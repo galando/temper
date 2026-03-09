@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "patterns": {},
+  "suppressed_patterns": [],
+  "context_rules": {
+    "config-loader": {
+      "detection": "file path contains 'config/' or class name has 'Config'",
+      "patterns": {}
+    },
+    "test-fixtures": {
+      "detection": "file path contains 'test/', 'spec/', '__tests__/'",
+      "patterns": {}
+    },
+    "data-transfer": {
+      "detection": "class name contains 'DTO', 'Request', 'Response'",
+      "patterns": {}
+    },
+    "legacy-module": {
+      "detection": "file marked in .temper/legacy-modules.json",
+      "patterns": {}
+    },
+    "generated-code": {
+      "detection": "file header contains '@generated' or 'auto-generated'",
+      "patterns": {}
+    }
+  }
+}

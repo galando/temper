@@ -1,0 +1,29 @@
+# Temper - Files that change per-project (don't commit to template)
+# These are generated when Temper runs in a project
+
+# Per-project specs and plans
+.temper/specs/
+.temper/reviews/
+.temper/archive/
+
+# Project-specific index (regenerated on each plan)
+.temper/index/
+
+# These should be committed to track metrics over time
+# .temper/metrics.json
+# .temper/review-memory.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Temporary files
+*.tmp
+*.temp

@@ -1,0 +1,25 @@
+{
+  "name": "temper",
+  "description": "Temper: Quality gates, blast radius analysis, and adaptive learning for AI-generated code",
+  "version": "1.0.0",
+  "author": {
+    "name": "galando",
+    "url": "https://github.com/galando/temper"
+  },
+  "repository": "https://github.com/galando/temper",
+  "homepage": "https://github.com/galando/temper",
+  "license": "MIT",
+  "keywords": ["temper", "quality", "code-review", "tdd", "standards", "blast-radius"],
+  "commands": [
+    "./.claude/commands/plan.md",
+    "./.claude/commands/build.md",
+    "./.claude/commands/review.md",
+    "./.claude/commands/check.md",
+    "./.claude/commands/fix.md",
+    "./.claude/commands/standards.md",
+    "./.claude/commands/status.md"
+  ],
+  "skills": [
+    "./.claude/skills/temper-core/SKILL.md"
+  ]
+}

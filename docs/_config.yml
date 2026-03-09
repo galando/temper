@@ -1,0 +1,48 @@
+title: Temper
+description: Quality gates, blast radius analysis, and adaptive learning for AI-generated code
+tagline: Your AI writes fast. Temper makes it last.
+author: Gal Naor
+url: https://galando.github.io
+baseurl: /temper
+
+# Theme
+theme: just-the-docs
+
+# Navigation
+nav_enabled: true
+nav_external_links:
+  - title: GitHub
+    url: https://github.com/galando/temper
+    hide_icon: false
+
+# Search
+search_enabled: true
+
+# Color scheme
+color_scheme: dark
+
+# Aux links
+aux_links:
+  "GitHub":
+    - "//github.com/galando/temper"
+
+# Footer
+footer_content: "Copyright &copy; 2025 Gal Naor. Distributed under the MIT license."
+
+# Plugins
+plugins:
+  - jemoji
+
+# Callouts
+callouts:
+  highlight:
+    color: yellow
+  important:
+    title: Important
+    color: blue
+  warning:
+    title: Warning
+    color: red
+  tip:
+    title: Tip
+    color: green

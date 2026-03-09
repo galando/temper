@@ -1,0 +1,47 @@
+# Presets Directory
+
+This directory contains company or project-specific presets.
+
+## Creating a Preset
+
+Create a YAML file named `{company}-{stack}.yaml`:
+
+```yaml
+name: company-microservice
+description: "Standard company Java microservice"
+
+stack:
+  runtime: java-21
+  framework: spring-boot-3.2
+  database: postgresql
+  orm: spring-data-jdbc
+  tests: junit5 + testcontainers
+  build: gradle
+
+validation:
+  compile: "./gradlew compileJava"
+  unit-test: "./gradlew test"
+  integration-test: "./gradlew integrationTest"
+  coverage: "./gradlew jacocoTestReport"
+  lint: "./gradlew checkstyleMain"
+  security: "./gradlew dependencyCheckAnalyze"
+  build: "./gradlew build"
+
+packs:
+  - quality
+  - tdd
+  - security
+  - company
+
+review:
+  block-on: [critical, high]
+  auto-fix: true
+
+branch:
+  pattern: "feature/{ticket}-{description}"
+  commit-style: conventional
+```
+
+## Usage
+
+Presets are automatically detected by Temper and override auto-detected settings.

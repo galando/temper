@@ -1,0 +1,15 @@
+{
+  "name": "temper",
+  "description": "Your AI writes fast. Temper makes it last. Quality gates, blast radius analysis, and adaptive learning.",
+  "owner": {
+    "name": "galando",
+    "url": "https://github.com/galando"
+  },
+  "plugins": [
+    {
+      "name": "temper",
+      "source": "./",
+      "description": "Quality gates, blast radius analysis, and adaptive learning for AI-generated code"
+    }
+  ]
+}

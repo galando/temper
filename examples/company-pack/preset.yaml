@@ -1,0 +1,38 @@
+name: acme-microservice
+description: "Standard Acme Corp Java microservice"
+
+stack:
+  runtime: java-21
+  framework: spring-boot-3.2
+  database: postgresql
+  orm: spring-data-jdbc
+  tests: junit5 + testcontainers
+  build: gradle
+
+validation:
+  compile: "./gradlew compileJava"
+  unit-test: "./gradlew test"
+  integration-test: "./gradlew integrationTest"
+  coverage: "./gradlew jacocoTestReport"
+  lint: "./gradlew checkstyleMain"
+  security: "./gradlew dependencyCheckAnalyze"
+  build: "./gradlew build"
+
+packs:
+  - quality
+  - tdd
+  - security
+  - acme-corp
+
+review:
+  block-on: [critical, high]
+  auto-fix: true
+  confidence-threshold: 0.7
+
+check:
+  coverage-threshold: 85
+  debt-tracking: true
+
+branch:
+  pattern: "feature/ACM-{ticket}-{description}"
+  commit-style: conventional

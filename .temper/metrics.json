@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "project": null,
+  "reviews": {
+    "total": 0,
+    "issues_by_severity": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "issues_by_category": {
+      "security": 0,
+      "performance": 0,
+      "quality": 0,
+      "logic": 0,
+      "architecture": 0,
+      "test_gap": 0
+    },
+    "auto_fixed": 0,
+    "suppressed": 0,
+    "acceptance_rate": 0.0
+  },
+  "coverage_history": [],
+  "test_count_history": [],
+  "patterns": {},
+  "plans": {
+    "created": 0,
+    "completed": 0,
+    "in_progress": 0,
+    "abandoned": 0
+  },
+  "fixes": {
+    "total": 0,
+    "rca_used": 0
+  },
+  "baseline": {
+    "date": null,
+    "coverage": null,
+    "violations": null
+  }
+}
