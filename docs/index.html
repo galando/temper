@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Temper - Quality gates, blast radius analysis, and adaptive learning for AI-generated code">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>Temper — Your AI writes fast. Temper makes it last.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0a0a;
+      --bg-secondary: #111111;
+      --bg-tertiary: #1a1a1a;
+      --fg-primary: #fafafa;
+      --fg-secondary: #a0a0a0;
+      --fg-muted: #666666;
+      --accent: #ff6b35;
+      --accent-secondary: #ffa726;
+      --accent-glow: rgba(255, 107, 53, 0.15);
+      --border: #2a2a2a;
+      --card: #151515;
+      --success: #4ade80;
+      --warning: #fbbf24;
+      --error: #f87171;
+      --radius-sm: 6px;
+      --radius-md: 12px;
+      --radius-lg: 20px;
+      --radius-full: 9999px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: 'Space Grotesk', -apple-system, sans-serif;
+      background: var(--bg-primary);
+      color: var(--fg-primary);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Background Grid */
+    .bg-grid {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image:
+        linear-gradient(rgba(255,107,53,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,107,53,0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .bg-glow {
+      position: fixed;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      filter: blur(120px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .bg-glow-1 {
+      top: -200px;
+      right: -100px;
+      background: radial-gradient(circle, rgba(255,107,53,0.15) 0%, transparent 70%);
+    }
+
+    .bg-glow-2 {
+      bottom: 20%;
+      left: -200px;
+      background: radial-gradient(circle, rgba(255,167,38,0.1) 0%, transparent 70%);
+    }
+
+    /* Navigation */
+    nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 1rem 2rem;
+      background: rgba(10, 10, 10, 0.8);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-weight: 700;
+      font-size: 1.5rem;
+      color: var(--fg-primary);
+      text-decoration: none;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      overflow: hidden;
+    }
+
+    .logo-icon img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      align-items: center;
+    }
+
+    .nav-links a {
+      color: var(--fg-secondary);
+      text-decoration: none;
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--fg-primary);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.65rem 1.25rem;
+      border-radius: var(--radius-full);
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-decoration: none;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+      color: var(--bg-primary);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(255, 107, 53, 0.3);
+    }
+
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--fg-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+
+    /* Hero Section */
+    .hero {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 8rem 2rem 4rem;
+      text-align: center;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 1rem;
+      background: var(--accent-glow);
+      border: 1px solid rgba(255, 107, 53, 0.3);
+      border-radius: var(--radius-full);
+      font-size: 0.85rem;
+      color: var(--accent);
+      margin-bottom: 2rem;
+      animation: fadeInUp 0.6s ease-out;
+    }
+
+    .hero h1 {
+      font-size: clamp(3rem, 8vw, 5.5rem);
+      font-weight: 700;
+      line-height: 1.1;
+      margin-bottom: 1.5rem;
+      animation: fadeInUp 0.6s ease-out 0.1s both;
+    }
+
+    .hero h1 .gradient {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-secondary) 50%, var(--accent) 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: gradient-shift 4s ease infinite;
+    }
+
+    @keyframes gradient-shift {
+      0%, 100% { background-position: 0% center; }
+      50% { background-position: 100% center; }
+    }
+
+    .hero-tagline {
+      font-size: clamp(1.25rem, 3vw, 1.75rem);
+      color: var(--fg-secondary);
+      max-width: 600px;
+      margin-bottom: 2.5rem;
+      animation: fadeInUp 0.6s ease-out 0.2s both;
+    }
+
+    .hero-cta {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      animation: fadeInUp 0.6s ease-out 0.3s both;
+    }
+
+    .hero-cta .btn {
+      padding: 0.85rem 1.75rem;
+      font-size: 1rem;
+    }
+
+    .hero-demo {
+      margin-top: 4rem;
+      width: 100%;
+      max-width: 800px;
+      animation: fadeInUp 0.6s ease-out 0.4s both;
+    }
+
+    .demo-terminal {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      text-align: left;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+    }
+
+    .demo-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1rem;
+      background: var(--bg-tertiary);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .demo-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+
+    .demo-dot.red { background: #ff5f56; }
+    .demo-dot.yellow { background: #ffbd2e; }
+    .demo-dot.green { background: #27c93f; }
+
+    .demo-body {
+      padding: 1.25rem;
+    }
+
+    .demo-line {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .demo-prompt {
+      color: var(--accent);
+    }
+
+    .demo-cmd {
+      color: var(--fg-primary);
+    }
+
+    .demo-output {
+      color: var(--fg-muted);
+      padding-left: 1.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .demo-output .highlight {
+      color: var(--success);
+    }
+
+    .demo-output .warn {
+      color: var(--warning);
+    }
+
+    /* Features Section */
+    section {
+      position: relative;
+      z-index: 1;
+      padding: 6rem 2rem;
+    }
+
+    .section-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+
+    .section-header h2 {
+      font-size: clamp(2rem, 4vw, 2.75rem);
+      font-weight: 700;
+      margin-bottom: 1rem;
+    }
+
+    .section-header p {
+      color: var(--fg-secondary);
+      font-size: 1.1rem;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    /* Commands Grid */
+    .commands-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .command-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      transition: all 0.3s;
+    }
+
+    .command-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    }
+
+    .command-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1rem;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .command-icon {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent-glow);
+      border-radius: var(--radius-sm);
+      font-size: 0.9rem;
+    }
+
+    .command-desc {
+      color: var(--fg-secondary);
+      font-size: 0.95rem;
+    }
+
+    /* How It Works */
+    .workflow {
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .workflow-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 1.5rem;
+    }
+
+    .workflow-number {
+      flex-shrink: 0;
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.25rem;
+      color: var(--bg-primary);
+    }
+
+    .workflow-content h3 {
+      font-size: 1.25rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .workflow-content p {
+      color: var(--fg-secondary);
+    }
+
+    .workflow-arrow {
+      width: 2px;
+      height: 40px;
+      background: linear-gradient(to bottom, var(--accent), transparent);
+      margin-left: 23px;
+    }
+
+    /* Stacks */
+    .stacks-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+    }
+
+    .stack-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.75rem 1.25rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-full);
+      font-size: 0.95rem;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .stack-badge:hover {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+
+    .stack-badge svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* Installation */
+    .install-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 2rem;
+    }
+
+    .install-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 2rem;
+    }
+
+    .install-card h3 {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.25rem;
+      margin-bottom: 1rem;
+    }
+
+    .install-card pre {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      overflow-x: auto;
+      color: var(--fg-secondary);
+    }
+
+    .install-card code {
+      color: var(--accent);
+    }
+
+    /* Packs */
+    .packs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .pack-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      text-align: center;
+    }
+
+    .pack-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 1rem;
+      background: var(--accent-glow);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+
+    .pack-card h4 {
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .pack-card p {
+      color: var(--fg-secondary);
+      font-size: 0.9rem;
+    }
+
+    /* Footer */
+    footer {
+      position: relative;
+      z-index: 1;
+      padding: 3rem 2rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+
+    .footer-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .footer-links a {
+      color: var(--fg-secondary);
+      text-decoration: none;
+      font-size: 0.95rem;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover {
+      color: var(--fg-primary);
+    }
+
+    .footer-copy {
+      color: var(--fg-muted);
+      font-size: 0.85rem;
+    }
+
+    /* Animations */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .animate-on-scroll {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: all 0.6s ease-out;
+    }
+
+    .animate-on-scroll.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Mobile */
+    @media (max-width: 768px) {
+      .nav-links {
+        display: none;
+      }
+
+      .hero {
+        padding: 6rem 1.5rem 3rem;
+      }
+
+      .hero-demo {
+        margin-top: 2rem;
+      }
+
+      .demo-terminal {
+        font-size: 0.75rem;
+      }
+
+      section {
+        padding: 4rem 1.5rem;
+      }
+
+      .install-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .workflow-step {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .workflow-arrow {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <nav>
+    <div class="nav-inner">
+      <a href="#" class="logo">
+        <div class="logo-icon">
+        <img src="assets/logo.png" alt="Temper Logo">
+      </div>
+        <span>Temper</span>
+      </a>
+      <div class="nav-links">
+        <a href="#commands">Commands</a>
+        <a href="#how-it-works">How it Works</a>
+        <a href="#install">Install</a>
+        <a href="https://github.com/galando/temper" target="_blank">GitHub</a>
+        <a href="https://github.com/galando/temper" class="btn btn-primary">Get Started</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-badge">
+      <span>✨</span>
+      <span>Now available for Claude Code & OpenCode</span>
+    </div>
+    <h1>
+      Your AI writes fast.<br>
+      <span class="gradient">Temper makes it last.</span>
+    </h1>
+    <p class="hero-tagline">
+      Quality gates, blast radius analysis, and adaptive learning for AI-generated code.
+    </p>
+    <div class="hero-cta">
+      <a href="#install" class="btn btn-primary">
+        <span>🚀</span> Install Now
+      </a>
+      <a href="https://github.com/galando/temper" class="btn btn-secondary" target="_blank">
+        <span>📖</span> View on GitHub
+      </a>
+    </div>
+    <div class="hero-demo">
+      <div class="demo-terminal">
+        <div class="demo-header">
+          <span class="demo-dot red"></span>
+          <span class="demo-dot yellow"></span>
+          <span class="demo-dot green"></span>
+        </div>
+        <div class="demo-body">
+          <div class="demo-line">
+            <span class="demo-prompt">$</span>
+            <span class="demo-cmd">/temper:plan "add user authentication"</span>
+          </div>
+          <div class="demo-output">
+            🔍 Analyzing blast radius...<br>
+            📦 <span class="highlight">12 files</span> will be affected<br>
+            🔗 Dependencies: UserService, AuthMiddleware, SessionStore<br>
+            ⚠️  Risk areas: <span class="warn">Password hashing, Token refresh</span><br>
+            <br>
+            ✅ Plan ready. <span class="highlight">7 implementation steps</span> with test gates.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="commands">
+    <div class="section-inner">
+      <div class="section-header animate-on-scroll">
+        <h2>7 Powerful Commands</h2>
+        <p>Everything you need to ship production-grade code with confidence.</p>
+      </div>
+      <div class="commands-grid">
+        <div class="command-card animate-on-scroll">
+          <div class="command-name">
+            <span class="command-icon">🎯</span>
+            /temper:plan
+          </div>
+          <p class="command-desc">Plan features with blast radius analysis. Understand impact before you code.</p>
+        </div>
+        <div class="command-card animate-on-scroll">
+          <div class="command-name">
+            <span class="command-icon">🔨</span>
+            /temper:build
+          </div>
+          <p class="command-desc">Build with TDD + quality gates. Tests must pass at every step.</p>
+        </div>
+        <div class="command-card animate-on-scroll">
+          <div class="command-name">
+            <span class="command-icon">🔍</span>
+            /temper:review
+          </div>
+          <p class="command-desc">Code review with confidence scoring. High-signal findings, minimal noise.</p>
+        </div>
+        <div class="command-card animate-on-scroll">
+          <div class="command-name">
+            <span class="command-icon">✅</span>
+            /temper:check
+          </div>
+          <p class="command-desc">Stack validation. Auto-detects your tech stack and validates everything.</p>
+        </div>
+        <div class="command-card animate-on-scroll">
+          <div class="command-name">
+            <span class="command-icon">🔧</span>
+            /temper:fix
+          </div>
+          <p class="command-desc">Root cause analysis + structured fix. Debug smarter, not harder.</p>
+        </div>
+        <div class="command-card animate-on-scroll">
+          <div class="command-name">
+            <span class="command-icon">📏</span>
+            /temper:standards
+          </div>
+          <p class="command-desc">Build team standards interactively. Scan codebase, generate rules.</p>
+        </div>
+        <div class="command-card animate-on-scroll">
+          <div class="command-name">
+            <span class="command-icon">📊</span>
+            /temper:status
+          </div>
+          <p class="command-desc">Quality metrics dashboard. Track coverage, debt, and improvement over time.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how-it-works">
+    <div class="section-inner">
+      <div class="section-header animate-on-scroll">
+        <h2>How It Works</h2>
+        <p>A sequential pipeline that forces discipline and produces exceptional results.</p>
+      </div>
+      <div class="workflow">
+        <div class="workflow-step animate-on-scroll">
+          <div class="workflow-number">1</div>
+          <div class="workflow-content">
+            <h3>Blast Radius Analysis</h3>
+            <p>First, Temper maps every file that will be affected by your change. It identifies dependencies, risk areas, and the true scope of work. No more "I just changed one thing and broke everything" surprises.</p>
+          </div>
+        </div>
+        <div class="workflow-arrow"></div>
+        <div class="workflow-step animate-on-scroll">
+          <div class="workflow-number">2</div>
+          <div class="workflow-content">
+            <h3>Quality Gates</h3>
+            <p>Then, Temper enforces validation rules. Tests must pass. Linting must be clean. Coverage thresholds must be met. The AI cannot proceed until gates are satisfied.</p>
+          </div>
+        </div>
+        <div class="workflow-arrow"></div>
+        <div class="workflow-step animate-on-scroll">
+          <div class="workflow-number">3</div>
+          <div class="workflow-content">
+            <h3>Production-Grade Output</h3>
+            <p>The result: tests pass, quality gates satisfied, impact understood, and technical debt tracked. Code that ships with confidence.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="stacks">
+    <div class="section-inner">
+      <div class="section-header animate-on-scroll">
+        <h2>Supported Stacks</h2>
+        <p>Auto-detection with zero configuration required.</p>
+      </div>
+      <div class="stacks-grid animate-on-scroll">
+        <div class="stack-badge">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.59 12c0 4.73-3.86 8.59-8.59 8.59S3.41 16.73 3.41 12 7.27 3.41 12 3.41 20.59 7.27 20.59 12M12 1C5.93 1 1 5.93 1 12s4.93 11 11 11 11-4.93 11-11S18.07 1 12 1m3.5 6.5L14 11l-4.5-1.5L12 14l1.5 4.5L17 12l1.5-4.5z"/></svg>
+          Spring Boot
+        </div>
+        <div class="stack-badge">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 10.11c1.03 0 1.87.84 1.87 1.89 0 1-.84 1.85-1.87 1.85S10.13 13 10.13 12c0-1.05.84-1.89 1.87-1.89M7.37 20c.63.38 2.01-.2 3.6-1.7-.52-.59-1.03-1.23-1.51-1.9-.82-.08-1.63-.2-2.4-.36-.51 2.14-.32 3.61.31 3.96m.71-5.74l-.29-.51c-.11.29-.22.58-.29.86.27.06.57.11.88.16l-.3-.51m6.54-.76l.81-1.79-.81-1.79c-.3-.59-.61-1.12-.88-1.6C13.51 9 12.76 9 12 9c-.76 0-1.51 0-2.22.06-.27.48-.58 1.01-.88 1.6L8.09 12l.81 1.79c.3.59.61 1.12.88 1.6.71.06 1.46.06 2.22.06.76 0 1.51 0 2.22-.06.27-.48.58-1.01.88-1.6M12 6.78c-.24.25-.5.52-.76.82h1.52c-.26-.3-.52-.57-.76-.82m0 10.44c.24-.25.5-.52.76-.82h-1.52c.26.3.52.57.76.82M16.62 4c-.62-.38-2 .2-3.59 1.7.52.59 1.03 1.23 1.51 1.9.82.08 1.63.2 2.4.36.51-2.14.32-3.61-.32-3.96m-.7 5.74l.29.51c.11-.29.22-.58.29-.86-.27-.06-.57-.11-.88-.16l.3.51m1.45-7.05c1.47.84 1.63 3.05 1.01 5.63 2.54.75 4.37 1.99 4.37 3.68s-1.83 2.93-4.37 3.68c.62 2.58.46 4.79-1.01 5.63-1.46.84-3.45-.12-5.37-1.95-1.92 1.83-3.91 2.79-5.38 1.95-1.46-.84-1.62-3.05-1-5.63-2.54-.75-4.37-1.99-4.37-3.68s1.83-2.93 4.37-3.68c-.62-2.58-.46-4.79 1-5.63 1.47-.84 3.46.12 5.38 1.95 1.92-1.83 3.91-2.79 5.37-1.95M17.08 12c.34.75.64 1.5.89 2.26 2.1-.63 3.28-1.53 3.28-2.26s-1.18-1.63-3.28-2.26c-.25.76-.55 1.51-.89 2.26M6.92 12c-.34-.75-.64-1.5-.89-2.26-2.1.63-3.28 1.53-3.28 2.26s1.18 1.63 3.28 2.26c.25-.76.55-1.51.89-2.26m9 2.26l-.3.51c.31-.05.61-.1.88-.16-.07-.28-.18-.57-.29-.86l-.29.51m-2.89 4.04c1.59 1.5 2.97 2.08 3.59 1.7.64-.35.83-1.82.32-3.96-.77.16-1.58.28-2.4.36-.48.67-.99 1.31-1.51 1.9M8.08 9.74l.3-.51c-.31.05-.61.1-.88.16.07.28.18.57.29.86l.29-.51m2.89-4.04C9.38 4.2 8 3.62 7.37 4c-.63.35-.82 1.82-.31 3.96.77-.16 1.58-.28 2.4-.36.48-.67.99-1.31 1.51-1.9z"/></svg>
+          React + TS
+        </div>
+        <div class="stack-badge">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.85c-.27 0-.55.07-.78.2l-7.44 4.3c-.48.28-.78.8-.78 1.36v8.58c0 .56.3 1.08.78 1.36l1.95 1.12c.95.46 1.27.46 1.71.46 1.4 0 2.21-.85 2.21-2.33V8.44c0-.12-.1-.22-.22-.22H8.5c-.13 0-.23.1-.23.22v8.47c0 .66-.68 1.31-1.77.76L4.45 16.5c-.07-.04-.11-.11-.11-.19V7.72c0-.08.04-.15.11-.19l7.44-4.29c.06-.04.14-.04.21 0l7.44 4.29c.07.04.11.11.11.19v8.58c0 .08-.04.15-.11.19l-7.44 4.29c-.07.04-.14.04-.21 0l-1.88-1.12c-.06-.03-.13-.04-.19-.01-.53.3-.63.34-1.13.51-.12.04-.31.11.07.32l2.44 1.44c.24.14.5.21.78.21.27 0 .54-.07.78-.21l7.44-4.29c.48-.28.78-.8.78-1.36V7.72c0-.56-.3-1.08-.78-1.36l-7.44-4.3c-.23-.13-.5-.2-.78-.2M14 8c-2.12 0-3.39.89-3.39 2.39 0 1.61 1.26 2.08 3.3 2.28 2.43.24 2.62.6 2.62 1.08 0 .83-.67 1.18-2.24 1.18-1.98 0-2.4-.49-2.55-1.47-.01-.11-.1-.19-.22-.19h-.99c-.11 0-.22.09-.22.22 0 1.24.68 2.74 3.98 2.74 2.38 0 3.75-.93 3.75-2.57 0-1.61-1.09-2.03-3.39-2.33-2.32-.31-2.55-.46-2.55-1.02 0-.45.2-1.05 1.93-1.05 1.55 0 2.13.33 2.37 1.37.02.1.11.17.21.17h1c.06 0 .11-.03.15-.07.04-.05.07-.1.05-.16C17.56 8.82 16.38 8 14 8z"/></svg>
+          Node/Express
+        </div>
+        <div class="stack-badge">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm-.041 4.725c.06-.056.147-.056.207 0l6.071 5.278a.16.16 0 010 .236l-6.071 5.278a.16.16 0 01-.207 0L5.888 10.24a.16.16 0 010-.237l6.071-5.278zm-5.743 6.51l5.743 5.002a.16.16 0 00.207 0l5.743-5.001-5.743 5.002a.16.16 0 01-.207 0L6.216 11.234z"/></svg>
+          FastAPI
+        </div>
+        <div class="stack-badge">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M1.811 10.231c-.047 0-.058-.023-.035-.059l.246-.315c.023-.035.081-.058.128-.058h4.172c.046 0 .058.035.035.07l-.199.303c-.023.036-.082.07-.117.07zM.047 11.306c-.047 0-.059-.023-.035-.058l.245-.316c.023-.035.082-.058.129-.058h5.328c.047 0 .07.035.058.07l-.093.28c-.012.046-.058.07-.105.07zm2.828 1.075c-.047 0-.059-.035-.035-.07l.163-.292c.023-.035.07-.07.117-.07h2.337c.047 0 .07.035.07.082l-.023.28c0 .047-.047.082-.082.082zm12.129-2.36c-.736.187-1.239.327-1.963.514-.176.046-.187.058-.34-.117-.174-.199-.303-.327-.548-.444-.737-.362-1.45-.257-2.115.175-.795.514-1.204 1.274-1.192 2.22.011.935.654 1.706 1.577 1.835.795.105 1.46-.175 1.987-.771.105-.13.198-.27.315-.434H10.47c-.245 0-.304-.152-.222-.35.152-.362.432-.97.596-1.274a.315.315 0 01.292-.187h3.683c-.023.316-.023.631-.07.947a4.983 4.983 0 01-.958 2.29c-.841 1.11-1.94 1.8-3.33 1.986-1.145.152-2.209-.07-3.143-.77-.865-.655-1.356-1.52-1.484-2.595-.152-1.274.222-2.419.993-3.424.83-1.086 1.928-1.776 3.272-2.02 1.098-.2 2.15-.07 3.096.571.62.41 1.063.97 1.356 1.648.07.105.023.164-.117.2m3.868 6.461c-1.064-.024-2.034-.328-2.852-1.029a3.665 3.665 0 01-1.262-2.255c-.21-1.32.152-2.489.947-3.529.853-1.122 1.881-1.706 3.272-1.95 1.192-.21 2.314-.095 3.33.595.923.63 1.496 1.484 1.648 2.605.198 1.578-.257 2.863-1.344 3.962-.771.783-1.718 1.273-2.805 1.495-.315.06-.63.07-.934.106zm2.78-4.72c-.011-.153-.011-.27-.034-.387-.21-1.157-1.274-1.812-2.361-1.578-1.075.222-1.776.935-2.045 2.021-.222.912.199 1.835.993 2.209.596.27 1.192.234 1.776-.07.853-.444 1.321-1.145 1.67-2.022v.024z"/></svg>
+          Go
+        </div>
+        <div class="stack-badge">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M23.834 11.703a1.378 1.378 0 00-.114-.562L20.58 4.15a1.388 1.388 0 00-.282-.398 1.4 1.4 0 00-.914-.413H4.616a1.4 1.4 0 00-.914.413 1.388 1.388 0 00-.282.398L.274 11.14a1.378 1.378 0 00-.114.562v.078c0 .07.01.14.028.206a1.38 1.38 0 00.502.813l10.682 8.05a1.4 1.4 0 001.656 0l10.682-8.05a1.38 1.38 0 00.502-.813c.018-.067.028-.136.028-.206v-.078zm-5.047-5.06l2.3 5.097H14.03l2.3-5.097h2.457zm-9.376 0h2.458l2.3 5.097H5.912l2.5-5.097zm-4.477 6.945h7.947l-3.973 6.727-3.974-6.727zm6.727 6.727l3.974-6.727 3.973 6.727-3.973 6.727z"/></svg>
+          Rust
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="packs">
+    <div class="section-inner">
+      <div class="section-header animate-on-scroll">
+        <h2>Built-in Packs</h2>
+        <p>Quality rules that enforce best practices automatically.</p>
+      </div>
+      <div class="packs-grid">
+        <div class="pack-card animate-on-scroll">
+          <div class="pack-icon">💎</div>
+          <h4>Quality</h4>
+          <p>Code quality rules — method length, DRY, naming conventions</p>
+        </div>
+        <div class="pack-card animate-on-scroll">
+          <div class="pack-icon">🧪</div>
+          <h4>TDD</h4>
+          <p>Test-driven development — RED-GREEN-REFACTOR cycle</p>
+        </div>
+        <div class="pack-card animate-on-scroll">
+          <div class="pack-icon">🔒</div>
+          <h4>Security</h4>
+          <p>Security best practices — OWASP Top 10 protection</p>
+        </div>
+        <div class="pack-card animate-on-scroll">
+          <div class="pack-icon">🌿</div>
+          <h4>Git</h4>
+          <p>Git workflow — conventional commits, branching strategy</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="section-inner">
+      <div class="section-header animate-on-scroll">
+        <h2>Quick Install</h2>
+        <p>Get started in seconds. Zero configuration required.</p>
+      </div>
+      <div class="install-grid">
+        <div class="install-card animate-on-scroll">
+          <h3>
+            <span>🟣</span>
+            Claude Code
+          </h3>
+          <pre><code>/plugin marketplace add galando/temper
+/plugin install temper</code></pre>
+          <p style="color: var(--fg-muted); margin-top: 1rem; font-size: 0.9rem;">
+            That's it! Commands are now available in any project.
+          </p>
+        </div>
+        <div class="install-card animate-on-scroll">
+          <h3>
+            <span>🟠</span>
+            OpenCode
+          </h3>
+          <pre><code>git clone https://github.com/galando/temper.git
+cp -r temper/.claude ~/.config/opencode/</code></pre>
+          <p style="color: var(--fg-muted); margin-top: 1rem; font-size: 0.9rem;">
+            Works with any AI assistant that reads markdown.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-links">
+        <a href="https://github.com/galando/temper">GitHub</a>
+        <a href="https://github.com/galando/temper/issues">Issues</a>
+        <a href="https://github.com/galando/temper/blob/main/CONTRIBUTING.md">Contributing</a>
+        <a href="https://github.com/galando/temper/blob/main/LICENSE">MIT License</a>
+      </div>
+      <p class="footer-copy">
+        Made with ❤️ by <a href="https://github.com/galando" style="color: var(--accent);">Gal Naor</a> for the AI coding community
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    // Scroll animations
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.1 });
+
+    document.querySelectorAll('.animate-on-scroll').forEach(el => {
+      observer.observe(el);
+    });
+
+    // Smooth scroll for nav links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  </script>
+</body>
+</html>
