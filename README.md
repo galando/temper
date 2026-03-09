@@ -1,12 +1,12 @@
 <div align="center">
 
-# 🌡️ Temper
+# Temper
 
 **Your AI writes fast. Temper makes it last.**
 
 *Quality gates, blast radius analysis, and adaptive learning for AI-generated code*
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/galando/temper)
+[![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases)](https://github.com/galando/temper/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Plugin-purple.svg)](https://claude.ai/claude-code)
 [![OpenCode](https://img.shields.io/badge/OpenCode-Compatible-orange.svg)](https://opencode.ai)
@@ -193,6 +193,23 @@ That's it. Temper will now enforce these rules automatically.
 - **Self-verification** — The AI reviews its own work against objective criteria
 - **Learning loop** — Patterns from reviews feed back into future suggestions
 
+## 📦 Releases & Versioning
+
+Temper follows [semantic versioning](https://semver.org/). Each release is tagged and includes a changelog.
+
+| Version | Description |
+|---------|-------------|
+| `1.x` | Current stable release |
+| `0.x` | Initial development releases |
+
+**Installing a specific version:**
+```bash
+# Clone a specific release
+git clone --depth 1 --branch v1.0.0 https://github.com/galando/temper.git
+```
+
+See [Releases](https://github.com/galando/temper/releases) for full changelog.
+
 ## 📖 Documentation
 
 - [Getting Started](https://galando.github.io/temper) — Full documentation
@@ -217,7 +234,7 @@ MIT © [Gal Naor](https://github.com/galando)
 
 <div align="center">
 
-**[⬆ Back to Top](#-temper)**
+**[⬆ Back to Top](#temper)**
 
 Made with ❤️ for the AI coding community
 

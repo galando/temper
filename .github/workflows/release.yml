@@ -1,0 +1,68 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            # First release, get all commits
+            COMMITS=$(git log --pretty=format:"- %s" --reverse)
+          else
+            # Get commits since last tag
+            COMMITS=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s" --reverse)
+          fi
+
+          # Save to file for multiline output
+          echo "$COMMITS" > /tmp/changelog.txt
+
+          # Create release notes
+          cat > /tmp/release_notes.md << EOF
+          ## What's Changed
+
+          $COMMITS
+
+          ## Installation
+
+          \`\`\`bash
+          # Claude Code
+          /plugin marketplace add galando/temper
+          /plugin install temper
+
+          # OpenCode
+          git clone https://github.com/galando/temper.git
+          cp -r temper/.claude ~/.config/opencode/
+          \`\`\`
+
+          **Full Changelog**: https://github.com/galando/temper/commits/${{ steps.version.outputs.VERSION }}
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: /tmp/release_notes.md
+          draft: false
+          prerelease: false
+          generate_release_notes: false
