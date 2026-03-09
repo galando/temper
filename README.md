@@ -20,7 +20,7 @@
 
 ## ✨ What is Temper?
 
-Temper is an **AI coding assistant plugin** that transforms your AI from a code generator into a **disciplined software engineer**. It's not a linter, not a CI tool — it's **instructions that shape AI behavior**.
+Temper transforms your AI assistant from a code generator into a **disciplined software engineer**. It's not a linter, not a CI tool — it's **instructions that shape AI behavior**.
 
 Works with **Claude Code**, **OpenCode**, and any AI assistant that reads markdown instructions.
 
@@ -29,45 +29,32 @@ Before Temper:  AI writes code → you review → bugs slip through → technica
 After Temper:   AI plans → validates → writes tests → implements → self-reviews → ships with confidence
 ```
 
-## 🎬 Demo
-
-```
-You: /temper:plan "add user authentication"
-
-Temper: 🔍 Analyzing blast radius...
-        📦 12 files will be affected
-        🔗 Dependencies: UserService, AuthMiddleware, SessionStore
-        ⚠️  Risk areas: Password hashing, Token refresh
-
-        Plan ready. 7 implementation steps with test gates.
-```
-
 ## 🚀 Quick Start
 
-### Claude Code
-
 ```bash
-# Install the plugin
+# Claude Code
 /plugin marketplace add galando/temper
 /plugin install temper
-```
 
-### OpenCode
-
-```bash
-# Clone into your project or globally
+# OpenCode
 git clone https://github.com/galando/temper.git
 cp -r temper/.claude ~/.config/opencode/
-```
 
-### Use it
-
-```bash
+# Use it
 cd your-project
 /temper:check           # Auto-detects your stack
 /temper:plan "feature"  # Plan with impact analysis
 /temper:build           # Build with TDD + quality gates
 ```
+
+## 🎯 Why Temper?
+
+| Feature | What it means |
+|---------|---------------|
+| **Blast Radius Analysis** | Understands impact before coding. Maps affected files, dependencies, and risk areas. |
+| **Enforced Quality Gates** | Tests must pass. Coverage must be met. The AI cannot proceed until verified. |
+| **Adaptive Learning** | Gets smarter as you use it. Tracks patterns and suggests custom rules. |
+| **2KB Context** | Tiny footprint. Always-on config is minimal, commands load on-demand. |
 
 ## 📋 Commands
 
@@ -81,51 +68,83 @@ cd your-project
 | `/temper:standards` | Build team standards | `/temper:standards` |
 | `/temper:status` | Quality metrics dashboard | `/temper:status` |
 
-## 🎯 Why Temper?
+## 🔄 The User Flow
 
-| Feature | What it means |
-|---------|---------------|
-| **Zero Config** | Auto-detects your stack, runs your test commands |
-| **Blast Radius** | Understands how changes ripple through your codebase |
-| **Confidence Scoring** | High-signal findings, minimal false positives |
-| **Adaptive Learning** | Tracks patterns, suppresses noise, suggests rules |
-| **Debt Tracking** | Coverage trends, hotspots, improvement over time |
-| **Company-ready** | Standards builder, custom packs, presets |
-| **Context-efficient** | ~2KB always-on (not 60KB) |
+### 1. Plan — *You type*
+```
+/temper:plan "add user authentication"
+```
+You describe what you want. Temper automatically analyzes the blast radius — mapping affected files, dependencies, and risk areas.
+
+### 2. Build — *Automated*
+```
+/temper:build
+```
+Temper implements automatically with TDD gates enforced. Tests written first, code follows. Cannot proceed until tests pass.
+
+### 3. Review — *Automated*
+```
+/temper:review
+```
+Temper reviews automatically against enabled packs. Findings scored by confidence — high-confidence issues require attention.
+
+### 4. Track & Learn — *Automated*
+```
+/temper:status
+```
+Temper learns over time. Tracks patterns, coverage trends, and suggests new rules based on your codebase.
+
+## 📈 Adaptive Learning
+
+Temper gets smarter the more you use it:
+
+- **Pattern Detection** — Identifies recurring issues and anti-patterns in your code
+- **Rule Suggestions** — Proposes new rules based on what it learns from your reviews
+- **Noise Reduction** — Suppresses false positives as it learns your codebase patterns
+
+## 📦 Built-in Packs
+
+| Pack | Severity | What it enforces |
+|------|----------|-----------------|
+| `quality` | BLOCK | Code quality — method length, DRY, naming, complexity |
+| `tdd` | WARN | Test-driven development — RED-GREEN-REFACTOR, coverage |
+| `security` | BLOCK | Security — OWASP Top 10, no secrets in code |
+| `git` | SUGGEST | Git workflow — conventional commits, branching |
+
+## 🎨 Create Your Own Packs
+
+Add a `rules.md` file to your project and Temper will automatically discover it:
+
+```markdown
+# .claude/packs/my-company/rules.md
+
+# My Company Standards
+
+## BLOCK
+- All API responses use DTOs
+- No raw SQL queries
+
+## WARN
+- Constructor injection only
+- Max method length: 20 lines
+
+## SUGGEST
+- Use Optional instead of null
+- Prefer immutable data structures
+```
+
+That's it. Temper will now enforce these rules automatically.
 
 ## 🔧 Supported Stacks
 
 | Stack | Detection | Auto-Commands |
 |-------|-----------|---------------|
-| ![Spring Boot](https://img.shields.io/badge/Spring_Boot-6DB33F?style=flat&logo=springboot) | `pom.xml` / `build.gradle` | `mvn compile`, `mvn test`, `mvn build` |
-| ![React + TS](https://img.shields.io/badge/React_TS-3178C6?style=flat&logo=react) | `package.json` + `tsconfig.json` | `npm test`, `npm run build`, `npm run lint` |
-| ![Node/Express](https://img.shields.io/badge/Node_Express-339933?style=flat&logo=node.js) | `package.json` + express | `npm test`, `npm run build`, `npm run lint` |
-| ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat&logo=fastapi) | `pyproject.toml` + fastapi | `pytest`, `ruff check`, `mypy` |
-| ![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go) | `go.mod` | `go test`, `golangci-lint`, `go build` |
-| ![Rust](https://img.shields.io/badge/Rust-000000?style=flat&logo=rust) | `Cargo.toml` | `cargo test`, `cargo clippy`, `cargo build` |
-
-## 📦 Built-in Packs
-
-Temper ships with 4 quality packs out of the box:
-
-| Pack | What it enforces |
-|------|-----------------|
-| `quality` | Code quality — method length, DRY, naming conventions |
-| `tdd` | Test-driven development — RED-GREEN-REFACTOR cycle |
-| `security` | Security best practices — OWASP Top 10 |
-| `git` | Git workflow — conventional commits, branching strategy |
-
-Create your own by adding `rules.md` to `.claude/packs/{your-pack}/`.
-
-## 🏢 For Companies
-
-```bash
-/temper:standards
-```
-
-Temper scans your codebase, asks the right questions, and generates your **engineering standards as a pack**. Distribute the `.claude/` directory to every project.
-
-→ [Enterprise Setup Guide](docs/enterprise.md)
+| Spring Boot | `pom.xml` / `build.gradle` | `mvn compile`, `mvn test`, `mvn build` |
+| React + TS | `package.json` + `tsconfig.json` | `npm test`, `npm run build`, `npm run lint` |
+| Node/Express | `package.json` + express | `npm test`, `npm run build`, `npm run lint` |
+| FastAPI | `pyproject.toml` + fastapi | `pytest`, `ruff check`, `mypy` |
+| Go | `go.mod` | `go test`, `golangci-lint`, `go build` |
+| Rust | `Cargo.toml` | `cargo test`, `cargo clippy`, `cargo build` |
 
 ## 🏗️ How It Works
 
@@ -134,21 +153,21 @@ Temper scans your codebase, asks the right questions, and generates your **engin
 │                        AI Coding Session                                 │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
-│  User Input ──────► Temper Commands ──────► AI Instructions             │
-│                                               │                          │
-│                      ┌────────────────────────┴────────────────┐        │
-│                      │                                         │        │
-│                      ▼                                         ▼        │
-│               ┌─────────────┐                           ┌──────────┐    │
-│               │   PHASE 1   │                           │  PHASE 2 │    │
-│               │ Blast Radius │───────┬─────────────────►│ Quality  │    │
-│               │   Analysis   │       │                  │  Gates   │    │
-│               └─────────────┘       │                  └──────────┘    │
-│                      │              │                        │          │
-│                      │   Impact     │   Validation          │   Test    │
-│                      │   Map        │   Rules               │   Gates   │
-│                      │              │                        │          │
-│                      └──────────────┴────────────────────────┘          │
+│  You type ───────► Temper Commands ───────► AI Instructions             │
+│                                                │                         │
+│                      ┌─────────────────────────┴────────────────┐       │
+│                      │                                          │       │
+│                      ▼                                          ▼       │
+│               ┌─────────────┐                            ┌──────────┐   │
+│               │   PHASE 1   │                            │  PHASE 2 │   │
+│               │ Blast Radius │───────┬─────────────────► │ Quality  │   │
+│               │   Analysis   │       │                   │  Gates   │   │
+│               └─────────────┘       │                   └──────────┘   │
+│                      │              │                         │         │
+│                      │   Impact     │   Validation           │   Test   │
+│                      │   Map        │   Rules                │   Gates  │
+│                      │              │                         │         │
+│                      └──────────────┴─────────────────────────┘         │
 │                                     │                                    │
 │                                     ▼                                    │
 │                    ┌────────────────────────────────┐                    │
@@ -156,31 +175,23 @@ Temper scans your codebase, asks the right questions, and generates your **engin
 │                    │   • Tests pass                  │                   │
 │                    │   • Quality gates satisfied     │                   │
 │                    │   • Impact understood           │                   │
-│                    │   • Technical debt tracked      │                   │
+│                    │   • Learns from patterns        │                   │
 │                    └────────────────────────────────┘                    │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**The pipeline is sequential, not parallel:**
+**The pipeline is sequential:**
 
-1. **Blast Radius Analysis (Phase 1)** — First, Temper maps every file that will be affected by your change. It identifies dependencies, risk areas, and the true scope of work. This prevents "I just changed one thing and broke everything" surprises.
+1. **Blast Radius Analysis (Phase 1)** — Maps every file that will be affected, identifies dependencies and risk areas.
 
-2. **Quality Gates (Phase 2)** — Then, Temper enforces validation rules. Tests must pass. Linting must be clean. Coverage thresholds must be met. The AI cannot proceed until gates are satisfied.
+2. **Quality Gates (Phase 2)** — Enforces validation rules. Tests must pass, linting must be clean, coverage thresholds must be met.
 
 **Why this produces exceptional results:**
 
-- **Forced discipline**: The AI can't cut corners — every gate must pass
-- **Informed decisions**: Blast radius means the AI understands context before coding
-- **Self-verification**: The AI reviews its own work against objective criteria
-- **Learning loop**: Patterns from reviews feed back into future suggestions
-
-**Key insight**: Temper is 100% markdown — no executables, no binaries, no external dependencies. It's AI instructions that teach any coding assistant engineering discipline.
-
-| Component | Context Cost |
-|-----------|-------------|
-| Always-on config | ~2 KB |
-| Per command | ~5-15 KB |
-| Full pack | ~20-30 KB |
+- **Forced discipline** — The AI can't cut corners, every gate must pass
+- **Informed decisions** — Blast radius means the AI understands context before coding
+- **Self-verification** — The AI reviews its own work against objective criteria
+- **Learning loop** — Patterns from reviews feed back into future suggestions
 
 ## 📖 Documentation
 
@@ -193,7 +204,6 @@ Temper scans your codebase, asks the right questions, and generates your **engin
 We love contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ```bash
-# Quick contrib setup
 git clone https://github.com/galando/temper.git
 cd temper
 # Make your changes, test with your own projects
