@@ -21,6 +21,19 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
+      - name: Verify plugin.json version matches tag
+        run: |
+          TAG_VERSION="${{ steps.version.outputs.VERSION }}"
+          # Remove 'v' prefix for comparison
+          VERSION_NUM="${TAG_VERSION#v}"
+          PLUGIN_VERSION=$(cat .claude-plugin/plugin.json | grep '"version"' | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+          if [ "$VERSION_NUM" != "$PLUGIN_VERSION" ]; then
+            echo "ERROR: Tag version ($VERSION_NUM) does not match plugin.json version ($PLUGIN_VERSION)"
+            echo "Please update .claude-plugin/plugin.json version to $VERSION_NUM before tagging"
+            exit 1
+          fi
+          echo "Version check passed: $VERSION_NUM"
+
       - name: Generate changelog
         id: changelog
         run: |
