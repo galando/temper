@@ -75,6 +75,20 @@ IMPORTANT:
 - Do not flag style preferences unless they violate pack rules
 - Do not flag patterns that are consistent with the rest of the codebase
 - Focus on: logic errors, security, performance, missing tests, architectural drift
+
+DIFF-AWARE REVIEW:
+For each issue, classify as:
+- REGRESSION: Code that was working before, now broken by these changes (highest priority)
+- NEW ISSUE: Problem introduced by this change
+- PRE-EXISTING: Issue existed before this change (lower priority, optional to fix)
+Weight your focus: 80% on changed lines, 20% on context verification.
+
+PERFORMANCE PATTERNS to check:
+- N+1 queries: Loops making database/API calls
+- Unbounded results: Queries without LIMIT, recursive calls without depth check
+- Sync I/O in hot path: Blocking operations in request handlers, event loops
+- Large objects in memory: Loading full datasets, unprocessed batch operations
+- Missing pagination: Endpoints returning unbounded lists
 ```
 
 **Subagent split strategy:**

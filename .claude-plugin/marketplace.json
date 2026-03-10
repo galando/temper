@@ -9,7 +9,7 @@
     {
       "name": "temper",
       "source": "./",
-      "description": "Quality gates, blast radius analysis, and adaptive learning for AI-generated code"
+      "description": "AI writes the code. Temper makes sure it's actually ready to ship."
     }
   ]
 }

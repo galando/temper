@@ -22,3 +22,5 @@ argument-hint: "<feature-name-or-JIRA-123>"
 6. Clarify if ambiguous (max 2-3 questions)
 7. Generate spec/plan/tasks/quickstart to `.temper/specs/{feature}/`
 8. Present for approval
+
+**Detects parallel tasks and optimizes ordering**

@@ -16,13 +16,31 @@ description: "Execute the plan, implementing tasks one-by-one with quality gates
 ### Step 1: Load Plan
 
 ```
-1. Check for active plan in .temper/specs/*/tasks.md
-2. If multiple specs exist, ask user which to execute
-3. Load tasks.md + quickstart.md
-4. Read plan.md for architecture decisions and blast radius
-5. Read all files listed in plan's "Prerequisites" or "Must Read" sections
-6. Read active pack rules from .claude/packs/ (enabled packs only)
-7. Read stack file from .claude/packs/stacks/{detected-stack}.md
+1. Check for .temper/build-state.json
+   - If found: Ask user "Resume from Task {N}? [Y/n]"
+   - If yes: Load checkpoint, resume from last completed task
+   - If no: Delete the file and start fresh
+2. Check for active plan in .temper/specs/*/tasks.md
+3. If multiple specs exist, ask user which to execute
+4. Load tasks.md + quickstart.md
+5. Read plan.md for architecture decisions and blast radius
+6. Read all files listed in plan's "Prerequisites" or "Must Read" sections
+7. Read active pack rules from .claude/packs/ (enabled packs only)
+8. Read stack file from .claude/packs/stacks/{detected-stack}.md
+```
+
+**Build State Schema:**
+```json
+{
+  "spec": "{feature-name}",
+  "started": "2026-03-10T10:00:00Z",
+  "last_task_completed": 3,
+  "tasks": [
+    { "id": 1, "status": "completed", "timestamp": "..." },
+    { "id": 2, "status": "completed", "timestamp": "..." },
+    { "id": 3, "status": "in_progress", "timestamp": "..." }
+  ]
+}
 ```
 
 **If no plan exists (trivial task):**
@@ -52,7 +70,16 @@ For each task in tasks.md:
 **b. Write test first** - If TDD pack enabled (see `.claude/packs/tdd/rules.md`)
 **c. Implement** - Write minimal code to pass the test or fulfill spec
 **d. Validate** - Run test → GREEN, run task validation command
-**e. Refactor** - Only if obvious, low-risk, and all tests pass
+**e. Checkpoint** - Write to `.temper/build-state.json`:
+   ```json
+   {
+     "spec": "{feature-name}",
+     "last_task_completed": {task_number},
+     "tasks": [...],
+     "updated": "{timestamp}"
+   }
+   ```
+**f. Refactor** - Only if obvious, low-risk, and all tests pass
 
 ### Step 4: Post-Implementation
 
@@ -62,11 +89,12 @@ After all tasks complete:
 1. Run full test suite → all must pass
 2. Auto-run /temper:review → fix issues (max 2 loops)
 3. Auto-run /temper:check → all levels must pass
-4. Report results:
+4. Delete .temper/build-state.json (clean up checkpoint)
+5. Report results:
    "Feature complete. {X} files created, {Y} modified, {Z} tests added.
     Branch: {branch name}
     Ready to commit?"
-5. On user approval → commit with conventional message
+6. On user approval → commit with conventional message
 ```
 
 ## Quality Gates

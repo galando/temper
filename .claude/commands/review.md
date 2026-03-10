@@ -18,3 +18,5 @@ description: "Code review with confidence scoring and review memory"
 5. Generate report to `.temper/reviews/`
 6. Auto-fix high-priority issues (if enabled, max 2 loops)
 7. Update metrics + review memory
+
+**Diff-aware: focuses on what changed, catches N+1 and performance issues**
