@@ -10,8 +10,13 @@ nav_order: 1
 Your AI writes fast. Temper makes it last.
 {: .fs-6 .fw-300 }
 
+[![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases)](https://github.com/galando/temper/releases)
+[![npm](https://img.shields.io/npm/v/@galando/temper)](https://www.npmjs.com/package/@galando/temper)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 [Get started now](#quick-start){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[View on GitHub](https://github.com/galando/temper){: .btn .fs-5 .mb-4 .mb-md-0 }
+[View on GitHub](https://github.com/galando/temper){: .btn .fs-5 .mb-4 .mb-md-0 .mr-2 }
+[DeepWiki](https://deepwiki.com/galando/temper){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 ---
 
@@ -112,3 +117,5 @@ This produces **production-grade code** because:
 - [Commands Reference](commands) — Full command documentation
 - [Packs](packs) — Built-in and custom packs
 - [Enterprise Setup](enterprise) — Deploy across your organization
+- [DeepWiki](https://deepwiki.com/galando/temper) — AI-powered documentation
+- [npm Package](https://www.npmjs.com/package/@galando/temper) — OpenCode plugin

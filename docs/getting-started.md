@@ -52,7 +52,7 @@ git clone https://github.com/galando/temper.git
 cp -r temper/.claude ~/.config/opencode/
 ```
 
-### Manual Installation
+### Other AI Assistants
 
 For any AI assistant that reads markdown:
 
@@ -187,3 +187,5 @@ check:
 - [Commands Reference](commands) — Full command documentation
 - [Packs](packs) — Built-in and custom packs
 - [Enterprise Setup](enterprise) — Deploy across your organization
+- [DeepWiki](https://deepwiki.com/galando/temper) — AI-powered documentation
+- [npm Package](https://www.npmjs.com/package/@galando/temper) — OpenCode plugin
