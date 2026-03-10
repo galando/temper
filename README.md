@@ -7,11 +7,13 @@
 *Quality gates, blast radius analysis, and adaptive learning for AI-generated code*
 
 [![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases)](https://github.com/galando/temper/releases)
+[![npm version](https://img.shields.io/npm/v/@galando/temper.svg)](https://www.npmjs.com/package/@galando/temper)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Plugin-purple.svg)](https://claude.ai/claude-code)
-[![OpenCode](https://img.shields.io/badge/OpenCode-Compatible-orange.svg)](https://opencode.ai)
+[![OpenCode](https://img.shields.io/badge/OpenCode-npm%20Plugin-orange.svg)](https://opencode.ai)
+[![DeepWiki](https://img.shields.io/badge/DeepWiki-Documentation-blue.svg)](https://deepwiki.com/galando/temper)
 
-[Website](https://galando.github.io/temper) • [Quick Start](#-quick-start) • [Commands](#-commands) • [Releases](https://github.com/galando/temper/releases)
+[Website](https://galando.github.io/temper) • [DeepWiki](https://deepwiki.com/galando/temper) • [npm](https://www.npmjs.com/package/@galando/temper) • [Releases](https://github.com/galando/temper/releases)
 
 ---
 
@@ -35,7 +37,10 @@ After Temper:   AI plans → validates → writes tests → implements → self-
 /plugin marketplace add galando/temper
 /plugin install temper
 
-# OpenCode
+# OpenCode (npm plugin - recommended)
+opencode plugin add @galando/temper
+
+# OpenCode (manual installation)
 git clone https://github.com/galando/temper.git
 cp -r temper/.claude ~/.config/opencode/
 
@@ -44,6 +49,23 @@ cd your-project
 /temper:check           # Auto-detects your stack
 /temper:plan "feature"  # Plan with impact analysis
 /temper:build           # Build with TDD + quality gates
+```
+
+### OpenCode Configuration
+
+Add to your `opencode.json`:
+```json
+{
+  "plugin": ["@galando/temper"]
+}
+```
+
+Then use Temper tools:
+```
+temper_plan({ feature: "add OAuth" })
+temper_build({})
+temper_review({})
+temper_check({})
 ```
 
 ## Why Temper?
@@ -263,17 +285,29 @@ Temper follows [semantic versioning](https://semver.org/). Each release is tagge
 
 **Installing a specific version:**
 ```bash
-# Clone a specific release
-git clone --depth 1 --branch v1.0.0 https://github.com/galando/temper.git
+# Claude Code - Clone a specific release
+git clone --depth 1 --branch v1.1.0 https://github.com/galando/temper.git
+
+# OpenCode - Install specific npm version
+opencode plugin add @galando/temper@1.1.0
 ```
 
 See [Releases](https://github.com/galando/temper/releases) for full changelog.
 
+### Distribution Channels
+
+| Platform | Package | Install |
+|----------|---------|---------|
+| Claude Code | GitHub Repo | `/plugin marketplace add galando/temper` |
+| OpenCode | `@galando/temper` on npm | `opencode plugin add @galando/temper` |
+
 ## Documentation
 
 - [Website](https://galando.github.io/temper) — Full documentation
-- [Getting Started](https://galando.github.io/temper) — Step-by-step guide
+- [DeepWiki](https://deepwiki.com/galando/temper) — AI-powered documentation
+- [Getting Started](https://galando.github.io/temper/getting-started) — Step-by-step guide
 - [Enterprise Setup](docs/enterprise.md) — Deploy across your organization
+- [npm Package](https://www.npmjs.com/package/@galando/temper) — OpenCode plugin
 
 ## Contributing
 

@@ -1141,11 +1141,17 @@
       <div class="install-card">
         <h4>🟠 OpenCode</h4>
         <div class="code-block">
-          <pre>git clone https://github.com/galando/temper.git
-cp -r temper/.claude ~/.config/opencode/</pre>
-          <button class="copy-btn" onclick="copyCode(this, 'git clone https://github.com/galando/temper.git\ncp -r temper/.claude ~/.config/opencode/')">Copy</button>
+          <pre>opencode plugin add @galando/temper</pre>
+          <button class="copy-btn" onclick="copyCode(this, 'opencode plugin add @galando/temper')">Copy</button>
         </div>
-        <p>Works with any AI assistant that reads markdown.</p>
+        <p><strong>Or add to <code>opencode.json</code>:</strong></p>
+        <div class="code-block">
+          <pre>{
+  "plugin": ["@galando/temper"]
+}</pre>
+          <button class="copy-btn" onclick="copyCode(this, '{\n  \"plugin\": [\"@galando/temper\"]\n}')">Copy</button>
+        </div>
+        <p style="margin-top: 8px; font-size: 0.9em; color: #666;">npm package: <a href="https://www.npmjs.com/package/@galando/temper" target="_blank">@galando/temper</a></p>
       </div>
     </div>
   </section>
@@ -1157,6 +1163,8 @@ cp -r temper/.claude ~/.config/opencode/</pre>
         <a href="https://github.com/galando/temper/issues">Issues</a>
         <a href="https://github.com/galando/temper/blob/main/CONTRIBUTING.md">Contributing</a>
         <a href="https://github.com/galando/temper/blob/main/LICENSE">MIT License</a>
+        <a href="https://deepwiki.com/galando/temper" target="_blank">DeepWiki</a>
+        <a href="https://www.npmjs.com/package/@galando/temper" target="_blank">npm</a>
       </div>
       <p class="footer-copy">Made by <a href="https://github.com/galando">Gal Naor</a></p>
     </div>

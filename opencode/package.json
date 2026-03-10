@@ -1,0 +1,60 @@
+{
+  "name": "@galando/temper",
+  "version": "1.0.0",
+  "description": "Quality gates, blast radius analysis, and adaptive learning for AI-generated code - OpenCode plugin",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "commands",
+    "skills",
+    "packs",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "ai",
+    "code-quality",
+    "tdd",
+    "blast-radius",
+    "temper"
+  ],
+  "author": "Gal Naor <gal@naor.dev>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/galando/temper.git",
+    "directory": "opencode"
+  },
+  "bugs": {
+    "url": "https://github.com/galando/temper/issues"
+  },
+  "homepage": "https://galando.github.io/temper",
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0"
+  }
+}
