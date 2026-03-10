@@ -13,6 +13,12 @@
 # .temper/metrics.json
 # .temper/review-memory.json
 
+# Dependencies (never commit)
+node_modules/
+
+# Build outputs (generated during build)
+dist/
+
 # OS files
 .DS_Store
 Thumbs.db
