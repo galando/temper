@@ -37,6 +37,21 @@ After Temper:   AI plans → validates → writes tests → implements → self-
 
 ### OpenCode
 
+**Option 1: npm Plugin (Recommended)**
+
+```bash
+opencode plugin add @galando/temper
+```
+
+Or add to your `opencode.json`:
+```json
+{
+  "plugin": ["@galando/temper"]
+}
+```
+
+**Option 2: Manual Installation**
+
 ```bash
 git clone https://github.com/galando/temper.git
 cp -r temper/.claude ~/.config/opencode/

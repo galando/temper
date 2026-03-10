@@ -64,7 +64,10 @@ jobs:
           /plugin marketplace add galando/temper
           /plugin install temper
 
-          # OpenCode
+          # OpenCode (npm plugin - recommended)
+          opencode plugin add @galando/temper
+
+          # OpenCode (manual)
           git clone https://github.com/galando/temper.git
           cp -r temper/.claude ~/.config/opencode/
           \`\`\`

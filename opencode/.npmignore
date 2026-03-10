@@ -1,0 +1,23 @@
+# Source files (not needed in published package)
+src/
+tsconfig.json
+
+# Development files
+*.log
+.DS_Store
+node_modules/
+
+# Test files
+*.test.ts
+*.spec.ts
+__tests__/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore

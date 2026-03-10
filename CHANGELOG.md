@@ -5,6 +5,29 @@ All notable changes to Temper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2025-03-10
+
+### Added
+- **OpenCode npm Plugin** (`@galando/temper`)
+  - Native OpenCode plugin with TypeScript implementation
+  - 7 Temper tools: `temper_plan`, `temper_build`, `temper_review`, `temper_check`, `temper_fix`, `temper_standards`, `temper_status`
+  - Easy installation via `opencode plugin add @galando/temper`
+  - Config-based installation: `"plugin": ["@galando/temper"]`
+- **Plugin Structure:**
+  - `src/index.ts` - Plugin entry point with tool definitions
+  - `commands/` - Markdown documentation for each command
+  - `skills/temper-core/` - Temper core skill with SKILL.md
+  - `packs/` - Quality, TDD, Security, Git packs
+  - `templates/` - Spec, plan, tasks, quickstart templates
+
+### Changed
+- Updated README with OpenCode plugin installation instructions
+- Added npm badge and OpenCode plugin documentation
+
+### Documentation
+- Updated docs/index.md with plugin syntax
+- Updated docs/getting-started.md with config-based installation
+
 ## [1.0.0] - 2025-03-09
 
 ### Added

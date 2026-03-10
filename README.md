@@ -35,7 +35,10 @@ After Temper:   AI plans → validates → writes tests → implements → self-
 /plugin marketplace add galando/temper
 /plugin install temper
 
-# OpenCode
+# OpenCode (npm plugin - recommended)
+opencode plugin add @galando/temper
+
+# OpenCode (manual installation)
 git clone https://github.com/galando/temper.git
 cp -r temper/.claude ~/.config/opencode/
 
@@ -44,6 +47,23 @@ cd your-project
 /temper:check           # Auto-detects your stack
 /temper:plan "feature"  # Plan with impact analysis
 /temper:build           # Build with TDD + quality gates
+```
+
+### OpenCode Configuration
+
+Add to your `opencode.json`:
+```json
+{
+  "plugin": ["@galando/temper"]
+}
+```
+
+Then use Temper tools:
+```
+temper_plan({ feature: "add OAuth" })
+temper_build({})
+temper_review({})
+temper_check({})
 ```
 
 ## Why Temper?
