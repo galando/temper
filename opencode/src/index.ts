@@ -1,4 +1,5 @@
-import { type Plugin, type ToolContext, tool } from "./types"
+import { type Plugin, type ToolContext, tool } from "@opencode-ai/plugin"
+import { z } from "zod"
 
 /**
  * Temper Plugin for OpenCode
@@ -42,14 +43,13 @@ Phases:
 8. Present for approval`,
 
         args: {
-          feature: tool.schema.string().describe("Feature description, Jira ticket (JIRA-123), or GitHub issue (#123)"),
-          mode: tool.schema.enum(["auto", "full", "quick"] as const).optional().default("auto").describe("Planning mode: auto (default), full (force spec-kit), quick (inline)"),
+          feature: z.string().describe("Feature description, Jira ticket (JIRA-123), or GitHub issue (#123)"),
+          mode: z.enum(["auto", "full", "quick"]).optional().default("auto").describe("Planning mode: auto (default), full (force spec-kit), quick (inline)"),
         },
 
-        async execute(args: { feature: string; mode?: string }, context: ToolContext) {
+        async execute(args, context: ToolContext) {
           const { directory } = context
-          return {
-            instructions: `# Plan: Feature Planning with Impact Analysis
+          return `# Plan: Feature Planning with Impact Analysis
 
 ## Feature: ${args.feature}
 ${args.mode && args.mode !== "auto" ? `## Mode: ${args.mode}` : ""}
@@ -102,7 +102,6 @@ Show plan summary, risk level, blast radius, file count.
 
 Working directory: ${directory}
 `
-          }
         },
       }),
 
@@ -128,13 +127,12 @@ Execution:
 5. Report results, ask to commit`,
 
         args: {
-          spec: tool.schema.string().optional().describe("Spec name to build (auto-detects if not provided)"),
+          spec: z.string().optional().describe("Spec name to build (auto-detects if not provided)"),
         },
 
-        async execute(args: { spec?: string }, context: ToolContext) {
+        async execute(args, context: ToolContext) {
           const { directory } = context
-          return {
-            instructions: `# Build: Execute Plan with Quality Gates
+          return `# Build: Execute Plan with Quality Gates
 
 ${args.spec ? `## Spec: ${args.spec}` : "## Spec: Auto-detect from .temper/specs/"}
 
@@ -183,7 +181,6 @@ e. **Refactor** - Only if obvious, low-risk, all tests pass
 
 Working directory: ${directory}
 `
-          }
         },
       }),
 
@@ -206,14 +203,13 @@ Execution:
 7. Update metrics + review memory`,
 
         args: {
-          files: tool.schema.array(tool.schema.string()).optional().describe("Specific files to review (defaults to changed files)"),
-          threshold: tool.schema.number().min(0).max(1).optional().default(0.7).describe("Confidence threshold (0.0-1.0)"),
+          files: z.array(z.string()).optional().describe("Specific files to review (defaults to changed files)"),
+          threshold: z.number().min(0).max(1).optional().default(0.7).describe("Confidence threshold (0.0-1.0)"),
         },
 
-        async execute(args: { files?: string[]; threshold?: number }, context: ToolContext) {
+        async execute(args, context: ToolContext) {
           const { directory } = context
-          return {
-            instructions: `# Review: Confidence-Scored Code Review
+          return `# Review: Confidence-Scored Code Review
 
 **Goal:** Review changes with confidence scoring and intent validation.
 
@@ -256,7 +252,6 @@ Fix high-priority issues automatically (max 2 loops).
 
 Working directory: ${directory}
 `
-          }
         },
       }),
 
@@ -281,14 +276,13 @@ Levels (stop on failure):
 7. Security (dependency scan)`,
 
         args: {
-          level: tool.schema.number().min(0).max(7).optional().describe("Stop at this level (default: run all)"),
-          fix: tool.schema.boolean().optional().default(false).describe("Auto-fix lint/format issues"),
+          level: z.number().min(0).max(7).optional().describe("Stop at this level (default: run all)"),
+          fix: z.boolean().optional().default(false).describe("Auto-fix lint/format issues"),
         },
 
-        async execute(args: { level?: number; fix?: boolean }, context: ToolContext) {
+        async execute(args, context: ToolContext) {
           const { directory } = context
-          return {
-            instructions: `# Check: Validation Pipeline
+          return `# Check: Validation Pipeline
 
 **Goal:** Auto-detect stack and run validation levels in order.
 
@@ -349,7 +343,6 @@ Report results for each level:
 
 Working directory: ${directory}
 `
-          }
         },
       }),
 
@@ -372,13 +365,12 @@ Execution:
 6. Report + commit`,
 
         args: {
-          bug: tool.schema.string().describe("Bug description or issue reference (JIRA-123, #456)"),
+          bug: z.string().describe("Bug description or issue reference (JIRA-123, #456)"),
         },
 
-        async execute(args: { bug: string }, context: ToolContext) {
+        async execute(args, context: ToolContext) {
           const { directory } = context
-          return {
-            instructions: `# Fix: RCA + Regression Test + Fix
+          return `# Fix: RCA + Regression Test + Fix
 
 ## Bug: ${args.bug}
 
@@ -428,7 +420,6 @@ Document findings:
 
 Working directory: ${directory}
 `
-          }
         },
       }),
 
@@ -448,13 +439,12 @@ Execution:
 4. Validate against current codebase, set baseline`,
 
         args: {
-          company: tool.schema.string().optional().describe("Company/team name for the pack"),
+          company: z.string().optional().describe("Company/team name for the pack"),
         },
 
-        async execute(args: { company?: string }, context: ToolContext) {
+        async execute(args, context: ToolContext) {
           const { directory } = context
-          return {
-            instructions: `# Standards: Interactive Standards Builder
+          return `# Standards: Interactive Standards Builder
 
 **Goal:** Scan codebase for patterns, interview about conventions, generate company pack + preset.
 
@@ -512,7 +502,6 @@ packs:
 
 Working directory: ${directory}
 `
-          }
         },
       }),
 
@@ -535,10 +524,9 @@ Displays:
 
         args: {},
 
-        async execute(_args: Record<string, never>, context: ToolContext) {
+        async execute(_args, context: ToolContext) {
           const { directory } = context
-          return {
-            instructions: `# Status: Quality Metrics Dashboard
+          return `# Status: Quality Metrics Dashboard
 
 **Goal:** Display metrics, trends, learning loop suggestions.
 
@@ -586,7 +574,6 @@ List any specs in .temper/specs/:
 
 Working directory: ${directory}
 `
-          }
         },
       }),
     },
