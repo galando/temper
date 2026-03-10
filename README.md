@@ -7,13 +7,11 @@
 *Quality gates, blast radius analysis, and adaptive learning for AI-generated code*
 
 [![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases)](https://github.com/galando/temper/releases)
-[![npm version](https://img.shields.io/npm/v/@galando/temper.svg)](https://www.npmjs.com/package/@galando/temper)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Plugin-purple.svg)](https://claude.ai/claude-code)
-[![OpenCode](https://img.shields.io/badge/OpenCode-npm%20Plugin-orange.svg)](https://opencode.ai)
 [![DeepWiki](https://img.shields.io/badge/DeepWiki-Documentation-blue.svg)](https://deepwiki.com/galando/temper)
 
-[Website](https://galando.github.io/temper) • [Why Temper?](docs/why-temper.md) • [npm](https://www.npmjs.com/package/@galando/temper) • [Releases](https://github.com/galando/temper/releases)
+[Website](https://galando.github.io/temper) • [Why Temper?](docs/why-temper.md) • [Releases](https://github.com/galando/temper/releases)
 
 ---
 
@@ -163,16 +161,6 @@ Run `/temper:standards` to create packs interactively.
 ```bash
 /plugin marketplace add galando/temper
 /plugin install temper
-```
-
-### OpenCode
-
-```bash
-# npm plugin (recommended)
-opencode plugin add @galando/temper
-
-# Or add to opencode.json:
-{ "plugin": ["@galando/temper"] }
 ```
 
 ### Use It

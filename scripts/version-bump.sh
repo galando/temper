@@ -6,8 +6,7 @@
 #
 # This script updates the version in all required files:
 # 1. .claude-plugin/plugin.json (Claude Code plugin)
-# 2. opencode/package.json (OpenCode npm package)
-# 3. CHANGELOG.md (adds version header)
+# 2. CHANGELOG.md (adds version header)
 #
 
 set -e
@@ -36,14 +35,7 @@ if [ -f ".claude-plugin/plugin.json" ]; then
     rm -f .claude-plugin/plugin.json.bak
 fi
 
-# 2. Update OpenCode npm package version
-echo "  → Updating opencode/package.json"
-if [ -f "opencode/package.json" ]; then
-    sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VERSION\"/" opencode/package.json
-    rm -f opencode/package.json.bak
-fi
-
-# 3. Update CHANGELOG.md - add version header if not exists
+# 2. Update CHANGELOG.md - add version header if not exists
 echo "  → Updating CHANGELOG.md"
 if ! grep -q "## \[$NEW_VERSION\]" CHANGELOG.md; then
     # Insert new version header after the intro section
@@ -71,7 +63,6 @@ echo "✅ Version bumped to $NEW_VERSION"
 echo ""
 echo "📋 Files updated:"
 echo "   • .claude-plugin/plugin.json"
-echo "   • opencode/package.json"
 echo "   • CHANGELOG.md"
 echo ""
 echo "🔍 Next steps:"

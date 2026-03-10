@@ -17,41 +17,6 @@ nav_order: 2
 {: .highlight }
 Claude Code will automatically load Temper's commands and skills when you start a session in any project.
 
-### OpenCode
-
-**Option 1: npm Plugin (Recommended)**
-
-```bash
-# Install via CLI
-opencode plugin add @galando/temper
-```
-
-Or add to your `opencode.json`:
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "plugin": ["@galando/temper"]
-}
-```
-
-Then use Temper tools in OpenCode:
-```
-temper_plan({ feature: "add authentication" })
-temper_build({})
-temper_review({})
-temper_check({})
-```
-
-**Option 2: Manual Installation**
-
-```bash
-# Clone the repository
-git clone https://github.com/galando/temper.git
-
-# Copy to your OpenCode config
-cp -r temper/.claude ~/.config/opencode/
-```
-
 ### Other AI Assistants
 
 For any AI assistant that reads markdown:
@@ -188,4 +153,3 @@ check:
 - [Packs](packs) — Built-in and custom packs
 - [Enterprise Setup](enterprise) — Deploy across your organization
 - [DeepWiki](https://deepwiki.com/galando/temper) — AI-powered documentation
-- [npm Package](https://www.npmjs.com/package/@galando/temper) — OpenCode plugin

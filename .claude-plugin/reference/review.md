@@ -96,7 +96,6 @@ PERFORMANCE PATTERNS to check:
 - If backend + frontend: 2 parallel subagents
 - If >20 changed files: split into groups of ~10 per subagent (max 3 parallel)
 
-**If subagents not available (OpenCode):** Run all reviews in main context sequentially.
 
 ### Step 3: Intent Validation (main context)
 

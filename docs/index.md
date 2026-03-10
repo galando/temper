@@ -11,7 +11,6 @@ nav_order: 1
 {: .fs-6 .fw-300 }
 
 [![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases)](https://github.com/galando/temper/releases)
-[![npm](https://img.shields.io/npm/v/@galando/temper)](https://www.npmjs.com/package/@galando/temper)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [Get started now](#quick-start){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
@@ -57,16 +56,6 @@ The queue consumer issue? Temper's blast radius analysis flagged the async depen
 ```bash
 /plugin marketplace add galando/temper
 /plugin install temper
-```
-
-### OpenCode
-
-```bash
-# npm plugin (recommended)
-opencode plugin add @galando/temper
-
-# Or add to opencode.json:
-{ "plugin": ["@galando/temper"] }
 ```
 
 ### Use It
