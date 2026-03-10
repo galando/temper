@@ -7,7 +7,7 @@ nav_order: 1
 
 {: .fs-9 }
 
-**AI writes the code. Temper makes sure it's actually ready to ship.**
+**Your AI writes fast. Temper makes it last.**
 {: .fs-6 .fw-300 }
 
 [![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases)](https://github.com/galando/temper/releases)

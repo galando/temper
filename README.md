@@ -2,7 +2,7 @@
 
 # Temper
 
-**AI writes the code. Temper makes sure it's actually ready to ship.**
+**Your AI writes fast. Temper makes it last.**
 
 *Quality gates, blast radius analysis, and adaptive learning for AI-generated code*
 
