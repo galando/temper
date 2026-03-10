@@ -7,230 +7,34 @@
 *Quality gates, blast radius analysis, and adaptive learning for AI-generated code*
 
 [![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases)](https://github.com/galando/temper/releases)
-[![npm version](https://img.shields.io/npm/v/@galando/temper.svg)](https://www.npmjs.com/package/@galando/temper)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Plugin-purple.svg)](https://claude.ai/claude-code)
-[![OpenCode](https://img.shields.io/badge/OpenCode-npm%20Plugin-orange.svg)](https://opencode.ai)
 [![DeepWiki](https://img.shields.io/badge/DeepWiki-Documentation-blue.svg)](https://deepwiki.com/galando/temper)
 
-[Website](https://galando.github.io/temper) • [DeepWiki](https://deepwiki.com/galando/temper) • [npm](https://www.npmjs.com/package/@galando/temper) • [Releases](https://github.com/galando/temper/releases)
+[Website](https://galando.github.io/temper) • [Why Temper?](docs/why-temper.md) • [Releases](https://github.com/galando/temper/releases)
 
 ---
 
 </div>
 
-## What is Temper?
+## The Problem
 
-Temper transforms your AI assistant from a code generator into a **disciplined software engineer**. It's not a linter, not a CI tool — it's **instructions that shape AI behavior**.
+AI writes code fast. Really fast. But speed without discipline creates bugs, technical debt, and subtle issues that slip through review. You've probably seen it: hallucinated APIs, over-engineered abstractions, missing error handling, code that works in isolation but breaks integration.
 
-Works with **Claude Code**, **OpenCode**, and any AI assistant that reads markdown instructions.
+## Before & After
+
+**Before Temper:** You add user authentication. AI generates code. Tests pass. You deploy. Users report password resets don't work. The queue consumer crashed silently at 2 AM. You debug for hours.
+
+**After Temper:**
 
 ```
-Before Temper:  AI writes code → you review → bugs slip through → technical debt accumulates
-After Temper:   AI plans → validates → writes tests → implements → self-reviews → ships with confidence
+/temper:plan "add password reset"     # Maps blast radius, identifies dependencies
+/temper:build                         # TDD gates: tests first, then implement
+/temper:review                        # Catches N+1 queries, missing rate limiting
+/temper:status                        # Tracks hotspots, suggests improvements
 ```
 
-## Quick Start
-
-```bash
-# Claude Code
-/plugin marketplace add galando/temper
-/plugin install temper
-
-# OpenCode (npm plugin - recommended)
-opencode plugin add @galando/temper
-
-# OpenCode (manual installation)
-git clone https://github.com/galando/temper.git
-cp -r temper/.claude ~/.config/opencode/
-
-# Use it
-cd your-project
-/temper:check           # Auto-detects your stack
-/temper:plan "feature"  # Plan with impact analysis
-/temper:build           # Build with TDD + quality gates
-```
-
-### OpenCode Configuration
-
-Add to your `opencode.json`:
-```json
-{
-  "plugin": ["@galando/temper"]
-}
-```
-
-Then use Temper tools:
-```
-temper_plan({ feature: "add OAuth" })
-temper_build({})
-temper_review({})
-temper_check({})
-```
-
-## Why Temper?
-
-| Feature | What it means |
-|---------|---------------|
-| **Blast Radius Analysis** | Understands impact before coding. Maps affected files, dependencies, and risk areas. |
-| **Enforced Quality Gates** | Tests must pass. Coverage must be met. The AI cannot proceed until verified. |
-| **Adaptive Learning** | Gets smarter as you use it. Tracks patterns and suggests custom rules. |
-| **2KB Context** | Tiny footprint. Always-on config is minimal, commands load on-demand. |
-
-## Commands
-
-| Command | Purpose | Example |
-|---------|---------|---------|
-| `/temper:plan` | Plan with blast radius analysis | `/temper:plan "add OAuth"` |
-| `/temper:build` | Build with TDD + quality gates | `/temper:build` |
-| `/temper:review` | Code review with confidence scoring | `/temper:review` |
-| `/temper:check` | Stack validation (auto-detects) | `/temper:check` |
-| `/temper:fix` | Root cause analysis + fix | `/temper:fix "JIRA-123"` |
-| `/temper:standards` | Build team standards | `/temper:standards` |
-| `/temper:status` | Quality metrics dashboard | `/temper:status` |
-
-## The User Flow
-
-### 1. Plan — *You type*
-```
-/temper:plan "add user authentication"
-```
-You describe what you want. Temper automatically analyzes the blast radius — mapping affected files, dependencies, and risk areas.
-
-### 2. Build — *Automated*
-```
-/temper:build
-```
-Temper implements automatically with TDD gates enforced. Tests written first, code follows. Cannot proceed until tests pass.
-
-### 3. Review — *Automated*
-```
-/temper:review
-```
-Temper reviews automatically against enabled packs. Findings scored by confidence — high-confidence issues require attention.
-
-### 4. Track & Learn — *Automated*
-```
-/temper:status
-```
-Temper learns over time. Tracks patterns, coverage trends, and suggests new rules based on your codebase.
-
-## Adaptive Learning
-
-Temper gets smarter the more you use it:
-
-- **Pattern Detection** — Identifies recurring issues and anti-patterns in your code
-- **Rule Suggestions** — Proposes new rules based on what it learns from your reviews
-- **Noise Reduction** — Suppresses false positives as it learns your codebase patterns
-
----
-
-## Quality Packs
-
-Packs are collections of rules that Temper enforces during code generation and review. Each pack has rules at three severity levels:
-
-| Severity | Behavior |
-|----------|----------|
-| **BLOCK** | Stops progress until issue is fixed. Used for critical rules. |
-| **WARN** | Flags issue but allows progress. Requires acknowledgment. |
-| **SUGGEST** | Informational. Logged but doesn't block or warn. |
-
-### Built-in Packs
-
-| Pack | Severity | What it enforces |
-|------|----------|-----------------|
-| `quality` | BLOCK | Code quality — method length, DRY, naming, complexity |
-| `tdd` | WARN | Test-driven development — RED-GREEN-REFACTOR, coverage |
-| `security` | BLOCK | Security — OWASP Top 10, no secrets in code |
-| `git` | SUGGEST | Git workflow — conventional commits, branching |
-
-### Pack Locations
-
-Temper looks for packs in these locations (in order):
-
-1. **Project packs** — `.claude/packs/` in your project
-2. **Built-in packs** — Shipped with Temper
-
-### Creating Custom Packs
-
-Add a `rules.md` file to your project and Temper will automatically discover it:
-
-```markdown
-# .claude/packs/my-company/rules.md
-
-# My Company Standards
-
-## BLOCK
-- All API responses use DTOs
-- No raw SQL queries
-- Services must be stateless
-
-## WARN
-- Constructor injection only
-- Max method length: 20 lines
-- Avoid nested conditionals (max 2 levels)
-
-## SUGGEST
-- Use Optional instead of null
-- Prefer immutable data structures
-- Document public APIs
-```
-
-That's it. Temper will now enforce these rules automatically during `/temper:build` and `/temper:review`.
-
-### Creating Packs Interactively
-
-Run `/temper:standards` to create a pack interactively:
-
-1. Temper scans your codebase for patterns
-2. Asks questions about your preferences
-3. Generates a custom `rules.md` based on your answers
-
-### Pack Structure
-
-```text
-.claude/packs/
-├── my-company/
-│   ├── rules.md        # Required: The rules file
-│   └── examples/       # Optional: Code examples
-│       ├── good.ts     # Good example
-│       └── bad.ts      # Bad example
-```
-
-### Rule Syntax
-
-```markdown
-## BLOCK
-- Rule description
-- Another rule with details
-
-## WARN
-- Warning-level rule
-- Another warning
-
-## SUGGEST
-- Suggestion for improvement
-```
-
-### Best Practices for Packs
-
-1. **Start with WARN** — New rules should warn first, promote to BLOCK after team alignment
-2. **Be specific** — "Max 20 lines per method" is better than "Keep methods short"
-3. **Include rationale** — Add comments explaining *why* a rule exists
-4. **Review periodically** — Remove outdated rules, promote working SUGGESTs to WARN
-
----
-
-## Supported Stacks
-
-| Stack | Detection | Auto-Commands |
-|-------|-----------|---------------|
-| Spring Boot | `pom.xml` / `build.gradle` | `mvn compile`, `mvn test`, `mvn build` |
-| React + TS | `package.json` + `tsconfig.json` | `npm test`, `npm run build`, `npm run lint` |
-| Node/Express | `package.json` + express | `npm test`, `npm run build`, `npm run lint` |
-| FastAPI | `pyproject.toml` + fastapi | `pytest`, `ruff check`, `mypy` |
-| Go | `go.mod` | `go test`, `golangci-lint`, `go build` |
-| Rust | `Cargo.toml` | `cargo test`, `cargo clippy`, `cargo build` |
+The queue consumer issue? Temper's blast radius analysis flagged the async dependency. The N+1 query? Caught in review. The missing rate limiting? Flagged as HIGH confidence. You ship with confidence.
 
 ## How It Works
 
@@ -266,58 +70,140 @@ Run `/temper:standards` to create a pack interactively:
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**The pipeline is sequential:**
+**Phase 1: Blast Radius Analysis** — Maps every file that will be affected, identifies dependencies and risk areas.
 
-1. **Blast Radius Analysis (Phase 1)** — Maps every file that will be affected, identifies dependencies and risk areas.
+**Phase 2: Quality Gates** — Enforces validation rules. Tests must pass, linting must be clean, coverage thresholds must be met.
 
-2. **Quality Gates (Phase 2)** — Enforces validation rules. Tests must pass, linting must be clean, coverage thresholds must be met.
+## Comparison
 
-**Why this produces exceptional results:**
+| | **AI Solo** | **AI + Temper** | **Traditional Review** |
+|---|-------------|-----------------|------------------------|
+| Blast radius analysis | ❌ | ✅ Maps files, dependencies | Manual (error-prone) |
+| Test-first enforcement | Hope AI remembers | ✅ RED-GREEN-REFACTOR gates | Code review comments |
+| Performance patterns | Maybe | ✅ N+1, unbounded results, sync I/O | Manual inspection |
+| Confidence scoring | All equal | ✅ Filters by threshold | Reviewer judgment |
+| False positive handling | ❌ | ✅ Review memory suppresses noise | Reviewer fatigue |
+| AI-specific patterns | ❌ | ✅ Hallucinated APIs, over-engineering | ❌ |
+| Learning over time | ❌ | ✅ Pattern detection, rule suggestions | ❌ |
+| Context footprint | N/A | ~2KB always-on | Human reviewer time |
 
-- **Forced discipline** — The AI can't cut corners, every gate must pass
-- **Informed decisions** — Blast radius means the AI understands context before coding
-- **Self-verification** — The AI reviews its own work against objective criteria
-- **Learning loop** — Patterns from reviews feed back into future suggestions
+## Value by Audience
 
-## Releases & Versioning
+### Solo Developers
+- **Confidence** that AI-generated code actually works
+- **Time back** from manual review and debugging
+- **Learning** that adapts to your codebase patterns
 
-Temper follows [semantic versioning](https://semver.org/). Each release is tagged and includes a changelog.
+### Teams
+- **Shared standards** enforced automatically via custom packs
+- **Consistent quality** regardless of who wrote the prompt
+- **Hotspot tracking** to identify files needing attention
 
-**Installing a specific version:**
-```bash
-# Claude Code - Clone a specific release
-git clone --depth 1 --branch v1.1.0 https://github.com/galando/temper.git
+### Organizations
+- **Audit trail** — every plan, review, and fix is logged
+- **Compliance** — BLOCK rules enforce organizational standards
+- **Metrics** — coverage trends, issue density, learning progress
+- **Debt tracking** — know where technical debt accumulates
 
-# OpenCode - Install specific npm version
-opencode plugin add @galando/temper@1.1.0
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| [`/temper:plan`](docs/commands.md#temperplan) | Plan with blast radius analysis |
+| [`/temper:build`](docs/commands.md#temperbuild) | Build with TDD + quality gates |
+| [`/temper:review`](docs/commands.md#temperreview) | Code review with confidence scoring |
+| [`/temper:check`](docs/commands.md#tempercheck) | Stack validation (auto-detects) |
+| [`/temper:fix`](docs/commands.md#temperfix) | Root cause analysis + fix |
+| [`/temper:standards`](docs/commands.md#temperstandards) | Build team standards |
+| [`/temper:status`](docs/commands.md#temperstatus) | Quality metrics dashboard |
+
+## Quality Packs
+
+Packs are collections of rules enforced during code generation and review:
+
+| Severity | Behavior |
+|----------|----------|
+| **BLOCK** | Stops progress until issue is fixed |
+| **WARN** | Flags issue, requires acknowledgment |
+| **SUGGEST** | Informational, logged only |
+
+### Built-in Packs
+
+| Pack | Severity | What it enforces |
+|------|----------|-----------------|
+| `quality` | BLOCK | Method length, DRY, naming, complexity |
+| `tdd` | WARN | RED-GREEN-REFACTOR, coverage |
+| `security` | BLOCK | OWASP Top 10, no secrets in code |
+| `git` | SUGGEST | Conventional commits, branching |
+
+### Custom Packs
+
+Add a `rules.md` file and Temper discovers it automatically:
+
+```markdown
+# .claude/packs/my-company/rules.md
+
+## BLOCK
+- All API responses use DTOs
+- No raw SQL queries
+
+## WARN
+- Constructor injection only
+- Max method length: 20 lines
 ```
 
-See [Releases](https://github.com/galando/temper/releases) for full changelog.
+Run `/temper:standards` to create packs interactively.
 
-### Distribution Channels
+## Installation
 
-| Platform | Package | Install |
-|----------|---------|---------|
-| Claude Code | GitHub Repo | `/plugin marketplace add galando/temper` |
-| OpenCode | `@galando/temper` on npm | `opencode plugin add @galando/temper` |
+### Claude Code
+
+```bash
+/plugin marketplace add galando/temper
+/plugin install temper
+```
+
+### Use It
+
+```bash
+cd your-project
+/temper:check           # Auto-detects your stack
+/temper:plan "feature"  # Plan with blast radius
+/temper:build           # Build with TDD gates
+/temper:review          # Review with confidence scoring
+```
+
+## Adaptive Learning
+
+Temper gets smarter the more you use it:
+
+- **Pattern Detection** — Identifies recurring issues in your code
+- **Rule Suggestions** — Proposes rules based on review history
+- **Noise Reduction** — Suppresses false positives over time
+- **Hotspot Tracking** — Shows which files generate the most issues
 
 ## Documentation
 
-- [Website](https://galando.github.io/temper) — Full documentation
-- [DeepWiki](https://deepwiki.com/galando/temper) — AI-powered documentation
-- [Getting Started](https://galando.github.io/temper/getting-started) — Step-by-step guide
+- [Why Temper?](docs/why-temper.md) — Why "be careful" isn't enough
+- [Commands Reference](docs/commands.md) — Full command documentation
+- [Getting Started](docs/getting-started.md) — Step-by-step guide
+- [Packs](docs/packs.md) — Built-in and custom packs
 - [Enterprise Setup](docs/enterprise.md) — Deploy across your organization
-- [npm Package](https://www.npmjs.com/package/@galando/temper) — OpenCode plugin
+
+## Supported Stacks
+
+| Stack | Detection | Auto-Commands |
+|-------|-----------|---------------|
+| Spring Boot | `pom.xml` / `build.gradle` | `mvn compile`, `mvn test` |
+| React + TS | `package.json` + `tsconfig.json` | `npm test`, `npm run build` |
+| Node/Express | `package.json` + express | `npm test`, `npm run lint` |
+| FastAPI | `pyproject.toml` + fastapi | `pytest`, `ruff check` |
+| Go | `go.mod` | `go test`, `golangci-lint` |
+| Rust | `Cargo.toml` | `cargo test`, `cargo clippy` |
 
 ## Contributing
 
 We love contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-```bash
-git clone https://github.com/galando/temper.git
-cd temper
-# Make your changes, test with your own projects
-```
 
 ## License
 

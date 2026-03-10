@@ -238,6 +238,41 @@ Tasks:
 
 Use templates from `$CLAUDE_PLUGIN_ROOT/templates/` (spec.md, plan.md, tasks.md, quickstart.md) as the base structure. Fill in from reference map and blast radius analysis.
 
+#### Task Ordering in tasks.md
+
+Order tasks by layer (dependencies first):
+```
+1. Infrastructure (config, DB migrations, build setup)
+2. Core (models, services, business logic)
+3. Integration (controllers, routes, API endpoints)
+4. Tests (integration tests, E2E)
+```
+
+#### Parallel Task Detection
+
+Analyze task pairs for file independence. Mark independent tasks with `[PARALLEL: with Task X]`:
+
+```
+ANALYSIS RULES:
+
+Two tasks CAN run in parallel if:
+- They modify different files (no overlap)
+- Neither depends on the other's output
+- No shared mutable state
+
+Two tasks MUST be sequential if:
+- Task B imports from Task A's file
+- Task B tests Task A's code
+- Task B depends on Task A's config changes
+
+MARKING FORMAT:
+- Sequential: `## Task 1 — {title} [SEQUENTIAL]`
+- Sequential after another: `## Task 2 — {title} [SEQUENTIAL: after Task 1]`
+- Parallel with another: `## Task 3 — {title} [PARALLEL: with Task 4]`
+
+GUARD: When in doubt, keep sequential. Parallel marking is an optimization, not a requirement.
+```
+
 ### Phase 7: Present for Approval
 
 Show the user:

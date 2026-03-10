@@ -1,4 +1,4 @@
-name: Create Release & Publish to npm
+name: Create Release
 
 on:
   push:
@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   release:
@@ -64,13 +63,6 @@ jobs:
           # Claude Code
           /plugin marketplace add galando/temper
           /plugin install temper
-
-          # OpenCode (npm plugin - recommended)
-          opencode plugin add @galando/temper
-
-          # OpenCode (manual)
-          git clone https://github.com/galando/temper.git
-          cp -r temper/.claude ~/.config/opencode/
           \`\`\`
 
           **Full Changelog**: https://github.com/galando/temper/commits/${{ steps.version.outputs.VERSION }}
@@ -83,23 +75,3 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install dependencies
-        working-directory: ./opencode
-        run: npm ci
-
-      - name: Build
-        working-directory: ./opencode
-        run: npm run build
-
-      - name: Publish to npm
-        working-directory: ./opencode
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -46,6 +46,7 @@ Plan with blast radius analysis.
 - Analyzes which files will be affected
 - Identifies dependencies and risk areas
 - Creates step-by-step plan with test gates
+- Detects parallel tasks for optimized ordering
 
 **Example:**
 ```bash
@@ -72,15 +73,23 @@ Plan with blast radius analysis.
 
 📋 Plan: 5 steps
 
-Step 1: Create PasswordResetService
+## Task 1 — Create PasswordResetService [SEQUENTIAL]
   → Test: PasswordResetService.test.ts
   → Gate: All tests pass
 
-Step 2: Add reset endpoint to AuthController
+## Task 2 — Add reset endpoint [SEQUENTIAL: after Task 1]
   → Test: AuthController.test.ts
   → Gate: Coverage > 80%
+
+## Task 3 — Update email templates [PARALLEL: with Task 4]
+  → Test: EmailTemplate.test.ts
+
+## Task 4 — Add rate limiting [PARALLEL: with Task 3]
+  → Test: RateLimiter.test.ts
 ...
 ```
+
+**Note:** Tasks marked `[PARALLEL: with Task X]` can run concurrently since they touch different files.
 
 ---
 
@@ -97,6 +106,7 @@ Build with TDD + quality gates.
 - Runs tests after each step
 - Blocks on quality gate failures
 - Tracks coverage
+- Resumes from checkpoint if interrupted
 
 **Workflow:**
 ```
@@ -131,6 +141,25 @@ Step 3/5: Email integration
    • Time: 4m 32s
 ```
 
+**Resume from Checkpoint:**
+
+If your build is interrupted, Temper saves progress and offers to resume:
+
+```
+📁 Found .temper/build-state.json
+   Last completed: Task 3/5
+   Started: 2026-03-10 14:32
+
+Resume from Task 4? [Y/n] > Y
+
+🚧 Resuming from Task 4...
+
+Step 4/5: Add rate limiting
+  ✅ Tests already written
+  ✅ Implement
+  ...
+```
+
 ---
 
 ## `/temper:review`
@@ -146,6 +175,8 @@ Code review with confidence scoring.
 - Checks against enabled packs
 - Scores confidence of findings
 - Suggests improvements
+- Diff-aware: focuses on changed lines
+- Catches N+1 queries and performance issues
 
 **Output:**
 ```
@@ -155,29 +186,34 @@ Files reviewed: 6
 Issues found: 4
 Confidence: 91%
 
-🔴 HIGH (Confidence: 96%)
+🔴 HIGH (Confidence: 96%) [REGRESSION]
    Missing rate limiting on password reset endpoint
-   └─ AuthController.ts:89
+   └─ AuthController.ts:89 (CHANGED)
    → Suggestion: Add rate limiting middleware
 
-🔴 HIGH (Confidence: 89%)
-   SQL injection potential in search query
-   └─ UserRepository.java:45
-   → Suggestion: Use parameterized queries
+🔴 HIGH (Confidence: 89%) [NEW ISSUE]
+   N+1 query pattern: DB call inside loop
+   └─ UserRepository.java:45 (CHANGED)
+   → Suggestion: Use batch fetch or JOIN query
 
-🟡 WARN (Confidence: 78%)
+🟡 WARN (Confidence: 78%) [NEW ISSUE]
    Method 'processReset' exceeds 30 lines
-   └─ PasswordResetService.ts:112
+   └─ PasswordResetService.ts:112 (CHANGED)
    → Suggestion: Extract helper methods
 
-🟢 INFO (Confidence: 65%)
+🟢 INFO (Confidence: 65%) [PRE-EXISTING]
    Consider extracting magic number to constant
-   └─ TokenService.ts:23
+   └─ TokenService.ts:23 (UNCHANGED)
    → Suggestion: EXPIRATION_HOURS = 24
 
 ✅ All tests passing
 ✅ No security pack violations
 ```
+
+**Issue Classifications:**
+- **REGRESSION** — Code that was working, now broken by your change
+- **NEW ISSUE** — Problem introduced by this change
+- **PRE-EXISTING** — Issue existed before (lower priority)
 
 ---
 

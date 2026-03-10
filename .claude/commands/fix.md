@@ -20,3 +20,5 @@ argument-hint: "<bug-description-or-JIRA-123>"
 4. Implement minimal fix → test must PASS
 5. Run /temper:check → all tests pass
 6. Report + commit
+
+**Multi-hypothesis RCA: investigates top causes ranked by confidence**

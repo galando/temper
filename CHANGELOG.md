@@ -5,31 +5,21 @@ All notable changes to Temper will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2025-03-10
+## [1.1.0] - 2026-03-10
 
 ### Added
-- **OpenCode npm Plugin** (`@galando/temper`)
-  - Native OpenCode plugin with TypeScript implementation
-  - 7 Temper tools: `temper_plan`, `temper_build`, `temper_review`, `temper_check`, `temper_fix`, `temper_standards`, `temper_status`
-  - Easy installation via `opencode plugin add @galando/temper`
-  - Config-based installation: `"plugin": ["@galando/temper"]`
-- **Plugin Structure:**
-  - `src/index.ts` - Plugin entry point with tool definitions
-  - `commands/` - Markdown documentation for each command
-  - `skills/temper-core/` - Temper core skill with SKILL.md
-  - `packs/` - Quality, TDD, Security, Git packs
-  - `templates/` - Spec, plan, tasks, quickstart templates
+- **Parallel task detection** in `/temper:plan` — tasks.md marks independent tasks with `[PARALLEL: with Task X]` for human-directed parallelism, with "when in doubt keep sequential" guard
+- **Build checkpoint resume** in `/temper:build` — persists progress to `.temper/build-state.json` after each task; offers resume on next invocation
+- **Diff-aware review** in `/temper:review` — subagent prompt weights changed lines at full scrutiny; classifies findings as REGRESSION / NEW ISSUE / PRE-EXISTING
+- **Performance pattern detection** in `/temper:review` — catches N+1 queries, unbounded results, sync I/O in hot path, large objects in memory
+- **Multi-hypothesis RCA** in `/temper:fix` — enumerates up to 5 ranked hypotheses before committing to a fix; falls back to next hypothesis if regression test denies the first
+- **Hotspot map** in `/temper:status` — scans `.temper/reviews/*.md` to compute issue density per file; HOTSPOTS section in dashboard
+- New docs page `docs/why-temper.md` — answers "Why not just tell Claude to be careful?"
 
 ### Changed
-- Updated README with OpenCode plugin installation instructions
-- Added npm badge and OpenCode plugin documentation
-
-### Documentation
-- Updated docs/index.md with plugin syntax
-- Updated docs/getting-started.md with config-based installation
-- Added DeepWiki link for AI-powered documentation
-- Added npm package link
-- Added distribution channels section to README
+- README rewritten: pain → before/after story → comparison table → value by audience → install
+- `docs/index.md` and `docs/index.html` updated to match pain → solution → proof → install narrative
+- `docs/commands.md` extended with realistic terminal output examples
 
 ## [1.0.0] - 2025-03-09
 

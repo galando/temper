@@ -8,12 +8,16 @@ description: "Show quality metrics dashboard"
 
 ## Execution
 
-### Step 1: Read Metrics
+### Step 1: Read Metrics + Build Hotspots
 
 ```
 1. Read .temper/metrics.json
 2. Read .temper/review-memory.json
 3. Read .temper/specs/ to find active specs
+4. Scan .temper/reviews/*.md to build a file frequency map
+   - Count how many times each file appears as a finding location
+   - Compute: issues_per_file = count of findings at file / number of reviews touching file
+   - Top 5 files by issue density = hotspots
 ```
 
 If `.temper/metrics.json` doesn't exist: show "No metrics yet. Run /temper:review or /temper:check to start tracking."
@@ -40,6 +44,12 @@ If `.temper/metrics.json` doesn't exist: show "No metrics yet. Run /temper:revie
 │ TECHNICAL DEBT                                       │
 │   Debt indicators: coverage {%}, lint violations {n} │
 │   Trend: {improving/stable/degrading}                │
+│                                                      │
+│ HOTSPOTS (most defect-dense files)                   │
+│   1. {file} — {N} issues across {R} reviews          │
+│   2. {file} — {N} issues across {R} reviews          │
+│   3. {file} — {N} issues across {R} reviews          │
+│   (None yet — run /temper:review to start tracking)  │
 │                                                      │
 │ TOP PATTERNS CAUGHT                                  │
 │   1. {pattern} ({count}x) {→ AUTO-RULE / suggested}  │

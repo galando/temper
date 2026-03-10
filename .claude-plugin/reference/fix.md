@@ -39,35 +39,43 @@ Investigate a bug and find the root cause. Understand WHY it happens, not just W
 BUG DESCRIPTION:
 {ticket content or user description}
 
-INVESTIGATION STEPS:
+MULTI-HYPOTHESIS INVESTIGATION:
 
-1. SEARCH for related code:
-   - Grep for error messages, status codes, exception types from the bug
-   - Grep for endpoint paths/URLs in the failing flow
-   - Grep for class/function names from stack traces
-   - Grep for domain keywords from the bug description
-   - Find the entry point (controller/route) for the affected flow
+1. LIST ALL PLAUSIBLE CAUSES (max 5):
+   Based on symptom, generate hypotheses with confidence + evidence:
 
-2. TRACE the execution path (most important step):
-   - Start at the entry point, follow EVERY call in the chain
-   - Read each file fully
-   - At each step check: input validation, null handling, error handling,
-     business logic correctness, type safety
-   - Continue until you find where behavior diverges from expected
+   | # | Hypothesis | Confidence | Evidence |
+   |---|------------|------------|----------|
+   | 1 | {cause}    | HIGH/MED/LOW | {why you think this} |
+   | 2 | {cause}    | HIGH/MED/LOW | {why you think this} |
+   ...
 
-3. CHECK common root causes:
+SKIP CONDITION: If only ONE plausible cause exists OR you have an exact stack trace pointing to a specific line, proceed directly to Step 2 investigation. Otherwise, continue with multi-hypothesis approach.
+
+2. INVESTIGATE TOP HYPOTHESIS:
+   - Start with highest confidence hypothesis
+   - SEARCH for related code (error messages, stack traces, domain keywords)
+   - TRACE the execution path (entry point → ... → failure point)
+   - Write a quick regression test to CONFIRM/DENY the hypothesis
+
+3. IF HYPOTHESIS DENIED:
+   - Fall back to next highest confidence hypothesis
+   - Repeat investigation
+   - Max 3 hypothesis attempts before asking user for more context
+
+4. CHECK common root causes:
    Off-by-one, null/undefined, wrong operator (= vs ==, && vs ||),
    race condition, type coercion, incorrect ordering, missing switch case,
    stale cache, config mismatch, dependency version conflict
 
-4. CHECK git history:
+5. CHECK git history:
    - git log --oneline -20 -- {affected files}
    - Look for recent refactors, dependency updates, merge conflicts
    - If suspicious commit: git show {hash}
 
-5. CHECK for same vulnerability in related code (becomes blast radius)
+6. CHECK for same vulnerability in related code (becomes blast radius)
 
-6. IDENTIFY root cause: specific line, trigger data/state, when introduced
+7. IDENTIFY root cause: specific line, trigger data/state, when introduced
 
 RETURN FORMAT (max 30 lines):
 
@@ -83,6 +91,7 @@ Trigger:      {specific data/state causing failure}
 Impact:       {scope: all users / specific flow / edge case}
 Blast radius: {other code with same vulnerability}
 Confidence:   {HIGH / MEDIUM / LOW}
+Hypotheses tested: {N}/{M} (only if multi-hypothesis used)
 
 Suggested fix: {1-2 sentence minimal fix}
 Fix location:  {file:line}
