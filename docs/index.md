@@ -49,25 +49,6 @@ After Temper:   AI plans → validates → tests → implements → self-reviews
 
 The queue consumer issue? Temper's blast radius analysis flagged the async dependency. The N+1 query? Caught in review. The missing rate limiting? Flagged as HIGH confidence.
 
-## Quick Start
-
-### Claude Code
-
-```bash
-/plugin marketplace add galando/temper
-/plugin install temper
-```
-
-### Use It
-
-```bash
-cd your-project
-/temper:check           # Auto-detects your stack
-/temper:plan "feature"  # Plan with blast radius analysis
-/temper:build           # Build with TDD + quality gates
-/temper:review          # Review with confidence scoring
-```
-
 ## How It Works
 
 {: .important }
