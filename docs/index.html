@@ -837,26 +837,15 @@
     </div>
   </header>
 
-  <section id="demo">
-    <div class="demo-card">
-      <div class="hero-demo">
-        <div class="demo-header">
-          <span class="demo-dot"></span>
-          <span class="demo-dot"></span>
-          <span class="demo-dot"></span>
-        </div>
-        <div class="demo-body">
-          <div class="demo-line">
-            <span class="demo-prompt">$</span> /temper:plan "add user auth"
-          </div>
-          <div class="demo-output">
-            <span class="highlight">✓</span> 12 files affected<br>
-            <span class="highlight">✓</span> Dependencies mapped<br>
-            <span class="warn">!</span> 2 risk areas identified<br>
-            <span class="highlight">✓</span> 7 implementation steps ready
-          </div>
-        </div>
+  <section id="quick-install">
+    <div class="install-card" style="max-width: 500px; margin: 0 auto; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px; padding: 1.5rem;">
+      <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">🟣 Quick Install</h4>
+      <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 0.5rem;">
+        <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; color: var(--fg-muted); overflow-x: auto; margin: 0;">/plugin marketplace add galando/temper
+/plugin install temper</pre>
+        <button class="copy-btn" onclick="copyCode(this, '/plugin marketplace add galando/temper\n/plugin install temper')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-family: 'IBM Plex Mono', monospace; color: var(--fg-muted); cursor: pointer;">Copy</button>
       </div>
+      <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Commands are now available in any project.</p>
     </div>
   </section>
 
