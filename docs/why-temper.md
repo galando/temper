@@ -151,6 +151,7 @@ Temper isn't about making the AI "careful." It's about **structural guardrails**
 - **Confidence scoring** separates signal from noise
 - **Review memory** learns your codebase patterns
 - **Hotspot tracking** shows where problems accumulate
+- **Custom packs** let you encode team-specific standards that the AI automatically follows
 
 The result: AI-generated code that's actually ready to ship.
 
