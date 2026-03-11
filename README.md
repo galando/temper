@@ -6,6 +6,8 @@
 
 *Quality gates, blast radius analysis, and adaptive learning for AI-generated code*
 
+<img src="docs/temper.png" alt="Temper Dashboard" width="100%">
+
 [![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases)](https://github.com/galando/temper/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Plugin-purple.svg)](https://claude.ai/claude-code)
