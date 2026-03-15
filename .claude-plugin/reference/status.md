@@ -8,6 +8,24 @@ description: "Show quality metrics dashboard"
 
 ## Execution
 
+### Step 0: Initialize .temper Directory (if missing)
+
+```
+If .temper/ directory doesn't exist:
+  1. Create structure:
+     .temper/
+     ├── specs/           # Feature specs (intent.md, plan.md, tasks.md)
+     ├── reviews/         # Review reports
+     ├── index/           # Semantic index (optional)
+     │   ├── modules.json
+     │   └── api-surface.json
+     ├── metrics.json     # Quality metrics
+     └── review-memory.json  # Pattern memory
+  2. Initialize metrics.json with schema below
+  3. Initialize review-memory.json: { "patterns": {} }
+  4. Report: "Initialized .temper/ directory for quality tracking"
+```
+
 ### Step 1: Read Metrics + Build Hotspots
 
 ```
@@ -146,6 +164,7 @@ Show change indicators in the dashboard:
 | Debt ratio stable | ➡️ | No change |
 
 **Trend interpretation:**
+
 - If coverage dropping → user notices and can run `/temper:check` to investigate
 - If issues/review rising → user sees it in the dashboard
 - No automated alerts needed - the user reads the dashboard
@@ -171,10 +190,12 @@ Pattern detected → Shown in review → User response tracked
 ```
 
 **Auto-rule promotion criteria:**
+
 - Pattern shown in >= 3 reviews
 - Acceptance rate >= 70%
 - No existing auto-rule for this pattern
 
 **Auto-suppression criteria:**
+
 - Pattern dismissed >= 5 times
 - OR: User explicitly marked "no-promote"

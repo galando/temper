@@ -25,6 +25,7 @@ git push -u origin main
 ```
 
 **Why fork?**
+
 - Full control over updates
 - No external dependencies
 - Security team can audit
@@ -206,6 +207,7 @@ branch:
 ### Metrics Collection
 
 Each project's `.temper/metrics.json` tracks:
+
 - Reviews run, issues found, auto-fixed
 - Coverage trends
 - Pattern frequencies
@@ -215,4 +217,4 @@ Aggregate these across projects to measure improvement.
 ## Support
 
 - Internal: Your platform team
-- Upstream: https://github.com/galando/temper/issues
+- Upstream: <https://github.com/galando/temper/issues>

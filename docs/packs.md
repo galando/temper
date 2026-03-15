@@ -16,6 +16,7 @@ Temper ships with 4 quality packs:
 Code quality rules — method length, DRY, naming conventions.
 
 **Rules include:**
+
 - Methods max 30 lines
 - Classes max 300 lines
 - No duplicate code blocks
@@ -27,6 +28,7 @@ Code quality rules — method length, DRY, naming conventions.
 Test-driven development — RED-GREEN-REFACTOR cycle.
 
 **Rules include:**
+
 - Write test first
 - Tests must fail initially (RED)
 - Minimal implementation (GREEN)
@@ -38,6 +40,7 @@ Test-driven development — RED-GREEN-REFACTOR cycle.
 Security best practices — OWASP Top 10.
 
 **Rules include:**
+
 - No SQL injection
 - No XSS vulnerabilities
 - Input validation
@@ -50,6 +53,7 @@ Security best practices — OWASP Top 10.
 Git workflow — conventional commits, branching strategy.
 
 **Rules include:**
+
 - Conventional commit format
 - Branch naming conventions
 - No force push

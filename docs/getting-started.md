@@ -80,6 +80,10 @@ Temper will analyze the blast radius:
    • Password storage (security-critical)
    • Token refresh logic (complex state)
 
+📝 intent.md: 5 scenarios (3 happy, 1 error, 1 edge case)
+   • Each scenario defines Given/When/Then
+   • Tests must cover all scenarios before build completes
+
 📋 Plan: 7 steps with test gates
 ```
 
@@ -90,10 +94,15 @@ Temper will analyze the blast radius:
 ```
 
 Temper will:
-1. Run tests for each step
+
+1. Run tests for each step (derived from intent.md scenarios)
 2. Check quality rules
 3. Block on violations
-4. Track coverage
+4. Scenario coverage gate: every scenario must have a passing test
+5. Track coverage
+
+{: .highlight }
+**intent.md** defines behavior scenarios — your tests must cover all of them before build completes.
 
 ### 4. Review Your Code
 
@@ -102,6 +111,7 @@ Temper will:
 ```
 
 Temper will:
+
 1. Analyze changed files
 2. Check against enabled packs
 3. Score confidence
@@ -118,6 +128,9 @@ Temper will:
 
 🟡 WARN: Method exceeds 30 lines
    └─ UserService.java:112
+
+   Intent Validation: 5/5 (3 mechanical, 1 deferred, 1 manual)
+   Scenario Coverage: 5/5
 
 ✅ All tests passing
 ✅ Coverage: 85% (threshold: 80%)

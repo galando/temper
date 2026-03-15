@@ -127,6 +127,7 @@ if (consistency_ratio < 0.6 AND alternative_pattern_ratio > 0.3):
 ```
 
 **Context-based rule example:**
+
 ```markdown
 ## Error Handling
 
@@ -140,6 +141,7 @@ Use Pattern B (error codes) for:
 ```
 
 **Legacy exception handling:**
+
 ```markdown
 ## Known Legacy Patterns
 
@@ -153,6 +155,7 @@ The following patterns exist in legacy code but should NOT be used in new code:
 Create two files:
 
 **`.claude/packs/{company}/rules.md`:**
+
 ```markdown
 # {Company} Engineering Standards
 
@@ -173,6 +176,7 @@ Based on scan of {project name}
 ```
 
 **`.claude/presets/{company}-{stack}.yaml`:**
+
 ```yaml
 name: {company}-{stack}
 description: "{Company} {stack} project"
@@ -209,11 +213,13 @@ branch:
 For companies, distribute the generated pack:
 
 **Option 1: Copy to each project**
+
 ```bash
 cp -r .claude/packs/company /path/to/project/.claude/packs/
 ```
 
 **Option 2: Git submodule**
+
 ```bash
 git submodule add https://gitlab.company.com/standards.git .claude/packs/company
 ```
@@ -244,4 +250,3 @@ Add a changelog section in the pack for human readability:
 - 2025-02-15: Moved "constructor injection" to BLOCK
 - 2025-01-10: Initial version
 ```
-

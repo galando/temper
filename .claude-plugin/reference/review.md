@@ -9,11 +9,13 @@ description: "Technical code review with confidence scoring, review memory, and 
 ## Prerequisites
 
 **DO NOT RUN if:**
+
 - Code does not compile
 - Tests are failing
 - Build is broken
 
 **RUN ONLY AFTER:**
+
 - Build succeeds
 - All tests pass
 - Or: auto-chained from /temper:build (which already validated)
@@ -42,6 +44,12 @@ git diff --stat HEAD
 # 5. Read review memory
 # - Load .temper/review-memory.json if exists
 # - Contains: dismissed patterns, accepted patterns, auto-rules
+
+# 6. Find active intent.md
+# - If chained from /temper:build: use the same spec (build context contains: spec name, feature path)
+# - If single spec in .temper/specs/: use that intent.md
+# - If multiple specs: check git branch name for match, or ask user which spec to review
+# - If no specs: skip intent validation (existing behavior)
 ```
 
 ### Step 2: Launch Parallel Review Subagents
@@ -92,14 +100,44 @@ PERFORMANCE PATTERNS to check:
 ```
 
 **Subagent split strategy:**
+
 - If all files are same domain: single review subagent
 - If backend + frontend: 2 parallel subagents
 - If >20 changed files: split into groups of ~10 per subagent (max 3 parallel)
 
+### Step 3: Intent Validation (IDD + BDD)
 
-### Step 3: Intent Validation (main context)
+If `.temper/specs/{feature}/intent.md` exists, validate at TWO levels:
 
-If a Jira ticket or GitHub issue was linked in the plan:
+**BDD Level (mechanical):**
+
+- Each scenario in intent.md → has a corresponding test → test passes
+- Report as checklist in review
+
+**IDD Level (structured validation):**
+
+- Read the Intent section (problem, success criteria, constraints)
+- Each success criterion has a `Validate:` field specifying how to check it:
+
+| Validate Type | How to Check | Result |
+|---------------|-------------|--------|
+| `scenario` | Linked scenario's test passes | Mechanical — ✅/❌ |
+| `code` | Grep for specified code/endpoint/config | Mechanical — ✅/❌ |
+| `metric` | Cannot verify pre-deploy | Deferred — 📊 "Post-deploy monitoring required" |
+| `manual` | Requires human judgment | Flagged — 🔍 "Manual check needed" |
+
+- For each success criterion, execute its validation method:
+  - ✅ Met: validation method confirms (scenario passes, code exists)
+  - ❌ Not met: validation method fails (scenario fails, code missing)
+  - 📊 Deferred: metric-based criterion, requires post-deploy measurement
+  - 🔍 Manual: qualitative criterion, flagged for human review
+- For each constraint: was it respected?
+- Overall: "Intent satisfied" / "Intent partially satisfied — gaps: X, Y" / "Intent not satisfied"
+- Count: "{N} mechanical, {N} deferred, {N} manual" — higher mechanical ratio = higher confidence
+
+If no intent.md: fall back to checking linked issue (Jira/GitHub) as before.
+
+**If a Jira ticket or GitHub issue was linked (legacy mode):**
 
 ```
 1. Re-read the original issue/ticket requirements
@@ -110,8 +148,6 @@ If a Jira ticket or GitHub issue was linked in the plan:
 3. Check edge cases mentioned in the issue/ticket comments
 4. Flag any requirements that were not implemented
 ```
-
-If no issue was linked, skip this step.
 
 ### Step 4: Apply Confidence Filtering
 
@@ -171,6 +207,22 @@ Save to `.temper/reviews/{feature-name}-review.md`:
 - ⚠️ {partially met}
 - ❌ {not addressed}
 
+## Intent Validation (IDD)
+{if intent.md exists}
+- Problem: {restated from intent.md}
+- ✅ Success criterion: {criterion} → validate: scenario → {test name} PASS
+- ✅ Success criterion: {criterion} → validate: code → {pattern} found in {file:line}
+- ❌ Success criterion: {criterion} → validate: code → {pattern} NOT found
+- 📊 Success criterion: {criterion} → validate: metric → post-deploy monitoring required
+- 🔍 Success criterion: {criterion} → validate: manual → requires human review
+- Confidence: {N}/{total} mechanically validated
+
+## Scenario Coverage (BDD)
+{if intent.md exists}
+- ✅ {scenario name} → {test name} (PASS)
+- ✅ {scenario name} → {test name} (PASS)
+- ❌ {scenario name} → NO TEST FOUND
+
 ## Blast Radius Check
 {if semantic index available}
 - {affected consumers and their test coverage}
@@ -202,6 +254,7 @@ Save to `.temper/reviews/{feature-name}-review.md`:
 ### Step 7: Update Metrics
 
 Append to `.temper/metrics.json`:
+
 ```json
 {
   "reviews": {
@@ -252,6 +305,7 @@ Findings can be valid in general but invalid in specific contexts. Track per-con
 | Generated | Header contains `@generated` | Not editable |
 
 **Suppression rules:**
+
 ```
 - Context-specific dismissal >= 3 times → SUPPRESS in that context only
 - Context dismissals are ISOLATED: dismissed in auth ≠ dismissed in payments
