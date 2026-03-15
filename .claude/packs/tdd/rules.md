@@ -67,6 +67,26 @@ ONLY refactor when ALL of these are true:
 After refactoring: run ALL tests again → must still pass
 ```
 
+## When intent.md Exists (Scenario-Driven TDD)
+
+When `/temper:plan` generates an intent.md with Gherkin scenarios, the TDD cycle becomes scenario-driven:
+
+| TDD Phase | Without intent.md | With intent.md |
+|-----------|-------------------|----------------|
+| **What to test** | Read task spec, identify public methods | Read Gherkin scenario from intent.md |
+| **RED** | Write test for expected behavior | Write test mapped to scenario name |
+| **GREEN** | Minimal implementation | Minimal implementation |
+| **REFACTOR** | Clean up if safe | Clean up if safe |
+
+The RED-GREEN-REFACTOR cycle is the same. The input changes:
+- Test names reference the scenario name
+- Given block becomes test setup
+- When block becomes action under test
+- Then block becomes assertions
+- Scenario coverage gate enforces all scenarios have passing tests
+
+Intent.md scenarios drive WHAT to test. TDD pack enforces HOW (discipline, conventions, structure).
+
 ## Concrete TDD Examples
 
 ### Spring Boot Example

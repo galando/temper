@@ -14,11 +14,13 @@ Stack validation and quality status.
 ```
 
 **What it does:**
+
 - Auto-detects your tech stack
 - Finds test, build, and lint commands
 - Reports current quality status
 
 **Output:**
+
 ```
 🔍 Detecting stack...
 ✅ Detected: React + TypeScript
@@ -43,17 +45,22 @@ Plan with blast radius analysis.
 ```
 
 **What it does:**
+
 - Analyzes which files will be affected
 - Identifies dependencies and risk areas
-- Creates step-by-step plan with test gates
+- Derives BDD scenarios from requirements + blast radius — **before architecture**
+- Builds architecture from scenarios — every file traces to a behavior or infrastructure need
+- Generates intent.md with structured success criteria + Gherkin scenarios (medium+ complexity)
 - Detects parallel tasks for optimized ordering
 
 **Example:**
+
 ```bash
 /temper:plan "add password reset"
 ```
 
 **Output:**
+
 ```
 🔍 Blast Radius Analysis
 
@@ -71,20 +78,33 @@ Plan with blast radius analysis.
    • Token expiration handling
    • Email delivery failures
 
-📋 Plan: 5 steps
+📝 Generated: intent.md
+   Success criteria (3):
+     ✓ Users can reset password without support → validate: scenario
+     ✓ Reset completes in under 2 minutes       → validate: manual
+     ✓ Support tickets decrease 30%              → validate: metric
+
+   Scenarios (5): 3 happy, 1 error, 1 edge case
+     Scenario: Successful password reset
+     Scenario: Expired token rejected
+     Scenario: Rate limiting enforced
+     ...
+
+📋 Plan: 5 steps (6 scenario-traced, 2 infrastructure)
 
 ## Task 1 — Create PasswordResetService [SEQUENTIAL]
+  → Scenario: "Successful password reset"
   → Test: PasswordResetService.test.ts
-  → Gate: All tests pass
 
 ## Task 2 — Add reset endpoint [SEQUENTIAL: after Task 1]
+  → Scenario: "Successful password reset", "Expired token rejected"
   → Test: AuthController.test.ts
-  → Gate: Coverage > 80%
 
 ## Task 3 — Update email templates [PARALLEL: with Task 4]
-  → Test: EmailTemplate.test.ts
+  → Infrastructure: required by PasswordResetService
 
 ## Task 4 — Add rate limiting [PARALLEL: with Task 3]
+  → Scenario: "Rate limiting enforced"
   → Test: RateLimiter.test.ts
 ...
 ```
@@ -102,24 +122,30 @@ Build with TDD + quality gates.
 ```
 
 **What it does:**
+
 - Executes the plan step by step
+- Tests derived from intent.md scenarios (RED → GREEN)
 - Runs tests after each step
+- Scenario coverage gate: every scenario must have a passing test
 - Blocks on quality gate failures
 - Tracks coverage
 - Resumes from checkpoint if interrupted
 
 **Workflow:**
+
 ```
 🚧 Building...
 
 Step 1/5: Create PasswordResetService
-  ✅ Write tests
+  📋 From scenario: Successful password reset
+  ✅ Write test: test_successful_reset
   ✅ Implement
   ✅ Tests pass (4/4)
   ✅ Coverage: 92%
 
 Step 2/5: Add reset endpoint
-  ✅ Write tests
+  📋 From scenario: Expired token rejected
+  ✅ Write test: test_expired_token
   ✅ Implement
   ✅ Tests pass (6/6)
   ⚠️  Coverage: 74% (threshold: 80%)
@@ -133,6 +159,15 @@ Step 3/5: Email integration
   ✅ Coverage: 88%
 
 ...
+
+📊 Scenario Coverage Gate:
+   ✅ Successful password reset → test_successful_reset (PASS)
+   ✅ Expired token rejected → test_expired_token (PASS)
+   ✅ Rate limiting enforced → test_rate_limiting (PASS)
+   ✅ Invalid email format → test_invalid_email (PASS)
+   ✅ Non-existent user → test_nonexistent_user (PASS)
+
+   Coverage: 5/5 scenarios ✅
 
 ✅ Build complete
    • Steps: 5/5
@@ -171,14 +206,17 @@ Code review with confidence scoring.
 ```
 
 **What it does:**
+
 - Analyzes changed files
 - Checks against enabled packs
+- Validates intent: success criteria (IDD) + scenario coverage (BDD)
 - Scores confidence of findings
 - Suggests improvements
 - Diff-aware: focuses on changed lines
 - Catches N+1 queries and performance issues
 
 **Output:**
+
 ```
 📊 Review Results
 
@@ -206,11 +244,25 @@ Confidence: 91%
    └─ TokenService.ts:23 (UNCHANGED)
    → Suggestion: EXPIRATION_HOURS = 24
 
+📊 Intent Validation (IDD): 2/3 mechanically validated
+   Problem: Users unable to reset passwords without support
+   ✅ Users can reset password → validate: scenario → test_successful_reset PASS
+   ✅ Reset completes in < 2 min → validate: manual → requires human review
+   📊 Support ticket reduction → validate: metric → post-deploy monitoring required
+
+📊 Scenario Coverage (BDD): 5/5 ✅
+   ✅ Successful password reset → test_successful_reset (PASS)
+   ✅ Expired token rejected → test_expired_token (PASS)
+   ✅ Rate limiting enforced → test_rate_limiting (PASS)
+   ✅ Invalid email format → test_invalid_email (PASS)
+   ✅ Non-existent user → test_nonexistent_user (PASS)
+
 ✅ All tests passing
 ✅ No security pack violations
 ```
 
 **Issue Classifications:**
+
 - **REGRESSION** — Code that was working, now broken by your change
 - **NEW ISSUE** — Problem introduced by this change
 - **PRE-EXISTING** — Issue existed before (lower priority)
@@ -226,16 +278,19 @@ Root cause analysis + structured fix.
 ```
 
 **What it does:**
+
 - Analyzes root cause of the issue
 - Creates fix plan
 - Implements with tests
 
 **Example:**
+
 ```bash
 /temper:fix "JIRA-123: Users can't reset password"
 ```
 
 **Output:**
+
 ```
 🔍 Root Cause Analysis
 
@@ -273,11 +328,13 @@ Build team standards interactively.
 ```
 
 **What it does:**
+
 - Scans your codebase for patterns
 - Asks clarifying questions
 - Generates your engineering standards pack
 
 **Workflow:**
+
 ```
 🔍 Scanning codebase...
 
@@ -322,11 +379,13 @@ Quality metrics dashboard.
 ```
 
 **What it does:**
+
 - Shows current quality metrics
 - Tracks trends over time
 - Highlights hotspots
 
 **Output:**
+
 ```
 📊 Temper Status Dashboard
 

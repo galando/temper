@@ -11,6 +11,7 @@ description: "Build team engineering standards interactively"
 > **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/standards.md`
 
 ### Quick Reference
+
 1. Scan codebase via Explore subagent (patterns, consistency, inconsistencies)
 2. Interview developer (5-10 questions about conventions)
 3. Generate `.claude/packs/{company}/rules.md` + preset

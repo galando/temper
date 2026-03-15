@@ -27,9 +27,13 @@ description: "Execute the plan, implementing tasks one-by-one with quality gates
 6. Read all files listed in plan's "Prerequisites" or "Must Read" sections
 7. Read active pack rules from .claude/packs/ (enabled packs only)
 8. Read stack file from .claude/packs/stacks/{detected-stack}.md
+9. Load .temper/specs/{feature}/intent.md if it exists
+   - Parse scenario names and Given/When/Then blocks
+   - If no intent.md: proceed with current behavior (unchanged)
 ```
 
 **Build State Schema:**
+
 ```json
 {
   "spec": "{feature-name}",
@@ -44,6 +48,7 @@ description: "Execute the plan, implementing tasks one-by-one with quality gates
 ```
 
 **If no plan exists (trivial task):**
+
 ```
 1. User gave direct instructions → treat as single-task build
 2. Detect stack (same as /temper:check Step 1)
@@ -67,10 +72,21 @@ description: "Execute the plan, implementing tasks one-by-one with quality gates
 For each task in tasks.md:
 
 **a. Read context** - Read existing files, understand patterns, check adjacent code
-**b. Write test first** - If TDD pack enabled (see `.claude/packs/tdd/rules.md`)
+**b. Write test first (priority order — first match wins)**
+
+   1. **intent.md exists** → scenario-driven testing (regardless of TDD pack)
+      - Each test maps to a Gherkin scenario by name
+      - Given block → test setup
+      - When block → action under test
+      - Then block → assertions
+      - One test per scenario minimum (some scenarios may need multiple tests)
+      - When both intent.md AND TDD pack exist: intent.md drives WHAT to test, TDD pack enforces HOW (RED-GREEN-REFACTOR discipline, test conventions)
+   2. **TDD pack enabled, no intent.md** → RED-GREEN-REFACTOR from pack rules
+   3. **Neither** → implement without enforced test-first
 **c. Implement** - Write minimal code to pass the test or fulfill spec
 **d. Validate** - Run test → GREEN, run task validation command
 **e. Checkpoint** - Write to `.temper/build-state.json`:
+
    ```json
    {
      "spec": "{feature-name}",
@@ -79,7 +95,104 @@ For each task in tasks.md:
      "updated": "{timestamp}"
    }
    ```
+
 **f. Refactor** - Only if obvious, low-risk, and all tests pass
+
+### Step 3.5: Scenario Coverage Gate (BDD Enforcement)
+
+After all tasks complete, before Step 4:
+
+```
+If intent.md exists:
+  1. Read all scenarios from intent.md
+  2. For each scenario:
+     a. Find test(s) by name/description match
+     b. If no test found → write test + implement if needed
+     c. Run the test → must PASS
+  3. If any scenario has no passing test → build cannot proceed
+  4. Report:
+     "Scenario Coverage: X/Y scenarios covered
+      ✅ Scenario: User resets password → PasswordResetTest.test_successful_reset
+      ✅ Scenario: Expired token → PasswordResetTest.test_expired_token
+      ❌ Scenario: Rate limiting → MISSING — writing test..."
+
+If no intent.md:
+  Skip gate, proceed to Step 4 as before
+```
+
+### Step 3.6: Success Criteria Validation (IDD Enforcement)
+
+After scenario coverage gate, validate code-based success criteria:
+
+```
+If intent.md exists and has success criteria with Validate: code:
+  1. For each success criterion with Validate: code — {pattern}:
+     a. Grep for the specified pattern/endpoint/config
+     b. If found → ✅ Success criterion met
+     c. If not found → ❌ WARN: "Success criterion not met: {criterion}"
+  2. Report:
+     "Success Criteria Validation: X/Y code criteria met
+      ✅ POST /api/reset exists → found in src/routes/auth.ts:45
+      ❌ Rate limit middleware applied → NOT found"
+  3. Non-blocking — WARN only, does not block build
+
+For Validate: scenario → already covered by Step 3.5
+For Validate: metric/manual → deferred to /temper:review
+```
+
+**Populate Scenario Coverage Checklist in intent.md:**
+After reporting coverage, write the results back to intent.md's "## Scenario Coverage Checklist" section:
+
+```
+1. Find the "## Scenario Coverage Checklist" section in intent.md
+2. Replace placeholder lines with actual scenario-to-test mappings:
+   - [x] {Scenario Name} → {TestClassName.test_method_name} (for passing tests)
+   - [ ] {Scenario Name} → NO TEST (for missing tests - should never occur if gate passed; indicates gate logic bug)
+3. Keep the section header and any existing content, only update the checklist items
+```
+
+This makes intent.md a complete record of what was planned AND what was delivered.
+
+**Scenario-to-test mapping rules:**
+
+- Test name should contain scenario name (snake_case or camelCase)
+- Test description/docstring should reference the Gherkin scenario
+- Multiple tests can map to one scenario (e.g., happy path + variant)
+- One test cannot satisfy multiple scenarios
+
+**Scenario Note handling:**
+Each scenario in intent.md may have a `Note:` field specifying the testing approach:
+
+- `Note: unit` → standard unit test (default if no Note specified)
+- `Note: mock` → test with mocked external dependency, verify interaction
+- `Note: integration` → write integration test if test infra exists, otherwise mock
+- `Note: manual` → skip from automated coverage gate, log as "requires manual verification"
+
+Scenarios marked `manual` count as covered in the gate but are flagged in the report:
+
+```
+Scenario Coverage: 5/5 (4 automated, 1 manual verification needed)
+  ✅ Scenario: User submits form → FormTest.test_submission (automated)
+  ⚠️  Scenario: Email delivered → MANUAL VERIFICATION NEEDED
+```
+
+### Step 3.75: Traceability Check
+
+After scenario coverage gate passes, verify file-to-scenario traceability:
+
+```
+If tasks.md has "Traced to:" fields:
+  1. Compare actual files changed (git diff --name-only) to planned file list from tasks.md
+  2. For each new/changed file not in plan:
+     → WARN: "Unplanned file {path} created. Trace to scenario or mark as infrastructure."
+  3. For each planned file not changed:
+     → WARN: "Planned file {path} was not modified. Is the task complete?"
+  4. Report: "Traceability: {N}/{M} files match plan"
+
+If no "Traced to:" fields: skip (backward compatible)
+```
+
+Non-blocking — warnings only. The scenario coverage gate is the hard gate.
 
 ### Step 4: Post-Implementation
 
@@ -90,11 +203,14 @@ After all tasks complete:
 2. Auto-run /temper:review → fix issues (max 2 loops)
 3. Auto-run /temper:check → all levels must pass
 4. Delete .temper/build-state.json (clean up checkpoint)
-5. Report results:
+5. Mark spec as completed:
+   - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header
+   - Suggest: "After merging, run `git clean` or manually move .temper/specs/{feature}/ to .temper/archive/"
+6. Report results:
    "Feature complete. {X} files created, {Y} modified, {Z} tests added.
     Branch: {branch name}
     Ready to commit?"
-6. On user approval → commit with conventional message
+7. On user approval → commit with conventional message
 ```
 
 ## Quality Gates

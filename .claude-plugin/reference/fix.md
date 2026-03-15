@@ -24,6 +24,7 @@ argument-hint: "<bug-description-or-JIRA-123>"
 Same as /temper:plan Phase 0 — detect Jira, GitHub, or direct description.
 
 **Extract from ticket/description:**
+
 - Symptom (error message, wrong behavior, crash)
 - Trigger (which user action, endpoint, data)
 - Reproducibility (always, intermittent, specific conditions)
@@ -168,6 +169,27 @@ If 2+ possible causes:
 ```
 
 If breaking changes: ask user before proceeding, list all required changes.
+
+### Step 4.75: Intent Cross-Reference
+
+```
+If an active intent.md exists in .temper/specs/:
+  1. Check if the bug relates to an existing scenario:
+     - Grep scenario names for keywords from the bug description
+     - If match found: note "Related to scenario: {name}" in report
+  2. Check if the fix affects a success criterion with a Validate: type:
+     - If fix touches code referenced by a `Validate: code` criterion → verify it still passes
+     - If fix changes behavior covered by a `Validate: scenario` criterion → verify linked test still passes
+  3. Check if the fix reveals a missing scenario:
+     - The regression test covers a behavior not in any scenario
+     - If so: suggest adding a scenario to intent.md
+       "Bug fix reveals missing scenario. Consider adding:
+        Scenario: {derived from regression test}
+          Given {trigger condition}
+          When {action}
+          Then {expected behavior}"
+  4. If no active intent.md: skip (most fixes are standalone)
+```
 
 ### Step 5: Validate (via /temper:check)
 

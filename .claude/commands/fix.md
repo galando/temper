@@ -14,11 +14,13 @@ argument-hint: "<bug-description-or-JIRA-123>"
 > **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/fix.md`
 
 ### Quick Reference
+
 1. Detect input (Jira/GitHub/description)
 2. RCA via Explore subagent (search code, trace execution, check git history)
 3. Write regression test → must FAIL (confirms bug)
 4. Implement minimal fix → test must PASS
-5. Run /temper:check → all tests pass
-6. Report + commit
+5. Intent cross-reference: link fix to active scenario, suggest missing scenarios
+6. Run /temper:check → all tests pass
+7. Report + commit
 
 **Multi-hypothesis RCA: investigates top causes ranked by confidence**

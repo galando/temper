@@ -25,6 +25,7 @@ argument-hint: "<feature-name-or-JIRA-123>"
 ### Phase 0: Detect Input Type
 
 Determine what the user provided:
+
 - Starts with a project prefix + numbers (e.g., `BKNG-1234`, `PROJ-567`) → fetch from Jira API using `gh` or `curl`
 - Starts with `#` + numbers (e.g., `#1234`) → fetch from GitHub Issues using `gh issue view`
 - URL containing `github.com` → fetch from GitHub using `gh`
@@ -132,6 +133,77 @@ Reference map too large (>60 lines) → keep only sections relevant to feature
 Subagent timeout/failure → fall back to manual exploration, flag lower confidence
 ```
 
+### Phase 1.6: Semantic Index (Optional Enhancement)
+
+The semantic index accelerates blast radius analysis by pre-computing dependency graphs. It's optional — if missing, the Explore subagent builds equivalent knowledge ad-hoc.
+
+**Index files:**
+
+```
+.temper/index/
+├── modules.json      # Import/dependency graph
+└── api-surface.json  # API endpoints and handlers
+```
+
+**modules.json schema:**
+
+```json
+{
+  "version": 1,
+  "last_built": "2026-03-15T10:00:00Z",
+  "modules": {
+    "src/services/AuthService.ts": {
+      "imports": ["src/models/User.ts", "src/utils/jwt.ts"],
+      "imported_by": ["src/controllers/AuthController.ts", "src/middleware/auth.ts"],
+      "exports": ["AuthService", "verifyToken"]
+    }
+  }
+}
+```
+
+**api-surface.json schema:**
+
+```json
+{
+  "version": 1,
+  "last_built": "2026-03-15T10:00:00Z",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "handler": "src/controllers/AuthController.ts:login",
+      "middleware": ["src/middleware/rateLimit.ts"]
+    }
+  ]
+}
+```
+
+**Index staleness detection:**
+
+- Compare `last_built` timestamp to git's last commit timestamp
+- If `last_built` < last commit → rebuild (or use `--reindex` flag)
+
+**Index building (if needed):**
+
+```
+1. Find all source files (exclude node_modules, vendor, dist)
+2. For each file:
+   a. Parse imports/requires
+   b. Parse exports
+   c. Build reverse dependency map
+3. For API routes:
+   a. Detect framework (Express, Fastify, Spring, etc.)
+   b. Parse route definitions
+   c. Map to handler functions
+4. Write to .temper/index/
+```
+
+**Skip index if:**
+
+- Project < 50 files (ad-hoc analysis is fast enough)
+- No .temper/ directory exists yet
+- User passed `--quick` flag
+
 ### Phase 2: Research (via Research subagent, if needed)
 
 Only launch if the feature involves external libraries or APIs not already in the project:
@@ -150,11 +222,13 @@ Return only the relevant snippets (max 30 lines).
 Based on the reference map, determine:
 
 **File count estimate:**
+
 - How many files need to be created?
 - How many files need to be modified?
 - Total = created + modified
 
 **Complexity level:**
+
 | Files | Level |
 |-------|-------|
 | <3 | Trivial → skip planning, just implement |
@@ -163,6 +237,7 @@ Based on the reference map, determine:
 | 10+ | Complex → full spec/plan/tasks/quickstart |
 
 **Risk multipliers** (each adds +1 to complexity level):
+
 - Touches payment, auth, or security code
 - Modifies shared library consumed by 5+ other modules
 - Changes database schema
@@ -174,7 +249,7 @@ Based on the reference map, determine:
 
 Using the reference map and semantic index:
 
-1. List all files that will be changed
+1. List files that will likely be changed (preliminary — refined after scenarios in Phase 4.5)
 2. For each changed file, find all importers/consumers
 3. For each consumer, check if it has test coverage for the affected code path
 4. Flag any contract changes (API response shapes, event payloads, DB schemas)
@@ -203,6 +278,52 @@ BLAST RADIUS — {feature-name}
     ⚠️ {concern}
 ```
 
+### Phase 4.5: Derive Scenarios (BDD — before architecture)
+
+**Why before architecture:** Scenarios define the behaviors the system must support. Architecture decisions should be driven by these behaviors, not the other way around. This prevents over-engineering (planning files no scenario needs) and scope gaps (missing behaviors that blast radius revealed).
+
+**Skip for Trivial/Simple** — no intent.md generated for these levels.
+
+For Medium and Complex, generate Gherkin scenarios from:
+
+```
+SOURCE                              BECOMES
+------                              -------
+User's feature description    →     Happy path scenarios
+Acceptance criteria (issue)   →     Happy path + validation scenarios
+Blast radius: risk areas      →     Edge case / error scenarios
+Blast radius: affected consumers →  Regression guard scenarios ("existing X still works")
+```
+
+**Scenario derivation rules:**
+
+```
+Every blast radius risk area → at least one scenario
+Every acceptance criterion → at least one scenario
+Every affected consumer → a regression guard scenario
+Scenarios must be concrete: specific inputs, specific expected outputs
+Each scenario must be testable (no "system works correctly")
+```
+
+**Scenario count:**
+
+- Medium: 3-8 scenarios (happy path, error path, edge case)
+- Complex: 5-15 scenarios (happy path, error paths, edge cases, regression guards)
+
+**Assign testing approach (Note field) per scenario:**
+
+| Behavior Type | Note | When to Use |
+|--------------|------|-------------|
+| `unit` | Default | Pure logic, no external dependencies |
+| `mock` | External dependency | Calls API, sends email, writes to queue |
+| `integration` | Cross-boundary | Database queries, multi-service flow |
+| `manual` | Non-automatable | UI/UX verification, visual output, email delivery confirmation |
+
+**Output:** A draft list of scenarios that will be written into intent.md in Phase 6. These scenarios now inform Phase 5 (questions) and Phase 6 (architecture/file planning).
+
+**Reconcile with Phase 4 file list:**
+After deriving scenarios, check if new files are needed that weren't in the Phase 4 preliminary list — add them. Also check if any Phase 4 files have no scenario or infrastructure justification — flag for removal or justify as infrastructure.
+
 ### Phase 5: Ask Clarifying Questions (if ambiguous)
 
 Only ask when genuinely ambiguous — don't ask for the sake of asking. Use AskUserQuestion with concrete options:
@@ -210,13 +331,14 @@ Only ask when genuinely ambiguous — don't ask for the sake of asking. Use AskU
 Good: "Should this integrate with existing PaymentService or create a new one?"
 Bad: "What should the architecture be?"
 
-Maximum 2-3 questions. If requirements are clear, skip this phase entirely.
+Scenarios from Phase 4.5 may reveal ambiguities that weren't visible from the feature description alone. Maximum 2-3 questions. If requirements are clear, skip this phase entirely.
 
 ### Phase 6: Generate Plan Artifacts
 
 **For Trivial:** No artifacts. Tell user: "Small change. I'll implement directly."
 
 **For Simple:** Inline plan in conversation. No files created:
+
 ```
 Plan: {feature name}
 Files to create: {list}
@@ -227,20 +349,89 @@ Tasks:
 ```
 
 **For Medium:** Create `.temper/specs/{feature-slug}/`:
+
+- `intent.md` — WHY + WHAT: Intent section (problem, success criteria, constraints) + Gherkin scenarios
 - `tasks.md` — ordered implementation steps
 - `quickstart.md` — 10-line summary
 
 **For Complex:** Create `.temper/specs/{feature-slug}/`:
+
 - `spec.md` — WHAT: requirements, acceptance criteria, edge cases
+- `intent.md` — WHY + WHAT: Intent section (problem, success criteria, constraints) + Gherkin scenarios
 - `plan.md` — HOW: architecture, file changes, patterns, blast radius
 - `tasks.md` — DO: ordered steps with validation command per task
 - `quickstart.md` — TLDR: 10-line summary
 
+**For Trivial/Simple:** No intent.md
+
+#### intent.md Generation
+
+The intent.md file combines IDD (Intent-Driven Development) and BDD (Behavior-Driven Development) in one artifact:
+
+**Intent Section (IDD):**
+
+- Problem: derived from user's feature description + linked issue
+- Success criteria: measurable outcomes from acceptance criteria, each with a `Validate:` field
+- Constraints: technical/business limitations from blast radius + pack rules
+- Target users: who benefits from this feature
+
+**For Complex features (spec.md + intent.md both exist):**
+
+- `spec.md` = WHAT (requirements from stakeholder perspective, acceptance criteria)
+- `intent.md` = WHY + HOW TO VERIFY (success criteria, scenarios for validation)
+- Derive intent.md success criteria FROM spec.md acceptance criteria
+- Each spec.md acceptance criterion → at least one intent.md scenario
+- spec.md edge cases → intent.md edge case scenarios
+
+**Success criteria validation types:**
+
+| Type | When to Use | Example |
+|------|------------|---------|
+| `scenario` | Criterion maps to a Gherkin scenario | `Validate: scenario — covered by "User resets password"` |
+| `code` | Criterion verifiable by checking code exists | `Validate: code — endpoint exists at POST /api/reset` |
+| `metric` | Criterion requires post-deploy measurement | `Validate: metric — measure support ticket volume post-deploy` |
+| `manual` | Criterion requires human judgment | `Validate: manual — UX review needed` |
+
+Prefer `scenario` and `code` — these are mechanically verifiable. Use `metric` and `manual` only when mechanical validation is impossible.
+
+**Scenarios Section (BDD):**
+Scenarios are derived in Phase 4.5 (before architecture). Write them into intent.md here.
+
 Use templates from `$CLAUDE_PLUGIN_ROOT/templates/` (spec.md, plan.md, tasks.md, quickstart.md) as the base structure. Fill in from reference map and blast radius analysis.
+
+**Populate `Traced to:` in tasks.md:**
+When generating tasks.md, fill the `Traced to:` field for each task:
+
+- If the task creates/modifies a file needed by a scenario → `Traced to: Scenario: "scenario name"`
+- If a task covers multiple scenarios → list all: `Traced to: Scenario: "name1", "name2"`
+- If the task is infrastructure (config, migration, build setup) → `Traced to: Infrastructure: required by {module/file}`
+- If a task cannot be traced → question whether it's needed (see File-to-Scenario Traceability)
+
+#### File-to-Scenario Traceability
+
+Every file in the plan must justify its existence. Files fall into two categories:
+
+```
+Scenario-traced files (must link to at least one scenario):
+  src/services/PasswordResetService.ts  → Scenario: "User resets password"
+  src/middleware/RateLimiter.ts          → Scenario: "Rate limiting enforced"
+
+Infrastructure files (no scenario required, but must state dependency):
+  db/migrations/001_add_reset_tokens.sql → Required by PasswordResetService
+  config/email.ts                        → Required by PasswordResetService
+```
+
+If a planned file cannot be traced to any scenario AND is not infrastructure:
+
+- Question whether it's needed
+- If it is needed, a scenario is missing — add one in Phase 4.5
+
+This prevents over-engineering: no file exists without a behavioral or infrastructural reason.
 
 #### Task Ordering in tasks.md
 
 Order tasks by layer (dependencies first):
+
 ```
 1. Infrastructure (config, DB migrations, build setup)
 2. Core (models, services, business logic)
@@ -276,10 +467,14 @@ GUARD: When in doubt, keep sequential. Parallel marking is an optimization, not 
 ### Phase 7: Present for Approval
 
 Show the user:
+
 - Plan summary (quickstart content)
 - Risk level with justification
 - Blast radius summary (if any consumers affected)
-- File count
+- File count with traceability: "{N} scenario-traced, {N} infrastructure"
+- **For Medium/Complex:** "Review intent.md — edit scenarios before approving"
+
+The user can add/remove/modify scenarios in intent.md. This is the contract between human and AI on what to build. Adding a scenario may add files to the plan. Removing a scenario may remove files (if no other scenario needs them).
 
 Use ExitPlanMode for user approval. User can modify the plan files before proceeding.
 

@@ -1,7 +1,7 @@
 {
   "name": "temper",
   "description": "Temper: Quality gates, blast radius analysis, and adaptive learning for AI-generated code",
-  "version": "1.1.0",
+  "version": "1.3.0",
   "author": {
     "name": "galando",
     "url": "https://github.com/galando/temper"
