@@ -12,6 +12,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Plugin-purple.svg)](https://claude.ai/claude-code)
 [![DeepWiki](https://img.shields.io/badge/DeepWiki-Documentation-blue.svg)](https://deepwiki.com/galando/temper)
+[![Explained by GitHub Explainer](https://img.shields.io/badge/Explained%20by-GitHub%20Explainer-6366f1?style=flat&logo=github)](https://repoxplain.nl/repo/galando/temper?ref=badge)
 
 [Website](https://galando.github.io/temper) | [Getting Started](docs/getting-started.md) | [Releases](https://github.com/galando/temper/releases)
 
