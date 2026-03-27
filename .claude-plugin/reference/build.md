@@ -220,40 +220,49 @@ After all tasks complete:
 │    ~ {file} — {one-line description}                         │
 │                                                             │
 │ What next?                                                  │
-│   [Enter] Review it                                          │
+│   ▸ Continue to Review (Recommended)                            │
 │   [c]     Change something first                             │
 │   [s]     Save for later                                     │
 └─────────────────────────────────────────────────────────────┘
 
 3. Use AskUserQuestion with options:
-   - Enter (default): Proceed to review
-   - c: User types what to change. Claude edits. Re-ask.
-   - s: Stop here, save state
+   - "Continue to Review (Recommended)" — proceed to review, clear context
+   - "Change something first" — user types what to change, Claude edits, re-ask
+   - "Save for later" — stop here, save state
 
-4. On Enter:
+4. On Continue:
    - Signal:
      "✅ Continuing to REVIEW...
       🧹 Clearing context for efficiency.
       📂 Loading: changed files only"
-   - Clear context
-   - Load only changed files (git diff --name-only)
+   - ⚠️ MANDATORY: Clear ALL context. Do NOT carry forward tasks.md,
+     intent.md, or any build artifacts. This prevents stale context.
+   - Load ONLY changed files (git diff --name-only)
    - Proceed to /temper:review
 
-5. On c (change):
+5. On Change something:
    - Ask: "What would you like to change?"
    - User types their change request
    - Claude makes the change
-   - Re-ask: "What next? [Enter/c/s]"
+   - Re-show AskUserQuestion with same options
 
-6. On s (save):
+6. On Save:
    - Save state to .temper/build-state.json
    - Report: "✅ Saved. Run /temper when ready to continue."
 
 7. Delete .temper/build-state.json (clean up checkpoint) after review+check complete
 8. Mark spec as completed:
    - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header
-   - Suggest: "After merging, run `git clean` or manually move .temper/specs/{feature}/ to .temper/archive/"
-```
+   - "Continue to Review (Recommended)" — proceed to review, clear context
+   - "Change something first" — user types what to change, Claude edits, re-ask
+   - "Save for later" — save state, stop here
+
+   - "Change something first" — user types what to change, Claude edits; re-ask
+   - "Save for later" — save state, stop here
+
+   - ⚠️ MANDATORY: Clear ALL context. Do not carry forward tasks.md, intent.md, or any build artifacts. Prevent stale context from bleeding into the review stage.
+   - Load only changed files (git diff --name-only`)
+   - Proceed to /temper:review```
 
 ## Quality Gates
 

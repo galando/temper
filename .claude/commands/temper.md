@@ -16,22 +16,35 @@ argument-hint: "<feature-description>"
 
 ---
 
-## Stage Gates: Simple Pattern
+## ⚠️ CRITICAL RULES (read these first)
 
-At each stage, the same question:
+### Rule 1: Context Clearing Is MANDATORY
+
+When transitioning between stages, you **MUST** clear context. This is not optional. Execute these steps IN ORDER:
+
+1. **Save state** to `.temper/build-state.json`
+2. **Signal transition** — show the "Continuing to..." message
+3. **Load ONLY the files needed** for the next stage (see Context Efficiency table below)
+4. **Do NOT carry forward** files, analysis, or artifacts from the previous stage
+
+If you skip context clearing, you will carry stale context that wastes tokens and causes hallucination.
+
+### Rule 2: Stage Gates Use AskUserQuestion
+
+At each stage gate, use the `AskUserQuestion` tool with **selectable options**. Do NOT use `[Enter]` as a prompt — Claude Code requires the user to select an option from a list.
 
 ```
-What next?
-  [Enter] {continue}
-  [c]     Change something first
-  [s]     Save for later
+AskUserQuestion:
+  question: "What next?"
+  options:
+    - label: "Continue to {next_stage} (Recommended)"
+      description: "Context will be cleared. Only {files for next stage} loaded."
+    - label: "Change something first"
+      description: "Type what you want to change. Claude edits, then re-asks."
+    - label: "Save for later"
+      description: "Save state and stop. Run /temper later to continue."
+  multiSelect: false
 ```
-
-| Option | What It Does |
-|--------|--------------|
-| **Enter** | Continue to next stage (clears context for efficiency) |
-| **c** | Type what you want to change, Claude edits, re-ask |
-| **s** | Save state, stop. Run `/temper` later to continue |
 
 ---
 
@@ -64,41 +77,27 @@ What next?
 │      • {file} — {change reason}                             │
 │                                                             │
 │ ⚡ RISK: {Low/Medium/High} — {reason}                       │
-│                                                             │
-│ What next?                                                  │
-│   [Enter] Build it                                          │
-│   [c]     Change something first                            │
-│   [s]     Save for later                                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**on Enter (continue):**
-```
-✅ Continuing to BUILD...
-🧹 Clearing context for efficiency.
-📂 Loading: tasks.md + intent.md only
+**Stage Gate:** Use AskUserQuestion:
+- "Continue to Build (Recommended)" — proceed to BUILD
+- "Change something first" — user types change, Claude edits, re-ask
+- "Save for later" — save state, stop
 
-🔨 BUILD — {Feature Name}
-...
-```
+**on Continue:**
+1. Save state to `.temper/build-state.json`
+2. Signal: `"✅ Continuing to BUILD... 🧹 Clearing context. Loading: tasks.md + intent.md only"`
+3. **CLEAR ALL CONTEXT** — do not carry any files, analysis, or artifacts from planning
+4. Load ONLY: `.temper/specs/{feature}/tasks.md` + `.temper/specs/{feature}/intent.md`
+5. Proceed to BUILD
 
-**on c (change):**
-```
-> c
-
-What would you like to change?
-
-> Add rate limiting scenario
-
-[Claude edits intent.md]
-
-✅ Done.
-
-What next?
-  [Enter] Build it
-  [c]     Change something first
-  [s]     Save for later
-```
+**on Change:**
+1. Ask: "What would you like to change?"
+2. User types their change request
+3. Claude edits intent.md
+4. Re-show summary
+5. Re-show AskUserQuestion with same options
 
 ---
 
@@ -124,22 +123,20 @@ What next?
 │    + {file} — {one-line description}                         │
 │    + {file} — {one-line description}                         │
 │    ~ {file} — {one-line description}                         │
-│                                                             │
-│ What next?                                                  │
-│   [Enter] Review it                                          │
-│   [c]     Change something first                             │
-│   [s]     Save for later                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**on Enter (continue):**
-```
-✅ Continuing to REVIEW...
-🧹 Clearing context for efficiency.
-📂 Loading: changed files only
+**Stage Gate:** Use AskUserQuestion:
+- "Continue to Review (Recommended)" — proceed to REVIEW
+- "Change something first" — user types change, Claude edits, re-ask
+- "Save for later" — save state, stop
 
-🔍 REVIEW...
-```
+**on Continue:**
+1. Save state to `.temper/build-state.json`
+2. Signal: `"✅ Continuing to REVIEW... 🧹 Clearing context. Loading: changed files only"`
+3. **CLEAR ALL CONTEXT** — do not carry tasks.md, intent.md, or any build artifacts
+4. Load ONLY: changed files (`git diff --name-only`)
+5. Proceed to REVIEW
 
 ---
 
@@ -163,18 +160,21 @@ What next?
 │ 🔧 TOP ISSUES                                                │
 │    1. [{severity}] {file}:{line} — {one-line description}   │
 │    2. [{severity}] {file}:{line} — {one-line description}   │
-│                                                             │
-│ What next?                                                  │
-│   [Enter] Fix & continue                                     │
-│   [c]     Change something first                             │
-│   [s]     Save for later                                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**on Enter (fix & continue):**
-- If auto-fixable issues exist: apply fixes
-- Re-run review (1 more loop max)
-- If clean: proceed to CHECK
+**Stage Gate:** Use AskUserQuestion:
+- "Fix & continue to Check (Recommended)" — apply fixes, proceed
+- "Change something first" — user types change, Claude edits, re-ask
+- "Save for later" — skip fixes, save state
+
+**on Continue:**
+1. If auto-fixable issues exist: apply fixes
+2. Re-run review (1 more loop max)
+3. If clean:
+   - Signal: `"✅ Continuing to CHECK... 🧹 Clearing context."`
+   - **CLEAR ALL CONTEXT** — no file loading needed
+   - Proceed to CHECK
 
 ---
 
@@ -195,15 +195,15 @@ What next?
 │    Security:  ✅ {time} — 0 vulnerabilities                │
 │                                                             │
 │ ⏱️  Total: {time}                                            │
-│                                                             │
-│ What next?                                                  │
-│   [Enter] Commit                                             │
-│   [c]     Change something first                             │
-│   [s]     Save for later                                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**on Enter (commit):**
+**Stage Gate:** Use AskUserQuestion:
+- "Commit (Recommended)" — commit with conventional message
+- "Change something first" — user types change, re-run validation
+- "Save for later" — keep changes uncommitted
+
+**on Continue:**
 ```
 ✅ Committing...
 
@@ -232,32 +232,26 @@ If you stopped earlier, run `/temper` to continue:
 │ 📁 Feature: {name}                                          │
 │    Stopped: After {stage}                                   │
 │    Files: {N} changed                                        │
-│                                                             │
-│ What next?                                                  │
-│   [Enter] Continue from {next_stage}                         │
-│   [r]     Start over (replan)                                 │
-│   [s]     Keep saved, don't resume                            │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-| Option | What It Does |
-|--------|--------------|
-| **Enter** | Continue from where you stopped |
-| **r** | Go back to PLAN stage, reload full context |
-| **s** | Stop, keep state for later |
+**Stage Gate:** Use AskUserQuestion:
+- "Continue from {next_stage} (Recommended)" — resume from checkpoint
+- "Start over (replan)" — go back to PLAN, reload full context
+- "Keep saved, don't resume" — stop, keep state for later
 
 ---
 
 ## Context Efficiency
 
-| Stage | What's Loaded | Size |
-|-------|---------------|------|
-| PLAN | Full codebase (via subagent) | Large (temp) |
-| BUILD | tasks.md + intent.md | ~5-10KB |
-| REVIEW | Changed files only | ~20-50KB |
-| CHECK | Nothing new | 0KB |
+| Stage Transition | Clear | Then Load Only | Size |
+|-----------------|-------|----------------|------|
+| PLAN → BUILD | ✅ All context | tasks.md + intent.md | ~5-10KB |
+| BUILD → REVIEW | ✅ All context | changed files (git diff) | ~20-50KB |
+| REVIEW → CHECK | ✅ All context | Nothing | 0KB |
+| CHECK → Commit | ✅ All context | Nothing | 0KB |
 
-**Every "Continue" clears context** — keeps the flow efficient.
+**Context clearing is MANDATORY.** The table above shows exactly what to load at each transition. Load nothing else.
 
 ---
 
