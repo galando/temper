@@ -16,22 +16,39 @@ argument-hint: "<feature-description>"
 
 ---
 
-## Stage Gates: Simple Pattern
+## Stage Gates: AskUserQuestion Pattern
 
-At each stage, the same question:
+At each stage, use the AskUserQuestion tool with these options:
 
 ```
-What next?
-  [Enter] {continue}
-  [c]     Change something first
-  [s]     Save for later
+Question: "What next?"
+  Option 1: "Continue to {next_stage}" (Recommended)
+  Option 2: "Change something first"
+  Option 3: "Save for later"
 ```
 
-| Option | What It Does |
-|--------|--------------|
-| **Enter** | Continue to next stage (clears context for efficiency) |
-| **c** | Type what you want to change, Claude edits, re-ask |
-| **s** | Save state, stop. Run `/temper` later to continue |
+**Implementation (use AskUserQuestion tool):**
+
+```
+AskUserQuestion:
+  question: "What next?"
+  options:
+    - label: "Continue to {next_stage} (Recommended)"
+      description: "Proceed to next stage. Context will be cleared for efficiency."
+    - label: "Change something first"
+      description: "Type what you want to change. Claude edits, then re-asks."
+    - label: "Save for later"
+      description: "Save state and stop. Run /temper later to continue."
+  multiSelect: false
+```
+
+| Selection | What It Does |
+|-----------|--------------|
+| **Continue** (first option) | Continue to next stage (clears context for efficiency) |
+| **Change something** | User types what to change via "Other", Claude edits, re-ask |
+| **Save for later** | Save state, stop. Run `/temper` later to continue |
+
+**IMPORTANT:** Do NOT use `[Enter]` as a prompt — Claude Code's AskUserQuestion requires the user to select an option. Always provide explicit selectable options.
 
 ---
 
@@ -66,13 +83,13 @@ What next?
 │ ⚡ RISK: {Low/Medium/High} — {reason}                       │
 │                                                             │
 │ What next?                                                  │
-│   [Enter] Build it                                          │
-│   [c]     Change something first                            │
-│   [s]     Save for later                                    │
+│   ▸ Continue to Build (Recommended)                         │
+│     Change something first                                  │
+│     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**on Enter (continue):**
+**on Continue (first option):**
 ```
 ✅ Continuing to BUILD...
 🧹 Clearing context for efficiency.
@@ -82,9 +99,9 @@ What next?
 ...
 ```
 
-**on c (change):**
+**on Change something (second option):**
 ```
-> c
+> User selects "Change something first"
 
 What would you like to change?
 
@@ -94,10 +111,7 @@ What would you like to change?
 
 ✅ Done.
 
-What next?
-  [Enter] Build it
-  [c]     Change something first
-  [s]     Save for later
+[Re-shows AskUserQuestion with same options]
 ```
 
 ---
@@ -126,13 +140,13 @@ What next?
 │    ~ {file} — {one-line description}                         │
 │                                                             │
 │ What next?                                                  │
-│   [Enter] Review it                                          │
-│   [c]     Change something first                             │
-│   [s]     Save for later                                     │
+│   ▸ Continue to Review (Recommended)                          │
+│     Change something first                                    │
+│     Save for later                                            │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**on Enter (continue):**
+**on Continue (first option):**
 ```
 ✅ Continuing to REVIEW...
 🧹 Clearing context for efficiency.
@@ -165,13 +179,13 @@ What next?
 │    2. [{severity}] {file}:{line} — {one-line description}   │
 │                                                             │
 │ What next?                                                  │
-│   [Enter] Fix & continue                                     │
-│   [c]     Change something first                             │
-│   [s]     Save for later                                     │
+│   ▸ Fix & continue to Check (Recommended)                     │
+│     Change something first                                    │
+│     Save for later                                            │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**on Enter (fix & continue):**
+**on Continue (first option — fix & continue):**
 - If auto-fixable issues exist: apply fixes
 - Re-run review (1 more loop max)
 - If clean: proceed to CHECK
@@ -197,13 +211,13 @@ What next?
 │ ⏱️  Total: {time}                                            │
 │                                                             │
 │ What next?                                                  │
-│   [Enter] Commit                                             │
-│   [c]     Change something first                             │
-│   [s]     Save for later                                      │
+│   ▸ Commit (Recommended)                                      │
+│     Change something first                                    │
+│     Save for later                                            │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**on Enter (commit):**
+**on Continue (first option — commit):**
 ```
 ✅ Committing...
 
@@ -234,17 +248,17 @@ If you stopped earlier, run `/temper` to continue:
 │    Files: {N} changed                                        │
 │                                                             │
 │ What next?                                                  │
-│   [Enter] Continue from {next_stage}                         │
-│   [r]     Start over (replan)                                 │
-│   [s]     Keep saved, don't resume                            │
+│   ▸ Continue from {next_stage} (Recommended)                  │
+│     Start over (replan)                                        │
+│     Keep saved, don't resume                                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 | Option | What It Does |
 |--------|--------------|
-| **Enter** | Continue from where you stopped |
-| **r** | Go back to PLAN stage, reload full context |
-| **s** | Stop, keep state for later |
+| **Continue** (first option) | Continue from where you stopped |
+| **Start over** | Go back to PLAN stage, reload full context |
+| **Keep saved** | Stop, keep state for later |
 
 ---
 

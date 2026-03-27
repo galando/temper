@@ -220,17 +220,17 @@ After all tasks complete:
 │    ~ {file} — {one-line description}                         │
 │                                                             │
 │ What next?                                                  │
-│   [Enter] Review it                                          │
-│   [c]     Change something first                             │
-│   [s]     Save for later                                     │
+│   ▸ Continue to Review (Recommended)                          │
+│     Change something first                                    │
+│     Save for later                                            │
 └─────────────────────────────────────────────────────────────┘
 
-3. Use AskUserQuestion with options:
-   - Enter (default): Proceed to review
-   - c: User types what to change. Claude edits. Re-ask.
-   - s: Stop here, save state
+3. Use AskUserQuestion with these options:
+   - "Continue to Review (Recommended)" — Proceed to review, clear context
+   - "Change something first" — User types what to change. Claude edits. Re-ask.
+   - "Save for later" — Stop here, save state
 
-4. On Enter:
+4. On Continue (first option):
    - Signal:
      "✅ Continuing to REVIEW...
       🧹 Clearing context for efficiency.
@@ -239,13 +239,13 @@ After all tasks complete:
    - Load only changed files (git diff --name-only)
    - Proceed to /temper:review
 
-5. On c (change):
+5. On Change something (second option):
    - Ask: "What would you like to change?"
    - User types their change request
    - Claude makes the change
-   - Re-ask: "What next? [Enter/c/s]"
+   - Re-show AskUserQuestion with same options
 
-6. On s (save):
+6. On Save (third option):
    - Save state to .temper/build-state.json
    - Report: "✅ Saved. Run /temper when ready to continue."
 

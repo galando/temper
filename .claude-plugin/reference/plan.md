@@ -488,11 +488,6 @@ Show a nice summary box with intent included:
 │    Modify: {N} — {key files}                               │
 │                                                             │
 │ ⚡ RISK: {Low/Medium/High} — {reason}                       │
-│                                                             │
-│ What next?                                                  │
-│   [Enter] Build it                                          │
-│   [c]     Change something first                            │
-│   [s]     Save for later                                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -504,11 +499,6 @@ Show a nice summary box with intent included:
 ├─────────────────────────────────────────────────────────────┤
 │ Files: {N} create, {N} modify                               │
 │ Risk: {Low/Medium}                                          │
-│                                                             │
-│ What next?                                                  │
-│   [Enter] Build it                                          │
-│   [c]     Change something first                            │
-│   [s]     Save for later                                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -518,10 +508,6 @@ Show a nice summary box with intent included:
 ┌─────────────────────────────────────────────────────────────┐
 │ 📋 Small change — implementing directly                     │
 │ {1-line description of what will be done}                   │
-│                                                             │
-│ What next?                                                  │
-│   [Enter] Do it                                             │
-│   [s]     Save for later                                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -529,13 +515,26 @@ Show a nice summary box with intent included:
 
 Use AskUserQuestion with these options:
 
+```
+AskUserQuestion:
+  question: "What next?"
+  options:
+    - label: "Continue to Build (Recommended)"
+      description: "Proceed to build. Context will be cleared, loading tasks.md + intent.md."
+    - label: "Change something first"
+      description: "Type what you want to change. Claude edits, then re-asks."
+    - label: "Save for later"
+      description: "Save state to .temper/build-state.json and stop."
+  multiSelect: false
+```
+
 | Response | Action |
 |----------|--------|
-| **Enter** (default) | Proceed to build. Signal context clear, load tasks.md + intent.md |
-| **c** (change) | User types what to change. Claude edits. Re-ask. |
-| **s** (save) | Save state to .temper/build-state.json, stop here |
+| **Continue** (first option) | Proceed to build. Signal context clear, load tasks.md + intent.md |
+| **Change something** | User types what to change. Claude edits. Re-ask. |
+| **Save** | Save state to .temper/build-state.json, stop here |
 
-**On Enter (continue):**
+**On Continue (first option):**
 
 ```
 1. Signal context transition:
@@ -560,17 +559,17 @@ Use AskUserQuestion with these options:
 5. Proceed to /temper:build (or continue if using unified /temper)
 ```
 
-**On c (change):**
+**On Change something (second option):**
 
 ```
 1. Ask: "What would you like to change?"
 2. User types their change request
 3. Claude edits intent.md (adds/removes scenarios, modifies success criteria, etc.)
 4. Re-show summary
-5. Re-ask: "What next? [Enter/c/s]"
+5. Re-show AskUserQuestion with same options
 ```
 
-**On s (save):**
+**On Save (third option):**
 
 ```
 1. Save state to .temper/build-state.json
