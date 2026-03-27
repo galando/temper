@@ -200,17 +200,59 @@ After all tasks complete:
 
 ```
 1. Run full test suite → all must pass
-2. Auto-run /temper:review → fix issues (max 2 loops)
-3. Auto-run /temper:check → all levels must pass
-4. Delete .temper/build-state.json (clean up checkpoint)
-5. Mark spec as completed:
+2. Show build summary:
+
+┌─────────────────────────────────────────────────────────────┐
+│ 🔨 BUILD — {Feature Name}                                  │
+├─────────────────────────────────────────────────────────────┤
+│ ✅ WHAT WAS BUILT                                            │
+│    Tasks: {N}/{N} completed                                 │
+│    Tests: {N} added, all passing                            │
+│    Files: {N} created, {N} modified                         │
+│                                                             │
+│ 📊 QUALITY                                                   │
+│    Coverage: {X}% (threshold: {Y}%)                         │
+│    All tests: PASS                                           │
+│                                                             │
+│ 📁 KEY CHANGES                                               │
+│    + {file} — {one-line description}                         │
+│    + {file} — {one-line description}                         │
+│    ~ {file} — {one-line description}                         │
+│                                                             │
+│ What next?                                                  │
+│   [Enter] Review it                                          │
+│   [c]     Change something first                             │
+│   [s]     Save for later                                     │
+└─────────────────────────────────────────────────────────────┘
+
+3. Use AskUserQuestion with options:
+   - Enter (default): Proceed to review
+   - c: User types what to change. Claude edits. Re-ask.
+   - s: Stop here, save state
+
+4. On Enter:
+   - Signal:
+     "✅ Continuing to REVIEW...
+      🧹 Clearing context for efficiency.
+      📂 Loading: changed files only"
+   - Clear context
+   - Load only changed files (git diff --name-only)
+   - Proceed to /temper:review
+
+5. On c (change):
+   - Ask: "What would you like to change?"
+   - User types their change request
+   - Claude makes the change
+   - Re-ask: "What next? [Enter/c/s]"
+
+6. On s (save):
+   - Save state to .temper/build-state.json
+   - Report: "✅ Saved. Run /temper when ready to continue."
+
+7. Delete .temper/build-state.json (clean up checkpoint) after review+check complete
+8. Mark spec as completed:
    - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header
    - Suggest: "After merging, run `git clean` or manually move .temper/specs/{feature}/ to .temper/archive/"
-6. Report results:
-   "Feature complete. {X} files created, {Y} modified, {Z} tests added.
-    Branch: {branch name}
-    Ready to commit?"
-7. On user approval → commit with conventional message
 ```
 
 ## Quality Gates

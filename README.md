@@ -283,6 +283,16 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ## Commands
 
+### Unified Command (Recommended)
+
+```
+/temper "add login feature"     # One command for the full SDLC
+```
+
+Runs plan → build → review → check with **stage gates**. At each stage, you see a nice summary and choose to proceed, edit, or stop.
+
+### Individual Commands (Granular Control)
+
 | Command | Purpose |
 |---------|---------|
 | [`/temper:plan`](docs/commands.md#temperplan) | Blast radius + BDD scenarios + architecture |
@@ -292,6 +302,30 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 | [`/temper:fix`](docs/commands.md#temperfix) | Root cause analysis + regression test |
 | [`/temper:standards`](docs/commands.md#temperstandards) | Build team standards |
 | [`/temper:status`](docs/commands.md#temperstatus) | Quality metrics dashboard |
+
+### Stage Gates
+
+Each stage ends with a gate:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 📋 PLAN COMPLETE — Add Login Feature                        │
+├─────────────────────────────────────────────────────────────┤
+│ 🎯 INTENT                                                   │
+│    Problem: Users can't access protected routes             │
+│    Success: JWT auth with role-based access                 │
+│    Scenarios: 5 (4 unit, 1 integration)                     │
+│                                                             │
+│ 📁 FILES: 3 create, 2 modify                                │
+│ ⚡ RISK: Medium (touches auth layer)                        │
+│                                                             │
+│ ✅ Ready to build? [Y/e(dit)/n]                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+- **Y** → Proceed, context clears, next stage begins
+- **e** → Edit scenarios, then re-ask
+- **n** → Stop, save state, resume later with `/temper --resume`
 
 ## Quality Packs
 

@@ -53,15 +53,69 @@ Temper combines three development methodologies in a single artifact called `int
 **After Temper:**
 
 ```
-/temper:plan "add password reset"     # Blast radius + scenarios before architecture
-/temper:build                         # Tests from scenarios -> coverage gate
-/temper:review                        # Structured intent validation
-/temper:status                        # Tracks hotspots, suggests improvements
+/temper "add password reset"
 ```
 
-The queue consumer issue? Blast radius flagged it. The missing rate limiting? Scenario coverage gate caught it — no test, so build wrote one, which failed, which forced the implementation.
+That's it. One command runs the full SDLC:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 📋 PLAN COMPLETE — Add Password Reset                        │
+├─────────────────────────────────────────────────────────────┤
+│ 🎯 INTENT                                                   │
+│    Problem: Users can't reset passwords without support     │
+│    Success: Self-service reset in under 2 minutes           │
+│    Scenarios: 5 (4 unit, 1 integration)                     │
+│                                                             │
+│ 📁 FILES: 3 create, 2 modify                                │
+│ ⚡ RISK: Medium (touches auth layer)                        │
+│                                                             │
+│ ✅ Ready to build? [Y/e(dit)/n]                             │
+└─────────────────────────────────────────────────────────────┘
+
+> Y
+
+┌─────────────────────────────────────────────────────────────┐
+│ 🔨 BUILD COMPLETE                                           │
+├─────────────────────────────────────────────────────────────┤
+│ ✅ Tasks: 5/5 completed                                     │
+│ ✅ Tests: 5 added, all passing                              │
+│ ✅ Coverage: 87% (threshold: 80%)                           │
+│                                                             │
+│ ✅ Run review? [Y/n]                                        │
+└─────────────────────────────────────────────────────────────┘
+
+> Y
+
+┌─────────────────────────────────────────────────────────────┐
+│ ✅ ALL CHECKS PASSED                                        │
+├─────────────────────────────────────────────────────────────┤
+│ ✅ Compile    2.3s                                          │
+│ ✅ Tests      4.1s    5 passed                               │
+│ ✅ Coverage   87%     (threshold: 80%)                       │
+│ ✅ Security   1.2s    0 vulnerabilities                     │
+│                                                             │
+│ ✅ Ready to commit? [Y/n]                                   │
+└─────────────────────────────────────────────────────────────┘
+
+> Y
+
+✅ Committed: a1b2c3d
+   Branch: feature/password-reset
+   Ready to push?
+```
+
+The queue consumer issue? Blast radius flagged it. The missing rate limiting? Scenario coverage gate caught it.
 
 ## Commands
+
+### Unified Command (Recommended)
+
+```
+/temper "add login feature"     # Full SDLC in one command
+```
+
+### Individual Commands
 
 | Command | Purpose |
 |---------|---------|
@@ -80,6 +134,11 @@ The queue consumer issue? Blast radius flagged it. The missing rate limiting? Sc
 /plugin install temper
 
 cd your-project
+
+# Option 1: Unified command (recommended)
+/temper "add login feature"
+
+# Option 2: Individual commands (granular control)
 /temper:plan "your feature"    # Scenarios + blast radius + architecture
 /temper:build                  # Scenario-driven TDD
 /temper:review                 # Intent validation

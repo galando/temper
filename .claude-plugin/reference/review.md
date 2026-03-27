@@ -169,71 +169,74 @@ Combine results from all subagents. For each finding:
    - SUGGEST rules → LOW
 ```
 
-### Step 5: Generate Review Report
+### Step 5: Nice Summary + Stage Gate
 
-Save to `.temper/reviews/{feature-name}-review.md`:
+After review completes, show a nice summary:
 
-```markdown
-# Code Review: {Feature Name}
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 🔍 REVIEW — {Feature Name}                                 │
+├─────────────────────────────────────────────────────────────┤
+│ ✅ WHAT WAS REVIEWED                                         │
+│    Files: {N} changed files                                 │
+│    Confidence: {X}%                                         │
+│                                                             │
+│ 📊 ISSUES FOUND                                              │
+│    Critical: {N} | High: {N} | Medium: {N} | Low: {N}       │
+│    Auto-fixable: {N}                                        │
+│                                                             │
+│ 🔧 TOP ISSUES                                                │
+│    1. [{severity}] {file}:{line} — {one-line description}   │
+│    2. [{severity}] {file}:{line} — {one-line description}   │
+│                                                             │
+│ What next?                                                  │
+│   [Enter] Fix & continue                                     │
+│   [c]     Change something first                             │
+│   [s]     Save for later                                     │
+└─────────────────────────────────────────────────────────────┘
+```
 
-**Date:** {timestamp}
-**Branch:** {branch}
-**Files reviewed:** {count}
-**Confidence threshold:** {threshold}
+Use AskUserQuestion with these options:
 
-## Summary
+| Response | Action |
+|----------|--------|
+| **Enter** | Apply all auto-fixes, wait, re-run review |
+| **c** | User types what to change. Claude edits. Re-ask. |
+| **s** | Skip review fixes, proceed to check |
 
-{1-2 sentence overall assessment}
+**On Enter (fix & continue):**
 
-## Issues Found
+```
+1. If auto-fixable issues exist: apply fixes
+2. Signal:
+   "✅ Continuing to CHECK...
+    🧹 Clearing context for efficiency."
+3. Clear context
+4. If fixes applied: Re-run review (single pass, no subagents)
+   - If new issues found: show updated summary, ask again (max 1 more loop)
+   - If clean: proceed to /temper:check
+5. If no fixes needed: proceed directly to /temper:check
+```
 
-### Critical ({count})
-| # | File:Line | Confidence | Description | Suggestion |
-|---|-----------|-----------|-------------|------------|
-| 1 | {loc} | {score} | {desc} | {fix} |
+**On c (change):**
 
-### High ({count})
-{same table format}
+```
+1. Ask: "What would you like to change?"
+2. User types their change request
+3. Claude makes the change
+4. Re-ask: "What next? [Enter/c/s]"
+```
 
-### Medium ({count})
-{same table format}
+**On s (save):**
 
-### Suppressed ({count})
-{count} findings below confidence threshold or dismissed by review memory.
-
-## Intent Validation
-{if linked issue exists}
-- ✅ {met requirement}
-- ⚠️ {partially met}
-- ❌ {not addressed}
-
-## Intent Validation (IDD)
-{if intent.md exists}
-- Problem: {restated from intent.md}
-- ✅ Success criterion: {criterion} → validate: scenario → {test name} PASS
-- ✅ Success criterion: {criterion} → validate: code → {pattern} found in {file:line}
-- ❌ Success criterion: {criterion} → validate: code → {pattern} NOT found
-- 📊 Success criterion: {criterion} → validate: metric → post-deploy monitoring required
-- 🔍 Success criterion: {criterion} → validate: manual → requires human review
-- Confidence: {N}/{total} mechanically validated
-
-## Scenario Coverage (BDD)
-{if intent.md exists}
-- ✅ {scenario name} → {test name} (PASS)
-- ✅ {scenario name} → {test name} (PASS)
-- ❌ {scenario name} → NO TEST FOUND
-
-## Blast Radius Check
-{if semantic index available}
-- {affected consumers and their test coverage}
-
-## Standards Compliance
-{checklist from active packs}
-
-## Conclusion
-**Assessment:** PASS / NEEDS FIXES
-**Auto-fixable:** {count}
-**Manual required:** {count}
+```
+1. Skip review fixes
+2. Signal:
+   "✅ Continuing to CHECK...
+    🧹 Clearing context for efficiency."
+3. Clear current context
+4. Load nothing new (check doesn't need additional context)
+5. Proceed to /temper:check
 ```
 
 ### Step 6: Auto-Fix (if enabled)
