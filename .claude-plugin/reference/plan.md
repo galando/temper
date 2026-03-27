@@ -466,17 +466,116 @@ GUARD: When in doubt, keep sequential. Parallel marking is an optimization, not 
 
 ### Phase 7: Present for Approval
 
-Show the user:
+Show a nice summary box with intent included:
 
-- Plan summary (quickstart content)
-- Risk level with justification
-- Blast radius summary (if any consumers affected)
-- File count with traceability: "{N} scenario-traced, {N} infrastructure"
-- **For Medium/Complex:** "Review intent.md — edit scenarios before approving"
+**For Medium/Complex features:**
 
-The user can add/remove/modify scenarios in intent.md. This is the contract between human and AI on what to build. Adding a scenario may add files to the plan. Removing a scenario may remove files (if no other scenario needs them).
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 📋 PLAN — {Feature Name}                                   │
+├─────────────────────────────────────────────────────────────┤
+│ 🎯 INTENT (Why)                                             │
+│    Problem: {derived from feature description}              │
+│    Success: {key success criteria, max 2}                   │
+│                                                             │
+│ 📝 PLAN (What & How)                                        │
+│    Scenarios: {N} ({unit} unit, {mock} mock, {int} integ)   │
+│    1. {scenario name}                                      │
+│    2. {scenario name}...                                   │
+│                                                             │
+│ 📁 ARCHITECTURE                                             │
+│    Create: {N} — {key files}                               │
+│    Modify: {N} — {key files}                               │
+│                                                             │
+│ ⚡ RISK: {Low/Medium/High} — {reason}                       │
+│                                                             │
+│ What next?                                                  │
+│   [Enter] Build it                                          │
+│   [c]     Change something first                            │
+│   [s]     Save for later                                    │
+└─────────────────────────────────────────────────────────────┘
+```
 
-Use ExitPlanMode for user approval. User can modify the plan files before proceeding.
+**For Simple features:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 📋 PLAN — {Feature Name}                                   │
+├─────────────────────────────────────────────────────────────┤
+│ Files: {N} create, {N} modify                               │
+│ Risk: {Low/Medium}                                          │
+│                                                             │
+│ What next?                                                  │
+│   [Enter] Build it                                          │
+│   [c]     Change something first                            │
+│   [s]     Save for later                                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**For Trivial features:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 📋 Small change — implementing directly                     │
+│ {1-line description of what will be done}                   │
+│                                                             │
+│ What next?                                                  │
+│   [Enter] Do it                                             │
+│   [s]     Save for later                                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Approval Gate
+
+Use AskUserQuestion with these options:
+
+| Response | Action |
+|----------|--------|
+| **Enter** (default) | Proceed to build. Signal context clear, load tasks.md + intent.md |
+| **c** (change) | User types what to change. Claude edits. Re-ask. |
+| **s** (save) | Save state to .temper/build-state.json, stop here |
+
+**On Enter (continue):**
+
+```
+1. Signal context transition:
+   "✅ Continuing to BUILD...
+    🧹 Clearing context for efficiency.
+    📂 Loading: tasks.md + intent.md only"
+
+2. Write to .temper/build-state.json:
+   {
+     "stage": "plan_complete",
+     "spec": "{feature-slug}",
+     "next_stage": "build",
+     "artifacts": ["intent.md", "tasks.md"]
+   }
+
+3. Clear current context (planning artifacts)
+
+4. Load only what's needed for build:
+   - .temper/specs/{feature}/tasks.md
+   - .temper/specs/{feature}/intent.md (if exists)
+
+5. Proceed to /temper:build (or continue if using unified /temper)
+```
+
+**On c (change):**
+
+```
+1. Ask: "What would you like to change?"
+2. User types their change request
+3. Claude edits intent.md (adds/removes scenarios, modifies success criteria, etc.)
+4. Re-show summary
+5. Re-ask: "What next? [Enter/c/s]"
+```
+
+**On s (save):**
+
+```
+1. Save state to .temper/build-state.json
+2. Report: "✅ Saved. Run /temper when ready to continue."
+```
 
 ### Edge Cases
 

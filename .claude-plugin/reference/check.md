@@ -119,26 +119,82 @@ Note: Full debt analysis (dead code, duplication) runs only on /temper:status
 to avoid slowing down the validation pipeline.
 ```
 
-### Step 4: Generate Report
+### Step 4: Nice Summary + Stage Gate
+
+After all levels complete, show a nice summary:
 
 ```
-┌─────────────────────────────────────────────────────┐
-│ Temper Check — {project-name}                        │
-│                                                      │
-│ ✅/❌ Compile      {command}                {time}    │
-│ ✅/❌ Unit Tests   {command}                {time}    │
-│    Tests: {passed} passed, {failed} failed           │
-│ ✅/❌ Integration  {command}                {time}    │
-│ ✅/❌ Coverage     {%} (threshold: {%})     {time}    │
-│ ✅/❌ Lint         {command}                {time}    │
-│ ✅/❌ Types        {command}                {time}    │
-│ ✅/❌ Security     {command}                {time}    │
-│                                                      │
-│ Status: {X/Y PASSED}                                 │
-│ Time:   {total}                                      │
-│                                                      │
-│ {Ready to commit / Fix issues above}                 │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ ✅ CHECK — {Project Name}                                   │
+├─────────────────────────────────────────────────────────────┤
+│ ✅ WHAT WAS VALIDATED                                        │
+│    Compile:   ✅ {time}                                     │
+│    Tests:     ✅ {time} — {N} passed                         │
+│    Coverage:  ✅ {X}% (threshold: {Y}%)                     │
+│    Lint:      ✅ {time}                                     │
+│    Security:  ✅ {time} — 0 vulnerabilities                │
+│                                                             │
+│ ⏱️  Skipped: Integration (no tool configured)                │
+│ ⏱️  Total: {time}                                            │
+│                                                             │
+│ What next?                                                  │
+│   [Enter] Commit                                             │
+│   [c]     Change something first                             │
+│   [s]     Save for later                                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Stage Gate
+
+Use AskUserQuestion with these options:
+
+| Response | Action |
+|----------|--------|
+| **Enter** (default) | Commit with conventional message, clear build-state.json |
+| **c** | User types what to change. Claude edits. Re-ask. |
+| **s** | Stop here, keep changes uncommitted |
+
+**On Enter (commit):**
+
+```
+1. Delete .temper/build-state.json (clean up checkpoint)
+2. Mark spec as completed:
+   - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header
+3. Commit with conventional message:
+   {type}({scope}): {description}
+
+   {Closes #{issue} or Implements #{feature}}
+   - {X} files changed, {Y} tests added
+
+   Co-Authored-By: Claude <noreply@anthropic.com>
+4. Report:
+   "✅ Committed: {hash}
+    Branch: {branch}
+    Ready to push?"
+```
+
+**On c (change):**
+
+```
+1. Ask: "What would you like to change?"
+2. User types their change request
+3. Claude makes the change
+4. Re-run validation
+5. Re-ask: "What next? [Enter/c/s]"
+```
+
+**On s (save):**
+
+```
+1. Save state to .temper/build-state.json:
+   {
+     "stage": "check_complete",
+     "spec": "{feature-slug}",
+     "next_stage": null,
+     "has_uncommitted_changes": true
+   }
+2. Report:
+   "✅ Saved. Run /temper when ready to continue."
 ```
 
 If levels were skipped (no tool configured), show them as `⏭️ Skipped`.

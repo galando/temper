@@ -31,6 +31,42 @@ cp -r temper/.claude /path/to/your/project/
 
 ## First Steps
 
+### Option A: Unified Command (Recommended)
+
+The simplest way to use Temper — one command for the entire SDLC:
+
+```bash
+cd your-project
+/temper "add user authentication"
+```
+
+Temper runs plan → build → review → check with stage gates:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 📋 PLAN COMPLETE — Add User Authentication                  │
+├─────────────────────────────────────────────────────────────┤
+│ 🎯 INTENT                                                   │
+│    Problem: Users can't access protected routes             │
+│    Success: JWT auth with role-based access                 │
+│    Scenarios: 5 (4 unit, 1 integration)                     │
+│                                                             │
+│ 📁 FILES: 3 create, 2 modify                                │
+│ ⚡ RISK: Medium (touches auth layer)                        │
+│                                                             │
+│ ✅ Ready to build? [Y/e(dit)/n]                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+At each stage, choose:
+- **Y** → Proceed to next stage
+- **e** → Edit the plan/scenarios
+- **n** → Stop and resume later with `/temper --resume`
+
+### Option B: Individual Commands (Granular Control)
+
+For more control, use individual commands:
+
 ### 1. Check Your Stack
 
 ```bash

@@ -5,6 +5,63 @@ nav_order: 3
 
 # Commands Reference
 
+## `/temper` (Unified Command)
+
+**The one command for the full SDLC.**
+
+```bash
+/temper "add login feature"
+/temper "JIRA-123"
+/temper --resume              # Resume from checkpoint
+```
+
+**What it does:**
+
+Runs the full software development lifecycle with stage gates:
+
+```
+PLAN → (gate) → BUILD → (gate) → REVIEW → (gate) → CHECK → (gate) → COMMIT
+```
+
+**Stage Gates:**
+
+At each stage, you see a nice summary and choose to proceed:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 📋 PLAN COMPLETE — Add Login Feature                        │
+├─────────────────────────────────────────────────────────────┤
+│ 🎯 INTENT                                                   │
+│    Problem: Users can't access protected routes             │
+│    Success: JWT auth with role-based access                 │
+│    Scenarios: 5 (4 unit, 1 integration)                     │
+│                                                             │
+│ 📁 FILES: 3 create, 2 modify                                │
+│ ⚡ RISK: Medium (touches auth layer)                        │
+│                                                             │
+│ ✅ Ready to build? [Y/e(dit)/n]                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+| Response | Action |
+|----------|--------|
+| **Y** | Proceed, context clears, next stage begins |
+| **e** | Edit intent.md, then re-ask |
+| **n** | Stop, save state, resume later with `/temper --resume` |
+
+**Context Management:**
+
+Each stage gate clears context and loads only what's needed:
+
+| Stage | What's Loaded | Size |
+|-------|---------------|------|
+| PLAN | Full codebase (via subagent) | Large (temp) |
+| BUILD | tasks.md + intent.md | ~5-10KB |
+| REVIEW | Changed files only | ~20-50KB |
+| CHECK | Nothing new | 0KB |
+
+---
+
 ## `/temper:check`
 
 Stack validation and quality status.
