@@ -201,7 +201,9 @@ After all tasks complete:
 ```
 1. Run full test suite → all must pass
 2. Show build summary:
+```
 
+```
 ┌─────────────────────────────────────────────────────────────┐
 │ 🔨 BUILD — {Feature Name}                                  │
 ├─────────────────────────────────────────────────────────────┤
@@ -220,17 +222,28 @@ After all tasks complete:
 │    ~ {file} — {one-line description}                         │
 │                                                             │
 │ What next?                                                  │
-│   ▸ Continue to Review (Recommended)                            │
-│   [c]     Change something first                             │
-│   [s]     Save for later                                     │
+│   ▸ Continue to Review (Recommended)                        │
+│     Change something first                                  │
+│     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
+```
 
-3. Use AskUserQuestion with options:
-   - "Continue to Review (Recommended)" — proceed to review, clear context
-   - "Change something first" — user types what to change, Claude edits, re-ask
-   - "Save for later" — stop here, save state
+3. Use AskUserQuestion with these options:
 
-4. On Continue:
+```
+AskUserQuestion:
+  question: "What next?"
+  options:
+    - label: "Continue to Review (Recommended)"
+      description: "Proceed to review. Context will be cleared, loading changed files."
+    - label: "Change something first"
+      description: "Type what you want to change. Claude edits, then re-asks."
+    - label: "Save for later"
+      description: "Save state to .temper/build-state.json and stop."
+  multiSelect: false
+```
+
+4. On Continue to Review (first option):
    - Signal:
      "✅ Continuing to REVIEW...
       🧹 Clearing context for efficiency.
@@ -240,29 +253,19 @@ After all tasks complete:
    - Load ONLY changed files (git diff --name-only)
    - Proceed to /temper:review
 
-5. On Change something:
+5. On Change something first (second option):
    - Ask: "What would you like to change?"
    - User types their change request
    - Claude makes the change
    - Re-show AskUserQuestion with same options
 
-6. On Save:
+6. On Save for later (third option):
    - Save state to .temper/build-state.json
    - Report: "✅ Saved. Run /temper when ready to continue."
 
 7. Delete .temper/build-state.json (clean up checkpoint) after review+check complete
 8. Mark spec as completed:
    - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header
-   - "Continue to Review (Recommended)" — proceed to review, clear context
-   - "Change something first" — user types what to change, Claude edits, re-ask
-   - "Save for later" — save state, stop here
-
-   - "Change something first" — user types what to change, Claude edits; re-ask
-   - "Save for later" — save state, stop here
-
-   - ⚠️ MANDATORY: Clear ALL context. Do not carry forward tasks.md, intent.md, or any build artifacts. Prevent stale context from bleeding into the review stage.
-   - Load only changed files (git diff --name-only`)
-   - Proceed to /temper:review```
 
 ## Quality Gates
 

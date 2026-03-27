@@ -139,8 +139,8 @@ After all levels complete, show a nice summary:
 │                                                             │
 │ What next?                                                  │
 │   ▸ Commit (Recommended)                                        │
-│   [c]     Change something first                             │
-│   [s]     Save for later                                      │
+│     Change something first                                   │
+│     Save for later                                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -148,19 +148,32 @@ After all levels complete, show a nice summary:
 
 Use AskUserQuestion with these options:
 
+```
+AskUserQuestion:
+  question: "What next?"
+  options:
+    - label: "Commit (Recommended)"
+      description: "Commit with conventional message, clear build-state.json."
+    - label: "Change something first"
+      description: "Type what you want to change. Claude edits, re-runs validation."
+    - label: "Save for later"
+      description: "Keep changes uncommitted, save state."
+  multiSelect: false
+```
+
 | Response | Action |
 |----------|--------|
 | **Commit** (first option) | Commit with conventional message, clear build-state.json |
-| **Change something** | User types what to change. Claude edits. Re-run validation. Re-ask. |
-| **Save for later** | Stop here, keep changes uncommitted |
+| **Change something first** (second option) | User types what to change. Claude edits. Re-run validation. Re-ask. |
+| **Save for later** (third option) | Stop here, keep changes uncommitted |
 
 **On Commit (first option):**
 
 ```
 1. ⚠️ MANDATORY: Delete .temper/build-state.json (clean up checkpoint)
-1. Delete .temper/build-state.json (clean up checkpoint)
 2. Mark spec as completed:
-   - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header3. Commit with conventional message:
+   - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header
+3. Commit with conventional message:
    {type}({scope}): {description}
 
    {Closes #{issue} or Implements #{feature}}
@@ -173,7 +186,7 @@ Use AskUserQuestion with these options:
     Ready to push?"
 ```
 
-**On Change something (second option):**
+**On Change something first (second option):**
 
 ```
 1. Ask: "What would you like to change?"
