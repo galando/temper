@@ -138,7 +138,7 @@ After all levels complete, show a nice summary:
 │ ⏱️  Total: {time}                                            │
 │                                                             │
 │ What next?                                                  │
-│   [Enter] Commit                                             │
+│   ▸ Commit (Recommended)                                        │
 │   [c]     Change something first                             │
 │   [s]     Save for later                                      │
 └─────────────────────────────────────────────────────────────┘
@@ -150,17 +150,17 @@ Use AskUserQuestion with these options:
 
 | Response | Action |
 |----------|--------|
-| **Enter** (default) | Commit with conventional message, clear build-state.json |
-| **c** | User types what to change. Claude edits. Re-ask. |
-| **s** | Stop here, keep changes uncommitted |
+| **Commit** (first option) | Commit with conventional message, clear build-state.json |
+| **Change something** | User types what to change. Claude edits. Re-run validation. Re-ask. |
+| **Save for later** | Stop here, keep changes uncommitted |
 
-**On Enter (commit):**
+**On Commit (first option):**
 
 ```
+1. ⚠️ MANDATORY: Delete .temper/build-state.json (clean up checkpoint)
 1. Delete .temper/build-state.json (clean up checkpoint)
 2. Mark spec as completed:
-   - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header
-3. Commit with conventional message:
+   - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header3. Commit with conventional message:
    {type}({scope}): {description}
 
    {Closes #{issue} or Implements #{feature}}
@@ -173,17 +173,17 @@ Use AskUserQuestion with these options:
     Ready to push?"
 ```
 
-**On c (change):**
+**On Change something (second option):**
 
 ```
 1. Ask: "What would you like to change?"
 2. User types their change request
 3. Claude makes the change
 4. Re-run validation
-5. Re-ask: "What next? [Enter/c/s]"
+5. Re-show AskUserQuestion with same options
 ```
 
-**On s (save):**
+**On Save for later (third option):**
 
 ```
 1. Save state to .temper/build-state.json:

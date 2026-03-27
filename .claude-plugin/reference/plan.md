@@ -490,9 +490,9 @@ Show a nice summary box with intent included:
 │ ⚡ RISK: {Low/Medium/High} — {reason}                       │
 │                                                             │
 │ What next?                                                  │
-│   [Enter] Build it                                          │
-│   [c]     Change something first                            │
-│   [s]     Save for later                                    │
+│   ▸ Continue to Build (Recommended)                               │
+│     Change something first                                  │
+│     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -506,9 +506,9 @@ Show a nice summary box with intent included:
 │ Risk: {Low/Medium}                                          │
 │                                                             │
 │ What next?                                                  │
-│   [Enter] Build it                                          │
-│   [c]     Change something first                            │
-│   [s]     Save for later                                    │
+│   ▸ Continue to Build (Recommended)                               │
+│     Change something first                                  │
+│     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -520,7 +520,7 @@ Show a nice summary box with intent included:
 │ {1-line description of what will be done}                   │
 │                                                             │
 │ What next?                                                  │
-│   [Enter] Do it                                             │
+│   ▸ Do it (Recommended)                                         │
 │   [s]     Save for later                                    │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -538,12 +538,7 @@ Use AskUserQuestion with these options:
 **On Enter (continue):**
 
 ```
-1. Signal context transition:
-   "✅ Continuing to BUILD...
-    🧹 Clearing context for efficiency.
-    📂 Loading: tasks.md + intent.md only"
-
-2. Write to .temper/build-state.json:
+1. Write to .temper/build-state.json:
    {
      "stage": "plan_complete",
      "spec": "{feature-slug}",
@@ -551,11 +546,19 @@ Use AskUserQuestion with these options:
      "artifacts": ["intent.md", "tasks.md"]
    }
 
-3. Clear current context (planning artifacts)
+2. Signal context transition:
+   "✅ Continuing to BUILD...
+    🧹 Clearing context for efficiency.
+    📂 Loading: tasks.md + intent.md only"
 
-4. Load only what's needed for build:
+3. ⚠️ MANDATORY: Clear ALL context. Do NOT carry forward any files,
+   analysis, or artifacts from the planning phase. This prevents
+   stale context from bleeding into the build stage.
+
+4. Load ONLY what's needed for build:
    - .temper/specs/{feature}/tasks.md
    - .temper/specs/{feature}/intent.md (if exists)
+   - Nothing else.
 
 5. Proceed to /temper:build (or continue if using unified /temper)
 ```
