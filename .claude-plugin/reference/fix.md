@@ -201,22 +201,64 @@ If an active intent.md exists in .temper/specs/:
 
 ### Step 6: Report + Commit
 
-```
-"Bug fixed. Regression test added.
-  Root cause:  {1-line}
-  Fix:         {1-line}
-  Confidence:  {HIGH/MEDIUM}
-  Test:        {test class}#{method}
-  Files:       {list}
-  Branch:      fix/{ticket}-{slug}
-  Ready to commit?"
+Show a report and ask what to do next:
 
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 🔧 FIX — {Bug Title}                                        │
+├─────────────────────────────────────────────────────────────┤
+│ ✅ ROOT CAUSE                                                │
+│    {1-line root cause}                                      │
+│                                                             │
+│ 🔨 FIX APPLIED                                              │
+│    Fix:         {1-line description}                        │
+│    Confidence:  {HIGH/MEDIUM}                               │
+│    Test:        {test class}#{method}                       │
+│    Files:       {list}                                      │
+│                                                             │
+│ What next?                                                  │
+│   ▸ Commit (Recommended)                                   │
+│     Change something first                                 │
+│     Save for later                                         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Stage Gate
+
+Use AskUserQuestion with these options:
+
+```
+AskUserQuestion:
+  question: "What next?"
+  options:
+    - label: "Commit (Recommended)"
+      description: "Commit with conventional message, regression test included."
+    - label: "Change something first"
+      description: "Type what you want to change. Claude edits, then re-asks."
+    - label: "Save for later"
+      description: "Keep changes uncommitted, save state."
+  multiSelect: false
+```
+
+**On Commit (first option):**
+
+```
 Commit: fix({scope}): {description}
   Root cause: {explanation}
   Regression test: {test name}
   {Closes JIRA-123 / Fixes #456}
   Co-Authored-By: Claude <noreply@anthropic.com>
 ```
+
+**On Change something first (second option):**
+1. Ask: "What would you like to change?"
+2. User types their change request
+3. Claude makes the change
+4. Re-show AskUserQuestion with same options
+
+**On Save for later (third option):**
+1. Save state to .temper/build-state.json
+2. Report: "✅ Saved. Run /temper when ready to continue."
 
 ### Step 7: Rollback Protocol
 

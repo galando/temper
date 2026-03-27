@@ -77,7 +77,9 @@ If `.temper/metrics.json` doesn't exist: show "No metrics yet. Run /temper:revie
 │ LEARNING LOOP                                        │
 │   "{pattern}" found in {X}/{Y} reviews.              │
 │   Want to add an auto-rule for this?                 │
-│   [Yes, add rule]  [No thanks]                       │
+│   ▸ Yes, add as BLOCK rule                           │
+│     Yes, add as WARN rule                            │
+│     No, keep as advisory                             │
 │                                                      │
 │ REVIEW MEMORY                                        │
 │   Suppressed patterns: {count}                       │
@@ -97,13 +99,16 @@ If `.temper/metrics.json` doesn't exist: show "No metrics yet. Run /temper:revie
 If any pattern count >= 3 and no auto-rule exists yet:
 
 ```
-Use AskUserQuestion:
-"'{pattern}' has been found in {X} reviews. Want to add it as an auto-rule?"
-
-Options:
-- "Yes, add as BLOCK rule" → add to active pack's Mandatory Rules
-- "Yes, add as WARN rule" → add to active pack's Quality Rules
-- "No, keep as advisory" → mark in review memory as "no-promote"
+AskUserQuestion:
+  question: "'{pattern}' has been found in {X} reviews. Want to add it as an auto-rule?"
+  options:
+    - label: "Yes, add as BLOCK rule"
+      description: "Add to active pack's Mandatory Rules."
+    - label: "Yes, add as WARN rule"
+      description: "Add to active pack's Quality Rules."
+    - label: "No, keep as advisory"
+      description: "Mark in review memory as 'no-promote'."
+  multiSelect: false
 ```
 
 ### Metrics Schema

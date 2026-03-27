@@ -190,21 +190,34 @@ After review completes, show a nice summary:
 │    2. [{severity}] {file}:{line} — {one-line description}   │
 │                                                             │
 │ What next?                                                  │
-│   ▸ Fix & continue to Check (Recommended)                        │
-│     Change something first                                   │
-│     Save for later                                           │
+│   ▸ Fix & continue to Check (Recommended)                   │
+│     Change something first                                  │
+│     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 Use AskUserQuestion with these options:
 
+```
+AskUserQuestion:
+  question: "What next?"
+  options:
+    - label: "Fix & continue to Check (Recommended)"
+      description: "Apply auto-fixes, clear context, proceed to check."
+    - label: "Change something first"
+      description: "Type what you want to change. Claude edits, then re-asks."
+    - label: "Save for later"
+      description: "Skip review fixes and save state."
+  multiSelect: false
+```
+
 | Response | Action |
 |----------|--------|
-| **Fix & continue** (first option) | Apply auto-fixes, clear context, proceed to check |
-| **Change something** | User types what to change. Claude edits. Re-ask. |
-| **Save for later** | Skip fixes, save state |
+| **Fix & continue to Check** (first option) | Apply auto-fixes, clear context, proceed to check |
+| **Change something first** (second option) | User types what to change. Claude edits. Re-ask. |
+| **Save for later** (third option) | Skip fixes, save state |
 
-**On Fix & continue (first option):**
+**On Fix & continue to Check (first option):**
 
 ```
 1. If auto-fixable issues exist: apply fixes
@@ -222,7 +235,7 @@ Use AskUserQuestion with these options:
 6. If no fixes needed: proceed directly to /temper:check
 ```
 
-**On Change something (second option):**
+**On Change something first (second option):**
 
 ```
 1. Ask: "What would you like to change?"
