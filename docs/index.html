@@ -912,10 +912,10 @@
           <span class="flow-tag user">You type</span>
         </div>
         <div class="flow-content">
-          <h3>Plan <code>/temper:plan</code></h3>
-          <p><strong>You describe what you want to build.</strong> Temper automatically analyzes the blast radius — mapping affected files, dependencies, and risk areas.</p>
+          <h3>Plan <code>/temper</code></h3>
+          <p><strong>One command starts it all.</strong> Temper analyzes blast radius, creates scenarios, and shows a summary. You confirm to proceed.</p>
           <div class="flow-result">
-            <span class="success">✓</span> 12 files affected · <span class="success">✓</span> Dependencies mapped · <span class="warning">!</span> 2 risk areas
+            <span class="success">✓</span> 12 files affected · <span class="success">✓</span> 5 scenarios · <span class="warning">!</span> 2 risk areas · <span class="success">Ready to build?</span>
           </div>
         </div>
       </div>
@@ -926,10 +926,10 @@
           <span class="flow-tag auto">Automated</span>
         </div>
         <div class="flow-content">
-          <h3>Build <code>/temper:build</code></h3>
-          <p><strong>Temper implements automatically</strong> with TDD gates enforced at every step. Tests written first, code follows. Cannot proceed until tests pass.</p>
+          <h3>Build <span style="color: var(--fg-muted); font-weight: 400;">(auto-continues)</span></h3>
+          <p><strong>Temper implements automatically</strong> with TDD gates enforced at every step. Tests written first, code follows. Stage gate asks to continue.</p>
           <div class="flow-result">
-            <span class="success">✓</span> 18 tests pass · <span class="success">✓</span> 86% coverage · <span class="success">✓</span> Gates satisfied
+            <span class="success">✓</span> 18 tests pass · <span class="success">✓</span> 86% coverage · <span class="success">Run review?</span>
           </div>
         </div>
       </div>
@@ -940,10 +940,10 @@
           <span class="flow-tag auto">Automated</span>
         </div>
         <div class="flow-content">
-          <h3>Review <code>/temper:review</code></h3>
-          <p><strong>Temper reviews automatically</strong> against enabled packs. Findings scored by confidence — high-confidence issues require your attention.</p>
+          <h3>Review <span style="color: var(--fg-muted); font-weight: 400;">(auto-continues)</span></h3>
+          <p><strong>Temper reviews automatically</strong> against enabled packs. Findings scored by confidence. Stage gate confirms all checks passed.</p>
           <div class="flow-result">
-            <span class="success">✓</span> 94% confidence · 3 findings · 1 auto-fixed · <span class="warning">1 needs review</span>
+            <span class="success">✓</span> 94% confidence · 3 findings · <span class="success">Ready to commit?</span>
           </div>
         </div>
       </div>
@@ -954,10 +954,10 @@
           <span class="flow-tag auto">Automated</span>
         </div>
         <div class="flow-content">
-          <h3>Track & Learn <code>/temper:status</code></h3>
-          <p><strong>Temper learns automatically</strong> over time. Tracks patterns, coverage trends, and suggests new rules based on your codebase.</p>
+          <h3>Commit <span style="color: var(--fg-muted); font-weight: 400;">(done)</span></h3>
+          <p><strong>Temper commits your changes</strong> with a proper message. Branch ready to push. Use <code style="background: var(--bg); padding: 0.1rem 0.4rem; border-radius: 2px;">/temper:status</code> anytime to track quality metrics.</p>
           <div class="flow-result">
-            <span class="success">✓</span> Coverage ↑12% · <span class="success">✓</span> Issues ↓34% · 2 rule suggestions ready
+            <span class="success">✓</span> Committed · Branch: feature/xxx · <span class="success">Ready to push</span>
           </div>
         </div>
       </div>
@@ -1087,8 +1087,20 @@
 
   <section id="commands">
     <div class="section-label">Commands</div>
-    <h2 class="section-title">7 Commands</h2>
-    <p class="section-desc">Everything you need to ship production-grade code with confidence.</p>
+    <h2 class="section-title">Unified Command</h2>
+    <p class="section-desc">One command runs the full SDLC: plan → build → review → check with stage gates.</p>
+
+    <div class="install-card" style="max-width: 600px; margin-bottom: 2rem;">
+      <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px;">
+        <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.9rem; color: var(--accent);">/temper "add login feature"     # Full SDLC in one command</pre>
+      </div>
+      <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.75rem;">
+        Runs plan, build, review, and check with interactive stage gates. Each stage asks for confirmation before proceeding.
+      </p>
+    </div>
+
+    <h3 class="section-title" style="font-size: 1.5rem; margin-top: 2rem;">Individual Commands</h3>
+    <p class="section-desc">For granular control, use individual commands.</p>
 
     <div class="commands">
       <div class="command">
@@ -1138,6 +1150,13 @@
         <div class="command-content">
           <h4>/temper:status</h4>
           <p>Quality metrics dashboard</p>
+        </div>
+      </div>
+      <div class="command" style="background: var(--accent-soft); border-color: var(--accent);">
+        <span class="command-icon">🔥</span>
+        <div class="command-content">
+          <h4>/temper "feature"</h4>
+          <p style="color: var(--fg);">Unified: plan → build → review → check</p>
         </div>
       </div>
     </div>
