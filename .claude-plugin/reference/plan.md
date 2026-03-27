@@ -488,6 +488,11 @@ Show a nice summary box with intent included:
 │    Modify: {N} — {key files}                               │
 │                                                             │
 │ ⚡ RISK: {Low/Medium/High} — {reason}                       │
+│                                                             │
+│ What next?                                                  │
+│   ▸ Continue to Build (Recommended)                               │
+│     Change something first                                  │
+│     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -499,6 +504,11 @@ Show a nice summary box with intent included:
 ├─────────────────────────────────────────────────────────────┤
 │ Files: {N} create, {N} modify                               │
 │ Risk: {Low/Medium}                                          │
+│                                                             │
+│ What next?                                                  │
+│   ▸ Continue to Build (Recommended)                               │
+│     Change something first                                  │
+│     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -508,6 +518,10 @@ Show a nice summary box with intent included:
 ┌─────────────────────────────────────────────────────────────┐
 │ 📋 Small change — implementing directly                     │
 │ {1-line description of what will be done}                   │
+│                                                             │
+│ What next?                                                  │
+│   ▸ Do it (Recommended)                                         │
+│     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -537,12 +551,7 @@ AskUserQuestion:
 **On Continue (first option):**
 
 ```
-1. Signal context transition:
-   "✅ Continuing to BUILD...
-    🧹 Clearing context for efficiency.
-    📂 Loading: tasks.md + intent.md only"
-
-2. Write to .temper/build-state.json:
+1. Write to .temper/build-state.json:
    {
      "stage": "plan_complete",
      "spec": "{feature-slug}",
@@ -550,26 +559,34 @@ AskUserQuestion:
      "artifacts": ["intent.md", "tasks.md"]
    }
 
-3. Clear current context (planning artifacts)
+2. Signal context transition:
+   "✅ Continuing to BUILD...
+    🧹 Clearing context for efficiency.
+    📂 Loading: tasks.md + intent.md only"
 
-4. Load only what's needed for build:
+3. ⚠️ MANDATORY: Clear ALL context. Do NOT carry forward any files,
+   analysis, or artifacts from the planning phase. This prevents
+   stale context from bleeding into the build stage.
+
+4. Load ONLY what's needed for build:
    - .temper/specs/{feature}/tasks.md
    - .temper/specs/{feature}/intent.md (if exists)
+   - Nothing else.
 
 5. Proceed to /temper:build (or continue if using unified /temper)
 ```
 
-**On Change something (second option):**
+**On c (change):**
 
 ```
 1. Ask: "What would you like to change?"
 2. User types their change request
 3. Claude edits intent.md (adds/removes scenarios, modifies success criteria, etc.)
 4. Re-show summary
-5. Re-show AskUserQuestion with same options
+5. Re-ask: "What next? [Enter/c/s]"
 ```
 
-**On Save (third option):**
+**On s (save):**
 
 ```
 1. Save state to .temper/build-state.json

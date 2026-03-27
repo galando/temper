@@ -190,41 +190,34 @@ After review completes, show a nice summary:
 │    2. [{severity}] {file}:{line} — {one-line description}   │
 │                                                             │
 │ What next?                                                  │
-│   ▸ Fix & continue to Check (Recommended)                     │
-│     Change something first                                    │
-│     Save for later                                            │
+│   ▸ Fix & continue to Check (Recommended)                        │
+│     Change something first                                   │
+│     Save for later                                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 Use AskUserQuestion with these options:
 
-```
-AskUserQuestion:
-  question: "What next?"
-  options:
-    - label: "Fix & continue to Check (Recommended)"
-      description: "Apply auto-fixes, re-run review, then proceed to check."
-    - label: "Change something first"
-      description: "Type what you want to change. Claude edits, then re-asks."
-    - label: "Save for later"
-      description: "Skip review fixes and save state."
-  multiSelect: false
-```
-
 | Response | Action |
 |----------|--------|
-| **Fix & continue** (first option) | Apply all auto-fixes, wait, re-run review |
+| **Fix & continue** (first option) | Apply auto-fixes, clear context, proceed to check |
 | **Change something** | User types what to change. Claude edits. Re-ask. |
-| **Save** | Skip review fixes, save state |
+| **Save for later** | Skip fixes, save state |
 
 **On Fix & continue (first option):**
 
 ```
 1. If auto-fixable issues exist: apply fixes
-2. Signal:
+2. Save state to .temper/build-state.json
+3. Signal:
    "✅ Continuing to CHECK...
-    🧹 Clearing context for efficiency."
-3. Clear context
+    🧹 MANDATORY: Clearing ALL context for efficiency.
+    📂 Loading: nothing new (check needs no additional context)"
+4. ⚠️ MANDATORY: Clear ALL context. Do NOT carry forward
+ changed files, review findings, or artifacts from the review stage.
+ This prevents stale context from bleeding into the check stage.
+5. If fixes applied: Re-run review (single pass, no subagents)
+
 4. If fixes applied: Re-run review (single pass, no subagents)
    - If new issues found: show updated summary, ask again (max 1 more loop)
    - If clean: proceed to /temper:check
@@ -234,22 +227,16 @@ AskUserQuestion:
 **On Change something (second option):**
 
 ```
-1. Ask: "What would you like to change?"
-2. User types their change request
 3. Claude makes the change
 4. Re-show AskUserQuestion with same options
 ```
 
-**On Save (third option):**
+**On Save for later(third option):**
 
 ```
 1. Skip review fixes
-2. Signal:
-   "✅ Continuing to CHECK...
-    🧹 Clearing context for efficiency."
-3. Clear current context
-4. Load nothing new (check doesn't need additional context)
-5. Proceed to /temper:check
+2. Save state to .temper/build-state.json
+3. Report: "✅ Saved. Run /temper when ready to continue."
 ```
 
 ### Step 6: Auto-Fix (if enabled)

@@ -138,9 +138,9 @@ After all levels complete, show a nice summary:
 │ ⏱️  Total: {time}                                            │
 │                                                             │
 │ What next?                                                  │
-│   ▸ Commit (Recommended)                                      │
-│     Change something first                                    │
-│     Save for later                                            │
+│   ▸ Commit (Recommended)                                        │
+│     Change something first                                   │
+│     Save for later                                           │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -148,32 +148,19 @@ After all levels complete, show a nice summary:
 
 Use AskUserQuestion with these options:
 
-```
-AskUserQuestion:
-  question: "What next?"
-  options:
-    - label: "Commit (Recommended)"
-      description: "Commit with conventional message, clean up build state."
-    - label: "Change something first"
-      description: "Type what you want to change. Claude edits, then re-asks."
-    - label: "Save for later"
-      description: "Keep changes uncommitted, save state."
-  multiSelect: false
-```
-
 | Response | Action |
 |----------|--------|
 | **Commit** (first option) | Commit with conventional message, clear build-state.json |
 | **Change something** | User types what to change. Claude edits. Re-run validation. Re-ask. |
-| **Save** | Stop here, keep changes uncommitted |
+| **Save for later** | Stop here, keep changes uncommitted |
 
 **On Commit (first option):**
 
 ```
+1. ⚠️ MANDATORY: Delete .temper/build-state.json (clean up checkpoint)
 1. Delete .temper/build-state.json (clean up checkpoint)
 2. Mark spec as completed:
-   - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header
-3. Commit with conventional message:
+   - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header3. Commit with conventional message:
    {type}({scope}): {description}
 
    {Closes #{issue} or Implements #{feature}}
@@ -196,7 +183,7 @@ AskUserQuestion:
 5. Re-show AskUserQuestion with same options
 ```
 
-**On Save (third option):**
+**On Save for later (third option):**
 
 ```
 1. Save state to .temper/build-state.json:
