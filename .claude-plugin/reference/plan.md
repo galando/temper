@@ -576,17 +576,17 @@ AskUserQuestion:
 5. Proceed to /temper:build (or continue if using unified /temper)
 ```
 
-**On c (change):**
+**On Change something first (second option):**
 
 ```
 1. Ask: "What would you like to change?"
 2. User types their change request
 3. Claude edits intent.md (adds/removes scenarios, modifies success criteria, etc.)
 4. Re-show summary
-5. Re-ask: "What next? [Enter/c/s]"
+5. Re-show AskUserQuestion with same options
 ```
 
-**On s (save):**
+**On Save for later (third option):**
 
 ```
 1. Save state to .temper/build-state.json
