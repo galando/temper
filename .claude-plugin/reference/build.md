@@ -201,7 +201,9 @@ After all tasks complete:
 ```
 1. Run full test suite → all must pass
 2. Show build summary:
+```
 
+```
 ┌─────────────────────────────────────────────────────────────┐
 │ 🔨 BUILD — {Feature Name}                                  │
 ├─────────────────────────────────────────────────────────────┤
@@ -224,6 +226,7 @@ After all tasks complete:
 │     Change something first                                  │
 │     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
+```
 
 3. Use AskUserQuestion with these options:
 
