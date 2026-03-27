@@ -214,24 +214,24 @@ Use AskUserQuestion with these options:
     🧹 MANDATORY: Clearing ALL context for efficiency.
     📂 Loading: nothing new (check needs no additional context)"
 4. ⚠️ MANDATORY: Clear ALL context. Do NOT carry forward
- changed files, review findings, or artifacts from the review stage.
- This prevents stale context from bleeding into the check stage.
+   changed files, review findings, or artifacts from the review stage.
+   This prevents stale context from bleeding into the check stage.
 5. If fixes applied: Re-run review (single pass, no subagents)
-
-4. If fixes applied: Re-run review (single pass, no subagents)
    - If new issues found: show updated summary, ask again (max 1 more loop)
    - If clean: proceed to /temper:check
-5. If no fixes needed: proceed directly to /temper:check
+6. If no fixes needed: proceed directly to /temper:check
 ```
 
 **On Change something (second option):**
 
 ```
+1. Ask: "What would you like to change?"
+2. User types their change request
 3. Claude makes the change
 4. Re-show AskUserQuestion with same options
 ```
 
-**On Save for later(third option):**
+**On Save for later (third option):**
 
 ```
 1. Skip review fixes

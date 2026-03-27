@@ -158,9 +158,9 @@ Use AskUserQuestion with these options:
 
 ```
 1. ⚠️ MANDATORY: Delete .temper/build-state.json (clean up checkpoint)
-1. Delete .temper/build-state.json (clean up checkpoint)
 2. Mark spec as completed:
-   - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header3. Commit with conventional message:
+   - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header
+3. Commit with conventional message:
    {type}({scope}): {description}
 
    {Closes #{issue} or Implements #{feature}}

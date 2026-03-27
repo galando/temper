@@ -253,16 +253,6 @@ After all tasks complete:
 7. Delete .temper/build-state.json (clean up checkpoint) after review+check complete
 8. Mark spec as completed:
    - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header
-   - "Continue to Review (Recommended)" — proceed to review, clear context
-   - "Change something first" — user types what to change, Claude edits, re-ask
-   - "Save for later" — save state, stop here
-
-   - "Change something first" — user types what to change, Claude edits; re-ask
-   - "Save for later" — save state, stop here
-
-   - ⚠️ MANDATORY: Clear ALL context. Do not carry forward tasks.md, intent.md, or any build artifacts. Prevent stale context from bleeding into the review stage.
-   - Load only changed files (git diff --name-only`)
-   - Proceed to /temper:review```
 
 ## Quality Gates
 
