@@ -13,13 +13,33 @@ description: "Execute the plan, implementing tasks one-by-one with quality gates
 
 ## Execution
 
+### Context Loading
+
+This stage may run in two modes:
+- **Standalone** (`/temper:build`) — runs in current context, handles its own gate
+- **Agent subprocess** (from `/temper`) — starts with CLEAN context, only loads what's listed below
+
+**Subprocess mode override:** When running as an Agent subprocess, do NOT show AskUserQuestion gates or clear context. Return the build summary to the orchestrator. The orchestrator handles all gate decisions and context transitions.
+
+In both modes, the build methodology is identical.
+
+Files to load at start:
+1. `.temper/specs/{feature}/tasks.md`
+2. `.temper/specs/{feature}/intent.md` (if exists)
+3. `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md` (this file)
+
 ### Step 1: Load Plan
 
 ```
 1. Check for .temper/build-state.json
-   - If found: Ask user "Resume from Task {N}? [Y/n]"
-   - If yes: Load checkpoint, resume from last completed task
-   - If no: Delete the file and start fresh
+   - If found: Validate it before offering resume:
+     a. Parseable JSON — if malformed, warn and offer "Start over / Delete / Cancel"
+     b. Valid stage — must be "plan_complete" or "build_complete" (with last_task_completed)
+     c. Spec directory exists — .temper/specs/{spec}/ must exist on disk
+     d. Artifacts exist — tasks.md and intent.md (if listed) must exist
+     e. Timestamp — if updated > 30 days ago, warn about staleness
+   - If valid: Ask user "Resume from Task {last_task_completed + 1}? [Y/n]"
+   - If invalid: Show what's wrong, offer "Start over / Delete saved state / Cancel"
 2. Check for active plan in .temper/specs/*/tasks.md
 3. If multiple specs exist, ask user which to execute
 4. Load tasks.md + quickstart.md
@@ -36,14 +56,20 @@ description: "Execute the plan, implementing tasks one-by-one with quality gates
 
 ```json
 {
+  "stage": "build_complete",
   "spec": "{feature-name}",
+  "spec_path": ".temper/specs/{feature-name}",
+  "original_args": "{user's original feature description}",
+  "next_stage": "review",
+  "artifacts": ["intent.md", "tasks.md"],
   "started": "2026-03-10T10:00:00Z",
   "last_task_completed": 3,
   "tasks": [
     { "id": 1, "status": "completed", "timestamp": "..." },
     { "id": 2, "status": "completed", "timestamp": "..." },
     { "id": 3, "status": "in_progress", "timestamp": "..." }
-  ]
+  ],
+  "updated": "{ISO timestamp}"
 }
 ```
 
@@ -89,14 +115,25 @@ For each task in tasks.md:
 
    ```json
    {
+     "stage": "build_complete",
      "spec": "{feature-name}",
+     "spec_path": ".temper/specs/{feature-name}",
+     "original_args": "{from prior state}",
+     "next_stage": "review",
+     "artifacts": ["intent.md", "tasks.md"],
      "last_task_completed": {task_number},
      "tasks": [...],
      "updated": "{timestamp}"
    }
    ```
 
-**f. Refactor** - Only if obvious, low-risk, and all tests pass
+**f. Simplify** - After each task, if the `code-simplifier:code-simplifier` agent is available, run it on changed files:
+   - This agent is optional — not all installations have it
+   - If available: run on files you created or modified during this task
+   - Focus on clarity, consistency, and maintainability
+   - Preserve all functionality — simplification must not change behavior
+   - Only simplify files you touched in the current task, not the entire codebase
+   - If not available: skip this step, continue to checkpoint
 
 ### Step 3.5: Scenario Coverage Gate (BDD Enforcement)
 
@@ -246,21 +283,35 @@ AskUserQuestion:
 4. On Continue to Review (first option):
    - Signal:
      "✅ Continuing to REVIEW...
-      🧹 Clearing context for efficiency.
       📂 Loading: changed files only"
-   - ⚠️ MANDATORY: Clear ALL context. Do NOT carry forward tasks.md,
-     intent.md, or any build artifacts. This prevents stale context.
-   - Load ONLY changed files (git diff --name-only)
+   - If running standalone: Load ONLY changed files (git diff --name-only).
+     Focus on these files and minimize references to prior build context.
+   - If running as Agent subprocess: The orchestrator handles context — return summary and stop.
    - Proceed to /temper:review
 
 5. On Change something first (second option):
    - Ask: "What would you like to change?"
    - User types their change request
    - Claude makes the change
-   - Re-show AskUserQuestion with same options
+   - ⚠️ MANDATORY: Re-show AskUserQuestion with same options
+
+   GATE ENFORCEMENT: The user's change input is NOT approval to proceed.
+   Do NOT skip to review after making changes. The user MUST explicitly
+   select "Continue to Review" from the gate to proceed.
 
 6. On Save for later (third option):
-   - Save state to .temper/build-state.json
+   - Save state to .temper/build-state.json:
+     ```json
+     {
+       "stage": "build_complete",
+       "spec": "{feature-slug}",
+       "spec_path": ".temper/specs/{feature-slug}",
+       "original_args": "{from prior state}",
+       "next_stage": "review",
+       "artifacts": ["intent.md", "tasks.md"],
+       "updated": "{ISO timestamp}"
+     }
+     ```
    - Report: "✅ Saved. Run /temper when ready to continue."
 
 7. Delete .temper/build-state.json (clean up checkpoint) after review+check complete

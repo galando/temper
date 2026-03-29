@@ -8,6 +8,19 @@ description: "Run the project's validation pipeline (tests, build, lint, securit
 
 ## Execution
 
+### Context Loading
+
+This stage may run in two modes:
+- **Standalone** (`/temper:check`) — runs in current context, handles its own gate
+- **Agent subprocess** (from `/temper`) — starts with CLEAN context, no prior files needed
+
+**Subprocess mode override:** When running as an Agent subprocess, do NOT show AskUserQuestion gates or clear context. Return the check summary to the orchestrator. The orchestrator handles all gate decisions and context transitions.
+
+In both modes, the check methodology is identical.
+
+Files to load at start:
+1. `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md` (this file)
+
 ### Step 1: Detect Stack
 
 Read project files to determine stack:
@@ -83,6 +96,25 @@ Level 4: COVERAGE (if available)
   On failure: WARN (not block by default), show coverage %
   If no coverage tool configured: SKIP
 
+Level 4.5: SCENARIO COVERAGE (BDD Final Gate)
+  Purpose: Every scenario in intent.md has a passing test
+  Prerequisite: intent.md exists at .temper/specs/{spec}/intent.md
+  How:
+    1. Read intent.md → extract all Gherkin scenarios
+    2. For each scenario:
+       a. Find matching test by name/description (grep test files for scenario name)
+       b. Verify test exists and passes (from Level 2 test results)
+       c. If scenario has Note: manual → mark as "requires manual verification"
+    3. Compare against Scenario Coverage Checklist in intent.md (if populated by build)
+  Report:
+    "Scenario Coverage: X/Y scenarios covered (Z automated, W manual)
+     ✅ Scenario: User resets password → PasswordResetTest.test_successful_reset
+     ✅ Scenario: Expired token → PasswordResetTest.test_expired_token
+     ⚠️  Scenario: Email delivered → MANUAL VERIFICATION NEEDED
+     ❌ Scenario: Rate limiting → NO PASSING TEST FOUND"
+  On failure (any ❌): BLOCK — cannot commit with uncovered scenarios
+  If no intent.md: SKIP (no BDD contract to enforce)
+
 Level 5: LINT/FORMAT
   Purpose: Code style checks pass
   Command: {detected lint command}
@@ -125,22 +157,23 @@ After all levels complete, show a nice summary:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ ✅ CHECK — {Project Name}                                   │
+│ CHECK — {Project Name}                                      │
 ├─────────────────────────────────────────────────────────────┤
-│ ✅ WHAT WAS VALIDATED                                        │
-│    Compile:   ✅ {time}                                     │
-│    Tests:     ✅ {time} — {N} passed                         │
-│    Coverage:  ✅ {X}% (threshold: {Y}%)                     │
-│    Lint:      ✅ {time}                                     │
-│    Security:  ✅ {time} — 0 vulnerabilities                │
+│ WHAT WAS VALIDATED                                           │
+│    Compile:   {status} {time}                               │
+│    Tests:     {status} {time} — {N} passed                  │
+│    Coverage:  {status} {X}% (threshold: {Y}%)               │
+│    Scenarios: {status} {X}/{Y} covered (if intent.md exists) │
+│    Lint:      {status} {time}                               │
+│    Security:  {status} {time}                               │
 │                                                             │
-│ ⏱️  Skipped: Integration (no tool configured)                │
-│ ⏱️  Total: {time}                                            │
+│ Skipped: Integration (no tool configured)                 │
+│ Total: {time}                                               │
 │                                                             │
-│ What next?                                                  │
-│   ▸ Commit (Recommended)                                        │
-│     Change something first                                   │
-│     Save for later                                           │
+│ What next?                                                 │
+│   ▸ Commit (Recommended)                                   │
+│     Change something first                                │
+│     Save for later                                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -193,7 +226,11 @@ AskUserQuestion:
 2. User types their change request
 3. Claude makes the change
 4. Re-run validation
-5. Re-show AskUserQuestion with same options
+5. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
+
+GATE ENFORCEMENT: The user's change input is NOT approval to commit.
+Do NOT commit after making changes. The user MUST explicitly select
+"Commit" from the gate to proceed.
 ```
 
 **On Save for later (third option):**
@@ -203,8 +240,11 @@ AskUserQuestion:
    {
      "stage": "check_complete",
      "spec": "{feature-slug}",
-     "next_stage": null,
-     "has_uncommitted_changes": true
+     "spec_path": ".temper/specs/{feature-slug}",
+     "original_args": "{from prior state}",
+     "next_stage": "commit",
+     "artifacts": ["intent.md", "tasks.md"],
+     "updated": "{ISO timestamp}"
    }
 2. Report:
    "✅ Saved. Run /temper when ready to continue."

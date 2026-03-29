@@ -19,6 +19,16 @@ argument-hint: "<bug-description-or-JIRA-123>"
 
 ## Execution
 
+### Context Loading
+
+This stage may run in two modes:
+- **Standalone** (`/temper:fix`) — runs in current context, handles its own gate
+- **Agent subprocess** (from `/temper`) — starts with CLEAN context, only loads what's listed below
+
+**Subprocess mode override:** When running as an Agent subprocess, do NOT show AskUserQuestion gates or clear context. Return the fix summary to the orchestrator. The orchestrator handles all gate decisions and context transitions.
+
+In both modes, the fix methodology is identical.
+
 ### Step 1: Detect Input Type
 
 Same as /temper:plan Phase 0 — detect Jira, GitHub, or direct description.
@@ -191,6 +201,14 @@ If an active intent.md exists in .temper/specs/:
   4. If no active intent.md: skip (most fixes are standalone)
 ```
 
+### Step 4.6: Simplify (if code-simplifier agent is available)
+
+After implementing the fix, if the `code-simplifier:code-simplifier` agent is available:
+- Run it on files you created or modified during this fix
+- Focus on clarity, consistency, and maintainability
+- Preserve all functionality — simplification must not change behavior
+- If the agent is not available in this installation: skip this step
+
 ### Step 5: Validate (via /temper:check)
 
 ```
@@ -254,10 +272,25 @@ Commit: fix({scope}): {description}
 1. Ask: "What would you like to change?"
 2. User types their change request
 3. Claude makes the change
-4. Re-show AskUserQuestion with same options
+4. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
+
+GATE ENFORCEMENT: The user's change input is NOT approval to commit.
+Do NOT commit after making changes. The user MUST explicitly select
+"Commit" from the gate to proceed.
 
 **On Save for later (third option):**
-1. Save state to .temper/build-state.json
+1. Save state to .temper/build-state.json:
+   ```json
+   {
+     "stage": "check_complete",
+     "spec": "{feature-slug}",
+     "spec_path": ".temper/specs/{feature-slug}",
+     "original_args": "{from prior state}",
+     "next_stage": "commit",
+     "artifacts": ["intent.md", "tasks.md"],
+     "updated": "{ISO timestamp}"
+   }
+   ```
 2. Report: "✅ Saved. Run /temper when ready to continue."
 
 ### Step 7: Rollback Protocol

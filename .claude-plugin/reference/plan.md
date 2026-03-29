@@ -22,6 +22,16 @@ argument-hint: "<feature-name-or-JIRA-123>"
 
 ## Execution
 
+### Context Loading
+
+This stage may run in two modes:
+- **Standalone** (`/temper:plan`) — runs in current context, handles its own gate
+- **Agent subprocess** (from `/temper`) — runs in clean context, returns summary to orchestrator
+
+**Subprocess mode override:** When running as an Agent subprocess, do NOT show AskUserQuestion gates or clear context. Return the plan summary to the orchestrator. The orchestrator handles all gate decisions and context transitions.
+
+In both modes, the planning methodology is identical.
+
 ### Phase 0: Detect Input Type
 
 Determine what the user provided:
@@ -555,25 +565,27 @@ AskUserQuestion:
    {
      "stage": "plan_complete",
      "spec": "{feature-slug}",
+     "spec_path": ".temper/specs/{feature-slug}",
+     "original_args": "{user's original feature description}",
      "next_stage": "build",
-     "artifacts": ["intent.md", "tasks.md"]
+     "artifacts": ["intent.md", "tasks.md"],
+     "updated": "{ISO timestamp}"
    }
 
-2. Signal context transition:
+2. If running standalone (/temper:plan):
+   Signal context transition:
    "✅ Continuing to BUILD...
-    🧹 Clearing context for efficiency.
     📂 Loading: tasks.md + intent.md only"
 
-3. ⚠️ MANDATORY: Clear ALL context. Do NOT carry forward any files,
-   analysis, or artifacts from the planning phase. This prevents
-   stale context from bleeding into the build stage.
-
-4. Load ONLY what's needed for build:
+   Note: In standalone mode, context is shared. Load ONLY what's needed for build:
    - .temper/specs/{feature}/tasks.md
    - .temper/specs/{feature}/intent.md (if exists)
-   - Nothing else.
+   Focus on these files and minimize references to prior planning context.
 
-5. Proceed to /temper:build (or continue if using unified /temper)
+3. If running as Agent subprocess (from /temper):
+   The orchestrator handles context — return summary and stop.
+
+4. Proceed to /temper:build (or continue if using unified /temper)
 ```
 
 **On Change something first (second option):**
@@ -583,13 +595,28 @@ AskUserQuestion:
 2. User types their change request
 3. Claude edits intent.md (adds/removes scenarios, modifies success criteria, etc.)
 4. Re-show summary
-5. Re-show AskUserQuestion with same options
+5. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
+
+GATE ENFORCEMENT: The user's change input is NOT approval to proceed.
+Do NOT skip to the next stage after making changes. The user MUST
+explicitly select "Continue to Build" from the gate to proceed.
 ```
 
 **On Save for later (third option):**
 
 ```
-1. Save state to .temper/build-state.json
+1. Save state to .temper/build-state.json:
+   ```json
+   {
+     "stage": "plan_complete",
+     "spec": "{feature-slug}",
+     "spec_path": ".temper/specs/{feature-slug}",
+     "original_args": "{user's original feature description}",
+     "next_stage": "build",
+     "artifacts": ["intent.md", "tasks.md"],
+     "updated": "{ISO timestamp}"
+   }
+   ```
 2. Report: "✅ Saved. Run /temper when ready to continue."
 ```
 
