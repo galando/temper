@@ -62,7 +62,7 @@ Git workflow — conventional commits, branching strategy.
 
 ## Creating Custom Packs
 
-**Recommended:** Use `/temper:standards` to create packs interactively. Temper scans your codebase, asks about your preferences, and generates a custom `rules.md` tailored to your team.
+**Recommended:** Use `/temper:pack` to create packs interactively. Select "Add new pack" to scan your codebase, define conventions, and generate a custom `rules.md` tailored to your team.
 
 ### Manual Creation
 

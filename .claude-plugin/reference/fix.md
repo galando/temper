@@ -40,6 +40,23 @@ Same as /temper:plan Phase 0 — detect Jira, GitHub, or direct description.
 - Reproducibility (always, intermittent, specific conditions)
 - When it started (recent deploy, specific date, always existed)
 
+### Step 1.5: Load Enabled Packs
+
+Read `.claude/temper.config` to get the list of enabled packs. For each enabled pack, load `.claude/packs/{pack}/rules.md`.
+
+These rules are applied during:
+- **RCA** — check if the bug violates any pack rules (e.g., security pack: was input validation skipped?)
+- **Fix implementation** — ensure the fix doesn't introduce new pack violations
+- **Validation** — `/temper:check` validates against all enabled pack rules
+
+```
+Loading enabled packs: quality, tdd, security, git
+  quality: 3 BLOCK, 5 WARN rules
+  tdd: 2 BLOCK, 4 WARN rules
+  security: 6 BLOCK, 2 WARN rules
+  git: 4 WARN, 4 SUGGEST rules
+```
+
 ### Step 2: Root Cause Analysis (via Explore subagent)
 
 Launch an Explore subagent:

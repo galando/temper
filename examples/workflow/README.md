@@ -45,14 +45,13 @@ Total: ~1-2 hours
 → 3 tickets done, coverage 87%→91%, 4 issues caught, debt ratio improving
 ```
 
-## Standards Building Workflow
+## Pack Management Workflow
 
 ```
-/temper:standards
-→ Scans codebase (patterns, consistency, inconsistencies)
-→ Interview: 5-10 questions about conventions
-→ Generates: .claude/packs/{company}/rules.md
-→ Generates: .claude/presets/{company}-{stack}.yaml
+/temper:pack
+→ Shows all packs with enabled/disabled status
+→ Toggle packs on/off, or select "Add new pack"
+→ Add new pack: scans codebase, interview, generates .claude/packs/{name}/rules.md
 → Validates against current codebase
 → Sets baseline for future tracking
 ```

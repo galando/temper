@@ -300,7 +300,7 @@ Runs plan → build → review → check with **stage gates**. At each stage, yo
 | [`/temper:review`](docs/commands.md#temperreview) | Structured intent validation + confidence scoring |
 | [`/temper:check`](docs/commands.md#tempercheck) | Stack validation (auto-detects) |
 | [`/temper:fix`](docs/commands.md#temperfix) | Root cause analysis + regression test |
-| [`/temper:standards`](docs/commands.md#temperstandards) | Build team standards |
+| [`/temper:pack`](docs/commands.md#temperpack) | Manage quality packs |
 | [`/temper:status`](docs/commands.md#temperstatus) | Quality metrics dashboard |
 
 ### Stage Gates
@@ -338,7 +338,7 @@ Packs are rule sets enforced during code generation and review:
 | `security` | BLOCK | OWASP Top 10, no secrets in code |
 | `git` | SUGGEST | Conventional commits, branching |
 
-Create custom packs with `/temper:standards` or add a `rules.md` to `.claude/packs/your-pack/`.
+Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/your-pack/`.
 
 ## Installation
 

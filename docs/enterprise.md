@@ -61,14 +61,14 @@ Create `.claude/packs/{company}/rules.md`:
 - Event consumers must be idempotent
 ```
 
-### Option B: Use Interactive Builder
+### Option B: Use Interactive Pack Builder
 
 ```
 cd your-project
-/temper:standards
+/temper:pack
 ```
 
-This scans your codebase, interviews you about conventions, and generates the rules file.
+Select "Add new pack" — Temper scans your codebase, interviews you about conventions, and generates the rules file.
 
 ## Step 3: Create Stack Preset
 
@@ -149,7 +149,7 @@ If you have an internal plugin marketplace:
 ```bash
 git clone project
 cd project
-/temper:status    # See pre-configured standards, packs, and metrics
+/temper:status    # See pre-configured packs and quality metrics
 ```
 
 No setup required. Everything is pre-configured.
@@ -167,6 +167,7 @@ packs:
   - quality
   - tdd
   - security
+  - git
   - company    # Your company pack
 
 # Planning options

@@ -7,7 +7,7 @@
 | `/temper:review` | Confidence-scored review |
 | `/temper:check` | Stack validation |
 | `/temper:fix` | RCA + fix |
-| `/temper:standards` | Build team standards |
+| `/temper:pack` | Manage quality packs |
 | `/temper:status` | Quality dashboard |
 
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/`

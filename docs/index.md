@@ -124,7 +124,7 @@ The queue consumer issue? Blast radius flagged it. The missing rate limiting? Sc
 | [`/temper:review`](commands.html#review) | Structured intent validation + confidence scoring |
 | [`/temper:check`](commands.html#check) | Stack validation (auto-detects) |
 | [`/temper:fix`](commands.html#fix) | Multi-hypothesis root cause analysis |
-| [`/temper:standards`](commands.html#standards) | Build team standards interactively |
+| [`/temper:pack`](commands.html#pack) | Manage quality packs: view, toggle, create |
 | [`/temper:status`](commands.html#status) | Quality metrics, hotspot tracking |
 
 ## Quick Start
