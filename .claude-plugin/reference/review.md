@@ -22,6 +22,21 @@ description: "Technical code review with confidence scoring, review memory, and 
 
 ## Execution
 
+### Context Loading
+
+This stage may run in two modes:
+- **Standalone** (`/temper:review`) — runs in current context, handles its own gate
+- **Agent subprocess** (from `/temper`) — starts with CLEAN context, only loads what's listed below
+
+**Subprocess mode override:** When running as an Agent subprocess, do NOT show AskUserQuestion gates or clear context. Return the review summary to the orchestrator. The orchestrator handles all gate decisions and context transitions.
+
+In both modes, the review methodology is identical.
+
+Files to load at start:
+1. Run `git diff --name-only` to identify changed files
+2. `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md` (this file)
+3. `.temper/specs/{feature}/intent.md` (for intent validation, if exists)
+
 ### Step 1: Gather Context
 
 ```bash
@@ -175,19 +190,23 @@ After review completes, show a nice summary:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ 🔍 REVIEW — {Feature Name}                                 │
+│ REVIEW — {Feature Name}                                     │
 ├─────────────────────────────────────────────────────────────┤
-│ ✅ WHAT WAS REVIEWED                                         │
+│ WHAT WAS REVIEWED                                           │
 │    Files: {N} changed files                                 │
 │    Confidence: {X}%                                         │
 │                                                             │
-│ 📊 ISSUES FOUND                                              │
-│    Critical: {N} | High: {N} | Medium: {N} | Low: {N}       │
+│ ISSUES FOUND                                                │
+│    Critical: {N} | High: {N} | Medium: {N} | Low: {N}      │
 │    Auto-fixable: {N}                                        │
 │                                                             │
-│ 🔧 TOP ISSUES                                                │
-│    1. [{severity}] {file}:{line} — {one-line description}   │
-│    2. [{severity}] {file}:{line} — {one-line description}   │
+│ SCENARIO COVERAGE (from intent.md)                          │
+│    Covered: {X}/{Y} ({Z} automated, {W} manual)            │
+│    ❌ {uncovered scenario name}                              │
+│                                                             │
+│ TOP ISSUES                                                  │
+│    1. [{severity}] {file}:{line} — {one-line description}  │
+│    2. [{severity}] {file}:{line} — {one-line description} │
 │                                                             │
 │ What next?                                                  │
 │   ▸ Fix & continue to Check (Recommended)                   │
@@ -222,17 +241,15 @@ AskUserQuestion:
 ```
 1. If auto-fixable issues exist: apply fixes
 2. Save state to .temper/build-state.json
-3. Signal:
+3. If running standalone:
+   Signal:
    "✅ Continuing to CHECK...
-    🧹 MANDATORY: Clearing ALL context for efficiency.
-    📂 Loading: nothing new (check needs no additional context)"
-4. ⚠️ MANDATORY: Clear ALL context. Do NOT carry forward
-   changed files, review findings, or artifacts from the review stage.
-   This prevents stale context from bleeding into the check stage.
-5. If fixes applied: Re-run review (single pass, no subagents)
+    📂 Check needs no additional context — running validation pipeline."
+   If running as Agent subprocess: The orchestrator handles context — return summary and stop.
+4. If fixes applied: Re-run review (single pass, no subagents)
    - If new issues found: show updated summary, ask again (max 1 more loop)
    - If clean: proceed to /temper:check
-6. If no fixes needed: proceed directly to /temper:check
+5. If no fixes needed: proceed directly to /temper:check
 ```
 
 **On Change something first (second option):**
@@ -241,14 +258,27 @@ AskUserQuestion:
 1. Ask: "What would you like to change?"
 2. User types their change request
 3. Claude makes the change
-4. Re-show AskUserQuestion with same options
+4. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
+
+GATE ENFORCEMENT: The user's change input is NOT approval to proceed.
+Do NOT skip to check after making changes. The user MUST explicitly
+select "Fix & continue to Check" from the gate to proceed.
 ```
 
 **On Save for later (third option):**
 
 ```
 1. Skip review fixes
-2. Save state to .temper/build-state.json
+2. Save state to .temper/build-state.json:
+   {
+     "stage": "review_complete",
+     "spec": "{feature-slug}",
+     "spec_path": ".temper/specs/{feature-slug}",
+     "original_args": "{from prior state}",
+     "next_stage": "check",
+     "artifacts": ["intent.md", "tasks.md"],
+     "updated": "{ISO timestamp}"
+   }
 3. Report: "✅ Saved. Run /temper when ready to continue."
 ```
 
