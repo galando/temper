@@ -4,9 +4,7 @@
 # Usage: ./scripts/version-bump.sh <version>
 # Example: ./scripts/version-bump.sh 1.2.0
 #
-# This script updates the version in all required files:
-# 1. .claude-plugin/plugin.json (Claude Code plugin)
-# 2. CHANGELOG.md (adds version header)
+# This script updates the version in plugin.json.
 #
 
 set -e
@@ -35,39 +33,14 @@ if [ -f ".claude-plugin/plugin.json" ]; then
     rm -f .claude-plugin/plugin.json.bak
 fi
 
-# 2. Update CHANGELOG.md - add version header if not exists
-echo "  → Updating CHANGELOG.md"
-if ! grep -q "## \[$NEW_VERSION\]" CHANGELOG.md; then
-    # Insert new version header after the intro section
-    sed -i.bak "/and this project adheres to \[Semantic Versioning\]/a\\
-\\
-## [$NEW_VERSION] - $DATE\\
-\\
-### Added\\
-- \\[Add your changes here\\]\\
-\\
-### Changed\\
-- \\[Add your changes here\\]\\
-\\
-### Fixed\\
-- \\[Add your changes here\\]
-" CHANGELOG.md
-    rm -f CHANGELOG.md.bak
-    echo "  → Added version header to CHANGELOG.md (edit to add your changes!)"
-else
-    echo "  → Version header already exists in CHANGELOG.md"
-fi
-
 echo ""
 echo "✅ Version bumped to $NEW_VERSION"
 echo ""
 echo "📋 Files updated:"
 echo "   • .claude-plugin/plugin.json"
-echo "   • CHANGELOG.md"
 echo ""
 echo "🔍 Next steps:"
-echo "   1. Edit CHANGELOG.md with your changes"
-echo "   2. Commit: git add -A && git commit -m 'chore: bump version to $NEW_VERSION'"
-echo "   3. Tag: git tag v$NEW_VERSION"
-echo "   4. Push: git push && git push --tags"
+echo "   1. Commit: git add -A && git commit -m 'chore: bump version to $NEW_VERSION'"
+echo "   2. Tag: git tag v$NEW_VERSION"
+echo "   3. Push: git push && git push --tags"
 echo ""

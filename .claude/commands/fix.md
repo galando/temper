@@ -16,11 +16,12 @@ argument-hint: "<bug-description-or-JIRA-123>"
 ### Quick Reference
 
 1. Detect input (Jira/GitHub/description)
-2. RCA via Explore subagent (search code, trace execution, check git history)
-3. Write regression test → must FAIL (confirms bug)
-4. Implement minimal fix → test must PASS
-5. Intent cross-reference: link fix to active scenario, suggest missing scenarios
-6. Run /temper:check → all tests pass
-7. Report + commit
+2. Load enabled packs from `.claude/temper.config`
+3. RCA via Explore subagent (search code, trace execution, check git history)
+4. Write regression test → must FAIL (confirms bug)
+5. Implement minimal fix → test must PASS, validate against enabled pack rules
+6. Intent cross-reference: link fix to active scenario, suggest missing scenarios
+7. Run /temper:check → all tests pass
+8. Report + commit
 
 **Multi-hypothesis RCA: investigates top causes ranked by confidence**

@@ -185,6 +185,7 @@ packs:
   - quality
   - tdd
   - security
+  - git
 
 # Review options
 review:

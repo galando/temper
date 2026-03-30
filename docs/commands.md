@@ -376,21 +376,49 @@ Root Cause: Queue consumer crashed at 2:34 AM
 
 ---
 
-## `/temper:standards`
+## `/temper:pack`
 
-Build team standards interactively.
+Manage quality packs: view, toggle, or create new ones.
 
 ```bash
-/temper:standards
+/temper:pack
 ```
 
 **What it does:**
 
-- Scans your codebase for patterns
-- Asks clarifying questions
-- Generates your engineering standards pack
+- Shows all defined packs with enable/disable status
+- Lets you toggle packs on/off
+- Create new custom packs by scanning your codebase
 
-**Workflow:**
+**Output:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ PACK — Quality Pack Manager                                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  PACK                     STATUS    RULES                    │
+│  ─────────────────────── ──────── ───────────────────────── │
+│  quality                   ON      BLOCK: 3, WARN: 5       │
+│  tdd                       ON      BLOCK: 2, WARN: 4       │
+│  security                  ON      BLOCK: 6, WARN: 2       │
+│  git                       ON      WARN: 4, SUGGEST: 4     │
+│  company                   OFF     BLOCK: 4, WARN: 3       │
+│                                                             │
+│  5 packs total (4 enabled, 1 disabled)                      │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Options:**
+
+| Option | What it does |
+|--------|-------------|
+| **Toggle packs** | Enable or disable packs via multi-select |
+| **Add new pack** | Scan codebase, interview about conventions, generate custom pack |
+| **Done** | Exit pack manager |
+
+**Adding a new pack:**
 
 ```
 🔍 Scanning codebase...
@@ -410,10 +438,6 @@ Questions:
    Make it mandatory?
    [Yes/No/Skip] > Yes
 
-3. Some services use console.log instead of logger.
-   Should I suggest migration?
-   [Yes/No/Skip] > Yes
-
 Generating pack...
 
 ✅ Created: .claude/packs/company/rules.md
@@ -421,8 +445,7 @@ Generating pack...
    • BLOCK rules: 2
    • WARN rules: 3
    • SUGGEST rules: 4
-
-Next: Commit this pack and share with your team.
+   • Status: ENABLED
 ```
 
 ---
