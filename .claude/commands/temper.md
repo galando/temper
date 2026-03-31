@@ -125,19 +125,23 @@ Use the Agent tool with this prompt:
 
 Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan.md
 
+ENFORCEMENT: Always follow the full planning methodology regardless of complexity level. Always generate: intent.md, tasks.md, mermaid diagram in plan.md, blast radius analysis. No shortcuts.
+
 CRITICAL: This agent runs in isolation. After planning:
 1. Show the plan summary box (see below)
 2. Do NOT show an AskUserQuestion gate — return the summary to the orchestrator
 3. The orchestrator handles the gate decision
 
 Return ONLY:
-- Plan summary text (formatted box)
+- Plan summary text (formatted box + diagram rendered below it)
 - Path to spec: .temper/specs/{feature-slug}/
 - Complexity level: trivial/simple/medium/complex
 - Risk level: low/medium/high"
 ```
 
 ### Plan Summary Format
+
+**ENFORCEMENT:** The unified `/temper` command always follows the full planning guidelines regardless of complexity level. No shortcuts for Simple or Trivial features. Always generate: intent.md, tasks.md, mermaid diagram, blast radius, and present the full approval gate with walkthrough option.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -162,14 +166,66 @@ Return ONLY:
 │                                                             │
 │ RISK: {Low/Medium/High} — {reason}                          │
 └─────────────────────────────────────────────────────────────┘
+
+Diagram (rendered below summary box):
+
+{mermaid diagram}
 ```
 
 ### Stage Gate
 
 Show the AskUserQuestion gate with:
 - "Continue to Build (Recommended)" — launch BUILD agent
+- "Walk through plan step by step" — interactive walkthrough (see below)
 - "Change something first" — make changes, re-show gate
 - "Save for later" — save state, stop
+
+#### Step-by-Step Walkthrough
+
+When the user selects "Walk through plan step by step", present the plan as an interactive, section-by-section flow. Read the plan files (intent.md, plan.md, tasks.md) from `.temper/specs/{feature-slug}/` to provide detailed content for each section.
+
+**Walkthrough sections (presented one at a time):**
+
+1. **Intent Deep Dive** — Full problem statement, all success criteria with validation methods, constraints, target users
+2. **Diagram Walkthrough** — Show the mermaid diagram (if generated), explain each node/edge, highlight what's new vs existing vs modified
+3. **Scenario Review** — For each BDD scenario: show the Gherkin, explain why it exists (which blast radius risk or acceptance criterion it addresses)
+4. **Architecture Details** — For each file to create/modify: what it does, which patterns it follows, which scenarios it traces to
+5. **Blast Radius Review** — Each impacted consumer, whether tests exist, what regression guards are in place
+6. **Task Walkthrough** — For each task: what it does, validation command, dependencies, parallel opportunities
+
+**After each section, use AskUserQuestion:**
+
+```
+AskUserQuestion:
+  question: "What would you like to do?"
+  options:
+    - label: "Next step"
+      description: "Continue to {next section name}."
+    - label: "Ask a question"
+      description: "Type your question about this section."
+    - label: "Change something"
+      description: "Request a modification to this part of the plan."
+  multiSelect: false
+```
+
+- **"Ask a question"**: Answer, then re-show the same section's gate
+- **"Change something"**: Edit plan files, show what changed, then re-show the same section's gate
+- **"Next step"**: Advance to next section. After the last section, show the final walkthrough gate:
+
+```
+AskUserQuestion:
+  question: "Walkthrough complete. What next?"
+  options:
+    - label: "Continue to Build (Recommended)"
+      description: "Launch BUILD agent with clean context."
+    - label: "Change something first"
+      description: "Type what you want to change. Edits are made, then gate re-appears."
+    - label: "Save for later"
+      description: "Save state and stop."
+  multiSelect: false
+```
+
+**Walkthrough edits propagate automatically.** The orchestrator edits plan files on disk directly. The BUILD agent subprocess reads these same files, so changes are reflected without any extra step.
 
 **on Continue:**
 1. Save state to `.temper/build-state.json`:

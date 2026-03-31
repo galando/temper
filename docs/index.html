@@ -886,16 +886,16 @@
         <p>Understands impact before coding. Maps affected files, dependencies, and risk areas.</p>
       </div>
       <div class="why-item">
+        <h4>Mermaid Architecture Diagrams</h4>
+        <p>Auto-generates flowcharts, sequence diagrams, and state machines. See the plan visually before building.</p>
+      </div>
+      <div class="why-item">
+        <h4>Interactive Plan Walkthrough</h4>
+        <p>Walk through the plan section by section — intent, scenarios, architecture, blast radius, tasks — with Q&A at each step.</p>
+      </div>
+      <div class="why-item">
         <h4>Enforced Quality Gates</h4>
         <p>Tests must pass. Coverage must be met. The AI cannot proceed until verified.</p>
-      </div>
-      <div class="why-item">
-        <h4>Adaptive Learning</h4>
-        <p>Gets smarter as you use it. Tracks patterns and suggests custom rules.</p>
-      </div>
-      <div class="why-item">
-        <h4>2KB Context</h4>
-        <p>Tiny footprint. Always-on config is minimal, commands load on-demand.</p>
       </div>
     </div>
   </section>
@@ -913,9 +913,9 @@
         </div>
         <div class="flow-content">
           <h3>Plan <code>/temper</code></h3>
-          <p><strong>One command starts it all.</strong> Temper analyzes blast radius, creates scenarios, and shows a summary. You confirm to proceed.</p>
+          <p><strong>One command starts it all.</strong> Temper analyzes blast radius, generates mermaid architecture diagrams, creates BDD scenarios, and presents an interactive plan. Walk through step by step or approve and build.</p>
           <div class="flow-result">
-            <span class="success">✓</span> 12 files affected · <span class="success">✓</span> 5 scenarios · <span class="warning">!</span> 2 risk areas · <span class="success">Ready to build?</span>
+            <span class="success">✓</span> 12 files affected · <span class="success">✓</span> 5 scenarios · <span class="success">✓</span> architecture diagram · <span class="warning">!</span> 2 risk areas · <span class="success">Walkthrough? → Build?</span>
           </div>
         </div>
       </div>
@@ -1107,7 +1107,7 @@
         <span class="command-icon">🎯</span>
         <div class="command-content">
           <h4>/temper:plan</h4>
-          <p>Plan with blast radius analysis</p>
+          <p>Plan with blast radius, mermaid diagrams, and interactive walkthrough</p>
         </div>
       </div>
       <div class="command">

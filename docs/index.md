@@ -69,11 +69,44 @@ That's it. One command runs the full SDLC:
 │                                                             │
 │ 📁 FILES: 3 create, 2 modify                                │
 │ ⚡ RISK: Medium (touches auth layer)                        │
-│                                                             │
-│ ✅ Ready to build? [Y/e(dit)/n]                             │
 └─────────────────────────────────────────────────────────────┘
 
+Diagram (architecture flow):
+
+flowchart TD
+    A[User] --> B[ResetController]
+    B --> C[TokenService]
+    C --> D[(Database)]
+    C --> E[EmailService]
+
+    class A new
+    class B,C new
+    class D,E existing
+
+> Walk through plan step by step? [Y/n]
+
 > Y
+
+📋 Step 1/6 — Intent Deep Dive
+   Problem: Users can't reset passwords without contacting support
+   Success criteria:
+     • Self-service reset in under 2 minutes (Validate: scenario)
+     • Token expires after 15 minutes (Validate: code)
+   [Next step / Ask a question / Change something]
+
+> Next step
+
+📋 Step 2/6 — Diagram Walkthrough
+   ...step by step through architecture...
+
+> Next step
+
+📋 Step 6/6 — Task Walkthrough
+   Task 1: Create token model + migration [SEQUENTIAL]
+   Task 2: Implement TokenService [SEQUENTIAL: after Task 1]
+   ...
+
+> Continue to Build
 
 ┌─────────────────────────────────────────────────────────────┐
 │ 🔨 BUILD COMPLETE                                           │
@@ -119,7 +152,7 @@ The queue consumer issue? Blast radius flagged it. The missing rate limiting? Sc
 
 | Command | Purpose |
 |---------|---------|
-| [`/temper:plan`](commands.html#plan) | Blast radius + BDD scenarios + architecture |
+| [`/temper:plan`](commands.html#plan) | Blast radius + mermaid diagrams + BDD scenarios + interactive walkthrough |
 | [`/temper:build`](commands.html#build) | Scenario-driven TDD gates, resume from checkpoint |
 | [`/temper:review`](commands.html#review) | Structured intent validation + confidence scoring |
 | [`/temper:check`](commands.html#check) | Stack validation (auto-detects) |
@@ -139,7 +172,7 @@ cd your-project
 /temper "add login feature"
 
 # Option 2: Individual commands (granular control)
-/temper:plan "your feature"    # Scenarios + blast radius + architecture
+/temper:plan "your feature"    # Scenarios + diagrams + blast radius + walkthrough
 /temper:build                  # Scenario-driven TDD
 /temper:review                 # Intent validation
 ```
