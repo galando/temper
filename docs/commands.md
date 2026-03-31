@@ -95,7 +95,7 @@ Stack validation and quality status.
 
 ## `/temper:plan`
 
-Plan with blast radius analysis.
+Plan with blast radius analysis, mermaid diagrams, and interactive walkthrough.
 
 ```bash
 /temper:plan "feature description"
@@ -105,10 +105,12 @@ Plan with blast radius analysis.
 
 - Analyzes which files will be affected
 - Identifies dependencies and risk areas
+- Generates mermaid architecture diagrams (flowchart, sequenceDiagram, etc.)
 - Derives BDD scenarios from requirements + blast radius — **before architecture**
 - Builds architecture from scenarios — every file traces to a behavior or infrastructure need
 - Generates intent.md with structured success criteria + Gherkin scenarios (medium+ complexity)
 - Detects parallel tasks for optimized ordering
+- Offers interactive step-by-step plan walkthrough with Q&A at each section
 
 **Example:**
 

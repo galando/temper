@@ -345,6 +345,10 @@ Scenarios from Phase 4.5 may reveal ambiguities that weren't visible from the fe
 
 ### Phase 6: Generate Plan Artifacts
 
+**ENFORCEMENT OVERRIDE (when running from `/temper` unified command):** Always generate the full artifact set regardless of complexity level. Always create: intent.md, tasks.md, plan.md with mermaid diagram, blast radius analysis. Present the full 4-option approval gate with walkthrough. This overrides the complexity-tiered rules below.
+
+**Complexity-tiered rules (for standalone `/temper:plan` only):**
+
 **For Trivial:** No artifacts. Tell user: "Small change. I'll implement directly."
 
 **For Simple:** Inline plan in conversation. No files created:
@@ -408,6 +412,61 @@ Prefer `scenario` and `code` — these are mechanically verifiable. Use `metric`
 Scenarios are derived in Phase 4.5 (before architecture). Write them into intent.md here.
 
 Use templates from `$CLAUDE_PLUGIN_ROOT/templates/` (spec.md, plan.md, tasks.md, quickstart.md) as the base structure. Fill in from reference map and blast radius analysis.
+
+#### Mermaid Diagram Generation
+
+For Medium and Complex features, generate a mermaid diagram in the plan.md `## Diagram` section. Choose the diagram type based on what best communicates the feature:
+
+| Situation | Diagram Type | When to Use |
+|-----------|-------------|-------------|
+| Component interactions | `flowchart` | Multiple modules/services communicating |
+| Data flow | `flowchart` with subgraphs | Data moves through layers or boundaries |
+| State machines | `stateDiagram-v2` | Entities with lifecycle states |
+| Cross-boundary sequences | `sequenceDiagram` | API calls, service-to-service, user journeys |
+| Type hierarchies | `classDiagram` | New types with inheritance or composition |
+
+**When running from `/temper` (unified command):** Always generate a diagram. Even for Simple features, a minimal diagram showing the files and their relationships adds value.
+
+**When running standalone `/temper:plan`:** Skip diagram for single-file changes or config-only changes only.
+
+**Guidelines:**
+- Keep diagrams under 30 nodes — split into multiple diagrams if needed
+- Use descriptive node names (not abbreviations)
+- Color-code with mermaid `classDef` when distinguishing new vs existing components:
+  ```
+  classDef new fill:#e1f5fe,stroke:#0288d1
+  classDef existing fill:#f5f5f5,stroke:#9e9e9e
+  classDef modified fill:#fff3e0,stroke:#f57c00
+  ```
+- Include a legend note above the diagram when using colors
+
+**Example flowchart:**
+```
+flowchart TD
+    A[Client Request] --> B[API Controller]
+    B --> C[Service Layer]
+    C --> D[(Database)]
+    C --> E[Cache]
+
+    class A,B,C new
+    class D,E existing
+```
+
+**Example sequenceDiagram:**
+```
+sequenceDiagram
+    participant U as User
+    participant API as AuthController
+    participant S as AuthService
+    participant DB as Database
+
+    U->>API: POST /login
+    API->>S: authenticate(credentials)
+    S->>DB: findUser(email)
+    DB-->>S: user record
+    S-->>API: token or error
+    API-->>U: 200 or 401
+```
 
 **Populate `Traced to:` in tasks.md:**
 When generating tasks.md, fill the `Traced to:` field for each task:
@@ -476,7 +535,7 @@ GUARD: When in doubt, keep sequential. Parallel marking is an optimization, not 
 
 ### Phase 7: Present for Approval
 
-Show a nice summary box with intent included:
+Show a summary box, then offer two ways to proceed: the quick summary (current behavior) or an interactive step-by-step walkthrough.
 
 **For Medium/Complex features:**
 
@@ -498,12 +557,11 @@ Show a nice summary box with intent included:
 │    Modify: {N} — {key files}                               │
 │                                                             │
 │ ⚡ RISK: {Low/Medium/High} — {reason}                       │
-│                                                             │
-│ What next?                                                  │
-│   ▸ Continue to Build (Recommended)                               │
-│     Change something first                                  │
-│     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
+
+Diagram (rendered below summary box):
+
+{mermaid diagram, or "N/A" if single-file/config-only when running standalone}
 ```
 
 **For Simple features:**
@@ -514,11 +572,6 @@ Show a nice summary box with intent included:
 ├─────────────────────────────────────────────────────────────┤
 │ Files: {N} create, {N} modify                               │
 │ Risk: {Low/Medium}                                          │
-│                                                             │
-│ What next?                                                  │
-│   ▸ Continue to Build (Recommended)                               │
-│     Change something first                                  │
-│     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -528,10 +581,6 @@ Show a nice summary box with intent included:
 ┌─────────────────────────────────────────────────────────────┐
 │ 📋 Small change — implementing directly                     │
 │ {1-line description of what will be done}                   │
-│                                                             │
-│ What next?                                                  │
-│   ▸ Do it (Recommended)                                         │
-│     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -541,10 +590,12 @@ Use AskUserQuestion with these options:
 
 ```
 AskUserQuestion:
-  question: "What next?"
+  question: "What would you like to do with this plan?"
   options:
     - label: "Continue to Build (Recommended)"
       description: "Proceed to build. Context will be cleared, loading tasks.md + intent.md."
+    - label: "Walk through plan step by step"
+      description: "Interactive walkthrough: each step explained in detail with Q&A at each point."
     - label: "Change something first"
       description: "Type what you want to change. Claude edits, then re-asks."
     - label: "Save for later"
@@ -555,8 +606,68 @@ AskUserQuestion:
 | Response | Action |
 |----------|--------|
 | **Continue** (first option) | Proceed to build. Signal context clear, load tasks.md + intent.md |
+| **Walk through** | Enter interactive step-by-step mode (see below) |
 | **Change something** | User types what to change. Claude edits. Re-ask. |
 | **Save** | Save state to .temper/build-state.json, stop here |
+
+#### Step-by-Step Walkthrough Mode
+
+When the user selects "Walk through plan step by step", present the plan as an interactive flow:
+
+**Structure the walkthrough as these sections (one at a time):**
+
+1. **Intent Deep Dive** — Full problem statement, success criteria with validation methods, constraints
+2. **Diagram Walkthrough** — Show the diagram and explain each node/edge, what's new vs existing vs modified
+3. **Scenario Review** — For each BDD scenario: show the Gherkin, explain why it exists (which blast radius risk or acceptance criterion it addresses)
+4. **Architecture Details** — For each file to create/modify: what it does, which patterns it follows, which scenarios it traces to
+5. **Blast Radius Review** — Each impacted consumer, whether tests exist for that path, what regression guards are in place
+6. **Task Walkthrough** — For each task in tasks.md: what it does, validation command, dependencies on prior tasks, parallel opportunities
+
+**Interactive flow per section:**
+
+```
+After presenting each section, use AskUserQuestion:
+
+AskUserQuestion:
+  question: "What would you like to do?"
+  options:
+    - label: "Next step"
+      description: "Continue to {next section name}."
+    - label: "Ask a question"
+      description: "Type your question about this section."
+    - label: "Change something"
+      description: "Request a modification to this part of the plan."
+  multiSelect: false
+```
+
+**Handling user interactions during walkthrough:**
+
+- **"Ask a question"**: Answer the question, then re-show the same section's AskUserQuestion
+- **"Change something"**: Make the edit to the plan files, show what changed, then re-show the same section's AskUserQuestion (user may want to change more before moving on)
+- **"Next step"**: Advance to the next section. After the last section (Task Walkthrough), transition to the final gate:
+
+**Final walkthrough gate (after all sections):**
+
+```
+AskUserQuestion:
+  question: "Walkthrough complete. What next?"
+  options:
+    - label: "Continue to Build (Recommended)"
+      description: "Proceed to build. Context will be cleared, loading tasks.md + intent.md."
+    - label: "Change something first"
+      description: "Type what you want to change. Claude edits, then re-asks."
+    - label: "Save for later"
+      description: "Save state to .temper/build-state.json and stop."
+  multiSelect: false
+```
+
+**ENFORCEMENT OVERRIDE (when running from `/temper` unified command):** Always use the full 6-section walkthrough and the full 4-option approval gate. No complexity-based shortcuts. This overrides the rules below.
+
+**Complexity-tiered rules (for standalone `/temper:plan` only):**
+
+**For Trivial features:** No walkthrough — these show a "Small change — implementing directly" box with no gate. Trivial features skip the AskUserQuestion entirely.
+
+**For Simple features:** Walkthrough has only 2 sections: Architecture Details (files to create/modify) + Blast Radius Review (risk level and justification).
 
 **On Continue (first option):**
 
@@ -588,7 +699,7 @@ AskUserQuestion:
 4. Proceed to /temper:build (or continue if using unified /temper)
 ```
 
-**On Change something first (second option):**
+**On Change something first (third option):**
 
 ```
 1. Ask: "What would you like to change?"
@@ -602,7 +713,7 @@ Do NOT skip to the next stage after making changes. The user MUST
 explicitly select "Continue to Build" from the gate to proceed.
 ```
 
-**On Save for later (third option):**
+**On Save for later (fourth option):**
 
 ```
 1. Save state to .temper/build-state.json:

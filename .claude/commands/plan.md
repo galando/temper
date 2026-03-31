@@ -25,7 +25,7 @@ argument-hint: "<feature-name-or-JIRA-123>"
 8. Clarify if ambiguous (max 2-3 questions, informed by scenarios)
 9. Generate spec/plan/tasks/quickstart to `.temper/specs/{feature}/` with file-to-scenario traceability
 10. Generate intent.md with structured success criteria + Gherkin scenarios
-11. For Complex: spec.md = WHAT, intent.md = WHY + validation (derive scenarios from acceptance criteria)
-12. Present for approval
+11. For Medium+/Complex: generate mermaid diagram (flowchart, sequenceDiagram, etc.) in plan.md
+12. Present for approval with 4 options: Continue / Walkthrough / Change / Save
 
 **Scenarios drive architecture. Every file must trace to a scenario or infrastructure need.**
