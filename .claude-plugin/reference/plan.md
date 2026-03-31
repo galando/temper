@@ -413,7 +413,7 @@ Scenarios are derived in Phase 4.5 (before architecture). Write them into intent
 
 Use templates from `$CLAUDE_PLUGIN_ROOT/templates/` (spec.md, plan.md, tasks.md, quickstart.md) as the base structure. Fill in from reference map and blast radius analysis.
 
-#### Mermaid Diagram Generation
+#### Diagram Generation (Mermaid + ASCII)
 
 For Medium and Complex features, generate a mermaid diagram in the plan.md `## Diagram` section. Choose the diagram type based on what best communicates the feature:
 
@@ -466,6 +466,57 @@ sequenceDiagram
     DB-->>S: user record
     S-->>API: token or error
     API-->>U: 200 or 401
+```
+
+#### ASCII Art Generation (alongside mermaid)
+
+For every mermaid diagram generated, also produce an ASCII art equivalent and write it to plan.md **below** the mermaid block, inside a ` ```text ` fence.
+
+**Why:** The terminal cannot render mermaid markdown. ASCII art is readable without any tooling.
+
+**ASCII art rules by diagram type:**
+
+| Diagram Type | ASCII Style |
+|-------------|-------------|
+| `flowchart` | `+---+` boxes connected with `-->` arrows, vertical flow |
+| `sequenceDiagram` | Vertical participant lanes (`|`), horizontal `-->` messages |
+| `stateDiagram-v2` | `+---+` state boxes, `-->` transitions with labels |
+| `classDiagram` | `+---+` class boxes with `|---|` attribute dividers |
+
+**General rules:**
+- Box corners: `+`, walls: `|` (vertical), `-` (horizontal)
+- Forward arrow: `-->`, backward: `<--`, bidirectional: `<-->`
+- Labels on edges: place above or beside the arrow line
+- Max width: 80 columns; abbreviate node labels if needed
+- Subgraphs: indent contained nodes by 2 spaces
+- Use blank lines to separate groups
+
+**Example flowchart ASCII:**
+```text
++----------+       +----------+       +----------+
+| NodeA    | --->  | NodeB    | --->  | NodeC    |
++----------+       +----------+       +----------+
+```
+
+**Example sequenceDiagram ASCII:**
+```text
+  User          API          Database
+   |             |              |
+   |-- request ->|              |
+   |             |-- query ---> |
+   |             |<-- result ---|
+   |<-- response-|              |
+```
+
+**Output in plan.md `## Diagram` section:**
+```
+\`\`\`mermaid
+{mermaid diagram content}
+\`\`\`
+
+\`\`\`text
+{ASCII art equivalent}
+\`\`\`
 ```
 
 **Populate `Traced to:` in tasks.md:**
@@ -561,7 +612,10 @@ Show a summary box, then offer two ways to proceed: the quick summary (current b
 
 Diagram (rendered below summary box):
 
-{mermaid diagram, or "N/A" if single-file/config-only when running standalone}
+{ASCII art diagram (from plan.md ASCII block), or "N/A" if running standalone /temper:plan for single-file/config-only changes}
+
+NOTE: Always render the ASCII art version in the terminal summary — NOT the raw mermaid markdown block.
+The mermaid block is stored in plan.md for GitHub/tool rendering; the ASCII art is shown to the user in the terminal.
 ```
 
 **For Simple features:**
