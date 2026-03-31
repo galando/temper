@@ -169,7 +169,7 @@ Return ONLY:
 
 Diagram (rendered below summary box):
 
-{mermaid diagram}
+{ASCII art diagram — rendered from plan.md ASCII block; mermaid block is in plan.md only}
 ```
 
 ### Stage Gate
@@ -187,7 +187,7 @@ When the user selects "Walk through plan step by step", present the plan as an i
 **Walkthrough sections (presented one at a time):**
 
 1. **Intent Deep Dive** — Full problem statement, all success criteria with validation methods, constraints, target users
-2. **Diagram Walkthrough** — Show the mermaid diagram (if generated), explain each node/edge, highlight what's new vs existing vs modified
+2. **Diagram Walkthrough** — Show the ASCII art diagram (from plan.md), explain each node/edge, highlight what's new vs existing vs modified
 3. **Scenario Review** — For each BDD scenario: show the Gherkin, explain why it exists (which blast radius risk or acceptance criterion it addresses)
 4. **Architecture Details** — For each file to create/modify: what it does, which patterns it follows, which scenarios it traces to
 5. **Blast Radius Review** — Each impacted consumer, whether tests exist, what regression guards are in place

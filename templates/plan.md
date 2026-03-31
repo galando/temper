@@ -6,18 +6,17 @@
 
 ## Diagram
 
-<!-- Mermaid diagram — ALWAYS include when running from /temper (unified command).
-  For standalone /temper:plan, skip only for single-file changes or config-only changes.
-  Choose diagram type:
-  - Component interactions → flowchart
-  - Data flow between modules → flowchart with subgraphs
-  - State machines/lifecycles → stateDiagram-v2
-  - Cross-boundary sequences → sequenceDiagram
-  - Type hierarchies → classDiagram
--->
+<!-- Legend: new = blue, modified = orange, existing = grey -->
+<!-- Generate two blocks: (1) mermaid for GitHub/tools, (2) ASCII for terminal -->
 
 ```mermaid
 {diagram type and content}
+```
+
+```text
+{ASCII art equivalent of the diagram above}
+{Use +--+ boxes, --> arrows, | lanes for sequences}
+{Keep under 80 columns; abbreviate labels if needed}
 ```
 
 ## Blast Radius
