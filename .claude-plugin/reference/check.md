@@ -172,7 +172,6 @@ After all levels complete, show a nice summary:
 │                                                             │
 │ What next?                                                 │
 │   ▸ Commit (Recommended)                                   │
-│     Change something first                                │
 │     Save for later                                         │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -187,8 +186,6 @@ AskUserQuestion:
   options:
     - label: "Commit (Recommended)"
       description: "Commit with conventional message, clear build-state.json."
-    - label: "Change something first"
-      description: "Type what you want to change. Claude edits, re-runs validation."
     - label: "Save for later"
       description: "Keep changes uncommitted, save state."
   multiSelect: false
@@ -197,8 +194,7 @@ AskUserQuestion:
 | Response | Action |
 |----------|--------|
 | **Commit** (first option) | Commit with conventional message, clear build-state.json |
-| **Change something first** (second option) | User types what to change. Claude edits. Re-run validation. Re-ask. |
-| **Save for later** (third option) | Stop here, keep changes uncommitted |
+| **Save for later** (second option) | Stop here, keep changes uncommitted |
 
 **On Commit (first option):**
 
@@ -219,21 +215,20 @@ AskUserQuestion:
     Ready to push?"
 ```
 
-**On Change something first (second option):**
+**On Change (via "Other" free-text input):**
 
 ```
-1. Ask: "What would you like to change?"
-2. User types their change request
-3. Claude makes the change
-4. Re-run validation
-5. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
+1. User types their change request in the "Other" field
+2. Make the change
+3. Re-run validation
+4. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
 
 GATE ENFORCEMENT: The user's change input is NOT approval to commit.
 Do NOT commit after making changes. The user MUST explicitly select
 "Commit" from the gate to proceed.
 ```
 
-**On Save for later (third option):**
+**On Save for later (second option):**
 
 ```
 1. Save state to .temper/build-state.json:

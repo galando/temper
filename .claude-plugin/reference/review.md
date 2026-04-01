@@ -209,8 +209,7 @@ After review completes, show a nice summary:
 │    2. [{severity}] {file}:{line} — {one-line description} │
 │                                                             │
 │ What next?                                                  │
-│   ▸ Fix & continue to Check (Recommended)                   │
-│     Change something first                                  │
+│   ▸ Fix all & continue to Check (Recommended)               │
 │     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -221,10 +220,8 @@ Use AskUserQuestion with these options:
 AskUserQuestion:
   question: "What next?"
   options:
-    - label: "Fix & continue to Check (Recommended)"
-      description: "Apply auto-fixes, clear context, proceed to check."
-    - label: "Change something first"
-      description: "Type what you want to change. Claude edits, then re-asks."
+    - label: "Fix all & continue to Check (Recommended)"
+      description: "Apply ALL fixes (including low severity), clear context, proceed to check."
     - label: "Save for later"
       description: "Skip review fixes and save state."
   multiSelect: false
@@ -232,11 +229,10 @@ AskUserQuestion:
 
 | Response | Action |
 |----------|--------|
-| **Fix & continue to Check** (first option) | Apply auto-fixes, clear context, proceed to check |
-| **Change something first** (second option) | User types what to change. Claude edits. Re-ask. |
-| **Save for later** (third option) | Skip fixes, save state |
+| **Fix all & continue to Check** (first option) | Apply ALL fixes (including low severity), clear context, proceed to check |
+| **Save for later** (second option) | Skip fixes, save state |
 
-**On Fix & continue to Check (first option):**
+**On Fix all & continue to Check (first option):**
 
 ```
 1. If auto-fixable issues exist: apply fixes
@@ -252,20 +248,19 @@ AskUserQuestion:
 5. If no fixes needed: proceed directly to /temper:check
 ```
 
-**On Change something first (second option):**
+**On Change (via "Other" free-text input):**
 
 ```
-1. Ask: "What would you like to change?"
-2. User types their change request
-3. Claude makes the change
-4. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
+1. User types their change request in the "Other" field
+2. Make the change
+3. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
 
 GATE ENFORCEMENT: The user's change input is NOT approval to proceed.
 Do NOT skip to check after making changes. The user MUST explicitly
-select "Fix & continue to Check" from the gate to proceed.
+select "Fix all & continue to Check" from the gate to proceed.
 ```
 
-**On Save for later (third option):**
+**On Save for later (second option):**
 
 ```
 1. Skip review fixes
