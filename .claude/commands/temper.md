@@ -62,6 +62,7 @@ The orchestrator tracks progress via `.temper/build-state.json`. **Resolve the s
   "stage": "plan_complete|build_complete|review_complete|check_complete",
   "spec": "{feature-slug}",
   "spec_path": ".temper/specs/{feature-slug}",
+  "branch": "feature/{feature-slug}",
   "original_args": "{user's original feature description}",
   "next_stage": "build|review|check|commit",
   "artifacts": ["intent.md", "tasks.md"],
@@ -75,7 +76,7 @@ On resume, validate `build-state.json`: parseable JSON, stage is valid, spec dir
 
 If an agent subprocess returns a failure or blocker:
 1. Show the failure details to the user
-2. Ask: "Retry / Change something / Save for later?"
+2. Ask: "Retry / Save for later?" (user can type changes via "Other")
 3. Do NOT silently proceed to the next stage
 
 ---
@@ -84,29 +85,34 @@ If an agent subprocess returns a failure or blocker:
 
 At each stage gate, use `AskUserQuestion` with selectable options. Do NOT use `[Enter]` as a prompt.
 
+### Gate Options Pattern
+
+Every stage gate uses exactly 2 explicit options plus the built-in "Other" free-text input:
+
 ```
 AskUserQuestion:
   question: "What would you like to do with this {stage}?"
   options:
     - label: "Continue to {next_stage} (Recommended)"
       description: "Launches a new agent subprocess. Clean context with only {files} loaded."
-    - label: "Change something first"
-      description: "Type what you want to change. Edits are made, then gate re-appears."
     - label: "Save for later"
       description: "Save state and stop. Run /temper later to continue."
   multiSelect: false
 ```
 
+**Users type change requests directly via the "Other" option.** AskUserQuestion always provides an "Other" free-text input. When a user selects "Other" and types a change request:
+1. Make the requested change
+2. **STOP** — re-show the AskUserQuestion gate with the same options
+3. Do NOT interpret the change input as approval to proceed
+
 ### Gate Enforcement Rules
 
-After handling a "Change something first" request, you **MUST** re-show the AskUserQuestion gate before proceeding. This is the most common bypass:
+After handling a change request (via "Other" free-text input), you **MUST** re-show the AskUserQuestion gate before proceeding:
 
-1. User selects "Change something first"
-2. You ask what they want to change
-3. User provides input (which may look like approval or contain "yes" / "go ahead")
-4. You make the requested change
-5. **STOP HERE** — re-show the AskUserQuestion gate with the same 3 options
-6. Do NOT interpret the user's change input as approval to proceed to the next stage
+1. User selects "Other" and types their change request (e.g., "add error handling to the parser")
+2. You make the requested change
+3. **STOP HERE** — re-show the AskUserQuestion gate with the same 2 options
+4. Do NOT interpret the user's change input as approval to proceed to the next stage
 
 The user must **explicitly select "Continue to {next_stage}"** from the gate to proceed.
 
@@ -127,13 +133,15 @@ Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan.md
 
 ENFORCEMENT: Always follow the full planning methodology regardless of complexity level. Always generate: intent.md, tasks.md, mermaid diagram in plan.md, blast radius analysis. No shortcuts.
 
+DIAGRAM ENFORCEMENT: You MUST generate ASCII art diagrams using box-drawing characters (+, -, |, -->, etc.). Write BOTH mermaid source and ASCII art to plan.md. When returning the summary to the orchestrator, include ONLY the ASCII art version — NEVER return raw mermaid source code in the summary. The summary must be readable in a terminal without any rendering tool.
+
 CRITICAL: This agent runs in isolation. After planning:
 1. Show the plan summary box (see below)
 2. Do NOT show an AskUserQuestion gate — return the summary to the orchestrator
 3. The orchestrator handles the gate decision
 
 Return ONLY:
-- Plan summary text (formatted box + diagram rendered below it)
+- Plan summary text (formatted box + ASCII art diagram rendered below it — NOT raw mermaid source)
 - Path to spec: .temper/specs/{feature-slug}/
 - Complexity level: trivial/simple/medium/complex
 - Risk level: low/medium/high"
@@ -167,18 +175,20 @@ Return ONLY:
 │ RISK: {Low/Medium/High} — {reason}                          │
 └─────────────────────────────────────────────────────────────┘
 
-Diagram (rendered below summary box):
+Diagram (rendered below summary box — MUST be ASCII art, NOT raw mermaid source):
 
-{ASCII art diagram — rendered from plan.md ASCII block; mermaid block is in plan.md only}
+{ASCII art diagram — generated using +---+ boxes, --> arrows, | walls. MUST be readable in terminal.}
 ```
+
+**CRITICAL:** The diagram in the summary MUST be ASCII art (box-drawing characters). Do NOT output raw mermaid syntax like "flowchart TD", "subgraph", "A[B] --> C" — that is NOT readable in a terminal. Generate proper ASCII art with aligned boxes and arrows.
 
 ### Stage Gate
 
 Show the AskUserQuestion gate with:
 - "Continue to Build (Recommended)" — launch BUILD agent
 - "Walk through plan step by step" — interactive walkthrough (see below)
-- "Change something first" — make changes, re-show gate
 - "Save for later" — save state, stop
+- **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
 
 #### Step-by-Step Walkthrough
 
@@ -203,13 +213,11 @@ AskUserQuestion:
       description: "Continue to {next section name}."
     - label: "Ask a question"
       description: "Type your question about this section."
-    - label: "Change something"
-      description: "Request a modification to this part of the plan."
   multiSelect: false
 ```
 
-- **"Ask a question"**: Answer, then re-show the same section's gate
-- **"Change something"**: Edit plan files, show what changed, then re-show the same section's gate
+- **"Ask a question"** (or "Other" with question text): Answer, then re-show the same section's gate
+- **"Other" (change request)**: Edit plan files, show what changed, then re-show the same section's gate
 - **"Next step"**: Advance to next section. After the last section, show the final walkthrough gate:
 
 ```
@@ -218,12 +226,12 @@ AskUserQuestion:
   options:
     - label: "Continue to Build (Recommended)"
       description: "Launch BUILD agent with clean context."
-    - label: "Change something first"
-      description: "Type what you want to change. Edits are made, then gate re-appears."
     - label: "Save for later"
       description: "Save state and stop."
   multiSelect: false
 ```
+
+**"Other" (free-text change request)**: Edit plan files, show what changed, re-show this gate.
 
 **Walkthrough edits propagate automatically.** The orchestrator edits plan files on disk directly. The BUILD agent subprocess reads these same files, so changes are reflected without any extra step.
 
@@ -237,31 +245,24 @@ AskUserQuestion:
      "original_args": "$ARGUMENTS",
      "next_stage": "build",
      "artifacts": ["intent.md", "tasks.md"],
+     "branch": "feature/{feature-slug}",
      "updated": "{ISO timestamp}"
    }
    ```
-2. Proceed to Stage 2 (BUILD) — launches a new Agent subprocess
+2. **Create feature branch** (if git pack is enabled):
+   - Run: `git branch --show-current`
+   - If on main/master: `git checkout -b feature/{feature-slug}`
+   - Store branch name in build-state.json
+3. Proceed to Stage 2 (BUILD) — launches a new Agent subprocess
 
-**on Change:**
-1. Ask: "What would you like to change?"
-2. User types their change request
-3. Edit the plan files directly (intent.md, tasks.md, etc.)
-4. Re-show the updated plan summary
-5. **Re-show the AskUserQuestion gate** — do NOT skip to build
+**on Change (via "Other" free-text input):**
+1. User types their change request in the "Other" field
+2. Edit the plan files directly (intent.md, tasks.md, etc.)
+3. Re-show the updated plan summary
+4. **Re-show the AskUserQuestion gate** — do NOT skip to build
 
 **on Save:**
-1. Save state to `.temper/build-state.json`:
-   ```json
-   {
-     "stage": "plan_complete",
-     "spec": "{feature-slug}",
-     "spec_path": ".temper/specs/{feature-slug}",
-     "original_args": "$ARGUMENTS",
-     "next_stage": "build",
-     "artifacts": ["intent.md", "tasks.md"],
-     "updated": "{ISO timestamp}"
-   }
-   ```
+1. Save state to `.temper/build-state.json`
 2. Report: "Saved. Run /temper when ready to continue."
 
 ---
@@ -322,19 +323,18 @@ Return ONLY:
 
 Show the AskUserQuestion gate with:
 - "Continue to Review (Recommended)" — launch REVIEW agent
-- "Change something first" — make changes, re-show gate
 - "Save for later" — save state, stop
+- **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
 
 **on Continue:**
 1. Save state to `.temper/build-state.json`
 2. Proceed to Stage 3 (REVIEW) — launches a new Agent subprocess
 
-**on Change:**
-1. Ask: "What would you like to change?"
-2. User types their change request
-3. Make the change
-4. Re-show the updated build summary
-5. **Re-show the AskUserQuestion gate** — do NOT skip to review
+**on Change (via "Other" free-text input):**
+1. User types their change request in the "Other" field
+2. Make the change
+3. Re-show the updated build summary
+4. **Re-show the AskUserQuestion gate** — do NOT skip to review
 
 **on Save:**
 1. Save state to `.temper/build-state.json`:
@@ -411,25 +411,24 @@ Return ONLY:
 ### Stage Gate
 
 Show the AskUserQuestion gate with:
-- "Fix & continue to Check (Recommended)" — apply fixes, launch CHECK agent
-- "Change something first" — make changes, re-show gate
+- "Fix all & continue to Check (Recommended)" — apply fixes for ALL issues (including low), launch CHECK agent
 - "Save for later" — skip fixes, save state
+- **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
 
 **on Continue:**
-1. Apply auto-fixable issues (if any) directly — no subprocess needed for fixes
+1. Apply ALL fixable issues (including low severity) directly — no subprocess needed for fixes
 2. If fixes were applied: re-run a single review pass on the fixed files
    - If new issues found: show updated summary, ask user again (max 1 more loop)
    - If clean: proceed to step 3
 3. Save state to `.temper/build-state.json`
 4. Proceed to Stage 4 (CHECK) — launches a new Agent subprocess
 
-**on Change:**
-1. Ask: "What would you like to change?"
-2. User types their change request
-3. Make the change
-4. Re-launch the REVIEW agent to get an updated review summary
-5. Show the updated review summary
-6. **Re-show the AskUserQuestion gate** — do NOT skip to check
+**on Change (via "Other" free-text input):**
+1. User types their change request in the "Other" field
+2. Make the change
+3. Re-launch the REVIEW agent to get an updated review summary
+4. Show the updated review summary
+5. **Re-show the AskUserQuestion gate** — do NOT skip to check
 
 **on Save:**
 1. Save state to `.temper/build-state.json`:
@@ -497,8 +496,8 @@ Return ONLY:
 
 Show the AskUserQuestion gate with:
 - "Commit (Recommended)" — commit with conventional message
-- "Change something first" — make changes, re-run check
 - "Save for later" — keep changes uncommitted
+- **"Other" (built-in free-text)** — type a change request, edits are made, re-run check
 
 **on Commit:**
 ```
@@ -518,12 +517,11 @@ Show the AskUserQuestion gate with:
     Ready to push?"
 ```
 
-**on Change:**
-1. Ask: "What would you like to change?"
-2. User types their change request
-3. Make the change
-4. Re-launch the CHECK agent to re-validate
-5. **Re-show the AskUserQuestion gate** — do NOT commit directly
+**on Change (via "Other" free-text input):**
+1. User types their change request in the "Other" field
+2. Make the change
+3. Re-launch the CHECK agent to re-validate
+4. **Re-show the AskUserQuestion gate** — do NOT commit directly
 
 **on Save:**
 1. Save state to `.temper/build-state.json`:

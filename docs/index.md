@@ -73,26 +73,26 @@ That's it. One command runs the full SDLC:
 
 Diagram (architecture flow):
 
-flowchart TD
-    A[User] --> B[ResetController]
-    B --> C[TokenService]
-    C --> D[(Database)]
-    C --> E[EmailService]
++--------+    +------------------+    +-------------+
+|  User  +--->+ ResetController  +--->+ TokenService|
++--------+    +------------------+    +------+------+
+                                             |  |
+                                     +-------+  +-------+
+                                     v                 v
+                              +------------+    +-------------+
+                              | (Database) |    | EmailService|
+                              +------------+    +-------------+
 
-    class A new
-    class B,C new
-    class D,E existing
+> Walk through plan step by step? (or Continue to Build / Save for later)
 
-> Walk through plan step by step? [Y/n]
-
-> Y
+> Walk through plan step by step
 
 📋 Step 1/6 — Intent Deep Dive
    Problem: Users can't reset passwords without contacting support
    Success criteria:
      • Self-service reset in under 2 minutes (Validate: scenario)
      • Token expires after 15 minutes (Validate: code)
-   [Next step / Ask a question / Change something]
+   [Next step / Ask a question]
 
 > Next step
 
@@ -115,10 +115,11 @@ flowchart TD
 │ ✅ Tests: 5 added, all passing                              │
 │ ✅ Coverage: 87% (threshold: 80%)                           │
 │                                                             │
-│ ✅ Run review? [Y/n]                                        │
+│ Continue to Review (Recommended)                            │
+│ Save for later                                              │
 └─────────────────────────────────────────────────────────────┘
 
-> Y
+> Continue to Review
 
 ┌─────────────────────────────────────────────────────────────┐
 │ ✅ ALL CHECKS PASSED                                        │
@@ -128,10 +129,11 @@ flowchart TD
 │ ✅ Coverage   87%     (threshold: 80%)                       │
 │ ✅ Security   1.2s    0 vulnerabilities                     │
 │                                                             │
-│ ✅ Ready to commit? [Y/n]                                   │
+│ Commit (Recommended)                                        │
+│ Save for later                                              │
 └─────────────────────────────────────────────────────────────┘
 
-> Y
+> Commit
 
 ✅ Committed: a1b2c3d
    Branch: feature/password-reset

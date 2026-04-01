@@ -650,8 +650,6 @@ AskUserQuestion:
       description: "Proceed to build. Context will be cleared, loading tasks.md + intent.md."
     - label: "Walk through plan step by step"
       description: "Interactive walkthrough: each step explained in detail with Q&A at each point."
-    - label: "Change something first"
-      description: "Type what you want to change. Claude edits, then re-asks."
     - label: "Save for later"
       description: "Save state to .temper/build-state.json and stop."
   multiSelect: false
@@ -661,8 +659,8 @@ AskUserQuestion:
 |----------|--------|
 | **Continue** (first option) | Proceed to build. Signal context clear, load tasks.md + intent.md |
 | **Walk through** | Enter interactive step-by-step mode (see below) |
-| **Change something** | User types what to change. Claude edits. Re-ask. |
 | **Save** | Save state to .temper/build-state.json, stop here |
+| **Other** (built-in free-text) | Type a change request. Edits are made, gate re-appears. See "On Change" section below. |
 
 #### Step-by-Step Walkthrough Mode
 
@@ -689,15 +687,12 @@ AskUserQuestion:
       description: "Continue to {next section name}."
     - label: "Ask a question"
       description: "Type your question about this section."
-    - label: "Change something"
-      description: "Request a modification to this part of the plan."
   multiSelect: false
 ```
 
 **Handling user interactions during walkthrough:**
 
 - **"Ask a question"**: Answer the question, then re-show the same section's AskUserQuestion
-- **"Change something"**: Make the edit to the plan files, show what changed, then re-show the same section's AskUserQuestion (user may want to change more before moving on)
 - **"Next step"**: Advance to the next section. After the last section (Task Walkthrough), transition to the final gate:
 
 **Final walkthrough gate (after all sections):**
@@ -708,8 +703,6 @@ AskUserQuestion:
   options:
     - label: "Continue to Build (Recommended)"
       description: "Proceed to build. Context will be cleared, loading tasks.md + intent.md."
-    - label: "Change something first"
-      description: "Type what you want to change. Claude edits, then re-asks."
     - label: "Save for later"
       description: "Save state to .temper/build-state.json and stop."
   multiSelect: false
@@ -753,21 +746,19 @@ AskUserQuestion:
 4. Proceed to /temper:build (or continue if using unified /temper)
 ```
 
-**On Change something first (third option):**
+**On Change (via "Other" free-text input):**
 
 ```
-1. Ask: "What would you like to change?"
-2. User types their change request
-3. Claude edits intent.md (adds/removes scenarios, modifies success criteria, etc.)
-4. Re-show summary
-5. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
+1. User types their change request in the "Other" field
+2. Make the change
+3. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
 
 GATE ENFORCEMENT: The user's change input is NOT approval to proceed.
 Do NOT skip to the next stage after making changes. The user MUST
 explicitly select "Continue to Build" from the gate to proceed.
 ```
 
-**On Save for later (fourth option):**
+**On Save for later (third option):**
 
 ```
 1. Save state to .temper/build-state.json:

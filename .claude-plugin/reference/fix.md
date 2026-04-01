@@ -253,7 +253,6 @@ Show a report and ask what to do next:
 │                                                             │
 │ What next?                                                  │
 │   ▸ Commit (Recommended)                                   │
-│     Change something first                                 │
 │     Save for later                                         │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -268,8 +267,6 @@ AskUserQuestion:
   options:
     - label: "Commit (Recommended)"
       description: "Commit with conventional message, regression test included."
-    - label: "Change something first"
-      description: "Type what you want to change. Claude edits, then re-asks."
     - label: "Save for later"
       description: "Keep changes uncommitted, save state."
   multiSelect: false
@@ -285,17 +282,16 @@ Commit: fix({scope}): {description}
   Co-Authored-By: Claude <noreply@anthropic.com>
 ```
 
-**On Change something first (second option):**
-1. Ask: "What would you like to change?"
-2. User types their change request
-3. Claude makes the change
-4. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
+**On Change (via "Other" free-text input):**
+1. User types their change request in the "Other" field
+2. Make the change
+3. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
 
 GATE ENFORCEMENT: The user's change input is NOT approval to commit.
 Do NOT commit after making changes. The user MUST explicitly select
 "Commit" from the gate to proceed.
 
-**On Save for later (third option):**
+**On Save for later (second option):**
 1. Save state to .temper/build-state.json:
    ```json
    {

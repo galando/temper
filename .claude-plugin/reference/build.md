@@ -85,10 +85,14 @@ Files to load at start:
 
 ### Step 2: Verify Branch
 
+> Note: When running as an Agent subprocess from `/temper`, the orchestrator may have already created the branch at the plan gate. `git branch --show-current` will confirm.
+
 ```
 1. Run: git branch --show-current
 2. If on main/master:
-   - Ask user to create feature branch
+   - Check if git pack is enabled in .claude/temper.config
+   - If git pack enabled: auto-create feature/{spec-slug} branch
+   - If no git pack: ask user to create feature branch
    - Suggest name: feature/{ticket}-{description}
 3. If already on feature branch: proceed
 ```
@@ -260,7 +264,6 @@ After all tasks complete:
 │                                                             │
 │ What next?                                                  │
 │   ▸ Continue to Review (Recommended)                        │
-│     Change something first                                  │
 │     Save for later                                          │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -273,8 +276,6 @@ AskUserQuestion:
   options:
     - label: "Continue to Review (Recommended)"
       description: "Proceed to review. Context will be cleared, loading changed files."
-    - label: "Change something first"
-      description: "Type what you want to change. Claude edits, then re-asks."
     - label: "Save for later"
       description: "Save state to .temper/build-state.json and stop."
   multiSelect: false
@@ -289,17 +290,16 @@ AskUserQuestion:
    - If running as Agent subprocess: The orchestrator handles context — return summary and stop.
    - Proceed to /temper:review
 
-5. On Change something first (second option):
-   - Ask: "What would you like to change?"
-   - User types their change request
-   - Claude makes the change
+5. On Change (via "Other" free-text input):
+   - User types their change request in the "Other" field
+   - Make the change
    - ⚠️ MANDATORY: Re-show AskUserQuestion with same options
 
    GATE ENFORCEMENT: The user's change input is NOT approval to proceed.
    Do NOT skip to review after making changes. The user MUST explicitly
    select "Continue to Review" from the gate to proceed.
 
-6. On Save for later (third option):
+6. On Save for later (second option):
    - Save state to .temper/build-state.json:
      ```json
      {
