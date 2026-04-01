@@ -658,8 +658,8 @@ AskUserQuestion:
 | Response | Action |
 |----------|--------|
 | **Continue** (first option) | Proceed to build. Signal context clear, load tasks.md + intent.md |
-| **Walk through** | Enter interactive step-by-step mode (see below) |
-| **Save** | Save state to .temper/build-state.json, stop here |
+| **Walk through** (second option) | Enter interactive step-by-step mode (see below) |
+| **Save** (third option) | Save state to .temper/build-state.json, stop here |
 | **Other** (built-in free-text) | Type a change request. Edits are made, gate re-appears. See "On Change" section below. |
 
 #### Step-by-Step Walkthrough Mode
