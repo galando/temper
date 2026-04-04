@@ -131,7 +131,22 @@ For each task in tasks.md:
    }
    ```
 
-**f. Simplify** - After each task, if the `code-simplifier:code-simplifier` agent is available, run it on changed files:
+**f. Track deviations** - During task execution, maintain a deviation log:
+
+   ```
+   As each task completes, track:
+   - Files created/modified that are NOT listed in tasks.md → add to "unplanned files" list
+   - Tasks skipped or failed → add to "skipped tasks" list with reason
+   - Tasks where approach differed from plan → add to "approach changes" list
+
+   After all tasks, compare git diff --name-only against tasks.md file list:
+   - Files in diff but not in tasks → unplanned
+   - Files in tasks but not in diff → possibly skipped
+
+   Note: Step 3.75 will reconcile these deviations against tasks.md traceability fields.
+   ```
+
+**g. Simplify** - After each task, if the `code-simplifier:code-simplifier` agent is available, run it on changed files:
    - This agent is optional — not all installations have it
    - If available: run on files you created or modified during this task
    - Focus on clarity, consistency, and maintainability
@@ -261,6 +276,14 @@ After all tasks complete:
 │    + {file} — {one-line description}                         │
 │    + {file} — {one-line description}                         │
 │    ~ {file} — {one-line description}                         │
+│                                                             │
+│ DEVIATIONS (if tasks.md exists)                              │
+│    Unplanned files: {N}                                      │
+│      • {file} — not in original tasks.md                     │
+│    Skipped tasks: {N}                                        │
+│      • Task {N}: {name} — {reason}                           │
+│    Approach changes: {N}                                     │
+│      • Task {N}: planned as {approach}, built as {approach}  │
 │                                                             │
 │ What next?                                                  │
 │   ▸ Continue to Review (Recommended)                        │

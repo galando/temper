@@ -96,8 +96,8 @@ Level 4: COVERAGE (if available)
   On failure: WARN (not block by default), show coverage %
   If no coverage tool configured: SKIP
 
-Level 4.5: SCENARIO COVERAGE (BDD Final Gate)
-  Purpose: Every scenario in intent.md has a passing test
+Level 4.5: SCENARIO COVERAGE (BDD Final Gate — Behavioral Verification)
+  Purpose: Every scenario in intent.md has a passing test that asserts correct behavior
   Prerequisite: intent.md exists at .temper/specs/{spec}/intent.md
   How:
     1. Read intent.md → extract all Gherkin scenarios
@@ -105,13 +105,23 @@ Level 4.5: SCENARIO COVERAGE (BDD Final Gate)
        a. Find matching test by name/description (grep test files for scenario name)
        b. Verify test exists and passes (from Level 2 test results)
        c. If scenario has Note: manual → mark as "requires manual verification"
-    3. Compare against Scenario Coverage Checklist in intent.md (if populated by build)
-  Report:
-    "Scenario Coverage: X/Y scenarios covered (Z automated, W manual)
-     ✅ Scenario: User resets password → PasswordResetTest.test_successful_reset
-     ✅ Scenario: Expired token → PasswordResetTest.test_expired_token
-     ⚠️  Scenario: Email delivered → MANUAL VERIFICATION NEEDED
-     ❌ Scenario: Rate limiting → NO PASSING TEST FOUND"
+       d. READ test body — verify assertions match Then clause (behavioral verification):
+          - Extract Then clause from Gherkin (expected outcomes)
+          - Find corresponding assertions in test body
+          - If Then says "returns 400" → test should assert status == 400
+          - If Then says "contains error message" → test should assert response body
+       e. Check assertion quality:
+          - Trivial assertion (always true) → flag as WARNING
+          - Missing assertion for Then clause → flag as WARNING
+       f. Compare against Scenario Coverage Checklist in intent.md (if populated by build)
+    3. Report per scenario:
+       "Scenario Coverage: X/Y scenarios covered (Z automated, W manual)
+        ✅ Scenario: User resets password → PasswordResetTest.test_successful_reset — asserts new password works
+        ✅ Scenario: Invalid email returns 400 → ValidationTest.test_invalid_email — asserts status == 400
+        ⚠️  Scenario: Rate limiting → test has trivial assertion (line 45: assertTrue(true))
+        ⚠️  Scenario: Token returned → test doesn't verify token field (Then clause expects it)
+        ⚠️  Scenario: Email delivered → MANUAL VERIFICATION NEEDED
+        ❌ Scenario: Error handling → NO PASSING TEST FOUND"
   On failure (any ❌): BLOCK — cannot commit with uncovered scenarios
   If no intent.md: SKIP (no BDD contract to enforce)
 
@@ -169,6 +179,10 @@ After all levels complete, show a nice summary:
 │                                                             │
 │ Skipped: Integration (no tool configured)                 │
 │ Total: {time}                                               │
+│                                                             │
+│ INTENT VERDICT (if intent.md exists)                        │
+│    Scenarios: {X}/{Y} behaviorally verified                 │
+│    Build deviations: {N} unplanned files, {N} skipped tasks │
 │                                                             │
 │ What next?                                                 │
 │   ▸ Commit (Recommended)                                   │

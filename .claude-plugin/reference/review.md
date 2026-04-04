@@ -152,6 +152,85 @@ If `.temper/specs/{feature}/intent.md` exists, validate at TWO levels:
 
 If no intent.md: fall back to checking linked issue (Jira/GitHub) as before.
 
+### Step 3a: Semantic Test Validation (if intent.md exists)
+
+After the mechanical BDD/IDD check in Step 3, validate that tests actually prove what they claim:
+
+```
+For each scenario with a passing test, validate the test BODY (not just its name):
+
+1. READ the test function/method body (not just the name)
+2. Verify structural alignment with Gherkin:
+   - Given → test sets up preconditions (fixtures, mocks, data)
+   - When → test invokes the action under test
+   - Then → test asserts the expected outcomes
+3. Check assertion quality:
+   - Flag trivial assertions: assertTrue(true), assertEquals(x, x), no assertions at all
+   - Flag incomplete assertions: Then clause expects "response contains token" but test only asserts status code
+   - Flag catch-all assertions: assert response != null without checking specific fields
+4. Report per-scenario:
+   ✅ Scenario: "User logs in" — structurally aligned (Given/When/Then mapped)
+   ⚠️ Scenario: "Rate limiting" — trivial assertion detected (assertTrue(true))
+   ⚠️ Scenario: "Token returned" — incomplete: Then expects "token field" but test only asserts status 200
+```
+
+**Confidence modifier:**
+- Structurally aligned → +10% scenario confidence
+- Trivial assertion → -20% scenario confidence, flagged as LOW issue
+- Incomplete assertions → -10% scenario confidence, flagged as MEDIUM issue
+
+**This step is additive** — existing mechanical checks still run first. Only runs when intent.md exists (backward compatible). Test body reading happens in the main review context, which already has access to changed files.
+
+### Step 3b: Problem Statement Traceback (if intent.md exists)
+
+After validating individual scenarios, step back and assess the BIG picture:
+
+```
+1. Re-read the Problem: field from intent.md
+2. Read the implementation code (changed files)
+3. Ask: "Does this implementation actually solve the stated problem?"
+4. Check for implementation drift:
+   - Problem says "password reset" but code implements "password change" → drift detected
+   - Problem says "rate limiting" but code implements "request throttling" → partial match
+   - Problem says "multi-user" but code handles single user → gap detected
+
+5. Report:
+   ✅ Intent satisfied — implementation addresses: {list of problem aspects covered}
+   ⚠️ Intent partially satisfied — gaps: {list of uncovered aspects}
+   ❌ Intent not satisfied — implementation doesn't address the stated problem
+
+6. This assessment uses the existing "Overall rating" field in the review summary
+```
+
+**This is the "semantic bridge"** — it requires understanding the relationship between problem and solution. It supplements (not replaces) the existing overall rating in Step 3. When the review runs as a subagent, it has access to changed files, so it can read them.
+
+### Step 3c: Decision Point Coverage (if intent.md exists)
+
+Check whether the code's decision points have corresponding scenarios:
+
+```
+1. Scan changed files for decision points:
+   - if/else branches (especially in business logic)
+   - try/catch blocks with different error types
+   - switch/case statements
+   - Early returns with different outcomes
+   - Error response variations
+
+2. For each decision point:
+   - Does a scenario in intent.md cover this branch?
+   - If no scenario → flag as potential gap
+
+3. Report:
+   ✅ All decision points covered by scenarios
+   ⚠️ Uncovered decision points:
+     - auth.ts:42 — branch for "email not verified" → no matching scenario
+     - payment.ts:89 — catch StripeCardError → no matching scenario
+
+4. Severity: LOW (informational) — the developer decides whether to add scenarios
+```
+
+This catches missing scenarios that the plan phase didn't anticipate. Only scans changed files (not entire codebase) to keep scope reasonable. Low severity by default — it's a suggestion, not a blocker.
+
 **If a Jira ticket or GitHub issue was linked (legacy mode):**
 
 ```
@@ -207,6 +286,12 @@ After review completes, show a nice summary:
 │ TOP ISSUES                                                  │
 │    1. [{severity}] {file}:{line} — {one-line description}  │
 │    2. [{severity}] {file}:{line} — {one-line description} │
+│                                                             │
+│ INTENT VERDICT (if intent.md exists)                        │
+│    Problem: {one-line problem statement}                    │
+│    Verdict: ✅ Intent satisfied / ⚠️ Partial / ❌ Not met    │
+│    Evidence: {X}/{Y} scenarios structurally validated       │
+│    Gaps: {list of gaps, or "none"}                          │
 │                                                             │
 │ What next?                                                  │
 │   ▸ Fix all & continue to Check (Recommended)               │
@@ -375,6 +460,53 @@ AI-written code has specific failure patterns. Flag these with higher confidence
 - Stale patterns: using deprecated APIs when the project has already migrated to newer ones
 - Incomplete error paths: happy path works, error handling is placeholder or generic
 ```
+
+(For detailed detection instructions for each pattern, see the **AI-Code Detection Checklist** below.)
+
+### AI-Code Detection Checklist (for review subagents)
+
+When reviewing code, actively check for these AI-specific failure patterns:
+
+```
+1. HALLUCINATED APIS:
+   - For each method/function call, verify the function EXISTS in the project's dependencies
+   - Check: Does the imported module actually export this function?
+   - Red flag: function name looks plausible but isn't in the library's API docs
+   - How to detect: grep for the function definition. If not found in project or node_modules/vendor → flag as HIGH
+
+2. PLAUSIBLE BUT WRONG:
+   - Code uses the correct library but wrong parameters, wrong order, or wrong context
+   - Red flag: async function called without await, callback passed to promise-based API
+   - How to detect: compare against library's actual API signature in node_modules/vendor
+
+3. OVER-ENGINEERING:
+   - Unnecessary abstractions (interface for single implementation, factory for single product)
+   - Helper utilities used only once
+   - Premature generalization (type parameters never varied, strategy pattern with one strategy)
+   - How to detect: count usages. If abstraction used once → flag as LOW
+
+4. COPY-PASTE DRIFT:
+   - Similar code blocks with subtle inconsistencies
+   - Red flag: two blocks that look identical except one variable name, but the logic differs
+   - How to detect: look for duplicated patterns in changed files, compare variable names and logic
+
+5. MISSING INTEGRATION:
+   - New code exists but isn't wired into routing, DI container, event handlers, or config
+   - Red flag: new service class never registered, new route never mounted
+   - How to detect: grep for imports/usage of the new module in existing wiring files
+
+6. STALE PATTERNS:
+   - Using deprecated APIs when the project has already migrated to newer ones
+   - Red flag: new code uses patterns that old code used before a migration
+   - How to detect: compare new code patterns against recent code in same directory
+
+7. INCOMPLETE ERROR PATHS:
+   - Happy path works, error handling is placeholder or generic
+   - Red flag: catch blocks that just log or rethrow without meaningful handling
+   - How to detect: for each try/catch, check if the catch block does something specific to the error type
+```
+
+These checks integrate into the existing parallel review subagents (Step 2). Each subagent runs the checklist on the files in its domain. The checklist doesn't create new subagents — it enhances the prompts for existing ones. All flags follow existing severity rules: hallucinated APIs = HIGH, over-engineering = LOW, etc.
 
 ### Automatic Next Step
 
