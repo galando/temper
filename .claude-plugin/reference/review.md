@@ -486,7 +486,9 @@ Findings can be valid in general but invalid in specific contexts. Track per-con
 4. Disagreement on category → use "quality" as default
 ```
 
-### AI-Code Detection Checklist (for review subagents)
+### AI-Code Detection Checklist (reference for standalone review)
+
+(Expanded version of the inline checklist in Step 2 — subagents use the inline version; this section is reference for standalone review runs.)
 
 When reviewing code, actively check for these AI-specific failure patterns:
 

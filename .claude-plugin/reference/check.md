@@ -99,10 +99,9 @@ Level 4: COVERAGE (if available)
 Level 4.5: SCENARIO COVERAGE (BDD Final Gate — Behavioral Verification)
   Purpose: Every scenario in intent.md has a passing test that asserts correct behavior
   Prerequisite: intent.md exists at .temper/specs/{spec}/intent.md
-  Pipeline optimization: If running after review (full /temper pipeline), skip steps d-e
-    for scenarios already validated in review's Step 3a (review covers behavioral verification).
-    Only run full behavioral verification for standalone /temper:check runs.
-    No transport mechanism needed — if running standalone, assume no prior review.
+  Pipeline note: This stage always runs full behavioral verification independently.
+    Review and check may flag the same assertion quality issues — this is intentional
+    (defense in depth: two independent evaluations catch different things).
   How:
     1. Read intent.md → extract all Gherkin scenarios
     2. For each scenario:
@@ -121,9 +120,10 @@ Level 4.5: SCENARIO COVERAGE (BDD Final Gate — Behavioral Verification)
           - Only flag when NO assertion can be linked to the expected outcome
           - If Then says "returns 400" → test should assert status == 400
           - If Then says "contains error message" → test should assert response body
-       e. Check assertion quality:
-          - Trivial assertion (always true) → flag as WARNING
-          - Missing assertion for Then clause → flag as WARNING
+       e. Check assertion quality (classify each scenario):
+          - STRONG: assertions meaningfully cover the Then clause → ✅
+          - WEAK: assertions exist but incompletely cover the Then clause → flag as WARNING
+          - TRIVIAL: assertions always pass (assertTrue(true)) or missing → flag as WARNING
        f. Compare against Scenario Coverage Checklist in intent.md (if populated by build)
           - If Level 4.5 analysis conflicts with the checklist, Level 4.5 analysis takes precedence
             (4.5 verifies behavior; the checklist only tracks existence)

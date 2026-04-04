@@ -69,6 +69,11 @@ Files to load at start:
     { "id": 2, "status": "completed", "timestamp": "..." },
     { "id": 3, "status": "in_progress", "timestamp": "..." }
   ],
+  "deviations": {
+    "unplanned_files": [],
+    "skipped_tasks": [],
+    "approach_changes": []
+  },
   "updated": "{ISO timestamp}"
 }
 ```
