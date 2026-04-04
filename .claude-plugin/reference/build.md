@@ -115,7 +115,7 @@ For each task in tasks.md:
    3. **Neither** → implement without enforced test-first
 **c. Implement** - Write minimal code to pass the test or fulfill spec
 **d. Validate** - Run test → GREEN, run task validation command
-**e. Checkpoint** - Write to `.temper/build-state.json`:
+**e. Checkpoint + deviation tracking** - Write to `.temper/build-state.json`:
 
    ```json
    {
@@ -127,26 +127,24 @@ For each task in tasks.md:
      "artifacts": ["intent.md", "tasks.md"],
      "last_task_completed": {task_number},
      "tasks": [...],
+     "deviations": {
+       "unplanned_files": ["path/to/file — reason"],
+       "skipped_tasks": [{ "id": 3, "name": "...", "reason": "..." }],
+       "approach_changes": [{ "id": 2, "planned": "...", "actual": "...", "reason": "..." }]
+     },
+     "started": "{from prior state or current timestamp on first checkpoint}",
      "updated": "{timestamp}"
    }
    ```
 
-**f. Track deviations** - During task execution, maintain a deviation log:
+   **Deviation tracking rules:**
+   - Files created/modified that are NOT listed in tasks.md → add to "unplanned_files" with one-line reason
+   - Tasks skipped or failed → add to "skipped_tasks" with reason
+   - Tasks where approach materially differs from plan (e.g., different library, different pattern) → add to "approach_changes"
+   - Only track if tasks.md exists (trivial builds have no plan to deviate from)
+   - Step 3.75 (Traceability Check) will reconcile these deviations against tasks.md "Traced to:" fields
 
-   ```
-   As each task completes, track:
-   - Files created/modified that are NOT listed in tasks.md → add to "unplanned files" list
-   - Tasks skipped or failed → add to "skipped tasks" list with reason
-   - Tasks where approach differed from plan → add to "approach changes" list
-
-   After all tasks, compare git diff --name-only against tasks.md file list:
-   - Files in diff but not in tasks → unplanned
-   - Files in tasks but not in diff → possibly skipped
-
-   Note: Step 3.75 will reconcile these deviations against tasks.md traceability fields.
-   ```
-
-**g. Simplify** - After each task, if the `code-simplifier:code-simplifier` agent is available, run it on changed files:
+**f. Simplify** - After each task, if the `code-simplifier:code-simplifier` agent is available, run it on changed files:
    - This agent is optional — not all installations have it
    - If available: run on files you created or modified during this task
    - Focus on clarity, consistency, and maintainability
@@ -238,12 +236,14 @@ After scenario coverage gate passes, verify file-to-scenario traceability:
 
 ```
 If tasks.md has "Traced to:" fields:
-  1. Compare actual files changed (git diff --name-only) to planned file list from tasks.md
-  2. For each new/changed file not in plan:
+  1. Read deviations from build-state.json (populated during Step 3e checkpoints)
+     - If "deviations" key missing or empty → skip deviation reconciliation, report "Traceability: no deviations to reconcile"
+  2. For each unplanned file:
+     → Check if it has a "Traced to:" justification. If not:
      → WARN: "Unplanned file {path} created. Trace to scenario or mark as infrastructure."
   3. For each planned file not changed:
      → WARN: "Planned file {path} was not modified. Is the task complete?"
-  4. Report: "Traceability: {N}/{M} files match plan"
+  4. Report: "Traceability: {N}/{M} files match plan ({D} deviations tracked)"
 
 If no "Traced to:" fields: skip (backward compatible)
 ```
@@ -254,10 +254,8 @@ Non-blocking — warnings only. The scenario coverage gate is the hard gate.
 
 After all tasks complete:
 
-```
 1. Run full test suite → all must pass
 2. Show build summary:
-```
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -278,8 +276,10 @@ After all tasks complete:
 │    ~ {file} — {one-line description}                         │
 │                                                             │
 │ DEVIATIONS (if tasks.md exists)                              │
+│    If no deviations: "None — build matched plan exactly"     │
+│    Otherwise:                                                │
 │    Unplanned files: {N}                                      │
-│      • {file} — not in original tasks.md                     │
+│      • {file} — {reason}                                     │
 │    Skipped tasks: {N}                                        │
 │      • Task {N}: {name} — {reason}                           │
 │    Approach changes: {N}                                     │
@@ -323,7 +323,7 @@ AskUserQuestion:
    select "Continue to Review" from the gate to proceed.
 
 6. On Save for later (second option):
-   - Save state to .temper/build-state.json:
+   - Save state to .temper/build-state.json (preserving existing deviations/started/tasks fields):
      ```json
      {
        "stage": "build_complete",
@@ -332,6 +332,10 @@ AskUserQuestion:
        "original_args": "{from prior state}",
        "next_stage": "review",
        "artifacts": ["intent.md", "tasks.md"],
+       "deviations": "{from current state}",
+       "last_task_completed": "{from current state}",
+       "tasks": "{from current state}",
+       "started": "{from current state}",
        "updated": "{ISO timestamp}"
      }
      ```

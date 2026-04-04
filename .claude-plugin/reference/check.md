@@ -99,29 +99,43 @@ Level 4: COVERAGE (if available)
 Level 4.5: SCENARIO COVERAGE (BDD Final Gate — Behavioral Verification)
   Purpose: Every scenario in intent.md has a passing test that asserts correct behavior
   Prerequisite: intent.md exists at .temper/specs/{spec}/intent.md
+  Pipeline optimization: If running after review (full /temper pipeline), skip steps d-e
+    for scenarios already validated in review's Step 3a (review covers behavioral verification).
+    Only run full behavioral verification for standalone /temper:check runs.
+    No transport mechanism needed — if running standalone, assume no prior review.
   How:
     1. Read intent.md → extract all Gherkin scenarios
     2. For each scenario:
        a. Find matching test by name/description (grep test files for scenario name)
        b. Verify test exists and passes (from Level 2 test results)
-       c. If scenario has Note: manual → mark as "requires manual verification"
+       c. If scenario Note field is exactly "manual" or starts with "manual" (e.g.,
+          "manual verification") → mark as "requires manual verification".
+          If Note contains "manual" alongside other approaches (e.g., "unit + manual"),
+          do NOT flag as manual-only — treat as the non-manual approach.
        d. READ test body — verify assertions match Then clause (behavioral verification):
           - Extract Then clause from Gherkin (expected outcomes)
           - Find corresponding assertions in test body
+          - Accept indirect assertions (helper methods like assertBadRequest(),
+            custom matchers) if they semantically cover the Then clause
+          - If unsure whether an assertion covers a Then clause, do NOT flag
+          - Only flag when NO assertion can be linked to the expected outcome
           - If Then says "returns 400" → test should assert status == 400
           - If Then says "contains error message" → test should assert response body
        e. Check assertion quality:
           - Trivial assertion (always true) → flag as WARNING
           - Missing assertion for Then clause → flag as WARNING
        f. Compare against Scenario Coverage Checklist in intent.md (if populated by build)
+          - If Level 4.5 analysis conflicts with the checklist, Level 4.5 analysis takes precedence
+            (4.5 verifies behavior; the checklist only tracks existence)
     3. Report per scenario:
        "Scenario Coverage: X/Y scenarios covered (Z automated, W manual)
-        ✅ Scenario: User resets password → PasswordResetTest.test_successful_reset — asserts new password works
-        ✅ Scenario: Invalid email returns 400 → ValidationTest.test_invalid_email — asserts status == 400
-        ⚠️  Scenario: Rate limiting → test has trivial assertion (line 45: assertTrue(true))
-        ⚠️  Scenario: Token returned → test doesn't verify token field (Then clause expects it)
+        ✅ Scenario: User resets password → PasswordResetTest.test_successful_reset (asserts new password works)
+        ✅ Scenario: Invalid email returns 400 → ValidationTest.test_invalid_email (asserts status == 400)
+        ⚠️  Scenario: Rate limiting → RateLimitTest.test_rate_limit (trivial assertion: assertTrue(true))
+        ⚠️  Scenario: Token returned → AuthTest.test_login (missing: token field assertion)
         ⚠️  Scenario: Email delivered → MANUAL VERIFICATION NEEDED
         ❌ Scenario: Error handling → NO PASSING TEST FOUND"
+  Gate rules: ❌ = BLOCK (cannot commit), ⚠️ = WARN (non-blocking, show in summary)
   On failure (any ❌): BLOCK — cannot commit with uncovered scenarios
   If no intent.md: SKIP (no BDD contract to enforce)
 
@@ -180,9 +194,14 @@ After all levels complete, show a nice summary:
 │ Skipped: Integration (no tool configured)                 │
 │ Total: {time}                                               │
 │                                                             │
-│ INTENT VERDICT (if intent.md exists)                        │
+│ SCENARIO VERDICT (if intent.md exists)                      │
 │    Scenarios: {X}/{Y} behaviorally verified                 │
-│    Build deviations: {N} unplanned files, {N} skipped tasks │
+│      Y = total scenarios in intent.md, X = those with       │
+│      STRONG assertions (not TRIVIAL). WEAK count as half.   │
+│      Note: This count is assertion-quality-weighted and     │
+│      intentionally differs from build's binary pass/fail.   │
+│    Build deviations: {N} unplanned, {N} skipped             │
+│      (if build-state.json available; otherwise omit this line)│
 │                                                             │
 │ What next?                                                 │
 │   ▸ Commit (Recommended)                                   │
