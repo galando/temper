@@ -63,13 +63,16 @@ DETECTION ORDER (first match wins):
 4. Company preset OVERRIDES auto-detected commands
 ```
 
-### Step 2: Run Validation Levels (in order, stop on failure)
+### Step 2: Run Validation Levels (in order, stop on BLOCK-level failure)
+
+NOTE: "Stop on failure" means halt the pipeline at the current level. Levels marked WARN continue to the next level. Only STOP/IMMEDIATELY/BLOCK results halt the pipeline.
 
 ```
 Level 0: ENVIRONMENT
   Purpose: Verify not hitting production
-  How: Check for .env.local, verify DATABASE_URL doesn't contain "production"
-  If no .env file: SKIP (not all projects use .env)
+  How: Check all .env* files (.env, .env.local, .env.production, etc.) for production indicators
+       Verify DATABASE_URL and similar connection strings don't contain "production"
+  If no .env files found: SKIP (not all projects use .env)
   If production detected: STOP IMMEDIATELY
 
 Level 1: COMPILE/BUILD
@@ -99,6 +102,9 @@ Level 4: COVERAGE (if available)
 Level 4.5: SCENARIO COVERAGE (BDD Final Gate — Behavioral Verification)
   Purpose: Every scenario in intent.md has a passing test that asserts correct behavior
   Prerequisite: intent.md exists at .temper/specs/{spec}/intent.md
+    If running standalone: resolve {spec} by listing .temper/specs/ directories and
+    using the most recently modified one. If build-state.json exists, read spec from there.
+    If no specs found → SKIP Level 4.5 entirely.
   Pipeline note: This stage always runs full behavioral verification independently.
     Review and check may flag the same assertion quality issues — this is intentional
     (defense in depth: two independent evaluations catch different things).
@@ -194,7 +200,8 @@ After all levels complete, show a nice summary:
 │ Skipped: Integration (no tool configured)                 │
 │ Total: {time}                                               │
 │                                                             │
-│ SCENARIO VERDICT (if intent.md exists)                      │
+│ SCENARIO VERDICT (if intent.md exists AND Level 4.5 ran)    │
+│    (Omit this entire section if pipeline stopped before 4.5) │
 │    Scenarios: {X}/{Y} behaviorally verified                 │
 │      Y = total scenarios in intent.md, X = those with       │
 │      STRONG assertions (not TRIVIAL). WEAK count as half.   │
@@ -253,7 +260,7 @@ AskUserQuestion:
 ```
 1. User types their change request in the "Other" field
 2. Make the change
-3. Re-run validation
+3. Re-run validation from the first failed level (inclusive) — no need to re-run levels that already passed
 4. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
 
 GATE ENFORCEMENT: The user's change input is NOT approval to commit.

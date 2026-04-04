@@ -279,8 +279,11 @@ This catches missing scenarios that the plan phase didn't anticipate. Only scans
 Combine results from all subagents. For each finding:
 
 ```
+ORDERING: Pack rules (step 3) override confidence filtering (step 1). A BLOCK pack rule
+finding is ALWAYS shown, even if confidence is below threshold.
+
 1. Check confidence score against threshold (default 0.7)
-   - Below threshold → SUPPRESS (don't show to user)
+   - Below threshold → DISCARD entirely (not shown, not counted in metrics, not stored in memory)
    - Above threshold → include in report
 
 2. Check review memory (.temper/review-memory.json)
@@ -316,6 +319,7 @@ After review completes, show a nice summary:
 │                                                             │
 │ SCENARIO COVERAGE (from intent.md)                          │
 │    Covered: {X}/{Y} ({Z} automated, {W} manual)            │
+│    (X = STRONG + ½ WEAK per Step 3a labels)                │
 │    ❌ {uncovered scenario name}                              │
 │                                                             │
 │ TOP ISSUES                                                  │
@@ -359,15 +363,15 @@ AskUserQuestion:
 **On Fix all & continue to Check (first option):**
 
 ```
-1. If auto-fixable issues exist: apply fixes
+1. If auto-fixable issues exist: apply fixes (see Step 6 for auto-fix loop details)
 2. Save state to .temper/build-state.json
 3. If running standalone:
    Signal:
    "✅ Continuing to CHECK...
     📂 Check needs no additional context — running validation pipeline."
    If running as Agent subprocess: The orchestrator handles context — return summary and stop.
-4. If fixes applied: Re-run review (single pass, no subagents)
-   - If new issues found: show updated summary, ask again (max 1 more loop)
+4. If fixes applied: Re-run review (single pass, no subagents) — max 1 additional loop
+   - If new issues found: show updated summary, ask again (this is the final loop)
    - If clean: proceed to /temper:check
 5. If no fixes needed: proceed directly to /temper:check
 ```
@@ -403,6 +407,8 @@ select "Fix all & continue to Check" from the gate to proceed.
 
 ### Step 6: Auto-Fix (if enabled)
 
+This step runs ONLY when invoked from Step 5's "Fix all" flow or when running standalone with auto-fix enabled. Do NOT run auto-fix independently.
+
 ```
 1. For each HIGH+ issue marked as auto-fixable:
    - Apply the suggested fix
@@ -410,8 +416,8 @@ select "Fix all & continue to Check" from the gate to proceed.
 
 2. After all auto-fixes applied:
    - Re-run review (single pass, no subagents) to verify fixes
-   - Max 2 auto-fix loops total
-   - If issues persist after 2 loops → show to user
+   - Total auto-fix loops across Step 5 + Step 6: max 2
+   - If issues persist after max loops → show to user
 
 3. Update review report with fix status
 ```
@@ -482,7 +488,7 @@ Findings can be valid in general but invalid in specific contexts. Track per-con
 ```
 1. Same severity from all agents → use that severity
 2. Mixed severities → use highest (conservative)
-3. One agent CRITICAL + others no finding → escalate to HIGH (not CRITICAL)
+3. One agent finds CRITICAL and ALL other agents find NO issues on the same code → downgrade to HIGH (single-agent CRITICAL is unreliable)
 4. Disagreement on category → use "quality" as default
 ```
 

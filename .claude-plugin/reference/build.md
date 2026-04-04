@@ -38,15 +38,15 @@ Files to load at start:
      c. Spec directory exists — .temper/specs/{spec}/ must exist on disk
      d. Artifacts exist — tasks.md and intent.md (if listed) must exist
      e. Timestamp — if updated > 30 days ago, warn about staleness
-   - If valid: Ask user "Resume from Task {last_task_completed + 1}? [Y/n]"
+   - If valid: Ask user "Resume from Task {last_task_completed + 1}? [Y/n]" (skip in subprocess mode — use build-state.json directly)
    - If invalid: Show what's wrong, offer "Start over / Delete saved state / Cancel"
 2. Check for active plan in .temper/specs/*/tasks.md
-3. If multiple specs exist, ask user which to execute
-4. Load tasks.md + quickstart.md
-5. Read plan.md for architecture decisions and blast radius
-6. Read all files listed in plan's "Prerequisites" or "Must Read" sections
-7. Read active pack rules from .claude/packs/ (enabled packs only)
-8. Read stack file from .claude/packs/stacks/{detected-stack}.md
+3. If multiple specs exist, ask user which to execute (skip in subprocess mode — use spec from build-state.json or orchestrator args)
+4. Load tasks.md + quickstart.md (quickstart.md may not exist for Simple features — skip if absent)
+5. Read plan.md for architecture decisions and blast radius (skip if no plan.md — Simple/Medium features)
+6. Read all files listed in plan's "Prerequisites" or "Must Read" sections (skip if no plan.md)
+7. Read active pack rules from .claude/packs/ (enabled packs only, skip if directory doesn't exist)
+8. Read stack file from .claude/packs/stacks/{detected-stack}.md (skip if file doesn't exist)
 9. Load .temper/specs/{feature}/intent.md if it exists
    - Parse scenario names and Given/When/Then blocks
    - If no intent.md: proceed with current behavior (unchanged)
@@ -257,6 +257,10 @@ Non-blocking — warnings only. The scenario coverage gate is the hard gate.
 
 ### Step 4: Post-Implementation
 
+**If running as Agent subprocess:** Skip the AskUserQuestion gate. Return the build summary to the orchestrator. The orchestrator handles all gate decisions.
+
+**If running standalone:** Show the summary and gate below.
+
 After all tasks complete:
 
 1. Run full test suite → all must pass
@@ -273,6 +277,7 @@ After all tasks complete:
 │                                                             │
 │ 📊 QUALITY                                                   │
 │    Coverage: {X}% (threshold: {Y}%)                         │
+│      (If no coverage tooling available, omit this line)      │
 │    All tests: PASS                                           │
 │                                                             │
 │ 📁 KEY CHANGES                                               │
@@ -346,7 +351,7 @@ AskUserQuestion:
      ```
    - Report: "✅ Saved. Run /temper when ready to continue."
 
-7. Delete .temper/build-state.json (clean up checkpoint) after review+check complete
+7. (Cleanup is handled by check.md after commit — do NOT delete build-state.json here)
 8. Mark spec as completed:
    - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header
 
