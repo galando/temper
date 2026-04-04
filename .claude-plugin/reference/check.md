@@ -63,13 +63,16 @@ DETECTION ORDER (first match wins):
 4. Company preset OVERRIDES auto-detected commands
 ```
 
-### Step 2: Run Validation Levels (in order, stop on failure)
+### Step 2: Run Validation Levels (in order, stop on BLOCK-level failure)
+
+NOTE: "Stop on failure" means halt the pipeline at the current level. Levels marked WARN continue to the next level. Only STOP/IMMEDIATELY/BLOCK results halt the pipeline.
 
 ```
 Level 0: ENVIRONMENT
   Purpose: Verify not hitting production
-  How: Check for .env.local, verify DATABASE_URL doesn't contain "production"
-  If no .env file: SKIP (not all projects use .env)
+  How: Check all .env* files (.env, .env.local, .env.production, etc.) for production indicators
+       Verify DATABASE_URL and similar connection strings don't contain "production"
+  If no .env files found: SKIP (not all projects use .env)
   If production detected: STOP IMMEDIATELY
 
 Level 1: COMPILE/BUILD
@@ -96,22 +99,49 @@ Level 4: COVERAGE (if available)
   On failure: WARN (not block by default), show coverage %
   If no coverage tool configured: SKIP
 
-Level 4.5: SCENARIO COVERAGE (BDD Final Gate)
-  Purpose: Every scenario in intent.md has a passing test
+Level 4.5: SCENARIO COVERAGE (BDD Final Gate — Behavioral Verification)
+  Purpose: Every scenario in intent.md has a passing test that asserts correct behavior
   Prerequisite: intent.md exists at .temper/specs/{spec}/intent.md
+    If running standalone: resolve {spec} by listing .temper/specs/ directories and
+    using the most recently modified one. If build-state.json exists, read spec from there.
+    If no specs found → SKIP Level 4.5 entirely.
+  Pipeline note: This stage always runs full behavioral verification independently.
+    Review and check may flag the same assertion quality issues — this is intentional
+    (defense in depth: two independent evaluations catch different things).
   How:
     1. Read intent.md → extract all Gherkin scenarios
     2. For each scenario:
        a. Find matching test by name/description (grep test files for scenario name)
        b. Verify test exists and passes (from Level 2 test results)
-       c. If scenario has Note: manual → mark as "requires manual verification"
-    3. Compare against Scenario Coverage Checklist in intent.md (if populated by build)
-  Report:
-    "Scenario Coverage: X/Y scenarios covered (Z automated, W manual)
-     ✅ Scenario: User resets password → PasswordResetTest.test_successful_reset
-     ✅ Scenario: Expired token → PasswordResetTest.test_expired_token
-     ⚠️  Scenario: Email delivered → MANUAL VERIFICATION NEEDED
-     ❌ Scenario: Rate limiting → NO PASSING TEST FOUND"
+       c. If scenario Note field is exactly "manual" or starts with "manual" (e.g.,
+          "manual verification") → mark as "requires manual verification".
+          If Note contains "manual" alongside other approaches (e.g., "unit + manual"),
+          do NOT flag as manual-only — treat as the non-manual approach.
+       d. READ test body — verify assertions match Then clause (behavioral verification):
+          - Extract Then clause from Gherkin (expected outcomes)
+          - Find corresponding assertions in test body
+          - Accept indirect assertions (helper methods like assertBadRequest(),
+            custom matchers) if they semantically cover the Then clause
+          - If unsure whether an assertion covers a Then clause, do NOT flag
+          - Only flag when NO assertion can be linked to the expected outcome
+          - If Then says "returns 400" → test should assert status == 400
+          - If Then says "contains error message" → test should assert response body
+       e. Check assertion quality (classify each scenario):
+          - STRONG: assertions meaningfully cover the Then clause → ✅
+          - WEAK: assertions exist but incompletely cover the Then clause → flag as WARNING
+          - TRIVIAL: assertions always pass (assertTrue(true)) or missing → flag as WARNING
+       f. Compare against Scenario Coverage Checklist in intent.md (if populated by build)
+          - If Level 4.5 analysis conflicts with the checklist, Level 4.5 analysis takes precedence
+            (4.5 verifies behavior; the checklist only tracks existence)
+    3. Report per scenario:
+       "Scenario Coverage: X/Y scenarios covered (Z automated, W manual)
+        ✅ Scenario: User resets password → PasswordResetTest.test_successful_reset (asserts new password works)
+        ✅ Scenario: Invalid email returns 400 → ValidationTest.test_invalid_email (asserts status == 400)
+        ⚠️  Scenario: Rate limiting → RateLimitTest.test_rate_limit (trivial assertion: assertTrue(true))
+        ⚠️  Scenario: Token returned → AuthTest.test_login (missing: token field assertion)
+        ⚠️  Scenario: Email delivered → MANUAL VERIFICATION NEEDED
+        ❌ Scenario: Error handling → NO PASSING TEST FOUND"
+  Gate rules: ❌ = BLOCK (cannot commit), ⚠️ = WARN (non-blocking, show in summary)
   On failure (any ❌): BLOCK — cannot commit with uncovered scenarios
   If no intent.md: SKIP (no BDD contract to enforce)
 
@@ -170,6 +200,16 @@ After all levels complete, show a nice summary:
 │ Skipped: Integration (no tool configured)                 │
 │ Total: {time}                                               │
 │                                                             │
+│ SCENARIO VERDICT (if intent.md exists AND Level 4.5 ran)    │
+│    (Omit this entire section if pipeline stopped before 4.5) │
+│    Scenarios: {X}/{Y} behaviorally verified                 │
+│      Y = total scenarios in intent.md, X = those with       │
+│      STRONG assertions (not TRIVIAL). WEAK count as half.   │
+│      Note: This count is assertion-quality-weighted and     │
+│      intentionally differs from build's binary pass/fail.   │
+│    Build deviations: {N} unplanned, {N} skipped             │
+│      (if build-state.json available; otherwise omit this line)│
+│                                                             │
 │ What next?                                                 │
 │   ▸ Commit (Recommended)                                   │
 │     Save for later                                         │
@@ -220,7 +260,7 @@ AskUserQuestion:
 ```
 1. User types their change request in the "Other" field
 2. Make the change
-3. Re-run validation
+3. Re-run validation from the first failed level (inclusive) — no need to re-run levels that already passed
 4. ⚠️ MANDATORY: Re-show AskUserQuestion with same options
 
 GATE ENFORCEMENT: The user's change input is NOT approval to commit.

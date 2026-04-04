@@ -94,7 +94,7 @@ Review these files:
 For each file, read the ENTIRE file (not just the diff) to understand full context.
 
 IMPORTANT:
-- Only flag issues you are confident about (>0.5 confidence)
+- Only flag issues you are confident about (>0.5 confidence; Step 4 applies user-configured threshold, default 0.7)
 - Do not flag style preferences unless they violate pack rules
 - Do not flag patterns that are consistent with the rest of the codebase
 - Focus on: logic errors, security, performance, missing tests, architectural drift
@@ -112,6 +112,15 @@ PERFORMANCE PATTERNS to check:
 - Sync I/O in hot path: Blocking operations in request handlers, event loops
 - Large objects in memory: Loading full datasets, unprocessed batch operations
 - Missing pagination: Endpoints returning unbounded lists
+
+AI-CODE DETECTION (apply to all files):
+- Hallucinated APIs: verify function calls exist in dependencies
+- Plausible but wrong: compare against project's existing usage of same library
+- Over-engineering: abstractions used only once, premature generalization
+- Copy-paste drift: similar blocks with subtle inconsistencies
+- Missing integration: new code not wired into routing/DI/config
+- Stale patterns: using deprecated APIs when project has migrated
+- Incomplete error paths: generic catch blocks without specific handling
 ```
 
 **Subagent split strategy:**
@@ -152,6 +161,107 @@ If `.temper/specs/{feature}/intent.md` exists, validate at TWO levels:
 
 If no intent.md: fall back to checking linked issue (Jira/GitHub) as before.
 
+### Step 3a: Semantic Test Validation (if intent.md exists)
+
+After the mechanical BDD/IDD check in Step 3, validate that tests actually prove what they claim:
+
+```
+For each scenario with a passing test, validate the test BODY (not just its name):
+
+0. LOCATE the test file for each scenario:
+   a. Check intent.md's Scenario Coverage Checklist for test name mapping
+   b. Grep test files for the scenario name or Gherkin annotations (e.g., @scenario-name)
+   c. If not found → flag as "test not locatable" and skip to next scenario
+1. READ the test function/method body (not just the name)
+2. Verify structural alignment with Gherkin:
+   - Given → test sets up preconditions (fixtures, mocks, data)
+   - When → test invokes the action under test
+   - Then → test asserts the expected outcomes
+3. Check assertion quality:
+   - Flag trivial assertions: assertTrue(true), assertEquals(x, x), no assertions at all
+   - Flag incomplete assertions: Then clause expects "response contains token" but test only asserts status code
+   - Flag catch-all assertions: assert response != null without checking specific fields
+4. Report per-scenario:
+   ✅ Scenario: "User logs in" — structurally aligned (Given/When/Then mapped)
+   ⚠️ Scenario: "Rate limiting" — trivial assertion detected (assertTrue(true))
+   ⚠️ Scenario: "Token returned" — incomplete: Then expects "token field" but test only asserts status 200
+```
+
+**Assertion quality labels:**
+- STRONG — test sets up Given, invokes When, asserts Then with meaningful, specific assertions
+- WEAK — test has incomplete assertions (Then expects "token" but only asserts status code); flagged as MEDIUM issue. Accept indirect assertions (helper methods, custom matchers) if they semantically cover the Then clause. If unsure whether an assertion covers a Then clause, do NOT flag.
+- TRIVIAL — test has assertions that always pass (assertTrue(true), no assertions); flagged as LOW issue
+
+These labels feed into the INTENT VERDICT evidence count: STRONG scenarios count toward the numerator, TRIVIAL scenarios do not, WEAK count as half.
+
+**This step is additive** — existing mechanical checks still run first. Only runs when intent.md exists (backward compatible). Test body reading happens in the main review context, which already has access to changed files.
+
+### Step 3b: Problem Statement Traceback (if intent.md exists)
+
+After validating individual scenarios, step back and assess the BIG picture:
+
+```
+1. Re-read the Problem: field from intent.md
+2. Read the implementation code (changed files)
+3. Ask: "Does this implementation actually solve the stated problem?"
+4. Check for implementation drift:
+   - Problem says "password reset" but code implements "password change" → drift detected
+   - Problem says "caching" but code implements "prefetching" → partial match (different strategies)
+   - Problem says "multi-user" but code handles single user → gap detected
+
+5. Report:
+   ✅ Intent satisfied — implementation addresses: {list of problem aspects covered}
+   ⚠️ Intent partially satisfied — gaps: {list of uncovered aspects}
+   ❌ Intent not satisfied — implementation doesn't address the stated problem
+
+6. This produces the SEMANTIC intent verdict (distinct from Step 3's mechanical verdict)
+```
+
+**Verdict reconciliation:** When both Step 3 (mechanical) and Step 3b (semantic) produce verdicts, use the most conservative:
+- If only one verdict is available, use that verdict directly
+- If both are available: any "Not satisfied" → final verdict is "Not satisfied"; all "Satisfied" → "Satisfied"; otherwise → "Partially satisfied"
+The INTENT VERDICT in the summary always reflects this reconciled verdict.
+
+**This is the "semantic bridge"** — it requires understanding the relationship between problem and solution. When the review runs as a subagent, it has access to changed files, so it can read them.
+
+### Step 3c: Decision Point Coverage (if intent.md exists)
+
+Check whether the code's decision points have corresponding scenarios:
+
+```
+1. Scan changed files for decision points:
+   - if/else branches (especially in business logic)
+   - try/catch blocks with different error types
+   - switch/case statements
+   - Early returns with different outcomes
+   - Error response variations
+
+   EXCLUDE (do not flag):
+   - Input validation guards (null/undefined checks)
+   - Logging branches (if (logger.isDebugEnabled()))
+   - Single-line early returns with no business logic
+   - Standard framework patterns (auth middleware redirects, etc.)
+
+   FOCUS ON:
+   - Business logic conditionals (different user types, states, outcomes)
+   - Multi-branch error handling (different error types → different responses)
+   - Branches that produce different user-visible outcomes
+
+2. For each decision point:
+   - Does a scenario in intent.md cover this branch?
+   - If no scenario → flag as potential gap
+
+3. Report:
+   ✅ All decision points covered by scenarios
+   ⚠️ Uncovered decision points:
+     - auth.ts:42 — branch for "email not verified" → no matching scenario
+     - payment.ts:89 — catch StripeCardError → no matching scenario
+
+4. Severity: LOW (informational) — the developer decides whether to add scenarios
+```
+
+This catches missing scenarios that the plan phase didn't anticipate. Only scans changed files (not entire codebase) to keep scope reasonable. Low severity by default — it's a suggestion, not a blocker.
+
 **If a Jira ticket or GitHub issue was linked (legacy mode):**
 
 ```
@@ -169,8 +279,11 @@ If no intent.md: fall back to checking linked issue (Jira/GitHub) as before.
 Combine results from all subagents. For each finding:
 
 ```
+ORDERING: Pack rules (step 3) override confidence filtering (step 1). A BLOCK pack rule
+finding is ALWAYS shown, even if confidence is below threshold.
+
 1. Check confidence score against threshold (default 0.7)
-   - Below threshold → SUPPRESS (don't show to user)
+   - Below threshold → DISCARD entirely (not shown, not counted in metrics, not stored in memory)
    - Above threshold → include in report
 
 2. Check review memory (.temper/review-memory.json)
@@ -186,6 +299,10 @@ Combine results from all subagents. For each finding:
 
 ### Step 5: Nice Summary + Stage Gate
 
+**If running as Agent subprocess:** Skip the AskUserQuestion gate. Return the review summary to the orchestrator. The orchestrator handles all gate decisions.
+
+**If running standalone:** Show the summary and gate below.
+
 After review completes, show a nice summary:
 
 ```
@@ -194,7 +311,7 @@ After review completes, show a nice summary:
 ├─────────────────────────────────────────────────────────────┤
 │ WHAT WAS REVIEWED                                           │
 │    Files: {N} changed files                                 │
-│    Confidence: {X}%                                         │
+│    Confidence: {X}% (avg of all finding confidence scores)  │
 │                                                             │
 │ ISSUES FOUND                                                │
 │    Critical: {N} | High: {N} | Medium: {N} | Low: {N}      │
@@ -202,11 +319,22 @@ After review completes, show a nice summary:
 │                                                             │
 │ SCENARIO COVERAGE (from intent.md)                          │
 │    Covered: {X}/{Y} ({Z} automated, {W} manual)            │
+│    (X = STRONG + ½ WEAK per Step 3a labels)                │
 │    ❌ {uncovered scenario name}                              │
 │                                                             │
 │ TOP ISSUES                                                  │
 │    1. [{severity}] {file}:{line} — {one-line description}  │
 │    2. [{severity}] {file}:{line} — {one-line description} │
+│                                                             │
+│ INTENT VERDICT (if intent.md exists)                        │
+│    Problem: {one-line problem statement}                    │
+│    Verdict: ✅ Intent satisfied / ⚠️ Partial / ❌ Not met    │
+│    Evidence: {X}/{Y} scenarios substantively validated      │
+│      (Y = total scenarios in intent.md, X = STRONG + ½ WEAK) │
+│    Gaps:                                                    │
+│      [assertion] {trivial/incomplete assertion gaps}        │
+│      [drift] {implementation vs problem drift}              │
+│      [coverage] {uncovered decision points}                 │
 │                                                             │
 │ What next?                                                  │
 │   ▸ Fix all & continue to Check (Recommended)               │
@@ -235,15 +363,15 @@ AskUserQuestion:
 **On Fix all & continue to Check (first option):**
 
 ```
-1. If auto-fixable issues exist: apply fixes
+1. If auto-fixable issues exist: apply fixes (see Step 6 for auto-fix loop details)
 2. Save state to .temper/build-state.json
 3. If running standalone:
    Signal:
    "✅ Continuing to CHECK...
     📂 Check needs no additional context — running validation pipeline."
    If running as Agent subprocess: The orchestrator handles context — return summary and stop.
-4. If fixes applied: Re-run review (single pass, no subagents)
-   - If new issues found: show updated summary, ask again (max 1 more loop)
+4. If fixes applied: Re-run review (single pass, no subagents) — max 1 additional loop
+   - If new issues found: show updated summary, ask again (this is the final loop)
    - If clean: proceed to /temper:check
 5. If no fixes needed: proceed directly to /temper:check
 ```
@@ -279,6 +407,8 @@ select "Fix all & continue to Check" from the gate to proceed.
 
 ### Step 6: Auto-Fix (if enabled)
 
+This step runs ONLY when invoked from Step 5's "Fix all" flow or when running standalone with auto-fix enabled. Do NOT run auto-fix independently.
+
 ```
 1. For each HIGH+ issue marked as auto-fixable:
    - Apply the suggested fix
@@ -286,8 +416,8 @@ select "Fix all & continue to Check" from the gate to proceed.
 
 2. After all auto-fixes applied:
    - Re-run review (single pass, no subagents) to verify fixes
-   - Max 2 auto-fix loops total
-   - If issues persist after 2 loops → show to user
+   - Total auto-fix loops across Step 5 + Step 6: max 2
+   - If issues persist after max loops → show to user
 
 3. Update review report with fix status
 ```
@@ -358,23 +488,57 @@ Findings can be valid in general but invalid in specific contexts. Track per-con
 ```
 1. Same severity from all agents → use that severity
 2. Mixed severities → use highest (conservative)
-3. One agent CRITICAL + others no finding → escalate to HIGH (not CRITICAL)
+3. One agent finds CRITICAL and ALL other agents find NO issues on the same code → downgrade to HIGH (single-agent CRITICAL is unreliable)
 4. Disagreement on category → use "quality" as default
 ```
 
-### AI-Generated Code: Extra Scrutiny
+### AI-Code Detection Checklist (reference for standalone review)
 
-AI-written code has specific failure patterns. Flag these with higher confidence:
+(Expanded version of the inline checklist in Step 2 — subagents use the inline version; this section is reference for standalone review runs.)
+
+When reviewing code, actively check for these AI-specific failure patterns:
 
 ```
-- Hallucinated APIs: method/function calls that don't exist in the project's dependencies
-- Plausible but wrong: code that looks correct but misuses a library's API
-- Over-engineering: unnecessary abstractions, helper utils used once, premature generalization
-- Copy-paste drift: similar-looking code blocks with subtle inconsistencies
-- Missing integration: new code not wired into existing routing, DI, or config
-- Stale patterns: using deprecated APIs when the project has already migrated to newer ones
-- Incomplete error paths: happy path works, error handling is placeholder or generic
+1. HALLUCINATED APIS:
+   - For each method/function call, verify the function EXISTS in the project's dependencies
+   - Check: Does the imported module actually export this function?
+   - Red flag: function name looks plausible but isn't in the library's API docs
+   - How to detect: grep for the function definition. If not found in project or node_modules/vendor → flag as HIGH
+
+2. PLAUSIBLE BUT WRONG:
+   - Code uses the correct library but wrong parameters, wrong order, or wrong context
+   - Red flag: async function called without await, callback passed to promise-based API
+   - How to detect: compare against library's actual API signature in node_modules/vendor
+   - Fallback (subagent context without dependency access): compare against the project's existing usage patterns of the same library. If the new call differs from established patterns, flag as MEDIUM.
+
+3. OVER-ENGINEERING:
+   - Unnecessary abstractions (interface for single implementation, factory for single product)
+   - Helper utilities used only once
+   - Premature generalization (type parameters never varied, strategy pattern with one strategy)
+   - How to detect: count usages. If abstraction used once → flag as LOW
+
+4. COPY-PASTE DRIFT:
+   - Similar code blocks with subtle inconsistencies
+   - Red flag: two blocks that look identical except one variable name, but the logic differs
+   - How to detect: look for duplicated patterns in changed files, compare variable names and logic
+
+5. MISSING INTEGRATION:
+   - New code exists but isn't wired into routing, DI container, event handlers, or config
+   - Red flag: new service class never registered, new route never mounted
+   - How to detect: grep for imports/usage of the new module in existing wiring files
+
+6. STALE PATTERNS:
+   - Using deprecated APIs when the project has already migrated to newer ones
+   - Red flag: new code uses patterns that old code used before a migration
+   - How to detect: compare new code patterns against recent code in same directory
+
+7. INCOMPLETE ERROR PATHS:
+   - Happy path works, error handling is placeholder or generic
+   - Red flag: catch blocks that just log or rethrow without meaningful handling
+   - How to detect: for each try/catch, check if the catch block does something specific to the error type
 ```
+
+These checks integrate into the existing parallel review subagents (Step 2). Each subagent runs the checklist on the files in its domain. The checklist doesn't create new subagents — it enhances the prompts for existing ones. All flags follow existing severity rules: hallucinated APIs = HIGH, over-engineering = LOW, etc.
 
 ### Automatic Next Step
 
