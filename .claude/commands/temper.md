@@ -18,16 +18,13 @@ argument-hint: "<feature-description>"
 
 ## Architecture: Agent Per Stage
 
-### $CLAUDE_PLUGIN_ROOT Resolution
+### Shared Orchestrator Patterns
 
-All references use `$CLAUDE_PLUGIN_ROOT` to locate plugin files. Resolve it as follows:
+> **Reference:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md`
+>
+> This command uses shared patterns for: $CLAUDE_PLUGIN_ROOT resolution, gate options, gate enforcement, resume validation, nested invocation protection, agent failure handling, and context efficiency. Read that file for the canonical definitions.
 
-1. If `$CLAUDE_PLUGIN_ROOT` is set and points to an existing directory → use it
-2. If unset → walk up from the command file location looking for `.claude-plugin/manifest.json`
-3. If still not found → fall back to `~/.claude/plugins/temper` (default install location)
-4. If fallback doesn't exist → warn user: "Cannot locate Temper plugin. Set CLAUDE_PLUGIN_ROOT or reinstall."
-
-The resolved path is used as `$CLAUDE_PLUGIN_ROOT` throughout this command.
+Each stage runs in an **isolated Agent subprocess**. This provides genuine context clearing — each stage starts with a clean context window containing only what it needs.
 
 Each stage runs in an **isolated Agent subprocess**. This provides genuine context clearing — each stage starts with a clean context window containing only what it needs.
 
@@ -83,38 +80,9 @@ If an agent subprocess returns a failure or blocker:
 
 ## Stage Gates Use AskUserQuestion
 
+> **Gate patterns:** See `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Gate Options Pattern" and "Gate Enforcement Rules" sections.
+
 At each stage gate, use `AskUserQuestion` with selectable options. Do NOT use `[Enter]` as a prompt.
-
-### Gate Options Pattern
-
-Every stage gate uses exactly 2 explicit options plus the built-in "Other" free-text input:
-
-```
-AskUserQuestion:
-  question: "What would you like to do with this {stage}?"
-  options:
-    - label: "Continue to {next_stage} (Recommended)"
-      description: "Launches a new agent subprocess. Clean context with only {files} loaded."
-    - label: "Save for later"
-      description: "Save state and stop. Run /temper later to continue."
-  multiSelect: false
-```
-
-**Users type change requests directly via the "Other" option.** AskUserQuestion always provides an "Other" free-text input. When a user selects "Other" and types a change request:
-1. Make the requested change
-2. **STOP** — re-show the AskUserQuestion gate with the same options
-3. Do NOT interpret the change input as approval to proceed
-
-### Gate Enforcement Rules
-
-After handling a change request (via "Other" free-text input), you **MUST** re-show the AskUserQuestion gate before proceeding:
-
-1. User selects "Other" and types their change request (e.g., "add error handling to the parser")
-2. You make the requested change
-3. **STOP HERE** — re-show the AskUserQuestion gate with the same 2 options
-4. Do NOT interpret the user's change input as approval to proceed to the next stage
-
-The user must **explicitly select "Continue to {next_stage}"** from the gate to proceed.
 
 ---
 
@@ -546,47 +514,13 @@ If you stopped earlier, run `/temper` to continue.
 
 ### Resume Validation
 
-Before showing the saved state, validate `.temper/build-state.json`:
-
-1. **Parseable JSON** — if malformed, show error and ask user
-2. **Valid stage** — must be one of: `plan_complete`, `build_complete`, `review_complete`, `check_complete`
-3. **Spec directory exists** — `.temper/specs/{spec}/` must exist on disk
-4. **Artifacts exist** — all files listed in `artifacts` array must exist
-5. **Timestamp** — if `updated` > 30 days ago, warn user about staleness
-
-If any check fails:
-- Show what's wrong: "Saved state is invalid: {reason}"
-- Ask user: "Start over (replan) / Delete saved state / Cancel?"
+> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Resume Validation" section. Valid stages for this command: `plan_complete`, `build_complete`, `review_complete`, `check_complete`.
 
 ### Nested Invocation Protection
 
 If `/temper "new feature"` is called while `.temper/build-state.json` already exists for a different feature:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ SAVED STATE FOUND                                           │
-├─────────────────────────────────────────────────────────────┤
-│ Feature: {name}                                             │
-│    Stopped: After {stage}                                   │
-│    Files: {N} changed                                       │
-│                                                             │
-│ Starting '{new feature}' will overwrite this session.       │
-└─────────────────────────────────────────────────────────────┘
-```
-
-Use AskUserQuestion:
-```
-AskUserQuestion:
-  question: "A saved session exists for '{existing feature}'. What would you like to do?"
-  options:
-    - label: "Resume existing session (Recommended)"
-      description: "Continue from {next_stage} stage with the existing plan."
-    - label: "Overwrite and start new"
-      description: "Delete existing session, start planning '{new feature}' from scratch."
-    - label: "Cancel"
-      description: "Keep saved state, don't start anything."
-  multiSelect: false
-```
+> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Nested Invocation Protection" section. Use "feature" in the display.
 
 If `/temper` (no arguments) is called and `.temper/build-state.json` exists for the same feature:
 ```
@@ -597,8 +531,6 @@ AskUserQuestion:
       description: "Resume from checkpoint, launch {next_stage} agent."
     - label: "Start over (replan)"
       description: "Go back to PLAN, launch planning agent."
-    - label: "Keep saved, don't resume"
-      description: "Stop, keep state for later."
   multiSelect: false
 ```
 
