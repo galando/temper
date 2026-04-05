@@ -22,8 +22,10 @@ argument-hint: "<bug-description-or-JIRA-123>"
 ### Context Loading
 
 This stage may run in two modes:
-- **Standalone** (`/temper:fix`) — runs as a full orchestrator with 4 stages (RCA → Fix → Review → Check) via Agent subprocesses
+- **Standalone** (`/temper:fix`) — the command file (`.claude/commands/fix.md`) acts as the orchestrator, running this methodology across 4 Agent subprocess stages (RCA → Fix → Review → Check)
 - **Agent subprocess** (from `/temper`) — starts with CLEAN context, only loads what's listed below
+
+**This reference file describes the methodology** for each stage. The **command file** handles the orchestrator routing, stage gates, and state management. When running as a subprocess, only the steps relevant to the current stage are executed.
 
 **Subprocess mode override:** When running as an Agent subprocess, do NOT show AskUserQuestion gates or clear context. Return the summary to the orchestrator. The orchestrator handles all gate decisions and context transitions.
 
@@ -363,7 +365,7 @@ Do NOT commit after making changes. The user MUST explicitly select
      "spec_path": ".temper/specs/{bug-slug}",
      "original_args": "{from prior state}",
      "next_stage": "review",
-     "artifacts": ["intent.md", "tasks.md"],
+     "artifacts": ["rca.md"],
      "updated": "{ISO timestamp}"
    }
    ```

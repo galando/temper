@@ -135,6 +135,11 @@ Use the Agent tool with this prompt:
 
 Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/fix.md
 
+CONTEXT: Load these first:
+1. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/fix.md for methodology
+2. Load enabled packs from .claude/temper.config and stack-specific rules (Step 1.5)
+3. Check if the bug violates any pack rules during RCA (e.g., security: was input validation skipped?)
+
 ENFORCEMENT: Always follow the full RCA methodology. Always generate multi-hypothesis investigation (or skip condition with justification).
 
 CRITICAL: This agent runs in isolation. After RCA:
@@ -341,6 +346,7 @@ CONTEXT: You are starting with a CLEAN context. Load these first:
 1. Run: git diff --name-only (to get changed files)
 2. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md for methodology
 3. Read {spec_path}/rca.md (for root cause context)
+4. Load enabled packs from .claude/temper.config and stack-specific rules (per review.md Step 1)
 
 Then review all changed files using parallel subagents as described in the methodology.
 
@@ -438,7 +444,8 @@ Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md
 
 CONTEXT: You are starting with a CLEAN context. Load these first:
 1. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md for methodology
-2. Detect stack and run the full validation pipeline
+2. Read {spec_path}/rca.md (for regression test context)
+3. Detect stack and run the full validation pipeline
 
 CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the check summary to the orchestrator.
 
@@ -556,8 +563,6 @@ AskUserQuestion:
       description: "Continue from {next_stage} stage with the existing RCA."
     - label: "Overwrite and start new"
       description: "Delete existing session, start RCA for '{new bug}' from scratch."
-    - label: "Cancel"
-      description: "Keep saved state, don't start anything."
   multiSelect: false
 ```
 
@@ -570,10 +575,10 @@ AskUserQuestion:
       description: "Resume from checkpoint, launch {next_stage} agent."
     - label: "Start over (re-investigate)"
       description: "Go back to RCA, launch root cause analysis agent."
-    - label: "Keep saved, don't resume"
-      description: "Stop, keep state for later."
   multiSelect: false
 ```
+
+**Special case:** If resuming at `rca_complete`, re-display the RCA summary box (read `{spec_path}/rca.md`) before launching the FIX agent, so the user can re-evaluate the root cause.
 
 ---
 
