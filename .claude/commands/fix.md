@@ -20,16 +20,8 @@ argument-hint: "<bug-description-or-JIRA-123>"
 
 ## Architecture: Agent Per Stage
 
-### $CLAUDE_PLUGIN_ROOT Resolution
-
-All references use `$CLAUDE_PLUGIN_ROOT` to locate plugin files. Resolve it as follows:
-
-1. If `$CLAUDE_PLUGIN_ROOT` is set and points to an existing directory → use it
-2. If unset → walk up from the command file location looking for `.claude-plugin/manifest.json`
-3. If still not found → fall back to `~/.claude/plugins/temper` (default install location)
-4. If fallback doesn't exist → warn user: "Cannot locate Temper plugin. Set CLAUDE_PLUGIN_ROOT or reinstall."
-
-The resolved path is used as `$CLAUDE_PLUGIN_ROOT` throughout this command.
+> **Shared patterns:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md`
+> This command uses shared patterns for: $CLAUDE_PLUGIN_ROOT resolution, gate options, gate enforcement, resume validation, nested invocation protection, agent failure handling, and context efficiency. Read that file for the canonical definitions.
 
 Each stage runs in an **isolated Agent subprocess** — genuine context clearing, not theater.
 
@@ -74,52 +66,6 @@ The orchestrator tracks progress via `.temper/build-state.json`. **Resolve the s
 }
 ```
 
-On resume, validate `build-state.json`: parseable JSON, stage is valid, spec directory exists, listed artifacts exist. If invalid, ask user whether to start over.
-
-### Agent Failure Handling
-
-If an agent subprocess returns a failure or blocker:
-1. Show the failure details to the user
-2. Ask: "Retry / Save for later?" (user can type changes via "Other")
-3. Do NOT silently proceed to the next stage
-
----
-
-## Stage Gates Use AskUserQuestion
-
-At each stage gate, use `AskUserQuestion` with selectable options. Do NOT use `[Enter]` as a prompt.
-
-### Gate Options Pattern
-
-Every stage gate uses exactly 2 explicit options plus the built-in "Other" free-text input:
-
-```
-AskUserQuestion:
-  question: "What would you like to do with this {stage}?"
-  options:
-    - label: "Continue to {next_stage} (Recommended)"
-      description: "Launches a new agent subprocess. Clean context."
-    - label: "Save for later"
-      description: "Save state and stop. Run /temper:fix later to continue."
-  multiSelect: false
-```
-
-**Users type change requests directly via the "Other" option.** AskUserQuestion always provides an "Other" free-text input. When a user selects "Other" and types a change request:
-1. Make the requested change
-2. **STOP** — re-show the AskUserQuestion gate with the same options
-3. Do NOT interpret the change input as approval to proceed
-
-### Gate Enforcement Rules
-
-After handling a change request (via "Other" free-text input), you **MUST** re-show the AskUserQuestion gate before proceeding:
-
-1. User selects "Other" and types their change request (e.g., "investigate the auth module instead")
-2. You make the requested change
-3. **STOP HERE** — re-show the AskUserQuestion gate with the same 2 options
-4. Do NOT interpret the user's change input as approval to proceed to the next stage
-
-The user must **explicitly select "Continue to {next_stage}"** from the gate to proceed.
-
 ---
 
 ## Stage 1: RCA (Root Cause Analysis)
@@ -137,7 +83,7 @@ Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/fix.md
 
 CONTEXT: Load these first:
 1. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/fix.md for methodology
-2. Load enabled packs from .claude/temper.config and stack-specific rules (Step 1.5)
+2. Load enabled packs from .claude/temper.config and stack-specific rules
 3. Check if the bug violates any pack rules during RCA (e.g., security: was input validation skipped?)
 
 ENFORCEMENT: Always follow the full RCA methodology. Always generate multi-hypothesis investigation (or skip condition with justification).
@@ -242,19 +188,20 @@ Use the Agent tool with this prompt:
 "Execute /temper:fix for bug: {spec from build-state.json}
 
 Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/fix.md
+Follow all steps in fix.md — read it first and execute in order.
 
 CONTEXT: You are starting with a CLEAN context. Load these files first:
 1. {spec_path}/rca.md (root cause analysis results)
 2. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/fix.md for methodology
 
-Then execute the fix:
-1. Load enabled packs and stack-specific rules (Step 1.5)
-2. Write regression test — MUST FAIL (Step 3)
-3. Validate fix approach against pack rules (Step 3.5)
-4. Implement minimal fix — test MUST PASS (Step 4)
-5. Blast radius check (Step 4.5)
-6. Intent cross-reference (Step 4.75)
-7. Simplify if code-simplifier available (Step 4.8)
+Then execute the fix methodology. Make sure to include:
+- Loading enabled packs and stack-specific rules
+- Writing a regression test that MUST FAIL before the fix
+- Validating the fix approach against pack rules before implementing
+- Implementing the minimal fix (test MUST PASS)
+- Blast radius check
+- Intent cross-reference (if active intent.md exists)
+- Simplification (if code-simplifier agent is available)
 
 CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the fix summary to the orchestrator.
 
@@ -346,7 +293,7 @@ CONTEXT: You are starting with a CLEAN context. Load these first:
 1. Run: git diff --name-only (to get changed files)
 2. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md for methodology
 3. Read {spec_path}/rca.md (for root cause context)
-4. Load enabled packs from .claude/temper.config and stack-specific rules (per review.md Step 1)
+4. Load enabled packs from .claude/temper.config and stack-specific rules
 
 Then review all changed files using parallel subagents as described in the methodology.
 
@@ -524,47 +471,11 @@ Show the AskUserQuestion gate with:
 
 If you stopped earlier, run `/temper:fix` to continue.
 
-### Resume Validation
-
-Before showing the saved state, validate `.temper/build-state.json`:
-
-1. **Parseable JSON** — if malformed, show error and ask user
-2. **Valid stage** — must be one of: `rca_complete`, `fix_complete`, `review_complete`, `check_complete`
-3. **Spec directory exists** — `.temper/specs/{spec}/` must exist on disk
-4. **Artifacts exist** — all files listed in `artifacts` array must exist
-5. **Timestamp** — if `updated` > 30 days ago, warn user about staleness
-
-If any check fails:
-- Show what's wrong: "Saved state is invalid: {reason}"
-- Ask user: "Start over (re-investigate) / Delete saved state / Cancel?"
+> **Resume validation:** Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Resume Validation" section. Valid stages for this command: `rca_complete`, `fix_complete`, `review_complete`, `check_complete`.
 
 ### Nested Invocation Protection
 
-If `/temper:fix "new bug"` is called while `.temper/build-state.json` already exists for a different bug:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ SAVED STATE FOUND                                           │
-├─────────────────────────────────────────────────────────────┤
-│ Bug: {name}                                                 │
-│    Stopped: After {stage}                                   │
-│    Files: {N} changed                                       │
-│                                                             │
-│ Starting '{new bug}' will overwrite this session.           │
-└─────────────────────────────────────────────────────────────┘
-```
-
-Use AskUserQuestion:
-```
-AskUserQuestion:
-  question: "A saved session exists for '{existing bug}'. What would you like to do?"
-  options:
-    - label: "Resume existing session (Recommended)"
-      description: "Continue from {next_stage} stage with the existing RCA."
-    - label: "Overwrite and start new"
-      description: "Delete existing session, start RCA for '{new bug}' from scratch."
-  multiSelect: false
-```
+> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Nested Invocation Protection" section. Use "bug" instead of "feature" in the display.
 
 If `/temper:fix` (no arguments) is called and `.temper/build-state.json` exists for the same bug:
 ```
@@ -584,14 +495,7 @@ AskUserQuestion:
 
 ## Context Efficiency
 
-| Stage Transition | Method | Context Loaded | Size |
-|-----------------|--------|----------------|------|
-| RCA → FIX | New Agent subprocess | rca.md + related files | ~5-15KB |
-| FIX → REVIEW | New Agent subprocess | changed files (git diff) | ~20-50KB |
-| REVIEW → CHECK | New Agent subprocess | check.md | ~5KB |
-| CHECK → Commit | Direct (no subprocess) | Nothing | 0KB |
-
-Each subprocess starts genuinely clean. No theater.
+> See shared table in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Context Efficiency Table". Fix command uses `fix/{bug-slug}` branches and `rca.md` as the primary artifact.
 
 ---
 
