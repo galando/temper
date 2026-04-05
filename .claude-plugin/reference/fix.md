@@ -5,7 +5,7 @@ argument-hint: "<bug-description-or-JIRA-123>"
 
 # Fix: Root Cause Analysis + Structured Fix
 
-**Goal:** Investigate root cause, write a regression test that proves the bug, implement the minimal fix, verify blast radius, validate. Never guess — investigate first.
+**Goal:** Investigate root cause, write a regression test that proves the bug, implement the minimal fix, review the fix, validate. Never guess — investigate first.
 
 ## Usage
 
@@ -22,10 +22,10 @@ argument-hint: "<bug-description-or-JIRA-123>"
 ### Context Loading
 
 This stage may run in two modes:
-- **Standalone** (`/temper:fix`) — runs in current context, handles its own gate
+- **Standalone** (`/temper:fix`) — runs as a full orchestrator with 4 stages (RCA → Fix → Review → Check) via Agent subprocesses
 - **Agent subprocess** (from `/temper`) — starts with CLEAN context, only loads what's listed below
 
-**Subprocess mode override:** When running as an Agent subprocess, do NOT show AskUserQuestion gates or clear context. Return the fix summary to the orchestrator. The orchestrator handles all gate decisions and context transitions.
+**Subprocess mode override:** When running as an Agent subprocess, do NOT show AskUserQuestion gates or clear context. Return the summary to the orchestrator. The orchestrator handles all gate decisions and context transitions.
 
 In both modes, the fix methodology is identical.
 
@@ -44,17 +44,22 @@ Same as /temper:plan Phase 0 — detect Jira, GitHub, or direct description.
 
 Read `.claude/temper.config` to get the list of enabled packs. For each enabled pack, load `.claude/packs/{pack}/rules.md`.
 
+If stack detected, also load `.claude/packs/stacks/{detected-stack}.md` for stack-specific patterns.
+
 These rules are applied during:
 - **RCA** — check if the bug violates any pack rules (e.g., security pack: was input validation skipped?)
+- **Fix approach validation** — validate the proposed fix doesn't introduce new pack violations (Step 3.5)
 - **Fix implementation** — ensure the fix doesn't introduce new pack violations
 - **Validation** — `/temper:check` validates against all enabled pack rules
 
 ```
 Loading enabled packs: quality, tdd, security, git
-  quality: 3 BLOCK, 5 WARN rules
-  tdd: 2 BLOCK, 4 WARN rules
-  security: 6 BLOCK, 2 WARN rules
-  git: 4 WARN, 4 SUGGEST rules
+Loading stack-specific rules: {detected-stack}
+  quality: {N} BLOCK, {N} WARN rules
+  tdd: {N} BLOCK, {N} WARN rules
+  security: {N} BLOCK, {N} WARN rules
+  git: {N} WARN, {N} SUGGEST rules
+  {stack}: {N} patterns to follow
 ```
 
 ### Step 2: Root Cause Analysis (via Explore subagent)
@@ -76,7 +81,7 @@ MULTI-HYPOTHESIS INVESTIGATION:
    |---|------------|------------|----------|
    | 1 | {cause}    | HIGH/MED/LOW | {why you think this} |
    | 2 | {cause}    | HIGH/MED/LOW | {why you think this} |
-   ...
+...
 
 SKIP CONDITION: If only ONE plausible cause exists OR you have an exact stack trace pointing to a specific line, proceed directly to Step 2 investigation. Otherwise, continue with multi-hypothesis approach.
 
@@ -149,6 +154,51 @@ If 2+ possible causes:
 5. Must fail with assertion error related to the bug, not NPE or compilation error
 ```
 
+### Step 3.5: Validate Fix Approach Against Pack Rules
+
+Before implementing the fix, validate that the proposed approach doesn't violate pack rules:
+
+```
+1. SECURITY PACK: Check if the fix approach would:
+   - Introduce SQL concatenation → must use parameterized queries
+   - Expose secrets → must use environment variables
+   - Log sensitive data → must redact or skip
+   - Bypass authentication → must add auth checks
+
+2. TDD PACK: Verify:
+   - Regression test exists (Step 3) ✅
+   - Test follows Given-When-Then structure
+   - Test is independent (no shared state)
+
+3. QUALITY PACK: Check if the fix will:
+   - Exceed 30 lines → consider refactoring
+   - Add nesting > 3 levels → use early return
+   - Duplicate logic → extract shared function
+
+4. STACK-SPECIFIC patterns:
+   - Spring Boot: Optional<T>? Constructor injection? DTOs?
+   - React: Hooks correctly? No direct DOM manipulation?
+   - Node: Error handling patterns? Async/await usage?
+
+5. Report:
+   PACK RULE VALIDATION
+   Security: ✅ No BLOCK rules violated
+   TDD: ✅ Test follows RED-GREEN-REFACTOR
+   Quality: ⚠️ Fix adds 2 nesting levels (currently 2 → will be 4)
+     Suggestion: Extract helper function to reduce nesting
+   Stack ({detected}): ✅ Follows patterns
+
+6. On BLOCK violation:
+   - Do NOT implement the fix as proposed
+   - Reconsider approach to satisfy pack rules
+   - If no alternative exists → ask user for guidance
+
+7. On WARN violation:
+   - Note in report
+   - Implement fix (non-blocking)
+   - Consider refactoring after fix passes
+```
+
 ### Step 4: Implement Fix (GREEN)
 
 ```
@@ -192,6 +242,7 @@ If 2+ possible causes:
    Fix location: {file:line}
    Consumers: {count} | Tests: {passed}/{total}
    Same-pattern: {count fixed}/{count found}
+   Pack violations: {BLOCK}/{WARN}/{SUGGEST} across affected files
    ✅ No breaking changes / ⚠️ {count} consumers need updates
 ```
 
@@ -218,7 +269,7 @@ If an active intent.md exists in .temper/specs/:
   4. If no active intent.md: skip (most fixes are standalone)
 ```
 
-### Step 4.6: Simplify (if code-simplifier agent is available)
+### Step 4.8: Simplify (if code-simplifier agent is available)
 
 After implementing the fix, if the `code-simplifier:code-simplifier` agent is available:
 - Run it on files you created or modified during this fix
@@ -232,6 +283,14 @@ After implementing the fix, if the `code-simplifier:code-simplifier` agent is av
 1. Run /temper:check (compile → test → lint → coverage)
 2. If failure related to your fix → fix it
 3. If pre-existing failure → note in report (verify with git stash → test → git stash pop)
+4. After check passes, run semantic test validation:
+   - READ the regression test body (not just the name)
+   - Verify assertions match expected behavior
+   - Classify: STRONG (proves fix) / WEAK (incomplete) / TRIVIAL (always passes)
+5. Report:
+   VALIDATION RESULTS
+   Check: ✅ All levels passed
+   Test quality: ✅ Semantic validation passed (STRONG)
 ```
 
 ### Step 6: Report + Commit
@@ -250,6 +309,10 @@ Show a report and ask what to do next:
 │    Confidence:  {HIGH/MEDIUM}                               │
 │    Test:        {test class}#{method}                       │
 │    Files:       {list}                                      │
+│                                                             │
+│ 📋 PACK VALIDATION                                          │
+│    Rules checked: {N} (security, tdd, quality, {stack})    │
+│    Violations: {none / listed}                              │
 │                                                             │
 │ What next?                                                  │
 │   ▸ Commit (Recommended)                                   │
@@ -295,16 +358,16 @@ Do NOT commit after making changes. The user MUST explicitly select
 1. Save state to .temper/build-state.json:
    ```json
    {
-     "stage": "check_complete",
-     "spec": "{feature-slug}",
-     "spec_path": ".temper/specs/{feature-slug}",
+     "stage": "fix_complete",
+     "spec": "{bug-slug}",
+     "spec_path": ".temper/specs/{bug-slug}",
      "original_args": "{from prior state}",
-     "next_stage": "commit",
+     "next_stage": "review",
      "artifacts": ["intent.md", "tasks.md"],
      "updated": "{ISO timestamp}"
    }
    ```
-2. Report: "✅ Saved. Run /temper when ready to continue."
+2. Report: "✅ Saved. Run /temper:fix when ready to continue."
 
 ### Step 7: Rollback Protocol
 
