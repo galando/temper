@@ -67,6 +67,58 @@ git diff --stat HEAD
 # - If no specs: skip intent validation (existing behavior)
 ```
 
+### Step 1.5: Diff-Aware Fingerprinting
+
+Before launching subagents, build a diff fingerprint that classifies each changed region by risk level. This focuses review energy where it matters most.
+
+```
+1. Extract unified diff with context:
+   git diff -U5 HEAD~1..HEAD  # if committed
+   git diff -U5               # if uncommitted
+
+2. For each changed file, classify the change:
+   a. Change type:
+      - ADDITION: New file (git status shows "??")
+      - MODIFICATION: Existing file with hunks
+      - DELETION: File removed
+      - RENAME: File moved (git status shows "RNN")
+
+   b. For MODIFICATION files, parse each hunk:
+      - Identify the function/method containing the change
+        (parse upward from hunk for def, function, class, const, etc.)
+      - Classify the change:
+        LOGIC — business logic, conditionals, calculations
+        STRUCTURE — new class, new method, refactored signature
+        CONFIG — settings, environment, feature flags
+        TEST — test files, test helpers, fixtures
+        IMPORT — import/require changes only
+
+   c. Detect risk signals per hunk:
+      - SECURITY: password, token, jwt, encrypt, decrypt, hash, auth,
+        secret, credential, api-key, session
+      - DATA_MUTATION: insert, update, delete, create, drop, alter,
+        save, persist, remove
+      - ERROR_HANDLING: throw, catch, error, exception, reject, fail
+      - CONCURRENCY: async, await, promise, spawn, thread, goroutine,
+        channel, mutex, lock
+      - EXTERNAL_API: fetch, http, request, client, axios, curl, grpc
+
+3. Build the fingerprint (ephemeral — not persisted):
+
+   DIFF FINGERPRINT:
+     Files: {N} changed ({A} additions, {M} modifications, {D} deletions)
+     Hunks: {N} total ({L} logic, {S} structure, {C} config, {T} test, {I} import)
+     High-risk regions: {N}
+       - {file}:{hunk} — {risk signals}
+       - {file}:{hunk} — {risk signals}
+     Security sensitivity: {N} CRITICAL, {N} HIGH, {N} MEDIUM, {N} LOW
+```
+
+Pass this fingerprint to all subagents in Step 2. Subagents must:
+- Focus 80% of attention on hunks with risk signals
+- Review remaining changed lines at standard depth
+- Include fingerprint summary in their findings
+
 ### Step 2: Launch Parallel Review Subagents
 
 **If changed files span multiple domains (e.g., backend + frontend), launch parallel subagents.**
@@ -112,6 +164,75 @@ PERFORMANCE PATTERNS to check:
 - Sync I/O in hot path: Blocking operations in request handlers, event loops
 - Large objects in memory: Loading full datasets, unprocessed batch operations
 - Missing pagination: Endpoints returning unbounded lists
+- Inefficient data structures: Array.includes/find in loops (should be Set/Map)
+
+PERFORMANCE ANTI-PATTERN DETECTION (for each changed file):
+
+1. N+1 QUERY DETECTION:
+   - Find loops (for/forEach/while) containing database/API calls
+   - Pattern: loop body has db.query, Model.find, fetch, axios, http.request
+   - FLAG as HIGH if: loop count is unbounded (user-provided data), no batching
+   - Suggestion: "Move query outside loop or use batch/join"
+
+2. MISSING PAGINATION:
+   - Find endpoints returning lists: return [], map(), filter(), findAll()
+   - Check for pagination parameters: limit, offset, page, cursor, take, skip
+   - FLAG as HIGH if: dataset could grow + no max result size enforced
+   - Suggestion: "Add limit/offset parameters and LIMIT clause"
+
+3. UNBOUNDED OPERATIONS:
+   - Recursion without depth limit
+   - Operations on unbounded user input (loops over user arrays, regex without timeout)
+   - FLAG as MEDIUM if: no max size enforced or no timeout/deadline
+
+4. SYNC I/O IN HOT PATH:
+   - fs.readFileSync, sync.* methods in HTTP handlers/event-loop contexts
+   - FLAG as HIGH if: in request handler with no async alternative
+
+5. INEFFICIENT DATA STRUCTURES:
+   - Array.includes() or Array.find() inside loops (O(n²))
+   - FLAG as MEDIUM if: loop over >10 items or called multiple times per request
+   - Suggestion: "Convert to Set/Map for O(1) lookups"
+
+Report format:
+  [HIGH] N+1 query — {file}:{line}: forEach loop with {Model.find()}
+    Impact: N database queries for N items
+    Suggestion: Use batch query with $in/IN clause
+
+SECURITY HOT PATH REVIEW (for files flagged CRITICAL/HIGH in diff fingerprint):
+
+For any file with security sensitivity CRITICAL or HIGH:
+
+1. TRACE all call chains:
+   a. Read the changed function/method
+   b. Grep for all usages of the function across the codebase
+   c. For each usage, determine if it's an entry point:
+      - HTTP handler → check if auth middleware applied
+      - Background job → check if inputs validated
+      - Library function → check if caller sanitizes inputs
+
+2. CHECK security boundaries:
+   - UNAUTHENTICATED code → must have rate limiting
+   - AUTHENTICATED code → must verify user owns resource (authorization)
+   - ADMIN code → must verify admin role
+   - INPUT handling → must validate/sanitize
+   - OUTPUT handling → must escape/redact sensitive data
+
+3. VERIFY tests cover security boundaries:
+   - Find test files for each entry point
+   - Check for tests covering: unauthorized access, boundary violations,
+     input validation, error handling (no stack traces leaked)
+
+4. FLAG severity:
+   CRITICAL: Security bug reachable from unauthenticated input
+             Missing authorization check on privileged operation
+             Sensitive data leaked in error messages/logs
+   HIGH:     Security boundary untested
+             Input validation missing
+             Error handling exposes system details
+
+IMPORTANT: Security findings ALWAYS bypass confidence filtering.
+Report them regardless of confidence threshold.
 
 AI-CODE DETECTION (apply to all files):
 - Hallucinated APIs: verify function calls exist in dependencies
@@ -130,6 +251,8 @@ AI-CODE DETECTION (apply to all files):
 - If >20 changed files: split into groups of ~10 per subagent (max 3 parallel)
 
 ### Step 3: Intent Validation (IDD + BDD)
+
+> **Method disclaimer:** Intent validation has two layers — **mechanical** (provable by tools) and **semantic** (Claude's judgment). The review clearly labels which is which. Mechanical checks (test exists, test passes, code grep) are reliable. Semantic checks (assertion quality, problem-solution alignment) are Claude's best-effort analysis — they catch obvious problems but cannot guarantee correctness. No amount of reading code replaces running it.
 
 If `.temper/specs/{feature}/intent.md` exists, validate at TWO levels:
 
@@ -163,25 +286,51 @@ If no intent.md: fall back to checking linked issue (Jira/GitHub) as before.
 
 ### Step 3a: Semantic Test Validation (if intent.md exists)
 
-After the mechanical BDD/IDD check in Step 3, validate that tests actually prove what they claim:
+> **Method disclaimer:** Reading test code and judging assertion quality is Claude's semantic analysis, not mechanical proof. A STRONG label means Claude believes the assertions cover the Then clause — but Claude cannot execute the test with a mutated implementation to prove it would fail. Use STRONG/WEAK/TRIVIAL as directional guidance, not guarantees.
+
+After the mechanical BDD/IDD check in Step 3, validate that tests actually prove what they claim.
+
+**Part 1: MECHANICAL checks (provable via tools):**
 
 ```
-For each scenario with a passing test, validate the test BODY (not just its name):
+For each scenario with a passing test, run these checks that DON'T require judgment:
 
 0. LOCATE the test file for each scenario:
    a. Check intent.md's Scenario Coverage Checklist for test name mapping
    b. Grep test files for the scenario name or Gherkin annotations (e.g., @scenario-name)
    c. If not found → flag as "test not locatable" and skip to next scenario
-1. READ the test function/method body (not just the name)
-2. Verify structural alignment with Gherkin:
+
+1. ASSERTION COUNT CHECK:
+   a. Read the test function body
+   b. Count assertion statements (assert*, expect*, should*, assertEquals, etc.)
+   c. If ZERO assertions → TRIVIAL (mechanically proven — no judgment needed)
+   d. If assertions exist → proceed to Part 2
+
+2. ASSERTION TARGET CHECK (mechanical):
+   a. Extract the variable/value being asserted from each assertion
+   b. Extract the Then clause expected values from Gherkin
+   c. Check: does ANY asserted variable name appear in the Then clause?
+      - Then says "response.status equals 400" → grep test for "status" and "400"
+      - Then says "error message contains 'invalid'" → grep test for "error" or "invalid"
+   d. If NO assertion variable matches any Then clause keyword → WEAK (mechanical mismatch)
+   e. If at least one assertion targets a Then clause keyword → proceed to Part 2
+```
+
+**Part 2: SEMANTIC checks (Claude's best-effort judgment):**
+
+```
+For scenarios that passed Part 1 mechanical checks:
+
+3. Verify structural alignment with Gherkin:
    - Given → test sets up preconditions (fixtures, mocks, data)
    - When → test invokes the action under test
    - Then → test asserts the expected outcomes
-3. Check assertion quality:
-   - Flag trivial assertions: assertTrue(true), assertEquals(x, x), no assertions at all
-   - Flag incomplete assertions: Then clause expects "response contains token" but test only asserts status code
+4. Check assertion depth (judgment-based):
+   - Flag incomplete assertions: Then says "response contains token" but test only asserts status code
    - Flag catch-all assertions: assert response != null without checking specific fields
-4. Report per-scenario:
+   - Accept indirect assertions (helper methods, custom matchers) if they semantically cover the Then clause
+   - If unsure whether an assertion covers a Then clause, do NOT flag
+5. Report per-scenario:
    ✅ Scenario: "User logs in" — structurally aligned (Given/When/Then mapped)
    ⚠️ Scenario: "Rate limiting" — trivial assertion detected (assertTrue(true))
    ⚠️ Scenario: "Token returned" — incomplete: Then expects "token field" but test only asserts status 200
@@ -197,6 +346,8 @@ These labels feed into the INTENT VERDICT evidence count: STRONG scenarios count
 **This step is additive** — existing mechanical checks still run first. Only runs when intent.md exists (backward compatible). Test body reading happens in the main review context, which already has access to changed files.
 
 ### Step 3b: Problem Statement Traceback (if intent.md exists)
+
+> **Method disclaimer:** This step is entirely semantic — Claude compares the Problem statement against implementation code and judges whether they match. This catches obvious mismatches (building "password change" when the problem says "password reset") but cannot detect subtle functional gaps. No substitute for acceptance testing.
 
 After validating individual scenarios, step back and assess the BIG picture:
 
@@ -262,6 +413,238 @@ Check whether the code's decision points have corresponding scenarios:
 
 This catches missing scenarios that the plan phase didn't anticipate. Only scans changed files (not entire codebase) to keep scope reasonable. Low severity by default — it's a suggestion, not a blocker.
 
+### Step 3d: Live Mutation Spot-Check (if tests exist)
+
+> **This is the ONLY step that actually PROVES tests catch bugs.** All other validation steps read code and form opinions. This step modifies code, runs tests, and checks the result. It's limited to 2-3 spot-checks (not full mutation testing) to keep review fast.
+
+**Purpose:** Prove that at least some tests actually fail when the implementation breaks.
+
+**When to run:** Only if Level 2 (unit tests) passed. Skip if no tests exist.
+
+**How (concrete, executable steps):**
+
+```
+For each CRITICAL or HIGH security-sensitivity file that has tests (max 3 files):
+
+1. PICK one assertion in the test file to spot-check:
+   - Prefer: assertions on business logic (not framework plumbing)
+   - Prefer: assertions that the STRONG/WEAK analysis flagged as uncertain
+
+2. RUN the test once to confirm it passes (baseline):
+   {test command for this specific test file}
+   → Must PASS. If fails, there's already a bug — report it and stop.
+
+3. MUTATE the implementation (one line only):
+   Pick the simplest mutation that should break the tested behavior:
+   - Change a return value: return true → return false
+   - Change a comparison: if (amount > 0) → if (amount > 100)
+   - Remove a required side effect: delete the database insert line
+   - Change an error code: throw new Error("not found") → throw new Error("server error")
+   Write the mutation to disk.
+
+4. RUN the test again:
+   {same test command}
+   → If test FAILS → ✅ MUTATION CAUGHT — restore implementation, mark test as PROVEN
+   → If test PASSES → ❌ MUTATION MISSED — restore implementation, flag test as UNVERIFIED
+
+5. RESTORE the original implementation immediately (no matter what):
+   git checkout -- {mutated file}
+   Or: manually revert the single changed line
+
+6. REPORT:
+   ✅ PasswordResetTest.test_successful_reset — PROVEN
+      Mutation: changed reset token expiry from 15min to 0min
+      Test failed as expected — assertion catches this mutation
+   ❌ RefundTest.test_process_refund — UNVERIFIED
+      Mutation: changed authorization check from userId === owner to userId !== owner
+      Test still passed — test does not verify authorization boundary
+   ⏭️  Skipped (no test file found for AuthService.generateToken)
+```
+
+**Gate behavior:**
+- UNVERIFIED on a security-critical function → CRITICAL issue
+- UNVERIFIED on a regular function → HIGH issue (suggestion to strengthen test)
+- Max 3 spot-checks per review (keeps review under 2 minutes extra)
+
+**Important constraints:**
+- ALWAYS restore the original code after mutation — never leave broken code on disk
+- Only mutate CHANGED files (not entire codebase)
+- If the test command isn't runnable (missing deps, env) → SKIP with note
+- This is a SAMPLE, not exhaustive — it proves specific assertions work, not all of them
+```
+
+### Step 3.5: Cross-File Pattern Consistency Check
+
+Detect when a changed file introduces a pattern that contradicts established patterns in similar files. This prevents "pattern drift" where codebases slowly accumulate inconsistent approaches.
+
+**Pattern extraction (from changed files):**
+
+```
+For each changed file, extract key patterns:
+
+1. ERROR HANDLING PATTERNS:
+   - How are errors caught? (try/catch, if err, .catch, Result<> types)
+   - How are errors raised? (throw, return error, reject, Error())
+   - How are errors logged? (logger.error, console.error, log.error)
+
+2. API RESPONSE PATTERNS:
+   - Response structure (e.g., { data, error, meta })
+   - Status code usage (200 vs 201, 400 vs 422)
+   - Error response format (e.g., { code, message, details })
+
+3. VALIDATION PATTERNS:
+   - Input validation approach (schema library, manual checks, class validators)
+   - Validation error format
+
+4. ASYNC PATTERNS:
+   - Promise handling (async/await, .then(), callbacks)
+   - Error propagation in async contexts
+```
+
+**Consistency check:**
+
+```
+For each extracted pattern:
+  1. Grep for the same pattern in OTHER files of the same type:
+     - Changed file is a service? → grep src/services/
+     - Changed file is a controller? → grep src/controllers/
+     - Changed file is a test? → grep tests/
+     - No same-type files? → skip (no comparison baseline)
+
+  2. Compare the pattern:
+     - Is the new pattern CONSISTENT with existing files?
+     - Or does it introduce a NEW pattern that differs?
+
+  3. If NEW pattern detected:
+     a. Check intent.md and tasks.md — is this an intentional improvement?
+     b. Or is this INCONSISTENT drift? (same concept, different approach)
+
+  4. Flag inconsistencies:
+     - Severity: MEDIUM (not blocking, but should be intentional)
+     - Confidence: 0.6 (lower threshold — pattern matching is heuristic)
+     - Description: "Pattern drift: {changed_file} uses {new_pattern}
+       but {other_files} use {established_pattern}"
+     - Suggestion: "Align with established pattern OR document why new
+       pattern is better in intent.md"
+```
+
+**Example detection:**
+
+```
+Changed file: src/services/PaymentService.ts
+  - Uses try/catch for error handling
+  - Returns { success, data, error } objects
+
+Existing: src/services/UserService.ts, src/services/OrderService.ts
+  - Use Result<Ok, Err> type for error handling
+  - Never use try/catch at service layer
+
+FINDING: [MEDIUM] PaymentService introduces try/catch error handling
+         but other services use Result<> types.
+         Suggestion: Consider aligning for consistency.
+```
+
+**State update:** Extends `.temper/review-memory.json` with a `patterns` section:
+
+```json
+{
+  "patterns": {
+    "error_handling": {
+      "dominant_pattern": "Result<Ok, Err>",
+      "dominant_count": 8,
+      "exceptions": [
+        {
+          "file": "src/services/PaymentService.ts",
+          "pattern": "try/catch",
+          "first_seen": "{date}",
+          "intentional": false
+        }
+      ]
+    }
+  }
+}
+```
+
+After 3+ dismissals of same pattern type → auto-suppress consistency warnings for that pattern.
+
+### Step 3.6: API Contract Validation
+
+Detect API contract changes and verify consumers are updated. Catches breaking changes before they reach staging/production.
+
+**Only runs when changed files include API boundary files:**
+
+```
+Trigger detection — run Step 3.6 if ANY changed file matches:
+- src/controllers/**, src/routes/**, api/**
+- Files ending in: *Controller.*, *Routes.*, *Dto.*, *Request.*, *Response.*
+- Files in types/ or interfaces/ that export shared types
+- OpenAPI/Swagger spec files
+- GraphQL schema files (.graphql, .gql)
+```
+
+**Contract change analysis:**
+
+```
+1. EXTRACT the old contract (from git diff — removals):
+   - Old endpoint path and HTTP method
+   - Old request structure (fields, types, required/optional)
+   - Old response structure (fields, types)
+   - Old error codes
+
+2. EXTRACT the new contract (from current code):
+   - New endpoint path and HTTP method
+   - New request structure
+   - New response structure
+   - New error codes
+
+3. CLASSIFY change type:
+   - ADDITIVE: New field, new endpoint, new optional parameter → LOW risk
+   - MODIFIED: Field type changed, required → optional → HIGH risk
+   - BREAKING: Required field removed, endpoint renamed,
+     type changed incompatibly → CRITICAL
+
+4. FIND consumers:
+   a. Grep test files: grep -r "{endpoint_path}" tests/ --include="*.ts|*.js|*.py|*.java"
+   b. Grep frontend code (if monorepo): grep -r "fetch.*{endpoint}" frontend/
+   c. Grep for DTO/type imports: grep -r "import.*{TypeName}" --include="*.ts|*.js"
+   d. Check for webhook/event subscribers: grep -r "{event_name}" src/
+
+5. VERIFY consumers are updated:
+   - For BREAKING changes: ALL consumers must be updated → BLOCK if any aren't
+   - For MODIFIED changes: consumers handling old format must be updated → WARN
+   - For ADDITIVE changes: consumers should be backward compatible → INFO
+```
+
+**Report format:**
+
+```
+CONTRACT CHANGES:
+  ✅ GET /api/users — ADDITIVE (new field: emailVerified)
+    Consumers: 3 test files, 1 frontend component
+    All consumers backward compatible ✅
+
+  ❌ POST /api/auth/login — BREAKING (response.token removed,
+                                    response.access_token added)
+    Consumers: 2 test files, 1 frontend component
+    Tests updated ✅, Frontend NOT updated ❌
+    BLOCKING: Frontend will break on deploy
+
+  ⚠️ PaymentRequest.amount type changed (number → string)
+    BREAKING type change but stringified in handler
+    Risk: Runtime error if non-numeric string passed
+    Suggestion: Keep as number or add runtime validation
+
+CONTRACT VERDICT:
+  {N} contract changes detected
+  {N} breaking with unverified consumers → BLOCK
+  {N} high-risk type changes → WARN
+```
+
+**Integration with review findings:**
+- CRITICAL contract findings → added to CRITICAL issues count, bypass confidence filter
+- HIGH contract findings → added to HIGH issues count
+- All findings include: file, line, change type, affected consumers, suggested fix
+
 **If a Jira ticket or GitHub issue was linked (legacy mode):**
 
 ```
@@ -309,13 +692,31 @@ After review completes, show a nice summary:
 ┌─────────────────────────────────────────────────────────────┐
 │ REVIEW — {Feature Name}                                     │
 ├─────────────────────────────────────────────────────────────┤
-│ WHAT WAS REVIEWED                                           │
-│    Files: {N} changed files                                 │
-│    Confidence: {X}% (avg of all finding confidence scores)  │
+│ DIFF FINGERPRINT                                            │
+│    Files: {N} changed ({A} additions, {M} modifications)    │
+│    Hunks: {N} ({L} logic, {S} structure, {T} test)          │
+│    Security: {N} CRITICAL, {N} HIGH                         │
 │                                                             │
 │ ISSUES FOUND                                                │
 │    Critical: {N} | High: {N} | Medium: {N} | Low: {N}      │
 │    Auto-fixable: {N}                                        │
+│                                                             │
+│ SECURITY HOT PATHS                                          │
+│    ⚠️  {File}.{function} — CRITICAL                        │
+│       Reachable from {entry_point} ({exposure})             │
+│    ✅ {File}.{function} — tests cover boundaries            │
+│                                                             │
+│ CROSS-FILE CONSISTENCY                                      │
+│    ⚠️  {file} uses {new_pattern}, others use {old_pattern} │
+│    ✅ All patterns consistent                               │
+│                                                             │
+│ PERFORMANCE PATTERNS                                        │
+│    [HIGH] N+1 query — {file}:{line}                        │
+│    [MEDIUM] Missing pagination — {endpoint}                │
+│                                                             │
+│ CONTRACT CHANGES (if API files changed)                     │
+│    ❌ BREAKING: {endpoint} — {description}                  │
+│    ✅ ADDITIVE: {endpoint} — backward compatible            │
 │                                                             │
 │ SCENARIO COVERAGE (from intent.md)                          │
 │    Covered: {X}/{Y} ({Z} automated, {W} manual)            │
@@ -331,8 +732,10 @@ After review completes, show a nice summary:
 │    Verdict: ✅ Intent satisfied / ⚠️ Partial / ❌ Not met    │
 │    Evidence: {X}/{Y} scenarios substantively validated      │
 │      (Y = total scenarios in intent.md, X = STRONG + ½ WEAK) │
+│    Mutation spot-check: {N} PROVEN, {N} UNVERIFIED          │
 │    Gaps:                                                    │
 │      [assertion] {trivial/incomplete assertion gaps}        │
+│      [mutation] {tests that didn't catch real mutations}    │
 │      [drift] {implementation vs problem drift}              │
 │      [coverage] {uncovered decision points}                 │
 │                                                             │

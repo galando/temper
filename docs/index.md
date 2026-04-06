@@ -29,7 +29,20 @@ Three questions every AI-generated feature should answer:
 2. **Does it do the right things?** (Behavior)
 3. **Does the code work?** (Tests)
 
-Most AI tools answer only the third. Temper answers all three.
+Most AI tools answer only the third. Temper answers all three — and now (v3.0.0) adds **security hot path detection, heuristic test gap analysis, API contract validation, and performance regression guards**.
+
+## What's New in v3.0.0
+
+A quality intelligence layer for review and check — zero new dependencies:
+
+| Feature | What It Does |
+|---------|-------------|
+| **Security Hot Paths** | Classifies files by sensitivity (CRITICAL/HIGH/MEDIUM/LOW), traces call chains to entry points, elevates scrutiny automatically |
+| **Diff-Aware Review** | Builds a risk fingerprint from changed regions, focuses 80% review attention on high-risk hunks |
+| **Cross-File Consistency** | Detects pattern drift — new file uses `try/catch` but peers use `Result<>`? Flagged |
+| **Test Gap Analysis** | Reads implementation + test code side-by-side, finds untested edge cases, BLOCKs on untested security code |
+| **API Diff Review** | Detects API shape changes from git diff, greps for consumers, flags unverified breaking changes |
+| **Performance Pattern Detection** | Scans for N+1 queries, missing pagination, sync I/O, inefficient data structures |
 
 ## IDD + BDD + TDD: Three Layers, One File
 
@@ -122,12 +135,15 @@ Diagram (architecture flow):
 > Continue to Review
 
 ┌─────────────────────────────────────────────────────────────┐
-│ ✅ ALL CHECKS PASSED                                        │
+│ ALL CHECKS PASSED                                           │
 ├─────────────────────────────────────────────────────────────┤
-│ ✅ Compile    2.3s                                          │
-│ ✅ Tests      4.1s    5 passed                               │
-│ ✅ Coverage   87%     (threshold: 80%)                       │
-│ ✅ Security   1.2s    0 vulnerabilities                     │
+│    Compile:    ✅ 2.3s                                       │
+│    Tests:      ✅ 4.1s — 5 passed                            │
+│    Coverage:   ✅ 87% (threshold: 80%)                        │
+│    Test Gaps:  ✅ 78% (31/40 edge cases covered)                │
+│    API Diff:   ✅ 3/3 consumers verified                      │
+│    Perf:       ✅ 0 anti-patterns (baseline updated)            │
+│    Security:   ✅ 0 hot path issues                           │
 │                                                             │
 │ Commit (Recommended)                                        │
 │ Save for later                                              │
@@ -154,10 +170,10 @@ The queue consumer issue? Blast radius flagged it. The missing rate limiting? Sc
 
 | Command | Purpose |
 |---------|---------|
-| [`/temper:plan`](commands.html#plan) | Blast radius + mermaid diagrams + BDD scenarios + interactive walkthrough |
+| [`/temper:plan`](commands.html#plan) | Blast radius + security hot paths + BDD scenarios + interactive walkthrough |
 | [`/temper:build`](commands.html#build) | Scenario-driven TDD gates, resume from checkpoint |
-| [`/temper:review`](commands.html#review) | Structured intent validation + confidence scoring |
-| [`/temper:check`](commands.html#check) | Stack validation (auto-detects) |
+| [`/temper:review`](commands.html#review) | Diff fingerprinting + security hot paths + intent validation + confidence scoring |
+| [`/temper:check`](commands.html#check) | Stack validation + test gap analysis + contract checking + perf regression |
 | [`/temper:fix`](commands.html#fix) | Multi-hypothesis root cause analysis |
 | [`/temper:pack`](commands.html#pack) | Manage quality packs: view, toggle, create |
 | [`/temper:status`](commands.html#status) | Quality metrics, hotspot tracking |

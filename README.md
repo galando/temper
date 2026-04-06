@@ -4,7 +4,7 @@
 
 **Your AI writes fast. Temper makes it last.**
 
-*Intent-driven development with behavioral testing and quality gates for AI-generated code*
+*Intent-driven development with behavioral testing, security analysis, and quality gates for AI-generated code*
 
 <img src="docs/temper.png" alt="Temper Dashboard" width="100%">
 
@@ -281,6 +281,78 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ---
 
+## What's New in v3.0.0
+
+v3.0.0 adds a **quality intelligence layer** to review and check — zero new dependencies, no setup required. Pure methodology improvements that make every review and check dramatically more thorough.
+
+### Security Hot Path Detection
+
+During planning, Temper classifies every affected file by security sensitivity (CRITICAL/HIGH/MEDIUM/LOW) and traces call chains to entry points. Code touching auth, payments, or crypto gets elevated scrutiny automatically.
+
+```
+SECURITY IMPACT:
+  src/services/PaymentService.ts (processRefund) → CRITICAL
+    Reachable from: POST /api/refunds (AUTHENTICATED)
+    Risk: Missing authorization check — user could refund any payment
+    Recommendation: Add scenario "User can only refund own payments"
+```
+
+### Diff-Aware Review
+
+Instead of reading entire files, Temper builds a **diff fingerprint** that classifies each changed region by risk level. High-risk hunks (security keywords, DB mutations, error handling, concurrency) get 80% of review attention. Low-risk changes (config, imports) get standard review.
+
+### Cross-File Pattern Consistency
+
+Temper detects when a changed file introduces a pattern that contradicts the codebase's established patterns. New file uses `try/catch` but all peers use `Result<>`? Flagged as inconsistency.
+
+```
+⚠️  PaymentService uses try/catch, but 8 other services use Result<Ok, Err>
+    Suggestion: Align with established pattern or document why new pattern is better
+```
+
+### Heuristic Test Gap Analysis
+
+After tests pass, Temper reads implementation and test code side-by-side. It identifies **edge cases the tests miss** — no null test, no boundary test, no error path test. Security-critical code with no test is BLOCKED. This is static analysis (reading code), not execution-based mutation testing.
+
+```
+✅ UserService.validateEmail — STRONG (all branches covered)
+⚠️  PaymentService.calculateRefund — WEAK (happy path only)
+   Gaps: no test for amount=0, negative amount, null input
+❌ AuthService.generateToken — NO TEST (security-critical) → BLOCKED
+```
+
+### API Diff Review
+
+When code changes API boundaries (endpoints, DTOs, response shapes), Temper reads the git diff to detect the change, greps for consumers, and checks if they're updated. Breaking changes with unverified consumers are flagged. This is heuristic (grep-based) not runtime contract testing.
+
+```
+❌ POST /api/auth/login — BREAKING (response.token → response.access_token)
+   Consumers: 2 tests ✅, 1 frontend ❌ NOT UPDATED → FLAGGED
+```
+
+### Performance Pattern Detection
+
+Temper scans changed code for performance anti-patterns: N+1 queries (loops with DB calls), missing pagination (unbounded endpoints), sync I/O in request handlers, and inefficient data structures (Array.includes in loops). When benchmarks exist, it also compares against baseline.
+
+```
+[HIGH] N+1 query in UserController.ts:45 — forEach loop with User.findById()
+[HIGH] Missing pagination in GET /api/orders — no LIMIT clause
+[MEDIUM] Inefficient lookup in PermissionService.ts:78 — Array.includes() in loop
+```
+
+### Why This Matters
+
+| Before v3.0.0 | After v3.0.0 |
+|----------------|---------------|
+| Review reads entire files | Review focuses on high-risk diff regions |
+| Security issues found by luck | Security hot paths traced to entry points automatically |
+| Tests pass but test nothing | Test gap analysis finds untested edge cases |
+| API breaking changes ship silently | API diff review flags unverified breaking changes |
+| Performance anti-patterns caught in prod | Pattern detection catches N+1, missing pagination before commit |
+| Pattern drift accumulates silently | Cross-file consistency detects drift immediately |
+
+---
+
 ## Commands
 
 ### Unified Command (Recommended)
@@ -309,23 +381,26 @@ Each stage ends with a gate:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ 📋 PLAN COMPLETE — Add Login Feature                        │
+│ PLAN COMPLETE — Add Login Feature                           │
 ├─────────────────────────────────────────────────────────────┤
-│ 🎯 INTENT                                                   │
+│ INTENT                                                      │
 │    Problem: Users can't access protected routes             │
 │    Success: JWT auth with role-based access                 │
 │    Scenarios: 5 (4 unit, 1 integration)                     │
 │                                                             │
-│ 📁 FILES: 3 create, 2 modify                                │
-│ ⚡ RISK: Medium (touches auth layer)                        │
+│ FILES: 3 create, 2 modify                                   │
+│ RISK: Medium (touches auth layer)                           │
+│ SECURITY: 2 hot paths (1 CRITICAL, 1 HIGH)                  │
+│    AuthService.verifyToken → 47 endpoints affected          │
 │                                                             │
-│ ✅ Ready to build? [Y/e(dit)/n]                             │
+│ Continue to Build (Recommended) / Walk through / Save       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-- **Y** → Proceed, context clears, next stage begins
-- **e** → Edit scenarios, then re-ask
-- **n** → Stop, save state, resume later with `/temper --resume`
+- **Continue** → Proceed, context clears, next stage begins
+- **Walk through** → Interactive step-by-step plan walkthrough
+- **Save** → Stop, save state, resume later with `/temper`
+- **Other** → Type a change request, edits applied, gate re-appears
 
 ## Quality Packs
 

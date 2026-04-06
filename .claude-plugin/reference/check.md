@@ -101,6 +101,10 @@ Level 4: COVERAGE (if available)
 
 Level 4.5: SCENARIO COVERAGE (BDD Final Gate — Behavioral Verification)
   Purpose: Every scenario in intent.md has a passing test that asserts correct behavior
+  Confidence: MECHANICAL for existence/passing, SEMANTIC for assertion quality
+    - Test exists + passes → proven (test runner output)
+    - Assertion covers Then clause → Claude's judgment (not proven)
+    - See review.md Step 3d for live mutation spot-check results (if review ran first and security-sensitive files were found)
   Prerequisite: intent.md exists at .temper/specs/{spec}/intent.md
     If running standalone: resolve {spec} by listing .temper/specs/ directories and
     using the most recently modified one. If build-state.json exists, read spec from there.
@@ -144,6 +148,209 @@ Level 4.5: SCENARIO COVERAGE (BDD Final Gate — Behavioral Verification)
   Gate rules: ❌ = BLOCK (cannot commit), ⚠️ = WARN (non-blocking, show in summary)
   On failure (any ❌): BLOCK — cannot commit with uncovered scenarios
   If no intent.md: SKIP (no BDD contract to enforce)
+
+Level 4.75: HEURISTIC TEST GAP ANALYSIS
+  Purpose: Find functions where tests are missing, trivial, or miss obvious edge cases
+  Method: Static analysis — reads code + tests, identifies gaps via pattern inspection
+  NOTE: This is NOT real mutation testing (which modifies code and runs tests).
+  This is heuristic analysis — Claude reads implementation and test code, then identifies
+  edge cases the tests likely miss. It catches common gaps (no null test, no boundary test)
+  but cannot guarantee all mutations would be caught.
+  Prerequisite: Level 2 (tests pass) AND Level 4.5 (scenarios covered) both passed
+    If either failed → SKIP (fix those first)
+  How:
+    For each changed file that has corresponding tests:
+
+    1. IDENTIFY testable logic:
+       - Focus on business logic functions (not config, types, I/O wrappers)
+       - Prioritize functions with: conditionals, calculations, transformations, state changes
+
+    2. FOR each testable function, check for common test gaps:
+
+       GAP PATTERNS TO CHECK:
+       ┌─────────────────────────┬──────────────────────────────────────────────────┐
+       │ Gap Pattern             │ What to look for                                 │
+       ├─────────────────────────┼──────────────────────────────────────────────────┤
+       │ Missing boundary test   │ Code has (x > 5) but no test at x=5, x=6         │
+       │ Missing null/undefined  │ Function takes params but no test passes null     │
+       │ Missing negative case   │ Function handles positive but no test for negative │
+       │ Missing empty input     │ Function processes collection but no test for []   │
+       │ Trivial assertion       │ Test only asserts status code, not response body  │
+       │ Missing error path      │ Code has catch/throw but no test triggers error   │
+       │ Untested branch         │ if/else exists but tests only cover one branch    │
+       └─────────────────────────┴──────────────────────────────────────────────────┘
+
+    3. FOR each function:
+       a. Read the implementation code — identify branches, boundaries, error paths
+       b. Read the test code — identify which paths are actually tested
+       c. Compare: which implementation paths have no corresponding test?
+       d. If gaps found → FLAG with specific missing cases
+
+    4. CLASSIFY per function:
+       STRONG — all branches and edge cases have tests
+       WEAK   — some paths tested but obvious gaps (e.g., happy path only)
+       NO TEST — no test exists for this function
+
+    5. REPORT per function:
+       ✅ UserService.validateEmail — STRONG (all branches covered)
+       ⚠️  PaymentService.calculateRefund — WEAK (happy path only)
+          Gaps: no test for amount=0, negative amount, null input
+          Suggestion: "Add test cases for edge cases"
+       ❌ AuthService.generateToken — NO TEST (security-critical)
+
+    6. GATE behavior:
+       CRITICAL (no test for security-critical code) → BLOCK
+       HIGH (zero test coverage for any function) → WARN
+       MEDIUM/LOW (some gaps) → INFO (show in summary, no gate impact)
+
+    7. Write results to .temper/test-gap-report.json:
+       {
+         "version": 1,
+         "run_date": "{ISO date}",
+         "files_analyzed": {N},
+         "functions_analyzed": {N},
+         "edge_cases_checked": {N},
+         "gaps_found": {N},
+         "test_gap_score": {0.0-1.0},
+         "weak_functions": [
+           {
+             "file": "{path}",
+             "function": "{name}",
+             "gaps_found": {N},
+             "edge_cases_total": {N},
+             "gaps": ["boundary", "null", "negative"]
+           }
+         ]
+       }
+
+Level 4.85: API DIFF REVIEW (Heuristic Contract Check)
+  Purpose: Detect API contract changes and check if consumers are likely affected
+  Method: Static analysis — reads git diff for API boundary files, greps for consumers
+  NOTE: This is NOT real contract testing (which runs consumer tests against provider).
+  This reads the diff, identifies API shape changes, and greps for consumer code.
+  It catches obvious breaking changes (renamed fields, removed endpoints) but cannot
+  verify runtime compatibility.
+  Prerequisite: Changed files include API boundary files (controllers, routes, DTOs,
+    shared types). If no API boundary files changed → SKIP.
+  How:
+
+    1. DETECT contract changes:
+       a. For each changed API boundary file, extract the contract:
+          - Endpoint path and HTTP method
+          - Request structure (fields, types, required/optional)
+          - Response structure (fields, types)
+          - Error codes and error response format
+       b. Compare old (git diff removals) vs new (current code):
+          - ADDITIVE: new field, new endpoint, new optional param → LOW risk
+          - MODIFIED: field type changed, required ↔ optional → HIGH risk
+          - BREAKING: required field removed, endpoint renamed/removed,
+            incompatible type change → CRITICAL
+
+    2. FIND consumers for each changed contract:
+       a. Grep test files: grep -r "{endpoint}" tests/ --include="*.ts|*.js|*.py|*.java"
+       b. Grep frontend (if monorepo): grep -r "fetch.*{endpoint}" frontend/
+       c. Grep for DTO/type imports: grep -r "import.*{TypeName}" src/
+       d. Check webhook/event subscribers if applicable
+
+    3. VERIFY consumers handle new contract:
+       For each consumer found:
+       a. Read the consumer code
+       b. Check if it handles: new required fields, changed types, removed fields
+       c. If consumer test exists: check if it passes with new contract
+
+    4. CLASSIFY and gate:
+       CRITICAL: Breaking change + consumer NOT updated → BLOCK
+       HIGH: Modified contract + no consumer tests exist → WARN
+       MEDIUM: Additive change + consumers not updated → INFO
+       LOW: Internal contract (no external consumers) → INFO
+
+    5. REPORT:
+       CONTRACT CHANGES:
+         ✅ GET /api/users — ADDITIVE (new field: emailVerified)
+           Consumers: 3 tests, 1 frontend — all backward compatible
+         ❌ POST /api/auth/login — BREAKING (response.token → response.access_token)
+           Consumers: 2 tests ✅, 1 frontend ❌ NOT UPDATED
+           BLOCKING: Frontend will break on deploy
+         ⚠️ PaymentRequestDto.amount: number → string
+           Breaking type change — runtime risk if non-numeric value
+
+    6. Write results to .temper/contract-map.json:
+       {
+         "version": 1,
+         "last_updated": "{ISO timestamp}",
+         "contracts": [
+           {
+             "endpoint": "POST /api/auth/login",
+             "change_type": "BREAKING",
+             "consumers": [
+               {
+                 "type": "test",
+                 "path": "tests/integration/auth.test.ts",
+                 "verified": true
+               },
+               {
+                 "type": "frontend",
+                 "path": "frontend/src/services/AuthService.ts",
+                 "verified": false
+               }
+             ]
+           }
+         ]
+       }
+
+Level 4.9: PERFORMANCE REGRESSION GUARD
+  Purpose: Catch performance regressions before deploy
+  Method: Runs project benchmarks and compares against baseline
+  Prerequisite: Benchmarks must exist in the project AND must be runnable:
+    - Check for: benchmarks/, perf/, .github/workflows/bench.yml
+    - OR: package.json has "benchmark" script, pyproject.toml has pytest-benchmark
+    - If no benchmarks configured → SKIP
+    - If benchmarks exist but can't run (missing deps, env) → SKIP with note
+  How:
+
+    1. LOAD baseline from .temper/performance-baseline.json (if exists)
+    2. RUN benchmarks:
+       npm run benchmark OR pytest benchmarks/ OR cargo bench OR go test -bench=.
+    3. CAPTURE metrics from benchmark output
+    4. COMPARE each metric against baseline:
+
+       THRESHOLDS:
+       ┌──────────────────┬───────────────┬─────────────────────────────────────┐
+       │ Slowdown         │ Classification│ Gate Action                         │
+       ├──────────────────┼───────────────┼─────────────────────────────────────┤
+       │ < 5%             │ NO REGRESSION │ Pass, update baseline               │
+       │ 5-10%            │ WARNING       │ Show in summary, non-blocking       │
+       │ > 10%            │ REGRESSION    │ BLOCK, suggest investigation        │
+       │ > 20%            │ CRITICAL      │ BLOCK, require explicit approval    │
+       └──────────────────┴───────────────┴─────────────────────────────────────┘
+
+       EXEMPTIONS:
+       - Benchmark variance > 20% (historically flaky) → downgrade by 1 level
+       - Benchmark marked non-critical in config → WARN only (never BLOCK)
+
+    5. REPORT:
+       PERFORMANCE BASELINE COMPARISON:
+         ✅ bcrypt.hash — 1.2% faster (acceptable)
+         ⚠️  PDF.generate — 7.3% slower (WARNING: exceeds 5% threshold)
+         ❌ UserSearch.query — 15.4% slower (REGRESSION: exceeds 10%)
+            Expected: 45ms, Actual: 52ms
+            Possible cause: N+1 query in UserSearchService (see review)
+            Suggestion: Add LIMIT or batch the query
+
+    6. UPDATE baseline (if no regressions):
+       Write new metrics to .temper/performance-baseline.json:
+       {
+         "version": 1,
+         "last_updated": "{ISO timestamp}",
+         "benchmarks": [
+           {
+             "name": "UserSearch.query",
+             "mean_ms": 45.2,
+             "variance": 1.1,
+             "history": [44.8, 45.1, 44.9, 45.2]
+           }
+         ]
+       }
 
 Level 5: LINT/FORMAT
   Purpose: Code style checks pass
@@ -190,15 +397,31 @@ After all levels complete, show a nice summary:
 │ CHECK — {Project Name}                                      │
 ├─────────────────────────────────────────────────────────────┤
 │ WHAT WAS VALIDATED                                           │
-│    Compile:   {status} {time}                               │
-│    Tests:     {status} {time} — {N} passed                  │
-│    Coverage:  {status} {X}% (threshold: {Y}%)               │
-│    Scenarios: {status} {X}/{Y} covered (if intent.md exists) │
-│    Lint:      {status} {time}                               │
-│    Security:  {status} {time}                               │
+│    Compile:    {status} {time}                               │
+│    Tests:      {status} {time} — {N} passed                  │
+│    Coverage:   {status} {X}% (threshold: {Y}%)               │
+│    Scenarios:  {status} {X}/{Y} covered (if intent.md)       │
+│    Test Gaps:  {status} {X}% ({N}/{N} functions analyzed)      │
+│    API Diff:   {status} {N} changes ({N} consumers checked)    │
+│    Perf:       {status} {N} regressions (baseline updated)   │
+│    Lint:       {status} {time}                               │
+│    Security:   {status} {time}                               │
 │                                                             │
-│ Skipped: Integration (no tool configured)                 │
+│ Skipped: Integration (no tool configured)                   │
 │ Total: {time}                                               │
+│                                                             │
+│ TEST GAPS (if any WEAK/NO TEST found)                     │
+│    ⚠️  {Function} — {N} edge cases untested (WEAK)         │
+│    ❌ {Function} — NO TEST (security-critical)                │
+│                                                             │
+│ API DIFF (if Level 4.85 ran)                                │
+│    ❌ BREAKING: {endpoint} — {description}                    │
+│    ✅ ADDITIVE: {endpoint} — backward compatible              │
+│                                                             │
+│ PERFORMANCE (if Level 4.9 ran)                               │
+│    ❌ {benchmark} — {X}% slower (REGRESSION)                  │
+│    ⚠️  {benchmark} — {X}% slower (WARNING)                   │
+│    ✅ All benchmarks within baseline                          │
 │                                                             │
 │ SCENARIO VERDICT (if intent.md exists AND Level 4.5 ran)    │
 │    (Omit this entire section if pipeline stopped before 4.5) │

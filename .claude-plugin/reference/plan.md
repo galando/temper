@@ -252,6 +252,7 @@ Based on the reference map, determine:
 - Modifies shared library consumed by 5+ other modules
 - Changes database schema
 - Module has historically high defect rate (check .temper/metrics.json if exists)
+- Security hot path detected (Phase 4.1 sensitivity CRITICAL or HIGH)
 
 **Override:** If user passed `--full`, use Complex. If `--quick`, use Simple.
 
@@ -286,6 +287,111 @@ BLAST RADIUS — {feature-name}
     ✅ {pattern} followed
     ✅ {pattern} followed
     ⚠️ {concern}
+```
+
+### Phase 4.1: Security Hot Path Detection
+
+During blast radius analysis, classify changed files by security sensitivity and trace call chains to entry points. This proactively identifies security risks before code is written.
+
+**Security sensitivity classification:**
+
+| Level | Keywords/Patterns | Examples |
+|-------|-------------------|----------|
+| CRITICAL | auth, crypto, payment, secret, password, token, encrypt, decrypt, PII | AuthService, PaymentService, TokenService |
+| HIGH | session, permission, role, rate-limit, validate, sanitize, admin | SessionManager, PermissionGuard, RateLimiter |
+| MEDIUM | logging, error-handling, api-route, handler, middleware | ErrorHandler, RequestLogger, ApiMiddleware |
+| LOW | config, constants, types, helpers, utils, DTOs | AppConfig, Constants, Types |
+
+**Detection steps:**
+
+```
+1. CLASSIFY each file in the blast radius by sensitivity:
+   - Match file path + function names against the classification table
+   - File inherits the HIGHEST sensitivity of any function it contains
+   - Default: LOW (unknown files)
+
+2. For CRITICAL and HIGH files, trace call chains to entry points:
+   a. Find all IMPORTERS of the changed file:
+      grep "from.*{file}" OR "require.*{file}" OR import("{file}")
+   b. For each importer, determine if it's an ENTRY POINT:
+      - HTTP handler/controller/route → Web entry point
+      - CLI command/main function → CLI entry point
+      - Worker/job processor → Background entry point
+      - WebSocket handler → Real-time entry point
+      - Event subscriber → Async entry point
+   c. Build call chain: Entry Point → Intermediate → Changed Code
+
+3. ASSESS security exposure per call chain:
+   - Reachable from UNAUTHENTICATED endpoint → exposure: PUBLIC
+   - Reachable from AUTHENTICATED endpoint → exposure: AUTHENTICATED
+   - Reachable from ADMIN-only endpoint → exposure: ADMIN
+   - Not reachable from any entry point → exposure: INTERNAL
+
+4. FLAG security risks:
+   - CRITICAL file reachable from PUBLIC endpoint → CRITICAL risk
+   - CRITICAL file reachable from AUTHENTICATED endpoint → HIGH risk
+   - HIGH file without test coverage → HIGH risk
+   - Any sensitive file with no entry point trace → MEDIUM risk (dead code or missing integration)
+```
+
+**Output — add to blast radius section:**
+
+```
+SECURITY IMPACT:
+  {File} ({function}) → {CRITICAL/HIGH/MEDIUM}
+    Reachable from: {entry point} ({exposure level})
+    Risk: {specific risk description}
+    Recommendation: {actionable suggestion}
+```
+
+**Example output:**
+
+```
+SECURITY IMPACT:
+  src/services/PaymentService.ts (processRefund) → CRITICAL
+    Reachable from: POST /api/refunds (AUTHENTICATED)
+    Risk: User could refund any payment if authorization check missing
+    Recommendation: Add scenario "User can only refund own payments"
+
+  src/middleware/auth.ts (verifyToken) → HIGH
+    Reachable from: 47 endpoints (PUBLIC + AUTHENTICATED)
+    Risk: Token validation bug affects all authenticated endpoints
+    Recommendation: Add integration test for expired/invalid tokens
+
+  src/utils/logger.ts (formatLogEntry) → LOW
+    Reachable from: Internal only
+    Risk: No security impact
+```
+
+**Integration with risk assessment:**
+- Security hot path findings add to the Phase 3 risk multipliers
+- Each CRITICAL finding → +1 complexity level
+- Each HIGH finding → consider adding security-focused scenario in Phase 4.5
+- Security findings persist to `.temper/security-map.json` for use in review and check phases
+
+**State:** Creates `.temper/security-map.json`:
+
+```json
+{
+  "version": 1,
+  "last_updated": "{ISO timestamp}",
+  "hot_paths": [
+    {
+      "file": "src/services/PaymentService.ts",
+      "function": "processRefund",
+      "sensitivity": "CRITICAL",
+      "entry_points": [
+        {
+          "route": "POST /api/refunds",
+          "exposure": "AUTHENTICATED",
+          "has_auth_middleware": true,
+          "has_authorization_check": false
+        }
+      ],
+      "last_reviewed": "{ISO timestamp}"
+    }
+  ]
+}
 ```
 
 ### Phase 4.5: Derive Scenarios (BDD — before architecture)
@@ -608,6 +714,10 @@ Show a summary box, then offer two ways to proceed: the quick summary (current b
 │    Modify: {N} — {key files}                               │
 │                                                             │
 │ ⚡ RISK: {Low/Medium/High} — {reason}                       │
+│                                                             │
+│ 🔒 SECURITY (if hot paths found)                            │
+│    {N} CRITICAL, {N} HIGH hot paths                         │
+│    {top finding}                                            │
 └─────────────────────────────────────────────────────────────┘
 
 Diagram (rendered below summary box):

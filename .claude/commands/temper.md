@@ -26,8 +26,6 @@ argument-hint: "<feature-description>"
 
 Each stage runs in an **isolated Agent subprocess**. This provides genuine context clearing — each stage starts with a clean context window containing only what it needs.
 
-Each stage runs in an **isolated Agent subprocess**. This provides genuine context clearing — each stage starts with a clean context window containing only what it needs.
-
 ```
 ORCHESTRATOR (this file)
   │
@@ -141,6 +139,10 @@ Return ONLY:
 │      • {file} — {change reason}                             │
 │                                                             │
 │ RISK: {Low/Medium/High} — {reason}                          │
+│                                                             │
+│ SECURITY (if hot paths found)                               │
+│    {N} CRITICAL, {N} HIGH hot paths                         │
+│    {top finding}                                            │
 └─────────────────────────────────────────────────────────────┘
 
 Diagram (rendered below summary box — MUST be ASCII art, NOT raw mermaid source):
@@ -358,21 +360,52 @@ Return ONLY:
 ┌─────────────────────────────────────────────────────────────┐
 │ REVIEW — {Feature Name}                                     │
 ├─────────────────────────────────────────────────────────────┤
-│ WHAT WAS REVIEWED                                           │
-│    Files: {N} changed files                                 │
-│    Confidence: {X}%                                         │
+│ DIFF FINGERPRINT                                            │
+│    Files: {N} changed ({A} additions, {M} modifications)    │
+│    Hunks: {N} ({L} logic, {S} structure, {T} test)          │
+│    Security: {N} CRITICAL, {N} HIGH                         │
 │                                                             │
 │ ISSUES FOUND                                                │
-│    Critical: {N} | High: {N} | Medium: {N} | Low: {N}       │
+│    Critical: {N} | High: {N} | Medium: {N} | Low: {N}      │
 │    Auto-fixable: {N}                                        │
 │                                                             │
-│ TOP ISSUES                                                  │
-│    1. [{severity}] {file}:{line} — {one-line description}   │
-│    2. [{severity}] {file}:{line} — {one-line description}  │
+│ SECURITY HOT PATHS                                          │
+│    ⚠️  {File}.{function} — CRITICAL                        │
+│       Reachable from {entry_point} ({exposure})             │
+│    ✅ {File}.{function} — tests cover boundaries             │
 │                                                             │
-│ SCENARIO COVERAGE                                           │
+│ CROSS-FILE CONSISTENCY                                      │
+│    ⚠️  {file} uses {new_pattern}, others use {old_pattern} │
+│    ✅ All patterns consistent                               │
+│                                                             │
+│ PERFORMANCE PATTERNS                                        │
+│    [HIGH] N+1 query — {file}:{line}                        │
+│    [MEDIUM] Missing pagination — {endpoint}                │
+│                                                             │
+│ CONTRACT CHANGES (if API files changed)                     │
+│    ❌ BREAKING: {endpoint} — {description}                  │
+│    ✅ ADDITIVE: {endpoint} — backward compatible            │
+│                                                             │
+│ SCENARIO COVERAGE (from intent.md)                          │
 │    Covered: {X}/{Y} ({Z} automated, {W} manual)             │
+│    (X = STRONG + ½ WEAK per Step 3a labels)                │
 │    ❌ {uncovered scenario name}                              │
+│                                                             │
+│ TOP ISSUES                                                  │
+│    1. [{severity}] {file}:{line} — {one-line description}  │
+│    2. [{severity}] {file}:{line} — {one-line description} │
+│                                                             │
+│ INTENT VERDICT (if intent.md exists)                        │
+│    Problem: {one-line problem statement}                    │
+│    Verdict: ✅ Intent satisfied / ⚠️ Partial / ❌ Not met    │
+│    Evidence: {X}/{Y} scenarios substantively validated      │
+│      (Y = total scenarios in intent.md, X = STRONG + ½ WEAK) │
+│    Mutation spot-check: {N} PROVEN, {N} UNVERIFIED          │
+│    Gaps:                                                    │
+│      [assertion] {trivial/incomplete assertion gaps}        │
+│      [mutation] {tests that didn't catch real mutations}    │
+│      [drift] {implementation vs problem drift}              │
+│      [coverage] {uncovered decision points}                 │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -449,13 +482,17 @@ Return ONLY:
 │ CHECK — {Project Name}                                      │
 ├─────────────────────────────────────────────────────────────┤
 │ WHAT WAS VALIDATED                                          │
-│    Compile:   {status} {time}                               │
-│    Tests:     {status} {time} — {N} passed                  │
-│    Coverage:  {status} {X}% (threshold: {Y}%)               │
-│    Scenarios: {status} {X}/{Y} covered (if intent.md)       │
-│    Lint:      {status} {time}                               │
-│    Security:  {status} {time}                               │
+│    Compile:    {status} {time}                               │
+│    Tests:      {status} {time} — {N} passed                  │
+│    Coverage:   {status} {X}% (threshold: {Y}%)               │
+│    Scenarios:  {status} {X}/{Y} covered (if intent.md)       │
+│    Test Gaps:  {status} {X}% ({N}/{N} functions analyzed)      │
+│    API Diff:   {status} {N} changes ({N} consumers checked)    │
+│    Perf:       {status} {N} regressions (if benchmarks)      │
+│    Lint:       {status} {time}                               │
+│    Security:   {status} {time}                               │
 │                                                             │
+│ Skipped: Integration (no tool configured)                   │
 │ Total: {time}                                               │
 └─────────────────────────────────────────────────────────────┘
 ```
