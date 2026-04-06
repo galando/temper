@@ -29,7 +29,7 @@ Three questions every AI-generated feature should answer:
 2. **Does it do the right things?** (Behavior)
 3. **Does the code work?** (Tests)
 
-Most AI tools answer only the third. Temper answers all three — and now (v3.0.0) adds **security hot path detection, mutation testing, API contract validation, and performance regression guards**.
+Most AI tools answer only the third. Temper answers all three — and now (v3.0.0) adds **security hot path detection, heuristic test gap analysis, API contract validation, and performance regression guards**.
 
 ## What's New in v3.0.0
 
@@ -173,7 +173,7 @@ The queue consumer issue? Blast radius flagged it. The missing rate limiting? Sc
 | [`/temper:plan`](commands.html#plan) | Blast radius + security hot paths + BDD scenarios + interactive walkthrough |
 | [`/temper:build`](commands.html#build) | Scenario-driven TDD gates, resume from checkpoint |
 | [`/temper:review`](commands.html#review) | Diff fingerprinting + security hot paths + intent validation + confidence scoring |
-| [`/temper:check`](commands.html#check) | Stack validation + mutation testing + contract testing + perf regression |
+| [`/temper:check`](commands.html#check) | Stack validation + test gap analysis + contract checking + perf regression |
 | [`/temper:fix`](commands.html#fix) | Multi-hypothesis root cause analysis |
 | [`/temper:pack`](commands.html#pack) | Manage quality packs: view, toggle, create |
 | [`/temper:status`](commands.html#status) | Quality metrics, hotspot tracking |

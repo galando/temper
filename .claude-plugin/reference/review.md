@@ -351,8 +351,6 @@ These labels feed into the INTENT VERDICT evidence count: STRONG scenarios count
 
 After validating individual scenarios, step back and assess the BIG picture:
 
-After validating individual scenarios, step back and assess the BIG picture:
-
 ```
 1. Re-read the Problem: field from intent.md
 2. Read the implementation code (changed files)

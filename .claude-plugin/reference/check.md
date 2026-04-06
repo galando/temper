@@ -104,7 +104,7 @@ Level 4.5: SCENARIO COVERAGE (BDD Final Gate — Behavioral Verification)
   Confidence: MECHANICAL for existence/passing, SEMANTIC for assertion quality
     - Test exists + passes → proven (test runner output)
     - Assertion covers Then clause → Claude's judgment (not proven)
-    - See review.md Step 3d for live mutation proof (if review ran first)
+    - See review.md Step 3d for live mutation spot-check results (if review ran first and security-sensitive files were found)
   Prerequisite: intent.md exists at .temper/specs/{spec}/intent.md
     If running standalone: resolve {spec} by listing .temper/specs/ directories and
     using the most recently modified one. If build-state.json exists, read spec from there.
@@ -208,16 +208,16 @@ Level 4.75: HEURISTIC TEST GAP ANALYSIS
          "version": 1,
          "run_date": "{ISO date}",
          "files_analyzed": {N},
-         "functions_tested": {N},
-         "mutations_checked": {N},
-         "mutations_caught": {N},
+         "functions_analyzed": {N},
+         "edge_cases_checked": {N},
+         "gaps_found": {N},
          "test_gap_score": {0.0-1.0},
          "weak_functions": [
            {
              "file": "{path}",
              "function": "{name}",
-             "mutations_caught": {N},
-             "mutations_total": {N},
+             "gaps_found": {N},
+             "edge_cases_total": {N},
              "gaps": ["boundary", "null", "negative"]
            }
          ]

@@ -283,7 +283,7 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ## What's New in v3.0.0
 
-v3.0.0 adds a **quality intelligence layer** to review and check — zero new dependencies, zero config. Pure methodology improvements that make every review and check dramatically more thorough.
+v3.0.0 adds a **quality intelligence layer** to review and check — zero new dependencies, no setup required. Pure methodology improvements that make every review and check dramatically more thorough.
 
 ### Security Hot Path Detection
 

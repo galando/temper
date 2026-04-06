@@ -26,8 +26,6 @@ argument-hint: "<feature-description>"
 
 Each stage runs in an **isolated Agent subprocess**. This provides genuine context clearing — each stage starts with a clean context window containing only what it needs.
 
-Each stage runs in an **isolated Agent subprocess**. This provides genuine context clearing — each stage starts with a clean context window containing only what it needs.
-
 ```
 ORCHESTRATOR (this file)
   │
@@ -388,8 +386,9 @@ Return ONLY:
 │    ❌ BREAKING: {endpoint} — {description}                  │
 │    ✅ ADDITIVE: {endpoint} — backward compatible            │
 │                                                             │
-│ SCENARIO COVERAGE                                           │
+│ SCENARIO COVERAGE (from intent.md)                          │
 │    Covered: {X}/{Y} ({Z} automated, {W} manual)             │
+│    (X = STRONG + ½ WEAK per Step 3a labels)                │
 │    ❌ {uncovered scenario name}                              │
 │                                                             │
 │ TOP ISSUES                                                  │
@@ -397,8 +396,16 @@ Return ONLY:
 │    2. [{severity}] {file}:{line} — {one-line description} │
 │                                                             │
 │ INTENT VERDICT (if intent.md exists)                        │
+│    Problem: {one-line problem statement}                    │
 │    Verdict: ✅ Intent satisfied / ⚠️ Partial / ❌ Not met    │
-│    Evidence: {X}/{Y} scenarios validated                    │
+│    Evidence: {X}/{Y} scenarios substantively validated      │
+│      (Y = total scenarios in intent.md, X = STRONG + ½ WEAK) │
+│    Mutation spot-check: {N} PROVEN, {N} UNVERIFIED          │
+│    Gaps:                                                    │
+│      [assertion] {trivial/incomplete assertion gaps}        │
+│      [mutation] {tests that didn't catch real mutations}    │
+│      [drift] {implementation vs problem drift}              │
+│      [coverage] {uncovered decision points}                 │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -479,12 +486,13 @@ Return ONLY:
 │    Tests:      {status} {time} — {N} passed                  │
 │    Coverage:   {status} {X}% (threshold: {Y}%)               │
 │    Scenarios:  {status} {X}/{Y} covered (if intent.md)       │
-│    Test Gaps:  {status} {score}% ({N}/{N} analyzed)        │
-│    API Diff:   {status} {N} changes, {N} checked             │
+│    Test Gaps:  {status} {X}% ({N}/{N} functions analyzed)      │
+│    API Diff:   {status} {N} changes ({N} consumers checked)    │
 │    Perf:       {status} {N} regressions (if benchmarks)      │
 │    Lint:       {status} {time}                               │
 │    Security:   {status} {time}                               │
 │                                                             │
+│ Skipped: Integration (no tool configured)                   │
 │ Total: {time}                                               │
 └─────────────────────────────────────────────────────────────┘
 ```
