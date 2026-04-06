@@ -141,6 +141,10 @@ Return ONLY:
 │      • {file} — {change reason}                             │
 │                                                             │
 │ RISK: {Low/Medium/High} — {reason}                          │
+│                                                             │
+│ SECURITY (if hot paths found)                               │
+│    {N} CRITICAL, {N} HIGH hot paths                         │
+│    {top finding}                                            │
 └─────────────────────────────────────────────────────────────┘
 
 Diagram (rendered below summary box — MUST be ASCII art, NOT raw mermaid source):
@@ -358,21 +362,43 @@ Return ONLY:
 ┌─────────────────────────────────────────────────────────────┐
 │ REVIEW — {Feature Name}                                     │
 ├─────────────────────────────────────────────────────────────┤
-│ WHAT WAS REVIEWED                                           │
-│    Files: {N} changed files                                 │
-│    Confidence: {X}%                                         │
+│ DIFF FINGERPRINT                                            │
+│    Files: {N} changed ({A} additions, {M} modifications)    │
+│    Hunks: {N} ({L} logic, {S} structure, {T} test)          │
+│    Security: {N} CRITICAL, {N} HIGH                         │
 │                                                             │
 │ ISSUES FOUND                                                │
-│    Critical: {N} | High: {N} | Medium: {N} | Low: {N}       │
+│    Critical: {N} | High: {N} | Medium: {N} | Low: {N}      │
 │    Auto-fixable: {N}                                        │
 │                                                             │
-│ TOP ISSUES                                                  │
-│    1. [{severity}] {file}:{line} — {one-line description}   │
-│    2. [{severity}] {file}:{line} — {one-line description}  │
+│ SECURITY HOT PATHS                                          │
+│    ⚠️  {File}.{function} — CRITICAL                        │
+│       Reachable from {entry_point} ({exposure})             │
+│    ✅ {File}.{function} — tests cover boundaries             │
+│                                                             │
+│ CROSS-FILE CONSISTENCY                                      │
+│    ⚠️  {file} uses {new_pattern}, others use {old_pattern} │
+│    ✅ All patterns consistent                               │
+│                                                             │
+│ PERFORMANCE PATTERNS                                        │
+│    [HIGH] N+1 query — {file}:{line}                        │
+│    [MEDIUM] Missing pagination — {endpoint}                │
+│                                                             │
+│ CONTRACT CHANGES (if API files changed)                     │
+│    ❌ BREAKING: {endpoint} — {description}                  │
+│    ✅ ADDITIVE: {endpoint} — backward compatible            │
 │                                                             │
 │ SCENARIO COVERAGE                                           │
 │    Covered: {X}/{Y} ({Z} automated, {W} manual)             │
 │    ❌ {uncovered scenario name}                              │
+│                                                             │
+│ TOP ISSUES                                                  │
+│    1. [{severity}] {file}:{line} — {one-line description}  │
+│    2. [{severity}] {file}:{line} — {one-line description} │
+│                                                             │
+│ INTENT VERDICT (if intent.md exists)                        │
+│    Verdict: ✅ Intent satisfied / ⚠️ Partial / ❌ Not met    │
+│    Evidence: {X}/{Y} scenarios validated                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -449,12 +475,15 @@ Return ONLY:
 │ CHECK — {Project Name}                                      │
 ├─────────────────────────────────────────────────────────────┤
 │ WHAT WAS VALIDATED                                          │
-│    Compile:   {status} {time}                               │
-│    Tests:     {status} {time} — {N} passed                  │
-│    Coverage:  {status} {X}% (threshold: {Y}%)               │
-│    Scenarios: {status} {X}/{Y} covered (if intent.md)       │
-│    Lint:      {status} {time}                               │
-│    Security:  {status} {time}                               │
+│    Compile:    {status} {time}                               │
+│    Tests:      {status} {time} — {N} passed                  │
+│    Coverage:   {status} {X}% (threshold: {Y}%)               │
+│    Scenarios:  {status} {X}/{Y} covered (if intent.md)       │
+│    Mutations:  {status} {score}% ({caught}/{total} caught)   │
+│    Contracts:  {status} {N} changes, {N} verified            │
+│    Perf:       {status} {N} regressions (if benchmarks)      │
+│    Lint:       {status} {time}                               │
+│    Security:   {status} {time}                               │
 │                                                             │
 │ Total: {time}                                               │
 └─────────────────────────────────────────────────────────────┘

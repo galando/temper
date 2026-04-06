@@ -67,6 +67,58 @@ git diff --stat HEAD
 # - If no specs: skip intent validation (existing behavior)
 ```
 
+### Step 1.5: Diff-Aware Fingerprinting
+
+Before launching subagents, build a diff fingerprint that classifies each changed region by risk level. This focuses review energy where it matters most.
+
+```
+1. Extract unified diff with context:
+   git diff -U5 HEAD~1..HEAD  # if committed
+   git diff -U5               # if uncommitted
+
+2. For each changed file, classify the change:
+   a. Change type:
+      - ADDITION: New file (git status shows "??")
+      - MODIFICATION: Existing file with hunks
+      - DELETION: File removed
+      - RENAME: File moved (git status shows "RNN")
+
+   b. For MODIFICATION files, parse each hunk:
+      - Identify the function/method containing the change
+        (parse upward from hunk for def, function, class, const, etc.)
+      - Classify the change:
+        LOGIC — business logic, conditionals, calculations
+        STRUCTURE — new class, new method, refactored signature
+        CONFIG — settings, environment, feature flags
+        TEST — test files, test helpers, fixtures
+        IMPORT — import/require changes only
+
+   c. Detect risk signals per hunk:
+      - SECURITY: password, token, jwt, encrypt, decrypt, hash, auth,
+        secret, credential, api-key, session
+      - DATA_MUTATION: insert, update, delete, create, drop, alter,
+        save, persist, remove
+      - ERROR_HANDLING: throw, catch, error, exception, reject, fail
+      - CONCURRENCY: async, await, promise, spawn, thread, goroutine,
+        channel, mutex, lock
+      - EXTERNAL_API: fetch, http, request, client, axios, curl, grpc
+
+3. Build the fingerprint (ephemeral — not persisted):
+
+   DIFF FINGERPRINT:
+     Files: {N} changed ({A} additions, {M} modifications, {D} deletions)
+     Hunks: {N} total ({L} logic, {S} structure, {C} config, {T} test, {I} import)
+     High-risk regions: {N}
+       - {file}:{hunk} — {risk signals}
+       - {file}:{hunk} — {risk signals}
+     Security sensitivity: {N} CRITICAL, {N} HIGH, {N} MEDIUM, {N} LOW
+```
+
+Pass this fingerprint to all subagents in Step 2. Subagents must:
+- Focus 80% of attention on hunks with risk signals
+- Review remaining changed lines at standard depth
+- Include fingerprint summary in their findings
+
 ### Step 2: Launch Parallel Review Subagents
 
 **If changed files span multiple domains (e.g., backend + frontend), launch parallel subagents.**
@@ -112,6 +164,75 @@ PERFORMANCE PATTERNS to check:
 - Sync I/O in hot path: Blocking operations in request handlers, event loops
 - Large objects in memory: Loading full datasets, unprocessed batch operations
 - Missing pagination: Endpoints returning unbounded lists
+- Inefficient data structures: Array.includes/find in loops (should be Set/Map)
+
+PERFORMANCE ANTI-PATTERN DETECTION (for each changed file):
+
+1. N+1 QUERY DETECTION:
+   - Find loops (for/forEach/while) containing database/API calls
+   - Pattern: loop body has db.query, Model.find, fetch, axios, http.request
+   - FLAG as HIGH if: loop count is unbounded (user-provided data), no batching
+   - Suggestion: "Move query outside loop or use batch/join"
+
+2. MISSING PAGINATION:
+   - Find endpoints returning lists: return [], map(), filter(), findAll()
+   - Check for pagination parameters: limit, offset, page, cursor, take, skip
+   - FLAG as HIGH if: dataset could grow + no max result size enforced
+   - Suggestion: "Add limit/offset parameters and LIMIT clause"
+
+3. UNBOUNDED OPERATIONS:
+   - Recursion without depth limit
+   - Operations on unbounded user input (loops over user arrays, regex without timeout)
+   - FLAG as MEDIUM if: no max size enforced or no timeout/deadline
+
+4. SYNC I/O IN HOT PATH:
+   - fs.readFileSync, sync.* methods in HTTP handlers/event-loop contexts
+   - FLAG as HIGH if: in request handler with no async alternative
+
+5. INEFFICIENT DATA STRUCTURES:
+   - Array.includes() or Array.find() inside loops (O(n²))
+   - FLAG as MEDIUM if: loop over >10 items or called multiple times per request
+   - Suggestion: "Convert to Set/Map for O(1) lookups"
+
+Report format:
+  [HIGH] N+1 query — {file}:{line}: forEach loop with {Model.find()}
+    Impact: N database queries for N items
+    Suggestion: Use batch query with $in/IN clause
+
+SECURITY HOT PATH REVIEW (for files flagged CRITICAL/HIGH in diff fingerprint):
+
+For any file with security sensitivity CRITICAL or HIGH:
+
+1. TRACE all call chains:
+   a. Read the changed function/method
+   b. Grep for all usages of the function across the codebase
+   c. For each usage, determine if it's an entry point:
+      - HTTP handler → check if auth middleware applied
+      - Background job → check if inputs validated
+      - Library function → check if caller sanitizes inputs
+
+2. CHECK security boundaries:
+   - UNAUTHENTICATED code → must have rate limiting
+   - AUTHENTICATED code → must verify user owns resource (authorization)
+   - ADMIN code → must verify admin role
+   - INPUT handling → must validate/sanitize
+   - OUTPUT handling → must escape/redact sensitive data
+
+3. VERIFY tests cover security boundaries:
+   - Find test files for each entry point
+   - Check for tests covering: unauthorized access, boundary violations,
+     input validation, error handling (no stack traces leaked)
+
+4. FLAG severity:
+   CRITICAL: Security bug reachable from unauthenticated input
+             Missing authorization check on privileged operation
+             Sensitive data leaked in error messages/logs
+   HIGH:     Security boundary untested
+             Input validation missing
+             Error handling exposes system details
+
+IMPORTANT: Security findings ALWAYS bypass confidence filtering.
+Report them regardless of confidence threshold.
 
 AI-CODE DETECTION (apply to all files):
 - Hallucinated APIs: verify function calls exist in dependencies
@@ -262,6 +383,178 @@ Check whether the code's decision points have corresponding scenarios:
 
 This catches missing scenarios that the plan phase didn't anticipate. Only scans changed files (not entire codebase) to keep scope reasonable. Low severity by default — it's a suggestion, not a blocker.
 
+### Step 3.5: Cross-File Pattern Consistency Check
+
+Detect when a changed file introduces a pattern that contradicts established patterns in similar files. This prevents "pattern drift" where codebases slowly accumulate inconsistent approaches.
+
+**Pattern extraction (from changed files):**
+
+```
+For each changed file, extract key patterns:
+
+1. ERROR HANDLING PATTERNS:
+   - How are errors caught? (try/catch, if err, .catch, Result<> types)
+   - How are errors raised? (throw, return error, reject, Error())
+   - How are errors logged? (logger.error, console.error, log.error)
+
+2. API RESPONSE PATTERNS:
+   - Response structure (e.g., { data, error, meta })
+   - Status code usage (200 vs 201, 400 vs 422)
+   - Error response format (e.g., { code, message, details })
+
+3. VALIDATION PATTERNS:
+   - Input validation approach (schema library, manual checks, class validators)
+   - Validation error format
+
+4. ASYNC PATTERNS:
+   - Promise handling (async/await, .then(), callbacks)
+   - Error propagation in async contexts
+```
+
+**Consistency check:**
+
+```
+For each extracted pattern:
+  1. Grep for the same pattern in OTHER files of the same type:
+     - Changed file is a service? → grep src/services/
+     - Changed file is a controller? → grep src/controllers/
+     - Changed file is a test? → grep tests/
+     - No same-type files? → skip (no comparison baseline)
+
+  2. Compare the pattern:
+     - Is the new pattern CONSISTENT with existing files?
+     - Or does it introduce a NEW pattern that differs?
+
+  3. If NEW pattern detected:
+     a. Check intent.md and tasks.md — is this an intentional improvement?
+     b. Or is this INCONSISTENT drift? (same concept, different approach)
+
+  4. Flag inconsistencies:
+     - Severity: MEDIUM (not blocking, but should be intentional)
+     - Confidence: 0.6 (lower threshold — pattern matching is heuristic)
+     - Description: "Pattern drift: {changed_file} uses {new_pattern}
+       but {other_files} use {established_pattern}"
+     - Suggestion: "Align with established pattern OR document why new
+       pattern is better in intent.md"
+```
+
+**Example detection:**
+
+```
+Changed file: src/services/PaymentService.ts
+  - Uses try/catch for error handling
+  - Returns { success, data, error } objects
+
+Existing: src/services/UserService.ts, src/services/OrderService.ts
+  - Use Result<Ok, Err> type for error handling
+  - Never use try/catch at service layer
+
+FINDING: [MEDIUM] PaymentService introduces try/catch error handling
+         but other services use Result<> types.
+         Suggestion: Consider aligning for consistency.
+```
+
+**State update:** Extends `.temper/review-memory.json` with a `patterns` section:
+
+```json
+{
+  "patterns": {
+    "error_handling": {
+      "dominant_pattern": "Result<Ok, Err>",
+      "dominant_count": 8,
+      "exceptions": [
+        {
+          "file": "src/services/PaymentService.ts",
+          "pattern": "try/catch",
+          "first_seen": "{date}",
+          "intentional": false
+        }
+      ]
+    }
+  }
+}
+```
+
+After 3+ dismissals of same pattern type → auto-suppress consistency warnings for that pattern.
+
+### Step 3.6: API Contract Validation
+
+Detect API contract changes and verify consumers are updated. Catches breaking changes before they reach staging/production.
+
+**Only runs when changed files include API boundary files:**
+
+```
+Trigger detection — run Step 3.6 if ANY changed file matches:
+- src/controllers/**, src/routes/**, api/**
+- Files ending in: *Controller.*, *Routes.*, *Dto.*, *Request.*, *Response.*
+- Files in types/ or interfaces/ that export shared types
+- OpenAPI/Swagger spec files
+- GraphQL schema files (.graphql, .gql)
+```
+
+**Contract change analysis:**
+
+```
+1. EXTRACT the old contract (from git diff — removals):
+   - Old endpoint path and HTTP method
+   - Old request structure (fields, types, required/optional)
+   - Old response structure (fields, types)
+   - Old error codes
+
+2. EXTRACT the new contract (from current code):
+   - New endpoint path and HTTP method
+   - New request structure
+   - New response structure
+   - New error codes
+
+3. CLASSIFY change type:
+   - ADDITIVE: New field, new endpoint, new optional parameter → LOW risk
+   - MODIFIED: Field type changed, required → optional → HIGH risk
+   - BREAKING: Required field removed, endpoint renamed,
+     type changed incompatibly → CRITICAL
+
+4. FIND consumers:
+   a. Grep test files: grep -r "{endpoint_path}" tests/ --include="*.ts|*.js|*.py|*.java"
+   b. Grep frontend code (if monorepo): grep -r "fetch.*{endpoint}" frontend/
+   c. Grep for DTO/type imports: grep -r "import.*{TypeName}" --include="*.ts|*.js"
+   d. Check for webhook/event subscribers: grep -r "{event_name}" src/
+
+5. VERIFY consumers are updated:
+   - For BREAKING changes: ALL consumers must be updated → BLOCK if any aren't
+   - For MODIFIED changes: consumers handling old format must be updated → WARN
+   - For ADDITIVE changes: consumers should be backward compatible → INFO
+```
+
+**Report format:**
+
+```
+CONTRACT CHANGES:
+  ✅ GET /api/users — ADDITIVE (new field: emailVerified)
+    Consumers: 3 test files, 1 frontend component
+    All consumers backward compatible ✅
+
+  ❌ POST /api/auth/login — BREAKING (response.token removed,
+                                    response.access_token added)
+    Consumers: 2 test files, 1 frontend component
+    Tests updated ✅, Frontend NOT updated ❌
+    BLOCKING: Frontend will break on deploy
+
+  ⚠️ PaymentRequest.amount type changed (number → string)
+    BREAKING type change but stringified in handler
+    Risk: Runtime error if non-numeric string passed
+    Suggestion: Keep as number or add runtime validation
+
+CONTRACT VERDICT:
+  {N} contract changes detected
+  {N} breaking with unverified consumers → BLOCK
+  {N} high-risk type changes → WARN
+```
+
+**Integration with review findings:**
+- CRITICAL contract findings → added to CRITICAL issues count, bypass confidence filter
+- HIGH contract findings → added to HIGH issues count
+- All findings include: file, line, change type, affected consumers, suggested fix
+
 **If a Jira ticket or GitHub issue was linked (legacy mode):**
 
 ```
@@ -309,13 +602,31 @@ After review completes, show a nice summary:
 ┌─────────────────────────────────────────────────────────────┐
 │ REVIEW — {Feature Name}                                     │
 ├─────────────────────────────────────────────────────────────┤
-│ WHAT WAS REVIEWED                                           │
-│    Files: {N} changed files                                 │
-│    Confidence: {X}% (avg of all finding confidence scores)  │
+│ DIFF FINGERPRINT                                            │
+│    Files: {N} changed ({A} additions, {M} modifications)    │
+│    Hunks: {N} ({L} logic, {S} structure, {T} test)          │
+│    Security: {N} CRITICAL, {N} HIGH                         │
 │                                                             │
 │ ISSUES FOUND                                                │
 │    Critical: {N} | High: {N} | Medium: {N} | Low: {N}      │
 │    Auto-fixable: {N}                                        │
+│                                                             │
+│ SECURITY HOT PATHS                                          │
+│    ⚠️  {File}.{function} — CRITICAL                        │
+│       Reachable from {entry_point} ({exposure})             │
+│    ✅ {File}.{function} — tests cover boundaries            │
+│                                                             │
+│ CROSS-FILE CONSISTENCY                                      │
+│    ⚠️  {file} uses {new_pattern}, others use {old_pattern} │
+│    ✅ All patterns consistent                               │
+│                                                             │
+│ PERFORMANCE PATTERNS                                        │
+│    [HIGH] N+1 query — {file}:{line}                        │
+│    [MEDIUM] Missing pagination — {endpoint}                │
+│                                                             │
+│ CONTRACT CHANGES (if API files changed)                     │
+│    ❌ BREAKING: {endpoint} — {description}                  │
+│    ✅ ADDITIVE: {endpoint} — backward compatible            │
 │                                                             │
 │ SCENARIO COVERAGE (from intent.md)                          │
 │    Covered: {X}/{Y} ({Z} automated, {W} manual)            │
