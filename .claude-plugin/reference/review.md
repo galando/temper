@@ -252,6 +252,8 @@ AI-CODE DETECTION (apply to all files):
 
 ### Step 3: Intent Validation (IDD + BDD)
 
+> **Method disclaimer:** Intent validation has two layers — **mechanical** (provable by tools) and **semantic** (Claude's judgment). The review clearly labels which is which. Mechanical checks (test exists, test passes, code grep) are reliable. Semantic checks (assertion quality, problem-solution alignment) are Claude's best-effort analysis — they catch obvious problems but cannot guarantee correctness. No amount of reading code replaces running it.
+
 If `.temper/specs/{feature}/intent.md` exists, validate at TWO levels:
 
 **BDD Level (mechanical):**
@@ -284,25 +286,51 @@ If no intent.md: fall back to checking linked issue (Jira/GitHub) as before.
 
 ### Step 3a: Semantic Test Validation (if intent.md exists)
 
-After the mechanical BDD/IDD check in Step 3, validate that tests actually prove what they claim:
+> **Method disclaimer:** Reading test code and judging assertion quality is Claude's semantic analysis, not mechanical proof. A STRONG label means Claude believes the assertions cover the Then clause — but Claude cannot execute the test with a mutated implementation to prove it would fail. Use STRONG/WEAK/TRIVIAL as directional guidance, not guarantees.
+
+After the mechanical BDD/IDD check in Step 3, validate that tests actually prove what they claim.
+
+**Part 1: MECHANICAL checks (provable via tools):**
 
 ```
-For each scenario with a passing test, validate the test BODY (not just its name):
+For each scenario with a passing test, run these checks that DON'T require judgment:
 
 0. LOCATE the test file for each scenario:
    a. Check intent.md's Scenario Coverage Checklist for test name mapping
    b. Grep test files for the scenario name or Gherkin annotations (e.g., @scenario-name)
    c. If not found → flag as "test not locatable" and skip to next scenario
-1. READ the test function/method body (not just the name)
-2. Verify structural alignment with Gherkin:
+
+1. ASSERTION COUNT CHECK:
+   a. Read the test function body
+   b. Count assertion statements (assert*, expect*, should*, assertEquals, etc.)
+   c. If ZERO assertions → TRIVIAL (mechanically proven — no judgment needed)
+   d. If assertions exist → proceed to Part 2
+
+2. ASSERTION TARGET CHECK (mechanical):
+   a. Extract the variable/value being asserted from each assertion
+   b. Extract the Then clause expected values from Gherkin
+   c. Check: does ANY asserted variable name appear in the Then clause?
+      - Then says "response.status equals 400" → grep test for "status" and "400"
+      - Then says "error message contains 'invalid'" → grep test for "error" or "invalid"
+   d. If NO assertion variable matches any Then clause keyword → WEAK (mechanical mismatch)
+   e. If at least one assertion targets a Then clause keyword → proceed to Part 2
+```
+
+**Part 2: SEMANTIC checks (Claude's best-effort judgment):**
+
+```
+For scenarios that passed Part 1 mechanical checks:
+
+3. Verify structural alignment with Gherkin:
    - Given → test sets up preconditions (fixtures, mocks, data)
    - When → test invokes the action under test
    - Then → test asserts the expected outcomes
-3. Check assertion quality:
-   - Flag trivial assertions: assertTrue(true), assertEquals(x, x), no assertions at all
-   - Flag incomplete assertions: Then clause expects "response contains token" but test only asserts status code
+4. Check assertion depth (judgment-based):
+   - Flag incomplete assertions: Then says "response contains token" but test only asserts status code
    - Flag catch-all assertions: assert response != null without checking specific fields
-4. Report per-scenario:
+   - Accept indirect assertions (helper methods, custom matchers) if they semantically cover the Then clause
+   - If unsure whether an assertion covers a Then clause, do NOT flag
+5. Report per-scenario:
    ✅ Scenario: "User logs in" — structurally aligned (Given/When/Then mapped)
    ⚠️ Scenario: "Rate limiting" — trivial assertion detected (assertTrue(true))
    ⚠️ Scenario: "Token returned" — incomplete: Then expects "token field" but test only asserts status 200
@@ -318,6 +346,10 @@ These labels feed into the INTENT VERDICT evidence count: STRONG scenarios count
 **This step is additive** — existing mechanical checks still run first. Only runs when intent.md exists (backward compatible). Test body reading happens in the main review context, which already has access to changed files.
 
 ### Step 3b: Problem Statement Traceback (if intent.md exists)
+
+> **Method disclaimer:** This step is entirely semantic — Claude compares the Problem statement against implementation code and judges whether they match. This catches obvious mismatches (building "password change" when the problem says "password reset") but cannot detect subtle functional gaps. No substitute for acceptance testing.
+
+After validating individual scenarios, step back and assess the BIG picture:
 
 After validating individual scenarios, step back and assess the BIG picture:
 
@@ -382,6 +414,66 @@ Check whether the code's decision points have corresponding scenarios:
 ```
 
 This catches missing scenarios that the plan phase didn't anticipate. Only scans changed files (not entire codebase) to keep scope reasonable. Low severity by default — it's a suggestion, not a blocker.
+
+### Step 3d: Live Mutation Spot-Check (if tests exist)
+
+> **This is the ONLY step that actually PROVES tests catch bugs.** All other validation steps read code and form opinions. This step modifies code, runs tests, and checks the result. It's limited to 2-3 spot-checks (not full mutation testing) to keep review fast.
+
+**Purpose:** Prove that at least some tests actually fail when the implementation breaks.
+
+**When to run:** Only if Level 2 (unit tests) passed. Skip if no tests exist.
+
+**How (concrete, executable steps):**
+
+```
+For each CRITICAL or HIGH security-sensitivity file that has tests (max 3 files):
+
+1. PICK one assertion in the test file to spot-check:
+   - Prefer: assertions on business logic (not framework plumbing)
+   - Prefer: assertions that the STRONG/WEAK analysis flagged as uncertain
+
+2. RUN the test once to confirm it passes (baseline):
+   {test command for this specific test file}
+   → Must PASS. If fails, there's already a bug — report it and stop.
+
+3. MUTATE the implementation (one line only):
+   Pick the simplest mutation that should break the tested behavior:
+   - Change a return value: return true → return false
+   - Change a comparison: if (amount > 0) → if (amount > 100)
+   - Remove a required side effect: delete the database insert line
+   - Change an error code: throw new Error("not found") → throw new Error("server error")
+   Write the mutation to disk.
+
+4. RUN the test again:
+   {same test command}
+   → If test FAILS → ✅ MUTATION CAUGHT — restore implementation, mark test as PROVEN
+   → If test PASSES → ❌ MUTATION MISSED — restore implementation, flag test as UNVERIFIED
+
+5. RESTORE the original implementation immediately (no matter what):
+   git checkout -- {mutated file}
+   Or: manually revert the single changed line
+
+6. REPORT:
+   ✅ PasswordResetTest.test_successful_reset — PROVEN
+      Mutation: changed reset token expiry from 15min to 0min
+      Test failed as expected — assertion catches this mutation
+   ❌ RefundTest.test_process_refund — UNVERIFIED
+      Mutation: changed authorization check from userId === owner to userId !== owner
+      Test still passed — test does not verify authorization boundary
+   ⏭️  Skipped (no test file found for AuthService.generateToken)
+```
+
+**Gate behavior:**
+- UNVERIFIED on a security-critical function → CRITICAL issue
+- UNVERIFIED on a regular function → HIGH issue (suggestion to strengthen test)
+- Max 3 spot-checks per review (keeps review under 2 minutes extra)
+
+**Important constraints:**
+- ALWAYS restore the original code after mutation — never leave broken code on disk
+- Only mutate CHANGED files (not entire codebase)
+- If the test command isn't runnable (missing deps, env) → SKIP with note
+- This is a SAMPLE, not exhaustive — it proves specific assertions work, not all of them
+```
 
 ### Step 3.5: Cross-File Pattern Consistency Check
 
@@ -642,8 +734,10 @@ After review completes, show a nice summary:
 │    Verdict: ✅ Intent satisfied / ⚠️ Partial / ❌ Not met    │
 │    Evidence: {X}/{Y} scenarios substantively validated      │
 │      (Y = total scenarios in intent.md, X = STRONG + ½ WEAK) │
+│    Mutation spot-check: {N} PROVEN, {N} UNVERIFIED          │
 │    Gaps:                                                    │
 │      [assertion] {trivial/incomplete assertion gaps}        │
+│      [mutation] {tests that didn't catch real mutations}    │
 │      [drift] {implementation vs problem drift}              │
 │      [coverage] {uncovered decision points}                 │
 │                                                             │

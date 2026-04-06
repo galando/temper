@@ -101,6 +101,10 @@ Level 4: COVERAGE (if available)
 
 Level 4.5: SCENARIO COVERAGE (BDD Final Gate — Behavioral Verification)
   Purpose: Every scenario in intent.md has a passing test that asserts correct behavior
+  Confidence: MECHANICAL for existence/passing, SEMANTIC for assertion quality
+    - Test exists + passes → proven (test runner output)
+    - Assertion covers Then clause → Claude's judgment (not proven)
+    - See review.md Step 3d for live mutation proof (if review ran first)
   Prerequisite: intent.md exists at .temper/specs/{spec}/intent.md
     If running standalone: resolve {spec} by listing .temper/specs/ directories and
     using the most recently modified one. If build-state.json exists, read spec from there.
