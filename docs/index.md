@@ -40,9 +40,9 @@ A quality intelligence layer for review and check — zero new dependencies:
 | **Security Hot Paths** | Classifies files by sensitivity (CRITICAL/HIGH/MEDIUM/LOW), traces call chains to entry points, elevates scrutiny automatically |
 | **Diff-Aware Review** | Builds a risk fingerprint from changed regions, focuses 80% review attention on high-risk hunks |
 | **Cross-File Consistency** | Detects pattern drift — new file uses `try/catch` but peers use `Result<>`? Flagged |
-| **Mutation Testing** | Simulates code mutations, verifies tests actually catch bugs, BLOCKs on untested security code |
-| **API Contract Validation** | Detects breaking API changes, finds consumers, BLOCKS if consumers not updated |
-| **Performance Regression Guard** | Compares benchmarks against baseline, BLOCKS on >10% slowdown |
+| **Test Gap Analysis** | Reads implementation + test code side-by-side, finds untested edge cases, BLOCKs on untested security code |
+| **API Diff Review** | Detects API shape changes from git diff, greps for consumers, flags unverified breaking changes |
+| **Performance Pattern Detection** | Scans for N+1 queries, missing pagination, sync I/O, inefficient data structures |
 
 ## IDD + BDD + TDD: Three Layers, One File
 
@@ -140,9 +140,9 @@ Diagram (architecture flow):
 │    Compile:    ✅ 2.3s                                       │
 │    Tests:      ✅ 4.1s — 5 passed                            │
 │    Coverage:   ✅ 87% (threshold: 80%)                        │
-│    Mutations:  ✅ 78% (31/40 caught)                          │
-│    Contracts:  ✅ 3/3 verified                                │
-│    Perf:       ✅ No regressions (baseline updated)            │
+│    Test Gaps:  ✅ 78% (31/40 edge cases covered)                │
+│    API Diff:   ✅ 3/3 consumers verified                      │
+│    Perf:       ✅ 0 anti-patterns (baseline updated)            │
 │    Security:   ✅ 0 hot path issues                           │
 │                                                             │
 │ Commit (Recommended)                                        │

@@ -479,8 +479,8 @@ Return ONLY:
 │    Tests:      {status} {time} — {N} passed                  │
 │    Coverage:   {status} {X}% (threshold: {Y}%)               │
 │    Scenarios:  {status} {X}/{Y} covered (if intent.md)       │
-│    Mutations:  {status} {score}% ({caught}/{total} caught)   │
-│    Contracts:  {status} {N} changes, {N} verified            │
+│    Test Gaps:  {status} {score}% ({N}/{N} analyzed)        │
+│    API Diff:   {status} {N} changes, {N} checked             │
 │    Perf:       {status} {N} regressions (if benchmarks)      │
 │    Lint:       {status} {time}                               │
 │    Security:   {status} {time}                               │

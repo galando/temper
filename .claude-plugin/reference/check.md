@@ -145,8 +145,13 @@ Level 4.5: SCENARIO COVERAGE (BDD Final Gate — Behavioral Verification)
   On failure (any ❌): BLOCK — cannot commit with uncovered scenarios
   If no intent.md: SKIP (no BDD contract to enforce)
 
-Level 4.75: MUTATION TESTING (Test Quality Verification)
-  Purpose: Verify tests actually catch bugs, not just pass through happy paths
+Level 4.75: HEURISTIC TEST GAP ANALYSIS
+  Purpose: Find functions where tests are missing, trivial, or miss obvious edge cases
+  Method: Static analysis — reads code + tests, identifies gaps via pattern inspection
+  NOTE: This is NOT real mutation testing (which modifies code and runs tests).
+  This is heuristic analysis — Claude reads implementation and test code, then identifies
+  edge cases the tests likely miss. It catches common gaps (no null test, no boundary test)
+  but cannot guarantee all mutations would be caught.
   Prerequisite: Level 2 (tests pass) AND Level 4.5 (scenarios covered) both passed
     If either failed → SKIP (fix those first)
   How:
@@ -156,46 +161,45 @@ Level 4.75: MUTATION TESTING (Test Quality Verification)
        - Focus on business logic functions (not config, types, I/O wrappers)
        - Prioritize functions with: conditionals, calculations, transformations, state changes
 
-    2. FOR each testable function, simulate mental mutations:
+    2. FOR each testable function, check for common test gaps:
 
-       MUTATION TYPES TO CHECK:
+       GAP PATTERNS TO CHECK:
        ┌─────────────────────────┬──────────────────────────────────────────────────┐
-       │ Mutation                │ What to check                                    │
+       │ Gap Pattern             │ What to look for                                 │
        ├─────────────────────────┼──────────────────────────────────────────────────┤
-       │ Boundary flip           │ If code is (x > 5), would test catch (x >= 5)?  │
-       │ Null/undefined bypass   │ Does test pass null? Would code crash?           │
-       │ Return value swap       │ Test expects true? Would code returning false    │
-       │                         │ be caught?                                       │
-       │ Exception silencing     │ If exception caught silently, would test notice? │
-       │ Logic operator flip     │ AND ↔ OR — would test catch the wrong operator?  │
-       │ Off-by-one              │ Array index, loop boundary, date edge — caught?  │
-       │ Empty collection        │ What if input is [], "", {}, 0? Test covers it?  │
+       │ Missing boundary test   │ Code has (x > 5) but no test at x=5, x=6         │
+       │ Missing null/undefined  │ Function takes params but no test passes null     │
+       │ Missing negative case   │ Function handles positive but no test for negative │
+       │ Missing empty input     │ Function processes collection but no test for []   │
+       │ Trivial assertion       │ Test only asserts status code, not response body  │
+       │ Missing error path      │ Code has catch/throw but no test triggers error   │
+       │ Untested branch         │ if/else exists but tests only cover one branch    │
        └─────────────────────────┴──────────────────────────────────────────────────┘
 
-    3. FOR each mutation:
-       a. Read the implementation code
-       b. Read the test code
-       c. Simulate: "If I changed {X} to {Y}, would any test fail?"
-       d. If NO test would catch the mutation → FLAG as weak test
+    3. FOR each function:
+       a. Read the implementation code — identify branches, boundaries, error paths
+       b. Read the test code — identify which paths are actually tested
+       c. Compare: which implementation paths have no corresponding test?
+       d. If gaps found → FLAG with specific missing cases
 
     4. CLASSIFY per function:
-       STRONG — all mutations would be caught (4/4+)
-       WEAK   — some mutations caught but obvious gaps (1-3/4+)
+       STRONG — all branches and edge cases have tests
+       WEAK   — some paths tested but obvious gaps (e.g., happy path only)
        NO TEST — no test exists for this function
 
     5. REPORT per function:
-       ✅ UserService.validateEmail — STRONG (4/4 mutations caught)
-       ⚠️  PaymentService.calculateRefund — WEAK (1/5 caught)
-          Missed: boundary (amount === 0), null input, negative amount, over-limit
+       ✅ UserService.validateEmail — STRONG (all branches covered)
+       ⚠️  PaymentService.calculateRefund — WEAK (happy path only)
+          Gaps: no test for amount=0, negative amount, null input
           Suggestion: "Add test cases for edge cases"
        ❌ AuthService.generateToken — NO TEST (security-critical)
 
     6. GATE behavior:
        CRITICAL (no test for security-critical code) → BLOCK
-       HIGH (zero mutations caught for any function) → WARN
+       HIGH (zero test coverage for any function) → WARN
        MEDIUM/LOW (some gaps) → INFO (show in summary, no gate impact)
 
-    7. Write results to .temper/mutation-report.json:
+    7. Write results to .temper/test-gap-report.json:
        {
          "version": 1,
          "run_date": "{ISO date}",
@@ -203,7 +207,7 @@ Level 4.75: MUTATION TESTING (Test Quality Verification)
          "functions_tested": {N},
          "mutations_checked": {N},
          "mutations_caught": {N},
-         "mutation_score": {0.0-1.0},
+         "test_gap_score": {0.0-1.0},
          "weak_functions": [
            {
              "file": "{path}",
@@ -215,8 +219,13 @@ Level 4.75: MUTATION TESTING (Test Quality Verification)
          ]
        }
 
-Level 4.85: CONSUMER VERIFICATION (API Contract Testing)
-  Purpose: Verify API consumers actually work with changed contracts
+Level 4.85: API DIFF REVIEW (Heuristic Contract Check)
+  Purpose: Detect API contract changes and check if consumers are likely affected
+  Method: Static analysis — reads git diff for API boundary files, greps for consumers
+  NOTE: This is NOT real contract testing (which runs consumer tests against provider).
+  This reads the diff, identifies API shape changes, and greps for consumer code.
+  It catches obvious breaking changes (renamed fields, removed endpoints) but cannot
+  verify runtime compatibility.
   Prerequisite: Changed files include API boundary files (controllers, routes, DTOs,
     shared types). If no API boundary files changed → SKIP.
   How:
@@ -287,10 +296,12 @@ Level 4.85: CONSUMER VERIFICATION (API Contract Testing)
 
 Level 4.9: PERFORMANCE REGRESSION GUARD
   Purpose: Catch performance regressions before deploy
-  Prerequisite: Benchmarks must exist in the project:
+  Method: Runs project benchmarks and compares against baseline
+  Prerequisite: Benchmarks must exist in the project AND must be runnable:
     - Check for: benchmarks/, perf/, .github/workflows/bench.yml
     - OR: package.json has "benchmark" script, pyproject.toml has pytest-benchmark
     - If no benchmarks configured → SKIP
+    - If benchmarks exist but can't run (missing deps, env) → SKIP with note
   How:
 
     1. LOAD baseline from .temper/performance-baseline.json (if exists)
@@ -386,8 +397,8 @@ After all levels complete, show a nice summary:
 │    Tests:      {status} {time} — {N} passed                  │
 │    Coverage:   {status} {X}% (threshold: {Y}%)               │
 │    Scenarios:  {status} {X}/{Y} covered (if intent.md)       │
-│    Mutations:  {status} {X}% ({N}/{N} caught)                │
-│    Contracts:  {status} {N} changes ({N} verified)           │
+│    Test Gaps:  {status} {X}% ({N}/{N} functions analyzed)      │
+│    API Diff:   {status} {N} changes ({N} consumers checked)    │
 │    Perf:       {status} {N} regressions (baseline updated)   │
 │    Lint:       {status} {time}                               │
 │    Security:   {status} {time}                               │
@@ -395,11 +406,11 @@ After all levels complete, show a nice summary:
 │ Skipped: Integration (no tool configured)                   │
 │ Total: {time}                                               │
 │                                                             │
-│ MUTATION GAPS (if any WEAK/NO TEST found)                    │
-│    ⚠️  {Function} — {N}/{M} mutations caught (WEAK)          │
+│ TEST GAPS (if any WEAK/NO TEST found)                     │
+│    ⚠️  {Function} — {N} edge cases untested (WEAK)         │
 │    ❌ {Function} — NO TEST (security-critical)                │
 │                                                             │
-│ CONTRACT CHANGES (if Level 4.85 ran)                         │
+│ API DIFF (if Level 4.85 ran)                                │
 │    ❌ BREAKING: {endpoint} — {description}                    │
 │    ✅ ADDITIVE: {endpoint} — backward compatible              │
 │                                                             │

@@ -310,34 +310,34 @@ Temper detects when a changed file introduces a pattern that contradicts the cod
     Suggestion: Align with established pattern or document why new pattern is better
 ```
 
-### Mutation Testing
+### Heuristic Test Gap Analysis
 
-After tests pass, Temper simulates **mental mutations** — "If I changed this AND to OR, would any test catch it?" Functions where tests wouldn't catch obvious breakage are flagged as WEAK. Security-critical code with no test is BLOCKED.
+After tests pass, Temper reads implementation and test code side-by-side. It identifies **edge cases the tests miss** — no null test, no boundary test, no error path test. Security-critical code with no test is BLOCKED. This is static analysis (reading code), not execution-based mutation testing.
 
 ```
-✅ UserService.validateEmail — STRONG (4/4 mutations caught)
-⚠️  PaymentService.calculateRefund — WEAK (1/5 caught)
-   Missed: boundary (amount === 0), null input, negative amount
+✅ UserService.validateEmail — STRONG (all branches covered)
+⚠️  PaymentService.calculateRefund — WEAK (happy path only)
+   Gaps: no test for amount=0, negative amount, null input
 ❌ AuthService.generateToken — NO TEST (security-critical) → BLOCKED
 ```
 
-### API Contract Validation
+### API Diff Review
 
-When code changes API boundaries (endpoints, DTOs, response shapes), Temper detects the change, finds all consumers, and verifies they're updated. Breaking changes with unverified consumers are BLOCKED.
+When code changes API boundaries (endpoints, DTOs, response shapes), Temper reads the git diff to detect the change, greps for consumers, and checks if they're updated. Breaking changes with unverified consumers are flagged. This is heuristic (grep-based) not runtime contract testing.
 
 ```
 ❌ POST /api/auth/login — BREAKING (response.token → response.access_token)
-   Consumers: 2 tests ✅, 1 frontend ❌ NOT UPDATED → BLOCKED
+   Consumers: 2 tests ✅, 1 frontend ❌ NOT UPDATED → FLAGGED
 ```
 
-### Performance Regression Guard
+### Performance Pattern Detection
 
-When benchmarks exist, Temper compares them against baseline. >10% regression BLOCKS. 5-10% triggers a WARNING. No benchmarks? Gracefully skipped.
+Temper scans changed code for performance anti-patterns: N+1 queries (loops with DB calls), missing pagination (unbounded endpoints), sync I/O in request handlers, and inefficient data structures (Array.includes in loops). When benchmarks exist, it also compares against baseline.
 
 ```
-❌ UserSearch.query — 15.4% slower (52ms vs 45ms baseline) → BLOCKED
-⚠️  PDF.generate — 7.3% slower (WARNING)
-✅ bcrypt.hash — 1.2% faster (baseline updated)
+[HIGH] N+1 query in UserController.ts:45 — forEach loop with User.findById()
+[HIGH] Missing pagination in GET /api/orders — no LIMIT clause
+[MEDIUM] Inefficient lookup in PermissionService.ts:78 — Array.includes() in loop
 ```
 
 ### Why This Matters
@@ -346,9 +346,9 @@ When benchmarks exist, Temper compares them against baseline. >10% regression BL
 |----------------|---------------|
 | Review reads entire files | Review focuses on high-risk diff regions |
 | Security issues found by luck | Security hot paths traced to entry points automatically |
-| Tests pass but test nothing | Mutation testing verifies tests actually catch bugs |
-| API breaking changes ship silently | Contract validation blocks unverified breaking changes |
-| Performance regressions detected in prod | Benchmark comparison catches regressions before commit |
+| Tests pass but test nothing | Test gap analysis finds untested edge cases |
+| API breaking changes ship silently | API diff review flags unverified breaking changes |
+| Performance anti-patterns caught in prod | Pattern detection catches N+1, missing pagination before commit |
 | Pattern drift accumulates silently | Cross-file consistency detects drift immediately |
 
 ---
