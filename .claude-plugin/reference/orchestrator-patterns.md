@@ -167,6 +167,6 @@ Labels are shown when `tools.label-findings: true` in temper.config (default: tr
 | Server | Install | Purpose |
 |--------|---------|---------|
 | code-review-graph | `pip install code-review-graph` + configure MCP | AST-level dependency graphs, call chains, blast radius |
-| semgrep | `brew install semgrep` + `claude mcp add semgrep` | Static analysis security scanning (SAST) |
+| semgrep | `brew install semgrep` + `claude mcp add semgrep -- semgrep --mcp` | Static analysis security scanning (SAST) |
 
 Availability of these servers is optional. When present, findings are labeled `[PROVEN]`. When absent, the same analysis runs via grep and is labeled `[HEURISTIC]`.

@@ -812,6 +812,7 @@
         <span>Temper</span>
       </a>
       <div class="nav-links">
+        <a href="#whats-new" style="color: var(--accent);">v3.1.0</a>
         <a href="#why">IDD+BDD+TDD</a>
         <a href="#flow">How it works</a>
         <a href="#packs">Packs</a>
@@ -847,6 +848,32 @@
         <button class="copy-btn" onclick="copyCode(this, '/plugin marketplace add galando/temper\n/plugin install temper')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-family: 'IBM Plex Mono', monospace; color: var(--fg-muted); cursor: pointer;">Copy</button>
       </div>
       <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Commands are now available in any project.</p>
+    </div>
+  </section>
+
+  <section id="whats-new">
+    <div class="section-label">What's New in v3.1.0</div>
+    <h2 class="section-title">Proven Verification</h2>
+    <p class="section-desc">v3.1.0 makes Temper's analysis <strong>real</strong>. Instead of reading tests and judging quality, Temper now <em>runs</em> your tests and shows you the proof.</p>
+
+    <div class="why-grid" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="why-item">
+        <h4>Live Scenario Verification</h4>
+        <p>Every Gherkin scenario in intent.md gets executed individually against your test runner. Real pass/fail, real output, real execution time. Not Claude's opinion — proof.</p>
+      </div>
+      <div class="why-item">
+        <h4>MCP-Powered Analysis</h4>
+        <p>Optional MCP servers upgrade heuristic analysis to proven findings. <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">code-review-graph</code> for blast radius and call chains, <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">semgrep</code> for SAST scanning.</p>
+      </div>
+      <div class="why-item">
+        <h4>Evidence Labels</h4>
+        <p>Every finding carries a label: <strong style="color:var(--success)">[PROVEN]</strong> (tool output), <strong style="color:var(--warning)">[HEURISTIC]</strong> (grep-based), or <strong style="color:var(--fg-muted)">[SEMANTIC]</strong> (interpretation). You know exactly what's verified.</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 2rem; text-align: center;">
+      <p style="color: var(--fg-muted); font-size: 0.9rem;">No MCP servers? Everything works exactly as v3.0.0. Progressive enhancement, zero breaking changes.</p>
+      <a href="https://github.com/galando/temper#whats-new-in-v310" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
     </div>
   </section>
 
@@ -1189,7 +1216,7 @@
 /plugin install temper</pre>
           <button class="copy-btn" onclick="copyCode(this, '/plugin marketplace add galando/temper\n/plugin install temper')">Copy</button>
         </div>
-        <p>Commands are now available in any project.</p>
+        <p>Commands are now available in any project. For optional MCP-powered analysis, see <a href="https://github.com/galando/temper/blob/main/docs/recommended-setup.md" style="color: var(--accent);">Recommended Setup</a>.</p>
       </div>
 
     </div>
