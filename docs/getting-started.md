@@ -195,10 +195,48 @@ review:
 # Check options
 check:
   coverage-threshold: 80
+  live-scenarios: prompt    # prompt | always | never
+
+# MCP-powered analysis (optional)
+tools:
+  mode: auto                # auto | heuristic-only | require
+  label-findings: true      # Show [PROVEN]/[HEURISTIC]/[SEMANTIC] labels
 ```
+
+### Live Scenario Verification
+
+Every Gherkin scenario in `intent.md` can be executed individually against your project's test runner — real pass/fail, real output. No MCP servers required.
+
+- `prompt` (default) — ask before running live verification
+- `always` — always run during `/temper:check`
+- `never` — skip, use heuristic analysis only
+
+Works with: Jest, Vitest, pytest, Maven, Gradle, Go test, cargo test.
+
+### MCP-Powered Analysis (Optional)
+
+Install optional MCP servers to upgrade heuristic analysis to proven findings:
+
+| Server | What it proves | Install |
+|--------|---------------|---------|
+| [code-review-graph](https://github.com/tirth8205/code-review-graph) | Blast radius, call chains, impact radius | `pip install code-review-graph` |
+| [Semgrep](https://github.com/semgrep/semgrep) | Security vulnerabilities (SAST) | `brew install semgrep` |
+
+Full setup instructions: [Recommended Setup](recommended-setup)
+
+See [README](..#whats-new-in-v310) for details on evidence labels and all v3.1.0 features.
+
+### Verify Your Setup
+
+```bash
+/temper:status
+```
+
+Shows live scenario verification status, MCP tool availability, and evidence ratio.
 
 ## Next Steps
 
+- [Recommended Setup](recommended-setup) — Optional MCP servers and live verification setup
 - [Commands Reference](commands) — Full command documentation
 - [Packs](packs) — Built-in and custom packs
 - [Enterprise Setup](enterprise) — Deploy across your organization
