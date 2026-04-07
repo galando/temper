@@ -260,6 +260,20 @@ Based on the reference map, determine:
 
 Using the reference map and semantic index:
 
+MCP BLAST RADIUS (before grep-based steps):
+  If code-review-graph MCP server is available and tools.mode is not heuristic-only:
+  1. Call get_impact_radius_tool with the planned file list
+  2. Returns [PROVEN]:
+     - Direct consumers (files importing planned files)
+     - Transitive impact (files depending on consumers)
+     - Risk scores per file
+     - Fan-in / fan-out metrics
+  3. If MCP available: SKIP grep-based steps 2-3 below (MCP provides superior results)
+     Always run steps 4-5 (contract changes, architectural drift) — MCP doesn't detect these
+  4. Evidence label: [PROVEN] on all MCP-sourced findings
+  If MCP unavailable:
+     Proceed with grep-based steps 1-5 as [HEURISTIC]
+
 1. List files that will likely be changed (preliminary — refined after scenarios in Phase 4.5)
 2. For each changed file, find all importers/consumers
 3. For each consumer, check if it has test coverage for the affected code path

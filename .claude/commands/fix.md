@@ -85,6 +85,7 @@ CONTEXT: Load these first:
 1. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/fix.md for methodology
 2. Load enabled packs from .claude/temper.config and stack-specific rules
 3. Check if the bug violates any pack rules during RCA (e.g., security: was input validation skipped?)
+4. If code-review-graph MCP server is available: use query_graph_tool for call chain tracing (callers + callees of suspected function) — [PROVEN] results. Fallback to grep-based tracing if unavailable.
 
 ENFORCEMENT: Always follow the full RCA methodology. Always generate multi-hypothesis investigation (or skip condition with justification).
 
@@ -193,6 +194,7 @@ Follow all steps in fix.md — read it first and execute in order.
 CONTEXT: You are starting with a CLEAN context. Load these files first:
 1. {spec_path}/rca.md (root cause analysis results)
 2. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/fix.md for methodology
+3. If code-review-graph MCP server is available: use get_impact_radius_tool for blast radius check — [PROVEN] results. Fallback to grep-based detection if unavailable.
 
 Then execute the fix methodology. Make sure to include:
 - Loading enabled packs and stack-specific rules

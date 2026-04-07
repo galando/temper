@@ -199,6 +199,19 @@ Report format:
     Impact: N database queries for N items
     Suggestion: Use batch query with $in/IN clause
 
+MCP SECURITY SCAN (before SECURITY HOT PATH REVIEW):
+  If semgrep MCP server is available and tools.mode is not heuristic-only:
+  1. Call semgrep security_check on all changed files
+  2. Map severity:
+     - semgrep error → CRITICAL
+     - semgrep warning → HIGH
+     - semgrep info → MEDIUM
+  3. SAST findings bypass confidence filtering — always shown regardless of threshold
+  4. Evidence label: [PROVEN] (tool output)
+  5. Add findings to the issues list before Step 4 filtering
+  If semgrep MCP unavailable:
+     Fall back to OWASP pattern-matching in SECURITY HOT PATH REVIEW → [HEURISTIC]
+
 SECURITY HOT PATH REVIEW (for files flagged CRITICAL/HIGH in diff fingerprint):
 
 For any file with security sensitivity CRITICAL or HIGH:
