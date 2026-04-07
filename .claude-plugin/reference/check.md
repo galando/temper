@@ -99,54 +99,76 @@ Level 4: COVERAGE (if available)
   On failure: WARN (not block by default), show coverage %
   If no coverage tool configured: SKIP
 
-Level 4.5: SCENARIO COVERAGE (BDD Final Gate — Behavioral Verification)
-  Purpose: Every scenario in intent.md has a passing test that asserts correct behavior
-  Confidence: MECHANICAL for existence/passing, SEMANTIC for assertion quality
-    - Test exists + passes → proven (test runner output)
-    - Assertion covers Then clause → Claude's judgment (not proven)
-    - See review.md Step 3d for live mutation spot-check results (if review ran first and security-sensitive files were found)
+Level 4.5: SCENARIO VERIFICATION (Live Execution)
+  Purpose: Execute each Gherkin scenario's matching test individually, showing real pass/fail
+  Confidence: [PROVEN] — mechanical test runner output
   Prerequisite: intent.md exists at .temper/specs/{spec}/intent.md
     If running standalone: resolve {spec} by listing .temper/specs/ directories and
     using the most recently modified one. If build-state.json exists, read spec from there.
     If no specs found → SKIP Level 4.5 entirely.
-  Pipeline note: This stage always runs full behavioral verification independently.
-    Review and check may flag the same assertion quality issues — this is intentional
-    (defense in depth: two independent evaluations catch different things).
+  Config: check.live-scenarios in temper.config (default: prompt)
+    Valid values: prompt | always | never
+    prompt → ask user whether to run live verification
+    always → always run live verification
+    never  → skip live verification, use heuristic analysis only (v3.0.0 behavior)
+    Any other value → treated as "prompt" (safe default)
   How:
-    1. Read intent.md → extract all Gherkin scenarios
-    2. For each scenario:
-       a. Find matching test by name/description (grep test files for scenario name)
-       b. Verify test exists and passes (from Level 2 test results)
-       c. If scenario Note field is exactly "manual" or starts with "manual" (e.g.,
-          "manual verification") → mark as "requires manual verification".
-          If Note contains "manual" alongside other approaches (e.g., "unit + manual"),
-          do NOT flag as manual-only — treat as the non-manual approach.
-       d. READ test body — verify assertions match Then clause (behavioral verification):
-          - Extract Then clause from Gherkin (expected outcomes)
-          - Find corresponding assertions in test body
-          - Accept indirect assertions (helper methods like assertBadRequest(),
-            custom matchers) if they semantically cover the Then clause
-          - If unsure whether an assertion covers a Then clause, do NOT flag
-          - Only flag when NO assertion can be linked to the expected outcome
-          - If Then says "returns 400" → test should assert status == 400
-          - If Then says "contains error message" → test should assert response body
-       e. Check assertion quality (classify each scenario):
-          - STRONG: assertions meaningfully cover the Then clause → ✅
-          - WEAK: assertions exist but incompletely cover the Then clause → flag as WARNING
-          - TRIVIAL: assertions always pass (assertTrue(true)) or missing → flag as WARNING
-       f. Compare against Scenario Coverage Checklist in intent.md (if populated by build)
-          - If Level 4.5 analysis conflicts with the checklist, Level 4.5 analysis takes precedence
-            (4.5 verifies behavior; the checklist only tracks existence)
-    3. Report per scenario:
-       "Scenario Coverage: X/Y scenarios covered (Z automated, W manual)
-        ✅ Scenario: User resets password → PasswordResetTest.test_successful_reset (asserts new password works)
-        ✅ Scenario: Invalid email returns 400 → ValidationTest.test_invalid_email (asserts status == 400)
-        ⚠️  Scenario: Rate limiting → RateLimitTest.test_rate_limit (trivial assertion: assertTrue(true))
-        ⚠️  Scenario: Token returned → AuthTest.test_login (missing: token field assertion)
-        ⚠️  Scenario: Email delivered → MANUAL VERIFICATION NEEDED
-        ❌ Scenario: Error handling → NO PASSING TEST FOUND"
-  Gate rules: ❌ = BLOCK (cannot commit), ⚠️ = WARN (non-blocking, show in summary)
-  On failure (any ❌): BLOCK — cannot commit with uncovered scenarios
+    STEP 1 — Extract scenarios:
+      Read intent.md → extract all Gherkin scenarios (name + Given/When/Then)
+
+    STEP 2 — Match scenarios to tests:
+      For each scenario, find the matching test file:
+      a. If MCP code-review-graph available: call query_graph_tool to find test
+         by scenario name annotation → [PROVEN] match
+      b. Fallback: grep test files for scenario name (snake_case or camelCase)
+         → [HEURISTIC] match
+      c. If no match found → UNMATCHED
+
+    STEP 3 — Gate (prompt mode only):
+      Show matched/unmatched counts. Ask user:
+      "Run live verification for {N} matched scenarios? [Y/n]"
+      If user declines → skip to heuristic-only analysis (v3.0.0 behavior)
+
+    STEP 4 — Execute each matched test individually:
+      For each matched scenario + test, run the test individually:
+      - Jest/Vitest: npx jest --testPathPattern="{test}" --testNamePattern="{scenario}" --no-coverage
+      - pytest: pytest {test}::test_{scenario_snake} -v
+      - Maven: ./mvnw test -Dtest="{TestClass#testMethod}"
+      - Gradle: ./gradlew test --tests "{TestClass.testMethod}"
+      - Go: go test -run Test{Scenario} -v
+      - Rust: cargo test test_{scenario_snake} -- --nocapture
+
+      Capture: test name, PASS/FAIL, assertion output, execution time
+      Label: [PROVEN] — actual test runner output
+
+    STEP 5 — Report with formatted table:
+      SCENARIO VERIFICATION RESULTS
+      ┌──────────────────────────────────────────────────────────────┐
+      │ Scenario           │ Test              │ Result │ Time      │
+      ├────────────────────┼───────────────────┼────────┼───────────┤
+      │ User resets pw     │ test_reset        │ ✅ PASS │ 0.12s    │
+      │ Invalid email      │ test_invalid      │ ✅ PASS │ 0.05s    │
+      │ Rate limiting      │ test_rate_limit   │ ❌ FAIL │ 0.08s    │
+      │ Token refresh      │ —                 │ ⚠️ MISSING │ —      │
+      └──────────────────────────────────────────────────────────────┘
+
+    STEP 6 — Gate rules:
+      FAIL → BLOCK (cannot commit with failing scenario)
+      MISSING → WARN (scenario has no matching test)
+      PASS → proceed
+
+    STEP 7 — Optional mutation spot-check (security-critical scenarios):
+      If all scenarios pass and security-critical scenarios exist:
+      1. Ask: "Run mutation spot-check on security-critical scenarios? [Y/n]"
+      2. For 1-2 critical functions:
+         a. Mutate one line (e.g., change auth check userId === owner to !==)
+         b. Re-run the matching test
+         c. If test FAILS → ✅ MUTATION CAUGHT (test proves security boundary)
+         d. If test PASSES → ❌ MUTATION MISSED (test doesn't catch this)
+         e. ALWAYS restore original code
+      3. Report mutation results alongside scenario results
+  Evidence: All results labeled [PROVEN] (tool output)
+  If check.live-scenarios: never → use heuristic-only v3.0.0 behavior
   If no intent.md: SKIP (no BDD contract to enforce)
 
 Level 4.75: HEURISTIC TEST GAP ANALYSIS
@@ -366,11 +388,26 @@ Level 6: TYPE CHECK (if applicable)
   If not applicable: SKIP
 
 Level 7: SECURITY (if available)
-  Purpose: No known vulnerabilities in dependencies
+  Purpose: No known vulnerabilities in dependencies + SAST scan
   Command: {detected security scan command}
   Examples: npm audit, ./gradlew dependencyCheckAnalyze, pip-audit
   On failure: WARN for medium, BLOCK for critical CVEs
   If no security scanner configured: SKIP
+
+  MCP SAST SCAN (after dependency scan):
+    If semgrep MCP server is available and tools.mode is not heuristic-only:
+    1. Call semgrep security_check on all source files (changed files, or entire
+       project if no changed files detected)
+    2. Call semgrep_scan_with_custom_rule for security pack rules
+       (load rules from .claude/packs/security/rules.md if pack is enabled)
+    3. Map severity:
+       - semgrep error → CRITICAL (BLOCK)
+       - semgrep warning → HIGH (WARN)
+       - semgrep info → MEDIUM (WARN)
+    4. SAST findings bypass confidence filtering — always shown
+    5. Evidence label: [PROVEN] (tool output)
+    If semgrep MCP unavailable:
+       Fall back to OWASP pattern-matching in review.md Step 2 → [HEURISTIC]
 ```
 
 ### Step 3: Track Technical Debt (if enabled)
@@ -400,7 +437,7 @@ After all levels complete, show a nice summary:
 │    Compile:    {status} {time}                               │
 │    Tests:      {status} {time} — {N} passed                  │
 │    Coverage:   {status} {X}% (threshold: {Y}%)               │
-│    Scenarios:  {status} {X}/{Y} covered (if intent.md)       │
+│    Live Scen:   {status} {X}/{Y} ({N}P/{N}F/{N}M)             │
 │    Test Gaps:  {status} {X}% ({N}/{N} functions analyzed)      │
 │    API Diff:   {status} {N} changes ({N} consumers checked)    │
 │    Perf:       {status} {N} regressions (baseline updated)   │

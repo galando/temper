@@ -39,5 +39,18 @@
     "date": null,
     "coverage": null,
     "violations": null
+  },
+  "scenarios": {
+    "total_verified": 0,
+    "total_passed": 0,
+    "total_failed": 0,
+    "total_missing": 0,
+    "mutations_caught": 0,
+    "mutations_missed": 0
+  },
+  "evidence": {
+    "proven": 0,
+    "heuristic": 0,
+    "semantic": 0
   }
 }

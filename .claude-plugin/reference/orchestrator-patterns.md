@@ -123,3 +123,50 @@ Each subprocess starts genuinely clean. No theater.
 | Stage 2 → 3 | New Agent subprocess | changed files (git diff) | ~20-50KB |
 | Stage 3 → 4 | New Agent subprocess | methodology + spec context | ~5KB |
 | Stage 4 → Commit | Direct (no subprocess) | Nothing | 0KB |
+
+---
+
+## MCP Tool-First Pattern
+
+When MCP (Model Context Protocol) servers are available, Temper uses their tools to produce **proven** findings instead of heuristic grep-based analysis. This is progressive enhancement: everything works exactly as before when no MCP servers are installed.
+
+### tools.mode Behavior
+
+Configured in `.claude/temper.config` under `tools.mode`:
+
+| Mode | Behavior |
+|------|----------|
+| `auto` (default) | Try MCP tool first. If unavailable, fall back to grep-based heuristic analysis. |
+| `heuristic-only` | Never call MCP tools. Always use grep-based analysis. Forces `[HEURISTIC]` labels. |
+| `require` | Fail if MCP tools are unavailable. Do NOT proceed with heuristic fallback. |
+
+### Evidence Labels
+
+Every finding in review, check, plan, and fix carries one of:
+
+| Label | Meaning | When Applied |
+|-------|---------|--------------|
+| `[PROVEN]` | Output from a tool (MCP, test runner, semgrep). Mechanically verified. | MCP tool returned results, test was executed, SAST scan found issue. |
+| `[HEURISTIC]` | Claude's analysis via grep/reading code. Best-effort, not mechanically verified. | MCP unavailable, grep-based detection, pattern-matching analysis. |
+| `[SEMANTIC]` | Claude's interpretation or judgment. Inherently subjective. | Asserting "this assertion covers the Then clause", problem-solution alignment check. |
+
+Labels are shown when `tools.label-findings: true` in temper.config (default: true).
+
+### MCP Tool Registry
+
+| MCP Tool | Server | Replaces |
+|----------|--------|----------|
+| `get_impact_radius_tool` | code-review-graph | grep-based blast radius (plan.md Phase 4 steps 2-3) |
+| `query_graph_tool` | code-review-graph | grep-based call chain tracing (fix.md Step 2) and scenario-to-test matching (check.md Level 4.5) |
+| `get_affected_flows_tool` | code-review-graph | grep-based consumer detection |
+| `security_check` | semgrep | OWASP pattern-matching (review.md Step 2, check.md Level 7) |
+| `semgrep_scan_with_custom_rule` | semgrep | Manual security pack rule enforcement |
+
+### Recommended MCP Servers
+
+| Server | Install | Purpose |
+|--------|---------|---------|
+| code-review-graph | `pip install code-review-graph` + configure MCP | AST-level dependency graphs, call chains, blast radius |
+| semgrep | `brew install semgrep` + `claude mcp add semgrep` | Static analysis security scanning (SAST) |
+
+Availability of these servers is optional. When present, findings are labeled `[PROVEN]`. When absent, the same analysis runs via grep and is labeled `[HEURISTIC]`.

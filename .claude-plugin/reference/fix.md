@@ -93,6 +93,18 @@ SKIP CONDITION: If only ONE plausible cause exists OR you have an exact stack tr
    - TRACE the execution path (entry point → ... → failure point)
    - Write a quick regression test to CONFIRM/DENY the hypothesis
 
+   MCP CALL CHAIN (during execution path tracing):
+   If code-review-graph MCP server is available and tools.mode is not heuristic-only:
+   1. Call query_graph_tool with the suspected function name:
+      - Request both callers (who calls this function) and callees (what this function calls)
+      - Returns full call chain: entry point → intermediates → failing function
+   2. Call get_affected_flows_tool for user-facing flows through the suspected function:
+      - Returns which API endpoints / user actions reach the failing code
+      - Identifies blast radius in terms of user-facing behavior
+   3. Evidence: [PROVEN] call chain (AST-level, mechanically verified)
+   If MCP unavailable:
+      Use grep-based call chain tracing → [HEURISTIC]
+
 3. IF HYPOTHESIS DENIED:
    - Fall back to next highest confidence hypothesis
    - Repeat investigation
@@ -289,10 +301,23 @@ After implementing the fix, if the `code-simplifier:code-simplifier` agent is av
    - READ the regression test body (not just the name)
    - Verify assertions match expected behavior
    - Classify: STRONG (proves fix) / WEAK (incomplete) / TRIVIAL (always passes)
+
+REGRESSION TEST VERIFICATION:
+  Run the specific regression test individually (not as part of the full suite):
+  - Jest/Vitest: npx jest --testPathPattern="{test}" --testNamePattern="{test_method}" --no-coverage
+  - pytest: pytest {test}::test_{method} -v
+  - Maven: ./mvnw test -Dtest="{TestClass#testMethod}"
+  - Gradle: ./gradlew test --tests "{TestClass.testMethod}"
+  - Go: go test -run Test{Method} -v
+  - Rust: cargo test test_{method} -- --nocapture
+  Show: test name, PASS/FAIL, assertion output, execution time
+  Label: [PROVEN] — actual test runner output
+
 5. Report:
    VALIDATION RESULTS
    Check: ✅ All levels passed
    Test quality: ✅ Semantic validation passed (STRONG)
+   Regression test: ✅ {test_name} PASS ({time}s) [PROVEN]
 ```
 
 ### Step 6: Report + Commit

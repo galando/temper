@@ -281,6 +281,55 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ---
 
+## What's New in v3.1.0
+
+v3.1.0 adds **proven verification** — live test execution and MCP-powered analysis that replaces heuristic opinions with mechanically verified findings. Zero breaking changes: everything works as v3.0.0 when no MCP servers are installed.
+
+### Live Scenario Verification
+
+Every Gherkin scenario in intent.md can now be **executed individually** against your project's test runner. Not "Claude reads the test and judges it" — actually running it and showing real pass/fail output.
+
+```
+SCENARIO VERIFICATION RESULTS
+┌──────────────────────┬───────────────────┬──────────┬──────────┐
+│ Scenario             │ Test              │ Result   │ Time     │
+├──────────────────────┼───────────────────┼──────────┼──────────┤
+│ User resets password │ test_reset        │ ✅ PASS  │ 0.12s    │
+│ Invalid email        │ test_invalid      │ ✅ PASS  │ 0.05s    │
+│ Rate limiting        │ test_rate_limit   │ ❌ FAIL  │ 0.08s    │
+│ Token refresh        │ —                 │ ⚠ MISSING│ —        │
+└──────────────────────┴───────────────────┴──────────┴──────────┘
+```
+
+Configured via `check.live-scenarios: prompt|always|never` in temper.config. No MCP required — uses your project's existing test runner.
+
+### MCP-Powered Analysis
+
+When MCP servers are available, Temper upgrades grep-based heuristic analysis to tool-powered proven findings:
+
+| Analysis | Without MCP | With MCP |
+|----------|-------------|----------|
+| Blast radius | grep-based `[HEURISTIC]` | code-review-graph `[PROVEN]` |
+| Security scan | OWASP patterns `[HEURISTIC]` | semgrep SAST `[PROVEN]` |
+| Call chain tracing | grep imports `[HEURISTIC]` | query_graph_tool `[PROVEN]` |
+| Impact radius | grep consumers `[HEURISTIC]` | get_impact_radius_tool `[PROVEN]` |
+
+### Evidence Labels
+
+Every finding now carries a label that tells you how it was produced:
+
+- **`[PROVEN]`** — Tool output (MCP server, test runner, SAST scan). Mechanically verified.
+- **`[HEURISTIC]`** — Claude's grep-based analysis. Best-effort, not mechanically verified.
+- **`[SEMANTIC]`** — Claude's interpretation or judgment. Inherently subjective.
+
+Configured via `tools.label-findings: true` and `tools.mode: auto|heuristic-only|require` in temper.config.
+
+### Full Pipeline for Fixes
+
+`/temper:fix` now gets the same MCP and live verification enhancements as the main pipeline. MCP call chain tracing in RCA, proven blast radius in the fix agent, and individual regression test execution in validation.
+
+---
+
 ## What's New in v3.0.0
 
 v3.0.0 adds a **quality intelligence layer** to review and check — zero new dependencies, no setup required. Pure methodology improvements that make every review and check dramatically more thorough.

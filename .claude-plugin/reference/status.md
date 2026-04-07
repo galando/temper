@@ -91,6 +91,17 @@ If `.temper/metrics.json` doesn't exist: show "No metrics yet. Run /temper:revie
 │                                                      │
 │ ACTIVE SPECS                                         │
 │   - {spec} ({status}, {X/Y tasks done})              │
+│                                                      │
+│ VERIFICATION                                         │
+│   Live scenarios: {enabled/prompt/disabled}           │
+│   Last run: {date} ({X}/{Y} passed)                  │
+│   Mutations: {N} caught, {N} missed                  │
+│                                                      │
+│ MCP TOOLS                                            │
+│   code-review-graph: {available/unavailable}          │
+│   semgrep: {available/unavailable}                    │
+│   Evidence ratio: {X}% [PROVEN] ({N} proven / {N} heuristic) │
+│   Setup: docs/recommended-setup.md                   │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -142,6 +153,19 @@ AskUserQuestion:
     "date": null,
     "coverage": null,
     "violations": null
+  },
+  "scenarios": {
+    "total_verified": 0,
+    "total_passed": 0,
+    "total_failed": 0,
+    "total_missing": 0,
+    "mutations_caught": 0,
+    "mutations_missed": 0
+  },
+  "evidence": {
+    "proven": 0,
+    "heuristic": 0,
+    "semantic": 0
   }
 }
 ```

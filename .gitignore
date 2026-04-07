@@ -33,3 +33,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Claude session logs
+.claude/interactions.log
+.claude/session.log
