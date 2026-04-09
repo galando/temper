@@ -40,6 +40,32 @@ If .temper/ directory doesn't exist:
 
 If `.temper/metrics.json` doesn't exist: show "No metrics yet. Run /temper:review or /temper:check to start tracking."
 
+### Step 1.5: Detect MCP Tool Availability
+
+```
+Detect which MCP tools are available by checking tool capabilities:
+
+1. code-review-graph:
+   - Try calling get_impact_radius_tool with a trivial query (e.g., current file)
+   - If tool exists and responds: available
+   - If tool not found or errors: unavailable
+   - Alternatively, check if MCP tools prefixed with the server name are registered
+
+2. semgrep:
+   - Try calling security_check or semgrep_scan_with_custom_rule
+   - If tool exists and responds: available
+   - If tool not found or errors: unavailable
+
+3. Read tools.mode from .claude/temper.config:
+   - auto: report availability, note fallback behavior
+   - heuristic-only: report as "disabled (heuristic-only mode)"
+   - require: report as "required" — warn if unavailable
+
+4. Compute evidence ratio from metrics.json evidence field:
+   - proven + heuristic + semantic = total evidence
+   - ratio = proven / total * 100 (if total > 0)
+```
+
 ### Step 2: Display Dashboard
 
 ```

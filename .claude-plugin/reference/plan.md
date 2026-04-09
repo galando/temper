@@ -68,6 +68,18 @@ Launch an Explore subagent with this prompt:
 ```
 Scan this project to build a reference map for planning a new feature.
 
+0. CODE REVIEW GRAPH MCP (PRIMARY exploration method)
+   If code-review-graph MCP tools are available:
+   a. Call build_or_update_graph_tool to ensure the graph is up-to-date
+   b. Call get_architecture_overview_tool for high-level codebase structure
+   c. Call list_communities_tool to understand code grouping
+   d. Call list_flows_tool (limit 20) to identify key execution paths
+   e. Call semantic_search_nodes_tool with keywords from the feature description
+   f. Call get_minimal_context_tool with the feature description for a quick overview
+   → Use these results as the PRIMARY source for dependency maps, patterns, and similar code
+   → Still verify with direct file reads where needed
+   If MCP is unavailable, proceed with grep/read steps below as fallback.
+
 1. DETECT STACK
    - Look for: package.json, pom.xml, build.gradle, pyproject.toml, go.mod, Cargo.toml
    - Read the detected manifest to understand dependencies
@@ -90,7 +102,8 @@ Scan this project to build a reference map for planning a new feature.
 
 4. FIND SIMILAR IMPLEMENTATIONS
    Search for existing code similar to the planned feature.
-   Use grep for keywords from the feature description.
+   First try semantic_search_nodes_tool with feature keywords (if MCP available).
+   Then grep for keywords from the feature description.
 
 5. CHECK FOR COMPANY PRESET
    - Read .claude/temper.config if exists

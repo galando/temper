@@ -812,7 +812,7 @@
         <span>Temper</span>
       </a>
       <div class="nav-links">
-        <a href="#whats-new" style="color: var(--accent);">v3.1.0</a>
+        <a href="#whats-new" style="color: var(--accent);">v3.1.1</a>
         <a href="#why">IDD+BDD+TDD</a>
         <a href="#flow">How it works</a>
         <a href="#packs">Packs</a>
@@ -852,6 +852,31 @@
   </section>
 
   <section id="whats-new">
+    <div class="section-label">What's New in v3.1.1</div>
+    <h2 class="section-title">MCP Setup Done Right</h2>
+    <p class="section-desc">v3.1.1 fixes MCP integration: proper setup instructions with verification, planning agent uses code-review-graph as primary exploration, and troubleshooting for common issues.</p>
+
+    <div class="why-grid" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="why-item">
+        <h4>Step-by-Step Setup</h4>
+        <p>Install, register, restart, verify. Each MCP server has clear instructions with a verification checklist and symptom → fix troubleshooting table.</p>
+      </div>
+      <div class="why-item">
+        <h4>MCP-First Planning</h4>
+        <p><code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper:plan</code> now uses code-review-graph as the primary codebase exploration method. AST-level proven analysis, not grep-based heuristics.</p>
+      </div>
+      <div class="why-item">
+        <h4>Verified Troubleshooting</h4>
+        <p>Forgot to restart? Graph not built? Supply chain scan needs daemon? Every common MCP issue has a clear fix in the README.</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 2rem; text-align: center;">
+      <a href="https://github.com/galando/temper#recommended-setup" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See setup guide on GitHub</a>
+    </div>
+  </section>
+
+  <section>
     <div class="section-label">What's New in v3.1.0</div>
     <h2 class="section-title">Proven Verification</h2>
     <p class="section-desc">v3.1.0 makes Temper's analysis <strong>real</strong>. Instead of reading tests and judging quality, Temper now <em>runs</em> your tests and shows you the proof.</p>
@@ -873,7 +898,7 @@
 
     <div style="margin-top: 2rem; text-align: center;">
       <p style="color: var(--fg-muted); font-size: 0.9rem;">No MCP servers? Everything works exactly as v3.0.0. Progressive enhancement, zero breaking changes.</p>
-      <a href="https://github.com/galando/temper#whats-new-in-v310" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
+      <a href="https://github.com/galando/temper#whats-new-in-v311" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
     </div>
   </section>
 
