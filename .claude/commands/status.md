@@ -14,6 +14,7 @@ description: "Show quality metrics and learning loop"
 
 1. Initialize `.temper/` directory if missing (metrics, review-memory, specs/)
 2. Read `.temper/metrics.json` + `.temper/review-memory.json`
-3. Display: reviews, quality trend, debt, hotspots, top patterns, learning loop, active specs
-4. If pattern count >= 3: suggest auto-rule
-5. **Hotspot map**: shows which files generate the most issues
+3. **Detect MCP tools**: attempt to call `get_impact_radius_tool` (code-review-graph) and check if semgrep tools are available. Report availability in dashboard.
+4. Display: reviews, quality trend, debt, hotspots, top patterns, learning loop, active specs, **MCP TOOLS section**
+5. If pattern count >= 3: suggest auto-rule
+6. **Hotspot map**: shows which files generate the most issues

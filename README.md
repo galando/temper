@@ -281,6 +281,33 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ---
 
+## What's New in v3.1.1
+
+v3.1.1 fixes MCP server integration: better setup instructions, planning agent now uses code-review-graph as primary exploration method, and troubleshooting for common issues.
+
+### MCP Setup Improvements
+
+The Recommended Setup section now provides step-by-step instructions with verification and troubleshooting:
+
+- Explicit **restart Claude Code** step after `claude mcp add` (MCP servers load at startup)
+- **Build the graph first** — code-review-graph needs `build_or_update_graph_tool` before producing `[PROVEN]` findings
+- **Symptom → fix table** for common issues (forgot restart, graph not built, unavailable tools)
+- Semgrep supply chain scanning requirements documented (requires daemon + API token)
+
+### Planning Agent Uses MCP
+
+The `/temper:plan` agent now uses code-review-graph MCP tools as the **primary** codebase exploration method. Previously, the planning agent ignored MCP tools and defaulted to grep-based exploration even when MCP was available. Now it calls:
+
+- `build_or_update_graph_tool` — ensure fresh graph
+- `get_architecture_overview_tool` — high-level structure
+- `list_communities_tool` — code grouping
+- `list_flows_tool` — execution paths
+- `semantic_search_nodes_tool` — find similar code
+
+Grep/read serves as verification fallback, not the primary method.
+
+---
+
 ## What's New in v3.1.0
 
 v3.1.0 adds **proven verification** — live test execution and MCP-powered analysis that replaces heuristic opinions with mechanically verified findings. Zero breaking changes: everything works as v3.0.0 when no MCP servers are installed.
@@ -478,6 +505,88 @@ cd your-project
 /temper:review                 # Structured intent validation
 ```
 
+## Recommended Setup
+
+Temper works out of the box. Two optional MCP servers upgrade grep-based heuristic analysis (`[HEURISTIC]`) to mechanically verified findings (`[PROVEN]`).
+
+### 1. code-review-graph (Blast Radius + Call Chains)
+
+Provides AST-level dependency graphs, call chain tracing, and impact radius analysis.
+
+```bash
+# Install
+pip install code-review-graph
+
+# Register with Claude Code
+claude mcp add code-review-graph -- code-review-graph
+```
+
+**Restart Claude Code.** MCP servers are loaded at startup — changes don't take effect until restart.
+
+**Build the graph for your project.** In your first session after install:
+
+```
+> ask Claude to call build_or_update_graph_tool for your project
+```
+
+Or it will auto-build the first time you run `/temper:plan`. The graph indexes source files (`.ts`, `.py`, `.go`, `.java`, etc.) — it reports 0 nodes on markdown-only projects (expected).
+
+### 2. Semgrep (Security Scanning)
+
+Provides SAST scanning for security vulnerabilities. Replaces OWASP pattern-matching with real static analysis.
+
+```bash
+# Install
+brew install semgrep
+
+# Register with Claude Code
+claude mcp add semgrep -- semgrep --mcp
+```
+
+**Restart Claude Code.** Same reason as above — MCP changes require restart.
+
+> **Supply chain scanning** (`semgrep_scan_supply_chain`) requires a running Semgrep daemon with an API token: `semgrep daemon start`. For most projects, SAST file scanning is sufficient.
+
+### 3. Verify Everything Works
+
+Run `/temper:status` in your project. Look for this section in the dashboard:
+
+```
+MCP TOOLS
+  code-review-graph: available       ← should say "available"
+  semgrep: available                 ← should say "available"
+  Evidence ratio: 0% [PROVEN]
+  Setup: docs/recommended-setup.md
+```
+
+**If either shows `unavailable`:**
+
+| Symptom | Fix |
+|---------|-----|
+| Both show `unavailable` | You didn't restart Claude Code after `claude mcp add` |
+| code-review-graph unavailable | Run `pip install code-review-graph` and restart |
+| semgrep unavailable | Run `brew install semgrep` and restart |
+| Available but `[HEURISTIC]` findings | Graph hasn't been built yet — run `/temper:plan` on a feature, or ask Claude to call `build_or_update_graph_tool` |
+| `require` mode + unavailable | Change `tools.mode` to `auto` in temper.config, or install the missing server |
+
+### 4. Configuration
+
+Configure MCP behavior in `.claude/temper.config`:
+
+```yaml
+tools:
+  mode: auto              # auto | heuristic-only | require
+  label-findings: true    # Show [PROVEN]/[HEURISTIC]/[SEMANTIC] labels
+```
+
+| Mode | Behavior |
+|------|----------|
+| `auto` | Use MCP when available, fall back to heuristics (default) |
+| `heuristic-only` | Never use MCP tools, always use grep-based analysis |
+| `require` | Fail if MCP tools are unavailable — for teams that need proven analysis |
+
+Full setup guide: [docs/recommended-setup.md](docs/recommended-setup.md)
+
 ## Adaptive Learning
 
 - **Pattern Detection** — Identifies recurring issues in your code
@@ -488,6 +597,7 @@ cd your-project
 ## Documentation
 
 - [Getting Started](docs/getting-started.md) — Step-by-step guide
+- [Recommended Setup](docs/recommended-setup.md) — MCP servers and live verification
 - [Commands Reference](docs/commands.md) — Full command documentation
 - [Packs](docs/packs.md) — Built-in and custom packs
 - [Enterprise Setup](docs/enterprise.md) — Deploy across your organization
