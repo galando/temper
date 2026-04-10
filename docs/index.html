@@ -812,7 +812,7 @@
         <span>Temper</span>
       </a>
       <div class="nav-links">
-        <a href="#whats-new" style="color: var(--accent);">v3.1.1</a>
+        <a href="#whats-new" style="color: var(--accent);">v4.0.0</a>
         <a href="#why">IDD+BDD+TDD</a>
         <a href="#flow">How it works</a>
         <a href="#packs">Packs</a>
@@ -852,27 +852,32 @@
   </section>
 
   <section id="whats-new">
-    <div class="section-label">What's New in v3.1.1</div>
-    <h2 class="section-title">MCP Setup Done Right</h2>
-    <p class="section-desc">v3.1.1 fixes MCP integration: proper setup instructions with verification, planning agent uses code-review-graph as primary exploration, and troubleshooting for common issues.</p>
+    <div class="section-label">What's New in v4.0.0</div>
+    <h2 class="section-title">From Pipeline to Cycle</h2>
+    <p class="section-desc">v4.0.0 transforms Temper from a one-way pipeline into a cyclic SDLC platform. Feedback loops, context accumulation, observability, and an optional Design phase. Inspired by <a href="https://amoshaviv.com/blog/the-agentic-sdlc/" style="color: var(--accent);">The Agentic SDLC</a>.</p>
 
-    <div class="why-grid" style="grid-template-columns: repeat(3, 1fr);">
+    <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
       <div class="why-item">
-        <h4>Step-by-Step Setup</h4>
-        <p>Install, register, restart, verify. Each MCP server has clear instructions with a verification checklist and symptom → fix troubleshooting table.</p>
+        <h4>Feedback Loops</h4>
+        <p>Review finds issues? Auto-loop back to Build. Check fails tests? Targeted fix task created. Build discovers bad plan? Revise plan. Circuit breakers prevent infinite loops.</p>
       </div>
       <div class="why-item">
-        <h4>MCP-First Planning</h4>
-        <p><code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper:plan</code> now uses code-review-graph as the primary codebase exploration method. AST-level proven analysis, not grep-based heuristics.</p>
+        <h4>Context Accumulation</h4>
+        <p>Each stage writes structured context for downstream stages. No more "agent amnesia" — Review knows what Build struggled with, Check knows what Review already fixed.</p>
       </div>
       <div class="why-item">
-        <h4>Verified Troubleshooting</h4>
-        <p>Forgot to restart? Graph not built? Supply chain scan needs daemon? Every common MCP issue has a clear fix in the README.</p>
+        <h4>Observability</h4>
+        <p>Per-stage metrics: tokens, latency, tool calls, quality trends. See which stages are slow, expensive, or finding the most issues. Tracked in <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper:status</code>.</p>
+      </div>
+      <div class="why-item">
+        <h4>Design Phase</h4>
+        <p>New <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper:design</code> for complex features: system architecture, API contracts, DB schema. Auto-skipped for simple changes.</p>
       </div>
     </div>
 
     <div style="margin-top: 2rem; text-align: center;">
-      <a href="https://github.com/galando/temper#recommended-setup" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See setup guide on GitHub</a>
+      <p style="color: var(--fg-muted); font-size: 0.9rem;">All features enabled by default. Disable any via <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">.claude/temper.config</code>. Zero breaking changes — same pipeline, now cyclic.</p>
+      <a href="https://github.com/galando/temper#whats-new-in-v400" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
     </div>
   </section>
 
@@ -1140,7 +1145,7 @@
   <section id="commands">
     <div class="section-label">Commands</div>
     <h2 class="section-title">Unified Command</h2>
-    <p class="section-desc">One command runs the full SDLC: plan → build → review → check with stage gates.</p>
+    <p class="section-desc">One command runs the full SDLC: plan → design → build → review → check with stage gates, feedback loops, and observability.</p>
 
     <div class="install-card" style="max-width: 600px; margin-bottom: 2rem;">
       <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px;">
@@ -1160,6 +1165,13 @@
         <div class="command-content">
           <h4>/temper:plan</h4>
           <p>Plan with blast radius, mermaid diagrams, and interactive walkthrough</p>
+        </div>
+      </div>
+      <div class="command">
+        <span class="command-icon">📐</span>
+        <div class="command-content">
+          <h4>/temper:design</h4>
+          <p>System design for complex features (auto-skipped for simple)</p>
         </div>
       </div>
       <div class="command">
@@ -1208,7 +1220,7 @@
         <span class="command-icon">🔥</span>
         <div class="command-content">
           <h4>/temper "feature"</h4>
-          <p style="color: var(--fg);">Unified: plan → build → review → check</p>
+          <p style="color: var(--fg);">Unified: plan → design → build → review → check</p>
         </div>
       </div>
     </div>

@@ -36,6 +36,7 @@ Files to load at start:
 1. Run `git diff --name-only` to identify changed files
 2. `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md` (this file)
 3. `.temper/specs/{feature}/intent.md` (for intent validation, if exists)
+4. `.temper/specs/{feature}/build-context.json` (if exists — build deviations and test results)
 
 ### Step 1: Gather Context
 
@@ -837,6 +838,50 @@ This step runs ONLY when invoked from Step 5's "Fix all" flow or when running st
 
 3. Update review report with fix status
 ```
+
+### Step 7.5: Context Output
+
+After review completes and before updating metrics, write `review-context.json` to the spec directory:
+
+```json
+{
+  "version": 1,
+  "stage": "review",
+  "timestamp": "{ISO timestamp}",
+  "findings_summary": {
+    "critical": {N},
+    "high": {N},
+    "medium": {N},
+    "low": {N},
+    "auto_fixed": {N}
+  },
+  "intent_verdict": "{satisfied|partial|not_met}",
+  "security_hot_paths": ["list of flagged paths"],
+  "contract_changes": ["list of contract changes"],
+  "scenario_coverage": {
+    "total": {N},
+    "strong": {N},
+    "weak": {N},
+    "trivial": {N},
+    "uncovered": {N}
+  }
+}
+```
+
+### Feedback Loop to Build
+
+When `feedback.enabled: true` in temper.config and auto-fixable issues are found:
+
+1. After applying fixes (Step 6), check if issues persist
+2. If issues persist AND iteration < max-loops (default 2):
+   - Write review-context.json with remaining issues
+   - Signal orchestrator to loop back to Build
+3. If issues persist AND iteration >= max-loops:
+   - Stop and show remaining issues to user
+   - Offer "Save for later" or "Manual fix"
+4. Circuit breaker: same issue found in 2 consecutive loops → stop immediately
+
+The feedback loop counter is tracked in `.temper/feedback-loops.json`.
 
 ### Step 7: Update Metrics
 

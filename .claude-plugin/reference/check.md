@@ -20,6 +20,7 @@ In both modes, the check methodology is identical.
 
 Files to load at start:
 1. `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md` (this file)
+2. `.temper/specs/{feature}/review-context.json` (if exists — review findings for context)
 
 ### Step 1: Detect Stack
 
@@ -425,6 +426,58 @@ Note: Full debt analysis (dead code, duplication) runs only on /temper:status
 to avoid slowing down the validation pipeline.
 ```
 
+### Step 3.5: Context Output
+
+After all validation levels complete, write `check-context.json` to the spec directory:
+
+```json
+{
+  "version": 1,
+  "stage": "check",
+  "timestamp": "{ISO timestamp}",
+  "validation_results": {
+    "compile": "{pass|fail|skip}",
+    "tests": "{pass|fail|skip}",
+    "coverage_pct": {N},
+    "lint": "{pass|fail|skip}",
+    "security": "{pass|fail|skip}"
+  },
+  "scenario_verification": {
+    "total": {N},
+    "passed": {N},
+    "failed": {N},
+    "missing": {N}
+  },
+  "test_failures": [
+    {
+      "test_name": "string",
+      "error_message": "string",
+      "file": "string",
+      "line": {N},
+      "scenario": "string (from intent.md)"
+    }
+  ]
+}
+```
+
+### Feedback Loop to Build
+
+When `feedback.enabled: true` in temper.config and test failures are found:
+
+1. For each test failure in newly written code:
+   - Create a targeted fix task with: test name, error message, file:line
+   - Include the intent.md scenario that the test maps to
+2. If failures found AND iteration < max-loops (default 2):
+   - Offer "Loop back to Build" option in the stage gate
+   - Write check-context.json with failure details
+   - Signal orchestrator to loop back to Build
+3. If failures found AND iteration >= max-loops:
+   - Stop and show remaining failures to user
+   - Offer "Save for later" or "Manual fix"
+4. Circuit breaker: same test failing in 2 consecutive loops → stop immediately
+
+The feedback loop counter is tracked in `.temper/feedback-loops.json`.
+
 ### Step 4: Nice Summary + Stage Gate
 
 After all levels complete, show a nice summary:
@@ -489,6 +542,9 @@ AskUserQuestion:
     - label: "Save for later"
       description: "Keep changes uncommitted, save state."
   multiSelect: false
+  Note: When feedback.enabled is true AND test failures exist in new code,
+  an additional "Loop back to Build" option is offered by the orchestrator.
+  The orchestrator handles feedback loop routing.
 ```
 
 | Response | Action |

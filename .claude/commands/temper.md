@@ -1,11 +1,11 @@
 ---
-description: "Unified SDLC command: plan → build → review → check with stage gates"
+description: "Unified SDLC command: plan → design → build → review → check with stage gates, feedback loops, and observability"
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command
+# Temper: Unified SDLC Command (v4.0.0)
 
-**Goal:** Execute the full SDLC flow (plan → build → review → check → commit) with stage gates and **real** context isolation via Agent subprocesses.
+**Goal:** Execute the full SDLC flow (plan → design? → build → review → check → commit) with stage gates, feedback loops, context accumulation, observability, and **real** context isolation via Agent subprocesses.
 
 ## Usage
 
@@ -30,20 +30,27 @@ Each stage runs in an **isolated Agent subprocess**. This provides genuine conte
 ORCHESTRATOR (this file)
   │
   ├── Agent subprocess → PLAN (full codebase exploration)
-  │     ↓ returns: plan summary + spec path
+  │     ↓ returns: plan summary + spec path + complexity
+  │     ↓ gate decision from user
+  │
+  ├── [OPTIONAL] Agent subprocess → DESIGN (if complex/medium + phases.design: true)
+  │     ↓ returns: design summary + design.md
   │     ↓ gate decision from user
   │
   ├── Agent subprocess → BUILD (loads tasks.md + intent.md only)
-  │     ↓ returns: build summary + files changed
+  │     ↓ returns: build summary + files changed + build-context.json
   │     ↓ gate decision from user
+  │     ↓ FEEDBACK: may loop back to PLAN (infeasible design)
   │
   ├── Agent subprocess → REVIEW (loads changed files only)
-  │     ↓ returns: review summary + issues
+  │     ↓ returns: review summary + issues + review-context.json
   │     ↓ gate decision from user
+  │     ↓ FEEDBACK: may loop back to BUILD (auto-fix loop)
   │
   └── Agent subprocess → CHECK (runs validation pipeline)
-        ↓ returns: check results
+        ↓ returns: check results + check-context.json
         ↓ gate decision from user → commit
+        ↓ FEEDBACK: may loop back to BUILD (test failure loop)
 ```
 
 **Why Agent subprocesses?** A self-directed prompt like "CLEAR ALL CONTEXT" is unenforceable — Claude cannot clear its own context window. Agent subprocesses start with genuinely clean context because they are separate invocations.
@@ -54,7 +61,7 @@ The orchestrator tracks progress via `.temper/build-state.json`. **Resolve the s
 
 ```json
 {
-  "stage": "plan_complete|build_complete|review_complete|check_complete",
+  "stage": "plan_complete|design_complete|build_complete|review_complete|check_complete",
   "spec": "{feature-slug}",
   "spec_path": ".temper/specs/{feature-slug}",
   "branch": "feature/{feature-slug}",
@@ -239,6 +246,96 @@ AskUserQuestion:
 
 ---
 
+## Stage 1.5: Design (Optional — for complex/medium features)
+
+**Runs in:** Agent subprocess with clean context — loads intent.md + plan.md
+
+**When active:** `phases.design: true` in temper.config AND complexity is `medium` or `complex`.
+**When skipped:** Automatically skipped for `simple` or `trivial` complexity, or when `phases.design: false`.
+
+### Design Gate Decision
+
+After Plan stage completes, check:
+1. Read `.claude/temper.config` → `phases.design`
+2. If `false`: skip to Stage 2 (BUILD) directly
+3. If `true`: check the plan's complexity level
+4. If complexity is `simple` or `trivial`: skip to Stage 2 (BUILD) directly
+5. If complexity is `medium` or `complex`: launch Design agent
+
+### Launch Design Agent
+
+Before launching, read `.temper/build-state.json` to get the `spec_path` and `spec` values.
+
+```
+Use the Agent tool with this prompt:
+
+"Execute /temper:design for feature: {spec from build-state.json}
+
+Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/design.md
+
+CONTEXT: You are starting with a CLEAN context. Load these files first:
+1. {spec_path}/intent.md
+2. {spec_path}/plan.md
+3. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/design.md for methodology
+
+Then produce the system design as described in the methodology.
+
+CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the design summary to the orchestrator.
+
+Return ONLY:
+- Design summary text (formatted box)
+- Path to design.md artifact
+- Key architectural decisions"
+```
+
+### Stage Gate
+
+Show the AskUserQuestion gate with:
+- "Continue to Build (Recommended)" — launch BUILD agent
+- "Save for later" — save state, stop
+- **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
+
+**on Continue:**
+1. Save state to `.temper/build-state.json` with `"stage": "design_complete"`
+2. Proceed to Stage 2 (BUILD) — launches a new Agent subprocess
+
+**on Save:**
+1. Save state to `.temper/build-state.json`
+2. Report: "Saved. Run /temper when ready to continue."
+
+---
+
+## Feedback Loops (v4.0.0)
+
+> **Reference:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Feedback Loop Patterns"
+
+When `feedback.enabled: true` in temper.config, stages can loop back to upstream stages:
+
+| Loop | Trigger | Max Iterations | Circuit Breaker |
+|------|---------|---------------|-----------------|
+| Review → Build | Auto-fixable issues found | 2 | Same issue twice = stop |
+| Check → Build | Test failures in new code | 2 | Same test twice = stop |
+| Build → Plan | Infeasible design discovered | Unlimited | Human-driven only |
+
+### Feedback Loop Handling
+
+When a stage reports a feedback trigger:
+1. Check `.temper/feedback-loops.json` for active loops
+2. If iteration < max-loops: loop back, increment counter
+3. If iteration >= max-loops: stop and show remaining issues
+4. Update `.temper/feedback-loops.json` with loop state
+
+### Observability Tracking (v4.0.0)
+
+When `observability.enabled: true` in temper.config, track per-stage metrics:
+
+1. Before launching each Agent subprocess: record start timestamp
+2. After each stage completes: record elapsed time, estimate tokens, count tool calls
+3. Write metrics to `.temper/observability.json` after each stage
+4. Show in `/temper:status` dashboard
+
+---
+
 ## Stage 2: Building
 
 **Runs in:** Agent subprocess with clean context — only tasks.md + intent.md loaded
@@ -258,6 +355,8 @@ CONTEXT: You are starting with a CLEAN context. Load these files first:
 1. {spec_path}/tasks.md
 2. {spec_path}/intent.md (if exists)
 3. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md for methodology
+4. Read {spec_path}/review-context.json (if exists — feedback from review loop)
+5. Read {spec_path}/check-context.json (if exists — feedback from check loop)
 
 Then execute all tasks in tasks.md using TDD discipline.
 
@@ -344,6 +443,7 @@ CONTEXT: You are starting with a CLEAN context. Load these first:
 1. Run: git diff --name-only (to get changed files)
 2. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md for methodology
 3. Read {spec_path}/intent.md (for intent validation)
+4. Read {spec_path}/build-context.json (if exists — build deviations and test results)
 
 Then review all changed files using parallel subagents as described in the methodology.
 
@@ -466,7 +566,8 @@ Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md
 CONTEXT: You are starting with a CLEAN context. Load these first:
 1. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md for methodology
 2. Read {spec_path}/intent.md (for scenario coverage validation, if exists)
-3. Detect stack and run the full validation pipeline
+3. Read {spec_path}/review-context.json (if exists — review findings for context)
+4. Detect stack and run the full validation pipeline
 
 CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the check summary to the orchestrator.
 
@@ -553,7 +654,7 @@ If you stopped earlier, run `/temper` to continue.
 
 ### Resume Validation
 
-> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Resume Validation" section. Valid stages for this command: `plan_complete`, `build_complete`, `review_complete`, `check_complete`.
+> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Resume Validation" section. Valid stages for this command: `plan_complete`, `design_complete`, `build_complete`, `review_complete`, `check_complete`.
 
 ### Nested Invocation Protection
 
@@ -579,12 +680,16 @@ AskUserQuestion:
 
 | Stage Transition | Method | Context Loaded | Size |
 |-----------------|--------|----------------|------|
+| PLAN → DESIGN | New Agent subprocess | intent.md + plan.md | ~5-10KB |
 | PLAN → BUILD | New Agent subprocess | tasks.md + intent.md | ~5-10KB |
-| BUILD → REVIEW | New Agent subprocess | changed files (git diff) | ~20-50KB |
-| REVIEW → CHECK | New Agent subprocess | check.md + intent.md | ~5KB |
+| DESIGN → BUILD | New Agent subprocess | tasks.md + intent.md + design.md | ~10-15KB |
+| BUILD → REVIEW | New Agent subprocess | changed files (git diff) + build-context.json | ~20-50KB |
+| REVIEW → CHECK | New Agent subprocess | check.md + intent.md + review-context.json | ~5-10KB |
+| REVIEW → BUILD (feedback) | New Agent subprocess | tasks.md + review-context.json | ~10-15KB |
+| CHECK → BUILD (feedback) | New Agent subprocess | tasks.md + check-context.json | ~10-15KB |
 | CHECK → Commit | Direct (no subprocess) | Nothing | 0KB |
 
-Each subprocess starts genuinely clean. No theater.
+Each subprocess starts genuinely clean. Context files accumulate in `.temper/specs/{feature}/` and are cleaned up on commit.
 
 ---
 
@@ -592,6 +697,7 @@ Each subprocess starts genuinely clean. No theater.
 
 ```
 /temper:plan    → Just planning, stops at gate
+/temper:design  → Just design (for complex features), stops at gate
 /temper:build   → Just building, stops at gate
 /temper:review  → Just review, stops at gate
 /temper:check   → Just check, stops at gate

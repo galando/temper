@@ -281,30 +281,65 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ---
 
-## What's New in v3.1.1
+## What's New in v4.0.0
 
-v3.1.1 fixes MCP server integration: better setup instructions, planning agent now uses code-review-graph as primary exploration method, and troubleshooting for common issues.
+v4.0.0 transforms Temper from a one-way pipeline into a **cyclic SDLC platform** with feedback loops, context accumulation, observability, and an optional Design phase. Inspired by [The Agentic SDLC](https://amoshaviv.com/blog/the-agentic-sdlc/) framework.
 
-### MCP Setup Improvements
+### Feedback Loops
 
-The Recommended Setup section now provides step-by-step instructions with verification and troubleshooting:
+Stages can now loop back to upstream stages with failure context. No more "stop and start over" when Review finds issues or Check fails tests.
 
-- Explicit **restart Claude Code** step after `claude mcp add` (MCP servers load at startup)
-- **Build the graph first** — code-review-graph needs `build_or_update_graph_tool` before producing `[PROVEN]` findings
-- **Symptom → fix table** for common issues (forgot restart, graph not built, unavailable tools)
-- Semgrep supply chain scanning requirements documented (requires daemon + API token)
+| Loop | Trigger | Behavior |
+|------|---------|----------|
+| Review → Build | Auto-fixable issues found | Fix applied, re-review, max 2 loops |
+| Check → Build | Test failures | Fix task created with failure context, max 2 loops |
+| Build → Plan | Infeasible design | Plan revision with what went wrong |
 
-### Planning Agent Uses MCP
+Circuit breakers prevent infinite loops — same issue twice triggers human intervention.
 
-The `/temper:plan` agent now uses code-review-graph MCP tools as the **primary** codebase exploration method. Previously, the planning agent ignored MCP tools and defaulted to grep-based exploration even when MCP was available. Now it calls:
+### Context Accumulation
 
-- `build_or_update_graph_tool` — ensure fresh graph
-- `get_architecture_overview_tool` — high-level structure
-- `list_communities_tool` — code grouping
-- `list_flows_tool` — execution paths
-- `semantic_search_nodes_tool` — find similar code
+Each stage now produces structured artifacts that accumulate for downstream stages. No more "agent amnesia" between stages.
 
-Grep/read serves as verification fallback, not the primary method.
+```
+.temper/specs/{feature}/
+  intent.md           ← Plan produces this
+  design.md           ← Design produces this (if complex)
+  build-context.json  ← Build writes deviations + test results
+  review-context.json ← Review writes findings + intent verdict
+  check-context.json  ← Check writes validation results
+```
+
+### Observability
+
+Per-stage metrics tracking: tokens, latency, tool calls, and quality trends over time. Shown in `/temper:status`.
+
+```
+| Stage   | Avg Tokens | Avg Latency | Total Runs |
+|---------|------------|-------------|------------|
+| Plan    | ~4,200     | ~12s        | 15         |
+| Build   | ~12,000    | ~45s        | 15         |
+| Review  | ~8,500     | ~30s        | 15         |
+| Check   | ~2,100     | ~25s        | 15         |
+```
+
+### Design Phase (Optional)
+
+New `/temper:design` stage for complex features: system architecture, API contracts, DB schema. Automatically skipped for simple/trivial features. Enabled by default.
+
+### All Features Enabled by Default
+
+v4.0.0 enables all new features by default. Disable any via `.claude/temper.config`:
+
+```yaml
+phases:
+  design: true         # Set false to skip Design stage
+feedback:
+  enabled: true        # Set false to disable feedback loops
+  max-loops: 2         # Circuit breaker limit
+observability:
+  enabled: true        # Set false to disable metrics tracking
+```
 
 ---
 
@@ -437,19 +472,20 @@ Temper scans changed code for performance anti-patterns: N+1 queries (loops with
 /temper "add login feature"     # One command for the full SDLC
 ```
 
-Runs plan → build → review → check with **stage gates**. At each stage, you see a nice summary and choose to proceed, edit, or stop.
+Runs plan → design? → build → review → check with **stage gates**, **feedback loops**, and **observability**. At each stage, you see a summary and choose to proceed, edit, or stop.
 
 ### Individual Commands (Granular Control)
 
 | Command | Purpose |
 |---------|---------|
 | [`/temper:plan`](docs/commands.md#temperplan) | Blast radius + BDD scenarios + architecture |
+| [`/temper:design`](docs/commands.md#temperdesign) | System design (complex/medium features) |
 | [`/temper:build`](docs/commands.md#temperbuild) | Scenario-driven TDD + coverage gate |
 | [`/temper:review`](docs/commands.md#temperreview) | Structured intent validation + confidence scoring |
 | [`/temper:check`](docs/commands.md#tempercheck) | Stack validation (auto-detects) |
 | [`/temper:fix`](docs/commands.md#temperfix) | Root cause analysis + regression test |
 | [`/temper:pack`](docs/commands.md#temperpack) | Manage quality packs |
-| [`/temper:status`](docs/commands.md#temperstatus) | Quality metrics dashboard |
+| [`/temper:status`](docs/commands.md#temperstatus) | Quality metrics + observability dashboard |
 
 ### Stage Gates
 
