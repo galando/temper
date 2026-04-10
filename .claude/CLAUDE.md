@@ -12,7 +12,7 @@
 | `/temper:pack` | Manage quality packs |
 | `/temper:status` | Quality + observability dashboard |
 
-**v4.0.0 features:** Feedback loops, context accumulation, observability, design phase
+**v4.0.1:** Design walkthrough + conditional sections
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/`
 
 <!-- TOKENOMICS:START -->
