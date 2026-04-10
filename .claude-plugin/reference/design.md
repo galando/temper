@@ -86,6 +86,8 @@ AskUserQuestion:
   options:
     - label: "Continue to Build (Recommended)"
       description: "Proceed to build with the approved design."
+    - label: "Walk through design step by step"
+      description: "Interactive walkthrough of design decisions."
     - label: "Save for later"
       description: "Save design and stop."
   multiSelect: false
@@ -94,8 +96,53 @@ AskUserQuestion:
 | Response | Action |
 |----------|--------|
 | **Continue to Build** | Save design.md, proceed to build |
+| **Walk through design** | Interactive section-by-section review (see below) |
 | **Save for later** | Save state, stop |
 | **Other** (free-text) | Edit design, re-show gate |
+
+#### Step-by-Step Walkthrough
+
+When the user selects "Walk through design step by step", present the design as an interactive, section-by-section flow.
+
+**Walkthrough sections (dynamic — only show sections present in design.md):**
+
+Read `design.md` and detect which sections exist. Present only sections that have content. The available sections:
+
+1. **Architecture Overview** — System components, data flow diagram, what's new vs modified vs existing (always shown)
+2. **API Contracts** — Request/response shapes, endpoint changes, backward compatibility notes (shown if design.md has API contract content)
+3. **Database Changes** — Schema changes, migration strategy, impact on existing data (shown if design.md has database content)
+4. **Integration Points** — External system connections, error handling strategy, retry/fallback logic (shown if design.md has integration content)
+5. **Decision Log** — Each architectural decision with rationale and alternatives considered (always shown)
+
+**After each section, use AskUserQuestion:**
+
+```
+AskUserQuestion:
+  question: "What would you like to do?"
+  options:
+    - label: "Next step"
+      description: "Continue to {next section name}."
+    - label: "Ask a question"
+      description: "Type your question about this section."
+  multiSelect: false
+```
+
+- **"Ask a question"** (or "Other" with question text): Answer, then re-show the same section's gate
+- **"Other" (change request)**: Edit design files, show what changed, then re-show the same section's gate
+- **"Next step"**: Advance to next section. After the last section, show the final walkthrough gate:
+
+```
+AskUserQuestion:
+  question: "Walkthrough complete. What next?"
+  options:
+    - label: "Continue to Build (Recommended)"
+      description: "Proceed to build with the approved design."
+    - label: "Save for later"
+      description: "Save design and stop."
+  multiSelect: false
+```
+
+**"Other" (free-text change request)**: Edit design files, show what changed, re-show this gate.
 
 ### Skip Conditions
 

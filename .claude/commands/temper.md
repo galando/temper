@@ -3,7 +3,7 @@ description: "Unified SDLC command: plan → design → build → review → che
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v4.0.0)
+# Temper: Unified SDLC Command (v4.0.1)
 
 **Goal:** Execute the full SDLC flow (plan → design? → build → review → check → commit) with stage gates, feedback loops, context accumulation, observability, and **real** context isolation via Agent subprocesses.
 
@@ -292,12 +292,65 @@ Return ONLY:
 
 Show the AskUserQuestion gate with:
 - "Continue to Build (Recommended)" — launch BUILD agent
+- "Walk through design step by step" — interactive walkthrough (see below)
 - "Save for later" — save state, stop
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
+
+#### Step-by-Step Walkthrough
+
+When the user selects "Walk through design step by step", present the design as an interactive, section-by-section flow. Read the design files from `.temper/specs/{feature-slug}/` to provide detailed content for each section.
+
+**Walkthrough sections (dynamic — only show sections present in design.md):**
+
+Read `.temper/specs/{feature-slug}/design.md` and detect which sections exist. Present only sections that have content. The available sections:
+
+1. **Architecture Overview** — System components, data flow diagram, what's new vs modified vs existing (always shown)
+2. **API Contracts** — Request/response shapes, endpoint changes, backward compatibility notes (shown if design.md has API contract content)
+3. **Database Changes** — Schema changes, migration strategy, impact on existing data (shown if design.md has database content)
+4. **Integration Points** — External system connections, error handling strategy, retry/fallback logic (shown if design.md has integration content)
+5. **Decision Log** — Each architectural decision with rationale and alternatives considered (always shown)
+
+**After each section, use AskUserQuestion:**
+
+```
+AskUserQuestion:
+  question: "What would you like to do?"
+  options:
+    - label: "Next step"
+      description: "Continue to {next section name}."
+    - label: "Ask a question"
+      description: "Type your question about this section."
+  multiSelect: false
+```
+
+- **"Ask a question"** (or "Other" with question text): Answer, then re-show the same section's gate
+- **"Other" (change request)**: Edit design files, show what changed, then re-show the same section's gate
+- **"Next step"**: Advance to next section. After the last section, show the final walkthrough gate:
+
+```
+AskUserQuestion:
+  question: "Walkthrough complete. What next?"
+  options:
+    - label: "Continue to Build (Recommended)"
+      description: "Launch BUILD agent with clean context."
+    - label: "Save for later"
+      description: "Save state and stop."
+  multiSelect: false
+```
+
+**"Other" (free-text change request)**: Edit design files, show what changed, re-show this gate.
+
+**Walkthrough edits propagate automatically.** The orchestrator edits design files on disk directly. The BUILD agent subprocess reads these same files, so changes are reflected without any extra step.
 
 **on Continue:**
 1. Save state to `.temper/build-state.json` with `"stage": "design_complete"`
 2. Proceed to Stage 2 (BUILD) — launches a new Agent subprocess
+
+**on Change (via "Other" free-text input):**
+1. User types their change request in the "Other" field
+2. Edit the design files directly (design.md, etc.)
+3. Re-show the updated design summary
+4. **Re-show the AskUserQuestion gate** — do NOT skip to build
 
 **on Save:**
 1. Save state to `.temper/build-state.json`
