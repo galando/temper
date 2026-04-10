@@ -913,6 +913,14 @@ explicitly select "Continue to Build" from the gate to proceed.
 2. Report: "✅ Saved. Run /temper when ready to continue."
 ```
 
+### Context Accumulation
+
+The planning stage produces the foundational artifacts (intent.md, tasks.md, plan.md) that all downstream stages consume. These artifacts serve as the plan context for the context accumulation system (v4.0.0).
+
+No additional context file is needed from the Plan stage — intent.md, tasks.md, and plan.md ARE the plan context. Downstream stages read these directly.
+
+See orchestrator-patterns.md → "Context Accumulation Patterns" for the full context schema and loading rules.
+
 ### Edge Cases
 
 ```

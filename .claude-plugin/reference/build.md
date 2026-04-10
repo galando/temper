@@ -27,6 +27,8 @@ Files to load at start:
 1. `.temper/specs/{feature}/tasks.md`
 2. `.temper/specs/{feature}/intent.md` (if exists)
 3. `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md` (this file)
+4. `.temper/specs/{feature}/review-context.json` (if exists — loaded when re-entering from feedback loop)
+5. `.temper/specs/{feature}/check-context.json` (if exists — loaded when re-entering from Check failure)
 
 ### Step 1: Load Plan
 
@@ -235,6 +237,57 @@ Scenario Coverage: 5/5 (4 automated, 1 manual verification needed)
   ⚠️  Scenario: Email delivered → MANUAL VERIFICATION NEEDED
 ```
 
+### Step 3.7: Context Output
+
+After all tasks complete and scenario coverage gate passes, write `build-context.json` to the spec directory:
+
+```json
+{
+  "version": 1,
+  "stage": "build",
+  "timestamp": "{ISO timestamp}",
+  "files_created": ["list of files created"],
+  "files_modified": ["list of files modified"],
+  "test_results": {
+    "total": {N},
+    "passed": {N},
+    "failed": {N}
+  },
+  "deviations": {
+    "unplanned_files": ["list"],
+    "skipped_tasks": ["list"],
+    "approach_changes": ["list"]
+  },
+  "scenarios_covered": ["list of covered scenario names"],
+  "tasks_completed": {N},
+  "tasks_total": {N}
+}
+```
+
+### Feedback Re-entry (when entering from Review or Check loop)
+
+If `review-context.json` exists in the spec directory:
+1. Read it to understand what issues were found
+2. Focus fixes on the specific files/issues listed
+3. After fixing, delete review-context.json (stale)
+
+If `check-context.json` exists in the spec directory:
+1. Read it to understand what test failures occurred
+2. For each test failure in `test_failures` array:
+   - Read the failing test file
+   - Read the implementation file referenced
+   - Fix the issue (test or implementation, as appropriate)
+3. After fixing, delete check-context.json (stale)
+
+### "Revise Plan" Option
+
+At the build gate (Step 4), add a third option when feedback is enabled:
+
+If the build encounters an infeasible plan (e.g., API doesn't exist, architecture incompatible):
+- Add "Revise plan" to the gate options
+- Write build-context.json with infeasibility reasons
+- The orchestrator handles routing back to Plan stage
+
 ### Step 3.75: Traceability Check
 
 After scenario coverage gate passes, verify file-to-scenario traceability:
@@ -312,6 +365,8 @@ AskUserQuestion:
     - label: "Save for later"
       description: "Save state to .temper/build-state.json and stop."
   multiSelect: false
+  Note: When feedback.enabled is true in temper.config, an additional "Revise plan" option
+  may be offered if build encountered infeasible design. This is at the orchestrator's discretion.
 ```
 
 4. On Continue to Review (first option):

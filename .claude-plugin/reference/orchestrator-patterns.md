@@ -170,3 +170,195 @@ Labels are shown when `tools.label-findings: true` in temper.config (default: tr
 | semgrep | `brew install semgrep` + `claude mcp add semgrep -- semgrep --mcp` | Static analysis security scanning (SAST) |
 
 Availability of these servers is optional. When present, findings are labeled `[PROVEN]`. When absent, the same analysis runs via grep and is labeled `[HEURISTIC]`.
+
+---
+
+## Context Accumulation Patterns
+
+Each stage produces structured artifacts that accumulate in `.temper/specs/{feature}/`. Downstream stages read upstream context to make better decisions.
+
+### Context File Schemas
+
+**build-context.json** (written by Build stage):
+
+```json
+{
+  "version": 1,
+  "stage": "build",
+  "timestamp": "{ISO timestamp}",
+  "files_created": ["path/to/file"],
+  "files_modified": ["path/to/file"],
+  "test_results": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0
+  },
+  "deviations": {
+    "unplanned_files": [],
+    "skipped_tasks": [],
+    "approach_changes": []
+  },
+  "scenarios_covered": ["scenario name"],
+  "tasks_completed": 5,
+  "tasks_total": 5
+}
+```
+
+**review-context.json** (written by Review stage):
+
+```json
+{
+  "version": 1,
+  "stage": "review",
+  "timestamp": "{ISO timestamp}",
+  "findings_summary": {
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "auto_fixed": 0
+  },
+  "intent_verdict": "satisfied | partial | not_met",
+  "security_hot_paths": [],
+  "contract_changes": [],
+  "scenario_coverage": {
+    "total": 5,
+    "strong": 3,
+    "weak": 1,
+    "trivial": 0,
+    "uncovered": 1
+  }
+}
+```
+
+**check-context.json** (written by Check stage):
+
+```json
+{
+  "version": 1,
+  "stage": "check",
+  "timestamp": "{ISO timestamp}",
+  "validation_results": {
+    "compile": "pass",
+    "tests": "pass",
+    "coverage_pct": 85,
+    "lint": "pass",
+    "security": "pass"
+  },
+  "scenario_verification": {
+    "total": 5,
+    "passed": 4,
+    "failed": 0,
+    "missing": 1
+  },
+  "test_failures": [
+    {
+      "test_name": "string",
+      "error_message": "string",
+      "file": "string",
+      "line": 0,
+      "scenario": "string"
+    }
+  ]
+}
+```
+
+### Context Loading Rules
+
+| Stage | Reads | Writes |
+|-------|-------|--------|
+| Plan | Nothing (first stage) | intent.md, tasks.md, plan.md |
+| Design | intent.md, plan.md | design.md |
+| Build | tasks.md, intent.md, review-context.json (on feedback re-entry) | build-context.json |
+| Review | intent.md, changed files (git diff), build-context.json | review-context.json |
+| Check | intent.md, review-context.json | check-context.json |
+
+### Context Versioning
+
+- Each context file has a `version` field (integer)
+- Downstream stages must handle older versions gracefully (ignore unknown fields)
+- Version is only bumped on schema-breaking changes
+
+### Context Cleanup
+
+On commit (after Check passes):
+- Delete `*-context.json` files from spec directory
+- Keep: intent.md, tasks.md, plan.md (permanent record)
+- Keep: design.md (if created, permanent record)
+
+---
+
+## Feedback Loop Patterns
+
+Feedback loops allow stages to send work back to upstream stages with failure context. This transforms the pipeline from linear to cyclic.
+
+### Feedback Registry
+
+File: `.temper/feedback-loops.json`
+
+```json
+{
+  "version": 1,
+  "active_loops": [
+    {
+      "id": "loop-1",
+      "from_stage": "review",
+      "to_stage": "build",
+      "reason": "auto-fixable issues found",
+      "iteration": 1,
+      "max_iterations": 2,
+      "failure_context": {
+        "issues": ["file:line — description"],
+        "auto_fixable_count": 2
+      },
+      "started": "{ISO timestamp}"
+    }
+  ],
+  "history": []
+}
+```
+
+### Loop Types
+
+**Review → Build (auto-fix loop):**
+- Trigger: Review finds auto-fixable HIGH/CRITICAL issues
+- User selects "Fix all & continue to Check"
+- Fixes applied, re-review runs (1 more pass)
+- Circuit breaker: max 2 loops total
+- After max loops: pause for human decision
+
+**Check → Build (test failure loop):**
+- Trigger: Check finds test failures in newly written code
+- Creates targeted fix task with:
+  - Test name, error message, file:line
+  - Original intent.md scenario that failed
+- User selects "Loop back to Build"
+- Build agent receives fix task + review-context.json
+- Circuit breaker: max 2 loops total
+
+**Build → Plan (revise plan loop):**
+- Trigger: Build discovers plan is infeasible
+- User selects "Revise plan" at build gate
+- Plan agent receives revision context (what was infeasible, why)
+- Plan is revised, user approves new plan
+- No circuit breaker — human-driven, not automated
+
+### Circuit Breaker Rules
+
+1. Max 2 automated loops per feedback type per pipeline run
+2. After max loops reached: show remaining issues, offer "Save for later" or "Manual fix"
+3. Same issue found in 2 consecutive loops → stop immediately (fix isn't working)
+4. Loop counter is stored in feedback-loops.json
+5. Counter resets when pipeline starts fresh (new /temper invocation)
+
+### Loop Context Transfer
+
+When looping back, the downstream stage passes structured context to the upstream stage:
+
+| Loop | Context Passed |
+|------|---------------|
+| Review → Build | review-context.json with fix list |
+| Check → Build | check-context.json with test failures |
+| Build → Plan | build-context.json with infeasibility reasons |
+
+The receiving stage reads this context at startup (Step 1 of its methodology).
