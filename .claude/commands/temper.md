@@ -3,7 +3,7 @@ description: "Unified SDLC command: plan → design → build → review → che
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v4.0.1)
+# Temper: Unified SDLC Command (v4.1.0)
 
 **Goal:** Execute the full SDLC flow (plan → design? → build → review → check → commit) with stage gates, feedback loops, context accumulation, observability, and **real** context isolation via Agent subprocesses.
 
@@ -370,13 +370,86 @@ When `feedback.enabled: true` in temper.config, stages can loop back to upstream
 | Check → Build | Test failures in new code | 2 | Same test twice = stop |
 | Build → Plan | Infeasible design discovered | Unlimited | Human-driven only |
 
+### Feedback Loop Helper Functions
+
+These helper functions manage feedback loop state in `.temper/feedback-loops.json`:
+
+**load_feedback_loops():**
+```bash
+# Read and parse .temper/feedback-loops.json
+# Returns: { version: 1, active_loops: [], history: [] }
+# Creates file if missing (with default structure)
+```
+
+**save_feedback_loops(loops):**
+```bash
+# Write loops object to .temper/feedback-loops.json
+# Validates: version is 1, active_loops is array, history is array
+# Creates parent directory if missing
+```
+
+**check_loop_eligibility(loop_type, issues):**
+```bash
+# Check if a loop should be offered based on:
+# - feedback.enabled setting from .claude/temper.config
+# - Current iteration count for this loop_type
+# - Circuit breaker: same issue found 2x consecutively
+# Returns: { can_loop: boolean, iteration: number, reason: string }
+```
+
+**create_loop(loop_type, from_stage, to_stage, reason, failure_context):**
+```bash
+# Create new loop entry in active_loops
+# Generates unique ID: loop-{timestamp}
+# Sets iteration: 1, max_iterations: from config (default 2)
+# Records started timestamp
+# Returns: loop object
+```
+
+**increment_loop(loop_id):**
+```bash
+# Increment iteration count for existing loop
+# Update started timestamp to now
+# Returns: updated loop object
+```
+
+**complete_loop(loop_id):**
+```bash
+# Move loop from active_loops to history
+# Add completed timestamp
+# Keep last 10 loops in history (remove older)
+```
+
+### Feedback Loop Implementation Rules
+
+**When to check loop eligibility:**
+- After Review agent returns: check if `findings_summary.critical + findings_summary.high > 0`
+- After Check agent returns: check if `test_failures.length > 0`
+- Read `.claude/temper.config` to verify `feedback.enabled: true`
+
+**How to determine circuit breaker:**
+- For each issue in current loop: check if same issue (file:line + description) exists in previous loop of same type
+- If yes: `can_loop: false`, `reason: "Circuit breaker: same issue found 2 times consecutively"`
+- If iteration >= max_loops: `can_loop: false`, `reason: "Max iterations reached"`
+
+**What context files to write:**
+- Review → Build loop: write `review-context.json` with findings_summary, security_hot_paths, contract_changes
+- Check → Build loop: write `check-context.json` with test_failures, validation_results
+- Build → Plan loop: write `build-context.json` with infeasibility reasons
+
+**When to clean up context files:**
+- On successful commit (after Check passes): delete all `*-context.json` files from spec directory
+- Move active_loops to history in feedback-loops.json
+- Keep history for debugging (last 10 loops)
+
 ### Feedback Loop Handling
 
 When a stage reports a feedback trigger:
 1. Check `.temper/feedback-loops.json` for active loops
-2. If iteration < max-loops: loop back, increment counter
-3. If iteration >= max-loops: stop and show remaining issues
-4. Update `.temper/feedback-loops.json` with loop state
+2. Call `check_loop_eligibility(loop_type, issues)` to determine if loop should be offered
+3. If `can_loop: true`: add loop option to gate, create loop entry on user selection
+4. If `can_loop: false`: show remaining issues with reason, offer "Save for later" or "Manual fix"
+5. Update `.temper/feedback-loops.json` with loop state on each transition
 
 ### Observability Tracking (v4.0.0)
 
@@ -566,8 +639,16 @@ Return ONLY:
 
 ### Stage Gate
 
+> **Feedback Loop Check:** Before showing gate, check if feedback loop should be offered:
+> 1. Read `.claude/temper.config` → check `feedback.enabled` setting
+> 2. If `feedback.enabled: true` AND review found issues (critical + high > 0):
+>    - Call `check_loop_eligibility("review→build", issues)` from helper functions
+>    - If `can_loop: true`: include "Loop back to Build" option in gate
+>    - If `can_loop: false`: show standard options only (max iterations reached or circuit breaker tripped)
+
 Show the AskUserQuestion gate with:
 - "Fix all & continue to Check (Recommended)" — apply fixes for ALL issues (including low), launch CHECK agent
+- "Loop back to Build (Fix issues)" — (shown ONLY if feedback.enabled AND can_loop) write review-context.json, update feedback-loops.json, launch BUILD agent
 - "Save for later" — skip fixes, save state
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
 
@@ -578,6 +659,69 @@ Show the AskUserQuestion gate with:
    - If clean: proceed to step 3
 3. Save state to `.temper/build-state.json`
 4. Proceed to Stage 4 (CHECK) — launches a new Agent subprocess
+
+**on Loop back to Build:**
+1. Write `review-context.json` to spec directory with:
+   ```json
+   {
+     "version": 1,
+     "stage": "review",
+     "timestamp": "{ISO timestamp}",
+     "findings_summary": {
+       "critical": {N},
+       "high": {N},
+       "medium": {N},
+       "low": {N},
+       "auto_fixed": {N}
+     },
+     "intent_verdict": "satisfied|partial|not_met",
+     "security_hot_paths": [],
+     "contract_changes": [],
+     "scenario_coverage": {
+       "total": {N},
+       "strong": {N},
+       "weak": {N},
+       "trivial": {N},
+       "uncovered": {N}
+     }
+   }
+   ```
+2. Create or update loop entry in `.temper/feedback-loops.json`:
+   ```json
+   {
+     "id": "loop-review-{timestamp}",
+     "from_stage": "review",
+     "to_stage": "build",
+     "reason": "auto-fixable issues found",
+     "iteration": {current_iteration + 1},
+     "max_iterations": 2,
+     "failure_context": {
+       "issues": ["file:line — description"],
+       "auto_fixable_count": {N}
+     },
+     "started": "{ISO timestamp}"
+   }
+   ```
+3. Launch BUILD agent subprocess with:
+   ```
+   "Execute /temper:build for spec: {spec}
+
+   Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md
+
+   CONTEXT: You are starting with a CLEAN context. Load these files first:
+   1. {spec_path}/tasks.md
+   2. {spec_path}/intent.md (if exists)
+   3. {spec_path}/review-context.json (contains issues to fix)
+   4. {spec_path}/check-context.json (if exists — previous check failures)
+
+   CRITICAL: This is a feedback loop re-entry. The review-context.json contains issues that must be fixed.
+
+   Return ONLY:
+   - Build summary text (formatted box)
+   - List of files changed
+   - Test results (pass/fail counts)
+   - Any blockers or failures"
+   ```
 
 **on Change (via "Other" free-text input):**
 1. User types their change request in the "Other" field
@@ -655,16 +799,31 @@ Return ONLY:
 
 ### Stage Gate
 
+> **Feedback Loop Check:** Before showing gate, check if feedback loop should be offered:
+> 1. Read `.claude/temper.config` → check `feedback.enabled` setting
+> 2. If `feedback.enabled: true` AND check found test failures (test_failures.length > 0):
+>    - Call `check_loop_eligibility("check→build", test_failures)` from helper functions
+>    - If `can_loop: true`: include "Loop back to Build" option in gate
+>    - If `can_loop: false`: show standard options only (max iterations reached or circuit breaker tripped)
+
 Show the AskUserQuestion gate with:
 - "Commit (Recommended)" — commit with conventional message
+- "Loop back to Build (Fix tests)" — (shown ONLY if feedback.enabled AND can_loop) write check-context.json, update feedback-loops.json, launch BUILD agent
 - "Save for later" — keep changes uncommitted
 - **"Other" (built-in free-text)** — type a change request, edits are made, re-run check
 
 **on Commit:**
 ```
 1. Delete .temper/build-state.json (cleanup)
-2. Mark spec as completed in intent.md
-3. Commit with conventional message:
+2. Delete context files from spec directory:
+   - rm {spec_path}/review-context.json (if exists)
+   - rm {spec_path}/check-context.json (if exists)
+3. Reset feedback-loops.json:
+   - Move all active_loops to history
+   - Clear active_loops array
+   - Keep last 10 loops in history (remove older)
+4. Mark spec as completed in intent.md
+5. Commit with conventional message:
    {type}({scope}): {description}
 
    {Closes #{issue}}
@@ -672,11 +831,78 @@ Show the AskUserQuestion gate with:
 
    Co-Authored-By: Claude <noreply@anthropic.com>
 
-4. Report:
+6. Report:
    "Committed: {hash}
     Branch: {branch}
     Ready to push?"
 ```
+
+**on Loop back to Build:**
+1. Write `check-context.json` to spec directory with:
+   ```json
+   {
+     "version": 1,
+     "stage": "check",
+     "timestamp": "{ISO timestamp}",
+     "validation_results": {
+       "compile": "pass|fail|skip",
+       "tests": "pass|fail|skip",
+       "coverage_pct": {N},
+       "lint": "pass|fail|skip",
+       "security": "pass|fail|skip"
+     },
+     "scenario_verification": {
+       "total": {N},
+       "passed": {N},
+       "failed": {N},
+       "missing": {N}
+     },
+     "test_failures": [
+       {
+         "test_name": "string",
+         "error_message": "string",
+         "file": "string",
+         "line": {N},
+         "scenario": "string"
+       }
+     ]
+   }
+   ```
+2. Create or update loop entry in `.temper/feedback-loops.json`:
+   ```json
+   {
+     "id": "loop-check-{timestamp}",
+     "from_stage": "check",
+     "to_stage": "build",
+     "reason": "test failures found",
+     "iteration": {current_iteration + 1},
+     "max_iterations": 2,
+     "failure_context": {
+       "test_failures": ["test_name — error_message"],
+       "failed_test_count": {N}
+     },
+     "started": "{ISO timestamp}"
+   }
+   ```
+3. Launch BUILD agent subprocess with:
+   ```
+   "Execute /temper:build for spec: {spec}
+   
+   Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md
+   
+   CONTEXT: You are starting with a CLEAN context. Load these files first:
+   1. {spec_path}/tasks.md
+   2. {spec_path}/intent.md (if exists)
+   3. {spec_path}/check-context.json (contains test failures to fix)
+   
+   CRITICAL: This is a feedback loop re-entry. The check-context.json contains test failures that must be fixed.
+   
+   Return ONLY:
+   - Build summary text (formatted box)
+   - List of files changed
+   - Test results (pass/fail counts)
+   - Any blockers or failures"
+   ```
 
 **on Change (via "Other" free-text input):**
 1. User types their change request in the "Other" field
