@@ -281,6 +281,27 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ---
 
+## What's New in v4.1.0
+
+v4.1.0 makes feedback loops **actually work**. The v4.0.0 documentation described loop types and schemas, but the orchestrator never executed them — stages always flowed linearly. Now Review and Check gates actively offer "Loop back to Build" when issues are found, with full context transfer and circuit breakers.
+
+### Working Feedback Loops
+
+Review finds issues or Check fails tests? The gate now shows a "Loop back to Build" option. Selecting it writes a context file (`review-context.json` or `check-context.json`) and re-launches the Build agent with the fix context — no more manually restarting the pipeline.
+
+```
+REVIEW finds 3 HIGH issues
+  → Gate shows: "Loop back to Build (Fix issues)"
+  → User selects → review-context.json written
+  → Build agent re-enters with fix context
+  → Fixes applied → back to Review
+  → Circuit breaker: max 2 loops, same issue 2x = stop
+```
+
+The loop instructions reference real Claude Code tools (Read, Write, Bash) — not pseudo-code functions that don't exist at runtime. Every step is actionable.
+
+---
+
 ## What's New in v4.0.0
 
 v4.0.0 transforms Temper from a one-way pipeline into a **cyclic SDLC platform** with feedback loops, context accumulation, observability, and an optional Design phase. Inspired by [The Agentic SDLC](https://amoshaviv.com/blog/the-agentic-sdlc/) framework.

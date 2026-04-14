@@ -812,7 +812,7 @@
         <span>Temper</span>
       </a>
       <div class="nav-links">
-        <a href="#whats-new" style="color: var(--accent);">v4.0.0</a>
+        <a href="#whats-new" style="color: var(--accent);">v4.1.0</a>
         <a href="#why">IDD+BDD+TDD</a>
         <a href="#flow">How it works</a>
         <a href="#packs">Packs</a>
@@ -852,6 +852,32 @@
   </section>
 
   <section id="whats-new">
+    <div class="section-label">What's New in v4.1.0</div>
+    <h2 class="section-title">Feedback Loops That Actually Work</h2>
+    <p class="section-desc">v4.0.0 documented feedback loops. v4.1.0 <strong>ships them</strong>. When Review finds issues or Check fails tests, the gate now offers "Loop back to Build" with context transfer and circuit breakers — no more restarting the pipeline manually.</p>
+
+    <div class="why-grid" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="why-item">
+        <h4>Loop Back to Build</h4>
+        <p>Review finds 3 HIGH issues? Gate shows "Loop back to Build". Check fails tests? Gate shows "Loop back to Build (Fix tests)". Context files carry the fix details — no information lost.</p>
+      </div>
+      <div class="why-item">
+        <h4>Circuit Breakers</h4>
+        <p>Max 2 loops per stage. Same issue found twice? Loop stops immediately — "Manual fix required". No infinite loops, no spinning cycles.</p>
+      </div>
+      <div class="why-item">
+        <h4>Actionable Instructions</h4>
+        <p>Every loop step references real Claude Code tools (Read, Write, Bash) — not pseudo-code. The orchestrator reads config, checks loop state, writes context files, and re-launches the Build agent.</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 2rem; text-align: center;">
+      <p style="color: var(--fg-muted); font-size: 0.9rem;">Feedback loops enabled by default. Disable via <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">feedback.enabled: false</code> in <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">.claude/temper.config</code>. Zero breaking changes.</p>
+      <a href="https://github.com/galando/temper#whats-new-in-v410" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
+    </div>
+  </section>
+
+  <section>
     <div class="section-label">What's New in v4.0.0</div>
     <h2 class="section-title">From Pipeline to Cycle</h2>
     <p class="section-desc">v4.0.0 transforms Temper from a one-way pipeline into a cyclic SDLC platform. Feedback loops, context accumulation, observability, and an optional Design phase. Inspired by <a href="https://amoshaviv.com/blog/the-agentic-sdlc/" style="color: var(--accent);">The Agentic SDLC</a>.</p>
