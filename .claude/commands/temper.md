@@ -370,86 +370,53 @@ When `feedback.enabled: true` in temper.config, stages can loop back to upstream
 | Check → Build | Test failures in new code | 2 | Same test twice = stop |
 | Build → Plan | Infeasible design discovered | Unlimited | Human-driven only |
 
-### Feedback Loop Helper Functions
+### How Feedback Loops Actually Work (Runtime Instructions)
 
-These helper functions manage feedback loop state in `.temper/feedback-loops.json`:
+This is NOT pseudo-code. These are instructions Claude Code follows at runtime when orchestrating the `/temper` pipeline. Every step below uses real tools (Read, Write, Edit, AskUserQuestion, Agent).
 
-**load_feedback_loops():**
-```bash
-# Read and parse .temper/feedback-loops.json
-# Returns: { version: 1, active_loops: [], history: [] }
-# Creates file if missing (with default structure)
-```
+#### Step 1: Check if feedback loops are enabled
 
-**save_feedback_loops(loops):**
-```bash
-# Write loops object to .temper/feedback-loops.json
-# Validates: version is 1, active_loops is array, history is array
-# Creates parent directory if missing
-```
+After Review or Check agent returns, BEFORE showing the gate:
+1. Read `.claude/temper.config` using the Read tool
+2. Check if `feedback.enabled: true` — if false, skip to standard gate (no loop options)
+3. Read `.temper/feedback-loops.json` using the Read tool — if file doesn't exist, create it with: `{"version":1,"active_loops":[],"history":[]}`
 
-**check_loop_eligibility(loop_type, issues):**
-```bash
-# Check if a loop should be offered based on:
-# - feedback.enabled setting from .claude/temper.config
-# - Current iteration count for this loop_type
-# - Circuit breaker: same issue found 2x consecutively
-# Returns: { can_loop: boolean, iteration: number, reason: string }
-```
+#### Step 2: Determine if loop should be offered
 
-**create_loop(loop_type, from_stage, to_stage, reason, failure_context):**
-```bash
-# Create new loop entry in active_loops
-# Generates unique ID: loop-{timestamp}
-# Sets iteration: 1, max_iterations: from config (default 2)
-# Records started timestamp
-# Returns: loop object
-```
+For **Review** stage: loop is possible if review found issues (critical + high > 0)
+For **Check** stage: loop is possible if check found test failures (test_failures.length > 0)
 
-**increment_loop(loop_id):**
-```bash
-# Increment iteration count for existing loop
-# Update started timestamp to now
-# Returns: updated loop object
-```
+If loop is possible, check eligibility by reading `.temper/feedback-loops.json`:
+1. Find active loop with matching `from_stage` (review or check) in `active_loops` array
+2. If no active loop exists → `can_loop: true`, `iteration: 0`
+3. If active loop exists and `iteration < max_iterations` (from config, default 2) → `can_loop: true`, `iteration: current`
+4. If active loop exists and `iteration >= max_iterations` → `can_loop: false`, reason: "Max iterations reached"
+5. Check same-issue circuit breaker: compare current issues with `failure_context.issues` from previous loop. If same issue (same file:line + same description) appears → `can_loop: false`, reason: "Same issue found 2x consecutively — manual fix required"
 
-**complete_loop(loop_id):**
-```bash
-# Move loop from active_loops to history
-# Add completed timestamp
-# Keep last 10 loops in history (remove older)
-```
+#### Step 3: Show gate with or without loop option
 
-### Feedback Loop Implementation Rules
+If `can_loop: true`: show gate with "Loop back to Build" option included
+If `can_loop: false`: show standard gate options only, and display the reason to the user
 
-**When to check loop eligibility:**
-- After Review agent returns: check if `findings_summary.critical + findings_summary.high > 0`
-- After Check agent returns: check if `test_failures.length > 0`
-- Read `.claude/temper.config` to verify `feedback.enabled: true`
+#### Step 4: On user selects "Loop back to Build"
 
-**How to determine circuit breaker:**
-- For each issue in current loop: check if same issue (file:line + description) exists in previous loop of same type
-- If yes: `can_loop: false`, `reason: "Circuit breaker: same issue found 2 times consecutively"`
-- If iteration >= max_loops: `can_loop: false`, `reason: "Max iterations reached"`
+Using the Write tool:
+1. Write context file to spec directory:
+   - Review loop: Write `{spec_path}/review-context.json` with the review findings schema
+   - Check loop: Write `{spec_path}/check-context.json` with the test failures schema
+2. Update `.temper/feedback-loops.json` using the Write tool:
+   - If no active loop: append new entry to `active_loops` with `iteration: 1`
+   - If active loop exists: increment `iteration` count, update `failure_context`
+3. Save state to `.temper/build-state.json` with `next_stage: "build"`
+4. Launch BUILD Agent subprocess — it loads the context file automatically (already in Build agent prompt at lines 484-485)
 
-**What context files to write:**
-- Review → Build loop: write `review-context.json` with findings_summary, security_hot_paths, contract_changes
-- Check → Build loop: write `check-context.json` with test_failures, validation_results
-- Build → Plan loop: write `build-context.json` with infeasibility reasons
+#### Step 5: On successful commit (after Check passes)
 
-**When to clean up context files:**
-- On successful commit (after Check passes): delete all `*-context.json` files from spec directory
-- Move active_loops to history in feedback-loops.json
-- Keep history for debugging (last 10 loops)
-
-### Feedback Loop Handling
-
-When a stage reports a feedback trigger:
-1. Check `.temper/feedback-loops.json` for active loops
-2. Call `check_loop_eligibility(loop_type, issues)` to determine if loop should be offered
-3. If `can_loop: true`: add loop option to gate, create loop entry on user selection
-4. If `can_loop: false`: show remaining issues with reason, offer "Save for later" or "Manual fix"
-5. Update `.temper/feedback-loops.json` with loop state on each transition
+Using Bash tool:
+1. `rm -f {spec_path}/review-context.json {spec_path}/check-context.json`
+2. Read `.temper/feedback-loops.json`, move all `active_loops` to `history`, clear `active_loops`
+3. Write updated feedback-loops.json
+4. `rm -f .temper/build-state.json`
 
 ### Observability Tracking (v4.0.0)
 
@@ -639,12 +606,10 @@ Return ONLY:
 
 ### Stage Gate
 
-> **Feedback Loop Check:** Before showing gate, check if feedback loop should be offered:
-> 1. Read `.claude/temper.config` → check `feedback.enabled` setting
-> 2. If `feedback.enabled: true` AND review found issues (critical + high > 0):
->    - Call `check_loop_eligibility("review→build", issues)` from helper functions
->    - If `can_loop: true`: include "Loop back to Build" option in gate
->    - If `can_loop: false`: show standard options only (max iterations reached or circuit breaker tripped)
+> **Feedback Loop Check:** Before showing gate, follow "How Feedback Loops Actually Work" section (Step 1-2):
+> 1. Use Read tool to check `.claude/temper.config` → verify `feedback.enabled: true`
+> 2. Use Read tool to check `.temper/feedback-loops.json` for active loops
+> 3. If feedback enabled AND review found issues (critical + high > 0) AND eligible per Step 2: show loop option
 
 Show the AskUserQuestion gate with:
 - "Fix all & continue to Check (Recommended)" — apply fixes for ALL issues (including low), launch CHECK agent
@@ -799,12 +764,10 @@ Return ONLY:
 
 ### Stage Gate
 
-> **Feedback Loop Check:** Before showing gate, check if feedback loop should be offered:
-> 1. Read `.claude/temper.config` → check `feedback.enabled` setting
-> 2. If `feedback.enabled: true` AND check found test failures (test_failures.length > 0):
->    - Call `check_loop_eligibility("check→build", test_failures)` from helper functions
->    - If `can_loop: true`: include "Loop back to Build" option in gate
->    - If `can_loop: false`: show standard options only (max iterations reached or circuit breaker tripped)
+> **Feedback Loop Check:** Before showing gate, follow "How Feedback Loops Actually Work" section (Step 1-2):
+> 1. Use Read tool to check `.claude/temper.config` → verify `feedback.enabled: true`
+> 2. Use Read tool to check `.temper/feedback-loops.json` for active loops
+> 3. If feedback enabled AND check found test failures (test_failures.length > 0) AND eligible per Step 2: show loop option
 
 Show the AskUserQuestion gate with:
 - "Commit (Recommended)" — commit with conventional message
