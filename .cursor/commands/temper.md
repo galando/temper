@@ -3,7 +3,7 @@ description: "Unified SDLC command: plan → design → build → review → che
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v4.4.0)
+# Temper: Unified SDLC Command (v4.1.0)
 
 **Goal:** Execute the full SDLC flow (plan → design? → build → review → check → commit) with stage gates, feedback loops, context accumulation, observability, and **real** context isolation via Agent subprocesses.
 
@@ -98,9 +98,9 @@ At each stage gate, use `AskUserQuestion` with selectable options. Do NOT use `[
 ### Launch Planning Agent
 
 ```
-Use the Agent tool with this prompt:
+Load the following context files, then execute the instructions sequentially:
 
-"Execute /temper:plan for feature: $ARGUMENTS
+"Execute /temper-plan for feature: $ARGUMENTS
 
 Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan.md
 
@@ -185,14 +185,12 @@ When the user selects "Walk through plan step by step", present the plan as an i
 **After each section, use AskUserQuestion:**
 
 ```
-AskUserQuestion:
-  question: "What would you like to do?"
-  options:
-    - label: "Next step"
-      description: "Continue to {next section name}."
-    - label: "Ask a question"
-      description: "Type your question about this section."
-  multiSelect: false
+**What would you like to do?**
+
+1. **Next step** — Continue to {next section name}.
+2. **Ask a question** — Type your question about this section.
+3. Type your own response
+multiSelect: false
 ```
 
 - **"Ask a question"** (or "Other" with question text): Answer, then re-show the same section's gate
@@ -200,14 +198,12 @@ AskUserQuestion:
 - **"Next step"**: Advance to next section. After the last section, show the final walkthrough gate:
 
 ```
-AskUserQuestion:
-  question: "Walkthrough complete. What next?"
-  options:
-    - label: "Continue to Build (Recommended)"
-      description: "Launch BUILD agent with clean context."
-    - label: "Save for later"
-      description: "Save state and stop."
-  multiSelect: false
+**Walkthrough complete. What next?**
+
+1. **Continue to Build (Recommended)** — Launch BUILD agent with clean context.
+2. **Save for later** — Save state and stop.
+3. Type your own response
+multiSelect: false
 ```
 
 **"Other" (free-text change request)**: Edit plan files, show what changed, re-show this gate.
@@ -267,9 +263,9 @@ After Plan stage completes, check:
 Before launching, read `.temper/build-state.json` to get the `spec_path` and `spec` values.
 
 ```
-Use the Agent tool with this prompt:
+Load the following context files, then execute the instructions sequentially:
 
-"Execute /temper:design for feature: {spec from build-state.json}
+"Execute /temper-design for feature: {spec from build-state.json}
 
 Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/design.md
 
@@ -313,14 +309,12 @@ Read `.temper/specs/{feature-slug}/design.md` and detect which sections exist. P
 **After each section, use AskUserQuestion:**
 
 ```
-AskUserQuestion:
-  question: "What would you like to do?"
-  options:
-    - label: "Next step"
-      description: "Continue to {next section name}."
-    - label: "Ask a question"
-      description: "Type your question about this section."
-  multiSelect: false
+**What would you like to do?**
+
+1. **Next step** — Continue to {next section name}.
+2. **Ask a question** — Type your question about this section.
+3. Type your own response
+multiSelect: false
 ```
 
 - **"Ask a question"** (or "Other" with question text): Answer, then re-show the same section's gate
@@ -328,14 +322,12 @@ AskUserQuestion:
 - **"Next step"**: Advance to next section. After the last section, show the final walkthrough gate:
 
 ```
-AskUserQuestion:
-  question: "Walkthrough complete. What next?"
-  options:
-    - label: "Continue to Build (Recommended)"
-      description: "Launch BUILD agent with clean context."
-    - label: "Save for later"
-      description: "Save state and stop."
-  multiSelect: false
+**Walkthrough complete. What next?**
+
+1. **Continue to Build (Recommended)** — Launch BUILD agent with clean context.
+2. **Save for later** — Save state and stop.
+3. Type your own response
+multiSelect: false
 ```
 
 **"Other" (free-text change request)**: Edit design files, show what changed, re-show this gate.
@@ -425,7 +417,7 @@ When `observability.enabled: true` in temper.config, track per-stage metrics:
 1. Before launching each Agent subprocess: record start timestamp
 2. After each stage completes: record elapsed time, estimate tokens, count tool calls
 3. Write metrics to `.temper/observability.json` after each stage
-4. Show in `/temper:status` dashboard
+4. Show in `/temper-status` dashboard
 
 ---
 
@@ -438,9 +430,9 @@ When `observability.enabled: true` in temper.config, track per-stage metrics:
 Before launching, read `.temper/build-state.json` to get the `spec_path` and `spec` values.
 
 ```
-Use the Agent tool with this prompt:
+Load the following context files, then execute the instructions sequentially:
 
-"Execute /temper:build for spec: {spec from build-state.json}
+"Execute /temper-build for spec: {spec from build-state.json}
 
 Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md
 
@@ -526,9 +518,9 @@ Show the AskUserQuestion gate with:
 Before launching, read `.temper/build-state.json` to get the `spec_path` and `spec` values.
 
 ```
-Use the Agent tool with this prompt:
+Load the following context files, then execute the instructions sequentially:
 
-"Execute /temper:review for feature: {spec from build-state.json}
+"Execute /temper-review for feature: {spec from build-state.json}
 
 Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md
 
@@ -669,7 +661,7 @@ Show the AskUserQuestion gate with:
    ```
 3. Launch BUILD agent subprocess with:
    ```
-   "Execute /temper:build for spec: {spec}
+   "Execute /temper-build for spec: {spec}
 
    Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md
 
@@ -719,9 +711,9 @@ Show the AskUserQuestion gate with:
 ### Launch Check Agent
 
 ```
-Use the Agent tool with this prompt:
+Load the following context files, then execute the instructions sequentially:
 
-"Execute /temper:check for project validation.
+"Execute /temper-check for project validation.
 
 Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md
 
@@ -849,7 +841,7 @@ Show the AskUserQuestion gate with:
    ```
 3. Launch BUILD agent subprocess with:
    ```
-   "Execute /temper:build for spec: {spec}
+   "Execute /temper-build for spec: {spec}
    
    Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md
    
@@ -906,14 +898,12 @@ If `/temper "new feature"` is called while `.temper/build-state.json` already ex
 
 If `/temper` (no arguments) is called and `.temper/build-state.json` exists for the same feature:
 ```
-AskUserQuestion:
-  question: "Resume from where you left off?"
-  options:
-    - label: "Continue from {next_stage} (Recommended)"
-      description: "Resume from checkpoint, launch {next_stage} agent."
-    - label: "Start over (replan)"
-      description: "Go back to PLAN, launch planning agent."
-  multiSelect: false
+**Resume from where you left off?**
+
+1. **Continue from {next_stage} (Recommended)** — Resume from checkpoint, launch {next_stage} agent.
+2. **Start over (replan)** — Go back to PLAN, launch planning agent.
+3. Type your own response
+multiSelect: false
 ```
 
 ---
@@ -938,11 +928,11 @@ Each subprocess starts genuinely clean. Context files accumulate in `.temper/spe
 ## Individual Commands Still Work
 
 ```
-/temper:plan    → Just planning, stops at gate
-/temper:design  → Just design (for complex features), stops at gate
-/temper:build   → Just building, stops at gate
-/temper:review  → Just review, stops at gate
-/temper:check   → Just check, stops at gate
+/temper-plan    → Just planning, stops at gate
+/temper-design  → Just design (for complex features), stops at gate
+/temper-build   → Just building, stops at gate
+/temper-review  → Just review, stops at gate
+/temper-check   → Just check, stops at gate
 ```
 
 Use these when you want granular control. These do NOT use Agent subprocesses — they run directly in the current context.

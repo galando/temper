@@ -1,64 +1,329 @@
 ---
-description: "Manage quality packs: view, toggle, or create new packs interactively"
+description: "Manage quality packs: view, toggle, create, quick-create launchers, configure links and phases"
 ---
 
 # Pack: Quality Pack Manager
 
-**Goal:** Display all defined quality packs with their enable/disable status, allow users to toggle packs on/off, and provide an option to create new packs using the interactive pack builder.
+**Goal:** Display all defined quality packs with their enable/disable status, link targets, phase scoping, and connection health. Allow users to toggle packs, create new packs, quick-create launcher packs, and configure links and phases.
+
+---
+
+## Pack Resolution: Three-Tier System (v4.3.0)
+
+Quality packs resolve from three tiers in priority order. Higher tiers shadow lower ones.
+
+```
+Priority 1 (highest) → .claude/packs/{name}/rules.md           (project-local)
+Priority 2           → ~/.claude/packs/{name}/rules.md          (global / user-wide)
+Priority 3 (lowest)  → $CLAUDE_PLUGIN_ROOT/.claude/packs/{name}/rules.md  (built-in)
+```
+
+**Why:** Teams ship project-specific packs in the repo. Users create global packs across all projects. Built-in packs provide defaults.
+
+**Resolution:** When the same pack name exists in multiple tiers, only the highest-priority version is loaded. Project-local always wins over global, which always wins over built-in.
+
+### Pack Discovery Algorithm
+
+Scan all three tiers, deduplicate by name (highest priority wins):
+
+```
+Step 1: Scan built-in packs
+  For each directory in $CLAUDE_PLUGIN_ROOT/.claude/packs/ (excluding stacks/):
+    - If {name}/rules.md exists → add to manifest with scope: "built-in"
+
+Step 2: Scan global packs
+  For each directory in ~/.claude/packs/ (excluding stacks/):
+    - If {name}/rules.md exists → add to manifest with scope: "global"
+    - If name already in manifest → replace (global shadows built-in)
+
+Step 3: Scan project-local packs
+  For each directory in .claude/packs/ (excluding stacks/):
+    - If {name}/rules.md exists → add to manifest with scope: "project"
+    - If name already in manifest → replace (project shadows all)
+```
+
+---
+
+## Cached Pack Manifest (v4.4.0)
+
+Pack discovery results are cached to `.temper/pack-manifest.json` for instant subsequent loads.
+
+### Cache Behavior
+
+- **First run:** Full filesystem scan of all three tiers → write manifest
+- **Subsequent runs:** Load from cache (near-instant)
+- **Cache is rebuilt when:**
+  1. `temper.config` file modified (project or global) — check mtime
+  2. Pack directories added or removed in any tier — check directory listing
+  3. Manifest `version` field doesn't match expected schema version
+
+### Manifest Structure
+
+```json
+{
+  "version": 1,
+  "last_built": "2026-04-20T10:00:00Z",
+  "config_mtime": "2026-04-20T09:30:00Z",
+  "packs": [
+    {
+      "name": "quality",
+      "enabled": true,
+      "scope": "built-in",
+      "phases": "all",
+      "link": null,
+      "connected": null,
+      "rules_path": "$CLAUDE_PLUGIN_ROOT/.claude/packs/quality/rules.md",
+      "rule_summary": "Code quality: method length, DRY, naming"
+    },
+    {
+      "name": "tdd",
+      "enabled": true,
+      "scope": "built-in",
+      "phases": ["build"],
+      "link": null,
+      "connected": null,
+      "rules_path": "$CLAUDE_PLUGIN_ROOT/.claude/packs/tdd/rules.md",
+      "rule_summary": "TDD: RED-GREEN-REFACTOR enforcement"
+    }
+  ]
+}
+```
+
+### Manifest Operations
+
+**Read manifest:**
+1. Check `.temper/pack-manifest.json` exists
+2. If not: run full discovery, write manifest, return
+3. If exists: load, check staleness conditions
+4. If stale: run full discovery, overwrite manifest, return
+5. If fresh: return cached manifest
+
+**Invalidate manifest:**
+- After toggling packs (enabled status changed)
+- After creating a new pack
+- After modifying pack link or phases config
+
+---
+
+## Pack Configuration Schema (v4.3.0)
+
+### Extended Config Format
+
+The `packs:` field in `.claude/temper.config` now supports objects with `name`, `link`, and `phases`:
+
+```yaml
+packs:
+  - name: quality                        # Simple format (no link, all phases)
+  - name: tdd
+    phases: [build]                      # Only during build phase
+  - name: security
+    phases: [review, check]              # Only during review and check
+  - name: api-standards
+    link: plugin://my-api-linter         # Links to an installed plugin
+  - name: sec-review
+    link: skill://security-review        # Links to a skill
+  - name: git                            # Simple format
+```
+
+### Backward Compatibility
+
+Simple string format still works:
+```yaml
+packs:
+  - quality
+  - tdd
+```
+This is equivalent to:
+```yaml
+packs:
+  - name: quality
+  - name: tdd
+```
+
+---
+
+## Phase Scoping (v4.3.0)
+
+Packs can be restricted to specific Temper phases. Only packs scoped to the current phase are loaded.
+
+### Available Phases
+
+`plan`, `design`, `build`, `review`, `check`, `fix`
+
+### Default Behavior
+
+If `phases` is omitted or set to `all`, the pack activates during every phase.
+
+### Phase Filtering
+
+When a stage starts:
+1. Read current phase from the command being executed (e.g., `/temper:build` → phase = "build")
+2. Filter manifest packs: only include packs where `phases` is "all" or contains the current phase
+3. Load filtered packs' rules + any linked context
+
+---
+
+## Pack-Plugin/Skill Linking (v4.3.0)
+
+Packs can link to external plugins or skills. When a pack loads during a Temper phase, the linked resource's instructions are **included in the AI prompt context** alongside the pack's own rules.
+
+### Link Format
+
+- `plugin://{name}` — Links to an installed Claude Code plugin
+- `skill://{name}` — Links to a skill (SKILL.md or command-based)
+
+### What Linking Does
+
+This is **context injection, not code execution.** When a linked pack loads:
+1. The pack's own `rules.md` is read
+2. The linked resource's content is located and read
+3. Both are included in the AI's prompt context for that phase
+
+### Connection Health Validation
+
+When a pack has a link, validate the target exists:
+
+**Plugin links (`plugin://`):**
+1. Read `~/.claude/plugins/installed_plugins.json`
+2. Find the plugin by name
+3. Verify the install path exists on disk
+4. If found → `connected: true`; if not → `connected: false`
+
+**Skill links (`skill://`):**
+1. Search resolution chain (see "Command-Based Skill Linking" below)
+2. If any source found → `connected: true`; if none → `connected: false`
+
+**Health states:**
+| Status | Meaning | Display |
+|--------|---------|---------|
+| `connected: true` | Link target found | `connected` |
+| `connected: false` | Link target missing | `not found` |
+| `null` | No link configured | `—` |
+
+**Graceful degradation:** If a link target is missing, the pack's own rules still load. Show a warning but do not block work. This prevents a removed plugin from blocking all Temper usage.
+
+---
+
+## Plugin/Skill Filesystem Discovery (v4.4.0)
+
+Automatic discovery of all linkable targets from the filesystem. Used by quick-create launcher packs and pack linking.
+
+### Discovery Algorithm
+
+Scan in order, collecting all discoverable targets:
+
+| Source | What's Found | Link Format |
+|--------|-------------|-------------|
+| `~/.claude/plugins/installed_plugins.json` | Installed plugins | `plugin://{name}` |
+| `{plugin_path}/skills/*/SKILL.md` | Plugin skills | `skill://{name}` |
+| `.claude/skills/*/SKILL.md` | Project-local skills | `skill://{name}` |
+| `~/.claude/skills/*/SKILL.md` | Global skills | `skill://{name}` |
+| `.claude/commands/*.md` (fallback) | Command-based skills | `skill://{command-name}` |
+
+### Deduplication
+
+If a skill name is found via `SKILL.md`, the command-based fallback (`commands/*.md`) is skipped for that name. This prevents duplicate entries.
+
+### Discovery Implementation
+
+```
+discovered_targets = []
+
+# 1. Plugins
+if ~/.claude/plugins/installed_plugins.json exists:
+  parse JSON, for each plugin:
+    add {type: "plugin", name: plugin.name, link: "plugin://{name}", source: path}
+
+# 2. Plugin skills
+for each plugin in installed_plugins:
+  for skill_dir in {plugin_path}/skills/*/:
+    if SKILL.md exists:
+      add {type: "skill", name: skill_dir.name, link: "skill://{name}", source: SKILL.md path}
+
+# 3. Project skills
+for skill_dir in .claude/skills/*/:
+  if SKILL.md exists:
+    add or update {type: "skill", name: skill_dir.name, link: "skill://{name}", source: SKILL.md path}
+
+# 4. Global skills
+for skill_dir in ~/.claude/skills/*/:
+  if SKILL.md exists:
+    add or update {type: "skill", name: skill_dir.name, link: "skill://{name}", source: SKILL.md path}
+
+# 5. Command-based skills (fallback — only if name not already found)
+for cmd_file in .claude/commands/*.md:
+  name = cmd_file.stem
+  if name not in discovered_names:
+    add {type: "command-skill", name: name, link: "skill://{name}", source: cmd_file path}
+```
+
+---
+
+## Command-Based Skill Linking (v4.4.0)
+
+Skills defined as markdown command files (`.claude/commands/*.md`) are valid link targets alongside traditional `SKILL.md` files.
+
+### Resolution Order for `skill://{name}`
+
+1. `.claude/skills/{name}/SKILL.md` — standard skill file
+2. `~/.claude/skills/{name}/SKILL.md` — global skill file
+3. `{plugin_path}/skills/{name}/SKILL.md` — plugin skill file
+4. `.claude/commands/{name}.md` — **command-based fallback**
+5. `{plugin_path}/commands/{name}.md` — plugin command fallback
+
+Return the content from the first source that exists.
+
+---
 
 ## Execution
 
-### Step 1: Discover Packs
+### Step 1: Discover Packs (Three-Tier + Cache)
 
-Scan `.claude/packs/` for all pack directories. Each pack is a folder containing a `rules.md` file.
+Read or build the pack manifest:
 
-```
-For each directory in .claude/packs/ (excluding stacks/):
-  - Read {pack-name}/rules.md header for description
-  - Check if pack-name is in .claude/temper.config packs: list
-  - Record: name, enabled status, rule summary
-```
-
-Built-in packs:
-- `quality` — Code quality rules (method length, DRY, naming)
-- `tdd` — Test-driven development (RED-GREEN-REFACTOR)
-- `security` — Security best practices (OWASP Top 10)
-- `git` — Git workflow conventions (commits, branching)
-
-Custom packs: any folder in `.claude/packs/` besides `stacks/` that contains a `rules.md`.
+1. Check `.temper/pack-manifest.json` — load if fresh, rebuild if stale
+2. If rebuilding: scan all three tiers, resolve links, check connection health
+3. Read `.claude/temper.config` for enabled status and extended config (links, phases)
+4. Merge manifest with config: apply enabled/disabled, links, phases
 
 ### Step 2: Display Pack Status
 
-Show the pack list in a formatted table:
+Show the pack list with all columns:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ PACK — Quality Pack Manager                                 │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  PACK                     STATUS    RULES                    │
-│  ─────────────────────── ──────── ───────────────────────── │
-│  quality                   ON      BLOCK: 3, WARN: 5       │
-│  tdd                       ON      BLOCK: 2, WARN: 4       │
-│  security                  ON      BLOCK: 6, WARN: 2       │
-│  git                       ON      WARN: 4, SUGGEST: 4     │
-│  company                   OFF     BLOCK: 4, WARN: 3       │
-│                                                             │
-│  5 packs total (4 enabled, 1 disabled)                      │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│ PACK — Quality Pack Manager                                      v4.4.0 │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  NAME            STATUS  PHASES     LINK                CONNECTED        │
+│  ────────────── ─────── ────────── ─────────────────── ──────────────── │
+│  quality          ON     all        —                   —                │
+│  tdd              ON     build      —                   —                │
+│  security         ON     review,check —                 —                │
+│  git              ON     all        —                   —                │
+│  api-standards    OFF    all        plugin://api-linter  connected       │
+│  sec-review       OFF    all        skill://sec-review  not found       │
+│                                                                          │
+│  6 packs total (4 enabled, 2 disabled)                                   │
+│  Manifest cached: 2026-04-20T10:00:00Z                                   │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Step 3: User Action
+### Step 3: User Action (AskUserQuestion-Driven UX)
 
-Use AskUserQuestion with these options:
+Use AskUserQuestion with structured options:
 
 ```
 AskUserQuestion:
   question: "What would you like to do?"
   options:
     - label: "Toggle packs on/off"
-      description: "Select a pack to enable or disable."
+      description: "Select packs to enable or disable."
+    - label: "Quick-create launcher pack"
+      description: "Wrap a plugin or skill as a BLOCK-level pack. Fast path — no codebase scan."
+    - label: "Configure pack (link, phases)"
+      description: "Set link target or phase scoping for an existing pack."
     - label: "Add new pack"
       description: "Create a new custom pack by scanning your codebase and defining rules interactively."
     - label: "Done"
@@ -76,45 +341,141 @@ If the user selects "Toggle packs on/off":
 AskUserQuestion:
   question: "Select packs to enable (deselect to disable):"
   options:
-    - label: "quality (currently ON)"
+    - label: "quality (ON)"
       description: "Code quality: method length, DRY, naming"
-    - label: "tdd (currently ON)"
-      description: "Test-driven development: RED-GREEN-REFACTOR"
-    - label: "security (currently ON)"
-      description: "Security: OWASP Top 10, no secrets"
-    - label: "git (currently ON)"
-      description: "Git workflow: conventional commits, branching"
-    - label: "company (currently OFF)"
-      description: "Company engineering standards"
+    - label: "tdd (ON)"
+      description: "TDD: RED-GREEN-REFACTOR"
+    - label: "security (ON)"
+      description: "Security: OWASP Top 10"
+    - label: "git (ON)"
+      description: "Git: conventional commits, branching"
   multiSelect: true
 ```
 
-2. User selects which packs should be enabled (multiSelect).
+2. Update `.claude/temper.config`:
+   - Preserve all config fields unchanged
+   - Update `packs:` list to exactly the packs the user selected (keeping link/phases config if present)
+3. Invalidate manifest cache
+4. Show updated status
+5. Return to Step 3
 
-3. Update `.claude/temper.config`:
-   - Set `packs:` list to exactly the packs the user selected
-   - Preserve all other config fields unchanged
+### Step 5: Quick-Create Launcher Pack
 
-4. Show updated status:
+If the user selects "Quick-create launcher pack":
+
+**5a: Discover linkable targets**
+Run the filesystem discovery algorithm. Collect all plugins, skills, and command-based skills.
+
+**5b: User selects target**
+Show discovered targets as options:
 
 ```
-Updated pack configuration:
-  + quality     ON
-  + tdd         ON
-  + security    ON
-  + git         ON
-  - company     OFF (disabled)
-
-Config saved to .claude/temper.config
+AskUserQuestion:
+  question: "Select the target to wrap as a launcher pack:"
+  options:
+    - label: "plugin://my-api-linter"
+      description: "Installed plugin — {description from installed_plugins.json}"
+    - label: "skill://security-review"
+      description: "Project skill — {path}"
+    - label: "skill://production-review"
+      description: "Command-based skill — .claude/commands/production-review.md"
+  multiSelect: false
 ```
 
-5. Return to Step 3 (main menu).
+**5c: User provides pack name**
+Ask via "Other" free-text: "Enter a name for the launcher pack (e.g., api-enforcer):"
 
-### Step 5: Add New Pack
+**5d: Generate launcher template**
+Create `.claude/packs/{pack-name}/rules.md`:
 
-If the user selects "Add new pack", run the interactive pack builder methodology:
+```markdown
+# {Pack Name}
+> Launcher pack — enforces {link_type}://{link_name}
 
-#### 5a: Scan Codebase (via Explore subagent)
+## Mandatory Rules (BLOCK if violated)
+- MUST use {link_type}://{link_name} for all work
+- MUST follow all instructions defined by the linked resource
+- MUST NOT bypass or ignore the linked resource's rules
+```
+
+**5e: Update config**
+Add to `.claude/temper.config` packs list:
+```yaml
+  - name: {pack-name}
+    link: {link_type}://{link_name}
+```
+
+**5f: Invalidate manifest and report**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ LAUNCHER PACK CREATED — {Pack Name}                         │
+├─────────────────────────────────────────────────────────────┤
+│ Location: .claude/packs/{pack-name}/rules.md                │
+│ Link:     {link_type}://{link_name}                         │
+│ Severity: BLOCK (guarantees linked resource is always used) │
+│ Status:   ENABLED (added to temper.config)                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Return to Step 3.
+
+### Step 6: Configure Pack (Link, Phases)
+
+If the user selects "Configure pack (link, phases)":
+
+**6a: Select pack**
+Show all packs as options:
+
+```
+AskUserQuestion:
+  question: "Which pack would you like to configure?"
+  options:
+    - label: "quality"
+      description: "Link: none | Phases: all"
+    - label: "tdd"
+      description: "Link: none | Phases: build"
+    ...
+  multiSelect: false
+```
+
+**6b: Choose what to configure**
+```
+AskUserQuestion:
+  question: "What would you like to configure for {pack-name}?"
+  options:
+    - label: "Set link target"
+      description: "Link this pack to a plugin or skill for context injection."
+    - label: "Set phase scoping"
+      description: "Restrict this pack to specific phases."
+    - label: "Both"
+      description: "Configure link and phases together."
+  multiSelect: false
+```
+
+**6c: Set link** — Show discovered targets (reuse filesystem discovery)
+**6d: Set phases** — Show phase options:
+```
+AskUserQuestion:
+  question: "Which phases should {pack-name} be active in?"
+  options:
+    - label: "All phases"
+      description: "Active during every Temper phase."
+    - label: "build only"
+      description: "Only during /temper:build."
+    - label: "review and check"
+      description: "Only during /temper:review and /temper:check."
+  multiSelect: false
+```
+
+**6e: Update config and invalidate manifest**
+Return to Step 3.
+
+### Step 7: Add New Pack (Full Builder)
+
+If the user selects "Add new pack", run the interactive pack builder methodology from v3.0.0:
+
+#### 7a: Scan Codebase (via Explore subagent)
 
 Launch an Explore subagent:
 
@@ -175,54 +536,32 @@ AREA: {name}
   Example: {file:line}
 ```
 
-#### 5b: Interactive Interview
+#### 7b: Interactive Interview
 
-Present findings to the user and ask about each area:
+Present findings to the user and ask about each area. Use AskUserQuestion for structured choices. Keep to 5-10 questions total.
 
-```
-For each area where patterns were found:
+#### 7c: Conflict Resolution
 
-"I found {pattern} used in {X/Y} files.
- If inconsistency: I also found {alternative} in {Z} files.
- Should I capture {pattern} as your standard?"
-
-For each area where no clear pattern exists:
-
-"I didn't find a consistent pattern for {area}.
- Would you like to establish one? Options:
- - {option A}: {description}
- - {option B}: {description}
- - Skip for now"
-
-Additional questions:
-- "What coverage threshold should new code meet?" (default: 80%)
-- "Should any of these rules block commits, or just warn?"
-- "Are there any additional rules not reflected in your code?"
-```
-
-Use AskUserQuestion for structured choices. Keep to 5-10 questions total.
-
-#### 5c: Conflict Resolution
-
-When competing patterns are detected with similar prevalence (within 20% of each other):
+When competing patterns detected with similar prevalence (within 20%):
 
 ```
-CONFLICT DETECTED:
-  Pattern A: {description} — {X/Y} files ({percentage}%)
-  Pattern B: {description} — {Z/Y} files ({percentage}%)
-
-RESOLUTION OPTIONS:
-1. "Make Pattern A the standard" → Pattern B becomes legacy exception
-2. "Make Pattern B the standard" → Pattern A becomes legacy exception
-3. "Allow both with context guidance" → Document when to use each
-4. "Defer decision" → Mark as unresolved, don't generate rule
+AskUserQuestion:
+  question: "CONFLICT: {Pattern A} ({X}%) vs {Pattern B} ({Y}%). Which should be the standard?"
+  options:
+    - label: "Pattern A"
+      description: "{description} — {X/Y} files"
+    - label: "Pattern B"
+      description: "{description} — {Z/Y} files"
+    - label: "Allow both"
+      description: "Document when to use each."
+    - label: "Defer"
+      description: "Skip this rule for now."
+  multiSelect: false
 ```
 
-#### 5d: Generate Pack
+#### 7d: Generate Pack
 
-Ask the user for a pack name (e.g., "company", "acme", "team-name").
-
-Create `.claude/packs/{pack-name}/rules.md`:
+Ask for pack name. Create `.claude/packs/{pack-name}/rules.md`:
 
 ```markdown
 # {Pack Name} Engineering Standards
@@ -243,77 +582,101 @@ Based on scan of {project name}
 {architectural patterns from interview}
 ```
 
-#### 5e: Enable the New Pack
+#### 7e: Enable and Validate
 
-Update `.claude/temper.config` to add the new pack to the `packs:` list.
+1. Update `.claude/temper.config` to add the new pack
+2. Invalidate manifest cache
+3. Report creation summary
 
-#### 5f: Validate Against Current Code
+### Step 8: Done
 
-```
-1. Run /temper:check with new standards
-2. Count violations
-3. Report:
-   "Your codebase has {X} violations of your new standards.
-    {Y} are in files not changed recently (legacy code).
-    {Z} are in recently changed files.
-
-    Consider:
-    - Fixing recent violations first
-    - Marking legacy violations as acknowledged
-    - Gradually improving over time"
-4. Set baseline in .temper/metrics.json for future trend tracking
-```
-
-#### 5g: Report
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ PACK CREATED — {Pack Name}                                  │
-├─────────────────────────────────────────────────────────────┤
-│ Location: .claude/packs/{pack-name}/rules.md                │
-│ Rules: {N} BLOCK, {N} WARN, {N} SUGGEST                    │
-│ Status: ENABLED (added to temper.config)                    │
-│ Violations: {X} found ({Y} legacy, {Z} recent)             │
-│                                                             │
-│ Edit rules anytime: .claude/packs/{pack-name}/rules.md     │
-└─────────────────────────────────────────────────────────────┘
-```
-
-Return to Step 3 (main menu).
-
-### Step 6: Done
-
-When the user selects "Done", report current configuration and exit:
+When the user selects "Done":
+1. Show final configuration
+2. Invalidate manifest if any changes were made
+3. Exit
 
 ```
 Current pack configuration (.claude/temper.config):
-  quality    ON
-  tdd        ON
-  security   ON
-  git        ON
+  quality     ON    phases: all
+  tdd         ON    phases: build
+  security    ON    phases: review, check
+  git         ON    phases: all
 
 Run /temper:review or /temper:check to use these packs.
 ```
 
+---
+
 ## Config File Format
 
-The `.claude/temper.config` file controls which packs are enabled:
+### Simple Format (backward compatible)
 
 ```yaml
-# Enabled packs (loaded during review and check)
 packs:
   - quality
   - tdd
   - security
   - git
-  # - {custom-pack}
 ```
 
-When toggling packs, this is the only field that changes. All other config settings are preserved.
+### Extended Format (v4.3.0+)
 
-## Pack Discovery Rules
+```yaml
+packs:
+  - name: quality
+  - name: tdd
+    phases: [build]
+  - name: security
+    phases: [review, check]
+  - name: api-standards
+    link: plugin://my-api-linter
+  - name: git
+```
 
-1. Any directory in `.claude/packs/` (except `stacks/`) that contains a `rules.md` is a valid pack
-2. The `stacks/` directory contains stack definitions (Spring Boot, React, etc.) — not quality packs
-3. Pack names are directory names, lowercase, hyphenated
-4. The pack name must match the entry in `temper.config` packs list
+---
+
+## Pack Rules Format
+
+Each pack's `rules.md` follows this structure:
+
+```markdown
+# {Pack Name}
+
+## Mandatory Rules (BLOCK if violated)
+- Rule that stops the build if broken
+
+## Quality Rules (WARN if violated)
+- Rule that flags but doesn't block
+
+## Conventions (SUGGEST improvements)
+- Nice-to-have patterns
+```
+
+---
+
+## Built-in Packs
+
+| Pack | Purpose | Default Gate Levels |
+|------|---------|---------------------|
+| `quality` | Code quality: method length, DRY, naming | WARN / SUGGEST |
+| `tdd` | RED-GREEN-REFACTOR enforcement, scenario coverage | BLOCK / WARN |
+| `security` | OWASP Top 10, secrets management | BLOCK / WARN |
+| `git` | Conventional commits, branch naming | WARN / SUGGEST |
+
+---
+
+## Pack Loading During Phases
+
+When any Temper phase starts, packs are loaded as follows:
+
+```
+1. Read or build pack manifest (cached in .temper/pack-manifest.json)
+2. Filter by enabled status (from temper.config)
+3. Filter by current phase (from phases field)
+4. For each active pack:
+   a. Read rules.md from highest-priority tier
+   b. If link exists, resolve and read linked resource
+   c. Check connection health for linked packs
+   d. Include all content in AI prompt context
+5. Report loaded packs (names + any warnings) at phase start
+```

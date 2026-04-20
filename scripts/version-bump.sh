@@ -33,11 +33,18 @@ if [ -f ".claude-plugin/plugin.json" ]; then
     rm -f .claude-plugin/plugin.json.bak
 fi
 
+# 2. Update Cursor IDE version
+echo "  → Updating .cursor/VERSION"
+if [ -d ".cursor" ]; then
+    echo "$NEW_VERSION" > .cursor/VERSION
+fi
+
 echo ""
 echo "✅ Version bumped to $NEW_VERSION"
 echo ""
 echo "📋 Files updated:"
 echo "   • .claude-plugin/plugin.json"
+echo "   • .cursor/VERSION"
 echo ""
 echo "🔍 Next steps:"
 echo "   1. Commit: git add -A && git commit -m 'chore: bump version to $NEW_VERSION'"

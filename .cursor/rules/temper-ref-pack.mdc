@@ -1,0 +1,324 @@
+---
+description: Temper reference: pack
+alwaysApply: false
+---
+
+---
+description: "Manage quality packs: view, toggle, or create new packs interactively"
+---
+
+# Pack: Quality Pack Manager
+
+**Goal:** Display all defined quality packs with their enable/disable status, allow users to toggle packs on/off, and provide an option to create new packs using the interactive pack builder.
+
+## Execution
+
+### Step 1: Discover Packs
+
+Scan `.claude/packs/` for all pack directories. Each pack is a folder containing a `rules.md` file.
+
+```
+For each directory in .claude/packs/ (excluding stacks/):
+  - Read {pack-name}/rules.md header for description
+  - Check if pack-name is in .claude/temper.config packs: list
+  - Record: name, enabled status, rule summary
+```
+
+Built-in packs:
+- `quality` — Code quality rules (method length, DRY, naming)
+- `tdd` — Test-driven development (RED-GREEN-REFACTOR)
+- `security` — Security best practices (OWASP Top 10)
+- `git` — Git workflow conventions (commits, branching)
+
+Custom packs: any folder in `.claude/packs/` besides `stacks/` that contains a `rules.md`.
+
+### Step 2: Display Pack Status
+
+Show the pack list in a formatted table:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ PACK — Quality Pack Manager                                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  PACK                     STATUS    RULES                    │
+│  ─────────────────────── ──────── ───────────────────────── │
+│  quality                   ON      BLOCK: 3, WARN: 5       │
+│  tdd                       ON      BLOCK: 2, WARN: 4       │
+│  security                  ON      BLOCK: 6, WARN: 2       │
+│  git                       ON      WARN: 4, SUGGEST: 4     │
+│  company                   OFF     BLOCK: 4, WARN: 3       │
+│                                                             │
+│  5 packs total (4 enabled, 1 disabled)                      │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Step 3: User Action
+
+Use AskUserQuestion with these options:
+
+```
+AskUserQuestion:
+  question: "What would you like to do?"
+  options:
+    - label: "Toggle packs on/off"
+      description: "Select a pack to enable or disable."
+    - label: "Add new pack"
+      description: "Create a new custom pack by scanning your codebase and defining rules interactively."
+    - label: "Done"
+      description: "Exit pack manager."
+  multiSelect: false
+```
+
+### Step 4: Toggle Packs
+
+If the user selects "Toggle packs on/off":
+
+1. Show a multi-select AskUserQuestion listing all packs with their current status:
+
+```
+AskUserQuestion:
+  question: "Select packs to enable (deselect to disable):"
+  options:
+    - label: "quality (currently ON)"
+      description: "Code quality: method length, DRY, naming"
+    - label: "tdd (currently ON)"
+      description: "Test-driven development: RED-GREEN-REFACTOR"
+    - label: "security (currently ON)"
+      description: "Security: OWASP Top 10, no secrets"
+    - label: "git (currently ON)"
+      description: "Git workflow: conventional commits, branching"
+    - label: "company (currently OFF)"
+      description: "Company engineering standards"
+  multiSelect: true
+```
+
+2. User selects which packs should be enabled (multiSelect).
+
+3. Update `.claude/temper.config`:
+   - Set `packs:` list to exactly the packs the user selected
+   - Preserve all other config fields unchanged
+
+4. Show updated status:
+
+```
+Updated pack configuration:
+  + quality     ON
+  + tdd         ON
+  + security    ON
+  + git         ON
+  - company     OFF (disabled)
+
+Config saved to .claude/temper.config
+```
+
+5. Return to Step 3 (main menu).
+
+### Step 5: Add New Pack
+
+If the user selects "Add new pack", run the interactive pack builder methodology:
+
+#### 5a: Scan Codebase (via Explore subagent)
+
+Launch an Explore subagent:
+
+```
+Scan this codebase to discover existing patterns and conventions.
+
+For each area, report:
+1. What pattern is used (with example file:line)
+2. How consistently it's used (X/Y files)
+3. Any inconsistencies (alternative patterns found)
+
+AREAS TO SCAN:
+
+1. API DESIGN
+   - Response format (envelope? flat? mixed?)
+   - Error handling (custom codes? generic exceptions?)
+   - Pagination style (cursor? offset?)
+   - URL patterns (REST conventions?)
+
+2. DATA ACCESS
+   - ORM/query pattern (repository? direct queries? ORM?)
+   - Transaction handling
+   - Connection management
+
+3. ERROR HANDLING
+   - Custom error types/codes?
+   - Logging patterns (structured? unstructured?)
+   - Error propagation strategy
+
+4. TESTING
+   - Test framework and patterns
+   - Coverage level (estimate from test file count vs source count)
+   - Test naming conventions
+   - Mock/stub patterns
+
+5. CODE STYLE
+   - Average method length
+   - Class/module size
+   - Dependency injection pattern
+   - Naming conventions
+
+6. SECURITY
+   - Input validation patterns
+   - Authentication/authorization approach
+   - Secret management
+
+7. GIT/WORKFLOW
+   - Branch naming patterns (from git log)
+   - Commit message style (from git log)
+
+RETURN FORMAT:
+
+For each area, return:
+AREA: {name}
+  Pattern: {what most code does}
+  Consistency: {X/Y files}
+  Alternative: {if any inconsistency found}
+  Example: {file:line}
+```
+
+#### 5b: Interactive Interview
+
+Present findings to the user and ask about each area:
+
+```
+For each area where patterns were found:
+
+"I found {pattern} used in {X/Y} files.
+ If inconsistency: I also found {alternative} in {Z} files.
+ Should I capture {pattern} as your standard?"
+
+For each area where no clear pattern exists:
+
+"I didn't find a consistent pattern for {area}.
+ Would you like to establish one? Options:
+ - {option A}: {description}
+ - {option B}: {description}
+ - Skip for now"
+
+Additional questions:
+- "What coverage threshold should new code meet?" (default: 80%)
+- "Should any of these rules block commits, or just warn?"
+- "Are there any additional rules not reflected in your code?"
+```
+
+Use AskUserQuestion for structured choices. Keep to 5-10 questions total.
+
+#### 5c: Conflict Resolution
+
+When competing patterns are detected with similar prevalence (within 20% of each other):
+
+```
+CONFLICT DETECTED:
+  Pattern A: {description} — {X/Y} files ({percentage}%)
+  Pattern B: {description} — {Z/Y} files ({percentage}%)
+
+RESOLUTION OPTIONS:
+1. "Make Pattern A the standard" → Pattern B becomes legacy exception
+2. "Make Pattern B the standard" → Pattern A becomes legacy exception
+3. "Allow both with context guidance" → Document when to use each
+4. "Defer decision" → Mark as unresolved, don't generate rule
+```
+
+#### 5d: Generate Pack
+
+Ask the user for a pack name (e.g., "company", "acme", "team-name").
+
+Create `.claude/packs/{pack-name}/rules.md`:
+
+```markdown
+# {Pack Name} Engineering Standards
+
+Generated by Temper on {date}
+Based on scan of {project name}
+
+## Mandatory Rules (BLOCK if violated)
+{rules from interview marked as blocking}
+
+## Quality Rules (WARN if violated)
+{rules from interview marked as warning}
+
+## Conventions (SUGGEST improvements)
+{rules from interview marked as suggestions}
+
+## Architectural Constraints (BLOCK if violated)
+{architectural patterns from interview}
+```
+
+#### 5e: Enable the New Pack
+
+Update `.claude/temper.config` to add the new pack to the `packs:` list.
+
+#### 5f: Validate Against Current Code
+
+```
+1. Run /temper:check with new standards
+2. Count violations
+3. Report:
+   "Your codebase has {X} violations of your new standards.
+    {Y} are in files not changed recently (legacy code).
+    {Z} are in recently changed files.
+
+    Consider:
+    - Fixing recent violations first
+    - Marking legacy violations as acknowledged
+    - Gradually improving over time"
+4. Set baseline in .temper/metrics.json for future trend tracking
+```
+
+#### 5g: Report
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ PACK CREATED — {Pack Name}                                  │
+├─────────────────────────────────────────────────────────────┤
+│ Location: .claude/packs/{pack-name}/rules.md                │
+│ Rules: {N} BLOCK, {N} WARN, {N} SUGGEST                    │
+│ Status: ENABLED (added to temper.config)                    │
+│ Violations: {X} found ({Y} legacy, {Z} recent)             │
+│                                                             │
+│ Edit rules anytime: .claude/packs/{pack-name}/rules.md     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Return to Step 3 (main menu).
+
+### Step 6: Done
+
+When the user selects "Done", report current configuration and exit:
+
+```
+Current pack configuration (.claude/temper.config):
+  quality    ON
+  tdd        ON
+  security   ON
+  git        ON
+
+Run /temper:review or /temper:check to use these packs.
+```
+
+## Config File Format
+
+The `.claude/temper.config` file controls which packs are enabled:
+
+```yaml
+# Enabled packs (loaded during review and check)
+packs:
+  - quality
+  - tdd
+  - security
+  - git
+  # - {custom-pack}
+```
+
+When toggling packs, this is the only field that changes. All other config settings are preserved.
+
+## Pack Discovery Rules
+
+1. Any directory in `.claude/packs/` (except `stacks/`) that contains a `rules.md` is a valid pack
+2. The `stacks/` directory contains stack definitions (Spring Boot, React, etc.) — not quality packs
+3. Pack names are directory names, lowercase, hyphenated
+4. The pack name must match the entry in `temper.config` packs list

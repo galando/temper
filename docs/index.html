@@ -812,7 +812,7 @@
         <span>Temper</span>
       </a>
       <div class="nav-links">
-        <a href="#whats-new" style="color: var(--accent);">v4.1.0</a>
+        <a href="#whats-new" style="color: var(--accent);">v4.4.0</a>
         <a href="#why">IDD+BDD+TDD</a>
         <a href="#flow">How it works</a>
         <a href="#packs">Packs</a>
@@ -852,27 +852,113 @@
   </section>
 
   <section id="whats-new">
-    <div class="section-label">What's New in v4.1.0</div>
-    <h2 class="section-title">Feedback Loops That Actually Work</h2>
-    <p class="section-desc">v4.0.0 documented feedback loops. v4.1.0 <strong>ships them</strong>. When Review finds issues or Check fails tests, the gate now offers "Loop back to Build" with context transfer and circuit breakers — no more restarting the pipeline manually.</p>
+    <div class="section-label">What's New in v4.4.0</div>
+    <h2 class="section-title">Pack Performance & Discovery</h2>
+    <p class="section-desc">v4.4.0 makes quality packs fast and discoverable. Cached manifests eliminate repeated scans, quick-create wraps any plugin or skill in seconds, and all decisions use structured prompts.</p>
 
-    <div class="why-grid" style="grid-template-columns: repeat(3, 1fr);">
+    <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
       <div class="why-item">
-        <h4>Loop Back to Build</h4>
-        <p>Review finds 3 HIGH issues? Gate shows "Loop back to Build". Check fails tests? Gate shows "Loop back to Build (Fix tests)". Context files carry the fix details — no information lost.</p>
+        <h4>Cached Manifest</h4>
+        <p>Pack discovery cached to <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">pack-manifest.json</code>. First run scans all 3 tiers, subsequent loads under 2 seconds. Auto-rebuilds on config changes.</p>
       </div>
       <div class="why-item">
-        <h4>Circuit Breakers</h4>
-        <p>Max 2 loops per stage. Same issue found twice? Loop stops immediately — "Manual fix required". No infinite loops, no spinning cycles.</p>
+        <h4>Quick-Create Launchers</h4>
+        <p>One command wraps any plugin or skill as a BLOCK-level pack. System discovers linkable targets, you pick one, name it, done.</p>
       </div>
       <div class="why-item">
-        <h4>Actionable Instructions</h4>
-        <p>Every loop step references real Claude Code tools (Read, Write, Bash) — not pseudo-code. The orchestrator reads config, checks loop state, writes context files, and re-launches the Build agent.</p>
+        <h4>Filesystem Discovery</h4>
+        <p>Automatic scan finds all plugins, skills, and command-based tools. Deduplicated results — each name appears once. Valid link targets everywhere.</p>
+      </div>
+      <div class="why-item">
+        <h4>Structured UX</h4>
+        <p>All <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper:pack</code> decisions use AskUserQuestion — toggle packs, create launchers, configure links. No more free-text guessing.</p>
       </div>
     </div>
 
     <div style="margin-top: 2rem; text-align: center;">
-      <p style="color: var(--fg-muted); font-size: 0.9rem;">Feedback loops enabled by default. Disable via <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">feedback.enabled: false</code> in <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">.claude/temper.config</code>. Zero breaking changes.</p>
+      <a href="https://github.com/galando/temper#whats-new-in-v440" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">What's New in v4.3.0</div>
+    <h2 class="section-title">Pack System Overhaul</h2>
+    <p class="section-desc">Three-tier resolution, plugin/skill linking, phase scoping, and connection health validation. Packs are now a first-class extensibility layer.</p>
+
+    <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
+      <div class="why-item">
+        <h4>Three-Tier Resolution</h4>
+        <p>Packs resolve from project-local > global > built-in. Teams ship project packs in the repo, users create global packs, built-ins provide defaults.</p>
+      </div>
+      <div class="why-item">
+        <h4>Plugin/Skill Linking</h4>
+        <p>Packs link to plugins (<code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">plugin://</code>) or skills (<code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">skill://</code>). Linked context injected alongside pack rules during execution.</p>
+      </div>
+      <div class="why-item">
+        <h4>Phase Scoping</h4>
+        <p>Restrict packs to specific phases — TDD only during build, security only during review and check. Keeps prompt context focused.</p>
+      </div>
+      <div class="why-item">
+        <h4>Connection Health</h4>
+        <p>Link targets validated automatically. Plugin missing? Pack still loads with a warning — graceful degradation, never blocks work.</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 2rem; text-align: center;">
+      <a href="https://github.com/galando/temper#whats-new-in-v430" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">What's New in v4.2.0</div>
+    <h2 class="section-title">Cursor IDE & Workflow</h2>
+    <p class="section-desc">Cursor IDE support with feature parity, feedback loop gates with circuit breakers, enhanced Design phase, and cross-walkthrough navigation.</p>
+
+    <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
+      <div class="why-item">
+        <h4>Cursor IDE Support</h4>
+        <p>Full Temper for <a href="https://cursor.sh" style="color: var(--accent);">Cursor</a>. Generation script mirrors <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">.claude/</code> to <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">.cursor/</code>. Commands, skills, packs — all adapted.</p>
+      </div>
+      <div class="why-item">
+        <h4>Feedback Loop Gates</h4>
+        <p>Review finds issues? Gate shows "Loop back to Build". Check fails tests? Targeted fix task. Circuit breaker: max 2 loops, same issue twice = stop.</p>
+      </div>
+      <div class="why-item">
+        <h4>Design Phase</h4>
+        <p>System architecture, API contracts, DB schema, integration points, and decision logs (ADRs). Auto-skipped for simple features.</p>
+      </div>
+      <div class="why-item">
+        <h4>Cross-Walkthrough</h4>
+        <p>Switch between Plan and Design walkthroughs at any point. Non-linear exploration — cross-reference scope with depth before building.</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 2rem; text-align: center;">
+      <a href="https://github.com/galando/temper#whats-new-in-v420" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">What's New in v4.1.0</div>
+    <h2 class="section-title">Feedback Loops That Actually Work</h2>
+    <p class="section-desc">v4.0.0 documented feedback loops. v4.1.0 <strong>ships them</strong>. When Review finds issues or Check fails tests, the gate now offers "Loop back to Build" with context transfer and circuit breakers.</p>
+
+    <div class="why-grid" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="why-item">
+        <h4>Loop Back to Build</h4>
+        <p>Review finds issues? Gate shows "Loop back to Build". Check fails tests? Gate shows "Loop back to Build (Fix tests)". Context files carry the fix details.</p>
+      </div>
+      <div class="why-item">
+        <h4>Circuit Breakers</h4>
+        <p>Max 2 loops per stage. Same issue found twice? Loop stops immediately. No infinite loops, no spinning cycles.</p>
+      </div>
+      <div class="why-item">
+        <h4>Actionable Instructions</h4>
+        <p>Every loop step references real Claude Code tools (Read, Write, Bash) — not pseudo-code. Context files carry full fix details.</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 2rem; text-align: center;">
       <a href="https://github.com/galando/temper#whats-new-in-v410" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
     </div>
   </section>
@@ -1131,7 +1217,7 @@
 
     <div class="custom-packs">
       <h3>🎨 Create Your Own Packs</h3>
-      <p>Add a <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">rules.md</code> file and Temper will automatically discover it. Perfect for company-specific standards.</p>
+      <p>Add a <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">rules.md</code> file and Temper will automatically discover it. Three-tier resolution: project > global > built-in. Link packs to plugins or skills for automatic context injection.</p>
       <code>
 <span class="path">.claude/packs/my-company/rules.md</span>
 

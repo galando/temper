@@ -281,6 +281,100 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ---
 
+## What's New in v4.4.0
+
+v4.4.0 makes quality packs **fast and discoverable**. A cached manifest eliminates repeated filesystem scans, quick-create launcher packs wrap any plugin or skill in seconds, and all pack decisions use structured `AskUserQuestion` prompts.
+
+### Cached Pack Manifest
+
+Pack discovery results are cached to `.temper/pack-manifest.json` for instant subsequent loads. First run does a full 3-tier scan; subsequent runs load from cache in under 2 seconds. Cache is rebuilt automatically when `temper.config` changes, packs are added/removed, or the manifest schema version mismatches.
+
+### Quick-Create Launcher Packs
+
+Fast path for creating a pack that wraps an existing plugin or skill. The system discovers all linkable targets, you pick one and name the pack, and Temper generates a launcher template with BLOCK-level enforcement — guaranteeing the linked resource is always used.
+
+### Plugin/Skill Filesystem Discovery
+
+Automatic discovery of all linkable targets from the filesystem: installed plugins (`plugin://{name}`), project and global skills (`skill://{name}`), and command-based skills (`.claude/commands/*.md`). Deduplication ensures each name appears once.
+
+### AskUserQuestion-Driven UX
+
+All decision points in `/temper:pack` now use `AskUserQuestion` for structured, clickable options. Toggle packs, quick-create launchers, configure links — no more free-text guessing. Cursor IDE uses conversational numbered prompts with the same options.
+
+### Command-Based Skill Linking
+
+Skills defined as markdown command files (`.claude/commands/*.md`) are now valid link targets alongside traditional `SKILL.md` files. The resolution chain checks standard skills, global skills, plugin skills, then command-based fallback — ensuring any Temper-compatible resource can be linked to a pack.
+
+---
+
+## What's New in v4.3.0
+
+v4.3.0 overhauls the pack system with **three-tier resolution, plugin/skill linking, phase scoping, and connection health validation**.
+
+### Three-Tier Pack Resolution
+
+Quality packs now resolve from three tiers in priority order:
+
+```
+Priority 1 (highest) → .claude/packs/{name}/rules.md           (project-local)
+Priority 2           → ~/.claude/packs/{name}/rules.md          (global / user-wide)
+Priority 3 (lowest)  → $TEMPER_ROOT/.claude/packs/{name}/rules.md  (built-in)
+```
+
+Teams ship project-specific packs in the repo, users create global packs across all projects, and built-in packs provide sensible defaults.
+
+### Pack-Plugin/Skill Linking
+
+Packs can link to external plugins or skills, injecting their context alongside pack rules during phase execution. When a pack loads, the linked resource's instructions are included in the AI prompt context — context injection, not code execution.
+
+```yaml
+packs:
+  - name: api-standards
+    link: plugin://my-api-linter     # Links to an installed plugin
+  - name: sec-review
+    link: skill://security-review    # Links to a skill
+```
+
+### Phase Scoping
+
+Packs can be restricted to specific Temper phases so they only activate when relevant. A TDD pack only runs during build, a security pack only during review and check. Available phases: `plan`, `design`, `build`, `review`, `check`, `fix`.
+
+### Connection Health Validation
+
+When a pack has a link, the system validates that the target exists and is accessible. Plugin links check `~/.claude/plugins/installed_plugins.json`, skill links search `.claude/skills/` directories. Graceful degradation: if a link target is missing, the pack's own rules still load with a warning — a removed plugin never blocks all work.
+
+---
+
+## What's New in v4.2.0
+
+v4.2.0 adds **Cursor IDE support, feedback loop gates with circuit breakers, an enhanced Design phase, and cross-walkthrough navigation**.
+
+### Cursor IDE Support
+
+Full Temper experience for [Cursor](https://cursor.sh) users with feature parity to the Claude Code CLI. A generation script (`scripts/generate-cursor.py`) mirrors `.claude/` to `.cursor/` — commands, skills, packs, and reference docs. IDE-specific adaptations handle the differences: hyphenated commands (`/temper-plan`), conversational stage gates instead of `AskUserQuestion`, and always-on pack context via Cursor rules.
+
+### Feedback Loop Gates & Circuit Breaker
+
+Explicit gates between stages allow returning to earlier stages when issues are found, with automatic circuit breakers:
+
+```
+Review ──[issues found]──→ Build    (max 2 loops)
+Check  ──[tests fail]────→ Build    (max 2 loops)
+Build  ──[architecture]──→ Plan     (max 1 loop)
+```
+
+After 3 loops in any direction, the "Return" option becomes "Accept with known issues." Context is passed between stages via `.temper/` JSON files (`review-context.json`, `check-context.json`, `build-context.json`).
+
+### Design Phase (Enhanced)
+
+An optional stage for system design on complex or medium-complexity features. Produces: system architecture, API contracts, database changes, integration points, and a decision log (ADRs). Auto-skipped when complexity is below medium or config `phases.design: false`.
+
+### Cross-Walkthrough Navigation
+
+Users can switch between Plan and Design walkthroughs at any point during interactive section-by-section review. Plan final gate includes "Walk through design," design final gate includes "Walk through plan." Non-linear exploration before committing to build.
+
+---
+
 ## What's New in v4.1.0
 
 v4.1.0 makes feedback loops **actually work**. The v4.0.0 documentation described loop types and schemas, but the orchestrator never executed them — stages always flowed linearly. Now Review and Check gates actively offer "Loop back to Build" when issues are found, with full context transfer and circuit breakers.
@@ -537,7 +631,7 @@ Each stage ends with a gate:
 
 ## Quality Packs
 
-Packs are rule sets enforced during code generation and review:
+Packs are rule sets enforced during code generation and review. Three-tier resolution: project-local > global > built-in.
 
 | Pack | Severity | What it enforces |
 |------|----------|-----------------|
@@ -546,7 +640,7 @@ Packs are rule sets enforced during code generation and review:
 | `security` | BLOCK | OWASP Top 10, no secrets in code |
 | `git` | SUGGEST | Conventional commits, branching |
 
-Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/your-pack/`.
+Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/your-pack/`. Link packs to plugins or skills for automatic context injection. Scope packs to specific phases (build, review, check) to keep prompt context focused.
 
 ## Installation
 
