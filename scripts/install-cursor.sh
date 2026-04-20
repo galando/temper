@@ -19,21 +19,21 @@ TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd)" || {
     exit 1
 }
 
-# Read version from plugin.json
-VERSION=$(python3 -c "
-import json, sys
-with open('$REPO_ROOT/.claude-plugin/plugin.json') as f:
-    print(json.load(f).get('version', 'unknown'))
-" 2>/dev/null || echo "unknown")
-
-echo "Temper v${VERSION} — Cursor IDE Setup"
-echo ""
-
-# Check Python 3
+# Check Python 3 first
 if ! command -v python3 &>/dev/null; then
     echo "Error: Python 3 is required. Install it from https://python.org"
     exit 1
 fi
+
+# Read version from plugin.json (pass path as argument to avoid shell injection)
+VERSION=$(python3 -c "
+import json, sys
+with open(sys.argv[1]) as f:
+    print(json.load(f).get('version', 'unknown'))
+" "$REPO_ROOT/.claude-plugin/plugin.json" 2>/dev/null || echo "unknown")
+
+echo "Temper v${VERSION} — Cursor IDE Setup"
+echo ""
 
 # Generate .cursor/ directory
 echo "Generating Cursor IDE files..."
@@ -43,7 +43,8 @@ python3 "$REPO_ROOT/scripts/generate-cursor.py" --output "$REPO_ROOT/.cursor"
 if [ "$TARGET_DIR" != "$REPO_ROOT" ]; then
     echo ""
     echo "Copying .cursor/ to $TARGET_DIR/"
-    cp -r "$REPO_ROOT/.cursor" "$TARGET_DIR/.cursor"
+    rm -rf "$TARGET_DIR/.cursor"
+    cp -R "$REPO_ROOT/.cursor" "$TARGET_DIR/.cursor"
 fi
 
 # Verify

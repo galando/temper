@@ -56,6 +56,7 @@ Pack discovery results are cached to `.temper/pack-manifest.json` for instant su
   1. `temper.config` file modified (project or global) — check mtime
   2. Pack directories added or removed in any tier — check directory listing
   3. Manifest `version` field doesn't match expected schema version
+  4. Any pack's `rules.md` file modified — check mtime of each rules_path
 
 ### Manifest Structure
 
@@ -140,6 +141,12 @@ packs:
   - name: tdd
 ```
 
+### Parsing Note
+
+When reading `packs:`, each entry can be either a **string scalar** (simple format) or a **mapping** with `name` key (extended format). Parser must check type:
+- If string → treat as `{name: <value>, phases: "all", link: null}`
+- If mapping → read `name` (required), `phases` (default: "all"), `link` (default: null)
+
 ---
 
 ## Phase Scoping (v4.3.0)
@@ -219,6 +226,7 @@ Scan in order, collecting all discoverable targets:
 | `.claude/skills/*/SKILL.md` | Project-local skills | `skill://{name}` |
 | `~/.claude/skills/*/SKILL.md` | Global skills | `skill://{name}` |
 | `.claude/commands/*.md` (fallback) | Command-based skills | `skill://{command-name}` |
+| `{plugin_path}/commands/*.md` (fallback) | Plugin command-based skills | `skill://{command-name}` |
 
 ### Deduplication
 
@@ -383,7 +391,9 @@ AskUserQuestion:
 ```
 
 **5c: User provides pack name**
-Ask via "Other" free-text: "Enter a name for the launcher pack (e.g., api-enforcer):"
+Ask via "Other" free-text: "Enter a name for the launcher pack (lowercase, hyphens only, e.g., api-enforcer):"
+
+Pack name constraints: lowercase alphanumeric with hyphens, matching directory name requirements. If free-text input is not available, generate a default from the link target (e.g., `plugin://my-api-linter` becomes `my-api-linter`).
 
 **5d: Generate launcher template**
 Create `.claude/packs/{pack-name}/rules.md`:
@@ -467,6 +477,8 @@ AskUserQuestion:
       description: "Only during /temper:review and /temper:check."
   multiSelect: false
 ```
+
+For arbitrary phase combinations not covered by presets, the user can type them via "Other" (e.g., "plan, build, fix"). Available phases: `plan`, `design`, `build`, `review`, `check`, `fix`.
 
 **6e: Update config and invalidate manifest**
 Return to Step 3.

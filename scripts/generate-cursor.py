@@ -31,9 +31,12 @@ def read_version(repo_root):
     """Read version from plugin.json."""
     plugin_json = repo_root / ".claude-plugin" / "plugin.json"
     if plugin_json.exists():
-        with open(plugin_json) as f:
-            data = json.load(f)
-            return data.get("version", "0.0.0")
+        try:
+            with open(plugin_json, encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get("version", "0.0.0")
+        except (json.JSONDecodeError, OSError):
+            return "0.0.0"
     return "0.0.0"
 
 
@@ -91,7 +94,7 @@ def process_command_file(content, filename):
 
 def generate_cursor_rules_mdc(name, content, description=""):
     """Wrap content in Cursor MDC format."""
-    frontmatter = f"---\ndescription: {description}\nalwaysApply: false\n---\n\n"
+    frontmatter = f'---\ndescription: "{description}"\nalwaysApply: false\n---\n\n'
     return frontmatter + content
 
 
@@ -115,14 +118,14 @@ def main():
 
     # --- 1. Write VERSION ---
     version_file = output_dir / "VERSION"
-    version_file.write_text(version + "\n")
+    version_file.write_text(version + "\n", encoding="utf-8")
     print(f"  [VERSION] {version_file}")
 
     # --- 2. Generate commands ---
     commands_dir = repo_root / ".claude" / "commands"
     if commands_dir.exists():
         for cmd_file in sorted(commands_dir.glob("*.md")):
-            content = cmd_file.read_text()
+            content = cmd_file.read_text(encoding="utf-8")
             # Convert filename: pack.md -> temper-pack.md, temper.md -> temper.md
             name = cmd_file.stem
             if name == "temper":
@@ -132,7 +135,7 @@ def main():
 
             processed = process_command_file(content, cursor_name)
             out_path = output_dir / "commands" / cursor_name
-            out_path.write_text(processed)
+            out_path.write_text(processed, encoding="utf-8")
             print(f"  [CMD] {cursor_name}")
 
     # --- 3. Generate rules from skills ---
@@ -142,7 +145,7 @@ def main():
             if skill_dir.is_dir():
                 skill_file = skill_dir / "SKILL.md"
                 if skill_file.exists():
-                    content = skill_file.read_text()
+                    content = skill_file.read_text(encoding="utf-8")
                     # Extract description from frontmatter
                     desc_match = re.search(r'description:\s*"([^"]+)"', content)
                     desc = desc_match.group(1) if desc_match else f"Temper {skill_dir.name}"
@@ -151,8 +154,8 @@ def main():
                         content,
                         desc
                     )
-                    out_path = output_dir / "rules" / f"temper-core.mdc"
-                    out_path.write_text(mdc_content)
+                    out_path = output_dir / "rules" / f"temper-{skill_dir.name}.mdc"
+                    out_path.write_text(mdc_content, encoding="utf-8")
                     print(f"  [RULE] temper-{skill_dir.name}.mdc")
 
     # --- 4. Generate rules from packs ---
@@ -162,28 +165,27 @@ def main():
             if pack_dir.is_dir() and pack_dir.name != "stacks":
                 rules_file = pack_dir / "rules.md"
                 if rules_file.exists():
-                    content = rules_file.read_text()
+                    content = rules_file.read_text(encoding="utf-8")
                     mdc_content = generate_cursor_rules_mdc(
                         f"temper-pack-{pack_dir.name}",
                         content,
                         f"Temper quality pack: {pack_dir.name}"
                     )
                     out_path = output_dir / "rules" / f"temper-pack-{pack_dir.name}.mdc"
-                    out_path.write_text(mdc_content)
-                    print(f"  [PACK] temper-pack-{pack_dir.name}.mdc")
+                    out_path.write_text(mdc_content, encoding="utf-8")
 
     # --- 5. Generate rules from reference docs ---
     ref_dir = repo_root / ".claude-plugin" / "reference"
     if ref_dir.exists():
         for ref_file in sorted(ref_dir.glob("*.md")):
-            content = ref_file.read_text()
+            content = ref_file.read_text(encoding="utf-8")
             mdc_content = generate_cursor_rules_mdc(
                 f"temper-ref-{ref_file.stem}",
                 content,
                 f"Temper reference: {ref_file.stem}"
             )
             out_path = output_dir / "rules" / f"temper-ref-{ref_file.stem}.mdc"
-            out_path.write_text(mdc_content)
+            out_path.write_text(mdc_content, encoding="utf-8")
             print(f"  [REF]  temper-ref-{ref_file.stem}.mdc")
 
     # --- 6. Generate MCP config template ---
@@ -191,7 +193,7 @@ def main():
         "mcpServers": {}
     }
     mcp_file = output_dir / "mcp.json"
-    mcp_file.write_text(json.dumps(mcp_config, indent=2) + "\n")
+    mcp_file.write_text(json.dumps(mcp_config, indent=2) + "\n", encoding="utf-8")
     print(f"  [MCP]  mcp.json (template)")
 
     print()

@@ -1,5 +1,5 @@
 ---
-description: Temper core: stack detection, quality gates, blast radius, learning
+description: "Temper core: stack detection, quality gates, blast radius, learning"
 alwaysApply: false
 ---
 
@@ -18,6 +18,13 @@ Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0
 2. `.claude/presets/*.yaml` → `stack` section
 3. Auto-detect: pom.xml→Spring Boot, package.json→Node, pyproject.toml→Python, go.mod→Go, Cargo.toml→Rust
 4. Load `.claude/packs/stacks/{stack}.md`
+
+## Pack Resolution (v4.3.0)
+Three-tier: project-local > global > built-in. Cached in `.temper/pack-manifest.json`.
+- `.claude/packs/{name}/rules.md` (project)
+- `~/.claude/packs/{name}/rules.md` (global)
+- `$CLAUDE_PLUGIN_ROOT/.claude/packs/{name}/rules.md` (built-in)
+Packs support `link: plugin://name | skill://name` and `phases: [build, review, ...]`.
 
 ## Quality Gates
 - **SUGGEST**: Non-blocking
