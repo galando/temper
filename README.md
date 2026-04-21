@@ -281,6 +281,27 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ---
 
+## What's New in v4.4.1
+
+v4.4.1 aligns implementation with documentation — shipping features that were documented but not wired up, and correcting docs that overpromised.
+
+### Build → Plan Feedback Loop
+
+The Build stage gate now offers a structured "Loop back to Plan" option when `feedback.enabled: true`. Selecting it writes `build-context.json` (blockers, partial results) and re-launches the PLAN agent with failure context. Circuit breaker: max 1 loop per cycle, human-driven only.
+
+### Cross-Walkthrough Navigation
+
+Plan and Design walkthroughs now link to each other at their final gates, plus a "Skip to build" option on every section to exit early.
+
+### Documentation Accuracy
+
+- Observability section shows config reference instead of fabricated dashboard numbers
+- Context accumulation accurately describes when files are written (on feedback loops)
+- Adaptive Learning section marked as "(Planned)" — not yet implemented
+- All version strings and install commands verified consistent across README, GitHub Pages, Jekyll docs, and plugin manifests
+
+---
+
 ## What's New in v4.4.0
 
 v4.4.0 makes quality packs **fast and discoverable**. A cached manifest eliminates repeated filesystem scans, quick-create launcher packs wrap any plugin or skill in seconds, and all pack decisions use structured `AskUserQuestion` prompts.

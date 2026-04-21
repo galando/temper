@@ -812,7 +812,7 @@
         <span>Temper</span>
       </a>
       <div class="nav-links">
-        <a href="#whats-new" style="color: var(--accent);">v4.4.0</a>
+        <a href="#whats-new" style="color: var(--accent);">v4.4.1</a>
         <a href="#why">IDD+BDD+TDD</a>
         <a href="#flow">How it works</a>
         <a href="#packs">Packs</a>
@@ -852,6 +852,35 @@
   </section>
 
   <section id="whats-new">
+    <div class="section-label">What's New in v4.4.1</div>
+    <h2 class="section-title">Implementation Alignment</h2>
+    <p class="section-desc">v4.4.1 ships features that were documented but not wired up, and corrects docs that overpromised. No more aspirational claims.</p>
+
+    <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
+      <div class="why-item">
+        <h4>Build → Plan Loop</h4>
+        <p>Build gate now offers "Loop back to Plan" with <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">build-context.json</code> carrying blockers and partial results. Max 1 per cycle, human-driven.</p>
+      </div>
+      <div class="why-item">
+        <h4>Cross-Walkthrough</h4>
+        <p>Plan and Design walkthroughs link to each other at their final gates. Non-linear exploration before committing to build.</p>
+      </div>
+      <div class="why-item">
+        <h4>Skip to Build</h4>
+        <p>Every walkthrough section now offers "Skip to build" — exit early without stepping through remaining sections.</p>
+      </div>
+      <div class="why-item">
+        <h4>Honest Docs</h4>
+        <p>Observability shows config, not fake numbers. Adaptive Learning marked planned. All version strings and install commands verified.</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 2rem; text-align: center;">
+      <a href="https://github.com/galando/temper#whats-new-in-v441" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
+    </div>
+  </section>
+
+  <section>
     <div class="section-label">What's New in v4.4.0</div>
     <h2 class="section-title">Pack Performance & Discovery</h2>
     <p class="section-desc">v4.4.0 makes quality packs fast and discoverable. Cached manifests eliminate repeated scans, quick-create wraps any plugin or skill in seconds, and all decisions use structured prompts.</p>
