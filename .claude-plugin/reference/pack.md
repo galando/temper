@@ -375,20 +375,42 @@ If the user selects "Quick-create launcher pack":
 Run the filesystem discovery algorithm. Collect all plugins, skills, and command-based skills.
 
 **5b: User selects target**
-Show discovered targets as options:
+Show ALL discovered targets. Since AskUserQuestion supports max 4 options per prompt, paginate if needed:
 
+If <= 4 targets found, show all in one AskUserQuestion:
 ```
 AskUserQuestion:
-  question: "Select the target to wrap as a launcher pack:"
+  question: "Select the target to wrap as a launcher pack (1/1):"
   options:
     - label: "plugin://my-api-linter"
-      description: "Installed plugin — {description from installed_plugins.json}"
+      description: "Installed plugin — {description}"
     - label: "skill://security-review"
       description: "Project skill — {path}"
     - label: "skill://production-review"
       description: "Command-based skill — .claude/commands/production-review.md"
+    - label: "skill://temper-core"
+      description: "Project skill — .claude/skills/temper-core/SKILL.md"
   multiSelect: false
 ```
+
+If > 4 targets found, show in pages of 4. First 3 slots are targets, 4th slot is "More..." if additional pages remain:
+```
+AskUserQuestion:
+  question: "Select the target to wrap as a launcher pack (page {N}/{total}):"
+  options:
+    - label: "plugin://my-api-linter"
+      description: "Installed plugin — {description}"
+    - label: "plugin://safety-net"
+      description: "Installed plugin — {description}"
+    - label: "skill://security-review"
+      description: "Project skill — {path}"
+    - label: "More targets..."
+      description: "Show next {remaining} targets"
+  multiSelect: false
+```
+
+On "More targets..." → show next page. Continue until user selects a target.
+On the last page, all 4 slots are targets (no "More..." option).
 
 **5c: User provides pack name**
 Ask via "Other" free-text: "Enter a name for the launcher pack (lowercase, hyphens only, e.g., api-enforcer):"
@@ -463,7 +485,7 @@ AskUserQuestion:
   multiSelect: false
 ```
 
-**6c: Set link** — Show discovered targets (reuse filesystem discovery)
+**6c: Set link** — Show ALL discovered targets (reuse filesystem discovery). Use same pagination as Step 5b if > 4 targets found. Include both `plugin://` and `skill://` targets from all discovery sources.
 **6d: Set phases** — Show phase options:
 ```
 AskUserQuestion:
