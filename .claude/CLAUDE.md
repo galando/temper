@@ -12,7 +12,8 @@
 | `/temper:pack` | Manage quality packs |
 | `/temper:status` | Quality + observability dashboard |
 
-**v4.0.1:** Design walkthrough + conditional sections
+**v4.4.1:** Implementation alignment — Build→Plan feedback loop, cross-walkthrough navigation, skip-to-build, doc accuracy
+**v4.4.0:** Pack performance & discovery — cached manifest, quick-create launcher packs, filesystem discovery, AskUserQuestion UX
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/`
 
 <!-- TOKENOMICS:START -->

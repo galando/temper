@@ -41,18 +41,14 @@ Example structure (populate with real data only):
 ## Step 3: AskUserQuestion (max 4 options)
 
 ```
-AskUserQuestion:
-  question: "What would you like to do?"
-  options:
-    - label: "Toggle packs on/off"
-      description: "Select packs to enable or disable."
-    - label: "Quick-create launcher pack"
-      description: "Wrap a plugin or skill as a BLOCK-level pack."
-    - label: "Configure pack (link, phases)"
-      description: "Set link target or phase scoping for an existing pack."
-    - label: "Done"
-      description: "Exit. Use 'Other' for full interactive pack builder."
-  multiSelect: false
+**What would you like to do?**
+
+1. **Toggle packs on/off** — Select packs to enable or disable.
+2. **Quick-create launcher pack** — Wrap a plugin or skill as a BLOCK-level pack.
+3. **Configure pack (link, phases)** — Set link target or phase scoping for an existing pack.
+4. **Done** — Exit. Use 'Other' for full interactive pack builder.
+5. Type your own response
+multiSelect: false
 ```
 
 ## Step 4: Toggle Packs
