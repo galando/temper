@@ -485,7 +485,7 @@ Packs: quality, tdd, security, company
    • UserService.java — 4 issues (complexity)
    • OrderProcessor.java — 3 issues (coupling)
 
-📚 Learning
+📚 Learning (planned)
    • Pattern detected: "Missing null check"
    → Suggestion: Add to company pack
 

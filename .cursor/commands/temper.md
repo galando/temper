@@ -185,28 +185,37 @@ When the user selects "Walk through plan step by step", present the plan as an i
 **After each section, use AskUserQuestion:**
 
 ```
-**What would you like to do?**
+**Plan walkthrough — {current section name}. What would you like to do?**
 
 1. **Next step** — Continue to {next section name}.
-2. **Ask a question** — Type your question about this section.
-3. Type your own response
+2. **Skip to build** — Skip remaining sections, proceed to Build stage.
+3. **Switch to design walkthrough** — Jump to the Design walkthrough (if design stage is active).
+4. Type your own response
 multiSelect: false
 ```
 
-- **"Ask a question"** (or "Other" with question text): Answer, then re-show the same section's gate
-- **"Other" (change request)**: Edit plan files, show what changed, then re-show the same section's gate
-- **"Next step"**: Advance to next section. After the last section, show the final walkthrough gate:
+- **"Other"** (built-in free-text): Ask a question or request a change. Answer/edit, then re-show the same section's gate.
+- **"Next step"**: Advance to next section. After the last section, show the final walkthrough gate (see below)
+- **"Skip to build"**: Exit walkthrough immediately, save state, proceed to Build stage (same as "Continue to Build" from the main gate)
+- **"Switch to design walkthrough"**: Begin the Design walkthrough from section 1. Only shown if `phases.design: true` and complexity is medium/complex. If design stage is not active, omit this option. The user can navigate back from Design walkthrough.
+
+After the last section, show the final walkthrough gate:
 
 ```
-**Walkthrough complete. What next?**
+**Plan walkthrough complete. What next?**
 
 1. **Continue to Build (Recommended)** — Launch BUILD agent with clean context.
-2. **Save for later** — Save state and stop.
-3. Type your own response
+2. **Switch to design walkthrough** — Jump to the Design walkthrough for cross-reference.
+3. **Save for later** — Save state and stop.
+4. Type your own response
 multiSelect: false
 ```
 
 **"Other" (free-text change request)**: Edit plan files, show what changed, re-show this gate.
+
+**on "Switch to design walkthrough"** (from either per-section or final gate): Begin the Design walkthrough (Stage 1.5 walkthrough steps), starting from section 1. Only available if `phases.design: true` and complexity is medium/complex. If design stage is not active, omit this option. The user can navigate back to Plan walkthrough from the Design walkthrough.
+
+**on "Skip to build":** Save state and proceed to Build stage immediately — identical to selecting "Continue to Build" from the main Plan gate.
 
 **Walkthrough edits propagate automatically.** The orchestrator edits plan files on disk directly. The BUILD agent subprocess reads these same files, so changes are reflected without any extra step.
 
@@ -309,28 +318,37 @@ Read `.temper/specs/{feature-slug}/design.md` and detect which sections exist. P
 **After each section, use AskUserQuestion:**
 
 ```
-**What would you like to do?**
+**Design walkthrough — {current section name}. What would you like to do?**
 
 1. **Next step** — Continue to {next section name}.
-2. **Ask a question** — Type your question about this section.
-3. Type your own response
+2. **Skip to build** — Skip remaining sections, proceed to Build stage.
+3. **Switch to plan walkthrough** — Jump to the Plan walkthrough.
+4. Type your own response
 multiSelect: false
 ```
 
-- **"Ask a question"** (or "Other" with question text): Answer, then re-show the same section's gate
-- **"Other" (change request)**: Edit design files, show what changed, then re-show the same section's gate
-- **"Next step"**: Advance to next section. After the last section, show the final walkthrough gate:
+- **"Other"** (built-in free-text): Ask a question or request a change. Answer/edit, then re-show the same section's gate.
+- **"Next step"**: Advance to next section. After the last section, show the final walkthrough gate (see below)
+- **"Skip to build"**: Exit walkthrough immediately, save state, proceed to Build stage (same as "Continue to Build" from the main gate)
+- **"Switch to plan walkthrough"**: Begin the Plan walkthrough from section 1. The user can navigate back from Plan walkthrough.
+
+After the last section, show the final walkthrough gate:
 
 ```
-**Walkthrough complete. What next?**
+**Design walkthrough complete. What next?**
 
 1. **Continue to Build (Recommended)** — Launch BUILD agent with clean context.
-2. **Save for later** — Save state and stop.
-3. Type your own response
+2. **Switch to plan walkthrough** — Jump to the Plan walkthrough for cross-reference.
+3. **Save for later** — Save state and stop.
+4. Type your own response
 multiSelect: false
 ```
 
 **"Other" (free-text change request)**: Edit design files, show what changed, re-show this gate.
+
+**on "Switch to plan walkthrough"** (from either per-section or final gate): Begin the Plan walkthrough (Stage 1 walkthrough steps), starting from section 1. The user can navigate back to Design walkthrough from the Plan walkthrough.
+
+**on "Skip to build":** Save state and proceed to Build stage immediately — identical to selecting "Continue to Build" from the main Design gate.
 
 **Walkthrough edits propagate automatically.** The orchestrator edits design files on disk directly. The BUILD agent subprocess reads these same files, so changes are reflected without any extra step.
 
@@ -360,7 +378,7 @@ When `feedback.enabled: true` in temper.config, stages can loop back to upstream
 |------|---------|---------------|-----------------|
 | Review → Build | Auto-fixable issues found | 2 | Same issue twice = stop |
 | Check → Build | Test failures in new code | 2 | Same test twice = stop |
-| Build → Plan | Infeasible design discovered | Unlimited | Human-driven only |
+| Build → Plan | Infeasible design discovered | 1 | Human-driven only |
 
 ### How Feedback Loops Actually Work (Runtime Instructions)
 
@@ -477,14 +495,78 @@ Return ONLY:
 
 ### Stage Gate
 
+> **Feedback Loop Check:** Before showing gate, check if Build → Plan loop should be offered:
+> 1. Use Read tool to check `.claude/temper.config` → verify `feedback.enabled: true`
+> 2. Use Read tool to check `.temper/feedback-loops.json` for active loops with `from_stage: "build"`
+> 3. If active loop exists and `iteration >= 1` → `can_loop: false` (human-driven, max 1 loop per cycle)
+> 4. Otherwise → `can_loop: true`
+
 Show the AskUserQuestion gate with:
 - "Continue to Review (Recommended)" — launch REVIEW agent
+- "Loop back to Plan (Revise plan)" — (shown ONLY if feedback.enabled AND can_loop) write build-context.json, update feedback-loops.json, launch PLAN agent
 - "Save for later" — save state, stop
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
 
 **on Continue:**
 1. Save state to `.temper/build-state.json`
 2. Proceed to Stage 3 (REVIEW) — launches a new Agent subprocess
+
+**on Loop back to Plan:**
+1. Write `build-context.json` to spec directory with:
+   ```json
+   {
+     "version": 1,
+     "stage": "build",
+     "timestamp": "{ISO timestamp}",
+     "build_summary": {
+       "tasks_completed": {N},
+       "tasks_total": {N},
+       "tests_added": {N},
+       "files_changed": {N}
+     },
+     "failure_reason": "{why the plan needs revision — e.g. infeasible design, missing dependencies, architecture mismatch}",
+     "blockers": ["{description of what couldn't be built}"],
+     "partial_results": {
+       "completed_files": ["{files that were successfully built}"],
+       "failed_tasks": ["{tasks that couldn't be completed with current plan}"]
+     }
+   }
+   ```
+2. Create loop entry in `.temper/feedback-loops.json`:
+   ```json
+   {
+     "id": "loop-build-{timestamp}",
+     "from_stage": "build",
+     "to_stage": "plan",
+     "reason": "infeasible design discovered",
+     "iteration": 1,
+     "max_iterations": 1,
+     "failure_context": {
+       "blockers": ["{blocker descriptions}"]
+     },
+     "started": "{ISO timestamp}"
+   }
+   ```
+3. Save state to `.temper/build-state.json` with `next_stage: "plan"`
+4. Launch PLAN Agent subprocess with:
+   ```
+   "Execute /temper-plan for feature: {original_args from build-state.json}
+
+   Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan.md
+
+   CONTEXT: You are starting with a CLEAN context. Load these files first:
+   1. {spec_path}/intent.md (original intent — may need revision)
+   2. {spec_path}/build-context.json (contains what went wrong during build)
+   3. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan.md for methodology
+
+   CRITICAL: This is a feedback loop re-entry from Build. The build-context.json describes what couldn't be built and why. Revise the plan to address these blockers.
+
+   Return ONLY:
+   - Plan summary text (formatted box + ASCII art diagram)
+   - Path to spec: .temper/specs/{feature-slug}/
+   - Complexity level: trivial/simple/medium/complex
+   - Risk level: low/medium/high"
+   ```
 
 **on Change (via "Other" free-text input):**
 1. User types their change request in the "Other" field
@@ -919,6 +1001,7 @@ multiSelect: false
 | REVIEW → CHECK | New Agent subprocess | check.md + intent.md + review-context.json | ~5-10KB |
 | REVIEW → BUILD (feedback) | New Agent subprocess | tasks.md + review-context.json | ~10-15KB |
 | CHECK → BUILD (feedback) | New Agent subprocess | tasks.md + check-context.json | ~10-15KB |
+| BUILD → PLAN (feedback) | New Agent subprocess | intent.md + build-context.json | ~10-15KB |
 | CHECK → Commit | Direct (no subprocess) | Nothing | 0KB |
 
 Each subprocess starts genuinely clean. Context files accumulate in `.temper/specs/{feature}/` and are cleaned up on commit.

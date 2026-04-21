@@ -105,7 +105,7 @@ Diagram (architecture flow):
    Success criteria:
      • Self-service reset in under 2 minutes (Validate: scenario)
      • Token expires after 15 minutes (Validate: code)
-   [Next step / Ask a question]
+   [Next step / Other]
 
 > Next step
 

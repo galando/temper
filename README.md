@@ -358,12 +358,12 @@ Full Temper experience for [Cursor](https://cursor.sh) users with feature parity
 Explicit gates between stages allow returning to earlier stages when issues are found, with automatic circuit breakers:
 
 ```
-Review ──[issues found]──→ Build    (max 2 loops)
-Check  ──[tests fail]────→ Build    (max 2 loops)
-Build  ──[architecture]──→ Plan     (max 1 loop)
+Review ──[issues found]──→ Build    (max 2 loops, same issue 2x = stop)
+Check  ──[tests fail]────→ Build    (max 2 loops, same test 2x = stop)
+Build  ──[architecture]──→ Plan     (human-driven, 1 per cycle)
 ```
 
-After 3 loops in any direction, the "Return" option becomes "Accept with known issues." Context is passed between stages via `.temper/` JSON files (`review-context.json`, `check-context.json`, `build-context.json`).
+Context is passed between stages via `.temper/` JSON files (`review-context.json`, `check-context.json`, `build-context.json`). Circuit breakers prevent infinite loops — the same issue appearing twice triggers human intervention.
 
 ### Design Phase (Enhanced)
 
@@ -371,7 +371,7 @@ An optional stage for system design on complex or medium-complexity features. Pr
 
 ### Cross-Walkthrough Navigation
 
-Users can switch between Plan and Design walkthroughs at any point during interactive section-by-section review. Plan final gate includes "Walk through design," design final gate includes "Walk through plan." Non-linear exploration before committing to build.
+Users can switch between Plan and Design walkthroughs at the final gate of each walkthrough. Plan walkthrough's final gate includes "Walk through design" (if design stage is active), and Design walkthrough's final gate includes "Walk through plan." Non-linear exploration before committing to build.
 
 ---
 
@@ -408,34 +408,33 @@ Stages can now loop back to upstream stages with failure context. No more "stop 
 |------|---------|----------|
 | Review → Build | Auto-fixable issues found | Fix applied, re-review, max 2 loops |
 | Check → Build | Test failures | Fix task created with failure context, max 2 loops |
-| Build → Plan | Infeasible design | Plan revision with what went wrong |
+| Build → Plan | Infeasible design | Plan revision with what went wrong, max 1 per cycle |
 
 Circuit breakers prevent infinite loops — same issue twice triggers human intervention.
 
 ### Context Accumulation
 
-Each stage now produces structured artifacts that accumulate for downstream stages. No more "agent amnesia" between stages.
+Each stage produces structured artifacts that accumulate for downstream stages. No more "agent amnesia" between stages.
 
 ```
 .temper/specs/{feature}/
   intent.md           ← Plan produces this
   design.md           ← Design produces this (if complex)
-  build-context.json  ← Build writes deviations + test results
-  review-context.json ← Review writes findings + intent verdict
-  check-context.json  ← Check writes validation results
+  review-context.json ← Review writes findings + intent verdict (on feedback loop)
+  check-context.json  ← Check writes validation results (on feedback loop)
+  build-context.json  ← Build writes blockers (on Build → Plan feedback loop)
 ```
 
 ### Observability
 
-Per-stage metrics tracking: tokens, latency, tool calls, and quality trends over time. Shown in `/temper:status`.
+Per-stage metrics tracking configuration: tokens, latency, tool calls. Metrics are tracked when `observability.enabled: true` in temper.config and displayed in `/temper:status`.
 
-```
-| Stage   | Avg Tokens | Avg Latency | Total Runs |
-|---------|------------|-------------|------------|
-| Plan    | ~4,200     | ~12s        | 15         |
-| Build   | ~12,000    | ~45s        | 15         |
-| Review  | ~8,500     | ~30s        | 15         |
-| Check   | ~2,100     | ~25s        | 15         |
+```yaml
+observability:
+  enabled: true
+  track-tokens: true
+  track-latency: true
+  track-tool-calls: true
 ```
 
 ### Design Phase (Optional)
@@ -738,12 +737,16 @@ tools:
 
 Full setup guide: [docs/recommended-setup.md](docs/recommended-setup.md)
 
-## Adaptive Learning
+## Adaptive Learning (Planned)
+
+Planned features for future releases — not yet implemented:
 
 - **Pattern Detection** — Identifies recurring issues in your code
 - **Rule Suggestions** — Proposes rules based on review history
 - **Noise Reduction** — Suppresses false positives over time
 - **Hotspot Tracking** — Shows which files generate the most issues
+
+Review memory persists between sessions via `.temper/reviews/` artifacts, providing the data foundation for these features.
 
 ## Documentation
 
