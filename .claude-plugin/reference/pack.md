@@ -215,55 +215,78 @@ When a pack has a link, validate the target exists:
 
 Automatic discovery of all linkable targets from the filesystem. Used by quick-create launcher packs and pack linking.
 
-### Discovery Algorithm
+### Discovery Scan (Execute These Steps at Runtime)
 
-Scan in order, collecting all discoverable targets:
+**Step 1: Discover installed plugins**
+
+Use Bash to read the plugin registry:
+```bash
+python3 -c "
+import json, os
+path = os.path.expanduser('~/.claude/plugins/installed_plugins.json')
+if os.path.exists(path):
+    with open(path) as f:
+        data = json.load(f)
+    plugins = data.get('plugins', data)
+    for key, entries in (plugins.items() if isinstance(plugins, dict) else []):
+        name = key.split('@')[0]  # 'safety-net@cc-marketplace' -> 'safety-net'
+        latest = entries[-1] if entries else {}
+        install_path = latest.get('installPath', '')
+        print(f'plugin://{name}  {install_path}')
+"
+```
+
+**Step 2: Discover plugin skills and commands**
+
+For each plugin found in Step 1, check its `installPath` for skills and commands:
+```bash
+# Replace {install_path} with the actual path from Step 1
+find {install_path}/skills -name "SKILL.md" 2>/dev/null
+find {install_path}/commands -name "*.md" 2>/dev/null
+```
+
+Each `SKILL.md` found becomes `skill://{directory_name}`. Each command `.md` becomes `skill://{stem}` (fallback only).
+
+**Step 3: Discover project-local skills**
+
+```bash
+find .claude/skills -name "SKILL.md" 2>/dev/null
+```
+
+Each becomes `skill://{parent_directory_name}`.
+
+**Step 4: Discover global skills**
+
+```bash
+find ~/.claude/skills -name "SKILL.md" 2>/dev/null
+```
+
+Each becomes `skill://{parent_directory_name}`.
+
+**Step 5: Discover command-based skills (fallback)**
+
+```bash
+ls .claude/commands/*.md 2>/dev/null
+ls ~/.claude/commands/*.md 2>/dev/null
+```
+
+Each `.md` file becomes `skill://{stem}` — BUT only if the name wasn't already found in Steps 2-4 (deduplication).
+
+### Deduplication
+
+If a skill name is found via `SKILL.md` in any source, the command-based fallback is skipped for that name.
+
+### Discovery Sources Summary
 
 | Source | What's Found | Link Format |
 |--------|-------------|-------------|
 | `~/.claude/plugins/installed_plugins.json` | Installed plugins | `plugin://{name}` |
-| `{plugin_path}/skills/*/SKILL.md` | Plugin skills | `skill://{name}` |
+| `{plugin installPath}/skills/*/SKILL.md` | Plugin skills | `skill://{name}` |
 | `.claude/skills/*/SKILL.md` | Project-local skills | `skill://{name}` |
 | `~/.claude/skills/*/SKILL.md` | Global skills | `skill://{name}` |
 | `.claude/commands/*.md` (fallback) | Command-based skills | `skill://{command-name}` |
-| `{plugin_path}/commands/*.md` (fallback) | Plugin command-based skills | `skill://{command-name}` |
-
-### Deduplication
-
-If a skill name is found via `SKILL.md`, the command-based fallback (`commands/*.md`) is skipped for that name. This prevents duplicate entries.
-
-### Discovery Implementation
-
-```
-discovered_targets = []
-
-# 1. Plugins
-if ~/.claude/plugins/installed_plugins.json exists:
-  parse JSON, for each plugin:
-    add {type: "plugin", name: plugin.name, link: "plugin://{name}", source: path}
-
-# 2. Plugin skills
-for each plugin in installed_plugins:
-  for skill_dir in {plugin_path}/skills/*/:
-    if SKILL.md exists:
-      add {type: "skill", name: skill_dir.name, link: "skill://{name}", source: SKILL.md path}
-
-# 3. Project skills
-for skill_dir in .claude/skills/*/:
-  if SKILL.md exists:
-    add or update {type: "skill", name: skill_dir.name, link: "skill://{name}", source: SKILL.md path}
-
-# 4. Global skills
-for skill_dir in ~/.claude/skills/*/:
-  if SKILL.md exists:
-    add or update {type: "skill", name: skill_dir.name, link: "skill://{name}", source: SKILL.md path}
-
-# 5. Command-based skills (fallback — only if name not already found)
-for cmd_file in .claude/commands/*.md:
-  name = cmd_file.stem
-  if name not in discovered_names:
-    add {type: "command-skill", name: name, link: "skill://{name}", source: cmd_file path}
-```
+| `~/.claude/commands/*.md` (fallback) | Global command-based skills | `skill://{command-name}` |
+| `{plugin installPath}/commands/*.md` (fallback) | Plugin commands | `skill://{command-name}` |
 
 ---
 
