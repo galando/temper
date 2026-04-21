@@ -15,12 +15,11 @@ description: "Manage quality packs: view, toggle, quick-create launchers, config
 1. **Discover packs** (three-tier: project > global > built-in) — cached in `.temper/pack-manifest.json`
 2. Read `.claude/temper.config` for enabled status, links, and phase scoping
 3. Display pack table with all columns: NAME, STATUS, PHASES, LINK, CONNECTED
-4. User chooses via AskUserQuestion:
+4. User chooses via AskUserQuestion (max 4 options):
    - **Toggle packs on/off** — multi-select to enable/disable
    - **Quick-create launcher pack** — wrap a plugin/skill as BLOCK-level pack (v4.4.0)
    - **Configure pack** — set link target or phase scoping (v4.3.0)
-   - **Add new pack** — full interactive builder with codebase scan
-   - **Done** — exit
+   - **Done** — exit (use "Other" to request full interactive pack builder)
 
 ### Three-Tier Resolution
 

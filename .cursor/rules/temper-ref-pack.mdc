@@ -337,12 +337,12 @@ AskUserQuestion:
       description: "Wrap a plugin or skill as a BLOCK-level pack. Fast path — no codebase scan."
     - label: "Configure pack (link, phases)"
       description: "Set link target or phase scoping for an existing pack."
-    - label: "Add new pack"
-      description: "Create a new custom pack by scanning your codebase and defining rules interactively."
     - label: "Done"
-      description: "Exit pack manager."
+      description: "Exit pack manager. Use 'Other' to request a full interactive pack builder."
   multiSelect: false
 ```
+
+If the user wants the full interactive pack builder (codebase scan + interview), they select "Other" and type "add new pack" or "create pack from scratch".
 
 ### Step 4: Toggle Packs
 
