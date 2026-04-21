@@ -400,10 +400,53 @@ AskUserQuestion:
 If the user selects "Quick-create launcher pack":
 
 **5a: Discover linkable targets**
-Run the filesystem discovery algorithm. Collect all plugins, skills, and command-based skills.
+
+You MUST execute these scans using the Bash tool before showing any options. Collect results into a list, then filter out targets already linked to existing packs.
+
+Run these commands and collect all output:
+
+```bash
+# 1. Installed plugins (parse name@source -> name, get installPath)
+python3 -c "
+import json, os
+path = os.path.expanduser('~/.claude/plugins/installed_plugins.json')
+if os.path.exists(path):
+    with open(path) as f:
+        data = json.load(f)
+    plugins = data.get('plugins', data)
+    for key, entries in (plugins.items() if isinstance(plugins, dict) else []):
+        name = key.split('@')[0]
+        latest = entries[-1] if entries else {}
+        ipath = latest.get('installPath', '')
+        print(f'PLUGIN|{name}|{ipath}')
+"
+
+# 2. Plugin skills (for each plugin installPath found above)
+find {each_plugin_installPath}/skills -name "SKILL.md" 2>/dev/null
+
+# 3. Project skills
+find .claude/skills -name "SKILL.md" 2>/dev/null
+
+# 4. Global skills
+find ~/.claude/skills -name "SKILL.md" 2>/dev/null
+
+# 5. Project commands (fallback, skip names already found as skills)
+ls .claude/commands/*.md 2>/dev/null
+
+# 6. Global commands (fallback)
+ls ~/.claude/commands/*.md 2>/dev/null
+
+# 7. Plugin commands (for each plugin installPath)
+find {each_plugin_installPath}/commands -name "*.md" 2>/dev/null
+```
+
+After collecting all results:
+1. Build a deduplicated list of `{type}://{name}` targets
+2. Remove any targets already linked to a pack in `temper.config` (check each pack's `link:` field)
+3. The remaining targets are available for quick-create
 
 **5b: User selects target**
-Show ALL discovered targets. Since AskUserQuestion supports max 4 options per prompt, paginate if needed:
+Show ALL discovered targets (after filtering). Paginate in groups of 4 since AskUserQuestion supports max 4 options:
 
 If <= 4 targets found, show all in one AskUserQuestion:
 ```
@@ -513,7 +556,7 @@ AskUserQuestion:
   multiSelect: false
 ```
 
-**6c: Set link** — Show ALL discovered targets (reuse filesystem discovery). Use same pagination as Step 5b if > 4 targets found. Include both `plugin://` and `skill://` targets from all discovery sources.
+**6c: Set link** — Execute the same discovery scans as Step 5a (plugins, skills, commands). Show ALL discovered targets with same pagination as Step 5b. Include both `plugin://` and `skill://` targets from all discovery sources.
 **6d: Set phases** — Show phase options:
 ```
 AskUserQuestion:
