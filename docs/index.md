@@ -38,7 +38,7 @@ All features from v4.0 through v4.4.1 — feedback loops, Cursor IDE support, pa
 | Feature | What It Does |
 |---------|-------------|
 | **Feedback Loops** | Review/Check → Build with circuit breakers (max 2 loops). Build → Plan (human-driven, 1 per cycle) |
-| **Cursor IDE Support** | Full feature parity via `scripts/generate-cursor.py`. Commands, skills, packs adapted for Cursor |
+| **Cursor IDE Support** | Static `.cursor/` files checked into git. Install via curl — no Python required |
 | **Three-Tier Pack Resolution** | project-local > global > built-in. Plugin/skill linking, phase scoping, connection health |
 | **Cached Pack Manifest** | `.temper/pack-manifest.json` for instant loads. Auto-rebuilds on config changes |
 | **Quick-Create Launchers** | One command wraps any plugin or skill as a BLOCK-level pack |
@@ -217,18 +217,21 @@ The queue consumer issue? Blast radius flagged it. The missing rate limiting? Sc
 ### Cursor IDE
 
 ```bash
-python3 scripts/generate-cursor.py
+bash <(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)
 ```
 
+No Python or git required — just curl. Static rules and commands are downloaded to `.cursor/`.
+
+```bash
 cd your-project
 
 # Option 1: Unified command (recommended)
 /temper "add login feature"
 
 # Option 2: Individual commands (granular control)
-/temper:plan "your feature"    # Scenarios + diagrams + blast radius + walkthrough
-/temper:build                  # Scenario-driven TDD
-/temper:review                 # Intent validation
+/temper-plan "your feature"    # Scenarios + blast radius + architecture
+/temper-build                  # Scenario-driven TDD
+/temper-review                 # Intent validation
 ```
 
 ## Next Steps

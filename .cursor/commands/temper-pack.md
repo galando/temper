@@ -9,7 +9,7 @@ description: "Manage quality packs: view, toggle, quick-create launchers, config
 Read `.claude/temper.config` packs section. Scan three tiers:
 - `.claude/packs/{name}/rules.md` (project-local, highest priority)
 - `~/.claude/packs/{name}/rules.md` (global)
-- `$CLAUDE_PLUGIN_ROOT/.claude/packs/{name}/rules.md` (built-in)
+- Built-in packs shipped with the plugin (lowest priority)
 
 Deduplicate by name (highest tier wins). For each pack: read rules.md header, check enabled status, read `phases` and `link` from config.
 
@@ -38,7 +38,7 @@ Example structure (populate with real data only):
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Step 3: AskUserQuestion (max 4 options)
+## Step 3: Present Options (max 4 options)
 
 ```
 **What would you like to do?**
@@ -48,12 +48,13 @@ Example structure (populate with real data only):
 3. **Configure pack (link, phases)** — Set link target or phase scoping for an existing pack.
 4. **Done** — Exit. Use 'Other' for full interactive pack builder.
 5. Type your own response
-multiSelect: false
+
+Ask the user to choose by number or type their response.
 ```
 
 ## Step 4: Toggle Packs
 
-Multi-select AskUserQuestion with all packs. Update `.claude/temper.config` `packs:` list. Return to Step 3.
+Multi-select numbered options with all packs. Update `.claude/temper.config` `packs:` list. Return to Step 3.
 
 ## Step 5: Quick-Create Launcher Pack
 
@@ -152,7 +153,7 @@ Project Commands:
 
 **Important:** Only show targets that actually appeared in scan output. Do NOT fabricate entries.
 
-Show via AskUserQuestion (max 4 at a time, use "More targets..." to paginate).
+Show via numbered options (max 4 at a time, use "More targets..." to paginate).
 
 **5b:** User picks target, types pack name via "Other". Generate `.claude/packs/{name}/rules.md` with BLOCK-level enforcement. Update `temper.config`. Return to Step 3.
 
@@ -167,6 +168,6 @@ Return to Step 3.
 
 ## Step 7: Full Interactive Pack Builder
 
-> Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/pack.md` → "Step 7: Add New Pack" section for the codebase scan + interview + generation methodology.
+> The reference docs loaded via the `temper-ref-pack` rule contain the "Step 7: Add New Pack" section for the codebase scan + interview + generation methodology.
 
 This is the ONLY step that requires loading the reference doc. All other steps are self-contained above.

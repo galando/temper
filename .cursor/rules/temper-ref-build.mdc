@@ -3,9 +3,6 @@ description: "Temper reference: build"
 alwaysApply: false
 ---
 
----
-description: "Execute the plan, implementing tasks one-by-one with quality gates"
----
 
 # Build: Execute Plan with Quality Gates
 

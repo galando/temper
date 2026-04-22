@@ -20,8 +20,8 @@ argument-hint: "<bug-description-or-JIRA-123>"
 
 ## Architecture: Agent Per Stage
 
-> **Shared patterns:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md`
-> This command uses shared patterns for: $CLAUDE_PLUGIN_ROOT resolution, gate options, gate enforcement, resume validation, nested invocation protection, agent failure handling, and context efficiency. Read that file for the canonical definitions.
+> **Shared patterns:** Loaded via the `temper-ref-orchestrator-patterns` rule
+> This command uses shared patterns for: gate options, gate enforcement, resume validation, nested invocation protection, agent failure handling, and context efficiency. Those patterns are available via the rule.
 
 Each stage runs in an **isolated Agent subprocess** — genuine context clearing, not theater.
 
@@ -79,10 +79,10 @@ Load the following context files, then execute the instructions sequentially:
 
 "Execute root cause analysis for bug: $ARGUMENTS
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/fix.md
+Full methodology: loaded via the temper-ref-fix rule
 
 CONTEXT: Load these first:
-1. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/fix.md for methodology
+1. The fix methodology is loaded via the temper-ref-fix rule
 2. Load enabled packs from .claude/temper.config and stack-specific rules
 3. Check if the bug violates any pack rules during RCA (e.g., security: was input validation skipped?)
 4. If code-review-graph MCP server is available: use query_graph_tool for call chain tracing (callers + callees of suspected function) — [PROVEN] results. Fallback to grep-based tracing if unavailable.
@@ -91,7 +91,7 @@ ENFORCEMENT: Always follow the full RCA methodology. Always generate multi-hypot
 
 CRITICAL: This agent runs in isolation. After RCA:
 1. Show the RCA summary box (see below)
-2. Do NOT show an AskUserQuestion gate — return the summary to the orchestrator
+2. Do NOT present numbered options — return the summary to the orchestrator
 3. The orchestrator handles the gate decision
 
 Return ONLY:
@@ -137,10 +137,13 @@ Return ONLY:
 
 ### Stage Gate
 
-Show the AskUserQuestion gate with:
-- "Proceed to Fix (Recommended)" — launch FIX agent
-- "Save for later" — save state, stop
-- **"Other" (built-in free-text)** — type a change request (e.g., "investigate auth module instead")
+Present these options to the user:
+
+1. **Proceed to Fix (Recommended)** — launch FIX agent
+2. **Save for later** — save state, stop
+3. Type your own response (e.g., "investigate auth module instead")
+
+Ask the user to choose by number or type their response.
 
 **on Continue:**
 1. Save RCA results to `.temper/specs/{bug-slug}/rca.md` (create directory if needed)
@@ -167,7 +170,7 @@ Show the AskUserQuestion gate with:
 1. User types their change request in the "Other" field (e.g., "investigate the auth module instead")
 2. Re-launch the RCA agent with the updated direction
 3. Show the updated RCA summary
-4. **Re-show the AskUserQuestion gate** — do NOT skip to fix
+4. **Re-show the numbered options gate** — do NOT skip to fix
 
 **on Save:**
 1. Save state to `.temper/build-state.json`
@@ -188,12 +191,12 @@ Load the following context files, then execute the instructions sequentially:
 
 "Execute /temper-fix for bug: {spec from build-state.json}
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/fix.md
-Follow all steps in fix.md — read it first and execute in order.
+Full methodology: loaded via the temper-ref-fix rule
+Follow all steps in the fix methodology — read it first and execute in order.
 
 CONTEXT: You are starting with a CLEAN context. Load these files first:
 1. {spec_path}/rca.md (root cause analysis results)
-2. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/fix.md for methodology
+2. The fix methodology is loaded via the temper-ref-fix rule
 3. If code-review-graph MCP server is available: use get_impact_radius_tool for blast radius check — [PROVEN] results. Fallback to grep-based detection if unavailable.
 
 Then execute the fix methodology. Make sure to include:
@@ -205,7 +208,7 @@ Then execute the fix methodology. Make sure to include:
 - Intent cross-reference (if active intent.md exists)
 - Simplification (if code-simplifier agent is available)
 
-CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the fix summary to the orchestrator.
+CRITICAL: Do NOT present numbered options at the end. Return the fix summary to the orchestrator.
 
 Return ONLY:
 - Fix summary text (formatted box)
@@ -244,10 +247,13 @@ Return ONLY:
 
 ### Stage Gate
 
-Show the AskUserQuestion gate with:
-- "Continue to Review (Recommended)" — launch REVIEW agent
-- "Save for later" — save state, stop
-- **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
+Present these options to the user:
+
+1. **Continue to Review (Recommended)** — launch REVIEW agent
+2. **Save for later** — save state, stop
+3. Type your own response
+
+Ask the user to choose by number or type their response.
 
 **on Continue:**
 1. Save state to `.temper/build-state.json`
@@ -257,7 +263,7 @@ Show the AskUserQuestion gate with:
 1. User types their change request in the "Other" field
 2. Make the change
 3. Re-show the updated fix summary
-4. **Re-show the AskUserQuestion gate** — do NOT skip to review
+4. **Re-show the numbered options gate** — do NOT skip to review
 
 **on Save:**
 1. Save state to `.temper/build-state.json`:
@@ -289,11 +295,11 @@ Load the following context files, then execute the instructions sequentially:
 
 "Execute /temper-review for fix: {spec from build-state.json}
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md
+Full methodology: loaded via the temper-ref-review rule
 
 CONTEXT: You are starting with a CLEAN context. Load these first:
 1. Run: git diff --name-only (to get changed files)
-2. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md for methodology
+2. The review methodology is loaded via the temper-ref-review rule
 3. Read {spec_path}/rca.md (for root cause context)
 4. Load enabled packs from .claude/temper.config and stack-specific rules
 
@@ -305,7 +311,7 @@ Focus areas for FIX reviews:
 - Pack rule compliance: security, quality, stack patterns
 - AI-code detection: hallucinated APIs, over-engineering, copy-paste drift
 
-CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the review summary to the orchestrator.
+CRITICAL: Do NOT present numbered options at the end. Return the review summary to the orchestrator.
 
 Return ONLY:
 - Review summary text (formatted box)
@@ -341,10 +347,13 @@ Return ONLY:
 
 ### Stage Gate
 
-Show the AskUserQuestion gate with:
-- "Fix all & continue to Check (Recommended)" — apply fixes for ALL issues (including low), launch CHECK agent
-- "Save for later" — skip fixes, save state
-- **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
+Present these options to the user:
+
+1. **Fix all & continue to Check (Recommended)** — apply fixes for ALL issues (including low), launch CHECK agent
+2. **Save for later** — skip fixes, save state
+3. Type your own response
+
+Ask the user to choose by number or type their response.
 
 **on Continue:**
 1. Apply ALL fixable issues (including low severity) directly — no subprocess needed for fixes
@@ -359,7 +368,7 @@ Show the AskUserQuestion gate with:
 2. Make the change
 3. Re-launch the REVIEW agent to get an updated review summary
 4. Show the updated review summary
-5. **Re-show the AskUserQuestion gate** — do NOT skip to check
+5. **Re-show the numbered options gate** — do NOT skip to check
 
 **on Save:**
 1. Save state to `.temper/build-state.json`:
@@ -389,14 +398,14 @@ Load the following context files, then execute the instructions sequentially:
 
 "Execute /temper-check for project validation.
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md
+Full methodology: loaded via the temper-ref-check rule
 
 CONTEXT: You are starting with a CLEAN context. Load these first:
-1. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md for methodology
+1. The check methodology is loaded via the temper-ref-check rule
 2. Read {spec_path}/rca.md (for regression test context)
 3. Detect stack and run the full validation pipeline
 
-CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the check summary to the orchestrator.
+CRITICAL: Do NOT present numbered options at the end. Return the check summary to the orchestrator.
 
 Return ONLY:
 - Check summary text (formatted box)
@@ -423,10 +432,13 @@ Return ONLY:
 
 ### Stage Gate
 
-Show the AskUserQuestion gate with:
-- "Commit (Recommended)" — commit with conventional message
-- "Save for later" — keep changes uncommitted
-- **"Other" (built-in free-text)** — type a change request, edits are made, re-run check
+Present these options to the user:
+
+1. **Commit (Recommended)** — commit with conventional message
+2. **Save for later** — keep changes uncommitted
+3. Type your own response
+
+Ask the user to choose by number or type their response.
 
 **on Commit:**
 ```
@@ -450,7 +462,7 @@ Show the AskUserQuestion gate with:
 1. User types their change request in the "Other" field
 2. Make the change
 3. Re-launch the CHECK agent to re-validate
-4. **Re-show the AskUserQuestion gate** — do NOT commit directly
+4. **Re-show the numbered options gate** — do NOT commit directly
 
 **on Save:**
 1. Save state to `.temper/build-state.json`:
@@ -473,11 +485,11 @@ Show the AskUserQuestion gate with:
 
 If you stopped earlier, run `/temper-fix` to continue.
 
-> **Resume validation:** Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Resume Validation" section. Valid stages for this command: `rca_complete`, `fix_complete`, `review_complete`, `check_complete`.
+> **Resume validation:** Follow the shared pattern loaded via the `temper-ref-orchestrator-patterns` rule → "Resume Validation" section. Valid stages for this command: `rca_complete`, `fix_complete`, `review_complete`, `check_complete`.
 
 ### Nested Invocation Protection
 
-> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Nested Invocation Protection" section. Use "bug" instead of "feature" in the display.
+> Follow the shared pattern loaded via the `temper-ref-orchestrator-patterns` rule → "Nested Invocation Protection" section. Use "bug" instead of "feature" in the display.
 
 If `/temper-fix` (no arguments) is called and `.temper/build-state.json` exists for the same bug:
 ```
@@ -486,7 +498,8 @@ If `/temper-fix` (no arguments) is called and `.temper/build-state.json` exists 
 1. **Continue from {next_stage} (Recommended)** — Resume from checkpoint, launch {next_stage} agent.
 2. **Start over (re-investigate)** — Go back to RCA, launch root cause analysis agent.
 3. Type your own response
-multiSelect: false
+
+Ask the user to choose by number or type their response.
 ```
 
 **Special case:** If resuming at `rca_complete`, re-display the RCA summary box (read `{spec_path}/rca.md`) before launching the FIX agent, so the user can re-evaluate the root cause.
@@ -495,7 +508,7 @@ multiSelect: false
 
 ## Context Efficiency
 
-> See shared table in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Context Efficiency Table". Fix command uses `fix/{bug-slug}` branches and `rca.md` as the primary artifact.
+> See shared table loaded via the `temper-ref-orchestrator-patterns` rule → "Context Efficiency Table". Fix command uses `fix/{bug-slug}` branches and `rca.md` as the primary artifact.
 
 ---
 

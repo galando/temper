@@ -8,7 +8,7 @@ description: "Execute plan with TDD and quality gates"
 
 ## Execution
 
-> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md`
+> **Full methodology:** Loaded via the `temper-ref-build` rule
 
 ### Quick Reference
 

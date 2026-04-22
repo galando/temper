@@ -3,9 +3,6 @@ description: "Temper reference: design"
 alwaysApply: false
 ---
 
----
-description: "System design exploration for complex features (optional stage)"
----
 
 # Design: System Design Phase
 

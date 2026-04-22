@@ -3,9 +3,6 @@ description: "Temper reference: orchestrator-patterns"
 alwaysApply: false
 ---
 
----
-description: "Shared patterns for orchestrator commands (temper.md, fix.md)"
----
 
 # Orchestrator Shared Patterns
 

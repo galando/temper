@@ -9,7 +9,7 @@ argument-hint: "[--skip | --force]"
 
 ## Execution
 
-> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/design.md`
+> **Full methodology:** Loaded via the `temper-ref-design` rule
 
 ### Quick Reference
 

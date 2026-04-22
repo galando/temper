@@ -3,9 +3,6 @@ description: "Temper reference: status"
 alwaysApply: false
 ---
 
----
-description: "Show quality metrics dashboard"
----
 
 # Status: Quality Metrics Dashboard
 
