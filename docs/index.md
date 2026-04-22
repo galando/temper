@@ -29,7 +29,34 @@ Three questions every AI-generated feature should answer:
 2. **Does it do the right things?** (Behavior)
 3. **Does the code work?** (Tests)
 
-Most AI tools answer only the third. Temper answers all three — and now (v3.0.0) adds **security hot path detection, heuristic test gap analysis, API contract validation, and performance regression guards**.
+Most AI tools answer only the third. Temper answers all three — and now (v3.1.0) adds **proven verification with live test execution and MCP-powered analysis**, plus (v4.4.1) **feedback loops, Cursor IDE support, three-tier pack system, and honest documentation**.
+
+## What's New
+
+All features from v4.0 through v4.4.1 — feedback loops, Cursor IDE support, pack system overhaul, and documentation accuracy.
+
+| Feature | What It Does |
+|---------|-------------|
+| **Feedback Loops** | Review/Check → Build with circuit breakers (max 2 loops). Build → Plan (human-driven, 1 per cycle) |
+| **Cursor IDE Support** | Full feature parity via `scripts/generate-cursor.py`. Commands, skills, packs adapted for Cursor |
+| **Three-Tier Pack Resolution** | project-local > global > built-in. Plugin/skill linking, phase scoping, connection health |
+| **Cached Pack Manifest** | `.temper/pack-manifest.json` for instant loads. Auto-rebuilds on config changes |
+| **Quick-Create Launchers** | One command wraps any plugin or skill as a BLOCK-level pack |
+| **Design Phase** | System architecture, API contracts, DB schema, ADRs. Auto-skipped for simple features |
+| **Cross-Walkthrough Navigation** | Plan ↔ Design walkthrough links, skip-to-build on every section |
+| **Observability** | Per-stage metrics: tokens, latency, tool calls. Tracked in `/temper:status` |
+| **Context Accumulation** | Structured artifacts between stages — Review knows what Build struggled with |
+| **Honest Docs** | Adaptive Learning marked planned. Observability shows config, not fake numbers |
+
+## What's New in v3.1.0
+
+v3.1.0 adds **proven verification** — live test execution and MCP-powered analysis:
+
+| Feature | What It Does |
+|---------|-------------|
+| **Live Scenario Verification** | Every Gherkin scenario executed individually against your test runner |
+| **MCP-Powered Analysis** | `code-review-graph` for blast radius, `semgrep` for SAST scanning |
+| **Evidence Labels** | `[PROVEN]`, `[HEURISTIC]`, `[SEMANTIC]` labels on every finding |
 
 ## What's New in v3.0.0
 
@@ -180,9 +207,18 @@ The queue consumer issue? Blast radius flagged it. The missing rate limiting? Sc
 
 ## Quick Start
 
+### Claude Code
+
 ```bash
 /plugin marketplace add galando/temper
 /plugin install temper
+```
+
+### Cursor IDE
+
+```bash
+python3 scripts/generate-cursor.py
+```
 
 cd your-project
 

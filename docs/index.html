@@ -812,7 +812,7 @@
         <span>Temper</span>
       </a>
       <div class="nav-links">
-        <a href="#whats-new" style="color: var(--accent);">v4.4.1</a>
+        <a href="#whats-new" style="color: var(--accent);">What's New</a>
         <a href="#why">IDD+BDD+TDD</a>
         <a href="#flow">How it works</a>
         <a href="#packs">Packs</a>
@@ -827,7 +827,7 @@
     <div class="hero-grid">
       <div class="hero-content">
         <h1>Your AI writes fast.<br><em>Temper makes it last.</em></h1>
-        <p>IDD + BDD + TDD for AI-generated code. Quality gates, blast radius analysis, and intent-driven development. The AI discipline layer for Claude Code.</p>
+        <p>IDD + BDD + TDD for AI-generated code. Quality gates, blast radius analysis, and intent-driven development. The AI discipline layer for Claude Code and Cursor.</p>
         <div class="hero-actions">
           <a href="#install" class="btn btn-primary">Install →</a>
           <a href="https://github.com/galando/temper" class="btn btn-secondary" target="_blank">View on GitHub</a>
@@ -840,185 +840,72 @@
   </header>
 
   <section id="quick-install">
-    <div class="install-card" style="max-width: 500px; margin: 0 auto; background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px; padding: 1.5rem;">
-      <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">🟣 Quick Install</h4>
-      <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 0.5rem;">
-        <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; color: var(--fg-muted); overflow-x: auto; margin: 0;">/plugin marketplace add galando/temper
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 700px; margin: 0 auto;">
+      <div class="install-card" style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px; padding: 1.5rem;">
+        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">🟣 Claude Code</h4>
+        <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 0.5rem;">
+          <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; color: var(--fg-muted); overflow-x: auto; margin: 0;">/plugin marketplace add galando/temper
 /plugin install temper</pre>
-        <button class="copy-btn" onclick="copyCode(this, '/plugin marketplace add galando/temper\n/plugin install temper')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-family: 'IBM Plex Mono', monospace; color: var(--fg-muted); cursor: pointer;">Copy</button>
+          <button class="copy-btn" onclick="copyCode(this, '/plugin marketplace add galando/temper\n/plugin install temper')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-family: 'IBM Plex Mono', monospace; color: var(--fg-muted); cursor: pointer;">Copy</button>
+        </div>
+        <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Commands available in any project.</p>
       </div>
-      <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Commands are now available in any project.</p>
+      <div class="install-card" style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px; padding: 1.5rem;">
+        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">🔵 Cursor IDE</h4>
+        <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 0.5rem;">
+          <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; color: var(--fg-muted); overflow-x: auto; margin: 0;">bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)</pre>
+          <button class="copy-btn" onclick="copyCode(this, 'bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-family: 'IBM Plex Mono', monospace; color: var(--fg-muted); cursor: pointer;">Copy</button>
+        </div>
+        <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Full feature parity with Claude Code.</p>
+      </div>
     </div>
   </section>
 
   <section id="whats-new">
-    <div class="section-label">What's New in v4.4.1</div>
-    <h2 class="section-title">Implementation Alignment</h2>
-    <p class="section-desc">v4.4.1 ships features that were documented but not wired up, and corrects docs that overpromised. No more aspirational claims.</p>
+    <div class="section-label">What's New</div>
+    <h2 class="section-title">Feedback Loops, Cursor IDE, Pack System</h2>
+    <p class="section-desc">All features from v4.0 through v4.4.1 — feedback loops with circuit breakers, Cursor IDE support with feature parity, a three-tier pack system with linking, and honest documentation.</p>
 
     <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
       <div class="why-item">
-        <h4>Build → Plan Loop</h4>
-        <p>Build gate now offers "Loop back to Plan" with <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">build-context.json</code> carrying blockers and partial results. Max 1 per cycle, human-driven.</p>
+        <h4>Feedback Loops</h4>
+        <p>Review finds issues? Gate shows "Loop back to Build". Check fails tests? Targeted fix task. Build discovers bad plan? Loop back to Plan. Circuit breaker: max 2 loops, same issue twice = stop.</p>
       </div>
-      <div class="why-item">
-        <h4>Cross-Walkthrough</h4>
-        <p>Plan and Design walkthroughs link to each other at their final gates. Non-linear exploration before committing to build.</p>
-      </div>
-      <div class="why-item">
-        <h4>Skip to Build</h4>
-        <p>Every walkthrough section now offers "Skip to build" — exit early without stepping through remaining sections.</p>
-      </div>
-      <div class="why-item">
-        <h4>Honest Docs</h4>
-        <p>Observability shows config, not fake numbers. Adaptive Learning marked planned. All version strings and install commands verified.</p>
-      </div>
-    </div>
-
-    <div style="margin-top: 2rem; text-align: center;">
-      <a href="https://github.com/galando/temper#whats-new-in-v441" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
-    </div>
-  </section>
-
-  <section>
-    <div class="section-label">What's New in v4.4.0</div>
-    <h2 class="section-title">Pack Performance & Discovery</h2>
-    <p class="section-desc">v4.4.0 makes quality packs fast and discoverable. Cached manifests eliminate repeated scans, quick-create wraps any plugin or skill in seconds, and all decisions use structured prompts.</p>
-
-    <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
-      <div class="why-item">
-        <h4>Cached Manifest</h4>
-        <p>Pack discovery cached to <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">pack-manifest.json</code>. First run scans all 3 tiers, subsequent loads under 2 seconds. Auto-rebuilds on config changes.</p>
-      </div>
-      <div class="why-item">
-        <h4>Quick-Create Launchers</h4>
-        <p>One command wraps any plugin or skill as a BLOCK-level pack. System discovers linkable targets, you pick one, name it, done.</p>
-      </div>
-      <div class="why-item">
-        <h4>Filesystem Discovery</h4>
-        <p>Automatic scan finds all plugins, skills, and command-based tools. Deduplicated results — each name appears once. Valid link targets everywhere.</p>
-      </div>
-      <div class="why-item">
-        <h4>Structured UX</h4>
-        <p>All <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper:pack</code> decisions use AskUserQuestion — toggle packs, create launchers, configure links. No more free-text guessing.</p>
-      </div>
-    </div>
-
-    <div style="margin-top: 2rem; text-align: center;">
-      <a href="https://github.com/galando/temper#whats-new-in-v440" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
-    </div>
-  </section>
-
-  <section>
-    <div class="section-label">What's New in v4.3.0</div>
-    <h2 class="section-title">Pack System Overhaul</h2>
-    <p class="section-desc">Three-tier resolution, plugin/skill linking, phase scoping, and connection health validation. Packs are now a first-class extensibility layer.</p>
-
-    <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
-      <div class="why-item">
-        <h4>Three-Tier Resolution</h4>
-        <p>Packs resolve from project-local > global > built-in. Teams ship project packs in the repo, users create global packs, built-ins provide defaults.</p>
-      </div>
-      <div class="why-item">
-        <h4>Plugin/Skill Linking</h4>
-        <p>Packs link to plugins (<code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">plugin://</code>) or skills (<code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">skill://</code>). Linked context injected alongside pack rules during execution.</p>
-      </div>
-      <div class="why-item">
-        <h4>Phase Scoping</h4>
-        <p>Restrict packs to specific phases — TDD only during build, security only during review and check. Keeps prompt context focused.</p>
-      </div>
-      <div class="why-item">
-        <h4>Connection Health</h4>
-        <p>Link targets validated automatically. Plugin missing? Pack still loads with a warning — graceful degradation, never blocks work.</p>
-      </div>
-    </div>
-
-    <div style="margin-top: 2rem; text-align: center;">
-      <a href="https://github.com/galando/temper#whats-new-in-v430" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
-    </div>
-  </section>
-
-  <section>
-    <div class="section-label">What's New in v4.2.0</div>
-    <h2 class="section-title">Cursor IDE & Workflow</h2>
-    <p class="section-desc">Cursor IDE support with feature parity, feedback loop gates with circuit breakers, enhanced Design phase, and cross-walkthrough navigation.</p>
-
-    <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
       <div class="why-item">
         <h4>Cursor IDE Support</h4>
         <p>Full Temper for <a href="https://cursor.sh" style="color: var(--accent);">Cursor</a>. Generation script mirrors <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">.claude/</code> to <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">.cursor/</code>. Commands, skills, packs — all adapted.</p>
       </div>
       <div class="why-item">
-        <h4>Feedback Loop Gates</h4>
-        <p>Review finds issues? Gate shows "Loop back to Build". Check fails tests? Targeted fix task. Circuit breaker: max 2 loops, same issue twice = stop.</p>
-      </div>
-      <div class="why-item">
-        <h4>Design Phase</h4>
-        <p>System architecture, API contracts, DB schema, integration points, and decision logs (ADRs). Auto-skipped for simple features.</p>
-      </div>
-      <div class="why-item">
-        <h4>Cross-Walkthrough</h4>
-        <p>Switch between Plan and Design walkthroughs at the final gate of each walkthrough. Non-linear exploration — cross-reference scope with depth before building.</p>
-      </div>
-    </div>
-
-    <div style="margin-top: 2rem; text-align: center;">
-      <a href="https://github.com/galando/temper#whats-new-in-v420" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
-    </div>
-  </section>
-
-  <section>
-    <div class="section-label">What's New in v4.1.0</div>
-    <h2 class="section-title">Feedback Loops That Actually Work</h2>
-    <p class="section-desc">v4.0.0 documented feedback loops. v4.1.0 <strong>ships them</strong>. When Review finds issues or Check fails tests, the gate now offers "Loop back to Build" with context transfer and circuit breakers.</p>
-
-    <div class="why-grid" style="grid-template-columns: repeat(3, 1fr);">
-      <div class="why-item">
-        <h4>Loop Back to Build</h4>
-        <p>Review finds issues? Gate shows "Loop back to Build". Check fails tests? Gate shows "Loop back to Build (Fix tests)". Context files carry the fix details.</p>
-      </div>
-      <div class="why-item">
-        <h4>Circuit Breakers</h4>
-        <p>Max 2 loops per stage. Same issue found twice? Loop stops immediately. No infinite loops, no spinning cycles.</p>
-      </div>
-      <div class="why-item">
-        <h4>Actionable Instructions</h4>
-        <p>Every loop step references real Claude Code tools (Read, Write, Bash) — not pseudo-code. Context files carry full fix details.</p>
-      </div>
-    </div>
-
-    <div style="margin-top: 2rem; text-align: center;">
-      <a href="https://github.com/galando/temper#whats-new-in-v410" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
-    </div>
-  </section>
-
-  <section>
-    <div class="section-label">What's New in v4.0.0</div>
-    <h2 class="section-title">From Pipeline to Cycle</h2>
-    <p class="section-desc">v4.0.0 transforms Temper from a one-way pipeline into a cyclic SDLC platform. Feedback loops, context accumulation, observability, and an optional Design phase. Inspired by <a href="https://amoshaviv.com/blog/the-agentic-sdlc/" style="color: var(--accent);">The Agentic SDLC</a>.</p>
-
-    <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
-      <div class="why-item">
-        <h4>Feedback Loops</h4>
-        <p>Review finds issues? Auto-loop back to Build. Check fails tests? Targeted fix task created. Build discovers bad plan? Revise plan. Circuit breakers prevent infinite loops.</p>
+        <h4>Pack System Overhaul</h4>
+        <p>Three-tier resolution (project > global > built-in), plugin/skill linking, phase scoping, cached manifests, quick-create launchers. Packs are a first-class extensibility layer.</p>
       </div>
       <div class="why-item">
         <h4>Context Accumulation</h4>
         <p>Each stage writes structured context for downstream stages. No more "agent amnesia" — Review knows what Build struggled with, Check knows what Review already fixed.</p>
       </div>
-      <div class="why-item">
-        <h4>Observability</h4>
-        <p>Per-stage metrics: tokens, latency, tool calls, quality trends. See which stages are slow, expensive, or finding the most issues. Tracked in <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper:status</code>.</p>
-      </div>
+    </div>
+
+    <div class="why-grid" style="grid-template-columns: repeat(4, 1fr); margin-top: 1rem;">
       <div class="why-item">
         <h4>Design Phase</h4>
-        <p>New <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper:design</code> for complex features: system architecture, API contracts, DB schema. Auto-skipped for simple changes.</p>
+        <p>System architecture, API contracts, DB schema, integration points, and decision logs. Auto-skipped for simple features.</p>
+      </div>
+      <div class="why-item">
+        <h4>Cross-Walkthrough</h4>
+        <p>Plan and Design walkthroughs link to each other at their final gates. Skip to build from any section. Non-linear exploration.</p>
+      </div>
+      <div class="why-item">
+        <h4>Observability</h4>
+        <p>Per-stage metrics: tokens, latency, tool calls. Tracked in <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper:status</code>. Config reference, not aspirational numbers.</p>
+      </div>
+      <div class="why-item">
+        <h4>Honest Docs</h4>
+        <p>Observability shows config, not fake numbers. Adaptive Learning marked as planned. All version strings and install commands verified.</p>
       </div>
     </div>
 
     <div style="margin-top: 2rem; text-align: center;">
-      <p style="color: var(--fg-muted); font-size: 0.9rem;">All features enabled by default. Disable any via <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">.claude/temper.config</code>. Zero breaking changes — same pipeline, now cyclic.</p>
-      <a href="https://github.com/galando/temper#whats-new-in-v400" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
+      <a href="https://github.com/galando/temper#whats-new" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
     </div>
   </section>
 
@@ -1386,7 +1273,7 @@
     <div class="section-label">Install</div>
     <h2 class="section-title">Quick Install</h2>
 
-    <div class="install">
+    <div class="install" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
       <div class="install-card">
         <h4>🟣 Claude Code</h4>
         <div class="code-block">
@@ -1395,6 +1282,15 @@
           <button class="copy-btn" onclick="copyCode(this, '/plugin marketplace add galando/temper\n/plugin install temper')">Copy</button>
         </div>
         <p>Commands are now available in any project. For optional MCP-powered analysis, see <a href="https://github.com/galando/temper/blob/main/docs/recommended-setup.md" style="color: var(--accent);">Recommended Setup</a>.</p>
+      </div>
+
+      <div class="install-card">
+        <h4>🔵 Cursor IDE</h4>
+        <div class="code-block">
+          <pre>bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)</pre>
+          <button class="copy-btn" onclick="copyCode(this, 'bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)')">Copy</button>
+        </div>
+        <p>Mirrors <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">.claude/</code> to <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">.cursor/</code> — commands, skills, packs, and reference docs. Full feature parity.</p>
       </div>
 
     </div>
