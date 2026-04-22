@@ -2,15 +2,15 @@
 #
 # Temper — Cursor IDE Install Script
 #
-# Usage: ./scripts/install-cursor.sh [project-path]
+# Usage:
+#   Local:   ./scripts/install-cursor.sh [project-path]
+#   Remote:  bash <(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)
 #
 # Generates .cursor/ directory from .claude/ and copies it
 # to the target project (defaults to current directory).
 #
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TARGET_DIR="${1:-.}"
 
 # Resolve target to absolute path
@@ -19,13 +19,41 @@ TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd)" || {
     exit 1
 }
 
-# Check Python 3 first
+# Check for git
+if ! command -v git &>/dev/null; then
+    echo "Error: git is required."
+    exit 1
+fi
+
+# Check Python 3
 if ! command -v python3 &>/dev/null; then
     echo "Error: Python 3 is required. Install it from https://python.org"
     exit 1
 fi
 
-# Read version from plugin.json (pass path as argument to avoid shell injection)
+# Detect if running from cloned repo or piped via curl
+REPO_ROOT=""
+if [ -f "${BASH_SOURCE[0]}" ] && [ -f "$(dirname "${BASH_SOURCE[0]}")/../.claude-plugin/plugin.json" ]; then
+    REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
+
+TEMP_DIR=""
+cleanup() {
+    if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
+        rm -rf "$TEMP_DIR"
+    fi
+}
+trap cleanup EXIT
+
+if [ -z "$REPO_ROOT" ]; then
+    # Running via curl | bash — clone a shallow copy
+    echo "Downloading Temper from GitHub..."
+    TEMP_DIR="$(mktemp -d)"
+    git clone --depth 1 https://github.com/galando/temper.git "$TEMP_DIR" >/dev/null 2>&1
+    REPO_ROOT="$TEMP_DIR"
+fi
+
+# Read version from plugin.json
 VERSION=$(python3 -c "
 import json, sys
 with open(sys.argv[1]) as f:
