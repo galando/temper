@@ -10,7 +10,7 @@
 
 [![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases)](https://github.com/galando/temper/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-Plugin-purple.svg)](https://claude.ai/claude-code)
+[![Claude Code & Cursor](https://img.shields.io/badge/Claude%20Code%20%26%20Cursor-Plugin-purple.svg)](https://claude.ai/claude-code)
 [![DeepWiki](https://img.shields.io/badge/DeepWiki-Documentation-blue.svg)](https://deepwiki.com/galando/temper)
 [![Explained by GitHub Explainer](https://img.shields.io/badge/Explained%20by-GitHub%20Explainer-6366f1?style=flat&logo=github)](https://repoxplain.nl/repo/galando/temper?ref=badge)
 
@@ -281,102 +281,13 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ---
 
-## What's New in v4.4.1
+## What's New
 
-v4.4.1 aligns implementation with documentation — shipping features that were documented but not wired up, and correcting docs that overpromised.
+All features from v4.0 through v4.4.1 — feedback loops, Cursor IDE support, pack system overhaul, and documentation accuracy.
 
-### Build → Plan Feedback Loop
+### Feedback Loops with Circuit Breakers
 
-The Build stage gate now offers a structured "Loop back to Plan" option when `feedback.enabled: true`. Selecting it writes `build-context.json` (blockers, partial results) and re-launches the PLAN agent with failure context. Circuit breaker: max 1 loop per cycle, human-driven only.
-
-### Cross-Walkthrough Navigation
-
-Plan and Design walkthroughs now link to each other at their final gates, plus a "Skip to build" option on every section to exit early.
-
-### Documentation Accuracy
-
-- Observability section shows config reference instead of fabricated dashboard numbers
-- Context accumulation accurately describes when files are written (on feedback loops)
-- Adaptive Learning section marked as "(Planned)" — not yet implemented
-- All version strings and install commands verified consistent across README, GitHub Pages, Jekyll docs, and plugin manifests
-
----
-
-## What's New in v4.4.0
-
-v4.4.0 makes quality packs **fast and discoverable**. A cached manifest eliminates repeated filesystem scans, quick-create launcher packs wrap any plugin or skill in seconds, and all pack decisions use structured `AskUserQuestion` prompts.
-
-### Cached Pack Manifest
-
-Pack discovery results are cached to `.temper/pack-manifest.json` for instant subsequent loads. First run does a full 3-tier scan; subsequent runs load from cache in under 2 seconds. Cache is rebuilt automatically when `temper.config` changes, packs are added/removed, or the manifest schema version mismatches.
-
-### Quick-Create Launcher Packs
-
-Fast path for creating a pack that wraps an existing plugin or skill. The system discovers all linkable targets, you pick one and name the pack, and Temper generates a launcher template with BLOCK-level enforcement — guaranteeing the linked resource is always used.
-
-### Plugin/Skill Filesystem Discovery
-
-Automatic discovery of all linkable targets from the filesystem: installed plugins (`plugin://{name}`), project and global skills (`skill://{name}`), and command-based skills (`.claude/commands/*.md`). Deduplication ensures each name appears once.
-
-### AskUserQuestion-Driven UX
-
-All decision points in `/temper:pack` now use `AskUserQuestion` for structured, clickable options. Toggle packs, quick-create launchers, configure links — no more free-text guessing. Cursor IDE uses conversational numbered prompts with the same options.
-
-### Command-Based Skill Linking
-
-Skills defined as markdown command files (`.claude/commands/*.md`) are now valid link targets alongside traditional `SKILL.md` files. The resolution chain checks standard skills, global skills, plugin skills, then command-based fallback — ensuring any Temper-compatible resource can be linked to a pack.
-
----
-
-## What's New in v4.3.0
-
-v4.3.0 overhauls the pack system with **three-tier resolution, plugin/skill linking, phase scoping, and connection health validation**.
-
-### Three-Tier Pack Resolution
-
-Quality packs now resolve from three tiers in priority order:
-
-```
-Priority 1 (highest) → .claude/packs/{name}/rules.md           (project-local)
-Priority 2           → ~/.claude/packs/{name}/rules.md          (global / user-wide)
-Priority 3 (lowest)  → $TEMPER_ROOT/.claude/packs/{name}/rules.md  (built-in)
-```
-
-Teams ship project-specific packs in the repo, users create global packs across all projects, and built-in packs provide sensible defaults.
-
-### Pack-Plugin/Skill Linking
-
-Packs can link to external plugins or skills, injecting their context alongside pack rules during phase execution. When a pack loads, the linked resource's instructions are included in the AI prompt context — context injection, not code execution.
-
-```yaml
-packs:
-  - name: api-standards
-    link: plugin://my-api-linter     # Links to an installed plugin
-  - name: sec-review
-    link: skill://security-review    # Links to a skill
-```
-
-### Phase Scoping
-
-Packs can be restricted to specific Temper phases so they only activate when relevant. A TDD pack only runs during build, a security pack only during review and check. Available phases: `plan`, `design`, `build`, `review`, `check`, `fix`.
-
-### Connection Health Validation
-
-When a pack has a link, the system validates that the target exists and is accessible. Plugin links check `~/.claude/plugins/installed_plugins.json`, skill links search `.claude/skills/` directories. Graceful degradation: if a link target is missing, the pack's own rules still load with a warning — a removed plugin never blocks all work.
-
----
-
-## What's New in v4.2.0
-
-v4.2.0 adds **Cursor IDE support, feedback loop gates with circuit breakers, an enhanced Design phase, and cross-walkthrough navigation**.
-
-### Cursor IDE Support
-
-Full Temper experience for [Cursor](https://cursor.sh) users with feature parity to the Claude Code CLI. A generation script (`scripts/generate-cursor.py`) mirrors `.claude/` to `.cursor/` — commands, skills, packs, and reference docs. IDE-specific adaptations handle the differences: hyphenated commands (`/temper-plan`), conversational stage gates instead of `AskUserQuestion`, and always-on pack context via Cursor rules.
-
-### Feedback Loop Gates & Circuit Breaker
-
-Explicit gates between stages allow returning to earlier stages when issues are found, with automatic circuit breakers:
+Stages can loop back to upstream stages with failure context. No more "stop and start over" when Review finds issues or Check fails tests.
 
 ```
 Review ──[issues found]──→ Build    (max 2 loops, same issue 2x = stop)
@@ -384,87 +295,39 @@ Check  ──[tests fail]────→ Build    (max 2 loops, same test 2x = s
 Build  ──[architecture]──→ Plan     (human-driven, 1 per cycle)
 ```
 
-Context is passed between stages via `.temper/` JSON files (`review-context.json`, `check-context.json`, `build-context.json`). Circuit breakers prevent infinite loops — the same issue appearing twice triggers human intervention.
+Context is passed between stages via `.temper/` JSON files (`review-context.json`, `check-context.json`, `build-context.json`). Circuit breakers prevent infinite loops — the same issue appearing twice triggers human intervention. Review and Check gates actively offer "Loop back to Build" when issues are found.
 
-### Design Phase (Enhanced)
+### Cursor IDE Support
+
+Full Temper experience for [Cursor](https://cursor.sh) users with feature parity to the Claude Code CLI. A generation script (`scripts/generate-cursor.py`) mirrors `.claude/` to `.cursor/` — commands, skills, packs, and reference docs. IDE-specific adaptations handle the differences: hyphenated commands (`/temper-plan`), conversational stage gates instead of `AskUserQuestion`, and always-on pack context via Cursor rules.
+
+### Pack System: Three-Tier Resolution & Linking
+
+Quality packs resolve from three tiers in priority order:
+
+```
+Priority 1 (highest) → .claude/packs/{name}/rules.md           (project-local)
+Priority 2           → ~/.claude/packs/{name}/rules.md          (global / user-wide)
+Priority 3 (lowest)  → $TEMPER_ROOT/.claude/packs/{name}/rules.md  (built-in)
+```
+
+Packs can link to external plugins or skills (`plugin://my-linter`, `skill://security-review`), injecting their context alongside pack rules during phase execution. Phase scoping restricts packs to specific phases — a TDD pack only runs during build, a security pack only during review and check. Connection health validation checks that link targets exist, with graceful degradation if missing.
+
+Pack discovery results are cached to `.temper/pack-manifest.json` for instant subsequent loads. Quick-create launcher packs wrap any plugin or skill in seconds. All `/temper:pack` decisions use structured `AskUserQuestion` prompts.
+
+### Design Phase
 
 An optional stage for system design on complex or medium-complexity features. Produces: system architecture, API contracts, database changes, integration points, and a decision log (ADRs). Auto-skipped when complexity is below medium or config `phases.design: false`.
 
 ### Cross-Walkthrough Navigation
 
-Users can switch between Plan and Design walkthroughs at the final gate of each walkthrough. Plan walkthrough's final gate includes "Walk through design" (if design stage is active), and Design walkthrough's final gate includes "Walk through plan." Non-linear exploration before committing to build.
-
----
-
-## What's New in v4.1.0
-
-v4.1.0 makes feedback loops **actually work**. The v4.0.0 documentation described loop types and schemas, but the orchestrator never executed them — stages always flowed linearly. Now Review and Check gates actively offer "Loop back to Build" when issues are found, with full context transfer and circuit breakers.
-
-### Working Feedback Loops
-
-Review finds issues or Check fails tests? The gate now shows a "Loop back to Build" option. Selecting it writes a context file (`review-context.json` or `check-context.json`) and re-launches the Build agent with the fix context — no more manually restarting the pipeline.
-
-```
-REVIEW finds 3 HIGH issues
-  → Gate shows: "Loop back to Build (Fix issues)"
-  → User selects → review-context.json written
-  → Build agent re-enters with fix context
-  → Fixes applied → back to Review
-  → Circuit breaker: max 2 loops, same issue 2x = stop
-```
-
-The loop instructions reference real Claude Code tools (Read, Write, Bash) — not pseudo-code functions that don't exist at runtime. Every step is actionable.
-
----
-
-## What's New in v4.0.0
-
-v4.0.0 transforms Temper from a one-way pipeline into a **cyclic SDLC platform** with feedback loops, context accumulation, observability, and an optional Design phase. Inspired by [The Agentic SDLC](https://amoshaviv.com/blog/the-agentic-sdlc/) framework.
-
-### Feedback Loops
-
-Stages can now loop back to upstream stages with failure context. No more "stop and start over" when Review finds issues or Check fails tests.
-
-| Loop | Trigger | Behavior |
-|------|---------|----------|
-| Review → Build | Auto-fixable issues found | Fix applied, re-review, max 2 loops |
-| Check → Build | Test failures | Fix task created with failure context, max 2 loops |
-| Build → Plan | Infeasible design | Plan revision with what went wrong, max 1 per cycle |
-
-Circuit breakers prevent infinite loops — same issue twice triggers human intervention.
-
-### Context Accumulation
-
-Each stage produces structured artifacts that accumulate for downstream stages. No more "agent amnesia" between stages.
-
-```
-.temper/specs/{feature}/
-  intent.md           ← Plan produces this
-  design.md           ← Design produces this (if complex)
-  review-context.json ← Review writes findings + intent verdict (on feedback loop)
-  check-context.json  ← Check writes validation results (on feedback loop)
-  build-context.json  ← Build writes blockers (on Build → Plan feedback loop)
-```
+Plan and Design walkthroughs link to each other at their final gates, plus a "Skip to build" option on every section to exit early. Non-linear exploration before committing to build.
 
 ### Observability
 
-Per-stage metrics tracking configuration: tokens, latency, tool calls. Metrics are tracked when `observability.enabled: true` in temper.config and displayed in `/temper:status`.
-
-```yaml
-observability:
-  enabled: true
-  track-tokens: true
-  track-latency: true
-  track-tool-calls: true
-```
-
-### Design Phase (Optional)
-
-New `/temper:design` stage for complex features: system architecture, API contracts, DB schema. Automatically skipped for simple/trivial features. Enabled by default.
+Per-stage metrics tracking: tokens, latency, tool calls. Metrics are tracked when `observability.enabled: true` in temper.config and displayed in `/temper:status`.
 
 ### All Features Enabled by Default
-
-v4.0.0 enables all new features by default. Disable any via `.claude/temper.config`:
 
 ```yaml
 phases:
@@ -664,16 +527,26 @@ Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/yo
 
 ## Installation
 
+### Claude Code
+
 ```bash
 /plugin marketplace add galando/temper
 /plugin install temper
 ```
 
+### Cursor IDE
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)
+```
+
+Mirrors `.claude/` to `.cursor/` — commands, skills, packs, and reference docs. Full feature parity with Claude Code.
+
 ```bash
 cd your-project
-/temper:plan "your feature"    # Scenarios + blast radius + architecture
-/temper:build                  # Scenario-driven TDD
-/temper:review                 # Structured intent validation
+/temper-plan "your feature"    # Scenarios + blast radius + architecture
+/temper-build                  # Scenario-driven TDD
+/temper-review                 # Structured intent validation
 ```
 
 ## Recommended Setup
