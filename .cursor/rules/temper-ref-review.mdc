@@ -3,9 +3,6 @@ description: "Temper reference: review"
 alwaysApply: false
 ---
 
----
-description: "Technical code review with confidence scoring, review memory, and intent validation"
----
 
 # Review: Confidence-Scored Code Review
 

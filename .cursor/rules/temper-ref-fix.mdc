@@ -3,10 +3,6 @@ description: "Temper reference: fix"
 alwaysApply: false
 ---
 
----
-description: "Root cause analysis + structured fix for a bug"
-argument-hint: "<bug-description-or-JIRA-123>"
----
 
 # Fix: Root Cause Analysis + Structured Fix
 

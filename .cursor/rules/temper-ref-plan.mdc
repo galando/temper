@@ -3,10 +3,6 @@ description: "Temper reference: plan"
 alwaysApply: false
 ---
 
----
-description: "Transform a feature request into a structured implementation plan with impact analysis"
-argument-hint: "<feature-name-or-JIRA-123>"
----
 
 # Plan: Feature Planning with Impact Analysis
 

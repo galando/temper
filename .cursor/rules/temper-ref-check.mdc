@@ -3,9 +3,6 @@ description: "Temper reference: check"
 alwaysApply: false
 ---
 
----
-description: "Run the project's validation pipeline (tests, build, lint, security)"
----
 
 # Check: Stack-Aware Validation Pipeline
 

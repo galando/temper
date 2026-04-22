@@ -3,9 +3,6 @@ description: "Temper reference: pack"
 alwaysApply: false
 ---
 
----
-description: "Manage quality packs: view, toggle, create, quick-create launchers, configure links and phases"
----
 
 # Pack: Quality Pack Manager
 

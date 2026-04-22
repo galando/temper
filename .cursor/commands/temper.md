@@ -20,9 +20,9 @@ argument-hint: "<feature-description>"
 
 ### Shared Orchestrator Patterns
 
-> **Reference:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md`
+> **Reference:** Loaded via the `temper-ref-orchestrator-patterns` rule
 >
-> This command uses shared patterns for: $CLAUDE_PLUGIN_ROOT resolution, gate options, gate enforcement, resume validation, nested invocation protection, agent failure handling, and context efficiency. Read that file for the canonical definitions.
+> This command uses shared patterns for: gate options, gate enforcement, resume validation, nested invocation protection, agent failure handling, and context efficiency. Those patterns are available via the rule.
 
 Each stage runs in an **isolated Agent subprocess**. This provides genuine context clearing — each stage starts with a clean context window containing only what it needs.
 
@@ -83,11 +83,11 @@ If an agent subprocess returns a failure or blocker:
 
 ---
 
-## Stage Gates Use AskUserQuestion
+## Stage Gates Use Numbered Options
 
-> **Gate patterns:** See `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Gate Options Pattern" and "Gate Enforcement Rules" sections.
+> **Gate patterns:** See the `temper-ref-orchestrator-patterns` rule → "Gate Options Pattern" and "Gate Enforcement Rules" sections.
 
-At each stage gate, use `AskUserQuestion` with selectable options. Do NOT use `[Enter]` as a prompt.
+At each stage gate, present numbered options to the user. Do NOT use `[Enter]` as a prompt.
 
 ---
 
@@ -102,7 +102,7 @@ Load the following context files, then execute the instructions sequentially:
 
 "Execute /temper-plan for feature: $ARGUMENTS
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan.md
+Full methodology: loaded via the temper-ref-plan rule
 
 ENFORCEMENT: Always follow the full planning methodology regardless of complexity level. Always generate: intent.md, tasks.md, mermaid diagram in plan.md, blast radius analysis. No shortcuts.
 
@@ -112,7 +112,7 @@ DIAGRAM ENFORCEMENT: You MUST generate ASCII art diagrams using box-drawing char
 
 CRITICAL: This agent runs in isolation. After planning:
 1. Show the plan summary box (see below)
-2. Do NOT show an AskUserQuestion gate — return the summary to the orchestrator
+2. Do NOT present a numbered options gate — return the summary to the orchestrator
 3. The orchestrator handles the gate decision
 
 Return ONLY:
@@ -163,11 +163,14 @@ Diagram (rendered below summary box — MUST be ASCII art, NOT raw mermaid sourc
 
 ### Stage Gate
 
-Show the AskUserQuestion gate with:
-- "Continue to Build (Recommended)" — launch BUILD agent
-- "Walk through plan step by step" — interactive walkthrough (see below)
-- "Save for later" — save state, stop
-- **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
+Present these options to the user:
+
+1. **Continue to Build (Recommended)** — launch BUILD agent
+2. **Walk through plan step by step** — interactive walkthrough (see below)
+3. **Save for later** — save state, stop
+4. Type your own response
+
+Ask the user to choose by number or type their response.
 
 #### Step-by-Step Walkthrough
 
@@ -182,7 +185,7 @@ When the user selects "Walk through plan step by step", present the plan as an i
 5. **Blast Radius Review** — Each impacted consumer, whether tests exist, what regression guards are in place
 6. **Task Walkthrough** — For each task: what it does, validation command, dependencies, parallel opportunities
 
-**After each section, use AskUserQuestion:**
+**After each section, present these options:**
 
 ```
 **Plan walkthrough — {current section name}. What would you like to do?**
@@ -191,7 +194,8 @@ When the user selects "Walk through plan step by step", present the plan as an i
 2. **Skip to build** — Skip remaining sections, proceed to Build stage.
 3. **Switch to design walkthrough** — Jump to the Design walkthrough (if design stage is active).
 4. Type your own response
-multiSelect: false
+
+Ask the user to choose by number or type their response.
 ```
 
 - **"Other"** (built-in free-text): Ask a question or request a change. Answer/edit, then re-show the same section's gate.
@@ -208,7 +212,8 @@ After the last section, show the final walkthrough gate:
 2. **Switch to design walkthrough** — Jump to the Design walkthrough for cross-reference.
 3. **Save for later** — Save state and stop.
 4. Type your own response
-multiSelect: false
+
+Ask the user to choose by number or type their response.
 ```
 
 **"Other" (free-text change request)**: Edit plan files, show what changed, re-show this gate.
@@ -243,7 +248,7 @@ multiSelect: false
 1. User types their change request in the "Other" field
 2. Edit the plan files directly (intent.md, tasks.md, etc.)
 3. Re-show the updated plan summary
-4. **Re-show the AskUserQuestion gate** — do NOT skip to build
+4. **Re-show the numbered options gate** — do NOT skip to build
 
 **on Save:**
 1. Save state to `.temper/build-state.json`
@@ -276,16 +281,16 @@ Load the following context files, then execute the instructions sequentially:
 
 "Execute /temper-design for feature: {spec from build-state.json}
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/design.md
+Full methodology: loaded via the temper-ref-design rule
 
 CONTEXT: You are starting with a CLEAN context. Load these files first:
 1. {spec_path}/intent.md
 2. {spec_path}/plan.md
-3. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/design.md for methodology
+3. The design methodology is loaded via the temper-ref-design rule
 
 Then produce the system design as described in the methodology.
 
-CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the design summary to the orchestrator.
+CRITICAL: Do NOT present numbered options at the end. Return the design summary to the orchestrator.
 
 Return ONLY:
 - Design summary text (formatted box)
@@ -295,11 +300,14 @@ Return ONLY:
 
 ### Stage Gate
 
-Show the AskUserQuestion gate with:
-- "Continue to Build (Recommended)" — launch BUILD agent
-- "Walk through design step by step" — interactive walkthrough (see below)
-- "Save for later" — save state, stop
-- **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
+Present these options to the user:
+
+1. **Continue to Build (Recommended)** — launch BUILD agent
+2. **Walk through design step by step** — interactive walkthrough (see below)
+3. **Save for later** — save state, stop
+4. Type your own response
+
+Ask the user to choose by number or type their response.
 
 #### Step-by-Step Walkthrough
 
@@ -315,7 +323,7 @@ Read `.temper/specs/{feature-slug}/design.md` and detect which sections exist. P
 4. **Integration Points** — External system connections, error handling strategy, retry/fallback logic (shown if design.md has integration content)
 5. **Decision Log** — Each architectural decision with rationale and alternatives considered (always shown)
 
-**After each section, use AskUserQuestion:**
+**After each section, present these options:**
 
 ```
 **Design walkthrough — {current section name}. What would you like to do?**
@@ -324,7 +332,8 @@ Read `.temper/specs/{feature-slug}/design.md` and detect which sections exist. P
 2. **Skip to build** — Skip remaining sections, proceed to Build stage.
 3. **Switch to plan walkthrough** — Jump to the Plan walkthrough.
 4. Type your own response
-multiSelect: false
+
+Ask the user to choose by number or type their response.
 ```
 
 - **"Other"** (built-in free-text): Ask a question or request a change. Answer/edit, then re-show the same section's gate.
@@ -341,7 +350,8 @@ After the last section, show the final walkthrough gate:
 2. **Switch to plan walkthrough** — Jump to the Plan walkthrough for cross-reference.
 3. **Save for later** — Save state and stop.
 4. Type your own response
-multiSelect: false
+
+Ask the user to choose by number or type their response.
 ```
 
 **"Other" (free-text change request)**: Edit design files, show what changed, re-show this gate.
@@ -360,7 +370,7 @@ multiSelect: false
 1. User types their change request in the "Other" field
 2. Edit the design files directly (design.md, etc.)
 3. Re-show the updated design summary
-4. **Re-show the AskUserQuestion gate** — do NOT skip to build
+4. **Re-show the numbered options gate** — do NOT skip to build
 
 **on Save:**
 1. Save state to `.temper/build-state.json`
@@ -370,7 +380,7 @@ multiSelect: false
 
 ## Feedback Loops (v4.0.0)
 
-> **Reference:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Feedback Loop Patterns"
+> **Reference:** The `temper-ref-orchestrator-patterns` rule → "Feedback Loop Patterns"
 
 When `feedback.enabled: true` in temper.config, stages can loop back to upstream stages:
 
@@ -382,7 +392,7 @@ When `feedback.enabled: true` in temper.config, stages can loop back to upstream
 
 ### How Feedback Loops Actually Work (Runtime Instructions)
 
-This is NOT pseudo-code. These are instructions Claude Code follows at runtime when orchestrating the `/temper` pipeline. Every step below uses real tools (Read, Write, Edit, AskUserQuestion, Agent).
+This is NOT pseudo-code. These are instructions the agent follows at runtime when orchestrating the `/temper` pipeline. Every step below uses real tools (Read, Write, Edit, Agent).
 
 #### Step 1: Check if feedback loops are enabled
 
@@ -452,18 +462,18 @@ Load the following context files, then execute the instructions sequentially:
 
 "Execute /temper-build for spec: {spec from build-state.json}
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md
+Full methodology: loaded via the temper-ref-build rule
 
 CONTEXT: You are starting with a CLEAN context. Load these files first:
 1. {spec_path}/tasks.md
 2. {spec_path}/intent.md (if exists)
-3. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md for methodology
+3. The build methodology is loaded via the temper-ref-build rule
 4. Read {spec_path}/review-context.json (if exists — feedback from review loop)
 5. Read {spec_path}/check-context.json (if exists — feedback from check loop)
 
 Then execute all tasks in tasks.md using TDD discipline.
 
-CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the build summary to the orchestrator.
+CRITICAL: Do NOT present numbered options at the end. Return the build summary to the orchestrator.
 
 Return ONLY:
 - Build summary text (formatted box)
@@ -501,11 +511,14 @@ Return ONLY:
 > 3. If active loop exists and `iteration >= 1` → `can_loop: false` (human-driven, max 1 loop per cycle)
 > 4. Otherwise → `can_loop: true`
 
-Show the AskUserQuestion gate with:
-- "Continue to Review (Recommended)" — launch REVIEW agent
-- "Loop back to Plan (Revise plan)" — (shown ONLY if feedback.enabled AND can_loop) write build-context.json, update feedback-loops.json, launch PLAN agent
-- "Save for later" — save state, stop
-- **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
+Present these options to the user:
+
+1. **Continue to Review (Recommended)** — launch REVIEW agent
+2. **Loop back to Plan (Revise plan)** — (shown ONLY if feedback.enabled AND can_loop) write build-context.json, update feedback-loops.json, launch PLAN agent
+3. **Save for later** — save state, stop
+4. Type your own response
+
+Ask the user to choose by number or type their response.
 
 **on Continue:**
 1. Save state to `.temper/build-state.json`
@@ -552,12 +565,12 @@ Show the AskUserQuestion gate with:
    ```
    "Execute /temper-plan for feature: {original_args from build-state.json}
 
-   Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan.md
+   Full methodology: loaded via the temper-ref-plan rule
 
    CONTEXT: You are starting with a CLEAN context. Load these files first:
    1. {spec_path}/intent.md (original intent — may need revision)
    2. {spec_path}/build-context.json (contains what went wrong during build)
-   3. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan.md for methodology
+   3. The plan methodology is loaded via the temper-ref-plan rule
 
    CRITICAL: This is a feedback loop re-entry from Build. The build-context.json describes what couldn't be built and why. Revise the plan to address these blockers.
 
@@ -572,7 +585,7 @@ Show the AskUserQuestion gate with:
 1. User types their change request in the "Other" field
 2. Make the change
 3. Re-show the updated build summary
-4. **Re-show the AskUserQuestion gate** — do NOT skip to review
+4. **Re-show the numbered options gate** — do NOT skip to review
 
 **on Save:**
 1. Save state to `.temper/build-state.json`:
@@ -604,17 +617,17 @@ Load the following context files, then execute the instructions sequentially:
 
 "Execute /temper-review for feature: {spec from build-state.json}
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md
+Full methodology: loaded via the temper-ref-review rule
 
 CONTEXT: You are starting with a CLEAN context. Load these first:
 1. Run: git diff --name-only (to get changed files)
-2. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md for methodology
+2. The review methodology is loaded via the temper-ref-review rule
 3. Read {spec_path}/intent.md (for intent validation)
 4. Read {spec_path}/build-context.json (if exists — build deviations and test results)
 
 Then review all changed files using parallel subagents as described in the methodology.
 
-CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the review summary to the orchestrator.
+CRITICAL: Do NOT present numbered options at the end. Return the review summary to the orchestrator.
 
 Return ONLY:
 - Review summary text (formatted box)
@@ -685,11 +698,14 @@ Return ONLY:
 > 2. Use Read tool to check `.temper/feedback-loops.json` for active loops
 > 3. If feedback enabled AND review found issues (critical + high > 0) AND eligible per Step 2: show loop option
 
-Show the AskUserQuestion gate with:
-- "Fix all & continue to Check (Recommended)" — apply fixes for ALL issues (including low), launch CHECK agent
-- "Loop back to Build (Fix issues)" — (shown ONLY if feedback.enabled AND can_loop) write review-context.json, update feedback-loops.json, launch BUILD agent
-- "Save for later" — skip fixes, save state
-- **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
+Present these options to the user:
+
+1. **Fix all & continue to Check (Recommended)** — apply fixes for ALL issues (including low), launch CHECK agent
+2. **Loop back to Build (Fix issues)** — (shown ONLY if feedback.enabled AND can_loop) write review-context.json, update feedback-loops.json, launch BUILD agent
+3. **Save for later** — skip fixes, save state
+4. Type your own response
+
+Ask the user to choose by number or type their response.
 
 **on Continue:**
 1. Apply ALL fixable issues (including low severity) directly — no subprocess needed for fixes
@@ -745,7 +761,7 @@ Show the AskUserQuestion gate with:
    ```
    "Execute /temper-build for spec: {spec}
 
-   Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md
+   Full methodology: loaded via the temper-ref-build rule
 
    CONTEXT: You are starting with a CLEAN context. Load these files first:
    1. {spec_path}/tasks.md
@@ -767,7 +783,7 @@ Show the AskUserQuestion gate with:
 2. Make the change
 3. Re-launch the REVIEW agent to get an updated review summary
 4. Show the updated review summary
-5. **Re-show the AskUserQuestion gate** — do NOT skip to check
+5. **Re-show the numbered options gate** — do NOT skip to check
 
 **on Save:**
 1. Save state to `.temper/build-state.json`:
@@ -797,15 +813,15 @@ Load the following context files, then execute the instructions sequentially:
 
 "Execute /temper-check for project validation.
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md
+Full methodology: loaded via the temper-ref-check rule
 
 CONTEXT: You are starting with a CLEAN context. Load these first:
-1. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md for methodology
+1. The check methodology is loaded via the temper-ref-check rule
 2. Read {spec_path}/intent.md (for scenario coverage validation, if exists)
 3. Read {spec_path}/review-context.json (if exists — review findings for context)
 4. Detect stack and run the full validation pipeline
 
-CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the check summary to the orchestrator.
+CRITICAL: Do NOT present numbered options at the end. Return the check summary to the orchestrator.
 
 Return ONLY:
 - Check summary text (formatted box)
@@ -843,11 +859,14 @@ Return ONLY:
 > 2. Use Read tool to check `.temper/feedback-loops.json` for active loops
 > 3. If feedback enabled AND check found test failures (test_failures.length > 0) AND eligible per Step 2: show loop option
 
-Show the AskUserQuestion gate with:
-- "Commit (Recommended)" — commit with conventional message
-- "Loop back to Build (Fix tests)" — (shown ONLY if feedback.enabled AND can_loop) write check-context.json, update feedback-loops.json, launch BUILD agent
-- "Save for later" — keep changes uncommitted
-- **"Other" (built-in free-text)** — type a change request, edits are made, re-run check
+Present these options to the user:
+
+1. **Commit (Recommended)** — commit with conventional message
+2. **Loop back to Build (Fix tests)** — (shown ONLY if feedback.enabled AND can_loop) write check-context.json, update feedback-loops.json, launch BUILD agent
+3. **Save for later** — keep changes uncommitted
+4. Type your own response
+
+Ask the user to choose by number or type their response.
 
 **on Commit:**
 ```
@@ -924,9 +943,9 @@ Show the AskUserQuestion gate with:
 3. Launch BUILD agent subprocess with:
    ```
    "Execute /temper-build for spec: {spec}
-   
-   Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md
-   
+
+   Full methodology: loaded via the temper-ref-build rule
+
    CONTEXT: You are starting with a CLEAN context. Load these files first:
    1. {spec_path}/tasks.md
    2. {spec_path}/intent.md (if exists)
@@ -945,7 +964,7 @@ Show the AskUserQuestion gate with:
 1. User types their change request in the "Other" field
 2. Make the change
 3. Re-launch the CHECK agent to re-validate
-4. **Re-show the AskUserQuestion gate** — do NOT commit directly
+4. **Re-show the numbered options gate** — do NOT commit directly
 
 **on Save:**
 1. Save state to `.temper/build-state.json`:
@@ -970,13 +989,13 @@ If you stopped earlier, run `/temper` to continue.
 
 ### Resume Validation
 
-> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Resume Validation" section. Valid stages for this command: `plan_complete`, `design_complete`, `build_complete`, `review_complete`, `check_complete`.
+> Follow the shared pattern loaded via the `temper-ref-orchestrator-patterns` rule → "Resume Validation" section. Valid stages for this command: `plan_complete`, `design_complete`, `build_complete`, `review_complete`, `check_complete`.
 
 ### Nested Invocation Protection
 
 If `/temper "new feature"` is called while `.temper/build-state.json` already exists for a different feature:
 
-> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Nested Invocation Protection" section. Use "feature" in the display.
+> Follow the shared pattern loaded via the `temper-ref-orchestrator-patterns` rule → "Nested Invocation Protection" section. Use "feature" in the display.
 
 If `/temper` (no arguments) is called and `.temper/build-state.json` exists for the same feature:
 ```
@@ -985,7 +1004,8 @@ If `/temper` (no arguments) is called and `.temper/build-state.json` exists for 
 1. **Continue from {next_stage} (Recommended)** — Resume from checkpoint, launch {next_stage} agent.
 2. **Start over (replan)** — Go back to PLAN, launch planning agent.
 3. Type your own response
-multiSelect: false
+
+Ask the user to choose by number or type their response.
 ```
 
 ---

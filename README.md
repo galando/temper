@@ -299,7 +299,7 @@ Context is passed between stages via `.temper/` JSON files (`review-context.json
 
 ### Cursor IDE Support
 
-Full Temper experience for [Cursor](https://cursor.sh) users with feature parity to the Claude Code CLI. A generation script (`scripts/generate-cursor.py`) mirrors `.claude/` to `.cursor/` — commands, skills, packs, and reference docs. IDE-specific adaptations handle the differences: hyphenated commands (`/temper-plan`), conversational stage gates instead of `AskUserQuestion`, and always-on pack context via Cursor rules.
+Full Temper experience for [Cursor](https://cursor.sh) users with feature parity to the Claude Code CLI. Static `.cursor/` files (rules, commands, packs, reference docs) are checked into git. Install via a curl-only shell script — no Python or git clone required. IDE-specific adaptations handle the differences: hyphenated commands (`/temper-plan`), conversational stage gates instead of `AskUserQuestion`, and always-on pack context via Cursor rules.
 
 ### Pack System: Three-Tier Resolution & Linking
 
@@ -540,7 +540,7 @@ Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/yo
 bash <(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)
 ```
 
-Mirrors `.claude/` to `.cursor/` — commands, skills, packs, and reference docs. Full feature parity with Claude Code.
+Downloads static `.cursor/` files from GitHub — commands, skills, packs, and reference docs. No Python or git required, just curl. Full feature parity with Claude Code.
 
 ```bash
 cd your-project

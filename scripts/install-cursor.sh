@@ -6,95 +6,73 @@
 #   Local:   ./scripts/install-cursor.sh [project-path]
 #   Remote:  bash <(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)
 #
-# Generates .cursor/ directory from .claude/ and copies it
-# to the target project (defaults to current directory).
+# Downloads static .cursor/ files from GitHub. Requires only curl.
 #
 set -e
 
 TARGET_DIR="${1:-.}"
-
-# Resolve target to absolute path
 TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd)" || {
     echo "Error: Target directory '$1' does not exist."
     exit 1
 }
 
-# Check for git
-if ! command -v git &>/dev/null; then
-    echo "Error: git is required."
-    exit 1
-fi
+BASE="https://raw.githubusercontent.com/galando/temper/main/.cursor"
+RULES_DIR="$TARGET_DIR/.cursor/rules"
+CMDS_DIR="$TARGET_DIR/.cursor/commands"
 
-# Check Python 3
-if ! command -v python3 &>/dev/null; then
-    echo "Error: Python 3 is required. Install it from https://python.org"
-    exit 1
-fi
+mkdir -p "$RULES_DIR" "$CMDS_DIR"
 
-# Detect if running from cloned repo or piped via curl
-REPO_ROOT=""
-if [ -f "${BASH_SOURCE[0]}" ] && [ -f "$(dirname "${BASH_SOURCE[0]}")/../.claude-plugin/plugin.json" ]; then
-    REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-fi
-
-TEMP_DIR=""
-cleanup() {
-    if [ -n "$TEMP_DIR" ] && [ -d "$TEMP_DIR" ]; then
-        rm -rf "$TEMP_DIR"
-    fi
+download() {
+    curl -fsSL "$BASE/$1" -o "$TARGET_DIR/.cursor/$1" || {
+        echo "Error: Failed to download $1"
+        exit 1
+    }
 }
-trap cleanup EXIT
 
-if [ -z "$REPO_ROOT" ]; then
-    # Running via curl | bash — clone a shallow copy
-    echo "Downloading Temper from GitHub..."
-    TEMP_DIR="$(mktemp -d)"
-    git clone --depth 1 https://github.com/galando/temper.git "$TEMP_DIR" >/dev/null 2>&1
-    REPO_ROOT="$TEMP_DIR"
-fi
+# Metadata
+download VERSION
+download mcp.json
 
-# Read version from plugin.json
-VERSION=$(python3 -c "
-import json, sys
-with open(sys.argv[1]) as f:
-    print(json.load(f).get('version', 'unknown'))
-" "$REPO_ROOT/.claude-plugin/plugin.json" 2>/dev/null || echo "unknown")
+VERSION=$(cat "$TARGET_DIR/.cursor/VERSION")
+
+# Rules
+RULES=(
+    temper-temper-core.mdc
+    temper-pack-code-simplifier.mdc
+    temper-pack-git.mdc
+    temper-pack-quality.mdc
+    temper-pack-security.mdc
+    temper-pack-tdd.mdc
+    temper-ref-build.mdc
+    temper-ref-check.mdc
+    temper-ref-design.mdc
+    temper-ref-fix.mdc
+    temper-ref-orchestrator-patterns.mdc
+    temper-ref-pack.mdc
+    temper-ref-plan.mdc
+    temper-ref-review.mdc
+    temper-ref-status.mdc
+)
+for rule in "${RULES[@]}"; do download "rules/$rule"; done
+
+# Commands
+COMMANDS=(
+    temper.md
+    temper-build.md
+    temper-check.md
+    temper-design.md
+    temper-fix.md
+    temper-pack.md
+    temper-plan.md
+    temper-review.md
+    temper-status.md
+)
+for cmd in "${COMMANDS[@]}"; do download "commands/$cmd"; done
 
 echo "Temper v${VERSION} — Cursor IDE Setup"
 echo ""
-
-# Generate .cursor/ directory
-echo "Generating Cursor IDE files..."
-python3 "$REPO_ROOT/scripts/generate-cursor.py" --output "$REPO_ROOT/.cursor"
-
-# Copy to target project
-if [ "$TARGET_DIR" != "$REPO_ROOT" ]; then
-    echo ""
-    echo "Copying .cursor/ to $TARGET_DIR/"
-    rm -rf "$TARGET_DIR/.cursor"
-    cp -R "$REPO_ROOT/.cursor" "$TARGET_DIR/.cursor"
-fi
-
-# Verify
-echo ""
-echo "Verification:"
-if [ -f "$TARGET_DIR/.cursor/VERSION" ]; then
-    CURSOR_VERSION=$(cat "$TARGET_DIR/.cursor/VERSION")
-    if [ "$CURSOR_VERSION" = "$VERSION" ]; then
-        echo "  Version: $CURSOR_VERSION (aligned with plugin.json)"
-    else
-        echo "  WARNING: .cursor/VERSION ($CURSOR_VERSION) != plugin.json ($VERSION)"
-        echo "  Run scripts/generate-cursor.py to regenerate"
-    fi
-else
-    echo "  WARNING: .cursor/VERSION not found"
-fi
-
-CMD_COUNT=$(find "$TARGET_DIR/.cursor/commands" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
-RULE_COUNT=$(find "$TARGET_DIR/.cursor/rules" -name "*.mdc" 2>/dev/null | wc -l | tr -d ' ')
-
-echo "  Commands: $CMD_COUNT"
-echo "  Rules:    $RULE_COUNT"
+echo "  Commands: 9"
+echo "  Rules:    15"
 echo ""
 echo "Setup complete. Temper commands available in Cursor:"
 echo "  /temper          — Unified SDLC"
