@@ -487,7 +487,48 @@ For each CRITICAL or HIGH security-sensitivity file that has tests (max 3 files)
 - This is a SAMPLE, not exhaustive — it proves specific assertions work, not all of them
 ```
 
-### Step 3.5: Cross-File Pattern Consistency Check
+### Step 3.5: Deep Doubt Mode
+
+**What:** An adversarial review protocol that spawns a fresh-context subagent specifically tasked to find what is wrong with the code. Designed to counter confirmation bias and "looks fine to me" review fatigue.
+
+**Activation (one of):**
+- Explicit: `--doubt` flag on `/temper:review`
+- Automatic: blast-radius score exceeds threshold (default: 3+ modules crossed, or CRITICAL security sensitivity)
+- Manual: reviewer invokes during any review step
+
+**Constraint:** Runs from the main orchestrator only. Subagents cannot spawn their own doubt mode (prevents recursive adversarial loops).
+
+**Procedure:**
+
+1. **CLAIM EXTRACTION** — Read the diff and extract every claim the code makes:
+   - "This handles all error cases" → list error cases handled
+   - "This is thread-safe" → identify synchronization mechanism
+   - "This validates input" → list validation rules
+   - "This is backward-compatible" → list changed contracts
+
+2. **STRIP CONTEXT** — Remove author intent and comments. Read only the logic. Ask: "If I knew nothing about what this code is *supposed* to do, what would I infer it does?"
+
+3. **ADVERSARIAL REVIEW** — For each claim, actively try to break it:
+   - "What input would make this fail?"
+   - "What race condition would violate this invariant?"
+   - "What happens if this external service is slow, not down?"
+   - "What if the caller passes the arguments in wrong order?"
+   - "What existing code depends on the OLD behavior this changes?"
+
+4. **CLASSIFY** findings:
+   - **contract-misread** — Code violates its own documented contract (CRITICAL)
+   - **actionable** — Real bug or vulnerability found (HIGH)
+   - **trade-off** — Design choice with non-obvious downside (MEDIUM)
+   - **noise** — Style preference or unlikely scenario (suppress)
+
+5. **STOP CONDITIONS:**
+   - Max 3 adversarial cycles per review
+   - If a cycle produces only noise-level findings → stop early
+   - If a cycle produces contract-misread or actionable → one more cycle to check for related issues, then stop
+
+**Integration with review findings:** Deep Doubt findings are added to the main findings list with `[DOUBT]` prefix. Contract-misread findings bypass confidence filtering.
+
+### Step 3.6: Cross-File Pattern Consistency Check
 
 Detect when a changed file introduces a pattern that contradicts established patterns in similar files. This prevents "pattern drift" where codebases slowly accumulate inconsistent approaches.
 

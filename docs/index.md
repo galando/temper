@@ -29,24 +29,29 @@ Three questions every AI-generated feature should answer:
 2. **Does it do the right things?** (Behavior)
 3. **Does the code work?** (Tests)
 
-Most AI tools answer only the third. Temper answers all three — and now (v3.1.0) adds **proven verification with live test execution and MCP-powered analysis**, plus (v4.4.1) **feedback loops, Cursor IDE support, three-tier pack system, and honest documentation**.
+Most AI tools answer only the third. Temper answers all three — and now (v3.1.0) adds **proven verification with live test execution and MCP-powered analysis**, plus (v4.5.0) **feedback loops, Cursor IDE support, three-tier pack system, performance + api-design packs, Deep Doubt adversarial review, ADR generation, context engineering, and source-driven development**.
 
 ## What's New
 
-All features from v4.0 through v4.4.1 — feedback loops, Cursor IDE support, pack system overhaul, and documentation accuracy.
+All features from v4.0 through v4.5.0 — feedback loops, Cursor IDE support, pack system overhaul, 7 imports from addyosmani/agent-skills, and documentation accuracy.
 
 | Feature | What It Does |
 |---------|-------------|
 | **Feedback Loops** | Review/Check → Build with circuit breakers (max 2 loops). Build → Plan (human-driven, 1 per cycle) |
 | **Cursor IDE Support** | Static `.cursor/` files checked into git. Install via curl — no Python required |
 | **Three-Tier Pack Resolution** | project-local > global > built-in. Plugin/skill linking, phase scoping, connection health |
-| **Cached Pack Manifest** | `.temper/pack-manifest.json` for instant loads. Auto-rebuilds on config changes |
-| **Quick-Create Launchers** | One command wraps any plugin or skill as a BLOCK-level pack |
+| **Performance Pack** | N+1 detection, pagination rules, Core Web Vitals, bundle splitting, measure-first gate |
+| **API Design Pack** | Additive extension, idempotency, consistent naming, breaking change detection |
+| **Deep Doubt Mode** | Adversarial review with fresh-context subagent. Claim extraction, classification, max 3 cycles |
+| **ADR Generation** | `/temper:design` generates Architectural Decision Records for architectural decisions |
+| **Context Engineering** | Hierarchical context loading (<2k lines/task) at every stage start |
+| **Source-Driven Development** | Version detection → Context7 doc fetch → citation before writing framework code |
+| **Debugging Procedure** | Structured RCA: Reproduce → Localize → Reduce → Bisect → Root Cause → Regression Test |
 | **Design Phase** | System architecture, API contracts, DB schema, ADRs. Auto-skipped for simple features |
 | **Cross-Walkthrough Navigation** | Plan ↔ Design walkthrough links, skip-to-build on every section |
 | **Observability** | Per-stage metrics: tokens, latency, tool calls. Tracked in `/temper:status` |
-| **Context Accumulation** | Structured artifacts between stages — Review knows what Build struggled with |
-| **Honest Docs** | Adaptive Learning marked planned. Observability shows config, not fake numbers |
+| **Cached Pack Manifest** | `.temper/pack-manifest.json` for instant loads. Auto-rebuilds on config changes |
+| **Quick-Create Launchers** | One command wraps any plugin or skill as a BLOCK-level pack |
 
 ## What's New in v3.1.0
 
