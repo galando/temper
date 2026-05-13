@@ -146,6 +146,55 @@ Test scenario: {scenario the regression test should exercise}
 Related files: {files to read before fixing}
 ```
 
+### Step 2.1: Mandatory Debugging Procedure
+
+After identifying the root cause area, follow this structured debugging procedure. **No shortcuts** — each step must be completed before proceeding to the next.
+
+**Procedure (in order):**
+
+1. **REPRODUCE** — Create a minimal, reliable reproduction of the bug.
+   - Isolate the trigger: specific input, state, timing, or condition
+   - Write it as a test or script that demonstrates the failure
+   - If you cannot reproduce: stop and gather more evidence (logs, traces, user steps)
+   - Gate: "Without a repro, stop and gather more evidence"
+
+2. **LOCALIZE** — Narrow down to the specific component, function, or line.
+   - Binary search through the execution path
+   - Add strategic logging/assertions to isolate the failing boundary
+   - Confirm: "The bug manifests between point A and point B"
+
+3. **REDUCE** — Strip away everything unrelated to the failure.
+   - Remove unrelated code paths, data, configuration
+   - The reproduction should be the simplest possible case
+   - If the reduced case no longer fails, you removed too much — add back carefully
+
+4. **BISECT** — Use `git bisect` to find the commit that introduced the bug.
+   - `git bisect start && git bisect bad HEAD && git bisect good {last-known-good}`
+   - If bisect is impractical (long-running bug, complex setup): use `git log --oneline -20 -- {affected files}` to identify suspicious commits
+   - `git show {hash}` to inspect each candidate
+
+5. **ROOT CAUSE** — Identify the specific line, condition, and why it fails.
+   - Not "the function has a bug" but "line 47 returns early when `items.length === 0` because the guard clause should check `items === null`"
+   - Trace: what data/state triggers the failure? Why does it happen now?
+
+6. **REGRESSION TEST** — Write a test that proves the bug exists and will catch it if it returns.
+   - Test must fail before the fix and pass after
+   - Test name should describe the bug: `shouldHandleEmptyItemListNotAsNull`
+   - This test is written BEFORE the fix (see Step 3)
+
+**Anti-rationalizations:**
+
+| Rationalization | Response |
+|-----------------|----------|
+| "I can see the bug right there" | Then reproduction takes 30 seconds. Do it. Eyes lie, tests don't. |
+| "The stack trace tells us everything" | Stack traces show WHERE, not WHY. Reproduce to confirm the why. |
+| "Bisect will take too long" | Bisect is logarithmic. Even 1000 commits = 10 steps. Use `git bisect run` for automation. |
+| "It's obvious — let me just fix it" | Obvious bugs get obvious wrong fixes. Reproduce first, then fix with confidence. |
+| "The test would be trivial" | Trivial tests catch trivial regressions. Write it. |
+| "This only happens in production" | Then you need production-like data/state. Create a staging reproduction with anonymized prod data. |
+
+**Gate:** Without a reproduction, stop and gather more evidence. Do not proceed to Step 2.5.
+
 ### Step 2.5: Multiple Root Causes
 
 ```

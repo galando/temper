@@ -144,6 +144,40 @@ AskUserQuestion:
 
 **"Other" (free-text change request)**: Edit design files, show what changed, re-show this gate.
 
+### ADR Generation
+
+After design.md is generated, check if the design contains **architectural decisions** that warrant an Architectural Decision Record (ADR). ADRs persist decisions for future reference and prevent "why did we do it this way?" confusion.
+
+**When to generate an ADR (only for architectural decisions):**
+- Database schema or storage technology choice (Postgres vs Redis, SQL vs NoSQL)
+- Framework or library selection for a new capability (auth, caching, messaging)
+- API contract design (REST vs GraphQL, versioning strategy)
+- Infrastructure or deployment architecture changes
+- Security architecture decisions (auth flow, encryption strategy)
+- Integration with external systems (payment provider, email service)
+
+**When NOT to generate an ADR (styling/implementation details):**
+- UI styling decisions (colors, fonts, layout)
+- Variable naming or code organization
+- Choice of utility function or helper library
+- Test structure or naming conventions
+
+**Procedure:**
+
+1. After design.md is written, scan for architectural decisions
+2. For each qualifying decision, generate `docs/decisions/NNNN-{slug}.md`:
+   - `NNNN` = sequential number (check existing ADRs for next number, start at 0001)
+   - `{slug}` = kebab-case summary of the decision
+   - Use template from `$CLAUDE_PLUGIN_ROOT/templates/adr.md`
+3. Fill in: Status (Proposed), Date, Context, Decision, Alternatives Considered, Consequences
+4. Never delete ADRs — supersede via new ADRs with "Supersedes: ADR-{NNNN}" reference
+5. If no architectural decisions found, skip ADR generation entirely
+
+**Example ADR filenames:**
+- `docs/decisions/0001-use-postgres-over-mongodb.md`
+- `docs/decisions/0002-rest-api-with-versioning.md`
+- `docs/decisions/0003-jwt-auth-with-refresh-tokens.md`
+
 ### Skip Conditions
 
 The Design stage is automatically skipped when:

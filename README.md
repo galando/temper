@@ -283,7 +283,7 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ## What's New
 
-All features from v4.0 through v4.4.1 — feedback loops, Cursor IDE support, pack system overhaul, and documentation accuracy.
+All features from v4.0 through v4.5.0 — feedback loops, Cursor IDE support, pack system overhaul, documentation accuracy, and 7 imports from addyosmani/agent-skills.
 
 ### Feedback Loops with Circuit Breakers
 
@@ -314,6 +314,30 @@ Priority 3 (lowest)  → $TEMPER_ROOT/.claude/packs/{name}/rules.md  (built-in)
 Packs can link to external plugins or skills (`plugin://my-linter`, `skill://security-review`), injecting their context alongside pack rules during phase execution. Phase scoping restricts packs to specific phases — a TDD pack only runs during build, a security pack only during review and check. Connection health validation checks that link targets exist, with graceful degradation if missing.
 
 Pack discovery results are cached to `.temper/pack-manifest.json` for instant subsequent loads. Quick-create launcher packs wrap any plugin or skill in seconds. All `/temper:pack` decisions use structured `AskUserQuestion` prompts.
+
+### Performance Pack
+
+Automatically detects performance anti-patterns during review and check: N+1 queries (loops with DB calls), missing pagination on unbounded endpoints, sync I/O in request handlers, and inefficient data structures. Frontend rules cover Core Web Vitals (LCP, INP, CLS), React memoization, bundle splitting, and lazy loading. Methodology gate: "Measure first" — blocks performance claims without baseline numbers.
+
+### API Design Pack
+
+Enforces API design discipline: types/contracts before implementation, validation at system boundaries, consistent error envelopes, and additive extension only (no breaking field changes). Detects breaking changes (removed fields, renamed endpoints, type changes) and flags unverified consumers. Enforces idempotency for write operations.
+
+### Deep Doubt Mode
+
+Opt-in adversarial review via `--doubt` flag or auto-triggered on high blast-radius changes. Spawns a fresh-context subagent tasked to find what is wrong with the code. Extracts claims, strips author intent, actively tries to break each claim. Findings classified: contract-misread > actionable > trade-off > noise. Max 3 cycles, stops early on trivial findings only.
+
+### ADR Generation
+
+`/temper:design` now generates Architectural Decision Records (ADRs) for architectural decisions (database choice, framework selection, API contract design, security architecture). ADRs are saved to `docs/decisions/NNNN-{slug}.md` with Status, Date, Context, Decision, Alternatives, and Consequences. Styling decisions are excluded. ADRs are never deleted — superseded by new ADRs.
+
+### Context Engineering Skill
+
+Hierarchical context loading strategy for AI coding agents: rules → architecture → source → errors → conversation. Enforces < 2K lines per task to maintain attention density. Loaded at the start of every `/temper` stage to prevent bloated context and hallucinations from insufficient context.
+
+### Source-Driven Development Skill
+
+Version-aware development that fetches current official documentation before writing framework-specific code. Detects installed dependency versions from package manifests, queries Context7 MCP for current API docs, and requires citation comments linking to official documentation. Surfaces conflicts between training-data assumptions and current library APIs.
 
 ### Design Phase
 
@@ -522,6 +546,8 @@ Packs are rule sets enforced during code generation and review. Three-tier resol
 | `tdd` | WARN | RED-GREEN-REFACTOR, coverage |
 | `security` | BLOCK | OWASP Top 10, no secrets in code |
 | `git` | SUGGEST | Conventional commits, branching |
+| `performance` | WARN/BLOCK | N+1 detection, pagination, Core Web Vitals, bundle splitting |
+| `api-design` | WARN/BLOCK | Additive extension, idempotency, consistent naming, validation at boundaries |
 
 Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/your-pack/`. Link packs to plugins or skills for automatic context injection. Scope packs to specific phases (build, review, check) to keep prompt context focused.
 
