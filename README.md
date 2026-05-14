@@ -283,7 +283,7 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ## What's New
 
-All features from v4.0 through v4.5.0 — feedback loops, Cursor IDE support, pack system overhaul, documentation accuracy, and 7 imports from addyosmani/agent-skills.
+All features from v4.0 through v4.5.1 — feedback loops, Cursor IDE support, pack system overhaul, documentation accuracy, and 7 imports from addyosmani/agent-skills.
 
 ### Feedback Loops with Circuit Breakers
 

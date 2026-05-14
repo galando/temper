@@ -1,7 +1,7 @@
 {
   "name": "temper",
   "description": "Temper: Quality gates, blast radius analysis, and intent-driven development for AI-generated code",
-  "version": "4.5.0",
+  "version": "4.5.1",
   "author": {
     "name": "galando",
     "url": "https://github.com/galando/temper"
@@ -22,8 +22,8 @@
     "./.claude/commands/status.md"
   ],
   "skills": [
-    "./.claude/skills/temper-core/SKILL.md",
-    "./.claude/skills/context-engineering/SKILL.md",
-    "./.claude/skills/source-driven-development/SKILL.md"
+    "./.claude/skills/temper-core",
+    "./.claude/skills/context-engineering",
+    "./.claude/skills/source-driven-development"
   ]
 }
