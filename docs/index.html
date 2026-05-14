@@ -812,7 +812,7 @@
         <span>Temper</span>
       </a>
       <div class="nav-links">
-        <a href="#whats-new" style="color: var(--accent);">What's New</a>
+        <a href="#capabilities" style="color: var(--accent);">Capabilities</a>
         <a href="#why">IDD+BDD+TDD</a>
         <a href="#flow">How it works</a>
         <a href="#packs">Packs</a>
@@ -861,77 +861,47 @@
     </div>
   </section>
 
-  <section id="whats-new">
-    <div class="section-label">What's New</div>
-    <h2 class="section-title">Feedback Loops, Cursor IDE, Pack System</h2>
-    <p class="section-desc">All features from v4.0 through v4.4.1 — feedback loops with circuit breakers, Cursor IDE support with feature parity, a three-tier pack system with linking, and honest documentation.</p>
+  <section id="capabilities">
+    <div class="section-label">Capabilities</div>
+    <h2 class="section-title">The full SDLC, automated</h2>
+    <p class="section-desc">Temper runs the complete software development lifecycle — plan, design, build, review, check — with stage gates, feedback loops, and observability built in.</p>
 
     <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
       <div class="why-item">
         <h4>Feedback Loops</h4>
-        <p>Review finds issues? Gate shows "Loop back to Build". Check fails tests? Targeted fix task. Build discovers bad plan? Loop back to Plan. Circuit breaker: max 2 loops, same issue twice = stop.</p>
+        <p>Review finds issues? Loop back to Build. Check fails tests? Targeted fix. Bad plan? Loop back to Plan. Circuit breakers: max 2 loops, same issue twice = stop.</p>
       </div>
       <div class="why-item">
-        <h4>Cursor IDE Support</h4>
-        <p>Full Temper for <a href="https://cursor.sh" style="color: var(--accent);">Cursor</a>. Generation script mirrors <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">.claude/</code> to <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">.cursor/</code>. Commands, skills, packs — all adapted.</p>
+        <h4>Design Phase</h4>
+        <p>System architecture, API contracts, database schema, integration points, and decision logs. Auto-skipped for simple features, enforced for complex ones.</p>
       </div>
       <div class="why-item">
-        <h4>Pack System Overhaul</h4>
-        <p>Three-tier resolution (project > global > built-in), plugin/skill linking, phase scoping, cached manifests, quick-create launchers. Packs are a first-class extensibility layer.</p>
+        <h4>Live Verification</h4>
+        <p>Every scenario runs against your test runner. Real pass/fail, real output. Not opinions — proof. Evidence labels: <strong style="color:var(--success)">[PROVEN]</strong>, <strong style="color:var(--warning)">[HEURISTIC]</strong>, <strong style="color:var(--fg-muted)">[SEMANTIC]</strong>.</p>
       </div>
       <div class="why-item">
-        <h4>Context Accumulation</h4>
-        <p>Each stage writes structured context for downstream stages. No more "agent amnesia" — Review knows what Build struggled with, Check knows what Review already fixed.</p>
+        <h4>MCP Integration</h4>
+        <p>Optional MCP servers upgrade analysis: <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">code-review-graph</code> for blast radius and call chains, <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">semgrep</code> for SAST scanning. Progressive enhancement.</p>
       </div>
     </div>
 
     <div class="why-grid" style="grid-template-columns: repeat(4, 1fr); margin-top: 1rem;">
       <div class="why-item">
-        <h4>Design Phase</h4>
-        <p>System architecture, API contracts, DB schema, integration points, and decision logs. Auto-skipped for simple features.</p>
+        <h4>Context Accumulation</h4>
+        <p>Each stage writes structured context for downstream stages. Review knows what Build struggled with, Check knows what Review already fixed. No agent amnesia.</p>
       </div>
       <div class="why-item">
-        <h4>Cross-Walkthrough</h4>
-        <p>Plan and Design walkthroughs link to each other at their final gates. Skip to build from any section. Non-linear exploration.</p>
+        <h4>Interactive Walkthrough</h4>
+        <p>Walk through plans and designs section by section — intent, scenarios, architecture, blast radius, tasks. Skip to build from any point.</p>
       </div>
       <div class="why-item">
         <h4>Observability</h4>
-        <p>Per-stage metrics: tokens, latency, tool calls. Tracked in <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper:status</code>. Config reference, not aspirational numbers.</p>
+        <p>Per-stage metrics: tokens, latency, tool calls. Tracked in <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper:status</code>. Real numbers from your runs, not aspirational benchmarks.</p>
       </div>
       <div class="why-item">
-        <h4>Honest Docs</h4>
-        <p>Observability shows config, not fake numbers. Adaptive Learning marked as planned. All version strings and install commands verified.</p>
+        <h4>Cursor IDE Parity</h4>
+        <p>Full Temper for <a href="https://cursor.sh" style="color: var(--accent);">Cursor</a>. Commands, skills, packs — all adapted. One install script gives you feature parity with Claude Code.</p>
       </div>
-    </div>
-
-    <div style="margin-top: 2rem; text-align: center;">
-      <a href="https://github.com/galando/temper#whats-new" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
-    </div>
-  </section>
-
-  <section>
-    <div class="section-label">What's New in v3.1.0</div>
-    <h2 class="section-title">Proven Verification</h2>
-    <p class="section-desc">v3.1.0 makes Temper's analysis <strong>real</strong>. Instead of reading tests and judging quality, Temper now <em>runs</em> your tests and shows you the proof.</p>
-
-    <div class="why-grid" style="grid-template-columns: repeat(3, 1fr);">
-      <div class="why-item">
-        <h4>Live Scenario Verification</h4>
-        <p>Every Gherkin scenario in intent.md gets executed individually against your test runner. Real pass/fail, real output, real execution time. Not Claude's opinion — proof.</p>
-      </div>
-      <div class="why-item">
-        <h4>MCP-Powered Analysis</h4>
-        <p>Optional MCP servers upgrade heuristic analysis to proven findings. <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">code-review-graph</code> for blast radius and call chains, <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">semgrep</code> for SAST scanning.</p>
-      </div>
-      <div class="why-item">
-        <h4>Evidence Labels</h4>
-        <p>Every finding carries a label: <strong style="color:var(--success)">[PROVEN]</strong> (tool output), <strong style="color:var(--warning)">[HEURISTIC]</strong> (grep-based), or <strong style="color:var(--fg-muted)">[SEMANTIC]</strong> (interpretation). You know exactly what's verified.</p>
-      </div>
-    </div>
-
-    <div style="margin-top: 2rem; text-align: center;">
-      <p style="color: var(--fg-muted); font-size: 0.9rem;">No MCP servers? Everything works exactly as v3.0.0. Progressive enhancement, zero breaking changes.</p>
-      <a href="https://github.com/galando/temper#whats-new-in-v311" class="btn btn-secondary" style="margin-top: 1rem;" target="_blank">See full changelog on GitHub</a>
     </div>
   </section>
 

@@ -27,6 +27,8 @@ alwaysApply: false
 - All tests pass
 - Or: auto-chained from /temper:build (which already validated)
 
+For confidence scoring and review memory, apply the temper-core skill.
+
 ## Execution
 
 ### Context Loading

@@ -1,7 +1,7 @@
 {
   "name": "temper",
   "description": "Temper: Quality gates, blast radius analysis, and intent-driven development for AI-generated code",
-  "version": "4.5.1",
+  "version": "4.5.2",
   "author": {
     "name": "galando",
     "url": "https://github.com/galando/temper"

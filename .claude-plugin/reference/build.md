@@ -412,11 +412,7 @@ AskUserQuestion:
 
 ## Quality Gates
 
-| Level | Behavior | Examples |
-|-------|----------|----------|
-| **SUGGEST** | Non-blocking, logged only | "Variable name could be more descriptive" |
-| **WARN** | Highlighted, developer decides | "No test for this method", "Method exceeds 30 lines" |
-| **BLOCK** | Must fix before proceeding | "SQL injection", "Hardcoded secret", "Architectural violation" |
+For quality gate definitions (SUGGEST/WARN/BLOCK), apply the temper-core skill.
 
 **Pattern-to-rule mapping:**
 

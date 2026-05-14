@@ -32,6 +32,8 @@ This stage may run in two modes:
 
 In both modes, the planning methodology is identical.
 
+**Context loading strategy:** Apply the context-engineering skill for hierarchical loading (rules -> arch -> source -> errors, under 2K lines/task). The file list below specifies WHAT to load; the skill specifies HOW and WHEN.
+
 ### Phase 0: Detect Input Type
 
 Determine what the user provided:
