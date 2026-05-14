@@ -20,4 +20,9 @@ description: "Technical code review with confidence scoring, review memory, and 
 6. Auto-fix high-priority issues (if enabled, max 2 loops)
 7. Update metrics + review memory
 
+### Active Skills
+
+- **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors, under 2K lines/task)
+- **Temper Core** — stack detection, pack resolution, quality gates
+
 **Diff-aware: focuses on what changed, catches N+1 and performance issues**

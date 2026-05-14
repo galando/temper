@@ -8,6 +8,11 @@ alwaysApply: false
 
 **Goal:** Run the project's full validation pipeline. Auto-detects stack and runs the right commands.
 
+## Active Skills
+
+- **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors, under 2K lines/task)
+- **Temper Core** — stack detection, pack resolution, quality gates
+
 ## Execution
 
 ### Context Loading

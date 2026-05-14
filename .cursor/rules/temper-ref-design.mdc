@@ -10,6 +10,11 @@ alwaysApply: false
 
 **When active:** `phases.design: true` in temper.config AND feature complexity >= medium.
 
+## Active Skills
+
+- **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors, under 2K lines/task)
+- **Temper Core** — stack detection, pack resolution, quality gates
+
 ## Execution
 
 ### Context Loading

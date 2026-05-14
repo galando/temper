@@ -1,7 +1,5 @@
 ---
 description: "Temper core: stack detection, quality gates, blast radius, learning"
-triggers:
-  - file_pattern: "*.java;*.ts;*.tsx;*.js;*.jsx;*.py;*.go;*.rs"
 ---
 
 # Temper Core
