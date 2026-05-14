@@ -29,11 +29,11 @@ Three questions every AI-generated feature should answer:
 2. **Does it do the right things?** (Behavior)
 3. **Does the code work?** (Tests)
 
-Most AI tools answer only the third. Temper answers all three — and now (v3.1.0) adds **proven verification with live test execution and MCP-powered analysis**, plus (v4.5.0) **feedback loops, Cursor IDE support, three-tier pack system, performance + api-design packs, Deep Doubt adversarial review, ADR generation, context engineering, and source-driven development**.
+Most AI tools answer only the third. Temper answers all three — **proven verification with live test execution and MCP-powered analysis**, **feedback loops, Cursor IDE support, three-tier pack system, performance + api-design packs, Deep Doubt adversarial review, ADR generation, context engineering, and source-driven development**.
 
 ## What's New
 
-All features from v4.0 through v4.5.0 — feedback loops, Cursor IDE support, pack system overhaul, 7 imports from addyosmani/agent-skills, and documentation accuracy.
+Feedback loops, Cursor IDE support, pack system overhaul, 7 imports from addyosmani/agent-skills, and documentation accuracy.
 
 | Feature | What It Does |
 |---------|-------------|
@@ -53,9 +53,9 @@ All features from v4.0 through v4.5.0 — feedback loops, Cursor IDE support, pa
 | **Cached Pack Manifest** | `.temper/pack-manifest.json` for instant loads. Auto-rebuilds on config changes |
 | **Quick-Create Launchers** | One command wraps any plugin or skill as a BLOCK-level pack |
 
-## What's New in v3.1.0
+## Proven Verification
 
-v3.1.0 adds **proven verification** — live test execution and MCP-powered analysis:
+Live test execution and MCP-powered analysis:
 
 | Feature | What It Does |
 |---------|-------------|
@@ -63,7 +63,7 @@ v3.1.0 adds **proven verification** — live test execution and MCP-powered anal
 | **MCP-Powered Analysis** | `code-review-graph` for blast radius, `semgrep` for SAST scanning |
 | **Evidence Labels** | `[PROVEN]`, `[HEURISTIC]`, `[SEMANTIC]` labels on every finding |
 
-## What's New in v3.0.0
+## Quality Intelligence
 
 A quality intelligence layer for review and check — zero new dependencies:
 
