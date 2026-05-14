@@ -25,6 +25,12 @@ argument-hint: "<bug-description-or-JIRA-123>"
 
 Each stage runs in an **isolated Agent subprocess** — genuine context clearing, not theater.
 
+### Active Skills
+
+- **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors, under 2K lines/task)
+- **Temper Core** — stack detection, pack resolution, quality gates
+- **Source-Driven Development** — before writing framework-specific code in the FIX stage: detect installed version → fetch current docs → cite sources → surface API conflicts
+
 ```
 ORCHESTRATOR (this file)
   │

@@ -22,3 +22,8 @@ Levels (stop on failure):
 5. Lint/Format
 6. Type Check
 7. Security (dependency scan)
+
+### Active Skills
+
+- **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors, under 2K lines/task)
+- **Temper Core** — stack detection, pack resolution, quality gates

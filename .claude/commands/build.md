@@ -20,3 +20,9 @@ description: "Execute plan with TDD and quality gates"
 6. **Resumes interrupted builds from checkpoint**
 7. After all tasks: auto-chain → /temper:review → /temper:check
 8. Report results, ask to commit
+
+### Active Skills
+
+- **Temper Core** — stack detection, pack resolution, quality gates
+- **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors, under 2K lines/task)
+- **Source-Driven Development** — before writing framework-specific code: detect installed version → fetch current docs → cite sources → surface API conflicts. Skip for plain logic or known patterns

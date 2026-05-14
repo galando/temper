@@ -28,4 +28,9 @@ argument-hint: "<feature-name-or-JIRA-123>"
 11. For Medium and Complex: generate mermaid diagram + ASCII art equivalent in plan.md (## Diagram section); render ASCII in terminal summary (not raw mermaid)
 12. Present for approval with 4 options: Continue / Walkthrough / Change / Save
 
+### Active Skills
+
+- **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors, under 2K lines/task)
+- **Temper Core** — stack detection, pack resolution, quality gates
+
 **Scenarios drive architecture. Every file must trace to a scenario or infrastructure need.**
