@@ -24,14 +24,9 @@ Files to load at start:
 
 ### Step 1: Detect Stack
 
-Read project files to determine stack:
+For stack detection order, apply the temper-core skill. Detection produces a stack identifier that determines which validation commands to run.
 
-```
-DETECTION ORDER (first match wins):
-
-1. Check .claude/temper.config → stack field (if not "auto")
-2. Check .claude/presets/*.yaml → stack section
-3. Auto-detect from project files:
+Stack-specific validation commands:
 
    pom.xml OR build.gradle → Java/Spring Boot
      compile: ./mvnw compile OR ./gradlew compileJava
@@ -61,8 +56,7 @@ DETECTION ORDER (first match wins):
      lint:  cargo clippy
      build: cargo build
 
-4. Company preset OVERRIDES auto-detected commands
-```
+Company preset OVERRIDES auto-detected commands.
 
 ### Step 2: Run Validation Levels (in order, stop on BLOCK-level failure)
 

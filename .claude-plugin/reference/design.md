@@ -20,6 +20,8 @@ This stage may run in two modes:
 
 In both modes, the design methodology is identical.
 
+**Context loading strategy:** Apply the context-engineering skill for hierarchical loading (rules -> arch -> source -> errors, under 2K lines/task). The file list below specifies WHAT to load; the skill specifies HOW and WHEN.
+
 Files to load at start:
 1. `.temper/specs/{feature}/intent.md`
 2. `.temper/specs/{feature}/plan.md`

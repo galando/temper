@@ -20,6 +20,8 @@ description: "Technical code review with confidence scoring, review memory, and 
 - All tests pass
 - Or: auto-chained from /temper:build (which already validated)
 
+Confidence scoring and review memory follow the temper-core skill definitions.
+
 ## Execution
 
 ### Context Loading
