@@ -52,6 +52,8 @@ RULES=(
     temper-ref-plan.mdc
     temper-ref-review.mdc
     temper-ref-status.mdc
+    temper-skill-context-engineering.mdc
+    temper-skill-source-driven.mdc
 )
 for rule in "${RULES[@]}"; do download "rules/$rule"; done
 
@@ -72,7 +74,7 @@ for cmd in "${COMMANDS[@]}"; do download "commands/$cmd"; done
 echo "Temper v${VERSION} — Cursor IDE Setup"
 echo ""
 echo "  Commands: 9"
-echo "  Rules:    15"
+echo "  Rules:    17"
 echo ""
 echo "Setup complete. Temper commands available in Cursor:"
 echo "  /temper          — Unified SDLC"

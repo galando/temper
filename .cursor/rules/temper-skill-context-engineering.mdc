@@ -1,0 +1,86 @@
+---
+description: "Hierarchical context loading for AI coding agents — load what you need, defer what you don't"
+alwaysApply: false
+---
+
+# Context Engineering
+
+Load the right information, in the right order, at the right time. Maximize signal per token.
+
+```
+Priority 1: rules      → pack rules, stack conventions, guardrails
+Priority 2: arch       → module boundaries, dependency graph, entry points
+Priority 3: source     → specific files relevant to the current task
+Priority 4: errors     → recent failures, test output, runtime errors
+Priority 5: conversation → prior decisions, user intent, stakeholder context
+```
+
+## When to Use
+
+- Start of every Temper stage (plan, design, build, review, check, fix)
+- Before making changes to unfamiliar code
+- When resuming a session from saved state
+- When context feels stale (agent is repeating itself or missing obvious facts)
+
+## Process
+
+### Step 1: Determine Task Scope
+
+Before loading anything, answer:
+
+1. **What am I doing?** (fixing a bug, adding a feature, reviewing code)
+2. **What files am I likely to touch?** (from tasks.md or plan.md)
+3. **What do I already know?** (from current context or build-state.json)
+
+### Step 2: Load Rules (always first)
+
+Load in this order:
+1. `.claude/temper.config` — enabled packs, stack, review settings
+2. `.claude/packs/{enabled-pack}/rules.md` — only enabled packs
+3. `.claude/packs/stacks/{detected-stack}.md` — stack-specific patterns (if exists)
+4. `.claude/CLAUDE.md` — project conventions
+
+**Budget:** ~200 lines total. If packs exceed this, load only the packs scoped to the current phase.
+
+### Step 3: Load Architecture (if touching unfamiliar code)
+
+1. Start with the file you need to change
+2. Trace dependencies: what does it import? What imports it?
+3. Stop at 2 hops — do not traverse the entire dependency graph
+4. If `plan.md` exists: read the file list section only (not the full plan)
+
+**Budget:** ~400 lines. Use `grep` to find imports, not `cat` to read entire files.
+
+### Step 4: Load Source (only what's needed)
+
+1. Read only files listed in tasks.md or plan.md
+2. Read tests before implementation (TDD discipline)
+3. Read error logs or test output if fixing a bug
+4. Skip files you're not modifying and don't need to understand for the change
+
+**Budget:** ~1000 lines. This is the bulk of your context. Be selective.
+
+### Step 5: Load Errors (if fixing or debugging)
+
+1. Test output from the last run
+2. `check-context.json` or `review-context.json` (if resuming from feedback loop)
+3. Git diff (if reviewing changes)
+4. Runtime error logs or stack traces
+
+**Budget:** ~200 lines. Only relevant failures, not full test suites.
+
+### Step 6: Defer Everything Else
+
+These are loaded ONLY when explicitly needed:
+- Full file contents of files not being modified
+- Historical git log beyond the last 5 commits
+- Documentation for frameworks you're not currently using
+- Design docs for features you're not currently building
+
+## Constraint: Under 2K Lines Per Task
+
+Total context loaded per task should stay under 2000 lines. If approaching this limit:
+
+1. **Drop architecture** — you probably already understand the module boundaries
+2. **Summarize source** — read the function signatures, skip the bodies
+3. **Defer errors** — only load the specific test failure you're fixing

@@ -8,6 +8,12 @@ alwaysApply: false
 
 **Goal:** Implement the approved plan, task by task, with TDD and graduated quality gates.
 
+## Active Skills
+
+- **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors, under 2K lines/task)
+- **Temper Core** — stack detection, pack resolution, quality gates
+- **Source-Driven Development** — before writing framework-specific code: detect installed version → fetch current docs → cite sources → surface API conflicts. Skip for plain logic or known patterns
+
 ## Prerequisites
 
 - Approved plan exists (from `/temper:plan`)

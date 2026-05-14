@@ -8,6 +8,11 @@ alwaysApply: false
 
 **Goal:** Transform feature request into implementation plan with blast radius analysis and risk assessment.
 
+## Active Skills
+
+- **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors, under 2K lines/task)
+- **Temper Core** — stack detection, pack resolution, quality gates
+
 ## Usage
 
 ```
