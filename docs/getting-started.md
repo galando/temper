@@ -247,8 +247,6 @@ Install optional MCP servers to upgrade heuristic analysis to proven findings:
 
 Full setup instructions: [Recommended Setup](recommended-setup)
 
-See [README](..#whats-new-in-v311) for details on MCP setup improvements and all v3.1.1 features.
-
 ### Verify Your Setup
 
 ```bash

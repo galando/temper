@@ -10,7 +10,6 @@ nav_order: 1
 **Your AI writes fast. Temper makes it last.**
 {: .fs-6 .fw-300 }
 
-[![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases)](https://github.com/galando/temper/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [Get started now](#quick-start){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
@@ -29,52 +28,68 @@ Three questions every AI-generated feature should answer:
 2. **Does it do the right things?** (Behavior)
 3. **Does the code work?** (Tests)
 
-Most AI tools answer only the third. Temper answers all three — **proven verification with live test execution and MCP-powered analysis**, **feedback loops, Cursor IDE support, three-tier pack system, performance + api-design packs, Deep Doubt adversarial review, ADR generation, context engineering, and source-driven development**.
+Most AI tools answer only the third. Temper answers all three.
 
-## What's New
+## Features
 
-Feedback loops, Cursor IDE support, pack system overhaul, 7 imports from addyosmani/agent-skills, and documentation accuracy.
+### SDLC Pipeline
 
 | Feature | What It Does |
 |---------|-------------|
+| **Unified Command** | One command runs the full SDLC: `/temper "add login feature"` |
 | **Feedback Loops** | Review/Check → Build with circuit breakers (max 2 loops). Build → Plan (human-driven, 1 per cycle) |
-| **Cursor IDE Support** | Static `.cursor/` files checked into git. Install via curl — no Python required |
-| **Three-Tier Pack Resolution** | project-local > global > built-in. Plugin/skill linking, phase scoping, connection health |
-| **Performance Pack** | N+1 detection, pagination rules, Core Web Vitals, bundle splitting, measure-first gate |
-| **API Design Pack** | Additive extension, idempotency, consistent naming, breaking change detection |
-| **Deep Doubt Mode** | Adversarial review with fresh-context subagent. Claim extraction, classification, max 3 cycles |
-| **ADR Generation** | `/temper:design` generates Architectural Decision Records for architectural decisions |
-| **Context Engineering** | Hierarchical context loading (<2k lines/task) at every stage start |
-| **Source-Driven Development** | Version detection → Context7 doc fetch → citation before writing framework code |
-| **Debugging Procedure** | Structured RCA: Reproduce → Localize → Reduce → Bisect → Root Cause → Regression Test |
+| **Stage Gates** | Interactive approval at every stage — Continue / Walkthrough / Change / Save |
+| **Agent Subprocesses** | Each stage runs in isolated context — genuine context clearing, not theater |
 | **Design Phase** | System architecture, API contracts, DB schema, ADRs. Auto-skipped for simple features |
 | **Cross-Walkthrough Navigation** | Plan ↔ Design walkthrough links, skip-to-build on every section |
 | **Observability** | Per-stage metrics: tokens, latency, tool calls. Tracked in `/temper:status` |
-| **Cached Pack Manifest** | `.temper/pack-manifest.json` for instant loads. Auto-rebuilds on config changes |
-| **Quick-Create Launchers** | One command wraps any plugin or skill as a BLOCK-level pack |
 
-## Proven Verification
+### Quality Gates
 
-Live test execution and MCP-powered analysis:
+| Feature | What It Does |
+|---------|-------------|
+| **Diff-Aware Review** | Builds a risk fingerprint from changed regions, focuses 80% review attention on high-risk hunks |
+| **Security Hot Paths** | Classifies files by sensitivity (CRITICAL/HIGH/MEDIUM/LOW), traces call chains to entry points, elevates scrutiny automatically |
+| **Cross-File Consistency** | Detects pattern drift — new file uses `try/catch` but peers use `Result<>`? Flagged |
+| **Test Gap Analysis** | Reads implementation + test code side-by-side, finds untested edge cases, BLOCKs on untested security code |
+| **API Diff Review** | Detects API shape changes from git diff, greps for consumers, flags unverified breaking changes |
+| **Performance Pattern Detection** | Scans for N+1 queries, missing pagination, sync I/O, inefficient data structures |
+| **Confidence Scoring** | 0.0–1.0 confidence on every finding, configurable threshold, review memory |
+
+### Verification
 
 | Feature | What It Does |
 |---------|-------------|
 | **Live Scenario Verification** | Every Gherkin scenario executed individually against your test runner |
 | **MCP-Powered Analysis** | `code-review-graph` for blast radius, `semgrep` for SAST scanning |
 | **Evidence Labels** | `[PROVEN]`, `[HEURISTIC]`, `[SEMANTIC]` labels on every finding |
+| **Deep Doubt Mode** | Adversarial review with fresh-context subagent. Claim extraction, classification, max 3 cycles |
+| **Debugging Procedure** | Structured RCA: Reproduce → Localize → Reduce → Bisect → Root Cause → Regression Test |
 
-## Quality Intelligence
-
-A quality intelligence layer for review and check — zero new dependencies:
+### Context & Source
 
 | Feature | What It Does |
 |---------|-------------|
-| **Security Hot Paths** | Classifies files by sensitivity (CRITICAL/HIGH/MEDIUM/LOW), traces call chains to entry points, elevates scrutiny automatically |
-| **Diff-Aware Review** | Builds a risk fingerprint from changed regions, focuses 80% review attention on high-risk hunks |
-| **Cross-File Consistency** | Detects pattern drift — new file uses `try/catch` but peers use `Result<>`? Flagged |
-| **Test Gap Analysis** | Reads implementation + test code side-by-side, finds untested edge cases, BLOCKs on untested security code |
-| **API Diff Review** | Detects API shape changes from git diff, greps for consumers, flags unverified breaking changes |
-| **Performance Pattern Detection** | Scans for N+1 queries, missing pagination, sync I/O, inefficient data structures |
+| **Context Engineering** | Hierarchical context loading (<2k lines/task) at every stage start — rules → arch → source → errors |
+| **Source-Driven Development** | Version detection → Context7 doc fetch → citation before writing framework code |
+| **ADR Generation** | `/temper:design` generates Architectural Decision Records for architectural decisions |
+
+### Pack System
+
+| Feature | What It Does |
+|---------|-------------|
+| **Three-Tier Pack Resolution** | project-local > global > built-in. Plugin/skill linking, phase scoping, connection health |
+| **Cached Pack Manifest** | `.temper/pack-manifest.json` for instant loads. Auto-rebuilds on config changes |
+| **Quick-Create Launchers** | One command wraps any plugin or skill as a BLOCK-level pack |
+| **Performance Pack** | N+1 detection, pagination rules, Core Web Vitals, bundle splitting, measure-first gate |
+| **API Design Pack** | Additive extension, idempotency, consistent naming, breaking change detection |
+
+### IDE Support
+
+| Feature | What It Does |
+|---------|-------------|
+| **Claude Code** | Native plugin via marketplace. Skills, commands, MCP integration |
+| **Cursor IDE** | Static `.cursor/` files. Install via curl — no Python or git required |
 
 ## IDD + BDD + TDD: Three Layers, One File
 
