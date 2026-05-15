@@ -263,6 +263,26 @@ Each stage produces structured artifacts that accumulate in `.temper/specs/{feat
 }
 ```
 
+**learning.json** (written by Review Step 8.5, read by Status and Review Step 4):
+
+```json
+{
+  "version": 1,
+  "last_updated": "{ISO timestamp}",
+  "detected_patterns": [],
+  "suppressed_patterns": [],
+  "suggestion_queue": [],
+  "learning_curve": {
+    "reviews_sampled": [],
+    "issues_per_review": [],
+    "trend": "improving | stable | degrading | insufficient_data",
+    "improvement_pct": 0
+  }
+}
+```
+
+Full schema: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/learning.md`
+
 ### Context Loading Rules
 
 | Stage | Reads | Writes |
@@ -270,8 +290,9 @@ Each stage produces structured artifacts that accumulate in `.temper/specs/{feat
 | Plan | Nothing (first stage) | intent.md, tasks.md, plan.md |
 | Design | intent.md, plan.md | design.md |
 | Build | tasks.md, intent.md, review-context.json (on feedback re-entry) | build-context.json |
-| Review | intent.md, changed files (git diff), build-context.json | review-context.json |
+| Review | intent.md, changed files (git diff), build-context.json, learning.json (noise filter) | review-context.json, learning.json (pattern detection) |
 | Check | intent.md, review-context.json | check-context.json |
+| Status | metrics.json, review-memory.json, learning.json | — |
 
 ### Context Versioning
 

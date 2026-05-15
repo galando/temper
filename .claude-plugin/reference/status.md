@@ -66,6 +66,19 @@ Detect which MCP tools are available by checking tool capabilities:
    - ratio = proven / total * 100 (if total > 0)
 ```
 
+### Step 1.7: Read Learning State
+
+```
+1. Read .temper/learning.json if it exists
+2. If absent: mark learning as "not initialized" (graceful degradation)
+3. Extract:
+   - detected_patterns count, active/degraded/suppressed breakdown
+   - suppressed_patterns count
+   - suggestion_queue with pending items
+   - learning_curve (trend, improvement_pct)
+4. If learning.json exists but is malformed: warn and skip learning section
+```
+
 ### Step 2: Display Dashboard
 
 ```
@@ -128,6 +141,15 @@ Detect which MCP tools are available by checking tool capabilities:
 │   semgrep: {available/unavailable}                    │
 │   Evidence ratio: {X}% [PROVEN] ({N} proven / {N} heuristic) │
 │   Setup: docs/recommended-setup.md                   │
+│                                                      │
+│ ADAPTIVE LEARNING                                    │
+│   Patterns detected: {N} ({M} active, {D} degraded) │
+│   Suppressed: {N} patterns (noise reduction)         │
+│   Promoted to rules: {N}                             │
+│   Pending suggestions: {N}                           │
+│   Learning curve: {improving/stable/degrading/insufficient_data} │
+│     Issues/review: {trend} ({improvement_pct}% change) │
+│   (If learning.json absent: "Adaptive learning: not yet initialized") │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -147,6 +169,32 @@ AskUserQuestion:
       description: "Mark in review memory as 'no-promote'."
   multiSelect: false
 ```
+
+### Step 3.5: Adaptive Learning Suggestion Prompt
+
+If `learning.json` exists and `suggestion_queue` contains items with status "pending":
+
+```
+AskUserQuestion:
+  question: "SUGGESTION: Promote '{pattern_id}' to {severity} rule?"
+  options:
+    - label: "Yes, promote to rule"
+      description: "Move rule template to .claude/packs/adaptive-learning/rules.md and mark as accepted."
+    - label: "No, dismiss suggestion"
+      description: "Mark suggestion as rejected in learning.json."
+    - label: "Skip for now"
+      description: "Leave suggestion pending for later."
+  multiSelect: false
+```
+
+On "Yes, promote to rule":
+1. Read the rule template from `.temper/learning/suggestions/{pattern_id}.md`
+2. Append it to `.claude/packs/adaptive-learning/rules.md`
+3. Update `suggestion_queue[].status` to "accepted" in learning.json
+4. Update `detected_patterns[].status` to "promoted" in learning.json
+
+On "No, dismiss":
+1. Update `suggestion_queue[].status` to "rejected" in learning.json
 
 ### Metrics Schema
 

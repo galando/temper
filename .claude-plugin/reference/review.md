@@ -624,14 +624,14 @@ FINDING: [MEDIUM] PaymentService introduces try/catch error handling
 
 After 3+ dismissals of same pattern type → auto-suppress consistency warnings for that pattern.
 
-### Step 3.6: API Contract Validation
+### Step 3.7: API Contract Validation
 
 Detect API contract changes and verify consumers are updated. Catches breaking changes before they reach staging/production.
 
 **Only runs when changed files include API boundary files:**
 
 ```
-Trigger detection — run Step 3.6 if ANY changed file matches:
+Trigger detection — run Step 3.7 if ANY changed file matches:
 - src/controllers/**, src/routes/**, api/**
 - Files ending in: *Controller.*, *Routes.*, *Dto.*, *Request.*, *Response.*
 - Files in types/ or interfaces/ that export shared types
@@ -964,6 +964,47 @@ Append to `.temper/metrics.json`:
 
 When a pattern reaches 3+ accepted: suggest auto-rule in `/temper:status`.
 When a pattern reaches 5+ dismissed: auto-suppress.
+
+### Step 8.5: Post-Review Learning Hook
+
+After updating review memory (Step 8), run the adaptive learning pattern detection. This hook is a no-op if `.temper/learning.json` does not exist (backward compatible).
+
+```
+1. CHECK: Does .temper/learning.json exist?
+   - If NO: skip this step entirely (no errors, no warnings)
+   - If YES: proceed
+
+2. READ findings from this review (category, file_path, description)
+   READ review-memory.json patterns (acceptance/dismissal history)
+
+3. CLUSTER findings by (category, file_path_pattern, description_keywords):
+   - file_path_pattern: extract directory prefix (e.g., src/services/*)
+   - description_keywords: extract first 3 significant words from description
+   - Categories: security, performance, quality, logic, architecture, test_gap, consistency
+
+4. MATCH each cluster against learning.json detected_patterns:
+   - If pattern exists: increment total_shown, update acceptance/dismissal counts
+   - If new AND count >= 2: create new detected pattern entry
+
+5. RUN Suggestion Engine on all detected patterns:
+   - Check promotion criteria:
+     | Accepted >= 3 AND acceptance_rate >= 70% | → Suggest as WARN rule |
+     | Accepted >= 5 AND acceptance_rate >= 80% | → Suggest as BLOCK rule (security/architecture only) |
+   - If promotable: write rule template to .temper/learning/suggestions/{pattern_id}.md
+   - Add entry to suggestion_queue[] with status "pending"
+
+6. RUN Noise Filter on all detected patterns:
+   - Check suppression criteria:
+     | Dismissed >= 3 AND acceptance_rate < 30% | → Downgrade severity by 1 level |
+     | Dismissed >= 5 AND acceptance_rate < 10% | → Auto-suppress entirely |
+   - Apply context-specific suppressions independently per context
+   - Move suppressed patterns to suppressed_patterns[]
+
+7. WRITE updated learning.json
+8. UPDATE learning_curve in learning.json (derive from metrics.json history)
+```
+
+Full algorithm details: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/learning.md`
 
 ### Context-Dependent Dismissals
 
