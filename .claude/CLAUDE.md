@@ -12,6 +12,7 @@
 | `/temper:pack` | Manage quality packs |
 | `/temper:status` | Quality + observability dashboard |
 
+**v5.0.0:** Capabilities — architecture depth review, grill-me challenge mode, config suggestions, interactive HTML plan review
 **v4.6.0:** Adaptive Learning — pattern detection, rule suggestions, noise reduction
 **v4.5.2:** Deduplicate reference docs and Cursor rules — skills are the single source of truth, docs delegate
 **v4.5.1:** Fix skills loading — plugin.json skills paths must be directories, not SKILL.md file paths

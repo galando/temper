@@ -45,9 +45,26 @@ At each stage, you see a nice summary and choose to proceed:
 
 | Response | Action |
 |----------|--------|
-| **Y** | Proceed, context clears, next stage begins |
-| **e** | Edit intent.md, then re-ask |
-| **n** | Stop, save state, resume later with `/temper --resume` |
+| **Continue to Build** | Proceed, context clears, next stage begins |
+| **Walk through step by step** | Interactive walkthrough: each section explained in detail |
+| **Grill Me** | Socratic challenge mode — adversarial questions that stress-test your plan |
+| **Open HTML review** | Browser-based review with inline comments (Google Doc-style) |
+| **Save for later** | Stop, save state, resume later with `/temper` |
+| **Other** | Type a change request, edits applied, gate re-appears |
+
+**Review Gate Additional Options:**
+
+| Response | Action |
+|----------|--------|
+| **Fix all & continue to Check** | Apply all fixes, proceed to validation |
+| **Architecture Depth Review** | Module-depth analysis: seams, adapters, locality, leverage, deletion test |
+
+**Check Gate Additional Options:**
+
+| Response | Action |
+|----------|--------|
+| **Commit** | Commit with conventional message |
+| **Review config suggestions** | Review CLAUDE.md/AGENTS.md suggestions based on what was built |
 
 **Context Management:**
 

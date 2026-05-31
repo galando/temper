@@ -422,6 +422,34 @@ to avoid slowing down the validation pipeline.
 
 ### Step 3.5: Context Output
 
+### Step 3.6: Config Suggestions (Post-Check)
+
+After all validation levels pass, before showing the Commit gate, generate config suggestions:
+
+```
+1. CHECK: Is capabilities.config-suggestions not false in temper.config? (default: enabled)
+2. CHECK: Did all validation levels pass? (no failures)
+3. CHECK: Were files changed? (git diff --name-only returns results)
+
+If all checks pass:
+4. READ analysis inputs:
+   - git diff --stat
+   - .temper/specs/{feature}/intent.md (if exists)
+   - .temper/specs/{feature}/tasks.md (if exists)
+   - Existing CLAUDE.md
+   - Existing AGENTS.md (if exists)
+
+5. ANALYZE changed files for patterns (error handling, naming, structure, testing, config)
+6. COMPARE against existing docs
+7. GENERATE suggestions (max 5, confidence >= 0.6)
+8. WRITE suggestions to .temper/specs/{feature}/config-suggestions.json
+9. INTEGRATE with learning.json suggestion_queue (type: config-update)
+
+Full methodology: $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/config-suggestions.md
+```
+
+Config suggestions are shown to the user at the Check gate (orchestrator handles display).
+
 After all validation levels complete, write `check-context.json` to the spec directory:
 
 ```json

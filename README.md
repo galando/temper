@@ -283,7 +283,74 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ## What's New
 
-All features from v4.0 through v4.5.1 — feedback loops, Cursor IDE support, pack system overhaul, documentation accuracy, and 7 imports from addyosmani/agent-skills.
+### v5.0.0: Interactive Capabilities
+
+Four new capabilities that change how you interact with Temper's pipeline — each independently optional, enabled by default.
+
+#### Architecture Depth Review
+
+An optional review pass that evaluates module depth — are your modules earning their complexity? Uses Matt Pocock's "Deep Modules" philosophy: deep modules have small interfaces with rich behavior; shallow modules have interfaces nearly as complex as their implementation.
+
+```
+[ARCH-DEPTH] Seams: PaymentService — missing adapter for Stripe API
+  Problem: Direct Stripe import in 3 service methods — can't swap provider
+  Solution: Create PaymentProvider interface + StripeAdapter
+  Benefits: Testability (mock provider), locality (payment logic in one place)
+```
+
+Five dimensions analyzed: **Seams** (can modules be replaced?), **Adapters** (are external deps wrapped?), **Locality** (is related code co-located?), **Leverage** (small interface, rich behavior?), **Deletion Test** (can you remove it without cascading?). Informed by your project's `CONTEXT.md` domain glossary and `docs/adr/` decisions.
+
+#### Grill Me — Socratic Challenge Mode
+
+At Plan and Design stage gates, "Grill Me" enters a one-question-at-a-time adversarial loop that stress-tests your plan's assumptions. This is NOT the walkthrough (which explains the plan) — it challenges it.
+
+```
+Grill Me: "What happens if the external payment provider is slow, not down?"
+  → Unstated assumption detected: plan assumes provider is either up or down
+  → No timeout or circuit breaker logic in the design
+```
+
+Targets: unstated assumptions, missing error paths, alternatives not considered, scalability limits, dependency risks. Max 10 questions, exits early if 3 consecutive answers reveal no weaknesses.
+
+#### Config Suggestions
+
+After Check passes, Temper analyzes what was built and suggests updates to your `CLAUDE.md` or `AGENTS.md`. Captures new patterns and conventions as they emerge, not weeks later.
+
+```
+Config Suggestion (confidence: 85%):
+  "Services use Result<> type for error handling"
+  → Add to CLAUDE.md? [Accept] [Reject] [Defer]
+```
+
+Categories: new patterns, learned conventions, architectural decisions, tooling config. Integrated with adaptive learning — accepted suggestions update your docs, rejected suggestions follow noise reduction rules.
+
+#### Interactive HTML Plan Review
+
+Generates a self-contained HTML file from your plan that you review in a browser with inline comments — like Google Docs for code plans.
+
+```
+/temper "add auth feature"
+  → Plan generated
+  → "Open HTML review" option at Plan gate
+  → Browser opens with styled plan, click-to-comment on any section
+  → "Done Reviewing" downloads review-comments.json
+  → Place JSON in .temper/specs/, orchestrator applies changes
+```
+
+Four comment types: task-change, scenario-change, plan-change, general-note. Each type routes to the correct artifact. No server needed — fully self-contained HTML with embedded CSS/JS.
+
+```yaml
+# All capabilities are configurable in temper.config
+capabilities:
+  architecture-depth: true    # Architecture depth review in review stage
+  grill-me: true              # Socratic challenge at Plan/Design gates
+  config-suggestions: true    # CLAUDE.md/AGENTS.md suggestions after Check
+  html-review: true           # Interactive HTML plan review
+```
+
+### v4.0–v4.6: Foundation
+
+All features from v4.0 through v4.6 — feedback loops, Cursor IDE support, pack system overhaul, documentation accuracy, adaptive learning, and 7 imports from addyosmani/agent-skills.
 
 ### Feedback Loops with Circuit Breakers
 
@@ -548,6 +615,7 @@ Packs are rule sets enforced during code generation and review. Three-tier resol
 | `git` | SUGGEST | Conventional commits, branching |
 | `performance` | WARN/BLOCK | N+1 detection, pagination, Core Web Vitals, bundle splitting |
 | `api-design` | WARN/BLOCK | Additive extension, idempotency, consistent naming, validation at boundaries |
+| `architecture-depth` | WARN/BLOCK | Module depth: seams, adapters, locality, leverage, deletion test |
 
 Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/your-pack/`. Link packs to plugins or skills for automatic context injection. Scope packs to specific phases (build, review, check) to keep prompt context focused.
 
@@ -657,16 +725,17 @@ tools:
 
 Full setup guide: [docs/recommended-setup.md](docs/recommended-setup.md)
 
-## Adaptive Learning (Planned)
+## Adaptive Learning
 
-Planned features for future releases — not yet implemented:
+Adaptive learning shipped in v4.6.0. Three capabilities that make reviews smarter over time:
 
-- **Pattern Detection** — Identifies recurring issues in your code
-- **Rule Suggestions** — Proposes rules based on review history
-- **Noise Reduction** — Suppresses false positives over time
-- **Hotspot Tracking** — Shows which files generate the most issues
+- **Pattern Detection** — Clusters recurring findings by category + file pattern + keywords
+- **Rule Suggestions** — Proposes pack rules when patterns are accepted 3+ times at 70%+ rate
+- **Noise Reduction** — Auto-suppresses patterns dismissed 5+ times
 
-Review memory persists between sessions via `.temper/reviews/` artifacts, providing the data foundation for these features.
+In v5.0.0, config suggestions extend learning to capture conventions for your `CLAUDE.md` and `AGENTS.md`.
+
+Review memory persists between sessions via `.temper/learning.json` and `.temper/review-memory.json`.
 
 ## Documentation
 

@@ -149,6 +149,18 @@ OUTPUT: learning_curve object in learning.json
       "rule_template_path": ".temper/learning/suggestions/missing-error-handling-services.md",
       "created_at": "{ISO timestamp}",
       "status": "pending | accepted | rejected"
+    },
+    {
+      "pattern_id": "config-update-error-handling-result-type",
+      "suggested_severity": null,
+      "type": "config-update",
+      "category": "learned_convention",
+      "description": "Services use Result<> type for error handling",
+      "suggested_text": "- **Error Handling:** Use `Result<T, E>` type for all service methods.",
+      "confidence": 0.85,
+      "target": "CLAUDE.md",
+      "created_at": "{ISO timestamp}",
+      "status": "pending | accepted | rejected | deferred"
     }
   ],
   "learning_curve": {

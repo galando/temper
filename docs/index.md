@@ -83,6 +83,16 @@ Most AI tools answer only the third. Temper answers all three.
 | **Quick-Create Launchers** | One command wraps any plugin or skill as a BLOCK-level pack |
 | **Performance Pack** | N+1 detection, pagination rules, Core Web Vitals, bundle splitting, measure-first gate |
 | **API Design Pack** | Additive extension, idempotency, consistent naming, breaking change detection |
+| **Architecture Depth Pack** | Module-depth analysis: seams, adapters, locality, leverage, deletion test |
+
+### Interactive Capabilities
+
+| Feature | What It Does |
+|---------|-------------|
+| **Grill Me** | Socratic challenge mode at Plan/Design gates — one question at a time, stress-tests assumptions before building |
+| **HTML Plan Review** | Interactive browser-based plan review with inline comments. Google Doc-style commenting, comment types route to correct artifacts |
+| **Config Suggestions** | After Check passes, suggests CLAUDE.md/AGENTS.md updates based on what was built. Integrated with adaptive learning |
+| **Architecture Depth Review** | Optional review pass evaluating module depth — deep modules have small interfaces with rich behavior |
 
 ### IDE Support
 

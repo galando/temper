@@ -166,8 +166,51 @@ Diagram (rendered below summary box — MUST be ASCII art, NOT raw mermaid sourc
 Show the AskUserQuestion gate with:
 - "Continue to Build (Recommended)" — launch BUILD agent
 - "Walk through plan step by step" — interactive walkthrough (see below)
+- "Grill Me (Challenge the plan)" — (shown ONLY if capabilities.grill-me is not false) invoke grill-me skill with plan.md, Socratic Q&A loop that stress-tests assumptions, returns to this gate after
+- "Open HTML review" — (shown ONLY if capabilities.html-review is not false) generate and open interactive HTML plan review in browser (see HTML Review section below)
 - "Save for later" — save state, stop
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
+
+**on Grill Me (Plan):**
+1. Read `.claude/temper.config` → verify `capabilities.grill-me` is not `false` (default: enabled)
+2. Read `.temper/specs/{feature-slug}/plan.md` and `.temper/specs/{feature-slug}/intent.md`
+3. Enter Socratic one-question-at-a-time challenge loop (max 10 questions):
+   - Extract claims, assumptions, dependencies, decisions from the plan
+   - Generate challenge questions targeting unstated assumptions, missing error paths, alternatives, scalability
+   - Present ONE question via AskUserQuestion, wait for response
+   - If user selects "Update plan": edit plan files, continue grilling
+   - If user selects "Done grilling": exit loop
+4. Show grill summary (questions asked, weaknesses found, updates made)
+5. If plan was updated: re-show the updated plan summary
+6. **Re-show this AskUserQuestion gate** — do NOT skip to build
+
+**on Open HTML review:**
+1. Read `.claude/temper.config` → verify `capabilities.html-review` is not `false` (default: enabled)
+2. Generate HTML review file (see plan.md Phase 6.5):
+   a. Read `templates/plan-review.html` from `$CLAUDE_PLUGIN_ROOT/templates/`
+   b. Read `.temper/specs/{feature-slug}/plan.md` — split into sections
+   c. Read `.temper/specs/{feature-slug}/tasks.md` — split into sections
+   d. Build sections JSON array
+   e. Replace template placeholders
+   f. Write to `.temper/specs/{feature-slug}/review.html`
+3. Open the file in the default browser: `open .temper/specs/{feature-slug}/review.html` (macOS) or `xdg-open` (Linux)
+4. Show message: "HTML review opened in browser. Add comments and click 'Done Reviewing'. When finished, place the downloaded review-comments.json in .temper/specs/{feature-slug}/ and return here."
+5. Wait for user to confirm they're done (via AskUserQuestion)
+6. Check for `.temper/specs/{feature-slug}/review-comments.json`:
+   - If exists: read and apply comments to plan artifacts (see below)
+   - If not: "No comments file found. Continue without applying changes."
+7. **Re-show this AskUserQuestion gate** — do NOT skip to build
+
+**Applying HTML review comments:**
+When review-comments.json exists:
+1. Parse the JSON file
+2. For each comment:
+   - `task-change` → find matching section in tasks.md by `target` name, apply the change
+   - `scenario-change` → find matching scenario in intent.md, apply the change
+   - `plan-change` → find matching section in plan.md, apply the change
+   - `general-note` → add to build-state.json as context note
+3. Show what changed: "Applied {N} comments: {N} task changes, {N} plan changes, {N} notes"
+4. Update plan summary if any plan artifacts were modified
 
 #### Step-by-Step Walkthrough
 
@@ -304,8 +347,17 @@ Return ONLY:
 Show the AskUserQuestion gate with:
 - "Continue to Build (Recommended)" — launch BUILD agent
 - "Walk through design step by step" — interactive walkthrough (see below)
+- "Grill Me (Challenge the design)" — (shown ONLY if capabilities.grill-me is not false) invoke grill-me skill with design.md, Socratic Q&A loop targeting architectural decisions, returns to this gate after
 - "Save for later" — save state, stop
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
+
+**on Grill Me (Design):**
+1. Read `.claude/temper.config` → verify `capabilities.grill-me` is not `false` (default: enabled)
+2. Read `.temper/specs/{feature-slug}/design.md`
+3. Enter Socratic one-question-at-a-time challenge loop targeting architectural decisions, trade-offs, alternatives (max 10 questions)
+4. Show grill summary
+5. If design was updated: re-show the updated design summary
+6. **Re-show this AskUserQuestion gate** — do NOT skip to build
 
 #### Step-by-Step Walkthrough
 
@@ -699,9 +751,18 @@ Return ONLY:
 
 Show the AskUserQuestion gate with:
 - "Fix all & continue to Check (Recommended)" — apply fixes for ALL issues (including low), launch CHECK agent
+- "Architecture Depth Review" — (shown ONLY if capabilities.architecture-depth is not false) run module-depth analysis on changed files, add findings to review summary, return to gate
 - "Loop back to Build (Fix issues)" — (shown ONLY if feedback.enabled AND can_loop) write review-context.json, update feedback-loops.json, launch BUILD agent
 - "Save for later" — skip fixes, save state
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
+
+**on Architecture Depth Review:**
+1. Read `.claude/temper.config` → verify `capabilities.architecture-depth` is not `false` (default: enabled)
+2. Read `CONTEXT.md` (if exists) and `docs/adr/` (if exists) for domain context
+3. Run the 5-dimension architecture depth analysis (seams, adapters, locality, leverage, deletion test) on changed files
+4. Add findings with `[ARCH-DEPTH]` prefix to the review summary
+5. Show updated review summary with architecture depth findings
+6. **Re-show the AskUserQuestion gate** — do NOT skip to check
 
 **on Continue:**
 1. Apply ALL fixable issues (including low severity) directly — no subprocess needed for fixes
@@ -857,9 +918,28 @@ Return ONLY:
 
 Show the AskUserQuestion gate with:
 - "Commit (Recommended)" — commit with conventional message
+- "Review config suggestions" — (shown ONLY if capabilities.config-suggestions is not false AND .temper/specs/{feature}/config-suggestions.json exists) show CLAUDE.md/AGENTS.md suggestions for accept/reject/defer
 - "Loop back to Build (Fix tests)" — (shown ONLY if feedback.enabled AND can_loop) write check-context.json, update feedback-loops.json, launch BUILD agent
 - "Save for later" — keep changes uncommitted
 - **"Other" (built-in free-text)** — type a change request, edits are made, re-run check
+
+**Config Suggestions Flow (before Commit gate):**
+After Check agent returns and before showing the gate:
+1. Read `.claude/temper.config` → verify `capabilities.config-suggestions` is not `false` (default: enabled)
+2. If all validation passed: trigger config suggestions generation (see check.md Step 3.6)
+3. If suggestions were generated: show them before the Commit gate
+
+**on Review config suggestions:**
+1. Read `.temper/specs/{feature}/config-suggestions.json`
+2. Show each suggestion with:
+   - Category and description
+   - Suggested text to add to CLAUDE.md/AGENTS.md
+   - Confidence score
+3. For each suggestion, ask user: Accept / Reject / Defer
+4. **Accepted:** Write the suggested text to CLAUDE.md or AGENTS.md (target from suggestion)
+5. **Rejected:** Update learning.json suggestion_queue with status "rejected", increment dismissal count
+6. **Deferred:** Keep in suggestion_queue with status "deferred"
+7. After all suggestions reviewed: **Re-show this AskUserQuestion gate**
 
 **on Commit:**
 ```

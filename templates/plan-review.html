@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Temper Plan Review — {{FEATURE_NAME}}</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent-hover: #79c0ff;
+    --success: #3fb950;
+    --warning: #d29922;
+    --danger: #f85149;
+    --comment-bg: #1c2128;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem;
+  }
+  header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  header h1 { font-size: 1.5rem; font-weight: 600; }
+  header p { color: var(--text-muted); margin-top: 0.5rem; font-size: 0.9rem; }
+  .status-bar {
+    display: flex; gap: 1rem; align-items: center;
+    padding: 0.75rem 1rem; border-radius: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    margin-bottom: 2rem; font-size: 0.85rem;
+  }
+  .status-bar .comments-count { color: var(--accent); font-weight: 600; }
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    position: relative;
+  }
+  .section-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    cursor: default;
+  }
+  .section-header h2 { font-size: 1.1rem; font-weight: 600; }
+  .section-header .badge {
+    font-size: 0.75rem; padding: 0.2rem 0.6rem;
+    border-radius: 12px; background: rgba(88,166,255,0.15);
+    color: var(--accent);
+  }
+  .section-body {
+    padding: 1.25rem;
+    white-space: pre-wrap;
+    font-size: 0.9rem;
+  }
+  .section-body h1,.section-body h2,.section-body h3,.section-body h4 {
+    margin-top: 1.5rem; margin-bottom: 0.5rem; white-space: normal;
+  }
+  .section-body h1:first-child,.section-body h2:first-child,.section-body h3:first-child { margin-top: 0; }
+  .section-body ul,.section-body ol { margin-left: 1.5rem; margin-bottom: 0.5rem; }
+  .section-body code { background: rgba(110,118,129,0.25); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
+  .section-body pre { background: var(--bg); padding: 1rem; border-radius: 6px; overflow-x: auto; margin: 0.75rem 0; }
+  .section-body pre code { background: none; padding: 0; }
+  .section-body table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+  .section-body th,.section-body td { padding: 0.5rem 0.75rem; border: 1px solid var(--border); text-align: left; font-size: 0.85rem; }
+  .section-body th { background: var(--bg); font-weight: 600; }
+  .section-body blockquote { border-left: 3px solid var(--accent); padding-left: 1rem; color: var(--text-muted); margin: 0.75rem 0; }
+
+  /* Comment UI */
+  .comment-btn {
+    position: absolute; top: 0.75rem; right: 3.5rem;
+    background: none; border: 1px solid var(--border); color: var(--text-muted);
+    padding: 0.3rem 0.7rem; border-radius: 4px; font-size: 0.75rem;
+    cursor: pointer; opacity: 0; transition: opacity 0.2s;
+  }
+  .section:hover .comment-btn { opacity: 1; }
+  .comment-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .comments-list { margin-top: 0; border-top: 1px solid var(--border); }
+  .comment {
+    padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border);
+    background: var(--comment-bg);
+  }
+  .comment:last-child { border-bottom: none; }
+  .comment-meta { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+  .comment-type {
+    display: inline-block; font-size: 0.7rem; padding: 0.15rem 0.5rem;
+    border-radius: 10px; margin-right: 0.5rem;
+  }
+  .comment-type.task-change { background: rgba(63,185,80,0.15); color: var(--success); }
+  .comment-type.scenario-change { background: rgba(210,153,34,0.15); color: var(--warning); }
+  .comment-type.plan-change { background: rgba(88,166,255,0.15); color: var(--accent); }
+  .comment-type.general-note { background: rgba(139,148,158,0.15); color: var(--text-muted); }
+  .comment-text { font-size: 0.85rem; white-space: pre-wrap; }
+
+  /* Add comment form */
+  .add-comment { padding: 1rem 1.25rem; border-top: 1px solid var(--border); display: none; }
+  .add-comment.active { display: block; }
+  .add-comment textarea {
+    width: 100%; min-height: 60px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 0.5rem; font-size: 0.85rem;
+    resize: vertical; font-family: inherit;
+  }
+  .add-comment select {
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); padding: 0.3rem 0.5rem; border-radius: 4px;
+    font-size: 0.8rem; margin-right: 0.5rem;
+  }
+  .add-comment .btn-row { margin-top: 0.5rem; display: flex; gap: 0.5rem; align-items: center; }
+  .btn-primary {
+    background: var(--accent); color: #fff; border: none;
+    padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer;
+    font-size: 0.8rem; font-weight: 500;
+  }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-ghost {
+    background: none; color: var(--text-muted); border: 1px solid var(--border);
+    padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem;
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--text-muted); }
+
+  /* Done button */
+  .done-bar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: var(--surface); border-top: 1px solid var(--border);
+    padding: 1rem; display: flex; justify-content: center; gap: 1rem;
+    z-index: 100;
+  }
+  .btn-done {
+    background: var(--success); color: #fff; border: none;
+    padding: 0.7rem 2rem; border-radius: 8px; cursor: pointer;
+    font-size: 1rem; font-weight: 600;
+  }
+  .btn-done:hover { filter: brightness(1.1); }
+  .btn-export {
+    background: none; color: var(--text-muted); border: 1px solid var(--border);
+    padding: 0.7rem 1.5rem; border-radius: 8px; cursor: pointer;
+    font-size: 0.9rem;
+  }
+  .btn-export:hover { color: var(--text); border-color: var(--text-muted); }
+  .done-spacer { height: 5rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Temper Plan Review</h1>
+  <p id="feature-name">{{FEATURE_NAME}} — Review and comment on the plan below. When done, click "Done Reviewing" at the bottom.</p>
+</header>
+
+<div class="status-bar">
+  <span>Comments: <span class="comments-count" id="comment-count">0</span></span>
+  <span style="color:var(--text-muted)">|</span>
+  <span style="color:var(--text-muted)">Click "+ Comment" on any section to add feedback</span>
+</div>
+
+<div id="sections-container">
+  <!-- Sections injected here by JS -->
+</div>
+
+<div class="done-spacer"></div>
+<div class="done-bar">
+  <button class="btn-export" onclick="exportComments()">Export Comments JSON</button>
+  <button class="btn-done" onclick="doneReviewing()">Done Reviewing</button>
+</div>
+
+<script>
+// ============================================================
+// DATA — injected by Temper orchestrator
+// ============================================================
+const FEATURE_SLUG = "{{FEATURE_SLUG}}";
+const SECTIONS = {{SECTIONS_JSON}};
+
+// ============================================================
+// STATE
+// ============================================================
+let comments = [];
+let activeSection = null;
+
+// Sanitize HTML to prevent XSS
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Simple markdown → HTML converter (no external deps)
+function mdToHtml(md) {
+  let html = escapeHtml(md);
+  // Code blocks
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Headers
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // Bold/italic
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  // Blockquotes
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+  // Unordered lists
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  // Ordered lists
+  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+  // Tables
+  const lines = html.split('\n');
+  let inTable = false;
+  let tableHtml = '';
+  const result = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.includes('|') && line.trim().startsWith('|')) {
+      if (!inTable) { inTable = true; tableHtml = '<table>'; }
+      if (line.replace(/[|\-\s]/g, '') === '') continue; // separator row
+      const cells = line.split('|').filter(c => c.trim() !== '');
+      const tag = tableHtml === '<table>' ? 'th' : 'td';
+      if (tag === 'th') {
+        tableHtml += '<thead><tr>' + cells.map(c => `<${tag}>${c.trim()}</${tag}>`).join('') + '</tr></thead><tbody>';
+      } else {
+        tableHtml += '<tr>' + cells.map(c => `<${tag}>${c.trim()}</${tag}>`).join('') + '</tr>';
+      }
+    } else {
+      if (inTable) { tableHtml += '</tbody></table>'; result.push(tableHtml); tableHtml = ''; inTable = false; }
+      result.push(line);
+    }
+  }
+  if (inTable) { tableHtml += '</tbody></table>'; result.push(tableHtml); }
+  html = result.join('\n');
+  // Paragraphs (double newline)
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = '<p>' + html + '</p>';
+  html = html.replace(/<p>\s*<(h[1-4]|pre|ul|ol|blockquote|table)/g, '<$1');
+  html = html.replace(/<\/(h[1-4]|pre|ul|ol|blockquote|table)>\s*<\/p>/g, '</$1>');
+  return html;
+}
+
+// ============================================================
+// RENDER SECTIONS
+// ============================================================
+function renderSections() {
+  const container = document.getElementById('sections-container');
+  container.innerHTML = '';
+  SECTIONS.forEach((section, idx) => {
+    const div = document.createElement('div');
+    div.className = 'section';
+    div.id = `section-${idx}`;
+    div.innerHTML = `
+      <div class="section-header">
+        <h2>${escapeHtml(section.title)}</h2>
+        <span class="badge">${escapeHtml(section.source)}</span>
+        <button class="comment-btn" onclick="toggleCommentForm(${idx})">+ Comment</button>
+      </div>
+      <div class="section-body">${mdToHtml(section.content)}</div>
+      <div class="comments-list" id="comments-${idx}"></div>
+      <div class="add-comment" id="add-comment-${idx}">
+        <textarea id="comment-text-${idx}" placeholder="Your comment..."></textarea>
+        <div class="btn-row">
+          <select id="comment-type-${idx}">
+            <option value="general-note">General Note</option>
+            <option value="task-change">Task Change</option>
+            <option value="scenario-change">Scenario Change</option>
+            <option value="plan-change">Plan Change</option>
+          </select>
+          <button class="btn-primary" onclick="submitComment(${idx})">Add</button>
+          <button class="btn-ghost" onclick="toggleCommentForm(${idx})">Cancel</button>
+        </div>
+      </div>
+    `;
+    container.appendChild(div);
+  });
+  renderAllComments();
+}
+
+// ============================================================
+// COMMENTS
+// ============================================================
+function toggleCommentForm(idx) {
+  const form = document.getElementById(`add-comment-${idx}`);
+  form.classList.toggle('active');
+  if (form.classList.contains('active')) {
+    document.getElementById(`comment-text-${idx}`).focus();
+  }
+}
+
+function submitComment(idx) {
+  const text = document.getElementById(`comment-text-${idx}`).value.trim();
+  const type = document.getElementById(`comment-type-${idx}`).value;
+  if (!text) return;
+
+  comments.push({
+    id: `c${Date.now()}`,
+    target: `section-${idx}`,
+    target_title: SECTIONS[idx].title,
+    type: type,
+    text: text,
+    timestamp: new Date().toISOString(),
+    resolved: false
+  });
+
+  document.getElementById(`comment-text-${idx}`).value = '';
+  toggleCommentForm(idx);
+  renderComments(idx);
+  updateCommentCount();
+}
+
+const VALID_COMMENT_TYPES = ['task-change', 'scenario-change', 'plan-change', 'general-note'];
+
+function renderComments(idx) {
+  const list = document.getElementById(`comments-${idx}`);
+  const sectionComments = comments.filter(c => c.target === `section-${idx}`);
+  list.innerHTML = sectionComments.map(c => {
+    const safeType = VALID_COMMENT_TYPES.includes(c.type) ? c.type : 'general-note';
+    return `
+    <div class="comment">
+      <div class="comment-meta">
+        <span class="comment-type ${safeType}">${escapeHtml(c.type.replace('-', ' '))}</span>
+        <span>${new Date(c.timestamp).toLocaleString()}</span>
+      </div>
+      <div class="comment-text">${escapeHtml(c.text)}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderAllComments() {
+  SECTIONS.forEach((_, idx) => renderComments(idx));
+}
+
+function updateCommentCount() {
+  document.getElementById('comment-count').textContent = comments.length;
+}
+
+// ============================================================
+// EXPORT / DONE
+// ============================================================
+function getCommentsJson() {
+  return {
+    version: 1,
+    feature: FEATURE_SLUG,
+    comments: comments.map(c => ({
+      id: c.id,
+      target: c.target_title,
+      type: c.type,
+      text: c.text,
+      timestamp: c.timestamp,
+      resolved: c.resolved
+    })),
+    review_completed: false,
+    completed_at: null
+  };
+}
+
+function exportComments() {
+  const data = getCommentsJson();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'review-comments.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function doneReviewing() {
+  const data = getCommentsJson();
+  data.review_completed = true;
+  data.completed_at = new Date().toISOString();
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'review-comments.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  alert('Review saved! Place review-comments.json in your .temper/specs/' + FEATURE_SLUG + '/ directory.\nThen return to your terminal to continue.');
+}
+
+// ============================================================
+// INIT
+// ============================================================
+renderSections();
+</script>
+</body>
+</html>

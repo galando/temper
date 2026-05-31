@@ -719,6 +719,32 @@ MARKING FORMAT:
 GUARD: When in doubt, keep sequential. Parallel marking is an optimization, not a requirement.
 ```
 
+### Phase 6.5: HTML Review Generation (Optional)
+
+If `capabilities.html-review` is not `false` in temper.config (default: enabled), generate an interactive HTML review file.
+
+**How:**
+
+```
+1. Read templates/plan-review.html from $CLAUDE_PLUGIN_ROOT/templates/
+2. Read plan.md and split into sections by ## headers
+3. Read tasks.md and split into sections by ## Task headers
+4. Build SECTIONS_JSON array: [{ title, source: "plan.md"|"tasks.md", content }]
+5. Replace template placeholders:
+   {{FEATURE_NAME}} → from build-state.json spec (human-readable)
+   {{FEATURE_SLUG}} → from build-state.json spec
+   {{SECTIONS_JSON}} → JSON.stringify(sections)
+6. Write to .temper/specs/{feature}/review.html
+```
+
+The generated HTML is self-contained — no external dependencies. Users can:
+- Review plan and tasks in a styled browser view
+- Add inline comments per section (4 types: task-change, scenario-change, plan-change, general-note)
+- Click "Done Reviewing" to download review-comments.json
+- Place the JSON file back in .temper/specs/{feature}/ for the orchestrator to consume
+
+Full docs: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan-review.md`
+
 ### Phase 7: Present for Approval
 
 Show a summary box, then offer two ways to proceed: the quick summary (current behavior) or an interactive step-by-step walkthrough.
