@@ -714,6 +714,50 @@ CONTRACT VERDICT:
 4. Flag any requirements that were not implemented
 ```
 
+### Step 3.8: Architecture Depth Review (Optional)
+
+**Trigger condition:** `architecture-depth` pack is enabled AND either:
+- User selects "Architecture Depth Review" at the review gate
+- `capabilities.architecture-depth: true` in temper.config (default)
+
+This step runs as an **additional pass** after the standard review. It does not replace any existing steps.
+
+**How:**
+
+```
+1. LOAD domain context:
+   a. Read CONTEXT.md (if exists at project root) for domain glossary
+   b. Read docs/adr/ directory (if exists) for Architecture Decision Records
+   c. Read the architecture-depth reference: $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/architecture-depth.md
+
+2. RUN 5-dimension analysis on changed files:
+   a. Seams — Can modules be replaced without touching others?
+   b. Adapters — Are external dependencies behind adapter layers?
+   c. Locality — Is related code co-located?
+   d. Leverage — Do small changes propagate value broadly?
+   e. Deletion Test — Can a module be removed without cascading?
+
+3. SCORE each dimension per module (0-5 scale, see architecture-depth.md)
+
+4. REFERENCE domain glossary: Use CONTEXT.md terms for module naming validation
+   - If a module name doesn't align with domain glossary → flag as finding
+
+5. CHECK ADR compliance: Compare module design against established decisions
+   - If module violates an ADR → severity BLOCK
+   - If module follows ADRs → note compliance
+
+6. REPORT findings with [ARCH-DEPTH] prefix:
+   [ARCH-DEPTH] {dimension}: {file} — {finding}
+     Problem: {why current architecture causes friction}
+     Solution: {what would change}
+     Benefits: {locality/leverage improvement}
+     Severity: {WARN|BLOCK}
+
+7. ADD findings to main findings list (they follow standard confidence filtering)
+```
+
+**Gate integration:** After standard review, the review gate offers "Architecture Depth Review" as an additional option. When selected, this step runs and findings are added to the existing review summary. The user then returns to the review gate with updated findings.
+
 ### Step 4: Apply Confidence Filtering
 
 Combine results from all subagents. For each finding:

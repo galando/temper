@@ -49,5 +49,18 @@ Post-review intelligence layer that makes reviews smarter over time. Runs as Ste
 
 Full docs: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/learning.md`
 
+## Capabilities (v5.0.0)
+
+Four independently optional capabilities, all enabled by default. Controlled via `capabilities` section in temper.config.
+
+| Capability | Stage | Purpose |
+|-----------|-------|---------|
+| Architecture Depth | Review | Module-depth analysis: seams, adapters, locality, leverage, deletion test |
+| Grill Me | Plan, Design | Socratic challenge mode — stress-test plans before building |
+| Config Suggestions | Check | Suggest CLAUDE.md/AGENTS.md updates based on what was built |
+| HTML Review | Plan | Interactive browser-based plan review with inline comments |
+
+**Graceful degradation:** Each capability checks its config flag. Missing config = all enabled (default-on).
+
 ## Full Docs
 `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/{command}.md`

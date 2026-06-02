@@ -38,11 +38,15 @@ VERSION=$(cat "$TARGET_DIR/.cursor/VERSION")
 # Rules
 RULES=(
     temper-temper-core.mdc
+    temper-pack-adaptive-learning.mdc
+    temper-pack-architecture-depth.mdc
     temper-pack-code-simplifier.mdc
     temper-pack-git.mdc
     temper-pack-quality.mdc
     temper-pack-security.mdc
     temper-pack-tdd.mdc
+    temper-capability-config-suggestions.mdc
+    temper-capability-plan-review.mdc
     temper-ref-build.mdc
     temper-ref-check.mdc
     temper-ref-design.mdc
@@ -53,6 +57,7 @@ RULES=(
     temper-ref-review.mdc
     temper-ref-status.mdc
     temper-skill-context-engineering.mdc
+    temper-skill-grill-me.mdc
     temper-skill-source-driven.mdc
 )
 for rule in "${RULES[@]}"; do download "rules/$rule"; done
@@ -74,7 +79,7 @@ for cmd in "${COMMANDS[@]}"; do download "commands/$cmd"; done
 echo "Temper v${VERSION} — Cursor IDE Setup"
 echo ""
 echo "  Commands: 9"
-echo "  Rules:    17"
+echo "  Rules:    22"
 echo ""
 echo "Setup complete. Temper commands available in Cursor:"
 echo "  /temper          — Unified SDLC"
