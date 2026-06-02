@@ -333,11 +333,11 @@ Generates a self-contained HTML file from your plan that you review in a browser
   → Plan generated
   → "Open HTML review" option at Plan gate
   → Browser opens with styled plan, click-to-comment on any section
-  → "Done Reviewing" downloads review-comments.json
-  → Place JSON in .temper/specs/, orchestrator applies changes
+  → "Done Reviewing" saves review-comments.json
+  → Temper auto-detects your feedback and applies changes
 ```
 
-Four comment types: task-change, scenario-change, plan-change, general-note. Each type routes to the correct artifact. No server needed — fully self-contained HTML with embedded CSS/JS.
+Four comment types: task-change, scenario-change, plan-change, general-note. Each type routes to the correct artifact. No server needed — fully self-contained HTML with embedded CSS/JS. Chrome/Edge writes directly to the filesystem; other browsers download with auto-detect via file watcher.
 
 ```yaml
 # All capabilities are configurable in temper.config
@@ -366,7 +366,7 @@ Context is passed between stages via `.temper/` JSON files (`review-context.json
 
 ### Cursor IDE Support
 
-Full Temper experience for [Cursor](https://cursor.sh) users with feature parity to the Claude Code CLI. Static `.cursor/` files (rules, commands, packs, reference docs) are checked into git. Install via a curl-only shell script — no Python or git clone required. IDE-specific adaptations handle the differences: hyphenated commands (`/temper-plan`), conversational stage gates instead of `AskUserQuestion`, and always-on pack context via Cursor rules.
+Full Temper experience for [Cursor](https://cursor.sh) users with feature parity to the Claude Code CLI (v5.0.0). Static `.cursor/` files (22 rules, 9 commands) are checked into git. Install via a curl-only shell script — no Python or git clone required. IDE-specific adaptations handle the differences: hyphenated commands (`/temper-plan`), conversational stage gates instead of `AskUserQuestion`, and always-on pack context via Cursor rules. Cursor rules mirror all Claude Code capabilities including architecture depth review, grill-me challenge mode, config suggestions, HTML plan review, and adaptive learning.
 
 ### Pack System: Three-Tier Resolution & Linking
 
@@ -634,7 +634,7 @@ Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/yo
 bash <(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)
 ```
 
-Downloads static `.cursor/` files from GitHub — commands, skills, packs, and reference docs. No Python or git required, just curl. Full feature parity with Claude Code.
+Downloads static `.cursor/` files from GitHub — 22 rules (packs, skills, capabilities, reference docs) and 9 commands. No Python or git required, just curl. Full feature parity with Claude Code v5.0.0.
 
 ```bash
 cd your-project
