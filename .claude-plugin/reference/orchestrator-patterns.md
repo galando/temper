@@ -23,6 +23,77 @@ The resolved path is used as `$CLAUDE_PLUGIN_ROOT` throughout the command.
 
 ---
 
+## Single-Read Contract
+
+Read this patterns file **once** at the start of the orchestrator command. Every
+`→ {pattern name}` reference in `temper.md` / `fix.md` points into this
+already-loaded file. **Do not re-read it** for each reference — the definitions are
+already in context.
+
+---
+
+## Build State Schema
+
+The orchestrator tracks progress via `.temper/build-state.json`. **Resolve the spec
+path from this file before launching any agent.** Canonical shape:
+
+```json
+{
+  "stage": "{stage}_complete",
+  "spec": "{slug}",
+  "spec_path": ".temper/specs/{slug}",
+  "branch": "{feature|fix}/{slug}",
+  "original_args": "{user's original description}",
+  "next_stage": "{next stage}",
+  "artifacts": ["intent.md", "tasks.md"],
+  "updated": "{ISO timestamp}"
+}
+```
+
+Per-command variations:
+- **`/temper`** — stages `plan_complete | design_complete | build_complete | review_complete | check_complete`; branch `feature/{slug}`; artifacts `intent.md`, `tasks.md`.
+- **`/temper:fix`** — stages `rca_complete | fix_complete | review_complete | check_complete`; branch `fix/{slug}`; artifacts `rca.md`.
+
+### Save State Pattern
+
+At every "Save for later" and "Continue" transition, write `build-state.json` using the
+schema above with the stage-specific `stage`, `next_stage`, and `artifacts` values. Do
+not re-document the full JSON at each gate — only state which `stage`/`next_stage` apply.
+
+On **Save**: write state, then report `"Saved. Run {command} when ready to continue."`
+
+---
+
+## Stage Agent Launch Template
+
+Every stage runs in an **isolated Agent subprocess** (genuine context clearing). Launch
+each with this template — fill the bracketed deltas, keep the fixed scaffolding:
+
+```
+Use the Agent tool with this prompt:
+
+"Execute {command/stage} for {item}: {spec from build-state.json}
+
+Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/{stage}.md
+
+CONTEXT: You are starting with a CLEAN context. Load these first:
+{ordered list of context files for this stage}
+
+{stage-specific instructions, e.g. enforcement notes or MCP tool priority}
+
+CRITICAL: This agent runs in isolation. Do NOT show an AskUserQuestion gate at the
+end — return the summary to the orchestrator, which owns the gate.
+
+Return ONLY:
+{stage-specific return contract}"
+```
+
+**Fixed scaffolding** (identical for every stage, do not vary): the CLEAN-context line,
+the "Full methodology: Read …" line, and the CRITICAL no-gate / return-to-orchestrator
+rule. Only the bracketed deltas change per stage.
+
+---
+
 ## Gate Options Pattern
 
 Every stage gate uses exactly 2 explicit options plus the built-in "Other" free-text input:

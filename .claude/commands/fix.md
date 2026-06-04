@@ -21,7 +21,7 @@ argument-hint: "<bug-description-or-JIRA-123>"
 ## Architecture: Agent Per Stage
 
 > **Shared patterns:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md`
-> This command uses shared patterns for: $CLAUDE_PLUGIN_ROOT resolution, gate options, gate enforcement, resume validation, nested invocation protection, agent failure handling, and context efficiency. Read that file for the canonical definitions.
+> **Read that file once, now.** Canonical definitions for: $CLAUDE_PLUGIN_ROOT resolution, single-read contract, build-state schema + save-state pattern, stage agent launch template, gate options, gate enforcement, resume validation, nested invocation protection, agent failure handling, and context efficiency. Every `→ pattern` reference below points into that already-loaded file — do not re-read it.
 
 Each stage runs in an **isolated Agent subprocess** — genuine context clearing, not theater.
 
@@ -57,20 +57,10 @@ ORCHESTRATOR (this file)
 
 ### State Management
 
-The orchestrator tracks progress via `.temper/build-state.json`. **Resolve the spec path from this file before launching any agent.**
-
-```json
-{
-  "stage": "rca_complete|fix_complete|review_complete|check_complete",
-  "spec": "{bug-slug}",
-  "spec_path": ".temper/specs/{bug-slug}",
-  "branch": "fix/{bug-slug}",
-  "original_args": "{user's original bug description}",
-  "next_stage": "fix|review|check|commit",
-  "artifacts": ["rca.md"],
-  "updated": "{ISO timestamp}"
-}
-```
+State is tracked in `.temper/build-state.json` — schema and save-state rules in
+orchestrator-patterns.md → "Build State Schema". For `/temper:fix`: stages
+`rca_complete | fix_complete | review_complete | check_complete`, branch `fix/{slug}`,
+artifact `rca.md`. **Resolve the spec path from this file before launching any agent.**
 
 ---
 
@@ -150,34 +140,16 @@ Show the AskUserQuestion gate with:
 
 **on Continue:**
 1. Save RCA results to `.temper/specs/{bug-slug}/rca.md` (create directory if needed)
-2. Save state to `.temper/build-state.json`:
-   ```json
-   {
-     "stage": "rca_complete",
-     "spec": "{bug-slug}",
-     "spec_path": ".temper/specs/{bug-slug}",
-     "original_args": "$ARGUMENTS",
-     "next_stage": "fix",
-     "artifacts": ["rca.md"],
-     "branch": "fix/{bug-slug}",
-     "updated": "{ISO timestamp}"
-   }
-   ```
+2. Save state (orchestrator-patterns.md → "Save State Pattern", `stage: rca_complete`, `next_stage: fix`, branch `fix/{bug-slug}`).
 3. **Create fix branch** (if git pack is enabled):
    - Run: `git branch --show-current`
    - If on main/master: `git checkout -b fix/{bug-slug}`
    - Store branch name in build-state.json
 4. Proceed to Stage 2 (FIX) — launches a new Agent subprocess
 
-**on Change (via "Other" free-text input):**
-1. User types their change request in the "Other" field (e.g., "investigate the auth module instead")
-2. Re-launch the RCA agent with the updated direction
-3. Show the updated RCA summary
-4. **Re-show the AskUserQuestion gate** — do NOT skip to fix
+**on Change (via "Other"):** Re-launch the RCA agent with the updated direction (e.g. "investigate the auth module instead"), show the updated RCA summary, then re-show this gate. Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
-**on Save:**
-1. Save state to `.temper/build-state.json`
-2. Report: "Saved. Run /temper:fix when ready to continue."
+**on Save:** Save state (orchestrator-patterns.md → "Save State Pattern", `stage: rca_complete`).
 
 ---
 
@@ -259,26 +231,9 @@ Show the AskUserQuestion gate with:
 1. Save state to `.temper/build-state.json`
 2. Proceed to Stage 3 (REVIEW) — launches a new Agent subprocess
 
-**on Change (via "Other" free-text input):**
-1. User types their change request in the "Other" field
-2. Make the change
-3. Re-show the updated fix summary
-4. **Re-show the AskUserQuestion gate** — do NOT skip to review
+**on Change (via "Other"):** Make the change, re-show the updated fix summary, then re-show this gate. Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
-**on Save:**
-1. Save state to `.temper/build-state.json`:
-   ```json
-   {
-     "stage": "fix_complete",
-     "spec": "{bug-slug}",
-     "spec_path": ".temper/specs/{bug-slug}",
-     "original_args": "{from prior state}",
-     "next_stage": "review",
-     "artifacts": ["rca.md"],
-     "updated": "{ISO timestamp}"
-   }
-   ```
-2. Report: "Saved. Run /temper:fix when ready to continue."
+**on Save:** Save state (orchestrator-patterns.md → "Save State Pattern", `stage: fix_complete`, `next_stage: review`).
 
 ---
 
@@ -360,27 +315,9 @@ Show the AskUserQuestion gate with:
 3. Save state to `.temper/build-state.json`
 4. Proceed to Stage 4 (CHECK) — launches a new Agent subprocess
 
-**on Change (via "Other" free-text input):**
-1. User types their change request in the "Other" field
-2. Make the change
-3. Re-launch the REVIEW agent to get an updated review summary
-4. Show the updated review summary
-5. **Re-show the AskUserQuestion gate** — do NOT skip to check
+**on Change (via "Other"):** Make the change, re-launch the REVIEW agent for an updated summary, then re-show this gate. Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
-**on Save:**
-1. Save state to `.temper/build-state.json`:
-   ```json
-   {
-     "stage": "review_complete",
-     "spec": "{bug-slug}",
-     "spec_path": ".temper/specs/{bug-slug}",
-     "original_args": "{from prior state}",
-     "next_stage": "check",
-     "artifacts": ["rca.md"],
-     "updated": "{ISO timestamp}"
-   }
-   ```
-2. Report: "Saved. Run /temper:fix when ready to continue."
+**on Save:** Save state (orchestrator-patterns.md → "Save State Pattern", `stage: review_complete`, `next_stage: check`).
 
 ---
 
@@ -452,26 +389,9 @@ Show the AskUserQuestion gate with:
     Ready to push?"
 ```
 
-**on Change (via "Other" free-text input):**
-1. User types their change request in the "Other" field
-2. Make the change
-3. Re-launch the CHECK agent to re-validate
-4. **Re-show the AskUserQuestion gate** — do NOT commit directly
+**on Change (via "Other"):** Make the change, re-launch the CHECK agent to re-validate, then re-show this gate (do NOT commit directly). Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
-**on Save:**
-1. Save state to `.temper/build-state.json`:
-   ```json
-   {
-     "stage": "check_complete",
-     "spec": "{bug-slug}",
-     "spec_path": ".temper/specs/{bug-slug}",
-     "original_args": "{from prior state}",
-     "next_stage": "commit",
-     "artifacts": ["rca.md"],
-     "updated": "{ISO timestamp}"
-   }
-   ```
-2. Report: "Saved. Run /temper:fix when ready to continue."
+**on Save:** Save state (orchestrator-patterns.md → "Save State Pattern", `stage: check_complete`, `next_stage: commit`).
 
 ---
 
