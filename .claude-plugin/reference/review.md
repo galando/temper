@@ -24,6 +24,24 @@ Confidence scoring and review memory follow the temper-core skill definitions.
 
 ## Execution
 
+### Progressive Loading Map
+
+This file is large. Read the **core** path first; read an **optional** section only when
+its trigger fires (use Grep/Read with the heading to jump there). Skipping untriggered
+sections is the intended behavior — it saves context without losing methodology.
+
+| Section | Load | Trigger |
+|---------|------|---------|
+| Steps 1–2 (gather, fingerprint, parallel subagents) | **Core** | Always |
+| Step 3–3a (intent + semantic test validation) | Core if `intent.md` exists | `intent.md` present |
+| Steps 3b–3d (problem traceback, decision coverage, mutation spot-check) | Optional | `intent.md` present AND tests exist |
+| Step 3.5 (Deep Doubt Mode) | Optional | High-risk diff or low confidence |
+| Step 3.6 (cross-file consistency) | Optional | >1 file changed |
+| Step 3.7 (API contract validation) | Optional | API/route/controller files changed |
+| Step 3.8 (architecture-depth) | Optional | `architecture-depth` pack/capability enabled |
+| Steps 4–8.5 (filter, summary, auto-fix, metrics, memory, learning) | **Core** | Always |
+| AI-Code Detection Checklist | Optional | Standalone review without a spec |
+
 ### Context Loading
 
 This stage may run in two modes:
@@ -722,39 +740,7 @@ CONTRACT VERDICT:
 
 This step runs as an **additional pass** after the standard review. It does not replace any existing steps.
 
-**How:**
-
-```
-1. LOAD domain context:
-   a. Read CONTEXT.md (if exists at project root) for domain glossary
-   b. Read docs/adr/ directory (if exists) for Architecture Decision Records
-   c. Read the architecture-depth reference: $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/architecture-depth.md
-
-2. RUN 5-dimension analysis on changed files:
-   a. Seams — Can modules be replaced without touching others?
-   b. Adapters — Are external dependencies behind adapter layers?
-   c. Locality — Is related code co-located?
-   d. Leverage — Do small changes propagate value broadly?
-   e. Deletion Test — Can a module be removed without cascading?
-
-3. SCORE each dimension per module (0-5 scale, see architecture-depth.md)
-
-4. REFERENCE domain glossary: Use CONTEXT.md terms for module naming validation
-   - If a module name doesn't align with domain glossary → flag as finding
-
-5. CHECK ADR compliance: Compare module design against established decisions
-   - If module violates an ADR → severity BLOCK
-   - If module follows ADRs → note compliance
-
-6. REPORT findings with [ARCH-DEPTH] prefix:
-   [ARCH-DEPTH] {dimension}: {file} — {finding}
-     Problem: {why current architecture causes friction}
-     Solution: {what would change}
-     Benefits: {locality/leverage improvement}
-     Severity: {WARN|BLOCK}
-
-7. ADD findings to main findings list (they follow standard confidence filtering)
-```
+**How:** Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/architecture-depth.md` and follow its full methodology (load CONTEXT.md + docs/adr/, run the 5-dimension analysis — seams, adapters, locality, leverage, deletion test — score each module, check ADR compliance). Report findings with the `[ARCH-DEPTH]` prefix and add them to the main findings list (standard confidence filtering applies).
 
 **Gate integration:** After standard review, the review gate offers "Architecture Depth Review" as an additional option. When selected, this step runs and findings are added to the existing review summary. The user then returns to the review gate with updated findings.
 

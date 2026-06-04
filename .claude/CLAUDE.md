@@ -12,29 +12,6 @@
 | `/temper:pack` | Manage quality packs |
 | `/temper:status` | Quality + observability dashboard |
 
-**v5.0.0:** Capabilities — architecture depth review, grill-me challenge mode, config suggestions, interactive HTML plan review
-**v4.6.0:** Adaptive Learning — pattern detection, rule suggestions, noise reduction
-**v4.5.2:** Deduplicate reference docs and Cursor rules — skills are the single source of truth, docs delegate
-**v4.5.1:** Fix skills loading — plugin.json skills paths must be directories, not SKILL.md file paths
-**v4.5.0:** 7 imports from addyosmani/agent-skills — performance + api-design packs, debugging procedure, Deep Doubt Mode, ADR generation, context engineering + source-driven skills
-**v4.4.1:** Implementation alignment — Build→Plan feedback loop, cross-walkthrough navigation, skip-to-build, doc accuracy
-**v4.4.0:** Pack performance & discovery — cached manifest, quick-create launcher packs, filesystem discovery, AskUserQuestion UX
+**Version:** 5.0.1 — see `CHANGELOG.md` for history.
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/`
-
-<!-- TOKENOMICS:START -->
-## Token Optimization Insights
-
-_Last updated: 2026-05-12_
-
-### Context Management
-- Your context snowballs at **turn 22** on average (31% of sessions). Use `/compact` proactively after turn 20-22 on long sessions to prevent unbounded growth.
-- You read files you don't end up using. Use `Grep` first to locate relevant files before reading them — reduces unnecessary context by ~3%.
-- You could benefit from subagents for parallel tasks. Consider splitting multi-file operations into parallel agent tasks.
-- You receive verbose command output. Prefer `Grep`/`Read` tools over bash commands when searching files to reduce output tokens.
-
-### Prompt Quality
-- **6%** of your prompts are under 10 words. Include specific file paths, function names, and expected outcomes to reduce clarification rounds.
-
-### Model Usage
-- You use Opus/Claude for **1%** of simple tasks. Prefer **Sonnet** for editing, small fixes, and exploration tasks to reduce token usage by ~5x on those sessions.
-<!-- TOKENOMICS:END -->
+Token efficiency tips: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/tokenomics.md`

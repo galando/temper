@@ -22,7 +22,7 @@ argument-hint: "<feature-description>"
 
 > **Reference:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md`
 >
-> This command uses shared patterns for: $CLAUDE_PLUGIN_ROOT resolution, gate options, gate enforcement, resume validation, nested invocation protection, agent failure handling, and context efficiency. Read that file for the canonical definitions.
+> **Read that file once, now.** It holds the canonical definitions for: $CLAUDE_PLUGIN_ROOT resolution, single-read contract, build-state schema + save-state pattern, stage agent launch template, gate options, gate enforcement, resume validation, nested invocation protection, agent failure handling, context-file schemas, feedback-loop schemas, and context efficiency. Every `→ pattern` reference below points into that already-loaded file — do not re-read it.
 
 Each stage runs in an **isolated Agent subprocess**. This provides genuine context clearing — each stage starts with a clean context window containing only what it needs.
 
@@ -57,29 +57,16 @@ ORCHESTRATOR (this file)
 
 ### State Management
 
-The orchestrator tracks progress via `.temper/build-state.json`. **Resolve the spec path from this file before launching any agent.**
-
-```json
-{
-  "stage": "plan_complete|design_complete|build_complete|review_complete|check_complete",
-  "spec": "{feature-slug}",
-  "spec_path": ".temper/specs/{feature-slug}",
-  "branch": "feature/{feature-slug}",
-  "original_args": "{user's original feature description}",
-  "next_stage": "build|review|check|commit",
-  "artifacts": ["intent.md", "tasks.md"],
-  "updated": "{ISO timestamp}"
-}
-```
-
-On resume, validate `build-state.json`: parseable JSON, stage is valid, spec directory exists, listed artifacts exist. If invalid, ask user whether to start over.
+State is tracked in `.temper/build-state.json` — schema and save-state rules in
+orchestrator-patterns.md → "Build State Schema". For `/temper`: stages
+`plan_complete | design_complete | build_complete | review_complete | check_complete`,
+branch `feature/{slug}`, artifacts `intent.md` + `tasks.md`. **Resolve the spec path
+from this file before launching any agent.** On resume, validate per
+orchestrator-patterns.md → "Resume Validation".
 
 ### Agent Failure Handling
 
-If an agent subprocess returns a failure or blocker:
-1. Show the failure details to the user
-2. Ask: "Retry / Save for later?" (user can type changes via "Other")
-3. Do NOT silently proceed to the next stage
+→ orchestrator-patterns.md → "Agent Failure Handling".
 
 ---
 
@@ -269,34 +256,16 @@ AskUserQuestion:
 **Walkthrough edits propagate automatically.** The orchestrator edits plan files on disk directly. The BUILD agent subprocess reads these same files, so changes are reflected without any extra step.
 
 **on Continue:**
-1. Save state to `.temper/build-state.json`:
-   ```json
-   {
-     "stage": "plan_complete",
-     "spec": "{feature-slug}",
-     "spec_path": ".temper/specs/{feature-slug}",
-     "original_args": "$ARGUMENTS",
-     "next_stage": "build",
-     "artifacts": ["intent.md", "tasks.md"],
-     "branch": "feature/{feature-slug}",
-     "updated": "{ISO timestamp}"
-   }
-   ```
+1. Save state (orchestrator-patterns.md → "Save State Pattern", `stage: plan_complete`, `next_stage: build`).
 2. **Create feature branch** (if git pack is enabled):
    - Run: `git branch --show-current`
    - If on main/master: `git checkout -b feature/{feature-slug}`
    - Store branch name in build-state.json
 3. Proceed to Stage 2 (BUILD) — launches a new Agent subprocess
 
-**on Change (via "Other" free-text input):**
-1. User types their change request in the "Other" field
-2. Edit the plan files directly (intent.md, tasks.md, etc.)
-3. Re-show the updated plan summary
-4. **Re-show the AskUserQuestion gate** — do NOT skip to build
+**on Change (via "Other"):** Edit the plan files (intent.md, tasks.md), re-show the updated plan summary, then re-show this gate. Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
-**on Save:**
-1. Save state to `.temper/build-state.json`
-2. Report: "Saved. Run /temper when ready to continue."
+**on Save:** Save state (orchestrator-patterns.md → "Save State Pattern", `stage: plan_complete`).
 
 ---
 
@@ -420,15 +389,9 @@ AskUserQuestion:
 1. Save state to `.temper/build-state.json` with `"stage": "design_complete"`
 2. Proceed to Stage 2 (BUILD) — launches a new Agent subprocess
 
-**on Change (via "Other" free-text input):**
-1. User types their change request in the "Other" field
-2. Edit the design files directly (design.md, etc.)
-3. Re-show the updated design summary
-4. **Re-show the AskUserQuestion gate** — do NOT skip to build
+**on Change (via "Other"):** Edit the design files (design.md), re-show the updated design summary, then re-show this gate. Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
-**on Save:**
-1. Save state to `.temper/build-state.json`
-2. Report: "Saved. Run /temper when ready to continue."
+**on Save:** Save state (orchestrator-patterns.md → "Save State Pattern", `stage: design_complete`).
 
 ---
 
@@ -576,82 +539,14 @@ Show the AskUserQuestion gate with:
 2. Proceed to Stage 3 (REVIEW) — launches a new Agent subprocess
 
 **on Loop back to Plan:**
-1. Write `build-context.json` to spec directory with:
-   ```json
-   {
-     "version": 1,
-     "stage": "build",
-     "timestamp": "{ISO timestamp}",
-     "build_summary": {
-       "tasks_completed": {N},
-       "tasks_total": {N},
-       "tests_added": {N},
-       "files_changed": {N}
-     },
-     "failure_reason": "{why the plan needs revision — e.g. infeasible design, missing dependencies, architecture mismatch}",
-     "blockers": ["{description of what couldn't be built}"],
-     "partial_results": {
-       "completed_files": ["{files that were successfully built}"],
-       "failed_tasks": ["{tasks that couldn't be completed with current plan}"]
-     }
-   }
-   ```
-2. Create loop entry in `.temper/feedback-loops.json`:
-   ```json
-   {
-     "id": "loop-build-{timestamp}",
-     "from_stage": "build",
-     "to_stage": "plan",
-     "reason": "infeasible design discovered",
-     "iteration": 1,
-     "max_iterations": 1,
-     "failure_context": {
-       "blockers": ["{blocker descriptions}"]
-     },
-     "started": "{ISO timestamp}"
-   }
-   ```
-3. Save state to `.temper/build-state.json` with `next_stage: "plan"`
-4. Launch PLAN Agent subprocess with:
-   ```
-   "Execute /temper:plan for feature: {original_args from build-state.json}
+1. Write `build-context.json` (schema: orchestrator-patterns.md → "Context File Schemas") with this stage's `failure_reason`, `blockers`, and `partial_results` (completed_files, failed_tasks).
+2. Create a loop entry in `.temper/feedback-loops.json` (schema: orchestrator-patterns.md → "Feedback Registry") with `from_stage: build`, `to_stage: plan`, `reason: "infeasible design discovered"`, `iteration: 1`, `max_iterations: 1`.
+3. Save state with `next_stage: "plan"`.
+4. Re-launch the PLAN agent (Stage 1 "Launch Planning Agent" template) with `original_args` from build-state.json, adding to its CONTEXT list: `{spec_path}/build-context.json` (what went wrong) and the note: "Feedback re-entry from Build — revise the plan to address these blockers."
 
-   Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan.md
+**on Change (via "Other"):** Make the change, re-show the updated build summary, then re-show this gate. Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
-   CONTEXT: You are starting with a CLEAN context. Load these files first:
-   1. {spec_path}/intent.md (original intent — may need revision)
-   2. {spec_path}/build-context.json (contains what went wrong during build)
-   3. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan.md for methodology
-
-   CRITICAL: This is a feedback loop re-entry from Build. The build-context.json describes what couldn't be built and why. Revise the plan to address these blockers.
-
-   Return ONLY:
-   - Plan summary text (formatted box + ASCII art diagram)
-   - Path to spec: .temper/specs/{feature-slug}/
-   - Complexity level: trivial/simple/medium/complex
-   - Risk level: low/medium/high"
-   ```
-
-**on Change (via "Other" free-text input):**
-1. User types their change request in the "Other" field
-2. Make the change
-3. Re-show the updated build summary
-4. **Re-show the AskUserQuestion gate** — do NOT skip to review
-
-**on Save:**
-1. Save state to `.temper/build-state.json`:
-   ```json
-   {
-     "stage": "build_complete",
-     "spec": "{feature-slug}",
-     "spec_path": ".temper/specs/{feature-slug}",
-     "original_args": "{from prior state}",
-     "next_stage": "review",
-     "artifacts": ["intent.md", "tasks.md"],
-     "updated": "{ISO timestamp}"
-   }
-   ```
-2. Report: "Saved. Run /temper when ready to continue."
+**on Save:** Save state (orchestrator-patterns.md → "Save State Pattern", `stage: build_complete`, `next_stage: review`).
 
 ---
 
@@ -773,89 +668,13 @@ Show the AskUserQuestion gate with:
 4. Proceed to Stage 4 (CHECK) — launches a new Agent subprocess
 
 **on Loop back to Build:**
-1. Write `review-context.json` to spec directory with:
-   ```json
-   {
-     "version": 1,
-     "stage": "review",
-     "timestamp": "{ISO timestamp}",
-     "findings_summary": {
-       "critical": {N},
-       "high": {N},
-       "medium": {N},
-       "low": {N},
-       "auto_fixed": {N}
-     },
-     "intent_verdict": "satisfied|partial|not_met",
-     "security_hot_paths": [],
-     "contract_changes": [],
-     "scenario_coverage": {
-       "total": {N},
-       "strong": {N},
-       "weak": {N},
-       "trivial": {N},
-       "uncovered": {N}
-     }
-   }
-   ```
-2. Create or update loop entry in `.temper/feedback-loops.json`:
-   ```json
-   {
-     "id": "loop-review-{timestamp}",
-     "from_stage": "review",
-     "to_stage": "build",
-     "reason": "auto-fixable issues found",
-     "iteration": {current_iteration + 1},
-     "max_iterations": 2,
-     "failure_context": {
-       "issues": ["file:line — description"],
-       "auto_fixable_count": {N}
-     },
-     "started": "{ISO timestamp}"
-   }
-   ```
-3. Launch BUILD agent subprocess with:
-   ```
-   "Execute /temper:build for spec: {spec}
+1. Write `review-context.json` (schema: orchestrator-patterns.md → "Context File Schemas") with this review's `findings_summary`, `intent_verdict`, and `scenario_coverage`.
+2. Create/update the loop entry in `.temper/feedback-loops.json` (schema: orchestrator-patterns.md → "Feedback Registry") with `from_stage: review`, `to_stage: build`, `reason: "auto-fixable issues found"`, `iteration: {current + 1}`, `max_iterations: 2`.
+3. Re-launch the BUILD agent (Stage 2 "Launch Build Agent" template) — it already loads `review-context.json` from its CONTEXT list; this is a feedback re-entry, so the issues there must be fixed.
 
-   Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md
+**on Change (via "Other"):** Make the change, re-launch the REVIEW agent for an updated summary, then re-show this gate. Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
-   CONTEXT: You are starting with a CLEAN context. Load these files first:
-   1. {spec_path}/tasks.md
-   2. {spec_path}/intent.md (if exists)
-   3. {spec_path}/review-context.json (contains issues to fix)
-   4. {spec_path}/check-context.json (if exists — previous check failures)
-
-   CRITICAL: This is a feedback loop re-entry. The review-context.json contains issues that must be fixed.
-
-   Return ONLY:
-   - Build summary text (formatted box)
-   - List of files changed
-   - Test results (pass/fail counts)
-   - Any blockers or failures"
-   ```
-
-**on Change (via "Other" free-text input):**
-1. User types their change request in the "Other" field
-2. Make the change
-3. Re-launch the REVIEW agent to get an updated review summary
-4. Show the updated review summary
-5. **Re-show the AskUserQuestion gate** — do NOT skip to check
-
-**on Save:**
-1. Save state to `.temper/build-state.json`:
-   ```json
-   {
-     "stage": "review_complete",
-     "spec": "{feature-slug}",
-     "spec_path": ".temper/specs/{feature-slug}",
-     "original_args": "{from prior state}",
-     "next_stage": "check",
-     "artifacts": ["intent.md", "tasks.md"],
-     "updated": "{ISO timestamp}"
-   }
-   ```
-2. Report: "Saved. Run /temper when ready to continue."
+**on Save:** Save state (orchestrator-patterns.md → "Save State Pattern", `stage: review_complete`, `next_stage: check`).
 
 ---
 
@@ -967,92 +786,13 @@ After Check agent returns and before showing the gate:
 ```
 
 **on Loop back to Build:**
-1. Write `check-context.json` to spec directory with:
-   ```json
-   {
-     "version": 1,
-     "stage": "check",
-     "timestamp": "{ISO timestamp}",
-     "validation_results": {
-       "compile": "pass|fail|skip",
-       "tests": "pass|fail|skip",
-       "coverage_pct": {N},
-       "lint": "pass|fail|skip",
-       "security": "pass|fail|skip"
-     },
-     "scenario_verification": {
-       "total": {N},
-       "passed": {N},
-       "failed": {N},
-       "missing": {N}
-     },
-     "test_failures": [
-       {
-         "test_name": "string",
-         "error_message": "string",
-         "file": "string",
-         "line": {N},
-         "scenario": "string"
-       }
-     ]
-   }
-   ```
-2. Create or update loop entry in `.temper/feedback-loops.json`:
-   ```json
-   {
-     "id": "loop-check-{timestamp}",
-     "from_stage": "check",
-     "to_stage": "build",
-     "reason": "test failures found",
-     "iteration": {current_iteration + 1},
-     "max_iterations": 2,
-     "failure_context": {
-       "test_failures": ["test_name — error_message"],
-       "failed_test_count": {N}
-     },
-     "started": "{ISO timestamp}"
-   }
-   ```
-3. Launch BUILD agent subprocess with:
-   ```
-   "Execute /temper:build for spec: {spec}
-   
-   Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md
-   
-   CONTEXT: You are starting with a CLEAN context. Load these files first:
-   1. {spec_path}/tasks.md
-   2. {spec_path}/intent.md (if exists)
-   3. {spec_path}/check-context.json (contains test failures to fix)
-   
-   CRITICAL: This is a feedback loop re-entry. The check-context.json contains test failures that must be fixed.
-   
-   Return ONLY:
-   - Build summary text (formatted box)
-   - List of files changed
-   - Test results (pass/fail counts)
-   - Any blockers or failures"
-   ```
+1. Write `check-context.json` (schema: orchestrator-patterns.md → "Context File Schemas") with this run's `validation_results`, `scenario_verification`, and `test_failures`.
+2. Create/update the loop entry in `.temper/feedback-loops.json` (schema: orchestrator-patterns.md → "Feedback Registry") with `from_stage: check`, `to_stage: build`, `reason: "test failures found"`, `iteration: {current + 1}`, `max_iterations: 2`.
+3. Re-launch the BUILD agent (Stage 2 "Launch Build Agent" template) — it already loads `check-context.json` from its CONTEXT list; this is a feedback re-entry, so the test failures there must be fixed.
 
-**on Change (via "Other" free-text input):**
-1. User types their change request in the "Other" field
-2. Make the change
-3. Re-launch the CHECK agent to re-validate
-4. **Re-show the AskUserQuestion gate** — do NOT commit directly
+**on Change (via "Other"):** Make the change, re-launch the CHECK agent to re-validate, then re-show this gate (do NOT commit directly). Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
-**on Save:**
-1. Save state to `.temper/build-state.json`:
-   ```json
-   {
-     "stage": "check_complete",
-     "spec": "{feature-slug}",
-     "spec_path": ".temper/specs/{feature-slug}",
-     "original_args": "{from prior state}",
-     "next_stage": "commit",
-     "artifacts": ["intent.md", "tasks.md"],
-     "updated": "{ISO timestamp}"
-   }
-   ```
-2. Report: "Saved. Run /temper when ready to continue."
+**on Save:** Save state (orchestrator-patterns.md → "Save State Pattern", `stage: check_complete`, `next_stage: commit`).
 
 ---
 

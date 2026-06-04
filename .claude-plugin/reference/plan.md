@@ -22,6 +22,23 @@ argument-hint: "<feature-name-or-JIRA-123>"
 
 ## Execution
 
+### Progressive Loading Map
+
+This file is large. Read the **core** path first; read an **optional** phase only when its
+trigger fires (Grep/Read the heading to jump there). Skipping untriggered phases is the
+intended behavior — it saves context without losing methodology.
+
+| Phase | Load | Trigger |
+|-------|------|---------|
+| Phases 0–1.5 (input type, file-count estimate, auto-prime, validate) | **Core** | Always |
+| Phase 1.6 (semantic index) | Optional | Semantic-search MCP available |
+| Phase 2 (research) | Optional | Unfamiliar framework/library in scope |
+| Phases 3–4 (complexity + risk, blast radius) | **Core** | Always |
+| Phase 4.1 (security hot-path detection) | Optional | Auth / input / data-access paths touched |
+| Phases 4.5–6 (derive scenarios, clarify, generate artifacts) | **Core** | Always |
+| Phase 6.5 (HTML review generation) | Optional | `capabilities.html-review` enabled AND user opts in |
+| Phase 7 (present for approval) | **Core** | Standalone mode (subprocess returns summary instead) |
+
 ### Context Loading
 
 This stage may run in two modes:
