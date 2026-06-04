@@ -3,7 +3,7 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## v5.1.0 — Token optimization
+## v5.0.1 — Token optimization
 
 - **Orchestrator dedup:** `temper.md` and `fix.md` now delegate repeated
   build-state schemas, gate-enforcement prose, context-file schemas, feedback-loop
