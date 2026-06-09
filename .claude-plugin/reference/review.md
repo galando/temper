@@ -280,9 +280,20 @@ AI-CODE DETECTION (apply to all files):
 
 **Subagent split strategy:**
 
+Check depth budget from agents config:
+- If `depth_remaining > 1`: spawn subagents (max `parallel-width`)
+- If `depth_remaining <= 1`: run review inline, no subagents
+
+If spawning is allowed:
 - If all files are same domain: single review subagent
 - If backend + frontend: 2 parallel subagents
 - If >20 changed files: split into groups of ~10 per subagent (max 3 parallel)
+
+Each subagent receives:
+```
+Use the Agent tool with this prompt:
+
+"Review the following files for issues. For each issue found, provide:
 
 ### Step 3: Intent Validation (IDD + BDD)
 

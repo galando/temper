@@ -86,6 +86,14 @@ end — return the summary to the orchestrator, which owns the gate.
 
 Return ONLY:
 {stage-specific return contract}"
+
+NESTED AGENTS (v5.1.0+):
+If agents.nested is enabled in temper.config:
+- Pass depth_remaining={max-depth - current_depth} to the subprocess prompt
+- Add this instruction: "When spawning child agents, check depth_remaining:
+  - If depth_remaining > 1: spawn Agent subprocesses (max parallel-width)
+  - If depth_remaining <= 1: run helper work inline (no spawn)"
+- Default depth_remaining = 4 at orchestrator (depth 0 → stage agents at depth 1 → helpers at depth 2)
 ```
 
 **Fixed scaffolding** (identical for every stage, do not vary): the CLEAN-context line,

@@ -3,6 +3,22 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v5.1.0 — Nested Subagent Support
+
+- **Nested agents config:** Added `agents` block to `.claude/temper.config` with
+  `nested`, `max-depth`, `parallel-width`, and `on-budget-exhausted` settings.
+  Defaults to `max-depth: 4`, `parallel-width: 3`, graceful inline fallback.
+- **Depth budget governance:** Updated orchestrator-patterns.md to pass
+  `depth_remaining` to stage agents. Stages check budget before spawning:
+  `depth_remaining > 1` → spawn, `depth_remaining <= 1` → run inline.
+- **Depth-2 helpers enabled:** Review parallel subagents, Plan Explore auto-prime,
+  Fix Explore RCA, and architecture-depth Explore now work in the composed
+  `/temper` pipeline (previously degraded when run through orchestrator).
+- **Graceful degradation:** Depth exhaustion falls back to inline work instead
+  of hard failure. Deterministic local budgeting; no global tree state needed.
+- **ADR-0002:** Documented nested subagent support strategy in
+  `docs/decisions/0002-nested-subagent-support.md`.
+
 ## v5.0.1 — Token optimization
 
 - **Orchestrator dedup:** `temper.md` and `fix.md` now delegate repeated
@@ -17,37 +33,3 @@ All notable changes to Temper are documented here. The plugin version lives in
   HTML review) trimmed to references.
 - **Lean memory:** `.claude/CLAUDE.md` trimmed to the command table + pointers; version
   history moved here, token insights moved to `reference/tokenomics.md`.
-
-## v5.0.0 — Capabilities
-
-Architecture depth review, grill-me challenge mode, config suggestions, interactive
-HTML plan review.
-
-## v4.6.0 — Adaptive Learning
-
-Pattern detection, rule suggestions, noise reduction.
-
-## v4.5.2
-
-Deduplicate reference docs and Cursor rules — skills are the single source of truth,
-docs delegate.
-
-## v4.5.1
-
-Fix skills loading — plugin.json skills paths must be directories, not SKILL.md file
-paths.
-
-## v4.5.0
-
-7 imports from addyosmani/agent-skills — performance + api-design packs, debugging
-procedure, Deep Doubt Mode, ADR generation, context engineering + source-driven skills.
-
-## v4.4.1
-
-Implementation alignment — Build→Plan feedback loop, cross-walkthrough navigation,
-skip-to-build, doc accuracy.
-
-## v4.4.0
-
-Pack performance & discovery — cached manifest, quick-create launcher packs, filesystem
-discovery, AskUserQuestion UX.

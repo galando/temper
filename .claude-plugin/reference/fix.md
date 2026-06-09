@@ -68,7 +68,11 @@ Loading stack-specific rules: {detected-stack}
 
 ### Step 2: Root Cause Analysis (via Explore subagent)
 
-Launch an Explore subagent:
+**Check depth budget from agents config:**
+- If `depth_remaining > 1`: spawn Explore subagent
+- If `depth_remaining <= 1`: run RCA inline (no subagent)
+
+If spawning is allowed, launch an Explore subagent:
 
 ```
 Investigate a bug and find the root cause. Understand WHY it happens, not just WHERE.

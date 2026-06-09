@@ -43,7 +43,11 @@ Before analysis, load domain context:
 
 ### Step 1: Explore
 
-Use the Agent tool with `subagent_type=Explore` to walk the changed files. Explore organically and note where you experience friction:
+**Check depth budget from agents config:**
+- If `depth_remaining > 1`: use Agent tool with `subagent_type=Explore`
+- If `depth_remaining <= 1`: explore inline (no subagent)
+
+If spawning is allowed, use the Agent tool with `subagent_type=Explore` to walk the changed files. Explore organically and note where you experience friction:
 
 - Where does understanding one concept require bouncing between many small modules?
 - Where are modules **shallow** — interface nearly as complex as the implementation?

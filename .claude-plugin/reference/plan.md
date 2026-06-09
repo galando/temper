@@ -82,7 +82,11 @@ Pre-estimate only. Explore subagent refines with actual codebase knowledge.
 
 ### Phase 1: Auto-Prime (via Explore subagent)
 
-Launch an Explore subagent with this prompt:
+**Check depth budget from agents config:**
+- If `depth_remaining > 1`: spawn Explore subagent
+- If `depth_remaining <= 1`: run exploration inline (no subagent)
+
+If spawning is allowed, launch an Explore subagent with this prompt:
 
 ```
 Scan this project to build a reference map for planning a new feature.

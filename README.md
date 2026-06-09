@@ -283,6 +283,48 @@ AI built it correctly. But also added an admin-only reset endpoint nobody asked 
 
 ## What's New
 
+### v5.1.0: Nested Subagent Support
+
+Temper now supports Claude Code's nested subagent capability — stage agents can spawn their own helper agents (up to depth 2 in the composed `/temper` pipeline).
+
+#### Depth Budget Governance
+
+A new `agents` config block governs nesting with a depth budget:
+
+```yaml
+agents:
+  nested: true                # allow stages to spawn child agents
+  max-depth: 4                # Temper's self-imposed cap (platform hard cap = 5)
+  parallel-width: 3           # max concurrent children per stage
+  on-budget-exhausted: inline # fallback: inline | fail
+```
+
+The orchestrator passes `depth_remaining` to each stage. Before spawning helper agents, stages check:
+- `depth_remaining > 1` → spawn subprocesses (parallel up to `parallel-width`)
+- `depth_remaining <= 1` → run helper work inline (graceful degradation)
+
+This makes nested execution **deterministic** and **local** — no global tree state needed.
+
+#### What Actually Changes
+
+Previously documented but dormant patterns now work in the composed `/temper` pipeline:
+
+- **Review parallel subagents** — Launch up to 3 domain-specialized reviewers in parallel
+- **Plan Explore auto-prime** — Blast radius uses an Explore subagent to scan affected modules
+- **Fix Explore RCA** — Root cause analysis launches parallel Explore agents per hypothesis
+- **Architecture-depth** — Module walk uses Explore-based depth analysis
+
+Before this change, these worked standalone (`/temper:review`) but degraded to inline work when run through the `/temper` orchestrator because the platform forbade agent→agent spawns.
+
+#### Future Phases
+
+Phase 1 (v5.1.0): Unblock existing depth-2 helpers + depth governance.
+Phase 2: Parallel Build execution of `[PARALLEL]` tasks.
+Phase 3: Fix RCA hypothesis fan-out (one child per root cause).
+Phase 4: Plan blast-radius fan-out (one Explore per module).
+
+See [ADR-0002](docs/decisions/0002-nested-subagent-support.md) for the full strategy.
+
 ### v5.0.0: Interactive Capabilities
 
 Four new capabilities that change how you interact with Temper's pipeline — each independently optional, enabled by default.
