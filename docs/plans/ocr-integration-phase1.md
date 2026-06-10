@@ -20,6 +20,7 @@ When OCR is available, it takes over **line-level defect detection** (NPE, threa
 - **No vendoring or forking** of OCR. We orchestrate the CLI; we ship zero OCR code.
 - **No OCR in `/temper:check`** — review stage only for Phase 1.
 - **No MCP wrapper** — OCR is invoked via Bash like the project test runner.
+- **No Cursor mirror.** Per the platform strategy ([growth-plan.md §1](growth-plan.md#1-platform-strategy--complexity-budget)), Cursor support is frozen at the v5.1 feature set; OCR integration ships Claude Code-only.
 
 ### Why CLI, not OCR's Claude Code plugin
 
@@ -217,9 +218,9 @@ Add **"3. open-code-review (Line-Level Defect Engine)"** section (renumber "Veri
 - "Recommended Setup" section: add OCR as the third optional tool (3 lines + link to recommended-setup.md — keep it short; README weight reduction is handled by the growth plan, not here).
 - Evidence label list: add `[OCR]` / `[OCR+TEMPER]` to the labels documented in the v3.1.0 section.
 
-### 4.6 Cursor parity — `.cursor/commands/temper-review.md` and `.cursor/commands/temper-status.md`
+### 4.6 Cursor — explicitly NOT mirrored
 
-Mirror edits 4.1(a)(c)(d) and 4.2 into the Cursor command files (same content, conversational-gate phrasing per existing Cursor adaptations). Update `scripts/install-cursor.sh` manifest only if it pins file hashes (verify during implementation; current script downloads by path, so likely no change).
+Cursor support is frozen at the v5.1 feature set (platform strategy, growth-plan.md §1). Do **not** mirror these edits into `.cursor/`. Add one line to `.cursor/commands/temper-review.md`'s header noting: "open-code-review integration is Claude Code-only; see docs/recommended-setup.md." Nothing else changes under `.cursor/`.
 
 ### 4.7 `docs/commands.md` and `docs/review.md` (docs site)
 
@@ -239,12 +240,11 @@ Add a short "External engine: open-code-review" subsection under the review comm
 | T1 | **Empirical schema capture.** Install `ocr` in a scratch repo with a seeded bug; run `ocr review --commit <sha> --format json --audience agent`; save raw output as `docs/plans/fixtures/ocr-output-sample.json`; document observed fields + severity values; test dirty-tree behavior; pin minimum OCR version (record `ocr --version`) | Schema doc + fixture + final §3.4 mapping | — |
 | T2 | review.md edits 4.1(a)–(d) | Core integration | T1 |
 | T3 | status.md edits 4.2 + temper.config 4.3 | Detection + dashboard | T1 |
-| T4 | Docs: recommended-setup.md, README.md, docs/commands.md, docs/review.md | User-facing docs | T2, T3 |
-| T5 | Cursor parity 4.6 | Feature parity | T2, T3 |
-| T6 | Manual test matrix (below) executed on a fixture project | Test evidence in PR description | T2–T5 |
-| T7 | CHANGELOG + version bump + release | v5.2.0 | T6 |
+| T4 | Docs: recommended-setup.md, README.md, docs/commands.md, docs/review.md + Cursor freeze note (4.6) | User-facing docs | T2, T3 |
+| T5 | Manual test matrix (below) executed on a fixture project | Test evidence in PR description | T2–T4 |
+| T6 | CHANGELOG + version bump + release | v5.2.0 | T5 |
 
-### Manual test matrix (T6)
+### Manual test matrix (T5)
 
 | Scenario | Expected |
 |----------|----------|
