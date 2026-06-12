@@ -189,6 +189,39 @@ Plan with blast radius analysis, mermaid diagrams, and interactive walkthrough.
 
 ---
 
+## `/temper:design`
+
+System design for complex/medium features. Auto-skipped for simple or trivial features.
+
+```bash
+/temper:design
+```
+
+**What it does:**
+
+Produces a system design document (`design.md`) with:
+
+- **Architecture overview** — System components and data flow
+- **API contracts** — Request/response shapes, endpoint changes
+- **Database changes** — Schema changes, migration strategy
+- **Integration points** — External system connections, error handling
+- **Decision log** — Architectural decisions with rationale (ADRs)
+
+**When it runs:**
+
+Automatically included in the `/temper` pipeline when:
+- `phases.design: true` in temper.config (default)
+- AND complexity is `medium` or `complex`
+
+**Config:**
+
+```yaml
+phases:
+  design: true    # Set false to always skip design stage
+```
+
+---
+
 ## `/temper:build`
 
 Build with TDD + quality gates.

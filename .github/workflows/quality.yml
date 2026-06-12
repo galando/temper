@@ -1,0 +1,40 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run quality-check.sh
+        run: bash scripts/quality-check.sh
+
+  validate-readme:
+    name: README Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run validate-readme.sh
+        run: bash scripts/validate-readme.sh
+
+  validate-docs:
+    name: Documentation Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run validate-docs.sh
+        run: bash scripts/validate-docs.sh
+
+  validate-plugin:
+    name: Plugin Structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run validate-plugin.sh
+        run: bash scripts/validate-plugin.sh

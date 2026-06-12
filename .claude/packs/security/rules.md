@@ -17,6 +17,8 @@
 - Use strong password hashing (bcrypt/scrypt/Argon2)
 - Set token expiration (max 1 hour for access tokens)
 - Apply rate limiting to authentication endpoints
+- Verify error handling middleware exists (global error handler, try/catch in route handlers)
+- Apply security middleware (cors, helmet, rate-limit) for all public-facing servers
 
 ## Architectural Constraints (BLOCK if violated)
 - Authentication/authorization checks required on all non-public endpoints

@@ -52,6 +52,18 @@ git clone https://github.com/galando/temper.git
 cp -r temper/.claude /path/to/your/project/
 ```
 
+## Try It First
+
+Want to see Temper in action before installing? Clone the playground:
+
+```bash
+git clone https://github.com/galando/temper-playground
+cd temper-playground
+# Follow the README — see Temper's gates catch real bugs
+```
+
+The playground has intentional flaws that demonstrate Temper's scenario coverage gate, security hot path detection, and test gap analysis.
+
 ## First Steps
 
 ### Option A: Unified Command (Recommended)

@@ -140,6 +140,7 @@ Before launching subagents, build a diff fingerprint that classifies each change
       - CONCURRENCY: async, await, promise, spawn, thread, goroutine,
         channel, mutex, lock
       - EXTERNAL_API: fetch, http, request, client, axios, curl, grpc
+      - MIDDLEWARE: app.use, use(), middleware, cors, helmet, rate-limit, error-handler
 
 3. Build the fingerprint (ephemeral — not persisted):
 
@@ -245,6 +246,13 @@ PERFORMANCE ANTI-PATTERN DETECTION (for each changed file):
    - FLAG as MEDIUM if: loop over >10 items or called multiple times per request
    - Suggestion: "Convert to Set/Map for O(1) lookups"
 
+6. RACE CONDITION DETECTION:
+   - Find shared mutable state: module-level variables, class properties modified in request handlers
+   - Check for non-atomic mutations: counter++, nextId++, array.push() without lock
+   - FLAG as HIGH if: shared state mutated in concurrent context (HTTP handler, event handler)
+   - FLAG as MEDIUM if: shared state read/written without synchronization primitive
+   - Suggestion: "Use atomic operations, transactions, or mutex for shared state"
+
 Report format:
   [HIGH] N+1 query — {file}:{line}: forEach loop with {Model.find()}
     Impact: N database queries for N items
@@ -294,6 +302,14 @@ For any file with security sensitivity CRITICAL or HIGH:
    HIGH:     Security boundary untested
              Input validation missing
              Error handling exposes system details
+
+5. CHECK middleware stack completeness:
+   a. Find the app entry point (index.ts, app.ts, main.ts, server.ts, etc.)
+   b. Verify security middleware: cors(), helmet(), rate-limit()
+   c. Verify error middleware: app.use((err, req, res, next) => ...) or equivalent
+   d. FLAG as HIGH if: HTTP server with no error middleware
+   e. FLAG as MEDIUM if: public API with no CORS or security headers
+   f. Evidence label: [HEURISTIC]
 
 IMPORTANT: Security findings ALWAYS bypass confidence filtering.
 Report them regardless of confidence threshold.
