@@ -5,6 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Temper - Quality gates, blast radius analysis, and intent-driven development for AI-generated code">
   <meta name="theme-color" content="#0f0a06">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Temper — Quality gates for AI-generated code">
+  <meta property="og:description" content="IDD + BDD + TDD for AI-generated code. Catches the edge cases, over-engineering, and wrong-problem solutions that AI coding assistants miss.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://galando.github.io/temper/">
+  <meta property="og:image" content="https://galando.github.io/temper/temper.png">
+  <meta property="og:site_name" content="Temper">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Temper — Quality gates for AI-generated code">
+  <meta name="twitter:description" content="Catches the edge cases, over-engineering, and wrong-problem solutions that AI coding assistants miss.">
+  <meta name="twitter:image" content="https://galando.github.io/temper/temper.png">
+
+  <!-- JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Temper",
+    "description": "Quality gates, blast radius analysis, and intent-driven development for AI-generated code",
+    "url": "https://github.com/galando/temper",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "license": "https://opensource.org/licenses/MIT",
+    "author": { "@type": "Person", "name": "Gal Naor", "url": "https://github.com/galando" },
+    "programmingLanguage": "Markdown",
+    "version": "5.2.0"
+  }
+  </script>
+
   <title>Temper — Your AI writes fast. Temper makes it last.</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -827,7 +858,7 @@
     <div class="hero-grid">
       <div class="hero-content">
         <h1>Your AI writes fast.<br><em>Temper makes it last.</em></h1>
-        <p>IDD + BDD + TDD for AI-generated code. Quality gates, blast radius analysis, and intent-driven development. The AI discipline layer for Claude Code and Cursor.</p>
+        <p>IDD + BDD + TDD for AI-generated code. Quality gates, blast radius analysis, and intent-driven development. The AI discipline layer for Claude Code (Cursor: stable v5.1 tier).</p>
         <div class="hero-actions">
           <a href="#install" class="btn btn-primary">Install →</a>
           <a href="https://github.com/galando/temper" class="btn btn-secondary" target="_blank">View on GitHub</a>
@@ -856,7 +887,7 @@
           <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; color: var(--fg-muted); overflow-x: auto; margin: 0;">bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)</pre>
           <button class="copy-btn" onclick="copyCode(this, 'bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-family: 'IBM Plex Mono', monospace; color: var(--fg-muted); cursor: pointer;">Copy</button>
         </div>
-        <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Full feature parity with Claude Code.</p>
+        <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Stable v5.1 feature set. New capabilities ship Claude Code-first.</p>
       </div>
     </div>
   </section>
@@ -885,7 +916,7 @@
       </div>
     </div>
 
-    <div class="why-grid" style="grid-template-columns: repeat(4, 1fr); margin-top: 1rem;">
+    <div class="why-grid" style="grid-template-columns: repeat(3, 1fr); margin-top: 1rem;">
       <div class="why-item">
         <h4>Context Accumulation</h4>
         <p>Each stage writes structured context for downstream stages. Review knows what Build struggled with, Check knows what Review already fixed. No agent amnesia.</p>
@@ -898,11 +929,45 @@
         <h4>MCP Integration</h4>
         <p>Optional MCP servers upgrade analysis: <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">code-review-graph</code> for blast radius and call chains, <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">semgrep</code> for SAST scanning. Progressive enhancement.</p>
       </div>
+    </div>
+
+    <div class="why-grid" style="grid-template-columns: repeat(2, 1fr); margin-top: 1rem;">
       <div class="why-item">
-        <h4>Cursor IDE Parity</h4>
-        <p>Full Temper for <a href="https://cursor.sh" style="color: var(--accent);">Cursor</a> (v5.0.0). 22 rules — packs, skills, capabilities — including architecture depth review, grill-me challenges, config suggestions, and interactive HTML plan review. Feature parity with Claude Code.</p>
+        <h4>Cursor IDE (stable tier)</h4>
+        <p>Temper for <a href="https://cursor.sh" style="color: var(--accent);">Cursor</a> at the v5.1 feature set. 22 rules — packs, skills, capabilities. New capabilities ship Claude Code-first. <a href="https://github.com/galando/temper/blob/main/docs/plans/growth-plan.md#1-platform-strategy--complexity-budget" style="color: var(--accent);">Platform strategy →</a></p>
+      </div>
+      <div class="why-item">
+        <h4>External Review Engine</h4>
+        <p>Orchestrates Alibaba's <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">open-code-review</code> for LLM-powered defect detection. Cross-validated findings labeled <strong style="color:var(--accent)">[OCR+TEMPER]</strong> with boosted confidence.</p>
       </div>
     </div>
+  </section>
+
+  <section id="evidence">
+    <div class="section-label">Evidence</div>
+    <h2 class="section-title">Does It Actually Catch Bugs?</h2>
+    <p class="section-desc">Architecture arguments are fine. Results are better. Here's what Temper catches that vanilla AI coding misses.</p>
+
+    <div class="why-grid" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="why-item" style="border-left: 3px solid var(--error); padding-left: 1rem;">
+        <h4 style="color: var(--error);">Missing Rate Limiting</h4>
+        <p>AI built password reset. All tests pass. Scenario coverage gate caught the gap: no test for rate limiting. Build wrote the test → failed → implemented rate limiting → passed.</p>
+      </div>
+      <div class="why-item" style="border-left: 3px solid var(--warning); padding-left: 1rem;">
+        <h4 style="color: var(--warning);">Over-Engineering</h4>
+        <p>AI planned 3 classes for a single validation rule. File-to-scenario traceability flagged it: one scenario, one function needed. Three files became zero.</p>
+      </div>
+      <div class="why-item" style="border-left: 3px solid var(--accent); padding-left: 1rem;">
+        <h4 style="color: var(--accent);">Wrong Problem Solved</h4>
+        <p>AI built the feature correctly — plus an admin-only endpoint nobody asked for. Untraced file flagged and removed before commit.</p>
+      </div>
+    </div>
+
+    <p style="text-align: center; margin-top: 1.5rem;">
+      <a href="https://github.com/galando/temper/tree/main/docs/evidence" style="color: var(--accent); font-weight: 500;">See all evidence →</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/galando/temper/tree/main/docs/evidence/benchmark.md" style="color: var(--fg-muted); font-size: 0.9rem;">Benchmark methodology</a>
+    </p>
   </section>
 
   <section id="why">
@@ -1260,7 +1325,7 @@
           <pre>bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)</pre>
           <button class="copy-btn" onclick="copyCode(this, 'bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)')">Copy</button>
         </div>
-        <p>Downloads 22 rules and 9 commands — packs, skills, capabilities, and reference docs. Full v5.0.0 feature parity with Claude Code. No Python or git required.</p>
+        <p>Downloads 22 rules and 9 commands — packs, skills, capabilities, and reference docs. Stable v5.1 feature set. No Python or git required.</p>
       </div>
 
     </div>

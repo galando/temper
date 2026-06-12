@@ -135,6 +135,18 @@ refactor: simplify blast radius logic
 - [ ] Commits follow conventional format
 - [ ] No unrelated changes
 
+## 🎮 Playground
+
+Try Temper in a sandbox before contributing:
+
+```bash
+git clone https://github.com/galando/temper-playground
+cd temper-playground
+# Follow the README to see Temper's gates in action
+```
+
+The playground has intentional flaws that Temper's gates catch — a quick way to understand how Temper works before contributing.
+
 ## 🤝 Code of Conduct
 
 - Be respectful and inclusive
@@ -145,7 +157,8 @@ refactor: simplify blast radius logic
 ## 📬 Questions?
 
 - Open an issue for bugs or feature requests
-- Start a discussion for questions
+- Start a [GitHub Discussion](https://github.com/galando/temper/discussions) for questions
+- Check [Good First Issues](https://github.com/galando/temper/labels/good%20first%20issue) for beginner-friendly contributions
 
 ---
 
