@@ -4,6 +4,8 @@ description: "Technical code review with confidence scoring, review memory, and 
 
 # Review: Confidence-Scored Code Review
 
+> open-code-review integration is Claude Code-only; see docs/recommended-setup.md
+
 **Goal:** Review changes with parallel subagents, confidence scoring, and intent validation.
 
 ## Execution

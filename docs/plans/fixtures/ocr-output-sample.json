@@ -1,0 +1,38 @@
+{
+  "status": "success",
+  "summary": {
+    "files_reviewed": 1,
+    "comments": 3,
+    "total_tokens": 8045,
+    "input_tokens": 7578,
+    "output_tokens": 467,
+    "cache_read_tokens": 5824,
+    "elapsed": "22s"
+  },
+  "comments": [
+    {
+      "path": "test.js",
+      "content": "Critical Bug: Calling `.toString()` on `null` will throw a `TypeError: Cannot read properties of null (reading 'toString')`. A null/undefined check should be performed before accessing properties or methods on potentially null values.",
+      "suggestion_code": "  if (input == null) {\n    throw new Error('Input cannot be null or undefined');\n  }\n  const result = input.toString();",
+      "existing_code": "  const result = null.toString();",
+      "start_line": 3,
+      "end_line": 3
+    },
+    {
+      "path": "test.js",
+      "content": "Security Vulnerability (SQL Injection): Directly concatenating user input (`id`) into a SQL query string allows an attacker to inject arbitrary SQL. Use parameterized/prepared statements instead.",
+      "suggestion_code": "  const query = \"SELECT * FROM users WHERE id = ?\";\n  return db.execute(query, [id]);",
+      "existing_code": "  const query = \"SELECT * FROM users WHERE id = \" + id;\n  return db.execute(query);",
+      "start_line": 9,
+      "end_line": 10
+    },
+    {
+      "path": "test.js",
+      "content": "Security Issue (Hardcoded Secret): API key is hardcoded in plain text in the source code. This exposes sensitive credentials in version control. Use environment variables or a secrets manager instead.",
+      "suggestion_code": "const API_KEY = process.env.API_KEY;",
+      "existing_code": "const API_KEY = \"sk-1234567890abcdef\";",
+      "start_line": 14,
+      "end_line": 14
+    }
+  ]
+}

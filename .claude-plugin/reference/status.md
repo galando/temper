@@ -40,10 +40,10 @@ If .temper/ directory doesn't exist:
 
 If `.temper/metrics.json` doesn't exist: show "No metrics yet. Run /temper:review or /temper:check to start tracking."
 
-### Step 1.5: Detect MCP Tool Availability
+### Step 1.5: Detect External Tool Availability
 
 ```
-Detect which MCP tools are available by checking tool capabilities:
+Detect which external tools are available by checking capabilities:
 
 1. code-review-graph:
    - Try calling get_impact_radius_tool with a trivial query (e.g., current file)
@@ -56,12 +56,21 @@ Detect which MCP tools are available by checking tool capabilities:
    - If tool exists and responds: available
    - If tool not found or errors: unavailable
 
-3. Read tools.mode from .claude/temper.config:
+3. ocr (open-code-review):
+   - Run: command -v ocr
+   - If not found: not installed
+   - If found: run ocr --version
+   - Probe readiness: ocr review --preview --from HEAD~1 --to HEAD
+   - If probe fails (LLM not configured): not configured
+   - If probe succeeds: ready
+   - Record: ocr_status = ready | not-installed | not-configured
+
+4. Read tools.mode from .claude/temper.config:
    - auto: report availability, note fallback behavior
    - heuristic-only: report as "disabled (heuristic-only mode)"
    - require: report as "required" — warn if unavailable
 
-4. Compute evidence ratio from metrics.json evidence field:
+5. Compute evidence ratio from metrics.json evidence field:
    - proven + heuristic + semantic = total evidence
    - ratio = proven / total * 100 (if total > 0)
 ```
@@ -136,9 +145,11 @@ Detect which MCP tools are available by checking tool capabilities:
 │   Last run: {date} ({X}/{Y} passed)                  │
 │   Mutations: {N} caught, {N} missed                  │
 │                                                      │
-│ MCP TOOLS                                            │
+│ EXTERNAL TOOLS                                       │
 │   code-review-graph: {available/unavailable}          │
 │   semgrep: {available/unavailable}                    │
+│   ocr (open-code-review): {ready/not installed/not configured} │
+│   ocr accept rate: {N}% ({accepted}/{total}) (if review memory has OCR entries) │
 │   Evidence ratio: {X}% [PROVEN] ({N} proven / {N} heuristic) │
 │   Setup: docs/recommended-setup.md                   │
 │                                                      │

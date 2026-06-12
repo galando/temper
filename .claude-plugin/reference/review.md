@@ -33,6 +33,7 @@ sections is the intended behavior — it saves context without losing methodolog
 | Section | Load | Trigger |
 |---------|------|---------|
 | Steps 1–2 (gather, fingerprint, parallel subagents) | **Core** | Always |
+| Step 2.5 (OCR engine run) | Optional | `ocr_status == ready` |
 | Step 3–3a (intent + semantic test validation) | Core if `intent.md` exists | `intent.md` present |
 | Steps 3b–3d (problem traceback, decision coverage, mutation spot-check) | Optional | `intent.md` present AND tests exist |
 | Step 3.5 (Deep Doubt Mode) | Optional | High-risk diff or low confidence |
@@ -80,6 +81,22 @@ git diff --stat HEAD
 # 5. Read review memory
 # - Load .temper/review-memory.json if exists
 # - Contains: dismissed patterns, accepted patterns, auto-rules
+
+# 5.5. Detect ocr CLI (external review engine)
+# - Read tools.ocr.mode from temper.config (default: auto)
+# - If mode == "off": skip detection, set ocr_status = "off"
+# - If mode != "off":
+#     a. Run: command -v ocr
+#        - Not found → ocr_status = "not-installed"
+#        - If mode == "require": BLOCK with "ocr required but not installed — npm install -g @alibaba-group/open-code-review"
+#        - If mode == "auto": skip silently
+#     b. Run: ocr --version → pin minimum version
+#     c. Probe readiness: ocr review --preview --from <base> --to <head>
+#        - Fails (LLM not configured) → ocr_status = "not-configured"
+#        - If mode == "require": BLOCK with config instructions
+#        - If mode == "auto": one-line notice, proceed
+#        - Succeeds → ocr_status = "ready"
+#     d. Record ocr_status for Step 2 prompt conditioning and Step 2.5
 
 # 6. Find active intent.md
 # - If chained from /temper:build: use the same spec (build context contains: spec name, feature path)
@@ -178,6 +195,19 @@ For each issue, classify as:
 - NEW ISSUE: Problem introduced by this change
 - PRE-EXISTING: Issue existed before this change (lower priority, optional to fix)
 Weight your focus: 80% on changed lines, 20% on context verification.
+
+--- BEGIN CONDITIONAL SECTION ---
+IF ocr_status == "ready" AND tools.ocr.replace-defect-subagent == true:
+  (OCR engine handles line-level defect detection)
+  OMIT the generic logic-defect hunting sections below:
+  - PERFORMANCE PATTERNS to check
+  - PERFORMANCE ANTI-PATTERN DETECTION
+  Focus instead on: pack rules, security hot paths, AI-code detection,
+  architecture drift, test gaps, intent validation.
+ELSE:
+  (Full Temper defect hunting — v5.1 behavior)
+  Include all sections below.
+--- END CONDITIONAL SECTION ---
 
 PERFORMANCE PATTERNS to check:
 - N+1 queries: Loops making database/API calls
@@ -294,6 +324,74 @@ Each subagent receives:
 Use the Agent tool with this prompt:
 
 "Review the following files for issues. For each issue found, provide:
+
+### Step 2.5: Run OCR Engine (if ready)
+
+**Only runs when `ocr_status == ready`.** Otherwise skip to Step 3.
+
+```
+1. Determine diff range:
+   - Committed diff: use --from <base> --to <head>
+   - PR mode: use --from origin/main --to <pr-branch>
+   - Uncommitted changes: SKIP OCR with notice "OCR skipped (uncommitted changes)"
+
+2. Invoke OCR:
+   ocr review --from <base> --to <head> \
+     --format json --audience agent \
+     --concurrency {tools.ocr.concurrency}
+
+   - Run via Bash with timeout = tools.ocr.timeout minutes + 2 minute buffer
+   - Capture stdout (JSON) and stderr
+
+3. Parse JSON output:
+   a. If JSON parse fails:
+      - mode auto: create unstructured [OCR] appendix section from raw text
+      - mode require: same + prominent warning
+      - SKIP deduplication, proceed to Step 3
+   b. If JSON parse succeeds: extract comments[] array
+
+4. For each comment in OCR output:
+   a. Extract fields:
+      - file: comment.path
+      - line: comment.start_line
+      - description: comment.content
+      - suggestion: comment.suggestion_code
+      - existing_code: comment.existing_code
+
+   b. Map severity (from content prose):
+      - "Critical Bug" | "Vulnerability" | "critical" → CRITICAL, confidence 0.85
+      - "Security Issue" | "Bug" | "Error" → HIGH, confidence 0.80
+      - "Warning" | "Performance" → MEDIUM, confidence 0.75
+      - "Suggestion" | "Improvement" | default → LOW, confidence 0.70
+
+   c. Map category (from content prose):
+      - SQL Injection | XSS | CSRF | "Secret" | "API Key" → security
+      - NPE | TypeError | "null" | undefined → logic
+      - Performance | N+1 | "query" → performance
+      - Default → quality
+
+   d. Label: [OCR] on all findings
+
+5. Deduplicate against Step 2 subagent findings:
+   For each [OCR] finding, check against ALL subagent findings:
+   - Match rule: same file AND line +/- 2 AND same category family
+   - If match found:
+     a. Merge into single [OCR+TEMPER] finding
+     b. Confidence = min(0.95, max(ocr_conf, temper_conf) + 0.15)
+     c. Severity = higher of the two
+     d. Description: combine both, lead with OCR description
+     e. Remove the original Temper-only finding from the list
+   - If no match: keep [OCR] finding as-is
+
+6. Append merged list to issues collection (Step 4 filters from here)
+
+7. Failure handling:
+   - OCR exits non-zero or timeout:
+     * mode auto: warn + discard OCR results, full Temper review continues
+     * mode require: warn + degrade (NOT block — runtime failure ≠ unavailability)
+   - JSON parse failure: raw-text appendix fallback (both modes)
+   - Dirty tree (uncommitted changes): skip OCR with notice
+```
 
 ### Step 3: Intent Validation (IDD + BDD)
 
