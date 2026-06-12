@@ -6,9 +6,8 @@ set -euo pipefail
 command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 is required but not found in PATH"; exit 1; }
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TOTAL_PASS=0
-TOTAL_FAIL=0
-RESULTS=()
+PASS=0
+FAIL=0
 
 echo "=== Temper Quality Check ==="
 echo "Repo: $REPO_ROOT"
@@ -18,17 +17,14 @@ echo ""
 PJ="$REPO_ROOT/.claude-plugin/plugin.json"
 if [[ ! -f "$PJ" ]]; then
   echo "[FAIL] plugin.json not found"
-  ((TOTAL_FAIL++))
-  RESULTS+=("plugin.json: NOT FOUND")
+  FAIL=$((FAIL+1))
 else
   if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$PJ" 2>/dev/null; then
     echo "[PASS] plugin.json is valid JSON"
-    ((TOTAL_PASS++))
-    RESULTS+=("plugin.json: valid")
+    PASS=$((PASS+1))
   else
     echo "[FAIL] plugin.json is not valid JSON"
-    ((TOTAL_FAIL++))
-    RESULTS+=("plugin.json: INVALID JSON")
+    FAIL=$((FAIL+1))
   fi
 fi
 
@@ -36,17 +32,14 @@ fi
 MJ="$REPO_ROOT/.claude-plugin/marketplace.json"
 if [[ ! -f "$MJ" ]]; then
   echo "[FAIL] marketplace.json not found"
-  ((TOTAL_FAIL++))
-  RESULTS+=("marketplace.json: NOT FOUND")
+  FAIL=$((FAIL+1))
 else
   if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$MJ" 2>/dev/null; then
     echo "[PASS] marketplace.json is valid JSON"
-    ((TOTAL_PASS++))
-    RESULTS+=("marketplace.json: valid")
+    PASS=$((PASS+1))
   else
     echo "[FAIL] marketplace.json is not valid JSON"
-    ((TOTAL_FAIL++))
-    RESULTS+=("marketplace.json: INVALID JSON")
+    FAIL=$((FAIL+1))
   fi
 fi
 
@@ -70,13 +63,11 @@ for m in missing:
 
   if [[ -z "$MISSING" ]]; then
     echo "[PASS] All plugin.json references resolve"
-    ((TOTAL_PASS++))
-    RESULTS+=("references: all resolve")
+    PASS=$((PASS+1))
   else
     echo "[FAIL] Missing references in plugin.json:"
     echo "$MISSING" | sed 's/^/  /'
-    ((TOTAL_FAIL++))
-    RESULTS+=("references: MISSING")
+    FAIL=$((FAIL+1))
   fi
 fi
 
@@ -86,17 +77,14 @@ if [[ -f "$README" ]]; then
   LINES=$(wc -l < "$README" | tr -d ' ')
   if [[ "$LINES" -le 300 ]]; then
     echo "[PASS] README is $LINES lines (<= 300)"
-    ((TOTAL_PASS++))
-    RESULTS+=("README: ${LINES} lines")
+    PASS=$((PASS+1))
   else
     echo "[FAIL] README is $LINES lines (max 300)"
-    ((TOTAL_FAIL++))
-    RESULTS+=("README: ${LINES} lines (OVER LIMIT)")
+    FAIL=$((FAIL+1))
   fi
 else
   echo "[FAIL] README.md not found"
-  ((TOTAL_FAIL++))
-  RESULTS+=("README: NOT FOUND")
+  FAIL=$((FAIL+1))
 fi
 
 # --- CHANGELOG version ---
@@ -106,23 +94,21 @@ if [[ -f "$CHANGELOG" && -f "$PJ" ]]; then
   CHANGELOG_VER=$(grep -m1 '## v' "$CHANGELOG" | sed 's/## v\([0-9.]*\).*/\1/')
   if [[ "$PLUGIN_VER" == "$CHANGELOG_VER" ]]; then
     echo "[PASS] Version match: plugin.json=$PLUGIN_VER changelog=$CHANGELOG_VER"
-    ((TOTAL_PASS++))
-    RESULTS+=("version: $PLUGIN_VER")
+    PASS=$((PASS+1))
   else
     echo "[FAIL] Version mismatch: plugin.json=$PLUGIN_VER changelog=$CHANGELOG_VER"
-    ((TOTAL_FAIL++))
-    RESULTS+=("version: MISMATCH")
+    FAIL=$((FAIL+1))
   fi
 fi
 
 # --- Summary ---
 echo ""
 echo "=== Summary ==="
-echo "PASS: $TOTAL_PASS"
-echo "FAIL: $TOTAL_FAIL"
+echo "PASS: $PASS"
+echo "FAIL: $FAIL"
 echo ""
 
-if [[ $TOTAL_FAIL -eq 0 ]]; then
+if [[ $FAIL -eq 0 ]]; then
   echo "All checks passed."
   exit 0
 else

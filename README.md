@@ -111,7 +111,7 @@ Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/yo
 bash <(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)
 ```
 
-Cursor support is stable at the v5.1 feature set. New capabilities ship Claude Code-first — see [Platform Strategy](docs/plans/growth-plan.md#1-platform-strategy--complexity-budget).
+Cursor support is stable at the v5.1 feature set. New capabilities ship Claude Code-first.
 
 ## Recommended Setup
 
