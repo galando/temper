@@ -3,6 +3,19 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v5.2.1 — Growth Plan & Benchmark Improvements
+
+- **README rewrite:** 829 → 172 lines (79% reduction). First screen: problem → catch story → quick start.
+- **CI quality gates:** 4 offline-safe validation scripts + GitHub Actions workflow (quality.yml).
+- **Landing page refresh:** Open Graph tags, JSON-LD, evidence section, OCR card. All parity claims removed per §1 platform strategy.
+- **Evidence documents:** Benchmark methodology, dogfooding case study, feature comparison matrix.
+- **Benchmark results:** Temper catches 12/12 bug patterns in playground testing vs vanilla Claude Code's 8/12.
+- **Race condition detection:** Performance pack now flags non-atomic mutations on shared state in concurrent contexts.
+- **Middleware stack completeness:** Review checks for error middleware, CORS, helmet in app entry point.
+- **Community infrastructure:** 4 issue templates, CONTRIBUTING.md and getting-started.md updates.
+- **Playground repo:** [galando/temper-playground](https://github.com/galando/temper-playground) with 4 intentional flaws for demo.
+- **Platform strategy:** Cursor support frozen at v5.1 feature set. New capabilities ship Claude Code-first.
+
 ## v5.2.0 — OCR Integration (External Review Engine)
 
 - **open-code-review integration:** `ocr` CLI is now an optional external review

@@ -21,6 +21,7 @@
 - **Query plan inspection**: For queries touching tables > 10K rows, verify `EXPLAIN` plan uses indexes. Block if full table scan on large tables without justification.
 - **Connection pooling**: Use connection pools for database and HTTP clients. Block if creating new connections per request.
 - **Async I/O**: No synchronous file I/O (`readFileSync`, `sync*` methods) in request handlers or event-loop contexts.
+- **Race conditions**: Shared mutable state (counters, flags, caches) modified by concurrent requests must use atomic operations or synchronization. Block on non-atomic mutations in request handlers (`counter++`, `nextId++`, `state.value = ...` without mutex/lock/transaction). Warn on shared state without concurrency protection.
 
 ## Methodology Gate: Measure First
 
