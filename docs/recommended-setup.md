@@ -46,6 +46,43 @@ brew install semgrep
 claude mcp add semgrep -- semgrep --mcp
 ```
 
+### open-code-review (Line-Level Defect Engine)
+
+Provides deterministic, file-bundled code review via an external LLM. When installed, OCR takes over line-level defect detection (NPEs, injections, thread-safety) during `/temper:review`. Temper keeps intent validation, security analysis, architecture depth, and review memory. Findings are labeled `[OCR]`; cross-validated findings that both engines agree on are labeled `[OCR+TEMPER]`.
+
+```bash
+npm install -g @alibaba-group/open-code-review
+```
+
+**Verify:**
+
+```bash
+ocr --version
+ocr review --preview --from HEAD~1 --to HEAD
+```
+
+**Configure OCR's LLM:** OCR needs its own LLM configuration (API key, model). See the [open-code-review docs](https://github.com/alibaba/open-code-review) for setup.
+
+**Troubleshooting:**
+
+| Issue | Fix |
+|-------|-----|
+| `ocr: command not found` | Run `npm install -g @alibaba-group/open-code-review` |
+| `ocr --preview` fails with LLM error | Configure OCR's LLM settings (see OCR docs) |
+| OCR findings seem wrong | Adjust `tools.ocr.mode: off` in temper.config to disable |
+| Review is slow with OCR | Lower `tools.ocr.concurrency` or increase `tools.ocr.timeout` |
+
+**Config** (in `.claude/temper.config`):
+
+```yaml
+tools:
+  ocr:
+    mode: auto                      # auto | off | require
+    replace-defect-subagent: true   # Drop generic defect hunting when OCR is active
+    timeout: 10                     # minutes
+    concurrency: 8
+```
+
 ### tools.mode Configuration
 
 ```yaml

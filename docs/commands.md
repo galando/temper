@@ -343,6 +343,31 @@ Confidence: 91%
 - **NEW ISSUE** — Problem introduced by this change
 - **PRE-EXISTING** — Issue existed before (lower priority)
 
+**External Engine: open-code-review:**
+
+When the `ocr` CLI is installed, `/temper:review` automatically runs a second defect-detection pass during Step 2.5. OCR handles line-level defects; Temper keeps intent validation, security analysis, and architecture depth.
+
+| Config Key | Default | Description |
+|------------|---------|-------------|
+| `tools.ocr.mode` | `auto` | `auto` (use if available), `off` (never invoke), `require` (block if missing) |
+| `tools.ocr.replace-defect-subagent` | `true` | Drop generic defect hunting from Temper subagents when OCR is active |
+| `tools.ocr.timeout` | `10` | Minutes before OCR invocation is killed |
+| `tools.ocr.concurrency` | `8` | Max concurrent file reviews by OCR |
+| `tools.ocr.extra-args` | `""` | Additional CLI flags passed to `ocr review` |
+
+**Evidence labels:**
+
+- `[OCR]` — Finding from the OCR engine alone
+- `[OCR+TEMPER]` — Both engines independently found the same issue (file + line +/-2 + category match). Confidence boosted: min(0.95, max(a,b) + 0.15)
+
+**Modes:**
+
+| Mode | OCR available | OCR missing | OCR fails at runtime |
+|------|--------------|-------------|---------------------|
+| `auto` | Run + dedupe | Skip silently | Warn + degrade |
+| `require` | Run + dedupe | BLOCK with install instructions | Warn + degrade |
+| `off` | Never invoke | Never invoke | Never invoke |
+
 ---
 
 ## `/temper:fix`

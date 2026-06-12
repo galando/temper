@@ -507,6 +507,16 @@ When MCP servers are available, Temper upgrades grep-based heuristic analysis to
 | Call chain tracing | grep imports `[HEURISTIC]` | query_graph_tool `[PROVEN]` |
 | Impact radius | grep consumers `[HEURISTIC]` | get_impact_radius_tool `[PROVEN]` |
 
+### External Engine: open-code-review
+
+When the `ocr` CLI is installed, Temper adds a second LLM-powered defect detection pass. OCR handles line-level defects (NPEs, injections, thread-safety); Temper keeps intent validation, security analysis, and architecture depth. Cross-validated findings are labeled `[OCR+TEMPER]` with boosted confidence.
+
+```bash
+npm install -g @alibaba-group/open-code-review
+```
+
+See `docs/recommended-setup.md` for full configuration details.
+
 ### Evidence Labels
 
 Every finding now carries a label that tells you how it was produced:
@@ -514,6 +524,8 @@ Every finding now carries a label that tells you how it was produced:
 - **`[PROVEN]`** — Tool output (MCP server, test runner, SAST scan). Mechanically verified.
 - **`[HEURISTIC]`** — Claude's grep-based analysis. Best-effort, not mechanically verified.
 - **`[SEMANTIC]`** — Claude's interpretation or judgment. Inherently subjective.
+- **`[OCR]`** — External review engine finding (open-code-review). LLM-generated, severity-mapped.
+- **`[OCR+TEMPER]`** — Cross-validated: both OCR and Temper independently found the same issue. Boosted confidence.
 
 Configured via `tools.label-findings: true` and `tools.mode: auto|heuristic-only|require` in temper.config.
 

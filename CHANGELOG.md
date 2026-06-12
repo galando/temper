@@ -3,6 +3,32 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v5.2.0 — OCR Integration (External Review Engine)
+
+- **open-code-review integration:** `ocr` CLI is now an optional external review
+  engine inside `/temper:review`. When installed and configured, OCR takes over
+  line-level defect detection (NPEs, injections, thread-safety). Temper keeps
+  intent validation, security analysis, architecture depth, and review memory.
+- **Auto-detection:** `ocr` is probed during Step 1 and enabled automatically
+  when available (`tools.ocr.mode: auto`, the default). Missing OCR is silent
+  in auto mode; blocks in require mode with install instructions.
+- **Step 2.5:** New pipeline step runs OCR between subagent launch and intent
+  validation. JSON output parsed, severity-mapped, labeled `[OCR]`, and
+  deduplicated against Temper findings. Cross-validated findings are labeled
+  `[OCR+TEMPER]` with boosted confidence (min(0.95, max + 0.15)).
+- **Subagent takeover:** When `tools.ocr.replace-defect-subagent: true` (default),
+  Temper subagents drop generic defect-hunting sections. OCR owns line-level
+  defects; Temper keeps pack rules, security, AI-code detection, architecture.
+- **Config block:** `tools.ocr` in `.claude/temper.config` with mode, timeout,
+  concurrency, and extra-args settings.
+- **Status dashboard:** `/temper:status` shows OCR availability and accept rate
+  under renamed "EXTERNAL TOOLS" section (was "MCP TOOLS").
+- **Evidence labels:** New `[OCR]` and `[OCR+TEMPER]` labels in review output.
+- **Documentation:** Updated recommended-setup.md, README.md, commands.md, and
+  schema fixture at `docs/plans/fixtures/`.
+- **No breaking changes.** All changes are additive. Zero-config when OCR is not
+  installed — review runs identically to v5.1.0.
+
 ## v5.1.0 — Nested Subagent Support
 
 - **Nested agents config:** Added `agents` block to `.claude/temper.config` with
