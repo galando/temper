@@ -1,4 +1,13 @@
-# Temper — Implementation Gaps (Promise vs. Reality)
+# Phase 0 — Implementation Gaps (Promise vs. Reality)
+
+> **Sequencing: do this phase FIRST**, before Phase 1 (verification) and Phase 2
+> (economics/observability). Rationale: the paper's principle "AI amplifies the
+> engineering culture it lands in" cuts both ways — building new capabilities on a base
+> that doesn't honor its existing promises compounds the drift. Make Temper do what it
+> already claims, then extend it.
+>
+> **Roadmap order:** Phase 0 (this doc) → Phase 1 (`phase-1-verification.md`) →
+> Phase 2 (`phase-2-economics-observability.md`). Phase 3 skipped.
 
 **What this is:** An audit of whether Temper's implementation actually does what its own
 docs, config, and skill files promise — independent of the paper. Each finding cites the
@@ -61,10 +70,20 @@ across tools is an explicit design goal. A two-minor-version lag means Cursor us
 
 **Evidence:** `.cursor/VERSION` = `5.0.1`; `git log` shows v5.1.0 (nested subagents) and
 v5.2.0/5.2.1 landed after, but the Cursor export wasn't regenerated in lockstep.
+**There is no generator:** `scripts/install-cursor.sh` only *downloads* the already-committed
+static `.cursor/*.mdc` files from GitHub `main` — it does not build them from `.claude/`. So
+the export is hand-synced, which is exactly why it drifts.
 
-**Fix:** Make `scripts/install-cursor.sh` (or a CI step) regenerate `.cursor/` on every
-release and assert `.cursor/VERSION == plugin.json version` in `validate-plugin.sh`. Treat
-the Cursor export as a release artifact, not a manually-synced copy.
+**Fix (a decision is needed — pick one):**
+1. **Build a generator** (`scripts/generate-cursor.sh`) that transforms `.claude/` commands,
+   skills, packs, and reference docs into `.cursor/` rules+commands, run on every release.
+   Highest effort, permanently kills the drift. *(Recommended.)*
+2. **Manual re-sync** of `.cursor/` to 5.2.1 now, and a release-checklist step to redo it.
+   Low effort, but the drift will recur.
+3. **Demote the parity claim** in README/landing to "periodically synced" until (1) exists.
+
+Whichever is chosen, add a `validate-plugin.sh` check asserting
+`.cursor/VERSION == plugin.json version` so the drift can't silently return.
 
 ---
 
