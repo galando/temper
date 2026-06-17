@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "_comment": "REFERENCE FIXTURE — redacted sample of .temper/learning.json shape. Not live data. Paths/identifiers are illustrative placeholders, not real project state. See .temper/fixtures/README.md.",
+  "_source": "G-6 adaptive-learning dogfooding (Phase 0 implementation-gaps). Live dogfooding cycles were not run inside this build subprocess; this fixture documents the schema and a plausible post-review state with one promoted rule.",
+  "last_updated": "2026-06-17T00:00:00Z",
+  "detected_patterns": [
+    {
+      "id": "version-stamp-drift-doc-trees",
+      "category": "consistency",
+      "file_pattern": "**/*.{md,json}",
+      "description_keywords": ["version", "stamp", "drift"],
+      "total_shown": 4,
+      "accepted": 4,
+      "dismissed": 0,
+      "acceptance_rate": 1.0,
+      "first_seen": "2026-06-17T00:00:00Z",
+      "last_seen": "2026-06-17T00:00:00Z",
+      "status": "promoted",
+      "context_breakdown": {
+        "default": { "shown": 4, "accepted": 4 }
+      },
+      "suggested_rule": "version-agreement-across-stamps"
+    },
+    {
+      "id": "cursor-parity-stale-derived-artifact",
+      "category": "consistency",
+      "file_pattern": ".cursor/**",
+      "description_keywords": ["cursor", "parity", "stale", "regenerate"],
+      "total_shown": 3,
+      "accepted": 3,
+      "dismissed": 0,
+      "acceptance_rate": 1.0,
+      "first_seen": "2026-06-17T00:00:00Z",
+      "last_seen": "2026-06-17T00:00:00Z",
+      "status": "active",
+      "context_breakdown": {
+        "default": { "shown": 3, "accepted": 3 }
+      },
+      "suggested_rule": null
+    },
+    {
+      "id": "pack-load-missing-phase-filter",
+      "category": "consistency",
+      "file_pattern": ".claude-plugin/reference/*.md",
+      "description_keywords": ["pack", "phase", "filter", "manifest"],
+      "total_shown": 5,
+      "accepted": 5,
+      "dismissed": 0,
+      "acceptance_rate": 1.0,
+      "first_seen": "2026-06-17T00:00:00Z",
+      "last_seen": "2026-06-17T00:00:00Z",
+      "status": "promoted",
+      "context_breakdown": {
+        "default": { "shown": 5, "accepted": 5 }
+      },
+      "suggested_rule": "phase-filtered-manifest-pack-load"
+    }
+  ],
+  "suppressed_patterns": [
+    {
+      "id": "doc-typo-prose-sections",
+      "reason": "5+ dismissals, acceptance_rate < 10%",
+      "suppressed_at": "2026-06-17T00:00:00Z",
+      "contexts": ["default"]
+    }
+  ],
+  "suggestion_queue": [
+    {
+      "pattern_id": "version-stamp-drift-doc-trees",
+      "suggested_severity": "BLOCK",
+      "rule_template_path": ".temper/learning/suggestions/version-stamp-drift-doc-trees.md",
+      "created_at": "2026-06-17T00:00:00Z",
+      "status": "accepted"
+    },
+    {
+      "pattern_id": "pack-load-missing-phase-filter",
+      "suggested_severity": "WARN",
+      "rule_template_path": ".temper/learning/suggestions/pack-load-missing-phase-filter.md",
+      "created_at": "2026-06-17T00:00:00Z",
+      "status": "pending"
+    },
+    {
+      "pattern_id": "observability-metric-source-label",
+      "suggested_severity": null,
+      "type": "config-update",
+      "category": "learned_convention",
+      "description": "Observability metrics must carry a source: measured|estimated field",
+      "suggested_text": "- **Observability:** Every metric in .temper/observability.json carries `source: \"measured\" | \"estimated\"`.",
+      "confidence": 0.9,
+      "target": "CLAUDE.md",
+      "created_at": "2026-06-17T00:00:00Z",
+      "status": "pending"
+    }
+  ],
+  "learning_curve": {
+    "reviews_sampled": [],
+    "issues_per_review": [],
+    "trend": "insufficient_data",
+    "improvement_pct": 0
+  }
+}
