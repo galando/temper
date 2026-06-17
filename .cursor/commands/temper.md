@@ -471,6 +471,17 @@ When `observability.enabled: true` in temper.config, track per-stage metrics:
 3. Write metrics to `.temper/observability.json` after each stage
 4. Show in `/temper:status` dashboard
 
+**Source labeling (G-5, v5.3.0):** every value written to `.temper/observability.json`
+MUST carry a sibling `source: "measured" | "estimated"` field so consumers can tell
+honest telemetry from model self-estimates. Defaults:
+- `tokens`: `source: "estimated"` — token counts are model self-estimates today;
+  real harness-reported token telemetry is Phase 2 scope.
+- `latency`, `tool-calls`: `source: "measured"` where the harness exposes them
+  (wall-clock and tool-invocation counts are observable); fall back to `"estimated"`
+  if only inferred.
+Do not emit a metric without a `source` field. The `/temper:status` dashboard
+should surface the source alongside the value (e.g. "tokens: 12.4k (estimated)").
+
 ---
 
 ## Stage 2: Building
