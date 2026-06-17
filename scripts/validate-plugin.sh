@@ -78,6 +78,54 @@ for m in missing:
   else
     ok
   fi
+
+  # --- Version-agreement checks (G-1, G-2) ---
+  # plugin.json is the single source of truth; every other stamp must agree.
+
+  # .cursor/VERSION == plugin.json (G-2 guard, SC-4)
+  CURSOR_VER_FILE="$REPO_ROOT/.cursor/VERSION"
+  if [[ -f "$CURSOR_VER_FILE" ]]; then
+    CURSOR_VER=$(tr -d '[:space:]' < "$CURSOR_VER_FILE")
+    if [[ "$CURSOR_VER" != "$PLUGIN_VER" ]]; then
+      fail ".cursor/VERSION ($CURSOR_VER) != plugin.json ($PLUGIN_VER)"
+    else
+      ok
+    fi
+  else
+    # Missing .cursor/VERSION is not itself a failure (the directory is derived
+    # by generate-cursor.sh), but we surface it as a soft check rather than ok.
+    fail ".cursor/VERSION missing (run scripts/generate-cursor.sh)"
+  fi
+
+  # .claude/CLAUDE.md  **Version:** X.Y.Z  == plugin.json (G-1 guard, SC-1)
+  CLAUDE_MD="$REPO_ROOT/.claude/CLAUDE.md"
+  if [[ -f "$CLAUDE_MD" ]]; then
+    CLAUDE_VER=$(grep -m1 -E '^\*\*Version:\*\*' "$CLAUDE_MD" | sed -E 's/^\*\*Version:\*\* ([0-9][0-9.]*(\.[0-9]+)*).*/\1/')
+    if [[ -z "$CLAUDE_VER" ]]; then
+      fail ".claude/CLAUDE.md has no '**Version:**' stamp"
+    elif [[ "$CLAUDE_VER" != "$PLUGIN_VER" ]]; then
+      fail ".claude/CLAUDE.md Version ($CLAUDE_VER) != plugin.json ($PLUGIN_VER)"
+    else
+      ok
+    fi
+  else
+    fail ".claude/CLAUDE.md missing"
+  fi
+
+  # .claude/commands/temper.md title header (vX.Y.Z) == plugin.json (G-1 guard)
+  TEMPER_CMD="$REPO_ROOT/.claude/commands/temper.md"
+  if [[ -f "$TEMPER_CMD" ]]; then
+    TEMPER_VER=$(grep -m1 -E '^# Temper:.*\(v[0-9]' "$TEMPER_CMD" | sed -E 's/.*\(v([0-9][0-9.]*(\.[0-9]+)*)\).*/\1/')
+    if [[ -z "$TEMPER_VER" ]]; then
+      fail ".claude/commands/temper.md has no title-line '(vX.Y.Z)' header"
+    elif [[ "$TEMPER_VER" != "$PLUGIN_VER" ]]; then
+      fail ".claude/commands/temper.md header ($TEMPER_VER) != plugin.json ($PLUGIN_VER)"
+    else
+      ok
+    fi
+  else
+    fail ".claude/commands/temper.md missing"
+  fi
 fi
 
 # --- marketplace.json ---
