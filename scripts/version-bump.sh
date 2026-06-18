@@ -53,12 +53,20 @@ else
     exit 1
 fi
 
-# 2. .cursor/VERSION (optional — generator owns it, but keep honest if present)
-if [ -d ".cursor" ]; then
-    echo "  -> Updating .cursor/VERSION"
-    echo "$NEW_VERSION" > .cursor/VERSION
+# 2. .cursor/ is a DERIVED artifact owned by generate-cursor.sh. Regenerate it
+#    wholesale so every derived file (VERSION, README, commands, rules/*.mdc)
+#    carries the new version in lockstep. Writing only .cursor/VERSION here would
+#    leave the derived content stale — the exact G-1/G-2 drift this batch closes.
+GEN_SCRIPT="scripts/generate-cursor.sh"
+if [ -d ".cursor" ] && [ -f "$GEN_SCRIPT" ]; then
+    echo "  -> Regenerating .cursor/ via $GEN_SCRIPT (single writer)"
+    if ! bash "$GEN_SCRIPT" >/dev/null 2>&1; then
+        echo "  -> WARN: $GEN_SCRIPT failed; .cursor/ may be stale. Run it manually." >&2
+    fi
+elif [ -f "$GEN_SCRIPT" ]; then
+    echo "  -> .cursor/ not found; run scripts/generate-cursor.sh to create it"
 else
-    echo "  -> .cursor/ not found, skipping .cursor/VERSION (run scripts/generate-cursor.sh)"
+    echo "  -> .cursor/ and $GEN_SCRIPT absent; skipping Cursor export"
 fi
 
 # 3. .claude/CLAUDE.md  **Version:** X.Y.Z

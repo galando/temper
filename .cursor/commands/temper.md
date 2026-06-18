@@ -10,7 +10,7 @@ argument-hint: "<feature-description>"
   Source: .claude/commands/temper.md
 -->
 
-# Temper: Unified SDLC Command (v5.2.1)
+# Temper: Unified SDLC Command (v5.3.0)
 
 **Goal:** Execute the full SDLC flow (plan → design? → build → review → check → commit) with stage gates, feedback loops, context accumulation, observability, and **real** context isolation via Agent subprocesses.
 
