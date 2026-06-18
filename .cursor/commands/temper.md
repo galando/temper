@@ -855,30 +855,54 @@ CONTEXT: You are starting with a CLEAN context. Load these first:
 CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the eval summary to the orchestrator.
 
 Return ONLY:
-- Eval summary text (score table + aggregate vs pass_threshold)
-- Per-dimension scores + justifications
+- Eval summary text (score table per the Eval Summary Format below: legend, ARTIFACT/PROCESS
+  grouping, per-row recommended action, partial-aggregate caveat when dims unscored)
+- Per-dimension scores + categories + justifications + recommended actions
+- Aggregate, aggregate_basis (scored|full), scored_weight
 - Path to results file: {spec_path}/evals/results/results-{timestamp}.json
 - Whether the eval passed/failed and which (if any) block-on dimension failed"
 ```
 
 ### Eval Summary Format
 
+> **Render rules (see `reference/eval.md` → "Reading the Score Table"):** print the legend
+> once above the table; group rows under ARTIFACT then PROCESS headers (never interleave);
+> annotate every row below `pass_threshold` with its recommended action; when any dimension
+> is unscored, print the partial-aggregate caveat in place of the plain Aggregate line.
+
 ```
+How to read this: 0–1 scale, {pass_threshold} to pass. Low ARTIFACT-scores mean fix the code;
+                   low PROCESS-scores mean the run was messy.
+
 ┌─────────────────────────────────────────────────────────────┐
 │ EVAL — {Feature Name}                                       │
 ├─────────────────────────────────────────────────────────────┤
-│ RESULTS (mode: {output|trajectory})                         │
-│    task_success:     {score}   {PASS/FAIL}                  │
-│    tool_use_quality: {score|unscored}                       │
-│    trajectory:       {score|unscored}                       │
-│    hallucination:    {score}   (invert — lower is better)   │
-│    response_quality: {score|unscored}                       │
+│ RESULTS (mode: {output|trajectory})   Judge: {model|fallback}│
 │                                                             │
-│ Aggregate: {score}   Threshold: {pass_threshold}   {PASS}   │
-│ Judge:     {model id | 'deterministic-fallback'}            │
-│ Results:   evals/results/results-{ts}.json                  │
+│ ARTIFACT — fix the code                                     │
+│    task_success:     {score}   {PASS/FAIL}  {action?}       │
+│    hallucination:    {score}   (invert)     {action?}       │
+│    response_quality: {score|unscored}       {action?}       │
+│                                                             │
+│ PROCESS — fix the run                                       │
+│    tool_use_quality: {score|unscored}       {action?}       │
+│    trajectory:       {score|unscored}       {action?}       │
+│                                                             │
+│ {Aggregate line — see below}                                │
+│ Results: evals/results/results-{ts}.json                    │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**`{action?}` placeholder (only on rows below `pass_threshold`):**
+- artifact-category low → `→ Re-run (code defect)`
+- any `block-on` dim low → `→ Re-run (block-on failed)`
+- process-category low, NOT block-on → `→ accept (process noise)`
+- `unscored` → `— unscored`
+- rows at/above threshold → blank
+
+**Aggregate line — choose one:**
+- All dims scored: `Aggregate: {score}   Threshold: {pass_threshold}   {PASS}`
+- Any dim unscored: `⚠ Aggregate {score} over {scored}/{total} scored dims ({names} unscored) — partial.   Threshold: {pass_threshold}   {PASS}`
 
 ### Stage Gate
 

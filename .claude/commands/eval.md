@@ -25,13 +25,13 @@ argument-hint: "[--create] [--trajectory] [<spec>]"
 4. **Dispatch judge** → `eval-judge` skill (cheaper model tier); per-dimension score 0..1 + justification
 5. **Fallback** → if judge unavailable/errors, deterministic string/regex over `expected`/`must_not`; mark unscored dimensions `"unscored"` (never zero, never hard-error)
 6. **Write** `evals/results/results-{timestamp}.json` + `.temper/eval-context.json`
-7. **Report** score table + aggregate vs `pass_threshold`
+7. **Report** score table (grouped ARTIFACT/PROCESS, per-row recommended action, partial-aggregate caveat when dims unscored) + aggregate vs `pass_threshold`
 
 ### `--create` (scaffold mode)
 
 1. Read `{spec_path}/intent.md` scenarios
 2. Derive one eval case per Gherkin scenario (id, input, expected, labels, must_not)
-3. Write `evalset.json` from `templates/evalset.json` (5 default rubric dimensions + weights)
+3. Write `evalset.json` from `templates/evalset.json` (5 default rubric dimensions + weights + `category`)
 4. Scaffold `evals/results/` dir + `evals/README.md`
 5. Mark evalset `"draft": true`
 

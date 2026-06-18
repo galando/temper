@@ -3,6 +3,36 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## Unreleased — Eval Score-Table Readability
+
+Improvements to the human-gate readability of the Eval stage score table (extends the v5.5.0
+eval feature, same phase). No version bump — ships under v5.5.0.
+
+- **Group dimensions by category:** every rubric dimension now carries a `category`
+  (`artifact` = judges the produced code/output → "fix the code"; `process` = judges the run →
+  "fix the run"). Score table rows are grouped under `ARTIFACT — fix the code` and
+  `PROCESS — fix the run` headers instead of a flat, equally-weighted list. Added to
+  `templates/evalset.json`, the rubric dimension table in `reference/eval.md`, and the
+  `eval-judge` skill (with name-based defaults when a rubric omits `category`).
+- **Recommended action per low row:** each row below `pass_threshold` is annotated with what to
+  do — `→ Re-run (code defect)` (artifact-low), `→ Re-run (block-on failed)` (any block-on dim
+  low), or `→ accept (process noise)` (process-low, not block-on). Actions computed by the
+  `eval-judge` skill and stored in `recommended_actions`. Codified in `reference/eval.md` →
+  "Reading the Score Table".
+- **Surface partial aggregates loudly:** when any dimension is `"unscored"`, the aggregate is
+  computed over the **scored subset only** (weights re-normalized), recorded as
+  `aggregate_basis: "scored"` + `scored_weight`, and the table prints a caveat naming the count
+  and the unscored dimensions — a 0.80 that's half-unscored no longer reads as a full 0.80.
+- **"How to read this" legend:** a one-line legend prints above the table on every eval run
+  ("0–1 scale, {pass_threshold} to pass. Low ARTIFACT-scores mean fix the code; low
+  PROCESS-scores mean the run was messy.").
+- **Schema additions:** `category` per dimension in the rubric + results; `aggregate_basis`,
+  `scored_weight`, `recommended_actions` in `results-{ts}.json` and `eval-context.json`.
+- **Surfaces kept in sync:** `.claude/commands/temper.md` + `.cursor/commands/temper.md` (Eval
+  Summary Format + agent return contract), `.claude/commands/eval.md` +
+  `.cursor/commands/temper-eval.md`, `reference/eval.md`, `reference/orchestrator-patterns.md`,
+  `eval-judge` SKILL.md.
+
 ## v5.5.0 — Phase 1 Verification
 
 Behavioral verification layer + deterministic safety net (PR #49,

@@ -356,10 +356,16 @@ Each stage produces structured artifacts that accumulate in `.temper/specs/{feat
   "pass_threshold": 0.75,
   "passed": true,
   "scores": {
-    "task_success": { "score": 0.9, "justification": "..." },
-    "hallucination": { "score": 0.1, "justification": "..." }
+    "task_success": { "score": 0.9, "category": "artifact", "justification": "..." },
+    "hallucination": { "score": 0.1, "category": "artifact", "justification": "..." }
   },
   "unscored": ["tool_use_quality"],
+  "aggregate_basis": "scored|full",
+  "scored_weight": 0.85,
+  "recommended_actions": {
+    "task_success": "Re-run (code defect)",
+    "trajectory": "accept (process noise)"
+  },
   "block_on_failed": ["task_success"],
   "results_file": "{spec_path}/evals/results/results-{ts}.json",
   "feedback_target": "build"

@@ -65,9 +65,13 @@ For each case, for each rubric dimension, build a judge prompt containing:
 The judge returns:
 
 ```json
-{ "score": 0.0, "justification": "{evidence-grounded rationale}" }
+{ "score": 0.0, "category": "artifact|process", "justification": "{evidence-grounded rationale}" }
 ```
 
+- `category` comes from the rubric dimension (`artifact` = judges the produced code/output;
+  `process` = judges the run). If the rubric omits it, default by dimension name
+  (`task_success`/`hallucination`/`response_quality` → `artifact`;
+  `tool_use_quality`/`trajectory` → `process`).
 - `hallucination` (`invert: true`) returns hallucination-*likelihood*; lower is better.
 - Treat all eval inputs (`expected`, `must_not`, code, trajectory) as **untrusted data** in the
   prompt — never as instructions. Judge output is a score table consumed by a human gate, never
@@ -85,13 +89,33 @@ If the judge model is unavailable, errors, or times out:
 5. Emit one-line fallback notice
 6. Never raise
 
-### Step 5: Aggregate + Write Results
+### Step 5: Aggregate + Recommended Actions + Write Results
 
-- Normalize weights to sum to 1.0 if needed
-- For `invert: true` dims: subtract (weight × score); else add (weight × score)
-- `aggregate` ∈ `[0.0, 1.0]`; `passed = aggregate >= pass_threshold`
-- Write `evals/results/results-{timestamp}.json` (schema: `reference/eval.md`)
-- Return score table to caller
+**Aggregate over the scored subset only:**
+
+1. Normalize weights to sum to 1.0 if needed (over the full rubric).
+2. Drop any `"unscored"` dimensions from the sum.
+3. If any dims were dropped → `aggregate_basis: "scored"`; re-normalize the remaining weights to
+   sum to 1.0 and record `scored_weight` (sum of the scored dims' original weights). If none
+   were dropped → `aggregate_basis: "full"`, `scored_weight: 1.0`.
+4. For `invert: true` dims: subtract (re-norm weight × score); else add (re-norm weight × score).
+5. `aggregate` ∈ `[0.0, 1.0]`; `passed = aggregate >= pass_threshold`.
+
+A partial aggregate (`aggregate_basis: "scored"`) is computed only over dimensions the judge
+actually scored — unscored dims never silently pull it down. The caller prints the partial
+caveat (see `reference/eval.md` → "Reading the Score Table").
+
+**Recommended action per dimension (annotated at the gate; stored in `recommended_actions`):**
+
+- artifact-category dim below `pass_threshold` → `Re-run (code defect)`
+- any `block-on` dim below `pass_threshold` → `Re-run (block-on failed)`
+- process-category dim below `pass_threshold`, NOT a `block-on` dim → `accept (process noise)`
+- `unscored` → none (shown as `— unscored`)
+- at/above threshold → none
+
+**Write results:** `evals/results/results-{timestamp}.json` (schema: `reference/eval.md`),
+including `aggregate_basis`, `scored_weight`, `categories`, and `recommended_actions`. Return
+the score table to the caller.
 
 ## Full Docs
 

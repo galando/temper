@@ -64,13 +64,20 @@ Every behavior in this doc degrades cleanly when its inputs are absent. **Never 
 
 **Rubric dimensions:**
 
-| Dimension | What it measures | Notes |
-|-----------|------------------|-------|
-| `task_success` | Did the change satisfy `expected`? | Primary block-on dimension |
-| `tool_use_quality` | Were tool calls appropriate/efficient? | Trajectory-mode only |
-| `trajectory` | Was the tool-call sequence coherent? | Trajectory-mode only |
-| `hallucination` | Did the change invent APIs/facts? | `invert: true` — lower is better |
-| `response_quality` | Clarity/structure of the produced artifact | |
+Every dimension carries a **`category`** — either `artifact` (it judges the produced
+code/output → "fix the code") or `process` (it judges the run that produced it → "fix the
+run"). Categories drive the table grouping and the per-row recommended action at the gate
+(see "Reading the Score Table" below). If a dimension omits `category`, default by name:
+`task_success` / `hallucination` / `response_quality` → `artifact`; `tool_use_quality` /
+`trajectory` → `process`.
+
+| Dimension | Category | What it measures | Notes |
+|-----------|----------|------------------|-------|
+| `task_success` | artifact | Did the change satisfy `expected`? | Primary block-on dimension |
+| `tool_use_quality` | process | Were tool calls appropriate/efficient? | Trajectory-mode only |
+| `trajectory` | process | Was the tool-call sequence coherent? | Trajectory-mode only |
+| `hallucination` | artifact | Did the change invent APIs/facts? | `invert: true` — lower is better |
+| `response_quality` | artifact | Clarity/structure of the produced artifact | |
 
 `invert: true` dims are subtracted from the aggregate rather than added. Weights should sum to 1.0;
 if they do not, normalize before aggregating.
@@ -87,14 +94,22 @@ if they do not, normalize before aggregating.
     {
       "id": "c1",
       "scores": { "task_success": 0.9, "hallucination": 0.1 },
+      "categories": { "task_success": "artifact", "hallucination": "artifact" },
       "justification": "{per-case rationale}",
       "unscored": ["{dimension name}"]
     }
   ],
   "aggregate": 0.81,
+  "aggregate_basis": "scored|full",
+  "scored_weight": 0.85,
   "passed": true
 }
 ```
+
+- `aggregate_basis: "scored"` when any dimension was `"unscored"` — the `aggregate` is then
+  computed over the **scored subset only** (weights re-normalized), and `scored_weight` is the
+  sum of weights that actually contributed. A partial aggregate is never presented as a full one.
+- `aggregate_basis: "full"` when every dimension was scored.
 
 ---
 
@@ -138,6 +153,43 @@ When the judge model is unavailable, errors, or times out:
 3. Record `"judge_model": "deterministic-fallback"` in results
 4. Emit a one-line notice that the fallback ran
 5. **Never raise** — fallback is the documented degraded path
+
+## Reading the Score Table (Human-Gate Readability)
+
+The gate renders the score table for a human who has to decide *what to do next*. A score
+alone is not enough — the table must group, annotate, and caveat so the action is obvious.
+
+**Legend (printed once, above the table):** "0–1 scale, `pass_threshold` to pass (default
+0.75). Low **artifact**-scores mean *fix the code*; low **process**-scores mean *the run was
+messy*."
+
+**Grouping:** Rows are grouped under two headers, never interleaved:
+
+- **ARTIFACT — fix the code** → `task_success`, `hallucination`, `response_quality`. These
+  score the produced change itself; a low score is a defect in the artifact.
+- **PROCESS — fix the run** → `tool_use_quality`, `trajectory`. These score the tool-call
+  sequence; a low score is noise in how the run happened, not necessarily a broken artifact.
+
+**Per-row recommended action (annotated when a row is below `pass_threshold`):**
+
+| Condition | Annotation | Meaning |
+|-----------|-----------|---------|
+| artifact-category, low | `→ Re-run (code defect)` | Fix the produced change, then re-run |
+| any `block-on` dim, low | `→ Re-run (block-on failed)` | Forces the Eval→Build loop |
+| process-category, low, NOT block-on | `→ accept (process noise)` | Code is fine; the run was messy — accept and move on |
+| `unscored` | `— unscored` | Excluded from the aggregate (see below) |
+
+Rows at or above `pass_threshold` carry no annotation.
+
+**Partial aggregate (surface loudly):** When one or more dimensions are `"unscored"`, the
+`aggregate` is computed over the **scored subset only** — weights are re-normalized to the
+scored dimensions, and the table prints a caveat naming the count:
+
+> `⚠ Aggregate 0.80 over 3/5 scored dims (tool_use_quality, trajectory unscored) — partial.`
+
+Without this caveat a 0.80 that is half-unscored reads as stronger than it is. A full
+aggregate (all dims scored) prints no caveat. See `aggregate_basis` / `scored_weight` in the
+results schema.
 
 ## Gate (when run as the Eval stage in `/temper`)
 
