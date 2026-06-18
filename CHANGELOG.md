@@ -3,6 +3,10 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v5.4.0 — CI / Tooling
+
+Auto-generate concise CHANGELOG notes from commits (#53); add release-bump.yml — one-button version bump workflow (#51); phase 0 implementation gaps — close G-1..G-6 (v5.3.0) (#50)
+
 ## v5.3.0 — Phase 0 Implementation Gaps (Promise vs. Reality)
 
 Closes the six drift findings from `docs/plans/implementation-gaps.md` (PR #49).
