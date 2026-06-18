@@ -3,6 +3,57 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v5.6.0 — Phase 2: Harness Economics & Observability
+
+Turns the paper's economic argument (high CapEx / low OpEx, intelligent model routing,
+auditable observability) into measured, enforced harness behavior. Routing stops being
+advisory; observability stops being self-estimated.
+
+### Deliverable 1 — Intelligent model routing (enforced)
+- New `models` block in `.claude/temper.config`: `enabled`, `tiers`
+  (`tier-frontier` → opus, `tier-standard` → sonnet, `tier-fast` → haiku), `routing`
+  per stage (plan/design→frontier, build→standard, review/check/eval→fast),
+  `escalate-on` (`architecture-finding`, `correctness-risk`), `respect-user-override`,
+  and `drift-threshold` (std-dev cutoff, default 2).
+- `.claude/commands/temper.md`: each of the 6 stage Agent launches carries a `[MODEL:]`
+  delta resolved from `models.routing.{stage}`. New "Model Routing Resolution" section:
+  first-match-wins — disabled ⇒ no `model` param (v5.5.0 byte-identical), then
+  user-override, then routing. Review escalates `escalate-on` findings from fast to
+  frontier, reusing `review.md`'s confidence-scoring path.
+- **Graceful degradation contract:** `models.enabled: false`/absent ⇒ no `model` param
+  emitted, session model inherited — Scenario 1 enforces this.
+
+### Deliverable 2 — Measured telemetry (not estimated)
+- `.temper/observability.json` bumps to `version: 2` (schema documented in
+  `reference/orchestrator-patterns.md`): per-stage `model_tier`, `model_source`,
+  `tokens{input,output,source}`, `latency_ms`, `tool_calls`, `cost_usd`, `retries`,
+  `eval_score`, plus `totals`. Extends the G-5 (v5.3.0) source-sibling rule to EVERY
+  numeric leaf (`measured` | `estimated` | `user-override` | `pricing`).
+- New `.claude-plugin/reference/pricing.md`: advisory, version-dated tier →
+  `{input_per_1m, output_per_1m}` table; `cost_usd = (in/1e6)*in_price + (out/1e6)*out_price`.
+
+### Deliverable 3 — Drift detection
+- `.temper/metrics.json` extended (additive) with `stage_baseline` (rolling per-stage
+  history) and `drift_flags[]`. A run deviating > `drift-threshold` std-dev from its
+  baseline is flagged at severity `SUGGEST`. Drift flags NEVER auto-block a stage gate;
+  surfaced in `/temper:status`.
+
+### Deliverable 4 — Economics panel in `/temper:status`
+- New ECONOMICS panel in `.claude/commands/status.md` + `reference/status.md`:
+  per-stage cost/latency/tier (last run), rolling averages, eval-score trend, drift
+  flags, and a CapEx vs OpEx summary. Absent/v1 observability ⇒ "No observability
+  data yet" (graceful, no error). Source flags surfaced alongside every numeric.
+
+### Cross-cutting
+- `.claude-plugin/reference/tokenomics.md`: advisory "prefer Sonnet" replaced with a
+  pointer to the enforced `models.routing`, so guidance and behavior agree.
+- New `scripts/validate-phase2.sh`: one-shot bash+python mechanical verification for
+  all 9 Phase 2 scenarios (config schema, routing conditionals, v2 source provenance,
+  pricing parseable, drift flag, status panels, version lockstep, cursor freeze).
+- `.cursor/` regenerated via `scripts/generate-cursor.sh`; FROZEN at the v5.1 feature
+  set (no v5.6 routing/observability features leaked into frozen cursor commands).
+- Version lockstep: `plugin.json` == `.cursor/VERSION` == `CLAUDE.md` == `temper.md` == 5.6.0.
+
 ## Unreleased — Eval Score-Table Readability
 
 Improvements to the human-gate readability of the Eval stage score table (extends the v5.5.0

@@ -161,8 +161,47 @@ Detect which external tools are available by checking capabilities:
 │   Learning curve: {improving/stable/degrading/insufficient_data} │
 │     Issues/review: {trend} ({improvement_pct}% change) │
 │   (If learning.json absent: "Adaptive learning: not yet initialized") │
+│                                                      │
+│ ECONOMICS (v5.6.0)                                   │
+│   Per-stage cost/latency/tier (last run):            │
+│     Plan  | tier-frontier | $0.{cc} | {Y}s | {tok}   │
+│     Build | tier-standard | $0.{cc} | {Y}s | {tok}   │
+│     Review| tier-fast     | $0.{cc} | {Y}s | {tok}   │
+│   Rolling avg cost/feature: $0.{cc} (source: pricing)│
+│   Eval-score trend: {s1} -> {sK} ({up|flat|down})    │
+│   Drift flags: {N} active (SUGGEST only)             │
+│   CapEx vs OpEx: upfront structure lowers marginal   │
+│   cost per shipped feature.                          │
+│   (If observability.json absent/v1:                  │
+│    "No observability data yet")                      │
 └─────────────────────────────────────────────────────┘
 ```
+
+### Step 2.5: Economics Panel (v5.6.0 — Deliverable 4)
+
+Render from `.temper/observability.json` (must be `version: 2`) + `.temper/metrics.json`.
+
+**Per-stage table** (last run): for each entry in `observability.json stages[]`, show
+`stage | model_tier | cost_usd.value | latency_ms.value | tokens(in+out) | tool_calls.value`.
+Surface the `source` flag next to each numeric so the dashboard never lies about provenance
+(e.g. "$0.04 (pricing)", "tokens: 12.4k (estimated)").
+
+**Rolling averages** (last K runs from `metrics.json stage_baseline`): avg cost/feature,
+avg latency/feature.
+
+**Eval-score trend** (Phase 1 scores): plot the last K `eval_score` values; label up/flat/down.
+
+**Drift flags** (Deliverable 3): list `metrics.json drift_flags[]` entries. All are
+`severity: SUGGEST` — never auto-blocking.
+
+**CapEx vs OpEx summary:**
+- CapEx (one-time investment): eval sets authored, packs/hooks configured, context files.
+- OpEx (per-feature): avg tokens/cost per shipped feature, avg pipeline minutes.
+- Thesis: upfront structure lowers marginal cost per shipped feature.
+
+**Graceful absence:** if `.temper/observability.json` does NOT exist OR is not `version: 2`,
+print `"No observability data yet. Run /temper to capture per-stage cost and telemetry."`
+and do NOT error. This preserves the existing graceful-degradation contract.
 
 ### Step 3: Learning Loop Prompt
 
