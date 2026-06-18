@@ -6,6 +6,11 @@
 .temper/reviews/
 .temper/archive/
 
+# Pipeline runtime state — written/resumed/deleted across /temper runs (never commit)
+.temper/build-state.json
+.temper/feedback-loops.json
+.temper/observability.json
+
 # Project-specific index (regenerated on each plan)
 .temper/index/
 

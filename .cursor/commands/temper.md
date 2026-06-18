@@ -10,7 +10,7 @@ argument-hint: "<feature-description>"
   Source: .claude/commands/temper.md
 -->
 
-# Temper: Unified SDLC Command (v5.4.0)
+# Temper: Unified SDLC Command (v5.5.0)
 
 **Goal:** Execute the full SDLC flow (plan → design? → build → review → check → commit) with stage gates, feedback loops, context accumulation, observability, and **real** context isolation via Agent subprocesses.
 
@@ -56,8 +56,13 @@ ORCHESTRATOR (this file)
   │
   └── Agent subprocess → CHECK (runs validation pipeline)
         ↓ returns: check results + check-context.json
-        ↓ gate decision from user → commit
+        ↓ gate decision from user
         ↓ FEEDBACK: may loop back to BUILD (test failure loop)
+  │
+  └── [OPTIONAL] Agent subprocess → EVAL (if eval.enabled: true AND evalset.json exists)
+        ↓ returns: score table + eval-context.json
+        ↓ gate decision from user → commit
+        ↓ FEEDBACK: may loop back to BUILD (block-on dimension failed)
 ```
 
 **Why Agent subprocesses?** A self-directed prompt like "CLEAR ALL CONTEXT" is unenforceable — Claude cannot clear its own context window. Agent subprocesses start with genuinely clean context because they are separate invocations.
@@ -66,7 +71,7 @@ ORCHESTRATOR (this file)
 
 State is tracked in `.temper/build-state.json` — schema and save-state rules in
 orchestrator-patterns.md → "Build State Schema". For `/temper`: stages
-`plan_complete | design_complete | build_complete | review_complete | check_complete`,
+`plan_complete | design_complete | build_complete | review_complete | check_complete | eval_complete`,
 branch `feature/{slug}`, artifacts `intent.md` + `tasks.md`. **Resolve the spec path
 from this file before launching any agent.** On resume, validate per
 orchestrator-patterns.md → "Resume Validation".
@@ -810,7 +815,112 @@ After Check agent returns and before showing the gate:
 
 **on Change (via "Other"):** Make the change, re-launch the CHECK agent to re-validate, then re-show this gate (do NOT commit directly). Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
-**on Save:** Save state (orchestrator-patterns.md → "Save State Pattern", `stage: check_complete`, `next_stage: commit`).
+**on Save:** Save state (orchestrator-patterns.md → "Save State Pattern", `stage: check_complete`, `next_stage: eval`).
+
+---
+
+## Stage 4.5: Eval (Behavioral Verification)
+
+**Runs in:** Agent subprocess with clean context — only eval.md + evalset.json + build-state.json + observability.json loaded
+
+> **Graceful degradation (default-on):** This stage is skipped with a one-line notice — and no subprocess is spawned — when EITHER:
+> 1. `.claude/temper.config` → `eval.enabled` is `false`, OR
+> 2. No `evalset.json` exists at `{spec_path}/evals/evalset.json` (and none was authored at plan time).
+>
+> A skip is never an error. The pipeline proceeds to commit unchanged.
+
+### Skip Check (before launching the agent)
+
+1. Read `.claude/temper.config` → resolve `eval.enabled` (default: `true` if absent). If `false`: emit `Eval: disabled in config — skipping`, proceed to Commit.
+2. Check `{spec_path}/evals/evalset.json` (and `{spec_path}/evalset.json`) exist. If neither: emit `Eval: no evalset found — skipping`, proceed to Commit.
+3. Otherwise: launch the Eval agent below.
+
+### Launch Eval Agent
+
+```
+Use the Agent tool with this prompt:
+
+"Execute /temper:eval for the current spec.
+
+Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/eval.md
+
+CONTEXT: You are starting with a CLEAN context. Load these first:
+1. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/eval.md for methodology
+2. Read {spec_path}/evals/evalset.json (the rubric + cases)
+3. Read {spec_path}/intent.md (intent, if exists)
+4. Read .temper/build-state.json + .temper/observability.json (for trajectory mode)
+5. Dispatch the eval-judge skill ($CLAUDE_PLUGIN_ROOT/.claude/skills/eval-judge/SKILL.md) on the
+   configured judge-model tier; fall back to deterministic checks if unavailable.
+
+CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the eval summary to the orchestrator.
+
+Return ONLY:
+- Eval summary text (score table per the Eval Summary Format below: legend, ARTIFACT/PROCESS
+  grouping, per-row recommended action, partial-aggregate caveat when dims unscored)
+- Per-dimension scores + categories + justifications + recommended actions
+- Aggregate, aggregate_basis (scored|full), scored_weight
+- Path to results file: {spec_path}/evals/results/results-{timestamp}.json
+- Whether the eval passed/failed and which (if any) block-on dimension failed"
+```
+
+### Eval Summary Format
+
+> **Render rules (see `reference/eval.md` → "Reading the Score Table"):** print the legend
+> once above the table; group rows under ARTIFACT then PROCESS headers (never interleave);
+> annotate every row below `pass_threshold` with its recommended action; when any dimension
+> is unscored, print the partial-aggregate caveat in place of the plain Aggregate line.
+
+```
+How to read this: 0–1 scale, {pass_threshold} to pass. Low ARTIFACT-scores mean fix the code;
+                   low PROCESS-scores mean the run was messy.
+
+┌─────────────────────────────────────────────────────────────┐
+│ EVAL — {Feature Name}                                       │
+├─────────────────────────────────────────────────────────────┤
+│ RESULTS (mode: {output|trajectory})   Judge: {model|fallback}│
+│                                                             │
+│ ARTIFACT — fix the code                                     │
+│    task_success:     {score}   {PASS/FAIL}  {action?}       │
+│    hallucination:    {score}   (invert)     {action?}       │
+│    response_quality: {score|unscored}       {action?}       │
+│                                                             │
+│ PROCESS — fix the run                                       │
+│    tool_use_quality: {score|unscored}       {action?}       │
+│    trajectory:       {score|unscored}       {action?}       │
+│                                                             │
+│ {Aggregate line — see below}                                │
+│ Results: evals/results/results-{ts}.json                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**`{action?}` placeholder (only on rows below `pass_threshold`):**
+- artifact-category low → `→ Re-run (code defect)`
+- any `block-on` dim low → `→ Re-run (block-on failed)`
+- process-category low, NOT block-on → `→ accept (process noise)`
+- `unscored` → `— unscored`
+- rows at/above threshold → blank
+
+**Aggregate line — choose one:**
+- All dims scored: `Aggregate: {score}   Threshold: {pass_threshold}   {PASS}`
+- Any dim unscored: `⚠ Aggregate {score} over {scored}/{total} scored dims ({names} unscored) — partial.   Threshold: {pass_threshold}   {PASS}`
+
+### Stage Gate
+
+Show the AskUserQuestion gate with:
+- "Continue to Commit (Recommended)" — proceed to commit (Stage 4's on-Commit flow)
+- "View results" — show `evals/results/results-{ts}.json`, then re-show this gate
+- "Re-run (loop to Build)" — (shown ONLY if a `block-on` dimension failed AND `feedback.enabled`) write `eval-context.json`, launch BUILD agent (feedback re-entry)
+- "Save for later" — save state, stop
+- **"Other" (built-in free-text)** — type a change request, edits are made, re-run Eval, re-show gate
+
+**on Continue to Commit:** Write `eval-context.json` (schema: orchestrator-patterns.md → "Context File Schemas") with aggregate + per-dimension scores + block-on status. Proceed to the Stage 4 "on Commit" flow.
+
+**on Re-run (Eval→Build feedback):**
+1. Write `eval-context.json` with the failing dimensions + the `block-on` reason.
+2. Create/update the loop entry in `.temper/feedback-loops.json` with `from_stage: eval`, `to_stage: build`, `reason: "eval block-on dimension failed"`, `iteration: {current + 1}`, `max_iterations` from `feedback.max-loops`.
+3. Re-launch the BUILD agent — it loads `eval-context.json` as a feedback re-entry.
+
+**on Save:** Save state (orchestrator-patterns.md → "Save State Pattern", `stage: eval_complete`, `next_stage: commit`).
 
 ---
 
@@ -820,7 +930,7 @@ If you stopped earlier, run `/temper` to continue.
 
 ### Resume Validation
 
-> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Resume Validation" section. Valid stages for this command: `plan_complete`, `design_complete`, `build_complete`, `review_complete`, `check_complete`.
+> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Resume Validation" section. Valid stages for this command: `plan_complete`, `design_complete`, `build_complete`, `review_complete`, `check_complete`, `eval_complete`.
 
 ### Nested Invocation Protection
 

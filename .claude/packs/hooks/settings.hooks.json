@@ -1,0 +1,36 @@
+{
+  "_comment": "settings.json hook block for the Temper hooks pack. NOTE: Claude Code has NO 'PreCommit' event (PreToolUse/PostToolUse/Stop/Notification/SubagentStop/PreCompact/SessionStart/SessionEnd/UserPromptSubmit only). The blocks below cover the IN-AGENT path (edits, writes, agent-driven commits). For deterministic commit-time enforcement on a RAW 'git commit', install the native git pre-commit hook via 'bash scripts/hooks/install.sh' — that is the only gate that fires regardless of the agent. See .claude/packs/hooks/rules.md.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/block-secrets.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/block-secrets.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/block-forbidden-imports.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

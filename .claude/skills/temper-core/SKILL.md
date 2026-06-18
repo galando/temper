@@ -59,6 +59,7 @@ Four independently optional capabilities, all enabled by default. Controlled via
 | Grill Me | Plan, Design | Socratic challenge mode — stress-test plans before building |
 | Config Suggestions | Check | Suggest CLAUDE.md/AGENTS.md updates based on what was built |
 | HTML Review | Plan | Interactive browser-based plan review with inline comments |
+| Evals | Eval, Check | Behavioral verification via LM-judge + trajectory + plan-time evalsets |
 
 **Graceful degradation:** Each capability checks its config flag. Missing config = all enabled (default-on).
 
