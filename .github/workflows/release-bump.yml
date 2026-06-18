@@ -1,0 +1,143 @@
+name: Release Bump
+
+# Manual one-button release bump. A human clicks "Run workflow", types the
+# target version + a CHANGELOG title; CI bumps all version stamps, regenerates
+# the derived .cursor/ export, inserts a CHANGELOG stub, validates, and opens a
+# PR. The human fills in the real CHANGELOG body and merges. This makes the
+# "forgot to regenerate .cursor/ after a bump" failure mode impossible — the
+# exact drift PR #50's review caught.
+#
+# Relationship to sibling workflows:
+#   - quality.yml   : runs the validators on every push/PR (unchanged)
+#   - release.yml   : creates the GitHub Release on `git tag v*` (unchanged)
+#   - release-bump.yml (this): manual bump + regenerate + open PR (new)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Target version (e.g. 5.4.0) — no 'v' prefix"
+        required: true
+        type: string
+      changelog_title:
+        description: "CHANGELOG entry title (after the em-dash). e.g. 'Eval Command'"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# Only one release bump at a time; never cancel an in-flight one mid-bump.
+concurrency:
+  group: release-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. Checkout the default branch with full history (tag comparison needs it).
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 2. Validate the target version is semver AND strictly greater than current.
+      #    Catches typos that would silently downgrade the plugin.
+      - name: Validate target version
+        env:
+          TARGET_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$TARGET_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: '$TARGET_VERSION' is not X.Y.Z"
+            exit 1
+          fi
+          CURRENT=$(grep -m1 '"version"' .claude-plugin/plugin.json | sed 's/.*"\([0-9.][0-9.]*\)".*/\1/')
+          NEWEST=$(printf '%s\n%s\n' "$CURRENT" "$TARGET_VERSION" | sort -V | tail -1)
+          if [ "$TARGET_VERSION" = "$CURRENT" ]; then
+            echo "ERROR: target ($TARGET_VERSION) equals current ($CURRENT) — nothing to bump"
+            exit 1
+          fi
+          if [ "$NEWEST" != "$TARGET_VERSION" ]; then
+            echo "ERROR: target ($TARGET_VERSION) must be greater than current ($CURRENT)"
+            exit 1
+          fi
+          echo "OK: bumping $CURRENT -> $TARGET_VERSION"
+
+      # 3. Insert a CHANGELOG stub BEFORE the bump. validate-plugin.sh asserts the
+      #    top CHANGELOG version matches plugin.json, so the stub must exist in the
+      #    same commit or the gate fails. Multi-line insertion via here-doc +
+      #    head/tail splice (awk -v chokes on newlines in the stub string).
+      - name: Insert CHANGELOG stub
+        env:
+          TARGET_VERSION: ${{ inputs.version }}
+          CHANGELOG_TITLE: ${{ inputs.changelog_title }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## v${TARGET_VERSION} — ${CHANGELOG_TITLE}"
+            echo ""
+            echo "_Replace this placeholder with release notes before merging._"
+            echo ""
+            echo "- (add entries here)"
+            echo ""
+          } > /tmp/changelog-stub.md
+          FIRST_V=$(grep -n '^## v' CHANGELOG.md | head -1 | cut -d: -f1)
+          if [ -z "$FIRST_V" ]; then
+            echo "ERROR: no '## v' entry found in CHANGELOG.md to splice before"
+            exit 1
+          fi
+          head -n $((FIRST_V - 1)) CHANGELOG.md > CHANGELOG.md.new
+          cat /tmp/changelog-stub.md >> CHANGELOG.md.new
+          tail -n +${FIRST_V} CHANGELOG.md >> CHANGELOG.md.new
+          mv CHANGELOG.md.new CHANGELOG.md
+          echo "Inserted CHANGELOG stub: v${TARGET_VERSION} — ${CHANGELOG_TITLE}"
+
+      # 4. Run the bump. version-bump.sh is the single writer: it rewrites all
+      #    source stamps (plugin.json, CLAUDE.md, temper.md header) AND regenerates
+      #    the derived .cursor/ via generate-cursor.sh as its final step.
+      - name: Bump version
+        env:
+          TARGET_VERSION: ${{ inputs.version }}
+        run: ./scripts/version-bump.sh "$TARGET_VERSION"
+
+      # 5. Gate: prove the tree is consistent before opening a PR. quality-check.sh
+      #    runs JSON/structure checks but does NOT run the version-agreement guard —
+      #    that lives only in validate-plugin.sh. Run all three validators explicitly
+      #    so stamp drift cannot slip through.
+      - name: Validate (gate)
+        run: |
+          set -euo pipefail
+          bash scripts/quality-check.sh
+          bash scripts/validate-plugin.sh
+          bash scripts/validate-docs.sh
+          bash scripts/validate-readme.sh
+
+      # 6. Commit to a release branch and open a PR. peter-evans/create-pull-request
+      #    is idempotent: re-running with the same version updates the existing PR.
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "chore(release): v${{ inputs.version }} — ${{ inputs.changelog_title }}"
+          branch: "release/v${{ inputs.version }}"
+          title: "chore(release): v${{ inputs.version }} — ${{ inputs.changelog_title }}"
+          body: |
+            Automated release bump.
+
+            **Version:** `${{ inputs.version }}`
+
+            - Bumps all version stamps (`version-bump.sh`)
+            - Regenerates the derived `.cursor/` export (`generate-cursor.sh`)
+            - Inserts a CHANGELOG stub — **replace the placeholder body with real notes before merging**
+            - All validators passed (`quality-check.sh`, `validate-plugin.sh`, `validate-docs.sh`, `validate-readme.sh`)
+
+            **After merge:** tag the release to publish it.
+            ```bash
+            git tag v${{ inputs.version }}
+            git push --tags
+            ```
+            `release.yml` then creates the GitHub Release.
+          labels: release
+          delete-branch: true
