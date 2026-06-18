@@ -7,11 +7,12 @@
 # Rewrites every version stamp so plugin.json is the single source of truth.
 # Stamps updated (all derived — never hand-edit these for version purposes):
 #   1. .claude-plugin/plugin.json          "version": "X.Y.Z"
-#   2. .cursor/VERSION                     bare X.Y.Z (if .cursor/ exists; the
-#                                          generator owns this post-Task-4, but
-#                                          the stamp is kept honest here too)
-#   3. .claude/CLAUDE.md                   **Version:** X.Y.Z
-#   4. .claude/commands/temper.md          header  (vX.Y.Z)
+#   2. .claude/CLAUDE.md                   **Version:** X.Y.Z
+#   3. .claude/commands/temper.md          header  (vX.Y.Z)
+#   4. .cursor/                            regenerated wholesale via
+#                                          generate-cursor.sh (RUN LAST, after
+#                                          steps 1-3, so derived content carries
+#                                          the new version in lockstep)
 #
 # CHANGELOG.md is NOT auto-rewritten — the maintainer owns the new `## vX.Y.Z`
 # entry and its body. validate-plugin.sh asserts CHANGELOG top version matches.
@@ -53,22 +54,6 @@ else
     exit 1
 fi
 
-# 2. .cursor/ is a DERIVED artifact owned by generate-cursor.sh. Regenerate it
-#    wholesale so every derived file (VERSION, README, commands, rules/*.mdc)
-#    carries the new version in lockstep. Writing only .cursor/VERSION here would
-#    leave the derived content stale — the exact G-1/G-2 drift this batch closes.
-GEN_SCRIPT="scripts/generate-cursor.sh"
-if [ -d ".cursor" ] && [ -f "$GEN_SCRIPT" ]; then
-    echo "  -> Regenerating .cursor/ via $GEN_SCRIPT (single writer)"
-    if ! bash "$GEN_SCRIPT" >/dev/null 2>&1; then
-        echo "  -> WARN: $GEN_SCRIPT failed; .cursor/ may be stale. Run it manually." >&2
-    fi
-elif [ -f "$GEN_SCRIPT" ]; then
-    echo "  -> .cursor/ not found; run scripts/generate-cursor.sh to create it"
-else
-    echo "  -> .cursor/ and $GEN_SCRIPT absent; skipping Cursor export"
-fi
-
 # 3. .claude/CLAUDE.md  **Version:** X.Y.Z
 CLAUDE_MD=".claude/CLAUDE.md"
 if [ -f "$CLAUDE_MD" ]; then
@@ -92,6 +77,23 @@ if [ -f "$TEMPER_CMD" ]; then
     rm -f "$TEMPER_CMD.bak"
 else
     echo "  -> $TEMPER_CMD not found, skipping"
+fi
+
+# 5. .cursor/ is a DERIVED artifact owned by generate-cursor.sh. Regenerate it
+#    LAST, after all source stamps (steps 1,3,4) are updated, so derived files
+#    (VERSION, README, commands/temper.md, rules/*.mdc) carry the new version in
+#    lockstep. Running the generator before bumping .claude/commands/temper.md
+#    leaves the derived command header one version behind (check finding VB-ORDER).
+GEN_SCRIPT="scripts/generate-cursor.sh"
+if [ -d ".cursor" ] && [ -f "$GEN_SCRIPT" ]; then
+    echo "  -> Regenerating .cursor/ via $GEN_SCRIPT (single writer)"
+    if ! bash "$GEN_SCRIPT" >/dev/null 2>&1; then
+        echo "  -> WARN: $GEN_SCRIPT failed; .cursor/ may be stale. Run it manually." >&2
+    fi
+elif [ -f "$GEN_SCRIPT" ]; then
+    echo "  -> .cursor/ not found; run scripts/generate-cursor.sh to create it"
+else
+    echo "  -> .cursor/ and $GEN_SCRIPT absent; skipping Cursor export"
 fi
 
 echo ""
