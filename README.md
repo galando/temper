@@ -108,10 +108,14 @@ Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/yo
 ### Cursor IDE
 
 ```bash
+# Into a Temper repo checkout (regenerates .cursor/ from .claude/ sources):
+./scripts/install-cursor.sh
+
+# Into an arbitrary project (downloads a static snapshot):
 bash <(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)
 ```
 
-Cursor support is stable at the v5.1 feature set. New capabilities ship Claude Code-first.
+Cursor support is **frozen at the v5.1 feature set** (CHANGELOG v5.2.1 platform strategy). New capabilities ship Claude Code-first. The `.cursor/` export is **regenerated from `.claude/` sources on every release** via `scripts/generate-cursor.sh` — parity is honest and consistent, not stale-by-accident. Running `install-cursor.sh` inside a repo checkout delegates to the generator (offline, idempotent).
 
 ## Recommended Setup
 

@@ -47,7 +47,20 @@ Files to load at start:
 4. Load tasks.md + quickstart.md (quickstart.md may not exist for Simple features — skip if absent)
 5. Read plan.md for architecture decisions and blast radius (skip if no plan.md — Simple/Medium features)
 6. Read all files listed in plan's "Prerequisites" or "Must Read" sections (skip if no plan.md)
-7. Read active pack rules from .claude/packs/ (enabled packs only, skip if directory doesn't exist)
+7. Read active pack rules — phase-filtered, manifest-driven for this stage (build):
+   Load packs via the cached manifest, phase-filtered for this stage (build):
+     1. Read `.temper/pack-manifest.json`. If missing or stale (config mtime changed,
+        pack dirs added/removed, schema version mismatch, or any rules.md mtime newer
+        than manifest `last_built`), rebuild it first — see `reference/pack.md`
+        "Cached Pack Manifest" for the staleness contract. [G-4]
+     2. From the manifest, keep only packs whose `phases` is `"all"` OR whose `phases`
+        array contains `"build"`. This is the `reference/pack.md` phase-filter
+        contract (lines 164-169). [G-3]
+     3. For each surviving pack, read its `rules_path` into context. Also load any
+        linked resource (`link: plugin://...` or `skill://...`) per pack.md
+        "Pack-Plugin/Skill Linking".
+     4. Read stack-specific rules from `.claude/packs/stacks/{detected-stack}.md`
+        if present (unchanged behavior).
 8. Read stack file from .claude/packs/stacks/{detected-stack}.md (skip if file doesn't exist)
 9. Load .temper/specs/{feature}/intent.md if it exists
    - Parse scenario names and Given/When/Then blocks
@@ -85,7 +98,7 @@ Files to load at start:
 ```
 1. User gave direct instructions → treat as single-task build
 2. Detect stack (same as /temper:check Step 1)
-3. Read active pack rules
+3. Read active pack rules (phase-filtered, manifest-driven — see Step 1 item 7 above; same {build} filter applies)
 4. Read related existing code before implementing
 5. Skip Step 2 (branch) — user decides if feature branch needed
 ```

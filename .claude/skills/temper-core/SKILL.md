@@ -13,7 +13,7 @@ Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0
 4. Load `.claude/packs/stacks/{stack}.md`
 
 ## Pack Resolution (v4.3.0)
-Three-tier: project-local > global > built-in. Cached in `.temper/pack-manifest.json`.
+Three-tier: project-local > global > built-in. Cached in `.temper/pack-manifest.json` and consumed by all stage commands (build, review, check, plan, design) for phase-filtered loading.
 - `.claude/packs/{name}/rules.md` (project)
 - `~/.claude/packs/{name}/rules.md` (global)
 - `$CLAUDE_PLUGIN_ROOT/.claude/packs/{name}/rules.md` (built-in)

@@ -78,6 +78,76 @@ for m in missing:
   else
     ok
   fi
+
+  # --- Version-agreement checks (G-1, G-2) ---
+  # plugin.json is the single source of truth; every other stamp must agree.
+
+  # .cursor/VERSION == plugin.json (G-2 guard, SC-4)
+  CURSOR_VER_FILE="$REPO_ROOT/.cursor/VERSION"
+  if [[ -f "$CURSOR_VER_FILE" ]]; then
+    CURSOR_VER=$(tr -d '[:space:]' < "$CURSOR_VER_FILE")
+    if [[ "$CURSOR_VER" != "$PLUGIN_VER" ]]; then
+      fail ".cursor/VERSION ($CURSOR_VER) != plugin.json ($PLUGIN_VER)"
+    else
+      ok
+    fi
+  else
+    # Missing .cursor/VERSION is not itself a failure (the directory is derived
+    # by generate-cursor.sh), but we surface it as a soft check rather than ok.
+    fail ".cursor/VERSION missing (run scripts/generate-cursor.sh)"
+  fi
+
+  # .cursor/ derived content must also match plugin.json — the bare VERSION file
+  # is not enough. If the generator wasn't re-run after a bump, derived files
+  # embed the old version (the G-1/G-2 drift this batch closes). [PROVEN guard]
+  CURSOR_README="$REPO_ROOT/.cursor/README.md"
+  if [[ -f "$CURSOR_README" ]]; then
+    CURSOR_README_VER=$(grep -E '^Version:' "$CURSOR_README" | head -1 | awk '{print $2}')
+    if [[ -n "$CURSOR_README_VER" && "$CURSOR_README_VER" != "$PLUGIN_VER" ]]; then
+      fail ".cursor/README.md Version ($CURSOR_README_VER) != plugin.json ($PLUGIN_VER) — run scripts/generate-cursor.sh"
+    else
+      ok
+    fi
+  fi
+  CURSOR_TEMPER_CMD="$REPO_ROOT/.cursor/commands/temper.md"
+  if [[ -f "$CURSOR_TEMPER_CMD" ]]; then
+    if ! grep -qE "Unified SDLC Command \(v$PLUGIN_VER\)" "$CURSOR_TEMPER_CMD"; then
+      CURSOR_CMD_VER=$(grep -oE 'Unified SDLC Command \(v[0-9.]+' "$CURSOR_TEMPER_CMD" | grep -oE '[0-9.]+$')
+      fail ".cursor/commands/temper.md header (v$CURSOR_CMD_VER) != plugin.json ($PLUGIN_VER) — run scripts/generate-cursor.sh"
+    else
+      ok
+    fi
+  fi
+
+  # .claude/CLAUDE.md  **Version:** X.Y.Z  == plugin.json (G-1 guard, SC-1)
+  CLAUDE_MD="$REPO_ROOT/.claude/CLAUDE.md"
+  if [[ -f "$CLAUDE_MD" ]]; then
+    CLAUDE_VER=$(grep -m1 -E '^\*\*Version:\*\*' "$CLAUDE_MD" | sed -E 's/^\*\*Version:\*\* ([0-9][0-9.]*(\.[0-9]+)*).*/\1/')
+    if [[ -z "$CLAUDE_VER" ]]; then
+      fail ".claude/CLAUDE.md has no '**Version:**' stamp"
+    elif [[ "$CLAUDE_VER" != "$PLUGIN_VER" ]]; then
+      fail ".claude/CLAUDE.md Version ($CLAUDE_VER) != plugin.json ($PLUGIN_VER)"
+    else
+      ok
+    fi
+  else
+    fail ".claude/CLAUDE.md missing"
+  fi
+
+  # .claude/commands/temper.md title header (vX.Y.Z) == plugin.json (G-1 guard)
+  TEMPER_CMD="$REPO_ROOT/.claude/commands/temper.md"
+  if [[ -f "$TEMPER_CMD" ]]; then
+    TEMPER_VER=$(grep -m1 -E '^# Temper:.*\(v[0-9]' "$TEMPER_CMD" | sed -E 's/.*\(v([0-9][0-9.]*(\.[0-9]+)*)\).*/\1/')
+    if [[ -z "$TEMPER_VER" ]]; then
+      fail ".claude/commands/temper.md has no title-line '(vX.Y.Z)' header"
+    elif [[ "$TEMPER_VER" != "$PLUGIN_VER" ]]; then
+      fail ".claude/commands/temper.md header ($TEMPER_VER) != plugin.json ($PLUGIN_VER)"
+    else
+      ok
+    fi
+  else
+    fail ".claude/commands/temper.md missing"
+  fi
 fi
 
 # --- marketplace.json ---

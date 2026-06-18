@@ -3,6 +3,43 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v5.3.0 — Phase 0 Implementation Gaps (Promise vs. Reality)
+
+Closes the six drift findings from `docs/plans/implementation-gaps.md` (PR #49).
+The plugin now does what its own docs/config/skills promise, before Phase 1
+(verification) extends it.
+
+- **G-1 — Single version source of truth:** `scripts/version-bump.sh` now
+  rewrites every stamp (plugin.json, `.cursor/VERSION`, `.claude/CLAUDE.md`,
+  `.claude/commands/temper.md` header). `scripts/validate-plugin.sh` gained
+  three assertions so stamp drift fails CI. The `temper.md` header (v4.4.1)
+  is no longer stale.
+- **G-2 — Regenerable Cursor export:** new `scripts/generate-cursor.sh`
+  transforms `.claude/` (packs, skills, capabilities, reference docs, commands)
+  into `.cursor/` rules + commands as a pure, idempotent, offline function.
+  `install-cursor.sh` now delegates to the generator inside a repo checkout.
+  Cursor remains **frozen at the v5.1 feature set** — regeneration makes parity
+  honest and consistent, not feature-advancing. `.cursor/` was regenerated.
+- **G-3 — Phase-scoped pack loading wired in:** `review`, `build`, `check`,
+  `plan`, and `design` stage docs now load only packs whose `phases` is `all`
+  or contains the current stage, per the `pack.md` contract. The promised
+  token/scoping benefit is now realized at the point of use.
+- **G-4 — Manifest cache consumed:** the same block consults
+  `.temper/pack-manifest.json` (rebuilt if stale) before loading packs,
+  closing both G-3 and G-4 in one coherent change. `temper-core/SKILL.md`
+  claim updated to match reality.
+- **G-5 — Honest observability labels:** every value written to
+  `.temper/observability.json` now carries a `source: measured|estimated`
+  field; the misleading `track-tokens` config comment is clarified. Real
+  measured telemetry is Phase 2 scope.
+- **G-6 — Learning flywheel fixture:** redacted
+  `.temper/fixtures/learning.sample.json` proves the adaptive-learning loop
+  shape. Live dogfooding (enough review cycles to promote a rule) is deferred
+  to a follow-up session; G-6 was non-blocking.
+
+**Validation:** `validate-plugin.sh` 16/0, `validate-docs.sh` 6/0,
+`validate-readme.sh` 5/0, `generate-cursor.sh` idempotent.
+
 ## v5.2.1 — Growth Plan & Benchmark Improvements
 
 - **README rewrite:** 829 → 172 lines (79% reduction). First screen: problem → catch story → quick start.

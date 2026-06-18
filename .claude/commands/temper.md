@@ -3,7 +3,7 @@ description: "Unified SDLC command: plan → design → build → review → che
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v4.4.1)
+# Temper: Unified SDLC Command (v5.3.0)
 
 **Goal:** Execute the full SDLC flow (plan → design? → build → review → check → commit) with stage gates, feedback loops, context accumulation, observability, and **real** context isolation via Agent subprocesses.
 
@@ -463,6 +463,17 @@ When `observability.enabled: true` in temper.config, track per-stage metrics:
 2. After each stage completes: record elapsed time, estimate tokens, count tool calls
 3. Write metrics to `.temper/observability.json` after each stage
 4. Show in `/temper:status` dashboard
+
+**Source labeling (G-5, v5.3.0):** every value written to `.temper/observability.json`
+MUST carry a sibling `source: "measured" | "estimated"` field so consumers can tell
+honest telemetry from model self-estimates. Defaults:
+- `tokens`: `source: "estimated"` — token counts are model self-estimates today;
+  real harness-reported token telemetry is Phase 2 scope.
+- `latency`, `tool-calls`: `source: "measured"` where the harness exposes them
+  (wall-clock and tool-invocation counts are observable); fall back to `"estimated"`
+  if only inferred.
+Do not emit a metric without a `source` field. The `/temper:status` dashboard
+should surface the source alongside the value (e.g. "tokens: 12.4k (estimated)").
 
 ---
 
