@@ -3,11 +3,9 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## v5.4.0 — Makes Temper do what its own docs/config/skills already claim, before Phase 1 (verification) extends it
+## v5.4.0 — Release Bump Automation
 
-_Replace this placeholder with release notes before merging._
-
-- (add entries here)
+Adds a one-button release workflow (`release-bump.yml`): a manual `workflow_dispatch` that bumps all version stamps, regenerates the derived `.cursor/` export, inserts a CHANGELOG entry, runs the full validator gate, and opens a release PR — removing the manual, error-prone bump-and-regenerate steps. Also ships the Phase 0 implementation-gap fixes from v5.3.0 (version single-source-of-truth, regenerable Cursor export, phase-filtered pack loading, honest observability labels) which had landed on `main` without a tag.
 
 ## v5.3.0 — Phase 0 Implementation Gaps (Promise vs. Reality)
 
