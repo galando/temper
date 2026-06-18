@@ -110,6 +110,9 @@ if they do not, normalize before aggregating.
   computed over the **scored subset only** (weights re-normalized), and `scored_weight` is the
   sum of weights that actually contributed. A partial aggregate is never presented as a full one.
 - `aggregate_basis: "full"` when every dimension was scored.
+- `aggregate_basis: "unscored"` when **zero** dimensions were scored (degenerate fallback) —
+  `aggregate` is `null`, `passed` is `false`, and the table shows "no dimensions scored — cannot
+  produce aggregate" instead of a number. Never divide by zero; never raise.
 
 ---
 
@@ -188,8 +191,9 @@ scored dimensions, and the table prints a caveat naming the count:
 > `⚠ Aggregate 0.80 over 3/5 scored dims (tool_use_quality, trajectory unscored) — partial.`
 
 Without this caveat a 0.80 that is half-unscored reads as stronger than it is. A full
-aggregate (all dims scored) prints no caveat. See `aggregate_basis` / `scored_weight` in the
-results schema.
+aggregate (all dims scored) prints no caveat. If **zero** dims were scored, print
+`Eval: no dimensions scored — cannot produce aggregate` and force a non-pass. See
+`aggregate_basis` / `scored_weight` in the results schema.
 
 ## Gate (when run as the Eval stage in `/temper`)
 

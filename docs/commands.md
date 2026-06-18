@@ -110,6 +110,36 @@ Stack validation and quality status.
 
 ---
 
+## `/temper:eval`
+
+Behavioral verification — judges whether a produced change actually satisfies its intent
+(not just compiles/passes tests) and scores the quality of the tool-call trajectory that
+produced it. The verification layer between `/temper:check` and commit.
+
+```bash
+/temper:eval                    # output eval: score the produced change vs the eval set
+/temper:eval --trajectory       # trajectory eval: score the agent's tool-call sequence
+/temper:eval --create           # scaffold an evalset.json from intent.md scenarios
+```
+
+**What it does:**
+
+- Dispatches an LM-judge (on a cheaper/faster model tier) for per-dimension scoring 0–1 with
+  grounded justifications
+- Scores five rubric dimensions grouped by category — **artifact** (`task_success`,
+  `hallucination`, `response_quality` → "fix the code") and **process** (`tool_use_quality`,
+  `trajectory` → "fix the run")
+- Falls back to deterministic string/regex checks if the judge model is unavailable — never
+  hard-errors
+- Annotates each low row with a recommended action: `→ Re-run (code defect)`,
+  `→ Re-run (block-on failed)`, or `→ accept (process noise)`
+- Surfaces partial aggregates loudly when dimensions are unscored
+
+**Default-on with graceful degradation:** missing `evalset.json` or unavailable judge model →
+one-line skip/fallback notice, never a hard error.
+
+---
+
 ## `/temper:plan`
 
 Plan with blast radius analysis, mermaid diagrams, and interactive walkthrough.

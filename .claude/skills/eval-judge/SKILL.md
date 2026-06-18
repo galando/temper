@@ -98,8 +98,12 @@ If the judge model is unavailable, errors, or times out:
 3. If any dims were dropped → `aggregate_basis: "scored"`; re-normalize the remaining weights to
    sum to 1.0 and record `scored_weight` (sum of the scored dims' original weights). If none
    were dropped → `aggregate_basis: "full"`, `scored_weight: 1.0`.
-4. For `invert: true` dims: subtract (re-norm weight × score); else add (re-norm weight × score).
-5. `aggregate` ∈ `[0.0, 1.0]`; `passed = aggregate >= pass_threshold`.
+4. **Edge case (all dims unscored):** if zero dimensions remain scored, do NOT re-normalize
+   (that would divide by zero). Set `aggregate: null`, `aggregate_basis: "unscored"`,
+   `scored_weight: 0.0`, `passed: false`, and emit "Eval: no dimensions scored — cannot
+   produce aggregate" as the table's aggregate line. Never raise.
+5. For `invert: true` dims: subtract (re-norm weight × score); else add (re-norm weight × score).
+6. `aggregate` ∈ `[0.0, 1.0]`; `passed = aggregate >= pass_threshold`.
 
 A partial aggregate (`aggregate_basis: "scored"`) is computed only over dimensions the judge
 actually scored — unscored dims never silently pull it down. The caller prints the partial
