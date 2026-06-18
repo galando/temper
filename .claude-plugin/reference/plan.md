@@ -583,6 +583,25 @@ Scenarios are derived in Phase 4.5 (before architecture). Write them into intent
 
 Use templates from `$CLAUDE_PLUGIN_ROOT/templates/` (spec.md, plan.md, tasks.md, quickstart.md) as the base structure. Fill in from reference map and blast radius analysis.
 
+#### Draft evalset.json Generation (Plan-Time Evals)
+
+For Medium and Complex features (where intent.md with Gherkin scenarios exists), emit a **draft**
+eval set alongside intent.md so evals are authored with the feature, not bolted on after.
+
+1. Create `{spec_path}/evals/evalset.json` from `$CLAUDE_PLUGIN_ROOT/templates/evalset.json`
+2. Derive one eval case per Gherkin scenario in intent.md:
+   - `id`: `c{N}` (ordered)
+   - `input`: the scenario's Given + When blocks (the situation + action under test)
+   - `expected`: the scenario's Then block (the observable expected behavior)
+   - `labels`: scenario tags / success-criterion id it traces to
+   - `must_not`: any explicit forbidden behavior stated in the scenario or constraints
+3. Keep the default 5 rubric dimensions + weights + `pass_threshold` from the template
+4. Set `"draft": true` — the evalset is not yet run; the Eval stage or `/temper:eval --create`
+   can refine it later
+5. If intent.md has no scenarios (Trivial/Simple): skip — no evalset is written (graceful)
+
+Schema and full methodology: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/eval.md`.
+
 #### Diagram Generation (Mermaid + ASCII)
 
 For Medium and Complex features, generate a mermaid diagram in the plan.md `## Diagram` section. Choose the diagram type based on what best communicates the feature:
@@ -796,6 +815,7 @@ Show a summary box, then offer two ways to proceed: the quick summary (current b
 │                                                             │
 │ 📝 PLAN (What & How)                                        │
 │    Scenarios: {N} ({unit} unit, {mock} mock, {int} integ)   │
+│    EVALS: {N} draft cases (evalset.json)                    │
 │    1. {scenario name}                                      │
 │    2. {scenario name}...                                   │
 │                                                             │

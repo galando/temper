@@ -3,6 +3,32 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v5.5.0 — Phase 1 Verification
+
+Behavioral verification layer + deterministic safety net (PR #49,
+`docs/plans/phase-1-verification.md`).
+
+- **D1 — Eval command + skill:** `/temper:eval` command (default output eval, `--create`
+  scaffold, `--trajectory` mode), `eval-judge` skill (LM-judge per-dimension scoring on a
+  cheaper model tier with deterministic fallback), `reference/eval.md` methodology,
+  `templates/evalset.json` schema (5 default rubric dimensions + weights + pass_threshold).
+- **D2 — Eval stage in `/temper`:** new "Stage 4.5: Eval" between Check and commit (isolated
+  Agent subprocess, score table + `eval-context.json`, gate {Continue, Re-run, View results,
+  Save-for-later}, Eval→Build feedback loop). `eval-context.json` schema in
+  `orchestrator-patterns.md`. Default-on config with one-line skip when evalset/config absent.
+- **D3 — Plan-time evalsets:** Plan stage emits a draft `evalset.json` from intent.md scenarios;
+  plan summary box shows an `EVALS: {N}` line.
+- **D4 — Deterministic hooks pack:** `packs/hooks/` with `block-secrets.sh`,
+  `block-forbidden-imports.sh`, `verify-tests-ran.sh` — deterministic, fail-closed on detected
+  secrets, fail-open (no-op) on missing scripts/state. Install via `/temper:pack enable hooks`
+  (merges `settings.hooks.json` into settings.json through the `update-config` skill).
+- **Cross-cutting:** `eval` + `capabilities.evals` config (default-on, graceful degradation);
+  `validate-plugin.sh` assertions for every new file; Cursor parity via `generate-cursor.sh`
+  (`temper-eval.md`, `temper-ref-eval.mdc`, `temper-pack-hooks.mdc`); version bump to 5.5.0.
+
+**Graceful degradation contract:** every new capability no-ops cleanly when its config flag,
+supporting files, or judge model are absent — never hard-errors.
+
 ## v5.4.0 — CI / Tooling
 
 Auto-generate concise CHANGELOG notes from commits (#53); add release-bump.yml — one-button version bump workflow (#51); phase 0 implementation gaps — close G-1..G-6 (v5.3.0) (#50)

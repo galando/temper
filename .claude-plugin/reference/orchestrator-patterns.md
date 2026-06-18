@@ -342,6 +342,35 @@ Each stage produces structured artifacts that accumulate in `.temper/specs/{feat
 }
 ```
 
+**eval-context.json** (written by Eval stage):
+
+```json
+{
+  "version": 1,
+  "stage": "eval",
+  "timestamp": "{ISO timestamp}",
+  "feature": "{feature-slug}",
+  "mode": "output|trajectory",
+  "judge_model": "{model id or 'deterministic-fallback'}",
+  "aggregate": 0.81,
+  "pass_threshold": 0.75,
+  "passed": true,
+  "scores": {
+    "task_success": { "score": 0.9, "justification": "..." },
+    "hallucination": { "score": 0.1, "justification": "..." }
+  },
+  "unscored": ["tool_use_quality"],
+  "block_on_failed": ["task_success"],
+  "results_file": "{spec_path}/evals/results/results-{ts}.json",
+  "feedback_target": "build"
+}
+```
+
+`block_on_failed` lists any `eval.block-on` dimensions whose score fell below `pass_threshold`
+(empty when none). When non-empty AND `feedback.enabled`, the Eval gate offers the Eval→Build
+Re-run loop; `feedback_target` is then `build`. Eval degrades gracefully: missing evalset or
+disabled config means this file is never written and the stage is skipped.
+
 **learning.json** (written by Review Step 8.5, read by Status and Review Step 4):
 
 ```json
@@ -371,6 +400,7 @@ Full schema: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/learning.md`
 | Build | tasks.md, intent.md, review-context.json (on feedback re-entry) | build-context.json |
 | Review | intent.md, changed files (git diff), build-context.json, learning.json (noise filter) | review-context.json, learning.json (pattern detection) |
 | Check | intent.md, review-context.json | check-context.json |
+| Eval | evalset.json, build-state.json, observability.json, eval.md | eval-context.json, results/results-{ts}.json |
 | Status | metrics.json, review-memory.json, learning.json | — |
 
 ### Context Versioning
@@ -435,6 +465,12 @@ File: `.temper/feedback-loops.json`
 - User selects "Loop back to Build"
 - Build agent receives fix task + review-context.json
 - Circuit breaker: max 2 loops total
+
+**Eval → Build (block-on dimension loop):**
+- Trigger: Eval stage finds an `eval.block-on` dimension below `pass_threshold`
+- User selects "Re-run (loop to Build)" at the Eval gate (requires `feedback.enabled`)
+- Build agent receives fix task + eval-context.json (failing dimensions + justifications)
+- Circuit breaker: max `feedback.max-loops` (default 2) Eval→Build loops
 
 **Build → Plan (revise plan loop):**
 - Trigger: Build discovers plan is infeasible

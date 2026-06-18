@@ -170,6 +170,71 @@ else
   done
 fi
 
+# --- Phase 1 Verification (v5.5.0): eval + hooks assertions ---
+# These cover the new files added by docs/plans/phase-1-verification.md.
+
+# Hooks pack: rules.md present + settings.hooks.json valid JSON
+HOOKS_RULES="$REPO_ROOT/.claude/packs/hooks/rules.md"
+if [[ -f "$HOOKS_RULES" ]]; then ok; else fail ".claude/packs/hooks/rules.md missing"; fi
+
+HOOKS_JSON="$REPO_ROOT/.claude/packs/hooks/settings.hooks.json"
+if [[ -f "$HOOKS_JSON" ]]; then
+  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$HOOKS_JSON" 2>/dev/null; then
+    ok
+  else
+    fail ".claude/packs/hooks/settings.hooks.json is not valid JSON"
+  fi
+  # Regression guard (C-1): Claude Code has NO PreCommit event — a PreCommit key is
+  # silently ignored and defeats the deterministic commit guarantee. The commit gate
+  # must be the native git pre-commit hook installed by scripts/hooks/install.sh.
+  if python3 -c "import json,sys; assert 'PreCommit' not in json.load(open(sys.argv[1])).get('hooks', {})" "$HOOKS_JSON" 2>/dev/null; then
+    ok
+  else
+    fail ".claude/packs/hooks/settings.hooks.json uses invalid 'PreCommit' key (use scripts/hooks/install.sh for commit-time enforcement)"
+  fi
+else
+  fail ".claude/packs/hooks/settings.hooks.json missing"
+fi
+
+# Hook scripts: exist and are executable
+for sh in block-secrets.sh block-forbidden-imports.sh verify-tests-ran.sh install.sh; do
+  p="$REPO_ROOT/scripts/hooks/$sh"
+  if [[ ! -f "$p" ]]; then
+    fail "scripts/hooks/$sh missing"
+  elif [[ ! -x "$p" ]]; then
+    fail "scripts/hooks/$sh not executable (chmod +x)"
+  else
+    ok
+  fi
+done
+
+# Evalset template
+if [[ -f "$REPO_ROOT/templates/evalset.json" ]]; then
+  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$REPO_ROOT/templates/evalset.json" 2>/dev/null; then
+    ok
+  else
+    fail "templates/evalset.json is not valid JSON"
+  fi
+else
+  fail "templates/evalset.json missing"
+fi
+
+# Cursor parity: derived eval command + rules + hooks pack rule exist (generator output)
+for cf in .cursor/commands/temper-eval.md .cursor/rules/temper-ref-eval.mdc .cursor/rules/temper-pack-hooks.mdc; do
+  if [[ -f "$REPO_ROOT/$cf" ]]; then ok; else fail "$cf missing (run scripts/generate-cursor.sh)"; fi
+done
+
+# Cursor parity: the eval reference rule carries the current version in its frozen-note
+# source path (extends the G-2 derived-content pattern to the new reference).
+EVAL_RULE="$REPO_ROOT/.cursor/rules/temper-ref-eval.mdc"
+if [[ -f "$EVAL_RULE" ]]; then
+  if grep -q "Source: .claude-plugin/reference/eval.md" "$EVAL_RULE" 2>/dev/null; then
+    ok
+  else
+    fail ".cursor/rules/temper-ref-eval.mdc source path mismatch"
+  fi
+fi
+
 echo ""
 echo "=== validate-plugin.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"
