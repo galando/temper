@@ -3,6 +3,12 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v5.4.0 — Makes Temper do what its own docs/config/skills already claim, before Phase 1 (verification) extends it
+
+_Replace this placeholder with release notes before merging._
+
+- (add entries here)
+
 ## v5.3.0 — Phase 0 Implementation Gaps (Promise vs. Reality)
 
 Closes the six drift findings from `docs/plans/implementation-gaps.md` (PR #49).
