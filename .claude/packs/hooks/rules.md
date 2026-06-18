@@ -42,6 +42,11 @@ bash scripts/hooks/install.sh --global # install via core.hooksPath
 The installed `pre-commit` runs `block-secrets.sh` then `verify-tests-ran.sh` and blocks
 (exit 1) on a detected secret or a not-green Check. Absent scripts degrade to no-op.
 
+If a non-Temper `pre-commit` already exists (husky, lefthook, hand-rolled), the installer
+backs it up to `.git/hooks/pre-commit.bak.<timestamp>` before overwriting and prints the
+backup path — it is never silently destroyed. Re-installing over an existing Temper hook is
+idempotent (no backup pile-up).
+
 > **This two-layer split is the determinism guarantee.** Layer 1 catches secrets at
 > edit-time inside the agent; layer 2 catches them at commit-time, deterministically,
 > independent of the agent. Without layer 2, the pack's headline SC-8 guarantee

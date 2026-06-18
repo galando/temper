@@ -46,6 +46,18 @@ fi
 
 PRECOMMIT="$TARGET_DIR/pre-commit"
 
+# Don't clobber an existing pre-commit hook silently. A Temper-managed hook
+# (recognizable by its marker line) is safe to overwrite in place; anything
+# else — husky, lefthook, or a hand-rolled hook — is backed up first so the
+# user's prior setup is recoverable, not lost.
+TEMPER_MARKER="installed by scripts/hooks/install.sh"
+if [[ -f "$PRECOMMIT" ]] && ! grep -qF "$TEMPER_MARKER" "$PRECOMMIT" 2>/dev/null; then
+  BACKUP="$PRECOMMIT.bak.$(date +%Y%m%d%H%M%S 2>/dev/null || echo backup)"
+  cp -p "$PRECOMMIT" "$BACKUP"
+  echo "Backed up existing pre-commit hook -> $BACKUP" >&2
+  echo "(It was not a Temper hook. Temper will overwrite $PRECOMMIT; restore the backup to revert.)" >&2
+fi
+
 # Write a pre-commit hook that invokes the Temper scripts. Fail-open by design:
 # missing scripts => exit 0; a detected secret or not-green check => exit 1 (block).
 # HOOKS_DIR is the canonical location of the Temper scripts at install time and is
@@ -78,3 +90,4 @@ else
   echo "Installed Temper pre-commit hook -> $PRECOMMIT"
 fi
 echo "To uninstall: rm -f $PRECOMMIT (and unset core.hooksPath if --global was used)."
+echo "A prior non-Temper hook, if any, was backed up alongside as $PRECOMMIT.bak.* ."
