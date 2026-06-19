@@ -42,17 +42,20 @@ else
 fi
 
 # 2. All markdown links in docs/ resolve to existing files
-# Skip .html extensions (Jekyll-generated). Try bare path, then path.md
+# Skip .html extensions (Jekyll-generated). Try bare path, then path.md.
+# Links are resolved relative to the containing file's directory (so docs in
+# subdirectories work), with a fallback to docs/ for backwards compatibility.
 BROKEN_LINKS=$(
-  find "$REPO_ROOT/docs" -name "*.md" -exec grep -oE '\]\([^)]+\)' {} \; 2>/dev/null | \
-  grep -vE 'http|mailto|\.html' | \
-  sed 's/\](//;s/)//' | while read -r link; do
+  grep -roE '\]\([^)]+\)' "$REPO_ROOT/docs" --include='*.md' 2>/dev/null | \
+  grep -vE 'http|mailto|\.html' | while read -r match; do
+    SRC=$(echo "$match" | cut -d: -f1)
+    link=$(echo "$match" | sed 's/^[^:]*://;s/\](//;s/)//')
     FILE=$(echo "$link" | sed 's/#.*//')
     [[ -z "$FILE" ]] && continue
-    # Resolve relative to docs/
-    TARGET="$REPO_ROOT/docs/$FILE"
-    # Try as-is, then with .md extension
-    if [[ ! -e "$TARGET" && ! -e "${TARGET}.md" ]]; then
+    SRC_DIR=$(dirname "$SRC")
+    # Resolve relative to the file's own directory, then fall back to docs/.
+    if [[ ! -e "$SRC_DIR/$FILE" && ! -e "$SRC_DIR/${FILE}.md" \
+       && ! -e "$REPO_ROOT/docs/$FILE" && ! -e "$REPO_ROOT/docs/${FILE}.md" ]]; then
       echo "$link"
     fi
   done || true
