@@ -3,7 +3,7 @@ description: "Unified SDLC command: plan → design → build → review → che
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v5.5.0)
+# Temper: Unified SDLC Command (v5.6.0)
 
 **Goal:** Execute the full SDLC flow (plan → design? → build → review → check → commit) with stage gates, feedback loops, context accumulation, observability, and **real** context isolation via Agent subprocesses.
 
@@ -73,6 +73,35 @@ orchestrator-patterns.md → "Resume Validation".
 
 → orchestrator-patterns.md → "Agent Failure Handling".
 
+### Model Routing Resolution (v5.6.0)
+
+Before launching ANY stage Agent, resolve the `model` param per the Model Routing
+Resolution block in orchestrator-patterns.md. Summary (first-match-wins):
+
+1. Read `.claude/temper.config` → `models` block.
+2. If `models.enabled` is false OR the `models` block is absent:
+   - **Emit NO `model` param on the Agent launch** — inherit the session model.
+   - This is byte-identical to v5.5.0 behavior (GRACEFUL DEGRADATION CONTRACT).
+3. Else if `models.respect-user-override: true` AND the user has explicitly set a model
+   for this session/stage:
+   - Keep the user's model; record `model_source: "user-override"` in observability.json.
+4. Else: resolve `tier = models.routing.{stage}`, then map to the Agent `model` param by
+   stripping the `tier-` prefix and looking up `models.tiers.{tier}`:
+   - `tier-frontier` → `models.tiers.frontier` (shipped default: `opus`)
+   - `tier-standard` → `models.tiers.standard` (shipped default: `sonnet`)
+   - `tier-fast` → `models.tiers.fast` (shipped default: `haiku`)
+   - Editing `models.tiers.{tier}` in temper.config changes what runs — routing honors it.
+   - Emit `model: <mapped>` on the Agent launch; record `model_source: "routing"`.
+
+Each of the 6 launch templates below carries a `[MODEL: …]` delta line. Fill it from this
+resolution. The override-check (step 3) MUST precede the routing resolution (step 4).
+
+**Review escalation (Deliverable 1.2):** the Review stage launches on its routed tier
+(`tier-fast` by default). Findings tagged with any `models.escalate-on` value
+(`architecture-finding`, `correctness-risk`) are re-judged on `tier-frontier`, reusing the
+existing confidence-scoring path in `reference/review.md`. Record the escalation as a
+`retries` bump or sub-stage entry in observability.json.
+
 ---
 
 ## Stage Gates Use AskUserQuestion
@@ -91,6 +120,7 @@ At each stage gate, use `AskUserQuestion` with selectable options. Do NOT use `[
 
 ```
 Use the Agent tool with this prompt:
+[MODEL: models.routing.plan -> tier-frontier -> model: opus (or inherit session if models disabled; respect user-override)]
 
 "Execute /temper:plan for feature: $ARGUMENTS
 
@@ -296,6 +326,7 @@ Before launching, read `.temper/build-state.json` to get the `spec_path` and `sp
 
 ```
 Use the Agent tool with this prompt:
+[MODEL: models.routing.design -> tier-frontier -> model: opus (or inherit session if models disabled; respect user-override)]
 
 "Execute /temper:design for feature: {spec from build-state.json}
 
@@ -460,25 +491,62 @@ Using Bash tool:
 3. Write updated feedback-loops.json
 4. `rm -f .temper/build-state.json`
 
-### Observability Tracking (v4.0.0)
+### Observability Tracking (v5.6.0 — v2 capture)
 
-When `observability.enabled: true` in temper.config, track per-stage metrics:
+When `observability.enabled: true` in temper.config, track per-stage metrics. The capture
+schema is **version 2** (see orchestrator-patterns.md → "Observability.json v2 Schema").
 
-1. Before launching each Agent subprocess: record start timestamp
-2. After each stage completes: record elapsed time, estimate tokens, count tool calls
-3. Write metrics to `.temper/observability.json` after each stage
-4. Show in `/temper:status` dashboard
+1. Before launching each Agent subprocess: record `ts_start` (ISO8601, measured).
+2. After each stage completes: record `ts_end`, then populate the per-stage entry:
+   - `model_tier`: the tier resolved for this stage (tier-frontier/standard/fast), or the
+     session tier if models disabled.
+   - `model_source`: `routing` | `user-override` | `inherited` (per Model Routing Resolution).
+   - `tokens`: `{input, input_source, output, output_source}` — prefer **measured** from
+     harness-reported usage; fall back to **estimated** and flag the source. NEVER present
+     an estimate as measured.
+   - `latency_ms`: `{value, source}` — `ts_end - ts_start`, `source: "measured"`.
+   - `tool_calls`: `{value, source}` — count of tool invocations, `source: "measured"`.
+   - `cost_usd`: `{value, source}` — computed from `pricing.md[tier]` (see cost formula
+     in orchestrator-patterns.md); `source: "pricing"` (derived, not billed).
+   - `retries`: `{value, source}` — stage re-launches (feedback loops, escalations).
+   - `eval_score`: `{value, source}` — pulled from `eval-context.json` for the eval stage;
+     `null` otherwise.
+3. Write `version: 2` to `.temper/observability.json` after each stage; accumulate stages[].
+4. Recompute `totals` (tokens sum, cost_usd sum, latency_ms sum) on each write.
+5. Show in `/temper:status` dashboard (economics panel — Deliverable 4).
 
-**Source labeling (G-5, v5.3.0):** every value written to `.temper/observability.json`
-MUST carry a sibling `source: "measured" | "estimated"` field so consumers can tell
-honest telemetry from model self-estimates. Defaults:
-- `tokens`: `source: "estimated"` — token counts are model self-estimates today;
-  real harness-reported token telemetry is Phase 2 scope.
-- `latency`, `tool-calls`: `source: "measured"` where the harness exposes them
-  (wall-clock and tool-invocation counts are observable); fall back to `"estimated"`
-  if only inferred.
-Do not emit a metric without a `source` field. The `/temper:status` dashboard
-should surface the source alongside the value (e.g. "tokens: 12.4k (estimated)").
+**Source provenance (extends G-5, v5.3.0):** EVERY numeric value written to
+`.temper/observability.json` MUST carry a sibling `source` field
+(`measured` | `estimated` | `user-override` | `pricing`). The G-5 rule is preserved and
+extended: do not emit a metric without a `source` field. The `/temper:status` dashboard
+surfaces the source alongside the value (e.g. "tokens: 12.4k (estimated)", "cost: $0.04 (pricing)").
+
+**Graceful degradation:** when `models.enabled` is false/absent, still capture v2 telemetry
+but set `model_tier` to the inherited session tier and `model_source: "inherited"`. The
+schema is v2 in both modes; only the routing provenance differs.
+
+### Drift Detection (v5.6.0 — Deliverable 3)
+
+After writing each stage's v2 entry to `.temper/observability.json`, extend
+`.temper/metrics.json` with drift baselines and flags (additive — existing keys preserved).
+Schema: orchestrator-patterns.md → "metrics.json Drift Baseline Schema".
+
+1. Append the stage's `tool_calls`, `retries`, `latency_ms`, and `eval_score` (where
+   available) to `metrics.json stage_baseline[stage][metric]` (rolling window, last K=10 runs).
+2. Compute rolling mean and population stddev over the baseline history.
+3. If `abs(value - mean) / stddev > drift-threshold` (from `temper.config models.drift-threshold`,
+   default 2), append a `drift_flags[]` entry:
+   ```
+   { "stage": ..., "metric": ..., "value": ..., "baseline_mean": ..., "baseline_stddev": ...,
+     "std_devs": ..., "threshold": ..., "severity": "SUGGEST", "direction": "high|low",
+     "ts": "{ISO8601}", "source": "measured" }
+   ```
+4. Also flag a downward eval-score trend: if the last K eval_scores are monotonically
+   decreasing, append a `drift_flags[]` entry at `severity: "SUGGEST"`.
+
+**Drift flags NEVER auto-block a stage gate.** They are SUGGEST-level only (Temper gate
+vocabulary) and surfaced in `/temper:status` for human review. Skip the stddev check when
+the baseline has fewer than 3 samples (not enough signal).
 
 ---
 
@@ -492,6 +560,7 @@ Before launching, read `.temper/build-state.json` to get the `spec_path` and `sp
 
 ```
 Use the Agent tool with this prompt:
+[MODEL: models.routing.build -> tier-standard -> model: sonnet (or inherit session if models disabled; respect user-override)]
 
 "Execute /temper:build for spec: {spec from build-state.json}
 
@@ -576,6 +645,7 @@ Before launching, read `.temper/build-state.json` to get the `spec_path` and `sp
 
 ```
 Use the Agent tool with this prompt:
+[MODEL: models.routing.review -> tier-fast -> model: haiku (or inherit session if models disabled; respect user-override). Findings tagged architecture-finding/correctness-risk (models.escalate-on) are re-judged on tier-frontier (model: opus), reusing review.md confidence path.]
 
 "Execute /temper:review for feature: {spec from build-state.json}
 
@@ -702,6 +772,7 @@ Show the AskUserQuestion gate with:
 
 ```
 Use the Agent tool with this prompt:
+[MODEL: models.routing.check -> tier-fast -> model: haiku (or inherit session if models disabled; respect user-override)]
 
 "Execute /temper:check for project validation.
 
@@ -832,6 +903,7 @@ After Check agent returns and before showing the gate:
 
 ```
 Use the Agent tool with this prompt:
+[MODEL: models.routing.eval -> tier-fast -> model: haiku (or inherit session if models disabled; respect user-override; the eval-judge skill already consumes eval.judge-model: tier-fast)]
 
 "Execute /temper:eval for the current spec.
 

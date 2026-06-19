@@ -21,7 +21,7 @@ description: "Show quality metrics, learning loop, and observability dashboard"
 7. If pattern count >= 3: suggest auto-rule
 8. **Hotspot map**: shows which files generate the most issues
 
-### Observability Dashboard (v4.0.0)
+### Observability Dashboard (v5.6.0)
 
 If `.temper/observability.json` exists and `observability.enabled: true` in temper.config, show:
 
@@ -41,6 +41,49 @@ OBSERVABILITY
     Total runs: {N}
     Avg total pipeline latency: ~{X}s
 ```
+
+### Economics Panel (v5.6.0 — Deliverable 4)
+
+If `.temper/observability.json` has `version: 2` AND `.temper/metrics.json` exists, render:
+
+```
+ECONOMICS
+  Per-stage cost / latency / tier (last run):
+
+  | Stage   | Tier          | Cost (USD)  | Latency   | Tokens      | Tool Calls |
+  |---------|---------------|-------------|-----------|-------------|------------|
+  | Plan    | tier-frontier | $0.{cc}     | {Y}s      | {in+out}    | {N}        |
+  | Build   | tier-standard | $0.{cc}     | {Y}s      | {in+out}    | {N}        |
+  | Review  | tier-fast     | $0.{cc}     | {Y}s      | {in+out}    | {N}        |
+  | ...     | ...           | ...         | ...       | ...         | ...        |
+
+  Rolling averages (last K runs):
+    Avg cost / feature:   $0.{cc}  (source: pricing)
+    Avg latency / feature: {Y}s    (source: measured)
+
+  Eval-score trend (last K runs): {score1} -> {scoreK}  ({trend: up|flat|down})
+
+  Drift flags (Deliverable 3): {N} active
+    [SUGGEST] build.tool_calls = {v} ({std_devs}σ above baseline {mean})
+
+  CapEx vs OpEx summary:
+    CapEx (one-time): eval sets authored ({N}), packs/hooks configured ({N}),
+                      context files ({N})
+    OpEx  (per-feature): ~${cc} tokens/feature, {Y} pipeline-mins/feature
+    Thesis: upfront structure lowers marginal cost per shipped feature.
+```
+
+Surface the `source` flag next to each numeric (e.g. "$0.04 (pricing)", "tokens: 12.4k (estimated)")
+so the dashboard never lies about provenance.
+
+**Graceful absence:** if `.temper/observability.json` does NOT exist OR is not v2, print:
+
+```
+ECONOMICS
+  No observability data yet. Run /temper to capture per-stage cost and telemetry.
+```
+
+Do NOT error. Preserve the prior graceful behavior for the OBSERVABILITY panel.
 
 ### Feedback Loops Section (v4.0.0)
 

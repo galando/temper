@@ -26,5 +26,16 @@ not required for any command to function.
 
 ## Model Usage
 
-- Prefer **Sonnet** for editing, small fixes, and exploration tasks — up to ~5x cheaper
-  on those sessions than Opus.
+- **Enforced routing (v5.6.0):** model selection is now enforced by `models.routing` in
+  `.claude/temper.config` (Deliverable 1, Phase 2). Each stage maps to a tier
+  (`tier-frontier` → opus, `tier-standard` → sonnet, `tier-fast` → haiku). Do not hand-pick
+  models per task — edit the routing map instead, so guidance and behavior agree.
+- **Routing pointer:** see `.claude/temper.config` → `models.routing`. The fast tier
+  (haiku) handles test-gen, review style/lint sweep, eval judging, and check monitoring;
+  the standard tier (sonnet) handles build/fixes/exploration; the frontier tier (opus)
+  handles plan/design/architecture. `review` escalates `architecture-finding` and
+  `correctness-risk` findings to `tier-frontier` per `models.escalate-on`.
+- **Graceful degradation:** when `models.enabled: false`, routing is off and the session
+  model is inherited everywhere (byte-identical to v5.5.0).
+- The historical "prefer Sonnet for editing/small fixes" advice is now realized as the
+  `build: tier-standard` and `review/check/eval: tier-fast` routing entries.

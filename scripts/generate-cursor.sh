@@ -259,6 +259,12 @@ IFS=$'\n' read -r -d '' -a REF_NAMES_SORTED < <(printf '%s\n' "${REF_NAMES[@]}" 
 unset IFS
 
 for name in "${REF_NAMES_SORTED[@]}"; do
+    # Skip v5.6+-only reference docs: the Cursor export is FROZEN at the v5.1
+    # platform track and must not receive post-v5.1 references (pricing.md is
+    # v5.6 economics). Add future frozen-out refs to CURSOR_FROZEN_REFS.
+    case "$name" in
+        pricing) continue ;;
+    esac
     src_ref="$REF_DIR/$name.md"
     target="$RULES_DIR/temper-ref-$name.mdc"
     desc="Temper reference: $name"
@@ -285,7 +291,9 @@ for name in "${CMD_NAMES_SORTED[@]}"; do
     desc=$(derive_description "$src_cmd")
     [[ -z "$desc" ]] && desc="Temper command: $name"
     # Commands re-emit a fresh frontmatter (description [+ argument-hint]) then
-    # the frozen-note header and the body.
+    # the frozen-note header and the body. The body is run through freeze_filter,
+    # which strips post-v5.1 feature blocks (model routing, v2 telemetry, drift,
+    # economics) so the FROZEN Cursor export stays on the v5.1 platform track.
     REPO_ROOT_FOR_REL="$REPO_ROOT" python3 - "$src_cmd" "$desc" "$REPO_ROOT" <<'PY' > "$target"
 import re, sys
 src, desc, repo_root = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -300,6 +308,58 @@ if m:
         arg_hint = am.group(1).strip()
 else:
     body = text
+
+def freeze_filter(body):
+    """Strip post-v5.1 feature blocks so the Cursor export stays frozen at v5.1.
+
+    The freeze (CHANGELOG v5.2.1) is a platform-strategy policy: Cursor is on the
+    v5.1 track and does NOT receive v5.2+ features. We strip the markers those
+    features introduced so a derived cursor command never carries them:
+      - [MODEL: ...] delta lines (v5.6.0 model routing on Agent launches)
+      - 'Model Routing Resolution (v5.6.0)' section (routing resolution block)
+      - 'Observability Tracking (v5.6.0 ...)' + 'Drift Detection (v5.6.0 ...)' sections
+        (reverted to the v4.0.0 observability block; drift is v5.6-only)
+      - 'Economics Panel (v5.6.0 ...)' + 'Observability Dashboard (v5.6.0 ...)' sections
+        in status command (CapEx/OpEx + drift surface are v5.6-only)
+    Any reference doc that is itself v5.6-only (pricing.md) is excluded from the
+    reference export loop entirely. Stripping is line-oriented and idempotent.
+    """
+    out = []
+    skip_section = False
+    skip_section_hdr = None
+    for line in body.splitlines():
+        # 1. Drop [MODEL: ...] delta lines entirely.
+        if re.match(r'^\[MODEL:', line):
+            continue
+        # 2. Section-level freeze: when we hit a v5.6 section header, skip until
+        #    the next same-or-shallower '## ' header.
+        hdr = re.match(r'^(##+) (.+)$', line)
+        if hdr and 'v5.6.0' in hdr.group(2) and any(
+            kw in hdr.group(2) for kw in (
+                'Model Routing Resolution', 'Observability Tracking', 'Drift Detection',
+                'Economics Panel', 'Observability Dashboard'
+            )
+        ):
+            skip_section = True
+            skip_section_hdr = hdr.group(1)  # the '##' or '###' prefix
+            continue
+        if skip_section:
+            # A new header at the same or shallower depth ends the skipped section.
+            nh = re.match(r'^(##+) (.+)$', line)
+            if nh and len(nh.group(1)) <= len(skip_section_hdr):
+                skip_section = False
+                skip_section_hdr = None
+                # fall through and emit this header
+            else:
+                continue
+        out.append(line)
+    # Trim trailing blank lines left by stripped sections, then restore one.
+    result = '\n'.join(out).rstrip('\n')
+    if result:
+        result += '\n'
+    return result
+
+body = freeze_filter(body)
 print('---')
 print(f'description: "{desc}"')
 if arg_hint:

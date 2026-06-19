@@ -28,27 +28,6 @@ description: "Show quality metrics, learning loop, and observability dashboard"
 7. If pattern count >= 3: suggest auto-rule
 8. **Hotspot map**: shows which files generate the most issues
 
-### Observability Dashboard (v4.0.0)
-
-If `.temper/observability.json` exists and `observability.enabled: true` in temper.config, show:
-
-```
-OBSERVABILITY
-  Per-stage metrics (last 10 runs):
-
-  | Stage   | Avg Tokens | Avg Latency | Avg Tool Calls | Total Runs |
-  |---------|------------|-------------|----------------|------------|
-  | Plan    | ~{X}       | ~{Y}s       | ~{Z}           | {N}        |
-  | Design  | ~{X}       | ~{Y}s       | ~{Z}           | {N}        |
-  | Build   | ~{X}       | ~{Y}s       | ~{Z}           | {N}        |
-  | Review  | ~{X}       | ~{Y}s       | ~{Z}           | {N}        |
-  | Check   | ~{X}       | ~{Y}s       | ~{Z}           | {N}        |
-
-  Pipeline totals:
-    Total runs: {N}
-    Avg total pipeline latency: ~{X}s
-```
-
 ### Feedback Loops Section (v4.0.0)
 
 If `.temper/feedback-loops.json` exists and `feedback.enabled: true` in temper.config, show:

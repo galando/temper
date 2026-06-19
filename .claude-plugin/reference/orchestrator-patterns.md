@@ -100,6 +100,137 @@ If agents.nested is enabled in temper.config:
 the "Full methodology: Read …" line, and the CRITICAL no-gate / return-to-orchestrator
 rule. Only the bracketed deltas change per stage.
 
+**Model routing delta (v5.6.0):** after resolving the bracketed deltas, decide the Agent
+tool `model` param per the Model Routing Resolution block below. The launch template gains
+an optional `model: <tier-resolved>` param driven by `models.routing.{stage}` in
+`temper.config`. When `models.enabled` is false/absent, emit NO `model` param (v5.5.0
+byte-identical behavior — session model inherited).
+
+---
+
+## Model Routing Resolution (v5.6.0)
+
+Resolve the stage tier BEFORE launching the Agent. Order is first-match-wins:
+
+```
+1. If models.enabled is false OR models block absent:
+     => emit NO model param (inherit session model; v5.5.0 behavior)
+2. Else if models.respect-user-override is true AND user set a model for this session/stage:
+     => keep user's model; record source: "user-override" in observability.json
+3. Else:
+     => tier = models.routing.{stage}  (tier-frontier | tier-standard | tier-fast)
+     => strip the `tier-` prefix and look up models.tiers.{tier} to get the Agent model id
+        (defaults: tier-frontier -> opus, tier-standard -> sonnet, tier-fast -> haiku;
+         these defaults are exactly the values in the shipped models.tiers block, so
+         editing models.tiers.{tier} in temper.config changes what runs — routing honors it)
+     => emit model: <mapped> on the Agent launch
+```
+
+**Review escalation (Deliverable 1.2):** the Review stage runs its broad style/lint sweep
+on `tier-fast`. Findings tagged `architecture-finding` or `correctness-risk` (per
+`models.escalate-on`) are re-judged on `tier-frontier`, reusing the existing
+confidence-scoring path in `reference/review.md`. The escalation is recorded in
+observability.json (per-stage `retries` bump or a sub-stage entry with its own tier).
+
+---
+
+## Observability.json v2 Schema (v5.6.0)
+
+The `.temper/observability.json` schema is versioned. v2 adds `model_tier`, `cost_usd`,
+`eval_score`, `retries`, and the `source` provenance rule on EVERY numeric leaf. v1 readers
+ignore unknown keys gracefully.
+
+**Source provenance (extends G-5, v5.3.0):** every numeric value MUST carry a sibling
+`source` field (`measured` | `estimated` | `user-override` | `pricing`). Do not emit a
+numeric without its `source`. Consumers (e.g. `/temper:status`) surface provenance so the
+dashboard never lies about how a number was obtained.
+
+```json
+{
+  "version": 2,
+  "feature": "{slug}",
+  "schema_source": "reference/orchestrator-patterns.md#observabilityjson-v2-schema",
+  "stages": [
+    {
+      "stage": "plan|design|build|review|check|eval",
+      "model_tier": "tier-frontier|tier-standard|tier-fast",
+      "model_source": "routing|user-override|inherited",
+      "tokens": {
+        "input":  0,  "input_source":  "measured|estimated",
+        "output": 0,  "output_source": "measured|estimated"
+      },
+      "latency_ms":      { "value": 0, "source": "measured|estimated" },
+      "tool_calls":      { "value": 0, "source": "measured|estimated" },
+      "cost_usd":        { "value": 0.0, "source": "pricing" },
+      "retries":         { "value": 0, "source": "measured" },
+      "eval_score":      { "value": null, "source": "measured|estimated" },
+      "ts_start": "{ISO8601}",
+      "ts_end":   "{ISO8601}"
+    }
+  ],
+  "totals": {
+    "tokens":   { "value": 0,   "source": "measured|estimated" },
+    "cost_usd": { "value": 0.0, "source": "pricing" },
+    "latency_ms": { "value": 0, "source": "measured|estimated" }
+  }
+}
+```
+
+**Field semantics:**
+- `tokens`: prefer `measured` from harness-reported usage; fall back to `estimated` and
+  flag `source` accordingly. NEVER present an estimate as measured.
+- `latency_ms`, `tool_calls`: `measured` where the harness exposes them (wall-clock and
+  tool-invocation counts are observable); `estimated` if only inferred.
+- `cost_usd`: computed from `pricing.md[tier]` (advisory price table); `source: "pricing"`
+  because the cost is derived from an external price table, not measured from a bill.
+- `retries`: stage re-launches (feedback loops or escalations). `source: "measured"`.
+- `eval_score`: pulled from `eval-context.json` for eval stage; `null` otherwise.
+  `source: "measured"` when from the LM-judge, `estimated` if inferred.
+- `model_source`: `routing` (tier from `models.routing`), `user-override` (respect-user-
+  override kept the user's model), or `inherited` (models disabled — session model used).
+
+**Pricing computation:** `cost_usd = (in_tokens/1e6)*in_price + (out_tokens/1e6)*out_price`
+where `in_price`/`out_price` come from `.claude-plugin/reference/pricing.md` keyed by tier.
+Round `cost_usd` to 6 decimal places when writing to observability.json. Advisory; update
+pricing.md as published prices change.
+
+---
+
+## metrics.json Drift Baseline Schema (v5.6.0)
+
+Extends the existing `.temper/metrics.json` (additive — existing keys unchanged).
+Maintains a rolling baseline per stage and surfaces deviations as SUGGEST-level drift flags.
+
+```json
+{
+  "stage_baseline": {
+    "plan":  { "tool_calls": [N...], "retries": [N...], "latency_ms": [N...], "eval_score": [N...] },
+    "build": { "tool_calls": [N...], "retries": [N...], "latency_ms": [N...], "eval_score": [N...] }
+  },
+  "drift_flags": [
+    {
+      "stage": "build",
+      "metric": "tool_calls",
+      "value": 42,
+      "baseline_mean": 12.5,
+      "baseline_stddev": 3.1,
+      "std_devs": 5.2,
+      "threshold": 2,
+      "severity": "SUGGEST",
+      "direction": "high",
+      "ts": "{ISO8601}",
+      "source": "measured"
+    }
+  ]
+}
+```
+
+**Drift rule:** after each stage, append its metrics to `stage_baseline[stage][metric]`
+(rolling window, last K runs). Compute rolling mean + stddev. If
+`abs(value - mean) / stddev > drift-threshold` (from `temper.config models.drift-threshold`,
+default 2), append a `drift_flags` entry at severity `SUGGEST`. Drift flags NEVER
+auto-block a stage gate — they are surfaced in `/temper:status` for human review.
+
 ---
 
 ## Gate Options Pattern
