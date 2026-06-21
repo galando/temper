@@ -10,7 +10,7 @@ argument-hint: "<feature-description>"
   Source: .claude/commands/temper.md
 -->
 
-# Temper: Unified SDLC Command (v5.6.0)
+# Temper: Unified SDLC Command (v5.7.0)
 
 **Goal:** Execute the full SDLC flow (plan → design? → build → review → check → commit) with stage gates, feedback loops, context accumulation, observability, and **real** context isolation via Agent subprocesses.
 
@@ -85,6 +85,30 @@ orchestrator-patterns.md → "Resume Validation".
 > **Gate patterns:** See `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Gate Options Pattern" and "Gate Enforcement Rules" sections.
 
 At each stage gate, use `AskUserQuestion` with selectable options. Do NOT use `[Enter]` as a prompt.
+
+---
+
+## Teach Me (Comprehension Companion) — shared handler (v5.7.0)
+
+> **Capability:** `capabilities.teach-me` in temper.config (default: enabled).
+> **Skill:** `$CLAUDE_PLUGIN_ROOT/.claude/skills/teach-me/SKILL.md`
+
+Every stage gate below (Plan, Design, Build, Check, Eval) offers a **"Teach Me (Quiz me until I get it)"** option. Its purpose is to keep the human engaged with — and in genuine command of — every change Temper makes, phase by phase. It teaches the current phase, quizzes for mastery, and returns to the same gate. It NEVER advances or blocks the pipeline. (Review is intentionally excluded: its substance — the diff and its rationale — is already taught at Build, and its findings are usually minor or auto-fixed.)
+
+**Shared `on Teach Me` handler** (each gate references this with its own `stage` + artifacts):
+
+1. Read `.claude/temper.config` → verify `capabilities.teach-me` is not `false` (default: enabled). If `false`, this option is not shown.
+2. Resolve `spec_path` from `.temper/build-state.json`.
+3. Read (or create) the running checklist `{spec_path}/comprehension.md` (three pillars: Problem / Solution / Impact — schema in the teach-me skill). It **accumulates across phases** — never reset it; append and tick items off.
+4. Load this stage's artifacts:
+   - **Plan** → `intent.md`, `plan.md`, `tasks.md`
+   - **Design** → `design.md`
+   - **Build** → `git diff` + changed files + `tasks.md`
+   - **Check** → the check results + scenario coverage
+   - **Eval** → the eval score table + per-dimension justifications
+5. Invoke the **teach-me** skill: probe (have the user restate first) → teach the gaps incrementally with real code → quiz via `AskUserQuestion` (vary the correct-answer position; never reveal the answer until the user submits) → confirm mastery before ticking each item. Honor `eli5`/`eli14`/`elii` depth requests.
+6. On exit (all phase items mastered, or user selects "Done for now"): write the updated `comprehension.md`, show the Teach Me summary box.
+7. **Re-show this same AskUserQuestion gate** — do NOT advance to the next stage.
 
 ---
 
@@ -164,6 +188,7 @@ Show the AskUserQuestion gate with:
 - "Continue to Build (Recommended)" — launch BUILD agent
 - "Walk through plan step by step" — interactive walkthrough (see below)
 - "Grill Me (Challenge the plan)" — (shown ONLY if capabilities.grill-me is not false) invoke grill-me skill with plan.md, Socratic Q&A loop that stress-tests assumptions, returns to this gate after
+- "Teach Me (Quiz me until I get it)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Plan phase (intent/plan/tasks), teach + quiz to mastery, returns to this gate after
 - "Open HTML review" — (shown ONLY if capabilities.html-review is not false) generate and open interactive HTML plan review in browser (see HTML Review section below)
 - "Save for later" — save state, stop
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
@@ -180,6 +205,8 @@ Show the AskUserQuestion gate with:
 4. Show grill summary (questions asked, weaknesses found, updates made)
 5. If plan was updated: re-show the updated plan summary
 6. **Re-show this AskUserQuestion gate** — do NOT skip to build
+
+**on Teach Me (Plan):** → run the shared `on Teach Me` handler with `stage: plan` (artifacts: intent.md, plan.md, tasks.md). Then **re-show this AskUserQuestion gate** — do NOT skip to build.
 
 **on Open HTML review:**
 1. Read `.claude/temper.config` → verify `capabilities.html-review` is not `false` (default: enabled)
@@ -327,6 +354,7 @@ Show the AskUserQuestion gate with:
 - "Continue to Build (Recommended)" — launch BUILD agent
 - "Walk through design step by step" — interactive walkthrough (see below)
 - "Grill Me (Challenge the design)" — (shown ONLY if capabilities.grill-me is not false) invoke grill-me skill with design.md, Socratic Q&A loop targeting architectural decisions, returns to this gate after
+- "Teach Me (Quiz me until I get it)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Design phase (decisions, trade-offs, edge cases), teach + quiz to mastery, returns to this gate after
 - "Save for later" — save state, stop
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
 
@@ -337,6 +365,8 @@ Show the AskUserQuestion gate with:
 4. Show grill summary
 5. If design was updated: re-show the updated design summary
 6. **Re-show this AskUserQuestion gate** — do NOT skip to build
+
+**on Teach Me (Design):** → run the shared `on Teach Me` handler with `stage: design` (artifact: design.md). Then **re-show this AskUserQuestion gate** — do NOT skip to build.
 
 #### Step-by-Step Walkthrough
 
@@ -529,6 +559,7 @@ Return ONLY:
 
 Show the AskUserQuestion gate with:
 - "Continue to Review (Recommended)" — launch REVIEW agent
+- "Teach Me (Quiz me until I get it)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Build phase (the diff, business logic, edge cases), teach + quiz to mastery, returns to this gate after
 - "Loop back to Plan (Revise plan)" — (shown ONLY if feedback.enabled AND can_loop) write build-context.json, update feedback-loops.json, launch PLAN agent
 - "Save for later" — save state, stop
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
@@ -536,6 +567,8 @@ Show the AskUserQuestion gate with:
 **on Continue:**
 1. Save state to `.temper/build-state.json`
 2. Proceed to Stage 3 (REVIEW) — launches a new Agent subprocess
+
+**on Teach Me (Build):** → run the shared `on Teach Me` handler with `stage: build` (artifacts: git diff + changed files + tasks.md). Then **re-show this AskUserQuestion gate** — do NOT skip to review.
 
 **on Loop back to Plan:**
 1. Write `build-context.json` (schema: orchestrator-patterns.md → "Context File Schemas") with this stage's `failure_reason`, `blockers`, and `partial_results` (completed_files, failed_tasks).
@@ -737,6 +770,7 @@ Return ONLY:
 Show the AskUserQuestion gate with:
 - "Commit (Recommended)" — commit with conventional message
 - "Review config suggestions" — (shown ONLY if capabilities.config-suggestions is not false AND .temper/specs/{feature}/config-suggestions.json exists) show CLAUDE.md/AGENTS.md suggestions for accept/reject/defer
+- "Teach Me (Quiz me until I get it)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Check phase (validation results, scenario coverage, what's now guaranteed), teach + quiz to mastery, returns to this gate after
 - "Loop back to Build (Fix tests)" — (shown ONLY if feedback.enabled AND can_loop) write check-context.json, update feedback-loops.json, launch BUILD agent
 - "Save for later" — keep changes uncommitted
 - **"Other" (built-in free-text)** — type a change request, edits are made, re-run check
@@ -758,6 +792,8 @@ After Check agent returns and before showing the gate:
 5. **Rejected:** Update learning.json suggestion_queue with status "rejected", increment dismissal count
 6. **Deferred:** Keep in suggestion_queue with status "deferred"
 7. After all suggestions reviewed: **Re-show this AskUserQuestion gate**
+
+**on Teach Me (Check):** → run the shared `on Teach Me` handler with `stage: check` (artifacts: the check results, scenario coverage). This is the last chance to close any remaining `comprehension.md` items before commit — aim to leave the checklist fully ticked. Then **re-show this AskUserQuestion gate** — do NOT commit directly.
 
 **on Commit:**
 ```
@@ -885,9 +921,12 @@ How to read this: 0–1 scale, {pass_threshold} to pass. Low ARTIFACT-scores mea
 Show the AskUserQuestion gate with:
 - "Continue to Commit (Recommended)" — proceed to commit (Stage 4's on-Commit flow)
 - "View results" — show `evals/results/results-{ts}.json`, then re-show this gate
+- "Teach Me (Quiz me until I get it)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Eval phase (score table, per-dimension justifications, what passed/failed and why), teach + quiz to mastery, returns to this gate after
 - "Re-run (loop to Build)" — (shown ONLY if a `block-on` dimension failed AND `feedback.enabled`) write `eval-context.json`, launch BUILD agent (feedback re-entry)
 - "Save for later" — save state, stop
 - **"Other" (built-in free-text)** — type a change request, edits are made, re-run Eval, re-show gate
+
+**on Teach Me (Eval):** → run the shared `on Teach Me` handler with `stage: eval` (artifacts: the eval score table, per-dimension justifications). Then **re-show this AskUserQuestion gate** — do NOT proceed to commit.
 
 **on Continue to Commit:** Write `eval-context.json` (schema: orchestrator-patterns.md → "Context File Schemas") with aggregate + per-dimension scores + block-on status. Proceed to the Stage 4 "on Commit" flow.
 
