@@ -57,7 +57,7 @@ Four independently optional capabilities, all enabled by default. Controlled via
 |-----------|-------|---------|
 | Architecture Depth | Review | Module-depth analysis: seams, adapters, locality, leverage, deletion test |
 | Grill Me | Plan, Design | Socratic challenge mode — stress-test plans before building |
-| Teach Me | All stages | Comprehension companion — teach + quiz the human to mastery at every gate |
+| Teach Me | Plan, Design, Build, Check, Eval | Comprehension companion — teach + quiz the human to mastery at each teaching gate (Review excluded — taught at Build) |
 | Config Suggestions | Check | Suggest CLAUDE.md/AGENTS.md updates based on what was built |
 | HTML Review | Plan | Interactive browser-based plan review with inline comments |
 | Evals | Eval, Check | Behavioral verification via LM-judge + trajectory + plan-time evalsets |

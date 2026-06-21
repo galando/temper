@@ -117,7 +117,7 @@ At each stage gate, use `AskUserQuestion` with selectable options. Do NOT use `[
 > **Capability:** `capabilities.teach-me` in temper.config (default: enabled).
 > **Skill:** `$CLAUDE_PLUGIN_ROOT/.claude/skills/teach-me/SKILL.md`
 
-Every stage gate below (Plan, Design, Build, Review, Check, Eval) offers a **"Teach Me (Understand the changes)"** option. Its purpose is to keep the human engaged with — and in genuine command of — every change Temper makes, phase by phase. It teaches the current phase, quizzes for mastery, and returns to the same gate. It NEVER advances or blocks the pipeline.
+Every stage gate below (Plan, Design, Build, Check, Eval) offers a **"Teach Me (Quiz me until I get it)"** option. Its purpose is to keep the human engaged with — and in genuine command of — every change Temper makes, phase by phase. It teaches the current phase, quizzes for mastery, and returns to the same gate. It NEVER advances or blocks the pipeline. (Review is intentionally excluded: its substance — the diff and its rationale — is already taught at Build, and its findings are usually minor or auto-fixed.)
 
 **Shared `on Teach Me` handler** (each gate references this with its own `stage` + artifacts):
 
@@ -128,7 +128,6 @@ Every stage gate below (Plan, Design, Build, Review, Check, Eval) offers a **"Te
    - **Plan** → `intent.md`, `plan.md`, `tasks.md`
    - **Design** → `design.md`
    - **Build** → `git diff` + changed files + `tasks.md`
-   - **Review** → the review summary + applied fixes + intent verdict
    - **Check** → the check results + scenario coverage
    - **Eval** → the eval score table + per-dimension justifications
 5. Invoke the **teach-me** skill: probe (have the user restate first) → teach the gaps incrementally with real code → quiz via `AskUserQuestion` (vary the correct-answer position; never reveal the answer until the user submits) → confirm mastery before ticking each item. Honor `eli5`/`eli14`/`elii` depth requests.
@@ -214,7 +213,7 @@ Show the AskUserQuestion gate with:
 - "Continue to Build (Recommended)" — launch BUILD agent
 - "Walk through plan step by step" — interactive walkthrough (see below)
 - "Grill Me (Challenge the plan)" — (shown ONLY if capabilities.grill-me is not false) invoke grill-me skill with plan.md, Socratic Q&A loop that stress-tests assumptions, returns to this gate after
-- "Teach Me (Understand the changes)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Plan phase (intent/plan/tasks), teach + quiz to mastery, returns to this gate after
+- "Teach Me (Quiz me until I get it)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Plan phase (intent/plan/tasks), teach + quiz to mastery, returns to this gate after
 - "Open HTML review" — (shown ONLY if capabilities.html-review is not false) generate and open interactive HTML plan review in browser (see HTML Review section below)
 - "Save for later" — save state, stop
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
@@ -381,7 +380,7 @@ Show the AskUserQuestion gate with:
 - "Continue to Build (Recommended)" — launch BUILD agent
 - "Walk through design step by step" — interactive walkthrough (see below)
 - "Grill Me (Challenge the design)" — (shown ONLY if capabilities.grill-me is not false) invoke grill-me skill with design.md, Socratic Q&A loop targeting architectural decisions, returns to this gate after
-- "Teach Me (Understand the changes)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Design phase (decisions, trade-offs, edge cases), teach + quiz to mastery, returns to this gate after
+- "Teach Me (Quiz me until I get it)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Design phase (decisions, trade-offs, edge cases), teach + quiz to mastery, returns to this gate after
 - "Save for later" — save state, stop
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
 
@@ -646,7 +645,7 @@ Return ONLY:
 
 Show the AskUserQuestion gate with:
 - "Continue to Review (Recommended)" — launch REVIEW agent
-- "Teach Me (Understand the changes)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Build phase (the diff, business logic, edge cases), teach + quiz to mastery, returns to this gate after
+- "Teach Me (Quiz me until I get it)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Build phase (the diff, business logic, edge cases), teach + quiz to mastery, returns to this gate after
 - "Loop back to Plan (Revise plan)" — (shown ONLY if feedback.enabled AND can_loop) write build-context.json, update feedback-loops.json, launch PLAN agent
 - "Save for later" — save state, stop
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
@@ -767,7 +766,6 @@ Return ONLY:
 Show the AskUserQuestion gate with:
 - "Fix all & continue to Check (Recommended)" — apply fixes for ALL issues (including low), launch CHECK agent
 - "Architecture Depth Review" — (shown ONLY if capabilities.architecture-depth is not false) run module-depth analysis on changed files, add findings to review summary, return to gate
-- "Teach Me (Understand the changes)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Review phase (issues found, why, the fixes, intent verdict), teach + quiz to mastery, returns to this gate after
 - "Loop back to Build (Fix issues)" — (shown ONLY if feedback.enabled AND can_loop) write review-context.json, update feedback-loops.json, launch BUILD agent
 - "Save for later" — skip fixes, save state
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
@@ -779,8 +777,6 @@ Show the AskUserQuestion gate with:
 4. Add findings with `[ARCH-DEPTH]` prefix to the review summary
 5. Show updated review summary with architecture depth findings
 6. **Re-show the AskUserQuestion gate** — do NOT skip to check
-
-**on Teach Me (Review):** → run the shared `on Teach Me` handler with `stage: review` (artifacts: the review summary, applied fixes, intent verdict). Then **re-show the AskUserQuestion gate** — do NOT skip to check.
 
 **on Continue:**
 1. Apply ALL fixable issues (including low severity) directly — no subprocess needed for fixes
@@ -862,7 +858,7 @@ Return ONLY:
 Show the AskUserQuestion gate with:
 - "Commit (Recommended)" — commit with conventional message
 - "Review config suggestions" — (shown ONLY if capabilities.config-suggestions is not false AND .temper/specs/{feature}/config-suggestions.json exists) show CLAUDE.md/AGENTS.md suggestions for accept/reject/defer
-- "Teach Me (Understand the changes)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Check phase (validation results, scenario coverage, what's now guaranteed), teach + quiz to mastery, returns to this gate after
+- "Teach Me (Quiz me until I get it)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Check phase (validation results, scenario coverage, what's now guaranteed), teach + quiz to mastery, returns to this gate after
 - "Loop back to Build (Fix tests)" — (shown ONLY if feedback.enabled AND can_loop) write check-context.json, update feedback-loops.json, launch BUILD agent
 - "Save for later" — keep changes uncommitted
 - **"Other" (built-in free-text)** — type a change request, edits are made, re-run check
@@ -1014,7 +1010,7 @@ How to read this: 0–1 scale, {pass_threshold} to pass. Low ARTIFACT-scores mea
 Show the AskUserQuestion gate with:
 - "Continue to Commit (Recommended)" — proceed to commit (Stage 4's on-Commit flow)
 - "View results" — show `evals/results/results-{ts}.json`, then re-show this gate
-- "Teach Me (Understand the changes)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Eval phase (score table, per-dimension justifications, what passed/failed and why), teach + quiz to mastery, returns to this gate after
+- "Teach Me (Quiz me until I get it)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Eval phase (score table, per-dimension justifications, what passed/failed and why), teach + quiz to mastery, returns to this gate after
 - "Re-run (loop to Build)" — (shown ONLY if a `block-on` dimension failed AND `feedback.enabled`) write `eval-context.json`, launch BUILD agent (feedback re-entry)
 - "Save for later" — save state, stop
 - **"Other" (built-in free-text)** — type a change request, edits are made, re-run Eval, re-show gate
