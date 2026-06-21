@@ -3,6 +3,41 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v5.7.0 — Teach Me: comprehension companion across all phases
+
+Adds a sixth capability, **Teach Me** — a Socratic *teaching* companion (the
+counterpart to Grill Me's *challenging*) that keeps the human engaged with every
+change Temper makes. Where the walkthrough gives a one-shot tour and Grill Me
+attacks assumptions, Teach Me confirms the user actually *understands* — phase by
+phase — before the pipeline moves on.
+
+### New skill
+- `.claude/skills/teach-me/SKILL.md`: probe (user restates first) → teach the gaps
+  incrementally with real code → quiz via `AskUserQuestion` (correct-answer
+  position varied; answer never revealed until submit) → confirm mastery before
+  ticking each item. Honors `eli5`/`eli14`/`elii` depth requests. Maintains a
+  running `{spec_path}/comprehension.md` checklist organized under three pillars —
+  **Problem (why)**, **Solution (what & how)**, **Impact** — that accumulates
+  across phases and is never reset.
+- Registered in `.claude-plugin/plugin.json` `skills[]`.
+
+### Wired into every stage gate
+- `.claude/commands/temper.md`: a shared **"Teach Me (Comprehension Companion)"**
+  handler plus a `Teach Me (Understand the changes)` gate option on all six gates
+  (Plan, Design, Build, Review, Check, Eval). Each phase teaches its own artifacts
+  (Plan→intent/plan/tasks, Design→design.md, Build→the diff, Review→findings+fixes,
+  Check→validation+coverage, Eval→score table) and returns to the same gate. Teach
+  Me NEVER advances or blocks the pipeline — it only adds understanding.
+
+### Config & docs
+- New capability flag `capabilities.teach-me: true` in `.claude/temper.config`
+  (default-on; graceful degradation — set `false` to hide the option everywhere).
+- `temper-core` capabilities table gains a **Teach Me / All stages** row.
+- Version bump to `5.7.0` (`plugin.json`, `.claude/CLAUDE.md`).
+
+> Cursor parity remains frozen at v5.1 (see v5.2.1 platform strategy) — this
+> capability is Claude Code only and is not forward-ported to `.cursor/`.
+
 ## v5.6.0 — Phase 2: Harness Economics & Observability
 
 Turns the paper's economic argument (high CapEx / low OpEx, intelligent model routing,
