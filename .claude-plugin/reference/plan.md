@@ -602,6 +602,52 @@ eval set alongside intent.md so evals are authored with the feature, not bolted 
 
 Schema and full methodology: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/eval.md`.
 
+#### Approach Decisions Generation
+
+For Medium and Complex features, populate the `## Approach Decisions` section of plan.md
+(between `## Architecture` and `## Diagram`). This surfaces the WHY behind approach choices
+at the Plan gate, so they can be reviewed and challenged before build — not discovered later.
+
+**Reuse the `templates/adr.md` "Alternatives Considered" structure** (Alternative / Pros /
+Cons / Why not chosen). See `templates/plan.md` for the exact sub-section template.
+
+**Load-bearing only — the core rules:**
+
+1. **Record a decision only when a real alternative was genuinely considered and rejected.**
+   If only one viable approach existed, there is no decision to record — omit the section
+   entirely.
+2. **The section MAY be empty or absent.** A plan.md with no `## Approach Decisions` section
+   is valid and common. The absence is informative: it signals "no load-bearing choice was
+   made." Do not fabricate alternatives to fill the section — an invented "alternative" with
+   a vague rejection is worse than no section; it is the failure mode this feature exists to
+   prevent.
+3. **One genuine decision is enough.** Do not pad to a minimum count. Quality over quantity.
+4. **The `Why not chosen` field is the load-bearing element.** If you cannot state a concrete,
+   specific reason the alternative lost (referencing a constraint, risk, or cost), the
+   decision is not load-bearing — drop it.
+
+**Banned phrases in `Why not chosen` (anti-patterns — do not use):**
+
+- "less optimal", "not as good", "suboptimal", "less suitable"
+- "for simplicity" without naming what was simplified and at whose cost
+- "best practice" without naming the practice and the alternative it beat
+
+Every `Why not chosen` must reference a concrete tradeoff: a constraint of the feature, a
+risk of the alternative, or a measurable cost. A reviewer at the Plan gate should be able to
+challenge the rejection from the text alone.
+
+**Examples of load-bearing decisions** (positive guidance — include when relevant):
+
+- Inline section vs. separate file (co-location vs. discoverability tradeoff)
+- Reuse existing structure A vs. structure B (granularity/compactness tradeoff)
+- Add a summary line vs. reference-only (gate visibility vs. edit-count tradeoff)
+- Library/framework choice, storage technology, API style (REST vs GraphQL), etc.
+
+**Summary box mirror:** Every decision recorded here also appears as a one-liner in the
+Phase 7 `🧭 DECISIONS` summary block (see Phase 7), formatted as
+`{chosen approach} (not {rejected alternative})`. Capped at 3 one-liners; append
+`+{N} more` when there are additional decisions.
+
 #### Diagram Generation (Mermaid + ASCII)
 
 For Medium and Complex features, generate a mermaid diagram in the plan.md `## Diagram` section. Choose the diagram type based on what best communicates the feature:
@@ -822,6 +868,12 @@ Show a summary box, then offer two ways to proceed: the quick summary (current b
 │ 📁 ARCHITECTURE                                             │
 │    Create: {N} — {key files}                               │
 │    Modify: {N} — {key files}                               │
+│                                                             │
+│ 🧭 DECISIONS                                                │
+│    {N} load-bearing — {chosen} (not {rejected})            │
+│    {chosen} (not {rejected})...                            │
+│    (show up to 3 one-liners; append "+{N} more" if more;   │
+│     literal "none" when no load-bearing decision exists)   │
 │                                                             │
 │ ⚡ RISK: {Low/Medium/High} — {reason}                       │
 │                                                             │
