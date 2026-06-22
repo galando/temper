@@ -3,6 +3,10 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v5.8.0 — New Features
+
+Explain implementation-approach choices in plans (#59)
+
 ## v5.7.0 — Teach Me: comprehension companion across the teaching gates
 
 Adds a sixth capability, **Teach Me** — a Socratic *teaching* companion (the
