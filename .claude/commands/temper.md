@@ -193,6 +193,12 @@ Return ONLY:
 │    Modify: {N} files                                        │
 │      • {file} — {change reason}                             │
 │                                                             │
+│ DECISIONS                                                   │
+│    {N} load-bearing — {chosen} (not {rejected})            │
+│    {chosen} (not {rejected})...                            │
+│    (show up to 3 one-liners; append "+{N} more" if more;   │
+│     literal "none" when no load-bearing decision exists)   │
+│                                                             │
 │ RISK: {Low/Medium/High} — {reason}                          │
 │                                                             │
 │ SECURITY (if hot paths found)                               │
