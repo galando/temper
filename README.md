@@ -67,6 +67,20 @@ intent.md
 
 Full methodology: [docs/methodology.md](docs/methodology.md)
 
+## Token Efficiency (v5.9.0)
+
+Temper cuts a run's token cost with three optimizations — **all ON by default**, all revert to v5.8.0 when their flag is off:
+
+| Optimization | Default | Quality tradeoff |
+|--------------|---------|------------------|
+| **Cache** static methodology reads | `on` | None — same reads, ~90% off re-read cost |
+| **Adaptive depth** — size the pipeline to the change | `on` (`floor: simple`) | Only one with a tradeoff — see below |
+| **Incremental loops** — inline auto-fix, no subprocess | `on` (`inline-threshold: 3`) | None for auto-fixable findings |
+
+**The one decision you make:** adaptive-depth runs a lighter pipeline on small changes. It's safe when the change is genuinely isolated — but if it touches a shared interface, auth, money, or has an unclear blast radius, click **"Escalate to full pipeline"** at the plan gate (one click, that change only — no config editing). For a whole high-stakes codebase, set `floor: medium` in `.claude/temper.config` once and never think about it again.
+
+Full explanation (mechanism, tiers, decision rule, when quality drops): **[docs/token-efficiency.md](docs/token-efficiency.md)**
+
 ## Commands
 
 | Command | Purpose |
@@ -154,6 +168,7 @@ Full setup: [docs/recommended-setup.md](docs/recommended-setup.md)
 - [Commands Reference](docs/commands.md) — Full command documentation
 - [Packs](docs/packs.md) — Built-in and custom packs
 - [Methodology](docs/methodology.md) — IDD, BDD, TDD deep dive
+- [Token Efficiency](docs/token-efficiency.md) — caching, adaptive depth, incremental loops (v5.9.0)
 - [Recommended Setup](docs/recommended-setup.md) — MCP servers and live verification
 - [Enterprise Setup](docs/enterprise.md) — Deploy across your organization
 
