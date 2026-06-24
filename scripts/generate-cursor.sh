@@ -260,10 +260,11 @@ unset IFS
 
 for name in "${REF_NAMES_SORTED[@]}"; do
     # Skip v5.6+-only reference docs: the Cursor export is FROZEN at the v5.1
-    # platform track and must not receive post-v5.1 references (pricing.md is
-    # v5.6 economics). Add future frozen-out refs to CURSOR_FROZEN_REFS.
+    # platform track and must not receive post-v5.1 references. pricing.md is
+    # v5.6 economics; tokenomics.md carries v5.6 routing + v5.9 Phase 3 levers.
+    # Add future frozen-out refs to this case list.
     case "$name" in
-        pricing) continue ;;
+        pricing|tokenomics) continue ;;
     esac
     src_ref="$REF_DIR/$name.md"
     target="$RULES_DIR/temper-ref-$name.mdc"
@@ -316,28 +317,69 @@ def freeze_filter(body):
     v5.1 track and does NOT receive v5.2+ features. We strip the markers those
     features introduced so a derived cursor command never carries them:
       - [MODEL: ...] delta lines (v5.6.0 model routing on Agent launches)
-      - 'Model Routing Resolution (v5.6.0)' section (routing resolution block)
-      - 'Observability Tracking (v5.6.0 ...)' + 'Drift Detection (v5.6.0 ...)' sections
-        (reverted to the v4.0.0 observability block; drift is v5.6-only)
-      - 'Economics Panel (v5.6.0 ...)' + 'Observability Dashboard (v5.6.0 ...)' sections
-        in status command (CapEx/OpEx + drift surface are v5.6-only)
-    Any reference doc that is itself v5.6-only (pricing.md) is excluded from the
-    reference export loop entirely. Stripping is line-oriented and idempotent.
+      - [CACHE: ...] delta lines (v5.9.0 cache routing on Agent launches)
+      - v5.6/v5.9 section headers (Model/Cache Routing Resolution, Observability
+        Tracking, Drift, Economics/Dashboard, Depth tier display) — skipped whole
+      - v5.9 Phase 3 marker lines: any line mentioning tokens.cache /
+        tokens.adaptive-depth / tokens.loops / Pipeline Depth / Loop Cost /
+        cached_input / cacheable prefix / inline-threshold / fix-mode preamble /
+        DEPTH CONTRACT / loop cost tier is dropped (Phase 3 is woven through many
+        sections, so a line-level scrub is the robust policy)
+    Any reference doc that is itself v5.6+ only (pricing.md, tokenomics.md) is
+    excluded from the reference export loop entirely. Stripping is line-oriented
+    and idempotent.
     """
+    # Phase 3 marker terms — any line mentioning one is dropped entirely.
+    phase3_markers = (
+        'tokens.cache', 'tokens.adaptive-depth', 'tokens.loops',
+        'Pipeline Depth', 'Loop Cost', 'cached_input', 'cacheable prefix',
+        'cacheable-first', 'inline-threshold', 'fix-mode preamble',
+        'DEPTH CONTRACT', 'loop cost tier', 'Cache Routing Resolution',
+        'Escalate to full pipeline', 'depth tier', 'adaptive-depth',
+        'cache.enabled', 'fix-mode', 'cache.prefix', 'cached prefix',
+    )
     out = []
     skip_section = False
     skip_section_hdr = None
+    skip_para = False  # True while inside a Phase 3 contract paragraph
     for line in body.splitlines():
-        # 1. Drop [MODEL: ...] delta lines entirely.
+        # 0. Paragraph-level freeze: a Phase 3 contract paragraph (DEPTH CONTRACT,
+        #    Cache Routing Resolution, depth-tier display, loop cost) is a discrete
+        #    multi-line block whose later continuation lines carry NO marker term.
+        #    When the paragraph opener is hit, drop the whole block through the next
+        #    blank line so continuation lines like "MUST be returned to the
+        #    orchestrator ... Escalate to full pipeline" do not leak through 1b.
+        if skip_para:
+            if line.strip() == '':
+                skip_para = False
+                # fall through: the blank line ends the block, drop it too
+            continue
+        if re.match(r'^(#{0,6}\s\**)?(DEPTH CONTRACT|Cache Routing Resolution|Depth tier display|Loop Cost Tier)', line) \
+                or line.startswith('DEPTH CONTRACT') \
+                or line.startswith('**DEPTH CONTRACT') \
+                or line.startswith('Cache Routing Resolution') \
+                or line.startswith('**Cache Routing Resolution') \
+                or line.startswith('Depth tier display') \
+                or line.startswith('**Depth tier display'):
+            skip_para = True
+            continue
+        # 1. Drop [MODEL: ...] and [CACHE: ...] delta lines entirely.
         if re.match(r'^\[MODEL:', line):
             continue
-        # 2. Section-level freeze: when we hit a v5.6 section header, skip until
-        #    the next same-or-shallower '## ' header.
+        if re.match(r'^\[CACHE:', line):
+            continue
+        # 1b. Drop any line mentioning a Phase 3 marker term.
+        if any(m in line for m in phase3_markers):
+            continue
+        # 2. Section-level freeze: when we hit a v5.6/v5.9 section header, skip
+        #    until the next same-or-shallower '## ' header.
         hdr = re.match(r'^(##+) (.+)$', line)
-        if hdr and 'v5.6.0' in hdr.group(2) and any(
+        if hdr and any(v in hdr.group(2) for v in ('v5.6.0', 'v5.9.0')) and any(
             kw in hdr.group(2) for kw in (
-                'Model Routing Resolution', 'Observability Tracking', 'Drift Detection',
-                'Economics Panel', 'Observability Dashboard'
+                'Model Routing Resolution', 'Cache Routing Resolution',
+                'Observability Tracking', 'Drift Detection',
+                'Economics Panel', 'Observability Dashboard',
+                'Depth tier display',
             )
         ):
             skip_section = True

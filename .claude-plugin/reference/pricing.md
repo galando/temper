@@ -46,12 +46,38 @@ cost_usd = (input_tokens  / 1_000_000) * tier.input_per_1m
          + (output_tokens / 1_000_000) * tier.output_per_1m
 ```
 
+When `observability.json` reports `tokens.cached_input > 0` (Phase 3, D1) and
+`tokens.cache.enabled` is true, `cost_usd` MAY reflect the cache savings by subtracting the
+cache discount: replace `(cached_input / 1_000_000) * tier.input_per_1m` of the input cost
+with `(cached_input / 1_000_000) * tier.input_per_1m * cache_read_multiplier` (see Cache
+Multipliers below). The `source` stays `"pricing"` (still derived from this table, not a
+bill). If the harness does not report cache usage, do not adjust — emit the uncached cost.
+
 Round to 6 decimal places when writing to `observability.json`.
+
+## Cache Multipliers (v5.9.0 — advisory)
+
+Cache read/write multipliers applied to the base input price when the harness reports
+`cached_input`. These are **advisory** multipliers sourced from public Anthropic docs; they
+do NOT add tiers (the tier table above is unchanged from v5.6.0). Update as published
+pricing changes.
+
+| Operation   | Multiplier vs base input | Source (advisory)  |
+|-------------|--------------------------|--------------------|
+| cache read  | ~0.1x                    | public Anthropic docs |
+| cache write | ~1.25x                   | public Anthropic docs |
+
+```
+cached_input_cost  = (cached_input  / 1_000_000) * tier.input_per_1m * 0.10   # cache read
+cache_write_cost   = (cache_write_tokens / 1_000_000) * tier.input_per_1m * 1.25  # cache write (one-off)
+```
 
 ## Notes
 
 - Prices reflect public Anthropic API pricing as of the "Last updated" date above. They
-  exclude volume discounts, caching, and batch-mode pricing. Treat `cost_usd` as an
-  upper-bound advisory, not an accounting figure.
+  exclude volume discounts and batch-mode pricing. `cost_usd` MAY now reflect cache savings
+  when the harness reports `cached_input`; see observability.json `tokens.cached_input` and
+  the Cache Multipliers section above. Treat `cost_usd` as an upper-bound advisory when
+  cache is off, and a cache-adjusted advisory when cache is on — not an accounting figure.
 - The markdown table and the YAML block carry identical data; either is parseable. The
   shell validator (`scripts/validate-phase2.sh schema`) parses the YAML form.
