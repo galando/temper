@@ -100,11 +100,63 @@ If agents.nested is enabled in temper.config:
 the "Full methodology: Read …" line, and the CRITICAL no-gate / return-to-orchestrator
 rule. Only the bracketed deltas change per stage.
 
+**Cacheable prefix delta (v5.9.0):** when `tokens.cache.enabled` is true, the "Full
+methodology: Read …" line and the always-on reference reads (orchestrator-patterns,
+pack-manifest, stack-pack, config) form a **cacheable context block** loaded FIRST, ahead
+of the per-launch volatile delta. The cacheable block is ordered identically on every
+launch so the prefix the platform caches is byte-stable across stages and across feedback
+re-entries. When `tokens.cache.enabled` is false, no ordering rule is applied — reads
+proceed exactly as in v5.8.0. See "Cacheable vs. Volatile Context" below.
+
 **Model routing delta (v5.6.0):** after resolving the bracketed deltas, decide the Agent
 tool `model` param per the Model Routing Resolution block below. The launch template gains
 an optional `model: <tier-resolved>` param driven by `models.routing.{stage}` in
 `temper.config`. When `models.enabled` is false/absent, emit NO `model` param (v5.5.0
 byte-identical behavior — session model inherited).
+
+### Cacheable vs. Volatile Context (v5.9.0)
+
+Every read a stage Agent makes is one of two classes. The ordering rule is:
+**cacheable reads first (stable prefix), volatile reads last (per-launch delta).**
+Keeping the prefix byte-identical across launches maximizes the chance the platform
+returns a cache hit; the orchestrator cannot force a cache, it can only structure reads
+so the prefix is stable and record what the platform reports (see Observability v3
+`tokens.cached_input`).
+
+| Class       | Reads (byte-stable across launches)                         |
+|-------------|-------------------------------------------------------------|
+| **Cacheable** | methodology ref (`{stage}.md`), `orchestrator-patterns.md`, pack-manifest, stack-pack, `temper.config` |
+| **Volatile**  | `build-state.json`, spec artifacts (`tasks.md`/`intent.md`/`plan.md`), `git diff`, `*-context.json`, feedback-loop state |
+
+**Ordering rule:** on every stage launch AND every feedback re-entry, read the cacheable
+block in the fixed order above, THEN read the volatile delta. When `tokens.cache.enabled`
+is false, this rule is suspended — reads proceed in v5.8.0 order.
+
+### Pipeline Depth (v5.9.0)
+
+When `tokens.adaptive-depth.enabled` is true, the pipeline depth is selected by the plan
+stage's existing complexity classification (trivial|simple|medium|complex — Phase 3 of
+`reference/plan.md` already emits this). The `floor` clamp raises the effective tier UP:
+`floor: simple` permits the trivial fast-path; `floor: medium` kills trivial; `floor:
+complex` forces the full pipeline always. A floor is a clamp, NOT a toggle.
+
+| Complexity (after floor clamp) | Stages run                                       | Design? | Eval? | Gates | Artifacts required                                   |
+|--------------------------------|--------------------------------------------------|---------|-------|-------|------------------------------------------------------|
+| **trivial**                    | 1 combined plan+build Agent → review             | no      | no    | 1 (final) | `intent.md` + `tasks.md` only (spine methodology) |
+| **simple**                     | plan → build → review → check                    | no      | no    | 2     | `intent.md` + `tasks.md`                             |
+| **medium**                     | plan → design? → build → review → check → eval   | opt     | yes   | 3     | `intent.md` + `tasks.md` + `plan.md`                 |
+| **complex**                    | plan → design → build → review → check → eval    | yes     | yes   | 4     | full set: `spec.md` + `intent.md` + `plan.md` + `tasks.md` + mermaid + blast radius |
+
+**Artifact-requirements scale:** the trivial tier runs a single combined plan+build Agent
+on spine methodology only (no `design.md`, no mermaid, no blast radius, no eval). The
+medium tier adds `plan.md` but may still skip design. The complex tier is the full v5.8.0
+pipeline. The standalone-`/temper:plan` complexity-tiered rules in `reference/plan.md`
+(lines 522+) are UNCHANGED — this table only governs the unified-`/temper` override.
+
+**Graceful degradation:** when `tokens.adaptive-depth.enabled` is false, every complexity
+runs the **complex** row — the full v5.8.0 pipeline (byte-identical). The plan gate shows
+the chosen depth tier and an "Escalate to full pipeline" option so a human can override a
+reduced tier upward.
 
 ---
 
@@ -134,22 +186,32 @@ observability.json (per-stage `retries` bump or a sub-stage entry with its own t
 
 ---
 
-## Observability.json v2 Schema (v5.6.0)
+## Observability.json v3 Schema (v5.9.0)
 
-The `.temper/observability.json` schema is versioned. v2 adds `model_tier`, `cost_usd`,
+_(Supersedes the Observability.json v2 Schema from v5.6.0. v3 is a strict superset: the
+v2 stage fields — `model_tier`, `cost_usd`, `eval_score`, `retries`, the `source`
+provenance rule — are all preserved; v3 only adds `tokens.cached_input` and `loops[]`.
+A v2 doc — `"version": 2` — remains a valid v3 read; v2 readers ignore the new keys.
+For the v2 schema reference, see this section's history in git at the v5.6.0 tag.)_
+
+The `.temper/observability.json` schema is versioned. v3 (Phase 3) is **additive** over
+v2: it adds `tokens.cached_input` per stage (D1) and a `loops[]` array with per-loop
+`mode` + `cost` (D3). v2 readers ignore the new keys gracefully (the G-5 source rule is
+preserved and extended to every new numeric). v2 adds `model_tier`, `cost_usd`,
 `eval_score`, `retries`, and the `source` provenance rule on EVERY numeric leaf. v1 readers
 ignore unknown keys gracefully.
 
 **Source provenance (extends G-5, v5.3.0):** every numeric value MUST carry a sibling
 `source` field (`measured` | `estimated` | `user-override` | `pricing`). Do not emit a
 numeric without its `source`. Consumers (e.g. `/temper:status`) surface provenance so the
-dashboard never lies about how a number was obtained.
+dashboard never lies about how a number was obtained. This rule is extended to the new
+`cached_input.value` and each `loops[].cost.value`.
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "feature": "{slug}",
-  "schema_source": "reference/orchestrator-patterns.md#observabilityjson-v2-schema",
+  "schema_source": "reference/orchestrator-patterns.md#observabilityjson-v3-schema",
   "stages": [
     {
       "stage": "plan|design|build|review|check|eval",
@@ -157,7 +219,8 @@ dashboard never lies about how a number was obtained.
       "model_source": "routing|user-override|inherited",
       "tokens": {
         "input":  0,  "input_source":  "measured|estimated",
-        "output": 0,  "output_source": "measured|estimated"
+        "output": 0,  "output_source": "measured|estimated",
+        "cached_input": { "value": 0, "source": "measured|estimated" }
       },
       "latency_ms":      { "value": 0, "source": "measured|estimated" },
       "tool_calls":      { "value": 0, "source": "measured|estimated" },
@@ -166,6 +229,17 @@ dashboard never lies about how a number was obtained.
       "eval_score":      { "value": null, "source": "measured|estimated" },
       "ts_start": "{ISO8601}",
       "ts_end":   "{ISO8601}"
+    }
+  ],
+  "loops": [
+    {
+      "loop_id": "loop-1",
+      "from_stage": "review|check|eval",
+      "to_stage": "build",
+      "mode": "inline|fix-mode|full",
+      "cost":     { "value": 0, "source": "measured|estimated" },
+      "iteration": 1,
+      "ts": "{ISO8601}"
     }
   ],
   "totals": {
@@ -179,15 +253,25 @@ dashboard never lies about how a number was obtained.
 **Field semantics:**
 - `tokens`: prefer `measured` from harness-reported usage; fall back to `estimated` and
   flag `source` accordingly. NEVER present an estimate as measured.
+- `tokens.cached_input` (v3, D1): the count of input tokens the platform reported as
+  served from cache for this stage. `value > 0` with `source: "measured"` when the harness
+  exposes cache-usage; `source: "estimated"` (and a flag) when only inferred. Emitted ONLY
+  when `tokens.cache.enabled` is true; absent (not zero) when cache is off (v5.8.0).
 - `latency_ms`, `tool_calls`: `measured` where the harness exposes them (wall-clock and
   tool-invocation counts are observable); `estimated` if only inferred.
 - `cost_usd`: computed from `pricing.md[tier]` (advisory price table); `source: "pricing"`
-  because the cost is derived from an external price table, not measured from a bill.
+  because the cost is derived from an external price table, not measured from a bill. When
+  `cached_input > 0` is reported, `cost_usd` MAY reflect cache savings (see pricing.md cache
+  multipliers) — the source stays `"pricing"`.
 - `retries`: stage re-launches (feedback loops or escalations). `source: "measured"`.
 - `eval_score`: pulled from `eval-context.json` for eval stage; `null` otherwise.
   `source: "measured"` when from the LM-judge, `estimated` if inferred.
 - `model_source`: `routing` (tier from `models.routing`), `user-override` (respect-user-
   override kept the user's model), or `inherited` (models disabled — session model used).
+- `loops[]` (v3, D3): one entry per feedback-loop iteration, recording `mode`
+  (`inline` | `fix-mode` | `full` per the Loop Cost Tiers decision rule) and the per-loop
+  `cost` (unit token cost of this loop iteration, with a `source` sibling per G-5). Absent
+  (empty array or key omitted) when no loops fired — v2 readers ignore it.
 
 **Pricing computation:** `cost_usd = (in_tokens/1e6)*in_price + (out_tokens/1e6)*out_price`
 where `in_price`/`out_price` come from `.claude-plugin/reference/pricing.md` keyed by tier.
@@ -615,6 +699,46 @@ File: `.temper/feedback-loops.json`
 - Plan agent receives revision context (what was infeasible, why)
 - Plan is revised, user approves new plan
 - No circuit breaker — human-driven, not automated
+
+### Cache-Stable Re-Entry (v5.9.0)
+
+A Review→Build, Check→Build, or Eval→Build re-launch is a *re-entry*: the same stage Agent
+runs again on the same methodology. When `tokens.cache.enabled` is true, the re-launch
+**MUST read the same methodology file in the same order** as the first launch so the
+cached prefix hits. Concretely: re-entries load the cacheable block (methodology +
+orchestrator-patterns + pack-manifest + stack-pack + config) in the fixed Cacheable vs.
+Volatile order, then the *volatile* delta changes (the new `*-context.json`, the new
+`git diff`). When `tokens.cache.enabled` is false, re-entries read as in v5.8.0.
+
+### Loop Cost Tiers (v5.9.0)
+
+Every feedback loop (Review→Build, Check→Build, Eval→Build) is resolved by a strict
+cost-ordering decision rule — **cheapest tier that satisfies the loop wins.** The tier
+chosen is recorded as `mode` on the loop's observability entry (see Observability v3).
+The circuit breaker above bounds the *count* of loops; this bounds the *unit cost*.
+
+| Tier   | When                                                            | What runs                                                       |
+|--------|-----------------------------------------------------------------|-----------------------------------------------------------------|
+| inline | all findings auto-fixable AND `files_touched <= inline-threshold` | fixes applied directly in-context; **no subprocess, no methodology re-read** |
+| fix-mode | NOT inline AND `tokens.loops.fix-mode: true`                  | minimal-context Build Agent: fix list + changed files + a fix-mode preamble (replaces full `build.md`) |
+| full   | NOT inline AND (`fix-mode: false` OR `inline-threshold: 0`)    | full Build Agent re-launch (reads full `build.md` + tasks + intent) — v5.8.0 loop behavior |
+
+**Decision rule (pseudocode):**
+
+```
+def loop_tier(findings, files_touched, cfg=tokens.loops):
+    if all(f.auto_fixable for f in findings) \
+       and files_touched <= cfg.inline_threshold:
+        return "inline"            # cheapest: no subprocess
+    if cfg.fix_mode:
+        return "fix-mode"          # medium: lean subprocess, fix-mode preamble
+    return "full"                  # full re-launch (v5.8.0)
+```
+
+**Graceful degradation:** with `fix-mode: false` and `inline-threshold: 0`, every loop
+resolves to `full` — byte-identical to v5.8.0 loop behavior. Each tier is recorded in
+observability.json `loops[]` with `mode` + token `cost` (per-loop unit cost), so
+`/temper:status` can surface dollars saved by cheaper tiers.
 
 ### Circuit Breaker Rules
 

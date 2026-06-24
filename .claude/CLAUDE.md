@@ -13,6 +13,6 @@
 | `/temper:pack` | Manage quality packs |
 | `/temper:status` | Quality + observability dashboard |
 
-**Version:** 5.8.0 — see `CHANGELOG.md` for history.
+**Version:** 5.9.0 — see `CHANGELOG.md` for history.
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/`
 Token efficiency tips: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/tokenomics.md`

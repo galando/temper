@@ -515,7 +515,16 @@ Scenarios from Phase 4.5 may reveal ambiguities that weren't visible from the fe
 
 ### Phase 6: Generate Plan Artifacts
 
-**ENFORCEMENT OVERRIDE (when running from `/temper` unified command):** Always generate the full artifact set regardless of complexity level. Always create: intent.md, tasks.md, plan.md with mermaid diagram, blast radius analysis. Present the full 4-option approval gate with walkthrough. This overrides the complexity-tiered rules below.
+**DEPTH CONTRACT (v5.9.0, when running from `/temper` unified command):** When
+`tokens.adaptive-depth.enabled` is false, OR this change classifies as `medium`/`complex`,
+OR `tokens.adaptive-depth.floor` clamps the effective tier up to medium+ => generate the
+FULL artifact set: intent.md, tasks.md, plan.md with mermaid diagram, blast radius
+analysis. Present the full 4-option approval gate with walkthrough (v5.8.0 — byte-identical).
+When `tokens.adaptive-depth.enabled` is true AND the effective tier (after the floor clamp)
+is `trivial` or `simple` => run the reduced pipeline per the Pipeline Depth table in
+`reference/orchestrator-patterns.md` (trivial = intent.md + tasks.md only; simple =
+intent.md + tasks.md). This retargets ONLY the unified-`/temper` override — the
+complexity-tiered rules below (for standalone `/temper:plan`) are UNCHANGED.
 
 **Complexity-tiered rules (for standalone `/temper:plan` only):**
 
@@ -980,7 +989,14 @@ AskUserQuestion:
   multiSelect: false
 ```
 
-**ENFORCEMENT OVERRIDE (when running from `/temper` unified command):** Always use the full 6-section walkthrough and the full 4-option approval gate. No complexity-based shortcuts. This overrides the rules below.
+**DEPTH CONTRACT (v5.9.0, when running from `/temper` unified command):** When
+`tokens.adaptive-depth.enabled` is false, OR the effective tier (after the floor clamp) is
+`medium`/`complex` => use the full 6-section walkthrough and the full 4-option approval
+gate (v5.8.0 — byte-identical). When enabled and the effective tier is `trivial`/`simple`
+=> run the reduced pipeline per the Pipeline Depth table in
+`reference/orchestrator-patterns.md` (trivial = no walkthrough, final gate only; simple =
+2-section walkthrough). This retargets ONLY the unified-`/temper` override — the rules
+below (for standalone `/temper:plan`) are UNCHANGED.
 
 **Complexity-tiered rules (for standalone `/temper:plan` only):**
 
@@ -1032,8 +1048,8 @@ explicitly select "Continue to Build" from the gate to proceed.
 
 **On Save for later (third option):**
 
-```
-1. Save state to .temper/build-state.json:
+1. Save state to `.temper/build-state.json`:
+
    ```json
    {
      "stage": "plan_complete",
@@ -1046,7 +1062,6 @@ explicitly select "Continue to Build" from the gate to proceed.
    }
    ```
 2. Report: "✅ Saved. Run /temper when ready to continue."
-```
 
 ### Context Accumulation
 

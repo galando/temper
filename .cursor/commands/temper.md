@@ -10,7 +10,7 @@ argument-hint: "<feature-description>"
   Source: .claude/commands/temper.md
 -->
 
-# Temper: Unified SDLC Command (v5.8.0)
+# Temper: Unified SDLC Command (v5.9.0)
 
 **Goal:** Execute the full SDLC flow (plan → design? → build → review → check → commit) with stage gates, feedback loops, context accumulation, observability, and **real** context isolation via Agent subprocesses.
 
@@ -88,6 +88,29 @@ At each stage gate, use `AskUserQuestion` with selectable options. Do NOT use `[
 
 ---
 
+> **Reference:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Cacheable vs. Volatile Context" + "Cache-Stable Re-Entry"
+
+Every stage Agent launch (and every feedback-loop re-entry) applies this resolution BEFORE
+building the launch prompt. It is the read-ordering counterpart to the Model Routing
+Resolution: it does not run code or add a dependency — it structures the CONTEXT list so a
+
+```
+     => apply NO ordering rule. Build the CONTEXT list exactly as in v5.8.0
+     => order the CONTEXT list as: CACHEABLE reads first, VOLATILE reads last.
+        CACHEABLE (byte-stable across launches, fixed order): methodology ref
+          ({stage}.md), orchestrator-patterns.md, pack-manifest, stack-pack,
+          temper.config
+        VOLATILE (per-launch delta): build-state.json, spec artifacts (tasks.md,
+          intent.md, plan.md), git diff, *-context.json, feedback-loop state
+     => on a feedback-loop RE-ENTRY, the re-launch MUST read the same methodology
+        observability.json for this stage: value = input tokens the harness
+        reported as cache-served (source "measured"); if the harness does not
+        expose cache usage, estimate and flag source "estimated".
+```
+
+
+---
+
 ## Teach Me (Comprehension Companion) — shared handler (v5.7.0)
 
 > **Capability:** `capabilities.teach-me` in temper.config (default: enabled).
@@ -125,8 +148,6 @@ Use the Agent tool with this prompt:
 
 Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan.md
 
-ENFORCEMENT: Always follow the full planning methodology regardless of complexity level. Always generate: intent.md, tasks.md, mermaid diagram in plan.md, blast radius analysis. No shortcuts.
-
 MCP PRIORITY: If code-review-graph MCP tools are available, use them as the PRIMARY exploration method in Phase 1 (Auto-Prime). Call build_or_update_graph_tool, get_architecture_overview_tool, list_communities_tool, list_flows_tool, and semantic_search_nodes_tool BEFORE falling back to grep/read. These tools provide AST-level proven dependency analysis that is far superior to heuristic grep-based exploration.
 
 DIAGRAM ENFORCEMENT: You MUST generate ASCII art diagrams using box-drawing characters (+, -, |, -->, etc.). Write BOTH mermaid source and ASCII art to plan.md. When returning the summary to the orchestrator, include ONLY the ASCII art version — NEVER return raw mermaid source code in the summary. The summary must be readable in a terminal without any rendering tool.
@@ -144,8 +165,6 @@ Return ONLY:
 ```
 
 ### Plan Summary Format
-
-**ENFORCEMENT:** The unified `/temper` command always follows the full planning guidelines regardless of complexity level. No shortcuts for Simple or Trivial features. Always generate: intent.md, tasks.md, mermaid diagram, blast radius, and present the full approval gate with walkthrough option.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -481,17 +500,34 @@ If loop is possible, check eligibility by reading `.temper/feedback-loops.json`:
 If `can_loop: true`: show gate with "Loop back to Build" option included
 If `can_loop: false`: show standard gate options only, and display the reason to the user
 
-#### Step 4: On user selects "Loop back to Build"
 
-Using the Write tool:
-1. Write context file to spec directory:
+count `files_touched` (distinct files in the finding/test-failure list), and determine
+whether every finding is `auto_fixable`. First match wins:
+
+```
+     => apply the fixes directly in-context using Edit. Launch NO Agent subprocess.
+     => launch a minimal-context Build Agent: it receives ONLY the fix list + the changed
+     => full Build Agent re-launch (reads full build.md + tasks + intent) — v5.8.0 loop
+        behavior, byte-identical. Record loop mode "full".
+```
+
+**Then, regardless of tier (shared bookkeeping):**
+1. Write context file to spec directory (skipped for INLINE — fixes applied directly):
    - Review loop: Write `{spec_path}/review-context.json` with the review findings schema
    - Check loop: Write `{spec_path}/check-context.json` with the test failures schema
 2. Update `.temper/feedback-loops.json` using the Write tool:
    - If no active loop: append new entry to `active_loops` with `iteration: 1`
    - If active loop exists: increment `iteration` count, update `failure_context`
 3. Save state to `.temper/build-state.json` with `next_stage: "build"`
-4. Launch BUILD Agent subprocess — it loads the context file automatically (already in Build agent prompt at lines 484-485)
+4. (INLINE only) fixes are already applied — skip the subprocess launch, proceed to a
+   re-review/re-check pass on the fixed files.
+   (FIX-MODE / FULL) launch the Build Agent per the tier above — it loads the context file
+   automatically (already in Build agent prompt).
+5. **Observability (v3):** append an entry to `.temper/observability.json` `loops[]` with:
+   `cost.value` is the per-loop unit token cost; `source` is "measured" if the harness
+   reports usage (0 for inline, since no subprocess ran), else "estimated".
+
+every loop resolves to FULL — byte-identical to v5.8.0 loop behavior.
 
 #### Step 5: On successful commit (after Check passes)
 
@@ -706,9 +742,8 @@ Show the AskUserQuestion gate with:
 4. Proceed to Stage 4 (CHECK) — launches a new Agent subprocess
 
 **on Loop back to Build:**
-1. Write `review-context.json` (schema: orchestrator-patterns.md → "Context File Schemas") with this review's `findings_summary`, `intent_verdict`, and `scenario_coverage`.
-2. Create/update the loop entry in `.temper/feedback-loops.json` (schema: orchestrator-patterns.md → "Feedback Registry") with `from_stage: review`, `to_stage: build`, `reason: "auto-fixable issues found"`, `iteration: {current + 1}`, `max_iterations: 2`.
-3. Re-launch the BUILD agent (Stage 2 "Launch Build Agent" template) — it already loads `review-context.json` from its CONTEXT list; this is a feedback re-entry, so the issues there must be fixed.
+2. Write `review-context.json` (schema: orchestrator-patterns.md → "Context File Schemas") with this review's `findings_summary`, `intent_verdict`, and `scenario_coverage` (skipped for inline — fixes applied directly).
+3. Create/update the loop entry in `.temper/feedback-loops.json` (schema: orchestrator-patterns.md → "Feedback Registry") with `from_stage: review`, `to_stage: build`, `reason: "auto-fixable issues found"`, `iteration: {current + 1}`, `max_iterations: 2`.
 
 **on Change (via "Other"):** Make the change, re-launch the REVIEW agent for an updated summary, then re-show this gate. Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
@@ -827,9 +862,8 @@ After Check agent returns and before showing the gate:
 ```
 
 **on Loop back to Build:**
-1. Write `check-context.json` (schema: orchestrator-patterns.md → "Context File Schemas") with this run's `validation_results`, `scenario_verification`, and `test_failures`.
-2. Create/update the loop entry in `.temper/feedback-loops.json` (schema: orchestrator-patterns.md → "Feedback Registry") with `from_stage: check`, `to_stage: build`, `reason: "test failures found"`, `iteration: {current + 1}`, `max_iterations: 2`.
-3. Re-launch the BUILD agent (Stage 2 "Launch Build Agent" template) — it already loads `check-context.json` from its CONTEXT list; this is a feedback re-entry, so the test failures there must be fixed.
+2. Write `check-context.json` (schema: orchestrator-patterns.md → "Context File Schemas") with this run's `validation_results`, `scenario_verification`, and `test_failures` (skipped for inline).
+3. Create/update the loop entry in `.temper/feedback-loops.json` (schema: orchestrator-patterns.md → "Feedback Registry") with `from_stage: check`, `to_stage: build`, `reason: "test failures found"`, `iteration: {current + 1}`, `max_iterations: 2`.
 
 **on Change (via "Other"):** Make the change, re-launch the CHECK agent to re-validate, then re-show this gate (do NOT commit directly). Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
@@ -937,9 +971,8 @@ Show the AskUserQuestion gate with:
 **on Continue to Commit:** Write `eval-context.json` (schema: orchestrator-patterns.md → "Context File Schemas") with aggregate + per-dimension scores + block-on status. Proceed to the Stage 4 "on Commit" flow.
 
 **on Re-run (Eval→Build feedback):**
-1. Write `eval-context.json` with the failing dimensions + the `block-on` reason.
-2. Create/update the loop entry in `.temper/feedback-loops.json` with `from_stage: eval`, `to_stage: build`, `reason: "eval block-on dimension failed"`, `iteration: {current + 1}`, `max_iterations` from `feedback.max-loops`.
-3. Re-launch the BUILD agent — it loads `eval-context.json` as a feedback re-entry.
+2. Write `eval-context.json` with the failing dimensions + the `block-on` reason (skipped for inline).
+3. Create/update the loop entry in `.temper/feedback-loops.json` with `from_stage: eval`, `to_stage: build`, `reason: "eval block-on dimension failed"`, `iteration: {current + 1}`, `max_iterations` from `feedback.max-loops`.
 
 **on Save:** Save state (orchestrator-patterns.md → "Save State Pattern", `stage: eval_complete`, `next_stage: commit`).
 

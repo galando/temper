@@ -173,19 +173,25 @@ scenario_2_3_4_routing() {
 # ---------------------------------------------------------------------------
 
 scenario_5_schema() {
-  echo "Scenario 5 (schema): v2 observability schema documented"
+  echo "Scenario 5 (schema): v2/v3 observability schema documented"
   local REF=.claude-plugin/reference/orchestrator-patterns.md
-  grep -q "Observability.json v2 Schema" "$REF" \
-    && ok "v2 schema section present in orchestrator-patterns.md" \
-    || fail "v2-schema-section" "v2 schema section missing"
-  grep -q '"version": 2' "$REF" \
-    && ok "v2 schema declares version: 2" \
-    || fail "v2-version" "version: 2 not in schema doc"
-  # every required stage field documented
+  # v3 (v5.9.0) is a strict superset of v2 (v5.6.0). Accept either marker so the
+  # assertion stays green across the v2->v3 bump while still proving a schema section exists.
+  if grep -q "Observability.json v3 Schema" "$REF" || grep -q "Observability.json v2 Schema" "$REF"; then
+    ok "observability schema section present in orchestrator-patterns.md (v2 or v3)"
+  else
+    fail "schema-section" "observability schema section missing"
+  fi
+  if grep -q '"version": 3' "$REF" || grep -q '"version": 2' "$REF"; then
+    ok "schema declares a version stamp (2 or 3)"
+  else
+    fail "schema-version" "version: 2 or 3 not in schema doc"
+  fi
+  # every required stage field documented (v2 fields preserved through v3)
   for f in model_tier cost_usd eval_score retries latency_ms tool_calls; do
     grep -q "$f" "$REF" || { fail "v2-field-$f" "schema missing field $f"; return; }
   done
-  ok "v2 schema documents all required stage fields"
+  ok "schema documents all required stage fields (v2 superset preserved)"
   # drift baseline schema
   grep -q "Drift Baseline Schema" "$REF" && grep -q "drift_flags" "$REF" \
     && ok "drift baseline schema documented" \
@@ -371,8 +377,11 @@ scenario_8_status() {
 
 scenario_9_version() {
   echo "Scenario 9 (version): all stamps agree at target version"
-  local TARGET="5.6.0"
-  local pj cv cm
+  # Phase 2 validator must stay green across version bumps. Lockstep-check against
+  # plugin.json (the canonical stamp) instead of a hard-coded target — mirrors
+  # validate-phase3.sh's pattern so a release bump no longer turns this red.
+  local TARGET pj cv cm
+  TARGET=$(grep -o '"version": "[^"]*"' .claude-plugin/plugin.json | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
   pj=$(grep -o '"version": "[^"]*"' .claude-plugin/plugin.json | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
   cm=$(grep -oE '\*\*Version:\*\* [0-9][0-9.]+' .claude/CLAUDE.md | head -1 | awk '{print $2}')
   cv=$(cat .cursor/VERSION 2>/dev/null | tr -d '[:space:]')

@@ -3,6 +3,51 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v5.9.0 — Phase 3: Token Efficiency & Loop Engineering
+
+Three independent, composable levers layered on the v5.6.0 model-routing foundation.
+Each is config-flagged under `tokens:` in `.claude/temper.config`, default-on, and
+degrades **byte-identically** to v5.8.0 when its flag is off.
+
+### D1 — Cache the static instruction mass
+- **`tokens.cache`**: stage agents read the cacheable context (methodology ref,
+  orchestrator-patterns, pack-manifest, stack-pack, config) FIRST in a byte-stable order,
+  then the volatile delta. Maximizes platform cache hits on re-entry; the orchestrator
+  cannot force a cache, only structure reads so the prefix is stable.
+- **`tokens.cached_input{value, source}`**: new v3 observability field records what the
+  platform reports as cache-served (source `measured`/`estimated`). G-5 source rule extended.
+- **Cacheable vs. Volatile Context** + **Cache-Stable Re-Entry** sections in
+  `reference/orchestrator-patterns.md`. Cache Routing Resolution block in `temper.md`.
+
+### D2 — Complexity-adaptive pipeline depth
+- **`tokens.adaptive-depth`**: the plan stage's existing complexity classification
+  (trivial|simple|medium|complex) selects a reduced pipeline per the new **Pipeline Depth**
+  table. `floor` clamps the effective tier UP (`floor: medium` kills the trivial fast-path).
+- Replaces the 4 blanket enforcement overrides (temper.md:153, temper.md:173, plan.md:518,
+  plan.md:983) with a **DEPTH CONTRACT** conditional on `adaptive-depth.enabled`. The
+  standalone `/temper:plan` complexity-tiered rules are UNCHANGED.
+- Plan gate shows the chosen depth tier with an **"Escalate to full pipeline"** option.
+
+### D3 — Incremental feedback loops
+- **`tokens.loops`**: every feedback loop resolves by a cheapest-first decision rule —
+  **inline** micro-fix (no subprocess) when all findings auto-fixable AND
+  `files_touched <= inline-threshold`; else **fix-mode** minimal-context Build Agent (fix
+  list + changed files + fix-mode preamble, NOT full `build.md`); else **full** re-launch.
+- New **Loop Cost Tiers** section + per-loop `mode` + `cost` in observability.json `loops[]`.
+
+### Degradation contract
+- With `cache.enabled: false` + `adaptive-depth.enabled: false` + `loops.fix-mode: false` +
+  `inline-threshold: 0`, a `/temper` run is byte-identical to v5.8.0 (full pipeline, full
+  re-launch, no cache prefix, no `cached_input` field). v3 observability is an additive
+  superset of v2.
+
+### Other
+- `reference/pricing.md`: cache read (~0.1x) / write (~1.25x) multipliers; dropped the
+  "excludes caching" note — `cost_usd` MAY now reflect cache savings.
+- `reference/tokenomics.md`: canonical 3-lever token-efficiency guidance.
+- `.cursor/` frozen at v5.1 (only `.cursor/VERSION` bumped to 5.9.0 via `generate-cursor.sh`).
+- New `scripts/validate-phase3.sh` mechanical verifier.
+
 ## v5.8.0 — New Features
 
 Explain implementation-approach choices in plans (#59)
