@@ -51,15 +51,18 @@ AskUserQuestion (at the plan gate, after the plan is approved):
     - label: "Autonomous — run the rest unattended"
       description: "Auto-resolve design→build→review→check→eval per policy; park before
                     commit and on anything needing a human. Read the report when you're back."
-    - label: "Supervised — auto-decide, but confirm each gate"
-      description: "Runs the real pipeline; at each gate shows the decision autonomy would
-                    take (+ why) and waits for your one-click confirm. Training wheels."
   multiSelect: false
 ```
 
 - The existing plan-gate options (`Grill Me`, `Teach Me`, walkthrough, `Escalate to full
-  pipeline`, `Save for later`, `Other`) are unchanged; the three continuation options above
+  pipeline`, `Save for later`, `Other`) are unchanged; the two continuation options above
   replace the single "Continue to Build/Design".
+- **Interactive gates are annotated, not duplicated.** When `autonomy.enabled`, every
+  *stage-by-stage* gate additionally shows the decision autonomy *would* take, its
+  confidence, and whether the park policy would have continued or stopped — as an
+  annotation above the usual options. This gives the trust-building / calibration value
+  ("watch it make the right calls before going unattended") without a separate mode. The
+  human still decides. When `autonomy.enabled` is false, no annotation is shown.
 - `default-choice` config decides which continuation option is pre-highlighted.
 - `/temper --auto "..."` is a **soft pre-highlight only**: it pre-selects the "Autonomous"
   option at the plan gate but **still stops at the plan gate for approval**. It can never
@@ -68,16 +71,19 @@ AskUserQuestion (at the plan gate, after the plan is approved):
   i.e. back to a human — and the continuation choice is offered again. Autonomy never
   re-plans unattended.
 
-### What each mode means (resolves the "dry-run does nothing?" question)
+### What each mode means
 
 | Mode | Does real work? | Gate behavior |
 |------|-----------------|---------------|
-| Stage by stage (interactive) | yes | stops at every gate; human decides (today's behavior) |
-| **Supervised** | **yes — builds code, runs tests, everything** | at each gate, shows the auto-decision + reason + confidence and waits for a one-click confirm/override. Not "doing nothing" — only the *gate decision* is surfaced instead of taken silently |
+| Stage by stage (interactive) | yes | stops at every gate; human decides. When `autonomy.enabled`, each gate is **annotated** with the decision autonomy would take + confidence + would-it-park — calibration without ceding control |
 | Autonomous | yes | auto-resolves each gate per policy; only pauses to **park** |
 
-Supervised is the trust on-ramp (the article's "start small, build trust"): watch it make
-the right calls a few times, then graduate to Autonomous.
+There are exactly **two** modes. The interactive-gate annotation is the trust on-ramp (the
+article's "start small, build trust"): watch the autonomy policy propose the right calls a
+few times — while you still click every gate — then choose Autonomous when you trust it. A
+separate "supervised" mode was considered and dropped: it duplicated interactive (both stop
+at every gate and require a human click), so its only real value — surfacing the autonomy
+decision + confidence — was folded into the interactive gate annotation instead.
 
 ---
 
@@ -86,8 +92,8 @@ the right calls a few times, then graduate to Autonomous.
 Autonomy is **not** a parallel pipeline. For each post-plan gate it replaces the
 `AskUserQuestion` call with a decision that selects the gate's existing "Recommended"
 option **unless a park condition fires**. Feedback loops, circuit breakers, loop cost
-tiers, observability, and save-state are reused verbatim. Supervised mode runs the same
-decision but requires a human confirm before applying it.
+tiers, observability, and save-state are reused verbatim. In interactive mode the same
+decision is computed and shown as a gate annotation, but the human still chooses.
 
 | Gate | Auto-action (no park) | Park condition (halt + report) |
 |------|----------------------|--------------------------------|
@@ -198,8 +204,8 @@ overnight is unreviewed churn. Under autonomy:
 # continuation (byte-identical to v5.9.0).
 # ============================================================
 autonomy:
-  enabled: true              # false => the plan gate never offers autonomous/supervised options
-  default-choice: interactive # plan-gate continuation pre-highlighted: interactive | auto | supervised
+  enabled: true              # false => plan gate offers only stage-by-stage; no gate annotation
+  default-choice: interactive # plan-gate continuation pre-highlighted: interactive | auto
   preselect-arg: true        # honor `/temper --auto` as a soft pre-highlight (still stops at plan)
 
   # --- Self-judgment safeguards (§4) ---
@@ -209,6 +215,9 @@ autonomy:
 
   # --- Safety envelope ---
   stop-before-commit: true   # NEVER auto-commit/merge. Human is always the merge gate.
+                             # Escape hatch (kept by design): set false to auto-commit a
+                             # fully-clean run (acceptance checklist all green). Even then
+                             # autonomy NEVER pushes or merges — push stays a human action.
   max-blast-radius: 15       # park (back to plan gate) if blast radius exceeds N files
   park-on-touch:
     - "**/auth/**"
@@ -308,7 +317,7 @@ WORK, BLOCKED ≈ BLOCK.
 
 Additions to `observability.json`:
 
-- `run_mode: "interactive" | "autonomous" | "supervised"` (per run).
+- `run_mode: "interactive" | "autonomous"` (per run).
 - `gate_decisions: []` — `{ stage, decision, auto, confidence, reason, ts }` per gate.
 - `park: { stage, reason, verdict, ts }` on park.
 - `budget_used: { stages, loops, wall_clock_min, tokens }`.
@@ -324,7 +333,7 @@ auto-resolved vs. parked, loop/budget consumption.
 |------|--------|
 | `.claude/temper.config` | Add the `autonomy:` block (§9), defaulted safe. |
 | `.claude-plugin/reference/orchestrator-patterns.md` | New canonical **"Autonomous Continuation"** section: plan-gate arming, post-plan auto-resolve policy table (§3), self-judgment safeguards (§4), run budget (§5), operational safety (§6), command policy (§7), fix policy (§8), park report + acceptance checklist schema (§10), observability fields (§11), graceful-degradation contract. Shared home; `temper.md` references it (single-read contract). |
-| `.claude/commands/temper.md` | (a) Plan gate: add the three-way continuation choice (§2) and arm `run_mode`; (b) each post-plan Stage Gate: add an auto-resolve / supervised-confirm branch that evaluates the park policy instead of calling `AskUserQuestion` when armed; (c) Commit stage: never auto-commit under autonomy — write report + park; (d) suppress teach-me/grill-me/walkthrough/config-prompts when `run_mode != interactive`; (e) clean-start + lock + checkpoint hooks. |
+| `.claude/commands/temper.md` | (a) Plan gate: add the two-way continuation choice (§2) and arm `run_mode`; (b) each post-plan Stage Gate: when autonomous, evaluate the park policy and auto-resolve instead of calling `AskUserQuestion`; when interactive + `autonomy.enabled`, render the would-be decision as a gate annotation; (c) Commit stage: never auto-commit under autonomy — write report + park; (d) suppress teach-me/grill-me/walkthrough/config-prompts when `run_mode == autonomous`; (e) clean-start + lock + checkpoint hooks. |
 | `.claude-plugin/reference/status.md` | Add the "Autonomous runs" panel (§11). |
 | `.claude-plugin/reference/plan.md` | Note that the plan gate now offers the continuation choice. |
 | `.claude/CLAUDE.md` | Document the plan-gate choice, `--auto` soft pre-select, and the autonomy config. |
@@ -347,8 +356,9 @@ runner.
 3. **Happy path:** approve plan → choose Autonomous → small change runs to the Commit gate,
    parks SHIP-PENDING-COMMIT with a fully-ticked acceptance checklist; `/temper` resume
    lands at Commit.
-4. **Supervised:** choose Supervised → real code is built; each gate pauses showing the
-   auto-decision + confidence and requires a confirm (proves it is not a no-op).
+4. **Interactive annotation:** with `autonomy.enabled` and "Stage by stage" chosen, each
+   gate shows the would-be autonomy decision + confidence; the human still clicks. With
+   `autonomy.enabled: false`, no annotation appears (byte-identical to v5.9.0).
 5. **Blast-radius park:** change touching `>max-blast-radius` files or a `park-on-touch`
    path → after plan approval, parks back at the plan gate / before build.
 6. **Loop-then-park:** persistent test failure → Check→Build loops to the limit → circuit
@@ -373,7 +383,8 @@ runner.
 
 Ship it **opt-in**, plan-gate-armed, default continuation `interactive`, with
 `stop-before-commit: true`, the blast-radius envelope, the run budget, and clean-start +
-checkpoints all on by default. Lead users in via **Supervised** mode, then Autonomous. This
+checkpoints all on by default. Lead users in via the **interactive gate annotation** (watch
+the autonomy policy propose calls while you still click each gate), then Autonomous. This
 captures the overnight-batch value while keeping the human exactly where the human adds
 value: the plan, high blast radius, and the merge. Keep teach-me/grill-me interactive-only —
 they are the heart of Temper's "stay in command of the change" promise and have no meaning
