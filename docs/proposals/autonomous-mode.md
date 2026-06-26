@@ -179,6 +179,12 @@ autonomous run — a real surface (e.g. a malicious dependency's test script). T
   discovering silent unattended execution. No new mechanism — the platform already gates
   commands; autonomy just treats a denied/unpermitted command as a park signal.
 
+**First-run prerequisite (release notes + README):** because autonomy runs build/test
+commands without prompting, the user should pre-allow the commands their build/check needs
+in `settings.json` *before* the first unattended run — otherwise the run parks on the first
+unpermitted command. One sentence in the release notes and the README's autonomy
+subsection.
+
 ---
 
 ## 8. Conservative fix policy under autonomy
@@ -332,8 +338,23 @@ auto-resolved vs. parked, loop/budget consumption.
 | `.claude-plugin/reference/status.md` | Add the "Autonomous runs" panel (§11). |
 | `.claude-plugin/reference/plan.md` | Note that the plan gate now offers the continuation choice. |
 | `.claude/CLAUDE.md` | Document the plan-gate continuation choice and the autonomy config. |
-| `README.md` | New "Autonomous Continuation" subsection: plan-gate-armed, safety envelope, parks before commit, any complexity. |
+| `README.md` | **Short** "Autonomous Continuation" subsection (~6–8 lines): approve plan → optionally run the rest unattended; never pushes/merges; parks before commit; one line on pre-allowing build/test commands in `settings.json` before the first run. Keep it tight — link to this proposal / docs for detail rather than expanding the README. |
 | `CHANGELOG.md` | Add a changelog entry for the feature (version is set separately via the release/version-bump process — not part of this change). |
+
+**README draft (keep it to roughly this — don't expand):**
+
+```markdown
+### Autonomous Continuation (opt-in)
+
+After you approve the plan, `/temper` can run the remaining stages
+(design → build → review → check → eval) unattended and leave a report.
+It never pushes or merges, never re-plans on its own, and parks before
+commit and on anything needing a human. Turn it off and Temper behaves
+exactly as before.
+
+First run: pre-allow your build/test commands in `settings.json`, or the
+run parks on the first unpermitted command. Details: docs/proposals/autonomous-mode.md
+```
 
 **Out of scope (future):** extending autonomy to `/temper:fix` (shares
 `orchestrator-patterns.md`, would inherit with a thin hook); a true background/scheduled
