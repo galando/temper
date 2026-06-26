@@ -1,263 +1,381 @@
-# Proposal: Autonomous Mode for `/temper`
+# Proposal: Autonomous Continuation for `/temper`
 
 **Status:** Draft / Plan
 **Target version:** 5.10.0
 **Scope:** `/temper` unified command (extensible to `/temper:fix` later)
-**Default behavior:** unchanged — autonomous mode is strictly opt-in.
+**Default behavior:** unchanged — autonomy is opt-in and armed by a human at the plan gate.
 
 ---
 
 ## 1. Motivation
 
-Temper today is human-in-the-loop by design: every stage (`plan → design → build →
-review → check → eval → commit`) stops at an `AskUserQuestion` gate that requires an
-explicit human "Continue". That is the right default — it is where Temper's intent-
-alignment value lives — but it forbids the "fire it before bed, read the verdict in the
-morning" workflow that a fixed 4-agent pipeline (Planner → Coder → Tester → Reviewer)
-offers.
+Temper is human-in-the-loop by design: every stage (`plan → design → build → review →
+check → eval → commit`) stops at an `AskUserQuestion` gate. That is the right default, but
+it forbids the "approve the plan, then let the rest run while I'm away" workflow that a
+fixed 4-agent pipeline offers.
 
-This proposal adds an **Autonomous Mode**: an opt-in run mode that auto-resolves the
-stage gates Temper already has, keeps every quality gate, feedback loop, and circuit
-breaker intact, and **parks before commit** for the human — exactly the article's
-morning-handoff model, but on top of Temper's stronger pipeline.
+This proposal adds **Autonomous Continuation**: after the human reviews and approves the
+**plan**, they may let the *remaining* stages run unattended. Every quality gate, feedback
+loop, and circuit breaker stays intact; the run **parks before commit** and on any
+decision a human should own.
 
-**Design stance:** *autonomy within a safety envelope*, not "fully autonomous." The
-pipeline runs unattended **until it reaches a decision a human should own** — an open
-question, a blast-radius trip, an unfixable BLOCK, or the commit itself — at which point
-it parks with a report and degrades into the existing save-state/resume path.
+### Design stance
 
-**Per the user's requirement:** available for **any** feature, not clamped to
-small/simple changes. Complexity is *not* the gatekeeper — the blast-radius safety
-envelope is. Complex changes are allowed; they simply park more often (typically at the
-plan gate), which is the correct behavior.
-
----
-
-## 2. How it surfaces to the user
-
-Three entry points, first-match-wins, all resolving to the same internal `run_mode`:
-
-1. **Invocation arg** (highest precedence):
-   `/temper --auto "add rate limiting to login"` → autonomous run.
-   `/temper --interactive "..."` → force interactive even if config defaults to auto.
-2. **Run Mode selector** at `/temper` start (when no arg given and `autonomy.prompt:
-   true`): an `AskUserQuestion` shown once, before Stage 1, that governs **all** gates
-   for the run:
-   ```
-   AskUserQuestion:
-     question: "How should this run be driven?"
-     options:
-       - label: "Interactive (Recommended)"
-         description: "Stop at every stage gate for your decision. (current behavior)"
-       - label: "Autonomous (run unattended)"
-         description: "Auto-resolve gates per policy; park before commit and on any
-                       decision a human should own. Read the report when you're back."
-   ```
-3. **Config default** (lowest precedence): `autonomy.mode` in `.claude/temper.config`.
-
-Resolution order: **arg → selector (if prompted) → config default → `interactive`.**
-The selector is shown only for genuinely new runs; on resume the saved `run_mode` is
-reused.
+- **The plan stage is always human-gated.** `/temper` always runs Plan first and stops at
+  the plan gate. Autonomy is *armed there*, never at invocation. The model never
+  auto-approves its own plan — the highest-leverage, highest-risk judgment stays with the
+  human. (The article's own thesis: "the plan sets the ceiling for everything after it.")
+- **Autonomy governs post-plan stages only:** `design? → build → review → check → eval`,
+  then parks at commit.
+- **Autonomy within a safety envelope, not "fully autonomous."** It runs unattended until
+  it hits a decision a human should own — a budget ceiling, a blast-radius trip, an
+  unfixable BLOCK, or the commit — then parks with a report and degrades into the existing
+  save-state/resume path.
+- **Any complexity.** Autonomy is not clamped to small features. Complexity is orthogonal;
+  the blast-radius envelope decides when it parks.
 
 ---
 
-## 3. The core mechanic — auto-resolve gates
+## 2. How it surfaces — the plan-gate choice
 
-Autonomous mode does **not** add a parallel pipeline. It replaces each gate's
-`AskUserQuestion` call with a deterministic **auto-resolve decision** that selects the
-gate's existing "Recommended" option *unless* a park condition fires. Every other piece
-(feedback loops, circuit breakers, loop cost tiers, observability, save-state) is reused
-verbatim.
+There is **no invocation-time mode**. The user runs `/temper "..."` exactly as today. Plan
+runs, the plan gate appears, and the human reviews/edits/approves the plan as always. The
+plan gate gains a continuation choice:
 
-### Per-gate policy
+```
+AskUserQuestion (at the plan gate, after the plan is approved):
+  question: "The plan is approved. How should the remaining stages run?"
+  options:
+    - label: "Stage by stage (Recommended)"
+      description: "Stop at each gate for your decision. (current behavior)"
+    - label: "Autonomous — run the rest unattended"
+      description: "Auto-resolve design→build→review→check→eval per policy; park before
+                    commit and on anything needing a human. Read the report when you're back."
+    - label: "Supervised — auto-decide, but confirm each gate"
+      description: "Runs the real pipeline; at each gate shows the decision autonomy would
+                    take (+ why) and waits for your one-click confirm. Training wheels."
+  multiSelect: false
+```
+
+- The existing plan-gate options (`Grill Me`, `Teach Me`, walkthrough, `Escalate to full
+  pipeline`, `Save for later`, `Other`) are unchanged; the three continuation options above
+  replace the single "Continue to Build/Design".
+- `default-choice` config decides which continuation option is pre-highlighted.
+- `/temper --auto "..."` is a **soft pre-highlight only**: it pre-selects the "Autonomous"
+  option at the plan gate but **still stops at the plan gate for approval**. It can never
+  bypass the plan review.
+- On a Build→Plan feedback loop (infeasible design), control returns to the plan gate —
+  i.e. back to a human — and the continuation choice is offered again. Autonomy never
+  re-plans unattended.
+
+### What each mode means (resolves the "dry-run does nothing?" question)
+
+| Mode | Does real work? | Gate behavior |
+|------|-----------------|---------------|
+| Stage by stage (interactive) | yes | stops at every gate; human decides (today's behavior) |
+| **Supervised** | **yes — builds code, runs tests, everything** | at each gate, shows the auto-decision + reason + confidence and waits for a one-click confirm/override. Not "doing nothing" — only the *gate decision* is surfaced instead of taken silently |
+| Autonomous | yes | auto-resolves each gate per policy; only pauses to **park** |
+
+Supervised is the trust on-ramp (the article's "start small, build trust"): watch it make
+the right calls a few times, then graduate to Autonomous.
+
+---
+
+## 3. Core mechanic — auto-resolve gates (post-plan only)
+
+Autonomy is **not** a parallel pipeline. For each post-plan gate it replaces the
+`AskUserQuestion` call with a decision that selects the gate's existing "Recommended"
+option **unless a park condition fires**. Feedback loops, circuit breakers, loop cost
+tiers, observability, and save-state are reused verbatim. Supervised mode runs the same
+decision but requires a human confirm before applying it.
 
 | Gate | Auto-action (no park) | Park condition (halt + report) |
 |------|----------------------|--------------------------------|
-| **Plan** | Select "Continue to Build" | Plan has `OPEN QUESTIONS` / unresolved ambiguity, **OR** blast radius exceeds `autonomy.max-blast-radius`, **OR** an `models.escalate-on` trigger (`architecture-finding`, `correctness-risk`) is present, **OR** the change touches a `autonomy.park-on-touch` guard path (auth / money / shared interface) |
-| **Design** | Select "Continue to Build" | Design surfaces an unresolved open question / undecided trade-off |
-| **Build** | Select "Continue to Review" | Build hits infeasibility (would trigger Build→Plan). Plan revision is human-driven with no circuit breaker, so autonomy **never** loops Build→Plan unattended — it parks |
-| **Review** | Select "Fix all & continue to Check"; run the Review→Build auto-fix loop, bounded by `feedback.max-loops` | Critical/BLOCK-class findings remain after max loops, **OR** a non-auto-fixable critical finding exists |
-| **Check** | On test failures, run the Check→Build loop, bounded by `feedback.max-loops`; otherwise advance | Tests still failing after max loops, **OR** same failure twice in a row (existing circuit breaker rule 3) |
-| **Eval** | On `eval.block-on` failure, run the Eval→Build loop, bounded by `feedback.max-loops`; otherwise advance | A `block-on` dimension still below `pass-threshold` after max loops |
-| **Commit** | **Never auto-commit.** Always park with a SHIP-pending report | Always parks (this *is* the final human gate) unless `autonomy.stop-before-commit: false` is explicitly set |
+| **Plan** | — | **Always human** (the arming point; never auto-resolved) |
+| **Design** | "Continue to Build" | Design surfaces an unresolved trade-off / open question (subject to the confidence rule, §4) |
+| **Build** | "Continue to Review" | Build hits infeasibility → returns to the **plan gate** (human); autonomy never loops Build→Plan unattended |
+| **Review** | "Fix all & continue to Check", running the Review→Build auto-fix loop bounded by `feedback.max-loops` — but applying only `auto-fix-severity` levels (§7) | A `critical`/BLOCK-class finding remains after max loops, or a non-auto-fixable critical exists |
+| **Check** | On test failures, run Check→Build loop bounded by `feedback.max-loops`; else advance | Tests still failing after max loops, or same failure twice (existing circuit-breaker rule 3) |
+| **Eval** | On `eval.block-on` failure, run Eval→Build loop bounded by `feedback.max-loops`; else advance | A `block-on` dimension still below `pass-threshold` after max loops |
+| **Commit** | **Never auto-commit** | Always parks with a SHIP-pending report (unless `stop-before-commit: false` is explicitly set) |
 
-This is a direct superset of the article's three stop conditions (open questions, failing
-tests, BLOCK verdict) plus a blast-radius envelope and a hard no-merge rule.
-
-### Interaction with circuit breakers
-
-No new looping logic. Autonomy auto-*selects* the loop option that a human would select
-interactively; the existing rules in `orchestrator-patterns.md → Circuit Breaker Rules`
-(max 2 loops/type, same-issue-twice → stop, counter in `feedback-loops.json`) bound it
-unchanged. **A tripped circuit breaker becomes a park**, not an infinite loop.
-
-### Capabilities suppressed in autonomous mode
-
-`teach-me`, `grill-me`, the HTML plan walkthrough, and config-suggestion prompts are
-**skipped** when `run_mode == autonomous` — they are human-interactive and meaningless
-unattended. (Config suggestions are still *generated* and listed in the report for later
-review; they are just not prompted.) These suppressions are mode-scoped and do not touch
-the capability flags.
+A tripped circuit breaker becomes a **park**, never an infinite loop. The global budget
+(§5) bounds the run regardless of per-type loop counts.
 
 ---
 
-## 4. Safety envelope (the part that makes "any feature" safe)
+## 4. Self-judgment safeguards (the core risk)
 
-Because autonomy is allowed on complex changes, the guardrails — not the complexity tier
-— are what keep it safe. New `autonomy` config block:
+Most park conditions are *LLM judgments*, not deterministic checks — and the same model
+that might misbuild is the one deciding whether to stop. Four structural mitigations:
+
+1. **Plan is always human-reviewed (§2).** The single most dangerous autonomous judgment —
+   "is this the right thing to build?" — is removed from autonomy entirely.
+2. **Conservative bias (`conservative-bias: true`, default):** when a proceed/park signal
+   is *uncertain*, park. Default-to-stop, not default-to-proceed.
+3. **Confidence threshold (`confidence-threshold`, default 0.7):** a "continue" decision
+   whose confidence falls below the threshold is downgraded to a park. Reuses the existing
+   `review.confidence-threshold` semantics so there is one notion of confidence.
+4. **Isolated gate-judge (`gate-judge`, opt-in):** for Review (and optionally Check), the
+   park/proceed decision runs as a separate `tier-fast` agent that sees only the artifact +
+   park policy, **not** the builder's context — structurally unable to rationalize its own
+   work, mirroring the article's read-only-reviewer insight.
+
+---
+
+## 5. Run budget — hard ceiling
+
+Per-type loop limits do not bound a whole overnight run (Review + Check + Eval loops
+compound). A global budget forces a park when exceeded:
+
+```yaml
+budget:
+  max-total-loops: 4        # across ALL feedback types in one run
+  max-stages: 12            # stage executions incl. loop re-entries
+  max-wall-clock-min: 60
+  max-tokens: 0             # 0 = unlimited; else park when exceeded (when the harness exposes usage)
+```
+
+Park verdict `BUDGET-EXCEEDED`, preserving whatever stages completed. This is the
+guardrail against waking to a run that churned all night or a surprise bill.
+
+---
+
+## 6. Operational safety
+
+Autonomy edits files unattended for a long time, so tree hygiene is mandatory:
+
+- **Clean-start (`require-clean-tree: true`):** refuse to begin autonomous continuation if
+  the working tree is dirty — or auto-stash and note it in the report. Never build on top
+  of unknown local changes.
+- **Recoverable checkpoints (`checkpoint: wip-commit | worktree | none`):** by default,
+  commit a `wip:` checkpoint after each green stage so a crash or container reclaim mid-run
+  loses at most one stage, and the human can see incremental diffs. `worktree` runs the
+  continuation in an isolated git worktree (the article's parallel-feature recommendation).
+- **Single-run lock (`lock: true`):** a `.temper/autonomy.lock` with a run-id prevents a
+  concurrent `/temper` from corrupting the singleton `build-state.json`.
+- **One-command abandon:** with `stop-before-commit: true` (default) the branch is never
+  committed, so `git branch -D` discards the night. Documented in the report's footer; if
+  `stop-before-commit: false`, the report prints the exact `git reset` to undo.
+
+---
+
+## 7. Unattended command execution (security)
+
+Build/Check run Bash (test runners, linters) with **no human approval** during an
+autonomous run — a real surface (e.g. a malicious dependency's test script). Controls:
+
+- `command-policy: inherit | allowlist`. `allowlist` restricts unattended Bash to
+  `commands-allow` (e.g. `["npm test","npm run lint","pytest","go test ./..."]`); anything
+  outside it **parks** for human approval rather than running.
+- The report records every command executed during the run, so the night is auditable.
+- This section is called out explicitly so `/security-review` has something concrete to
+  assess rather than discovering silent unattended execution.
+
+---
+
+## 8. Conservative fix policy under autonomy
+
+Interactive "Fix all" includes low-severity findings. Applying those across many files
+overnight is unreviewed churn. Under autonomy:
+
+- `auto-fix-severity: [critical, high]` (default) — auto-apply only these; lower-severity
+  findings are **listed in the report, not applied**.
+- Loop budget per feedback type defers to `feedback.max-loops` (single source of truth);
+  the global cap is `budget.max-total-loops`. There is no separate `autonomy.max-loops`.
+
+---
+
+## 9. Config block
 
 ```yaml
 # ============================================================
-# Autonomous Mode (v5.10.0)
-# Opt-in unattended runs. Default mode is `interactive`, which is
-# byte-identical to v5.9.0 (no gate auto-resolves). Autonomy runs ANY
-# complexity; the blast-radius envelope below — not the complexity tier —
-# decides when it parks for a human.
+# Autonomous Continuation (v5.10.0)
+# Armed by a human at the PLAN GATE, never at invocation. /temper always
+# runs Plan first and stops for human review; after approval the human may
+# let the remaining stages run unattended. Default behavior is unchanged:
+# with this block absent, the plan gate offers only the usual stage-by-stage
+# continuation (byte-identical to v5.9.0).
 # ============================================================
 autonomy:
-  mode: interactive          # interactive | auto. Default interactive (no behavior change).
-  prompt: true               # show the Run Mode selector at /temper start when no --auto/--interactive arg
+  enabled: true              # false => the plan gate never offers autonomous/supervised options
+  default-choice: interactive # plan-gate continuation pre-highlighted: interactive | auto | supervised
+  preselect-arg: true        # honor `/temper --auto` as a soft pre-highlight (still stops at plan)
+
+  # --- Self-judgment safeguards (§4) ---
+  conservative-bias: true
+  confidence-threshold: 0.7  # a "continue" below this confidence becomes a park
+  gate-judge: false          # isolated tier-fast park/proceed judge for review (opt-in)
 
   # --- Safety envelope ---
-  stop-before-commit: true   # NEVER auto-commit/merge. The human is always the merge gate.
-                             # false => auto-commit on a clean pipeline (still NEVER pushes/merges).
-  max-blast-radius: 15       # park at the plan gate if blast radius exceeds this many files
-  park-on-touch:             # park at the plan gate if the change touches these (substring/glob match)
+  stop-before-commit: true   # NEVER auto-commit/merge. Human is always the merge gate.
+  max-blast-radius: 15       # park (back to plan gate) if blast radius exceeds N files
+  park-on-touch:
     - "**/auth/**"
     - "**/payment/**"
     - "**/billing/**"
-  respect-escalation: true   # park when a models.escalate-on trigger appears
-                             # (architecture-finding, correctness-risk)
+  respect-escalation: true   # park on a models.escalate-on trigger (architecture-finding, correctness-risk)
 
-  # --- Loop budget (reuses feedback.max-loops; listed here for discoverability) ---
-  auto-fix: true             # allow Review→Build / Check→Build / Eval→Build auto-fix loops
-  max-loops: 2               # alias of feedback.max-loops for autonomous runs
+  # --- Run budget, hard ceiling (§5) ---
+  budget:
+    max-total-loops: 4
+    max-stages: 12
+    max-wall-clock-min: 60
+    max-tokens: 0
 
-  # --- Handoff ---
-  report: ".temper/autonomy-report.md"   # morning-handoff verdict file (see §5)
-  notify: none               # none | push  (push => fire a PushNotification when the run parks)
+  # --- Fix policy under autonomy (§8) ---
+  auto-fix-severity: [critical, high]   # per-type loop count defers to feedback.max-loops
+
+  # --- Operational safety (§6) ---
+  require-clean-tree: true
+  checkpoint: wip-commit     # none | wip-commit | worktree
+  lock: true
+
+  # --- Command execution surface (§7) ---
+  command-policy: inherit    # inherit | allowlist
+  commands-allow: []
+
+  # --- Handoff (§10) ---
+  report: ".temper/autonomy-report.md"
+  report-json: ".temper/autonomy-report.json"
+  notify: push-on-park       # none | push-on-park (default) | push-on-finish
 ```
 
-**Graceful-degradation contract** (matches Temper's existing discipline): when
-`autonomy.mode: interactive` **or the `autonomy` block is absent**, no gate auto-resolves
-and the run is byte-identical to v5.9.0. Disabling autonomy never affects adaptive-depth,
-cache, loops, or model routing.
-
-**Complexity is orthogonal.** Autonomy does not read `adaptive-depth.floor` and is not
-clamped by it. A complex feature runs autonomously; it will simply hit the plan-gate park
-conditions (blast radius, escalation triggers, guard paths) more often and hand back to
-the human there — which is the intended "autonomy within an envelope" behavior. Users who
-want complex changes to sail through can raise `max-blast-radius` and empty `park-on-touch`.
+**Graceful-degradation contract:** with the `autonomy` block absent or `enabled: false`,
+the plan gate offers only the existing stage-by-stage continuation and no gate ever
+auto-resolves — byte-identical to v5.9.0. Disabling autonomy never affects adaptive-depth,
+cache, loops, or model routing. Autonomy does **not** read `adaptive-depth.floor` and is
+not clamped by complexity tier.
 
 ---
 
-## 5. The park artifact (morning handoff)
+## 10. Park artifact (morning handoff)
 
-When the pipeline parks, it does two things:
+On park, two things happen:
 
-1. **Saves state** exactly like the existing "Save for later" path — `build-state.json`
-   with the parked `stage`/`next_stage`, plus `run_mode: autonomous`. This means *resume
-   is free*: the human runs `/temper` and lands back at the parked gate, interactively.
-2. **Writes `.temper/autonomy-report.md`** — the analogue of the article's
-   `.pipeline/review.md`. Proposed schema:
+1. **State is saved** like the existing "Save for later" path — `build-state.json` with the
+   parked `stage`/`next_stage` plus `run_mode: autonomous`. Resume is free: `/temper` lands
+   back at the parked gate, interactively.
+2. **A report is written**, both human-readable (`autonomy-report.md`) and machine-readable
+   (`autonomy-report.json`) so `/temper:status` and CI can consume it.
+
+`autonomy-report.md`:
 
 ```markdown
 # Autonomy Report — {feature slug}
 
-**Verdict:** SHIP-PENDING-COMMIT | PARKED-NEEDS-DECISION | BLOCKED
-**Parked at:** {stage} gate
-**Reason:** {one-line park reason}
-**Branch:** feature/{slug}   **Run mode:** autonomous   **Finished:** {ISO ts}
+**Verdict:** SHIP-PENDING-COMMIT | PARKED-NEEDS-DECISION | BLOCKED | BUDGET-EXCEEDED
+**Parked at:** {stage} gate     **Reason:** {one-line}
+**Branch:** feature/{slug}   **Checkpoints:** {N wip commits}   **Finished:** {ISO ts}
+
+## Acceptance checklist (all must hold for SHIP-PENDING-COMMIT)
+- [x] all tasks complete (6/6)
+- [x] review clean or auto-fixed (2 high fixed; 1 low deferred — see below)
+- [x] check pass, coverage 86% ≥ 80%
+- [x] all scenarios covered
+- [x] eval aggregate 0.82 ≥ 0.75
 
 ## What ran
-| Stage | Result | Auto-decision | Loops |
-|-------|--------|---------------|-------|
-| Plan  | depth=complex, blast=12 files | continued | — |
-| Build | 6/6 tasks, 5 tests | continued | — |
-| Review| 2 high auto-fixed | fix-all → continued | 1 |
-| Check | tests pass, cov 86% | continued | 1 (Check→Build) |
-| Eval  | aggregate 0.82 ≥ 0.75 | continued | — |
-| Commit| — | PARKED (stop-before-commit) | — |
+| Stage | Result | Auto-decision | Confidence | Loops |
+|-------|--------|---------------|-----------|-------|
+| Design| skipped (simple) | — | — | — |
+| Build | 6/6 tasks, 5 tests | continued | 0.91 | — |
+| Review| 2 high auto-fixed | fix → continued | 0.84 | 1 |
+| Check | tests pass, cov 86% | continued | 0.95 | 1 (Check→Build) |
+| Eval  | aggregate 0.82 | continued | 0.88 | — |
+| Commit| — | PARKED (stop-before-commit) | — | — |
 
 ## Your next action
-{Exact instruction: e.g. "Review the diff and run `/temper` to resume at the Commit gate,
-or `git diff` then commit." For PARKED/BLOCKED: the precise question to answer, with the
-file:line context that triggered the park.}
+{Exact instruction + the file:line context that triggered any park.}
 
-## Open questions / blockers
-- {if any}
+## Deferred (not applied autonomously)
+- low-severity findings: {list}
+- config suggestions (generated, not applied): {list}
 
-## Artifacts
-- spec: .temper/specs/{slug}/  (intent.md, tasks.md, plan.md[, design.md])
-- diff: `git diff`
-- config suggestions (generated, not applied): {list or "none"}
+## Audit
+- commands executed: {list}     - budget used: 3/12 stages, 2/4 loops, 18 min
+- abandon this run: `git branch -D feature/{slug}`
 ```
 
-`VERDICT` maps to the article's SHIP / NEEDS WORK / BLOCK trichotomy:
-SHIP-PENDING-COMMIT ≈ SHIP, PARKED-NEEDS-DECISION ≈ NEEDS WORK, BLOCKED ≈ BLOCK.
+`SHIP-PENDING-COMMIT` requires the **explicit acceptance checklist above** to all hold —
+otherwise the verdict is PARKED/BLOCKED. The JSON mirrors the same fields for machines.
+Verdict mapping to the article: SHIP-PENDING-COMMIT ≈ SHIP, PARKED-NEEDS-DECISION ≈ NEEDS
+WORK, BLOCKED ≈ BLOCK.
 
 ---
 
-## 6. Observability
+## 11. Observability
 
-Record the run so `/temper:status` can show what happened overnight. Additions to
-`observability.json`:
+Additions to `observability.json`:
 
-- `run_mode: "autonomous" | "interactive"` (per run).
-- `gate_decisions: []` — one entry per gate: `{ stage, decision, auto: true|false,
-  reason, ts }`. Interactive runs leave `auto: false`; autonomous runs record the
-  auto-resolved choice and its justification.
-- `park: { stage, reason, verdict, ts }` when the run parks.
+- `run_mode: "interactive" | "autonomous" | "supervised"` (per run).
+- `gate_decisions: []` — `{ stage, decision, auto, confidence, reason, ts }` per gate.
+- `park: { stage, reason, verdict, ts }` on park.
+- `budget_used: { stages, loops, wall_clock_min, tokens }`.
 
-`/temper:status` gains an "Autonomous runs" section: last run mode, where it parked, how
-many gates auto-resolved, loops consumed vs. budget.
+`/temper:status` gains an **Autonomous runs** panel: last run mode, park point, gates
+auto-resolved vs. parked, loop/budget consumption.
 
 ---
 
-## 7. Files to change
+## 12. Files to change
 
 | File | Change |
 |------|--------|
-| `.claude/temper.config` | Add the `autonomy:` block (§4), defaulted to `interactive`. |
-| `.claude-plugin/reference/orchestrator-patterns.md` | **New canonical section "Autonomy Mode"**: run_mode resolution, the per-gate auto-resolve policy table (§3), park conditions, park-report schema (§5), circuit-breaker interaction, capability suppression, observability fields, and the graceful-degradation contract. This is the shared home; `temper.md` references it (single-read contract). |
-| `.claude/commands/temper.md` | (a) Resolve `run_mode` at entry + show the Run Mode selector; (b) at **every** Stage Gate, add an "Autonomous auto-resolve" branch that, when `run_mode == autonomous`, evaluates the park policy and either selects the Recommended option or parks (instead of calling `AskUserQuestion`); (c) Commit stage: never auto-commit under autonomy — write the report and park; (d) suppress teach-me/grill-me/walkthrough/config-prompts under autonomy. |
-| `.claude-plugin/reference/status.md` | Add the "Autonomous runs" panel (run_mode, park point, gate auto-resolve count, loop budget used). |
-| `.claude/CLAUDE.md` | Document `/temper --auto` and the autonomy config in the command table / notes. |
-| `README.md` | New "Autonomous Mode" subsection: opt-in, safety envelope, parks before commit, "any complexity." |
+| `.claude/temper.config` | Add the `autonomy:` block (§9), defaulted safe. |
+| `.claude-plugin/reference/orchestrator-patterns.md` | New canonical **"Autonomous Continuation"** section: plan-gate arming, post-plan auto-resolve policy table (§3), self-judgment safeguards (§4), run budget (§5), operational safety (§6), command policy (§7), fix policy (§8), park report + acceptance checklist schema (§10), observability fields (§11), graceful-degradation contract. Shared home; `temper.md` references it (single-read contract). |
+| `.claude/commands/temper.md` | (a) Plan gate: add the three-way continuation choice (§2) and arm `run_mode`; (b) each post-plan Stage Gate: add an auto-resolve / supervised-confirm branch that evaluates the park policy instead of calling `AskUserQuestion` when armed; (c) Commit stage: never auto-commit under autonomy — write report + park; (d) suppress teach-me/grill-me/walkthrough/config-prompts when `run_mode != interactive`; (e) clean-start + lock + checkpoint hooks. |
+| `.claude-plugin/reference/status.md` | Add the "Autonomous runs" panel (§11). |
+| `.claude-plugin/reference/plan.md` | Note that the plan gate now offers the continuation choice. |
+| `.claude/CLAUDE.md` | Document the plan-gate choice, `--auto` soft pre-select, and the autonomy config. |
+| `README.md` | New "Autonomous Continuation" subsection: plan-gate-armed, safety envelope, parks before commit, any complexity. |
 | `CHANGELOG.md` | 5.10.0 entry. |
 | `.claude-plugin/plugin.json` / version refs | Bump to 5.10.0. |
 
-**Out of scope (future):** extending autonomy to `/temper:fix` (it already shares
-`orchestrator-patterns.md`, so it would inherit the Autonomy Mode section with a thin
-hook), and a true background/scheduled runner.
+**Out of scope (future):** extending autonomy to `/temper:fix` (shares
+`orchestrator-patterns.md`, would inherit with a thin hook); a true background/scheduled
+runner.
 
 ---
 
-## 8. Test / verification plan
+## 13. Test / verification plan
 
-1. **Degradation:** with no `autonomy` block (and with `mode: interactive`), diff the
-   gate behavior against v5.9.0 — must be byte-identical (no auto-resolve, selector not
-   shown unless `prompt: true` and even then it defaults to interactive).
-2. **Happy path:** `/temper --auto` on a small isolated change → runs to the Commit gate,
-   parks, writes a SHIP-PENDING-COMMIT report; `/temper` resume lands at Commit.
-3. **Open-question park:** a vague request → plan flags OPEN QUESTION → parks at plan with
-   PARKED-NEEDS-DECISION.
-4. **Blast-radius park:** a change touching `>max-blast-radius` files or a `park-on-touch`
-   path → parks at plan even though the plan itself is clean.
-5. **Loop-then-park:** seed a persistent test failure → Check→Build loops to `max-loops`,
-   circuit breaker trips → parks BLOCKED with the failing test in the report.
-6. **No-merge guarantee:** assert that no autonomous path ever calls `git commit`
-   (with default `stop-before-commit: true`) or `git push`/merge under any setting.
-7. **Complex feature:** a complex-tier feature runs autonomously (not clamped by
-   adaptive-depth) and parks per the envelope, not per the tier.
+1. **Degradation:** `autonomy.enabled: false` (and block-absent) → plan gate offers only
+   stage-by-stage; no gate auto-resolves; diff against v5.9.0 must be byte-identical.
+2. **Plan always gates:** `/temper --auto "x"` → Plan runs and **stops** at the plan gate;
+   the "Autonomous" option is pre-highlighted but requires an explicit click.
+3. **Happy path:** approve plan → choose Autonomous → small change runs to the Commit gate,
+   parks SHIP-PENDING-COMMIT with a fully-ticked acceptance checklist; `/temper` resume
+   lands at Commit.
+4. **Supervised:** choose Supervised → real code is built; each gate pauses showing the
+   auto-decision + confidence and requires a confirm (proves it is not a no-op).
+5. **Blast-radius park:** change touching `>max-blast-radius` files or a `park-on-touch`
+   path → after plan approval, parks back at the plan gate / before build.
+6. **Loop-then-park:** persistent test failure → Check→Build loops to the limit → circuit
+   breaker trips → parks BLOCKED with the failing test in the report.
+7. **Budget park:** force `max-stages`/`max-wall-clock-min` low → parks BUDGET-EXCEEDED with
+   partial progress preserved.
+8. **No-merge guarantee:** assert no autonomous path calls `git commit` (default) or
+   `git push`/merge under any setting.
+9. **Command allowlist:** `command-policy: allowlist` with a command outside the list → the
+   stage parks for approval instead of executing it.
+10. **Complex feature:** a complex-tier feature runs autonomously after plan approval (not
+    clamped by adaptive-depth) and parks per the envelope, not the tier.
+11. **Crash recovery:** kill the run mid-build with `checkpoint: wip-commit` → at most one
+    stage of work lost; resume continues.
+12. **Quality parity (dogfood):** `/temper:eval` comparison of autonomous vs. interactive
+    outcomes on a small benchmark set, to validate the "same quality" claim rather than
+    assert it.
 
 ---
 
-## 9. Recommendation
+## 14. Recommendation
 
-Ship it **opt-in**, default `interactive`, with `stop-before-commit: true` and the
-blast-radius envelope on by default. This captures ~80% of the overnight-batch value
-(green check + SHIP verdict gates auto-resolve) while keeping the human exactly where the
-human adds value: ambiguous intent, high blast radius, and the merge decision. Do not make
-it the default, and keep teach-me/grill-me interactive-only — they are the heart of
-Temper's "stay in command of the change" promise and have no meaning unattended.
+Ship it **opt-in**, plan-gate-armed, default continuation `interactive`, with
+`stop-before-commit: true`, the blast-radius envelope, the run budget, and clean-start +
+checkpoints all on by default. Lead users in via **Supervised** mode, then Autonomous. This
+captures the overnight-batch value while keeping the human exactly where the human adds
+value: the plan, high blast radius, and the merge. Keep teach-me/grill-me interactive-only —
+they are the heart of Temper's "stay in command of the change" promise and have no meaning
+unattended.
+```
