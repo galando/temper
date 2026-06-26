@@ -1,7 +1,6 @@
 # Proposal: Autonomous Continuation for `/temper`
 
 **Status:** Draft / Plan
-**Target version:** 5.10.0
 **Scope:** `/temper` unified command (extensible to `/temper:fix` later)
 **Default behavior:** unchanged — autonomy is opt-in and armed by a human at the plan gate.
 
@@ -198,7 +197,7 @@ overnight is unreviewed churn. Under autonomy:
 
 ```yaml
 # ============================================================
-# Autonomous Continuation (v5.10.0)
+# Autonomous Continuation
 # Armed by a human at the PLAN GATE, never at invocation. /temper always
 # runs Plan first and stops for human review; after approval the human may
 # let the remaining stages run unattended. Default behavior is unchanged:
@@ -334,8 +333,7 @@ auto-resolved vs. parked, loop/budget consumption.
 | `.claude-plugin/reference/plan.md` | Note that the plan gate now offers the continuation choice. |
 | `.claude/CLAUDE.md` | Document the plan-gate continuation choice and the autonomy config. |
 | `README.md` | New "Autonomous Continuation" subsection: plan-gate-armed, safety envelope, parks before commit, any complexity. |
-| `CHANGELOG.md` | 5.10.0 entry. |
-| `.claude-plugin/plugin.json` / version refs | Bump to 5.10.0. |
+| `CHANGELOG.md` | Add a changelog entry for the feature (version is set separately via the release/version-bump process — not part of this change). |
 
 **Out of scope (future):** extending autonomy to `/temper:fix` (shares
 `orchestrator-patterns.md`, would inherit with a thin hook); a true background/scheduled
