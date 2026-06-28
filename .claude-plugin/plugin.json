@@ -20,7 +20,8 @@
     "./.claude/commands/fix.md",
     "./.claude/commands/pack.md",
     "./.claude/commands/status.md",
-    "./.claude/commands/eval.md"
+    "./.claude/commands/eval.md",
+    "./.claude/commands/init.md"
   ],
   "skills": [
     "./.claude/skills/temper-core",

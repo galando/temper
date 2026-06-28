@@ -3,6 +3,34 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## Autonomous Continuation (opt-in)
+
+After the human approves the plan, `/temper` can run the remaining stages
+(design → build → review → check → eval) unattended and leave a report. Plan-gate-armed,
+never invocation-time; never pushes/merges; never re-plans unattended; parks before commit
+and on any decision a human should own.
+
+- **Opt-in, byte-identical when off:** with the `autonomy:` block absent or `enabled: false`,
+  the plan gate offers only the existing stage-by-stage continuation and no gate ever
+  auto-resolves — identical to v5.9.0.
+- **Plan is always the arming point:** `/temper` always runs Plan first and stops at the plan
+  gate. The two-way continuation choice (Stage by stage / Autonomous) replaces the single
+  "Continue to Build" option only when armed.
+- **Reused machinery, no new mechanisms:** confidence reuses `review.confidence-threshold`
+  (0.7); per-type loops reuse `feedback.max-loops` + a global `budget.max-total-loops`.
+  Park = existing "Save for later" path + one `autonomy-report.md`. Observability fields
+  (`run_mode`, `gate_decisions[]`, `park{}`, `budget_used{}`) are additive over v3, every
+  numeric carries a G-5 `source` sibling.
+- **Safety envelope:** `stop-before-commit: true` default, blast-radius + `park-on-touch`
+  paths, run budget (stages/loops/wall-clock), clean-start lock, wip checkpoints. Command
+  execution reuses harness `settings.json` perms — a denied/unpermitted command parks (no
+  bespoke allowlist).
+- **New `/temper:init`:** seeds a project's `.claude/temper.config` from the default template
+  (idempotent).
+- Canonical definition: `.claude-plugin/reference/orchestrator-patterns.md` → "Autonomous
+  Continuation". Proposal: `docs/proposals/autonomous-mode.md`. (Version bump is owned by the
+  release process — not part of this change.)
+
 ## v5.9.0 — Phase 3: Token Efficiency & Loop Engineering
 
 Three independent, composable levers layered on the v5.6.0 model-routing foundation.

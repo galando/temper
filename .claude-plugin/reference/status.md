@@ -174,6 +174,16 @@ Detect which external tools are available by checking capabilities:
 │   cost per shipped feature.                          │
 │   (If observability.json absent/v1:                  │
 │    "No observability data yet")                      │
+│                                                      │
+│ AUTONOMOUS RUNS                                      │
+│   Last run mode: {interactive|autonomous}            │
+│   Park point: {stage} — {reason}                     │
+│   Gates auto-resolved: {N} | parked: {N}             │
+│   Budget used: {s}/{max} stages, {l}/{max} loops,    │
+│                {min}/{max} min, {tok}/{max} tok      │
+│                (sources shown next to each numeric)  │
+│   (If autonomy fields absent: print nothing —        │
+│    byte-identical to v5.9.0)                         │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -202,6 +212,27 @@ avg latency/feature.
 **Graceful absence:** if `.temper/observability.json` does NOT exist OR is not `version: 2`,
 print `"No observability data yet. Run /temper to capture per-stage cost and telemetry."`
 and do NOT error. This preserves the existing graceful-degradation contract.
+
+### Step 2.6: Autonomous runs Panel
+
+Render from the additive autonomy fields in `.temper/observability.json` (all defined in
+orchestrator-patterns.md → "Autonomous Continuation" §11). This "Autonomous runs" panel is
+**purely additive**:
+if `run_mode` / `park` / `gate_decisions` / `budget_used` are absent (i.e. the run never
+armed autonomy, or observability predates autonomy), **print nothing** for this panel — the
+dashboard is byte-identical to v5.9.0.
+
+- **Last run mode:** `observability.json run_mode` (`interactive` | `autonomous`), with
+  `run_mode_source`.
+- **Park point:** `observability.json park.stage` + `park.reason` + `park.verdict` (omit if
+  no `park` entry — the run was still running or completed without parking).
+- **Gates auto-resolved vs parked:** count `gate_decisions[]` entries where `auto: true`,
+  split by `decision` (AUTO-RESOLVE vs PARK).
+- **Budget used:** `budget_used.{stages, loops, wall_clock_min, tokens}` each with their
+  `source` sibling, shown against `budget.{max-stages, max-total-loops, max-wall-clock-min}`
+  (tokens has no budget ceiling until the harness exposes usage reliably — surface it as a
+  consumption indicator, not a fraction). Surface the `source` flag next to each numeric so the
+  dashboard never lies about provenance.
 
 ### Step 3: Learning Loop Prompt
 

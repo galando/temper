@@ -81,6 +81,18 @@ Temper cuts a run's token cost with three optimizations — **all ON by default*
 
 Full explanation (mechanism, tiers, decision rule, when quality drops): **[docs/token-efficiency.md](docs/token-efficiency.md)**
 
+### Autonomous Continuation (opt-in)
+
+After you approve the plan, `/temper` can run the remaining stages
+(design → build → review → check → eval) unattended and leave a report.
+It never pushes or merges, never re-plans on its own, and parks before
+commit and on anything needing a human. Turn it off and Temper behaves
+exactly as before.
+
+First run: pre-allow your build/test commands in `settings.json`, or the run
+parks on the first unpermitted command. No config yet? `/temper:init` seeds
+one. Details: docs/proposals/autonomous-mode.md
+
 ## Commands
 
 | Command | Purpose |
