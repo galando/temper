@@ -67,6 +67,18 @@ intent.md
 
 Full methodology: [docs/methodology.md](docs/methodology.md)
 
+### Autonomous Continuation (opt-in) (v6.0.0)
+
+After you approve the plan, `/temper` can run the remaining stages
+(design → build → review → check → eval) unattended and leave a report.
+It never pushes or merges, never re-plans on its own, and parks before
+commit and on anything needing a human. Turn it off and Temper behaves
+exactly as before.
+
+First run: pre-allow your build/test commands in `settings.json`, or the run
+parks on the first unpermitted command. No config yet? `/temper:init` seeds
+one. Details: docs/proposals/autonomous-mode.md
+
 ## Token Efficiency (v5.9.0)
 
 Temper cuts a run's token cost with three optimizations — **all ON by default**, all revert to v5.8.0 when their flag is off:
@@ -80,18 +92,6 @@ Temper cuts a run's token cost with three optimizations — **all ON by default*
 **The one decision you make:** adaptive-depth runs a lighter pipeline on small changes. It's safe when the change is genuinely isolated — but if it touches a shared interface, auth, money, or has an unclear blast radius, click **"Escalate to full pipeline"** at the plan gate (one click, that change only — no config editing). For a whole high-stakes codebase, set `floor: medium` in `.claude/temper.config` once and never think about it again.
 
 Full explanation (mechanism, tiers, decision rule, when quality drops): **[docs/token-efficiency.md](docs/token-efficiency.md)**
-
-### Autonomous Continuation (opt-in)
-
-After you approve the plan, `/temper` can run the remaining stages
-(design → build → review → check → eval) unattended and leave a report.
-It never pushes or merges, never re-plans on its own, and parks before
-commit and on anything needing a human. Turn it off and Temper behaves
-exactly as before.
-
-First run: pre-allow your build/test commands in `settings.json`, or the run
-parks on the first unpermitted command. No config yet? `/temper:init` seeds
-one. Details: docs/proposals/autonomous-mode.md
 
 ## Commands
 
