@@ -100,6 +100,13 @@ If agents.nested is enabled in temper.config:
 the "Full methodology: Read …" line, and the CRITICAL no-gate / return-to-orchestrator
 rule. Only the bracketed deltas change per stage.
 
+**print-output contract:** every stage summary box (the formatted `PLAN`/`BUILD`/`REVIEW`/
+`CHECK`/`EVAL` box the stage Agent returns) **prints to the main terminal in BOTH modes** —
+interactive AND autonomous. The orchestrator emits the summary box before the gate decision,
+so an unattended overnight run still leaves a visible, scroll-back-readable record of each
+stage's result on the main terminal. Autonomy changes WHICH gate decision is taken
+(AskUserQuestion vs auto-resolve), never WHETHER the summary is printed.
+
 **Cacheable prefix delta (v5.9.0):** when `tokens.cache.enabled` is true, the "Full
 methodology: Read …" line and the always-on reference reads (orchestrator-patterns,
 pack-manifest, stack-pack, config) form a **cacheable context block** loaded FIRST, ahead
@@ -759,3 +766,214 @@ When looping back, the downstream stage passes structured context to the upstrea
 | Build → Plan | build-context.json with infeasibility reasons |
 
 The receiving stage reads this context at startup (Step 1 of its methodology).
+
+---
+
+## Autonomous Continuation
+
+**This is the canonical definition of Autonomous Continuation.** `temper.md` only references
+it (single-read contract) — it does not redeclare the policy. `/temper:fix` will inherit it
+with a thin hook when autonomy is extended to it (out of scope here).
+
+**Design stance:** The plan stage is always human-gated. `/temper` always runs Plan first
+and stops at the plan gate. Autonomy is *armed there*, never at invocation. Autonomy governs
+the post-plan stages (`design? → build → review → check → eval`) only, then **parks before
+commit** and on any decision a human should own. It runs unattended until a budget ceiling,
+a blast-radius trip, an unfixable BLOCK, or the commit is reached — then it parks with a
+report and degrades into the existing save-state/resume path.
+
+> **Guarantees.** Autonomy never pushes, never merges, never re-plans unattended, and always
+> lets the human review the plan first.
+
+### Graceful-degradation contract (the most important property)
+
+With the `autonomy` block absent OR `autonomy.enabled: false`, the plan gate offers only the
+existing stage-by-stage continuation ("Continue to Build (Recommended)") and **no gate ever
+auto-resolves** and **no annotation is shown** — byte-identical to v5.9.0. Disabling autonomy
+never affects adaptive-depth, cache, loops, or model routing. Autonomy does **not** read
+`adaptive-depth.floor` and is not clamped by complexity tier.
+
+### §2 — Plan-gate arming
+
+There is **no invocation-time mode**. The user runs `/temper "..."` exactly as today. Plan
+runs, the plan gate appears, the human reviews/edits/approves the plan. The plan gate then
+offers a **continuation choice** (replacing the single "Continue to Build"):
+
+- **"Stage by stage (Recommended)"** — stop at each gate (current behavior; v5.9.0).
+- **"Autonomous — run the rest unattended"** — auto-resolve design→build→review→check→eval
+  per the policy table below; park before commit and on anything needing a human.
+
+`default-choice` config decides which continuation option is pre-highlighted. The existing
+plan-gate options (Grill Me, Teach Me, walkthrough, Escalate to full pipeline, Save for
+later, Other) are unchanged. Arming sets `run_mode` in `build-state.json` (`interactive` |
+`autonomous`). When autonomy is off/absent, the plan gate shows "Continue to Build
+(Recommended)" verbatim and arming never happens.
+
+**Interactive gates are annotated, not duplicated:** when `autonomy.enabled` is true AND the
+human chooses "Stage by stage", each subsequent gate additionally shows — as an *annotation
+above the usual options* — the decision autonomy *would* take, its confidence, and whether
+the park policy would have continued or stopped. The human still decides every gate. When
+`autonomy.enabled` is false, no annotation appears (byte-identity).
+
+### §3 — Auto-resolve policy table (post-plan only)
+
+For each post-plan gate, autonomy replaces the `AskUserQuestion` call with a decision that
+selects the gate's existing **Recommended** option **unless a park condition fires**.
+Feedback loops, circuit breakers, loop cost tiers, observability, and save-state are reused
+verbatim. In interactive mode the same decision is computed and shown as a gate annotation,
+but the human still chooses.
+
+| Gate | Auto-action (no park) | Park condition (halt + report) |
+|------|----------------------|--------------------------------|
+| **Plan** | — | **Always human** (the arming point; never auto-resolved) |
+| **Design** | "Continue to Build" | Design surfaces an unresolved trade-off / open question (subject to the confidence rule, §4) |
+| **Build** | "Continue to Review" | Build hits infeasibility → returns to the **plan gate** (human); autonomy never loops Build→Plan unattended |
+| **Review** | "Fix all & continue to Check", running the Review→Build auto-fix loop bounded by `feedback.max-loops` — but applying only `auto-fix-severity` levels (§8) | A `critical`/BLOCK-class finding remains after max loops, or a non-auto-fixable critical exists |
+| **Check** | On test failures, run Check→Build loop bounded by `feedback.max-loops`; else advance | Tests still failing after max loops, or same failure twice (existing circuit-breaker rule 3) |
+| **Eval** | On `eval.block-on` failure, run Eval→Build loop bounded by `feedback.max-loops`; else advance | A `block-on` dimension still below `pass-threshold` after max loops |
+| **Commit** | **Never auto-commit** (default) | Always parks with a SHIP-pending report (unless `stop-before-commit: false` is explicitly set) |
+
+A tripped circuit breaker becomes a **park**, never an infinite loop. The global budget (§5)
+bounds the run regardless of per-type loop counts. **No new mechanism** is introduced: the
+park is the existing "Save for later" path plus one markdown report (§10).
+
+### §4 — Self-judgment safeguards (the core risk)
+
+Most park conditions are *LLM judgments*, not deterministic checks — and the same model that
+might misbuild is the one deciding whether to stop. Three structural mitigations, none of
+which adds a new mechanism:
+
+1. **Plan is always human-reviewed (§2).** The single most dangerous autonomous judgment —
+   "is this the right thing to build?" — is removed from autonomy entirely.
+2. **Conservative bias (`conservative-bias: true`, default):** when a proceed/park signal is
+   *uncertain*, park. Default-to-stop, not default-to-proceed.
+3. **Confidence threshold:** a "continue" decision whose confidence falls below the
+   **existing** `review.confidence-threshold` (default 0.7) is downgraded to a park. One
+   threshold, one meaning — **no new config key**. Confidence reuses the existing review
+   threshold; it is never given its own autonomy-scoped key.
+
+### §5 — Run budget (hard ceiling)
+
+Per-type loop limits do not bound a whole overnight run (Review + Check + Eval loops
+compound). A global budget forces a park when exceeded:
+
+```yaml
+budget:
+  max-total-loops: 4        # across ALL feedback types in one run
+  max-stages: 12            # stage executions incl. loop re-entries
+  max-wall-clock-min: 60
+```
+
+Park verdict `BUDGET-EXCEEDED`, preserving whatever stages completed. The loop count per
+type still defers to `feedback.max-loops`; the global cap is `budget.max-total-loops`.
+**The loop limit never gets its own autonomy-scoped key.**
+
+### §6 — Operational safety
+
+Autonomy edits files unattended for a long time, so tree hygiene is mandatory:
+
+- **Clean-start (`require-clean-tree: true`):** refuse to begin autonomous continuation if
+  the working tree is dirty — or auto-stash and note it in the report. Never build on top of
+  unknown local changes.
+- **Recoverable checkpoints (`checkpoint: wip-commit | none`):** by default, commit a `wip:`
+  checkpoint after each green stage so a crash or container reclaim mid-run loses at most one
+  stage, and the human can see incremental diffs.
+- **Single-run lock (`lock: true`):** a `.temper/autonomy.lock` with a run-id prevents a
+  concurrent `/temper` from corrupting the singleton `build-state.json`.
+- **One-command abandon:** with `stop-before-commit: true` (default) the branch is never
+  committed, so `git branch -D` discards the night. Documented in the report's footer; if
+  `stop-before-commit: false`, the report prints the exact `git reset` to undo.
+
+### §7 — Unattended command execution (security)
+
+Build/Check run Bash (test runners, linters) with **no human approval** during an autonomous
+run — a real surface (e.g. a malicious dependency's test script). The fix is to **reuse the
+harness's existing permission system, not invent an allowlist**:
+
+- Autonomy runs under Claude Code's configured `settings.json` allow/deny permissions. A
+  command that isn't already permitted **parks** for human approval instead of running.
+- The report records every command executed, so the night is auditable.
+- No new mechanism — the platform already gates commands; autonomy just treats a
+  denied/unpermitted command as a park signal. **There is no `autonomy.allowlist`.**
+
+**First-run prerequisite (release notes + README):** because autonomy runs build/test
+commands without prompting, the user should pre-allow the commands their build/check needs
+in `settings.json` *before* the first unattended run — otherwise the run parks on the first
+unpermitted command.
+
+### §8 — Conservative fix policy under autonomy
+
+Interactive "Fix all" includes low-severity findings. Applying those across many files
+overnight is unreviewed churn. Under autonomy:
+
+- `auto-fix-severity: [critical, high]` (default) — auto-apply only these; lower-severity
+  findings are **listed in the report, not applied**.
+- Loop budget per feedback type defers to `feedback.max-loops` (single source of truth); the
+  global cap is `budget.max-total-loops`. **No autonomy-scoped loop-limit key is introduced.**
+
+### §10 — Park artifact (morning handoff)
+
+**A park is just the existing "Save for later" path plus one markdown file** — not a new
+state machine. Two things happen:
+
+1. **State is saved** exactly like "Save for later" — `build-state.json` with the parked
+   `stage`/`next_stage` plus `run_mode: autonomous`. Resume is free: `/temper` lands back at
+   the parked gate, interactively.
+2. **One human-readable report is written** (`autonomy-report.md`, path from
+   `autonomy.report`). The few machine-readable fields `/temper:status` needs go into the
+   existing `observability.json` (§11) — no separate JSON file.
+
+`autonomy-report.md` schema:
+
+```markdown
+# Autonomy Report — {feature slug}
+
+**Verdict:** SHIP-PENDING-COMMIT | PARKED-NEEDS-DECISION | BLOCKED | BUDGET-EXCEEDED
+**Parked at:** {stage} gate     **Reason:** {one-line}
+**Branch:** feature/{slug}   **Checkpoints:** {N wip commits}   **Finished:** {ISO ts}
+
+## Acceptance checklist (all must hold for SHIP-PENDING-COMMIT)
+- [x] all tasks complete ({done}/{total})
+- [x] review clean or auto-fixed (severity applied/deferred)
+- [x] check pass, coverage {X}% ≥ {Y}%
+- [x] all scenarios covered
+- [x] eval aggregate {s} ≥ {pass-threshold}
+
+## What ran
+| Stage | Result | Auto-decision | Confidence | Loops |
+|-------|--------|---------------|-----------|-------|
+| {stage} | {result} | {continued|PARKED|fix→continued} | {conf or —} | {N or —} |
+
+## Your next action
+{Exact instruction + the file:line context that triggered any park.}
+
+## Deferred (not applied autonomously)
+- low-severity findings: {list}
+- config suggestions (generated, not applied): {list}
+
+## Audit
+- commands executed: {list}
+- budget used: {stages}/{max-stages} stages, {loops}/{max-total-loops} loops, {min} min
+- abandon this run: `git branch -D feature/{slug}`
+```
+
+`SHIP-PENDING-COMMIT` requires the **explicit acceptance checklist above** to all hold —
+otherwise the verdict is PARKED/BLOCKED. Verdict mapping: SHIP-PENDING-COMMIT ≈ SHIP,
+PARKED-NEEDS-DECISION ≈ NEEDS WORK, BLOCKED ≈ BLOCK.
+
+### §11 — Observability additions (additive over v3, G-5 source rule preserved)
+
+Additions to `observability.json` (all ADDITIVE — v3 readers ignore them gracefully; absent
+when autonomy never ran, i.e. byte-identical to v5.9.0):
+
+- `run_mode: "interactive" | "autonomous"` (per run). `run_mode_source: "config|user-choice"`.
+- `gate_decisions: []` — `{ stage, decision, auto: bool, confidence: {value, source},
+  reason, ts }` per gate evaluated. `confidence.source` per G-5 (`measured` when from the
+  LM-judge/confidence path, `estimated` otherwise).
+- `park: { stage, reason, verdict, ts }` on park (absent when not parked).
+- `budget_used: { stages: {value, source}, loops: {value, source},
+  wall_clock_min: {value, source}, tokens: {value, source} }`. Every numeric carries a
+  `source` sibling per the G-5 rule.
+
+`/temper:status` gains an **Autonomous runs** panel: last run mode, park point, gates
+auto-resolved vs. parked, loop/budget consumption.

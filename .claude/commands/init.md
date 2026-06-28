@@ -1,0 +1,35 @@
+---
+description: "Initialize Temper config for a project (idempotent)"
+---
+
+# Temper: Init Project Config
+
+**Goal:** Ensure the current project has a `.claude/temper.config`. Idempotent — safe to run
+any number of times; an existing config is never overwritten.
+
+## Resolution
+
+```
+1. Resolve $CLAUDE_PLUGIN_ROOT (orchestrator-patterns.md → "$CLAUDE_PLUGIN_ROOT Resolution").
+2. Check whether .claude/temper.config exists in the current project:
+   a. If it EXISTS:
+        - Report: "Temper config already present: .claude/temper.config"
+        - Do NOT overwrite it. Stop (idempotent).
+   b. If it does NOT exist:
+        - Ensure the .claude/ directory exists (mkdir -p .claude).
+        - Copy the default template into place:
+            $CLAUDE_PLUGIN_ROOT/.claude-plugin/templates/temper.config.default
+            -> .claude/temper.config
+        - Report: "Created .claude/temper.config from the default template."
+3. Report where to edit it: "Edit .claude/temper.config to tune packs, review thresholds,
+   model routing, token levers, and the autonomy block."
+4. Note the fallback: if the plugin ships without the template, point the user at the
+   README's autonomous-mode note and the shipped .claude/temper.config as the reference copy.
+```
+
+## Defaults
+
+The default template is the plugin's own shipped `.claude/temper.config` — same packs, same
+review/check/eval settings, same model routing, same token-efficiency levers, and the same
+opt-in `autonomy:` block (armed at the plan gate, parked before commit). New installs get a
+known-good starting point; existing installs are untouched.

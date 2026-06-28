@@ -921,6 +921,11 @@ The mermaid block is stored in plan.md for GitHub/tool rendering; the ASCII art 
 
 #### Approval Gate
 
+> **Unified-/temper note (autonomy):** in the **unified `/temper`** command, this plan gate
+> is also the autonomy arming point — after approval it offers the continuation choice
+> (stage-by-stage vs. autonomous). This **standalone `/temper:plan`** gate is UNCHANGED: it
+> stops at the gate and never offers an autonomous continuation option.
+
 Use AskUserQuestion with these options:
 
 ```
