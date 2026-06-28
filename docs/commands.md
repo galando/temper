@@ -483,6 +483,23 @@ Root Cause: Queue consumer crashed at 2:34 AM
 
 ---
 
+## `/temper:init`
+
+Seed a project's `.claude/temper.config` from the bundled default template. Idempotent — never overwrites an existing config.
+
+```bash
+/temper:init
+```
+
+**What it does:**
+
+- If `.claude/temper.config` is absent, copies the default template into place (creating `.claude/` if needed)
+- If a config already exists, reports that it's present and leaves it untouched
+
+Use it once in a new project so Temper runs on documented, safe defaults — including the opt-in `autonomy:` block.
+
+---
+
 ## `/temper:pack`
 
 Manage quality packs: view, toggle, or create new ones.
