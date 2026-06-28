@@ -10,7 +10,7 @@ argument-hint: "<feature-description>"
   Source: .claude/commands/temper.md
 -->
 
-# Temper: Unified SDLC Command (v5.9.0)
+# Temper: Unified SDLC Command (v6.0.0)
 
 **Goal:** Execute the full SDLC flow (plan → design? → build → review → check → commit) with stage gates, feedback loops, context accumulation, observability, and **real** context isolation via Agent subprocesses.
 
@@ -209,8 +209,42 @@ Diagram (rendered below summary box — MUST be ASCII art, NOT raw mermaid sourc
 
 ### Stage Gate
 
+#### Autonomous Continuation — plan-gate arming
+
+> **Canonical definition:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md`
+> → "Autonomous Continuation" (single-read contract; do not re-read it).
+
+**Continuation Choice Resolution (before showing the gate):**
+
+```
+1. Read .claude/temper.config -> resolve the autonomy block.
+2. If the autonomy block is absent OR autonomy.enabled is false:
+     => OFF-CASE (byte-identical to v5.9.0). Show "Continue to Build (Recommended)" as the
+        first gate option. Do NOT arm run_mode, do NOT offer a continuation choice, do NOT
+        annotate any downstream gate. Skip to "Show the AskUserQuestion gate".
+3. Else (autonomy.enabled is true): the plan is the ARMING POINT. After the human has
+   reviewed/edited the plan, REPLACE the single "Continue to Build (Recommended)" option
+   with the two-way continuation choice:
+     - "Stage by stage (Recommended)" — stop at each gate (current behavior). When chosen,
+       set run_mode="interactive" in build-state.json; downstream gates additionally show
+       the autonomy annotation (decision autonomy would take + confidence + would-it-park),
+       but the human still decides every gate.
+     - "Autonomous — run the rest unattended" — auto-resolve design->build->review->check->
+       eval per the §3 policy table; park before commit and on anything needing a human.
+       When chosen, set run_mode="autonomous".
+   The continuation choice is offered ONLY here. default-choice config decides which is
+   pre-highlighted. The existing Grill Me / Teach Me / walkthrough / Escalate / Save / Other
+   options are UNCHANGED and remain available in both modes.
+4. Record run_mode ("interactive"|"autonomous") + run_mode_source ("config"|"user-choice")
+   in build-state.json AND observability.json.
+```
+
 Show the AskUserQuestion gate with:
-- "Continue to Build (Recommended)" — launch BUILD agent
+- **OFF-CASE:** "Continue to Build (Recommended)" — launch BUILD agent
+- **WHEN autonomy.enabled:** "Stage by stage (Recommended)" / "Autonomous — run the rest
+  unattended" — the two-way continuation choice (replaces the single "Continue to Build").
+  The chosen option arms run_mode per the Resolution above; the selected "Stage by stage" or
+  post-plan progression then behaves exactly as the existing "Continue to Build" launch.
 - "Walk through plan step by step" — interactive walkthrough (see below)
 - "Grill Me (Challenge the plan)" — (shown ONLY if capabilities.grill-me is not false) invoke grill-me skill with plan.md, Socratic Q&A loop that stress-tests assumptions, returns to this gate after
 - "Teach Me (Quiz me until I get it)" — (shown ONLY if capabilities.teach-me is not false) invoke teach-me skill for the Plan phase (intent/plan/tasks), teach + quiz to mastery, returns to this gate after
@@ -331,6 +365,82 @@ AskUserQuestion:
 
 ---
 
+## Autonomous Continuation — shared gate-eval hook (post-plan gates)
+
+> **Canonical policy:** orchestrator-patterns.md → "Autonomous Continuation" (§3 policy table,
+> §4 safeguards, §5 budget, §7 command perms, §8 fix policy). Read it once at the plan gate;
+> this hook only applies it.
+
+**Every post-plan gate** (Design, Build, Review, Check, Eval) runs this shared `gate-eval`
+step BEFORE showing its AskUserQuestion (or instead of it, when autonomous). The hook has
+three branches keyed on `run_mode` from `build-state.json`:
+
+```
+gate-eval(stage, park_conditions):
+  1. Read run_mode from .temper/build-state.json.
+  2. If run_mode == "autonomous":
+       (a) Compute the decision per the §3 policy table for this stage:
+           - confidence reuses review.confidence-threshold (0.7) — NO new key.
+           - on a park condition OR confidence < 0.7 OR an uncertain signal with
+             conservative-bias:true => decision = PARK (default-to-stop).
+           - on a tripped circuit breaker, an unfixable critical/BLOCK, OR a budget trip
+             (§5) => decision = PARK.
+           - otherwise => decision = AUTO-RESOLVE (select the gate's existing Recommended
+             option). Apply ONLY auto-fix-severity levels (§8); loop budget per feedback
+             type defers to feedback.max-loops, global cap to budget.max-total-loops.
+       (b) Record gate_decisions[] { stage, decision, auto:true, confidence:{value,source},
+           reason, ts } in observability.json.
+       (c) If decision == PARK: run the park flow (Task 3.4). If AUTO-RESOLVE: take the
+           Recommended action WITHOUT calling AskUserQuestion; continue to the next stage.
+  3. Else if run_mode == "interactive" AND autonomy.enabled == true:
+       (a) Compute the same decision + confidence.
+       (b) Render it as an ANNOTATION line ABOVE the gate's usual options, e.g.:
+           "[autonomy would: continue to Review | confidence 0.88 | would not park]". The
+           human still selects from the existing gate options. Then show the normal gate.
+       (c) Record gate_decisions[] with auto:false.
+  4. Else (autonomy off/absent => run_mode unset or "interactive" with autonomy off):
+       => show the normal gate, NO annotation (byte-identical to v5.9.0).
+       NOTE: this branch intentionally records NOTHING in gate_decisions[] (unlike steps
+       2b/3c) — writing observability the off-case never wrote would break byte-identity.
+       Do not "fix" this asymmetry; it is the byte-identity guarantee.
+```
+
+Each post-plan Stage Gate below invokes `gate-eval` first and notes the autonomy branch in
+effect. The gate's existing options, feedback-loop wiring, and loop-cost tiers are unchanged
+in all three branches — autonomy only swaps the `AskUserQuestion` call for a decision in the
+autonomous branch and adds one annotation line in the interactive+annotated branch.
+
+## Autonomous Continuation — operational-safety hooks + option suppression
+
+**On autonomous run begin** (immediately after the human selects "Autonomous — run the rest
+unattended" at the plan gate):
+
+1. **require-clean-tree:** if `autonomy.require-clean-tree: true` (default), refuse to begin
+   if the working tree is dirty — or auto-stash and note it in the report. Never build on top
+   of unknown local changes.
+2. **Single-run lock:** if `autonomy.lock: true`, take `.temper/autonomy.lock` containing a
+   run-id. This prevents a concurrent `/temper` from corrupting the singleton
+   `build-state.json`. Release the lock on park/finish.
+3. **Checkpoint setup:** if `autonomy.checkpoint: wip-commit`, after each GREEN stage commit
+   a `wip:` checkpoint so a crash mid-run loses at most one stage and the human can see
+   incremental diffs (`checkpoint: none` disables this).
+
+**Suppress interactive-only options when `run_mode == "autonomous"`:** the following gate
+options are **interactive-only** and are NOT offered (they have no meaning unattended):
+`Teach Me`, `Grill Me`, `Walk through plan/design step by step`, `Open HTML review`,
+`Review config suggestions`, and config-prompt AskUserQuestion calls. They are unaffected in
+the off-case and the interactive+annotated branch. The autonomous branch simply skips them —
+it auto-resolves via `gate-eval` and never calls `AskUserQuestion` for these.
+
+**print-output contract (both modes):** per orchestrator-patterns.md → "print-output
+contract" — every stage summary box prints to the main terminal in BOTH interactive and
+autonomous modes. The orchestrator emits each summary box before the gate decision, so an
+overnight autonomous run still leaves a visible, scroll-back-readable record of every
+stage's result. Autonomy changes which gate decision is taken, never whether the summary
+prints.
+
+---
+
 ## Stage 1.5: Design (Optional — for complex/medium features)
 
 **Runs in:** Agent subprocess with clean context — loads intent.md + plan.md
@@ -374,6 +484,12 @@ Return ONLY:
 ```
 
 ### Stage Gate
+
+**gate-eval (autonomy):** run the shared `gate-eval` hook first (Design park condition: an
+unresolved trade-off / open question surfaced, subject to the confidence rule §4). On
+autonomous AUTO-RESOLVE it selects "Continue to Build"; on PARK it runs the park flow; the
+interactive+annotated branch prepends the would-be decision; the off branch shows the normal
+gate. Then:
 
 Show the AskUserQuestion gate with:
 - "Continue to Build (Recommended)" — launch BUILD agent
@@ -593,6 +709,12 @@ Return ONLY:
 
 ### Stage Gate
 
+**gate-eval (autonomy):** run the shared `gate-eval` hook first (Build park condition:
+infeasible design => returns to the PLAN gate (human); autonomy NEVER loops Build→Plan
+unattended — max 1, human-driven). On autonomous AUTO-RESOLVE it selects "Continue to
+Review"; on PARK it returns to the human plan gate; the interactive+annotated branch
+prepends the would-be decision; the off branch shows the normal gate. Then:
+
 > **Feedback Loop Check:** Before showing gate, check if Build → Plan loop should be offered:
 > 1. Use Read tool to check `.claude/temper.config` → verify `feedback.enabled: true`
 > 2. Use Read tool to check `.temper/feedback-loops.json` for active loops with `from_stage: "build"`
@@ -617,6 +739,11 @@ Show the AskUserQuestion gate with:
 2. Create a loop entry in `.temper/feedback-loops.json` (schema: orchestrator-patterns.md → "Feedback Registry") with `from_stage: build`, `to_stage: plan`, `reason: "infeasible design discovered"`, `iteration: 1`, `max_iterations: 1`.
 3. Save state with `next_stage: "plan"`.
 4. Re-launch the PLAN agent (Stage 1 "Launch Planning Agent" template) with `original_args` from build-state.json, adding to its CONTEXT list: `{spec_path}/build-context.json` (what went wrong) and the note: "Feedback re-entry from Build — revise the plan to address these blockers."
+
+**Autonomy note (Build→Plan returns to a human):** under `run_mode == "autonomous"`, the
+`gate-eval` hook NEVER auto-loops Build→Plan — infeasible-design is a hard park condition
+(§3). Control returns to the **plan gate (human)**: the continuation choice is re-offered
+there, and the human re-plans. Autonomy never re-plans unattended (max 1, human-driven).
 
 **on Change (via "Other"):** Make the change, re-show the updated build summary, then re-show this gate. Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
@@ -713,6 +840,13 @@ Return ONLY:
 
 ### Stage Gate
 
+**gate-eval (autonomy):** run the shared `gate-eval` hook first (Review park condition: a
+`critical`/BLOCK-class finding remains after `feedback.max-loops`, OR a non-auto-fixable
+critical exists). On autonomous AUTO-RESOLVE it runs "Fix all & continue to Check" bounded
+by `feedback.max-loops` but applying ONLY `auto-fix-severity` levels (§8); on PARK it halts
+with a report; the interactive+annotated branch prepends the would-be decision; the off
+branch shows the normal gate. Then:
+
 > **Feedback Loop Check:** Before showing gate, follow "How Feedback Loops Actually Work" section (Step 1-2):
 > 1. Use Read tool to check `.claude/temper.config` → verify `feedback.enabled: true`
 > 2. Use Read tool to check `.temper/feedback-loops.json` for active loops
@@ -803,6 +937,12 @@ Return ONLY:
 
 ### Stage Gate
 
+**gate-eval (autonomy):** run the shared `gate-eval` hook first (Check park condition: tests
+still failing after `feedback.max-loops`, OR the same failure twice — existing circuit
+breaker rule 3). On autonomous AUTO-RESOLVE it runs the Check→Build loop bounded by
+`feedback.max-loops`, else advances; on PARK it halts; the interactive+annotated branch
+prepends the would-be decision; the off branch shows the normal gate. Then:
+
 > **Feedback Loop Check:** Before showing gate, follow "How Feedback Loops Actually Work" section (Step 1-2):
 > 1. Use Read tool to check `.claude/temper.config` → verify `feedback.enabled: true`
 > 2. Use Read tool to check `.temper/feedback-loops.json` for active loops
@@ -860,6 +1000,27 @@ After Check agent returns and before showing the gate:
     Branch: {branch}
     Ready to push?"
 ```
+
+**Autonomous Commit-park guard:** if `run_mode == "autonomous"` (read from
+`build-state.json`), this "on Commit" flow is **NEVER auto-run**. Instead:
+1. Evaluate the acceptance checklist (all tasks complete; review clean or auto-fixed within
+   `auto-fix-severity`; check pass + coverage ≥ threshold; scenarios covered; eval aggregate
+   ≥ `pass-threshold` if Eval ran).
+2. Determine the verdict: **SHIP-PENDING-COMMIT** iff every checklist item holds; else
+   **PARKED-NEEDS-DECISION** / **BLOCKED** / **BUDGET-EXCEEDED** per the park reason.
+3. Write `autonomy-report.md` to the path in `autonomy.report` (default
+   `.temper/autonomy-report.md`) using the §10 schema (verdict, parked-at, reason, branch,
+   checkpoints, the What-ran table, the next-action line, deferred findings, the audit
+   block with every command executed + budget used).
+4. Save state (orchestrator-patterns.md → "Save State Pattern") with `stage: check_complete`
+   (or `eval_complete`), `next_stage: commit`, and `run_mode: autonomous`. Record `park{}`
+   in observability.json.
+5. **PARK.** Print the report path + verdict. Resume (`/temper` with no args) lands
+   **interactively** at the Commit gate — the human owns the merge.
+
+**No-merge guarantee:** even with `stop-before-commit: false`, autonomy NEVER pushes or
+merges (push stays a human action). With the default `stop-before-commit: true`, autonomy
+never commits at all — `git branch -D feature/{slug}` discards the whole run.
 
 **on Loop back to Build:**
 2. Write `check-context.json` (schema: orchestrator-patterns.md → "Context File Schemas") with this run's `validation_results`, `scenario_verification`, and `test_failures` (skipped for inline).
@@ -957,6 +1118,12 @@ How to read this: 0–1 scale, {pass_threshold} to pass. Low ARTIFACT-scores mea
 - Any dim unscored: `⚠ Aggregate {score} over {scored}/{total} scored dims ({names} unscored) — partial.   Threshold: {pass_threshold}   {PASS}`
 
 ### Stage Gate
+
+**gate-eval (autonomy):** run the shared `gate-eval` hook first (Eval park condition: a
+`block-on` dimension still below `pass-threshold` after `feedback.max-loops`). On autonomous
+AUTO-RESOLVE it runs the Eval→Build loop bounded by `feedback.max-loops`, else advances to
+the Commit park (Task 3.4); on PARK it halts; the interactive+annotated branch prepends the
+would-be decision; the off branch shows the normal gate. Then:
 
 Show the AskUserQuestion gate with:
 - "Continue to Commit (Recommended)" — proceed to commit (Stage 4's on-Commit flow)

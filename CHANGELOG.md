@@ -31,6 +31,10 @@ and on any decision a human should own.
   Continuation". Proposal: `docs/proposals/autonomous-mode.md`. (Version bump is owned by the
   release process — not part of this change.)
 
+## v6.0.0 — New Features
+
+Autonomous Continuation for /temper (#63)
+
 ## v5.9.0 — Phase 3: Token Efficiency & Loop Engineering
 
 Three independent, composable levers layered on the v5.6.0 model-routing foundation.
