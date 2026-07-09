@@ -609,7 +609,7 @@ eval set alongside intent.md so evals are authored with the feature, not bolted 
    can refine it later
 5. If intent.md has no scenarios (Trivial/Simple): skip — no evalset is written (graceful)
 
-Schema and full methodology: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/eval.md`.
+Schema and full methodology: `$CLAUDE_PLUGIN_ROOT/reference/eval.md`.
 
 #### Approach Decisions Generation
 
@@ -852,7 +852,7 @@ The generated HTML is self-contained — no external dependencies. Users can:
 - Click "Done Reviewing" to download review-comments.json
 - Place the JSON file back in .temper/specs/{feature}/ for the orchestrator to consume
 
-Full docs: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan-review.md`
+Full docs: `$CLAUDE_PLUGIN_ROOT/reference/plan-review.md`
 
 ### Phase 7: Present for Approval
 

@@ -9,7 +9,7 @@ description: "Manage quality packs: view, toggle, quick-create launchers, config
 Read `.claude/temper.config` packs section. Scan three tiers:
 - `.claude/packs/{name}/rules.md` (project-local, highest priority)
 - `~/.claude/packs/{name}/rules.md` (global)
-- `$CLAUDE_PLUGIN_ROOT/.claude/packs/{name}/rules.md` (built-in)
+- `$CLAUDE_PLUGIN_ROOT/packs/{name}/rules.md` (built-in)
 
 Deduplicate by name (highest tier wins). For each pack: read rules.md header, check enabled status, read `phases` and `link` from config.
 
@@ -171,6 +171,6 @@ Return to Step 3.
 
 ## Step 7: Full Interactive Pack Builder
 
-> Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/pack.md` → "Step 7: Add New Pack" section for the codebase scan + interview + generation methodology.
+> Read `$CLAUDE_PLUGIN_ROOT/reference/pack.md` → "Step 7: Add New Pack" section for the codebase scan + interview + generation methodology.
 
 This is the ONLY step that requires loading the reference doc. All other steps are self-contained above.

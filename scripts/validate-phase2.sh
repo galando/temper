@@ -80,8 +80,8 @@ scenario_1_routing() {
     fail "disabled-config-fixture" "stripped fixture still contains a models block"
   fi
   # temper.md must state the conditional: disabled => no model param (inherit).
-  if grep -q "Emit NO .model. param" .claude/commands/temper.md && \
-     grep -q "byte-identical to v5.5.0" .claude/commands/temper.md; then
+  if grep -q "Emit NO .model. param" commands/temper.md && \
+     grep -q "byte-identical to v5.5.0" commands/temper.md; then
     ok "temper.md declares disabled=>no-model-param (v5.5.0 byte-identical) contract"
   else
     fail "routing-conditional" "temper.md missing disabled=>no-model-param declaration"
@@ -124,7 +124,7 @@ scenario_2_3_config() {
 
 scenario_2_3_4_routing() {
   echo "Scenario 2/3/4 (routing): per-stage [MODEL:] delta + override precedence + escalate"
-  local CMD=.claude/commands/temper.md
+  local CMD=commands/temper.md
   local launches=0
   # Each of the 6 launches must carry a [MODEL: ...] delta line.
   for stage_pair in "Launch Planning Agent|models.routing.plan" \
@@ -174,7 +174,7 @@ scenario_2_3_4_routing() {
 
 scenario_5_schema() {
   echo "Scenario 5 (schema): v2/v3 observability schema documented"
-  local REF=.claude-plugin/reference/orchestrator-patterns.md
+  local REF=reference/orchestrator-patterns.md
   # v3 (v5.9.0) is a strict superset of v2 (v5.6.0). Accept either marker so the
   # assertion stays green across the v2->v3 bump while still proving a schema section exists.
   if grep -q "Observability.json v3 Schema" "$REF" || grep -q "Observability.json v2 Schema" "$REF"; then
@@ -262,7 +262,7 @@ PY
 
 scenario_6_pricing() {
   echo "Scenario 6 (pricing): pricing.md exists + parseable + cost computable"
-  local P=.claude-plugin/reference/pricing.md
+  local P=reference/pricing.md
   [ -f "$P" ] && ok "pricing.md exists" || { fail "pricing-exists" "$P missing"; return; }
   grep -q "tier-frontier" "$P" && grep -q "tier-standard" "$P" && grep -q "tier-fast" "$P" \
     && ok "pricing.md covers all three tiers" \
@@ -276,7 +276,7 @@ scenario_6_pricing() {
   # cost computable via python one-liner parsing the YAML block
   if python3 - <<'PY'
 import re
-txt = open(".claude-plugin/reference/pricing.md").read()
+txt = open("reference/pricing.md").read()
 # grab the yaml ``` block
 m = re.search(r"```yaml\n(.*?)```", txt, re.S)
 assert m, "no yaml block in pricing.md"
@@ -340,7 +340,7 @@ PY
   [ $rc -eq 0 ] && PASS=$((PASS+1)) || { FAIL=$((FAIL+1)); FAILED_SCENARIOS+=("drift-flag"); echo "  FAIL  drift-flag"; }
 
   # temper.md must state drift never auto-blocks
-  grep -q "drift" .claude/commands/temper.md && grep -qi "NEVER auto-block" .claude/commands/temper.md \
+  grep -q "drift" commands/temper.md && grep -qi "NEVER auto-block" commands/temper.md \
     && ok "temper.md states drift NEVER auto-blocks a stage gate" \
     || fail "drift-no-block-doc" "temper.md missing NEVER auto-block statement"
   rm -rf "$TMP"
@@ -352,8 +352,8 @@ PY
 
 scenario_8_status() {
   echo "Scenario 8 (status): ECONOMICS panel + graceful-absence fallback"
-  local CMD=.claude/commands/status.md
-  local REF=.claude-plugin/reference/status.md
+  local CMD=commands/status.md
+  local REF=reference/status.md
   grep -q "ECONOMICS" "$CMD" \
     && ok "ECONOMICS panel section present in commands/status.md" \
     || fail "economics-cmd" "ECONOMICS panel missing from commands/status.md"
@@ -386,7 +386,7 @@ scenario_9_version() {
   cm=$(grep -oE '\*\*Version:\*\* [0-9][0-9.]+' .claude/CLAUDE.md | head -1 | awk '{print $2}')
   cv=$(cat .cursor/VERSION 2>/dev/null | tr -d '[:space:]')
   # temper.md title header
-  local tv; tv=$(grep -oE '# Temper:.*\(v[0-9][0-9.]+' .claude/commands/temper.md | head -1 | grep -oE 'v[0-9][0-9.]+' | tr -d 'v')
+  local tv; tv=$(grep -oE '# Temper:.*\(v[0-9][0-9.]+' commands/temper.md | head -1 | grep -oE 'v[0-9][0-9.]+' | tr -d 'v')
 
   [ "$pj" = "$TARGET" ] && ok "plugin.json version == $TARGET" \
                         || fail "version-pluginjson" "plugin.json=$pj (expected $TARGET)"

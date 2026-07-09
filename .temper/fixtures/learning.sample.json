@@ -41,7 +41,7 @@
     {
       "id": "pack-load-missing-phase-filter",
       "category": "consistency",
-      "file_pattern": ".claude-plugin/reference/*.md",
+      "file_pattern": "reference/*.md",
       "description_keywords": ["pack", "phase", "filter", "manifest"],
       "total_shown": 5,
       "accepted": 5,

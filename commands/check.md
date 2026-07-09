@@ -8,7 +8,7 @@ description: "Run stack-aware validation pipeline"
 
 ## Execution
 
-> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md`
+> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/reference/check.md`
 
 ### Quick Reference
 

@@ -8,7 +8,7 @@ description: "Technical code review with confidence scoring, review memory, and 
 
 ## Execution
 
-> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md`
+> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/reference/review.md`
 
 ### Quick Reference
 

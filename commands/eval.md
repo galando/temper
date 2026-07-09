@@ -11,7 +11,7 @@ argument-hint: "[--create] [--trajectory] [<spec>]"
 
 ## Execution
 
-> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/eval.md`
+> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/reference/eval.md`
 
 ### Quick Reference
 
@@ -45,7 +45,7 @@ argument-hint: "[--create] [--trajectory] [<spec>]"
 
 ### Active Skills
 
-- **Eval Judge** — LM-judge per-dimension scoring + deterministic fallback (`$CLAUDE_PLUGIN_ROOT/.claude/skills/eval-judge/SKILL.md`)
+- **Eval Judge** — LM-judge per-dimension scoring + deterministic fallback (`$CLAUDE_PLUGIN_ROOT/skills/eval-judge/SKILL.md`)
 - **Context Engineering** — load hierarchical context at stage start
 - **Temper Core** — config resolution, quality gates
 

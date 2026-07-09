@@ -15,7 +15,7 @@ Quality packs resolve from three tiers in priority order. Higher tiers shadow lo
 ```
 Priority 1 (highest) → .claude/packs/{name}/rules.md           (project-local)
 Priority 2           → ~/.claude/packs/{name}/rules.md          (global / user-wide)
-Priority 3 (lowest)  → $CLAUDE_PLUGIN_ROOT/.claude/packs/{name}/rules.md  (built-in)
+Priority 3 (lowest)  → $CLAUDE_PLUGIN_ROOT/packs/{name}/rules.md  (built-in)
 ```
 
 **Why:** Teams ship project-specific packs in the repo. Users create global packs across all projects. Built-in packs provide defaults.
@@ -28,7 +28,7 @@ Scan all three tiers, deduplicate by name (highest priority wins):
 
 ```
 Step 1: Scan built-in packs
-  For each directory in $CLAUDE_PLUGIN_ROOT/.claude/packs/ (excluding stacks/):
+  For each directory in $CLAUDE_PLUGIN_ROOT/packs/ (excluding stacks/):
     - If {name}/rules.md exists → add to manifest with scope: "built-in"
 
 Step 2: Scan global packs
@@ -73,7 +73,7 @@ Pack discovery results are cached to `.temper/pack-manifest.json` for instant su
       "phases": "all",
       "link": null,
       "connected": null,
-      "rules_path": "$CLAUDE_PLUGIN_ROOT/.claude/packs/quality/rules.md",
+      "rules_path": "$CLAUDE_PLUGIN_ROOT/packs/quality/rules.md",
       "rule_summary": "Code quality: method length, DRY, naming"
     },
     {
@@ -83,7 +83,7 @@ Pack discovery results are cached to `.temper/pack-manifest.json` for instant su
       "phases": ["build"],
       "link": null,
       "connected": null,
-      "rules_path": "$CLAUDE_PLUGIN_ROOT/.claude/packs/tdd/rules.md",
+      "rules_path": "$CLAUDE_PLUGIN_ROOT/packs/tdd/rules.md",
       "rule_summary": "TDD: RED-GREEN-REFACTOR enforcement"
     }
   ]

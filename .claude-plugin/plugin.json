@@ -1,7 +1,7 @@
 {
   "name": "temper",
   "description": "Temper: Quality gates, blast radius analysis, and intent-driven development for AI-generated code",
-  "version": "6.0.0",
+  "version": "6.0.1",
   "author": {
     "name": "galando",
     "url": "https://github.com/galando/temper"
@@ -11,24 +11,24 @@
   "license": "MIT",
   "keywords": ["temper", "quality", "code-review", "tdd", "standards", "blast-radius", "sdlc"],
   "commands": [
-    "./.claude/commands/temper.md",
-    "./.claude/commands/plan.md",
-    "./.claude/commands/design.md",
-    "./.claude/commands/build.md",
-    "./.claude/commands/review.md",
-    "./.claude/commands/check.md",
-    "./.claude/commands/fix.md",
-    "./.claude/commands/pack.md",
-    "./.claude/commands/status.md",
-    "./.claude/commands/eval.md",
-    "./.claude/commands/init.md"
+    "./commands/temper.md",
+    "./commands/plan.md",
+    "./commands/design.md",
+    "./commands/build.md",
+    "./commands/review.md",
+    "./commands/check.md",
+    "./commands/fix.md",
+    "./commands/pack.md",
+    "./commands/status.md",
+    "./commands/eval.md",
+    "./commands/init.md"
   ],
   "skills": [
-    "./.claude/skills/temper-core",
-    "./.claude/skills/context-engineering",
-    "./.claude/skills/source-driven-development",
-    "./.claude/skills/grill-me",
-    "./.claude/skills/teach-me",
-    "./.claude/skills/eval-judge"
+    "./skills/temper-core",
+    "./skills/context-engineering",
+    "./skills/source-driven-development",
+    "./skills/grill-me",
+    "./skills/teach-me",
+    "./skills/eval-judge"
   ]
 }

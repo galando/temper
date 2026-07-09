@@ -25,7 +25,7 @@ In both modes, the design methodology is identical.
 Files to load at start:
 1. `.temper/specs/{feature}/intent.md`
 2. `.temper/specs/{feature}/plan.md`
-3. `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/design.md` (this file)
+3. `$CLAUDE_PLUGIN_ROOT/reference/design.md` (this file)
 4. Read active pack rules — phase-filtered, manifest-driven for this stage (design):
    Load packs via the cached manifest, phase-filtered for this stage (design):
      1. Read `.temper/pack-manifest.json`. If missing or stale (config mtime

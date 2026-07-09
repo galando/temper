@@ -11,9 +11,9 @@ FAIL=0
 ok() { PASS=$((PASS+1)); }
 fail() { echo "FAIL: $1"; FAIL=$((FAIL+1)); }
 
-# 1. docs/commands.md references match .claude/commands/ files
+# 1. docs/commands.md references match commands/ files
 COMMANDS_MD="$REPO_ROOT/docs/commands.md"
-COMMANDS_DIR="$REPO_ROOT/.claude/commands"
+COMMANDS_DIR="$REPO_ROOT/commands"
 
 if [[ -f "$COMMANDS_MD" && -d "$COMMANDS_DIR" ]]; then
   # Extract command names from commands.md (e.g., /temper, /temper:plan, etc.)
@@ -32,13 +32,13 @@ if [[ -f "$COMMANDS_MD" && -d "$COMMANDS_DIR" ]]; then
 
   MISSING_IN_MD=$(comm -23 <(echo "$FILE_CMDS") <(echo "$MD_CMDS") || true)
   if [[ -n "$MISSING_IN_MD" ]]; then
-    fail "Commands in .claude/commands/ but missing from docs/commands.md:"
+    fail "Commands in commands/ but missing from docs/commands.md:"
     echo "$MISSING_IN_MD" | sed 's/^/  /'
   else
     ok
   fi
 else
-  fail "docs/commands.md or .claude/commands/ not found"
+  fail "docs/commands.md or commands/ not found"
 fi
 
 # 2. All markdown links in docs/ resolve to existing files

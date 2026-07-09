@@ -6,7 +6,7 @@
 #   Local:   ./scripts/install-cursor.sh [project-path]
 #   Remote:  bash <(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)
 #
-# Local path (default): if the target is a Temper repo (.claude/ + plugin.json
+# Local path (default): if the target is a Temper repo (skills/ + plugin.json
 # present), regenerates .cursor/ from sources via scripts/generate-cursor.sh —
 # honest parity, offline-safe, no drift. This is the recommended path.
 #
@@ -24,8 +24,8 @@ TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd)" || {
 }
 
 # --- Local-repo branch: regenerate from sources ------------------------------
-if [[ -d "$TARGET_DIR/.claude" && -f "$TARGET_DIR/.claude-plugin/plugin.json" && -f "$TARGET_DIR/scripts/generate-cursor.sh" ]]; then
-    echo "Temper repo detected — regenerating .cursor/ from .claude/ sources."
+if [[ -d "$TARGET_DIR/skills" && -f "$TARGET_DIR/.claude-plugin/plugin.json" && -f "$TARGET_DIR/scripts/generate-cursor.sh" ]]; then
+    echo "Temper repo detected — regenerating .cursor/ from plugin sources."
     bash "$TARGET_DIR/scripts/generate-cursor.sh" --target "$TARGET_DIR"
     VERSION=$(cat "$TARGET_DIR/.cursor/VERSION")
     RULE_COUNT=$(find "$TARGET_DIR/.cursor/rules" -name '*.mdc' | wc -l | tr -d ' ')

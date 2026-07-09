@@ -18,7 +18,7 @@ any number of times; an existing config is never overwritten.
    b. If it does NOT exist:
         - Ensure the .claude/ directory exists (mkdir -p .claude).
         - Copy the default template into place:
-            $CLAUDE_PLUGIN_ROOT/.claude-plugin/templates/temper.config.default
+            $CLAUDE_PLUGIN_ROOT/templates/temper.config.default
             -> .claude/temper.config
         - Report: "Created .claude/temper.config from the default template."
 3. Report where to edit it: "Edit .claude/temper.config to tune packs, review thresholds,

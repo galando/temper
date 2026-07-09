@@ -3,7 +3,7 @@ description: "Unified SDLC command: plan → design → build → review → che
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v6.0.0)
+# Temper: Unified SDLC Command (v6.0.1)
 
 **Goal:** Execute the full SDLC flow (plan → design? → build → review → check → commit) with stage gates, feedback loops, context accumulation, observability, and **real** context isolation via Agent subprocesses.
 
@@ -20,7 +20,7 @@ argument-hint: "<feature-description>"
 
 ### Shared Orchestrator Patterns
 
-> **Reference:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md`
+> **Reference:** `$CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md`
 >
 > **Read that file once, now.** It holds the canonical definitions for: $CLAUDE_PLUGIN_ROOT resolution, single-read contract, build-state schema + save-state pattern, stage agent launch template, gate options, gate enforcement, resume validation, nested invocation protection, agent failure handling, context-file schemas, feedback-loop schemas, and context efficiency. Every `→ pattern` reference below points into that already-loaded file — do not re-read it.
 
@@ -106,7 +106,7 @@ existing confidence-scoring path in `reference/review.md`. Record the escalation
 
 ## Stage Gates Use AskUserQuestion
 
-> **Gate patterns:** See `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Gate Options Pattern" and "Gate Enforcement Rules" sections.
+> **Gate patterns:** See `$CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md` → "Gate Options Pattern" and "Gate Enforcement Rules" sections.
 
 At each stage gate, use `AskUserQuestion` with selectable options. Do NOT use `[Enter]` as a prompt.
 
@@ -114,7 +114,7 @@ At each stage gate, use `AskUserQuestion` with selectable options. Do NOT use `[
 
 ## Cache Routing Resolution (v5.9.0)
 
-> **Reference:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Cacheable vs. Volatile Context" + "Cache-Stable Re-Entry"
+> **Reference:** `$CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md` → "Cacheable vs. Volatile Context" + "Cache-Stable Re-Entry"
 
 Every stage Agent launch (and every feedback-loop re-entry) applies this resolution BEFORE
 building the launch prompt. It is the read-ordering counterpart to the Model Routing
@@ -149,7 +149,7 @@ no `cached_input` field — every stage reads exactly as in v5.8.0.
 ## Teach Me (Comprehension Companion) — shared handler (v5.7.0)
 
 > **Capability:** `capabilities.teach-me` in temper.config (default: enabled).
-> **Skill:** `$CLAUDE_PLUGIN_ROOT/.claude/skills/teach-me/SKILL.md`
+> **Skill:** `$CLAUDE_PLUGIN_ROOT/skills/teach-me/SKILL.md`
 
 Every stage gate below (Plan, Design, Build, Check, Eval) offers a **"Teach Me (Quiz me until I get it)"** option. Its purpose is to keep the human engaged with — and in genuine command of — every change Temper makes, phase by phase. It teaches the current phase, quizzes for mastery, and returns to the same gate. It NEVER advances or blocks the pipeline. (Review is intentionally excluded: its substance — the diff and its rationale — is already taught at Build, and its findings are usually minor or auto-fixed.)
 
@@ -183,7 +183,7 @@ Use the Agent tool with this prompt:
 
 "Execute /temper:plan for feature: $ARGUMENTS
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan.md
+Full methodology: Read $CLAUDE_PLUGIN_ROOT/reference/plan.md
 
 DEPTH CONTRACT (v5.9.0): When `tokens.adaptive-depth.enabled` is false, OR the plan stage
 classifies this change as `medium`/`complex`, OR `tokens.adaptive-depth.floor` clamps the
@@ -273,7 +273,7 @@ is false, no tier line is shown and no escalate option appears (v5.8.0 — byte-
 
 #### Autonomous Continuation — plan-gate arming
 
-> **Canonical definition:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md`
+> **Canonical definition:** `$CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md`
 > → "Autonomous Continuation" (single-read contract; do not re-read it).
 
 **Continuation Choice Resolution (before showing the gate):**
@@ -531,12 +531,12 @@ Use the Agent tool with this prompt:
 
 "Execute /temper:design for feature: {spec from build-state.json}
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/design.md
+Full methodology: Read $CLAUDE_PLUGIN_ROOT/reference/design.md
 
 CONTEXT: You are starting with a CLEAN context. Load these files first:
 1. {spec_path}/intent.md
 2. {spec_path}/plan.md
-3. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/design.md for methodology
+3. Read $CLAUDE_PLUGIN_ROOT/reference/design.md for methodology
 
 Then produce the system design as described in the methodology.
 
@@ -643,7 +643,7 @@ AskUserQuestion:
 
 ## Feedback Loops (v4.0.0)
 
-> **Reference:** `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Feedback Loop Patterns"
+> **Reference:** `$CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md` → "Feedback Loop Patterns"
 
 When `feedback.enabled: true` in temper.config, stages can loop back to upstream stages:
 
@@ -803,12 +803,12 @@ Use the Agent tool with this prompt:
 
 "Execute /temper:build for spec: {spec from build-state.json}
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md
+Full methodology: Read $CLAUDE_PLUGIN_ROOT/reference/build.md
 
 CONTEXT: You are starting with a CLEAN context. Load these files first:
 1. {spec_path}/tasks.md
 2. {spec_path}/intent.md (if exists)
-3. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md for methodology
+3. Read $CLAUDE_PLUGIN_ROOT/reference/build.md for methodology
 4. Read {spec_path}/review-context.json (if exists — feedback from review loop)
 5. Read {spec_path}/check-context.json (if exists — feedback from check loop)
 
@@ -903,11 +903,11 @@ Use the Agent tool with this prompt:
 
 "Execute /temper:review for feature: {spec from build-state.json}
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md
+Full methodology: Read $CLAUDE_PLUGIN_ROOT/reference/review.md
 
 CONTEXT: You are starting with a CLEAN context. Load these first:
 1. Run: git diff --name-only (to get changed files)
-2. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md for methodology
+2. Read $CLAUDE_PLUGIN_ROOT/reference/review.md for methodology
 3. Read {spec_path}/intent.md (for intent validation)
 4. Read {spec_path}/build-context.json (if exists — build deviations and test results)
 
@@ -1039,10 +1039,10 @@ Use the Agent tool with this prompt:
 
 "Execute /temper:check for project validation.
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md
+Full methodology: Read $CLAUDE_PLUGIN_ROOT/reference/check.md
 
 CONTEXT: You are starting with a CLEAN context. Load these first:
-1. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md for methodology
+1. Read $CLAUDE_PLUGIN_ROOT/reference/check.md for methodology
 2. Read {spec_path}/intent.md (for scenario coverage validation, if exists)
 3. Read {spec_path}/review-context.json (if exists — review findings for context)
 4. Detect stack and run the full validation pipeline
@@ -1202,14 +1202,14 @@ Use the Agent tool with this prompt:
 
 "Execute /temper:eval for the current spec.
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/eval.md
+Full methodology: Read $CLAUDE_PLUGIN_ROOT/reference/eval.md
 
 CONTEXT: You are starting with a CLEAN context. Load these first:
-1. Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/eval.md for methodology
+1. Read $CLAUDE_PLUGIN_ROOT/reference/eval.md for methodology
 2. Read {spec_path}/evals/evalset.json (the rubric + cases)
 3. Read {spec_path}/intent.md (intent, if exists)
 4. Read .temper/build-state.json + .temper/observability.json (for trajectory mode)
-5. Dispatch the eval-judge skill ($CLAUDE_PLUGIN_ROOT/.claude/skills/eval-judge/SKILL.md) on the
+5. Dispatch the eval-judge skill ($CLAUDE_PLUGIN_ROOT/skills/eval-judge/SKILL.md) on the
    configured judge-model tier; fall back to deterministic checks if unavailable.
 
 CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the eval summary to the orchestrator.
@@ -1300,13 +1300,13 @@ If you stopped earlier, run `/temper` to continue.
 
 ### Resume Validation
 
-> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Resume Validation" section. Valid stages for this command: `plan_complete`, `design_complete`, `build_complete`, `review_complete`, `check_complete`, `eval_complete`.
+> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md` → "Resume Validation" section. Valid stages for this command: `plan_complete`, `design_complete`, `build_complete`, `review_complete`, `check_complete`, `eval_complete`.
 
 ### Nested Invocation Protection
 
 If `/temper "new feature"` is called while `.temper/build-state.json` already exists for a different feature:
 
-> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Nested Invocation Protection" section. Use "feature" in the display.
+> Follow the shared pattern in `$CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md` → "Nested Invocation Protection" section. Use "feature" in the display.
 
 If `/temper` (no arguments) is called and `.temper/build-state.json` exists for the same feature:
 ```

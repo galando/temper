@@ -8,7 +8,7 @@
 # Stamps updated (all derived — never hand-edit these for version purposes):
 #   1. .claude-plugin/plugin.json          "version": "X.Y.Z"
 #   2. .claude/CLAUDE.md                   **Version:** X.Y.Z
-#   3. .claude/commands/temper.md          header  (vX.Y.Z)
+#   3. commands/temper.md          header  (vX.Y.Z)
 #   4. .cursor/                            regenerated wholesale via
 #                                          generate-cursor.sh (RUN LAST, after
 #                                          steps 1-3, so derived content carries
@@ -65,8 +65,8 @@ else
     echo "  -> $CLAUDE_MD not found, skipping"
 fi
 
-# 4. .claude/commands/temper.md header  (vX.Y.Z)
-TEMPER_CMD=".claude/commands/temper.md"
+# 4. commands/temper.md header  (vX.Y.Z)
+TEMPER_CMD="commands/temper.md"
 if [ -f "$TEMPER_CMD" ]; then
     echo "  -> Updating $TEMPER_CMD header (vX.Y.Z)"
     # Only the title header line carries the plugin version stamp:
@@ -82,7 +82,7 @@ fi
 # 5. .cursor/ is a DERIVED artifact owned by generate-cursor.sh. Regenerate it
 #    LAST, after all source stamps (steps 1,3,4) are updated, so derived files
 #    (VERSION, README, commands/temper.md, rules/*.mdc) carry the new version in
-#    lockstep. Running the generator before bumping .claude/commands/temper.md
+#    lockstep. Running the generator before bumping commands/temper.md
 #    leaves the derived command header one version behind (check finding VB-ORDER).
 GEN_SCRIPT="scripts/generate-cursor.sh"
 if [ -d ".cursor" ] && [ -f "$GEN_SCRIPT" ]; then

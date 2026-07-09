@@ -8,7 +8,7 @@ description: "Execute plan with TDD and quality gates"
 
 ## Execution
 
-> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md`
+> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/reference/build.md`
 
 ### Quick Reference
 

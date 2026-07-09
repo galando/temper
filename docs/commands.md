@@ -15,6 +15,12 @@ nav_order: 3
 /temper --resume              # Resume from checkpoint
 ```
 
+> **Headless / non-interactive (`claude -p`, CI):** the bare `/temper` alias is only
+> registered in interactive sessions. Use the fully-qualified name instead:
+> `claude -p '/temper:temper "add login feature"'`. All other commands
+> (`/temper:plan`, `/temper:build`, etc.) already use their fully-qualified form and
+> are unaffected.
+
 **What it does:**
 
 Runs the full software development lifecycle with stage gates:

@@ -45,7 +45,7 @@ temper/
 
 ### Add a New Stack
 
-1. Create `.claude/packs/stacks/{stack-name}.md`
+1. Create `packs/stacks/{stack-name}.md`
 2. Include:
    - Detection patterns (files, dependencies)
    - Validation commands (test, build, lint)
@@ -55,7 +55,7 @@ temper/
 
 **Example:**
 ```markdown
-# .claude/packs/stacks/django.md
+# packs/stacks/django.md
 
 ## Detection
 - manage.py in root
@@ -70,7 +70,7 @@ temper/
 
 ### Add a New Pack
 
-1. Create `.claude/packs/{pack-name}/rules.md`
+1. Create `packs/{pack-name}/rules.md`
 2. Use sections:
    - `## BLOCK` — Violations stop the build
    - `## WARN` — Violations trigger warning
@@ -79,8 +79,8 @@ temper/
 
 ### Add a New Command
 
-1. Create `.claude/commands/{command}.md` (stub, ~300B)
-2. Create `.claude-plugin/reference/{command}.md` (full docs)
+1. Create `commands/{command}.md` (stub, ~300B)
+2. Create `reference/{command}.md` (full docs)
 3. Update `.claude-plugin/plugin.json`
 4. Update README.md commands table
 

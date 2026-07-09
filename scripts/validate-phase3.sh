@@ -22,7 +22,10 @@ set -u
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-TARGET="5.9.0"
+# Phase 3 shipped in v5.9.0 — used only to assert the CHANGELOG entry exists.
+# Stamp agreement is checked against plugin.json (the single source of truth),
+# so this validator keeps passing on releases after 5.9.0.
+PHASE_VERSION="5.9.0"
 GROUP="${1:-all}"
 PASS=0
 FAIL=0
@@ -102,8 +105,8 @@ scenario_1_config() {
 
 scenario_cache_disabled() {
   echo "Scenario (cache-disabled): disabled => no prefix rule, no cached_input field"
-  local CMD=.claude/commands/temper.md
-  local REF=.claude-plugin/reference/orchestrator-patterns.md
+  local CMD=commands/temper.md
+  local REF=reference/orchestrator-patterns.md
   # The Cache Routing Resolution must be CONDITIONAL on tokens.cache.enabled and
   # state the disabled => v5.8.0 byte-identical contract.
   grep -q "Cache Routing Resolution (v5.9.0)" "$CMD" \
@@ -133,8 +136,8 @@ scenario_cache_disabled() {
 
 scenario_cache_reentry() {
   echo "Scenario (cache-reentry): cacheable-first ordering + cached_input{value,source}"
-  local CMD=.claude/commands/temper.md
-  local REF=.claude-plugin/reference/orchestrator-patterns.md
+  local CMD=commands/temper.md
+  local REF=reference/orchestrator-patterns.md
   # Cacheable vs Volatile subsection classifies reads + ordering rule
   grep -q "Cacheable vs. Volatile Context" "$REF" \
     && ok "Cacheable vs. Volatile Context subsection present" \
@@ -167,7 +170,7 @@ scenario_cache_reentry() {
 
 scenario_depth_tiers() {
   echo "Scenario (depth-tiers): Pipeline Depth table + floor clamp + disabled=>full"
-  local REF=.claude-plugin/reference/orchestrator-patterns.md
+  local REF=reference/orchestrator-patterns.md
   # Pipeline Depth section with 4-tier table
   grep -q "Pipeline Depth (v5.9.0)" "$REF" \
     && ok "Pipeline Depth section present" \
@@ -199,8 +202,8 @@ scenario_depth_tiers() {
 
 scenario_depth_contract() {
   echo "Scenario (depth-contract): 4 overrides conditional on adaptive-depth.enabled"
-  local CMD=.claude/commands/temper.md
-  local PLAN=.claude-plugin/reference/plan.md
+  local CMD=commands/temper.md
+  local PLAN=reference/plan.md
   # The blanket override strings must be GONE.
   local blanket=0
   grep -q "No shortcuts for Simple or Trivial" "$CMD" && blanket=$((blanket+1))
@@ -251,8 +254,8 @@ scenario_depth_contract() {
 
 scenario_loops() {
   echo "Scenario (loops): Loop Cost Tiers decision rule + disabled=>full"
-  local CMD=.claude/commands/temper.md
-  local REF=.claude-plugin/reference/orchestrator-patterns.md
+  local CMD=commands/temper.md
+  local REF=reference/orchestrator-patterns.md
   # Loop Cost Tiers section in orchestrator-patterns
   grep -q "Loop Cost Tiers (v5.9.0)" "$REF" \
     && ok "Loop Cost Tiers section present in orchestrator-patterns" \
@@ -278,7 +281,7 @@ scenario_loops() {
 
 scenario_loops_routing() {
   echo "Scenario (loops-routing): inline no subprocess; fix-mode lean context"
-  local CMD=.claude/commands/temper.md
+  local CMD=commands/temper.md
   # The decision rule is wired into temper.md Step 4
   grep -q "Loop Cost Tier (v5.9.0)" "$CMD" \
     && ok "Loop Cost Tier resolution wired into temper.md Step 4" \
@@ -309,7 +312,7 @@ scenario_loops_routing() {
 
 scenario_pricing() {
   echo "Scenario (pricing): cache multipliers; excludes-caching dropped; YAML parseable"
-  local P=.claude-plugin/reference/pricing.md
+  local P=reference/pricing.md
   grep -q "Cache Multipliers" "$P" \
     && ok "Cache Multipliers section present in pricing.md" \
     || fail "cache-mult-section" "pricing.md missing Cache Multipliers section"
@@ -332,7 +335,7 @@ scenario_pricing() {
   # YAML block still parseable (validate-phase2.sh schema depends on it)
   if python3 - <<'PY'
 import re
-txt = open(".claude-plugin/reference/pricing.md").read()
+txt = open("reference/pricing.md").read()
 m = re.search(r"```yaml\n(.*?)```", txt, re.S)
 assert m, "no yaml block in pricing.md"
 block = m.group(1)
@@ -357,7 +360,7 @@ PY
 
 scenario_schema() {
   echo "Scenario (schema): v3 observability schema documented + G-5 source rule extended"
-  local REF=.claude-plugin/reference/orchestrator-patterns.md
+  local REF=reference/orchestrator-patterns.md
   # v3 schema section present
   grep -q "Observability.json v3 Schema (v5.9.0)" "$REF" \
     && ok "v3 schema section present in orchestrator-patterns.md" \
@@ -461,21 +464,21 @@ PY
 # ---------------------------------------------------------------------------
 
 scenario_version() {
-  echo "Scenario (version): all stamps agree at $TARGET"
+  echo "Scenario (version): all stamps agree with plugin.json"
   local pj cv cm tv
   pj=$(grep -o '"version": "[^"]*"' .claude-plugin/plugin.json | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
   cm=$(grep -oE '\*\*Version:\*\* [0-9][0-9.]+' .claude/CLAUDE.md | head -1 | awk '{print $2}')
   cv=$(cat .cursor/VERSION 2>/dev/null | tr -d '[:space:]')
-  tv=$(grep -oE '# Temper:.*\(v[0-9][0-9.]+' .claude/commands/temper.md | head -1 | grep -oE 'v[0-9][0-9.]+' | tr -d 'v')
+  tv=$(grep -oE '# Temper:.*\(v[0-9][0-9.]+' commands/temper.md | head -1 | grep -oE 'v[0-9][0-9.]+' | tr -d 'v')
 
-  [ "$pj" = "$TARGET" ] && ok "plugin.json version == $TARGET" \
-                        || fail "version-pluginjson" "plugin.json=$pj (expected $TARGET)"
-  [ "$cm" = "$TARGET" ] && ok "CLAUDE.md Version == $TARGET" \
-                       || fail "version-claudemd" "CLAUDE.md=$cm (expected $TARGET)"
-  [ "$cv" = "$TARGET" ] && ok ".cursor/VERSION == $TARGET" \
-                       || fail "version-cursor" ".cursor/VERSION=$cv (expected $TARGET)"
-  [ "$tv" = "$TARGET" ] && ok "temper.md header (vX.Y.Z) == $TARGET" \
-                       || fail "version-tempermd" "temper.md header=$tv (expected $TARGET)"
+  [ -n "$pj" ] && ok "plugin.json version stamp present ($pj)" \
+               || fail "version-pluginjson" "plugin.json version stamp not found"
+  [ "$cm" = "$pj" ] && ok "CLAUDE.md Version == plugin.json ($pj)" \
+                    || fail "version-claudemd" "CLAUDE.md=$cm != plugin.json=$pj"
+  [ "$cv" = "$pj" ] && ok ".cursor/VERSION == plugin.json ($pj)" \
+                    || fail "version-cursor" ".cursor/VERSION=$cv != plugin.json=$pj"
+  [ "$tv" = "$pj" ] && ok "temper.md header (vX.Y.Z) == plugin.json ($pj)" \
+                    || fail "version-tempermd" "temper.md header=$tv != plugin.json=$pj"
 
   # root VERSION file must be absent or empty (NOT a stamp)
   if [ ! -f VERSION ] || [ ! -s VERSION ]; then
@@ -484,10 +487,10 @@ scenario_version() {
     fail "version-root-file" "root VERSION file is non-empty — should not be a stamp"
   fi
 
-  # CHANGELOG has a v5.9.0 entry
-  grep -q "## v5.9.0\|## v$TARGET" CHANGELOG.md \
-    && ok "CHANGELOG.md has a v$TARGET entry" \
-    || fail "version-changelog" "CHANGELOG.md missing v$TARGET entry"
+  # CHANGELOG has the Phase 3 release entry
+  grep -q "## v$PHASE_VERSION" CHANGELOG.md \
+    && ok "CHANGELOG.md has a v$PHASE_VERSION entry" \
+    || fail "version-changelog" "CHANGELOG.md missing v$PHASE_VERSION entry"
 }
 
 # ---------------------------------------------------------------------------

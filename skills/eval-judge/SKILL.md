@@ -123,4 +123,4 @@ the score table to the caller.
 
 ## Full Docs
 
-`$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/eval.md`
+`$CLAUDE_PLUGIN_ROOT/reference/eval.md`

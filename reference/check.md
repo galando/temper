@@ -19,7 +19,7 @@ This stage may run in two modes:
 In both modes, the check methodology is identical.
 
 Files to load at start:
-1. `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/check.md` (this file)
+1. `$CLAUDE_PLUGIN_ROOT/reference/check.md` (this file)
 2. `.temper/specs/{feature}/review-context.json` (if exists — review findings for context)
 
 ### Step 1: Detect Stack
@@ -457,7 +457,7 @@ If all checks pass:
 8. WRITE suggestions to .temper/specs/{feature}/config-suggestions.json
 9. INTEGRATE with learning.json suggestion_queue (type: config-update)
 
-Full methodology: $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/config-suggestions.md
+Full methodology: $CLAUDE_PLUGIN_ROOT/reference/config-suggestions.md
 ```
 
 Config suggestions are shown to the user at the Check gate (orchestrator handles display).

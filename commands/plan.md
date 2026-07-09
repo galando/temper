@@ -11,7 +11,7 @@ argument-hint: "<feature-name-or-JIRA-123>"
 
 ## Execution
 
-> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/plan.md`
+> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/reference/plan.md`
 
 ### Quick Reference
 

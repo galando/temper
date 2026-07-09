@@ -55,7 +55,7 @@ In both modes, the review methodology is identical.
 
 Files to load at start:
 1. Run `git diff --name-only` to identify changed files
-2. `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/review.md` (this file)
+2. `$CLAUDE_PLUGIN_ROOT/reference/review.md` (this file)
 3. `.temper/specs/{feature}/intent.md` (for intent validation, if exists)
 4. `.temper/specs/{feature}/build-context.json` (if exists — build deviations and test results)
 
@@ -876,7 +876,7 @@ CONTRACT VERDICT:
 
 This step runs as an **additional pass** after the standard review. It does not replace any existing steps.
 
-**How:** Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/architecture-depth.md` and follow its full methodology (load CONTEXT.md + docs/adr/, run the 5-dimension analysis — seams, adapters, locality, leverage, deletion test — score each module, check ADR compliance). Report findings with the `[ARCH-DEPTH]` prefix and add them to the main findings list (standard confidence filtering applies).
+**How:** Read `$CLAUDE_PLUGIN_ROOT/reference/architecture-depth.md` and follow its full methodology (load CONTEXT.md + docs/adr/, run the 5-dimension analysis — seams, adapters, locality, leverage, deletion test — score each module, check ADR compliance). Report findings with the `[ARCH-DEPTH]` prefix and add them to the main findings list (standard confidence filtering applies).
 
 **Gate integration:** After standard review, the review gate offers "Architecture Depth Review" as an additional option. When selected, this step runs and findings are added to the existing review summary. The user then returns to the review gate with updated findings.
 
@@ -1170,7 +1170,7 @@ After updating review memory (Step 8), run the adaptive learning pattern detecti
 8. UPDATE learning_curve in learning.json (derive from metrics.json history)
 ```
 
-Full algorithm details: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/learning.md`
+Full algorithm details: `$CLAUDE_PLUGIN_ROOT/reference/learning.md`
 
 ### Context-Dependent Dismissals
 
