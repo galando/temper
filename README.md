@@ -16,6 +16,8 @@
 </div>
 
 > **Quick Start:** `/plugin marketplace add galando/temper` then `/temper "add password reset"` — one command for the full pipeline.
+>
+> **Headless / CI (`claude -p`):** use the fully-qualified name, `/temper:temper "..."` — the bare `/temper` alias only resolves in an interactive session.
 
 ## The Problem
 

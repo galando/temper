@@ -55,6 +55,16 @@ and reference doc is byte-identical, only paths moved.
   paths. It is outside the plugin's command/skill surface.
 - Scripts (`generate-cursor.sh`, `install-cursor.sh`, `version-bump.sh`,
   `validate-*.sh`) updated to the new layout.
+- **`validate-phase3.sh` version scenario no longer pinned to `5.9.0`:** it was
+  asserting every version stamp equals the Phase 3 release version, so it began
+  failing on v6.0.0 and every release after. It now checks lockstep agreement
+  against `plugin.json` (the single source of truth) instead, so it keeps
+  passing across releases. The CHANGELOG-has-a-v5.9.0-entry check is unchanged.
+- **Documented headless invocation:** confirmed via an end-to-end pipeline run
+  (real fixture project, all 6 stages, plan gate through commit-gate park) that
+  the bare `/temper` alias only resolves in interactive sessions — `claude -p`
+  and CI callers must use the fully-qualified `/temper:temper`. Noted in the
+  README quick start and in `docs/commands.md`.
 
 ## v6.0.0 — New Features
 
