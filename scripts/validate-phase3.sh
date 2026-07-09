@@ -22,7 +22,10 @@ set -u
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
-TARGET="5.9.0"
+# Phase 3 shipped in v5.9.0 — used only to assert the CHANGELOG entry exists.
+# Stamp agreement is checked against plugin.json (the single source of truth),
+# so this validator keeps passing on releases after 5.9.0.
+PHASE_VERSION="5.9.0"
 GROUP="${1:-all}"
 PASS=0
 FAIL=0
@@ -461,21 +464,21 @@ PY
 # ---------------------------------------------------------------------------
 
 scenario_version() {
-  echo "Scenario (version): all stamps agree at $TARGET"
+  echo "Scenario (version): all stamps agree with plugin.json"
   local pj cv cm tv
   pj=$(grep -o '"version": "[^"]*"' .claude-plugin/plugin.json | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
   cm=$(grep -oE '\*\*Version:\*\* [0-9][0-9.]+' .claude/CLAUDE.md | head -1 | awk '{print $2}')
   cv=$(cat .cursor/VERSION 2>/dev/null | tr -d '[:space:]')
   tv=$(grep -oE '# Temper:.*\(v[0-9][0-9.]+' commands/temper.md | head -1 | grep -oE 'v[0-9][0-9.]+' | tr -d 'v')
 
-  [ "$pj" = "$TARGET" ] && ok "plugin.json version == $TARGET" \
-                        || fail "version-pluginjson" "plugin.json=$pj (expected $TARGET)"
-  [ "$cm" = "$TARGET" ] && ok "CLAUDE.md Version == $TARGET" \
-                       || fail "version-claudemd" "CLAUDE.md=$cm (expected $TARGET)"
-  [ "$cv" = "$TARGET" ] && ok ".cursor/VERSION == $TARGET" \
-                       || fail "version-cursor" ".cursor/VERSION=$cv (expected $TARGET)"
-  [ "$tv" = "$TARGET" ] && ok "temper.md header (vX.Y.Z) == $TARGET" \
-                       || fail "version-tempermd" "temper.md header=$tv (expected $TARGET)"
+  [ -n "$pj" ] && ok "plugin.json version stamp present ($pj)" \
+               || fail "version-pluginjson" "plugin.json version stamp not found"
+  [ "$cm" = "$pj" ] && ok "CLAUDE.md Version == plugin.json ($pj)" \
+                    || fail "version-claudemd" "CLAUDE.md=$cm != plugin.json=$pj"
+  [ "$cv" = "$pj" ] && ok ".cursor/VERSION == plugin.json ($pj)" \
+                    || fail "version-cursor" ".cursor/VERSION=$cv != plugin.json=$pj"
+  [ "$tv" = "$pj" ] && ok "temper.md header (vX.Y.Z) == plugin.json ($pj)" \
+                    || fail "version-tempermd" "temper.md header=$tv != plugin.json=$pj"
 
   # root VERSION file must be absent or empty (NOT a stamp)
   if [ ! -f VERSION ] || [ ! -s VERSION ]; then
@@ -484,10 +487,10 @@ scenario_version() {
     fail "version-root-file" "root VERSION file is non-empty — should not be a stamp"
   fi
 
-  # CHANGELOG has a v5.9.0 entry
-  grep -q "## v5.9.0\|## v$TARGET" CHANGELOG.md \
-    && ok "CHANGELOG.md has a v$TARGET entry" \
-    || fail "version-changelog" "CHANGELOG.md missing v$TARGET entry"
+  # CHANGELOG has the Phase 3 release entry
+  grep -q "## v$PHASE_VERSION" CHANGELOG.md \
+    && ok "CHANGELOG.md has a v$PHASE_VERSION entry" \
+    || fail "version-changelog" "CHANGELOG.md missing v$PHASE_VERSION entry"
 }
 
 # ---------------------------------------------------------------------------
