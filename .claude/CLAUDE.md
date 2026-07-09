@@ -19,6 +19,6 @@ remaining stages unattended and park before commit. Armed at the plan gate (neve
 invocation); never pushes/merges; byte-identical to v5.9.0 when the `autonomy:` block is
 absent or `enabled: false`. Config: `.claude/temper.config` → `autonomy:`.
 
-**Version:** 6.0.0 — see `CHANGELOG.md` for history.
-Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/`
-Token efficiency tips: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/tokenomics.md`
+**Version:** 6.0.1 — see `CHANGELOG.md` for history.
+Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/reference/`
+Token efficiency tips: `$CLAUDE_PLUGIN_ROOT/reference/tokenomics.md`

@@ -9,7 +9,7 @@ description: "Eval methodology: eval-set format, rubric schema, LM-judge contrac
 Eval is the **verification layer** between Check and commit. It judges whether a produced
 change actually satisfies its intent (not just compiles/passes tests) and measures the quality
 of the tool-call trajectory that produced it. It runs as an isolated Agent subprocess in the
-`/temper` pipeline (see `.claude/commands/temper.md` → "Stage 4.5: Eval").
+`/temper` pipeline (see `commands/temper.md` → "Stage 4.5: Eval").
 
 ## Contract: Config-Flagged Default-On + Graceful Degradation
 
@@ -205,7 +205,7 @@ After producing the score table + `eval-context.json`, the stage offers (via Ask
 - **Save-for-later** → save state
 
 `eval-context.json` schema is documented in
-`$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/orchestrator-patterns.md` → "Context File Schemas".
+`$CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md` → "Context File Schemas".
 
 ## `--create` (Scaffold) Rules
 

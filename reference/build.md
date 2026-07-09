@@ -26,7 +26,7 @@ In both modes, the build methodology is identical.
 Files to load at start:
 1. `.temper/specs/{feature}/tasks.md`
 2. `.temper/specs/{feature}/intent.md` (if exists)
-3. `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/build.md` (this file)
+3. `$CLAUDE_PLUGIN_ROOT/reference/build.md` (this file)
 4. `.temper/specs/{feature}/review-context.json` (if exists — loaded when re-entering from feedback loop)
 5. `.temper/specs/{feature}/check-context.json` (if exists — loaded when re-entering from Check failure)
 

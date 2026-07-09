@@ -22,7 +22,7 @@ argument-hint: "<bug-description-or-JIRA-123>"
 ### Context Loading
 
 This stage may run in two modes:
-- **Standalone** (`/temper:fix`) — the command file (`.claude/commands/fix.md`) acts as the orchestrator, running this methodology across 4 Agent subprocess stages (RCA -> Fix -> Review -> Check)
+- **Standalone** (`/temper:fix`) — the command file (`commands/fix.md`) acts as the orchestrator, running this methodology across 4 Agent subprocess stages (RCA -> Fix -> Review -> Check)
 - **Agent subprocess** (from `/temper`) — starts with CLEAN context, only loads what's listed below
 
 **This reference file describes the methodology** for each stage. The **command file** handles the orchestrator routing, stage gates, and state management. When running as a subprocess, only the steps relevant to the current stage are executed.

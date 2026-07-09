@@ -229,7 +229,7 @@ scenario (`validate-phase3.sh`) and reproduces v5.8.0 exactly.
 
 ## Further reading
 
-- Reference: [orchestrator-patterns.md — Cacheable vs. Volatile Context, Pipeline Depth, Loop Cost Tiers](../.claude-plugin/reference/orchestrator-patterns.md)
-- Reference: [pricing.md — cache multipliers](../.claude-plugin/reference/pricing.md)
-- Reference: [tokenomics.md — the three levers as canonical guidance](../.claude-plugin/reference/tokenomics.md)
+- Reference: [orchestrator-patterns.md — Cacheable vs. Volatile Context, Pipeline Depth, Loop Cost Tiers](../reference/orchestrator-patterns.md)
+- Reference: [pricing.md — cache multipliers](../reference/pricing.md)
+- Reference: [tokenomics.md — the three levers as canonical guidance](../reference/tokenomics.md)
 - Plan: [docs/plans/phase-3-token-efficiency.md](plans/phase-3-token-efficiency.md)

@@ -16,7 +16,7 @@ Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0
 Three-tier: project-local > global > built-in. Cached in `.temper/pack-manifest.json` and consumed by all stage commands (build, review, check, plan, design) for phase-filtered loading.
 - `.claude/packs/{name}/rules.md` (project)
 - `~/.claude/packs/{name}/rules.md` (global)
-- `$CLAUDE_PLUGIN_ROOT/.claude/packs/{name}/rules.md` (built-in)
+- `$CLAUDE_PLUGIN_ROOT/packs/{name}/rules.md` (built-in)
 Packs support `link: plugin://name | skill://name` and `phases: [build, review, ...]`.
 
 ## Quality Gates
@@ -47,7 +47,7 @@ Post-review intelligence layer that makes reviews smarter over time. Runs as Ste
 
 **Graceful degradation:** If `learning.json` is absent, all commands work unchanged. No errors, no warnings.
 
-Full docs: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/learning.md`
+Full docs: `$CLAUDE_PLUGIN_ROOT/reference/learning.md`
 
 ## Capabilities (v5.0.0)
 
@@ -65,4 +65,4 @@ Four independently optional capabilities, all enabled by default. Controlled via
 **Graceful degradation:** Each capability checks its config flag. Missing config = all enabled (default-on).
 
 ## Full Docs
-`$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/{command}.md`
+`$CLAUDE_PLUGIN_ROOT/reference/{command}.md`

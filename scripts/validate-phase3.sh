@@ -102,8 +102,8 @@ scenario_1_config() {
 
 scenario_cache_disabled() {
   echo "Scenario (cache-disabled): disabled => no prefix rule, no cached_input field"
-  local CMD=.claude/commands/temper.md
-  local REF=.claude-plugin/reference/orchestrator-patterns.md
+  local CMD=commands/temper.md
+  local REF=reference/orchestrator-patterns.md
   # The Cache Routing Resolution must be CONDITIONAL on tokens.cache.enabled and
   # state the disabled => v5.8.0 byte-identical contract.
   grep -q "Cache Routing Resolution (v5.9.0)" "$CMD" \
@@ -133,8 +133,8 @@ scenario_cache_disabled() {
 
 scenario_cache_reentry() {
   echo "Scenario (cache-reentry): cacheable-first ordering + cached_input{value,source}"
-  local CMD=.claude/commands/temper.md
-  local REF=.claude-plugin/reference/orchestrator-patterns.md
+  local CMD=commands/temper.md
+  local REF=reference/orchestrator-patterns.md
   # Cacheable vs Volatile subsection classifies reads + ordering rule
   grep -q "Cacheable vs. Volatile Context" "$REF" \
     && ok "Cacheable vs. Volatile Context subsection present" \
@@ -167,7 +167,7 @@ scenario_cache_reentry() {
 
 scenario_depth_tiers() {
   echo "Scenario (depth-tiers): Pipeline Depth table + floor clamp + disabled=>full"
-  local REF=.claude-plugin/reference/orchestrator-patterns.md
+  local REF=reference/orchestrator-patterns.md
   # Pipeline Depth section with 4-tier table
   grep -q "Pipeline Depth (v5.9.0)" "$REF" \
     && ok "Pipeline Depth section present" \
@@ -199,8 +199,8 @@ scenario_depth_tiers() {
 
 scenario_depth_contract() {
   echo "Scenario (depth-contract): 4 overrides conditional on adaptive-depth.enabled"
-  local CMD=.claude/commands/temper.md
-  local PLAN=.claude-plugin/reference/plan.md
+  local CMD=commands/temper.md
+  local PLAN=reference/plan.md
   # The blanket override strings must be GONE.
   local blanket=0
   grep -q "No shortcuts for Simple or Trivial" "$CMD" && blanket=$((blanket+1))
@@ -251,8 +251,8 @@ scenario_depth_contract() {
 
 scenario_loops() {
   echo "Scenario (loops): Loop Cost Tiers decision rule + disabled=>full"
-  local CMD=.claude/commands/temper.md
-  local REF=.claude-plugin/reference/orchestrator-patterns.md
+  local CMD=commands/temper.md
+  local REF=reference/orchestrator-patterns.md
   # Loop Cost Tiers section in orchestrator-patterns
   grep -q "Loop Cost Tiers (v5.9.0)" "$REF" \
     && ok "Loop Cost Tiers section present in orchestrator-patterns" \
@@ -278,7 +278,7 @@ scenario_loops() {
 
 scenario_loops_routing() {
   echo "Scenario (loops-routing): inline no subprocess; fix-mode lean context"
-  local CMD=.claude/commands/temper.md
+  local CMD=commands/temper.md
   # The decision rule is wired into temper.md Step 4
   grep -q "Loop Cost Tier (v5.9.0)" "$CMD" \
     && ok "Loop Cost Tier resolution wired into temper.md Step 4" \
@@ -309,7 +309,7 @@ scenario_loops_routing() {
 
 scenario_pricing() {
   echo "Scenario (pricing): cache multipliers; excludes-caching dropped; YAML parseable"
-  local P=.claude-plugin/reference/pricing.md
+  local P=reference/pricing.md
   grep -q "Cache Multipliers" "$P" \
     && ok "Cache Multipliers section present in pricing.md" \
     || fail "cache-mult-section" "pricing.md missing Cache Multipliers section"
@@ -332,7 +332,7 @@ scenario_pricing() {
   # YAML block still parseable (validate-phase2.sh schema depends on it)
   if python3 - <<'PY'
 import re
-txt = open(".claude-plugin/reference/pricing.md").read()
+txt = open("reference/pricing.md").read()
 m = re.search(r"```yaml\n(.*?)```", txt, re.S)
 assert m, "no yaml block in pricing.md"
 block = m.group(1)
@@ -357,7 +357,7 @@ PY
 
 scenario_schema() {
   echo "Scenario (schema): v3 observability schema documented + G-5 source rule extended"
-  local REF=.claude-plugin/reference/orchestrator-patterns.md
+  local REF=reference/orchestrator-patterns.md
   # v3 schema section present
   grep -q "Observability.json v3 Schema (v5.9.0)" "$REF" \
     && ok "v3 schema section present in orchestrator-patterns.md" \
@@ -466,7 +466,7 @@ scenario_version() {
   pj=$(grep -o '"version": "[^"]*"' .claude-plugin/plugin.json | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
   cm=$(grep -oE '\*\*Version:\*\* [0-9][0-9.]+' .claude/CLAUDE.md | head -1 | awk '{print $2}')
   cv=$(cat .cursor/VERSION 2>/dev/null | tr -d '[:space:]')
-  tv=$(grep -oE '# Temper:.*\(v[0-9][0-9.]+' .claude/commands/temper.md | head -1 | grep -oE 'v[0-9][0-9.]+' | tr -d 'v')
+  tv=$(grep -oE '# Temper:.*\(v[0-9][0-9.]+' commands/temper.md | head -1 | grep -oE 'v[0-9][0-9.]+' | tr -d 'v')
 
   [ "$pj" = "$TARGET" ] && ok "plugin.json version == $TARGET" \
                         || fail "version-pluginjson" "plugin.json=$pj (expected $TARGET)"

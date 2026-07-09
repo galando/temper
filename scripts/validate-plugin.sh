@@ -134,19 +134,19 @@ for m in missing:
     fail ".claude/CLAUDE.md missing"
   fi
 
-  # .claude/commands/temper.md title header (vX.Y.Z) == plugin.json (G-1 guard)
-  TEMPER_CMD="$REPO_ROOT/.claude/commands/temper.md"
+  # commands/temper.md title header (vX.Y.Z) == plugin.json (G-1 guard)
+  TEMPER_CMD="$REPO_ROOT/commands/temper.md"
   if [[ -f "$TEMPER_CMD" ]]; then
     TEMPER_VER=$(grep -m1 -E '^# Temper:.*\(v[0-9]' "$TEMPER_CMD" | sed -E 's/.*\(v([0-9][0-9.]*(\.[0-9]+)*)\).*/\1/')
     if [[ -z "$TEMPER_VER" ]]; then
-      fail ".claude/commands/temper.md has no title-line '(vX.Y.Z)' header"
+      fail "commands/temper.md has no title-line '(vX.Y.Z)' header"
     elif [[ "$TEMPER_VER" != "$PLUGIN_VER" ]]; then
-      fail ".claude/commands/temper.md header ($TEMPER_VER) != plugin.json ($PLUGIN_VER)"
+      fail "commands/temper.md header ($TEMPER_VER) != plugin.json ($PLUGIN_VER)"
     else
       ok
     fi
   else
-    fail ".claude/commands/temper.md missing"
+    fail "commands/temper.md missing"
   fi
 fi
 
@@ -174,15 +174,15 @@ fi
 # These cover the new files added by docs/plans/phase-1-verification.md.
 
 # Hooks pack: rules.md present + settings.hooks.json valid JSON
-HOOKS_RULES="$REPO_ROOT/.claude/packs/hooks/rules.md"
-if [[ -f "$HOOKS_RULES" ]]; then ok; else fail ".claude/packs/hooks/rules.md missing"; fi
+HOOKS_RULES="$REPO_ROOT/packs/hooks/rules.md"
+if [[ -f "$HOOKS_RULES" ]]; then ok; else fail "packs/hooks/rules.md missing"; fi
 
-HOOKS_JSON="$REPO_ROOT/.claude/packs/hooks/settings.hooks.json"
+HOOKS_JSON="$REPO_ROOT/packs/hooks/settings.hooks.json"
 if [[ -f "$HOOKS_JSON" ]]; then
   if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$HOOKS_JSON" 2>/dev/null; then
     ok
   else
-    fail ".claude/packs/hooks/settings.hooks.json is not valid JSON"
+    fail "packs/hooks/settings.hooks.json is not valid JSON"
   fi
   # Regression guard (C-1): Claude Code has NO PreCommit event — a PreCommit key is
   # silently ignored and defeats the deterministic commit guarantee. The commit gate
@@ -190,10 +190,10 @@ if [[ -f "$HOOKS_JSON" ]]; then
   if python3 -c "import json,sys; assert 'PreCommit' not in json.load(open(sys.argv[1])).get('hooks', {})" "$HOOKS_JSON" 2>/dev/null; then
     ok
   else
-    fail ".claude/packs/hooks/settings.hooks.json uses invalid 'PreCommit' key (use scripts/hooks/install.sh for commit-time enforcement)"
+    fail "packs/hooks/settings.hooks.json uses invalid 'PreCommit' key (use scripts/hooks/install.sh for commit-time enforcement)"
   fi
 else
-  fail ".claude/packs/hooks/settings.hooks.json missing"
+  fail "packs/hooks/settings.hooks.json missing"
 fi
 
 # Hook scripts: exist and are executable
@@ -228,7 +228,7 @@ done
 # source path (extends the G-2 derived-content pattern to the new reference).
 EVAL_RULE="$REPO_ROOT/.cursor/rules/temper-ref-eval.mdc"
 if [[ -f "$EVAL_RULE" ]]; then
-  if grep -q "Source: .claude-plugin/reference/eval.md" "$EVAL_RULE" 2>/dev/null; then
+  if grep -q "Source: reference/eval.md" "$EVAL_RULE" 2>/dev/null; then
     ok
   else
     fail ".cursor/rules/temper-ref-eval.mdc source path mismatch"

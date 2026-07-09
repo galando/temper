@@ -122,6 +122,15 @@ Rule sets enforced during code generation and review. Three-tier resolution: pro
 
 Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/your-pack/`.
 
+## Security & Trust
+
+Temper is Markdown all the way down — every command, skill, and pack is an auditable prompt file in this repository. The trust contract:
+
+- **No network calls, no telemetry.** Temper never phones home. The only shell commands it runs are your project's own build/test/lint commands, and only under Claude Code's normal permission prompts.
+- **Writes are confined to your project.** Temper writes `.claude/temper.config` (created by `/temper:init`, only with your approval) and its working files under `.temper/` in your project. It never touches files outside the project directory.
+- **Autonomous Continuation is opt-in and fenced.** It is armed per-run at the plan gate, never at invocation. It never commits, never pushes, never merges — it parks before commit and leaves a report. With the `autonomy:` config absent, behavior is byte-identical to non-autonomous Temper.
+- **Optional MCP servers are optional.** The recommended servers below only upgrade evidence quality; nothing breaks without them.
+
 ## Installation
 
 ### Claude Code
@@ -134,14 +143,14 @@ Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/yo
 ### Cursor IDE
 
 ```bash
-# Into a Temper repo checkout (regenerates .cursor/ from .claude/ sources):
+# Into a Temper repo checkout (regenerates .cursor/ from plugin sources):
 ./scripts/install-cursor.sh
 
 # Into an arbitrary project (downloads a static snapshot):
 bash <(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)
 ```
 
-Cursor support is **frozen at the v5.1 feature set** (CHANGELOG v5.2.1 platform strategy). New capabilities ship Claude Code-first. The `.cursor/` export is **regenerated from `.claude/` sources on every release** via `scripts/generate-cursor.sh` — parity is honest and consistent, not stale-by-accident. Running `install-cursor.sh` inside a repo checkout delegates to the generator (offline, idempotent).
+Cursor support is **frozen at the v5.1 feature set** (CHANGELOG v5.2.1 platform strategy). New capabilities ship Claude Code-first. The `.cursor/` export is **regenerated from plugin sources on every release** via `scripts/generate-cursor.sh` — parity is honest and consistent, not stale-by-accident. Running `install-cursor.sh` inside a repo checkout delegates to the generator (offline, idempotent). The `.cursor/` directory is a derived, self-contained export: Claude Code ignores it entirely, and it is not part of the plugin's command/skill surface.
 
 ## Recommended Setup
 

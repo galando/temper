@@ -8,7 +8,7 @@ description: "Show quality metrics, learning loop, and observability dashboard"
 
 ## Execution
 
-> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/status.md`
+> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/reference/status.md`
 
 ### Quick Reference
 

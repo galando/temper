@@ -4,7 +4,7 @@ description: "Shared patterns for orchestrator commands (temper.md, fix.md)"
 
 # Orchestrator Shared Patterns
 
-**Used by:** `.claude/commands/temper.md`, `.claude/commands/fix.md`
+**Used by:** `commands/temper.md`, `commands/fix.md`
 
 This file contains shared orchestration patterns. Both `/temper` and `/temper:fix` delegate to these patterns instead of duplicating them.
 
@@ -74,7 +74,7 @@ Use the Agent tool with this prompt:
 
 "Execute {command/stage} for {item}: {spec from build-state.json}
 
-Full methodology: Read $CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/{stage}.md
+Full methodology: Read $CLAUDE_PLUGIN_ROOT/reference/{stage}.md
 
 CONTEXT: You are starting with a CLEAN context. Load these first:
 {ordered list of context files for this stage}
@@ -281,7 +281,7 @@ dashboard never lies about how a number was obtained. This rule is extended to t
   (empty array or key omitted) when no loops fired — v2 readers ignore it.
 
 **Pricing computation:** `cost_usd = (in_tokens/1e6)*in_price + (out_tokens/1e6)*out_price`
-where `in_price`/`out_price` come from `.claude-plugin/reference/pricing.md` keyed by tier.
+where `in_price`/`out_price` come from `reference/pricing.md` keyed by tier.
 Round `cost_usd` to 6 decimal places when writing to observability.json. Advisory; update
 pricing.md as published prices change.
 
@@ -617,7 +617,7 @@ disabled config means this file is never written and the stage is skipped.
 }
 ```
 
-Full schema: `$CLAUDE_PLUGIN_ROOT/.claude-plugin/reference/learning.md`
+Full schema: `$CLAUDE_PLUGIN_ROOT/reference/learning.md`
 
 ### Context Loading Rules
 
