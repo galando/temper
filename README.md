@@ -194,6 +194,7 @@ Full setup: [docs/recommended-setup.md](docs/recommended-setup.md)
 - [Token Efficiency](docs/token-efficiency.md) — caching, adaptive depth, incremental loops (v5.9.0)
 - [Recommended Setup](docs/recommended-setup.md) — MCP servers and live verification
 - [Enterprise Setup](docs/enterprise.md) — Deploy across your organization
+- [Privacy Policy](https://galando.github.io/temper/privacy.html) — No data collected, no servers, no telemetry
 
 ## Contributing
 
