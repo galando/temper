@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Privacy policy for the Temper plugin for Claude Code">
+  <meta name="theme-color" content="#0f0a06">
+  <title>Privacy Policy — Temper</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0f0a06;
+      --fg: #f5f0ea;
+      --fg-muted: #9a9085;
+      --accent: #ff6b35;
+      --border: #2a2420;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--bg);
+      color: var(--fg);
+      font-family: 'Inter', -apple-system, sans-serif;
+      line-height: 1.7;
+      padding: 4rem 1.5rem;
+    }
+    main { max-width: 42rem; margin: 0 auto; }
+    h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 2.25rem;
+      margin-bottom: 0.5rem;
+    }
+    .updated { color: var(--fg-muted); font-size: 0.875rem; margin-bottom: 2.5rem; }
+    h2 {
+      font-size: 1.15rem;
+      margin: 2rem 0 0.75rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+    }
+    p, li { color: var(--fg-muted); margin-bottom: 0.75rem; }
+    ul { padding-left: 1.25rem; }
+    strong { color: var(--fg); }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .back { display: inline-block; margin-top: 3rem; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Temper plugin for Claude Code · Last updated: July 11, 2026</p>
+
+    <p><strong>Summary: Temper collects no data. It has no servers, no telemetry, no analytics, and makes no network calls.</strong></p>
+
+    <h2>What Temper is</h2>
+    <p>Temper is an open-source plugin for Claude Code, distributed as Markdown instruction files and shell scripts. It runs entirely inside your local Claude Code session. The full source is public at <a href="https://github.com/galando/temper">github.com/galando/temper</a>.</p>
+
+    <h2>Data collection</h2>
+    <ul>
+      <li><strong>No data is collected or transmitted.</strong> Temper contains no telemetry, analytics, crash reporting, or phone-home mechanism of any kind.</li>
+      <li><strong>No accounts.</strong> Temper requires no sign-up, login, API key, or registration.</li>
+      <li><strong>No network calls.</strong> Temper itself never contacts any server. The only network activity involved in using it is the plugin download/update from GitHub, performed by Claude Code's plugin manager.</li>
+    </ul>
+
+    <h2>Where your data lives</h2>
+    <p>Everything Temper produces — plans, scenarios, review reports, metrics, learning state — is written to files inside your own project directory (<code>.temper/</code>, <code>.claude/</code>). These files stay on your machine and under your version control. Deleting them removes all Temper state.</p>
+
+    <h2>Claude Code</h2>
+    <p>Temper runs as instructions executed by Claude Code. Your interactions with Claude Code itself are governed by <a href="https://www.anthropic.com/legal/privacy">Anthropic's Privacy Policy</a>, which is independent of Temper.</p>
+
+    <h2>This website</h2>
+    <p>This site is hosted on GitHub Pages and contains no analytics or tracking added by us. GitHub may log standard access data as described in <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub's Privacy Statement</a>. Fonts are loaded from Google Fonts, which is subject to <a href="https://policies.google.com/privacy">Google's Privacy Policy</a>.</p>
+
+    <h2>Changes</h2>
+    <p>Any change to this policy will be published on this page and recorded in the repository's public git history.</p>
+
+    <h2>Contact</h2>
+    <p>Questions: open an issue at <a href="https://github.com/galando/temper/issues">github.com/galando/temper/issues</a>.</p>
+
+    <a class="back" href="./">← Back to Temper</a>
+  </main>
+</body>
+</html>
