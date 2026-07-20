@@ -4,6 +4,6 @@
   "version": "1.0.0",
   "description": "Temper eval fixture — seeded defect: no rate limiting on password reset",
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test"
   }
 }

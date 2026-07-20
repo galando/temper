@@ -413,7 +413,12 @@ cmd_evidence_list() {
 import json, sys
 for e in json.load(open(sys.argv[1])):
     mark = 'OK ' if (e.get('exit_code') in (0, None)) else 'ERR'
-    print(f\"[{e.get('label')}] {mark} {e.get('claim')}\" + (f\" (cmd: {e.get('cmd')}, exit {e.get('exit_code')})\" if e.get('cmd') else ''))
+    line = f\"[{e.get('label')}] {mark} {e.get('claim')}\"
+    if e.get('cmd'):
+        line += f\" (cmd: {e.get('cmd')}, exit {e.get('exit_code')})\"
+    if e.get('scenario'):
+        line += f\" [scenario: {e.get('scenario')}]\"
+    print(line)
 " "$file"
   fi
 }
@@ -646,7 +651,17 @@ gate_check() {
     elif [[ "$scenario_covered" -ge "$scenario_total" ]]; then
       reqs+=("$(_req "scenarios traced to tests" 1 "$scenario_covered/$scenario_total scenario(s) covered")")
     else
-      local missing; missing="$(_intent_uncovered_scenarios "$spec_path/intent.md" check | tr $'\x1f' ',')"
+      # Join with ' | ', not ',' — a scenario name may itself contain a comma, which
+      # would make a comma-joined list ambiguous about where one name ends. IFS-based
+      # array joining ("${arr[*]}") only honors IFS's FIRST character, not the whole
+      # string, so a real multi-char separator needs an explicit loop.
+      local missing_raw missing_arr missing="" name
+      missing_raw="$(_intent_uncovered_scenarios "$spec_path/intent.md" check)"
+      IFS=$'\x1f' read -r -a missing_arr <<< "$missing_raw"
+      for name in "${missing_arr[@]}"; do
+        [[ -n "$missing" ]] && missing+=" | "
+        missing+="$name"
+      done
       reqs+=("$(_req "scenarios traced to tests" 0 "$scenario_covered/$scenario_total covered — missing: $missing")")
       all_pass=0
     fi

@@ -1,21 +1,18 @@
-# test_orders.py — only exercises the not-found path, so find_order()'s hallucinated
-# `.find()` call is never actually invoked with data in the list.
+# test_orders.py — passes green, but never actually calls find_order() or
+# order_total(). It only tests the Order dataclass itself.
 #
-# SEEDED DEFECT: no test calls find_order()/order_total() with a non-empty orders list,
-# so the AttributeError in orders.py never fires here. /temper:check or /temper:review
-# reading orders.py directly (not just running the existing suite) should still flag
-# `.find()` as not a list method.
+# SEEDED DEFECT: find_order()'s `orders.find(...)` call (app/orders.py) raises
+# AttributeError unconditionally — Python's list has no .find() method, that's a
+# JavaScript Array method, and the error fires the instant it's called regardless of
+# whether `orders` has any items. No test here calls find_order() or order_total() at
+# all, so `pytest` reports a fully green suite while the only two functions that matter
+# are completely broken. This mirrors the README's story exactly: tests pass, but the
+# feature doesn't work — a defect only reading the code (not running the suite) catches.
 
-from app.orders import find_order, order_total
+from app.orders import Order
 
 
-def test_find_order_returns_none_for_empty_list():
-    assert find_order([], "ord_1") is None
-
-
-def test_order_total_raises_for_missing_order():
-    try:
-        order_total([], "ord_1")
-        assert False, "expected ValueError"
-    except ValueError:
-        pass
+def test_order_is_constructible():
+    order = Order(id="ord_1", customer_email="a@example.com", total_cents=1500)
+    assert order.id == "ord_1"
+    assert order.total_cents == 1500

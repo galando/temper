@@ -7,6 +7,10 @@
     "react": "^18.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "@types/react": "^18.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --jsx react-jsx --noEmit --skipLibCheck --strict --target ES2020 --moduleResolution bundler --module ESNext src/App.tsx src/components/NotificationBell.tsx"
   }
 }
