@@ -64,14 +64,16 @@ tracked here as a follow-up, not built in this pass.
 of this script effectively did, and that was a real, fixed bug — see "A bug in the
 harness itself" below). It checks, strongest first:
 
-1. **`gate-blocking-evidence`** — a recorded evidence entry both matches the fixture's
-   `catch_keywords` AND carries the specific property that makes the real gate FAIL:
-   `severity == 'critical'` for `review` (matching `gate_review()`'s actual check),
-   or a `--scenario` row with a nonzero `exit_code` for `check` (matching
-   `gate_check()`'s actual check). This is the only tier that proves "`temper gate`
-   would have mechanically blocked a commit" — the actual claim v7 makes.
-2. **`evidence-non-blocking`** — text matches, but not in a way that would fail the
-   gate (e.g. recorded at a non-blocking severity).
+1. **`gate-blocking-evidence`** — a recorded evidence entry matches **both** the
+   fixture's `anchor_keywords` and its `signal_keywords` (not either alone — see
+   "Anchor + signal keyword matching" below) AND carries the specific property that
+   makes the real gate FAIL: `severity == 'critical'` for `review` (matching
+   `gate_review()`'s actual check), or a `--scenario` row with a nonzero `exit_code`
+   for `check` (matching `gate_check()`'s actual check). This is the only tier that
+   proves "`temper gate` would have mechanically blocked a commit" — the actual claim
+   v7 makes.
+2. **`evidence-non-blocking`** — text matches both keyword sets, but not in a way
+   that would fail the gate (e.g. recorded at a non-blocking severity).
 3. **`transcript-fallback`** — only the raw transcript mentions it; no evidence was
    ever recorded, so `temper gate` never saw it at all. This is the *only* tier
    reachable for v6.0.1, which has no `temper` CLI.
@@ -81,6 +83,25 @@ relaxes it to any tier — needed to compare against v6.0.1 (tier 1 is structura
 unreachable there), never for judging v7 itself. Accepting a weaker tier there would
 let a real regression — the agent still narrates the bug but stops recording it as
 blocking — pass CI silently.
+
+### Anchor + signal keyword matching (2026-07-20)
+
+Every tier matches text with two keyword sets from `expect.json`, both required —
+never a single flat `OR`ed list:
+
+- **`anchor_keywords`** — specific enough to identify *this* defect uniquely: an exact
+  scenario name (`"Rate limiting on reset requests"`), a code symbol (`"find_order"`,
+  `"\\.find\\("`), a component name (`"NotificationBell"`).
+- **`signal_keywords`** — generic descriptive terms (`"missing"`, `"unused"`,
+  `"AttributeError"`) that mean nothing on their own — they match all kinds of
+  unrelated text — but become meaningful once co-occurring with an anchor.
+
+A claim (or, for tier 3, the transcript) must match **both** patterns, not either one.
+Before this, a single flat `catch_keywords` list let a generic word alone (e.g.
+`"missing"` matching some unrelated "nothing missing here" sentence) count as a catch
+— a false-positive risk concentrated in tiers 2/3, since tier 1 already had the
+gate-property check as a second filter. Requiring anchor+signal co-occurrence closes
+that gap at every tier, including tier 1's text-matching component.
 
 ## A bug in the harness itself (2026-07-20)
 
@@ -147,10 +168,14 @@ bash evals/run-fixture.sh password-reset   # v7, strict bar, no override needed
   isolation, not whether a real model actually calls it correctly in those stages.
   That's the same class of gap that hid the standalone-command bug above; it could be
   hiding another one in an untested stage right now.
-- **Tiers 2 and 3 still use fuzzy keyword matching** — some `catch_keywords` (e.g.
-  `"missing"`, `"unused"`) are generic enough to false-positive on unrelated text.
-  Acceptable now that they're demoted to non-authoritative signals, not what CI
-  enforces, but don't treat a tier-2/3 MISSED as decisive without reading `run.log`.
+
+**Fixed (2026-07-20):** tiers 2 and 3 used to match on a single flat, `OR`ed keyword
+list, so a generic word alone (`"missing"`, `"unused"`) could false-positive on
+unrelated text. Fixed by requiring `anchor_keywords` AND `signal_keywords` to both
+match — see "Anchor + signal keyword matching" above. Residual risk: the anchor and
+signal only have to appear *somewhere* in the same claim/transcript, not adjacent or
+about the same clause — still weaker than tier 1's gate-property check, which is why
+tiers 2/3 stay non-authoritative for CI regardless.
 
 ## Adding a fixture
 
@@ -159,8 +184,12 @@ bash evals/run-fixture.sh password-reset   # v7, strict bar, no override needed
    *visible* to Temper's methodology (not just "the code is wrong" — the spec has to
    describe the behavior the defect violates).
 3. `SEEDED_DEFECT.md` — what's wrong, why, which gate should catch it, in plain English.
-4. `expect.json` — `{"stage": "...", "command": "/temper:...", "catch_keywords": [...]}`.
-   Keywords are regexes, ORed together, case-insensitive.
+4. `expect.json` — `{"stage": "...", "command": "/temper:...", "anchor_keywords": [...],
+   "signal_keywords": [...]}`. Both are lists of regexes, case-insensitive, ORed
+   together *within* each list — but a catch requires at least one `anchor_keywords`
+   match AND at least one `signal_keywords` match (see "Anchor + signal keyword
+   matching" above). Put exact scenario names/symbols/component names in
+   `anchor_keywords`; put generic descriptive terms in `signal_keywords`.
 5. Confirm `bash evals/run-fixture.sh <name>` actually fails today (MISSED) if you
    revert the fix, and passes (CAUGHT) against the real pipeline — a fixture that
    passes unconditionally isn't testing anything.

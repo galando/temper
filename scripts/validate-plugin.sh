@@ -254,8 +254,8 @@ for fdir in "$REPO_ROOT"/evals/fixtures/*/; do
     if python3 -c "
 import json, sys
 d = json.load(open(sys.argv[1]))
-assert 'stage' in d and 'command' in d and 'catch_keywords' in d
-" "$fdir/expect.json" 2>/dev/null; then ok; else fail "evals/fixtures/$name/expect.json missing required keys (stage/command/catch_keywords)"; fi
+assert 'stage' in d and 'command' in d and 'anchor_keywords' in d and 'signal_keywords' in d
+" "$fdir/expect.json" 2>/dev/null; then ok; else fail "evals/fixtures/$name/expect.json missing required keys (stage/command/anchor_keywords/signal_keywords)"; fi
   fi
 done
 if [[ "$FIXTURE_COUNT" -ge 1 ]]; then ok; else fail "no eval fixtures found under evals/fixtures/"; fi

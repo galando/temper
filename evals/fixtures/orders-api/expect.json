@@ -1,5 +1,6 @@
 {
   "stage": "review",
   "command": "/temper:review",
-  "catch_keywords": ["\\.find\\(", "AttributeError", "list.*method", "hallucinat"]
+  "anchor_keywords": ["\\.find\\(", "find_order", "order_total"],
+  "signal_keywords": ["AttributeError", "not a (valid )?method", "doesn't exist", "no such method", "hallucinat", "invalid", "broken", "incorrect", "list.*method"]
 }

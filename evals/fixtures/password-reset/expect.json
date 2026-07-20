@@ -1,5 +1,6 @@
 {
   "stage": "check",
   "command": "/temper:check",
-  "catch_keywords": ["rate.?limit", "429", "uncovered", "missing", "not covered"]
+  "anchor_keywords": ["Rate limiting on reset requests", "rate.?limit", "429"],
+  "signal_keywords": ["missing", "uncovered", "not covered", "no test", "not tested", "not implemented"]
 }

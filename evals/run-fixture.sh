@@ -35,7 +35,13 @@ command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 required" >&2; exit 
 
 STAGE=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['stage'])" "$EXPECT")
 COMMAND=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['command'])" "$EXPECT")
-KEYWORDS=$(python3 -c "import json, sys; print('|'.join(json.load(open(sys.argv[1]))['catch_keywords']))" "$EXPECT")
+# Two keyword sets, both required (AND, not OR): anchor_keywords are specific enough to
+# identify THIS defect uniquely (a scenario name, a symbol, a component name);
+# signal_keywords are generic descriptive terms ("missing", "unused") that are only
+# meaningful once co-occurring with an anchor. Either alone is a false-positive risk —
+# an anchor can appear in unrelated boilerplate, a signal word matches almost anything.
+ANCHOR_KEYWORDS=$(python3 -c "import json, sys; print('|'.join(json.load(open(sys.argv[1]))['anchor_keywords']))" "$EXPECT")
+SIGNAL_KEYWORDS=$(python3 -c "import json, sys; print('|'.join(json.load(open(sys.argv[1]))['signal_keywords']))" "$EXPECT")
 
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
@@ -68,15 +74,19 @@ EVIDENCE_FILE=".temper/evidence/$STAGE.json"
 # must be a --scenario entry with a nonzero exit_code (uncovered). This directly
 # mirrors gate_review()/gate_check() in scripts/temper — a keyword match alone proves
 # nothing about whether the gate would have blocked a commit, only that matching text
-# exists somewhere in a claim string.
+# exists somewhere in a claim string. Requiring BOTH an anchor and a signal match (not
+# either alone) narrows a claim like "coverage looks fine, nothing missing" from
+# falsely matching a lone "missing" signal word with no anchor identifying this defect.
 if [[ -f "$EVIDENCE_FILE" ]]; then
   if python3 -c "
 import json, re, sys
-evidence_path, keywords, stage = sys.argv[1], sys.argv[2], sys.argv[3]
+evidence_path, anchor_kw, signal_kw, stage = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 entries = json.load(open(evidence_path))
-pat = re.compile(keywords, re.I)
+anchor_pat = re.compile(anchor_kw, re.I)
+signal_pat = re.compile(signal_kw, re.I)
 def blocks_gate(e):
-    if not pat.search(e.get('claim') or ''):
+    claim = e.get('claim') or ''
+    if not (anchor_pat.search(claim) and signal_pat.search(claim)):
         return False
     if stage == 'review':
         return e.get('severity') == 'critical'
@@ -84,21 +94,25 @@ def blocks_gate(e):
         return e.get('scenario') and e.get('exit_code') not in (0, None)
     return e.get('exit_code') not in (0, None)
 sys.exit(0 if any(blocks_gate(e) for e in entries) else 1)
-" "$EVIDENCE_FILE" "$KEYWORDS" "$STAGE" 2>/dev/null; then
+" "$EVIDENCE_FILE" "$ANCHOR_KEYWORDS" "$SIGNAL_KEYWORDS" "$STAGE" 2>/dev/null; then
     FOUND="gate-blocking-evidence"
   fi
 fi
 
-# Tier 2: evidence exists and its claim text matches, but not in a way that would
-# have failed the gate (e.g. recorded at a non-blocking severity) — worth knowing
-# separately from tier 1, not the same claim strength.
+# Tier 2: evidence exists and its claim text matches both anchor and signal, but not
+# in a way that would have failed the gate (e.g. recorded at a non-blocking severity)
+# — worth knowing separately from tier 1, not the same claim strength.
 if [[ "$FOUND" == "no" && -f "$EVIDENCE_FILE" ]]; then
   if python3 -c "
 import json, re, sys
 entries = json.load(open(sys.argv[1]))
-pat = re.compile(sys.argv[2], re.I)
-sys.exit(0 if any(pat.search(e.get('claim') or '') for e in entries) else 1)
-" "$EVIDENCE_FILE" "$KEYWORDS" 2>/dev/null; then
+anchor_pat = re.compile(sys.argv[2], re.I)
+signal_pat = re.compile(sys.argv[3], re.I)
+def matches(e):
+    claim = e.get('claim') or ''
+    return bool(anchor_pat.search(claim) and signal_pat.search(claim))
+sys.exit(0 if any(matches(e) for e in entries) else 1)
+" "$EVIDENCE_FILE" "$ANCHOR_KEYWORDS" "$SIGNAL_KEYWORDS" 2>/dev/null; then
     FOUND="evidence-non-blocking"
   fi
 fi
@@ -106,7 +120,10 @@ fi
 # Tier 3 (weakest): only the raw transcript mentions it — no evidence was ever
 # recorded, so `temper gate` never saw this at all. Real for v6.0.1 (no CLI exists);
 # a warning sign for v7 (the agent found it but never called `temper evidence add`).
-if [[ "$FOUND" == "no" ]] && grep -qEi "$KEYWORDS" run.log 2>/dev/null; then
+# Same anchor+signal co-occurrence requirement — a transcript is long free text where a
+# lone generic word like "missing" or "unused" is even more likely to false-positive
+# than a structured evidence claim.
+if [[ "$FOUND" == "no" ]] && grep -qEi "$ANCHOR_KEYWORDS" run.log 2>/dev/null && grep -qEi "$SIGNAL_KEYWORDS" run.log 2>/dev/null; then
   FOUND="transcript-fallback"
 fi
 

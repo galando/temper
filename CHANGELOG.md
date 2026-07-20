@@ -163,6 +163,33 @@ during debugging, never by the automated script CI runs.
   2-3 still use fuzzy keyword matching. Both documented in `evals/README.md` under
   "Known limitations", not hidden.
 
+**Fifth pass — closed the tier 2/3 fuzzy-keyword-matching gap:**
+
+The fourth pass's remaining item: tiers 2/3 matched on a single flat `catch_keywords`
+list, `OR`ed together — a generic word alone (`"missing"`, `"unused"`) could
+false-positive on unrelated text with no connection to the seeded defect.
+
+- **Fixed:** each fixture's `expect.json` now splits `catch_keywords` into
+  `anchor_keywords` (specific identifiers — exact scenario names, code symbols,
+  component names) and `signal_keywords` (generic descriptive terms). Every tier now
+  requires **both** an anchor match and a signal match, not either alone — including
+  tier 1's text-matching component, not just tiers 2/3. `evals/run-fixture.sh` passes
+  both patterns as `argv` into its `python3 -c` checks (not spliced into source, per
+  the same fix already applied once in `scripts/temper` and once earlier in this same
+  file), and the transcript-fallback tier now requires both patterns to appear in
+  `run.log`, not just one.
+- **Also fixed:** `scripts/validate-plugin.sh`'s fixture-schema check, which still
+  asserted the old `catch_keywords` key — would have failed CI against every fixture's
+  new `expect.json` had it been left as-is.
+- **Verified live:** all three `expect.json` files re-validated as well-formed JSON
+  carrying both keys; `evals/run-fixture.sh` re-run live against this branch, still
+  reporting `CAUGHT` at the strict `gate-blocking-evidence` tier with the new
+  anchor+signal logic. Full rationale: `evals/README.md`.
+- **Residual, disclosed limitation:** anchor and signal only need to appear *somewhere*
+  in the same claim/transcript, not adjacent or about the same clause — narrower than
+  before, but still weaker than tier 1's gate-property check. Tiers 2/3 remain
+  non-authoritative for CI regardless.
+
 ## v6.0.1 — Standard Plugin Layout
 
 Restructure to the standard Claude Code plugin layout in preparation for
