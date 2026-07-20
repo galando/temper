@@ -214,6 +214,40 @@ assert_exit "autonomous commit gate parks on a park-on-touch path" 1 "$TEMPER" g
 OUT=$("$TEMPER" gate commit 2>&1)
 assert_eq "park reason names the matched path" "yes" "$(echo "$OUT" | grep -q 'src/auth/login.js' && echo yes || echo no)"
 
+# --- native pre-commit hook: does `git commit` actually get blocked/allowed for
+# real, not just gate_commit()'s decision logic in isolation? Everything above tests
+# the CLI function; this installs the real hook (scripts/hooks/install.sh) and runs a
+# real `git commit`, the same way a human's `git commit` reaches it.
+setup
+git config user.email "test@example.com"
+git config user.name "test"
+bash "$REPO_ROOT/scripts/hooks/install.sh" >/dev/null
+echo '{"command": "temper", "run_mode": "interactive"}' > .temper/build-state.json
+echo 'x' > file.txt
+git add file.txt >/dev/null 2>&1
+
+cat > .temper/gates.json <<'EOF'
+{
+  "plan": {"verdict": "PASS", "requirements": [], "ts": "x"},
+  "build": {"verdict": "PASS", "requirements": [], "ts": "x"},
+  "review": {"verdict": "PASS", "requirements": [], "ts": "x"},
+  "check": {"verdict": "FAIL", "requirements": [], "ts": "x"},
+  "eval": {"verdict": "PASS", "requirements": [], "ts": "x"}
+}
+EOF
+echo '[]' > .temper/overrides.json
+assert_exit "native pre-commit hook blocks a real git commit on a red gate" 1 git commit -m "test"
+assert_eq "the blocked commit never actually landed" "yes" "$(git log --oneline 2>&1 | grep -q . && echo no || echo yes)"
+
+python3 -c "
+import json
+d = json.load(open('.temper/gates.json'))
+d['check'] = {'verdict': 'PASS', 'requirements': [], 'ts': 'x'}
+json.dump(d, open('.temper/gates.json', 'w'))
+"
+assert_exit "native pre-commit hook allows a real git commit once the gate is green" 0 git commit -m "test"
+assert_eq "the allowed commit actually landed" "yes" "$(git log --oneline 2>&1 | grep -q . && echo yes || echo no)"
+
 echo ""
 echo "=== test-temper.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"

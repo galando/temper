@@ -216,13 +216,24 @@ three specific stages.
   `evals/run-all.sh` on the nightly + full on-demand paths (not the per-PR smoke
   check, to keep PR cost down); `scripts/validate-plugin.sh` checks the new fixture's
   required files and that `run-wiring-smoke.sh` is executable.
-- **Narrowed, not closed: `commit` gate aggregation.** `temper gate commit` isn't
-  invoked by a model that could forget a prompt instruction — the native pre-commit
-  hook and the in-agent PreToolUse hook both call it unconditionally. The risk class
-  that justified this pass doesn't apply the same way there; its aggregation logic is
-  unit-tested, but a live end-to-end proof that the hook itself fires on a real `git
-  commit` isn't covered by any fixture. Disclosed in `evals/README.md`, not hidden —
-  a narrower and lower-risk gap than the one this pass closed.
+- **Narrowed, not closed at first: `commit` gate aggregation.** `temper gate commit`
+  isn't invoked by a model that could forget a prompt instruction — the native
+  pre-commit hook and the in-agent PreToolUse hook both call it unconditionally. The
+  risk class that justified the rest of this pass doesn't apply the same way there;
+  its aggregation logic was already unit-tested, but nothing had ever proven the real
+  *mechanism* — the actual git hook `scripts/hooks/install.sh` writes — really
+  installs, really fires, and really blocks (or allows) a real `git commit`, as
+  opposed to just the function it calls.
+
+**Then closed for real, same pass:** asked directly "will it actually work?" instead
+of leaving the narrowed gap as a documented tradeoff. Answered it by testing the real
+mechanism — installed the hook into a scratch repo, set a red gate, ran a real `git
+commit`: blocked (exit 1, nothing landed in `git log`). Flipped the gate green, ran it
+again: succeeded (exit 0, commit landed). Both directions needed no live model call,
+only real git — so both are now permanent assertions in
+`scripts/tests/test-temper.sh` (27 → 31 tests), not a one-off manual check. All five
+pre-commit gate stages plus the commit gate's own installation mechanism are now
+verified for real, live or deterministic as appropriate; no known gap remains.
 
 Full writeup: `evals/README.md`.
 

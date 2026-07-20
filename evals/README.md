@@ -208,23 +208,27 @@ TEMPER_PLUGIN_DIR=/tmp/temper-v601 TEMPER_EVAL_ACCEPT_ANY_TIER=1 \
 bash evals/run-fixture.sh password-reset   # v7, strict bar, no override needed
 ```
 
-## Known limitations (still open, not hidden)
+## Known limitations (none currently open)
 
-- **`commit` gate aggregation is unit-tested only, but that's a different risk class
-  than `plan`/`build`/`eval` were.** `temper gate commit` isn't invoked by a model
-  following prompt instructions it could forget — it's invoked mechanically by the
-  native git pre-commit hook and the in-agent PreToolUse hook, both of which literally
-  just run `temper gate commit` unconditionally (`scripts/hooks/install.sh`,
-  `scripts/hooks/block-uncommitted-gate.sh`). The risk that caught `plan`/`build`/
-  `review`/`check`/`eval` before — "does the *prompt* actually drive the model to call
-  the CLI" — doesn't apply here the same way; there's no prompt step to forget. Its
-  aggregation *logic* (stage list by `command`, override checking, blast-radius/
-  park-on-touch) is exercised by `scripts/tests/test-temper.sh`. Live end-to-end proof
-  the hook itself fires on a real `git commit` isn't covered by any fixture here — a
-  gap, but a narrower and lower-risk one than the others were.
+None right now — see "Resolved" below for what used to be here and how each was
+closed. This line stays instead of deleting the section outright: the day a new gap is
+found (a new stage, a new integration point, a new failure mode this suite doesn't
+cover yet) it belongs here, disclosed, not silently absorbed into "Resolved" or left
+out of this file.
 
 ### Resolved (not open anymore)
 
+- **`commit` gate aggregation had no live, real-`git commit` test — only
+  `gate_commit()`'s decision logic was unit-tested.** That logic (given a crafted
+  `gates.json`, does it compute the right PASS/FAIL) was always correct; what was
+  missing was proof the actual mechanism — the native pre-commit hook written by
+  `scripts/hooks/install.sh` — really gets installed, really runs, and really blocks
+  (or allows) a real `git commit`, not just the function it calls. This needed no live
+  model call to close, only real git: `scripts/tests/test-temper.sh` now installs the
+  real hook into a scratch repo, sets a red gate, runs a real `git commit`, and asserts
+  it's rejected (exit 1, nothing lands in `git log`) — then flips the gate green and
+  asserts a real commit now succeeds. Both directions verified, deterministic, on
+  every test run (no `claude -p` involved, unlike the fixtures above).
 - **Only `review`/`check` were exercised by a live fixture; `plan`/`build`/`eval` were
   unit-tested only** — the same class of gap that hid the standalone-command bug (pass
   3, below): a synthetic test can't know whether a *prompt* actually calls the CLI.
