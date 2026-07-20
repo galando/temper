@@ -103,6 +103,12 @@ Before this, a single flat `catch_keywords` list let a generic word alone (e.g.
 gate-property check as a second filter. Requiring anchor+signal co-occurrence closes
 that gap at every tier, including tier 1's text-matching component.
 
+**Verified live, all three fixtures, after the fix:** `password-reset` (`check` stage),
+`orders-api` (`review` stage), and `notifications` (`review` stage) each re-run against
+this branch — all three still report **CAUGHT (`gate-blocking-evidence`)** under the
+new anchor+signal logic. Both gate paths the tier-1 check branches on (`review`'s
+`severity`, `check`'s `--scenario`/`exit_code`) are exercised by this set.
+
 ## A bug in the harness itself (2026-07-20)
 
 Asked directly whether this eval suite is actually correct, not just useful. Re-read
@@ -169,13 +175,15 @@ bash evals/run-fixture.sh password-reset   # v7, strict bar, no override needed
   That's the same class of gap that hid the standalone-command bug above; it could be
   hiding another one in an untested stage right now.
 
-**Fixed (2026-07-20):** tiers 2 and 3 used to match on a single flat, `OR`ed keyword
-list, so a generic word alone (`"missing"`, `"unused"`) could false-positive on
-unrelated text. Fixed by requiring `anchor_keywords` AND `signal_keywords` to both
-match — see "Anchor + signal keyword matching" above. Residual risk: the anchor and
-signal only have to appear *somewhere* in the same claim/transcript, not adjacent or
-about the same clause — still weaker than tier 1's gate-property check, which is why
-tiers 2/3 stay non-authoritative for CI regardless.
+### Resolved (not open anymore)
+
+- **Tiers 2 and 3 used to match on a single flat, `OR`ed keyword list**, so a generic
+  word alone (`"missing"`, `"unused"`) could false-positive on unrelated text. Fixed by
+  requiring `anchor_keywords` AND `signal_keywords` to both match — see "Anchor +
+  signal keyword matching" above. Residual risk, still true after the fix: the anchor
+  and signal only have to appear *somewhere* in the same claim/transcript, not adjacent
+  or about the same clause — still weaker than tier 1's gate-property check, which is
+  why tiers 2/3 stay non-authoritative for CI regardless.
 
 ## Adding a fixture
 
