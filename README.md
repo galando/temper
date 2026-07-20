@@ -92,12 +92,15 @@ temper gate check -> PASS
 - **The gate logic is ~20-30 lines of readable shell per stage** — `scripts/temper`, unit
   tested in `scripts/tests/test-temper.sh`. If you want to know exactly what "Check
   passed" means, read the function; you don't have to trust 1,000 lines of prompt.
-- **Seeded-defect fixtures prove the pipeline catches real bugs — 3/3, verified live.**
-  Three small projects, each with one known, planted defect (missing rate limiting, a
-  hallucinated API call, a component never wired in). Run for real against both v6.0.1
-  and this branch: both catch all three, and v7's catches are confirmed via the
-  evidence ledger (`temper gate` mechanically FAILing with the defect named), not just
-  a narrated summary. Details, including a real bug this run found and fixed:
+- **Seeded-defect fixtures prove the pipeline catches real bugs — 3/3, verified live,
+  at the strict bar.** Three small projects, each with one known, planted defect
+  (missing rate limiting, a hallucinated API call, a component never wired in). Run
+  for real against both v6.0.1 and this branch: both catch all three. v7's catches
+  require the harness's strongest tier — `temper gate` mechanically FAILing with the
+  defect named — not a weaker "some evidence text roughly matches" signal; that
+  distinction was itself a real bug the harness had until it was caught by asking
+  "is this eval actually correct?" and fixing it. Full story, including two real bugs
+  this found (one in the pipeline, one in the eval harness itself):
   [`evals/README.md`](evals/README.md).
 
 Full design rationale: [docs/plans/v7-deterministic-spine.md](docs/plans/v7-deterministic-spine.md)

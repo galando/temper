@@ -58,21 +58,61 @@ needs a fourth fixture shaped differently from these three (a full `/temper` pip
 run that touches `auth/`, not a single-stage `/temper:check`/`/temper:review` run) —
 tracked here as a follow-up, not built in this pass.
 
+## How a "catch" is verified — three tiers, strongest wins
+
+`run-fixture.sh` doesn't just grep for keywords and call it a day (an earlier version
+of this script effectively did, and that was a real, fixed bug — see "A bug in the
+harness itself" below). It checks, strongest first:
+
+1. **`gate-blocking-evidence`** — a recorded evidence entry both matches the fixture's
+   `catch_keywords` AND carries the specific property that makes the real gate FAIL:
+   `severity == 'critical'` for `review` (matching `gate_review()`'s actual check),
+   or a `--scenario` row with a nonzero `exit_code` for `check` (matching
+   `gate_check()`'s actual check). This is the only tier that proves "`temper gate`
+   would have mechanically blocked a commit" — the actual claim v7 makes.
+2. **`evidence-non-blocking`** — text matches, but not in a way that would fail the
+   gate (e.g. recorded at a non-blocking severity).
+3. **`transcript-fallback`** — only the raw transcript mentions it; no evidence was
+   ever recorded, so `temper gate` never saw it at all. This is the *only* tier
+   reachable for v6.0.1, which has no `temper` CLI.
+
+**Pass bar is strict by default: only tier 1 counts.** `TEMPER_EVAL_ACCEPT_ANY_TIER=1`
+relaxes it to any tier — needed to compare against v6.0.1 (tier 1 is structurally
+unreachable there), never for judging v7 itself. Accepting a weaker tier there would
+let a real regression — the agent still narrates the bug but stops recording it as
+blocking — pass CI silently.
+
+## A bug in the harness itself (2026-07-20)
+
+Asked directly whether this eval suite is actually correct, not just useful. Re-read
+`run-fixture.sh` cold and found: the original "evidence-ledger" check only tested
+whether *any* evidence entry's free-text `claim` matched a keyword regex — it never
+looked at `severity` or `exit_code`/`scenario`, and never ran `temper gate <stage>` or
+read `.temper/gates.json`. So "confirmed via evidence-ledger" was true only in the
+sense that matching text existed somewhere, not that the gate would have blocked
+anything — that distinction had only ever been checked by hand during debugging, never
+by the script CI actually runs. Fixed into the three-tier system above.
+
+**Verified live, both directions, after the fix:**
+- v6.0.1's `orders-api`, run **without** the override, correctly reports **MISSED** —
+  proof the strict bar actually discriminates rather than rubber-stamping everything.
+  This is also the first real negative-path confirmation this harness has ever
+  produced; every run before this had only ever shown CAUGHT.
+- v6.0.1's `password-reset`, run **with** `TEMPER_EVAL_ACCEPT_ANY_TIER=1`, correctly
+  passes.
+
 ## Baseline pinning — run for real (2026-07-20)
 
-Ran live: `evals/run-all.sh` against a `v6.0.1` worktree (`TEMPER_PLUGIN_DIR` override
-— see below) and against this branch. Both catch **3/3**:
+`evals/run-all.sh` against a `v6.0.1` worktree (relaxed bar — see above) and against
+this branch (strict bar, the default). **Both catch 3/3**:
 
-| Fixture | v6.0.1 | v7 (this branch) |
+| Fixture | v6.0.1 (relaxed bar) | v7 — strict bar, this branch |
 |---|---|---|
-| `password-reset` | CAUGHT (transcript) | CAUGHT (**evidence-ledger**) |
-| `orders-api` | CAUGHT (transcript) | CAUGHT (**evidence-ledger**) |
-| `notifications` | CAUGHT (transcript) | CAUGHT (**evidence-ledger**) |
+| `password-reset` | CAUGHT (`transcript-fallback`) | CAUGHT (**`gate-blocking-evidence`**) |
+| `orders-api` | CAUGHT (`transcript-fallback`) | CAUGHT (**`gate-blocking-evidence`**) |
+| `notifications` | CAUGHT (`transcript-fallback`) | CAUGHT (**`gate-blocking-evidence`**) |
 
-"transcript" vs "evidence-ledger" is the source column `run-fixture.sh` prints — v6.0.1
-has no `temper` CLI at all, so its catches can only ever be the transcript-grep
-fallback (the agent's own narrated summary mentioned the defect). v7's catches are
-confirmed via the **evidence ledger** — meaning `temper gate {stage}` mechanically
+v7's catches are confirmed at the strongest tier — `temper gate {stage}` mechanically
 FAILed with the defect named in its own detail line, e.g.:
 
 ```
@@ -82,23 +122,35 @@ temper gate check -> FAIL
 
 That's a strictly stronger guarantee than v6.0.1 ever had, not just parity.
 
-**A real bug this baseline run found and fixed:** the first live pass on `orders-api`
-and `notifications` caught the defect only via transcript-fallback *on v7 too* — the
-standalone `/temper:review`/`/temper:check` commands (as opposed to the unified
-`/temper`'s `agents/*.md` path) were never wired to call `temper evidence add` or
-`temper gate`, so a real run left `.temper/evidence/` empty. `commands/{plan,build,
-review,check,eval}.md` now each carry a "Deterministic Gate" step pointing back at the
-matching `agents/*.md` steps, plus explicit `--spec-path` (state isn't necessarily
-initialized in standalone use, so `temper state get spec_path` can be empty). Re-run
-after the fix: `orders-api` now confirms `evidence-ledger`. This is exactly the kind of
-bug a synthetic CLI test can't find — only running the real thing did.
+**A real bug the first pass of this baseline run found and fixed** (before the harness
+fix above): the standalone `/temper:review`/`/temper:check` commands (as opposed to
+the unified `/temper`'s `agents/*.md` path) were never wired to call `temper evidence
+add` or `temper gate` at all, so a real run left `.temper/evidence/` empty.
+`commands/{plan,build,review,check,eval}.md` now each carry a "Deterministic Gate"
+step pointing back at the matching `agents/*.md` steps, plus explicit `--spec-path`
+(state isn't necessarily initialized in standalone use). This is exactly the kind of
+bug a synthetic CLI test can't find — only running the real thing did, twice over.
 
 **To reproduce:**
 ```bash
 git worktree add /tmp/temper-v601 <v6.0.1-commit-or-tag>
-TEMPER_PLUGIN_DIR=/tmp/temper-v601 bash evals/run-fixture.sh password-reset
-bash evals/run-fixture.sh password-reset   # v7, no override needed
+TEMPER_PLUGIN_DIR=/tmp/temper-v601 TEMPER_EVAL_ACCEPT_ANY_TIER=1 \
+  bash evals/run-fixture.sh password-reset
+bash evals/run-fixture.sh password-reset   # v7, strict bar, no override needed
 ```
+
+## Known limitations (still open, not hidden)
+
+- **Only `review` and `check` are exercised by a live fixture.** `plan`'s blast-radius
+  requirement, `build`'s RED/GREEN, `eval`'s threshold, and `commit`'s aggregation are
+  only tested by `scripts/tests/test-temper.sh` — which tests the CLI's logic in
+  isolation, not whether a real model actually calls it correctly in those stages.
+  That's the same class of gap that hid the standalone-command bug above; it could be
+  hiding another one in an untested stage right now.
+- **Tiers 2 and 3 still use fuzzy keyword matching** — some `catch_keywords` (e.g.
+  `"missing"`, `"unused"`) are generic enough to false-positive on unrelated text.
+  Acceptable now that they're demoted to non-authoritative signals, not what CI
+  enforces, but don't treat a tier-2/3 MISSED as decisive without reading `run.log`.
 
 ## Adding a fixture
 

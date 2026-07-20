@@ -129,6 +129,40 @@ acceptance criteria and closed the real gaps that turned up:
   the plan's ~1,500-line target would violate v7's own design rule (delete mechanism,
   keep judgment) for the sake of a number. The gap is real and stays open by design.
 
+**Fourth pass — the eval harness's own "caught" signal was weaker than claimed:**
+
+Asked directly whether the eval suite is actually correct, not just useful — re-read
+`evals/run-fixture.sh` cold rather than re-stating the third pass's claims. Found: the
+"evidence-ledger" match only checked whether *any* evidence entry's free-text `claim`
+matched a keyword regex. It never inspected `severity` (what `temper gate review`
+actually checks) or `exit_code`/`scenario` (what `temper gate check` actually checks),
+and never ran `temper gate <stage>` or read `.temper/gates.json`. So "confirmed via
+evidence-ledger" was true only in the sense that matching text existed — not that the
+gate would have mechanically blocked a commit, the actual claim made in this
+CHANGELOG's third-pass entry above. That distinction had only been checked by hand
+during debugging, never by the automated script CI runs.
+
+- **Fixed:** a three-tier signal, strongest first — `gate-blocking-evidence` (the
+  matching entry also carries the specific property that drives the real gate:
+  `severity == 'critical'` for review, a `--scenario` row with nonzero `exit_code` for
+  check), `evidence-non-blocking` (text matches, wouldn't fail the gate), and
+  `transcript-fallback` (only the raw transcript mentions it; no evidence recorded at
+  all). Pass bar is now **strict by default** — only tier 1 counts, matching what CI
+  should enforce; `TEMPER_EVAL_ACCEPT_ANY_TIER=1` is the explicit override needed only
+  for the v6.0.1 comparison (tier 1 is structurally unreachable there — v6.0.1 has no
+  CLI at all).
+- **Verified live, both directions:** v6.0.1's `orders-api`, run *without* the
+  override, correctly reports MISSED — the first real negative-path confirmation this
+  harness has ever produced (every prior run had only ever shown CAUGHT). v6.0.1's
+  `password-reset`, run *with* the override, correctly passes. All three v7 fixtures
+  re-confirmed at the strict `gate-blocking-evidence` tier. Full writeup:
+  `evals/README.md`.
+- **Known, disclosed limitations that remain:** only `review`/`check` are exercised by
+  a live fixture — `plan`, `build`, `eval`, and `commit` gates are only tested by
+  synthetic CLI unit tests, the same class of gap that hid the third-pass bug. Tiers
+  2-3 still use fuzzy keyword matching. Both documented in `evals/README.md` under
+  "Known limitations", not hidden.
+
 ## v6.0.1 — Standard Plugin Layout
 
 Restructure to the standard Claude Code plugin layout in preparation for
