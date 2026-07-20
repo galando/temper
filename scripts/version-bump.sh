@@ -9,10 +9,10 @@
 #   1. .claude-plugin/plugin.json          "version": "X.Y.Z"
 #   2. .claude/CLAUDE.md                   **Version:** X.Y.Z
 #   3. commands/temper.md          header  (vX.Y.Z)
-#   4. .cursor/                            regenerated wholesale via
-#                                          generate-cursor.sh (RUN LAST, after
-#                                          steps 1-3, so derived content carries
-#                                          the new version in lockstep)
+#
+# .cursor/ is NOT touched by this script (v7+): Cursor support is archived at its
+# last-synced snapshot, not regenerated per release — see .cursor/README.md and
+# CHANGELOG v7.0.0. validate-plugin.sh no longer asserts .cursor/ version agreement.
 #
 # CHANGELOG.md is NOT auto-rewritten — the maintainer owns the new `## vX.Y.Z`
 # entry and its body. validate-plugin.sh asserts CHANGELOG top version matches.
@@ -79,31 +79,14 @@ else
     echo "  -> $TEMPER_CMD not found, skipping"
 fi
 
-# 5. .cursor/ is a DERIVED artifact owned by generate-cursor.sh. Regenerate it
-#    LAST, after all source stamps (steps 1,3,4) are updated, so derived files
-#    (VERSION, README, commands/temper.md, rules/*.mdc) carry the new version in
-#    lockstep. Running the generator before bumping commands/temper.md
-#    leaves the derived command header one version behind (check finding VB-ORDER).
-GEN_SCRIPT="scripts/generate-cursor.sh"
-if [ -d ".cursor" ] && [ -f "$GEN_SCRIPT" ]; then
-    echo "  -> Regenerating .cursor/ via $GEN_SCRIPT (single writer)"
-    if ! bash "$GEN_SCRIPT" >/dev/null 2>&1; then
-        echo "  -> WARN: $GEN_SCRIPT failed; .cursor/ may be stale. Run it manually." >&2
-    fi
-elif [ -f "$GEN_SCRIPT" ]; then
-    echo "  -> .cursor/ not found; run scripts/generate-cursor.sh to create it"
-else
-    echo "  -> .cursor/ and $GEN_SCRIPT absent; skipping Cursor export"
-fi
-
 echo ""
 echo "Version bumped to $NEW_VERSION"
 echo ""
 echo "Files updated:"
 echo "   * .claude-plugin/plugin.json"
-[ -d ".cursor" ]            && echo "   * .cursor/VERSION"
 [ -f "$CLAUDE_MD" ]         && echo "   * $CLAUDE_MD"
 [ -f "$TEMPER_CMD" ]        && echo "   * $TEMPER_CMD"
+[ -d ".cursor" ]            && echo "   (.cursor/ NOT touched — archived, see .cursor/README.md)"
 echo ""
 echo "Next steps:"
 echo "   1. Update CHANGELOG.md with a '## v$NEW_VERSION' entry at the top"

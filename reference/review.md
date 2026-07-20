@@ -870,9 +870,8 @@ CONTRACT VERDICT:
 
 ### Step 3.8: Architecture Depth Review (Optional)
 
-**Trigger condition:** `architecture-depth` pack is enabled AND either:
-- User selects "Architecture Depth Review" at the review gate
-- `capabilities.architecture-depth: true` in temper.config (default)
+**Trigger condition:** `architecture-depth` pack is enabled AND the user selects
+"Architecture Depth Review" at the review gate (always offered, no config toggle).
 
 This step runs as an **additional pass** after the standard review. It does not replace any existing steps.
 

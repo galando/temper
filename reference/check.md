@@ -439,12 +439,11 @@ to avoid slowing down the validation pipeline.
 After all validation levels pass, before showing the Commit gate, generate config suggestions:
 
 ```
-1. CHECK: Is capabilities.config-suggestions not false in temper.config? (default: enabled)
-2. CHECK: Did all validation levels pass? (no failures)
-3. CHECK: Were files changed? (git diff --name-only returns results)
+1. CHECK: Did all validation levels pass? (no failures)
+2. CHECK: Were files changed? (git diff --name-only returns results)
 
 If all checks pass:
-4. READ analysis inputs:
+3. READ analysis inputs:
    - git diff --stat
    - .temper/specs/{feature}/intent.md (if exists)
    - .temper/specs/{feature}/tasks.md (if exists)

@@ -21,7 +21,15 @@ argument-hint: "<bug-description-or-JIRA-123>"
 ## Architecture: Agent Per Stage
 
 > **Shared patterns:** `$CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md`
-> **Read that file once, now.** Canonical definitions for: $CLAUDE_PLUGIN_ROOT resolution, single-read contract, build-state schema + save-state pattern, stage agent launch template, gate options, gate enforcement, resume validation, nested invocation protection, agent failure handling, and context efficiency. Every `→ pattern` reference below points into that already-loaded file — do not re-read it.
+> **Read that file once, now.** Canonical definitions for: $CLAUDE_PLUGIN_ROOT resolution, build-state schema + save-state pattern, gate enforcement, resume validation, nested invocation protection, and context efficiency. Every `→ pattern` reference below points into that already-loaded file — do not re-read it.
+>
+> **`$TEMPER` below means `$CLAUDE_PLUGIN_ROOT/scripts/temper`.** The commit hook
+> (`scripts/hooks/install.sh`) runs `temper gate commit` on **every** `git commit`,
+> regardless of which command produced it — so this file records evidence and runs the
+> same gates as `/temper` (Fix maps onto the `build` gate: a regression test is exactly a
+> RED-then-GREEN pair; Review and Check are the literal same stages, sharing
+> `reference/review.md` / `reference/check.md`). Skipping this would leave every
+> `/temper:fix` commit wrongly blocked (missing evidence fails closed, by design).
 
 Each stage runs in an **isolated Agent subprocess** — genuine context clearing, not theater.
 
@@ -140,11 +148,11 @@ Show the AskUserQuestion gate with:
 
 **on Continue:**
 1. Save RCA results to `.temper/specs/{bug-slug}/rca.md` (create directory if needed)
-2. Save state (orchestrator-patterns.md → "Save State Pattern", `stage: rca_complete`, `next_stage: fix`, branch `fix/{bug-slug}`).
+2. `$TEMPER state init {bug-slug} --command fix` (first time only — this also sets branch
+   `fix/{bug-slug}`), else `$TEMPER state advance rca_complete fix`.
 3. **Create fix branch** (if git pack is enabled):
    - Run: `git branch --show-current`
    - If on main/master: `git checkout -b fix/{bug-slug}`
-   - Store branch name in build-state.json
 4. Proceed to Stage 2 (FIX) — launches a new Agent subprocess
 
 **on Change (via "Other"):** Re-launch the RCA agent with the updated direction (e.g. "investigate the auth module instead"), show the updated RCA summary, then re-show this gate. Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
@@ -182,6 +190,12 @@ Then execute the fix methodology. Make sure to include:
 - Blast radius check
 - Intent cross-reference (if active intent.md exists)
 - Simplification (if code-simplifier agent is available)
+
+Record the regression test as build evidence — this is what `temper gate build` checks:
+  $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage build --claim 'regression test' \
+    --cmd '<test command>' --exit 1 --phase red --label PROVEN     # failing, before the fix
+  $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage build --claim 'regression test' \
+    --cmd '<test command>' --exit 0 --phase green --label PROVEN   # passing, after the fix
 
 CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the fix summary to the orchestrator.
 
@@ -222,13 +236,18 @@ Return ONLY:
 
 ### Stage Gate
 
+Run `$TEMPER gate build` (checks the RED-then-GREEN regression-test evidence above; the
+"no unchecked tasks" requirement is skipped automatically — fixes have no `tasks.md`).
+
 Show the AskUserQuestion gate with:
-- "Continue to Review (Recommended)" — launch REVIEW agent
+- **On PASS:** "Continue to Review (Recommended)" — launch REVIEW agent
+- **On FAIL:** "Override and continue" (`$TEMPER override build --reason "..."`) or fix it
+  and re-run the gate
 - "Save for later" — save state, stop
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
 
 **on Continue:**
-1. Save state to `.temper/build-state.json`
+1. `$TEMPER state advance fix_complete review`
 2. Proceed to Stage 3 (REVIEW) — launches a new Agent subprocess
 
 **on Change (via "Other"):** Make the change, re-show the updated fix summary, then re-show this gate. Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
@@ -266,6 +285,11 @@ Focus areas for FIX reviews:
 - Pack rule compliance: security, quality, stack patterns
 - AI-code detection: hallucinated APIs, over-engineering, copy-paste drift
 
+Record every finding you keep open (per `reference/review.md`'s severity taxonomy) —
+this is what `temper gate review` checks:
+  $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage review \
+    --claim '<one-line finding>' --severity critical|high|medium|low --label HEURISTIC
+
 CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the review summary to the orchestrator.
 
 Return ONLY:
@@ -302,18 +326,19 @@ Return ONLY:
 
 ### Stage Gate
 
+Run `$TEMPER gate review` (zero open findings at or above `review.block-on`).
+
 Show the AskUserQuestion gate with:
-- "Fix all & continue to Check (Recommended)" — apply fixes for ALL issues (including low), launch CHECK agent
+- **On FAIL:** "Fix all & continue to Check (Recommended)" — apply fixes for ALL open
+  findings directly (no subprocess), then re-run `temper gate review`; if it's still FAIL
+  after one fix pass, offer "Override and continue" instead of looping indefinitely
+- **On PASS:** "Continue to Check (Recommended)"
 - "Save for later" — skip fixes, save state
 - **"Other" (built-in free-text)** — type a change request, edits are made, gate re-appears
 
 **on Continue:**
-1. Apply ALL fixable issues (including low severity) directly — no subprocess needed for fixes
-2. If fixes were applied: re-run a single review pass on the fixed files
-   - If new issues found: show updated summary, ask user again (max 1 more loop)
-   - If clean: proceed to step 3
-3. Save state to `.temper/build-state.json`
-4. Proceed to Stage 4 (CHECK) — launches a new Agent subprocess
+1. `$TEMPER state advance review_complete check`
+2. Proceed to Stage 4 (CHECK) — launches a new Agent subprocess
 
 **on Change (via "Other"):** Make the change, re-launch the REVIEW agent for an updated summary, then re-show this gate. Enforcement: orchestrator-patterns.md → "Gate Enforcement Rules".
 
@@ -338,6 +363,13 @@ CONTEXT: You are starting with a CLEAN context. Load these first:
 1. Read $CLAUDE_PLUGIN_ROOT/reference/check.md for methodology
 2. Read {spec_path}/rca.md (for regression test context)
 3. Detect stack and run the full validation pipeline
+
+Record what you ran — this is what `temper gate check` checks:
+  $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage check --claim 'tests' \
+    --cmd '<test command>' --exit <code> --label PROVEN
+  $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage check --claim 'coverage' \
+    --cmd '<coverage command>' --exit <code> --value <parsed %> \
+    --artifact <path to the report> --label PROVEN
 
 CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the check summary to the orchestrator.
 
@@ -366,23 +398,26 @@ Return ONLY:
 
 ### Stage Gate
 
+Run `$TEMPER gate check`, then `$TEMPER gate commit` (aggregates build/review/check —
+Fix has no `plan`/`eval` gates, `temper gate commit` only requires the gates a `fix` run
+actually produced).
+
 Show the AskUserQuestion gate with:
-- "Commit (Recommended)" — commit with conventional message
-- "Save for later" — keep changes uncommitted
+- **On PASS:** "Commit (Recommended)" — commit with conventional message
+- **On FAIL:** show `$TEMPER report`; "Override and commit" (`$TEMPER override <stage>
+  --reason "..."`, re-run `temper gate commit`) or "Save for later"
 - **"Other" (built-in free-text)** — type a change request, edits are made, re-run check
 
 **on Commit:**
 ```
-1. Delete .temper/build-state.json (cleanup)
-2. Commit with conventional message:
-   fix({scope}): {description}
+1. git add -A && git commit -m "fix({scope}): {description}
 
    Root cause: {explanation}
    Regression test: {test name}
    {Closes JIRA-123 / Fixes #456}
 
-   Co-Authored-By: Claude <noreply@anthropic.com>
-
+   Co-Authored-By: Claude <noreply@anthropic.com>"
+2. $TEMPER state clear
 3. Report:
    "Committed: {hash}
     Branch: {branch}

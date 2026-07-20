@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+#
+# run-fixture.sh <fixture-name> — runs a seeded-defect fixture's designated /temper
+# stage headlessly against a throwaway copy of the fixture, then checks whether the
+# defect was actually caught: via the evidence ledger `scripts/temper` writes first,
+# falling back to a keyword match on the transcript only if no evidence exists.
+#
+# This is Move 3 of docs/plans/v7-deterministic-spine.md: proof, not narration, that
+# the pipeline catches what it claims to catch.
+#
+# Requires: the `claude` CLI on PATH, authenticated. Runs with
+# --dangerously-skip-permissions — only ever point this at the throwaway copy this
+# script makes, never at a real project.
+#
+# Exit 0 + "CAUGHT" if the seeded defect was flagged; exit 1 + "MISSED" otherwise.
+set -uo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+FIXTURE="${1:?usage: run-fixture.sh <fixture-name>}"
+FIXTURE_DIR="$REPO_ROOT/evals/fixtures/$FIXTURE"
+[[ -d "$FIXTURE_DIR" ]] || { echo "FAIL: no such fixture: $FIXTURE" >&2; exit 2; }
+
+EXPECT="$FIXTURE_DIR/expect.json"
+[[ -f "$EXPECT" ]] || { echo "FAIL: $FIXTURE_DIR/expect.json missing" >&2; exit 2; }
+command -v claude >/dev/null 2>&1 || { echo "FAIL: claude CLI not on PATH" >&2; exit 2; }
+command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 required" >&2; exit 2; }
+
+STAGE=$(python3 -c "import json; print(json.load(open('$EXPECT'))['stage'])")
+COMMAND=$(python3 -c "import json; print(json.load(open('$EXPECT'))['command'])")
+KEYWORDS=$(python3 -c "import json; print('|'.join(json.load(open('$EXPECT'))['catch_keywords']))")
+
+WORKDIR="$(mktemp -d)"
+trap 'rm -rf "$WORKDIR"' EXIT
+cp -r "$FIXTURE_DIR"/. "$WORKDIR"/
+# Don't leak the answer key into the agent's context — it must find the defect itself.
+rm -f "$WORKDIR/expect.json" "$WORKDIR/SEEDED_DEFECT.md"
+cd "$WORKDIR"
+git init -q . 2>/dev/null || true
+
+TIMEOUT_BIN="timeout"
+command -v timeout >/dev/null 2>&1 || TIMEOUT_BIN="gtimeout"
+if ! command -v "$TIMEOUT_BIN" >/dev/null 2>&1; then
+  echo "WARN: no timeout/gtimeout on PATH — running without a wall-clock cap" >&2
+  TIMEOUT_BIN=""
+fi
+
+echo "Running: claude -p \"$COMMAND\" in $WORKDIR (fixture: $FIXTURE, stage: $STAGE)"
+$TIMEOUT_BIN 600 claude -p "$COMMAND" \
+  --plugin-dir "$REPO_ROOT" \
+  --dangerously-skip-permissions \
+  > run.log 2>&1
+CLAUDE_EXIT=$?
+
+FOUND="no"
+if [[ -f ".temper/evidence/$STAGE.json" ]]; then
+  if python3 -c "
+import json, re, sys
+entries = json.load(open('.temper/evidence/$STAGE.json'))
+pat = re.compile(r'$KEYWORDS', re.I)
+sys.exit(0 if any(pat.search(e.get('claim') or '') for e in entries) else 1)
+" 2>/dev/null; then
+    FOUND="evidence-ledger"
+  fi
+fi
+if [[ "$FOUND" == "no" ]] && grep -qEi "$KEYWORDS" run.log 2>/dev/null; then
+  FOUND="transcript-fallback"
+fi
+
+if [[ "$FOUND" != "no" ]]; then
+  echo "CAUGHT: $FIXTURE ($STAGE) — defect flagged (source: $FOUND)"
+  exit 0
+else
+  echo "MISSED: $FIXTURE ($STAGE) — defect NOT flagged (claude exit $CLAUDE_EXIT)"
+  echo "--- run.log tail ---"
+  tail -40 run.log
+  exit 1
+fi

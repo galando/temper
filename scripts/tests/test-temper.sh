@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+#
+# test-temper.sh — unit tests for scripts/temper (the deterministic spine).
+#
+# Plain-bash assertions, no test framework dependency (consistent with the rest of
+# Temper's tooling). Runs entirely in a throwaway tmp dir; never touches the repo.
+set -uo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+TEMPER="$REPO_ROOT/scripts/temper"
+WORKDIR="$(mktemp -d)"
+trap 'rm -rf "$WORKDIR"' EXIT
+
+PASS=0
+FAIL=0
+
+assert_eq() { # assert_eq <name> <expected> <actual>
+  if [[ "$2" == "$3" ]]; then
+    PASS=$((PASS+1))
+  else
+    FAIL=$((FAIL+1))
+    echo "FAIL: $1 — expected '$2', got '$3'"
+  fi
+}
+
+assert_exit() { # assert_exit <name> <expected-code> <cmd...>
+  local name="$1" expected="$2"; shift 2
+  local actual out
+  out="$(mktemp "$WORKDIR/assert-out.XXXXXX")"
+  "$@" >"$out" 2>&1; actual=$?
+  if [[ "$actual" == "$expected" ]]; then
+    PASS=$((PASS+1))
+  else
+    FAIL=$((FAIL+1))
+    echo "FAIL: $name — expected exit $expected, got $actual"
+    sed 's/^/    /' "$out"
+  fi
+  rm -f "$out"
+}
+
+setup() {
+  cd "$WORKDIR"
+  rm -rf .temper .claude
+  mkdir -p .claude .temper/specs/demo
+  git init -q . 2>/dev/null || true
+  cat > .claude/temper.config <<'EOF'
+stack: auto
+packs: [quality, tdd, security, git]
+review:
+  block-on: [critical]
+check:
+  coverage-threshold: 80
+eval:
+  enabled: true
+  pass-threshold: 0.75
+loops:
+  max-per-type: 2
+autonomy:
+  enabled: false
+  max-blast-radius: 15
+  park-on-touch: ["**/auth/**", "**/payment/**"]
+  budget:
+    max-total-loops: 4
+    max-stages: 12
+EOF
+  cat > .temper/specs/demo/intent.md <<'EOF'
+## Success Criteria
+- one
+- two
+
+Scenario: first
+Scenario: second
+EOF
+  cat > .temper/specs/demo/tasks.md <<'EOF'
+- [x] done task
+EOF
+  "$TEMPER" init >/dev/null
+  "$TEMPER" state init demo --command temper >/dev/null
+}
+
+# --- config parser: booleans must be lowercase, never Python's True/False ---
+setup
+"$TEMPER" evidence add --stage eval --claim "aggregate" --value 0.9 --label PROVEN >/dev/null
+assert_exit "eval gate PASSes when enabled=true and score above threshold" 0 "$TEMPER" gate eval
+
+# --- grep -c zero-match must not double-print (the "0\n0" bug) ---
+setup
+cat > .temper/specs/demo/tasks.md <<'EOF'
+- [x] a
+- [x] b
+EOF
+assert_exit "build gate PASSes with zero unchecked tasks (no double-count)" 1 "$TEMPER" gate build
+# (still FAILs on the RED/GREEN requirement — no test evidence yet — but must not crash)
+
+# --- plan gate: criteria -> scenarios coverage ---
+setup
+assert_exit "plan gate PASSes: 2 scenarios for 2 criteria" 0 "$TEMPER" gate plan
+
+setup
+cat > .temper/specs/demo/intent.md <<'EOF'
+## Success Criteria
+- one
+- two
+- three
+
+Scenario: first
+EOF
+assert_exit "plan gate FAILs: 1 scenario for 3 criteria" 1 "$TEMPER" gate plan
+
+# --- build gate: RED then GREEN required ---
+setup
+"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+assert_exit "build gate FAILs on GREEN with no RED (TDD discipline)" 1 "$TEMPER" gate build
+
+setup
+"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+assert_exit "build gate PASSes on RED then GREEN + no unchecked tasks" 0 "$TEMPER" gate build
+
+# --- review gate: block-on severity ---
+setup
+assert_exit "review gate PASSes with no findings" 0 "$TEMPER" gate review
+"$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
+assert_exit "review gate FAILs on an open critical finding" 1 "$TEMPER" gate review
+
+# --- check gate: coverage threshold ---
+setup
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --claim "coverage" --value 60 >/dev/null
+assert_exit "check gate FAILs below coverage threshold (60 < 80)" 1 "$TEMPER" gate check
+"$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+assert_exit "check gate PASSes above coverage threshold (90 >= 80)" 0 "$TEMPER" gate check
+
+# --- evidence: PROVEN downgrade on missing artifact ---
+setup
+OUT=$("$TEMPER" evidence add --stage check --claim "x" --exit 0 --artifact does/not/exist --label PROVEN 2>&1)
+assert_eq "PROVEN downgrades to HEURISTIC when artifact is missing" "yes" "$(echo "$OUT" | grep -q 'downgraded to HEURISTIC' && echo yes || echo no)"
+
+# --- commit gate: aggregates prior gate verdicts + honors overrides ---
+setup
+"$TEMPER" evidence add --stage eval --claim "aggregate" --value 0.9 >/dev/null
+"$TEMPER" gate plan >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+"$TEMPER" gate build >/dev/null
+"$TEMPER" gate review >/dev/null
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+"$TEMPER" gate check >/dev/null
+"$TEMPER" gate eval >/dev/null
+assert_exit "commit gate PASSes once every upstream gate is green" 0 "$TEMPER" gate commit
+
+setup
+"$TEMPER" evidence add --stage review --claim "critical thing" --severity critical >/dev/null
+assert_exit "commit gate FAILs with an unresolved review finding, no override" 1 "$TEMPER" gate commit
+"$TEMPER" override review --reason "manually verified safe" >/dev/null
+"$TEMPER" gate plan >/dev/null; "$TEMPER" gate build >/dev/null 2>&1 || true
+"$TEMPER" gate check >/dev/null 2>&1 || true
+"$TEMPER" gate eval >/dev/null 2>&1 || true
+assert_eq "override is recorded and visible in report" "yes" "$("$TEMPER" report | grep -q 'overridden' && echo yes || echo no)"
+
+# --- state: illegal transitions rejected, loop budget enforced ---
+setup
+assert_exit "state advance rejects an unknown stage name" 1 "$TEMPER" state advance not_a_real_stage build
+assert_exit "state advance accepts a known stage" 0 "$TEMPER" state advance build_complete review
+assert_exit "state loop allows iterations up to max-per-type" 0 "$TEMPER" state loop review build --reason r1
+assert_exit "state loop allows the second iteration" 0 "$TEMPER" state loop review build --reason r2
+assert_exit "state loop blocks the third iteration (max-per-type: 2)" 1 "$TEMPER" state loop review build --reason r3
+
+# --- /temper:fix commits: no plan/eval gate required (fix has no such stage) ---
+setup
+"$TEMPER" state init bug1 --command fix >/dev/null
+"$TEMPER" evidence add --stage build --claim "regression test" --exit 1 --phase red >/dev/null
+"$TEMPER" evidence add --stage build --claim "regression test" --exit 0 --phase green >/dev/null
+"$TEMPER" gate build >/dev/null
+"$TEMPER" gate review >/dev/null
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+"$TEMPER" gate check >/dev/null
+assert_exit "fix commit gate PASSes without a plan or eval gate" 0 "$TEMPER" gate commit
+
+# --- autonomy: park-on-touch blocks commit in autonomous mode only ---
+setup
+"$TEMPER" state set run_mode autonomous >/dev/null
+mkdir -p src/auth && echo x > src/auth/login.js
+git add -A >/dev/null 2>&1 || true
+assert_exit "autonomous commit gate parks on a park-on-touch path" 1 "$TEMPER" gate commit
+OUT=$("$TEMPER" gate commit 2>&1)
+assert_eq "park reason names the matched path" "yes" "$(echo "$OUT" | grep -q 'src/auth/login.js' && echo yes || echo no)"
+
+echo ""
+echo "=== test-temper.sh ==="
+echo "PASS: $PASS  FAIL: $FAIL"
+[[ $FAIL -eq 0 ]] && exit 0 || exit 1

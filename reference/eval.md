@@ -118,8 +118,9 @@ if they do not, normalize before aggregating.
 
 ## LM-Judge Contract
 
-The judge runs via the `eval-judge` skill on the configured `judge-model` tier
-(default `tier-fast` — a cheaper/faster model than the build/review tier).
+The judge runs via the `eval-judge` skill on the Eval stage's fixed model (`agents/
+eval.md` frontmatter — `haiku`, deliberately cheaper/faster than build/review; there is
+no config key for this in v7, it's a fixed default like every other stage's model).
 
 **Per-dimension scoring prompt emits:**
 
@@ -143,6 +144,14 @@ Trajectory mode reconstructs the agent's tool-call sequence from runtime artifac
 2. Read `.temper/observability.json` → per-stage tool-call log (`tool`, `args`, `result_summary`, `timestamp`)
 3. Replay into an ordered sequence; score `tool_use_quality` + `trajectory` dimensions
 4. If either artifact is absent/unreadable → score those dims `"unscored"`, score output dims normally
+
+**v7 note:** `.temper/observability.json` was written by the telemetry system v7 retired
+(see `reference/tokenomics.md`) — nothing writes it anymore, so trajectory mode now
+*always* takes branch 4 above: `tool_use_quality`/`trajectory` score `"unscored"`, output
+dimensions score normally, aggregate uses the partial-aggregate caveat. This is the
+existing degradation contract, not a new failure mode — it was already designed for
+exactly this case. If trajectory scoring matters to you, an evalset can still supply its
+own process-quality checks as output-dimension cases.
 
 ## Deterministic Fallback
 

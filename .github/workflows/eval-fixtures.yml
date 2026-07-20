@@ -1,0 +1,60 @@
+name: Eval Fixtures
+
+# Move 3 of docs/plans/v7-deterministic-spine.md: run the seeded-defect fixtures
+# through the real /temper pipeline (headless `claude -p`) and assert the defect was
+# actually caught, via the evidence ledger — not transcript narration.
+#
+# This costs real tokens and wall-clock time, so it does NOT run on every PR. It runs:
+#   - nightly, on a schedule
+#   - on demand, via workflow_dispatch
+#   - never for forks/PRs without the ANTHROPIC_API_KEY secret configured — the job
+#     checks for the secret first and skips cleanly (never fails CI for contributors
+#     who don't have it).
+
+on:
+  schedule:
+    - cron: "17 3 * * *"   # nightly, off-peak
+  workflow_dispatch:
+    inputs:
+      fixture:
+        description: "Run one fixture only (name under evals/fixtures/), or leave blank for all"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  check-secret:
+    runs-on: ubuntu-latest
+    outputs:
+      has-key: ${{ steps.check.outputs.has-key }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.ANTHROPIC_API_KEY }}" ]; then
+            echo "has-key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-key=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ANTHROPIC_API_KEY not configured — skipping eval fixtures (this is expected on forks)."
+          fi
+
+  eval-fixtures:
+    needs: check-secret
+    if: needs.check-secret.outputs.has-key == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+      - name: Run fixture(s)
+        run: |
+          if [ -n "${{ inputs.fixture }}" ]; then
+            bash evals/run-fixture.sh "${{ inputs.fixture }}"
+          else
+            bash evals/run-all.sh
+          fi

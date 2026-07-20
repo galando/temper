@@ -50,7 +50,7 @@ import json, sys, os
 d = json.load(open(sys.argv[1]))
 root = sys.argv[2]
 missing = []
-for ref in d.get('commands', []) + d.get('skills', []):
+for ref in d.get('commands', []) + d.get('skills', []) + d.get('agents', []):
     path = os.path.join(root, ref.replace('./', ''))
     kind = 'file' if ref.endswith('.md') else 'dir'
     if kind == 'file' and not os.path.isfile(path):

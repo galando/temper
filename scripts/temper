@@ -1,0 +1,823 @@
+#!/usr/bin/env bash
+#
+# temper — the deterministic spine of the Temper plugin.
+#
+# Everything in the /temper pipeline that has exactly one correct output lives here,
+# not in a prompt. State transitions, evidence bookkeeping, and gate verdicts are
+# computed by this script; the orchestrator prompts call it and act on its exit code.
+# No network calls. python3 stdlib only (json parsing) — no external dependencies.
+#
+# Subcommands:
+#   temper init                                  scaffold .temper/ in the current project
+#   temper state <get|set|advance|loop|clear> ..  read/write .temper/build-state.json
+#   temper evidence <add|list> ...                append/read the per-stage evidence ledger
+#   temper gate <stage> [--spec-path P]           compute PASS/FAIL for a stage, record verdict
+#   temper override <stage> --reason "..."        record a human override of a FAIL gate
+#   temper report [--json]                        render the current run's gate ledger
+#
+# DEGRADATION CONTRACT (same spirit as scripts/hooks/*.sh):
+#   - A stage with no evidence recorded FAILS closed (nothing to verify => not verified).
+#   - Missing python3 => every subcommand exits 1 with a clear message (JSON needs it).
+#   - Malformed state/config => treated as absent (defaults apply), never a crash.
+set -uo pipefail
+
+REPO_ROOT="$(pwd)"
+TEMPER_DIR="${TEMPER_DIR:-$REPO_ROOT/.temper}"
+CONFIG_FILE="${TEMPER_CONFIG:-$REPO_ROOT/.claude/temper.config}"
+STATE_FILE="$TEMPER_DIR/build-state.json"
+LOOPS_FILE="$TEMPER_DIR/feedback-loops.json"
+GATES_FILE="$TEMPER_DIR/gates.json"
+OVERRIDES_FILE="$TEMPER_DIR/overrides.json"
+EVIDENCE_DIR="$TEMPER_DIR/evidence"
+
+STAGES="plan design build review check eval commit"
+
+_count_lines_matching() { # _count_lines_matching <pattern> <file>  (grep -c exits 1 on zero matches
+                           # but still prints "0" — never pair it with "|| echo 0", that double-prints)
+  local n
+  n=$(grep -c "$1" "$2" 2>/dev/null)
+  echo "${n:-0}"
+}
+
+_require_python() {
+  command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 is required but not found in PATH" >&2; exit 1; }
+}
+
+_now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+_ensure_dirs() { mkdir -p "$TEMPER_DIR" "$EVIDENCE_DIR"; }
+
+# ---------------------------------------------------------------------------
+# Minimal JSON helpers (python3 stdlib only — no jq / pyyaml dependency)
+# ---------------------------------------------------------------------------
+
+_json_read() { # _json_read <file> <default-json>
+  local file="$1" default="$2"
+  if [[ -f "$file" ]]; then
+    python3 -c "
+import json, sys
+try:
+    json.load(open(sys.argv[1]))
+    print(open(sys.argv[1]).read())
+except Exception:
+    print(sys.argv[2])
+" "$file" "$default"
+  else
+    echo "$default"
+  fi
+}
+
+_json_get_path() { # _json_get_path <file> <dot.path> [default]
+  local file="$1" path="$2" default="${3:-}"
+  python3 -c "
+import json, sys
+path, default = sys.argv[2], sys.argv[3]
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    print(default); sys.exit(0)
+cur = d
+for k in path.split('.'):
+    if isinstance(cur, dict) and k in cur:
+        cur = cur[k]
+    else:
+        print(default); sys.exit(0)
+if isinstance(cur, (dict, list)):
+    print(json.dumps(cur))
+elif isinstance(cur, bool):
+    print('true' if cur else 'false')  # bash compares lowercase — never emit Python's True/False
+else:
+    print(cur if cur is not None else default)
+" "$file" "$path" "$default" 2>/dev/null || echo "$default"
+}
+
+_json_set_path() { # _json_set_path <file> <dot.path> <value> <default-json>
+  local file="$1" path="$2" value="$3" default="$4"
+  python3 -c "
+import json, sys
+path, value, default = sys.argv[2], sys.argv[3], sys.argv[4]
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    d = json.loads(default)
+# auto-typing: true/false/int/float pass through, else string
+if value in ('true', 'false'):
+    v = (value == 'true')
+else:
+    try:
+        v = int(value)
+    except ValueError:
+        try:
+            v = float(value)
+        except ValueError:
+            v = value
+cur = d
+keys = path.split('.')
+for k in keys[:-1]:
+    cur = cur.setdefault(k, {})
+cur[keys[-1]] = v
+with open(sys.argv[1], 'w') as f:
+    json.dump(d, f, indent=2)
+    f.write('\n')
+" "$file" "$path" "$value" "$default"
+}
+
+_json_append() { # _json_append <file> <entry-json>  (file holds a JSON array)
+  local file="$1" entry="$2"
+  python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    if not isinstance(d, list):
+        d = []
+except Exception:
+    d = []
+d.append(json.loads(sys.argv[2]))
+with open(sys.argv[1], 'w') as f:
+    json.dump(d, f, indent=2)
+    f.write('\n')
+" "$file" "$entry"
+}
+
+# ---------------------------------------------------------------------------
+# Config (a small YAML subset — indentation-nested maps/lists, flow lists).
+# The v7 config is ~25 lines; this parser is intentionally not general-purpose YAML.
+# ---------------------------------------------------------------------------
+
+_cfg_get() { # _cfg_get <dot.path> [default]
+  local path="$1" default="${2:-}"
+  [[ -f "$CONFIG_FILE" ]] || { echo "$default"; return; }
+  python3 -c "
+import sys
+
+# A deliberately small YAML subset: nested maps by indentation, scalars, and
+# INLINE flow lists ([a, b, c]) only — the v7 config never needs block-style
+# '- item' lists, so that form is intentionally not supported here.
+def parse_yaml_subset(text):
+    root = {}
+    stack = [(-1, root)]
+    for raw in text.splitlines():
+        line = raw.split(' #', 1)[0].rstrip()
+        if not line.strip() or line.strip().startswith('#'):
+            continue
+        indent = len(line) - len(line.lstrip(' '))
+        stripped = line.strip()
+        while len(stack) > 1 and indent <= stack[-1][0]:
+            stack.pop()
+        parent = stack[-1][1]
+        if ':' not in stripped:
+            continue
+        key, _, val = stripped.partition(':')
+        key, val = key.strip(), val.strip()
+        if val == '':
+            container = {}
+            parent[key] = container
+            stack.append((indent, container))
+        elif val.startswith('[') and val.endswith(']'):
+            items = [i.strip().strip('\"\\'') for i in val[1:-1].split(',') if i.strip()]
+            parent[key] = items
+        elif val in ('true', 'false'):
+            parent[key] = (val == 'true')
+        else:
+            try:
+                parent[key] = int(val)
+            except ValueError:
+                try:
+                    parent[key] = float(val)
+                except ValueError:
+                    parent[key] = val.strip('\"\\'')
+    return root
+
+text = open(sys.argv[1]).read()
+d = parse_yaml_subset(text)
+path, default = sys.argv[2], sys.argv[3]
+cur = d
+for k in path.split('.'):
+    if isinstance(cur, dict) and k in cur:
+        cur = cur[k]
+    else:
+        print(default); sys.exit(0)
+if isinstance(cur, list):
+    print('\x1f'.join(str(i) for i in cur))
+elif isinstance(cur, bool):
+    print('true' if cur else 'false')  # bash compares lowercase — never emit Python's True/False
+else:
+    print(cur if cur != '' else default)
+" "$CONFIG_FILE" "$path" "$default" 2>/dev/null || echo "$default"
+}
+
+# ---------------------------------------------------------------------------
+# init
+# ---------------------------------------------------------------------------
+
+cmd_init() {
+  _ensure_dirs
+  [[ -f "$GATES_FILE" ]] || echo '{}' > "$GATES_FILE"
+  [[ -f "$OVERRIDES_FILE" ]] || echo '[]' > "$OVERRIDES_FILE"
+  [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
+  echo "OK: .temper/ scaffolded at $TEMPER_DIR"
+}
+
+# ---------------------------------------------------------------------------
+# state
+# ---------------------------------------------------------------------------
+
+cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch NAME]
+  _ensure_dirs
+  local slug="$1"; shift || true
+  local command="temper" branch=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --command) command="$2"; shift 2 ;;
+      --branch) branch="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [[ -n "$branch" ]] || branch="feature/$slug"
+  [[ "$command" == "fix" ]] && [[ "$branch" == "feature/$slug" ]] && branch="fix/$slug"
+  python3 -c "
+import json, sys
+d = {
+    'stage': 'started',
+    'spec': sys.argv[1],
+    'spec_path': f'.temper/specs/{sys.argv[1]}',
+    'branch': sys.argv[2],
+    'command': sys.argv[3],
+    'next_stage': 'plan' if sys.argv[3] == 'temper' else 'rca',
+    'run_mode': 'interactive',
+    'artifacts': ['intent.md', 'tasks.md'] if sys.argv[3] == 'temper' else ['rca.md'],
+    'updated': sys.argv[4],
+}
+json.dump(d, open(sys.argv[5], 'w'), indent=2)
+" "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE"
+  echo "OK: state initialized for '$slug' ($command, branch $branch)"
+}
+
+cmd_state_get() {
+  [[ -f "$STATE_FILE" ]] || { echo ""; return 0; }
+  _json_get_path "$STATE_FILE" "$1" "${2:-}"
+}
+
+cmd_state_set() {
+  [[ -f "$STATE_FILE" ]] || { echo '{}' > "$STATE_FILE"; }
+  _json_set_path "$STATE_FILE" "$1" "$2" '{}'
+  _json_set_path "$STATE_FILE" "updated" "$(_now)" '{}'
+  echo "OK: $1 = $2"
+}
+
+cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
+  [[ -f "$STATE_FILE" ]] || { echo "FAIL: no active state — run 'temper state init' first" >&2; return 1; }
+  local stage="$1" next="$2"
+  local known=false
+  for s in $STAGES; do
+    [[ "$stage" == "${s}_complete" ]] && known=true
+  done
+  if [[ "$known" != "true" && "$stage" != "started" ]]; then
+    echo "FAIL: unknown stage '$stage' (expected one of: $(for s in $STAGES; do printf '%s_complete ' "$s"; done))" >&2
+    return 1
+  fi
+  _json_set_path "$STATE_FILE" "stage" "$stage" '{}'
+  _json_set_path "$STATE_FILE" "next_stage" "$next" '{}'
+  _json_set_path "$STATE_FILE" "updated" "$(_now)" '{}'
+  echo "OK: advanced to $stage (next: $next)"
+}
+
+cmd_state_loop() { # temper state loop <from> <to> --reason "..."
+  local from="$1" to="$2"; shift 2 || true
+  local reason=""
+  while [[ $# -gt 0 ]]; do case "$1" in --reason) reason="$2"; shift 2 ;; *) shift ;; esac; done
+  [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
+  local max_per_type
+  max_per_type="$(_cfg_get loops.max-per-type 2)"
+  local result
+  result=$(python3 -c "
+import json, sys
+f, frm, to, reason, max_per_type, ts = sys.argv[1:7]
+max_per_type = int(max_per_type)
+d = json.load(open(f))
+active = d.get('active_loops', [])
+loop = next((l for l in active if l['from_stage'] == frm and l['to_stage'] == to), None)
+if loop is None:
+    loop = {'id': f'loop-{len(active) + len(d.get(\"history\", [])) + 1}', 'from_stage': frm,
+             'to_stage': to, 'reason': reason, 'iteration': 0, 'max_iterations': max_per_type,
+             'started': ts}
+    active.append(loop)
+if loop['iteration'] >= max_per_type:
+    print('BLOCKED: max iterations (%d) reached for %s->%s' % (max_per_type, frm, to))
+    d['active_loops'] = active
+    json.dump(d, open(f, 'w'), indent=2)
+    sys.exit(1)
+loop['iteration'] += 1
+loop['reason'] = reason or loop['reason']
+d['active_loops'] = active
+json.dump(d, open(f, 'w'), indent=2)
+print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_type))
+" "$LOOPS_FILE" "$from" "$to" "$reason" "$max_per_type" "$(_now)")
+  local rc=$?
+  echo "$result"
+  return $rc
+}
+
+cmd_state_clear() {
+  rm -f "$STATE_FILE" "$LOOPS_FILE" "$GATES_FILE" "$OVERRIDES_FILE"
+  rm -rf "$EVIDENCE_DIR"
+  echo "OK: run state cleared (spec artifacts under .temper/specs/ are untouched)"
+}
+
+cmd_state() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    init) cmd_state_init "$@" ;;
+    get) cmd_state_get "$@" ;;
+    set) cmd_state_set "$@" ;;
+    advance) cmd_state_advance "$@" ;;
+    loop) cmd_state_loop "$@" ;;
+    clear) cmd_state_clear "$@" ;;
+    *) echo "FAIL: usage: temper state <init|get|set|advance|loop|clear> ..." >&2; return 1 ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# evidence
+# ---------------------------------------------------------------------------
+
+cmd_evidence_add() {
+  _ensure_dirs
+  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --stage) stage="$2"; shift 2 ;;
+      --claim) claim="$2"; shift 2 ;;
+      --cmd) cmd="$2"; shift 2 ;;
+      --exit) exit_code="$2"; shift 2 ;;
+      --artifact) artifact="$2"; shift 2 ;;
+      --value) value="$2"; shift 2 ;;
+      --severity) severity="$2"; shift 2 ;;
+      --label) label="$2"; shift 2 ;;
+      --phase) phase="$2"; shift 2 ;;
+      *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
+    esac
+  done
+  [[ -n "$stage" && -n "$claim" ]] || { echo "FAIL: --stage and --claim are required" >&2; return 1; }
+
+  # A row claimed PROVEN is mechanically re-checked here — never taken on faith.
+  # An artifact that doesn't exist, or a nonzero exit paired with PROVEN, is downgraded.
+  if [[ "$label" == "PROVEN" ]]; then
+    if [[ -n "$artifact" && ! -f "$artifact" ]]; then
+      label="HEURISTIC"
+      echo "WARN: --label PROVEN downgraded to HEURISTIC — artifact '$artifact' does not exist" >&2
+    elif [[ -n "$exit_code" && "$exit_code" != "0" && -z "$severity" ]]; then
+      label="HEURISTIC"
+      echo "WARN: --label PROVEN downgraded to HEURISTIC — exit code $exit_code is nonzero" >&2
+    fi
+  fi
+
+  local file="$EVIDENCE_DIR/$stage.json"
+  [[ -f "$file" ]] || echo '[]' > "$file"
+  local artifact_hash=""
+  if [[ -n "$artifact" && -f "$artifact" ]]; then
+    artifact_hash="$(python3 -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$artifact" 2>/dev/null || echo "")"
+  fi
+  local entry
+  entry=$(python3 -c "
+import json, sys
+claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, ts = sys.argv[1:]
+e = {'claim': claim, 'cmd': cmd or None,
+     'exit_code': int(exit_code) if exit_code != '' else None,
+     'artifact': artifact or None, 'sha256': artifact_hash or None,
+     'value': (float(value) if value != '' else None),
+     'severity': severity or None, 'phase': phase or None,
+     'label': label, 'ts': ts}
+print(json.dumps(e))
+" "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$(_now)")
+  _json_append "$file" "$entry"
+  echo "OK: [$label] $stage: $claim"
+}
+
+cmd_evidence_list() {
+  local stage="" as_json=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --stage) stage="$2"; shift 2 ;;
+      --json) as_json=true; shift ;;
+      *) shift ;;
+    esac
+  done
+  local file="$EVIDENCE_DIR/$stage.json"
+  [[ -f "$file" ]] || { echo "[]"; return 0; }
+  if [[ "$as_json" == "true" ]]; then
+    cat "$file"
+  else
+    python3 -c "
+import json, sys
+for e in json.load(open(sys.argv[1])):
+    mark = 'OK ' if (e.get('exit_code') in (0, None)) else 'ERR'
+    print(f\"[{e.get('label')}] {mark} {e.get('claim')}\" + (f\" (cmd: {e.get('cmd')}, exit {e.get('exit_code')})\" if e.get('cmd') else ''))
+" "$file"
+  fi
+}
+
+cmd_evidence() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    add) cmd_evidence_add "$@" ;;
+    list) cmd_evidence_list "$@" ;;
+    *) echo "FAIL: usage: temper evidence <add|list> ..." >&2; return 1 ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# gate — the whole point. Deterministic PASS/FAIL, evidence-backed.
+# ---------------------------------------------------------------------------
+
+_gate_write_verdict() { # _gate_write_verdict <stage> <verdict> <requirements-json-array>
+  local stage="$1" verdict="$2" reqs="$3"
+  [[ -f "$GATES_FILE" ]] || echo '{}' > "$GATES_FILE"
+  python3 -c "
+import json, sys
+f, stage, verdict, reqs, ts = sys.argv[1:6]
+d = json.load(open(f))
+d[stage] = {'verdict': verdict, 'requirements': json.loads(reqs), 'ts': ts}
+json.dump(d, open(f, 'w'), indent=2)
+" "$GATES_FILE" "$stage" "$verdict" "$reqs" "$(_now)"
+}
+
+_spec_path() {
+  local override="$1"
+  if [[ -n "$override" ]]; then echo "$override"; return; fi
+  cmd_state_get spec_path ""
+}
+
+_evidence_file() { echo "$EVIDENCE_DIR/$1.json"; }
+
+# Purpose-built evidence queries — every value crosses the shell/python boundary as an
+# argv element, never interpolated into python source, so no claim/detail text can ever
+# be misparsed as code.
+
+_ev_count_matching() { # _ev_count_matching <stage> <keyword-regex|""> <phase|""> <exit:any|0|nonzero>
+  local stage="$1" keyword="$2" phase="$3" exitfilter="$4"
+  local file; file="$(_evidence_file "$stage")"
+  [[ -f "$file" ]] || { echo 0; return; }
+  python3 -c "
+import json, sys, re
+file, keyword, phase, exitfilter = sys.argv[1:5]
+entries = json.load(open(file))
+n = 0
+for e in entries:
+    if keyword and not re.search(keyword, e.get('claim') or '', re.I):
+        continue
+    if phase and e.get('phase') != phase:
+        continue
+    if exitfilter == '0' and e.get('exit_code') != 0:
+        continue
+    if exitfilter == 'nonzero' and e.get('exit_code') in (0, None):
+        continue
+    n += 1
+print(n)
+" "$file" "$keyword" "$phase" "$exitfilter"
+}
+
+_ev_last_value() { # _ev_last_value <stage> <keyword-regex|""> -> last matching entry's numeric value, or ""
+  local stage="$1" keyword="$2"
+  local file; file="$(_evidence_file "$stage")"
+  [[ -f "$file" ]] || { echo ""; return; }
+  python3 -c "
+import json, sys, re
+file, keyword = sys.argv[1:3]
+entries = json.load(open(file))
+vals = [e.get('value') for e in entries
+        if (not keyword or re.search(keyword, e.get('claim') or '', re.I)) and e.get('value') is not None]
+print(vals[-1] if vals else '')
+" "$file" "$keyword"
+}
+
+_ev_count_severity_in() { # _ev_count_severity_in <stage> <comma-separated severities>
+  local stage="$1" sev_csv="$2"
+  local file; file="$(_evidence_file "$stage")"
+  [[ -f "$file" ]] || { echo 0; return; }
+  python3 -c "
+import json, sys
+file, sev_csv = sys.argv[1:3]
+sevs = set(s for s in sev_csv.split(',') if s)
+entries = json.load(open(file))
+print(sum(1 for e in entries if e.get('severity') in sevs))
+" "$file" "$sev_csv"
+}
+
+_req() { # _req <label> <bool 0|1> <detail> -> emits one requirement json line to stdout, and echoes pass/fail
+  local label="$1" ok="$2" detail="$3"
+  python3 -c "
+import json, sys
+print(json.dumps({'name': sys.argv[1], 'pass': sys.argv[2] == '1', 'detail': sys.argv[3]}))
+" "$label" "$ok" "$detail"
+}
+
+gate_plan() {
+  local spec_path="$1"
+  local reqs=() all_pass=1
+  if [[ -f "$spec_path/intent.md" && -f "$spec_path/tasks.md" ]]; then
+    reqs+=("$(_req "artifacts exist" 1 "intent.md + tasks.md present")")
+  else
+    reqs+=("$(_req "artifacts exist" 0 "intent.md and/or tasks.md missing under $spec_path")")
+    all_pass=0
+  fi
+  if [[ -f "$spec_path/intent.md" ]]; then
+    local criteria scenarios
+    criteria=$(awk '/^## Success Criteria/{f=1;next} /^## /{f=0} f && /^- /{c++} END{print c+0}' "$spec_path/intent.md")
+    scenarios=$(_count_lines_matching '^[[:space:]]*Scenario:' "$spec_path/intent.md")
+    if [[ "$criteria" -gt 0 && "$scenarios" -ge "$criteria" ]]; then
+      reqs+=("$(_req "criteria -> scenarios" 1 "$scenarios scenario(s) for $criteria success criterion/criteria")")
+    else
+      reqs+=("$(_req "criteria -> scenarios" 0 "$scenarios scenario(s) for $criteria success criterion/criteria — need >=1 scenario per criterion")")
+      all_pass=0
+    fi
+  fi
+  local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+  echo "$reqs_json" "$all_pass"
+}
+
+gate_build() {
+  local spec_path="$1"
+  local reqs=() all_pass=1
+  local red_n green_n
+  red_n=$(_ev_count_matching build test red nonzero)
+  green_n=$(_ev_count_matching build test green 0)
+  if [[ "$red_n" -gt 0 && "$green_n" -gt 0 ]]; then
+    reqs+=("$(_req "RED then GREEN" 1 "$red_n failing-first run(s), $green_n passing run(s) recorded")")
+  else
+    reqs+=("$(_req "RED then GREEN" 0 "need >=1 failing test run (RED) and >=1 passing run (GREEN); have red=$red_n green=$green_n")")
+    all_pass=0
+  fi
+  if [[ -f "$spec_path/tasks.md" ]]; then
+    local unchecked
+    unchecked=$(_count_lines_matching '^[[:space:]]*- \[ \]' "$spec_path/tasks.md")
+    if [[ "$unchecked" -eq 0 ]]; then
+      reqs+=("$(_req "all tasks complete" 1 "no unchecked tasks in tasks.md")")
+    else
+      reqs+=("$(_req "all tasks complete" 0 "$unchecked unchecked task(s) remain in tasks.md")")
+      all_pass=0
+    fi
+  fi
+  local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+  echo "$reqs_json" "$all_pass"
+}
+
+gate_review() {
+  local block_on sev_csv
+  block_on="$(_cfg_get review.block-on critical)"
+  sev_csv="$(printf '%s' "$block_on" | tr $'\x1f' ',')"
+  local n; n=$(_ev_count_severity_in review "$sev_csv")
+  local all_pass=1 reqs=()
+  if [[ "$n" -eq 0 ]]; then
+    reqs+=("$(_req "no blocking findings" 1 "0 open findings at severity [$sev_csv]")")
+  else
+    reqs+=("$(_req "no blocking findings" 0 "$n open finding(s) at severity [$sev_csv]")")
+    all_pass=0
+  fi
+  local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+  echo "$reqs_json" "$all_pass"
+}
+
+gate_check() {
+  local threshold; threshold="$(_cfg_get check.coverage-threshold 80)"
+  local reqs=() all_pass=1
+  local tests_n; tests_n=$(_ev_count_matching check test "" 0)
+  if [[ "$tests_n" -gt 0 ]]; then
+    reqs+=("$(_req "tests pass" 1 "$tests_n green test run(s) recorded")")
+  else
+    reqs+=("$(_req "tests pass" 0 "no passing test-run evidence recorded")")
+    all_pass=0
+  fi
+  local cov_val; cov_val=$(_ev_last_value check coverage)
+  if [[ -n "$cov_val" ]] && python3 -c "import sys; sys.exit(0 if float('$cov_val') >= float('$threshold') else 1)"; then
+    reqs+=("$(_req "coverage >= threshold" 1 "$cov_val% >= $threshold% threshold")")
+  else
+    reqs+=("$(_req "coverage >= threshold" 0 "recorded coverage '${cov_val:-none}' vs threshold $threshold%")")
+    all_pass=0
+  fi
+  local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+  echo "$reqs_json" "$all_pass"
+}
+
+gate_eval() {
+  local enabled; enabled="$(_cfg_get eval.enabled true)"
+  local reqs=() all_pass=1
+  if [[ "$enabled" != "true" ]]; then
+    reqs+=("$(_req "eval stage" 1 "eval.enabled=false — skipped")")
+    reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+    echo "$reqs_json" 1
+    return
+  fi
+  local threshold; threshold="$(_cfg_get eval.pass-threshold 0.75)"
+  local agg_val; agg_val=$(_ev_last_value eval aggregate)
+  if [[ -n "$agg_val" ]] && python3 -c "import sys; sys.exit(0 if float('$agg_val') >= float('$threshold') else 1)"; then
+    reqs+=("$(_req "eval aggregate >= threshold" 1 "$agg_val >= $threshold")")
+  else
+    reqs+=("$(_req "eval aggregate >= threshold" 0 "recorded aggregate '${agg_val:-none}' vs threshold $threshold")")
+    all_pass=0
+  fi
+  local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+  echo "$reqs_json" "$all_pass"
+}
+
+_glob_touch_match() { # _glob_touch_match <file> <pattern>  (pattern like **/auth/**)
+  local file="$1" pattern="$2"
+  local core="${pattern#\*\*/}"; core="${core%/\*\*}"
+  case "$file" in *"$core"*) return 0 ;; *) return 1 ;; esac
+}
+
+gate_commit() {
+  local reqs=() all_pass=1
+  local run_mode; run_mode="$(cmd_state_get run_mode interactive)"
+  # /temper:fix has no plan/eval stage — RCA and Fix aren't gated through 'plan'/'eval',
+  # so requiring those verdicts would permanently FAIL every fix commit (never computed).
+  local command stages_to_check
+  command="$(cmd_state_get command temper)"
+  if [[ "$command" == "fix" ]]; then
+    stages_to_check="build review check"
+  else
+    stages_to_check="plan build review check eval"
+  fi
+  for s in $stages_to_check; do
+    [[ "$s" == "eval" && "$(_cfg_get eval.enabled true)" != "true" ]] && continue
+    local verdict; verdict="$(_json_get_path "$GATES_FILE" "$s.verdict" "MISSING")"
+    if [[ "$verdict" == "PASS" ]]; then
+      reqs+=("$(_req "$s gate" 1 "PASS")")
+      continue
+    fi
+    local override; override="$(python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    d = []
+print('yes' if any(o.get('stage') == sys.argv[2] for o in d) else 'no')
+" "$OVERRIDES_FILE" "$s" 2>/dev/null || echo no)"
+    if [[ "$override" == "yes" ]]; then
+      reqs+=("$(_req "$s gate" 1 "$verdict, overridden by human")")
+    else
+      reqs+=("$(_req "$s gate" 0 "$verdict, no override recorded")")
+      all_pass=0
+    fi
+  done
+  if [[ "$run_mode" == "autonomous" ]]; then
+    local max_blast; max_blast="$(_cfg_get autonomy.max-blast-radius 15)"
+    local changed_n; changed_n=$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+    if [[ "$changed_n" -le "$max_blast" ]]; then
+      reqs+=("$(_req "blast radius" 1 "$changed_n file(s) <= $max_blast")")
+    else
+      reqs+=("$(_req "blast radius" 0 "$changed_n file(s) exceeds autonomy.max-blast-radius=$max_blast")")
+      all_pass=0
+    fi
+    local patterns; patterns="$(_cfg_get autonomy.park-on-touch "")"
+    local touched=""
+    if [[ -n "$patterns" ]]; then
+      local pats=()
+      IFS=$'\x1f' read -r -a pats <<< "$patterns"
+      while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        for p in "${pats[@]}"; do
+          if _glob_touch_match "$f" "$p"; then touched="$f matches $p"; fi
+        done
+      done < <(git -C "$REPO_ROOT" status --porcelain 2>/dev/null | awk '{print $2}')
+    fi
+    if [[ -z "$touched" ]]; then
+      reqs+=("$(_req "park-on-touch paths" 1 "no changed file matches a park-on-touch pattern")")
+    else
+      reqs+=("$(_req "park-on-touch paths" 0 "$touched")")
+      all_pass=0
+    fi
+  fi
+  local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+  echo "$reqs_json" "$all_pass"
+}
+
+cmd_gate() {
+  local stage="${1:-}"; shift || true
+  local spec_path_override=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --spec-path) spec_path_override="$2"; shift 2 ;; *) shift ;; esac
+  done
+  _ensure_dirs
+  local ok=false
+  for s in $STAGES; do [[ "$stage" == "$s" ]] && ok=true; done
+  [[ "$ok" == "true" ]] || { echo "FAIL: usage: temper gate <plan|design|build|review|check|eval|commit>" >&2; return 1; }
+
+  local spec_path; spec_path="$(_spec_path "$spec_path_override")"
+  local out reqs_json all_pass
+  case "$stage" in
+    plan) out=$(gate_plan "$spec_path") ;;
+    design) reqs_json='[]'; all_pass=1 ;;
+    build) out=$(gate_build "$spec_path") ;;
+    review) out=$(gate_review) ;;
+    check) out=$(gate_check) ;;
+    eval) out=$(gate_eval) ;;
+    commit) out=$(gate_commit) ;;
+  esac
+  if [[ -n "${out:-}" ]]; then
+    reqs_json="${out% *}"
+    all_pass="${out##* }"
+  fi
+
+  local verdict="FAIL"
+  [[ "$all_pass" == "1" ]] && verdict="PASS"
+  _gate_write_verdict "$stage" "$verdict" "$reqs_json"
+
+  echo "temper gate $stage -> $verdict"
+  python3 -c "
+import json, sys
+for r in json.loads(sys.argv[1]):
+    mark = 'v' if r['pass'] else 'x'
+    print(f\"  [{mark}] {r['name']} — {r['detail']}\")
+" "$reqs_json"
+
+  [[ "$verdict" == "PASS" ]] && return 0 || return 1
+}
+
+# ---------------------------------------------------------------------------
+# override
+# ---------------------------------------------------------------------------
+
+cmd_override() {
+  local stage="${1:-}"; shift || true
+  local reason=""
+  while [[ $# -gt 0 ]]; do case "$1" in --reason) reason="$2"; shift 2 ;; *) shift ;; esac; done
+  [[ -n "$stage" && -n "$reason" ]] || { echo "FAIL: usage: temper override <stage> --reason \"...\"" >&2; return 1; }
+  _ensure_dirs
+  [[ -f "$OVERRIDES_FILE" ]] || echo '[]' > "$OVERRIDES_FILE"
+  _json_append "$OVERRIDES_FILE" "$(python3 -c "
+import json, sys
+print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'ts': sys.argv[3]}))
+" "$stage" "$reason" "$(_now)")"
+  echo "OK: override recorded for '$stage': $reason"
+}
+
+# ---------------------------------------------------------------------------
+# report
+# ---------------------------------------------------------------------------
+
+cmd_report() {
+  local as_json=false
+  [[ "${1:-}" == "--json" ]] && as_json=true
+  [[ -f "$GATES_FILE" ]] || echo '{}' > "$GATES_FILE"
+  if [[ "$as_json" == "true" ]]; then
+    cat "$GATES_FILE"
+    return
+  fi
+  python3 -c "
+import json
+d = json.load(open('$GATES_FILE'))
+try:
+    overrides = json.load(open('$OVERRIDES_FILE'))
+except Exception:
+    overrides = []
+overridden = {o['stage'] for o in overrides}
+print('Stage    Verdict  Evidence')
+print('-------  -------  --------')
+for stage in ['plan', 'design', 'build', 'review', 'check', 'eval', 'commit']:
+    g = d.get(stage)
+    if not g:
+        continue
+    tag = g['verdict'] + (' (overridden)' if stage in overridden and g['verdict'] == 'FAIL' else '')
+    print(f\"{stage:<8} {tag}\")
+    for r in g.get('requirements', []):
+        mark = 'v' if r['pass'] else 'x'
+        print(f\"           [{mark}] {r['name']} — {r['detail']}\")
+if overridden:
+    print()
+    print(f'{len(overridden)} gate(s) overridden by a human — see .temper/overrides.json')
+"
+}
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
+main() {
+  _require_python
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    init) cmd_init "$@" ;;
+    state) cmd_state "$@" ;;
+    evidence) cmd_evidence "$@" ;;
+    gate) cmd_gate "$@" ;;
+    override) cmd_override "$@" ;;
+    report) cmd_report "$@" ;;
+    ""|-h|--help)
+      cat <<'EOF'
+temper — the deterministic spine of the Temper plugin
+
+Usage:
+  temper init
+  temper state <init|get|set|advance|loop|clear> ...
+  temper evidence <add|list> ...
+  temper gate <plan|design|build|review|check|eval|commit> [--spec-path P]
+  temper override <stage> --reason "..."
+  temper report [--json]
+EOF
+      ;;
+    *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;
+  esac
+}
+
+main "$@"

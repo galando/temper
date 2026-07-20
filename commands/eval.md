@@ -21,8 +21,8 @@ argument-hint: "[--create] [--trajectory] [<spec>]"
    - default → output eval (score the produced change against the eval set)
    - `<spec>` → `.temper/specs/{spec}/`; omitted → resolve from `.temper/build-state.json`
 2. **Load** `{spec_path}/evals/evalset.json` (if absent → emit one-line skip notice, exit 0 — graceful degradation)
-3. **Resolve config** from `.claude/temper.config` → `eval:` block (defaults: `enabled: true`, `pass-threshold: 0.75`, `judge-model: tier-fast`, `block-on: [task_success]`)
-4. **Dispatch judge** → `eval-judge` skill (cheaper model tier); per-dimension score 0..1 + justification
+3. **Resolve config** from `.claude/temper.config` → `eval:` block (defaults: `enabled: true`, `pass-threshold: 0.75`; `task_success` is always the block-on dimension, no separate config key)
+4. **Dispatch judge** → `eval-judge` skill (the Eval stage's fixed model, `agents/eval.md` frontmatter — `haiku`); per-dimension score 0..1 + justification
 5. **Fallback** → if judge unavailable/errors, deterministic string/regex over `expected`/`must_not`; mark unscored dimensions `"unscored"` (never zero, never hard-error)
 6. **Write** `evals/results/results-{timestamp}.json` + `.temper/eval-context.json`
 7. **Report** score table (grouped ARTIFACT/PROCESS, per-row recommended action, partial-aggregate caveat when dims unscored) + aggregate vs `pass_threshold`

@@ -10,9 +10,8 @@ description: "Post-check config suggestions — analyze what was built and sugge
 
 After all validation levels in `/temper:check` pass (no failures), before the Commit gate:
 
-1. `capabilities.config-suggestions` is not `false` in temper.config (default: enabled)
-2. Check validation passed (compile, tests, coverage, lint, security all green)
-3. At least one file was changed (`git diff --name-only` returns results)
+1. Check validation passed (compile, tests, coverage, lint, security all green)
+2. At least one file was changed (`git diff --name-only` returns results)
 
 ## Analysis Inputs
 

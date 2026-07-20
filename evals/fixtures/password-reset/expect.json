@@ -1,0 +1,5 @@
+{
+  "stage": "check",
+  "command": "/temper:check",
+  "catch_keywords": ["rate.?limit", "429", "uncovered", "missing", "not covered"]
+}

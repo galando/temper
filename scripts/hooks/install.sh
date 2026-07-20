@@ -69,14 +69,27 @@ cat > "$PRECOMMIT" <<HOOK
 set -uo pipefail
 TEMPER_HOOKS_DIR="\${TEMPER_HOOKS_DIR:-$HOOKS_DIR}"
 
+# Git hooks are not guaranteed to run with CWD at the worktree root on every
+# platform/version — pin it explicitly so 'temper gate commit' (which resolves
+# .temper/ and .claude/temper.config relative to \$(pwd)) reads the right project.
+cd "\$(git rev-parse --show-toplevel)" || exit 0
+
 # Absent scripts dir => no-op (degradation contract).
 [[ -d "\$TEMPER_HOOKS_DIR" ]] || exit 0
 
 # 1. Secrets.
 [[ -f "\$TEMPER_HOOKS_DIR/block-secrets.sh" ]] && { bash "\$TEMPER_HOOKS_DIR/block-secrets.sh" || exit 1; }
 
-# 2. Check must be green.
-[[ -f "\$TEMPER_HOOKS_DIR/verify-tests-ran.sh" ]] && { bash "\$TEMPER_HOOKS_DIR/verify-tests-ran.sh" || exit 1; }
+# 2. Every /temper gate must be green (or explicitly overridden) — the commit gate
+# itself, computed by the temper CLI from the evidence ledger. Absent .temper/ state
+# (repo doesn't use /temper for this commit, or CLI missing) => fail-open.
+TEMPER_BIN="\$TEMPER_HOOKS_DIR/../temper"
+if [[ -x "\$TEMPER_BIN" && -d .temper ]]; then
+  "\$TEMPER_BIN" gate commit || exit 1
+elif [[ -f "\$TEMPER_HOOKS_DIR/verify-tests-ran.sh" ]]; then
+  # Fallback for a project that only installed the hooks pack without the CLI.
+  bash "\$TEMPER_HOOKS_DIR/verify-tests-ran.sh" || exit 1
+fi
 
 exit 0
 HOOK

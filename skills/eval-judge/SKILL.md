@@ -9,13 +9,14 @@ description: "LM-judge for eval: per-dimension scoring + justification, cheaper-
 
 ## Overview
 
-The judge scores a produced change against an eval set's rubric. It runs on a cheaper/faster
-model tier than the build/review stages (config: `eval.judge-model`, default `tier-fast`) and
-emits per-dimension scores with grounded justifications. When the judge model is unavailable, it
-falls back to deterministic string/regex checks — it never hard-errors.
+The judge scores a produced change against an eval set's rubric. It runs on the Eval
+stage's fixed, cheaper/faster model (`agents/eval.md` frontmatter — `haiku`; there is no
+config key for this in v7) and emits per-dimension scores with grounded justifications.
+When the judge model is unavailable, it falls back to deterministic string/regex checks
+— it never hard-errors.
 
 ```
-Load evalset → dispatch judge (tier-fast) → per-dimension {score, justification} → fallback on failure → write results-{ts}.json
+Load evalset → dispatch judge (haiku) → per-dimension {score, justification} → fallback on failure → write results-{ts}.json
 ```
 
 ## When to Use
@@ -40,13 +41,14 @@ Read `.claude/temper.config` → `eval:` block. Defaults (default-on):
 ```yaml
 eval:
   enabled: true
-  block-on: [task_success]
   pass-threshold: 0.75
-  judge-model: tier-fast
 ```
 
-If the `eval:` block is missing entirely → apply defaults (default-on contract). If
-`eval.enabled: false` → the calling stage already skipped; this skill should not load.
+`task_success` is always the primary block-on dimension — there is no separate
+`eval.block-on` config key in v7 (one fewer flag; it was always `[task_success]` in
+practice). If the `eval:` block is missing entirely → apply defaults (default-on
+contract). If `eval.enabled: false` → the calling stage already skipped; this skill
+should not load.
 
 ### Step 2: Load Eval Set
 

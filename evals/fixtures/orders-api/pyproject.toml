@@ -1,0 +1,6 @@
+[project]
+name = "orders-api-fixture"
+version = "1.0.0"
+description = "Temper eval fixture — seeded defect: a hallucinated API call"
+requires-python = ">=3.10"
+dependencies = ["fastapi", "pydantic"]

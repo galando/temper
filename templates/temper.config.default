@@ -1,211 +1,60 @@
-# Temper Configuration
+# Temper Configuration (v7)
+#
+# Everything with exactly one correct output — model routing, gate logic, state
+# bookkeeping — lives in scripts/temper now, not here. This file holds only the
+# decisions that are actually yours to make. Full reference: docs/getting-started.md
 
-# Stack: auto-detect from project files
-# Override: spring-boot, react-ts, node-express, fastapi, go, rust
+# Stack: auto-detect from project files. Override: spring-boot, react-ts,
+# node-express, fastapi, go, rust
 stack: auto
 
-# Enabled packs (loaded during review)
-# Simple format: - quality
-# Extended format: - name: quality / phases: [build] / link: plugin://name
-packs:
-  - name: quality
-  - name: tdd
-    phases: [build]
-  - name: security
-    phases: [review, check]
-  - name: git
-  - name: performance
-    phases: [plan, review, check]
-  - name: api-design
-    phases: [plan, design, review]
-  - name: architecture-depth
-    phases: [review]
-  # - name: company
-  #   link: plugin://my-company-linter
+# Packs enforced during build/review (see docs/packs.md). Add a project pack under
+# .claude/packs/<name>/rules.md and list it here.
+packs: [quality, tdd, security, git, performance]
 
-# Review settings
-review:
-  block-on: [critical]
-  auto-fix: true
-  confidence-threshold: 0.7
-
-# MCP tools settings
+# MCP tool-first analysis: auto (use MCP tools when available, else heuristic) |
+# heuristic-only | require. See docs/recommended-setup.md.
 tools:
-  mode: auto            # auto | heuristic-only | require
-  label-findings: true  # Show [PROVEN]/[HEURISTIC]/[SEMANTIC] labels
-
-  # External review engine: open-code-review (ocr CLI)
-  # When installed, OCR takes over line-level defect detection in /temper:review
+  mode: auto
+  # External review engine: open-code-review (ocr CLI). When installed, OCR takes
+  # over line-level defect detection in /temper:review. auto | off | require.
   ocr:
-    mode: auto                      # auto | off | require
-    replace-defect-subagent: true   # When true + ocr ready, subagents drop generic defect hunting
-    timeout: 10                     # minutes (Bash-level timeout = this + 2min buffer)
-    concurrency: 8                  # passed to ocr --concurrency
-    extra-args: ""                  # additional CLI flags (e.g., "--rule custom-rules.json")
+    mode: auto
 
-# Check settings
+review:
+  block-on: [critical]        # severities that fail `temper gate review`
+
 check:
-  coverage-threshold: 80
-  debt-tracking: true
-  live-scenarios: prompt    # prompt | always | never
+  coverage-threshold: 80      # `temper gate check` requires recorded coverage >= this
 
-# ============================================================
-# Eval / Verification (v5.5.0)
-# Behavioral verification layer between Check and commit.
-# Default-on with graceful degradation: missing evalset.json or
-# unavailable judge model => one-line skip/fallback, never a hard error.
-# ============================================================
 eval:
-  enabled: true              # stage runs; set false to skip entirely (one-line notice, no subprocess)
-  block-on: [task_success]   # dimensions whose failure offers the Eval->Build Re-run loop
-  pass-threshold: 0.75       # aggregate score >= this => passed
-  judge-model: tier-fast     # cheaper/faster model tier for the LM-judge (eval-judge skill)
+  enabled: true                # false skips the stage entirely (one-line notice)
+  pass-threshold: 0.75         # `temper gate eval` requires the recorded aggregate >= this
 
-# Branch conventions
-branch:
-  pattern: "feature/{ticket}-{description}"
-  commit-style: conventional
-
-# ============================================================
-# Agentic SDLC Enhancement (v4.0.0)
-# Enabled by default — this IS the v4.0 experience
-# ============================================================
-
-# Phase configuration
 phases:
-  design: true         # Design stage for complex/medium features (auto-skipped for simple)
+  design: true                 # design stage for medium/complex features (auto-skipped otherwise)
 
-# Feedback loops
 feedback:
-  enabled: true        # Feedback loops between stages
-  max-loops: 2         # Max auto-fix loops before pausing (Review→Build, Check→Build)
-  check-to-build: true # Check failures create targeted fix tasks
+  enabled: true                # allow Review->Build / Check->Build / Eval->Build loops
+
+loops:
+  max-per-type: 2              # circuit breaker per feedback-loop type (enforced by `temper state loop`)
 
 # ============================================================
-# Intelligent model routing (v5.6.0) — Deliverable 1, Phase 2
-# Default-on with graceful degradation: when enabled is false/absent,
-# behavior is byte-identical to v5.5.0 (no model param emitted on
-# Agent launches; session model inherited everywhere).
-# Tier names use the tier- prefix to match eval.judge-model: tier-fast.
-# ============================================================
-models:
-  enabled: true
-  tiers:
-    frontier: claude-opus          # planning, design, architecture, hard implementation
-    standard: claude-sonnet        # build, fixes, exploration
-    fast:     claude-haiku         # test-gen, review style/lint pass, eval judge, check monitoring
-  routing:
-    plan:    tier-frontier
-    design:  tier-frontier
-    build:   tier-standard
-    review:  tier-fast             # style/lint sweep; escalate-on findings re-judged on tier-frontier
-    check:   tier-fast
-    eval:    tier-fast             # LM-judge — the canonical "route to small model" task
-  escalate-on:                    # when a fast tier hits these, re-run on tier-frontier
-    - architecture-finding
-    - correctness-risk
-  respect-user-override: true     # never silently replace a user-set model; log source "user-override"
-  drift-threshold: 2              # std-dev beyond which a stage is flagged in drift_flags (SUGGEST)
-
-# ============================================================
-# Token Efficiency & Loop Engineering (v5.9.0) — Phase 3
-# Three independent, composable levers layered on the v5.6.0
-# model-routing foundation. Default-on with INDEPENDENT graceful
-# degradation: each sub-feature degrades byte-identically to v5.8.0
-# when its flag is off. Disabling cache does NOT disable
-# adaptive-depth or loops. See reference/tokenomics.md + the
-# degradation contract in reference/orchestrator-patterns.md.
-# ============================================================
-tokens:
-  cache:
-    enabled: true        # true => stage agents read cacheable context first (stable prefix);
-                         # false => reads exactly as v5.8.0 (no prefix rule, no cached_input field)
-    scope: methodology   # which reads form the cacheable prefix (methodology = refs + config;
-                         # do not widen per release without a schema bump)
-  adaptive-depth:
-    enabled: true        # true => trivial/simple changes run reduced pipelines (see Pipeline Depth table
-                         # in reference/orchestrator-patterns.md); false => full 6-stage pipeline for every
-                         # complexity (byte-identical to v5.8.0)
-    floor: simple        # clamp the effective tier UP. simple = allow trivial fast-path; medium = kill
-                         # trivial (clamp to medium minimum); complex = full pipeline always. A floor is a
-                         # clamp, NOT a toggle — it does not disable adaptive-depth.
-  loops:
-    inline-threshold: 3  # files_touched <= this AND all findings auto-fixable => inline micro-fix
-                         # (no subprocess). 0 => inline path never selected (full re-launch always)
-    fix-mode: true       # true => minimal-context fix agent (fix list + changed files only; fix-mode
-                         # preamble replaces build.md) when above inline-threshold; false => every loop
-                         # is a full Build re-launch (byte-identical to v5.8.0 loop behavior)
-
-# Observability
-observability:
-  enabled: true        # Track per-stage metrics
-  track-tokens: true   # Track token usage per stage, incl. cached_input when tokens.cache.enabled (source: measured where harness exposes usage, else estimated)
-  track-latency: true  # Track wall-clock time per stage
-  track-tool-calls: true # Track MCP tool invocations per stage
-
-# ============================================================
-# Capabilities (v5.0.0)
-# Capabilities (v5.0.0)
-# Each capability is independently optional and enabled by default
-capabilities:
-  architecture-depth: true    # Architecture depth review in review stage
-  grill-me: true              # Socratic challenge at Plan/Design gates
-  teach-me: true              # Comprehension companion — teach + quiz at Plan/Design/Build/Check/Eval gates
-  config-suggestions: true    # CLAUDE.md/AGENTS.md suggestions after Check
-  html-review: true           # Interactive HTML plan review
-  evals: true                 # Behavioral verification (Eval stage + /temper:eval)
-
-# Nested agents (v5.1.0)
-# Depth budget governance for Claude Code's nested subagent support
-agents:
-  nested: true                # allow stages to spawn child agents (default: true)
-  max-depth: 4                # Temper's self-imposed cap (platform hard cap = 5)
-  parallel-width: 3           # max concurrent children per stage
-  on-budget-exhausted: inline # fallback when depth_remaining <= 1: inline | fail
-
-# ============================================================
-# Autonomous Continuation
-# Armed by a human at the PLAN GATE, never at invocation. /temper always
-# runs Plan first and stops for human review; after approval the human may
-# let the remaining stages run unattended. Default behavior is unchanged:
-# with this block absent, the plan gate offers only the usual stage-by-stage
-# continuation (byte-identical to v5.9.0).
+# Autonomous Continuation — armed by a human at the PLAN GATE, never at
+# invocation. /temper always runs Plan first and stops for human review.
+# With this block absent or enabled: false, the plan gate offers only the
+# ordinary stage-by-stage continuation.
+#
+# Hardcoded, not configurable (safety invariants, not preferences): autonomy
+# NEVER commits, pushes, or merges; NEVER re-plans unattended; always requires a
+# clean working tree before starting; always checkpoints a `wip:` commit after
+# each green stage; always takes a single-run lock.
 # ============================================================
 autonomy:
-  enabled: true              # false => plan gate offers only stage-by-stage; no gate annotation
-  default-choice: interactive # plan-gate continuation pre-highlighted: interactive | auto
-
-  # --- Self-judgment safeguards (§4) ---
-  conservative-bias: true    # uncertain proceed/park signal => park. Confidence reuses review.confidence-threshold.
-
-  # --- Safety envelope ---
-  stop-before-commit: true   # NEVER auto-commit/merge. Human is always the merge gate.
-                             # Escape hatch (kept by design): set false to auto-commit a
-                             # fully-clean run (acceptance checklist all green). Even then
-                             # autonomy NEVER pushes or merges — push stays a human action.
-  max-blast-radius: 15       # park (back to plan gate) if blast radius exceeds N files
-  park-on-touch:
-    - "**/auth/**"
-    - "**/payment/**"
-    - "**/billing/**"
-  respect-escalation: true   # park on a models.escalate-on trigger (architecture-finding, correctness-risk)
-
-  # --- Run budget, hard ceiling (§5) ---
+  enabled: false
+  max-blast-radius: 15         # `temper gate commit` parks if more files changed than this
+  park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]
   budget:
     max-total-loops: 4
     max-stages: 12
-    max-wall-clock-min: 60
-
-  # --- Fix policy under autonomy (§8) ---
-  auto-fix-severity: [critical, high]   # per-type loop count defers to feedback.max-loops
-
-  # --- Operational safety (§6) ---
-  require-clean-tree: true
-  checkpoint: wip-commit     # none | wip-commit
-  lock: true
-
-  # --- Handoff (§10) ---
-  report: ".temper/autonomy-report.md"
-  notify: push-on-park       # none | push-on-park (default) | push-on-finish
-                            # NOTE: "push" here = a desktop/phone notification, NOT git push.
-                            # Autonomy NEVER does git push or merge under any setting.

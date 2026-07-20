@@ -3,33 +3,66 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## Autonomous Continuation (opt-in)
+## v7.0.0 — The Deterministic Spine
 
-After the human approves the plan, `/temper` can run the remaining stages
-(design → build → review → check → eval) unattended and leave a report. Plan-gate-armed,
-never invocation-time; never pushes/merges; never re-plans unattended; parks before commit
-and on any decision a human should own.
+Temper's guarantees moved out of prose and into a program. Through v6.x, gate logic,
+model routing, prompt-cache ordering, and loop-cost tiering were ~9,000 lines of prompt
+asking an LLM to act as a deterministic interpreter — the least trustworthy place to put
+logic with exactly one correct output. v7 is a breaking release built around one rule,
+applied everywhere: **no feature ships in prompt-space if it has exactly one correct
+output.**
 
-- **Opt-in, byte-identical when off:** with the `autonomy:` block absent or `enabled: false`,
-  the plan gate offers only the existing stage-by-stage continuation and no gate ever
-  auto-resolves — identical to v5.9.0.
-- **Plan is always the arming point:** `/temper` always runs Plan first and stops at the plan
-  gate. The two-way continuation choice (Stage by stage / Autonomous) replaces the single
-  "Continue to Build" option only when armed.
-- **Reused machinery, no new mechanisms:** confidence reuses `review.confidence-threshold`
-  (0.7); per-type loops reuse `feedback.max-loops` + a global `budget.max-total-loops`.
-  Park = existing "Save for later" path + one `autonomy-report.md`. Observability fields
-  (`run_mode`, `gate_decisions[]`, `park{}`, `budget_used{}`) are additive over v3, every
-  numeric carries a G-5 `source` sibling.
-- **Safety envelope:** `stop-before-commit: true` default, blast-radius + `park-on-touch`
-  paths, run budget (stages/loops/wall-clock), clean-start lock, wip checkpoints. Command
-  execution reuses harness `settings.json` perms — a denied/unpermitted command parks (no
-  bespoke allowlist).
-- **New `/temper:init`:** seeds a project's `.claude/temper.config` from the default template
-  (idempotent).
-- Canonical definition: `.claude-plugin/reference/orchestrator-patterns.md` → "Autonomous
-  Continuation". Proposal: `docs/proposals/autonomous-mode.md`. (Version bump is owned by the
-  release process — not part of this change.)
+- **New `scripts/temper` CLI** — a single zero-dependency bash script that owns
+  `state` (build-state.json, never hand-written again), `evidence` (every claim now
+  carries a command, exit code, and artifact — `--label PROVEN` is mechanically
+  re-checked, not taken on faith), `gate` (`plan`/`build`/`review`/`check`/`eval`/`commit`
+  — each ~20-30 lines of readable shell, PASS/FAIL with named reasons), `override`
+  (a human can always proceed past a FAIL, but it's recorded, never silently erased), and
+  `report` (renders the ledger). Unit-tested: `scripts/tests/test-temper.sh`, wired into
+  CI.
+- **The commit gate is now a program, not a promise.** The native pre-commit hook
+  (`scripts/hooks/install.sh`) and a new in-agent PreToolUse hook
+  (`scripts/hooks/block-uncommitted-gate.sh`) both run `temper gate commit` — `git
+  commit` is physically blocked while any upstream gate is FAIL and unoverridden. This
+  is what "autonomy never commits without green gates" now *means*, mechanically, not
+  just in the README.
+- **New `agents/` directory** — `agents/{plan,design,build,review,check,eval}.md`, one
+  file per stage with `model:` frontmatter (native, declarative) and a short contract
+  (what to read, what `temper evidence`/`temper gate` calls to make). Replaces the
+  Model Routing Resolution and Cache Routing Resolution algorithms.
+- **Prompt diet:** `commands/temper.md` 1,353 → 363 lines; `reference/orchestrator-
+  patterns.md` 979 → 327 lines — the two biggest single cuts. Both dropped only
+  mechanism (routing/caching/gate-eval algorithms, the observability.json v3 telemetry
+  schema, loop-cost tiering); judgment content (scenario derivation, TDD discipline,
+  review taxonomy, the eval rubric, Grill Me/Teach Me) is untouched.
+- **Config collapsed:** `.claude/temper.config` 211 → ~55 lines (most of it comments).
+  `tokens.*`, `models.*`, `observability.*`, `capabilities.*`, and the nested-agent
+  budget block are gone — replaced by either a CLI mechanism (gates, evidence) or a
+  fixed good default (Grill Me/Teach Me/HTML review/Architecture Depth Review are now
+  always offered at their gates; there's no toggle to turn them off, just don't pick
+  them).
+- **`/temper:status` drops the cost/latency/token "Economics" panel** (v6.x estimates
+  with no mechanical backing) for a **Gate Ledger panel** reading `.temper/gates.json` +
+  `.temper/evidence/`: only what was actually recorded.
+- **Autonomous Continuation, simplified, not removed:** still opt-in, still armed only
+  at the plan gate, still never commits/pushes/merges. The three-branch `gate-eval` hook
+  and confidence-threshold machinery are gone — an autonomous run now just runs `temper
+  gate {stage}` and auto-continues on PASS, parks on FAIL past budget. Blast-radius and
+  park-on-touch checks are computed by `temper gate commit` itself.
+- **`/temper:fix` updated to match:** Fix/Review/Check now record evidence and run
+  `temper gate build/review/check/commit` — required so a `/temper:fix` commit isn't
+  wrongly blocked by a commit hook that now checks for evidence on every commit.
+- **Retired outright** (not degraded — deleted): the `tokens.*` runtime levers (prompt
+  cache read-ordering, adaptive pipeline depth, loop-cost tiers), `models.*` routing
+  config, the `observability.json` v2/v3 cost/latency/drift telemetry schema, the
+  `capabilities.*` config toggles, and `scripts/validate-phase2.sh` /
+  `scripts/validate-phase3.sh` (they asserted the byte-identity contracts this release
+  retires). See `reference/tokenomics.md` and `reference/pricing.md` for what replaced
+  each.
+- **Cursor IDE export archived**, not regenerated per release. `.cursor/` stays at its
+  v6.0.1 snapshot; `scripts/generate-cursor.sh` still runs by hand if you want it, but
+  it's out of `version-bump.sh` and `release-bump.yml`. See `.cursor/README.md`.
+- **Design doc:** `docs/plans/v7-deterministic-spine.md`.
 
 ## v6.0.1 — Standard Plugin Layout
 

@@ -162,77 +162,54 @@ Detect which external tools are available by checking capabilities:
 │     Issues/review: {trend} ({improvement_pct}% change) │
 │   (If learning.json absent: "Adaptive learning: not yet initialized") │
 │                                                      │
-│ ECONOMICS (v5.6.0)                                   │
-│   Per-stage cost/latency/tier (last run):            │
-│     Plan  | tier-frontier | $0.{cc} | {Y}s | {tok}   │
-│     Build | tier-standard | $0.{cc} | {Y}s | {tok}   │
-│     Review| tier-fast     | $0.{cc} | {Y}s | {tok}   │
-│   Rolling avg cost/feature: $0.{cc} (source: pricing)│
-│   Eval-score trend: {s1} -> {sK} ({up|flat|down})    │
-│   Drift flags: {N} active (SUGGEST only)             │
-│   CapEx vs OpEx: upfront structure lowers marginal   │
-│   cost per shipped feature.                          │
-│   (If observability.json absent/v1:                  │
-│    "No observability data yet")                      │
+│ GATE LEDGER (current/last run — .temper/gates.json)  │
+│   Plan   {PASS/FAIL}   Build  {PASS/FAIL}            │
+│   Review {PASS/FAIL}   Check  {PASS/FAIL}            │
+│   Eval   {PASS/FAIL/skipped}                         │
+│   Overrides: {N} (see .temper/overrides.json)        │
+│   Evidence: {N} PROVEN, {N} HEURISTIC, {N} SEMANTIC  │
+│   (If .temper/gates.json absent: "No gate data yet — │
+│    run /temper to populate it")                      │
 │                                                      │
-│ AUTONOMOUS RUNS                                      │
-│   Last run mode: {interactive|autonomous}            │
-│   Park point: {stage} — {reason}                     │
-│   Gates auto-resolved: {N} | parked: {N}             │
-│   Budget used: {s}/{max} stages, {l}/{max} loops,    │
-│                {min}/{max} min, {tok}/{max} tok      │
-│                (sources shown next to each numeric)  │
-│   (If autonomy fields absent: print nothing —        │
-│    byte-identical to v5.9.0)                         │
+│ AUTONOMOUS RUNS (last parked run, if any)            │
+│   Run mode: {interactive|autonomous}                 │
+│   Park point: {stage} — {reason, from the report}    │
+│   Loop budget used: {l}/{max-total-loops}            │
+│   (If .temper/autonomy-report.md absent: print       │
+│    nothing for this panel)                           │
 └─────────────────────────────────────────────────────┘
 ```
 
-### Step 2.5: Economics Panel (v5.6.0 — Deliverable 4)
+### Step 2.5: Gate Ledger Panel (v7 — replaces the v6.x Economics panel)
 
-Render from `.temper/observability.json` (must be `version: 2`) + `.temper/metrics.json`.
+Render from `.temper/gates.json`, `.temper/overrides.json`, and
+`.temper/evidence/*.json` — the same evidence-ledger the `temper` CLI computes gate
+verdicts from (see `reference/orchestrator-patterns.md`). This is a deliberate
+downgrade from v6.x's cost/latency/token dashboard: those numbers were estimates with no
+mechanical backing, which is exactly what v7 stops presenting as fact. What's shown here
+is *only* what `temper gate` and `temper evidence` actually recorded.
 
-**Per-stage table** (last run): for each entry in `observability.json stages[]`, show
-`stage | model_tier | cost_usd.value | latency_ms.value | tokens(in+out) | tool_calls.value`.
-Surface the `source` flag next to each numeric so the dashboard never lies about provenance
-(e.g. "$0.04 (pricing)", "tokens: 12.4k (estimated)").
+- **Per-stage verdict:** `temper report` (or read `.temper/gates.json` directly) —
+  stage, verdict, and each requirement's pass/fail with its detail string.
+- **Overrides:** count entries in `.temper/overrides.json`; list stage + reason for each
+  (an override is not hidden — it's a decision a human made, on the record).
+- **Evidence label mix:** count `.temper/evidence/*.json` entries by `label`
+  (PROVEN/HEURISTIC/SEMANTIC) — the same ratio v6.x called "evidence ratio", still
+  useful as a rough proxy for how much of the run was mechanically verified vs judged.
 
-**Rolling averages** (last K runs from `metrics.json stage_baseline`): avg cost/feature,
-avg latency/feature.
-
-**Eval-score trend** (Phase 1 scores): plot the last K `eval_score` values; label up/flat/down.
-
-**Drift flags** (Deliverable 3): list `metrics.json drift_flags[]` entries. All are
-`severity: SUGGEST` — never auto-blocking.
-
-**CapEx vs OpEx summary:**
-- CapEx (one-time investment): eval sets authored, packs/hooks configured, context files.
-- OpEx (per-feature): avg tokens/cost per shipped feature, avg pipeline minutes.
-- Thesis: upfront structure lowers marginal cost per shipped feature.
-
-**Graceful absence:** if `.temper/observability.json` does NOT exist OR is not `version: 2`,
-print `"No observability data yet. Run /temper to capture per-stage cost and telemetry."`
-and do NOT error. This preserves the existing graceful-degradation contract.
+**Graceful absence:** if `.temper/gates.json` does not exist, print `"No gate data yet.
+Run /temper to populate it."` and do not error.
 
 ### Step 2.6: Autonomous runs Panel
 
-Render from the additive autonomy fields in `.temper/observability.json` (all defined in
-orchestrator-patterns.md → "Autonomous Continuation" §11). This "Autonomous runs" panel is
-**purely additive**:
-if `run_mode` / `park` / `gate_decisions` / `budget_used` are absent (i.e. the run never
-armed autonomy, or observability predates autonomy), **print nothing** for this panel — the
-dashboard is byte-identical to v5.9.0.
+Render from `.temper/autonomy-report.md` (if present) and `.temper/feedback-loops.json`.
+This panel is **purely additive** — if no autonomy report exists (the project has never
+armed autonomy, or the last run finished without parking), print nothing.
 
-- **Last run mode:** `observability.json run_mode` (`interactive` | `autonomous`), with
-  `run_mode_source`.
-- **Park point:** `observability.json park.stage` + `park.reason` + `park.verdict` (omit if
-  no `park` entry — the run was still running or completed without parking).
-- **Gates auto-resolved vs parked:** count `gate_decisions[]` entries where `auto: true`,
-  split by `decision` (AUTO-RESOLVE vs PARK).
-- **Budget used:** `budget_used.{stages, loops, wall_clock_min, tokens}` each with their
-  `source` sibling, shown against `budget.{max-stages, max-total-loops, max-wall-clock-min}`
-  (tokens has no budget ceiling until the harness exposes usage reliably — surface it as a
-  consumption indicator, not a fraction). Surface the `source` flag next to each numeric so the
-  dashboard never lies about provenance.
+- **Run mode:** the `run_mode` field in `.temper/build-state.json`, if a run is active.
+- **Park point:** parse the report's `**Parked at:**` / `**Reason:**` lines.
+- **Loop budget used:** sum `iteration` across `.temper/feedback-loops.json`
+  `active_loops[]` + `history[]`, shown against `autonomy.budget.max-total-loops`.
 
 ### Step 3: Learning Loop Prompt
 
