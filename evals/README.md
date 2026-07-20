@@ -4,10 +4,12 @@ Move 3 of [`docs/plans/v7-deterministic-spine.md`](../docs/plans/v7-deterministi
 Temper ships an eval stage for *your* features (`/temper:eval`) but, before v7, had no
 behavioral regression harness for its own prompts — `scripts/quality-check.sh` and
 friends check structure, never behavior. Every prompt edit was a blind change to a
-multi-thousand-line program. This is the fix: three fixture projects, each with one
-seeded, known defect, run through the real pipeline in CI, asserting against the
+multi-thousand-line program. This is the fix: three seeded-defect fixture projects,
+each with one known defect, run through the real pipeline in CI, asserting against the
 evidence ledger (`.temper/evidence/`, written by `scripts/temper`) — not by grepping a
-transcript for hopeful phrases.
+transcript for hopeful phrases — plus one wiring-smoke fixture (no seeded defect) that
+proves every pre-commit gate stage actually gets called by the model, not just that
+the CLI's own logic is correct in isolation.
 
 ## Fixtures
 
@@ -43,6 +45,46 @@ a lightweight PR check (one fixture, on PRs touching `commands/`, `reference/`,
 `agents/`, `skills/`, or `scripts/temper`). It checks for `secrets.ANTHROPIC_API_KEY`
 first and skips cleanly if absent — it never fails CI for a fork or a PR without the
 secret configured.
+
+## Wiring smoke test — `plan`/`build`/`eval` coverage (2026-07-20)
+
+The three seeded-defect fixtures above only exercise `review` and `check`. That left a
+real, disclosed gap: `plan`, `build`, and `eval` were only tested by
+`scripts/tests/test-temper.sh` — which verifies the CLI's own gate logic in isolation,
+not whether a real model, following the actual prompt, calls `temper evidence add`/
+`temper gate` at all. That's not hypothetical: it's the exact bug verification pass 3
+found for the standalone commands (see "A real bug the first pass of this baseline run
+found and fixed" below) — a synthetic unit test structurally cannot catch a prompt that
+forgets to call the CLI, only running the prompt for real can.
+
+`evals/wiring-smoke/` (no seeded defect, no `expect.json`) closes this: `evals/
+run-wiring-smoke.sh` runs `/temper:plan`, `/temper:build`, then `/temper:eval` as three
+chained standalone invocations against one small, deliberately trivial feature (add a
+`version()` function backed by `package.json`, plus a test), then checks two things
+mechanically — not by keyword matching, by reading the same files `temper gate commit`
+itself reads:
+
+1. `.temper/gates.json` has a real `verdict` for `plan`, `build`, and `eval` (not
+   `MISSING` — a `MISSING` verdict is exactly what pass 3 found for the standalone
+   commands: `temper gate {stage}` was simply never invoked).
+2. `.temper/evidence/{build,eval}.json` actually has entries, and `temper state get
+   complexity` actually returns a value plan is supposed to set — proving `temper
+   evidence add` (not just `temper gate`) was really called.
+
+It deliberately does **not** score eval quality, review scenario coverage, or exercise
+`review`/`check` — those are already covered live by the three fixtures above. It only
+answers one question: "did the CLI actually get called in every stage," the same class
+of question pass 3 answered the hard way for `review`/`check`.
+
+**Verified live (2026-07-20):** first run, clean pass —
+`plan: PASS`, `build: PASS`, `eval: PASS`, `build` evidence: 2 entries, `eval` evidence:
+1 entry, `complexity=trivial`. No wiring gap found for `plan`/`build`/`eval` — combined
+with the three fixtures above, all five pre-commit gate stages (`plan`, `build`,
+`review`, `check`, `eval`) are now independently confirmed, live, to actually call the
+CLI they're supposed to.
+
+Run it: `bash evals/run-wiring-smoke.sh`. In CI: nightly + full on-demand runs (not the
+per-PR smoke check, to keep PR cost down — see `.github/workflows/eval-fixtures.yml`).
 
 ## Scope note: the autonomy tripwire
 
@@ -168,15 +210,27 @@ bash evals/run-fixture.sh password-reset   # v7, strict bar, no override needed
 
 ## Known limitations (still open, not hidden)
 
-- **Only `review` and `check` are exercised by a live fixture.** `plan`'s blast-radius
-  requirement, `build`'s RED/GREEN, `eval`'s threshold, and `commit`'s aggregation are
-  only tested by `scripts/tests/test-temper.sh` — which tests the CLI's logic in
-  isolation, not whether a real model actually calls it correctly in those stages.
-  That's the same class of gap that hid the standalone-command bug above; it could be
-  hiding another one in an untested stage right now.
+- **`commit` gate aggregation is unit-tested only, but that's a different risk class
+  than `plan`/`build`/`eval` were.** `temper gate commit` isn't invoked by a model
+  following prompt instructions it could forget — it's invoked mechanically by the
+  native git pre-commit hook and the in-agent PreToolUse hook, both of which literally
+  just run `temper gate commit` unconditionally (`scripts/hooks/install.sh`,
+  `scripts/hooks/block-uncommitted-gate.sh`). The risk that caught `plan`/`build`/
+  `review`/`check`/`eval` before — "does the *prompt* actually drive the model to call
+  the CLI" — doesn't apply here the same way; there's no prompt step to forget. Its
+  aggregation *logic* (stage list by `command`, override checking, blast-radius/
+  park-on-touch) is exercised by `scripts/tests/test-temper.sh`. Live end-to-end proof
+  the hook itself fires on a real `git commit` isn't covered by any fixture here — a
+  gap, but a narrower and lower-risk one than the others were.
 
 ### Resolved (not open anymore)
 
+- **Only `review`/`check` were exercised by a live fixture; `plan`/`build`/`eval` were
+  unit-tested only** — the same class of gap that hid the standalone-command bug (pass
+  3, below): a synthetic test can't know whether a *prompt* actually calls the CLI.
+  Fixed by `evals/wiring-smoke/` + `evals/run-wiring-smoke.sh` — see "Wiring smoke
+  test" above. Verified live: `plan`/`build`/`eval` all PASS, evidence actually
+  recorded, no wiring gap found.
 - **Tiers 2 and 3 used to match on a single flat, `OR`ed keyword list**, so a generic
   word alone (`"missing"`, `"unused"`) could false-positive on unrelated text. Fixed by
   requiring `anchor_keywords` AND `signal_keywords` to both match — see "Anchor +

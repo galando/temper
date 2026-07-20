@@ -236,7 +236,7 @@ if [[ -f "$EVAL_RULE" ]]; then
 fi
 
 # --- Eval fixtures (v7 — Move 3, docs/plans/v7-deterministic-spine.md) ---
-for h in evals/run-fixture.sh evals/run-all.sh; do
+for h in evals/run-fixture.sh evals/run-all.sh evals/run-wiring-smoke.sh; do
   p="$REPO_ROOT/$h"
   if [[ ! -f "$p" ]]; then fail "$h missing"
   elif [[ ! -x "$p" ]]; then fail "$h not executable (chmod +x)"
@@ -259,6 +259,17 @@ assert 'stage' in d and 'command' in d and 'anchor_keywords' in d and 'signal_ke
   fi
 done
 if [[ "$FIXTURE_COUNT" -ge 1 ]]; then ok; else fail "no eval fixtures found under evals/fixtures/"; fi
+
+# wiring-smoke is a different fixture shape (no seeded defect, no expect.json) —
+# checked separately rather than folded into the loop above.
+WIRING_DIR="$REPO_ROOT/evals/wiring-smoke"
+if [[ -d "$WIRING_DIR" ]]; then
+  for required in package.json src/app.js test/app.test.js WIRING_CHECK.md; do
+    if [[ -f "$WIRING_DIR/$required" ]]; then ok; else fail "evals/wiring-smoke/$required missing"; fi
+  done
+else
+  fail "evals/wiring-smoke/ missing"
+fi
 
 echo ""
 echo "=== validate-plugin.sh ==="

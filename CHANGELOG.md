@@ -190,6 +190,42 @@ false-positive on unrelated text with no connection to the seeded defect.
   before, but still weaker than tier 1's gate-property check. Tiers 2/3 remain
   non-authoritative for CI regardless.
 
+**Sixth pass — closed the `plan`/`build`/`eval` live-coverage gap:**
+
+The remaining disclosed limitation from the fourth pass: only `review`/`check` were
+exercised by a live fixture. `plan`, `build`, and `eval` were only tested by
+`scripts/tests/test-temper.sh` — real for the CLI's own gate *logic*, but blind to
+whether a real model, following the actual prompt, calls `temper evidence add`/
+`temper gate` at all. That's not a hypothetical concern — it's exactly the bug class
+the third pass found for the standalone commands, just not yet re-checked for these
+three specific stages.
+
+- **Added `evals/wiring-smoke/` + `evals/run-wiring-smoke.sh`** — a fourth fixture,
+  differently shaped from the other three: no seeded defect, no `expect.json`, no
+  catch/miss verdict. It chains three real headless invocations
+  (`/temper:plan` → `/temper:build` → `/temper:eval`) against one small, deliberately
+  trivial feature, then checks — by reading `.temper/gates.json` and
+  `.temper/evidence/*.json` directly, the same files `temper gate commit` itself
+  reads — whether each stage actually got called for real, not by matching keywords in
+  a transcript.
+- **Verified live, first run:** clean pass — `plan: PASS`, `build: PASS`, `eval: PASS`;
+  `build` evidence 2 entries, `eval` evidence 1 entry; `temper state get complexity`
+  correctly returned `trivial`. No wiring gap found in any of the three previously
+  untested stages.
+- **Wired into CI:** `.github/workflows/eval-fixtures.yml` runs it alongside
+  `evals/run-all.sh` on the nightly + full on-demand paths (not the per-PR smoke
+  check, to keep PR cost down); `scripts/validate-plugin.sh` checks the new fixture's
+  required files and that `run-wiring-smoke.sh` is executable.
+- **Narrowed, not closed: `commit` gate aggregation.** `temper gate commit` isn't
+  invoked by a model that could forget a prompt instruction — the native pre-commit
+  hook and the in-agent PreToolUse hook both call it unconditionally. The risk class
+  that justified this pass doesn't apply the same way there; its aggregation logic is
+  unit-tested, but a live end-to-end proof that the hook itself fires on a real `git
+  commit` isn't covered by any fixture. Disclosed in `evals/README.md`, not hidden —
+  a narrower and lower-risk gap than the one this pass closed.
+
+Full writeup: `evals/README.md`.
+
 ## v6.0.1 — Standard Plugin Layout
 
 Restructure to the standard Claude Code plugin layout in preparation for

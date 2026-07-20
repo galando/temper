@@ -99,9 +99,11 @@ temper gate check -> PASS
   require the harness's strongest tier — `temper gate` mechanically FAILing with the
   defect named — not a weaker "some evidence text roughly matches" signal; that
   distinction was itself a real bug the harness had until it was caught by asking
-  "is this eval actually correct?" and fixing it. Full story, including two real bugs
-  this found (one in the pipeline, one in the eval harness itself):
-  [`evals/README.md`](evals/README.md).
+  "is this eval actually correct?" and fixing it. A fourth, differently-shaped fixture
+  (no seeded defect) then confirmed the remaining gate stages — `plan`, `build`,
+  `eval` — actually get called by the model too, not just the two the seeded-defect
+  fixtures exercise. Full story, including the real bugs this found along the way (one
+  in the pipeline, one in the eval harness itself): [`evals/README.md`](evals/README.md).
 
 Full design rationale: [docs/plans/v7-deterministic-spine.md](docs/plans/v7-deterministic-spine.md)
 
