@@ -61,26 +61,78 @@ CLAUDE_EXIT=$?
 
 FOUND="no"
 EVIDENCE_FILE=".temper/evidence/$STAGE.json"
+
+# Tier 1 (strongest): the recorded evidence carries the SPECIFIC property that makes
+# `temper gate <stage>` actually FAIL for it — not just text matching the keywords.
+# review: severity must be in the default block-on list (critical). check: the row
+# must be a --scenario entry with a nonzero exit_code (uncovered). This directly
+# mirrors gate_review()/gate_check() in scripts/temper — a keyword match alone proves
+# nothing about whether the gate would have blocked a commit, only that matching text
+# exists somewhere in a claim string.
 if [[ -f "$EVIDENCE_FILE" ]]; then
   if python3 -c "
 import json, re, sys
-evidence_path, keywords = sys.argv[1], sys.argv[2]
+evidence_path, keywords, stage = sys.argv[1], sys.argv[2], sys.argv[3]
 entries = json.load(open(evidence_path))
 pat = re.compile(keywords, re.I)
-sys.exit(0 if any(pat.search(e.get('claim') or '') for e in entries) else 1)
-" "$EVIDENCE_FILE" "$KEYWORDS" 2>/dev/null; then
-    FOUND="evidence-ledger"
+def blocks_gate(e):
+    if not pat.search(e.get('claim') or ''):
+        return False
+    if stage == 'review':
+        return e.get('severity') == 'critical'
+    if stage == 'check':
+        return e.get('scenario') and e.get('exit_code') not in (0, None)
+    return e.get('exit_code') not in (0, None)
+sys.exit(0 if any(blocks_gate(e) for e in entries) else 1)
+" "$EVIDENCE_FILE" "$KEYWORDS" "$STAGE" 2>/dev/null; then
+    FOUND="gate-blocking-evidence"
   fi
 fi
+
+# Tier 2: evidence exists and its claim text matches, but not in a way that would
+# have failed the gate (e.g. recorded at a non-blocking severity) — worth knowing
+# separately from tier 1, not the same claim strength.
+if [[ "$FOUND" == "no" && -f "$EVIDENCE_FILE" ]]; then
+  if python3 -c "
+import json, re, sys
+entries = json.load(open(sys.argv[1]))
+pat = re.compile(sys.argv[2], re.I)
+sys.exit(0 if any(pat.search(e.get('claim') or '') for e in entries) else 1)
+" "$EVIDENCE_FILE" "$KEYWORDS" 2>/dev/null; then
+    FOUND="evidence-non-blocking"
+  fi
+fi
+
+# Tier 3 (weakest): only the raw transcript mentions it — no evidence was ever
+# recorded, so `temper gate` never saw this at all. Real for v6.0.1 (no CLI exists);
+# a warning sign for v7 (the agent found it but never called `temper evidence add`).
 if [[ "$FOUND" == "no" ]] && grep -qEi "$KEYWORDS" run.log 2>/dev/null; then
   FOUND="transcript-fallback"
 fi
 
-if [[ "$FOUND" != "no" ]]; then
+# Pass bar: STRICT by default (tier 1 only — "would this have mechanically blocked a
+# commit"), which is the actual guarantee v7 makes and what CI should enforce on every
+# prompt change. Set TEMPER_EVAL_ACCEPT_ANY_TIER=1 to accept tiers 2-3 too — needed
+# for a v6.0.1 baseline comparison, since v6.0.1 has no CLI and tier 1 is structurally
+# unreachable there; NOT for judging v7 itself, where accepting a weaker tier would
+# let a real regression (found the bug, stopped recording it as blocking) pass silently.
+PASS_BAR_MET="no"
+if [[ "$FOUND" == "gate-blocking-evidence" ]]; then
+  PASS_BAR_MET="yes"
+elif [[ "$FOUND" != "no" && "${TEMPER_EVAL_ACCEPT_ANY_TIER:-0}" == "1" ]]; then
+  PASS_BAR_MET="yes"
+fi
+
+if [[ "$PASS_BAR_MET" == "yes" ]]; then
   echo "CAUGHT: $FIXTURE ($STAGE) — defect flagged (source: $FOUND)"
   exit 0
+elif [[ "$FOUND" != "no" ]]; then
+  echo "MISSED: $FIXTURE ($STAGE) — defect noticed but NOT gate-blocking (source: $FOUND) — set TEMPER_EVAL_ACCEPT_ANY_TIER=1 to accept this tier (e.g. for a pre-CLI baseline comparison)"
+  echo "--- run.log tail ---"
+  tail -40 run.log
+  exit 1
 else
-  echo "MISSED: $FIXTURE ($STAGE) — defect NOT flagged (claude exit $CLAUDE_EXIT)"
+  echo "MISSED: $FIXTURE ($STAGE) — defect NOT flagged at all (claude exit $CLAUDE_EXIT)"
   echo "--- run.log tail ---"
   tail -40 run.log
   exit 1
