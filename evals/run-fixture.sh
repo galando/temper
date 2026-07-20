@@ -25,9 +25,9 @@ EXPECT="$FIXTURE_DIR/expect.json"
 command -v claude >/dev/null 2>&1 || { echo "FAIL: claude CLI not on PATH" >&2; exit 2; }
 command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 required" >&2; exit 2; }
 
-STAGE=$(python3 -c "import json; print(json.load(open('$EXPECT'))['stage'])")
-COMMAND=$(python3 -c "import json; print(json.load(open('$EXPECT'))['command'])")
-KEYWORDS=$(python3 -c "import json; print('|'.join(json.load(open('$EXPECT'))['catch_keywords']))")
+STAGE=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['stage'])" "$EXPECT")
+COMMAND=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['command'])" "$EXPECT")
+KEYWORDS=$(python3 -c "import json, sys; print('|'.join(json.load(open(sys.argv[1]))['catch_keywords']))" "$EXPECT")
 
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
@@ -52,13 +52,15 @@ $TIMEOUT_BIN 600 claude -p "$COMMAND" \
 CLAUDE_EXIT=$?
 
 FOUND="no"
-if [[ -f ".temper/evidence/$STAGE.json" ]]; then
+EVIDENCE_FILE=".temper/evidence/$STAGE.json"
+if [[ -f "$EVIDENCE_FILE" ]]; then
   if python3 -c "
 import json, re, sys
-entries = json.load(open('.temper/evidence/$STAGE.json'))
-pat = re.compile(r'$KEYWORDS', re.I)
+evidence_path, keywords = sys.argv[1], sys.argv[2]
+entries = json.load(open(evidence_path))
+pat = re.compile(keywords, re.I)
 sys.exit(0 if any(pat.search(e.get('claim') or '') for e in entries) else 1)
-" 2>/dev/null; then
+" "$EVIDENCE_FILE" "$KEYWORDS" 2>/dev/null; then
     FOUND="evidence-ledger"
   fi
 fi
