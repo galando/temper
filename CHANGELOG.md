@@ -64,6 +64,33 @@ output.**
   it's out of `version-bump.sh` and `release-bump.yml`. See `.cursor/README.md`.
 - **Design doc:** `docs/plans/v7-deterministic-spine.md`.
 
+**Self-verification pass (same release):** re-checked against the design doc's own
+acceptance criteria and closed the real gaps that turned up:
+- `temper gate check` now traces every `intent.md` scenario to a test by name
+  (`--scenario` on `temper evidence add`) and names the uncovered ones in its FAIL
+  detail — this is the mechanism that makes the README's rate-limiting story literally
+  true, not just illustrative. It was missing at first pass; `agents/check.md` and
+  `scripts/tests/test-temper.sh` updated with it.
+- `temper gate plan` now requires a `## Blast Radius` section in `plan.md` for
+  `medium`/`complex` changes (`temper state set complexity` records the tier).
+- `.github/workflows/eval-fixtures.yml` gained a `pull_request` trigger (one fixture,
+  path-filtered to `commands/`/`reference/`/`agents/`/`skills/`/`scripts/temper`) — the
+  design doc called for per-PR + nightly; only nightly + on-demand shipped at first pass.
+- `/temper:init` now actually greps an existing config for retired `tokens:`/`models:`/
+  `observability:`/`capabilities:` blocks and reports them, instead of only describing
+  that behavior in prose.
+- The design doc's per-fixture "autonomy tripwire" was deliberately not added to the
+  three eval fixtures — `park-on-touch` is a pure CLI property with zero model
+  judgment involved, already covered by `scripts/tests/test-temper.sh` without spending
+  tokens on a live run to re-prove it. Reasoning: `evals/README.md`.
+- **Known gap, not closed in this pass:** the design doc's reference/ line-count target
+  (~10,700 → ~1,500 total) was not hit — `commands/temper.md` (1,353→363) and
+  `reference/orchestrator-patterns.md` (979→327) got the deep rewrite; the other
+  reference files (`plan.md`, `review.md`, `check.md`, `build.md`, `pack.md`, `fix.md`,
+  and others) only got targeted edits removing dangling references to retired config
+  keys, not a line-count-reducing rewrite. Current `reference/` total: ~6,500 lines.
+  This is real, disclosed scope not yet done, not a silently-missed target.
+
 ## v6.0.1 — Standard Plugin Layout
 
 Restructure to the standard Claude Code plugin layout in preparation for

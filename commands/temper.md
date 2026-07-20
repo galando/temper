@@ -283,7 +283,9 @@ Use the Agent tool, model: haiku, prompt:
 
 Summary box: compile/test/lint/security results, coverage %, scenario verification.
 
-Gate: `$TEMPER gate check` (tests pass, coverage >= threshold). On a clean pass, the
+Gate: `$TEMPER gate check` (tests pass, coverage >= threshold, every `intent.md`
+scenario traced to a test by name — this is the gate that catches the README's
+rate-limiting story). On a clean pass, the
 Check agent may also have written `{spec_path}/config-suggestions.json` (CLAUDE.md/
 AGENTS.md suggestions per `reference/config-suggestions.md`) — if present, offer a
 **"Review config suggestions"** option before Continue: show each, Accept (write it into

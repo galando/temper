@@ -4,14 +4,24 @@ name: Eval Fixtures
 # through the real /temper pipeline (headless `claude -p`) and assert the defect was
 # actually caught, via the evidence ledger — not transcript narration.
 #
-# This costs real tokens and wall-clock time, so it does NOT run on every PR. It runs:
-#   - nightly, on a schedule
-#   - on demand, via workflow_dispatch
-#   - never for forks/PRs without the ANTHROPIC_API_KEY secret configured — the job
-#     checks for the secret first and skips cleanly (never fails CI for contributors
-#     who don't have it).
+# This costs real tokens and wall-clock time, so it runs at two different depths:
+#   - PRs touching the prompt/CLI surface: ONE fixture only (a cheap smoke check —
+#     did this change break the pipeline's ability to catch anything at all)
+#   - nightly, on a schedule: the FULL suite
+#   - on demand, via workflow_dispatch: one fixture or the full suite, your choice
+#   - never for forks/PRs without the ANTHROPIC_API_KEY secret configured (forks don't
+#     get repo secrets on pull_request by default) — the job checks for the secret
+#     first and skips cleanly, never failing CI for a contributor who doesn't have it.
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "commands/**"
+      - "reference/**"
+      - "agents/**"
+      - "skills/**"
+      - "scripts/temper"
   schedule:
     - cron: "17 3 * * *"   # nightly, off-peak
   workflow_dispatch:
@@ -34,7 +44,7 @@ jobs:
             echo "has-key=true" >> "$GITHUB_OUTPUT"
           else
             echo "has-key=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::ANTHROPIC_API_KEY not configured — skipping eval fixtures (this is expected on forks)."
+            echo "::notice::ANTHROPIC_API_KEY not configured — skipping eval fixtures (expected on forks / PRs without the secret)."
           fi
 
   eval-fixtures:
@@ -55,6 +65,9 @@ jobs:
         run: |
           if [ -n "${{ inputs.fixture }}" ]; then
             bash evals/run-fixture.sh "${{ inputs.fixture }}"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            # Smoke check only — full suite is nightly + on-demand.
+            bash evals/run-fixture.sh password-reset
           else
             bash evals/run-all.sh
           fi

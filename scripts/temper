@@ -343,7 +343,7 @@ cmd_state() {
 
 cmd_evidence_add() {
   _ensure_dirs
-  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase=""
+  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stage) stage="$2"; shift 2 ;;
@@ -355,6 +355,7 @@ cmd_evidence_add() {
       --severity) severity="$2"; shift 2 ;;
       --label) label="$2"; shift 2 ;;
       --phase) phase="$2"; shift 2 ;;
+      --scenario) scenario="$2"; shift 2 ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
@@ -381,15 +382,15 @@ cmd_evidence_add() {
   local entry
   entry=$(python3 -c "
 import json, sys
-claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, ts = sys.argv[1:]
+claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, scenario, ts = sys.argv[1:]
 e = {'claim': claim, 'cmd': cmd or None,
      'exit_code': int(exit_code) if exit_code != '' else None,
      'artifact': artifact or None, 'sha256': artifact_hash or None,
      'value': (float(value) if value != '' else None),
-     'severity': severity or None, 'phase': phase or None,
+     'severity': severity or None, 'phase': phase or None, 'scenario': scenario or None,
      'label': label, 'ts': ts}
 print(json.dumps(e))
-" "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$(_now)")
+" "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$(_now)")
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim"
 }
@@ -504,6 +505,44 @@ print(sum(1 for e in entries if e.get('severity') in sevs))
 " "$file" "$sev_csv"
 }
 
+_ev_scenarios_covered() { # _ev_scenarios_covered <stage> -> count of DISTINCT scenarios
+                           # recorded with exit_code 0 (an agent traces each Gherkin
+                           # scenario to a test via --scenario "<name>" --exit <code>)
+  local stage="$1"
+  local file; file="$(_evidence_file "$stage")"
+  [[ -f "$file" ]] || { echo 0; return; }
+  python3 -c "
+import json, sys
+entries = json.load(open(sys.argv[1]))
+covered = {e['scenario'] for e in entries if e.get('scenario') and e.get('exit_code') == 0}
+print(len(covered))
+" "$file"
+}
+
+_intent_uncovered_scenarios() { # _intent_uncovered_scenarios <intent.md> <stage>
+                                 # -> \x1f-joined scenario names present in intent.md but
+                                 # not recorded as covered (exit_code 0) in the ledger
+  local intent="$1" stage="$2"
+  local file; file="$(_evidence_file "$stage")"
+  python3 -c "
+import json, re, sys
+intent_path, ev_path = sys.argv[1:3]
+names = []
+for line in open(intent_path):
+    m = re.match(r'^\s*Scenario:\s*(.+?)\s*$', line)
+    if m:
+        names.append(m.group(1))
+covered = set()
+try:
+    entries = json.load(open(ev_path))
+    covered = {e['scenario'] for e in entries if e.get('scenario') and e.get('exit_code') == 0}
+except Exception:
+    pass
+missing = [n for n in names if n not in covered]
+print('\x1f'.join(missing))
+" "$intent" "$file"
+}
+
 _req() { # _req <label> <bool 0|1> <detail> -> emits one requirement json line to stdout, and echoes pass/fail
   local label="$1" ok="$2" detail="$3"
   python3 -c "
@@ -529,6 +568,15 @@ gate_plan() {
       reqs+=("$(_req "criteria -> scenarios" 1 "$scenarios scenario(s) for $criteria success criterion/criteria")")
     else
       reqs+=("$(_req "criteria -> scenarios" 0 "$scenarios scenario(s) for $criteria success criterion/criteria — need >=1 scenario per criterion")")
+      all_pass=0
+    fi
+  fi
+  local complexity; complexity="$(cmd_state_get complexity "")"
+  if [[ "$complexity" == "medium" || "$complexity" == "complex" ]]; then
+    if [[ -f "$spec_path/plan.md" ]] && grep -qiE '^#+ .*blast radius' "$spec_path/plan.md"; then
+      reqs+=("$(_req "blast radius documented" 1 "plan.md has a Blast Radius section ($complexity change)")")
+    else
+      reqs+=("$(_req "blast radius documented" 0 "plan.md missing a Blast Radius section — required for $complexity complexity")")
       all_pass=0
     fi
   fi
@@ -579,6 +627,7 @@ gate_review() {
 }
 
 gate_check() {
+  local spec_path="$1"
   local threshold; threshold="$(_cfg_get check.coverage-threshold 80)"
   local reqs=() all_pass=1
   local tests_n; tests_n=$(_ev_count_matching check test "" 0)
@@ -587,6 +636,20 @@ gate_check() {
   else
     reqs+=("$(_req "tests pass" 0 "no passing test-run evidence recorded")")
     all_pass=0
+  fi
+  if [[ -f "$spec_path/intent.md" ]]; then
+    local scenario_total scenario_covered
+    scenario_total=$(_count_lines_matching '^[[:space:]]*Scenario:' "$spec_path/intent.md")
+    scenario_covered=$(_ev_scenarios_covered check)
+    if [[ "$scenario_total" -eq 0 ]]; then
+      : # no scenarios in intent.md (e.g. no spec for this run) — nothing to require
+    elif [[ "$scenario_covered" -ge "$scenario_total" ]]; then
+      reqs+=("$(_req "scenarios traced to tests" 1 "$scenario_covered/$scenario_total scenario(s) covered")")
+    else
+      local missing; missing="$(_intent_uncovered_scenarios "$spec_path/intent.md" check | tr $'\x1f' ',')"
+      reqs+=("$(_req "scenarios traced to tests" 0 "$scenario_covered/$scenario_total covered — missing: $missing")")
+      all_pass=0
+    fi
   fi
   local cov_val; cov_val=$(_ev_last_value check coverage)
   if [[ -n "$cov_val" ]] && python3 -c "import sys; sys.exit(0 if float('$cov_val') >= float('$threshold') else 1)"; then
@@ -710,7 +773,7 @@ cmd_gate() {
     design) reqs_json='[]'; all_pass=1 ;;
     build) out=$(gate_build "$spec_path") ;;
     review) out=$(gate_review) ;;
-    check) out=$(gate_check) ;;
+    check) out=$(gate_check "$spec_path") ;;
     eval) out=$(gate_eval) ;;
     commit) out=$(gate_commit) ;;
   esac

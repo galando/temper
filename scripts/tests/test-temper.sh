@@ -107,6 +107,17 @@ Scenario: first
 EOF
 assert_exit "plan gate FAILs: 1 scenario for 3 criteria" 1 "$TEMPER" gate plan
 
+# --- plan gate: blast radius required for medium/complex, not for trivial/simple ---
+setup
+assert_exit "plan gate PASSes without a Blast Radius section (no complexity set)" 0 "$TEMPER" gate plan
+"$TEMPER" state set complexity medium >/dev/null
+assert_exit "plan gate FAILs: medium complexity needs a Blast Radius section" 1 "$TEMPER" gate plan
+cat > .temper/specs/demo/plan.md <<'EOF'
+## Blast Radius
+- no external consumers
+EOF
+assert_exit "plan gate PASSes once plan.md has a Blast Radius section" 0 "$TEMPER" gate plan
+
 # --- build gate: RED then GREEN required ---
 setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
@@ -127,9 +138,20 @@ assert_exit "review gate FAILs on an open critical finding" 1 "$TEMPER" gate rev
 setup
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 60 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
 assert_exit "check gate FAILs below coverage threshold (60 < 80)" 1 "$TEMPER" gate check
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 assert_exit "check gate PASSes above coverage threshold (90 >= 80)" 0 "$TEMPER" gate check
+
+# --- check gate: scenarios must be traced to a test (the flagship "rate limiting" story) ---
+setup
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
+assert_exit "check gate FAILs when a scenario has no traced test (1/2 covered)" 1 "$TEMPER" gate check
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
+assert_exit "check gate PASSes once every scenario is traced (2/2 covered)" 0 "$TEMPER" gate check
 
 # --- evidence: PROVEN downgrade on missing artifact ---
 setup
@@ -146,6 +168,8 @@ setup
 "$TEMPER" gate review >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
 "$TEMPER" gate check >/dev/null
 "$TEMPER" gate eval >/dev/null
 assert_exit "commit gate PASSes once every upstream gate is green" 0 "$TEMPER" gate commit
@@ -176,6 +200,8 @@ setup
 "$TEMPER" gate review >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
 "$TEMPER" gate check >/dev/null
 assert_exit "fix commit gate PASSes without a plan or eval gate" 0 "$TEMPER" gate commit
 

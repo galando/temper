@@ -15,7 +15,15 @@ overwritten.
 2. Check whether .claude/temper.config exists in the current project:
    a. If it EXISTS:
         - Report: "Temper config already present: .claude/temper.config"
-        - Do NOT overwrite it. Stop (idempotent).
+        - Do NOT overwrite it (idempotent — an existing config is the user's, never
+          silently rewritten). But DO check it for retired v6.x blocks and report what's
+          now ignored, so the user isn't left guessing:
+            grep -nE '^(tokens|models|observability|capabilities):' .claude/temper.config
+          For each top-level key matched, print one line: "NOTE: '{key}:' block found —
+          retired in v7, now ignored (see CHANGELOG.md 'v7.0.0' for what replaced it)."
+          If none matched, print nothing extra. This is a read-only report — it never
+          edits the file. If the user wants those lines gone, that's their edit to make.
+        - Stop (idempotent).
    b. If it does NOT exist:
         - Ensure the .claude/ directory exists (mkdir -p .claude).
         - Copy the default template into place:

@@ -38,9 +38,25 @@ Requires the `claude` CLI on `PATH`, authenticated (`ANTHROPIC_API_KEY` or equiv
 Runs with `--dangerously-skip-permissions` against a throwaway `mktemp -d` copy of the
 fixture only — never point it at a real project.
 
-In CI: `.github/workflows/eval-fixtures.yml`, nightly + on-demand (`workflow_dispatch`).
-It checks for `secrets.ANTHROPIC_API_KEY` first and skips cleanly if absent — it never
-fails CI for a fork or a PR without the secret configured.
+In CI: `.github/workflows/eval-fixtures.yml`, nightly + on-demand (`workflow_dispatch`) +
+a lightweight PR check (one fixture, on PRs touching `commands/`, `reference/`,
+`agents/`, `skills/`, or `scripts/temper`). It checks for `secrets.ANTHROPIC_API_KEY`
+first and skips cleanly if absent — it never fails CI for a fork or a PR without the
+secret configured.
+
+## Scope note: the autonomy tripwire
+
+The v7 plan called for each fixture to also plant a change under `**/auth/**`, to prove
+autonomy parks mechanically. That's deliberately **not** in these three fixtures:
+`park-on-touch` is a pure `temper gate commit` property (matching changed file paths
+against config globs) that needs zero model judgment to verify — spinning up a live
+`claude -p` run against it would cost real tokens to re-prove something a shell script
+already proves for free. It's covered instead in `scripts/tests/test-temper.sh`
+("autonomous commit gate parks on a park-on-touch path"), which runs on every push.
+If an end-to-end "the *agent* correctly triggers a park mid-run" fixture is wanted, that
+needs a fourth fixture shaped differently from these three (a full `/temper` pipeline
+run that touches `auth/`, not a single-stage `/temper:check`/`/temper:review` run) —
+tracked here as a follow-up, not built in this pass.
 
 ## Baseline pinning (how this guards quality during a prompt diet)
 
