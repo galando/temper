@@ -34,3 +34,11 @@ argument-hint: "<feature-name-or-JIRA-123>"
 - **Temper Core** — stack detection, pack resolution, quality gates
 
 **Scenarios drive architecture. Every file must trace to a scenario or infrastructure need.**
+
+### Deterministic Gate
+
+Follow `$CLAUDE_PLUGIN_ROOT/agents/plan.md` steps 3-4 (record `temper state set
+complexity`, then run `temper gate plan --spec-path .temper/specs/{feature-slug}` and
+fix any FAIL) before presenting for approval — same reason as Review/Check: skipping
+this leaves `temper gate commit` unable to see that planning happened at all. Pass
+`--spec-path` explicitly rather than relying on `temper state` having been initialized.

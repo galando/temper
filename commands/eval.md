@@ -50,3 +50,9 @@ argument-hint: "[--create] [--trajectory] [<spec>]"
 - **Temper Core** — config resolution, quality gates
 
 **Graceful degradation:** Missing evalset, disabled config, or unavailable judge model → one-line skip/fallback notice, never a hard error.
+
+### Deterministic Gate
+
+Follow `$CLAUDE_PLUGIN_ROOT/agents/eval.md` step 3 (record `temper evidence add --stage
+eval --claim "aggregate score" --value <score>`), then run
+`$CLAUDE_PLUGIN_ROOT/scripts/temper gate eval` before reporting results.

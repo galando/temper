@@ -10,12 +10,20 @@
 #
 # Requires: the `claude` CLI on PATH, authenticated. Runs with
 # --dangerously-skip-permissions — only ever point this at the throwaway copy this
-# script makes, never at a real project.
+# script makes, never at a real project. IS_SANDBOX=1 is set on the invocation because
+# --dangerously-skip-permissions refuses to run as root otherwise (common on
+# Docker-based CI runners) — safe here specifically because the target is always the
+# disposable mktemp -d copy made above, never a real checkout.
+#
+# TEMPER_PLUGIN_DIR overrides which plugin checkout is loaded via --plugin-dir — used
+# to baseline-run this same harness (fixtures + expect.json) against a different
+# plugin version/commit (e.g. a pre-diet checkout) without duplicating the script.
 #
 # Exit 0 + "CAUGHT" if the seeded defect was flagged; exit 1 + "MISSED" otherwise.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PLUGIN_DIR="${TEMPER_PLUGIN_DIR:-$REPO_ROOT}"
 FIXTURE="${1:?usage: run-fixture.sh <fixture-name>}"
 FIXTURE_DIR="$REPO_ROOT/evals/fixtures/$FIXTURE"
 [[ -d "$FIXTURE_DIR" ]] || { echo "FAIL: no such fixture: $FIXTURE" >&2; exit 2; }
@@ -44,9 +52,9 @@ if ! command -v "$TIMEOUT_BIN" >/dev/null 2>&1; then
   TIMEOUT_BIN=""
 fi
 
-echo "Running: claude -p \"$COMMAND\" in $WORKDIR (fixture: $FIXTURE, stage: $STAGE)"
-$TIMEOUT_BIN 600 claude -p "$COMMAND" \
-  --plugin-dir "$REPO_ROOT" \
+echo "Running: claude -p \"$COMMAND\" in $WORKDIR (fixture: $FIXTURE, stage: $STAGE, plugin: $PLUGIN_DIR)"
+IS_SANDBOX=1 $TIMEOUT_BIN 600 claude -p "$COMMAND" \
+  --plugin-dir "$PLUGIN_DIR" \
   --dangerously-skip-permissions \
   > run.log 2>&1
 CLAUDE_EXIT=$?

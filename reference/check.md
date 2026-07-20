@@ -393,20 +393,10 @@ Level 7: SECURITY (if available)
     If semgrep MCP server is available and tools.mode is not heuristic-only:
     1. Call semgrep security_check on all source files (changed files, or entire
        project if no changed files detected)
-    2. Call semgrep_scan_with_custom_rule for security pack rules.
-       Load packs via the cached manifest, phase-filtered for this stage (check):
-         1. Read `.temper/pack-manifest.json`. If missing or stale (config mtime
-            changed, pack dirs added/removed, schema version mismatch, or any
-            rules.md mtime newer than manifest `last_built`), rebuild it first —
-            see `reference/pack.md` "Cached Pack Manifest" for the staleness
-            contract. [G-4]
-         2. From the manifest, keep only packs whose `phases` is `"all"` OR whose
-            `phases` array contains `"check"`. This is the `reference/pack.md`
-            phase-filter contract (lines 164-169). [G-3]
-         3. For each surviving pack (e.g. security whose phases include check),
-            read its `rules_path` and pass each rule to semgrep_scan_with_custom_rule.
-         4. Read stack-specific rules from `.claude/packs/stacks/{detected-stack}.md`
-            if present (unchanged behavior).
+    2. Call semgrep_scan_with_custom_rule for security pack rules: load packs via the
+       cached manifest, phase-filtered for `check` (see `reference/pack.md` "Cached
+       Pack Manifest" + "Phase Scoping" for the mechanism), and for each surviving pack
+       (e.g. security), pass its rules to semgrep_scan_with_custom_rule.
     3. Map severity:
        - semgrep error → CRITICAL (BLOCK)
        - semgrep warning → HIGH (WARN)

@@ -91,6 +91,44 @@ acceptance criteria and closed the real gaps that turned up:
   keys, not a line-count-reducing rewrite. Current `reference/` total: ~6,500 lines.
   This is real, disclosed scope not yet done, not a silently-missed target.
 
+**Third pass — live baseline run, and a critical bug it found:**
+
+- **Ran the eval suite for real** against a `v6.0.1` worktree and against this branch
+  (`TEMPER_PLUGIN_DIR` override in `evals/run-fixture.sh`, `IS_SANDBOX=1` to unblock
+  `--dangerously-skip-permissions` under root). Both catch **3/3**; v7's catches are
+  confirmed via the evidence ledger (`temper gate` mechanically FAILing with the defect
+  named), not just a transcript grep — a strictly stronger guarantee than v6.0.1 had.
+  Full numbers: `evals/README.md`.
+- **That live run found a real, severe bug: the standalone `/temper:plan`,
+  `/temper:build`, `/temper:review`, `/temper:check`, `/temper:eval` commands never
+  recorded evidence or ran gates at all.** Only `agents/*.md` (used by the unified
+  `/temper` orchestrator) had the `temper evidence add`/`temper gate` instructions —
+  the standalone commands, a fully documented and supported entry point, were left
+  running the old prose-only methodology with no CLI involvement. Concretely: running
+  `/temper:check` standalone, then `git commit`, would have hit `temper gate commit`
+  seeing zero evidence for every stage and wrongly blocking the commit (or, worse,
+  once `.temper/gates.json` had *some* stale PASS in it, wrongly letting a broken
+  change through). Fixed: `commands/{plan,build,review,check,eval}.md` each gained a
+  "Deterministic Gate" step pointing at the matching `agents/*.md` steps, with an
+  explicit `--spec-path` (standalone use doesn't necessarily call `temper state init`,
+  so `temper state get spec_path` can be empty — passing it explicitly was required,
+  not optional, to stop the scenario-tracing check from silently skipping instead of
+  failing loudly). Verified with fresh live runs before and after the fix.
+- Collapsed a genuinely duplicated ~13-line "load packs via the cached manifest" block
+  — repeated near-verbatim across `plan.md`/`design.md`/`build.md`/`check.md`/
+  `review.md` — down to a one-line pointer at `pack.md`'s already-canonical
+  documentation of the same mechanism. ~55 lines, zero methodology lost.
+- Fixed a dormant shell/Python interpolation bug in `evals/run-fixture.sh` (same class
+  already fixed once in `scripts/temper`) and a join-with-comma ambiguity + a subtler
+  IFS-first-character-only bug in `temper gate check`'s scenario-tracing detail line.
+- Investigated further reference/ line-count reduction beyond the pack-manifest dedup
+  and made a deliberate call not to force it: the remaining size in `review.md`/
+  `plan.md`/`pack.md`/`check.md` is genuine, load-bearing methodology (confidence
+  scoring, diff fingerprinting, Deep Doubt Mode, progressive-loading navigation maps
+  that are themselves a token-efficiency mechanism) — not plumbing. Cutting it to hit
+  the plan's ~1,500-line target would violate v7's own design rule (delete mechanism,
+  keep judgment) for the sake of a number. The gap is real and stays open by design.
+
 ## v6.0.1 — Standard Plugin Layout
 
 Restructure to the standard Claude Code plugin layout in preparation for

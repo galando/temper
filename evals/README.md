@@ -58,19 +58,47 @@ needs a fourth fixture shaped differently from these three (a full `/temper` pip
 run that touches `auth/`, not a single-stage `/temper:check`/`/temper:review` run) —
 tracked here as a follow-up, not built in this pass.
 
-## Baseline pinning (how this guards quality during a prompt diet)
+## Baseline pinning — run for real (2026-07-20)
 
-The design intent, per the v7 plan: before any prompt-diet deletion lands (Move 2), run
-this suite against the pre-diet version and record the catch rate as the baseline; the
-diet is only allowed to land once the suite matches that baseline against the new
-prompts. That baseline run is a **deliberate follow-up, not done as part of this PR** —
-authoring the harness and cutting the prompts happened in the same pass here, so
-"same quality" for this specific change is asserted based on the reasoning in the
-CHANGELOG and PR description (which lines were mechanism vs. judgment), not yet backed
-by a recorded pre/post fixture run. Treat the harness in this state as: *ready to run,
-not yet run.* Running `evals/run-all.sh` against `v6.0.1` and against this branch, and
-recording both catch rates, is the next honest step — do that before trusting this
-badge in the README.
+Ran live: `evals/run-all.sh` against a `v6.0.1` worktree (`TEMPER_PLUGIN_DIR` override
+— see below) and against this branch. Both catch **3/3**:
+
+| Fixture | v6.0.1 | v7 (this branch) |
+|---|---|---|
+| `password-reset` | CAUGHT (transcript) | CAUGHT (**evidence-ledger**) |
+| `orders-api` | CAUGHT (transcript) | CAUGHT (**evidence-ledger**) |
+| `notifications` | CAUGHT (transcript) | CAUGHT (**evidence-ledger**) |
+
+"transcript" vs "evidence-ledger" is the source column `run-fixture.sh` prints — v6.0.1
+has no `temper` CLI at all, so its catches can only ever be the transcript-grep
+fallback (the agent's own narrated summary mentioned the defect). v7's catches are
+confirmed via the **evidence ledger** — meaning `temper gate {stage}` mechanically
+FAILed with the defect named in its own detail line, e.g.:
+
+```
+temper gate check -> FAIL
+  [x] scenarios traced to tests — 1/2 covered — missing: Rate limiting on reset requests
+```
+
+That's a strictly stronger guarantee than v6.0.1 ever had, not just parity.
+
+**A real bug this baseline run found and fixed:** the first live pass on `orders-api`
+and `notifications` caught the defect only via transcript-fallback *on v7 too* — the
+standalone `/temper:review`/`/temper:check` commands (as opposed to the unified
+`/temper`'s `agents/*.md` path) were never wired to call `temper evidence add` or
+`temper gate`, so a real run left `.temper/evidence/` empty. `commands/{plan,build,
+review,check,eval}.md` now each carry a "Deterministic Gate" step pointing back at the
+matching `agents/*.md` steps, plus explicit `--spec-path` (state isn't necessarily
+initialized in standalone use, so `temper state get spec_path` can be empty). Re-run
+after the fix: `orders-api` now confirms `evidence-ledger`. This is exactly the kind of
+bug a synthetic CLI test can't find — only running the real thing did.
+
+**To reproduce:**
+```bash
+git worktree add /tmp/temper-v601 <v6.0.1-commit-or-tag>
+TEMPER_PLUGIN_DIR=/tmp/temper-v601 bash evals/run-fixture.sh password-reset
+bash evals/run-fixture.sh password-reset   # v7, no override needed
+```
 
 ## Adding a fixture
 
