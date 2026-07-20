@@ -27,9 +27,8 @@ Use these terms consistently in all findings:
 
 This review runs as an **optional pass** during `/temper:review`:
 
-1. User selects "Architecture Depth Review" at the review gate
+1. User selects "Architecture Depth Review" at the review gate (always offered, no config toggle)
 2. `architecture-depth` pack is enabled in temper.config
-3. Triggered automatically when `capabilities.architecture-depth: true`
 
 ## Context Loading
 

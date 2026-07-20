@@ -36,7 +36,7 @@ intended behavior — it saves context without losing methodology.
 | Phases 3–4 (complexity + risk, blast radius) | **Core** | Always |
 | Phase 4.1 (security hot-path detection) | Optional | Auth / input / data-access paths touched |
 | Phases 4.5–6 (derive scenarios, clarify, generate artifacts) | **Core** | Always |
-| Phase 6.5 (HTML review generation) | Optional | `capabilities.html-review` enabled AND user opts in |
+| Phase 6.5 (HTML review generation) | Optional | User opts in (always offered, no config toggle) |
 | Phase 7 (present for approval) | **Core** | Standalone mode (subprocess returns summary instead) |
 
 ### Context Loading
@@ -131,21 +131,10 @@ Scan this project to build a reference map for planning a new feature.
 5. CHECK FOR COMPANY PRESET
    - Read .claude/temper.config if exists
    - Read .claude/presets/*.yaml if exists
-   - Read enabled pack rules — phase-filtered, manifest-driven for this stage (plan):
-     Load packs via the cached manifest, phase-filtered for this stage (plan):
-       1. Read `.temper/pack-manifest.json`. If missing or stale (config mtime
-          changed, pack dirs added/removed, schema version mismatch, or any
-          rules.md mtime newer than manifest `last_built`), rebuild it first —
-          see `reference/pack.md` "Cached Pack Manifest" for the staleness
-          contract. [G-4]
-       2. From the manifest, keep only packs whose `phases` is `"all"` OR whose
-          `phases` array contains `"plan"`. This is the `reference/pack.md`
-          phase-filter contract (lines 164-169). [G-3]
-       3. For each surviving pack, read its `rules_path` into context. Also load
-          any linked resource (`link: plugin://...` or `skill://...`) per pack.md
-          "Pack-Plugin/Skill Linking".
-       4. Read stack-specific rules from `.claude/packs/stacks/{detected-stack}.md`
-          if present (unchanged behavior).
+   - Read enabled pack rules via the cached manifest, phase-filtered for `plan` — see
+     `reference/pack.md` "Cached Pack Manifest" + "Phase Scoping" for the full
+     mechanism; read stack-specific rules from `.claude/packs/stacks/{detected-stack}.md`
+     if present.
 
 6. READ SEMANTIC INDEX (if exists)
    - Read .temper/index/modules.json for dependency graph
@@ -515,16 +504,14 @@ Scenarios from Phase 4.5 may reveal ambiguities that weren't visible from the fe
 
 ### Phase 6: Generate Plan Artifacts
 
-**DEPTH CONTRACT (v5.9.0, when running from `/temper` unified command):** When
-`tokens.adaptive-depth.enabled` is false, OR this change classifies as `medium`/`complex`,
-OR `tokens.adaptive-depth.floor` clamps the effective tier up to medium+ => generate the
-FULL artifact set: intent.md, tasks.md, plan.md with mermaid diagram, blast radius
-analysis. Present the full 4-option approval gate with walkthrough (v5.8.0 — byte-identical).
-When `tokens.adaptive-depth.enabled` is true AND the effective tier (after the floor clamp)
-is `trivial` or `simple` => run the reduced pipeline per the Pipeline Depth table in
-`reference/orchestrator-patterns.md` (trivial = intent.md + tasks.md only; simple =
-intent.md + tasks.md). This retargets ONLY the unified-`/temper` override — the
-complexity-tiered rules below (for standalone `/temper:plan`) are UNCHANGED.
+**When running from the `/temper` unified command (v7):** always generate the full
+artifact set — `intent.md`, `tasks.md`, `plan.md` with a mermaid diagram, blast radius
+analysis — and present the full approval gate with walkthrough. v7 retired the
+adaptive-depth pipeline-reduction system (it traded a small token saving for a
+meaningfully weaker plan gate — `temper gate plan` needs the real Success Criteria and
+Scenarios sections either way, so there was no smaller artifact set that was still
+correct). This does not affect the complexity-tiered rules below, which are a *separate*
+mechanism for the standalone `/temper:plan` command.
 
 **Complexity-tiered rules (for standalone `/temper:plan` only):**
 
@@ -830,7 +817,7 @@ GUARD: When in doubt, keep sequential. Parallel marking is an optimization, not 
 
 ### Phase 6.5: HTML Review Generation (Optional)
 
-If `capabilities.html-review` is not `false` in temper.config (default: enabled), generate an interactive HTML review file.
+When the user selects "Open HTML review" at the plan gate, generate an interactive HTML review file.
 
 **How:**
 
@@ -994,14 +981,10 @@ AskUserQuestion:
   multiSelect: false
 ```
 
-**DEPTH CONTRACT (v5.9.0, when running from `/temper` unified command):** When
-`tokens.adaptive-depth.enabled` is false, OR the effective tier (after the floor clamp) is
-`medium`/`complex` => use the full 6-section walkthrough and the full 4-option approval
-gate (v5.8.0 — byte-identical). When enabled and the effective tier is `trivial`/`simple`
-=> run the reduced pipeline per the Pipeline Depth table in
-`reference/orchestrator-patterns.md` (trivial = no walkthrough, final gate only; simple =
-2-section walkthrough). This retargets ONLY the unified-`/temper` override — the rules
-below (for standalone `/temper:plan`) are UNCHANGED.
+**When running from the `/temper` unified command (v7):** always use the full 6-section
+walkthrough and the full approval gate — see the Phase 6 note above on why adaptive-depth
+pipeline reduction was retired. This does not affect the complexity-tiered rules below,
+which are a *separate* mechanism for the standalone `/temper:plan` command.
 
 **Complexity-tiered rules (for standalone `/temper:plan` only):**
 

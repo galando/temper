@@ -1,0 +1,6 @@
+{
+  "stage": "review",
+  "command": "/temper:review",
+  "anchor_keywords": ["NotificationBell"],
+  "signal_keywords": ["unused", "unmounted", "never (rendered|imported)", "not (wired|mounted|used|referenced)", "dead code"]
+}

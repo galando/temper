@@ -1,11 +1,16 @@
 # Hooks Pack
 
-**Version:** 1.0.0
-**Last Updated:** 2026-06-18
+**Version:** 2.0.0
+**Last Updated:** 2026-07-19
 
 Deterministic safety net for Temper. Unlike the model-driven advisory checks in
 review/check, these hooks are plain bash: they block on a *detected* violation with a
 non-model exit code and no-op when their inputs are absent. They are the determinism layer.
+
+**v7:** the commit-time gate is now `temper gate commit` (`scripts/temper`) — it reads
+the evidence ledger written by every stage (`temper evidence add`) and computes PASS/FAIL
+per gate, rather than checking a single `build-state.json` stage field. `verify-tests-ran.sh`
+is kept as a fallback for a project that installed only this pack, without the CLI.
 
 ## Install
 
@@ -20,8 +25,9 @@ There are **two** layers, and both are needed for the full guarantee:
 Enabling this pack routes through the global **update-config** skill, which block-merges
 `settings.hooks.json` (the copy-paste source in this directory) into the project or user
 `settings.json`. This wires `PreToolUse`/`PostToolUse` blocks that fire when the **agent**
-edits or writes files (block-secrets on every Edit/Write, forbidden-imports after each
-Edit/Write). The merge is additive — it never clobbers unrelated existing hooks. To
+edits or writes files (block-secrets on every Edit/Write) or runs Bash (block-secrets and
+the commit gate on every Bash call — the commit-gate check is a no-op unless the command is
+a `git commit`). The merge is additive — it never clobbers unrelated existing hooks. To
 uninstall, run `/temper:pack disable hooks` (update-config removes the Temper hook block).
 
 You can also copy `settings.hooks.json` into your `settings.json` manually if you prefer.
@@ -39,8 +45,9 @@ bash scripts/hooks/install.sh          # install into .git/hooks/pre-commit
 bash scripts/hooks/install.sh --global # install via core.hooksPath
 ```
 
-The installed `pre-commit` runs `block-secrets.sh` then `verify-tests-ran.sh` and blocks
-(exit 1) on a detected secret or a not-green Check. Absent scripts degrade to no-op.
+The installed `pre-commit` runs `block-secrets.sh` then `temper gate commit` and blocks
+(exit 1) on a detected secret or a FAILing commit gate (any upstream gate not PASS and not
+explicitly overridden via `temper override`). Absent scripts/CLI degrade to no-op.
 
 If a non-Temper `pre-commit` already exists (husky, lefthook, hand-rolled), the installer
 backs it up to `.git/hooks/pre-commit.bak.<timestamp>` before overwriting and prints the
@@ -70,8 +77,10 @@ The single fail-closed path for each script is documented below. Everything else
 |--------|-------|----------------|------------------|
 | `scripts/hooks/block-secrets.sh` | PreToolUse / native pre-commit | **BLOCK** | A staged/edited file matches a secret pattern (AWS `AKIA...`, GitHub `gh[ps]_...`, private-key header, `sk-ant-...` / `sk-proj-...` / OpenAI legacy) |
 | `scripts/hooks/block-forbidden-imports.sh` | PostToolUse | **warn** (no-op by default) | An edited file imports a name on the explicit denylist (empty by default) |
-| `scripts/hooks/verify-tests-ran.sh` | native pre-commit | **BLOCK** | `.temper/build-state.json` shows the latest `check_complete` absent or failed |
-| `scripts/hooks/install.sh` | n/a (installer) | **install** | Wires block-secrets + verify-tests-ran into a native git `pre-commit` hook (the deterministic commit gate) |
+| `scripts/hooks/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `temper gate commit` FAILs (in-agent mirror of the native hook, below) |
+| `scripts/temper gate commit` | native pre-commit | **BLOCK** | Any stage's evidence-backed gate is not PASS and has no recorded `temper override` |
+| `scripts/hooks/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json` shows the latest `check_complete` absent or failed — used only when `scripts/temper` isn't present |
+| `scripts/hooks/install.sh` | n/a (installer) | **install** | Wires block-secrets + `temper gate commit` into a native git `pre-commit` hook (the deterministic commit gate) |
 
 ### block-secrets.sh
 
@@ -100,22 +109,31 @@ to **empty** → warn-only / no-op. Set `TEMPER_FORBIDDEN_IMPORTS` (colon-separa
 blocking, e.g. `TEMPER_FORBIDDEN_IMPORTS="eval:child_process.exec"`. Exit 2 only on an explicit
 denylist match; otherwise exit 0.
 
-### verify-tests-ran.sh
+### temper gate commit (scripts/temper)
 
-Refuses a commit if the staged change has not passed Check. Reads `.temper/build-state.json`;
-if the latest stage is not `check_complete` (or check failed), `exit 2` with "run /temper:check".
-If `.temper/build-state.json` is missing or unreadable → `exit 0` (degrade; do not block on
-missing state — this is the fail-open path, distinct from the detected "check not green" block).
+Refuses a commit if any stage's evidence-backed gate isn't PASS and has no recorded
+override. Reads `.temper/evidence/*.json` (written by `temper evidence add` throughout
+the pipeline) and `.temper/gates.json` (the last-computed verdict per stage); prints the
+specific unmet requirement(s). `temper override <stage> --reason "..."` records a human
+override — it stays visible in `temper report` and the final summary, it does not erase
+the FAIL. See `docs/getting-started.md` for the full CLI reference. Absent `.temper/`
+state → `exit 0` (degrade; a repo not running `/temper` for this commit is never blocked).
+
+### verify-tests-ran.sh (fallback)
+
+Used only when `scripts/temper` isn't present. Reads `.temper/build-state.json`; if the
+latest stage is not `check_complete` (or check failed), `exit 2` with "run /temper:check".
+Missing/unreadable state → `exit 0` (fail-open).
 
 ## Extending the Denylists
 
 - Secrets: add regexes to the `patterns` array in `block-secrets.sh`.
 - Imports: set `TEMPER_FORBIDDEN_IMPORTS` in your environment or settings.json `env` block.
-- Check state: the gate is structural (stage field); no denylist to extend.
+- Gate requirements: edit the `gate_*` functions in `scripts/temper` (each is ~20-30 lines).
 
 ## Mandatory Rules (BLOCK if violated)
 - Never commit a credential matching a known secret pattern (deterministic block via block-secrets.sh)
-- Never commit when the latest Check stage is not green (deterministic block via verify-tests-ran.sh)
+- Never commit while any stage gate is FAIL and unoverridden (deterministic block via `temper gate commit`)
 
 ## Quality Rules (WARN if violated)
 - Avoid importing known-dangerous modules (eval, child_process.exec) — warn-by-default, block only on explicit denylist

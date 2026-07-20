@@ -20,9 +20,15 @@
 
 # Dependencies (never commit)
 node_modules/
+package-lock.json
 
 # Build outputs (generated during build)
 dist/
+
+# Python cache (evals/fixtures/*/test runs, etc.)
+__pycache__/
+*.pyc
+.pytest_cache/
 
 # OS files
 .DS_Store

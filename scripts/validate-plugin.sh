@@ -70,6 +70,30 @@ for m in missing:
     ok
   fi
 
+  # Check agent paths resolve + carry required frontmatter (name, model)
+  AGENT_COUNT=$(python3 -c "
+import json, sys, os, re
+d = json.load(open(sys.argv[1]))
+agents = d.get('agents', [])
+for a in agents:
+    path = os.path.join(sys.argv[2], a.replace('./', ''))
+    if not os.path.isfile(path):
+        print(f'FAIL: agent path does not exist: {a}', file=sys.stderr)
+        continue
+    text = open(path).read()
+    if not re.match(r'^---\n.*?\bname:.*?\bmodel:.*?\n---', text, re.S):
+        print(f'FAIL: agent missing name/model frontmatter: {a}', file=sys.stderr)
+print(len(agents))
+" "$PJ" "$REPO_ROOT" 2>&1)
+
+  AGENT_ERRORS=$(echo "$AGENT_COUNT" | grep "^FAIL:" || true)
+  if [[ -n "$AGENT_ERRORS" ]]; then
+    fail "agent paths/frontmatter invalid"
+    echo "$AGENT_ERRORS"
+  else
+    ok
+  fi
+
   # Check version matches CHANGELOG latest
   PLUGIN_VER=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['version'])" "$PJ")
   CHANGELOG_VER=$(grep -m1 '## v' "$REPO_ROOT/CHANGELOG.md" | sed 's/## v\([0-9.]*\).*/\1/')
@@ -80,44 +104,9 @@ for m in missing:
   fi
 
   # --- Version-agreement checks (G-1, G-2) ---
-  # plugin.json is the single source of truth; every other stamp must agree.
-
-  # .cursor/VERSION == plugin.json (G-2 guard, SC-4)
-  CURSOR_VER_FILE="$REPO_ROOT/.cursor/VERSION"
-  if [[ -f "$CURSOR_VER_FILE" ]]; then
-    CURSOR_VER=$(tr -d '[:space:]' < "$CURSOR_VER_FILE")
-    if [[ "$CURSOR_VER" != "$PLUGIN_VER" ]]; then
-      fail ".cursor/VERSION ($CURSOR_VER) != plugin.json ($PLUGIN_VER)"
-    else
-      ok
-    fi
-  else
-    # Missing .cursor/VERSION is not itself a failure (the directory is derived
-    # by generate-cursor.sh), but we surface it as a soft check rather than ok.
-    fail ".cursor/VERSION missing (run scripts/generate-cursor.sh)"
-  fi
-
-  # .cursor/ derived content must also match plugin.json — the bare VERSION file
-  # is not enough. If the generator wasn't re-run after a bump, derived files
-  # embed the old version (the G-1/G-2 drift this batch closes). [PROVEN guard]
-  CURSOR_README="$REPO_ROOT/.cursor/README.md"
-  if [[ -f "$CURSOR_README" ]]; then
-    CURSOR_README_VER=$(grep -E '^Version:' "$CURSOR_README" | head -1 | awk '{print $2}')
-    if [[ -n "$CURSOR_README_VER" && "$CURSOR_README_VER" != "$PLUGIN_VER" ]]; then
-      fail ".cursor/README.md Version ($CURSOR_README_VER) != plugin.json ($PLUGIN_VER) — run scripts/generate-cursor.sh"
-    else
-      ok
-    fi
-  fi
-  CURSOR_TEMPER_CMD="$REPO_ROOT/.cursor/commands/temper.md"
-  if [[ -f "$CURSOR_TEMPER_CMD" ]]; then
-    if ! grep -qE "Unified SDLC Command \(v$PLUGIN_VER\)" "$CURSOR_TEMPER_CMD"; then
-      CURSOR_CMD_VER=$(grep -oE 'Unified SDLC Command \(v[0-9.]+' "$CURSOR_TEMPER_CMD" | grep -oE '[0-9.]+$')
-      fail ".cursor/commands/temper.md header (v$CURSOR_CMD_VER) != plugin.json ($PLUGIN_VER) — run scripts/generate-cursor.sh"
-    else
-      ok
-    fi
-  fi
+  # plugin.json is the single source of truth; every other LIVE stamp must agree.
+  # .cursor/ is archived (v7+, see .cursor/README.md) — no longer regenerated per
+  # release, so it is intentionally NOT version-checked against plugin.json here.
 
   # .claude/CLAUDE.md  **Version:** X.Y.Z  == plugin.json (G-1 guard, SC-1)
   CLAUDE_MD="$REPO_ROOT/.claude/CLAUDE.md"
@@ -197,7 +186,7 @@ else
 fi
 
 # Hook scripts: exist and are executable
-for sh in block-secrets.sh block-forbidden-imports.sh verify-tests-ran.sh install.sh; do
+for sh in block-secrets.sh block-forbidden-imports.sh block-uncommitted-gate.sh verify-tests-ran.sh install.sh; do
   p="$REPO_ROOT/scripts/hooks/$sh"
   if [[ ! -f "$p" ]]; then
     fail "scripts/hooks/$sh missing"
@@ -207,6 +196,17 @@ for sh in block-secrets.sh block-forbidden-imports.sh verify-tests-ran.sh instal
     ok
   fi
 done
+
+# --- The temper CLI (v7): the deterministic spine every gate resolves through ---
+TEMPER_CLI="$REPO_ROOT/scripts/temper"
+if [[ ! -f "$TEMPER_CLI" ]]; then
+  fail "scripts/temper missing"
+elif [[ ! -x "$TEMPER_CLI" ]]; then
+  fail "scripts/temper not executable (chmod +x)"
+else
+  ok
+fi
+if [[ -f "$REPO_ROOT/scripts/tests/test-temper.sh" ]]; then ok; else fail "scripts/tests/test-temper.sh missing"; fi
 
 # Evalset template
 if [[ -f "$REPO_ROOT/templates/evalset.json" ]]; then
@@ -233,6 +233,42 @@ if [[ -f "$EVAL_RULE" ]]; then
   else
     fail ".cursor/rules/temper-ref-eval.mdc source path mismatch"
   fi
+fi
+
+# --- Eval fixtures (v7 — Move 3, docs/plans/v7-deterministic-spine.md) ---
+for h in evals/run-fixture.sh evals/run-all.sh evals/run-wiring-smoke.sh; do
+  p="$REPO_ROOT/$h"
+  if [[ ! -f "$p" ]]; then fail "$h missing"
+  elif [[ ! -x "$p" ]]; then fail "$h not executable (chmod +x)"
+  else ok; fi
+done
+FIXTURE_COUNT=0
+for fdir in "$REPO_ROOT"/evals/fixtures/*/; do
+  [[ -d "$fdir" ]] || continue
+  name="$(basename "$fdir")"
+  FIXTURE_COUNT=$((FIXTURE_COUNT + 1))
+  for required in expect.json SEEDED_DEFECT.md; do
+    if [[ -f "$fdir$required" ]]; then ok; else fail "evals/fixtures/$name/$required missing"; fi
+  done
+  if [[ -f "$fdir/expect.json" ]]; then
+    if python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert 'stage' in d and 'command' in d and 'anchor_keywords' in d and 'signal_keywords' in d
+" "$fdir/expect.json" 2>/dev/null; then ok; else fail "evals/fixtures/$name/expect.json missing required keys (stage/command/anchor_keywords/signal_keywords)"; fi
+  fi
+done
+if [[ "$FIXTURE_COUNT" -ge 1 ]]; then ok; else fail "no eval fixtures found under evals/fixtures/"; fi
+
+# wiring-smoke is a different fixture shape (no seeded defect, no expect.json) —
+# checked separately rather than folded into the loop above.
+WIRING_DIR="$REPO_ROOT/evals/wiring-smoke"
+if [[ -d "$WIRING_DIR" ]]; then
+  for required in package.json src/app.js test/app.test.js WIRING_CHECK.md; do
+    if [[ -f "$WIRING_DIR/$required" ]]; then ok; else fail "evals/wiring-smoke/$required missing"; fi
+  done
+else
+  fail "evals/wiring-smoke/ missing"
 fi
 
 echo ""

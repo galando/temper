@@ -15,6 +15,14 @@ jobs:
       - name: Run quality-check.sh
         run: bash scripts/quality-check.sh
 
+  temper-cli:
+    name: temper CLI Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run test-temper.sh
+        run: bash scripts/tests/test-temper.sh
+
   validate-readme:
     name: README Validation
     runs-on: ubuntu-latest

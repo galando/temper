@@ -3,33 +3,239 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## Autonomous Continuation (opt-in)
+## v7.0.0 — The Deterministic Spine
 
-After the human approves the plan, `/temper` can run the remaining stages
-(design → build → review → check → eval) unattended and leave a report. Plan-gate-armed,
-never invocation-time; never pushes/merges; never re-plans unattended; parks before commit
-and on any decision a human should own.
+Temper's guarantees moved out of prose and into a program. Through v6.x, gate logic,
+model routing, prompt-cache ordering, and loop-cost tiering were ~9,000 lines of prompt
+asking an LLM to act as a deterministic interpreter — the least trustworthy place to put
+logic with exactly one correct output. v7 is a breaking release built around one rule,
+applied everywhere: **no feature ships in prompt-space if it has exactly one correct
+output.**
 
-- **Opt-in, byte-identical when off:** with the `autonomy:` block absent or `enabled: false`,
-  the plan gate offers only the existing stage-by-stage continuation and no gate ever
-  auto-resolves — identical to v5.9.0.
-- **Plan is always the arming point:** `/temper` always runs Plan first and stops at the plan
-  gate. The two-way continuation choice (Stage by stage / Autonomous) replaces the single
-  "Continue to Build" option only when armed.
-- **Reused machinery, no new mechanisms:** confidence reuses `review.confidence-threshold`
-  (0.7); per-type loops reuse `feedback.max-loops` + a global `budget.max-total-loops`.
-  Park = existing "Save for later" path + one `autonomy-report.md`. Observability fields
-  (`run_mode`, `gate_decisions[]`, `park{}`, `budget_used{}`) are additive over v3, every
-  numeric carries a G-5 `source` sibling.
-- **Safety envelope:** `stop-before-commit: true` default, blast-radius + `park-on-touch`
-  paths, run budget (stages/loops/wall-clock), clean-start lock, wip checkpoints. Command
-  execution reuses harness `settings.json` perms — a denied/unpermitted command parks (no
-  bespoke allowlist).
-- **New `/temper:init`:** seeds a project's `.claude/temper.config` from the default template
-  (idempotent).
-- Canonical definition: `.claude-plugin/reference/orchestrator-patterns.md` → "Autonomous
-  Continuation". Proposal: `docs/proposals/autonomous-mode.md`. (Version bump is owned by the
-  release process — not part of this change.)
+- **New `scripts/temper` CLI** — a single zero-dependency bash script that owns
+  `state` (build-state.json, never hand-written again), `evidence` (every claim now
+  carries a command, exit code, and artifact — `--label PROVEN` is mechanically
+  re-checked, not taken on faith), `gate` (`plan`/`build`/`review`/`check`/`eval`/`commit`
+  — each ~20-30 lines of readable shell, PASS/FAIL with named reasons), `override`
+  (a human can always proceed past a FAIL, but it's recorded, never silently erased), and
+  `report` (renders the ledger). Unit-tested: `scripts/tests/test-temper.sh`, wired into
+  CI.
+- **The commit gate is now a program, not a promise.** The native pre-commit hook
+  (`scripts/hooks/install.sh`) and a new in-agent PreToolUse hook
+  (`scripts/hooks/block-uncommitted-gate.sh`) both run `temper gate commit` — `git
+  commit` is physically blocked while any upstream gate is FAIL and unoverridden. This
+  is what "autonomy never commits without green gates" now *means*, mechanically, not
+  just in the README.
+- **New `agents/` directory** — `agents/{plan,design,build,review,check,eval}.md`, one
+  file per stage with `model:` frontmatter (native, declarative) and a short contract
+  (what to read, what `temper evidence`/`temper gate` calls to make). Replaces the
+  Model Routing Resolution and Cache Routing Resolution algorithms.
+- **Prompt diet:** `commands/temper.md` 1,353 → 363 lines; `reference/orchestrator-
+  patterns.md` 979 → 327 lines — the two biggest single cuts. Both dropped only
+  mechanism (routing/caching/gate-eval algorithms, the observability.json v3 telemetry
+  schema, loop-cost tiering); judgment content (scenario derivation, TDD discipline,
+  review taxonomy, the eval rubric, Grill Me/Teach Me) is untouched.
+- **Config collapsed:** `.claude/temper.config` 211 → ~55 lines (most of it comments).
+  `tokens.*`, `models.*`, `observability.*`, `capabilities.*`, and the nested-agent
+  budget block are gone — replaced by either a CLI mechanism (gates, evidence) or a
+  fixed good default (Grill Me/Teach Me/HTML review/Architecture Depth Review are now
+  always offered at their gates; there's no toggle to turn them off, just don't pick
+  them).
+- **`/temper:status` drops the cost/latency/token "Economics" panel** (v6.x estimates
+  with no mechanical backing) for a **Gate Ledger panel** reading `.temper/gates.json` +
+  `.temper/evidence/`: only what was actually recorded.
+- **Autonomous Continuation, simplified, not removed:** still opt-in, still armed only
+  at the plan gate, still never commits/pushes/merges. The three-branch `gate-eval` hook
+  and confidence-threshold machinery are gone — an autonomous run now just runs `temper
+  gate {stage}` and auto-continues on PASS, parks on FAIL past budget. Blast-radius and
+  park-on-touch checks are computed by `temper gate commit` itself.
+- **`/temper:fix` updated to match:** Fix/Review/Check now record evidence and run
+  `temper gate build/review/check/commit` — required so a `/temper:fix` commit isn't
+  wrongly blocked by a commit hook that now checks for evidence on every commit.
+- **Retired outright** (not degraded — deleted): the `tokens.*` runtime levers (prompt
+  cache read-ordering, adaptive pipeline depth, loop-cost tiers), `models.*` routing
+  config, the `observability.json` v2/v3 cost/latency/drift telemetry schema, the
+  `capabilities.*` config toggles, and `scripts/validate-phase2.sh` /
+  `scripts/validate-phase3.sh` (they asserted the byte-identity contracts this release
+  retires). See `reference/tokenomics.md` and `reference/pricing.md` for what replaced
+  each.
+- **Cursor IDE export archived**, not regenerated per release. `.cursor/` stays at its
+  v6.0.1 snapshot; `scripts/generate-cursor.sh` still runs by hand if you want it, but
+  it's out of `version-bump.sh` and `release-bump.yml`. See `.cursor/README.md`.
+- **Design doc:** `docs/plans/v7-deterministic-spine.md`.
+
+**Self-verification pass (same release):** re-checked against the design doc's own
+acceptance criteria and closed the real gaps that turned up:
+- `temper gate check` now traces every `intent.md` scenario to a test by name
+  (`--scenario` on `temper evidence add`) and names the uncovered ones in its FAIL
+  detail — this is the mechanism that makes the README's rate-limiting story literally
+  true, not just illustrative. It was missing at first pass; `agents/check.md` and
+  `scripts/tests/test-temper.sh` updated with it.
+- `temper gate plan` now requires a `## Blast Radius` section in `plan.md` for
+  `medium`/`complex` changes (`temper state set complexity` records the tier).
+- `.github/workflows/eval-fixtures.yml` gained a `pull_request` trigger (one fixture,
+  path-filtered to `commands/`/`reference/`/`agents/`/`skills/`/`scripts/temper`) — the
+  design doc called for per-PR + nightly; only nightly + on-demand shipped at first pass.
+- `/temper:init` now actually greps an existing config for retired `tokens:`/`models:`/
+  `observability:`/`capabilities:` blocks and reports them, instead of only describing
+  that behavior in prose.
+- The design doc's per-fixture "autonomy tripwire" was deliberately not added to the
+  three eval fixtures — `park-on-touch` is a pure CLI property with zero model
+  judgment involved, already covered by `scripts/tests/test-temper.sh` without spending
+  tokens on a live run to re-prove it. Reasoning: `evals/README.md`.
+- **Known gap, not closed in this pass:** the design doc's reference/ line-count target
+  (~10,700 → ~1,500 total) was not hit — `commands/temper.md` (1,353→363) and
+  `reference/orchestrator-patterns.md` (979→327) got the deep rewrite; the other
+  reference files (`plan.md`, `review.md`, `check.md`, `build.md`, `pack.md`, `fix.md`,
+  and others) only got targeted edits removing dangling references to retired config
+  keys, not a line-count-reducing rewrite. Current `reference/` total: ~6,500 lines.
+  This is real, disclosed scope not yet done, not a silently-missed target.
+
+**Third pass — live baseline run, and a critical bug it found:**
+
+- **Ran the eval suite for real** against a `v6.0.1` worktree and against this branch
+  (`TEMPER_PLUGIN_DIR` override in `evals/run-fixture.sh`, `IS_SANDBOX=1` to unblock
+  `--dangerously-skip-permissions` under root). Both catch **3/3**; v7's catches are
+  confirmed via the evidence ledger (`temper gate` mechanically FAILing with the defect
+  named), not just a transcript grep — a strictly stronger guarantee than v6.0.1 had.
+  Full numbers: `evals/README.md`.
+- **That live run found a real, severe bug: the standalone `/temper:plan`,
+  `/temper:build`, `/temper:review`, `/temper:check`, `/temper:eval` commands never
+  recorded evidence or ran gates at all.** Only `agents/*.md` (used by the unified
+  `/temper` orchestrator) had the `temper evidence add`/`temper gate` instructions —
+  the standalone commands, a fully documented and supported entry point, were left
+  running the old prose-only methodology with no CLI involvement. Concretely: running
+  `/temper:check` standalone, then `git commit`, would have hit `temper gate commit`
+  seeing zero evidence for every stage and wrongly blocking the commit (or, worse,
+  once `.temper/gates.json` had *some* stale PASS in it, wrongly letting a broken
+  change through). Fixed: `commands/{plan,build,review,check,eval}.md` each gained a
+  "Deterministic Gate" step pointing at the matching `agents/*.md` steps, with an
+  explicit `--spec-path` (standalone use doesn't necessarily call `temper state init`,
+  so `temper state get spec_path` can be empty — passing it explicitly was required,
+  not optional, to stop the scenario-tracing check from silently skipping instead of
+  failing loudly). Verified with fresh live runs before and after the fix.
+- Collapsed a genuinely duplicated ~13-line "load packs via the cached manifest" block
+  — repeated near-verbatim across `plan.md`/`design.md`/`build.md`/`check.md`/
+  `review.md` — down to a one-line pointer at `pack.md`'s already-canonical
+  documentation of the same mechanism. ~55 lines, zero methodology lost.
+- Fixed a dormant shell/Python interpolation bug in `evals/run-fixture.sh` (same class
+  already fixed once in `scripts/temper`) and a join-with-comma ambiguity + a subtler
+  IFS-first-character-only bug in `temper gate check`'s scenario-tracing detail line.
+- Investigated further reference/ line-count reduction beyond the pack-manifest dedup
+  and made a deliberate call not to force it: the remaining size in `review.md`/
+  `plan.md`/`pack.md`/`check.md` is genuine, load-bearing methodology (confidence
+  scoring, diff fingerprinting, Deep Doubt Mode, progressive-loading navigation maps
+  that are themselves a token-efficiency mechanism) — not plumbing. Cutting it to hit
+  the plan's ~1,500-line target would violate v7's own design rule (delete mechanism,
+  keep judgment) for the sake of a number. The gap is real and stays open by design.
+
+**Fourth pass — the eval harness's own "caught" signal was weaker than claimed:**
+
+Asked directly whether the eval suite is actually correct, not just useful — re-read
+`evals/run-fixture.sh` cold rather than re-stating the third pass's claims. Found: the
+"evidence-ledger" match only checked whether *any* evidence entry's free-text `claim`
+matched a keyword regex. It never inspected `severity` (what `temper gate review`
+actually checks) or `exit_code`/`scenario` (what `temper gate check` actually checks),
+and never ran `temper gate <stage>` or read `.temper/gates.json`. So "confirmed via
+evidence-ledger" was true only in the sense that matching text existed — not that the
+gate would have mechanically blocked a commit, the actual claim made in this
+CHANGELOG's third-pass entry above. That distinction had only been checked by hand
+during debugging, never by the automated script CI runs.
+
+- **Fixed:** a three-tier signal, strongest first — `gate-blocking-evidence` (the
+  matching entry also carries the specific property that drives the real gate:
+  `severity == 'critical'` for review, a `--scenario` row with nonzero `exit_code` for
+  check), `evidence-non-blocking` (text matches, wouldn't fail the gate), and
+  `transcript-fallback` (only the raw transcript mentions it; no evidence recorded at
+  all). Pass bar is now **strict by default** — only tier 1 counts, matching what CI
+  should enforce; `TEMPER_EVAL_ACCEPT_ANY_TIER=1` is the explicit override needed only
+  for the v6.0.1 comparison (tier 1 is structurally unreachable there — v6.0.1 has no
+  CLI at all).
+- **Verified live, both directions:** v6.0.1's `orders-api`, run *without* the
+  override, correctly reports MISSED — the first real negative-path confirmation this
+  harness has ever produced (every prior run had only ever shown CAUGHT). v6.0.1's
+  `password-reset`, run *with* the override, correctly passes. All three v7 fixtures
+  re-confirmed at the strict `gate-blocking-evidence` tier. Full writeup:
+  `evals/README.md`.
+- **Known, disclosed limitations that remain:** only `review`/`check` are exercised by
+  a live fixture — `plan`, `build`, `eval`, and `commit` gates are only tested by
+  synthetic CLI unit tests, the same class of gap that hid the third-pass bug. Tiers
+  2-3 still use fuzzy keyword matching. Both documented in `evals/README.md` under
+  "Known limitations", not hidden.
+
+**Fifth pass — closed the tier 2/3 fuzzy-keyword-matching gap:**
+
+The fourth pass's remaining item: tiers 2/3 matched on a single flat `catch_keywords`
+list, `OR`ed together — a generic word alone (`"missing"`, `"unused"`) could
+false-positive on unrelated text with no connection to the seeded defect.
+
+- **Fixed:** each fixture's `expect.json` now splits `catch_keywords` into
+  `anchor_keywords` (specific identifiers — exact scenario names, code symbols,
+  component names) and `signal_keywords` (generic descriptive terms). Every tier now
+  requires **both** an anchor match and a signal match, not either alone — including
+  tier 1's text-matching component, not just tiers 2/3. `evals/run-fixture.sh` passes
+  both patterns as `argv` into its `python3 -c` checks (not spliced into source, per
+  the same fix already applied once in `scripts/temper` and once earlier in this same
+  file), and the transcript-fallback tier now requires both patterns to appear in
+  `run.log`, not just one.
+- **Also fixed:** `scripts/validate-plugin.sh`'s fixture-schema check, which still
+  asserted the old `catch_keywords` key — would have failed CI against every fixture's
+  new `expect.json` had it been left as-is.
+- **Verified live:** all three `expect.json` files re-validated as well-formed JSON
+  carrying both keys; `evals/run-fixture.sh` re-run live against this branch, still
+  reporting `CAUGHT` at the strict `gate-blocking-evidence` tier with the new
+  anchor+signal logic. Full rationale: `evals/README.md`.
+- **Residual, disclosed limitation:** anchor and signal only need to appear *somewhere*
+  in the same claim/transcript, not adjacent or about the same clause — narrower than
+  before, but still weaker than tier 1's gate-property check. Tiers 2/3 remain
+  non-authoritative for CI regardless.
+
+**Sixth pass — closed the `plan`/`build`/`eval` live-coverage gap:**
+
+The remaining disclosed limitation from the fourth pass: only `review`/`check` were
+exercised by a live fixture. `plan`, `build`, and `eval` were only tested by
+`scripts/tests/test-temper.sh` — real for the CLI's own gate *logic*, but blind to
+whether a real model, following the actual prompt, calls `temper evidence add`/
+`temper gate` at all. That's not a hypothetical concern — it's exactly the bug class
+the third pass found for the standalone commands, just not yet re-checked for these
+three specific stages.
+
+- **Added `evals/wiring-smoke/` + `evals/run-wiring-smoke.sh`** — a fourth fixture,
+  differently shaped from the other three: no seeded defect, no `expect.json`, no
+  catch/miss verdict. It chains three real headless invocations
+  (`/temper:plan` → `/temper:build` → `/temper:eval`) against one small, deliberately
+  trivial feature, then checks — by reading `.temper/gates.json` and
+  `.temper/evidence/*.json` directly, the same files `temper gate commit` itself
+  reads — whether each stage actually got called for real, not by matching keywords in
+  a transcript.
+- **Verified live, first run:** clean pass — `plan: PASS`, `build: PASS`, `eval: PASS`;
+  `build` evidence 2 entries, `eval` evidence 1 entry; `temper state get complexity`
+  correctly returned `trivial`. No wiring gap found in any of the three previously
+  untested stages.
+- **Wired into CI:** `.github/workflows/eval-fixtures.yml` runs it alongside
+  `evals/run-all.sh` on the nightly + full on-demand paths (not the per-PR smoke
+  check, to keep PR cost down); `scripts/validate-plugin.sh` checks the new fixture's
+  required files and that `run-wiring-smoke.sh` is executable.
+- **Narrowed, not closed at first: `commit` gate aggregation.** `temper gate commit`
+  isn't invoked by a model that could forget a prompt instruction — the native
+  pre-commit hook and the in-agent PreToolUse hook both call it unconditionally. The
+  risk class that justified the rest of this pass doesn't apply the same way there;
+  its aggregation logic was already unit-tested, but nothing had ever proven the real
+  *mechanism* — the actual git hook `scripts/hooks/install.sh` writes — really
+  installs, really fires, and really blocks (or allows) a real `git commit`, as
+  opposed to just the function it calls.
+
+**Then closed for real, same pass:** asked directly "will it actually work?" instead
+of leaving the narrowed gap as a documented tradeoff. Answered it by testing the real
+mechanism — installed the hook into a scratch repo, set a red gate, ran a real `git
+commit`: blocked (exit 1, nothing landed in `git log`). Flipped the gate green, ran it
+again: succeeded (exit 0, commit landed). Both directions needed no live model call,
+only real git — so both are now permanent assertions in
+`scripts/tests/test-temper.sh` (27 → 31 tests), not a one-off manual check. All five
+pre-commit gate stages plus the commit gate's own installation mechanism are now
+verified for real, live or deterministic as appropriate; no known gap remains.
+
+Full writeup: `evals/README.md`.
 
 ## v6.0.1 — Standard Plugin Layout
 

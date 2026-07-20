@@ -13,7 +13,7 @@ nav_order: 1
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 [Get started now](#quick-start){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[Why Temper?](why-temper.html){: .btn .fs-5 .mb-4 .mb-md-0 .mr-2 }
+[Why Temper?](#the-problem){: .btn .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [View on GitHub](https://github.com/galando/temper){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 ---
@@ -42,7 +42,7 @@ Most AI tools answer only the third. Temper answers all three.
 | **Agent Subprocesses** | Each stage runs in isolated context — genuine context clearing, not theater |
 | **Design Phase** | System architecture, API contracts, DB schema, ADRs. Auto-skipped for simple features |
 | **Cross-Walkthrough Navigation** | Plan ↔ Design walkthrough links, skip-to-build on every section |
-| **Observability** | Per-stage metrics: tokens, latency, tool calls. Tracked in `/temper:status` |
+| **Deterministic Gates** | Every stage gate is a PASS/FAIL computed by the `temper` CLI from an evidence ledger — never asserted by a model. `git commit` is physically blocked while a gate is red and unoverridden |
 
 ### Quality Gates
 
@@ -98,8 +98,8 @@ Most AI tools answer only the third. Temper answers all three.
 
 | Feature | What It Does |
 |---------|-------------|
-| **Claude Code** | Native plugin via marketplace. Skills, commands, MCP integration |
-| **Cursor IDE** | Static `.cursor/` files. Install via curl — no Python or git required |
+| **Claude Code** | Native plugin via marketplace. Skills, commands, agents, MCP integration |
+| **Cursor IDE** | Archived at the v6.0.1 feature set (v7's CLI-backed gates are Claude Code-only). Static `.cursor/` files, install via curl — no Python or git required |
 
 ## IDD + BDD + TDD: Three Layers, One File
 
@@ -266,7 +266,6 @@ cd your-project
 
 ## Next Steps
 
-- [Why Temper?](why-temper.html) — Why "be careful" isn't enough
 - [Getting Started Guide](getting-started.html) — Detailed installation and setup
 - [Commands Reference](commands.html) — Full command documentation
 - [Packs](packs.html) — Built-in and custom quality packs

@@ -74,20 +74,9 @@ git diff --stat HEAD
 # - confidence-threshold: minimum confidence to show
 # - auto-fix: whether to auto-fix
 
-# 4. Read active pack rules
-# Load packs via the cached manifest, phase-filtered for this stage (review):
-#   1. Read `.temper/pack-manifest.json`. If missing or stale (config mtime changed,
-#      pack dirs added/removed, schema version mismatch, or any rules.md mtime newer
-#      than manifest `last_built`), rebuild it first — see `reference/pack.md`
-#      "Cached Pack Manifest" for the staleness contract. [G-4]
-#   2. From the manifest, keep only packs whose `phases` is `"all"` OR whose `phases`
-#      array contains `"review"`. This is the `reference/pack.md` phase-filter
-#      contract (lines 164-169). [G-3]
-#   3. For each surviving pack, read its `rules_path` into context. Also load any
-#      linked resource (`link: plugin://...` or `skill://...`) per pack.md
-#      "Pack-Plugin/Skill Linking".
-#   4. Read stack-specific rules from .claude/packs/stacks/{detected-stack}.md
-#      if present (unchanged behavior).
+# 4. Read active pack rules via the cached manifest, phase-filtered for "review" — see
+#    reference/pack.md "Cached Pack Manifest" + "Phase Scoping" for the full mechanism;
+#    read stack-specific rules from .claude/packs/stacks/{detected-stack}.md if present.
 
 # 5. Read review memory
 # - Load .temper/review-memory.json if exists
@@ -870,9 +859,8 @@ CONTRACT VERDICT:
 
 ### Step 3.8: Architecture Depth Review (Optional)
 
-**Trigger condition:** `architecture-depth` pack is enabled AND either:
-- User selects "Architecture Depth Review" at the review gate
-- `capabilities.architecture-depth: true` in temper.config (default)
+**Trigger condition:** `architecture-depth` pack is enabled AND the user selects
+"Architecture Depth Review" at the review gate (always offered, no config toggle).
 
 This step runs as an **additional pass** after the standard review. It does not replace any existing steps.
 

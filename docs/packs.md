@@ -9,7 +9,7 @@ Packs are collections of rules that Temper uses to validate and guide AI-generat
 
 ## Built-in Packs
 
-Temper ships with 4 quality packs:
+Temper ships with 6 quality packs, enforced during code generation and review:
 
 ### `quality`
 
@@ -48,9 +48,41 @@ Security best practices — OWASP Top 10.
 - No secrets in code
 - HTTPS enforcement
 
+### `performance`
+
+Core Web Vitals, N+1 queries, missing pagination, sync I/O, memoization.
+
+**Rules include:**
+
+- Core Web Vitals thresholds (LCP, INP, CLS)
+- Lazy-load routes, code-split on route boundaries
+- Modern image formats with fallback
+- No N+1 queries; pagination on list endpoints
+
+### `api-design`
+
+Contract-first design, additive extension, idempotency, consistent error shapes.
+
+**Rules include:**
+
+- Define request/response types before implementation
+- Validate all external input at the API boundary
+- One consistent error envelope for every error
+- Backward-compatible (additive) changes over breaking ones
+
+### `architecture-depth`
+
+Module-depth analysis (seams, locality, leverage) — do modules earn their complexity?
+
+**Rules include:**
+
+- Modules expose a clear, replaceable interface
+- Related logic stays co-located; unrelated logic doesn't leak in
+- A module's abstraction pays for itself in call-site simplicity
+
 ### `git`
 
-Git workflow — conventional commits, branching strategy.
+Git workflow — conventional commits, branching strategy. Enabled by default.
 
 **Rules include:**
 
@@ -163,4 +195,4 @@ git log --oneline .claude/packs/company/rules.md
 git checkout HEAD~1 -- .claude/packs/company/rules.md
 ```
 
-See [Pack Versioning](pack-versioning) for more details.
+That's it — no lock files, no semantic versioning, no upgrade commands. Just git.
