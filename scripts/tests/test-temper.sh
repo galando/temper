@@ -191,6 +191,31 @@ assert_exit "state loop allows iterations up to max-per-type" 0 "$TEMPER" state 
 assert_exit "state loop allows the second iteration" 0 "$TEMPER" state loop review build --reason r2
 assert_exit "state loop blocks the third iteration (max-per-type: 2)" 1 "$TEMPER" state loop review build --reason r3
 
+# --- state get: bare call dumps the whole state; degrades cleanly on corrupted JSON ---
+setup
+assert_eq "state get (bare) dumps the whole state file" "yes" "$("$TEMPER" state get | grep -q '"spec": "demo"' && echo yes || echo no)"
+echo '{"stage": "started", "spec": "demo"' > .temper/build-state.json
+assert_exit "state get (bare) does not crash on a corrupted state file" 0 "$TEMPER" state get
+assert_eq "state get (bare) falls back to {} on a corrupted state file" "yes" "$("$TEMPER" state get | grep -q '^{}$' && echo yes || echo no)"
+
+# --- state advance: missing args fail cleanly instead of an unbound-variable crash ---
+setup
+OUT=$("$TEMPER" state advance 2>&1)
+assert_eq "state advance with zero args exits 1" "1" "$("$TEMPER" state advance >/dev/null 2>&1; echo $?)"
+assert_eq "state advance with zero args prints a usage message, not an unbound-variable crash" "yes" "$(echo "$OUT" | grep -q 'usage: temper state advance' && ! echo "$OUT" | grep -q 'unbound variable' && echo yes || echo no)"
+OUT=$("$TEMPER" state advance build_complete 2>&1)
+assert_eq "state advance with one arg prints a usage message, not an unbound-variable crash" "yes" "$(echo "$OUT" | grep -q 'usage: temper state advance' && ! echo "$OUT" | grep -q 'unbound variable' && echo yes || echo no)"
+
+# --- state advance: stage vocabulary is scoped per command (temper vs fix) ---
+setup
+assert_exit "a /temper run rejects fix-only stage names (rca_complete)" 1 "$TEMPER" state advance rca_complete design
+assert_exit "a /temper run accepts its own stage names" 0 "$TEMPER" state advance plan_complete design
+
+setup
+"$TEMPER" state init bug2 --command fix >/dev/null
+assert_exit "a /temper:fix run accepts rca_complete" 0 "$TEMPER" state advance rca_complete fix
+assert_exit "a /temper:fix run rejects temper-only stage names (plan_complete)" 1 "$TEMPER" state advance plan_complete design
+
 # --- /temper:fix commits: no plan/eval gate required (fix has no such stage) ---
 setup
 "$TEMPER" state init bug1 --command fix >/dev/null
