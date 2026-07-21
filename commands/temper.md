@@ -3,7 +3,7 @@ description: "Unified SDLC command: plan → design? → build → review → ch
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v7.0.0)
+# Temper: Unified SDLC Command (v7.0.1)
 
 **Goal:** Run plan → design? → build → review → check → eval → commit with a human gate
 at every stage (or, if armed, unattended past the plan gate). Every gate verdict is

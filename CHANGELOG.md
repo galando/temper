@@ -3,6 +3,10 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v7.0.1 — Fixes
+
+Fix bash 3.2 override crash + state CLI correctness bugs (#69); v7.0.0: The Deterministic Spine — CLI-enforced gates, agents/, prompt diet, self-evals (#68); link Privacy Policy from landing page and README (#67); ci,docs: plugin-directory submission kit + official strict manifest validation in CI (#66)
+
 ## v7.0.0 — The Deterministic Spine
 
 Temper's guarantees moved out of prose and into a program. Through v6.x, gate logic,
