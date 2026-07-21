@@ -255,6 +255,10 @@ json.dump(d, open(sys.argv[5], 'w'), indent=2)
 
 cmd_state_get() {
   [[ -f "$STATE_FILE" ]] || { echo ""; return 0; }
+  if [[ -z "${1:-}" ]]; then
+    cat "$STATE_FILE"
+    return 0
+  fi
   _json_get_path "$STATE_FILE" "$1" "${2:-}"
 }
 
@@ -269,11 +273,15 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
   [[ -f "$STATE_FILE" ]] || { echo "FAIL: no active state — run 'temper state init' first" >&2; return 1; }
   local stage="$1" next="$2"
   local known=false
-  for s in $STAGES; do
+  # state.stage is bookkeeping for resume, not a gate name — /temper:fix uses
+  # rca_complete/fix_complete (RCA replaces plan, Fix replaces build; see
+  # reference/orchestrator-patterns.md "Build State Schema") even though neither
+  # "rca" nor "fix" is a real `temper gate` stage.
+  for s in $STAGES rca fix; do
     [[ "$stage" == "${s}_complete" ]] && known=true
   done
   if [[ "$known" != "true" && "$stage" != "started" ]]; then
-    echo "FAIL: unknown stage '$stage' (expected one of: $(for s in $STAGES; do printf '%s_complete ' "$s"; done))" >&2
+    echo "FAIL: unknown stage '$stage' (expected one of: $(for s in $STAGES rca fix; do printf '%s_complete ' "$s"; done))" >&2
     return 1
   fi
   _json_set_path "$STATE_FILE" "stage" "$stage" '{}'
@@ -823,10 +831,12 @@ cmd_override() {
   [[ -n "$stage" && -n "$reason" ]] || { echo "FAIL: usage: temper override <stage> --reason \"...\"" >&2; return 1; }
   _ensure_dirs
   [[ -f "$OVERRIDES_FILE" ]] || echo '[]' > "$OVERRIDES_FILE"
-  _json_append "$OVERRIDES_FILE" "$(python3 -c "
+  local entry
+  entry=$(python3 -c "
 import json, sys
 print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'ts': sys.argv[3]}))
-" "$stage" "$reason" "$(_now)")"
+" "$stage" "$reason" "$(_now)")
+  _json_append "$OVERRIDES_FILE" "$entry"
   echo "OK: override recorded for '$stage': $reason"
 }
 
