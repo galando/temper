@@ -90,6 +90,31 @@ temper/
 - Add examples
 - Improve the GitHub Pages site
 
+### Vendor Adapters (Codex, Cursor, Gemini) — maintainer/CI tooling only
+
+`adapters/codex/`, `adapters/cursor/`, `adapters/gemini/`, `.agents/plugins/marketplace.json`,
+and `.cursor-plugin/marketplace.json` are **generated, committed output** — never
+hand-edit them. They're derived from the same single source of truth as the Claude
+Code plugin (`commands/*.md`, `skills/temper-core/SKILL.md`, `.claude-plugin/plugin.json`)
+by three generator scripts:
+
+```bash
+scripts/generate-codex.sh           # -> adapters/codex/ + .agents/plugins/marketplace.json
+scripts/generate-cursor-plugin.sh   # -> adapters/cursor/ + .cursor-plugin/marketplace.json
+scripts/generate-gemini.sh          # -> adapters/gemini/
+```
+
+**These are maintainer/CI build tooling — never an end-user install step.** End users
+install the *committed* output natively (marketplace source + in-agent install; see the
+README's [Adapter Tier Matrix](README.md#adapter-tier-matrix)). If you change a command,
+skill, or `plugin.json` version, re-run all three generators and commit the diff — CI
+(`scripts/validate-adapters.sh`) fails the build if generated output has drifted from
+source. Shared extraction/rewrite logic lives in `scripts/adapters/lib.sh`.
+
+`scripts/generate-cursor.sh` (the legacy `.cursor/` snapshot generator) and
+`scripts/install-cursor.sh` are frozen — do not modify them; they exist only for
+existing consumers of the archived v5.1 Cursor snapshot.
+
 ## 📏 Guidelines
 
 ### Context Budget
@@ -134,6 +159,23 @@ refactor: simplify blast radius logic
 - [ ] Followed context budget guidelines
 - [ ] Commits follow conventional format
 - [ ] No unrelated changes
+
+## 🏷️ Release Process (maintainer)
+
+**Tag convention: `vX.Y.Z`, always.** `release.yml` triggers only on `v*` tag pushes;
+tags without the prefix (e.g. bare `7.0.0`) do not trigger a release and are not a
+supported release path. (Two releases were cut this way before the convention was
+normalized here — see git history; `release.yml`'s previous-tag lookup tolerates the
+mixed history without a code change, since `git describe`/`git log <ref>..HEAD` don't
+care about naming convention — verified during this pass.)
+
+1. Run `release-bump.yml` (or `scripts/version-bump.sh <version>` locally) — bumps all
+   version stamps, regenerates the three vendor adapters, inserts a CHANGELOG entry.
+2. After merge, tag **signed**: `git tag -s vX.Y.Z -m "vX.Y.Z"` then `git push --tags`.
+3. `release.yml` creates the GitHub Release with a source tarball, `checksums.txt`,
+   and a `actions/attest-build-provenance` attestation — see
+   [`docs/security/pinned-install.md`](docs/security/pinned-install.md) for how a user
+   verifies a release (`git tag -v`, `gh attestation verify`, `sha256sum -c`).
 
 ## 🎮 Playground
 

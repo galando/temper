@@ -1,0 +1,46 @@
+{
+  "name": "temper",
+  "version": "7.0.1",
+  "description": "Temper: Quality gates, blast radius analysis, and intent-driven development for AI-generated code",
+  "author": {
+    "name": "galando",
+    "url": "https://github.com/galando"
+  },
+  "homepage": "https://github.com/galando/temper",
+  "repository": "https://github.com/galando/temper",
+  "license": "MIT",
+  "keywords": [
+    "temper",
+    "quality-gates",
+    "tdd",
+    "code-review",
+    "sdlc"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Temper",
+    "shortDescription": "Deterministic quality gates + intent-driven development, driven by scripts/temper",
+    "longDescription": "Temper brings Plan/Build/Review/Check/Fix/Init quality gates to Codex CLI. Every gate verdict is computed by scripts/temper from an evidence ledger, never asserted by the model.",
+    "developerName": "galando",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/galando/temper",
+    "defaultPrompt": [
+      "Plan a new feature with blast radius analysis",
+      "Build the current plan with TDD and quality gates",
+      "Run the check pipeline on my changes"
+    ],
+    "brandColor": "#0288D1",
+    "screenshots": []
+  },
+  "x-temper": {
+    "source": ".claude-plugin/plugin.json",
+    "version": "7.0.1",
+    "tier": "2",
+    "schemaVerified": "2026-07"
+  }
+}

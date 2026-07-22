@@ -858,7 +858,7 @@
     <div class="hero-grid">
       <div class="hero-content">
         <h1>Your AI writes fast.<br><em>Temper makes it last.</em></h1>
-        <p>IDD + BDD + TDD for AI-generated code. Deterministic quality gates, blast radius analysis, and intent-driven development. The AI discipline layer for Claude Code (Cursor: archived v5.1 snapshot).</p>
+        <p>IDD + BDD + TDD for AI-generated code. Deterministic quality gates, blast radius analysis, and intent-driven development. Full pipeline on Claude Code; native Tier-2 plugins for Codex CLI, Cursor, and Gemini CLI.</p>
         <div class="hero-actions">
           <a href="#install" class="btn btn-primary">Install →</a>
           <a href="https://github.com/galando/temper" class="btn btn-secondary" target="_blank">View on GitHub</a>
@@ -871,23 +871,40 @@
   </header>
 
   <section id="quick-install">
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 800px; margin: 0 auto;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 900px; margin: 0 auto;">
       <div class="install-card" style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px; padding: 1.5rem;">
-        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">🟣 Claude Code</h4>
+        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">🟣 Claude Code (Tier 1)</h4>
         <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 0.5rem;">
           <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; color: var(--fg-muted); overflow-x: auto; margin: 0;">/plugin marketplace add galando/temper
 /plugin install temper</pre>
           <button class="copy-btn" onclick="copyCode(this, '/plugin marketplace add galando/temper\n/plugin install temper')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-family: 'IBM Plex Mono', monospace; color: var(--fg-muted); cursor: pointer;">Copy</button>
         </div>
-        <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Commands available in any project.</p>
+        <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Full pipeline: commands, agents, skills, hooks.</p>
       </div>
       <div class="install-card" style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px; padding: 1.5rem;">
-        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">🔵 Cursor IDE</h4>
+        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">⚫ Codex CLI (Tier 2)</h4>
         <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 0.5rem;">
-          <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; color: var(--fg-muted); overflow-x: auto; margin: 0;">bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)</pre>
-          <button class="copy-btn" onclick="copyCode(this, 'bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-family: 'IBM Plex Mono', monospace; color: var(--fg-muted); cursor: pointer;">Copy</button>
+          <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; color: var(--fg-muted); overflow-x: auto; margin: 0;">codex marketplace add galando/temper</pre>
+          <button class="copy-btn" onclick="copyCode(this, 'codex marketplace add galando/temper')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-family: 'IBM Plex Mono', monospace; color: var(--fg-muted); cursor: pointer;">Copy</button>
         </div>
-        <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Archived at the v5.1 feature set — no longer regenerated per release. v7's CLI-backed gates ship Claude Code-only.</p>
+        <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Then install <code>temper</code> from <code>/plugins</code>. Native plugin, no shell scripts.</p>
+      </div>
+      <div class="install-card" style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px; padding: 1.5rem;">
+        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">🔵 Cursor (Tier 2)</h4>
+        <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 0.5rem;">
+          <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; color: var(--fg-muted); overflow-x: auto; margin: 0;">Register this repo as a marketplace
+source, then editor /add-plugin</pre>
+        </div>
+        <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Native plugin. No documented one-shot CLI install from a custom source yet (as of 2026-07) — superseded the archived v5.1 snapshot.</p>
+      </div>
+      <div class="install-card" style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px; padding: 1.5rem;">
+        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">🔴 Gemini CLI (Tier 2)</h4>
+        <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 0.5rem;">
+          <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; color: var(--fg-muted); overflow-x: auto; margin: 0;">gemini extensions install \
+  https://github.com/galando/temper</pre>
+          <button class="copy-btn" onclick="copyCode(this, 'gemini extensions install https://github.com/galando/temper')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-family: 'IBM Plex Mono', monospace; color: var(--fg-muted); cursor: pointer;">Copy</button>
+        </div>
+        <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Unified <code>/temper</code> plus plan/build/review/check/fix/status/init.</p>
       </div>
     </div>
   </section>
@@ -937,8 +954,8 @@
 
     <div class="why-grid" style="grid-template-columns: repeat(2, 1fr); margin-top: 1rem;">
       <div class="why-item">
-        <h4>Cursor IDE (archived)</h4>
-        <p>Temper for <a href="https://cursor.sh" style="color: var(--accent);">Cursor</a>, archived at the v5.1 feature set — 22 rules covering packs, skills, capabilities. No longer regenerated per release; v7's CLI-backed gates and <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">agents/</code> directory ship Claude Code-only. <a href="https://github.com/galando/temper/blob/main/docs/plans/v7-deterministic-spine.md" style="color: var(--accent);">v7 design doc →</a></p>
+        <h4>Native Plugins Everywhere</h4>
+        <p>Codex CLI and <a href="https://cursor.sh" style="color: var(--accent);">Cursor</a> each get a first-party plugin manifest, self-hosted from this repo as a marketplace source — no shell scripts, no copy-paste. Gemini CLI installs as a generated extension. The legacy Cursor <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">.cursor/</code> snapshot (frozen at v5.1) is superseded, not maintained.</p>
       </div>
       <div class="why-item">
         <h4>External Review Engine</h4>
@@ -1312,9 +1329,9 @@
     <div class="section-label">Install</div>
     <h2 class="section-title">Quick Install</h2>
 
-    <div class="install" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 800px; margin: 0 auto;">
+    <div class="install" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 900px; margin: 0 auto;">
       <div class="install-card">
-        <h4>🟣 Claude Code</h4>
+        <h4>🟣 Claude Code (Tier 1)</h4>
         <div class="code-block">
           <pre>/plugin marketplace add galando/temper
 /plugin install temper</pre>
@@ -1324,12 +1341,31 @@
       </div>
 
       <div class="install-card">
-        <h4>🔵 Cursor IDE</h4>
+        <h4>⚫ Codex CLI (Tier 2)</h4>
         <div class="code-block">
-          <pre>bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)</pre>
-          <button class="copy-btn" onclick="copyCode(this, 'bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)')">Copy</button>
+          <pre>codex marketplace add galando/temper</pre>
+          <button class="copy-btn" onclick="copyCode(this, 'codex marketplace add galando/temper')">Copy</button>
         </div>
-        <p>Downloads 22 rules and 9 commands — packs, skills, capabilities, and reference docs. Archived at the v5.1 feature set (not the v7 CLI-backed gates). No Python or git required.</p>
+        <p>Then install <code>temper</code> from the in-session plugin browser (<code>/plugins</code>), or non-interactively with <code>codex plugin install temper --non-interactive</code>. Native plugin, no shell scripts.</p>
+      </div>
+
+      <div class="install-card">
+        <h4>🔵 Cursor (Tier 2)</h4>
+        <div class="code-block">
+          <pre>Register this repo as a marketplace
+source, then editor /add-plugin</pre>
+        </div>
+        <p>Native plugin, self-hosted marketplace source. As of 2026-07, no documented one-shot CLI install from a custom source — the editor's <code>/add-plugin</code> is the verified path. Supersedes the archived v5.1 <code>.cursor/</code> snapshot.</p>
+      </div>
+
+      <div class="install-card">
+        <h4>🔴 Gemini CLI (Tier 2)</h4>
+        <div class="code-block">
+          <pre>gemini extensions install \
+  https://github.com/galando/temper</pre>
+          <button class="copy-btn" onclick="copyCode(this, 'gemini extensions install https://github.com/galando/temper')">Copy</button>
+        </div>
+        <p>Generated extension: unified <code>/temper</code> plus plan/build/review/check/fix/status/init.</p>
       </div>
 
     </div>

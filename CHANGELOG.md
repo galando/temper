@@ -3,6 +3,27 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## Unreleased
+
+**Native plugin surfaces for Codex CLI, Cursor, and Gemini CLI** — generated,
+committed adapters (`adapters/codex/`, `adapters/cursor/`, `adapters/gemini/`) driven
+by the same sources as the Claude Code plugin, each ending its prompts in the identical
+gate-protocol epilogue (`scripts/temper evidence add` / `scripts/temper gate <stage>` —
+no adapter reimplements verdict logic). This repo now self-hosts a marketplace source
+for each of Codex (`.agents/plugins/marketplace.json`) and Cursor
+(`.cursor-plugin/marketplace.json`) — install is a single native in-agent action per
+vendor, no shell scripts (see README's Adapter Tier Matrix). Cursor rejoins as a
+supported Tier 2 (native plugin); the legacy `.cursor/` snapshot and
+`scripts/generate-cursor.sh` stay byte-frozen and superseded. Three new generator
+scripts (`scripts/generate-{codex,cursor-plugin,gemini}.sh`) plus
+`scripts/validate-adapters.sh` (idempotence, schema, gate-protocol, and install-docs
+guards, wired into CI) are maintainer/CI build tooling only.
+
+**Security & supply-chain posture** — `SECURITY.md`, `docs/security/threat-model.md`,
+and `docs/security/data-flow.md` (audited egress table, "zero egress by default" +
+enumerated conditional paths), a no-network CI guard, signed/attested releases, and a
+documented pinned-version install path.
+
 ## v7.0.1 — Fixes
 
 Fix bash 3.2 override crash + state CLI correctness bugs (#69); v7.0.0: The Deterministic Spine — CLI-enforced gates, agents/, prompt diet, self-evals (#68); link Privacy Policy from landing page and README (#67); ci,docs: plugin-directory submission kit + official strict manifest validation in CI (#66)

@@ -271,6 +271,18 @@ else
   fail "evals/wiring-smoke/ missing"
 fi
 
+# --- No-network guard (docs/security/data-flow.md "zero egress by default") ---
+# The core enforcement surface (scripts/temper + scripts/hooks/*) must never gain a
+# network primitive without a deliberate, reviewed change to the data-flow claim.
+NETWORK_GUARD_FILES=$(grep -rlE 'curl|wget|nc |urllib|requests|socket|http\.client|ftp://' \
+  "$REPO_ROOT/scripts/temper" "$REPO_ROOT"/scripts/hooks/*.sh 2>/dev/null || true)
+if [[ -z "$NETWORK_GUARD_FILES" ]]; then
+  ok
+else
+  fail "network primitive found in scripts/temper or scripts/hooks/ (breaks the zero-egress claim in docs/security/data-flow.md):"
+  echo "$NETWORK_GUARD_FILES" | sed 's/^/  /'
+fi
+
 echo ""
 echo "=== validate-plugin.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"

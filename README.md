@@ -154,15 +154,32 @@ Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/yo
 Temper is Markdown and ~500 lines of auditable shell — every command, skill, pack, and
 gate is either a prompt file or a script you can read in this repository. The trust contract:
 
-- **No network calls, no telemetry.** Temper never phones home. The only shell commands it runs are your project's own build/test/lint commands (plus its own gate script), and only under Claude Code's normal permission prompts.
+- **Zero network egress by default, audit-verified.** `scripts/temper` and
+  `scripts/hooks/*` — the core enforcement surface — make no network calls, no
+  telemetry, ever (a CI grep guard fails the build if one is ever introduced). The
+  only shell commands they run are your project's own build/test/lint commands (plus
+  the gate script itself), under Claude Code's normal permission prompts. This is a
+  *qualified* claim on purpose: optional features (OCR, third-party MCP servers,
+  issue-tracker fetches) can egress when explicitly enabled — see
+  [`docs/security/data-flow.md`](docs/security/data-flow.md) for the full audited
+  table and each feature's off switch.
 - **Writes are confined to your project.** Temper writes `.claude/temper.config` (created by `/temper:init`, only with your approval) and its working files under `.temper/` in your project. It never touches files outside the project directory.
 - **The commit gate is mechanical, not advisory.** `temper gate commit` — enforced by a real git pre-commit hook — blocks a commit whenever an upstream gate is FAIL and unoverridden. See [Deterministic Gates](#deterministic-gates-v7).
 - **Autonomous Continuation is opt-in and fenced.** Armed per-run at the plan gate, never at invocation. It never commits, never pushes, never merges — it parks before commit and leaves a report.
 - **Optional MCP servers are optional.** The recommended servers below only upgrade evidence quality; nothing breaks without them.
+- **Security policy, threat model, and data-flow statement** are published:
+  [`SECURITY.md`](SECURITY.md) ·
+  [`docs/security/threat-model.md`](docs/security/threat-model.md) ·
+  [`docs/security/data-flow.md`](docs/security/data-flow.md).
 
 ## Installation
 
-### Claude Code
+Every vendor below installs the same way Superpowers popularized: add this repo as a
+native marketplace/extension source, then install — no cloning, no shell scripts.
+
+<!-- temper:install:start -->
+
+### Claude Code (Tier 1 — full pipeline)
 
 ```bash
 /plugin marketplace add galando/temper
@@ -170,12 +187,54 @@ gate is either a prompt file or a script you can read in this repository. The tr
 bash "$CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh"   # installs the commit gate
 ```
 
-### Cursor IDE (archived)
+### Codex CLI (Tier 2)
 
-Cursor support is **archived** at the v6.0.1 snapshot (frozen feature set — CHANGELOG
-v5.2.1 platform strategy) and is no longer regenerated per release; v7's CLI-backed
-gates and `agents/` directory ship Claude Code-only. `./scripts/generate-cursor.sh`
-still works if you want to hand-run it. Details: [`.cursor/README.md`](.cursor/README.md).
+```bash
+codex marketplace add galando/temper
+```
+
+Then install `temper` from the in-session plugin browser (`/plugins`), or
+non-interactively: `codex plugin install temper --non-interactive`. Pin a release with
+`codex marketplace add galando/temper --ref v7.0.1` (per openai/codex PR #17087).
+
+### Cursor (Tier 2)
+
+Register this repo as a marketplace source, then install `temper` via the editor's
+`/add-plugin`. **Honest limitation (as of 2026-07):** Cursor's official docs
+(cursor.com/docs/plugins) document plugin submission and the manifest schema, but not
+yet a command for registering a third-party repo as a custom source — `/add-plugin` is
+the documented installer surface; there is no verified one-shot CLI install today.
+
+### Gemini CLI (Tier 2)
+
+```bash
+gemini extensions install https://github.com/galando/temper
+```
+
+<!-- temper:install:end -->
+
+Want a pinned, reproducible install instead of tracking the default branch? Codex and
+Gemini support `--ref vX.Y.Z` directly; the clone-at-signed-tag path works for every
+vendor — see [`docs/security/pinned-install.md`](docs/security/pinned-install.md).
+
+### Adapter Tier Matrix
+
+| Tier | Platform | Surface | Install | Commit gate |
+|------|----------|---------|---------|-------------|
+| 1 | Claude Code | plugin: commands + agents + skills + hooks | `/plugin marketplace add` + `/plugin install` | git hook + PreToolUse |
+| 2 | Codex CLI | native plugin: `.codex-plugin` manifest + skills | `codex marketplace add` + install (in-agent) | git hook |
+| 2 | Cursor | native plugin: `.cursor-plugin` manifest + skills | add marketplace source + editor `/add-plugin` | git hook |
+| 2 | Gemini CLI | generated extension (GEMINI.md + TOML commands) | `gemini extensions install <git-url>` | git hook |
+| Legacy | Cursor `.cursor/` snapshot | frozen v5.1-track rule files | deprecated — superseded by the Tier-2 native plugin above | git hook |
+
+Tier 2 adapters ship the linear gate pipeline (plan/build/review/check/fix/init, plus
+`status` for Gemini); `design`, `pack`, and `eval` remain Claude Code-only — they're
+multi-agent/interactive constructs that don't port to a single-context CLI. Generator
+scripts (`scripts/generate-{codex,cursor-plugin,gemini}.sh`) are maintainer/CI build
+tooling that refresh the committed adapter output at release time — never an end-user
+install step. See [`adapters/*/README.md`](adapters/) for each adapter's own tier note,
+and the legacy Cursor snapshot at [`.cursor/README.md`](.cursor/README.md) (frozen at
+the v5.1 feature set, superseded, no longer an end-user install path).
 
 ## Recommended Setup
 

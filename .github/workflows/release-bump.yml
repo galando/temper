@@ -175,8 +175,10 @@ jobs:
 
       # 5. Gate: prove the tree is consistent before opening a PR. quality-check.sh
       #    runs JSON/structure checks but does NOT run the version-agreement guard —
-      #    that lives only in validate-plugin.sh. Run all three validators explicitly
-      #    so stamp drift cannot slip through.
+      #    that lives only in validate-plugin.sh. Run all validators explicitly so
+      #    stamp drift cannot slip through. validate-adapters.sh confirms the
+      #    version-bump.sh regeneration step above kept the three vendor adapters
+      #    (Codex/Cursor/Gemini) in sync with the new plugin version.
       - name: Validate (gate)
         run: |
           set -euo pipefail
@@ -184,6 +186,7 @@ jobs:
           bash scripts/validate-plugin.sh
           bash scripts/validate-docs.sh
           bash scripts/validate-readme.sh
+          bash scripts/validate-adapters.sh
 
       # 6. Commit to a release branch and open a PR. peter-evans/create-pull-request
       #    is idempotent: re-running with the same version updates the existing PR.
@@ -203,11 +206,12 @@ jobs:
             - Inserts a CHANGELOG entry — auto-generated from commits since the last tag (edit before merging if you want more detail)
             - All validators passed (`quality-check.sh`, `validate-plugin.sh`, `validate-docs.sh`, `validate-readme.sh`)
 
-            **After merge:** tag the release to publish it.
+            **After merge:** tag the release (signed) to publish it.
             ```bash
-            git tag v${{ inputs.version }}
+            git tag -s v${{ inputs.version }} -m "v${{ inputs.version }}"
             git push --tags
             ```
-            `release.yml` then creates the GitHub Release.
+            `release.yml` then creates the GitHub Release with a source tarball,
+            `checksums.txt`, and a build-provenance attestation.
           labels: release
           delete-branch: true

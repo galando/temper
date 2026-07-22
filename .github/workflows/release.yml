@@ -1,5 +1,9 @@
 name: Create Release
 
+# Tag convention: vX.Y.Z (this workflow's trigger). Tags without the 'v' prefix
+# (e.g. bare "7.0.0"/"7.0.1", cut outside this workflow — see git history) do not
+# trigger a release and are not a supported release path going forward; see
+# docs/security/pinned-install.md and CONTRIBUTING.md for the normalized convention.
 on:
   push:
     tags:
@@ -7,6 +11,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -37,7 +43,13 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
-          # Get previous tag
+          # Get previous tag. NOTE: this repo's tag history is mixed — 7.0.0/7.0.1
+          # were cut without the 'v' prefix (so they never triggered this workflow;
+          # tag convention is now normalized to vX.Y.Z going forward, see
+          # CONTRIBUTING.md). `git describe`/`git log <ref>..HEAD` do not care about
+          # naming convention, so this range logic tolerates the mixed history
+          # without any code change — verified empirically during the v7.1
+          # security-posture pass (docs/security/pinned-install.md investigation).
           PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
 
           if [ -z "$PREV_TAG" ]; then
@@ -65,13 +77,51 @@ jobs:
           /plugin install temper
           \`\`\`
 
+          Pinned/reproducible install, and Codex/Cursor/Gemini native installs: see
+          [docs/security/pinned-install.md](https://github.com/galando/temper/blob/${{ steps.version.outputs.VERSION }}/docs/security/pinned-install.md).
+
+          ## Verifying this release
+
+          This tag is signed and the source tarball below is attested with GitHub
+          build provenance:
+
+          \`\`\`bash
+          git clone https://github.com/galando/temper.git && cd temper
+          git tag -v ${{ steps.version.outputs.VERSION }}   # verify the signed tag
+          gh attestation verify temper-${{ steps.version.outputs.VERSION }}.tar.gz \\
+            --owner galando                                  # verify build provenance
+          sha256sum -c checksums.txt                          # verify tarball integrity
+          \`\`\`
+
           **Full Changelog**: https://github.com/galando/temper/commits/${{ steps.version.outputs.VERSION }}
           EOF
+
+      # Source tarball + checksums, built from the exact tagged commit (not a
+      # GitHub-generated "Source code" zip, which is not reproducible/attestable
+      # the same way — this one is ours to attest below).
+      - name: Build source tarball + checksums
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          git archive --format=tar.gz --prefix="temper-${VERSION}/" -o "temper-${VERSION}.tar.gz" HEAD
+          sha256sum "temper-${VERSION}.tar.gz" > checksums.txt
+          cat checksums.txt
+
+      # Build provenance attestation for the tarball — proves it was built by this
+      # workflow run from this commit, not tampered with in between (SC12).
+      # Pinned by commit SHA (v4.1.1, 2026-07), not a mutable tag.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: "temper-${{ steps.version.outputs.VERSION }}.tar.gz"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           body_path: /tmp/release_notes.md
+          files: |
+            temper-${{ steps.version.outputs.VERSION }}.tar.gz
+            checksums.txt
           draft: false
           prerelease: false
           generate_release_notes: false

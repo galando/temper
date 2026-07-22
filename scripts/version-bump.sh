@@ -79,6 +79,22 @@ else
     echo "  -> $TEMPER_CMD not found, skipping"
 fi
 
+# 5. Regenerate the vendor-neutral adapters (Codex/Cursor/Gemini) so their stamp
+#    headers + manifest "version" fields pick up the new plugin version. Must run
+#    BEFORE the commit/tag steps below — the regenerated output is part of the
+#    release commit. Only writes to adapters/, .agents/, .cursor-plugin/ — never
+#    touches the frozen .cursor/ snapshot or scripts/generate-cursor.sh.
+ADAPTERS_REGENERATED=0
+if [ -f "scripts/generate-codex.sh" ] && [ -f "scripts/generate-cursor-plugin.sh" ] && [ -f "scripts/generate-gemini.sh" ]; then
+    echo "  -> Regenerating vendor adapters (Codex/Cursor/Gemini)"
+    bash scripts/generate-codex.sh
+    bash scripts/generate-cursor-plugin.sh
+    bash scripts/generate-gemini.sh
+    ADAPTERS_REGENERATED=1
+else
+    echo "  -> Adapter generators not found, skipping (pre-adapters checkout?)"
+fi
+
 echo ""
 echo "Version bumped to $NEW_VERSION"
 echo ""
@@ -87,10 +103,11 @@ echo "   * .claude-plugin/plugin.json"
 [ -f "$CLAUDE_MD" ]         && echo "   * $CLAUDE_MD"
 [ -f "$TEMPER_CMD" ]        && echo "   * $TEMPER_CMD"
 [ -d ".cursor" ]            && echo "   (.cursor/ NOT touched — archived, see .cursor/README.md)"
+[ "$ADAPTERS_REGENERATED" = "1" ] && echo "   * adapters/{codex,cursor,gemini}/** + .agents/plugins/marketplace.json + .cursor-plugin/marketplace.json (regenerated)"
 echo ""
 echo "Next steps:"
 echo "   1. Update CHANGELOG.md with a '## v$NEW_VERSION' entry at the top"
 echo "   2. Commit: git add -A && git commit -m 'chore: bump version to $NEW_VERSION'"
-echo "   3. Tag: git tag v$NEW_VERSION"
+echo "   3. Tag (signed): git tag -s v$NEW_VERSION"
 echo "   4. Push: git push && git push --tags"
 echo ""
