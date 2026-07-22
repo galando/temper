@@ -33,3 +33,19 @@ description: "Technical code review with confidence scoring, review memory, and 
 - **Temper Core** — stack detection, pack resolution, quality gates
 
 **Diff-aware: focuses on what changed, catches N+1 and performance issues**
+
+### Deterministic Gate
+
+This is the same gate the unified `/temper` command's Review stage runs — running this
+command standalone must not skip it, or `temper gate commit` sees no review evidence and
+wrongly blocks (or wrongly passes) a later commit. Follow
+`$CLAUDE_PLUGIN_ROOT/agents/review.md` steps 2-3 (record each open finding via `temper
+evidence add --stage review --severity ...`) as you review, then run
+`$CLAUDE_PLUGIN_ROOT/scripts/temper gate review` and show its PASS/FAIL to the user via
+`AskUserQuestion` (this command is not a subprocess — you own the gate here, unlike
+`agents/review.md`'s "never show a gate" rule).
+
+**Pass `--spec-path` explicitly** — a standalone command hasn't necessarily run `temper
+state init`, so `temper state get spec_path` may be empty. Always call
+`temper gate <stage> --spec-path .temper/specs/{feature-slug}` (the slug you already
+resolved in step 1), don't rely on `temper state` having been initialized.

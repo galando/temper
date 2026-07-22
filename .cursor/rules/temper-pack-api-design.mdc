@@ -10,3 +10,61 @@ alwaysApply: false
   Source: packs/api-design/rules.md
 -->
 
+# API Design Pack
+
+**Version:** 1.0.0
+**Last Updated:** 2026-05-12
+
+## Design Rules (BLOCK if violated)
+
+- **Types/contracts before implementation**: Define request/response types, error shapes, and status codes before writing handler logic. Types are the contract — implementation follows.
+- **Validate at system boundaries**: All external input is untrusted. Validate at the API boundary (controller/handler), not in business logic. Use schema validation (Zod, Joi, Pydantic, Jakarta Validation).
+- **Consistent error envelope**: All errors return the same shape:
+  ```json
+  { "error": { "code": "VALIDATION_ERROR", "message": "...", "details": [...] } }
+  ```
+  Never return raw exceptions, stack traces, or inconsistent error formats.
+
+## Evolution Rules (WARN if violated)
+
+- **Additive extension only**: Never remove or rename a required field in a response. Add new fields, deprecate old ones with a sunset timeline. Block if a required field is removed or renamed without versioning.
+- **Predictable naming**: Choose one convention (camelCase or snake_case) and use it everywhere — URIs, query params, JSON fields, headers. Document the convention once. Block if a new endpoint uses a different convention than the rest of the API.
+- **Idempotency for write operations**: `PUT` and `DELETE` must be idempotent by default. `POST` creating a resource should accept an idempotency key for safe retries. Warn if write endpoints lack idempotency guarantees.
+
+## Structure Rules (SUGGEST if violated)
+
+- **Resource-oriented URLs**: Use nouns, not verbs. `/users/{id}` not `/getUser`. Actions as sub-resources: `/users/{id}/activate`.
+- **Pagination on list endpoints**: All list endpoints return `items`, `total`, `limit`, `offset`/`cursor`. Never return unbounded arrays.
+- **Versioning**: Prefer URL versioning (`/v1/`) or header versioning. Document the versioning strategy and stick to it.
+- **Consistent filtering/sorting**: Use `?filter[status]=active` or `?status=active` — pick one, use it everywhere. Sort with `?sort=created_at:desc`.
+
+## Breaking Change Detection
+
+The following changes are **BREAKING** and require a new API version or migration plan:
+
+- Removing a required field from request or response
+- Renaming a field (even if marked deprecated)
+- Changing a field type (string to number, object to array)
+- Removing or renaming an endpoint
+- Changing a status code for an existing condition
+- Adding a new required field to a request
+- Changing authentication/authorization requirements
+
+The following changes are **ADDITIVE** and safe:
+
+- Adding a new optional field to response
+- Adding a new endpoint
+- Adding a new optional query parameter
+- Adding a new enum value (if clients handle unknown values)
+
+## Anti-Rationalizations
+
+| Rationalization | Why It's Wrong |
+|-----------------|----------------|
+| "We can just rename it and update the docs" | Clients break at runtime, not at compile time. Breaking changes require coordinated migration, not just doc updates. |
+| "Nobody uses that field" | You don't know who uses what. Internal tools, scripts, and third-party integrations may depend on it. |
+| "We'll version the whole API later" | API versioning is not a retrofit. Design for evolution from day one with additive changes. |
+| "Frontend can just adapt" | Mobile clients can't adapt — they're on old versions for weeks. Backend must stay backward-compatible. |
+| "It's an internal API" | Internal APIs become external APIs. Design all APIs as if they will be public. |
+| "Idempotency is overkill for this" | Network retries happen. Duplicate creates are a data corruption vector. Idempotency keys are cheap insurance. |
+| "We'll add validation later" | Validation at the boundary is a security requirement, not a nice-to-have. Every day without it is a day with injection risk. |

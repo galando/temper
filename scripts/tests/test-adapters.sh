@@ -99,10 +99,20 @@ bash "$REPO_ROOT/scripts/generate-cursor-plugin.sh" --out "$CURSOR_OUT2" >/dev/n
 assert_exit "generate-cursor-plugin.sh is idempotent" 0 \
   diff -rq "$CURSOR_OUT/adapters/cursor" "$CURSOR_OUT2/adapters/cursor"
 
-# Legacy zero-diff contract: this generator must never touch .cursor/ or
-# scripts/generate-cursor.sh (Decision 2 — frozen).
+# Legacy isolation contract: generate-cursor-plugin.sh (the NEW native-manifest
+# generator) must never touch .cursor/ or scripts/generate-cursor.sh — those are
+# a separate, independently-maintained legacy path (Decision 2). This checks
+# what the NEW generator does to those paths on this run, not their overall git
+# history — scripts/generate-cursor.sh itself may be legitimately fixed/
+# regenerated in an unrelated commit (see CHANGELOG: the frontmatter-stripping
+# bug fix) without this test conflating the two concerns.
+LEGACY_BEFORE="$WORKDIR/legacy-before.sha"
+LEGACY_AFTER="$WORKDIR/legacy-after.sha"
+(cd "$REPO_ROOT" && find .cursor scripts/generate-cursor.sh -type f -exec sha256sum {} \; | sort) > "$LEGACY_BEFORE"
+bash "$REPO_ROOT/scripts/generate-cursor-plugin.sh" --out "$WORKDIR/cursor-legacy-check" >/dev/null
+(cd "$REPO_ROOT" && find .cursor scripts/generate-cursor.sh -type f -exec sha256sum {} \; | sort) > "$LEGACY_AFTER"
 assert_exit "generate-cursor-plugin.sh leaves legacy .cursor/ + generate-cursor.sh untouched" 0 \
-  git -C "$REPO_ROOT" diff --stat main -- .cursor scripts/generate-cursor.sh --quiet
+  diff -q "$LEGACY_BEFORE" "$LEGACY_AFTER"
 
 # ==============================================================================
 # generate-gemini.sh

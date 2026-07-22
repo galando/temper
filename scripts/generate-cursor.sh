@@ -139,8 +139,16 @@ PY
 }
 
 # Strip a leading YAML frontmatter block from stdin, return the body.
+#
+# BUG FIX: `python3 - <<'PY' ... PY` feeds the heredoc to python as its own
+# *script* (stdin, because of `-`) — by the time the script body runs,
+# sys.stdin is already at EOF, so `sys.stdin.read()` always returned ''. Every
+# caller piped real content in via `< file | strip_frontmatter`, so every
+# .cursor/rules/*.mdc body for packs/skills/reference docs was silently
+# empty. Fix: pass the script via `-c` (a command-line string) instead of a
+# heredoc, so the piped stdin reaches sys.stdin.read() intact.
 strip_frontmatter() {
-    python3 - <<'PY'
+    python3 -c "$(cat <<'PY'
 import re, sys
 text = sys.stdin.read()
 m = re.match(r'^---\s*\n.*?\n---\s*\n?', text, re.DOTALL)
@@ -149,6 +157,7 @@ if m:
 else:
     sys.stdout.write(text)
 PY
+)"
 }
 
 # --- 1. Packs ----------------------------------------------------------------
@@ -160,9 +169,18 @@ for pack_dir in "$REPO_ROOT"/packs/*/; do
     PACK_NAMES+=("$name")
 done
 # Deterministic enumeration (sorted) — required for byte-stable output.
-IFS=$'\n' read -r -d '' -a PACK_NAMES_SORTED < <(printf '%s\n' "${PACK_NAMES[@]}" | sort && printf '\0') || true
-unset IFS
+# ${#arr[@]} (length) is safe on an empty array in every bash; ${arr[@]}
+# (expansion) is NOT — bash < 4.4 (macOS's system bash is 3.2) raises "unbound
+# variable" under `set -u` when expanding a zero-element array via [@], even
+# if it was explicitly declared. Guarding on the length check avoids ever
+# hitting that expansion while empty.
+PACK_NAMES_SORTED=()
+if [[ ${#PACK_NAMES[@]} -gt 0 ]]; then
+    IFS=$'\n' read -r -d '' -a PACK_NAMES_SORTED < <(printf '%s\n' "${PACK_NAMES[@]}" | sort && printf '\0') || true
+    unset IFS
+fi
 
+if [[ ${#PACK_NAMES_SORTED[@]} -gt 0 ]]; then
 for name in "${PACK_NAMES_SORTED[@]}"; do
     src_rules="$REPO_ROOT/packs/$name/rules.md"
     [[ -f "$src_rules" ]] || continue
@@ -172,6 +190,7 @@ for name in "${PACK_NAMES_SORTED[@]}"; do
     # keep pack bodies verbatim otherwise.
     { strip_frontmatter < "$src_rules"; } | emit_rule "$target" "$desc" "false" "packs/$name/rules.md"
 done
+fi
 
 # --- 2. Skills ---------------------------------------------------------------
 SKILL_NAMES=()
@@ -179,9 +198,13 @@ for skill_dir in "$REPO_ROOT"/skills/*/; do
     name=$(basename "$skill_dir")
     SKILL_NAMES+=("$name")
 done
-IFS=$'\n' read -r -d '' -a SKILL_NAMES_SORTED < <(printf '%s\n' "${SKILL_NAMES[@]}" | sort && printf '\0') || true
-unset IFS
+SKILL_NAMES_SORTED=()
+if [[ ${#SKILL_NAMES[@]} -gt 0 ]]; then
+    IFS=$'\n' read -r -d '' -a SKILL_NAMES_SORTED < <(printf '%s\n' "${SKILL_NAMES[@]}" | sort && printf '\0') || true
+    unset IFS
+fi
 
+if [[ ${#SKILL_NAMES_SORTED[@]} -gt 0 ]]; then
 for name in "${SKILL_NAMES_SORTED[@]}"; do
     src_skill="$REPO_ROOT/skills/$name/SKILL.md"
     [[ -f "$src_skill" ]] || continue
@@ -196,6 +219,7 @@ for name in "${SKILL_NAMES_SORTED[@]}"; do
     fi
     { strip_frontmatter < "$src_skill"; } | emit_rule "$target" "$desc" "$always" "skills/$name/SKILL.md"
 done
+fi
 
 # --- 3. Capabilities ---------------------------------------------------------
 # Enumerate enabled capability flags from temper.config. Each enabled flag maps
@@ -233,9 +257,13 @@ if [[ -f "$CONFIG" ]]; then
         fi
     done < "$CONFIG"
 fi
-IFS=$'\n' read -r -d '' -a CAP_NAMES_SORTED < <(printf '%s\n' "${CAP_NAMES[@]}" | sort -u && printf '\0') || true
-unset IFS
+CAP_NAMES_SORTED=()
+if [[ ${#CAP_NAMES[@]} -gt 0 ]]; then
+    IFS=$'\n' read -r -d '' -a CAP_NAMES_SORTED < <(printf '%s\n' "${CAP_NAMES[@]}" | sort -u && printf '\0') || true
+    unset IFS
+fi
 
+if [[ ${#CAP_NAMES_SORTED[@]} -gt 0 ]]; then
 for name in "${CAP_NAMES_SORTED[@]}"; do
     target="$RULES_DIR/temper-capability-$name.mdc"
     desc="Temper capability: $name"
@@ -249,6 +277,7 @@ for name in "${CAP_NAMES_SORTED[@]}"; do
         printf '%s' "$body" | emit_rule "$target" "$desc" "false" "temper.config:capabilities.$name"
     fi
 done
+fi
 
 # --- 4. Reference docs -------------------------------------------------------
 REF_NAMES=()
@@ -256,9 +285,13 @@ for ref_file in "$REF_DIR"/*.md; do
     name=$(basename "$ref_file" .md)
     REF_NAMES+=("$name")
 done
-IFS=$'\n' read -r -d '' -a REF_NAMES_SORTED < <(printf '%s\n' "${REF_NAMES[@]}" | sort -u && printf '\0') || true
-unset IFS
+REF_NAMES_SORTED=()
+if [[ ${#REF_NAMES[@]} -gt 0 ]]; then
+    IFS=$'\n' read -r -d '' -a REF_NAMES_SORTED < <(printf '%s\n' "${REF_NAMES[@]}" | sort -u && printf '\0') || true
+    unset IFS
+fi
 
+if [[ ${#REF_NAMES_SORTED[@]} -gt 0 ]]; then
 for name in "${REF_NAMES_SORTED[@]}"; do
     # Skip v5.6+-only reference docs: the Cursor export is FROZEN at the v5.1
     # platform track and must not receive post-v5.1 references. pricing.md is
@@ -272,6 +305,7 @@ for name in "${REF_NAMES_SORTED[@]}"; do
     desc="Temper reference: $name"
     { strip_frontmatter < "$src_ref"; } | emit_rule "$target" "$desc" "false" "reference/$name.md"
 done
+fi
 
 # --- 5. Commands -------------------------------------------------------------
 CMD_NAMES=()
@@ -279,9 +313,13 @@ for cmd_file in "$REPO_ROOT"/commands/*.md; do
     name=$(basename "$cmd_file" .md)
     CMD_NAMES+=("$name")
 done
-IFS=$'\n' read -r -d '' -a CMD_NAMES_SORTED < <(printf '%s\n' "${CMD_NAMES[@]}" | sort -u && printf '\0') || true
-unset IFS
+CMD_NAMES_SORTED=()
+if [[ ${#CMD_NAMES[@]} -gt 0 ]]; then
+    IFS=$'\n' read -r -d '' -a CMD_NAMES_SORTED < <(printf '%s\n' "${CMD_NAMES[@]}" | sort -u && printf '\0') || true
+    unset IFS
+fi
 
+if [[ ${#CMD_NAMES_SORTED[@]} -gt 0 ]]; then
 for name in "${CMD_NAMES_SORTED[@]}"; do
     src_cmd="$REPO_ROOT/commands/$name.md"
     # Naming: temper.md -> temper.md; {name}.md -> temper-{name}.md
@@ -420,6 +458,7 @@ print()
 sys.stdout.write(body)
 PY
 done
+fi
 
 # --- 6. VERSION + README -----------------------------------------------------
 printf '%s\n' "$VERSION" > "$CURSOR_DIR/VERSION"
