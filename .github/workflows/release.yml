@@ -82,16 +82,21 @@ jobs:
 
           ## Verifying this release
 
-          This tag is signed and the source tarball below is attested with GitHub
-          build provenance:
+          The source tarball below is attested with GitHub build provenance —
+          verify it was built by this repo's own release.yml, from this exact tag,
+          and hasn't been tampered with:
 
           \`\`\`bash
           git clone https://github.com/galando/temper.git && cd temper
-          git tag -v ${{ steps.version.outputs.VERSION }}   # verify the signed tag
           gh attestation verify temper-${{ steps.version.outputs.VERSION }}.tar.gz \\
             --owner galando                                  # verify build provenance
           sha256sum -c checksums.txt                          # verify tarball integrity
           \`\`\`
+
+          If this tag is also GPG-signed (\`git tag -v ${{ steps.version.outputs.VERSION }}\`
+          — check for a "Good signature" line; not all releases are signed yet, see
+          [SECURITY.md](https://github.com/galando/temper/blob/main/SECURITY.md)), that's an
+          additional, independent verification — the attestation above does not depend on it.
 
           **Full Changelog**: https://github.com/galando/temper/commits/${{ steps.version.outputs.VERSION }}
           EOF
