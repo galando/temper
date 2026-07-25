@@ -31,7 +31,7 @@ file once when you launch it.
 ORCHESTRATOR (this file)
   |
   +-- Agent(agents/plan.md)    -> plan gate  -> temper gate plan
-  +-- Agent(agents/design.md)  -> design gate (medium/complex only)
+  +-- Agent(agents/design.md)  -> design gate -> temper gate design
   +-- Agent(agents/build.md)   -> build gate  -> temper gate build
   +-- Agent(agents/review.md)  -> review gate -> temper gate review
   +-- Agent(agents/check.md)   -> check gate  -> temper gate check
@@ -212,8 +212,9 @@ Use the Agent tool, model: opus, prompt:
 
 Summary box: architecture overview, key decisions, what's new/modified/existing.
 
-There is no `temper gate design` — this stage has no single-correct-output requirement
-in v7; its quality shows up in whether Build can execute it and what Review finds. Gate
+Gate: `$TEMPER gate design` (for medium/complex: `design.md` exists, >=2 alternatives
+considered, >=1 risk documented, every risk carrying a `Mitigation:`; for
+trivial/simple it passes with a "design optional" row). Gate
 options: Continue / Grill Me / Teach Me / "Walk through step by step" (same shape as
 Plan's — architecture overview, API contracts, database changes, integration points,
 decision log; only sections `design.md` actually has) / Save / Other.

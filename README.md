@@ -72,7 +72,7 @@ Full methodology: [docs/methodology.md](docs/methodology.md)
 
 ## Deterministic Gates (v7)
 
-Every gate verdict — Plan, Build, Review, Check, Eval, Commit — is computed by a small
+Every gate verdict — Plan, Design, Build, Review, Check, Eval, Commit — is computed by a small
 CLI (`scripts/temper`) from an evidence ledger, never asserted by a model:
 
 ```
@@ -87,8 +87,10 @@ temper gate check -> PASS
   auto-downgrades it to `HEURISTIC`. Nothing is labeled verified on faith.
 - **`git commit` is physically blocked**, not just discouraged, while any gate is FAIL
   and unoverridden — a native pre-commit hook and an in-agent hook both run `temper gate
-  commit`. A human can always override (recorded, never silently erased), but a
-  confused model can't talk past a red gate.
+  commit`. `/temper:init` installs that hook for you (it never replaces a pre-existing
+  non-Temper hook; opt out with `TEMPER_INIT_NO_HOOK=1`), so the guarantee holds from
+  the first run rather than waiting on a second command. A human can always override
+  (recorded, never silently erased), but a confused model can't talk past a red gate.
 - **The gate logic is ~20-30 lines of readable shell per stage** — `scripts/temper`, unit
   tested in `scripts/tests/test-temper.sh`. If you want to know exactly what "Check
   passed" means, read the function; you don't have to trust 1,000 lines of prompt.
@@ -167,8 +169,10 @@ gate is either a prompt file or a script you can read in this repository. The tr
 ```bash
 /plugin marketplace add galando/temper
 /plugin install temper
-bash "$CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh"   # installs the commit gate
 ```
+
+Then run `/temper:init` in your project — it seeds the config, lints it, and installs
+the native pre-commit hook that enforces the commit gate.
 
 ### Cursor IDE (archived)
 

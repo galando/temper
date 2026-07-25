@@ -3,6 +3,37 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## Unreleased — Keep the Promise (v7.1 item 1: integrity)
+
+Three places where a headline claim was not yet true.
+
+**`temper gate design` has real requirements.** It was `design) reqs_json='[]';
+all_pass=1` — an unconditional PASS, which made "every gate verdict is computed from an
+evidence ledger, never asserted by a model" false for one stage in six. It now checks,
+for medium/complex features only: `design.md` exists, an *Alternatives Considered*
+section carries >=2 entries, a *Risks* section carries >=1 bullet, and every risk bullet
+names a `Mitigation:`. Trivial/simple complexity passes with an explicit "design
+optional" row. `templates/design.md`, `reference/design.md`, and `agents/design.md`
+co-evolved with the gate — the shipped template satisfies it, and the agent now records
+evidence and runs the gate like every other stage. A red design gate blocks `git commit`
+through the existing aggregation, covered by a test.
+
+**`/temper:init` installs the commit hook instead of recommending it.** Until a user ran
+`scripts/hooks/install.sh` by hand, a raw `git commit` was completely ungated and the
+flagship guarantee didn't exist. Init now installs it — except when a non-Temper
+pre-commit hook is already present (husky, lefthook, hand-rolled), which is reported and
+left untouched rather than backed up and replaced. Opt out with `TEMPER_INIT_NO_HOOK=1`;
+remove with `rm .git/hooks/pre-commit`. Re-running init stays idempotent.
+
+**`temper config lint`** — new subcommand, also run by `/temper:init`. `_cfg_get` parses
+a deliberate YAML subset and ends in `|| echo "$default"`, so a config it can't read is
+silently ignored. Lint is the explicit pass that says so: it flags block-style lists
+(`- item`, unsupported by design), tab-indented lines, lines with no `key: value` pair,
+unknown top-level keys, and retired v6.x blocks. The hot path is unchanged — no
+per-call overhead, no behavior change for valid configs.
+
+14 new unit tests in `scripts/tests/test-temper.sh` (55 total, no model calls).
+
 ## v7.0.1 — Fixes
 
 Fix bash 3.2 override crash + state CLI correctness bugs (#69); v7.0.0: The Deterministic Spine — CLI-enforced gates, agents/, prompt diet, self-evals (#68); link Privacy Policy from landing page and README (#67); ci,docs: plugin-directory submission kit + official strict manifest validation in CI (#66)

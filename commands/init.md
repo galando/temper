@@ -32,12 +32,30 @@ overwritten.
         - Report: "Created .claude/temper.config from the default template."
 3. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper init` — scaffolds `.temper/` (gates ledger,
    overrides log, feedback-loops registry). Also idempotent.
-4. Recommend the commit gate: "Run `bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh`
-   to install the native pre-commit hook — without it, `temper gate commit` only runs
-   in-agent (PreToolUse), not on a raw `git commit` outside the agent."
-5. Report where to edit the config: "Edit .claude/temper.config to tune packs, review/
+4. Lint the config — `$CLAUDE_PLUGIN_ROOT/scripts/temper config lint`. Print whatever
+   it reports. A finding is never fatal (Temper still runs), but an unreadable setting
+   silently falls back to its default, which is precisely the failure worth surfacing
+   at init time rather than three gates later.
+5. **Install the commit gate.** This is the flagship guarantee — until the native hook
+   exists, `temper gate commit` only runs in-agent (PreToolUse), and a raw `git commit`
+   outside the agent is completely ungated. Do not merely recommend it:
+   a. Skip entirely if `TEMPER_INIT_NO_HOOK=1` is set — report "Commit hook skipped
+      (TEMPER_INIT_NO_HOOK=1)." and move on.
+   b. Check for a foreign hook first:
+        test -f .git/hooks/pre-commit && ! grep -qF "installed by scripts/hooks/install.sh" .git/hooks/pre-commit
+      If that's true, the project already has its own pre-commit hook (husky, lefthook,
+      hand-rolled). **Do not run the installer** — it would back the hook up and replace
+      it. Report: "Existing non-Temper pre-commit hook found — left untouched. To chain
+      Temper's gate into it, add `bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/block-uncommitted-gate.sh`
+      to your hook, or run `bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh` to replace
+      it (your hook is backed up first)."
+   c. Otherwise run `bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh` and report what
+      landed, plus the one-line opt-out: "Remove with `rm .git/hooks/pre-commit`."
+   Re-running init stays idempotent — the installer overwrites only its own marked hook,
+   in place.
+6. Report where to edit the config: "Edit .claude/temper.config to tune packs, review/
    check/eval thresholds, and the autonomy block."
-6. Note the fallback: if the plugin ships without the template, point the user at the
+7. Note the fallback: if the plugin ships without the template, point the user at the
    shipped `.claude/temper.config` as the reference copy.
 ```
 

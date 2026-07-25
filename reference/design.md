@@ -55,6 +55,18 @@ For COMPLEX complexity features:
 
 Write `.temper/specs/{feature}/design.md` using the template from `$CLAUDE_PLUGIN_ROOT/templates/design.md`.
 
+**Two sections are gate-checked for medium/complex features — `temper gate design`
+greps for them literally, so the headings and bullet format are not stylistic:**
+
+| Section | Heading must match | Content requirement |
+|---------|--------------------|---------------------|
+| Alternatives | `## Alternatives Considered` (any heading containing "Alternatives") | >=2 entries, each a `### ` subsection or a `- ` bullet |
+| Risks | `## Risks` (any heading containing "Risks") | >=1 `- ` bullet, and **every** bullet contains the literal string `Mitigation:` |
+
+Write them because they make the design better, not to satisfy a grep — a single
+"alternative" means no decision was made, and a risk with no mitigation is a wish.
+But if they're absent or malformed, the gate FAILs and the pipeline stops.
+
 ### Step 4: Design Summary
 
 ```

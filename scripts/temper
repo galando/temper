@@ -608,6 +608,90 @@ gate_plan() {
   echo "$reqs_json" "$all_pass"
 }
 
+_md_section() { # _md_section <file> <heading-regex> -> the section's body (heading line excluded)
+  # Prints every line after the first heading matching <heading-regex> up to (but not
+  # including) the next heading at the SAME OR SHALLOWER level. Deeper headings are
+  # part of the section and are printed — `### ` subsections are how the design
+  # template lists alternatives, so stopping at the first one would read every
+  # section as empty. Used by gate_design to scope its counts to one section.
+  [[ -f "$1" ]] || return 0
+  awk -v pat="$2" '
+    /^#+ / {
+      n = 0
+      while (substr($0, n + 1, 1) == "#") n++
+      if (inside) {
+        if (n <= lvl) exit
+        print; next
+      }
+      if ($0 ~ pat) { inside = 1; lvl = n; next }
+    }
+    inside { print }
+  ' "$1"
+}
+
+gate_design() {
+  local spec_path="$1"
+  local reqs=() all_pass=1
+  local complexity; complexity="$(cmd_state_get complexity "")"
+
+  # Design is only mandatory for medium/complex — the same rule the pipeline already
+  # uses to decide whether to run the stage at all (commands/temper.md, Stage 1.5).
+  if [[ "$complexity" != "medium" && "$complexity" != "complex" ]]; then
+    reqs+=("$(_req "design not required" 1 "design optional for ${complexity:-unset} complexity")")
+    local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+    echo "$reqs_json" "$all_pass"
+    return
+  fi
+
+  local design="$spec_path/design.md"
+  if [[ -f "$design" ]]; then
+    reqs+=("$(_req "artifact exists" 1 "design.md present ($complexity change)")")
+  else
+    # Every remaining check reads that file — report the one real failure and stop
+    # rather than emitting three derived ones.
+    reqs+=("$(_req "artifact exists" 0 "design.md missing under $spec_path — required for $complexity complexity")")
+    all_pass=0
+    local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+    echo "$reqs_json" "$all_pass"
+    return
+  fi
+
+  # Alternatives: >=2 entries under an "Alternatives" heading. Entries are '### '
+  # subsections or '- ' bullets — the two forms templates/design.md documents.
+  local alts
+  alts=$(_md_section "$design" '[Aa]lternatives' | grep -cE '^(### |- )' || true)
+  alts=$(printf '%s' "$alts" | head -1)
+  if [[ "${alts:-0}" -ge 2 ]]; then
+    reqs+=("$(_req "alternatives considered" 1 "$alts alternative(s) documented")")
+  else
+    reqs+=("$(_req "alternatives considered" 0 "${alts:-0} alternative(s) under an 'Alternatives' heading — need >=2 (a single option is not a decision)")")
+    all_pass=0
+  fi
+
+  # Risks: >=1 bullet under a "Risks" heading, and every one of them names a mitigation.
+  local risk_body risks mitigated
+  risk_body=$(_md_section "$design" '[Rr]isks')
+  risks=$(printf '%s\n' "$risk_body" | grep -cE '^- ' || true)
+  risks=$(printf '%s' "$risks" | head -1)
+  if [[ "${risks:-0}" -ge 1 ]]; then
+    reqs+=("$(_req "risks documented" 1 "$risks risk(s) listed")")
+  else
+    reqs+=("$(_req "risks documented" 0 "no '- ' bullets under a 'Risks' heading — need >=1")")
+    all_pass=0
+  fi
+  mitigated=$(printf '%s\n' "$risk_body" | grep -E '^- ' | grep -cF 'Mitigation:' || true)
+  mitigated=$(printf '%s' "$mitigated" | head -1)
+  if [[ "${risks:-0}" -ge 1 && "${mitigated:-0}" -eq "${risks:-0}" ]]; then
+    reqs+=("$(_req "risks carry mitigations" 1 "$mitigated/$risks risk(s) name a Mitigation:")")
+  else
+    reqs+=("$(_req "risks carry mitigations" 0 "${mitigated:-0}/${risks:-0} risk(s) name a Mitigation: — every risk bullet must contain 'Mitigation:'")")
+    all_pass=0
+  fi
+
+  local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+  echo "$reqs_json" "$all_pass"
+}
+
 gate_build() {
   local spec_path="$1"
   local reqs=() all_pass=1
@@ -804,7 +888,7 @@ cmd_gate() {
   local out reqs_json all_pass
   case "$stage" in
     plan) out=$(gate_plan "$spec_path") ;;
-    design) reqs_json='[]'; all_pass=1 ;;
+    design) out=$(gate_design "$spec_path") ;;
     build) out=$(gate_build "$spec_path") ;;
     review) out=$(gate_review) ;;
     check) out=$(gate_check "$spec_path") ;;
@@ -889,6 +973,71 @@ if overridden:
 }
 
 # ---------------------------------------------------------------------------
+# config
+# ---------------------------------------------------------------------------
+
+# Top-level keys the config is allowed to carry: the ones `_cfg_get` reads plus the
+# ones the stage prompts read. Anything else is a typo or a v6.x leftover — reported,
+# never fatal.
+CONFIG_KNOWN_KEYS="stack packs tools review check eval phases feedback loops autonomy engagement"
+CONFIG_RETIRED_KEYS="tokens models observability capabilities"
+
+cmd_config_lint() {
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "OK: no $CONFIG_FILE — defaults apply to every setting."
+    return 0
+  fi
+  # The hot path (_cfg_get) deliberately swallows parse errors and falls back to
+  # defaults, so a config it cannot read is silently ignored. This is the explicit,
+  # opt-in pass that says so out loud. Same parser subset, different failure policy.
+  python3 -c "
+import sys
+path = sys.argv[1]
+known = set(sys.argv[2].split())
+retired = set(sys.argv[3].split())
+findings = []
+for n, raw in enumerate(open(path, encoding='utf-8').read().splitlines(), 1):
+    line = raw.split(' #', 1)[0].rstrip()
+    if not line.strip() or line.strip().startswith('#'):
+        continue
+    if '\t' in (line[:len(line) - len(line.lstrip())]):
+        findings.append((n, 'tab-indented line — the parser counts spaces only, so this nests wrong', raw.strip()))
+        continue
+    stripped = line.strip()
+    if stripped.startswith('- '):
+        findings.append((n, 'block-style list item — unsupported by design; use an inline list: key: [a, b]', stripped))
+        continue
+    if ':' not in stripped:
+        findings.append((n, 'no key: value pair — this line is skipped entirely', stripped))
+        continue
+    if not (len(line) - len(line.lstrip(' '))):
+        key = stripped.partition(':')[0].strip()
+        if key in retired:
+            findings.append((n, \"retired in v7 and ignored — see CHANGELOG.md 'v7.0.0'\", key + ':'))
+        elif key not in known:
+            findings.append((n, 'unknown top-level key — nothing reads it', key + ':'))
+for n, why, text in findings:
+    print(f'  line {n}: {why}')
+    print(f'    {text}')
+print('' if not findings else '')
+sys.exit(1 if findings else 0)
+" "$CONFIG_FILE" "$CONFIG_KNOWN_KEYS" "$CONFIG_RETIRED_KEYS" && {
+    echo "OK: $CONFIG_FILE parses cleanly."
+    return 0
+  }
+  echo "WARN: $CONFIG_FILE has findings above. Temper still runs — every unreadable"
+  echo "      setting silently falls back to its default, which is exactly the problem."
+  return 1
+}
+
+cmd_config() {
+  case "${1:-}" in
+    lint) shift; cmd_config_lint "$@" ;;
+    *) echo "FAIL: usage: temper config lint" >&2; return 1 ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
@@ -902,6 +1051,7 @@ main() {
     gate) cmd_gate "$@" ;;
     override) cmd_override "$@" ;;
     report) cmd_report "$@" ;;
+    config) cmd_config "$@" ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -913,6 +1063,7 @@ Usage:
   temper gate <plan|design|build|review|check|eval|commit> [--spec-path P]
   temper override <stage> --reason "..."
   temper report [--json]
+  temper config lint
 EOF
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;

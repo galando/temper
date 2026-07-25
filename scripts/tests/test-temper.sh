@@ -118,6 +118,118 @@ cat > .temper/specs/demo/plan.md <<'EOF'
 EOF
 assert_exit "plan gate PASSes once plan.md has a Blast Radius section" 0 "$TEMPER" gate plan
 
+# --- design gate: optional below medium, real requirements at/above it ---
+# Before v7.1 this gate was an unconditional PASS (`design) reqs_json='[]'`), which
+# made "every gate verdict is computed from evidence" false for one stage in six.
+setup
+assert_exit "design gate PASSes for unset complexity (design is optional there)" 0 "$TEMPER" gate design
+"$TEMPER" state set complexity simple >/dev/null
+assert_exit "design gate PASSes for simple complexity with no design.md" 0 "$TEMPER" gate design
+"$TEMPER" state set complexity medium >/dev/null
+assert_exit "design gate FAILs: medium complexity with no design.md" 1 "$TEMPER" gate design
+
+cat > .temper/specs/demo/design.md <<'EOF'
+## Alternatives Considered
+
+### Poll the queue
+
+Simpler, but adds latency.
+
+## Risks
+
+- **Backpressure** — the consumer may lag. Mitigation: bounded queue + shed load
+EOF
+assert_exit "design gate FAILs: only one alternative is not a decision" 1 "$TEMPER" gate design
+
+cat > .temper/specs/demo/design.md <<'EOF'
+## Alternatives Considered
+
+### Poll the queue
+
+Simpler, but adds latency.
+
+### Push via webhook
+
+Lower latency, but needs a public endpoint.
+
+## Risks
+
+- **Backpressure** — the consumer may lag.
+EOF
+assert_exit "design gate FAILs: a risk with no Mitigation: is a wish" 1 "$TEMPER" gate design
+
+cat > .temper/specs/demo/design.md <<'EOF'
+## Alternatives Considered
+
+### Poll the queue
+
+Simpler, but adds latency.
+
+### Push via webhook
+
+Lower latency, but needs a public endpoint.
+
+## Risks
+
+- **Backpressure** — the consumer may lag. Mitigation: bounded queue + shed load
+- **Webhook outage** — deliveries drop silently. Mitigation: dead-letter queue + alert
+EOF
+assert_exit "design gate PASSes: 2 alternatives, all risks mitigated" 0 "$TEMPER" gate design
+
+# The Risks-section scan must not leak into the rest of the file: a stray 'Mitigation:'
+# under a later heading cannot rescue an unmitigated risk.
+cat > .temper/specs/demo/design.md <<'EOF'
+## Alternatives Considered
+
+- Poll the queue
+- Push via webhook
+
+## Risks
+
+- **Backpressure** — the consumer may lag.
+
+## Notes
+
+- Mitigation: not here, this section is not Risks
+EOF
+assert_exit "design gate FAILs: 'Mitigation:' outside the Risks section does not count" 1 "$TEMPER" gate design
+
+# A red design gate must actually block the commit gate, not just report.
+setup
+"$TEMPER" state set complexity complex >/dev/null
+"$TEMPER" gate design >/dev/null 2>&1 || true
+assert_exit "commit gate FAILs while the design gate is red" 1 "$TEMPER" gate commit
+
+# --- config lint: refuse quietly-misread configs out loud ---
+setup
+assert_exit "config lint passes on the fixture config" 0 "$TEMPER" config lint
+cat > .claude/temper.config <<'EOF'
+packs:
+  - quality
+  - tdd
+EOF
+assert_exit "config lint FAILs on a block-style list (unsupported by the parser)" 1 "$TEMPER" config lint
+# Capture first, then grep — `set -o pipefail` would otherwise make the pipeline
+# inherit lint's nonzero exit and mask a matching grep.
+LINT_OUT="$("$TEMPER" config lint 2>&1)"
+assert_eq "config lint names the block-style list" "yes" \
+  "$(printf '%s' "$LINT_OUT" | grep -q 'block-style list' && echo yes || echo no)"
+cat > .claude/temper.config <<'EOF'
+stack: auto
+nonsense: 1
+EOF
+assert_exit "config lint FAILs on an unknown top-level key" 1 "$TEMPER" config lint
+cat > .claude/temper.config <<'EOF'
+stack: auto
+capabilities:
+  evals: true
+EOF
+LINT_OUT="$("$TEMPER" config lint 2>&1)"
+assert_eq "config lint names a retired v6.x block as retired, not unknown" "yes" \
+  "$(printf '%s' "$LINT_OUT" | grep -q 'retired in v7' && echo yes || echo no)"
+rm -f .claude/temper.config
+assert_exit "config lint passes when no config exists (defaults apply)" 0 "$TEMPER" config lint
+
 # --- build gate: RED then GREEN required ---
 setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null

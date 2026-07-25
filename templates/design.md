@@ -42,6 +42,28 @@ Errors:   {error codes and messages}
 |----------|-------------------|--------|-----------|
 | {decision} | {options} | {chosen} | {why} |
 
+## Alternatives Considered
+
+<!-- `temper gate design` requires >=2 entries here for medium/complex features:
+     either `### ` subsections or `- ` bullets. One option is not a decision. -->
+
+### {Alternative A}
+
+{What it would look like, and why it was not chosen.}
+
+### {Alternative B}
+
+{What it would look like, and why it was not chosen.}
+
+## Risks
+
+<!-- `temper gate design` requires >=1 `- ` bullet here, and EVERY bullet must
+     contain the literal string `Mitigation:`. A risk without a mitigation is a
+     wish. -->
+
+- **{risk}** — {what goes wrong and when}. Mitigation: {what makes it survivable}
+- **{risk}** — {what goes wrong and when}. Mitigation: {what makes it survivable}
+
 ## Security Considerations
 
 {Any security implications of the design}
