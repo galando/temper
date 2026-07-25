@@ -43,11 +43,9 @@ releases and the archived Cursor `.cursor/` snapshot are not maintained.
   the underlying claim being true.
 - Bypassing the secret-scanner class of hook (`scripts/hooks/block-secrets.sh`) or the
   forbidden-imports guard (`scripts/hooks/block-forbidden-imports.sh`).
-- Prompt injection via a generated hook, a generated vendor adapter file
-  (`adapters/codex/**`, `adapters/cursor/**`, `adapters/gemini/**`), or either
-  self-hosted marketplace manifest (`.agents/plugins/marketplace.json`,
-  `.cursor-plugin/marketplace.json`) that causes an agent to execute unintended
-  commands.
+- Prompt injection via a generated hook, a generated file (`.cursor/**`), or the
+  self-hosted marketplace manifest (`.claude-plugin/marketplace.json`) that causes an
+  agent to execute unintended commands.
 - Supply-chain issues in the release process (unsigned/tampered tags, release
   artifacts, or the `version-bump.sh` / `release.yml` / `release-bump.yml` workflows).
 

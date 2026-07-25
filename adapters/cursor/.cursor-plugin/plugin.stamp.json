@@ -1,7 +1,0 @@
-{
-  "source": ".claude-plugin/plugin.json",
-  "version": "7.0.1",
-  "tier": "2",
-  "schemaVerified": "2026-07",
-  "note": "Cursor's plugin.schema.json declares additionalProperties: false; provenance lives in this sidecar instead of an inline key."
-}

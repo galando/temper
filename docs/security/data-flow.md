@@ -33,13 +33,12 @@ user-initiated, and listed here — not folded into the "core" claim above.
 | OCR (`tools.ocr.mode`) | **Code content** sent to the OCR tool's configured external LLM (Alibaba `open-code-review` today) for defect detection. | Enabled in `.claude/temper.config` under `tools:` and the tool is installed. | Set `tools.ocr.mode: off` (or leave the optional tool uninstalled — the default). |
 | Optional MCP servers (`tools.mode`) | Depends on which MCP servers are registered — `code-review-graph` and `semgrep` run as local processes today (no network by design), but MCP servers are third-party code and a user could register one that does call out. | A server is registered via `claude mcp add ...` and Temper's `tools.mode` allows using it. | Set `tools.mode: heuristic-only` to disable MCP-backed analysis entirely; only register MCP servers you trust. |
 | Plan-stage issue-tracker fetch | Outbound request to GitHub/Jira for the issue referenced (`gh`/`curl` under the hood in the Plan agent's tooling), when a user passes a ticket reference to `/temper:plan`. | User-initiated: passing a JIRA-123 / #456 style reference as the plan argument. | Don't pass an issue reference — describe the feature in plain text instead. |
-| `scripts/install-cursor.sh` remote mode | `curl` from `raw.githubusercontent.com` to fetch `.cursor/` files. | Running `install-cursor.sh` directly (legacy, in-tree, deprecated). | **Not an end-user path as of this release** — the README's install section no longer documents it; the native Cursor plugin (`adapters/cursor/`, registered as a marketplace source) is the documented install path and makes no network call itself beyond whatever the vendor's own marketplace-add mechanism performs. `install-cursor.sh` remains in-tree only for consumers who already depend on the legacy `.cursor/` snapshot. |
+| `scripts/install-cursor.sh` remote mode | `curl` from `raw.githubusercontent.com` to fetch `.cursor/` files. | Running `install-cursor.sh` directly (legacy, in-tree, deprecated). | Don't run it. The `.cursor/` snapshot it fetches is archived at the v6.0.1 feature set and is not an install path the README documents; it remains in-tree only for consumers who already depend on that snapshot. |
 
-**Framing note (consistent with the README and the Task 7 install-docs rework):** the
-legacy `install-cursor.sh` remote mode is *present in-tree, deprecated, and **not** an
-end-user path* — avoid it by using the native installs (Codex/Cursor/Gemini/Claude Code,
-all documented in the README's Quickstart). It is listed here as a conditional egress
-path because the file still exists and still works if hand-run; it is not listed as
+**Framing note:** the legacy `install-cursor.sh` remote mode is *present in-tree,
+deprecated, and **not** an end-user path* — the Claude Code plugin install documented
+in the README's Quickstart makes no such call. It is listed here as a conditional
+egress path because the file still exists and still works if hand-run; it is not listed as
 part of the "audited core" because it is not part of the enforcement surface
 (`scripts/temper` / `scripts/hooks/*`) this document's zero-egress claim covers.
 

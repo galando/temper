@@ -24,13 +24,6 @@ every gate is the ordinary interactive one. Config: `.claude/temper.config` → 
 a model. `git commit` is blocked by a native pre-commit hook + an in-agent PreToolUse
 hook whenever a gate is FAIL and unoverridden — see `packs/hooks/rules.md`.
 
-**Vendor-neutral adapters (generated, never hand-edited):** `adapters/{codex,cursor,gemini}/`
-give Codex CLI, Cursor, and Gemini CLI native Tier-2 plugins/extensions, self-hosted
-from this repo (`.agents/plugins/marketplace.json`, `.cursor-plugin/marketplace.json`).
-Regenerate via `scripts/generate-{codex,cursor-plugin,gemini}.sh` (maintainer/CI
-tooling only — never an end-user step) and validate with
-`scripts/validate-adapters.sh`. See README's Adapter Tier Matrix.
-
 **Version:** 7.0.1 — see `CHANGELOG.md` for history.
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/reference/tokenomics.md`

@@ -174,12 +174,7 @@ gate is either a prompt file or a script you can read in this repository. The tr
 
 ## Installation
 
-Every vendor below installs the same way Superpowers popularized: add this repo as a
-native marketplace/extension source, then install — no cloning, no shell scripts.
-
-<!-- temper:install:start -->
-
-### Claude Code (Tier 1 — full pipeline)
+### Claude Code
 
 ```bash
 /plugin marketplace add galando/temper
@@ -187,54 +182,16 @@ native marketplace/extension source, then install — no cloning, no shell scrip
 bash "$CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh"   # installs the commit gate
 ```
 
-### Codex CLI (Tier 2)
+Want a pinned, reproducible install instead of tracking the default branch? Clone at a
+signed tag and add the local checkout as a marketplace source — see
+[`docs/security/pinned-install.md`](docs/security/pinned-install.md).
 
-```bash
-codex marketplace add galando/temper
-```
+### Cursor IDE (archived)
 
-Then install `temper` from the in-session plugin browser (`/plugins`), or
-non-interactively: `codex plugin install temper --non-interactive`. Pin a release with
-`codex marketplace add galando/temper --ref v7.0.1` (per openai/codex PR #17087).
-
-### Cursor (Tier 2)
-
-Register this repo as a marketplace source, then install `temper` via the editor's
-`/add-plugin`. **Honest limitation (as of 2026-07):** Cursor's official docs
-(cursor.com/docs/plugins) document plugin submission and the manifest schema, but not
-yet a command for registering a third-party repo as a custom source — `/add-plugin` is
-the documented installer surface; there is no verified one-shot CLI install today.
-
-### Gemini CLI (Tier 2)
-
-```bash
-gemini extensions install https://github.com/galando/temper
-```
-
-<!-- temper:install:end -->
-
-Want a pinned, reproducible install instead of tracking the default branch? Codex and
-Gemini support `--ref vX.Y.Z` directly; the clone-at-signed-tag path works for every
-vendor — see [`docs/security/pinned-install.md`](docs/security/pinned-install.md).
-
-### Adapter Tier Matrix
-
-| Tier | Platform | Surface | Install | Commit gate |
-|------|----------|---------|---------|-------------|
-| 1 | Claude Code | plugin: commands + agents + skills + hooks | `/plugin marketplace add` + `/plugin install` | git hook + PreToolUse |
-| 2 | Codex CLI | native plugin: `.codex-plugin` manifest + skills | `codex marketplace add` + install (in-agent) | git hook |
-| 2 | Cursor | native plugin: `.cursor-plugin` manifest + skills | add marketplace source + editor `/add-plugin` | git hook |
-| 2 | Gemini CLI | generated extension (GEMINI.md + TOML commands) | `gemini extensions install <git-url>` | git hook |
-| Legacy | Cursor `.cursor/` snapshot | frozen v5.1-track rule files | deprecated — superseded by the Tier-2 native plugin above | git hook |
-
-Tier 2 adapters ship the linear gate pipeline (plan/build/review/check/fix/init, plus
-`status` for Gemini); `design`, `pack`, and `eval` remain Claude Code-only — they're
-multi-agent/interactive constructs that don't port to a single-context CLI. Generator
-scripts (`scripts/generate-{codex,cursor-plugin,gemini}.sh`) are maintainer/CI build
-tooling that refresh the committed adapter output at release time — never an end-user
-install step. See [`adapters/*/README.md`](adapters/) for each adapter's own tier note,
-and the legacy Cursor snapshot at [`.cursor/README.md`](.cursor/README.md) (frozen at
-the v5.1 feature set, superseded, no longer an end-user install path).
+Cursor support is **archived** at the v6.0.1 snapshot (frozen feature set — CHANGELOG
+v5.2.1 platform strategy) and is no longer regenerated per release; v7's CLI-backed
+gates and `agents/` directory ship Claude Code-only. `./scripts/generate-cursor.sh`
+still works if you want to hand-run it. Details: [`.cursor/README.md`](.cursor/README.md).
 
 ## Recommended Setup
 

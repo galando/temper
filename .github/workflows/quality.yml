@@ -47,14 +47,6 @@ jobs:
       - name: Run validate-plugin.sh
         run: bash scripts/validate-plugin.sh
 
-  validate-adapters:
-    name: Vendor Adapter Validation (Codex/Cursor/Gemini)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run validate-adapters.sh
-        run: bash scripts/validate-adapters.sh
-
   validate-manifest:
     name: Official Manifest Validation
     runs-on: ubuntu-latest

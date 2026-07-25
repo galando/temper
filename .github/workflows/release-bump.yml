@@ -176,9 +176,7 @@ jobs:
       # 5. Gate: prove the tree is consistent before opening a PR. quality-check.sh
       #    runs JSON/structure checks but does NOT run the version-agreement guard —
       #    that lives only in validate-plugin.sh. Run all validators explicitly so
-      #    stamp drift cannot slip through. validate-adapters.sh confirms the
-      #    version-bump.sh regeneration step above kept the three vendor adapters
-      #    (Codex/Cursor/Gemini) in sync with the new plugin version.
+      #    stamp drift cannot slip through.
       - name: Validate (gate)
         run: |
           set -euo pipefail
@@ -186,7 +184,6 @@ jobs:
           bash scripts/validate-plugin.sh
           bash scripts/validate-docs.sh
           bash scripts/validate-readme.sh
-          bash scripts/validate-adapters.sh
 
       # 6. Commit to a release branch and open a PR. peter-evans/create-pull-request
       #    is idempotent: re-running with the same version updates the existing PR.

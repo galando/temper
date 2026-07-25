@@ -14,7 +14,7 @@ what a malicious actor at each boundary could and could not do.
 | Commit-gate integrity | The property that `git commit` is blocked while any upstream `temper gate` is FAIL and unoverridden. |
 | `.temper/` ledger (`gates.json`, `evidence/*.json`, `build-state.json`) | The evidence a gate verdict is computed from. |
 | `.git/hooks/pre-commit` | The installed enforcement point — a real file on disk, replaceable by anything with local write access. |
-| The three marketplace-source manifests (`.claude-plugin/marketplace.json`, `.agents/plugins/marketplace.json`, `.cursor-plugin/marketplace.json`) | Install-time trust roots — new in this release. A tampered manifest could point an install at a hostile plugin path. |
+| The marketplace-source manifest (`.claude-plugin/marketplace.json`) | Install-time trust root. A tampered manifest could point an install at a hostile plugin path. |
 
 ## Capabilities — what each script executes
 
@@ -41,16 +41,13 @@ than silently assumed.
 
 ### 1. Plugin repo → machine (install-time)
 
-Installing Temper — for any vendor — means trusting the repo you point your agent's
-marketplace/plugin system at. This release adds two new self-hosted marketplace
-manifests (`.agents/plugins/marketplace.json` for Codex, `.cursor-plugin/marketplace.json`
-for Cursor) alongside the existing Claude Code one. **These are listing files, not
-auto-activating skills** — a manifest entry only names a path (`adapters/codex`,
-`adapters/cursor`); nothing in it executes on its own. A contributor who opens this
-repo in Codex or Cursor is not silently handed an active prompt surface merely because
-these manifest files exist in the tree — the vendor's own install action (`codex
-marketplace add`, the Cursor editor's `/add-plugin`) is the step that activates
-anything, and that step is always user-initiated.
+Installing Temper means trusting the repo you point your agent's marketplace/plugin
+system at. The self-hosted marketplace manifest (`.claude-plugin/marketplace.json`) is
+a **listing file, not an auto-activating skill** — an entry only names a path; nothing
+in it executes on its own. A contributor who opens this repo is not silently handed an
+active prompt surface merely because the manifest exists in the tree — `/plugin
+marketplace add` followed by `/plugin install` is the step that activates anything, and
+that step is always user-initiated.
 
 The residual risk is a **tampered repo or tarball** presented as this one (a
 malicious fork, a compromised release asset, or a MITM'd clone) — mitigated by signed,
@@ -112,7 +109,7 @@ override: a sign the runner is compromised, not a Temper-specific gap.
 
 | Story | Impact | Mitigation |
 |-------|--------|------------|
-| **Malicious plugin update** (any vendor's marketplace path) — an attacker gains push access to this repo (or a fork users are pointed at) and ships a tampered `commands/*.md`, adapter, or hook. | Every future install/update pulls the tampered content; for Claude Code and the new Codex/Cursor adapters, this could inject instructions into every user's agent session. | Signed, verifiable release tags + build-provenance attestation (Tasks 11–12); pinned-version install path documented in the README so consumers can pin to a verified tag rather than tracking `main`. |
+| **Malicious plugin update** — an attacker gains push access to this repo (or a fork users are pointed at) and ships a tampered `commands/*.md` or hook. | Every future install/update pulls the tampered content, injecting instructions into every user's agent session. | Signed, verifiable release tags + build-provenance attestation; pinned-version install path documented in `docs/security/pinned-install.md` so consumers can pin to a verified tag rather than tracking `main`. |
 | **Malicious pack** — a project adds a `packs/evil/rules.md` (or a global `~/.claude/packs/...`) designed to manipulate Build/Review output. | Prompt injection into the agent's context during those stages (see Trust Boundary #2). | Pack review before adoption (same trust level as any other repo content); gates don't read pack content, so a forged PASS still requires a forged, ledger-visible `temper evidence add`. |
 | **Tampered checkout** — a user is handed a zip/tarball or a clone from an untrusted mirror instead of the real repo. | Any of the above, plus a completely arbitrary `scripts/temper` or hook script. | `git tag -v` verification against the maintainer's signing key + `gh attestation verify` against the release's build provenance (Task 12) — both give a cryptographic answer to "is this actually the maintainer's release," which a copied tarball cannot forge. |
 | **Hostile repo consumed by a Temper user** — the *reverse* direction: a user runs Temper against a project whose own `.claude/temper.config` or pack content they don't control (e.g. reviewing an untrusted PR's branch). | The untrusted project's config/packs get read into the agent's context, same class as Trust Boundary #2. | Out of Temper's control by design — this is the same risk as running *any* agent against untrusted repo content; Temper does not amplify it, since it still routes every verdict through the CLI rather than trusting prompt content for gate decisions. |

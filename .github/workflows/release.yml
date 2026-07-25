@@ -77,7 +77,7 @@ jobs:
           /plugin install temper
           \`\`\`
 
-          Pinned/reproducible install, and Codex/Cursor/Gemini native installs: see
+          Pinned/reproducible install: see
           [docs/security/pinned-install.md](https://github.com/galando/temper/blob/${{ steps.version.outputs.VERSION }}/docs/security/pinned-install.md).
 
           ## Verifying this release

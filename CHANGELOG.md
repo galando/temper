@@ -5,24 +5,28 @@ All notable changes to Temper are documented here. The plugin version lives in
 
 ## Unreleased
 
-**Native plugin surfaces for Codex CLI, Cursor, and Gemini CLI** — generated,
-committed adapters (`adapters/codex/`, `adapters/cursor/`, `adapters/gemini/`) driven
-by the same sources as the Claude Code plugin, each ending its prompts in the identical
-gate-protocol epilogue (`scripts/temper evidence add` / `scripts/temper gate <stage>` —
-no adapter reimplements verdict logic). This repo now self-hosts a marketplace source
-for each of Codex (`.agents/plugins/marketplace.json`) and Cursor
-(`.cursor-plugin/marketplace.json`) — install is a single native in-agent action per
-vendor, no shell scripts (see README's Adapter Tier Matrix). Cursor rejoins as a
-supported Tier 2 (native plugin); the legacy `.cursor/` snapshot and
-`scripts/generate-cursor.sh` stay byte-frozen and superseded. Three new generator
-scripts (`scripts/generate-{codex,cursor-plugin,gemini}.sh`) plus
-`scripts/validate-adapters.sh` (idempotence, schema, gate-protocol, and install-docs
-guards, wired into CI) are maintainer/CI build tooling only.
+**Security & supply-chain posture** — `SECURITY.md` (scope, reporting, disclosure),
+`docs/security/threat-model.md` (assets, capabilities, trust boundaries, attacker
+stories), and `docs/security/data-flow.md` (audited egress table: "zero egress by
+default" for `scripts/temper` and `scripts/hooks/*`, plus every conditional path
+enumerated with its off switch). A no-network CI guard in `scripts/validate-plugin.sh`
+fails the build if a network primitive is ever introduced into the enforcement
+surface, making the zero-egress claim mechanical rather than asserted. Releases now
+publish a source tarball, `checksums.txt`, and an `actions/attest-build-provenance`
+attestation; `docs/security/pinned-install.md` documents the reproducible
+clone-at-a-signed-tag install and how to verify a release.
 
-**Security & supply-chain posture** — `SECURITY.md`, `docs/security/threat-model.md`,
-and `docs/security/data-flow.md` (audited egress table, "zero egress by default" +
-enumerated conditional paths), a no-network CI guard, signed/attested releases, and a
-documented pinned-version install path.
+**Two real bugs fixed in `scripts/generate-cursor.sh`** — (1) `strip_frontmatter()`'s
+`python3 - <<'PY'` heredoc was fed to python as its own script, leaving `sys.stdin` at
+EOF before the script's `sys.stdin.read()` ran, so every `.cursor/rules/*.mdc` body for
+packs/skills/reference docs was silently empty (frontmatter + comment only, no
+content); fixed by using `python3 -c`. (2) Fixing (1) exposed a bash 3.2 crash —
+`"${ARR[@]}"` on a declared-but-empty array raises "unbound variable" under `set -u` in
+bash < 4.4, hit because `capabilities:` no longer exists in `.claude/temper.config`
+since v7.0.0; fixed by guarding the name-array expansions with a length check.
+`.cursor/` is regenerated from the corrected script: rule/command bodies now carry real
+content, and 6 stale `temper-capability-*.mdc` files (orphaned by the same v7.0.0
+config removal) are gone.
 
 ## v7.0.1 — Fixes
 

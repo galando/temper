@@ -17,36 +17,28 @@ nav_order: 2
 {: .highlight }
 Claude Code will automatically load Temper's commands and skills when you start a session in any project.
 
-### Codex CLI
+### Cursor IDE
 
 ```bash
-codex marketplace add galando/temper
+bash <(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)
 ```
-
-Then install `temper` from the in-session plugin browser (`/plugins`), or
-non-interactively: `codex plugin install temper --non-interactive`. Ships
-`temper-core` + plan/build/review/check/fix/init skills (Tier 2 — see the
-[Adapter Tier Matrix](../README.md#adapter-tier-matrix)).
-
-### Cursor
-
-Register this repo as a marketplace source, then install `temper` via the editor's
-`/add-plugin`. As of 2026-07, Cursor's official docs document plugin submission and
-the manifest schema but not yet a custom-source registration command — `/add-plugin`
-is the documented installer surface.
 
 {: .highlight }
-This supersedes the archived `.cursor/` snapshot (frozen at the v5.1 feature set) —
-see [`.cursor/README.md`](https://github.com/galando/temper/blob/main/.cursor/README.md)
-for that legacy path, which is no longer an end-user install step.
+No Python or git required — just curl. The script downloads static `.cursor/` files (rules and commands) from GitHub to your project.
 
-### Gemini CLI
+Slash commands use hyphenated format in Cursor:
 
 ```bash
-gemini extensions install https://github.com/galando/temper
+cd your-project
+/temper "add login feature"    # Unified SDLC (recommended)
+/temper-plan "your feature"    # Plan with blast radius
+/temper-build                  # Scenario-driven TDD
+/temper-review                 # Structured intent validation
+/temper-check                  # Stack validation
+/temper-fix "bug description"  # Root cause analysis + fix
+/temper-pack                   # Manage quality packs
+/temper-status                 # Quality metrics dashboard
 ```
-
-Ships the unified `/temper` command plus plan/build/review/check/fix/status/init.
 
 ### Other AI Assistants
 
