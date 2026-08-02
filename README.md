@@ -22,17 +22,9 @@
 
 ## The Problem
 
-AI writes code fast. But "fast" without "right" creates bugs, technical debt, and features that miss the point. AI-generated code has **structural failure patterns**:
+AI writes code fast. But "fast" without "right" creates bugs, technical debt, and features that miss the point. AI-generated code has **structural failure patterns**: happy paths that work while edge cases are never implemented, features nobody asked for, factories for something used once, calls to methods that don't exist, correct code that was never wired in.
 
-| Pattern | What Goes Wrong |
-|---------|----------------|
-| Missing behaviors | Happy path works, edge cases never implemented |
-| Wrong problem solved | Feature works perfectly, but nobody asked for it |
-| Over-engineering | Factories and strategies for something used once |
-| Hallucinated APIs | Methods called that don't exist |
-| Missing wiring | Code correct, integration missing |
-
-Most AI tools check if code compiles. Temper checks if it solves the right problem, handles edge cases, and is safe to ship — and since v7, it checks *mechanically*, not by asking the model to grade its own work.
+Most AI tools check whether code compiles. Temper checks whether it solves the right problem — and it checks *mechanically*, not by asking the model to grade its own work.
 
 ## The Catch
 
@@ -45,7 +37,7 @@ Scenario: Rate limiting on reset requests
   Then the request is rejected with 429
 ```
 
-AI built password reset. All tests pass. But Temper's **scenario coverage gate** caught the gap: no test for rate limiting. Build wrote the test. Test failed. Build implemented rate limiting. Test passed. Without the coverage gate, rate limiting would never have been implemented.
+AI built password reset. All tests passed. Temper's **scenario coverage gate** caught the gap: no test for rate limiting. Build wrote the test, it failed, Build implemented rate limiting. Without the gate, it would never have been built.
 
 More: [Evidence Gallery](docs/evidence/)
 
@@ -66,14 +58,13 @@ intent.md
     Tests from scenarios, RED → GREEN → REFACTOR
 ```
 
-**Key insight:** Scenarios are derived *before* architecture. The file plan follows from what the system must do, not the other way around. This prevents over-engineering structurally.
+Scenarios are derived *before* architecture, so the file plan follows from what the system must do. That prevents over-engineering structurally.
 
 Full methodology: [docs/methodology.md](docs/methodology.md)
 
-## Deterministic Gates (v7)
+## Deterministic Gates
 
-Every gate verdict — Plan, Build, Review, Check, Commit — is computed by a small
-CLI (`scripts/temper`) from an evidence ledger, never asserted by a model:
+Every gate verdict — Plan, Build, Review, Check, Commit — is computed by a small CLI (`scripts/temper`) from an evidence ledger, never asserted by a model:
 
 ```
 > temper gate check
@@ -82,42 +73,18 @@ temper gate check -> PASS
   [v] coverage >= threshold — 87.0% >= 80% threshold
 ```
 
-- **Every claim carries proof.** `temper evidence add` records a command, exit code, and
-  artifact. `PROVEN` is mechanically re-checked — a missing artifact or a nonzero exit
-  auto-downgrades it to `HEURISTIC`. Nothing is labeled verified on faith.
-- **`git commit` is physically blocked**, not just discouraged, while any gate is FAIL
-  and unoverridden — a native pre-commit hook and an in-agent hook both run `temper gate
-  commit`. A human can always override (recorded, never silently erased), but a
-  confused model can't talk past a red gate.
-- **The gate logic is ~20-30 lines of readable shell per stage** — `scripts/temper`, unit
-  tested in `scripts/tests/test-temper.sh`. If you want to know exactly what "Check
-  passed" means, read the function; you don't have to trust 1,000 lines of prompt.
-- **Seeded-defect fixtures prove the pipeline catches real bugs — 3/3, verified live,
-  at the strict bar.** Three small projects, each with one known, planted defect
-  (missing rate limiting, a hallucinated API call, a component never wired in). Run
-  for real against both v6.0.1 and this branch: both catch all three. v7's catches
-  require the harness's strongest tier — `temper gate` mechanically FAILing with the
-  defect named — not a weaker "some evidence text roughly matches" signal; that
-  distinction was itself a real bug the harness had until it was caught by asking
-  "is this eval actually correct?" and fixing it. A fourth, differently-shaped fixture
-  (no seeded defect) then confirmed the remaining gate stages — `plan`, `build`,
-  `eval` — actually get called by the model too, not just the two the seeded-defect
-  fixtures exercise. Full story, including the real bugs this found along the way (one
-  in the pipeline, one in the eval harness itself): [`evals/README.md`](evals/README.md).
+- **Every claim carries proof.** `temper evidence add` records a command, exit code, and artifact. `PROVEN` is mechanically re-checked — a missing artifact or nonzero exit auto-downgrades it to `HEURISTIC`.
+- **`git commit` is physically blocked** while any gate is FAIL and unoverridden, by a real pre-commit hook. A human can always override (recorded, never erased); a confused model can't talk past a red gate.
+- **Gate logic is ~20-30 lines of readable shell per stage**, unit-tested in `scripts/tests/test-temper.sh`. To know what "Check passed" means, read the function — not 1,000 lines of prompt.
+- **Seeded-defect fixtures prove it catches real bugs — 3/3, verified live.** Three projects, each with one planted defect (missing rate limiting, a hallucinated API call, a component never wired in). A gate must mechanically FAIL naming the defect; "some text roughly matches" doesn't count. Full story: [`evals/README.md`](evals/README.md).
 
-Full design rationale: [docs/plans/v7-deterministic-spine.md](docs/plans/v7-deterministic-spine.md)
+Design rationale: [docs/plans/v7-deterministic-spine.md](docs/plans/v7-deterministic-spine.md)
 
 ### Autonomous Continuation (opt-in)
 
-After you approve the plan, `/temper` can run the remaining stages
-(design → build → review → check) unattended and leave a report.
-It never pushes or merges, never re-plans on its own, and parks before
-commit and on anything needing a human — enforced by the same `temper gate`
-mechanism as the interactive path, not a separate trust boundary.
+After you approve the plan, `/temper` can run the remaining stages unattended and leave a report. It never pushes or merges, never re-plans on its own, and parks before commit — enforced by the same `temper gate` mechanism as the interactive path.
 
-First run: pre-allow your build/test commands in `settings.json`, or the run
-parks on the first unpermitted command. No config yet? `/temper:init` seeds
-one (and scaffolds `.temper/` for the CLI).
+First run: pre-allow your build/test commands in `settings.json`, or the run parks on the first unpermitted command. No config yet? `/temper:init` seeds one.
 
 ## Commands
 
@@ -136,7 +103,7 @@ one (and scaffolds `.temper/` for the CLI).
 
 ## Quality Packs
 
-Rule sets enforced during code generation and review. Three-tier resolution: project-local → global → built-in.
+Rule sets enforced during generation and review. Three-tier resolution: project-local → global → built-in.
 
 | Pack | What It Enforces |
 |------|-------------------|
@@ -151,18 +118,14 @@ Create custom packs with `/temper:pack` or add a `rules.md` to `.claude/packs/yo
 
 ## Security & Trust
 
-Temper is Markdown and ~500 lines of auditable shell — every command, skill, pack, and
-gate is either a prompt file or a script you can read in this repository. The trust contract:
+Temper is Markdown and ~500 lines of auditable shell — every command, skill, pack, and gate is a file you can read in this repository.
 
-- **No network calls, no telemetry.** Temper never phones home. The only shell commands it runs are your project's own build/test/lint commands (plus its own gate script), and only under Claude Code's normal permission prompts.
-- **Writes are confined to your project.** Temper writes `.claude/temper.config` (created by `/temper:init`, only with your approval) and its working files under `.temper/` in your project. It never touches files outside the project directory.
-- **The commit gate is mechanical, not advisory.** `temper gate commit` — enforced by a real git pre-commit hook — blocks a commit whenever an upstream gate is FAIL and unoverridden. See [Deterministic Gates](#deterministic-gates-v7).
-- **Autonomous Continuation is opt-in and fenced.** Armed per-run at the plan gate, never at invocation. It never commits, never pushes, never merges — it parks before commit and leaves a report.
-- **Optional MCP servers are optional.** The recommended servers below only upgrade evidence quality; nothing breaks without them.
+- **No network calls, no telemetry.** The only shell commands it runs are your project's own build/test/lint commands plus its gate script, under Claude Code's normal permission prompts.
+- **Writes stay in your project** — `.claude/temper.config` (only with your approval) and working files under `.temper/`.
+- **The commit gate is mechanical, not advisory.** See [Deterministic Gates](#deterministic-gates).
+- **Autonomous Continuation is opt-in and fenced.** Armed per-run at the plan gate. Never commits, pushes, or merges.
 
 ## Installation
-
-### Claude Code
 
 ```bash
 /plugin marketplace add galando/temper
@@ -172,7 +135,7 @@ bash "$CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh"   # installs the commit gate
 
 ## Recommended Setup
 
-Temper works out of the box. Two optional MCP servers upgrade heuristic analysis to mechanically verified findings:
+Temper works out of the box. Optional MCP servers upgrade heuristic analysis to mechanically verified findings:
 
 | Server | Provides | Install |
 |--------|----------|---------|
@@ -181,14 +144,11 @@ Temper works out of the box. Two optional MCP servers upgrade heuristic analysis
 | [open-code-review](docs/recommended-setup.md) | External LLM-powered defect detection (Alibaba) | `npm install -g @alibaba-group/open-code-review` |
 
 ```bash
-# Register with Claude Code (requires restart)
 claude mcp add code-review-graph -- code-review-graph
 claude mcp add semgrep -- semgrep --mcp
 ```
 
-Every finding carries an evidence label — `PROVEN` (mechanically verified), `HEURISTIC`
-(grep-based), `SEMANTIC` (judgment), `OCR` (external engine) — recorded in
-`.temper/evidence/` by `temper evidence add`.
+Every finding carries an evidence label — `PROVEN`, `HEURISTIC`, `SEMANTIC`, or `OCR` — recorded in `.temper/evidence/`.
 
 Full setup: [docs/recommended-setup.md](docs/recommended-setup.md)
 
@@ -209,7 +169,6 @@ Full setup: [docs/recommended-setup.md](docs/recommended-setup.md)
 - [Commands Reference](docs/commands.md) — Full command documentation
 - [Packs](docs/packs.md) — Built-in and custom packs
 - [Methodology](docs/methodology.md) — IDD, BDD, TDD deep dive
-- [v7 Design](docs/plans/v7-deterministic-spine.md) — Why the CLI, the evidence ledger, the prompt diet
 - [Recommended Setup](docs/recommended-setup.md) — MCP servers and live verification
 - [Enterprise Setup](docs/enterprise.md) — Deploy across your organization
 - [Privacy Policy](https://galando.github.io/temper/privacy.html) — No data collected, no servers, no telemetry

@@ -3,71 +3,43 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## v8.0.0 — Opus 5 Refresh: shorter prompts, no Eval stage, leaner pipeline
+## v8.0.0 — shorter prompts, no Eval stage, leaner pipeline
 
-Breaking release: a shipped stage and a shipped config key are removed. The prompt
-surface was written for an older model generation — long, prescriptive, step-numbered
-choreography. This release rewrites it as outcome briefs, removes two things that were
-costing every run without earning it, and measures the result rather than asserting it:
-an A/B on Opus 5 shows the shorter prompts hold plan quality at a fifth of the length
-and cut the cost of a Plan run roughly in half.
+Breaking: the Eval stage and its config key are removed. The prompt surface was written
+for an older model generation — long, prescriptive, step-numbered. It is now outcome
+briefs, 43.7% smaller, which a measured A/B shows cuts the cost of a Plan run roughly in
+half while holding quality.
 
-- **The Eval stage is gone.** `agents/eval.md`, `commands/eval.md`, `reference/eval.md`,
-  `skills/eval-judge/`, `templates/evalset.json`, and the `eval:` config block are
-  deleted — not disabled. `temper gate eval` now exits non-zero with a usage error;
-  `temper gate check` advances straight to the commit gate.
-  **Migration — no action needed:** a stale `eval:` block in an existing
-  `.claude/temper.config` is inert (unknown keys are ignored) and a stale `"eval"` key in
-  an existing `.temper/gates.json` is simply never visited. An in-flight run's
-  `build-state.json` holding `next_stage: "eval"` or `stage: "eval_complete"` is healed
-  automatically, in place, the first time any `temper` CLI command touches it — no
-  command to run yourself.
-  `evals/` — Temper's own seeded-defect regression harness (three fixtures + a wiring
-  smoke test) — is a different thing with the same name and is untouched, **except**
-  `evals/run-wiring-smoke.sh`, which drops its `/temper:eval` probe and eval-gate/
-  eval-evidence assertions (approved amendment: a removed stage can't be probed for
-  wiring). `plan`/`build` wiring coverage in that harness is unchanged.
-- **Review and Check now run on Sonnet**, not Haiku — `agents/review.md`,
-  `agents/check.md`, and their launch blocks in `commands/temper.md` all say
-  `model: sonnet`. `haiku` no longer appears anywhere in the prompt surface.
-- **Evidence for a stage being redone is now auto-cleared** — new
-  `temper evidence clear --stage S`, wired into `temper state loop`, so a discarded run's
-  rows can never inflate a later gate's count. This fixes a long-standing bug: evidence
-  was append-only, so after any Review→Build or Check→Build loop, stale passing rows from
-  the abandoned run still counted toward `gate check`'s test and scenario-coverage
-  totals.
-  (A parallel Review+Check launch was built and then **reverted before release** — it
-  saved one stage of wall-clock but left Check's results stale whenever a human requested
-  changes at the Review gate, and it bought that latency with a kill-before-clear
-  ordering rule and an auto-fix restriction. Review and Check remain sequential, each
-  with its own summary box and its own human gate.)
-- **The prompt surface is down 43.7%** (372,967 → 209,863 bytes across `agents/`,
-  `commands/`, `reference/`, `skills/*/SKILL.md`) — `reference/plan.md` alone drops from
-  1,086 to 224 lines. Every doc was rewritten as an outcome brief (what you produce, what
-  the gate checks, the non-obvious rules) rather than numbered phase choreography; nothing
-  a gate mechanically checks lost its prompt-side instruction. Verified against the
-  seeded-defect fixtures before and after: 3/3 caught post-cut (up from 1/3 pre-cut in
-  this environment).
-  **Measured, so the claim stays honest:** a controlled A/B on Opus 5 (same fixture,
-  same feature, 6 runs per arm, old 1,086-line prompt vs new 224-line prompt) shows the
-  diet did **not** make the Plan stage faster — 384s vs 388s median, inside noise.
-  What it actually buys is **money: a Plan run costs $1.74 median instead of $3.37, a
-  48% reduction** (mean $1.81 vs $3.09, −41%), with 13% fewer output tokens — while
-  holding quality: equal blast-radius recall, slightly more scenarios (13 vs 12), and
-  exactly the three artifacts the gate reads in 3 of 3 runs where the old prompt always
-  wrote 6. Full data: `docs/evidence/opus5-plan-prompt-ab.md`.
-- **`/temper:pack`'s Step 5a discovery scan is fixed and extracted** to
-  `scripts/pack-discover.py`: deduplicated targets, per-command descriptions (not the
-  parent plugin's description repeated), a deterministic install-path selection, bounded
-  globs, and the dead exclusion list removed. The documented-but-never-implemented
-  `.temper/pack-manifest.json` cache is removed from the docs rather than built — it
-  never existed on disk after 7 major versions.
-- **Cursor IDE support is removed entirely** — the archived `.cursor/` export,
-  `scripts/generate-cursor.sh`, `scripts/install-cursor.sh`, the validator's parity
-  assertion, and every install doc pointing at them. The export had silently been frozen
-  at v6.0.1 by a generator bug and drifted three major versions behind the plugin; an
-  archived-but-shipped copy misrepresents what Cursor users actually get. Cursor support
-  will return in a better form (tracked separately) rather than as a stale derived tree.
+- **The Eval stage is gone** — agent, command, reference doc, `skills/eval-judge/`,
+  `templates/evalset.json`, and the `eval:` config block, deleted rather than disabled.
+  `temper gate eval` exits non-zero; Check advances straight to the commit gate.
+  **Migration: nothing to do.** A stale `eval:` config block and a stale `"eval"` key in
+  `gates.json` are both inert, and an in-flight run's `build-state.json` is healed in
+  place on the first CLI call. Temper's own `evals/` regression harness is a different
+  thing with the same name and is untouched, except that `run-wiring-smoke.sh` drops its
+  probe of the removed stage.
+- **Review and Check run on Sonnet**, not Haiku — the two gates carrying the most
+  judgment. `haiku` no longer appears in the prompt surface.
+- **The prompt surface is down 43.7%** (372,967 → 209,863 bytes); `reference/plan.md`
+  alone goes from 1,086 to 224 lines, with nothing a gate checks losing its prompt-side
+  instruction. **Measured, not asserted** (6 runs per arm on Opus 5, same fixture):
+  a Plan run costs **$1.74 median instead of $3.37, −48%**, with equal blast-radius
+  recall, slightly more scenarios, and exactly the three artifacts the gate reads in 3
+  of 3 runs where the old prompt always wrote 6. It is **not** faster — 384s vs 388s.
+  Data: `docs/evidence/opus5-plan-prompt-ab.md`.
+- **Evidence is cleared when a stage is redone** — new `temper evidence clear`, wired
+  into `temper state loop`. Fixes a long-standing bug: evidence was append-only, so
+  stale rows from an abandoned run still counted toward the next gate. (A parallel
+  Review+Check launch was built and reverted before release — it left Check's results
+  stale when a human requested changes at the Review gate. The two stages remain
+  sequential, each with its own gate.)
+- **`/temper:pack` discovery is fixed and extracted** to `scripts/pack-discover.py`:
+  deduplicated targets, per-command descriptions, deterministic install-path selection,
+  bounded globs. The documented-but-never-written `.temper/pack-manifest.json` cache is
+  removed from the docs rather than built.
+- **Cursor support is removed** — the `.cursor/` export and its two scripts. A generator
+  bug had silently frozen it at v6.0.1, three major versions behind; shipping it
+  misrepresented what Cursor users got. It will return in a better form.
 
 ## v7.0.1 — Fixes
 

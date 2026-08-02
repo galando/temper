@@ -96,9 +96,7 @@ Most AI tools answer only the third. Temper answers all three.
 
 ### IDE Support
 
-| Feature | What It Does |
-|---------|-------------|
-| **Claude Code** | Native plugin via marketplace. Skills, commands, agents, MCP integration |
+Claude Code, as a native plugin via the marketplace — skills, commands, agents, and MCP integration.
 
 ## IDD + BDD + TDD: Three Layers, One File
 

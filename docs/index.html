@@ -955,8 +955,16 @@
       </div>
     </div>
 
-    <p style="text-align: center; margin-top: 1.5rem;">
+    <p style="text-align: center; margin-top: 1.5rem; color: var(--fg-muted); font-size: 0.9rem;">
+      Claims here are measured, not asserted — including the ones that came out
+      unflattering. v8's prompt rewrite cut the cost of a Plan run 48% and held quality,
+      but it did <em>not</em> make it faster, and the changelog says so.
+    </p>
+
+    <p style="text-align: center; margin-top: 1rem;">
       <a href="https://github.com/galando/temper/tree/main/docs/evidence" style="color: var(--accent); font-weight: 500;">See all evidence →</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/galando/temper/blob/main/docs/evidence/opus5-plan-prompt-ab.md" style="color: var(--fg-muted); font-size: 0.9rem;">Prompt A/B data</a>
       &nbsp;·&nbsp;
       <a href="https://github.com/galando/temper/tree/main/docs/evidence/benchmark.md" style="color: var(--fg-muted); font-size: 0.9rem;">Benchmark methodology</a>
     </p>
@@ -1269,6 +1277,13 @@
         <div class="command-content">
           <h4>/temper:status</h4>
           <p>Quality metrics dashboard</p>
+        </div>
+      </div>
+      <div class="command">
+        <span class="command-icon">🌱</span>
+        <div class="command-content">
+          <h4>/temper:init</h4>
+          <p>Seed project config (idempotent)</p>
         </div>
       </div>
       <div class="command" style="background: var(--accent-soft); border-color: var(--accent);">

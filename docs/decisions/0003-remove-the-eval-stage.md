@@ -75,6 +75,8 @@ it is not (see ADR-0004): a stale `eval:` block in a user's config is never read
 - The four generated `.cursor/` eval artifacts need no explicit delete: `generate-cursor.sh`
   does `rm -rf` on the output directory before rebuilding. The *assertions* in
   `validate-plugin.sh:222-234` do need removing, in the same commit.
+  *(Moot as of v8.0.0: Cursor support and its generator were removed later in the same
+  release. Left as written — this records the decision as it was made.)*
 
 ## References
 
