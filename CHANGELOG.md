@@ -10,8 +10,8 @@ surface was written for an older model generation — long, prescriptive, step-n
 choreography. This release rewrites it as outcome briefs, removes two things that were
 costing every run without earning it, and measures the result rather than asserting it:
 an A/B on Opus 5 shows the shorter prompts hold plan quality (equal blast-radius recall,
-slightly more scenarios) at a fifth of the length, while the pipeline's actual speedups
-come from removing a stage and parallelising Review+Check.
+slightly more scenarios) at a fifth of the length, while the pipeline's actual saving comes from
+removing a stage and from spending far fewer tokens on every run.
 
 - **The Eval stage is gone.** `agents/eval.md`, `commands/eval.md`, `reference/eval.md`,
   `skills/eval-judge/`, `templates/evalset.json`, and the `eval:` config block are
@@ -31,13 +31,17 @@ come from removing a stage and parallelising Review+Check.
 - **Review and Check now run on Sonnet**, not Haiku — `agents/review.md`,
   `agents/check.md`, and their launch blocks in `commands/temper.md` all say
   `model: sonnet`. `haiku` no longer appears anywhere in the prompt surface.
-- **Review and Check launch in parallel** after the Build gate (both read independent
-  inputs — Review the diff, Check the validation pipeline) instead of sequentially,
-  saving a full stage of wall-clock on every run. Gate evaluation stays strictly ordered
-  (`gate review` before `gate check`) so verdict semantics are unchanged. A Review FAIL
-  stops the in-flight Check background agent before looping back, and evidence for a
-  stage being redone is now auto-cleared (`temper evidence clear`, wired into
-  `temper state loop`) so a discarded run's evidence can never inflate a later gate.
+- **Evidence for a stage being redone is now auto-cleared** — new
+  `temper evidence clear --stage S`, wired into `temper state loop`, so a discarded run's
+  rows can never inflate a later gate's count. This fixes a long-standing bug: evidence
+  was append-only, so after any Review→Build or Check→Build loop, stale passing rows from
+  the abandoned run still counted toward `gate check`'s test and scenario-coverage
+  totals.
+  (A parallel Review+Check launch was built and then **reverted before release** — it
+  saved one stage of wall-clock but left Check's results stale whenever a human requested
+  changes at the Review gate, and it bought that latency with a kill-before-clear
+  ordering rule and an auto-fix restriction. Review and Check remain sequential, each
+  with its own summary box and its own human gate.)
 - **The prompt surface is down 43.7%** (372,967 → 209,863 bytes across `agents/`,
   `commands/`, `reference/`, `skills/*/SKILL.md`) — `reference/plan.md` alone drops from
   1,086 to 224 lines. Every doc was rewritten as an outcome brief (what you produce, what
@@ -51,8 +55,8 @@ come from removing a stage and parallelising Review+Check.
   inside run-to-run noise. What it did buy: equal blast-radius recall, slightly more
   scenarios (median 13 vs 12), and the intended 3-artifact output in 2 of 3 runs where
   the old prompt always wrote 6 (three of which no gate reads) — at 20% the prompt
-  length. The pipeline's real speedups this release are structural: one fewer stage and
-  Review+Check in parallel. Full data: `docs/evidence/opus5-plan-prompt-ab.md`.
+  length. The pipeline's real saving this release is structural: one fewer stage, and
+  43.7% fewer prompt tokens on every stage of every run. Full data: `docs/evidence/opus5-plan-prompt-ab.md`.
 - **`/temper:pack`'s Step 5a discovery scan is fixed and extracted** to
   `scripts/pack-discover.py`: deduplicated targets, per-command descriptions (not the
   parent plugin's description repeated), a deterministic install-path selection, bounded

@@ -1,5 +1,5 @@
 ---
-description: "Unified SDLC command: plan → design? → build → review+check (parallel) → commit, gated by the temper CLI"
+description: "Unified SDLC command: plan → design? → build → review → check → commit, gated by the temper CLI"
 argument-hint: "<feature-description>"
 ---
 
@@ -33,8 +33,8 @@ ORCHESTRATOR (this file)
   +-- Agent(agents/plan.md)    -> plan gate  -> temper gate plan
   +-- Agent(agents/design.md)  -> design gate (medium/complex only)
   +-- Agent(agents/build.md)   -> build gate  -> temper gate build
-  +-- Agent(agents/review.md)  -\
-  +-- Agent(agents/check.md)   -/  launched together (Decision 5) -> gate review, then gate check
+  +-- Agent(agents/review.md)  -> review gate -> temper gate review
+  +-- Agent(agents/check.md)   -> check gate  -> temper gate check
   |
   +-- temper gate commit -> commit
 ```
@@ -46,9 +46,9 @@ means `$CLAUDE_PLUGIN_ROOT/scripts/temper`.
 ## State
 
 `$TEMPER state` owns `.temper/build-state.json` — never hand-write it. When a step calls
-for more than one `$TEMPER` invocation in a row (state/evidence calls only — never `gate`,
-see the parallel-launch rule below), batch them into a single Bash tool call, one shell
-command per line — they're sequential anyway, and it's one round-trip instead of several.
+for more than one `$TEMPER` invocation in a row (state/evidence calls only, never `gate`),
+batch them into a single Bash tool call, one shell command per line — they're sequential
+anyway, and it's one round-trip instead of several.
 
 - **Start:** `$TEMPER state init {slug} --command temper` (creates it, `stage: started`,
   branch `feature/{slug}`).
@@ -88,22 +88,15 @@ Never re-derive gate logic here or in a stage prompt — a gate mechanics change
 
 When a gate FAILs and the user selects "Loop back":
 
-1. **If a Review+Check parallel launch is in flight and this is a Review FAIL:**
-   `TaskStop` the Check background agent **first** — synchronously, before step 2 — so no
-   write from it can land after the evidence clear below. This is the kill-before-clear
-   ordering (Decision 7); doing the clear before the stop reopens the exact bug it fixes.
-2. `$TEMPER state loop {from} {to} --reason "<why>"` — this enforces
+1. `$TEMPER state loop {from} {to} --reason "<why>"` — this enforces
    `loops.max-per-type` (default 2), prints `BLOCKED` (exit 1) once the budget is spent,
    and (as of v8) auto-clears evidence for `{to}` and every stage downstream of it in
    the sequence — a stale row from the stage being redone must not survive to inflate
    the next gate's count. If blocked, don't offer the loop option again this run; fall
    through to Override / Save.
-3. **Backstop:** immediately before re-launching any stage after a loop, run
-   `$TEMPER evidence clear --stage {s}` for that stage regardless — belt-and-suspenders
-   in case step 1's kill was missed or raced.
-4. Re-launch the upstream stage's Agent (same template as its first launch), adding one
+2. Re-launch the upstream stage's Agent (same template as its first launch), adding one
    line to its prompt: *"Feedback re-entry: {reason}. Fix this, then continue."*
-5. When it returns, re-run the downstream gate that triggered the loop.
+3. When it returns, re-run the downstream gate that triggered the loop.
 
 That's the whole mechanism — there is no separate "loop cost tier" or context-size
 branching in v7+. A loop is a normal stage re-launch. Build→Plan is the one exception:
@@ -230,53 +223,45 @@ plan infeasible — human-driven, no circuit breaker, max 1 per run) / Override 
 
 ---
 
-## Stage 3: Review + Check (parallel, Decision 5)
+## Stage 3: Review
 
-Review reads the diff; Check runs the validation pipeline. Neither consumes the other's
-output, so both launch **in the same turn as background agents** — this saves a full
-stage of wall-clock latency on every run, not just this one. **Parallelism is in agent
-execution only, never in gate evaluation:** the two `$TEMPER gate` calls below must never
-be backgrounded or run inside one `&`-parallel shell invocation — that is the one way to
-corrupt `.temper/gates.json`'s read-modify-write. Evidence files are safe to write
-concurrently (`review.json` and `check.json` are different files, no lock needed).
-
-Launch both:
+Launch:
 
 ```
-Use the Agent tool, model: sonnet, prompt (background):
+Use the Agent tool, model: sonnet, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/review.md exactly. Spec: {spec_path from state}."
+```
 
-Use the Agent tool, model: sonnet, prompt (background):
+Summary box: files changed, findings by severity, security hot paths, intent-validation
+verdict, scenario coverage.
+
+Gate: `$TEMPER gate review` (zero open findings at or above `review.block-on`). An
+**"Architecture Depth Review"** option is also always available — runs the 5-dimension
+module-depth analysis (seams, adapters, locality, leverage, deletion test) on changed
+files and folds `[ARCH-DEPTH]` findings into the summary before re-showing the gate.
+
+**On Continue:** `$TEMPER state advance review_complete check`, launch Check.
+
+---
+
+## Stage 4: Check
+
+Launch:
+
+```
+Use the Agent tool, model: sonnet, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/check.md exactly. Spec: {spec_path from state}."
 ```
 
-**Working-tree hazard:** `reference/check.md` requires Check to *propose* auto-fixes
-during this window and never apply them — Check rewriting files while Review is reading
-the diff would invalidate Review's line numbers. Application (if any) is deferred until
-after `gate review` is recorded.
+Summary box: compile/test/lint/security results, coverage %, scenario verification.
 
-When Review returns, show its summary box (files changed, findings by severity, security
-hot paths, intent-validation verdict, scenario coverage) and run `$TEMPER gate review`
-(zero open findings at or above `review.block-on`) to completion before touching Check.
-An **"Architecture Depth Review"** option is also always available on the Review gate —
-runs the 5-dimension module-depth analysis (seams, adapters, locality, leverage, deletion
-test) on changed files and folds `[ARCH-DEPTH]` findings into the summary before
-re-showing the gate.
+Gate: `$TEMPER gate check` (tests pass, coverage >= threshold, every `intent.md` scenario
+traced to a test by name — this is the gate that catches the README's rate-limiting
+story). On a clean pass, Check may also have written `{spec_path}/config-suggestions.json`
+— if present, offer a **"Review config suggestions"** option before Continue: show each,
+Accept (write it into CLAUDE.md/AGENTS.md) / Reject / Defer, then re-show the gate.
 
-- **Review PASS:** `$TEMPER state advance review_complete check` — record the transition
-  before evaluating `gate check`, so an interrupted run resumes at Check instead of
-  relaunching all of Stage 3. Then wait for Check if it hasn't returned yet, show its summary box
-  (compile/test/lint/security results, coverage %, scenario verification), then run
-  `$TEMPER gate check` (tests pass, coverage >= threshold, every `intent.md` scenario
-  traced to a test by name — this is the gate that catches the README's rate-limiting
-  story). On a clean pass, Check may also have written `{spec_path}/config-suggestions.json`
-  — if present, offer a **"Review config suggestions"** option before Continue: show each,
-  Accept (write it into CLAUDE.md/AGENTS.md) / Reject / Defer, then re-show the gate.
-  **On Continue:** `$TEMPER state advance check_complete commit`, proceed to Commit.
-- **Review FAIL:** follow the Feedback Loops kill-before-clear ordering above —
-  `TaskStop` the Check background agent first, *then* loop. The Check run is discarded;
-  its evidence (if any landed) is cleared by the loop's auto-clear, not left to inflate a
-  later `gate check`.
+**On Continue:** `$TEMPER state advance check_complete commit`, proceed to Commit.
 
 ---
 

@@ -145,7 +145,7 @@ justifications a gate doesn't need but a re-launched agent does.
 | Design | intent.md, plan.md | design.md |
 | Build | tasks.md, intent.md, review/check-context.json (on re-entry) | build-context.json |
 | Review | intent.md, `git diff`, build-context.json, learning.json | review-context.json, learning.json |
-| Check | intent.md, review-context.json (opportunistic — Review and Check launch in parallel, so Check usually starts before review-context.json exists; loaded only if present, e.g. on a Check re-run after a loop) | check-context.json |
+| Check | intent.md, review-context.json | check-context.json |
 | Status | metrics.json, review-memory.json, learning.json, gates.json, evidence/ | — |
 
 **Cleanup:** `$TEMPER state clear` (on commit) removes `*-context.json`, `gates.json`,
@@ -166,7 +166,6 @@ with failure context.
   infeasibility context and re-approves. Human-driven only — no circuit breaker, max 1
   per run. Context: `build-context.json`'s infeasibility reason.
 
-**Circuit breaker + evidence clearing:** full mechanics (budget, auto-clear, the
-parallel-launch kill-before-clear ordering) live in `commands/temper.md` → "Feedback
-Loops" — not restated here. A loop is always a normal stage re-launch that reads the
+**Circuit breaker + evidence clearing:** full mechanics (budget, auto-clear) live in
+`commands/temper.md` → "Feedback Loops" — not restated here. A loop is always a normal stage re-launch that reads the
 relevant `*-context.json` at startup.

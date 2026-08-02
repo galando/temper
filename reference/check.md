@@ -168,9 +168,7 @@ check_complete`, `next_stage: commit`, report "Run /temper when ready to continu
 - **Coverage:** name the uncovered files/functions, prioritize recently-changed public
   methods; never suggest a trivial test just to move the number.
 - **Lint/type:** group by violation type; offer auto-fix only if the tool supports it
-  (`eslint --fix`, `ruff format`) — **never apply it during a parallel Review+Check
-  window** (`commands/temper.md` Stage 3): propose it, apply only after `gate review` is
-  recorded, so Review's line numbers stay valid.
+  (`eslint --fix`, `ruff format`).
 - **Security:** name the CVE, severity, affected dependency; suggest a version bump if
   one fixes it, else note it as an accepted risk with a workaround if one exists.
 - **Missing tool:** skip that level, note the install command — never fail the whole
