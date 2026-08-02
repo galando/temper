@@ -895,12 +895,12 @@
   <section id="capabilities">
     <div class="section-label">Capabilities</div>
     <h2 class="section-title">The full SDLC, automated</h2>
-    <p class="section-desc">Temper runs the complete software development lifecycle — plan, design, build, review, check, eval — with stage gates computed by a deterministic CLI, not asserted by a model.</p>
+    <p class="section-desc">Temper runs the complete software development lifecycle — plan, design, build, review, check — with stage gates computed by a deterministic CLI, not asserted by a model.</p>
 
     <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
       <div class="why-item">
         <h4>Deterministic Gates</h4>
-        <p>Every gate — Plan, Build, Review, Check, Eval, Commit — is a PASS/FAIL computed by <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">temper gate</code> from an evidence ledger. <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code> is physically blocked while any gate is red and unoverridden.</p>
+        <p>Every gate — Plan, Build, Review, Check, Commit — is a PASS/FAIL computed by <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">temper gate</code> from an evidence ledger. <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code> is physically blocked while any gate is red and unoverridden.</p>
       </div>
       <div class="why-item">
         <h4>Feedback Loops</h4>
@@ -1212,7 +1212,7 @@
   <section id="commands">
     <div class="section-label">Commands</div>
     <h2 class="section-title">Unified Command</h2>
-    <p class="section-desc">One command runs the full SDLC: plan → design → build → review → check → eval, with stage gates, feedback loops, and a mechanical commit gate that blocks <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code> until every gate is green.</p>
+    <p class="section-desc">One command runs the full SDLC: plan → design → build → review → check, with stage gates, feedback loops, and a mechanical commit gate that blocks <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code> until every gate is green.</p>
 
     <div class="install-card" style="max-width: 600px; margin-bottom: 2rem;">
       <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px;">

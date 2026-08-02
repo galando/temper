@@ -233,10 +233,11 @@ if [[ -f "$CONFIG" ]]; then
         fi
     done < "$CONFIG"
 fi
-IFS=$'\n' read -r -d '' -a CAP_NAMES_SORTED < <(printf '%s\n' "${CAP_NAMES[@]}" | sort -u && printf '\0') || true
+IFS=$'\n' read -r -d '' -a CAP_NAMES_SORTED < <(printf '%s\n' "${CAP_NAMES[@]:-}" | sort -u && printf '\0') || true
 unset IFS
 
-for name in "${CAP_NAMES_SORTED[@]}"; do
+for name in "${CAP_NAMES_SORTED[@]:-}"; do
+    [[ -z "$name" ]] && continue
     target="$RULES_DIR/temper-capability-$name.mdc"
     desc="Temper capability: $name"
     ref_name=$(cap_to_ref "$name")

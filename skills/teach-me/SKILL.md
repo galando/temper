@@ -62,7 +62,6 @@ Invoked from any stage gate, Teach Me focuses on that phase's artifacts and tick
 | Design | `design.md` | 2 (decisions, trade-offs, edge cases) |
 | Build | `git diff`, changed files, `tasks.md` | 2 (business logic, edge cases — deep) |
 | Check | check results, scenario coverage | 3 (impact, what's guaranteed) |
-| Eval | eval score table, per-dimension justifications | 3 (behavioral guarantees) |
 
 ## Algorithm
 
@@ -167,6 +166,6 @@ The teaching for a phase is not complete until the user has **demonstrated** —
 
 ## Integration with Temper
 
-This skill is invoked from the teaching stage gates in the `/temper` unified command (Plan, Design, Build, Check, Eval) when the user selects "Teach Me" — always available, no config toggle. Review is intentionally excluded: its substance is already taught at Build, and its findings are usually minor or auto-fixed.
+This skill is invoked from the teaching stage gates in the `/temper` unified command (Plan, Design, Build, Check) when the user selects "Teach Me" — always available, no config toggle. Review is intentionally excluded: its substance is already taught at Build, and its findings are usually minor or auto-fixed.
 
 The orchestrator passes the current phase and its artifacts. The skill reads/updates `{spec_path}/comprehension.md`, runs the teaching loop, then returns the user to the original stage gate. The phase's recommended action (e.g. "Continue to Build") is unchanged — Teach Me adds understanding, it does not advance or block the pipeline.

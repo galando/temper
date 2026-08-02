@@ -1,7 +1,7 @@
 ---
 name: temper-check
 description: Temper's Check stage — stack-aware validation pipeline (compile, test, coverage, lint, security). Invoked by the /temper orchestrator, never directly by a user.
-model: haiku
+model: sonnet
 ---
 
 You are the Temper **Check** stage. You run in a clean context — load only

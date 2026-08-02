@@ -159,7 +159,7 @@ else
   done
 fi
 
-# --- Phase 1 Verification (v5.5.0): eval + hooks assertions ---
+# --- Phase 1 Verification (v5.5.0): hooks assertions ---
 # These cover the new files added by docs/plans/phase-1-verification.md.
 
 # Hooks pack: rules.md present + settings.hooks.json valid JSON
@@ -208,34 +208,25 @@ else
 fi
 if [[ -f "$REPO_ROOT/scripts/tests/test-temper.sh" ]]; then ok; else fail "scripts/tests/test-temper.sh missing"; fi
 
-# Evalset template
-if [[ -f "$REPO_ROOT/templates/evalset.json" ]]; then
-  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$REPO_ROOT/templates/evalset.json" 2>/dev/null; then
-    ok
-  else
-    fail "templates/evalset.json is not valid JSON"
-  fi
+# --- pack-discover.py (v8): /temper:pack's Step 5a discovery scan, extracted from a
+# prompt-embedded script into a testable one ---
+PACK_DISCOVER="$REPO_ROOT/scripts/pack-discover.py"
+if [[ ! -f "$PACK_DISCOVER" ]]; then
+  fail "scripts/pack-discover.py missing"
+elif ! python3 -c "import ast; ast.parse(open('$PACK_DISCOVER').read())" 2>/dev/null; then
+  fail "scripts/pack-discover.py has a syntax error"
 else
-  fail "templates/evalset.json missing"
+  ok
 fi
 
-# Cursor parity: derived eval command + rules + hooks pack rule exist (generator output)
-for cf in .cursor/commands/temper-eval.md .cursor/rules/temper-ref-eval.mdc .cursor/rules/temper-pack-hooks.mdc; do
+# Cursor parity: hooks pack rule exists (generator output)
+for cf in .cursor/rules/temper-pack-hooks.mdc; do
   if [[ -f "$REPO_ROOT/$cf" ]]; then ok; else fail "$cf missing (run scripts/generate-cursor.sh)"; fi
 done
 
-# Cursor parity: the eval reference rule carries the current version in its frozen-note
-# source path (extends the G-2 derived-content pattern to the new reference).
-EVAL_RULE="$REPO_ROOT/.cursor/rules/temper-ref-eval.mdc"
-if [[ -f "$EVAL_RULE" ]]; then
-  if grep -q "Source: reference/eval.md" "$EVAL_RULE" 2>/dev/null; then
-    ok
-  else
-    fail ".cursor/rules/temper-ref-eval.mdc source path mismatch"
-  fi
-fi
-
-# --- Eval fixtures (v7 — Move 3, docs/plans/v7-deterministic-spine.md) ---
+# --- Eval fixtures (v7 — Move 3, docs/plans/v7-deterministic-spine.md) — this is
+# Temper's OWN seeded-defect regression harness (evals/), unrelated to the removed
+# /temper:eval stage despite the name collision. It stays exactly as it was.
 for h in evals/run-fixture.sh evals/run-all.sh evals/run-wiring-smoke.sh; do
   p="$REPO_ROOT/$h"
   if [[ ! -f "$p" ]]; then fail "$h missing"

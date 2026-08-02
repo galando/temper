@@ -3,6 +3,54 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v8.0.0 — Opus 5 Refresh: shorter prompts, no Eval stage, faster pipeline
+
+Breaking release: a shipped stage and a shipped config key are removed. The Plan/Design
+model (Opus 5) behaves differently than the generation these prompts were written for —
+it degrades under long prescriptive choreography and does better with a short brief
+stating the outcome and the few non-obvious constraints. This release rewrites the prompt
+surface for that model and removes two things that were costing every run without
+earning it.
+
+- **The Eval stage is gone.** `agents/eval.md`, `commands/eval.md`, `reference/eval.md`,
+  `skills/eval-judge/`, `templates/evalset.json`, and the `eval:` config block are
+  deleted — not disabled. `temper gate eval` now exits non-zero with a usage error;
+  `temper gate check` advances straight to the commit gate.
+  **Migration — no action needed:** a stale `eval:` block in an existing
+  `.claude/temper.config` is inert (unknown keys are ignored) and a stale `"eval"` key in
+  an existing `.temper/gates.json` is simply never visited. An in-flight run's
+  `build-state.json` holding `next_stage: "eval"` or `stage: "eval_complete"` is healed
+  automatically, in place, the first time any `temper` CLI command touches it — no
+  command to run yourself.
+  `evals/` — Temper's own seeded-defect regression harness (three fixtures + a wiring
+  smoke test) — is a different thing with the same name and is untouched, **except**
+  `evals/run-wiring-smoke.sh`, which drops its `/temper:eval` probe and eval-gate/
+  eval-evidence assertions (approved amendment: a removed stage can't be probed for
+  wiring). `plan`/`build` wiring coverage in that harness is unchanged.
+- **Review and Check now run on Sonnet**, not Haiku — `agents/review.md`,
+  `agents/check.md`, and their launch blocks in `commands/temper.md` all say
+  `model: sonnet`. `haiku` no longer appears anywhere in the prompt surface.
+- **Review and Check launch in parallel** after the Build gate (both read independent
+  inputs — Review the diff, Check the validation pipeline) instead of sequentially,
+  saving a full stage of wall-clock on every run. Gate evaluation stays strictly ordered
+  (`gate review` before `gate check`) so verdict semantics are unchanged. A Review FAIL
+  stops the in-flight Check background agent before looping back, and evidence for a
+  stage being redone is now auto-cleared (`temper evidence clear`, wired into
+  `temper state loop`) so a discarded run's evidence can never inflate a later gate.
+- **The prompt surface is down 43.7%** (372,967 → 209,863 bytes across `agents/`,
+  `commands/`, `reference/`, `skills/*/SKILL.md`) — `reference/plan.md` alone drops from
+  1,086 to 224 lines. Every doc was rewritten as an outcome brief (what you produce, what
+  the gate checks, the non-obvious rules) rather than numbered phase choreography; nothing
+  a gate mechanically checks lost its prompt-side instruction. Verified against the
+  seeded-defect fixtures before and after: 3/3 caught post-cut (up from 1/3 pre-cut in
+  this environment), in less wall-clock, not more.
+- **`/temper:pack`'s Step 5a discovery scan is fixed and extracted** to
+  `scripts/pack-discover.py`: deduplicated targets, per-command descriptions (not the
+  parent plugin's description repeated), a deterministic install-path selection, bounded
+  globs, and the dead exclusion list removed. The documented-but-never-implemented
+  `.temper/pack-manifest.json` cache is removed from the docs rather than built — it
+  never existed on disk after 7 major versions.
+
 ## v7.0.1 — Fixes
 
 Fix bash 3.2 override crash + state CLI correctness bugs (#69); v7.0.0: The Deterministic Spine — CLI-enforced gates, agents/, prompt diet, self-evals (#68); link Privacy Policy from landing page and README (#67); ci,docs: plugin-directory submission kit + official strict manifest validation in CI (#66)

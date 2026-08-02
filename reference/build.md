@@ -4,436 +4,158 @@ description: "Execute the plan, implementing tasks one-by-one with quality gates
 
 # Build: Execute Plan with Quality Gates
 
-**Goal:** Implement the approved plan, task by task, with TDD and graduated quality gates.
+**Goal:** Implement the approved plan, task by task, with real TDD discipline.
+`agents/build.md` carries the exact `temper evidence add --phase red/green` invocations
+the gate needs; this doc is the methodology behind what to test and in what order.
 
-## Prerequisites
+**Modes:** Standalone (`/temper:build`) runs in the current context, own gate. Agent
+subprocess (from `/temper`) starts clean — no `AskUserQuestion` gate, return the summary,
+the orchestrator owns it. Load `tasks.md`, `intent.md` (if it exists), `plan.md`'s
+Prerequisites/blast-radius section, active packs' `rules.md` (project `.claude/packs/`
+shadows global `~/.claude/packs/` shadows built-in `$CLAUDE_PLUGIN_ROOT/packs/`, kept
+where `phases` is `all` or contains `build`), and `.claude/packs/stacks/{stack}.md` if
+present. Verify you're on a feature branch (auto-create `feature/{spec-slug}` if the git
+pack is enabled and you're on main).
 
-- Approved plan exists (from `/temper:plan`)
-- OR: user provides inline instructions for trivial tasks
+**If no plan exists** (trivial task, direct instructions): detect stack, read active pack
+rules, read related existing code, skip branch verification (the user decides).
 
-## Execution
+## Execute Tasks in Order
 
-### Context Loading
+For each task in `tasks.md`:
 
-This stage may run in two modes:
-- **Standalone** (`/temper:build`) — runs in current context, handles its own gate
-- **Agent subprocess** (from `/temper`) — starts with CLEAN context, only loads what's listed below
+**a. Read context** — existing files, adjacent patterns, conventions.
 
-**Subprocess mode override:** When running as an Agent subprocess, do NOT show AskUserQuestion gates or clear context. Return the build summary to the orchestrator. The orchestrator handles all gate decisions and context transitions.
+**b. Write the test first — priority order, first match wins:**
 
-In both modes, the build methodology is identical.
+1. **`intent.md` exists** → scenario-driven, regardless of whether a TDD pack is
+   enabled: one test per Gherkin scenario minimum, Given→setup, When→action, Then→
+   assertions. If a TDD pack is *also* enabled, intent.md drives WHAT to test and the
+   pack enforces HOW (RED→GREEN→REFACTOR discipline, naming conventions).
+2. **TDD pack enabled, no intent.md** → RED→GREEN→REFACTOR from the pack's rules.
+3. **Neither** → implement without an enforced test-first step.
 
-Files to load at start:
-1. `.temper/specs/{feature}/tasks.md`
-2. `.temper/specs/{feature}/intent.md` (if exists)
-3. `$CLAUDE_PLUGIN_ROOT/reference/build.md` (this file)
-4. `.temper/specs/{feature}/review-context.json` (if exists — loaded when re-entering from feedback loop)
-5. `.temper/specs/{feature}/check-context.json` (if exists — loaded when re-entering from Check failure)
+**c. Implement** the minimal code to pass the test / fulfill the spec.
+**d. Validate** — run the test (must go GREEN) and the task's validation command.
+**e. Checkpoint** — write `.temper/build-state.json` (`last_task_completed`, per-task
+status) and track deviations: a file touched that isn't in `tasks.md` → `unplanned_files`
+with a one-line reason; a task skipped/failed → `skipped_tasks` with a reason; an
+approach that materially differs from the plan (different library/pattern) →
+`approach_changes`. Only track when `tasks.md` exists. The Traceability Check (below)
+reconciles these against each task's `Traced to:` field.
+**f. Simplify** — if the `code-simplifier` agent is available, run it on the files you
+just touched (not the whole codebase); preserve behavior, improve clarity only.
 
-### Step 1: Load Plan
+## Scenario Coverage Gate (BDD enforcement) — blocks the build
+
+If `intent.md` exists: for every `Scenario:`, find or write the test that exercises it
+(match by name/description), and it must PASS. **Any scenario left without a passing
+test means the build cannot proceed.** Report:
 
 ```
-1. Check for .temper/build-state.json
-   - If found: Validate it before offering resume:
-     a. Parseable JSON — if malformed, warn and offer "Start over / Delete / Cancel"
-     b. Valid stage — must be "plan_complete" or "build_complete" (with last_task_completed)
-     c. Spec directory exists — .temper/specs/{spec}/ must exist on disk
-     d. Artifacts exist — tasks.md and intent.md (if listed) must exist
-     e. Timestamp — if updated > 30 days ago, warn about staleness
-   - If valid: Ask user "Resume from Task {last_task_completed + 1}? [Y/n]" (skip in subprocess mode — use build-state.json directly)
-   - If invalid: Show what's wrong, offer "Start over / Delete saved state / Cancel"
-2. Check for active plan in .temper/specs/*/tasks.md
-3. If multiple specs exist, ask user which to execute (skip in subprocess mode — use spec from build-state.json or orchestrator args)
-4. Load tasks.md + quickstart.md (quickstart.md may not exist for Simple features — skip if absent)
-5. Read plan.md for architecture decisions and blast radius (skip if no plan.md — Simple/Medium features)
-6. Read all files listed in plan's "Prerequisites" or "Must Read" sections (skip if no plan.md)
-7. Read active pack rules via the cached manifest, phase-filtered for `build` — see
-   `reference/pack.md` "Cached Pack Manifest" + "Phase Scoping" for the full mechanism
-   (staleness rebuild, phase filter, plugin/skill linking); read stack-specific rules
-   from `.claude/packs/stacks/{detected-stack}.md` if present.
-8. Load .temper/specs/{feature}/intent.md if it exists
-   - Parse scenario names and Given/When/Then blocks
-   - If no intent.md: proceed with current behavior (unchanged)
+Scenario Coverage: X/Y scenarios covered
+ [x] Scenario: User resets password -> PasswordResetTest.test_successful_reset
+ [ ] Scenario: Rate limiting -> MISSING — writing test...
 ```
 
-**Build State Schema:**
+A scenario's `Note:` field picks the testing approach: `unit` (default), `mock`
+(external dependency, verify the interaction), `integration` (write one if test infra
+exists, else mock), `manual` (skip automated coverage, log "requires manual
+verification" — still counts as covered in the tally, flagged with ⚠️ in the report).
+
+Then write the results back into `intent.md`'s `## Scenario Coverage Checklist`:
+`- [x] {Scenario Name} -> {TestClass.test_method}` per passing test (a `- [ ] ... NO
+TEST` line should never survive the gate above — if it does, that's a gate-logic bug,
+not an acceptable output). A test name should contain the scenario name; one test can't
+satisfy two scenarios, but one scenario may need more than one test (happy path +
+variant).
+
+If no `intent.md`: skip this gate, proceed as before.
+
+## Success Criteria Validation (IDD enforcement) — non-blocking
+
+For each success criterion with `Validate: code — {pattern}`: grep for the pattern; ✅ if
+found, WARN "Success criterion not met: {criterion}" if not. `Validate: scenario` is
+already covered by the gate above; `Validate: metric`/`manual` defer to `/temper:review`.
+This is a WARN, not a blocker — report it, don't stop the build over it.
+
+## Traceability Check — non-blocking
+
+If `tasks.md` has `Traced to:` fields: for each unplanned file from the deviation log
+with no justification, WARN "trace to a scenario or mark as infrastructure"; for each
+planned file that was never touched, WARN "is the task complete?". Report `N/M files
+match plan ({D} deviations tracked)`. No `Traced to:` fields → skip (backward
+compatible). This is signal, not a gate — the Scenario Coverage Gate above is the hard
+one.
+
+## Context Output
+
+After the coverage gate passes, write `build-context.json`:
 
 ```json
-{
-  "stage": "build_complete",
-  "spec": "{feature-name}",
-  "spec_path": ".temper/specs/{feature-name}",
-  "original_args": "{user's original feature description}",
-  "next_stage": "review",
-  "artifacts": ["intent.md", "tasks.md"],
-  "started": "2026-03-10T10:00:00Z",
-  "last_task_completed": 3,
-  "tasks": [
-    { "id": 1, "status": "completed", "timestamp": "..." },
-    { "id": 2, "status": "completed", "timestamp": "..." },
-    { "id": 3, "status": "in_progress", "timestamp": "..." }
-  ],
-  "deviations": {
-    "unplanned_files": [],
-    "skipped_tasks": [],
-    "approach_changes": []
-  },
-  "updated": "{ISO timestamp}"
-}
+{ "version": 1, "stage": "build", "timestamp": "{ISO timestamp}",
+  "files_created": [], "files_modified": [],
+  "test_results": { "total": {N}, "passed": {N}, "failed": {N} },
+  "deviations": { "unplanned_files": [], "skipped_tasks": [], "approach_changes": [] },
+  "scenarios_covered": [], "tasks_completed": {N}, "tasks_total": {N} }
 ```
 
-**If no plan exists (trivial task):**
+## Feedback Re-entry
+
+If `review-context.json` or `check-context.json` exists in the spec dir: read it, focus
+fixes on the files/issues it names (for Check, read each `test_failures[]` entry's test
+file + implementation file and fix the actual cause), then delete the file — it's stale
+once consumed.
+
+**Infeasible plan:** if the plan itself can't work (an API doesn't exist, the
+architecture is incompatible), add "Revise plan" as a build-gate option, write
+`build-context.json` with the infeasibility reason — the orchestrator routes back to
+Plan. This is human-driven, no circuit breaker, max once per run.
+
+## Post-Implementation
+
+Standalone mode: run the full suite, show the summary box, then `AskUserQuestion` —
+"Continue to Review (Recommended)" / "Save for later" (+ "Revise plan" per above when
+applicable). A change typed via "Other" is never approval — make the edit, re-show this
+same gate; the user must explicitly pick "Continue" to advance. Subprocess mode: skip the
+gate, return the summary.
 
 ```
-1. User gave direct instructions → treat as single-task build
-2. Detect stack (same as /temper:check Step 1)
-3. Read active pack rules (phase-filtered, manifest-driven — see Step 1 item 7 above; same {build} filter applies)
-4. Read related existing code before implementing
-5. Skip Step 2 (branch) — user decides if feature branch needed
++-----------------------------------------------------------+
+| BUILD — {Feature Name}                                    |
++-----------------------------------------------------------+
+| Tasks: {N}/{N} complete   Tests: {N} added, all passing    |
+| Files: {N} created, {N} modified   Coverage: {X}% (if known)|
+| Deviations: none, or list (unplanned/skipped/approach)     |
++-----------------------------------------------------------+
 ```
 
-### Step 2: Verify Branch
+**On Continue:** standalone loads only changed files (`git diff --name-only`) into
+context for Review. Mark the spec header `**Status:** completed` /
+`**Completed:** {date}` if `intent.md` exists. Cleanup of `build-state.json` happens
+after commit, not here.
 
-> Note: When running as an Agent subprocess from `/temper`, the orchestrator may have already created the branch at the plan gate. `git branch --show-current` will confirm.
+## Quality Gates (pattern → pack rule → level)
 
-```
-1. Run: git branch --show-current
-2. If on main/master:
-   - Check if git pack is enabled in .claude/temper.config
-   - If git pack enabled: auto-create feature/{spec-slug} branch
-   - If no git pack: ask user to create feature branch
-   - Suggest name: feature/{ticket}-{description}
-3. If already on feature branch: proceed
-```
+Apply the temper-core skill for SUGGEST/WARN/BLOCK definitions. Representative mapping —
+the packs are the source of truth, this is illustrative, not exhaustive:
 
-### Step 3: Execute Tasks (in order)
-
-For each task in tasks.md:
-
-**a. Read context** - Read existing files, understand patterns, check adjacent code
-**b. Write test first (priority order — first match wins)**
-
-   1. **intent.md exists** → scenario-driven testing (regardless of TDD pack)
-      - Each test maps to a Gherkin scenario by name
-      - Given block → test setup
-      - When block → action under test
-      - Then block → assertions
-      - One test per scenario minimum (some scenarios may need multiple tests)
-      - When both intent.md AND TDD pack exist: intent.md drives WHAT to test, TDD pack enforces HOW (RED-GREEN-REFACTOR discipline, test conventions)
-   2. **TDD pack enabled, no intent.md** → RED-GREEN-REFACTOR from pack rules
-   3. **Neither** → implement without enforced test-first
-**c. Implement** - Write minimal code to pass the test or fulfill spec
-**d. Validate** - Run test → GREEN, run task validation command
-**e. Checkpoint + deviation tracking** - Write to `.temper/build-state.json`:
-
-   ```json
-   {
-     "stage": "build_complete",
-     "spec": "{feature-name}",
-     "spec_path": ".temper/specs/{feature-name}",
-     "original_args": "{from prior state}",
-     "next_stage": "review",
-     "artifacts": ["intent.md", "tasks.md"],
-     "last_task_completed": {task_number},
-     "tasks": [...],
-     "deviations": {
-       "unplanned_files": ["path/to/file — reason"],
-       "skipped_tasks": [{ "id": 3, "name": "...", "reason": "..." }],
-       "approach_changes": [{ "id": 2, "planned": "...", "actual": "...", "reason": "..." }]
-     },
-     "started": "{from prior state or current timestamp on first checkpoint}",
-     "updated": "{timestamp}"
-   }
-   ```
-
-   **Deviation tracking rules:**
-   - Files created/modified that are NOT listed in tasks.md → add to "unplanned_files" with one-line reason
-   - Tasks skipped or failed → add to "skipped_tasks" with reason
-   - Tasks where approach materially differs from plan (e.g., different library, different pattern) → add to "approach_changes"
-   - Only track if tasks.md exists (trivial builds have no plan to deviate from)
-   - Step 3.75 (Traceability Check) will reconcile these deviations against tasks.md "Traced to:" fields
-
-**f. Simplify** - After each task, if the `code-simplifier:code-simplifier` agent is available, run it on changed files:
-   - This agent is optional — not all installations have it
-   - If available: run on files you created or modified during this task
-   - Focus on clarity, consistency, and maintainability
-   - Preserve all functionality — simplification must not change behavior
-   - Only simplify files you touched in the current task, not the entire codebase
-   - If not available: skip this step, continue to checkpoint
-
-### Step 3.5: Scenario Coverage Gate (BDD Enforcement)
-
-After all tasks complete, before Step 4:
-
-```
-If intent.md exists:
-  1. Read all scenarios from intent.md
-  2. For each scenario:
-     a. Find test(s) by name/description match
-     b. If no test found → write test + implement if needed
-     c. Run the test → must PASS
-  3. If any scenario has no passing test → build cannot proceed
-  4. Report:
-     "Scenario Coverage: X/Y scenarios covered
-      ✅ Scenario: User resets password → PasswordResetTest.test_successful_reset
-      ✅ Scenario: Expired token → PasswordResetTest.test_expired_token
-      ❌ Scenario: Rate limiting → MISSING — writing test..."
-
-If no intent.md:
-  Skip gate, proceed to Step 4 as before
-```
-
-### Step 3.6: Success Criteria Validation (IDD Enforcement)
-
-After scenario coverage gate, validate code-based success criteria:
-
-```
-If intent.md exists and has success criteria with Validate: code:
-  1. For each success criterion with Validate: code — {pattern}:
-     a. Grep for the specified pattern/endpoint/config
-     b. If found → ✅ Success criterion met
-     c. If not found → ❌ WARN: "Success criterion not met: {criterion}"
-  2. Report:
-     "Success Criteria Validation: X/Y code criteria met
-      ✅ POST /api/reset exists → found in src/routes/auth.ts:45
-      ❌ Rate limit middleware applied → NOT found"
-  3. Non-blocking — WARN only, does not block build
-
-For Validate: scenario → already covered by Step 3.5
-For Validate: metric/manual → deferred to /temper:review
-```
-
-**Populate Scenario Coverage Checklist in intent.md:**
-After reporting coverage, write the results back to intent.md's "## Scenario Coverage Checklist" section:
-
-```
-1. Find the "## Scenario Coverage Checklist" section in intent.md
-2. Replace placeholder lines with actual scenario-to-test mappings:
-   - [x] {Scenario Name} → {TestClassName.test_method_name} (for passing tests)
-   - [ ] {Scenario Name} → NO TEST (for missing tests - should never occur if gate passed; indicates gate logic bug)
-3. Keep the section header and any existing content, only update the checklist items
-```
-
-This makes intent.md a complete record of what was planned AND what was delivered.
-
-**Scenario-to-test mapping rules:**
-
-- Test name should contain scenario name (snake_case or camelCase)
-- Test description/docstring should reference the Gherkin scenario
-- Multiple tests can map to one scenario (e.g., happy path + variant)
-- One test cannot satisfy multiple scenarios
-
-**Scenario Note handling:**
-Each scenario in intent.md may have a `Note:` field specifying the testing approach:
-
-- `Note: unit` → standard unit test (default if no Note specified)
-- `Note: mock` → test with mocked external dependency, verify interaction
-- `Note: integration` → write integration test if test infra exists, otherwise mock
-- `Note: manual` → skip from automated coverage gate, log as "requires manual verification"
-
-Scenarios marked `manual` count as covered in the gate but are flagged in the report:
-
-```
-Scenario Coverage: 5/5 (4 automated, 1 manual verification needed)
-  ✅ Scenario: User submits form → FormTest.test_submission (automated)
-  ⚠️  Scenario: Email delivered → MANUAL VERIFICATION NEEDED
-```
-
-### Step 3.7: Context Output
-
-After all tasks complete and scenario coverage gate passes, write `build-context.json` to the spec directory:
-
-```json
-{
-  "version": 1,
-  "stage": "build",
-  "timestamp": "{ISO timestamp}",
-  "files_created": ["list of files created"],
-  "files_modified": ["list of files modified"],
-  "test_results": {
-    "total": {N},
-    "passed": {N},
-    "failed": {N}
-  },
-  "deviations": {
-    "unplanned_files": ["list"],
-    "skipped_tasks": ["list"],
-    "approach_changes": ["list"]
-  },
-  "scenarios_covered": ["list of covered scenario names"],
-  "tasks_completed": {N},
-  "tasks_total": {N}
-}
-```
-
-### Feedback Re-entry (when entering from Review or Check loop)
-
-If `review-context.json` exists in the spec directory:
-1. Read it to understand what issues were found
-2. Focus fixes on the specific files/issues listed
-3. After fixing, delete review-context.json (stale)
-
-If `check-context.json` exists in the spec directory:
-1. Read it to understand what test failures occurred
-2. For each test failure in `test_failures` array:
-   - Read the failing test file
-   - Read the implementation file referenced
-   - Fix the issue (test or implementation, as appropriate)
-3. After fixing, delete check-context.json (stale)
-
-### "Revise Plan" Option
-
-At the build gate (Step 4), add a third option when feedback is enabled:
-
-If the build encounters an infeasible plan (e.g., API doesn't exist, architecture incompatible):
-- Add "Revise plan" to the gate options
-- Write build-context.json with infeasibility reasons
-- The orchestrator handles routing back to Plan stage
-
-### Step 3.75: Traceability Check
-
-After scenario coverage gate passes, verify file-to-scenario traceability:
-
-```
-If tasks.md has "Traced to:" fields:
-  1. Read deviations from build-state.json (populated during Step 3e checkpoints)
-     - If "deviations" key missing or empty → skip deviation reconciliation, report "Traceability: no deviations to reconcile"
-  2. For each unplanned file:
-     → Check if it has a "Traced to:" justification. If not:
-     → WARN: "Unplanned file {path} created. Trace to scenario or mark as infrastructure."
-  3. For each planned file not changed:
-     → WARN: "Planned file {path} was not modified. Is the task complete?"
-  4. Report: "Traceability: {N}/{M} files match plan ({D} deviations tracked)"
-
-If no "Traced to:" fields: skip (backward compatible)
-```
-
-Non-blocking — warnings only. The scenario coverage gate is the hard gate.
-
-### Step 4: Post-Implementation
-
-**If running as Agent subprocess:** Skip the AskUserQuestion gate. Return the build summary to the orchestrator. The orchestrator handles all gate decisions.
-
-**If running standalone:** Show the summary and gate below.
-
-After all tasks complete:
-
-1. Run full test suite → all must pass
-2. Show build summary:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 🔨 BUILD — {Feature Name}                                  │
-├─────────────────────────────────────────────────────────────┤
-│ ✅ WHAT WAS BUILT                                            │
-│    Tasks: {N}/{N} completed                                 │
-│    Tests: {N} added, all passing                            │
-│    Files: {N} created, {N} modified                         │
-│                                                             │
-│ 📊 QUALITY                                                   │
-│    Coverage: {X}% (threshold: {Y}%)                         │
-│      (If no coverage tooling available, omit this line)      │
-│    All tests: PASS                                           │
-│                                                             │
-│ 📁 KEY CHANGES                                               │
-│    + {file} — {one-line description}                         │
-│    + {file} — {one-line description}                         │
-│    ~ {file} — {one-line description}                         │
-│                                                             │
-│ DEVIATIONS (if tasks.md exists)                              │
-│    If no deviations: "None — build matched plan exactly"     │
-│    Otherwise:                                                │
-│    Unplanned files: {N}                                      │
-│      • {file} — {reason}                                     │
-│    Skipped tasks: {N}                                        │
-│      • Task {N}: {name} — {reason}                           │
-│    Approach changes: {N}                                     │
-│      • Task {N}: planned as {approach}, built as {approach}  │
-│                                                             │
-│ What next?                                                  │
-│   ▸ Continue to Review (Recommended)                        │
-│     Save for later                                          │
-└─────────────────────────────────────────────────────────────┘
-```
-
-3. Use AskUserQuestion with these options:
-
-```
-AskUserQuestion:
-  question: "What next?"
-  options:
-    - label: "Continue to Review (Recommended)"
-      description: "Proceed to review. Context will be cleared, loading changed files."
-    - label: "Save for later"
-      description: "Save state to .temper/build-state.json and stop."
-  multiSelect: false
-  Note: When feedback.enabled is true in temper.config, an additional "Revise plan" option
-  may be offered if build encountered infeasible design. This is at the orchestrator's discretion.
-```
-
-4. On Continue to Review (first option):
-   - Signal:
-     "✅ Continuing to REVIEW...
-      📂 Loading: changed files only"
-   - If running standalone: Load ONLY changed files (git diff --name-only).
-     Focus on these files and minimize references to prior build context.
-   - If running as Agent subprocess: The orchestrator handles context — return summary and stop.
-   - Proceed to /temper:review
-
-5. On Change (via "Other" free-text input):
-   - User types their change request in the "Other" field
-   - Make the change
-   - ⚠️ MANDATORY: Re-show AskUserQuestion with same options
-
-   GATE ENFORCEMENT: The user's change input is NOT approval to proceed.
-   Do NOT skip to review after making changes. The user MUST explicitly
-   select "Continue to Review" from the gate to proceed.
-
-6. On Save for later (second option):
-   - Save state to .temper/build-state.json (preserving existing deviations/started/tasks fields):
-     ```json
-     {
-       "stage": "build_complete",
-       "spec": "{feature-slug}",
-       "spec_path": ".temper/specs/{feature-slug}",
-       "original_args": "{from prior state}",
-       "next_stage": "review",
-       "artifacts": ["intent.md", "tasks.md"],
-       "deviations": "{from current state}",
-       "last_task_completed": "{from current state}",
-       "tasks": "{from current state}",
-       "started": "{from current state}",
-       "updated": "{ISO timestamp}"
-     }
-     ```
-   - Report: "✅ Saved. Run /temper when ready to continue."
-
-7. (Cleanup is handled by check.md after commit — do NOT delete build-state.json here)
-8. Mark spec as completed:
-   - If intent.md exists: add `**Status:** completed` and `**Completed:** {date}` to header
-
-## Quality Gates
-
-For quality gate definitions (SUGGEST/WARN/BLOCK), apply the temper-core skill.
-
-**Pattern-to-rule mapping:**
-
-| Code Pattern | Pack Rule | Level |
-|--------------|-----------|-------|
+| Pattern | Rule | Level |
+|---|---|---|
 | SQL string concatenation | security: no SQL concat | BLOCK |
-| Hardcoded API keys/passwords | security: no secrets | BLOCK |
+| Hardcoded secret/API key | security: no secrets | BLOCK |
 | DB access from controller | architecture: use service layer | BLOCK |
-| Public method without test | tdd: test all public methods | WARN |
+| Public method with no test | tdd: test all public methods | WARN |
 | Method > 30 lines | quality: method length | WARN |
-| Magic numbers | quality: named constants | SUGGEST |
 | 4+ nesting levels | quality: max 3 nesting | WARN |
 | Empty catch block | quality: no swallowed exceptions | WARN |
+| Magic numbers | quality: named constants | SUGGEST |
 
 ## Error Recovery
 
-```
-COMPILATION ERROR: Read full error → identify type → fix → retry (max 3)
-TEST FAILURE (new test): Test may be wrong OR implementation wrong → investigate
-TEST FAILURE (existing test): REGRESSION → your code broke something → fix your code
-STUCK: Re-read plan → re-read similar code → break down task → ask user if needed
-```
+- **Compilation error:** read the full error, identify the type, fix, retry (max 3).
+- **New-test failure:** either the test or the implementation could be wrong —
+  investigate before assuming either.
+- **Existing-test failure:** a regression — your change broke it, fix your code.
+- **Stuck:** re-read the plan, re-read similar code in the repo, break the task down
+  further, or ask the user if genuinely blocked.

@@ -68,73 +68,21 @@ Multi-select AskUserQuestion with all packs. Update `.claude/temper.config` `pac
 
 ## Step 5: Quick-Create Launcher Pack
 
-**5a: Discover ALL linkable targets.** Run this unified discovery scan:
+**5a: Discover ALL linkable targets.** Run the discovery script — one correct output for
+a given filesystem, so this is a script, not a prompt-embedded scan:
 
-### Single unified scan — classify everything correctly
 ```bash
-python3 -c "
-import json, os, glob
-
-path = os.path.expanduser('~/.claude/plugins/installed_plugins.json')
-if not os.path.exists(path):
-    exit()
-with open(path) as f: data = json.load(f)
-plugins = data.get('plugins', {})
-
-for key, entries in plugins.items():
-    pkg_name = key.split('@')[0]
-    if pkg_name == 'temper': continue
-    latest = entries[-1] if entries else {}
-    ipath = latest.get('installPath', '')
-    if not ipath or not os.path.exists(ipath): continue
-
-    # Read plugin description
-    pj = os.path.join(ipath, '.claude-plugin/plugin.json')
-    desc = ''
-    if os.path.exists(pj):
-        with open(pj) as f: pd = json.load(f)
-        desc = pd.get('description', '')
-
-    # Find skills: skills/*/SKILL.md or .claude/skills/*/SKILL.md
-    skills = glob.glob(os.path.join(ipath, '**/SKILL.md'), recursive=True)
-    # Find commands: commands/*.md or .claude/commands/*.md
-    cmds = glob.glob(os.path.join(ipath, '**/commands/*.md'), recursive=True)
-
-    # Classify: if plugin has skills, list skills; if commands, list commands
-    # If neither, list the plugin package itself
-    has_output = False
-
-    for s in skills:
-        skill_dir = os.path.basename(os.path.dirname(s))
-        print(f'SKILL|{pkg_name}:{skill_dir}|{os.path.dirname(s)}|{desc}')
-        has_output = True
-
-    for c in cmds:
-        cmd_name = os.path.splitext(os.path.basename(c))[0]
-        print(f'CMD|{pkg_name}:{cmd_name}|{os.path.dirname(c)}|{desc}')
-        has_output = True
-
-    if not has_output:
-        print(f'PLUGIN|{pkg_name}|{ipath}|{desc}')
-"
+python3 "$CLAUDE_PLUGIN_ROOT/scripts/pack-discover.py"
 ```
 
-Then supplement with project-local and global commands:
-```bash
-# Project-local commands
-ls .claude/commands/*.md 2>/dev/null | while read f; do
-  echo "LOCAL_CMD|$(basename "$f" .md)|.claude/commands/"
-done
-# Global commands
-ls ~/.claude/commands/*.md 2>/dev/null | while read f; do
-  echo "GLOBAL_CMD|$(basename "$f" .md)|~/.claude/commands/"
-done
-```
+Each line is `TYPE|name|path|description`, already deduplicated (one row per
+plugin/skill/command, deterministic across marketplaces and reruns) with every row
+carrying its *own* frontmatter description — never the parent plugin's description
+repeated across every row. `temper`'s own plugin is excluded inside the script (there is
+no separate exclusion list to keep in sync here).
 
-### Deduplicate & filter
-Combine all scan results. Remove targets already linked to existing packs (check `link:` values in temper.config).
-
-**Exclude** temper's own commands (build, check, design, fix, pack, plan, review, status, temper, temper-core) — they're already built-in, no launcher needed.
+**Filter:** remove any target already linked to an existing pack (check `link:` values
+in `temper.config`).
 
 Use these display labels by TYPE prefix:
 - `SKILL|` → `Skill`
@@ -178,6 +126,6 @@ Return to Step 3.
 
 ## Step 7: Full Interactive Pack Builder
 
-> Read `$CLAUDE_PLUGIN_ROOT/reference/pack.md` → "Step 7: Add New Pack" section for the codebase scan + interview + generation methodology.
+> Read `$CLAUDE_PLUGIN_ROOT/reference/pack.md` → "Step 5: Full Interactive Pack Builder" section for the codebase scan + interview + generation methodology.
 
 This is the ONLY step that requires loading the reference doc. All other steps are self-contained above.

@@ -34,3 +34,19 @@ Levels (stop on failure):
 
 - **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors, under 2K lines/task)
 - **Temper Core** — stack detection, pack resolution, quality gates
+
+### Deterministic Gate
+
+This is the same gate the unified `/temper` command's Check stage runs — running this
+command standalone must not skip it, or `temper gate commit` sees no check evidence and
+wrongly blocks (or wrongly passes) a later commit. Follow
+`$CLAUDE_PLUGIN_ROOT/agents/check.md` steps 2-3 (record test/coverage evidence, and
+trace every `intent.md` scenario to a test via `temper evidence add --scenario`) as you
+validate, then run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate check` and show its
+PASS/FAIL to the user via `AskUserQuestion` (this command is not a subprocess — you own
+the gate here, unlike `agents/check.md`'s "never show a gate" rule).
+
+**Pass `--spec-path` explicitly** — a standalone command hasn't necessarily run `temper
+state init`, so `temper state get spec_path` may be empty, which silently skips the
+scenario-tracing requirement (it can't find `intent.md`) instead of failing loudly.
+Always call `temper gate check --spec-path .temper/specs/{feature-slug}`.

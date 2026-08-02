@@ -27,15 +27,11 @@ review:
 check:
   coverage-threshold: 80      # `temper gate check` requires recorded coverage >= this
 
-eval:
-  enabled: true                # false skips the stage entirely (one-line notice)
-  pass-threshold: 0.75         # `temper gate eval` requires the recorded aggregate >= this
-
 phases:
   design: true                 # design stage for medium/complex features (auto-skipped otherwise)
 
 feedback:
-  enabled: true                # allow Review->Build / Check->Build / Eval->Build loops
+  enabled: true                # allow Review->Build / Check->Build loops
 
 loops:
   max-per-type: 2              # circuit breaker per feedback-loop type (enforced by `temper state loop`)

@@ -72,7 +72,7 @@ Full methodology: [docs/methodology.md](docs/methodology.md)
 
 ## Deterministic Gates (v7)
 
-Every gate verdict — Plan, Build, Review, Check, Eval, Commit — is computed by a small
+Every gate verdict — Plan, Build, Review, Check, Commit — is computed by a small
 CLI (`scripts/temper`) from an evidence ledger, never asserted by a model:
 
 ```
@@ -110,7 +110,7 @@ Full design rationale: [docs/plans/v7-deterministic-spine.md](docs/plans/v7-dete
 ### Autonomous Continuation (opt-in)
 
 After you approve the plan, `/temper` can run the remaining stages
-(design → build → review → check → eval) unattended and leave a report.
+(design → build → review → check) unattended and leave a report.
 It never pushes or merges, never re-plans on its own, and parks before
 commit and on anything needing a human — enforced by the same `temper gate`
 mechanism as the interactive path, not a separate trust boundary.
@@ -123,7 +123,7 @@ one (and scaffolds `.temper/` for the CLI).
 
 | Command | Purpose |
 |---------|---------|
-| [`/temper`](docs/commands.md#temper) | Full pipeline: plan → design? → build → review → check → eval |
+| [`/temper`](docs/commands.md#temper) | Full pipeline: plan → design? → build → review → check |
 | [`/temper:plan`](docs/commands.md#temperplan) | Blast radius + BDD scenarios + architecture |
 | [`/temper:design`](docs/commands.md#temperdesign) | System design (complex/medium features) |
 | [`/temper:build`](docs/commands.md#temperbuild) | Scenario-driven TDD + coverage gate |

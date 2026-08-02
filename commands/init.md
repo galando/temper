@@ -36,7 +36,7 @@ overwritten.
    to install the native pre-commit hook — without it, `temper gate commit` only runs
    in-agent (PreToolUse), not on a raw `git commit` outside the agent."
 5. Report where to edit the config: "Edit .claude/temper.config to tune packs, review/
-   check/eval thresholds, and the autonomy block."
+   check thresholds, and the autonomy block."
 6. Note the fallback: if the plugin ships without the template, point the user at the
    shipped `.claude/temper.config` as the reference copy.
 ```
@@ -53,6 +53,6 @@ of what replaced each retired block.
 ## Defaults
 
 The default template is the plugin's own shipped `.claude/temper.config` — same packs,
-same review/check/eval settings, and the same opt-in `autonomy:` block (armed at the
+same review/check settings, and the same opt-in `autonomy:` block (armed at the
 plan gate, parked before commit). New installs get a known-good starting point;
 existing installs are untouched.

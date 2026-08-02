@@ -4,7 +4,7 @@
 #
 # Refuses a commit if the latest build state is not check_complete (i.e. /temper:check
 # has not passed for the staged change). The check sentinel is the `stage` field in
-# .temper/build-state.json equal to "check_complete" (or "eval_complete").
+# .temper/build-state.json equal to "check_complete".
 #
 # DEGRADATION CONTRACT (the two paths are distinct — do not conflate):
 #   - .temper/build-state.json present AND stage not green => exit 2 (BLOCK — the one
@@ -39,8 +39,8 @@ print(d.get('stage', '__missing__'))
 " "$state" 2>/dev/null || true)
 
   case "$stage" in
-    check_complete|eval_complete)
-      # Green: Check (or Eval) has run. Allow the commit.
+    check_complete)
+      # Green: Check has run. Allow the commit.
       return 0
       ;;
     __unreadable__|__missing__|'')

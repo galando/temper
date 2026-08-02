@@ -4,123 +4,68 @@ description: "Shared patterns for orchestrator commands (temper.md, fix.md)"
 
 # Orchestrator Shared Patterns
 
-**Used by:** `commands/temper.md`, `commands/fix.md`
+**Used by:** `commands/temper.md`, `commands/fix.md`. Read once at the start — every
+`→ pattern` reference in either file points here.
 
-Shared orchestration patterns so `/temper` and `/temper:fix` don't duplicate them.
-Read this file **once**, at the start of the orchestrator command — every `→ pattern`
-reference in `temper.md` / `fix.md` points here; don't re-read it per reference.
-
-**What moved out of this file in v7:** model routing, prompt-cache read-ordering, pipeline
-depth tiers, loop-cost tiers, and the observability/drift telemetry schemas were all
-*mechanism with exactly one correct output* — they now live in `scripts/temper` (state,
-gate, evidence) and `agents/*.md` (model per stage, via frontmatter), not in prose. What
-remains here is genuinely shared, judgment-adjacent bookkeeping: state schema, gate UX,
-resume/invocation safety, and the structured hand-off format between stages.
-
----
+**What moved out of this file in v7:** model routing, prompt-cache ordering, pipeline
+depth/loop-cost tiers, and the observability/drift telemetry schemas were all mechanism
+with exactly one correct output — they live in `scripts/temper` and `agents/*.md`
+frontmatter now, not in prose. What remains is genuinely shared, judgment-adjacent
+bookkeeping: state schema, gate UX, resume/invocation safety, hand-off formats.
 
 ## $CLAUDE_PLUGIN_ROOT Resolution
 
-1. If `$CLAUDE_PLUGIN_ROOT` is set and points to an existing directory → use it
-2. If unset → walk up from the command file location looking for `.claude-plugin/`
-3. If still not found → fall back to `~/.claude/plugins/temper` (default install location)
-4. If fallback doesn't exist → warn user: "Cannot locate Temper plugin. Set CLAUDE_PLUGIN_ROOT or reinstall."
-
-`$TEMPER` (used throughout `temper.md`/`fix.md`) means `$CLAUDE_PLUGIN_ROOT/scripts/temper`.
-
----
+Set and valid → use it. Unset → walk up from the command file for `.claude-plugin/`.
+Still not found → `~/.claude/plugins/temper` (default install). That doesn't exist
+either → warn "Cannot locate Temper plugin. Set CLAUDE_PLUGIN_ROOT or reinstall."
+`$TEMPER` means `$CLAUDE_PLUGIN_ROOT/scripts/temper` throughout `temper.md`/`fix.md`.
 
 ## Build State Schema
 
-The orchestrator tracks progress via `.temper/build-state.json`, owned by `$TEMPER
-state` — never hand-write it. **Resolve the spec path from `$TEMPER state get
-spec_path` before launching any agent.** Shape (written by `temper state init`):
+`.temper/build-state.json`, owned by `$TEMPER state` — never hand-write it. Resolve the
+spec path from `$TEMPER state get spec_path` before launching any agent.
 
 ```json
-{
-  "stage": "{stage}_complete",
-  "spec": "{slug}",
-  "spec_path": ".temper/specs/{slug}",
-  "branch": "{feature|fix}/{slug}",
-  "command": "temper|fix",
-  "next_stage": "{next stage}",
-  "run_mode": "interactive|autonomous",
-  "artifacts": ["intent.md", "tasks.md"],
-  "updated": "{ISO timestamp}"
-}
+{ "stage": "{stage}_complete", "spec": "{slug}", "spec_path": ".temper/specs/{slug}",
+  "branch": "{feature|fix}/{slug}", "command": "temper|fix", "next_stage": "{next}",
+  "run_mode": "interactive|autonomous", "artifacts": ["intent.md", "tasks.md"],
+  "updated": "{ISO timestamp}" }
 ```
 
-Per-command stage sequences:
-- **`/temper`** — `plan_complete | design_complete | build_complete | review_complete | check_complete | eval_complete`; branch `feature/{slug}`.
-- **`/temper:fix`** — `rca_complete | fix_complete | review_complete | check_complete`; branch `fix/{slug}`.
+Stage sequences: `/temper` — `plan_complete | design_complete | build_complete |
+review_complete | check_complete`, branch `feature/{slug}`. `/temper:fix` —
+`rca_complete | fix_complete | review_complete | check_complete`, branch `fix/{slug}`.
 
-### Save State Pattern
+**Save/Continue:** `$TEMPER state advance {stage}_complete {next_stage}` at every
+transition. On Save, report "Saved. Run {command} when ready to continue."
 
-At every "Save for later" and "Continue" transition: `$TEMPER state advance
-{stage}_complete {next_stage}`. On **Save**, report `"Saved. Run {command} when ready to
-continue."`
+## Gate Options + Enforcement
 
----
-
-## Gate Options Pattern
-
-Every stage gate uses exactly 2 explicit options plus the built-in "Other" free-text input:
+Every gate: 2 explicit options plus the built-in "Other" free-text.
 
 ```
 AskUserQuestion:
   question: "What would you like to do with this {stage}?"
   options:
     - label: "{continue_label} (Recommended)"
-      description: "{continue_description}"
     - label: "Save for later"
       description: "Save state and stop. Run {command} later to continue."
-  multiSelect: false
 ```
 
-**Users type change requests directly via the "Other" option.** When selected and the
-user types a change:
-1. Make the requested change
-2. **STOP** — re-show the AskUserQuestion gate with the same options
-3. Do NOT interpret the change input as approval to proceed
-
-## Gate Enforcement Rules
-
-After handling a change request (via "Other"), you **MUST** re-show the gate before
-proceeding — a user must **explicitly select the "Continue" option** to advance. Never
-infer approval from a change request.
-
----
+A change typed via "Other" is **never** approval to proceed: make the edit, then **STOP**
+and re-show the same gate. The user must explicitly pick "Continue" — never infer
+approval from a change request.
 
 ## Resume Validation
 
-Before showing the saved state, validate `.temper/build-state.json`:
-
-1. **Parseable JSON** — if malformed, show error and ask user
-2. **Valid stage** — must be one of the stages defined by the command
-3. **Spec directory exists** — `.temper/specs/{spec}/` must exist on disk
-4. **Artifacts exist** — all files listed in `artifacts` array must exist
-5. **Timestamp** — if `updated` > 30 days ago, warn user about staleness
-
-If any check fails: show what's wrong, ask "Start over / Delete saved state / Cancel?"
-
----
+Before honoring saved state, check: parseable JSON; `stage` is one the command defines;
+`.temper/specs/{spec}/` exists on disk; every file in `artifacts[]` exists; `updated` <
+30 days old (warn if older). Any check fails → show what's wrong, ask "Start over /
+Delete saved state / Cancel?"
 
 ## Nested Invocation Protection
 
-When `{command} "{new item}"` is called while `.temper/build-state.json` already exists
-for a different item:
-
-```
-+-------------------------------------------------------------+
-| SAVED STATE FOUND                                            |
-+-------------------------------------------------------------+
-| {Item type}: {name}                                          |
-|    Stopped: After {stage}                                    |
-|    Files: {N} changed                                        |
-|                                                               |
-| Starting '{new item}' will overwrite this session.            |
-+-------------------------------------------------------------+
-```
+`{command} "{new item}"` called while state exists for a **different** item:
 
 ```
 AskUserQuestion:
@@ -130,199 +75,98 @@ AskUserQuestion:
       description: "Continue from {next_stage} stage."
     - label: "Overwrite and start new"
       description: "Delete existing session (temper state clear), start from scratch."
-  multiSelect: false
 ```
-
----
 
 ## Agent Failure Handling
 
-If an agent subprocess returns a failure or blocker:
-1. Show the failure details to the user
-2. Ask: "Retry / Save for later?" (user can type changes via "Other")
-3. Do NOT silently proceed to the next stage
+An agent subprocess returns a failure/blocker → show the details, ask "Retry / Save for
+later?" (changes via "Other"). Never silently proceed to the next stage.
 
----
+## Context Efficiency
 
-## Context Efficiency Table
+| Transition | Context loaded | Size |
+|---|---|---|
+| Stage N → N+1 (plan→build) | spec artifacts + related files | ~5-15KB |
+| Build → Review/Check | changed files (`git diff`) | ~20-50KB |
+| Check/Fix → Commit | nothing (direct, no subprocess) | 0KB |
 
-Each subprocess starts genuinely clean. No theater.
-
-| Transition | Method | Context Loaded | Size |
-|-----------|--------|----------------|------|
-| Stage 1 → 2 | New Agent subprocess | spec artifacts + related files | ~5-15KB |
-| Stage 2 → 3 | New Agent subprocess | changed files (git diff) | ~20-50KB |
-| Stage 3 → 4 | New Agent subprocess | methodology + spec context | ~5KB |
-| Check/Fix → Commit | Direct (no subprocess) | Nothing | 0KB |
-
-`/temper:fix` uses `fix/{bug-slug}` branches and `rca.md` as its primary artifact in
-place of `intent.md`/`plan.md`.
-
----
+`/temper:fix` uses `fix/{bug-slug}` branches, `rca.md` in place of `intent.md`/`plan.md`.
 
 ## MCP Tool-First Pattern
 
-When MCP servers are available, Temper uses their tools to produce **proven** findings
-instead of heuristic grep-based analysis. Progressive enhancement: everything works
-exactly as before when no MCP servers are installed.
+`tools.mode`: `auto` (default — try MCP, fall back to grep-based heuristic) /
+`heuristic-only` (never call MCP, forces `[HEURISTIC]`) / `require` (fail if MCP
+unavailable, no fallback). Every finding's `temper evidence add --label`:
 
-### tools.mode Behavior
+| Label | Meaning |
+|---|---|
+| `PROVEN` | Mechanically verified — a real command/tool ran with a real exit code and artifact. `temper evidence add` re-checks this itself; a missing artifact or unexplained nonzero exit auto-downgrades to HEURISTIC. |
+| `HEURISTIC` | Grep/reading-based analysis, best-effort, not mechanically verified. |
+| `SEMANTIC` | Claude's judgment/interpretation — inherently subjective. |
+| `OCR` | External engine (open-code-review) finding — informational, same trust tier as HEURISTIC. |
 
-| Mode | Behavior |
-|------|----------|
-| `auto` (default) | Try MCP tool first. If unavailable, fall back to grep-based heuristic analysis. |
-| `heuristic-only` | Never call MCP tools. Always use grep-based analysis. Forces `[HEURISTIC]` labels. |
-| `require` | Fail if MCP tools are unavailable. Do NOT proceed with heuristic fallback. |
+Recommended servers: `code-review-graph` (`pip install code-review-graph`) for AST-level
+dependency graphs and blast radius; `semgrep` (`brew install semgrep`,
+`claude mcp add semgrep -- semgrep --mcp`) for SAST. Both optional — absence just means
+the same analysis runs via grep, labeled `HEURISTIC` instead of `PROVEN`.
 
-### Evidence Labels
+## Context Accumulation
 
-Every finding recorded via `temper evidence add --label ...` carries one of:
-
-| Label | Meaning | When to use |
-|-------|---------|-------------|
-| `PROVEN` | Mechanically verified. `temper evidence add` itself re-checks this: an artifact that doesn't exist, or a nonzero exit with no severity given, is auto-downgraded to `HEURISTIC` — the label is never taken on faith. | MCP tool returned results, a test/coverage command actually ran with a real exit code and report file, SAST scan found an issue. |
-| `HEURISTIC` | Claude's analysis via grep/reading code. Best-effort, not mechanically verified. | MCP unavailable, grep-based detection, pattern-matching analysis. |
-| `SEMANTIC` | Claude's interpretation or judgment. Inherently subjective. | "This assertion covers the Then clause", problem-solution alignment. |
-| `OCR` | External LLM-powered defect engine (open-code-review). Not CLI-verified — informational label, same trust tier as `HEURISTIC`. | `tools.ocr.mode` ready and `/temper:review` delegated line-level defect detection to it. |
-
-### Recommended MCP Servers
-
-| Server | Install | Purpose |
-|--------|---------|---------|
-| code-review-graph | `pip install code-review-graph` + configure MCP | AST-level dependency graphs, call chains, blast radius |
-| semgrep | `brew install semgrep` + `claude mcp add semgrep -- semgrep --mcp` | Static analysis security scanning (SAST) |
-
-Availability is optional. When present, findings are labeled `PROVEN`. When absent, the
-same analysis runs via grep and is labeled `HEURISTIC`.
-
----
-
-## Context Accumulation Patterns
-
-Each stage produces structured artifacts that accumulate in `.temper/specs/{feature}/`.
-Downstream stages read upstream context to make better decisions. This is separate from
-— and richer than — the flat `temper evidence` ledger: it carries deviations, coverage
-detail, and justifications a gate doesn't need but a re-launched agent does.
-
-### Context File Schemas
-
-**build-context.json** (written by Build on a Review/Check feedback re-entry, or when
-looping Build→Plan):
+Each stage writes structured artifacts to `.temper/specs/{feature}/` that downstream
+stages read — richer than the flat evidence ledger: deviations, coverage detail,
+justifications a gate doesn't need but a re-launched agent does.
 
 ```json
-{
-  "version": 1, "stage": "build", "timestamp": "{ISO timestamp}",
-  "files_created": ["path/to/file"], "files_modified": ["path/to/file"],
-  "test_results": { "total": 5, "passed": 5, "failed": 0 },
+// build-context.json (Build, on a Review/Check feedback re-entry or Build->Plan loop)
+{ "version": 1, "stage": "build", "timestamp": "", "files_created": [], "files_modified": [],
+  "test_results": { "total": 0, "passed": 0, "failed": 0 },
   "deviations": { "unplanned_files": [], "skipped_tasks": [], "approach_changes": [] },
-  "scenarios_covered": ["scenario name"],
-  "tasks_completed": 5, "tasks_total": 5
-}
-```
+  "scenarios_covered": [], "tasks_completed": 0, "tasks_total": 0 }
 
-**review-context.json** (written by Review, read by Build on a loop-back):
-
-```json
-{
-  "version": 1, "stage": "review", "timestamp": "{ISO timestamp}",
+// review-context.json (Review, read by Build on a loop-back)
+{ "version": 1, "stage": "review", "timestamp": "",
   "findings_summary": { "critical": 0, "high": 0, "medium": 0, "low": 0, "auto_fixed": 0 },
-  "intent_verdict": "satisfied | partial | not_met",
-  "security_hot_paths": [], "contract_changes": [],
-  "scenario_coverage": { "total": 5, "strong": 3, "weak": 1, "trivial": 0, "uncovered": 1 }
-}
+  "intent_verdict": "satisfied|partial|not_met", "security_hot_paths": [], "contract_changes": [],
+  "scenario_coverage": { "total": 0, "strong": 0, "weak": 0, "trivial": 0, "uncovered": 0 } }
+
+// check-context.json (Check, read by Build on a loop-back)
+{ "version": 1, "stage": "check", "timestamp": "",
+  "validation_results": { "compile": "pass", "tests": "pass", "coverage_pct": 0, "lint": "pass", "security": "pass" },
+  "scenario_verification": { "total": 0, "passed": 0, "failed": 0, "missing": 0 },
+  "test_failures": [ { "test_name": "", "error_message": "", "file": "", "line": 0, "scenario": "" } ] }
 ```
 
-**check-context.json** (written by Check, read by Build on a loop-back):
-
-```json
-{
-  "version": 1, "stage": "check", "timestamp": "{ISO timestamp}",
-  "validation_results": { "compile": "pass", "tests": "pass", "coverage_pct": 85, "lint": "pass", "security": "pass" },
-  "scenario_verification": { "total": 5, "passed": 4, "failed": 0, "missing": 1 },
-  "test_failures": [ { "test_name": "string", "error_message": "string", "file": "string", "line": 0, "scenario": "string" } ]
-}
-```
-
-**eval-context.json** (written by Eval, read by Build on a loop-back):
-
-```json
-{
-  "version": 1, "stage": "eval", "timestamp": "{ISO timestamp}", "feature": "{feature-slug}",
-  "mode": "output|trajectory", "judge_model": "{model id or 'deterministic-fallback'}",
-  "aggregate": 0.81, "pass_threshold": 0.75, "passed": true,
-  "scores": {
-    "task_success": { "score": 0.9, "category": "artifact", "justification": "..." },
-    "hallucination": { "score": 0.1, "category": "artifact", "justification": "..." }
-  },
-  "unscored": ["tool_use_quality"], "aggregate_basis": "scored|full", "scored_weight": 0.85,
-  "recommended_actions": { "task_success": "Re-run (code defect)", "trajectory": "accept (process noise)" },
-  "block_on_failed": ["task_success"],
-  "results_file": "{spec_path}/evals/results/results-{ts}.json", "feedback_target": "build"
-}
-```
-
-`block_on_failed` lists any `eval.block-on` dimensions below `pass_threshold` (empty when
-none). Eval degrades gracefully: missing evalset or disabled config means this file is
-never written and the stage is skipped.
-
-**learning.json** (written by Review, read by Status and Review — pattern/noise memory):
-schema in `$CLAUDE_PLUGIN_ROOT/reference/learning.md`.
-
-### Context Loading Rules
+`learning.json` (Review writes, Status + Review read — pattern/noise memory): schema in
+`reference/learning.md`.
 
 | Stage | Reads | Writes |
-|-------|-------|--------|
-| Plan | Nothing (first stage) | intent.md, tasks.md, plan.md |
+|---|---|---|
+| Plan | nothing (first stage) | intent.md, tasks.md, plan.md |
 | Design | intent.md, plan.md | design.md |
-| Build | tasks.md, intent.md, review/check/eval-context.json (on feedback re-entry) | build-context.json |
-| Review | intent.md, changed files (git diff), build-context.json, learning.json | review-context.json, learning.json |
-| Check | intent.md, review-context.json | check-context.json |
-| Eval | evalset.json, build-state.json | eval-context.json, results/results-{ts}.json |
-| Status | metrics.json, review-memory.json, learning.json, .temper/gates.json, .temper/evidence/ | — |
+| Build | tasks.md, intent.md, review/check-context.json (on re-entry) | build-context.json |
+| Review | intent.md, `git diff`, build-context.json, learning.json | review-context.json, learning.json |
+| Check | intent.md, review-context.json (opportunistic — Review and Check launch in parallel, so Check usually starts before review-context.json exists; loaded only if present, e.g. on a Check re-run after a loop) | check-context.json |
+| Status | metrics.json, review-memory.json, learning.json, gates.json, evidence/ | — |
 
-### Context Cleanup
-
-`$TEMPER state clear` (run on commit) removes `*-context.json` files, `gates.json`,
-`overrides.json`, and the evidence ledger. It keeps `intent.md`/`tasks.md`/`plan.md`/
-`design.md` under `.temper/specs/` — the permanent record.
-
----
+**Cleanup:** `$TEMPER state clear` (on commit) removes `*-context.json`, `gates.json`,
+`overrides.json`, the evidence ledger. `intent.md`/`tasks.md`/`plan.md`/`design.md` under
+`.temper/specs/` are kept — they're the permanent record.
 
 ## Feedback Loop Patterns
 
-Feedback loops send work back to an upstream stage with failure context — the pipeline
-is cyclic, not strictly linear.
+The pipeline is cyclic, not strictly linear — a gate FAIL can send work back upstream
+with failure context.
 
-### Loop Types
+- **Review → Build:** auto-fixable HIGH/CRITICAL found → "Fix all & continue to Check" →
+  fixes applied, re-review runs. Context: `review-context.json`'s fix list.
+- **Check → Build:** test failures → a targeted fix task (test name, error, file:line,
+  the `intent.md` scenario it maps to) → "Loop back to Build". Context:
+  `check-context.json`'s `test_failures[]`.
+- **Build → Plan:** Build judges the plan infeasible → "Loop back to Plan", Plan gets the
+  infeasibility context and re-approves. Human-driven only — no circuit breaker, max 1
+  per run. Context: `build-context.json`'s infeasibility reason.
 
-**Review → Build (auto-fix loop):** Review finds auto-fixable HIGH/CRITICAL issues → user
-selects "Fix all & continue to Check" → fixes applied, re-review runs.
-
-**Check → Build (test failure loop):** Check finds test failures → creates a targeted fix
-task (test name, error, file:line, the intent.md scenario that failed) → user selects
-"Loop back to Build".
-
-**Eval → Build (block-on dimension loop):** an `eval.block-on` dimension falls below
-`pass_threshold` → user selects "Re-run (loop to Build)" (requires `feedback.enabled`).
-
-**Build → Plan (revise plan loop):** Build discovers the plan is infeasible → user selects
-"Loop back to Plan" → Plan agent receives the infeasibility context, plan is revised and
-re-approved. No circuit breaker — human-driven, not automated, max 1 per run.
-
-### Circuit Breaker
-
-`$TEMPER state loop {from} {to} --reason "..."` enforces `loops.max-per-type` (default
-2) per feedback type and prints `BLOCKED` (exit 1) once spent — offer "Override" or
-"Save for later" instead of looping further. There is no separate token-cost tiering in
-v7: a loop is always a normal stage re-launch, reading the relevant `*-context.json`.
-
-### Loop Context Transfer
-
-| Loop | Context Passed |
-|------|---------------|
-| Review → Build | review-context.json with fix list |
-| Check → Build | check-context.json with test failures |
-| Eval → Build | eval-context.json with failing dimensions |
-| Build → Plan | build-context.json with infeasibility reasons |
-
-The receiving stage reads this context at startup, per its own methodology file.
+**Circuit breaker + evidence clearing:** full mechanics (budget, auto-clear, the
+parallel-launch kill-before-clear ordering) live in `commands/temper.md` → "Feedback
+Loops" — not restated here. A loop is always a normal stage re-launch that reads the
+relevant `*-context.json` at startup.
