@@ -9,9 +9,8 @@ Breaking release: a shipped stage and a shipped config key are removed. The prom
 surface was written for an older model generation — long, prescriptive, step-numbered
 choreography. This release rewrites it as outcome briefs, removes two things that were
 costing every run without earning it, and measures the result rather than asserting it:
-an A/B on Opus 5 shows the shorter prompts hold plan quality (equal blast-radius recall,
-slightly more scenarios) at a fifth of the length, while the pipeline's actual saving comes from
-removing a stage and from spending far fewer tokens on every run.
+an A/B on Opus 5 shows the shorter prompts hold plan quality at a fifth of the length
+and cut the cost of a Plan run roughly in half.
 
 - **The Eval stage is gone.** `agents/eval.md`, `commands/eval.md`, `reference/eval.md`,
   `skills/eval-judge/`, `templates/evalset.json`, and the `eval:` config block are
@@ -50,13 +49,13 @@ removing a stage and from spending far fewer tokens on every run.
   seeded-defect fixtures before and after: 3/3 caught post-cut (up from 1/3 pre-cut in
   this environment).
   **Measured, so the claim stays honest:** a controlled A/B on Opus 5 (same fixture,
-  same feature, 3 runs each, old 1,086-line prompt vs new 224-line prompt) shows the
-  diet did **not** make the Plan stage faster — median 379s before, 391s after, well
-  inside run-to-run noise. What it did buy: equal blast-radius recall, slightly more
-  scenarios (median 13 vs 12), and the intended 3-artifact output in 2 of 3 runs where
-  the old prompt always wrote 6 (three of which no gate reads) — at 20% the prompt
-  length. The pipeline's real saving this release is structural: one fewer stage, and
-  43.7% fewer prompt tokens on every stage of every run. Full data: `docs/evidence/opus5-plan-prompt-ab.md`.
+  same feature, 6 runs per arm, old 1,086-line prompt vs new 224-line prompt) shows the
+  diet did **not** make the Plan stage faster — 384s vs 388s median, inside noise.
+  What it actually buys is **money: a Plan run costs $1.74 median instead of $3.37, a
+  48% reduction** (mean $1.81 vs $3.09, −41%), with 13% fewer output tokens — while
+  holding quality: equal blast-radius recall, slightly more scenarios (13 vs 12), and
+  exactly the three artifacts the gate reads in 3 of 3 runs where the old prompt always
+  wrote 6. Full data: `docs/evidence/opus5-plan-prompt-ab.md`.
 - **`/temper:pack`'s Step 5a discovery scan is fixed and extracted** to
   `scripts/pack-discover.py`: deduplicated targets, per-command descriptions (not the
   parent plugin's description repeated), a deterministic install-path selection, bounded
