@@ -22,10 +22,10 @@
       "suggested_rule": "version-agreement-across-stamps"
     },
     {
-      "id": "cursor-parity-stale-derived-artifact",
+      "id": "docs-version-stale-derived-artifact",
       "category": "consistency",
-      "file_pattern": ".cursor/**",
-      "description_keywords": ["cursor", "parity", "stale", "regenerate"],
+      "file_pattern": "docs/**",
+      "description_keywords": ["docs", "version", "stale", "regenerate"],
       "total_shown": 3,
       "accepted": 3,
       "dismissed": 0,

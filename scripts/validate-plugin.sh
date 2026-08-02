@@ -105,8 +105,6 @@ print(len(agents))
 
   # --- Version-agreement checks (G-1, G-2) ---
   # plugin.json is the single source of truth; every other LIVE stamp must agree.
-  # .cursor/ is archived (v7+, see .cursor/README.md) — no longer regenerated per
-  # release, so it is intentionally NOT version-checked against plugin.json here.
 
   # .claude/CLAUDE.md  **Version:** X.Y.Z  == plugin.json (G-1 guard, SC-1)
   CLAUDE_MD="$REPO_ROOT/.claude/CLAUDE.md"
@@ -218,11 +216,6 @@ elif ! python3 -c "import ast; ast.parse(open('$PACK_DISCOVER').read())" 2>/dev/
 else
   ok
 fi
-
-# Cursor parity: hooks pack rule exists (generator output)
-for cf in .cursor/rules/temper-pack-hooks.mdc; do
-  if [[ -f "$REPO_ROOT/$cf" ]]; then ok; else fail "$cf missing (run scripts/generate-cursor.sh)"; fi
-done
 
 # --- Eval fixtures (v7 — Move 3, docs/plans/v7-deterministic-spine.md) — this is
 # Temper's OWN seeded-defect regression harness (evals/), unrelated to the removed

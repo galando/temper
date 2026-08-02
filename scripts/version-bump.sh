@@ -10,9 +10,6 @@
 #   2. .claude/CLAUDE.md                   **Version:** X.Y.Z
 #   3. commands/temper.md          header  (vX.Y.Z)
 #
-# .cursor/ is NOT touched by this script (v7+): Cursor support is archived at its
-# last-synced snapshot, not regenerated per release — see .cursor/README.md and
-# CHANGELOG v7.0.0. validate-plugin.sh no longer asserts .cursor/ version agreement.
 #
 # CHANGELOG.md is NOT auto-rewritten — the maintainer owns the new `## vX.Y.Z`
 # entry and its body. validate-plugin.sh asserts CHANGELOG top version matches.
@@ -86,7 +83,6 @@ echo "Files updated:"
 echo "   * .claude-plugin/plugin.json"
 [ -f "$CLAUDE_MD" ]         && echo "   * $CLAUDE_MD"
 [ -f "$TEMPER_CMD" ]        && echo "   * $TEMPER_CMD"
-[ -d ".cursor" ]            && echo "   (.cursor/ NOT touched — archived, see .cursor/README.md)"
 echo ""
 echo "Next steps:"
 echo "   1. Update CHANGELOG.md with a '## v$NEW_VERSION' entry at the top"

@@ -99,7 +99,6 @@ Most AI tools answer only the third. Temper answers all three.
 | Feature | What It Does |
 |---------|-------------|
 | **Claude Code** | Native plugin via marketplace. Skills, commands, agents, MCP integration |
-| **Cursor IDE** | Archived at the v6.0.1 feature set (v7's CLI-backed gates are Claude Code-only). Static `.cursor/` files, install via curl — no Python or git required |
 
 ## IDD + BDD + TDD: Three Layers, One File
 
@@ -242,26 +241,6 @@ The queue consumer issue? Blast radius flagged it. The missing rate limiting? Sc
 ```bash
 /plugin marketplace add galando/temper
 /plugin install temper
-```
-
-### Cursor IDE
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)
-```
-
-No Python or git required — just curl. Static rules and commands are downloaded to `.cursor/`.
-
-```bash
-cd your-project
-
-# Option 1: Unified command (recommended)
-/temper "add login feature"
-
-# Option 2: Individual commands (granular control)
-/temper-plan "your feature"    # Scenarios + blast radius + architecture
-/temper-build                  # Scenario-driven TDD
-/temper-review                 # Intent validation
 ```
 
 ## Next Steps

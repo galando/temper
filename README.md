@@ -170,13 +170,6 @@ gate is either a prompt file or a script you can read in this repository. The tr
 bash "$CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh"   # installs the commit gate
 ```
 
-### Cursor IDE (archived)
-
-Cursor support is **archived** at the v6.0.1 snapshot (frozen feature set — CHANGELOG
-v5.2.1 platform strategy) and is no longer regenerated per release; v7's CLI-backed
-gates and `agents/` directory ship Claude Code-only. `./scripts/generate-cursor.sh`
-still works if you want to hand-run it. Details: [`.cursor/README.md`](.cursor/README.md).
-
 ## Recommended Setup
 
 Temper works out of the box. Two optional MCP servers upgrade heuristic analysis to mechanically verified findings:
