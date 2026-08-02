@@ -3,14 +3,15 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## v8.0.0 — Opus 5 Refresh: shorter prompts, no Eval stage, faster pipeline
+## v8.0.0 — Opus 5 Refresh: shorter prompts, no Eval stage, leaner pipeline
 
-Breaking release: a shipped stage and a shipped config key are removed. The Plan/Design
-model (Opus 5) behaves differently than the generation these prompts were written for —
-it degrades under long prescriptive choreography and does better with a short brief
-stating the outcome and the few non-obvious constraints. This release rewrites the prompt
-surface for that model and removes two things that were costing every run without
-earning it.
+Breaking release: a shipped stage and a shipped config key are removed. The prompt
+surface was written for an older model generation — long, prescriptive, step-numbered
+choreography. This release rewrites it as outcome briefs, removes two things that were
+costing every run without earning it, and measures the result rather than asserting it:
+an A/B on Opus 5 shows the shorter prompts hold plan quality (equal blast-radius recall,
+slightly more scenarios) at a fifth of the length, while the pipeline's actual speedups
+come from removing a stage and parallelising Review+Check.
 
 - **The Eval stage is gone.** `agents/eval.md`, `commands/eval.md`, `reference/eval.md`,
   `skills/eval-judge/`, `templates/evalset.json`, and the `eval:` config block are
@@ -43,13 +44,27 @@ earning it.
   the gate checks, the non-obvious rules) rather than numbered phase choreography; nothing
   a gate mechanically checks lost its prompt-side instruction. Verified against the
   seeded-defect fixtures before and after: 3/3 caught post-cut (up from 1/3 pre-cut in
-  this environment), in less wall-clock, not more.
+  this environment).
+  **Measured, so the claim stays honest:** a controlled A/B on Opus 5 (same fixture,
+  same feature, 3 runs each, old 1,086-line prompt vs new 224-line prompt) shows the
+  diet did **not** make the Plan stage faster — median 379s before, 391s after, well
+  inside run-to-run noise. What it did buy: equal blast-radius recall, slightly more
+  scenarios (median 13 vs 12), and the intended 3-artifact output in 2 of 3 runs where
+  the old prompt always wrote 6 (three of which no gate reads) — at 20% the prompt
+  length. The pipeline's real speedups this release are structural: one fewer stage and
+  Review+Check in parallel. Full data: `docs/evidence/opus5-plan-prompt-ab.md`.
 - **`/temper:pack`'s Step 5a discovery scan is fixed and extracted** to
   `scripts/pack-discover.py`: deduplicated targets, per-command descriptions (not the
   parent plugin's description repeated), a deterministic install-path selection, bounded
   globs, and the dead exclusion list removed. The documented-but-never-implemented
   `.temper/pack-manifest.json` cache is removed from the docs rather than built — it
   never existed on disk after 7 major versions.
+- **Cursor IDE support is removed entirely** — the archived `.cursor/` export,
+  `scripts/generate-cursor.sh`, `scripts/install-cursor.sh`, the validator's parity
+  assertion, and every install doc pointing at them. The export had silently been frozen
+  at v6.0.1 by a generator bug and drifted three major versions behind the plugin; an
+  archived-but-shipped copy misrepresents what Cursor users actually get. Cursor support
+  will return in a better form (tracked separately) rather than as a stale derived tree.
 
 ## v7.0.1 — Fixes
 
