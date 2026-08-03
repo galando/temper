@@ -109,6 +109,12 @@ If every level passed and files changed: generate up to 5 config suggestions
 `learning.json.suggestion_queue` (`type: config-update`). Full methodology:
 `reference/config-suggestions.md`. Shown to the user at the Check gate.
 
+Every accepted suggestion is a permanent line in a file loaded on every future session,
+so suggest one only when a *specific* thing went wrong that the config could have
+prevented — not general good practice the model would apply anyway. If `CLAUDE.md` is
+already long enough that you're hesitating, say so and suggest `/doctor` instead of
+adding to it; see `docs/context-hygiene.md`.
+
 ## Context Output
 
 Write `check-context.json`:

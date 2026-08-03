@@ -107,7 +107,18 @@ Git workflow — conventional commits, branching strategy. Enabled by default.
 
 ### Rules Format
 
+Open `rules.md` with a `phases:` block naming the stages that should load it. A pack
+loaded by a stage it has nothing to say to is pure context cost — see
+[Context Hygiene](context-hygiene). `all` (or an absent block, for backwards
+compatibility) loads it everywhere; `[]` loads it nowhere, which is right for a pack that
+documents self-enforcing tooling. A project can override the author's choice per pack via
+`phases` on its `packs:` entry.
+
 ```markdown
+---
+phases: [build, review]
+---
+
 # My Custom Pack
 
 ## BLOCK (Violations stop the build)

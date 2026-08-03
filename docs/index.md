@@ -246,5 +246,6 @@ The queue consumer issue? Blast radius flagged it. The missing rate limiting? Sc
 - [Getting Started Guide](getting-started.html) — Detailed installation and setup
 - [Commands Reference](commands.html) — Full command documentation
 - [Packs](packs.html) — Built-in and custom quality packs
+- [Context Hygiene](context-hygiene.html) — `/doctor`, pack `phases:`, and what Temper keeps out of your context
 - [Enterprise Setup](enterprise.html) — Deploy across your organization
 - [DeepWiki](https://deepwiki.com/galando/temper) — AI-powered documentation

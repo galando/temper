@@ -41,26 +41,29 @@ matters. For each hunk: change type (LOGIC/STRUCTURE/CONFIG/TEST/IMPORT) and ris
 (insert/update/delete/save), ERROR_HANDLING (throw/catch/reject), CONCURRENCY
 (async/thread/mutex/lock), EXTERNAL_API (fetch/http/client/grpc), MIDDLEWARE (app.use,
 cors, rate-limit). Build an ephemeral (not persisted) fingerprint — files/hunks by type,
-high-risk regions, security sensitivity counts — and pass it to every subagent in Step 2:
-they spend 80% of attention on flagged hunks, standard depth on the rest.
+high-risk regions, security sensitivity counts — and pass it to every subagent in Step 2
+so review effort concentrates where the risk actually is.
 
 ## Step 2: Parallel Review Subagents
 
-Same domain → one subagent. Backend+frontend → two. >20 files → groups of ~10, max 3
-parallel. Check the depth budget first: `depth_remaining <= 1` → review inline, no
-subagents. Each subagent gets the active pack rules, the stack-specific pattern file, its
-file list, and this prompt shape:
+Split the changed files across subagents however the diff suggests — by domain, by
+module, by whatever grouping means each subagent can hold its slice in one context. One
+hard constraint, because it's what bounds recursion: check the depth budget first —
+`depth_remaining <= 1` → review inline, no subagents. Each subagent gets the active pack
+rules, the stack-specific pattern file, its file list, and this prompt shape:
 
 ```
 For each issue: Severity (CRITICAL/HIGH/MEDIUM/LOW), Confidence (0.0-1.0), Category
 (logic/security/performance/quality/standards/architecture/test-gap), file:line,
 Description, Suggestion.
 
-Read the ENTIRE file (not just the diff) for context. Only flag issues you're >0.5
-confident about (Step 4 applies the real threshold, default 0.7). Don't flag style
-preferences that don't violate a pack rule, or patterns consistent with the rest of the
-codebase. Classify each finding REGRESSION (was working, now broken — highest priority) /
-NEW ISSUE / PRE-EXISTING (lower priority). Weight 80% changed lines, 20% context.
+Read the ENTIRE file (not just the diff) for context — the changed lines are what you
+judge, the rest of the file is how you judge them. Report what you'd defend in review:
+Step 4 discards anything below the configured confidence threshold, so a genuine
+low-confidence finding costs nothing, but style preferences that violate no pack rule and
+patterns consistent with the rest of the codebase are noise either way. Classify each
+finding REGRESSION (was working, now broken — highest priority) / NEW ISSUE /
+PRE-EXISTING (lower priority).
 ```
 
 **If `ocr_status == ready` and `tools.ocr.replace-defect-subagent: true`:** OCR owns

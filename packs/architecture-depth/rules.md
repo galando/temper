@@ -1,3 +1,7 @@
+---
+phases: [design, review]
+---
+
 # Architecture Depth Pack
 
 Module-depth analysis inspired by Matt Pocock's "Deep Modules" philosophy.

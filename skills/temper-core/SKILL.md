@@ -17,7 +17,10 @@ Three-tier: project-local > global > built-in. Read live (no cache) by every sta
 - `.claude/packs/{name}/rules.md` (project)
 - `~/.claude/packs/{name}/rules.md` (global)
 - `$CLAUDE_PLUGIN_ROOT/packs/{name}/rules.md` (built-in)
-Packs support `link: plugin://name | skill://name` and `phases: [build, review, ...]`.
+Packs support `link: plugin://name | skill://name` and `phases: [build, review, ...]` —
+declared in the pack's `rules.md` frontmatter, overridable per project on the `packs:`
+config entry, defaulting to `all` when neither says. `[]` means no stage loads it.
+Precedence and rationale: `reference/pack.md` → "Pack Configuration Schema".
 
 ## Quality Gates
 - **SUGGEST**: Non-blocking

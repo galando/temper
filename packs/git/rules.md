@@ -1,3 +1,7 @@
+---
+phases: all
+---
+
 # Git Pack
 
 **Version:** 1.0.0

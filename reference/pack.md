@@ -20,7 +20,8 @@ $CLAUDE_PLUGIN_ROOT/packs/{name}/rules.md   built-in (lowest)
 
 Every stage reads this live at phase start (no cache): scan all three tiers (excluding
 `stacks/`), keep the highest-priority `rules.md` per name, filter to packs whose `phases`
-is `all` or contains the current phase, read `temper.config` for enabled/link overrides.
+is `all` or contains the current phase (resolved as below), read `temper.config` for
+enabled/link overrides.
 
 **No manifest cache.** A cached-scan JSON file was documented in earlier versions but
 never implemented — the live scan reads a dozen small `rules.md` files, milliseconds
@@ -39,9 +40,25 @@ packs:
     link: plugin://my-api-linter         # or skill://name
 ```
 
-`phases` omitted or `all` → active every phase. Available phases: `plan`, `design`,
-`build`, `review`, `check`, `fix`. A `packs:` entry is either a bare string (simple form)
-or a mapping with `name` (required), `phases` (default `all`), `link` (default none).
+Available phases: `plan`, `design`, `build`, `review`, `check`, `fix`. A `packs:` entry is
+either a bare string (simple form) or a mapping with `name` (required), `phases`, `link`
+(default none).
+
+**Where `phases` comes from, in precedence order** — a pack is loaded for a phase if the
+first of these that exists says so:
+
+1. **`phases` on the `packs:` entry** in `temper.config` — the project's explicit choice,
+   and it wins.
+2. **`phases:` frontmatter in the pack's own `rules.md`** — the author declaring which
+   stages the pack has anything to say to. Built-in packs all declare one; `tdd` is
+   `[build, review, check]`, `adaptive-learning` is `[review]`.
+3. **`all`** — no declaration anywhere, so it loads everywhere. This is the
+   backwards-compatible default for a third-party pack written before frontmatter existed.
+
+`all` in either place means every phase. An **empty list (`[]`) means no phase loads it** —
+that's a real value, not a missing one. `packs/hooks/rules.md` uses it: the file documents
+bash hooks that enforce themselves at edit- and commit-time, so there is nothing in it for
+a stage agent to apply, and loading it into all five stages was ~140 lines of pure cost.
 
 ## Pack-Plugin/Skill Linking
 

@@ -41,6 +41,40 @@ half while holding quality.
   bug had silently frozen it at v6.0.1, three major versions behind; shipping it
   misrepresented what Cursor users got. It will return in a better form.
 
+### Context engineering (second pass)
+
+The prompt diet above cut length. This pass closes four places where Temper still spent
+context the way a pre-Claude-5 plugin would — measured against Anthropic's
+[new rules of context engineering](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models).
+New doc: `docs/context-hygiene.md`.
+
+- **The generated `TOKENOMICS` block is out of `.claude/CLAUDE.md`** — standing advice
+  ("prefer Sonnet for simple tasks", "run `/compact` after turn 28", "Grep first, saves
+  ~1%") re-injected into every session, for a saving smaller than the block describing
+  it, duplicating judgment the model already applies. Tokenomics has been a retired
+  system since v7; `validate-docs.sh` now fails if the block regenerates.
+- **Pack `phases:` is real, not just documented.** No built-in pack had ever declared
+  one, so every enabled pack loaded into all five stages regardless. Each now declares
+  its scope in `rules.md` frontmatter, with the project's `packs:` entry still winning
+  and `all` still the default when neither says. `packs/hooks/rules.md` declares `[]` —
+  ~140 lines of install-and-behaviour documentation for self-enforcing bash hooks, which
+  no stage agent can act on, previously loaded by all of them.
+- **`packs/tdd/rules.md` is 207 → 69 lines.** The cut is 106 lines of the same test
+  written three times (Spring Boot, React, Express) plus step-numbered RED/GREEN/REFACTOR
+  procedure. The rules, the scenario-driven mapping, and the test-location table stay.
+  `reference/review.md` loses its subagent arithmetic (">20 files → groups of ~10, max 3
+  parallel", "spend 80% of attention on flagged hunks", "weight 80% changed lines") in
+  favour of the grouping judgment plus the one constraint that actually bounds recursion,
+  the depth budget.
+- **New `temper model <stage> | --all`, and an optional `models.{stage}` config key.**
+  v7 was right to delete `models.routing`/`models.tiers` — a resolution algorithm a
+  prompt had to execute correctly every run — but collapsing it to frontmatter meant a
+  project could not change a stage's model without editing plugin-owned files, which
+  comes up every time a model generation ships. Defaults still live in
+  `agents/{stage}.md` frontmatter (one source of truth, read directly, nothing to drift);
+  config overrides one; the lookup is bash. The orchestrator makes one `temper model
+  --all` call per run. No tiers, no routing table, no algorithm in prose.
+
 ## v7.0.1 — Fixes
 
 Fix bash 3.2 override crash + state CLI correctness bugs (#69); v7.0.0: The Deterministic Spine — CLI-enforced gates, agents/, prompt diet, self-evals (#68); link Privacy Policy from landing page and README (#67); ci,docs: plugin-directory submission kit + official strict manifest validation in CI (#66)

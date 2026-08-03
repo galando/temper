@@ -91,6 +91,22 @@ else
   fail "docs/index.html not found"
 fi
 
+# 5. No generated token-optimization block in the project CLAUDE.md.
+# Tokenomics is retired (reference/tokenomics.md); an external tool used to re-inject a
+# TOKENOMICS block of standing advice into every session's context. If it comes back,
+# this fails rather than silently costing every run — delete the block, keep the marker
+# comment. See docs/context-hygiene.md.
+PROJECT_CLAUDE_MD="$REPO_ROOT/.claude/CLAUDE.md"
+if [[ -f "$PROJECT_CLAUDE_MD" ]]; then
+  if grep -qE '^<!-- TOKENOMICS:(START|END) -->' "$PROJECT_CLAUDE_MD"; then
+    fail ".claude/CLAUDE.md has a regenerated TOKENOMICS block — tokenomics is retired, delete it (reference/tokenomics.md)"
+  else
+    ok
+  fi
+else
+  fail ".claude/CLAUDE.md not found"
+fi
+
 echo ""
 echo "=== validate-docs.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"

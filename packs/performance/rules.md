@@ -1,3 +1,7 @@
+---
+phases: [build, review]
+---
+
 # Performance Pack
 
 **Version:** 1.0.0

@@ -27,21 +27,10 @@ hook whenever a gate is FAIL and unoverridden — see `packs/hooks/rules.md`.
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/reference/tokenomics.md`
 
-<!-- TOKENOMICS:START -->
-## Token Optimization Insights
+<!-- No generated "Token Optimization Insights" block belongs in this file. It was a
+     `<!-- TOKENOMICS:START -->` section of standing advice ("prefer Sonnet", "run
+     /compact after turn 28", "Grep first — saves ~1%") re-injected on every session for
+     a saving smaller than the block's own cost, and it duplicated judgment the model
+     already applies. Tokenomics is a retired system (reference/tokenomics.md);
+     validate-docs.sh fails if the block returns. -->
 
-_Last updated: 2026-07-31_
-
-### Context Management
-- Your context snowballs at **turn 28** on average (27% of sessions). Use `/compact` proactively after turn 26-28 on long sessions to prevent unbounded growth.
-- Some sessions use significantly more tokens than others. Consider shorter, more focused sessions with clear goals.
-- You read files you don't end up using. Use `Grep` first to locate relevant files before reading them — reduces unnecessary context by ~1%.
-- You could benefit from subagents for parallel tasks. Consider splitting multi-file operations into parallel agent tasks.
-- You receive verbose command output. Prefer `Grep`/`Read` tools over bash commands when searching files to reduce output tokens.
-
-### Prompt Quality
-- **7%** of your prompts are under 10 words. Include specific file paths, function names, and expected outcomes to reduce clarification rounds.
-
-### Model Usage
-- You use Opus/Claude for **3%** of simple tasks. Prefer **Sonnet** for editing, small fixes, and exploration tasks to reduce token usage by ~5x on those sessions.
-<!-- TOKENOMICS:END -->

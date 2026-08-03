@@ -12,6 +12,7 @@
 #   temper state <get|set|advance|loop|clear> ..  read/write .temper/build-state.json
 #   temper evidence <add|list|clear> ...          append/read/clear the per-stage evidence ledger
 #   temper gate <stage> [--spec-path P]           compute PASS/FAIL for a stage, record verdict
+#   temper model <stage> | --all                  resolve a stage's model (config override > frontmatter)
 #   temper override <stage> --reason "..."        record a human override of a FAIL gate
 #   temper report [--json]                        render the current run's gate ledger
 #
@@ -22,6 +23,12 @@
 set -uo pipefail
 
 REPO_ROOT="$(pwd)"
+# Where the plugin itself lives (this script is $PLUGIN_ROOT/scripts/temper). Used only
+# by `temper model` to read agents/*.md frontmatter — never to locate project state.
+# Prefer where this file actually sits over $CLAUDE_PLUGIN_ROOT, which belongs to
+# whichever plugin is calling; fall back to it when the script is reached via a symlink.
+PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)"
+[[ -d "$PLUGIN_ROOT/agents" ]] || PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
 TEMPER_DIR="${TEMPER_DIR:-$REPO_ROOT/.temper}"
 CONFIG_FILE="${TEMPER_CONFIG:-$REPO_ROOT/.claude/temper.config}"
 STATE_FILE="$TEMPER_DIR/build-state.json"
@@ -31,6 +38,10 @@ OVERRIDES_FILE="$TEMPER_DIR/overrides.json"
 EVIDENCE_DIR="$TEMPER_DIR/evidence"
 
 STAGES="plan design build review check commit"
+
+# Stages that run as an Agent subprocess and therefore have a model to resolve.
+# `commit` is not one — it's the orchestrator running `temper gate commit`.
+AGENT_STAGES="plan design build review check"
 
 # Per-command state.stage sequences (bookkeeping for resume — see
 # reference/orchestrator-patterns.md "Build State Schema"). Distinct from $STAGES
@@ -211,6 +222,59 @@ elif isinstance(cur, bool):
 else:
     print(cur if cur != '' else default)
 " "$CONFIG_FILE" "$path" "$default" 2>/dev/null || echo "$default"
+}
+
+# ---------------------------------------------------------------------------
+# model — resolve which model a stage runs on.
+#
+# v7 replaced the v6 `models.routing`/`models.tiers` config with fixed `model:`
+# frontmatter in agents/{stage}.md, because the old block was a *resolution algorithm* a
+# prompt had to execute correctly on every run. That diagnosis still holds; what it cost
+# was the ability to change a model without editing plugin-owned files, which matters
+# every time a new model generation ships.
+#
+# So: the frontmatter stays the source of truth for defaults (no table to drift out of
+# sync with it), an optional flat `models.{stage}` config key overrides it, and the
+# lookup lives here — one deterministic call, no algorithm in prose.
+# ---------------------------------------------------------------------------
+
+_agent_default_model() { # <stage> -> the `model:` line in agents/<stage>.md frontmatter
+  local f="$PLUGIN_ROOT/agents/${1}.md"
+  [[ -f "$f" ]] || { echo ""; return; }
+  awk '
+    /^---[[:space:]]*$/ { n++; if (n == 2) exit; next }
+    n == 1 && /^model:/ { sub(/^model:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print; exit }
+  ' "$f" 2>/dev/null
+}
+
+_resolve_model() { # <stage> -> config override, else frontmatter default, else ""
+  local override; override="$(_cfg_get "models.${1}" "")"
+  [[ -n "$override" ]] && { echo "$override"; return; }
+  _agent_default_model "$1"
+}
+
+cmd_model() {
+  local stage="${1:-}"
+  if [[ -z "$stage" || "$stage" == "--all" ]]; then
+    local s m rc=0
+    for s in $AGENT_STAGES; do
+      m="$(_resolve_model "$s")"
+      [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$s' (missing $PLUGIN_ROOT/agents/$s.md?)" >&2; rc=1; continue; }
+      echo "${s}=${m}"
+    done
+    return $rc
+  fi
+
+  case " $AGENT_STAGES " in
+    *" $stage "*) ;;
+    *) echo "FAIL: unknown stage '$stage' (one of: $AGENT_STAGES, or --all)" >&2; return 1 ;;
+  esac
+
+  local m; m="$(_resolve_model "$stage")"
+  # Fail loudly rather than printing an empty string the orchestrator would paste into
+  # an Agent launch — this is only reachable if the plugin install is broken.
+  [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$stage' (missing $PLUGIN_ROOT/agents/$stage.md?)" >&2; return 1; }
+  echo "$m"
 }
 
 # ---------------------------------------------------------------------------
@@ -938,6 +1002,7 @@ main() {
     state) cmd_state "$@" ;;
     evidence) cmd_evidence "$@" ;;
     gate) cmd_gate "$@" ;;
+    model) cmd_model "$@" ;;
     override) cmd_override "$@" ;;
     report) cmd_report "$@" ;;
     ""|-h|--help)
@@ -949,6 +1014,7 @@ Usage:
   temper state <init|get|set|advance|loop|clear> ...
   temper evidence <add|list|clear> ...
   temper gate <plan|design|build|review|check|commit> [--spec-path P]
+  temper model <plan|design|build|review|check> | --all
   temper override <stage> --reason "..."
   temper report [--json]
 EOF

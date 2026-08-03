@@ -22,10 +22,10 @@ the `temper` CLI from an evidence ledger — never asserted by a model.
 
 Each stage runs in an **isolated Agent subprocess** — genuine context clearing, not a
 self-directed "clear your context" instruction (which is unenforceable). What each stage
-must do lives in exactly one place: `agents/{stage}.md` (frontmatter declares its model;
-the body points at `reference/{stage}.md` for methodology and tells it which `temper`
-commands to run). This file does not repeat that contract per stage — read the agent
-file once when you launch it.
+must do lives in exactly one place: `agents/{stage}.md` (frontmatter declares its default
+model; the body points at `reference/{stage}.md` for methodology and tells it which
+`temper` commands to run). This file does not repeat that contract per stage — read the
+agent file once when you launch it.
 
 ```
 ORCHESTRATOR (this file)
@@ -42,6 +42,16 @@ ORCHESTRATOR (this file)
 `$CLAUDE_PLUGIN_ROOT` resolution: see `reference/orchestrator-patterns.md` →
 "$CLAUDE_PLUGIN_ROOT Resolution". All paths below are relative to it. `$TEMPER` below
 means `$CLAUDE_PLUGIN_ROOT/scripts/temper`.
+
+## Models
+
+Run `$TEMPER model --all` **once**, at the same time as the first state call, and keep
+its output for the run. It prints one `stage=model` line per stage, resolving a project's
+optional `models.{stage}` config override against the `agents/{stage}.md` default. The
+stage launches below say `model: {plan}`, `{build}` and so on — substitute the value for
+that stage from this output verbatim. Don't re-run it per stage, and don't infer a model
+from anywhere else: this command is the only thing that knows whether the project
+overrode one.
 
 ## State
 
@@ -137,7 +147,7 @@ dirty tree unless confirmed; `git commit -m "wip: {stage} passed"` after each PA
 Launch:
 
 ```
-Use the Agent tool, model: opus, prompt:
+Use the Agent tool, model: {plan}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/plan.md exactly. Feature: $ARGUMENTS.
 Spec path: {from temper state get spec_path, or a new slug you choose}."
 ```
@@ -178,7 +188,7 @@ Skip straight to Build when `phases.design: false`, or complexity is trivial/sim
 Launch:
 
 ```
-Use the Agent tool, model: opus, prompt:
+Use the Agent tool, model: {design}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/design.md exactly. Spec: {spec_path from state}."
 ```
 
@@ -199,7 +209,7 @@ decision log; only sections `design.md` actually has) / Save / Other.
 Launch:
 
 ```
-Use the Agent tool, model: sonnet, prompt:
+Use the Agent tool, model: {build}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/build.md exactly. Spec: {spec_path from state}.
 {If a review-context.json or check-context.json feedback file exists, name it here.}"
 ```
@@ -228,7 +238,7 @@ plan infeasible — human-driven, no circuit breaker, max 1 per run) / Override 
 Launch:
 
 ```
-Use the Agent tool, model: sonnet, prompt:
+Use the Agent tool, model: {review}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/review.md exactly. Spec: {spec_path from state}."
 ```
 
@@ -249,7 +259,7 @@ files and folds `[ARCH-DEPTH]` findings into the summary before re-showing the g
 Launch:
 
 ```
-Use the Agent tool, model: sonnet, prompt:
+Use the Agent tool, model: {check}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/check.md exactly. Spec: {spec_path from state}."
 ```
 

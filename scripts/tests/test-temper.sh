@@ -424,6 +424,34 @@ DEDUP_OUT="$(HOME="$DEDUP_HOME" python3 "$REPO_ROOT/scripts/pack-discover.py")"
 assert_eq "pack-discover emits feature-dev:feature-dev exactly once across two marketplace keys" "1" "$(printf '%s\n' "$DEDUP_OUT" | grep -c "^SKILL|feature-dev:feature-dev|")"
 assert_eq "pack-discover does not emit a second, market-B-suffixed duplicate" "1" "$(printf '%s\n' "$DEDUP_OUT" | grep -c "feature-dev:feature-dev")"
 
+# --- temper model: config override > agents/{stage}.md frontmatter, resolved in bash ---
+setup
+# Defaults come from the real agents/*.md frontmatter — no table in the CLI to drift.
+assert_eq "model plan defaults to agents/plan.md frontmatter" \
+  "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); print; exit}' "$REPO_ROOT/agents/plan.md")" \
+  "$("$TEMPER" model plan)"
+assert_eq "model --all emits one stage=model line per agent stage" "5" "$("$TEMPER" model --all | grep -c '^[a-z]*=')"
+assert_eq "model --all covers every agent stage" "plan design build review check" \
+  "$("$TEMPER" model --all | cut -d= -f1 | tr '\n' ' ' | sed 's/ $//')"
+assert_exit "model rejects an unknown stage" 1 "$TEMPER" model bogus
+assert_exit "model rejects 'commit' (not an Agent stage)" 1 "$TEMPER" model commit
+
+# A models: block in the project config overrides the frontmatter default.
+cat >> .claude/temper.config <<'EOF'
+models:
+  review: opus
+  check: claude-opus-5
+EOF
+assert_eq "models.{stage} config overrides the frontmatter default" "opus" "$("$TEMPER" model review)"
+assert_eq "models.{stage} accepts a full model ID, not just an alias" "claude-opus-5" "$("$TEMPER" model check)"
+assert_eq "an unset stage still falls back to frontmatter" "$("$TEMPER" model plan)" "$(cd "$REPO_ROOT" && ./scripts/temper model plan)"
+assert_eq "model --all reflects overrides" "review=opus" "$("$TEMPER" model --all | grep '^review=')"
+
+# Absent config => frontmatter defaults, never an empty string.
+rm -f .claude/temper.config
+assert_eq "no config file => frontmatter default, non-empty" "1" "$([[ -n "$("$TEMPER" model build)" ]] && echo 1 || echo 0)"
+assert_exit "model --all succeeds with no config file" 0 "$TEMPER" model --all
+
 echo ""
 echo "=== test-temper.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"

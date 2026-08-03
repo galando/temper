@@ -1,3 +1,7 @@
+---
+phases: []
+---
+
 # Hooks Pack
 
 **Version:** 2.0.0
@@ -6,6 +10,12 @@
 Deterministic safety net for Temper. Unlike the model-driven advisory checks in
 review/check, these hooks are plain bash: they block on a *detected* violation with a
 non-model exit code and no-op when their inputs are absent. They are the determinism layer.
+
+**`phases: []` is deliberate.** This file is install-and-behaviour documentation read by
+`/temper:pack` and by humans — there is nothing here for a stage agent to apply, because
+enforcement happens in bash at edit- and commit-time whether or not any prompt mentions
+it. Loading it into Plan/Build/Review/Check would spend context on instructions no stage
+can act on.
 
 **v7:** the commit-time gate is now `temper gate commit` (`scripts/temper`) — it reads
 the evidence ledger written by every stage (`temper evidence add`) and computes PASS/FAIL

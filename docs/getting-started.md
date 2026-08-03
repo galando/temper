@@ -249,5 +249,6 @@ Shows live scenario verification status, MCP tool availability, and evidence rat
 - [Recommended Setup](recommended-setup) — Optional MCP servers and live verification setup
 - [Commands Reference](commands) — Full command documentation
 - [Packs](packs) — Built-in and custom packs
+- [Context Hygiene](context-hygiene) — Run `/doctor` on your project; keep packs and `CLAUDE.md` lean
 - [Enterprise Setup](enterprise) — Deploy across your organization
 - [DeepWiki](https://deepwiki.com/galando/temper) — AI-powered documentation
