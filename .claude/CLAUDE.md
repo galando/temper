@@ -27,10 +27,11 @@ hook whenever a gate is FAIL and unoverridden — see `packs/hooks/rules.md`.
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/reference/tokenomics.md`
 
-<!-- No generated "Token Optimization Insights" block belongs in this file. It was a
-     `<!-- TOKENOMICS:START -->` section of standing advice ("prefer Sonnet", "run
-     /compact after turn 28", "Grep first — saves ~1%") re-injected on every session for
-     a saving smaller than the block's own cost, and it duplicated judgment the model
-     already applies. Tokenomics is a retired system (reference/tokenomics.md);
-     validate-docs.sh fails if the block returns. -->
+<!-- Nothing follows. A generated "Token Optimization Insights" section, delimited by
+     TOKENOMICS:START / TOKENOMICS:END markers, used to be re-injected here every
+     session; it was standing advice that cost more than it saved and duplicated
+     judgment the model already applies. Tokenomics is a retired system — see
+     reference/tokenomics.md. validate-docs.sh fails if it returns. Do not quote the
+     literal marker syntax in this comment: the embedded close-delimiter ends the
+     comment early and the rest renders as visible context. -->
 

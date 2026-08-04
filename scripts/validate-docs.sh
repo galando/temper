@@ -91,15 +91,28 @@ else
   fail "docs/index.html not found"
 fi
 
-# 5. No generated token-optimization block in the project CLAUDE.md.
+# 5. No token-optimization advice in the project CLAUDE.md's *rendered* text.
 # Tokenomics is retired (reference/tokenomics.md); an external tool used to re-inject a
-# TOKENOMICS block of standing advice into every session's context. If it comes back,
-# this fails rather than silently costing every run — delete the block, keep the marker
-# comment. See docs/context-hygiene.md.
+# TOKENOMICS block of standing advice into every session's context.
+#
+# This checks what the file actually contributes to context, i.e. after HTML comments are
+# stripped — not the raw source. A raw grep passes a comment that quotes the marker
+# syntax, because the quoted close-delimiter ends the comment early and spills the rest
+# back into view. That exact bug shipped once. See docs/context-hygiene.md.
 PROJECT_CLAUDE_MD="$REPO_ROOT/.claude/CLAUDE.md"
 if [[ -f "$PROJECT_CLAUDE_MD" ]]; then
-  if grep -qE '^<!-- TOKENOMICS:(START|END) -->' "$PROJECT_CLAUDE_MD"; then
-    fail ".claude/CLAUDE.md has a regenerated TOKENOMICS block — tokenomics is retired, delete it (reference/tokenomics.md)"
+  TOKENOMICS_LEAK=$(python3 -c "
+import re, sys
+src = open(sys.argv[1]).read()
+visible = re.sub(r'<!--.*?-->', '', src, flags=re.DOTALL)
+# Anything a stray delimiter left behind is a leak by definition.
+markers = ['TOKENOMICS:START', 'TOKENOMICS:END', '-->', '<!--']
+advice = ['Token Optimization', 'prefer Sonnet', '/compact after turn', 'context snowballs']
+hits = [m for m in markers + advice if m.lower() in visible.lower()]
+print('; '.join(hits))
+" "$PROJECT_CLAUDE_MD" 2>/dev/null)
+  if [[ -n "$TOKENOMICS_LEAK" ]]; then
+    fail ".claude/CLAUDE.md leaks token-optimization advice into rendered context ($TOKENOMICS_LEAK) — tokenomics is retired (reference/tokenomics.md)"
   else
     ok
   fi
