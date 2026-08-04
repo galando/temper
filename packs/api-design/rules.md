@@ -1,5 +1,5 @@
 ---
-phases: [plan, design, build, review]
+phases: all
 ---
 
 # API Design Pack

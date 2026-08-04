@@ -1,5 +1,5 @@
 ---
-phases: [build, review]
+phases: [build, review, check, fix]
 ---
 
 # Performance Pack

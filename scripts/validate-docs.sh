@@ -120,6 +120,20 @@ else
   fail ".claude/CLAUDE.md not found"
 fi
 
+# 6. Regression guard: the choreography removed in v8's context pass stays removed.
+# This does not judge prose quality — it cannot. It pins the specific micro-management
+# patterns that were cut (fixed subagent arithmetic, attention-percentage budgets), so
+# reintroducing one is a deliberate act with a failing check attached rather than a quiet
+# drift back. See docs/context-hygiene.md.
+CHOREO=$(grep -rnE 'groups of ~[0-9]+|max [0-9]+ parallel|[0-9]+% of attention|[Ww]eight [0-9]+% changed' \
+  "$REPO_ROOT/reference" "$REPO_ROOT/packs" 2>/dev/null || true)
+if [[ -z "$CHOREO" ]]; then
+  ok
+else
+  fail "choreography patterns reintroduced (v8 context pass removed these):"
+  echo "$CHOREO" | sed 's/^/  /'
+fi
+
 echo ""
 echo "=== validate-docs.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"

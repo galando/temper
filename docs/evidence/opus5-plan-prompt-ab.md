@@ -54,6 +54,24 @@ old `409/340/397`.
    emitted exactly `intent.md` + `plan.md` + `tasks.md` in 3 of 3. The old prompt always
    wrote 6, three of which no gate reads.
 
+## SC6, resolved
+
+SC6 ("Plan completes in under 4 minutes") was carried through the release as an unmet
+criterion under a human override. It should not have been: **the criterion was invalid,
+not the result.** Its 4-minute target was derived by halving a ">10 minutes" figure that
+came from a user report about full `/temper` runs on a real repository — a different
+command on different code. Nothing ever measured this fixture before the target was
+written, so there was no baseline to improve on by 50%.
+
+The measurement now exists: **384s median (6.4 min) over 6 runs**, range 303–455s, and
+the old prompt was 388s on the same fixture. A Plan run on `password-reset` takes about
+six and a half minutes on Opus 5 regardless of prompt length, because wall-clock is
+dominated by repo exploration and artifact writing.
+
+Anyone re-deriving a Plan timing target should set it against that 384s figure and state
+the fixture it applies to. The spec that carried SC6 was a run-local `.temper/specs/`
+artifact and is not in version control; this section is the durable record.
+
 ## What this changed in the release
 
 `faster pipeline` was withdrawn from the v8.0.0 headline — it is not supported for the

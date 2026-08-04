@@ -58,7 +58,13 @@ New doc: `docs/context-hygiene.md`.
   its scope in `rules.md` frontmatter, with the project's `packs:` entry still winning
   and `all` still the default when neither says. `packs/hooks/rules.md` declares `[]` —
   ~140 lines of install-and-behaviour documentation for self-enforcing bash hooks, which
-  no stage agent can act on, previously loaded by all of them.
+  no stage agent can act on, previously loaded by all of them. Narrowing is evidence-based
+  and deliberately conservative: `performance` and `api-design` keep `check` because
+  `reference/check.md` runs a performance-regression gate (4.9) and an API contract check
+  (4.85); `tdd` and `performance` keep `fix` because `/temper:fix` loads packs and writes
+  a RED regression test. `validate-plugin.sh` validates every pack's declaration against
+  the real phase vocabulary — it cannot tell you a pack was narrowed too far, which stays
+  a reading of the stage docs.
 - **`packs/tdd/rules.md` is 207 → 69 lines.** The cut is 106 lines of the same test
   written three times (Spring Boot, React, Express) plus step-numbered RED/GREEN/REFACTOR
   procedure. The rules, the scenario-driven mapping, and the test-location table stay.

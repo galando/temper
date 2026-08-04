@@ -157,6 +157,38 @@ else
   done
 fi
 
+# --- Pack `phases:` frontmatter (v8) ---
+# Every built-in pack declares which stages load it. This validates the declaration is
+# present and its values are real phases; it cannot tell you a pack was narrowed too far
+# — that's a reading of the stage docs, not a property of the file. `all` loads
+# everywhere, `[]` loads nowhere (packs/hooks, whose content is install documentation).
+PACK_PHASES_ERR=$(python3 -c "
+import glob, os, re, sys
+VALID = {'plan', 'design', 'build', 'review', 'check', 'fix'}
+errs = []
+for path in sorted(glob.glob(os.path.join(sys.argv[1], 'packs', '*', 'rules.md'))):
+    name = os.path.basename(os.path.dirname(path))
+    m = re.match(r'---\n(.*?)\n---\n', open(path).read(), re.DOTALL)
+    if not m:
+        errs.append(f'{name}: no frontmatter (expected a phases: block)')
+        continue
+    pm = re.search(r'^phases:[ \t]*(.+)$', m.group(1), re.MULTILINE)
+    if not pm:
+        errs.append(f'{name}: frontmatter has no phases: key')
+        continue
+    raw = pm.group(1).strip()
+    if raw == 'all':
+        continue
+    if not (raw.startswith('[') and raw.endswith(']')):
+        errs.append(f'{name}: phases must be \'all\' or a [list], got {raw!r}')
+        continue
+    bad = [p for p in (x.strip() for x in raw[1:-1].split(',')) if p and p not in VALID]
+    if bad:
+        errs.append(f'{name}: unknown phase(s) {bad} (valid: {sorted(VALID)})')
+print('; '.join(errs))
+" "$REPO_ROOT" 2>/dev/null)
+if [[ -z "$PACK_PHASES_ERR" ]]; then ok; else fail "pack phases: $PACK_PHASES_ERR"; fi
+
 # --- Phase 1 Verification (v5.5.0): hooks assertions ---
 # These cover the new files added by docs/plans/phase-1-verification.md.
 

@@ -1,5 +1,5 @@
 ---
-phases: [review]
+phases: [review, check]
 ---
 
 # Adaptive Learning Pack

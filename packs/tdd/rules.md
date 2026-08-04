@@ -1,5 +1,5 @@
 ---
-phases: [build, review, check]
+phases: [build, review, check, fix]
 ---
 
 # TDD Pack
