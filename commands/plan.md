@@ -24,7 +24,9 @@ argument-hint: "<feature-name-or-JIRA-123>"
 7. Clarify if ambiguous (max 2-3 questions, informed by scenarios)
 8. Generate exactly `intent.md` + `tasks.md` + `plan.md` — never a fourth file — to `.temper/specs/{feature}/` with file-to-scenario traceability
 9. For Medium and Complex: generate mermaid diagram + ASCII art equivalent in plan.md (## Diagram section); render ASCII in terminal summary (not raw mermaid)
-10. Present for approval with 4 options: Continue / Walkthrough / Change / Save
+10. Record `temper state set complexity <tier>`, then run `temper gate plan --spec-path
+    .temper/specs/{feature-slug}` and fix any FAIL — see **Deterministic Gate** below
+11. Present for approval with 4 options: Continue / Walkthrough / Change / Save
 
 ### Active Skills
 
