@@ -215,8 +215,35 @@ else
   fail "packs/hooks/settings.hooks.json missing"
 fi
 
+# Plugin-level hooks/hooks.json (v8.0.1): ships the standalone-stage gate guarantee
+# with the plugin itself, so --plugin-dir and marketplace installs get it without a
+# settings.json merge. Must be valid JSON and reference only hook scripts that exist.
+PLUGIN_HOOKS="$REPO_ROOT/hooks/hooks.json"
+if [[ -f "$PLUGIN_HOOKS" ]]; then
+  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$PLUGIN_HOOKS" 2>/dev/null; then
+    ok
+  else
+    fail "hooks/hooks.json is not valid JSON"
+  fi
+  MISSING_HOOK_SCRIPTS=$(python3 -c "
+import json, re, sys, os
+d = json.load(open(sys.argv[1]))
+missing = []
+for event in d.get('hooks', {}).values():
+    for matcher in event:
+        for h in matcher.get('hooks', []):
+            for m in re.findall(r'scripts/hooks/[\w.-]+\.sh', h.get('command', '')):
+                if not os.path.isfile(os.path.join(sys.argv[2], m)):
+                    missing.append(m)
+print('; '.join(missing))
+" "$PLUGIN_HOOKS" "$REPO_ROOT" 2>/dev/null)
+  if [[ -z "$MISSING_HOOK_SCRIPTS" ]]; then ok; else fail "hooks/hooks.json references missing scripts: $MISSING_HOOK_SCRIPTS"; fi
+else
+  fail "hooks/hooks.json missing (plugin-level stage-gate guarantee)"
+fi
+
 # Hook scripts: exist and are executable
-for sh in block-secrets.sh block-forbidden-imports.sh block-uncommitted-gate.sh verify-tests-ran.sh install.sh; do
+for sh in block-secrets.sh block-forbidden-imports.sh block-uncommitted-gate.sh verify-tests-ran.sh install.sh stage-marker.sh verify-stage-gate.sh; do
   p="$REPO_ROOT/scripts/hooks/$sh"
   if [[ ! -f "$p" ]]; then
     fail "scripts/hooks/$sh missing"

@@ -424,6 +424,62 @@ DEDUP_OUT="$(HOME="$DEDUP_HOME" python3 "$REPO_ROOT/scripts/pack-discover.py")"
 assert_eq "pack-discover emits feature-dev:feature-dev exactly once across two marketplace keys" "1" "$(printf '%s\n' "$DEDUP_OUT" | grep -c "^SKILL|feature-dev:feature-dev|")"
 assert_eq "pack-discover does not emit a second, market-B-suffixed duplicate" "1" "$(printf '%s\n' "$DEDUP_OUT" | grep -c "feature-dev:feature-dev")"
 
+# --- stage-marker.sh + verify-stage-gate.sh: the standalone-stage gate guarantee ---
+# stage-marker records the gate a /temper:{stage} session owes; verify-stage-gate blocks
+# Stop until gates.json carries a verdict for it (any verdict), failing open after 2
+# blocks. See docs/decisions/0005-deterministic-stage-gate-enforcement.md.
+setup
+MARKER="$REPO_ROOT/scripts/hooks/stage-marker.sh"
+VERIFY="$REPO_ROOT/scripts/hooks/verify-stage-gate.sh"
+
+echo '{"prompt": "/temper:plan add a thing"}' | bash "$MARKER"
+assert_eq "stage-marker records the owed stage" "plan" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['stage'])")"
+
+rm -f .temper/pending-stage.json
+echo '{"prompt": "please run /temper:plan for me"}' | bash "$MARKER"
+assert_eq "stage-marker ignores a mid-sentence mention" "absent" "$([[ -f .temper/pending-stage.json ]] && echo created || echo absent)"
+echo '{"prompt": "/temper add login"}' | bash "$MARKER"
+assert_eq "stage-marker ignores the unified /temper command" "absent" "$([[ -f .temper/pending-stage.json ]] && echo created || echo absent)"
+echo 'not json at all' | bash "$MARKER"
+assert_exit "stage-marker fails open on garbage stdin" 0 bash -c "echo garbage | bash '$MARKER'"
+
+assert_exit "verify-stage-gate passes with no marker" 0 bash "$VERIFY"
+
+echo '{"prompt": "/temper:plan x"}' | bash "$MARKER"
+assert_exit "verify-stage-gate BLOCKS when no verdict exists" 2 bash "$VERIFY"
+assert_eq "block is counted in the marker" "1" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['blocks'])")"
+
+echo '{"plan": {"verdict": "FAIL"}}' > .temper/gates.json
+assert_exit "a FAIL verdict satisfies the guarantee (gate ran)" 0 bash "$VERIFY"
+assert_eq "marker cleared once the verdict exists" "absent" "$([[ -f .temper/pending-stage.json ]] && echo present || echo absent)"
+
+rm -f .temper/gates.json
+echo '{"prompt": "/temper:build x"}' | bash "$MARKER"
+bash "$VERIFY" >/dev/null 2>&1; bash "$VERIFY" >/dev/null 2>&1
+assert_exit "loop guard fails open on the third stop attempt" 0 bash "$VERIFY"
+assert_eq "loop-guard fail-open clears the marker" "absent" "$([[ -f .temper/pending-stage.json ]] && echo present || echo absent)"
+
+echo '{"stage": "plan"' > .temper/pending-stage.json
+assert_exit "corrupt marker fails open" 0 bash "$VERIFY"
+
+# stop_hook_active with our counter at 0 means the marker isn't persisting — fail open
+# rather than loop. (Regression: the harness JSON must travel as argv; piping it into
+# `python3 - <<heredoc` silently discards it, since the heredoc owns stdin.)
+rm -f .temper/pending-stage.json .temper/gates.json
+echo '{"prompt": "/temper:check x"}' | bash "$MARKER"
+assert_exit "stop_hook_active with a stuck counter fails open" 0 \
+  bash -c "echo '{\"stop_hook_active\": true}' | bash '$VERIFY'"
+rm -f .temper/pending-stage.json
+echo '{"prompt": "/temper:check x"}' | bash "$MARKER"
+assert_exit "stop_hook_active=false still blocks normally" 2 \
+  bash -c "echo '{\"stop_hook_active\": false}' | bash '$VERIFY'"
+
+# End-to-end with the real CLI: marker -> real `temper gate plan` FAIL -> stop allowed.
+rm -f .temper/gates.json .temper/pending-stage.json
+echo '{"prompt": "/temper:plan x"}' | bash "$MARKER"
+"$TEMPER" gate plan --spec-path .temper/specs/empty >/dev/null 2>&1 || true
+assert_exit "real gate FAIL verdict unblocks the stop" 0 bash "$VERIFY"
+
 # --- temper model: config override > agents/{stage}.md frontmatter, resolved in bash ---
 setup
 # Defaults come from the real agents/*.md frontmatter — no table in the CLI to drift.

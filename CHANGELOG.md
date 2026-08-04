@@ -41,6 +41,30 @@ half while holding quality.
   bug had silently frozen it at v6.0.1, three major versions behind; shipping it
   misrepresented what Cursor users got. It will return in a better form.
 
+### Deterministic standalone-stage gate enforcement
+
+Re-running `evals/run-wiring-smoke.sh` (skipped in the original v8 verification)
+found that the standalone commands invoked the deterministic spine in only **1 of 3
+live runs** — Plan never called `temper gate plan`, Build wrote no evidence at all, and
+`temper gate commit` cannot distinguish that from a repo that never ran Temper. For a
+release whose headline is "gate verdicts are computed, never asserted", that was a
+release blocker, fixed in the layer where the commit gate already lives:
+
+- **New hook pair** — `scripts/hooks/stage-marker.sh` (UserPromptSubmit) records which
+  gate a `/temper:{plan,build,review,check}` session owes; `scripts/hooks/verify-stage-gate.sh`
+  (Stop) refuses to end the session until `.temper/gates.json` carries a verdict for it.
+  Any verdict satisfies it — PASS or FAIL — because the guarantee is that the gate *ran*.
+  Fail-open everywhere except that one path, with a 2-refusal loop guard.
+- **Shipped with the plugin** via `hooks/hooks.json` (new) — fires for `--plugin-dir`
+  and marketplace installs with no settings merge — and via the hooks pack's
+  `settings.hooks.json` for the copy-paste path.
+- **Gate calls moved into each command's numbered steps** (they sat in a trailing
+  section the model demonstrably didn't reach) — kept as defense-in-depth so the hook
+  rarely fires.
+- **Proven live**: `.temper/hooks.log` from an end-to-end run shows the hook blocking a
+  real skip and the model then running the gate 10 seconds later. Full record:
+  `docs/decisions/0005-deterministic-stage-gate-enforcement.md`.
+
 ### Context engineering (second pass)
 
 The prompt diet above cut length. This pass closes four places where Temper still spent
