@@ -50,6 +50,20 @@ Scope: `/temper` (unified) is not marked — its orchestrator owns the gates and
 session legitimately ends at any human gate. `/temper:fix` is not marked — an RCA-only
 session can legitimately end before build evidence exists.
 
+**Time-scoped:** the marker records `since` (submit time) and the Stop hook accepts
+only a verdict whose `gates.json` ts is `>= since` — a verdict left behind by a
+previous run does not pay this session's debt. Missing timestamps (old marker format,
+hand-edited gates) degrade to the weaker any-verdict check rather than blocking on
+unknowable state.
+
+**Strength by mode:** the guarantee is strongest in single-turn contexts (`claude -p`,
+CI) — one Stop, one debt, blocked until paid. In interactive sessions Stop fires at
+every assistant turn end, so a pre-gate turn (e.g. a free-text clarifying question) can
+be nudged early; after the loop guard's two refusals the hook fails open and the
+remaining turns are advisory-only. That degradation is accepted: the measured defect
+was the single-turn path, and a hook that could trap an interactive user outranks the
+residual risk.
+
 ## Degradation contract
 
 Consistent with every hook in the pack — exactly one fail-closed path:

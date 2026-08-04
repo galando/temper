@@ -474,6 +474,23 @@ echo '{"prompt": "/temper:check x"}' | bash "$MARKER"
 assert_exit "stop_hook_active=false still blocks normally" 2 \
   bash -c "echo '{\"stop_hook_active\": false}' | bash '$VERIFY'"
 
+# Time-scoping: a verdict from BEFORE the marker (a previous run's leftovers) must not
+# satisfy this session's debt; one recorded after it must.
+rm -f .temper/gates.json .temper/pending-stage.json
+echo '{"plan": {"verdict": "PASS", "ts": "2020-01-01T00:00:00Z"}}' > .temper/gates.json
+echo '{"prompt": "/temper:plan a new feature"}' | bash "$MARKER"
+assert_exit "a pre-marker verdict does NOT pay this session's debt" 2 bash "$VERIFY"
+python3 -c "
+import json; g=json.load(open('.temper/gates.json'))
+g['plan']['ts']='2099-01-01T00:00:00Z'; json.dump(g, open('.temper/gates.json','w'))"
+assert_exit "a post-marker verdict does" 0 bash "$VERIFY"
+
+# Backward compat: missing timestamps degrade to the any-verdict check, never a block.
+rm -f .temper/pending-stage.json
+echo '{"plan": {"verdict": "PASS"}}' > .temper/gates.json
+echo '{"stage": "plan", "blocks": 0}' > .temper/pending-stage.json
+assert_exit "verdict without ts + old marker format still clears" 0 bash "$VERIFY"
+
 # End-to-end with the real CLI: marker -> real `temper gate plan` FAIL -> stop allowed.
 rm -f .temper/gates.json .temper/pending-stage.json
 echo '{"prompt": "/temper:plan x"}' | bash "$MARKER"

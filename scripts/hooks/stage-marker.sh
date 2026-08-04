@@ -47,7 +47,12 @@ except Exception:
 
   local dir="${CLAUDE_PROJECT_DIR:-$PWD}"
   mkdir -p "$dir/.temper" 2>/dev/null || return 0
-  printf '{"stage": "%s", "blocks": 0}\n' "$stage" > "$dir/.temper/pending-stage.json" 2>/dev/null || true
+  # "since" scopes the debt in time: verify-stage-gate.sh accepts only a verdict whose
+  # ts is >= this moment, so a verdict left in gates.json by a PREVIOUS run cannot
+  # satisfy THIS session's guarantee. Same format as scripts/temper's _now.
+  local now; now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || now=""
+  printf '{"stage": "%s", "blocks": 0, "since": "%s"}\n' "$stage" "$now" \
+    > "$dir/.temper/pending-stage.json" 2>/dev/null || true
   return 0
 }
 

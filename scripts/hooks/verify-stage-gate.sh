@@ -54,13 +54,19 @@ except Exception:
 try:
     m = json.load(open(marker_path))
     stage, blocks = m["stage"], int(m.get("blocks", 0))
+    since = m.get("since", "")
 except Exception:
     print("OPEN"); sys.exit(0)
 try:
-    verdict = json.load(open(gates_path)).get(stage, {}).get("verdict")
+    g = json.load(open(gates_path)).get(stage, {})
+    verdict, verdict_ts = g.get("verdict"), g.get("ts", "")
 except Exception:
-    verdict = None
-if verdict:
+    verdict, verdict_ts = None, ""
+# The verdict must postdate the marker: a verdict left behind by a previous run does
+# not pay this session's debt. ISO-8601 UTC strings compare lexicographically; if
+# either timestamp is missing (old marker format, hand-edited gates.json), degrade to
+# the weaker any-verdict check rather than blocking on unknowable state.
+if verdict and (not since or not verdict_ts or verdict_ts >= since):
     print("CLEAR"); sys.exit(0)
 if blocks >= max_blocks:
     print("OPEN"); sys.exit(0)

@@ -27,8 +27,10 @@ is kept as a fallback for a project that installed only this pack, without the C
 `hooks/hooks.json`, so any install of the Temper plugin — `--plugin-dir` or marketplace —
 gets that guarantee with **no settings merge and no pack enablement**. Enabling this pack
 adds the remaining hooks (secrets, imports, in-agent commit gate); if both are active the
-stage-gate pair fires twice, which is harmless (second firing sees the verdict or no
-marker and no-ops).
+stage-gate pair fires twice per event. On the satisfied path the second firing sees the
+verdict or no marker and no-ops; on the blocking path both firings increment the refusal
+counter, so the loop guard trips after one blocked stop instead of two — the error is in
+the fail-open direction, never a double-block.
 
 ## Install
 
