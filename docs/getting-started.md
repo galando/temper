@@ -17,29 +17,6 @@ nav_order: 2
 {: .highlight }
 Claude Code will automatically load Temper's commands and skills when you start a session in any project.
 
-### Cursor IDE
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)
-```
-
-{: .highlight }
-No Python or git required — just curl. The script downloads static `.cursor/` files (rules and commands) from GitHub to your project.
-
-Slash commands use hyphenated format in Cursor:
-
-```bash
-cd your-project
-/temper "add login feature"    # Unified SDLC (recommended)
-/temper-plan "your feature"    # Plan with blast radius
-/temper-build                  # Scenario-driven TDD
-/temper-review                 # Structured intent validation
-/temper-check                  # Stack validation
-/temper-fix "bug description"  # Root cause analysis + fix
-/temper-pack                   # Manage quality packs
-/temper-status                 # Quality metrics dashboard
-```
-
 ### Other AI Assistants
 
 For any AI assistant that reads markdown:
@@ -272,5 +249,6 @@ Shows live scenario verification status, MCP tool availability, and evidence rat
 - [Recommended Setup](recommended-setup) — Optional MCP servers and live verification setup
 - [Commands Reference](commands) — Full command documentation
 - [Packs](packs) — Built-in and custom packs
+- [Context Hygiene](context-hygiene) — Run `/doctor` on your project; keep packs and `CLAUDE.md` lean
 - [Enterprise Setup](enterprise) — Deploy across your organization
 - [DeepWiki](https://deepwiki.com/galando/temper) — AI-powered documentation

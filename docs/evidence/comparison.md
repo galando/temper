@@ -28,7 +28,7 @@ An honest comparison of AI code quality approaches. Every cell is factually accu
 | **Observability** | Yes — per-stage metrics | No | No | Partial |
 | **Stack auto-detection** | Yes — 6 stacks | Partial | No | Partial |
 | **MCP integration** | Yes — code-review-graph, semgrep | Yes (native) | No | No |
-| **Multi-IDE support** | Claude Code + Cursor | Claude Code | Cursor | Any (CI) |
+| **Platform** | Claude Code | Claude Code | Cursor | Any (CI) |
 | **Cost** | Free, open source | Included | Included | Freemium |
 
 ### What Each Tool Does Best

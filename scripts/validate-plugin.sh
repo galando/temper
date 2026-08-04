@@ -105,8 +105,6 @@ print(len(agents))
 
   # --- Version-agreement checks (G-1, G-2) ---
   # plugin.json is the single source of truth; every other LIVE stamp must agree.
-  # .cursor/ is archived (v7+, see .cursor/README.md) — no longer regenerated per
-  # release, so it is intentionally NOT version-checked against plugin.json here.
 
   # .claude/CLAUDE.md  **Version:** X.Y.Z  == plugin.json (G-1 guard, SC-1)
   CLAUDE_MD="$REPO_ROOT/.claude/CLAUDE.md"
@@ -159,7 +157,39 @@ else
   done
 fi
 
-# --- Phase 1 Verification (v5.5.0): eval + hooks assertions ---
+# --- Pack `phases:` frontmatter (v8) ---
+# Every built-in pack declares which stages load it. This validates the declaration is
+# present and its values are real phases; it cannot tell you a pack was narrowed too far
+# — that's a reading of the stage docs, not a property of the file. `all` loads
+# everywhere, `[]` loads nowhere (packs/hooks, whose content is install documentation).
+PACK_PHASES_ERR=$(python3 -c "
+import glob, os, re, sys
+VALID = {'plan', 'design', 'build', 'review', 'check', 'fix'}
+errs = []
+for path in sorted(glob.glob(os.path.join(sys.argv[1], 'packs', '*', 'rules.md'))):
+    name = os.path.basename(os.path.dirname(path))
+    m = re.match(r'---\n(.*?)\n---\n', open(path).read(), re.DOTALL)
+    if not m:
+        errs.append(f'{name}: no frontmatter (expected a phases: block)')
+        continue
+    pm = re.search(r'^phases:[ \t]*(.+)$', m.group(1), re.MULTILINE)
+    if not pm:
+        errs.append(f'{name}: frontmatter has no phases: key')
+        continue
+    raw = pm.group(1).strip()
+    if raw == 'all':
+        continue
+    if not (raw.startswith('[') and raw.endswith(']')):
+        errs.append(f'{name}: phases must be \'all\' or a [list], got {raw!r}')
+        continue
+    bad = [p for p in (x.strip() for x in raw[1:-1].split(',')) if p and p not in VALID]
+    if bad:
+        errs.append(f'{name}: unknown phase(s) {bad} (valid: {sorted(VALID)})')
+print('; '.join(errs))
+" "$REPO_ROOT" 2>/dev/null)
+if [[ -z "$PACK_PHASES_ERR" ]]; then ok; else fail "pack phases: $PACK_PHASES_ERR"; fi
+
+# --- Phase 1 Verification (v5.5.0): hooks assertions ---
 # These cover the new files added by docs/plans/phase-1-verification.md.
 
 # Hooks pack: rules.md present + settings.hooks.json valid JSON
@@ -185,8 +215,35 @@ else
   fail "packs/hooks/settings.hooks.json missing"
 fi
 
+# Plugin-level hooks/hooks.json (v8.0.1): ships the standalone-stage gate guarantee
+# with the plugin itself, so --plugin-dir and marketplace installs get it without a
+# settings.json merge. Must be valid JSON and reference only hook scripts that exist.
+PLUGIN_HOOKS="$REPO_ROOT/hooks/hooks.json"
+if [[ -f "$PLUGIN_HOOKS" ]]; then
+  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$PLUGIN_HOOKS" 2>/dev/null; then
+    ok
+  else
+    fail "hooks/hooks.json is not valid JSON"
+  fi
+  MISSING_HOOK_SCRIPTS=$(python3 -c "
+import json, re, sys, os
+d = json.load(open(sys.argv[1]))
+missing = []
+for event in d.get('hooks', {}).values():
+    for matcher in event:
+        for h in matcher.get('hooks', []):
+            for m in re.findall(r'scripts/hooks/[\w.-]+\.sh', h.get('command', '')):
+                if not os.path.isfile(os.path.join(sys.argv[2], m)):
+                    missing.append(m)
+print('; '.join(missing))
+" "$PLUGIN_HOOKS" "$REPO_ROOT" 2>/dev/null)
+  if [[ -z "$MISSING_HOOK_SCRIPTS" ]]; then ok; else fail "hooks/hooks.json references missing scripts: $MISSING_HOOK_SCRIPTS"; fi
+else
+  fail "hooks/hooks.json missing (plugin-level stage-gate guarantee)"
+fi
+
 # Hook scripts: exist and are executable
-for sh in block-secrets.sh block-forbidden-imports.sh block-uncommitted-gate.sh verify-tests-ran.sh install.sh; do
+for sh in block-secrets.sh block-forbidden-imports.sh block-uncommitted-gate.sh verify-tests-ran.sh install.sh stage-marker.sh verify-stage-gate.sh; do
   p="$REPO_ROOT/scripts/hooks/$sh"
   if [[ ! -f "$p" ]]; then
     fail "scripts/hooks/$sh missing"
@@ -208,34 +265,20 @@ else
 fi
 if [[ -f "$REPO_ROOT/scripts/tests/test-temper.sh" ]]; then ok; else fail "scripts/tests/test-temper.sh missing"; fi
 
-# Evalset template
-if [[ -f "$REPO_ROOT/templates/evalset.json" ]]; then
-  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$REPO_ROOT/templates/evalset.json" 2>/dev/null; then
-    ok
-  else
-    fail "templates/evalset.json is not valid JSON"
-  fi
+# --- pack-discover.py (v8): /temper:pack's Step 5a discovery scan, extracted from a
+# prompt-embedded script into a testable one ---
+PACK_DISCOVER="$REPO_ROOT/scripts/pack-discover.py"
+if [[ ! -f "$PACK_DISCOVER" ]]; then
+  fail "scripts/pack-discover.py missing"
+elif ! python3 -c "import ast; ast.parse(open('$PACK_DISCOVER').read())" 2>/dev/null; then
+  fail "scripts/pack-discover.py has a syntax error"
 else
-  fail "templates/evalset.json missing"
+  ok
 fi
 
-# Cursor parity: derived eval command + rules + hooks pack rule exist (generator output)
-for cf in .cursor/commands/temper-eval.md .cursor/rules/temper-ref-eval.mdc .cursor/rules/temper-pack-hooks.mdc; do
-  if [[ -f "$REPO_ROOT/$cf" ]]; then ok; else fail "$cf missing (run scripts/generate-cursor.sh)"; fi
-done
-
-# Cursor parity: the eval reference rule carries the current version in its frozen-note
-# source path (extends the G-2 derived-content pattern to the new reference).
-EVAL_RULE="$REPO_ROOT/.cursor/rules/temper-ref-eval.mdc"
-if [[ -f "$EVAL_RULE" ]]; then
-  if grep -q "Source: reference/eval.md" "$EVAL_RULE" 2>/dev/null; then
-    ok
-  else
-    fail ".cursor/rules/temper-ref-eval.mdc source path mismatch"
-  fi
-fi
-
-# --- Eval fixtures (v7 — Move 3, docs/plans/v7-deterministic-spine.md) ---
+# --- Eval fixtures (v7 — Move 3, docs/plans/v7-deterministic-spine.md) — this is
+# Temper's OWN seeded-defect regression harness (evals/), unrelated to the removed
+# /temper:eval stage despite the name collision. It stays exactly as it was.
 for h in evals/run-fixture.sh evals/run-all.sh evals/run-wiring-smoke.sh; do
   p="$REPO_ROOT/$h"
   if [[ ! -f "$p" ]]; then fail "$h missing"

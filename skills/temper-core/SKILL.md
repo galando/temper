@@ -13,11 +13,14 @@ Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0
 4. Load `.claude/packs/stacks/{stack}.md`
 
 ## Pack Resolution (v4.3.0)
-Three-tier: project-local > global > built-in. Cached in `.temper/pack-manifest.json` and consumed by all stage commands (build, review, check, plan, design) for phase-filtered loading.
+Three-tier: project-local > global > built-in. Read live (no cache) by every stage command (build, review, check, plan, design) for phase-filtered loading.
 - `.claude/packs/{name}/rules.md` (project)
 - `~/.claude/packs/{name}/rules.md` (global)
 - `$CLAUDE_PLUGIN_ROOT/packs/{name}/rules.md` (built-in)
-Packs support `link: plugin://name | skill://name` and `phases: [build, review, ...]`.
+Packs support `link: plugin://name | skill://name` and `phases: [build, review, ...]` —
+declared in the pack's `rules.md` frontmatter, overridable per project on the `packs:`
+config entry, defaulting to `all` when neither says. `[]` means no stage loads it.
+Precedence and rationale: `reference/pack.md` → "Pack Configuration Schema".
 
 ## Quality Gates
 - **SUGGEST**: Non-blocking
@@ -57,10 +60,9 @@ Four independently optional capabilities, all enabled by default. Controlled via
 |-----------|-------|---------|
 | Architecture Depth | Review | Module-depth analysis: seams, adapters, locality, leverage, deletion test |
 | Grill Me | Plan, Design | Socratic challenge mode — stress-test plans before building |
-| Teach Me | Plan, Design, Build, Check, Eval | Comprehension companion — teach + quiz the human to mastery at each teaching gate (Review excluded — taught at Build) |
+| Teach Me | Plan, Design, Build, Check | Comprehension companion — teach + quiz the human to mastery at each teaching gate (Review excluded — taught at Build) |
 | Config Suggestions | Check | Suggest CLAUDE.md/AGENTS.md updates based on what was built |
 | HTML Review | Plan | Interactive browser-based plan review with inline comments |
-| Evals | Eval, Check | Behavioral verification via LM-judge + trajectory + plan-time evalsets |
 
 **Graceful degradation:** Each capability checks its config flag. Missing config = all enabled (default-on).
 

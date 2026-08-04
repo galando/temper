@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
 #
-# run-wiring-smoke.sh — proves /temper:plan, /temper:build, and /temper:eval actually
-# call `temper evidence add` / `temper gate <stage>` when a real model runs them
+# run-wiring-smoke.sh — proves /temper:plan and /temper:build actually call
+# `temper evidence add` / `temper gate <stage>` when a real model runs them
 # standalone. Unlike run-fixture.sh, there's no seeded defect and no CAUGHT/MISSED
 # verdict — this only checks that each stage's gate was actually invoked for real
 # (`.temper/gates.json` has a real verdict, not MISSING) and that evidence/state was
 # actually recorded. `review`/`check` wiring is already covered live by
 # evals/run-fixture.sh's seeded-defect fixtures; this fills the remaining gap —
 # see "Known limitations" in evals/README.md.
+# (v8.0.0: the Eval stage was removed from the pipeline; this probe no longer runs
+# /temper:eval or asserts an eval gate verdict — see CHANGELOG.md's v8.0.0 migration
+# note. plan/build wiring coverage is unchanged.)
 #
 # Requires: the `claude` CLI on PATH, authenticated. IS_SANDBOX=1 is set for the same
 # --dangerously-skip-permissions-refuses-root reason as run-fixture.sh — safe here only
 # because the target is always the disposable mktemp -d copy made below.
 #
-# Exit 0 if plan/build/eval all wired correctly; exit 1 if any gap is found.
+# Exit 0 if plan/build are wired correctly; exit 1 if any gap is found.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -51,42 +54,7 @@ FEATURE='add a version() function to src/app.js returning the package.json versi
 
 run_stage plan "/temper:plan $FEATURE"
 
-SPEC_DIR=""
-if [[ -d ".temper/specs" ]]; then
-  SPEC_DIR="$(find .temper/specs -mindepth 1 -maxdepth 1 -type d | head -1)"
-fi
-
 run_stage build "/temper:build"
-
-# Eval needs an evalset.json to score against. Writing a minimal one directly here
-# rather than spending a live `/temper:eval --create` call on it — evalset *content*
-# quality isn't what this fixture tests, evidence/gate wiring is.
-if [[ -n "$SPEC_DIR" ]]; then
-  mkdir -p "$SPEC_DIR/evals"
-  python3 -c "
-import json, sys
-json.dump({
-    'version': 1,
-    'feature': 'wiring-smoke',
-    'draft': False,
-    'rubric': {
-        'dimensions': [{'name': 'task_success', 'weight': 1.0, 'category': 'artifact'}],
-        'pass_threshold': 0.5,
-    },
-    'cases': [{
-        'id': 'c1',
-        'input': 'Call version()',
-        'expected': 'Returns the package.json version string',
-        'labels': ['smoke'],
-        'must_not': ['throws an error'],
-    }],
-}, open(sys.argv[1], 'w'), indent=2)
-" "$SPEC_DIR/evals/evalset.json"
-else
-  echo "WARN: no .temper/specs/* directory found after plan — eval will have nothing to score" >&2
-fi
-
-run_stage eval "/temper:eval"
 
 echo ""
 echo "=== gates.json wiring check (was temper gate <stage> actually invoked?) ==="
@@ -97,7 +65,7 @@ try:
 except Exception:
     gates = {}
 missing = []
-for s in ('plan', 'build', 'eval'):
+for s in ('plan', 'build'):
     v = gates.get(s, {}).get('verdict', 'MISSING')
     print(f'  {s}: {v}')
     if v == 'MISSING':
@@ -111,7 +79,7 @@ echo "=== evidence wiring check (was temper evidence add actually called?) ==="
 python3 -c "
 import json, os, sys
 missing = []
-for s in ('build', 'eval'):
+for s in ('build',):
     p = f'.temper/evidence/{s}.json'
     if not os.path.exists(p):
         print(f'  {s}: no evidence file at all')
@@ -140,9 +108,9 @@ fi
 
 echo ""
 if [[ "$GATES_OK" -eq 0 && "$EVIDENCE_OK" -eq 0 && "$COMPLEXITY_OK" -eq 0 ]]; then
-  echo "WIRED: plan/build/eval all called temper evidence add / temper gate for real"
+  echo "WIRED: plan/build both called temper evidence add / temper gate for real"
   exit 0
 else
-  echo "GAP: one or more stages never called the CLI — inspect run.plan.log / run.build.log / run.eval.log before this workdir is cleaned up"
+  echo "GAP: one or more stages never called the CLI — inspect run.plan.log / run.build.log before this workdir is cleaned up"
   exit 1
 fi

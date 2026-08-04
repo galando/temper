@@ -1,3 +1,7 @@
+---
+phases: []
+---
+
 # Hooks Pack
 
 **Version:** 2.0.0
@@ -7,10 +11,26 @@ Deterministic safety net for Temper. Unlike the model-driven advisory checks in
 review/check, these hooks are plain bash: they block on a *detected* violation with a
 non-model exit code and no-op when their inputs are absent. They are the determinism layer.
 
+**`phases: []` is deliberate.** This file is install-and-behaviour documentation read by
+`/temper:pack` and by humans — there is nothing here for a stage agent to apply, because
+enforcement happens in bash at edit- and commit-time whether or not any prompt mentions
+it. Loading it into Plan/Build/Review/Check would spend context on instructions no stage
+can act on.
+
 **v7:** the commit-time gate is now `temper gate commit` (`scripts/temper`) — it reads
 the evidence ledger written by every stage (`temper evidence add`) and computes PASS/FAIL
 per gate, rather than checking a single `build-state.json` stage field. `verify-tests-ran.sh`
 is kept as a fallback for a project that installed only this pack, without the CLI.
+
+**Plugin-shipped subset (v8):** the standalone-stage gate pair (`stage-marker.sh` +
+`verify-stage-gate.sh`, last two rows of the catalog) also ships in the plugin's own
+`hooks/hooks.json`, so any install of the Temper plugin — `--plugin-dir` or marketplace —
+gets that guarantee with **no settings merge and no pack enablement**. Enabling this pack
+adds the remaining hooks (secrets, imports, in-agent commit gate); if both are active the
+stage-gate pair fires twice per event. On the satisfied path the second firing sees the
+verdict or no marker and no-ops; on the blocking path both firings increment the refusal
+counter, so the loop guard trips after one blocked stop instead of two — the error is in
+the fail-open direction, never a double-block.
 
 ## Install
 
@@ -78,6 +98,8 @@ The single fail-closed path for each script is documented below. Everything else
 | `scripts/hooks/block-secrets.sh` | PreToolUse / native pre-commit | **BLOCK** | A staged/edited file matches a secret pattern (AWS `AKIA...`, GitHub `gh[ps]_...`, private-key header, `sk-ant-...` / `sk-proj-...` / OpenAI legacy) |
 | `scripts/hooks/block-forbidden-imports.sh` | PostToolUse | **warn** (no-op by default) | An edited file imports a name on the explicit denylist (empty by default) |
 | `scripts/hooks/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `temper gate commit` FAILs (in-agent mirror of the native hook, below) |
+| `scripts/hooks/stage-marker.sh` | UserPromptSubmit | **no-op** (records only) | Never — it writes `.temper/pending-stage.json` when a `/temper:{plan,build,review,check}` prompt is submitted, and blocks nothing |
+| `scripts/hooks/verify-stage-gate.sh` | Stop | **BLOCK** | A standalone stage session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage — see `docs/decisions/0005-deterministic-stage-gate-enforcement.md`. Fails open after 2 refusals |
 | `scripts/temper gate commit` | native pre-commit | **BLOCK** | Any stage's evidence-backed gate is not PASS and has no recorded `temper override` |
 | `scripts/hooks/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json` shows the latest `check_complete` absent or failed — used only when `scripts/temper` isn't present |
 | `scripts/hooks/install.sh` | n/a (installer) | **install** | Wires block-secrets + `temper gate commit` into a native git `pre-commit` hook (the deterministic commit gate) |

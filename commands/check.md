@@ -22,6 +22,9 @@ Levels (stop on failure):
 5. Lint/Format
 6. Type Check
 7. Security (dependency scan)
+8. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate check --spec-path
+   .temper/specs/{feature-slug}` and show its PASS/FAIL via `AskUserQuestion` — see
+   **Deterministic Gate** below
 
 ### Active Skills
 

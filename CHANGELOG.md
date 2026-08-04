@@ -3,6 +3,108 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v8.0.0 — shorter prompts, no Eval stage, leaner pipeline
+
+Breaking: the Eval stage and its config key are removed. The prompt surface was written
+for an older model generation — long, prescriptive, step-numbered. It is now outcome
+briefs, 43.7% smaller, which a measured A/B shows cuts the cost of a Plan run roughly in
+half while holding quality.
+
+- **The Eval stage is gone** — agent, command, reference doc, `skills/eval-judge/`,
+  `templates/evalset.json`, and the `eval:` config block, deleted rather than disabled.
+  `temper gate eval` exits non-zero; Check advances straight to the commit gate.
+  **Migration: nothing to do.** A stale `eval:` config block and a stale `"eval"` key in
+  `gates.json` are both inert, and an in-flight run's `build-state.json` is healed in
+  place on the first CLI call. Temper's own `evals/` regression harness is a different
+  thing with the same name and is untouched, except that `run-wiring-smoke.sh` drops its
+  probe of the removed stage.
+- **Review and Check run on Sonnet**, not Haiku — the two gates carrying the most
+  judgment. `haiku` no longer appears in the prompt surface.
+- **The prompt surface is down 43.7%** (372,967 → 209,863 bytes); `reference/plan.md`
+  alone goes from 1,086 to 224 lines, with nothing a gate checks losing its prompt-side
+  instruction. **Measured, not asserted** (6 runs per arm on Opus 5, same fixture):
+  a Plan run costs **$1.74 median instead of $3.37, −48%**, with equal blast-radius
+  recall, slightly more scenarios, and exactly the three artifacts the gate reads in 3
+  of 3 runs where the old prompt always wrote 6. It is **not** faster — 384s vs 388s.
+  Data: `docs/evidence/opus5-plan-prompt-ab.md`.
+- **Evidence is cleared when a stage is redone** — new `temper evidence clear`, wired
+  into `temper state loop`. Fixes a long-standing bug: evidence was append-only, so
+  stale rows from an abandoned run still counted toward the next gate. (A parallel
+  Review+Check launch was built and reverted before release — it left Check's results
+  stale when a human requested changes at the Review gate. The two stages remain
+  sequential, each with its own gate.)
+- **`/temper:pack` discovery is fixed and extracted** to `scripts/pack-discover.py`:
+  deduplicated targets, per-command descriptions, deterministic install-path selection,
+  bounded globs. The documented-but-never-written `.temper/pack-manifest.json` cache is
+  removed from the docs rather than built.
+- **Cursor support is removed** — the `.cursor/` export and its two scripts. A generator
+  bug had silently frozen it at v6.0.1, three major versions behind; shipping it
+  misrepresented what Cursor users got. It will return in a better form.
+
+### Deterministic standalone-stage gate enforcement
+
+Re-running `evals/run-wiring-smoke.sh` (skipped in the original v8 verification)
+found that the standalone commands invoked the deterministic spine in only **1 of 3
+live runs** — Plan never called `temper gate plan`, Build wrote no evidence at all, and
+`temper gate commit` cannot distinguish that from a repo that never ran Temper. For a
+release whose headline is "gate verdicts are computed, never asserted", that was a
+release blocker, fixed in the layer where the commit gate already lives:
+
+- **New hook pair** — `scripts/hooks/stage-marker.sh` (UserPromptSubmit) records which
+  gate a `/temper:{plan,build,review,check}` session owes; `scripts/hooks/verify-stage-gate.sh`
+  (Stop) refuses to end the session until `.temper/gates.json` carries a verdict for it.
+  Any verdict satisfies it — PASS or FAIL — because the guarantee is that the gate *ran*.
+  Fail-open everywhere except that one path, with a 2-refusal loop guard.
+- **Shipped with the plugin** via `hooks/hooks.json` (new) — fires for `--plugin-dir`
+  and marketplace installs with no settings merge — and via the hooks pack's
+  `settings.hooks.json` for the copy-paste path.
+- **Gate calls moved into each command's numbered steps** (they sat in a trailing
+  section the model demonstrably didn't reach) — kept as defense-in-depth so the hook
+  rarely fires.
+- **Proven live**: `.temper/hooks.log` from an end-to-end run shows the hook blocking a
+  real skip and the model then running the gate 10 seconds later. Full record:
+  `docs/decisions/0005-deterministic-stage-gate-enforcement.md`.
+
+### Context engineering (second pass)
+
+The prompt diet above cut length. This pass closes four places where Temper still spent
+context the way a pre-Claude-5 plugin would — measured against Anthropic's
+[new rules of context engineering](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models).
+New doc: `docs/context-hygiene.md`.
+
+- **The generated `TOKENOMICS` block is out of `.claude/CLAUDE.md`** — standing advice
+  ("prefer Sonnet for simple tasks", "run `/compact` after turn 28", "Grep first, saves
+  ~1%") re-injected into every session, for a saving smaller than the block describing
+  it, duplicating judgment the model already applies. Tokenomics has been a retired
+  system since v7; `validate-docs.sh` now fails if the block regenerates.
+- **Pack `phases:` is real, not just documented.** No built-in pack had ever declared
+  one, so every enabled pack loaded into all five stages regardless. Each now declares
+  its scope in `rules.md` frontmatter, with the project's `packs:` entry still winning
+  and `all` still the default when neither says. `packs/hooks/rules.md` declares `[]` —
+  ~140 lines of install-and-behaviour documentation for self-enforcing bash hooks, which
+  no stage agent can act on, previously loaded by all of them. Narrowing is evidence-based
+  and deliberately conservative: `performance` and `api-design` keep `check` because
+  `reference/check.md` runs a performance-regression gate (4.9) and an API contract check
+  (4.85); `tdd` and `performance` keep `fix` because `/temper:fix` loads packs and writes
+  a RED regression test. `validate-plugin.sh` validates every pack's declaration against
+  the real phase vocabulary — it cannot tell you a pack was narrowed too far, which stays
+  a reading of the stage docs.
+- **`packs/tdd/rules.md` is 207 → 69 lines.** The cut is 106 lines of the same test
+  written three times (Spring Boot, React, Express) plus step-numbered RED/GREEN/REFACTOR
+  procedure. The rules, the scenario-driven mapping, and the test-location table stay.
+  `reference/review.md` loses its subagent arithmetic (">20 files → groups of ~10, max 3
+  parallel", "spend 80% of attention on flagged hunks", "weight 80% changed lines") in
+  favour of the grouping judgment plus the one constraint that actually bounds recursion,
+  the depth budget.
+- **New `temper model <stage> | --all`, and an optional `models.{stage}` config key.**
+  v7 was right to delete `models.routing`/`models.tiers` — a resolution algorithm a
+  prompt had to execute correctly every run — but collapsing it to frontmatter meant a
+  project could not change a stage's model without editing plugin-owned files, which
+  comes up every time a model generation ships. Defaults still live in
+  `agents/{stage}.md` frontmatter (one source of truth, read directly, nothing to drift);
+  config overrides one; the lookup is bash. The orchestrator makes one `temper model
+  --all` call per run. No tiers, no routing table, no algorithm in prose.
+
 ## v7.0.1 — Fixes
 
 Fix bash 3.2 override crash + state CLI correctness bugs (#69); v7.0.0: The Deterministic Spine — CLI-enforced gates, agents/, prompt diet, self-evals (#68); link Privacy Policy from landing page and README (#67); ci,docs: plugin-directory submission kit + official strict manifest validation in CI (#66)

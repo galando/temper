@@ -91,6 +91,49 @@ else
   fail "docs/index.html not found"
 fi
 
+# 5. No token-optimization advice in the project CLAUDE.md's *rendered* text.
+# Tokenomics is retired (reference/tokenomics.md); an external tool used to re-inject a
+# TOKENOMICS block of standing advice into every session's context.
+#
+# This checks what the file actually contributes to context, i.e. after HTML comments are
+# stripped — not the raw source. A raw grep passes a comment that quotes the marker
+# syntax, because the quoted close-delimiter ends the comment early and spills the rest
+# back into view. That exact bug shipped once. See docs/context-hygiene.md.
+PROJECT_CLAUDE_MD="$REPO_ROOT/.claude/CLAUDE.md"
+if [[ -f "$PROJECT_CLAUDE_MD" ]]; then
+  TOKENOMICS_LEAK=$(python3 -c "
+import re, sys
+src = open(sys.argv[1]).read()
+visible = re.sub(r'<!--.*?-->', '', src, flags=re.DOTALL)
+# Anything a stray delimiter left behind is a leak by definition.
+markers = ['TOKENOMICS:START', 'TOKENOMICS:END', '-->', '<!--']
+advice = ['Token Optimization', 'prefer Sonnet', '/compact after turn', 'context snowballs']
+hits = [m for m in markers + advice if m.lower() in visible.lower()]
+print('; '.join(hits))
+" "$PROJECT_CLAUDE_MD" 2>/dev/null)
+  if [[ -n "$TOKENOMICS_LEAK" ]]; then
+    fail ".claude/CLAUDE.md leaks token-optimization advice into rendered context ($TOKENOMICS_LEAK) — tokenomics is retired (reference/tokenomics.md)"
+  else
+    ok
+  fi
+else
+  fail ".claude/CLAUDE.md not found"
+fi
+
+# 6. Regression guard: the choreography removed in v8's context pass stays removed.
+# This does not judge prose quality — it cannot. It pins the specific micro-management
+# patterns that were cut (fixed subagent arithmetic, attention-percentage budgets), so
+# reintroducing one is a deliberate act with a failing check attached rather than a quiet
+# drift back. See docs/context-hygiene.md.
+CHOREO=$(grep -rnE 'groups of ~[0-9]+|max [0-9]+ parallel|[0-9]+% of attention|[Ww]eight [0-9]+% changed' \
+  "$REPO_ROOT/reference" "$REPO_ROOT/packs" 2>/dev/null || true)
+if [[ -z "$CHOREO" ]]; then
+  ok
+else
+  fail "choreography patterns reintroduced (v8 context pass removed these):"
+  echo "$CHOREO" | sed 's/^/  /'
+fi
+
 echo ""
 echo "=== validate-docs.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"

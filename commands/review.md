@@ -19,6 +19,9 @@ description: "Technical code review with confidence scoring, review memory, and 
 5. Generate report to `.temper/reviews/`
 6. Auto-fix high-priority issues (if enabled, max 2 loops)
 7. Update metrics + review memory
+8. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate review --spec-path
+   .temper/specs/{feature-slug}` and show its PASS/FAIL via `AskUserQuestion` — see
+   **Deterministic Gate** below
 
 ### Active Skills
 

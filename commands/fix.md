@@ -399,7 +399,7 @@ Return ONLY:
 ### Stage Gate
 
 Run `$TEMPER gate check`, then `$TEMPER gate commit` (aggregates build/review/check —
-Fix has no `plan`/`eval` gates, `temper gate commit` only requires the gates a `fix` run
+Fix has no `plan` gate, `temper gate commit` only requires the gates a `fix` run
 actually produced).
 
 Show the AskUserQuestion gate with:

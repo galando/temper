@@ -8,355 +8,131 @@ description: "Show quality metrics dashboard"
 
 ## Execution
 
-### Step 0: Initialize .temper Directory (if missing)
+### Step 0: Initialize (if `.temper/` is missing)
 
-```
-If .temper/ directory doesn't exist:
-  1. Create structure:
-     .temper/
-     ├── specs/           # Feature specs (intent.md, plan.md, tasks.md)
-     ├── reviews/         # Review reports
-     ├── index/           # Semantic index (optional)
-     │   ├── modules.json
-     │   └── api-surface.json
-     ├── metrics.json     # Quality metrics
-     └── review-memory.json  # Pattern memory
-  2. Initialize metrics.json with schema below
-  3. Initialize review-memory.json: { "patterns": {} }
-  4. Report: "Initialized .temper/ directory for quality tracking"
-```
+Create `.temper/specs/`, `.temper/reviews/`, `metrics.json` (schema below), and
+`review-memory.json: { "patterns": {} }`. Report "Initialized .temper/ directory for
+quality tracking."
 
 ### Step 1: Read Metrics + Build Hotspots
 
-```
-1. Read .temper/metrics.json
-2. Read .temper/review-memory.json
-3. Read .temper/specs/ to find active specs
-4. Scan .temper/reviews/*.md to build a file frequency map
-   - Count how many times each file appears as a finding location
-   - Compute: issues_per_file = count of findings at file / number of reviews touching file
-   - Top 5 files by issue density = hotspots
-```
+Read `metrics.json`, `review-memory.json`, `.temper/specs/` for active specs. Scan
+`.temper/reviews/*.md` to build a file-frequency map: `issues_per_file = findings at
+file / reviews touching file`; top 5 by density = hotspots. No `metrics.json` → "No
+metrics yet. Run /temper:review or /temper:check to start tracking."
 
-If `.temper/metrics.json` doesn't exist: show "No metrics yet. Run /temper:review or /temper:check to start tracking."
+### Step 1.5: External Tool Availability
 
-### Step 1.5: Detect External Tool Availability
+- **code-review-graph / semgrep:** probe with a trivial tool call (e.g.
+  `get_impact_radius_tool` on the current file, or `security_check`); tool responds →
+  available, errors/missing → unavailable.
+- **ocr:** `command -v ocr` → not-installed if missing; else `ocr --version` then probe
+  `ocr review --preview --from HEAD~1 --to HEAD` → ready, or not-configured if the probe
+  fails (LLM not set up).
+- Read `tools.mode` (`auto`/`heuristic-only`/`require`) and report accordingly.
+- Evidence ratio: `proven / (proven + heuristic + semantic) * 100` from
+  `metrics.json.evidence`.
 
-```
-Detect which external tools are available by checking capabilities:
+### Step 1.7: Learning State
 
-1. code-review-graph:
-   - Try calling get_impact_radius_tool with a trivial query (e.g., current file)
-   - If tool exists and responds: available
-   - If tool not found or errors: unavailable
-   - Alternatively, check if MCP tools prefixed with the server name are registered
-
-2. semgrep:
-   - Try calling security_check or semgrep_scan_with_custom_rule
-   - If tool exists and responds: available
-   - If tool not found or errors: unavailable
-
-3. ocr (open-code-review):
-   - Run: command -v ocr
-   - If not found: not installed
-   - If found: run ocr --version
-   - Probe readiness: ocr review --preview --from HEAD~1 --to HEAD
-   - If probe fails (LLM not configured): not configured
-   - If probe succeeds: ready
-   - Record: ocr_status = ready | not-installed | not-configured
-
-4. Read tools.mode from .claude/temper.config:
-   - auto: report availability, note fallback behavior
-   - heuristic-only: report as "disabled (heuristic-only mode)"
-   - require: report as "required" — warn if unavailable
-
-5. Compute evidence ratio from metrics.json evidence field:
-   - proven + heuristic + semantic = total evidence
-   - ratio = proven / total * 100 (if total > 0)
-```
-
-### Step 1.7: Read Learning State
-
-```
-1. Read .temper/learning.json if it exists
-2. If absent: mark learning as "not initialized" (graceful degradation)
-3. Extract:
-   - detected_patterns count, active/degraded/suppressed breakdown
-   - suppressed_patterns count
-   - suggestion_queue with pending items
-   - learning_curve (trend, improvement_pct)
-4. If learning.json exists but is malformed: warn and skip learning section
-```
+Read `.temper/learning.json` if present (absent → "not initialized", graceful). Extract
+`detected_patterns` counts by status, `suppressed_patterns` count,
+`suggestion_queue` pending items, `learning_curve` (trend, improvement_pct). Malformed →
+warn and skip the learning section, don't crash.
 
 ### Step 2: Display Dashboard
 
 ```
-┌─────────────────────────────────────────────────────┐
-│ Temper Status — {project-name}                       │
-│ Period: Last 30 days                                 │
-│                                                      │
-│ REVIEWS                                              │
-│   Total:           {count}                           │
-│   Issues found:    {count}                           │
-│   Auto-fixed:      {count} ({%})                     │
-│   Manual fixes:    {count}                           │
-│   Acceptance rate:  {%}                              │
-│                                                      │
-│ QUALITY TREND                                        │
-│   Coverage:     {old}% → {new}% {↑/↓}               │
-│   Avg issues/review:  {old} → {new} {↑/↓}           │
-│   Blocked commits: {count}                           │
-│                                                      │
-│ TECHNICAL DEBT                                       │
-│   Debt indicators: coverage {%}, lint violations {n} │
-│   Trend: {improving/stable/degrading}                │
-│                                                      │
-│ HOTSPOTS (most defect-dense files)                   │
-│   1. {file} — {N} issues across {R} reviews          │
-│   2. {file} — {N} issues across {R} reviews          │
-│   3. {file} — {N} issues across {R} reviews          │
-│   (None yet — run /temper:review to start tracking)  │
-│                                                      │
-│ TOP PATTERNS CAUGHT                                  │
-│   1. {pattern} ({count}x) {→ AUTO-RULE / suggested}  │
-│   2. {pattern} ({count}x)                            │
-│   3. {pattern} ({count}x)                            │
-│                                                      │
-│ LEARNING LOOP                                        │
-│   "{pattern}" found in {X}/{Y} reviews.              │
-│   Want to add an auto-rule for this?                 │
-│   ▸ Yes, add as BLOCK rule                           │
-│     Yes, add as WARN rule                            │
-│     No, keep as advisory                             │
-│                                                      │
-│ REVIEW MEMORY                                        │
-│   Suppressed patterns: {count}                       │
-│   Promoted to rules: {count}                         │
-│                                                      │
-│ STANDARDS COMPLIANCE                                 │
-│   {standard name}: {%} compliant                     │
-│   Violations: {count} ({description})                │
-│                                                      │
-│ ACTIVE SPECS                                         │
-│   - {spec} ({status}, {X/Y tasks done})              │
-│                                                      │
-│ VERIFICATION                                         │
-│   Live scenarios: {enabled/prompt/disabled}           │
-│   Last run: {date} ({X}/{Y} passed)                  │
-│   Mutations: {N} caught, {N} missed                  │
-│                                                      │
-│ EXTERNAL TOOLS                                       │
-│   code-review-graph: {available/unavailable}          │
-│   semgrep: {available/unavailable}                    │
-│   ocr (open-code-review): {ready/not installed/not configured} │
-│   ocr accept rate: {N}% ({accepted}/{total}) (if review memory has OCR entries) │
-│   Evidence ratio: {X}% [PROVEN] ({N} proven / {N} heuristic) │
-│   Setup: docs/recommended-setup.md                   │
-│                                                      │
-│ ADAPTIVE LEARNING                                    │
-│   Patterns detected: {N} ({M} active, {D} degraded) │
-│   Suppressed: {N} patterns (noise reduction)         │
-│   Promoted to rules: {N}                             │
-│   Pending suggestions: {N}                           │
-│   Learning curve: {improving/stable/degrading/insufficient_data} │
-│     Issues/review: {trend} ({improvement_pct}% change) │
-│   (If learning.json absent: "Adaptive learning: not yet initialized") │
-│                                                      │
-│ GATE LEDGER (current/last run — .temper/gates.json)  │
-│   Plan   {PASS/FAIL}   Build  {PASS/FAIL}            │
-│   Review {PASS/FAIL}   Check  {PASS/FAIL}            │
-│   Eval   {PASS/FAIL/skipped}                         │
-│   Overrides: {N} (see .temper/overrides.json)        │
-│   Evidence: {N} PROVEN, {N} HEURISTIC, {N} SEMANTIC  │
-│   (If .temper/gates.json absent: "No gate data yet — │
-│    run /temper to populate it")                      │
-│                                                      │
-│ AUTONOMOUS RUNS (last parked run, if any)            │
-│   Run mode: {interactive|autonomous}                 │
-│   Park point: {stage} — {reason, from the report}    │
-│   Loop budget used: {l}/{max-total-loops}            │
-│   (If .temper/autonomy-report.md absent: print       │
-│    nothing for this panel)                           │
-└─────────────────────────────────────────────────────┘
++-------------------------------------------------------+
+| Temper Status — {project}           Period: 30 days   |
+|                                                        |
+| REVIEWS: {total} | issues {N} | auto-fixed {N} ({%})   |
+|   acceptance rate {%}                                  |
+| QUALITY TREND: coverage {old}%->{new}% {up/down}        |
+|   avg issues/review {old}->{new}   blocked commits {N}  |
+| HOTSPOTS: 1. {file} — {N} issues / {R} reviews  ...     |
+| TOP PATTERNS: 1. {pattern} ({count}x) {auto-rule?} ...  |
+| REVIEW MEMORY: suppressed {N}   promoted to rules {N}   |
+| ACTIVE SPECS: {spec} ({status}, {X}/{Y} tasks)          |
+| VERIFICATION: live scenarios {enabled/prompt/disabled}  |
+|   last run {date} ({X}/{Y})   mutations {N} caught/missed |
+| EXTERNAL TOOLS: code-review-graph/semgrep/ocr status,    |
+|   ocr accept rate (if any), evidence ratio {X}% PROVEN   |
+| ADAPTIVE LEARNING: {N} patterns ({M} active, {D} degraded)|
+|   suppressed {N}, promoted {N}, pending {N}, curve {trend}|
+|   (absent -> "Adaptive learning: not yet initialized")   |
+| GATE LEDGER: Plan/Build/Review/Check {PASS/FAIL}          |
+|   overrides {N}, evidence {N} PROVEN/{N} HEURISTIC/{N} SEMANTIC |
+|   (gates.json absent -> "No gate data yet — run /temper") |
+| AUTONOMOUS RUNS: mode, park point + reason, loop budget   |
+|   (no autonomy-report.md -> print nothing for this panel) |
++-------------------------------------------------------+
 ```
+
+Populate every panel from real files, never a hardcoded example; empty/absent inputs
+degrade to the notices above, not an error.
 
 ### Step 2.5: Gate Ledger Panel (v7 — replaces the v6.x Economics panel)
 
-Render from `.temper/gates.json`, `.temper/overrides.json`, and
-`.temper/evidence/*.json` — the same evidence-ledger the `temper` CLI computes gate
-verdicts from (see `reference/orchestrator-patterns.md`). This is a deliberate
-downgrade from v6.x's cost/latency/token dashboard: those numbers were estimates with no
-mechanical backing, which is exactly what v7 stops presenting as fact. What's shown here
-is *only* what `temper gate` and `temper evidence` actually recorded.
+Render from `.temper/gates.json`, `.temper/overrides.json`, `.temper/evidence/*.json` —
+the same ledger `temper gate` computes verdicts from. Deliberately not the v6.x cost/
+latency/token dashboard (those were unbacked estimates): per-stage verdict + requirement
+detail (`temper report`), override count + reason per stage, and the PROVEN/HEURISTIC/
+SEMANTIC evidence-label mix as a rough proxy for how much of the run was mechanically
+verified. No `gates.json` → "No gate data yet. Run /temper to populate it." — never error.
 
-- **Per-stage verdict:** `temper report` (or read `.temper/gates.json` directly) —
-  stage, verdict, and each requirement's pass/fail with its detail string.
-- **Overrides:** count entries in `.temper/overrides.json`; list stage + reason for each
-  (an override is not hidden — it's a decision a human made, on the record).
-- **Evidence label mix:** count `.temper/evidence/*.json` entries by `label`
-  (PROVEN/HEURISTIC/SEMANTIC) — the same ratio v6.x called "evidence ratio", still
-  useful as a rough proxy for how much of the run was mechanically verified vs judged.
+### Step 2.6: Autonomous Runs Panel (purely additive)
 
-**Graceful absence:** if `.temper/gates.json` does not exist, print `"No gate data yet.
-Run /temper to populate it."` and do not error.
+From `.temper/autonomy-report.md` (if present) + `.temper/feedback-loops.json`: run mode
+(from `build-state.json` if a run is active), park point + reason (parsed from the
+report), loop budget used (sum `iteration` across `active_loops[]` + `history[]` vs.
+`autonomy.budget.max-total-loops`). No report → print nothing for this panel.
 
-### Step 2.6: Autonomous runs Panel
+### Step 3: Learning Loop + Adaptive Suggestion Prompts
 
-Render from `.temper/autonomy-report.md` (if present) and `.temper/feedback-loops.json`.
-This panel is **purely additive** — if no autonomy report exists (the project has never
-armed autonomy, or the last run finished without parking), print nothing.
+If a pattern's shown-count >= 3 with no auto-rule yet: `AskUserQuestion` — "Yes, add as
+BLOCK rule" (active pack's Mandatory Rules) / "Yes, add as WARN rule" (Quality Rules) /
+"No, keep as advisory" (mark `no-promote` in review memory).
 
-- **Run mode:** the `run_mode` field in `.temper/build-state.json`, if a run is active.
-- **Park point:** parse the report's `**Parked at:**` / `**Reason:**` lines.
-- **Loop budget used:** sum `iteration` across `.temper/feedback-loops.json`
-  `active_loops[]` + `history[]`, shown against `autonomy.budget.max-total-loops`.
-
-### Step 3: Learning Loop Prompt
-
-If any pattern count >= 3 and no auto-rule exists yet:
-
-```
-AskUserQuestion:
-  question: "'{pattern}' has been found in {X} reviews. Want to add it as an auto-rule?"
-  options:
-    - label: "Yes, add as BLOCK rule"
-      description: "Add to active pack's Mandatory Rules."
-    - label: "Yes, add as WARN rule"
-      description: "Add to active pack's Quality Rules."
-    - label: "No, keep as advisory"
-      description: "Mark in review memory as 'no-promote'."
-  multiSelect: false
-```
-
-### Step 3.5: Adaptive Learning Suggestion Prompt
-
-If `learning.json` exists and `suggestion_queue` contains items with status "pending":
-
-```
-AskUserQuestion:
-  question: "SUGGESTION: Promote '{pattern_id}' to {severity} rule?"
-  options:
-    - label: "Yes, promote to rule"
-      description: "Move rule template to .claude/packs/adaptive-learning/rules.md and mark as accepted."
-    - label: "No, dismiss suggestion"
-      description: "Mark suggestion as rejected in learning.json."
-    - label: "Skip for now"
-      description: "Leave suggestion pending for later."
-  multiSelect: false
-```
-
-On "Yes, promote to rule":
-1. Read the rule template from `.temper/learning/suggestions/{pattern_id}.md`
-2. Append it to `.claude/packs/adaptive-learning/rules.md`
-3. Update `suggestion_queue[].status` to "accepted" in learning.json
-4. Update `detected_patterns[].status` to "promoted" in learning.json
-
-On "No, dismiss":
-1. Update `suggestion_queue[].status` to "rejected" in learning.json
+If `learning.json.suggestion_queue` has a `pending` item: `AskUserQuestion` — "Yes,
+promote to rule" (move the template from `.temper/learning/suggestions/{id}.md` into
+`.claude/packs/adaptive-learning/rules.md`, mark `accepted` + pattern `promoted`) / "No,
+dismiss" (mark `rejected`) / "Skip for now" (leave pending).
 
 ### Metrics Schema
 
 ```json
-{
-  "version": 1,
-  "project": "{project name}",
-  "reviews": {
-    "total": 0,
-    "issues_by_severity": { "critical": 0, "high": 0, "medium": 0, "low": 0 },
-    "issues_by_category": { "security": 0, "performance": 0, "quality": 0, "logic": 0, "architecture": 0, "test_gap": 0 },
-    "auto_fixed": 0,
-    "suppressed": 0,
-    "acceptance_rate": 0.0
-  },
-  "coverage_history": [],
-  "test_count_history": [],
-  "patterns": {},
-  "plans": {
-    "created": 0,
-    "completed": 0,
-    "in_progress": 0,
-    "abandoned": 0
-  },
-  "fixes": {
-    "total": 0,
-    "rca_used": 0
-  },
-  "baseline": {
-    "date": null,
-    "coverage": null,
-    "violations": null
-  },
-  "scenarios": {
-    "total_verified": 0,
-    "total_passed": 0,
-    "total_failed": 0,
-    "total_missing": 0,
-    "mutations_caught": 0,
-    "mutations_missed": 0
-  },
-  "evidence": {
-    "proven": 0,
-    "heuristic": 0,
-    "semantic": 0
-  }
-}
+{ "version": 1, "project": "", "reviews": { "total": 0,
+  "issues_by_severity": { "critical": 0, "high": 0, "medium": 0, "low": 0 },
+  "issues_by_category": { "security": 0, "performance": 0, "quality": 0, "logic": 0, "architecture": 0, "test_gap": 0 },
+  "auto_fixed": 0, "suppressed": 0, "acceptance_rate": 0.0 },
+  "coverage_history": [], "test_count_history": [], "patterns": {},
+  "plans": { "created": 0, "completed": 0, "in_progress": 0, "abandoned": 0 },
+  "fixes": { "total": 0, "rca_used": 0 },
+  "baseline": { "date": null, "coverage": null, "violations": null },
+  "scenarios": { "total_verified": 0, "total_passed": 0, "total_failed": 0, "total_missing": 0,
+    "mutations_caught": 0, "mutations_missed": 0 },
+  "evidence": { "proven": 0, "heuristic": 0, "semantic": 0 } }
 ```
 
-### Metric Calculation Formulas
+### Formulas
 
-| Metric | Formula | Notes |
-|--------|---------|-------|
-| **Acceptance Rate** | `accepted_findings / total_shown_findings` | Ratio of findings user accepted vs shown |
-| **Auto-fix Rate** | `auto_fixed / total_issues` | Percentage of issues fixed automatically |
-| **Coverage Trend** | `coverage_history[-1] - coverage_history[-7]` | Change over last 7 data points |
-| **Issues/Review** | `sum(issues_found) / reviews.total` | Average issues per review |
-| **Debt Ratio** | `(violations_current - violations_baseline) / violations_baseline` | Change since baseline |
-| **Pattern Frequency** | `patterns[key].total_shown / reviews.total` | How often pattern appears |
-| **Standards Compliance** | `(files_total - files_with_violations) / files_total * 100` | Percentage of compliant files |
+| Metric | Formula |
+|---|---|
+| Acceptance rate | `accepted_findings / total_shown_findings` |
+| Auto-fix rate | `auto_fixed / total_issues` |
+| Coverage trend | `coverage_history[-1] - coverage_history[-7]` |
+| Issues/review | `sum(issues_found) / reviews.total` |
+| Debt ratio | `(violations_current - violations_baseline) / violations_baseline` |
+| Pattern frequency | `patterns[key].total_shown / reviews.total` |
+| Standards compliance | `(files_total - files_with_violations) / files_total * 100` |
 
-### Quality Trends
-
-Show change indicators in the dashboard:
-
-| Trend | Visual | Meaning |
-|-------|--------|---------|
-| Coverage 85% → 77% | 📉 ↓8% | Degrading |
-| Issues/review 2.1 → 1.8 | 📉 ↓14% | Improving |
-| Debt ratio stable | ➡️ | No change |
-
-**Trend interpretation:**
-
-- If coverage dropping → user notices and can run `/temper:check` to investigate
-- If issues/review rising → user sees it in the dashboard
-- No automated alerts needed - the user reads the dashboard
+Show trend arrows (📉/📈/➡️) next to coverage and issues/review — the user reads the
+dashboard, there's no separate alerting system.
 
 ### Learning Loop Lifecycle
 
-```
-Pattern detected → Shown in review → User response tracked
-                                    ↓
-                    ┌───────────────┴───────────────┐
-                    ↓                               ↓
-              Accepted (✓)                    Dismissed (✗)
-                    ↓                               ↓
-            count++ in patterns              count++ in patterns
-            .accepted++                      .dismissed++
-                    ↓                               ↓
-        if accepted >= 3:                if dismissed >= 5:
-        Prompt auto-rule                 Auto-suppress
-        (in /temper:status)              (in /temper:review)
-                    ↓                               ↓
-        User chooses:                    Pattern added to
-        BLOCK/WARN/No-promote            suppressed_patterns[]
-```
-
-**Auto-rule promotion criteria:**
-
-- Pattern shown in >= 3 reviews
-- Acceptance rate >= 70%
-- No existing auto-rule for this pattern
-
-**Auto-suppression criteria:**
-
-- Pattern dismissed >= 5 times
-- OR: User explicitly marked "no-promote"
+Pattern detected in a review → shown → user's response tracked as accepted or dismissed
+in `patterns[key]`. Accepted >= 3 (at >= 70% acceptance rate, no existing auto-rule) →
+prompt for promotion at `/temper:status` (user picks BLOCK/WARN/no-promote). Dismissed
+>= 5 → auto-suppress in `/temper:review`, moved to `suppressed_patterns[]`.

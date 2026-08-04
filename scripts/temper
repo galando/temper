@@ -10,8 +10,9 @@
 # Subcommands:
 #   temper init                                  scaffold .temper/ in the current project
 #   temper state <get|set|advance|loop|clear> ..  read/write .temper/build-state.json
-#   temper evidence <add|list> ...                append/read the per-stage evidence ledger
+#   temper evidence <add|list|clear> ...          append/read/clear the per-stage evidence ledger
 #   temper gate <stage> [--spec-path P]           compute PASS/FAIL for a stage, record verdict
+#   temper model <stage> | --all                  resolve a stage's model (config override > frontmatter)
 #   temper override <stage> --reason "..."        record a human override of a FAIL gate
 #   temper report [--json]                        render the current run's gate ledger
 #
@@ -22,6 +23,12 @@
 set -uo pipefail
 
 REPO_ROOT="$(pwd)"
+# Where the plugin itself lives (this script is $PLUGIN_ROOT/scripts/temper). Used only
+# by `temper model` to read agents/*.md frontmatter — never to locate project state.
+# Prefer where this file actually sits over $CLAUDE_PLUGIN_ROOT, which belongs to
+# whichever plugin is calling; fall back to it when the script is reached via a symlink.
+PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)"
+[[ -d "$PLUGIN_ROOT/agents" ]] || PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
 TEMPER_DIR="${TEMPER_DIR:-$REPO_ROOT/.temper}"
 CONFIG_FILE="${TEMPER_CONFIG:-$REPO_ROOT/.claude/temper.config}"
 STATE_FILE="$TEMPER_DIR/build-state.json"
@@ -30,13 +37,17 @@ GATES_FILE="$TEMPER_DIR/gates.json"
 OVERRIDES_FILE="$TEMPER_DIR/overrides.json"
 EVIDENCE_DIR="$TEMPER_DIR/evidence"
 
-STAGES="plan design build review check eval commit"
+STAGES="plan design build review check commit"
+
+# Stages that run as an Agent subprocess and therefore have a model to resolve.
+# `commit` is not one — it's the orchestrator running `temper gate commit`.
+AGENT_STAGES="plan design build review check"
 
 # Per-command state.stage sequences (bookkeeping for resume — see
 # reference/orchestrator-patterns.md "Build State Schema"). Distinct from $STAGES
 # above, which is the `temper gate <stage>` vocabulary: /temper:fix's state.stage
 # uses rca/fix in place of plan/build, but "rca"/"fix" are never valid gate stages.
-STAGE_SEQ_TEMPER="plan design build review check eval"
+STAGE_SEQ_TEMPER="plan design build review check"
 STAGE_SEQ_FIX="rca fix review check"
 
 _count_lines_matching() { # _count_lines_matching <pattern> <file>  (grep -c exits 1 on zero matches
@@ -214,6 +225,59 @@ else:
 }
 
 # ---------------------------------------------------------------------------
+# model — resolve which model a stage runs on.
+#
+# v7 replaced the v6 `models.routing`/`models.tiers` config with fixed `model:`
+# frontmatter in agents/{stage}.md, because the old block was a *resolution algorithm* a
+# prompt had to execute correctly on every run. That diagnosis still holds; what it cost
+# was the ability to change a model without editing plugin-owned files, which matters
+# every time a new model generation ships.
+#
+# So: the frontmatter stays the source of truth for defaults (no table to drift out of
+# sync with it), an optional flat `models.{stage}` config key overrides it, and the
+# lookup lives here — one deterministic call, no algorithm in prose.
+# ---------------------------------------------------------------------------
+
+_agent_default_model() { # <stage> -> the `model:` line in agents/<stage>.md frontmatter
+  local f="$PLUGIN_ROOT/agents/${1}.md"
+  [[ -f "$f" ]] || { echo ""; return; }
+  awk '
+    /^---[[:space:]]*$/ { n++; if (n == 2) exit; next }
+    n == 1 && /^model:/ { sub(/^model:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print; exit }
+  ' "$f" 2>/dev/null
+}
+
+_resolve_model() { # <stage> -> config override, else frontmatter default, else ""
+  local override; override="$(_cfg_get "models.${1}" "")"
+  [[ -n "$override" ]] && { echo "$override"; return; }
+  _agent_default_model "$1"
+}
+
+cmd_model() {
+  local stage="${1:-}"
+  if [[ -z "$stage" || "$stage" == "--all" ]]; then
+    local s m rc=0
+    for s in $AGENT_STAGES; do
+      m="$(_resolve_model "$s")"
+      [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$s' (missing $PLUGIN_ROOT/agents/$s.md?)" >&2; rc=1; continue; }
+      echo "${s}=${m}"
+    done
+    return $rc
+  fi
+
+  case " $AGENT_STAGES " in
+    *" $stage "*) ;;
+    *) echo "FAIL: unknown stage '$stage' (one of: $AGENT_STAGES, or --all)" >&2; return 1 ;;
+  esac
+
+  local m; m="$(_resolve_model "$stage")"
+  # Fail loudly rather than printing an empty string the orchestrator would paste into
+  # an Agent launch — this is only reachable if the plugin install is broken.
+  [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$stage' (missing $PLUGIN_ROOT/agents/$stage.md?)" >&2; return 1; }
+  echo "$m"
+}
+
+# ---------------------------------------------------------------------------
 # init
 # ---------------------------------------------------------------------------
 
@@ -260,7 +324,35 @@ json.dump(d, open(sys.argv[5], 'w'), indent=2)
   echo "OK: state initialized for '$slug' ($command, branch $branch)"
 }
 
+_state_migrate_legacy() { # idempotent; called before any state read/write and by cmd_gate.
+                           # Heals a v7.0.x build-state.json left with next_stage/stage
+                           # pointing at the removed eval stage. Write-through (not
+                           # read-only): scripts/hooks/verify-tests-ran.sh (L1) reads
+                           # build-state.json directly and cannot call this CLI, so a
+                           # stale on-disk value would block every future `git commit`.
+  [[ -f "$STATE_FILE" ]] || return 0
+  grep -q '"eval' "$STATE_FILE" 2>/dev/null || return 0   # fast path — no python3 spawn
+  python3 - "$STATE_FILE" <<'PY'
+import json, os, sys, tempfile
+p = sys.argv[1]
+try:
+    d = json.load(open(p))
+except Exception:
+    sys.exit(0)                     # malformed state == absent; never crash (spine contract)
+changed = False
+if d.get("next_stage") == "eval":       d["next_stage"] = "commit";        changed = True
+if d.get("stage") == "eval_complete":   d["stage"] = "check_complete";     changed = True
+if not changed:
+    sys.exit(0)
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(p) or ".")
+with os.fdopen(fd, "w") as f:
+    json.dump(d, f, indent=2); f.write("\n")
+os.replace(tmp, p)                  # atomic: a truncated migration would LOSE state
+PY
+}
+
 cmd_state_get() {
+  _state_migrate_legacy
   [[ -f "$STATE_FILE" ]] || { echo ""; return 0; }
   if [[ -z "${1:-}" ]]; then
     _json_read "$STATE_FILE" '{}'
@@ -277,6 +369,7 @@ cmd_state_set() {
 }
 
 cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
+  _state_migrate_legacy
   [[ -f "$STATE_FILE" ]] || { echo "FAIL: no active state — run 'temper state init' first" >&2; return 1; }
   [[ $# -ge 2 ]] || { echo "FAIL: usage: temper state advance <stage_complete> <next_stage>" >&2; return 1; }
   local stage="$1" next="$2"
@@ -334,6 +427,13 @@ print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_t
 " "$LOOPS_FILE" "$from" "$to" "$reason" "$max_per_type" "$(_now)")
   local rc=$?
   echo "$result"
+  # A loop means "we are going backwards" — evidence is append-only, so a stale row
+  # from a stage that's being redone (or, in the parallel-Review+Check window, an
+  # abandoned background Check run) must not survive to inflate the next gate's count.
+  # Belt-and-suspenders with the orchestrator's kill-before-clear ordering, not a
+  # substitute for it: this is the backstop for standalone CLI users with no
+  # orchestrator to do the kill.
+  [[ $rc -eq 0 ]] && _clear_evidence_downstream "$to"
   return $rc
 }
 
@@ -442,12 +542,24 @@ for e in json.load(open(sys.argv[1])):
   fi
 }
 
+cmd_evidence_clear() { # temper evidence clear --stage <s> — truncate .temper/evidence/<s>.json to []
+  local stage=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --stage) stage="$2"; shift 2 ;; *) shift ;; esac
+  done
+  [[ -n "$stage" ]] || { echo "FAIL: usage: temper evidence clear --stage <s>" >&2; return 1; }
+  _ensure_dirs
+  echo '[]' > "$(_evidence_file "$stage")"
+  echo "OK: evidence cleared for '$stage'"
+}
+
 cmd_evidence() {
   local sub="${1:-}"; shift || true
   case "$sub" in
     add) cmd_evidence_add "$@" ;;
     list) cmd_evidence_list "$@" ;;
-    *) echo "FAIL: usage: temper evidence <add|list> ..." >&2; return 1 ;;
+    clear) cmd_evidence_clear "$@" ;;
+    *) echo "FAIL: usage: temper evidence <add|list|clear> ..." >&2; return 1 ;;
   esac
 }
 
@@ -474,6 +586,16 @@ _spec_path() {
 }
 
 _evidence_file() { echo "$EVIDENCE_DIR/$1.json"; }
+
+_clear_evidence_downstream() { # _clear_evidence_downstream <to> — truncates evidence for
+                                # <to> and every stage after it in STAGE_SEQ_TEMPER to []
+  local to="$1" seen=false s
+  _ensure_dirs
+  for s in $STAGE_SEQ_TEMPER; do
+    [[ "$s" == "$to" ]] && seen=true
+    [[ "$seen" == "true" ]] && echo '[]' > "$(_evidence_file "$s")"
+  done
+}
 
 # Purpose-built evidence queries — every value crosses the shell/python boundary as an
 # argv element, never interpolated into python source, so no claim/detail text can ever
@@ -696,27 +818,6 @@ gate_check() {
   echo "$reqs_json" "$all_pass"
 }
 
-gate_eval() {
-  local enabled; enabled="$(_cfg_get eval.enabled true)"
-  local reqs=() all_pass=1
-  if [[ "$enabled" != "true" ]]; then
-    reqs+=("$(_req "eval stage" 1 "eval.enabled=false — skipped")")
-    reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
-    echo "$reqs_json" 1
-    return
-  fi
-  local threshold; threshold="$(_cfg_get eval.pass-threshold 0.75)"
-  local agg_val; agg_val=$(_ev_last_value eval aggregate)
-  if [[ -n "$agg_val" ]] && python3 -c "import sys; sys.exit(0 if float('$agg_val') >= float('$threshold') else 1)"; then
-    reqs+=("$(_req "eval aggregate >= threshold" 1 "$agg_val >= $threshold")")
-  else
-    reqs+=("$(_req "eval aggregate >= threshold" 0 "recorded aggregate '${agg_val:-none}' vs threshold $threshold")")
-    all_pass=0
-  fi
-  local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
-  echo "$reqs_json" "$all_pass"
-}
-
 _glob_touch_match() { # _glob_touch_match <file> <pattern>  (pattern like **/auth/**)
   local file="$1" pattern="$2"
   local core="${pattern#\*\*/}"; core="${core%/\*\*}"
@@ -726,17 +827,18 @@ _glob_touch_match() { # _glob_touch_match <file> <pattern>  (pattern like **/aut
 gate_commit() {
   local reqs=() all_pass=1
   local run_mode; run_mode="$(cmd_state_get run_mode interactive)"
-  # /temper:fix has no plan/eval stage — RCA and Fix aren't gated through 'plan'/'eval',
-  # so requiring those verdicts would permanently FAIL every fix commit (never computed).
+  # /temper:fix has no plan stage — RCA and Fix aren't gated through 'plan', so requiring
+  # that verdict would permanently FAIL every fix commit (never computed). A stale "eval"
+  # key from a pre-upgrade .temper/gates.json is simply never visited: this loop only
+  # ever iterates stages_to_check below, which no longer names eval.
   local command stages_to_check
   command="$(cmd_state_get command temper)"
   if [[ "$command" == "fix" ]]; then
     stages_to_check="build review check"
   else
-    stages_to_check="plan build review check eval"
+    stages_to_check="plan build review check"
   fi
   for s in $stages_to_check; do
-    [[ "$s" == "eval" && "$(_cfg_get eval.enabled true)" != "true" ]] && continue
     local verdict; verdict="$(_json_get_path "$GATES_FILE" "$s.verdict" "MISSING")"
     if [[ "$verdict" == "PASS" ]]; then
       reqs+=("$(_req "$s gate" 1 "PASS")")
@@ -790,6 +892,7 @@ print('yes' if any(o.get('stage') == sys.argv[2] for o in d) else 'no')
 }
 
 cmd_gate() {
+  _state_migrate_legacy
   local stage="${1:-}"; shift || true
   local spec_path_override=""
   while [[ $# -gt 0 ]]; do
@@ -798,7 +901,7 @@ cmd_gate() {
   _ensure_dirs
   local ok=false
   for s in $STAGES; do [[ "$stage" == "$s" ]] && ok=true; done
-  [[ "$ok" == "true" ]] || { echo "FAIL: usage: temper gate <plan|design|build|review|check|eval|commit>" >&2; return 1; }
+  [[ "$ok" == "true" ]] || { echo "FAIL: usage: temper gate <plan|design|build|review|check|commit>" >&2; return 1; }
 
   local spec_path; spec_path="$(_spec_path "$spec_path_override")"
   local out reqs_json all_pass
@@ -808,7 +911,6 @@ cmd_gate() {
     build) out=$(gate_build "$spec_path") ;;
     review) out=$(gate_review) ;;
     check) out=$(gate_check "$spec_path") ;;
-    eval) out=$(gate_eval) ;;
     commit) out=$(gate_commit) ;;
   esac
   if [[ -n "${out:-}" ]]; then
@@ -873,7 +975,7 @@ except Exception:
 overridden = {o['stage'] for o in overrides}
 print('Stage    Verdict  Evidence')
 print('-------  -------  --------')
-for stage in ['plan', 'design', 'build', 'review', 'check', 'eval', 'commit']:
+for stage in ['plan', 'design', 'build', 'review', 'check', 'commit']:
     g = d.get(stage)
     if not g:
         continue
@@ -900,6 +1002,7 @@ main() {
     state) cmd_state "$@" ;;
     evidence) cmd_evidence "$@" ;;
     gate) cmd_gate "$@" ;;
+    model) cmd_model "$@" ;;
     override) cmd_override "$@" ;;
     report) cmd_report "$@" ;;
     ""|-h|--help)
@@ -909,8 +1012,9 @@ temper — the deterministic spine of the Temper plugin
 Usage:
   temper init
   temper state <init|get|set|advance|loop|clear> ...
-  temper evidence <add|list> ...
-  temper gate <plan|design|build|review|check|eval|commit> [--spec-path P]
+  temper evidence <add|list|clear> ...
+  temper gate <plan|design|build|review|check|commit> [--spec-path P]
+  temper model <plan|design|build|review|check> | --all
   temper override <stage> --reason "..."
   temper report [--json]
 EOF

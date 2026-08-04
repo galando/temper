@@ -1,3 +1,7 @@
+---
+phases: all
+---
+
 # Quality Pack
 
 **Version:** 1.0.0

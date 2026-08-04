@@ -1,0 +1,27 @@
+{
+  "description": "Temper plugin hooks: deterministic standalone-stage gate guarantee. stage-marker.sh (UserPromptSubmit) records which gate a /temper:{plan,build,review,check} session owes; verify-stage-gate.sh (Stop) refuses to end the session until .temper/gates.json carries a verdict for it — any verdict, PASS or FAIL. Both fail open on every path except the one detected violation. See docs/decisions/0005-deterministic-stage-gate-enforcement.md.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/scripts/hooks/stage-marker.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/scripts/hooks/verify-stage-gate.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,13 +1,13 @@
 ---
-description: "Unified SDLC command: plan → design? → build → review → check → eval → commit, gated by the temper CLI"
+description: "Unified SDLC command: plan → design? → build → review → check → commit, gated by the temper CLI"
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v7.0.1)
+# Temper: Unified SDLC Command (v8.0.0)
 
-**Goal:** Run plan → design? → build → review → check → eval → commit with a human gate
-at every stage (or, if armed, unattended past the plan gate). Every gate verdict is
-computed by the `temper` CLI from an evidence ledger — never asserted by a model.
+**Goal:** Run plan → design? → build → review+check → commit with a human gate at every
+stage (or, if armed, unattended past the plan gate). Every gate verdict is computed by
+the `temper` CLI from an evidence ledger — never asserted by a model.
 
 ## Usage
 
@@ -22,10 +22,10 @@ computed by the `temper` CLI from an evidence ledger — never asserted by a mod
 
 Each stage runs in an **isolated Agent subprocess** — genuine context clearing, not a
 self-directed "clear your context" instruction (which is unenforceable). What each stage
-must do lives in exactly one place: `agents/{stage}.md` (frontmatter declares its model;
-the body points at `reference/{stage}.md` for methodology and tells it which `temper`
-commands to run). This file does not repeat that contract per stage — read the agent
-file once when you launch it.
+must do lives in exactly one place: `agents/{stage}.md` (frontmatter declares its default
+model; the body points at `reference/{stage}.md` for methodology and tells it which
+`temper` commands to run). This file does not repeat that contract per stage — read the
+agent file once when you launch it.
 
 ```
 ORCHESTRATOR (this file)
@@ -35,18 +35,30 @@ ORCHESTRATOR (this file)
   +-- Agent(agents/build.md)   -> build gate  -> temper gate build
   +-- Agent(agents/review.md)  -> review gate -> temper gate review
   +-- Agent(agents/check.md)   -> check gate  -> temper gate check
-  +-- Agent(agents/eval.md)    -> eval gate   -> temper gate eval   (if eval.enabled)
   |
   +-- temper gate commit -> commit
 ```
 
-`$CLAUDE_PLUGIN_ROOT` resolution: if set and valid, use it; else walk up from this file
-for `.claude-plugin/`; else fall back to `~/.claude/plugins/temper`. All paths below are
-relative to it. `$TEMPER` below means `$CLAUDE_PLUGIN_ROOT/scripts/temper`.
+`$CLAUDE_PLUGIN_ROOT` resolution: see `reference/orchestrator-patterns.md` →
+"$CLAUDE_PLUGIN_ROOT Resolution". All paths below are relative to it. `$TEMPER` below
+means `$CLAUDE_PLUGIN_ROOT/scripts/temper`.
+
+## Models
+
+Run `$TEMPER model --all` **once**, at the same time as the first state call, and keep
+its output for the run. It prints one `stage=model` line per stage, resolving a project's
+optional `models.{stage}` config override against the `agents/{stage}.md` default. The
+stage launches below say `model: {plan}`, `{build}` and so on — substitute the value for
+that stage from this output verbatim. Don't re-run it per stage, and don't infer a model
+from anywhere else: this command is the only thing that knows whether the project
+overrode one.
 
 ## State
 
-`$TEMPER state` owns `.temper/build-state.json` — never hand-write it.
+`$TEMPER state` owns `.temper/build-state.json` — never hand-write it. When a step calls
+for more than one `$TEMPER` invocation in a row (state/evidence calls only, never `gate`),
+batch them into a single Bash tool call, one shell command per line — they're sequential
+anyway, and it's one round-trip instead of several.
 
 - **Start:** `$TEMPER state init {slug} --command temper` (creates it, `stage: started`,
   branch `feature/{slug}`).
@@ -74,83 +86,59 @@ Every stage gate follows the same shape. After a stage Agent returns:
      the final report — it does not erase the FAIL) / `"Save for later"`.
 4. Autonomous mode replaces step 3 — see Autonomous Continuation below.
 
-Every gate also offers, unconditionally (no config toggle — just don't pick them if you
-don't want them): **"Grill Me"** (Socratic challenge, skill `grill-me`), **"Teach Me"**
-(teach + quiz to mastery, skill `teach-me`), and at Plan specifically **"Walk through
-step by step"** and **"Open HTML review"**. Each returns to the same gate afterward —
-none of them advance or block the pipeline.
+Every gate also offers, unconditionally (no config toggle): **"Grill Me"** (skill
+`grill-me`), **"Teach Me"** (skill `teach-me`), and at Plan: **"Walk through step by
+step"** and **"Open HTML review"**. Each returns to the same gate — none advance or
+block the pipeline.
 
-Do not re-derive gate logic here or in any stage prompt. If a gate's mechanics need to
-change, that's a `scripts/temper` edit (and a `scripts/tests/test-temper.sh` case), not a
-prompt edit.
+Never re-derive gate logic here or in a stage prompt — a gate mechanics change is a
+`scripts/temper` edit plus a `test-temper.sh` case, not a prompt edit.
 
 ## Feedback Loops
 
 When a gate FAILs and the user selects "Loop back":
 
 1. `$TEMPER state loop {from} {to} --reason "<why>"` — this enforces
-   `loops.max-per-type` (default 2) and prints `BLOCKED` (exit 1) once the budget is
-   spent. If blocked, don't offer the loop option again this run; fall through to
-   Override / Save.
+   `loops.max-per-type` (default 2), prints `BLOCKED` (exit 1) once the budget is spent,
+   and (as of v8) auto-clears evidence for `{to}` and every stage downstream of it in
+   the sequence — a stale row from the stage being redone must not survive to inflate
+   the next gate's count. If blocked, don't offer the loop option again this run; fall
+   through to Override / Save.
 2. Re-launch the upstream stage's Agent (same template as its first launch), adding one
    line to its prompt: *"Feedback re-entry: {reason}. Fix this, then continue."*
 3. When it returns, re-run the downstream gate that triggered the loop.
 
 That's the whole mechanism — there is no separate "loop cost tier" or context-size
-branching in v7. A loop is a normal stage re-launch. Build→Plan is the one exception:
+branching in v7+. A loop is a normal stage re-launch. Build→Plan is the one exception:
 it's human-driven only (max 1 per run, no circuit breaker) because it means the plan
 itself was wrong, not the implementation.
 
 ## Autonomous Continuation
 
-Opt-in, armed by the human at the **plan gate only** — never at invocation, never
-mid-run. With `autonomy.enabled: false` or the block absent (the default), skip this
-section entirely: every gate is the ordinary interactive `AskUserQuestion` above.
+Opt-in, armed by the human at the **plan gate only** — never at invocation or mid-run.
+`autonomy.enabled: false` or the block absent (default) → skip this whole section, every
+gate is the ordinary interactive one above.
 
-**Arming (at the plan gate, after the human has reviewed the plan):** replace the single
-"Continue to Build" option with two: **"Stage by stage (Recommended)"** (sets
-`$TEMPER state set run_mode interactive`) and **"Autonomous — run the rest unattended"**
-(sets `$TEMPER state set run_mode autonomous`).
+**Arming** (at the plan gate, after human review): replace "Continue to Build" with
+"Stage by stage (Recommended)" (`run_mode: interactive`) / "Autonomous — run the rest
+unattended" (`run_mode: autonomous`).
 
-**While `run_mode == autonomous`, at every post-plan gate:**
+**While `run_mode == autonomous`, every post-plan gate:** run `$TEMPER gate {stage}` as
+usual. **PASS** → auto-select Continue, no `AskUserQuestion` (but still print the summary
+box — an unattended run must leave a scroll-back-readable record). **FAIL** → loop
+automatically at the same budget as interactive mode, except Build→Plan (always returns
+to a human, never auto-loops); budget exhausted → park instead of asking. **At commit:**
+`$TEMPER gate commit` already checks blast radius + park-on-touch (autonomous-only) along
+with every upstream gate — PASS or FAIL, **always park**, autonomy never auto-commits.
 
-1. Run the stage's gate as usual (`$TEMPER gate {stage}`).
-2. **PASS →** auto-select "Continue" — no `AskUserQuestion` call. Print the summary box
-   first (an unattended run must still leave a scroll-back-readable record).
-3. **FAIL →** loop automatically, same budget as interactive mode (`loops.max-per-type`),
-   except Build→Plan — that always returns control to a human at the plan gate, never
-   auto-loops. If the loop budget is exhausted, **park** (below) instead of asking a human.
-4. **At commit:** run `$TEMPER gate commit` — it already checks every upstream gate,
-   blast radius, and park-on-touch paths for you (those two only apply in autonomous
-   mode). PASS or FAIL, **always park** — autonomy never auto-commits, no exception.
+**Park:** `$TEMPER state set run_mode interactive` (so a plain resume lands here
+normally), write `.temper/autonomy-report.md` (`**Verdict:**
+SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION`, `**Parked at:**`/`**Reason:**` verbatim from
+`temper gate`, `**Branch:**`, the `$TEMPER report` ledger, "Run /temper to resume").
 
-**Park = save state + write a report, nothing more elaborate:**
-
-```
-$TEMPER state set run_mode interactive   # so a plain /temper resume lands here normally
-```
-
-Write `.temper/autonomy-report.md`:
-
-```markdown
-# Autonomy Report — {feature slug}
-
-**Verdict:** SHIP-PENDING-COMMIT | PARKED-NEEDS-DECISION
-**Parked at:** {stage} gate   **Reason:** {the failed requirement, verbatim from `temper gate`}
-**Branch:** feature/{slug}
-
-## Gate ledger
-{output of `$TEMPER report`}
-
-## Your next action
-Run /temper to resume at this gate, interactively.
-```
-
-**Operational safety (hardcoded, not configurable — see `templates/temper.config.default`):**
-before starting, refuse if the tree is dirty (`git status --porcelain` non-empty) unless
-the user explicitly confirms; after each PASS stage, `git commit -m "wip: {stage} passed"`
-so a crash loses at most one stage; take `.temper/autonomy.lock` (a run-id) for the
-duration and refuse to start a second autonomous run while one is active.
+**Operational safety (hardcoded — see `templates/temper.config.default`):** refuse a
+dirty tree unless confirmed; `git commit -m "wip: {stage} passed"` after each PASS stage
+(a crash loses at most one stage); `.temper/autonomy.lock` refuses a second concurrent run.
 
 ---
 
@@ -159,7 +147,7 @@ duration and refuse to start a second autonomous run while one is active.
 Launch:
 
 ```
-Use the Agent tool, model: opus, prompt:
+Use the Agent tool, model: {plan}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/plan.md exactly. Feature: $ARGUMENTS.
 Spec path: {from temper state get spec_path, or a new slug you choose}."
 ```
@@ -178,17 +166,11 @@ Summary box:
 {ASCII art diagram — box-drawing characters, never raw mermaid source}
 ```
 
-Gate: `$TEMPER gate plan`.
-
-- **"Walk through step by step"** — present intent, diagram, scenarios, architecture,
-  blast radius, and tasks one section at a time via `AskUserQuestion` (`Next step` /
-  `Skip to build` / free-text `Other` for a change request, applied then the same
-  section re-shown).
-- **"Open HTML review"** — render `templates/plan-review.html` with the `plan.md`/
-  `tasks.md` sections filled in, open it in the browser, wait for the user to confirm
-  they're done, then look for `review-comments.json` in the spec dir and apply it
-  (task-change / scenario-change / plan-change / general-note, each mapped to the
-  matching artifact).
+Gate: `$TEMPER gate plan` — see `reference/plan.md` → "Approval" for the walkthrough
+mechanics. **"Open HTML review"** (in addition to reference/plan.md's options): render
+`templates/plan-review.html` with the `plan.md`/`tasks.md` sections filled in, open it,
+wait for the user, then look for `review-comments.json` in the spec dir and apply it
+(task-change / scenario-change / plan-change / general-note, mapped to its artifact).
 
 **On Continue:** `$TEMPER state advance plan_complete design-or-build` (pick `design` if
 `phases.design: true` and complexity is medium/complex, else `build`). Create the feature
@@ -206,7 +188,7 @@ Skip straight to Build when `phases.design: false`, or complexity is trivial/sim
 Launch:
 
 ```
-Use the Agent tool, model: opus, prompt:
+Use the Agent tool, model: {design}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/design.md exactly. Spec: {spec_path from state}."
 ```
 
@@ -227,7 +209,7 @@ decision log; only sections `design.md` actually has) / Save / Other.
 Launch:
 
 ```
-Use the Agent tool, model: sonnet, prompt:
+Use the Agent tool, model: {build}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/build.md exactly. Spec: {spec_path from state}.
 {If a review-context.json or check-context.json feedback file exists, name it here.}"
 ```
@@ -247,7 +229,7 @@ Gate: `$TEMPER gate build` (RED-then-GREEN evidence recorded, no unchecked tasks
 Options: Continue to Review / Teach Me / "Loop back to Plan" (only if Build judges the
 plan infeasible — human-driven, no circuit breaker, max 1 per run) / Override / Save.
 
-**On Continue:** `$TEMPER state advance build_complete review`, launch Review.
+**On Continue:** `$TEMPER state advance build_complete review`, launch Stage 3.
 
 ---
 
@@ -256,7 +238,7 @@ plan infeasible — human-driven, no circuit breaker, max 1 per run) / Override 
 Launch:
 
 ```
-Use the Agent tool, model: haiku, prompt:
+Use the Agent tool, model: {review}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/review.md exactly. Spec: {spec_path from state}."
 ```
 
@@ -277,43 +259,19 @@ files and folds `[ARCH-DEPTH]` findings into the summary before re-showing the g
 Launch:
 
 ```
-Use the Agent tool, model: haiku, prompt:
+Use the Agent tool, model: {check}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/check.md exactly. Spec: {spec_path from state}."
 ```
 
 Summary box: compile/test/lint/security results, coverage %, scenario verification.
 
-Gate: `$TEMPER gate check` (tests pass, coverage >= threshold, every `intent.md`
-scenario traced to a test by name — this is the gate that catches the README's
-rate-limiting story). On a clean pass, the
-Check agent may also have written `{spec_path}/config-suggestions.json` (CLAUDE.md/
-AGENTS.md suggestions per `reference/config-suggestions.md`) — if present, offer a
-**"Review config suggestions"** option before Continue: show each, Accept (write it into
-CLAUDE.md/AGENTS.md) / Reject / Defer, then re-show the gate.
+Gate: `$TEMPER gate check` (tests pass, coverage >= threshold, every `intent.md` scenario
+traced to a test by name — this is the gate that catches the README's rate-limiting
+story). On a clean pass, Check may also have written `{spec_path}/config-suggestions.json`
+— if present, offer a **"Review config suggestions"** option before Continue: show each,
+Accept (write it into CLAUDE.md/AGENTS.md) / Reject / Defer, then re-show the gate.
 
-**On Continue:** if `eval.enabled: true`, `$TEMPER state advance check_complete eval` and
-launch Eval; else skip straight to the commit gate.
-
----
-
-## Stage 5: Eval (optional)
-
-Skipped with a one-line notice when `eval.enabled: false` or no `evals/evalset.json`
-exists for this spec — never an error.
-
-Launch:
-
-```
-Use the Agent tool, model: haiku, prompt:
-"Follow $CLAUDE_PLUGIN_ROOT/agents/eval.md exactly. Spec: {spec_path from state}."
-```
-
-Summary box: score table by dimension (grouped ARTIFACT then PROCESS per
-`reference/eval.md` → "Reading the Score Table"), aggregate, pass/fail.
-
-Gate: `$TEMPER gate eval` (aggregate >= `eval.pass-threshold`).
-
-**On Continue:** `$TEMPER state advance eval_complete commit`.
+**On Continue:** `$TEMPER state advance check_complete commit`, proceed to Commit.
 
 ---
 
@@ -337,17 +295,12 @@ what was actually verified, not a narrated summary.
 
 ## Resume
 
-If `.temper/build-state.json` exists and `/temper` is called with **no arguments**,
-resume: read `spec_path` and `next_stage` via `$TEMPER state get`, confirm the spec
-directory and its `artifacts` still exist on disk (if not: "Saved state is invalid —
-start over / delete it?"), then launch `next_stage`. If it's been more than 30 days since
-`updated`, warn about staleness before resuming.
-
-If `/temper "new feature"` is called while state exists for a **different** feature, ask:
-resume the existing one, or overwrite (`$TEMPER state clear` then start fresh).
-
-If `/temper` (no arguments) is called for the **same** feature already in progress, ask:
-"Continue from {next_stage} (Recommended)" or "Start over (replan)".
+`/temper` with no arguments and `build-state.json` exists → validate per
+`reference/orchestrator-patterns.md` → "Resume Validation", then launch `next_stage`.
+`/temper "new feature"` while state exists for a **different** feature → follow
+"Nested Invocation Protection" there (say "feature", not "item"). `/temper` (no args) for
+the **same** feature already in progress → "Continue from {next_stage} (Recommended)" or
+"Start over (replan)".
 
 ---
 

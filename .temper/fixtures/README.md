@@ -16,7 +16,7 @@ all timestamps are placeholder zeros, identifiers are illustrative, and no
 project-specific paths or secrets appear. It demonstrates:
 
 - `detected_patterns[]` with one **promoted** rule (version-stamp drift, met the
-  3+ accepts threshold) and one **active** rule (cursor parity, approaching
+  3+ accepts threshold) and one **active** rule (stale derived docs, approaching
   promotion)
 - `suppressed_patterns[]` noise reduction
 - `suggestion_queue[]` with a rule-template entry and a `config-update` entry

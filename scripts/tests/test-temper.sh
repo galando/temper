@@ -78,11 +78,6 @@ EOF
   "$TEMPER" state init demo --command temper >/dev/null
 }
 
-# --- config parser: booleans must be lowercase, never Python's True/False ---
-setup
-"$TEMPER" evidence add --stage eval --claim "aggregate" --value 0.9 --label PROVEN >/dev/null
-assert_exit "eval gate PASSes when enabled=true and score above threshold" 0 "$TEMPER" gate eval
-
 # --- grep -c zero-match must not double-print (the "0\n0" bug) ---
 setup
 cat > .temper/specs/demo/tasks.md <<'EOF'
@@ -160,7 +155,6 @@ assert_eq "PROVEN downgrades to HEURISTIC when artifact is missing" "yes" "$(ech
 
 # --- commit gate: aggregates prior gate verdicts + honors overrides ---
 setup
-"$TEMPER" evidence add --stage eval --claim "aggregate" --value 0.9 >/dev/null
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
@@ -171,7 +165,6 @@ setup
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
 "$TEMPER" gate check >/dev/null
-"$TEMPER" gate eval >/dev/null
 assert_exit "commit gate PASSes once every upstream gate is green" 0 "$TEMPER" gate commit
 
 setup
@@ -180,7 +173,6 @@ assert_exit "commit gate FAILs with an unresolved review finding, no override" 1
 "$TEMPER" override review --reason "manually verified safe" >/dev/null
 "$TEMPER" gate plan >/dev/null; "$TEMPER" gate build >/dev/null 2>&1 || true
 "$TEMPER" gate check >/dev/null 2>&1 || true
-"$TEMPER" gate eval >/dev/null 2>&1 || true
 assert_eq "override is recorded and visible in report" "yes" "$("$TEMPER" report | grep -q 'overridden' && echo yes || echo no)"
 
 # --- state: illegal transitions rejected, loop budget enforced ---
@@ -216,7 +208,7 @@ setup
 assert_exit "a /temper:fix run accepts rca_complete" 0 "$TEMPER" state advance rca_complete fix
 assert_exit "a /temper:fix run rejects temper-only stage names (plan_complete)" 1 "$TEMPER" state advance plan_complete design
 
-# --- /temper:fix commits: no plan/eval gate required (fix has no such stage) ---
+# --- /temper:fix commits: no plan gate required (fix has no such stage) ---
 setup
 "$TEMPER" state init bug1 --command fix >/dev/null
 "$TEMPER" evidence add --stage build --claim "regression test" --exit 1 --phase red >/dev/null
@@ -228,7 +220,7 @@ setup
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
 "$TEMPER" gate check >/dev/null
-assert_exit "fix commit gate PASSes without a plan or eval gate" 0 "$TEMPER" gate commit
+assert_exit "fix commit gate PASSes without a plan gate" 0 "$TEMPER" gate commit
 
 # --- autonomy: park-on-touch blocks commit in autonomous mode only ---
 setup
@@ -251,6 +243,9 @@ echo '{"command": "temper", "run_mode": "interactive"}' > .temper/build-state.js
 echo 'x' > file.txt
 git add file.txt >/dev/null 2>&1
 
+# The "eval" entry below is a stale key a pre-upgrade .temper/gates.json would still
+# carry — gate_commit's stages_to_check no longer names "eval" so it is never visited.
+# This fixture doubles as coverage for that; a dedicated case follows further down too.
 cat > .temper/gates.json <<'EOF'
 {
   "plan": {"verdict": "PASS", "requirements": [], "ts": "x"},
@@ -272,6 +267,263 @@ json.dump(d, open('.temper/gates.json', 'w'))
 "
 assert_exit "native pre-commit hook allows a real git commit once the gate is green" 0 git commit -m "test"
 assert_eq "the allowed commit actually landed" "yes" "$(git log --oneline 2>&1 | grep -q . && echo yes || echo no)"
+
+# --- v8 compat: Eval-stage removal must not break a pre-upgrade project ---
+
+# 1. A stale `eval:` block in .claude/temper.config never breaks a gate — every setup()
+#    fixture above already writes one (see the config heredoc), so this run's whole
+#    green suite is itself evidence; this case makes the claim explicit and standalone.
+setup
+"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+assert_exit "gate build runs cleanly against a config with a stale eval: block" 0 "$TEMPER" gate build
+
+# 2. A stale "eval" key in .temper/gates.json is ignored by gate_commit, not iterated.
+setup
+"$TEMPER" gate plan >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+"$TEMPER" gate build >/dev/null
+"$TEMPER" gate review >/dev/null
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
+"$TEMPER" gate check >/dev/null
+python3 -c "
+import json
+d = json.load(open('.temper/gates.json'))
+d['eval'] = {'verdict': 'FAIL', 'requirements': [], 'ts': 'x'}
+json.dump(d, open('.temper/gates.json', 'w'))
+"
+assert_exit "commit gate PASSes and ignores a stale FAIL 'eval' key in gates.json" 0 "$TEMPER" gate commit
+
+# 3. Legacy state left by an in-flight v7.0.x run: next_stage "eval" forward-maps to
+#    "commit", written through to disk (not just stdout) so a later raw read sees it too.
+setup
+python3 -c "
+import json
+d = json.load(open('.temper/build-state.json'))
+d['next_stage'] = 'eval'
+json.dump(d, open('.temper/build-state.json', 'w'))
+"
+assert_eq "state get forward-maps legacy next_stage 'eval' to 'commit'" "commit" "$("$TEMPER" state get next_stage)"
+assert_eq "the next_stage forward-map is written through to disk" "commit" "$(python3 -c "import json; print(json.load(open('.temper/build-state.json'))['next_stage'])")"
+
+# 4. Legacy stage "eval_complete": the hook (L1, reads build-state.json directly, cannot
+#    call this CLI) no longer treats a raw/unhealed value as green — but a prior CLI
+#    touch heals the file on disk, and the hook then sees "check_complete" and passes.
+setup
+git config user.email "test@example.com"
+git config user.name "test"
+bash "$REPO_ROOT/scripts/hooks/install.sh" >/dev/null
+python3 -c "
+import json
+d = json.load(open('.temper/build-state.json'))
+d['stage'] = 'eval_complete'
+json.dump(d, open('.temper/build-state.json', 'w'))
+"
+assert_exit "verify-tests-ran.sh no longer matches a raw, unhealed 'eval_complete'" 2 bash "$REPO_ROOT/scripts/hooks/verify-tests-ran.sh"
+"$TEMPER" state get stage >/dev/null   # a CLI touch heals the on-disk value
+assert_eq "the stage forward-map is written through to disk" "check_complete" "$(python3 -c "import json; print(json.load(open('.temper/build-state.json'))['stage'])")"
+assert_exit "verify-tests-ran.sh passes once the CLI has healed the state to check_complete" 0 bash "$REPO_ROOT/scripts/hooks/verify-tests-ran.sh"
+
+# --- v8: evidence clear + state loop auto-clears downstream evidence (Decision 7) ---
+# A loop means "we are going backwards"; evidence is append-only, so a stale row from a
+# stage being redone (or an abandoned parallel Check run on a Review FAIL) must not
+# survive to inflate the next gate's count. `temper evidence clear` is the direct tool;
+# `state loop <from> <to>` calls it automatically for <to> and everything downstream of
+# it in STAGE_SEQ_TEMPER — the spine-level backstop behind the orchestrator's
+# kill-before-clear ordering.
+setup
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+"$TEMPER" evidence clear --stage check >/dev/null
+assert_eq "evidence clear truncates a stage's ledger to []" "[]" "$(cat .temper/evidence/check.json | tr -d '[:space:]')"
+
+setup
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
+"$TEMPER" gate check >/dev/null
+"$TEMPER" state loop check build --reason "regression found downstream" >/dev/null
+assert_eq "state loop check->build auto-clears check evidence (check is downstream of build)" "[]" "$(cat .temper/evidence/check.json | tr -d '[:space:]')"
+assert_exit "check gate FAILs closed again after the auto-clear (stale scenario coverage cannot mask a regression)" 1 "$TEMPER" gate check
+
+# --- pack-discover.py: install-path selection uses lastUpdated, not (version, installPath)
+# (feedback re-entry fix). Real installed_plugins.json entries commonly carry
+# "version": "unknown" for every candidate, which made the old (version, installPath)
+# tiebreak an unrelated path-string sort — "install-old" > "install-new" lexicographically,
+# so the *older* entry won even though "install-new" has the newer lastUpdated. ---
+setup
+PACK_HOME="$WORKDIR/fake-home"
+mkdir -p "$PACK_HOME/.claude/plugins" \
+  "$PACK_HOME/install-old/.claude-plugin" \
+  "$PACK_HOME/install-new/.claude-plugin" \
+  "$PACK_HOME/install-new/skills/demo"
+echo '{"description": "old install"}' > "$PACK_HOME/install-old/.claude-plugin/plugin.json"
+echo '{"description": "new install"}' > "$PACK_HOME/install-new/.claude-plugin/plugin.json"
+cat > "$PACK_HOME/install-new/skills/demo/SKILL.md" <<'EOF'
+---
+description: "demo skill"
+---
+EOF
+cat > "$PACK_HOME/.claude/plugins/installed_plugins.json" <<EOF
+{
+  "plugins": {
+    "demo@marketA": [
+      {"version": "unknown", "installPath": "$PACK_HOME/install-old", "lastUpdated": "2026-01-01T00:00:00Z"},
+      {"version": "unknown", "installPath": "$PACK_HOME/install-new", "lastUpdated": "2026-06-01T00:00:00Z"}
+    ]
+  }
+}
+EOF
+PACK_OUT="$(HOME="$PACK_HOME" python3 "$REPO_ROOT/scripts/pack-discover.py")"
+assert_eq "pack-discover picks the entry with the newest lastUpdated, not the alphabetically-last path" "1" "$(printf '%s\n' "$PACK_OUT" | grep -c "install-new")"
+assert_eq "pack-discover does not pick the older lastUpdated entry" "0" "$(printf '%s\n' "$PACK_OUT" | grep -c "install-old")"
+
+# --- pack-discover.py: cross-marketplace dedup — the SAME package name installed from
+# TWO different marketplace keys (e.g. feature-dev@marketA and feature-dev@marketB, the
+# real-world case being feature-dev installed from both claude-plugins-official and
+# claude-code-plugins) must still emit each target exactly once, not once per
+# marketplace key. Scenario: "Pack discovery deduplicates targets installed from two
+# marketplaces" (intent.md). ---
+setup
+DEDUP_HOME="$WORKDIR/fake-home-dedup"
+mkdir -p "$DEDUP_HOME/.claude/plugins" \
+  "$DEDUP_HOME/marketA-install/.claude-plugin" \
+  "$DEDUP_HOME/marketA-install/skills/feature-dev" \
+  "$DEDUP_HOME/marketB-install/.claude-plugin" \
+  "$DEDUP_HOME/marketB-install/skills/feature-dev"
+echo '{"description": "feature-dev plugin (market A)"}' > "$DEDUP_HOME/marketA-install/.claude-plugin/plugin.json"
+echo '{"description": "feature-dev plugin (market B)"}' > "$DEDUP_HOME/marketB-install/.claude-plugin/plugin.json"
+cat > "$DEDUP_HOME/marketA-install/skills/feature-dev/SKILL.md" <<'EOF'
+---
+description: "Guided feature development (market A)"
+---
+EOF
+cat > "$DEDUP_HOME/marketB-install/skills/feature-dev/SKILL.md" <<'EOF'
+---
+description: "Guided feature development (market B)"
+---
+EOF
+cat > "$DEDUP_HOME/.claude/plugins/installed_plugins.json" <<EOF
+{
+  "plugins": {
+    "feature-dev@claude-plugins-official": [
+      {"version": "1.0.0", "installPath": "$DEDUP_HOME/marketA-install", "lastUpdated": "2026-01-01T00:00:00Z"}
+    ],
+    "feature-dev@claude-code-plugins": [
+      {"version": "1.0.0", "installPath": "$DEDUP_HOME/marketB-install", "lastUpdated": "2026-06-01T00:00:00Z"}
+    ]
+  }
+}
+EOF
+DEDUP_OUT="$(HOME="$DEDUP_HOME" python3 "$REPO_ROOT/scripts/pack-discover.py")"
+assert_eq "pack-discover emits feature-dev:feature-dev exactly once across two marketplace keys" "1" "$(printf '%s\n' "$DEDUP_OUT" | grep -c "^SKILL|feature-dev:feature-dev|")"
+assert_eq "pack-discover does not emit a second, market-B-suffixed duplicate" "1" "$(printf '%s\n' "$DEDUP_OUT" | grep -c "feature-dev:feature-dev")"
+
+# --- stage-marker.sh + verify-stage-gate.sh: the standalone-stage gate guarantee ---
+# stage-marker records the gate a /temper:{stage} session owes; verify-stage-gate blocks
+# Stop until gates.json carries a verdict for it (any verdict), failing open after 2
+# blocks. See docs/decisions/0005-deterministic-stage-gate-enforcement.md.
+setup
+MARKER="$REPO_ROOT/scripts/hooks/stage-marker.sh"
+VERIFY="$REPO_ROOT/scripts/hooks/verify-stage-gate.sh"
+
+echo '{"prompt": "/temper:plan add a thing"}' | bash "$MARKER"
+assert_eq "stage-marker records the owed stage" "plan" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['stage'])")"
+
+rm -f .temper/pending-stage.json
+echo '{"prompt": "please run /temper:plan for me"}' | bash "$MARKER"
+assert_eq "stage-marker ignores a mid-sentence mention" "absent" "$([[ -f .temper/pending-stage.json ]] && echo created || echo absent)"
+echo '{"prompt": "/temper add login"}' | bash "$MARKER"
+assert_eq "stage-marker ignores the unified /temper command" "absent" "$([[ -f .temper/pending-stage.json ]] && echo created || echo absent)"
+echo 'not json at all' | bash "$MARKER"
+assert_exit "stage-marker fails open on garbage stdin" 0 bash -c "echo garbage | bash '$MARKER'"
+
+assert_exit "verify-stage-gate passes with no marker" 0 bash "$VERIFY"
+
+echo '{"prompt": "/temper:plan x"}' | bash "$MARKER"
+assert_exit "verify-stage-gate BLOCKS when no verdict exists" 2 bash "$VERIFY"
+assert_eq "block is counted in the marker" "1" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['blocks'])")"
+
+echo '{"plan": {"verdict": "FAIL"}}' > .temper/gates.json
+assert_exit "a FAIL verdict satisfies the guarantee (gate ran)" 0 bash "$VERIFY"
+assert_eq "marker cleared once the verdict exists" "absent" "$([[ -f .temper/pending-stage.json ]] && echo present || echo absent)"
+
+rm -f .temper/gates.json
+echo '{"prompt": "/temper:build x"}' | bash "$MARKER"
+bash "$VERIFY" >/dev/null 2>&1; bash "$VERIFY" >/dev/null 2>&1
+assert_exit "loop guard fails open on the third stop attempt" 0 bash "$VERIFY"
+assert_eq "loop-guard fail-open clears the marker" "absent" "$([[ -f .temper/pending-stage.json ]] && echo present || echo absent)"
+
+echo '{"stage": "plan"' > .temper/pending-stage.json
+assert_exit "corrupt marker fails open" 0 bash "$VERIFY"
+
+# stop_hook_active with our counter at 0 means the marker isn't persisting — fail open
+# rather than loop. (Regression: the harness JSON must travel as argv; piping it into
+# `python3 - <<heredoc` silently discards it, since the heredoc owns stdin.)
+rm -f .temper/pending-stage.json .temper/gates.json
+echo '{"prompt": "/temper:check x"}' | bash "$MARKER"
+assert_exit "stop_hook_active with a stuck counter fails open" 0 \
+  bash -c "echo '{\"stop_hook_active\": true}' | bash '$VERIFY'"
+rm -f .temper/pending-stage.json
+echo '{"prompt": "/temper:check x"}' | bash "$MARKER"
+assert_exit "stop_hook_active=false still blocks normally" 2 \
+  bash -c "echo '{\"stop_hook_active\": false}' | bash '$VERIFY'"
+
+# Time-scoping: a verdict from BEFORE the marker (a previous run's leftovers) must not
+# satisfy this session's debt; one recorded after it must.
+rm -f .temper/gates.json .temper/pending-stage.json
+echo '{"plan": {"verdict": "PASS", "ts": "2020-01-01T00:00:00Z"}}' > .temper/gates.json
+echo '{"prompt": "/temper:plan a new feature"}' | bash "$MARKER"
+assert_exit "a pre-marker verdict does NOT pay this session's debt" 2 bash "$VERIFY"
+python3 -c "
+import json; g=json.load(open('.temper/gates.json'))
+g['plan']['ts']='2099-01-01T00:00:00Z'; json.dump(g, open('.temper/gates.json','w'))"
+assert_exit "a post-marker verdict does" 0 bash "$VERIFY"
+
+# Backward compat: missing timestamps degrade to the any-verdict check, never a block.
+rm -f .temper/pending-stage.json
+echo '{"plan": {"verdict": "PASS"}}' > .temper/gates.json
+echo '{"stage": "plan", "blocks": 0}' > .temper/pending-stage.json
+assert_exit "verdict without ts + old marker format still clears" 0 bash "$VERIFY"
+
+# End-to-end with the real CLI: marker -> real `temper gate plan` FAIL -> stop allowed.
+rm -f .temper/gates.json .temper/pending-stage.json
+echo '{"prompt": "/temper:plan x"}' | bash "$MARKER"
+"$TEMPER" gate plan --spec-path .temper/specs/empty >/dev/null 2>&1 || true
+assert_exit "real gate FAIL verdict unblocks the stop" 0 bash "$VERIFY"
+
+# --- temper model: config override > agents/{stage}.md frontmatter, resolved in bash ---
+setup
+# Defaults come from the real agents/*.md frontmatter — no table in the CLI to drift.
+assert_eq "model plan defaults to agents/plan.md frontmatter" \
+  "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); print; exit}' "$REPO_ROOT/agents/plan.md")" \
+  "$("$TEMPER" model plan)"
+assert_eq "model --all emits one stage=model line per agent stage" "5" "$("$TEMPER" model --all | grep -c '^[a-z]*=')"
+assert_eq "model --all covers every agent stage" "plan design build review check" \
+  "$("$TEMPER" model --all | cut -d= -f1 | tr '\n' ' ' | sed 's/ $//')"
+assert_exit "model rejects an unknown stage" 1 "$TEMPER" model bogus
+assert_exit "model rejects 'commit' (not an Agent stage)" 1 "$TEMPER" model commit
+
+# A models: block in the project config overrides the frontmatter default.
+cat >> .claude/temper.config <<'EOF'
+models:
+  review: opus
+  check: claude-opus-5
+EOF
+assert_eq "models.{stage} config overrides the frontmatter default" "opus" "$("$TEMPER" model review)"
+assert_eq "models.{stage} accepts a full model ID, not just an alias" "claude-opus-5" "$("$TEMPER" model check)"
+assert_eq "an unset stage still falls back to frontmatter" "$("$TEMPER" model plan)" "$(cd "$REPO_ROOT" && ./scripts/temper model plan)"
+assert_eq "model --all reflects overrides" "review=opus" "$("$TEMPER" model --all | grep '^review=')"
+
+# Absent config => frontmatter defaults, never an empty string.
+rm -f .claude/temper.config
+assert_eq "no config file => frontmatter default, non-empty" "1" "$([[ -n "$("$TEMPER" model build)" ]] && echo 1 || echo 0)"
+assert_exit "model --all succeeds with no config file" 0 "$TEMPER" model --all
 
 echo ""
 echo "=== test-temper.sh ==="

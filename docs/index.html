@@ -858,7 +858,7 @@
     <div class="hero-grid">
       <div class="hero-content">
         <h1>Your AI writes fast.<br><em>Temper makes it last.</em></h1>
-        <p>IDD + BDD + TDD for AI-generated code. Deterministic quality gates, blast radius analysis, and intent-driven development. The AI discipline layer for Claude Code (Cursor: archived v5.1 snapshot).</p>
+        <p>IDD + BDD + TDD for AI-generated code. Deterministic quality gates, blast radius analysis, and intent-driven development. The AI discipline layer for Claude Code.</p>
         <div class="hero-actions">
           <a href="#install" class="btn btn-primary">Install →</a>
           <a href="https://github.com/galando/temper" class="btn btn-secondary" target="_blank">View on GitHub</a>
@@ -881,26 +881,18 @@
         </div>
         <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Commands available in any project.</p>
       </div>
-      <div class="install-card" style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px; padding: 1.5rem;">
-        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">🔵 Cursor IDE</h4>
-        <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 0.5rem;">
-          <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; color: var(--fg-muted); overflow-x: auto; margin: 0;">bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)</pre>
-          <button class="copy-btn" onclick="copyCode(this, 'bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-family: 'IBM Plex Mono', monospace; color: var(--fg-muted); cursor: pointer;">Copy</button>
-        </div>
-        <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Archived at the v5.1 feature set — no longer regenerated per release. v7's CLI-backed gates ship Claude Code-only.</p>
-      </div>
     </div>
   </section>
 
   <section id="capabilities">
     <div class="section-label">Capabilities</div>
     <h2 class="section-title">The full SDLC, automated</h2>
-    <p class="section-desc">Temper runs the complete software development lifecycle — plan, design, build, review, check, eval — with stage gates computed by a deterministic CLI, not asserted by a model.</p>
+    <p class="section-desc">Temper runs the complete software development lifecycle — plan, design, build, review, check — with stage gates computed by a deterministic CLI, not asserted by a model.</p>
 
     <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
       <div class="why-item">
         <h4>Deterministic Gates</h4>
-        <p>Every gate — Plan, Build, Review, Check, Eval, Commit — is a PASS/FAIL computed by <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">temper gate</code> from an evidence ledger. <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code> is physically blocked while any gate is red and unoverridden.</p>
+        <p>Every gate — Plan, Build, Review, Check, Commit — is a PASS/FAIL computed by <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">temper gate</code> from an evidence ledger. <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code> is physically blocked while any gate is red and unoverridden.</p>
       </div>
       <div class="why-item">
         <h4>Feedback Loops</h4>
@@ -937,10 +929,6 @@
 
     <div class="why-grid" style="grid-template-columns: repeat(2, 1fr); margin-top: 1rem;">
       <div class="why-item">
-        <h4>Cursor IDE (archived)</h4>
-        <p>Temper for <a href="https://cursor.sh" style="color: var(--accent);">Cursor</a>, archived at the v5.1 feature set — 22 rules covering packs, skills, capabilities. No longer regenerated per release; v7's CLI-backed gates and <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">agents/</code> directory ship Claude Code-only. <a href="https://github.com/galando/temper/blob/main/docs/plans/v7-deterministic-spine.md" style="color: var(--accent);">v7 design doc →</a></p>
-      </div>
-      <div class="why-item">
         <h4>External Review Engine</h4>
         <p>Orchestrates Alibaba's <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">open-code-review</code> for LLM-powered defect detection. Cross-validated findings labeled <strong style="color:var(--accent)">[OCR+TEMPER]</strong> with boosted confidence.</p>
       </div>
@@ -967,8 +955,16 @@
       </div>
     </div>
 
-    <p style="text-align: center; margin-top: 1.5rem;">
+    <p style="text-align: center; margin-top: 1.5rem; color: var(--fg-muted); font-size: 0.9rem;">
+      Claims here are measured, not asserted — including the ones that came out
+      unflattering. v8's prompt rewrite cut the cost of a Plan run 48% and held quality,
+      but it did <em>not</em> make it faster, and the changelog says so.
+    </p>
+
+    <p style="text-align: center; margin-top: 1rem;">
       <a href="https://github.com/galando/temper/tree/main/docs/evidence" style="color: var(--accent); font-weight: 500;">See all evidence →</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/galando/temper/blob/main/docs/evidence/opus5-plan-prompt-ab.md" style="color: var(--fg-muted); font-size: 0.9rem;">Prompt A/B data</a>
       &nbsp;·&nbsp;
       <a href="https://github.com/galando/temper/tree/main/docs/evidence/benchmark.md" style="color: var(--fg-muted); font-size: 0.9rem;">Benchmark methodology</a>
     </p>
@@ -1212,7 +1208,7 @@
   <section id="commands">
     <div class="section-label">Commands</div>
     <h2 class="section-title">Unified Command</h2>
-    <p class="section-desc">One command runs the full SDLC: plan → design → build → review → check → eval, with stage gates, feedback loops, and a mechanical commit gate that blocks <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code> until every gate is green.</p>
+    <p class="section-desc">One command runs the full SDLC: plan → design → build → review → check, with stage gates, feedback loops, and a mechanical commit gate that blocks <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code> until every gate is green.</p>
 
     <div class="install-card" style="max-width: 600px; margin-bottom: 2rem;">
       <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px;">
@@ -1283,6 +1279,13 @@
           <p>Quality metrics dashboard</p>
         </div>
       </div>
+      <div class="command">
+        <span class="command-icon">🌱</span>
+        <div class="command-content">
+          <h4>/temper:init</h4>
+          <p>Seed project config (idempotent)</p>
+        </div>
+      </div>
       <div class="command" style="background: var(--accent-soft); border-color: var(--accent);">
         <span class="command-icon">🔥</span>
         <div class="command-content">
@@ -1321,15 +1324,6 @@
           <button class="copy-btn" onclick="copyCode(this, '/plugin marketplace add galando/temper\n/plugin install temper')">Copy</button>
         </div>
         <p>Commands are now available in any project. For optional MCP-powered analysis, see <a href="https://github.com/galando/temper/blob/main/docs/recommended-setup.md" style="color: var(--accent);">Recommended Setup</a>.</p>
-      </div>
-
-      <div class="install-card">
-        <h4>🔵 Cursor IDE</h4>
-        <div class="code-block">
-          <pre>bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)</pre>
-          <button class="copy-btn" onclick="copyCode(this, 'bash &lt;(curl -fsSL https://raw.githubusercontent.com/galando/temper/main/scripts/install-cursor.sh)')">Copy</button>
-        </div>
-        <p>Downloads 22 rules and 9 commands — packs, skills, capabilities, and reference docs. Archived at the v5.1 feature set (not the v7 CLI-backed gates). No Python or git required.</p>
       </div>
 
     </div>

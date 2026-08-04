@@ -1,3 +1,7 @@
+---
+phases: all
+---
+
 # Security Pack
 
 **Version:** 1.0.0

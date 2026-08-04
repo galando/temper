@@ -1,3 +1,7 @@
+---
+phases: all
+---
+
 # API Design Pack
 
 **Version:** 1.0.0
