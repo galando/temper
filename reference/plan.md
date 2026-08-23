@@ -40,6 +40,13 @@ plan` reads only these three.
 files): an inline plan in the conversation, no files. **Medium** (5-10) / **Complex**
 (10+): the three files above. `--full`/`--quick` force Complex/Simple.
 
+**A draft intent.md already exists** (captured via `/temper:intent`, or drafted from a
+`temper bands` breach): it is your input, not something to overwrite. Keep the
+originator's Problem and Constraints (correct only with a stated reason), tighten the
+Success Criteria with `Validate:` types, resolve or explicitly re-carry each Open
+Question (they count toward the 2-3 clarifying questions below), then derive Scenarios
+as usual. The `Status: draft` header stays until a human accepts the plan gate.
+
 **Risk multipliers** (each pushes complexity up one tier): touches auth/payment/security
 code; modifies a library with 5+ consumers; changes a DB schema; a module with a
 historically high defect rate (`.temper/metrics.json` if present); a CRITICAL/HIGH
@@ -210,8 +217,10 @@ time, `AskUserQuestion` "Next step"/"Ask a question" between each) / "Save for l
 change typed via "Other" is never approval — make the edit, then re-show this same gate.
 
 On Continue: write `.temper/build-state.json` (`stage: plan_complete`, `next_stage:
-build`, `artifacts: ["intent.md","tasks.md"]`); standalone mode loads only `tasks.md` +
-`intent.md` for Build. Subprocess mode: the orchestrator handles the transition.
+build`, `artifacts: ["intent.md","tasks.md"]`); if intent.md's header says `Status:
+draft`, flip it to `Status: accepted` — the human Continue *is* the acceptance, and the
+artifact records it. Standalone mode loads only `tasks.md` + `intent.md` for Build.
+Subprocess mode: the orchestrator handles the transition.
 
 ## Edge Cases
 

@@ -12,6 +12,7 @@
   "keywords": ["temper", "quality", "code-review", "tdd", "standards", "blast-radius", "sdlc"],
   "commands": [
     "./commands/temper.md",
+    "./commands/intent.md",
     "./commands/plan.md",
     "./commands/design.md",
     "./commands/build.md",

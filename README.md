@@ -91,6 +91,7 @@ First run: pre-allow your build/test commands in `settings.json`, or the run par
 | Command | Purpose |
 |---------|---------|
 | [`/temper`](docs/commands.md#temper) | Full pipeline: plan → design? → build → review → check |
+| [`/temper:intent`](docs/commands.md#temperintent) | Capture an idea as a committed draft `intent.md` — build later |
 | [`/temper:plan`](docs/commands.md#temperplan) | Blast radius + BDD scenarios + architecture |
 | [`/temper:design`](docs/commands.md#temperdesign) | System design (complex/medium features) |
 | [`/temper:build`](docs/commands.md#temperbuild) | Scenario-driven TDD + coverage gate |

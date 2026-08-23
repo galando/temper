@@ -85,6 +85,35 @@ Each stage gate clears context and loads only what's needed:
 
 ---
 
+## `/temper:intent`
+
+Capture an idea as a draft `intent.md` — the artifact that starts the pipeline —
+without starting the pipeline.
+
+```bash
+/temper:intent "handlers spend a third of call time on status-only queries"
+/temper:intent "JIRA-4521"
+/temper:intent                # interview from scratch
+```
+
+**What it does:**
+
+- Interviews the originator the way an analyst would (scope, affected users,
+  constraints, what better looks like) — no formal language required of them
+- Writes `.temper/specs/{slug}/intent.md` with `Status: draft`, the author (from git
+  config), Problem, measurable Success Criteria, Constraints, Target Users, and Open
+  Questions — **no scenarios and no architecture**; those are Plan's job, derived from
+  the measured blast radius later
+- Offers to commit the draft, so author, timestamp, and revision history live in
+  version control from the moment the idea is real
+
+**Who flips `Status:`** — `draft` (this command) → `accepted` (a human approving the
+plan gate) → `completed` (the commit step). A later `/temper "{slug}"` picks the draft
+up and builds on it, never overwrites it. A `temper bands` breach drafts intents in
+exactly the same shape (see `/temper:status`).
+
+---
+
 ## `/temper:check`
 
 Stack validation and quality status.
@@ -592,3 +621,13 @@ Packs: quality, tdd, security, company
    • TODOs: 12 (3 critical)
    • Deprecated: 1 dependency
 ```
+
+**Control bands (closing the loop):** the dashboard also runs `temper bands` — a
+deterministic drift check of the metric history against rolling mean ± k·sigma bands
+(config: `bands:` in `.claude/temper.config`). `1sigma` logs, `2sigma` means
+diagnose, and a `3sigma`/`propose`-tier breach offers to draft the breach as a
+Stage-1 `intent.md` for `/temper` to pick up — evidence in, ordinary gates out.
+Dismissals are the tuning signal (3+ on one metric → widen the window or retire the
+metric). `temper bands` is also runnable headless from CI or cron with no dashboard
+at all (exit 1 on a breach) — see `examples/workflow/temper-bands.yml` — which is
+what lets the loop begin and end without a person starting it.

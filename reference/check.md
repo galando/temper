@@ -161,9 +161,11 @@ the orchestrator when the feedback conditions above are met). A change typed via
 is never approval to commit — make the edit, re-run validation from the first level that
 had failed (skip already-passed levels), re-show this same gate.
 
-**On Commit:** delete `.temper/build-state.json`; if `intent.md` exists add `**Status:**
-completed` + `**Completed:** {date}` to its header; commit with a conventional message
-naming files changed / tests added. **On Save:** write `build-state.json` with `stage:
+**On Commit:** delete `.temper/build-state.json`; if `intent.md` exists set its header
+to `**Status:** completed` + `**Completed:** {date}`; stage the spec artifacts
+(`.temper/specs/{slug}/`) alongside the diff unless the project gitignores them (their
+choice — never force-add) — the committed artifact chain is the audit trail; commit
+with a conventional message naming files changed / tests added. **On Save:** write `build-state.json` with `stage:
 check_complete`, `next_stage: commit`, report "Run /temper when ready to continue."
 
 ## Error Interpretation

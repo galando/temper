@@ -173,8 +173,10 @@ wait for the user, then look for `review-comments.json` in the spec dir and appl
 (task-change / scenario-change / plan-change / general-note, mapped to its artifact).
 
 **On Continue:** `$TEMPER state advance plan_complete design-or-build` (pick `design` if
-`phases.design: true` and complexity is medium/complex, else `build`). Create the feature
-branch if not already on it (`git checkout -b feature/{slug}`), then launch that stage.
+`phases.design: true` and complexity is medium/complex, else `build`). If intent.md's
+header says `Status: draft`, flip it to `Status: accepted` — this human Continue is the
+acceptance the artifact records. Create the feature branch if not already on it
+(`git checkout -b feature/{slug}`), then launch that stage.
 
 **On PASS at the plan gate, before showing options:** if `autonomy.enabled: true`, offer
 the continuation choice described above instead of a single "Continue" option.
@@ -281,8 +283,13 @@ Run `$TEMPER gate commit`. It aggregates every upstream gate's last verdict (PAS
 overridden), and — only when `run_mode == autonomous` — blast radius and park-on-touch.
 
 - **PASS (interactive):** `AskUserQuestion` — "Commit" / "Save for later" / "Other".
-  On Commit: stage the diff, `git commit` (a conventional-commit message summarizing the
-  feature), then `$TEMPER state clear`.
+  On Commit: stage the diff **and the spec artifacts** (`.temper/specs/{slug}/` —
+  intent.md, tasks.md, plan.md, design.md if present): the committed artifact chain is
+  the audit trail — what was asked for, what was planned, and the diff that answers
+  them, in one commit. If the project gitignores `.temper/specs/` that's its explicit
+  choice — never `git add -f` over it; note once that the artifacts stay local-only.
+  Then `git commit` (a conventional-commit message summarizing the feature), then
+  `$TEMPER state clear`.
 - **PASS (autonomous):** never auto-commits (see Autonomous Continuation) — park with a
   `SHIP-PENDING-COMMIT` report instead.
 - **FAIL:** show `$TEMPER report`, offer "Override and commit" (records the override,

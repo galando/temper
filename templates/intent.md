@@ -1,5 +1,7 @@
 # Intent: {Feature Name}
 
+**Author:** {name <email> — who asked for this; from git config if not stated}
+**Status:** {draft | accepted | completed}
 **Created:** {date}
 **Ticket:** {JIRA-XXX or #XXX if linked}
 **Complexity:** {trivial/simple/medium/complex}
@@ -36,6 +38,13 @@
 
 - {user type 1}: {how they benefit}
 - {user type 2}: {how they benefit}
+
+### Open Questions
+
+{Unresolved points, carried forward honestly rather than resolved by guess. Plan
+answers or re-carries each one; omit the section only when nothing is open.}
+
+- {question 1}
 
 ---
 
