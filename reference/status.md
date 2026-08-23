@@ -33,6 +33,15 @@ metrics yet. Run /temper:review or /temper:check to start tracking."
 - Evidence ratio: `proven / (proven + heuristic + semantic) * 100` from
   `metrics.json.evidence`.
 
+### Step 1.6: Control Bands (closing the loop)
+
+Run `$CLAUDE_PLUGIN_ROOT/scripts/temper bands` — a deterministic drift check of the
+metric history arrays against rolling mean ± k·sigma bands (config: `bands:` in
+`.claude/temper.config`; see `templates/temper.config.default`). Three verdicts:
+`OK`, `INSUFFICIENT-DATA` (too few recorded points — report it, never an error), and
+`BREACH` (a metric at 2sigma+, exit 1). Keep the raw per-metric lines for the panel; a
+`propose`-tier breach also arms Step 3.7 below.
+
 ### Step 1.7: Learning State
 
 Read `.temper/learning.json` if present (absent → "not initialized", graceful). Extract
@@ -64,6 +73,10 @@ warn and skip the learning section, don't crash.
 | GATE LEDGER: Plan/Build/Review/Check {PASS/FAIL}          |
 |   overrides {N}, evidence {N} PROVEN/{N} HEURISTIC/{N} SEMANTIC |
 |   (gates.json absent -> "No gate data yet — run /temper") |
+| CONTROL BANDS: {OK/BREACH/INSUFFICIENT-DATA}              |
+|   per-metric: {metric} z={z} {tier} -> {action}            |
+|   (verbatim from `temper bands`; insufficient data ->      |
+|    "not enough history yet — bands arm as runs accumulate")|
 | AUTONOMOUS RUNS: mode, park point + reason, loop budget   |
 |   (no autonomy-report.md -> print nothing for this panel) |
 +-------------------------------------------------------+
@@ -127,8 +140,28 @@ dismiss" (mark `rejected`) / "Skip for now" (leave pending).
 | Pattern frequency | `patterns[key].total_shown / reviews.total` |
 | Standards compliance | `(files_total - files_with_violations) / files_total * 100` |
 
-Show trend arrows (📉/📈/➡️) next to coverage and issues/review — the user reads the
-dashboard, there's no separate alerting system.
+Show trend arrows (📉/📈/➡️) next to coverage and issues/review. The dashboard is the
+human-facing view; `temper bands` (Step 1.6) is the deterministic trigger layer behind
+it — runnable headless from CI or cron with no dashboard at all (exit 1 on a breach),
+which is what closes the loop without a person starting it.
+
+### Step 3.7: Breach → intent.md (the loop's last arc)
+
+Only when Step 1.6 reported a `propose`-tier breach (default: 3sigma). `AskUserQuestion`:
+
+- **"Draft intent.md from this breach (Recommended)"** — write
+  `.temper/specs/{metric}-breach-{date}/intent.md` in the standard Stage-1 shape:
+  **Problem** = the breach verbatim from `temper bands` (metric, latest, baseline,
+  z-score — evidence, not narrative); **Success Criteria** = the metric back inside its
+  bands, with `Validate: metric`, plus at least one `Validate: scenario` criterion for
+  the suspected cause once known; **Constraints** = fix goes through the normal
+  pipeline; **Target Users** = the team. Then report: "Run `/temper` to pick it up."
+  The draft rides the ordinary pipeline — every gate applies; a bands breach never
+  fast-tracks anything.
+- **"Dismiss"** — record it in review-memory (`patterns` key `bands:{metric}`);
+  dismissals are the tuning signal: 3+ dismissals of the same metric's breaches →
+  suggest widening `bands.window` or retiring that metric from `bands.metrics`.
+- **"Skip for now"** — leave it; the next `/temper:status` re-offers.
 
 ### Learning Loop Lifecycle
 

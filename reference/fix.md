@@ -221,6 +221,12 @@ If 2+ possible causes:
 3. Name descriptively: "shouldHandleExpiredTokenGracefully" not "testBugFix"
 4. Run → MUST FAIL (confirms bug). If passes: wrong path? wrong data? already fixed?
 5. Must fail with assertion error related to the bug, not NPE or compilation error
+6. Record the test as this run's proof — from here on it is write-protected:
+   $CLAUDE_PLUGIN_ROOT/scripts/temper state set regression_test {test file path}
+   With the hooks pack enabled, protect-regression-test.sh now BLOCKS any edit to
+   that file for the rest of the fix run (fix the code, not the test). If the test
+   itself turns out to be wrong, lifting the shield is the human's call:
+   temper state set regression_test "" — never the fixing agent's.
 ```
 
 ### Step 3.5: Validate Fix Approach Against Pack Rules

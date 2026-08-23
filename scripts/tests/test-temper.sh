@@ -525,6 +525,161 @@ rm -f .claude/temper.config
 assert_eq "no config file => frontmatter default, non-empty" "1" "$([[ -n "$("$TEMPER" model build)" ]] && echo 1 || echo 0)"
 assert_exit "model --all succeeds with no config file" 0 "$TEMPER" model --all
 
+# --- protect-regression-test.sh: the fix loop's write shield ---
+# Once a /temper:fix run records its regression test (state.regression_test), an agent
+# Edit/Write targeting that file is blocked (exit 2) — the agent fixing the code must
+# not weaken the check on it. Everything else: fail-open.
+setup
+SHIELD="$REPO_ROOT/scripts/hooks/protect-regression-test.sh"
+"$TEMPER" state init bug2 --command fix >/dev/null
+mkdir -p test && echo 'assert(true)' > test/regression.spec.js
+
+assert_exit "shield: no recorded regression test => edit passes" 0 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"test/regression.spec.js\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$SHIELD'"
+
+"$TEMPER" state set regression_test test/regression.spec.js >/dev/null
+assert_exit "shield: editing the recorded regression test is BLOCKED" 2 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"test/regression.spec.js\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$SHIELD'"
+OUT=$(echo '{"tool_input": {"file_path": "test/regression.spec.js"}}' | CLAUDE_PROJECT_DIR="$WORKDIR" bash "$SHIELD" 2>&1; true)
+assert_eq "shield: the block names the human release valve" "yes" "$(echo "$OUT" | grep -q 'temper state set regression_test' && echo yes || echo no)"
+
+assert_exit "shield: an absolute path to the same file is also BLOCKED" 2 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"$WORKDIR/test/regression.spec.js\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$SHIELD'"
+assert_exit "shield: editing any other file passes" 0 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"src/resetService.js\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$SHIELD'"
+
+# The shield is fix-run-scoped: a /temper (feature) run never blocks, even with a
+# stray regression_test key in state.
+setup
+mkdir -p test && echo 'assert(true)' > test/regression.spec.js
+"$TEMPER" state set regression_test test/regression.spec.js >/dev/null
+assert_exit "shield: inert outside a fix run (command != fix)" 0 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"test/regression.spec.js\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$SHIELD'"
+
+# Degradation contract: garbage stdin, missing state, cleared shield — all fail open.
+setup
+"$TEMPER" state init bug3 --command fix >/dev/null
+"$TEMPER" state set regression_test test/regression.spec.js >/dev/null
+assert_exit "shield: garbage stdin fails open" 0 \
+  bash -c "echo 'not json' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$SHIELD'"
+"$TEMPER" state set regression_test "" >/dev/null
+assert_exit "shield: a human clearing regression_test lifts the block" 0 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"test/regression.spec.js\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$SHIELD'"
+rm -f .temper/build-state.json
+assert_exit "shield: no state file fails open" 0 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"anything.js\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$SHIELD'"
+
+# --- temper bands: deterministic control-band drift check (closing the loop) ---
+# Detection is pure arithmetic over .temper/metrics.json history arrays — no model, no
+# network. BREACH (exit 1) only at 2sigma+; 1sigma logs but never breaches; too few
+# points is INSUFFICIENT-DATA, never a breach (degradation contract).
+setup
+rm -f .temper/metrics.json
+assert_exit "bands: no metrics.json is INSUFFICIENT-DATA, exit 0" 0 "$TEMPER" bands
+OUT=$("$TEMPER" bands 2>&1)
+assert_eq "bands: no metrics.json reports INSUFFICIENT-DATA" "yes" "$(echo "$OUT" | grep -q 'INSUFFICIENT-DATA' && echo yes || echo no)"
+
+echo 'this is not json' > .temper/metrics.json
+assert_exit "bands: malformed metrics.json degrades to insufficient data, never crashes" 0 "$TEMPER" bands
+
+python3 -c "
+import json
+json.dump({'coverage_history': [85, 86, 85, 86, 85, 86, 85, 86], 'test_count_history': []},
+          open('.temper/metrics.json', 'w'))
+"
+assert_exit "bands: an in-band latest point is OK, exit 0" 0 "$TEMPER" bands
+OUT=$("$TEMPER" bands 2>&1)
+assert_eq "bands: in-band verdict is OK" "yes" "$(echo "$OUT" | grep -q 'temper bands -> OK' && echo yes || echo no)"
+assert_eq "bands: a metric with no points reports insufficient data without failing the run" "yes" "$(echo "$OUT" | grep -q 'tests — insufficient data' && echo yes || echo no)"
+
+# A collapsed latest point (85-86 baseline, then 60) is far beyond 3 sigma.
+python3 -c "
+import json
+json.dump({'coverage_history': [85, 86, 85, 86, 85, 86, 85, 86, 60]},
+          open('.temper/metrics.json', 'w'))
+"
+assert_exit "bands: a 3sigma coverage collapse is a BREACH, exit 1" 1 "$TEMPER" bands
+OUT=$("$TEMPER" bands 2>&1; true)
+assert_eq "bands: the breach names the metric and tier" "yes" "$(echo "$OUT" | grep -q '\[3sigma\] coverage' && echo yes || echo no)"
+assert_eq "bands: the 3sigma tier maps to the propose action by default" "yes" "$(echo "$OUT" | grep -q 'action=propose' && echo yes || echo no)"
+assert_eq "bands: a breach names the closing-the-loop next step (intent.md)" "yes" "$(echo "$OUT" | grep -q 'intent.md' && echo yes || echo no)"
+
+# A flat baseline (sigma = 0) treats ANY deviation as 3sigma — documented behavior.
+python3 -c "
+import json
+json.dump({'coverage_history': [80, 80, 80, 80, 80, 80, 79]}, open('.temper/metrics.json', 'w'))
+"
+assert_exit "bands: any deviation from a perfectly flat baseline is a BREACH" 1 "$TEMPER" bands
+
+# Slow drift: six consecutive same-side points elevate to 2sigma even when each point
+# is individually inside the bands (the Western-Electric-style run rule).
+python3 -c "
+import json
+json.dump({'coverage_history': [10, 10, 10, 10, 11, 11, 11, 11, 11, 11]},
+          open('.temper/metrics.json', 'w'))
+"
+assert_exit "bands: a 6-point same-side run is a drift BREACH" 1 "$TEMPER" bands
+OUT=$("$TEMPER" bands 2>&1; true)
+assert_eq "bands: drift is labeled as drift" "yes" "$(echo "$OUT" | grep -q 'drift' && echo yes || echo no)"
+
+# 1 sigma logs but does not breach: baseline mean 82.5, sigma ~2.5, latest ~1.4 sigma out.
+python3 -c "
+import json
+json.dump({'coverage_history': [80, 85, 80, 85, 80, 85, 79]}, open('.temper/metrics.json', 'w'))
+"
+assert_exit "bands: a 1sigma excursion logs but is not a breach" 0 "$TEMPER" bands
+OUT=$("$TEMPER" bands 2>&1)
+assert_eq "bands: the 1sigma excursion is reported with the log action" "yes" "$(echo "$OUT" | grep -q 'action=log' && echo yes || echo no)"
+
+# History points as objects ({value: N}) parse the same as bare numbers.
+python3 -c "
+import json
+json.dump({'coverage_history': [{'value': 85}, {'value': 86}, {'value': 85}, {'value': 86}, {'value': 60}]},
+          open('.temper/metrics.json', 'w'))
+"
+assert_exit "bands: object-shaped history points ({value: N}) are read like numbers" 1 "$TEMPER" bands
+
+# Config overrides: window, min-points, metrics list, and tier actions all honored.
+cat >> .claude/temper.config <<'EOF'
+bands:
+  window: 4
+  min-points: 6
+  metrics: [coverage]
+  tiers:
+    3sigma: page-a-human
+EOF
+python3 -c "
+import json
+json.dump({'coverage_history': [85, 86, 85, 86, 60]}, open('.temper/metrics.json', 'w'))
+"
+assert_exit "bands: config min-points 6 turns a 5-point series into insufficient data" 0 "$TEMPER" bands
+python3 -c "
+import json
+json.dump({'coverage_history': [85, 86, 85, 86, 85, 86, 60]}, open('.temper/metrics.json', 'w'))
+"
+OUT=$("$TEMPER" bands 2>&1; true)
+assert_eq "bands: config tier action overrides the default" "yes" "$(echo "$OUT" | grep -q 'action=page-a-human' && echo yes || echo no)"
+assert_eq "bands: metrics list from config drops the tests series" "no" "$(echo "$OUT" | grep -q 'tests' && echo yes || echo no)"
+
+# --json emits the persisted verdict file, machine-readable.
+OUT=$("$TEMPER" bands --json 2>&1; true)
+assert_eq "bands: --json output parses and carries the verdict" "BREACH" "$(echo "$OUT" | python3 -c "import json,sys; print(json.load(sys.stdin)['verdict'])" 2>/dev/null)"
+assert_eq "bands: verdict is persisted to .temper/bands.json" "yes" "$([[ -f .temper/bands.json ]] && echo yes || echo no)"
+
+# Unknown metric names are skipped with a notice, never a crash or a breach.
+setup
+python3 -c "
+import json
+json.dump({'coverage_history': [85, 86, 85, 86]}, open('.temper/metrics.json', 'w'))
+"
+cat >> .claude/temper.config <<'EOF'
+bands:
+  metrics: [coverage, made-up-series]
+EOF
+assert_exit "bands: an unknown metric name is skipped, not fatal" 0 "$TEMPER" bands
+OUT=$("$TEMPER" bands 2>&1)
+assert_eq "bands: the unknown metric is named in a skip notice" "yes" "$(echo "$OUT" | grep -q 'made-up-series — unknown metric' && echo yes || echo no)"
+
 echo ""
 echo "=== test-temper.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"

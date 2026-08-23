@@ -8,6 +8,10 @@
           {
             "type": "command",
             "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/block-secrets.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/protect-regression-test.sh"
           }
         ]
       },

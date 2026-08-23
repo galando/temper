@@ -18,8 +18,11 @@ description: "Show quality metrics, learning loop, and observability dashboard"
    evidence-backed gate ledger — run `$CLAUDE_PLUGIN_ROOT/scripts/temper report`, or read
    the files directly)
 4. Read `.temper/feedback-loops.json` (if exists — active feedback loop state)
+4.5. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper bands` (deterministic control-band drift
+   check over metrics history — **CONTROL BANDS section**; a `propose`-tier breach
+   offers drafting an intent.md, see reference/status.md Step 3.7)
 5. **Detect MCP tools**: attempt to call `get_impact_radius_tool` (code-review-graph) and check if semgrep tools are available. Report availability in dashboard.
-6. Display: reviews, quality trend, debt, hotspots, top patterns, learning loop, active specs, **MCP TOOLS section**, **GATE LEDGER section**, **FEEDBACK LOOPS section**
+6. Display: reviews, quality trend, debt, hotspots, top patterns, learning loop, active specs, **MCP TOOLS section**, **GATE LEDGER section**, **FEEDBACK LOOPS section**, **CONTROL BANDS section**
 7. If pattern count >= 3: suggest auto-rule
 8. **Hotspot map**: shows which files generate the most issues
 

@@ -15,6 +15,8 @@
 #   temper model <stage> | --all                  resolve a stage's model (config override > frontmatter)
 #   temper override <stage> --reason "..."        record a human override of a FAIL gate
 #   temper report [--json]                        render the current run's gate ledger
+#   temper bands [--json]                         deterministic control-band drift check
+#                                                 over .temper/metrics.json history
 #
 # DEGRADATION CONTRACT (same spirit as scripts/hooks/*.sh):
 #   - A stage with no evidence recorded FAILS closed (nothing to verify => not verified).
@@ -36,6 +38,8 @@ LOOPS_FILE="$TEMPER_DIR/feedback-loops.json"
 GATES_FILE="$TEMPER_DIR/gates.json"
 OVERRIDES_FILE="$TEMPER_DIR/overrides.json"
 EVIDENCE_DIR="$TEMPER_DIR/evidence"
+METRICS_FILE="$TEMPER_DIR/metrics.json"
+BANDS_FILE="$TEMPER_DIR/bands.json"
 
 STAGES="plan design build review check commit"
 
@@ -991,6 +995,126 @@ if overridden:
 }
 
 # ---------------------------------------------------------------------------
+# bands — closing the loop (deterministic drift detection, no model).
+#
+# Watches the history arrays in .temper/metrics.json against control bands
+# (rolling mean ± k·sigma over a window, plus a same-side-run drift rule).
+# Detection is entirely deterministic — this subcommand never invokes a model,
+# reads the network, or edits code. What a breach *triggers* is tiered in
+# config (`bands:` in .claude/temper.config — log / diagnose / propose) and
+# always lands in the normal pipeline: /temper:status renders the verdict, and
+# a `propose`-tier breach is drafted into a `.temper/specs/<slug>/intent.md`
+# for /temper to run — through every ordinary gate, never around them.
+#
+# Verdict: OK (nothing at 2sigma+), BREACH (>=1 metric at 2sigma+, exit 1),
+# INSUFFICIENT-DATA (no metric has enough recorded points yet). A flat
+# baseline (sigma = 0) treats any deviation as 3sigma — a perfectly stable
+# series moving at all is out of band by definition. History points may be
+# bare numbers or objects carrying a numeric `value`/`coverage`/`count`/`pct`.
+# ---------------------------------------------------------------------------
+
+cmd_bands() {
+  _ensure_dirs
+  local as_json=false
+  [[ "${1:-}" == "--json" ]] && as_json=true
+  local window min_points drift_run metrics t1 t2 t3
+  window="$(_cfg_get bands.window 10)"
+  min_points="$(_cfg_get bands.min-points 4)"
+  drift_run="$(_cfg_get bands.drift-run 6)"
+  metrics="$(_cfg_get bands.metrics "")"
+  [[ -n "$metrics" ]] || metrics="coverage"$'\x1f'"tests"
+  t1="$(_cfg_get bands.tiers.1sigma log)"
+  t2="$(_cfg_get bands.tiers.2sigma diagnose)"
+  t3="$(_cfg_get bands.tiers.3sigma propose)"
+  local out rc
+  out=$(python3 - "$METRICS_FILE" "$BANDS_FILE" "$window" "$min_points" "$drift_run" "$metrics" "$t1" "$t2" "$t3" "$(_now)" <<'PY'
+import json, math, sys
+metrics_path, out_path, window, min_points, drift_run, metrics_sep, t1, t2, t3, ts = sys.argv[1:11]
+window, min_points, drift_run = int(window), int(min_points), int(drift_run)
+SERIES_KEYS = {'coverage': 'coverage_history', 'tests': 'test_count_history'}
+try:
+    m = json.load(open(metrics_path))
+    if not isinstance(m, dict):
+        m = {}
+except Exception:
+    m = {}   # malformed metrics == absent; never a crash, never a breach (spine contract)
+
+def numeric(v):
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, dict):
+        for k in ('value', 'coverage', 'count', 'pct'):
+            if isinstance(v.get(k), (int, float)) and not isinstance(v.get(k), bool):
+                return float(v[k])
+    return None
+
+tier_names = {0: 'ok', 1: '1sigma', 2: '2sigma', 3: '3sigma'}
+actions = {'1sigma': t1, '2sigma': t2, '3sigma': t3}
+results, lines, worst, any_data = {}, [], 0, False
+for name in [s for s in metrics_sep.split('\x1f') if s]:
+    key = SERIES_KEYS.get(name)
+    if key is None:
+        lines.append(f"  [--] {name} — unknown metric (known: {', '.join(sorted(SERIES_KEYS))}); skipped")
+        results[name] = {'tier': 'unknown-metric'}
+        continue
+    raw = m.get(key, [])
+    series = [x for x in (numeric(v) for v in (raw if isinstance(raw, list) else [])) if x is not None]
+    if len(series) < min_points:
+        lines.append(f"  [--] {name} — insufficient data ({len(series)} point(s) recorded, need {min_points})")
+        results[name] = {'tier': 'insufficient-data', 'points': len(series)}
+        continue
+    any_data = True
+    latest = series[-1]
+    base = series[max(0, len(series) - 1 - window):-1]
+    mean = sum(base) / len(base)
+    sigma = math.sqrt(sum((x - mean) ** 2 for x in base) / len(base))
+    if sigma == 0:
+        z = 0.0 if latest == mean else (3.0 if latest > mean else -3.0)
+    else:
+        z = (latest - mean) / sigma
+    level = 3 if abs(z) >= 3 else 2 if abs(z) >= 2 else 1 if abs(z) >= 1 else 0
+    run = series[-drift_run:]
+    drift = len(run) >= drift_run and (all(p > mean for p in run) or all(p < mean for p in run))
+    if drift and level < 2:
+        level = 2
+    tier = tier_names[level]
+    action = actions.get(tier)
+    worst = max(worst, level)
+    line = (f"  [{tier if level else 'ok'}] {name} — latest {latest:g} vs baseline "
+            f"{mean:.2f} ±{sigma:.2f} (z={z:+.2f}, window {len(base)})")
+    if drift:
+        line += f" [drift: {drift_run} consecutive same-side point(s)]"
+    if level >= 1:
+        line += f": action={action}"
+    lines.append(line)
+    results[name] = {'latest': latest, 'mean': round(mean, 4), 'sigma': round(sigma, 4),
+                     'z': round(z, 4), 'tier': tier, 'drift': drift,
+                     'action': action if level >= 1 else None, 'window': len(base)}
+verdict = 'BREACH' if worst >= 2 else ('OK' if any_data else 'INSUFFICIENT-DATA')
+with open(out_path, 'w') as f:
+    json.dump({'verdict': verdict, 'metrics': results, 'ts': ts}, f, indent=2)
+    f.write('\n')
+print(f"temper bands -> {verdict}")
+for l in lines:
+    print(l)
+if worst >= 2:
+    print("A 2sigma+ breach is a closing-the-loop trigger: /temper:status renders it; a "
+          "propose-tier breach is drafted as .temper/specs/<slug>/intent.md for /temper to run.")
+sys.exit(1 if worst >= 2 else 0)
+PY
+)
+  rc=$?
+  if [[ "$as_json" == "true" ]]; then
+    cat "$BANDS_FILE" 2>/dev/null || echo '{}'
+  else
+    echo "$out"
+  fi
+  return $rc
+}
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
@@ -1005,6 +1129,7 @@ main() {
     model) cmd_model "$@" ;;
     override) cmd_override "$@" ;;
     report) cmd_report "$@" ;;
+    bands) cmd_bands "$@" ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -1017,6 +1142,7 @@ Usage:
   temper model <plan|design|build|review|check> | --all
   temper override <stage> --reason "..."
   temper report [--json]
+  temper bands [--json]
 EOF
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;

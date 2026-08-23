@@ -39,6 +39,23 @@ check:
 #   review: sonnet
 #   check: sonnet
 
+# Control bands — closing the loop (`temper bands`). A deterministic check of the
+# history arrays in .temper/metrics.json against rolling mean ± k·sigma bands plus a
+# same-side-run drift rule. Detection never involves a model; the response to a breach
+# is tiered here and lands in the normal pipeline (/temper:status renders the verdict;
+# a propose-tier breach is drafted as .temper/specs/<slug>/intent.md for /temper to
+# run — through every ordinary gate, never around them). The block absent = these
+# defaults; `temper bands` in CI or cron is the trigger layer, never a daemon.
+# bands:
+#   window: 10            # rolling baseline: the last N points before the latest
+#   min-points: 4         # fewer recorded points -> INSUFFICIENT-DATA, never a breach
+#   drift-run: 6          # N consecutive same-side points counts as drift (>= 2sigma)
+#   metrics: [coverage, tests]
+#   tiers:
+#     1sigma: log         # in the report only
+#     2sigma: diagnose    # read-only diagnosis via /temper:status
+#     3sigma: propose     # draft an intent.md into .temper/specs/ for /temper to run
+
 phases:
   design: true                 # design stage for medium/complex features (auto-skipped otherwise)
 
