@@ -19,11 +19,18 @@ on:
   pull_request:
     branches: [main]
     paths:
+      # The full agent-configuration surface: anything here steers what the agents do,
+      # so a change to it gets the same regression pass a code change would (the
+      # continuous-evals principle — evals fire on config changes, not just code).
       - "commands/**"
       - "reference/**"
       - "agents/**"
       - "skills/**"
+      - "packs/**"
+      - "hooks/**"
+      - "templates/**"
       - "scripts/temper"
+      - "scripts/hooks/**"
   schedule:
     - cron: "17 3 * * *"   # nightly, off-peak
   workflow_dispatch:
