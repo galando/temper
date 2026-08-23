@@ -31,7 +31,7 @@ agent file once when you launch it.
 ORCHESTRATOR (this file)
   |
   +-- Agent(agents/plan.md)    -> plan gate  -> temper gate plan
-  +-- Agent(agents/design.md)  -> design gate (medium/complex only)
+  +-- Agent(agents/design.md)  -> design gate -> temper gate design (medium/complex only)
   +-- Agent(agents/build.md)   -> build gate  -> temper gate build
   +-- Agent(agents/review.md)  -> review gate -> temper gate review
   +-- Agent(agents/check.md)   -> check gate  -> temper gate check
@@ -174,9 +174,15 @@ wait for the user, then look for `review-comments.json` in the spec dir and appl
 
 **On Continue:** `$TEMPER state advance plan_complete design-or-build` (pick `design` if
 `phases.design: true` and complexity is medium/complex, else `build`). If intent.md's
-header says `Status: draft`, flip it to `Status: accepted` — this human Continue is the
-acceptance the artifact records. Create the feature branch if not already on it
-(`git checkout -b feature/{slug}`), then launch that stage.
+header says `Status: draft`, flip it to `Status: accepted` and add
+`**Accepted-by:** {git config user.name} <{user.email}>` under it — this human Continue
+is the acceptance, and the artifact records who gave it. Create the feature branch if
+not already on it (`git checkout -b feature/{slug}`), then **commit the accepted
+artifacts**: `git add .temper/specs/{slug}/ && git commit -m "docs(plan): accept {slug}
+— plan approved"` (skip with a one-line note if the project gitignores `.temper/specs/`
+— never `git add -f`). The commit gate passes artifact-only commits by design, so this
+works mid-run; it gives the diff a committed baseline to be reviewed against. Then
+launch that stage.
 
 **On PASS at the plan gate, before showing options:** if `autonomy.enabled: true`, offer
 the continuation choice described above instead of a single "Continue" option.
@@ -194,10 +200,12 @@ Use the Agent tool, model: {design}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/design.md exactly. Spec: {spec_path from state}."
 ```
 
-Summary box: architecture overview, key decisions, what's new/modified/existing.
+Summary box: architecture overview, key decisions, what's new/modified/existing, areas
+of concern (presented FIRST when any are flagged — they are why the human is here).
 
-There is no `temper gate design` — this stage has no single-correct-output requirement
-in v7; its quality shows up in whether Build can execute it and what Review finds. Gate
+Run `$TEMPER gate design` (one requirement: design.md carries an Areas of Concern
+section — flagged conflicts with owners, or an explicit "None flagged — why"; design
+*quality* still shows up in whether Build can execute it and what Review finds). Gate
 options: Continue / Grill Me / Teach Me / "Walk through step by step" (same shape as
 Plan's — architecture overview, API contracts, database changes, integration points,
 decision log; only sections `design.md` actually has) / Save / Other.
@@ -283,13 +291,20 @@ Run `$TEMPER gate commit`. It aggregates every upstream gate's last verdict (PAS
 overridden), and — only when `run_mode == autonomous` — blast radius and park-on-touch.
 
 - **PASS (interactive):** `AskUserQuestion` — "Commit" / "Save for later" / "Other".
-  On Commit: stage the diff **and the spec artifacts** (`.temper/specs/{slug}/` —
-  intent.md, tasks.md, plan.md, design.md if present): the committed artifact chain is
-  the audit trail — what was asked for, what was planned, and the diff that answers
-  them, in one commit. If the project gitignores `.temper/specs/` that's its explicit
-  choice — never `git add -f` over it; note once that the artifacts stay local-only.
-  Then `git commit` (a conventional-commit message summarizing the feature), then
-  `$TEMPER state clear`.
+  On Commit: if `build-context.json` recorded deviations from the plan (unplanned
+  files, approach changes), first write them into `plan.md` as a `## Deviations`
+  section — the committed plan describes what was actually built. Run `$TEMPER state
+  archive`: it writes the run's decision record to
+  `.temper/specs/{slug}/gate-ledger.json` (verdicts, overrides with approver,
+  evidence counts) **without touching the live state**, so the pre-commit gate still
+  verifies for real. Then stage the diff **and the spec artifacts**
+  (`.temper/specs/{slug}/` — intent.md, tasks.md, plan.md, design.md,
+  gate-ledger.json as present): the committed artifact chain is the audit trail —
+  what was asked for, what was planned, what the gates verified, and the diff that
+  answers them, in one commit. If the project gitignores `.temper/specs/` that's its
+  explicit choice — never `git add -f` over it; note once that the artifacts stay
+  local-only. Then `git commit` (a conventional-commit message summarizing the
+  feature), then `$TEMPER state clear`.
 - **PASS (autonomous):** never auto-commits (see Autonomous Continuation) — park with a
   `SHIP-PENDING-COMMIT` report instead.
 - **FAIL:** show `$TEMPER report`, offer "Override and commit" (records the override,

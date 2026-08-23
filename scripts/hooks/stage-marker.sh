@@ -2,8 +2,8 @@
 #
 # stage-marker.sh — UserPromptSubmit half of the standalone-stage gate guarantee.
 #
-# When the submitted prompt invokes a standalone stage command (/temper:plan, :build,
-# :review, :check), record which gate that session now owes in
+# When the submitted prompt invokes a standalone stage command (/temper:plan, :design,
+# :build, :review, :check), record which gate that session now owes in
 # .temper/pending-stage.json. The Stop half (verify-stage-gate.sh) refuses to let the
 # session end until .temper/gates.json carries a verdict for that stage — any verdict,
 # PASS or FAIL; what's enforced is that `temper gate <stage>` actually ran, not that it
@@ -39,6 +39,7 @@ except Exception:
   local stage=""
   case "$prompt" in
     /temper:plan*)   stage="plan" ;;
+    /temper:design*) stage="design" ;;   # design gained a real gate in v8.1 (Areas of Concern)
     /temper:build*)  stage="build" ;;
     /temper:review*) stage="review" ;;
     /temper:check*)  stage="check" ;;

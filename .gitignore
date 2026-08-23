@@ -1,7 +1,12 @@
 # Temper - Files that change per-project (don't commit to template)
 # These are generated when Temper runs in a project
 
-# Per-project specs and plans
+# Per-project specs and plans.
+# NOTE (committed-artifact chain): in a project USING temper, .temper/specs/ is the
+# permanent record — intent.md, plan.md, design.md, gate-ledger.json — and committing
+# it is what makes the chain of commits the audit trail (see docs/ai-native-sdlc.md).
+# It stays ignored HERE because this repo's own .temper/specs/ holds throwaway
+# artifacts from local pipeline test runs, not real feature history.
 .temper/specs/
 .temper/reviews/
 .temper/archive/

@@ -99,9 +99,13 @@ the OWASP pattern-matching in `review.md` Step 2, labeled `[HEURISTIC]`.
 
 ## Step 3: Debt Tracking + Config Suggestions
 
-If `debt-tracking: true`: append coverage %, test count, and lint-violation count to
-`.temper/metrics.json` history arrays (full debt analysis is `/temper:status`'s job, not
-Check's — don't slow the pipeline down repeating it here).
+If `debt-tracking: true`: record coverage %, test count, and lint-violation count via
+the CLI — `$CLAUDE_PLUGIN_ROOT/scripts/temper metrics append coverage <pct>`, `temper
+metrics append tests <count>`, `temper metrics append lint_violations <count>` — never
+by hand-editing `.temper/metrics.json`: these arrays are what `temper bands` computes
+control bands from, so the monitor must read a ledger the spine wrote. (Full debt
+analysis is `/temper:status`'s job, not Check's — don't slow the pipeline down
+repeating it here.)
 
 If every level passed and files changed: generate up to 5 config suggestions
 (confidence >= 0.6) comparing the diff against `CLAUDE.md`/`AGENTS.md`, write
@@ -162,7 +166,10 @@ is never approval to commit — make the edit, re-run validation from the first 
 had failed (skip already-passed levels), re-show this same gate.
 
 **On Commit:** delete `.temper/build-state.json`; if `intent.md` exists set its header
-to `**Status:** completed` + `**Completed:** {date}`; stage the spec artifacts
+to `**Status:** completed` + `**Completed:** {date}`; if `build-context.json` recorded
+deviations (unplanned files, approach changes), write them into `plan.md` as a
+`## Deviations` section first — the committed plan must describe what was actually
+built, in the same commit as the code that departed from it; stage the spec artifacts
 (`.temper/specs/{slug}/`) alongside the diff unless the project gitignores them (their
 choice — never force-add) — the committed artifact chain is the audit trail; commit
 with a conventional message naming files changed / tests added. **On Save:** write `build-state.json` with `stage:

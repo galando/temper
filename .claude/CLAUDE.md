@@ -28,6 +28,19 @@ hook whenever a gate is FAIL and unoverridden — see `packs/hooks/rules.md`.
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/reference/tokenomics.md`
 
+**Developing temper (this repo):**
+- Test: `bash scripts/tests/test-temper.sh` (ends `PASS: N  FAIL: 0`); validators:
+  `bash scripts/quality-check.sh` (also runs in CI via quality.yml).
+- Layout: `commands/` (slash commands) · `agents/` (stage subprocess briefs) ·
+  `reference/` (methodology) · `packs/` (rules) · `scripts/temper` (the deterministic
+  spine — gate logic lives HERE, never in a prompt) · `scripts/hooks/` · `evals/`
+  (seeded-defect fixtures).
+- Known mistakes: a gate-mechanics change is a `scripts/temper` edit + a
+  `test-temper.sh` case, not a prompt edit; hooks must fail OPEN except their one
+  detected-violation path; never re-add per-stage logic to `commands/temper.md` — it
+  belongs in `agents/{stage}.md`; new commands must be listed in
+  `.claude-plugin/plugin.json`.
+
 <!-- Nothing follows. A generated "Token Optimization Insights" section, delimited by
      TOKENOMICS:START / TOKENOMICS:END markers, used to be re-injected here every
      session; it was standing advice that cost more than it saved and duplicated

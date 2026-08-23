@@ -16,8 +16,11 @@ argument-hint: "[--skip | --force]"
 1. Load intent.md + plan.md from active spec
 2. Skip if complexity < medium or config disabled
 3. Explore system architecture, API contracts, DB schema
-4. Write design.md to spec directory
-5. Present design summary for approval
+4. Write design.md to spec directory — always including its Areas of Concern section
+   (flagged conflicts with owners, or an explicit "None flagged — why")
+5. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate design` (checks that section exists);
+   fix a FAIL before the gate
+6. Present design summary for approval — flagged concerns first
 
 ### Active Skills
 

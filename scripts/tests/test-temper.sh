@@ -680,6 +680,156 @@ assert_exit "bands: an unknown metric name is skipped, not fatal" 0 "$TEMPER" ba
 OUT=$("$TEMPER" bands 2>&1)
 assert_eq "bands: the unknown metric is named in a skip notice" "yes" "$(echo "$OUT" | grep -q 'made-up-series — unknown metric' && echo yes || echo no)"
 
+# --- v8.1: design gate is no longer vacuous ---
+# design.md absent => stage skipped => PASS. design.md present => must carry an Areas
+# of Concern heading (an explicit "None flagged" section counts; silence does not).
+setup
+assert_exit "design gate PASSes when design.md is absent (stage skipped)" 0 "$TEMPER" gate design
+cat > .temper/specs/demo/design.md <<'EOF'
+# Design: demo
+## System Architecture
+stuff
+EOF
+assert_exit "design gate FAILs when design.md has no Areas of Concern section" 1 "$TEMPER" gate design
+cat >> .temper/specs/demo/design.md <<'EOF'
+## Areas of Concern
+None flagged — no two applicable policies conflicted.
+EOF
+assert_exit "design gate PASSes once concerns are flagged (or explicitly none)" 0 "$TEMPER" gate design
+
+# The commit gate requires a design verdict exactly when design.md exists.
+setup
+"$TEMPER" gate plan >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+"$TEMPER" gate build >/dev/null
+"$TEMPER" gate review >/dev/null
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
+"$TEMPER" gate check >/dev/null
+assert_exit "commit gate PASSes with no design.md and no design verdict" 0 "$TEMPER" gate commit
+printf '# Design\n## Areas of Concern\nNone flagged — simple change.\n' > .temper/specs/demo/design.md
+assert_exit "commit gate FAILs when design.md exists but its gate never ran" 1 "$TEMPER" gate commit
+"$TEMPER" gate design >/dev/null
+assert_exit "commit gate PASSes once the design gate ran" 0 "$TEMPER" gate commit
+
+# --- v8.1: artifact-only commits pass the commit gate (the committed artifact chain) ---
+setup
+git config user.email "test@example.com"
+git config user.name "test"
+echo "# Intent: demo" > .temper/specs/demo/captured.md
+git add .temper/specs/demo/ >/dev/null 2>&1
+assert_exit "an all-specs staged set passes the commit gate mid-run (no stage verdicts)" 0 "$TEMPER" gate commit
+OUT=$("$TEMPER" gate commit 2>&1)
+assert_eq "the artifact-only carve-out names itself" "yes" "$(echo "$OUT" | grep -q 'artifact-only commit' && echo yes || echo no)"
+echo 'code' > src.js
+git add src.js >/dev/null 2>&1
+assert_exit "one staged file outside .temper/specs/ restores every gate requirement" 1 "$TEMPER" gate commit
+
+# --- v8.1: override records the approver's identity ---
+setup
+git config user.name "Jane Approver"
+git config user.email "jane@example.com"
+"$TEMPER" override review --reason "accepted the risk" >/dev/null
+assert_eq "override entry records who approved" "Jane Approver <jane@example.com>" \
+  "$(python3 -c "import json; print(json.load(open('.temper/overrides.json'))[0]['by'])")"
+
+# --- v8.1: the gate ledger is archived into the spec dir (audit trail survives) ---
+setup
+"$TEMPER" gate plan >/dev/null
+"$TEMPER" override plan --reason "test archive" >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --label HEURISTIC >/dev/null
+"$TEMPER" state archive >/dev/null
+assert_eq "state archive writes the ledger WITHOUT deleting live state" "yes" \
+  "$([[ -f .temper/specs/demo/gate-ledger.json && -f .temper/gates.json ]] && echo yes || echo no)"
+rm -f .temper/specs/demo/gate-ledger.json
+"$TEMPER" state clear >/dev/null
+assert_eq "state clear writes gate-ledger.json into the spec dir" "yes" "$([[ -f .temper/specs/demo/gate-ledger.json ]] && echo yes || echo no)"
+assert_eq "the archived ledger carries the plan verdict" "PASS" \
+  "$(python3 -c "import json; print(json.load(open('.temper/specs/demo/gate-ledger.json'))['gates']['plan']['verdict'])")"
+assert_eq "the archived ledger carries the override" "test archive" \
+  "$(python3 -c "import json; print(json.load(open('.temper/specs/demo/gate-ledger.json'))['overrides'][0]['reason'])")"
+
+# --- v8.1: temper metrics append + data-driven bands series ---
+setup
+rm -f .temper/metrics.json
+assert_exit "metrics append rejects a non-numeric value" 1 "$TEMPER" metrics append coverage abc
+assert_exit "metrics append rejects a malformed series name" 1 "$TEMPER" metrics append "Bad Name" 1
+"$TEMPER" metrics append my_series 10 >/dev/null
+"$TEMPER" metrics append my_series 10 >/dev/null
+"$TEMPER" metrics append my_series 10 >/dev/null
+"$TEMPER" metrics append my_series 10 >/dev/null
+"$TEMPER" metrics append my_series 99 >/dev/null
+assert_eq "metrics append creates and grows <series>_history" "5" \
+  "$(python3 -c "import json; print(len(json.load(open('.temper/metrics.json'))['my_series_history']))")"
+cat >> .claude/temper.config <<'EOF'
+bands:
+  metrics: [my_series]
+EOF
+assert_exit "bands reads a custom appended series by name and detects the breach" 1 "$TEMPER" bands
+
+# --- v8.1: temper config get + evidence run ---
+setup
+assert_eq "config get reads a nested key" "critical" "$("$TEMPER" config get review.block-on x)"
+assert_eq "config get falls back to the default for a missing key" "fallback" "$("$TEMPER" config get no.such.key fallback)"
+"$TEMPER" evidence run --stage build --claim "regression test red" --phase red -- false >/dev/null
+"$TEMPER" evidence run --stage build --claim "regression test green" --phase green -- true >/dev/null
+assert_exit "evidence run returns 0 even when the command fails (the record is the product)" 0 \
+  "$TEMPER" evidence run --stage check --claim "failing cmd" -- false
+assert_eq "evidence run records the observed exit code" "1" \
+  "$(python3 -c "import json; print([e for e in json.load(open('.temper/evidence/build.json')) if e['claim']=='regression test red'][0]['exit_code'])")"
+assert_eq "evidence run keeps PROVEN on a nonzero exit (machine-observed, no downgrade)" "PROVEN" \
+  "$(python3 -c "import json; print([e for e in json.load(open('.temper/evidence/build.json')) if e['claim']=='regression test red'][0]['label'])")"
+echo '- [x] t' > .temper/specs/demo/tasks.md
+assert_exit "cli-executed RED+GREEN satisfies the build gate" 0 "$TEMPER" gate build
+
+# --- v8.1 hooks: protected paths, confirm-override ask tier, formatter, imports stdin ---
+setup
+PROTECT="$REPO_ROOT/scripts/hooks/block-protected-paths.sh"
+CONFIRM="$REPO_ROOT/scripts/hooks/confirm-override.sh"
+FORMATTER="$REPO_ROOT/scripts/hooks/run-formatter.sh"
+IMPORTS="$REPO_ROOT/scripts/hooks/block-forbidden-imports.sh"
+
+assert_exit "protected-paths: no config => edit passes" 0 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"src/gen/model.ts\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PROTECT'"
+cat >> .claude/temper.config <<'EOF'
+protect:
+  paths: ["**/src/gen/**", "**/v1/**"]
+EOF
+assert_exit "protected-paths: an edit inside a frozen path is BLOCKED" 2 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"src/gen/model.ts\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PROTECT'"
+assert_exit "protected-paths: an edit elsewhere passes" 0 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"src/app.ts\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PROTECT'"
+assert_exit "protected-paths: garbage stdin fails open" 0 \
+  bash -c "echo garbage | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PROTECT'"
+
+OUT=$(echo '{"tool_input": {"command": "$CLAUDE_PLUGIN_ROOT/scripts/temper override review --reason x"}}' | bash "$CONFIRM")
+assert_eq "confirm-override: a temper override command emits the ask decision" "yes" \
+  "$(echo "$OUT" | grep -q '"permissionDecision": "ask"' && echo yes || echo no)"
+OUT=$(echo '{"tool_input": {"command": "git status"}}' | bash "$CONFIRM")
+assert_eq "confirm-override: any other command stays silent" "" "$OUT"
+assert_exit "confirm-override: always exits 0 (ask is advisory, not a block)" 0 \
+  bash -c "echo '{\"tool_input\": {\"command\": \"temper override plan --reason y\"}}' | bash '$CONFIRM'"
+
+echo 'x  =  1' > messy.txt
+cat >> .claude/temper.config <<'EOF'
+format:
+  cmd: "sed -i 's/  */ /g' {file}"
+EOF
+assert_exit "formatter: runs the configured command, exits 0" 0 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"$WORKDIR/messy.txt\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$FORMATTER'"
+assert_eq "formatter: the file was actually formatted" "x = 1" "$(cat messy.txt)"
+assert_exit "formatter: a failing format.cmd never blocks" 0 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"/nonexistent/x\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$FORMATTER'"
+
+echo 'const cp = require("child_process.exec")' > risky.js
+assert_exit "imports hook: reads the edited file from hook stdin and blocks a denylisted import" 2 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"$WORKDIR/risky.js\"}}' | TEMPER_FORBIDDEN_IMPORTS='child_process.exec' bash '$IMPORTS'"
+assert_exit "imports hook: empty denylist stays a no-op" 0 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"$WORKDIR/risky.js\"}}' | bash '$IMPORTS'"
+
 echo ""
 echo "=== test-temper.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"

@@ -55,8 +55,10 @@ Errors:   {error codes and messages}
 {The points an analyst would have escalated — especially anywhere two applicable
 policies or pack rules pull in opposite directions, or a constraint from intent.md
 cannot be fully satisfied. Name the conflict, the options, and WHO owns the call
-(which policy/pack, which person or role). An empty section means "nothing was
-flagged", which is itself a claim — omit the section only when that claim is true.
-Concerns are resolved by a human before Build, not discovered by Review after it.}
+(which policy/pack, which person or role). This section is ALWAYS present —
+`temper gate design` requires the heading. Nothing to flag? Write
+"None flagged — {one line on why}" so the no-concerns claim is explicit, not an
+omission. Concerns are resolved by a human before Build, not discovered by Review
+after it.}
 
 - {concern} — owner: {policy/pack/person}

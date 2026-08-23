@@ -34,6 +34,12 @@ who owns the call. These are the points an analyst would have escalated — a hu
 resolves each one at the design gate, before Build spends anything on the wrong
 answer. Design flags; it never silently picks a side on a policy conflict.
 
+The section is **always present** — when nothing was flagged, write
+`None flagged — {one line on why}` rather than omitting it: an absent section is
+indistinguishable from a forgotten check, and `temper gate design` mechanically
+requires the heading (its only requirement — silence is the one thing an unattended
+design→build crossing must not let through).
+
 ## Step 3: Generate `design.md`
 
 Write `.temper/specs/{feature}/design.md` from `$CLAUDE_PLUGIN_ROOT/templates/design.md`.

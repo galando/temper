@@ -68,6 +68,12 @@ Loading stack-specific rules: {detected-stack}
 
 ### Step 2: Root Cause Analysis (via Explore subagent)
 
+**First, read the lessons file** (`.temper/lessons.md`, committed — skip silently if
+absent): has this failure shape been seen before? A matching prior incident gives the
+investigation its highest-confidence starting hypothesis, its known trigger data, and
+the regression test that caught it last time. Cite the matched entry in the RCA
+report; an unread lessons file is an incident the team pays for twice.
+
 **Check depth budget from agents config:**
 - If `depth_remaining > 1`: spawn Explore subagent
 - If `depth_remaining <= 1`: run RCA inline (no subagent)
@@ -475,7 +481,7 @@ Bug is actually a design flaw:
   → Offer temporary workaround with TODO if possible
 ```
 
-### Step 8: Update Metrics
+### Step 8: Update Metrics + Lessons
 
 ```json
 {
@@ -488,3 +494,21 @@ Bug is actually a design flaw:
   }
 }
 ```
+
+**Append a lessons entry** to `.temper/lessons.md` (create with a `# Lessons` header
+if absent — this file is meant to be committed; it is the post-mortem corpus Step 2
+reads first on every future fix):
+
+```markdown
+## {date} — {bug title}
+- **Root cause:** {one line — the specific condition, not "a bug"}
+- **Trigger:** {data/state that provoked it}
+- **Fix:** {commit hash or 1-line description}
+- **Regression test:** {test file}#{test name}
+- **Watch for:** {the generalized failure shape — what a future RCA should recognize}
+{- **Band change:** only when the fix originated from a `temper bands` breach — what was retuned}
+```
+
+One entry per fixed bug, newest last. This is incident memory, distinct from
+review-memory (finding patterns): lessons record *what broke and why*, so the next
+investigation starts from evidence instead of from zero.

@@ -209,6 +209,15 @@ violates the invariant, what depends on the old behavior). Classify **contract-m
 early on an all-noise cycle; one more cycle after a real finding, then stop. Findings get
 a `[DOUBT]` prefix; contract-misread bypasses confidence filtering.
 
+## Step 3.55: Stale CLAUDE.md Check (LOW, informational)
+
+If the diff invalidates something `CLAUDE.md`/`AGENTS.md` states — a renamed command,
+a moved directory, a convention the change abandons, a "things Claude gets wrong"
+entry this diff just fixed structurally — flag it as a LOW finding naming the stale
+line. Don't edit the file from review; queue it as a `config-update` suggestion (the
+same Accept/Reject gate Check's suggestions use, `reference/config-suggestions.md`).
+An instruction file that lags the code misleads every future session that loads it.
+
 ## Step 3.6: Cross-File Pattern Consistency
 
 For each changed file, extract its error-handling / API-response / validation / async

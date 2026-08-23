@@ -10,9 +10,14 @@ listed below, nothing from the orchestrator's conversation carries over.
 1. Load `{spec_path}/intent.md` and `{spec_path}/plan.md`.
 2. Read `$CLAUDE_PLUGIN_ROOT/reference/design.md` once — the full methodology. Follow it
    exactly; nothing here overrides it.
-3. Produce `{spec_path}/design.md` as it describes.
-4. There is no `temper gate design` requirement in v7 — this stage's output is judged by
-   the Build agent's ability to execute it, and by Review afterward. Don't invent one.
+3. Produce `{spec_path}/design.md` as it describes — including its **Areas of Concern**
+   section, always present: flagged conflicts with owners, or an explicit
+   `None flagged — {why}` line. Silence is not a valid claim.
+4. `temper gate design` mechanically checks exactly one thing: design.md carries an
+   Areas of Concern heading. Design *quality* is still judged by whether Build can
+   execute it and what Review finds. Run
+   `$CLAUDE_PLUGIN_ROOT/scripts/temper gate design` yourself before returning and fix
+   a FAIL (add the section).
 5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
