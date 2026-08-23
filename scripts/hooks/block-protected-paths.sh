@@ -33,31 +33,49 @@ _main() {
   patterns=$(TEMPER_CONFIG="$dir/.claude/temper.config" "$temper_cli" config get protect.paths "" 2>/dev/null) || return 0
   [[ -n "$patterns" ]] || return 0
 
-  local target=""
-  target=$(python3 -c "
-import json, sys
+  # Proper glob matching (not substring): the value arrives on stdin, patterns are
+  # \x1f-joined in $patterns. A pattern like **/gen/** must match the `gen` path
+  # SEGMENT, never the substring `gen` inside `oxygen` or `agent`; **/migrations/*.sql
+  # must honor the interior `*`. Translation: **/ -> optional path prefix, /** ->
+  # optional path suffix, * -> within a segment. All matching runs in python (argv +
+  # stdin only — no value is interpolated into source); the hook prints the matched
+  # pattern to stderr and this function maps a match to exit 2.
+  local matched
+  matched=$(TEMPER_PROTECT_PATTERNS="$patterns" python3 -c '
+import json, os, re, sys
 try:
-    print(json.load(sys.stdin).get('tool_input', {}).get('file_path', '') or '')
+    target = json.load(sys.stdin).get("tool_input", {}).get("file_path", "") or ""
 except Exception:
-    print('')
-" 2>/dev/null) || return 0
-  [[ -n "$target" ]] || return 0
+    sys.exit(0)
+if not target:
+    sys.exit(0)
+target = target.lstrip("./")
+def glob_to_re(pat):
+    out, i, n = [], 0, len(pat)
+    while i < n:
+        if pat[i:i+3] == "**/":
+            out.append("(?:.*/)?"); i += 3
+        elif pat[i:i+3] == "/**":
+            out.append("(?:/.*)?"); i += 3
+        elif pat[i:i+2] == "**":
+            out.append(".*"); i += 2
+        elif pat[i] == "*":
+            out.append("[^/]*"); i += 1
+        elif pat[i] == "?":
+            out.append("[^/]"); i += 1
+        else:
+            out.append(re.escape(pat[i])); i += 1
+    return re.compile("^" + "".join(out) + "$")
+for pat in os.environ.get("TEMPER_PROTECT_PATTERNS", "").split("\x1f"):
+    if pat and glob_to_re(pat).match(target):
+        print(pat); break
+' 2>/dev/null) || return 0
 
-  # Same core-segment matching as gate_commit's _glob_touch_match.
-  local -a pats=()
-  IFS=$'\x1f' read -r -a pats <<< "$patterns"
-  local p core
-  for p in "${pats[@]}"; do
-    [[ -z "$p" ]] && continue
-    core="${p#\*\*/}"; core="${core%/\*\*}"
-    case "$target" in
-      *"$core"*)
-        echo "BLOCK: '$target' matches protected path pattern '$p' (protect.paths in .claude/temper.config)." >&2
-        echo "This path is frozen at edit time. If the change is intended, a human removes or narrows the pattern — that edit is the approval." >&2
-        return 2
-        ;;
-    esac
-  done
+  if [[ -n "$matched" ]]; then
+    echo "BLOCK: this edit matches protected path pattern '$matched' (protect.paths in .claude/temper.config)." >&2
+    echo "This path is frozen at edit time. If the change is intended, a human removes or narrows the pattern — that edit is the approval." >&2
+    return 2
+  fi
   return 0
 }
 

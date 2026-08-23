@@ -24,19 +24,30 @@ set -uo pipefail
 _main() {
   command -v python3 >/dev/null 2>&1 || return 0
 
-  local cmd=""
-  cmd=$(python3 -c "
-import json, sys
+  # Match a `temper override` invocation robustly: tokenize the command (shlex, so a
+  # quoted path unquotes) and look for a token whose basename is `temper` immediately
+  # followed by the `override` subcommand. A naive `*temper override*` glob is bypassed
+  # by a quoted path (`"…/temper" override`), a tab, or doubled spaces — all of which
+  # reach the same command. Decided in python; the value crosses as stdin only.
+  # (python3 -c, NOT a heredoc: the hook's JSON arrives on stdin, and a `python3 <<PY`
+  # heredoc would own stdin and discard it — see test-temper.sh's stop_hook_active note.)
+  local decision
+  decision=$(python3 -c '
+import json, os, shlex, sys
 try:
-    print(json.load(sys.stdin).get('tool_input', {}).get('command', '') or '')
+    cmd = json.load(sys.stdin).get("tool_input", {}).get("command", "") or ""
 except Exception:
-    print('')
-" 2>/dev/null) || return 0
+    sys.exit(0)
+try:
+    toks = shlex.split(cmd)
+except ValueError:
+    toks = cmd.split()
+for i, t in enumerate(toks[:-1]):
+    if os.path.basename(t) == "temper" and toks[i + 1] == "override":
+        print("ask"); break
+' 2>/dev/null) || return 0
 
-  case "$cmd" in
-    *temper\ override*|*temper' override'*) ;;
-    *) return 0 ;;
-  esac
+  [[ "$decision" == "ask" ]] || return 0
 
   printf '%s\n' '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": "temper override clears a FAIL gate — a human approves this, not the agent. Approve only if YOU chose Override at the gate."}}'
   return 0

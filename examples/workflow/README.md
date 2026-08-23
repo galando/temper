@@ -6,12 +6,13 @@ This directory contains example workflows showing how to use Temper.
 
 | Template | Loop it closes |
 |---|---|
-| [`temper-review.yml`](temper-review.yml) | AI in the PR review loop: headless `/temper:review` on every PR, merge check = `temper gate review` (deterministic verdict from the evidence ledger, never model narration). Humans still approve via branch protection. |
-| [`temper-bands.yml`](temper-bands.yml) | Closing the loop: scheduled `temper bands` (pure arithmetic, no tokens) → on a 2sigma+ breach, Claude drafts the breach as a Stage-1 `intent.md` and opens a triage PR. The loop begins and ends with no one starting it — and lands in the review gate, never around it. |
+| [`temper-review.yml`](temper-review.yml) | AI in the PR review loop: headless `/temper:review` on every PR, merge check = `temper gate review` (deterministic verdict from the evidence ledger, never model narration). Guards the two fail-open traps — fork PRs with no secret, and a vacuous PASS on an empty ledger (a completion marker proves the review ran). Humans still approve via branch protection. |
+| [`temper-bands.yml`](temper-bands.yml) | Closing the loop: scheduled `temper bands` (pure arithmetic, no tokens) → on a 2sigma+ breach, Claude drafts the breach as a Stage-1 `intent.md` and opens a triage PR. Detection begins and ends with no one starting it. Read the template's `REQUIRES` header before enabling — three real GitHub settings, including that a bot-opened PR does not auto-trigger the review workflow. |
 
 Both templates pin a temper tag — review what you pin; the headless step runs with
 `--dangerously-skip-permissions` inside the runner sandbox, same as this repo's own
-eval harness (`evals/run-fixture.sh`).
+eval harness (`evals/run-fixture.sh`). Each template's own header comments carry the
+full setup and the failure modes it guards.
 
 ## Sprint Workflow Example
 

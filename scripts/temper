@@ -955,9 +955,23 @@ gate_check() {
 }
 
 _glob_touch_match() { # _glob_touch_match <file> <pattern>  (pattern like **/auth/**)
+  # Proper glob match, not a substring test: **/auth/** matches the `auth` path
+  # SEGMENT, never `auth` inside `oauth` or `authenticator`; an interior `*` (e.g.
+  # **/migrations/*.sql) is honored. file + pattern cross as argv, never source.
   local file="$1" pattern="$2"
-  local core="${pattern#\*\*/}"; core="${core%/\*\*}"
-  case "$file" in *"$core"*) return 0 ;; *) return 1 ;; esac
+  python3 - "$file" "$pattern" <<'PY'
+import re, sys
+target, pat = sys.argv[1].lstrip("./"), sys.argv[2]
+out, i, n = [], 0, len(pat)
+while i < n:
+    if pat[i:i+3] == "**/": out.append("(?:.*/)?"); i += 3
+    elif pat[i:i+3] == "/**": out.append("(?:/.*)?"); i += 3
+    elif pat[i:i+2] == "**": out.append(".*"); i += 2
+    elif pat[i] == "*": out.append("[^/]*"); i += 1
+    elif pat[i] == "?": out.append("[^/]"); i += 1
+    else: out.append(re.escape(pat[i])); i += 1
+sys.exit(0 if re.match("^" + "".join(out) + "$", target) else 1)
+PY
 }
 
 gate_commit() {
@@ -1174,23 +1188,35 @@ cmd_metrics() {
       local series="${1:-}" value="${2:-}"
       [[ -n "$series" && -n "$value" ]] || { echo "FAIL: usage: temper metrics append <series> <value>" >&2; return 1; }
       [[ "$series" =~ ^[a-z][a-z0-9_-]*$ ]] || { echo "FAIL: series must match [a-z][a-z0-9_-]* (got '$series')" >&2; return 1; }
-      python3 -c "float('$value')" 2>/dev/null || { echo "FAIL: value must be numeric (got '$value')" >&2; return 1; }
       _ensure_dirs
       [[ -f "$METRICS_FILE" ]] || echo '{}' > "$METRICS_FILE"
-      python3 - "$METRICS_FILE" "$series" "$value" <<'PY'
+      # value crosses the boundary as an argv element and is parsed by float() INSIDE
+      # python — never interpolated into source (a metric value can be attacker-influenced:
+      # a CI failure rate, a 5xx count fed from a pipeline step). A non-numeric value is a
+      # clean exit 1, not code that runs.
+      local out rc
+      out=$(python3 - "$METRICS_FILE" "$series" "$value" <<'PY'
 import json, sys
 path, series, value = sys.argv[1:4]
+try:
+    v = float(value)
+except ValueError:
+    sys.stderr.write(f"FAIL: value must be numeric (got '{value}')\n")
+    sys.exit(1)
 try:
     d = json.load(open(path))
     if not isinstance(d, dict):
         d = {}
 except Exception:
     d = {}
-key = series if series.endswith('_history') else f"{series}_history"
+# Same alias map `temper bands` uses (kept in sync): appending the friendly name
+# `tests` must land in the SAME array bands reads for it (test_count_history), or a
+# recorded point would never be banded. Any other name -> <name>_history.
+ALIASES = {'coverage': 'coverage_history', 'tests': 'test_count_history'}
+key = ALIASES.get(series) or (series if series.endswith('_history') else f"{series}_history")
 arr = d.get(key)
 if not isinstance(arr, list):
     arr = []
-v = float(value)
 arr.append(int(v) if v.is_integer() else v)
 d[key] = arr
 with open(path, 'w') as f:
@@ -1198,6 +1224,10 @@ with open(path, 'w') as f:
     f.write('\n')
 print(f"OK: {key} += {value} ({len(arr)} point(s))")
 PY
+)
+      rc=$?
+      echo "$out"
+      return $rc
       ;;
     *) echo "FAIL: usage: temper metrics append <series> <value>" >&2; return 1 ;;
   esac
@@ -1239,7 +1269,19 @@ cmd_bands() {
   out=$(python3 - "$METRICS_FILE" "$BANDS_FILE" "$window" "$min_points" "$drift_run" "$metrics" "$t1" "$t2" "$t3" "$(_now)" <<'PY'
 import json, math, sys
 metrics_path, out_path, window, min_points, drift_run, metrics_sep, t1, t2, t3, ts = sys.argv[1:11]
-window, min_points, drift_run = int(window), int(min_points), int(drift_run)
+# Clamp config to sane floors, never crash on it (spine degradation contract): a
+# non-integer or out-of-range window/min-points/drift-run falls back to its default
+# rather than raising. window>=2 and min-points>=2 keep the baseline slice and the
+# variance non-empty; drift-run>=2 keeps the run rule meaningful.
+def _cfg_int(raw, default, floor):
+    try:
+        n = int(float(raw))
+    except (ValueError, TypeError):
+        return default
+    return n if n >= floor else floor
+window = _cfg_int(window, 10, 2)
+min_points = _cfg_int(min_points, 4, 2)
+drift_run = _cfg_int(drift_run, 6, 2)
 # Two friendly aliases; beyond them, ANY <name>_history array in metrics.json is
 # band-able by name — `temper metrics append <name> <value>` is how a series
 # (including external ones: CI failure rate, 5xx counts) gets points.

@@ -220,11 +220,13 @@ On Continue: write `.temper/build-state.json` (`stage: plan_complete`, `next_sta
 build`, `artifacts: ["intent.md","tasks.md"]`); if intent.md's header says `Status:
 draft`, flip it to `Status: accepted` and add `**Accepted-by:** {git config user.name}
 <{user.email}>` — the human Continue *is* the acceptance, and the artifact records who
-gave it. Commit the accepted artifacts (`git add .temper/specs/{slug}/`, message
-`docs(plan): accept {slug} — plan approved`; artifact-only commits pass the commit
-gate by design — skip with a note if the project gitignores `.temper/specs/`).
-Standalone mode loads only `tasks.md` + `intent.md` for Build. Subprocess mode: the
-orchestrator handles the transition.
+gave it. Commit the accepted artifacts in two steps — `git add .temper/specs/{slug}/`
+first, then `git commit -m "docs(plan): accept {slug} — plan approved"` as a separate
+call (not `add && commit`: the in-agent commit-gate hook checks `temper gate commit`
+when the commit is submitted, and the artifact-only carve-out that passes it mid-run
+reads the already-staged set). Skip with a note if the project gitignores
+`.temper/specs/`. Standalone mode loads only `tasks.md` + `intent.md` for Build.
+Subprocess mode: the orchestrator handles the transition.
 
 ## Edge Cases
 

@@ -46,9 +46,13 @@ timestamp, and revision history live in version control from the moment it's rea
 3. **Let the originator correct it.** Show the draft; apply their corrections; re-show.
    The artifact is theirs — you drafted it.
 
-4. **Gate** (`AskUserQuestion`): **"Commit intent.md (Recommended)"** — `git add` the
-   spec directory and commit `docs(intent): capture {slug} (draft)`; author and
-   timestamp join the record, and review/acceptance happens wherever this repo reviews
+4. **Gate** (`AskUserQuestion`): **"Commit intent.md (Recommended)"** — stage then
+   commit in two separate calls (`git add .temper/specs/{slug}/`, then `git commit -m
+   "docs(intent): capture {slug} (draft)"` — separate calls so the in-agent
+   commit-gate hook sees the artifacts already staged and its artifact-only carve-out
+   passes them). If the project gitignores `.temper/specs/`, skip the commit with a
+   one-line note that the draft stays local-only — never `git add -f`. Author and
+   timestamp join the record; review/acceptance happens wherever this repo reviews
    commits. / **"Start /temper now"** — commit as above, then hand straight into the
    full pipeline with this intent as input. / **"Leave uncommitted"** — the file
    stays; say what was written where.

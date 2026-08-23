@@ -178,11 +178,14 @@ header says `Status: draft`, flip it to `Status: accepted` and add
 `**Accepted-by:** {git config user.name} <{user.email}>` under it — this human Continue
 is the acceptance, and the artifact records who gave it. Create the feature branch if
 not already on it (`git checkout -b feature/{slug}`), then **commit the accepted
-artifacts**: `git add .temper/specs/{slug}/ && git commit -m "docs(plan): accept {slug}
-— plan approved"` (skip with a one-line note if the project gitignores `.temper/specs/`
-— never `git add -f`). The commit gate passes artifact-only commits by design, so this
-works mid-run; it gives the diff a committed baseline to be reviewed against. Then
-launch that stage.
+artifacts** in two separate Bash calls, staging first: `git add .temper/specs/{slug}/`,
+then `git commit -m "docs(plan): accept {slug} — plan approved"`. They must be
+separate calls, not `add && commit`: the in-agent commit-gate hook runs `temper gate
+commit` at the moment the `git commit` call is submitted, and the artifact-only
+carve-out that lets this pass mid-run inspects the *already-staged* set — so the `git
+add` has to have run in a prior call. (Skip both with a one-line note if the project
+gitignores `.temper/specs/` — never `git add -f`.) This gives the diff a committed
+baseline to be reviewed against. Then launch that stage.
 
 **On PASS at the plan gate, before showing options:** if `autonomy.enabled: true`, offer
 the continuation choice described above instead of a single "Continue" option.
@@ -291,10 +294,13 @@ Run `$TEMPER gate commit`. It aggregates every upstream gate's last verdict (PAS
 overridden), and — only when `run_mode == autonomous` — blast radius and park-on-touch.
 
 - **PASS (interactive):** `AskUserQuestion` — "Commit" / "Save for later" / "Other".
-  On Commit: if `build-context.json` recorded deviations from the plan (unplanned
-  files, approach changes), first write them into `plan.md` as a `## Deviations`
-  section — the committed plan describes what was actually built. Run `$TEMPER state
-  archive`: it writes the run's decision record to
+  On Commit: set `intent.md`'s header to `**Status:** completed` + `**Completed:**
+  {date}` — this orchestrated path owns the terminal state flip (the standalone
+  `/temper:check` gate does it only when Check runs as its own command; here the
+  subprocess never gates, so the orchestrator must). If `build-context.json` recorded
+  deviations from the plan (unplanned files, approach changes), write them into
+  `plan.md` as a `## Deviations` section — the committed plan describes what was
+  actually built. Run `$TEMPER state archive`: it writes the run's decision record to
   `.temper/specs/{slug}/gate-ledger.json` (verdicts, overrides with approver,
   evidence counts) **without touching the live state**, so the pre-commit gate still
   verifies for real. Then stage the diff **and the spec artifacts**

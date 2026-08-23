@@ -830,6 +830,117 @@ assert_exit "imports hook: reads the edited file from hook stdin and blocks a de
 assert_exit "imports hook: empty denylist stays a no-op" 0 \
   bash -c "echo '{\"tool_input\": {\"file_path\": \"$WORKDIR/risky.js\"}}' | bash '$IMPORTS'"
 
+# --- v8.1 hardening: adversarial-review fixes (must never regress) ---
+
+# metrics append: the value is parsed by float() INSIDE python (argv), never
+# interpolated into source. A crafted payload must NOT execute and must exit 1.
+setup
+rm -f INJECTED
+"$TEMPER" metrics append cov "1');import os;os.system('touch INJECTED')#" >/dev/null 2>&1
+assert_eq "metrics append: an injection payload does not execute" "no" "$([[ -f INJECTED ]] && echo yes || echo no)"
+assert_exit "metrics append: an injection payload is rejected as non-numeric" 1 \
+  "$TEMPER" metrics append cov "1');import os;os.system('touch INJECTED')#"
+rm -f INJECTED
+
+# metrics append + bands agree on the friendly alias: `tests` lands in test_count_history,
+# which bands' `tests` metric reads — a recorded point must actually be band-able.
+setup
+rm -f .temper/metrics.json
+"$TEMPER" metrics append tests 42 >/dev/null
+assert_eq "metrics append tests writes the alias array bands reads (test_count_history)" "yes" \
+  "$(python3 -c "import json; d=json.load(open('.temper/metrics.json')); print('yes' if 'test_count_history' in d and 'tests_history' not in d else 'no')")"
+
+# bands never crashes on valid-but-small config — the spine's 'never a crash' contract.
+setup
+rm -f .temper/metrics.json
+for v in 80 81 82 83 84; do "$TEMPER" metrics append coverage $v >/dev/null; done
+cat >> .claude/temper.config <<'EOF'
+bands:
+  window: 0
+  metrics: [coverage]
+EOF
+assert_exit "bands: window 0 does not crash (exit 0/1, never a traceback)" 1 "$TEMPER" bands
+setup
+rm -f .temper/metrics.json
+for v in 80 81 82 83 84; do "$TEMPER" metrics append coverage $v >/dev/null; done
+cat >> .claude/temper.config <<'EOF'
+bands:
+  window: 2.5
+  metrics: [coverage]
+EOF
+assert_exit "bands: a non-integer window does not crash" 1 "$TEMPER" bands
+setup
+rm -f .temper/metrics.json
+"$TEMPER" metrics append coverage 80 >/dev/null
+cat >> .claude/temper.config <<'EOF'
+bands:
+  min-points: 1
+  metrics: [coverage]
+EOF
+assert_exit "bands: min-points 1 with a single point is graceful, not a crash" 0 "$TEMPER" bands
+
+# _glob_touch_match (park-on-touch): proper segment match, not a loose substring.
+# Assert on the park-on-touch requirement LINE, not the whole gate verdict (which also
+# reflects blast radius + upstream gates). Uses a segment name ('zauth') no other test
+# creates, and unique content, so the shared WORKDIR can't mask the diff.
+setup
+"$TEMPER" state set run_mode autonomous >/dev/null
+cat > .claude/temper.config <<'EOF'
+stack: auto
+autonomy:
+  park-on-touch: ["**/zauth/**"]
+EOF
+mkdir -p src/xzauthy && echo "park-false-$$" > src/xzauthy/client.js
+git add -A >/dev/null 2>&1 || true
+OUT=$("$TEMPER" gate commit 2>&1)
+assert_eq "park-on-touch: 'xzauthy' does NOT match the 'zauth' segment (no false park)" "yes" \
+  "$(echo "$OUT" | grep -q 'no changed file matches a park-on-touch' && echo yes || echo no)"
+setup
+"$TEMPER" state set run_mode autonomous >/dev/null
+cat > .claude/temper.config <<'EOF'
+stack: auto
+autonomy:
+  park-on-touch: ["**/zauth/**"]
+EOF
+mkdir -p src/zauth && echo "park-true-$$" > src/zauth/login.js
+git add -A >/dev/null 2>&1 || true
+OUT=$("$TEMPER" gate commit 2>&1)
+assert_eq "park-on-touch: the real 'zauth' segment still parks" "yes" \
+  "$(echo "$OUT" | grep -q 'src/zauth/login.js matches' && echo yes || echo no)"
+
+# block-protected-paths.sh: segment match (no substring false-positive), interior glob honored.
+setup
+PP="$REPO_ROOT/scripts/hooks/block-protected-paths.sh"
+cat >> .claude/temper.config <<'EOF'
+protect:
+  paths: ["**/gen/**", "**/migrations/*.sql"]
+EOF
+for f in src/agent/main.py packages/oxygen/index.ts lib/legend.js; do
+  assert_exit "protected-paths: '$f' is not blocked by the 'gen' substring" 0 \
+    bash -c "echo '{\"tool_input\": {\"file_path\": \"$f\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PP'"
+done
+assert_exit "protected-paths: a real 'gen' path segment is blocked" 2 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"src/gen/model.ts\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PP'"
+assert_exit "protected-paths: an interior-glob pattern (*.sql) is honored" 2 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"db/migrations/001.sql\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PP'"
+assert_exit "protected-paths: a non-.sql file under migrations is not blocked" 0 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"db/migrations/notes.txt\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PP'"
+
+# confirm-override.sh: robust matcher — quoted path, doubled space, path prefix all ASK.
+setup
+CO="$REPO_ROOT/scripts/hooks/confirm-override.sh"
+for cmd in \
+  'temper override plan --reason x' \
+  '"/abs/scripts/temper" override plan' \
+  'temper  override plan' \
+  'bash /p/temper override check'; do
+  esc=$(printf '%s' "$cmd" | sed 's/"/\\"/g')
+  OUT=$(printf '{"tool_input": {"command": "%s"}}' "$esc" | bash "$CO")
+  assert_eq "confirm-override asks for: $cmd" "yes" "$(echo "$OUT" | grep -q '\"ask\"' && echo yes || echo no)"
+done
+OUT=$(echo '{"tool_input": {"command": "git status"}}' | bash "$CO")
+assert_eq "confirm-override stays silent on an unrelated command" "" "$OUT"
+
 echo ""
 echo "=== test-temper.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"
