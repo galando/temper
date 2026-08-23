@@ -170,6 +170,7 @@ Full setup: [docs/recommended-setup.md](docs/recommended-setup.md)
 - [Commands Reference](docs/commands.md) — Full command documentation
 - [Packs](docs/packs.md) — Built-in and custom packs
 - [Methodology](docs/methodology.md) — IDD, BDD, TDD deep dive
+- [AI-Native SDLC Alignment](docs/ai-native-sdlc.md) — Temper mapped against Anthropic's playbook, play by play
 - [Recommended Setup](docs/recommended-setup.md) — MCP servers and live verification
 - [Enterprise Setup](docs/enterprise.md) — Deploy across your organization
 - [Privacy Policy](https://galando.github.io/temper/privacy.html) — No data collected, no servers, no telemetry
