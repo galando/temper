@@ -1,0 +1,56 @@
+# temper-review.yml — copy into a PROJECT's .github/workflows/ (not this plugin's).
+#
+# The AI-in-the-PR-review-loop pattern, temper-flavored: /temper:review runs headlessly
+# against the PR diff, records findings as evidence (`temper evidence add`), and then —
+# the part that matters — the MERGE CHECK is `temper gate review`: a deterministic
+# verdict computed from the evidence ledger against the project's own
+# `review.block-on` config, never a model's self-assessment. Model findings inform;
+# the gate decides; branch protection + a human code owner still own the approval.
+#
+# Setup: ANTHROPIC_API_KEY in the repo's Actions secrets; a temper checkout (pinned
+# below via the marketplace clone — pin a tag you've reviewed, it runs with
+# --dangerously-skip-permissions inside the runner sandbox).
+name: Temper review
+on:
+  pull_request:
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # /temper:review diffs against the base branch
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Claude Code + Temper
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          git clone --depth 1 --branch v8.0.0 https://github.com/galando/temper /tmp/temper
+
+      - name: Headless review (writes the evidence ledger)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          IS_SANDBOX=1 claude -p "/temper:review" \
+            --plugin-dir /tmp/temper \
+            --dangerously-skip-permissions
+
+      - name: Gate on the deterministic verdict, not the narration
+        run: |
+          /tmp/temper/scripts/temper gate review
+          # exit 0 = no findings at/above review.block-on; nonzero fails this check.
+          # The per-finding detail is in .temper/evidence/review.json — upload it if
+          # you want the tally as an artifact:
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: temper-review-ledger
+          path: |
+            .temper/evidence/
+            .temper/gates.json
+          if-no-files-found: ignore

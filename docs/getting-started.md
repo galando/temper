@@ -244,6 +244,26 @@ Full setup instructions: [Recommended Setup](recommended-setup)
 
 Shows live scenario verification status, MCP tool availability, and evidence ratio.
 
+## Parallel Runs (worktrees)
+
+Temper's state is per-checkout — `.temper/` lives in the working directory, so two
+sessions in the same checkout would fight over `build-state.json`. Git worktrees make
+parallel runs safe, and everything temper needs travels with each worktree:
+
+```bash
+claude --worktree feature-auth      # session 1: /temper "add auth"
+claude --worktree fix-rate-limit    # session 2: /temper:fix "429 not returned"
+```
+
+- Each worktree gets its **own** `.temper/` state, evidence ledger, gates, and
+  autonomy lock — sessions cannot collide on runtime state.
+- Split work so parallel tasks touch **disjoint files** (the plan's blast radius shows
+  where work is independent); tasks sharing files belong in one session, sequentially.
+- The controls travel with the repo: packs, hooks in settings, and the pre-commit gate
+  apply identically in every worktree — more sessions never means fewer guardrails.
+- Practical ceiling: how many streams one person can *review*. Two or three is a
+  sensible start; add sessions only while your review keeps up.
+
 ## Next Steps
 
 - [Recommended Setup](recommended-setup) — Optional MCP servers and live verification setup

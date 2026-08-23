@@ -26,6 +26,14 @@ risk level and complexity.
 shapes), DB schema changes (if any), integration points with external systems, error
 handling strategy.
 
+**Flag areas of concern while designing, not after.** Anywhere two applicable rules
+pull in opposite directions (a pack rule vs. a stack pattern, a constraint in
+`intent.md` vs. a security requirement), or a constraint cannot be fully satisfied:
+record it in `design.md` → **Areas of Concern** with the conflict, the options, and
+who owns the call. These are the points an analyst would have escalated — a human
+resolves each one at the design gate, before Build spends anything on the wrong
+answer. Design flags; it never silently picks a side on a policy conflict.
+
 ## Step 3: Generate `design.md`
 
 Write `.temper/specs/{feature}/design.md` from `$CLAUDE_PLUGIN_ROOT/templates/design.md`.
@@ -41,8 +49,13 @@ Write `.temper/specs/{feature}/design.md` from `$CLAUDE_PLUGIN_ROOT/templates/de
 | DB changes (if any): + {table} -- {columns}                   |
 | Integration points: {external system} -- how it connects      |
 | Decision log: 1. {decision} -- {rationale}                    |
+| Areas of concern: {N} flagged (or "none")                     |
 +--------------------------------------------------------------+
 ```
+
+Any flagged concern is presented **first** at the gate — it is the reason the human is
+here. "Continue to Build" with open concerns means the human accepted them; record
+their call in the concern's line (`resolved: {what was decided}`).
 
 `AskUserQuestion`: "Continue to Build (Recommended)" (save `design.md`, proceed) / "Walk
 through design step by step" (below) / "Save for later". "Other" free-text → edit

@@ -27,6 +27,21 @@ orchestrator owns it. Load: `git diff --name-only`, `.temper/specs/{feature}/int
 `.temper/review-memory.json` (dismissed/accepted patterns, auto-rules); the active
 `intent.md` (from build-context if chained, else the single spec present, else ask).
 
+**`REVIEW.md` at the repo root (optional — the org-review-policy convention):** when
+present, read it and apply it as review policy layered on top of the packs:
+- Its **passes** and emphases steer where subagent attention goes (in addition to the
+  fingerprint from Step 1.5).
+- Its **Important-vs-Nit definitions** map onto severities: anything it classes as a
+  nit caps at LOW; anything it names Important floors at HIGH.
+- Its **nit cap** bounds how many LOW findings the summary lists (excess LOWs are
+  summarized as a count, not dropped from metrics).
+- Its **do-not-report** list (generated paths, things CI already enforces) suppresses
+  matching findings — but never a pack **BLOCK** rule, a `review.block-on` severity, or
+  a security finding: those bypass every filter (Step 4), REVIEW.md included. Policy
+  can re-aim the review; only config + packs can lower the gate.
+
+No `REVIEW.md` → skip silently; packs and config are already the policy.
+
 **OCR (external review engine, optional):** read `tools.ocr.mode` (default `auto`). Not
 `off` → `command -v ocr`; missing + `require` → BLOCK with the install command, missing +
 `auto` → skip silently. Found → `ocr --version`, then probe readiness with `ocr review

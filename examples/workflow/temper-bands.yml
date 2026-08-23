@@ -1,0 +1,74 @@
+# temper-bands.yml — copy into a PROJECT's .github/workflows/ (not this plugin's).
+#
+# The closing-the-loop trigger layer: a scheduled job runs `temper bands` — pure
+# arithmetic over the project's committed .temper/metrics.json history, no model, no
+# tokens — and only on a 2sigma+ breach invokes Claude to draft the breach as a
+# Stage-1 intent.md and open a PR carrying it. The PR is the escalation: a human
+# triages it (fix now / schedule / dismiss), and if accepted the intent rides the
+# ordinary /temper pipeline through every gate. Nothing deploys, reverts, or merges
+# from here — the loop closes into the review gate, not around it.
+#
+# Requires: .temper/metrics.json committed (see .gitignore notes in the temper repo —
+# metrics are the two lines meant to be committed), ANTHROPIC_API_KEY secret, and
+# `permissions: contents/pull-requests: write` for the PR step.
+name: Temper control bands
+on:
+  schedule:
+    - cron: "23 5 * * *" # daily, off-peak
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bands:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch temper (the CLI is enough for detection)
+        run: git clone --depth 1 --branch v8.0.0 https://github.com/galando/temper /tmp/temper
+
+      - name: Deterministic band check
+        id: bands
+        run: |
+          set +e
+          /tmp/temper/scripts/temper bands
+          echo "breach=$?" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        if: steps.bands.outputs.breach == '1'
+        with:
+          node-version: 22
+
+      - name: Draft the breach as an intent.md (2sigma+ only)
+        if: steps.bands.outputs.breach == '1'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          IS_SANDBOX=1 claude -p "Read .temper/bands.json (a temper control-band breach). \
+          Draft .temper/specs/bands-breach-$(date -u +%Y%m%d)/intent.md exactly per the \
+          temper plugin's reference/status.md Step 3.7: Problem = the breach verbatim \
+          (metric, latest, baseline, z — evidence, not narrative), Success Criteria = the \
+          metric back inside its bands with Validate: metric, Status: draft. Write that \
+          one file and nothing else." \
+            --plugin-dir /tmp/temper \
+            --dangerously-skip-permissions
+
+      - name: Open the escalation PR
+        if: steps.bands.outputs.breach == '1'
+        run: |
+          BRANCH="temper/bands-breach-$(date -u +%Y%m%d)"
+          git config user.name "temper-bands"
+          git config user.email "temper-bands@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add .temper/specs/
+          git commit -m "docs(intent): control-band breach — draft intent for triage"
+          git push -u origin "$BRANCH"
+          gh pr create --fill --title "Control-band breach: triage this intent draft" \
+            --body "Deterministic \`temper bands\` breach. Triage: run \`/temper\` on this intent, schedule it, or dismiss (dismissals are the band-tuning signal)."
+        env:
+          GH_TOKEN: ${{ github.token }}
