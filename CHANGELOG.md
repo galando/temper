@@ -3,6 +3,33 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.2.0 — review diet, lazy autonomy, subprocess mode for standalone stages
+
+Token-efficiency release, continuing v9.1. No gate or state behavior changes.
+
+- **`reference/review.md` gets the v8 outcome-brief treatment** — 19.6KB → 13.6KB
+  (−31%). Everything that survived is policy a strong reviewer would not derive alone:
+  severity floors, filter bypasses (security/BLOCK/contract findings), STRONG/WEAK/
+  TRIVIAL weighting, the mutation-spot-check protocol, promotion/suppression
+  thresholds. What left was choreography and keyword lists. All numeric thresholds and
+  the AI-code detection table (which the seeded-defect evals depend on) are unchanged.
+  Unlike the v8 plan diet, this pass has no controlled A/B behind it yet — the eval
+  fixtures are the regression net.
+- **Autonomy loads on opt-in.** Autonomous Continuation's mechanics moved to
+  `reference/autonomy.md`, read only when `autonomy.enabled: true` at the plan gate.
+  The default interactive run keeps a five-line stub stating the two safety
+  invariants (never auto-commits; Intent gate always interactive).
+- **`stages.subprocess: true`** (new config, default `false`) runs the standalone
+  stage commands (`/temper:plan`, `:design`, `:build`, `:review`, `:check`) in the
+  same isolated `agents/{stage}.md` subprocess the unified `/temper` uses — only the
+  summary box and gate verdict return to your session. Default stays inline:
+  mid-stage interactivity is the point of standalone stages. `/temper:intent` is
+  always inline (interactive capture).
+- One summary box per stage: `reference/review.md` and `reference/check.md` no longer
+  carry their own competing box templates — the base format is owned by
+  `agents/{stage}.md` (v9.1), with the reference docs listing only the extra
+  sub-panel lines the standalone rendering appends.
+
 ## v9.1.0 — fix joins the brief architecture; briefs own their return format
 
 Token-efficiency release, no behavior changes to gates or state. Two leaks closed:

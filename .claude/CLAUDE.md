@@ -24,7 +24,7 @@ every gate is the ordinary interactive one. Config: `.claude/temper.config` → 
 a model. `git commit` is blocked by a native pre-commit hook + an in-agent PreToolUse
 hook whenever a gate is FAIL and unoverridden — see `packs/hooks/rules.md`.
 
-**Version:** 9.1.0 — see `CHANGELOG.md` for history.
+**Version:** 9.2.0 — see `CHANGELOG.md` for history.
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/docs/history/`
 

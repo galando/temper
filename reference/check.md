@@ -145,20 +145,11 @@ same test failing across 2 consecutive loops stops immediately rather than loopi
 
 ## Summary + Gate
 
-```
-+-----------------------------------------------------------+
-| CHECK — {Project Name}                                    |
-+-----------------------------------------------------------+
-| Compile {status}  Tests {status} {N} passed  Coverage {X}% |
-| Live Scenarios {X}/{Y} ({P} pass / {F} fail / {M} missing)  |
-| Lint {status}  Security {status}   Total: {time}            |
-| (Test Gaps / API Diff / Perf sub-panels only when they ran) |
-| Scenario verdict: {X}/{Y} behaviorally verified             |
-|   (STRONG assertions count full, WEAK count half — this is |
-|    quality-weighted and intentionally differs from Build's |
-|    binary pass/fail)                                        |
-+-----------------------------------------------------------+
-```
+The base summary box format is owned by `agents/check.md` — render it, appending: a
+Live Scenarios line (`{X}/{Y}: {P} pass / {F} fail / {M} missing`), Test Gaps / API
+Diff / Perf sub-panel lines only when those levels ran, total time, and the scenario
+verdict `{X}/{Y} behaviorally verified` (STRONG assertions count full, WEAK half —
+quality-weighted, intentionally different from Build's binary pass/fail).
 
 `AskUserQuestion`: "Commit (Recommended)" / "Save for later" (+ "Loop back to Build" from
 the orchestrator when the feedback conditions above are met). A change typed via "Other"

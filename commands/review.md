@@ -10,6 +10,18 @@ description: "Technical code review with confidence scoring, review memory, and 
 
 > **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/reference/review.md`
 
+### Subprocess Mode
+
+If `$CLAUDE_PLUGIN_ROOT/scripts/temper config get stages.subprocess false` returns
+`true`, don't run the methodology inline (skip the reference read and Quick Reference
+below). Launch the same isolated subprocess `/temper` uses — model from `temper model
+review`, prompt: *"Follow $CLAUDE_PLUGIN_ROOT/agents/review.md exactly. Spec:
+.temper/specs/{feature-slug}. Standalone run — pass --spec-path
+.temper/specs/{feature-slug} to every temper gate call."* Print the returned box
+verbatim, then run the gate + `AskUserQuestion` per **Deterministic Gate** below (the
+subprocess already recorded each open finding as evidence) — the human gate stays in
+this context either way.
+
 ### Quick Reference
 
 1. Gather changed files + active pack rules + review memory

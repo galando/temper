@@ -41,6 +41,15 @@ check:
 #   rca: opus      # /temper:fix stages
 #   fix: sonnet
 
+# Standalone stage commands (/temper:plan, :design, :build, :review, :check) execute
+# inline in your session by default — full mid-stage interactivity, but the stage's
+# working context (reference doc, diff, pack rules) stays in your context window
+# afterwards. `true` runs each in the same isolated agents/{stage}.md subprocess the
+# unified /temper uses: only the summary box and gate verdict return to your session.
+# /temper:intent stays inline either way — it's an interactive capture.
+# stages:
+#   subprocess: false
+
 # Control bands — closing the loop (`temper bands`). A deterministic check of the
 # history arrays in .temper/metrics.json against rolling mean ± k·sigma bands plus a
 # same-side-run drift rule. Detection never involves a model; the response to a breach

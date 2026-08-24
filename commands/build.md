@@ -10,6 +10,19 @@ description: "Execute plan with TDD and quality gates"
 
 > **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/reference/build.md`
 
+### Subprocess Mode
+
+If `$CLAUDE_PLUGIN_ROOT/scripts/temper config get stages.subprocess false` returns
+`true`, don't run the methodology inline (skip the reference read and Quick Reference
+below). Launch the same isolated subprocess `/temper` uses — model from `temper model
+build`, prompt: *"Follow $CLAUDE_PLUGIN_ROOT/agents/build.md exactly. Spec:
+.temper/specs/{feature-slug}. Standalone run — pass --spec-path
+.temper/specs/{feature-slug} to every temper gate call."* Print the returned box
+verbatim, then run the gate + report per **Deterministic Gate** below (the subprocess
+already recorded the RED/GREEN evidence and ticked `tasks.md`); auto-chain to
+`/temper:review` → `/temper:check` as usual — the human gate stays in this context
+either way.
+
 ### Quick Reference
 
 1. Load plan from `.temper/specs/{feature}/tasks.md`
