@@ -40,7 +40,20 @@ if [[ "$MODE" == "global" ]]; then
   TARGET_DIR="$TARGET_ROOT/.git/hooks-temper"
   mkdir -p "$TARGET_DIR"
 else
-  TARGET_DIR="$TARGET_ROOT/.git/hooks"
+  # Respect an EXISTING core.hooksPath (husky v9, lefthook, the pre-commit framework
+  # all set it): git ignores .git/hooks/ entirely when core.hooksPath is set, so a hook
+  # written there would be inert and never block a commit. Install into the configured
+  # dir instead (resolved relative to the worktree root if it's a relative path).
+  EXISTING_HOOKS_PATH="$(git config --get core.hooksPath 2>/dev/null || true)"
+  if [[ -n "$EXISTING_HOOKS_PATH" ]]; then
+    case "$EXISTING_HOOKS_PATH" in
+      /*) TARGET_DIR="$EXISTING_HOOKS_PATH" ;;
+      *)  TARGET_DIR="$TARGET_ROOT/$EXISTING_HOOKS_PATH" ;;
+    esac
+    echo "Note: core.hooksPath is set ($EXISTING_HOOKS_PATH) — installing there, not .git/hooks (which git would ignore)." >&2
+  else
+    TARGET_DIR="$TARGET_ROOT/.git/hooks"
+  fi
   mkdir -p "$TARGET_DIR"
 fi
 

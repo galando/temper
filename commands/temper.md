@@ -55,13 +55,27 @@ overrode one.
 
 ## First-run bootstrap
 
-Before Stage 1, if **neither** `.claude/temper.config` **nor** `.temper/` exists, this
-project has never been set up. Do the bootstrap inline — don't make the user run a
-separate command: follow `commands/init.md` (copy the default config, `temper init`
-scaffold, `bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh` for the commit gate),
-print its one-line "Set up." report, then continue into Plan. If a config already
-exists, skip this silently. This is what lets install be two steps —
-`/plugin install temper` then `/temper "…"`.
+Before Stage 1, ensure the project is set up — **per piece, not all-or-nothing**, so a
+partially-set-up project (config copied but no git hook, `.temper/` present but no
+config) still ends up with every piece. All three steps are idempotent, so this is
+safe to run every time; do the ones that are missing, silently skip the ones already
+in place:
+
+1. **Config** — if `.claude/temper.config` is absent, copy the default template.
+2. **Scaffold** — run `$CLAUDE_PLUGIN_ROOT/scripts/temper init` (idempotent).
+3. **Commit gate** — this is the headline guarantee, and the easiest to leave missing.
+   If it isn't installed yet — no `pre-commit` hook carrying the marker
+   `installed by scripts/hooks/install.sh` in the active hooks dir (`git config
+   core.hooksPath` if set, else `.git/hooks`) — run
+   `bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh`. Not a git repo yet → say so in
+   one line and continue (config + scaffold still done); the gate installs on the next
+   run after `git init`.
+
+If a step ran, print a one-line "Set up." note naming what was done; if everything was
+already in place, continue into Plan silently. This per-piece check is what makes
+install two `/plugin` commands then just `/temper "…"` — and what stops a config that
+arrived some other way (a copied `.claude/`, a re-run that failed mid-way) from
+running the pipeline with no commit gate.
 
 ## State
 

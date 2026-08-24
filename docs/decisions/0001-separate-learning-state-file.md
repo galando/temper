@@ -1,6 +1,6 @@
 # ADR-0001: Separate Learning State File
 
-**Status:** Superseded by [ADR-0006](decisions/0006-merge-learning-into-review-memory.md)
+**Status:** Superseded by [ADR-0006](0006-merge-learning-into-review-memory.md)
 **Date:** 2026-05-14
 **Supersedes:** (none)
 

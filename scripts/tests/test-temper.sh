@@ -926,6 +926,21 @@ assert_exit "protected-paths: an interior-glob pattern (*.sql) is honored" 2 \
 assert_exit "protected-paths: a non-.sql file under migrations is not blocked" 0 \
   bash -c "echo '{\"tool_input\": {\"file_path\": \"db/migrations/notes.txt\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PP'"
 
+# install.sh: respect an existing core.hooksPath (husky/lefthook) — install where git
+# actually looks, not the ignored .git/hooks/ (which would make the gate inert).
+setup
+git config user.email "test@example.com"
+git config user.name "test"
+rm -f .git/hooks/pre-commit    # clear any hook a prior test left in the shared WORKDIR
+mkdir -p .husky
+git config core.hooksPath .husky
+bash "$REPO_ROOT/scripts/hooks/install.sh" >/dev/null 2>&1
+assert_eq "install.sh honors core.hooksPath — hook lands where git looks" "yes" \
+  "$([[ -f .husky/pre-commit ]] && grep -q 'installed by scripts/hooks/install.sh' .husky/pre-commit && echo yes || echo no)"
+assert_eq "install.sh does NOT write the ignored .git/hooks/pre-commit when core.hooksPath is set" "yes" \
+  "$([[ ! -f .git/hooks/pre-commit ]] && echo yes || echo no)"
+git config --unset core.hooksPath 2>/dev/null || true
+
 # confirm-override.sh: robust matcher — quoted path, doubled space, path prefix all ASK.
 setup
 CO="$REPO_ROOT/scripts/hooks/confirm-override.sh"

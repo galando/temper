@@ -41,20 +41,25 @@ else
   fail "docs/commands.md or commands/ not found"
 fi
 
-# 2. All markdown links in docs/ resolve to existing files
-# Skip .html extensions (Jekyll-generated). Try bare path, then path.md
+# 2. All markdown links in docs/ resolve to existing files.
+# Resolve each link relative to the DIRECTORY OF THE FILE THAT CONTAINS IT — the way
+# GitHub and Jekyll actually resolve a relative link. (Resolving from docs/ root instead
+# passes a link that 404s in a subdirectory file, e.g. `decisions/x.md` written inside
+# docs/decisions/y.md — the exact bug this check exists to catch.) Skip .html (Jekyll).
 BROKEN_LINKS=$(
-  find "$REPO_ROOT/docs" -name "*.md" -exec grep -oE '\]\([^)]+\)' {} \; 2>/dev/null | \
-  grep -vE 'http|mailto|\.html' | \
-  sed 's/\](//;s/)//' | while read -r link; do
-    FILE=$(echo "$link" | sed 's/#.*//')
-    [[ -z "$FILE" ]] && continue
-    # Resolve relative to docs/
-    TARGET="$REPO_ROOT/docs/$FILE"
-    # Try as-is, then with .md extension
-    if [[ ! -e "$TARGET" && ! -e "${TARGET}.md" ]]; then
-      echo "$link"
-    fi
+  find "$REPO_ROOT/docs" -name "*.md" -print | while read -r src; do
+    grep -oE '\]\([^)]+\)' "$src" 2>/dev/null | grep -vE 'http|mailto|\.html' | \
+    sed 's/\](//;s/)//' | while read -r link; do
+      FILE=$(echo "$link" | sed 's/#.*//')
+      [[ -z "$FILE" ]] && continue
+      case "$FILE" in
+        /*) TARGET="$REPO_ROOT/docs${FILE}" ;;          # absolute-from-docs-root
+        *)  TARGET="$(dirname "$src")/$FILE" ;;         # relative to the containing file
+      esac
+      if [[ ! -e "$TARGET" && ! -e "${TARGET}.md" ]]; then
+        echo "$link (in ${src#$REPO_ROOT/})"
+      fi
+    done
   done || true
 )
 

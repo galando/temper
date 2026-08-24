@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-08-24
-**Supersedes:** [ADR-0001](decisions/0001-separate-learning-state-file.md)
+**Supersedes:** [ADR-0001](0001-separate-learning-state-file.md)
 
 ## Context
 
@@ -62,5 +62,5 @@ rejections recorded in `review-memory.json` under a `config:` key — no separat
 
 ## References
 
-- [ADR-0001](decisions/0001-separate-learning-state-file.md) (superseded) — why the split was originally made
+- [ADR-0001](0001-separate-learning-state-file.md) (superseded) — why the split was originally made
 - `reference/review.md` → "Metrics + Memory" — the merged promote/suppress logic

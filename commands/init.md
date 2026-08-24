@@ -34,8 +34,10 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
       bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh
    It installs a native git pre-commit hook that runs `temper gate commit` (and the
    secret scan) on every commit, fails open if temper isn't in use for a commit, and
-   backs up any existing non-Temper pre-commit hook first. If the project isn't a git
-   repo yet, install.sh exits non-zero — report "not a git repo yet; run
+   backs up any existing non-Temper pre-commit hook first. It installs into the active
+   hooks dir — respecting an existing `core.hooksPath` (husky/lefthook) so the gate
+   isn't written where git would ignore it. Re-running is idempotent. If the project
+   isn't a git repo yet, install.sh exits non-zero — report "not a git repo yet; run
    /temper:init again after `git init` to install the commit gate" and continue (the
    config + scaffold still succeeded).
 
