@@ -10,243 +10,85 @@ nav_order: 1
 **Your AI writes fast. Temper makes it last.**
 {: .fs-6 .fw-300 }
 
+An intent-gated SDLC for AI-generated code — every gate verdict computed by a small
+CLI, never asserted by a model.
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[Get started now](#quick-start){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[Why Temper?](#the-problem){: .btn .fs-5 .mb-4 .mb-md-0 .mr-2 }
+[Get started](#install){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
+[How it works](#how-it-works){: .btn .fs-5 .mb-4 .mb-md-0 .mr-2 }
 [View on GitHub](https://github.com/galando/temper){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 ---
 
 ## The Problem
 
-AI writes code fast. But "fast" without "right" creates bugs, technical debt, and features that miss the point.
+AI writes code fast, but with structural failure patterns: happy paths without edge
+cases, features nobody asked for, calls to methods that don't exist, correct code
+never wired in. Most tools check whether the code compiles. Temper checks whether it
+solves the right problem — **mechanically**, not by asking the model to grade itself.
 
-Three questions every AI-generated feature should answer:
+## How It Works
 
-1. **Did we solve the problem?** (Intent)
-2. **Does it do the right things?** (Behavior)
-3. **Does the code work?** (Tests)
-
-Most AI tools answer only the third. Temper answers all three.
-
-## Features
-
-### SDLC Pipeline
-
-| Feature | What It Does |
-|---------|-------------|
-| **Unified Command** | One command runs the full SDLC: `/temper "add login feature"` |
-| **Feedback Loops** | Review/Check → Build with circuit breakers (max 2 loops). Build → Plan (human-driven, 1 per cycle) |
-| **Stage Gates** | Interactive approval at every stage — Continue / Walkthrough / Change / Save |
-| **Agent Subprocesses** | Each stage runs in isolated context — genuine context clearing, not theater |
-| **Design Phase** | System architecture, API contracts, DB schema, ADRs. Auto-skipped for simple features |
-| **Cross-Walkthrough Navigation** | Plan ↔ Design walkthrough links, skip-to-build on every section |
-| **Deterministic Gates** | Every stage gate is a PASS/FAIL computed by the `temper` CLI from an evidence ledger — never asserted by a model. `git commit` is physically blocked while a gate is red and unoverridden |
-
-### Quality Gates
-
-| Feature | What It Does |
-|---------|-------------|
-| **Diff-Aware Review** | Builds a risk fingerprint from changed regions, focuses 80% review attention on high-risk hunks |
-| **Security Hot Paths** | Classifies files by sensitivity (CRITICAL/HIGH/MEDIUM/LOW), traces call chains to entry points, elevates scrutiny automatically |
-| **Cross-File Consistency** | Detects pattern drift — new file uses `try/catch` but peers use `Result<>`? Flagged |
-| **Test Gap Analysis** | Reads implementation + test code side-by-side, finds untested edge cases, BLOCKs on untested security code |
-| **API Diff Review** | Detects API shape changes from git diff, greps for consumers, flags unverified breaking changes |
-| **Performance Pattern Detection** | Scans for N+1 queries, missing pagination, sync I/O, inefficient data structures |
-| **Confidence Scoring** | 0.0–1.0 confidence on every finding, configurable threshold, review memory |
-
-### Verification
-
-| Feature | What It Does |
-|---------|-------------|
-| **Live Scenario Verification** | Every Gherkin scenario executed individually against your test runner |
-| **MCP-Powered Analysis** | `code-review-graph` for blast radius, `semgrep` for SAST scanning |
-| **Evidence Labels** | `[PROVEN]`, `[HEURISTIC]`, `[SEMANTIC]` labels on every finding |
-| **Deep Doubt Mode** | Adversarial review with fresh-context subagent. Claim extraction, classification, max 3 cycles |
-| **Debugging Procedure** | Structured RCA: Reproduce → Localize → Reduce → Bisect → Root Cause → Regression Test |
-
-### Context & Source
-
-| Feature | What It Does |
-|---------|-------------|
-| **Context Engineering** | Hierarchical context loading (<2k lines/task) at every stage start — rules → arch → source → errors |
-| **Source-Driven Development** | Version detection → Context7 doc fetch → citation before writing framework code |
-| **ADR Generation** | `/temper:design` generates Architectural Decision Records for architectural decisions |
-
-### Pack System
-
-| Feature | What It Does |
-|---------|-------------|
-| **Three-Tier Pack Resolution** | project-local > global > built-in. Plugin/skill linking, phase scoping, connection health |
-| **Cached Pack Manifest** | `.temper/pack-manifest.json` for instant loads. Auto-rebuilds on config changes |
-| **Quick-Create Launchers** | One command wraps any plugin or skill as a BLOCK-level pack |
-| **Performance Pack** | N+1 detection, pagination rules, Core Web Vitals, bundle splitting, measure-first gate |
-| **API Design Pack** | Additive extension, idempotency, consistent naming, breaking change detection |
-| **Architecture Depth Pack** | Module-depth analysis: seams, adapters, locality, leverage, deletion test |
-
-### Interactive Capabilities
-
-| Feature | What It Does |
-|---------|-------------|
-| **Grill Me** | Socratic challenge mode at Plan/Design gates — one question at a time, stress-tests assumptions before building |
-| **HTML Plan Review** | Interactive browser-based plan review with inline comments. Google Doc-style commenting, comment types route to correct artifacts |
-| **Config Suggestions** | After Check passes, suggests CLAUDE.md/AGENTS.md updates based on what was built, shown at the Check gate |
-| **Architecture Depth Review** | Optional review pass evaluating module depth — deep modules have small interfaces with rich behavior |
-
-### IDE Support
-
-Claude Code, as a native plugin via the marketplace — skills, commands, agents, and MCP integration.
-
-## IDD + BDD + TDD: Three Layers, One File
-
-{: .important }
-Temper is 100% markdown — no executables, no binaries, no external dependencies.
-
-Temper combines three development methodologies in a single artifact called `intent.md`:
-
-| Layer | Question | How Temper Does It |
-|-------|----------|-------------------|
-| **IDD** (Intent) | Did we solve the problem? | Success criteria with structured validation types |
-| **BDD** (Behavior) | Does it do the right things? | Scenarios derived before architecture — they drive what gets built |
-| **TDD** (Test) | Does the code work? | Tests written from scenarios — RED -> GREEN -> REFACTOR |
-
-**Scenarios drive architecture.** Every planned file must trace to a behavior or infrastructure need. Success criteria are mechanically validated where possible.
-
-## The Proof
-
-**Before Temper:** You add user authentication. AI generates code. Tests pass. You deploy. Users report password resets don't work. The queue consumer crashed silently.
-
-**After Temper:**
+One loop, a human gate at every stage, the cheapest artifact reviewed first:
 
 ```
-/temper "add password reset"
+INTENT → PLAN → DESIGN? → BUILD → REVIEW → CHECK → COMMIT
+  ↑ WHY — approved before any tokens are spent downstream
 ```
 
-That's it. One command runs the full SDLC:
+- **Intent gate first** — you approve the Problem and success criteria before
+  exploration or architecture runs. A wrong intent multiplies into wrong everything;
+  correcting it at this gate costs words, after Plan it costs the plan.
+- **Scenarios before architecture** — BDD scenarios are derived from a *measured*
+  blast radius, so every planned file traces to a behavior.
+- **Every gate is computed** — the `temper` CLI (auditable bash, no network) reads an
+  evidence ledger and prints PASS/FAIL per requirement. A red gate blocks `git commit`
+  via a real pre-commit hook; a human can override (recorded, never erased) — a
+  confused model can't.
+- **The loop closes itself** — `temper bands` watches metric history with control
+  bands (pure arithmetic); a breach is drafted as the next intent and rides the same
+  pipeline. Fixes write a committed `lessons.md` every future RCA reads first.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 📋 PLAN COMPLETE — Add Password Reset                        │
-├─────────────────────────────────────────────────────────────┤
-│ 🎯 INTENT                                                   │
-│    Problem: Users can't reset passwords without support     │
-│    Success: Self-service reset in under 2 minutes           │
-│    Scenarios: 5 (4 unit, 1 integration)                     │
-│                                                             │
-│ 📁 FILES: 3 create, 2 modify                                │
-│ ⚡ RISK: Medium (touches auth layer)                        │
-└─────────────────────────────────────────────────────────────┘
-
-Diagram (architecture flow):
-
-+--------+    +------------------+    +-------------+
-|  User  +--->+ ResetController  +--->+ TokenService|
-+--------+    +------------------+    +------+------+
-                                             |  |
-                                     +-------+  +-------+
-                                     v                 v
-                              +------------+    +-------------+
-                              | (Database) |    | EmailService|
-                              +------------+    +-------------+
-
-> Walk through plan step by step? (or Continue to Build / Save for later)
-
-> Walk through plan step by step
-
-📋 Step 1/6 — Intent Deep Dive
-   Problem: Users can't reset passwords without contacting support
-   Success criteria:
-     • Self-service reset in under 2 minutes (Validate: scenario)
-     • Token expires after 15 minutes (Validate: code)
-   [Next step / Other]
-
-> Next step
-
-📋 Step 2/6 — Diagram Walkthrough
-   ...step by step through architecture...
-
-> Next step
-
-📋 Step 6/6 — Task Walkthrough
-   Task 1: Create token model + migration [SEQUENTIAL]
-   Task 2: Implement TokenService [SEQUENTIAL: after Task 1]
-   ...
-
-> Continue to Build
-
-┌─────────────────────────────────────────────────────────────┐
-│ 🔨 BUILD COMPLETE                                           │
-├─────────────────────────────────────────────────────────────┤
-│ ✅ Tasks: 5/5 completed                                     │
-│ ✅ Tests: 5 added, all passing                              │
-│ ✅ Coverage: 87% (threshold: 80%)                           │
-│                                                             │
-│ Continue to Review (Recommended)                            │
-│ Save for later                                              │
-└─────────────────────────────────────────────────────────────┘
-
-> Continue to Review
-
-┌─────────────────────────────────────────────────────────────┐
-│ ALL CHECKS PASSED                                           │
-├─────────────────────────────────────────────────────────────┤
-│    Compile:    ✅ 2.3s                                       │
-│    Tests:      ✅ 4.1s — 5 passed                            │
-│    Coverage:   ✅ 87% (threshold: 80%)                        │
-│    Test Gaps:  ✅ 78% (31/40 edge cases covered)                │
-│    API Diff:   ✅ 3/3 consumers verified                      │
-│    Perf:       ✅ 0 anti-patterns (baseline updated)            │
-│    Security:   ✅ 0 hot path issues                           │
-│                                                             │
-│ Commit (Recommended)                                        │
-│ Save for later                                              │
-└─────────────────────────────────────────────────────────────┘
-
-> Commit
-
-✅ Committed: a1b2c3d
-   Branch: feature/password-reset
-   Ready to push?
-```
-
-The queue consumer issue? Blast radius flagged it. The missing rate limiting? Scenario coverage gate caught it.
+Proof it catches real bugs: three seeded-defect fixtures run through the live
+pipeline in CI and must *mechanically FAIL naming the defect* —
+[seeded-defect evals](https://github.com/galando/temper/tree/main/evals) ·
+[evidence gallery](evidence/case-study.html).
 
 ## Commands
 
-### Unified Command (Recommended)
-
-```
-/temper "add login feature"     # Full SDLC in one command
-```
-
-### Individual Commands
+Three you'll actually type — `/temper` runs and routes the rest:
 
 | Command | Purpose |
 |---------|---------|
-| [`/temper:plan`](commands.html#plan) | Blast radius + security hot paths + BDD scenarios + interactive walkthrough |
-| [`/temper:build`](commands.html#build) | Scenario-driven TDD gates, resume from checkpoint |
-| [`/temper:review`](commands.html#review) | Diff fingerprinting + security hot paths + intent validation + confidence scoring |
-| [`/temper:check`](commands.html#check) | Stack validation + test gap analysis + contract checking + perf regression |
-| [`/temper:fix`](commands.html#fix) | Multi-hypothesis root cause analysis |
-| [`/temper:pack`](commands.html#pack) | Manage quality packs: view, toggle, create |
-| [`/temper:status`](commands.html#status) | Quality metrics, hotspot tracking |
+| [`/temper "…"`](commands.html#temper) | The whole pipeline, intent gate to commit |
+| [`/temper:fix "…"`](commands.html#temperfix) | Root cause → failing test (write-protected) → minimal fix |
+| [`/temper:intent "…"`](commands.html#temperintent) | Capture an idea as a committed draft, build it later |
 
-## Quick Start
+Each stage is also available on its own (`/temper:plan`, `:build`, `:review`,
+`:check`, `:status`, `:pack`, `:init`) — see the [commands reference](commands.html).
 
-### Claude Code
+**Autonomy (opt-in):** after you approve the plan, `/temper` can run the remaining
+stages unattended, parking before commit. It never commits, pushes, or merges.
+
+**Works with any CI:** temper ships no platform files — its automation surface is
+commands and exit codes, the same under GitHub Actions, GitLab, Jenkins, or cron.
+
+## Install
 
 ```bash
 /plugin marketplace add galando/temper
 /plugin install temper
 ```
 
+That's it. Your first `/temper "…"` sets the project up — config, scaffold, and the
+native commit gate.
+
 ## Next Steps
 
-- [Getting Started Guide](getting-started.html) — Detailed installation and setup
-- [Commands Reference](commands.html) — Full command documentation
-- [Packs](packs.html) — Built-in and custom quality packs
-- [Context Hygiene](context-hygiene.html) — `/doctor`, pack `phases:`, and what Temper keeps out of your context
-- [AI-Native SDLC Alignment](ai-native-sdlc.html) — Temper mapped play-by-play against Anthropic's playbook
-- [Enterprise Setup](enterprise.html) — Deploy across your organization
-- [DeepWiki](https://deepwiki.com/galando/temper) — AI-powered documentation
+- [Getting Started](getting-started.html) — installation and first run
+- [Commands Reference](commands.html) — full command documentation
+- [Methodology](methodology.html) — IDD + BDD + TDD, one contract file
+- [Packs](packs.html) — built-in and custom quality packs
+- [AI-Native SDLC Alignment](ai-native-sdlc.html) — temper vs Anthropic's playbook
+- [Context Hygiene](context-hygiene.html) · [Enterprise](enterprise.html) · [Recommended Setup](recommended-setup.html)

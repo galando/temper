@@ -102,7 +102,7 @@ The single fail-closed path for each script is documented below. Everything else
 | `scripts/hooks/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `temper override` — emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records the git identity (`by`) |
 | `scripts/hooks/run-formatter.sh` | PostToolUse (Edit\|Write) | **format** (no-op by default) | Never blocks — runs `format: cmd:` from temper.config on each edited file so drift never accumulates; a formatter failure is a stderr warning, not a gate |
 | `scripts/hooks/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `temper gate commit` FAILs (in-agent mirror of the native hook, below) |
-| `scripts/hooks/stage-marker.sh` | UserPromptSubmit | **no-op** (records only) | Never — it writes `.temper/pending-stage.json` when a `/temper:{plan,build,review,check}` prompt is submitted, and blocks nothing |
+| `scripts/hooks/stage-marker.sh` | UserPromptSubmit | **no-op** (records only) | Never — it writes `.temper/pending-stage.json` when a `/temper:{intent,plan,design,build,review,check}` prompt is submitted, and blocks nothing |
 | `scripts/hooks/verify-stage-gate.sh` | Stop | **BLOCK** | A standalone stage session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage — see `docs/decisions/0005-deterministic-stage-gate-enforcement.md`. Fails open after 2 refusals |
 | `scripts/temper gate commit` | native pre-commit | **BLOCK** | Any stage's evidence-backed gate is not PASS and has no recorded `temper override` |
 | `scripts/hooks/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json` shows the latest `check_complete` absent or failed — used only when `scripts/temper` isn't present |
@@ -144,7 +144,7 @@ no-op. Internal errors: fail-open, per the contract above.
 Checks edited files' import statements against a configurable denylist. The denylist defaults
 to **empty** → warn-only / no-op. Set `TEMPER_FORBIDDEN_IMPORTS` (colon-separated) to enable
 blocking, e.g. `TEMPER_FORBIDDEN_IMPORTS="eval:child_process.exec"`. Exit 2 only on an explicit
-denylist match; otherwise exit 0. (v8.1 fix: the hook now reads the edited file from the
+denylist match; otherwise exit 0. (v9 fix: the hook now reads the edited file from the
 PostToolUse stdin payload (`tool_input.file_path`) — it previously read only the never-set
 `CLAUDE_FILE_PATH` env var plus staged files, which made it inert on in-agent edits.)
 

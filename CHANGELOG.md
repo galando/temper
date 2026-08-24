@@ -3,13 +3,37 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## v8.1.0 — AI-native SDLC alignment, two-step install, and a simplification pass
+## v9.0.0 — the intent-gated pipeline
 
-Three threads: align temper with Anthropic's [AI-native SDLC playbook](https://claude.com/blog/the-ai-native-sdlc-playbook),
+Breaking: the pipeline gains a stage, the commit gate gets stricter, and a subsystem
+is removed — the same class of change that made v7 and v8 majors. Three threads: align
+temper with Anthropic's [AI-native SDLC playbook](https://claude.com/blog/the-ai-native-sdlc-playbook),
 cut install to two steps, and remove duplicated machinery. Net prompt-surface change
 from the simplification alone: **−9.2%** (266KB → 242KB), with `reference/fix.md`
-down 64% (517 → 143 lines). 170 CLI assertions green (up from 106); all validators pass.
+down 64% (517 → 143 lines). 189 CLI assertions green (up from 106); all validators pass.
 Full play-by-play: `docs/ai-native-sdlc.md`.
+
+### Breaking + migration
+
+- **`/temper` runs intent → plan → … — a new mandatory human gate on every
+  non-trivial run.** The Intent stage states the Problem/criteria/constraints and a
+  human accepts them BEFORE exploration or architecture spends tokens; acceptance
+  (the `Status` flip + `Accepted-by:`) moves from the plan gate to the intent gate.
+- **The commit gate requires an intent verdict whenever `intent.md` exists** (and a
+  design verdict whenever `design.md` exists). **Migration for an in-flight v8 run:**
+  `temper gate commit` will FAIL with "intent gate — MISSING"; a v8-era `intent.md`
+  also lacks the new `**Status:**` header. Add one line (`**Status:** accepted`) and
+  run `temper gate intent` once — or record `temper override intent` — and commit
+  proceeds. Fresh runs need nothing.
+- **Adaptive learning is removed** (`learning.json`, `packs/adaptive-learning/`,
+  `reference/learning.md`, the suggestion queue and learning curve — see ADR-0006).
+  **Migration:** delete `adaptive-learning` from your `packs:` list if present (a
+  stale entry degrades silently); a leftover `learning.json` is inert and can be
+  deleted. Promotion/suppression continue unchanged from `review-memory.json`.
+- `templates/spec.md` + `templates/quickstart.md` deleted (the documented
+  three-artifact rule forbids them); retired-system docs moved `reference/` →
+  `docs/history/`. Standalone `/temper:plan` and `/temper:intent` sessions now owe a
+  gate verdict (the Stop hook holds the session until the gate ran).
 
 ### Install is two steps
 

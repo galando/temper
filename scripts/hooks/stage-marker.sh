@@ -38,9 +38,9 @@ except Exception:
   # not an invocation.
   local stage=""
   case "$prompt" in
-    /temper:intent*) stage="intent" ;;   # intent gained its own gate in v8.1 (fail-fast artifact)
+    /temper:intent*) stage="intent" ;;   # intent gained its own gate in v9 (fail-fast artifact)
     /temper:plan*)   stage="plan" ;;
-    /temper:design*) stage="design" ;;   # design gained a real gate in v8.1 (Areas of Concern)
+    /temper:design*) stage="design" ;;   # design gained a real gate in v9 (Areas of Concern)
     /temper:build*)  stage="build" ;;
     /temper:review*) stage="review" ;;
     /temper:check*)  stage="check" ;;

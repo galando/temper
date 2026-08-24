@@ -687,7 +687,7 @@ assert_exit "bands: an unknown metric name is skipped, not fatal" 0 "$TEMPER" ba
 OUT=$("$TEMPER" bands 2>&1)
 assert_eq "bands: the unknown metric is named in a skip notice" "yes" "$(echo "$OUT" | grep -q 'made-up-series — unknown metric' && echo yes || echo no)"
 
-# --- v8.1: intent gate — the fail-fast gate ---
+# --- v9: intent gate — the fail-fast gate ---
 # intent.md absent => trivial path => PASS. Present => Problem stated (not template
 # placeholders), >=1 success criterion, a Status header. The commit gate requires an
 # intent verdict exactly when the artifact exists (tested with the commit fixtures).
@@ -783,7 +783,7 @@ MARKER="$REPO_ROOT/scripts/hooks/stage-marker.sh"
 echo '{"prompt": "/temper:intent capture this idea"}' | bash "$MARKER"
 assert_eq "stage-marker records the owed intent stage" "intent" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['stage'])")"
 
-# --- v8.1: design gate is no longer vacuous ---
+# --- v9: design gate is no longer vacuous ---
 # design.md absent => stage skipped => PASS. design.md present => must carry an Areas
 # of Concern heading (an explicit "None flagged" section counts; silence does not).
 setup
@@ -819,7 +819,7 @@ assert_exit "commit gate FAILs when design.md exists but its gate never ran" 1 "
 "$TEMPER" gate design >/dev/null
 assert_exit "commit gate PASSes once the design gate ran" 0 "$TEMPER" gate commit
 
-# --- v8.1: artifact-only commits pass the commit gate (the committed artifact chain) ---
+# --- v9: artifact-only commits pass the commit gate (the committed artifact chain) ---
 setup
 git config user.email "test@example.com"
 git config user.name "test"
@@ -832,7 +832,7 @@ echo 'code' > src.js
 git add src.js >/dev/null 2>&1
 assert_exit "one staged file outside .temper/specs/ restores every gate requirement" 1 "$TEMPER" gate commit
 
-# --- v8.1: override records the approver's identity ---
+# --- v9: override records the approver's identity ---
 setup
 git config user.name "Jane Approver"
 git config user.email "jane@example.com"
@@ -840,7 +840,7 @@ git config user.email "jane@example.com"
 assert_eq "override entry records who approved" "Jane Approver <jane@example.com>" \
   "$(python3 -c "import json; print(json.load(open('.temper/overrides.json'))[0]['by'])")"
 
-# --- v8.1: the gate ledger is archived into the spec dir (audit trail survives) ---
+# --- v9: the gate ledger is archived into the spec dir (audit trail survives) ---
 setup
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
@@ -857,7 +857,7 @@ assert_eq "the archived ledger carries the plan verdict" "PASS" \
 assert_eq "the archived ledger carries the override" "test archive" \
   "$(python3 -c "import json; print(json.load(open('.temper/specs/demo/gate-ledger.json'))['overrides'][0]['reason'])")"
 
-# --- v8.1: temper metrics append + data-driven bands series ---
+# --- v9: temper metrics append + data-driven bands series ---
 setup
 rm -f .temper/metrics.json
 assert_exit "metrics append rejects a non-numeric value" 1 "$TEMPER" metrics append coverage abc
@@ -875,7 +875,7 @@ bands:
 EOF
 assert_exit "bands reads a custom appended series by name and detects the breach" 1 "$TEMPER" bands
 
-# --- v8.1: temper config get + evidence run ---
+# --- v9: temper config get + evidence run ---
 setup
 assert_eq "config get reads a nested key" "critical" "$("$TEMPER" config get review.block-on x)"
 assert_eq "config get falls back to the default for a missing key" "fallback" "$("$TEMPER" config get no.such.key fallback)"
@@ -890,7 +890,7 @@ assert_eq "evidence run keeps PROVEN on a nonzero exit (machine-observed, no dow
 echo '- [x] t' > .temper/specs/demo/tasks.md
 assert_exit "cli-executed RED+GREEN satisfies the build gate" 0 "$TEMPER" gate build
 
-# --- v8.1 hooks: protected paths, confirm-override ask tier, formatter, imports stdin ---
+# --- v9 hooks: protected paths, confirm-override ask tier, formatter, imports stdin ---
 setup
 PROTECT="$REPO_ROOT/scripts/hooks/block-protected-paths.sh"
 CONFIRM="$REPO_ROOT/scripts/hooks/confirm-override.sh"
@@ -935,7 +935,7 @@ assert_exit "imports hook: reads the edited file from hook stdin and blocks a de
 assert_exit "imports hook: empty denylist stays a no-op" 0 \
   bash -c "echo '{\"tool_input\": {\"file_path\": \"$WORKDIR/risky.js\"}}' | bash '$IMPORTS'"
 
-# --- v8.1 hardening: adversarial-review fixes (must never regress) ---
+# --- v9 hardening: adversarial-review fixes (must never regress) ---
 
 # metrics append: the value is parsed by float() INSIDE python (argv), never
 # interpolated into source. A crafted payload must NOT execute and must exit 1.
