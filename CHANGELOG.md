@@ -3,10 +3,28 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## v9.2.0 — review diet, lazy autonomy, subprocess mode for standalone stages
+## v9.1.0 — the token-efficiency release
 
-Token-efficiency release, continuing v9.1. No gate or state behavior changes.
+Subagent architecture completed and prompt surface cut. No gate or state behavior
+changes.
 
+- **`/temper:fix` gets the v7 treatment it missed.** `commands/fix.md` was still the
+  pre-v7 shape — four hand-rolled inline agent prompts plus four inline summary-box
+  templates, duplicating (and drifting from) the contracts in `agents/review.md` /
+  `agents/check.md`. New `agents/rca.md` and `agents/fix.md` briefs now carry the
+  RCA/Fix stage contracts (methodology pointer, evidence commands, the
+  `regression_test` write-shield arming, return box); `commands/fix.md` is a lean
+  orchestrator that launches all four stages via their briefs — 22.9KB → 7.1KB (−69%)
+  of main-context prompt on every `/temper:fix` run, and one copy of each stage
+  contract instead of two.
+- **Agent briefs define the summary box they return — one box per stage.**
+  `agents/intent.md` and `agents/plan.md` used to say "see `commands/temper.md`" for
+  the box format — a clean-context subprocess following that pointer read the entire
+  21KB orchestrator to fetch an 8-line template, defeating the isolation it was
+  launched with. Every brief now carries its own return box; the orchestrators print
+  the returned box verbatim instead of restating formats, and `reference/review.md` /
+  `reference/check.md` no longer carry competing box templates (they list only the
+  extra sub-panel lines the standalone rendering appends).
 - **`reference/review.md` gets the v8 outcome-brief treatment** — 19.6KB → 13.6KB
   (−31%). Everything that survived is policy a strong reviewer would not derive alone:
   severity floors, filter bypasses (security/BLOCK/contract findings), STRONG/WEAK/
@@ -25,31 +43,6 @@ Token-efficiency release, continuing v9.1. No gate or state behavior changes.
   summary box and gate verdict return to your session. Default stays inline:
   mid-stage interactivity is the point of standalone stages. `/temper:intent` is
   always inline (interactive capture).
-- One summary box per stage: `reference/review.md` and `reference/check.md` no longer
-  carry their own competing box templates — the base format is owned by
-  `agents/{stage}.md` (v9.1), with the reference docs listing only the extra
-  sub-panel lines the standalone rendering appends.
-
-## v9.1.0 — fix joins the brief architecture; briefs own their return format
-
-Token-efficiency release, no behavior changes to gates or state. Two leaks closed:
-
-- **`/temper:fix` gets the v7 treatment it missed.** `commands/fix.md` was still the
-  pre-v7 shape — four hand-rolled inline agent prompts plus four inline summary-box
-  templates, duplicating (and drifting from) the contracts in `agents/review.md` /
-  `agents/check.md`. New `agents/rca.md` and `agents/fix.md` briefs now carry the
-  RCA/Fix stage contracts (methodology pointer, evidence commands, the
-  `regression_test` write-shield arming, return box); `commands/fix.md` is a lean
-  orchestrator that launches all four stages via their briefs — 22.9KB → 7.1KB (−69%)
-  of main-context prompt on every `/temper:fix` run, and one copy of each stage
-  contract instead of two.
-- **Agent briefs define the summary box they return.** `agents/intent.md` and
-  `agents/plan.md` used to say "see `commands/temper.md`" for the box format — a
-  clean-context subprocess following that pointer read the entire 21KB orchestrator
-  to fetch an 8-line template, defeating the isolation it was launched with. Every
-  brief now carries its own return box; `commands/temper.md` prints the returned box
-  verbatim instead of restating the formats (−1.7KB there, and no cross-read from any
-  stage context).
 - `temper model` resolves the new stages: `AGENT_STAGES` gains `rca` and `fix`
   (`model --all` now prints 8 lines; `models.rca` / `models.fix` config overrides
   work like every other stage). rca/fix remain state-sequence and model stages only —
