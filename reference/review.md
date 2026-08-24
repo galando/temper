@@ -6,17 +6,19 @@ description: "Technical code review with confidence scoring, review memory, and 
 
 **Goal:** High signal-to-noise review — parallel subagents, confidence scoring, review
 memory, intent validation. `agents/review.md` carries the exact `temper evidence add
---severity` invocation the gate needs; this doc is the methodology behind what to look
-for and how to score it.
+--severity` invocation the gate needs; this doc is the policy behind what to look for
+and how to score it. It states rules a strong reviewer would not derive alone —
+severity floors, filter bypasses, memory thresholds — not review technique.
 
-**Do not run if** code doesn't compile, tests are failing, or the build is broken — run
-only after Build succeeds (or auto-chained from `/temper:build`, which already verified
-this). Confidence scoring and review memory follow the temper-core skill's definitions.
+**Do not run if** code doesn't compile or tests are failing — run only after Build
+succeeds. Confidence scoring and review memory follow the temper-core skill's
+definitions.
 
-**Modes:** Standalone (`/temper:review`) runs in the current context, own gate. Agent
-subprocess (from `/temper`) starts clean, no `AskUserQuestion` — return the summary, the
-orchestrator owns it. Load: `git diff --name-only`, `.temper/specs/{feature}/intent.md`
-(for intent validation, if it exists), `build-context.json` (if it exists).
+**Modes:** Standalone (`/temper:review`) owns its human gate. Agent subprocess (from
+`/temper`, or from a standalone command running with `stages.subprocess: true`) starts
+clean and never shows an `AskUserQuestion` — return the summary, the caller owns the
+gate. Load: `git diff --name-only`, `{spec}/intent.md` (if it exists),
+`build-context.json` (if it exists).
 
 ## Step 1: Gather Context
 
@@ -24,99 +26,74 @@ orchestrator owns it. Load: `git diff --name-only`, `.temper/specs/{feature}/int
 `review.confidence-threshold` / auto-fix; the enabled packs' `rules.md` (project
 `.claude/packs/` shadows global `~/.claude/packs/` shadows built-in
 `$CLAUDE_PLUGIN_ROOT/packs/`, kept where `phases` is `all` or contains `review`);
-`.temper/review-memory.json` (dismissed/accepted patterns, auto-rules); the active
-`intent.md` (from build-context if chained, else the single spec present, else ask).
+`.temper/review-memory.json`; the active `intent.md` (from build-context if chained,
+else the single spec present, else ask).
 
-**`REVIEW.md` at the repo root (optional — the org-review-policy convention):** when
-present, read it and apply it as review policy layered on top of the packs:
-- Its **passes** and emphases steer where subagent attention goes (in addition to the
-  fingerprint from Step 1.5).
-- Its **Important-vs-Nit definitions** map onto severities: anything it classes as a
-  nit caps at LOW; anything it names Important floors at HIGH.
-- Its **nit cap** bounds how many LOW findings the summary lists (excess LOWs are
-  summarized as a count, not dropped from metrics).
-- Its **do-not-report** list (generated paths, things CI already enforces) suppresses
-  matching findings — but never a pack **BLOCK** rule, a `review.block-on` severity, or
-  a security finding: those bypass every filter (Step 4), REVIEW.md included. Policy
-  can re-aim the review; only config + packs can lower the gate.
+**`REVIEW.md` at the repo root (optional org review policy):** apply it layered on top
+of the packs — its passes/emphases steer subagent attention; its Important-vs-Nit
+definitions map to severities (nit caps at LOW, Important floors at HIGH); its nit cap
+bounds how many LOWs the summary lists (excess summarized as a count, not dropped from
+metrics); its do-not-report list suppresses matches — but never a pack **BLOCK** rule,
+a `review.block-on` severity, or a security finding: those bypass every filter,
+REVIEW.md included. Policy can re-aim the review; only config + packs can lower the
+gate. Absent → skip silently.
 
-No `REVIEW.md` → skip silently; packs and config are already the policy.
-
-**OCR (external review engine, optional — the MCP-style probe):** if `tools.ocr.mode`
-isn't `off`, `command -v ocr` then probe `ocr review --preview`; ready → record
-`ocr_status = ready` (Step 2's defect subagent steps aside for it; the merge mechanics
-are in `docs/recommended-setup.md`). Absent or failing: `require` blocks with the
-install command, `auto` skips with a one-line notice and reviews heuristically. Same
-shape as the semgrep probe below — no separate engine section in this doc.
+**OCR (external review engine, optional):** if `tools.ocr.mode` isn't `off`,
+`command -v ocr` then probe `ocr review --preview`; ready → record `ocr_status = ready`
+(merge mechanics in `docs/recommended-setup.md`). Absent/failing: `require` blocks with
+the install command, `auto` skips with a one-line notice.
 
 ## Step 1.5: Diff-Aware Fingerprinting
 
-Before launching subagents, classify each changed hunk so review energy goes where it
-matters. For each hunk: change type (LOGIC/STRUCTURE/CONFIG/TEST/IMPORT) and risk signals
-— SECURITY (password, token, jwt, encrypt, auth, secret, api-key, session), DATA_MUTATION
-(insert/update/delete/save), ERROR_HANDLING (throw/catch/reject), CONCURRENCY
-(async/thread/mutex/lock), EXTERNAL_API (fetch/http/client/grpc), MIDDLEWARE (app.use,
-cors, rate-limit). Build an ephemeral (not persisted) fingerprint — files/hunks by type,
-high-risk regions, security sensitivity counts — and pass it to every subagent in Step 2
+Classify each changed hunk — change type (LOGIC/STRUCTURE/CONFIG/TEST/IMPORT) and risk
+signals (SECURITY, DATA_MUTATION, ERROR_HANDLING, CONCURRENCY, EXTERNAL_API,
+MIDDLEWARE) — into an ephemeral (not persisted) fingerprint passed to every subagent,
 so review effort concentrates where the risk actually is.
 
 ## Step 2: Parallel Review Subagents
 
-Split the changed files across subagents however the diff suggests — by domain, by
-module, by whatever grouping means each subagent can hold its slice in one context. One
-hard constraint, because it's what bounds recursion: check the depth budget first —
-`depth_remaining <= 1` → review inline, no subagents. Each subagent gets the active pack
-rules, the stack-specific pattern file, its file list, and this prompt shape:
+Split the changed files across subagents however the diff suggests. One hard
+constraint, because it bounds recursion: `depth_remaining <= 1` → review inline, no
+subagents. Each subagent gets the pack rules, the stack pattern file, the fingerprint,
+its file list, and this prompt shape:
 
 ```
 For each issue: Severity (CRITICAL/HIGH/MEDIUM/LOW), Confidence (0.0-1.0), Category
 (logic/security/performance/quality/standards/architecture/test-gap), file:line,
 Description, Suggestion.
 
-Read the ENTIRE file (not just the diff) for context — the changed lines are what you
-judge, the rest of the file is how you judge them. Report what you'd defend in review:
-Step 4 discards anything below the configured confidence threshold, so a genuine
-low-confidence finding costs nothing, but style preferences that violate no pack rule and
-patterns consistent with the rest of the codebase are noise either way. Classify each
-finding REGRESSION (was working, now broken — highest priority) / NEW ISSUE /
-PRE-EXISTING (lower priority).
+Read the ENTIRE file (not just the diff) — the changed lines are what you judge, the
+rest of the file is how you judge them. Report what you'd defend in review: findings
+below the confidence threshold are discarded later, so a genuine low-confidence finding
+costs nothing, but style preferences that violate no pack rule are noise either way.
+Classify each finding REGRESSION (was working, now broken — highest priority) /
+NEW ISSUE / PRE-EXISTING (lower priority).
 ```
 
-**If `ocr_status == ready`:** OCR (run per `docs/recommended-setup.md`) owns line-level
-defect detection — the subagent focuses on pack rules, security hot paths, AI-code
-detection, architecture drift, test gaps, and intent validation, and folds OCR's
-`[OCR]`/`[OCR+TEMPER]` findings in. Otherwise it runs everything below itself.
+If `ocr_status == ready`, OCR owns line-level defect detection; the subagent covers
+pack rules, security, AI-code detection, architecture drift, test gaps, and intent
+validation, folding in OCR's `[OCR]` findings.
 
-**Performance patterns to flag:** N+1 queries (loop body calling db/API, unbounded count,
-no batching → HIGH), missing pagination (list endpoint with no limit/offset/cursor and
-unbounded growth → HIGH), unbounded recursion/operations (no depth limit or timeout →
-MEDIUM), sync I/O in a request handler / hot path (→ HIGH), `O(n²)` `Array.includes`/
-`find` in a loop over >10 items (→ MEDIUM, suggest Set/Map), and shared mutable state
-mutated non-atomically in a concurrent handler (counter++, push() with no lock → HIGH; no
-sync primitive at all → MEDIUM).
+**Performance severity floors:** N+1 query, missing pagination on an unbounded list,
+sync I/O in a hot path, non-atomic shared-state mutation in a concurrent handler →
+HIGH; unbounded recursion, O(n²) membership scan in a loop, concurrent access with no
+sync primitive at all → MEDIUM.
 
-**Security (MCP-first):** if the semgrep MCP server is available and `tools.mode` isn't
-`heuristic-only`: `security_check` on changed files, map error→CRITICAL, warning→HIGH,
-info→MEDIUM, label `[PROVEN]`, always shown (bypasses confidence filtering). No semgrep →
-run the checklist below, label `[HEURISTIC]`.
+**Security (MCP-first):** semgrep MCP available and `tools.mode` isn't
+`heuristic-only` → `security_check` on changed files, error→CRITICAL, warning→HIGH,
+info→MEDIUM, label `[PROVEN]`. Else review heuristically, label `[HEURISTIC]`. For
+files the fingerprint flagged: trace call chains to the changed function and check each
+boundary — unauthenticated code needs rate limiting, authenticated needs an
+ownership/authorization check, admin needs a role check, input needs validation, output
+must not leak sensitive data — and verify a test exists per boundary. CRITICAL:
+reachable from unauthenticated input, missing authz on a privileged op, sensitive data
+in errors/logs. HIGH: untested boundary, missing input validation, error handler
+exposing internals, HTTP server with neither security middleware nor an error handler.
+MEDIUM: a public API missing CORS/security headers.
+**Security findings always bypass confidence filtering** — the one category that must
+never go silent because of a threshold.
 
-**Security hot path review** (files the fingerprint flagged CRITICAL/HIGH): trace every
-call chain to the changed function (grep all usages, classify each as an entry point —
-HTTP handler / background job / library call — and whether it's auth-gated); check
-boundaries (unauthenticated code needs rate limiting, authenticated code needs an
-ownership/authorization check, admin code needs a role check, input needs
-validation/sanitization, output needs escaping of sensitive data); verify a test exists
-for each boundary (unauthorized access, boundary violation, no stack-trace leakage).
-CRITICAL: reachable from unauthenticated input, missing authorization on a privileged op,
-sensitive data leaked in errors/logs. HIGH: an untested boundary, missing input
-validation, an error handler exposing internals. Also check the app entry point for
-security middleware (cors/helmet/rate-limit) and an error handler — HIGH if an HTTP
-server has neither, MEDIUM if a public API is missing CORS/security headers. **Security
-findings always bypass confidence filtering — this is the one category that must never
-go silent because of a threshold.**
-
-**AI-code detection** (apply to every file — this is what the notifications and
-orders-api fixtures actually depend on, keep it real):
+**AI-code detection** (apply to every file):
 
 | Pattern | Detect by | Severity |
 |---|---|---|
@@ -130,142 +107,97 @@ orders-api fixtures actually depend on, keep it real):
 
 ## Step 3: Intent + Test Validation (if `intent.md` exists)
 
-**Method disclaimer, stated once for the whole section:** this step has a mechanical
-layer (provable by tools — a test exists, it passes, a grep matches) and a semantic layer
-(Claude's judgment — does this assertion actually cover the Then clause, does this
-implementation really solve the stated problem). Label every verdict with which kind it
-is; semantic labels are directional, not proof, and no amount of reading code replaces
-running it.
+Every verdict is labeled **mechanical** (provable by tools) or **semantic** (judgment —
+directional, not proof).
 
-**a. BDD (mechanical):** each `Scenario:` → a corresponding test → the test passes.
-Report as a checklist.
-
-**b. IDD (structured):** for each Success Criterion, run its `Validate:` method — `scenario`
-(linked scenario's test passes, ✅/❌) / `code` (grep for the named endpoint/config, ✅/❌) /
-`metric` (can't verify pre-deploy, 📊 deferred) / `manual` (🔍 flagged for a human). Check
-each constraint was respected. Overall verdict: satisfied / partially satisfied (name the
-gaps) / not satisfied, plus "{N} mechanical, {N} deferred, {N} manual". No `intent.md` →
-fall back to the linked issue/ticket, same three-way verdict.
-
-**c. Semantic test quality (per scenario with a passing test):** locate its test (from
-the Scenario Coverage Checklist, or grep the scenario name/annotation). Mechanical
-sub-checks first — zero assertions → **TRIVIAL** (proven, no judgment needed); does any
-asserted variable name appear in the Then clause's keywords → if not, **WEAK**
-(mechanical mismatch). Otherwise, judge structural alignment (Given→setup, When→action,
-Then→assertion) and assertion depth — flag an assertion that checks less than the Then
-clause claims, accept indirect assertions (helper/matcher) that semantically cover it,
-and when unsure, don't flag. Label **STRONG** (meaningful, specific assertions covering
-Then) / **WEAK** (incomplete — MEDIUM issue) / **TRIVIAL** (always-passes — LOW issue).
-STRONG counts full and TRIVIAL counts zero toward the Intent Verdict's evidence ratio;
-WEAK counts half.
-
-**d. Problem-statement traceback (semantic, the big picture):** re-read the Problem
-field, read the implementation, ask "does this actually solve the stated problem" —
-flag drift (problem says X, code does a different Y) or a gap (problem says multi-user,
-code handles one). This produces its own semantic verdict; **reconcile** with (b)'s
-mechanical verdict by taking the more conservative of the two (any "not satisfied" wins;
-all "satisfied" wins; otherwise "partially satisfied").
-
-**e. Decision-point coverage (LOW, informational):** scan changed files for business-
-logic branches (if/else outcomes, multi-type catch blocks, switch/case, early returns
-with different results) — excluding null-guards, logging branches, and framework
-boilerplate. No matching scenario for a branch → flag it as a suggested addition, not a
-blocker. Scoped to changed files only.
-
-**f. Live mutation spot-check — the only step that actually proves a test catches a bug**
-(everything else above is reading code and forming an opinion): for up to 3
-CRITICAL/HIGH security-sensitivity files with tests — run the target test once to
-confirm it's green; make one minimal mutation (flip a comparison, drop a required side
-effect, change an error code); re-run the same test; **fails → PROVEN** (restore the
-code); **still passes → UNVERIFIED** (restore the code, flag: CRITICAL if the function is
-security-critical, else HIGH — "strengthen this test"). Always restore the original code
-immediately, whatever the outcome. Skip if the test command isn't runnable in this
-environment.
+- **a. BDD (mechanical):** each `Scenario:` → a corresponding test → it passes.
+  Checklist.
+- **b. IDD (structured):** per Success Criterion, run its `Validate:` method —
+  `scenario` / `code` (grep) → ✅/❌, `metric` → 📊 deferred, `manual` → 🔍 flagged.
+  Verdict: satisfied / partially satisfied (name the gaps) / not satisfied, plus
+  "{N} mechanical, {N} deferred, {N} manual". No intent.md → same verdict against the
+  linked ticket.
+- **c. Test quality (per covered scenario):** zero assertions → **TRIVIAL**; no
+  asserted variable appears in the Then clause's keywords → **WEAK** (mechanical);
+  otherwise judge Given→setup/When→action/Then→assertion alignment and depth — accept
+  indirect assertions that semantically cover the Then; unsure → don't flag. STRONG
+  counts full, WEAK half, TRIVIAL zero toward the verdict's evidence ratio; WEAK is a
+  MEDIUM issue, TRIVIAL a LOW.
+- **d. Problem-statement traceback (semantic):** does the implementation solve the
+  stated Problem — flag drift or gaps. Reconcile with (b) by taking the more
+  conservative verdict.
+- **e. Decision-point coverage (LOW, informational):** business-logic branches in
+  changed files with no matching scenario → suggested addition, never a blocker.
+- **f. Live mutation spot-check** — the only step that proves a test catches a bug: for
+  up to 3 CRITICAL/HIGH security-sensitive files with tests, confirm green → one
+  minimal mutation → re-run. Fails → **PROVEN**; still passes → **UNVERIFIED** (flag
+  CRITICAL if security-critical, else HIGH). Always restore the original code
+  immediately, whatever the outcome. Skip if tests aren't runnable here.
 
 ## Step 3.5: Deep Doubt Mode (adversarial pass)
 
-Activate on `--doubt`, automatically for a large/CRITICAL blast radius (3+ modules or a
-CRITICAL security hunk), or on request. Main orchestrator only — a subagent may not spawn
-its own doubt mode (no recursive adversarial loops). Extract every claim the diff makes
-("handles all errors", "thread-safe", "backward-compatible"); strip author intent and
-comments, read only the logic; attack each claim (what input breaks it, what race
-violates the invariant, what depends on the old behavior). Classify **contract-misread**
-(violates its own documented contract, CRITICAL) / **actionable** (real bug, HIGH) /
-**trade-off** (non-obvious downside, MEDIUM) / **noise** (suppress). Max 3 cycles; stop
-early on an all-noise cycle; one more cycle after a real finding, then stop. Findings get
-a `[DOUBT]` prefix; contract-misread bypasses confidence filtering.
+On `--doubt`, automatically for a large/CRITICAL blast radius (3+ modules or a CRITICAL
+security hunk), or on request. Main orchestrator only — a subagent never spawns its own
+doubt mode. Extract every claim the diff makes; read only the logic (not comments);
+attack each claim. Classify **contract-misread** (CRITICAL, bypasses confidence
+filtering) / **actionable** (HIGH) / **trade-off** (MEDIUM) / **noise** (suppress). Max
+3 cycles; stop early on an all-noise cycle; one more cycle after a real finding, then
+stop. `[DOUBT]` prefix.
 
 ## Step 3.55: Stale CLAUDE.md Check (LOW, informational)
 
-If the diff invalidates something `CLAUDE.md`/`AGENTS.md` states — a renamed command,
-a moved directory, a convention the change abandons, a "things Claude gets wrong"
-entry this diff just fixed structurally — flag it as a LOW finding naming the stale
-line. Don't edit the file from review; queue it as a `config-update` suggestion (the
-same Accept/Reject gate Check's suggestions use, `reference/config-suggestions.md`).
-An instruction file that lags the code misleads every future session that loads it.
+Diff invalidates something `CLAUDE.md`/`AGENTS.md` states → LOW finding naming the
+stale line; queue a `config-update` suggestion (`reference/config-suggestions.md`) —
+never edit the file from review.
 
 ## Step 3.6: Cross-File Pattern Consistency
 
-For each changed file, extract its error-handling / API-response / validation / async
-pattern and grep the same-type files (services, controllers, tests) for the established
-pattern. A genuinely new pattern that isn't documented as an intentional improvement in
-`intent.md`/`tasks.md` → MEDIUM "pattern drift" finding, confidence 0.6 (heuristic).
-Track dominant pattern + exceptions in `.temper/review-memory.json`'s `patterns` key;
-3+ dismissals of the same drift type → auto-suppress it.
+Per changed file, compare its error-handling / API-response / validation / async
+pattern against same-type files. A new pattern not documented as intentional in
+`intent.md`/`tasks.md` → MEDIUM "pattern drift", confidence 0.6. Track dominant
+pattern + exceptions in `review-memory.json.patterns`; 3+ dismissals of the same drift
+type → auto-suppress.
 
 ## Step 3.7: API Contract Validation
 
-Triggers when a changed file matches a controller/route/DTO/request/response/shared-type
-path, or an OpenAPI/GraphQL schema. Diff old (removed) vs. new (current) contract shape
-per endpoint — ADDITIVE (new field/endpoint/optional param, LOW risk) / MODIFIED
-(type change, required↔optional, HIGH risk) / BREAKING (required field removed, endpoint
-renamed, incompatible type, CRITICAL). Grep tests/frontend/type-imports/event-subscribers
-for consumers; BREAKING with any consumer not updated → BLOCK; MODIFIED with no consumer
-tests → WARN; ADDITIVE → INFO. Report per endpoint with consumer status. CRITICAL/HIGH
-contract findings bypass confidence filtering.
+When a changed file is a controller/route/DTO/shared type or an OpenAPI/GraphQL schema:
+diff old vs. new contract per endpoint — ADDITIVE (LOW) / MODIFIED (type or
+required↔optional change, HIGH) / BREAKING (removed/renamed/incompatible, CRITICAL).
+Grep for consumers; BREAKING with any consumer not updated → BLOCK; MODIFIED with no
+consumer tests → WARN; ADDITIVE → INFO. Report per endpoint with consumer status. CRITICAL/HIGH contract
+findings bypass confidence filtering.
 
 ## Step 3.8: Architecture Depth (optional, gate-offered)
 
-When the `architecture-depth` pack is enabled and the user selects it at the review gate:
-read `reference/architecture-depth.md` and run its 5-dimension analysis (seams, adapters,
-locality, leverage, deletion test) on changed modules, ADR compliance included. Findings
-get a `[ARCH-DEPTH]` prefix, folded into the main list, standard confidence filtering.
+`architecture-depth` pack enabled and selected at the gate → run
+`reference/architecture-depth.md`'s 5-dimension analysis on changed modules; `[ARCH-DEPTH]`
+prefix, standard filtering.
 
 ## Step 4: Confidence Filtering
 
-Pack-rule findings (BLOCK/WARN/SUGGEST) override the confidence threshold — a BLOCK rule
-finding is always shown. Otherwise: below `review.confidence-threshold` (default 0.7) →
-discard entirely (not shown, not counted, not stored). Check `review-memory.json`: 5+
-prior dismissals of this pattern → suppress; 3-4 → downgrade severity one level. Severity
-from pack rules: BLOCK→CRITICAL, WARN→HIGH/MEDIUM, SUGGEST→LOW.
+Pack-rule findings override the threshold (BLOCK→CRITICAL, WARN→HIGH/MEDIUM,
+SUGGEST→LOW — always shown). Otherwise: below `review.confidence-threshold` (default
+0.7) → discard entirely (not shown, not counted, not stored). From
+`review-memory.json`: 5+ prior dismissals of the pattern → suppress; 3-4 → downgrade
+one severity level.
 
 ## Summary + Gate
 
-```
-+-----------------------------------------------------------+
-| REVIEW — {Feature Name}                                   |
-+-----------------------------------------------------------+
-| Fingerprint: {N} files, {N} hunks, {N} CRITICAL/{N} HIGH security |
-| Issues: Critical {N} High {N} Medium {N} Low {N}  Auto-fixable {N} |
-| Security hot paths / Cross-file consistency / Contract changes    |
-|   (sub-panels shown only when each step actually ran)             |
-| Scenario coverage: {X}/{Y} (STRONG + 1/2 WEAK per Step 3c)         |
-| Top issues: [{severity}] {file}:{line} — {one-liner}               |
-| Intent verdict (if intent.md): {satisfied/partial/not met}         |
-|   Evidence {X}/{Y} scenarios; mutation spot-check {N} PROVEN/{N} UNVERIFIED |
-+-----------------------------------------------------------+
-```
+The base summary box format is owned by `agents/review.md` — render it, appending a
+line per step that actually ran (fingerprint, security hot paths, cross-file
+consistency, contract changes, mutation spot-check {N} PROVEN/{N} UNVERIFIED) and the
+top issues as `[{severity}] {file}:{line} — {one-liner}`.
 
-`AskUserQuestion`: "Fix all & continue to Check (Recommended)" (apply every fix including
-LOW, re-run review once — single pass, no subagents, max 1 more loop — then proceed) /
-"Save for later". A change typed via "Other" is never approval — make the edit, re-show
-this same gate; the user must explicitly pick "Fix all & continue" to advance.
+`AskUserQuestion` (standalone mode only): "Fix all & continue to Check (Recommended)"
+(apply every fix including LOW, re-run review once — single pass, no subagents — then
+proceed) / "Save for later". A change typed via "Other" is never approval — make the
+edit, re-show this same gate.
 
-## Auto-Fix (Step 6 — only from the "Fix all" flow above, never standalone)
+## Auto-Fix (only from the "Fix all" flow, never standalone)
 
-Apply each HIGH+ auto-fixable issue's suggested fix, run the relevant tests. Re-run
-review once (single pass) to verify. Total auto-fix loops across the gate + this step:
-max 2; issues still open after that → show them to the user rather than looping again.
+Apply each HIGH+ auto-fixable fix, run the relevant tests, re-run review once. Total
+auto-fix loops across the gate + this step: max 2; still open after that → show the
+user rather than looping again.
 
 ## Context Output
 
@@ -281,41 +213,39 @@ Write `review-context.json`:
 
 ## Feedback Loop to Build
 
-`feedback.enabled: true` and auto-fixable issues persist after Step 6: write
-`review-context.json` with what's left, loop to Build while `iteration <
-loops.max-per-type` (default 2); at the budget, stop and show the user instead. The same
-issue surviving 2 consecutive loops stops immediately rather than looping again.
+`feedback.enabled: true` and auto-fixable issues persist after auto-fix → loop to Build
+with `review-context.json` while `iteration < loops.max-per-type` (default 2); at the
+budget, stop and show the user. The same issue surviving 2 consecutive loops stops
+immediately.
 
 ## Metrics + Memory
 
-Append to `.temper/metrics.json`: `reviews.total += 1`, `issues_found`, per-severity and
-per-category counts, `auto_fixed`, `confidence_avg`. Then update the **single finding
-memory**, `.temper/review-memory.json.patterns[{key}]` (key = category + file-path
-prefix + the first few description keywords): `total_shown`/`accepted`/`dismissed`,
-`last_seen`, and `acceptance_rate = accepted/total_shown`. This one store drives both
-promotion and suppression — there is no separate learning file:
+Append to `.temper/metrics.json`: `reviews.total += 1`, `issues_found`, per-severity
+and per-category counts, `auto_fixed`, `confidence_avg`. Then update the single finding
+memory, `.temper/review-memory.json.patterns[{key}]` (key = category + file-path prefix
++ first description keywords): `total_shown`/`accepted`/`dismissed`, `last_seen`,
+`acceptance_rate = accepted/total_shown`. This one store drives both promotion and
+suppression — there is no separate learning file:
 
 - **Promote** (surfaced at `/temper:status`, never auto-applied): 3+ accepted at
-  acceptance_rate ≥ 70% → suggest a **WARN** rule; 5+ accepted at ≥ 80% and the
-  category is security or architecture → suggest a **BLOCK** rule. The human picks
-  BLOCK / WARN / keep-advisory; an accepted rule is written into the active pack's
-  `rules.md`.
-- **Suppress**: 3+ dismissals at acceptance_rate < 30% → downgrade the pattern one
-  severity level; 5+ at < 10% → auto-suppress (Step 4 then drops it).
+  acceptance_rate ≥ 70% → suggest a **WARN** rule; 5+ at ≥ 80% in security or
+  architecture → suggest a **BLOCK** rule. The human picks BLOCK / WARN /
+  keep-advisory; an accepted rule is written into the active pack's `rules.md`.
+- **Suppress**: 3+ dismissals at acceptance_rate < 30% → downgrade one severity level;
+  5+ at < 10% → auto-suppress (Step 4 then drops it).
 
 Context-specific dismissals (`config/` paths, test fixtures, DTOs, listed legacy
-modules, `@generated` headers) are tracked and suppressed **independently per context**
-— dismissed in `auth/` doesn't suppress the same pattern in `payments/`; ask "this file
-only, or all {context} files?" on dismissal.
+modules, `@generated` headers) are tracked per context — dismissed in `auth/` doesn't
+suppress the pattern in `payments/`; ask "this file only, or all {context} files?" on
+dismissal.
 
 ## Multi-Agent Severity Consensus
 
-Same severity from every subagent → keep it. Mixed → take the highest (conservative). One
-agent alone finds CRITICAL and every other agent found nothing on that code → downgrade
-to HIGH (a lone CRITICAL is unreliable). Category disagreement → default to `quality`.
+Same severity everywhere → keep. Mixed → highest wins. A lone CRITICAL no other
+subagent saw on that code → downgrade to HIGH. Category disagreement → `quality`.
 
 ## Automatic Next Step
 
-CRITICAL/HIGH remain after auto-fix → show the report, ask the user. All clean → auto-
-chain to `/temper:check`. Invoked manually (not chained from Build) → always show the
-report and ask, regardless of findings.
+CRITICAL/HIGH remain after auto-fix → show the report, ask. All clean and chained from
+Build → auto-chain to `/temper:check`. Invoked manually → always show the report and
+ask, regardless of findings.

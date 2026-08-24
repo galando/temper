@@ -13,6 +13,19 @@ argument-hint: "<feature-name-or-JIRA-123>"
 
 > **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/reference/plan.md`
 
+### Subprocess Mode
+
+If `$CLAUDE_PLUGIN_ROOT/scripts/temper config get stages.subprocess false` returns
+`true`, don't run the methodology inline (skip the reference read and Quick Reference
+below). Launch the same isolated subprocess `/temper` uses — model from `temper model
+plan`, prompt: *"Follow $CLAUDE_PLUGIN_ROOT/agents/plan.md exactly. Feature:
+$ARGUMENTS. Spec path: .temper/specs/{feature-slug}. Standalone run — no orchestrated
+Intent stage ran: author intent.md yourself per reference/plan.md's standalone case,
+and pass --spec-path .temper/specs/{feature-slug} to every temper gate call."* Print
+the returned box verbatim, then run both gates + the approval `AskUserQuestion` per
+**Deterministic Gate** below — the subprocess is headless and already recorded its
+evidence; the human gate stays in this context either way.
+
 ### Quick Reference
 
 1. Detect input (Jira/GitHub/description)

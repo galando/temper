@@ -44,5 +44,15 @@ orchestrator's conversation carries over.
 4. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
-Return only: the check summary box, validation results per level, and any scenario
-verification gaps.
+Return only: this summary box (the orchestrator prints it verbatim), validation results
+per level, and any scenario verification gaps:
+
+```
++-----------------------------------------------------------+
+| CHECK — {Feature Name}                                    |
++-----------------------------------------------------------+
+| Compile: {ok}   Tests: {N} passed   Lint: {ok}             |
+| Coverage: {X}% (threshold {Y}%)   Security: {ok}           |
+| SCENARIOS: {N}/{N} traced to tests ({gaps by name})        |
++-----------------------------------------------------------+
+```

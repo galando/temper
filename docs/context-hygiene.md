@@ -35,6 +35,27 @@ must produce and the handful of rules a strong model would not derive on its own
 cost per Plan run with equal blast-radius recall. Hard rules survive where a gate
 mechanically checks them, and nowhere else.
 
+**Briefs are self-contained; orchestrators relay.** Every stage runs as an isolated
+Agent subprocess launched from a small `agents/{stage}.md` brief, and (v9.1) the brief
+carries everything the subprocess needs — including the summary box it returns — so a
+clean context never reads the 20KB orchestrator file to fetch an 8-line template. The
+orchestrator prints the returned box verbatim rather than restating formats, and
+`commands/fix.md` launches its stages through the same briefs instead of inlining its
+own copies of their prompts (22.9KB → 7.1KB in v9.1).
+
+**Opt-in features load on opt-in.** Autonomous Continuation's mechanics live in
+`reference/autonomy.md` (v9.1), read only when a project sets `autonomy.enabled: true` —
+the default interactive run pays a five-line stub, not the feature. The same shift
+dieted `reference/review.md` from 19.6KB to 13.6KB: what survived is policy a reviewer
+would not derive alone (severity floors, filter bypasses, memory thresholds); what left
+was choreography.
+
+**Standalone commands can borrow the subprocess isolation.** `stages.subprocess: true`
+makes `/temper:plan` through `/temper:check` run in the same clean `agents/{stage}.md`
+subprocess the unified `/temper` uses, returning only the summary box and gate verdict
+to your session — the default stays inline, because mid-stage interactivity is the
+point of running a stage standalone.
+
 **Rules live in the CLI, not in prose.** Every gate verdict is computed by
 `scripts/temper` from an evidence ledger. A prompt that restated gate logic would be a
 second copy to drift; instead the prompts quote the gate function or point at it. Same

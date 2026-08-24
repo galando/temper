@@ -31,5 +31,14 @@ listed in your launch prompt. Nothing from the orchestrator's conversation carri
 4. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
-Return only: the build summary box, the list of files changed, test pass/fail counts,
-and any blockers.
+Return only: this summary box (the orchestrator prints it verbatim), the list of files
+changed, test pass/fail counts, and any blockers:
+
+```
++-----------------------------------------------------------+
+| BUILD — {Feature Name}                                    |
++-----------------------------------------------------------+
+| Tasks: {N}/{N} complete   Tests: {N} added, all passing    |
+| Files: {N} created, {N} modified                           |
++-----------------------------------------------------------+
+```

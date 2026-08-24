@@ -510,9 +510,15 @@ setup
 assert_eq "model plan defaults to agents/plan.md frontmatter" \
   "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); print; exit}' "$REPO_ROOT/agents/plan.md")" \
   "$("$TEMPER" model plan)"
-assert_eq "model --all emits one stage=model line per agent stage" "6" "$("$TEMPER" model --all | grep -c '^[a-z]*=')"
-assert_eq "model --all covers every agent stage" "intent plan design build review check" \
+assert_eq "model --all emits one stage=model line per agent stage" "8" "$("$TEMPER" model --all | grep -c '^[a-z]*=')"
+assert_eq "model --all covers every agent stage (incl. fix-command stages)" "intent plan design build review check rca fix" \
   "$("$TEMPER" model --all | cut -d= -f1 | tr '\n' ' ' | sed 's/ $//')"
+assert_eq "model rca defaults to agents/rca.md frontmatter" \
+  "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); print; exit}' "$REPO_ROOT/agents/rca.md")" \
+  "$("$TEMPER" model rca)"
+assert_eq "model fix defaults to agents/fix.md frontmatter" \
+  "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); print; exit}' "$REPO_ROOT/agents/fix.md")" \
+  "$("$TEMPER" model fix)"
 assert_exit "model rejects an unknown stage" 1 "$TEMPER" model bogus
 assert_exit "model rejects 'commit' (not an Agent stage)" 1 "$TEMPER" model commit
 

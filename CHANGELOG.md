@@ -3,6 +3,51 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.1.0 — the token-efficiency release
+
+Subagent architecture completed and prompt surface cut. No gate or state behavior
+changes.
+
+- **`/temper:fix` gets the v7 treatment it missed.** `commands/fix.md` was still the
+  pre-v7 shape — four hand-rolled inline agent prompts plus four inline summary-box
+  templates, duplicating (and drifting from) the contracts in `agents/review.md` /
+  `agents/check.md`. New `agents/rca.md` and `agents/fix.md` briefs now carry the
+  RCA/Fix stage contracts (methodology pointer, evidence commands, the
+  `regression_test` write-shield arming, return box); `commands/fix.md` is a lean
+  orchestrator that launches all four stages via their briefs — 22.9KB → 7.1KB (−69%)
+  of main-context prompt on every `/temper:fix` run, and one copy of each stage
+  contract instead of two.
+- **Agent briefs define the summary box they return — one box per stage.**
+  `agents/intent.md` and `agents/plan.md` used to say "see `commands/temper.md`" for
+  the box format — a clean-context subprocess following that pointer read the entire
+  21KB orchestrator to fetch an 8-line template, defeating the isolation it was
+  launched with. Every brief now carries its own return box; the orchestrators print
+  the returned box verbatim instead of restating formats, and `reference/review.md` /
+  `reference/check.md` no longer carry competing box templates (they list only the
+  extra sub-panel lines the standalone rendering appends).
+- **`reference/review.md` gets the v8 outcome-brief treatment** — 19.6KB → 13.6KB
+  (−31%). Everything that survived is policy a strong reviewer would not derive alone:
+  severity floors, filter bypasses (security/BLOCK/contract findings), STRONG/WEAK/
+  TRIVIAL weighting, the mutation-spot-check protocol, promotion/suppression
+  thresholds. What left was choreography and keyword lists. All numeric thresholds and
+  the AI-code detection table (which the seeded-defect evals depend on) are unchanged.
+  Unlike the v8 plan diet, this pass has no controlled A/B behind it yet — the eval
+  fixtures are the regression net.
+- **Autonomy loads on opt-in.** Autonomous Continuation's mechanics moved to
+  `reference/autonomy.md`, read only when `autonomy.enabled: true` at the plan gate.
+  The default interactive run keeps a five-line stub stating the two safety
+  invariants (never auto-commits; Intent gate always interactive).
+- **`stages.subprocess: true`** (new config, default `false`) runs the standalone
+  stage commands (`/temper:plan`, `:design`, `:build`, `:review`, `:check`) in the
+  same isolated `agents/{stage}.md` subprocess the unified `/temper` uses — only the
+  summary box and gate verdict return to your session. Default stays inline:
+  mid-stage interactivity is the point of standalone stages. `/temper:intent` is
+  always inline (interactive capture).
+- `temper model` resolves the new stages: `AGENT_STAGES` gains `rca` and `fix`
+  (`model --all` now prints 8 lines; `models.rca` / `models.fix` config overrides
+  work like every other stage). rca/fix remain state-sequence and model stages only —
+  never gate stages; Fix evidence still gates as `build`. 191 CLI assertions green.
+
 ## v9.0.0 — the intent-gated pipeline
 
 Breaking: the pipeline gains a stage, the commit gate gets stricter, and a subsystem

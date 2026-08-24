@@ -24,7 +24,7 @@ every gate is the ordinary interactive one. Config: `.claude/temper.config` → 
 a model. `git commit` is blocked by a native pre-commit hook + an in-agent PreToolUse
 hook whenever a gate is FAIL and unoverridden — see `packs/hooks/rules.md`.
 
-**Version:** 9.0.0 — see `CHANGELOG.md` for history.
+**Version:** 9.1.0 — see `CHANGELOG.md` for history.
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/docs/history/`
 
@@ -37,9 +37,10 @@ CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/d
   (seeded-defect fixtures).
 - Known mistakes: a gate-mechanics change is a `scripts/temper` edit + a
   `test-temper.sh` case, not a prompt edit; hooks must fail OPEN except their one
-  detected-violation path; never re-add per-stage logic to `commands/temper.md` — it
-  belongs in `agents/{stage}.md`; new commands must be listed in
-  `.claude-plugin/plugin.json`.
+  detected-violation path; never re-add per-stage logic to `commands/temper.md` or
+  `commands/fix.md` — it belongs in `agents/{stage}.md` (including the stage's return
+  box: a brief must never point a clean-context subprocess at an orchestrator file);
+  new commands and agents must be listed in `.claude-plugin/plugin.json`.
 
 <!-- Nothing follows. A generated "Token Optimization Insights" section, delimited by
      TOKENOMICS:START / TOKENOMICS:END markers, used to be re-injected here every

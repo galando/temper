@@ -29,5 +29,17 @@ orchestrator's conversation carries over except the prompt you were launched wit
 5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
-Return only: the plan summary box (see `commands/temper.md`), the spec path, the
-complexity tier (trivial/simple/medium/complex), and the risk level.
+Return only: this summary box (the orchestrator prints it verbatim), the spec path,
+the complexity tier, and the risk level:
+
+```
++-----------------------------------------------------------+
+| PLAN — {Feature Name}                                     |
++-----------------------------------------------------------+
+| INTENT: {one-line problem} -> {success criteria}           |
+| SCENARIOS: {N} ({list})                                    |
+| ARCHITECTURE: create {N} files, modify {N} files            |
+| COMPLEXITY: {trivial|simple|medium|complex}  RISK: {L/M/H}  |
++-----------------------------------------------------------+
+{ASCII art diagram — box-drawing characters, never raw mermaid source}
+```
