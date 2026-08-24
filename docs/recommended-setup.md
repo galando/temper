@@ -63,6 +63,17 @@ ocr review --preview --from HEAD~1 --to HEAD
 
 **Configure OCR's LLM:** OCR needs its own LLM configuration (API key, model). See the [open-code-review docs](https://github.com/alibaba/open-code-review) for setup.
 
+**How findings merge into a review** (the mechanics `/temper:review` applies when
+`tools.ocr.mode` isn't `off` and `ocr` is ready): Review runs `ocr review --format json
+--audience agent` over the diff range under a timeout, parses `comments[]`, and maps
+each to a severity/category from its prose (`Critical Bug`/`Vulnerability` → CRITICAL,
+`Bug`/`Security Issue` → HIGH, `Warning`/`Performance` → MEDIUM, else LOW; SQLi/XSS/secret
+→ security, NPE/null → logic, N+1/query → performance, else quality), labeled `[OCR]`. A
+finding within ±2 lines of one Temper already found, same category family, merges to
+`[OCR+TEMPER]` at the higher severity. A runtime failure (non-zero/timeout) degrades to
+Temper's own review — it never blocks; only `mode: require` with `ocr` *absent* blocks,
+with the install command.
+
 **Troubleshooting:**
 
 | Issue | Fix |

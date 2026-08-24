@@ -41,20 +41,25 @@ else
   fail "docs/commands.md or commands/ not found"
 fi
 
-# 2. All markdown links in docs/ resolve to existing files
-# Skip .html extensions (Jekyll-generated). Try bare path, then path.md
+# 2. All markdown links in docs/ resolve to existing files.
+# Resolve each link relative to the DIRECTORY OF THE FILE THAT CONTAINS IT — the way
+# GitHub and Jekyll actually resolve a relative link. (Resolving from docs/ root instead
+# passes a link that 404s in a subdirectory file, e.g. `decisions/x.md` written inside
+# docs/decisions/y.md — the exact bug this check exists to catch.) Skip .html (Jekyll).
 BROKEN_LINKS=$(
-  find "$REPO_ROOT/docs" -name "*.md" -exec grep -oE '\]\([^)]+\)' {} \; 2>/dev/null | \
-  grep -vE 'http|mailto|\.html' | \
-  sed 's/\](//;s/)//' | while read -r link; do
-    FILE=$(echo "$link" | sed 's/#.*//')
-    [[ -z "$FILE" ]] && continue
-    # Resolve relative to docs/
-    TARGET="$REPO_ROOT/docs/$FILE"
-    # Try as-is, then with .md extension
-    if [[ ! -e "$TARGET" && ! -e "${TARGET}.md" ]]; then
-      echo "$link"
-    fi
+  find "$REPO_ROOT/docs" -name "*.md" -print | while read -r src; do
+    grep -oE '\]\([^)]+\)' "$src" 2>/dev/null | grep -vE 'http|mailto|\.html' | \
+    sed 's/\](//;s/)//' | while read -r link; do
+      FILE=$(echo "$link" | sed 's/#.*//')
+      [[ -z "$FILE" ]] && continue
+      case "$FILE" in
+        /*) TARGET="$REPO_ROOT/docs${FILE}" ;;          # absolute-from-docs-root
+        *)  TARGET="$(dirname "$src")/$FILE" ;;         # relative to the containing file
+      esac
+      if [[ ! -e "$TARGET" && ! -e "${TARGET}.md" ]]; then
+        echo "$link (in ${src#$REPO_ROOT/})"
+      fi
+    done
   done || true
 )
 
@@ -92,8 +97,8 @@ else
 fi
 
 # 5. No token-optimization advice in the project CLAUDE.md's *rendered* text.
-# Tokenomics is retired (reference/tokenomics.md); an external tool used to re-inject a
-# TOKENOMICS block of standing advice into every session's context.
+# Tokenomics is retired (docs/history/tokenomics.md); an external tool used to re-inject
+# a TOKENOMICS block of standing advice into every session's context.
 #
 # This checks what the file actually contributes to context, i.e. after HTML comments are
 # stripped — not the raw source. A raw grep passes a comment that quotes the marker
@@ -112,7 +117,7 @@ hits = [m for m in markers + advice if m.lower() in visible.lower()]
 print('; '.join(hits))
 " "$PROJECT_CLAUDE_MD" 2>/dev/null)
   if [[ -n "$TOKENOMICS_LEAK" ]]; then
-    fail ".claude/CLAUDE.md leaks token-optimization advice into rendered context ($TOKENOMICS_LEAK) — tokenomics is retired (reference/tokenomics.md)"
+    fail ".claude/CLAUDE.md leaks token-optimization advice into rendered context ($TOKENOMICS_LEAK) — tokenomics is retired (docs/history/tokenomics.md)"
   else
     ok
   fi

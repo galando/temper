@@ -32,7 +32,7 @@
     "license": "https://opensource.org/licenses/MIT",
     "author": { "@type": "Person", "name": "Gal Naor", "url": "https://github.com/galando" },
     "programmingLanguage": "Markdown",
-    "version": "5.2.1"
+    "version": "9.0.0"
   }
   </script>
 
@@ -843,11 +843,10 @@
         <span>Temper</span>
       </a>
       <div class="nav-links">
-        <a href="#capabilities" style="color: var(--accent);">Capabilities</a>
-        <a href="#why">IDD+BDD+TDD</a>
-        <a href="#flow">How it works</a>
-        <a href="#packs">Packs</a>
-        <a href="#install">Install</a>
+        <a href="#loop">The Loop</a>
+        <a href="#evidence">Evidence</a>
+        <a href="#why">Methodology</a>
+        <a href="#commands">Commands</a>
         <a href="https://github.com/galando/temper" target="_blank">GitHub</a>
         <a href="#install" class="btn btn-primary">Get Started</a>
       </div>
@@ -858,9 +857,9 @@
     <div class="hero-grid">
       <div class="hero-content">
         <h1>Your AI writes fast.<br><em>Temper makes it last.</em></h1>
-        <p>IDD + BDD + TDD for AI-generated code. Deterministic quality gates, blast radius analysis, and intent-driven development. The AI discipline layer for Claude Code.</p>
+        <p>An intent-gated SDLC for AI-generated code. Every gate verdict is computed by a small auditable CLI from an evidence ledger &mdash; never asserted by a model &mdash; and a red gate physically blocks <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code>.</p>
         <div class="hero-actions">
-          <a href="#install" class="btn btn-primary">Install →</a>
+          <a href="#install" class="btn btn-primary">Install &rarr;</a>
           <a href="https://github.com/galando/temper" class="btn btn-secondary" target="_blank">View on GitHub</a>
         </div>
       </div>
@@ -871,79 +870,60 @@
   </header>
 
   <section id="quick-install">
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 800px; margin: 0 auto;">
+    <div style="max-width: 520px; margin: 0 auto;">
       <div class="install-card" style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: 6px; padding: 1.5rem;">
-        <h4 style="font-size: 1rem; font-weight: 600; margin-bottom: 1rem;">🟣 Claude Code</h4>
         <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 0.5rem;">
           <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; color: var(--fg-muted); overflow-x: auto; margin: 0;">/plugin marketplace add galando/temper
 /plugin install temper</pre>
           <button class="copy-btn" onclick="copyCode(this, '/plugin marketplace add galando/temper\n/plugin install temper')" style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 3px; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-family: 'IBM Plex Mono', monospace; color: var(--fg-muted); cursor: pointer;">Copy</button>
         </div>
-        <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">Commands available in any project.</p>
+        <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.5rem;">That&rsquo;s the whole install. Your first <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper "&hellip;"</code> sets the project up &mdash; config, scaffold, and the commit gate.</p>
       </div>
     </div>
   </section>
 
-  <section id="capabilities">
-    <div class="section-label">Capabilities</div>
-    <h2 class="section-title">The full SDLC, automated</h2>
-    <p class="section-desc">Temper runs the complete software development lifecycle — plan, design, build, review, check — with stage gates computed by a deterministic CLI, not asserted by a model.</p>
+  <section id="loop">
+    <div class="section-label">The Loop</div>
+    <h2 class="section-title">One pipeline, a human gate at every stage</h2>
+    <p class="section-desc">
+      <code style="background:var(--bg);padding:0.15rem 0.5rem;border-radius:3px;font-size:0.9em;">INTENT &rarr; PLAN &rarr; DESIGN? &rarr; BUILD &rarr; REVIEW &rarr; CHECK &rarr; COMMIT</code>
+    </p>
 
-    <div class="why-grid" style="grid-template-columns: repeat(4, 1fr);">
+    <div class="why-grid">
+      <div class="why-item">
+        <h4>Intent Gate First</h4>
+        <p>You approve the Problem and success criteria <strong>before any exploration or architecture spends tokens</strong>. A wrong intent multiplies into wrong everything &mdash; correcting it here costs words; after Plan it costs the plan.</p>
+      </div>
       <div class="why-item">
         <h4>Deterministic Gates</h4>
-        <p>Every gate — Plan, Build, Review, Check, Commit — is a PASS/FAIL computed by <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">temper gate</code> from an evidence ledger. <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code> is physically blocked while any gate is red and unoverridden.</p>
+        <p>Each stage&rsquo;s PASS/FAIL is computed by <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">temper gate</code> from an evidence ledger of real commands and exit codes. A red gate blocks <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code> via a native pre-commit hook; a human override is recorded with their identity, never erased.</p>
       </div>
       <div class="why-item">
-        <h4>Feedback Loops</h4>
-        <p>Review finds issues? Loop back to Build. Check fails tests? Targeted fix. Bad plan? Loop back to Plan. Circuit breakers: max 2 loops, same issue twice = stop.</p>
+        <h4>Scenarios Before Architecture</h4>
+        <p>BDD scenarios are derived from a <em>measured</em> blast radius, so every planned file traces to a behavior &mdash; the structural defense against over-engineering.</p>
       </div>
       <div class="why-item">
-        <h4>Design Phase</h4>
-        <p>System architecture, API contracts, database schema, integration points, and decision logs. Auto-skipped for simple features, enforced for complex ones.</p>
-      </div>
-      <div class="why-item">
-        <h4>Live Verification</h4>
-        <p>Every scenario runs against your test runner. Real pass/fail, real output. Not opinions — proof. Evidence labels: <strong style="color:var(--success)">[PROVEN]</strong>, <strong style="color:var(--warning)">[HEURISTIC]</strong>, <strong style="color:var(--fg-muted)">[SEMANTIC]</strong>.</p>
-      </div>
-      <div class="why-item">
-        <h4>Adaptive Learning</h4>
-        <p>Learns from every review. Detects recurring patterns, suggests new pack rules, and suppresses noise. Your reviews get sharper over time.</p>
+        <h4>The Loop Closes Itself</h4>
+        <p><code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">temper bands</code> watches metric history with control bands (pure arithmetic, no model); a breach is drafted as the next intent and rides the same gates. Fixes write a committed lessons file every future investigation reads first.</p>
       </div>
     </div>
 
-    <div class="why-grid" style="grid-template-columns: repeat(3, 1fr); margin-top: 1rem;">
-      <div class="why-item">
-        <h4>Context Accumulation</h4>
-        <p>Each stage writes structured context for downstream stages. Review knows what Build struggled with, Check knows what Review already fixed. No agent amnesia.</p>
-      </div>
-      <div class="why-item">
-        <h4>Interactive Walkthrough</h4>
-        <p>Walk through plans and designs section by section — intent, scenarios, architecture, blast radius, tasks. Skip to build from any point.</p>
-      </div>
-      <div class="why-item">
-        <h4>MCP Integration</h4>
-        <p>Optional MCP servers upgrade analysis: <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">code-review-graph</code> for blast radius and call chains, <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">semgrep</code> for SAST scanning. Progressive enhancement.</p>
-      </div>
-    </div>
-
-    <div class="why-grid" style="grid-template-columns: repeat(2, 1fr); margin-top: 1rem;">
-      <div class="why-item">
-        <h4>External Review Engine</h4>
-        <p>Orchestrates Alibaba's <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">open-code-review</code> for LLM-powered defect detection. Cross-validated findings labeled <strong style="color:var(--accent)">[OCR+TEMPER]</strong> with boosted confidence.</p>
-      </div>
-    </div>
+    <p style="text-align: center; margin-top: 1.5rem; color: var(--fg-muted); font-size: 0.9rem;">
+      Versioned quality packs (security, TDD, quality, performance&hellip;) enforce policy during build and review, with deterministic hook backstops.
+      Works with any CI &mdash; the automation surface is commands and exit codes, no platform files.
+      &nbsp;<a href="https://github.com/galando/temper/blob/main/docs/ai-native-sdlc.md" style="color: var(--accent);">Temper vs the AI-native SDLC playbook &rarr;</a>
+    </p>
   </section>
 
   <section id="evidence">
     <div class="section-label">Evidence</div>
     <h2 class="section-title">Does It Actually Catch Bugs?</h2>
-    <p class="section-desc">Architecture arguments are fine. Results are better. Here's what Temper catches that vanilla AI coding misses.</p>
+    <p class="section-desc">Architecture arguments are fine. Results are better. Three seeded-defect projects run through the live pipeline in CI &mdash; a gate must mechanically FAIL naming the defect.</p>
 
     <div class="why-grid" style="grid-template-columns: repeat(3, 1fr);">
       <div class="why-item" style="border-left: 3px solid var(--error); padding-left: 1rem;">
         <h4 style="color: var(--error);">Missing Rate Limiting</h4>
-        <p>AI built password reset. All tests pass. Scenario coverage gate caught the gap: no test for rate limiting. Build wrote the test → failed → implemented rate limiting → passed.</p>
+        <p>AI built password reset. All tests pass. The scenario coverage gate caught the gap: no test for rate limiting. Build wrote the test &rarr; failed &rarr; implemented it &rarr; passed.</p>
       </div>
       <div class="why-item" style="border-left: 3px solid var(--warning); padding-left: 1rem;">
         <h4 style="color: var(--warning);">Over-Engineering</h4>
@@ -951,381 +931,101 @@
       </div>
       <div class="why-item" style="border-left: 3px solid var(--accent); padding-left: 1rem;">
         <h4 style="color: var(--accent);">Wrong Problem Solved</h4>
-        <p>AI built the feature correctly — plus an admin-only endpoint nobody asked for. Untraced file flagged and removed before commit.</p>
+        <p>AI built the feature correctly &mdash; plus an admin-only endpoint nobody asked for. Untraced file flagged and removed before commit.</p>
       </div>
     </div>
 
     <p style="text-align: center; margin-top: 1.5rem; color: var(--fg-muted); font-size: 0.9rem;">
-      Claims here are measured, not asserted — including the ones that came out
-      unflattering. v8's prompt rewrite cut the cost of a Plan run 48% and held quality,
-      but it did <em>not</em> make it faster, and the changelog says so.
+      Claims here are measured, not asserted &mdash; including the unflattering ones: the v8 prompt
+      rewrite cut a Plan run&rsquo;s cost 48% and held quality, but did <em>not</em> make it faster, and the changelog says so.
     </p>
 
     <p style="text-align: center; margin-top: 1rem;">
-      <a href="https://github.com/galando/temper/tree/main/docs/evidence" style="color: var(--accent); font-weight: 500;">See all evidence →</a>
-      &nbsp;·&nbsp;
-      <a href="https://github.com/galando/temper/blob/main/docs/evidence/opus5-plan-prompt-ab.md" style="color: var(--fg-muted); font-size: 0.9rem;">Prompt A/B data</a>
-      &nbsp;·&nbsp;
-      <a href="https://github.com/galando/temper/tree/main/docs/evidence/benchmark.md" style="color: var(--fg-muted); font-size: 0.9rem;">Benchmark methodology</a>
+      <a href="https://github.com/galando/temper/tree/main/docs/evidence" style="color: var(--accent); font-weight: 500;">See all evidence &rarr;</a>
+      &nbsp;&middot;&nbsp;
+      <a href="https://github.com/galando/temper/blob/main/evals/README.md" style="color: var(--fg-muted); font-size: 0.9rem;">Self-eval methodology</a>
     </p>
   </section>
 
   <section id="why">
     <div class="section-label">Methodology</div>
     <h2 class="section-title">IDD + BDD + TDD: Three Layers, One File</h2>
-    <p class="section-desc">Most AI tools only answer "does the code work?" Temper answers all three questions that matter.</p>
+    <p class="section-desc">Most AI tools only answer &ldquo;does the code work?&rdquo; Temper answers all three questions that matter.</p>
 
     <div class="why-grid">
       <div class="why-item">
-        <h4>IDD — Intent-Driven</h4>
-        <p><strong>Did we solve the problem?</strong> Success criteria with structured validation types. Not just "tests pass" — the feature actually addresses the need.</p>
+        <h4>IDD &mdash; Intent-Driven</h4>
+        <p><strong>Did we solve the problem?</strong> Success criteria with structured validation types, accepted by a human at the intent gate before anything is built.</p>
       </div>
       <div class="why-item">
-        <h4>BDD — Behavior-Driven</h4>
-        <p><strong>Does it do the right things?</strong> Scenarios derived BEFORE architecture. Every file traces to a behavior. No over-engineering.</p>
+        <h4>BDD &mdash; Behavior-Driven</h4>
+        <p><strong>Does it do the right things?</strong> Scenarios derived before architecture. Every file traces to a behavior.</p>
       </div>
       <div class="why-item">
-        <h4>TDD — Test-Driven</h4>
-        <p><strong>Does the code work?</strong> Tests written from scenarios. RED → GREEN → REFACTOR. Scenario coverage gate ensures nothing is missed.</p>
+        <h4>TDD &mdash; Test-Driven</h4>
+        <p><strong>Does the code work?</strong> Tests written from scenarios, RED &rarr; GREEN evidence the build gate requires. The coverage gate ensures nothing is missed.</p>
       </div>
       <div class="why-item">
         <h4>One File: intent.md</h4>
-        <p>All three layers live in a single markdown artifact. Problem, scenarios, and coverage checklist in one place.</p>
-      </div>
-    </div>
-  </section>
-
-  <section id="features">
-    <div class="section-label">Features</div>
-    <h2 class="section-title">Discipline built in, not bolted on</h2>
-    <p class="section-desc">Temper doesn't just generate code — it plans, validates, tests, and learns. Every step is verified before moving forward.</p>
-
-    <div class="why-grid">
-      <div class="why-item">
-        <h4>Blast Radius Analysis</h4>
-        <p>Understands impact before coding. Maps affected files, dependencies, and risk areas.</p>
-      </div>
-      <div class="why-item">
-        <h4>Mermaid Architecture Diagrams</h4>
-        <p>Auto-generates flowcharts, sequence diagrams, and state machines. See the plan visually before building.</p>
-      </div>
-      <div class="why-item">
-        <h4>Interactive Plan Walkthrough</h4>
-        <p>Walk through the plan section by section — intent, scenarios, architecture, blast radius, tasks — with Q&A at each step.</p>
-      </div>
-      <div class="why-item">
-        <h4>Enforced Quality Gates</h4>
-        <p>Tests must pass. Coverage must be met. The AI cannot proceed until verified.</p>
-      </div>
-    </div>
-  </section>
-
-  <section id="flow">
-    <div class="section-label">Workflow</div>
-    <h2 class="section-title">The User Flow</h2>
-    <p class="section-desc">Four steps from idea to production-ready code. Temper automates quality — you focus on shipping.</p>
-
-    <div class="flow">
-      <div class="flow-step">
-        <div class="flow-meta">
-          <span class="flow-number">01</span>
-          <span class="flow-tag user">You type</span>
-        </div>
-        <div class="flow-content">
-          <h3>Plan <code>/temper</code></h3>
-          <p><strong>One command starts it all.</strong> Temper analyzes blast radius, generates mermaid architecture diagrams, creates BDD scenarios, and presents an interactive plan. Walk through step by step or approve and build.</p>
-          <div class="flow-result">
-            <span class="success">✓</span> 12 files affected · <span class="success">✓</span> 5 scenarios · <span class="success">✓</span> architecture diagram · <span class="warning">!</span> 2 risk areas · <span class="success">Walkthrough? → Build?</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="flow-step">
-        <div class="flow-meta">
-          <span class="flow-number">02</span>
-          <span class="flow-tag auto">Automated</span>
-        </div>
-        <div class="flow-content">
-          <h3>Build <span style="color: var(--fg-muted); font-weight: 400;">(auto-continues)</span></h3>
-          <p><strong>Temper implements automatically</strong> with TDD gates enforced at every step. Tests written first, code follows. Stage gate asks to continue.</p>
-          <div class="flow-result">
-            <span class="success">✓</span> 18 tests pass · <span class="success">✓</span> 86% coverage · <span class="success">Run review?</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="flow-step">
-        <div class="flow-meta">
-          <span class="flow-number">03</span>
-          <span class="flow-tag auto">Automated</span>
-        </div>
-        <div class="flow-content">
-          <h3>Review <span style="color: var(--fg-muted); font-weight: 400;">(auto-continues)</span></h3>
-          <p><strong>Temper reviews automatically</strong> against enabled packs. Findings scored by confidence. Stage gate confirms all checks passed.</p>
-          <div class="flow-result">
-            <span class="success">✓</span> 94% confidence · 3 findings · <span class="success">Ready to commit?</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="flow-step">
-        <div class="flow-meta">
-          <span class="flow-number">04</span>
-          <span class="flow-tag auto">Automated</span>
-        </div>
-        <div class="flow-content">
-          <h3>Commit <span style="color: var(--fg-muted); font-weight: 400;">(done)</span></h3>
-          <p><strong>Temper commits your changes</strong> with a proper message. Branch ready to push. Use <code style="background: var(--bg); padding: 0.1rem 0.4rem; border-radius: 2px;">/temper:status</code> anytime to track quality metrics.</p>
-          <div class="flow-result">
-            <span class="success">✓</span> Committed · Branch: feature/xxx · <span class="success">Ready to push</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="learning">
-      <h3>Adaptive Learning</h3>
-      <p>Temper gets smarter with every review. It detects recurring patterns, suggests new rules, and suppresses false positives — so your reviews focus on what actually matters.</p>
-      <div class="learning-grid">
-        <div class="learning-item">
-          <h4>Pattern Detection</h4>
-          <p>Identifies recurring issues and anti-patterns in your code.</p>
-        </div>
-        <div class="learning-item">
-          <h4>Rule Suggestions</h4>
-          <p>Proposes new rules based on what it learns from your reviews.</p>
-        </div>
-        <div class="learning-item">
-          <h4>Noise Reduction</h4>
-          <p>Suppresses false positives as it learns your codebase patterns.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="packs">
-    <div class="section-label">Quality Packs</div>
-    <h2 class="section-title">Built-in Packs</h2>
-    <p class="section-desc">Rules that enforce best practices. Each pack has BLOCK, WARN, and SUGGEST severity levels.</p>
-
-    <div class="packs">
-      <div class="pack">
-        <div class="pack-header">
-          <span class="pack-icon">💎</span>
-          <div class="pack-title">
-            <h4>Quality <span class="severity severity-block">BLOCK</span></h4>
-          </div>
-        </div>
-        <ul class="pack-rules">
-          <li>Methods max 30 lines</li>
-          <li>No duplicate code (DRY)</li>
-          <li>Max complexity: 10</li>
-        </ul>
-      </div>
-
-      <div class="pack">
-        <div class="pack-header">
-          <span class="pack-icon">🧪</span>
-          <div class="pack-title">
-            <h4>TDD <span class="severity severity-warn">WARN</span></h4>
-          </div>
-        </div>
-        <ul class="pack-rules">
-          <li>Write test first (RED)</li>
-          <li>Minimal implementation</li>
-          <li>Coverage: 80%</li>
-        </ul>
-      </div>
-
-      <div class="pack">
-        <div class="pack-header">
-          <span class="pack-icon">🔒</span>
-          <div class="pack-title">
-            <h4>Security <span class="severity severity-block">BLOCK</span></h4>
-          </div>
-        </div>
-        <ul class="pack-rules">
-          <li>No SQL injection</li>
-          <li>No XSS vulnerabilities</li>
-          <li>No secrets in code</li>
-        </ul>
-      </div>
-
-      <div class="pack">
-        <div class="pack-header">
-          <span class="pack-icon">🌿</span>
-          <div class="pack-title">
-            <h4>Git <span class="severity severity-suggest">SUGGEST</span></h4>
-          </div>
-        </div>
-        <ul class="pack-rules">
-          <li>Conventional commits</li>
-          <li>Branch conventions</li>
-          <li>Atomic commits</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="custom-packs">
-      <h3>🎨 Create Your Own Packs</h3>
-      <p>Add a <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">rules.md</code> file and Temper will automatically discover it. Three-tier resolution: project > global > built-in. Link packs to plugins or skills for automatic context injection.</p>
-      <code>
-<span class="path">.claude/packs/my-company/rules.md</span>
-
-# My Company Standards
-
-<span class="section">## BLOCK</span>
-- All API responses use DTOs
-- No raw SQL queries
-
-<span class="section">## WARN</span>
-- Constructor injection only
-- Max method length: 20 lines</code>
-    </div>
-
-    <div class="create-pack">
-      <h4>⚡ Or create a pack interactively</h4>
-      <div class="create-pack-steps">
-        <div class="create-pack-step">
-          <div class="step-num">STEP 1</div>
-          <h5>Run the command</h5>
-          <p>Type <code>/temper:pack</code> in any project</p>
-        </div>
-        <div class="create-pack-step">
-          <div class="step-num">STEP 2</div>
-          <h5>Answer questions</h5>
-          <p>Temper scans your codebase and asks about patterns it finds</p>
-        </div>
-        <div class="create-pack-step">
-          <div class="step-num">STEP 3</div>
-          <h5>Get your pack</h5>
-          <p>Temper generates a custom rules.md based on your answers</p>
-        </div>
+        <p>All three layers live in a single committed artifact &mdash; problem, scenarios, coverage checklist &mdash; and the chain of commits is the audit trail.</p>
       </div>
     </div>
   </section>
 
   <section id="commands">
     <div class="section-label">Commands</div>
-    <h2 class="section-title">Unified Command</h2>
-    <p class="section-desc">One command runs the full SDLC: plan → design → build → review → check, with stage gates, feedback loops, and a mechanical commit gate that blocks <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code> until every gate is green.</p>
-
-    <div class="install-card" style="max-width: 600px; margin-bottom: 2rem;">
-      <div class="code-block" style="position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 4px;">
-        <pre style="padding: 1rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.9rem; color: var(--accent);">/temper "add login feature"     # Full SDLC in one command</pre>
-      </div>
-      <p style="color: var(--fg-muted); font-size: 0.85rem; margin-top: 0.75rem;">
-        Runs plan, build, review, and check with interactive stage gates. Each stage asks for confirmation before proceeding.
-      </p>
-    </div>
-
-    <h3 class="section-title" style="font-size: 1.5rem; margin-top: 2rem;">Individual Commands</h3>
-    <p class="section-desc">For granular control, use individual commands.</p>
+    <h2 class="section-title">Three commands you&rsquo;ll actually type</h2>
+    <p class="section-desc"><code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper</code> runs and routes everything else.</p>
 
     <div class="commands">
-      <div class="command">
-        <span class="command-icon">🎯</span>
-        <div class="command-content">
-          <h4>/temper:plan</h4>
-          <p>Plan with blast radius, mermaid diagrams, and interactive walkthrough</p>
-        </div>
-      </div>
-      <div class="command">
-        <span class="command-icon">📐</span>
-        <div class="command-content">
-          <h4>/temper:design</h4>
-          <p>System design for complex features (auto-skipped for simple)</p>
-        </div>
-      </div>
-      <div class="command">
-        <span class="command-icon">🔨</span>
-        <div class="command-content">
-          <h4>/temper:build</h4>
-          <p>Build with TDD + quality gates</p>
-        </div>
-      </div>
-      <div class="command">
-        <span class="command-icon">🔍</span>
-        <div class="command-content">
-          <h4>/temper:review</h4>
-          <p>Review with confidence scoring</p>
-        </div>
-      </div>
-      <div class="command">
-        <span class="command-icon">✅</span>
-        <div class="command-content">
-          <h4>/temper:check</h4>
-          <p>Stack validation (auto-detect)</p>
-        </div>
-      </div>
-      <div class="command">
-        <span class="command-icon">🔧</span>
-        <div class="command-content">
-          <h4>/temper:fix</h4>
-          <p>Root cause analysis + fix</p>
-        </div>
-      </div>
-      <div class="command">
-        <span class="command-icon">📏</span>
-        <div class="command-content">
-          <h4>/temper:pack</h4>
-          <p>Manage quality packs</p>
-        </div>
-      </div>
-      <div class="command">
-        <span class="command-icon">📊</span>
-        <div class="command-content">
-          <h4>/temper:status</h4>
-          <p>Quality metrics dashboard</p>
-        </div>
-      </div>
-      <div class="command">
-        <span class="command-icon">🌱</span>
-        <div class="command-content">
-          <h4>/temper:init</h4>
-          <p>Seed project config (idempotent)</p>
-        </div>
-      </div>
       <div class="command" style="background: var(--accent-soft); border-color: var(--accent);">
-        <span class="command-icon">🔥</span>
+        <span class="command-icon">&#128293;</span>
         <div class="command-content">
-          <h4>/temper "feature"</h4>
-          <p style="color: var(--fg);">Unified: plan → design → build → review → check</p>
+          <h4>/temper "add password reset"</h4>
+          <p style="color: var(--fg);">The whole pipeline, intent gate to commit &mdash; or arm autonomy at the plan gate and it runs unattended, parking before commit</p>
+        </div>
+      </div>
+      <div class="command">
+        <span class="command-icon">&#128295;</span>
+        <div class="command-content">
+          <h4>/temper:fix "500 on checkout"</h4>
+          <p>Root cause &rarr; failing test (write-protected) &rarr; minimal fix &rarr; validated</p>
+        </div>
+      </div>
+      <div class="command">
+        <span class="command-icon">&#128161;</span>
+        <div class="command-content">
+          <h4>/temper:intent "an idea"</h4>
+          <p>Capture an idea as a committed draft &mdash; from anyone &mdash; and build it later</p>
         </div>
       </div>
     </div>
-  </section>
 
-  <section id="stacks">
-    <div class="section-label">Stacks</div>
-    <h2 class="section-title">Supported Stacks</h2>
-    <p class="section-desc">Auto-detection with zero configuration.</p>
-
-    <div class="stacks">
-      <span class="stack">Spring Boot</span>
-      <span class="stack">React + TS</span>
-      <span class="stack">Node/Express</span>
-      <span class="stack">FastAPI</span>
-      <span class="stack">Go</span>
-      <span class="stack">Rust</span>
-    </div>
+    <p style="text-align: center; margin-top: 1.5rem; color: var(--fg-muted); font-size: 0.9rem;">
+      Granular control: <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:plan</code>
+      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:design</code>
+      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:build</code>
+      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:review</code>
+      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:check</code>
+      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:status</code>
+      <code style="background:var(--bg);padding:0.1rem 0.3rem;border-radius:2px;">:pack</code>
+      &nbsp;&mdash;&nbsp;<a href="https://github.com/galando/temper/blob/main/docs/commands.md" style="color: var(--accent);">full reference &rarr;</a>
+    </p>
   </section>
 
   <section id="install">
     <div class="section-label">Install</div>
-    <h2 class="section-title">Quick Install</h2>
+    <h2 class="section-title">Two steps</h2>
 
-    <div class="install" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 800px; margin: 0 auto;">
+    <div style="max-width: 520px; margin: 0 auto;">
       <div class="install-card">
-        <h4>🟣 Claude Code</h4>
         <div class="code-block">
           <pre>/plugin marketplace add galando/temper
 /plugin install temper</pre>
           <button class="copy-btn" onclick="copyCode(this, '/plugin marketplace add galando/temper\n/plugin install temper')">Copy</button>
         </div>
-        <p>Commands are now available in any project. For optional MCP-powered analysis, see <a href="https://github.com/galando/temper/blob/main/docs/recommended-setup.md" style="color: var(--accent);">Recommended Setup</a>.</p>
+        <p>Then just use it &mdash; the first <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper</code> in a project bootstraps config, scaffold, and the native commit gate. Auto-detects Spring Boot, React+TS, Node/Express, FastAPI, Go, and Rust. Optional MCP-powered analysis: <a href="https://github.com/galando/temper/blob/main/docs/recommended-setup.md" style="color: var(--accent);">Recommended Setup</a>.</p>
       </div>
-
     </div>
   </section>
 
@@ -1333,11 +1033,11 @@
     <div class="footer-inner">
       <div class="footer-links">
         <a href="https://github.com/galando/temper">GitHub</a>
+        <a href="https://github.com/galando/temper/blob/main/docs/getting-started.md">Docs</a>
         <a href="https://github.com/galando/temper/issues">Issues</a>
         <a href="https://github.com/galando/temper/blob/main/CONTRIBUTING.md">Contributing</a>
         <a href="https://github.com/galando/temper/blob/main/LICENSE">MIT License</a>
         <a href="privacy.html">Privacy</a>
-        <a href="https://deepwiki.com/galando/temper" target="_blank">DeepWiki</a>
       </div>
       <p class="footer-copy">Made by <a href="https://github.com/galando">Gal Naor</a></p>
     </div>

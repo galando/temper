@@ -26,17 +26,18 @@ git push origin feature/my-improvement
 
 ```
 temper/
-├── .claude-plugin/          # Plugin manifest and reference docs
-│   ├── plugin.json          # Plugin metadata
-│   ├── marketplace.json     # Marketplace entry
-│   └── reference/           # Full command documentation (loaded on-demand)
-├── .claude/                 # Core plugin files
-│   ├── CLAUDE.md            # Always-loaded context (~200B)
-│   ├── commands/            # Command stubs (loaded on invocation)
-│   ├── skills/              # Core skill definitions
-│   └── packs/               # Rule packs and stack files
-├── templates/               # Plan artifact templates
-├── examples/                # Example company packs and presets
+├── .claude-plugin/          # Plugin manifest (plugin.json, marketplace.json)
+├── .claude/                 # CLAUDE.md + the plugin's own temper.config
+├── commands/                # Slash commands (loaded on invocation)
+├── agents/                  # Stage subprocess briefs (model frontmatter = defaults)
+├── reference/               # Per-stage methodology docs (loaded on demand)
+├── skills/                  # Skill definitions (temper-core, grill-me, ...)
+├── packs/                   # Rule packs, stack files, hooks pack
+├── hooks/                   # Plugin-shipped hooks.json (stage-gate pair)
+├── scripts/                 # temper CLI (the deterministic spine), hooks/, tests/
+├── templates/               # Artifact templates (intent/plan/design/config)
+├── evals/                   # Seeded-defect fixtures + wiring smoke (CI-run)
+├── examples/                # Company packs, CI workflow templates, example hooks
 ├── docs/                    # GitHub Pages documentation
 └── README.md                # Project README
 ```

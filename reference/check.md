@@ -99,15 +99,19 @@ the OWASP pattern-matching in `review.md` Step 2, labeled `[HEURISTIC]`.
 
 ## Step 3: Debt Tracking + Config Suggestions
 
-If `debt-tracking: true`: append coverage %, test count, and lint-violation count to
-`.temper/metrics.json` history arrays (full debt analysis is `/temper:status`'s job, not
-Check's — don't slow the pipeline down repeating it here).
+If `debt-tracking: true`: record coverage %, test count, and lint-violation count via
+the CLI — `$CLAUDE_PLUGIN_ROOT/scripts/temper metrics append coverage <pct>`, `temper
+metrics append tests <count>`, `temper metrics append lint_violations <count>` — never
+by hand-editing `.temper/metrics.json`: these arrays are what `temper bands` computes
+control bands from, so the monitor must read a ledger the spine wrote. (Full debt
+analysis is `/temper:status`'s job, not Check's — don't slow the pipeline down
+repeating it here.)
 
 If every level passed and files changed: generate up to 5 config suggestions
 (confidence >= 0.6) comparing the diff against `CLAUDE.md`/`AGENTS.md`, write
-`.temper/specs/{feature}/config-suggestions.json`, queue them in
-`learning.json.suggestion_queue` (`type: config-update`). Full methodology:
-`reference/config-suggestions.md`. Shown to the user at the Check gate.
+`.temper/specs/{feature}/config-suggestions.json`, and show them at the Check gate for
+Accept/Reject/Defer. Full methodology: `reference/config-suggestions.md`. (They're
+shown once at the gate — there's no separate re-offer queue.)
 
 Every accepted suggestion is a permanent line in a file loaded on every future session,
 so suggest one only when a *specific* thing went wrong that the config could have
@@ -161,10 +165,28 @@ the orchestrator when the feedback conditions above are met). A change typed via
 is never approval to commit — make the edit, re-run validation from the first level that
 had failed (skip already-passed levels), re-show this same gate.
 
-**On Commit:** delete `.temper/build-state.json`; if `intent.md` exists add `**Status:**
-completed` + `**Completed:** {date}` to its header; commit with a conventional message
-naming files changed / tests added. **On Save:** write `build-state.json` with `stage:
-check_complete`, `next_stage: commit`, report "Run /temper when ready to continue."
+**On Commit**, in this order (the order matters — the ledger archive needs the live
+state that the final clear destroys):
+
+1. If `intent.md` exists, set its header to `**Status:** completed` + `**Completed:**
+   {date}`; if `build-context.json` recorded deviations (unplanned files, approach
+   changes), write them into `plan.md` as a `## Deviations` section — the committed
+   plan must describe what was actually built, in the same commit as the code.
+2. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper state archive` — this writes
+   `.temper/specs/{slug}/gate-ledger.json` (verdicts, overrides, evidence counts)
+   while the state is still intact. Do this BEFORE deleting build-state.json:
+   `state archive` reads `spec_path` from that file, so deleting it first would
+   silently skip the ledger.
+3. Stage the spec artifacts (`.temper/specs/{slug}/`, now including
+   `gate-ledger.json`) alongside the diff — two calls, `git add` then `git commit`
+   (separate, so the in-agent commit-gate hook sees them staged) — unless the project
+   gitignores them (their choice — never force-add). The committed artifact chain is
+   the audit trail; use a conventional message naming files changed / tests added.
+4. `$CLAUDE_PLUGIN_ROOT/scripts/temper state clear` (which also re-archives as a
+   safety net) — or delete `.temper/build-state.json` if the CLI is absent.
+
+**On Save:** write `build-state.json` with `stage: check_complete`, `next_stage:
+commit`, report "Run /temper when ready to continue."
 
 ## Error Interpretation
 

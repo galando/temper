@@ -197,6 +197,11 @@ Record the regression test as build evidence — this is what `temper gate build
   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage build --claim 'regression test' \
     --cmd '<test command>' --exit 0 --phase green --label PROVEN   # passing, after the fix
 
+As soon as RED is confirmed, also record the test's path — this arms the write shield
+(protect-regression-test.sh blocks the fixing agent from editing that file; fix the
+code, not the test):
+  $CLAUDE_PLUGIN_ROOT/scripts/temper state set regression_test '<test file path>'
+
 CRITICAL: Do NOT show an AskUserQuestion gate at the end. Return the fix summary to the orchestrator.
 
 Return ONLY:

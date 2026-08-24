@@ -3,6 +3,106 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.0.0 — the intent-gated pipeline
+
+Breaking: the pipeline gains a stage, the commit gate gets stricter, and a subsystem
+is removed — the same class of change that made v7 and v8 majors. Three threads: align
+temper with Anthropic's [AI-native SDLC playbook](https://claude.com/blog/the-ai-native-sdlc-playbook),
+cut install to two steps, and remove duplicated machinery. Net prompt-surface change
+from the simplification alone: **−9.2%** (266KB → 242KB), with `reference/fix.md`
+down 64% (517 → 143 lines). 189 CLI assertions green (up from 106); all validators pass.
+Full play-by-play: `docs/ai-native-sdlc.md`.
+
+### Breaking + migration
+
+- **`/temper` runs intent → plan → … — a new mandatory human gate on every
+  non-trivial run.** The Intent stage states the Problem/criteria/constraints and a
+  human accepts them BEFORE exploration or architecture spends tokens; acceptance
+  (the `Status` flip + `Accepted-by:`) moves from the plan gate to the intent gate.
+- **The commit gate requires an intent verdict whenever `intent.md` exists** (and a
+  design verdict whenever `design.md` exists). **Migration for an in-flight v8 run:**
+  `temper gate commit` will FAIL with "intent gate — MISSING"; a v8-era `intent.md`
+  also lacks the new `**Status:**` header. Add one line (`**Status:** accepted`) and
+  run `temper gate intent` once — or record `temper override intent` — and commit
+  proceeds. Fresh runs need nothing.
+- **Adaptive learning is removed** (`learning.json`, `packs/adaptive-learning/`,
+  `reference/learning.md`, the suggestion queue and learning curve — see ADR-0006).
+  **Migration:** delete `adaptive-learning` from your `packs:` list if present (a
+  stale entry degrades silently); a leftover `learning.json` is inert and can be
+  deleted. Promotion/suppression continue unchanged from `review-memory.json`.
+- `templates/spec.md` + `templates/quickstart.md` deleted (the documented
+  three-artifact rule forbids them); retired-system docs moved `reference/` →
+  `docs/history/`. Standalone `/temper:plan` and `/temper:intent` sessions now owe a
+  gate verdict (the Stop hook holds the session until the gate ran).
+
+### Install is two steps
+
+`/plugin marketplace add` + `/plugin install`, then just `/temper "…"` — the first run
+in an un-set-up project bootstraps itself (config, `.temper/` scaffold, and the native
+commit gate). `/temper:init` is now that whole one-command setup (it installs the
+commit hook too), kept for an explicit re-run. The old third manual step
+(`bash scripts/hooks/install.sh`) is gone from the quick-start.
+
+### New capabilities (playbook alignment)
+
+- **Intent is the pipeline's own first gated stage.** `/temper` now runs
+  intent → plan → design? → build → review → check → commit: a cheap Intent pass
+  states the Problem, criteria, and constraints (no exploration, no architecture) and
+  a human accepts or corrects it at the intent gate BEFORE the expensive stages spend
+  tokens — an intent correction at this gate costs words; after Plan it costs the
+  plan. `temper gate intent` is the deterministic floor (Problem stated, ≥1
+  criterion, Status header); the commit gate requires an intent verdict whenever the
+  artifact exists; trivial requests skip the stage automatically.
+- **`/temper:intent`** — capture an idea (from anyone) as a committed `Status: draft`
+  intent.md without starting the pipeline; the pipeline's Intent gate later presents
+  exactly that draft. The intent lifecycle (`draft` → `accepted` → `completed`) has
+  named owners and is recorded (`Accepted-by:` at the intent gate).
+- **`temper bands`** — deterministic control-band drift detection (rolling mean ± kσ +
+  a same-side-run rule, no model) over `.temper/metrics.json`; a 2σ+ breach exits 1 and
+  a 3σ breach is drafted as the next intent.md. **`temper metrics append`** feeds any
+  series, including external production metrics. Closes the Maintain loop.
+- **A real design gate** — `temper gate design` now requires an Areas-of-Concern
+  section; the commit gate requires a design verdict when `design.md` exists.
+- **`temper evidence run`** (CLI executes the command and records the exit code —
+  PROVEN means machine-observed), **`temper state archive`** (a durable
+  `gate-ledger.json` committed with the diff), and **overrides that record the approver**.
+- **New hooks** — the fix-loop regression-test write shield, edit-time protected paths
+  (`protect.paths`), auto-format (`format.cmd`), and an ASK-tier confirm-override gate.
+- **REVIEW.md** repo policy support; an approval-gate example hook. Automation is
+  **deliberately host-agnostic**: temper ships no CI-platform files — the review and
+  closing-the-loop arcs wire into ANY CI/scheduler (GitHub Actions, GitLab, Jenkins,
+  cron) as plain commands and exit codes; `examples/workflow/README.md` documents the
+  contract.
+
+### Simplification (subtraction)
+
+- **Four memory systems → one.** The adaptive-learning subsystem (`learning.json`,
+  `packs/adaptive-learning/`, `reference/learning.md`, the `suggestion_queue`,
+  `learning_curve`, and `.temper/learning/suggestions/`) is removed; its promotion and
+  suppression thresholds were already `review-memory.json`'s, and now live only there.
+  See ADR-0006 (supersedes ADR-0001).
+- **`reference/fix.md` dieted** from a v6-style 517-line step script to outcome briefs,
+  keeping the debugging floor, RED-first + the write shield, lessons read/write, and the
+  gate calls.
+- **OCR moved behind the MCP pattern** — the inline engine section in `reference/review.md`
+  is now a probe + one merge rule, with the mechanics in `docs/recommended-setup.md`,
+  matching how semgrep is handled.
+- **`source-driven-development`** (previously loaded by no prompt) is wired into Build —
+  it catches a hallucinated API while writing, before Review has to.
+- **One front door** — the README leads with the three commands you actually type
+  (`/temper`, `/temper:fix`, `/temper:intent`); the standalone stage commands move to a
+  collapsed "granular control" section.
+- **Retired-system docs** (`tokenomics.md`, `pricing.md`) moved out of the live
+  methodology dir to `docs/history/`; the orphaned `templates/spec.md` +
+  `quickstart.md` (which the three-artifact rule forbids) are deleted.
+
+### Adversarial review
+
+The branch diff was reviewed by a multi-agent workflow (4 dimensions, adversarial
+verification); all 16 confirmed findings were fixed with regression tests — among them a
+command-injection hole in the first cut of `temper metrics append` (a metric value was
+interpolated into Python source; now parsed across the argv boundary).
+
 ## v8.0.0 — shorter prompts, no Eval stage, leaner pipeline
 
 Breaking: the Eval stage and its config key are removed. The prompt surface was written

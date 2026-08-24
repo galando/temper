@@ -8,6 +8,14 @@
           {
             "type": "command",
             "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/block-secrets.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/protect-regression-test.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/block-protected-paths.sh"
           }
         ]
       },
@@ -21,6 +29,10 @@
           {
             "type": "command",
             "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/block-uncommitted-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/confirm-override.sh"
           }
         ]
       }
@@ -32,6 +44,10 @@
           {
             "type": "command",
             "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/block-forbidden-imports.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/run-formatter.sh"
           }
         ]
       }

@@ -1,10 +1,10 @@
 ---
-description: "Temper core: stack detection, quality gates, blast radius, adaptive learning"
+description: "Temper core: stack detection, quality gates, blast radius, review memory"
 ---
 
 # Temper Core
 
-Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0.0-1.0) → Review memory → Adaptive learning → Metrics.
+Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0.0-1.0) → Review memory → Metrics.
 
 ## Stack Detection
 1. `.claude/temper.config` → `stack` field
@@ -32,25 +32,20 @@ Precedence and rationale: `reference/pack.md` → "Pack Configuration Schema".
 - Review memory: `.temper/review-memory.json` — auto-suppress after 5 dismissals
 - Metrics: `.temper/metrics.json`
 
-## Adaptive Learning (v4.6.0)
-Post-review intelligence layer that makes reviews smarter over time. Runs as Step 8.5 in `/temper:review` and displays in `/temper:status`.
-
-**Three capabilities:**
+## Review memory — the one finding memory
+Reviews get smarter over time through a single store, `.temper/review-memory.json`
+(there is no separate learning file). Written by `/temper:review`, surfaced at
+`/temper:status`.
 
 | Capability | Trigger | Action |
 |-----------|---------|--------|
-| Pattern Detection | Post-review hook (Step 8.5) | Cluster recurring findings by category + file pattern + keywords |
-| Rule Suggestions | Pattern accepted 3+ times at 70%+ rate | Generate pack rule template, queue for promotion |
-| Noise Reduction | Pattern dismissed 5+ times | Auto-suppress, reduce false positives |
+| Pattern tracking | every review | Cluster findings by category + file-path prefix + keywords into `patterns[key]` |
+| Rule promotion | accepted 3+ times @ ≥70% (5+ @ ≥80% for security/architecture → BLOCK) | Suggest a pack rule at `/temper:status`; the human accepts BLOCK/WARN |
+| Noise reduction | dismissed 3+ (downgrade) / 5+ (suppress) | Downgrade or auto-suppress, per-context |
 
-**Key files:**
-- `.temper/learning.json` — Learning state (detected patterns, suppressions, suggestions, learning curve)
-- `.temper/learning/suggestions/` — Generated rule suggestion templates
-- `.claude/packs/adaptive-learning/rules.md` — Promoted rules (user-accepted suggestions)
+**Graceful degradation:** absent `review-memory.json` → every command works unchanged.
 
-**Graceful degradation:** If `learning.json` is absent, all commands work unchanged. No errors, no warnings.
-
-Full docs: `$CLAUDE_PLUGIN_ROOT/reference/learning.md`
+Full docs: `$CLAUDE_PLUGIN_ROOT/reference/review.md` → "Metrics + Memory".
 
 ## Capabilities (v5.0.0)
 

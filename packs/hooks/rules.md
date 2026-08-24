@@ -97,8 +97,12 @@ The single fail-closed path for each script is documented below. Everything else
 |--------|-------|----------------|------------------|
 | `scripts/hooks/block-secrets.sh` | PreToolUse / native pre-commit | **BLOCK** | A staged/edited file matches a secret pattern (AWS `AKIA...`, GitHub `gh[ps]_...`, private-key header, `sk-ant-...` / `sk-proj-...` / OpenAI legacy) |
 | `scripts/hooks/block-forbidden-imports.sh` | PostToolUse | **warn** (no-op by default) | An edited file imports a name on the explicit denylist (empty by default) |
+| `scripts/hooks/protect-regression-test.sh` | PreToolUse (Edit\|Write) | **BLOCK** | A /temper:fix run edits the regression test it recorded at RED (`state.regression_test`) — the fix loop's own check must not be weakened by the agent running it |
+| `scripts/hooks/block-protected-paths.sh` | PreToolUse (Edit\|Write) | **BLOCK** (no-op by default) | The edited file matches a `protect: paths:` pattern in temper.config (generated classes, frozen packages) — enforced at edit time, every mode, not just at the autonomous commit gate |
+| `scripts/hooks/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `temper override` — emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records the git identity (`by`) |
+| `scripts/hooks/run-formatter.sh` | PostToolUse (Edit\|Write) | **format** (no-op by default) | Never blocks — runs `format: cmd:` from temper.config on each edited file so drift never accumulates; a formatter failure is a stderr warning, not a gate |
 | `scripts/hooks/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `temper gate commit` FAILs (in-agent mirror of the native hook, below) |
-| `scripts/hooks/stage-marker.sh` | UserPromptSubmit | **no-op** (records only) | Never — it writes `.temper/pending-stage.json` when a `/temper:{plan,build,review,check}` prompt is submitted, and blocks nothing |
+| `scripts/hooks/stage-marker.sh` | UserPromptSubmit | **no-op** (records only) | Never — it writes `.temper/pending-stage.json` when a `/temper:{intent,plan,design,build,review,check}` prompt is submitted, and blocks nothing |
 | `scripts/hooks/verify-stage-gate.sh` | Stop | **BLOCK** | A standalone stage session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage — see `docs/decisions/0005-deterministic-stage-gate-enforcement.md`. Fails open after 2 refusals |
 | `scripts/temper gate commit` | native pre-commit | **BLOCK** | Any stage's evidence-backed gate is not PASS and has no recorded `temper override` |
 | `scripts/hooks/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json` shows the latest `check_complete` absent or failed — used only when `scripts/temper` isn't present |
@@ -124,12 +128,50 @@ On match: `exit 2` (blocks), reporting the matched pattern + file. On no match: 
 On any internal error: `exit 0` (fail-open). Extend the denylist by editing the script's
 `patterns` array.
 
+### protect-regression-test.sh
+
+The fix loop's self-protection. `/temper:fix` writes a regression test that must fail
+before the fix (RED) and records its path with `temper state set regression_test
+<path>`. From that moment until the run's state is cleared, any agent Edit/Write
+targeting that file exits 2 — the agent fixing the code cannot also weaken the check on
+that code. The block message names the deliberate human release valve
+(`temper state set regression_test ""`), so a genuinely-wrong test is a person's edit
+to unlock, never the fixing agent's. Outside a fix run (or with no recorded test):
+no-op. Internal errors: fail-open, per the contract above.
+
 ### block-forbidden-imports.sh
 
 Checks edited files' import statements against a configurable denylist. The denylist defaults
 to **empty** → warn-only / no-op. Set `TEMPER_FORBIDDEN_IMPORTS` (colon-separated) to enable
 blocking, e.g. `TEMPER_FORBIDDEN_IMPORTS="eval:child_process.exec"`. Exit 2 only on an explicit
-denylist match; otherwise exit 0.
+denylist match; otherwise exit 0. (v9 fix: the hook now reads the edited file from the
+PostToolUse stdin payload (`tool_input.file_path`) — it previously read only the never-set
+`CLAUDE_FILE_PATH` env var plus staged files, which made it inert on in-agent edits.)
+
+### block-protected-paths.sh
+
+The playbook-classic build-time guardrail: paths in `protect: paths:` (temper.config) are
+frozen at **edit time**, for every mode — generated classes, a legacy `v1/` package,
+migrations without a ticket. Same `**/segment/**` pattern shape as `autonomy.park-on-touch`,
+read via `temper config get` (the same parser every gate uses). Empty/absent list → no-op.
+Unfreezing is a human's config edit — the block message says exactly that.
+
+### confirm-override.sh
+
+The ASK tier — the third hook mode after allow and block. `temper override` is the one
+command that clears a FAIL gate, and it used to be reachable by the agent with nothing
+deterministic in between. This hook emits Claude Code's `permissionDecision: "ask"` for any
+Bash command invoking it, putting an explicit human approval click between an agent and its
+own approval route; `cmd_override` additionally records the approver's git identity in the
+`by` field of every overrides.json entry. Separation of duties, enforced at the exact seam
+where it used to be prompt-only.
+
+### run-formatter.sh
+
+Runs the project's configured formatter (`format: cmd:`, with `{file}` substituted) on each
+edited file, so formatting drift never accumulates across a long session. There is no
+fail-closed path: a formatter failure warns on stderr and the edit stands. Absent config →
+no-op.
 
 ### temper gate commit (scripts/temper)
 
@@ -146,6 +188,24 @@ state → `exit 0` (degrade; a repo not running `/temper` for this commit is nev
 Used only when `scripts/temper` isn't present. Reads `.temper/build-state.json`; if the
 latest stage is not `check_complete` (or check failed), `exit 2` with "run /temper:check".
 Missing/unreadable state → `exit 0` (fail-open).
+
+## Beyond the Commit Fence: Approval Gates (example, not wired by default)
+
+Every hook above is a **guardrail** — it allows or blocks with no human involved.
+The third mode is an **approval gate**: the hook *asks*, deterministically, by
+refusing until a named human authorization exists. Temper's own fence ends at
+`git commit` (it never pushes, merges, or deploys), so no pack wires one — but the
+pattern is the same script shape, and `examples/hooks/production-gate.sh` is a
+copy-paste starting point: a PreToolUse (Bash) hook that blocks `deploy`+`production`
+commands until `RELEASE_APPROVAL` names an approver and change ticket, explaining the
+route to approval in its block message. Two placement rules from hard experience:
+
+- An approval gate belongs at the **release boundary**, never in the build phase — a
+  human prompt mid-build puts a person back on the critical path of every parallel
+  session.
+- A gate individual engineers must not be able to switch off belongs in **managed
+  settings** (owned by an org admin), not the repo's `.claude/settings.json` — a
+  repo-level hook can be edited by anyone who can commit.
 
 ## Extending the Denylists
 

@@ -9,12 +9,17 @@
 #
 # Subcommands:
 #   temper init                                  scaffold .temper/ in the current project
-#   temper state <get|set|advance|loop|clear> ..  read/write .temper/build-state.json
-#   temper evidence <add|list|clear> ...          append/read/clear the per-stage evidence ledger
+#   temper state <get|set|advance|loop|archive|clear> ..  read/write .temper/build-state.json;
+#                                                 archive writes {spec}/gate-ledger.json
+#   temper evidence <add|run|list|clear> ...      append/execute-and-record/read/clear the ledger
 #   temper gate <stage> [--spec-path P]           compute PASS/FAIL for a stage, record verdict
 #   temper model <stage> | --all                  resolve a stage's model (config override > frontmatter)
 #   temper override <stage> --reason "..."        record a human override of a FAIL gate
 #   temper report [--json]                        render the current run's gate ledger
+#   temper bands [--json]                         deterministic control-band drift check
+#                                                 over .temper/metrics.json history
+#   temper metrics append <series> <value>        append a numeric point to <series>_history
+#   temper config get <dot.path> [default]        read temper.config (for hooks/CI scripts)
 #
 # DEGRADATION CONTRACT (same spirit as scripts/hooks/*.sh):
 #   - A stage with no evidence recorded FAILS closed (nothing to verify => not verified).
@@ -36,18 +41,20 @@ LOOPS_FILE="$TEMPER_DIR/feedback-loops.json"
 GATES_FILE="$TEMPER_DIR/gates.json"
 OVERRIDES_FILE="$TEMPER_DIR/overrides.json"
 EVIDENCE_DIR="$TEMPER_DIR/evidence"
+METRICS_FILE="$TEMPER_DIR/metrics.json"
+BANDS_FILE="$TEMPER_DIR/bands.json"
 
-STAGES="plan design build review check commit"
+STAGES="intent plan design build review check commit"
 
 # Stages that run as an Agent subprocess and therefore have a model to resolve.
 # `commit` is not one — it's the orchestrator running `temper gate commit`.
-AGENT_STAGES="plan design build review check"
+AGENT_STAGES="intent plan design build review check"
 
 # Per-command state.stage sequences (bookkeeping for resume — see
 # reference/orchestrator-patterns.md "Build State Schema"). Distinct from $STAGES
 # above, which is the `temper gate <stage>` vocabulary: /temper:fix's state.stage
 # uses rca/fix in place of plan/build, but "rca"/"fix" are never valid gate stages.
-STAGE_SEQ_TEMPER="plan design build review check"
+STAGE_SEQ_TEMPER="intent plan design build review check"
 STAGE_SEQ_FIX="rca fix review check"
 
 _count_lines_matching() { # _count_lines_matching <pattern> <file>  (grep -c exits 1 on zero matches
@@ -314,7 +321,7 @@ d = {
     'spec_path': f'.temper/specs/{sys.argv[1]}',
     'branch': sys.argv[2],
     'command': sys.argv[3],
-    'next_stage': 'plan' if sys.argv[3] == 'temper' else 'rca',
+    'next_stage': 'intent' if sys.argv[3] == 'temper' else 'rca',
     'run_mode': 'interactive',
     'artifacts': ['intent.md', 'tasks.md'] if sys.argv[3] == 'temper' else ['rca.md'],
     'updated': sys.argv[4],
@@ -437,10 +444,59 @@ print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_t
   return $rc
 }
 
+_archive_ledger() { # writes {spec_path}/gate-ledger.json from the live run state.
+  # The run's decision record (verdicts, overrides with approver, evidence counts) must
+  # not evaporate with the runtime state — it is the audit trail the committed artifact
+  # chain exists for. Called by `state archive` (before the commit, so the ledger rides
+  # it) and by `state clear` (the safety net for flows that never archived). Idempotent.
+  local spec_path; spec_path="$(cmd_state_get spec_path "")"
+  if [[ -n "$spec_path" && -d "$spec_path" && -f "$GATES_FILE" ]]; then
+    python3 - "$GATES_FILE" "$OVERRIDES_FILE" "$EVIDENCE_DIR" "$spec_path/gate-ledger.json" "$(_now)" <<'PY'
+import glob, json, os, sys
+gates_f, overrides_f, evidence_dir, out_f, ts = sys.argv[1:6]
+def load(p, default):
+    try:
+        return json.load(open(p))
+    except Exception:
+        return default
+gates = load(gates_f, {})
+overrides = load(overrides_f, [])
+evidence = {}
+for f in sorted(glob.glob(os.path.join(evidence_dir, '*.json'))):
+    stage = os.path.splitext(os.path.basename(f))[0]
+    rows = load(f, [])
+    if rows:
+        evidence[stage] = {'rows': len(rows),
+                           'labels': {l: sum(1 for e in rows if e.get('label') == l)
+                                      for l in {e.get('label') for e in rows if e.get('label')}}}
+with open(out_f, 'w') as fh:
+    json.dump({'gates': gates, 'overrides': overrides, 'evidence': evidence,
+               'archived': ts}, fh, indent=2)
+    fh.write('\n')
+PY
+    [[ -f "$spec_path/gate-ledger.json" ]] && { echo "$spec_path/gate-ledger.json"; return 0; }
+  fi
+  return 0
+}
+
+cmd_state_archive() { # temper state archive — write the ledger WITHOUT touching state.
+                       # Run before `git commit` so the archived record rides the commit
+                       # while the live state stays intact for the pre-commit gate.
+  local out; out="$(_archive_ledger)"
+  if [[ -n "$out" ]]; then
+    echo "OK: gate ledger archived to $out"
+  else
+    echo "OK: nothing to archive (no gates recorded, or no spec dir)"
+  fi
+}
+
 cmd_state_clear() {
+  local archived_note=""
+  local out; out="$(_archive_ledger)"
+  [[ -n "$out" ]] && archived_note=" — gate ledger archived to $out"
   rm -f "$STATE_FILE" "$LOOPS_FILE" "$GATES_FILE" "$OVERRIDES_FILE"
   rm -rf "$EVIDENCE_DIR"
-  echo "OK: run state cleared (spec artifacts under .temper/specs/ are untouched)"
+  echo "OK: run state cleared (spec artifacts under .temper/specs/ are untouched${archived_note})"
 }
 
 cmd_state() {
@@ -451,8 +507,9 @@ cmd_state() {
     set) cmd_state_set "$@" ;;
     advance) cmd_state_advance "$@" ;;
     loop) cmd_state_loop "$@" ;;
+    archive) cmd_state_archive "$@" ;;
     clear) cmd_state_clear "$@" ;;
-    *) echo "FAIL: usage: temper state <init|get|set|advance|loop|clear> ..." >&2; return 1 ;;
+    *) echo "FAIL: usage: temper state <init|get|set|advance|loop|archive|clear> ..." >&2; return 1 ;;
   esac
 }
 
@@ -542,6 +599,49 @@ for e in json.load(open(sys.argv[1])):
   fi
 }
 
+cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--scenario x]
+                      # [--severity s] [--label L] -- <cmd...>
+  # The CLI executes the command ITSELF and records the exit code it observed — so a
+  # PROVEN label here means machine-observed, not agent-reported. Deliberately skips
+  # cmd_evidence_add's nonzero-exit downgrade: a RED run (exit 1) recorded by the
+  # process that ran it is exactly as proven as a green one. Always returns 0 — the
+  # record is the product; pass/fail is the gate's business (the printed line and the
+  # ledger carry the exit code).
+  _ensure_dirs
+  local stage="" claim="" phase="" scenario="" severity="" label="PROVEN"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --stage) stage="$2"; shift 2 ;;
+      --claim) claim="$2"; shift 2 ;;
+      --phase) phase="$2"; shift 2 ;;
+      --scenario) scenario="$2"; shift 2 ;;
+      --severity) severity="$2"; shift 2 ;;
+      --label) label="$2"; shift 2 ;;
+      --) shift; break ;;
+      *) echo "FAIL: unknown flag $1 (command goes after --)" >&2; return 1 ;;
+    esac
+  done
+  [[ -n "$stage" && -n "$claim" && $# -gt 0 ]] || { echo "FAIL: usage: temper evidence run --stage <s> --claim <c> -- <cmd...>" >&2; return 1; }
+  "$@"
+  local exit_code=$?
+  local cmd_str="$*"
+  local file="$EVIDENCE_DIR/$stage.json"
+  [[ -f "$file" ]] || echo '[]' > "$file"
+  local entry
+  entry=$(python3 -c "
+import json, sys
+claim, cmd, exit_code, severity, label, phase, scenario, ts = sys.argv[1:]
+e = {'claim': claim, 'cmd': cmd, 'exit_code': int(exit_code), 'artifact': None,
+     'sha256': None, 'value': None, 'severity': severity or None,
+     'phase': phase or None, 'scenario': scenario or None, 'label': label,
+     'executed_by': 'cli', 'ts': ts}
+print(json.dumps(e))
+" "$claim" "$cmd_str" "$exit_code" "$severity" "$label" "$phase" "$scenario" "$(_now)")
+  _json_append "$file" "$entry"
+  echo "OK: [$label] $stage: $claim (cli-executed, exit $exit_code)"
+  return 0
+}
+
 cmd_evidence_clear() { # temper evidence clear --stage <s> — truncate .temper/evidence/<s>.json to []
   local stage=""
   while [[ $# -gt 0 ]]; do
@@ -557,9 +657,24 @@ cmd_evidence() {
   local sub="${1:-}"; shift || true
   case "$sub" in
     add) cmd_evidence_add "$@" ;;
+    run) cmd_evidence_run "$@" ;;
     list) cmd_evidence_list "$@" ;;
     clear) cmd_evidence_clear "$@" ;;
-    *) echo "FAIL: usage: temper evidence <add|list|clear> ..." >&2; return 1 ;;
+    *) echo "FAIL: usage: temper evidence <add|run|list|clear> ..." >&2; return 1 ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# config — scriptable read access to .claude/temper.config (the same parser
+# every gate uses, exposed so hooks and CI steps never re-implement it).
+# ---------------------------------------------------------------------------
+
+cmd_config() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    get) [[ -n "${1:-}" ]] || { echo "FAIL: usage: temper config get <dot.path> [default]" >&2; return 1; }
+         _cfg_get "$1" "${2:-}" ;;
+    *) echo "FAIL: usage: temper config get <dot.path> [default]" >&2; return 1 ;;
   esac
 }
 
@@ -697,6 +812,62 @@ print(json.dumps({'name': sys.argv[1], 'pass': sys.argv[2] == '1', 'detail': sys
 " "$label" "$ok" "$detail"
 }
 
+gate_intent() {
+  # The fail-fast gate: intent is the artifact everything downstream is derived from,
+  # so a wrong intent multiplies into wrong scenarios, a wrong plan, and a wrong
+  # build — tokens spent for nothing. This gate makes the human review the CHEAP
+  # artifact before the expensive stages run. Mechanically checkable floor: a Problem
+  # section with real content (not template placeholders), at least one success
+  # criterion, and a Status header. intent.md absent => the run took the trivial path
+  # (no artifacts) => PASS; the commit gate requires an intent verdict exactly when
+  # the artifact exists, so a skipped gate on a real intent cannot reach commit.
+  local spec_path="$1"
+  local reqs=() all_pass=1
+  if [[ ! -f "$spec_path/intent.md" ]]; then
+    reqs+=("$(_req "intent artifact" 1 "intent.md absent — trivial path, no artifacts")")
+  else
+    local problem_lines criteria status_line
+    problem_lines=$(awk '
+      /^#+[[:space:]]*Problem/ { f=1; next }
+      f && /^#+[[:space:]]/ { f=0 }
+      f && NF && $0 !~ /^[[:space:]]*\{/ { c++ }
+      END { print c+0 }
+    ' "$spec_path/intent.md")
+    if [[ "$problem_lines" -gt 0 ]]; then
+      reqs+=("$(_req "problem stated" 1 "Problem section has $problem_lines line(s) of content")")
+    else
+      reqs+=("$(_req "problem stated" 0 "Problem section is missing, empty, or still template placeholders")")
+      all_pass=0
+    fi
+    # A criterion is a '- ' line whose CONTENT isn't a template placeholder: strip the
+    # optional checkbox, then reject anything still starting with '{' — the template's
+    # own '- [ ] {criterion 1: ...}' bullets must not count as real criteria.
+    criteria=$(awk '
+      /^#+[[:space:]]*Success Criteria/ { f=1; next }
+      f && /^#+[[:space:]]/ { f=0 }
+      f && /^- / { t=$0; sub(/^- \[[ xX]\] */,"",t); sub(/^- */,"",t); if (t !~ /^\{/) c++ }
+      END { print c+0 }
+    ' "$spec_path/intent.md")
+    if [[ "$criteria" -gt 0 ]]; then
+      reqs+=("$(_req "success criteria" 1 "$criteria criterion/criteria listed")")
+    else
+      reqs+=("$(_req "success criteria" 0 "no real success criteria (template placeholders don't count) — nothing downstream can be validated against")")
+      all_pass=0
+    fi
+    # The Status value must be an actual lifecycle state, not the template's
+    # '{draft | accepted | completed}' placeholder.
+    if grep -qiE '^\*\*Status:\*\*[[:space:]]*(draft|accepted|completed)[[:space:]]*$' "$spec_path/intent.md"; then
+      status_line="$(grep -m1 -iE '^\*\*Status:\*\*[[:space:]]*(draft|accepted|completed)[[:space:]]*$' "$spec_path/intent.md")"
+      reqs+=("$(_req "status header" 1 "$status_line")")
+    else
+      reqs+=("$(_req "status header" 0 "no **Status:** draft|accepted|completed header (a placeholder doesn't count) — the lifecycle has nowhere to live")")
+      all_pass=0
+    fi
+  fi
+  local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+  echo "$reqs_json" "$all_pass"
+}
+
 gate_plan() {
   local spec_path="$1"
   local reqs=() all_pass=1
@@ -751,6 +922,27 @@ gate_build() {
       reqs+=("$(_req "all tasks complete" 0 "$unchecked unchecked task(s) remain in tasks.md")")
       all_pass=0
     fi
+  fi
+  local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+  echo "$reqs_json" "$all_pass"
+}
+
+gate_design() {
+  # v8.1: no longer vacuous. Design is still an optional stage with no
+  # single-correct-output *quality* requirement — but when it RAN (design.md exists),
+  # the one thing reference/design.md makes non-negotiable is checkable: an Areas of
+  # Concern section, present even when it says none was flagged. A policy conflict
+  # silently unflagged is exactly what an unattended design->build crossing must not
+  # let through. design.md absent => stage was legitimately skipped => PASS.
+  local spec_path="$1"
+  local reqs=() all_pass=1
+  if [[ ! -f "$spec_path/design.md" ]]; then
+    reqs+=("$(_req "design artifact" 1 "design.md absent — stage skipped (trivial/simple, or phases.design: false)")")
+  elif grep -qiE '^#+ .*areas of concern' "$spec_path/design.md"; then
+    reqs+=("$(_req "concerns flagged" 1 "design.md has an Areas of Concern section ('None flagged — why' counts)")")
+  else
+    reqs+=("$(_req "concerns flagged" 0 "design.md has no Areas of Concern section — flag conflicts, or state 'None flagged — {why}'")")
+    all_pass=0
   fi
   local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
@@ -819,14 +1011,44 @@ gate_check() {
 }
 
 _glob_touch_match() { # _glob_touch_match <file> <pattern>  (pattern like **/auth/**)
+  # Proper glob match, not a substring test: **/auth/** matches the `auth` path
+  # SEGMENT, never `auth` inside `oauth` or `authenticator`; an interior `*` (e.g.
+  # **/migrations/*.sql) is honored. file + pattern cross as argv, never source.
   local file="$1" pattern="$2"
-  local core="${pattern#\*\*/}"; core="${core%/\*\*}"
-  case "$file" in *"$core"*) return 0 ;; *) return 1 ;; esac
+  python3 - "$file" "$pattern" <<'PY'
+import re, sys
+target, pat = sys.argv[1].lstrip("./"), sys.argv[2]
+out, i, n = [], 0, len(pat)
+while i < n:
+    if pat[i:i+3] == "**/": out.append("(?:.*/)?"); i += 3
+    elif pat[i:i+3] == "/**": out.append("(?:/.*)?"); i += 3
+    elif pat[i:i+2] == "**": out.append(".*"); i += 2
+    elif pat[i] == "*": out.append("[^/]*"); i += 1
+    elif pat[i] == "?": out.append("[^/]"); i += 1
+    else: out.append(re.escape(pat[i])); i += 1
+sys.exit(0 if re.match("^" + "".join(out) + "$", target) else 1)
+PY
 }
 
 gate_commit() {
   local reqs=() all_pass=1
   local run_mode; run_mode="$(cmd_state_get run_mode interactive)"
+
+  # Artifact-only carve-out: a commit whose ENTIRE staged set lives under
+  # .temper/specs/ is the committed-artifact chain doing its job — capturing an
+  # intent draft, accepting a plan at its gate — and blocking it until build/review/
+  # check have verdicts would make mid-run artifact commits impossible. Code commits
+  # are untouched: one staged file outside .temper/specs/ and every gate below applies.
+  local staged_all staged_specs
+  staged_all=$(git -C "$REPO_ROOT" diff --cached --name-only 2>/dev/null | grep -c .)
+  staged_specs=$(git -C "$REPO_ROOT" diff --cached --name-only 2>/dev/null | grep -c '^\.temper/specs/')
+  if [[ "${staged_all:-0}" -gt 0 && "$staged_all" -eq "${staged_specs:-0}" ]]; then
+    reqs+=("$(_req "artifact-only commit" 1 "$staged_all staged file(s), all under .temper/specs/ — the artifact chain passes the fence; code commits still need every gate")")
+    local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+    echo "$reqs_json" 1
+    return
+  fi
+
   # /temper:fix has no plan stage — RCA and Fix aren't gated through 'plan', so requiring
   # that verdict would permanently FAIL every fix commit (never computed). A stale "eval"
   # key from a pre-upgrade .temper/gates.json is simply never visited: this loop only
@@ -837,6 +1059,15 @@ gate_commit() {
     stages_to_check="build review check"
   else
     stages_to_check="plan build review check"
+    # Intent and design are artifact-conditional: each stage's gate must have run
+    # (any verdict) exactly when its artifact exists. An intent nobody gated, or an
+    # unflagged design.md, must not slide through the commit gate — while a trivial
+    # run that produced neither artifact owes neither verdict.
+    local spec_path_cond; spec_path_cond="$(cmd_state_get spec_path "")"
+    if [[ -n "$spec_path_cond" ]]; then
+      [[ -f "$spec_path_cond/intent.md" ]] && stages_to_check="intent $stages_to_check"
+      [[ -f "$spec_path_cond/design.md" ]] && stages_to_check="${stages_to_check/plan build/plan design build}"
+    fi
   fi
   for s in $stages_to_check; do
     local verdict; verdict="$(_json_get_path "$GATES_FILE" "$s.verdict" "MISSING")"
@@ -901,13 +1132,24 @@ cmd_gate() {
   _ensure_dirs
   local ok=false
   for s in $STAGES; do [[ "$stage" == "$s" ]] && ok=true; done
-  [[ "$ok" == "true" ]] || { echo "FAIL: usage: temper gate <plan|design|build|review|check|commit>" >&2; return 1; }
+  [[ "$ok" == "true" ]] || { echo "FAIL: usage: temper gate <intent|plan|design|build|review|check|commit>" >&2; return 1; }
 
   local spec_path; spec_path="$(_spec_path "$spec_path_override")"
+  # intent and design treat an ABSENT artifact as a legitimate skip — which makes an
+  # EMPTY spec path poisonous for them: with no state and no --spec-path, the gate
+  # would test -f "/intent.md", find nothing, and record a vacuous PASS that never
+  # looked at the real draft (and would silently pay a stage-marker debt). Refuse to
+  # guess: no target => usage error, no verdict written.
+  if [[ -z "$spec_path" && ( "$stage" == "intent" || "$stage" == "design" ) ]]; then
+    echo "FAIL: no spec path — pass --spec-path <dir> or run 'temper state init' first" >&2
+    echo "      (gate $stage treats a missing artifact as a legitimate skip, so it refuses to guess where to look)" >&2
+    return 1
+  fi
   local out reqs_json all_pass
   case "$stage" in
+    intent) out=$(gate_intent "$spec_path") ;;
     plan) out=$(gate_plan "$spec_path") ;;
-    design) reqs_json='[]'; all_pass=1 ;;
+    design) out=$(gate_design "$spec_path") ;;
     build) out=$(gate_build "$spec_path") ;;
     review) out=$(gate_review) ;;
     check) out=$(gate_check "$spec_path") ;;
@@ -944,13 +1186,22 @@ cmd_override() {
   [[ -n "$stage" && -n "$reason" ]] || { echo "FAIL: usage: temper override <stage> --reason \"...\"" >&2; return 1; }
   _ensure_dirs
   [[ -f "$OVERRIDES_FILE" ]] || echo '[]' > "$OVERRIDES_FILE"
+  # An override is a human decision — record WHO, not just why. git identity is the
+  # best deterministic proxy available here; the confirm-override hook (hooks pack)
+  # additionally puts a human permission prompt between an agent and this command.
+  local by name email
+  name="$(git config user.name 2>/dev/null || true)"
+  email="$(git config user.email 2>/dev/null || true)"
+  by="$name"
+  [[ -n "$email" ]] && by="${by:+$by }<$email>"
+  [[ -n "$by" ]] || by="${USER:-unknown}"
   local entry
   entry=$(python3 -c "
 import json, sys
-print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'ts': sys.argv[3]}))
-" "$stage" "$reason" "$(_now)")
+print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'by': sys.argv[3], 'ts': sys.argv[4]}))
+" "$stage" "$reason" "$by" "$(_now)")
   _json_append "$OVERRIDES_FILE" "$entry"
-  echo "OK: override recorded for '$stage': $reason"
+  echo "OK: override recorded for '$stage' by $by: $reason"
 }
 
 # ---------------------------------------------------------------------------
@@ -975,7 +1226,7 @@ except Exception:
 overridden = {o['stage'] for o in overrides}
 print('Stage    Verdict  Evidence')
 print('-------  -------  --------')
-for stage in ['plan', 'design', 'build', 'review', 'check', 'commit']:
+for stage in ['intent', 'plan', 'design', 'build', 'review', 'check', 'commit']:
     g = d.get(stage)
     if not g:
         continue
@@ -988,6 +1239,210 @@ if overridden:
     print()
     print(f'{len(overridden)} gate(s) overridden by a human — see .temper/overrides.json')
 "
+}
+
+# ---------------------------------------------------------------------------
+# metrics — deterministic metric ingestion for the bands monitor.
+#
+# `temper metrics append <series> <value>` appends one numeric point to
+# <series>_history in .temper/metrics.json (creating file and array as needed) —
+# the same CLI-owned bookkeeping discipline as `temper evidence add`, so the
+# bands monitor reads a ledger the spine wrote, not prose-maintained state. Any
+# appended series is band-able by name (`bands.metrics: [coverage, my_series]`).
+# External sources (CI failure rate, post-deploy 5xx) enter the loop the same
+# way: a pipeline step calls append, the scheduled bands check does the rest.
+# ---------------------------------------------------------------------------
+
+cmd_metrics() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    append)
+      local series="${1:-}" value="${2:-}"
+      [[ -n "$series" && -n "$value" ]] || { echo "FAIL: usage: temper metrics append <series> <value>" >&2; return 1; }
+      [[ "$series" =~ ^[a-z][a-z0-9_-]*$ ]] || { echo "FAIL: series must match [a-z][a-z0-9_-]* (got '$series')" >&2; return 1; }
+      _ensure_dirs
+      [[ -f "$METRICS_FILE" ]] || echo '{}' > "$METRICS_FILE"
+      # value crosses the boundary as an argv element and is parsed by float() INSIDE
+      # python — never interpolated into source (a metric value can be attacker-influenced:
+      # a CI failure rate, a 5xx count fed from a pipeline step). A non-numeric value is a
+      # clean exit 1, not code that runs.
+      local out rc
+      out=$(python3 - "$METRICS_FILE" "$series" "$value" <<'PY'
+import json, sys
+path, series, value = sys.argv[1:4]
+try:
+    v = float(value)
+except ValueError:
+    sys.stderr.write(f"FAIL: value must be numeric (got '{value}')\n")
+    sys.exit(1)
+try:
+    d = json.load(open(path))
+    if not isinstance(d, dict):
+        d = {}
+except Exception:
+    d = {}
+# Same alias map `temper bands` uses (kept in sync): appending the friendly name
+# `tests` must land in the SAME array bands reads for it (test_count_history), or a
+# recorded point would never be banded. Any other name -> <name>_history.
+ALIASES = {'coverage': 'coverage_history', 'tests': 'test_count_history'}
+key = ALIASES.get(series) or (series if series.endswith('_history') else f"{series}_history")
+arr = d.get(key)
+if not isinstance(arr, list):
+    arr = []
+arr.append(int(v) if v.is_integer() else v)
+d[key] = arr
+with open(path, 'w') as f:
+    json.dump(d, f, indent=2)
+    f.write('\n')
+print(f"OK: {key} += {value} ({len(arr)} point(s))")
+PY
+)
+      rc=$?
+      echo "$out"
+      return $rc
+      ;;
+    *) echo "FAIL: usage: temper metrics append <series> <value>" >&2; return 1 ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# bands — closing the loop (deterministic drift detection, no model).
+#
+# Watches the history arrays in .temper/metrics.json against control bands
+# (rolling mean ± k·sigma over a window, plus a same-side-run drift rule).
+# Detection is entirely deterministic — this subcommand never invokes a model,
+# reads the network, or edits code. What a breach *triggers* is tiered in
+# config (`bands:` in .claude/temper.config — log / diagnose / propose) and
+# always lands in the normal pipeline: /temper:status renders the verdict, and
+# a `propose`-tier breach is drafted into a `.temper/specs/<slug>/intent.md`
+# for /temper to run — through every ordinary gate, never around them.
+#
+# Verdict: OK (nothing at 2sigma+), BREACH (>=1 metric at 2sigma+, exit 1),
+# INSUFFICIENT-DATA (no metric has enough recorded points yet). A flat
+# baseline (sigma = 0) treats any deviation as 3sigma — a perfectly stable
+# series moving at all is out of band by definition. History points may be
+# bare numbers or objects carrying a numeric `value`/`coverage`/`count`/`pct`.
+# ---------------------------------------------------------------------------
+
+cmd_bands() {
+  _ensure_dirs
+  local as_json=false
+  [[ "${1:-}" == "--json" ]] && as_json=true
+  local window min_points drift_run metrics t1 t2 t3
+  window="$(_cfg_get bands.window 10)"
+  min_points="$(_cfg_get bands.min-points 4)"
+  drift_run="$(_cfg_get bands.drift-run 6)"
+  metrics="$(_cfg_get bands.metrics "")"
+  [[ -n "$metrics" ]] || metrics="coverage"$'\x1f'"tests"
+  t1="$(_cfg_get bands.tiers.1sigma log)"
+  t2="$(_cfg_get bands.tiers.2sigma diagnose)"
+  t3="$(_cfg_get bands.tiers.3sigma propose)"
+  local out rc
+  out=$(python3 - "$METRICS_FILE" "$BANDS_FILE" "$window" "$min_points" "$drift_run" "$metrics" "$t1" "$t2" "$t3" "$(_now)" <<'PY'
+import json, math, sys
+metrics_path, out_path, window, min_points, drift_run, metrics_sep, t1, t2, t3, ts = sys.argv[1:11]
+# Clamp config to sane floors, never crash on it (spine degradation contract): a
+# non-integer or out-of-range window/min-points/drift-run falls back to its default
+# rather than raising. window>=2 and min-points>=2 keep the baseline slice and the
+# variance non-empty; drift-run>=2 keeps the run rule meaningful.
+def _cfg_int(raw, default, floor):
+    try:
+        n = int(float(raw))
+    except (ValueError, TypeError):
+        return default
+    return n if n >= floor else floor
+window = _cfg_int(window, 10, 2)
+min_points = _cfg_int(min_points, 4, 2)
+drift_run = _cfg_int(drift_run, 6, 2)
+# Two friendly aliases; beyond them, ANY <name>_history array in metrics.json is
+# band-able by name — `temper metrics append <name> <value>` is how a series
+# (including external ones: CI failure rate, 5xx counts) gets points.
+ALIASES = {'coverage': 'coverage_history', 'tests': 'test_count_history'}
+try:
+    m = json.load(open(metrics_path))
+    if not isinstance(m, dict):
+        m = {}
+except Exception:
+    m = {}   # malformed metrics == absent; never a crash, never a breach (spine contract)
+
+def numeric(v):
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, dict):
+        for k in ('value', 'coverage', 'count', 'pct'):
+            if isinstance(v.get(k), (int, float)) and not isinstance(v.get(k), bool):
+                return float(v[k])
+    return None
+
+tier_names = {0: 'ok', 1: '1sigma', 2: '2sigma', 3: '3sigma'}
+actions = {'1sigma': t1, '2sigma': t2, '3sigma': t3}
+results, lines, worst, any_data = {}, [], 0, False
+for name in [s for s in metrics_sep.split('\x1f') if s]:
+    key = ALIASES.get(name)
+    if key is None:
+        candidate = name if name.endswith('_history') else f"{name}_history"
+        if isinstance(m.get(candidate), list):
+            key = candidate
+    if key is None:
+        known = sorted(set(ALIASES) | {k[:-len('_history')] for k in m if k.endswith('_history') and isinstance(m.get(k), list)})
+        lines.append(f"  [--] {name} — unknown metric (known: {', '.join(known)}); skipped")
+        results[name] = {'tier': 'unknown-metric'}
+        continue
+    raw = m.get(key, [])
+    series = [x for x in (numeric(v) for v in (raw if isinstance(raw, list) else [])) if x is not None]
+    if len(series) < min_points:
+        lines.append(f"  [--] {name} — insufficient data ({len(series)} point(s) recorded, need {min_points})")
+        results[name] = {'tier': 'insufficient-data', 'points': len(series)}
+        continue
+    any_data = True
+    latest = series[-1]
+    base = series[max(0, len(series) - 1 - window):-1]
+    mean = sum(base) / len(base)
+    sigma = math.sqrt(sum((x - mean) ** 2 for x in base) / len(base))
+    if sigma == 0:
+        z = 0.0 if latest == mean else (3.0 if latest > mean else -3.0)
+    else:
+        z = (latest - mean) / sigma
+    level = 3 if abs(z) >= 3 else 2 if abs(z) >= 2 else 1 if abs(z) >= 1 else 0
+    run = series[-drift_run:]
+    drift = len(run) >= drift_run and (all(p > mean for p in run) or all(p < mean for p in run))
+    if drift and level < 2:
+        level = 2
+    tier = tier_names[level]
+    action = actions.get(tier)
+    worst = max(worst, level)
+    line = (f"  [{tier if level else 'ok'}] {name} — latest {latest:g} vs baseline "
+            f"{mean:.2f} ±{sigma:.2f} (z={z:+.2f}, window {len(base)})")
+    if drift:
+        line += f" [drift: {drift_run} consecutive same-side point(s)]"
+    if level >= 1:
+        line += f": action={action}"
+    lines.append(line)
+    results[name] = {'latest': latest, 'mean': round(mean, 4), 'sigma': round(sigma, 4),
+                     'z': round(z, 4), 'tier': tier, 'drift': drift,
+                     'action': action if level >= 1 else None, 'window': len(base)}
+verdict = 'BREACH' if worst >= 2 else ('OK' if any_data else 'INSUFFICIENT-DATA')
+with open(out_path, 'w') as f:
+    json.dump({'verdict': verdict, 'metrics': results, 'ts': ts}, f, indent=2)
+    f.write('\n')
+print(f"temper bands -> {verdict}")
+for l in lines:
+    print(l)
+if worst >= 2:
+    print("A 2sigma+ breach is a closing-the-loop trigger: /temper:status renders it; a "
+          "propose-tier breach is drafted as .temper/specs/<slug>/intent.md for /temper to run.")
+sys.exit(1 if worst >= 2 else 0)
+PY
+)
+  rc=$?
+  if [[ "$as_json" == "true" ]]; then
+    cat "$BANDS_FILE" 2>/dev/null || echo '{}'
+  else
+    echo "$out"
+  fi
+  return $rc
 }
 
 # ---------------------------------------------------------------------------
@@ -1005,18 +1460,24 @@ main() {
     model) cmd_model "$@" ;;
     override) cmd_override "$@" ;;
     report) cmd_report "$@" ;;
+    bands) cmd_bands "$@" ;;
+    metrics) cmd_metrics "$@" ;;
+    config) cmd_config "$@" ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
 
 Usage:
   temper init
-  temper state <init|get|set|advance|loop|clear> ...
-  temper evidence <add|list|clear> ...
-  temper gate <plan|design|build|review|check|commit> [--spec-path P]
-  temper model <plan|design|build|review|check> | --all
+  temper state <init|get|set|advance|loop|archive|clear> ...
+  temper evidence <add|run|list|clear> ...
+  temper gate <intent|plan|design|build|review|check|commit> [--spec-path P]
+  temper model <intent|plan|design|build|review|check> | --all
   temper override <stage> --reason "..."
   temper report [--json]
+  temper bands [--json]
+  temper metrics append <series> <value>
+  temper config get <dot.path> [default]
 EOF
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;

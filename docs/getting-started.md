@@ -15,7 +15,10 @@ nav_order: 2
 ```
 
 {: .highlight }
-Claude Code will automatically load Temper's commands and skills when you start a session in any project.
+That's it. Claude Code loads Temper's commands and skills automatically, and your first
+`/temper "…"` in a project sets it up on the spot — config, `.temper/` scaffold, and the
+native commit gate that blocks a red commit. To set up explicitly instead, run
+`/temper:init`. For optional edit-time guardrails, `/temper:pack enable hooks`.
 
 ### Other AI Assistants
 
@@ -52,7 +55,10 @@ cd your-project
 /temper "add user authentication"
 ```
 
-Temper runs plan → build → review → check with stage gates:
+Temper runs intent → plan → build → review → check with stage gates. The first gate is
+the cheapest and highest-leverage: you approve the Problem and success criteria before
+any exploration or architecture spends tokens — correcting the intent there costs
+words; correcting it after planning costs the plan. Then:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -243,6 +249,26 @@ Full setup instructions: [Recommended Setup](recommended-setup)
 ```
 
 Shows live scenario verification status, MCP tool availability, and evidence ratio.
+
+## Parallel Runs (worktrees)
+
+Temper's state is per-checkout — `.temper/` lives in the working directory, so two
+sessions in the same checkout would fight over `build-state.json`. Git worktrees make
+parallel runs safe, and everything temper needs travels with each worktree:
+
+```bash
+claude --worktree feature-auth      # session 1: /temper "add auth"
+claude --worktree fix-rate-limit    # session 2: /temper:fix "429 not returned"
+```
+
+- Each worktree gets its **own** `.temper/` state, evidence ledger, gates, and
+  autonomy lock — sessions cannot collide on runtime state.
+- Split work so parallel tasks touch **disjoint files** (the plan's blast radius shows
+  where work is independent); tasks sharing files belong in one session, sequentially.
+- The controls travel with the repo: packs, hooks in settings, and the pre-commit gate
+  apply identically in every worktree — more sessions never means fewer guardrails.
+- Practical ceiling: how many streams one person can *review*. Two or three is a
+  sensible start; add sessions only while your review keeps up.
 
 ## Next Steps
 

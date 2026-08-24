@@ -62,7 +62,7 @@ Sonnet for simple tasks", "run `/compact` after turn 28", "Grep first, saves ~1%
 re-injected into every session. Advice that generic is judgment the model already
 applies, and a ~1% saving does not pay for the block that describes it. It's gone, and
 `validate-docs.sh` fails if it comes back. Token optimization as a set of runtime levers
-is a [retired system](https://github.com/galando/temper/blob/main/reference/tokenomics.md).
+is a [retired system](https://github.com/galando/temper/blob/main/docs/history/tokenomics.md).
 
 ## Writing a pack for Claude 5
 

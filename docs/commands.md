@@ -26,8 +26,14 @@ nav_order: 3
 Runs the full software development lifecycle with stage gates:
 
 ```
-PLAN → (gate) → BUILD → (gate) → REVIEW → (gate) → CHECK → (gate) → COMMIT
+INTENT → (gate) → PLAN → (gate) → BUILD → (gate) → REVIEW → (gate) → CHECK → (gate) → COMMIT
 ```
+
+The **Intent gate comes first and is deliberately cheap**: you approve (or correct) the
+Problem, success criteria, and constraints before any exploration or architecture work
+spends tokens — an intent correction at this gate costs words; the same correction
+after Plan costs the whole plan, because every downstream artifact is derived from the
+intent. Trivial requests (a typo, a one-liner) skip it automatically.
 
 **Stage Gates:**
 
@@ -82,6 +88,37 @@ Each stage gate clears context and loads only what's needed:
 | BUILD | tasks.md + intent.md | ~5-10KB |
 | REVIEW | Changed files only | ~20-50KB |
 | CHECK | Nothing new | 0KB |
+
+---
+
+## `/temper:intent`
+
+Capture an idea as a draft `intent.md` — the artifact that starts the pipeline —
+without starting the pipeline.
+
+```bash
+/temper:intent "handlers spend a third of call time on status-only queries"
+/temper:intent "JIRA-4521"
+/temper:intent                # interview from scratch
+```
+
+**What it does:**
+
+- Interviews the originator the way an analyst would (scope, affected users,
+  constraints, what better looks like) — no formal language required of them
+- Writes `.temper/specs/{slug}/intent.md` with `Status: draft`, the author (from git
+  config), Problem, measurable Success Criteria, Constraints, Target Users, and Open
+  Questions — **no scenarios and no architecture**; those are Plan's job, derived from
+  the measured blast radius later
+- Offers to commit the draft, so author, timestamp, and revision history live in
+  version control from the moment the idea is real
+
+**Who flips `Status:`** — `draft` (this command) → `accepted` (the human's Continue at
+`/temper`'s **Intent gate**; the plan gate only in a standalone `/temper:plan` run,
+where it's the first human gate to review the intent) → `completed` (the commit step).
+A later `/temper "{slug}"` presents the draft at its Intent gate and builds on it,
+never overwrites it. A `temper bands` breach drafts intents in exactly the same shape
+(see `/temper:status`).
 
 ---
 
@@ -461,7 +498,7 @@ Root Cause: Queue consumer crashed at 2:34 AM
 
 ## `/temper:init`
 
-Seed a project's `.claude/temper.config` from the bundled default template. Idempotent — never overwrites an existing config.
+One-command project setup. Idempotent — safe to re-run; never overwrites an existing config or an existing non-Temper git hook.
 
 ```bash
 /temper:init
@@ -469,10 +506,11 @@ Seed a project's `.claude/temper.config` from the bundled default template. Idem
 
 **What it does:**
 
-- If `.claude/temper.config` is absent, copies the default template into place (creating `.claude/` if needed)
-- If a config already exists, reports that it's present and leaves it untouched
+- Seeds `.claude/temper.config` from the bundled default (if absent; an existing config is left untouched, with a note about any retired blocks in it)
+- Scaffolds `.temper/` (the gate ledger, overrides log, feedback-loop registry)
+- Installs the **native commit gate** — the pre-commit hook that blocks `git commit` while any gate is red (backs up a prior non-Temper hook first)
 
-Use it once in a new project so Temper runs on documented, safe defaults — including the opt-in `autonomy:` block.
+**You usually don't run it by hand** — your first `/temper "…"` in an un-set-up project does all of this automatically. Optional edit-time guardrails are a separate `/temper:pack enable hooks`.
 
 ---
 
@@ -592,3 +630,14 @@ Packs: quality, tdd, security, company
    • TODOs: 12 (3 critical)
    • Deprecated: 1 dependency
 ```
+
+**Control bands (closing the loop):** the dashboard also runs `temper bands` — a
+deterministic drift check of the metric history against rolling mean ± k·sigma bands
+(config: `bands:` in `.claude/temper.config`). `1sigma` logs, `2sigma` means
+diagnose, and a `3sigma`/`propose`-tier breach offers to draft the breach as a
+Stage-1 `intent.md` for `/temper` to pick up — evidence in, ordinary gates out.
+Dismissals are the tuning signal (3+ on one metric → widen the window or retire the
+metric). `temper bands` is also runnable headless with no dashboard at all — exit 1 on
+a breach — from **any** scheduler (cron, Jenkins, GitLab CI, GitHub Actions; temper
+ships no platform-specific wiring on purpose, see `examples/workflow/README.md`),
+which is what lets the loop begin and end without a person starting it.

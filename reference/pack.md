@@ -51,9 +51,9 @@ first of these that exists says so:
    and it wins.
 2. **`phases:` frontmatter in the pack's own `rules.md`** — the author declaring which
    stages the pack has anything to say to. Built-in packs all declare one; `tdd` is
-   `[build, review, check, fix]`, `adaptive-learning` is `[review, check]`. The
-   declarations themselves are the source of truth — read the frontmatter, not this
-   sentence, if they ever disagree (`validate-plugin.sh` checks their syntax).
+   `[build, review, check, fix]`, `security` is `all`. The declarations themselves are
+   the source of truth — read the frontmatter, not this sentence, if they ever disagree
+   (`validate-plugin.sh` checks their syntax).
 3. **`all`** — no declaration anywhere, so it loads everywhere. This is the
    backwards-compatible default for a third-party pack written before frontmatter existed.
 

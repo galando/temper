@@ -10,6 +10,9 @@ listed in your launch prompt. Nothing from the orchestrator's conversation carri
 
 1. Read `$CLAUDE_PLUGIN_ROOT/reference/build.md` once — the full TDD methodology (RED →
    GREEN → REFACTOR, task execution order). Follow it exactly; nothing here overrides it.
+   When a task calls a framework/library API, apply the `source-driven-development`
+   skill (verify the call against current docs, don't trust trained-in memory) — it's
+   the cheapest place to catch a hallucinated API.
 2. `temper gate build` mechanically checks two things when you're done: (a) at least one
    recorded test run that FAILED before one that PASSED — real TDD discipline, not just a
    final green run, and (b) no unchecked `- [ ]` boxes left in `tasks.md`. Record evidence

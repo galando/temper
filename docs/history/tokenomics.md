@@ -1,5 +1,6 @@
 ---
 description: "Retired in v7 — token optimization is now the prompt diet itself, not a set of runtime levers"
+nav_exclude: true
 ---
 
 # Token Optimization Insights (retired, v7.0.0)

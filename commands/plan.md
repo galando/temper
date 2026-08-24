@@ -24,8 +24,11 @@ argument-hint: "<feature-name-or-JIRA-123>"
 7. Clarify if ambiguous (max 2-3 questions, informed by scenarios)
 8. Generate exactly `intent.md` + `tasks.md` + `plan.md` — never a fourth file — to `.temper/specs/{feature}/` with file-to-scenario traceability
 9. For Medium and Complex: generate mermaid diagram + ASCII art equivalent in plan.md (## Diagram section); render ASCII in terminal summary (not raw mermaid)
-10. Record `temper state set complexity <tier>`, then run `temper gate plan --spec-path
-    .temper/specs/{feature-slug}` and fix any FAIL — see **Deterministic Gate** below
+10. Record `temper state set complexity <tier>`, then run BOTH gates with an explicit
+    spec path and fix any FAIL — see **Deterministic Gate** below:
+    `temper gate intent --spec-path .temper/specs/{feature-slug}` (whenever intent.md
+    exists — authored here or picked up as a draft) and
+    `temper gate plan --spec-path .temper/specs/{feature-slug}`
 11. Present for approval with 4 options: Continue / Walkthrough / Change / Save
 
 ### Active Skills
@@ -37,8 +40,12 @@ argument-hint: "<feature-name-or-JIRA-123>"
 
 ### Deterministic Gate
 
-Follow `$CLAUDE_PLUGIN_ROOT/agents/plan.md` steps 3-4 (record `temper state set
-complexity`, then run `temper gate plan --spec-path .temper/specs/{feature-slug}` and
-fix any FAIL) before presenting for approval — same reason as Review/Check: skipping
-this leaves `temper gate commit` unable to see that planning happened at all. Pass
-`--spec-path` explicitly rather than relying on `temper state` having been initialized.
+Record `temper state set complexity <tier>`, then run `temper gate intent` and
+`temper gate plan`, each with `--spec-path .temper/specs/{feature-slug}`, and fix any
+FAIL before presenting for approval — same reason as Review/Check: skipping this
+leaves `temper gate commit` unable to see that planning happened at all (it requires
+an intent verdict whenever intent.md exists). The intent gate is standalone-only
+here: in the orchestrated `/temper` flow the Intent stage already recorded it, which
+is why `agents/plan.md` doesn't repeat it. Pass `--spec-path` explicitly rather than
+relying on `temper state` having been initialized — the intent/design gates refuse to
+run without a spec path.

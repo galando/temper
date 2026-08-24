@@ -1,9 +1,8 @@
 # Temper self-evals — seeded-defect fixtures
 
 Move 3 of [`docs/plans/v7-deterministic-spine.md`](../docs/plans/v7-deterministic-spine.md):
-Temper ships an eval stage for *your* features (`/temper:eval`) but, before v7, had no
-behavioral regression harness for its own prompts — `scripts/quality-check.sh` and
-friends check structure, never behavior. Every prompt edit was a blind change to a
+before v7, Temper had no behavioral regression harness for its own prompts —
+`scripts/quality-check.sh` and friends check structure, never behavior. Every prompt edit was a blind change to a
 multi-thousand-line program. This is the fix: three seeded-defect fixture projects,
 each with one known defect, run through the real pipeline in CI, asserting against the
 evidence ledger (`.temper/evidence/`, written by `scripts/temper`) — not by grepping a
@@ -58,16 +57,17 @@ found and fixed" below) — a synthetic unit test structurally cannot catch a pr
 forgets to call the CLI, only running the prompt for real can.
 
 `evals/wiring-smoke/` (no seeded defect, no `expect.json`) closes this: `evals/
-run-wiring-smoke.sh` runs `/temper:plan`, `/temper:build`, then `/temper:eval` as three
-chained standalone invocations against one small, deliberately trivial feature (add a
-`version()` function backed by `package.json`, plus a test), then checks two things
-mechanically — not by keyword matching, by reading the same files `temper gate commit`
-itself reads:
+run-wiring-smoke.sh` runs `/temper:plan` then `/temper:build` as chained standalone
+invocations against one small, deliberately trivial feature (add a `version()`
+function backed by `package.json`, plus a test), then checks two things mechanically —
+not by keyword matching, by reading the same files `temper gate commit` itself reads
+(the v8 release removed the Eval stage, and this harness dropped its probe of it —
+see CHANGELOG v8.0.0):
 
-1. `.temper/gates.json` has a real `verdict` for `plan`, `build`, and `eval` (not
-   `MISSING` — a `MISSING` verdict is exactly what pass 3 found for the standalone
-   commands: `temper gate {stage}` was simply never invoked).
-2. `.temper/evidence/{build,eval}.json` actually has entries, and `temper state get
+1. `.temper/gates.json` has a real `verdict` for `plan` and `build` (not `MISSING` —
+   a `MISSING` verdict is exactly what pass 3 found for the standalone commands:
+   `temper gate {stage}` was simply never invoked).
+2. `.temper/evidence/build.json` actually has entries, and `temper state get
    complexity` actually returns a value plan is supposed to set — proving `temper
    evidence add` (not just `temper gate`) was really called.
 

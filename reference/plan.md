@@ -40,6 +40,28 @@ plan` reads only these three.
 files): an inline plan in the conversation, no files. **Medium** (5-10) / **Complex**
 (10+): the three files above. `--full`/`--quick` force Complex/Simple.
 
+**intent.md usually already exists when you start.** In the orchestrated `/temper`
+flow, the Intent stage wrote it and a human accepted it at the intent gate
+(`Status: accepted`) before you launched — it is your input: derive Scenarios and
+architecture from it, refine its wording only with a stated reason, never re-derive
+the Problem from scratch. A `Status: draft` intent (captured via `/temper:intent` or a
+`temper bands` breach, reaching you standalone) is the same input, plus: resolve or
+explicitly re-carry each Open Question (they count toward the 2-3 clarifying questions
+below); the draft→accepted flip happens at whichever human gate reviews it first.
+Standalone `/temper:plan` with no existing intent.md: derive the intent yourself
+(Problem, Success Criteria with `Validate:` types, Constraints, `**Status:** draft`
+header) as your first act.
+
+**Either way, standalone `/temper:plan` records the intent verdict itself.** Whenever
+intent.md exists at the spec path — authored fresh OR picked up as a draft — run
+`$CLAUDE_PLUGIN_ROOT/scripts/temper gate intent --spec-path {spec-path}` and fix any
+FAIL before proceeding to blast radius. Always pass `--spec-path` explicitly: state
+may not be initialized yet in standalone mode, and without a spec path the gate
+refuses to guess (usage error, no verdict). This matters at the end of the chain: the
+commit gate requires an intent verdict whenever intent.md exists, so the standalone
+`/temper:plan → :build → :review → :check → commit` chain FAILs at commit if this
+verdict was never recorded.
+
 **Risk multipliers** (each pushes complexity up one tier): touches auth/payment/security
 code; modifies a library with 5+ consumers; changes a DB schema; a module with a
 historically high defect rate (`.temper/metrics.json` if present); a CRITICAL/HIGH
@@ -210,8 +232,18 @@ time, `AskUserQuestion` "Next step"/"Ask a question" between each) / "Save for l
 change typed via "Other" is never approval — make the edit, then re-show this same gate.
 
 On Continue: write `.temper/build-state.json` (`stage: plan_complete`, `next_stage:
-build`, `artifacts: ["intent.md","tasks.md"]`); standalone mode loads only `tasks.md` +
-`intent.md` for Build. Subprocess mode: the orchestrator handles the transition.
+build`, `artifacts: ["intent.md","tasks.md"]`); if intent.md's header still says
+`Status: draft` (standalone mode — no intent gate ran before this one), flip it to
+`Status: accepted` and add `**Accepted-by:** {git config user.name} <{user.email}>` —
+the first human gate that reviews the intent is where acceptance is recorded (in the
+orchestrated flow that already happened at the Intent gate). Commit the artifacts in
+two steps — `git add .temper/specs/{slug}/` first, then `git commit -m "docs(plan):
+approve plan — {slug}"` as a separate call (not `add && commit`: the in-agent
+commit-gate hook checks `temper gate commit` when the commit is submitted, and the
+artifact-only carve-out that passes it mid-run reads the already-staged set). Skip
+with a note if the project gitignores `.temper/specs/`. Standalone mode loads only
+`tasks.md` + `intent.md` for Build. Subprocess mode: the orchestrator handles the
+transition.
 
 ## Edge Cases
 

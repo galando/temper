@@ -112,6 +112,12 @@ architecture is incompatible), add "Revise plan" as a build-gate option, write
 `build-context.json` with the infeasibility reason — the orchestrator routes back to
 Plan. This is human-driven, no circuit breaker, max once per run.
 
+**Writing framework code:** apply the `source-driven-development` skill when a task
+uses a framework/library API — detect the pinned version, verify the call against
+current official docs rather than trained-in memory, and cite the source. It's how a
+"hallucinated API" (the exact defect the orders-api fixture plants) gets caught while
+writing, before Review has to flag it. Skip it for plain application logic.
+
 ## Post-Implementation
 
 Standalone mode: run the full suite, show the summary box, then `AskUserQuestion` —

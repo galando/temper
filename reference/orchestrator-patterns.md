@@ -32,9 +32,10 @@ spec path from `$TEMPER state get spec_path` before launching any agent.
   "updated": "{ISO timestamp}" }
 ```
 
-Stage sequences: `/temper` — `plan_complete | design_complete | build_complete |
-review_complete | check_complete`, branch `feature/{slug}`. `/temper:fix` —
-`rca_complete | fix_complete | review_complete | check_complete`, branch `fix/{slug}`.
+Stage sequences: `/temper` — `intent_complete | plan_complete | design_complete |
+build_complete | review_complete | check_complete`, branch `feature/{slug}`.
+`/temper:fix` — `rca_complete | fix_complete | review_complete | check_complete`,
+branch `fix/{slug}`.
 
 **Save/Continue:** `$TEMPER state advance {stage}_complete {next_stage}` at every
 transition. On Save, report "Saved. Run {command} when ready to continue."
@@ -59,9 +60,12 @@ approval from a change request.
 ## Resume Validation
 
 Before honoring saved state, check: parseable JSON; `stage` is one the command defines;
-`.temper/specs/{spec}/` exists on disk; every file in `artifacts[]` exists; `updated` <
-30 days old (warn if older). Any check fails → show what's wrong, ask "Start over /
-Delete saved state / Cancel?"
+`.temper/specs/{spec}/` exists on disk; the artifacts the **completed** stages should
+have produced exist — `artifacts[]` lists the full run's expected set, so check it
+stage-aware: at `intent_complete` only `intent.md` is owed (Plan hasn't written
+`tasks.md`/`plan.md` yet); from `plan_complete` onward, every file in `artifacts[]`;
+`updated` < 30 days old (warn if older). Any check fails → show what's wrong, ask
+"Start over / Delete saved state / Cancel?"
 
 ## Nested Invocation Protection
 
@@ -136,17 +140,19 @@ justifications a gate doesn't need but a re-launched agent does.
   "test_failures": [ { "test_name": "", "error_message": "", "file": "", "line": 0, "scenario": "" } ] }
 ```
 
-`learning.json` (Review writes, Status + Review read — pattern/noise memory): schema in
-`reference/learning.md`.
+`review-memory.json` (Review writes, Status + Review read — the single finding memory:
+pattern acceptance/dismissal, promotion, and suppression; there is no separate learning
+store). See `reference/review.md` → "Metrics + Memory".
 
 | Stage | Reads | Writes |
 |---|---|---|
-| Plan | nothing (first stage) | intent.md, tasks.md, plan.md |
+| Intent | nothing (first stage) | intent.md (Problem/criteria/constraints — no scenarios) |
+| Plan | intent.md (accepted) | intent.md (adds Scenarios), tasks.md, plan.md |
 | Design | intent.md, plan.md | design.md |
 | Build | tasks.md, intent.md, review/check-context.json (on re-entry) | build-context.json |
-| Review | intent.md, `git diff`, build-context.json, learning.json | review-context.json, learning.json |
+| Review | intent.md, `git diff`, build-context.json, review-memory.json | review-context.json, review-memory.json |
 | Check | intent.md, review-context.json | check-context.json |
-| Status | metrics.json, review-memory.json, learning.json, gates.json, evidence/ | — |
+| Status | metrics.json, review-memory.json, gates.json, evidence/ | — |
 
 **Cleanup:** `$TEMPER state clear` (on commit) removes `*-context.json`, `gates.json`,
 `overrides.json`, the evidence ledger. `intent.md`/`tasks.md`/`plan.md`/`design.md` under

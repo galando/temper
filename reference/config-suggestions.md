@@ -66,21 +66,21 @@ After all validation levels in `/temper:check` pass (no failures), before the Co
    - Max 5 suggestions per check (prevent overwhelm)
 ```
 
-## Integration with Adaptive Learning
+## How suggestions are handled at the gate
 
-Config suggestions extend the existing adaptive learning system (v4.6.0):
-
-1. **Write to suggestion_queue:** Each suggestion is written to `learning.json` `suggestion_queue[]` with type `config-update`
-2. **User interaction:** User can Accept, Reject, or Defer each suggestion at the Check gate
-3. **Accepted suggestions:** Written to CLAUDE.md or AGENTS.md immediately
-4. **Rejected suggestions:** Tracked in learning.json with dismissal count. After 3+ rejections → auto-suppress
-5. **Deferred suggestions:** Kept in suggestion_queue with status "deferred" for future reference
+1. **Written to the spec:** each suggestion goes to
+   `.temper/specs/{feature}/config-suggestions.json`.
+2. **User interaction:** Accept, Reject, or Defer each one at the Check gate.
+3. **Accepted:** written to CLAUDE.md or AGENTS.md immediately.
+4. **Rejected:** recorded as a dismissal in `review-memory.json` (the single finding
+   memory) under a `config:{pattern_id}` key — 3+ dismissals of the same suggestion
+   pattern auto-suppress it from future checks.
+5. **Deferred:** left in the spec's `config-suggestions.json` for the next check.
 
 ## Suggestion Format
 
 ```json
 {
-  "type": "config-update",
   "pattern_id": "error-handling-result-type",
   "category": "learned_convention",
   "description": "Services use Result<> type for error handling",
@@ -100,6 +100,5 @@ Config suggestions extend the existing adaptive learning system (v4.6.0):
 - If CLAUDE.md doesn't exist: still generate suggestions, target file creation
 - If AGENTS.md doesn't exist: skip AGENTS.md suggestions
 - If no patterns detected (trivial change): show "No config suggestions for this change" at the gate
-- If `learning.json` doesn't exist: create it with the suggestion entries
 
 This capability does NOT modify files without user consent. All suggestions require explicit Accept at the Check gate.

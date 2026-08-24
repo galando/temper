@@ -20,9 +20,22 @@ _main() {
   # Empty denylist => warn-only default. No block.
   [[ -z "$denylist" ]] && return 0
 
-  # Gather edited file paths. PreToolUse/PostToolUse pass CLAUDE_FILE_PATH; pre-commit
-  # uses staged files. Absence of either => exit 0.
+  # Gather edited file paths. PostToolUse delivers the tool payload as JSON on stdin —
+  # tool_input.file_path is the edited file (this was the wiring bug: the hook used to
+  # read only CLAUDE_FILE_PATH, which hook events never set, so in-agent it scanned
+  # nothing). CLAUDE_FILE_PATH is kept as a fallback; pre-commit uses staged files.
   local -a files=()
+  if [[ ! -t 0 ]] && command -v python3 >/dev/null 2>&1; then
+    local stdin_file
+    stdin_file=$(python3 -c "
+import json, sys
+try:
+    print(json.load(sys.stdin).get('tool_input', {}).get('file_path', '') or '')
+except Exception:
+    print('')
+" 2>/dev/null) || stdin_file=""
+    [[ -n "$stdin_file" && -f "$stdin_file" ]] && files+=("$stdin_file")
+  fi
   if [[ -n "${CLAUDE_FILE_PATH:-}" && -f "${CLAUDE_FILE_PATH}" ]]; then
     files+=("${CLAUDE_FILE_PATH}")
   fi
