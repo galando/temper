@@ -15,7 +15,10 @@ nav_order: 2
 ```
 
 {: .highlight }
-Claude Code will automatically load Temper's commands and skills when you start a session in any project.
+That's it. Claude Code loads Temper's commands and skills automatically, and your first
+`/temper "…"` in a project sets it up on the spot — config, `.temper/` scaffold, and the
+native commit gate that blocks a red commit. To set up explicitly instead, run
+`/temper:init`. For optional edit-time guardrails, `/temper:pack enable hooks`.
 
 ### Other AI Assistants
 

@@ -3,7 +3,7 @@ description: "Unified SDLC command: plan → design? → build → review → ch
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v8.0.0)
+# Temper: Unified SDLC Command (v8.1.0)
 
 **Goal:** Run plan → design? → build → review+check → commit with a human gate at every
 stage (or, if armed, unattended past the plan gate). Every gate verdict is computed by
@@ -52,6 +52,16 @@ stage launches below say `model: {plan}`, `{build}` and so on — substitute the
 that stage from this output verbatim. Don't re-run it per stage, and don't infer a model
 from anywhere else: this command is the only thing that knows whether the project
 overrode one.
+
+## First-run bootstrap
+
+Before Stage 1, if **neither** `.claude/temper.config` **nor** `.temper/` exists, this
+project has never been set up. Do the bootstrap inline — don't make the user run a
+separate command: follow `commands/init.md` (copy the default config, `temper init`
+scaffold, `bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh` for the commit gate),
+print its one-line "Set up." report, then continue into Plan. If a config already
+exists, skip this silently. This is what lets install be two steps —
+`/plugin install temper` then `/temper "…"`.
 
 ## State
 

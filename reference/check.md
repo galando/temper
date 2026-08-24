@@ -109,9 +109,9 @@ repeating it here.)
 
 If every level passed and files changed: generate up to 5 config suggestions
 (confidence >= 0.6) comparing the diff against `CLAUDE.md`/`AGENTS.md`, write
-`.temper/specs/{feature}/config-suggestions.json`, queue them in
-`learning.json.suggestion_queue` (`type: config-update`). Full methodology:
-`reference/config-suggestions.md`. Shown to the user at the Check gate.
+`.temper/specs/{feature}/config-suggestions.json`, and show them at the Check gate for
+Accept/Reject/Defer. Full methodology: `reference/config-suggestions.md`. (They're
+shown once at the gate — there's no separate re-offer queue.)
 
 Every accepted suggestion is a permanent line in a file loaded on every future session,
 so suggest one only when a *specific* thing went wrong that the config could have

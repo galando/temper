@@ -136,17 +136,18 @@ justifications a gate doesn't need but a re-launched agent does.
   "test_failures": [ { "test_name": "", "error_message": "", "file": "", "line": 0, "scenario": "" } ] }
 ```
 
-`learning.json` (Review writes, Status + Review read — pattern/noise memory): schema in
-`reference/learning.md`.
+`review-memory.json` (Review writes, Status + Review read — the single finding memory:
+pattern acceptance/dismissal, promotion, and suppression; there is no separate learning
+store). See `reference/review.md` → "Metrics + Memory".
 
 | Stage | Reads | Writes |
 |---|---|---|
 | Plan | nothing (first stage) | intent.md, tasks.md, plan.md |
 | Design | intent.md, plan.md | design.md |
 | Build | tasks.md, intent.md, review/check-context.json (on re-entry) | build-context.json |
-| Review | intent.md, `git diff`, build-context.json, learning.json | review-context.json, learning.json |
+| Review | intent.md, `git diff`, build-context.json, review-memory.json | review-context.json, review-memory.json |
 | Check | intent.md, review-context.json | check-context.json |
-| Status | metrics.json, review-memory.json, learning.json, gates.json, evidence/ | — |
+| Status | metrics.json, review-memory.json, gates.json, evidence/ | — |
 
 **Cleanup:** `$TEMPER state clear` (on commit) removes `*-context.json`, `gates.json`,
 `overrides.json`, the evidence ledger. `intent.md`/`tasks.md`/`plan.md`/`design.md` under

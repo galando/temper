@@ -1,5 +1,6 @@
 ---
 description: "Retired in v7 — cost_usd estimation was part of the observability.json system this file supported"
+nav_exclude: true
 ---
 
 # Pricing Table (retired, v7.0.0)

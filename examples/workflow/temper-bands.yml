@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Fetch temper (the CLI is enough for detection)
-        run: git clone --depth 1 --branch v8.0.0 https://github.com/galando/temper /tmp/temper
+        run: git clone --depth 1 --branch v8.1.0 https://github.com/galando/temper /tmp/temper
 
       - name: Deterministic band check
         id: bands

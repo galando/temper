@@ -92,8 +92,8 @@ else
 fi
 
 # 5. No token-optimization advice in the project CLAUDE.md's *rendered* text.
-# Tokenomics is retired (reference/tokenomics.md); an external tool used to re-inject a
-# TOKENOMICS block of standing advice into every session's context.
+# Tokenomics is retired (docs/history/tokenomics.md); an external tool used to re-inject
+# a TOKENOMICS block of standing advice into every session's context.
 #
 # This checks what the file actually contributes to context, i.e. after HTML comments are
 # stripped — not the raw source. A raw grep passes a comment that quotes the marker
@@ -112,7 +112,7 @@ hits = [m for m in markers + advice if m.lower() in visible.lower()]
 print('; '.join(hits))
 " "$PROJECT_CLAUDE_MD" 2>/dev/null)
   if [[ -n "$TOKENOMICS_LEAK" ]]; then
-    fail ".claude/CLAUDE.md leaks token-optimization advice into rendered context ($TOKENOMICS_LEAK) — tokenomics is retired (reference/tokenomics.md)"
+    fail ".claude/CLAUDE.md leaks token-optimization advice into rendered context ($TOKENOMICS_LEAK) — tokenomics is retired (docs/history/tokenomics.md)"
   else
     ok
   fi

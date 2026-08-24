@@ -490,7 +490,7 @@ Root Cause: Queue consumer crashed at 2:34 AM
 
 ## `/temper:init`
 
-Seed a project's `.claude/temper.config` from the bundled default template. Idempotent — never overwrites an existing config.
+One-command project setup. Idempotent — safe to re-run; never overwrites an existing config or an existing non-Temper git hook.
 
 ```bash
 /temper:init
@@ -498,10 +498,11 @@ Seed a project's `.claude/temper.config` from the bundled default template. Idem
 
 **What it does:**
 
-- If `.claude/temper.config` is absent, copies the default template into place (creating `.claude/` if needed)
-- If a config already exists, reports that it's present and leaves it untouched
+- Seeds `.claude/temper.config` from the bundled default (if absent; an existing config is left untouched, with a note about any retired blocks in it)
+- Scaffolds `.temper/` (the gate ledger, overrides log, feedback-loop registry)
+- Installs the **native commit gate** — the pre-commit hook that blocks `git commit` while any gate is red (backs up a prior non-Temper hook first)
 
-Use it once in a new project so Temper runs on documented, safe defaults — including the opt-in `autonomy:` block.
+**You usually don't run it by hand** — your first `/temper "…"` in an un-set-up project does all of this automatically. Optional edit-time guardrails are a separate `/temper:pack enable hooks`.
 
 ---
 

@@ -1,8 +1,15 @@
 # ADR-0001: Separate Learning State File
 
-**Status:** Proposed
+**Status:** Superseded by [ADR-0006](decisions/0006-merge-learning-into-review-memory.md)
 **Date:** 2026-05-14
 **Supersedes:** (none)
+
+> **Superseded (2026-08):** the separate `learning.json` layer this ADR introduced
+> was folded back into `review-memory.json`. The "zero breaking changes" constraint
+> that justified a separate file no longer applies (v7/v8 were deliberate breaking
+> releases), and the two stores had grown into parallel implementations of the same
+> promote/suppress logic. See ADR-0006. The analysis below is kept as the historical
+> record of why the split was made.
 
 ## Context
 

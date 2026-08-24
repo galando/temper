@@ -24,9 +24,9 @@ every gate is the ordinary interactive one. Config: `.claude/temper.config` → 
 a model. `git commit` is blocked by a native pre-commit hook + an in-agent PreToolUse
 hook whenever a gate is FAIL and unoverridden — see `packs/hooks/rules.md`.
 
-**Version:** 8.0.0 — see `CHANGELOG.md` for history.
+**Version:** 8.1.0 — see `CHANGELOG.md` for history.
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/reference/`
-CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/reference/tokenomics.md`
+CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/docs/history/`
 
 **Developing temper (this repo):**
 - Test: `bash scripts/tests/test-temper.sh` (ends `PASS: N  FAIL: 0`); validators:
@@ -45,7 +45,7 @@ CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/r
      TOKENOMICS:START / TOKENOMICS:END markers, used to be re-injected here every
      session; it was standing advice that cost more than it saved and duplicated
      judgment the model already applies. Tokenomics is a retired system — see
-     reference/tokenomics.md. validate-docs.sh fails if it returns. Do not quote the
+     docs/history/tokenomics.md. validate-docs.sh fails if it returns. Do not quote the
      literal marker syntax in this comment: the embedded close-delimiter ends the
      comment early and the rest renders as visible context. -->
 

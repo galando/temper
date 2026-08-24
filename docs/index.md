@@ -91,7 +91,7 @@ Most AI tools answer only the third. Temper answers all three.
 |---------|-------------|
 | **Grill Me** | Socratic challenge mode at Plan/Design gates — one question at a time, stress-tests assumptions before building |
 | **HTML Plan Review** | Interactive browser-based plan review with inline comments. Google Doc-style commenting, comment types route to correct artifacts |
-| **Config Suggestions** | After Check passes, suggests CLAUDE.md/AGENTS.md updates based on what was built. Integrated with adaptive learning |
+| **Config Suggestions** | After Check passes, suggests CLAUDE.md/AGENTS.md updates based on what was built, shown at the Check gate |
 | **Architecture Depth Review** | Optional review pass evaluating module depth — deep modules have small interfaces with rich behavior |
 
 ### IDE Support

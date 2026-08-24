@@ -42,11 +42,12 @@ present, read it and apply it as review policy layered on top of the packs:
 
 No `REVIEW.md` → skip silently; packs and config are already the policy.
 
-**OCR (external review engine, optional):** read `tools.ocr.mode` (default `auto`). Not
-`off` → `command -v ocr`; missing + `require` → BLOCK with the install command, missing +
-`auto` → skip silently. Found → `ocr --version`, then probe readiness with `ocr review
---preview --from <base> --to <head>`; failure + `require` → BLOCK, failure + `auto` →
-one-line notice and proceed heuristically. Record `ocr_status` for Steps 2/2.5.
+**OCR (external review engine, optional — the MCP-style probe):** if `tools.ocr.mode`
+isn't `off`, `command -v ocr` then probe `ocr review --preview`; ready → record
+`ocr_status = ready` (Step 2's defect subagent steps aside for it; the merge mechanics
+are in `docs/recommended-setup.md`). Absent or failing: `require` blocks with the
+install command, `auto` skips with a one-line notice and reviews heuristically. Same
+shape as the semgrep probe below — no separate engine section in this doc.
 
 ## Step 1.5: Diff-Aware Fingerprinting
 
@@ -81,10 +82,10 @@ finding REGRESSION (was working, now broken — highest priority) / NEW ISSUE /
 PRE-EXISTING (lower priority).
 ```
 
-**If `ocr_status == ready` and `tools.ocr.replace-defect-subagent: true`:** OCR owns
-line-level defect detection — the subagent skips the Performance sections below and
-focuses on pack rules, security hot paths, AI-code detection, architecture drift, test
-gaps, intent validation. Otherwise it runs everything below too.
+**If `ocr_status == ready`:** OCR (run per `docs/recommended-setup.md`) owns line-level
+defect detection — the subagent focuses on pack rules, security hot paths, AI-code
+detection, architecture drift, test gaps, and intent validation, and folds OCR's
+`[OCR]`/`[OCR+TEMPER]` findings in. Otherwise it runs everything below itself.
 
 **Performance patterns to flag:** N+1 queries (loop body calling db/API, unbounded count,
 no batching → HIGH), missing pagination (list endpoint with no limit/offset/cursor and
@@ -126,21 +127,6 @@ orders-api fixtures actually depend on, keep it real):
 | **Missing integration** | new class/component/route never imported/registered/mounted anywhere | HIGH |
 | Stale pattern | new code uses what old code used before a migration | — |
 | Incomplete error path | catch block that only logs/rethrows generically | — |
-
-## Step 2.5: OCR Engine (only if `ocr_status == ready`)
-
-Determine the diff range (committed: `--from <base> --to <head>`; PR mode: `--from
-origin/main --to <branch>`; uncommitted → skip with a notice). Run `ocr review --from X
---to Y --format json --audience agent --concurrency {tools.ocr.concurrency}` under a
-`tools.ocr.timeout + 2min` bash timeout. Parse `comments[]` (file/line/description/
-suggestion), map severity from the prose ("Critical Bug"/"Vulnerability"→CRITICAL 0.85,
-"Security Issue"/"Bug"→HIGH 0.80, "Warning"/"Performance"→MEDIUM 0.75, else→LOW 0.70) and
-category (SQLi/XSS/secret→security, NPE/null→logic, N+1/query→performance, else→quality),
-label `[OCR]`. Deduplicate against Step 2's findings (same file, line ±2, same category
-family) → merge to `[OCR+TEMPER]`, confidence `min(0.95, max(both)+0.15)`, higher
-severity. JSON parse failure → raw-text appendix, both modes. OCR exits non-zero/timeout
-→ `auto` discards and continues with Temper's own review, `require` degrades (warns, does
-not block — a runtime failure isn't the same as unavailability).
 
 ## Step 3: Intent + Test Validation (if `intent.md` exists)
 
@@ -303,20 +289,24 @@ issue surviving 2 consecutive loops stops immediately rather than looping again.
 ## Metrics + Memory
 
 Append to `.temper/metrics.json`: `reviews.total += 1`, `issues_found`, per-severity and
-per-category counts, `auto_fixed`, `confidence_avg`. Update
-`.temper/review-memory.json.patterns[{key}]`: `total_shown`/`accepted`/`dismissed`,
-`last_seen`. 3+ accepted → suggest an auto-rule at `/temper:status`. 5+ dismissed →
-auto-suppress. Context-specific dismissals (`config/` paths, test fixtures, DTOs, listed
-legacy modules, `@generated` headers) are tracked and suppressed **independently per
-context** — dismissed in `auth/` doesn't suppress the same pattern in `payments/`; ask
-"this file only, or all {context} files?" on dismissal.
+per-category counts, `auto_fixed`, `confidence_avg`. Then update the **single finding
+memory**, `.temper/review-memory.json.patterns[{key}]` (key = category + file-path
+prefix + the first few description keywords): `total_shown`/`accepted`/`dismissed`,
+`last_seen`, and `acceptance_rate = accepted/total_shown`. This one store drives both
+promotion and suppression — there is no separate learning file:
 
-**Post-review learning hook** (no-op if `.temper/learning.json` doesn't exist): cluster
-this review's findings by (category, file-path prefix, description keywords), match
-against `learning.json.detected_patterns`, run the promotion criteria (3+ accepted @70%
-→ suggest WARN; 5+ accepted @80% → suggest BLOCK, security/architecture only) and the
-suppression criteria (3+ dismissed @<30% → downgrade a level; 5+ dismissed @<10% →
-auto-suppress). Full algorithm: `reference/learning.md`.
+- **Promote** (surfaced at `/temper:status`, never auto-applied): 3+ accepted at
+  acceptance_rate ≥ 70% → suggest a **WARN** rule; 5+ accepted at ≥ 80% and the
+  category is security or architecture → suggest a **BLOCK** rule. The human picks
+  BLOCK / WARN / keep-advisory; an accepted rule is written into the active pack's
+  `rules.md`.
+- **Suppress**: 3+ dismissals at acceptance_rate < 30% → downgrade the pattern one
+  severity level; 5+ at < 10% → auto-suppress (Step 4 then drops it).
+
+Context-specific dismissals (`config/` paths, test fixtures, DTOs, listed legacy
+modules, `@generated` headers) are tracked and suppressed **independently per context**
+— dismissed in `auth/` doesn't suppress the same pattern in `payments/`; ask "this file
+only, or all {context} files?" on dismissal.
 
 ## Multi-Agent Severity Consensus
 

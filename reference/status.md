@@ -42,13 +42,6 @@ metric history arrays against rolling mean ± k·sigma bands (config: `bands:` i
 `BREACH` (a metric at 2sigma+, exit 1). Keep the raw per-metric lines for the panel; a
 `propose`-tier breach also arms Step 3.7 below.
 
-### Step 1.7: Learning State
-
-Read `.temper/learning.json` if present (absent → "not initialized", graceful). Extract
-`detected_patterns` counts by status, `suppressed_patterns` count,
-`suggestion_queue` pending items, `learning_curve` (trend, improvement_pct). Malformed →
-warn and skip the learning section, don't crash.
-
 ### Step 2: Display Dashboard
 
 ```
@@ -61,15 +54,13 @@ warn and skip the learning section, don't crash.
 |   avg issues/review {old}->{new}   blocked commits {N}  |
 | HOTSPOTS: 1. {file} — {N} issues / {R} reviews  ...     |
 | TOP PATTERNS: 1. {pattern} ({count}x) {auto-rule?} ...  |
-| REVIEW MEMORY: suppressed {N}   promoted to rules {N}   |
+| REVIEW MEMORY: {N} patterns tracked   suppressed {N}    |
+|   promoted to rules {N}   pending suggestion {N}         |
 | ACTIVE SPECS: {spec} ({status}, {X}/{Y} tasks)          |
 | VERIFICATION: live scenarios {enabled/prompt/disabled}  |
 |   last run {date} ({X}/{Y})   mutations {N} caught/missed |
 | EXTERNAL TOOLS: code-review-graph/semgrep/ocr status,    |
 |   ocr accept rate (if any), evidence ratio {X}% PROVEN   |
-| ADAPTIVE LEARNING: {N} patterns ({M} active, {D} degraded)|
-|   suppressed {N}, promoted {N}, pending {N}, curve {trend}|
-|   (absent -> "Adaptive learning: not yet initialized")   |
 | GATE LEDGER: Plan/Build/Review/Check {PASS/FAIL}          |
 |   overrides {N}, evidence {N} PROVEN/{N} HEURISTIC/{N} SEMANTIC |
 |   (gates.json absent -> "No gate data yet — run /temper") |
@@ -101,16 +92,16 @@ From `.temper/autonomy-report.md` (if present) + `.temper/feedback-loops.json`: 
 report), loop budget used (sum `iteration` across `active_loops[]` + `history[]` vs.
 `autonomy.budget.max-total-loops`). No report → print nothing for this panel.
 
-### Step 3: Learning Loop + Adaptive Suggestion Prompts
+### Step 3: Rule-Promotion Prompt (from review memory)
 
-If a pattern's shown-count >= 3 with no auto-rule yet: `AskUserQuestion` — "Yes, add as
-BLOCK rule" (active pack's Mandatory Rules) / "Yes, add as WARN rule" (Quality Rules) /
-"No, keep as advisory" (mark `no-promote` in review memory).
-
-If `learning.json.suggestion_queue` has a `pending` item: `AskUserQuestion` — "Yes,
-promote to rule" (move the template from `.temper/learning/suggestions/{id}.md` into
-`.claude/packs/adaptive-learning/rules.md`, mark `accepted` + pattern `promoted`) / "No,
-dismiss" (mark `rejected`) / "Skip for now" (leave pending).
+Read `.temper/review-memory.json` — the single finding memory (there is no separate
+learning file). For a pattern that meets the promotion criteria from `reference/review.md`
+→ "Metrics + Memory" (3+ accepted @ ≥70% → WARN candidate; 5+ accepted @ ≥80% and
+security/architecture → BLOCK candidate) with no auto-rule yet: `AskUserQuestion` —
+"Yes, add as BLOCK rule" (active pack's Mandatory Rules) / "Yes, add as WARN rule"
+(Quality Rules) / "No, keep as advisory" (mark `no-promote` in review memory). Writing
+the accepted rule into the active pack's `rules.md` is what makes it enforced from the
+next review on. One prompt per qualifying pattern, highest acceptance first.
 
 ### Metrics Schema
 
@@ -165,9 +156,10 @@ Only when Step 1.6 reported a `propose`-tier breach (default: 3sigma). `AskUserQ
   suggest widening `bands.window` or retiring that metric from `bands.metrics`.
 - **"Skip for now"** — leave it; the next `/temper:status` re-offers.
 
-### Learning Loop Lifecycle
+### Review-Memory Lifecycle (the one finding-memory loop)
 
 Pattern detected in a review → shown → user's response tracked as accepted or dismissed
-in `patterns[key]`. Accepted >= 3 (at >= 70% acceptance rate, no existing auto-rule) →
-prompt for promotion at `/temper:status` (user picks BLOCK/WARN/no-promote). Dismissed
->= 5 → auto-suppress in `/temper:review`, moved to `suppressed_patterns[]`.
+in `review-memory.json.patterns[key]`. Accepted >= 3 (at >= 70% acceptance rate, no
+existing auto-rule) → prompt for promotion at `/temper:status` (user picks
+BLOCK/WARN/no-promote). Dismissed >= 5 → auto-suppress in `/temper:review`, moved to
+`suppressed_patterns[]`. This is the whole loop — one file, no separate learning store.

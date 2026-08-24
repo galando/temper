@@ -84,23 +84,32 @@ Design rationale: [docs/plans/v7-deterministic-spine.md](docs/plans/v7-determini
 
 After you approve the plan, `/temper` can run the remaining stages unattended and leave a report. It never pushes or merges, never re-plans on its own, and parks before commit — enforced by the same `temper gate` mechanism as the interactive path.
 
-First run: pre-allow your build/test commands in `settings.json`, or the run parks on the first unpermitted command. No config yet? `/temper:init` seeds one.
+Before an autonomous run: pre-allow your build/test commands in `settings.json`, or the run parks on the first unpermitted command. (Config and the commit gate are set up automatically on your first `/temper`.)
 
 ## Commands
 
+**Three you'll actually type** — `/temper` runs and routes the rest:
+
 | Command | Purpose |
 |---------|---------|
-| [`/temper`](docs/commands.md#temper) | Full pipeline: plan → design? → build → review → check |
-| [`/temper:intent`](docs/commands.md#temperintent) | Capture an idea as a committed draft `intent.md` — build later |
+| [`/temper "…"`](docs/commands.md#temper) | The whole pipeline: plan → design? → build → review → check → commit |
+| [`/temper:fix "…"`](docs/commands.md#temperfix) | Root cause analysis → failing test → minimal fix → validate |
+| [`/temper:intent "…"`](docs/commands.md#temperintent) | Capture an idea as a committed draft `intent.md`, build it later |
+
+<details><summary><b>Granular control</b> — each stage on its own, plus utilities (for power users)</summary>
+
+| Command | Purpose |
+|---------|---------|
 | [`/temper:plan`](docs/commands.md#temperplan) | Blast radius + BDD scenarios + architecture |
 | [`/temper:design`](docs/commands.md#temperdesign) | System design (complex/medium features) |
 | [`/temper:build`](docs/commands.md#temperbuild) | Scenario-driven TDD + coverage gate |
 | [`/temper:review`](docs/commands.md#temperreview) | Intent validation + confidence scoring |
 | [`/temper:check`](docs/commands.md#tempercheck) | Stack-aware validation pipeline |
-| [`/temper:fix`](docs/commands.md#temperfix) | Root cause analysis + regression test |
+| [`/temper:status`](docs/commands.md#temperstatus) | Quality dashboard + gate ledger + control bands |
 | [`/temper:pack`](docs/commands.md#temperpack) | Manage quality packs |
-| [`/temper:status`](docs/commands.md#temperstatus) | Quality dashboard + gate ledger |
-| [`/temper:init`](docs/commands.md) | Seed `.claude/temper.config` + `.temper/` (idempotent) |
+| [`/temper:init`](docs/commands.md) | Explicit setup (config + `.temper/` + commit gate; idempotent) |
+
+</details>
 
 ## Quality Packs
 
@@ -131,8 +140,13 @@ Temper is Markdown and ~500 lines of auditable shell — every command, skill, p
 ```bash
 /plugin marketplace add galando/temper
 /plugin install temper
-bash "$CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh"   # installs the commit gate
 ```
+
+Then just use it — `/temper "your first feature"` sets the project up on its first run
+(config, `.temper/` scaffold, and the native commit gate that blocks a red commit).
+Prefer to set up explicitly? Run `/temper:init`. Optional edit-time guardrails (secret
+blocking, frozen-path protection, auto-format, an approval prompt before overrides):
+`/temper:pack enable hooks`.
 
 ## Recommended Setup
 
