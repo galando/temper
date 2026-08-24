@@ -718,6 +718,43 @@ open('.temper/specs/demo/intent.md','w').write(s.replace('**Status:** draft\n\n'
 "
 assert_exit "intent gate FAILs without a Status header (the lifecycle needs a home)" 1 "$TEMPER" gate intent
 
+# An EMPTY spec path is poisonous for the absent-artifact-means-skip gates: with no
+# state and no --spec-path they must refuse to guess (usage error, no verdict), never
+# record a vacuous PASS on "/intent.md".
+setup
+rm -f .temper/build-state.json .temper/gates.json
+mkdir -p .temper/specs/idea
+cat > .temper/specs/idea/intent.md <<'EOF'
+## Problem
+{still a placeholder}
+EOF
+assert_exit "gate intent with no state and no --spec-path refuses to guess (exit 1)" 1 "$TEMPER" gate intent
+assert_eq "the refusal writes NO verdict (no vacuous stage-marker payment)" "no" \
+  "$([[ -f .temper/gates.json ]] && python3 -c "import json; print('yes' if 'intent' in json.load(open('.temper/gates.json')) else 'no')" || echo no)"
+assert_exit "gate design with no state and no --spec-path also refuses" 1 "$TEMPER" gate design
+assert_exit "gate intent --spec-path works without state and judges the real draft" 1 \
+  "$TEMPER" gate intent --spec-path .temper/specs/idea
+
+# Template placeholders never satisfy the gate: the template's own '- [ ] {criterion}'
+# bullets and '**Status:** {draft | accepted | completed}' line must not count.
+setup
+cp "$REPO_ROOT/templates/intent.md" .temper/specs/demo/intent.md
+python3 -c "
+s = open('.temper/specs/demo/intent.md').read()
+s = s.replace('{What problem are we solving? For whom? Why is this needed?}',
+              'Handlers spend a third of call time on status-only queries.')
+open('.temper/specs/demo/intent.md','w').write(s)
+"
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_exit "a template-verbatim intent with only the Problem filled still FAILs" 1 "$TEMPER" gate intent
+assert_eq "placeholder criteria bullets are not counted" "yes" "$(echo "$OUT" | grep -q 'no real success criteria' && echo yes || echo no)"
+assert_eq "the placeholder Status line is not accepted" "yes" "$(echo "$OUT" | grep -q 'placeholder doesn.t count' && echo yes || echo no)"
+
+# temper report renders the intent stage (verdict + requirement rows).
+setup
+"$TEMPER" gate intent >/dev/null
+assert_eq "temper report renders the intent row" "yes" "$("$TEMPER" report | grep -q '^intent' && echo yes || echo no)"
+
 # The commit gate demands an intent verdict exactly when intent.md exists.
 setup
 "$TEMPER" gate plan >/dev/null

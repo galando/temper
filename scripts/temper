@@ -839,23 +839,28 @@ gate_intent() {
       reqs+=("$(_req "problem stated" 0 "Problem section is missing, empty, or still template placeholders")")
       all_pass=0
     fi
+    # A criterion is a '- ' line whose CONTENT isn't a template placeholder: strip the
+    # optional checkbox, then reject anything still starting with '{' — the template's
+    # own '- [ ] {criterion 1: ...}' bullets must not count as real criteria.
     criteria=$(awk '
       /^#+[[:space:]]*Success Criteria/ { f=1; next }
       f && /^#+[[:space:]]/ { f=0 }
-      f && /^- / { c++ }
+      f && /^- / { t=$0; sub(/^- \[[ xX]\] */,"",t); sub(/^- */,"",t); if (t !~ /^\{/) c++ }
       END { print c+0 }
     ' "$spec_path/intent.md")
     if [[ "$criteria" -gt 0 ]]; then
       reqs+=("$(_req "success criteria" 1 "$criteria criterion/criteria listed")")
     else
-      reqs+=("$(_req "success criteria" 0 "no success criteria — nothing downstream can be validated against")")
+      reqs+=("$(_req "success criteria" 0 "no real success criteria (template placeholders don't count) — nothing downstream can be validated against")")
       all_pass=0
     fi
-    if grep -qE '^\*\*Status:\*\*' "$spec_path/intent.md"; then
-      status_line="$(grep -m1 -E '^\*\*Status:\*\*' "$spec_path/intent.md")"
+    # The Status value must be an actual lifecycle state, not the template's
+    # '{draft | accepted | completed}' placeholder.
+    if grep -qiE '^\*\*Status:\*\*[[:space:]]*(draft|accepted|completed)[[:space:]]*$' "$spec_path/intent.md"; then
+      status_line="$(grep -m1 -iE '^\*\*Status:\*\*[[:space:]]*(draft|accepted|completed)[[:space:]]*$' "$spec_path/intent.md")"
       reqs+=("$(_req "status header" 1 "$status_line")")
     else
-      reqs+=("$(_req "status header" 0 "no **Status:** header — the lifecycle (draft/accepted/completed) has nowhere to live")")
+      reqs+=("$(_req "status header" 0 "no **Status:** draft|accepted|completed header (a placeholder doesn't count) — the lifecycle has nowhere to live")")
       all_pass=0
     fi
   fi
@@ -1130,6 +1135,16 @@ cmd_gate() {
   [[ "$ok" == "true" ]] || { echo "FAIL: usage: temper gate <intent|plan|design|build|review|check|commit>" >&2; return 1; }
 
   local spec_path; spec_path="$(_spec_path "$spec_path_override")"
+  # intent and design treat an ABSENT artifact as a legitimate skip — which makes an
+  # EMPTY spec path poisonous for them: with no state and no --spec-path, the gate
+  # would test -f "/intent.md", find nothing, and record a vacuous PASS that never
+  # looked at the real draft (and would silently pay a stage-marker debt). Refuse to
+  # guess: no target => usage error, no verdict written.
+  if [[ -z "$spec_path" && ( "$stage" == "intent" || "$stage" == "design" ) ]]; then
+    echo "FAIL: no spec path — pass --spec-path <dir> or run 'temper state init' first" >&2
+    echo "      (gate $stage treats a missing artifact as a legitimate skip, so it refuses to guess where to look)" >&2
+    return 1
+  fi
   local out reqs_json all_pass
   case "$stage" in
     intent) out=$(gate_intent "$spec_path") ;;
@@ -1211,7 +1226,7 @@ except Exception:
 overridden = {o['stage'] for o in overrides}
 print('Stage    Verdict  Evidence')
 print('-------  -------  --------')
-for stage in ['plan', 'design', 'build', 'review', 'check', 'commit']:
+for stage in ['intent', 'plan', 'design', 'build', 'review', 'check', 'commit']:
     g = d.get(stage)
     if not g:
         continue

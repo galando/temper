@@ -186,9 +186,13 @@ Spec path: {from temper state get spec_path}."
 
 The agent returns `READY` (intent.md written, or an existing draft refined) or
 `TRIVIAL` (a typo/one-liner with no product problem to state — nothing written).
-**On TRIVIAL:** skip this gate entirely, `$TEMPER state advance intent_complete plan`,
-go straight to Stage 1 (Plan's trivial path handles it; with no intent.md, neither
-`gate intent` nor the commit gate expects an intent verdict).
+**On TRIVIAL:** the change exits the gated pipeline honestly instead of limping
+through gates built for artifacts it doesn't have (`gate plan` would FAIL forever on
+"artifacts exist" with nothing fixable). Tell the user in one line ("trivial — handling
+directly, no pipeline"), run `$TEMPER state clear`, make the change directly, run the
+project's tests, and commit normally — with no active run state, `temper gate commit`
+degrades open by design, so the commit hook doesn't block a run that never gated. If
+mid-change it turns out NOT to be trivial, stop and restart `/temper` properly.
 
 Summary box:
 

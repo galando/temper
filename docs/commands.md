@@ -113,10 +113,12 @@ without starting the pipeline.
 - Offers to commit the draft, so author, timestamp, and revision history live in
   version control from the moment the idea is real
 
-**Who flips `Status:`** — `draft` (this command) → `accepted` (a human approving the
-plan gate) → `completed` (the commit step). A later `/temper "{slug}"` picks the draft
-up and builds on it, never overwrites it. A `temper bands` breach drafts intents in
-exactly the same shape (see `/temper:status`).
+**Who flips `Status:`** — `draft` (this command) → `accepted` (the human's Continue at
+`/temper`'s **Intent gate**; the plan gate only in a standalone `/temper:plan` run,
+where it's the first human gate to review the intent) → `completed` (the commit step).
+A later `/temper "{slug}"` presents the draft at its Intent gate and builds on it,
+never overwrites it. A `temper bands` breach drafts intents in exactly the same shape
+(see `/temper:status`).
 
 ---
 

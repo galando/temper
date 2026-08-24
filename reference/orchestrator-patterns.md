@@ -60,9 +60,12 @@ approval from a change request.
 ## Resume Validation
 
 Before honoring saved state, check: parseable JSON; `stage` is one the command defines;
-`.temper/specs/{spec}/` exists on disk; every file in `artifacts[]` exists; `updated` <
-30 days old (warn if older). Any check fails → show what's wrong, ask "Start over /
-Delete saved state / Cancel?"
+`.temper/specs/{spec}/` exists on disk; the artifacts the **completed** stages should
+have produced exist — `artifacts[]` lists the full run's expected set, so check it
+stage-aware: at `intent_complete` only `intent.md` is owed (Plan hasn't written
+`tasks.md`/`plan.md` yet); from `plan_complete` onward, every file in `artifacts[]`;
+`updated` < 30 days old (warn if older). Any check fails → show what's wrong, ask
+"Start over / Delete saved state / Cancel?"
 
 ## Nested Invocation Protection
 

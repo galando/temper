@@ -45,9 +45,12 @@ presents for acceptance.
      from the measured blast radius at Plan time (`reference/plan.md`), not at
      capture time. Leave the Scenarios section as the template's placeholder.
 
-3. **Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate intent`** and fix any FAIL (empty
-   Problem, no criteria, missing Status header) — the same deterministic floor the
-   pipeline's Intent gate applies.
+3. **Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate intent --spec-path
+   .temper/specs/{slug}`** and fix any FAIL (empty/placeholder Problem, no real
+   criteria, missing Status value) — the same deterministic floor the pipeline's
+   Intent gate applies. `--spec-path` is required here: this command never runs
+   `temper state init`, and without a spec path the gate refuses to guess (usage
+   error, no verdict) rather than vacuously passing on a path it never looked at.
 
 4. **Let the originator correct it.** Show the draft; apply their corrections; re-show.
    The artifact is theirs — you drafted it.

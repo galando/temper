@@ -48,14 +48,19 @@ the Problem from scratch. A `Status: draft` intent (captured via `/temper:intent
 `temper bands` breach, reaching you standalone) is the same input, plus: resolve or
 explicitly re-carry each Open Question (they count toward the 2-3 clarifying questions
 below); the draft→accepted flip happens at whichever human gate reviews it first.
-
-**Standalone `/temper:plan` with no existing intent.md**: derive the intent yourself
+Standalone `/temper:plan` with no existing intent.md: derive the intent yourself
 (Problem, Success Criteria with `Validate:` types, Constraints, `**Status:** draft`
-header) as your first act, then run
-`$CLAUDE_PLUGIN_ROOT/scripts/temper gate intent` and fix any FAIL before proceeding to
-blast radius — the commit gate requires an intent verdict whenever intent.md exists,
-and recording it here is what keeps the standalone path equivalent to the orchestrated
-one.
+header) as your first act.
+
+**Either way, standalone `/temper:plan` records the intent verdict itself.** Whenever
+intent.md exists at the spec path — authored fresh OR picked up as a draft — run
+`$CLAUDE_PLUGIN_ROOT/scripts/temper gate intent --spec-path {spec-path}` and fix any
+FAIL before proceeding to blast radius. Always pass `--spec-path` explicitly: state
+may not be initialized yet in standalone mode, and without a spec path the gate
+refuses to guess (usage error, no verdict). This matters at the end of the chain: the
+commit gate requires an intent verdict whenever intent.md exists, so the standalone
+`/temper:plan → :build → :review → :check → commit` chain FAILs at commit if this
+verdict was never recorded.
 
 **Risk multipliers** (each pushes complexity up one tier): touches auth/payment/security
 code; modifies a library with 5+ consumers; changes a DB schema; a module with a
