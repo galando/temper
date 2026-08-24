@@ -41,6 +41,16 @@ gate can correct it before the expensive stages run. You run in a clean context.
 5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
-Return only: the intent summary box (Problem → success criteria count, constraints,
-open questions — see `commands/temper.md`), the spec path, and either `READY` or
-`TRIVIAL`.
+Return only: this summary box (the orchestrator prints it verbatim), the spec path,
+and either `READY` or `TRIVIAL`:
+
+```
++-----------------------------------------------------------+
+| INTENT — {Feature Name}                                   |
++-----------------------------------------------------------+
+| PROBLEM: {one line — whose problem, what they can't do}    |
+| SUCCESS: {N} criteria ({N} scenario / {N} code / {N} metric/manual) |
+| CONSTRAINTS: {list, or none}                               |
+| OPEN QUESTIONS: {N} ({first one verbatim} ...)             |
++-----------------------------------------------------------+
+```

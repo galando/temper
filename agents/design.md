@@ -21,5 +21,16 @@ listed below, nothing from the orchestrator's conversation carries over.
 5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
-Return only: the design summary box, the path to `design.md`, and the key architectural
-decisions.
+Return only: this summary box (the orchestrator prints it verbatim — areas of concern
+first, they are why the human is at the gate), the path to `design.md`, and the key
+architectural decisions:
+
+```
++-----------------------------------------------------------+
+| DESIGN — {Feature Name}                                   |
++-----------------------------------------------------------+
+| AREAS OF CONCERN: {N} ({first one} ...) or none: {why}     |
+| DECISIONS: {N} key ({list})                                |
+| COMPONENTS: {N} new / {N} modified / {N} existing          |
++-----------------------------------------------------------+
+```

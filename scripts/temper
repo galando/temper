@@ -48,7 +48,9 @@ STAGES="intent plan design build review check commit"
 
 # Stages that run as an Agent subprocess and therefore have a model to resolve.
 # `commit` is not one — it's the orchestrator running `temper gate commit`.
-AGENT_STAGES="intent plan design build review check"
+# rca/fix are /temper:fix's subprocess stages: model stages (agents/{rca,fix}.md
+# frontmatter) but never gate stages — Fix evidence gates as `build`.
+AGENT_STAGES="intent plan design build review check rca fix"
 
 # Per-command state.stage sequences (bookkeeping for resume — see
 # reference/orchestrator-patterns.md "Build State Schema"). Distinct from $STAGES
@@ -1472,7 +1474,7 @@ Usage:
   temper state <init|get|set|advance|loop|archive|clear> ...
   temper evidence <add|run|list|clear> ...
   temper gate <intent|plan|design|build|review|check|commit> [--spec-path P]
-  temper model <intent|plan|design|build|review|check> | --all
+  temper model <intent|plan|design|build|review|check|rca|fix> | --all
   temper override <stage> --reason "..."
   temper report [--json]
   temper bands [--json]

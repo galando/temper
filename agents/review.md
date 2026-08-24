@@ -27,5 +27,15 @@ orchestrator's conversation carries over.
 4. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
-Return only: the review summary box, issues found by severity, auto-fixable issues, and
-intent-validation results.
+Return only: this summary box (the orchestrator prints it verbatim), issues found by
+severity, auto-fixable issues, and intent-validation results:
+
+```
++-----------------------------------------------------------+
+| REVIEW — {Feature Name}                                   |
++-----------------------------------------------------------+
+| FILES: {N} reviewed   FINDINGS: {N}C / {N}H / {N}M / {N}L  |
+| INTENT: {satisfied|partial|not_met}  HOT PATHS: {N}        |
+| SCENARIO COVERAGE: {N} strong / {N} weak / {N} uncovered   |
++-----------------------------------------------------------+
+```

@@ -3,6 +3,31 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.1.0 — fix joins the brief architecture; briefs own their return format
+
+Token-efficiency release, no behavior changes to gates or state. Two leaks closed:
+
+- **`/temper:fix` gets the v7 treatment it missed.** `commands/fix.md` was still the
+  pre-v7 shape — four hand-rolled inline agent prompts plus four inline summary-box
+  templates, duplicating (and drifting from) the contracts in `agents/review.md` /
+  `agents/check.md`. New `agents/rca.md` and `agents/fix.md` briefs now carry the
+  RCA/Fix stage contracts (methodology pointer, evidence commands, the
+  `regression_test` write-shield arming, return box); `commands/fix.md` is a lean
+  orchestrator that launches all four stages via their briefs — 22.9KB → 7.1KB (−69%)
+  of main-context prompt on every `/temper:fix` run, and one copy of each stage
+  contract instead of two.
+- **Agent briefs define the summary box they return.** `agents/intent.md` and
+  `agents/plan.md` used to say "see `commands/temper.md`" for the box format — a
+  clean-context subprocess following that pointer read the entire 21KB orchestrator
+  to fetch an 8-line template, defeating the isolation it was launched with. Every
+  brief now carries its own return box; `commands/temper.md` prints the returned box
+  verbatim instead of restating the formats (−1.7KB there, and no cross-read from any
+  stage context).
+- `temper model` resolves the new stages: `AGENT_STAGES` gains `rca` and `fix`
+  (`model --all` now prints 8 lines; `models.rca` / `models.fix` config overrides
+  work like every other stage). rca/fix remain state-sequence and model stages only —
+  never gate stages; Fix evidence still gates as `build`. 191 CLI assertions green.
+
 ## v9.0.0 — the intent-gated pipeline
 
 Breaking: the pipeline gains a stage, the commit gate gets stricter, and a subsystem

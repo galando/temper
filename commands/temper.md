@@ -3,7 +3,7 @@ description: "Unified SDLC command: intent → plan → design? → build → re
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v9.0.0)
+# Temper: Unified SDLC Command (v9.1.0)
 
 **Goal:** Run intent → plan → design? → build → review+check → commit with a human gate
 at every stage (or, if armed, unattended past the plan gate). Every gate verdict is
@@ -25,9 +25,10 @@ the Problem statement costs words at the intent gate and costs the whole plan af
 Each stage runs in an **isolated Agent subprocess** — genuine context clearing, not a
 self-directed "clear your context" instruction (which is unenforceable). What each stage
 must do lives in exactly one place: `agents/{stage}.md` (frontmatter declares its default
-model; the body points at `reference/{stage}.md` for methodology and tells it which
-`temper` commands to run). This file does not repeat that contract per stage — read the
-agent file once when you launch it.
+model; the body points at `reference/{stage}.md` for methodology, tells it which
+`temper` commands to run, and defines the summary box it returns). This file does not
+repeat that contract per stage — read the agent file once when you launch it, and print
+the box the agent returns verbatim rather than reconstructing it.
 
 ```
 ORCHESTRATOR (this file)
@@ -101,7 +102,8 @@ anyway, and it's one round-trip instead of several.
 
 Every stage gate follows the same shape. After a stage Agent returns:
 
-1. Print its summary box (see per-stage format below).
+1. Print the summary box it returned, verbatim (each agent brief defines its format —
+   not restated here).
 2. Run `$TEMPER gate {stage}`. It prints PASS/FAIL with each requirement's status and
    writes the verdict to `.temper/gates.json`.
 3. Show an `AskUserQuestion` gate:
@@ -194,19 +196,6 @@ project's tests, and commit normally — with no active run state, `temper gate 
 degrades open by design, so the commit hook doesn't block a run that never gated. If
 mid-change it turns out NOT to be trivial, stop and restart `/temper` properly.
 
-Summary box:
-
-```
-+-----------------------------------------------------------+
-| INTENT — {Feature Name}                                   |
-+-----------------------------------------------------------+
-| PROBLEM: {one line — whose problem, what they can't do}    |
-| SUCCESS: {N} criteria ({N} scenario / {N} code / {N} metric/manual) |
-| CONSTRAINTS: {list, or none}                               |
-| OPEN QUESTIONS: {N} ({first one verbatim} ...)             |
-+-----------------------------------------------------------+
-```
-
 Gate: `$TEMPER gate intent` (Problem stated, >=1 criterion, Status header). Options:
 **"Continue to Plan (Recommended)"** / Grill Me / Teach Me / "Save for later" / Other
 (a correction — edit intent.md, re-run the gate, re-show; this is the whole point of
@@ -238,20 +227,6 @@ Use the Agent tool, model: {plan}, prompt:
 Spec path: {from temper state get spec_path}. The accepted intent.md there is your
 input — derive scenarios and architecture from it; refine it only with a stated
 reason."
-```
-
-Summary box:
-
-```
-+-----------------------------------------------------------+
-| PLAN — {Feature Name}                                     |
-+-----------------------------------------------------------+
-| INTENT: {one-line problem} -> {success criteria}           |
-| SCENARIOS: {N} ({list})                                    |
-| ARCHITECTURE: create {N} files, modify {N} files            |
-| COMPLEXITY: {trivial|simple|medium|complex}  RISK: {L/M/H}  |
-+-----------------------------------------------------------+
-{ASCII art diagram — box-drawing characters, never raw mermaid source}
 ```
 
 Gate: `$TEMPER gate plan` — see `reference/plan.md` → "Approval" for the walkthrough
@@ -290,9 +265,6 @@ Use the Agent tool, model: {design}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/design.md exactly. Spec: {spec_path from state}."
 ```
 
-Summary box: architecture overview, key decisions, what's new/modified/existing, areas
-of concern (presented FIRST when any are flagged — they are why the human is here).
-
 Run `$TEMPER gate design` (one requirement: design.md carries an Areas of Concern
 section — flagged conflicts with owners, or an explicit "None flagged — why"; design
 *quality* still shows up in whether Build can execute it and what Review finds). Gate
@@ -314,17 +286,6 @@ Use the Agent tool, model: {build}, prompt:
 {If a review-context.json or check-context.json feedback file exists, name it here.}"
 ```
 
-Summary box:
-
-```
-+-----------------------------------------------------------+
-| BUILD — {Feature Name}                                    |
-+-----------------------------------------------------------+
-| Tasks: {N}/{N} complete   Tests: {N} added, all passing    |
-| Files: {N} created, {N} modified                           |
-+-----------------------------------------------------------+
-```
-
 Gate: `$TEMPER gate build` (RED-then-GREEN evidence recorded, no unchecked tasks).
 Options: Continue to Review / Teach Me / "Loop back to Plan" (only if Build judges the
 plan infeasible — human-driven, no circuit breaker, max 1 per run) / Override / Save.
@@ -341,9 +302,6 @@ Launch:
 Use the Agent tool, model: {review}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/review.md exactly. Spec: {spec_path from state}."
 ```
-
-Summary box: files changed, findings by severity, security hot paths, intent-validation
-verdict, scenario coverage.
 
 Gate: `$TEMPER gate review` (zero open findings at or above `review.block-on`). An
 **"Architecture Depth Review"** option is also always available — runs the 5-dimension
@@ -362,8 +320,6 @@ Launch:
 Use the Agent tool, model: {check}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/check.md exactly. Spec: {spec_path from state}."
 ```
-
-Summary box: compile/test/lint/security results, coverage %, scenario verification.
 
 Gate: `$TEMPER gate check` (tests pass, coverage >= threshold, every `intent.md` scenario
 traced to a test by name — this is the gate that catches the README's rate-limiting

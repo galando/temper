@@ -38,6 +38,8 @@ check:
 #   build: sonnet
 #   review: sonnet
 #   check: sonnet
+#   rca: opus      # /temper:fix stages
+#   fix: sonnet
 
 # Control bands — closing the loop (`temper bands`). A deterministic check of the
 # history arrays in .temper/metrics.json against rolling mean ± k·sigma bands plus a
