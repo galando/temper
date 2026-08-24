@@ -70,7 +70,8 @@ Same shape as `/temper`: print the agent's returned box verbatim, run the stage'
 `$TEMPER gate`, then `AskUserQuestion` — Continue (Recommended) / "Save for later" /
 built-in "Other" free-text. A change typed via "Other" is never approval: make the
 edit, re-show the same gate (→ "Gate Options + Enforcement"). An agent returning a
-failure/blocker → "Agent Failure Handling". On Save → "Save/Continue".
+failure/blocker → "Agent Failure Handling". On Save → the Save/Continue rule under
+"Build State Schema".
 
 ---
 

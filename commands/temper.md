@@ -339,7 +339,7 @@ overridden), and — only when `run_mode == autonomous` — blast radius and par
   local-only. Then `git commit` (a conventional-commit message summarizing the
   feature), then `$TEMPER state clear`.
 - **PASS (autonomous):** never auto-commits — park with a `SHIP-PENDING-COMMIT` report
-  instead (`reference/autonomy.md` → Park).
+  instead (the Park step in `reference/autonomy.md`).
 - **FAIL:** show `$TEMPER report`, offer "Override and commit" (records the override,
   re-run `$TEMPER gate commit`, it should now PASS) or "Save for later".
 

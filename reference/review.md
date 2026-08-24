@@ -89,6 +89,7 @@ must not leak sensitive data — and verify a test exists per boundary. CRITICAL
 reachable from unauthenticated input, missing authz on a privileged op, sensitive data
 in errors/logs. HIGH: untested boundary, missing input validation, error handler
 exposing internals, HTTP server with neither security middleware nor an error handler.
+MEDIUM: a public API missing CORS/security headers.
 **Security findings always bypass confidence filtering** — the one category that must
 never go silent because of a threshold.
 
@@ -163,7 +164,7 @@ When a changed file is a controller/route/DTO/shared type or an OpenAPI/GraphQL 
 diff old vs. new contract per endpoint — ADDITIVE (LOW) / MODIFIED (type or
 required↔optional change, HIGH) / BREAKING (removed/renamed/incompatible, CRITICAL).
 Grep for consumers; BREAKING with any consumer not updated → BLOCK; MODIFIED with no
-consumer tests → WARN. Report per endpoint with consumer status. CRITICAL/HIGH contract
+consumer tests → WARN; ADDITIVE → INFO. Report per endpoint with consumer status. CRITICAL/HIGH contract
 findings bypass confidence filtering.
 
 ## Step 3.8: Architecture Depth (optional, gate-offered)
