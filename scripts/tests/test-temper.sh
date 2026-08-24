@@ -64,6 +64,11 @@ autonomy:
     max-stages: 12
 EOF
   cat > .temper/specs/demo/intent.md <<'EOF'
+**Status:** draft
+
+## Problem
+Users cannot do the demo thing today.
+
 ## Success Criteria
 - one
 - two
@@ -155,6 +160,7 @@ assert_eq "PROVEN downgrades to HEURISTIC when artifact is missing" "yes" "$(ech
 
 # --- commit gate: aggregates prior gate verdicts + honors overrides ---
 setup
+"$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
@@ -171,7 +177,7 @@ setup
 "$TEMPER" evidence add --stage review --claim "critical thing" --severity critical >/dev/null
 assert_exit "commit gate FAILs with an unresolved review finding, no override" 1 "$TEMPER" gate commit
 "$TEMPER" override review --reason "manually verified safe" >/dev/null
-"$TEMPER" gate plan >/dev/null; "$TEMPER" gate build >/dev/null 2>&1 || true
+"$TEMPER" gate intent >/dev/null; "$TEMPER" gate plan >/dev/null; "$TEMPER" gate build >/dev/null 2>&1 || true
 "$TEMPER" gate check >/dev/null 2>&1 || true
 assert_eq "override is recorded and visible in report" "yes" "$("$TEMPER" report | grep -q 'overridden' && echo yes || echo no)"
 
@@ -280,6 +286,7 @@ assert_exit "gate build runs cleanly against a config with a stale eval: block" 
 
 # 2. A stale "eval" key in .temper/gates.json is ignored by gate_commit, not iterated.
 setup
+"$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
@@ -503,8 +510,8 @@ setup
 assert_eq "model plan defaults to agents/plan.md frontmatter" \
   "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); print; exit}' "$REPO_ROOT/agents/plan.md")" \
   "$("$TEMPER" model plan)"
-assert_eq "model --all emits one stage=model line per agent stage" "5" "$("$TEMPER" model --all | grep -c '^[a-z]*=')"
-assert_eq "model --all covers every agent stage" "plan design build review check" \
+assert_eq "model --all emits one stage=model line per agent stage" "6" "$("$TEMPER" model --all | grep -c '^[a-z]*=')"
+assert_eq "model --all covers every agent stage" "intent plan design build review check" \
   "$("$TEMPER" model --all | cut -d= -f1 | tr '\n' ' ' | sed 's/ $//')"
 assert_exit "model rejects an unknown stage" 1 "$TEMPER" model bogus
 assert_exit "model rejects 'commit' (not an Agent stage)" 1 "$TEMPER" model commit
@@ -680,6 +687,65 @@ assert_exit "bands: an unknown metric name is skipped, not fatal" 0 "$TEMPER" ba
 OUT=$("$TEMPER" bands 2>&1)
 assert_eq "bands: the unknown metric is named in a skip notice" "yes" "$(echo "$OUT" | grep -q 'made-up-series — unknown metric' && echo yes || echo no)"
 
+# --- v8.1: intent gate — the fail-fast gate ---
+# intent.md absent => trivial path => PASS. Present => Problem stated (not template
+# placeholders), >=1 success criterion, a Status header. The commit gate requires an
+# intent verdict exactly when the artifact exists (tested with the commit fixtures).
+setup
+rm -f .temper/specs/demo/intent.md
+assert_exit "intent gate PASSes when intent.md is absent (trivial path)" 0 "$TEMPER" gate intent
+cat > .temper/specs/demo/intent.md <<'EOF'
+## Problem
+{What problem are we solving? For whom?}
+
+## Success Criteria
+EOF
+assert_exit "intent gate FAILs on template placeholders and zero criteria" 1 "$TEMPER" gate intent
+cat > .temper/specs/demo/intent.md <<'EOF'
+**Status:** draft
+
+## Problem
+Support spends a third of call time on status-only queries.
+
+## Success Criteria
+- [ ] status visible in the portal
+  Validate: scenario — covered later
+EOF
+assert_exit "intent gate PASSes with a real Problem, a criterion, and a Status header" 0 "$TEMPER" gate intent
+python3 -c "
+s = open('.temper/specs/demo/intent.md').read()
+open('.temper/specs/demo/intent.md','w').write(s.replace('**Status:** draft\n\n',''))
+"
+assert_exit "intent gate FAILs without a Status header (the lifecycle needs a home)" 1 "$TEMPER" gate intent
+
+# The commit gate demands an intent verdict exactly when intent.md exists.
+setup
+"$TEMPER" gate plan >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+"$TEMPER" gate build >/dev/null
+"$TEMPER" gate review >/dev/null
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
+"$TEMPER" gate check >/dev/null
+assert_exit "commit gate FAILs when intent.md exists but its gate never ran" 1 "$TEMPER" gate commit
+"$TEMPER" gate intent >/dev/null
+assert_exit "commit gate PASSes once the intent gate ran" 0 "$TEMPER" gate commit
+
+# intent_complete is a valid /temper state transition; the fix sequence rejects it.
+setup
+assert_exit "a /temper run accepts intent_complete" 0 "$TEMPER" state advance intent_complete plan
+assert_eq "state init points a temper run at the intent stage first" "intent" \
+  "$(rm -f .temper/build-state.json; "$TEMPER" state init demo2 --command temper >/dev/null; "$TEMPER" state get next_stage)"
+
+# stage-marker marks /temper:intent sessions (they owe a gate intent verdict).
+setup
+MARKER="$REPO_ROOT/scripts/hooks/stage-marker.sh"
+echo '{"prompt": "/temper:intent capture this idea"}' | bash "$MARKER"
+assert_eq "stage-marker records the owed intent stage" "intent" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['stage'])")"
+
 # --- v8.1: design gate is no longer vacuous ---
 # design.md absent => stage skipped => PASS. design.md present => must carry an Areas
 # of Concern heading (an explicit "None flagged" section counts; silence does not).
@@ -699,6 +765,7 @@ assert_exit "design gate PASSes once concerns are flagged (or explicitly none)" 
 
 # The commit gate requires a design verdict exactly when design.md exists.
 setup
+"$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
@@ -738,6 +805,7 @@ assert_eq "override entry records who approved" "Jane Approver <jane@example.com
 
 # --- v8.1: the gate ledger is archived into the spec dir (audit trail survives) ---
 setup
+"$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" override plan --reason "test archive" >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --label HEURISTIC >/dev/null

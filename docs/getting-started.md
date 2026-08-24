@@ -55,7 +55,10 @@ cd your-project
 /temper "add user authentication"
 ```
 
-Temper runs plan → build → review → check with stage gates:
+Temper runs intent → plan → build → review → check with stage gates. The first gate is
+the cheapest and highest-leverage: you approve the Problem and success criteria before
+any exploration or architecture spends tokens — correcting the intent there costs
+words; correcting it after planning costs the plan. Then:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐

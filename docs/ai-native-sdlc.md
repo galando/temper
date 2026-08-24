@@ -26,11 +26,11 @@ as what was asked and what was built.
 
 | Playbook stage | Playbook artifact | Temper |
 |---|---|---|
-| Plan | `intent.md` | `/temper:intent` **[NEW]** → `.temper/specs/{slug}/intent.md`, `Status: draft` |
+| Plan | `intent.md` | Intent stage + gate **[NEW]** → `.temper/specs/{slug}/intent.md`, accepted by a human before anything else runs (`/temper:intent` for capture-only) |
 | Design | `spec.md` | `intent.md` (criteria + scenarios) + `plan.md` + `design.md` — see [Deliberate divergences](#deliberate-divergences) |
 | Build | `plan.md`, the diff | plan gate → `plan.md`/`tasks.md`; Build's RED→GREEN evidence |
 | Test | tests + eval results | check gate: scenario-traced tests, coverage, live verification |
-| Deploy | PR + review findings | review gate pre-commit; `examples/workflow/temper-review.yml` **[NEW]** for the PR loop |
+| Deploy | PR + review findings | review gate pre-commit; `temper gate review`'s exit code is the merge check under any CI |
 | Maintain | incident → next intent | `temper bands` **[NEW]** → breach drafted as the next `intent.md` |
 
 ## Play-by-play
@@ -38,13 +38,20 @@ as what was asked and what was built.
 ### Stage 1 — Plan
 
 **Capture as intent.md.** The playbook wants anyone — not just engineers — able to
-turn an idea into a committed, reviewable proto-spec. Temper wrote `intent.md` only
-inside the engineer-driven Plan pass. **[NEW]** `/temper:intent` captures an idea as a
-draft with author, status, and Open Questions; committing it puts the author,
-timestamp, and revision history in git from the moment the idea is real. The
-lifecycle has named owners: `draft` (capture) → `accepted` (a human approving the
-plan gate) → `completed` (the commit step). Plan builds on a draft, never overwrites
-it.
+turn an idea into a committed, reviewable proto-spec, and the intent to be the
+artifact the whole loop starts from. **[NEW]** Intent is now `/temper`'s own first
+*gated stage*: a cheap pass states the Problem, success criteria, and constraints —
+no exploration, no architecture — and a human accepts or corrects it at the intent
+gate **before the expensive stages spend anything**. The reasoning is the playbook's
+own: every downstream artifact is derived from the intent, so an intent correction at
+this gate costs words, and the same correction after Plan costs the plan.
+`temper gate intent` is the deterministic floor (Problem stated, ≥1 criterion, Status
+header), and the commit gate requires an intent verdict whenever the artifact exists.
+`/temper:intent` remains the capture-only entry (an idea, a ticket, a bands breach —
+possibly from someone who will never run the build); its draft is exactly what the
+pipeline's intent gate later presents. The lifecycle has named owners: `draft`
+(capture or the Intent stage) → `accepted` (the human's Continue at the intent gate,
+recorded as `Accepted-by:` and committed) → `completed` (the commit step).
 
 ### Stage 2 — Design
 
@@ -67,15 +74,16 @@ mock handoff for front-end intents) — that lives outside a plugin.
 beyond the playbook: the plan isn't just reviewed before code, `temper gate plan`
 computes whether its artifacts exist, every criterion has a scenario, and
 medium/complex changes documented a blast radius. Grill Me / walkthrough / HTML
-review are the playbook's "interrogate the plan" made concrete. **[NEW]** Acceptance
-is now a recorded, committed event: the human Continue writes `Accepted-by:` into
-intent.md and commits the spec artifacts on the spot (the commit gate passes
-artifact-only commits by design), so the diff has a committed plan baseline from the
-moment build starts; at the end, recorded deviations are written into plan.md as a
-`## Deviations` section in the same commit as the code. One honest residual: nothing
-deterministically blocks *source edits* before plan acceptance — that control is
-prompt-level (the hooks block commits, protected paths, and regression-test edits,
-not arbitrary pre-acceptance edits).
+review are the playbook's "interrogate the plan" made concrete. **[NEW]** Each
+acceptance is a recorded, committed event: intent acceptance at the intent gate
+(`Accepted-by:` + a committed `docs(intent)` commit), plan approval at the plan gate
+(a committed `docs(plan)` commit — the commit gate passes artifact-only commits by
+design), so the diff has a committed baseline from the moment build starts; at the
+end, recorded deviations are written into plan.md as a `## Deviations` section in the
+same commit as the code. One honest residual: nothing deterministically blocks
+*source edits* before plan acceptance — that control is prompt-level (the hooks block
+commits, protected paths, and regression-test edits, not arbitrary pre-acceptance
+edits).
 
 **Auto mode.** Aligned, more conservative than the playbook: Autonomous Continuation
 is armed by a human at the plan gate only, checkpoints after each green stage, and
@@ -142,15 +150,15 @@ Open: per-pack fixtures, model/CLI pinning, and scaffolding an eval harness for 
 
 **AI in the PR review loop.** Temper's review runs pre-commit — earlier than the
 playbook's PR review, with confidence scoring, review memory, intent validation.
-**[NEW]** Two bridges to the PR loop: `reference/review.md` reads a repo-root
-`REVIEW.md` as org review policy (passes, Important-vs-Nit, nit caps,
-do-not-report — which can re-aim the review but never lower the gate), and
-`examples/workflow/temper-review.yml` runs the review headlessly on PRs with the
-merge check being `temper gate review` — the deterministic verdict as the
-machine-readable tally, branch protection and a human code owner still owning
-approval. The @claude comment-fix loop and babysit-to-merge remain Claude Code
-platform features, not plugin surface — Temper composes with them rather than
-reimplementing them.
+**[NEW]** Two bridges to the review loop, both host-agnostic: `reference/review.md`
+reads a repo-root `REVIEW.md` as org review policy (passes, Important-vs-Nit, nit
+caps, do-not-report — which can re-aim the review but never lower the gate), and the
+review is runnable headlessly under **any** CI with `temper gate review`'s exit code
+as the merge check — the deterministic verdict as the machine-readable tally
+(`examples/workflow/README.md` gives the command contract; temper deliberately ships
+no CI-platform files). Branch/merge protection and a human code owner still own
+approval; @claude-style comment loops remain the host platform's feature — Temper
+composes with them rather than reimplementing them.
 
 **Hooks as approval gates.** Temper's fence deliberately ends at `git commit`
 (see divergences), and its commit gate is already an approval gate: a human override
@@ -165,11 +173,14 @@ boundary only (a human prompt mid-build puts a person back on every parallel
 session's critical path), and non-negotiable gates in managed settings, not the repo.
 
 **CI/CD integration.** The plugin runs headlessly (`claude -p "/temper:temper ..."` —
-the eval harness is the existence proof). **[NEW]** The two workflow templates give
-projects the playbook's pattern: agent work arrives as a PR through branch
-protection, detection steps spend no tokens, and nothing the agent does can pass the
-production gate. MCP-scoped deploy tools and rollback rehearsal are a project's
-pipeline concern; the templates leave that boundary explicit.
+the eval harness is the existence proof), and its whole automation surface is
+**commands and exit codes, deliberately host-agnostic**: the same wiring works under
+GitHub Actions, GitLab CI, Jenkins, or plain cron, and temper ships no
+platform-specific pipeline files (`examples/workflow/README.md` documents the
+contract). The playbook's pattern still holds wherever you wire it: agent work
+arrives through your host's review flow, detection steps spend no tokens, and nothing
+the agent does can pass the production gate. MCP-scoped deploy tools and rollback
+rehearsal are a project's pipeline concern.
 
 ### Stage 6 — Maintain
 
@@ -184,9 +195,11 @@ pipeline through every gate. **[NEW]** Ingestion is CLI-owned and open-ended:
 `temper metrics append <series> <value>` feeds any series — the pipeline's own
 (coverage, tests, lint) or external production metrics (CI failure rate, post-deploy
 5xx appended by a pipeline step) — and bands watches any appended series by name.
-`examples/workflow/temper-bands.yml` is the trigger layer: scheduled, stateless,
-token-free until a breach — the loop begins and ends with no one starting it, and
-lands in the review gate, never around it. Dismissals tune the bands.
+The trigger layer is **any scheduler you already run** (cron, a pipeline schedule):
+`temper bands` is stateless and token-free until a breach, exits 1 when one exists,
+and the breach is drafted into the ordinary pipeline — the loop begins and ends with
+no one starting it, and lands in the review gate, never around it. Dismissals tune
+the bands.
 
 **Claude on call (Claude Tag).** Channel-resident incident response is a platform
 capability, out of scope for a plugin — but the plugin-shaped half is now in:
@@ -206,18 +219,24 @@ intent:
    (Gherkin scenarios) into `intent.md`, architecture into `plan.md`/`design.md`.
    The playbook's intent→spec pair is Temper's intent(draft)→intent(accepted) +
    design — same audit chain, fewer files for a gate to check.
-2. **Scenarios before architecture.** The playbook orders intent → spec → plan.
-   Temper derives BDD scenarios from the *measured* blast radius before committing
-   to an architecture, so the file list is justified by behavior — its structural
-   defense against over-engineering. The order differs; the "design review before
-   any code" control is the same, enforced by the plan gate.
+2. **Scenarios after intent, from the measured blast radius.** The pipeline now runs
+   the playbook's literal order — intent (gated) → plan — but *within* Plan, temper
+   still derives BDD scenarios from the measured blast radius before committing to
+   an architecture, so the file list is justified by behavior: its structural
+   defense against over-engineering. The intent gate reviews the WHY cheaply; the
+   plan gate reviews the WHAT/HOW it was derived into.
 3. **The fence ends at commit.** Temper never pushes, merges, or deploys — the
    strongest possible reading of "the agent may act up to the production gate and
-   cannot pass it." Deploy-stage controls are documented patterns (templates,
-   example hooks) for the project's own pipeline, not plugin behavior.
-4. **Review runs pre-commit, PR review is a bridge.** Catching findings before the
-   commit exists is cheaper than at the PR; the CI template adds the PR-time pass
-   for the org-visible audit record rather than replacing the local one.
+   cannot pass it." Deploy-stage controls are documented command contracts and an
+   example hook for the project's own pipeline, not plugin behavior.
+4. **Review runs pre-commit; PR-time review is your CI's one-liner.** Catching
+   findings before the commit exists is cheaper than at the PR; wiring
+   `temper gate review` as a pipeline check adds the org-visible audit record
+   without replacing the local pass.
+5. **No CI-platform files, on purpose.** Temper's automation surface is commands
+   and exit codes (`temper bands`, `temper gate review`, `temper metrics append`),
+   equally at home under GitHub Actions, GitLab CI, Jenkins, or cron — shipping any
+   one host's workflow files would couple a host-agnostic spine to a vendor.
 
 ## Remaining gaps
 
@@ -225,23 +244,20 @@ Honest list, in rough adoption order:
 
 - **Commit-triggered stage handover** — inside a run, handover is state-file-driven
   in one session; a committed `Status: draft` intent triggers nothing by itself. The
-  outer arcs are commit-shaped (intent PRs, bands-breach PRs, PR-time review), and
-  the artifact chain + artifact-only commits now make the inner trigger buildable —
-  but the wiring (a workflow that fires `/temper` on intent acceptance) is a
-  template away, not shipped.
+  artifact chain + artifact-only commits make the trigger buildable in any host's
+  automation (fire headless `/temper` when an accepted intent lands), but temper
+  ships no such wiring — by the no-CI-platform-files rule, that hookup is the
+  project's.
 - **Org flow around intent** — product-owner review queues, an "intent home" for
-  non-git contributors (issue-form → headless `/temper:intent` → intent PR), Claude
-  Design mock handoff for front-end intents. Route: repository conventions +
-  claude.ai connectors; the artifact shape is ready for it.
-- **@claude fix loop / babysit-to-merge** — platform features Temper composes with;
-  a `/temper:babysit` sweeping unresolved comments + red checks through the existing
-  gates would be the native version. Human PR review comments also never feed
+  non-git contributors, Claude Design mock handoff for front-end intents. Route:
+  repository conventions + connectors; the artifact shape is ready for it.
+- **Review-comment loops** — host-platform features (comment-driven fixes,
+  babysit-to-merge) Temper composes with; human review comments never feed
   review-memory today.
 - **Server-side gate verification** — the pre-commit hook is per-clone, so
-  `git commit --no-verify` bypasses the spine locally; the review CI template
-  re-computes `temper gate review` at the PR, but a required status check
-  re-verifying the full commit gate (e.g. from the committed `gate-ledger.json`)
-  where branch protection lives is not shipped.
+  `git commit --no-verify` bypasses the spine locally; re-verifying the gates where
+  your host's merge protection lives (e.g. from the committed `gate-ledger.json`)
+  is wiring the project adds, not shipped.
 - **Eval scale and reach** — 4 self-eval cases vs the play's 20–50; no per-pack
   seeded fixtures; no model/CLI pinning; nothing scaffolds an eval harness for a
   user project's own agent config (their CLAUDE.md, their packs).
@@ -255,10 +271,10 @@ Honest list, in rough adoption order:
 
 ## Adoption order (the playbook's arrows, in Temper commands)
 
-1. `/temper:init` → config, `.temper/` scaffold, the pre-commit gate.
-2. `/temper` → plan-gated pipeline (plan mode + CLAUDE.md + feedback loop plays).
-3. Packs + hooks pack → skills-with-deterministic-backstops.
-4. `/temper:intent` → capture-first flow; commit the spec artifacts.
-5. `examples/workflow/temper-review.yml` → the PR review loop.
-6. `autonomy:` block → longer unattended arcs, parked before commit.
-7. `bands:` + `examples/workflow/temper-bands.yml` → the loop closes itself.
+1. `/temper "…"` → sets itself up on first run (config, scaffold, commit gate) and
+   runs the intent-gated pipeline.
+2. Packs + hooks pack → skills-with-deterministic-backstops.
+3. `/temper:intent` → capture-first flow; commit the spec artifacts.
+4. Wire `temper gate review` into whatever CI you run → the review loop, org-visible.
+5. `autonomy:` block → longer unattended arcs, parked before commit.
+6. `bands:` + `temper bands` on any scheduler → the loop closes itself.

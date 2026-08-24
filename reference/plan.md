@@ -40,12 +40,22 @@ plan` reads only these three.
 files): an inline plan in the conversation, no files. **Medium** (5-10) / **Complex**
 (10+): the three files above. `--full`/`--quick` force Complex/Simple.
 
-**A draft intent.md already exists** (captured via `/temper:intent`, or drafted from a
-`temper bands` breach): it is your input, not something to overwrite. Keep the
-originator's Problem and Constraints (correct only with a stated reason), tighten the
-Success Criteria with `Validate:` types, resolve or explicitly re-carry each Open
-Question (they count toward the 2-3 clarifying questions below), then derive Scenarios
-as usual. The `Status: draft` header stays until a human accepts the plan gate.
+**intent.md usually already exists when you start.** In the orchestrated `/temper`
+flow, the Intent stage wrote it and a human accepted it at the intent gate
+(`Status: accepted`) before you launched — it is your input: derive Scenarios and
+architecture from it, refine its wording only with a stated reason, never re-derive
+the Problem from scratch. A `Status: draft` intent (captured via `/temper:intent` or a
+`temper bands` breach, reaching you standalone) is the same input, plus: resolve or
+explicitly re-carry each Open Question (they count toward the 2-3 clarifying questions
+below); the draft→accepted flip happens at whichever human gate reviews it first.
+
+**Standalone `/temper:plan` with no existing intent.md**: derive the intent yourself
+(Problem, Success Criteria with `Validate:` types, Constraints, `**Status:** draft`
+header) as your first act, then run
+`$CLAUDE_PLUGIN_ROOT/scripts/temper gate intent` and fix any FAIL before proceeding to
+blast radius — the commit gate requires an intent verdict whenever intent.md exists,
+and recording it here is what keeps the standalone path equivalent to the orchestrated
+one.
 
 **Risk multipliers** (each pushes complexity up one tier): touches auth/payment/security
 code; modifies a library with 5+ consumers; changes a DB schema; a module with a
@@ -217,16 +227,18 @@ time, `AskUserQuestion` "Next step"/"Ask a question" between each) / "Save for l
 change typed via "Other" is never approval — make the edit, then re-show this same gate.
 
 On Continue: write `.temper/build-state.json` (`stage: plan_complete`, `next_stage:
-build`, `artifacts: ["intent.md","tasks.md"]`); if intent.md's header says `Status:
-draft`, flip it to `Status: accepted` and add `**Accepted-by:** {git config user.name}
-<{user.email}>` — the human Continue *is* the acceptance, and the artifact records who
-gave it. Commit the accepted artifacts in two steps — `git add .temper/specs/{slug}/`
-first, then `git commit -m "docs(plan): accept {slug} — plan approved"` as a separate
-call (not `add && commit`: the in-agent commit-gate hook checks `temper gate commit`
-when the commit is submitted, and the artifact-only carve-out that passes it mid-run
-reads the already-staged set). Skip with a note if the project gitignores
-`.temper/specs/`. Standalone mode loads only `tasks.md` + `intent.md` for Build.
-Subprocess mode: the orchestrator handles the transition.
+build`, `artifacts: ["intent.md","tasks.md"]`); if intent.md's header still says
+`Status: draft` (standalone mode — no intent gate ran before this one), flip it to
+`Status: accepted` and add `**Accepted-by:** {git config user.name} <{user.email}>` —
+the first human gate that reviews the intent is where acceptance is recorded (in the
+orchestrated flow that already happened at the Intent gate). Commit the artifacts in
+two steps — `git add .temper/specs/{slug}/` first, then `git commit -m "docs(plan):
+approve plan — {slug}"` as a separate call (not `add && commit`: the in-agent
+commit-gate hook checks `temper gate commit` when the commit is submitted, and the
+artifact-only carve-out that passes it mid-run reads the already-staged set). Skip
+with a note if the project gitignores `.temper/specs/`. Standalone mode loads only
+`tasks.md` + `intent.md` for Build. Subprocess mode: the orchestrator handles the
+transition.
 
 ## Edge Cases
 

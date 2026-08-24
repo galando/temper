@@ -11,10 +11,11 @@ orchestrator's conversation carries over except the prompt you were launched wit
    (intent derivation, BDD scenario writing, blast radius, complexity classification).
    Follow it exactly; nothing here overrides it.
 2. Produce the artifacts it describes under `.temper/specs/{feature-slug}/`: `intent.md`
-   (Success Criteria + Gherkin Scenarios), `tasks.md`, `plan.md`. A draft `intent.md`
-   already at the spec path (captured via `/temper:intent`) is input — refine it per
-   reference/plan.md, never overwrite it; its `Status:` header stays `draft` (the
-   orchestrator's human gate flips it).
+   (Success Criteria + Gherkin Scenarios), `tasks.md`, `plan.md`. In the orchestrated
+   flow the Intent stage already wrote `intent.md` and a human accepted it — it is your
+   INPUT: derive scenarios and architecture from it, refine only with a stated reason,
+   never re-derive the Problem (reference/plan.md covers the standalone case where you
+   author it yourself and run `temper gate intent` first).
 3. As soon as you classify complexity, record it:
    `$CLAUDE_PLUGIN_ROOT/scripts/temper state set complexity <trivial|simple|medium|complex>`
    — `temper gate plan` reads this to decide whether a Blast Radius section is required.

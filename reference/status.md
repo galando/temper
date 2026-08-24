@@ -149,8 +149,9 @@ Only when Step 1.6 reported a `propose`-tier breach (default: 3sigma). `AskUserQ
   with `Validate: metric`, plus at least one `Validate: scenario` criterion for the
   suspected cause once known; **Constraints** = fix goes through the normal pipeline;
   **Target Users** = the team. Then report: "Run `/temper` to pick it up." The draft
-  rides the ordinary pipeline — every gate applies (Plan flips `draft → accepted` at
-  its human gate); a bands breach never fast-tracks anything.
+  rides the ordinary pipeline — every gate applies (the Intent gate presents the
+  draft and flips `draft → accepted` on the human's Continue); a bands breach never
+  fast-tracks anything.
 - **"Dismiss"** — record it in review-memory (`patterns` key `bands:{metric}`);
   dismissals are the tuning signal: 3+ dismissals of the same metric's breaches →
   suggest widening `bands.window` or retiring that metric from `bands.metrics`.

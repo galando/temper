@@ -2,7 +2,7 @@
 
 | Command | Purpose |
 |---------|---------|
-| `/temper` | Unified SDLC: plan → design → build → review → check |
+| `/temper` | Unified SDLC: intent → plan → design → build → review → check |
 | `/temper:intent` | Capture an idea as a draft `intent.md` (build later) |
 | `/temper:plan` | Plan with blast radius |
 | `/temper:design` | System design (complex/medium features) |

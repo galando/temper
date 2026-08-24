@@ -44,17 +44,17 @@ EVIDENCE_DIR="$TEMPER_DIR/evidence"
 METRICS_FILE="$TEMPER_DIR/metrics.json"
 BANDS_FILE="$TEMPER_DIR/bands.json"
 
-STAGES="plan design build review check commit"
+STAGES="intent plan design build review check commit"
 
 # Stages that run as an Agent subprocess and therefore have a model to resolve.
 # `commit` is not one — it's the orchestrator running `temper gate commit`.
-AGENT_STAGES="plan design build review check"
+AGENT_STAGES="intent plan design build review check"
 
 # Per-command state.stage sequences (bookkeeping for resume — see
 # reference/orchestrator-patterns.md "Build State Schema"). Distinct from $STAGES
 # above, which is the `temper gate <stage>` vocabulary: /temper:fix's state.stage
 # uses rca/fix in place of plan/build, but "rca"/"fix" are never valid gate stages.
-STAGE_SEQ_TEMPER="plan design build review check"
+STAGE_SEQ_TEMPER="intent plan design build review check"
 STAGE_SEQ_FIX="rca fix review check"
 
 _count_lines_matching() { # _count_lines_matching <pattern> <file>  (grep -c exits 1 on zero matches
@@ -321,7 +321,7 @@ d = {
     'spec_path': f'.temper/specs/{sys.argv[1]}',
     'branch': sys.argv[2],
     'command': sys.argv[3],
-    'next_stage': 'plan' if sys.argv[3] == 'temper' else 'rca',
+    'next_stage': 'intent' if sys.argv[3] == 'temper' else 'rca',
     'run_mode': 'interactive',
     'artifacts': ['intent.md', 'tasks.md'] if sys.argv[3] == 'temper' else ['rca.md'],
     'updated': sys.argv[4],
@@ -812,6 +812,57 @@ print(json.dumps({'name': sys.argv[1], 'pass': sys.argv[2] == '1', 'detail': sys
 " "$label" "$ok" "$detail"
 }
 
+gate_intent() {
+  # The fail-fast gate: intent is the artifact everything downstream is derived from,
+  # so a wrong intent multiplies into wrong scenarios, a wrong plan, and a wrong
+  # build — tokens spent for nothing. This gate makes the human review the CHEAP
+  # artifact before the expensive stages run. Mechanically checkable floor: a Problem
+  # section with real content (not template placeholders), at least one success
+  # criterion, and a Status header. intent.md absent => the run took the trivial path
+  # (no artifacts) => PASS; the commit gate requires an intent verdict exactly when
+  # the artifact exists, so a skipped gate on a real intent cannot reach commit.
+  local spec_path="$1"
+  local reqs=() all_pass=1
+  if [[ ! -f "$spec_path/intent.md" ]]; then
+    reqs+=("$(_req "intent artifact" 1 "intent.md absent — trivial path, no artifacts")")
+  else
+    local problem_lines criteria status_line
+    problem_lines=$(awk '
+      /^#+[[:space:]]*Problem/ { f=1; next }
+      f && /^#+[[:space:]]/ { f=0 }
+      f && NF && $0 !~ /^[[:space:]]*\{/ { c++ }
+      END { print c+0 }
+    ' "$spec_path/intent.md")
+    if [[ "$problem_lines" -gt 0 ]]; then
+      reqs+=("$(_req "problem stated" 1 "Problem section has $problem_lines line(s) of content")")
+    else
+      reqs+=("$(_req "problem stated" 0 "Problem section is missing, empty, or still template placeholders")")
+      all_pass=0
+    fi
+    criteria=$(awk '
+      /^#+[[:space:]]*Success Criteria/ { f=1; next }
+      f && /^#+[[:space:]]/ { f=0 }
+      f && /^- / { c++ }
+      END { print c+0 }
+    ' "$spec_path/intent.md")
+    if [[ "$criteria" -gt 0 ]]; then
+      reqs+=("$(_req "success criteria" 1 "$criteria criterion/criteria listed")")
+    else
+      reqs+=("$(_req "success criteria" 0 "no success criteria — nothing downstream can be validated against")")
+      all_pass=0
+    fi
+    if grep -qE '^\*\*Status:\*\*' "$spec_path/intent.md"; then
+      status_line="$(grep -m1 -E '^\*\*Status:\*\*' "$spec_path/intent.md")"
+      reqs+=("$(_req "status header" 1 "$status_line")")
+    else
+      reqs+=("$(_req "status header" 0 "no **Status:** header — the lifecycle (draft/accepted/completed) has nowhere to live")")
+      all_pass=0
+    fi
+  fi
+  local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
+  echo "$reqs_json" "$all_pass"
+}
+
 gate_plan() {
   local spec_path="$1"
   local reqs=() all_pass=1
@@ -1003,10 +1054,15 @@ gate_commit() {
     stages_to_check="build review check"
   else
     stages_to_check="plan build review check"
-    # The design stage is optional — but when its artifact exists, its gate must have
-    # run (any verdict): an unflagged design.md must not slide through the commit gate.
-    local spec_path_for_design; spec_path_for_design="$(cmd_state_get spec_path "")"
-    [[ -n "$spec_path_for_design" && -f "$spec_path_for_design/design.md" ]] && stages_to_check="plan design build review check"
+    # Intent and design are artifact-conditional: each stage's gate must have run
+    # (any verdict) exactly when its artifact exists. An intent nobody gated, or an
+    # unflagged design.md, must not slide through the commit gate — while a trivial
+    # run that produced neither artifact owes neither verdict.
+    local spec_path_cond; spec_path_cond="$(cmd_state_get spec_path "")"
+    if [[ -n "$spec_path_cond" ]]; then
+      [[ -f "$spec_path_cond/intent.md" ]] && stages_to_check="intent $stages_to_check"
+      [[ -f "$spec_path_cond/design.md" ]] && stages_to_check="${stages_to_check/plan build/plan design build}"
+    fi
   fi
   for s in $stages_to_check; do
     local verdict; verdict="$(_json_get_path "$GATES_FILE" "$s.verdict" "MISSING")"
@@ -1071,11 +1127,12 @@ cmd_gate() {
   _ensure_dirs
   local ok=false
   for s in $STAGES; do [[ "$stage" == "$s" ]] && ok=true; done
-  [[ "$ok" == "true" ]] || { echo "FAIL: usage: temper gate <plan|design|build|review|check|commit>" >&2; return 1; }
+  [[ "$ok" == "true" ]] || { echo "FAIL: usage: temper gate <intent|plan|design|build|review|check|commit>" >&2; return 1; }
 
   local spec_path; spec_path="$(_spec_path "$spec_path_override")"
   local out reqs_json all_pass
   case "$stage" in
+    intent) out=$(gate_intent "$spec_path") ;;
     plan) out=$(gate_plan "$spec_path") ;;
     design) out=$(gate_design "$spec_path") ;;
     build) out=$(gate_build "$spec_path") ;;
@@ -1399,8 +1456,8 @@ Usage:
   temper init
   temper state <init|get|set|advance|loop|archive|clear> ...
   temper evidence <add|run|list|clear> ...
-  temper gate <plan|design|build|review|check|commit> [--spec-path P]
-  temper model <plan|design|build|review|check> | --all
+  temper gate <intent|plan|design|build|review|check|commit> [--spec-path P]
+  temper model <intent|plan|design|build|review|check> | --all
   temper override <stage> --reason "..."
   temper report [--json]
   temper bands [--json]

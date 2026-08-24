@@ -24,6 +24,7 @@
     "./commands/init.md"
   ],
   "agents": [
+    "./agents/intent.md",
     "./agents/plan.md",
     "./agents/design.md",
     "./agents/build.md",

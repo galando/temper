@@ -92,7 +92,7 @@ Before an autonomous run: pre-allow your build/test commands in `settings.json`,
 
 | Command | Purpose |
 |---------|---------|
-| [`/temper "…"`](docs/commands.md#temper) | The whole pipeline: plan → design? → build → review → check → commit |
+| [`/temper "…"`](docs/commands.md#temper) | The whole pipeline: intent → plan → design? → build → review → check → commit |
 | [`/temper:fix "…"`](docs/commands.md#temperfix) | Root cause analysis → failing test → minimal fix → validate |
 | [`/temper:intent "…"`](docs/commands.md#temperintent) | Capture an idea as a committed draft `intent.md`, build it later |
 

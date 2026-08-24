@@ -26,8 +26,14 @@ nav_order: 3
 Runs the full software development lifecycle with stage gates:
 
 ```
-PLAN → (gate) → BUILD → (gate) → REVIEW → (gate) → CHECK → (gate) → COMMIT
+INTENT → (gate) → PLAN → (gate) → BUILD → (gate) → REVIEW → (gate) → CHECK → (gate) → COMMIT
 ```
+
+The **Intent gate comes first and is deliberately cheap**: you approve (or correct) the
+Problem, success criteria, and constraints before any exploration or architecture work
+spends tokens — an intent correction at this gate costs words; the same correction
+after Plan costs the whole plan, because every downstream artifact is derived from the
+intent. Trivial requests (a typo, a one-liner) skip it automatically.
 
 **Stage Gates:**
 
@@ -629,6 +635,7 @@ deterministic drift check of the metric history against rolling mean ± k·sigma
 diagnose, and a `3sigma`/`propose`-tier breach offers to draft the breach as a
 Stage-1 `intent.md` for `/temper` to pick up — evidence in, ordinary gates out.
 Dismissals are the tuning signal (3+ on one metric → widen the window or retire the
-metric). `temper bands` is also runnable headless from CI or cron with no dashboard
-at all (exit 1 on a breach) — see `examples/workflow/temper-bands.yml` — which is
-what lets the loop begin and end without a person starting it.
+metric). `temper bands` is also runnable headless with no dashboard at all — exit 1 on
+a breach — from **any** scheduler (cron, Jenkins, GitLab CI, GitHub Actions; temper
+ships no platform-specific wiring on purpose, see `examples/workflow/README.md`),
+which is what lets the loop begin and end without a person starting it.

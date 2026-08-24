@@ -32,9 +32,10 @@ spec path from `$TEMPER state get spec_path` before launching any agent.
   "updated": "{ISO timestamp}" }
 ```
 
-Stage sequences: `/temper` — `plan_complete | design_complete | build_complete |
-review_complete | check_complete`, branch `feature/{slug}`. `/temper:fix` —
-`rca_complete | fix_complete | review_complete | check_complete`, branch `fix/{slug}`.
+Stage sequences: `/temper` — `intent_complete | plan_complete | design_complete |
+build_complete | review_complete | check_complete`, branch `feature/{slug}`.
+`/temper:fix` — `rca_complete | fix_complete | review_complete | check_complete`,
+branch `fix/{slug}`.
 
 **Save/Continue:** `$TEMPER state advance {stage}_complete {next_stage}` at every
 transition. On Save, report "Saved. Run {command} when ready to continue."
@@ -142,7 +143,8 @@ store). See `reference/review.md` → "Metrics + Memory".
 
 | Stage | Reads | Writes |
 |---|---|---|
-| Plan | nothing (first stage) | intent.md, tasks.md, plan.md |
+| Intent | nothing (first stage) | intent.md (Problem/criteria/constraints — no scenarios) |
+| Plan | intent.md (accepted) | intent.md (adds Scenarios), tasks.md, plan.md |
 | Design | intent.md, plan.md | design.md |
 | Build | tasks.md, intent.md, review/check-context.json (on re-entry) | build-context.json |
 | Review | intent.md, `git diff`, build-context.json, review-memory.json | review-context.json, review-memory.json |

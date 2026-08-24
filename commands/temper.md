@@ -1,13 +1,15 @@
 ---
-description: "Unified SDLC command: plan → design? → build → review → check → commit, gated by the temper CLI"
+description: "Unified SDLC command: intent → plan → design? → build → review → check → commit, gated by the temper CLI"
 argument-hint: "<feature-description>"
 ---
 
 # Temper: Unified SDLC Command (v8.1.0)
 
-**Goal:** Run plan → design? → build → review+check → commit with a human gate at every
-stage (or, if armed, unattended past the plan gate). Every gate verdict is computed by
-the `temper` CLI from an evidence ledger — never asserted by a model.
+**Goal:** Run intent → plan → design? → build → review+check → commit with a human gate
+at every stage (or, if armed, unattended past the plan gate). Every gate verdict is
+computed by the `temper` CLI from an evidence ledger — never asserted by a model. The
+Intent gate comes first because intent errors are the most expensive kind: correcting
+the Problem statement costs words at the intent gate and costs the whole plan after it.
 
 ## Usage
 
@@ -30,6 +32,7 @@ agent file once when you launch it.
 ```
 ORCHESTRATOR (this file)
   |
+  +-- Agent(agents/intent.md)  -> intent gate -> temper gate intent (the fail-fast gate)
   +-- Agent(agents/plan.md)    -> plan gate  -> temper gate plan
   +-- Agent(agents/design.md)  -> design gate -> temper gate design (medium/complex only)
   +-- Agent(agents/build.md)   -> build gate  -> temper gate build
@@ -166,6 +169,61 @@ dirty tree unless confirmed; `git commit -m "wip: {stage} passed"` after each PA
 
 ---
 
+## Stage 0: Intent (the fail-fast gate)
+
+Why this is its own gate: **everything downstream is derived from the intent** — a
+wrong Problem or a missing criterion multiplies into wrong scenarios, a wrong plan,
+and a wrong build. The intent is the cheapest artifact in the run, so the human
+corrects it FIRST, before the expensive exploration/architecture work spends anything.
+
+Launch:
+
+```
+Use the Agent tool, model: {intent}, prompt:
+"Follow $CLAUDE_PLUGIN_ROOT/agents/intent.md exactly. Feature: $ARGUMENTS.
+Spec path: {from temper state get spec_path}."
+```
+
+The agent returns `READY` (intent.md written, or an existing draft refined) or
+`TRIVIAL` (a typo/one-liner with no product problem to state — nothing written).
+**On TRIVIAL:** skip this gate entirely, `$TEMPER state advance intent_complete plan`,
+go straight to Stage 1 (Plan's trivial path handles it; with no intent.md, neither
+`gate intent` nor the commit gate expects an intent verdict).
+
+Summary box:
+
+```
++-----------------------------------------------------------+
+| INTENT — {Feature Name}                                   |
++-----------------------------------------------------------+
+| PROBLEM: {one line — whose problem, what they can't do}    |
+| SUCCESS: {N} criteria ({N} scenario / {N} code / {N} metric/manual) |
+| CONSTRAINTS: {list, or none}                               |
+| OPEN QUESTIONS: {N} ({first one verbatim} ...)             |
++-----------------------------------------------------------+
+```
+
+Gate: `$TEMPER gate intent` (Problem stated, >=1 criterion, Status header). Options:
+**"Continue to Plan (Recommended)"** / Grill Me / Teach Me / "Save for later" / Other
+(a correction — edit intent.md, re-run the gate, re-show; this is the whole point of
+the gate: intent corrections here cost words, the same correction after Plan costs the
+plan). Open Questions are presented FIRST — each is answered by the human here or
+explicitly carried forward; an intent accepted with open questions records that
+choice.
+
+**On Continue:** flip intent.md's header `Status: draft → accepted` and add
+`**Accepted-by:** {git config user.name} <{user.email}>` — this human Continue is the
+acceptance the artifact records. Commit the accepted intent in two separate Bash calls
+(`git add .temper/specs/{slug}/`, then `git commit -m "docs(intent): accept {slug}"` —
+separate calls so the in-agent commit-gate hook sees it staged; artifact-only commits
+pass the fence; skip with a one-line note if the project gitignores `.temper/specs/`).
+Then `$TEMPER state advance intent_complete plan` and launch Stage 1.
+
+The Intent gate is **always interactive** — autonomy is armed later, at the plan gate,
+never here: no unattended run starts without a human having accepted the intent.
+
+---
+
 ## Stage 1: Plan
 
 Launch:
@@ -173,7 +231,9 @@ Launch:
 ```
 Use the Agent tool, model: {plan}, prompt:
 "Follow $CLAUDE_PLUGIN_ROOT/agents/plan.md exactly. Feature: $ARGUMENTS.
-Spec path: {from temper state get spec_path, or a new slug you choose}."
+Spec path: {from temper state get spec_path}. The accepted intent.md there is your
+input — derive scenarios and architecture from it; refine it only with a stated
+reason."
 ```
 
 Summary box:
@@ -197,19 +257,18 @@ wait for the user, then look for `review-comments.json` in the spec dir and appl
 (task-change / scenario-change / plan-change / general-note, mapped to its artifact).
 
 **On Continue:** `$TEMPER state advance plan_complete design-or-build` (pick `design` if
-`phases.design: true` and complexity is medium/complex, else `build`). If intent.md's
-header says `Status: draft`, flip it to `Status: accepted` and add
-`**Accepted-by:** {git config user.name} <{user.email}>` under it — this human Continue
-is the acceptance, and the artifact records who gave it. Create the feature branch if
-not already on it (`git checkout -b feature/{slug}`), then **commit the accepted
-artifacts** in two separate Bash calls, staging first: `git add .temper/specs/{slug}/`,
-then `git commit -m "docs(plan): accept {slug} — plan approved"`. They must be
-separate calls, not `add && commit`: the in-agent commit-gate hook runs `temper gate
-commit` at the moment the `git commit` call is submitted, and the artifact-only
-carve-out that lets this pass mid-run inspects the *already-staged* set — so the `git
-add` has to have run in a prior call. (Skip both with a one-line note if the project
-gitignores `.temper/specs/` — never `git add -f`.) This gives the diff a committed
-baseline to be reviewed against. Then launch that stage.
+`phases.design: true` and complexity is medium/complex, else `build`). (Intent
+acceptance — the Status flip and `Accepted-by:` — already happened at the Intent gate;
+this gate approves the *plan*.) Create the feature branch if not already on it
+(`git checkout -b feature/{slug}`), then **commit the approved plan artifacts** in two
+separate Bash calls, staging first: `git add .temper/specs/{slug}/`, then
+`git commit -m "docs(plan): approve plan — {slug}"`. They must be separate calls, not
+`add && commit`: the in-agent commit-gate hook runs `temper gate commit` at the moment
+the `git commit` call is submitted, and the artifact-only carve-out that lets this
+pass mid-run inspects the *already-staged* set — so the `git add` has to have run in a
+prior call. (Skip both with a one-line note if the project gitignores `.temper/specs/`
+— never `git add -f`.) This gives the diff a committed baseline to be reviewed
+against. Then launch that stage.
 
 **On PASS at the plan gate, before showing options:** if `autonomy.enabled: true`, offer
 the continuation choice described above instead of a single "Continue" option.

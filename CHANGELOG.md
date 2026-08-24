@@ -21,10 +21,18 @@ commit hook too), kept for an explicit re-run. The old third manual step
 
 ### New capabilities (playbook alignment)
 
+- **Intent is the pipeline's own first gated stage.** `/temper` now runs
+  intent → plan → design? → build → review → check → commit: a cheap Intent pass
+  states the Problem, criteria, and constraints (no exploration, no architecture) and
+  a human accepts or corrects it at the intent gate BEFORE the expensive stages spend
+  tokens — an intent correction at this gate costs words; after Plan it costs the
+  plan. `temper gate intent` is the deterministic floor (Problem stated, ≥1
+  criterion, Status header); the commit gate requires an intent verdict whenever the
+  artifact exists; trivial requests skip the stage automatically.
 - **`/temper:intent`** — capture an idea (from anyone) as a committed `Status: draft`
-  intent.md without starting the pipeline; Plan picks the draft up. The intent
-  lifecycle (`draft` → `accepted` → `completed`) has named owners and is recorded
-  (`Accepted-by:` at the plan gate).
+  intent.md without starting the pipeline; the pipeline's Intent gate later presents
+  exactly that draft. The intent lifecycle (`draft` → `accepted` → `completed`) has
+  named owners and is recorded (`Accepted-by:` at the intent gate).
 - **`temper bands`** — deterministic control-band drift detection (rolling mean ± kσ +
   a same-side-run rule, no model) over `.temper/metrics.json`; a 2σ+ breach exits 1 and
   a 3σ breach is drafted as the next intent.md. **`temper metrics append`** feeds any
@@ -36,8 +44,11 @@ commit hook too), kept for an explicit re-run. The old third manual step
   `gate-ledger.json` committed with the diff), and **overrides that record the approver**.
 - **New hooks** — the fix-loop regression-test write shield, edit-time protected paths
   (`protect.paths`), auto-format (`format.cmd`), and an ASK-tier confirm-override gate.
-- **REVIEW.md** repo policy support; **CI templates** for the PR-review and
-  closing-the-loop arcs (`examples/workflow/`); an approval-gate example hook.
+- **REVIEW.md** repo policy support; an approval-gate example hook. Automation is
+  **deliberately host-agnostic**: temper ships no CI-platform files — the review and
+  closing-the-loop arcs wire into ANY CI/scheduler (GitHub Actions, GitLab, Jenkins,
+  cron) as plain commands and exit codes; `examples/workflow/README.md` documents the
+  contract.
 
 ### Simplification (subtraction)
 
