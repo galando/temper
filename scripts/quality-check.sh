@@ -71,29 +71,43 @@ for m in missing:
   fi
 fi
 
-# --- Cursor surface (v9.2.0) ---
-# Two manifests over ONE source tree. The only thing that can rot here is agreement,
-# so that is what this checks; validate-plugin.sh carries the full parity assertion.
-CPJ="$REPO_ROOT/.cursor-plugin/plugin.json"
-if [[ ! -f "$CPJ" ]]; then
-  echo "[FAIL] .cursor-plugin/plugin.json not found"
-  FAIL=$((FAIL+1))
-elif ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$CPJ" 2>/dev/null; then
-  echo "[FAIL] .cursor-plugin/plugin.json is not valid JSON"
-  FAIL=$((FAIL+1))
-else
-  echo "[PASS] .cursor-plugin/plugin.json is valid JSON"
-  PASS=$((PASS+1))
-  if [[ -f "$PJ" ]]; then
-    CUR_VER=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('version',''))" "$CPJ")
-    CLA_VER=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('version',''))" "$PJ")
-    if [[ "$CUR_VER" == "$CLA_VER" ]]; then
-      echo "[PASS] Cursor/Claude manifest versions agree ($CUR_VER)"
-      PASS=$((PASS+1))
-    else
-      echo "[FAIL] Manifest version drift: .cursor-plugin=$CUR_VER .claude-plugin=$CLA_VER"
-      FAIL=$((FAIL+1))
-    fi
+# --- Multi-agent surface (v9.3.0) ---
+# Manifests for several agents over ONE source tree. The only thing that can rot here
+# is agreement, so that is what this checks; validate-plugin.sh carries the full
+# parity assertions (component coverage, Gemini shims, skill frontmatter).
+for m in plugin.json .claude-plugin/plugin.json .cursor-plugin/plugin.json \
+         .codex-plugin/plugin.json .agents/plugins/marketplace.json; do
+  MP="$REPO_ROOT/$m"
+  if [[ ! -f "$MP" ]]; then
+    echo "[FAIL] $m not found"
+    FAIL=$((FAIL+1))
+  elif ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$MP" 2>/dev/null; then
+    echo "[FAIL] $m is not valid JSON"
+    FAIL=$((FAIL+1))
+  else
+    PASS=$((PASS+1))
+  fi
+done
+echo "[PASS] All agent manifests are valid JSON"
+
+if [[ -f "$PJ" ]]; then
+  DRIFT=$(python3 -c "
+import json, sys
+root = sys.argv[1]
+def ver(p):
+    d = json.load(open(f'{root}/{p}'))
+    return d.get('version') or (d.get('plugins') or [{}])[0].get('version')
+base = ver('.claude-plugin/plugin.json')
+bad = [p for p in ['plugin.json', '.cursor-plugin/plugin.json', '.codex-plugin/plugin.json',
+                   '.agents/plugins/marketplace.json'] if ver(p) != base]
+print(' '.join(bad))
+" "$REPO_ROOT" 2>/dev/null)
+  if [[ -z "$DRIFT" ]]; then
+    echo "[PASS] All agent manifests agree on the version"
+    PASS=$((PASS+1))
+  else
+    echo "[FAIL] Manifest version drift in:$DRIFT"
+    FAIL=$((FAIL+1))
   fi
 fi
 

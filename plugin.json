@@ -1,0 +1,5 @@
+{
+  "name": "temper",
+  "version": "9.3.0",
+  "description": "Temper: an intent-gated SDLC for AI-generated code. Every gate verdict is computed by an auditable CLI, never asserted by a model."
+}

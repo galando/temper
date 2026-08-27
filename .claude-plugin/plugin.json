@@ -1,7 +1,7 @@
 {
   "name": "temper",
   "description": "Temper: Quality gates, blast radius analysis, and intent-driven development for AI-generated code",
-  "version": "9.2.0",
+  "version": "9.3.0",
   "author": {
     "name": "galando",
     "url": "https://github.com/galando/temper"
@@ -9,7 +9,15 @@
   "repository": "https://github.com/galando/temper",
   "homepage": "https://github.com/galando/temper",
   "license": "MIT",
-  "keywords": ["temper", "quality", "code-review", "tdd", "standards", "blast-radius", "sdlc"],
+  "keywords": [
+    "temper",
+    "quality",
+    "code-review",
+    "tdd",
+    "standards",
+    "blast-radius",
+    "sdlc"
+  ],
   "commands": [
     "./commands/temper.md",
     "./commands/intent.md",
@@ -34,6 +42,7 @@
     "./agents/fix.md"
   ],
   "skills": [
+    "./skills/temper",
     "./skills/temper-core",
     "./skills/context-engineering",
     "./skills/source-driven-development",

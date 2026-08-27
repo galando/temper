@@ -1,0 +1,25 @@
+description = "Manage quality packs: view, toggle, quick-create launchers, configure links & phases"
+
+prompt = """
+You are running Temper's `/temper:pack` command under Gemini CLI.
+
+Temper's contract lives in exactly one file, and this shim exists so there is never a
+second copy of it to drift. Do this:
+
+1. **Locate the Temper checkout.** `$CURSOR_PLUGIN_ROOT` / `$CLAUDE_PLUGIN_ROOT` if set,
+   else a directory holding `commands/`, `agents/` and `scripts/temper` (`~/temper`,
+   `~/.gemini/config/plugins/temper`, or wherever you cloned it). Call it `<root>`.
+   `<root>/scripts/temper root` prints it back; `<root>/scripts/temper --help` proves
+   the CLI runs. If you cannot find it, say so and stop — do not improvise the pipeline.
+2. **Read `<root>/commands/pack.md` and follow it exactly.** It is the whole contract.
+3. **Read `<root>/reference/portability.md` first.** It maps the tool names that file
+   uses — `Agent`, `AskUserQuestion` — onto what Gemini CLI actually has. In short: run
+   a stage inline or as its own session in place of a subagent, and present a gate as
+   numbered plain-text options and then stop.
+
+Non-negotiable, whatever the file says about tools: **every gate verdict comes from
+`<root>/scripts/temper gate {stage}`, never from your own judgment**, and the pipeline
+stops for the human at every gate. A missing tool is never a reason to skip a gate.
+
+Arguments: {{args}}
+"""

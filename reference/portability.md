@@ -14,9 +14,13 @@ agent brief points here rather than restating it.
 rule, and a translator where a contract differs. Temper shipped a generated `.cursor/`
 export once (v5.1–v9.0.0); a generator bug froze it three majors behind and it was
 removed rather than keep misrepresenting what Cursor users got. A second copy of
-anything is how that happens. There is no export here — the Cursor manifest points at
-the same `commands/`, `agents/`, and `skills/` the Claude Code manifest does, and
-`scripts/hooks/cursor-adapter.sh` translates one hook contract into the other.
+anything is how that happens.
+
+So: every manifest in this repo points at the same `commands/`, `agents/`, and
+`skills/`; `scripts/hooks/cursor-adapter.sh` translates one hook contract into another
+rather than duplicating a rule; and the Gemini CLI command files are *shims* that read
+`commands/*.md` rather than restating it. Nothing here is generated, and
+`validate-plugin.sh` fails the build if any of that stops being true.
 
 ---
 
@@ -46,11 +50,12 @@ finding the CLI in the first place.
 Three things the pipeline does are named after Claude Code tools. Each has a defined
 fallback; nothing in the pipeline is skipped because a tool is missing.
 
-| Pipeline step | Claude Code | Cursor | Any other agent |
+| Pipeline step | Claude Code | Cursor / Antigravity | Codex, Gemini CLI, OpenCode, any other |
 |---|---|---|---|
-| Run a stage in a clean context | `Agent` tool with `agents/{stage}.md` | subagent from the same `agents/{stage}.md` | run the brief inline, then summarize back to the box it defines and drop the working detail |
+| Run a stage in a clean context | `Agent` tool with `agents/{stage}.md` | subagent from the same `agents/{stage}.md` | run the brief inline, then summarize back to the box it defines and drop the working detail — or better, run the stage as its own session |
 | Ask the human at a gate | `AskUserQuestion` | numbered options as plain text; stop and wait | numbered options as plain text; stop and wait |
 | Pick a stage's model | `temper model {stage}` → `Agent(model:)` | `temper model {stage}`, mapped to the agent's own tier | ignore; the session's model runs it |
+| Invoke a stage | `/temper:{stage}` | `/temper:{stage}` | `/temper:{stage}` under Gemini CLI; elsewhere the `temper` skill |
 
 **Inline stages are a real degradation, not an equivalent.** The isolated subprocess is
 what makes a stage's context genuinely clean — an inline run carries the orchestrator's
@@ -71,7 +76,7 @@ contract (Claude-shaped JSON on stdin, exit 2 = block).
 responses out. What differs is not the rule but *which lifecycle events an agent lets a
 hook refuse*:
 
-| Guarantee | Claude Code | Cursor | Any other agent |
+| Guarantee | Claude Code | Cursor | Codex, Gemini CLI, OpenCode, Antigravity, others |
 |---|---|---|---|
 | **Commit gate on `git commit`** (native git `pre-commit`, `scripts/hooks/install.sh`) | enforced | **enforced** | **enforced** |
 | In-agent commit gate (`block-uncommitted-gate.sh`) | `PreToolUse:Bash` → blocks | `beforeShellExecution` → denies | — |
@@ -93,26 +98,61 @@ an IDE button, under every row of that table — including the "any other agent"
 where it is the *only* deterministic enforcement and therefore the install step that
 matters most.
 
-## Files
+## The Roster
 
-| Surface | Claude Code | Cursor |
+Temper reaches an agent by one of four routes. Every route serves the **same**
+`commands/`, `agents/`, and `skills/` — there is no export anywhere in this table.
+
+| Route | Agents | Surface |
 |---|---|---|
-| Plugin manifest | `.claude-plugin/plugin.json` | `.cursor-plugin/plugin.json` |
-| Marketplace manifest | `.claude-plugin/marketplace.json` | `.cursor-plugin/marketplace.json` |
-| Plugin-level hooks | `hooks/hooks.json` | `hooks/cursor-hooks.json` |
-| Hooks pack (opt-in) | `packs/hooks/settings.hooks.json` | `packs/hooks/cursor.hooks.json` |
-| Commands / agents / skills / packs / reference / scripts | shared — one copy, no export | shared |
+| Native plugin | Claude Code, Cursor, Codex, Antigravity | `.claude-plugin/`, `.cursor-plugin/`, `.codex-plugin/`, `.agents/plugins/` |
+| Native commands | Gemini CLI | `.gemini/commands/**.toml` — thin shims pointing at `commands/*.md` |
+| Skills install | ~77 agents via the [`skills` CLI](https://github.com/vercel-labs/skills) — OpenCode, Amp, Cline, Zed, Warp, Copilot, Kimi, Augment, Replit, and the rest | `skills/**/SKILL.md`, entry point `skills/temper/SKILL.md` |
+| Instruction file | anything that reads `AGENTS.md` | `templates/AGENTS.temper.md` |
 
-`scripts/validate-plugin.sh` asserts parity between the two manifests: every command,
-agent, and skill the Claude manifest declares must be reachable through the Cursor
-manifest's paths, and both must carry the same version. That check is what stops the
-Cursor surface from silently falling behind again.
+`npx skills add galando/temper` is the one command that covers the third row. It reads
+`skills/**/SKILL.md` and installs into whichever agents it finds. Two consequences bind
+every skill in this repo:
 
-## Agents With No Plugin System
+- **`name:` and `description:` are both required** in the frontmatter. The CLI *silently
+  skips* a skill missing either — no error, the skill simply never appears. Three of
+  Temper's skills shipped without `name:` until v9.3.0 and were invisible to that route.
+- **A per-skill install copies only `skills/<name>/`** — not `scripts/`, not
+  `reference/`, not `commands/`. `skills/temper/SKILL.md` therefore opens by resolving
+  or cloning the CLI, and refuses to run the pipeline without it. That refusal is the
+  point: Temper whose gates are model-asserted is not Temper.
 
-Codex, Gemini CLI, Aider, and anything else that reads `AGENTS.md` get Temper by
-pointing at a checkout. `templates/AGENTS.temper.md` is the snippet to append to the
-project's `AGENTS.md`; it names the checkout path, the commands, and the one setup step
-(`bash <temper>/scripts/hooks/install.sh`) that makes the commit gate real. Everything
-downstream — the CLI, the gates, the evidence ledger, the artifacts under
-`.temper/specs/` — behaves identically, because none of it was ever agent-specific.
+### Per-agent surfaces
+
+| Surface | Claude Code | Cursor | Codex | Antigravity | Gemini CLI | OpenCode / skills CLI |
+|---|---|---|---|---|---|---|
+| Plugin manifest | `.claude-plugin/plugin.json` | `.cursor-plugin/plugin.json` | `.codex-plugin/plugin.json` | `.agents/plugins/marketplace.json` | — | — |
+| Marketplace | `.claude-plugin/marketplace.json` | `.cursor-plugin/marketplace.json` | same `plugin.json` | same file | — | — |
+| Commands | `commands/*.md` | `commands/*.md` | via skill | via skill | `.gemini/commands/**.toml` | via skill |
+| Skills | `skills/` | `skills/` | `skills/` | `skills/` | via skill | `skills/`, `.opencode/skills` symlink |
+| Hooks | `hooks/hooks.json` + `packs/hooks/settings.hooks.json` | `hooks/cursor-hooks.json` + `packs/hooks/cursor.hooks.json` | — | — | — | — |
+| Generic manifest | — | — | — | `plugin.json` | — | — |
+
+Commands, agents, skills, packs, reference, and scripts are shared by every column. One
+copy, no export.
+
+## Agents With No Hook System
+
+Most of the roster is here: Codex, Gemini CLI, OpenCode, Antigravity, Aider, Copilot,
+Zed, Warp, and the rest. They load Temper's skills and (where they have them) commands,
+run the CLI, and record evidence exactly as Claude Code does — because none of that was
+ever agent-specific. What they do not have is anything that can refuse a tool call.
+
+That changes what is *enforced*, never what is *required*. Two things carry the weight
+there:
+
+1. **The native git `pre-commit` hook** (`scripts/hooks/install.sh`). It is the only
+   deterministic enforcement available, and it is complete for the thing that matters
+   most — a red commit. Install it; the docs never soften this step.
+2. **`skills/temper/SKILL.md`'s rules section**, which states the invariants as method
+   rather than as things a script will catch: never assert a verdict, stop at every
+   gate, record evidence, an override is a human's decision.
+
+`templates/AGENTS.temper.md` is the snippet to append to a consuming project's
+`AGENTS.md` when the agent has no plugin or skill system at all — it names the checkout
+path, the stage briefs, the gate commands, and the same rules.

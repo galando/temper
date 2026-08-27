@@ -24,7 +24,7 @@ every gate is the ordinary interactive one. Config: `.claude/temper.config` → 
 a model. `git commit` is blocked by a native pre-commit hook + an in-agent PreToolUse
 hook whenever a gate is FAIL and unoverridden — see `packs/hooks/rules.md`.
 
-**Version:** 9.2.0 — see `CHANGELOG.md` for history.
+**Version:** 9.3.0 — see `CHANGELOG.md` for history.
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/docs/history/`
 
@@ -35,13 +35,21 @@ CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/d
   `reference/` (methodology) · `packs/` (rules) · `scripts/temper` (the deterministic
   spine — gate logic lives HERE, never in a prompt) · `scripts/hooks/` · `evals/`
   (seeded-defect fixtures).
-- **Multi-agent (v9.2.0):** two manifests (`.claude-plugin/`, `.cursor-plugin/`) over
-  ONE source tree — never a generated export, which is what silently froze the old
-  `.cursor/` three majors behind. Hook rules are written once against Claude Code's
-  contract; `scripts/hooks/cursor-adapter.sh` translates for Cursor. Adding a command
-  or agent means updating BOTH manifests' declarations, and `validate-plugin.sh`
-  asserts parity + version agreement. Capability limits go in
-  `reference/portability.md` and get stated in the docs, never smoothed over.
+- **Multi-agent (v9.3.0):** manifests for Claude Code, Cursor, Codex, Antigravity,
+  OpenCode and Gemini CLI over ONE source tree — never a generated export, which is what
+  silently froze the old `.cursor/` three majors behind. Full contributor contract in
+  root `AGENTS.md`; keep it and this file in agreement. The rules that bite:
+  - Adding a **command** → update `.claude-plugin/plugin.json` AND add a
+    `.gemini/commands/` shim. A shim *points at* `commands/{stem}.md` and restates
+    nothing; `validate-plugin.sh` fails on a missing shim, a drifted description, a
+    shim over 3KB, or an orphan.
+  - Adding a **skill** → `SKILL.md` needs BOTH `name:` and `description:`. The `skills`
+    CLI silently skips a skill missing either, so this is asserted.
+  - Hook rules are written once against Claude Code's contract;
+    `scripts/hooks/cursor-adapter.sh` translates for Cursor. Never a second copy.
+  - `version-bump.sh` stamps all five manifests; disagreement is a FAIL.
+  - Capability limits go in `reference/portability.md` + `docs/agents.md` and get
+    stated plainly, never smoothed over.
 - Known mistakes: a gate-mechanics change is a `scripts/temper` edit + a
   `test-temper.sh` case, not a prompt edit; hooks must fail OPEN except their one
   detected-violation path; never re-add per-stage logic to `commands/temper.md` or

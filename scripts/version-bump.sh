@@ -6,15 +6,18 @@
 #
 # Rewrites every version stamp so plugin.json is the single source of truth.
 # Stamps updated (all derived — never hand-edit these for version purposes):
-#   1. .claude-plugin/plugin.json          "version": "X.Y.Z"
-#   2. .cursor-plugin/plugin.json          "version": "X.Y.Z"
+#   1. .claude-plugin/plugin.json          "version": "X.Y.Z"   (source of truth)
+#   2. every other agent manifest          "version": "X.Y.Z"
+#        .cursor-plugin/plugin.json, .codex-plugin/plugin.json,
+#        .agents/plugins/marketplace.json, plugin.json
 #   3. .claude/CLAUDE.md                   **Version:** X.Y.Z
-#   4. commands/temper.md          header  (vX.Y.Z)
+#   4. AGENTS.md                           **Version:** X.Y.Z
+#   5. commands/temper.md          header  (vX.Y.Z)
 #
-# The Cursor manifest is stamped here, not by a generator, because it points at the
-# SAME source tree as the Claude manifest — there is nothing to regenerate, only a
-# version to keep in step. validate-plugin.sh FAILs if the two ever disagree; that
-# check is the guard against the drift that froze the old .cursor/ export.
+# The per-agent manifests are stamped here, not by a generator, because they point at
+# the SAME source tree — there is nothing to regenerate, only a version to keep in
+# step. validate-plugin.sh FAILs if any of them disagree; that check is the guard
+# against the drift that froze the old .cursor/ export.
 #
 #
 # CHANGELOG.md is NOT auto-rewritten — the maintainer owns the new `## vX.Y.Z`
@@ -57,15 +60,22 @@ else
     exit 1
 fi
 
-# 2. .cursor-plugin/plugin.json (the Cursor surface — same tree, same version)
-CPJ=".cursor-plugin/plugin.json"
-if [ -f "$CPJ" ]; then
-    echo "  -> Updating $CPJ"
-    sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VERSION\"/" "$CPJ"
-    rm -f "$CPJ.bak"
-else
-    echo "  -> $CPJ not found, skipping"
-fi
+# 2. Every other agent manifest — same tree, same version.
+AGENT_MANIFESTS=".cursor-plugin/plugin.json .codex-plugin/plugin.json .agents/plugins/marketplace.json plugin.json"
+STAMPED_MANIFESTS=""
+for m in $AGENT_MANIFESTS; do
+    if [ -f "$m" ]; then
+        echo "  -> Updating $m"
+        # First "version" key only for the nested marketplace shape; a plain global
+        # substitution is correct for all of these because none carries a second,
+        # unrelated version field.
+        sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VERSION\"/" "$m"
+        rm -f "$m.bak"
+        STAMPED_MANIFESTS="$STAMPED_MANIFESTS $m"
+    else
+        echo "  -> $m not found, skipping"
+    fi
+done
 
 # 3. .claude/CLAUDE.md  **Version:** X.Y.Z
 CLAUDE_MD=".claude/CLAUDE.md"
@@ -76,6 +86,16 @@ if [ -f "$CLAUDE_MD" ]; then
     rm -f "$CLAUDE_MD.bak"
 else
     echo "  -> $CLAUDE_MD not found, skipping"
+fi
+
+# 3b. AGENTS.md  **Version:** X.Y.Z (the non-Claude contributors' entry point)
+AGENTS_MD="AGENTS.md"
+if [ -f "$AGENTS_MD" ]; then
+    echo "  -> Updating $AGENTS_MD (**Version:**)"
+    sed -i.bak -E "s/(\*\*Version:\*\*) [0-9][0-9.]+([-+0-9A-Za-z.]*)?/\1 $NEW_VERSION/" "$AGENTS_MD"
+    rm -f "$AGENTS_MD.bak"
+else
+    echo "  -> $AGENTS_MD not found, skipping"
 fi
 
 # 4. commands/temper.md header  (vX.Y.Z)
@@ -97,7 +117,8 @@ echo "Version bumped to $NEW_VERSION"
 echo ""
 echo "Files updated:"
 echo "   * .claude-plugin/plugin.json"
-[ -f "$CPJ" ]               && echo "   * $CPJ"
+for m in $STAMPED_MANIFESTS; do echo "   * $m"; done
+[ -f "$AGENTS_MD" ]         && echo "   * $AGENTS_MD"
 [ -f "$CLAUDE_MD" ]         && echo "   * $CLAUDE_MD"
 [ -f "$TEMPER_CMD" ]        && echo "   * $TEMPER_CMD"
 echo ""

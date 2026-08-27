@@ -1,0 +1,29 @@
+{
+  "name": "temper",
+  "version": "9.3.0",
+  "description": "Temper: an intent-gated SDLC for AI-generated code \u2014 intent, plan, design, build, review, check, commit, with every gate verdict computed by an auditable CLI rather than asserted by a model.",
+  "author": {
+    "name": "galando",
+    "url": "https://github.com/galando"
+  },
+  "homepage": "https://galando.github.io/temper",
+  "repository": "https://github.com/galando/temper",
+  "license": "MIT",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Temper",
+    "shortDescription": "Quality gates for AI-written code: intent to commit, every verdict computed.",
+    "longDescription": "Temper runs a gated SDLC over AI-generated code. A bash CLI reads an evidence ledger and computes PASS/FAIL per stage, and a native git pre-commit hook blocks the commit while any gate is red \u2014 so a gate verdict is never something the model asserts about its own work.",
+    "developerName": "galando",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Run the Temper pipeline on this feature",
+      "Use the temper skill to plan and build this change behind quality gates"
+    ]
+  }
+}

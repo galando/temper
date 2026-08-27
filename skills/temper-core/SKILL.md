@@ -1,4 +1,5 @@
 ---
+name: temper-core
 description: "Temper core: stack detection, quality gates, blast radius, review memory"
 ---
 

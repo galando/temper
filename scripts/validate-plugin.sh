@@ -201,8 +201,6 @@ if isinstance(h, str) and not os.path.isfile(os.path.join(root, h.lstrip('./')))
     errs.append(f'hooks path does not exist: {h}')
 # Version agreement with the Claude manifest — one plugin, one version.
 cl = json.load(open(sys.argv[2]))
-if c.get('version') != cl.get('version'):
-    errs.append(f\"version {c.get('version')} != .claude-plugin/plugin.json {cl.get('version')}\")
 if c.get('name') != cl.get('name'):
     errs.append(f\"name {c.get('name')!r} != .claude-plugin/plugin.json {cl.get('name')!r}\")
 # PARITY: every Claude-declared component is reachable through a Cursor path.
@@ -301,6 +299,113 @@ else
 fi
 for f in reference/portability.md templates/AGENTS.temper.md; do
   if [[ -f "$REPO_ROOT/$f" ]]; then ok; else fail "$f missing (multi-agent contract)"; fi
+done
+
+# --- Multi-agent surface (v9.3.0) ---
+# Temper ships manifests for several agents over ONE source tree. Two failure modes are
+# invisible without a check: a manifest left at an old version, and a per-agent surface
+# that stops covering a command/skill someone added. Both are how the old generated
+# `.cursor/` export rotted three majors deep before anyone noticed.
+MANIFESTS="plugin.json .claude-plugin/plugin.json .cursor-plugin/plugin.json .codex-plugin/plugin.json .agents/plugins/marketplace.json"
+for m in $MANIFESTS; do
+  mp="$REPO_ROOT/$m"
+  if [[ ! -f "$mp" ]]; then
+    fail "$m missing (multi-agent manifest set)"
+  elif ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$mp" 2>/dev/null; then
+    fail "$m is not valid JSON"
+  else
+    MV=$(python3 -c "
+import json,sys
+d = json.load(open(sys.argv[1]))
+print(d.get('version') or (d.get('plugins') or [{}])[0].get('version') or '')
+" "$mp" 2>/dev/null)
+    if [[ "$MV" == "$PLUGIN_VER" ]]; then ok; else fail "$m version ($MV) != .claude-plugin/plugin.json ($PLUGIN_VER)"; fi
+  fi
+done
+
+# Every skill must carry BOTH name: and description:. The `skills` CLI that installs
+# Temper into ~77 agents SILENTLY SKIPS a skill missing either — no error, the skill
+# just never appears. Three of Temper's skills shipped that way until v9.3.0.
+SKILL_FM_ERR=$(python3 -c "
+import glob, os, re, sys
+errs = []
+paths = sorted(glob.glob(os.path.join(sys.argv[1], 'skills', '*', 'SKILL.md')))
+if not paths:
+    errs.append('no skills/*/SKILL.md found')
+for path in paths:
+    slug = os.path.basename(os.path.dirname(path))
+    m = re.match(r'---\n(.*?)\n---\n', open(path).read(), re.DOTALL)
+    if not m:
+        errs.append(f'{slug}: no frontmatter'); continue
+    fm = m.group(1)
+    for key in ('name', 'description'):
+        v = re.search(rf'^{key}:[ \t]*(.+)\$', fm, re.MULTILINE)
+        if not v or not v.group(1).strip().strip('\"\\''):
+            errs.append(f'{slug}: frontmatter missing {key}: (the skills CLI skips this skill silently)')
+    n = re.search(r'^name:[ \t]*(.+)\$', fm, re.MULTILINE)
+    if n and n.group(1).strip().strip('\"\\'') != slug:
+        errs.append(f'{slug}: frontmatter name ({n.group(1).strip()}) != directory name')
+print('; '.join(errs))
+" "$REPO_ROOT" 2>&1)
+if [[ -z "$SKILL_FM_ERR" ]]; then ok; else fail "skill frontmatter: $SKILL_FM_ERR"; fi
+
+# OpenCode discovers .opencode/skills; it must be a SYMLINK to skills/, never a copy.
+OC="$REPO_ROOT/.opencode/skills"
+if [[ ! -L "$OC" ]]; then
+  fail ".opencode/skills must be a symlink to ../skills/ (a copy would drift)"
+elif [[ ! -d "$OC" ]]; then
+  fail ".opencode/skills symlink is broken"
+else
+  ok
+fi
+
+# Gemini CLI command parity. Each commands/*.md needs a .gemini/commands shim whose
+# description matches its frontmatter — and the shim must POINT at the .md, never
+# restate it. A shim that grew a prompt body is a second copy waiting to drift.
+GEMINI_ERR=$(python3 -c "
+import glob, os, re, sys
+root = sys.argv[1]
+errs = []
+
+def md_desc(path):
+    m = re.match(r'---\n(.*?)\n---\n', open(path).read(), re.DOTALL)
+    if not m: return None
+    d = re.search(r'^description:[ \t]*(.+)\$', m.group(1), re.MULTILINE)
+    return d.group(1).strip().strip('\"\\'') if d else None
+
+def toml_desc(text):
+    d = re.search(r'^description\s*=\s*\"((?:[^\"\\\\]|\\\\.)*)\"', text, re.MULTILINE)
+    return d.group(1).replace('\\\\\"', '\"') if d else None
+
+for path in sorted(glob.glob(os.path.join(root, 'commands', '*.md'))):
+    stem = os.path.basename(path)[:-3]
+    shim = os.path.join(root, '.gemini', 'commands', 'temper.toml') if stem == 'temper' \
+        else os.path.join(root, '.gemini', 'commands', 'temper', stem + '.toml')
+    rel = os.path.relpath(shim, root)
+    if not os.path.isfile(shim):
+        errs.append(f'{stem}: no Gemini shim at {rel}'); continue
+    text = open(shim).read()
+    want, got = md_desc(path), toml_desc(text)
+    if want is None:
+        errs.append(f'{stem}: commands/{stem}.md has no description frontmatter')
+    elif got != want:
+        errs.append(f'{rel}: description drifted from commands/{stem}.md')
+    if f'commands/{stem}.md' not in text:
+        errs.append(f'{rel}: does not point at commands/{stem}.md (a shim must reference, never restate)')
+    if len(text) > 3000:
+        errs.append(f'{rel}: {len(text)} bytes — too long for a shim; it is restating the command')
+
+# ...and no orphan shims for commands that no longer exist.
+for shim in sorted(glob.glob(os.path.join(root, '.gemini', 'commands', '**', '*.toml'), recursive=True)):
+    stem = os.path.basename(shim)[:-5]
+    if not os.path.isfile(os.path.join(root, 'commands', stem + '.md')):
+        errs.append(f'{os.path.relpath(shim, root)}: no matching commands/{stem}.md')
+print('; '.join(errs))
+" "$REPO_ROOT" 2>&1)
+if [[ -z "$GEMINI_ERR" ]]; then ok; else fail "gemini command parity: $GEMINI_ERR"; fi
+
+for f in AGENTS.md docs/agents.md skills/temper/SKILL.md; do
+  if [[ -f "$REPO_ROOT/$f" ]]; then ok; else fail "$f missing (multi-agent entry point)"; fi
 done
 
 # --- Pack `phases:` frontmatter (v8) ---

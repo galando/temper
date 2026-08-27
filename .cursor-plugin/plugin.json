@@ -1,7 +1,7 @@
 {
   "name": "temper",
   "displayName": "Temper",
-  "version": "9.2.0",
+  "version": "9.3.0",
   "description": "Temper: Quality gates, blast radius analysis, and intent-driven development for AI-generated code. Every gate verdict is computed by a small auditable CLI, never asserted by a model.",
   "author": {
     "name": "galando"

@@ -1146,6 +1146,55 @@ assert_eq "adapter is permissive with no rule argument at all" "True" \
 assert_exit "adapter always exits 0 (Cursor reads the verdict on stdout)" 0 \
   bash -c "printf '%s' '{\"hook_event_name\":\"stop\"}' | bash '$ADAPTER' verify-stage-gate.sh >/dev/null 2>&1"
 
+# --- Multi-agent surface (v9.3.0) ---
+# These are repo-shape assertions, not CLI behavior — but they guard the two failure
+# modes that are INVISIBLE at runtime: a skill the `skills` CLI silently drops, and a
+# per-agent surface that stops covering something. validate-plugin.sh asserts the same
+# invariants in CI; duplicating the cheapest of them here means a contributor running
+# only the unit tests still trips over them.
+assert_eq "every skill carries the frontmatter the skills CLI requires" "" \
+  "$(for f in "$REPO_ROOT"/skills/*/SKILL.md; do
+       slug=$(basename "$(dirname "$f")")
+       n=$(awk '/^---[[:space:]]*$/{k++; if(k==2)exit; next} k==1 && /^name:/{sub(/^name:[[:space:]]*/,""); print; exit}' "$f")
+       d=$(awk '/^---[[:space:]]*$/{k++; if(k==2)exit; next} k==1 && /^description:/{print "y"; exit}' "$f")
+       [[ "$n" == "$slug" && -n "$d" ]] || echo "$slug"
+     done)"
+assert_eq "the temper entry-point skill exists (skills-only installs depend on it)" "yes" \
+  "$([[ -f "$REPO_ROOT/skills/temper/SKILL.md" ]] && echo yes || echo no)"
+# A skills-only install has no scripts/temper. The entry-point skill must say so and
+# refuse, rather than letting the model grade its own gates — the one failure Temper
+# exists to prevent.
+assert_eq "the entry-point skill refuses to run without the CLI" "yes" \
+  "$(grep -q 'git clone https://github.com/galando/temper.git' "$REPO_ROOT/skills/temper/SKILL.md" \
+     && grep -qi 'do \*\*not\*\* proceed\|Do \*\*not\*\* proceed' "$REPO_ROOT/skills/temper/SKILL.md" \
+     && echo yes || echo no)"
+
+assert_eq "every agent manifest agrees on the version" "" \
+  "$(cd "$REPO_ROOT" && python3 -c "
+import json
+def ver(p):
+    d = json.load(open(p))
+    return d.get('version') or (d.get('plugins') or [{}])[0].get('version')
+base = ver('.claude-plugin/plugin.json')
+print(' '.join(p for p in ['plugin.json', '.cursor-plugin/plugin.json', '.codex-plugin/plugin.json',
+                           '.agents/plugins/marketplace.json'] if ver(p) != base))")"
+
+assert_eq ".opencode/skills is a symlink, never a copy" "yes" \
+  "$([[ -L "$REPO_ROOT/.opencode/skills" && -d "$REPO_ROOT/.opencode/skills" ]] && echo yes || echo no)"
+
+# Every command has a Gemini shim, and every shim POINTS at its command rather than
+# restating it. A shim that grew a prompt body is the second copy that rotted the old
+# .cursor/ export.
+assert_eq "every command has a Gemini shim that points at it" "" \
+  "$(for f in "$REPO_ROOT"/commands/*.md; do
+       stem=$(basename "$f" .md)
+       if [[ "$stem" == "temper" ]]; then shim="$REPO_ROOT/.gemini/commands/temper.toml"
+       else shim="$REPO_ROOT/.gemini/commands/temper/$stem.toml"; fi
+       [[ -f "$shim" ]] && grep -q "commands/$stem.md" "$shim" || echo "$stem"
+     done)"
+assert_eq "no Gemini shim carries a prompt body (all under 3KB)" "" \
+  "$(find "$REPO_ROOT/.gemini/commands" -name '*.toml' -size +3k -printf '%f\n' 2>/dev/null)"
+
 echo ""
 echo "=== test-temper.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"

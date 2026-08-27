@@ -3,7 +3,7 @@ description: "Unified SDLC command: intent → plan → design? → build → re
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v9.2.0)
+# Temper: Unified SDLC Command (v9.3.0)
 
 > **Plugin root & tool names.** Where this file says `$CLAUDE_PLUGIN_ROOT`, use the
 > plugin's install directory: `$CLAUDE_PLUGIN_ROOT` under Claude Code,

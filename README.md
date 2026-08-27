@@ -24,12 +24,11 @@
 That's it. Your first `/temper "…"` sets the project up — config, scaffold, and the
 native commit gate that physically blocks `git commit` while any gate is red.
 
-**Cursor:** `git clone https://github.com/galando/temper.git && ln -sfn "$(pwd)/temper"
-~/.cursor/plugins/local/temper`, then reload. **Any other agent:** append
-[`templates/AGENTS.temper.md`](templates/AGENTS.temper.md) to your project's
-`AGENTS.md`. One source tree, one manifest per agent — no generated export to fall
-behind. What each agent enforces natively, and what degrades:
-[getting-started](docs/getting-started.md#what-each-agent-gets).
+**Any other agent** — `npx skills add galando/temper` installs into ~77 of them
+(OpenCode, Amp, Cline, Zed, Warp, Copilot, Aider, …); Cursor, Codex, Antigravity, and
+Gemini CLI have native installs. One source tree, one manifest per agent, no generated
+export to fall behind — and an honest matrix of what each one actually enforces:
+**[Agent Support](docs/agents.md)**.
 
 ## The Problem
 
@@ -99,10 +98,10 @@ architecture-depth) enforced during build and review, with deterministic hook
 backstops for the rules that must always hold. [docs/packs.md](docs/packs.md)
 
 **Works with any agent:** the pipeline, the gate verdicts, and the committed artifact
-chain are the same under Claude Code, Cursor, or an `AGENTS.md` agent — the spine is a
-bash CLI and a git hook, not an agent feature. The commit gate is a real `pre-commit`
-hook, so it fires everywhere, including where nothing else does.
-[reference/portability.md](reference/portability.md)
+chain are the same under Claude Code, Cursor, Codex, Gemini CLI, OpenCode, or an
+`AGENTS.md` agent — the spine is a bash CLI and a git hook, not an agent feature. The
+commit gate is a real `pre-commit` hook, so it fires everywhere, including where nothing
+else does. [docs/agents.md](docs/agents.md) · [reference/portability.md](reference/portability.md)
 
 **Works with any CI:** temper ships no platform files — its automation surface is
 commands and exit codes (`temper bands`, `temper gate review`, `temper metrics
@@ -118,7 +117,7 @@ was planned, what the gates verified, in the same commits as the code.
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [Packs](docs/packs.md)
+- [Getting Started](docs/getting-started.md) · [Agent Support](docs/agents.md) · [Commands](docs/commands.md) · [Packs](docs/packs.md)
 - [Methodology](docs/methodology.md) — IDD + BDD + TDD, one contract file
 - [AI-Native SDLC Alignment](docs/ai-native-sdlc.md) — temper vs Anthropic's playbook, play by play
 - [Recommended Setup](docs/recommended-setup.md) · [Enterprise](docs/enterprise.md) · [Privacy](https://galando.github.io/temper/privacy.html)

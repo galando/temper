@@ -1,0 +1,22 @@
+{
+  "name": "temper",
+  "interface": {
+    "displayName": "Temper"
+  },
+  "plugins": [
+    {
+      "name": "temper",
+      "version": "9.3.0",
+      "description": "An intent-gated SDLC for AI-generated code: intent, plan, design, build, review, check, commit — every gate verdict computed by an auditable CLI.",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

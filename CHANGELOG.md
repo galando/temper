@@ -3,6 +3,82 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.3.0 — the whole roster
+
+v9.2.0 added Cursor. This adds the rest: **Codex, Antigravity, Gemini CLI, OpenCode**
+natively, and ~77 more agents through the open
+[`skills` CLI](https://github.com/vercel-labs/skills) — still from one source tree, with
+no generated export anywhere.
+
+### The bug this found first
+
+Three of Temper's five skills — `temper-core`, `context-engineering`,
+`source-driven-development` — had no `name:` in their frontmatter. The `skills` CLI
+requires both `name:` and `description:` and **silently skips** a skill missing either:
+no error, no warning, the skill simply never appears. Temper would have installed into
+77 agents while quietly dropping three fifths of its own skills. `validate-plugin.sh`
+now fails on a missing or mismatched `name:`, because a silent skip is indistinguishable
+from success until a user reports something missing.
+
+### A skills install has to actually be Temper
+
+The `skills` route installs `skills/`, and a per-skill install copies *only*
+`skills/<name>/` — not `scripts/temper`. That matters more for Temper than for a skills
+pack: without the CLI there is nothing to compute a gate verdict, and a model grading its
+own work is the precise failure this tool exists to prevent.
+
+So the new **`skills/temper/SKILL.md`** — the entry point for every agent that loads
+Temper as a skill — opens by resolving the CLI, and if it cannot find one it prints the
+clone command and **stops** rather than improvising a PASS. The rest of it is the
+pipeline, the stage-brief map, and six rules stated as method rather than as things a
+script will catch: never assert a verdict, stop at every gate, record evidence, an
+override is a human's decision, never hand-edit ledger state, run stages in fresh
+contexts.
+
+### Manifests, and the drift guards that keep them honest
+
+| Agent | Surface |
+|---|---|
+| Codex | `.codex-plugin/plugin.json` |
+| Antigravity (`agy`) | `.agents/plugins/marketplace.json` |
+| OpenCode | `.opencode/skills` → **symlink** to `skills/` |
+| Gemini CLI | `.gemini/commands/**.toml` — `/temper`, `/temper:plan`, … |
+| Generic / folder discovery | `plugin.json` |
+
+The Gemini command files are **shims**: each one names the checkout, points at
+`commands/{stem}.md`, and restates nothing. This is deliberately *not* how the
+prior art does it — the repo this release was modelled on duplicates each command's
+prompt body into every tool's format and validates only that descriptions match, which
+accepts body drift by design. Temper has already paid for that once, so
+`validate-plugin.sh` asserts a shim references its `.md`, that its description matches
+the source frontmatter, that no shim exceeds 3KB (a shim that grew a body is a second
+copy), and that no orphan shim survives a deleted command.
+
+Also newly asserted: every agent manifest carries the same version (`version-bump.sh`
+stamps all five), `.opencode/skills` is a symlink and not a copy, and `AGENTS.md`,
+`docs/agents.md` and `skills/temper/SKILL.md` exist.
+
+### Docs
+
+- **`docs/agents.md`** — one page, every install path, and the honest matrix of what
+  each agent *enforces* versus what degrades. `README.md` and `docs/getting-started.md`
+  point at it rather than restating it.
+- **`AGENTS.md`** at the repo root — the contributor contract for agents that don't read
+  `.claude/CLAUDE.md`, including the six consequences of the one-tree rule (adding a
+  command means adding a Gemini shim; adding a skill means both frontmatter keys; never
+  duplicate a prompt body into a per-agent file).
+- `reference/portability.md` grew the roster table, the four install routes, and the
+  per-agent surface matrix.
+
+### The limits, restated
+
+Nothing here changes what an agent can enforce. Codex, Gemini CLI, OpenCode and
+Antigravity have no hook system Temper can use, so their only deterministic guarantee is
+the native git `pre-commit` hook — which is also the one that matters most, and the one
+step every install page refuses to soften. Cursor's `stop` and `afterFileEdit` remain
+advisory. `reference/portability.md` states all of it in one table rather than implying
+parity anywhere.
+
 ## v9.2.0 — Temper is not a Claude Code plugin
 
 v9.0.0 removed Cursor support with a promise: *"It will return in a better form."* This
