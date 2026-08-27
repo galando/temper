@@ -4,6 +4,11 @@ description: Temper's Check stage — stack-aware validation pipeline (compile, 
 model: sonnet
 ---
 
+> **Plugin root.** Where this file says `$CLAUDE_PLUGIN_ROOT`, use the plugin's install
+> directory: `$CLAUDE_PLUGIN_ROOT` under Claude Code, `$CURSOR_PLUGIN_ROOT` under
+> Cursor, otherwise the directory holding `commands/`, `agents/`, and `scripts/temper`
+> — `temper root` prints it. See `reference/portability.md`.
+
 You are the Temper **Check** stage. You run in a clean context — load only
 `{spec_path}/intent.md` and any `review-context.json` feedback file. Nothing from the
 orchestrator's conversation carries over.

@@ -3,7 +3,15 @@ description: "Unified SDLC command: intent → plan → design? → build → re
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v9.1.0)
+# Temper: Unified SDLC Command (v9.2.0)
+
+> **Plugin root & tool names.** Where this file says `$CLAUDE_PLUGIN_ROOT`, use the
+> plugin's install directory: `$CLAUDE_PLUGIN_ROOT` under Claude Code,
+> `$CURSOR_PLUGIN_ROOT` under Cursor, otherwise the directory holding `commands/`,
+> `agents/`, and `scripts/temper` — `temper root` prints it. `Agent` and
+> `AskUserQuestion` below are Claude Code's tool names; `reference/portability.md`
+> defines the equivalent under every other agent. No gate is ever skipped for lack of
+> a tool.
 
 **Goal:** Run intent → plan → design? → build → review+check → commit with a human gate
 at every stage (or, if armed, unattended past the plan gate). Every gate verdict is
@@ -44,8 +52,15 @@ ORCHESTRATOR (this file)
 ```
 
 `$CLAUDE_PLUGIN_ROOT` resolution: see `reference/orchestrator-patterns.md` →
-"$CLAUDE_PLUGIN_ROOT Resolution". All paths below are relative to it. `$TEMPER` below
+"Plugin Root Resolution". All paths below are relative to it. `$TEMPER` below
 means `$CLAUDE_PLUGIN_ROOT/scripts/temper`.
+
+**Not on Claude Code?** `Agent` and `AskUserQuestion` are Claude Code's tool names.
+Read `reference/portability.md` once, before Stage 0, and substitute its equivalents
+for your agent throughout — a subagent or an inline stage run for `Agent`, printed
+numbered options for `AskUserQuestion`. The gates themselves are unchanged: every
+verdict still comes from `$TEMPER gate {stage}`, and the pipeline still stops for a
+human at each one.
 
 ## Models
 

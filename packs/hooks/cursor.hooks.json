@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "bash \"${CURSOR_PLUGIN_ROOT}\"/scripts/hooks/cursor-adapter.sh block-secrets.sh"
+      },
+      {
+        "command": "bash \"${CURSOR_PLUGIN_ROOT}\"/scripts/hooks/cursor-adapter.sh block-uncommitted-gate.sh"
+      },
+      {
+        "command": "bash \"${CURSOR_PLUGIN_ROOT}\"/scripts/hooks/cursor-adapter.sh confirm-override.sh"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "bash \"${CURSOR_PLUGIN_ROOT}\"/scripts/hooks/cursor-adapter.sh block-forbidden-imports.sh"
+      },
+      {
+        "command": "bash \"${CURSOR_PLUGIN_ROOT}\"/scripts/hooks/cursor-adapter.sh run-formatter.sh"
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "bash \"${CURSOR_PLUGIN_ROOT}\"/scripts/hooks/cursor-adapter.sh stage-marker.sh"
+      }
+    ],
+    "stop": [
+      {
+        "command": "bash \"${CURSOR_PLUGIN_ROOT}\"/scripts/hooks/cursor-adapter.sh verify-stage-gate.sh"
+      }
+    ]
+  }
+}

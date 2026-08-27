@@ -24,6 +24,13 @@
 That's it. Your first `/temper "…"` sets the project up — config, scaffold, and the
 native commit gate that physically blocks `git commit` while any gate is red.
 
+**Cursor:** `git clone https://github.com/galando/temper.git && ln -sfn "$(pwd)/temper"
+~/.cursor/plugins/local/temper`, then reload. **Any other agent:** append
+[`templates/AGENTS.temper.md`](templates/AGENTS.temper.md) to your project's
+`AGENTS.md`. One source tree, one manifest per agent — no generated export to fall
+behind. What each agent enforces natively, and what degrades:
+[getting-started](docs/getting-started.md#what-each-agent-gets).
+
 ## The Problem
 
 AI writes code fast, but with structural failure patterns: happy paths without edge
@@ -90,6 +97,12 @@ commits, pushes, or merges.
 **Quality packs:** versioned policy (security, TDD, quality, performance, api-design,
 architecture-depth) enforced during build and review, with deterministic hook
 backstops for the rules that must always hold. [docs/packs.md](docs/packs.md)
+
+**Works with any agent:** the pipeline, the gate verdicts, and the committed artifact
+chain are the same under Claude Code, Cursor, or an `AGENTS.md` agent — the spine is a
+bash CLI and a git hook, not an agent feature. The commit gate is a real `pre-commit`
+hook, so it fires everywhere, including where nothing else does.
+[reference/portability.md](reference/portability.md)
 
 **Works with any CI:** temper ships no platform files — its automation surface is
 commands and exit codes (`temper bands`, `temper gate review`, `temper metrics

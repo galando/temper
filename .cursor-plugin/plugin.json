@@ -1,0 +1,20 @@
+{
+  "name": "temper",
+  "displayName": "Temper",
+  "version": "9.2.0",
+  "description": "Temper: Quality gates, blast radius analysis, and intent-driven development for AI-generated code. Every gate verdict is computed by a small auditable CLI, never asserted by a model.",
+  "author": {
+    "name": "galando"
+  },
+  "publisher": "galando",
+  "repository": "https://github.com/galando/temper",
+  "homepage": "https://galando.github.io/temper",
+  "license": "MIT",
+  "keywords": ["temper", "quality", "code-review", "tdd", "standards", "blast-radius", "sdlc"],
+  "category": "developer-tools",
+  "tags": ["quality", "code-review", "tdd", "sdlc"],
+  "commands": "./commands/",
+  "agents": "./agents/",
+  "skills": "./skills/",
+  "hooks": "./hooks/cursor-hooks.json"
+}

@@ -1067,6 +1067,85 @@ done
 OUT=$(echo '{"tool_input": {"command": "git status"}}' | bash "$CO")
 assert_eq "confirm-override stays silent on an unrelated command" "" "$OUT"
 
+# --- temper root: agent-agnostic plugin-root resolution (v9.2.0) ---
+# The single mechanic behind reference/portability.md's "Plugin Root Resolution": the
+# CLI resolves from its own location first, so it answers with NO environment at all.
+setup
+assert_eq "root resolves from the script's own location, no env vars" \
+  "$REPO_ROOT" "$(env -u CLAUDE_PLUGIN_ROOT -u CURSOR_PLUGIN_ROOT "$TEMPER" root)"
+assert_eq "root ignores a bogus CLAUDE_PLUGIN_ROOT when its own location is valid" \
+  "$REPO_ROOT" "$(CLAUDE_PLUGIN_ROOT=/nonexistent "$TEMPER" root)"
+assert_eq "root ignores a bogus CURSOR_PLUGIN_ROOT when its own location is valid" \
+  "$REPO_ROOT" "$(CURSOR_PLUGIN_ROOT=/nonexistent "$TEMPER" root)"
+# A copy of the CLI outside any install falls back to the env var — Claude's first,
+# then Cursor's. This is the path a symlinked or vendored `temper` actually takes.
+mkdir -p "$WORKDIR/loose"
+cp "$TEMPER" "$WORKDIR/loose/temper"
+assert_eq "root falls back to CURSOR_PLUGIN_ROOT outside an install" \
+  "$REPO_ROOT" "$(env -u CLAUDE_PLUGIN_ROOT CURSOR_PLUGIN_ROOT="$REPO_ROOT" bash "$WORKDIR/loose/temper" root)"
+assert_eq "root prefers CLAUDE_PLUGIN_ROOT over CURSOR_PLUGIN_ROOT" \
+  "$REPO_ROOT" "$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" CURSOR_PLUGIN_ROOT=/nonexistent bash "$WORKDIR/loose/temper" root)"
+assert_exit "root FAILs loudly when nothing resolves" 1 \
+  env -u CLAUDE_PLUGIN_ROOT -u CURSOR_PLUGIN_ROOT bash "$WORKDIR/loose/temper" root
+
+# --- cursor-adapter.sh: one rule implementation, two hook contracts (v9.2.0) ---
+# Cursor answers with JSON on stdout, not an exit code, and always expects exit 0.
+# These assertions pin the translation both ways; a regression here silently un-gates
+# every Cursor install, which is exactly how the old .cursor/ export rotted.
+setup
+ADAPTER="$REPO_ROOT/scripts/hooks/cursor-adapter.sh"
+
+_cursor() { # _cursor <script> <payload-json>
+  printf '%s' "$2" | bash "$ADAPTER" "$1" 2>/dev/null
+}
+
+assert_eq "adapter maps beforeShellExecution + confirm-override to Cursor's ask tier" "ask" \
+  "$(_cursor confirm-override.sh '{"hook_event_name":"beforeShellExecution","command":"temper override plan --reason x","workspace_roots":["'"$WORKDIR"'"]}' \
+     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("permission",""))' 2>/dev/null)"
+assert_eq "adapter allows an unrelated shell command" "allow" \
+  "$(_cursor confirm-override.sh '{"hook_event_name":"beforeShellExecution","command":"git status","workspace_roots":["'"$WORKDIR"'"]}' \
+     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("permission",""))' 2>/dev/null)"
+assert_eq "adapter answers beforeSubmitPrompt with continue:true" "True" \
+  "$(_cursor stage-marker.sh '{"hook_event_name":"beforeSubmitPrompt","prompt":"/temper:plan add auth","workspace_roots":["'"$WORKDIR"'"]}' \
+     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("continue"))' 2>/dev/null)"
+# ...and the rule underneath it still did its job: the marker names the owed stage.
+assert_eq "adapter hands the rule a Claude-shaped payload (marker records the stage)" "plan" \
+  "$(python3 -c 'import json;print(json.load(open(".temper/pending-stage.json"))["stage"])' 2>/dev/null)"
+# workspace_roots[0] is Cursor's name for the project dir; the rules read
+# CLAUDE_PROJECT_DIR. Run the adapter from OUTSIDE the project so a $PWD fallback
+# cannot pass this by accident — the marker must still land in $WORKDIR/.temper/.
+rm -f "$WORKDIR/.temper/pending-stage.json"
+( cd / && printf '%s' '{"hook_event_name":"beforeSubmitPrompt","prompt":"/temper:build x","workspace_roots":["'"$WORKDIR"'"]}' \
+    | bash "$ADAPTER" stage-marker.sh ) >/dev/null 2>&1
+assert_eq "adapter routes workspace_roots[0] to the rule as the project dir" "build" \
+  "$(python3 -c 'import json; print(json.load(open("'"$WORKDIR"'/.temper/pending-stage.json"))["stage"])' 2>/dev/null)"
+
+# Cursor's stop response is void — a rule that exits 2 there CANNOT block. The adapter
+# must say so (stderr + hooks.log) and still exit 0; claiming a block that did not
+# happen is the misrepresentation this whole surface exists to avoid.
+setup
+printf '%s' '{"hook_event_name":"beforeSubmitPrompt","prompt":"/temper:review x","workspace_roots":["'"$WORKDIR"'"]}' \
+  | bash "$ADAPTER" stage-marker.sh >/dev/null 2>&1
+STOP_ERR=$(printf '%s' '{"hook_event_name":"stop","status":"completed","workspace_roots":["'"$WORKDIR"'"]}' \
+  | bash "$ADAPTER" verify-stage-gate.sh 2>&1 >/dev/null); STOP_RC=$?
+assert_eq "adapter exits 0 on an unblockable stop verdict" "0" "$STOP_RC"
+assert_eq "adapter labels an unblockable stop verdict advisory" "yes" \
+  "$(echo "$STOP_ERR" | grep -q 'advisory' && echo yes || echo no)"
+assert_eq "adapter records the advisory verdict in .temper/hooks.log" "yes" \
+  "$(grep -q 'cursor-adapter advisory' "$WORKDIR/.temper/hooks.log" 2>/dev/null && echo yes || echo no)"
+
+# Fail-open, every path — same contract as every other hook here.
+assert_eq "adapter is permissive on unparseable stdin" "" \
+  "$(echo 'not json' | bash "$ADAPTER" stage-marker.sh 2>/dev/null)"
+assert_eq "adapter is permissive when the named rule does not exist" "allow" \
+  "$(_cursor no-such-rule.sh '{"hook_event_name":"beforeShellExecution","command":"x"}' \
+     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("permission",""))' 2>/dev/null)"
+assert_eq "adapter is permissive with no rule argument at all" "True" \
+  "$(printf '%s' '{"hook_event_name":"beforeSubmitPrompt","prompt":"x"}' | bash "$ADAPTER" 2>/dev/null \
+     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("continue"))' 2>/dev/null)"
+assert_exit "adapter always exits 0 (Cursor reads the verdict on stdout)" 0 \
+  bash -c "printf '%s' '{\"hook_event_name\":\"stop\"}' | bash '$ADAPTER' verify-stage-gate.sh >/dev/null 2>&1"
+
 echo ""
 echo "=== test-temper.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"

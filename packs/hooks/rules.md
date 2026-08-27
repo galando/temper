@@ -4,8 +4,8 @@ phases: []
 
 # Hooks Pack
 
-**Version:** 2.0.0
-**Last Updated:** 2026-07-19
+**Version:** 2.1.0
+**Last Updated:** 2026-08-27
 
 Deterministic safety net for Temper. Unlike the model-driven advisory checks in
 review/check, these hooks are plain bash: they block on a *detected* violation with a
@@ -73,6 +73,30 @@ If a non-Temper `pre-commit` already exists (husky, lefthook, hand-rolled), the 
 backs it up to `.git/hooks/pre-commit.bak.<timestamp>` before overwriting and prints the
 backup path — it is never silently destroyed. Re-installing over an existing Temper hook is
 idempotent (no backup pile-up).
+
+### Cursor (and other agents)
+
+Cursor's hook contract differs from Claude Code's in both directions — different payload
+keys, and a JSON response on stdout instead of an exit code. The rules are **not**
+reimplemented for it. `scripts/hooks/cursor-adapter.sh` translates, and
+`cursor.hooks.json` in this directory is the copy-paste source for layer 1 under Cursor
+(merge into `.cursor/hooks.json`, or install the plugin — `hooks/cursor-hooks.json`
+ships the stage-gate pair automatically, exactly as `hooks/hooks.json` does for Claude
+Code).
+
+Two Cursor events cannot refuse: `stop` and `afterFileEdit` both return void by Cursor's
+own contract, so `verify-stage-gate.sh` and `block-forbidden-imports.sh` degrade to
+advisory there — reported on stderr and appended to `.temper/hooks.log`, but the turn
+proceeds. Cursor also has no pre-edit event at all, so `protect-regression-test.sh` and
+`block-protected-paths.sh` have no layer-1 home under it. `reference/portability.md`
+carries the full per-agent matrix; do not read a hook listed in the catalog below as
+enforced under every agent.
+
+**Layer 2 is unaffected, and that is the point.** The native git `pre-commit` hook knows
+nothing about agents — it fires on `git commit` from Claude Code, Cursor, a terminal, or
+an IDE button. Under an agent with no hook system at all it is the *only* deterministic
+enforcement, which makes `bash scripts/hooks/install.sh` the setup step that matters
+most the further you get from Claude Code.
 
 > **This two-layer split is the determinism guarantee.** Layer 1 catches secrets at
 > edit-time inside the agent; layer 2 catches them at commit-time, deterministically,

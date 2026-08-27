@@ -13,12 +13,19 @@ with exactly one correct output — they live in `scripts/temper` and `agents/*.
 frontmatter now, not in prose. What remains is genuinely shared, judgment-adjacent
 bookkeeping: state schema, gate UX, resume/invocation safety, hand-off formats.
 
-## $CLAUDE_PLUGIN_ROOT Resolution
+## Plugin Root Resolution
 
-Set and valid → use it. Unset → walk up from the command file for `.claude-plugin/`.
-Still not found → `~/.claude/plugins/temper` (default install). That doesn't exist
-either → warn "Cannot locate Temper plugin. Set CLAUDE_PLUGIN_ROOT or reinstall."
-`$TEMPER` means `$CLAUDE_PLUGIN_ROOT/scripts/temper` throughout `temper.md`/`fix.md`.
+`$CLAUDE_PLUGIN_ROOT` set and valid → use it. Unset → `$CURSOR_PLUGIN_ROOT` (Cursor's
+name for the same thing). Neither → walk up from the command file for a directory
+holding `commands/`, `agents/`, and `scripts/temper`. Still not found → the default
+installs (`~/.claude/plugins/temper`, `~/.cursor/plugins/temper`,
+`~/.cursor/plugins/local/temper`). None exists → warn "Cannot locate the Temper plugin.
+Set CLAUDE_PLUGIN_ROOT or CURSOR_PLUGIN_ROOT, or reinstall." and stop; never guess.
+
+`temper root` implements exactly this chain and prints the answer — once you can run
+the CLI, `$(temper root)` is the value. `$TEMPER` means `{plugin root}/scripts/temper`
+throughout `temper.md`/`fix.md`. Full rationale and the per-agent capability matrix:
+`reference/portability.md`.
 
 ## Build State Schema
 

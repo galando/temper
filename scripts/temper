@@ -9,6 +9,8 @@
 #
 # Subcommands:
 #   temper init                                  scaffold .temper/ in the current project
+#   temper root                                  print the plugin's install directory
+#                                                 (agent-agnostic; see reference/portability.md)
 #   temper state <get|set|advance|loop|archive|clear> ..  read/write .temper/build-state.json;
 #                                                 archive writes {spec}/gate-ledger.json
 #   temper evidence <add|run|list|clear> ...      append/execute-and-record/read/clear the ledger
@@ -33,7 +35,9 @@ REPO_ROOT="$(pwd)"
 # Prefer where this file actually sits over $CLAUDE_PLUGIN_ROOT, which belongs to
 # whichever plugin is calling; fall back to it when the script is reached via a symlink.
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)"
-[[ -d "$PLUGIN_ROOT/agents" ]] || PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
+# $CURSOR_PLUGIN_ROOT is Cursor's equivalent — same meaning, different agent. Neither
+# is consulted while the script's own location already looks like a plugin root.
+[[ -d "$PLUGIN_ROOT/agents" ]] || PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-$PLUGIN_ROOT}}"
 TEMPER_DIR="${TEMPER_DIR:-$REPO_ROOT/.temper}"
 CONFIG_FILE="${TEMPER_CONFIG:-$REPO_ROOT/.claude/temper.config}"
 STATE_FILE="$TEMPER_DIR/build-state.json"
@@ -284,6 +288,24 @@ cmd_model() {
   # an Agent launch — this is only reachable if the plugin install is broken.
   [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$stage' (missing $PLUGIN_ROOT/agents/$stage.md?)" >&2; return 1; }
   echo "$m"
+}
+
+# ---------------------------------------------------------------------------
+# root — where the plugin itself is installed
+# ---------------------------------------------------------------------------
+
+# Prompts refer to the plugin's install directory constantly (reference/*.md, packs/,
+# scripts/temper). Claude Code hands it over as $CLAUDE_PLUGIN_ROOT and Cursor as
+# $CURSOR_PLUGIN_ROOT; an agent with no plugin system sets neither. Resolution is a
+# mechanic with exactly one right answer, so it lives here rather than in a prompt:
+# `temper root` prints it, and reference/portability.md points every surface at this.
+cmd_root() {
+  if [[ -d "$PLUGIN_ROOT/agents" && -d "$PLUGIN_ROOT/commands" ]]; then
+    echo "$PLUGIN_ROOT"
+    return 0
+  fi
+  echo "FAIL: cannot locate the Temper plugin root (looked in '$PLUGIN_ROOT'). Set CLAUDE_PLUGIN_ROOT or CURSOR_PLUGIN_ROOT, or invoke this script by its real path inside the install." >&2
+  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -1456,6 +1478,7 @@ main() {
   local sub="${1:-}"; shift || true
   case "$sub" in
     init) cmd_init "$@" ;;
+    root) cmd_root "$@" ;;
     state) cmd_state "$@" ;;
     evidence) cmd_evidence "$@" ;;
     gate) cmd_gate "$@" ;;
@@ -1471,6 +1494,7 @@ temper — the deterministic spine of the Temper plugin
 
 Usage:
   temper init
+  temper root
   temper state <init|get|set|advance|loop|archive|clear> ...
   temper evidence <add|run|list|clear> ...
   temper gate <intent|plan|design|build|review|check|commit> [--spec-path P]

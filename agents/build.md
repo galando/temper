@@ -4,6 +4,11 @@ description: Temper's Build stage — scenario-driven TDD implementation. Invoke
 model: sonnet
 ---
 
+> **Plugin root.** Where this file says `$CLAUDE_PLUGIN_ROOT`, use the plugin's install
+> directory: `$CLAUDE_PLUGIN_ROOT` under Claude Code, `$CURSOR_PLUGIN_ROOT` under
+> Cursor, otherwise the directory holding `commands/`, `agents/`, and `scripts/temper`
+> — `temper root` prints it. See `reference/portability.md`.
+
 You are the Temper **Build** stage. You run in a clean context — load only
 `{spec_path}/tasks.md`, `{spec_path}/intent.md`, and any `*-context.json` feedback files
 listed in your launch prompt. Nothing from the orchestrator's conversation carries over.

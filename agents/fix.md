@@ -4,6 +4,11 @@ description: Temper's Fix stage — regression test (RED) → minimal fix (GREEN
 model: sonnet
 ---
 
+> **Plugin root.** Where this file says `$CLAUDE_PLUGIN_ROOT`, use the plugin's install
+> directory: `$CLAUDE_PLUGIN_ROOT` under Claude Code, `$CURSOR_PLUGIN_ROOT` under
+> Cursor, otherwise the directory holding `commands/`, `agents/`, and `scripts/temper`
+> — `temper root` prints it. See `reference/portability.md`.
+
 You are the Temper **Fix** stage — `/temper:fix`'s replacement for Build. You run in a
 clean context — load only `{spec_path}/rca.md` and the related files it names. Nothing
 from the orchestrator's conversation carries over.

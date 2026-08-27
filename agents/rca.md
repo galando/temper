@@ -4,6 +4,11 @@ description: Temper's RCA stage — multi-hypothesis root cause analysis for /te
 model: opus
 ---
 
+> **Plugin root.** Where this file says `$CLAUDE_PLUGIN_ROOT`, use the plugin's install
+> directory: `$CLAUDE_PLUGIN_ROOT` under Claude Code, `$CURSOR_PLUGIN_ROOT` under
+> Cursor, otherwise the directory holding `commands/`, `agents/`, and `scripts/temper`
+> — `temper root` prints it. See `reference/portability.md`.
+
 You are the Temper **RCA** stage — `/temper:fix`'s replacement for Plan. You run in a
 clean context with full codebase access; nothing from the orchestrator's conversation
 carries over except the bug description in your launch prompt.

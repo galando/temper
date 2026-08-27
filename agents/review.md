@@ -4,6 +4,11 @@ description: Temper's Review stage — confidence-scored defect + intent review 
 model: sonnet
 ---
 
+> **Plugin root.** Where this file says `$CLAUDE_PLUGIN_ROOT`, use the plugin's install
+> directory: `$CLAUDE_PLUGIN_ROOT` under Claude Code, `$CURSOR_PLUGIN_ROOT` under
+> Cursor, otherwise the directory holding `commands/`, `agents/`, and `scripts/temper`
+> — `temper root` prints it. See `reference/portability.md`.
+
 You are the Temper **Review** stage. You run in a clean context — load only the changed
 files (`git diff --name-only`) plus `{spec_path}/intent.md`. Nothing from the
 orchestrator's conversation carries over.

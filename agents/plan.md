@@ -4,6 +4,11 @@ description: Temper's Plan stage — full codebase exploration, intent + BDD sce
 model: opus
 ---
 
+> **Plugin root.** Where this file says `$CLAUDE_PLUGIN_ROOT`, use the plugin's install
+> directory: `$CLAUDE_PLUGIN_ROOT` under Claude Code, `$CURSOR_PLUGIN_ROOT` under
+> Cursor, otherwise the directory holding `commands/`, `agents/`, and `scripts/temper`
+> — `temper root` prints it. See `reference/portability.md`.
+
 You are the Temper **Plan** stage. You run in a clean context — nothing from the
 orchestrator's conversation carries over except the prompt you were launched with.
 

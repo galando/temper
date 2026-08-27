@@ -7,6 +7,10 @@ nav_order: 2
 
 ## Installation
 
+Temper's spine is a bash CLI (`scripts/temper`) and a native git `pre-commit` hook.
+Neither belongs to any one agent, so the install differs only in how your agent loads
+commands and skills. Pick your agent:
+
 ### Claude Code
 
 ```bash
@@ -14,23 +18,77 @@ nav_order: 2
 /plugin install temper
 ```
 
-{: .highlight }
-That's it. Claude Code loads Temper's commands and skills automatically, and your first
-`/temper "…"` in a project sets it up on the spot — config, `.temper/` scaffold, and the
-native commit gate that blocks a red commit. To set up explicitly instead, run
-`/temper:init`. For optional edit-time guardrails, `/temper:pack enable hooks`.
-
-### Other AI Assistants
-
-For any AI assistant that reads markdown:
+From the terminal instead:
 
 ```bash
-# Clone the repository
-git clone https://github.com/galando/temper.git
-
-# Copy .claude folder to your project
-cp -r temper/.claude /path/to/your/project/
+claude plugin marketplace add galando/temper
+claude plugin install temper@temper
 ```
+
+### Cursor
+
+The same repository ships a Cursor plugin manifest (`.cursor-plugin/`) over the same
+commands, agents, and skills — there is no separate export to fall behind.
+
+```bash
+git clone https://github.com/galando/temper.git
+ln -sfn "$(pwd)/temper" ~/.cursor/plugins/local/temper
+```
+
+Reload Cursor, then run `/temper "…"`. Cursor loads `commands/`, `agents/`, `skills/`,
+and the plugin's `hooks/cursor-hooks.json` from that manifest.
+
+### Codex, Gemini CLI, Aider, or any agent that reads AGENTS.md
+
+Point the agent at a checkout and give it the contract:
+
+```bash
+git clone https://github.com/galando/temper.git ~/temper
+cat ~/temper/templates/AGENTS.temper.md >> /path/to/your/project/AGENTS.md
+```
+
+Edit the `<TEMPER>` placeholder in what you just appended to your checkout's absolute
+path. The snippet names the commands, the stage briefs, and the one setup step that
+makes the commit gate real.
+
+### Then, in your project
+
+{: .highlight }
+Your first `/temper "…"` sets the project up on the spot — config, `.temper/` scaffold,
+and the native commit gate that blocks a red commit. To set up explicitly instead, run
+`/temper:init`. For optional edit-time guardrails, `/temper:pack enable hooks`.
+
+Under an agent with no plugin system, run the setup by hand once per project:
+
+```bash
+cp ~/temper/templates/temper.config.default .claude/temper.config
+~/temper/scripts/temper init
+bash ~/temper/scripts/hooks/install.sh      # the commit gate — do not skip this
+```
+
+## What Each Agent Gets
+
+The pipeline, the CLI, the gate verdicts, and the committed artifact chain are
+identical everywhere — none of that was ever agent-specific. What differs is which
+lifecycle events an agent lets a hook *refuse*:
+
+| | Claude Code | Cursor | Other agents |
+|---|---|---|---|
+| Commands, stage agents, skills | plugin | plugin | `AGENTS.md` + stage briefs |
+| `temper gate` verdicts, evidence ledger, artifacts | yes | yes | yes |
+| **Commit gate on `git commit`** (native git hook) | **enforced** | **enforced** | **enforced** |
+| In-agent commit gate + secret scan on shell commands | blocks | denies | — |
+| Pre-edit guards (protected paths, regression-test protection) | blocks | not available | — |
+| Standalone-stage gate debt at end of session | blocks | advisory | — |
+| Isolated per-stage context | subagent | subagent | inline, degraded |
+
+The row that matters most is the bold one: the gate that physically stops a red commit
+is a git hook, so it fires under every agent — and under an agent with no hook system
+it is the *only* deterministic enforcement, which is why
+`bash scripts/hooks/install.sh` is the step to never skip there.
+
+Full detail, including why Cursor's `stop` and `afterFileEdit` hooks can only advise:
+[`reference/portability.md`](https://github.com/galando/temper/blob/main/reference/portability.md).
 
 ## Try It First
 

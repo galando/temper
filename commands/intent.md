@@ -5,6 +5,14 @@ argument-hint: "<idea-in-your-own-words | JIRA-123 | #456>"
 
 # Intent: Capture an Idea as an Artifact
 
+> **Plugin root & tool names.** Where this file says `$CLAUDE_PLUGIN_ROOT`, use the
+> plugin's install directory: `$CLAUDE_PLUGIN_ROOT` under Claude Code,
+> `$CURSOR_PLUGIN_ROOT` under Cursor, otherwise the directory holding `commands/`,
+> `agents/`, and `scripts/temper` — `temper root` prints it. `Agent` and
+> `AskUserQuestion` below are Claude Code's tool names; `reference/portability.md`
+> defines the equivalent under every other agent. No gate is ever skipped for lack of
+> a tool.
+
 **Goal:** Turn an idea, a ticket, or an incident finding into a committed
 `.temper/specs/{slug}/intent.md` with `Status: draft` — and stop there. This is the
 entry point for work that isn't ready to build yet: the originator (who may not be the

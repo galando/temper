@@ -4,6 +4,14 @@ description: "Manage quality packs: view, toggle, quick-create launchers, config
 
 # Pack: Quality Pack Manager
 
+> **Plugin root & tool names.** Where this file says `$CLAUDE_PLUGIN_ROOT`, use the
+> plugin's install directory: `$CLAUDE_PLUGIN_ROOT` under Claude Code,
+> `$CURSOR_PLUGIN_ROOT` under Cursor, otherwise the directory holding `commands/`,
+> `agents/`, and `scripts/temper` — `temper root` prints it. `Agent` and
+> `AskUserQuestion` below are Claude Code's tool names; `reference/portability.md`
+> defines the equivalent under every other agent. No gate is ever skipped for lack of
+> a tool.
+
 ## Step 1: Discover Packs
 
 Read `.claude/temper.config` packs section. Scan three tiers:

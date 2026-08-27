@@ -40,7 +40,10 @@ except Exception:
   local temper_bin="$repo_root/scripts/temper"
   # A project consuming Temper as an installed plugin (not the Temper repo itself)
   # won't have scripts/temper at its own root — fall back to the plugin's own copy.
-  [[ -x "$temper_bin" ]] || temper_bin="${CLAUDE_PLUGIN_ROOT:-__none__}/scripts/temper"
+  # Own location first: this file is $PLUGIN_ROOT/scripts/hooks/, so ../temper is the
+  # CLI, and that resolution holds under every agent — Claude Code, Cursor, or none.
+  [[ -x "$temper_bin" ]] || temper_bin="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/temper"
+  [[ -x "$temper_bin" ]] || temper_bin="${CLAUDE_PLUGIN_ROOT:-${CURSOR_PLUGIN_ROOT:-__none__}}/scripts/temper"
   [[ -x "$temper_bin" ]] || return 0
 
   if ( cd "$repo_root" && "$temper_bin" gate commit ); then

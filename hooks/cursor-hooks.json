@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "bash \"${CURSOR_PLUGIN_ROOT}\"/scripts/hooks/cursor-adapter.sh stage-marker.sh"
+      }
+    ],
+    "stop": [
+      {
+        "command": "bash \"${CURSOR_PLUGIN_ROOT}\"/scripts/hooks/cursor-adapter.sh verify-stage-gate.sh"
+      }
+    ]
+  }
+}

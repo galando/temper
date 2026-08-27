@@ -71,6 +71,32 @@ for m in missing:
   fi
 fi
 
+# --- Cursor surface (v9.2.0) ---
+# Two manifests over ONE source tree. The only thing that can rot here is agreement,
+# so that is what this checks; validate-plugin.sh carries the full parity assertion.
+CPJ="$REPO_ROOT/.cursor-plugin/plugin.json"
+if [[ ! -f "$CPJ" ]]; then
+  echo "[FAIL] .cursor-plugin/plugin.json not found"
+  FAIL=$((FAIL+1))
+elif ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$CPJ" 2>/dev/null; then
+  echo "[FAIL] .cursor-plugin/plugin.json is not valid JSON"
+  FAIL=$((FAIL+1))
+else
+  echo "[PASS] .cursor-plugin/plugin.json is valid JSON"
+  PASS=$((PASS+1))
+  if [[ -f "$PJ" ]]; then
+    CUR_VER=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('version',''))" "$CPJ")
+    CLA_VER=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('version',''))" "$PJ")
+    if [[ "$CUR_VER" == "$CLA_VER" ]]; then
+      echo "[PASS] Cursor/Claude manifest versions agree ($CUR_VER)"
+      PASS=$((PASS+1))
+    else
+      echo "[FAIL] Manifest version drift: .cursor-plugin=$CUR_VER .claude-plugin=$CLA_VER"
+      FAIL=$((FAIL+1))
+    fi
+  fi
+fi
+
 # --- README line count ---
 README="$REPO_ROOT/README.md"
 if [[ -f "$README" ]]; then

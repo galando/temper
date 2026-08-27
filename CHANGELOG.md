@@ -3,6 +3,78 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.2.0 — Temper is not a Claude Code plugin
+
+v9.0.0 removed Cursor support with a promise: *"It will return in a better form."* This
+is that form. Temper now installs under **Cursor** and under any agent that reads
+`AGENTS.md`, alongside Claude Code — from **one source tree**, with no generated export.
+
+The old `.cursor/` surface was a *copy*, produced by `scripts/generate-cursor.sh`. A
+generator bug silently froze it at v6.0.1, three majors behind, and Cursor users were
+running a Temper that no longer existed. Nothing here is copied:
+
+- **Two manifests, one tree.** `.cursor-plugin/plugin.json` and
+  `.cursor-plugin/marketplace.json` point at the same `commands/`, `agents/`, and
+  `skills/` the Claude manifest does. Adding a command to one adds it to both, because
+  there is only one of it.
+- **Parity is asserted, not assumed.** `validate-plugin.sh` FAILs if any command, agent
+  or skill the Claude manifest declares is unreachable through the Cursor manifest's
+  paths, or if the two versions disagree. `version-bump.sh` stamps both;
+  `quality-check.sh` re-checks agreement. Drift is now a red CI job, which is precisely
+  what the old generator lacked.
+- **One implementation of every hook rule, plus a translator.**
+  `scripts/hooks/cursor-adapter.sh` maps Cursor's payloads onto the Claude-shaped JSON
+  the existing `scripts/hooks/*.sh` already read, and maps their exit codes onto
+  Cursor's stdout responses (`permission: deny|ask`, `continue`). No rule is written
+  twice. It fails open on every path and always exits 0, since Cursor treats a
+  non-zero hook exit as a broken hook. `hooks/cursor-hooks.json` (plugin-level) and
+  `packs/hooks/cursor.hooks.json` (opt-in pack) are the Cursor-shaped wiring.
+- **The limits are stated, not papered over.** Cursor's `stop` and `afterFileEdit`
+  responses are `void` by its own contract, so `verify-stage-gate.sh` and
+  `block-forbidden-imports.sh` can only *advise* there — reported on stderr and in
+  `.temper/hooks.log`, never announced as a block. Cursor has no pre-edit event, so
+  `protect-regression-test.sh` and `block-protected-paths.sh` have no layer-1 home
+  under it. New `reference/portability.md` carries the full per-agent matrix; the
+  install docs lead with it rather than burying it.
+- **The headline guarantee is unaffected, everywhere.** The gate that physically stops
+  a red commit is a native git `pre-commit` hook (`scripts/hooks/install.sh`). It knows
+  nothing about agents, so it fires under Claude Code, Cursor, a bare terminal, or an
+  IDE button — and under an agent with no hook system it is the *only* deterministic
+  enforcement, which is why it is the one setup step the docs refuse to soften.
+
+### Plugin root resolution is a mechanic, so it moved into the spine
+
+`$CLAUDE_PLUGIN_ROOT` is Claude Code's name; Cursor sets `$CURSOR_PLUGIN_ROOT`; other
+agents set neither. New **`temper root`** resolves the plugin's install directory from
+the script's own location first — so it answers correctly with no environment at all —
+falling back to either env var. `reference/orchestrator-patterns.md` → "Plugin Root
+Resolution" is generalized to match, and every `commands/*.md` and `agents/*.md` opens
+with a short, self-contained note so a prompt reaching an agent that sets neither
+variable still knows what to do. `block-uncommitted-gate.sh` gained the same
+own-location fallback.
+
+### Agents with no plugin system
+
+`templates/AGENTS.temper.md` is the snippet to append to a project's `AGENTS.md`: the
+checkout path, the stage briefs, the gate commands, and the five rules that hold
+regardless of agent — never assert a verdict, stop at every gate, record evidence,
+don't `git add -f`, don't hand-edit state. `reference/portability.md` documents exactly
+what that path gives up (an inline stage run is not a clean context) rather than
+implying parity.
+
+### Also
+
+- `commands/temper.md` tells a non-Claude-Code agent to read `reference/portability.md`
+  once, before Stage 0, and substitute the fallbacks for `Agent` / `AskUserQuestion` —
+  with the invariant restated: no gate is skipped for a missing tool, every verdict
+  still comes from `$TEMPER gate {stage}`, and the pipeline still stops for a human.
+- `packs/hooks/rules.md` (2.1.0) documents the Cursor layer and its two unblockable
+  events.
+- `test-temper.sh` +18 cases: `temper root` resolution across five environments
+  (including the loose-copy fallback and the loud failure when nothing resolves), and
+  the adapter's translation in both directions, its advisory path, and its fail-open
+  contract. 209 assertions, 0 failures.
+
 ## v9.1.0 — the token-efficiency release
 
 Subagent architecture completed and prompt surface cut. No gate or state behavior

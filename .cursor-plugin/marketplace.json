@@ -1,0 +1,16 @@
+{
+  "name": "temper",
+  "owner": {
+    "name": "galando"
+  },
+  "metadata": {
+    "description": "Your AI writes fast. Temper makes it last. Quality gates, blast radius analysis, and intent-driven development."
+  },
+  "plugins": [
+    {
+      "name": "temper",
+      "source": "./",
+      "description": "AI writes the code. Temper makes sure it's actually ready to ship."
+    }
+  ]
+}

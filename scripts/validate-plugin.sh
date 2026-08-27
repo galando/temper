@@ -157,6 +157,152 @@ else
   done
 fi
 
+# --- Cursor surface (v9.2.0): .cursor-plugin/ manifests over the SAME source tree ---
+# Temper shipped a generated `.cursor/` export once; a generator bug froze it three
+# majors behind and it was removed rather than keep misrepresenting what Cursor users
+# got (CHANGELOG v9.0.0). The replacement is a second MANIFEST, not a second copy — so
+# the check that matters here is parity: every command, agent and skill the Claude
+# manifest declares must be reachable through the Cursor manifest's paths, and both
+# manifests must carry the same version. Drift is a FAIL, not a warning.
+CPJ="$REPO_ROOT/.cursor-plugin/plugin.json"
+CMJ="$REPO_ROOT/.cursor-plugin/marketplace.json"
+if [[ ! -f "$CPJ" ]]; then
+  fail ".cursor-plugin/plugin.json not found (Cursor surface)"
+elif ! python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$CPJ" 2>/dev/null; then
+  fail ".cursor-plugin/plugin.json is not valid JSON"
+else
+  ok
+  # Cursor's schema: name is required and kebab-case; components are path/glob strings
+  # or arrays of them (not the Claude manifest's per-file arrays).
+  CURSOR_ERR=$(python3 -c "
+import json, os, re, sys
+root = sys.argv[3]
+c = json.load(open(sys.argv[1]))
+errs = []
+name = c.get('name', '')
+if not re.fullmatch(r'[a-z0-9]([a-z0-9.-]*[a-z0-9])?', name or ''):
+    errs.append(f'name {name!r} is not kebab-case (Cursor plugin schema)')
+for key in ('version', 'description'):
+    if not c.get(key):
+        errs.append(f'missing {key}')
+def paths(v):
+    if v is None: return []
+    return [v] if isinstance(v, str) else list(v)
+for key in ('commands', 'agents', 'skills'):
+    vals = paths(c.get(key))
+    if not vals:
+        errs.append(f'declares no {key}')
+    for v in vals:
+        p = os.path.join(root, v.lstrip('./'))
+        if '*' not in v and not os.path.exists(p):
+            errs.append(f'{key} path does not exist: {v}')
+h = c.get('hooks')
+if isinstance(h, str) and not os.path.isfile(os.path.join(root, h.lstrip('./'))):
+    errs.append(f'hooks path does not exist: {h}')
+# Version agreement with the Claude manifest — one plugin, one version.
+cl = json.load(open(sys.argv[2]))
+if c.get('version') != cl.get('version'):
+    errs.append(f\"version {c.get('version')} != .claude-plugin/plugin.json {cl.get('version')}\")
+if c.get('name') != cl.get('name'):
+    errs.append(f\"name {c.get('name')!r} != .claude-plugin/plugin.json {cl.get('name')!r}\")
+# PARITY: every Claude-declared component is reachable through a Cursor path.
+def covered(ref, decl):
+    target = os.path.normpath(os.path.join(root, ref.lstrip('./')))
+    for v in decl:
+        base = os.path.normpath(os.path.join(root, v.split('*')[0].lstrip('./')))
+        if target == base or target.startswith(base + os.sep):
+            return True
+    return False
+for key in ('commands', 'agents', 'skills'):
+    decl = paths(c.get(key))
+    for ref in cl.get(key, []):
+        if not covered(ref, decl):
+            errs.append(f'{key} parity: {ref} is not reachable from the Cursor manifest')
+print('; '.join(errs))
+" "$CPJ" "$PJ" "$REPO_ROOT" 2>&1)
+  if [[ -z "$CURSOR_ERR" ]]; then ok; else fail "cursor plugin.json: $CURSOR_ERR"; fi
+fi
+
+if [[ ! -f "$CMJ" ]]; then
+  fail ".cursor-plugin/marketplace.json not found"
+else
+  CURSOR_MP_ERR=$(python3 -c "
+import json, os, sys
+m = json.load(open(sys.argv[1]))
+errs = []
+if not m.get('name'): errs.append('missing name')
+if not isinstance(m.get('plugins'), list) or not m['plugins']:
+    errs.append('missing or empty plugins array')
+else:
+    # Cursor's marketplace pluginEntry is additionalProperties:false — name, source,
+    # description and minClientVersions only. Extra keys fail validation at install.
+    allowed = {'name', 'source', 'description', 'minClientVersions'}
+    for e in m['plugins']:
+        extra = set(e) - allowed
+        if extra: errs.append(f\"plugin entry {e.get('name')!r} has unsupported keys {sorted(extra)}\")
+        for k in ('name', 'source'):
+            if not e.get(k): errs.append(f'plugin entry missing {k}')
+        src = e.get('source', '')
+        if src and not src.startswith(('http://', 'https://')):
+            if not os.path.isdir(os.path.join(sys.argv[2], src.lstrip('./') or '.')):
+                errs.append(f'plugin source does not exist: {src}')
+print('; '.join(errs))
+" "$CMJ" "$REPO_ROOT" 2>&1)
+  if [[ -z "$CURSOR_MP_ERR" ]]; then ok; else fail "cursor marketplace.json: $CURSOR_MP_ERR"; fi
+fi
+
+# Cursor hook configs: valid JSON, version 1, only real Cursor events, and every
+# referenced hook script exists. A typo'd event name is silently ignored by Cursor —
+# exactly the class of bug that froze the old export, so it fails here instead.
+CURSOR_EVENTS="sessionStart sessionEnd preToolUse postToolUse postToolUseFailure subagentStart subagentStop beforeShellExecution afterShellExecution beforeMCPExecution afterMCPExecution beforeReadFile afterFileEdit beforeSubmitPrompt preCompact stop afterAgentResponse afterAgentThought"
+for ch in hooks/cursor-hooks.json packs/hooks/cursor.hooks.json; do
+  p="$REPO_ROOT/$ch"
+  if [[ ! -f "$p" ]]; then
+    fail "$ch missing (Cursor hook surface)"
+    continue
+  fi
+  CH_ERR=$(CURSOR_EVENTS="$CURSOR_EVENTS" python3 -c "
+import json, os, re, sys
+valid = set(os.environ['CURSOR_EVENTS'].split())
+errs = []
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception as e:
+    print(f'not valid JSON: {e}'); sys.exit(0)
+if d.get('version') != 1: errs.append(f\"version must be 1, got {d.get('version')!r}\")
+hooks = d.get('hooks', {})
+if not hooks: errs.append('declares no hooks')
+for event, entries in hooks.items():
+    if event not in valid: errs.append(f'unknown Cursor event {event!r}')
+    for e in entries:
+        cmd = e.get('command', '')
+        if not cmd: errs.append(f'{event}: entry has no command')
+        for ref in re.findall(r'scripts/hooks/[\w.-]+\.sh', cmd):
+            if not os.path.isfile(os.path.join(sys.argv[2], ref)):
+                errs.append(f'{event}: missing script {ref}')
+        # Every rule must route through the adapter — a rule invoked directly would be
+        # handed a Cursor payload it cannot read, and would answer with an exit code
+        # Cursor ignores. Silent no-op, which is worse than a crash.
+        if 'scripts/hooks/' in cmd and 'cursor-adapter.sh' not in cmd:
+            errs.append(f'{event}: hook script invoked without cursor-adapter.sh')
+print('; '.join(errs))
+" "$p" "$REPO_ROOT" 2>&1)
+  if [[ -z "$CH_ERR" ]]; then ok; else fail "$ch: $CH_ERR"; fi
+done
+
+# The adapter itself, and the portability contract every surface points at.
+CURSOR_ADAPTER="$REPO_ROOT/scripts/hooks/cursor-adapter.sh"
+if [[ ! -f "$CURSOR_ADAPTER" ]]; then
+  fail "scripts/hooks/cursor-adapter.sh missing (Cursor hook translation)"
+elif [[ ! -x "$CURSOR_ADAPTER" ]]; then
+  fail "scripts/hooks/cursor-adapter.sh not executable (chmod +x)"
+else
+  ok
+fi
+for f in reference/portability.md templates/AGENTS.temper.md; do
+  if [[ -f "$REPO_ROOT/$f" ]]; then ok; else fail "$f missing (multi-agent contract)"; fi
+done
+
 # --- Pack `phases:` frontmatter (v8) ---
 # Every built-in pack declares which stages load it. This validates the declaration is
 # present and its values are real phases; it cannot tell you a pack was narrowed too far

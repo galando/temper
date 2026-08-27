@@ -4,6 +4,14 @@ description: "Show quality metrics, learning loop, and observability dashboard"
 
 # Status: Quality Metrics Dashboard
 
+> **Plugin root & tool names.** Where this file says `$CLAUDE_PLUGIN_ROOT`, use the
+> plugin's install directory: `$CLAUDE_PLUGIN_ROOT` under Claude Code,
+> `$CURSOR_PLUGIN_ROOT` under Cursor, otherwise the directory holding `commands/`,
+> `agents/`, and `scripts/temper` — `temper root` prints it. `Agent` and
+> `AskUserQuestion` below are Claude Code's tool names; `reference/portability.md`
+> defines the equivalent under every other agent. No gate is ever skipped for lack of
+> a tool.
+
 **Goal:** Display metrics, trends, learning loop suggestions, and observability data.
 
 ## Execution

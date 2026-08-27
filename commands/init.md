@@ -4,6 +4,14 @@ description: "One-command setup: config + .temper/ scaffold + the commit gate (i
 
 # Temper: Set Up This Project
 
+> **Plugin root & tool names.** Where this file says `$CLAUDE_PLUGIN_ROOT`, use the
+> plugin's install directory: `$CLAUDE_PLUGIN_ROOT` under Claude Code,
+> `$CURSOR_PLUGIN_ROOT` under Cursor, otherwise the directory holding `commands/`,
+> `agents/`, and `scripts/temper` — `temper root` prints it. `Agent` and
+> `AskUserQuestion` below are Claude Code's tool names; `reference/portability.md`
+> defines the equivalent under every other agent. No gate is ever skipped for lack of
+> a tool.
+
 **Goal:** get a project fully set up in one command. Seeds `.claude/temper.config`,
 scaffolds `.temper/`, and installs the native commit gate — the one control that
 physically blocks `git commit` while a gate is red. Idempotent: safe to run any number
