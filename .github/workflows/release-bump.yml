@@ -165,7 +165,10 @@ jobs:
           echo "Inserted CHANGELOG entry: v${TARGET_VERSION} — ${TITLE}"
 
       # 4. Run the bump. version-bump.sh is the single writer: it rewrites all
-      #    live source stamps (plugin.json, CLAUDE.md, temper.md header).
+      #    live source stamps — every agent manifest (.claude-plugin,
+      #    .cursor-plugin, .codex-plugin, .agents/plugins, plugin.json), plus
+      #    CLAUDE.md, AGENTS.md and the temper.md header. Adding a new agent
+      #    surface means adding it there, not here.
       - name: Bump version
         env:
           TARGET_VERSION: ${{ inputs.version }}
