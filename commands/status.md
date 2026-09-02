@@ -26,11 +26,10 @@ description: "Show quality metrics, learning loop, and observability dashboard"
 7. If pattern count >= 3: suggest auto-rule
 8. **Hotspot map**: shows which files generate the most issues
 
-### Gate Ledger Panel (v7 — replaces the v6.x Observability/Economics panels)
+### Gate Ledger Panel
 
-v6.x rendered per-stage cost/latency/token estimates here — numbers with no mechanical
-backing, exactly what v7 stops presenting as fact. v7 shows only what `temper gate` and
-`temper evidence` actually recorded:
+Show only what `temper gate` and `temper evidence` recorded. Never render cost, latency,
+or token estimates: nothing mechanical backs them.
 
 ```
 GATE LEDGER

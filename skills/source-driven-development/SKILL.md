@@ -9,7 +9,7 @@ description: "Version-aware, source-driven development — fetch official docs b
 
 ## Overview
 
-Source-driven development ensures that framework-specific code is written against *current* official documentation, not stale training data. AI models often generate code using deprecated APIs, wrong parameter orders, or patterns from older versions. This skill enforces a verification loop:
+Source-driven development ensures that framework-specific code is written against *current* official documentation, not stale training data. AI models often generate code using deprecated APIs, wrong parameter orders, or patterns from older versions. Existing usage in the codebase is not verification either: the codebase may be on an older version, and a passing test proves the code runs, not that the API is current. This skill enforces a verification loop:
 
 ```
 Detect version → Fetch current docs → Write code with citations → Surface conflicts
@@ -45,18 +45,14 @@ For the specific library you're about to use, note the **exact version** install
 
 ### Step 2: Fetch Current Documentation
 
-If the Context7 MCP server is available:
+If a documentation MCP server such as Context7 is available: resolve the library to its
+ID, query it for the specific API or pattern you need at the installed version, and read
+the returned snippets. Use the tool names the server exposes in this session rather than
+assuming them.
 
-1. Resolve the library ID: `mcp__plugin_context7_context7__resolve-library-id` with the library name
-2. Query for the specific API: `mcp__plugin_context7_context7__query-docs` with:
-   - `libraryId` from step 1
-   - `query` describing the specific API or pattern you need
-3. Read the returned documentation snippets
-
-If Context7 is NOT available:
-- Fall back to web search for `{library} v{version} {api} documentation`
-- Use `mcp__web_reader__webReader` to fetch the official docs page
-- This is `[HEURISTIC]` rather than `[PROVEN]` — note the evidence level
+If no documentation server is available: web-search `{library} v{version} {api}
+documentation` and fetch the official docs page with the fetch tool you have. This is
+`[HEURISTIC]` rather than `[PROVEN]` — note the evidence level.
 
 ### Step 3: Cite Sources
 
@@ -102,16 +98,6 @@ When multiple documentation sources conflict, use this hierarchy:
 3. **Source code** (GitHub repo, node_modules) — ground truth but may be internal
 4. **Community** (Stack Overflow, blog posts) — useful for patterns, not API signatures
 5. **Training data** (what the model "knows") — lowest authority, always verify
-
-## Rationalizations
-
-| Rationalization | Why It's Wrong |
-|-----------------|----------------|
-| "I know this API — I've used it before" | APIs change between versions. React 18 hooks != React 19 hooks. Verify. |
-| "The docs will just confirm what I already know" | Then verification takes 10 seconds. Do it. Unexpected deprecations are common. |
-| "I can just check if the test passes" | Tests prove the code runs, not that it uses the recommended approach. Deprecated APIs pass tests today and break tomorrow. |
-| "Looking up docs slows me down" | Writing the wrong API and debugging for 30 minutes is slower than a 10-second doc check. |
-| "The codebase already uses this pattern" | The codebase may be on an older version. Your task might be the one that should update the pattern. |
 
 ## Red Flags
 

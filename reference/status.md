@@ -76,14 +76,14 @@ metric history arrays against rolling mean ± k·sigma bands (config: `bands:` i
 Populate every panel from real files, never a hardcoded example; empty/absent inputs
 degrade to the notices above, not an error.
 
-### Step 2.5: Gate Ledger Panel (v7 — replaces the v6.x Economics panel)
+### Step 2.5: Gate Ledger Panel
 
-Render from `.temper/gates.json`, `.temper/overrides.json`, `.temper/evidence/*.json` —
-the same ledger `temper gate` computes verdicts from. Deliberately not the v6.x cost/
-latency/token dashboard (those were unbacked estimates): per-stage verdict + requirement
+Render from `.temper/gates.json`, `.temper/overrides.json`, `.temper/evidence/*.json`,
+the same ledger `temper gate` computes verdicts from: per-stage verdict + requirement
 detail (`temper report`), override count + reason per stage, and the PROVEN/HEURISTIC/
 SEMANTIC evidence-label mix as a rough proxy for how much of the run was mechanically
-verified. No `gates.json` → "No gate data yet. Run /temper to populate it." — never error.
+verified. Never render cost, latency, or token estimates: nothing mechanical backs them.
+No `gates.json` → "No gate data yet. Run /temper to populate it." — never error.
 
 ### Step 2.6: Autonomous Runs Panel (purely additive)
 
@@ -94,8 +94,8 @@ report), loop budget used (sum `iteration` across `active_loops[]` + `history[]`
 
 ### Step 3: Rule-Promotion Prompt (from review memory)
 
-Read `.temper/review-memory.json` — the single finding memory (there is no separate
-learning file). For a pattern that meets the promotion criteria from `reference/review.md`
+Read `.temper/review-memory.json`, the single finding memory. For a pattern that meets
+the promotion criteria from `reference/review.md`
 → "Metrics + Memory" (3+ accepted @ ≥70% → WARN candidate; 5+ accepted @ ≥80% and
 security/architecture → BLOCK candidate) with no auto-rule yet: `AskUserQuestion` —
 "Yes, add as BLOCK rule" (active pack's Mandatory Rules) / "Yes, add as WARN rule"
@@ -163,4 +163,4 @@ Pattern detected in a review → shown → user's response tracked as accepted o
 in `review-memory.json.patterns[key]`. Accepted >= 3 (at >= 70% acceptance rate, no
 existing auto-rule) → prompt for promotion at `/temper:status` (user picks
 BLOCK/WARN/no-promote). Dismissed >= 5 → auto-suppress in `/temper:review`, moved to
-`suppressed_patterns[]`. This is the whole loop — one file, no separate learning store.
+`suppressed_patterns[]`. This is the whole loop.

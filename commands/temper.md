@@ -3,7 +3,7 @@ description: "Unified SDLC command: intent → plan → design? → build → re
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v9.1.0)
+# Temper: Unified SDLC Command (v9.2.0)
 
 **Goal:** Run intent → plan → design? → build → review+check → commit with a human gate
 at every stage (or, if armed, unattended past the plan gate). Every gate verdict is
@@ -129,7 +129,7 @@ When a gate FAILs and the user selects "Loop back":
 
 1. `$TEMPER state loop {from} {to} --reason "<why>"` — this enforces
    `loops.max-per-type` (default 2), prints `BLOCKED` (exit 1) once the budget is spent,
-   and (as of v8) auto-clears evidence for `{to}` and every stage downstream of it in
+   and auto-clears evidence for `{to}` and every stage downstream of it in
    the sequence — a stale row from the stage being redone must not survive to inflate
    the next gate's count. If blocked, don't offer the loop option again this run; fall
    through to Override / Save.
@@ -137,10 +137,9 @@ When a gate FAILs and the user selects "Loop back":
    line to its prompt: *"Feedback re-entry: {reason}. Fix this, then continue."*
 3. When it returns, re-run the downstream gate that triggered the loop.
 
-That's the whole mechanism — there is no separate "loop cost tier" or context-size
-branching in v7+. A loop is a normal stage re-launch. Build→Plan is the one exception:
-it's human-driven only (max 1 per run, no circuit breaker) because it means the plan
-itself was wrong, not the implementation.
+That's the whole mechanism: a loop is a normal stage re-launch. Build→Plan is the one
+exception: it's human-driven only (max 1 per run, no circuit breaker) because it means
+the plan itself was wrong, not the implementation.
 
 ## Autonomous Continuation
 

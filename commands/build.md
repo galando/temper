@@ -39,7 +39,7 @@ either way.
 ### Active Skills
 
 - **Temper Core** — stack detection, pack resolution, quality gates
-- **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors, under 2K lines/task)
+- **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors)
 - **Source-Driven Development** — before writing framework-specific code: detect installed version → fetch current docs → cite sources → surface API conflicts. Skip for plain logic or known patterns
 
 ### Deterministic Gate
