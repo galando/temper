@@ -42,11 +42,9 @@ Before analysis, load domain context:
 
 ### Step 1: Explore
 
-**Check depth budget from agents config:**
-- If `depth_remaining > 1`: use Agent tool with `subagent_type=Explore`
-- If `depth_remaining <= 1`: explore inline (no subagent)
-
-If spawning is allowed, use the Agent tool with `subagent_type=Explore` to walk the changed files. Explore organically and note where you experience friction:
+Walk the changed files yourself; use the Agent tool with `subagent_type=Explore` only
+when the changed set is too large to read directly. Explore organically and note where
+you experience friction:
 
 - Where does understanding one concept require bouncing between many small modules?
 - Where are modules **shallow** — interface nearly as complex as the implementation?
@@ -54,40 +52,25 @@ If spawning is allowed, use the Agent tool with `subagent_type=Explore` to walk 
 - Where do tightly-coupled modules leak across their seams?
 - Which parts of the codebase are untested, or hard to test through their current interface?
 
-### Step 2: Score Each Dimension
+### Step 2: Examine Each Dimension
 
-For each changed file/module, score on a 0-5 scale:
-
-| Score | Meaning |
-|-------|---------|
-| 0 | No evidence of this dimension |
-| 1 | Significant problems detected |
-| 2 | Some problems, mostly superficial |
-| 3 | Adequate, room for improvement |
-| 4 | Well-designed, minor issues |
-| 5 | Exemplary, deep module |
-
-**Dimensions:**
+For each changed file/module, answer the five questions. The answers, not a score, are
+what Step 5 classifies:
 
 1. **Seams** — Can modules be replaced without touching others?
    - Detection: Import graph analysis (MCP) or grep for import statements
-   - Score: Number of modules with clear interfaces / total modules
 
 2. **Adapters** — Are external dependencies behind adapter layers?
    - Detection: Wrapper/facade patterns around APIs, databases, file systems
-   - Score: Number of external deps wrapped / total external deps
 
 3. **Locality** — Is related code co-located?
    - Detection: Directory structure + import distance
-   - Score: Average import distance for related functionality
 
 4. **Leverage** — Do small changes propagate value broadly?
    - Detection: Fan-out analysis via dependency graph
-   - Score: Interface surface area vs. behavior delivered
 
 5. **Deletion Test** — Can a module be removed without cascading?
    - Detection: Reverse dependency count + import scan
-   - Score: Modules with high fan-in / total modules
 
 ### Step 3: Apply Deletion Test
 

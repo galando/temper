@@ -23,10 +23,6 @@ Every stage reads this live at phase start (no cache): scan all three tiers (exc
 is `all` or contains the current phase (resolved as below), read `temper.config` for
 enabled/link overrides.
 
-**No manifest cache.** A cached-scan JSON file was documented in earlier versions but
-never implemented — the live scan reads a dozen small `rules.md` files, milliseconds
-against any real problem here. The doc was fiction; it's removed rather than built.
-
 ## Pack Configuration Schema
 
 ```yaml

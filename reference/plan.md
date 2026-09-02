@@ -175,13 +175,10 @@ genuinely considered and rejected — an empty/absent section is valid and means
 that: no load-bearing choice was made. One genuine decision beats three padded ones.
 Structure: Alternative / Pros / Cons / **Why not chosen** (`templates/adr.md`'s shape).
 
-**`Why not chosen` is the load-bearing field — banned, verbatim:**
-- "less optimal", "not as good", "suboptimal", "less suitable"
-- "for simplicity" without naming what was simplified and at whose cost
-- "best practice" without naming the practice and the alternative it beat
-
-Every rejection must name a concrete constraint, risk, or cost — a reviewer should be
-able to challenge it from the text alone. Mirror each as one line in the summary box's
+**`Why not chosen` is the load-bearing field.** Every rejection names a concrete
+constraint, risk, or cost that a reviewer could challenge from the text alone: not
+"simpler" but what was simplified and at whose cost, not "best practice" but which
+practice and which alternative it beat. Mirror each as one line in the summary box's
 🧭 DECISIONS (`{chosen} (not {rejected})`, capped at 3, `+{N} more` beyond that).
 
 ## Diagram

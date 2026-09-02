@@ -40,7 +40,7 @@ Levels (stop on failure):
 
 ### Active Skills
 
-- **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors, under 2K lines/task)
+- **Context Engineering** — load hierarchical context at stage start (rules → arch → source → errors)
 - **Temper Core** — stack detection, pack resolution, quality gates
 
 ### Deterministic Gate

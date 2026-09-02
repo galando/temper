@@ -52,10 +52,11 @@ so review effort concentrates where the risk actually is.
 
 ## Step 2: Parallel Review Subagents
 
-Split the changed files across subagents however the diff suggests. One hard
-constraint, because it bounds recursion: `depth_remaining <= 1` → review inline, no
-subagents. Each subagent gets the pack rules, the stack pattern file, the fingerprint,
-its file list, and this prompt shape:
+Split the changed files across subagents when the diff is large enough that parallel
+reading pays for each subagent's context setup; a small diff is reviewed inline. One
+hard constraint, because it bounds recursion: a review subagent never spawns subagents
+of its own (say so in its prompt). Each subagent gets the pack rules, the stack pattern
+file, the fingerprint, its file list, and this prompt shape:
 
 ```
 For each issue: Severity (CRITICAL/HIGH/MEDIUM/LOW), Confidence (0.0-1.0), Category
@@ -63,11 +64,12 @@ For each issue: Severity (CRITICAL/HIGH/MEDIUM/LOW), Confidence (0.0-1.0), Categ
 Description, Suggestion.
 
 Read the ENTIRE file (not just the diff) — the changed lines are what you judge, the
-rest of the file is how you judge them. Report what you'd defend in review: findings
-below the confidence threshold are discarded later, so a genuine low-confidence finding
-costs nothing, but style preferences that violate no pack rule are noise either way.
-Classify each finding REGRESSION (was working, now broken — highest priority) /
-NEW ISSUE / PRE-EXISTING (lower priority).
+rest of the file is how you judge them. Report every issue you find, including ones
+you are uncertain about or consider low-severity; do not filter for importance or
+confidence here. The confidence you attach is what Step 4 filters on, so a real finding
+reported at 0.4 costs less than a dropped one. Omit only pure style or naming
+preferences that violate no pack rule. Classify each finding REGRESSION (was working,
+now broken — highest priority) / NEW ISSUE / PRE-EXISTING (lower priority).
 ```
 
 If `ocr_status == ready`, OCR owns line-level defect detection; the subagent covers
@@ -225,7 +227,7 @@ and per-category counts, `auto_fixed`, `confidence_avg`. Then update the single 
 memory, `.temper/review-memory.json.patterns[{key}]` (key = category + file-path prefix
 + first description keywords): `total_shown`/`accepted`/`dismissed`, `last_seen`,
 `acceptance_rate = accepted/total_shown`. This one store drives both promotion and
-suppression — there is no separate learning file:
+suppression:
 
 - **Promote** (surfaced at `/temper:status`, never auto-applied): 3+ accepted at
   acceptance_rate ≥ 70% → suggest a **WARN** rule; 5+ at ≥ 80% in security or

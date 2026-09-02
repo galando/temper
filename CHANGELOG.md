@@ -3,6 +3,50 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.2.0 — the prompt-audit release
+
+Prompt surface only. No gate, state, or CLI behavior changes; 191 CLI assertions and
+every validator green. Findings and rationale: a `/claude-api prompt-audit` pass over
+every file that reaches a model, targeting the Claude 5 generation the stage briefs
+resolve to.
+
+- **Dangling `depth_remaining` budget removed.** `reference/review.md`, `reference/fix.md`
+  and `reference/architecture-depth.md` still branched on the v5 nested-agent budget
+  (ADR-0002) that v7 retired and no launch prompt passes. Each now states the rule it
+  stood for: read inline by default, delegate only when the reading set is large, and a
+  spawned subagent never spawns its own.
+- **`skills/temper-core` no longer documents the retired `capabilities:` config block.**
+  Grill Me, Teach Me, HTML Review and Config Suggestions are always offered at their
+  gates (as `commands/temper.md` already said); Architecture Depth applies the
+  `architecture-depth` pack's rules when it is enabled.
+- **Review subagents report every finding with confidence and severity** instead of
+  self-filtering to "what you'd defend"; Step 4 already filters mechanically on the
+  confidence field, and current models follow a self-filter literally at the cost of
+  recall. The omission bar is now concrete: pure style or naming preferences that
+  violate no pack rule.
+- **`skills/context-engineering` keeps its loading order and drops its numeric
+  clamps** (2K lines per task, 2 import hops, ">10 turns means bloat") and its
+  rationalization table; the five stage commands that cited the line budget no longer
+  do. The 2-hop rule contradicted `reference/plan.md`'s measured blast radius.
+- **`skills/source-driven-development` names capabilities, not tool IDs**
+  (`mcp__plugin_context7_…`, `mcp__web_reader__…`), and drops its rationalization
+  table; the one substantive row moved into the overview as a positive statement.
+- **Version-relative narrative removed from prompts:** the v6.x/v7 story in the status
+  panel (`commands/status.md`, `reference/status.md`), "what moved out of this file in
+  v7" (`reference/orchestrator-patterns.md`), "the doc was fiction" (`reference/pack.md`),
+  "(as of v8)" and "no loop cost tier in v7+" (`commands/temper.md`), five copies of
+  "there is no separate learning file", and the tokenomics history comment in
+  `.claude/CLAUDE.md` (the validator guard stays).
+- **Smaller re-baselines:** the `Why not chosen` banned-phrase list in `reference/plan.md`
+  becomes the positive rule with two contrasting examples; the headless RCA stage returns
+  a blocker instead of an unreachable "ask the user after 3 dead ends"; Grill Me's
+  `CRITICAL:` booster becomes a plain instruction with its reason; the unused 0-5
+  scoring rubric in `reference/architecture-depth.md` is gone (Step 5 classifies by
+  condition, and the report format never carried a score).
+- **`reference/autonomy.md` gains an unattended-run guard:** the user is not watching, so
+  a turn that ends on a question or a "next I'll…" stalls the pipeline; the model
+  finishes the work and stops only at a park.
+
 ## v9.1.0 — the token-efficiency release
 
 Subagent architecture completed and prompt surface cut. No gate or state behavior

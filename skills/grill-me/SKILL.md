@@ -46,9 +46,10 @@ For each extracted item, generate challenge questions targeting:
 | Cross-cutting concerns | "How does this interact with {existing system}?" |
 | Rollback | "If this fails in production, how do you roll back?" |
 
-### 3. Present ONE Question at a Time
+### 3. Present One Question at a Time
 
-**CRITICAL:** Never ask multiple questions. One question, wait for response.
+Ask exactly one question per turn and wait for the answer; a batch of questions lets
+the user answer the easy ones and skip the hard one.
 
 ```
 AskUserQuestion:

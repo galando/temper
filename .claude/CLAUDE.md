@@ -24,7 +24,7 @@ every gate is the ordinary interactive one. Config: `.claude/temper.config` → 
 a model. `git commit` is blocked by a native pre-commit hook + an in-agent PreToolUse
 hook whenever a gate is FAIL and unoverridden — see `packs/hooks/rules.md`.
 
-**Version:** 9.1.0 — see `CHANGELOG.md` for history.
+**Version:** 9.2.0 — see `CHANGELOG.md` for history.
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/docs/history/`
 
@@ -42,11 +42,8 @@ CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/d
   box: a brief must never point a clean-context subprocess at an orchestrator file);
   new commands and agents must be listed in `.claude-plugin/plugin.json`.
 
-<!-- Nothing follows. A generated "Token Optimization Insights" section, delimited by
-     TOKENOMICS:START / TOKENOMICS:END markers, used to be re-injected here every
-     session; it was standing advice that cost more than it saved and duplicated
-     judgment the model already applies. Tokenomics is a retired system — see
-     docs/history/tokenomics.md. validate-docs.sh fails if it returns. Do not quote the
-     literal marker syntax in this comment: the embedded close-delimiter ends the
-     comment early and the rest renders as visible context. -->
+<!-- Nothing follows. Do not add a generated advice section here: validate-docs.sh
+     rejects the TOKENOMICS:START / TOKENOMICS:END markers (docs/history/tokenomics.md).
+     Never write the markers' full comment syntax inside this comment; the embedded
+     close-delimiter would end it early. -->
 

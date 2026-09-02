@@ -29,15 +29,16 @@ absent). A prior incident matching this failure shape hands you the highest-conf
 hypothesis, its trigger data, and the test that caught it last time — cite the match in
 the RCA. An unread lessons file is an incident paid for twice.
 
-Then investigate — via an Explore subagent if the depth budget allows
-(`depth_remaining > 1`), else inline:
+Then investigate, inline by default; hand the wide reading to an Explore subagent only
+when the codebase is large enough that reading it directly would crowd your context:
 
 - **Detect input** the way `/temper:plan` does (Jira / GitHub / prose), and extract
   symptom, trigger, reproducibility, and when it started.
 - **Multi-hypothesis** only when the cause is ambiguous: list up to 5 plausible causes
-  with confidence + evidence, investigate the strongest first, fall back on a denial,
-  ask the user after 3 dead ends. Skip straight to investigation when there's one
-  obvious cause or an exact stack trace.
+  with confidence + evidence, investigate the strongest first, fall back on a denial.
+  After 3 dead ends, return a blocker naming what was tried; you run headless, so the
+  orchestrator asks the user. Skip straight to investigation when there's one obvious
+  cause or an exact stack trace.
 - **Trace the call chain** to the failing point. With the `code-review-graph` MCP server
   (and `tools.mode` ≠ `heuristic-only`), `query_graph_tool` + `get_affected_flows_tool`
   give an AST-level chain and user-facing blast radius → `[PROVEN]`; else grep →

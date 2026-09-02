@@ -7,11 +7,9 @@ description: "Shared patterns for orchestrator commands (temper.md, fix.md)"
 **Used by:** `commands/temper.md`, `commands/fix.md`. Read once at the start — every
 `→ pattern` reference in either file points here.
 
-**What moved out of this file in v7:** model routing, prompt-cache ordering, pipeline
-depth/loop-cost tiers, and the observability/drift telemetry schemas were all mechanism
-with exactly one correct output — they live in `scripts/temper` and `agents/*.md`
-frontmatter now, not in prose. What remains is genuinely shared, judgment-adjacent
-bookkeeping: state schema, gate UX, resume/invocation safety, hand-off formats.
+Scope: shared, judgment-adjacent bookkeeping only (state schema, gate UX,
+resume/invocation safety, hand-off formats). Mechanism with one correct output (model
+resolution, gate logic) lives in `scripts/temper` and `agents/*.md` frontmatter.
 
 ## $CLAUDE_PLUGIN_ROOT Resolution
 
@@ -141,8 +139,8 @@ justifications a gate doesn't need but a re-launched agent does.
 ```
 
 `review-memory.json` (Review writes, Status + Review read — the single finding memory:
-pattern acceptance/dismissal, promotion, and suppression; there is no separate learning
-store). See `reference/review.md` → "Metrics + Memory".
+pattern acceptance/dismissal, promotion, and suppression). See `reference/review.md` →
+"Metrics + Memory".
 
 | Stage | Reads | Writes |
 |---|---|---|

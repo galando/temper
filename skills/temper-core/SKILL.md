@@ -32,10 +32,9 @@ Precedence and rationale: `reference/pack.md` → "Pack Configuration Schema".
 - Review memory: `.temper/review-memory.json` — auto-suppress after 5 dismissals
 - Metrics: `.temper/metrics.json`
 
-## Review memory — the one finding memory
-Reviews get smarter over time through a single store, `.temper/review-memory.json`
-(there is no separate learning file). Written by `/temper:review`, surfaced at
-`/temper:status`.
+## Review memory
+Reviews get smarter over time through a single store, `.temper/review-memory.json`,
+written by `/temper:review` and surfaced at `/temper:status`.
 
 | Capability | Trigger | Action |
 |-----------|---------|--------|
@@ -47,19 +46,19 @@ Reviews get smarter over time through a single store, `.temper/review-memory.jso
 
 Full docs: `$CLAUDE_PLUGIN_ROOT/reference/review.md` → "Metrics + Memory".
 
-## Capabilities (v5.0.0)
+## Gate add-ons
 
-Four independently optional capabilities, all enabled by default. Controlled via `capabilities` section in temper.config.
+Always offered at their stage gates; there is no config toggle (a `capabilities:` block
+in temper.config is ignored by the CLI). Architecture Depth applies the
+`architecture-depth` pack's rules when that pack is enabled.
 
-| Capability | Stage | Purpose |
+| Add-on | Stage | Purpose |
 |-----------|-------|---------|
 | Architecture Depth | Review | Module-depth analysis: seams, adapters, locality, leverage, deletion test |
-| Grill Me | Plan, Design | Socratic challenge mode — stress-test plans before building |
-| Teach Me | Plan, Design, Build, Check | Comprehension companion — teach + quiz the human to mastery at each teaching gate (Review excluded — taught at Build) |
+| Grill Me | Plan, Design | Socratic challenge mode: stress-test plans before building |
+| Teach Me | Plan, Design, Build, Check | Comprehension companion: teach + quiz the human to mastery at each teaching gate (Review excluded, taught at Build) |
 | Config Suggestions | Check | Suggest CLAUDE.md/AGENTS.md updates based on what was built |
 | HTML Review | Plan | Interactive browser-based plan review with inline comments |
-
-**Graceful degradation:** Each capability checks its config flag. Missing config = all enabled (default-on).
 
 ## Full Docs
 `$CLAUDE_PLUGIN_ROOT/reference/{command}.md`

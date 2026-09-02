@@ -24,6 +24,14 @@ to a human, never auto-loops); budget exhausted → park instead of asking. **At
 `$TEMPER gate commit` already checks blast radius + park-on-touch (autonomous-only) along
 with every upstream gate — PASS or FAIL, **always park**, autonomy never auto-commits.
 
+**The user is not watching.** You are operating autonomously. The user is not watching
+in real time and cannot answer questions mid-task, so asking 'Want me to...?' or
+'Shall I...?' will block the work. For reversible actions that follow from the approved
+plan, proceed without asking; the only stop is a park. Before ending your turn, check
+your last paragraph: if it is a plan, a question, or a promise about work you have not
+done, do that work now with tool calls. End your turn only at a park, or when the run
+is blocked on input only a human can give.
+
 **Park:** `$TEMPER state set run_mode interactive` (so a plain resume lands here
 normally), write `.temper/autonomy-report.md` (`**Verdict:**
 SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION`, `**Parked at:**`/`**Reason:**` verbatim from
