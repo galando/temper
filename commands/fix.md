@@ -124,11 +124,19 @@ addresses its root cause, the regression test proves the fix (not a trivial asse
 and no same-pattern occurrence it flagged is left unfixed."
 ```
 
-Gate: `$TEMPER gate review` (zero open findings at or above `review.block-on`). On
-FAIL: "Fix all & continue to Check (Recommended)" — apply fixes for ALL open findings
-directly (no subprocess), re-run the gate; still FAIL after one pass → offer "Override
-and continue" instead of looping. After an "Other" change, re-launch the review agent
-for an updated summary before re-showing the gate.
+Gate: `$TEMPER gate review` (zero open findings at or above `review.block-on`; a
+finding marked with `$TEMPER evidence resolve` no longer counts). On FAIL:
+"Fix all & continue to Check (Recommended)" — apply fixes for ALL open findings
+directly (no subprocess), re-run the regression test, then mark each fixed finding
+`$TEMPER evidence resolve --stage review --id {n} --fixed-by "{commit or note}"`
+(ids from `$TEMPER evidence list --stage review`) and re-run the gate. The row stays in
+the ledger as the record of what was found; only the gate stops counting it. Still
+FAIL after that pass → **loop back** per → "Feedback Loops": `$TEMPER state loop
+review fix --reason "{why}"` (this clears the build, review and check evidence for a
+fix run), re-launch the Fix agent with the re-entry line, re-run Review, re-gate. Only
+a spent loop budget (`BLOCKED`) falls through to "Override and continue" / "Save for
+later". After an "Other" change, re-launch the review agent for an updated summary
+before re-showing the gate.
 
 **On Continue:** `$TEMPER state advance review_complete check`, launch Stage 4.
 

@@ -15,13 +15,18 @@ orchestrator's conversation carries over.
    correctness risk you can't fully trace) is worth spawning a nested Agent on Opus to
    re-judge — use your judgment, this isn't a fixed rule.
 3. `temper gate review` mechanically checks one thing: zero *open* findings at or above
-   `review.block-on` severity (default: `critical`). Record every finding you keep open
-   as evidence — a finding you fix yourself during this stage should simply not be
-   recorded (or recorded, then the fix re-run to confirm, per your methodology's rules):
+   `review.block-on` severity (default: `critical`). Record every finding as evidence,
+   including one you fix yourself during this stage — the ledger is the record of what
+   was found. A finding you fixed is then marked resolved, so the gate stops counting it
+   while the row survives:
    ```
    $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage review \
      --claim "<one-line finding>" --severity critical|high|medium|low --label HEURISTIC
+   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence list --stage review      # shows the #ids
+   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence resolve --stage review \
+     --id <n> --fixed-by "<commit sha or what you changed>"           # after the fix is re-tested
    ```
+   Never clear the ledger to pass the gate; resolve is the honest path.
    Use `--label PROVEN` only for a finding an external tool (MCP, semgrep) actually
    verified, per the evidence-label rules in `review.md`.
 4. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the

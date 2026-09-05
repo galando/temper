@@ -11,7 +11,7 @@
 #   temper init                                  scaffold .temper/ in the current project
 #   temper state <get|set|advance|loop|archive|clear> ..  read/write .temper/build-state.json;
 #                                                 archive writes {spec}/gate-ledger.json
-#   temper evidence <add|run|list|clear> ...      append/execute-and-record/read/clear the ledger
+#   temper evidence <add|run|list|resolve|clear> ...  append/execute-and-record/read/mark-fixed/clear the ledger
 #   temper gate <stage> [--spec-path P]           compute PASS/FAIL for a stage, record verdict
 #   temper model <stage> | --all                  resolve a stage's model (config override > frontmatter)
 #   temper override <stage> --reason "..."        record a human override of a FAIL gate
@@ -589,9 +589,13 @@ cmd_evidence_list() {
   else
     python3 -c "
 import json, sys
-for e in json.load(open(sys.argv[1])):
+for i, e in enumerate(json.load(open(sys.argv[1])), 1):
     mark = 'OK ' if (e.get('exit_code') in (0, None)) else 'ERR'
-    line = f\"[{e.get('label')}] {mark} {e.get('claim')}\"
+    line = f\"#{i} [{e.get('label')}] {mark} {e.get('claim')}\"
+    if e.get('severity'):
+        line += f\" (severity: {e.get('severity')})\"
+    if e.get('resolved'):
+        line += f\" [resolved: {e['resolved'].get('fixed_by')}]\"
     if e.get('cmd'):
         line += f\" (cmd: {e.get('cmd')}, exit {e.get('exit_code')})\"
     if e.get('scenario'):
@@ -599,6 +603,44 @@ for e in json.load(open(sys.argv[1])):
     print(line)
 " "$file"
   fi
+}
+
+cmd_evidence_resolve() { # temper evidence resolve --stage <s> --id <n> --fixed-by "<commit or note>"
+  # Marks one recorded finding as fixed in THIS run. The row is kept — the ledger must
+  # still show what was found — but the gate no longer counts it. The alternative was
+  # deleting evidence to go green, which QUALITY-GATES forbids (woningscout #984).
+  _ensure_dirs
+  local stage="" id="" fixed_by=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --stage) stage="$2"; shift 2 ;;
+      --id) id="$2"; shift 2 ;;
+      --fixed-by) fixed_by="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [[ -n "$stage" && -n "$id" && -n "$fixed_by" ]] || { echo "FAIL: usage: temper evidence resolve --stage <s> --id <n> --fixed-by \"<commit or note>\" (ids from 'temper evidence list --stage <s>')" >&2; return 1; }
+  local file; file="$(_evidence_file "$stage")"
+  [[ -f "$file" ]] || { echo "FAIL: no evidence recorded for stage '$stage'" >&2; return 1; }
+  python3 - "$file" "$id" "$fixed_by" "$(_now)" <<'PY'
+import json, sys
+f, id_s, fixed_by, ts = sys.argv[1:5]
+entries = json.load(open(f))
+try:
+    idx = int(id_s)
+except ValueError:
+    sys.exit("FAIL: --id must be the 1-based number shown by 'temper evidence list'")
+if idx < 1 or idx > len(entries):
+    sys.exit("FAIL: no finding #%s in this stage (it has %d entries)" % (id_s, len(entries)))
+e = entries[idx - 1]
+if not e.get('severity'):
+    sys.exit("FAIL: finding #%s carries no severity, so it never counted against a gate" % id_s)
+if e.get('resolved'):
+    sys.exit("FAIL: finding #%s is already resolved (%s)" % (id_s, e['resolved'].get('fixed_by')))
+e['resolved'] = {'fixed_by': fixed_by, 'ts': ts}
+json.dump(entries, open(f, 'w'), indent=2)
+print("OK: %s finding #%s resolved — %s" % (e.get('severity'), id_s, fixed_by))
+PY
 }
 
 cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--scenario x]
@@ -661,8 +703,9 @@ cmd_evidence() {
     add) cmd_evidence_add "$@" ;;
     run) cmd_evidence_run "$@" ;;
     list) cmd_evidence_list "$@" ;;
+    resolve) cmd_evidence_resolve "$@" ;;
     clear) cmd_evidence_clear "$@" ;;
-    *) echo "FAIL: usage: temper evidence <add|run|list|clear> ..." >&2; return 1 ;;
+    *) echo "FAIL: usage: temper evidence <add|run|list|resolve|clear> ..." >&2; return 1 ;;
   esac
 }
 
@@ -705,10 +748,21 @@ _spec_path() {
 _evidence_file() { echo "$EVIDENCE_DIR/$1.json"; }
 
 _clear_evidence_downstream() { # _clear_evidence_downstream <to> — truncates evidence for
-                                # <to> and every stage after it in STAGE_SEQ_TEMPER to []
+                                # <to> and every gate stage after it in the run's own sequence
   local to="$1" seen=false s
   _ensure_dirs
-  for s in $STAGE_SEQ_TEMPER; do
+  # A /temper:fix run records its RED/GREEN under the `build` gate and has no plan or
+  # design evidence, so its gate sequence is build -> review -> check and a loop back to
+  # `rca` or `fix` must clear from `build`. Walking STAGE_SEQ_TEMPER here cleared nothing
+  # for a fix run, which left a self-fixed review finding inflating the gate for ever
+  # (woningscout #984).
+  local seq="$STAGE_SEQ_TEMPER" command="temper"
+  [[ -f "$STATE_FILE" ]] && command="$(_json_get_path "$STATE_FILE" command temper)"
+  if [[ "$command" == "fix" ]]; then
+    seq="build review check"
+    case "$to" in rca|fix) to="build" ;; esac
+  fi
+  for s in $seq; do
     [[ "$s" == "$to" ]] && seen=true
     [[ "$seen" == "true" ]] && echo '[]' > "$(_evidence_file "$s")"
   done
@@ -759,12 +813,27 @@ _ev_count_severity_in() { # _ev_count_severity_in <stage> <comma-separated sever
   local stage="$1" sev_csv="$2"
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo 0; return; }
+  # A finding marked resolved (temper evidence resolve) stays in the ledger as the record
+  # of what was found and fixed, but no longer counts against the gate (woningscout #984).
   python3 -c "
 import json, sys
 file, sev_csv = sys.argv[1:3]
 sevs = set(s for s in sev_csv.split(',') if s)
 entries = json.load(open(file))
-print(sum(1 for e in entries if e.get('severity') in sevs))
+print(sum(1 for e in entries if e.get('severity') in sevs and not e.get('resolved')))
+" "$file" "$sev_csv"
+}
+
+_ev_count_resolved_in() { # _ev_count_resolved_in <stage> <comma-separated severities>
+  local stage="$1" sev_csv="$2"
+  local file; file="$(_evidence_file "$stage")"
+  [[ -f "$file" ]] || { echo 0; return; }
+  python3 -c "
+import json, sys
+file, sev_csv = sys.argv[1:3]
+sevs = set(s for s in sev_csv.split(',') if s)
+entries = json.load(open(file))
+print(sum(1 for e in entries if e.get('severity') in sevs and e.get('resolved')))
 " "$file" "$sev_csv"
 }
 
@@ -955,11 +1024,14 @@ gate_review() {
   block_on="$(_cfg_get review.block-on critical)"
   sev_csv="$(printf '%s' "$block_on" | tr $'\x1f' ',')"
   local n; n=$(_ev_count_severity_in review "$sev_csv")
+  local resolved; resolved=$(_ev_count_resolved_in review "$sev_csv")
+  local resolved_note=""
+  [[ "$resolved" -gt 0 ]] && resolved_note=", $resolved resolved in this run"
   local all_pass=1 reqs=()
   if [[ "$n" -eq 0 ]]; then
-    reqs+=("$(_req "no blocking findings" 1 "0 open findings at severity [$sev_csv]")")
+    reqs+=("$(_req "no blocking findings" 1 "0 open findings at severity [$sev_csv]$resolved_note")")
   else
-    reqs+=("$(_req "no blocking findings" 0 "$n open finding(s) at severity [$sev_csv]")")
+    reqs+=("$(_req "no blocking findings" 0 "$n open finding(s) at severity [$sev_csv]$resolved_note — fix and 'temper evidence resolve' each, or loop back")")
     all_pass=0
   fi
   local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
@@ -1472,7 +1544,7 @@ temper — the deterministic spine of the Temper plugin
 Usage:
   temper init
   temper state <init|get|set|advance|loop|archive|clear> ...
-  temper evidence <add|run|list|clear> ...
+  temper evidence <add|run|list|resolve|clear> ...
   temper gate <intent|plan|design|build|review|check|commit> [--spec-path P]
   temper model <intent|plan|design|build|review|check|rca|fix> | --all
   temper override <stage> --reason "..."

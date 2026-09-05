@@ -134,6 +134,23 @@ assert_exit "review gate PASSes with no findings" 0 "$TEMPER" gate review
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
 assert_exit "review gate FAILs on an open critical finding" 1 "$TEMPER" gate review
 
+# --- review gate: a finding fixed in this run is resolved, not deleted (woningscout #984) ---
+setup
+"$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
+"$TEMPER" evidence add --stage review --claim "missing null check" --severity high >/dev/null
+assert_exit "evidence resolve needs --stage, --id and --fixed-by" 1 "$TEMPER" evidence resolve --stage review --id 1
+assert_exit "evidence resolve rejects an unknown id" 1 "$TEMPER" evidence resolve --stage review --id 9 --fixed-by abc123
+assert_exit "evidence resolve rejects an unknown stage" 1 "$TEMPER" evidence resolve --stage nope --id 1 --fixed-by abc123
+assert_exit "review gate still FAILs before the finding is resolved" 1 "$TEMPER" gate review
+assert_exit "evidence resolve marks the critical finding fixed" 0 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc123
+assert_exit "evidence resolve refuses to resolve the same finding twice" 1 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc123
+assert_exit "review gate PASSes once the only blocking finding is resolved" 0 "$TEMPER" gate review
+assert_eq "the resolved row is still in the ledger" "2" "$("$TEMPER" evidence list --stage review --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+assert_eq "evidence list shows the id and the resolver" "yes" "$("$TEMPER" evidence list --stage review | grep -q '#1 .*\[resolved: abc123\]' && echo yes || echo no)"
+assert_eq "the gate detail names the resolved count" "yes" "$("$TEMPER" gate review | grep -q '1 resolved in this run' && echo yes || echo no)"
+"$TEMPER" evidence add --stage review --claim "second injection" --severity critical >/dev/null
+assert_exit "a new unresolved critical finding FAILs the gate again" 1 "$TEMPER" gate review
+
 # --- check gate: coverage threshold ---
 setup
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
@@ -188,6 +205,35 @@ assert_exit "state advance accepts a known stage" 0 "$TEMPER" state advance buil
 assert_exit "state loop allows iterations up to max-per-type" 0 "$TEMPER" state loop review build --reason r1
 assert_exit "state loop allows the second iteration" 0 "$TEMPER" state loop review build --reason r2
 assert_exit "state loop blocks the third iteration (max-per-type: 2)" 1 "$TEMPER" state loop review build --reason r3
+
+# --- state loop: a /temper run clears the temper sequence from the target stage down ---
+setup
+"$TEMPER" evidence add --stage plan --claim "plan row" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+"$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+"$TEMPER" state loop review build --reason r1 >/dev/null
+assert_eq "a temper-run loop keeps the plan evidence above the target" "1" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/plan.json"))))')"
+assert_eq "a temper-run loop clears build evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/build.json"))))')"
+assert_eq "a temper-run loop clears review evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/review.json"))))')"
+assert_eq "a temper-run loop clears check evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/check.json"))))')"
+
+# --- state loop: a /temper:fix run clears build, review and check on a loop back to fix (woningscout #984) ---
+setup
+"$TEMPER" state init bug3 --command fix >/dev/null
+"$TEMPER" evidence add --stage build --claim "regression test" --exit 1 --phase red >/dev/null
+"$TEMPER" evidence add --stage build --claim "regression test" --exit 0 --phase green >/dev/null
+"$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+assert_exit "a fix run's review gate FAILs on the open finding" 1 "$TEMPER" gate review
+assert_exit "state loop review fix is accepted in a fix run" 0 "$TEMPER" state loop review fix --reason "fix the injection"
+assert_eq "a fix-run loop clears the build evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/build.json"))))')"
+assert_eq "a fix-run loop clears the review evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/review.json"))))')"
+assert_eq "a fix-run loop clears the check evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/check.json"))))')"
+assert_exit "the review gate can pass again after the loop" 0 "$TEMPER" gate review
+"$TEMPER" evidence add --stage review --claim "kept" --severity critical >/dev/null
+"$TEMPER" state loop check fix --reason "second loop" >/dev/null
+assert_eq "a fix-run loop back to fix from check also clears review" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/review.json"))))')"
 
 # --- state get: bare call dumps the whole state; degrades cleanly on corrupted JSON ---
 setup
@@ -759,7 +805,10 @@ assert_eq "the placeholder Status line is not accepted" "yes" "$(echo "$OUT" | g
 # temper report renders the intent stage (verdict + requirement rows).
 setup
 "$TEMPER" gate intent >/dev/null
-assert_eq "temper report renders the intent row" "yes" "$("$TEMPER" report | grep -q '^intent' && echo yes || echo no)"
+# grep without -q: under `pipefail`, `grep -q` exits on the first match and the report's
+# python still writing gets SIGPIPE, which turned this into a timing-dependent failure
+# on a loaded machine. Reading to EOF makes the pipeline's status grep's own.
+assert_eq "temper report renders the intent row" "yes" "$("$TEMPER" report | grep '^intent' >/dev/null && echo yes || echo no)"
 
 # The commit gate demands an intent verdict exactly when intent.md exists.
 setup

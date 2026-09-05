@@ -3,6 +3,29 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.3.0 — a fixed finding can pass the review gate
+
+What was wrong: `temper gate review` counted every recorded finding at a blocking
+severity, fixed or not. A `/temper:fix` run that found and fixed its own critical
+finding could never go green: the headless playbooks forbid an override, and deleting
+the evidence is forbidden too. On top of that, `state loop` walked only the `/temper`
+stage sequence, so `state loop review fix` cleared nothing, and `commands/fix.md`
+never looped on a review FAIL at all. Reported as woningscout #984, reproduced on
+v7.0.1, v8.0.0 and v9.2.0.
+
+- **`temper evidence resolve --stage <s> --id <n> --fixed-by "<commit or note>"`** marks
+  one recorded finding as fixed in this run. The row stays in the ledger; the gate
+  stops counting it. `evidence list` now prints each row's `#id`, its severity and its
+  resolver, and the review gate's detail names how many findings were resolved.
+- **`state loop` clears the right evidence for a fix run.** With `command: fix` in the
+  state, a loop back to `rca` or `fix` truncates `build`, `review` and `check`; a
+  `/temper` run keeps its previous behaviour.
+- **`commands/fix.md` loops on a review FAIL** the way `commands/temper.md` does:
+  resolve what was fixed, loop back when something remains, override only on a spent
+  budget. `agents/review.md` tells the stage to record then resolve, never to clear.
+- Tests: new CLI assertions in `scripts/tests/test-temper.sh` covering the verb, its
+  refusals, the gate's new counting, and both loop sequences.
+
 ## v9.2.0 — the prompt-audit release
 
 Prompt surface only. No gate, state, or CLI behavior changes; 191 CLI assertions and
