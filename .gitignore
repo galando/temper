@@ -30,6 +30,9 @@ package-lock.json
 # Build outputs (generated during build)
 dist/
 
+# Native `claude plugin eval` suite output (see plugin-evals/README.md)
+plugin-evals/results/
+
 # Python cache (evals/fixtures/*/test runs, etc.)
 __pycache__/
 *.pyc

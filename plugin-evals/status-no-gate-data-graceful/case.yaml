@@ -1,0 +1,16 @@
+schema_version: "1.1"
+name: status-no-gate-data-graceful
+description: >-
+  /temper:status on a project that has never run a Temper stage must print the
+  documented graceful placeholder ("No gate data yet. Run /temper to populate
+  it.") instead of erroring on a missing .temper/gates.json.
+tags: [status, regression]
+runs: 3
+
+execution:
+  max_turns: 10
+  timeout_seconds: 240
+  allowed_tools: [Read, Glob, Grep, Bash]
+
+context:
+  scaffold_script: scaffold.sh

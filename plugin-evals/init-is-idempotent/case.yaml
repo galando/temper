@@ -1,0 +1,16 @@
+schema_version: "1.1"
+name: init-is-idempotent
+description: >-
+  /temper:init on a project that already has .claude/temper.config must never
+  overwrite it, while still re-running the idempotent .temper/ scaffold and
+  commit-gate install steps.
+tags: [init, setup, regression]
+runs: 3
+
+execution:
+  max_turns: 12
+  timeout_seconds: 300
+  allowed_tools: [Read, Glob, Grep, Bash]
+
+context:
+  scaffold_script: scaffold.sh

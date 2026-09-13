@@ -34,7 +34,9 @@ CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/d
 - Layout: `commands/` (slash commands) · `agents/` (stage subprocess briefs) ·
   `reference/` (methodology) · `packs/` (rules) · `scripts/temper` (the deterministic
   spine — gate logic lives HERE, never in a prompt) · `scripts/hooks/` · `evals/`
-  (seeded-defect fixtures).
+  (seeded-defect fixtures) · `plugin-evals/` (native `claude plugin eval` suite —
+  case.yaml/prompt.md + graders, wired via `plugin.json`'s `experimental.evals`; see
+  `plugin-evals/README.md` for how it differs from `evals/`).
 - Known mistakes: a gate-mechanics change is a `scripts/temper` edit + a
   `test-temper.sh` case, not a prompt edit; hooks must fail OPEN except their one
   detected-violation path; never re-add per-stage logic to `commands/temper.md` or

@@ -1,0 +1,16 @@
+schema_version: "1.1"
+name: review-catches-array-bug
+description: >-
+  /temper:review must name the specific off-by-one loop bug in an uncommitted diff
+  (not just narrate a generic review), record it in the evidence ledger, and run
+  the deterministic `temper gate review` check.
+tags: [review, regression, quality]
+runs: 3
+
+execution:
+  max_turns: 25
+  timeout_seconds: 420
+  allowed_tools: [Read, Glob, Grep, Bash]
+
+context:
+  scaffold_script: scaffold.sh

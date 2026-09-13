@@ -39,5 +39,8 @@
     "./skills/source-driven-development",
     "./skills/grill-me",
     "./skills/teach-me"
-  ]
+  ],
+  "experimental": {
+    "evals": "plugin-evals"
+  }
 }
