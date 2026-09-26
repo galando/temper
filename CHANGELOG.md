@@ -3,6 +3,17 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.3.3 — clears the directory's remaining policy holds
+
+Addresses the Claude plugin directory's second validation report. No behaviour change.
+
+- **The website screenshot leaves the plugin tree.** The directory held the plugin for
+  review because repository scripts could reach a bundled image. The GitHub Pages
+  workflow now restores the screenshot from git history at deploy time, so the site
+  still serves it and plugin installs are 2 MB smaller.
+- **`scripts/hooks/verify-stage-gate.sh` has no here-document.** Its block message is
+  printed with `printf`, byte for byte the same text as before.
+
 ## v9.3.2 — directory validation follow-ups
 
 Addresses the Claude plugin directory's validation report. No behaviour change.
