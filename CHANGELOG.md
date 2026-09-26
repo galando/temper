@@ -3,6 +3,22 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.3.1 — ready for the Claude plugin directory
+
+Prepares the plugin for submission to the Claude plugin directory. No behaviour change.
+
+- **README discloses everything the plugin runs and changes**: the two plugin hooks,
+  the files written under `.claude/` and `.temper/`, the git pre-commit hook install
+  (and its backup of an existing hook), the project commands the stages run, the
+  optional `ocr` engine that sends the diff to its configured LLM provider, the opt-in
+  `settings.json` merge, and the maintainer-only `evals/` harness.
+- **`hooks/hooks.json`**: each command now names its script as one full
+  `${CLAUDE_PLUGIN_ROOT}/...` path, and the ignored `matcher` on `UserPromptSubmit` and
+  `Stop` is gone.
+- **`plugin.json`**: adds `displayName`, a listing description, and points
+  `author.url` at the author profile.
+- Removes `docs/assets/logo.png`, an unreferenced 2 MB copy of `docs/temper.png`.
+
 ## v9.3.0 — a fixed finding can pass the review gate
 
 What was wrong: `temper gate review` counted every recorded finding at a blocking

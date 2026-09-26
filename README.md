@@ -98,10 +98,51 @@ append`), the same under GitHub Actions, GitLab, Jenkins, or cron.
 
 ## Trust
 
-Markdown plus ~1,500 lines of auditable shell. No network calls, no telemetry; writes
-stay in your project (`.claude/temper.config`, `.temper/`). The committed artifact
-chain — intent, plan, design, gate ledger, diff — is the audit trail: who asked, what
-was planned, what the gates verified, in the same commits as the code.
+Markdown plus about 1,700 lines of auditable bash, with small inline Python for JSON
+parsing and one read-only helper (`scripts/pack-discover.py`). Temper itself makes no
+network calls, sends no telemetry, and installs no packages. The committed artifact
+chain (intent, plan, design, gate ledger, diff) is the audit trail: who asked, what was
+planned, what the gates verified, in the same commits as the code.
+
+### What Temper runs and changes
+
+Temper's own scripts run locally with `bash`, `git` and `python3`, and write only inside
+your project.
+
+- **Plugin hooks (active on install).** `hooks/hooks.json` registers two hooks.
+  `UserPromptSubmit` runs `scripts/hooks/stage-marker.sh`, which writes
+  `.temper/pending-stage.json` when a prompt starts with `/temper:intent`, `:plan`,
+  `:design`, `:build`, `:review` or `:check`. `Stop` runs
+  `scripts/hooks/verify-stage-gate.sh`, which can ask Claude to keep working (at most
+  twice per stage) until that stage's gate verdict is recorded, and logs each firing to
+  `.temper/hooks.log`. Both do nothing for any other prompt and fail open on errors.
+- **Project files.** `/temper` and `/temper:init` create `.claude/temper.config` (never
+  overwriting an existing one) and the `.temper/` folder: gate ledger, evidence,
+  overrides log, specs and metrics.
+- **Git pre-commit hook.** On first run, `/temper` and `/temper:init` run
+  `scripts/hooks/install.sh`, which writes a `pre-commit` hook into your repository's
+  active hooks folder (`.git/hooks`, or the folder `core.hooksPath` already names). The
+  hook runs a secret scan and `temper gate commit`, and blocks the commit only when a
+  gate is red. Any existing non-Temper `pre-commit` hook is backed up first. Only the
+  optional `install.sh --global` sets `core.hooksPath`, in that repository's config. To
+  remove it, delete the `pre-commit` file the installer names.
+- **Your own toolchain.** Build and check stages run the test, lint, type check and
+  build commands your project already uses (from `.claude/temper.config` or detected
+  from your stack). Temper records their exit codes as gate evidence.
+- **Optional tools you install yourself.** If `ocr`
+  ([open-code-review](docs/recommended-setup.md)) is on your `PATH`, `/temper:review`
+  runs it on the diff under review, and `ocr` sends that diff to the LLM provider you
+  configured for it. Set `tools.ocr.mode: off` in `.claude/temper.config` to skip it.
+  MCP servers you added, such as `code-review-graph` or `semgrep`, are used when
+  present. Temper never installs any of them.
+- **Opt-in only.** `/temper:pack enable hooks` merges the edit-time guardrails in
+  `packs/hooks/settings.hooks.json` into your `settings.json`, and only when you ask.
+  Autonomous continuation runs only when you arm it at the plan gate, and it never
+  commits, pushes or merges.
+- **Maintainer tooling, never run by the plugin.** `evals/` and `scripts/tests/` are
+  this repository's own test harness. `evals/run-*.sh` start `claude` with
+  `--dangerously-skip-permissions` inside a throwaway `mktemp -d` copy; no command,
+  agent, skill or hook invokes them.
 
 ## Documentation
 
