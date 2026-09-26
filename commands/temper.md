@@ -3,7 +3,7 @@ description: "Unified SDLC command: intent → plan → design? → build → re
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v9.3.3)
+# Temper: Unified SDLC Command (v9.3.4)
 
 **Goal:** Run intent → plan → design? → build → review+check → commit with a human gate
 at every stage (or, if armed, unattended past the plan gate). Every gate verdict is
@@ -226,8 +226,8 @@ separate Bash calls, staging first: `git add .temper/specs/{slug}/`, then
 `git commit -m "docs(plan): approve plan — {slug}"`. They must be separate calls, not
 `add && commit`: the in-agent commit-gate hook runs `temper gate commit` at the moment
 the `git commit` call is submitted, and the artifact-only carve-out that lets this
-pass mid-run inspects the *already-staged* set — so the `git add` has to have run in a
-prior call. (Skip both with a one-line note if the project gitignores `.temper/specs/`
+commit through mid-pipeline inspects the *already-staged* set — so the `git add` has to
+have run in a prior call. (Skip both with a one-line note if the project gitignores `.temper/specs/`
 — never `git add -f`.) This gives the diff a committed baseline to be reviewed
 against. Then launch that stage.
 

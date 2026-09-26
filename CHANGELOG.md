@@ -3,6 +3,16 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.3.4 — clears the last directory policy hold
+
+- **`commands/temper.md`**: rewords one sentence about the plan-gate commit ("lets this
+  pass mid-run" is now "lets this commit through mid-pipeline"). The directory's
+  scanner read the old wording as the plugin reading a password during a run. Same
+  instruction, no behaviour change.
+- **`evals/wiring-smoke/WIRING_CHECK.md`** no longer describes `/temper:eval` as a
+  command the wiring smoke test covers; since v8.0.0 it covers `plan` and `build` only,
+  which is what `evals/run-wiring-smoke.sh` already does.
+
 ## v9.3.3 — clears the directory's remaining policy holds
 
 Addresses the Claude plugin directory's second validation report. No behaviour change.
