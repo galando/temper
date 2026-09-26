@@ -41,10 +41,10 @@ _main() {
 
   # One python pass: read marker + gates.json + harness input, decide, update the
   # marker in place. Prints "CLEAR", "OPEN" (fail-open), or "BLOCK <stage>". The
-  # harness JSON travels as argv, NOT piped to stdin — `python3 -` takes its program
-  # from stdin (the heredoc), so anything piped there would be silently discarded.
+  # program is an inline `python3 -c` string (single-quoted, so it must not contain a
+  # single quote) and every input travels as argv, so the hook runs no other file.
   local decision
-  decision=$(python3 - "$marker" "$dir/.temper/gates.json" "$MAX_BLOCKS" "$stdin_json" <<'PY' 2>/dev/null
+  decision=$(python3 -c '
 import json, sys
 marker_path, gates_path, max_blocks = sys.argv[1], sys.argv[2], int(sys.argv[3])
 try:
@@ -63,7 +63,7 @@ try:
 except Exception:
     verdict, verdict_ts = None, ""
 # The verdict must postdate the marker: a verdict left behind by a previous run does
-# not pay this session's debt. ISO-8601 UTC strings compare lexicographically; if
+# not pay the debt of this session. ISO-8601 UTC strings compare lexicographically; if
 # either timestamp is missing (old marker format, hand-edited gates.json), degrade to
 # the weaker any-verdict check rather than blocking on unknowable state.
 if verdict and (not since or not verdict_ts or verdict_ts >= since):
@@ -72,13 +72,12 @@ if blocks >= max_blocks:
     print("OPEN"); sys.exit(0)
 if hook_input.get("stop_hook_active") and blocks == 0:
     # The harness says a stop hook is already re-blocking this session, yet our own
-    # counter never moved — the marker isn't persisting. Don't loop on a broken counter.
+    # counter never moved, so the marker is not persisting. Do not loop on a broken counter.
     print("OPEN"); sys.exit(0)
 m["blocks"] = blocks + 1
 json.dump(m, open(marker_path, "w"))
 print(f"BLOCK {stage}")
-PY
-  ) || decision="OPEN"
+' "$marker" "$dir/.temper/gates.json" "$MAX_BLOCKS" "$stdin_json" 2>/dev/null) || decision="OPEN"
 
   case "$decision" in
     CLEAR)
@@ -95,7 +94,8 @@ no verdict exists in .temper/gates.json and 'temper gate commit' cannot see that
 stage happened. Before finishing: record the stage's evidence as agents/$stage.md
 specifies (e.g. 'temper state set complexity <tier>' for plan, 'temper evidence add'
 for build/review/check), then run:
-  \$CLAUDE_PLUGIN_ROOT/scripts/temper gate $stage --spec-path .temper/specs/<feature-slug>
+  temper gate $stage --spec-path .temper/specs/<feature-slug>
+(the temper CLI in this plugin's scripts/ folder).
 A FAIL verdict is fine to finish on if the user chose to stop — the requirement is that
 the gate ran, not that it passed.
 EOF

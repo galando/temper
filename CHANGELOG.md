@@ -3,6 +3,18 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.3.2 — directory validation follow-ups
+
+Addresses the Claude plugin directory's validation report. No behaviour change.
+
+- **Plugin icon**: adds `.claude-plugin/icon.svg` (256 px, the website's colours).
+- **`scripts/hooks/verify-stage-gate.sh` is readable end to end by the validator.** Its
+  Python decision step is now an inline `python3 -c` string with every input passed as
+  argv, the same form `stage-marker.sh` uses, instead of a program fed on stdin. The
+  block message no longer spells out a path to another plugin file. Blocking, the
+  two-block budget, fail-open and clearing behave exactly as before
+  (`scripts/tests/test-temper.sh` unchanged and passing).
+
 ## v9.3.1 — ready for the Claude plugin directory
 
 Prepares the plugin for submission to the Claude plugin directory. No behaviour change.
@@ -17,7 +29,7 @@ Prepares the plugin for submission to the Claude plugin directory. No behaviour 
   `Stop` is gone.
 - **`plugin.json`**: adds `displayName`, a listing description, and points
   `author.url` at the author profile.
-- Removes `docs/assets/logo.png`, an unreferenced 2 MB copy of `docs/temper.png`.
+- Removes an unreferenced 2 MB duplicate of the website screenshot.
 
 ## v9.3.0 — a fixed finding can pass the review gate
 
