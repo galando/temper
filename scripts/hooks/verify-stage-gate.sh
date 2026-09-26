@@ -88,17 +88,16 @@ print(f"BLOCK {stage}")
     BLOCK*)
       local stage="${decision#BLOCK }"
       _log "$dir" "blocked stop (stage=$stage, no verdict)"
-      cat >&2 <<EOF
-temper: this session ran /temper:$stage but 'temper gate $stage' was never invoked, so
-no verdict exists in .temper/gates.json and 'temper gate commit' cannot see that the
-stage happened. Before finishing: record the stage's evidence as agents/$stage.md
-specifies (e.g. 'temper state set complexity <tier>' for plan, 'temper evidence add'
-for build/review/check), then run:
-  temper gate $stage --spec-path .temper/specs/<feature-slug>
-(the temper CLI in this plugin's scripts/ folder).
-A FAIL verdict is fine to finish on if the user chose to stop — the requirement is that
-the gate ran, not that it passed.
-EOF
+      printf '%s\n' >&2 \
+        "temper: this session ran /temper:$stage but 'temper gate $stage' was never invoked, so" \
+        "no verdict exists in .temper/gates.json and 'temper gate commit' cannot see that the" \
+        "stage happened. Before finishing: record the stage's evidence as agents/$stage.md" \
+        "specifies (e.g. 'temper state set complexity <tier>' for plan, 'temper evidence add'" \
+        "for build/review/check), then run:" \
+        "  temper gate $stage --spec-path .temper/specs/<feature-slug>" \
+        "(the temper CLI in this plugin's scripts/ folder)." \
+        "A FAIL verdict is fine to finish on if the user chose to stop — the requirement is that" \
+        "the gate ran, not that it passed."
       return 2
       ;;
     *)
