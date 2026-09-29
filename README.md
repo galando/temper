@@ -1,5 +1,3 @@
-<div align="center">
-
 # Temper
 
 **Your AI writes fast. Temper makes it last.**
@@ -8,11 +6,8 @@
 
 [![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases)](https://github.com/galando/temper/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Eval Fixtures](https://github.com/galando/temper/actions/workflows/eval-fixtures.yml/badge.svg)](https://github.com/galando/temper/actions/workflows/eval-fixtures.yml)
 
 [Website](https://galando.github.io/temper) · [Getting Started](docs/getting-started.md) · [Releases](https://github.com/galando/temper/releases)
-
-</div>
 
 ## Install
 
@@ -53,10 +48,6 @@ INTENT → PLAN → DESIGN? → BUILD → REVIEW → CHECK → COMMIT
 - **The loop closes itself** — `temper bands` watches metric history with control
   bands (pure arithmetic, no model); a breach is drafted as the next intent and rides
   the same pipeline. Fixes write a committed `lessons.md` every future RCA reads first.
-
-Proof it catches real bugs: three seeded-defect fixtures run through the live pipeline
-in CI and must *mechanically FAIL naming the defect* — [evals/README.md](evals/README.md),
-[evidence gallery](docs/evidence/).
 
 ## Commands
 
@@ -139,10 +130,9 @@ your project.
   `packs/hooks/settings.hooks.json` into your `settings.json`, and only when you ask.
   Autonomous continuation runs only when you arm it at the plan gate, and it never
   commits, pushes or merges.
-- **Maintainer tooling, never run by the plugin.** `evals/` and `scripts/tests/` are
-  this repository's own test harness. `evals/run-*.sh` start `claude` with
-  `--dangerously-skip-permissions` inside a throwaway `mktemp -d` copy; no command,
-  agent, skill or hook invokes them.
+- **Maintainer tooling, never run by the plugin.** `scripts/tests/` and other harness
+  directories in this repository are the project's own test tooling; no command,
+  agent, skill or hook invokes them on install.
 
 ## Documentation
 

@@ -1,5 +1,7 @@
 ---
+name: source-driven-development
 description: "Version-aware, source-driven development — fetch official docs before writing framework code"
+user-invocable: false
 ---
 
 # Source-Driven Development

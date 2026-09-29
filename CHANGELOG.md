@@ -3,6 +3,22 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.3.5 — directory listing cleanups
+
+No behaviour change to gates, commands, or agents.
+
+- **README**: drops the raw HTML `<div align="center">` hero wrapper — the plugin
+  directory strips HTML, so it rendered as literal text. The header and badge row
+  are now plain markdown (badges kept: Version, License). Removes the eval-fixtures
+  badge and other `evals/` references
+  from the README (the directory and its CI workflow stay — they're maintainer
+  tooling, not part of the plugin surface).
+- **Skills**: `temper-core`, `context-engineering`, and
+  `source-driven-development` are model-invoked during stages, not user commands —
+  they now declare `user-invocable: false` so they don't present as slash commands.
+  `grill-me` and `teach-me` remain user-facing (offered at the plan gate), and
+  `grill-me` now credits Matt's original skill (AI Hero).
+
 ## v9.3.4 — clears the last directory policy hold
 
 - **`commands/temper.md`**: rewords one sentence about the plan-gate commit ("lets this

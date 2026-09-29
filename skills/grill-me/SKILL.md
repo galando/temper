@@ -7,6 +7,8 @@ description: "Socratic challenge mode — stress-test plans and designs with adv
 
 Interview the user relentlessly about a plan or design until reaching shared understanding. Walk down each branch of the decision tree, resolving dependencies between decisions one-by-one.
 
+> **Credit:** adapted from Matt's [Grill Me skill](https://www.aihero.dev/skills-grill-me) (AI Hero), with thanks.
+
 **This is NOT the walkthrough.** The walkthrough *explains* the plan. Grill Me *challenges* it.
 
 | Property | Walkthrough | Grill Me |
