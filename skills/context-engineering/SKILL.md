@@ -1,5 +1,7 @@
 ---
+name: context-engineering
 description: "Hierarchical context loading for AI coding agents — load what you need, defer what you don't"
+user-invocable: false
 ---
 
 # Context Engineering
