@@ -22,20 +22,27 @@ carries over except the bug description in your launch prompt.
    Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate and persists `rca.md` on Continue.
 
-Return only: this summary box (the orchestrator prints it verbatim), plus — for
+**Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
+the right border) and nothing outside it. Fact rows at the top, then titled sections
+(`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
+more"; omit an empty section including its divider — never a row saying "none"; wrap
+a long entry onto a continuation row indented two spaces.
+
+Return only: this panel (the orchestrator prints it verbatim), plus — for
 `rca.md` — the root cause (specific line, condition, why), confidence (HIGH/MEDIUM/LOW),
 suggested minimal fix + fix location (`file:line`), the scenario the regression test
 should exercise, the blast radius (other code with the same vulnerability), and the
 related files to read before fixing:
 
 ```
-+-----------------------------------------------------------+
-| RCA — {Bug Title}                                         |
-+-----------------------------------------------------------+
-| CAUSE: {which line, which condition, why}                  |
-| AT: {file:line}   CONFIDENCE: {H/M/L}   SINCE: {commit}    |
-| CHAIN: {entry point} -> {intermediate} -> {failing fn}     |
-| BLAST RADIUS: {impact}; same bug in {locations or none}    |
-| FIX: {1-2 sentence minimal fix}   TEST: {scenario}         |
-+-----------------------------------------------------------+
++--------------------------------------------------------------------------+
+| RCA — {Bug Title}                                                        |
++--------------------------------------------------------------------------+
+| CAUSE: {which line, which condition, why}                                |
+| AT: {file:line}   CONFIDENCE: {H/M/L}   SINCE: {commit}                  |
+| CHAIN: {entry point} -> {intermediate} -> {failing fn}                   |
+| FIX: {1-2 sentence minimal fix}   TEST: {scenario}                       |
++--- BLAST RADIUS (N) ---+-------------------------------------------------+
+| {file or call site with the same vulnerability}                          |
++--------------------------------------------------------------------------+
 ```

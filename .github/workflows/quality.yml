@@ -47,6 +47,14 @@ jobs:
       - name: Run validate-plugin.sh
         run: bash scripts/validate-plugin.sh
 
+  validate-panels:
+    name: Stage Panel Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run validate-panels.py
+        run: python3 scripts/validate-panels.py
+
   validate-manifest:
     name: Official Manifest Validation
     runs-on: ubuntu-latest

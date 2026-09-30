@@ -64,6 +64,22 @@ PRECOMMIT="$TARGET_DIR/pre-commit"
 # else — husky, lefthook, or a hand-rolled hook — is backed up first so the
 # user's prior setup is recoverable, not lost.
 TEMPER_MARKER="installed by scripts/hooks/install.sh"
+# Stale-path detection: a Temper hook carries the plugin path embedded at ITS
+# install time. A plugin upgrade moves that directory, and the hook's
+# `[[ -d ... ]] || exit 0` guard then fails open SILENTLY — every commit gate
+# check becomes a no-op with no signal. Detect the mismatch and report it; the
+# heredoc below always re-embeds the CURRENT path, so re-running this installer
+# is the repair.
+if [[ -f "$PRECOMMIT" ]] && grep -qF "$TEMPER_MARKER" "$PRECOMMIT" 2>/dev/null; then
+  EMBEDDED_PATH="$(sed -n 's/^TEMPER_HOOKS_DIR="\${TEMPER_HOOKS_DIR:-\(.*\)}"$/\1/p' "$PRECOMMIT" 2>/dev/null || true)"
+  if [[ -n "$EMBEDDED_PATH" && "$EMBEDDED_PATH" != "$HOOKS_DIR" ]]; then
+    echo "Warning: installed pre-commit hook points at a stale plugin path:" >&2
+    echo "  embedded: $EMBEDDED_PATH" >&2
+    echo "  current:  $HOOKS_DIR" >&2
+    echo "  (The hook has been failing open — its gate checks were no-ops.)" >&2
+    echo "  Re-embedding the current path now." >&2
+  fi
+fi
 if [[ -f "$PRECOMMIT" ]] && ! grep -qF "$TEMPER_MARKER" "$PRECOMMIT" 2>/dev/null; then
   BACKUP="$PRECOMMIT.bak.$(date +%Y%m%d%H%M%S 2>/dev/null || echo backup)"
   cp -p "$PRECOMMIT" "$BACKUP"

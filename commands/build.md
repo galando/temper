@@ -27,14 +27,17 @@ either way.
 
 1. Load plan from `.temper/specs/{feature}/tasks.md`
 2. Verify feature branch (create if on main)
-3. For each task: test from intent.md scenario (RED) → implement (GREEN) → validate
-4. Scenario coverage gate: every intent.md scenario must have a passing test
-5. Success criteria gate: code-validated criteria must be present (WARN only)
-6. **Resumes interrupted builds from checkpoint**
-7. After all tasks: run `temper gate build --spec-path .temper/specs/{feature-slug}` —
+3. For each task: cross-repo code search first when a search tool is connected (definitions, prior art; record `"code_search"` in build-context.json — `{"tool": "{name}", "queries": N}` or `{"available": false, "reason": "{why}"}`), then test from intent.md scenario (RED) → implement (GREEN) → validate
+4. Commit per GREEN scenario: `git add {paths touched}` then a SEPARATE
+   `git commit -m "feat({slug}): {scenario} [AC-NN]"` — never `git add -A`, never
+   `--no-verify`; an infrastructure-only task makes no commit
+5. Scenario coverage gate: every intent.md scenario must have a passing test
+6. Success criteria gate: code-validated criteria must be present (WARN only)
+7. **Resumes interrupted builds from checkpoint** (disk state in tasks.md is the source of truth; with a `Checkpoint: task {N}` launch, answer every pending feedback item via `--phase feedback-resolved` first, then run only task N)
+8. After all tasks: run `temper gate build --spec-path .temper/specs/{feature-slug}` —
    see **Deterministic Gate** below
-8. Auto-chain → /temper:review → /temper:check
-9. Report results, ask to commit
+9. Auto-chain → /temper:review → /temper:check
+10. Report results, ask to commit
 
 ### Active Skills
 

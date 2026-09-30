@@ -28,22 +28,39 @@ presents for acceptance.
 ## Execution
 
 1. **Understand the problem, not the solution.** Read `$ARGUMENTS` (detect
-   Jira/GitHub/free-text the same way `/temper:plan` Phase 0 does). Then ask what an
-   analyst would ask — scope, who is affected, what better looks like, what is out of
-   scope — via `AskUserQuestion`, max 2-3 concrete rounds. No formal language is
-   required of the originator; producing structure is your job, not theirs.
+   Jira/GitHub/free-text the same way `/temper:plan` Phase 0 does). Fetch every
+   source the request links (ticket, MR/PR, doc) read-only and record each under
+   `### Context Sources` (`consulted:` / `unavailable:` / `none:`). Then interview
+   with the full question bank — current vs desired behavior, scope and non-goals,
+   acceptance, post-release outcome, blocking vs deferred decisions — and always ask
+   **who reviews the intent** (the `**Reviewer:**` header: a name, not a role). Two
+   probes are mandatory: *"what business outcome or risk does each criterion
+   address?"* (the `Why:` line) and *"who acts on the result, and what happens
+   next?"* (the Target Users action chain). Ask only where the uncertainty changes
+   the outcome — no fixed round count, one question at a time, via
+   `AskUserQuestion`. No formal language is required of the originator; producing
+   structure is your job, not theirs. Write every answer into `### Decisions`
+   immediately, as `{question} -> {answer} ({who decided}, {date})`. **Never write
+   card data or personal data into the intent** — reference the ticket instead.
+   When a ticket key is linked, prefix the slug with it (`{KEY}-{slug}`).
 
 2. **Write the draft** to `.temper/specs/{slug}/intent.md` using
    `$CLAUDE_PLUGIN_ROOT/templates/intent.md`:
    - Header: `**Author:**` (from `git config user.name` / `user.email`),
-     `**Status:** draft`, `**Created:**`, `**Ticket:**` if one was given.
-   - Fill **Problem**, **Success Criteria** (measurable, each with a `Validate:`
-     type), **Constraints**, **Target Users**, and **Open Questions** (every
-     unresolved point from step 1 — carrying a question forward honestly beats
-     resolving it by guess).
+     `**Status:** draft`, `**Created:**`, `**Ticket:**` if one was given,
+     `**Reviewer:**` (from step 1), `**Complexity:**` (a first guess).
+   - Fill **Problem** (who is affected, current → desired with one concrete example,
+     facts separated from assumptions), **Success Criteria** (stable `AC-NN` ids,
+     each `[required]`/`[optional]`, each with `Why:` and `Validate:` lines),
+     **Constraints** (each `(source: …)` or `(proposed)`), **Scope and Non-goals**,
+     **Target Users** (action chains `{user}: {what} → {what next}`), and **Open
+     Questions** (each labeled `Blocking:` or `Deferred:` — carrying a question
+     forward honestly beats resolving it by guess).
    - **Do not write Scenarios or pick an architecture.** BDD scenarios are derived
      from the measured blast radius at Plan time (`reference/plan.md`), not at
-     capture time. Leave the Scenarios section as the template's placeholder.
+     capture time. Leave `## Scenarios (BDD)` empty — never a placeholder
+     `Scenario:` block: the check gate demands a passing test for every
+     `Scenario:` line and cannot tell a placeholder from a real one.
 
 3. **Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate intent --spec-path
    .temper/specs/{slug}`** and fix any FAIL (empty/placeholder Problem, no real
@@ -76,7 +93,7 @@ presents for acceptance.
 |---|---|---|
 | `draft` | this command (or a bands-breach draft via `/temper:status`) | captured, awaiting review |
 | `accepted` | the Intent gate's human "Continue" (`/temper`'s Stage 0; the plan gate in standalone `/temper:plan`) | a person accepted it into build |
-| `completed` | the commit step | shipped |
+| `completed` | the commit step | implemented — the change is committed, not necessarily released |
 
 No stage advances on a draft without a human accepting it — same rule as every other
 temper gate.

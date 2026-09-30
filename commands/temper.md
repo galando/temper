@@ -3,7 +3,7 @@ description: "Unified SDLC command: intent → plan → design? → build → re
 argument-hint: "<feature-description>"
 ---
 
-# Temper: Unified SDLC Command (v9.3.5)
+# Temper: Unified SDLC Command
 
 **Goal:** Run intent → plan → design? → build → review+check → commit with a human gate
 at every stage (or, if armed, unattended past the plan gate). Every gate verdict is
@@ -68,10 +68,13 @@ in place:
 1. **Config** — if `.claude/temper.config` is absent, copy the default template.
 2. **Scaffold** — run `$CLAUDE_PLUGIN_ROOT/scripts/temper init` (idempotent).
 3. **Commit gate** — this is the headline guarantee, and the easiest to leave missing.
-   If it isn't installed yet — no `pre-commit` hook carrying the marker
+   Install it when it isn't installed yet — no `pre-commit` hook carrying the marker
    `installed by scripts/hooks/install.sh` in the active hooks dir (`git config
-   core.hooksPath` if set, else `.git/hooks`) — run
-   `bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh`. Not a git repo yet → say so in
+   core.hooksPath` if set, else `.git/hooks`) — **or when it is stale**: a plugin
+   upgrade moves the plugin directory, and a hook whose embedded `TEMPER_HOOKS_DIR`
+   no longer points at the current `$CLAUDE_PLUGIN_ROOT/scripts/hooks` fails open
+   silently. Either way, run `bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh`
+   (it reports and re-embeds the current path). Not a git repo yet → say so in
    one line and continue (config + scaffold still done); the gate installs on the next
    run after `git init`.
 
@@ -88,8 +91,12 @@ for more than one `$TEMPER` invocation in a row (state/evidence calls only, neve
 batch them into a single Bash tool call, one shell command per line — they're sequential
 anyway, and it's one round-trip instead of several.
 
-- **Start:** `$TEMPER state init {slug} --command temper` (creates it, `stage: started`,
-  branch `feature/{slug}`).
+- **Start:** before `state init`, look for a matching committed draft: if a
+  `.temper/specs/*/intent.md` already exists for this feature, reuse that spec's slug
+  in place of a new one — the Intent stage then refines the committed draft in place
+  rather than creating a sibling. Carry the draft's `**Ticket:**` header forward on
+  pickup. Then `$TEMPER state init {slug} --command temper` (creates it, `stage:
+  started`, branch `feature/{slug}`).
 - **Advance:** after each gate's "Continue", `$TEMPER state advance {stage}_complete {next}`.
 - **Resume:** if `.temper/build-state.json` exists, read `$TEMPER state get spec_path`
   and `$TEMPER state get stage` to find where you left off. If it exists for a
@@ -259,21 +266,46 @@ decision log; only sections `design.md` actually has) / Save / Other.
 
 ---
 
-## Stage 2: Build
+## Stage 2: Build (one task per checkpoint)
 
-Launch:
+Build runs **one task per launch**, gated at every checkpoint — nobody (human or
+autonomy loop) should have to wait until all the work is done to redirect it.
 
-```
-Use the Agent tool, model: {build}, prompt:
-"Follow $CLAUDE_PLUGIN_ROOT/agents/build.md exactly. Spec: {spec_path from state}.
-{If a review-context.json or check-context.json feedback file exists, name it here.}"
-```
+1. Before the first Build launch, record the diff baseline:
+   `$TEMPER state set base_sha "$(git rev-parse HEAD)"`. Checkpoint commits land
+   during Build, so every later reader of "changed files" diffs against this sha,
+   not HEAD.
+2. Loop from the **next unchecked `- [ ]` task in `tasks.md`** (disk is the source
+   of truth for resume — an interrupted run picks up exactly where tasks.md says).
+   Launch:
 
-Gate: `$TEMPER gate build` (RED-then-GREEN evidence recorded, no unchecked tasks).
-Options: Continue to Review / Teach Me / "Loop back to Plan" (only if Build judges the
-plan infeasible — human-driven, no circuit breaker, max 1 per run) / Override / Save.
-
-**On Continue:** `$TEMPER state advance build_complete review`, launch Stage 3.
+   ```
+   Use the Agent tool, model: {build}, prompt:
+   "Follow $CLAUDE_PLUGIN_ROOT/agents/build.md exactly. Spec: {spec_path from state}.
+   Checkpoint: task {N}.
+   {One "Checkpoint feedback #{K}: {text}" line per pending feedback item.}
+   {If a review-context.json or check-context.json feedback file exists, name it here.}"
+   ```
+3. Print the returned panel verbatim.
+4. Gate with `AskUserQuestion`:
+   - **"Continue (Recommended)"** — on a non-last task, go to step 2 for the next
+     task. On the last task, this becomes the normal Build completion gate below.
+   - **"Change"** — never approval. Record
+     `$TEMPER evidence add --stage build --phase feedback --claim "feedback #{K}: {text}"`
+     for each item the user typed, then relaunch **the same task** with the feedback
+     lines added to its prompt.
+   - **"Stop"** — run `$TEMPER gate build`, then save for later.
+5. **On the last task's Continue** (the normal completion gate): `$TEMPER gate build`
+   (RED-then-GREEN evidence recorded, no unchecked tasks, all feedback answered).
+   Options (four max; Override and corrections arrive via "Other"): Continue to
+   Review / Teach Me / "Loop back to Plan" (only if Build judges the plan
+   infeasible — human-driven, no circuit breaker, max 1 per run) / Save.
+   **On Continue:** `$TEMPER state advance build_complete review`, launch
+   Stage 3.
+6. **Autonomy enabled:** the panel still prints and the per-scenario checkpoint
+   commits still happen, but Continue is auto-selected at every checkpoint — Change
+   and Stop stay interactive-only. The autonomy blast-radius check in
+   `gate commit` uses `base_sha`-relative diffs plus still-uncommitted paths.
 
 ---
 
@@ -305,8 +337,8 @@ Use the Agent tool, model: {check}, prompt:
 ```
 
 Gate: `$TEMPER gate check` (tests pass, coverage >= threshold, every `intent.md` scenario
-traced to a test by name — this is the gate that catches the README's rate-limiting
-story). On a clean pass, Check may also have written `{spec_path}/config-suggestions.json`
+traced to a test by name — the requirement that catches a scenario Build never
+implemented). On a clean pass, Check may also have written `{spec_path}/config-suggestions.json`
 — if present, offer a **"Review config suggestions"** option before Continue: show each,
 Accept (write it into CLAUDE.md/AGENTS.md) / Reject / Defer, then re-show the gate.
 

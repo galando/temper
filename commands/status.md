@@ -41,7 +41,7 @@ GATE LEDGER
 **Graceful absence:** if `.temper/gates.json` does not exist, print `"No gate data yet.
 Run /temper to populate it."` Do not error.
 
-### Feedback Loops Section (v4.0.0)
+### Feedback Loops Section
 
 If `.temper/feedback-loops.json` exists and `feedback.enabled: true` in temper.config, show:
 

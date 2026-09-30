@@ -2,7 +2,7 @@
   "name": "temper",
   "displayName": "Temper",
   "description": "Intent-gated SDLC for AI-generated code: blast radius planning, TDD, confidence-scored review, and quality gates computed by an auditable CLI that blocks git commit while a gate is red.",
-  "version": "9.3.5",
+  "version": "9.4.0",
   "author": {
     "name": "galando",
     "url": "https://github.com/galando"

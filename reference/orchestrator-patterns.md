@@ -89,7 +89,7 @@ later?" (changes via "Other"). Never silently proceed to the next stage.
 | Transition | Context loaded | Size |
 |---|---|---|
 | Stage N → N+1 (plan→build) | spec artifacts + related files | ~5-15KB |
-| Build → Review/Check | changed files (`git diff`) | ~20-50KB |
+| Build → Review/Check | changed files (`git diff` vs `base_sha` when recorded, + uncommitted paths) | ~20-50KB |
 | Check/Fix → Commit | nothing (direct, no subprocess) | 0KB |
 
 `/temper:fix` uses `fix/{bug-slug}` branches, `rca.md` in place of `intent.md`/`plan.md`.

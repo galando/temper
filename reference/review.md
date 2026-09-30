@@ -17,7 +17,11 @@ definitions.
 **Modes:** Standalone (`/temper:review`) owns its human gate. Agent subprocess (from
 `/temper`, or from a standalone command running with `stages.subprocess: true`) starts
 clean and never shows an `AskUserQuestion` — return the summary, the caller owns the
-gate. Load: `git diff --name-only`, `{spec}/intent.md` (if it exists),
+gate. Load the changed files — when `temper state get base_sha` returns a sha
+(checkpoint commits already landed, so a plain `git diff --name-only` returns
+nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
+(`git status --porcelain`); otherwise fall back to `git diff --name-only` — plus
+`{spec}/intent.md` (if it exists),
 `build-context.json` (if it exists).
 
 ## Step 1: Gather Context

@@ -30,19 +30,20 @@ evidence; the human gate stays in this context either way.
 
 1. Detect input (Jira/GitHub/description)
 2. Explore with your own tools (a nested Explore subagent is a judgment call for large repos, not a mandatory step)
-3. Research external docs if needed
-4. Assess complexity + risk (trivial/simple/medium/complex)
-5. Blast radius analysis, measured not estimated (consumers, contracts, security hot paths)
-6. Derive BDD scenarios from the blast radius (medium+ complexity) — **before architecture**
-7. Clarify if ambiguous (max 2-3 questions, informed by scenarios)
-8. Generate exactly `intent.md` + `tasks.md` + `plan.md` — never a fourth file — to `.temper/specs/{feature}/` with file-to-scenario traceability
-9. For Medium and Complex: generate mermaid diagram + ASCII art equivalent in plan.md (## Diagram section); render ASCII in terminal summary (not raw mermaid)
-10. Record `temper state set complexity <tier>`, then run BOTH gates with an explicit
+3. Re-read every `- consulted:` source the intent's `### Context Sources` records; treat every `- unavailable:` line as an explicit gap — do not re-derive context Intent already gathered
+4. Cross-repo code search when a cross-repo search tool is connected (e.g. Sourcegraph MCP): blast radius outside this repo, prior art, definitions. None connected or `tools.mode: heuristic-only` → local tools. Record under `## Cross-Repo Search` in plan.md (`- used: {tool} — {query} → {finding}` / `- not available: {reason}`)
+5. Assess complexity + risk (trivial/simple/medium/complex)
+6. Blast radius analysis, measured not estimated (consumers, contracts, security hot paths; cross-repo rows carry `[CROSS-REPO]` + repo name)
+7. Derive BDD scenarios from the blast radius (medium+ complexity) — **before architecture**. Each scenario is ONE fenced ```gherkin block holding the `Scenario:` line, Given/When/Then, `Note:` (unit|integration|mock|manual) and `Covers: AC-01, AC-02`; grouped under `#### Happy Path` / `#### Error Paths` / `#### Edge Cases`, empty groups omitted
+8. Clarify if ambiguous (only where the uncertainty changes the outcome, informed by scenarios)
+9. Generate exactly `intent.md` + `tasks.md` + `plan.md` — never a fourth file — to `.temper/specs/{feature}/` with file-to-scenario traceability
+10. For Medium and Complex: generate mermaid diagram + ASCII art equivalent in plan.md (## Diagram section); render ASCII in terminal summary (not raw mermaid)
+11. Record `temper state set complexity <tier>`, then run BOTH gates with an explicit
     spec path and fix any FAIL — see **Deterministic Gate** below:
     `temper gate intent --spec-path .temper/specs/{feature-slug}` (whenever intent.md
     exists — authored here or picked up as a draft) and
     `temper gate plan --spec-path .temper/specs/{feature-slug}`
-11. Present for approval with 4 options: Continue / Walkthrough / Change / Save
+12. Present for approval with 4 options: Continue / Walkthrough / Change / Save
 
 ### Active Skills
 

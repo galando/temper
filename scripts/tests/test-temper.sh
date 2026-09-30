@@ -64,17 +64,62 @@ autonomy:
     max-stages: 12
 EOF
   cat > .temper/specs/demo/intent.md <<'EOF'
-**Status:** draft
+**Author:** Demo Author <demo@example.com>
+**Status:** accepted
+**Created:** 2026-01-01
+**Reviewer:** Demo Reviewer <rev@example.com>
+**Complexity:** simple
 
 ## Problem
 Users cannot do the demo thing today.
 
-## Success Criteria
-- one
-- two
+### Success Criteria
+- [ ] AC-01 [required]: demo criterion one
+  Why: keeps the demo flow honest
+  Validate: scenario — traced to a test below
+- [ ] AC-02 [required]: demo criterion two
+  Why: second criterion for scenario parity
+  Validate: scenario — traced to a test below
 
+### Constraints
+- keep the demo self-contained (proposed)
+
+### Scope and Non-goals
+- In scope: the demo
+- Out of scope: production behavior
+- Must keep working: the existing suite
+
+### Target Users
+- developer: runs the demo → sees the output
+
+### Open Questions
+
+### Decisions
+
+## Scenarios (BDD)
+#### Happy Path
+```gherkin
 Scenario: first
+  Given a demo
+  When it runs
+  Then it works
+  Note: unit
+  Covers: AC-01
+```
+```gherkin
 Scenario: second
+  Given a demo
+  When it runs again
+  Then it still works
+  Note: unit
+  Covers: AC-02
+```
+
+## Scenario Coverage Checklist
+
+## Source Traceability
+### Context Sources
+- none: description only — nothing linked
 EOF
   cat > .temper/specs/demo/tasks.md <<'EOF'
 - [x] done task
@@ -115,6 +160,9 @@ assert_exit "plan gate FAILs: medium complexity needs a Blast Radius section" 1 
 cat > .temper/specs/demo/plan.md <<'EOF'
 ## Blast Radius
 - no external consumers
+
+## Cross-Repo Search
+- not available: no cross-repo search tool connected
 EOF
 assert_exit "plan gate PASSes once plan.md has a Blast Radius section" 0 "$TEMPER" gate plan
 
@@ -130,6 +178,7 @@ assert_exit "build gate PASSes on RED then GREEN + no unchecked tasks" 0 "$TEMPE
 
 # --- review gate: block-on severity ---
 setup
+"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 assert_exit "review gate PASSes with no findings" 0 "$TEMPER" gate review
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
 assert_exit "review gate FAILs on an open critical finding" 1 "$TEMPER" gate review
@@ -144,8 +193,9 @@ assert_exit "evidence resolve rejects an unknown stage" 1 "$TEMPER" evidence res
 assert_exit "review gate still FAILs before the finding is resolved" 1 "$TEMPER" gate review
 assert_exit "evidence resolve marks the critical finding fixed" 0 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc123
 assert_exit "evidence resolve refuses to resolve the same finding twice" 1 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc123
+"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 assert_exit "review gate PASSes once the only blocking finding is resolved" 0 "$TEMPER" gate review
-assert_eq "the resolved row is still in the ledger" "2" "$("$TEMPER" evidence list --stage review --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+assert_eq "the resolved row is still in the ledger" "3" "$("$TEMPER" evidence list --stage review --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
 assert_eq "evidence list shows the id and the resolver" "yes" "$("$TEMPER" evidence list --stage review | grep -q '#1 .*\[resolved: abc123\]' && echo yes || echo no)"
 assert_eq "the gate detail names the resolved count" "yes" "$("$TEMPER" gate review | grep -q '1 resolved in this run' && echo yes || echo no)"
 "$TEMPER" evidence add --stage review --claim "second injection" --severity critical >/dev/null
@@ -155,8 +205,8 @@ assert_exit "a new unresolved critical finding FAILs the gate again" 1 "$TEMPER"
 setup
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 60 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
 assert_exit "check gate FAILs below coverage threshold (60 < 80)" 1 "$TEMPER" gate check
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 assert_exit "check gate PASSes above coverage threshold (90 >= 80)" 0 "$TEMPER" gate check
@@ -165,9 +215,9 @@ assert_exit "check gate PASSes above coverage threshold (90 >= 80)" 0 "$TEMPER" 
 setup
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 assert_exit "check gate FAILs when a scenario has no traced test (1/2 covered)" 1 "$TEMPER" gate check
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
 assert_exit "check gate PASSes once every scenario is traced (2/2 covered)" 0 "$TEMPER" gate check
 
 # --- evidence: PROVEN downgrade on missing artifact ---
@@ -182,11 +232,12 @@ setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
 "$TEMPER" gate build >/dev/null
+"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 "$TEMPER" gate review >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
 "$TEMPER" gate check >/dev/null
 assert_exit "commit gate PASSes once every upstream gate is green" 0 "$TEMPER" gate commit
 
@@ -230,6 +281,7 @@ assert_exit "state loop review fix is accepted in a fix run" 0 "$TEMPER" state l
 assert_eq "a fix-run loop clears the build evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/build.json"))))')"
 assert_eq "a fix-run loop clears the review evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/review.json"))))')"
 assert_eq "a fix-run loop clears the check evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/check.json"))))')"
+"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 assert_exit "the review gate can pass again after the loop" 0 "$TEMPER" gate review
 "$TEMPER" evidence add --stage review --claim "kept" --severity critical >/dev/null
 "$TEMPER" state loop check fix --reason "second loop" >/dev/null
@@ -266,11 +318,12 @@ setup
 "$TEMPER" evidence add --stage build --claim "regression test" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "regression test" --exit 0 --phase green >/dev/null
 "$TEMPER" gate build >/dev/null
+"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 "$TEMPER" gate review >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
 "$TEMPER" gate check >/dev/null
 assert_exit "fix commit gate PASSes without a plan gate" 0 "$TEMPER" gate commit
 
@@ -337,11 +390,12 @@ setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
 "$TEMPER" gate build >/dev/null
+"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 "$TEMPER" gate review >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
 "$TEMPER" gate check >/dev/null
 python3 -c "
 import json
@@ -397,8 +451,8 @@ assert_eq "evidence clear truncates a stage's ledger to []" "[]" "$(cat .temper/
 setup
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
 "$TEMPER" gate check >/dev/null
 "$TEMPER" state loop check build --reason "regression found downstream" >/dev/null
 assert_eq "state loop check->build auto-clears check evidence (check is downstream of build)" "[]" "$(cat .temper/evidence/check.json | tr -d '[:space:]')"
@@ -755,18 +809,34 @@ EOF
 assert_exit "intent gate FAILs on template placeholders and zero criteria" 1 "$TEMPER" gate intent
 cat > .temper/specs/demo/intent.md <<'EOF'
 **Status:** draft
+**Author:** A Author <a@example.com>
+**Created:** 2026-01-01
+**Reviewer:** R Reviewer <r@example.com>
 
 ## Problem
 Support spends a third of call time on status-only queries.
 
-## Success Criteria
-- [ ] status visible in the portal
+### Success Criteria
+- [ ] AC-01 [required]: status visible in the portal
+  Why: cuts per-call handle time
   Validate: scenario — covered later
+- [ ] AC-02 [optional]: status emailed nightly
+  Why: nice-to-have digest
+  Validate: manual — checked by hand
+
+### Target Users
+- support agent: opens the portal → sees status without a call
+
+### Open Questions
+
+## Source Traceability
+### Context Sources
+- none: description only — nothing linked
 EOF
 assert_exit "intent gate PASSes with a real Problem, a criterion, and a Status header" 0 "$TEMPER" gate intent
 python3 -c "
 s = open('.temper/specs/demo/intent.md').read()
-open('.temper/specs/demo/intent.md','w').write(s.replace('**Status:** draft\n\n',''))
+open('.temper/specs/demo/intent.md','w').write(s.replace('**Status:** draft\n',''))
 "
 assert_exit "intent gate FAILs without a Status header (the lifecycle needs a home)" 1 "$TEMPER" gate intent
 
@@ -816,11 +886,12 @@ setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
 "$TEMPER" gate build >/dev/null
+"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 "$TEMPER" gate review >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
 "$TEMPER" gate check >/dev/null
 assert_exit "commit gate FAILs when intent.md exists but its gate never ran" 1 "$TEMPER" gate commit
 "$TEMPER" gate intent >/dev/null
@@ -862,11 +933,12 @@ setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
 "$TEMPER" gate build >/dev/null
+"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 "$TEMPER" gate review >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null
-"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
 "$TEMPER" gate check >/dev/null
 assert_exit "commit gate PASSes with no design.md and no design verdict" 0 "$TEMPER" gate commit
 printf '# Design\n## Areas of Concern\nNone flagged — simple change.\n' > .temper/specs/demo/design.md
@@ -976,7 +1048,7 @@ assert_exit "confirm-override: always exits 0 (ask is advisory, not a block)" 0 
 echo 'x  =  1' > messy.txt
 cat >> .claude/temper.config <<'EOF'
 format:
-  cmd: "sed -i 's/  */ /g' {file}"
+  cmd: "perl -pi -e 's/  +/ /g' {file}"
 EOF
 assert_exit "formatter: runs the configured command, exits 0" 0 \
   bash -c "echo '{\"tool_input\": {\"file_path\": \"$WORKDIR/messy.txt\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$FORMATTER'"
@@ -1115,6 +1187,402 @@ for cmd in \
 done
 OUT=$(echo '{"tool_input": {"command": "git status"}}' | bash "$CO")
 assert_eq "confirm-override stays silent on an unrelated command" "" "$OUT"
+
+# =============================================================================
+# v9.4: acceptance criteria with stable IDs, draft-intent requirements,
+# gherkin fences, cross-repo search, checkpoint feedback, commit carve-outs,
+# state-init inheritance fix.
+# =============================================================================
+
+# A minimal draft that passes every new intent requirement; each case below
+# mutates one thing.
+good_draft() {
+  cat > .temper/specs/demo/intent.md <<'EOF'
+**Author:** A Author <a@example.com>
+**Status:** draft
+**Created:** 2026-01-01
+**Reviewer:** R Reviewer <r@example.com>
+
+## Problem
+A real problem with real text.
+
+### Success Criteria
+- [ ] AC-01 [required]: criterion one
+  Why: serves the real outcome
+  Validate: scenario — traced later
+
+### Target Users
+- developer: uses the feature → gets a result
+
+### Open Questions
+
+### Decisions
+
+## Source Traceability
+### Context Sources
+- none: description only — nothing linked
+EOF
+}
+
+# --- gate intent: the ten draft requirements ---
+setup; good_draft
+assert_exit "intent draft gate PASSes a complete draft" 0 "$TEMPER" gate intent
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('### Context Sources\n- none: description only — nothing linked', '')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "no Source Traceability FAILs task context recorded" "yes" "$(echo "$OUT" | grep -q 'no consulted/unavailable/none line' && echo yes || echo no)"
+
+setup; good_draft
+printf '**Ticket:** PROJ-1\n' | cat - .temper/specs/demo/intent.md > /tmp/ti && mv /tmp/ti .temper/specs/demo/intent.md
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('- none: description only', '- consulted: PROJ-12 notes — background')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "a recorded PROJ-12 does not satisfy a linked PROJ-1 (whole-token match)" "yes" \
+  "$(echo "$OUT" | grep -q 'PROJ-1' && echo yes || echo no)"
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('  Why: serves the real outcome', '  Why: {placeholder why}')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "a placeholder Why: FAILs criteria why" "yes" "$(echo "$OUT" | grep -q 'no Why: line with real text on: AC-01' && echo yes || echo no)"
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('- developer: uses the feature → gets a result', '- developer benefits')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "a Target Users bullet with no action chain FAILs" "yes" "$(echo "$OUT" | grep -q 'no action chain' && echo yes || echo no)"
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('- [ ] AC-01 [required]: criterion one', '- [ ] criterion one, no id')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "a criterion without AC-NN FAILs criteria ids" "yes" "$(echo "$OUT" | grep -q 'no AC-NN id' && echo yes || echo no)"
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('- [ ] AC-01 [required]: criterion one', '- [ ] AC-01 [required]: criterion one\n- [ ] AC-01 [required]: duplicate id')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "a repeated AC id is named as a duplicate" "yes" "$(echo "$OUT" | grep -q 'duplicate id: AC-01' && echo yes || echo no)"
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('AC-01 [required]', 'AC-01')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "a criterion with no [required]/[optional] FAILs criteria priority" "yes" \
+  "$(echo "$OUT" | grep -q '\[x\] criteria priority' && echo yes || echo no)"
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('  Validate: scenario — traced later', '  Validate: vibe — hope')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "an unknown Validate type FAILs criteria validate" "yes" "$(echo "$OUT" | grep -q 'missing/unknown Validate: type on: AC-01' && echo yes || echo no)"
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('### Open Questions\n', '### Open Questions\n- which color should the button be?\n')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "an unlabeled open question FAILs" "yes" "$(echo "$OUT" | grep -q 'neither blocking nor deferred' && echo yes || echo no)"
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('### Open Questions\n', '### Open Questions\n- Blocking: which database do we use in production; consequence: blocked migration; owner: EM\n')
+s = s.replace('### Decisions\n', '### Decisions\n- which database do we use in production -> postgres (EM, 2026-01-01)\n')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "an open question re-asking a decided topic FAILs" "yes" "$(echo "$OUT" | grep -q 'already answered in ### Decisions' && echo yes || echo no)"
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('**Reviewer:** R Reviewer <r@example.com>', '**Reviewer:** {name <email>}')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "a placeholder Reviewer FAILs header fields" "yes" "$(echo "$OUT" | grep -q 'missing, empty, or placeholder: Reviewer' && echo yes || echo no)"
+
+setup; good_draft
+printf '## Scenarios (BDD)\nScenario: premature\n' >> .temper/specs/demo/intent.md
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "a Scenario: line in a draft FAILs no scenarios in draft, naming the line" "yes" \
+  "$(echo "$OUT" | grep -q 'no scenarios in draft' && echo "$OUT" | grep -qE 'Scenario: line\(s\) at [0-9]+' && echo yes || echo no)"
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('**Status:** draft', '**Status:** accepted')
+s = s.replace('  Why: serves the real outcome', '')   # would FAIL as a draft
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_exit "an accepted intent PASSes even where the draft would FAIL" 0 "$TEMPER" gate intent
+assert_eq "each draft-only requirement records a skip detail, never revisited" "10/10" \
+  "$(echo "$OUT" | grep -c 'skipped — intent is accepted; this check applies to drafts only')/10"
+
+# templates/example-intent.md must pass the intent gate as-is.
+setup
+cp "$REPO_ROOT/templates/example-intent.md" .temper/specs/demo/intent.md
+assert_exit "templates/example-intent.md passes temper gate intent" 0 "$TEMPER" gate intent
+
+# --- gate plan: gherkin fences + cross-repo search + acceptance links ---
+setup
+assert_exit "plan gate PASSes with fenced scenarios and valid AC links" 0 "$TEMPER" gate plan
+
+setup
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('```gherkin', '```text')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate plan 2>&1; true)
+assert_eq "a non-gherkin fence does not protect a Scenario" "yes" \
+  "$(echo "$OUT" | grep -q 'scenarios in gherkin blocks' && echo "$OUT" | grep -q 'not inside a gherkin fence' && echo yes || echo no)"
+
+setup
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read()
+# drop the fences entirely, keep the Scenario lines
+import re
+s = re.sub(r'^```.*$', '', s, flags=re.M)
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate plan 2>&1; true)
+assert_eq "bare Scenario: lines FAIL scenarios in gherkin blocks" "yes" \
+  "$(echo "$OUT" | grep -q 'Scenario: not inside a gherkin fence' && echo yes || echo no)"
+
+setup
+cat > .temper/specs/demo/plan.md <<'EOF'
+## Blast Radius
+- none
+
+## Cross-Repo Search
+- used: sourcegraph — callers of demo() → 3 hits in sister repo
+EOF
+"$TEMPER" state set complexity medium >/dev/null
+assert_exit "plan gate PASSes with a recorded cross-repo search" 0 "$TEMPER" gate plan
+
+setup
+cat > .temper/specs/demo/plan.md <<'EOF'
+## Blast Radius
+- none
+EOF
+OUT=$("$TEMPER" gate plan 2>&1; true)
+assert_eq "a plan.md with no Cross-Repo Search section FAILs" "yes" \
+  "$(echo "$OUT" | grep -q 'cross-repo search recorded' && echo "$OUT" | grep -q 'no heading matching' && echo yes || echo no)"
+
+setup
+printf '## Cross-Repo Search\n- used: {tool} — {query}\n' > .temper/specs/demo/plan.md
+OUT=$("$TEMPER" gate plan 2>&1; true)
+assert_eq "a placeholder used: line does not count as a record" "yes" \
+  "$(echo "$OUT" | grep -q 'no .*used.* line with real text' && echo yes || echo no)"
+
+# --- acceptance.py: internal links (plan) and supported evidence (check) ---
+setup
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('Covers: AC-01', 'Covers: AC-99')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" plan .temper/specs/demo/intent.md .temper/evidence/plan.json 2>&1; true)
+assert_eq "acceptance.py rejects a Covers reference to an unknown criterion" "yes" \
+  "$(echo "$OUT" | grep -q 'unknown criterion AC-99' && echo yes || echo no)"
+
+setup
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').replace('**Author:', '**Author:') if False else open('.temper/specs/demo/intent.md').read()
+s = s.replace('[required]: demo criterion one', '[required]: demo criterion one\n  Deferred: not now')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" plan .temper/specs/demo/intent.md .temper/evidence/plan.json 2>&1; true)
+assert_eq "a Deferred line on a required criterion is an error" "yes" \
+  "$(echo "$OUT" | grep -q 'required criteria can never be deferred' && echo yes || echo no)"
+
+setup
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('Covers: AC-02', 'Covers: AC-01')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" plan .temper/specs/demo/intent.md .temper/evidence/plan.json 2>&1; true)
+assert_eq "a Validate: scenario criterion with no covering scenario is an error" "yes" \
+  "$(echo "$OUT" | grep -q 'no scenario Covers: it' && echo yes || echo no)"
+
+setup
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 --cmd pytest >/dev/null
+"$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 >/dev/null   # no cmd, no artifact -> unsupported
+OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
+assert_eq "an exit-0 row with no cmd and no artifact is NOT a supported pass" "yes" \
+  "$(echo "$OUT" | grep -q "scenario 'first' has no supported passing evidence" && echo yes || echo no)"
+
+setup
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 --cmd pytest >/dev/null
+"$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+echo proof > .temper/specs/demo/artifact.txt
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --artifact .temper/specs/demo/artifact.txt >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
+"$TEMPER" evidence add --stage check --criterion AC-01 --claim "criterion AC-01" --exit 0 --cmd "manual check" >/dev/null
+"$TEMPER" evidence add --stage check --criterion AC-02 --claim "criterion AC-02" --exit 0 --cmd "manual check" >/dev/null
+OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
+assert_eq "artifact-sha and cmd rows are supported passes" "every criterion has explicit validation links" "$OUT"
+echo tampered > .temper/specs/demo/artifact.txt
+OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
+assert_eq "a changed artifact no longer supports its recorded sha" "yes" \
+  "$(echo "$OUT" | grep -q "scenario 'first' has no supported passing evidence" && echo yes || echo no)"
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second re-run" --exit 1 --cmd "pytest -k second" >/dev/null
+OUT=$(python3 "$REPO_ROOT/scripts/acceptance.py" check .temper/specs/demo/intent.md .temper/evidence/check.json 2>&1; true)
+assert_eq "the LATEST row wins — a newer failure is never hidden by an older pass" "yes" \
+  "$(echo "$OUT" | grep -q "scenario 'second' has no supported passing evidence" && echo yes || echo no)"
+
+# --criterion is recorded on both evidence add and evidence run rows.
+setup
+"$TEMPER" evidence add --stage check --criterion AC-01 --claim "c" --exit 0 --cmd x >/dev/null
+"$TEMPER" evidence run --stage check --criterion AC-02 --claim "c2" -- true >/dev/null
+assert_eq "evidence add/run record the criterion field" "AC-01|AC-02" \
+  "$(python3 -c "import json; e=json.load(open('.temper/evidence/check.json')); print(e[0]['criterion'] + '|' + e[1]['criterion'])")"
+
+# --- gate review: completion row + named findings ---
+setup
+OUT=$("$TEMPER" gate review 2>&1; true)
+assert_eq "an empty findings ledger is not a review" "yes" \
+  "$(echo "$OUT" | grep -q 'no review completion evidence' && echo yes || echo no)"
+"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+"$TEMPER" evidence add --stage review --claim "sql injection in login" --severity critical >/dev/null
+OUT=$("$TEMPER" gate review 2>&1; true)
+assert_eq "the FAIL detail names each open blocking finding" "yes" \
+  "$(echo "$OUT" | grep -q 'sql injection in login' && echo yes || echo no)"
+"$TEMPER" evidence add --stage review --claim "review completed" --exit 1 --cmd "review panel" >/dev/null
+assert_exit "a latest nonzero completion row FAILs the gate" 1 "$TEMPER" gate review
+
+# --- gate build: checkpoint feedback answered ---
+setup
+"$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+assert_exit "no feedback rows => requirement skipped" 0 "$TEMPER" gate build
+"$TEMPER" evidence add --stage build --phase feedback --claim "feedback #1: use the builder pattern" >/dev/null
+assert_exit "an unanswered feedback row FAILs the build gate" 1 "$TEMPER" gate build
+"$TEMPER" evidence add --stage build --phase feedback-resolved --claim "feedback #1: applied — switched to builder" >/dev/null
+assert_exit "feedback applied (with detail) answers the gate" 0 "$TEMPER" gate build
+"$TEMPER" evidence add --stage build --phase feedback --claim "feedback #2: rename the helper" >/dev/null
+"$TEMPER" evidence add --stage build --phase feedback-resolved --claim "feedback #2: declined" >/dev/null
+OUT=$("$TEMPER" gate build 2>&1; true)
+assert_eq "a decline with no reason is not an answer" "yes" \
+  "$(echo "$OUT" | grep -q 'feedback #2 (declined with no reason)' && echo yes || echo no)"
+
+# --- gate commit: no active run degrades open ---
+setup
+rm -f .temper/build-state.json
+echo 'x' > plain.txt
+git add plain.txt >/dev/null 2>&1
+OUT=$("$TEMPER" gate commit 2>&1; true)
+assert_exit "a commit outside any run passes with the single 'active run' requirement" 0 "$TEMPER" gate commit
+assert_eq "the carve-out names itself" "yes" "$(echo "$OUT" | grep -q 'active run' && echo "$OUT" | grep -q 'no active run — nothing to gate' && echo yes || echo no)"
+
+# --- gate commit: build-checkpoint carve-out ---
+setup
+"$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
+"$TEMPER" state set next_stage build >/dev/null
+"$TEMPER" gate intent >/dev/null
+"$TEMPER" gate plan >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests green task 1" --phase green --exit 0 --cmd pytest >/dev/null
+echo 'code' > src.js
+git add src.js >/dev/null 2>&1
+OUT=$("$TEMPER" gate commit 2>&1; true)
+assert_exit "a GREEN checkpoint commit passes on the one carve-out requirement" 0 "$TEMPER" gate commit
+assert_eq "the checkpoint carve-out names the green run" "yes" \
+  "$(echo "$OUT" | grep -q 'build checkpoint commit' && echo "$OUT" | grep -q 'tests green task 1' && echo yes || echo no)"
+
+setup
+"$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
+"$TEMPER" state set next_stage build >/dev/null
+"$TEMPER" gate intent >/dev/null
+"$TEMPER" gate plan >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests green then regress" --phase green --exit 0 --cmd pytest >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests green then regress" --phase green --exit 1 --cmd pytest >/dev/null
+OUT=$("$TEMPER" gate commit 2>&1; true)
+assert_exit "a RED latest test run fails the checkpoint commit, naming the claim" 1 "$TEMPER" gate commit
+assert_eq "the RED carve-out names the failing claim" "yes" "$(echo "$OUT" | grep -q 'tests green then regress' && echo yes || echo no)"
+
+setup
+"$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
+"$TEMPER" state set next_stage build >/dev/null
+# no plan verdict -> upstream not satisfied -> full gate applies -> FAIL (build gate never ran)
+OUT=$("$TEMPER" gate commit 2>&1; true)
+assert_exit "upstream gates unmet => full commit gate applies" 1 "$TEMPER" gate commit
+assert_eq "no checkpoint carve-out row when upstream is unmet" "no" \
+  "$(echo "$OUT" | grep -q 'build checkpoint commit' && echo yes || echo no)"
+
+setup
+"$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
+"$TEMPER" state set next_stage review >/dev/null   # past build => no carve-out
+"$TEMPER" gate intent >/dev/null
+"$TEMPER" gate plan >/dev/null
+"$TEMPER" evidence add --stage build --claim "tests green" --phase green --exit 0 --cmd pytest >/dev/null
+OUT=$("$TEMPER" gate commit 2>&1; true)
+assert_eq "next_stage != build => the final completion commit faces every gate" "no" \
+  "$(echo "$OUT" | grep -q 'build checkpoint commit' && echo yes || echo no)"
+
+# --- state init: never inherit the previous run's verdicts or overrides ---
+setup
+"$TEMPER" override review --reason "old run" >/dev/null
+"$TEMPER" gate intent >/dev/null
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 --cmd pytest >/dev/null
+"$TEMPER" state init demo2 --command temper >/dev/null
+assert_eq "state init clears inherited overrides" "[]" "$(cat .temper/overrides.json | tr -d '[:space:]')"
+assert_eq "state init clears inherited gate verdicts" "{}" "$(cat .temper/gates.json | tr -d '[:space:]')"
+assert_eq "state init clears inherited evidence" "0" "$(python3 -c 'import json,os; print(len(json.load(open(".temper/evidence/check.json"))) if os.path.exists(".temper/evidence/check.json") else 0)')"
+assert_eq "state init archives the prior run's ledger" "yes" "$([[ -f .temper/specs/demo/gate-ledger.json ]] && echo yes || echo no)"
+
+setup
+rm -f .temper/build-state.json      # no prior run — but an override carries an approver
+"$TEMPER" override review --reason "keep the audit fact" >/dev/null
+"$TEMPER" state init fresh --command temper >/dev/null
+assert_eq "a pre-init override is archived, not deleted" "yes" \
+  "$(ls .temper/archive/pre-init-*-overrides.json >/dev/null 2>&1 && echo yes || echo no)"
+assert_eq "the archived pre-init override keeps the reason" "keep the audit fact" \
+  "$(python3 -c "import json,glob; print(json.load(open(glob.glob('.temper/archive/pre-init-*-overrides.json')[0]))[0]['reason'])")"
+assert_eq "the live overrides file is reset" "[]" "$(cat .temper/overrides.json | tr -d '[:space:]')"
+
+# --- autonomous blast radius uses base_sha (checkpoint commits already landed) ---
+setup
+git config user.email "t@e.com"; git config user.name t
+git add -A >/dev/null 2>&1
+git commit --no-verify -q -m "suite baseline for base_sha" >/dev/null 2>&1 || true
+"$TEMPER" state init demo --command temper >/dev/null   # fresh state on the committed tree
+"$TEMPER" state set run_mode autonomous >/dev/null
+"$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null
+mkdir -p src && echo a > src/a.js
+OUT=$("$TEMPER" gate commit 2>&1; true)
+assert_eq "base_sha diff + uncommitted paths feed the blast-radius count" "yes" \
+  "$(echo "$OUT" | grep -qE 'blast radius — [0-9]+ file' && echo "$OUT" | grep -qE 'blast radius' && echo yes || echo no)"
+
+# --- version-stamp drift: every visible version string matches plugin.json ---
+# plugin.json is the single source of truth; the CLAUDE.md stamp and the top
+# CHANGELOG entry must never disagree with it (version-bump.sh keeps them in
+# sync — this test catches a hand-bump that misses one). Resolved from the
+# script's own location so it works from any cwd.
+VR_ROOT="$REPO_ROOT"   # captured before setup() cds into WORKDIR
+PLUGIN_VERSION="$(python3 -c "import json; print(json.load(open('$VR_ROOT/.claude-plugin/plugin.json'))['version'])" 2>/dev/null || echo MISSING)"
+assert_eq "plugin.json version is readable" "yes" "$([[ "$PLUGIN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo yes || echo no)"
+CLAUDE_MD_VERSION="$(sed -n 's/^\*\*Version:\*\* \([0-9.]*\).*/\1/p' "$VR_ROOT/.claude/CLAUDE.md" | head -1)"
+assert_eq ".claude/CLAUDE.md version stamp matches plugin.json" "$PLUGIN_VERSION" "${CLAUDE_MD_VERSION:-MISSING}"
+CHANGELOG_VERSION="$(grep -m1 -oE '^## v[0-9]+\.[0-9]+\.[0-9]+' "$VR_ROOT/CHANGELOG.md" | sed 's/^## v//')"
+assert_eq "CHANGELOG top entry matches plugin.json" "$PLUGIN_VERSION" "${CHANGELOG_VERSION:-MISSING}"
 
 echo ""
 echo "=== test-temper.sh ==="

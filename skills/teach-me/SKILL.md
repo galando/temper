@@ -60,7 +60,7 @@ Invoked from any stage gate, Teach Me focuses on that phase's artifacts and tick
 |-------|------------------|-----------------|
 | Plan | `intent.md`, `plan.md`, `tasks.md` | 1 (problem, branches) + start of 3 |
 | Design | `design.md` | 2 (decisions, trade-offs, edge cases) |
-| Build | `git diff`, changed files, `tasks.md` | 2 (business logic, edge cases — deep) |
+| Build | `git diff` (vs `base_sha` when recorded, + uncommitted paths), changed files, `tasks.md` | 2 (business logic, edge cases — deep) |
 | Check | check results, scenario coverage | 3 (impact, what's guaranteed) |
 
 ## Algorithm

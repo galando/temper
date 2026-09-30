@@ -44,13 +44,24 @@ files): an inline plan in the conversation, no files. **Medium** (5-10) / **Comp
 flow, the Intent stage wrote it and a human accepted it at the intent gate
 (`Status: accepted`) before you launched — it is your input: derive Scenarios and
 architecture from it, refine its wording only with a stated reason, never re-derive
-the Problem from scratch. A `Status: draft` intent (captured via `/temper:intent` or a
-`temper bands` breach, reaching you standalone) is the same input, plus: resolve or
-explicitly re-carry each Open Question (they count toward the 2-3 clarifying questions
-below); the draft→accepted flip happens at whichever human gate reviews it first.
+the Problem from scratch. **Re-read every `- consulted:` source its `### Context
+Sources` records** — the intent summarizes them, but you plan against them; treat
+every `- unavailable:` line as an explicit gap (name it in `plan.md`, and add an
+Open Question back into `intent.md` if it hides a decision). Do not re-derive
+context Intent already gathered. A `Status: draft` intent (captured via
+`/temper:intent` or a `temper bands` breach, reaching you standalone) is the same
+input, plus: resolve or explicitly re-carry each Open Question (a refine pass may
+ask only a question the draft marks `Blocking`, or one a gate FAIL forces —
+anything else thin becomes a new Open Question); the draft→accepted flip happens at
+whichever human gate reviews it first.
 Standalone `/temper:plan` with no existing intent.md: derive the intent yourself
-(Problem, Success Criteria with `Validate:` types, Constraints, `**Status:** draft`
-header) as your first act.
+from `templates/intent.md` — full header (including `**Reviewer:**`, a name not a
+role), Problem, Success Criteria with stable `AC-NN` ids each carrying `Why:` and
+`Validate:`, Constraints with source markers, Scope and Non-goals, action-chain
+Target Users, labeled Open Questions, and `### Context Sources` (`consulted:` /
+`unavailable:` / `none:`) — as your first act. The two mandatory probes of the
+intent interview apply here too: what business outcome or risk does each criterion
+address, and who acts on the result with what next step.
 
 **Either way, standalone `/temper:plan` records the intent verdict itself.** Whenever
 intent.md exists at the spec path — authored fresh OR picked up as a draft — run
@@ -69,16 +80,34 @@ security hot path (below).
 
 ## What `temper gate plan` Checks
 
-Quoted from `gate_plan()` in `scripts/temper` so this doc cannot drift from the gate:
-
-1. **Artifacts exist** — `intent.md` and `tasks.md` present under the spec path.
-2. **Criteria → Scenarios** — scenario count >= Success Criteria count. Record
-   `temper state set complexity <tier>` as soon as you classify it — the gate reads it.
-3. **Blast Radius documented** — for `medium`/`complex` only, `plan.md` has a heading
-   matching `blast radius` (any level, e.g. `## Blast Radius`).
+Quoted from `gate_plan()` in `scripts/temper` so this doc cannot drift from the gate.
+These run **at every tier**: the artifacts exist (`intent.md` + `tasks.md`); scenario
+count >= Success Criteria count; every criterion has explicit validation links
+(`acceptance.py plan` — stable `AC-NN` ids, `Why:` and `Validate:` on each, every
+`Covers:` id names a real criterion); every `Scenario:` sits inside a ```gherkin
+fence; `plan.md` records `## Cross-Repo Search`. **Only for `medium`/`complex`**:
+`plan.md` also needs a heading matching `blast radius` (any level, e.g.
+`## Blast Radius`). Record `temper state set complexity <tier>` as soon as you
+classify it — the gate reads it to decide whether the Blast Radius section applies.
 
 Fix any FAIL before returning: usually a missing scenario, an empty Success Criteria
-section, or a missing Blast Radius heading.
+section, a missing Cross-Repo Search record, or a missing Blast Radius heading.
+
+## Cross-Repo Search
+
+When any cross-repo code search tool is connected (for example a Sourcegraph MCP),
+use it — for blast radius (callers of the changed code outside this repo), prior art
+(has another repo solved this already), and definitions that live in a dependency.
+When none is connected, or `tools.mode: heuristic-only`, say so and proceed with
+local tools: the tool's absence never fails a gate, but a missing record does.
+Record under `## Cross-Repo Search` in `plan.md`, one line per query:
+
+```
+- used: {tool} — {query} → {finding}
+- not available: {reason}
+```
+
+Blast-radius rows found this way carry a `[CROSS-REPO]` label and name the repo.
 
 ## Explore: Your Own Tools, By Default
 
@@ -136,9 +165,27 @@ scenario or an infrastructure reason). Skip this section for Trivial/Simple.
 - Every scenario is concrete (specific inputs/outputs) and testable — never "system works
   correctly".
 
-Medium: 3-8 scenarios. Complex: 5-15. Tag each with a `Note:` — `unit` (default, pure
-logic), `mock` (external dependency), `integration` (DB/multi-service), or `manual`
-(non-automatable: UX, email delivery). After deriving scenarios, reconcile against your
+Medium: 3-8 scenarios. Complex: 5-15. **Every scenario is one fenced ```gherkin
+block** — never a bare `Scenario:` line with indented steps (markdown reads the
+steps as a lazy continuation and renders the whole scenario as one run-on paragraph
+in every preview and review surface). The fence holds the `Scenario:` line, the
+Given/When/Then steps, and the two annotations: `Note:` — the testing approach
+(`unit` the default for pure logic, `mock` for an external dependency,
+`integration` for DB/multi-service, `manual` for the non-automatable: UX, email
+delivery) and `Covers:` — the comma-separated AC ids this scenario verifies (a
+regression-only scenario may omit it). Group the blocks under `#### Happy Path`,
+`#### Error Paths`, `#### Edge Cases`; omit an empty group. Example:
+
+    ```gherkin
+    Scenario: Rate-limited caller gets 429, not a hang
+      Given the API has received 100 requests in the last minute
+      When one more request arrives
+      Then it is rejected with 429 within 50ms
+      Note: unit
+      Covers: AC-01
+    ```
+
+After deriving scenarios, reconcile against your
 preliminary file list: add files scenarios now require, and drop or justify-as-
 infrastructure any file no scenario touches.
 
@@ -151,9 +198,10 @@ infrastructure any file no scenario touches.
 | `metric` | `Validate: metric — measure support ticket volume post-deploy` |
 | `manual` | `Validate: manual — UX review needed` |
 
-Ask clarifying questions (max 2-3, `AskUserQuestion`, concrete options — "integrate with
-existing PaymentService or create a new one?", never "what should the architecture be?")
-only when scenarios reveal a genuine ambiguity. Skip entirely when requirements are clear.
+Ask clarifying questions (`AskUserQuestion`, concrete options — "integrate with
+existing PaymentService or create a new one?", never "what should the architecture
+be?") only where the uncertainty changes the outcome — no fixed round count, one
+question at a time. Skip entirely when requirements are clear.
 
 ## File-to-Scenario Traceability
 
@@ -202,21 +250,14 @@ If a security-hot-path scan ran, also persist `.temper/security-map.json` (one e
 CRITICAL/HIGH file: `file`, `function`, `sensitivity`, `entry_points[]` with `route`,
 `exposure`, `has_auth_middleware`, `has_authorization_check`) for Review/Check to read.
 
-## Summary Box
+## Summary Panel
 
-```
-+-----------------------------------------------------------+
-| PLAN — {Feature Name}                                     |
-+-----------------------------------------------------------+
-| INTENT: {one-line problem} -> {success criteria}           |
-| SCENARIOS: {N} ({unit}/{mock}/{integration}/{manual})      |
-| ARCHITECTURE: create {N} files, modify {N} files            |
-| DECISIONS: {chosen} (not {rejected}) [+{N} more] | none     |
-| COMPLEXITY: {trivial|simple|medium|complex}  RISK: {L/M/H}  |
-| SECURITY: {N} CRITICAL, {N} HIGH hot paths (if any)          |
-+-----------------------------------------------------------+
-{ASCII art diagram, or N/A for a standalone single-file/config-only change}
-```
+The panel format is owned by `agents/plan.md` — render exactly the panel it defines
+(76 columns, fact rows then titled sections, one row per item, empty sections
+omitted), appending a `SECURITY: {N} CRITICAL, {N} HIGH hot paths` fact row when the
+security scan found any. Never carry a second, different box here: whichever box a
+clean-context stage reads first is the one that renders, and two shapes means two
+different reviews.
 
 Trivial: a one-line box, no gate. Simple: `Files: {N} create, {N} modify` / `Risk: {L/M}`.
 
