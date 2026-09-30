@@ -40,16 +40,24 @@ from the orchestrator's conversation carries over.
 5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
-Return only: this summary box (the orchestrator prints it verbatim), the list of files
+**Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
+the right border) and nothing outside it. Fact rows at the top, then titled sections
+(`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
+more"; omit an empty section including its divider — never a row saying "none"; wrap
+a long entry onto a continuation row indented two spaces.
+
+Return only: this panel (the orchestrator prints it verbatim), the list of files
 changed, the regression test name and result, and any blockers:
 
 ```
-+-----------------------------------------------------------+
-| FIX — {Bug Title}                                         |
-+-----------------------------------------------------------+
-| FIX: {1-line description}   CONFIDENCE: {H/M}              |
-| TEST: {test name} — PASS (was failing before fix)          |
-| FILES: {list}                                              |
-| BLAST RADIUS: {consumers} consumers; same-pattern {n}/{m}  |
-+-----------------------------------------------------------+
++--------------------------------------------------------------------------+
+| FIX — {Bug Title}                                                        |
++--------------------------------------------------------------------------+
+| FIX: {1-line description}   CONFIDENCE: {H/M}                            |
+| TEST: {test name} — PASS (was failing before fix)                        |
++--- CHANGED (N) ---+------------------------------------------------------+
+| {file}                                                                   |
++--- BLAST RADIUS (N) ---+-------------------------------------------------+
+| {consumers} consumers; same-pattern {n}/{m} — {file: each occurrence}    |
++--------------------------------------------------------------------------+
 ```

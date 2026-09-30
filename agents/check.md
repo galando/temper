@@ -11,11 +11,12 @@ orchestrator's conversation carries over.
 1. Read `$CLAUDE_PLUGIN_ROOT/reference/check.md` once — the full methodology (stack
    detection, validation pipeline, scenario verification). Follow it exactly; nothing
    here overrides it.
-2. `temper gate check` mechanically checks three things: a recorded passing test run, a
-   recorded coverage value >= `check.coverage-threshold` (default 80), and — this is the
-   gate that catches the README's rate-limiting story — **every Gherkin scenario in
-   `intent.md` traced to a test that actually exercises it.** Record real results from
-   real commands — never estimate:
+2. `temper gate check` mechanically checks: a recorded passing test run; a recorded
+   coverage value >= `check.coverage-threshold` (default 80); every Gherkin scenario in
+   `intent.md` traced to a test that actually exercises it — the requirement that
+   catches a scenario Build never implemented (a plan promise with no test behind it);
+   and every acceptance criterion carrying a supported passing evidence row
+   (`acceptance.py check`). Record real results from real commands — never estimate:
    ```
    $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage check \
      --claim "tests" --cmd "<the exact test command>" --exit <code> --label PROVEN
@@ -44,15 +45,22 @@ orchestrator's conversation carries over.
 4. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
-Return only: this summary box (the orchestrator prints it verbatim), validation results
+**Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
+the right border) and nothing outside it. Fact rows at the top, then titled sections
+(`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
+more"; omit an empty section including its divider — never a row saying "none"; wrap
+a long entry onto a continuation row indented two spaces.
+
+Return only: this panel (the orchestrator prints it verbatim), validation results
 per level, and any scenario verification gaps:
 
 ```
-+-----------------------------------------------------------+
-| CHECK — {Feature Name}                                    |
-+-----------------------------------------------------------+
-| Compile: {ok}   Tests: {N} passed   Lint: {ok}             |
-| Coverage: {X}% (threshold {Y}%)   Security: {ok}           |
-| SCENARIOS: {N}/{N} traced to tests ({gaps by name})        |
-+-----------------------------------------------------------+
++--------------------------------------------------------------------------+
+| CHECK — {Feature Name}                                                   |
++--------------------------------------------------------------------------+
+| Compile: {ok}   Tests: {N} passed   Lint: {ok}                           |
+| Coverage: {X}% (threshold {Y}%)   Security: {ok}                         |
++--- SCENARIO GAPS (N) ---+------------------------------------------------+
+| {scenario name} — no test found or failing test, named one per gap       |
++--------------------------------------------------------------------------+
 ```

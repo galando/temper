@@ -21,16 +21,25 @@ listed below, nothing from the orchestrator's conversation carries over.
 5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
-Return only: this summary box (the orchestrator prints it verbatim — areas of concern
+**Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
+the right border) and nothing outside it. Fact rows at the top, then titled sections
+(`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
+more"; omit an empty section including its divider — never a row saying "none"; wrap
+a long entry onto a continuation row indented two spaces.
+
+Return only: this panel (the orchestrator prints it verbatim — areas of concern
 first, they are why the human is at the gate), the path to `design.md`, and the key
 architectural decisions:
 
 ```
-+-----------------------------------------------------------+
-| DESIGN — {Feature Name}                                   |
-+-----------------------------------------------------------+
-| AREAS OF CONCERN: {N} ({first one} ...) or none: {why}     |
-| DECISIONS: {N} key ({list})                                |
-| COMPONENTS: {N} new / {N} modified / {N} existing          |
-+-----------------------------------------------------------+
++--------------------------------------------------------------------------+
+| DESIGN — {Feature Name}                                                  |
++--------------------------------------------------------------------------+
+| COMPONENTS: {N} new / {N} modified / {N} existing                        |
++--- AREAS OF CONCERN (N) ---+---------------------------------------------+
+| {conflict or policy tension, with the owner who resolves it}             |
+| (when design.md says "None flagged — {why}", omit this entire section)   |
++--- DECISIONS (N) ---+----------------------------------------------------+
+| {decision} — {rationale}                                                 |
++--------------------------------------------------------------------------+
 ```

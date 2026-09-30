@@ -24,19 +24,9 @@ Format each row using actual data:
 - **LINK** — from config (show `—` if none)
 - **CONNECTED** — check if link target actually exists on filesystem
 
-Example structure (populate with real data only):
-
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│ PACK — Quality Pack Manager                                      v4.4.0 │
-├──────────────────────────────────────────────────────────────────────────┤
-│  NAME            STATUS  PHASES     LINK                CONNECTED        │
-│  ────────────── ─────── ────────── ─────────────────── ──────────────── │
-│  {name}           {on}    {phases}   {link}              {found/missing} │
-│  ...                                                                     │
-│  N packs total (X enabled, Y disabled)                                   │
-└──────────────────────────────────────────────────────────────────────────┘
-```
+Example structure (populate with real data only) — the panel format is owned by
+`reference/pack.md` → "Step 1: Discover + Display"; render exactly that box, never a
+second, different shape here:
 
 ## Step 3: AskUserQuestion (max 4 options)
 

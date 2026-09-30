@@ -22,9 +22,24 @@ rules, read related existing code, skip branch verification (the user decides).
 
 ## Execute Tasks in Order
 
+**Checkpoint mode:** your launch prompt may carry `Checkpoint: task {N}.` plus
+`Checkpoint feedback #{K}: {text}` lines. With a checkpoint, FIRST answer every
+feedback item — `temper evidence add --stage build --phase feedback-resolved
+--claim "feedback #{K}: applied — {what changed}"` or `"feedback #{K}: declined —
+{reason}"` (a decline always carries a reason; feedback that changes a later task
+edits that task's unchecked row, never a checked one) — then run ONLY task N.
+Without a checkpoint line, run all remaining tasks; `tasks.md` on disk is the
+source of truth for where an interrupted run resumes.
+
 For each task in `tasks.md`:
 
-**a. Read context** — existing files, adjacent patterns, conventions.
+**a. Read context** — existing files, adjacent patterns, conventions. Before writing
+code for the task, use any connected cross-repo code search tool (for example a
+Sourcegraph MCP) for definitions and prior art; with none connected, or
+`tools.mode: heuristic-only`, proceed with local tools. Record the outcome in
+`build-context.json` as `"code_search": {"tool": "{name}", "queries": N}` or
+`{"available": false, "reason": "{why}"}` — the tool's absence never fails a gate,
+a missing record does.
 
 **b. Write the test first — priority order, first match wins:**
 
@@ -37,6 +52,10 @@ For each task in `tasks.md`:
 
 **c. Implement** the minimal code to pass the test / fulfill the spec.
 **d. Validate** — run the test (must go GREEN) and the task's validation command.
+**The moment a scenario's test goes GREEN, commit it on its own:** `git add {the
+paths that scenario touched}`, then in a SEPARATE tool call `git commit -m
+"feat({spec-slug}): {scenario} [AC-NN]"` — never `git add -A`, never `--no-verify`.
+An infrastructure-only task (no scenario) makes no commit.
 **e. Checkpoint** — write `.temper/build-state.json` (`last_task_completed`, per-task
 status) and track deviations: a file touched that isn't in `tasks.md` → `unplanned_files`
 with a one-line reason; a task skipped/failed → `skipped_tasks` with a reason; an
@@ -94,11 +113,15 @@ After the coverage gate passes, write `build-context.json`:
 
 ```json
 { "version": 1, "stage": "build", "timestamp": "{ISO timestamp}",
+  "code_search": { "tool": "{name}", "queries": {N} },
   "files_created": [], "files_modified": [],
   "test_results": { "total": {N}, "passed": {N}, "failed": {N} },
   "deviations": { "unplanned_files": [], "skipped_tasks": [], "approach_changes": [] },
   "scenarios_covered": [], "tasks_completed": {N}, "tasks_total": {N} }
 ```
+
+(`code_search` is `{"available": false, "reason": "{why}"}` when no cross-repo
+search tool is connected.)
 
 ## Feedback Re-entry
 
@@ -120,24 +143,22 @@ writing, before Review has to flag it. Skip it for plain application logic.
 
 ## Post-Implementation
 
-Standalone mode: run the full suite, show the summary box, then `AskUserQuestion` —
+Standalone mode: run the full suite, show the summary panel, then `AskUserQuestion` —
 "Continue to Review (Recommended)" / "Save for later" (+ "Revise plan" per above when
 applicable). A change typed via "Other" is never approval — make the edit, re-show this
 same gate; the user must explicitly pick "Continue" to advance. Subprocess mode: skip the
 gate, return the summary.
 
-```
-+-----------------------------------------------------------+
-| BUILD — {Feature Name}                                    |
-+-----------------------------------------------------------+
-| Tasks: {N}/{N} complete   Tests: {N} added, all passing    |
-| Files: {N} created, {N} modified   Coverage: {X}% (if known)|
-| Deviations: none, or list (unplanned/skipped/approach)     |
-+-----------------------------------------------------------+
-```
+The panel format is owned by `agents/build.md` — render exactly the panel it defines
+(76 columns, fact rows then titled sections; `SEARCH:` row, and `COMMITS` / `FEEDBACK`
+sections on a checkpoint run). Never carry a second, different box here: whichever
+box a clean-context stage reads first is the one that renders, and two shapes means
+two different reviews.
 
-**On Continue:** standalone loads only changed files (`git diff --name-only`) into
-context for Review. Mark the spec header `**Status:** completed` /
+**On Continue:** standalone loads only changed files into context for Review —
+diffed against `temper state get base_sha` when one is recorded (checkpoint commits
+already landed, so a plain `git diff --name-only` returns nothing), plus
+still-uncommitted paths. Mark the spec header `**Status:** completed` /
 `**Completed:** {date}` if `intent.md` exists. Cleanup of `build-state.json` happens
 after commit, not here.
 

@@ -141,17 +141,24 @@ which is what closes the loop without a person starting it.
 Only when Step 1.6 reported a `propose`-tier breach (default: 3sigma). `AskUserQuestion`:
 
 - **"Draft intent.md from this breach (Recommended)"** — write
-  `.temper/specs/{metric}-breach-{date}/intent.md` in the standard Stage-1 shape from
-  `templates/intent.md`, header included: `**Author:** temper bands (control-band
-  monitor)`, `**Status:** draft`, `**Created:** {date}`. Then the body: **Problem** =
-  the breach verbatim from `temper bands` (metric, latest, baseline, z-score —
-  evidence, not narrative); **Success Criteria** = the metric back inside its bands,
-  with `Validate: metric`, plus at least one `Validate: scenario` criterion for the
-  suspected cause once known; **Constraints** = fix goes through the normal pipeline;
-  **Target Users** = the team. Then report: "Run `/temper` to pick it up." The draft
-  rides the ordinary pipeline — every gate applies (the Intent gate presents the
-  draft and flips `draft → accepted` on the human's Continue); a bands breach never
-  fast-tracks anything.
+  `.temper/specs/{metric}-breach-{date}/intent.md` in the standard shape from
+  `templates/intent.md`, complete enough to pass `temper gate intent` itself:
+  header including `**Author:** temper bands (control-band monitor)`,
+  `**Status:** draft`, `**Created:** {date}`, and a `**Reviewer:**` — ask who
+  reviews it; a name, not a role, and never a guessed default. Then the body:
+  **Problem** = the breach verbatim from `temper bands`
+  (metric, latest, baseline, z-score — evidence, not narrative); **Success
+  Criteria** = stable `AC-NN` ids, the metric back inside its bands with
+  `Validate: metric` and a `Why:` line naming the risk the band guards, plus at
+  least one `Validate: scenario` criterion for the suspected cause once known;
+  **Constraints** = fix goes through the normal pipeline `(source: pipeline rules)`;
+  **Target Users** = action chains (`{user}: reads the bands dashboard → sees the
+  metric back in band at the next status run`); **Open Questions** labeled
+  Blocking/Deferred; `### Context Sources` = `- consulted: .temper/metrics.json —
+  the breached series' history ({date})`. Then report: "Run `/temper` to pick it
+  up." The draft rides the ordinary pipeline — every gate applies (the Intent gate
+  presents the draft and flips `draft → accepted` on the human's Continue); a bands
+  breach never fast-tracks anything.
 - **"Dismiss"** — record it in review-memory (`patterns` key `bands:{metric}`);
   dismissals are the tuning signal: 3+ dismissals of the same metric's breaches →
   suggest widening `bands.window` or retiring that metric from `bands.metrics`.

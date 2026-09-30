@@ -101,6 +101,16 @@ if [[ -f "$CHANGELOG" && -f "$PJ" ]]; then
   fi
 fi
 
+# --- Panel validation (agents/*.md one-closed-panel rule) ---
+if python3 "$REPO_ROOT/scripts/validate-panels.py" >/dev/null 2>&1; then
+  echo "[PASS] Every agents/*.md brief shows one closed panel"
+  PASS=$((PASS+1))
+else
+  echo "[FAIL] Panel violations in agents/*.md:"
+  python3 "$REPO_ROOT/scripts/validate-panels.py" 2>/dev/null | grep '^FAIL' | sed 's/^/  /'
+  FAIL=$((FAIL+1))
+fi
+
 # --- Summary ---
 echo ""
 echo "=== Summary ==="

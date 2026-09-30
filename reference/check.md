@@ -48,8 +48,9 @@ missing *optional* tool.
 
 ### Level 4.5 — Scenario Verification (Live Execution)
 
-This is the level the README's rate-limiting story depends on — it is the only level
-that reads `intent.md` and proves, per scenario, whether a real test exercises it.
+This is the level that proves, per scenario, whether a real test exercises it — the
+level that catches a scenario Build never implemented. It is the only level that
+reads `intent.md` and checks behavior against what was promised.
 
 1. Resolve `{spec}`: from `build-state.json` if present, else the most-recently-modified
    dir under `.temper/specs/`. No specs found → SKIP this level entirely.

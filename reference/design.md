@@ -46,18 +46,13 @@ Write `.temper/specs/{feature}/design.md` from `$CLAUDE_PLUGIN_ROOT/templates/de
 
 ## Step 4: Summary + Gate
 
-```
-+--------------------------------------------------------------+
-| DESIGN -- {Feature Name}                                     |
-+--------------------------------------------------------------+
-| Components: {N} new, {N} modified, {N} existing               |
-| API contracts (if any): + POST /api/x -- shape -> response    |
-| DB changes (if any): + {table} -- {columns}                   |
-| Integration points: {external system} -- how it connects      |
-| Decision log: 1. {decision} -- {rationale}                    |
-| Areas of concern: {N} flagged (or "none")                     |
-+--------------------------------------------------------------+
-```
+The panel format is owned by `agents/design.md` — render exactly the panel it defines
+(76 columns, fact rows then `AREAS OF CONCERN` and `DECISIONS` titled sections; the
+concerns section is omitted entirely when design.md says "None flagged — {why}").
+Never carry a second, different box here: whichever box a clean-context stage reads
+first is the one that renders, and two shapes means two different reviews. Append
+fact rows for what the design actually has: API contracts (`+ POST /api/x — shape →
+response`), DB changes (`+ {table} — {columns}`), integration points.
 
 Any flagged concern is presented **first** at the gate — it is the reason the human is
 here. "Continue to Build" with open concerns means the human accepted them; record

@@ -3,6 +3,90 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.4.0 — acceptance-linked criteria, richer Intent gate, per-task Build checkpoints, panel + CLI fixes
+
+### Acceptance criteria with stable IDs (AC-NN)
+
+- Success Criteria now carry stable `AC-NN [required|optional]:` IDs with explicit
+  `Why:` and `Validate:` links; `Covers:` ties every scenario to the criteria it
+  proves. New `scripts/acceptance.py` (stdlib-only) verifies the links at plan and,
+  with evidence support checks (artifact sha256 still matching, or a recorded cmd;
+  latest row wins), at check.
+- `temper evidence add|run` accept `--criterion AC-NN`.
+- New gates: `plan` → `criteria -> validation`; `check` → `acceptance evidence`;
+  `review` → `review completed` (an empty findings ledger is not a review).
+
+### Richer Intent stage
+
+- `templates/intent.md` rewritten (Reviewer header, Scope and Non-goals, Business
+  Outcome, action-chain Target Users, labeled Open Questions, `### Decisions`,
+  Source Traceability / Context Sources); `## Scenarios (BDD)` ships empty — Plan
+  writes it. New `templates/example-intent.md` (gate-clean by construction).
+- `temper gate intent` gains ten draft-only requirements: task context recorded
+  (whole-token ticket-key match), criteria why / ids / priority / validate, target
+  users action chain, open questions labeled, no duplicate question, header fields,
+  no scenarios in draft. Accepted/completed intents skip with a recorded PASS.
+- Intent interview discipline (bounded refine pass, accepted-intent pass, two
+  mandatory probes, answers written to `### Decisions` immediately); Stage 0 reuses
+  a matching committed draft instead of re-initing a spec dir.
+
+### Plan / Build
+
+- Scenarios are fenced ```gherkin blocks (gate `scenarios in gherkin blocks`); the
+  CLI's section readers are fence-aware.
+- Cross-repo code search recorded in Plan (`## Cross-Repo Search`; gate
+  `cross-repo search recorded`) and Build (`code_search` in build-context.json,
+  `SEARCH:` panel row).
+- Build runs one task per checkpoint with a Continue/Change/Stop gate, feedback
+  evidence (`checkpoint feedback answered` gate requirement), and a commit per GREEN
+  scenario. `temper gate commit` gains the build-checkpoint carve-out
+  (docs/decisions/0009) and `base_sha`-aware blast radius; downstream readers diff
+  from `base_sha`.
+
+### One closed panel per stage
+
+- Every `agents/*.md` returns exactly one 76-column closed panel with titled
+  sections (Review's 15-row MEDIUM/LOW cap is the sole subset exception); panel
+  copies removed from `reference/*.md`. New `scripts/validate-panels.py`, wired into
+  quality-check.sh and CI. `gate review` FAIL detail names each open blocking
+  finding.
+
+### CLI and hook fixes
+
+1. **`temper gate commit` blocked every commit outside a run.** What broke: with
+   `.temper/` present but no active run, the gate demanded stage verdicts that could
+   never exist, so the pre-commit hook blocked unrelated commits. Root cause: the
+   documented degrade-open path was never implemented — the gate read gates.json
+   unconditionally. Nothing failed because the test suite never exercised a commit
+   with `.temper/` present and no build-state.json. Fix: no build-state.json →
+   single PASS requirement `active run`.
+2. **`temper state init` inherited the previous run's overrides.** What broke: a
+   stale override from run N satisfied a gate run N+1 never earned. Root cause:
+   `state init` wrote only build-state.json, unlike `state clear` which archives and
+   removes overrides/gates/loops/evidence. Nothing failed because no test re-inited
+   over a dirty `.temper/`. Fix: init now clears like `state clear`, archiving
+   non-empty overrides/gates to `.temper/archive/pre-init-*` first (an override
+   carries an approver; that audit fact is kept).
+3. **The pre-commit hook kept a stale plugin path.** What broke: after a plugin
+   upgrade moved the install dir, the embedded path dangled and the hook failed
+   open silently — every commit-gate check a no-op. Root cause: the installer
+   embedded an absolute path at install time and nothing ever re-ran it. Nothing
+   failed because fail-open is the hook's design for *missing* scripts, and a moved
+   plugin is indistinguishable from a missing one. Fix: `install.sh` detects the
+   mismatch, reports it, and always re-embeds the current path; the orchestrator
+   bootstrap reinstalls on a stale path, not only a missing marker.
+4. **`scripts/version-bump.sh` skipped the CHANGELOG insert silently.** What broke:
+   its sed anchor never matched this CHANGELOG's `## vX.Y.Z —` shape, inserted
+   nothing, and still printed success. Root cause: the script predated the current
+   heading format and had no post-insert verification. Nothing failed because no
+   test asserted the insert happened (the maintainer owned the entry by policy, so
+   its absence looked intentional). Fix: anchor on the first `## vX.Y.Z` entry,
+   insert before it (head/tail splice — awk `-v` cannot carry the multi-line
+   skeleton), verify the header landed, exit 1 on no anchor; visible version
+   strings synced, and a suite test fails on any stamp disagreeing with
+   plugin.json. Also fixed a pre-existing bash-3.2 parse bug that had made
+   `scripts/validate-docs.sh` entirely inert.
+
 ## v9.3.5 — directory listing cleanups
 
 No behaviour change to gates, commands, or agents.

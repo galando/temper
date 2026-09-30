@@ -14,7 +14,7 @@ Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0
 3. Auto-detect: pom.xml→Spring Boot, package.json→Node, pyproject.toml→Python, go.mod→Go, Cargo.toml→Rust
 4. Load `.claude/packs/stacks/{stack}.md`
 
-## Pack Resolution (v4.3.0)
+## Pack Resolution
 Three-tier: project-local > global > built-in. Read live (no cache) by every stage command (build, review, check, plan, design) for phase-filtered loading.
 - `.claude/packs/{name}/rules.md` (project)
 - `~/.claude/packs/{name}/rules.md` (global)

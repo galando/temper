@@ -52,10 +52,13 @@ BROKEN_LINKS=$(
     sed 's/\](//;s/)//' | while read -r link; do
       FILE=$(echo "$link" | sed 's/#.*//')
       [[ -z "$FILE" ]] && continue
-      case "$FILE" in
-        /*) TARGET="$REPO_ROOT/docs${FILE}" ;;          # absolute-from-docs-root
-        *)  TARGET="$(dirname "$src")/$FILE" ;;         # relative to the containing file
-      esac
+      # (an if/else, not `case` — macOS's stock bash 3.2 mis-parses a `case`
+      # inside this $() + pipeline construct; see scripts/tests history)
+      if [[ "$FILE" == /* ]]; then                      # absolute-from-docs-root
+        TARGET="$REPO_ROOT/docs${FILE}"
+      else                                              # relative to the containing file
+        TARGET="$(dirname "$src")/$FILE"
+      fi
       if [[ ! -e "$TARGET" && ! -e "${TARGET}.md" ]]; then
         echo "$link (in ${src#$REPO_ROOT/})"
       fi

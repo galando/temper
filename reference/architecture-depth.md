@@ -36,7 +36,9 @@ Before analysis, load domain context:
 
 1. **CONTEXT.md** (if exists at project root): Read domain glossary for naming validation
 2. **docs/adr/** (if exists): Read Architecture Decision Records for compliance checking
-3. **Changed files** from git diff: These are the analysis targets
+3. **Changed files** from git diff (against `temper state get base_sha` when
+   recorded, plus still-uncommitted paths — checkpoint commits already landed, so
+   a plain `git diff --name-only` returns nothing): These are the analysis targets
 
 ## Analysis Methodology
 

@@ -121,20 +121,12 @@ print(len(agents))
     fail ".claude/CLAUDE.md missing"
   fi
 
-  # commands/temper.md title header (vX.Y.Z) == plugin.json (G-1 guard)
+  # commands/temper.md no longer carries a version tag in its title — prompt
+  # files hold rules, not version history (the tag was removed with the rest of
+  # the version-relative prompt text), so there is no stamp left to compare.
+  # plugin.json and .claude/CLAUDE.md remain the live stamps.
   TEMPER_CMD="$REPO_ROOT/commands/temper.md"
-  if [[ -f "$TEMPER_CMD" ]]; then
-    TEMPER_VER=$(grep -m1 -E '^# Temper:.*\(v[0-9]' "$TEMPER_CMD" | sed -E 's/.*\(v([0-9][0-9.]*(\.[0-9]+)*)\).*/\1/')
-    if [[ -z "$TEMPER_VER" ]]; then
-      fail "commands/temper.md has no title-line '(vX.Y.Z)' header"
-    elif [[ "$TEMPER_VER" != "$PLUGIN_VER" ]]; then
-      fail "commands/temper.md header ($TEMPER_VER) != plugin.json ($PLUGIN_VER)"
-    else
-      ok
-    fi
-  else
-    fail "commands/temper.md missing"
-  fi
+  [[ -f "$TEMPER_CMD" ]] || fail "commands/temper.md missing"
 fi
 
 # --- marketplace.json ---
