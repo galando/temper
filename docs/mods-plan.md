@@ -477,7 +477,37 @@ nothing runs in CI. Light and dark terminal screenshots come from VHS themes.
   desktop; `claude -p`; 2.1.200 and 2.1.259 (plugin loads, prompt based phases work);
   `/compact` keeps the section.
 
-## 6. Delivery
+## 6. Test on your laptop before merge and release
+
+Nothing is released from this branch until you have run it in your own terminal.
+Deliverable: `docs/mods-testing.md`, a checklist you tick by hand. The steps:
+
+1. Claude Code 2.1.287 or later: `claude --version`, then `claude update` if older.
+2. Get the branch: `git fetch origin ccr-ea3cb3cc-wsa4sb && git checkout ccr-ea3cb3cc-wsa4sb`
+   in your Temper clone (or a fresh clone).
+3. If you have Temper installed from the marketplace, turn that copy off for the test
+   so only one Temper runs: `claude plugin disable temper@<marketplace>` (the id is
+   shown by `/plugin`). Turn it back on afterwards with `claude plugin enable`.
+4. Run the automated checks from the clone: `claude plugin validate --strict .` and
+   `claude plugin test .` (no sign in needed), plus `bash scripts/tests/test-temper.sh`.
+5. Open the demo project with the branch loaded for that session only:
+   `cd <clone>/demo/<fixture> && claude --plugin-dir <clone>`. The folder is watched,
+   so a `git pull` of the branch reloads the mod without restarting.
+6. Walk the checklist: each phase's denials and hotkeys; `/temper mode full`, `minimal`,
+   `off`; `/compact` keeps "Temper enforcement: active"; a narrow (80 columns) and a
+   wide (160 columns, fullscreen) terminal; light and dark themes.
+7. Old version check without touching your installed CLI:
+   `npx @anthropic-ai/claude-code@2.1.259 -p --plugin-dir <clone> "/temper status"`
+   should answer through the prompt based path with no load error.
+8. Your installed Temper is untouched by all of this: `--plugin-dir` lasts one session
+   and writes nothing to your settings, except the mode you pick with `/temper mode`,
+   which is stored in your user settings under `pluginConfigs`. The checklist ends with
+   how to clear it.
+
+After you tick the checklist: merge, then release with the existing
+`release-bump.yml` and `release.yml` workflows as today.
+
+## 7. Delivery
 
 **Needs your call:** this is large. I propose four pull requests in this order, each
 green on its own:
@@ -489,10 +519,10 @@ green on its own:
 
 Or one pull request with all of it, as your Deliverables list implies.
 
-## 7. Decisions needed from you
+## 8. Decisions needed from you
 
 1. Approve this plan (or list changes).
 2. Real sec-default test: may I write managed settings in this container? (2.6)
 3. Bare `/temper` behavior with mods (3.6).
 4. Minimal mode: phase bar with or without action buttons (3.8).
-5. Four pull requests or one (6).
+5. Four pull requests or one (7).

@@ -66,6 +66,9 @@ that says what to do next, and the phase bar shows Plan as current.
 - [ ] AC-14 [required]: README shows the value line, badges, hero GIF, Mermaid diagram, mode screenshots, collapsible action references and a "Where enforcement works" section, and still passes `validate-readme.sh` (source: request Part D)
   Why: the GitHub page explains Temper at a glance
   Validate: code — validate-readme.sh; manual — view on GitHub
+- [ ] AC-16 [required]: `docs/mods-testing.md` gives the maintainer a checklist to run the branch in their own laptop terminal with `--plugin-dir` before merge and release, without changing their installed Temper (source: maintainer request, 2026-10-02)
+  Why: nothing ships until the maintainer has seen it work on their machine
+  Validate: manual — the maintainer ticks the checklist before merging
 - [ ] AC-15 [optional]: Per phase model or effort through `turn.step`, and a reviewer model through `agent.spawn`, both off by default (proposed)
   Why: cost and quality tuning per phase
   Validate: code — hook tests with the option on and off
