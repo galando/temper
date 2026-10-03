@@ -43,17 +43,18 @@ Run these from `<clone>`. None of them needs you to be signed in.
 
 ## 3. The demo session
 
-- [ ] **Copy the demo project and open it with the branch loaded.**
+- [ ] **Start the demo with one command.** From the root of your clone:
 
 ```bash
-cp -R <clone>/demo/password-reset /tmp/password-reset-demo
-cd /tmp/password-reset-demo
-git init -q && git add -A && git commit -qm start
-npm test                          # three tests pass
-claude --plugin-dir <clone>
+bash demo/run-demo.sh
 ```
 
-  Expect the session to start with no plugin load error. The folder is watched, so a
+  The script copies the demo project to `/tmp/pr-demo`, seeds a Temper run in the Intent
+  phase, checks your Claude Code version, switches off your installed Temper for this one
+  process only (so the branch is the only Temper, and your settings are untouched), and
+  starts Claude Code with the branch loaded. When Claude Code asks, choose "Yes, I trust
+  this folder". Always type the full command name `/temper:temper`.
+  Expect the TEMPER bar above the prompt and no plugin load error. The folder is watched, so a
   `git pull` in `<clone>` reloads the mod without restarting.
 - [ ] **Ask Claude whether the mod is active.** Type `/temper:temper status`. Expect an answer
   that starts with `No Temper run is active`. Then type
