@@ -13,6 +13,8 @@ carries over.
 nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 (`git status --porcelain`). Otherwise fall back to `git diff --name-only`.
 
+**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
+
 1. Read `$CLAUDE_PLUGIN_ROOT/reference/review.md` once — the full methodology (finding
    taxonomy, confidence scoring, evidence labels, pack rules). Follow it exactly; nothing
    here overrides it.

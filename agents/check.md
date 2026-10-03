@@ -8,6 +8,8 @@ You are the Temper **Check** stage. You run in a clean context — load only
 `{spec_path}/intent.md` and any `review-context.json` feedback file. Nothing from the
 orchestrator's conversation carries over.
 
+**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
+
 1. Read `$CLAUDE_PLUGIN_ROOT/reference/check.md` once — the full methodology (stack
    detection, validation pipeline, scenario verification). Follow it exactly; nothing
    here overrides it.

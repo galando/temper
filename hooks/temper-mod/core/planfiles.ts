@@ -50,3 +50,25 @@ export function parseTaskFiles(tasks: string): string[] {
 export function planFileList(plan: string, tasks: string): string[] {
   return unique([...parsePlanFiles(plan), ...parseTaskFiles(tasks)])
 }
+
+// "Task N of M" for the system prompt. M counts the `### Task N:` headings of tasks.md.
+// A task is done when its block carries ticked `- [x]` rows and no open `- [ ]` row
+// (the Build stage ticks a task's box when its Validate passes). N is the first task
+// not done, or M once all are. `override` (build-state's numeric `task`) wins when set.
+export function taskProgress(tasksMd: string, override: number | null = null): { n: number; of: number } | null {
+  const tasks: string[][] = []
+  let isTask = false
+  for (const line of tasksMd.split('\n')) {
+    if (/^###\s+Task\s+\d+/.test(line)) {
+      tasks.push([])
+      isTask = true
+    } else if (/^#{1,3}\s/.test(line)) isTask = false
+    else if (isTask) tasks[tasks.length - 1]?.push(line)
+  }
+  if (tasks.length === 0) return null
+  const done = (b: string[]) => b.some(l => /^\s*-\s+\[[xX]\]/.test(l)) && !b.some(l => /^\s*-\s+\[ \]/.test(l))
+  let first = tasks.findIndex(b => !done(b))
+  if (first < 0) first = tasks.length - 1
+  const n = override !== null ? Math.min(Math.max(override, 1), tasks.length) : first + 1
+  return { n, of: tasks.length }
+}

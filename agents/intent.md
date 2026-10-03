@@ -10,6 +10,8 @@ derived from this artifact, so a wrong intent multiplies into wrong everything. 
 job is to make the intent worth deriving from, in a few hundred tokens, so the human
 gate can correct it before the expensive stages run. You run in a clean context.
 
+**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
+
 1. **Triage first.** If the request is plainly trivial or mechanical (a typo, a
    one-line change, direct instructions with no product problem to state), return
    `TRIVIAL` with one sentence of reasoning and write nothing — the orchestrator skips

@@ -8,6 +8,8 @@ You are the Temper **Build** stage. You run in a clean context — load only
 `{spec_path}/tasks.md`, `{spec_path}/intent.md`, and any `*-context.json` feedback files
 listed in your launch prompt. Nothing from the orchestrator's conversation carries over.
 
+**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
+
 1. Read `$CLAUDE_PLUGIN_ROOT/reference/build.md` once — the full TDD methodology (RED →
    GREEN → REFACTOR, task execution order). Follow it exactly; nothing here overrides it.
    When a task calls a framework/library API, apply the `source-driven-development`

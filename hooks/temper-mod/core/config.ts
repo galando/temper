@@ -63,3 +63,25 @@ export function parsePhaseModels(v: string | undefined): Record<string, string> 
   }
   return out
 }
+
+export const MIN_VERSION = '2.1.287'
+
+// "2.1.288" or "2.1.280-dev.2026..." -> [2, 1, 288 or 280]; null when not a release.
+export function parseVersion(v: string): [number, number, number] | null {
+  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(v.trim())
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
+}
+
+// True when `v` is at least `min`. An unparseable version is not supported: the mod
+// stays inert rather than guess.
+export function versionAtLeast(v: string | undefined, min: string = MIN_VERSION): boolean {
+  const have = parseVersion(v ?? '')
+  const want = parseVersion(min)
+  if (!have || !want) return false
+  for (let i = 0; i < 3; i++) {
+    const a = have[i] ?? 0
+    const b = want[i] ?? 0
+    if (a !== b) return a > b
+  }
+  return true
+}
