@@ -113,7 +113,377 @@ that says what to do next, and the phase bar shows Plan as current.
 
 ## Scenarios (BDD)
 
+Derived by Plan (2026-10-03) from the criteria above and the blast radius in
+`plan.md`. Test approach `mock` means a `claude plugin test` case in `tests/mod/`
+(the kit stubs Claude Code); `unit` means a pure-function test of
+`hooks/temper-mod/core/` or a `test-temper.sh` case for the CLI.
+
+#### Happy Path
+
+```gherkin
+Scenario: Plan phase refuses a source write with the next action
+  Given a run whose folded state is phase Plan for spec "password-reset"
+  When Claude calls Write with file_path "src/app.ts"
+  Then the tool.call hook returns deny
+  And the reason starts "Temper: Plan phase. Writing src/app.ts is not allowed"
+  And the reason ends with "Next: finish plan.md and tasks.md, then ask the user to approve (key 1 or /temper approve)."
+  Note: mock
+  Covers: AC-01
+```
+
+```gherkin
+Scenario: Each phase allows exactly its own paths for Write, Edit and NotebookEdit
+  Given the allowed-path table of plan.md section "Deny rules"
+  When rules.evaluate runs for every phase in Intent, Plan, Build, Review, Check, Fix
+  And for every tool in Write, Edit, NotebookEdit
+  And for one allowed path and one disallowed path per phase
+  Then every allowed path returns allow and every disallowed path returns deny with a "Next:" clause
+  Note: unit
+  Covers: AC-01
+```
+
+```gherkin
+Scenario: git commit is refused until Check passes, then allowed
+  Given phase Check and .temper/gates.json has check verdict FAIL
+  When Claude calls Bash with command "git add -A && git commit -m wip"
+  Then the hook denies with "Temper: commit blocked, Check has not passed. Next: run the checks (key 1 in Check or /temper check)."
+  When gates.json is rewritten with check verdict PASS and the state reaches Done
+  And Claude calls Bash with command "git commit -m feat"
+  Then the call passes through to the stub unchanged
+  Note: mock
+  Covers: AC-02
+```
+
+```gherkin
+Scenario: Every request carries the Temper section and it survives compaction
+  Given phase Build on task 3 of 7 for intent "Password reset by email" with AC-01 and AC-03 passed of 5
+  When prompt.compose fires
+  Then the returned sections end with id "temper:phase" scope "session"
+  And its text contains "Temper enforcement: active" and "Phase: Build (task 3 of 7)" and "Criteria: 2 of 5 passed (AC-01, AC-03)"
+  When session.compact fires and prompt.compose fires again
+  Then the same "temper:phase" section is still last
+  Note: mock
+  Covers: AC-03
+```
+
+```gherkin
+Scenario: Without the marker the skills announce prompt-based phases
+  Given Claude Code 2.1.286 without mods, or a claude.ai/code session without the plugin's mod
+  When the user runs "/temper status"
+  Then the reply says once "Temper enforcement is off here (no mods support); continuing with prompt based phases"
+  And the run continues with the prompt-based stages and CLI gates as in 9.4.0
+  Note: manual
+  Covers: AC-04
+```
+
+```gherkin
+Scenario: Override with a reason skips one phase and is reported
+  Given phase Review with a FAIL review verdict
+  When the user types "/temper override reviewer is on leave, risk accepted"
+  Then exactly one override event for phase Review is written with that reason and origin "person"
+  And the state advances to Check only, not past it
+  And .temper/report.md lists "Review: overridden — reviewer is on leave, risk accepted"
+  Note: mock
+  Covers: AC-05, AC-11
+```
+
+```gherkin
+Scenario: Going back to Plan invalidates every later phase
+  Given Build, Review and Check each have a PASS verdict at time T1
+  When the user runs "/temper back plan need a cache layer" at time T2
+  Then the folded state marks Build, Review and Check invalidated at T2
+  And the phase bar shows Plan as current and Build, Review, Check as stale
+  Note: unit
+  Covers: AC-06
+```
+
+```gherkin
+Scenario: Full mode draws every Temper element on terminal and desktop
+  Given uiMode "full" and phase Build on criterion 2 of 5
+  When AbovePrompt, Pane, Spinner, PromptHint and AskUserQuestion are mounted on surface "terminal" and on "desktop"
+  Then the band shows the six phases and buttons with hotkeys 1, 2, 3, 9, 0
+  And the Spinner word is "Building · criterion 2 of 5"
+  And the terminal PromptHint has a tail and the desktop PromptHint is passed through unchanged
+  And the AskUserQuestion site has a one-line Temper header above the engine's dialog
+  And turn.complete returns a text line and a phase transition shows one toast
+  Note: mock
+  Covers: AC-07
+```
+
+```gherkin
+Scenario: Minimal mode shows phases only and off mode draws nothing
+  Given uiMode "minimal"
+  When the band is mounted on terminal and desktop
+  Then it shows the six phases and no Button elements
+  And no pane opens, no toast, suggestion, hint tail, spinner rewrite, turn line or question header appears
+  Given uiMode "off"
+  When every site is mounted
+  Then each hook returns next(e) unchanged
+  And a Plan-phase Write to "src/app.ts" is still denied
+  Note: mock
+  Covers: AC-07
+```
+
+```gherkin
+Scenario: Mode switch takes effect without restart and persists
+  Given uiMode "full" and the config row "temper.uiMode" is not locked
+  When the user runs "/temper mode minimal"
+  Then $.config.set is called with key "temper.uiMode" and value "minimal"
+  And $.state mirrors "minimal" so the next mount draws the minimal band
+  And the reply says "Temper mode: minimal"
+  Note: mock
+  Covers: AC-08
+```
+
+```gherkin
+Scenario: Scope drift offers three choices and logs each decision
+  Given phase Build and the plan's file list does not contain "src/billing.ts"
+  When Claude calls Edit on "src/billing.ts"
+  Then the call is denied with a reason naming "scope drift" and the three choices
+  And the band offers "Add to plan", "Revert", "Allow once (reason)"
+  When the user picks each choice in a separate test
+  Then a drift event with path, choice, reason and origin "person" is written
+  And "Allow once" with an empty reason writes nothing and asks again
+  And only "Add to plan" or "Allow once" lets the next Edit on that path through
+  Note: mock
+  Covers: AC-09
+```
+
+```gherkin
+Scenario: The fix loop stops at the configured limit
+  Given fix.max-loops is 3 in .claude/temper.config
+  When Check fails three times, each followed by a Fix pass
+  Then the fourth checkResult(fail) moves to a Fix state whose only legal commands are back(plan), override and pause
+  And the band offers "Re-plan", "Override", "I take over"
+  And decide(state, advance) returns an error naming the loop limit
+  Note: unit
+  Covers: AC-10
+```
+
+```gherkin
+Scenario: Completion writes the audit report
+  Given a run with one override, one accepted finding, two drift decisions and 4 of 5 criteria passed in .temper/status.json
+  When Check passes and the state reaches Done
+  Then .temper/report.md is written with sections Phases, Overrides, Accepted findings, Scope drift, Criteria
+  And each override, acceptance and drift line carries its reason and author
+  Note: mock
+  Covers: AC-11
+```
+
+```gherkin
+Scenario: temper status --json writes per-criterion status after each gate
+  Given intent.md with AC-01 and AC-02 and an evidence row supporting AC-01
+  When "temper gate check" runs
+  Then .temper/status.json holds AC-01 passed and AC-02 open, each with its evidence reference
+  And "temper status --json" prints the same JSON and exits 0
+  Note: unit
+  Covers: AC-03, AC-11
+```
+
+```gherkin
+Scenario: temper evidence accept stops the review gate counting a finding
+  Given review evidence with one unresolved critical finding id 1 and block-on [critical]
+  When "temper evidence accept --stage review --id 1 --reason 'false positive, input is trusted'" runs
+  Then "temper gate review" returns PASS
+  And "temper evidence list --stage review" shows "[accepted: false positive, input is trusted]"
+  And the same command without --reason exits 1 and changes nothing
+  Note: unit
+  Covers: AC-05, AC-11
+```
+
+```gherkin
+Scenario: The mod uses no process, http or env call
+  Given the built mod under hooks/temper-mod
+  When "claude plugin validate --json ." runs in CI
+  Then the reported calls contain no entry starting with "process.", "http." or "env."
+  And they equal the reviewed list in scripts/check-mod-calls.sh
+  Note: integration
+  Covers: AC-13
+```
+
+```gherkin
+Scenario: README explains Temper at a glance and still validates
+  Given the rewritten README.md
+  When "bash scripts/validate-readme.sh" runs
+  Then it exits 0 with the file at or under 300 lines
+  And the README contains the value line, badges, the hero GIF, a mermaid block, light and dark mode screenshots, details blocks for actions, and a "Where enforcement works" section
+  Note: integration
+  Covers: AC-14
+```
+
+```gherkin
+Scenario: The maintainer tests the branch on their laptop without touching the installed Temper
+  Given docs/mods-testing.md and the demo/password-reset fixture
+  When the maintainer follows the checklist with "claude --plugin-dir <clone>" on Claude Code 2.1.287 or later
+  Then every step has a checkbox, an exact command and the expected result
+  And the last step clears the pluginConfigs row the mode test wrote
+  Note: manual
+  Covers: AC-16
+```
+
+```gherkin
+Scenario: Per-phase model and reviewer model are off by default
+  Given userConfig phaseModels "" and reviewerModel ""
+  When turn.step fires in Build and agent.spawn fires for "temper:review"
+  Then both events pass through with the model unchanged
+  Given phaseModels "build=sonnet" and reviewerModel "opus"
+  Then turn.step in Build is passed on with model "sonnet" and the review spawn returns model "opus"
+  Note: mock
+  Covers: AC-15
+```
+
+#### Error Paths
+
+```gherkin
+Scenario: Override without a reason is refused
+  Given phase Review
+  When the user runs "/temper override" with no text, or presses 9 and submits an empty reason
+  Then no event is written and the reply says "Override needs a reason: /temper override <reason>"
+  Note: mock
+  Covers: AC-05
+```
+
+```gherkin
+Scenario: Claude cannot forge an approval
+  Given phase Plan
+  When Claude calls Write on ".temper/specs/password-reset/events/1-x-1.json"
+  Or Claude calls Bash with "temper override plan --reason ok" and no unconsumed human override event exists
+  Then both calls are denied with "Only the user can approve this. Ask them to press 1 or run /temper approve."
+  And an event file present on disk whose id is not in the mod's store is shown as unverified and does not count as an approval
+  Note: mock
+  Covers: AC-01, AC-05
+```
+
+```gherkin
+Scenario: A locked mode row is reported, not changed
+  Given $.config.list returns the row "temper.uiMode" with isLocked true and value "minimal"
+  When the user runs "/temper mode full"
+  Then $.config.set is not called
+  And the reply says "Your organization set Temper's mode to minimal; ask your admin to change it."
+  Note: mock
+  Covers: AC-08
+```
+
+```gherkin
+Scenario: Skipping forward over an invalidated phase is refused
+  Given Build was invalidated at T2 and its last PASS verdict is from T1
+  When decide(state, advance) is asked to move from Build to Review
+  Then it returns an error "Build needs a fresh verdict after it was invalidated"
+  And it returns events only after a build verdict newer than T2 is read from gates.json
+  Note: unit
+  Covers: AC-06
+```
+
+```gherkin
+Scenario: A torn event file is skipped and reported
+  Given the events directory holds three valid events and one file containing half a JSON object
+  When state is rebuilt on session.start
+  Then the three valid events are folded and the torn file is listed as "unreadable event"
+  And no hook throws
+  Note: unit
+  Covers: AC-06
+```
+
+```gherkin
+Scenario: On an unsupported Claude Code version the mod stays inert
+  Given $.session.version returns "2.1.286", or the call rejects
+  When session.start fires and then a Plan-phase Write to "src/app.ts" is called
+  Then the Write passes through, no section is composed and no site is drawn
+  Note: mock
+  Covers: AC-12
+```
+
+#### Edge Cases
+
+```gherkin
+Scenario: Temper's denials compose with a prepended managed guard
+  Given an inline prepend-tier plugin that denies every Bash call and allows everything else
+  When Claude calls Bash "git commit -m x" and Write "src/app.ts" in phase Plan
+  Then the Bash call carries the prepended guard's reason, not Temper's
+  And the Write carries Temper's reason
+  Note: mock
+  Covers: AC-01, AC-12
+```
+
+```gherkin
+Scenario: Old Claude Code versions load the plugin as today
+  Given Claude Code 2.1.200, 2.1.259, 2.1.286 and 2.1.287 in turn
+  When "claude -p --plugin-dir <clone> '/temper status'" runs on each
+  Then the plugin loads with no error, the classic UserPromptSubmit and Stop hooks run, and /temper answers
+  And plugin.json declares no userConfig field with "options"
+  Note: manual
+  Covers: AC-12
+```
+
+```gherkin
+Scenario: Subagent tool calls are held to the same phase rules
+  Given phase Intent
+  When a subagent with an agentId calls Edit on "src/app.ts"
+  Then the call is denied with the same reason the main loop would get
+  Note: mock
+  Covers: AC-01
+```
+
+```gherkin
+Scenario: State comes back after /clear from the event files
+  Given events on disk that fold to phase Review and $.state reset by /clear
+  When classic.SessionStart fires with source "clear"
+  Then $.state holds phase Review and the composed section names Review
+  Note: mock
+  Covers: AC-03, AC-06
+```
+
+```gherkin
+Scenario: A feature description after /temper still reaches the prompt-based orchestrator
+  Given an active run and the mod loaded
+  When the user runs "/temper add password reset by email"
+  Then command.run passes the event through with next(e) unchanged
+  When the user runs bare "/temper"
+  Then the pane toggles and no prompt is submitted
+  Note: mock
+  Covers: AC-07
+```
+
+```gherkin
+Scenario: Intent gate requires an out-of-scope line and resolved questions
+  Given an accepted intent.md whose Scope section has no "Out of scope:" line with real text
+  Or whose Open Questions still hold a Blocking question
+  When "temper gate intent --spec-path <dir>" runs
+  Then it returns FAIL naming "out of scope stated" or "open questions resolved"
+  And an intent with both satisfied, or Open Questions "none", returns PASS
+  Note: unit
+```
+
+```gherkin
+Scenario: Check uses configured commands and the fix loop limit comes from config
+  Given .claude/temper.config sets check.commands.test "npm test" and fix.max-loops 3
+  When "temper config get check.commands.test" and "temper config get fix.max-loops" run
+  Then they print "npm test" and "3"
+  And with the keys absent they print nothing and "3"
+  Note: unit
+  Covers: AC-10
+```
+
 ## Scenario Coverage Checklist
+
+| AC | Scenarios |
+|---|---|
+| AC-01 | Plan phase refuses a source write; Each phase allows exactly its own paths; Claude cannot forge an approval; Denials compose with a prepended guard; Subagent tool calls |
+| AC-02 | git commit is refused until Check passes |
+| AC-03 | Every request carries the Temper section; temper status --json; State comes back after /clear |
+| AC-04 | Without the marker the skills announce prompt-based phases |
+| AC-05 | Override with a reason; Override without a reason; Claude cannot forge an approval; temper evidence accept |
+| AC-06 | Going back to Plan invalidates; Skipping forward refused; Torn event file; State after /clear |
+| AC-07 | Full mode; Minimal and off mode; Feature description passes through |
+| AC-08 | Mode switch without restart; Locked mode row |
+| AC-09 | Scope drift offers three choices |
+| AC-10 | Fix loop stops at the limit; Check commands and fix loop limit from config |
+| AC-11 | Completion writes the report; Override is reported; temper status --json; temper evidence accept |
+| AC-12 | Unsupported version stays inert; Old versions load the plugin; Denials compose with a prepended guard |
+| AC-13 | The mod uses no process, http or env call |
+| AC-14 | README explains Temper at a glance |
+| AC-15 | Per-phase model and reviewer model are off by default |
+| AC-16 | The maintainer tests the branch on their laptop |
 
 ## Source Traceability
 
