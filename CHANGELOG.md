@@ -3,6 +3,84 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.5.0: the Temper mod, and four CLI additions it needs
+
+### The mod (Claude Code 2.1.287 or later)
+
+- A new mod in `hooks/temper-mod/`, loaded through a `modules` entry next to the existing
+  hooks in `hooks/hooks.json`. It refuses Write, Edit and NotebookEdit outside the current
+  phase's paths, refuses `git commit` until Check passes (or is overridden), refuses
+  forged approvals (writes to the events folder, `.temper/gates.json`, `.temper/status.json`
+  or `.temper/overrides.json`, and decision CLI calls without a matching human decision),
+  and adds a `temper:phase` section to every request so Claude knows the phase, with the
+  line `Temper enforcement: active`.
+- Phase history is stored as one event file per decision under
+  `.temper/specs/<name>/events/`, written once with a unique name. Verdicts and criteria
+  status are only read from the CLI's files. Going back invalidates every later phase, and a
+  phase needs a fresh verdict after it was invalidated.
+- `/temper` gains reserved subcommands: `status`, `timeline`, `approve`, `next`, `back`,
+  `override <reason>`, `accept`, `drift`, `pause`, `resume`, `report`, `pr`, `mode`,
+  `enforcement` and `pane`. Any other first word still reaches the prompt based command.
+  Decisions count only from the person. The same words are handled in prose when the mod is
+  absent.
+- Scope drift: an edit outside the plan's files asks you to add it to the plan, revert it,
+  or allow it once with a reason, and logs the choice. After the configured number of failed
+  Check to Fix loops (default 3) the run stops and offers replan, override or hand over.
+- A phase bar above the prompt (six phases, up to three actions on keys 1, 2 and 3,
+  override on 9, all actions on 0), a pane with a live criteria checklist, the spinner text
+  `Building · criterion 2 of 5`, a hint tail, a question header, a line under each answer,
+  suggestions that are never submitted, and one toast per phase change.
+- Three modes, `full`, `minimal` and `off`, switched live with `/temper mode`. A separate
+  `/temper enforcement on|off` controls the refusals. Both are plugin settings (`uiMode`,
+  `enforcement`); a value locked by an administrator is reported, not changed. The first
+  interactive `/temper` asks once.
+- `.temper/report.md` is written when a run completes: phases, overrides, accepted findings,
+  scope drift decisions with reasons, and criteria status.
+- Optional and off by default: a model or effort per phase (`phaseModels`, for example
+  `build=sonnet:high`) and a reviewer model (`reviewerModel`).
+- The mod calls only the reviewed set listed in `docs/mods-plan.md` section 2.7: no
+  `process`, `http` or `env`. `scripts/check-mod-calls.sh` enforces it in CI, which now also
+  runs `claude plugin test`, `claude plugin validate --strict` and the type check on
+  Claude Code 2.1.287.
+
+### CLI additions (these help without the mod too)
+
+- `check.commands.test`, `check.commands.lint` and `check.commands.typecheck` in
+  `.claude/temper.config` replace stack detection for Check when set.
+- `fix.max-loops` sets the Check to Fix limit. `temper config get fix.max-loops` reads 3
+  when it is unset. With the key absent, the existing `loops.max-per-type` still applies.
+- `temper evidence accept --stage review --id N --reason "..."` stops the review gate counting
+  a finding, keeping the row with the reason, the author and the time. An empty reason is
+  refused and writes nothing.
+- `temper status --json` prints per criterion `passed` or `open` with the evidence behind it,
+  and `temper gate` now writes the same view to `.temper/status.json`. Failing to write it
+  never changes a verdict.
+
+### Verdict change: `temper gate intent`
+
+Two requirements are new. An intent needs an `Out of scope:` line under `Scope and Non-goals`
+with real text, and an accepted or completed intent may not carry an Open Question marked
+`Blocking`. Existing accepted intents that have neither will now fail the gate until they are
+edited. The out of scope line is checked for every status, drafts included. The shipped
+template and example carry the line.
+
+### Minimum versions and old versions
+
+- The mod needs Claude Code 2.1.287 or later. On older versions the plugin loads and runs the
+  prompt based phases, and the skills say once that enforcement is off. Loading was checked on
+  2.1.200 and 2.1.259; a module runs from 2.1.286 on.
+- The plugin settings (`userConfig`) are plain strings and declare no `options`. A field with
+  `options` stops the whole plugin loading on Claude Code before 2.1.271, so the values are
+  checked in code instead (an unknown `uiMode` means `full`, an unknown `enforcement` means `on`).
+- Where enforcement works, and where it does not (surfaces, organization policy, Bash being
+  best effort), is written down in the README section "Where enforcement works".
+
+### Docs
+
+- README rewritten around the one line promise, with a phase diagram, the three modes and a
+  collapsible reference for each phase. `docs/mods-testing.md` is the checklist to run the
+  branch on your own machine before release. `docs/demo-script.md` and `demo/` hold the demo.
+
 ## v9.4.0 — acceptance-linked criteria, richer Intent gate, per-task Build checkpoints, panel + CLI fixes
 
 ### Acceptance criteria with stable IDs (AC-NN)

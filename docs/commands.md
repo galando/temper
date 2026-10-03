@@ -89,6 +89,56 @@ Each stage gate clears context and loads only what's needed:
 | REVIEW | Changed files only | ~20-50KB |
 | CHECK | Nothing new | 0KB |
 
+### Subcommands
+
+When the first word after `/temper` is one of these, Temper handles it instead of
+starting a run. Any other first word is a feature description, as before.
+
+| Subcommand | What it does |
+|---|---|
+| `/temper status` | Where the run stands: phase, task, criteria passed, loop count |
+| `/temper timeline` | The phases the run went through |
+| `/temper approve` | Approve the current phase (Intent or Plan). Only you can do this. |
+| `/temper next` | Move on when the phase has passed its gate |
+| `/temper back <phase> <reason>` | Go back. Every later phase needs a fresh verdict. |
+| `/temper override <reason>` | Skip the current phase once. A reason is required and is recorded. |
+| `/temper accept <id> <reason>` | Accept a review finding with a reason |
+| `/temper drift <add\|revert\|allow> <reason>` | Decide a pending scope drift |
+| `/temper pause`, `/temper resume` | Hand the run over to you, take it back |
+| `/temper report` | Write `.temper/report.md` now |
+| `/temper pr` | Ask Claude for a pull request description from the report |
+| `/temper mode <full\|minimal\|off>` | Change how much Temper draws |
+| `/temper enforcement <on\|off>` | Turn denials on or off |
+| `/temper pane` | Open or close the pane. A bare `/temper` does the same while a run is active. |
+| `/temper help` | List these |
+
+Decisions (`approve`, `override`, `accept`, `drift`, `back`) count only when you type
+them or press the button yourself. Claude cannot create one. With the mod loaded the
+subcommands are handled by the mod; without it the same words are handled by the prompt
+based command, so they work on every surface.
+
+### Modes
+
+With Claude Code 2.1.287 or later, the Temper mod draws a phase bar, a pane and a few
+other elements, and refuses writes that do not belong to the current phase. Two settings
+control it, and both can be changed while a session runs:
+
+| Setting | Values | Effect |
+|---|---|---|
+| `uiMode` (`/temper mode`) | `full`, `minimal`, `off` | `full` draws the bar with action buttons, the pane, toasts, suggestions, the spinner text, the turn line, the hint and the question header. `minimal` draws the phase bar only, with no buttons. `off` draws nothing. |
+| `enforcement` (`/temper enforcement`) | `on`, `off` | `on` refuses out of phase writes and an early `git commit`. `off` keeps the drawing only. |
+
+Denials and subcommands work in every mode. The first interactive `/temper` asks once
+which mode you want. If your organization locked a mode, `/temper mode` says so and does
+not change it. See the README section "Where enforcement works" for what is and is not
+covered.
+
+### Phase bar hotkeys
+
+In `full` mode the band above the prompt offers up to three actions for the current
+phase on `1`, `2` and `3`. Key `9` is override (it asks for a reason) and `0` opens the
+pane with every action. Key `1` changes when the phase is ready to move on.
+
 ---
 
 ## `/temper:intent`

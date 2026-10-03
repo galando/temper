@@ -1,13 +1,19 @@
 # Temper
 
-**Your AI writes fast. Temper makes it last.**
+**Claude cannot write code before you approve the intent.**
 
-*An intent-gated SDLC for AI-generated code — every gate verdict computed by a small CLI, never asserted by a model.*
+An intent gated workflow for AI generated code. Every gate verdict is computed by a small
+CLI, never asserted by a model, and with Claude Code 2.1.287 or later a mod enforces the
+phases while you work.
 
-[![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases)](https://github.com/galando/temper/releases)
+[![Plugin directory](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
+[![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases&label=version)](https://github.com/galando/temper/releases)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1.287%2B%20for%20the%20mod-blue)](#where-enforcement-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[Website](https://galando.github.io/temper) · [Getting Started](docs/getting-started.md) · [Releases](https://github.com/galando/temper/releases)
+![Temper in a terminal: a refused write, an approval with one key, criteria ticking](docs/assets/temper-full.gif)
+
+[Website](https://galando.github.io/temper) · [Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [Releases](https://github.com/galando/temper/releases)
 
 ## Install
 
@@ -16,131 +22,278 @@
 /plugin install temper
 ```
 
-That's it. Your first `/temper "…"` sets the project up — config, scaffold, and the
-native commit gate that physically blocks `git commit` while any gate is red.
+Your first `/temper "describe the feature"` sets the project up: the config, the `.temper/`
+folder and a `pre-commit` hook that blocks `git commit` while any gate is red. Use Claude Code
+2.1.287 or later for the phase bar and the refusals below. Older versions run every phase as prompts.
 
-## The Problem
+## The problem
 
-AI writes code fast, but with structural failure patterns: happy paths without edge
-cases, features nobody asked for, calls to methods that don't exist, correct code
-never wired in. Most tools check whether the code compiles. Temper checks whether it
-solves the right problem — **mechanically**, not by asking the model to grade itself.
+AI writes code fast, with predictable failures: happy paths without edge cases, features
+nobody asked for, calls to methods that do not exist, correct code that is never wired
+in. Most tools check that the code compiles. Temper checks that it solves the right
+problem, and it does so mechanically, not by asking the model to grade itself.
 
-## How It Works
+## How it works
 
-One loop, a human gate at every stage, the cheapest artifact reviewed first:
+One loop with a human gate at every stage. The cheapest artifact is reviewed first.
 
+```mermaid
+flowchart LR
+  I["Intent<br/>press 1 to approve"] --> P["Plan<br/>files it may touch"]
+  P --> B["Build<br/>failing test first"]
+  B --> R["Review<br/>fix or accept"]
+  R --> C["Check<br/>run all checks"]
+  C --> D(("Done<br/>commit allowed"))
+  C -- "a check fails" --> F["Fix<br/>three loops at most"]
+  F --> C
 ```
-INTENT → PLAN → DESIGN? → BUILD → REVIEW → CHECK → COMMIT
-  ↑ WHY — approved before any tokens are spent downstream
-```
 
-- **Intent gate first** — you approve the Problem and success criteria before
-  exploration or architecture runs. A wrong intent multiplies into wrong everything;
-  correcting it at this gate costs words, after Plan it costs the plan.
-- **Scenarios before architecture** — BDD scenarios are derived from a *measured*
-  blast radius, so every planned file traces to a behavior. That's the structural
-  defense against over-engineering.
-- **Every gate is computed** — `scripts/temper` (auditable bash, no network) reads an
-  evidence ledger (`temper evidence add/run`) and prints PASS/FAIL per requirement. A
-  red gate blocks `git commit` via a real pre-commit hook; a human can override
-  (recorded with their identity, never erased) — a confused model can't.
-- **The loop closes itself** — `temper bands` watches metric history with control
-  bands (pure arithmetic, no model); a breach is drafted as the next intent and rides
-  the same pipeline. Fixes write a committed `lessons.md` every future RCA reads first.
+- **The intent gate comes first.** You approve the problem and the success criteria before
+  exploration or architecture spends tokens. Correcting a wrong intent costs words here and
+  costs the whole plan later.
+- **Every gate is computed.** `scripts/temper` is auditable bash with no network. It reads an
+  evidence ledger and prints PASS or FAIL per requirement. A red gate blocks `git commit`
+  through a real hook. A person can override a gate (recorded with their identity). A
+  confused model cannot.
+- **The mod makes the phases real.** Claude Code 2.1.287 or later runs a small mod that
+  refuses a write that does not belong to the current phase, refuses `git commit` until Check
+  passes, draws the phase bar, and writes `.temper/report.md` at the end.
 
-## Commands
+### The three modes
 
-Three you'll actually type — `/temper` runs and routes the rest:
+You choose how much Temper draws with `/temper mode`. Denials work in every mode.
 
-| Command | Purpose |
-|---------|---------|
-| [`/temper "…"`](docs/commands.md#temper) | The whole pipeline, intent gate to commit |
-| [`/temper:fix "…"`](docs/commands.md#temperfix) | Root cause → failing test (write-protected) → minimal fix |
-| [`/temper:intent "…"`](docs/commands.md#temperintent) | Capture an idea as a committed draft, build it later |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/mode-full-dark.png">
+  <img alt="Full mode: phase bar with action buttons and the pane" src="docs/assets/mode-full-light.png">
+</picture>
+**Full** draws the bar with action buttons, the pane, toasts and suggestions.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/mode-minimal-dark.png">
+  <img alt="Minimal mode: the phase bar only" src="docs/assets/mode-minimal-light.png">
+</picture>
+**Minimal** draws the phase bar only.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/mode-off-dark.png">
+  <img alt="Off mode: nothing drawn, denials still apply" src="docs/assets/mode-off-light.png">
+</picture>
+**Off** draws nothing. A write outside the phase is still refused.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/desktop-dark.png">
+  <img alt="The same bar in the Claude desktop app, Code tab" src="docs/assets/desktop-light.png">
+</picture>
+The same mod runs in the desktop app (Code tab).
 
-<details><summary><b>Granular control</b> — each stage on its own, plus utilities</summary>
+### Each phase
 
-| Command | Purpose |
-|---------|---------|
-| [`/temper:plan`](docs/commands.md#temperplan) | Blast radius + BDD scenarios + architecture |
-| [`/temper:design`](docs/commands.md#temperdesign) | System design, Areas of Concern gated |
-| [`/temper:build`](docs/commands.md#temperbuild) | Scenario-driven TDD + coverage gate |
-| [`/temper:review`](docs/commands.md#temperreview) | Confidence-scored review + intent validation |
-| [`/temper:check`](docs/commands.md#tempercheck) | Stack-aware validation pipeline |
-| [`/temper:status`](docs/commands.md#temperstatus) | Dashboard: gates, hotspots, control bands |
-| [`/temper:pack`](docs/commands.md#temperpack) | Manage quality packs |
-| [`/temper:init`](docs/commands.md#temperinit) | Explicit setup (idempotent) |
+Key `1` is the main action and changes when the phase is ready to move on. Key `9` is
+override everywhere and always asks for a reason. Key `0` opens the pane with every action.
+
+<details><summary><b>Intent</b>: write the problem and the criteria</summary>
+
+| Key | Action |
+|---|---|
+| 1 | Approve intent (when the gate passes), otherwise Lint intent |
+| 2 | Ask clarifying questions |
+| 3 | Edit intent |
+| 0 | Capture intent from my prompt |
+
+Allowed writes: the spec's `intent.md`. Everything else is refused.
 
 </details>
 
-**Autonomy (opt-in):** after you approve the plan, `/temper` can run the remaining
-stages unattended — checkpointing each green stage, parking before commit. It never
-commits, pushes, or merges.
+<details><summary><b>Plan</b>: scenarios, blast radius, files</summary>
 
-**Quality packs:** versioned policy (security, TDD, quality, performance, api-design,
-architecture-depth) enforced during build and review, with deterministic hook
-backstops for the rules that must always hold. [docs/packs.md](docs/packs.md)
+| Key | Action |
+|---|---|
+| 1 | Approve plan (when the gate passes), otherwise Generate plan |
+| 2 | Show files the plan touches |
+| 3 | Propose an alternative |
+| 0 | Split into tasks, Back to Intent |
 
-**Works with any CI:** temper ships no platform files — its automation surface is
-commands and exit codes (`temper bands`, `temper gate review`, `temper metrics
-append`), the same under GitHub Actions, GitLab, Jenkins, or cron.
-[examples/workflow/README.md](examples/workflow/README.md)
+Allowed writes: `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records.
+
+</details>
+
+<details><summary><b>Build</b>: failing test first, inside the plan</summary>
+
+| Key | Action |
+|---|---|
+| 1 | Start next task, or Send to Review when the tasks are done |
+| 2 | Run tests for the current criterion |
+| 3 | Show diff against plan |
+| 0 | Pause |
+
+Allowed writes: the plan's files, test files and the spec folder. A write anywhere else raises
+scope drift: add it to the plan, revert it, or allow it once with a reason. Each choice is logged.
+
+</details>
+
+<details><summary><b>Review</b>: confidence scored findings</summary>
+
+| Key | Action |
+|---|---|
+| 1 | Start review, or Fix all when findings exist |
+| 2 | `Re-review` |
+| 3 | Show diff |
+| pane | Per finding: Fix, Accept with reason, Explain |
+
+Allowed writes: the spec folder only, unless a fix for that file is active.
+
+</details>
+
+<details><summary><b>Check</b>: stack validation</summary>
+
+| Key | Action |
+|---|---|
+| 1 | Run all checks, or Mark done when every check passes |
+| 2 | Rerun failed only |
+| 3 | Failures by criterion |
+
+Allowed writes: the spec folder only. `git commit` stays refused until Check passes.
+
+</details>
+
+<details><summary><b>Fix</b>: the loop after a failed check</summary>
+
+| Key | Action |
+|---|---|
+| 1 | Fix failures |
+| 2 | Fix open findings |
+| 3 | Return to Check |
+| at the limit | `Re-plan`, Override, I take over |
+
+After three failed loops (configurable with `fix.max-loops`) Temper stops and offers those three choices.
+
+</details>
+
+## Where enforcement works
+
+The mod needs Claude Code 2.1.287 or later. This section says plainly where that is true,
+where it is not, and what is unverified.
+
+**Older versions.** On Claude Code before 2.1.287 the plugin loads and works as it always
+did: prompt based phases, the CLI gates and the native `pre-commit` hook. The mod is
+ignored or stays inert, and the skills say once that enforcement is off. This was checked on
+2.1.200 and 2.1.259 (the plugin loads, the old hooks run, the mod does not). The plugin
+settings declare no picker options on purpose: a settings field with options stops the whole
+plugin loading on versions before 2.1.271.
+
+| Surface | Refusals (hooks) | Drawing |
+|---|---|---|
+| `claude` in a terminal, including editor terminals | yes | yes |
+| Desktop app, Code tab | yes | yes, except terminal only elements |
+| Desktop app, WSL session | no (plugins are unavailable) | no |
+| VS Code extension chat panel | yes | no |
+| `claude -p` and the Agent SDK | yes | no |
+| Remote Control (phone or web) | yes, on your machine | only in your machine's terminal |
+| Cloud sessions (claude.ai/code) | yes, if the plugin reaches the session | no |
+| claude.ai chat, Cowork | not documented, so unverified | not documented |
+| GitHub Actions | not documented; it runs `claude -p`, so probably yes (unverified) | no |
+
+Cloud sessions only receive plugins through server managed settings, so most people get the
+prompt based phases there.
+
+**Early access API.** Claude Code's mods API is early access and may change between releases.
+The adapter in `hooks/temper-mod/register.tsx` is deliberately thin, the rules are plain
+functions with their own tests, and CI runs the whole suite on Claude Code 2.1.287.
+
+**Organization policy.** An administrator can switch parts of this off:
+
+- `allowManagedModsOnly` is not a top level setting. It is an option of the built in
+  `sec-default` guard. With it on, Temper's mod does not load unless the organization ships
+  Temper itself. The rest of the plugin (commands, skills, agents, hooks) still loads.
+- `allowManagedHooksOnly` also stops hooks from plugins, so the classic Temper hooks stop too
+  unless the plugin is force enabled.
+- `disableAllHooks` in managed settings stops every mod and every settings hook.
+- A managed guard that runs first and denies a call wins, so two guards never conflict.
+  Coexistence with the real `sec-default` was tested with a simulated prepended guard only,
+  because loading the real one needs managed settings on the machine.
+
+**You can turn it off.** Anyone can disable the plugin or set `/temper enforcement off`. It is a
+workflow guard for honest use, not a security boundary.
+
+**What the mod can do.** Mods are not sandboxed. This one uses no network and spawns no
+process: it reads and writes files under `.temper/` and the project (events and the report),
+asks you questions, and draws. Tests, lint and git run as prompts to Claude through Claude's
+normal tools and permissions. CI fails if the mod gains any `process`, `http` or `env` call or
+any call outside the reviewed list in [`scripts/check-mod-calls.sh`](scripts/check-mod-calls.sh).
+
+**Bash is best effort.** The hard guarantee covers Write, Edit, NotebookEdit and `git commit`.
+Bash can write files in ways no pattern catches, and MCP file tools are not covered. The native
+`pre-commit` hook is a second layer that still blocks a commit with a red gate.
+
+**Without the mod** you keep the full pipeline: intent, plan, build, review and check as
+prompts, every CLI gate verdict, the commit hook and the evidence ledger. You lose the live
+refusals, the phase bar and the report.
+
+## Commands
+
+Three you will actually type. `/temper` runs and routes the rest.
+
+| Command | Purpose |
+|---------|---------|
+| [`/temper "..."`](docs/commands.md#temper-unified-command) | The whole pipeline, intent gate to commit |
+| [`/temper:fix "..."`](docs/commands.md#temperfix) | Root cause, a failing test that is write protected, a minimal fix |
+| [`/temper:intent "..."`](docs/commands.md#temperintent) | Capture an idea as a committed draft, build it later |
+
+`/temper` also takes subcommands such as `status`, `approve`, `override <reason>`, `back`,
+`mode` and `pane`. See [Commands](docs/commands.md#subcommands).
+
+<details><summary><b>Granular control</b>: each stage on its own, plus utilities</summary>
+
+| Command | Purpose |
+|---------|---------|
+| [`/temper:plan`](docs/commands.md#temperplan) | Blast radius, BDD scenarios and architecture |
+| [`/temper:design`](docs/commands.md#temperdesign) | System design, areas of concern gated |
+| [`/temper:build`](docs/commands.md#temperbuild) | Scenario driven TDD and a coverage gate |
+| [`/temper:review`](docs/commands.md#temperreview) | Confidence scored review and intent validation |
+| [`/temper:check`](docs/commands.md#tempercheck) | Stack aware validation pipeline |
+| [`/temper:status`](docs/commands.md#temperstatus) | Dashboard: gates, hotspots, control bands |
+| [`/temper:pack`](docs/commands.md#temperpack) | Manage quality packs |
+| [`/temper:init`](docs/commands.md#temperinit) | Explicit setup, safe to repeat |
+
+</details>
+
+**Autonomy (opt in)** runs the stages after the plan gate unattended and parks before commit; it
+never commits, pushes or merges. **Packs:** [docs/packs.md](docs/packs.md). **Any CI:**
+[examples/workflow/README.md](examples/workflow/README.md).
 
 ## Trust
 
-Markdown plus about 1,700 lines of auditable bash, with small inline Python for JSON
-parsing and one read-only helper (`scripts/pack-discover.py`). Temper itself makes no
-network calls, sends no telemetry, and installs no packages. The committed artifact
-chain (intent, plan, design, gate ledger, diff) is the audit trail: who asked, what was
-planned, what the gates verified, in the same commits as the code.
+Markdown, a mod written in TypeScript, and about 1,700 lines of auditable bash with small
+inline Python for JSON parsing. Temper itself makes no network calls, sends no telemetry and
+installs no packages. The committed artifacts (intent, plan, design, gate ledger, diff, and the
+decision events and report from the mod) are the audit trail: who asked, what was planned, what
+the gates verified, in the same commits as the code.
 
 ### What Temper runs and changes
 
-Temper's own scripts run locally with `bash`, `git` and `python3`, and write only inside
-your project.
+Temper's scripts run locally with `bash`, `git` and `python3`, and write only inside your project.
 
-- **Plugin hooks (active on install).** `hooks/hooks.json` registers two hooks.
-  `UserPromptSubmit` runs `scripts/hooks/stage-marker.sh`, which writes
-  `.temper/pending-stage.json` when a prompt starts with `/temper:intent`, `:plan`,
-  `:design`, `:build`, `:review` or `:check`. `Stop` runs
-  `scripts/hooks/verify-stage-gate.sh`, which can ask Claude to keep working (at most
-  twice per stage) until that stage's gate verdict is recorded, and logs each firing to
-  `.temper/hooks.log`. Both do nothing for any other prompt and fail open on errors.
-- **Project files.** `/temper` and `/temper:init` create `.claude/temper.config` (never
-  overwriting an existing one) and the `.temper/` folder: gate ledger, evidence,
-  overrides log, specs and metrics.
-- **Git pre-commit hook.** On first run, `/temper` and `/temper:init` run
-  `scripts/hooks/install.sh`, which writes a `pre-commit` hook into your repository's
-  active hooks folder (`.git/hooks`, or the folder `core.hooksPath` already names). The
-  hook runs a secret scan and `temper gate commit`, and blocks the commit only when a
-  gate is red. Any existing non-Temper `pre-commit` hook is backed up first. Only the
-  optional `install.sh --global` sets `core.hooksPath`, in that repository's config. To
-  remove it, delete the `pre-commit` file the installer names.
-- **Your own toolchain.** Build and check stages run the test, lint, type check and
-  build commands your project already uses (from `.claude/temper.config` or detected
-  from your stack). Temper records their exit codes as gate evidence.
-- **Optional tools you install yourself.** If `ocr`
-  ([open-code-review](docs/recommended-setup.md)) is on your `PATH`, `/temper:review`
-  runs it on the diff under review, and `ocr` sends that diff to the LLM provider you
-  configured for it. Set `tools.ocr.mode: off` in `.claude/temper.config` to skip it.
-  MCP servers you added, such as `code-review-graph` or `semgrep`, are used when
-  present. Temper never installs any of them.
-- **Opt-in only.** `/temper:pack enable hooks` merges the edit-time guardrails in
-  `packs/hooks/settings.hooks.json` into your `settings.json`, and only when you ask.
-  Autonomous continuation runs only when you arm it at the plan gate, and it never
-  commits, pushes or merges.
-- **Maintainer tooling, never run by the plugin.** `scripts/tests/` and other harness
-  directories in this repository are the project's own test tooling; no command,
-  agent, skill or hook invokes them on install.
+- **Plugin hooks.** `hooks/hooks.json` registers two classic hooks and the mod module.
+  `UserPromptSubmit` runs `scripts/hooks/stage-marker.sh`, which notes which gate a standalone
+  stage command owes. `Stop` runs `scripts/hooks/verify-stage-gate.sh`, which can ask Claude to
+  keep working (at most twice per stage) until that gate has a verdict. Both fail open.
+- **The mod.** It reads `.temper/` files and the spec, and writes event files under
+  `.temper/specs/<name>/events/` and `.temper/report.md`. It refuses writes by returning a
+  reason, and never edits your code.
+- **Git hook.** On first run `scripts/hooks/install.sh` writes a `pre-commit` hook into the
+  repository's active hooks folder. It runs a secret scan and `temper gate commit` and blocks only
+  when a gate is red. An existing hook is backed up first. Delete the file to remove it.
+- **Your toolchain.** Build and check run the test, lint and type check commands your project
+  already uses (`check.commands.*` in `.claude/temper.config`) and record their exit codes as evidence.
+- **Optional tools you install yourself.** If `ocr` (open code review) is on your `PATH`,
+  `/temper:review` runs it on the diff, and `ocr` sends that diff to the provider you set up.
+  Set `tools.ocr.mode: off` to skip it. Temper never installs any tool, and
+  `/temper:pack enable hooks` or autonomous continuation only run when you ask.
 
 ## Documentation
 
 - [Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [Packs](docs/packs.md)
-- [Methodology](docs/methodology.md) — IDD + BDD + TDD, one contract file
-- [AI-Native SDLC Alignment](docs/ai-native-sdlc.md) — temper vs Anthropic's playbook, play by play
-- [Recommended Setup](docs/recommended-setup.md) · [Enterprise](docs/enterprise.md) · [Privacy](https://galando.github.io/temper/privacy.html)
+- [Methodology](docs/methodology.md) · [Testing the mod on your laptop](docs/mods-testing.md) · [Demo script](docs/demo-script.md)
+- [AI Native SDLC Alignment](docs/ai-native-sdlc.md) · [Recommended Setup](docs/recommended-setup.md) · [Enterprise](docs/enterprise.md) · [Privacy](https://galando.github.io/temper/privacy.html)
 
-## Contributing & License
+## Contributing and license
 
 [CONTRIBUTING.md](CONTRIBUTING.md) · MIT © [Gal Naor](https://github.com/galando)
