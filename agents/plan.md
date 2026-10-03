@@ -52,6 +52,21 @@ orchestrator's conversation carries over except the prompt you were launched wit
 8. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
+**Gotchas** (each one is a gate or hook that rejects the stage when missed):
+- The spec directory holds exactly `intent.md`, `tasks.md` and `plan.md`. Never a
+  fourth file (no `spec.md`, `quickstart.md`, README); `temper gate plan` reads only
+  those three.
+- A `Scenario:` outside a ```gherkin fence fails the gate, and a bare one renders as a
+  run-on paragraph in every review surface.
+- Record complexity with `temper state set complexity` the moment you classify it. The
+  gate reads it to decide whether `## Blast Radius` is required.
+- `plan.md` carries a `## Cross-Repo Search` section at every tier. When no search
+  tool is connected, say so there.
+- Scenario count must be at least the criterion count, and every `Covers:` id must
+  name a real `AC-NN`.
+- The accepted intent is your input. Refine it only with a stated reason, and never
+  re-derive its Problem.
+
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
 the right border) and nothing outside it. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N

@@ -79,6 +79,20 @@ gate can correct it before the expensive stages run. You run in a clean context.
 7. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
+**Gotchas** (each one is a gate or hook that rejects the stage when missed):
+- Never write a placeholder `Scenario:` block. `temper gate check` demands a passing
+  test for every `Scenario:` line and cannot tell a placeholder from a real one, so
+  `## Scenarios (BDD)` stays empty until Plan fills it.
+- Gather context before drafting. A source you could not read is recorded as
+  `unavailable` with the reason, and thin context becomes a labeled Open Question. A
+  silent guess is the failure this stage exists to prevent.
+- Every criterion needs a stable `AC-NN` id, a `Why:` line and a `Validate:` type. An
+  unlabeled open question or a missing header field fails `temper gate intent`.
+- Do not explore the codebase beyond naming and context. Blast radius and architecture
+  belong to Plan and Plan's budget.
+- An intent already marked `**Status:** accepted` that passes the gate is read, never
+  rewritten, and never re-questioned.
+
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
 the right border) and nothing outside it. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N

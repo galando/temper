@@ -1,31 +1,39 @@
 ---
-description: "Interactive HTML plan review — browser-based review with inline comments"
+description: "Interactive HTML plan review, local or shared, with inline comments"
 ---
 
 # HTML Plan Review
 
-**Goal:** Generate a self-contained HTML file from plan.md + tasks.md that supports interactive browser-based review with inline comments (Google Doc-style).
+**Goal:** Generate a self-contained HTML page from plan.md + tasks.md that supports interactive review with inline comments (Google Doc-style), either on your own machine or shared with other reviewers by link.
+
+Two plan gate options use this page:
+
+- **Open HTML review**: render to a local file and open it. One reviewer, comments come back as a JSON file.
+- **Share HTML review**: publish the page so other people can review it. Two paths, chosen by what the session has (see [Sharing](#sharing)).
 
 ## Template
 
 The HTML template is at `templates/plan-review.html`. It contains:
-- All CSS inline (dark theme, responsive)
-- All JS inline (comment system, export, markdown rendering)
+- All CSS inline (dark and light theme, responsive down to phone width)
+- All JS inline (comment system, copy/export, markdown rendering)
 - No external dependencies (no CDN, no build tools)
-- XSS-safe: all user input is escaped before rendering
+- XSS-safe: all comment text is escaped before rendering
+- A shared mode that switches on by itself when the page runs where a shared store exists (a published Claude artifact). Anywhere else it works from the page alone.
 
 ## HTML Generation
 
-The orchestrator generates the HTML file by:
+Never fill the template by hand. `scripts/plan_review.py` does it deterministically, escapes every value for the place it lands in, and splits sections the same way every time:
 
-1. Read `templates/plan-review.html`
-2. Read `.temper/specs/{feature}/plan.md` — split into sections by `##` headers
-3. Read `.temper/specs/{feature}/tasks.md` — split into sections by `## Task` headers
-4. Replace template placeholders:
-   - `{{FEATURE_NAME}}` → human-readable feature name
-   - `{{FEATURE_SLUG}}` → slug from build-state.json
-   - `{{SECTIONS_JSON}}` → JSON array of `{ title, source, content }` objects
-5. Write to `.temper/specs/{feature}/review.html`
+```bash
+python3 "$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py" render ".temper/specs/{feature}"
+# writes .temper/specs/{feature}/review.html and prints its path
+python3 "$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py" render ".temper/specs/{feature}" \
+  --target artifact -o "${TMPDIR:-/tmp}/temper-review-{feature}.html"
+```
+
+- Sections come from `plan.md` then `tasks.md`, split at each `## ` heading (headings inside code fences are ignored). Text before the first heading becomes its own section when it has content.
+- `--feature "Name"` overrides the display name (default: the `# ` heading of plan.md, else the spec directory name).
+- `--target artifact` writes the fragment the Artifact tool expects (title, style, body; no `<!doctype>`, `<html>`, `<head>` or `<body>` wrapper). Write it outside the spec directory so a shared page is never committed with the spec.
 
 ### Section Schema
 
@@ -37,9 +45,9 @@ The orchestrator generates the HTML file by:
     "content": "## Architecture\n\n...markdown content..."
   },
   {
-    "title": "Task 1 — Create Pack",
+    "title": "Task 1: Create Pack",
     "source": "tasks.md",
-    "content": "## Task 1 — Create Pack\n\n...markdown content..."
+    "content": "## Task 1: Create Pack\n\n...markdown content..."
   }
 ]
 ```
@@ -58,39 +66,91 @@ Comments are serialized to `review-comments.json`:
       "target": "Architecture",
       "type": "task-change|scenario-change|plan-change|general-note",
       "text": "User's comment text",
+      "author": "Optional reviewer name",
       "timestamp": "{ISO}",
       "resolved": false
     }
   ],
   "review_completed": true,
-  "completed_at": "{ISO}"
+  "completed_at": "{ISO}",
+  "reviewers_done": ["Optional reviewer name"]
 }
 ```
 
+`author` and `reviewers_done` are optional: the page fills them only when a reviewer typed a name.
+
 ## Orchestrator Integration
 
-After the user clicks "Done Reviewing" in the HTML:
+After the reviewer is done, get the comments into `.temper/specs/{feature}/review-comments.json` (how depends on the option; see below), then:
 
-1. Browser downloads `review-comments.json`
-2. User places the file at `.temper/specs/{feature}/review-comments.json`
-3. Orchestrator reads the JSON file
-4. For each comment:
+1. Read the JSON file
+2. For each comment:
    - `task-change` → update tasks.md section matching `target`
    - `scenario-change` → update intent.md scenario matching `target`
    - `plan-change` → update plan.md section matching `target`
    - `general-note` → add as context note to build-state.json
-5. Show what changed
-6. Return to Plan gate
+3. Show what changed
+4. Return to Plan gate
+
+### Local: Open HTML review
+
+1. Render and open `review.html`.
+2. The reviewer clicks "Done Reviewing". The browser downloads `review-comments.json` (and the page also shows the JSON in a box with a Copy button, for browsers that block downloads).
+3. The user places the file at `.temper/specs/{feature}/review-comments.json`, or pastes the JSON when asked.
+
+## Sharing
+
+Sharing sends the plan text to a service outside this machine. Before publishing, tell the user exactly where it will go and who can read it, and publish only after they confirm. A plan names files, internal design and sometimes people.
+
+Pick the path from what the session has, in this order:
+
+### Path A: Claude artifact (preferred, comments come back automatically)
+
+Use it when the `Artifact` tool is in your tool list.
+
+1. Load the `artifact-design` and `artifact-capabilities` skills if they are listed; follow their page contract.
+2. Render with `--target artifact` (command above).
+3. Publish with the Artifact tool: `file_path` = the rendered file, `capabilities: {db: {}}`, `icon: "review"`, and a one-sentence `description` (for example "Plan review for {feature}"). Do not pass a `title`; the page carries its own.
+4. The artifact is private until the user shares it. Tell the user: open the artifact's Share menu and give reviewers **Contributor** access. Viewers and Commenters can read but cannot save comments (their page then falls back to Copy comments).
+5. Do one functional check as the skill asks: list the `comments` collection once with `ArtifactData` (empty is correct) and tell the user in one line what you checked.
+6. Show an `AskUserQuestion` gate: **"Comments are in"** / **"Skip the review"**.
+7. On "Comments are in", read both collections with `ArtifactData` (`list` on `comments`, then `list` on `done`), save the documents' bodies as `{"comments": [...], "done": [...]}` in a temp file, and normalize:
+   ```bash
+   python3 "$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py" merge --feature "{feature}" \
+     -o ".temper/specs/{feature}/review-comments.json" "{temp file}"
+   ```
+   Report how many comments came back and which reviewers marked themselves done (`reviewers_done`), then apply them as above.
+8. Leave the artifact in place unless the user asks to delete it.
+
+### Path B: secret Gist (fallback, comments come back by paste)
+
+Use it when there is no `Artifact` tool and the `gh` CLI is installed and logged in.
+
+1. Warn the user: a secret Gist is **unlisted, not private**. Anyone who has the link can read it. Publish only after they confirm.
+2. Render the local file, then `gh gist create ".temper/specs/{feature}/review.html" -d "Temper plan review {feature}"`. The Gist is secret by default; never pass `--public`.
+3. Build the viewing link from the Gist URL `https://gist.github.com/{user}/{id}`: `https://gist.githack.com/{user}/{id}/raw/review.html`. A Gist serves raw HTML as plain text, so the githack proxy is what renders it. If that link does not render, paste the raw Gist URL into raw.githack.com to get one.
+4. Tell the user the link. Reviewers read and comment in the browser, click **Done Reviewing**, then use **Copy comments** (or the box that appears) and send the JSON back.
+5. Show an `AskUserQuestion` gate asking the user to paste each reviewer's JSON through "Other", or to say where the files are. Save each paste to a temp file and normalize them together (inputs are merged and de-duplicated by comment id):
+   ```bash
+   python3 "$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py" merge --feature "{feature}" \
+     -o ".temper/specs/{feature}/review-comments.json" "{file 1}" "{file 2}"
+   ```
+6. Apply the comments as above, then offer to delete the Gist (`gh gist delete {id}`) so the plan does not stay on a public link.
+
+### Neither is available
+
+Say so, and offer **Open HTML review** (local) instead. Never invent another hosting route.
 
 ## Browser Compatibility
 
 - Chrome/Edge 90+, Firefox 90+, Safari 15+
 - No polyfills needed
-- Uses standard File API for JSON download
-- No server-side component
+- Copy uses the clipboard API with a select-and-copy fallback; the file download is a convenience, not the only way out
 
 ## Security
 
-- All user input (comments) is escaped via `textContent` assignment (never `innerHTML` with user data)
-- Markdown rendering only applies to plan content (injected by orchestrator, trusted)
+- All comment text, including other reviewers' comments in a shared review, is escaped via `textContent`/`escapeHtml`, never inserted as markup
+- Markdown rendering only applies to plan content (injected by `plan_review.py`, which JSON-escapes it for the script block)
 - No external resources loaded (fully self-contained)
+- Shared-review data is untrusted: `plan_review.py merge` drops empty comments and coerces unknown types to `general-note` before anything is applied
+- The only network calls are the ones the user confirmed: publishing the artifact, or creating the Gist

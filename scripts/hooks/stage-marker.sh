@@ -7,9 +7,8 @@
 # .temper/pending-stage.json. The Stop half (verify-stage-gate.sh) refuses to let the
 # session end until .temper/gates.json carries a verdict for that stage — any verdict,
 # PASS or FAIL; what's enforced is that `temper gate <stage>` actually ran, not that it
-# passed. Together the pair closes the wiring gap measured by evals/run-wiring-smoke.sh
-# (v8 baseline: the model skipped the CLI in 2 of 3 live runs — see
-# docs/decisions/0005-deterministic-stage-gate-enforcement.md).
+# passed. Together the pair closes the wiring gap measured at v8 (the model skipped the CLI
+# in 2 of 3 live runs — see docs/decisions/0005-deterministic-stage-gate-enforcement.md).
 #
 # /temper (unified) is deliberately NOT marked: its orchestrator runs each gate at the
 # stage boundary, and a session legitimately ends mid-pipeline at any human gate.

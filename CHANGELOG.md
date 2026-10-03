@@ -3,6 +3,47 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.5.0, shareable plan review, stage gotchas, per-stage effort, eval suite removed
+
+### Share HTML review at the Plan gate
+
+- New plan gate option **Share HTML review**. With the `Artifact` tool available it
+  publishes the review as a Claude artifact; reviewers comment in the page and the
+  comments come back through the artifact's shared store, so nothing has to be moved
+  by hand. Reviewers need Contributor access in the Share menu.
+- Without the Artifact tool it falls back to a secret Gist (rendered through
+  gist.githack.com); reviewers copy their comments and send them back. The Gist link is
+  unlisted, not private, and the flow says so and asks before creating it.
+- Nothing leaves the machine until the user confirms where it is going. Both paths end
+  in the same `review-comments.json` the local review already used.
+- `templates/plan-review.html` rewritten for this: dark and light themes, no `alert()`
+  or inline handlers, a Copy comments box (downloads do not work inside the Claude
+  viewer), an optional reviewer name, and a shared mode that turns on only where the
+  shared store exists.
+- New `scripts/plan_review.py` (stdlib only): `render` fills the template
+  deterministically and escapes every value (plan text containing `</script>` can no
+  longer break the page), `merge` normalizes comments from one or more reviewers
+  (de-duplicates by id, drops empty text, coerces unknown types). 13 new cases in
+  `test-temper.sh`.
+
+### Stage briefs
+
+- Every `agents/*.md` brief now carries a **Gotchas** section: the mistakes each stage
+  is rejected for (a gate requirement or hook), listed up front instead of discovered
+  at the gate. `validate-plugin.sh` fails a brief without one.
+- `effort: high` on the Review and RCA agents, where extra verification pays off. The
+  other stages inherit the session's effort. `validate-plugin.sh` rejects an
+  `effort` value Claude Code does not accept.
+
+### Removed
+
+- The `evals/` seeded-defect fixtures and the `Eval Fixtures` workflow. Its job needs an
+  `ANTHROPIC_API_KEY` repository secret that was never set, so the latest nightly run
+  concluded `skipped`, and it never gated a merge. `scripts/tests/test-temper.sh` still
+  covers the gate logic, and the stage-gate Stop hook still enforces that the owed
+  gate runs. Docs that cited the fixtures were reworded; ADRs and plans that describe
+  history were left as written.
+
 ## v9.4.0 — acceptance-linked criteria, richer Intent gate, per-task Build checkpoints, panel + CLI fixes
 
 ### Acceptance criteria with stable IDs (AC-NN)

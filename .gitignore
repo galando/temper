@@ -30,7 +30,7 @@ package-lock.json
 # Build outputs (generated during build)
 dist/
 
-# Python cache (evals/fixtures/*/test runs, etc.)
+# Python cache (scripts/*.py runs)
 __pycache__/
 *.pyc
 .pytest_cache/

@@ -21,6 +21,14 @@ listed below, nothing from the orchestrator's conversation carries over.
 5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
+**Gotchas** (each one is a gate or hook that rejects the stage when missed):
+- The gate checks only that an Areas of Concern heading exists. That is a floor, not
+  the standard: list the real conflicts with the owner who resolves each, or write an
+  explicit `None flagged` line with the reason. Silence is not a valid claim.
+- Areas of Concern come first in your panel. They are the reason the human is at this
+  gate.
+- Design flags a policy conflict and names its owner. It never silently picks a side.
+
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
 the right border) and nothing outside it. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
