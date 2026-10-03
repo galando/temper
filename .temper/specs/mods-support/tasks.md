@@ -7,9 +7,9 @@ maintainer ticks `docs/mods-testing.md`.
 
 ## Prerequisites
 
-- [ ] Read `docs/mods-plan.md` sections 2 to 7 (the approved design)
-- [ ] Read `.temper/specs/mods-support/intent.md` Scenarios and `plan.md`
-- [ ] `claude --version` ≥ 2.1.287 (2.1.288 installed)
+- [x] Read `docs/mods-plan.md` sections 2 to 7 (the approved design)
+- [x] Read `.temper/specs/mods-support/intent.md` Scenarios and `plan.md`
+- [x] `claude --version` ≥ 2.1.287 (2.1.288 installed)
 
 ## Tasks
 

@@ -18,6 +18,8 @@ description: "Show quality metrics, learning loop, and observability dashboard"
    evidence-backed gate ledger — run `$CLAUDE_PLUGIN_ROOT/scripts/temper report`, or read
    the files directly)
 4. Read `.temper/feedback-loops.json` (if exists — active feedback loop state)
+4.2. If the current spec has an `intent.md`, run `$CLAUDE_PLUGIN_ROOT/scripts/temper status`
+   (per-criterion passed/open with evidence; `--json` writes `.temper/status.json`)
 4.5. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper bands` (deterministic control-band drift
    check over metrics history — **CONTROL BANDS section**; a `propose`-tier breach
    offers drafting an intent.md, see reference/status.md Step 3.7)

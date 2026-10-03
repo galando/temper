@@ -21,6 +21,14 @@ Read `metrics.json`, `review-memory.json`, `.temper/specs/` for active specs. Sc
 file / reviews touching file`; top 5 by density = hotspots. No `metrics.json` → "No
 metrics yet. Run /temper:review or /temper:check to start tracking."
 
+### Step 1.4: Criteria Status
+
+When the current spec has an `intent.md`, run `$CLAUDE_PLUGIN_ROOT/scripts/temper status`
+and show its rows: each acceptance criterion as passed or open with the evidence rows
+that support it. `temper status --json` prints the same data as JSON, and every
+`temper gate` run refreshes `.temper/status.json` with it (a failed write never changes
+a verdict). Nothing here is a verdict; `.temper/gates.json` owns those.
+
 ### Step 1.5: External Tool Availability
 
 - **code-review-graph / semgrep:** probe with a trivial tool call (e.g.

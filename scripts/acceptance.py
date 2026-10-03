@@ -2,6 +2,12 @@
 """acceptance.py — explicit validation links between criteria, scenarios, and evidence.
 
 Usage: acceptance.py <stage> <intent.md> <evidence.json>
+       acceptance.py status <intent.md> <evidence-dir>
+
+`status` prints {criteria: [{id, priority, status: passed|open, evidence}], ts} as
+JSON for `.temper/status.json`: a criterion is passed when its latest `criterion` row
+is a supported pass, or when it is Covered by scenarios that ALL have a supported
+passing latest row. Rows from every stage file in the evidence dir are merged by ts.
 
 Prints `every criterion has explicit validation links` on success, or the errors
 joined with `; ` and exits non-zero. python3 stdlib only.
@@ -165,7 +171,71 @@ def latest_by_key(rows, key):
     return out
 
 
+def status_report(intent_path, ev_dir):
+    """Per-criterion status for the live view (`temper status --json`)."""
+    import datetime
+    import glob
+    import os
+    lines = open(intent_path).read().splitlines()
+    real = [c for c in parse_criteria(section_lines(lines, "Success Criteria"))
+            if not c.get("placeholder") and c.get("id")]
+    rows = []
+    for f in sorted(glob.glob(os.path.join(ev_dir, "*.json"))):
+        stage = os.path.splitext(os.path.basename(f))[0]
+        for i, r in enumerate(load_evidence(f), 1):
+            if isinstance(r, dict):
+                rows.append((r.get("ts") or "", stage, i, r))
+    rows.sort(key=lambda t: t[0])   # stable: equal ts keeps file order
+
+    def latest(key, value):
+        hit = None
+        for _, stage, i, r in rows:
+            if r.get(key) == value:
+                hit = (stage, i, r)
+        return hit
+
+    # scenario name -> the AC ids its Covers: line names (the line sits in its block)
+    covers, current = {}, None
+    for line in lines:
+        m = re.match(r"^\s*Scenario:\s*(.+?)\s*$", line)
+        if m:
+            current = m.group(1)
+            covers.setdefault(current, [])
+            continue
+        cm = COVERS_RE.match(line)
+        if cm and current:
+            covers[current] += [t.strip() for t in cm.group(1).split(",") if t.strip()]
+
+    out = []
+    for c in real:
+        evidence, status = [], "open"
+        hit = latest("criterion", c["id"])
+        if hit and supported_pass(hit[2]):
+            status = "passed"
+            evidence.append("%s#%d %s" % (hit[0], hit[1], hit[2].get("claim") or ""))
+        else:
+            names = [n for n, ids in covers.items() if c["id"] in ids]
+            hits = [latest("scenario", n) for n in names]
+            if names and all(h and supported_pass(h[2]) for h in hits):
+                status = "passed"
+                evidence = ["%s#%d scenario %s" % (h[0], h[1], n) for n, h in zip(names, hits)]
+        out.append({"id": c["id"], "priority": c["priority"], "status": status,
+                    "evidence": [e.strip() for e in evidence]})
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {"criteria": out, "ts": ts}
+
+
 def main():
+    if len(sys.argv) >= 2 and sys.argv[1] == "status":
+        if len(sys.argv) != 4:
+            print("usage: acceptance.py status <intent.md> <evidence-dir>", file=sys.stderr)
+            return 2
+        try:
+            print(json.dumps(status_report(sys.argv[2], sys.argv[3]), indent=2))
+        except OSError as e:
+            print(f"cannot read intent: {e}", file=sys.stderr)
+            return 2
+        return 0
     if len(sys.argv) != 4:
         print("usage: acceptance.py <stage> <intent.md> <evidence.json>", file=sys.stderr)
         return 2

@@ -32,7 +32,9 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
    $CLAUDE_PLUGIN_ROOT/scripts/temper evidence resolve --stage review \
      --id <n> --fixed-by "<commit sha or what you changed>"           # after the fix is re-tested
    ```
-   Never clear the ledger to pass the gate; resolve is the honest path.
+   Never clear the ledger to pass the gate; resolve is the honest path. A finding the
+   person decides to keep is never accepted by you: `temper evidence accept --stage
+   review --id <n> --reason "<why>"` is their call, and it needs a reason.
    Use `--label PROVEN` only for a finding an external tool (MCP, semgrep) actually
    verified, per the evidence-label rules in `review.md`.
    **When the review is done — even if there were NO findings — record:**

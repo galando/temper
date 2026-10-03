@@ -138,7 +138,9 @@ Then two records, both committed:
 ## Rollback
 
 - Tests fail after the fix → `git checkout -- {file}`, re-run, re-investigate.
-- 3+ fix attempts fail → keep the regression test (it proves the bug), show the RCA and
+- The attempt limit is `temper config get fix.max-loops` (default 3), enforced by
+  `temper state loop check fix` once the key is set in `.claude/temper.config`.
+- `fix.max-loops` attempts fail → keep the regression test (it proves the bug), show the RCA and
   what you tried, ask for context.
 - It's actually a design flaw, not a bug → "this needs `/temper:plan` for a redesign,
   not a patch"; offer a workaround with a TODO if one exists.

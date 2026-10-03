@@ -824,6 +824,10 @@ Support spends a third of call time on status-only queries.
   Why: nice-to-have digest
   Validate: manual — checked by hand
 
+### Scope and Non-goals
+- In scope: the demo
+- Out of scope: production behavior
+
 ### Target Users
 - support agent: opens the portal → sees status without a call
 
@@ -1211,6 +1215,10 @@ A real problem with real text.
   Why: serves the real outcome
   Validate: scenario — traced later
 
+### Scope and Non-goals
+- In scope: the demo
+- Out of scope: production behavior
+
 ### Target Users
 - developer: uses the feature → gets a result
 
@@ -1570,6 +1578,130 @@ mkdir -p src && echo a > src/a.js
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_eq "base_sha diff + uncommitted paths feed the blast-radius count" "yes" \
   "$(echo "$OUT" | grep -qE 'blast radius — [0-9]+ file' && echo "$OUT" | grep -qE 'blast radius' && echo yes || echo no)"
+
+# --- mods: check.commands.* and fix.max-loops config keys ---
+setup
+assert_eq "config get fix.max-loops defaults to 3 when the key is absent" "3" "$("$TEMPER" config get fix.max-loops)"
+assert_eq "config get check.commands.test prints nothing when absent" "" "$("$TEMPER" config get check.commands.test)"
+cat >> .claude/temper.config <<'CFG'
+fix:
+  max-loops: 4
+CFG
+assert_eq "config get fix.max-loops reads the configured value" "4" "$("$TEMPER" config get fix.max-loops)"
+setup
+printf 'check:\n  commands:\n    test: "npm test"\n    lint: npm run lint\n    typecheck: tsc --noEmit\nfix:\n  max-loops: 3\n' >> .claude/temper.config
+assert_eq "config get check.commands.test prints the configured command" "npm test" "$("$TEMPER" config get check.commands.test)"
+assert_eq "config get check.commands.lint prints an unquoted command" "npm run lint" "$("$TEMPER" config get check.commands.lint)"
+assert_eq "config get check.commands.typecheck prints the configured command" "tsc --noEmit" "$("$TEMPER" config get check.commands.typecheck)"
+assert_eq "config get fix.max-loops prints 3 when set to 3" "3" "$("$TEMPER" config get fix.max-loops)"
+# fix.max-loops bounds the check->fix pair only when set; loops.max-per-type stays 2 elsewhere.
+"$TEMPER" state init demo --command fix >/dev/null
+assert_exit "state loop check fix iteration 1 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason a
+assert_exit "state loop check fix iteration 2 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason b
+assert_exit "state loop check fix iteration 3 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason c
+assert_exit "state loop check fix iteration 4 is blocked by fix.max-loops 3" 1 "$TEMPER" state loop check fix --reason d
+assert_exit "state loop review build still stops at loops.max-per-type 2 (key unset for that pair)" 0 "$TEMPER" state loop review build --reason a
+assert_exit "state loop review build second iteration passes" 0 "$TEMPER" state loop review build --reason b
+assert_exit "state loop review build third iteration is blocked" 1 "$TEMPER" state loop review build --reason c
+setup
+"$TEMPER" state init demo --command fix >/dev/null
+"$TEMPER" state loop check fix --reason a >/dev/null; "$TEMPER" state loop check fix --reason b >/dev/null
+assert_exit "with fix.max-loops unset, check fix keeps loops.max-per-type 2" 1 "$TEMPER" state loop check fix --reason c
+
+# --- mods: evidence accept stops the review gate counting a finding (with a reason) ---
+setup
+git config user.email "acc@example.com"; git config user.name "Acc Person"
+"$TEMPER" evidence add --stage review --claim "weak hash" --severity critical >/dev/null
+"$TEMPER" evidence add --stage review --claim "long method" --severity high >/dev/null
+"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+assert_exit "evidence accept needs --stage, --id and --reason" 1 "$TEMPER" evidence accept --stage review --id 1
+assert_exit "evidence accept with an empty --reason exits 1" 1 "$TEMPER" evidence accept --stage review --id 1 --reason ""
+assert_eq "an empty --reason writes nothing" "no" "$("$TEMPER" evidence list --stage review --json | grep -q '"accepted"' && echo yes || echo no)"
+assert_exit "evidence accept rejects an unknown id" 1 "$TEMPER" evidence accept --stage review --id 9 --reason "x"
+assert_exit "evidence accept rejects an unknown stage" 1 "$TEMPER" evidence accept --stage nope --id 1 --reason "x"
+assert_exit "review gate FAILs while the critical finding is open" 1 "$TEMPER" gate review
+assert_exit "evidence accept records the finding with a reason" 0 "$TEMPER" evidence accept --stage review --id 1 --reason "legacy hash, tracked in TICKET-9"
+assert_exit "evidence accept refuses the same finding twice" 1 "$TEMPER" evidence accept --stage review --id 1 --reason "again"
+assert_eq "accepted row stores reason, author and ts" "legacy hash, tracked in TICKET-9|Acc Person <acc@example.com>|yes" \
+  "$("$TEMPER" evidence list --stage review --json | python3 -c 'import json,sys; a=json.load(sys.stdin)[0]["accepted"]; print("%s|%s|%s" % (a["reason"], a["author"], "yes" if a.get("ts") else "no"))')"
+assert_eq "the accepted row is still in the ledger" "3" "$("$TEMPER" evidence list --stage review --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+assert_eq "evidence list shows [accepted: reason]" "yes" "$("$TEMPER" evidence list --stage review | grep -q '#1 .*\[accepted: legacy hash, tracked in TICKET-9\]' && echo yes || echo no)"
+assert_exit "review gate PASSes once the only blocking finding is accepted" 0 "$TEMPER" gate review
+assert_eq "the gate detail names the accepted count" "yes" "$("$TEMPER" gate review | grep -q '1 accepted' && echo yes || echo no)"
+assert_exit "evidence resolve refuses an already accepted finding" 1 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc
+assert_exit "evidence accept refuses an already resolved finding" 1 bash -c "'$TEMPER' evidence resolve --stage review --id 2 --fixed-by abc >/dev/null && '$TEMPER' evidence accept --stage review --id 2 --reason r"
+
+# --- mods: gate intent requires an out-of-scope line and resolved questions ---
+scope_fixture() { # scope_fixture <status> <out-of-scope-bullet-or-empty> <open-questions-body>
+  good_draft
+  python3 - "$1" "$2" "$3" <<'PYX'
+import sys
+status, oos, oq = sys.argv[1:4]
+p = '.temper/specs/demo/intent.md'
+s = open(p).read().replace('**Status:** draft', '**Status:** ' + status)
+s = s.replace('### Scope and Non-goals\n- In scope: the demo\n- Out of scope: production behavior\n\n', '')
+scope = '### Scope and Non-goals\n- In scope: the demo\n' + (('- Out of scope: ' + oos + '\n') if oos else '') + '\n'
+s = s.replace('### Open Questions\n', scope + '### Open Questions\n' + oq + '\n', 1)
+open(p, 'w').write(s)
+PYX
+}
+setup; scope_fixture accepted "billing changes" "- none"
+assert_exit "accepted intent with an Out of scope line and no questions PASSes" 0 "$TEMPER" gate intent
+setup; scope_fixture accepted "" "- none"
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_exit "accepted intent without an Out of scope line FAILs" 1 "$TEMPER" gate intent
+assert_eq "the FAIL names out of scope stated" "yes" "$(echo "$OUT" | grep -q 'out of scope stated' && echo yes || echo no)"
+setup; scope_fixture accepted "{what it explicitly does not touch}" "- none"
+assert_exit "a placeholder Out of scope line does not count" 1 "$TEMPER" gate intent
+setup; scope_fixture draft "" ""
+assert_exit "a draft without an Out of scope line also FAILs" 1 "$TEMPER" gate intent
+setup; scope_fixture accepted "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_exit "accepted intent with a Blocking question FAILs" 1 "$TEMPER" gate intent
+assert_eq "the FAIL names open questions resolved" "yes" "$(echo "$OUT" | grep -q 'open questions resolved' && echo yes || echo no)"
+setup; scope_fixture completed "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
+assert_exit "completed intent with a Blocking question FAILs" 1 "$TEMPER" gate intent
+setup; scope_fixture accepted "billing" "- Deferred: rename later; consequence: none; why work can proceed: cosmetic; needed by: v2."
+assert_exit "accepted intent with only a Deferred question PASSes" 0 "$TEMPER" gate intent
+setup; scope_fixture draft "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
+assert_exit "a draft may still hold a Blocking question" 0 "$TEMPER" gate intent
+
+# --- mods: per-criterion status.json written after each gate; temper status --json ---
+setup
+"$TEMPER" evidence add --stage check --claim "AC-01 shown" --criterion AC-01 --cmd "echo ok" --exit 0 >/dev/null
+"$TEMPER" gate check >/dev/null 2>&1 || true
+assert_eq "gate writes .temper/status.json" "yes" "$([[ -f .temper/status.json ]] && echo yes || echo no)"
+assert_eq "status.json: AC-01 passed, AC-02 open" "AC-01:required:passed|AC-02:required:open" \
+  "$(python3 -c 'import json; d=json.load(open(".temper/status.json")); print("|".join("%s:%s:%s" % (c["id"], c["priority"], c["status"]) for c in d["criteria"]))')"
+assert_eq "status.json: the passed criterion carries its evidence reference, the open one none" "1|0" \
+  "$(python3 -c 'import json; d=json.load(open(".temper/status.json")); print("|".join(str(len(c["evidence"])) for c in d["criteria"]))')"
+assert_eq "status.json carries a ts" "yes" "$(python3 -c 'import json; print("yes" if json.load(open(".temper/status.json")).get("ts") else "no")')"
+OUT_JSON="$("$TEMPER" status --json)"
+assert_exit "temper status --json exits 0" 0 "$TEMPER" status --json
+assert_eq "temper status --json prints the same criteria as the file" "$(python3 -c 'import json; print(json.dumps(json.load(open(".temper/status.json"))["criteria"], sort_keys=True))')" \
+  "$(echo "$OUT_JSON" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["criteria"], sort_keys=True))')"
+# A scenario with a supported passing row passes every criterion it Covers.
+setup
+"$TEMPER" evidence add --stage build --claim "first passes" --scenario first --cmd "echo ok" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage build --claim "second passes" --scenario second --cmd "echo ok" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage build --claim "second regressed" --scenario second --cmd "echo ok" --exit 1 >/dev/null
+"$TEMPER" gate build >/dev/null 2>&1 || true
+assert_eq "scenario evidence: first covers AC-01 (passed), a later failing row leaves AC-02 open" "passed|open" \
+  "$(python3 -c 'import json; d=json.load(open(".temper/status.json")); print("|".join(c["status"] for c in d["criteria"]))')"
+# Fail open: an unwritable status.json never changes the verdict.
+setup
+"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+mkdir -p .temper/status.json
+assert_exit "an unwritable status.json does not change a PASS verdict" 0 "$TEMPER" gate review
+rmdir .temper/status.json
+# No intent.md: nothing to report, no file.
+setup
+rm -f .temper/specs/demo/intent.md .temper/status.json
+"$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
+"$TEMPER" gate review >/dev/null 2>&1
+assert_eq "no intent.md means no status.json" "no" "$([[ -f .temper/status.json ]] && echo yes || echo no)"
+assert_exit "temper status --json without intent.md exits 1" 1 "$TEMPER" status --json
+assert_exit "acceptance.py status needs its arguments" 2 python3 "$REPO_ROOT/scripts/acceptance.py" status
 
 # --- version-stamp drift: every visible version string matches plugin.json ---
 # plugin.json is the single source of truth; the CLAUDE.md stamp and the top

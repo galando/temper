@@ -199,6 +199,14 @@ top issues as `[{severity}] {file}:{line} — {one-liner}`.
 proceed) / "Save for later". A change typed via "Other" is never approval — make the
 edit, re-show this same gate.
 
+**Accepting a finding.** A person can keep a finding as it stands with
+`temper evidence accept --stage review --id <n> --reason "<why>"`. The row stays in the
+ledger with the reason, the author (git identity) and the time; `temper gate review`
+stops counting it and its detail names the accepted count. The reason is required, an
+empty one exits 1 and writes nothing, and a finding already resolved or accepted cannot
+be accepted again. Resolve means fixed; accept means a person chose to keep it. The
+review stage never accepts a finding on its own.
+
 ## Auto-Fix (only from the "Fix all" flow, never standalone)
 
 Apply each HIGH+ auto-fixable fix, run the relevant tests, re-run review once. Total

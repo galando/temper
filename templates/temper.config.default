@@ -26,6 +26,18 @@ review:
 
 check:
   coverage-threshold: 80      # `temper gate check` requires recorded coverage >= this
+  # Commands Check runs instead of auto-detecting them for your stack. Any key left out
+  # keeps stack detection. Read with `temper config get check.commands.test`.
+  # commands:
+  #   test: npm test
+  #   lint: npm run lint
+  #   typecheck: tsc --noEmit
+
+# Fix loop limit. `temper state loop check fix` blocks after this many Check to Fix
+# passes. With the key absent the limit stays loops.max-per-type (below); the key
+# reads as 3 through `temper config get fix.max-loops`.
+# fix:
+#   max-loops: 3
 
 # Model per stage. With this block absent (the default), each stage runs on the model
 # declared in the plugin's agents/{stage}.md. Uncomment a key to override it — an alias
