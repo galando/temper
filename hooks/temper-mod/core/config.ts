@@ -1,0 +1,65 @@
+// The few keys the mod reads: `.claude/temper.config` (a small YAML subset) and the
+// plain-string userConfig fields. userConfig declares no `options` (that would stop the
+// whole plugin loading before Claude Code 2.1.271), so every value is validated here.
+
+export type UiMode = 'full' | 'minimal' | 'off'
+
+// Value of a dotted key such as `fix.max-loops`, read by indentation. Comments, inline
+// comments and surrounding quotes are dropped. Null when the key is absent.
+export function readConfigValue(text: string, dotted: string): string | null {
+  const want = dotted.split('.')
+  const stack: Array<{ indent: number; key: string }> = []
+  for (const raw of text.split('\n')) {
+    if (raw.trim() === '' || raw.trimStart().startsWith('#')) continue
+    const m = /^(\s*)([A-Za-z0-9_-]+):\s*(.*)$/.exec(raw)
+    if (!m) continue
+    const indent = (m[1] ?? '').length
+    const key = m[2] ?? ''
+    for (let top = stack[stack.length - 1]; top !== undefined && top.indent >= indent; top = stack[stack.length - 1]) stack.pop()
+    const path = [...stack.map(s => s.key), key]
+    const value = (m[3] ?? '').replace(/\s+#.*$/, '').trim()
+    if (value === '') {
+      stack.push({ indent, key })
+      continue
+    }
+    if (path.length === want.length && path.every((k, i) => k === want[i])) {
+      return value.replace(/^(['"])(.*)\1$/, '$2')
+    }
+  }
+  return null
+}
+
+const norm = (v: string | undefined): string => (v ?? '').trim().toLowerCase()
+
+export function parseUiMode(v: string | undefined): UiMode {
+  const n = norm(v)
+  return n === 'minimal' || n === 'off' || n === 'full' ? n : 'full'
+}
+
+export function parseOnOff(v: string | undefined, fallback: 'on' | 'off'): 'on' | 'off' {
+  const n = norm(v)
+  return n === 'on' || n === 'off' ? n : fallback
+}
+
+export const parseEnforcement = (v: string | undefined): 'on' | 'off' => parseOnOff(v, 'on')
+
+const positiveInt = (v: string | null | undefined): number | null => {
+  if (v === null || v === undefined || !/^\s*\d+\s*$/.test(v)) return null
+  const n = Number(v)
+  return n >= 1 ? n : null
+}
+
+// fix.max-loops in temper.config wins, then the userConfig field, then 3.
+export function parseMaxLoops(configText: string, userValue: string | undefined): number {
+  return positiveInt(readConfigValue(configText, 'fix.max-loops')) ?? positiveInt(userValue) ?? 3
+}
+
+// "build=sonnet, plan=opus" -> { build: 'sonnet', plan: 'opus' }; malformed pairs skipped.
+export function parsePhaseModels(v: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const pair of (v ?? '').split(',')) {
+    const m = /^\s*([A-Za-z-]+)\s*=\s*(\S+)\s*$/.exec(pair)
+    if (m?.[1] && m[2]) out[m[1].toLowerCase()] = m[2]
+  }
+  return out
+}
