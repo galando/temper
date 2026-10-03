@@ -36,8 +36,8 @@ describe('follow up prompts name the exact CLI command and say the decision is r
   for (const m of MOVES) {
     test(m.name, () => {
       const text = followUp(m.draft) ?? ''
-      expect(text).toContain('already recorded')
-      expect(text).toContain('only mirrors it in the CLI state')
+      expect(text).toContain('is recorded')
+      expect(text).toContain('only copies it to the CLI state')
       expect(commandsIn(text).length).toBeGreaterThan(0)
       expect(commandsIn(text).every(c => c.startsWith(`${CLI} `))).toBe(true)
     })
@@ -158,7 +158,7 @@ describe('end to end through the band: the prompt the mod sends is runnable once
     })
     await band.press({ key: 'action-approve' })
     const prompt = w.prompts.find(p => p.includes('state advance'))
-    expect(prompt).toContain('already recorded')
+    expect(prompt).toContain('is recorded')
     const cmd = commandsIn(prompt ?? '')[0] ?? ''
     expect(cmd).toBe(`${CLI} state advance intent_complete plan`)
     const first = await $.tool.call({ tool: 'Bash', command: cmd })

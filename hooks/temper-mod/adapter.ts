@@ -83,7 +83,7 @@ const str = (options: PluginOptions, key: string): string | undefined => {
 
 // Values changed live (`/temper:temper mode`, `/temper:temper enforcement`) win over the options of this
 // load until the config change reloads the module with the new options.
-export const live: { mode?: UiMode; enforcement?: 'on' | 'off'; paneExpanded?: boolean } = {}
+export const live: { mode?: UiMode; enforcement?: 'on' | 'off'; paneExpanded?: boolean; paneOpen?: boolean } = {}
 
 export function settingsFrom(options: PluginOptions) {
   return {
@@ -309,7 +309,7 @@ export function composeText(snap: Snapshot): string {
 }
 
 export const viewOf = (snap: Snapshot): View =>
-  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, enforcement: snap.enforcement, expanded: live.paneExpanded ?? false })
+  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, enforcement: snap.enforcement, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false })
 
 // Mirrors the folded state into `$.state` for drawing and compaction.
 export async function publish(io: Io, snap: Snapshot): Promise<void> {
@@ -339,7 +339,7 @@ export function statusText(snap: Snapshot): string {
   if (s.overrides.length > 0) lines.push(`Overrides: ${s.overrides.length}`)
   if (s.accepted.length > 0) lines.push(`Accepted findings: ${s.accepted.length}`)
   if (s.drift.length > 0) lines.push(`Scope drift decisions: ${s.drift.length}`)
-  if (s.unverified.length > 0) lines.push(`Unverified event files (not counted): ${s.unverified.length}`)
+  if (s.unverified.length > 0) lines.push(`Event files that Temper does not trust: ${s.unverified.length}`)
   if (snap.unreadable.length > 0) lines.push(`Unreadable event files: ${snap.unreadable.join(', ')}`)
   return lines.join('\n')
 }

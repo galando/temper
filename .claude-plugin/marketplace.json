@@ -1,6 +1,6 @@
 {
   "name": "temper",
-  "description": "Your AI writes fast. Temper makes it last. Quality gates, blast radius analysis, and intent-driven development.",
+  "description": "Phase gates for AI written code. Claude cannot write code before you approve the intent.",
   "owner": {
     "name": "galando",
     "url": "https://github.com/galando"
@@ -9,7 +9,8 @@
     {
       "name": "temper",
       "source": "./",
-      "description": "AI writes the code. Temper makes sure it's actually ready to ship."
+      "description": "Intent gate, plan, TDD, review and check for AI written code. A red gate blocks git commit.",
+      "keywords": ["intent", "gates", "tdd", "review", "enforcement", "workflow"]
     }
   ]
 }

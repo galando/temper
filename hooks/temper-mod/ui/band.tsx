@@ -11,7 +11,7 @@ import type { Kit, OnAction, OnReason } from './kit'
 // short button labels. Nothing wraps into a mess.
 export const COMPACT_BELOW = 100
 
-export const REASON_HINT = 'Override needs a reason; it is logged in the report'
+export const REASON_HINT = 'Override needs a reason. Temper writes it in the report.'
 
 const COLOR: Record<Step['status'], string | undefined> = { done: 'green', current: 'blue', pending: undefined, stale: 'yellow' }
 
@@ -51,7 +51,17 @@ function chip(kit: Kit, step: Step, compact: boolean) {
 // phases as chips, big action buttons on the right (1, 2, 3, override on 9, more on 0), and a
 // field for the override reason. Minimal draws the chips only. Off draws nothing (the caller
 // passes next(e)).
-export function renderBand(kit: Kit, view: View, mode: UiMode, onAction: OnAction, onReason: OnReason, columns = 120): RenderElement | null {
+export type GameButton = { show: boolean; open: boolean }
+
+export function renderBand(
+  kit: Kit,
+  view: View,
+  mode: UiMode,
+  onAction: OnAction,
+  onReason: OnReason,
+  columns = 120,
+  game: GameButton = { show: false, open: false },
+): RenderElement | null {
   const style = phaseBarStyle(mode)
   if (style === 'none' || view.phase === null) return null
   const { Box, Text, Button, Input } = kit
@@ -75,7 +85,7 @@ export function renderBand(kit: Kit, view: View, mode: UiMode, onAction: OnActio
   const head = (
     <Box flexDirection="row" columnGap={1} key="row-head">
       <Text bold color="magenta">TEMPER</Text>
-      <Text dimColor>{view.phase === 'done' ? 'Run complete' : whereText(view)}</Text>
+      <Text dimColor>{view.phase === 'done' ? 'Run done' : whereText(view)}</Text>
       {view.total > 0 ? <Text dimColor>{`· criteria ${view.passed} of ${view.total}`}</Text> : null}
       <Text dimColor={view.enforcement === 'on'} color={view.enforcement === 'on' ? undefined : 'yellow'}>{`· enforcement ${view.enforcement}`}</Text>
     </Box>
@@ -90,11 +100,32 @@ export function renderBand(kit: Kit, view: View, mode: UiMode, onAction: OnActio
       <Button key={`action-${id}`} label={shown(label)} hotkey={key} plain variant={primaryLook ? 'primary' : 'secondary'} onPress={onPress} />
     </Box>
   )
+  const hasMore = view.actions.more.length > 0
   const buttons = [
     ...primary.map((a, i) => big(a.id, a.key, a.label, () => onAction(a), i === 0)),
     big(override.id, override.key, override.label, () => onAction(override), false),
-    big('more', '0', 'More', () => onAction({ key: '0', id: 'more', label: 'More', command: 'pane' }), false),
+    // 0 is drawn only when the phase has extra actions to show.
+    ...(hasMore
+      ? [big('more', '0', view.expanded ? 'Fewer' : 'More', () => onAction({ key: '0', id: compact ? 'more-narrow' : 'more', label: 'More', command: 'pane' }), false)]
+      : []),
   ]
+  // The game button: dim, drawn only while Claude works and only when the game is on.
+  const play = game.show ? (
+    <Box key="box-play" paddingX={compact ? 0 : 1}>
+      <Button key="action-play" label={game.open ? 'Close game' : 'Play'} hotkey="p" plain dimColor onPress={() => onAction({ key: 'a', id: 'play', label: 'Play', command: 'play' })} />
+    </Box>
+  ) : null
+
+  // With the full list on and no docked pane to hold it (a narrow band, or no pane), the extra
+  // actions show in a third row.
+  const extras =
+    view.expanded && (compact || !view.paneOpen)
+      ? view.actions.more.map(a => (
+          <Box key={`box-${a.id}`} paddingX={compact ? 0 : 1} columnGap={1}>
+            <Button key={`action-${a.id}`} label={shown(a.label)} hotkey={a.key} plain dimColor onPress={() => onAction(a)} />
+          </Box>
+        ))
+      : null
 
   return (
     <Box flexDirection="column" key="temper-band">
@@ -102,9 +133,10 @@ export function renderBand(kit: Kit, view: View, mode: UiMode, onAction: OnActio
       {now}
       <Box flexDirection="row" justifyContent="space-between" flexWrap="wrap">
         {chips}
-        <Box flexDirection="row" columnGap={compact ? 1 : 0} flexWrap="wrap">{buttons}</Box>
+        <Box flexDirection="row" columnGap={compact ? 1 : 0} flexWrap="wrap">{buttons}{play}</Box>
       </Box>
-      {Input ? <Input key={REASON_KEY} placeholder="reason to override" submitLabel="override" onSubmit={value => onReason(value)} /> : null}
+      {extras ? <Box flexDirection="row" flexWrap="wrap" columnGap={compact ? 1 : 0}>{extras}</Box> : null}
+      {Input ? <Input key={REASON_KEY} placeholder="type a reason" submitLabel="override" onSubmit={value => onReason(value)} /> : null}
       <Text dimColor>{REASON_HINT}</Text>
     </Box>
   )

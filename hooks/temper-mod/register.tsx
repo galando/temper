@@ -7,10 +7,10 @@ import type { Action } from './core/actions'
 import { classifyBash } from './core/bash'
 import { HELP, followUp, parseArgs, planCommand } from './core/commands'
 import type { Bare, Parsed } from './core/commands'
-import { parsePhaseModel, parsePhaseModels, parseUiMode } from './core/config'
+import { parseOnOff, parsePhaseModel, parsePhaseModels, parseUiMode } from './core/config'
 import type { UiMode } from './core/config'
 import type { Draft } from './core/events'
-import { ONLY_USER } from './core/machine'
+import { ONLY_USER, phaseLabel } from './core/machine'
 import type { Command } from './core/machine'
 import { evaluate } from './core/rules'
 import type { RuleContext } from './core/rules'
@@ -21,6 +21,7 @@ import { hintProps } from './ui/hint'
 import { renderBand } from './ui/band'
 import { PANE_ID, renderPane } from './ui/pane'
 import { REASON_HINT } from './ui/band'
+import type { GameButton } from './ui/band'
 import { REASON_KEY } from './ui/kit'
 import { renderQuestion } from './ui/question'
 import { spinnerProps } from './ui/spinner'
@@ -40,11 +41,19 @@ let interactive = false
 let paneOpen = false
 // The last phase announced, so a toast goes out once per transition and never at load.
 let lastPhase: string | null | undefined
+// The game: whether its pane is open, the best score, and a banner Temper hands to it.
+const GAME_ID = 'temper-game'
+let gameOpen = false
+let gameBest = 0
+let gameSeed = 1
+let gameBanner: { text: string; until: number } | null = null
+// Where the session draws (session.start says so); the game needs the terminal or the desktop app.
+let drawSurface: string | null = null
 
 const MODE_LABELS: Array<[UiMode, string]> = [
-  ['full', 'Full: phase bar, actions, pane'],
-  ['minimal', 'Minimal: phase bar only'],
-  ['off', 'Off: draw nothing'],
+  ['full', 'Full: bar, buttons and pane'],
+  ['minimal', 'Minimal: phases only'],
+  ['off', 'Off: show nothing'],
 ]
 
 // `$` is spelled only in this file, as `$.noun.method(...)` at each call site, so the
@@ -79,8 +88,11 @@ function ensure($: Api): Promise<Snapshot> {
 // One toast per phase transition, in full mode, never at the first load.
 function announce($: Api, snap: Snapshot): void {
   const phase = snap.state.phase
-  if (lastPhase !== undefined && phase !== lastPhase && phase !== null && snap.mode === 'full' && !snap.inert) {
-    const toast = transitionToast(snap.state.history[snap.state.history.length - 1])
+  if (lastPhase !== undefined && phase !== lastPhase && phase !== null && !snap.inert) {
+    // The game, if it is open, shows this line for a while. The toast is the normal single one.
+    const where = phase === 'done' ? 'the run is done' : `${phaseLabel(phase)} is open`
+    gameBanner = { text: `Temper: ${where}. Press Esc to go back.`, until: Date.now() + 20000 }
+    const toast = snap.mode === 'full' ? transitionToast(snap.state.history[snap.state.history.length - 1]) : null
     if (toast) $.ui.toast(toast)
   }
   lastPhase = phase
@@ -118,25 +130,70 @@ async function readUi($: Api): Promise<{ view: View; mode: UiMode } | null> {
   return { view: run.value.view, mode: mode.value }
 }
 
+// ---- The game --------------------------------------------------------------------
+
+// `game` is a plain string option (on or off), checked here and never as a picker.
+const gameOn = (): boolean => parseOnOff(typeof options.game === 'string' ? options.game : undefined, 'on') === 'on'
+
+// The Client element exists on the terminal and the desktop app only.
+const GAME_SURFACES = ['terminal', 'desktop']
+
+// The line Temper hands to the game: a new phase for a short while, else a gate that waits for the
+// person (the first action is an approval or a move on).
+function bannerFor(view: View | null): string | null {
+  if (gameBanner && Date.now() < gameBanner.until) return gameBanner.text
+  if (view === null || view.phase === null || view.phase === 'done') return null
+  const first = view.actions?.primary[0]
+  const waits = first?.command === 'approve' || first?.command === 'next'
+  return waits ? `Temper: ${phaseLabel(view.phase)} is ready. Press Esc to go back.` : null
+}
+
+// Keeps the best score the game posted. This is the one place the game touches the plugin store.
+async function saveBest($: Api, score: number): Promise<void> {
+  if (!Number.isFinite(score) || score < 0 || score > 10000000 || score <= gameBest) return
+  gameBest = Math.floor(score)
+  await $.store.set('gameBest', gameBest)
+}
+
+// Opens or closes the game pane. Only an action of the person calls this: the command or the band
+// button. The command asks for the keys (`focus`); the button leaves the keys with the prompt.
+async function toggleGame($: Api, focus: boolean): Promise<string> {
+  if (!gameOn()) return 'The game is off. Set game to on in /config.'
+  if (drawSurface === null || !GAME_SURFACES.includes(drawSurface)) return 'The game needs the terminal or the desktop app.'
+  if (gameOpen) {
+    await $.ui.close({ id: GAME_ID })
+    gameOpen = false
+    return 'The game is closed.'
+  }
+  const stored = await $.store.get('gameBest')
+  gameBest = typeof stored === 'number' ? stored : 0
+  gameSeed = (Date.now() & 0x7fffffff) >>> 0
+  const placed = await $.ui.open({ id: GAME_ID, title: 'Temper Run', ...(focus ? { focus: true as const } : {}) })
+  gameOpen = placed.isPlaced
+  return placed.isPlaced ? 'The game is open. Click it or press a key to play. Esc leaves.' : 'The game needs a wider terminal.'
+}
+
 // ---- Pane ------------------------------------------------------------------------
 
 async function openPane($: Api): Promise<boolean> {
   const placed = await $.ui.open({ id: PANE_ID, title: 'Temper' })
   paneOpen = placed.isPlaced
+  live.paneOpen = placed.isPlaced
   return placed.isPlaced
 }
 
 async function closePane($: Api): Promise<void> {
   await $.ui.close({ id: PANE_ID })
   paneOpen = false
+  live.paneOpen = false
 }
 
 async function togglePane($: Api): Promise<string> {
   if (paneOpen) {
     await closePane($)
-    return 'Temper pane closed.'
+    return 'The Temper pane is closed.'
   }
-  return (await openPane($)) ? 'Temper pane opened.' : 'The Temper pane needs a wider terminal.'
+  return (await openPane($)) ? 'The Temper pane is open.' : 'The Temper pane needs a wider terminal.'
 }
 
 // Opened unasked (a session start): only where it would dock. Where it would only wait
@@ -146,9 +203,11 @@ async function autoOpenPane($: Api, snap: Snapshot): Promise<void> {
   const placed = await $.ui.open({ id: PANE_ID, title: 'Temper' })
   if (placed.isPlaced) {
     paneOpen = true
+    live.paneOpen = true
   } else {
     await $.ui.close({ id: PANE_ID })
     paneOpen = false
+    live.paneOpen = false
   }
 }
 
@@ -156,7 +215,7 @@ async function autoOpenPane($: Api, snap: Snapshot): Promise<void> {
 
 async function askReason($: Api, what: string): Promise<string> {
   try {
-    return (await $.ui.ask(`Reason for ${what}?`, { options: ['Risk accepted', 'Not a real issue'], header: 'Reason' })).trim()
+    return (await $.ui.ask(`What is the reason for ${what}?`, { options: ['I accept the risk', 'It is not a real issue'], header: 'Reason' })).trim()
   } catch {
     return ''
   }
@@ -197,12 +256,31 @@ async function runReason($: Api, text: string): Promise<void> {
   for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity))
 }
 
+// Key 0 and the pane's "More actions" button. With the pane closed it opens the pane with the full
+// list. With the pane open it shows or hides the list. When no pane can seat (a narrow terminal)
+// the band shows the extra actions in a third row, and the same key hides them again.
+async function showMore($: Api): Promise<void> {
+  if (!paneOpen && !(live.paneExpanded ?? false)) {
+    live.paneExpanded = true
+    await openPane($)
+  } else {
+    live.paneExpanded = !(live.paneExpanded ?? false)
+  }
+  await refresh($)
+  $.ui.invalidate('ui.render')
+}
+
 async function runAction($: Api, action: Action, requestId?: string): Promise<void> {
-  if (action.id === 'more') {
-    $.ui.toast(await togglePane($))
+  if (action.id === 'play') {
+    $.ui.toast(await toggleGame($, false))
     return
   }
-  if (action.id === 'more-actions') {
+  if (action.id === 'more' || action.id === 'more-actions') {
+    await showMore($)
+    return
+  }
+  if (action.id === 'more-narrow') {
+    // A narrow band keeps the list in its own third row: no pane is opened.
     live.paneExpanded = !(live.paneExpanded ?? false)
     await refresh($)
     $.ui.invalidate('ui.render')
@@ -245,7 +323,7 @@ async function runFindingAction($: Api, kind: 'fix' | 'accept' | 'explain', id: 
   if (kind === 'explain') return submitText($, explain?.prompt ?? null)
   const reason = await askReason($, `accepting finding ${id}`)
   if (!reason) {
-    $.ui.toast('Accepting a finding needs a reason.')
+    $.ui.toast('Accept needs a reason.')
     return
   }
   const done = await decideAs($, { type: 'acceptFinding', id, reason }, 'person')
@@ -266,7 +344,7 @@ type RowKey = 'temper.uiMode' | 'temper.enforcement'
 async function setRow($: Api, key: RowKey, label: string, value: string): Promise<string | null> {
   const rows = await $.config.list()
   const row = rows.find(r => r.key === key)
-  if (row?.isLocked) return `Your organization set Temper's ${label} to ${String(row.value)}; ask your admin to change it.`
+  if (row?.isLocked) return `Your organization set Temper's ${label} to ${String(row.value)}. Ask your admin to change it.`
   const result = await $.config.set({ key, value })
   return result.deny ?? null
 }
@@ -296,7 +374,7 @@ async function switchEnforcement($: Api, value: 'on' | 'off'): Promise<string> {
 async function askMode($: Api): Promise<string> {
   let picked: UiMode | null = null
   try {
-    const answer = await $.ui.ask('How much should Temper draw?', { options: MODE_LABELS.map(([, label]) => label), header: 'Temper mode' })
+    const answer = await $.ui.ask('How much do you want Temper to show?', { options: MODE_LABELS.map(([, label]) => label), header: 'Temper mode' })
     picked = MODE_LABELS.find(([mode, label]) => answer === label || answer.trim().toLowerCase().startsWith(mode))?.[0] ?? null
   } catch {
     picked = null
@@ -304,7 +382,7 @@ async function askMode($: Api): Promise<string> {
   if (picked === null) {
     live.mode = 'full'
     await refresh($)
-    $.ui.toast('Temper UI is full. Change it with /temper:temper mode <full|minimal|off>.')
+    $.ui.toast('Temper mode is full. To change it, use /temper:temper mode <full|minimal|off>.')
     return 'Temper mode: full'
   }
   return switchMode($, picked)
@@ -330,7 +408,7 @@ async function firstRunAsk($: Api): Promise<void> {
 // dialog. Null when nobody can be asked (`claude -p`) or the dialog was dismissed.
 async function askDrift($: Api, path: string): Promise<{ choice: 'add' | 'revert' | 'allow-once'; reason: string } | null> {
   try {
-    const answer = await $.ui.ask(`Scope drift: ${path} is not in the plan. What should Temper do?`, {
+    const answer = await $.ui.ask(`${path} is not in the plan. What do you want to do?`, {
       options: ['Add to plan', 'Revert', 'Allow once'],
       header: 'Scope drift',
     })
@@ -340,7 +418,7 @@ async function askDrift($: Api, path: string): Promise<{ choice: 'add' | 'revert
     // Allow once needs a reason: ask again while the answer is empty, then give up.
     for (let tries = 0; tries < 3; tries++) {
       const reason = (
-        await $.ui.ask(`Why allow ${path} once?`, { options: ['Needed for this task', 'Temporary experiment'], header: 'Reason' })
+        await $.ui.ask(`What is the reason to allow ${path} once?`, { options: ['Needed for this task', 'Short test'], header: 'Reason' })
       ).trim()
       if (reason) return { choice: 'allow-once', reason }
     }
@@ -359,12 +437,12 @@ async function resolveDrift($: Api, snap: Snapshot, path: string, fallback: stri
   const io = makeIo($)
   const done = await apply(io, options, snap, { type: 'drift', path, choice: choice.choice, reason: choice.reason, origin: 'person', author: 'user' })
   adopt($, done.snap)
-  if (done.error) return `Temper: scope drift on ${path} could not be recorded. ${done.error}`
+  if (done.error) return `Temper: scope drift on ${path} is not recorded. ${done.error}`
   pendingDrift = null
   if (choice.choice === 'revert') {
     // prompt.submit cannot be called from a tool.call hook (the engine says it would wait
     // on this very turn), so the instruction rides in the deny text Claude reads next.
-    return `Temper: scope drift. The user chose to revert ${path}; it stays out of the plan. Next: restore ${path} to its committed state and continue inside the plan files.`
+    return `Temper: scope drift. The user chose to revert ${path}. It stays out of the plan. Next: restore ${path} to its committed state. Then continue inside the plan files.`
   }
   // Add to plan, or allow once: the decision now lets this write through.
   const again = evaluate(done.snap.state, ruleContext(done.snap, await rootOf($)), { tool: 'Edit', input: { file_path: path } })
@@ -425,12 +503,16 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
       case 'timeline':
         return { text: timelineText(await refresh($)) }
       case 'report':
-        if (snap.slug === null) return { text: 'No Temper run is active, so there is no report to write.' }
+        if (snap.slug === null) return { text: 'No run is active. There is no report to write.' }
         await writeReport(makeIo($), await refresh($))
         return { text: 'Wrote .temper/report.md' }
       case 'pr':
         // Claude writes the description: the prompt based command handles it.
         return null
+      case 'play':
+        // Only the person opens the game. It works in every mode, because the person asked.
+        if (originKind !== 'composer') return { text: 'Only the user can open the game. Next: ask the user to run /temper:temper play.' }
+        return { text: await toggleGame($, true) }
       case 'mode': {
         const wanted = plan.rest.trim().toLowerCase()
         if (wanted === '') return { text: interactive ? await askMode($) : `Temper mode: ${snap.mode}` }
@@ -444,7 +526,7 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
         return { text: await switchEnforcement($, wanted) }
       }
       default:
-        if (snap.mode !== 'full') return { text: 'The pane is drawn in full mode only. Switch with /temper:temper mode full.' }
+        if (snap.mode !== 'full') return { text: 'The pane shows in full mode only. Use /temper:temper mode full.' }
         return { text: await togglePane($) }
     }
   }
@@ -456,7 +538,7 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
   const done = await decideAs($, plan.command, originKind === 'composer' ? 'person' : 'model')
   if (done.error) return { text: done.error }
   if (plan.command.type === 'pause' || plan.command.type === 'resume') {
-    return { text: `Temper run ${plan.command.type === 'pause' ? 'paused: you have the wheel' : 'resumed'}.` }
+    return { text: `The run is ${plan.command.type === 'pause' ? 'paused. You have control' : 'resumed'}.` }
   }
   return null
 }
@@ -488,12 +570,17 @@ export const register: Register = (on, opts) => {
   interactive = false
   paneOpen = false
   lastPhase = undefined
+  gameOpen = false
+  gameBest = 0
+  gameBanner = null
+  drawSurface = null
   live.mode = undefined
   live.enforcement = undefined
   live.paneExpanded = undefined
 
   on('session.start', async ($, e, next) => {
     root = e.cwd
+    drawSurface = e.surface
     interactive = e.isInteractive
     await refresh($)
       .then(snap => autoOpenPane($, snap))
@@ -541,7 +628,7 @@ export const register: Register = (on, opts) => {
     try {
       const snap = await ensure($)
       if (snap.inert || snap.prAttribution !== 'on' || snap.slug === null) return result
-      return { text: `${result.text}\n\nBuilt under Temper: gated phases with an audit trail in .temper/report.md.` }
+      return { text: `${result.text}\n\nMade with Temper. The phases have gates. The report is in .temper/report.md.` }
     } catch {
       return result
     }
@@ -586,8 +673,44 @@ export const register: Register = (on, opts) => {
       action => runAction($, action, e.requestId).catch(() => undefined),
       reason => runReason($, reason).catch(() => undefined),
       e.props.bodyColumns,
+      // The game button shows only while Claude works, and only when the game is on.
+      { show: e.props.isWorking && gameOn(), open: gameOpen } satisfies GameButton,
     )
     return band ?? next(e)
+  })
+
+  // The game pane: the Client element exists on the terminal and the desktop app only. The module
+  // runs on its own frame clock, so nothing here redraws it per frame.
+  on('ui.render', { component: 'Pane', requestId: GAME_ID }, async ($, e, next) => {
+    const kit = $.ui.resolve(e)
+    // The table of another surface holds a Client that draws nothing, so the surface decides.
+    if ((e.surface !== 'terminal' && e.surface !== 'desktop') || !('Client' in kit)) {
+      const { Text } = kit
+      return <Text>The game needs the terminal or the desktop app.</Text>
+    }
+    const ui = await readUi($).catch(() => null)
+    const { Client } = kit
+    return <Client key="game" module="./ui/game-client.tsx" props={{ best: gameBest, banner: bannerFor(ui?.view ?? null), seed: gameSeed }} />
+  })
+
+  // The score the game posts when a game ends. The data is input, so it is checked.
+  on('ui.message', async ($, e, next) => {
+    if (e.element !== 'game') return next(e)
+    const data = e.data
+    if (typeof data === 'object' && data !== null && (data as { kind?: unknown }).kind === 'game-over') {
+      await saveBest($, Number((data as { score?: unknown }).score)).catch(() => undefined)
+    }
+    return {}
+  })
+
+  // A pane closed by its own mark: forget it, so the next toggle opens it again.
+  on('ui.close', async ($, e, next) => {
+    if (e.id === GAME_ID) gameOpen = false
+    if (e.id === PANE_ID) {
+      paneOpen = false
+      live.paneOpen = false
+    }
+    return next(e)
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e, next) => {

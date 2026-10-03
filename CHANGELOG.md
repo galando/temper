@@ -34,6 +34,12 @@ All notable changes to Temper are documented here. The plugin version lives in
   `/temper enforcement on|off` controls the refusals. Both are plugin settings (`uiMode`,
   `enforcement`); a value locked by an administrator is reported, not changed. The first
   interactive `/temper` asks once.
+- An optional runner game, Temper Run, for the time Claude works: key `p` on the band or
+  `/temper:temper play` (a new reserved word, 17 in all). It runs on the terminal and the
+  desktop app only, keeps a best score, shows a banner when a phase is ready, and never
+  weakens a refusal. The plugin setting `game` (`on` or `off`) turns it off.
+- User text of the mod is written in Simplified Technical English. "Lint intent" is now
+  "Check intent". Every refusal ends with a "Next:" step.
 - `.temper/report.md` is written when a run completes: phases, overrides, accepted findings,
   scope drift decisions with reasons, and criteria status.
 - Optional and off by default: a model or effort per phase (`phaseModels`, for example

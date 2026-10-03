@@ -111,6 +111,16 @@ else
   FAIL=$((FAIL+1))
 fi
 
+# --- Directory readiness (README without raw HTML, no assets folder path, manifests) ---
+if bash "$REPO_ROOT/scripts/validate-directory.sh" >/dev/null 2>&1; then
+  echo "[PASS] Directory readiness (scripts/validate-directory.sh)"
+  PASS=$((PASS+1))
+else
+  echo "[FAIL] Directory readiness:"
+  bash "$REPO_ROOT/scripts/validate-directory.sh" 2>&1 | sed 's/^/  /'
+  FAIL=$((FAIL+1))
+fi
+
 # --- Summary ---
 echo ""
 echo "=== Summary ==="

@@ -1,6 +1,5 @@
 // Test world: stands in for the engine beneath the plugin. Files live in a Map the
 // fs.* hooks answer from; fs.write records back into it. Not a test file.
-import { mock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 export type World = {
@@ -17,6 +16,8 @@ export type World = {
   // What the mod showed or did through the engine's UI calls.
   toasts: string[]
   opened: string[]
+  // Whether each pane open asked for the keys.
+  openArgs: Array<{ id: string; focus: boolean }>
   closed: string[]
   invalidated: number
   suggestions: string[]
@@ -49,8 +50,18 @@ export const denyText = (r: { deny?: string }): string => r.deny ?? ''
 const rel = (p: string): string => /(?:^|\/)((?:\.temper|\.claude)\/.*)$/.exec(p)?.[1] ?? p
 
 export function world(on: On, files: Record<string, string> = {}, opts: WorldOptions = {}): World {
-  const w: World = { files: new Map(Object.entries(files)), writes: [], reads: [], prompts: [], asked: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) } }
-  mock.store(on, w.store)
+  const w: World = { files: new Map(Object.entries(files)), writes: [], reads: [], prompts: [], asked: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) } }
+  // The plugin store, in memory and live: a test reads what the mod stored from `w.store`.
+  on('store.get', ($, e) => ({ value: w.store[e.key] }))
+  on('store.set', ($, e) => {
+    w.store[e.key] = e.value
+    return { value: undefined }
+  })
+  on('store.delete', ($, e) => {
+    delete w.store[e.key]
+    return { value: undefined }
+  })
+  on('store.keys', () => ({ value: Object.keys(w.store) }))
   on('fs.read', ($, e) => {
     w.reads.push(rel(e.path))
     const text = w.files.get(rel(e.path))
@@ -86,6 +97,7 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
   })
   on('ui.open', ($, e) => {
     w.opened.push(e.id)
+    w.openArgs.push({ id: e.id, focus: e.focus === true })
     return { value: opts.placed === false ? { isPlaced: false as const, reason: 'narrow' } : { isPlaced: true as const } } as never
   })
   on('ui.close', ($, e) => {

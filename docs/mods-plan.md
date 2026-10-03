@@ -453,12 +453,12 @@ Key 1 is the main action and changes when the phase is ready to move on.
 
 | Phase | 1 | 2 | 3 | 0 shows also |
 |---|---|---|---|---|
-| Intent | Approve intent (when lint passes), else Lint intent | Ask clarifying questions | Edit intent | Capture intent from my prompt |
-| Plan | Approve plan (when the plan gate passes), else Generate plan | Show files the plan touches | Propose an alternative | Split into tasks, Back to Intent |
-| Build | Start next task, or Send to Review when tasks are done | Run tests for current criterion | Show diff against plan | Pause |
-| Review | Start review, or Fix all when findings exist | Re-review | Show diff | per finding Fix, Accept with reason, Explain (in the pane) |
-| Check | Run all checks, or Mark done when all pass | Rerun failed only | Failures by criterion | |
-| Fix | Fix failures | Fix open findings | Return to Check | at the loop limit: Re-plan, Override, I take over |
+| Intent | Approve intent (when the gate passes), else Check intent | Ask questions | Edit intent | Capture intent |
+| Plan | Approve plan (when the plan gate passes), else Write plan | Show files the plan touches | Propose an alternative | Split tasks, Back to Intent |
+| Build | Next task, or Send to Review when tasks are done | Run tests | Show diff | Pause |
+| Review | Start review, or Fix all when findings exist | Review again | Show diff | per finding Fix, Accept, Explain (in the pane) |
+| Check | Run checks, or Mark done when all pass | Rerun failed only | Failures by criterion | |
+| Fix | Fix failures | Fix findings | Back to Check | at the loop limit: Plan again, Override, Take over |
 
 9 is override everywhere (asks for a reason; no reason, no override). Global actions
 are subcommands and pane buttons. Every action that runs something submits a prompt
@@ -483,6 +483,27 @@ First run: on the first `/temper` in an interactive session, `$.ui.ask` offers t
 three modes, one line each. Dismissed: full, plus a toast "Change with /temper mode".
 `$.store` records that it asked; never again unless `/temper mode` runs. In `claude -p`
 nothing is asked.
+
+### 3.8a The game (Temper Run)
+
+An optional runner game for the time Claude works. It adds no engine call.
+
+- `core/game.ts` is pure: a seeded generator, the physics, the score and the drawing rows.
+  The same seed and the same keys give the same game, so the tests need no clock.
+- `ui/game-client.tsx` is a Client module (a surface module). It draws with Box and Text, reads
+  keys with `onKey`, and moves the game on `surface.every`. It has no `$` call at all, and
+  `scripts/check-mod-calls.sh` fails if one appears in any `*-client.tsx` file.
+- The best score reaches the store through the existing path: the Client posts the score with
+  `surface.post`, and the `ui.message` hook in `register.tsx` validates it and calls the
+  already reviewed `$.store.set`. The reviewed list of 20 calls does not change.
+- The pane is `temper-game`. The Client exists on the terminal and the desktop app only, so the
+  hook checks `e.surface` and draws a short text elsewhere.
+- The band button `p Play` shows only while Claude works. `/temper:temper play` is the 17th
+  reserved word. Only a person can open the game: a call that does not come from the composer
+  gets a refusal.
+- The game cannot weaken a gate. Refusals are decided in `tool.call` and do not read game state.
+- What is not verified: the game was checked live on the terminal only. Keys reach it after a
+  click, because a Client takes the focus from a pointer event.
 
 ### 3.9 Layout in the repo
 

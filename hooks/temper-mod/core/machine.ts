@@ -52,7 +52,7 @@ export type RunState = {
   unverified: string[]
 }
 
-export const ONLY_USER = 'Only the user can approve this. Ask them to press 1 or run /temper:temper approve.'
+export const ONLY_USER = 'Only the user can approve this. Next: ask the user to press 1 or run /temper:temper approve.'
 
 const FLOW: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check']
 
@@ -220,7 +220,7 @@ const fail = (error: string): Decision => ({ error })
 function loopLimitMessage(s: RunState): string {
   return (
     `Fix loop limit reached (${s.loops} failed Check runs, limit ${s.maxLoops}). ` +
-    'Next: re-plan (/temper:temper back plan <reason>), override with a reason (/temper:temper override <reason>), ' +
+    'Next: plan again (/temper:temper back plan <reason>), override with a reason (/temper:temper override <reason>), ' +
     'or take over (/temper:temper pause).'
   )
 }
@@ -231,7 +231,7 @@ export function decide(state: RunState, cmd: Command): Decision {
   const isPerson = cmd.origin === 'person'
 
   if (cmd.type === 'start') {
-    if (phase !== null && phase !== 'done') return fail('A Temper run is already active. Finish it or /temper:temper pause first.')
+    if (phase !== null && phase !== 'done') return fail('A Temper run is active. Finish it, or run /temper:temper pause.')
     return { events: [{ type: 'start', slug: cmd.slug, title: cmd.title, ...(cmd.phase ? { phase: cmd.phase } : {}), ...who }] }
   }
   if (phase === null) return fail('No Temper run is active. Next: start one with /temper:temper <feature description>.')
@@ -240,8 +240,8 @@ export function decide(state: RunState, cmd: Command): Decision {
     if (!isPerson) return fail(ONLY_USER)
     return { events: [{ type: 'resume', ...who }] }
   }
-  if (state.paused) return fail('The Temper run is paused. Next: /temper:temper resume.')
-  if (phase === 'done') return fail('The Temper run is complete. Next: commit, or start a new run with /temper:temper <feature description>.')
+  if (state.paused) return fail('The run is paused. Next: run /temper:temper resume.')
+  if (phase === 'done') return fail('The run is done. Next: commit, or start a new run with /temper:temper <feature description>.')
 
   // At the fix loop limit only re-plan, override and pause remain.
   if (state.loopLimitReached) {
@@ -259,38 +259,38 @@ export function decide(state: RunState, cmd: Command): Decision {
         const g = state.gate[phase]
         const name = phaseLabel(phase)
         if (g === 'stale' && state.invalidated[phase] !== undefined) {
-          return fail(`${name} needs a fresh verdict after it was invalidated`)
+          return fail(`${name} needs a new verdict. A back step made the old verdict invalid.`)
         }
         if (g === 'stale' || g === 'none') {
           return fail(`${name} has no PASS verdict yet. Next: run the ${phase} gate (temper gate ${phase}).`)
         }
-        if (g === 'fail') return fail(`${name} verdict is FAIL. Next: fix the findings, then rerun the ${phase} gate.`)
+        if (g === 'fail') return fail(`${name} verdict is FAIL. Next: fix the findings. Then run the ${phase} gate again.`)
       }
       return { events: [{ type: 'advance', from: phase, to: phase === 'check' ? 'done' : phase === 'fix' ? 'check' : nextOf(phase), ...who }] }
     }
     case 'back': {
       if (!isPerson) return fail(ONLY_USER)
-      if (!cmd.reason.trim()) return fail('Going back needs a reason: /temper:temper back <phase> <reason>')
+      if (!cmd.reason.trim()) return fail('A back step needs a reason. Use /temper:temper back <phase> <reason>.')
       if (cmd.to === 'fix' || !(order(cmd.to) < order(phase))) {
-        return fail(`Back needs an earlier phase than ${phaseLabel(phase)}.`)
+        return fail(`Go back to a phase before ${phaseLabel(phase)}.`)
       }
       return { events: [{ type: 'back', to: cmd.to, reason: cmd.reason.trim(), ...who }] }
     }
     case 'override': {
       if (!isPerson) return fail(ONLY_USER)
-      if (!cmd.reason.trim()) return fail('Override needs a reason: /temper:temper override <reason>')
-      if (cmd.phase !== undefined && cmd.phase !== phase) return fail(`Override applies to the current phase, ${phaseLabel(phase)}.`)
+      if (!cmd.reason.trim()) return fail('Override needs a reason. Use /temper:temper override <reason>.')
+      if (cmd.phase !== undefined && cmd.phase !== phase) return fail(`Override works on the current phase, ${phaseLabel(phase)}.`)
       return { events: [{ type: 'override', phase, reason: cmd.reason.trim(), ...who }] }
     }
     case 'acceptFinding': {
       if (!isPerson) return fail(ONLY_USER)
-      if (phase !== 'review' && phase !== 'fix') return fail('Findings are accepted in Review or Fix.')
-      if (!cmd.reason.trim()) return fail('Accepting a finding needs a reason: /temper:temper accept <id> <reason>')
+      if (phase !== 'review' && phase !== 'fix') return fail('You can accept findings in Review or Fix.')
+      if (!cmd.reason.trim()) return fail('Accept needs a reason. Use /temper:temper accept <id> <reason>.')
       return { events: [{ type: 'accept', findingId: cmd.id, reason: cmd.reason.trim(), ...who }] }
     }
     case 'drift': {
       if (!isPerson) return fail(ONLY_USER)
-      if (phase !== 'build' && phase !== 'fix') return fail('Scope drift decisions apply in Build or Fix.')
+      if (phase !== 'build' && phase !== 'fix') return fail('Scope drift decisions work in Build or Fix.')
       if (cmd.choice === 'allow-once' && !cmd.reason.trim()) return fail('Allow once needs a reason.')
       return { events: [{ type: 'drift', path: cmd.path, choice: cmd.choice, reason: cmd.reason.trim(), ...who }] }
     }
@@ -298,7 +298,7 @@ export function decide(state: RunState, cmd: Command): Decision {
       if (!state.allowOnce.includes(cmd.path)) return fail(`No allowance for ${cmd.path}.`)
       return { events: [{ type: 'driftUsed', path: cmd.path, ...who }] }
     case 'checkResult':
-      if (phase !== 'check') return fail('Check results only count in the Check phase.')
+      if (phase !== 'check') return fail('Check results count only in the Check phase.')
       return { events: [{ type: 'checkResult', result: cmd.result, ...who }] }
     case 'pause':
       if (!isPerson) return fail(ONLY_USER)

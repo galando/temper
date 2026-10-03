@@ -1,7 +1,7 @@
 {
   "name": "temper",
   "displayName": "Temper",
-  "description": "Intent-gated SDLC for AI-generated code: blast radius planning, TDD, confidence-scored review, and quality gates computed by an auditable CLI that blocks git commit while a gate is red.",
+  "description": "Claude cannot write code before you approve the intent. Phase gates for AI written code: plan with blast radius, TDD, scored review, and gate verdicts computed by an auditable CLI that blocks git commit while a gate is red. With Claude Code 2.1.287 or later a mod refuses out of phase writes and draws a phase bar.",
   "version": "9.5.0",
   "author": {
     "name": "galando",
@@ -17,7 +17,12 @@
     "tdd",
     "standards",
     "blast-radius",
-    "sdlc"
+    "sdlc",
+    "intent",
+    "gates",
+    "enforcement",
+    "workflow",
+    "phase-bar"
   ],
   "commands": [
     "./commands/temper.md",
@@ -86,6 +91,12 @@
       "title": "Reviewer model",
       "description": "Optional model for the Temper review agent. Empty means no change.",
       "default": ""
+    },
+    "game": {
+      "type": "string",
+      "title": "Game",
+      "description": "on shows the Temper Run game: key p while Claude works, or /temper:temper play. off hides it. Values: on or off.",
+      "default": "on"
     }
   }
 }

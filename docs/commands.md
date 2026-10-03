@@ -111,7 +111,11 @@ after the command is one of these, Temper handles it instead of starting a run. 
 | `/temper:temper mode <full\|minimal\|off>` | Change how much Temper draws |
 | `/temper:temper enforcement <on\|off>` | Turn denials on or off |
 | `/temper:temper pane` | Open or close the pane. A bare `/temper:temper` does the same while a run is active. |
+| `/temper:temper play` | Open or close the Temper Run game. Only you can open it. Terminal and desktop app only. |
 | `/temper:temper help` | List these |
+
+These 17 words are reserved: `status`, `timeline`, `approve`, `next`, `back`, `override`, `accept`,
+`drift`, `pause`, `resume`, `report`, `pr`, `mode`, `enforcement`, `pane`, `play` and `help`.
 
 Decisions (`approve`, `override`, `accept`, `drift`, `back`) count only when you type
 them or press the button yourself. Claude cannot create one. With the mod loaded the
@@ -144,6 +148,42 @@ buttons; Enter records the override with that reason, and an empty reason is ref
 repeats this with the intent title and a criteria checklist; its `0` expands the full action list,
 whose entries use the letters `a`, `b`, `c` and so on. Under about 100 columns (for example while the
 pane is docked) the band uses a compact form without borders. `minimal` shows the chips only.
+
+### Each phase
+
+Key `1` is the main action. It changes when the phase is ready to move on. Key `9` is override
+everywhere and always asks for a reason. Key `0` (`More`) shows every action. It appears only when
+the phase has more actions.
+
+| Phase | Writes allowed | Keys |
+|---|---|---|
+| Intent | `intent.md` only | 1 Approve intent (when the gate passes), otherwise Check intent. 2 Ask questions. 3 Edit intent. 0 Capture intent. |
+| Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records | 1 Approve plan (when the gate passes), otherwise Write plan. 2 Show files. 3 Other plan. 0 Split tasks, Back to Intent. |
+| Build | The files in the plan, test files and the spec folder | 1 Next task, or Start review when the tasks are done. 2 Run tests. 3 Show diff. |
+| Review | The spec folder only, unless a fix for that file is active | 1 Start review, or Fix all when findings exist. 2 Review again. 3 Show diff. In the pane, per finding: Fix, Accept, Explain. |
+| Check | The spec folder only. `git commit` stays refused until Check passes. | 1 Run checks, or Mark done when every check passes. 2 Rerun failed. 3 Show failures. |
+| Fix | The failing files | 1 Fix failures. 2 Fix findings. 3 Back to Check. At the loop limit: Plan again, Override, Take over. |
+
+A write outside the Build plan raises scope drift. You can add the file to the plan, revert it, or
+allow it once with a reason. Each choice is logged. After three failed fix loops (set with
+`fix.max-loops`) Temper stops and offers the three choices in the last row.
+
+### The game
+
+Temper Run is a small runner game for the time Claude works. It is optional.
+
+- Open it with the `p` key on the band (the button shows only while Claude works) or with
+  `/temper:temper play`. The same command closes it. Only you can open it. Claude cannot.
+- Click the game once so it gets the keys. Space, Up or W jumps. Space also starts and restarts.
+  Esc gives the focus back to the prompt.
+- The game shows a banner when a phase is ready or changes, so you do not miss an approval.
+- It keeps your best score in the plugin store. The score does not change any gate.
+- It pauses by itself after a short idle time. It never writes files and never makes a call to
+  Claude.
+- Turn it off with the plugin setting `game` set to `off`.
+- It exists on the terminal and the desktop app only. On the VS Code extension and on mobile the
+  command prints a short text and nothing else happens.
+- Refusals still apply while the game is open.
 
 ---
 

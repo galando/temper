@@ -39,7 +39,7 @@ describe('prompt.compose', () => {
   test('with no run the marker is still there, saying no run is active', async ($, on) => {
     world(on, {})
     const text = (await $.prompt.compose(COMPOSE)).sections.at(-1)?.text ?? ''
-    expect(text).toBe('Temper enforcement: active\nPhase: none (no active Temper run)')
+    expect(text).toBe('Temper enforcement: active\nPhase: none. No Temper run is active.')
   })
 
   test('a load failure leaves the engine sections untouched', async ($, on) => {

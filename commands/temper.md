@@ -37,12 +37,12 @@ mod is absent. Any other first word is a feature description.
 | `help` | List these words with their one line meanings. |
 | `approve` / `next` | Treat it as the human answer at the current gate: confirm the gate with `$TEMPER gate {stage}`, record the move with `$TEMPER state advance {stage}_complete {next}`, then continue. Refuse and print the failing requirements when the gate is not PASS. |
 | `back <phase> <reason>` | `$TEMPER state set next_stage {phase}`, record the reason with `$TEMPER evidence add --stage {phase} --phase feedback --claim "back: {reason}"`, and rerun every later gate before advancing. |
-| `override <reason>` | `$TEMPER override {stage} --reason "{reason}"`. With no reason, refuse: "Override needs a reason: /temper:temper override <reason>". |
+| `override <reason>` | `$TEMPER override {stage} --reason "{reason}"`. With no reason, refuse: "Override needs a reason. Use /temper:temper override <reason>." |
 | `accept <id> <reason>` | `$TEMPER evidence accept --stage review --id {id} --reason "{reason}"`. With no reason, refuse. |
 | `drift <add\|revert\|allow> <reason>` | `add`: put the file in plan.md's Files table. `revert`: restore the file to its committed state. `allow`: continue once. Record the choice with `$TEMPER evidence add --stage build --phase feedback --claim "drift {path}: {choice}: {reason}"`. |
 | `pause` / `resume` | Stop at the next gate and wait for the person, or continue from it. |
 | `pr` | Write a pull request description from `$TEMPER report`: overrides, accepted findings and drift decisions with their reasons. |
-| `mode`, `enforcement`, `pane` | These belong to the Temper mod. Without it, say they are not available here. |
+| `mode`, `enforcement`, `pane`, `play` | These belong to the Temper mod. Without it, say they are not available here. The game needs the mod. |
 
 ---
 

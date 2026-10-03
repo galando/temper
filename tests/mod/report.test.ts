@@ -83,7 +83,7 @@ describe('renderReport', () => {
     const noted = renderReport({ ...input(), unreadable: ['4-s-4.json'], unverified: ['2-x-1'] })
     expect(noted).toContain('## Notes')
     expect(noted).toContain('Unreadable event file: 4-s-4.json')
-    expect(noted).toContain('Unverified event (not counted): 2-x-1')
+    expect(noted).toContain('Event that Temper does not trust: 2-x-1')
   })
 
   test('no em or en dashes anywhere in the output', () => {

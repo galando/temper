@@ -81,10 +81,18 @@ Work through one run. For each phase, check the refusal and the key.
   Expect the edit to go through once.
 - [ ] **The pane.** Type `/temper:temper pane`. Expect a pane with the criteria checklist, the
   phase and a short timeline. Type `/temper:temper pane` again to close it.
+- [ ] **The game.** While Claude works, press `p`, or type `/temper:temper play`. Expect a game pane
+  beside the Temper pane (terminal and desktop app only; on the VS Code extension you get a short
+  text). Click the game once, press Space to start, and jump with Space. Let it end and expect
+  "Game over" and your best score. While the game pane is open, ask Claude to edit `src/users.js` and
+  expect the same refusal as without the game. Press Esc and expect the focus back in the prompt.
+  Press `1` to approve and expect the banner "Temper: Intent is ready. Press Esc to go back." or the
+  new phase in the banner. Set the plugin setting `game` to `off` and expect no `p Play` button.
+  Run `/temper:temper play` again and expect the game to close.
 - [ ] **Override needs a reason.** Press `9`. Dismiss the reason question without an
   answer. Expect a toast that an override needs a reason and no phase change.
 - [ ] **Commit gate.** Before Check passes, ask Claude to run `git commit -am wip`. Expect
-  `Temper: commit blocked, Check has not passed.` After Check passes, the same command
+  `Temper: commit blocked. Check has not passed.` After Check passes, the same command
   must be allowed.
 - [ ] **Review and Check.** Press `1` at each band. Expect `.temper/report.md` after Check
   passes, listing the phases, any override and every scope decision with its reason.

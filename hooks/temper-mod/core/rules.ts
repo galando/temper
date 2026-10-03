@@ -53,31 +53,31 @@ function protectedDeny(kind: ProtectedKind): RuleResult {
   if (kind === 'folder') {
     return {
       deny:
-        'Temper: the .temper folders hold the run, its verdicts and its decisions, and are not removed or replaced by hand. ' +
-        'Next: use scripts/temper state archive after the run, or name the single file you mean.',
+        'Temper: the .temper folders hold the run, its verdicts and its decisions. Do not remove or replace them by hand. ' +
+        'Next: use scripts/temper state archive after the run, or name one file.',
     }
   }
   if (kind === 'state') {
     return {
       deny:
-        'Temper: run state is changed with the temper CLI and never written by hand. ' +
+        'Temper: use the temper CLI to change run state. Do not write it by hand. ' +
         'Next: use scripts/temper state set or scripts/temper state advance.',
     }
   }
   return {
     deny:
-      'Temper: gate verdicts are computed by the temper CLI and never written by hand. ' +
-      'Next: run scripts/temper gate <stage> and read the verdict it records.',
+      'Temper: the temper CLI makes the gate verdicts. Do not write them by hand. ' +
+      'Next: run scripts/temper gate <stage> and read the verdict.',
   }
 }
 
 const COMMIT_NEXT: Record<Phase, string> = {
-  intent: 'finish the intent and move through the phases to Check (key 1 or /temper:temper next)',
-  plan: 'finish the plan and move through the phases to Check (key 1 or /temper:temper next)',
-  build: 'finish the build and move on to Review and Check (key 1 or /temper:temper next)',
-  review: 'finish the review and move on to Check (key 1 or /temper:temper next)',
+  intent: 'finish the phases up to Check (key 1 or /temper:temper next)',
+  plan: 'finish the phases up to Check (key 1 or /temper:temper next)',
+  build: 'finish Build, then do Review and Check (key 1 or /temper:temper next)',
+  review: 'finish Review, then do Check (key 1 or /temper:temper next)',
   check: 'run the checks (key 1 in Check or /temper:check)',
-  fix: 'fix the failures, then rerun the checks (key 1 in Fix)',
+  fix: 'fix the failed checks. Then run the checks again (key 1 in Fix)',
 }
 
 const isActive = (s: RunState): s is RunState & { phase: Phase } => s.phase !== null && s.phase !== 'done'
@@ -93,8 +93,8 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, path: 
       if (specFile('intent.md') || specFile('intent-context.json')) return ALLOW
       return {
         deny:
-          `Temper: ${label} phase. Writing ${path} is not allowed until the intent is approved. ` +
-          'Next: finish intent.md, then ask the user to approve (key 1 or /temper:temper approve).',
+          `Temper: ${label} phase. Writing ${path} is not allowed until the user approves the intent. ` +
+          'Next: finish intent.md. Then ask the user to approve it (key 1 or /temper:temper approve).',
       }
     case 'plan': {
       const ok =
@@ -104,22 +104,22 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, path: 
       if (ok) return ALLOW
       return {
         deny:
-          `Temper: ${label} phase. Writing ${path} is not allowed until the plan is approved. ` +
-          'Next: finish plan.md and tasks.md, then ask the user to approve (key 1 or /temper:temper approve).',
+          `Temper: ${label} phase. Writing ${path} is not allowed until the user approves the plan. ` +
+          'Next: finish plan.md and tasks.md. Then ask the user to approve them (key 1 or /temper:temper approve).',
       }
     }
     case 'review':
       if (inSpec || (ctx.fixFiles ?? []).some(f => normalizePath(f, ctx.root) === path)) return ALLOW
       return {
         deny:
-          `Temper: ${label} phase. Writing ${path} is not allowed; Review only changes the spec directory. ` +
-          'Next: record the finding, then fix it once the user starts Fix (key 1 in Review, Fix all).',
+          `Temper: ${label} phase. Writing ${path} is not allowed. Review changes the spec folder only. ` +
+          'Next: write the finding in the spec folder. Fix it when the user starts Fix (key 1 in Review, Fix all).',
       }
     case 'check':
       if (inSpec) return ALLOW
       return {
         deny:
-          `Temper: ${label} phase. Writing ${path} is not allowed; Check only runs validation. ` +
+          `Temper: ${label} phase. Writing ${path} is not allowed. Check only runs checks. ` +
           'Next: run the checks (key 1 in Check or /temper:check).',
       }
     case 'build':
@@ -154,26 +154,26 @@ const planApproved = (s: RunState): boolean => {
 }
 
 const AUTONOMY_DENY =
-  'Temper: autonomous mode is armed by the user at the plan gate. ' +
-  'Next: ask the user to approve the plan (key 1 or /temper:temper approve) and to set autonomy.enabled: true in .claude/temper.config, then try again.'
+  'Temper: only the user can turn on autonomous mode, at the plan gate. ' +
+  'Next: ask the user to approve the plan (key 1 or /temper:temper approve) and to set autonomy.enabled: true in .claude/temper.config. Then try again.'
 
 const GUARD_KEYS = new Set(['stage', 'next_stage', 'branch', 'spec_path', 'run_mode'])
 
 const UNCHECKABLE =
-  'Temper: this command writes through a path that cannot be checked, and it names Temper state. ' +
-  'Next: spell the exact file path with no variables, globs, braces or substitutions, or use ' +
+  'Temper: this command writes to a path that Temper cannot check, and it names Temper state. ' +
+  'Next: write the exact file path with no variables, globs, braces or substitutions. Or use ' +
   'scripts/temper gate <stage>, scripts/temper evidence or scripts/temper state.'
 
 const REPEATED_FLAG =
-  'Temper: this decision call repeats a flag (--id, --stage or --reason), so it cannot be matched to ' +
-  'what the person decided. Next: run it once with each flag given a single time.'
+  'Temper: this decision call repeats a flag (--id, --stage or --reason). ' +
+  'Temper cannot match it to the decision of the user. Next: run the call again. Give each flag one time.'
 
 const STATE_END =
-  'Temper: clearing or archiving the run state is for after the run. Next: finish the run (Check passes), ' +
+  'Temper: do not clear or archive the run state during a run. Next: finish the run, ' +
   'commit, then run scripts/temper state archive.'
 
 const stateSetDeny = (key: string): string =>
-  `Temper: state set ${key} moves the run, and only the user can do that. ` +
+  `Temper: state set ${key} moves the run. Only the user can do this. ` +
   'Next: ask the user to run /temper:temper back <phase> <reason>.'
 
 function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResult {
@@ -232,7 +232,7 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
 
   if (c.commits && isActive(s) && !s.paused) {
     return {
-      deny: `Temper: commit blocked, Check has not passed. Next: ${COMMIT_NEXT[s.phase]}.`,
+      deny: `Temper: commit blocked. Check has not passed. Next: ${COMMIT_NEXT[s.phase]}.`,
     }
   }
   return ALLOW

@@ -63,7 +63,7 @@ export function renderReport(input: ReportInput): string {
 
   const notes = [
     ...(input.unreadable ?? []).map(n => `- Unreadable event file: ${n}`),
-    ...(input.unverified ?? []).map(n => `- Unverified event (not counted): ${n}`),
+    ...(input.unverified ?? []).map(n => `- Event that Temper does not trust: ${n}`),
   ]
   if (notes.length > 0) out.push(...section('Notes', notes))
 

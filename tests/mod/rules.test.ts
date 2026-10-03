@@ -49,8 +49,8 @@ describe('specific denials', () => {
     const r = evaluate(stateAt('plan'), ctx, { tool: 'Write', input: { file_path: 'src/app.ts' } })
     expect(r).toEqual({
       deny:
-        'Temper: Plan phase. Writing src/app.ts is not allowed until the plan is approved. ' +
-        'Next: finish plan.md and tasks.md, then ask the user to approve (key 1 or /temper:temper approve).',
+        'Temper: Plan phase. Writing src/app.ts is not allowed until the user approves the plan. ' +
+        'Next: finish plan.md and tasks.md. Then ask the user to approve them (key 1 or /temper:temper approve).',
     })
   })
 
@@ -222,14 +222,14 @@ describe('git commit gate', () => {
 
   test('refused with the exact reason while Check has not passed', () => {
     expect(evaluate(stateAt('check'), ctx, commit)).toEqual({
-      deny: 'Temper: commit blocked, Check has not passed. Next: run the checks (key 1 in Check or /temper:check).',
+      deny: 'Temper: commit blocked. Check has not passed. Next: run the checks (key 1 in Check or /temper:check).',
     })
   })
 
   test('every unfinished phase refuses and names its next step', () => {
     for (const phase of ['intent', 'plan', 'build', 'review', 'fix'] as const) {
       const r = evaluate(stateAt(phase), ctx, commit)
-      expect(isDeny(r) && r.deny.startsWith('Temper: commit blocked, Check has not passed. Next: ')).toBe(true)
+      expect(isDeny(r) && r.deny.startsWith('Temper: commit blocked. Check has not passed. Next: ')).toBe(true)
     }
   })
 

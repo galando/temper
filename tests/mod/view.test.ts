@@ -75,7 +75,7 @@ describe('texts', () => {
     expect(hintTail(v)).toMatch(/^Temper, Build \(3 of 6\): /)
     expect(turnLine(v)).toBe('Build \u00b7 1 of 2 criteria met \u00b7 next: Review')
     expect(questionHeader(v)).toBe('Temper: Build (3 of 6), criterion 2 of 2')
-    expect(suggestion(v)).toContain('next unfinished task')
+    expect(suggestion(v)).toContain('Start the next task')
     expect(hintTail({ ...v, phase: null })).toBe(null)
     expect(turnLine({ ...v, phase: null })).toBe(null)
     expect(questionHeader({ ...v, phase: 'done' })).toBe(null)

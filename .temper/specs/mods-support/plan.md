@@ -266,7 +266,7 @@ not covered (README "Where enforcement works" says so).
 | `docs/demo-script.md` | Scenario: "README explains Temper at a glance…" (walkthrough video script) |
 | `demo/password-reset/` (README.md, package.json, src/reset.js, src/reset.test.js, .claude/temper.config) | Infrastructure: required by docs/mods-testing.md step 5 and demo/temper.tape |
 | `demo/temper.tape` | Scenario: "README explains Temper at a glance…" (hero GIF source) |
-| `docs/assets/temper-hero.gif`, `docs/assets/mode-full-dark.png`, `docs/assets/mode-minimal-light.png` | Scenario: "README explains Temper at a glance…" |
+| `images/temper-hero.gif`, `images/mode-full-dark.png`, `images/mode-minimal-light.png` | Scenario: "README explains Temper at a glance…" |
 
 ### Files to Modify
 

@@ -24,6 +24,7 @@ export const RESERVED = [
   'enforcement',
   'next',
   'pane',
+  'play',
 ] as const
 
 export type Reserved = (typeof RESERVED)[number]
@@ -83,7 +84,7 @@ export function planCommand(parsed: Parsed, pendingDrift: string | null): Plan {
       const choices: Record<string, DriftChoice> = { add: 'add', revert: 'revert', allow: 'allow-once', 'allow-once': 'allow-once' }
       const choice = choices[choiceWord.toLowerCase()]
       if (!choice) return { kind: 'error', text: 'Usage: /temper:temper drift <add|revert|allow> <reason>' }
-      if (!pendingDrift) return { kind: 'error', text: 'No scope drift is pending. Nothing to decide.' }
+      if (!pendingDrift) return { kind: 'error', text: 'No scope drift waits for a decision.' }
       return { kind: 'command', command: { type: 'drift', path: pendingDrift, choice, reason } }
     }
     default:
@@ -96,45 +97,46 @@ export function planCommand(parsed: Parsed, pendingDrift: string | null): Plan {
 // names the exact CLI command that mirrors it in the CLI state (the commit gate reads that state),
 // and says what to do next. Every command named here is a valid `scripts/temper` invocation.
 export function followUp(draft: Draft, complexity: string | null = null): string | null {
-  const recorded = 'The user\'s decision is already recorded; this only mirrors it in the CLI state.'
+  const recorded = 'The user\'s decision is recorded. The command only copies it to the CLI state.'
   switch (draft.type) {
     case 'advance': {
       if (draft.to === 'done') {
         const cmds = advanceCommands(draft.from, draft.to, complexity)
-        return `Temper: the user marked the run done. ${recorded} Run ${cmds.map(c => `\`${c}\``).join(' then ')}, then report the result. Commit only if the user asks.`
+        return `Temper: the user marked the run done. ${recorded} Run ${cmds.map(c => `\`${c}\``).join(' then ')}. Then report the result. Commit only if the user asks.`
       }
       const cmds = advanceCommands(draft.from, draft.to, complexity)
       const run = cmds.length > 0 ? ` Run ${cmds.map(c => `\`${c}\``).join(' then ')}.` : ''
       return `Temper: the user moved the run from ${draft.from} to ${draft.to}. ${recorded}${run} Then continue with the ${draft.to} phase.`
     }
     case 'override':
-      return `Temper: the user overrode the ${draft.phase} phase (reason: ${draft.reason}). ${recorded} Run \`${overrideCommand(draft.phase, draft.reason)}\`, then continue with the next phase.`
+      return `Temper: the user overrode the ${draft.phase} phase (reason: ${draft.reason}). ${recorded} Run \`${overrideCommand(draft.phase, draft.reason)}\`. Then continue with the next phase.`
     case 'accept':
       return `Temper: the user accepted review finding ${draft.findingId} (reason: ${draft.reason}). ${recorded} Run \`${acceptCommand(draft.findingId, draft.reason)}\`.`
     case 'back':
-      return `Temper: the user sent the run back to ${draft.to} (reason: ${draft.reason}). ${recorded} Run \`${backCommand(draft.to)}\`, then rework ${draft.to} before moving forward again.`
+      return `Temper: the user sent the run back to ${draft.to} (reason: ${draft.reason}). ${recorded} Run \`${backCommand(draft.to)}\`. Then redo ${draft.to} before you move on.`
     case 'drift':
       return draft.choice === 'revert'
-        ? `Temper: the user chose to revert the out of plan change to ${draft.path}. Restore that file to its committed state and continue inside the plan.`
-        : `Temper: the user decided scope drift for ${draft.path} (${draft.choice}). Continue.`
+        ? `Temper: the user chose to revert the change to ${draft.path}. It is not in the plan. Restore the file to its committed state. Then continue inside the plan.`
+        : `Temper: the user decided the scope drift for ${draft.path} (${draft.choice}). Continue.`
     default:
       return null
   }
 }
 
 export const HELP = [
-  'Temper subcommands (typed after /temper:temper):',
-  '  status               where the run stands',
-  '  timeline             the phases the run went through',
+  'Temper subcommands (type them after /temper:temper):',
+  '  status               show where the run is',
+  '  timeline             show the phases of the run',
   '  approve              approve the current phase (Intent or Plan)',
-  '  next                 move on when the phase passed its gate',
-  '  back <phase> <why>   go back; every later phase needs a fresh verdict',
-  '  override <reason>    skip the current phase, once, with a reason',
-  '  accept <id> <why>    accept a review finding with a reason',
-  '  drift <add|revert|allow> <reason>   decide a pending scope drift',
-  '  pause / resume       hand the run over, take it back',
+  '  next                 move on when the phase passes its gate',
+  '  back <phase> <why>   go back (later phases need a new verdict)',
+  '  override <reason>    skip the current phase once (give a reason)',
+  '  accept <id> <why>    accept a review finding (give a reason)',
+  '  drift <add|revert|allow> <reason>   decide a scope drift',
+  '  pause / resume       take the run over, give it back',
   '  report               write .temper/report.md now',
   '  pr                   ask Claude for a pull request description',
-  '  mode, enforcement, pane   show or change how Temper draws and enforces',
-  'Anything else after /temper:temper is a feature description and starts or resumes a run.',
+  '  play                 play Temper Run while you wait (Esc leaves)',
+  '  mode, enforcement, pane   show or change what Temper shows and enforces',
+  'Any other text after /temper:temper is a feature description. It starts or resumes a run.',
 ].join('\n')

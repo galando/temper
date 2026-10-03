@@ -42,7 +42,7 @@ describe('system prompt section', () => {
 
   test('no run gives a short section', () => {
     const t = sectionText({ enforcement: 'on', phase: null, title: null, progress: null })
-    expect(t).toBe('Temper enforcement: active\nPhase: none (no active Temper run)')
+    expect(t).toBe('Temper enforcement: active\nPhase: none. No Temper run is active.')
   })
 
   test('no em or en dashes', () => {

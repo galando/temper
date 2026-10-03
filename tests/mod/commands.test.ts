@@ -106,7 +106,7 @@ describe('decisions come only from the person', () => {
   test('override without a reason is refused and writes no event', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'review' }))
     const r = await $.command.run({ command: 'temper', args: 'override', origin: { kind: 'composer' } } as never)
-    expect(r.text).toBe('Override needs a reason: /temper:temper override <reason>')
+    expect(r.text).toBe('Override needs a reason. Use /temper:temper override <reason>.')
     expect(decisions(w)).toEqual([])
   })
 
@@ -114,7 +114,7 @@ describe('decisions come only from the person', () => {
     const w = world(on, runFiles({ nextStage: 'review' }))
     for (const kind of ['sdk', 'bridge', 'plugin'] as const) {
       const r = await $.command.run({ command: 'temper', args: 'override because', origin: { kind, name: 'x' } } as never)
-      expect(r.text).toBe('Only the user can approve this. Ask them to press 1 or run /temper:temper approve.')
+      expect(r.text).toBe('Only the user can approve this. Next: ask the user to press 1 or run /temper:temper approve.')
     }
     expect(decisions(w)).toEqual([])
   })
@@ -156,13 +156,13 @@ describe('decisions come only from the person', () => {
     await $.command.run({ command: 'temper', args: 'override risk accepted', origin: { kind: 'composer' } } as never)
     const call = { tool: 'Bash', command: 'scripts/temper override review --reason "risk accepted"' } as const
     expect((await $.tool.call(call)).text).toBe('stub ran')
-    expect(await $.tool.call(call)).toEqual({ deny: 'Only the user can approve this. Ask them to press 1 or run /temper:temper approve.' })
+    expect(await $.tool.call(call)).toEqual({ deny: 'Only the user can approve this. Next: ask the user to press 1 or run /temper:temper approve.' })
   })
 
   test('drift decisions by command need a pending drift', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'build' }))
     const none = await $.command.run({ command: 'temper', args: 'drift add', origin: { kind: 'composer' } } as never)
-    expect(none.text).toContain('No scope drift is pending')
+    expect(none.text).toContain('No scope drift waits for a decision')
     // A denied edit (nobody to ask) leaves the path pending; the person then decides.
     const denied = await $.tool.call({ tool: 'Edit', file_path: 'src/billing.ts', old_string: 'a', new_string: 'b' })
     expect(denied.deny).toContain('/temper:temper drift add|revert|allow <reason>')
@@ -193,7 +193,7 @@ describe('pull request attribution', () => {
   test('adds one Temper line while a run is on', async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }))
     const r = await $.attribution.text(pr)
-    expect(r.text).toBe('Generated with Claude Code\n\nBuilt under Temper: gated phases with an audit trail in .temper/report.md.')
+    expect(r.text).toBe('Generated with Claude Code\n\nMade with Temper. The phases have gates. The report is in .temper/report.md.')
   })
 
   test('off by option, with no run, and for other kinds', async ($, on) => {
@@ -225,7 +225,7 @@ describe('a chained command spends every human event it matched', () => {
 })
 
 describe('every state changing word needs the person', () => {
-  const ONLY = 'Only the user can approve this. Ask them to press 1 or run /temper:temper approve.'
+  const ONLY = 'Only the user can approve this. Next: ask the user to press 1 or run /temper:temper approve.'
   const words = [
     'mode full',
     'mode off',

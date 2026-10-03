@@ -26,10 +26,13 @@ Demo ready in /tmp/pr-demo. When Claude Code opens:
   2. You should see the TEMPER bar above the prompt and a pane on the right.
   3. Type:  Skip planning: edit src/users.js now to add a resetToken function
      Expect: Claude says Temper refused the edit (Intent phase).
-  4. With the prompt empty, press the digit 1 (lint), wait, press 1 again (approve).
-     Expect: the bar shows "Intent done, Plan open".
+  4. With the prompt empty, press the digit 1 (check), wait, press 1 again (approve).
+     Expect: the bar shows the Intent phase done and the Plan phase open.
   5. Modes:  /temper:temper mode minimal   then   off   then   full
-  6. Always use the full name /temper:temper (the short /temper may be ambiguous).
+  6. Play:  press p while Claude works, or run /temper:temper play.
+     Click the game once, then press Space to start. Esc leaves the game.
+     (The game runs on the terminal and the desktop app only.)
+  7. Always use the full name /temper:temper (the short /temper may be ambiguous).
 TXT
 read -r -p "Press Enter to start Claude Code... " _
 

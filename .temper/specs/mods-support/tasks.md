@@ -187,7 +187,7 @@ maintainer ticks `docs/mods-testing.md`.
 ### Task 19: Demo fixture, tape, demo script, assets [SEQUENTIAL: after Task 18]
 
 **Action:** CREATE
-**File:** `demo/password-reset/`, `demo/temper.tape`, `docs/demo-script.md`, `docs/assets/`
+**File:** `demo/password-reset/`, `demo/temper.tape`, `docs/demo-script.md`, `demo/out/`
 **Traced to:** Scenario: "README explains Temper at a glance and still validates"; Infrastructure: required by docs/mods-testing.md step 5
 **Test:** manual
 **Validate:** `bash scripts/validate-docs.sh && test -f demo/temper.tape`

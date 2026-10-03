@@ -38,6 +38,7 @@ problem, and it does so mechanically, not by asking the model to grade itself.
 ## How it works
 
 One loop with a human gate at every stage. The cheapest artifact is reviewed first.
+The order is Intent, Plan, Build, Review, Check, then Done. A failed check goes to Fix and back to Check.
 
 ```mermaid
 flowchart LR
@@ -64,100 +65,46 @@ flowchart LR
 ### The three modes
 
 You choose how much Temper draws with `/temper:temper mode`. Denials work in every mode.
+Full draws the bar with action buttons, the pane, toasts and suggestions. Minimal draws the
+phase bar only. Off draws nothing, and a write outside the phase is still refused.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/mode-full-dark.png">
-  <img alt="Full mode: phase bar with action buttons and the pane" src="docs/assets/mode-full-light.png">
-</picture>
-**Full** draws the bar with action buttons, the pane, toasts and suggestions.
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/mode-minimal-dark.png">
-  <img alt="Minimal mode: the phase bar only" src="docs/assets/mode-minimal-light.png">
-</picture>
-**Minimal** draws the phase bar only.
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/mode-off-dark.png">
-  <img alt="Off mode: nothing drawn, denials still apply" src="docs/assets/mode-off-light.png">
-</picture>
-**Off** draws nothing. A write outside the phase is still refused.
-The same mod runs in the desktop app (Code tab). A desktop screenshot is not in the repository yet; `docs/demo-script.md` says how to add one.
+| Dark | Light |
+|---|---|
+| ![Full mode, dark: phase bar with action buttons and the pane](docs/assets/mode-full-dark.png) | ![Full mode, light: phase bar with action buttons and the pane](docs/assets/mode-full-light.png) |
+| ![Minimal mode, dark: the phase bar only](docs/assets/mode-minimal-dark.png) | ![Minimal mode, light: the phase bar only](docs/assets/mode-minimal-light.png) |
+| ![Off mode, dark: nothing drawn, denials still apply](docs/assets/mode-off-dark.png) | ![Off mode, light: nothing drawn, denials still apply](docs/assets/mode-off-light.png) |
+
+The rows are Full, Minimal and Off. The same mod runs in the desktop app (Code tab). A desktop
+screenshot is not in the repository yet; [the demo script](docs/demo-script.md) says how to add one.
 
 ### Each phase
 
-Key `1` is the main action and changes when the phase is ready to move on. Key `9` is
-override everywhere and always asks for a reason. Key `0` opens the pane with every action.
+Key `1` is the main action and changes when the phase is ready to move on. Key `9` is override
+everywhere and always asks for a reason. Key `0` shows every action.
 
-<details><summary><b>Intent</b>: write the problem and the criteria</summary>
-
-| Key | Action |
+| Phase | Writes allowed |
 |---|---|
-| 1 | Approve intent (when the gate passes), otherwise Lint intent |
-| 2, 3 | Ask clarifying questions, Edit intent |
-| 0 | Capture intent from my prompt |
+| Intent | `intent.md` only |
+| Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records |
+| Build | The plan's files, test files and the spec folder. Other files raise scope drift. |
+| Review | The spec folder only, unless a fix for that file is active |
+| Check | The spec folder only. `git commit` stays refused until Check passes. |
+| Fix | The failing files. After three failed loops Temper stops and offers Plan again, Override or Take over. |
 
-Allowed writes: the spec's `intent.md`. Everything else is refused.
+The keys of each phase are in [Commands](docs/commands.md#each-phase).
 
-</details>
+### A game while you wait
 
-<details><summary><b>Plan</b>: scenarios, blast radius, files</summary>
+Claude works and you wait? Press `p` on the band, or run `/temper:temper play`, to open Temper
+Run, a small runner game. Click the game once so it gets the keys, then press Space to start
+and Space to jump. Esc gives the focus back to the prompt. It shows a banner when a phase is
+ready, so you do not miss an approval, and refusals still apply while it is open. It is optional:
+set the plugin setting `game` to `off` to hide it.
 
-| Key | Action |
-|---|---|
-| 1 | Approve plan (when the gate passes), otherwise Generate plan |
-| 2, 3 | Show files the plan touches, Propose an alternative |
-| 0 | Split into tasks, Back to Intent |
+![Temper Run, the optional game: a runner jumps over blocks while Claude works](docs/assets/game.svg)
 
-Allowed writes: `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records.
-
-</details>
-
-<details><summary><b>Build</b>: failing test first, inside the plan</summary>
-
-| Key | Action |
-|---|---|
-| 1 | Start next task, or Send to Review when the tasks are done |
-| 2, 3 | Run tests for the current criterion, Show diff against plan |
-| 0 | Pause |
-
-Allowed writes: the plan's files, test files and the spec folder. A write anywhere else raises
-scope drift: add it to the plan, revert it, or allow it once with a reason. Each choice is logged.
-
-</details>
-
-<details><summary><b>Review</b>: confidence scored findings</summary>
-
-| Key | Action |
-|---|---|
-| 1 | Start review, or Fix all when findings exist |
-| 2 | `Re-review` |
-| 3 | Show diff |
-| pane | Per finding: Fix, Accept with reason, Explain |
-
-Allowed writes: the spec folder only, unless a fix for that file is active.
-
-</details>
-
-<details><summary><b>Check</b>: stack validation</summary>
-
-| Key | Action |
-|---|---|
-| 1 | Run all checks, or Mark done when every check passes |
-| 2, 3 | Rerun failed only, Failures by criterion |
-
-Allowed writes: the spec folder only. `git commit` stays refused until Check passes.
-
-</details>
-
-<details><summary><b>Fix</b>: the loop after a failed check</summary>
-
-| Key | Action |
-|---|---|
-| 1, 2, 3 | Fix failures, Fix open findings, Return to Check |
-| at the limit | `Re-plan`, Override, I take over |
-
-After three failed loops (configurable with `fix.max-loops`) Temper stops and offers those three choices.
-
-</details>
+The game runs on the terminal and the desktop app only. It was verified by hand on the
+terminal. The image above is a placeholder until the recording from `demo/game.tape` replaces it.
 
 ## Where enforcement works
 
@@ -204,12 +151,6 @@ runs the suite on Claude Code 2.1.287.
 **You can turn it off.** Anyone can disable the plugin or run `/temper:temper enforcement off`. It guards
 a workflow for honest use; it is not a security boundary.
 
-**What the mod can do.** Mods are not sandboxed. This one uses no network and spawns no
-process: it reads and writes files under `.temper/` and the project (events and the report),
-asks you questions, and draws. Tests, lint and git run as prompts to Claude through Claude's
-normal tools and permissions. CI fails if the mod gains any `process`, `http` or `env` call or
-any call outside the reviewed list in [`scripts/check-mod-calls.sh`](scripts/check-mod-calls.sh).
-
 **Bash is best effort.** The hard guarantee covers the tool layer: Write, Edit, NotebookEdit,
 MultiEdit and `git commit`. For Bash the mod resolves variables in order, expands braces, follows
 `cd`, and refuses a write it cannot check when the command names Temper state, so common tricks fail
@@ -220,6 +161,22 @@ backstop. Button presses and the reason field carry no origin, so their authenti
 **Without the mod** you keep the full pipeline: intent, plan, build, review and check as
 prompts, every CLI gate verdict, the commit hook and the evidence ledger. You lose the live
 refusals, the phase bar and the report.
+
+## What the mod reads and writes
+
+Mods are not sandboxed, so this is the full list. The mod uses no network and starts no process.
+
+- **Reads:** files under `.temper/` (state, gates, evidence, intent, plan, tasks, config) and the
+  event files of the current run. It also reads the plugin settings (`uiMode`, `enforcement`,
+  `game` and a few more) and its own stored decisions.
+- **Writes:** event files under `.temper/specs/<name>/events/` and `.temper/report.md`. It never
+  edits your code. The game keeps one number, your best score, in the plugin store.
+- **Asks:** you, with questions, for a mode, a scope drift choice, or a reason for an override.
+- **Draws:** the phase bar, the pane and, if you open it, the game.
+- **Tests, lint and git** run as prompts to Claude through Claude's normal tools and permissions.
+
+CI fails if the mod gains any `process`, `http` or `env` call, or any call outside the reviewed list
+in [scripts/check-mod-calls.sh](scripts/check-mod-calls.sh).
 
 ## Commands
 
@@ -232,22 +189,13 @@ Three you will actually type. `/temper` runs and routes the rest.
 | [`/temper:intent "..."`](docs/commands.md#temperintent) | Capture an idea as a committed draft, build it later |
 
 `/temper:temper` also takes subcommands such as `status`, `approve`, `override <reason>`, `back`,
-`mode` and `pane`. See [Commands](docs/commands.md#subcommands).
+`mode`, `pane` and `play`. See [Commands](docs/commands.md#subcommands).
 
-<details><summary><b>Granular control</b>: each stage on its own, plus utilities</summary>
-
-| Command | Purpose |
-|---------|---------|
-| [`/temper:plan`](docs/commands.md#temperplan) | Blast radius, BDD scenarios and architecture |
-| [`/temper:design`](docs/commands.md#temperdesign) | System design, areas of concern gated |
-| [`/temper:build`](docs/commands.md#temperbuild) | Scenario driven TDD and a coverage gate |
-| [`/temper:review`](docs/commands.md#temperreview) | Confidence scored review and intent validation |
-| [`/temper:check`](docs/commands.md#tempercheck) | Stack aware validation pipeline |
-| [`/temper:status`](docs/commands.md#temperstatus) | Dashboard: gates, hotspots, control bands |
-| [`/temper:pack`](docs/commands.md#temperpack) | Manage quality packs |
-| [`/temper:init`](docs/commands.md#temperinit) | Explicit setup, safe to repeat |
-
-</details>
+**Granular control.** Each stage on its own: [`/temper:plan`](docs/commands.md#temperplan),
+[`/temper:design`](docs/commands.md#temperdesign), [`/temper:build`](docs/commands.md#temperbuild),
+[`/temper:review`](docs/commands.md#temperreview), [`/temper:check`](docs/commands.md#tempercheck).
+Utilities: [`/temper:status`](docs/commands.md#temperstatus),
+[`/temper:pack`](docs/commands.md#temperpack), [`/temper:init`](docs/commands.md#temperinit).
 
 **Autonomy (opt in)** runs stages after the plan gate unattended and never commits, pushes or
 merges. **Packs:** [docs/packs.md](docs/packs.md). **CI:** [examples/workflow/README.md](examples/workflow/README.md).
@@ -268,8 +216,6 @@ Temper's scripts run locally with `bash`, `git` and `python3`, and write only in
   `UserPromptSubmit` runs `scripts/hooks/stage-marker.sh`, which notes which gate a standalone
   stage command owes. `Stop` runs `scripts/hooks/verify-stage-gate.sh`, which can ask Claude to
   keep working (at most twice per stage) until that gate has a verdict. Both fail open.
-- **The mod.** It reads `.temper/` files and writes event files under `.temper/specs/<name>/events/`
-  and `.temper/report.md`. It refuses writes by returning a reason, and never edits your code.
 - **Git hook.** On first run `scripts/hooks/install.sh` writes a `pre-commit` hook (secret scan and
   `temper gate commit`) into the active hooks folder, backing up any existing one. Delete it to remove it.
 - **Your toolchain.** Build and check run the test, lint and type check commands your project
@@ -283,7 +229,7 @@ Temper's scripts run locally with `bash`, `git` and `python3`, and write only in
 
 - [Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [Packs](docs/packs.md)
 - [Methodology](docs/methodology.md) · [Testing the mod](docs/mods-testing.md) · [Demo script](docs/demo-script.md) · [AI Native SDLC](docs/ai-native-sdlc.md)
-- [Recommended Setup](docs/recommended-setup.md) · [Enterprise](docs/enterprise.md) · [Privacy](https://galando.github.io/temper/privacy.html)
+- [Recommended Setup](docs/recommended-setup.md) · [Enterprise](docs/enterprise.md) · [Directory submission](docs/directory-submission.md) · [Privacy](https://galando.github.io/temper/privacy.html)
 
 ## Contributing and license
 

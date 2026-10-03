@@ -60,7 +60,7 @@ describe('phase bar (AbovePrompt)', () => {
       expect(/[\u25b6\u25b8\u2192\u279c]/.test(JSON.stringify(drawn))).toBe(false)
       expect(texts).toContain('TEMPER')
       expect(texts).toContain('Build (3 of 6)')
-      expect(texts).toContain('Work through the tasks')
+      expect(texts).toContain('Do the tasks one by one')
       // Buttons: three actions, override on 9, more on 0; the first is primary.
       const buttons = tree.filter(n => n.type === 'Button')
       expect(buttons).toHaveLength(5)
@@ -69,9 +69,9 @@ describe('phase bar (AbovePrompt)', () => {
       expect(buttons[1]?.props?.variant).toBe('secondary')
       // The reason field and its hint.
       expect(tree.some(n => n.type === 'Input' && n.props?.key === 'override-reason')).toBe(true)
-      expect(texts).toContain('Override needs a reason; it is logged in the report')
+      expect(texts).toContain('Override needs a reason. Temper writes it in the report.')
       await ui.press({ key: 'action-next-task' })
-      expect(w.prompts.some(p => p.includes('Start the next unfinished task'))).toBe(true)
+      expect(w.prompts.some(p => p.includes('Start the next task'))).toBe(true)
       await ui.unmount()
     })
 
@@ -131,12 +131,63 @@ describe('phase bar (AbovePrompt)', () => {
     expect([...w.files.values()].some(t => t.includes('"type":"override"') && t.includes('Risk accepted'))).toBe(true)
   })
 
-  test('0 opens the pane with every action', async ($, on) => {
-    const w = world(on, runFiles({ nextStage: 'build' }))
+  test('0 with the pane closed opens it with the full list', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'build' }), { placed: true })
     await $.session.start(START)
-    const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
-    await ui.press({ key: 'action-more' })
-    expect(w.opened).toContain('temper')
+    // The pane opened at session start; close it as a person would.
+    await $.command.run({ command: 'temper', args: 'pane', origin: { kind: 'composer' } } as never)
+    expect(w.closed).toContain('temper')
+    w.opened.length = 0
+    const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    await band.press({ key: 'action-more' })
+    expect(w.opened).toEqual(['temper'])
+    const pane = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'Pane', requestId: 'temper', props: PANE })
+    const keys = walk(await pane.drawn()).filter(n => n.type === 'Button').map(n => n.props?.hotkey)
+    expect(keys.filter(k => typeof k === 'string' && /^[a-h]$/.test(k)).length).toBeGreaterThan(0)
+  })
+
+  test('0 with the pane open shows and hides the full list in the pane', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'build' }), { placed: true })
+    await $.session.start(START)
+    expect(w.opened).toEqual(['temper'])
+    const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    const pane = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'Pane', requestId: 'temper', props: PANE })
+    const letters = async () => walk(await pane.drawn()).filter(n => n.type === 'Button' && /^[a-h]$/.test(String(n.props?.hotkey))).length
+    expect(await letters()).toBe(0)
+    await band.press({ key: 'action-more' })
+    expect(await letters()).toBeGreaterThan(0)
+    await band.press({ key: 'action-more' })
+    expect(await letters()).toBe(0)
+    // No second open: the pane was already there.
+    expect(w.opened).toEqual(['temper'])
+  })
+
+  test('0 with no pane that can seat shows the extra actions in a third row under the band, and hides them again', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'build' }), { placed: false })
+    await $.session.start(START)
+    const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 80 } })
+    w.opened.length = 0
+    const extra = async () => walk(await band.drawn()).filter(n => n.type === 'Button' && /^[a-h]$/.test(String(n.props?.hotkey))).length
+    expect(await extra()).toBe(0)
+    await band.press({ key: 'action-more' })
+    // A narrow band keeps the list in its own row and opens no pane.
+    expect(w.opened).toEqual([])
+    expect(await extra()).toBeGreaterThan(0)
+    // An extra action works from the band: Pause records the pause.
+    await band.press({ key: 'action-pause' })
+    expect([...w.files.values()].some(t => t.includes('"type":"pause"'))).toBe(true)
+    await band.press({ key: 'action-more' })
+    expect(await extra()).toBe(0)
+  })
+
+  test('the 0 button shows "Fewer" while the list is on', async ($, on) => {
+    world(on, runFiles({ nextStage: 'build' }), { placed: false })
+    await $.session.start(START)
+    const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    const label = async () => walk(await band.drawn()).find(n => n.type === 'Button' && n.props?.hotkey === '0')?.props?.label
+    expect(await label()).toBe('0: More'.replace('0: ', ''))
+    await band.press({ key: 'action-more' })
+    expect(await label()).toBe('Fewer')
   })
 
   for (const surface of SURFACES) {
@@ -331,7 +382,7 @@ describe('turn line, suggestions and toasts', () => {
     expect(r.text).toBe(
       'Build \u00b7 2 of 5 criteria met \u00b7 next: Review',
     )
-    expect(w.suggestions).toEqual(['Start the next unfinished task in tasks.md with a failing test first.'])
+    expect(w.suggestions).toEqual(['Start the next task in tasks.md. Write a failing test first.'])
     expect(w.prompts).toEqual([])
   })
 
@@ -375,8 +426,8 @@ describe('pane commands', () => {
     const w = world(on, runFiles({ nextStage: 'build' }), { placed: true })
     await $.session.start(START)
     w.opened.length = 0
-    expect((await $.command.run(run('pane'))).text).toBe('Temper pane closed.')
-    expect((await $.command.run(run('pane'))).text).toBe('Temper pane opened.')
+    expect((await $.command.run(run('pane'))).text).toBe('The Temper pane is closed.')
+    expect((await $.command.run(run('pane'))).text).toBe('The Temper pane is open.')
     expect(w.closed).toEqual(['temper'])
     expect(w.opened).toEqual(['temper'])
   })
@@ -384,7 +435,7 @@ describe('pane commands', () => {
   test('bare /temper:temper toggles the pane while a run is active', async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }))
     await $.session.start(START)
-    expect((await $.command.run(run(''))).text).toBe('Temper pane closed.')
+    expect((await $.command.run(run(''))).text).toBe('The Temper pane is closed.')
   })
 
   test('bare /temper:temper with no run reaches the prompt based command', async ($, on) => {

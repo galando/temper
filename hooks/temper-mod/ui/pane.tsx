@@ -31,7 +31,8 @@ export function renderPane(kit: Kit, view: View, onAction: OnAction, onFinding: 
   const timeline = inline ? '' : view.timeline.map((line, i) => `${i + 1}. ${line}`).join('\n')
   // Seated inline above the prompt (a narrow terminal) the pane stays short so the band is not
   // pushed off screen: the buttons live in the band there, and a long checklist is cut.
-  const a = inline ? null : view.actions
+  // When the person asks for the full list (key 0), it shows even here.
+  const a = inline && !view.expanded ? null : view.actions
   const criteria = inline ? view.criteria.slice(0, 4) : view.criteria
 
   return (
@@ -50,7 +51,7 @@ export function renderPane(kit: Kit, view: View, onAction: OnAction, onFinding: 
             {`${c.status === 'passed' ? '✔' : '○'} ${c.text}`}
           </Text>
         ))}
-        {inline && view.criteria.length > 4 ? <Text dimColor>{`and ${view.criteria.length - 4} more (open the pane in a wider terminal)`}</Text> : null}
+        {inline && view.criteria.length > 4 ? <Text dimColor>{`and ${view.criteria.length - 4} more. Open the pane in a wider terminal.`}</Text> : null}
       </Box>
 
       <Box flexDirection="column">
@@ -90,7 +91,7 @@ export function renderPane(kit: Kit, view: View, onAction: OnAction, onFinding: 
       {a ? (
         <Box flexDirection="column">
           <Text dimColor>Actions</Text>
-          {[...a.primary, a.override].map(x => (
+          {(inline ? [] : [...a.primary, a.override]).map(x => (
             <Button key={`pane-${x.id}`} label={x.label} hotkey={x.key} plain onPress={() => onAction(x)} />
           ))}
           <Button

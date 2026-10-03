@@ -1,4 +1,5 @@
-# The hero recording for the README: it writes the full mode GIF into docs/assets.
+# The hero recording for the README: it writes the full mode GIF into demo/out (not in git).
+# Copy the result into the README image folder yourself when you are happy with it.
 #
 # Regenerate from the root of a Temper clone with VHS (https://github.com/charmbracelet/vhs):
 #
@@ -15,7 +16,7 @@
 # phase (scripts/demo-seed.sh). The `claude` function in the setup switches off an installed
 # copy of the Temper plugin for this one process, so the branch in this clone is the only one.
 
-Output docs/assets/temper-full.gif
+Output demo/out/temper-full.gif
 
 Set Shell "bash"
 Set FontSize 18

@@ -77,7 +77,18 @@ while IFS= read -r call; do
   fi
 done <<< "$CALLS"
 
+# The surface modules (the game) run on the drawing thread and have no engine at all: any dollar
+# sign followed by a dot in one fails. CHECK_MOD_CLIENT_DIR lets the test script point at fixtures.
+CLIENT_DIR="${CHECK_MOD_CLIENT_DIR:-$REPO_ROOT/hooks/temper-mod/ui}"
+for f in "$CLIENT_DIR"/*-client.tsx; do
+  [[ -e "$f" ]] || continue
+  if grep -nE '(^|[^A-Za-z0-9_])\$\.' "$f" >/dev/null; then
+    echo "FAIL: $(basename "$f") makes a \$. call; a surface module has no engine (it posts to the hooks module instead)"
+    FAIL=1
+  fi
+done
+
 if [[ $FAIL -eq 0 ]]; then
-  echo "OK: $(printf '%s\n' "$CALLS" | wc -l | tr -d ' ') calls, all on the reviewed list, none process/http/env"
+  echo "OK: $(printf '%s\n' "$CALLS" | wc -l | tr -d ' ') calls, all on the reviewed list, none process/http/env; surface modules make no \$. call"
 fi
 exit $FAIL

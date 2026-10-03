@@ -30,7 +30,7 @@ describe('/temper:temper mode', () => {
     const w = world(on, runFiles({ nextStage: 'build' }), { rows: [ROW('temper.uiMode', 'minimal', true)] })
     await $.session.start(START)
     const r = await $.command.run(run('mode full'))
-    expect(r.text).toBe("Your organization set Temper's mode to minimal; ask your admin to change it.")
+    expect(r.text).toBe("Your organization set Temper's mode to minimal. Ask your admin to change it.")
     expect(w.configSets).toEqual([])
   })
 
@@ -76,7 +76,7 @@ describe('/temper:temper enforcement', () => {
   test('a locked row is reported', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'plan' }), { rows: [ROW('temper.enforcement', 'on', true)] })
     await $.session.start(START)
-    expect((await $.command.run(run('enforcement off'))).text).toBe("Your organization set Temper's enforcement to on; ask your admin to change it.")
+    expect((await $.command.run(run('enforcement off'))).text).toBe("Your organization set Temper's enforcement to on. Ask your admin to change it.")
     expect(w.configSets).toEqual([])
   })
 
@@ -96,7 +96,7 @@ describe('first interactive run asks once', () => {
     await $.session.start(INTERACTIVE)
     const first = await $.command.run(run('add password reset'))
     expect(first.text).toBe('prompt based /temper:temper ran')
-    expect(w.asked).toEqual(['How much should Temper draw?'])
+    expect(w.asked).toEqual(['How much do you want Temper to show?'])
     expect(w.configSets).toEqual([{ key: 'temper.uiMode', value: 'minimal' }])
     await $.command.run(run('status'))
     await $.command.run(run('add something else'))
@@ -110,7 +110,7 @@ describe('first interactive run asks once', () => {
     await $.command.run(run('add password reset'))
     expect(w.asked).toHaveLength(1)
     expect(w.configSets).toEqual([])
-    expect(w.toasts).toContain('Temper UI is full. Change it with /temper:temper mode <full|minimal|off>.')
+    expect(w.toasts).toContain('Temper mode is full. To change it, use /temper:temper mode <full|minimal|off>.')
     await $.command.run(run('add more'))
     expect(w.asked).toHaveLength(1)
   })

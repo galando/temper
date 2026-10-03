@@ -26,6 +26,7 @@ export type TemperView = {
   steps: Array<{ id: PhaseName; label: string; status: 'done' | 'current' | 'pending' | 'stale' }>
   actions: { primary: TemperAction[]; override: TemperAction; more: TemperAction[] } | null
   expanded: boolean
+  paneOpen: boolean
   criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string }>
   passed: number
   total: number

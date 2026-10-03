@@ -23,7 +23,7 @@ export function sectionText(input: SectionInput): string {
   const lines: string[] = [input.enforcement === 'on' ? 'Temper enforcement: active' : 'Temper enforcement: off (UI only)']
 
   if (input.phase === null) {
-    lines.push('Phase: none (no active Temper run)')
+    lines.push('Phase: none. No Temper run is active.')
     return lines.join('\n')
   }
 
@@ -40,7 +40,7 @@ export function sectionText(input: SectionInput): string {
   }
 
   if (input.stale && input.stale.length > 0) {
-    lines.push(`Stale: ${input.stale.map(phaseLabel).join(', ')} (invalidated by going back; each needs a fresh verdict)`)
+    lines.push(`Stale: ${input.stale.map(phaseLabel).join(', ')}. A back step made them invalid. Each needs a new verdict.`)
   }
 
   lines.push(`Next: ${nextStep(input.phase, { ...input.actionContext, loopLimitReached: input.loopLimitReached })}`)

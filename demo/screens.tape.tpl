@@ -24,12 +24,12 @@ Type "/temper:temper mode full" Enter
 Sleep 8s
 Show
 Sleep 2s
-Screenshot docs/assets/mode-full-SUFFIX.png
+Screenshot demo/out/mode-full-SUFFIX.png
 Type "/temper:temper mode minimal" Enter
 Sleep 8s
-Screenshot docs/assets/mode-minimal-SUFFIX.png
+Screenshot demo/out/mode-minimal-SUFFIX.png
 Type "/temper:temper mode off" Enter
 Sleep 8s
-Screenshot docs/assets/mode-off-SUFFIX.png
+Screenshot demo/out/mode-off-SUFFIX.png
 Type "/temper:temper mode full" Enter
 Sleep 6s

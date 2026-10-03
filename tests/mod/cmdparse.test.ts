@@ -3,8 +3,8 @@ import { describe, expect, test } from 'claude-code/testing'
 import { HELP, RESERVED, isReserved, parseArgs, planCommand } from '../../hooks/temper-mod/core/commands'
 
 describe('parseArgs', () => {
-  test('only the 16 reserved first words are claimed', () => {
-    expect(RESERVED).toHaveLength(16)
+  test('only the 17 reserved first words are claimed', () => {
+    expect(RESERVED).toHaveLength(17)
     for (const w of RESERVED) expect(parseArgs(`${w} rest of it`)).toEqual({ word: w, rest: 'rest of it' })
   })
 
@@ -43,7 +43,7 @@ describe('planCommand', () => {
   })
 
   test('drift needs a pending path and maps allow to allow-once', () => {
-    expect(plan('drift allow hotfix')).toMatchObject({ kind: 'error', text: expect.stringContaining('No scope drift is pending') })
+    expect(plan('drift allow hotfix')).toMatchObject({ kind: 'error', text: expect.stringContaining('No scope drift waits for a decision') })
     expect(plan('drift allow hotfix', 'src/a.ts')).toEqual({
       kind: 'command',
       command: { type: 'drift', path: 'src/a.ts', choice: 'allow-once', reason: 'hotfix' },

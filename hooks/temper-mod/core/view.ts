@@ -31,8 +31,10 @@ export type View = {
   // Null when no phase is active (no run, or Done): nothing to act on. `more` is the full
   // list the pane shows when expanded, each with its own letter hotkey.
   actions: ActionSet | null
-  // Whether the pane shows the full action list.
+  // Whether the full action list is shown (in the pane, or under the band when no pane is open).
   expanded: boolean
+  // Whether the pane is open, so the band knows where the full list shows.
+  paneOpen: boolean
   criteria: ViewCriterion[]
   passed: number
   total: number
@@ -52,6 +54,7 @@ export type ViewInput = {
   task: { n: number; of: number } | null
   enforcement: 'on' | 'off'
   expanded?: boolean
+  paneOpen?: boolean
 }
 
 export const BAR: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check', 'fix']
@@ -93,7 +96,9 @@ export function buildView(input: ViewInput): View {
   let actions: ActionSet | null = null
   if (s.phase !== null && s.phase !== 'done') {
     const base = actionsFor(s.phase, ctx)
-    actions = { ...base, more: lettered([...base.more, ...globalActions(s.phase, s.paused)]) }
+    // An action the phase already lists is not listed twice.
+    const extra = globalActions(s.phase, s.paused).filter(g => !base.more.some(m => m.id === g.id))
+    actions = { ...base, more: lettered([...base.more, ...extra]) }
   }
   const stepIdx = s.phase !== null && s.phase !== 'done' ? BAR.indexOf(s.phase) : -1
   return {
@@ -105,6 +110,7 @@ export function buildView(input: ViewInput): View {
     steps: stepsOf(s),
     actions,
     expanded: input.expanded ?? false,
+    paneOpen: input.paneOpen ?? false,
     criteria: input.criteria.map(c => ({ id: c.id, text: c.text, status: c.status, priority: c.priority })),
     passed,
     total: input.criteria.length,
@@ -143,7 +149,7 @@ export function spinnerWord(v: View): string | null {
 // The dim line after the engine's prompt hint on the terminal.
 export function hintTail(v: View): string | null {
   if (v.phase === null) return null
-  return v.phase === 'done' ? 'Temper: run complete' : `Temper, ${whereText(v)}: ${v.now}`
+  return v.phase === 'done' ? 'Temper: run done' : `Temper, ${whereText(v)}: ${v.now}`
 }
 
 // The phase that follows, for "next: Review". Check is followed by Done, and Fix by Check.
@@ -159,7 +165,7 @@ export function nextPhaseLabel(v: View): string {
 // One dim line beneath an answer when a turn ends: "Build \u00b7 2 of 4 criteria met \u00b7 next: Review".
 export function turnLine(v: View): string | null {
   if (v.phase === null) return null
-  if (v.phase === 'done') return 'Done \u00b7 run complete \u00b7 next: commit'
+  if (v.phase === 'done') return 'Done \u00b7 next: commit'
   const parts = [phaseLabel(v.phase)]
   if (v.total > 0) parts.push(`${v.passed} of ${v.total} criteria met`)
   parts.push(`next: ${nextPhaseLabel(v)}`)
@@ -187,16 +193,16 @@ export function suggestion(v: View): string | null {
 export function transitionToast(rec: HistoryRecord | undefined): string | null {
   if (!rec || rec.kind === 'start') return null
   const from = rec.from ? phaseLabel(rec.from) : ''
-  const to = rec.to === 'done' ? 'Run complete' : `${phaseLabel(rec.to)} open`
+  const to = rec.to === 'done' ? 'Run done' : `${phaseLabel(rec.to)} open`
   switch (rec.kind) {
     case 'advance':
       return `${from} ${rec.from === 'fix' ? 'done' : 'approved'} \u00b7 ${to}`
     case 'override':
       return `${from} overridden \u00b7 ${to}`
     case 'back':
-      return `Back to ${phaseLabel(rec.to as Phase)} \u00b7 later phases need redo`
+      return `Back to ${phaseLabel(rec.to as Phase)} \u00b7 later phases need a new verdict`
     case 'check':
-      return rec.to === 'done' ? 'Check passed \u00b7 Run complete' : 'Check failed \u00b7 Fix open'
+      return rec.to === 'done' ? 'Check passed \u00b7 Run done' : 'Check failed \u00b7 Fix open'
     default:
       return null
   }

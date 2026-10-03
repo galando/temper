@@ -31,6 +31,9 @@ CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/d
 **Developing temper (this repo):**
 - Test: `bash scripts/tests/test-temper.sh` (ends `PASS: N  FAIL: 0`); validators:
   `bash scripts/quality-check.sh` (also runs in CI via quality.yml).
+- Directory readiness: `bash scripts/validate-directory.sh` (no raw HTML in the README, no
+  assets folder path in text, no `options` key). Run it before any README or manifest change.
+  Tape and screenshot output goes to the git ignored `demo/out/`.
 - The mod: `hooks/temper-mod/` (pure rules in `core/`, wiring in `register.tsx`, drawing in
   `ui/`), tests in `tests/mod/`. Run `claude plugin test .`, `npx -p typescript@5.6 tsc -p
   tsconfig.mod.json` and `bash scripts/check-mod-calls.sh`; the reviewed `$` calls live in that script.
@@ -49,4 +52,3 @@ CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/d
      rejects the TOKENOMICS:START / TOKENOMICS:END markers (docs/history/tokenomics.md).
      Never write the markers' full comment syntax inside this comment; the embedded
      close-delimiter would end it early. -->
-
