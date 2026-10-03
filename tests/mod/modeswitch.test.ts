@@ -10,7 +10,7 @@ const BAND = { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 100
 
 const ROW = (key: string, value: string, isLocked = false) => ({ key, value, isLocked })
 
-describe('/temper mode', () => {
+describe('/temper:temper mode', () => {
   test('switches without a restart: config.set, live redraw, reply', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'build' }), { rows: [ROW('temper.uiMode', 'full')] })
     await $.session.start(START)
@@ -45,7 +45,7 @@ describe('/temper mode', () => {
   test('an unknown mode shows usage and changes nothing', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'build' }))
     await $.session.start(START)
-    expect((await $.command.run(run('mode loud'))).text).toBe('Usage: /temper mode <full|minimal|off>')
+    expect((await $.command.run(run('mode loud'))).text).toBe('Usage: /temper:temper mode <full|minimal|off>')
     expect(w.configSets).toEqual([])
   })
 
@@ -58,7 +58,7 @@ describe('/temper mode', () => {
   })
 })
 
-describe('/temper enforcement', () => {
+describe('/temper:temper enforcement', () => {
   test('off stops denials at once, toasts, and is persisted through the config row', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'plan' }), { rows: [ROW('temper.enforcement', 'on')] })
     await $.session.start(START)
@@ -83,7 +83,7 @@ describe('/temper enforcement', () => {
   test('usage and the current value', async ($, on) => {
     world(on, runFiles({ nextStage: 'plan' }))
     await $.session.start(START)
-    expect((await $.command.run(run('enforcement maybe'))).text).toBe('Usage: /temper enforcement <on|off>')
+    expect((await $.command.run(run('enforcement maybe'))).text).toBe('Usage: /temper:temper enforcement <on|off>')
     expect((await $.command.run(run('enforcement'))).text).toBe('Temper enforcement: on')
   })
 })
@@ -95,7 +95,7 @@ describe('first interactive run asks once', () => {
     const w = world(on, runFiles({ nextStage: 'build' }), { answers: ['Minimal: phase bar only'] })
     await $.session.start(INTERACTIVE)
     const first = await $.command.run(run('add password reset'))
-    expect(first.text).toBe('prompt based /temper ran')
+    expect(first.text).toBe('prompt based /temper:temper ran')
     expect(w.asked).toEqual(['How much should Temper draw?'])
     expect(w.configSets).toEqual([{ key: 'temper.uiMode', value: 'minimal' }])
     await $.command.run(run('status'))
@@ -110,7 +110,7 @@ describe('first interactive run asks once', () => {
     await $.command.run(run('add password reset'))
     expect(w.asked).toHaveLength(1)
     expect(w.configSets).toEqual([])
-    expect(w.toasts).toContain('Temper UI is full. Change it with /temper mode <full|minimal|off>.')
+    expect(w.toasts).toContain('Temper UI is full. Change it with /temper:temper mode <full|minimal|off>.')
     await $.command.run(run('add more'))
     expect(w.asked).toHaveLength(1)
   })
@@ -123,7 +123,7 @@ describe('first interactive run asks once', () => {
     expect(w.configSets).toEqual([])
   })
 
-  test('/temper mode with no argument offers the choice again, even after the first ask', async ($, on) => {
+  test('/temper:temper mode with no argument offers the choice again, even after the first ask', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'build' }), { answers: ['Full: phase bar, actions, pane', 'Off: draw nothing'] })
     await $.session.start(INTERACTIVE)
     await $.command.run(run('add password reset'))
@@ -132,5 +132,55 @@ describe('first interactive run asks once', () => {
     expect(w.asked).toHaveLength(2)
     expect(r.text).toBe('Temper mode: off')
     expect(w.configSets.at(-1)).toEqual({ key: 'temper.uiMode', value: 'off' })
+  })
+
+  test('an explicit mode argument applies at once and never asks, first run or not', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'build' }), { answers: ['Off: draw nothing'], rows: [ROW('temper.uiMode', 'full')] })
+    await $.session.start(INTERACTIVE)
+    const r = await $.command.run(run('mode minimal'))
+    expect(r.text).toBe('Temper mode: minimal')
+    expect(w.asked).toEqual([])
+    expect(w.configSets).toEqual([{ key: 'temper.uiMode', value: 'minimal' }])
+    // The explicit choice counts as the first run answer: a later /temper:temper does not ask either.
+    await $.command.run(run('add password reset'))
+    expect(w.asked).toEqual([])
+  })
+
+  test('a bare first /temper:temper still asks once, and /temper:temper mode with no argument asks again', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'build' }), { answers: ['Full: phase bar, actions, pane', 'Minimal: phase bar only'] })
+    await $.session.start(INTERACTIVE)
+    await $.command.run(run('add password reset'))
+    expect(w.asked).toHaveLength(1)
+    await $.command.run(run('mode'))
+    expect(w.asked).toHaveLength(2)
+  })
+
+  test('/temper:temper mode with no argument on a fresh store asks exactly once, not twice', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'build' }), { answers: ['Minimal: phase bar only', 'Off: draw nothing'] })
+    await $.session.start(INTERACTIVE)
+    const r = await $.command.run(run('mode'))
+    expect(w.asked).toHaveLength(1)
+    expect(r.text).toBe('Temper mode: minimal')
+  })
+
+  test('an invalid mode argument asks nothing and changes nothing', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'build' }), { answers: ['Off: draw nothing'] })
+    await $.session.start(INTERACTIVE)
+    expect((await $.command.run(run('mode loud'))).text).toBe('Usage: /temper:temper mode <full|minimal|off>')
+    expect(w.asked).toEqual([])
+    expect(w.configSets).toEqual([])
+  })
+
+  test('a command that is not the person never marks the question answered or opens it', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'build' }), { answers: ['Minimal: phase bar only'] })
+    await $.session.start(INTERACTIVE)
+    for (const kind of ['sdk', 'plugin', 'bridge'] as const) {
+      await $.command.run({ command: 'temper', args: 'mode full', origin: { kind, name: 'x' } } as never)
+      await $.command.run({ command: 'temper', args: 'add password reset', origin: { kind, name: 'x' } } as never)
+    }
+    expect(w.asked).toEqual([])
+    // The person's first /temper still gets the question.
+    await $.command.run(run('add password reset'))
+    expect(w.asked).toHaveLength(1)
   })
 })

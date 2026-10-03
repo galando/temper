@@ -1,6 +1,6 @@
 // Per-phase actions and hotkeys (mods-plan 3.7). Key 1 is the main action and changes
 // when the phase is ready to move on. Every action that runs something submits a prompt
-// to Claude (`prompt`) or runs a reserved /temper subcommand (`command`); none submits
+// to Claude (`prompt`) or runs a reserved /temper:temper subcommand (`command`); none submits
 // on its own. 9 is override everywhere and asks for a reason.
 
 import type { Phase } from './events'
@@ -13,7 +13,7 @@ export type Action = {
   label: string
   // Text submitted to Claude as a prompt.
   prompt?: string
-  // A reserved subcommand typed as `/temper <command>`.
+  // A reserved subcommand typed as `/temper:temper <command>`.
   command?: string
   asksReason?: boolean
 }
@@ -145,22 +145,22 @@ export function nextStep(phase: Phase | 'done', ctx: ActionContext): string {
       return 'the run is complete; commit is allowed'
     case 'intent':
       return ctx.ready
-        ? 'ask the user to approve the intent (key 1 or /temper approve)'
-        : 'finish intent.md until the intent gate passes, then ask the user to approve (key 1 or /temper approve)'
+        ? 'ask the user to approve the intent (key 1 or /temper:temper approve)'
+        : 'finish intent.md until the intent gate passes, then ask the user to approve (key 1 or /temper:temper approve)'
     case 'plan':
       return ctx.ready
-        ? 'ask the user to approve the plan (key 1 or /temper approve)'
-        : 'finish plan.md and tasks.md, then ask the user to approve (key 1 or /temper approve)'
+        ? 'ask the user to approve the plan (key 1 or /temper:temper approve)'
+        : 'finish plan.md and tasks.md, then ask the user to approve (key 1 or /temper:temper approve)'
     case 'build':
       return ctx.tasksDone
-        ? 'send the work to Review (key 1 or /temper next)'
+        ? 'send the work to Review (key 1 or /temper:temper next)'
         : 'work the next task in tasks.md with a failing test first; stay inside the plan files'
     case 'review':
       return ctx.hasFindings
-        ? 'fix the open findings or ask the user to accept them with a reason (key 1, /temper accept <id> <reason>)'
+        ? 'fix the open findings or ask the user to accept them with a reason (key 1, /temper:temper accept <id> <reason>)'
         : 'run the review (key 1)'
     case 'check':
-      return ctx.allChecksPass ? 'mark the run done (key 1 or /temper next)' : 'run the checks (key 1 in Check or /temper check)'
+      return ctx.allChecksPass ? 'mark the run done (key 1 or /temper:temper next)' : 'run the checks (key 1 in Check or /temper:check)'
     case 'fix':
       return ctx.loopLimitReached
         ? 'the fix loop limit is reached; ask the user to re-plan, override with a reason, or take over'

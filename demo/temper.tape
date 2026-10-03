@@ -36,7 +36,7 @@ Type "claude --plugin-dir $TEMPER_CLONE" Enter
 Sleep 8s
 
 # 1. Intent. Claude drafts the intent; the band shows the six phases.
-Type "/temper Add password reset: one time token that expires after one hour" Enter
+Type "/temper:temper Add password reset: one time token that expires after one hour" Enter
 Sleep 45s
 
 # 2. A denial: no code before the intent is approved.
@@ -50,7 +50,7 @@ Type "1"
 Sleep 5s
 
 # 4. Build. Open the pane to watch the criteria tick.
-Type "/temper pane" Enter
+Type "/temper:temper pane" Enter
 Sleep 90s
 
 # 5. Review and Check run; press 1 when the band offers the next step.

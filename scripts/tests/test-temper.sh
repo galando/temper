@@ -1342,8 +1342,8 @@ open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_exit "an accepted intent PASSes even where the draft would FAIL" 0 "$TEMPER" gate intent
-assert_eq "each draft-only requirement records a skip detail, never revisited" "10/10" \
-  "$(echo "$OUT" | grep -c 'skipped — intent is accepted; this check applies to drafts only')/10"
+assert_eq "each draft-only requirement records a skip detail, never revisited" "12/12" \
+  "$(echo "$OUT" | grep -c 'skipped — intent is accepted; this check applies to drafts only')/12"
 
 # templates/example-intent.md must pass the intent gate as-is.
 setup
@@ -1645,26 +1645,56 @@ s = s.replace('### Open Questions\n', scope + '### Open Questions\n' + oq + '\n'
 open(p, 'w').write(s)
 PYX
 }
-setup; scope_fixture accepted "billing changes" "- none"
-assert_exit "accepted intent with an Out of scope line and no questions PASSes" 0 "$TEMPER" gate intent
-setup; scope_fixture accepted "" "- none"
-OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_exit "accepted intent without an Out of scope line FAILs" 1 "$TEMPER" gate intent
-assert_eq "the FAIL names out of scope stated" "yes" "$(echo "$OUT" | grep -q 'out of scope stated' && echo yes || echo no)"
-setup; scope_fixture accepted "{what it explicitly does not touch}" "- none"
-assert_exit "a placeholder Out of scope line does not count" 1 "$TEMPER" gate intent
+setup; scope_fixture draft "billing changes" ""
+assert_exit "a draft with an Out of scope line and no questions PASSes" 0 "$TEMPER" gate intent
 setup; scope_fixture draft "" ""
-assert_exit "a draft without an Out of scope line also FAILs" 1 "$TEMPER" gate intent
-setup; scope_fixture accepted "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_exit "accepted intent with a Blocking question FAILs" 1 "$TEMPER" gate intent
-assert_eq "the FAIL names open questions resolved" "yes" "$(echo "$OUT" | grep -q 'open questions resolved' && echo yes || echo no)"
-setup; scope_fixture completed "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
-assert_exit "completed intent with a Blocking question FAILs" 1 "$TEMPER" gate intent
-setup; scope_fixture accepted "billing" "- Deferred: rename later; consequence: none; why work can proceed: cosmetic; needed by: v2."
-assert_exit "accepted intent with only a Deferred question PASSes" 0 "$TEMPER" gate intent
+assert_exit "a draft without an Out of scope line FAILs" 1 "$TEMPER" gate intent
+assert_eq "the FAIL names out of scope stated" "yes" "$(echo "$OUT" | grep -q 'out of scope stated' && echo yes || echo no)"
+setup; scope_fixture draft "{what it explicitly does not touch}" ""
+assert_exit "a placeholder Out of scope line does not count in a draft" 1 "$TEMPER" gate intent
+status_fixture() { # status_fixture <Status value or "none">: a good draft with the Status header replaced or removed
+  good_draft
+  python3 - "$1" <<'PYX'
+import sys, re
+p = '.temper/specs/demo/intent.md'
+s = open(p).read()
+if sys.argv[1] == 'none':
+    s = re.sub(r'^\*\*Status:\*\*.*\n', '', s, flags=re.M)
+else:
+    s = re.sub(r'^\*\*Status:\*\*.*$', '**Status:** ' + sys.argv[1], s, flags=re.M)
+s = s.replace('- Out of scope: production behavior\n', '')
+open(p, 'w').write(s)
+PYX
+}
+setup; status_fixture "planning"
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "an unknown Status skips out of scope with a note" "yes" "$(echo "$OUT" | grep -q 'out of scope stated .*no recognized Status header' && echo yes || echo no)"
+assert_eq "an unknown Status does not fail out of scope stated" "no" "$(echo "$OUT" | grep -q '\[x\] out of scope stated' && echo yes || echo no)"
+setup; status_fixture "none"
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "a missing Status skips out of scope and open questions with a note" "2" "$(echo "$OUT" | grep -c 'no recognized Status header (draft, accepted or completed)')"
+assert_exit "a missing Status still FAILs the gate through the status header requirement" 1 "$TEMPER" gate intent
+setup; status_fixture "draft"
+assert_exit "an explicit draft without Out of scope still FAILs" 1 "$TEMPER" gate intent
+
+setup; scope_fixture accepted "" "- none"
+assert_exit "an accepted intent without an Out of scope line PASSes (acceptance is never revisited)" 0 "$TEMPER" gate intent
+setup; scope_fixture completed "" "- none"
+assert_exit "a completed intent without an Out of scope line PASSes" 0 "$TEMPER" gate intent
 setup; scope_fixture draft "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
-assert_exit "a draft may still hold a Blocking question" 0 "$TEMPER" gate intent
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_exit "a draft may hold a Blocking question and still PASS" 0 "$TEMPER" gate intent
+assert_eq "the gate names the Blocking question still open on the draft" "yes" "$(echo "$OUT" | grep -q 'Blocking question(s) still open on the draft' && echo yes || echo no)"
+setup; scope_fixture accepted "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
+assert_exit "an accepted intent with a Blocking question PASSes (not revisited)" 0 "$TEMPER" gate intent
+setup; scope_fixture completed "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
+assert_exit "a completed intent with a Blocking question PASSes" 0 "$TEMPER" gate intent
+setup; scope_fixture draft "billing" "- Deferred: rename later; consequence: none; why work can proceed: cosmetic; needed by: v2."
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "a draft with only a Deferred question reports no Blocking question" "yes" "$(echo "$OUT" | grep -q 'no Blocking question remains' && echo yes || echo no)"
+
+assert_eq "the CLI header lists temper status exactly once" "1" "$(grep -c '^#   temper status' "$TEMPER")"
 
 # --- mods: per-criterion status.json written after each gate; temper status --json ---
 setup

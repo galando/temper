@@ -10,7 +10,7 @@ const person = { origin: 'person', author: 'galando' } as const
 // Fold drafts at ts 10, 20, 30, ...
 const fold = (drafts: Draft[], verdicts: Verdicts = {}, opts = {}): RunState =>
   reduce(
-    drafts.map((d, i) => stamp(d, { ts: (i + 1) * 10, session: 's', seq: i + 1 })),
+    drafts.map((d, i) => stamp(d, { ts: (i + 1) * 10_000, session: 's', seq: i + 1 })),
     verdicts,
     opts,
   )
@@ -42,15 +42,15 @@ describe('reduce', () => {
     ]
     // Build, Review and Check each passed at T1 = 35 (before the back at ts 60)
     const verdicts: Verdicts = {
-      build: { verdict: 'PASS', ts: 35 },
-      review: { verdict: 'PASS', ts: 45 },
-      check: { verdict: 'PASS', ts: 55 },
+      build: { verdict: 'PASS', ts: 35_000 },
+      review: { verdict: 'PASS', ts: 45_000 },
+      check: { verdict: 'PASS', ts: 55_000 },
     }
     const s = fold(drafts, verdicts)
     expect(s.phase).toBe('plan')
-    expect(s.invalidated.build).toBe(60)
-    expect(s.invalidated.review).toBe(60)
-    expect(s.invalidated.check).toBe(60)
+    expect(s.invalidated.build).toBe(60_000)
+    expect(s.invalidated.review).toBe(60_000)
+    expect(s.invalidated.check).toBe(60_000)
     expect(s.stale).toEqual(['build', 'review', 'check'])
     expect(s.gate.build).toBe('stale')
     expect(s.gate.check).toBe('stale')
@@ -70,7 +70,7 @@ describe('reduce', () => {
     const s = fold([...toBuild, adv('build', 'review'), { type: 'override', phase: 'review', reason: 'reviewer is on leave', ...person }])
     expect(s.phase).toBe('check')
     expect(s.overrides).toEqual([
-      { id: '50-s-5', phase: 'review', reason: 'reviewer is on leave', author: 'galando', ts: 50 },
+      { id: '50000-s-5', phase: 'review', reason: 'reviewer is on leave', author: 'galando', ts: 50_000 },
     ])
   })
 
@@ -111,16 +111,16 @@ describe('decide', () => {
   test('advance needs a fresh PASS verdict', () => {
     const s0 = fold(toBuild)
     expect(err(decide(s0, { type: 'advance', origin: 'model' }))).toContain('Build has no PASS verdict')
-    const s1 = fold(toBuild, { build: { verdict: 'FAIL', ts: 100 } })
+    const s1 = fold(toBuild, { build: { verdict: 'FAIL', ts: 100_000 } })
     expect(err(decide(s1, { type: 'advance', origin: 'model' }))).toContain('Build verdict is FAIL')
-    const s2 = fold(toBuild, { build: { verdict: 'PASS', ts: 100 } })
+    const s2 = fold(toBuild, { build: { verdict: 'PASS', ts: 100_000 } })
     expect(ok(decide(s2, { type: 'advance', origin: 'model' }))).toEqual([
       { type: 'advance', from: 'build', to: 'review', origin: 'model' },
     ])
   })
 
   test('only the person approves Intent and Plan', () => {
-    const s = fold([start], { intent: { verdict: 'PASS', ts: 15 } })
+    const s = fold([start], { intent: { verdict: 'PASS', ts: 15_000 } })
     expect(err(decide(s, { type: 'advance', origin: 'model' }))).toBe(ONLY_USER)
     expect(err(decide(s, { type: 'approve', origin: 'model' }))).toBe(ONLY_USER)
     expect(ok(decide(s, { type: 'approve', ...person }))[0]).toMatchObject({ type: 'advance', from: 'intent', to: 'plan' })
@@ -133,12 +133,12 @@ describe('decide', () => {
       { type: 'back', to: 'plan', reason: 'rework', ...person },
       adv('plan', 'build'),
     ]
-    const stale = fold(drafts, { build: { verdict: 'PASS', ts: 35 } })
+    const stale = fold(drafts, { build: { verdict: 'PASS', ts: 35_000 } })
     expect(stale.phase).toBe('build')
     expect(err(decide(stale, { type: 'advance', origin: 'model' }))).toBe(
       'Build needs a fresh verdict after it was invalidated',
     )
-    const fresh = fold(drafts, { build: { verdict: 'PASS', ts: 500 } })
+    const fresh = fold(drafts, { build: { verdict: 'PASS', ts: 500_000 } })
     expect(ok(decide(fresh, { type: 'advance', origin: 'model' }))[0]).toMatchObject({ type: 'advance', to: 'review' })
   })
 
@@ -152,8 +152,8 @@ describe('decide', () => {
 
   test('override needs a non-empty reason and the person, and names the current phase', () => {
     const s = fold([...toBuild, adv('build', 'review')])
-    expect(err(decide(s, { type: 'override', reason: '', ...person }))).toBe('Override needs a reason: /temper override <reason>')
-    expect(err(decide(s, { type: 'override', reason: '   ', ...person }))).toBe('Override needs a reason: /temper override <reason>')
+    expect(err(decide(s, { type: 'override', reason: '', ...person }))).toBe('Override needs a reason: /temper:temper override <reason>')
+    expect(err(decide(s, { type: 'override', reason: '   ', ...person }))).toBe('Override needs a reason: /temper:temper override <reason>')
     expect(err(decide(s, { type: 'override', reason: 'ok', origin: 'model' }))).toBe(ONLY_USER)
     expect(ok(decide(s, { type: 'override', reason: 'risk accepted', ...person }))).toEqual([
       { type: 'override', phase: 'review', reason: 'risk accepted', ...person },
@@ -248,5 +248,79 @@ describe('fix loop limit', () => {
 
   test('without a limit option the default is 3', () => {
     expect(fold([start]).maxLoops).toBe(3)
+  })
+})
+
+describe('an event the mod did not write never changes what is enforced', () => {
+  const trusted = (ev: { session: string }) => ev.session === 's'
+  const baseDrafts: Draft[] = [
+    start,
+    adv('intent', 'plan'),
+    adv('plan', 'build'),
+    adv('build', 'review'),
+    adv('review', 'check'),
+  ]
+  const base = baseDrafts.map((d, i) => stamp(d, { ts: (i + 1) * 10_000, session: 's', seq: i + 1 }))
+
+  // One forged file of every kind, each from a session the mod did not write.
+  const forged: Array<[string, Draft]> = [
+    ['pause', { type: 'pause', ...person }],
+    ['resume', { type: 'resume', ...person }],
+    ['checkResult pass', { type: 'checkResult', result: 'pass', origin: 'system' }],
+    ['checkResult fail', { type: 'checkResult', result: 'fail', origin: 'system' }],
+    ['start', { type: 'start', slug: 'other', title: 'Forged', phase: 'build', origin: 'system' }],
+    ['advance past Intent', adv('intent', 'plan')],
+    ['advance out of Check', adv('check', 'done')],
+    ['override', { type: 'override', phase: 'check', reason: 'forged', ...person }],
+    ['accept', { type: 'accept', findingId: '1', reason: 'forged', ...person }],
+    ['drift add', { type: 'drift', path: 'src/x.ts', choice: 'add', reason: '', ...person }],
+    ['drift allow once', { type: 'drift', path: 'src/y.ts', choice: 'allow-once', reason: 'forged', ...person }],
+    ['driftUsed', { type: 'driftUsed', path: 'src/y.ts', origin: 'system' }],
+    ['back', { type: 'back', to: 'plan', reason: 'forged', ...person }],
+  ]
+
+  const view = (s: RunState) => ({
+    phase: s.phase,
+    paused: s.paused,
+    loops: s.loops,
+    slug: s.slug,
+    overrides: s.overrides.length,
+    accepted: s.accepted.length,
+    drift: s.drift.length,
+    addedPaths: s.addedPaths,
+    allowOnce: s.allowOnce,
+    invalidated: s.invalidated,
+    checkOverridden: s.checkOverridden,
+  })
+
+  const clean = reduce(base, {}, { isTrusted: trusted })
+
+  for (const [name, draft] of forged) {
+    test(`a forged ${name} is listed as unverified and not folded`, () => {
+      const ev = stamp(draft, { ts: 99_000, session: 'evil', seq: 1 })
+      const s = reduce([...base, ev], {}, { isTrusted: trusted })
+      expect(s.phase).toBe('check')
+      expect(view(s)).toEqual(view(clean))
+      expect(s.unverified).toEqual([ev.id])
+    })
+  }
+
+  test('the same events written by the mod do count', () => {
+    const own = stamp({ type: 'pause', ...person }, { ts: 99_000, session: 's', seq: 99 })
+    expect(reduce([...base, own], {}, { isTrusted: trusted }).paused).toBe(true)
+  })
+})
+
+describe('verdict and phase entry compare at whole seconds', () => {
+  test('a verdict recorded in the same second as the phase entry is fresh', () => {
+    // Build is entered at 30 s and 400 ms; gates.json says 30 s.
+    const drafts: Draft[] = [start, adv('intent', 'plan')]
+    const events = [
+      ...drafts.map((d, i) => stamp(d, { ts: (i + 1) * 10_000, session: 's', seq: i + 1 })),
+      stamp(adv('plan', 'build'), { ts: 30_400, session: 's', seq: 3 }),
+    ]
+    expect(reduce(events, { build: { verdict: 'PASS', ts: 30_000 } }).gate.build).toBe('fresh')
+    expect(reduce(events, { build: { verdict: 'PASS', ts: 29_000 } }).gate.build).toBe('stale')
+    expect(reduce(events, { build: { verdict: 'FAIL', ts: 30_000 } }).gate.build).toBe('fail')
   })
 })

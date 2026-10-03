@@ -52,7 +52,7 @@ export type RunState = {
   unverified: string[]
 }
 
-export const ONLY_USER = 'Only the user can approve this. Ask them to press 1 or run /temper approve.'
+export const ONLY_USER = 'Only the user can approve this. Ask them to press 1 or run /temper:temper approve.'
 
 const FLOW: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check']
 
@@ -98,22 +98,6 @@ export function initialState(maxLoops = 3): RunState {
   }
 }
 
-// Decisions are the events only the person may create. An advance out of Intent or
-// Plan is an approval; later advances follow a verdict and carry no human weight.
-function isDecision(ev: TemperEvent): boolean {
-  switch (ev.type) {
-    case 'back':
-    case 'override':
-    case 'accept':
-    case 'drift':
-      return true
-    case 'advance':
-      return ev.from === 'intent' || ev.from === 'plan'
-    default:
-      return false
-  }
-}
-
 export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, opts: ReduceOptions = {}): RunState {
   const s = initialState(opts.maxLoops ?? 3)
   const sorted = [...events].sort(compareEvents)
@@ -124,7 +108,10 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
   }
 
   for (const ev of sorted) {
-    if (isDecision(ev) && opts.isTrusted && !opts.isTrusted(ev)) {
+    // Every kind of event changes what is enforced (pause lifts the rules, checkResult
+    // ends the run, start resets it), so an event file the mod did not write counts for
+    // none of them. The adapter trusts only ids it recorded itself.
+    if (opts.isTrusted && !opts.isTrusted(ev)) {
       s.unverified.push(ev.id)
       continue
     }
@@ -202,8 +189,10 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
   for (const p of FLOW) {
     const v = verdicts[p]
     const boundary = Math.max(s.since[p] ?? -Infinity, s.invalidated[p] ?? -Infinity)
+    // gates.json times have whole second resolution and phase entry times are in
+    // milliseconds, so compare whole seconds and treat equal as fresh.
     if (!v) s.gate[p] = 'none'
-    else if (v.ts <= boundary) s.gate[p] = 'stale'
+    else if (Math.floor(v.ts / 1000) < Math.floor(boundary / 1000)) s.gate[p] = 'stale'
     else s.gate[p] = v.verdict === 'PASS' ? 'fresh' : 'fail'
   }
   s.stale = FLOW.filter(p => s.invalidated[p] !== undefined && p !== s.phase && s.gate[p] !== 'fresh')
@@ -231,8 +220,8 @@ const fail = (error: string): Decision => ({ error })
 function loopLimitMessage(s: RunState): string {
   return (
     `Fix loop limit reached (${s.loops} failed Check runs, limit ${s.maxLoops}). ` +
-    'Next: re-plan (/temper back plan <reason>), override with a reason (/temper override <reason>), ' +
-    'or take over (/temper pause).'
+    'Next: re-plan (/temper:temper back plan <reason>), override with a reason (/temper:temper override <reason>), ' +
+    'or take over (/temper:temper pause).'
   )
 }
 
@@ -242,17 +231,17 @@ export function decide(state: RunState, cmd: Command): Decision {
   const isPerson = cmd.origin === 'person'
 
   if (cmd.type === 'start') {
-    if (phase !== null && phase !== 'done') return fail('A Temper run is already active. Finish it or /temper pause first.')
+    if (phase !== null && phase !== 'done') return fail('A Temper run is already active. Finish it or /temper:temper pause first.')
     return { events: [{ type: 'start', slug: cmd.slug, title: cmd.title, ...(cmd.phase ? { phase: cmd.phase } : {}), ...who }] }
   }
-  if (phase === null) return fail('No Temper run is active. Next: start one with /temper <feature description>.')
+  if (phase === null) return fail('No Temper run is active. Next: start one with /temper:temper <feature description>.')
 
   if (cmd.type === 'resume') {
     if (!isPerson) return fail(ONLY_USER)
     return { events: [{ type: 'resume', ...who }] }
   }
-  if (state.paused) return fail('The Temper run is paused. Next: /temper resume.')
-  if (phase === 'done') return fail('The Temper run is complete. Next: commit, or start a new run with /temper <feature description>.')
+  if (state.paused) return fail('The Temper run is paused. Next: /temper:temper resume.')
+  if (phase === 'done') return fail('The Temper run is complete. Next: commit, or start a new run with /temper:temper <feature description>.')
 
   // At the fix loop limit only re-plan, override and pause remain.
   if (state.loopLimitReached) {
@@ -281,7 +270,7 @@ export function decide(state: RunState, cmd: Command): Decision {
     }
     case 'back': {
       if (!isPerson) return fail(ONLY_USER)
-      if (!cmd.reason.trim()) return fail('Going back needs a reason: /temper back <phase> <reason>')
+      if (!cmd.reason.trim()) return fail('Going back needs a reason: /temper:temper back <phase> <reason>')
       if (cmd.to === 'fix' || !(order(cmd.to) < order(phase))) {
         return fail(`Back needs an earlier phase than ${phaseLabel(phase)}.`)
       }
@@ -289,14 +278,14 @@ export function decide(state: RunState, cmd: Command): Decision {
     }
     case 'override': {
       if (!isPerson) return fail(ONLY_USER)
-      if (!cmd.reason.trim()) return fail('Override needs a reason: /temper override <reason>')
+      if (!cmd.reason.trim()) return fail('Override needs a reason: /temper:temper override <reason>')
       if (cmd.phase !== undefined && cmd.phase !== phase) return fail(`Override applies to the current phase, ${phaseLabel(phase)}.`)
       return { events: [{ type: 'override', phase, reason: cmd.reason.trim(), ...who }] }
     }
     case 'acceptFinding': {
       if (!isPerson) return fail(ONLY_USER)
       if (phase !== 'review' && phase !== 'fix') return fail('Findings are accepted in Review or Fix.')
-      if (!cmd.reason.trim()) return fail('Accepting a finding needs a reason: /temper accept <id> <reason>')
+      if (!cmd.reason.trim()) return fail('Accepting a finding needs a reason: /temper:temper accept <id> <reason>')
       return { events: [{ type: 'accept', findingId: cmd.id, reason: cmd.reason.trim(), ...who }] }
     }
     case 'drift': {

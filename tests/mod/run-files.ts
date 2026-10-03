@@ -1,5 +1,6 @@
 // A small spec directory as the files Temper reads. Not a test file.
 import { encodeEvent, eventFileName, stamp } from '../../hooks/temper-mod/core/events'
+import { digestText } from '../../hooks/temper-mod/adapter'
 import type { Draft } from '../../hooks/temper-mod/core/events'
 
 export const SPEC = '.temper/specs/pw'
@@ -59,4 +60,11 @@ export function runFiles(o: RunOptions = {}): Record<string, string> {
 export function eventFile(draft: Draft, ts: number, session = 's', seq = 1): [string, string] {
   const ev = stamp(draft, { ts, session, seq })
   return [`${SPEC}/events/${eventFileName(ev)}`, encodeEvent(ev)]
+}
+
+// The store entries the mod would have written for these event files (a digest of each text).
+export async function trusted(files: Array<[string, string]>): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {}
+  for (const [path, text] of files) out[`ev:${(path.split('/').pop() ?? '').replace(/\.json$/, '')}`] = await digestText(text)
+  return out
 }

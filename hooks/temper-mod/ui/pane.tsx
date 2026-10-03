@@ -16,7 +16,7 @@ export function renderPane(kit: Kit, view: View, onAction: OnAction, onFinding: 
   if (view.phase === null) {
     return (
       <Box flexDirection="column">
-        <Text dimColor>No Temper run is active. Start one with /temper and a feature description.</Text>
+        <Text dimColor>No Temper run is active. Start one with /temper:temper and a feature description.</Text>
       </Box>
     )
   }

@@ -56,13 +56,15 @@ All notable changes to Temper are documented here. The plugin version lives in
   and `temper gate` now writes the same view to `.temper/status.json`. Failing to write it
   never changes a verdict.
 
-### Verdict change: `temper gate intent`
+### Verdict change: `temper gate intent` (drafts only)
 
-Two requirements are new. An intent needs an `Out of scope:` line under `Scope and Non-goals`
-with real text, and an accepted or completed intent may not carry an Open Question marked
-`Blocking`. Existing accepted intents that have neither will now fail the gate until they are
-edited. The out of scope line is checked for every status, drafts included. The shipped
-template and example carry the line.
+Two requirements are new, and both apply only while the intent's Status is draft. A draft
+needs an `Out of scope:` line under `Scope and Non-goals` with real text. The second
+requirement, "open questions resolved", names any `Blocking` question still open on a draft in
+the gate detail but does not fail it, because drafts legitimately carry them. An accepted or
+completed intent skips both with a recorded PASS: a recorded
+acceptance is never revisited, so existing accepted intents keep passing. The shipped template
+and example carry the line.
 
 ### Minimum versions and old versions
 

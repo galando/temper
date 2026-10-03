@@ -17,7 +17,6 @@
 #   temper override <stage> --reason "..."        record a human override of a FAIL gate
 #   temper report [--json]                        render the current run's gate ledger
 #   temper status [--json] [--spec-path P]        per-criterion passed/open view; writes .temper/status.json
-#   temper status [--json] [--spec-path P]        per-criterion passed/open view; writes .temper/status.json
 #   temper bands [--json]                         deterministic control-band drift check
 #                                                 over .temper/metrics.json history
 #   temper metrics append <series> <value>        append a numeric point to <series>_history
@@ -1006,7 +1005,7 @@ def add(name, ok, detail):
     reqs.append({'name': name, 'pass': ok, 'detail': detail})
 
 m = re.search(r'^\*\*Status:\*\*\s*(draft|accepted|completed)\s*$', "\n".join(lines), re.I | re.M)
-status = m.group(1).lower() if m else 'draft'
+status = m.group(1).lower() if m else None   # None: missing or unknown Status header
 if status != 'draft':
     d = ("skipped — intent is %s; this check applies to drafts only "
          "(a recorded acceptance is never revisited)") % status
@@ -1160,7 +1159,7 @@ PY
 }
 
 _intent_closure_reqs() { # _intent_closure_reqs <intent.md> -> JSON rows: "out of scope stated"
-                         # (every status) and "open questions resolved" (accepted/completed only)
+                         # and "open questions resolved" (both apply to drafts only; the second is informational)
   local script_dir; script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   python3 - "$script_dir" "$1" <<'PY'
 import json, re, sys
@@ -1173,7 +1172,13 @@ def add(name, ok, detail):
     reqs.append({'name': name, 'pass': ok, 'detail': detail})
 
 m = re.search(r'^\*\*Status:\*\*\s*(draft|accepted|completed)\s*$', "\n".join(lines), re.I | re.M)
-status = m.group(1).lower() if m else 'draft'
+status = m.group(1).lower() if m else None   # None: missing or unknown Status header
+
+# Both requirements apply only while the intent is a draft: a recorded acceptance is never
+# revisited, so an accepted or completed intent skips them with a PASS.
+SKIP = ('skipped \u2014 intent is %s; this check applies to drafts only (a recorded acceptance is never revisited)' % status
+        if status else
+        'skipped \u2014 no recognized Status header (draft, accepted or completed); this check applies to drafts only, and the status header requirement reports the missing header')
 
 # --- out of scope stated: a '- Out of scope:' bullet with non-placeholder text ----------
 scope = A.section_lines(lines, 'Scope and Non-goals') or A.section_lines(lines, 'Scope')
@@ -1183,14 +1188,18 @@ for l in scope:
     if om and re.search(r'[A-Za-z0-9]', A.blank_placeholders(om.group(1))):
         found = True
         break
-add('out of scope stated', found,
-    'Scope states what is out of scope' if found
-    else 'no "- Out of scope:" bullet with real text under ### Scope and Non-goals')
+if status != 'draft':   # explicitly draft only
+    add('out of scope stated', True, SKIP)
+else:
+    add('out of scope stated', found,
+        'Scope states what is out of scope' if found
+        else 'no "- Out of scope:" bullet with real text under ### Scope and Non-goals')
 
-# --- open questions resolved: no Blocking question once accepted or completed -----------
-if status == 'draft':
-    add('open questions resolved', True,
-        'skipped — intent is draft; Blocking questions are still being asked')
+# --- open questions resolved: a draft reports its Blocking questions (informational) -------
+# Drafts legitimately carry Blocking questions (the shipped example does), so this never fails
+# a draft; it names what is still open so the person answers it before accepting.
+if status != 'draft':
+    add('open questions resolved', True, SKIP)
 else:
     blocking = []
     cur = None
@@ -1203,9 +1212,9 @@ else:
     blocking = [' '.join(b).strip()[:60] for b in blocking
                 if not A.strip_checkbox(b[0]).startswith('{')
                 and re.match(r'^\W*blocking\b', A.strip_checkbox(b[0]), re.I)]
-    add('open questions resolved', not blocking,
+    add('open questions resolved', True,
         'no Blocking question remains' if not blocking
-        else 'Blocking question(s) still open on a %s intent: %s' % (status, ' | '.join(blocking)))
+        else '%d Blocking question(s) still open on the draft; answer them into ### Decisions before accepting: %s' % (len(blocking), ' | '.join(blocking)))
 print("\n".join(json.dumps(r) for r in reqs))
 PY
 }

@@ -1,5 +1,5 @@
 // Interaction modes (mods-plan 3.8). The one table that says what each uiMode draws.
-// Denials and /temper subcommands work in every mode; enforcement is a separate switch.
+// Denials and /temper:temper subcommands work in every mode; enforcement is a separate switch.
 
 import type { UiMode } from './config'
 

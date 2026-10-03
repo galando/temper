@@ -5,13 +5,13 @@ argument-hint: "<feature-description>"
 
 # Temper: Unified SDLC Command
 
+**FIRST OUTPUT (do this before reading anything else).** Look at your system prompt now. If it does not contain a line reading `Temper enforcement: active`, your very first line of text in this reply must be exactly: `Temper enforcement is off here (no mods support); continuing with prompt based phases.` Then carry on as written below. Never treat the missing line as an error, and say it only once per conversation. If the line is present, say nothing about it.
+
 **Goal:** Run intent → plan → design? → build → review+check → commit with a human gate
 at every stage (or, if armed, unattended past the plan gate). Every gate verdict is
 computed by the `temper` CLI from an evidence ledger — never asserted by a model. The
 Intent gate comes first because intent errors are the most expensive kind: correcting
 the Problem statement costs words at the intent gate and costs the whole plan after it.
-
-**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
 
 ## Usage
 
@@ -37,7 +37,7 @@ mod is absent. Any other first word is a feature description.
 | `help` | List these words with their one line meanings. |
 | `approve` / `next` | Treat it as the human answer at the current gate: confirm the gate with `$TEMPER gate {stage}`, record the move with `$TEMPER state advance {stage} {next}`, then continue. Refuse and print the failing requirements when the gate is not PASS. |
 | `back <phase> <reason>` | `$TEMPER state set next_stage {phase}`, record the reason with `$TEMPER evidence add --stage {phase} --phase feedback --claim "back: {reason}"`, and rerun every later gate before advancing. |
-| `override <reason>` | `$TEMPER override {stage} --reason "{reason}"`. With no reason, refuse: "Override needs a reason: /temper override <reason>". |
+| `override <reason>` | `$TEMPER override {stage} --reason "{reason}"`. With no reason, refuse: "Override needs a reason: /temper:temper override <reason>". |
 | `accept <id> <reason>` | `$TEMPER evidence accept --stage review --id {id} --reason "{reason}"`. With no reason, refuse. |
 | `drift <add\|revert\|allow> <reason>` | `add`: put the file in plan.md's Files table. `revert`: restore the file to its committed state. `allow`: continue once. Record the choice with `$TEMPER evidence add --stage build --phase feedback --claim "drift {path}: {choice}: {reason}"`. |
 | `pause` / `resume` | Stop at the next gate and wait for the person, or continue from it. |

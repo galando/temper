@@ -4,7 +4,7 @@ import { SPEC, runFiles } from './run-files'
 import { world } from './world'
 import type { World } from './world'
 
-const PASSTHROUGH = 'prompt based /temper ran'
+const PASSTHROUGH = 'prompt based /temper:temper ran'
 
 const events = (w: World): Array<Record<string, unknown>> =>
   [...w.files.entries()]
@@ -15,7 +15,7 @@ const events = (w: World): Array<Record<string, unknown>> =>
 const decisions = (w: World) => events(w).filter(e => e.type !== 'start')
 
 describe('only reserved first words are handled', () => {
-  test('a feature description reaches the prompt based /temper unchanged', async ($, on) => {
+  test('a feature description reaches the prompt based /temper:temper unchanged', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'plan' }))
     for (const args of ['add password reset by email', 'statuses please', 'build the thing']) {
       const r = await $.command.run({ command: 'temper', args, origin: { kind: 'composer' } } as never)
@@ -56,7 +56,7 @@ describe('read only subcommands', () => {
   test('status works from any origin; with no run it says so', async ($, on) => {
     world(on, {})
     const r = await $.command.run({ command: 'temper', args: 'status', origin: { kind: 'sdk' } } as never)
-    expect(r.text).toBe('No Temper run is active. Start one with /temper <feature description>.')
+    expect(r.text).toBe('No Temper run is active. Start one with /temper:temper <feature description>.')
   })
 
   test('timeline lists the phases so far', async ($, on) => {
@@ -106,7 +106,7 @@ describe('decisions come only from the person', () => {
   test('override without a reason is refused and writes no event', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'review' }))
     const r = await $.command.run({ command: 'temper', args: 'override', origin: { kind: 'composer' } } as never)
-    expect(r.text).toBe('Override needs a reason: /temper override <reason>')
+    expect(r.text).toBe('Override needs a reason: /temper:temper override <reason>')
     expect(decisions(w)).toEqual([])
   })
 
@@ -114,7 +114,7 @@ describe('decisions come only from the person', () => {
     const w = world(on, runFiles({ nextStage: 'review' }))
     for (const kind of ['sdk', 'bridge', 'plugin'] as const) {
       const r = await $.command.run({ command: 'temper', args: 'override because', origin: { kind, name: 'x' } } as never)
-      expect(r.text).toBe('Only the user can approve this. Ask them to press 1 or run /temper approve.')
+      expect(r.text).toBe('Only the user can approve this. Ask them to press 1 or run /temper:temper approve.')
     }
     expect(decisions(w)).toEqual([])
   })
@@ -156,7 +156,7 @@ describe('decisions come only from the person', () => {
     await $.command.run({ command: 'temper', args: 'override risk accepted', origin: { kind: 'composer' } } as never)
     const call = { tool: 'Bash', command: 'scripts/temper override review --reason "risk accepted"' } as const
     expect((await $.tool.call(call)).text).toBe('stub ran')
-    expect(await $.tool.call(call)).toEqual({ deny: 'Only the user can approve this. Ask them to press 1 or run /temper approve.' })
+    expect(await $.tool.call(call)).toEqual({ deny: 'Only the user can approve this. Ask them to press 1 or run /temper:temper approve.' })
   })
 
   test('drift decisions by command need a pending drift', async ($, on) => {
@@ -165,7 +165,7 @@ describe('decisions come only from the person', () => {
     expect(none.text).toContain('No scope drift is pending')
     // A denied edit (nobody to ask) leaves the path pending; the person then decides.
     const denied = await $.tool.call({ tool: 'Edit', file_path: 'src/billing.ts', old_string: 'a', new_string: 'b' })
-    expect(denied.deny).toContain('/temper drift add|revert|allow <reason>')
+    expect(denied.deny).toContain('/temper:temper drift add|revert|allow <reason>')
     const ok = await $.command.run({ command: 'temper', args: 'drift allow hotfix', origin: { kind: 'composer' } } as never)
     expect(ok.text).toBe(PASSTHROUGH)
     expect(decisions(w)).toMatchObject([{ type: 'drift', path: 'src/billing.ts', choice: 'allow-once', reason: 'hotfix', origin: 'person' }])
@@ -205,5 +205,65 @@ describe('pull request attribution', () => {
     world(on, runFiles({ nextStage: 'build' }))
     expect((await $.attribution.text(pr)).text).toBe('Generated with Claude Code')
     expect((await $.attribution.text({ kind: 'commit', text: 'trailer' })).text).toBe('trailer')
+  })
+})
+
+describe('a chained command spends every human event it matched', () => {
+  test('two override calls in one command use two events, and neither can be reused', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'plan', gates: { plan: 'FAIL' } }))
+    await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
+    // Two human overrides of the same phase: one for Plan now, the second recorded after the advance
+    // to Build; the CLI call for each phase may only be used once.
+    await $.command.run({ command: 'temper', args: 'override first', origin: { kind: 'composer' } } as never)
+    expect(decisions(w)).toHaveLength(1)
+    const call = { tool: 'Bash', command: 'temper override plan --reason first' } as const
+    expect((await $.tool.call(call)).text).toBe('stub ran')
+    // The one event is spent: the identical call is refused, and so is a chain of two.
+    expect((await $.tool.call(call)).deny).toContain('Only the user')
+    expect((await $.tool.call({ tool: 'Bash', command: 'temper override plan --reason a && temper override plan --reason b' })).deny).toContain('Only the user')
+  })
+})
+
+describe('every state changing word needs the person', () => {
+  const ONLY = 'Only the user can approve this. Ask them to press 1 or run /temper:temper approve.'
+  const words = [
+    'mode full',
+    'mode off',
+    'enforcement off',
+    'enforcement on',
+    'pause',
+    'resume',
+    'approve',
+    'next',
+    'override because',
+    'back plan because',
+    'accept 1 because',
+    'drift add because',
+  ]
+
+  for (const kind of ['sdk', 'bridge', 'plugin', 'task-notification', 'scheduled-trigger'] as const) {
+    test(`from ${kind}: refused, nothing written, nothing changed`, async ($, on) => {
+      const w = world(on, runFiles({ nextStage: 'build' }), { rows: [{ key: 'temper.uiMode', value: 'full', isLocked: false }] })
+      await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
+      for (const args of words) {
+        const r = await $.command.run({ command: 'temper', args, origin: { kind, name: 'x' } } as never)
+        expect(r.text).toBe(ONLY)
+      }
+      expect(decisions(w)).toEqual([])
+      expect(w.configSets).toEqual([])
+      expect(w.toasts).toEqual([])
+      // Enforcement is exactly as before.
+      const edit = await $.tool.call({ tool: 'Edit', file_path: 'src/billing.ts', old_string: 'a', new_string: 'b' })
+      expect(edit.deny).toContain('scope drift')
+    })
+  }
+
+  test('the read only words stay open to any origin', async ($, on) => {
+    world(on, runFiles({ nextStage: 'build' }))
+    await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
+    for (const args of ['status', 'timeline', 'help', 'report', 'mode', 'enforcement']) {
+      const r = await $.command.run({ command: 'temper', args, origin: { kind: 'sdk' } } as never)
+      expect(r.text).not.toBe(ONLY)
+    }
   })
 })

@@ -8,7 +8,7 @@ user-invocable: false
 
 Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0.0-1.0) → Review memory → Metrics.
 
-**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
+**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, make the very first sentence of your first reply in this conversation, before anything else and also when the command is one of the reserved words below, exactly "Temper enforcement is off here (no mods support); continuing with prompt based phases.", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
 
 ## Stack Detection
 1. `.claude/temper.config` → `stack` field

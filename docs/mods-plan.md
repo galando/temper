@@ -321,11 +321,16 @@ Commit is not a phase: after Check passes, the state is Done and `git commit` is
 | uiMode, enforcement | `userConfig` (see 2.4) | managed precedence for free |
 
 **Forgery guard:** Claude must not create approval events itself. The adapter denies
-Write, Edit and NotebookEdit on `.temper/specs/*/events/**`, `.temper/gates.json`,
-`.temper/status.json` and `.temper/overrides.json`, and denies Bash commands that name
-those paths (best effort). It also keeps the ids of events it wrote in `$.store`;
-an event file the mod did not write is shown as "unverified" and never counts as an
-approval.
+Write, Edit, NotebookEdit and MultiEdit on `.temper/specs/*/events/**`, `.temper/gates.json`,
+`.temper/status.json`, `.temper/overrides.json` and `.temper/build-state.json`, and denies Bash
+commands that write them (best effort). Trust follows content: after writing an event file the
+mod stores a digest (SHA256 of the exact text) under `ev:{id}` in `$.store`. On every load an
+event counts only if the stored digest matches the text now on disk, for every event type
+(start, pause, resume, advance, checkResult, override, accept, drift, back). A file the mod did
+not write, or one rewritten in place, is shown as "unverified" and counts for nothing. The
+bootstrap start event for a run the CLI began earlier has one fixed name
+(`0-bootstrap-1.json`), so entering the run again overwrites that file instead of adding
+another, and a planted file under that name is replaced by a genuine one.
 
 **Human decisions only from the human:** decisions (`approve`, `override`, `accept`,
 `drift allow`, `back`) are created only by a button press or a `/temper` subcommand
@@ -355,9 +360,27 @@ Example reasons:
 - "Temper: commit blocked, Check has not passed. Next: run the checks (key 1 in Check
   or /temper check)."
 
-Bash coverage is best effort: Bash can write files in ways no pattern catches. The hard
-guarantee covers Write, Edit, NotebookEdit and `git commit`; the native `pre-commit`
-hook stays as a second layer. MCP file tools are not covered. The README will say so.
+Bash coverage is best effort. The hard guarantee covers the tool layer: Write, Edit,
+NotebookEdit and MultiEdit, and `git commit` through Bash. The classifier strips common
+wrappers (`env`, `timeout`, `nice`, `ionice`, `nohup`, `time`, `xargs`, `command`, `builtin`,
+`exec`, `sudo`, a path to `git` or `temper`, a backslash or quotes around the command word)
+before it looks for `git commit` and for the decision CLI calls. It treats redirects (including
+`>|`), `tee`, `cp`, `mv`, `install`, `ln`, `rsync` (and `-t DIR`), `rm`, `sed -i` and `sed w`,
+`curl -o`, `wget -O`, and `tar -C` onto a guarded path as writes, collapses `..` segments,
+follows `cd`, removes quotes and backslashes before matching a path, and for a glob or a shell
+variable that could name a guarded file it denies when the same command writes. Reading
+(`cat`, `grep`, `ls`, `jq`, `diff`) is not flagged. Bash can still write files in other ways
+(an interpreter that builds the path, for one), and Bash writes to ordinary source files are not
+phase checked. MCP file tools are not covered. The native `pre-commit` hook stays as a second
+layer. The README says so.
+
+**Review and Check allow the whole spec directory.** In those phases a write to
+`intent.md`, `plan.md` or `tasks.md` is allowed, so an approved intent or plan can be edited
+without a back step. This is deliberate: Review and Check write evidence, findings and
+notes into the spec directory, and a finer split would refuse legitimate work. Edits that
+matter are visible in the diff, and `/temper back` is how a person invalidates later phases.
+The events folder, `gates.json`, `status.json`, `overrides.json` and `build-state.json` stay
+guarded in every phase.
 
 ### 3.5 Injection (Part A.2, A.3)
 

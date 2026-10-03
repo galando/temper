@@ -56,11 +56,11 @@ describe('scope drift in Build', () => {
     expect(w.asked.length).toBe(4)
   })
 
-  test('with nobody to ask, the edit is denied with the instructions and /temper drift decides', async ($, on) => {
+  test('with nobody to ask, the edit is denied with the instructions and /temper:temper drift decides', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'build' }))
     const r = await $.tool.call(edit('src/billing.ts'))
     expect(denyText(r)).toContain('add to plan, revert, or allow once with a reason')
-    expect(denyText(r)).toContain('/temper drift add|revert|allow <reason>')
+    expect(denyText(r)).toContain('/temper:temper drift add|revert|allow <reason>')
     expect(eventTypes(w.files)).toEqual([])
   })
 })

@@ -25,6 +25,7 @@ import { planFileList, taskProgress } from './core/planfiles'
 import { renderReport } from './core/report'
 import { sectionText } from './core/section'
 import type { DecisionKind } from './core/bash'
+import type { HumanDecision } from './core/rules'
 import type { TemperRun } from '../../types'
 
 // Everything the adapter needs from Claude Code, as plain functions. register.tsx builds
@@ -62,7 +63,7 @@ export type Snapshot = {
   task: { n: number; of: number } | null
   unreadable: string[]
   // Unconsumed human decision events per kind, for the CLI decision guard.
-  humanDecisions: Partial<Record<DecisionKind, number>>
+  humanDecisions: HumanDecision[]
 }
 
 const OWN_PREFIX = 'ev:'
@@ -75,7 +76,7 @@ const str = (options: PluginOptions, key: string): string | undefined => {
   return typeof v === 'string' ? v : undefined
 }
 
-// Values changed live (`/temper mode`, `/temper enforcement`) win over the options of this
+// Values changed live (`/temper:temper mode`, `/temper:temper enforcement`) win over the options of this
 // load until the config change reloads the module with the new options.
 export const live: { mode?: UiMode; enforcement?: 'on' | 'off' } = {}
 
@@ -101,7 +102,7 @@ export function idleSnapshot(options: PluginOptions, inert: boolean): Snapshot {
     findings: [],
     task: null,
     unreadable: [],
-    humanDecisions: {},
+    humanDecisions: [],
   }
 }
 
@@ -127,9 +128,23 @@ function humanKind(ev: TemperEvent): DecisionKind | null {
   return null
 }
 
-async function isOwn(io: Io, id: string): Promise<boolean> {
+// A digest of the exact text of an event file. The store keeps it under `ev:{id}`, so trust
+// follows the content, not just the name: rewriting a trusted file in place (same name,
+// different text) makes it untrusted. SHA-256 where the environment has it, else FNV-1a.
+export async function digestText(text: string): Promise<string> {
   try {
-    return (await io.storeGet(OWN_PREFIX + id)) === 1
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+    return 'sha256:' + [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('')
+  } catch {
+    let h = 0x811c9dc5
+    for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0
+    return 'fnv:' + h.toString(16)
+  }
+}
+
+async function isOwn(io: Io, id: string, text: string): Promise<boolean> {
+  try {
+    return (await io.storeGet(OWN_PREFIX + id)) === (await digestText(text))
   } catch {
     return false
   }
@@ -138,6 +153,15 @@ async function isOwn(io: Io, id: string): Promise<boolean> {
 // Event names are `{ts}-{session}-{seq}.json`. This module has no session id call, so a
 // random token per load stands in: two loads never share a name.
 const SESSION = (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(16).slice(2) + '00000000').replace(/-/g, '').slice(0, 8)
+// The phase an event decided, so a CLI call is matched only to a decision made for it.
+function decisionOf(ev: TemperEvent, kind: DecisionKind): HumanDecision {
+  if (ev.type === 'override') return { id: ev.id, kind, phase: ev.phase }
+  if (ev.type === 'accept') return { id: ev.id, kind, phase: 'review', findingId: ev.findingId }
+  if (ev.type === 'advance') return { id: ev.id, kind, phase: ev.from }
+  return { id: ev.id, kind }
+}
+
+const BOOTSTRAP = { ts: 0, session: 'bootstrap', seq: 1 }
 let seq = 0
 
 export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snapshot> {
@@ -157,21 +181,26 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   const own = new Set<string>()
   const fold = (events: readonly TemperEvent[]) => reduce(events, verdicts, { maxLoops, isTrusted: ev => own.has(ev.id) })
 
-  const read = readEvents(await readEventFiles(io, `${specDir}/events`))
+  const files = await readEventFiles(io, `${specDir}/events`)
+  const textOf = new Map(files.map(f => [f.name, f.text]))
+  const read = readEvents(files)
   const unreadable = read.unreadable
   let events = read.events
   // One store key per event id: an event file whose id is not here was not written by
   // this mod, so it is unverified and never counts as an approval.
-  for (const ev of events) if (await isOwn(io, ev.id)) own.add(ev.id)
+  for (const ev of events) if (await isOwn(io, ev.id, textOf.get(eventFileName(ev)) ?? '')) own.add(ev.id)
   let state = fold(events)
 
   // A run the CLI began before the mod saw it: enter it once, at the phase the CLI
   // recorded. The start event is written by the mod itself, so it is a trusted record.
-  if (!events.some(e => e.type === 'start')) {
+  // The bootstrap start has one fixed name (ts 0, session "bootstrap", seq 1), so entering a run
+  // again overwrites that file instead of adding another: a lost or unwritable store cannot pile
+  // up start files, and a planted or edited file under that name is replaced with a genuine one.
+  if (!state.started) {
     const phase = phaseFromStage(bs.nextStage)
     if (phase !== 'done') {
-      const start = await writeEvent(io, specDir, { type: 'start', slug: bs.spec, title, phase, origin: 'system' })
-      events = [...events, start]
+      const start = await writeEvent(io, specDir, { type: 'start', slug: bs.spec, title, phase, origin: 'system' }, BOOTSTRAP)
+      events = [...events.filter(e => e.id !== start.id), start]
       own.add(start.id)
       state = fold(events)
     }
@@ -181,11 +210,11 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   const tasksText = (await readText(io, `${specDir}/tasks.md`)) ?? ''
   const status = parseStatus((await readText(io, `${STATE_ROOT}/status.json`)) ?? '')
 
-  const humanDecisions: Partial<Record<DecisionKind, number>> = {}
+  const humanDecisions: HumanDecision[] = []
   for (const ev of events) {
     const kind = humanKind(ev)
     if (kind && own.has(ev.id) && !(await io.storeGet(USED_PREFIX + ev.id))) {
-      humanDecisions[kind] = (humanDecisions[kind] ?? 0) + 1
+      humanDecisions.push(decisionOf(ev, kind))
     }
   }
 
@@ -206,24 +235,21 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   }
 }
 
-// Writes one event file, once, under a unique name, and records its id in `$.store` (one
-// key per id) so a later load can tell its own events from files it did not write.
-export async function writeEvent(io: Io, specDir: string, draft: Draft): Promise<TemperEvent> {
+// Writes one event file, once, under a unique name, and records a digest of its text in
+// `$.store` (one key per id) so a later load can tell its own events from files it did not
+// write, or from one that was rewritten afterwards.
+export async function writeEvent(io: Io, specDir: string, draft: Draft, fixed?: { ts: number; session: string; seq: number }): Promise<TemperEvent> {
   seq += 1
-  const ev = stamp(draft, { ts: Date.now(), session: SESSION, seq })
-  await io.write(`${specDir}/events/${eventFileName(ev)}`, encodeEvent(ev))
-  await io.storeSet(OWN_PREFIX + ev.id, 1)
+  const ev = stamp(draft, fixed ?? { ts: Date.now(), session: SESSION, seq })
+  const text = encodeEvent(ev)
+  await io.write(`${specDir}/events/${eventFileName(ev)}`, text)
+  await io.storeSet(OWN_PREFIX + ev.id, await digestText(text))
   return ev
 }
 
-// Marks the oldest unconsumed human event of `kind` as matched by a CLI call.
-export async function consumeDecision(io: Io, snap: Snapshot, kind: DecisionKind): Promise<void> {
-  const { events } = readEvents(await readEventFiles(io, `${snap.specDir}/events`))
-  for (const ev of events) {
-    if (humanKind(ev) !== kind || !(await isOwn(io, ev.id)) || (await io.storeGet(USED_PREFIX + ev.id))) continue
-    await io.storeSet(USED_PREFIX + ev.id, 1)
-    return
-  }
+// Marks one human event as matched by a CLI call, so it authorizes that call only once.
+export async function consumeDecision(io: Io, eventId: string): Promise<void> {
+  await io.storeSet(USED_PREFIX + eventId, 1)
 }
 
 export type Applied = { snap: Snapshot; error?: string; events: Draft[] }
@@ -289,9 +315,9 @@ export async function syncCheck(io: Io, options: PluginOptions, snap: Snapshot, 
 
 const iso = (ts: number): string => new Date(ts).toISOString()
 
-// `/temper status`: the section text plus the counts a person wants at a glance.
+// `/temper:temper status`: the section text plus the counts a person wants at a glance.
 export function statusText(snap: Snapshot): string {
-  if (snap.state.phase === null) return 'No Temper run is active. Start one with /temper <feature description>.'
+  if (snap.state.phase === null) return 'No Temper run is active. Start one with /temper:temper <feature description>.'
   const s = snap.state
   const lines = [composeText(snap)]
   lines.push(`Mode: ${snap.mode}, enforcement: ${snap.enforcement}`)

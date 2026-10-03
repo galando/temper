@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { eventFile, runFiles } from './run-files'
+import { eventFile, runFiles, trusted } from './run-files'
 import { COMPOSE, world } from './world'
 
 
@@ -55,7 +55,7 @@ describe('state comes back after /clear from the event files', () => {
     // While the session was cleared another load wrote an approval; its id is in the store.
     const [path, text] = eventFile({ type: 'advance', from: 'intent', to: 'plan', origin: 'person', author: 'galando' }, Date.now() + 5000, 'own', 2)
     const id = path.split('/').pop()?.replace('.json', '') ?? ''
-    const w = world(on, runFiles({ nextStage: 'intent' }), { store: { [`ev:${id}`]: 1 } })
+    const w = world(on, runFiles({ nextStage: 'intent' }), { store: await trusted([[path, text]]) })
     const first = (await $.prompt.compose(COMPOSE)).sections.at(-1)?.text ?? ''
     expect(first).toContain('Phase: Intent')
     w.files.set(path, text)

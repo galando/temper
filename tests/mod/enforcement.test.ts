@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { ONLY_USER } from '../../hooks/temper-mod/core/machine'
-import { SPEC, eventFile, runFiles } from './run-files'
+import { SPEC, eventFile, runFiles, trusted } from './run-files'
 import { denyText, world } from './world'
 
 const write = (path: string) => ({ tool: 'Write', file_path: path, content: 'x' }) as const
@@ -9,7 +9,7 @@ const bash = (command: string) => ({ tool: 'Bash', command }) as const
 
 const PLAN_DENY =
   'Temper: Plan phase. Writing src/app.ts is not allowed until the plan is approved. ' +
-  'Next: finish plan.md and tasks.md, then ask the user to approve (key 1 or /temper approve).'
+  'Next: finish plan.md and tasks.md, then ask the user to approve (key 1 or /temper:temper approve).'
 
 describe('tool.call enforcement', () => {
   test('Plan phase refuses a source write with the next action', async ($, on) => {
@@ -84,7 +84,7 @@ describe('claude cannot forge an approval', () => {
   test('a human event the mod wrote lets one matching CLI call through, once', async ($, on) => {
     const [path, text] = eventFile({ type: 'override', phase: 'plan', reason: 'ok', origin: 'person', author: 'galando' }, 20, 'own', 1)
     // The mod wrote it: its id is in the store.
-    world(on, { ...runFiles({ nextStage: 'plan' }), [path]: text }, { store: { 'ev:20-own-1': 1 } })
+    world(on, { ...runFiles({ nextStage: 'plan' }), [path]: text }, { store: await trusted([[path, text]]) })
     expect((await $.tool.call(bash('temper override plan --reason ok'))).text).toBe('stub ran')
     expect(await $.tool.call(bash('temper override plan --reason again'))).toEqual({ deny: ONLY_USER })
   })
@@ -99,8 +99,92 @@ describe('claude cannot forge an approval', () => {
   })
 })
 
+describe('forged event files never change what is enforced', () => {
+  test('a foreign pause does not lift the Plan rules', async ($, on) => {
+    const [startPath, startText] = eventFile({ type: 'start', slug: 'pw', title: 'Password reset', phase: 'plan', origin: 'system' }, 10, 'x', 1)
+    const [pausePath, pauseText] = eventFile({ type: 'pause', origin: 'person', author: 'someone' }, 20, 'x', 2)
+    // The start is the mod's own; the pause is not.
+    world(on, { ...runFiles({ nextStage: 'plan' }), [startPath]: startText, [pausePath]: pauseText }, { store: await trusted([[startPath, startText]]) })
+    const r = await $.tool.call(write('src/app.ts'))
+    expect(denyText(r).startsWith('Temper: Plan phase.')).toBe(true)
+  })
+
+  test('a foreign checkResult pass does not end the run or allow a commit', async ($, on) => {
+    const [startPath, startText] = eventFile({ type: 'start', slug: 'pw', title: 'Password reset', phase: 'check', origin: 'system' }, 10, 'x', 1)
+    const [passPath, passText] = eventFile({ type: 'checkResult', result: 'pass', origin: 'system' }, 20, 'x', 2)
+    world(on, { ...runFiles({ nextStage: 'check' }), [startPath]: startText, [passPath]: passText }, { store: await trusted([[startPath, startText]]) })
+    const r = await $.tool.call(bash('git commit -m x'))
+    expect(denyText(r)).toContain('commit blocked')
+  })
+
+  test('foreign files only: the mod enters the run itself and the forged start counts for nothing', async ($, on) => {
+    const [startPath, startText] = eventFile({ type: 'start', slug: 'pw', title: 'Forged', phase: 'build', origin: 'system' }, 10, 'x', 1)
+    world(on, { ...runFiles({ nextStage: 'plan' }), [startPath]: startText })
+    const r = await $.tool.call(write('src/app.ts'))
+    expect(denyText(r).startsWith('Temper: Plan phase.')).toBe(true)
+  })
+})
+
+describe('trust follows the content of an event file', () => {
+  test('rewriting a trusted event file in place makes it untrusted', async ($, on) => {
+    const [startPath, startText] = eventFile({ type: 'start', slug: 'pw', title: 'Password reset', phase: 'plan', origin: 'system' }, 10, 'own', 1)
+    // The mod wrote a resume event; the file on disk is now a pause with the same name.
+    const resume = eventFile({ type: 'resume', origin: 'person', author: 'galando' }, 20, 'own', 2)
+    const [pausePath, pauseText] = eventFile({ type: 'pause', origin: 'person', author: 'galando' }, 20, 'own', 2)
+    expect(pausePath).toBe(resume[0])
+    const store = await trusted([[startPath, startText], resume])
+    world(on, { ...runFiles({ nextStage: 'plan' }), [startPath]: startText, [pausePath]: pauseText }, { store })
+    const r = await $.tool.call(write('src/app.ts'))
+    expect(denyText(r).startsWith('Temper: Plan phase.')).toBe(true)
+  })
+
+  test('the untouched file with the same name is trusted', async ($, on) => {
+    const [startPath, startText] = eventFile({ type: 'start', slug: 'pw', title: 'Password reset', phase: 'plan', origin: 'system' }, 10, 'own', 1)
+    const pause = eventFile({ type: 'pause', origin: 'person', author: 'galando' }, 20, 'own', 2)
+    world(on, { ...runFiles({ nextStage: 'plan' }), [startPath]: startText, [pause[0]]: pause[1] }, { store: await trusted([[startPath, startText], pause]) })
+    expect((await $.tool.call(write('src/app.ts'))).text).toBe('stub ran')
+  })
+
+  test('a legacy store value of 1 trusts nothing', async ($, on) => {
+    const [startPath, startText] = eventFile({ type: 'start', slug: 'pw', title: 'Password reset', phase: 'plan', origin: 'system' }, 10, 'own', 1)
+    const pause = eventFile({ type: 'pause', origin: 'person' }, 20, 'own', 2)
+    world(on, { ...runFiles({ nextStage: 'plan' }), [startPath]: startText, [pause[0]]: pause[1] }, { store: { 'ev:20-own-2': 1 } })
+    expect('deny' in (await $.tool.call(write('src/app.ts')))).toBe(true)
+  })
+})
+
+describe('the bootstrap start is written once', () => {
+  const eventNames = (files: Map<string, string>) => [...files.keys()].filter(k => k.startsWith(`${SPEC}/events/`))
+
+  test('many loads with the store lost leave one start file', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'plan' }))
+    for (let i = 0; i < 4; i++) await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
+    for (let i = 0; i < 2; i++) await $.classic.SessionStart({ source: 'clear' })
+    expect(eventNames(w.files)).toEqual([`${SPEC}/events/0-bootstrap-1.json`])
+    expect(denyText(await $.tool.call(write('src/app.ts'))).startsWith('Temper: Plan phase.')).toBe(true)
+  })
+
+  test('an untrusted file under the bootstrap name is replaced by a genuine one', async ($, on) => {
+    // Planted: claims the run is already in Build.
+    const planted = eventFile({ type: 'start', slug: 'pw', title: 'Planted', phase: 'build', origin: 'system' }, 0, 'bootstrap', 1)
+    const w = world(on, { ...runFiles({ nextStage: 'plan' }), [planted[0]]: planted[1] })
+    const r = await $.tool.call(write('src/app.ts'))
+    expect(denyText(r).startsWith('Temper: Plan phase.')).toBe(true)
+    expect(eventNames(w.files)).toEqual([planted[0]])
+    expect(w.files.get(planted[0])).toContain('"phase":"plan"')
+  })
+
+  test('a trusted run is not bootstrapped again', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'plan' }))
+    await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
+    const before = w.writes.length
+    await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
+    expect(w.writes.length).toBe(before)
+  })
+})
+
 describe('git commit gate', () => {
-  const FAIL_MSG = 'Temper: commit blocked, Check has not passed. Next: run the checks (key 1 in Check or /temper check).'
+  const FAIL_MSG = 'Temper: commit blocked, Check has not passed. Next: run the checks (key 1 in Check or /temper:check).'
 
   test('refused until Check passes, then allowed once gates.json says PASS', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'check', gates: { check: 'FAIL' } }))

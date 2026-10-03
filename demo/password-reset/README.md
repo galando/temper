@@ -19,7 +19,7 @@ claude --plugin-dir <path to your Temper clone>
 Then, in the session:
 
 ```
-/temper Add password reset: generate a one time token for a user that expires after one hour, and refuse an expired or reused token
+/temper:temper Add password reset: generate a one time token for a user that expires after one hour, and refuse an expired or reused token
 ```
 
 Expect, in order: an intent to approve (press 1), a plan to approve (press 1), a build

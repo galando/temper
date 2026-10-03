@@ -141,7 +141,10 @@ describe('pane', () => {
     expect(w.toasts.some(t => t.includes('needs a reason'))).toBe(true)
     w.answers.push('false positive, input is trusted')
     await ui.press({ key: 'accept-2' })
+    // Hashing the event file is asynchronous in the host, so the follow up lands a moment after the press.
+    for (const end = Date.now() + 1000; Date.now() < end && !w.prompts.some(p => p.includes('evidence accept')); ) await $.prompt.compose(COMPOSE)
     expect([...w.files.values()].some(t => t.includes('"type":"accept"') && t.includes('false positive'))).toBe(true)
+
     expect(w.prompts.some(p => p.includes('evidence accept --stage review --id 2'))).toBe(true)
   })
 
@@ -282,7 +285,7 @@ describe('turn line, suggestions and toasts', () => {
 describe('pane commands', () => {
   const run = (args: string) => ({ command: 'temper', args, origin: { kind: 'composer' } }) as never
 
-  test('/temper pane toggles', async ($, on) => {
+  test('/temper:temper pane toggles', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'build' }), { placed: true })
     await $.session.start(START)
     w.opened.length = 0
@@ -292,22 +295,22 @@ describe('pane commands', () => {
     expect(w.opened).toEqual(['temper'])
   })
 
-  test('bare /temper toggles the pane while a run is active', async ($, on) => {
+  test('bare /temper:temper toggles the pane while a run is active', async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }))
     await $.session.start(START)
     expect((await $.command.run(run(''))).text).toBe('Temper pane closed.')
   })
 
-  test('bare /temper with no run reaches the prompt based command', async ($, on) => {
+  test('bare /temper:temper with no run reaches the prompt based command', async ($, on) => {
     world(on, {})
     await $.session.start(START)
-    expect((await $.command.run(run(''))).text).toBe('prompt based /temper ran')
+    expect((await $.command.run(run(''))).text).toBe('prompt based /temper:temper ran')
   })
 
   test('outside full mode the pane is refused with a hint', { options: { uiMode: 'minimal' } }, async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }))
     await $.session.start(START)
     expect((await $.command.run(run('pane'))).text).toContain('full mode only')
-    expect((await $.command.run(run(''))).text).toBe('prompt based /temper ran')
+    expect((await $.command.run(run(''))).text).toBe('prompt based /temper:temper ran')
   })
 })

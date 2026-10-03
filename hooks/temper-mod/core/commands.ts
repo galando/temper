@@ -1,6 +1,6 @@
-// The reserved first words of `/temper` and what each one means. Pure: this file turns
+// The reserved first words of `/temper:temper` and what each one means. Pure: this file turns
 // typed arguments into a machine command, a local answer, or an error; the adapter runs
-// the result. Anything that is not a reserved word is left to the prompt based /temper.
+// the result. Anything that is not a reserved word is left to the prompt based /temper:temper.
 
 import type { Draft, DriftChoice, Phase } from './events'
 import { PHASES } from './events'
@@ -69,19 +69,19 @@ export function planCommand(parsed: Parsed, pendingDrift: string | null): Plan {
       return { kind: 'command', command: { type: 'override', reason: rest } }
     case 'back': {
       const [to, reason] = split(rest)
-      if (!FLOW_PHASES.includes(to.toLowerCase())) return { kind: 'error', text: 'Usage: /temper back <intent|plan|build|review|check> <reason>' }
+      if (!FLOW_PHASES.includes(to.toLowerCase())) return { kind: 'error', text: 'Usage: /temper:temper back <intent|plan|build|review|check> <reason>' }
       return { kind: 'command', command: { type: 'back', to: to.toLowerCase() as Phase, reason } }
     }
     case 'accept': {
       const [id, reason] = split(rest)
-      if (!id) return { kind: 'error', text: 'Usage: /temper accept <finding id> <reason>' }
+      if (!id) return { kind: 'error', text: 'Usage: /temper:temper accept <finding id> <reason>' }
       return { kind: 'command', command: { type: 'acceptFinding', id, reason } }
     }
     case 'drift': {
       const [choiceWord, reason] = split(rest)
       const choices: Record<string, DriftChoice> = { add: 'add', revert: 'revert', allow: 'allow-once', 'allow-once': 'allow-once' }
       const choice = choices[choiceWord.toLowerCase()]
-      if (!choice) return { kind: 'error', text: 'Usage: /temper drift <add|revert|allow> <reason>' }
+      if (!choice) return { kind: 'error', text: 'Usage: /temper:temper drift <add|revert|allow> <reason>' }
       if (!pendingDrift) return { kind: 'error', text: 'No scope drift is pending. Nothing to decide.' }
       return { kind: 'command', command: { type: 'drift', path: pendingDrift, choice, reason } }
     }
@@ -91,7 +91,7 @@ export function planCommand(parsed: Parsed, pendingDrift: string | null): Plan {
 }
 
 // What Claude is asked to do once the person decided with a button (the command path
-// runs the prompt based /temper instead): mirror the decision in the CLI, or act on it.
+// runs the prompt based /temper:temper instead): mirror the decision in the CLI, or act on it.
 export function followUp(draft: Draft): string | null {
   switch (draft.type) {
     case 'advance':
@@ -114,7 +114,7 @@ export function followUp(draft: Draft): string | null {
 }
 
 export const HELP = [
-  'Temper subcommands (typed after /temper):',
+  'Temper subcommands (typed after /temper:temper):',
   '  status               where the run stands',
   '  timeline             the phases the run went through',
   '  approve              approve the current phase (Intent or Plan)',
@@ -127,5 +127,5 @@ export const HELP = [
   '  report               write .temper/report.md now',
   '  pr                   ask Claude for a pull request description',
   '  mode, enforcement, pane   show or change how Temper draws and enforces',
-  'Anything else after /temper is a feature description and starts or resumes a run.',
+  'Anything else after /temper:temper is a feature description and starts or resumes a run.',
 ].join('\n')

@@ -66,8 +66,8 @@ describe('per-phase actions (mods-plan 3.7)', () => {
   })
 
   test('nextStep names the key and the subcommand', () => {
-    expect(nextStep('plan', { ready: true })).toContain('/temper approve')
-    expect(nextStep('check', {})).toContain('/temper check')
+    expect(nextStep('plan', { ready: true })).toContain('/temper:temper approve')
+    expect(nextStep('check', {})).toContain('/temper:check')
     expect(nextStep('done', {})).toContain('commit')
     expect(nextStep('fix', { loopLimitReached: true })).toContain('loop limit')
   })

@@ -10,7 +10,7 @@ export const adv = (from: Phase, to: Phase | 'done'): Draft => ({ type: 'advance
 
 export function fold(drafts: Draft[], verdicts: Verdicts = {}, opts: { maxLoops?: number } = {}): RunState {
   return reduce(
-    drafts.map((d, i) => stamp(d, { ts: (i + 1) * 10, session: 's', seq: i + 1 })),
+    drafts.map((d, i) => stamp(d, { ts: (i + 1) * 10_000, session: 's', seq: i + 1 })),
     verdicts,
     opts,
   )

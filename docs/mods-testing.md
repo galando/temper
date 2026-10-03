@@ -11,9 +11,9 @@ should see. If a result differs, stop and write down what you saw.
 
 The branch is loaded for one session with `--plugin-dir`. That does not install anything
 and does not touch the Temper you already have. The one thing the test writes outside the
-clone is the mode you pick with `/temper mode`, which the last step clears.
+clone is the mode you pick with `/temper:temper mode`, which the last step clears.
 
-In the commands below, `<clone>` is the path of your Temper clone.
+In the commands below, `<clone>` is the path of your Temper clone. The short form `/temper` works only when no other plugin has the same command name. With the installed Temper and the branch both loaded it is an unknown command, so this checklist always types the full name `/temper:temper`.
 
 ## 1. Preparation
 
@@ -55,12 +55,12 @@ claude --plugin-dir <clone>
 
   Expect the session to start with no plugin load error. The folder is watched, so a
   `git pull` in `<clone>` reloads the mod without restarting.
-- [ ] **Ask Claude whether the mod is active.** Type `/temper status`. Expect an answer
+- [ ] **Ask Claude whether the mod is active.** Type `/temper:temper status`. Expect an answer
   that starts with `No Temper run is active`. Then type
   `Does your system prompt contain a Temper enforcement line?` and expect Claude to quote
   `Temper enforcement: active`.
 - [ ] **Start a run.** Type
-  `/temper Add password reset: one time token that expires after one hour`.
+  `/temper:temper Add password reset: one time token that expires after one hour`.
   Expect a phase bar above the prompt with Intent current, and a drafted intent.
 
 ## 4. Phase by phase
@@ -78,8 +78,8 @@ Work through one run. For each phase, check the refusal and the key.
   that is not in the plan (for example `README.md` in the demo). Expect a question with
   three choices: Add to plan, Revert, Allow once. Choose Allow once and give a reason.
   Expect the edit to go through once.
-- [ ] **The pane.** Type `/temper pane`. Expect a pane with the criteria checklist, the
-  phase and a short timeline. Type `/temper pane` again to close it.
+- [ ] **The pane.** Type `/temper:temper pane`. Expect a pane with the criteria checklist, the
+  phase and a short timeline. Type `/temper:temper pane` again to close it.
 - [ ] **Override needs a reason.** Press `9`. Dismiss the reason question without an
   answer. Expect a toast that an override needs a reason and no phase change.
 - [ ] **Commit gate.** Before Check passes, ask Claude to run `git commit -am wip`. Expect
@@ -93,15 +93,15 @@ Work through one run. For each phase, check the refusal and the key.
 
 ## 5. Modes
 
-- [ ] `/temper mode minimal`. Expect the reply `Temper mode: minimal`, the bar with no
+- [ ] `/temper:temper mode minimal`. Expect the reply `Temper mode: minimal`, the bar with no
   action buttons, no toasts and no pane. Denials still apply.
-- [ ] `/temper mode off`. Expect the bar to disappear. Ask for a write in Plan and expect
+- [ ] `/temper:temper mode off`. Expect the bar to disappear. Ask for a write in Plan and expect
   the refusal to still appear.
-- [ ] `/temper mode full`. Expect the bar and the buttons back, with no restart.
-- [ ] `/temper enforcement off`, then try a write in Plan. Expect the write to go through
-  and a toast `Temper enforcement: off`. Run `/temper enforcement on` to restore it.
+- [ ] `/temper:temper mode full`. Expect the bar and the buttons back, with no restart.
+- [ ] `/temper:temper enforcement off`, then try a write in Plan. Expect the write to go through
+  and a toast `Temper enforcement: off`. Run `/temper:temper enforcement on` to restore it.
 - [ ] If you can, set `pluginConfigs` for Temper in a managed settings file so that
-  `uiMode` is locked, then run `/temper mode full`. Expect
+  `uiMode` is locked, then run `/temper:temper mode full`. Expect
   `Your organization set Temper's mode to ...; ask your admin to change it.`
   If you cannot set managed settings, mark this step as skipped.
 
@@ -110,7 +110,7 @@ Work through one run. For each phase, check the refusal and the key.
 - [ ] **`/compact` keeps the marker.** Type `/compact`. After it finishes, ask
   `Does your system prompt contain a Temper enforcement line?` Expect `Temper enforcement: active`
   and the same phase.
-- [ ] **`/clear` rebuilds the state.** Type `/clear`, then `/temper status`. Expect the same
+- [ ] **`/clear` rebuilds the state.** Type `/clear`, then `/temper:temper status`. Expect the same
   phase as before, rebuilt from the files in `.temper/specs/<name>/events/`.
 - [ ] **A narrow terminal.** Resize to 80 columns. Expect the bar to wrap or truncate
   without breaking the prompt, and the pane to wait instead of squeezing in.
@@ -153,7 +153,7 @@ desktop app depends on your installation, so treat the first step as an experime
 ## 9. Clean up
 
 - [ ] Enable the installed Temper again with `claude plugin enable <that id>`.
-- [ ] **Clear the saved mode.** `/temper mode` stores your choice as a `pluginConfigs`
+- [ ] **Clear the saved mode.** `/temper:temper mode` stores your choice as a `pluginConfigs`
   entry in your user settings. Make a backup, then remove the entry:
 
 ```bash

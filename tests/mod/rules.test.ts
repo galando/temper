@@ -50,7 +50,7 @@ describe('specific denials', () => {
     expect(r).toEqual({
       deny:
         'Temper: Plan phase. Writing src/app.ts is not allowed until the plan is approved. ' +
-        'Next: finish plan.md and tasks.md, then ask the user to approve (key 1 or /temper approve).',
+        'Next: finish plan.md and tasks.md, then ask the user to approve (key 1 or /temper:temper approve).',
     })
   })
 
@@ -146,10 +146,10 @@ describe('Temper state paths and forged decisions', () => {
   test('decision CLI calls through Bash need an unconsumed human event', () => {
     const call = { tool: 'Bash', input: { command: 'temper override plan --reason ok' } }
     expect(evaluate(stateAt('plan'), ctx, call)).toEqual({ deny: ONLY_USER })
-    expect(evaluate(stateAt('plan'), { ...ctx, humanDecisions: { override: 1 } }, call)).toEqual({ allow: true, consume: 'override' })
+    expect(evaluate(stateAt('plan'), { ...ctx, humanDecisions: [{ id: 'e1', kind: 'override', phase: 'plan' }] }, call)).toEqual({ allow: true, consume: 'override', eventId: 'e1', eventIds: ['e1'] })
     const accept = { tool: 'Bash', input: { command: 'scripts/temper evidence accept --stage review --id 1 --reason x' } }
     expect(evaluate(stateAt('review'), ctx, accept)).toEqual({ deny: ONLY_USER })
-    expect(evaluate(stateAt('review'), { ...ctx, humanDecisions: { accept: 1 } }, accept)).toEqual({ allow: true, consume: 'accept' })
+    expect(evaluate(stateAt('review'), { ...ctx, humanDecisions: [{ id: 'e2', kind: 'accept', phase: 'review', findingId: '1' }] }, accept)).toEqual({ allow: true, consume: 'accept', eventId: 'e2', eventIds: ['e2'] })
   })
 
   test('state advance is guarded in Intent and Plan only', () => {
@@ -166,12 +166,58 @@ describe('Temper state paths and forged decisions', () => {
   })
 })
 
+describe('a human decision authorizes only the call it was made for', () => {
+  const override = (stage: string) => ({ tool: 'Bash', input: { command: `temper override ${stage} --reason ok` } })
+
+  test('an override for Plan does not authorize an override of Review', () => {
+    const c = { ...ctx, humanDecisions: [{ id: 'e1', kind: 'override' as const, phase: 'plan' }] }
+    expect(evaluate(stateAt('plan'), c, override('review'))).toEqual({ deny: ONLY_USER })
+    expect(evaluate(stateAt('plan'), c, override('plan'))).toEqual({ allow: true, consume: 'override', eventId: 'e1', eventIds: ['e1'] })
+  })
+
+  test('an accept for finding 1 does not authorize accepting finding 2', () => {
+    const c = { ...ctx, humanDecisions: [{ id: 'e2', kind: 'accept' as const, phase: 'review', findingId: '1' }] }
+    const call = (id: string) => ({ tool: 'Bash', input: { command: `temper evidence accept --stage review --id ${id} --reason x` } })
+    expect(evaluate(stateAt('review'), c, call('2'))).toEqual({ deny: ONLY_USER })
+    expect(evaluate(stateAt('review'), c, call('1'))).toMatchObject({ allow: true, eventId: 'e2' })
+  })
+
+  test('one event authorizes one call: a chain of two needs two events', () => {
+    const chain = { tool: 'Bash', input: { command: 'temper override plan --reason a && temper override plan --reason b' } }
+    const one = { ...ctx, humanDecisions: [{ id: 'e1', kind: 'override' as const, phase: 'plan' }] }
+    expect(evaluate(stateAt('plan'), one, chain)).toEqual({ deny: ONLY_USER })
+    const two = { ...ctx, humanDecisions: [{ id: 'e1', kind: 'override' as const, phase: 'plan' }, { id: 'e2', kind: 'override' as const, phase: 'plan' }] }
+    const ok = evaluate(stateAt('plan'), two, chain)
+    // Both events are spent by the one command, so neither can be used again later.
+    expect('allow' in ok && ok.eventIds).toEqual(['e1', 'e2'])
+  })
+
+  test('temper global options before the subcommand are still a decision', () => {
+    const call = { tool: 'Bash', input: { command: 'temper --spec-path .temper/specs/pw override plan --reason x' } }
+    expect(evaluate(stateAt('plan'), ctx, call)).toEqual({ deny: ONLY_USER })
+  })
+
+  test('build-state.json is never written by hand', () => {
+    for (const tool of WRITE_TOOLS) {
+      const r = evaluate(stateAt('build'), ctx, { tool, input: inputFor(tool, '.temper/build-state.json') })
+      expect(isDeny(r) && r.deny).toContain('scripts/temper state')
+    }
+    const b = evaluate(stateAt('build'), ctx, { tool: 'Bash', input: { command: 'echo {} > .temper/build-state.json' } })
+    expect(isDeny(b)).toBe(true)
+  })
+
+  test('a path with .. segments cannot reach a guarded file', () => {
+    const r = evaluate(stateAt('plan'), ctx, { tool: 'Write', input: { file_path: '.temper/specs/pw/../pw/events/1-x-1.json' } })
+    expect(r).toEqual({ deny: ONLY_USER })
+  })
+})
+
 describe('git commit gate', () => {
   const commit = { tool: 'Bash', input: { command: 'git add -A && git commit -m wip' } }
 
   test('refused with the exact reason while Check has not passed', () => {
     expect(evaluate(stateAt('check'), ctx, commit)).toEqual({
-      deny: 'Temper: commit blocked, Check has not passed. Next: run the checks (key 1 in Check or /temper check).',
+      deny: 'Temper: commit blocked, Check has not passed. Next: run the checks (key 1 in Check or /temper:check).',
     })
   })
 

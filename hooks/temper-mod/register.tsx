@@ -10,7 +10,7 @@ import type { Bare, Parsed } from './core/commands'
 import { parsePhaseModel, parsePhaseModels, parseUiMode } from './core/config'
 import type { UiMode } from './core/config'
 import type { Draft } from './core/events'
-import { phaseLabel } from './core/machine'
+import { ONLY_USER, phaseLabel } from './core/machine'
 import type { Command } from './core/machine'
 import { evaluate } from './core/rules'
 import type { RuleContext } from './core/rules'
@@ -260,7 +260,7 @@ async function switchEnforcement($: Api, value: 'on' | 'off'): Promise<string> {
 }
 
 // Asks the person for a mode: the first interactive run (once, remembered in the store),
-// or `/temper mode` with no argument. Dismissed means full.
+// or `/temper:temper mode` with no argument. Dismissed means full.
 async function askMode($: Api): Promise<string> {
   let picked: UiMode | null = null
   try {
@@ -272,10 +272,17 @@ async function askMode($: Api): Promise<string> {
   if (picked === null) {
     live.mode = 'full'
     await refresh($)
-    $.ui.toast('Temper UI is full. Change it with /temper mode <full|minimal|off>.')
+    $.ui.toast('Temper UI is full. Change it with /temper:temper mode <full|minimal|off>.')
     return 'Temper mode: full'
   }
   return switchMode($, picked)
+}
+
+// Records that the mode question needs no first run ask. An explicit choice always counts; a
+// bare /temper:temper mode counts only where the question can be asked (never in a `-p` run, whose
+// store is the same machine wide one).
+async function markModeAsked($: Api, isExplicit: boolean): Promise<void> {
+  if (isExplicit || interactive) await $.store.set('modeAsked', 1)
 }
 
 async function firstRunAsk($: Api): Promise<void> {
@@ -354,17 +361,26 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
   if ('deny' in r) return r.drift ? resolveDrift($, snap, r.drift, r.deny) : r.deny
   if (r.consume === 'drift' && r.driftPath) {
     adopt($, (await apply(io, options, snap, { type: 'useDrift', path: r.driftPath, origin: 'system' })).snap)
-  } else if (r.consume && r.consume !== 'drift') {
-    await consumeDecision(io, snap, r.consume)
+  } else if (r.consume && r.consume !== 'drift' && r.eventIds) {
+    // Every human event a chained command matched is spent, not only the first.
+    for (const id of r.eventIds) await consumeDecision(io, id)
     await refresh($)
   }
   return null
 }
 
-// `/temper <reserved word>`: null means "not mine", and the prompt based command runs.
+// `/temper:temper <reserved word>`: null means "not mine", and the prompt based command runs.
 async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise<CommandRunResult | null> {
   const snap = await ensure($)
   if (snap.inert) return null
+  // Every word that changes state needs the person's own composer: the decisions, pause and
+  // resume, and a mode or enforcement change. Checked before anything else, so a refusal never
+  // depends on the arguments. The read only words (status, timeline, help, report) and
+  // showing the current mode stay open to any origin.
+  const changes: readonly string[] = ['approve', 'next', 'back', 'override', 'accept', 'drift', 'pause', 'resume']
+  const changesState = changes.includes(parsed.word) || ((parsed.word === 'mode' || parsed.word === 'enforcement') && parsed.rest.trim() !== '')
+  if (changesState && originKind !== 'composer') return { text: ONLY_USER }
+
   const plan = planCommand(parsed, pendingDrift)
   if (plan.kind === 'error') return { text: plan.text }
 
@@ -386,24 +402,24 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
       case 'mode': {
         const wanted = plan.rest.trim().toLowerCase()
         if (wanted === '') return { text: interactive ? await askMode($) : `Temper mode: ${snap.mode}` }
-        if (wanted !== 'full' && wanted !== 'minimal' && wanted !== 'off') return { text: 'Usage: /temper mode <full|minimal|off>' }
+        if (wanted !== 'full' && wanted !== 'minimal' && wanted !== 'off') return { text: 'Usage: /temper:temper mode <full|minimal|off>' }
         return { text: await switchMode($, parseUiMode(wanted)) }
       }
       case 'enforcement': {
         const wanted = plan.rest.trim().toLowerCase()
         if (wanted === '') return { text: `Temper enforcement: ${snap.enforcement}` }
-        if (wanted !== 'on' && wanted !== 'off') return { text: 'Usage: /temper enforcement <on|off>' }
+        if (wanted !== 'on' && wanted !== 'off') return { text: 'Usage: /temper:temper enforcement <on|off>' }
         return { text: await switchEnforcement($, wanted) }
       }
       default:
-        if (snap.mode !== 'full') return { text: 'The pane is drawn in full mode only. Switch with /temper mode full.' }
+        if (snap.mode !== 'full') return { text: 'The pane is drawn in full mode only. Switch with /temper:temper mode full.' }
         return { text: await togglePane($) }
     }
   }
 
   // A decision: only the person's own composer creates one. The event is the record the
   // commit gate and the rules trust; Claude's part (mirroring it in the CLI, continuing
-  // the phase) is the prompt based /temper, which runs next. prompt.submit is not used
+  // the phase) is the prompt based /temper:temper, which runs next. prompt.submit is not used
   // here: the engine refuses it from inside command.run.
   const done = await decideAs($, plan.command, originKind === 'composer' ? 'person' : 'model')
   if (done.error) return { text: done.error }
@@ -458,13 +474,21 @@ export const register: Register = (on, opts) => {
     return next(e)
   })
 
-  // Only the reserved first words of /temper are handled here; anything else (a feature
-  // description) goes on to the prompt based command unchanged. Bare /temper toggles the
+  // Only the reserved first words of /temper:temper are handled here; anything else (a feature
+  // description) goes on to the prompt based command unchanged. Bare /temper:temper toggles the
   // pane while a run is active.
   on('command.run', async ($, e, next) => {
     if (e.command !== 'temper' && e.command !== 'temper:temper') return next(e)
-    await firstRunAsk($).catch(() => undefined)
     const parsed = parseArgs(e.args)
+    // Only the person's own composer counts here: a command from any other origin never marks
+    // the question answered and never opens the dialog. /temper:temper mode handles the
+    // question itself (an explicit mode applies at once, a bare one asks once) and either way
+    // counts as the first run answer.
+    const isPerson = e.origin?.kind === 'composer'
+    if (isPerson) {
+      if (parsed?.word === 'mode') await markModeAsked($, parsed.rest.trim() !== '').catch(() => undefined)
+      else await firstRunAsk($).catch(() => undefined)
+    }
     if (parsed === null) {
       const snap = await ensure($).catch(() => null)
       const isBare = e.args.trim() === ''
@@ -522,7 +546,7 @@ export const register: Register = (on, opts) => {
     if (e.props.hasSurvey) return next(e)
     const ui = await readUi($).catch(() => null)
     if (ui === null) return next(e)
-    const band = renderBand($.ui.resolve(e), ui.view, ui.mode, action => void runAction($, action))
+    const band = renderBand($.ui.resolve(e), ui.view, ui.mode, action => runAction($, action).catch(() => undefined))
     return band ?? next(e)
   })
 
@@ -532,8 +556,8 @@ export const register: Register = (on, opts) => {
     return renderPane(
       $.ui.resolve(e),
       ui.view,
-      action => void runAction($, action),
-      (kind, id) => void runFindingAction($, kind, id),
+      action => runAction($, action).catch(() => undefined),
+      (kind, id) => runFindingAction($, kind, id).catch(() => undefined),
     )
   })
 

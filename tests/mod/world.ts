@@ -121,7 +121,7 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
     return { text: e.text }
   })
   on('attribution.text', ($, e) => ({ text: e.text }))
-  on('command.run', () => ({ text: 'prompt based /temper ran' }))
+  on('command.run', () => ({ text: 'prompt based /temper:temper ran' }))
   on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'You are Claude.', scope: 'shared' as const }] }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('classic.SessionStart', () => ({}))

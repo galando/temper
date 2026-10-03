@@ -2,11 +2,15 @@
 // Pure. Every deny reason ends with what to do next (mods-plan 3.4).
 
 import { classifyBash, protectedKind } from './bash'
-import type { DecisionKind } from './bash'
+import type { DecisionKind, ProtectedKind } from './bash'
 import type { Phase } from './events'
 import { ONLY_USER, phaseLabel } from './machine'
 import type { RunState } from './machine'
 import { matchesPlan, normalizePath } from './paths'
+
+// A decision the person made that no CLI call has matched yet: the event id, its kind, and
+// the phase (or finding id) it was made for.
+export type HumanDecision = { id: string; kind: DecisionKind; phase?: string; findingId?: string }
 
 export type RuleContext = {
   // Absolute project root; absolute tool paths inside it are made relative.
@@ -15,8 +19,8 @@ export type RuleContext = {
   specDir: string
   // File entries from plan.md and tasks.md (exact paths, `dir/` prefixes or globs).
   planFiles: readonly string[]
-  // Human decision events not yet matched by a CLI call, per kind.
-  humanDecisions?: Partial<Record<DecisionKind, number>>
+  // Human decision events not yet matched by a CLI call.
+  humanDecisions?: readonly HumanDecision[]
   // Files a Fix finding action is currently active for (Review phase writes).
   fixFiles?: readonly string[]
 }
@@ -24,7 +28,7 @@ export type RuleContext = {
 export type ToolCall = { tool: string; input: Record<string, unknown> }
 
 export type RuleResult =
-  | { allow: true; consume?: DecisionKind | 'drift'; driftPath?: string }
+  | { allow: true; consume?: DecisionKind | 'drift'; driftPath?: string; eventId?: string; eventIds?: string[] }
   | { deny: string; drift?: string }
 
 const ALLOW: RuleResult = { allow: true }
@@ -41,8 +45,15 @@ function targetPath(call: ToolCall): string | null {
 
 const inDir = (path: string, dir: string): boolean => path === dir || path.startsWith(dir + '/')
 
-function protectedDeny(kind: 'events' | 'gates' | 'status' | 'overrides'): RuleResult {
+function protectedDeny(kind: ProtectedKind): RuleResult {
   if (kind === 'events' || kind === 'overrides') return { deny: ONLY_USER }
+  if (kind === 'state') {
+    return {
+      deny:
+        'Temper: run state is changed with the temper CLI and never written by hand. ' +
+        'Next: use scripts/temper state set or scripts/temper state advance.',
+    }
+  }
   return {
     deny:
       'Temper: gate verdicts are computed by the temper CLI and never written by hand. ' +
@@ -51,11 +62,11 @@ function protectedDeny(kind: 'events' | 'gates' | 'status' | 'overrides'): RuleR
 }
 
 const COMMIT_NEXT: Record<Phase, string> = {
-  intent: 'finish the intent and move through the phases to Check (key 1 or /temper next)',
-  plan: 'finish the plan and move through the phases to Check (key 1 or /temper next)',
-  build: 'finish the build and move on to Review and Check (key 1 or /temper next)',
-  review: 'finish the review and move on to Check (key 1 or /temper next)',
-  check: 'run the checks (key 1 in Check or /temper check)',
+  intent: 'finish the intent and move through the phases to Check (key 1 or /temper:temper next)',
+  plan: 'finish the plan and move through the phases to Check (key 1 or /temper:temper next)',
+  build: 'finish the build and move on to Review and Check (key 1 or /temper:temper next)',
+  review: 'finish the review and move on to Check (key 1 or /temper:temper next)',
+  check: 'run the checks (key 1 in Check or /temper:check)',
   fix: 'fix the failures, then rerun the checks (key 1 in Fix)',
 }
 
@@ -73,7 +84,7 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, path: 
       return {
         deny:
           `Temper: ${label} phase. Writing ${path} is not allowed until the intent is approved. ` +
-          'Next: finish intent.md, then ask the user to approve (key 1 or /temper approve).',
+          'Next: finish intent.md, then ask the user to approve (key 1 or /temper:temper approve).',
       }
     case 'plan': {
       const ok =
@@ -84,7 +95,7 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, path: 
       return {
         deny:
           `Temper: ${label} phase. Writing ${path} is not allowed until the plan is approved. ` +
-          'Next: finish plan.md and tasks.md, then ask the user to approve (key 1 or /temper approve).',
+          'Next: finish plan.md and tasks.md, then ask the user to approve (key 1 or /temper:temper approve).',
       }
     }
     case 'review':
@@ -99,7 +110,7 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, path: 
       return {
         deny:
           `Temper: ${label} phase. Writing ${path} is not allowed; Check only runs validation. ` +
-          'Next: run the checks (key 1 in Check or /temper check).',
+          'Next: run the checks (key 1 in Check or /temper:check).',
       }
     case 'build':
     case 'fix': {
@@ -111,7 +122,7 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, path: 
         deny:
           `Temper: scope drift. ${path} is not in the plan. ` +
           'Next: ask the user to choose: add to plan, revert, or allow once with a reason ' +
-          '(/temper drift add|revert|allow <reason>).',
+          '(/temper:temper drift add|revert|allow <reason>).',
         drift: path,
       }
     }
@@ -128,11 +139,26 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
   }
 
   if (isActive(s)) {
-    const guarded = c.decisions.filter(k => k !== 'advance' || s.phase === 'intent' || s.phase === 'plan')
-    for (const kind of guarded) {
-      if ((ctx.humanDecisions?.[kind] ?? 0) < 1) return { deny: ONLY_USER }
+    // Each guarded CLI call needs its own unconsumed human decision made for that phase (and
+    // that finding, when the call names one).
+    const pool = [...(ctx.humanDecisions ?? [])]
+    let first: { kind: DecisionKind; eventId: string } | null = null
+    const matched: string[] = []
+    for (const call of c.calls) {
+      if (call.kind === 'advance' && s.phase !== 'intent' && s.phase !== 'plan') continue
+      const i = pool.findIndex(
+        h =>
+          h.kind === call.kind &&
+          (call.kind === 'accept' || call.stage === undefined || h.phase === undefined || h.phase === call.stage) &&
+          (call.id === undefined || h.findingId === undefined || h.findingId === call.id),
+      )
+      const hit = i >= 0 ? pool[i] : undefined
+      if (!hit) return { deny: ONLY_USER }
+      pool.splice(i, 1)
+      matched.push(hit.id)
+      first ??= { kind: call.kind, eventId: hit.id }
     }
-    if (guarded.length > 0 && !(c.commits && !s.paused)) return { allow: true, consume: guarded[0] }
+    if (first && !(c.commits && !s.paused)) return { allow: true, consume: first.kind, eventId: first.eventId, eventIds: matched }
   }
 
   if (c.commits && isActive(s) && !s.paused) {

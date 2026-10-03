@@ -27,10 +27,10 @@ Total about 80 seconds. Times are targets, not promises.
 | Shot | Time | On screen | Say or caption |
 |---|---|---|---|
 | 1. The promise | 0:00 to 0:08 | The README title, then a terminal at the prompt in `demo/password-reset` | Claude cannot write code before you approve the intent. |
-| 2. Intent | 0:08 to 0:22 | `/temper Add password reset...`, the phase bar with Intent current, a drafted intent with criteria | Temper starts with the intent. Six phases are always visible: Intent, Plan, Build, Review, Check, Fix. |
+| 2. Intent | 0:08 to 0:22 | `/temper:temper Add password reset...`, the phase bar with Intent current, a drafted intent with criteria | Temper starts with the intent. Six phases are always visible: Intent, Plan, Build, Review, Check, Fix. |
 | 3. A denial | 0:22 to 0:32 | The prompt "edit src/users.js now", then the refusal text ending in "Next:" | Ask for code too early and the write is refused, with the next step. This is enforced by a hook, not by a polite request. |
 | 4. Approve with a key | 0:32 to 0:44 | Press 1 on the Intent band, then 1 on the Plan band | One key approves. Plan lists the files it may touch. |
-| 5. Build and the pane | 0:44 to 1:05 | `/temper pane`, the criteria checklist ticking, a failing test then a passing one | Build starts with a failing test. The pane shows each criterion as it passes. Touch a file outside the plan and Temper asks: add to plan, revert, or allow once with a reason. |
+| 5. Build and the pane | 0:44 to 1:05 | `/temper:temper pane`, the criteria checklist ticking, a failing test then a passing one | Build starts with a failing test. The pane shows each criterion as it passes. Touch a file outside the plan and Temper asks: add to plan, revert, or allow once with a reason. |
 | 6. Desktop app | 1:05 to 1:15 | The Code tab of the desktop app with the same band and the same denial | The same mod runs in the desktop app. |
 | 7. Review, Check, done | 1:15 to 1:25 | Review findings, Check passing, `git commit` allowed, `.temper/report.md` | Review and Check follow. When Check passes, commit is allowed and the report records every override and decision. |
 
