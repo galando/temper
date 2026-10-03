@@ -1,7 +1,8 @@
 # Intent: Claude Code mods support for Temper
 
 **Author:** galando <galando@gmail.com>
-**Status:** draft
+**Status:** accepted
+**Accepted-by:** galando <galando@gmail.com>
 **Created:** 2026-10-02
 **Ticket:** none
 **Reviewer:** galando <galando@gmail.com> (Engineer)
@@ -95,9 +96,16 @@ that says what to do next, and the phase bar shows Plan as current.
 
 ### Open Questions
 
-- Blocking: approve the plan in docs/mods-plan.md, including the decisions marked "needs your call"; consequence: no build starts; owner: galando.
+- none
 
 ### Decisions
+
+- Approve docs/mods-plan.md? -> yes, "implement according to the docs in the repo" (galando, 2026-10-03)
+- Bare /temper with mods? -> toggles the pane only while a run is active; /temper pane always toggles (recommended, galando, 2026-10-03)
+- Minimal mode buttons? -> phase bar without action buttons (recommended, galando, 2026-10-03)
+- Real sec-default test? -> simulated prepend guard only, no managed settings written (recommended, galando, 2026-10-03)
+- One PR or four? -> one PR, opened only when everything works and the maintainer has tested it (galando, 2026-10-03)
+- Existing cockpit-v1.5 run -> backed up to .temper/archive/cockpit-v1.5-backup/, state replaced (galando, 2026-10-03)
 
 - Is Intent split from Plan? -> No split needed; Intent is already its own stage and gate (repo fact, 2026-10-02)
 
