@@ -2,7 +2,7 @@
 // typed arguments into a machine command, a local answer, or an error; the adapter runs
 // the result. Anything that is not a reserved word is left to the prompt based /temper.
 
-import type { DriftChoice, Phase } from './events'
+import type { Draft, DriftChoice, Phase } from './events'
 import { PHASES } from './events'
 import type { Command } from './machine'
 
@@ -87,6 +87,29 @@ export function planCommand(parsed: Parsed, pendingDrift: string | null): Plan {
     }
     default:
       return { kind: 'local', word, rest }
+  }
+}
+
+// What Claude is asked to do once the person decided with a button (the command path
+// runs the prompt based /temper instead): mirror the decision in the CLI, or act on it.
+export function followUp(draft: Draft): string | null {
+  switch (draft.type) {
+    case 'advance':
+      return draft.to === 'done'
+        ? 'Temper: the run is complete. Report the result and, if the user asks, commit.'
+        : `Temper: the user moved the run from ${draft.from} to ${draft.to}. Record it with scripts/temper state advance ${draft.from} ${draft.to}, then continue with the ${draft.to} phase.`
+    case 'override':
+      return `Temper: the user overrode the ${draft.phase} phase (reason: ${draft.reason}). Record it with scripts/temper override ${draft.phase} --reason "${draft.reason}" and continue with the next phase.`
+    case 'accept':
+      return `Temper: the user accepted review finding ${draft.findingId} (reason: ${draft.reason}). Record it with scripts/temper evidence accept --stage review --id ${draft.findingId} --reason "${draft.reason}".`
+    case 'back':
+      return `Temper: the user sent the run back to ${draft.to} (reason: ${draft.reason}). Rework ${draft.to} before moving forward again.`
+    case 'drift':
+      return draft.choice === 'revert'
+        ? `Temper: the user chose to revert the out of plan change to ${draft.path}. Restore that file to its committed state and continue inside the plan.`
+        : `Temper: the user decided scope drift for ${draft.path} (${draft.choice}). Continue.`
+    default:
+      return null
   }
 }
 

@@ -85,3 +85,15 @@ export function versionAtLeast(v: string | undefined, min: string = MIN_VERSION)
   }
   return true
 }
+
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+const EFFORTS: readonly string[] = ['low', 'medium', 'high', 'xhigh', 'max']
+
+// "sonnet", "sonnet:high" or ":high" -> a model, an effort, or both; empty parts stay out.
+export function parsePhaseModel(value: string | undefined): { model?: string; effort?: Effort } {
+  const [model = '', effort = ''] = (value ?? '').split(':').map(s => s.trim())
+  const out: { model?: string; effort?: Effort } = {}
+  if (model) out.model = model
+  if (EFFORTS.includes(effort)) out.effort = effort as Effort
+  return out
+}

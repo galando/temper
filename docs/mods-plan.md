@@ -231,12 +231,35 @@ treat the docs as the current behavior for the README.
 
 There is no manifest permission list. The engine scans the module and records what it
 calls; `claude plugin validate` prints it and admins can refuse a mod by it
-(`plugin.register` `uses`). Planned `calls:` line, nothing else:
+(`plugin.register` `uses`). The `calls:` line the validator prints for the built mod,
+nothing else (19 calls; the list is enforced by `scripts/check-mod-calls.sh`):
 
-`command.register, config.list, config.set, fs.exists, fs.list, fs.read, fs.stat,
-fs.write, prompt.submit, prompt.suggest, session.version, state.get, state.set,
-store.get, store.set, ui.ask, ui.close, ui.open, ui.resolve, ui.status, ui.toast,
-ui.invalidate`
+`config.list, config.set, fs.list, fs.read, fs.stat, fs.write, prompt.submit,
+prompt.suggest, session.version, state.get, state.set, store.get, store.set, ui.ask,
+ui.close, ui.invalidate, ui.open, ui.resolve, ui.toast`
+
+Why each call is there:
+
+| Call | Reason |
+|---|---|
+| `config.list`, `config.set` | `/temper mode` and `/temper enforcement` read the row (locked by an administrator or not) and change it the way `/config` does |
+| `fs.list`, `fs.read` | rebuild the run from `.temper/` files and the spec's events |
+| `fs.stat` | resolve `.` to the project root so absolute tool paths can be made relative |
+| `fs.write` | the one write: event files and `.temper/report.md` |
+| `prompt.submit` | a pressed Button sends its action to Claude (never from a hook) |
+| `prompt.suggest` | the next action as a Tab suggestion after a turn |
+| `session.version` | the version guard |
+| `state.get`, `state.set` | the run view and live mode that the drawing hooks read |
+| `store.get`, `store.set` | own event ids, consumed human decisions, "mode already asked" |
+| `ui.ask` | scope drift choices, the first run question, reasons |
+| `ui.open`, `ui.close` | the pane |
+| `ui.invalidate` | redraw after a mode or enforcement change |
+| `ui.resolve`, `ui.toast` | the element table; one toast per transition |
+
+Three calls the first draft listed are not used and are no longer allowed:
+`command.register`, `fs.exists` and `ui.status`. Reading a missing file is a rejected
+`fs.read`, so `fs.exists` is not needed; the `/temper` command already exists as a
+markdown command, so nothing is registered; and no status line is drawn.
 
 - No `process.*`, `http.*` or `env.*`. Tests, lint, git and every CLI call are prompts
   to Claude, so they pass through Claude's normal tools and permissions.

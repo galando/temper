@@ -14,6 +14,17 @@ export type World = {
   asked: string[]
   // Answers the person gives, in order; empty means nobody answers (a `-p` run).
   answers: string[]
+  // What the mod showed or did through the engine's UI calls.
+  toasts: string[]
+  opened: string[]
+  closed: string[]
+  invalidated: number
+  suggestions: string[]
+  // Config rows (`temper.uiMode`, ...) the mod listed and the values it set, in order.
+  rows: Array<{ key: string; value: string; isLocked: boolean }>
+  configSets: Array<{ key: string; value: unknown }>
+  // The props the engine's own drawing received after the plugins' hooks, per component.
+  rendered: Array<{ component: string; props: Record<string, unknown> }>
 }
 
 export type WorldOptions = {
@@ -23,6 +34,10 @@ export type WorldOptions = {
   store?: Record<string, unknown>
   // Answers the person gives to the mod's questions, in order.
   answers?: string[]
+  // Config rows the mod can list; a locked one is an administrator's.
+  rows?: Array<{ key: string; value: string; isLocked: boolean }>
+  // False answers every pane open with "not placed" (a narrow terminal).
+  placed?: boolean
   // Answer every directory listing with something that is not a list.
   brokenList?: boolean
 }
@@ -34,7 +49,7 @@ export const denyText = (r: { deny?: string }): string => r.deny ?? ''
 const rel = (p: string): string => /(?:^|\/)((?:\.temper|\.claude)\/.*)$/.exec(p)?.[1] ?? p
 
 export function world(on: On, files: Record<string, string> = {}, opts: WorldOptions = {}): World {
-  const w: World = { files: new Map(Object.entries(files)), writes: [], reads: [], prompts: [], asked: [], answers: [...(opts.answers ?? [])], store: { ...(opts.store ?? {}) } }
+  const w: World = { files: new Map(Object.entries(files)), writes: [], reads: [], prompts: [], asked: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) } }
   mock.store(on, w.store)
   on('fs.read', ($, e) => {
     w.reads.push(rel(e.path))
@@ -58,6 +73,36 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
     if (opts.version === null) return { deny: 'no version' }
     const v = opts.version ?? '2.1.288'
     return { value: { version: v, base: v } }
+  })
+  // The engine's own drawing: `ref: 0` is the original, as the engine would draw it.
+  on('ui.render', ($, e) => {
+    w.rendered.push({ component: e.component, props: { ...e.props } })
+    return { type: 'engine', ref: 0 } as never
+  })
+  on('config.list', () => ({ value: w.rows.map(r => ({ ...r, label: r.key, kind: 'choice' as const, provider: { plugin: 'temper', tier: 'user' as const } })) as never }))
+  on('config.set', ($, e) => {
+    w.configSets.push({ key: e.key, value: e.value })
+    return { value: e.value }
+  })
+  on('ui.open', ($, e) => {
+    w.opened.push(e.id)
+    return { value: opts.placed === false ? { isPlaced: false as const, reason: 'narrow' } : { isPlaced: true as const } } as never
+  })
+  on('ui.close', ($, e) => {
+    w.closed.push(e.id)
+    return { value: undefined }
+  })
+  on('ui.toast', ($, e) => {
+    w.toasts.push(e.text)
+    return { value: undefined }
+  })
+  on('ui.invalidate', () => {
+    w.invalidated += 1
+    return { value: undefined }
+  })
+  on('prompt.suggest', ($, e) => {
+    w.suggestions.push(e.text)
+    return { isShown: true } as never
   })
   // The engine's own tool.call: reaching it means the plugin let the call through.
   on('tool.call', ($, e) => {

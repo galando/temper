@@ -72,3 +72,26 @@ export function phaseFromStage(next: string | null): Phase | 'done' {
       return 'intent'
   }
 }
+
+export type Finding = { id: string; severity: string; claim: string }
+
+// Open review findings from `.temper/evidence/review.json`: rows with a severity that are
+// neither resolved nor accepted. The id is the row's 1-based position, which is what
+// `temper evidence accept --id` takes.
+export function parseFindings(text: string): Finding[] {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(raw)) return []
+  const out: Finding[] = []
+  raw.forEach((row, i) => {
+    if (typeof row !== 'object' || row === null) return
+    const r = row as Record<string, unknown>
+    if (typeof r.severity !== 'string' || r.severity === '' || r.resolved || r.accepted) return
+    out.push({ id: String(i + 1), severity: r.severity, claim: typeof r.claim === 'string' ? r.claim : '' })
+  })
+  return out
+}

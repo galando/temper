@@ -17,7 +17,7 @@ const decisions = (w: World) => events(w).filter(e => e.type !== 'start')
 describe('only reserved first words are handled', () => {
   test('a feature description reaches the prompt based /temper unchanged', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'plan' }))
-    for (const args of ['add password reset by email', '', 'statuses please', 'build the thing']) {
+    for (const args of ['add password reset by email', 'statuses please', 'build the thing']) {
       const r = await $.command.run({ command: 'temper', args, origin: { kind: 'composer' } } as never)
       expect(r.text).toBe(PASSTHROUGH)
     }

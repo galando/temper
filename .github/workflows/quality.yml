@@ -67,3 +67,30 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
       - name: Run claude plugin validate --strict
         run: claude plugin validate --strict .
+
+  mod:
+    name: Mod (Claude Code 2.1.287)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Claude Code 2.1.287
+        run: npm install -g @anthropic-ai/claude-code@2.1.287
+      - name: claude plugin test (no sign in needed)
+        run: claude plugin test .
+      - name: claude plugin validate --strict
+        run: claude plugin validate --strict .
+      - name: Generate the mod types
+        # Loading the plugin writes .claude-plugin/types/. The key is invalid on purpose:
+        # the load happens before any request, and nothing is sent that needs a login.
+        run: |
+          ANTHROPIC_API_KEY=sk-invalid claude -p "hi" --plugin-dir . || true
+          test -f .claude-plugin/types/claude-code/index.d.ts
+      - name: Type check the mod (tsc via tsconfig.mod.json)
+        run: npx -p typescript@5.6 tsc -p tsconfig.mod.json
+      - name: Assert the reviewed calls list
+        run: |
+          bash scripts/tests/test-check-mod-calls.sh
+          bash scripts/check-mod-calls.sh

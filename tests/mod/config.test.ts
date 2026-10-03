@@ -4,6 +4,7 @@ import {
   parseEnforcement,
   parseMaxLoops,
   parseOnOff,
+  parsePhaseModel,
   parsePhaseModels,
   parseUiMode,
   readConfigValue,
@@ -72,5 +73,16 @@ describe('plain string options validated in code', () => {
     expect(parsePhaseModels('')).toEqual({})
     expect(parsePhaseModels('build=, =x, nonsense, review=haiku')).toEqual({ review: 'haiku' })
     expect(parsePhaseModels(undefined)).toEqual({})
+  })
+})
+
+describe('parsePhaseModel', () => {
+  test('model, effort, or both; junk effort is dropped', () => {
+    expect(parsePhaseModel('sonnet')).toEqual({ model: 'sonnet' })
+    expect(parsePhaseModel('sonnet:high')).toEqual({ model: 'sonnet', effort: 'high' })
+    expect(parsePhaseModel(':max')).toEqual({ effort: 'max' })
+    expect(parsePhaseModel('sonnet:loud')).toEqual({ model: 'sonnet' })
+    expect(parsePhaseModel('')).toEqual({})
+    expect(parsePhaseModel(undefined)).toEqual({})
   })
 })

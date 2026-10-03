@@ -15,7 +15,10 @@ import { mergeCriteria, parseCriteria, parseStatus, parseTitle, progress } from 
 import type { MergedCriterion } from './core/criteria'
 import { encodeEvent, eventFileName, readEvents, stamp } from './core/events'
 import type { Draft, TemperEvent } from './core/events'
-import { parseBuildState, parseGates, phaseFromStage } from './core/gates'
+import { parseBuildState, parseFindings, parseGates, phaseFromStage } from './core/gates'
+import type { Finding } from './core/gates'
+import { buildView } from './core/view'
+import type { View } from './core/view'
 import { decide, initialState, phaseLabel, reduce } from './core/machine'
 import type { Command, RunState, Verdicts } from './core/machine'
 import { planFileList, taskProgress } from './core/planfiles'
@@ -36,6 +39,8 @@ export type Io = {
   storeSet: (key: string, value: unknown) => Promise<void>
   version: () => Promise<string | undefined>
   setRun: (run: TemperRun) => Promise<void>
+  // The live mode, mirrored so a redraw sees a change at once.
+  setMode: (mode: UiMode) => Promise<void>
 }
 
 export type Snapshot = {
@@ -51,6 +56,7 @@ export type Snapshot = {
   planFiles: string[]
   title: string | null
   criteria: MergedCriterion[]
+  findings: Finding[]
   // "task N of M": see taskProgress in core/planfiles.ts (ticked rows in tasks.md, or
   // the numeric `task` in build-state.json when the orchestrator sets one).
   task: { n: number; of: number } | null
@@ -69,10 +75,14 @@ const str = (options: PluginOptions, key: string): string | undefined => {
   return typeof v === 'string' ? v : undefined
 }
 
+// Values changed live (`/temper mode`, `/temper enforcement`) win over the options of this
+// load until the config change reloads the module with the new options.
+export const live: { mode?: UiMode; enforcement?: 'on' | 'off' } = {}
+
 export function settingsFrom(options: PluginOptions) {
   return {
-    mode: parseUiMode(str(options, 'uiMode')),
-    enforcement: parseEnforcement(str(options, 'enforcement')),
+    mode: live.mode ?? parseUiMode(str(options, 'uiMode')),
+    enforcement: live.enforcement ?? parseEnforcement(str(options, 'enforcement')),
     prAttribution: parseOnOff(str(options, 'prAttribution'), 'on'),
   }
 }
@@ -88,6 +98,7 @@ export function idleSnapshot(options: PluginOptions, inert: boolean): Snapshot {
     planFiles: [],
     title: null,
     criteria: [],
+    findings: [],
     task: null,
     unreadable: [],
     humanDecisions: {},
@@ -188,6 +199,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     planFiles: planFileList(planText, tasksText),
     title,
     criteria: mergeCriteria(parseCriteria(intentText), status),
+    findings: parseFindings((await readText(io, `${STATE_ROOT}/evidence/review.json`)) ?? ''),
     task: taskProgress(tasksText, bs.task),
     unreadable: unreadable.map(u => u.name),
     humanDecisions,
@@ -256,9 +268,13 @@ export function composeText(snap: Snapshot): string {
   })
 }
 
+export const viewOf = (snap: Snapshot): View =>
+  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, enforcement: snap.enforcement })
+
 // Mirrors the folded state into `$.state` for drawing and compaction.
 export async function publish(io: Io, snap: Snapshot): Promise<void> {
-  await io.setRun({ slug: snap.slug, phase: snap.state.phase, title: snap.title, summary: composeText(snap) })
+  await io.setRun({ slug: snap.slug, phase: snap.state.phase, title: snap.title, summary: composeText(snap), view: viewOf(snap) })
+  await io.setMode(snap.mode)
 }
 
 // Check results are read from the CLI's verdict, never decided here. A fresh PASS ends
