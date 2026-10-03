@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Temper Plan Review — {{FEATURE_NAME}}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>{{FEATURE_NAME}} plan review</title>
 <style>
+  /* Dark first. Light values live in the two light blocks below the base tokens. */
   :root {
     --bg: #0d1117;
     --surface: #161b22;
@@ -13,11 +14,64 @@
     --text-muted: #8b949e;
     --accent: #58a6ff;
     --accent-hover: #79c0ff;
+    --on-accent: #0d1117;
     --success: #3fb950;
+    --on-success: #0d1117;
     --warning: #d29922;
     --danger: #f85149;
     --comment-bg: #1c2128;
+    --code-bg: rgba(110,118,129,0.25);
+    --accent-soft: rgba(88,166,255,0.15);
+    --success-soft: rgba(63,185,80,0.15);
+    --warning-soft: rgba(210,153,34,0.15);
+    --muted-soft: rgba(139,148,158,0.15);
+    color-scheme: dark;
   }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #ffffff;
+      --surface: #f6f8fa;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --text-muted: #59636e;
+      --accent: #0969da;
+      --accent-hover: #0550ae;
+      --on-accent: #ffffff;
+      --success: #1a7f37;
+      --on-success: #ffffff;
+      --warning: #9a6700;
+      --danger: #cf222e;
+      --comment-bg: #eef1f5;
+      --code-bg: rgba(175,184,193,0.3);
+      --accent-soft: rgba(9,105,218,0.12);
+      --success-soft: rgba(26,127,55,0.12);
+      --warning-soft: rgba(154,103,0,0.14);
+      --muted-soft: rgba(89,99,110,0.12);
+      color-scheme: light;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #ffffff;
+    --surface: #f6f8fa;
+    --border: #d0d7de;
+    --text: #1f2328;
+    --text-muted: #59636e;
+    --accent: #0969da;
+    --accent-hover: #0550ae;
+    --on-accent: #ffffff;
+    --success: #1a7f37;
+    --on-success: #ffffff;
+    --warning: #9a6700;
+    --danger: #cf222e;
+    --comment-bg: #eef1f5;
+    --code-bg: rgba(175,184,193,0.3);
+    --accent-soft: rgba(9,105,218,0.12);
+    --success-soft: rgba(26,127,55,0.12);
+    --warning-soft: rgba(154,103,0,0.14);
+    --muted-soft: rgba(89,99,110,0.12);
+    color-scheme: light;
+  }
+  [hidden] { display: none !important; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
@@ -25,23 +79,34 @@
     color: var(--text);
     line-height: 1.6;
     max-width: 960px;
-    margin: 0 auto;
-    padding: 2rem 1.5rem;
+    margin-inline: auto;
+    padding-block: 2rem;
+    padding-inline: 1.5rem;
   }
   header {
     border-bottom: 1px solid var(--border);
     padding-bottom: 1.5rem;
     margin-bottom: 2rem;
   }
-  header h1 { font-size: 1.5rem; font-weight: 600; }
+  header h1 { font-size: 1.5rem; font-weight: 600; text-wrap: balance; }
   header p { color: var(--text-muted); margin-top: 0.5rem; font-size: 0.9rem; }
   .status-bar {
-    display: flex; gap: 1rem; align-items: center;
+    display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center;
     padding: 0.75rem 1rem; border-radius: 6px;
     background: var(--surface); border: 1px solid var(--border);
-    margin-bottom: 2rem; font-size: 0.85rem;
+    margin-bottom: 1rem; font-size: 0.85rem;
   }
   .status-bar .comments-count { color: var(--accent); font-weight: 600; }
+  .status-bar .muted { color: var(--text-muted); }
+  .status-bar label { color: var(--text-muted); }
+  .status-bar input {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem; width: 12rem; max-width: 100%;
+  }
+  .notice {
+    padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.85rem;
+    background: var(--accent-soft); border: 1px solid var(--accent); color: var(--text);
+  }
   .section {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -50,20 +115,20 @@
     position: relative;
   }
   .section-header {
-    display: flex; justify-content: space-between; align-items: center;
+    display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: space-between; align-items: center;
     padding: 1rem 1.25rem;
     border-bottom: 1px solid var(--border);
-    cursor: default;
   }
-  .section-header h2 { font-size: 1.1rem; font-weight: 600; }
+  .section-header h2 { font-size: 1.1rem; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
   .section-header .badge {
     font-size: 0.75rem; padding: 0.2rem 0.6rem;
-    border-radius: 12px; background: rgba(88,166,255,0.15);
+    border-radius: 12px; background: var(--accent-soft);
     color: var(--accent);
   }
   .section-body {
     padding: 1.25rem;
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
     font-size: 0.9rem;
   }
   .section-body h1,.section-body h2,.section-body h3,.section-body h4 {
@@ -71,24 +136,23 @@
   }
   .section-body h1:first-child,.section-body h2:first-child,.section-body h3:first-child { margin-top: 0; }
   .section-body ul,.section-body ol { margin-left: 1.5rem; margin-bottom: 0.5rem; }
-  .section-body code { background: rgba(110,118,129,0.25); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
+  .section-body code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
   .section-body pre { background: var(--bg); padding: 1rem; border-radius: 6px; overflow-x: auto; margin: 0.75rem 0; }
   .section-body pre code { background: none; padding: 0; }
-  .section-body table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+  .section-body table { display: block; overflow-x: auto; border-collapse: collapse; margin: 0.75rem 0; }
   .section-body th,.section-body td { padding: 0.5rem 0.75rem; border: 1px solid var(--border); text-align: left; font-size: 0.85rem; }
   .section-body th { background: var(--bg); font-weight: 600; }
   .section-body blockquote { border-left: 3px solid var(--accent); padding-left: 1rem; color: var(--text-muted); margin: 0.75rem 0; }
 
   /* Comment UI */
   .comment-btn {
-    position: absolute; top: 0.75rem; right: 3.5rem;
     background: none; border: 1px solid var(--border); color: var(--text-muted);
     padding: 0.3rem 0.7rem; border-radius: 4px; font-size: 0.75rem;
-    cursor: pointer; opacity: 0; transition: opacity 0.2s;
+    cursor: pointer;
   }
-  .section:hover .comment-btn { opacity: 1; }
-  .comment-btn:hover { color: var(--accent); border-color: var(--accent); }
-  .comments-list { margin-top: 0; border-top: 1px solid var(--border); }
+  .comment-btn:hover, .comment-btn:focus-visible { color: var(--accent); border-color: var(--accent); }
+  .comments-list { border-top: 1px solid var(--border); }
+  .comments-list:empty { display: none; }
   .comment {
     padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--border);
     background: var(--comment-bg);
@@ -99,11 +163,11 @@
     display: inline-block; font-size: 0.7rem; padding: 0.15rem 0.5rem;
     border-radius: 10px; margin-right: 0.5rem;
   }
-  .comment-type.task-change { background: rgba(63,185,80,0.15); color: var(--success); }
-  .comment-type.scenario-change { background: rgba(210,153,34,0.15); color: var(--warning); }
-  .comment-type.plan-change { background: rgba(88,166,255,0.15); color: var(--accent); }
-  .comment-type.general-note { background: rgba(139,148,158,0.15); color: var(--text-muted); }
-  .comment-text { font-size: 0.85rem; white-space: pre-wrap; }
+  .comment-type.task-change { background: var(--success-soft); color: var(--success); }
+  .comment-type.scenario-change { background: var(--warning-soft); color: var(--warning); }
+  .comment-type.plan-change { background: var(--accent-soft); color: var(--accent); }
+  .comment-type.general-note { background: var(--muted-soft); color: var(--text-muted); }
+  .comment-text { font-size: 0.85rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 
   /* Add comment form */
   .add-comment { padding: 1rem 1.25rem; border-top: 1px solid var(--border); display: none; }
@@ -117,11 +181,11 @@
   .add-comment select {
     background: var(--bg); border: 1px solid var(--border);
     color: var(--text); padding: 0.3rem 0.5rem; border-radius: 4px;
-    font-size: 0.8rem; margin-right: 0.5rem;
+    font-size: 0.8rem;
   }
-  .add-comment .btn-row { margin-top: 0.5rem; display: flex; gap: 0.5rem; align-items: center; }
+  .add-comment .btn-row { margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
   .btn-primary {
-    background: var(--accent); color: #fff; border: none;
+    background: var(--accent); color: var(--on-accent); border: none;
     padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer;
     font-size: 0.8rem; font-weight: 500;
   }
@@ -131,16 +195,34 @@
     padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.8rem;
   }
   .btn-ghost:hover { color: var(--text); border-color: var(--text-muted); }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
 
-  /* Done button */
+  /* Export panel */
+  .export-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem 1.25rem; margin-bottom: 1.5rem;
+  }
+  .export-panel h2 { font-size: 1rem; margin-bottom: 0.25rem; }
+  .export-panel p { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem; }
+  .export-panel textarea {
+    width: 100%; min-height: 9rem; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem;
+  }
+  .export-panel .btn-row { margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+  /* Done bar */
   .done-bar {
     position: fixed; bottom: 0; left: 0; right: 0;
     background: var(--surface); border-top: 1px solid var(--border);
-    padding: 1rem; display: flex; justify-content: center; gap: 1rem;
+    padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem;
     z-index: 100;
   }
   .btn-done {
-    background: var(--success); color: #fff; border: none;
+    background: var(--success); color: var(--on-success); border: none;
     padding: 0.7rem 2rem; border-radius: 8px; cursor: pointer;
     font-size: 1rem; font-weight: 600;
   }
@@ -151,53 +233,71 @@
     font-size: 0.9rem;
   }
   .btn-export:hover { color: var(--text); border-color: var(--text-muted); }
-  .done-spacer { height: 5rem; }
+  .done-spacer { height: 8rem; }
 </style>
 </head>
 <body>
 
 <header>
   <h1>Temper Plan Review</h1>
-  <p id="feature-name">{{FEATURE_NAME}} — Review and comment on the plan below. When done, click "Done Reviewing" at the bottom.</p>
+  <p id="feature-name">{{FEATURE_NAME}}. Review and comment on the plan below. When you are done, click "Done Reviewing" at the bottom.</p>
 </header>
 
 <div class="status-bar">
   <span>Comments: <span class="comments-count" id="comment-count">0</span></span>
-  <span style="color:var(--text-muted)">|</span>
-  <span style="color:var(--text-muted)">Click "+ Comment" on any section to add feedback</span>
+  <span class="muted">Click "+ Comment" on any section to add feedback.</span>
+  <span><label for="reviewer">Your name (optional)</label> <input id="reviewer" type="text" maxlength="60" autocomplete="name"></span>
+  <span class="muted" id="shared-note" hidden>Shared review: comments from every reviewer appear here as they are added.</span>
 </div>
+
+<div class="notice" id="notice" role="status" hidden></div>
 
 <div id="sections-container">
   <!-- Sections injected here by JS -->
 </div>
 
+<section class="export-panel" id="export-panel" hidden>
+  <h2 id="export-title">Review comments</h2>
+  <p id="export-hint"></p>
+  <textarea id="export-json" readonly aria-label="Review comments as JSON"></textarea>
+  <div class="btn-row">
+    <button class="btn-primary" type="button" data-action="copy-export">Copy</button>
+    <button class="btn-ghost" type="button" data-action="close-export">Close</button>
+  </div>
+</section>
+
 <div class="done-spacer"></div>
 <div class="done-bar">
-  <button class="btn-export" onclick="exportComments()">Export Comments JSON</button>
-  <button class="btn-done" onclick="doneReviewing()">Done Reviewing</button>
+  <button class="btn-export" type="button" data-action="copy-comments">Copy comments</button>
+  <button class="btn-export" type="button" id="btn-download" data-action="download-comments">Download JSON</button>
+  <button class="btn-done" type="button" data-action="done">Done Reviewing</button>
 </div>
 
 <script>
 // ============================================================
-// DATA — injected by Temper orchestrator
+// DATA: filled in by scripts/plan_review.py (values are JSON-escaped)
 // ============================================================
-const FEATURE_SLUG = "{{FEATURE_SLUG}}";
+const FEATURE_SLUG = {{FEATURE_SLUG}};
 const SECTIONS = {{SECTIONS_JSON}};
 
 // ============================================================
 // STATE
 // ============================================================
-let comments = [];
-let activeSection = null;
+let comments = [];        // comments made on this page
+let shared = null;        // Map id -> comment from the shared review, when it is on
+let db = null;            // the shared review store, when this view has one
+const reviewerId = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
-// Sanitize HTML to prevent XSS
+const VALID_COMMENT_TYPES = ['task-change', 'scenario-change', 'plan-change', 'general-note'];
+
+// Escape text for HTML (comments from other reviewers are untrusted)
 function escapeHtml(str) {
   const div = document.createElement('div');
-  div.textContent = str;
+  div.textContent = String(str == null ? '' : str);
   return div.innerHTML;
 }
 
-// Simple markdown → HTML converter (no external deps)
+// Simple markdown to HTML converter (no external deps)
 function mdToHtml(md) {
   let html = escapeHtml(md);
   // Code blocks
@@ -252,6 +352,31 @@ function mdToHtml(md) {
 }
 
 // ============================================================
+// SMALL HELPERS
+// ============================================================
+function byTime(a, b) {
+  return String(a.timestamp).localeCompare(String(b.timestamp)) || String(a.id).localeCompare(String(b.id));
+}
+
+// Every comment to show: the shared review's, plus any of ours it has not stored yet.
+function allComments() {
+  if (!shared) return comments.slice().sort(byTime);
+  const merged = new Map(shared);
+  comments.forEach(c => { if (!merged.has(c.id)) merged.set(c.id, c); });
+  return Array.from(merged.values()).sort(byTime);
+}
+
+function reviewerName() {
+  return document.getElementById('reviewer').value.trim();
+}
+
+function setNotice(message) {
+  const el = document.getElementById('notice');
+  el.textContent = message || '';
+  el.hidden = !message;
+}
+
+// ============================================================
 // RENDER SECTIONS
 // ============================================================
 function renderSections() {
@@ -265,21 +390,21 @@ function renderSections() {
       <div class="section-header">
         <h2>${escapeHtml(section.title)}</h2>
         <span class="badge">${escapeHtml(section.source)}</span>
-        <button class="comment-btn" onclick="toggleCommentForm(${idx})">+ Comment</button>
+        <button class="comment-btn" type="button" data-action="toggle-form" data-idx="${idx}">+ Comment</button>
       </div>
       <div class="section-body">${mdToHtml(section.content)}</div>
       <div class="comments-list" id="comments-${idx}"></div>
       <div class="add-comment" id="add-comment-${idx}">
-        <textarea id="comment-text-${idx}" placeholder="Your comment..."></textarea>
+        <textarea id="comment-text-${idx}" placeholder="Your comment..." aria-label="Comment on ${escapeHtml(section.title)}"></textarea>
         <div class="btn-row">
-          <select id="comment-type-${idx}">
+          <select id="comment-type-${idx}" aria-label="Comment type">
             <option value="general-note">General Note</option>
             <option value="task-change">Task Change</option>
             <option value="scenario-change">Scenario Change</option>
             <option value="plan-change">Plan Change</option>
           </select>
-          <button class="btn-primary" onclick="submitComment(${idx})">Add</button>
-          <button class="btn-ghost" onclick="toggleCommentForm(${idx})">Cancel</button>
+          <button class="btn-primary" type="button" data-action="add-comment" data-idx="${idx}">Add</button>
+          <button class="btn-ghost" type="button" data-action="toggle-form" data-idx="${idx}">Cancel</button>
         </div>
       </div>
     `;
@@ -304,34 +429,44 @@ function submitComment(idx) {
   const type = document.getElementById(`comment-type-${idx}`).value;
   if (!text) return;
 
-  comments.push({
-    id: `c${Date.now()}`,
+  const comment = {
+    id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
     target: `section-${idx}`,
     target_title: SECTIONS[idx].title,
     type: type,
     text: text,
+    author: reviewerName(),
     timestamp: new Date().toISOString(),
     resolved: false
-  });
+  };
+  comments.push(comment);
 
   document.getElementById(`comment-text-${idx}`).value = '';
   toggleCommentForm(idx);
-  renderComments(idx);
-  updateCommentCount();
+  renderAllComments();
+  saveShared(comment);
 }
 
-const VALID_COMMENT_TYPES = ['task-change', 'scenario-change', 'plan-change', 'general-note'];
+async function saveShared(comment) {
+  if (!db) return;
+  try {
+    await db.collection('comments').doc(comment.id).set(comment);
+  } catch (err) {
+    setNotice('Your comment is kept on this page only. The shared review could not store it, which usually means you have view-only access. Use "Copy comments" to send it.');
+  }
+}
 
 function renderComments(idx) {
   const list = document.getElementById(`comments-${idx}`);
-  const sectionComments = comments.filter(c => c.target === `section-${idx}`);
+  const sectionComments = allComments().filter(c => c.target === `section-${idx}`);
   list.innerHTML = sectionComments.map(c => {
     const safeType = VALID_COMMENT_TYPES.includes(c.type) ? c.type : 'general-note';
+    const who = c.author ? `<span>${escapeHtml(c.author)}</span> ` : '';
     return `
     <div class="comment">
       <div class="comment-meta">
-        <span class="comment-type ${safeType}">${escapeHtml(c.type.replace('-', ' '))}</span>
-        <span>${new Date(c.timestamp).toLocaleString()}</span>
+        <span class="comment-type ${safeType}">${escapeHtml(safeType.replace(/-/g, ' '))}</span>
+        ${who}<span>${escapeHtml(new Date(c.timestamp).toLocaleString())}</span>
       </div>
       <div class="comment-text">${escapeHtml(c.text)}</div>
     </div>`;
@@ -340,10 +475,7 @@ function renderComments(idx) {
 
 function renderAllComments() {
   SECTIONS.forEach((_, idx) => renderComments(idx));
-}
-
-function updateCommentCount() {
-  document.getElementById('comment-count').textContent = comments.length;
+  document.getElementById('comment-count').textContent = allComments().length;
 }
 
 // ============================================================
@@ -353,11 +485,12 @@ function getCommentsJson() {
   return {
     version: 1,
     feature: FEATURE_SLUG,
-    comments: comments.map(c => ({
+    comments: allComments().map(c => ({
       id: c.id,
       target: c.target_title,
       type: c.type,
       text: c.text,
+      author: c.author || '',
       timestamp: c.timestamp,
       resolved: c.resolved
     })),
@@ -366,35 +499,123 @@ function getCommentsJson() {
   };
 }
 
-function exportComments() {
-  const data = getCommentsJson();
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'review-comments.json';
-  a.click();
-  URL.revokeObjectURL(url);
+function showExport(data, title, hint) {
+  document.getElementById('export-title').textContent = title;
+  document.getElementById('export-hint').textContent = hint;
+  const box = document.getElementById('export-json');
+  box.value = JSON.stringify(data, null, 2);
+  const panel = document.getElementById('export-panel');
+  panel.hidden = false;
+  panel.scrollIntoView({ block: 'nearest' });
 }
 
-function doneReviewing() {
+// Copy needs the click's user gesture; fall back to selecting the text.
+function copyExport() {
+  const box = document.getElementById('export-json');
+  const done = () => setNotice('Copied. Paste it to the person who shared this review.');
+  const fallback = () => {
+    box.focus(); box.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    if (ok) done(); else setNotice('Select the text in the box and copy it yourself.');
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(box.value).then(done, fallback);
+  } else {
+    fallback();
+  }
+}
+
+function copyComments() {
+  showExport(getCommentsJson(), 'Review comments',
+    'Copy this JSON and send it to the person who shared the review. They save it as review-comments.json in .temper/specs/' + FEATURE_SLUG + '/.');
+  copyExport();
+}
+
+// Saving a file works from a local file or a plain web page, not inside the Claude viewer.
+function downloadComments(data) {
+  try {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'review-comments.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) { /* the export panel is the fallback */ }
+}
+
+async function doneReviewing() {
   const data = getCommentsJson();
   data.review_completed = true;
   data.completed_at = new Date().toISOString();
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'review-comments.json';
-  a.click();
-  URL.revokeObjectURL(url);
-  alert('Review saved! Place review-comments.json in your .temper/specs/' + FEATURE_SLUG + '/ directory.\nThen return to your terminal to continue.');
+  if (db) {
+    try {
+      await db.doc('done/' + reviewerId).set({ author: reviewerName(), completed_at: data.completed_at });
+      setNotice('Review submitted. Tell the person who shared this link that you are done.');
+      return;
+    } catch (err) {
+      setNotice('The shared review could not record that you are done. Copy your comments and send them instead.');
+    }
+  }
+  showExport(data, 'Review ready',
+    'Copy this JSON and send it to the person who shared the review, or save it as review-comments.json in .temper/specs/' + FEATURE_SLUG + '/ and return to your terminal.');
+  if (!db) downloadComments(data);
+}
+
+// ============================================================
+// SHARED REVIEW: lights up only when this view has the db capability
+// ============================================================
+async function initShared() {
+  try {
+    const c = window.claude;
+    if (!c || typeof c.use !== 'function') return;
+    const handle = await c.use('db');
+    if (!handle) return;
+    db = handle;
+    document.getElementById('shared-note').hidden = false;
+    document.getElementById('btn-download').hidden = true;
+    db.collection('comments').onSnapshot(snap => {
+      shared = new Map(snap.docs.map(d => [d.id, d.data()]));
+      renderAllComments();
+    }, () => {
+      shared = null;
+      setNotice('Live comments stopped. Your comments stay on this page; use "Copy comments" to send them.');
+      renderAllComments();
+    });
+  } catch (err) {
+    db = null;
+  }
 }
 
 // ============================================================
 // INIT
 // ============================================================
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const idx = Number(el.dataset.idx);
+  switch (el.dataset.action) {
+    case 'toggle-form': toggleCommentForm(idx); break;
+    case 'add-comment': submitComment(idx); break;
+    case 'copy-comments': copyComments(); break;
+    case 'copy-export': copyExport(); break;
+    case 'close-export': document.getElementById('export-panel').hidden = true; break;
+    case 'download-comments': downloadComments(getCommentsJson()); break;
+    case 'done': doneReviewing(); break;
+  }
+});
+
+try {
+  const saved = localStorage.getItem('temper-reviewer');
+  if (saved) document.getElementById('reviewer').value = saved;
+  document.getElementById('reviewer').addEventListener('change', e => {
+    try { localStorage.setItem('temper-reviewer', e.target.value.trim()); } catch (err) { /* optional */ }
+  });
+} catch (err) { /* storage can be blocked; the name field still works */ }
+
 renderSections();
+initShared();
 </script>
 </body>
 </html>

@@ -50,10 +50,7 @@ INTENT → PLAN → DESIGN? → BUILD → REVIEW → CHECK → COMMIT
   bands (pure arithmetic); a breach is drafted as the next intent and rides the same
   pipeline. Fixes write a committed `lessons.md` every future RCA reads first.
 
-Proof it catches real bugs: three seeded-defect fixtures run through the live
-pipeline in CI and must *mechanically FAIL naming the defect* —
-[seeded-defect evals](https://github.com/galando/temper/tree/main/evals) ·
-[evidence gallery](evidence/case-study.html).
+Proof it catches real bugs: [evidence gallery](evidence/case-study.html).
 
 ## Commands
 

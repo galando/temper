@@ -60,7 +60,7 @@ in temper.config is ignored by the CLI). Architecture Depth applies the
 | Grill Me | Plan, Design | Socratic challenge mode: stress-test plans before building |
 | Teach Me | Plan, Design, Build, Check | Comprehension companion: teach + quiz the human to mastery at each teaching gate (Review excluded, taught at Build) |
 | Config Suggestions | Check | Suggest CLAUDE.md/AGENTS.md updates based on what was built |
-| HTML Review | Plan | Interactive browser-based plan review with inline comments |
+| HTML Review | Plan | Interactive plan review with inline comments, local or shared by link (artifact or secret Gist) |
 
 ## Full Docs
 `$CLAUDE_PLUGIN_ROOT/reference/{command}.md`

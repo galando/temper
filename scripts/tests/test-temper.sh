@@ -1571,6 +1571,92 @@ OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_eq "base_sha diff + uncommitted paths feed the blast-radius count" "yes" \
   "$(echo "$OUT" | grep -qE 'blast radius — [0-9]+ file' && echo "$OUT" | grep -qE 'blast radius' && echo yes || echo no)"
 
+# --- plan_review.py: deterministic HTML plan review (render + merge) ---
+PR="$REPO_ROOT/scripts/plan_review.py"
+PRD="$WORKDIR/pr/demo-feature"; mkdir -p "$PRD"
+cat > "$PRD/plan.md" <<'EOF'
+# Plan: Password reset
+
+Intro with {{FEATURE_NAME}} text and a </script><b>tag</b>.
+
+## Architecture
+
+```markdown
+## not a real section
+```
+
+## Blast Radius
+
+- a.js callers: 3
+EOF
+cat > "$PRD/tasks.md" <<'EOF'
+# Tasks
+
+## Task 1: Reset endpoint
+- [ ] write the test
+EOF
+assert_exit "plan_review render succeeds" 0 python3 "$PR" render "$PRD" -o "$PRD/review.html"
+SECS=$(python3 - "$PRD/review.html" <<'EOF'
+import json, re, sys
+d = open(sys.argv[1]).read()
+secs = json.loads(re.search(r"const SECTIONS = (.*?);\n\n//", d, re.S).group(1))
+print(len(secs), "|".join(s["source"] + ":" + s["title"] for s in secs))
+EOF
+)
+assert_eq "render splits plan.md then tasks.md at ## headings, ignoring fenced ones" \
+  "4 plan.md:Plan: Password reset|plan.md:Architecture|plan.md:Blast Radius|tasks.md:Task 1: Reset endpoint" "$SECS"
+assert_eq "render JSON-escapes </script> from plan text (only the real closing tag remains)" "1" \
+  "$(grep -o '</script>' "$PRD/review.html" | wc -l | tr -d ' ')"
+assert_eq "render does not re-expand a placeholder that appears inside the plan" "yes" \
+  "$(grep -q '{{FEATURE_NAME}} text' "$PRD/review.html" && echo yes || echo no)"
+assert_eq "render titles the page from the plan heading" "yes" \
+  "$(grep -q '<title>Password reset plan review</title>' "$PRD/review.html" && echo yes || echo no)"
+python3 "$PR" render "$PRD" --target artifact -o "$PRD/review-artifact.html" >/dev/null
+assert_eq "artifact target drops the document wrapper but keeps title, style and script" "yes" \
+  "$(python3 - "$PRD/review-artifact.html" <<'EOF'
+import re, sys
+a = open(sys.argv[1]).read()
+bad = [t for t in (r"<!doctype", r"<html[\s>]", r"<head[\s>]", r"</head>", r"<body[\s>]", r"</body>", r"</html>") if re.search(t, a, re.I)]
+print("yes" if not bad and "<title>" in a and "<style>" in a and "<script>" in a else "no")
+EOF
+)"
+assert_exit "render rejects a missing spec directory" 2 python3 "$PR" render "$WORKDIR/pr/nope"
+mkdir -p "$WORKDIR/pr/empty"
+assert_exit "render rejects a spec directory with no plan or tasks" 2 python3 "$PR" render "$WORKDIR/pr/empty"
+
+cat > "$WORKDIR/pr/db-dump.json" <<'EOF'
+{"comments": [
+  {"id": "c2", "target": "section-1", "target_title": "Architecture", "type": "plan-change", "text": "split it", "author": "Eli", "timestamp": "2026-01-02T00:00:00Z"},
+  {"id": "c1", "target": "section-0", "target_title": "Plan: Password reset", "type": "weird", "text": "odd type", "timestamp": "2026-01-01T00:00:00Z"},
+  {"id": "c3", "target_title": "Blast Radius", "type": "general-note", "text": "   ", "timestamp": "2026-01-03T00:00:00Z"}
+ ],
+ "done": [{"author": "Eli", "completed_at": "2026-01-04T00:00:00Z"}]}
+EOF
+cat > "$WORKDIR/pr/export.json" <<'EOF'
+{"version": 1, "feature": "demo-feature", "comments": [
+  {"id": "c2", "target": "Architecture", "type": "plan-change", "text": "split it", "timestamp": "2026-01-02T00:00:00Z"},
+  {"id": "c4", "target": "Task 1: Reset endpoint", "type": "task-change", "text": "add a test", "timestamp": "2026-01-05T00:00:00Z"}
+ ], "review_completed": false, "completed_at": null}
+EOF
+python3 "$PR" merge --feature demo-feature -o "$WORKDIR/pr/merged.json" "$WORKDIR/pr/db-dump.json" "$WORKDIR/pr/export.json" >/dev/null
+assert_eq "merge de-duplicates by id, drops empty text, coerces unknown types, sorts by time" \
+  "c1:general-note:Plan: Password reset|c2:plan-change:Architecture|c4:task-change:Task 1: Reset endpoint" \
+  "$(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+print('|'.join(c['id'] + ':' + c['type'] + ':' + c['target'] for c in d['comments']))" "$WORKDIR/pr/merged.json")"
+assert_eq "merge reads completion and reviewer names from the done collection" "True|2026-01-04T00:00:00Z|Eli" \
+  "$(python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(str(d['review_completed']) + '|' + str(d['completed_at']) + '|' + ','.join(d['reviewers_done']))" "$WORKDIR/pr/merged.json")"
+python3 "$PR" merge --feature demo-feature "$WORKDIR/pr/export.json" > "$WORKDIR/pr/merged-one.json"
+assert_eq "merge leaves review_completed false when nobody marked done" "False" \
+  "$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['review_completed'])" "$WORKDIR/pr/merged-one.json")"
+echo '{not json' > "$WORKDIR/pr/bad.json"
+assert_exit "merge rejects invalid JSON" 2 python3 "$PR" merge --feature demo-feature "$WORKDIR/pr/bad.json"
+assert_exit "merge rejects a missing file" 2 python3 "$PR" merge --feature demo-feature "$WORKDIR/pr/nope.json"
+
 # --- version-stamp drift: every visible version string matches plugin.json ---
 # plugin.json is the single source of truth; the CLAUDE.md stamp and the top
 # CHANGELOG entry must never disagree with it (version-bump.sh keeps them in

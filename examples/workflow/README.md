@@ -15,7 +15,7 @@ because the integration surface is just commands and exit codes:
 | Feeding external metrics | `scripts/temper metrics append <series> <value>` from any pipeline step | any appended series becomes band-able by name |
 
 Two cautions that apply on every platform: run headless steps in a sandboxed runner
-(the same way this repo's own eval harness does, `evals/run-fixture.sh`), and guard
+(a throwaway checkout, with `--dangerously-skip-permissions` only inside it), and guard
 the review check against a *vacuous* pass — `temper gate review` reads an empty
 evidence ledger as "0 findings", so have the review record a completion marker
 (`temper evidence add --stage review --claim "review completed"`) and fail the job if

@@ -40,6 +40,15 @@ from the orchestrator's conversation carries over.
 5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
+**Gotchas** (each one is a gate or hook that rejects the stage when missed):
+- The regression test must FAIL before the fix. Record the `red` row before you edit
+  any source file.
+- Set `temper state set regression_test` as soon as RED is confirmed. From then on the
+  write shield blocks edits to that file: fix the code, never the test.
+- Keep the fix minimal. Touch only the cause and the same-pattern occurrences
+  `rca.md` flagged.
+- Fix evidence maps onto the `build` gate, and fixes have no `tasks.md`.
+
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
 the right border) and nothing outside it. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N

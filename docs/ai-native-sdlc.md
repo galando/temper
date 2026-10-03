@@ -136,15 +136,12 @@ machine-observed rather than agent-reported. One whole clause has no counterpart
 the play's **UI feedback loop** (screenshot-vs-mock iteration for front-end work) —
 temper's verification is tests, coverage, and scenarios only.
 
-**Continuous evals in CI.** Aligned in kind for Temper itself, honest about scale:
-seeded-defect fixtures run headlessly through the real pipeline, asserting the gate
-*would have mechanically blocked* (answer keys stripped, transcript matching
-distrusted) — a stronger pass bar than the play's — but the suite is 4 cases against
-the play's 20–50, and the PR job runs one smoke fixture (it skips cleanly without
-the API secret, so it cannot hard-gate merges). **[NEW]** The suite now fires on the
-*full* agent-configuration surface (packs, hooks, templates), not just prompts.
-Open: per-pack fixtures, model/CLI pinning, and scaffolding an eval harness for a
-*user project's* own agent config — see [Remaining gaps](#remaining-gaps).
+**Continuous evals in CI.** Not provided. Temper's own seeded-defect fixture suite was
+removed in v9.5.0: its CI job skipped without an API secret, so it never gated a
+merge. What guards Temper's own behavior is `scripts/tests/test-temper.sh` (the gate
+logic, deterministically) plus the stage-gate Stop hook, which refuses to end a
+session until the owed gate has actually run. Scaffolding an eval harness for a
+*user project's* own agent config is open — see [Remaining gaps](#remaining-gaps).
 
 ### Stage 5 — Deploy
 
@@ -173,7 +170,7 @@ boundary only (a human prompt mid-build puts a person back on every parallel
 session's critical path), and non-negotiable gates in managed settings, not the repo.
 
 **CI/CD integration.** The plugin runs headlessly (`claude -p "/temper:temper ..."` —
-the eval harness is the existence proof), and its whole automation surface is
+it needs no interactive session), and its whole automation surface is
 **commands and exit codes, deliberately host-agnostic**: the same wiring works under
 GitHub Actions, GitLab CI, Jenkins, or plain cron, and temper ships no
 platform-specific pipeline files (`examples/workflow/README.md` documents the
@@ -258,9 +255,8 @@ Honest list, in rough adoption order:
   `git commit --no-verify` bypasses the spine locally; re-verifying the gates where
   your host's merge protection lives (e.g. from the committed `gate-ledger.json`)
   is wiring the project adds, not shipped.
-- **Eval scale and reach** — 4 self-eval cases vs the play's 20–50; no per-pack
-  seeded fixtures; no model/CLI pinning; nothing scaffolds an eval harness for a
-  user project's own agent config (their CLAUDE.md, their packs).
+- **Eval reach** — Temper ships no eval suite (removed in v9.5.0); nothing scaffolds an
+  eval harness for a user project's own agent config (their CLAUDE.md, their packs).
 - **Parallel-session execution** — tasks.md computes `[PARALLEL]` groups and the
   worktree pattern is documented, but nothing spawns per-worktree sessions from
   those groups; stage agents carry no `tools:` restrictions (report-only roles are
