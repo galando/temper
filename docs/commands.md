@@ -134,11 +134,16 @@ which mode you want. If your organization locked a mode, `/temper:temper mode` s
 not change it. See the README section "Where enforcement works" for what is and is not
 covered.
 
-### Phase bar hotkeys
+### The phase bar and its keys
 
-In `full` mode the band above the prompt offers up to three actions for the current
-phase on `1`, `2` and `3`. Key `9` is override (it asks for a reason) and `0` opens the
-pane with every action. Key `1` changes when the phase is ready to move on.
+In `full` mode the band above the prompt shows `TEMPER`, a plain sentence of what to do now, the
+six phases as chips (a check mark for done, a filled chip for the phase you are in, plain chips for
+upcoming phases, a redo mark after a back step), and buttons: up to three actions on `1`, `2` and
+`3`, `Override gate` on `9` and `More` on `0`. Key `9` moves the focus to a reason field below the
+buttons; Enter records the override with that reason, and an empty reason is refused. The pane
+repeats this with the intent title and a criteria checklist; its `0` expands the full action list,
+whose entries use the letters `a`, `b`, `c` and so on. Under about 100 columns (for example while the
+pane is docked) the band uses a compact form without borders. `minimal` shows the chips only.
 
 ---
 

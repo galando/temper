@@ -28,6 +28,7 @@ export const TASKS = [
 
 export type RunOptions = {
   nextStage?: string
+  complexity?: string
   gates?: Record<string, 'PASS' | 'FAIL'>
   passedCriteria?: string[]
 }
@@ -36,7 +37,7 @@ export function runFiles(o: RunOptions = {}): Record<string, string> {
   const gates: Record<string, unknown> = {}
   for (const [stage, verdict] of Object.entries(o.gates ?? {})) gates[stage] = { verdict, ts: LATER }
   const files: Record<string, string> = {
-    '.temper/build-state.json': JSON.stringify({ spec: 'pw', spec_path: SPEC, next_stage: o.nextStage ?? 'plan' }),
+    '.temper/build-state.json': JSON.stringify({ spec: 'pw', spec_path: SPEC, next_stage: o.nextStage ?? 'plan', ...(o.complexity ? { complexity: o.complexity } : {}) }),
     '.temper/gates.json': JSON.stringify(gates),
     [`${SPEC}/intent.md`]: INTENT,
     [`${SPEC}/plan.md`]: PLAN,

@@ -9,12 +9,13 @@
 
 import type { PluginOptions } from 'claude-code'
 
-import { parseEnforcement, parseMaxLoops, parseOnOff, parseUiMode, versionAtLeast } from './core/config'
+import { parseEnforcement, parseMaxLoops, parseOnOff, parseUiMode, readConfigValue, versionAtLeast } from './core/config'
 import type { UiMode } from './core/config'
 import { mergeCriteria, parseCriteria, parseStatus, parseTitle, progress } from './core/criteria'
 import type { MergedCriterion } from './core/criteria'
 import { encodeEvent, eventFileName, readEvents, stamp } from './core/events'
 import type { Draft, TemperEvent } from './core/events'
+import { stageOf } from './core/cli'
 import { parseBuildState, parseFindings, parseGates, phaseFromStage } from './core/gates'
 import type { Finding } from './core/gates'
 import { buildView } from './core/view'
@@ -51,6 +52,10 @@ export type Snapshot = {
   mode: UiMode
   prAttribution: 'on' | 'off'
   slug: string | null
+  // autonomy.enabled in .claude/temper.config.
+  autonomyEnabled: boolean
+  // The run's complexity from build-state.json (decides whether Plan is followed by design).
+  complexity: string | null
   specDir: string
   state: RunState
   verdicts: Verdicts
@@ -78,7 +83,7 @@ const str = (options: PluginOptions, key: string): string | undefined => {
 
 // Values changed live (`/temper:temper mode`, `/temper:temper enforcement`) win over the options of this
 // load until the config change reloads the module with the new options.
-export const live: { mode?: UiMode; enforcement?: 'on' | 'off' } = {}
+export const live: { mode?: UiMode; enforcement?: 'on' | 'off'; paneExpanded?: boolean } = {}
 
 export function settingsFrom(options: PluginOptions) {
   return {
@@ -93,6 +98,8 @@ export function idleSnapshot(options: PluginOptions, inert: boolean): Snapshot {
     inert,
     ...settingsFrom(options),
     slug: null,
+    autonomyEnabled: false,
+    complexity: null,
     specDir: '',
     state: initialState(parseMaxLoops('', str(options, 'fixMaxLoops'))),
     verdicts: {},
@@ -125,6 +132,7 @@ function humanKind(ev: TemperEvent): DecisionKind | null {
   if (ev.type === 'override') return 'override'
   if (ev.type === 'accept') return 'accept'
   if (ev.type === 'advance' && (ev.from === 'intent' || ev.from === 'plan')) return 'advance'
+  if (ev.type === 'back') return 'back'
   return null
 }
 
@@ -155,7 +163,9 @@ async function isOwn(io: Io, id: string, text: string): Promise<boolean> {
 const SESSION = (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(16).slice(2) + '00000000').replace(/-/g, '').slice(0, 8)
 // The phase an event decided, so a CLI call is matched only to a decision made for it.
 function decisionOf(ev: TemperEvent, kind: DecisionKind): HumanDecision {
-  if (ev.type === 'override') return { id: ev.id, kind, phase: ev.phase }
+  // The CLI names Fix by its Check stage, as the follow up command does.
+  if (ev.type === 'override') return { id: ev.id, kind, phase: stageOf(ev.phase) }
+  if (ev.type === 'back') return { id: ev.id, kind, phase: stageOf(ev.to) }
   if (ev.type === 'accept') return { id: ev.id, kind, phase: 'review', findingId: ev.findingId }
   if (ev.type === 'advance') return { id: ev.id, kind, phase: ev.from }
   return { id: ev.id, kind }
@@ -169,7 +179,9 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   if (!versionAtLeast(version)) return idleSnapshot(options, true)
 
   const cfg = settingsFrom(options)
-  const maxLoops = parseMaxLoops((await readText(io, '.claude/temper.config')) ?? '', str(options, 'fixMaxLoops'))
+  const configText = (await readText(io, '.claude/temper.config')) ?? ''
+  const maxLoops = parseMaxLoops(configText, str(options, 'fixMaxLoops'))
+  const autonomyEnabled = readConfigValue(configText, 'autonomy.enabled') === 'true'
   const bs = parseBuildState((await readText(io, `${STATE_ROOT}/build-state.json`)) ?? '')
   if (!bs) return { ...idleSnapshot(options, false), state: initialState(maxLoops) }
 
@@ -222,6 +234,8 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     inert: false,
     ...cfg,
     slug: bs.spec,
+    autonomyEnabled,
+    complexity: bs.complexity,
     specDir,
     state,
     verdicts,
@@ -295,7 +309,7 @@ export function composeText(snap: Snapshot): string {
 }
 
 export const viewOf = (snap: Snapshot): View =>
-  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, enforcement: snap.enforcement })
+  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, enforcement: snap.enforcement, expanded: live.paneExpanded ?? false })
 
 // Mirrors the folded state into `$.state` for drawing and compaction.
 export async function publish(io: Io, snap: Snapshot): Promise<void> {

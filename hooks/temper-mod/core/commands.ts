@@ -4,6 +4,7 @@
 
 import type { Draft, DriftChoice, Phase } from './events'
 import { PHASES } from './events'
+import { acceptCommand, advanceCommands, backCommand, overrideCommand } from './cli'
 import type { Command } from './machine'
 
 export const RESERVED = [
@@ -90,20 +91,28 @@ export function planCommand(parsed: Parsed, pendingDrift: string | null): Plan {
   }
 }
 
-// What Claude is asked to do once the person decided with a button (the command path
-// runs the prompt based /temper:temper instead): mirror the decision in the CLI, or act on it.
-export function followUp(draft: Draft): string | null {
+// What Claude is asked to do once the person decided with a button (the command path runs the
+// prompt based command instead). The decision is already recorded by the mod: the prompt says so,
+// names the exact CLI command that mirrors it in the CLI state (the commit gate reads that state),
+// and says what to do next. Every command named here is a valid `scripts/temper` invocation.
+export function followUp(draft: Draft, complexity: string | null = null): string | null {
+  const recorded = 'The user\'s decision is already recorded; this only mirrors it in the CLI state.'
   switch (draft.type) {
-    case 'advance':
-      return draft.to === 'done'
-        ? 'Temper: the run is complete. Report the result and, if the user asks, commit.'
-        : `Temper: the user moved the run from ${draft.from} to ${draft.to}. Record it with scripts/temper state advance ${draft.from} ${draft.to}, then continue with the ${draft.to} phase.`
+    case 'advance': {
+      if (draft.to === 'done') {
+        const cmds = advanceCommands(draft.from, draft.to, complexity)
+        return `Temper: the user marked the run done. ${recorded} Run ${cmds.map(c => `\`${c}\``).join(' then ')}, then report the result. Commit only if the user asks.`
+      }
+      const cmds = advanceCommands(draft.from, draft.to, complexity)
+      const run = cmds.length > 0 ? ` Run ${cmds.map(c => `\`${c}\``).join(' then ')}.` : ''
+      return `Temper: the user moved the run from ${draft.from} to ${draft.to}. ${recorded}${run} Then continue with the ${draft.to} phase.`
+    }
     case 'override':
-      return `Temper: the user overrode the ${draft.phase} phase (reason: ${draft.reason}). Record it with scripts/temper override ${draft.phase} --reason "${draft.reason}" and continue with the next phase.`
+      return `Temper: the user overrode the ${draft.phase} phase (reason: ${draft.reason}). ${recorded} Run \`${overrideCommand(draft.phase, draft.reason)}\`, then continue with the next phase.`
     case 'accept':
-      return `Temper: the user accepted review finding ${draft.findingId} (reason: ${draft.reason}). Record it with scripts/temper evidence accept --stage review --id ${draft.findingId} --reason "${draft.reason}".`
+      return `Temper: the user accepted review finding ${draft.findingId} (reason: ${draft.reason}). ${recorded} Run \`${acceptCommand(draft.findingId, draft.reason)}\`.`
     case 'back':
-      return `Temper: the user sent the run back to ${draft.to} (reason: ${draft.reason}). Rework ${draft.to} before moving forward again.`
+      return `Temper: the user sent the run back to ${draft.to} (reason: ${draft.reason}). ${recorded} Run \`${backCommand(draft.to)}\`, then rework ${draft.to} before moving forward again.`
     case 'drift':
       return draft.choice === 'revert'
         ? `Temper: the user chose to revert the out of plan change to ${draft.path}. Restore that file to its committed state and continue inside the plan.`

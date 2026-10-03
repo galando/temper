@@ -51,7 +51,7 @@ describe('buildView', () => {
   test('no run means a bar of pending steps and no actions', () => {
     const v = buildView({ ...input('build'), state: { ...stateAt('build'), phase: null } })
     expect(v.actions).toBe(null)
-    expect(v.next).toBe('')
+    expect(v.now).toBe('')
   })
 
   test('the view is plain JSON, safe for $.state', () => {
@@ -72,9 +72,9 @@ describe('texts', () => {
   })
 
   test('hint tail, turn line, question header and suggestion', () => {
-    expect(hintTail(v)).toMatch(/^Temper Build: /)
-    expect(turnLine(v)).toMatch(/^Temper: Build, task 2 of 5, 1 of 2 criteria passed\. Next: /)
-    expect(questionHeader(v)).toBe('Temper: Build, criterion 2 of 2')
+    expect(hintTail(v)).toMatch(/^Temper, Build \(3 of 6\): /)
+    expect(turnLine(v)).toBe('Build \u00b7 1 of 2 criteria met \u00b7 next: Review')
+    expect(questionHeader(v)).toBe('Temper: Build (3 of 6), criterion 2 of 2')
     expect(suggestion(v)).toContain('next unfinished task')
     expect(hintTail({ ...v, phase: null })).toBe(null)
     expect(turnLine({ ...v, phase: null })).toBe(null)
@@ -109,12 +109,45 @@ describe('parseFindings', () => {
 
 describe('followUp', () => {
   test('decisions ask Claude to mirror them in the CLI', () => {
-    expect(followUp({ type: 'override', phase: 'review', reason: 'r', origin: 'person' })).toContain('scripts/temper override review --reason "r"')
+    expect(followUp({ type: 'override', phase: 'review', reason: 'r', origin: 'person' })).toContain("scripts/temper override review --reason 'r'")
     expect(followUp({ type: 'accept', findingId: '2', reason: 'fp', origin: 'person' })).toContain('evidence accept --stage review --id 2')
-    expect(followUp({ type: 'advance', from: 'plan', to: 'build', origin: 'person' })).toContain('state advance plan build')
-    expect(followUp({ type: 'back', to: 'plan', reason: 'x', origin: 'person' })).toContain('back to plan')
+    expect(followUp({ type: 'advance', from: 'plan', to: 'build', origin: 'person' })).toContain('state advance plan_complete build')
+    expect(followUp({ type: 'back', to: 'plan', reason: 'x', origin: 'person' })).toContain('state set next_stage plan')
     expect(followUp({ type: 'drift', path: 'a.ts', choice: 'revert', reason: '', origin: 'person' })).toContain('a.ts')
     expect(followUp({ type: 'pause', origin: 'person' })).toBe(null)
     expect(/[\u2013\u2014]/.test(followUp({ type: 'override', phase: 'plan', reason: 'x', origin: 'person' }) ?? '')).toBe(false)
   })
+})
+
+describe('hotkeys are unique in every phase and state', () => {
+  const PHASES = ['intent', 'plan', 'build', 'review', 'check', 'fix'] as const
+  const unique = (keys: string[]) => new Set(keys).size === keys.length
+
+  // Every combination of the flags that change which actions are offered.
+  for (const phase of PHASES) {
+    for (const hasFindings of [false, true]) {
+      for (const paused of [false, true]) {
+        for (const limit of [false, true]) {
+          test(`${phase} findings=${hasFindings} paused=${paused} limit=${limit}`, () => {
+            const state = stateAt(phase, paused ? [{ type: 'pause', ...person }] : [])
+            const v = buildView({
+              ...input(phase),
+              state: limit && phase === 'fix' ? { ...state, loopLimitReached: true } : state,
+              findings: hasFindings ? [{ id: '1', severity: 'major', claim: 'x' }, { id: '2', severity: 'minor', claim: 'y' }] : [],
+            })
+            const a = v.actions
+            if (!a) throw new Error('no actions')
+            const band = [...a.primary.map(x => x.key), a.override.key, '0']
+            expect(unique(band)).toBe(true)
+            expect(band).toEqual(['1', '2', '3', '9', '0'])
+            // The pane adds the letters of the full list; 0 is only ever "More actions".
+            const pane = [...a.primary.map(x => x.key), a.override.key, '0', ...a.more.map(x => x.key)]
+            expect(unique(pane)).toBe(true)
+            expect(a.more.every(x => /^[a-h]$/.test(x.key))).toBe(true)
+            expect(a.more.length).toBeGreaterThan(0)
+          })
+        }
+      }
+    }
+  }
 })

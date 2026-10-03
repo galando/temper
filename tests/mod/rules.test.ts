@@ -153,9 +153,14 @@ describe('Temper state paths and forged decisions', () => {
   })
 
   test('state advance is guarded in Intent and Plan only', () => {
-    const call = { tool: 'Bash', input: { command: 'temper state advance build' } }
-    expect(evaluate(stateAt('plan'), ctx, call)).toEqual({ deny: ONLY_USER })
-    expect('allow' in evaluate(stateAt('build'), ctx, call)).toBe(true)
+    // The approval is named by the stage it completes, whatever phase the run is in by now.
+    const intent = { tool: 'Bash', input: { command: 'scripts/temper state advance intent_complete plan' } }
+    const plan = { tool: 'Bash', input: { command: 'scripts/temper state advance plan_complete build' } }
+    expect(evaluate(stateAt('plan'), ctx, intent)).toEqual({ deny: ONLY_USER })
+    expect(evaluate(stateAt('build'), ctx, plan)).toEqual({ deny: ONLY_USER })
+    // Later moves follow a verdict and need no person.
+    const later = { tool: 'Bash', input: { command: 'scripts/temper state advance build_complete review' } }
+    expect('allow' in evaluate(stateAt('review'), ctx, later)).toBe(true)
   })
 
   test('Bash writes that name a Temper state path are denied', () => {

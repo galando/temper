@@ -35,7 +35,7 @@ mod is absent. Any other first word is a feature description.
 | `status` | Print `$TEMPER status` and `$TEMPER state get next_stage`. |
 | `timeline` / `report` | Print `$TEMPER report`. |
 | `help` | List these words with their one line meanings. |
-| `approve` / `next` | Treat it as the human answer at the current gate: confirm the gate with `$TEMPER gate {stage}`, record the move with `$TEMPER state advance {stage} {next}`, then continue. Refuse and print the failing requirements when the gate is not PASS. |
+| `approve` / `next` | Treat it as the human answer at the current gate: confirm the gate with `$TEMPER gate {stage}`, record the move with `$TEMPER state advance {stage}_complete {next}`, then continue. Refuse and print the failing requirements when the gate is not PASS. |
 | `back <phase> <reason>` | `$TEMPER state set next_stage {phase}`, record the reason with `$TEMPER evidence add --stage {phase} --phase feedback --claim "back: {reason}"`, and rerun every later gate before advancing. |
 | `override <reason>` | `$TEMPER override {stage} --reason "{reason}"`. With no reason, refuse: "Override needs a reason: /temper:temper override <reason>". |
 | `accept <id> <reason>` | `$TEMPER evidence accept --stage review --id {id} --reason "{reason}"`. With no reason, refuse. |

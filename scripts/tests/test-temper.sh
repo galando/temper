@@ -1696,6 +1696,18 @@ assert_eq "a draft with only a Deferred question reports no Blocking question" "
 
 assert_eq "the CLI header lists temper status exactly once" "1" "$(grep -c '^#   temper status' "$TEMPER")"
 
+# --- mods: the stage names the mod puts in its follow up prompts are the CLI's own ---
+assert_eq "hooks/temper-mod/core/cli.ts CLI_STAGES equals STAGE_SEQ_TEMPER" \
+  "$(sed -n 's/^STAGE_SEQ_TEMPER="\(.*\)"$/\1/p' "$TEMPER")" \
+  "$(sed -n "s/^export const CLI_STAGES = '\(.*\)'\$/\1/p" "$REPO_ROOT/hooks/temper-mod/core/cli.ts")"
+setup
+"$TEMPER" state init demo --command temper >/dev/null
+assert_exit "the mod's approve intent command is accepted by the CLI" 0 "$TEMPER" state advance intent_complete plan
+assert_exit "the mod's approve plan command (design first) is accepted by the CLI" 0 bash -c "'$TEMPER' state advance plan_complete design && '$TEMPER' state advance design_complete build"
+assert_exit "the mod's later advances are accepted by the CLI" 0 bash -c "'$TEMPER' state advance build_complete review && '$TEMPER' state advance review_complete check && '$TEMPER' state advance check_complete commit"
+assert_exit "the mod's back command is accepted by the CLI" 0 "$TEMPER" state set next_stage plan
+assert_exit "the old form 'state advance intent plan' is refused by the CLI" 1 "$TEMPER" state advance intent plan
+
 # --- mods: per-criterion status.json written after each gate; temper status --json ---
 setup
 "$TEMPER" evidence add --stage check --claim "AC-01 shown" --criterion AC-01 --cmd "echo ok" --exit 0 >/dev/null

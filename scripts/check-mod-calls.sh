@@ -31,6 +31,7 @@ store.get        own event ids (forgery guard), consumed human decisions, "mode 
 store.set        records those
 ui.ask           scope drift choices, the first run mode question, reasons for override and accept
 ui.close         closes the pane (leaving full mode, a toggle, a pane that would not dock)
+ui.focus         key 9 on the band moves the focus into the override reason field
 ui.invalidate    redraws the render sites after a mode or enforcement change
 ui.open          opens the pane
 ui.resolve       the element table of the surface being drawn (Box, Text, Button, Markdown)

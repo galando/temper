@@ -1,14 +1,18 @@
 // The view model: everything the band, pane, spinner, hint and question header draw,
 // computed once from the folded run so each drawing is a plain function of plain data.
 // Pure and JSON safe: it is mirrored into `$.state`, which survives reload and compaction.
+//
+// Vocabulary, used the same way everywhere: a run has six phases; the bar shows each as done
+// (a check mark), current ("you are here", a filled circle), upcoming (an open circle) or
+// redo (a counter clockwise arrow, after a back step).
 
-import { actionsFor, nextStep } from './actions'
+import { actionsFor, globalActions, lettered, nowText } from './actions'
 import type { Action, ActionContext, ActionSet } from './actions'
 import type { MergedCriterion } from './criteria'
 import type { Phase } from './events'
 import type { Finding } from './gates'
 import { phaseLabel } from './machine'
-import type { RunState } from './machine'
+import type { HistoryRecord, RunState } from './machine'
 
 export type StepStatus = 'done' | 'current' | 'pending' | 'stale'
 
@@ -19,17 +23,23 @@ export type ViewCriterion = { id: string; text: string; status: 'passed' | 'open
 export type View = {
   title: string | null
   phase: Phase | 'done' | null
+  // 1 to 6 while a phase is active, else null.
+  stepNo: number | null
   paused: boolean
   enforcement: 'on' | 'off'
   steps: Step[]
-  // Null when no phase is active (no run, or Done): nothing to act on.
+  // Null when no phase is active (no run, or Done): nothing to act on. `more` is the full
+  // list the pane shows when expanded, each with its own letter hotkey.
   actions: ActionSet | null
+  // Whether the pane shows the full action list.
+  expanded: boolean
   criteria: ViewCriterion[]
   passed: number
   total: number
   findings: Finding[]
   timeline: string[]
-  next: string
+  // One plain sentence: what to do now.
+  now: string
   task: { n: number; of: number } | null
   loopLimitReached: boolean
 }
@@ -41,9 +51,10 @@ export type ViewInput = {
   findings: readonly Finding[]
   task: { n: number; of: number } | null
   enforcement: 'on' | 'off'
+  expanded?: boolean
 }
 
-const BAR: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check', 'fix']
+export const BAR: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check', 'fix']
 const FLOW: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check']
 
 const order = (p: Phase): number => (p === 'fix' ? FLOW.indexOf('check') + 0.5 : FLOW.indexOf(p))
@@ -59,6 +70,14 @@ function stepsOf(s: RunState): Step[] {
   })
 }
 
+const KIND: Record<string, (from: string, to: string) => string> = {
+  start: (_f, to) => `Run started at ${to}`,
+  advance: (from, to) => `${from} done, now ${to}`,
+  back: (from, to) => `Sent back from ${from} to ${to}`,
+  override: (from, to) => `${from} overridden, now ${to}`,
+  check: (_f, to) => (to === 'Done' ? 'Checks passed, run done' : `Checks failed, now ${to}`),
+}
+
 export function buildView(input: ViewInput): View {
   const s = input.state
   const active = s.phase !== null && s.phase !== 'done'
@@ -71,19 +90,27 @@ export function buildView(input: ViewInput): View {
     loopLimitReached: s.loopLimitReached,
   }
   const passed = input.criteria.filter(c => c.status === 'passed').length
+  let actions: ActionSet | null = null
+  if (s.phase !== null && s.phase !== 'done') {
+    const base = actionsFor(s.phase, ctx)
+    actions = { ...base, more: lettered([...base.more, ...globalActions(s.phase, s.paused)]) }
+  }
+  const stepIdx = s.phase !== null && s.phase !== 'done' ? BAR.indexOf(s.phase) : -1
   return {
     title: input.title,
     phase: s.phase,
+    stepNo: stepIdx >= 0 ? stepIdx + 1 : null,
     paused: s.paused,
     enforcement: input.enforcement,
     steps: stepsOf(s),
-    actions: s.phase !== null && s.phase !== 'done' ? actionsFor(s.phase, ctx) : null,
+    actions,
+    expanded: input.expanded ?? false,
     criteria: input.criteria.map(c => ({ id: c.id, text: c.text, status: c.status, priority: c.priority })),
     passed,
     total: input.criteria.length,
     findings: [...input.findings],
-    timeline: s.history.slice(-5).map(h => `${h.from ? phaseLabel(h.from) : 'Start'} to ${phaseLabel(h.to)} (${h.kind})`),
-    next: s.phase === null ? '' : nextStep(s.phase, ctx),
+    timeline: s.history.slice(-6).map(h => (KIND[h.kind] ?? KIND.advance)?.(h.from ? phaseLabel(h.from) : 'Start', phaseLabel(h.to)) ?? ''),
+    now: s.phase === null ? '' : nowText(s.phase, ctx),
     task: input.task,
     loopLimitReached: s.loopLimitReached,
   }
@@ -98,6 +125,13 @@ const VERB: Record<Phase, string> = {
   fix: 'Fixing',
 }
 
+// "Phase 3 of 6" and the phase name, as one fragment: "Build (3 of 6)".
+export function whereText(v: View): string {
+  if (v.phase === null) return ''
+  if (v.phase === 'done') return 'Done'
+  return `${phaseLabel(v.phase)} (${v.stepNo ?? 0} of 6)`
+}
+
 // "Building · criterion 2 of 5": the criterion being worked is the first not yet passed.
 export function spinnerWord(v: View): string | null {
   if (v.phase === null || v.phase === 'done') return null
@@ -109,32 +143,61 @@ export function spinnerWord(v: View): string | null {
 // The dim line after the engine's prompt hint on the terminal.
 export function hintTail(v: View): string | null {
   if (v.phase === null) return null
-  const phase = phaseLabel(v.phase)
-  return v.phase === 'done' ? `Temper: ${phase}` : `Temper ${phase}: ${v.next}`
+  return v.phase === 'done' ? 'Temper: run complete' : `Temper, ${whereText(v)}: ${v.now}`
 }
 
-// One line beneath an answer when a turn ends.
+// The phase that follows, for "next: Review". Check is followed by Done, and Fix by Check.
+export function nextPhaseLabel(v: View): string {
+  if (v.phase === null) return ''
+  if (v.phase === 'done') return 'commit'
+  const flow = ['intent', 'plan', 'build', 'review', 'check']
+  if (v.phase === 'fix') return 'Check'
+  const next = flow[flow.indexOf(v.phase) + 1]
+  return next ? phaseLabel(next as Phase) : 'Done'
+}
+
+// One dim line beneath an answer when a turn ends: "Build \u00b7 2 of 4 criteria met \u00b7 next: Review".
 export function turnLine(v: View): string | null {
   if (v.phase === null) return null
-  const parts = [`Temper: ${phaseLabel(v.phase)}`]
-  if (v.task) parts.push(`task ${v.task.n} of ${v.task.of}`)
-  if (v.total > 0) parts.push(`${v.passed} of ${v.total} criteria passed`)
-  const line = parts.join(', ')
-  return v.next ? `${line}. Next: ${v.next}` : line
+  if (v.phase === 'done') return 'Done \u00b7 run complete \u00b7 next: commit'
+  const parts = [phaseLabel(v.phase)]
+  if (v.total > 0) parts.push(`${v.passed} of ${v.total} criteria met`)
+  parts.push(`next: ${nextPhaseLabel(v)}`)
+  return parts.join(' \u00b7 ')
 }
 
 // One line above the engine's own question dialog.
 export function questionHeader(v: View): string | null {
   if (v.phase === null || v.phase === 'done') return null
-  const where = v.total > 0 ? `${phaseLabel(v.phase)}, criterion ${Math.min(v.passed + 1, v.total)} of ${v.total}` : phaseLabel(v.phase)
-  return `Temper: ${where}`
+  return v.total > 0 ? `Temper: ${whereText(v)}, criterion ${Math.min(v.passed + 1, v.total)} of ${v.total}` : `Temper: ${whereText(v)}`
 }
 
-// A short label per phase for the phase bar marker.
-export const MARK: Record<StepStatus, string> = { done: '✓', current: '▶', pending: '·', stale: '!' }
+// The glyph for each state of a step. No bare arrow: the current step is a filled circle.
+export const MARK: Record<StepStatus, string> = { done: '✓', current: '●', pending: '○', stale: '↺' }
+
+export const LEGEND = '✓ done  ● you are here  ○ upcoming  ↺ redo'
 
 // The prompt the suggestion box offers (Tab to take): the main action's prompt, never sent.
 export function suggestion(v: View): string | null {
   const first: Action | undefined = v.actions?.primary[0]
   return first?.prompt ?? null
+}
+
+// The toast for a phase change: "Plan approved \u00b7 Build open". Null for a run start.
+export function transitionToast(rec: HistoryRecord | undefined): string | null {
+  if (!rec || rec.kind === 'start') return null
+  const from = rec.from ? phaseLabel(rec.from) : ''
+  const to = rec.to === 'done' ? 'Run complete' : `${phaseLabel(rec.to)} open`
+  switch (rec.kind) {
+    case 'advance':
+      return `${from} ${rec.from === 'fix' ? 'done' : 'approved'} \u00b7 ${to}`
+    case 'override':
+      return `${from} overridden \u00b7 ${to}`
+    case 'back':
+      return `Back to ${phaseLabel(rec.to as Phase)} \u00b7 later phases need redo`
+    case 'check':
+      return rec.to === 'done' ? 'Check passed \u00b7 Run complete' : 'Check failed \u00b7 Fix open'
+    default:
+      return null
+  }
 }

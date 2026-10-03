@@ -5,7 +5,9 @@
 
 import type { Phase } from './events'
 
-export type ActionKey = '1' | '2' | '3' | '9' | '0'
+// 1, 2, 3 are the three main actions, 9 is override and 0 opens the full list. The full list
+// uses lowercase letters, so no key is ever used twice in one place.
+export type ActionKey = '1' | '2' | '3' | '9' | '0' | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h'
 
 export type Action = {
   key: ActionKey
@@ -38,7 +40,7 @@ const command = (key: ActionKey, id: string, label: string, cmd: string, asksRea
   ...(asksReason ? { asksReason } : {}),
 })
 
-const OVERRIDE: Action = command('9', 'override', 'Override', 'override', true)
+const OVERRIDE: Action = command('9', 'override', 'Override gate', 'override', true)
 
 export function actionsFor(phase: Phase, ctx: ActionContext): ActionSet {
   switch (phase) {
@@ -165,5 +167,45 @@ export function nextStep(phase: Phase | 'done', ctx: ActionContext): string {
       return ctx.loopLimitReached
         ? 'the fix loop limit is reached; ask the user to re-plan, override with a reason, or take over'
         : 'fix the failing checks, then return to Check (key 3)'
+  }
+}
+
+const LETTERS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'] as const
+
+// Gives each action in a list its own letter hotkey (a, b, c ...). Anything past the eighth
+// keeps no hotkey rather than repeating one.
+export function lettered(list: readonly Action[]): Action[] {
+  return list.slice(0, LETTERS.length).map((a, i) => ({ ...a, key: LETTERS[i] ?? 'h' }))
+}
+
+const BACK_ONE: Partial<Record<Phase, Phase>> = { plan: 'intent', build: 'plan', review: 'build', check: 'review', fix: 'check' }
+
+// Actions that belong to every phase, shown after the phase's own extras in the full list.
+export function globalActions(phase: Phase, paused: boolean): Action[] {
+  const out: Action[] = [paused ? command('0', 'resume', 'Resume the run', 'resume') : command('0', 'pause', 'Pause the run', 'pause')]
+  const prev = BACK_ONE[phase]
+  if (prev) out.push(command('0', 'back-one', `Go back to ${prev.charAt(0).toUpperCase()}${prev.slice(1)}`, `back ${prev}`, true))
+  out.push(prompt('0', 'pr-desc', 'Draft the pull request description', 'Write a pull request description for this change from .temper/report.md (write the report first if it is missing). List overrides, accepted findings and scope drift decisions with their reasons.'))
+  return out
+}
+
+// One plain sentence: what to do now. It reads the same in the band, the pane, the hint and
+// the line under an answer.
+export function nowText(phase: Phase | 'done', ctx: ActionContext): string {
+  switch (phase) {
+    case 'done':
+      return 'The run is complete: commit is allowed.'
+    case 'intent':
+      return ctx.ready ? 'Approve the intent, then Plan starts.' : 'Finish the intent until its gate passes, then approve it.'
+    case 'plan':
+      return ctx.ready ? 'Approve the plan, then Build starts.' : 'Write the plan and the tasks, then approve them.'
+    case 'build':
+      return ctx.tasksDone ? 'Build is done: send it to Review.' : 'Work through the tasks, one failing test at a time.'
+    case 'review':
+      return ctx.hasFindings ? 'Fix the open findings, or accept them with a reason.' : 'Run the review.'
+    case 'check':
+      return ctx.allChecksPass ? 'Every check passed: mark the run done.' : 'Run the checks.'
+    case 'fix':
+      return ctx.loopLimitReached ? 'Fix loop limit reached: re-plan, override, or take over.' : 'Fix the failing checks, then go back to Check.'
   }
 }

@@ -7,57 +7,55 @@
 # This tape is NOT run in CI and nothing in the repository depends on it. It needs:
 #   - an authenticated `claude` session on this machine (Claude Code 2.1.287 or later),
 #   - VHS with ttyd and ffmpeg installed.
-# It spends real tokens: every take runs a short Temper pipeline. Model output varies, so
-# expect to retry and to tune the Sleep times below until each step has finished before
-# the next key press. The key presses are the point: 1 approves, so a Sleep that is too
-# short presses 1 while Claude is still working and the take drifts.
+# It spends real tokens: each take sends three short prompts to Claude. Model output varies,
+# so expect to retry and to tune the Sleep times until each step has finished before the next
+# key press. Everything between Hide and Show is real time that the GIF skips.
 #
-# For the light and dark screenshots in the README, change `Set Theme` and add
-# `Screenshot docs/assets/<name>.png` at the moment you want, then run the tape again.
+# The setup copies demo/password-reset to /tmp/pr-demo and seeds a Temper run in the Intent
+# phase (scripts/demo-seed.sh). The `claude` function in the setup switches off an installed
+# copy of the Temper plugin for this one process, so the branch in this clone is the only one.
 
 Output docs/assets/temper-full.gif
 
 Set Shell "bash"
-Set FontSize 22
-Set Width 1500
-Set Height 900
-Set Padding 24
+Set FontSize 18
+Set Width 1800
+Set Height 1000
+Set Padding 20
 Set Theme "Catppuccin Mocha"
-Set TypingSpeed 45ms
-Set PlaybackSpeed 1
+Set TypingSpeed 40ms
+Set Framerate 12
 
-# Setup the viewer never sees: a throwaway copy of the demo project with its own git.
 Hide
-Type "export TEMPER_CLONE=$PWD && rm -rf /tmp/pr-demo && cp -R demo/password-reset /tmp/pr-demo && cd /tmp/pr-demo" Enter
-Type "git init -q && git add -A && git commit -qm start && clear" Enter
+Type "unset CLAUDECODE CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_EXECPATH CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_SESSION_ID CLAUDE_EFFORT CLAUDE_PID" Enter
+Type "export TEMPER_CLONE=$PWD && bash demo/demo-seed.sh && cd /tmp/pr-demo && clear" Enter
+Sleep 6s
+Type `claude() { command claude --settings '{"enabledPlugins":{"temper@temper":false}}' "$@"; }` Enter
+Type "claude --plugin-dir $TEMPER_CLONE" Enter
+Sleep 7s
+Down
+Enter
+Sleep 8s
 Show
 
-Type "claude --plugin-dir $TEMPER_CLONE" Enter
-Sleep 8s
-
-# 1. Intent. Claude drafts the intent; the band shows the six phases.
-Type "/temper:temper Add password reset: one time token that expires after one hour" Enter
-Sleep 45s
-
-# 2. A denial: no code before the intent is approved.
-Type "Skip the planning and edit src/users.js to add resetToken now" Enter
-Sleep 20s
-
-# 3. Approve the intent with the hotkey, then the plan.
-Type "1"
-Sleep 60s
-Type "1"
+# 1. Claude is asked to skip the planning. The Intent phase refuses the edit.
+Sleep 2s
+Type "Skip planning: edit src/users.js now to add a resetToken function"
+Sleep 1s
+Enter
+Hide
+Sleep 40s
+Show
 Sleep 5s
 
-# 4. Build. Open the pane to watch the criteria tick.
-Type "/temper:temper pane" Enter
-Sleep 90s
-
-# 5. Review and Check run; press 1 when the band offers the next step.
+# 2. One key press lints the intent, a second one approves it. The bar moves to Plan.
 Type "1"
-Sleep 60s
+Hide
+Sleep 35s
+Show
+Sleep 3s
 Type "1"
-Sleep 45s
-
-# Done: the run is complete and git commit is allowed.
+Hide
+Sleep 40s
+Show
 Sleep 6s

@@ -10,16 +10,18 @@ import type { Bare, Parsed } from './core/commands'
 import { parsePhaseModel, parsePhaseModels, parseUiMode } from './core/config'
 import type { UiMode } from './core/config'
 import type { Draft } from './core/events'
-import { ONLY_USER, phaseLabel } from './core/machine'
+import { ONLY_USER } from './core/machine'
 import type { Command } from './core/machine'
 import { evaluate } from './core/rules'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
-import { suggestion, turnLine } from './core/view'
+import { suggestion, transitionToast, turnLine } from './core/view'
 import type { View } from './core/view'
 import { hintProps } from './ui/hint'
 import { renderBand } from './ui/band'
 import { PANE_ID, renderPane } from './ui/pane'
+import { REASON_HINT } from './ui/band'
+import { REASON_KEY } from './ui/kit'
 import { renderQuestion } from './ui/question'
 import { spinnerProps } from './ui/spinner'
 
@@ -78,7 +80,8 @@ function ensure($: Api): Promise<Snapshot> {
 function announce($: Api, snap: Snapshot): void {
   const phase = snap.state.phase
   if (lastPhase !== undefined && phase !== lastPhase && phase !== null && snap.mode === 'full' && !snap.inert) {
-    $.ui.toast(`Temper: ${phaseLabel(phase)}`)
+    const toast = transitionToast(snap.state.history[snap.state.history.length - 1])
+    if (toast) $.ui.toast(toast)
   }
   lastPhase = phase
 }
@@ -172,11 +175,40 @@ async function submitText($: Api, text: string | null): Promise<void> {
   if (text) await $.prompt.submit({ text }).then(() => undefined, () => undefined)
 }
 
-async function runAction($: Api, action: Action): Promise<void> {
+// The band's 9: focus the reason field so the person types the reason and presses Enter. When the
+// field cannot take the focus (a different site), fall back to the question dialog.
+async function focusReason($: Api, requestId: string): Promise<boolean> {
+  const moved = await $.ui.focus({ requestId, key: REASON_KEY }).catch(() => undefined)
+  return moved !== undefined && !('deny' in moved && moved.deny)
+}
+
+// Enter in the band's reason field: an empty reason is refused, a real one records the override.
+async function runReason($: Api, text: string): Promise<void> {
+  const reason = text.trim()
+  if (!reason) {
+    $.ui.toast(REASON_HINT)
+    return
+  }
+  const done = await decideAs($, { type: 'override', reason }, 'person')
+  if (done.error) {
+    $.ui.toast(done.error)
+    return
+  }
+  for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity))
+}
+
+async function runAction($: Api, action: Action, requestId?: string): Promise<void> {
   if (action.id === 'more') {
     $.ui.toast(await togglePane($))
     return
   }
+  if (action.id === 'more-actions') {
+    live.paneExpanded = !(live.paneExpanded ?? false)
+    await refresh($)
+    $.ui.invalidate('ui.render')
+    return
+  }
+  if (action.id === 'override' && requestId !== undefined && (await focusReason($, requestId))) return
   if (action.prompt) {
     await submitText($, action.prompt)
     return
@@ -204,7 +236,7 @@ async function runAction($: Api, action: Action): Promise<void> {
     $.ui.toast(done.error)
     return
   }
-  for (const draft of done.events) await submitText($, followUp(draft))
+  for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity))
 }
 
 async function runFindingAction($: Api, kind: 'fix' | 'accept' | 'explain', id: string): Promise<void> {
@@ -221,7 +253,7 @@ async function runFindingAction($: Api, kind: 'fix' | 'accept' | 'explain', id: 
     $.ui.toast(done.error)
     return
   }
-  for (const draft of done.events) await submitText($, followUp(draft))
+  for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity))
 }
 
 // ---- Modes (config rows) ------------------------------------------------------------
@@ -344,7 +376,7 @@ async function resolveDrift($: Api, snap: Snapshot, path: string, fallback: stri
 }
 
 function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
-  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions }
+  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled }
 }
 
 // The one place this module denies. Returns the deny text, or null to pass the call on.
@@ -458,6 +490,7 @@ export const register: Register = (on, opts) => {
   lastPhase = undefined
   live.mode = undefined
   live.enforcement = undefined
+  live.paneExpanded = undefined
 
   on('session.start', async ($, e, next) => {
     root = e.cwd
@@ -546,7 +579,14 @@ export const register: Register = (on, opts) => {
     if (e.props.hasSurvey) return next(e)
     const ui = await readUi($).catch(() => null)
     if (ui === null) return next(e)
-    const band = renderBand($.ui.resolve(e), ui.view, ui.mode, action => runAction($, action).catch(() => undefined))
+    const band = renderBand(
+      $.ui.resolve(e),
+      ui.view,
+      ui.mode,
+      action => runAction($, action, e.requestId).catch(() => undefined),
+      reason => runReason($, reason).catch(() => undefined),
+      e.props.bodyColumns,
+    )
     return band ?? next(e)
   })
 
@@ -558,6 +598,7 @@ export const register: Register = (on, opts) => {
       ui.view,
       action => runAction($, action).catch(() => undefined),
       (kind, id) => runFindingAction($, kind, id).catch(() => undefined),
+      e.props.placement === 'inline',
     )
   })
 

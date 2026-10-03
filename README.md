@@ -11,7 +11,7 @@ outside the current phase through Claude's editing tools (details in "Where enfo
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1.287%2B%20for%20the%20mod-blue)](#where-enforcement-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-![Temper in a terminal: a refused write, an approval with one key, criteria ticking](docs/assets/temper-full.gif)
+![Temper in a terminal: a refused write, then an approval with one key moves the phase bar from Intent to Plan](docs/assets/temper-full.gif)
 
 [Website](https://galando.github.io/temper) · [Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [Releases](https://github.com/galando/temper/releases)
 
@@ -80,11 +80,7 @@ You choose how much Temper draws with `/temper:temper mode`. Denials work in eve
   <img alt="Off mode: nothing drawn, denials still apply" src="docs/assets/mode-off-light.png">
 </picture>
 **Off** draws nothing. A write outside the phase is still refused.
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/desktop-dark.png">
-  <img alt="The same bar in the Claude desktop app, Code tab" src="docs/assets/desktop-light.png">
-</picture>
-The same mod runs in the desktop app (Code tab).
+The same mod runs in the desktop app (Code tab). A desktop screenshot is not in the repository yet; `docs/demo-script.md` says how to add one.
 
 ### Each phase
 
@@ -215,10 +211,11 @@ normal tools and permissions. CI fails if the mod gains any `process`, `http` or
 any call outside the reviewed list in [`scripts/check-mod-calls.sh`](scripts/check-mod-calls.sh).
 
 **Bash is best effort.** The hard guarantee covers the tool layer: Write, Edit, NotebookEdit,
-MultiEdit and `git commit`. Patterns catch common Bash writes to Temper's own state files
-(through wrappers, redirects and quoting tricks), but a Bash command can write ordinary source
-files, and MCP file tools are not covered. The
-native `pre-commit` hook is a second layer that still blocks a commit with a red gate.
+MultiEdit and `git commit`. For Bash the mod resolves variables in order, expands braces, follows
+`cd`, and refuses a write it cannot check when the command names Temper state, so common tricks fail
+closed. It cannot see a variable set in an earlier call or a profile, a Bash command can still write
+ordinary source files, and MCP file tools are not covered. The native `pre-commit` hook is the
+backstop. Button presses and the reason field carry no origin, so their authenticity rests on Claude Code.
 
 **Without the mod** you keep the full pipeline: intent, plan, build, review and check as
 prompts, every CLI gate verdict, the commit hook and the evidence ledger. You lose the live

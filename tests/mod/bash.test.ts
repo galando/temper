@@ -87,9 +87,9 @@ describe('evasions of the protected path guard', () => {
 
   test('temper global options before a decision subcommand', () => {
     expect(classifyBash('temper --spec-path .temper/specs/pw override plan --reason x').decisions).toEqual(['override'])
-    expect(classifyBash('scripts/temper -q evidence accept --stage review --id 2 --reason x').calls).toEqual([{ kind: 'accept', stage: 'review', id: '2' }])
+    expect(classifyBash('scripts/temper -q evidence accept --stage review --id 2 --reason x').calls).toMatchObject([{ kind: 'accept', stage: 'review', id: '2' }])
     expect(classifyBash('temper state advance plan build').calls).toEqual([{ kind: 'advance', stage: 'plan' }])
-    expect(classifyBash('temper override review --reason x').calls).toEqual([{ kind: 'override', stage: 'review' }])
+    expect(classifyBash('temper override review --reason x').calls).toMatchObject([{ kind: 'override', stage: 'review' }])
   })
 
   test('build-state.json is a protected state file', () => {
@@ -196,6 +196,31 @@ describe('command wrappers do not hide a commit or a decision', () => {
       expect(k.commits).toBe(false)
       expect(k.decisions).toEqual([])
     }
+  })
+})
+
+describe('ordinary writes into the spec folder through a variable stay allowed', () => {
+  const flagged = (c: string) => classifyBash(c).protectedWrites.length > 0
+  // The command Claude ran live to write the plan files, which an earlier rule refused.
+  const live = [
+    "cd /tmp/pr-demo; S=.temper/specs/pwreset\npython3 - <<'EOF'\np='.temper/specs/pwreset/intent.md'\nopen(p,'w').write('x')\nEOF\ncat > $S/tasks.md <<'EOF'\n# Tasks\nEOF",
+    'S=.temper/specs/pw; cat > $S/plan.md < draft.md',
+    'S=.temper/specs/pw; echo x > ${S}/design.md',
+    'cat > $SPEC/plan.md < draft.md',
+    'cp draft.md $SPEC/tasks.md',
+    'tee $OUT/notes.md < in.txt',
+  ]
+  for (const c of live) {
+    test(`allowed: ${c.split('\n')[0]}`, () => {
+      expect(flagged(c)).toBe(false)
+    })
+  }
+
+  test('a variable that resolves to a guarded path, or a tail that names one, is still refused', () => {
+    expect(flagged('S=.temper/specs/pw; echo {} > $S/events/1-x-1.json')).toBe(true)
+    expect(flagged('F=.temper/gates.json; echo {} > $F')).toBe(true)
+    expect(flagged('echo {} > $SPEC/events/1.json')).toBe(true)
+    expect(flagged('echo {} > ${T}/gates.json')).toBe(true)
   })
 })
 

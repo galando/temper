@@ -57,3 +57,25 @@ work that way:
   app, which the author did not verify (see `docs/mods-testing.md`).
 - The `user-attachments` behaviour above is described from how GitHub works today. It was
   not tested from this repository.
+
+## Desktop screenshot and the video (yours to record)
+
+The terminal GIF and the six terminal screenshots are regenerated with VHS (`vhs demo/temper.tape`
+and `bash demo/make-screens.sh`). The desktop app cannot be recorded that way, so two assets are
+left for you.
+
+1. Open the Claude desktop app, choose the Code tab, and open a copy of `demo/password-reset`
+   prepared with `bash demo/demo-seed.sh` (it creates `/tmp/pr-demo`). Load the Temper clone as a
+   plugin folder for that session; how a local plugin folder is loaded in the desktop app is not
+   verified here, see the desktop section of `docs/mods-testing.md`.
+2. Run `/temper:temper mode full`, take a screenshot in light and again in dark, and save them as
+   `docs/assets/desktop-light.png` and `docs/assets/desktop-dark.png`.
+3. Add this block back to the README under "The three modes":
+
+```html
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/desktop-dark.png">
+  <img alt="The same bar in the Claude desktop app, Code tab" src="docs/assets/desktop-light.png">
+</picture>
+```
+

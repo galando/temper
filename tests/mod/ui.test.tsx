@@ -29,23 +29,77 @@ const PANE = {
 const SPINNER = { word: 'Sauteing', message: null, suffix: '…', mode: 'responding' } as const
 const HINT = { isDraft: false, isWorking: false, hint: '? for shortcuts' } as const
 
+// Every node of a drawn tree, depth first.
+type Node = { type?: string; props?: Record<string, unknown>; children?: unknown }
+function walk(tree: unknown, out: Node[] = []): Node[] {
+  if (typeof tree !== 'object' || tree === null) return out
+  const n = tree as Node
+  if (n.type) out.push(n)
+  const kids = n.children
+  if (Array.isArray(kids)) for (const k of kids) walk(k, out)
+  else walk(kids, out)
+  return out
+}
+const textOf = (n: Node): string => JSON.stringify(n.children ?? '')
+
 describe('phase bar (AbovePrompt)', () => {
   for (const surface of SURFACES) {
-    test(`full mode draws six phases and the action buttons on ${surface}`, async ($, on) => {
+    test(`full mode draws the chips, the buttons and the reason field on ${surface}`, async ($, on) => {
       const w = world(on, runFiles({ nextStage: 'build', passedCriteria: ['AC-01'] }))
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'temper', surface, component: 'AbovePrompt', props: BAND })
-      for (const label of ['Intent', 'Plan', 'Build', 'Review', 'Check', 'Fix']) {
-        expect(await ui.find({ type: 'Text', text: new RegExp(label) })).toBeDefined()
-      }
-      expect((await ui.find({ type: 'Text', text: /Build/ }))?.text).toContain('▶')
-      expect((await ui.find({ type: 'Text', text: /Intent/ }))?.text).toContain('✓')
-      const buttons = await ui.findAll({ type: 'Button' })
-      // Three context actions, override on 9, and all actions on 0.
+      const drawn = await ui.drawn()
+      const tree = walk(drawn)
+      const texts = tree.filter(n => n.type === 'Text').map(textOf).join(' ')
+      // Glyph per state: done check, current dot, upcoming plain, no bare arrow anywhere.
+      expect(texts).toContain('\u2713 Intent')
+      expect(texts).toContain('\u2713 Plan')
+      expect(texts).toContain('\u25cf Build')
+      for (const label of ['Review', 'Check', 'Fix']) expect(texts).toContain(label)
+      expect(JSON.stringify(drawn).match(/\u25cf/g)).toHaveLength(1)
+      expect(/[\u25b6\u25b8\u2192\u279c]/.test(JSON.stringify(drawn))).toBe(false)
+      expect(texts).toContain('TEMPER')
+      expect(texts).toContain('Build (3 of 6)')
+      expect(texts).toContain('Work through the tasks')
+      // Buttons: three actions, override on 9, more on 0; the first is primary.
+      const buttons = tree.filter(n => n.type === 'Button')
       expect(buttons).toHaveLength(5)
+      expect(buttons.map(b => b.props?.hotkey)).toEqual(['1', '2', '3', '9', '0'])
+      expect(buttons[0]?.props?.variant).toBe('primary')
+      expect(buttons[1]?.props?.variant).toBe('secondary')
+      // The reason field and its hint.
+      expect(tree.some(n => n.type === 'Input' && n.props?.key === 'override-reason')).toBe(true)
+      expect(texts).toContain('Override needs a reason; it is logged in the report')
       await ui.press({ key: 'action-next-task' })
       expect(w.prompts.some(p => p.includes('Start the next unfinished task'))).toBe(true)
       await ui.unmount()
+    })
+
+    test(`the stepper shows done, current, upcoming and redo states on ${surface}`, async ($, on) => {
+      const files = runFiles({ nextStage: 'review' })
+      const w = world(on, files)
+      await $.session.start(START)
+      await $.command.run({ command: 'temper', args: 'back plan rework', origin: { kind: 'composer' } } as never)
+      const ui = await $.ui.mount({ plugin: 'temper', surface, component: 'AbovePrompt', props: BAND })
+      const texts = walk(await ui.drawn()).filter(n => n.type === 'Text').map(textOf).join(' ')
+      expect(texts).toContain('\u25cf Plan')
+      expect(texts).toContain('\u21ba Build')
+      expect(texts).toContain('\u21ba Review')
+      expect(w.files.size).toBeGreaterThan(0)
+    })
+
+    test(`wide draws bordered chips and buttons, under 100 columns the compact form has no borders on ${surface}`, async ($, on) => {
+      world(on, runFiles({ nextStage: 'build' }))
+      await $.session.start(START)
+      const wide = await $.ui.mount({ plugin: 'temper', surface, component: 'AbovePrompt', props: { ...BAND, bodyColumns: 140 } })
+      expect(JSON.stringify(await wide.drawn())).toContain('"borderStyle":"round"')
+      await wide.unmount()
+      const compact = await $.ui.mount({ plugin: 'temper', surface, component: 'AbovePrompt', props: { ...BAND, bodyColumns: 80 } })
+      const drawn = await compact.drawn()
+      expect(JSON.stringify(drawn)).not.toContain('borderStyle')
+      // Still every action, with short labels, and one dot.
+      expect(walk(drawn).filter(n => n.type === 'Button')).toHaveLength(5)
+      expect(JSON.stringify(drawn).match(/\u25cf/g)).toHaveLength(1)
     })
   }
 
@@ -56,14 +110,23 @@ describe('phase bar (AbovePrompt)', () => {
     expect(await ui.find({ key: 'action-to-review' })).toBeDefined()
   })
 
-  test('9 asks for a reason: no reason, no override', async ($, on) => {
-    const w = world(on, runFiles({ nextStage: 'review' }), { answers: [] })
+  test('Enter in the reason field records the override with that reason; an empty reason is refused', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'review' }))
     await $.session.start(START)
     const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
-    await ui.press({ key: 'action-override' })
-    expect(w.toasts.some(t => t.includes('needs a reason'))).toBe(true)
-    expect([...w.files.keys()].filter(k => k.includes('/events/') && w.files.get(k)?.includes('"override"'))).toEqual([])
-    w.answers.push('Risk accepted')
+    await ui.input({ key: 'override-reason', text: '   ' })
+    expect(w.toasts.some(t => t.includes('Override needs a reason'))).toBe(true)
+    expect([...w.files.values()].some(t => t.includes('"type":"override"'))).toBe(false)
+    await ui.input({ key: 'override-reason', text: 'reviewer is on leave' })
+    expect([...w.files.values()].some(t => t.includes('"type":"override"') && t.includes('reviewer is on leave'))).toBe(true)
+  })
+
+  // The kit does not implement ui.focus for a plugin's own call, so here 9 always takes the fallback
+  // (the engine moves the focus in a real session; checked live in a terminal).
+  test('9 falls back to the question dialog when the field cannot take the focus', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'review' }), { answers: ['Risk accepted'] })
+    await $.session.start(START)
+    const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
     await ui.press({ key: 'action-override' })
     expect([...w.files.values()].some(t => t.includes('"type":"override"') && t.includes('Risk accepted'))).toBe(true)
   })
@@ -77,12 +140,16 @@ describe('phase bar (AbovePrompt)', () => {
   })
 
   for (const surface of SURFACES) {
-    test(`minimal mode shows the phases and no Button on ${surface}`, { options: { uiMode: 'minimal' } }, async ($, on) => {
+    test(`minimal mode shows the chips only: no Button, no field, no sentence on ${surface}`, { options: { uiMode: 'minimal' } }, async ($, on) => {
       world(on, runFiles({ nextStage: 'build' }))
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'temper', surface, component: 'AbovePrompt', props: BAND })
-      expect(await ui.findAll({ type: 'Button' })).toHaveLength(0)
-      expect(await ui.find({ type: 'Text', text: /Review/ })).toBeDefined()
+      const tree = walk(await ui.drawn())
+      expect(tree.filter(n => n.type === 'Button')).toHaveLength(0)
+      expect(tree.filter(n => n.type === 'Input')).toHaveLength(0)
+      const texts = tree.filter(n => n.type === 'Text').map(textOf).join(' ')
+      expect(texts).toContain('\u25cf Build')
+      expect(texts).not.toContain('Override needs a reason')
     })
 
     test(`off mode draws nothing on ${surface}: the engine's own drawing stands`, { options: { uiMode: 'off' } }, async ($, on) => {
@@ -93,7 +160,7 @@ describe('phase bar (AbovePrompt)', () => {
     })
   }
 
-  test('a survey holding the band is left alone, and with no run nothing is drawn', async ($, on) => {
+  test('a survey holding the band is left alone', async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }))
     await $.session.start(START)
     const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, hasSurvey: true } })
@@ -107,14 +174,33 @@ describe('pane', () => {
       world(on, runFiles({ nextStage: 'build', passedCriteria: ['AC-01', 'AC-03'] }))
       await $.session.start(START)
       const ui = await $.ui.mount({ plugin: 'temper', surface, component: 'Pane', requestId: 'temper', props: PANE })
+      expect(await ui.find({ type: 'Text', text: /Temper/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /Password reset by email/ })).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: /Phase: Build \(task 3 of 7\)/ })).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: /Criteria: 2 of 5 passed/ })).toBeDefined()
-      const checklist = await ui.find({ key: 'criteria' })
-      expect(checklist?.text).toContain('[x] **AC-01**')
-      expect(checklist?.text).toContain('[ ] **AC-02**')
+      expect(await ui.find({ type: 'Text', text: /Phase \u00b7 Build \(3 of 6\) \u00b7 task 3 of 7/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /Acceptance criteria \u00b7 2 of 5 met/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /\u2714 criterion 1/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /\u25cb criterion 2/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /\u2713 done {2}\u25cf you are here {2}\u25cb upcoming {2}\u21ba redo/ })).toBeDefined()
+      expect((await ui.find({ key: 'timeline' }))?.text).toContain('1. Run started at Build')
     })
   }
+
+  test('pane hotkeys are unique in every phase, expanded or not, and findings carry none', async ($, on) => {
+    {
+      const files = { ...runFiles({ nextStage: 'review' }), '.temper/evidence/review.json': JSON.stringify([{ claim: 'x', severity: 'major' }]) }
+      world(on, files)
+      await $.session.start(START)
+      for (const expanded of [false, true]) {
+        const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'Pane', requestId: 'temper', props: PANE })
+        if (expanded) await ui.press({ key: 'pane-more-actions' })
+        const keys = walk(await ui.drawn()).filter(n => n.type === 'Button').map(n => n.props?.hotkey).filter((k): k is string => typeof k === 'string')
+        expect(new Set(keys).size).toBe(keys.length)
+        expect(keys).toContain('0')
+        expect(keys.filter(k => /^[a-h]$/.test(k)).length > 0).toBe(expanded)
+        await ui.unmount()
+      }
+    }
+  })
 
   test('per finding Fix, Accept with reason and Explain', async ($, on) => {
     const files = {
@@ -200,7 +286,7 @@ describe('spinner, hint and question header', () => {
       await ui.unmount()
     }
     const [terminal, desktop] = w.rendered.filter(r => r.component === 'PromptHint')
-    expect(String(terminal?.props.tail)).toContain('Temper Build: ')
+    expect(String(terminal?.props.tail)).toContain('Temper, Build (3 of 6): ')
     expect(desktop?.props.tail).toBeUndefined()
     expect(desktop?.props.hint).toBe('? for shortcuts')
   })
@@ -217,7 +303,7 @@ describe('spinner, hint and question header', () => {
       })
       const drawn = JSON.stringify(await ui.drawn())
       expect(drawn.match(/"type":"engine"/g)).toHaveLength(1)
-      expect(drawn).toContain('Temper: Build, criterion 2 of 5')
+      expect(drawn).toContain('Temper: Build (3 of 6), criterion 2 of 5')
     })
   }
 
@@ -243,7 +329,7 @@ describe('turn line, suggestions and toasts', () => {
     await $.session.start(START)
     const r = await $.turn.complete(COMPLETE as never)
     expect(r.text).toBe(
-      'Temper: Build, task 3 of 7, 2 of 5 criteria passed. Next: work the next task in tasks.md with a failing test first; stay inside the plan files',
+      'Build \u00b7 2 of 5 criteria met \u00b7 next: Review',
     )
     expect(w.suggestions).toEqual(['Start the next unfinished task in tasks.md with a failing test first.'])
     expect(w.prompts).toEqual([])
@@ -271,7 +357,7 @@ describe('turn line, suggestions and toasts', () => {
     await $.session.start(START)
     expect(w.toasts).toEqual([])
     await $.command.run({ command: 'temper', args: 'approve', origin: { kind: 'composer' } } as never)
-    expect(w.toasts).toEqual(['Temper: Build'])
+    expect(w.toasts).toEqual(['Plan approved \u00b7 Build open'])
   })
 
   test('no toast in minimal mode', { options: { uiMode: 'minimal' } }, async ($, on) => {

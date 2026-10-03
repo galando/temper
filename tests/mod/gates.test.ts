@@ -31,7 +31,7 @@ describe('parseGates', () => {
 describe('parseBuildState and phaseFromStage', () => {
   test('reads spec, path and next stage', () => {
     const s = parseBuildState('{"spec":"pw","spec_path":".temper/specs/pw","next_stage":"build"}')
-    expect(s).toEqual({ spec: 'pw', specPath: '.temper/specs/pw', nextStage: 'build', task: null })
+    expect(s).toEqual({ spec: 'pw', specPath: '.temper/specs/pw', nextStage: 'build', task: null, complexity: null })
     expect(parseBuildState('{"spec":"pw","task":3}')?.task).toBe(3)
     expect(parseBuildState('{"spec":"pw"}')?.specPath).toBe('.temper/specs/pw')
   })

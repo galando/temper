@@ -183,6 +183,35 @@ describe('the bootstrap start is written once', () => {
   })
 })
 
+describe('arming autonomous mode end to end', () => {
+  const arm = bash('scripts/temper state set run_mode autonomous')
+  const config = (on: boolean) => `autonomy:\n  enabled: ${on}\n`
+
+  test('refused before the plan is approved, allowed after the person approves with autonomy on', async ($, on) => {
+    const w = world(on, { ...runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }), '.claude/temper.config': config(true) })
+    await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
+    expect(denyText(await $.tool.call(arm))).toContain('autonomy.enabled: true')
+    // A model cannot approve.
+    await $.command.run({ command: 'temper', args: 'approve', origin: { kind: 'sdk' } } as never)
+    expect('deny' in (await $.tool.call(arm))).toBe(true)
+    // The person approves.
+    await $.command.run({ command: 'temper', args: 'approve', origin: { kind: 'composer' } } as never)
+    const ok = await $.tool.call(arm)
+    expect('deny' in ok).toBe(false)
+    expect(ok.text).toBe('stub ran')
+    expect(w.files.size).toBeGreaterThan(0)
+  })
+
+  for (const [name, cfg] of [['off', config(false)], ['missing', '']] as const) {
+    test(`refused after the approval when autonomy.enabled is ${name}`, async ($, on) => {
+      world(on, { ...runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }), ...(cfg ? { '.claude/temper.config': cfg } : {}) })
+      await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
+      await $.command.run({ command: 'temper', args: 'approve', origin: { kind: 'composer' } } as never)
+      expect(denyText(await $.tool.call(arm))).toContain('autonomy.enabled: true')
+    })
+  }
+})
+
 describe('git commit gate', () => {
   const FAIL_MSG = 'Temper: commit blocked, Check has not passed. Next: run the checks (key 1 in Check or /temper:check).'
 

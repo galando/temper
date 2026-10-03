@@ -28,7 +28,7 @@ export function parseGates(text: string): Verdicts {
   return out
 }
 
-export type BuildState = { spec: string; specPath: string; nextStage: string | null; task: number | null }
+export type BuildState = { spec: string; specPath: string; nextStage: string | null; task: number | null; complexity: string | null }
 
 export function parseBuildState(text: string): BuildState | null {
   let raw: unknown
@@ -45,6 +45,7 @@ export function parseBuildState(text: string): BuildState | null {
     spec: o.spec,
     specPath,
     nextStage: typeof o.next_stage === 'string' ? o.next_stage : null,
+    complexity: typeof o.complexity === 'string' ? o.complexity : null,
     task: typeof o.task === 'number' && Number.isInteger(o.task) && o.task >= 1 ? o.task : null,
   }
 }

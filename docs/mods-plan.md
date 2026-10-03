@@ -232,11 +232,11 @@ treat the docs as the current behavior for the README.
 There is no manifest permission list. The engine scans the module and records what it
 calls; `claude plugin validate` prints it and admins can refuse a mod by it
 (`plugin.register` `uses`). The `calls:` line the validator prints for the built mod,
-nothing else (19 calls; the list is enforced by `scripts/check-mod-calls.sh`):
+nothing else (20 calls; the list is enforced by `scripts/check-mod-calls.sh`):
 
 `config.list, config.set, fs.list, fs.read, fs.stat, fs.write, prompt.submit,
 prompt.suggest, session.version, state.get, state.set, store.get, store.set, ui.ask,
-ui.close, ui.invalidate, ui.open, ui.resolve, ui.toast`
+ui.close, ui.focus, ui.invalidate, ui.open, ui.resolve, ui.toast`
 
 Why each call is there:
 
@@ -253,6 +253,7 @@ Why each call is there:
 | `store.get`, `store.set` | own event ids, consumed human decisions, "mode already asked" |
 | `ui.ask` | scope drift choices, the first run question, reasons |
 | `ui.open`, `ui.close` | the pane |
+| `ui.focus` | the band's key 9 moves the focus into the override reason field |
 | `ui.invalidate` | redraw after a mode or enforcement change |
 | `ui.resolve`, `ui.toast` | the element table; one toast per transition |
 
@@ -360,19 +361,53 @@ Example reasons:
 - "Temper: commit blocked, Check has not passed. Next: run the checks (key 1 in Check
   or /temper check)."
 
-Bash coverage is best effort. The hard guarantee covers the tool layer: Write, Edit,
-NotebookEdit and MultiEdit, and `git commit` through Bash. The classifier strips common
-wrappers (`env`, `timeout`, `nice`, `ionice`, `nohup`, `time`, `xargs`, `command`, `builtin`,
-`exec`, `sudo`, a path to `git` or `temper`, a backslash or quotes around the command word)
-before it looks for `git commit` and for the decision CLI calls. It treats redirects (including
-`>|`), `tee`, `cp`, `mv`, `install`, `ln`, `rsync` (and `-t DIR`), `rm`, `sed -i` and `sed w`,
-`curl -o`, `wget -O`, and `tar -C` onto a guarded path as writes, collapses `..` segments,
-follows `cd`, removes quotes and backslashes before matching a path, and for a glob or a shell
-variable that could name a guarded file it denies when the same command writes. Reading
-(`cat`, `grep`, `ls`, `jq`, `diff`) is not flagged. Bash can still write files in other ways
-(an interpreter that builds the path, for one), and Bash writes to ordinary source files are not
-phase checked. MCP file tools are not covered. The native `pre-commit` hook stays as a second
-layer. The README says so.
+Bash coverage is best effort, but structural and conservative. The hard guarantee covers the
+tool layer: Write, Edit, NotebookEdit and MultiEdit, and `git commit` through Bash. For Bash the
+classifier splits the command into statements (quote, heredoc and substitution aware, heredoc
+bodies left out), strips wrappers (`env`, `timeout`, `nice`, `ionice`, `nohup`, `time`, `xargs`,
+`command`, `builtin`, `exec`, `sudo`, a path to `git` or `temper`, `bash scripts/temper`, `sh -c`,
+`eval`), and resolves shell variables statement by statement, left to right, in `export`,
+`declare`, `local`, `readonly` and `typeset` forms and in env prefixes, to a fixed depth. Brace
+expansion is expanded to a fixed cap, `..` segments are collapsed, `cd` is followed, and quotes and
+backslashes are removed before a path is compared.
+
+Every write capable construct in the command is then checked: redirects (including `>|` and
+`&>`), `tee` (every target), `dd of=`, `cp`, `mv`, `install`, `ln`, `rsync`, `rm`, `truncate`,
+`touch`, `sed -i` and `sed w`, `curl -o`, `wget -O`, `tar -C`, `find -delete` and `-exec`. The
+rules are:
+
+- A target that resolves to a guarded file (events, `gates.json`, `status.json`, `overrides.json`,
+  `build-state.json`) is refused.
+- A folder that holds guarded files (`.temper`, `.temper/specs`, `.temper/specs/<slug>`, an events
+  folder) cannot be removed or moved, and nothing can be copied or moved into it when a file that
+  lands there would be guarded or cannot be named.
+- A target that cannot be resolved (an unset variable, a command or process substitution, a glob
+  that could match a guarded name, an expansion that is too large) is refused when the command
+  names Temper state, or when the file name itself cannot be known. The deny says how to do it
+  legitimately: spell the exact path, or use `scripts/temper gate`, `evidence` or `state`.
+- An interpreter (`python`, `perl`, `ruby`, `node`) told a guarded path is refused.
+
+Reading (`cat`, `grep`, `ls`, `jq`, `diff`, `head`, `tail`) is not flagged, and ordinary flows pass
+(a heredoc into `$S/tasks.md` with `S=.temper/specs/x` in the same command, every
+`scripts/temper gate`, `evidence` and `state get` call).
+
+Limits, stated honestly. A variable set in an earlier call, in a profile or in the environment
+cannot be seen. Bash can still write files in ways no classifier catches (an interpreter that builds
+its path at run time, for one), and Bash writes to ordinary source files are not phase checked. MCP
+file tools are not covered. The native `pre-commit` hook is the backstop. Button presses, the
+reason field and menu picks carry no origin in their handlers, so their authenticity rests on the
+platform.
+
+The CLI calls that matter are matched to the person's decision. A decision call that repeats
+`--id`, `--stage` or `--reason` is refused, because the CLI reads the last one and the mod must not
+read a different one. `state set next_stage` is allowed once for the stage of a person's `back`
+decision and otherwise refused; `state set stage|branch|spec_path` is refused while a run is active;
+`state set run_mode autonomous` is allowed only after the person approved the Plan in this run and
+`autonomy.enabled: true` is set in `.claude/temper.config` (`run_mode interactive` is always allowed); `state clear` and `state archive` are refused
+while a run is active and allowed after it is Done or when no run is active. `state set
+complexity|base_sha|regression_test` stay allowed. In follow up prompts the reason is single quoted
+with its quotes escaped, so nothing a person types is read as shell. The native `pre-commit` hook
+stays as a second layer.
 
 **Review and Check allow the whole spec directory.** In those phases a write to
 `intent.md`, `plan.md` or `tasks.md` is allowed, so an approved intent or plan can be edited
