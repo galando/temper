@@ -17,7 +17,7 @@ export type World = {
   toasts: string[]
   opened: string[]
   // Whether each pane open asked for the keys.
-  openArgs: Array<{ id: string; focus: boolean }>
+  openArgs: Array<{ id: string; focus: boolean; closeOnEscape: boolean }>
   closed: string[]
   invalidated: number
   suggestions: string[]
@@ -39,6 +39,9 @@ export type WorldOptions = {
   rows?: Array<{ key: string; value: string; isLocked: boolean }>
   // False answers every pane open with "not placed" (a narrow terminal).
   placed?: boolean
+  // True: the surface grants the keyboard to a pane that asks for it (an empty composer).
+  // Left out: it refuses, as it does while the composer holds text.
+  grantFocus?: boolean
   // Answer every directory listing with something that is not a list.
   brokenList?: boolean
 }
@@ -51,6 +54,7 @@ const rel = (p: string): string => /(?:^|\/)((?:\.temper|\.claude)\/.*)$/.exec(p
 
 export function world(on: On, files: Record<string, string> = {}, opts: WorldOptions = {}): World {
   const w: World = { files: new Map(Object.entries(files)), writes: [], reads: [], prompts: [], asked: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) } }
+  const panes = new Map<string, boolean>()
   // The plugin store, in memory and live: a test reads what the mod stored from `w.store`.
   on('store.get', ($, e) => ({ value: w.store[e.key] }))
   on('store.set', ($, e) => {
@@ -97,13 +101,17 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
   })
   on('ui.open', ($, e) => {
     w.opened.push(e.id)
-    w.openArgs.push({ id: e.id, focus: e.focus === true })
+    w.openArgs.push({ id: e.id, focus: e.focus === true, closeOnEscape: e.closeOnEscape === true })
+    panes.set(e.id, e.focus === true && opts.grantFocus === true)
     return { value: opts.placed === false ? { isPlaced: false as const, reason: 'narrow' } : { isPlaced: true as const } } as never
   })
   on('ui.close', ($, e) => {
     w.closed.push(e.id)
+    panes.delete(e.id)
     return { value: undefined }
   })
+  // The open panes and whether each holds the keyboard.
+  on('ui.panes', () => ({ value: [...panes].map(([id, isFocused]) => ({ id, title: id, isShown: true, isFocused, isPlaced: true })) as never }))
   on('ui.toast', ($, e) => {
     w.toasts.push(e.text)
     return { value: undefined }

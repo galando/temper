@@ -33,11 +33,11 @@ describe('the game pane draws on the terminal and the desktop app', () => {
       const ui = await $.ui.mount({ plugin: 'temper', surface, component: 'Pane', requestId: 'temper-game', props: GAME })
       const inner = () => ui.drawn({ in: 'game' })
       expect(textOf(await inner())).toContain('TEMPER RUN')
-      expect(textOf(await inner())).toContain('Press Space to start')
+      expect(textOf(await inner())).toContain('Press s to start')
 
-      // Space starts the game; the clock moves it.
-      await ui.key({ key: ' ', in: 'game' })
-      expect(textOf(await inner())).toContain('Space, Up or W jumps')
+      // After a click, the key s starts the game; the clock moves it.
+      await ui.key({ key: 's', in: 'game' })
+      expect(textOf(await inner())).toContain('w jumps. q or Esc leaves.')
       const before = textOf(await inner())
       await ui.advance(80 * 3)
       expect(textOf(await inner())).not.toEqual(before)
@@ -50,7 +50,7 @@ describe('the game pane draws on the terminal and the desktop app', () => {
 
       // With no key for 2 seconds and no block close, the game pauses by itself.
       await ui.advance(80 * 40)
-      expect(textOf(await inner())).toContain('Paused. Press Space to go on.')
+      expect(textOf(await inner())).toContain('Paused. Press s or w to go on.')
       const frozen = textOf(await inner())
       await ui.advance(80 * 40)
       expect(textOf(await inner())).toEqual(frozen)
@@ -59,7 +59,7 @@ describe('the game pane draws on the terminal and the desktop app', () => {
       await ui.key({ key: ' ', in: 'game' })
       await ui.advance(80 * 80)
       expect(textOf(await inner())).toContain('Game over')
-      expect(textOf(await inner())).toContain('Press Space to play again')
+      expect(textOf(await inner())).toContain('Press s to play again')
       expect(typeof w.store.gameBest === 'number' && w.store.gameBest > 0).toBe(true)
     })
 
@@ -132,8 +132,9 @@ describe('/temper:temper play', () => {
     const w = world(on, runFiles({ nextStage: 'build' }))
     await $.session.start(START('terminal'))
     const first = await $.command.run(run('play'))
-    expect(first.text).toBe('The game is open. Click it or press a key to play. Esc leaves.')
-    expect(w.openArgs.filter(a => a.id === 'temper-game')).toEqual([{ id: 'temper-game', focus: true }])
+    // The surface refused the keys (the composer held text), so the text says how to get them.
+    expect(first.text).toBe('The game is open. Press Ctrl+X, then Tab, to give it the keys. Then press s to start, w to jump, q or Esc to leave.')
+    expect(w.openArgs.filter(a => a.id === 'temper-game')).toEqual([{ id: 'temper-game', focus: true, closeOnEscape: true }])
     expect((await $.command.run(run('play'))).text).toBe('The game is closed.')
     expect(w.closed).toContain('temper-game')
     expect((await $.command.run(run('play'))).text).toContain('The game is open.')
@@ -190,7 +191,7 @@ describe('/temper:temper play', () => {
 
 describe('the Play button in the band', () => {
   for (const surface of SURFACES) {
-    test(`shows only while Claude works, dim, with key p, and opens the game without the keys on ${surface}`, async ($, on) => {
+    test(`shows only while Claude works, dim, with the digit 8, and opens the same focused game pane on ${surface}`, async ($, on) => {
       const w = world(on, runFiles({ nextStage: 'build' }))
       await $.session.start(START(surface))
       const idle = await $.ui.mount({ plugin: 'temper', surface, component: 'AbovePrompt', requestId: 'idle', props: BAND(false) })
@@ -199,7 +200,7 @@ describe('the Play button in the band', () => {
       const busy = await $.ui.mount({ plugin: 'temper', surface, component: 'AbovePrompt', requestId: 'busy', props: BAND(true) })
       expect(await busy.find({ key: 'action-play' })).toBeDefined()
       await busy.press({ key: 'action-play' })
-      expect(w.openArgs.filter(a => a.id === 'temper-game')).toEqual([{ id: 'temper-game', focus: false }])
+      expect(w.openArgs.filter(a => a.id === 'temper-game')).toEqual([{ id: 'temper-game', focus: true, closeOnEscape: true }])
       expect(w.toasts.some(t => t.includes('The game is open'))).toBe(true)
     })
   }
@@ -219,14 +220,15 @@ describe('the Play button in the band', () => {
     expect(await band.find({ key: 'action-play' })).toBeUndefined()
   })
 
-  test('the p key does not clash with any other hotkey of the band', async ($, on) => {
+  test('the digit 8 does not clash with any other hotkey of the band, and is a digit', async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }))
     await $.session.start(START('terminal'))
     const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND(true) })
     const text = JSON.stringify(await band.drawn())
     const keys = [...text.matchAll(/"hotkey":"(.)"/g)].map(m => m[1])
     expect(new Set(keys).size).toBe(keys.length)
-    expect(keys).toContain('p')
+    expect(keys).toContain('8')
+    expect(keys).not.toContain('p')
   })
 })
 
@@ -256,5 +258,150 @@ describe('the game never disturbs Temper work', () => {
     await ui.advance(80 * 100)
     expect(w.invalidated).toBe(invalidated)
     expect(w.writes.length).toBe(writes)
+  })
+})
+
+// The keyboard path: the pane's Buttons carry the letter hotkeys, so the game plays with no mouse.
+const mountGame = ($: never, surface: 'terminal' | 'desktop') =>
+  ($ as { ui: { mount: (a: unknown) => Promise<never> } }).ui.mount({ plugin: 'temper', surface, component: 'Pane', requestId: 'temper-game', props: GAME }) as Promise<{
+    drawn: (a?: { in: string }) => Promise<unknown>
+    find: (a: { key: string }) => Promise<unknown>
+    press: (a: { key: string }) => Promise<void>
+    advance: (ms: number) => Promise<void>
+    unmount: () => Promise<void>
+  }>
+// The field as text: each row Box of the drawn tree joined into one string.
+type Node = { type?: string; props?: { key?: string }; children?: Array<Node | string> }
+const joinText = (n: Node | string): string => (typeof n === 'string' ? n : (n.children ?? []).map(joinText).join(''))
+const collectRows = (n: Node | string, out: string[]): string[] => {
+  if (typeof n === 'string') return out
+  if (n.props?.key?.startsWith('row-')) out.push(joinText(n))
+  for (const c of n.children ?? []) collectRows(c, out)
+  return out
+}
+const fieldRows = async (ui: Awaited<ReturnType<typeof mountGame>>): Promise<string[]> => collectRows((await ui.drawn({ in: 'game' })) as Node, [])
+
+describe('the game pane Buttons (keyboard only)', () => {
+  for (const surface of SURFACES) {
+    test(`w Jump, s Start and q Quit are drawn with letter hotkeys on ${surface}`, async ($, on) => {
+      world(on, runFiles({ nextStage: 'build' }))
+      await $.session.start(START(surface))
+      const ui = await mountGame($ as never, surface)
+      const text = textOf(await ui.drawn())
+      for (const [key, hotkey, label] of [['game-jump', 'w', 'Jump'], ['game-start', 's', 'Start'], ['game-quit', 'q', 'Quit']] as const) {
+        expect(await ui.find({ key })).toBeDefined()
+        expect(text).toContain(`"hotkey":"${hotkey}"`)
+        expect(text).toContain(label)
+      }
+    })
+
+    test(`pressing Jump adds one to the counter, and only a press writes it on ${surface}`, async ($, on) => {
+      const w = world(on, runFiles({ nextStage: 'build' }))
+      await $.session.start(START(surface))
+      const ui = await mountGame($ as never, surface)
+      // The counters live in $.state; the pane hands them to the game as props, so read them there.
+      const read = async () => {
+        const text = textOf(await ui.drawn())
+        return { jump: Number(/"jumpCount":(\d+)/.exec(text)?.[1]), start: Number(/"startCount":(\d+)/.exec(text)?.[1]) }
+      }
+      expect(await read()).toEqual({ jump: 0, start: 0 })
+      await ui.press({ key: 'game-jump' })
+      expect(await read()).toEqual({ jump: 1, start: 0 })
+      await ui.press({ key: 'game-jump' })
+      await ui.press({ key: 'game-start' })
+      expect(await read()).toEqual({ jump: 2, start: 1 })
+      const writes = w.writes.length
+      const invalidated = w.invalidated
+      await ui.advance(80 * 50)
+      expect(w.writes.length).toBe(writes)
+      expect(w.invalidated).toBe(invalidated)
+    })
+
+    test(`the game reacts to a new startCount and a new jumpCount on ${surface}`, async ($, on) => {
+      world(on, runFiles({ nextStage: 'build' }))
+      await $.session.start(START(surface))
+      const ui = await mountGame($ as never, surface)
+      expect(textOf(await ui.drawn({ in: 'game' }))).toContain('Press s to start')
+      await ui.press({ key: 'game-start' })
+      expect(textOf(await ui.drawn({ in: 'game' }))).toContain('w jumps. q or Esc leaves.')
+      await ui.advance(80 * 3)
+      // On the ground the runner is on the bottom row of the field.
+      expect((await fieldRows(ui))[5]?.[6]).toBe('A')
+      await ui.press({ key: 'game-jump' })
+      await ui.advance(80)
+      expect((await fieldRows(ui))[5]?.[6]).toBe(' ')
+      // One press moves the runner once: a second press while it is in the air changes nothing.
+      const air = textOf(await ui.drawn({ in: 'game' }))
+      expect(air).toContain('score')
+    })
+
+    test(`Start becomes Again after a game over, and the Start Button starts a new game on ${surface}`, async ($, on) => {
+      const w = world(on, runFiles({ nextStage: 'build' }))
+      await $.session.start(START(surface))
+      const ui = await mountGame($ as never, surface)
+      await ui.press({ key: 'game-start' })
+      // With no press for 2 seconds the game pauses; one Jump press wakes it, and with no more
+      // presses the runner then hits a block.
+      await ui.advance(80 * 30)
+      await ui.press({ key: 'game-jump' })
+      await ui.advance(80 * 80)
+      expect(textOf(await ui.drawn({ in: 'game' }))).toContain('Game over')
+      expect(typeof w.store.gameBest === 'number' && w.store.gameBest > 0).toBe(true)
+      // The Start Button now says Again (a pane drawn after the game over shows it).
+      await ui.unmount()
+      const fresh = await mountGame($ as never, surface)
+      expect(textOf(await fresh.drawn())).toContain('Again')
+      // A new Client counts from the counters it sees, so press Start twice to cover a game with no state yet.
+      await fresh.press({ key: 'game-start' })
+      expect(textOf(await fresh.drawn({ in: 'game' }))).toContain('score 0000')
+      expect(textOf(await fresh.drawn({ in: 'game' }))).toContain('w jumps. q or Esc leaves.')
+    })
+
+    test(`keys still work after a click through onKey on ${surface}`, async ($, on) => {
+      world(on, runFiles({ nextStage: 'build' }))
+      await $.session.start(START(surface))
+      const ui = await mountGame($ as never, surface)
+      await (ui as unknown as { key: (e: { key: string; in: string }) => Promise<void> }).key({ key: 's', in: 'game' })
+      expect(textOf(await ui.drawn({ in: 'game' }))).toContain('w jumps. q or Esc leaves.')
+      await (ui as unknown as { key: (e: { key: string; in: string }) => Promise<void> }).key({ key: 'up', in: 'game' })
+      await ui.advance(80)
+      expect((await fieldRows(ui))[5]?.[6]).toBe(' ')
+    })
+
+    test(`the Quit Button closes the pane on ${surface}`, async ($, on) => {
+      const w = world(on, runFiles({ nextStage: 'build' }))
+      await $.session.start(START(surface))
+      await $.command.run(run('play'))
+      const ui = await mountGame($ as never, surface)
+      await ui.press({ key: 'game-quit' })
+      expect(w.closed).toContain('temper-game')
+      // The pane is closed, so the same command opens it again.
+      expect((await $.command.run(run('play'))).text).toContain('The game is open.')
+    })
+  }
+
+  test('Esc path: the pane asks to close on Esc, and a person close lets the command open it again', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'build' }))
+    await $.session.start(START('terminal'))
+    await $.command.run(run('play'))
+    expect(w.openArgs.filter(a => a.id === 'temper-game')).toEqual([{ id: 'temper-game', focus: true, closeOnEscape: true }])
+    // The same command closes it, and a second one opens it again.
+    expect((await $.command.run(run('play'))).text).toBe('The game is closed.')
+    expect((await $.command.run(run('play'))).text).toContain('The game is open.')
+    expect(w.openArgs.filter(a => a.id === 'temper-game')).toHaveLength(2)
+  })
+
+  test('the toast says the keys when the surface grants them, and the Ctrl+X Tab way when it does not', async ($, on) => {
+    world(on, runFiles({ nextStage: 'build' }), { grantFocus: true })
+    await $.session.start(START('terminal'))
+    expect((await $.command.run(run('play'))).text).toBe('The game is open. Press s to start, w to jump, q or Esc to leave.')
+  })
+
+  test('the game never uses the old key text', async ($, on) => {
+    world(on, runFiles({ nextStage: 'build' }))
+    await $.session.start(START('terminal'))
+    const text = (await $.command.run(run('play'))).text ?? ''
+    expect(text).not.toContain('Click it')
+    expect(text).not.toContain('Space')
   })
 })

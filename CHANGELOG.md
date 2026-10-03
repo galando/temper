@@ -34,8 +34,9 @@ All notable changes to Temper are documented here. The plugin version lives in
   `/temper enforcement on|off` controls the refusals. Both are plugin settings (`uiMode`,
   `enforcement`); a value locked by an administrator is reported, not changed. The first
   interactive `/temper` asks once.
-- An optional runner game, Temper Run, for the time Claude works: key `p` on the band or
-  `/temper:temper play` (a new reserved word, 17 in all). It runs on the terminal and the
+- An optional runner game, Temper Run, for the time Claude works: the `8: Play` button on the band
+  (only while Claude works; the digit works from an empty prompt) or `/temper:temper play` (a new reserved word, 17 in all). The pane takes the keyboard when it
+  opens: `s` starts, `w` jumps, `q` or Esc leaves, with no mouse. It runs on the terminal and the
   desktop app only, keeps a best score, shows a banner when a phase is ready, and never
   weakens a refusal. The plugin setting `game` (`on` or `off`) turns it off.
 - User text of the mod is written in Simplified Technical English. "Lint intent" is now

@@ -35,7 +35,7 @@ Total about 80 seconds. Times are targets, not promises.
 | 5. Build and the pane | 0:44 to 1:05 | `/temper:temper pane`, the criteria checklist ticking, a failing test then a passing one | Build starts with a failing test. The pane shows each criterion as it passes. Touch a file outside the plan and Temper asks: add to plan, revert, or allow once with a reason. |
 | 6. Desktop app | 1:05 to 1:15 | The Code tab of the desktop app with the same band and the same denial | The same mod runs in the desktop app. |
 | 7. Review, Check, done | 1:15 to 1:25 | Review findings, Check passing, `git commit` allowed, `.temper/report.md` | Review and Check follow. When Check passes, commit is allowed and the report records every override and decision. |
-| 8. A game while you wait (10 s, optional) | 1:25 to 1:35 | While Claude works, press `p` or run `/temper:temper play`. Click the game, press Space, jump a block, then press Esc | Claude is busy and you wait? Play Temper Run. A banner tells you when a phase is ready. Esc takes you back. |
+| 8. A game while you wait (10 s, optional) | 1:25 to 1:35 | Run `/temper:temper play` (or press `8` while Claude works), press `s`, jump a block with `w`, then press `q` | Claude is busy and you wait? Play Temper Run. A banner tells you when a phase is ready. Press q to go back. |
 
 All six phases appear: Intent (shot 2), Plan (shot 4), Build (shot 5), Review and Check
 (shot 7), and Fix (say it in shot 7: a failing check sends the run to Fix, with a limit of
@@ -56,9 +56,8 @@ work that way:
 ## What was not verified
 
 - The tape has not been run. The Sleep times are estimates and will need tuning.
-- The game tape has not been run. The game was verified by hand on the terminal only. It needs
-  a click or the `play` command before keys reach it, and it exists on the terminal and the
-  desktop app only.
+- The game tape has not been run. The game was verified by hand on the terminal only, with the
+  keyboard (s, w, q). It exists on the terminal and the desktop app only.
 - The desktop app shot depends on how you load a local plugin folder into the desktop
   app, which the author did not verify (see `docs/mods-testing.md`).
 - The `user-attachments` behaviour above is described from how GitHub works today. It was

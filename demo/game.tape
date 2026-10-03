@@ -3,10 +3,10 @@
 #     vhs demo/game.tape
 #
 # This tape is NOT run in CI. It needs an authenticated `claude` session (Claude Code 2.1.287
-# or later) and VHS with ttyd and ffmpeg. It sends no prompt to Claude: the game opens with
-# the /temper:temper play command. A click gives the game its keys, so the tape does not
-# press keys at the game until the mouse has clicked it. If your VHS cannot click, press Tab
-# to move the focus. Tune the Sleep times for your machine.
+# or later) and VHS with ttyd and ffmpeg. It sends no prompt to Claude. The game opens with the
+# /temper:temper play command (while Claude works, the digit 8 opens it too), and the pane takes the keyboard. The tape plays with the keys
+# s (start), w (jump) and q (quit) only. It never clicks and never presses Tab or Space.
+# The Sleep times are estimates: a jump has to come before a block reaches the runner.
 
 Output demo/out/game.gif
 
@@ -31,17 +31,33 @@ Enter
 Sleep 9s
 Show
 
-Type "/temper:temper play" Enter
+# Open the game. The line "The game is open. Press s to start, w to jump, q or Esc to leave." shows.
+Type "/temper:temper play"
+Sleep 500ms
+Enter
 Sleep 3s
-Tab
-Sleep 1s
-Space
+
+# Start, then jump over the blocks. Each w is one jump.
+Type "s"
 Sleep 2s
-Space
+Type "w"
 Sleep 1500ms
-Space
-Sleep 2s
-Space
+Type "w"
+Sleep 1500ms
+Type "w"
+Sleep 1800ms
+Type "w"
+Sleep 1500ms
+Type "w"
+Sleep 1800ms
+Type "w"
+Sleep 1500ms
+Type "w"
+Sleep 1500ms
+
+# Stop jumping: the next block ends the game and the Start button says Again.
 Sleep 8s
-Escape
+
+# Leave with q. The prompt is back.
+Type "q"
 Sleep 3s

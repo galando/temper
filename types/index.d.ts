@@ -46,8 +46,13 @@ export type TemperRun = {
   view: TemperView
 }
 
+// The game's button presses. The pane's Buttons add one to a counter; the game compares the
+// counters with the values it saw last and applies the new presses. Written on a press only,
+// never on a frame.
+export type TemperGameCtl = { jump: number; start: number }
+
 declare module 'claude-code' {
   interface PluginState {
-    temper: { run: TemperRun | null; mode: UiMode | null }
+    temper: { run: TemperRun | null; mode: UiMode | null; game: TemperGameCtl | null }
   }
 }

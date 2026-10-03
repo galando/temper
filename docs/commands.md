@@ -172,10 +172,13 @@ allow it once with a reason. Each choice is logged. After three failed fix loops
 
 Temper Run is a small runner game for the time Claude works. It is optional.
 
-- Open it with the `p` key on the band (the button shows only while Claude works) or with
-  `/temper:temper play`. The same command closes it. Only you can open it. Claude cannot.
-- Click the game once so it gets the keys. Space, Up or W jumps. Space also starts and restarts.
-  Esc gives the focus back to the prompt.
+- Open it with `8` at the empty prompt (the band shows `8: Play`, dim, only while Claude works, in
+  full mode) or with `/temper:temper play`. The same command closes it. Only
+  you can open it. Claude cannot.
+- The pane asks for the keyboard when it opens. Press `s` to start (the button says Again after a
+  game over), `w` to jump, `q` or Esc to leave. These are Buttons with hotkeys, so no mouse is
+  needed. If the prompt held text when you opened it, the pane may not get the keys: press Ctrl+X,
+  then Tab. After a click on the game, Space and Up also jump.
 - The game shows a banner when a phase is ready or changes, so you do not miss an approval.
 - It keeps your best score in the plugin store. The score does not change any gate.
 - It pauses by itself after a short idle time. It never writes files and never makes a call to

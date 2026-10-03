@@ -12,9 +12,16 @@ export type GameProps = {
   // A short line from Temper for the top of the game area, or null.
   banner: string | null
   seed: number
+  // How many times the pane's Jump and Start Buttons were pressed. The game compares them with
+  // the values it saw last and applies each new press once.
+  jumpCount: number
+  startCount: number
 }
 
 type State = {
+  // The counters this game has already applied.
+  seenJump: number
+  seenStart: number
   g: GameState
   // Ticks since the last key or click while the game runs. After 25 (2 seconds) with no block
   // close, the game pauses. This is how it stops when the game has no keys.
@@ -28,7 +35,23 @@ const IDLE_TICKS = 25
 // A block this close (in cells) keeps the game running, so an idle game never skips a block.
 const NEAR = 14
 
+// Keys that reach the game itself after a click. Space, Up, w jump; s starts.
 const JUMP_KEYS = [' ', 'space', 'up', 'w', 'W']
+const START_KEYS = ['s', 'S']
+
+// One press of Start: start a game that is ready or over; wake a paused one. A running game ignores it.
+function pressStart(cur: State): State {
+  if (cur.g.status === 'running' && !cur.paused) return cur
+  if (cur.g.status === 'running') return { ...cur, idle: 0, paused: false }
+  return { ...cur, g: start(cur.g, nextSeed(cur.g)), idle: 0, paused: false, posted: false }
+}
+
+// One press of Jump: a paused game wakes up. A game that has not started does not move.
+function pressJump(cur: State): State {
+  if (cur.g.status !== 'running') return cur
+  if (cur.paused) return { ...cur, idle: 0, paused: false }
+  return { ...cur, g: jump(cur.g), idle: 0 }
+}
 
 const COLOR: Record<string, { color?: string; dim?: boolean; bold?: boolean }> = {
   '#': { color: 'blue', bold: true },
@@ -53,9 +76,27 @@ const nextSeed = (g: GameState): number => (g.rng ^ Math.imul(g.tick + 1, 265443
 
 const GameClient: ClientModule<GameProps, State> = (props, surface) => {
   const { Box, Text } = surface.elements
-  const current: State = surface.state ?? { g: newGame(props.seed, props.best), idle: 0, paused: false, posted: false }
+  const first = surface.state === undefined
+  // The counters start at what the pane shows now, so a press made before this game existed is not replayed.
+  let current: State = surface.state ?? {
+    g: newGame(props.seed, props.best),
+    idle: 0,
+    paused: false,
+    posted: false,
+    seenJump: props.jumpCount,
+    seenStart: props.startCount,
+  }
 
-  if (surface.state === undefined) {
+  // New presses of the pane's Buttons: Start first, then Jump, each applied once.
+  if (!first && (props.startCount !== current.seenStart || props.jumpCount !== current.seenJump)) {
+    let next = current
+    if (props.startCount !== next.seenStart) next = pressStart(next)
+    if (props.jumpCount !== next.seenJump) next = pressJump(next)
+    current = { ...next, seenStart: props.startCount, seenJump: props.jumpCount }
+    surface.setState(current)
+  }
+
+  if (first) {
     // Set up once: the first call has no state yet.
     surface.setState(current)
 
@@ -74,20 +115,22 @@ const GameClient: ClientModule<GameProps, State> = (props, surface) => {
         surface.post({ kind: 'game-over', score: g.score, best: g.best })
         posted = true
       }
-      surface.setState({ g, idle, paused: false, posted })
+      surface.setState({ ...cur, g, idle, paused: false, posted })
     })
 
+    // Keys that arrive after a click on the game. The pane's own Buttons (s, w, q) cover the
+    // keyboard when the pane holds it; these keep a clicked game playable too.
     surface.onKey(event => {
       const cur = surface.state
-      if (!cur || !JUMP_KEYS.includes(event.key)) return
-      let g = cur.g
-      let posted = cur.posted
-      if (g.status === 'ready') g = start(g, nextSeed(g))
-      else if (g.status === 'over') {
-        g = start(g, nextSeed(g))
-        posted = false
-      } else if (!cur.paused) g = jump(g)
-      surface.setState({ g, idle: 0, paused: false, posted })
+      if (!cur) return
+      if (START_KEYS.includes(event.key)) {
+        surface.setState(pressStart(cur))
+        return
+      }
+      if (!JUMP_KEYS.includes(event.key)) return
+      // Space also starts a game that is ready or over.
+      if (cur.g.status !== 'running' && (event.key === ' ' || event.key === 'space')) surface.setState(pressStart(cur))
+      else surface.setState(pressJump(cur))
     })
 
     // A click gives the game the keys, so a click also wakes a paused game.
@@ -102,12 +145,12 @@ const GameClient: ClientModule<GameProps, State> = (props, surface) => {
   const best = Math.max(g.best, props.best)
   const hint =
     g.status === 'ready'
-      ? 'Press Space to start. Space, Up or W jumps. Esc leaves.'
+      ? 'Press s to start. w jumps. q or Esc leaves.'
       : current.paused
-        ? 'Paused. Press Space to go on. Esc leaves.'
+        ? 'Paused. Press s or w to go on. q or Esc leaves.'
         : g.status === 'over'
-          ? `${isNewBest(g) ? 'New best score. ' : ''}Game over. Press Space to play again. Esc leaves.`
-          : 'Space, Up or W jumps. Esc leaves.'
+          ? `${isNewBest(g) ? 'New best score. ' : ''}Game over. Press s to play again. q or Esc leaves.`
+          : 'w jumps. q or Esc leaves.'
 
   return (
     <Box flexDirection="column">

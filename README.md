@@ -95,16 +95,19 @@ The keys of each phase are in [Commands](docs/commands.md#each-phase).
 
 ### A game while you wait
 
-Claude works and you wait? Press `p` on the band, or run `/temper:temper play`, to open Temper
-Run, a small runner game. Click the game once so it gets the keys, then press Space to start
-and Space to jump. Esc gives the focus back to the prompt. It shows a banner when a phase is
-ready, so you do not miss an approval, and refusals still apply while it is open. It is optional:
-set the plugin setting `game` to `off` to hide it.
+Claude works and you wait? Press `8` at the empty prompt (the band shows `8: Play` while Claude
+works), or run `/temper:temper play`, to open Temper
+Run, a small runner game. The game pane takes the keyboard when it opens. Press `s` to start,
+`w` to jump and `q` or Esc to leave. You need no mouse. If the prompt held text when you opened
+the game, the pane may not get the keys: press Ctrl+X, then Tab. The game shows a banner when
+a phase is ready, so you do not miss an approval, and refusals still apply while it is open. It
+is optional: set the plugin setting `game` to `off` to hide it.
 
-![Temper Run, the optional game: a runner jumps over blocks while Claude works](docs/assets/game.svg)
+![Temper Run, the optional game: a runner jumps over blocks while Claude works](docs/assets/game.gif)
 
 The game runs on the terminal and the desktop app only. It was verified by hand on the
-terminal. The image above is a placeholder until the recording from `demo/game.tape` replaces it.
+terminal, with the keyboard only. The image above is a placeholder until the recording from
+`demo/game.tape` replaces it.
 
 ## Where enforcement works
 

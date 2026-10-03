@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="200" viewBox="0 0 640 200" role="img" aria-label="Placeholder for the Temper Run recording">
-  <rect width="640" height="200" fill="#1e1e2e"/>
-  <text x="24" y="40" fill="#cdd6f4" font-family="monospace" font-size="16" font-weight="bold">TEMPER RUN   score 0023   best 0061</text>
-  <rect x="440" y="120" width="16" height="32" fill="#89b4fa"/>
-  <rect x="48" y="120" width="16" height="32" fill="#f9e2af"/>
-  <rect x="24" y="156" width="592" height="2" fill="#6c7086"/>
-  <text x="24" y="184" fill="#a6adc8" font-family="monospace" font-size="13">Placeholder. Replace it with the recording from demo/game.tape.</text>
-</svg>

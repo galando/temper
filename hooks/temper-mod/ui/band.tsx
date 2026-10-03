@@ -109,10 +109,11 @@ export function renderBand(
       ? [big('more', '0', view.expanded ? 'Fewer' : 'More', () => onAction({ key: '0', id: compact ? 'more-narrow' : 'more', label: 'More', command: 'pane' }), false)]
       : []),
   ]
-  // The game button: dim, drawn only while Claude works and only when the game is on.
+  // The game button: dim, drawn only while Claude works and only when the game is on. Its key is the
+  // digit 8, because only a digit works from an empty prompt (a letter would type into the composer).
   const play = game.show ? (
     <Box key="box-play" paddingX={compact ? 0 : 1}>
-      <Button key="action-play" label={game.open ? 'Close game' : 'Play'} hotkey="p" plain dimColor onPress={() => onAction({ key: 'a', id: 'play', label: 'Play', command: 'play' })} />
+      <Button key="action-play" label={game.open ? 'Close game' : 'Play'} hotkey="8" plain dimColor onPress={() => onAction({ key: 'a', id: 'play', label: 'Play', command: 'play' })} />
     </Box>
   ) : null
 

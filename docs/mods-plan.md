@@ -232,11 +232,11 @@ treat the docs as the current behavior for the README.
 There is no manifest permission list. The engine scans the module and records what it
 calls; `claude plugin validate` prints it and admins can refuse a mod by it
 (`plugin.register` `uses`). The `calls:` line the validator prints for the built mod,
-nothing else (20 calls; the list is enforced by `scripts/check-mod-calls.sh`):
+nothing else (21 calls; the list is enforced by `scripts/check-mod-calls.sh`):
 
 `config.list, config.set, fs.list, fs.read, fs.stat, fs.write, prompt.submit,
 prompt.suggest, session.version, state.get, state.set, store.get, store.set, ui.ask,
-ui.close, ui.focus, ui.invalidate, ui.open, ui.resolve, ui.toast`
+ui.close, ui.focus, ui.invalidate, ui.open, ui.panes, ui.resolve, ui.toast`
 
 Why each call is there:
 
@@ -253,6 +253,7 @@ Why each call is there:
 | `store.get`, `store.set` | own event ids, consumed human decisions, "mode already asked" |
 | `ui.ask` | scope drift choices, the first run question, reasons |
 | `ui.open`, `ui.close` | the pane |
+| `ui.panes` | the game asks whether its pane holds the keyboard, so the toast says what is true |
 | `ui.focus` | the band's key 9 moves the focus into the override reason field |
 | `ui.invalidate` | redraw after a mode or enforcement change |
 | `ui.resolve`, `ui.toast` | the element table; one toast per transition |
@@ -495,15 +496,24 @@ An optional runner game for the time Claude works. It adds no engine call.
   `scripts/check-mod-calls.sh` fails if one appears in any `*-client.tsx` file.
 - The best score reaches the store through the existing path: the Client posts the score with
   `surface.post`, and the `ui.message` hook in `register.tsx` validates it and calls the
-  already reviewed `$.store.set`. The reviewed list of 20 calls does not change.
+  already reviewed `$.store.set`. The Buttons of the game pane (w Jump, s Start or Again, q Quit)
+  add one to a counter in `$.state` (`game`); the pane passes the counters to the Client as props,
+  and the Client applies each new press once. The only new call is `$.ui.panes`, to learn whether
+  the pane holds the keyboard.
+- The pane asks for the keyboard with `focus` and for Esc to close it with `closeOnEscape`. The
+  surface grants the keys only while the prompt has them over an empty composer, so a command typed
+  in the composer does not always get them. The toast then says: press Ctrl+X, then Tab. That path
+  is in the API text; it is not verified live.
 - The pane is `temper-game`. The Client exists on the terminal and the desktop app only, so the
   hook checks `e.surface` and draws a short text elsewhere.
-- The band button `p Play` shows only while Claude works. `/temper:temper play` is the 17th
+- The band button `8: Play` shows only while Claude works. It takes a digit because only a digit
+  works from an empty prompt. `/temper:temper play` is the 17th
   reserved word. Only a person can open the game: a call that does not come from the composer
   gets a refusal.
 - The game cannot weaken a gate. Refusals are decided in `tool.call` and do not read game state.
-- What is not verified: the game was checked live on the terminal only. Keys reach it after a
-  click, because a Client takes the focus from a pointer event.
+- What is not verified: the game was checked live on the terminal only. Keys reach the Buttons
+  while the pane holds the keyboard. It does after `/temper:temper play` with an empty prompt, and
+  after a click on the Play button. A key reaches the Client itself only after a click.
 
 ### 3.9 Layout in the repo
 

@@ -47,6 +47,11 @@ let gameOpen = false
 let gameBest = 0
 let gameSeed = 1
 let gameBanner: { text: string; until: number } | null = null
+// What the Start Button says: Start before the first game, Again after a game over.
+let gameStatus: 'ready' | 'running' | 'over' = 'ready'
+// The two lines the person reads when the game opens. The second is for a pane that did not get the keys.
+const GAME_KEYS_TEXT = 'The game is open. Press s to start, w to jump, q or Esc to leave.'
+const GAME_FOCUS_TEXT = 'The game is open. Press Ctrl+X, then Tab, to give it the keys. Then press s to start, w to jump, q or Esc to leave.'
 // Where the session draws (session.start says so); the game needs the terminal or the desktop app.
 let drawSurface: string | null = null
 
@@ -156,8 +161,8 @@ async function saveBest($: Api, score: number): Promise<void> {
 }
 
 // Opens or closes the game pane. Only an action of the person calls this: the command or the band
-// button. The command asks for the keys (`focus`); the button leaves the keys with the prompt.
-async function toggleGame($: Api, focus: boolean): Promise<string> {
+// button. Both ask for the keys (`focus`); the surface decides.
+async function toggleGame($: Api): Promise<string> {
   if (!gameOn()) return 'The game is off. Set game to on in /config.'
   if (drawSurface === null || !GAME_SURFACES.includes(drawSurface)) return 'The game needs the terminal or the desktop app.'
   if (gameOpen) {
@@ -168,9 +173,33 @@ async function toggleGame($: Api, focus: boolean): Promise<string> {
   const stored = await $.store.get('gameBest')
   gameBest = typeof stored === 'number' ? stored : 0
   gameSeed = (Date.now() & 0x7fffffff) >>> 0
-  const placed = await $.ui.open({ id: GAME_ID, title: 'Temper Run', ...(focus ? { focus: true as const } : {}) })
+  gameStatus = 'ready'
+  // The pane asks for the keyboard and for Esc to close it. The surface grants the keys only
+  // while the prompt has them over an empty composer, so the text below says what is true.
+  const placed = await $.ui.open({ id: GAME_ID, title: 'Temper Run', focus: true, closeOnEscape: true })
   gameOpen = placed.isPlaced
-  return placed.isPlaced ? 'The game is open. Click it or press a key to play. Esc leaves.' : 'The game needs a wider terminal.'
+  if (!placed.isPlaced) return 'The game needs a wider terminal.'
+  const held = (await $.ui.panes().catch(() => [])).some(p => p.id === GAME_ID && p.isFocused)
+  return held ? GAME_KEYS_TEXT : GAME_FOCUS_TEXT
+}
+
+// Presses of the game's Buttons. Each one writes one counter in $.state, so the pane draws again
+// and the game sees the new value. Nothing is written on a frame.
+async function readCtl($: Api): Promise<{ jump: number; start: number }> {
+  const read = await $.state.get({ plugin: 'temper', key: 'game' } as const).catch(() => null)
+  return read?.value ?? { jump: 0, start: 0 }
+}
+
+async function pressGame($: Api, which: 'jump' | 'start'): Promise<void> {
+  const cur = await readCtl($)
+  if (which === 'start') gameStatus = 'running'
+  await $.state.set({ plugin: 'temper', key: 'game' } as const, { jump: cur.jump + (which === 'jump' ? 1 : 0), start: cur.start + (which === 'start' ? 1 : 0) })
+}
+
+// The Quit Button: close the pane, as Esc does.
+async function quitGame($: Api): Promise<void> {
+  await $.ui.close({ id: GAME_ID })
+  gameOpen = false
 }
 
 // ---- Pane ------------------------------------------------------------------------
@@ -272,7 +301,7 @@ async function showMore($: Api): Promise<void> {
 
 async function runAction($: Api, action: Action, requestId?: string): Promise<void> {
   if (action.id === 'play') {
-    $.ui.toast(await toggleGame($, false))
+    $.ui.toast(await toggleGame($))
     return
   }
   if (action.id === 'more' || action.id === 'more-actions') {
@@ -512,7 +541,7 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
       case 'play':
         // Only the person opens the game. It works in every mode, because the person asked.
         if (originKind !== 'composer') return { text: 'Only the user can open the game. Next: ask the user to run /temper:temper play.' }
-        return { text: await toggleGame($, true) }
+        return { text: await toggleGame($) }
       case 'mode': {
         const wanted = plan.rest.trim().toLowerCase()
         if (wanted === '') return { text: interactive ? await askMode($) : `Temper mode: ${snap.mode}` }
@@ -573,6 +602,7 @@ export const register: Register = (on, opts) => {
   gameOpen = false
   gameBest = 0
   gameBanner = null
+  gameStatus = 'ready'
   drawSurface = null
   live.mode = undefined
   live.enforcement = undefined
@@ -689,8 +719,22 @@ export const register: Register = (on, opts) => {
       return <Text>The game needs the terminal or the desktop app.</Text>
     }
     const ui = await readUi($).catch(() => null)
-    const { Client } = kit
-    return <Client key="game" module="./ui/game-client.tsx" props={{ best: gameBest, banner: bannerFor(ui?.view ?? null), seed: gameSeed }} />
+    const { Client, Box, Button } = kit
+    const ctl = await readCtl($)
+    return (
+      <Box flexDirection="column">
+        <Client
+          key="game"
+          module="./ui/game-client.tsx"
+          props={{ best: gameBest, banner: bannerFor(ui?.view ?? null), seed: gameSeed, jumpCount: ctl.jump, startCount: ctl.start }}
+        />
+        <Box flexDirection="row" columnGap={2}>
+          <Button key="game-jump" label="Jump" hotkey="w" plain onPress={() => pressGame($, 'jump').catch(() => undefined)} />
+          <Button key="game-start" label={gameStatus === 'over' ? 'Again' : 'Start'} hotkey="s" plain onPress={() => pressGame($, 'start').catch(() => undefined)} />
+          <Button key="game-quit" label="Quit" hotkey="q" plain onPress={() => quitGame($).catch(() => undefined)} />
+        </Box>
+      </Box>
+    )
   })
 
   // The score the game posts when a game ends. The data is input, so it is checked.
@@ -699,13 +743,19 @@ export const register: Register = (on, opts) => {
     const data = e.data
     if (typeof data === 'object' && data !== null && (data as { kind?: unknown }).kind === 'game-over') {
       await saveBest($, Number((data as { score?: unknown }).score)).catch(() => undefined)
+      // The Start Button now says Again. One redraw for each game over, never one per frame.
+      gameStatus = 'over'
+      $.ui.invalidate('ui.render')
     }
     return {}
   })
 
   // A pane closed by its own mark: forget it, so the next toggle opens it again.
   on('ui.close', async ($, e, next) => {
-    if (e.id === GAME_ID) gameOpen = false
+    if (e.id === GAME_ID) {
+      gameOpen = false
+      gameStatus = 'ready'
+    }
     if (e.id === PANE_ID) {
       paneOpen = false
       live.paneOpen = false

@@ -140,6 +140,8 @@ describe('hotkeys are unique in every phase and state', () => {
             const band = [...a.primary.map(x => x.key), a.override.key, '0']
             expect(unique(band)).toBe(true)
             expect(band).toEqual(['1', '2', '3', '9', '0'])
+            // The band's Play button (only while Claude works) takes the digit 8: no phase uses it.
+            expect(unique([...band, '8'])).toBe(true)
             // The pane adds the letters of the full list; 0 is only ever "More actions".
             const pane = [...a.primary.map(x => x.key), a.override.key, '0', ...a.more.map(x => x.key)]
             expect(unique(pane)).toBe(true)
