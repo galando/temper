@@ -5,9 +5,11 @@
 # This tape is NOT run in CI. It needs an authenticated `claude` session (Claude Code 2.1.287
 # or later) and VHS with ttyd and ffmpeg. It sends one short prompt to Claude (it costs a few
 # tokens), because the game is offered only while Claude works. The digit 8 opens the game (the
-# command /temper:temper play opens it too), and the pane takes the keyboard. The game is
-# Temper Merge, a turn based puzzle, so no key needs exact timing. The tape plays with the keys
-# 8, w, a, s, d and q only. It never clicks and never presses Tab or Space.
+# command /temper:temper play opens it too), and the pane takes the keyboard. The game is Temper
+# Run: Ember, a dragon, jumps over anvils (w) and ducks under hammers (s). The tape plays with the
+# keys 8, r, w, s and q only. It never clicks and never presses Tab or Space. The first obstacle
+# arrives 2.5 seconds after r, and the next ones come at least 1.2 seconds apart. The Sleep times
+# are estimates: tune them if Ember hits an obstacle (that only ends the run, and the tape goes on).
 
 Output demo/out/game.gif
 
@@ -43,32 +45,29 @@ Sleep 4s
 Type "8"
 Sleep 3s
 
-# Slide the pieces with w a s d. Equal pieces merge and get hotter. Take your time: the game waits.
-Type "a"
-Sleep 900ms
+# Run. The help line "Press w to jump. Press s to duck." shows for 4 seconds.
+Type "r"
+Sleep 2300ms
+
+# The first anvil: jump a moment before it reaches Ember.
 Type "w"
-Sleep 900ms
-Type "d"
-Sleep 900ms
-Type "s"
-Sleep 900ms
-Type "a"
-Sleep 900ms
-Type "w"
-Sleep 900ms
-Type "a"
-Sleep 900ms
-Type "s"
-Sleep 900ms
-Type "d"
-Sleep 900ms
-Type "w"
-Sleep 900ms
-Type "a"
-Sleep 900ms
-Type "s"
 Sleep 2s
 
-# Leave with q. The prompt is back, and the board waits for the next time.
+# The next obstacles: jump, jump, then duck under a hammer when one appears.
+Type "w"
+Sleep 2200ms
+Type "w"
+Sleep 2200ms
+Type "s"
+Sleep 2s
+Type "w"
+Sleep 2s
+
+# Let the run end, or keep going: then run again.
+Sleep 3s
+Type "r"
+Sleep 2s
+
+# Leave with q. The prompt is back.
 Type "q"
 Sleep 3s

@@ -111,7 +111,7 @@ after the command is one of these, Temper handles it instead of starting a run. 
 | `/temper:temper mode <full\|minimal\|off>` | Change how much Temper draws |
 | `/temper:temper enforcement <on\|off>` | Turn denials on or off |
 | `/temper:temper pane` | Open or close the pane. A bare `/temper:temper` does the same while a run is active. |
-| `/temper:temper play` | Open or close the Temper Merge game. Only you can open it. Terminal and desktop app only. |
+| `/temper:temper play` | Open or close the Temper Run game. Only you can open it. Terminal and desktop app only. |
 | `/temper:temper help` | List these |
 
 These 17 words are reserved: `status`, `timeline`, `approve`, `next`, `back`, `override`, `accept`,
@@ -175,13 +175,21 @@ allow it once with a reason. Each choice is logged. After three failed fix loops
 
 ### The game
 
-Temper Merge is a small puzzle for the time Claude works. It is optional. It is turn based, so it
-needs no timing. The board is 4 by 4 and holds metal pieces. Slide all pieces with `w` (up),
-`a` (left), `s` (down) and `d` (right). Two equal pieces that touch merge into one piece of double
-value, and you score that value. A new piece (2, sometimes 4) appears after each move that changed
-the board. The pieces get hotter as the value grows: 2 dark gray, 4 gray, 8 dull red, 16 red, 32
-orange red, 64 orange, 128 amber, 256 yellow, and 512 and more white on a hot background. Make a
-white hot 512 piece. You may keep playing after that. The game ends when no move changes the board.
+Temper Run is a small runner game for the time Claude works. It is optional. Ember, a small dragon,
+runs on the spot in a forge hall, like the dinosaur in a browser. Iron anvils and buckets of cold water
+come from the right: press `w` to jump over them. Hammers fly through the air at head height: press
+`s` to duck under a low one (a high one flies over you). The floor and the far wall scroll, sparks
+drift by, and the wall warms from dark gray to deep red as the score rises (heat 1 to 5, one level
+for every 400 points, shown as bars). At every 100 points Ember flashes yellow and a banner says
+"Hot! 100". The top right shows `HI 00155  00032`: the best score and the score.
+
+It is made to be fair and easy to play:
+- A jump takes about 0.9 seconds. A jump pressed up to 250 ms before the landing is remembered and
+  fires on the landing. A duck lasts 0.8 seconds, and a jump cancels it.
+- The hit boxes are smaller than the pictures, so a near miss is a miss.
+- The first obstacle arrives after 2.5 seconds. The game keeps a gap between obstacles that you can
+  always clear at the current speed, and it never asks for a jump and a duck too close together.
+- A help line, "Press w to jump. Press s to duck.", shows for the first 4 seconds of a run.
 
 - While a phase works, Temper offers the game in three places, in full mode: the band
   (`8: Play while you wait`, a normal button like 2 and 3), the pane (Actions list, key 8) and the
@@ -193,20 +201,18 @@ white hot 512 piece. You may keep playing after that. The game ends when no move
 - The setting `game` has three values: `on` (the default: the offers and the command), `command`
   (the command only, no offers) and `off` (nothing; the command answers "The game is off. Set game
   to on in /config.").
-- The pane asks for the keyboard when it opens. The Buttons are `w` Up, `a` Left, `s` Down, `d` Right,
-  `r` New game and `q` Quit (Esc also leaves). They have hotkeys, so no mouse is needed. The text
-  when it opens is always "The game is open. Press w a s d to slide the pieces, r for a new game, q
-  or Esc to leave." If no key reaches the game within 3 seconds, it draws one dim line: "No keys yet?
-  Press Ctrl+X, then Tab, to give the game the keys." The line goes away when a key arrives. After a
-  click on the game, the arrow keys also slide the pieces.
-- The board and the score stay when you leave. The next `8` or `/temper:temper play` goes on with
-  the same game. `r` starts a new one.
-- At the end you see "No more moves. Score 1240. Press r for a new game. q or Esc leaves." A 512
-  piece shows "White hot! You made 512. You can keep playing."
+- The pane asks for the keyboard when it opens. The Buttons are `w` Jump, `s` Duck, `r` Run (it says
+  Run again after a game over) and `q` Quit (Esc also leaves). They have hotkeys, so no mouse is
+  needed. The text when it opens is always "The game is open. Press r to run, w to jump, s to duck,
+  q or Esc to leave." If no key reaches the game within 3 seconds, it draws one dim line: "No keys
+  yet? Press Ctrl+X, then Tab, to give the game the keys." The line goes away when a key arrives.
+  After one click on the game, Space and the Up arrow jump and the Down arrow ducks, with no wait.
+- At the end you see Ember fallen, "Game over. Your forge went cold." and "Press r to run again. q or
+  Esc leaves." A score above the best shows "New record. The forge is hot."
 - The game shows a banner when a phase is ready or changes, so you do not miss an approval.
-- It keeps your best score in the plugin store (written once when a game ends or a 512 is made).
-  The score does not change any gate. The board is kept in the plugin state, not in a file.
-- The board is 29 columns wide and 12 rows tall, so it fits a 36 column pane and plays at 80 columns.
+- It keeps your best score in the plugin store (written once for each game over). The score does not
+  change any gate. A press of a Button is one counter in the plugin state; the clock writes nothing.
+- The picture is 14 rows of coloured half blocks, as wide as the pane allows (36 to 72 columns).
 - It exists on the terminal and the desktop app only. On the VS Code extension and on mobile the
   command prints a short text and nothing else happens.
 - Refusals still apply while the game is open.

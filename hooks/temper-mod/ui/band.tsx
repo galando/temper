@@ -114,7 +114,7 @@ export function renderBand(
   // when the game setting is on. Its key is the digit 8, because only a digit works from an empty
   // prompt (a letter would type into the composer).
   const play = game.show
-    ? big('play', '8', game.open ? 'Close the game' : compact ? 'Play' : 'Play while you wait', () => onAction({ key: 'a', id: 'play', label: 'Play', desc: 'Play a small puzzle.', command: 'play' }), false)
+    ? big('play', '8', game.open ? 'Close the game' : compact ? 'Play' : 'Play while you wait', () => onAction({ key: 'a', id: 'play', label: 'Play', desc: 'Play a small game.', command: 'play' }), false)
     : null
 
   // With the full list on and no docked pane to hold it (a narrow band, or no pane), the extra

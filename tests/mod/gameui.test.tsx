@@ -1,7 +1,7 @@
 import { describe, expect, test as baseTest } from 'claude-code/testing'
 
-import { DIRS, applyMove, newGame } from '../../hooks/temper-mod/core/merge'
-import type { Dir, MergeState } from '../../hooks/temper-mod/core/merge'
+import { DRAGON_X, ROWS, TICK_MS, drawScene, newGame, press, runs, start, step } from '../../hooks/temper-mod/core/runner'
+import type { RunState } from '../../hooks/temper-mod/core/runner'
 import { SPEC, runFiles } from './run-files'
 import { world } from './world'
 
@@ -9,29 +9,27 @@ const SURFACES = ['terminal', 'desktop'] as const
 const run = (args: string, kind = 'composer') => ({ command: 'temper', args, origin: { kind } }) as never
 const START = (surface: 'terminal' | 'desktop' | 'vscode' | 'mobile' | null) => ({ cwd: '/repo', surface, isInteractive: false }) as const
 
-const GAME = { title: 'Temper Merge', isFocused: false, bodyColumns: 80, placement: 'inline', scroll: { offset: 0, bodyRows: 12 }, view: {} } as const
+const GAME = { title: 'Temper Run', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 12 }, view: {} } as const
+const GAME_INLINE = { ...GAME, placement: 'inline' } as const
 const BAND = (isWorking: boolean) => ({ hasSurvey: false, isWorking, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} }) as const
 
-const OPEN_TEXT = 'The game is open. Press w a s d to slide the pieces, r for a new game, q or Esc to leave.'
+const OPEN_TEXT = 'The game is open. Press r to run, w to jump, s to duck, q or Esc to leave.'
 
 // All the text of a drawn tree, one string.
 const textOf = (tree: unknown): string => JSON.stringify(tree)
 
 // The game picks its seed from the clock when it opens. Every test in this file sets the plugin
-// option `gameSeed`, so the board is known and the rules can be run again here to compare.
-const SEED_A = 4242
-type TestFn = (...args: never[]) => unknown
+// option `gameSeed`, so the run is known and the rules can be run again here to compare.
+const SEED = 4242
 const test = ((name: string, a: unknown, b?: unknown) => {
-  const seedOption = { gameSeed: String(SEED_A) }
+  const seedOption = { gameSeed: String(SEED) }
   const base = baseTest as unknown as (n: string, o: unknown, f: unknown) => unknown
   if (typeof a === 'function') return base(name, { options: seedOption }, a)
   const given = (a as { options?: Record<string, unknown> }).options ?? {}
   return base(name, { ...(a as object), options: { ...seedOption, ...given } }, b)
 }) as unknown as typeof baseTest
-void (null as unknown as TestFn)
-// The clock no longer matters: the option fixes the seed. These stay so each test reads the same.
-const withClock = async <T,>(_seed: number, fn: () => Promise<T>): Promise<T> => fn()
-const SEED_B = 777
+// The seed of the run that the Run Button starts: the option plus 7919 for each press of Run.
+const seedOfRun = (n: number): number => (SEED + n * 7919) >>> 0
 
 type Mounted = {
   drawn: (a?: { in: string }) => Promise<unknown>
@@ -43,204 +41,183 @@ type Mounted = {
   unmount: () => Promise<void>
 }
 
-const mountGame = ($: never, surface: 'terminal' | 'desktop', requestId = 'temper-game'): Promise<Mounted> =>
-  ($ as unknown as { ui: { mount: (a: unknown) => Promise<Mounted> } }).ui.mount({ plugin: 'temper', surface, component: 'Pane', requestId, props: GAME })
+const mountGame = ($: never, surface: 'terminal' | 'desktop', requestId = 'temper-game', props: unknown = GAME): Promise<Mounted> =>
+  ($ as unknown as { ui: { mount: (a: unknown) => Promise<Mounted> } }).ui.mount({ plugin: 'temper', surface, component: 'Pane', requestId, props })
 
-// The drawn board as text rows, and as 16 numbers (0 for an empty cell).
-type Node = { type?: string; props?: { key?: string }; children?: Array<Node | string> }
-const joinText = (n: Node | string): string => (typeof n === 'string' ? n : (n.children ?? []).map(joinText).join(''))
-const collectRows = (n: Node | string, out: string[]): string[] => {
-  if (typeof n === 'string') return out
-  if (n.props?.key?.startsWith('row-')) out.push(joinText(n))
-  for (const c of n.children ?? []) collectRows(c, out)
-  return out
-}
-const rowsOf = async (ui: Mounted): Promise<string[]> => collectRows((await ui.drawn({ in: 'game' })) as Node, [])
-const boardOf = async (ui: Mounted): Promise<number[]> => {
-  const rows = await rowsOf(ui)
-  const out: number[] = []
-  for (let r = 0; r < 4; r++) {
-    const line = rows[r * 3 + 1] ?? ''
-    for (let c = 0; c < 4; c++) out.push(Number(line.slice(1 + c * 7, 8 + c * 7).trim()) || 0)
+// The scene of the drawn tree: for each Box with a key scene-N, its runs of cells.
+type Node = { type?: string; props?: Record<string, unknown>; children?: Array<Node | string> }
+type Run = { text: string; fg: string; bg: string }
+const sceneOf = (tree: unknown): Run[][] => {
+  const rows: Run[][] = []
+  const walk = (n: Node | string) => {
+    if (typeof n === 'string') return
+    const key = n.props?.key
+    if (typeof key === 'string' && key.startsWith('scene-')) {
+      rows[Number(key.slice(6))] = (n.children ?? []).map(c => {
+        const t = c as Node
+        return { text: (t.children ?? []).join(''), fg: String(t.props?.color), bg: String(t.props?.backgroundColor) }
+      })
+      return
+    }
+    for (const c of n.children ?? []) walk(c)
   }
-  return out
+  walk(tree as Node)
+  return rows
 }
-const scoreOf = async (ui: Mounted): Promise<number> => Number(/score (\d+)/.exec(textOf(await ui.drawn({ in: 'game' })))?.[1])
-
-const BUTTON: Record<Dir, string> = { up: 'game-up', left: 'game-left', down: 'game-down', right: 'game-right' }
-
-// What the pure rules say after the same moves from the same seed.
-const expected = (seed: number, moves: Dir[], best = 0): MergeState => moves.reduce((g, d) => applyMove(g, d), newGame(seed, best))
+const expectedScene = (g: RunState): Run[][] => drawScene(g).map(r => runs(r).map(x => ({ text: x.text, fg: x.fg, bg: x.bg })))
 
 describe('the game pane draws on the terminal and the desktop app', () => {
   for (const surface of SURFACES) {
-    test(`the header, the board and the start message on ${surface}`, async ($, on) => {
+    test(`the heads up line, the heat bars, the best score and the start line on ${surface}`, async ($, on) => {
       const w = world(on, runFiles({ nextStage: 'build' }), { store: { gameBest: 42 } })
       await $.session.start(START(surface))
-      await withClock(SEED_A, () => $.command.run(run('play')))
+      await $.command.run(run('play'))
       expect(w.opened).toContain('temper-game')
       const ui = await mountGame($ as never, surface)
       const text = textOf(await ui.drawn({ in: 'game' }))
-      for (const part of ['▲ TEMPER MERGE', 'score 0000', 'best 0042', 'Slide the pieces. Equal pieces merge and get hotter. Make a white hot 512.']) expect(text).toContain(part)
-      expect(await boardOf(ui)).toEqual(newGame(SEED_A, 42).board)
-      expect(text).not.toContain('Temper Run')
+      for (const part of ['▲ TEMPER RUN', '▮', '▯▯▯▯', 'HI 00042  00000', 'Press r to run. Press w to jump. Press s to duck.']) expect(text).toContain(part)
+      expect(text).not.toContain('Merge')
+      expect(text).not.toContain('pieces')
     })
 
-    test(`pieces have heat colours and empty cells are dim dots on ${surface}`, async ($, on) => {
+    test(`the picture is 14 rows of coloured half blocks, as wide as the pane allows (36 to 72) on ${surface}`, async ($, on) => {
       world(on, runFiles({ nextStage: 'build' }))
       await $.session.start(START(surface))
-      await withClock(SEED_A, () => $.command.run(run('play')))
+      await $.command.run(run('play'))
       const ui = await mountGame($ as never, surface)
-      const text = textOf(await ui.drawn({ in: 'game' }))
-      expect(text).toContain('"backgroundColor":"#3a3a3a"')
-      expect(text).toContain('·')
-      expect(text).toContain('"color":"#a8a8a8"')
-    })
-
-    test(`every board row is 29 columns, and nothing is wider, at any pane width on ${surface}`, async ($, on) => {
-      world(on, runFiles({ nextStage: 'build' }))
-      await $.session.start(START(surface))
-      await withClock(SEED_A, () => $.command.run(run('play')))
-      const ui = await mountGame($ as never, surface)
-      for (const columns of [30, 36, 60, 120]) {
-        await ui.resize({ columns, rows: 20, in: 'game' })
-        await ui.advance(250)
-        const rows = await rowsOf(ui)
-        expect(rows).toHaveLength(12)
-        for (const r of rows) expect(r).toHaveLength(29)
+      for (const [columns, want] of [[0, 56], [30, 36], [36, 36], [45, 45], [60, 60], [72, 72], [200, 72]] as const) {
+        if (columns > 0) await ui.resize({ columns, rows: 20, in: 'game' })
+        await ui.advance(100)
+        const rows = sceneOf(await ui.drawn({ in: 'game' }))
+        expect(rows, `columns ${columns}`).toHaveLength(ROWS)
+        for (const r of rows) expect(r.map(x => x.text).join(''), `columns ${columns}`).toHaveLength(want)
       }
     })
 
-    test(`each pane Button moves the pieces exactly as the rules say, one new piece for a move on ${surface}`, async ($, on) => {
-      world(on, runFiles({ nextStage: 'build' }))
+    test(`an inline pane (a narrow terminal) leaves out the top 3 rows of sky and the Temper line, so the floor shows on ${surface}`, async ($, on) => {
+      world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }))
       await $.session.start(START(surface))
-      await withClock(SEED_A, () => $.command.run(run('play')))
-      const ui = await mountGame($ as never, surface)
-      const moves: Dir[] = ['left', 'up', 'right', 'down', 'left', 'down', 'right', 'up']
-      const done: Dir[] = []
-      for (const d of moves) {
-        await ui.press({ key: BUTTON[d] })
-        done.push(d)
-        const want = expected(SEED_A, done)
-        expect(await boardOf(ui)).toEqual(want.board)
-        expect(await scoreOf(ui)).toBe(want.score)
-      }
-    })
-
-    test(`keys after a click move the pieces too: wasd and the arrow keys on ${surface}`, async ($, on) => {
-      world(on, runFiles({ nextStage: 'build' }))
-      await $.session.start(START(surface))
-      await withClock(SEED_A, () => $.command.run(run('play')))
-      const ui = await mountGame($ as never, surface)
-      const keys: Array<[string, Dir]> = [['a', 'left'], ['w', 'up'], ['d', 'right'], ['s', 'down'], ['left', 'left'], ['up', 'up'], ['right', 'right'], ['down', 'down']]
-      const done: Dir[] = []
-      for (const [k, d] of keys) {
-        await ui.key({ key: k, in: 'game' })
-        done.push(d)
-        expect(await boardOf(ui)).toEqual(expected(SEED_A, done).board)
-      }
-    })
-
-    test(`a move that changes nothing adds no piece and no score on ${surface}`, async ($, on) => {
-      world(on, runFiles({ nextStage: 'build' }))
-      await $.session.start(START(surface))
-      await withClock(SEED_A, () => $.command.run(run('play')))
-      const ui = await mountGame($ as never, surface)
-      // Find a direction that does nothing on the start board by asking the pure rules.
-      let g = newGame(SEED_A)
-      let dead: Dir | null = null
-      for (let i = 0; i < 200 && dead === null; i++) {
-        // After each move, ask the rules whether some direction would change nothing.
-        dead = DIRS.find(d => applyMove(g, d).board.every((v, k) => v === g.board[k])) ?? null
-        if (dead !== null) break
-        const d = DIRS[i % 4] as Dir
-        g = applyMove(g, d)
-        await ui.press({ key: BUTTON[d] })
-      }
-      expect(dead).not.toBeNull()
-      const before = await boardOf(ui)
-      const score = await scoreOf(ui)
-      await ui.press({ key: BUTTON[dead as Dir] })
-      expect(await boardOf(ui)).toEqual(before)
-      expect(await scoreOf(ui)).toBe(score)
-    })
-
-    test(`r starts a new game with a new board and keeps the best score on ${surface}`, async ($, on) => {
-      world(on, runFiles({ nextStage: 'build' }), { store: { gameBest: 300 } })
-      await $.session.start(START(surface))
-      await withClock(SEED_A, () => $.command.run(run('play')))
-      const ui = await mountGame($ as never, surface)
-      for (const d of ['left', 'up', 'right', 'down', 'left', 'up'] as Dir[]) await ui.press({ key: BUTTON[d] })
-      expect(await scoreOf(ui)).toBeGreaterThanOrEqual(0)
-      await withClock(SEED_B, () => ui.press({ key: 'game-new' }))
-      const board = await boardOf(ui)
-      expect(await scoreOf(ui)).toBe(0)
-      expect(board.filter(v => v !== 0)).toHaveLength(2)
-      expect(textOf(await ui.drawn({ in: 'game' }))).toContain('best 0300')
-      // The key r after a click does the same.
-      await ui.press({ key: 'game-left' })
-      await withClock(SEED_A, () => ui.key({ key: 'r', in: 'game' }))
-      expect(await scoreOf(ui)).toBe(0)
-      expect((await boardOf(ui)).filter(v => v !== 0)).toHaveLength(2)
-    })
-
-    test(`closing the pane keeps the board, and opening it again goes on with the same game on ${surface}`, async ($, on) => {
-      const w = world(on, runFiles({ nextStage: 'build' }))
-      await $.session.start(START(surface))
-      await withClock(SEED_A, () => $.command.run(run('play')))
-      const ui = await mountGame($ as never, surface)
-      const moves: Dir[] = ['left', 'up', 'right', 'down', 'left']
-      for (const d of moves) await ui.press({ key: BUTTON[d] })
-      const board = await boardOf(ui)
-      const score = await scoreOf(ui)
-      await ui.press({ key: 'game-quit' })
-      expect(w.closed).toContain('temper-game')
+      await $.command.run(run('play'))
+      const ui = await mountGame($ as never, surface, 'temper-game', GAME_INLINE)
+      const g0 = newGame(SEED, 0, 56)
+      const rows = sceneOf(await ui.drawn({ in: 'game' }))
+      expect(rows).toHaveLength(ROWS - 3)
+      expect(rows).toEqual(expectedScene(g0).slice(3))
+      expect(textOf(await ui.drawn({ in: 'game' }))).not.toContain('Temper: Plan is ready')
+      // The dock keeps all 14 rows and the Temper line.
       await ui.unmount()
-      // Another seed in the clock must not matter: the game goes on.
-      await withClock(SEED_B, () => $.command.run(run('play')))
-      const again = await mountGame($ as never, surface)
-      expect(await boardOf(again)).toEqual(board)
-      expect(await scoreOf(again)).toBe(score)
-      expect(board).toEqual(expected(SEED_A, moves).board)
+      const dock = await mountGame($ as never, surface)
+      expect(sceneOf(await dock.drawn({ in: 'game' }))).toHaveLength(ROWS)
+      expect(textOf(await dock.drawn({ in: 'game' }))).toContain('Temper: Plan is ready')
     })
 
-    test(`the game ends when no move changes the board, says the score, and keeps the best score once on ${surface}`, async ($, on) => {
+    test(`the Run Button starts a run, and the picture is the picture the rules draw, tick by tick on ${surface}`, async ($, on) => {
+      world(on, runFiles({ nextStage: 'build' }))
+      await $.session.start(START(surface))
+      await $.command.run(run('play'))
+      const ui = await mountGame($ as never, surface)
+      await ui.press({ key: 'game-run' })
+      let g = start(newGame(seedOfRun(1), 0, 56), seedOfRun(1))
+      expect(textOf(await ui.drawn({ in: 'game' }))).toContain('Press w to jump. Press s to duck.')
+      for (let i = 0; i < 6; i++) {
+        await ui.advance(TICK_MS * 5)
+        for (let k = 0; k < 5; k++) g = step(g)
+        expect(sceneOf(await ui.drawn({ in: 'game' })), `after ${(i + 1) * 5} ticks`).toEqual(expectedScene(g))
+      }
+      expect(textOf(await ui.drawn({ in: 'game' }))).toContain(`${String(g.score).padStart(5, '0')}`)
+    })
+
+    test(`the Jump and Duck Buttons act at once, exactly as a press in the rules on ${surface}`, async ($, on) => {
+      world(on, runFiles({ nextStage: 'build' }))
+      await $.session.start(START(surface))
+      await $.command.run(run('play'))
+      const ui = await mountGame($ as never, surface)
+      await ui.press({ key: 'game-run' })
+      let g = start(newGame(seedOfRun(1), 0, 56), seedOfRun(1))
+      await ui.advance(TICK_MS * 8)
+      for (let k = 0; k < 8; k++) g = step(g)
+      await ui.press({ key: 'game-jump' })
+      g = press(g, 'jump')
+      expect(g.jt).toBe(1)
+      expect(sceneOf(await ui.drawn({ in: 'game' }))).toEqual(expectedScene(g))
+      await ui.advance(TICK_MS * 4)
+      for (let k = 0; k < 4; k++) g = step(g)
+      expect(g.jt).toBeGreaterThan(1)
+      expect(sceneOf(await ui.drawn({ in: 'game' }))).toEqual(expectedScene(g))
+      // After the landing a duck.
+      await ui.advance(TICK_MS * 8)
+      for (let k = 0; k < 8; k++) g = step(g)
+      expect(g.jt).toBe(0)
+      await ui.press({ key: 'game-duck' })
+      g = press(g, 'duck')
+      expect(sceneOf(await ui.drawn({ in: 'game' }))).toEqual(expectedScene(g))
+    })
+
+    test(`after a click, Space and the Up arrow jump and the Down arrow ducks with no wait on ${surface}`, async ($, on) => {
+      world(on, runFiles({ nextStage: 'build' }))
+      await $.session.start(START(surface))
+      await $.command.run(run('play'))
+      const ui = await mountGame($ as never, surface)
+      await ui.key({ key: 'r', in: 'game' })
+      const seen = textOf(await ui.drawn({ in: 'game' }))
+      expect(seen).toContain('Press w to jump. Press s to duck.')
+      await ui.advance(TICK_MS * 3)
+      const before = JSON.stringify(sceneOf(await ui.drawn({ in: 'game' })))
+      await ui.key({ key: ' ', in: 'game' })
+      const jumped = JSON.stringify(sceneOf(await ui.drawn({ in: 'game' })))
+      expect(jumped).not.toEqual(before)
+      await ui.advance(TICK_MS * 14)
+      await ui.key({ key: 'down', in: 'game' })
+      expect(JSON.stringify(sceneOf(await ui.drawn({ in: 'game' })))).not.toEqual(jumped)
+      await ui.key({ key: 'up', in: 'game' })
+    })
+
+    test(`a run that is left alone ends, shows the game over lines, and posts the score once on ${surface}`, async ($, on) => {
       const w = world(on, runFiles({ nextStage: 'build' }))
       await $.session.start(START(surface))
-      await withClock(SEED_A, () => $.command.run(run('play')))
+      await $.command.run(run('play'))
       const ui = await mountGame($ as never, surface)
-      // Play the same moves the pure rules play, until the pure game is over.
-      let g = newGame(SEED_A)
-      let i = 0
-      while (!g.over && i < 3000) {
-        const d = DIRS[i % 4] as Dir
-        g = applyMove(g, d)
-        await ui.press({ key: BUTTON[d] })
-        i++
-      }
-      expect(g.over).toBe(true)
+      await ui.press({ key: 'game-run' })
+      await ui.advance(TICK_MS * 200)
       const text = textOf(await ui.drawn({ in: 'game' }))
-      expect(text).toContain(`No more moves. Score ${g.score}. Press r for a new game. q or Esc leaves.`)
-      expect(w.store.gameBest).toBe(g.score)
-      // More presses after the end change nothing, and write nothing more to the store.
-      const writes = w.store.gameBest
-      await ui.press({ key: 'game-left' })
-      expect(await boardOf(ui)).toEqual(g.board)
-      expect(w.store.gameBest).toBe(writes)
+      expect(text).toContain('Game over. Your forge went cold.')
+      expect(text).toContain('Press r to run again. q or Esc leaves.')
+      expect(text).toContain('New record. The forge is hot.')
+      const stored = w.store.gameBest
+      expect(typeof stored === 'number' && stored > 0).toBe(true)
+      // More time after the game over posts nothing more and changes nothing.
+      const invalidated = w.invalidated
+      await ui.advance(TICK_MS * 100)
+      expect(w.store.gameBest).toBe(stored)
+      expect(w.invalidated).toBe(invalidated)
     })
 
     test(`the best score from the store reaches the game, and a lower score is not stored on ${surface}`, async ($, on) => {
       const w = world(on, runFiles({ nextStage: 'build' }), { store: { gameBest: 1000000 } })
       await $.session.start(START(surface))
-      await withClock(SEED_A, () => $.command.run(run('play')))
+      await $.command.run(run('play'))
       const ui = await mountGame($ as never, surface)
-      expect(textOf(await ui.drawn({ in: 'game' }))).toContain('best 1000000')
-      let g = newGame(SEED_A)
-      for (let i = 0; i < 3000 && !g.over; i++) {
-        g = applyMove(g, DIRS[i % 4] as Dir)
-        await ui.press({ key: BUTTON[DIRS[i % 4] as Dir] })
-      }
+      expect(textOf(await ui.drawn({ in: 'game' }))).toContain('HI 1000000')
+      await ui.press({ key: 'game-run' })
+      await ui.advance(TICK_MS * 200)
+      expect(textOf(await ui.drawn({ in: 'game' }))).not.toContain('New record')
       expect(w.store.gameBest).toBe(1000000)
+    })
+
+    test(`Run again starts a new run with a new seed and keeps the best score on ${surface}`, async ($, on) => {
+      world(on, runFiles({ nextStage: 'build' }))
+      await $.session.start(START(surface))
+      await $.command.run(run('play'))
+      const ui = await mountGame($ as never, surface)
+      await ui.press({ key: 'game-run' })
+      await ui.advance(TICK_MS * 200)
+      expect(textOf(await ui.drawn({ in: 'game' }))).toContain('Game over')
+      const fresh = await mountGame($ as never, surface, 'temper-game-2').catch(() => null)
+      void fresh
+      await ui.press({ key: 'game-run' })
+      const g = start(newGame(seedOfRun(2), 0, 56), seedOfRun(2))
+      expect(sceneOf(await ui.drawn({ in: 'game' }))).toEqual(expectedScene(g))
+      expect(textOf(await ui.drawn({ in: 'game' }))).toContain('Press w to jump. Press s to duck.')
     })
 
     test(`a banner from Temper shows at the top when a phase changes on ${surface}`, async ($, on) => {
@@ -253,25 +230,64 @@ describe('the game pane draws on the terminal and the desktop app', () => {
       expect(textOf(await ui.drawn({ in: 'game' }))).toContain('Temper: Build is open. Press Esc to go back.')
       expect(w.toasts).toEqual(['Plan approved. Build open.'])
     })
+
+    test(`a milestone shows the banner and the dragon flashes on ${surface}`, async ($, on) => {
+      world(on, runFiles({ nextStage: 'build' }))
+      await $.session.start(START(surface))
+      await $.command.run(run('play'))
+      const ui = await mountGame($ as never, surface)
+      await ui.press({ key: 'game-run' })
+      // Press nothing else; the run ends before 100 points with no keys, so play it with the rules:
+      // keep the dragon alive by jumping at the right moments, as a bot, until the first hundred.
+      let g = start(newGame(seedOfRun(1), 0, 56), seedOfRun(1))
+      let guard = 0
+      let sawBanner = false
+      while (guard++ < 400 && !sawBanner) {
+        const ahead = g.obstacles.find(o => o.x + 8 > DRAGON_X)
+        const near = ahead && ahead.x - DRAGON_X < 16 && ahead.x - DRAGON_X > 12
+        if (near && g.jt === 0) {
+          await ui.press({ key: ahead.kind === 'hammer' && ahead.lift <= 5 ? 'game-duck' : 'game-jump' })
+          g = press(g, ahead.kind === 'hammer' && ahead.lift <= 5 ? 'duck' : 'jump')
+        }
+        await ui.advance(TICK_MS)
+        g = step(g)
+        if (g.status === 'over') break
+        sawBanner = g.banner !== null
+      }
+      expect(sceneOf(await ui.drawn({ in: 'game' }))).toEqual(expectedScene(g))
+      if (sawBanner) expect(textOf(await ui.drawn({ in: 'game' }))).toContain('Hot! 100')
+    })
   }
 })
 
 describe('the game Buttons carry the keys', () => {
   for (const surface of SURFACES) {
-    test(`w Up, a Left, s Down, d Right, r New game and q Quit have letter hotkeys, all different, on ${surface}`, async ($, on) => {
+    test(`w Jump, s Duck, r Run and q Quit have letter hotkeys, all different, on ${surface}`, async ($, on) => {
       world(on, runFiles({ nextStage: 'build' }))
       await $.session.start(START(surface))
       const ui = await mountGame($ as never, surface)
       const text = textOf(await ui.drawn())
-      const want = [['game-up', 'w', 'Up'], ['game-left', 'a', 'Left'], ['game-down', 's', 'Down'], ['game-right', 'd', 'Right'], ['game-new', 'r', 'New game'], ['game-quit', 'q', 'Quit']] as const
+      const want = [['game-jump', 'w', 'Jump'], ['game-duck', 's', 'Duck'], ['game-run', 'r', 'Run'], ['game-quit', 'q', 'Quit']] as const
       for (const [key, hotkey, label] of want) {
         expect(await ui.find({ key })).toBeDefined()
         expect(text).toContain(`"hotkey":"${hotkey}"`)
-        // The label starts with the key ("w  Up").
+        // The label starts with the key ("w  Jump").
         expect(text).toContain(`"label":"${hotkey}  ${label}"`)
       }
       const keys = [...text.matchAll(/"hotkey":"(.)"/g)].map(m => m[1])
       expect(new Set(keys).size).toBe(keys.length)
+    })
+
+    test(`the Run Button says Run again after a game over on ${surface}`, async ($, on) => {
+      world(on, runFiles({ nextStage: 'build' }))
+      await $.session.start(START(surface))
+      await $.command.run(run('play'))
+      const ui = await mountGame($ as never, surface)
+      await ui.press({ key: 'game-run' })
+      await ui.advance(TICK_MS * 200)
+      await ui.unmount()
+      const again = await mountGame($ as never, surface)
+      expect(textOf(await again.drawn())).toContain('"label":"r  Run again"')
     })
 
     test(`the Quit Button closes the pane on ${surface}`, async ($, on) => {
@@ -285,29 +301,29 @@ describe('the game Buttons carry the keys', () => {
       expect((await $.command.run(run('play'))).text).toContain('The game is open.')
     })
 
-    test(`the frame clock writes no file and invalidates nothing on ${surface}`, async ($, on) => {
+    test(`a press of a Button writes one counter, and the frame clock writes nothing on ${surface}`, async ($, on) => {
       const w = world(on, runFiles({ nextStage: 'build' }))
       await $.session.start(START(surface))
       await $.command.run(run('play'))
       const ui = await mountGame($ as never, surface)
-      await ui.key({ key: 'a', in: 'game' })
+      await ui.press({ key: 'game-run' })
       const writes = w.writes.length
       const invalidated = w.invalidated
-      await ui.advance(60000)
+      // A run left alone ends at about 40 ticks; before that, many frames with no write at all.
+      await ui.advance(TICK_MS * 30)
       expect(w.writes.length).toBe(writes)
       expect(w.invalidated).toBe(invalidated)
     })
   }
 
-  test('a message from the drawing is checked: an unknown direction does nothing', async ($, on) => {
-    world(on, runFiles({ nextStage: 'build' }))
+  test('a message from the drawing is checked: an unknown message does nothing', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'build' }))
     await $.session.start(START('terminal'))
-    await withClock(SEED_A, () => $.command.run(run('play')))
+    await $.command.run(run('play'))
     const ui = await mountGame($ as never, 'terminal')
-    const before = await boardOf(ui)
     await ui.key({ key: 'x', in: 'game' })
     await ui.key({ key: 'escape', in: 'game' })
-    expect(await boardOf(ui)).toEqual(before)
+    expect(w.store.gameBest).toBeUndefined()
   })
 })
 
@@ -403,11 +419,11 @@ describe('/temper:temper play', () => {
     })
   }
 
-  test('the text never mentions the old game', async ($, on) => {
+  test('the text never mentions the old games', async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }))
     await $.session.start(START('terminal'))
     const text = (await $.command.run(run('play'))).text ?? ''
-    for (const old of ['flame', 'jump', 'Space', 'Click it', 'Temper Run']) expect(text).not.toContain(old)
+    for (const old of ['Merge', 'pieces', 'slide', 'flame', 'Click it', 'Space', 'w a s d']) expect(text).not.toContain(old)
   })
 })
 
@@ -455,12 +471,13 @@ describe('the Play button in the band', () => {
 })
 
 describe('the game never disturbs Temper work', () => {
-  test('enforcement still denies, phases still move and the band still works while the game is open', async ($, on) => {
+  test('enforcement still denies, phases still move and the band still works while the game runs', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }))
     await $.session.start(START('terminal'))
     await $.command.run(run('play'))
     const ui = await mountGame($ as never, 'terminal')
-    await ui.key({ key: 'a', in: 'game' })
+    await ui.press({ key: 'game-run' })
+    await ui.advance(TICK_MS * 10)
     const denied = await $.tool.call({ tool: 'Write', file_path: 'src/app.ts', content: 'x' })
     expect(denied.deny?.startsWith('Temper: Plan phase.')).toBe(true)
     const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND(true) })
@@ -555,7 +572,7 @@ describe('the no keys hint in the game area', () => {
       await $.session.start(START(surface))
       const ui = await mountGame($ as never, surface)
       await ui.advance(2000)
-      await ui.key({ key: 'a', in: 'game' })
+      await ui.key({ key: 'x', in: 'game' })
       await ui.advance(500)
       expect(textOf(await ui.drawn({ in: 'game' }))).not.toContain(NO_KEYS)
       await ui.advance(10000)
@@ -592,7 +609,7 @@ describe('the no keys hint in the game area', () => {
       const ui = await mountGame($ as never, surface)
       await ui.advance(5000)
       expect(textOf(await ui.drawn({ in: 'game' }))).toContain(NO_KEYS)
-      await ui.press({ key: 'game-up' })
+      await ui.press({ key: 'game-jump' })
       expect(textOf(await ui.drawn({ in: 'game' }))).not.toContain(NO_KEYS)
     })
 

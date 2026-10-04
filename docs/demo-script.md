@@ -49,7 +49,7 @@ Total about 80 seconds. Times are targets, not promises.
 | 5. Build and the pane | 0:44 to 1:05 | `/temper:temper pane`, the criteria checklist ticking, a failing test then a passing one | Build starts with a failing test. The pane shows each criterion as it passes. Touch a file outside the plan and Temper asks: add to plan, revert, or allow once with a reason. |
 | 6. Desktop app | 1:05 to 1:15 | The Code tab of the desktop app with the same band and the same denial | The same mod runs in the desktop app. |
 | 7. Review, Check, done | 1:15 to 1:25 | Review findings, Check passing, `git commit` allowed, `.temper/report.md` | Review and Check follow. When Check passes, commit is allowed and the report records every override and decision. |
-| 8. A game while you wait (10 s, optional) | 1:25 to 1:35 | While Claude works, press `8` (the band says "Play while you wait"), slide the pieces with `w a s d` until two equal pieces merge and get hotter, then press `q` | Claude is busy and you wait? Play Temper Merge. A banner tells you when a phase is ready. Press q to go back. The board waits for you. |
+| 8. A game while you wait (10 s, optional) | 1:25 to 1:35 | While Claude works, press `8` (the band says "Play while you wait"), press `r`, jump an anvil with `w`, duck a hammer with `s`, then press `q` | Claude is busy and you wait? Play Temper Run with Ember the dragon. A banner tells you when a phase is ready. Press q to go back. |
 
 All six phases appear: Intent (shot 2), Plan (shot 4), Build (shot 5), Review and Check
 (shot 7), and Fix (say it in shot 7: a failing check sends the run to Fix, with a limit of

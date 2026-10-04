@@ -55,6 +55,24 @@ Data and permissions, in plain words:
 - Tests, lint and git run through Claude's own tools and permissions.
 - The optional game keeps one number, the best score, in the plugin store.
 
+## What the listing shows
+
+The directory builds the listing from `plugin.json` and the README. It has no other form fields
+for marketing. These facts come from the Anthropic plugin documentation.
+
+| Listing part | Where it comes from | What Temper does |
+|---|---|---|
+| Icon | The `icon` field in `plugin.json`, a path to an image file in the plugin | An orange T on a dark square, 256 by 256 pixels, in the `.claude-plugin` folder. Before 9.5.0 the field was missing, so the card showed the plain plug icon. |
+| Short description | The `description` field. A card cuts it after about 100 characters. | The first sentence says the outcome: "Claude cannot write code before you approve the intent." |
+| Page text | The README | The first screen has the outcome, an image with alt text and the install steps. |
+| Links | `documentationUrl`, `supportUrl` and `privacyPolicyUrl` in `plugin.json` | The docs site, the GitHub issues page and the privacy page. |
+| Search words | The `keywords` field | Words a person types: sdlc, tdd, code-review, guardrails, quality-gates. |
+| New versions | The tracked branch. Raise `version` in `plugin.json` with every release. | Set up the GitHub push webhook in the developer portal so a merge reaches the listing without waiting for the schedule. |
+
+You cannot apply for the Verified label or for a place in the directory. Anthropic decides both
+during review. What you control is a clean review (no held files, no unclear behavior), a clear
+listing and a smooth first install.
+
 ## What is not verified
 
 - Which categories and fields a given directory asks for. Use the form as it is today.

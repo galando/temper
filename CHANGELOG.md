@@ -34,15 +34,19 @@ All notable changes to Temper are documented here. The plugin version lives in
   `/temper enforcement on|off` controls the refusals. Both are plugin settings (`uiMode`,
   `enforcement`); a value locked by an administrator is reported, not changed. The first
   interactive `/temper` asks once.
-- An optional puzzle, Temper Merge, for the time Claude works. A 4 by 4 board of metal pieces: slide
-  them with `w a s d`, equal pieces merge and get hotter, make a white hot 512. It is turn based, so
-  it needs no timing, and the board stays when you close the pane. While a phase works, the band
-  (`8: Play while you wait`), the pane and the prompt hint offer it; key `8` or
+- An optional game, Temper Run, for the time Claude works, in the spirit of the browser dinosaur
+  game. Ember, a small dragon drawn in half block pixel art, runs on the spot in a forge hall. Jump
+  (`w`) over iron anvils and buckets of cold water, duck (`s`) under flying hammers. The floor
+  scrolls, sparks drift, the wall warms from dark gray to deep red with the heat (levels 1 to 5), and
+  at every 100 points Ember flashes yellow and a banner says "Hot! 100". It is made to be fair: a jump
+  pressed up to 250 ms before the landing is remembered, hit boxes are smaller than the pictures, and
+  the obstacle generator keeps gaps that a bot with a slow hand can always clear. While a phase works,
+  the band (`8: Play while you wait`), the pane and the prompt hint offer it; key `8` or
   `/temper:temper play` (a new reserved word, 17 in all) opens it. It never opens by itself. The pane
-  takes the keyboard when it opens: `r` starts a new game, `q` or Esc leaves, with no mouse. It runs
-  on the terminal and the desktop app only, keeps a best score, shows a banner when a phase is ready,
-  and never weakens a refusal. The plugin setting `game` is `on` (offers and command), `command`
-  (command only) or `off`.
+  takes the keyboard when it opens: `r` runs, `q` or Esc leaves, with no mouse. It runs on the
+  terminal and the desktop app only, keeps a best score, shows a banner when a phase is ready, and
+  never weakens a refusal. The plugin setting `game` is `on` (offers and command), `command` (command
+  only) or `off`.
 - User text of the mod is written in Simplified Technical English, and every label says its
   result: "Make the plan", "Approve the plan", "Start the next task", "Skip with a reason". Each
   action has a one line description in the pane, the step reads "Step 2 of 6: Plan", and one

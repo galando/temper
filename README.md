@@ -22,6 +22,8 @@ outside the current phase through Claude's editing tools (details in "Where enfo
 /plugin install temper
 ```
 
+You can also open the Plugins page in Claude, choose **Discover** and search for "temper".
+
 Your first `/temper "describe the feature"` sets the project up: the config, the `.temper/`
 folder and a `pre-commit` hook that blocks `git commit` while any gate is red. The short form
 `/temper` works only when no other plugin has the same command name; `/temper:temper` always
@@ -104,16 +106,16 @@ The keys of each phase are in [Commands](docs/commands.md#each-phase).
 
 Claude works and you wait? While a phase works, the band, the pane and the prompt hint offer
 "Play while you wait". Press `8` at the empty prompt, or run `/temper:temper play`, to open Temper
-Merge. It is a puzzle with metal pieces on a 4 by 4 board, and it needs no timing. Slide the pieces
-with `w`, `a`, `s` and `d`. Equal pieces that touch merge and get hotter. Make a white hot 512.
-`r` starts a new game and `q` or Esc leaves. The board stays when you leave, and the next `8` goes
-on with the same game. You need no mouse. If no key reaches the game within 3 seconds, it says "No
-keys yet? Press Ctrl+X, then Tab, to give the game the keys." and removes that line when a key
-arrives. The game never opens by itself. It shows a banner when a phase is ready, so you do not miss
-an approval, and refusals still apply while it is open. The plugin setting `game` has three values:
-`on` (the offers and the command, the default), `command` (the command only) and `off` (nothing).
+Run. Ember, a small dragon, runs on the spot in a forge hall. Press `r` to run, `w` to jump over
+anvils and buckets of cold water, and `s` to duck under flying hammers. The forge gets hotter as
+your score grows. `q` or Esc leaves. You need no mouse. If no key reaches the game within 3 seconds,
+it says "No keys yet? Press Ctrl+X, then Tab, to give the game the keys." and removes that line when a
+key arrives. The game never opens by itself. It shows a banner when a phase is ready, so you do not
+miss an approval, and refusals still apply while it is open. The plugin setting `game` has three
+values: `on` (the offers and the command, the default), `command` (the command only) and `off`
+(nothing).
 
-![Temper Merge, the optional puzzle: pieces get hotter as they merge, while Claude works](docs/assets/game.gif)
+![Temper Run, the optional game: Ember the dragon jumps over an anvil while Claude works](docs/assets/game.gif)
 
 The game runs on the terminal and the desktop app only. It was verified by hand on the
 terminal, with the keyboard only. The image above is a placeholder until the recording from

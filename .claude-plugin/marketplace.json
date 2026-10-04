@@ -1,6 +1,6 @@
 {
   "name": "temper",
-  "description": "Phase gates for AI written code. Claude cannot write code before you approve the intent.",
+  "description": "Claude cannot write code before you approve the intent. Gated plan, TDD, review and check for AI written code.",
   "owner": {
     "name": "galando",
     "url": "https://github.com/galando"
@@ -9,8 +9,17 @@
     {
       "name": "temper",
       "source": "./",
-      "description": "Intent gate, plan, TDD, review and check for AI written code. A red gate blocks git commit.",
-      "keywords": ["intent", "gates", "tdd", "review", "enforcement", "workflow"]
+      "description": "Claude cannot write code before you approve the intent. Gated plan, TDD, review and check for AI written code.",
+      "keywords": [
+        "intent-driven-development",
+        "sdlc",
+        "guardrails",
+        "tdd",
+        "code-review",
+        "quality-gates",
+        "workflow",
+        "enforcement"
+      ]
     }
   ]
 }

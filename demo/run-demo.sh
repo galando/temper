@@ -33,7 +33,7 @@ Demo ready in /tmp/pr-demo, at Step 2 of 6: Plan. When Claude Code opens:
   4. With the prompt empty, press the digit 1.
      Expect: the toast "Plan approved. Build open." and the bar moves to Build: "1 Start the next task."
   5. Play:  while Claude works, press 8 on an empty prompt ("Play while you wait"), or
-     run /temper:temper play. Press w a s d to slide the pieces, q or Esc to leave.
+     run /temper:temper play. Press r to run, w to jump, s to duck, q or Esc to leave.
      (The game runs on the terminal and the desktop app only.)
   6. Modes:  /temper:temper mode minimal   then   off   then   full
   7. Always use the full name /temper:temper (the short /temper may be ambiguous).

@@ -145,7 +145,7 @@ export const HELP = [
   '  pause / resume       take the run over, give it back',
   '  report               write .temper/report.md now',
   '  pr                   ask Claude for a pull request description',
-  '  play                 play Temper Merge while you wait (key 8 too; w a s d slide, q leaves)',
+  '  play                 play Temper Run while you wait (key 8 too; r runs, w jumps, s ducks, q leaves)',
   '  mode, enforcement, pane   show or change what Temper shows and enforces',
   'Any other text after /temper:temper is a feature description. It starts or resumes a run.',
 ].join('\n')

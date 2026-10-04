@@ -35,12 +35,14 @@ Type "/temper:temper mode full" Enter
 Sleep 6s
 Type "/temper:temper play" Enter
 Sleep 5s
-Type "a"
-Sleep 600ms
+# Before the run, then running, then in the air over the first anvil (it arrives 2.5 seconds after r).
+Screenshot demo/out/game-ready-SUFFIX.png
+Type "r"
+Sleep 1500ms
+Screenshot demo/out/game-run-SUFFIX.png
+Sleep 400ms
 Type "w"
-Sleep 600ms
-Type "d"
-Sleep 600ms
-Type "s"
-Sleep 2s
-Screenshot demo/out/game-SUFFIX.png
+Sleep 300ms
+Screenshot demo/out/game-jump-SUFFIX.png
+Sleep 6s
+Screenshot demo/out/game-over-SUFFIX.png

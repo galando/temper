@@ -9,8 +9,6 @@ import { HELP, followUp, parseArgs, planCommand } from './core/commands'
 import type { Bare, Parsed } from './core/commands'
 import { parseGameMode, parseOnOff, parsePhaseModel, parsePhaseModels, parseUiMode } from './core/config'
 import type { GameMode, UiMode } from './core/config'
-import { DIRS, applyMove, newGame, restart } from './core/merge'
-import type { Dir, MergeState } from './core/merge'
 import type { Draft } from './core/events'
 import { ONLY_USER, phaseLabel } from './core/machine'
 import type { Command } from './core/machine'
@@ -52,7 +50,11 @@ let gameSeed = 1
 let gameBanner: { text: string; until: number } | null = null
 // The line the person reads when the game opens. It is always this one. Whether the keys reach the
 // game, the game finds out by itself (it draws a hint after 3 seconds with no key).
-const GAME_KEYS_TEXT = 'The game is open. Press w a s d to slide the pieces, r for a new game, q or Esc to leave.'
+const GAME_KEYS_TEXT = 'The game is open. Press r to run, w to jump, s to duck, q or Esc to leave.'
+// The type of the counters in $.state key game (types/index.d.ts has the same shape).
+type GameCtl = { jumpCount: number; duckCount: number; startCount: number }
+// After a game over the Run Button says Run again.
+let gameOver = false
 // Where the session draws (session.start says so); the game needs the terminal or the desktop app.
 let drawSurface: string | null = null
 
@@ -185,53 +187,39 @@ async function toggleGame($: Api): Promise<string> {
   }
   const stored = await $.store.get('gameBest')
   gameBest = typeof stored === 'number' ? stored : 0
-  gameSeed = boardSeed()
-  // A board that was left open earlier goes on. Only r starts a new one.
-  const before = await readGame($)
-  await writeGame($, before === null ? newGame(gameSeed, gameBest) : { ...before, best: Math.max(before.best, gameBest) })
+  gameSeed = seedFor(0)
+  gameOver = false
   // The pane asks for the keyboard and for Esc to close it. The surface may or may not grant the
   // keys; the game draws a hint by itself when no key comes.
-  const placed = await $.ui.open({ id: GAME_ID, title: 'Temper Merge', focus: true, closeOnEscape: true, rows: 20 })
+  const placed = await $.ui.open({ id: GAME_ID, title: 'Temper Run', focus: true, closeOnEscape: true, rows: 22 })
   gameOpen = placed.isPlaced
   if (!placed.isPlaced) return 'The game needs a wider terminal.'
   return GAME_KEYS_TEXT
 }
 
-// A seed for a new board: the clock. A test sets the plugin option `gameSeed` (a number) to get a
-// board it knows; each new game then adds the press count, so the seeds differ.
-function boardSeed(salt = 0): number {
+// A seed for a run: the clock. A test sets the plugin option `gameSeed` (a number) to get a run it
+// knows; each new run then adds the count of the Run presses, so the seeds differ.
+function seedFor(salt: number): number {
   const fixed = typeof options.gameSeed === 'string' || typeof options.gameSeed === 'number' ? Number(options.gameSeed) : NaN
   if (Number.isFinite(fixed)) return (Math.floor(fixed) + salt * 7919) >>> 0
-  return (Date.now() & 0x7fffffff) >>> 0
+  return ((Date.now() & 0x7fffffff) + salt) >>> 0
 }
 
-// The game lives here, in $.state (key game), so a closed pane keeps its board. Each key press is
-// one write: the move, the new piece and the score. The drawing only reads it.
-async function readGame($: Api): Promise<MergeState | null> {
+// The key presses that reached the pane's Buttons, as counters in $.state (key game). The drawing
+// reads them as props, compares them with the values it saw last, and applies each new press once.
+// A press is one write; the frame clock writes nothing here.
+async function readCtl($: Api): Promise<GameCtl> {
   const read = await $.state.get({ plugin: 'temper', key: 'game' } as const).catch(() => null)
-  return read?.value ?? null
+  return read?.value ?? { jumpCount: 0, duckCount: 0, startCount: 0 }
 }
 
-async function writeGame($: Api, g: MergeState): Promise<void> {
-  await $.state.set({ plugin: 'temper', key: 'game' } as const, g)
+async function pressGame($: Api, which: 'jumpCount' | 'duckCount' | 'startCount'): Promise<void> {
+  const cur = await readCtl($)
+  if (which === 'startCount') gameOver = false
+  await $.state.set({ plugin: 'temper', key: 'game' } as const, { ...cur, [which]: cur[which] + 1 })
 }
 
-// One move key. The best score goes to the store once, when the game ends or the first 512 is made.
-async function moveGame($: Api, dir: Dir): Promise<void> {
-  const before = (await readGame($)) ?? newGame(boardSeed(), gameBest)
-  const after = applyMove(before, dir)
-  await writeGame($, after)
-  if ((after.over && !before.over) || (after.won && !before.won)) await saveBest($, after.score)
-}
-
-// The New game Button, or the r key: a new board with a new seed. The best score stays.
-async function newGameAction($: Api): Promise<void> {
-  const before = await readGame($)
-  const seed = boardSeed((before?.presses ?? 0) + 1)
-  await writeGame($, before === null ? newGame(seed, gameBest) : restart({ ...before, best: Math.max(before.best, gameBest) }, seed))
-}
-
-// The Quit Button: close the pane, as Esc does. The board stays for the next time.
+// The Quit Button: close the pane, as Esc does.
 async function quitGame($: Api): Promise<void> {
   await $.ui.close({ id: GAME_ID })
   gameOpen = false
@@ -650,6 +638,7 @@ export const register: Register = (on, opts) => {
   lastPhase = undefined
   gameOpen = false
   gameBest = 0
+  gameOver = false
   gameBanner = null
   working = false
   drawSurface = null
@@ -774,41 +763,39 @@ export const register: Register = (on, opts) => {
     }
     const ui = await readUi($).catch(() => null)
     const { Client, Box, Button } = kit
-    const g = (await readGame($)) ?? newGame(gameSeed, gameBest)
+    const ctl = await readCtl($)
     const act = (fn: () => Promise<void>) => () => fn().catch(() => undefined)
     return (
       <Box flexDirection="column" backgroundColor={CARD_BG}>
         <Client
           key="game"
           module="./ui/game-client.tsx"
-          props={{ board: g.board, score: g.score, best: Math.max(g.best, gameBest), won: g.won, over: g.over, presses: g.presses, banner: bannerFor(ui?.view ?? null) }}
+          props={{ ...ctl, seed: seedFor(ctl.startCount), best: gameBest, banner: bannerFor(ui?.view ?? null), compact: e.props.placement === 'inline' }}
         />
         <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-          <Button key="game-up" label="w  Up" hotkey="w" variant="primary" onPress={act(() => moveGame($, 'up'))} />
-          <Button key="game-left" label="a  Left" hotkey="a" variant="primary" onPress={act(() => moveGame($, 'left'))} />
-          <Button key="game-down" label="s  Down" hotkey="s" variant="primary" onPress={act(() => moveGame($, 'down'))} />
-          <Button key="game-right" label="d  Right" hotkey="d" variant="primary" onPress={act(() => moveGame($, 'right'))} />
-          <Button key="game-new" label="r  New game" hotkey="r" variant="primary" onPress={act(() => newGameAction($))} />
+          <Button key="game-jump" label="w  Jump" hotkey="w" variant="primary" onPress={act(() => pressGame($, 'jumpCount'))} />
+          <Button key="game-duck" label="s  Duck" hotkey="s" variant="primary" onPress={act(() => pressGame($, 'duckCount'))} />
+          <Button key="game-run" label={gameOver ? 'r  Run again' : 'r  Run'} hotkey="r" variant="primary" onPress={act(() => pressGame($, 'startCount'))} />
           <Button key="game-quit" label="q  Quit" hotkey="q" variant="primary" onPress={act(() => quitGame($))} />
         </Box>
       </Box>
     )
   })
 
-  // A key that reached the game drawing (after a click) comes here as a message. The data is input,
-  // so it is checked: only a known direction or a new game does anything.
+  // The score the game posts when a run ends. The data is input, so it is checked. The best score
+  // goes to the store once for each game over, and the Run Button then says Run again.
   on('ui.message', async ($, e, next) => {
     if (e.element !== 'game') return next(e)
     const data = e.data
-    if (typeof data === 'object' && data !== null) {
-      const msg = data as { kind?: unknown; dir?: unknown }
-      if (msg.kind === 'move' && typeof msg.dir === 'string' && (DIRS as readonly string[]).includes(msg.dir)) await moveGame($, msg.dir as Dir).catch(() => undefined)
-      else if (msg.kind === 'new') await newGameAction($).catch(() => undefined)
+    if (typeof data === 'object' && data !== null && (data as { kind?: unknown }).kind === 'game-over') {
+      await saveBest($, Number((data as { score?: unknown }).score)).catch(() => undefined)
+      gameOver = true
+      $.ui.invalidate('ui.render')
     }
     return {}
   })
 
-  // A pane closed by its own mark: forget it, so the next toggle opens it again. The board stays.
+  // A pane closed by its own mark: forget it, so the next toggle opens it again.
   on('ui.close', async ($, e, next) => {
     if (e.id === GAME_ID) gameOpen = false
     if (e.id === PANE_ID) {

@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { EMPTY, pieceStyle } from '../../hooks/temper-mod/core/merge'
 import { BLUE, CARD_BG, FG, GREEN, MUTED, ORANGE, PINK, YELLOW, contrast, luminance } from '../../hooks/temper-mod/ui/palette'
 import { runFiles } from './run-files'
 import { world } from './world'
@@ -9,7 +8,7 @@ const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
 const START = (surface: string | null) => ({ cwd: '/repo', surface, isInteractive: false }) as never
 
 const PANE = { title: 'Temper', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} } as const
-const GAME = { title: 'Temper Merge', isFocused: false, bodyColumns: 80, placement: 'inline', scroll: { offset: 0, bodyRows: 12 }, view: {} } as const
+const GAME = { title: 'Temper Run', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 12 }, view: {} } as const
 
 type Node = { type?: string; props?: Record<string, unknown>; children?: unknown }
 
@@ -23,6 +22,9 @@ function texts(tree: unknown, bg: string | null = null, out: Seen[] = []): Seen[
   }
   if (typeof tree !== 'object' || tree === null) return out
   const n = tree as Node
+  // The picture of the game is made of coloured half blocks (a Box with a key that starts with
+  // scene-). Those are pixels, not text, and the art tests check their colours.
+  if (typeof n.props?.key === 'string' && n.props.key.startsWith('scene-')) return out
   const own = typeof n.props?.backgroundColor === 'string' ? (n.props.backgroundColor as string) : bg
   if (n.type === 'Text') out.push({ text: JSON.stringify(n.children ?? ''), props: n.props ?? {}, bg: own })
   texts(n.children, own, out)
@@ -95,19 +97,19 @@ describe('the game is legible on every theme', () => {
       await $.command.run({ command: 'temper', args: 'play', origin: { kind: 'composer' } } as never)
       const ui = await $.ui.mount({ plugin: 'temper', surface, component: 'Pane', requestId: 'temper-game', props: GAME })
       expectLegible(await ui.drawn({ in: 'game' }), `game/${surface}`)
+      // Running, with the help line and the heat bars, and after the game over with its two lines.
+      await ui.press({ key: 'game-run' })
+      await ui.advance(1000)
+      expectLegible(await ui.drawn({ in: 'game' }), `game running/${surface}`)
+      await ui.advance(12000)
+      const over = await ui.drawn({ in: 'game' })
+      expect(JSON.stringify(over)).toContain('Game over. Your forge went cold.')
+      expectLegible(over, `game over/${surface}`)
     })
   }
 })
 
-describe('every heat colour of a piece is legible on its own background', () => {
-  test('text on a piece has a contrast of 4.5 or more, and the empty dot is legible on the card', () => {
-    for (const v of [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]) {
-      const s = pieceStyle(v)
-      expect(contrast(s.color as string, s.bg as string), `piece ${v}: ${String(s.color)} on ${String(s.bg)}`).toBeGreaterThanOrEqual(4.5)
-    }
-    expect(contrast(EMPTY.color as string, CARD_BG)).toBeGreaterThanOrEqual(4.5)
-  })
-
+describe('the palette of the card', () => {
   test('every palette colour is legible on the card', () => {
     for (const c of [FG, MUTED, GREEN, BLUE, YELLOW, ORANGE, PINK]) expect(contrast(c, CARD_BG), c).toBeGreaterThanOrEqual(4.5)
   })

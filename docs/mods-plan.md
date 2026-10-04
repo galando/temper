@@ -485,34 +485,53 @@ three modes, one line each. Dismissed: full, plus a toast "Change with /temper m
 `$.store` records that it asked; never again unless `/temper mode` runs. In `claude -p`
 nothing is asked.
 
-### 3.8a The game (Temper Merge)
+### 3.8a The game (Temper Run)
 
-An optional puzzle for the time Claude works. It adds no engine call. The first version was a runner
-game with a flame. A timing game suffers from key latency in a terminal, so it was replaced by a turn
-based puzzle that needs no clock.
+An optional runner game for the time Claude works, in the spirit of the browser dinosaur game. It
+adds no engine call. Two earlier versions (a flame runner, then a merge puzzle) were dropped after
+trial: the first was not clear and not fun, the second was not what was wanted.
 
-- `core/merge.ts` is pure: a 4 by 4 board, the slide and merge rules (one merge for each piece in
-  one move), a seeded generator for the new piece (a 2, sometimes a 4), the score, the win (a 512
-  piece) and the end (no move changes the board). The same seed and the same moves give the same game.
-  The drawing data is there too: the heat colour of each value and the 7 by 3 cell rows. The board is
-  29 columns wide and 12 rows tall, so it fits a 36 column pane.
-- The game lives in the hooks module, in `$.state` key `game` (board, score, best, generator state,
-  won, over, press count). A pane Button (w Up, a Left, s Down, d Right, r New game, q Quit) applies
-  the move with the pure rules and writes the state once, so a closed pane keeps its board and the
-  next open goes on. The first version kept the game in the drawing; a drawing ends with its pane, so
-  the board would be lost.
-- `ui/game-client.tsx` is a Client module (a surface module). It only draws the props and, after a
-  click, turns a key into a message (`surface.post`). It has no `$` call at all, and
-  `scripts/check-mod-calls.sh` fails if one appears in any `*-client.tsx` file. The `ui.message`
-  hook checks the message (a known direction, or a new game) and applies it the same way a Button does.
-- The best score reaches the store through the existing `$.store.set`, once when a game ends or a 512
-  is made. No call is new: the reviewed list stays at 20.
-- A test hook: the plugin option `gameSeed` (a number) fixes the seed, so a test knows the board. It is
+- `core/runner-art.ts` is data: the palette and every picture as a table of rows of palette letters
+  (a letter is one pixel, a dot is none). Ember, the dragon, is 12 pixels wide and 12 tall (12
+  columns by 6 rows) in five frames (run A and B, jump, duck 6 tall, dead). The obstacles are two
+  iron anvils, a bucket of cold water and a hammer with two spin frames. Each picture has a hit box
+  one pixel in from the drawn pixels. Tests check equal row widths, defined letters, hit boxes inside
+  the pictures, and the colours (3 to 1 or more against the wall, the glow and the floor, also after
+  a change to 256 colours; two bright fills cannot reach 3 to 1, so the dragon and the obstacles
+  differ in hue instead).
+- `core/runner.ts` is pure and seeded: the jump arc (11 ticks of 80 ms in the air, 12 pixels high),
+  the input buffer (a jump pressed up to 3 ticks, 240 ms, before the landing fires on the landing),
+  the duck (10 ticks, 0.8 s, cancelled by a jump), the boxes, the score (1 point for 2 pixels) and
+  the best score, heat 1 to 5 (every 400 points), the milestone at every 100 points (a yellow flash
+  of 6 ticks and a banner), and the picture as pixels and then as half block cells.
+- Fairness is code and tests, not a feeling. The generator picks only an obstacle that can be
+  cleared at the current speed with a window of 3 ticks or more (found by running the rules, not by a
+  table), keeps a minimum gap by what each obstacle needs (jump after jump 16 ticks, a jump and a
+  duck 18), starts the first obstacle 2.5 seconds after the run began, and keeps hammers for after
+  100 points. A property test runs thousands of seeds at every speed and checks every gap, and a bot
+  that looks, presses and then waits 0, 2 or 3 ticks (up to 240 ms) survives 900 ticks in all of them.
+- The hooks module keeps only the counters of the pane Buttons in `$.state` key `game` (jumpCount,
+  duckCount, startCount): a press is one write, and the clock writes nothing. `ui/game-client.tsx`
+  is a Client module (a surface module): it runs the frame clock (80 ms), compares the counters with
+  the values it saw last and applies each new press once, and draws. After one click it also takes
+  Space and the Up arrow (jump) and the Down arrow (duck) directly through `onKey`. It has no `$`
+  call at all, and `scripts/check-mod-calls.sh` fails if one appears in any `*-client.tsx` file. It
+  posts the score once for each game over, and the `ui.message` hook keeps the best score with the
+  existing `$.store.set`. No call is new: the reviewed list stays at 20.
+- Measured on the terminal (tmux, 160 columns, real Claude Code 2.1.288): from `tmux send-keys` to
+  Ember leaving the floor on the screen, 14 trials, median 40 ms, from 35 to 53 ms. That includes the
+  send and the screen capture, so the delay of the Button route is under half a tick of 80 ms. A bot
+  played from the screen through the Buttons (jump and duck from what it saw) for 170 seconds, to
+  heat 5, with no game over.
+- In a narrow terminal the pane sits inline and shows about 14 lines. Then the Client leaves out the
+  top 3 rows of sky and the Temper line, so the floor, the help line and the Buttons show; the top of
+  a jump is a little cut off.
+- A test hook: the plugin option `gameSeed` (a number) fixes the seed, so a test knows the run. It is
   not in `plugin.json` and has no effect unless it is set.
 - The pane asks for the keyboard with `focus` and for Esc to close it with `closeOnEscape`. The
   surface may or may not grant the keys, and the mod cannot read which (`ui.panes` reported an
   unfocused pane while the keys did reach the game, so it is not used). The toast is always the
-  same: "The game is open. Press w a s d to slide the pieces, r for a new game, q or Esc to leave."
+  same: "The game is open. Press r to run, w to jump, s to duck, q or Esc to leave."
   The Client finds out by itself: with no key, click or press within 3 seconds of opening, it draws
   one dim line, "No keys yet? Press Ctrl+X, then Tab, to give the game the keys." Any key
   or press removes the line. That Ctrl+X, Tab path is in the API text; it is not verified live.

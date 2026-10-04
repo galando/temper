@@ -1,7 +1,7 @@
 {
   "name": "temper",
   "displayName": "Temper",
-  "description": "Claude cannot write code before you approve the intent. Phase gates for AI written code: plan with blast radius, TDD, scored review, and gate verdicts computed by an auditable CLI that blocks git commit while a gate is red. With Claude Code 2.1.287 or later a mod refuses out of phase writes and draws a phase bar.",
+  "description": "Claude cannot write code before you approve the intent. Gated plan, TDD, review and check for AI written code, with a phase bar in Claude Code.",
   "version": "9.5.0",
   "author": {
     "name": "galando",
@@ -9,20 +9,22 @@
   },
   "repository": "https://github.com/galando/temper",
   "homepage": "https://github.com/galando/temper",
+  "icon": "./.claude-plugin/icon.png",
+  "documentationUrl": "https://galando.github.io/temper",
+  "supportUrl": "https://github.com/galando/temper/issues",
+  "privacyPolicyUrl": "https://galando.github.io/temper/privacy.html",
   "license": "MIT",
   "keywords": [
-    "temper",
-    "quality",
-    "code-review",
-    "tdd",
-    "standards",
-    "blast-radius",
+    "intent-driven-development",
     "sdlc",
-    "intent",
-    "gates",
-    "enforcement",
+    "guardrails",
+    "tdd",
+    "code-review",
+    "quality-gates",
+    "blast-radius",
     "workflow",
-    "phase-bar"
+    "enforcement",
+    "plan-mode"
   ],
   "commands": [
     "./commands/temper.md",
@@ -95,7 +97,7 @@
     "game": {
       "type": "string",
       "title": "Game",
-      "description": "Temper Merge game. on offers it while Claude works (key 8) and answers /temper:temper play. command answers the command only and offers nothing. off hides it all. Values: on, command or off.",
+      "description": "Temper Run game. on offers it while Claude works (key 8) and answers /temper:temper play. command answers the command only and offers nothing. off hides it all. Values: on, command or off.",
       "default": "on"
     }
   }

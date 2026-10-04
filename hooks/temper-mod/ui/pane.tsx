@@ -38,9 +38,9 @@ export function renderPane(
         label={game.open ? '8  Close the game' : '8  Play while you wait'}
         hotkey="8"
         variant="primary"
-        onPress={() => onAction({ key: '1', id: 'play', label: 'Play', desc: 'Play a small puzzle.', command: 'play' })}
+        onPress={() => onAction({ key: '1', id: 'play', label: 'Play', desc: 'Play a small game.', command: 'play' })}
       />
-      <Text color={MUTED}>{'  A small puzzle for the wait.'}</Text>
+      <Text color={MUTED}>{'  A small game for the wait.'}</Text>
     </Box>
   ) : null
 

@@ -47,17 +47,13 @@ export type TemperRun = {
   view: TemperView
 }
 
-// The game, Temper Merge: a 4 by 4 board (16 cells, 0 is empty), the score, the best score, the
-// seeded generator state, whether a 512 was made, whether no move is left, and how many times a move
-// key was pressed. Written on a key press only, so a closed pane keeps its board.
+// The game, Temper Run: how many times each Button of the game pane was pressed. The drawing reads
+// the counters as props, compares them with the values it saw last, and applies each new press once.
+// Written on a key press only, never on a frame.
 export type TemperGame = {
-  board: number[]
-  score: number
-  best: number
-  rng: number
-  won: boolean
-  over: boolean
-  presses: number
+  jumpCount: number
+  duckCount: number
+  startCount: number
 }
 
 declare module 'claude-code' {
