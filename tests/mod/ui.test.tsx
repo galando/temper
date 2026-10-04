@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
+import { actionsFor, globalActions } from '../../hooks/temper-mod/core/actions'
 import { SPEC, runFiles } from './run-files'
 import { COMPOSE, world } from './world'
 
@@ -59,8 +60,8 @@ describe('phase bar (AbovePrompt)', () => {
       expect(JSON.stringify(drawn).match(/\u25cf/g)).toHaveLength(1)
       expect(/[\u25b6\u25b8\u2192\u279c]/.test(JSON.stringify(drawn))).toBe(false)
       expect(texts).toContain('TEMPER')
-      expect(texts).toContain('Build (3 of 6)')
-      expect(texts).toContain('Do the tasks one by one')
+      expect(texts).toContain('Step 3 of 6: Build')
+      expect(texts).toContain('1 Start the next task. Claude writes a failing test, then the code. Then run the tests.')
       // Buttons: three actions, override on 9, more on 0; the first is primary.
       const buttons = tree.filter(n => n.type === 'Button')
       expect(buttons).toHaveLength(5)
@@ -69,7 +70,7 @@ describe('phase bar (AbovePrompt)', () => {
       expect(buttons[1]?.props?.variant).toBe('secondary')
       // The reason field and its hint.
       expect(tree.some(n => n.type === 'Input' && n.props?.key === 'override-reason')).toBe(true)
-      expect(texts).toContain('Override needs a reason. Temper writes it in the report.')
+      expect(texts).toContain('A skip needs a reason. Temper writes it in the report.')
       await ui.press({ key: 'action-next-task' })
       expect(w.prompts.some(p => p.includes('Start the next task'))).toBe(true)
       await ui.unmount()
@@ -115,7 +116,7 @@ describe('phase bar (AbovePrompt)', () => {
     await $.session.start(START)
     const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
     await ui.input({ key: 'override-reason', text: '   ' })
-    expect(w.toasts.some(t => t.includes('Override needs a reason'))).toBe(true)
+    expect(w.toasts.some(t => t.includes('A skip needs a reason'))).toBe(true)
     expect([...w.files.values()].some(t => t.includes('"type":"override"'))).toBe(false)
     await ui.input({ key: 'override-reason', text: 'reviewer is on leave' })
     expect([...w.files.values()].some(t => t.includes('"type":"override"') && t.includes('reviewer is on leave'))).toBe(true)
@@ -200,7 +201,7 @@ describe('phase bar (AbovePrompt)', () => {
       expect(tree.filter(n => n.type === 'Input')).toHaveLength(0)
       const texts = tree.filter(n => n.type === 'Text').map(textOf).join(' ')
       expect(texts).toContain('\u25cf Build')
-      expect(texts).not.toContain('Override needs a reason')
+      expect(texts).not.toContain('A skip needs a reason')
     })
 
     test(`off mode draws nothing on ${surface}: the engine's own drawing stands`, { options: { uiMode: 'off' } }, async ($, on) => {
@@ -227,13 +228,33 @@ describe('pane', () => {
       const ui = await $.ui.mount({ plugin: 'temper', surface, component: 'Pane', requestId: 'temper', props: PANE })
       expect(await ui.find({ type: 'Text', text: /Temper/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /Password reset by email/ })).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: /Phase \u00b7 Build \(3 of 6\) \u00b7 task 3 of 7/ })).toBeDefined()
-      expect(await ui.find({ type: 'Text', text: /Acceptance criteria \u00b7 2 of 5 met/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /Phase \u00b7 Step 3 of 6: Build \u00b7 task 3 of 7/ })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /Acceptance criteria \(what must be true\) \u00b7 2 of 5 met/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /\u2714 criterion 1/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /\u25cb criterion 2/ })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /\u2713 done {2}\u25cf you are here {2}\u25cb upcoming {2}\u21ba redo/ })).toBeDefined()
-      expect((await ui.find({ key: 'timeline' }))?.text).toContain('1. Run started at Build')
+      expect(await ui.find({ type: 'Text', text: /1\. Run started at Build/ })).toBeDefined()
     })
+  }
+
+  for (const stage of ['intent', 'plan', 'build', 'review', 'check'] as const) {
+    for (const pass of [false, true]) {
+      test(`every action label of ${stage} (verdict pass=${pass}) shows in the pane with its own short line`, async ($, on) => {
+        world(on, runFiles({ nextStage: stage, ...(pass ? { gates: { [stage]: 'PASS' } } : {}) }))
+        await $.session.start(START)
+        const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'Pane', requestId: 'temper', props: PANE })
+        await ui.press({ key: 'pane-more-actions' })
+        const drawn = JSON.stringify(await ui.drawn())
+        const ctx = { ready: pass, tasksDone: stage === 'build' && pass, allChecksPass: stage === 'check' && pass }
+        const set = actionsFor(stage, ctx)
+        // The full list gets letter keys, but the label and the line stay.
+        for (const x of [...set.primary, set.override, ...set.more, ...globalActions(stage, false)]) {
+          // The Button label starts with the key ("1  Make the plan"), so the text ends the label.
+          expect(new RegExp(`"label":"[^"]*${x.label}"`).test(drawn), `label ${x.label}`).toBe(true)
+          expect(drawn.includes(x.desc), `line of ${x.label}`).toBe(true)
+        }
+      })
+    }
   }
 
   test('pane hotkeys are unique in every phase, expanded or not, and findings carry none', async ($, on) => {
@@ -337,7 +358,7 @@ describe('spinner, hint and question header', () => {
       await ui.unmount()
     }
     const [terminal, desktop] = w.rendered.filter(r => r.component === 'PromptHint')
-    expect(String(terminal?.props.tail)).toContain('Temper, Build (3 of 6): ')
+    expect(String(terminal?.props.tail)).toContain('Temper. Step 3 of 6: Build. ')
     expect(desktop?.props.tail).toBeUndefined()
     expect(desktop?.props.hint).toBe('? for shortcuts')
   })
@@ -354,7 +375,7 @@ describe('spinner, hint and question header', () => {
       })
       const drawn = JSON.stringify(await ui.drawn())
       expect(drawn.match(/"type":"engine"/g)).toHaveLength(1)
-      expect(drawn).toContain('Temper: Build (3 of 6), criterion 2 of 5')
+      expect(drawn).toContain('Temper: Step 3 of 6: Build, criterion 2 of 5')
     })
   }
 
@@ -382,7 +403,7 @@ describe('turn line, suggestions and toasts', () => {
     expect(r.text).toBe(
       'Build \u00b7 2 of 5 criteria met \u00b7 next: Review',
     )
-    expect(w.suggestions).toEqual(['Start the next task in tasks.md. Write a failing test first.'])
+    expect(w.suggestions).toEqual(['Start the next task in tasks.md. Write a failing test first. Do this now. Reply with one short line.'])
     expect(w.prompts).toEqual([])
   })
 
@@ -408,7 +429,7 @@ describe('turn line, suggestions and toasts', () => {
     await $.session.start(START)
     expect(w.toasts).toEqual([])
     await $.command.run({ command: 'temper', args: 'approve', origin: { kind: 'composer' } } as never)
-    expect(w.toasts).toEqual(['Plan approved \u00b7 Build open'])
+    expect(w.toasts).toEqual(['Plan approved. Build open.'])
   })
 
   test('no toast in minimal mode', { options: { uiMode: 'minimal' } }, async ($, on) => {

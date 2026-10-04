@@ -95,7 +95,7 @@
     "game": {
       "type": "string",
       "title": "Game",
-      "description": "Temper Run game. on offers it while Claude works (key 8) and answers /temper:temper play. command answers the command only and offers nothing. off hides it all. Values: on, command or off.",
+      "description": "Temper Merge game. on offers it while Claude works (key 8) and answers /temper:temper play. command answers the command only and offers nothing. off hides it all. Values: on, command or off.",
       "default": "on"
     }
   }

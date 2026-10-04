@@ -106,7 +106,7 @@ describe('decisions come only from the person', () => {
   test('override without a reason is refused and writes no event', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'review' }))
     const r = await $.command.run({ command: 'temper', args: 'override', origin: { kind: 'composer' } } as never)
-    expect(r.text).toBe('Override needs a reason. Use /temper:temper override <reason>.')
+    expect(r.text).toBe('A skip needs a reason. Use /temper:temper override <reason>.')
     expect(decisions(w)).toEqual([])
   })
 
@@ -122,7 +122,7 @@ describe('decisions come only from the person', () => {
   test('approve needs a fresh PASS verdict, then advances', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'plan' }))
     const refused = await $.command.run({ command: 'temper', args: 'approve', origin: { kind: 'composer' } } as never)
-    expect(refused.text).toContain('Plan has no PASS verdict yet')
+    expect(refused.text).toContain('Plan has not passed its check yet')
     w.files.set('.temper/gates.json', JSON.stringify({ plan: { verdict: 'PASS', ts: '2999-01-01T00:00:00Z' } }))
     const ok = await $.command.run({ command: 'temper', args: 'approve', origin: { kind: 'composer' } } as never)
     expect(ok.text).toBe(PASSTHROUGH)

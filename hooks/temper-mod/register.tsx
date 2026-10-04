@@ -9,6 +9,8 @@ import { HELP, followUp, parseArgs, planCommand } from './core/commands'
 import type { Bare, Parsed } from './core/commands'
 import { parseGameMode, parseOnOff, parsePhaseModel, parsePhaseModels, parseUiMode } from './core/config'
 import type { GameMode, UiMode } from './core/config'
+import { DIRS, applyMove, newGame, restart } from './core/merge'
+import type { Dir, MergeState } from './core/merge'
 import type { Draft } from './core/events'
 import { ONLY_USER, phaseLabel } from './core/machine'
 import type { Command } from './core/machine'
@@ -23,6 +25,7 @@ import { PANE_ID, renderPane } from './ui/pane'
 import { REASON_HINT } from './ui/band'
 import type { GameButton } from './ui/band'
 import { REASON_KEY } from './ui/kit'
+import { CARD_BG, FG } from './ui/palette'
 import { renderQuestion } from './ui/question'
 import { spinnerProps } from './ui/spinner'
 
@@ -47,11 +50,9 @@ let gameOpen = false
 let gameBest = 0
 let gameSeed = 1
 let gameBanner: { text: string; until: number } | null = null
-// What the Start Button says: Start before the first game, Again after a game over.
-let gameStatus: 'ready' | 'running' | 'over' = 'ready'
 // The line the person reads when the game opens. It is always this one. Whether the keys reach the
 // game, the game finds out by itself (it draws a hint after 3 seconds with no key).
-const GAME_KEYS_TEXT = 'The game is open. Press s to start, w to jump, q or Esc to leave.'
+const GAME_KEYS_TEXT = 'The game is open. Press w a s d to slide the pieces, r for a new game, q or Esc to leave.'
 // Where the session draws (session.start says so); the game needs the terminal or the desktop app.
 let drawSurface: string | null = null
 
@@ -184,30 +185,53 @@ async function toggleGame($: Api): Promise<string> {
   }
   const stored = await $.store.get('gameBest')
   gameBest = typeof stored === 'number' ? stored : 0
-  gameSeed = (Date.now() & 0x7fffffff) >>> 0
-  gameStatus = 'ready'
+  gameSeed = boardSeed()
+  // A board that was left open earlier goes on. Only r starts a new one.
+  const before = await readGame($)
+  await writeGame($, before === null ? newGame(gameSeed, gameBest) : { ...before, best: Math.max(before.best, gameBest) })
   // The pane asks for the keyboard and for Esc to close it. The surface may or may not grant the
   // keys; the game draws a hint by itself when no key comes.
-  const placed = await $.ui.open({ id: GAME_ID, title: 'Temper Run', focus: true, closeOnEscape: true, rows: 20 })
+  const placed = await $.ui.open({ id: GAME_ID, title: 'Temper Merge', focus: true, closeOnEscape: true, rows: 20 })
   gameOpen = placed.isPlaced
   if (!placed.isPlaced) return 'The game needs a wider terminal.'
   return GAME_KEYS_TEXT
 }
 
-// Presses of the game's Buttons. Each one writes one counter in $.state, so the pane draws again
-// and the game sees the new value. Nothing is written on a frame.
-async function readCtl($: Api): Promise<{ jump: number; start: number }> {
+// A seed for a new board: the clock. A test sets the plugin option `gameSeed` (a number) to get a
+// board it knows; each new game then adds the press count, so the seeds differ.
+function boardSeed(salt = 0): number {
+  const fixed = typeof options.gameSeed === 'string' || typeof options.gameSeed === 'number' ? Number(options.gameSeed) : NaN
+  if (Number.isFinite(fixed)) return (Math.floor(fixed) + salt * 7919) >>> 0
+  return (Date.now() & 0x7fffffff) >>> 0
+}
+
+// The game lives here, in $.state (key game), so a closed pane keeps its board. Each key press is
+// one write: the move, the new piece and the score. The drawing only reads it.
+async function readGame($: Api): Promise<MergeState | null> {
   const read = await $.state.get({ plugin: 'temper', key: 'game' } as const).catch(() => null)
-  return read?.value ?? { jump: 0, start: 0 }
+  return read?.value ?? null
 }
 
-async function pressGame($: Api, which: 'jump' | 'start'): Promise<void> {
-  const cur = await readCtl($)
-  if (which === 'start') gameStatus = 'running'
-  await $.state.set({ plugin: 'temper', key: 'game' } as const, { jump: cur.jump + (which === 'jump' ? 1 : 0), start: cur.start + (which === 'start' ? 1 : 0) })
+async function writeGame($: Api, g: MergeState): Promise<void> {
+  await $.state.set({ plugin: 'temper', key: 'game' } as const, g)
 }
 
-// The Quit Button: close the pane, as Esc does.
+// One move key. The best score goes to the store once, when the game ends or the first 512 is made.
+async function moveGame($: Api, dir: Dir): Promise<void> {
+  const before = (await readGame($)) ?? newGame(boardSeed(), gameBest)
+  const after = applyMove(before, dir)
+  await writeGame($, after)
+  if ((after.over && !before.over) || (after.won && !before.won)) await saveBest($, after.score)
+}
+
+// The New game Button, or the r key: a new board with a new seed. The best score stays.
+async function newGameAction($: Api): Promise<void> {
+  const before = await readGame($)
+  const seed = boardSeed((before?.presses ?? 0) + 1)
+  await writeGame($, before === null ? newGame(seed, gameBest) : restart({ ...before, best: Math.max(before.best, gameBest) }, seed))
+}
+
+// The Quit Button: close the pane, as Esc does. The board stays for the next time.
 async function quitGame($: Api): Promise<void> {
   await $.ui.close({ id: GAME_ID })
   gameOpen = false
@@ -270,6 +294,20 @@ async function decideAs($: Api, command: Bare, origin: 'person' | 'model'): Prom
 }
 
 // prompt.submit is allowed here (a button press runs outside any held turn).
+// The Temper script in the plugin folder, as a full path. The mod file sits at
+// <plugin>/hooks/temper-mod/register.tsx, so the root is two folders up. Anything else (an
+// unexpected location) gives the plain `scripts/temper`, and the prompt then says where to look.
+function pluginCli(): string {
+  try {
+    const here = new URL((import.meta as { url?: string }).url ?? '').pathname
+    const tail = '/hooks/temper-mod/register.tsx'
+    if (here.endsWith(tail) && !/\s|'/.test(here)) return `${decodeURIComponent(here.slice(0, -tail.length))}/scripts/temper`
+  } catch {
+    // no module URL here
+  }
+  return 'scripts/temper'
+}
+
 async function submitText($: Api, text: string | null): Promise<void> {
   if (text) await $.prompt.submit({ text }).then(() => undefined, () => undefined)
 }
@@ -293,7 +331,7 @@ async function runReason($: Api, text: string): Promise<void> {
     $.ui.toast(done.error)
     return
   }
-  for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity))
+  for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity, pluginCli()))
 }
 
 // Key 0 and the pane's "More actions" button. With the pane closed it opens the pane with the full
@@ -354,7 +392,7 @@ async function runAction($: Api, action: Action, requestId?: string): Promise<vo
     $.ui.toast(done.error)
     return
   }
-  for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity))
+  for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity, pluginCli()))
 }
 
 async function runFindingAction($: Api, kind: 'fix' | 'accept' | 'explain', id: string): Promise<void> {
@@ -371,7 +409,7 @@ async function runFindingAction($: Api, kind: 'fix' | 'accept' | 'explain', id: 
     $.ui.toast(done.error)
     return
   }
-  for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity))
+  for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity, pluginCli()))
 }
 
 // ---- Modes (config rows) ------------------------------------------------------------
@@ -613,7 +651,6 @@ export const register: Register = (on, opts) => {
   gameOpen = false
   gameBest = 0
   gameBanner = null
-  gameStatus = 'ready'
   working = false
   drawSurface = null
   live.mode = undefined
@@ -728,47 +765,52 @@ export const register: Register = (on, opts) => {
     const kit = $.ui.resolve(e)
     // The table of another surface holds a Client that draws nothing, so the surface decides.
     if ((e.surface !== 'terminal' && e.surface !== 'desktop') || !('Client' in kit)) {
-      const { Text } = kit
-      return <Text>The game needs the terminal or the desktop app.</Text>
+      const { Box, Text } = kit
+      return (
+        <Box backgroundColor={CARD_BG}>
+          <Text color={FG}>The game needs the terminal or the desktop app.</Text>
+        </Box>
+      )
     }
     const ui = await readUi($).catch(() => null)
     const { Client, Box, Button } = kit
-    const ctl = await readCtl($)
+    const g = (await readGame($)) ?? newGame(gameSeed, gameBest)
+    const act = (fn: () => Promise<void>) => () => fn().catch(() => undefined)
     return (
-      <Box flexDirection="column">
+      <Box flexDirection="column" backgroundColor={CARD_BG}>
         <Client
           key="game"
           module="./ui/game-client.tsx"
-          props={{ best: gameBest, banner: bannerFor(ui?.view ?? null), seed: gameSeed, jumpCount: ctl.jump, startCount: ctl.start }}
+          props={{ board: g.board, score: g.score, best: Math.max(g.best, gameBest), won: g.won, over: g.over, presses: g.presses, banner: bannerFor(ui?.view ?? null) }}
         />
-        <Box flexDirection="row" columnGap={2}>
-          <Button key="game-jump" label="Jump" hotkey="w" plain onPress={() => pressGame($, 'jump').catch(() => undefined)} />
-          <Button key="game-start" label={gameStatus === 'over' ? 'Again' : 'Start'} hotkey="s" plain onPress={() => pressGame($, 'start').catch(() => undefined)} />
-          <Button key="game-quit" label="Quit" hotkey="q" plain onPress={() => quitGame($).catch(() => undefined)} />
+        <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+          <Button key="game-up" label="w  Up" hotkey="w" variant="primary" onPress={act(() => moveGame($, 'up'))} />
+          <Button key="game-left" label="a  Left" hotkey="a" variant="primary" onPress={act(() => moveGame($, 'left'))} />
+          <Button key="game-down" label="s  Down" hotkey="s" variant="primary" onPress={act(() => moveGame($, 'down'))} />
+          <Button key="game-right" label="d  Right" hotkey="d" variant="primary" onPress={act(() => moveGame($, 'right'))} />
+          <Button key="game-new" label="r  New game" hotkey="r" variant="primary" onPress={act(() => newGameAction($))} />
+          <Button key="game-quit" label="q  Quit" hotkey="q" variant="primary" onPress={act(() => quitGame($))} />
         </Box>
       </Box>
     )
   })
 
-  // The score the game posts when a game ends. The data is input, so it is checked.
+  // A key that reached the game drawing (after a click) comes here as a message. The data is input,
+  // so it is checked: only a known direction or a new game does anything.
   on('ui.message', async ($, e, next) => {
     if (e.element !== 'game') return next(e)
     const data = e.data
-    if (typeof data === 'object' && data !== null && (data as { kind?: unknown }).kind === 'game-over') {
-      await saveBest($, Number((data as { score?: unknown }).score)).catch(() => undefined)
-      // The Start Button now says Again. One redraw for each game over, never one per frame.
-      gameStatus = 'over'
-      $.ui.invalidate('ui.render')
+    if (typeof data === 'object' && data !== null) {
+      const msg = data as { kind?: unknown; dir?: unknown }
+      if (msg.kind === 'move' && typeof msg.dir === 'string' && (DIRS as readonly string[]).includes(msg.dir)) await moveGame($, msg.dir as Dir).catch(() => undefined)
+      else if (msg.kind === 'new') await newGameAction($).catch(() => undefined)
     }
     return {}
   })
 
-  // A pane closed by its own mark: forget it, so the next toggle opens it again.
+  // A pane closed by its own mark: forget it, so the next toggle opens it again. The board stays.
   on('ui.close', async ($, e, next) => {
-    if (e.id === GAME_ID) {
-      gameOpen = false
-      gameStatus = 'ready'
-    }
+    if (e.id === GAME_ID) gameOpen = false
     if (e.id === PANE_ID) {
       paneOpen = false
       live.paneOpen = false

@@ -219,8 +219,8 @@ const fail = (error: string): Decision => ({ error })
 
 function loopLimitMessage(s: RunState): string {
   return (
-    `Fix loop limit reached (${s.loops} failed Check runs, limit ${s.maxLoops}). ` +
-    'Next: plan again (/temper:temper back plan <reason>), override with a reason (/temper:temper override <reason>), ' +
+    `The fix limit is reached (${s.loops} failed check runs, limit ${s.maxLoops}). ` +
+    'Next: make a new plan (/temper:temper back plan <reason>), skip with a reason (/temper:temper override <reason>), ' +
     'or take over (/temper:temper pause).'
   )
 }
@@ -259,12 +259,12 @@ export function decide(state: RunState, cmd: Command): Decision {
         const g = state.gate[phase]
         const name = phaseLabel(phase)
         if (g === 'stale' && state.invalidated[phase] !== undefined) {
-          return fail(`${name} needs a new verdict. A back step made the old verdict invalid.`)
+          return fail(`${name} needs a new check. A step back made the old check invalid.`)
         }
         if (g === 'stale' || g === 'none') {
-          return fail(`${name} has no PASS verdict yet. Next: run the ${phase} gate (temper gate ${phase}).`)
+          return fail(`${name} has not passed its check yet. Next: run the ${phase} check (temper gate ${phase}).`)
         }
-        if (g === 'fail') return fail(`${name} verdict is FAIL. Next: fix the findings. Then run the ${phase} gate again.`)
+        if (g === 'fail') return fail(`${name} did not pass its check. Next: fix the problems. Then run the ${phase} check again.`)
       }
       return { events: [{ type: 'advance', from: phase, to: phase === 'check' ? 'done' : phase === 'fix' ? 'check' : nextOf(phase), ...who }] }
     }
@@ -278,8 +278,8 @@ export function decide(state: RunState, cmd: Command): Decision {
     }
     case 'override': {
       if (!isPerson) return fail(ONLY_USER)
-      if (!cmd.reason.trim()) return fail('Override needs a reason. Use /temper:temper override <reason>.')
-      if (cmd.phase !== undefined && cmd.phase !== phase) return fail(`Override works on the current phase, ${phaseLabel(phase)}.`)
+      if (!cmd.reason.trim()) return fail('A skip needs a reason. Use /temper:temper override <reason>.')
+      if (cmd.phase !== undefined && cmd.phase !== phase) return fail(`You can skip only the current step, ${phaseLabel(phase)}.`)
       return { events: [{ type: 'override', phase, reason: cmd.reason.trim(), ...who }] }
     }
     case 'acceptFinding': {

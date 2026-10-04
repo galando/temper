@@ -110,9 +110,9 @@ describe('decide', () => {
 
   test('advance needs a fresh PASS verdict', () => {
     const s0 = fold(toBuild)
-    expect(err(decide(s0, { type: 'advance', origin: 'model' }))).toContain('Build has no PASS verdict')
+    expect(err(decide(s0, { type: 'advance', origin: 'model' }))).toContain('Build has not passed its check')
     const s1 = fold(toBuild, { build: { verdict: 'FAIL', ts: 100_000 } })
-    expect(err(decide(s1, { type: 'advance', origin: 'model' }))).toContain('Build verdict is FAIL')
+    expect(err(decide(s1, { type: 'advance', origin: 'model' }))).toContain('Build did not pass its check')
     const s2 = fold(toBuild, { build: { verdict: 'PASS', ts: 100_000 } })
     expect(ok(decide(s2, { type: 'advance', origin: 'model' }))).toEqual([
       { type: 'advance', from: 'build', to: 'review', origin: 'model' },
@@ -136,7 +136,7 @@ describe('decide', () => {
     const stale = fold(drafts, { build: { verdict: 'PASS', ts: 35_000 } })
     expect(stale.phase).toBe('build')
     expect(err(decide(stale, { type: 'advance', origin: 'model' }))).toBe(
-      'Build needs a new verdict. A back step made the old verdict invalid.',
+      'Build needs a new check. A step back made the old check invalid.',
     )
     const fresh = fold(drafts, { build: { verdict: 'PASS', ts: 500_000 } })
     expect(ok(decide(fresh, { type: 'advance', origin: 'model' }))[0]).toMatchObject({ type: 'advance', to: 'review' })
@@ -152,8 +152,8 @@ describe('decide', () => {
 
   test('override needs a non-empty reason and the person, and names the current phase', () => {
     const s = fold([...toBuild, adv('build', 'review')])
-    expect(err(decide(s, { type: 'override', reason: '', ...person }))).toBe('Override needs a reason. Use /temper:temper override <reason>.')
-    expect(err(decide(s, { type: 'override', reason: '   ', ...person }))).toBe('Override needs a reason. Use /temper:temper override <reason>.')
+    expect(err(decide(s, { type: 'override', reason: '', ...person }))).toBe('A skip needs a reason. Use /temper:temper override <reason>.')
+    expect(err(decide(s, { type: 'override', reason: '   ', ...person }))).toBe('A skip needs a reason. Use /temper:temper override <reason>.')
     expect(err(decide(s, { type: 'override', reason: 'ok', origin: 'model' }))).toBe(ONLY_USER)
     expect(ok(decide(s, { type: 'override', reason: 'risk accepted', ...person }))).toEqual([
       { type: 'override', phase: 'review', reason: 'risk accepted', ...person },
@@ -220,14 +220,14 @@ describe('fix loop limit', () => {
     const s = fold([...toCheck, ...failThenFix, { type: 'checkResult', result: 'fail', origin: 'system' }], {}, { maxLoops: 1 })
     expect(s.loopLimitReached).toBe(true)
     const e = err(decide(s, { type: 'advance', origin: 'model' }))
-    expect(e).toContain('loop limit')
-    expect(e).toContain('plan again')
+    expect(e).toContain('fix limit')
+    expect(e).toContain('make a new plan')
     const illegal: Command[] = [
       { type: 'back', to: 'build', reason: 'x', ...person },
       { type: 'acceptFinding', id: '1', reason: 'x', ...person },
       { type: 'drift', path: 'a', choice: 'add', reason: '', ...person },
     ]
-    for (const c of illegal) expect(err(decide(s, c))).toContain('loop limit')
+    for (const c of illegal) expect(err(decide(s, c))).toContain('fix limit')
     for (const c of [
       { type: 'back', to: 'plan', reason: 'rework', ...person },
       { type: 'override', reason: 'ship it', ...person },

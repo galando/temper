@@ -453,14 +453,15 @@ Key 1 is the main action and changes when the phase is ready to move on.
 
 | Phase | 1 | 2 | 3 | 0 shows also |
 |---|---|---|---|---|
-| Intent | Approve intent (when the gate passes), else Check intent | Ask questions | Edit intent | Capture intent |
-| Plan | Approve plan (when the plan gate passes), else Write plan | Show files the plan touches | Propose an alternative | Split tasks, Back to Intent |
-| Build | Next task, or Send to Review when tasks are done | Run tests | Show diff | Pause |
-| Review | Start review, or Fix all when findings exist | Review again | Show diff | per finding Fix, Accept, Explain (in the pane) |
-| Check | Run checks, or Mark done when all pass | Rerun failed only | Failures by criterion | |
-| Fix | Fix failures | Fix findings | Back to Check | at the loop limit: Plan again, Override, Take over |
+| Intent | Approve the intent (when the check passes), else Check the intent | Ask me questions | Edit the intent | Save my request |
+| Plan | Approve the plan (when the check passes), else Make the plan | Show the files | Try another plan | Split the tasks, Go back to Intent |
+| Build | Start the next task, or Send to review when tasks are done | Run the tests | Show the changes | Pause the run |
+| Review | Start the review, or Fix the problems when findings exist | Review again | Show the changes | per finding Fix, Accept, Explain (in the pane) |
+| Check | Run the checks, or Finish the run when all pass | Run failed checks again | Show the failures | |
+| Fix | Fix the failures | Fix the findings | Go back to checks | at the limit: Make a new plan, Skip with a reason, Take over |
 
-9 is override everywhere (asks for a reason; no reason, no override). Global actions
+Every label says its result and every action has a one line description (10 words at most) in the
+pane. 9 is "Skip with a reason" everywhere (the subcommand is still `override`; no reason, no skip). Global actions
 are subcommands and pane buttons. Every action that runs something submits a prompt
 to Claude; none submit on their own.
 
@@ -484,31 +485,36 @@ three modes, one line each. Dismissed: full, plus a toast "Change with /temper m
 `$.store` records that it asked; never again unless `/temper mode` runs. In `claude -p`
 nothing is asked.
 
-### 3.8a The game (Temper Run)
+### 3.8a The game (Temper Merge)
 
-An optional runner game for the time Claude works. It adds no engine call.
+An optional puzzle for the time Claude works. It adds no engine call. The first version was a runner
+game with a flame. A timing game suffers from key latency in a terminal, so it was replaced by a turn
+based puzzle that needs no clock.
 
-- `core/game.ts` is pure: a seeded generator, the physics, the score, the heat level and the
-  drawing rows. The same seed and the same keys give the same game, so the tests need no clock.
-  The art is data: a flame of three flicker frames (3 by 3), a taller jump frame and a spark;
-  two anvils and two cold obstacles. Every row of a sprite has the same width, and a test checks
-  that the hit box lies inside the sprites. The field is 36 to 60 cells wide (it follows the
-  region) and 10 rows tall. The height is fixed on purpose: a region sized by its content would
-  feed the height back into the game.
-- `ui/game-client.tsx` is a Client module (a surface module). It draws with Box and Text, reads
-  keys with `onKey`, and moves the game on `surface.every`. It has no `$` call at all, and
-  `scripts/check-mod-calls.sh` fails if one appears in any `*-client.tsx` file.
-- The best score reaches the store through the existing path: the Client posts the score with
-  `surface.post`, and the `ui.message` hook in `register.tsx` validates it and calls the
-  already reviewed `$.store.set`. The Buttons of the game pane (w Jump, s Start or Again, q Quit)
-  add one to a counter in `$.state` (`game`); the pane passes the counters to the Client as props,
-  and the Client applies each new press once. No call is new: the reviewed list stays at 20.
+- `core/merge.ts` is pure: a 4 by 4 board, the slide and merge rules (one merge for each piece in
+  one move), a seeded generator for the new piece (a 2, sometimes a 4), the score, the win (a 512
+  piece) and the end (no move changes the board). The same seed and the same moves give the same game.
+  The drawing data is there too: the heat colour of each value and the 7 by 3 cell rows. The board is
+  29 columns wide and 12 rows tall, so it fits a 36 column pane.
+- The game lives in the hooks module, in `$.state` key `game` (board, score, best, generator state,
+  won, over, press count). A pane Button (w Up, a Left, s Down, d Right, r New game, q Quit) applies
+  the move with the pure rules and writes the state once, so a closed pane keeps its board and the
+  next open goes on. The first version kept the game in the drawing; a drawing ends with its pane, so
+  the board would be lost.
+- `ui/game-client.tsx` is a Client module (a surface module). It only draws the props and, after a
+  click, turns a key into a message (`surface.post`). It has no `$` call at all, and
+  `scripts/check-mod-calls.sh` fails if one appears in any `*-client.tsx` file. The `ui.message`
+  hook checks the message (a known direction, or a new game) and applies it the same way a Button does.
+- The best score reaches the store through the existing `$.store.set`, once when a game ends or a 512
+  is made. No call is new: the reviewed list stays at 20.
+- A test hook: the plugin option `gameSeed` (a number) fixes the seed, so a test knows the board. It is
+  not in `plugin.json` and has no effect unless it is set.
 - The pane asks for the keyboard with `focus` and for Esc to close it with `closeOnEscape`. The
   surface may or may not grant the keys, and the mod cannot read which (`ui.panes` reported an
   unfocused pane while the keys did reach the game, so it is not used). The toast is always the
-  same: "The game is open. Press s to start, w to jump, q or Esc to leave." The Client finds out
-  by itself: with no key, click or press within 3 seconds of opening and the game not started, it
-  draws one dim line, "No keys yet? Press Ctrl+X, then Tab, to give the game the keys." Any key
+  same: "The game is open. Press w a s d to slide the pieces, r for a new game, q or Esc to leave."
+  The Client finds out by itself: with no key, click or press within 3 seconds of opening, it draws
+  one dim line, "No keys yet? Press Ctrl+X, then Tab, to give the game the keys." Any key
   or press removes the line. That Ctrl+X, Tab path is in the API text; it is not verified live.
 - The pane is `temper-game`. The Client exists on the terminal and the desktop app only, so the
   hook checks `e.surface` and draws a short text elsewhere.

@@ -77,7 +77,7 @@ const KIND: Record<string, (from: string, to: string) => string> = {
   start: (_f, to) => `Run started at ${to}`,
   advance: (from, to) => `${from} done, now ${to}`,
   back: (from, to) => `Sent back from ${from} to ${to}`,
-  override: (from, to) => `${from} overridden, now ${to}`,
+  override: (from, to) => `${from} skipped, now ${to}`,
   check: (_f, to) => (to === 'Done' ? 'Checks passed, run done' : `Checks failed, now ${to}`),
 }
 
@@ -131,11 +131,11 @@ const VERB: Record<Phase, string> = {
   fix: 'Fixing',
 }
 
-// "Phase 3 of 6" and the phase name, as one fragment: "Build (3 of 6)".
+// The step in plain words: "Step 3 of 6: Build".
 export function whereText(v: View): string {
   if (v.phase === null) return ''
   if (v.phase === 'done') return 'Done'
-  return `${phaseLabel(v.phase)} (${v.stepNo ?? 0} of 6)`
+  return `Step ${v.stepNo ?? 0} of 6: ${phaseLabel(v.phase)}`
 }
 
 // "Building · criterion 2 of 5": the criterion being worked is the first not yet passed.
@@ -149,7 +149,7 @@ export function spinnerWord(v: View): string | null {
 // The dim line after the engine's prompt hint on the terminal.
 export function hintTail(v: View): string | null {
   if (v.phase === null) return null
-  return v.phase === 'done' ? 'Temper: run done' : `Temper, ${whereText(v)}: ${v.now}`
+  return v.phase === 'done' ? 'Temper: the run is done.' : `Temper. ${whereText(v)}. ${v.now}`
 }
 
 // The phase that follows, for "next: Review". Check is followed by Done, and Fix by Check.
@@ -196,13 +196,13 @@ export function transitionToast(rec: HistoryRecord | undefined): string | null {
   const to = rec.to === 'done' ? 'Run done' : `${phaseLabel(rec.to)} open`
   switch (rec.kind) {
     case 'advance':
-      return `${from} ${rec.from === 'fix' ? 'done' : 'approved'} \u00b7 ${to}`
+      return `${from} ${rec.from === 'fix' ? 'done' : 'approved'}. ${to}.`
     case 'override':
-      return `${from} overridden \u00b7 ${to}`
+      return `${from} skipped. ${to}.`
     case 'back':
-      return `Back to ${phaseLabel(rec.to as Phase)} \u00b7 later phases need a new verdict`
+      return `Back to ${phaseLabel(rec.to as Phase)}. The later steps need a new check.`
     case 'check':
-      return rec.to === 'done' ? 'Check passed \u00b7 Run done' : 'Check failed \u00b7 Fix open'
+      return rec.to === 'done' ? 'Check passed. Run done.' : 'Check failed. Fix open.'
     default:
       return null
   }

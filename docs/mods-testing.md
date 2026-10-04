@@ -46,21 +46,28 @@ Run these from `<clone>`. None of them needs you to be signed in.
 - [ ] **Start the demo with one command.** From the root of your clone:
 
 ```bash
-bash demo/run-demo.sh
+bash demo/run-demo.sh          # starts at Step 2 of 6: Plan, ready to approve
+bash demo/run-demo.sh intent   # starts at Step 1 of 6: Intent
 ```
 
-  The script copies the demo project to `/tmp/pr-demo`, seeds a Temper run in the Intent
-  phase, checks your Claude Code version, switches off your installed Temper for this one
+  The script copies the demo project to `/tmp/pr-demo`, seeds a Temper run (at Plan, with the
+  intent accepted and the plan written, so both checks already pass; or at Intent), checks your
+  Claude Code version, switches off your installed Temper for this one
   process only (so the branch is the only Temper, and your settings are untouched), and
   starts Claude Code with the branch loaded. When Claude Code asks, choose "Yes, I trust
   this folder". Always type the full command name `/temper:temper`.
-  Expect the TEMPER bar above the prompt and no plugin load error. The folder is watched, so a
-  `git pull` in `<clone>` reloads the mod without restarting.
-- [ ] **Ask Claude whether the mod is active.** Type `/temper:temper status`. Expect an answer
-  that starts with `No Temper run is active`. Then type
+  Expect the TEMPER bar above the prompt ("Step 2 of 6: Plan" and "1 Approve the plan.") and no
+  plugin load error. The folder is watched, so a `git pull` in `<clone>` reloads the mod without
+  restarting.
+- [ ] **The smooth path.** At Plan, type `Skip the tasks: edit src/users.js now to add a resetToken
+  function`. Expect a refusal with a `Next:` step. Then, with the prompt empty, press `1`. Expect the
+  toast "Plan approved. Build open.", the bar at "Step 3 of 6: Build" with "1 Start the next task.",
+  and, after Claude's one short line, `scripts/temper state get next_stage` prints `build` in
+  `/tmp/pr-demo`. Claude must not ask you to approve again.
+- [ ] **Ask Claude whether the mod is active.** Type
   `Does your system prompt contain a Temper enforcement line?` and expect Claude to quote
   `Temper enforcement: active`.
-- [ ] **Start a run.** Type
+- [ ] **Start a run (from `intent`, or with no run).** Type
   `/temper:temper Add password reset: one time token that expires after one hour`.
   Expect a phase bar above the prompt with Intent current, and a drafted intent.
 
@@ -71,8 +78,9 @@ Work through one run. For each phase, check the refusal and the key.
 - [ ] **Intent denial.** While Intent is current, type `Edit src/users.js and add a resetToken field now`.
   Expect a refusal that starts `Temper: Intent phase.` and ends with `Next:` and a step.
   The write to `.temper/specs/<name>/intent.md` must still be allowed.
-- [ ] **Approve Intent with a key.** When the intent gate passes, press `1`. Expect the
-  band to show Plan as current and a toast naming the new phase.
+- [ ] **Approve Intent with a key.** Press `1` ("Check the intent"), wait for Claude, then press `1`
+  again ("Approve the intent"). When a passing check already exists, key 1 says "Approve the intent"
+  at once. Expect the band to show Plan as current and a toast "Intent approved. Plan open."
 - [ ] **Plan denial and approval.** Repeat the denial for `src/users.js`. Expect
   `Temper: Plan phase.` Then press `1` to approve the plan.
 - [ ] **Build.** Expect the first action to be a failing test. Ask Claude to edit a file
@@ -83,25 +91,27 @@ Work through one run. For each phase, check the refusal and the key.
   phase and a short timeline. Type `/temper:temper pane` again to close it.
 - [ ] **The game.** Type `/temper:temper play` with an empty prompt. Expect a game pane beside the
   Temper pane (terminal and desktop app only; on the VS Code extension you get a short text) and the
-  line "The game is open. Press s to start, w to jump, q or Esc to leave." Press `s`, then `w` several
-  times, with no mouse. Expect a flame, anvils, cold drops or ice, embers on the ground and a header
-  with score, best and heat. Let it end and expect "Your flame went out. Score N." and a button that
-  says Again. Press `q` and expect the pane to close and the prompt to work. Open it again and ask
-  Claude to edit `src/users.js`: expect the same refusal as without the game. Press Esc and expect
-  the pane to close. Resize to 80 columns and open it again: the field must fit.
+  line "The game is open. Press w a s d to slide the pieces, r for a new game, q or Esc to leave."
+  Press `w`, `a`, `s` and `d` several times, with no mouse. Expect a 4 by 4 board with colored
+  pieces (dark gray for 2, red for 16, orange for 64, yellow for 256), merges that add to the score,
+  and one new piece after each move that changed the board. Press `q`, then open it again with
+  `/temper:temper play`: expect the same board and score. Press `r` for a new game and expect the best
+  score to stay. While the game is open, ask Claude to edit `src/users.js`: expect the same refusal
+  as without the game. Press Esc and expect the pane to close and the prompt to work. Resize to 80
+  columns and open it again: the board must fit.
 - [ ] **The game offer.** Send a prompt that takes a while ("Write a 300 word essay about forges").
   While Claude works, expect `8: Play while you wait` in the band (`8: Play` when the band is
   narrow), "Play while you wait" in the Actions list of the pane, and "Press 8 to play while you
   wait." at the start of the hint line under the prompt (terminal). Press `8` at the empty prompt and
-  expect the game pane with the keys, so `s` starts the game. When Claude stops, expect the offers to
-  go away. The toast is always "The game is open. Press s to start, w to jump, q or Esc to leave."
-  Press `s` and `w` and expect no hint in the game area. Open it again and wait 4 seconds without a
+  expect the game pane with the keys, so `w` slides the pieces. When Claude stops, expect the offers
+  to go away. The toast is always "The game is open. Press w a s d to slide the pieces, r for a new
+  game, q or Esc to leave." Press `w` and `a` and expect no hint in the game area. Open it again and wait 4 seconds without a
   key: expect the dim line "No keys yet? Press Ctrl+X, then Tab, to give the game the keys." and
   expect it to go when you press a key. Set the plugin setting `game` to `command` and expect no offer anywhere, while
   `/temper:temper play` still works. Set it to `off` and expect "The game is off. Set game to on in
   /config."
-- [ ] **Override needs a reason.** Press `9`. Dismiss the reason question without an
-  answer. Expect a toast that an override needs a reason and no phase change.
+- [ ] **Skip needs a reason.** Press `9` ("Skip with a reason"). Dismiss the reason question without
+  an answer. Expect a toast that a skip needs a reason and no phase change.
 - [ ] **Commit gate.** Before Check passes, ask Claude to run `git commit -am wip`. Expect
   `Temper: commit blocked. Check has not passed.` After Check passes, the same command
   must be allowed.

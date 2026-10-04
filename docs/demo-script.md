@@ -9,13 +9,27 @@ A 60 to 90 second walkthrough of Temper with the mod loaded. It uses the project
 `demo/password-reset`. The recording is made from `demo/temper.tape`; this page is the
 shot list for the voice or captions, and for the desktop app part the tape cannot film.
 
+## The short hero (15 to 20 seconds)
+
+The hero GIF in the README is made from `demo/temper.tape`. It starts at the Plan step, seeded by
+`bash demo/demo-seed.sh plan` (the intent is accepted, the plan and the tasks are written, and both
+checks pass), so nothing waits on screen:
+
+1. The bar shows "Step 2 of 6: Plan" and "1 Approve the plan." (3 seconds)
+2. A prompt asks Claude to edit `src/users.js`. Claude answers while the tape is hidden. Show the
+   refusal with its "Next:" step. (5 seconds)
+3. Press `1`. The toast says "Plan approved. Build open." and the bar moves to Build with
+   "1 Start the next task." (6 seconds)
+
+To try the same by hand: `bash demo/run-demo.sh` (Plan) or `bash demo/run-demo.sh intent` (Intent).
+
 ## Before you record
 
 1. Install VHS, then confirm `claude --version` prints 2.1.287 or later and that you are
    signed in.
 2. From the root of a Temper clone, run `vhs demo/temper.tape`. It writes the GIF into
    `demo/out/`, a folder that git ignores. Copy the result into the README image folder
-   yourself. The tape is never run in CI. It costs tokens and needs an authenticated
+   yourself. The tape is never run in CI. It costs a few tokens and needs an authenticated
    session, so expect a few takes.
 3. For the light and dark screenshots, run `bash demo/make-screens.sh`. It writes into
    `demo/out/` as well.
@@ -35,7 +49,7 @@ Total about 80 seconds. Times are targets, not promises.
 | 5. Build and the pane | 0:44 to 1:05 | `/temper:temper pane`, the criteria checklist ticking, a failing test then a passing one | Build starts with a failing test. The pane shows each criterion as it passes. Touch a file outside the plan and Temper asks: add to plan, revert, or allow once with a reason. |
 | 6. Desktop app | 1:05 to 1:15 | The Code tab of the desktop app with the same band and the same denial | The same mod runs in the desktop app. |
 | 7. Review, Check, done | 1:15 to 1:25 | Review findings, Check passing, `git commit` allowed, `.temper/report.md` | Review and Check follow. When Check passes, commit is allowed and the report records every override and decision. |
-| 8. A game while you wait (10 s, optional) | 1:25 to 1:35 | While Claude works, press `8` (the band says "Play while you wait"), press `s`, hop over an anvil with `w`, then press `q` | Claude is busy and you wait? Play Temper Run. A banner tells you when a phase is ready. Press q to go back. |
+| 8. A game while you wait (10 s, optional) | 1:25 to 1:35 | While Claude works, press `8` (the band says "Play while you wait"), slide the pieces with `w a s d` until two equal pieces merge and get hotter, then press `q` | Claude is busy and you wait? Play Temper Merge. A banner tells you when a phase is ready. Press q to go back. The board waits for you. |
 
 All six phases appear: Intent (shot 2), Plan (shot 4), Build (shot 5), Review and Check
 (shot 7), and Fix (say it in shot 7: a failing check sends the run to Fix, with a limit of

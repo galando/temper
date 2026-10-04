@@ -34,16 +34,25 @@ All notable changes to Temper are documented here. The plugin version lives in
   `/temper enforcement on|off` controls the refusals. Both are plugin settings (`uiMode`,
   `enforcement`); a value locked by an administrator is reported, not changed. The first
   interactive `/temper` asks once.
-- An optional runner game, Temper Run, for the time Claude works. You are a flame in a forge:
-  hop over anvils and cold water on a bed of embers, and the heat rises (heat 1 to 5). While a
-  phase works, the band (`8: Play while you wait`), the pane and the prompt hint offer it; key `8`
-  or `/temper:temper play` (a new reserved word, 17 in all) opens it. It never opens by itself.
-  The pane takes the keyboard when it opens: `s` lights the flame, `w` jumps, `q` or Esc leaves,
-  with no mouse. It runs on the terminal and the desktop app only, keeps a best score, shows a
-  banner when a phase is ready, and never weakens a refusal. The plugin setting `game` is `on`
-  (offers and command), `command` (command only) or `off`.
-- User text of the mod is written in Simplified Technical English. "Lint intent" is now
-  "Check intent". Every refusal ends with a "Next:" step.
+- An optional puzzle, Temper Merge, for the time Claude works. A 4 by 4 board of metal pieces: slide
+  them with `w a s d`, equal pieces merge and get hotter, make a white hot 512. It is turn based, so
+  it needs no timing, and the board stays when you close the pane. While a phase works, the band
+  (`8: Play while you wait`), the pane and the prompt hint offer it; key `8` or
+  `/temper:temper play` (a new reserved word, 17 in all) opens it. It never opens by itself. The pane
+  takes the keyboard when it opens: `r` starts a new game, `q` or Esc leaves, with no mouse. It runs
+  on the terminal and the desktop app only, keeps a best score, shows a banner when a phase is ready,
+  and never weakens a refusal. The plugin setting `game` is `on` (offers and command), `command`
+  (command only) or `off`.
+- User text of the mod is written in Simplified Technical English, and every label says its
+  result: "Make the plan", "Approve the plan", "Start the next task", "Skip with a reason". Each
+  action has a one line description in the pane, the step reads "Step 2 of 6: Plan", and one
+  sentence under the bar says what key 1 does and what happens next. Every refusal ends with a
+  "Next:" step. Follow up prompts to Claude are short and end with "Do this now. Reply with one
+  short line." They name the full path of the Temper script in the plugin folder, so Claude does not
+  try a path that does not exist in the project.
+- The demo is smooth: `bash demo/demo-seed.sh plan` seeds the Plan step with an accepted intent and a
+  written plan (both checks pass), `bash demo/run-demo.sh` starts there, and `demo/temper.tape` is a
+  15 to 20 second hero with no waiting scene.
 - `.temper/report.md` is written when a run completes: phases, overrides, accepted findings,
   scope drift decisions with reasons, and criteria status.
 - Optional and off by default: a model or effort per phase (`phaseModels`, for example

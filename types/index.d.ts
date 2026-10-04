@@ -12,6 +12,7 @@ export type TemperAction = {
   key: '1' | '2' | '3' | '9' | '0' | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h'
   id: string
   label: string
+  desc: string
   prompt?: string
   command?: string
   asksReason?: boolean
@@ -46,13 +47,21 @@ export type TemperRun = {
   view: TemperView
 }
 
-// The game's button presses. The pane's Buttons add one to a counter; the game compares the
-// counters with the values it saw last and applies the new presses. Written on a press only,
-// never on a frame.
-export type TemperGameCtl = { jump: number; start: number }
+// The game, Temper Merge: a 4 by 4 board (16 cells, 0 is empty), the score, the best score, the
+// seeded generator state, whether a 512 was made, whether no move is left, and how many times a move
+// key was pressed. Written on a key press only, so a closed pane keeps its board.
+export type TemperGame = {
+  board: number[]
+  score: number
+  best: number
+  rng: number
+  won: boolean
+  over: boolean
+  presses: number
+}
 
 declare module 'claude-code' {
   interface PluginState {
-    temper: { run: TemperRun | null; mode: UiMode | null; game: TemperGameCtl | null }
+    temper: { run: TemperRun | null; mode: UiMode | null; game: TemperGame | null }
   }
 }

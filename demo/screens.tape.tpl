@@ -33,3 +33,14 @@ Sleep 8s
 Screenshot demo/out/mode-off-SUFFIX.png
 Type "/temper:temper mode full" Enter
 Sleep 6s
+Type "/temper:temper play" Enter
+Sleep 5s
+Type "a"
+Sleep 600ms
+Type "w"
+Sleep 600ms
+Type "d"
+Sleep 600ms
+Type "s"
+Sleep 2s
+Screenshot demo/out/game-SUFFIX.png

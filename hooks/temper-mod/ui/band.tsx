@@ -11,7 +11,7 @@ import type { Kit, OnAction, OnReason } from './kit'
 // short button labels. Nothing wraps into a mess.
 export const COMPACT_BELOW = 100
 
-export const REASON_HINT = 'Override needs a reason. Temper writes it in the report.'
+export const REASON_HINT = 'A skip needs a reason. Temper writes it in the report.'
 
 const COLOR: Record<Step['status'], string | undefined> = { done: 'green', current: 'blue', pending: undefined, stale: 'yellow' }
 
@@ -90,10 +90,11 @@ export function renderBand(
       <Text dimColor={view.enforcement === 'on'} color={view.enforcement === 'on' ? undefined : 'yellow'}>{`· enforcement ${view.enforcement}`}</Text>
     </Box>
   )
-  const now = view.now ? <Text wrap="truncate">{view.now}</Text> : null
+  // The sentence is long enough to need two lines in a narrow band, so it wraps.
+  const now = view.now ? <Text>{view.now}</Text> : null
 
   const { primary, override } = view.actions
-  const size = compact ? 14 : 28
+  const size = compact ? 20 : 28
   const shown = (label: string) => (label.length > size ? `${label.slice(0, size - 1)}…` : label)
   const big = (id: string, key: string, label: string, onPress: () => void | Promise<void>, primaryLook: boolean) => (
     <Box key={`box-${id}`} borderStyle={compact ? undefined : 'round'} borderColor={primaryLook ? 'blue' : 'gray'} paddingX={compact ? 0 : 1} columnGap={1}>
@@ -106,14 +107,14 @@ export function renderBand(
     big(override.id, override.key, override.label, () => onAction(override), false),
     // 0 is drawn only when the phase has extra actions to show.
     ...(hasMore
-      ? [big('more', '0', view.expanded ? 'Fewer' : 'More', () => onAction({ key: '0', id: compact ? 'more-narrow' : 'more', label: 'More', command: 'pane' }), false)]
+      ? [big('more', '0', view.expanded ? 'Fewer' : 'More', () => onAction({ key: '0', id: compact ? 'more-narrow' : 'more', label: 'More', desc: 'Show the other actions.', command: 'pane' }), false)]
       : []),
   ]
   // The game offer: a normal secondary button like 2 and 3, drawn only while Claude works and only
   // when the game setting is on. Its key is the digit 8, because only a digit works from an empty
   // prompt (a letter would type into the composer).
   const play = game.show
-    ? big('play', '8', game.open ? 'Close game' : compact ? 'Play' : 'Play while you wait', () => onAction({ key: 'a', id: 'play', label: 'Play', command: 'play' }), false)
+    ? big('play', '8', game.open ? 'Close the game' : compact ? 'Play' : 'Play while you wait', () => onAction({ key: 'a', id: 'play', label: 'Play', desc: 'Play a small puzzle.', command: 'play' }), false)
     : null
 
   // With the full list on and no docked pane to hold it (a narrow band, or no pane), the extra
@@ -136,7 +137,7 @@ export function renderBand(
         <Box flexDirection="row" columnGap={compact ? 1 : 0} flexWrap="wrap">{buttons}{play}</Box>
       </Box>
       {extras ? <Box flexDirection="row" flexWrap="wrap" columnGap={compact ? 1 : 0}>{extras}</Box> : null}
-      {Input ? <Input key={REASON_KEY} placeholder="type a reason" submitLabel="override" onSubmit={value => onReason(value)} /> : null}
+      {Input ? <Input key={REASON_KEY} placeholder="type a reason" submitLabel="skip" onSubmit={value => onReason(value)} /> : null}
       <Text dimColor>{REASON_HINT}</Text>
     </Box>
   )

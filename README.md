@@ -28,6 +28,13 @@ folder and a `pre-commit` hook that blocks `git commit` while any gate is red. T
 works. Use Claude Code 2.1.287 or later for the phase bar and the refusals below. Older versions
 run every phase as prompts.
 
+### Try the demo
+
+From a clone of this repository, `bash demo/run-demo.sh` opens Claude Code on a small demo project
+at "Step 2 of 6: Plan", with the plan ready. Ask Claude to change `src/users.js`: Temper refuses and
+says what to do next. Then press `1` ("Approve the plan"): the bar moves to Build. Use
+`bash demo/run-demo.sh intent` to start from the intent step. See [the demo script](docs/demo-script.md).
+
 ## The problem
 
 AI writes code fast, with predictable failures: happy paths without edge cases, features
@@ -97,16 +104,16 @@ The keys of each phase are in [Commands](docs/commands.md#each-phase).
 
 Claude works and you wait? While a phase works, the band, the pane and the prompt hint offer
 "Play while you wait". Press `8` at the empty prompt, or run `/temper:temper play`, to open Temper
-Run. You are a small flame in the forge. Hop over anvils and cold water, and the heat rises. The
-pane takes the keyboard when it opens. Press `s` to light the flame, `w` to jump and `q` or Esc to
-leave. You need no mouse. If no key reaches the game within 3 seconds, it says "No keys yet?
-Press Ctrl+X, then Tab, to give the game the keys." and removes that line when a key arrives.
-The game never opens by itself. It shows a banner when a phase
-is ready, so you do not miss an approval, and refusals still apply while it is open. The plugin
-setting `game` has three values: `on` (the offers and the command, the default), `command` (the
-command only) and `off` (nothing).
+Merge. It is a puzzle with metal pieces on a 4 by 4 board, and it needs no timing. Slide the pieces
+with `w`, `a`, `s` and `d`. Equal pieces that touch merge and get hotter. Make a white hot 512.
+`r` starts a new game and `q` or Esc leaves. The board stays when you leave, and the next `8` goes
+on with the same game. You need no mouse. If no key reaches the game within 3 seconds, it says "No
+keys yet? Press Ctrl+X, then Tab, to give the game the keys." and removes that line when a key
+arrives. The game never opens by itself. It shows a banner when a phase is ready, so you do not miss
+an approval, and refusals still apply while it is open. The plugin setting `game` has three values:
+`on` (the offers and the command, the default), `command` (the command only) and `off` (nothing).
 
-![Temper Run, the optional game: a runner jumps over blocks while Claude works](docs/assets/game.gif)
+![Temper Merge, the optional puzzle: pieces get hotter as they merge, while Claude works](docs/assets/game.gif)
 
 The game runs on the terminal and the desktop app only. It was verified by hand on the
 terminal, with the keyboard only. The image above is a placeholder until the recording from

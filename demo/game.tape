@@ -5,9 +5,9 @@
 # This tape is NOT run in CI. It needs an authenticated `claude` session (Claude Code 2.1.287
 # or later) and VHS with ttyd and ffmpeg. It sends one short prompt to Claude (it costs a few
 # tokens), because the game is offered only while Claude works. The digit 8 opens the game (the
-# command /temper:temper play opens it too), and the pane takes the keyboard. The tape plays with the keys
-# s (start), w (jump) and q (quit) only. It never clicks and never presses Tab or Space.
-# The Sleep times are estimates: a jump has to come before a block reaches the runner.
+# command /temper:temper play opens it too), and the pane takes the keyboard. The game is
+# Temper Merge, a turn based puzzle, so no key needs exact timing. The tape plays with the keys
+# 8, w, a, s, d and q only. It never clicks and never presses Tab or Space.
 
 Output demo/out/game.gif
 
@@ -22,7 +22,7 @@ Set Framerate 12
 
 Hide
 Type "unset CLAUDECODE CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_EXECPATH CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_SESSION_ATTENDED CLAUDE_CODE_SESSION_ID CLAUDE_EFFORT CLAUDE_PID" Enter
-Type "export TEMPER_CLONE=$PWD && bash demo/demo-seed.sh && cd /tmp/pr-demo && clear" Enter
+Type "export TEMPER_CLONE=$PWD && bash demo/demo-seed.sh plan && cd /tmp/pr-demo && clear" Enter
 Sleep 6s
 Type `claude() { command claude --settings '{"enabledPlugins":{"temper@temper":false}}' "$@"; }` Enter
 Type "claude --plugin-dir $TEMPER_CLONE" Enter
@@ -43,27 +43,32 @@ Sleep 4s
 Type "8"
 Sleep 3s
 
-# Light the flame with s, then hop over the anvils and cold water. Each w is one jump.
+# Slide the pieces with w a s d. Equal pieces merge and get hotter. Take your time: the game waits.
+Type "a"
+Sleep 900ms
+Type "w"
+Sleep 900ms
+Type "d"
+Sleep 900ms
+Type "s"
+Sleep 900ms
+Type "a"
+Sleep 900ms
+Type "w"
+Sleep 900ms
+Type "a"
+Sleep 900ms
+Type "s"
+Sleep 900ms
+Type "d"
+Sleep 900ms
+Type "w"
+Sleep 900ms
+Type "a"
+Sleep 900ms
 Type "s"
 Sleep 2s
-Type "w"
-Sleep 1500ms
-Type "w"
-Sleep 1500ms
-Type "w"
-Sleep 1800ms
-Type "w"
-Sleep 1500ms
-Type "w"
-Sleep 1800ms
-Type "w"
-Sleep 1500ms
-Type "w"
-Sleep 1500ms
 
-# Stop jumping: the next block ends the game and the Start button says Again.
-Sleep 8s
-
-# Leave with q. The prompt is back.
+# Leave with q. The prompt is back, and the board waits for the next time.
 Type "q"
 Sleep 3s

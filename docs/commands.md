@@ -111,7 +111,7 @@ after the command is one of these, Temper handles it instead of starting a run. 
 | `/temper:temper mode <full\|minimal\|off>` | Change how much Temper draws |
 | `/temper:temper enforcement <on\|off>` | Turn denials on or off |
 | `/temper:temper pane` | Open or close the pane. A bare `/temper:temper` does the same while a run is active. |
-| `/temper:temper play` | Open or close the Temper Run game. Only you can open it. Terminal and desktop app only. |
+| `/temper:temper play` | Open or close the Temper Merge game. Only you can open it. Terminal and desktop app only. |
 | `/temper:temper help` | List these |
 
 These 17 words are reserved: `status`, `timeline`, `approve`, `next`, `back`, `override`, `accept`,
@@ -140,29 +140,34 @@ covered.
 
 ### The phase bar and its keys
 
-In `full` mode the band above the prompt shows `TEMPER`, a plain sentence of what to do now, the
-six phases as chips (a check mark for done, a filled chip for the phase you are in, plain chips for
-upcoming phases, a redo mark after a back step), and buttons: up to three actions on `1`, `2` and
-`3`, `Override gate` on `9` and `More` on `0`. Key `9` moves the focus to a reason field below the
-buttons; Enter records the override with that reason, and an empty reason is refused. The pane
-repeats this with the intent title and a criteria checklist; its `0` expands the full action list,
-whose entries use the letters `a`, `b`, `c` and so on. Under about 100 columns (for example while the
+In `full` mode the band above the prompt shows `TEMPER`, the step in plain words ("Step 2 of 6:
+Plan"), one sentence that says what key 1 does and what happens next ("1 Make the plan. Claude
+writes the plan: which files change and the steps. Then you approve it."), the six phases as chips
+(a check mark for done, a filled chip for the phase you are in, plain chips for upcoming phases, a
+redo mark after a back step), and buttons: up to three actions on `1`, `2` and `3`, `Skip with a
+reason` on `9` and `More` on `0`. Key `9` moves the focus to a reason field below the buttons; Enter
+records the skip with that reason, and an empty reason is refused (the subcommand is still
+`/temper:temper override <reason>`). The pane repeats this with the intent title, the acceptance
+criteria ("what must be true") and a checklist, and it shows a short line under every action (10
+words at most); its `0` expands the full action list, whose entries use the letters `a`, `b`, `c`
+and so on. Under about 100 columns (for example while the
 pane is docked) the band uses a compact form without borders. `minimal` shows the chips only.
 
 ### Each phase
 
-Key `1` is the main action. It changes when the phase is ready to move on. Key `9` is override
-everywhere and always asks for a reason. Key `0` (`More`) shows every action. It appears only when
+Key `1` is the main action. It changes when the phase is ready to move on. When a passing check
+already exists, key 1 says "Approve the intent" or "Approve the plan" at once, with no extra check.
+Key `9` is "Skip with a reason" everywhere and always asks for a reason. Key `0` (`More`) shows every action. It appears only when
 the phase has more actions.
 
 | Phase | Writes allowed | Keys |
 |---|---|---|
-| Intent | `intent.md` only | 1 Approve intent (when the gate passes), otherwise Check intent. 2 Ask questions. 3 Edit intent. 0 Capture intent. |
-| Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records | 1 Approve plan (when the gate passes), otherwise Write plan. 2 Show files. 3 Other plan. 0 Split tasks, Back to Intent. |
-| Build | The files in the plan, test files and the spec folder | 1 Next task, or Start review when the tasks are done. 2 Run tests. 3 Show diff. |
-| Review | The spec folder only, unless a fix for that file is active | 1 Start review, or Fix all when findings exist. 2 Review again. 3 Show diff. In the pane, per finding: Fix, Accept, Explain. |
-| Check | The spec folder only. `git commit` stays refused until Check passes. | 1 Run checks, or Mark done when every check passes. 2 Rerun failed. 3 Show failures. |
-| Fix | The failing files | 1 Fix failures. 2 Fix findings. 3 Back to Check. At the loop limit: Plan again, Override, Take over. |
+| Intent | `intent.md` only | 1 Approve the intent (when the check passes), otherwise Check the intent. 2 Ask me questions. 3 Edit the intent. 0 Save my request. |
+| Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records | 1 Approve the plan (when the check passes), otherwise Make the plan. 2 Show the files. 3 Try another plan. 0 Split the tasks, Go back to Intent. |
+| Build | The files in the plan, test files and the spec folder | 1 Start the next task, or Send to review when the tasks are done. 2 Run the tests. 3 Show the changes. |
+| Review | The spec folder only, unless a fix for that file is active | 1 Start the review, or Fix the problems when findings exist. 2 Review again. 3 Show the changes. In the pane, per finding: Fix, Accept, Explain. |
+| Check | The spec folder only. `git commit` stays refused until Check passes. | 1 Run the checks, or Finish the run when every check passes. 2 Run failed checks again. 3 Show the failures. |
+| Fix | The failing files | 1 Fix the failures. 2 Fix the findings. 3 Go back to checks. At the limit: Make a new plan, Skip with a reason, Take over. |
 
 A write outside the Build plan raises scope drift. You can add the file to the plan, revert it, or
 allow it once with a reason. Each choice is logged. After three failed fix loops (set with
@@ -170,10 +175,13 @@ allow it once with a reason. Each choice is logged. After three failed fix loops
 
 ### The game
 
-Temper Run is a small runner game for the time Claude works. It is optional. You are a flame in
-a forge. You hop over anvils (dark gray) and cold water or ice (cyan) on a bed of embers. The
-header shows score, best and the heat (heat 1 to heat 5, as the speed grows). When the flame
-goes out you see "Your flame went out" and your score.
+Temper Merge is a small puzzle for the time Claude works. It is optional. It is turn based, so it
+needs no timing. The board is 4 by 4 and holds metal pieces. Slide all pieces with `w` (up),
+`a` (left), `s` (down) and `d` (right). Two equal pieces that touch merge into one piece of double
+value, and you score that value. A new piece (2, sometimes 4) appears after each move that changed
+the board. The pieces get hotter as the value grows: 2 dark gray, 4 gray, 8 dull red, 16 red, 32
+orange red, 64 orange, 128 amber, 256 yellow, and 512 and more white on a hot background. Make a
+white hot 512 piece. You may keep playing after that. The game ends when no move changes the board.
 
 - While a phase works, Temper offers the game in three places, in full mode: the band
   (`8: Play while you wait`, a normal button like 2 and 3), the pane (Actions list, key 8) and the
@@ -185,17 +193,20 @@ goes out you see "Your flame went out" and your score.
 - The setting `game` has three values: `on` (the default: the offers and the command), `command`
   (the command only, no offers) and `off` (nothing; the command answers "The game is off. Set game
   to on in /config.").
-- The pane asks for the keyboard when it opens. Press `s` to light the flame (the button says Again
-  after the flame goes out), `w` to jump, `q` or Esc to leave. These are Buttons with hotkeys, so no mouse is
-  needed. The text when it opens is always "The game is open. Press s to start, w to jump, q or Esc
-  to leave." If no key reaches the game within 3 seconds, it draws one dim line: "No keys yet? Press
-  Ctrl+X, then Tab, to give the game the keys." The line goes away when a key arrives. After a click
-  on the game, Space and Up also jump.
+- The pane asks for the keyboard when it opens. The Buttons are `w` Up, `a` Left, `s` Down, `d` Right,
+  `r` New game and `q` Quit (Esc also leaves). They have hotkeys, so no mouse is needed. The text
+  when it opens is always "The game is open. Press w a s d to slide the pieces, r for a new game, q
+  or Esc to leave." If no key reaches the game within 3 seconds, it draws one dim line: "No keys yet?
+  Press Ctrl+X, then Tab, to give the game the keys." The line goes away when a key arrives. After a
+  click on the game, the arrow keys also slide the pieces.
+- The board and the score stay when you leave. The next `8` or `/temper:temper play` goes on with
+  the same game. `r` starts a new one.
+- At the end you see "No more moves. Score 1240. Press r for a new game. q or Esc leaves." A 512
+  piece shows "White hot! You made 512. You can keep playing."
 - The game shows a banner when a phase is ready or changes, so you do not miss an approval.
-- It keeps your best score in the plugin store. The score does not change any gate.
-- It pauses by itself after a short idle time. It never writes files and never makes a call to
-  Claude.
-- The field is 36 to 60 cells wide (it follows the pane) and 10 rows tall, so it plays at 80 columns.
+- It keeps your best score in the plugin store (written once when a game ends or a 512 is made).
+  The score does not change any gate. The board is kept in the plugin state, not in a file.
+- The board is 29 columns wide and 12 rows tall, so it fits a 36 column pane and plays at 80 columns.
 - It exists on the terminal and the desktop app only. On the VS Code extension and on mobile the
   command prints a short text and nothing else happens.
 - Refusals still apply while the game is open.

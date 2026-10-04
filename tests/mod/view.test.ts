@@ -72,9 +72,9 @@ describe('texts', () => {
   })
 
   test('hint tail, turn line, question header and suggestion', () => {
-    expect(hintTail(v)).toMatch(/^Temper, Build \(3 of 6\): /)
+    expect(hintTail(v)).toMatch(/^Temper\. Step 3 of 6: Build\. 1 Start the next task\./)
     expect(turnLine(v)).toBe('Build \u00b7 1 of 2 criteria met \u00b7 next: Review')
-    expect(questionHeader(v)).toBe('Temper: Build (3 of 6), criterion 2 of 2')
+    expect(questionHeader(v)).toBe('Temper: Step 3 of 6: Build, criterion 2 of 2')
     expect(suggestion(v)).toContain('Start the next task')
     expect(hintTail({ ...v, phase: null })).toBe(null)
     expect(turnLine({ ...v, phase: null })).toBe(null)

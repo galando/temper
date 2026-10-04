@@ -30,14 +30,18 @@ const MOVES: Move[] = [
 
 // The commands a prompt names: every backticked span.
 // A reason can hold backticks, so the span ends at the backtick that is followed by a space, a full stop or the end.
-const commandsIn = (text: string): string[] => [...text.matchAll(/`(scripts\/temper(?:[^`]|`(?![ .]|$))+)`/g)].map(m => m[1] ?? '')
+// The path in front of scripts/temper may be the plugin folder (a full path); it is cut so the rest compares.
+const commandsIn = (text: string): string[] =>
+  [...text.matchAll(/`((?:\/\S*)?scripts\/temper(?:[^`]|`(?![ .]|$))+)`/g)].map(m => (m[1] ?? '').replace(/^\/\S*?scripts\/temper/, 'scripts/temper'))
 
 describe('follow up prompts name the exact CLI command and say the decision is recorded', () => {
   for (const m of MOVES) {
     test(m.name, () => {
       const text = followUp(m.draft) ?? ''
-      expect(text).toContain('is recorded')
-      expect(text).toContain('only copies it to the CLI state')
+      expect(text).toContain('already recorded')
+      // Short, and it tells Claude to act and not to narrate.
+      expect(text.endsWith('Do this now. Reply with one short line.')).toBe(true)
+      expect(text.split('. ').length).toBeLessThanOrEqual(8)
       expect(commandsIn(text).length).toBeGreaterThan(0)
       expect(commandsIn(text).every(c => c.startsWith(`${CLI} `))).toBe(true)
     })
@@ -158,7 +162,7 @@ describe('end to end through the band: the prompt the mod sends is runnable once
     })
     await band.press({ key: 'action-approve' })
     const prompt = w.prompts.find(p => p.includes('state advance'))
-    expect(prompt).toContain('is recorded')
+    expect(prompt).toContain('already recorded')
     const cmd = commandsIn(prompt ?? '')[0] ?? ''
     expect(cmd).toBe(`${CLI} state advance intent_complete plan`)
     const first = await $.tool.call({ tool: 'Bash', command: cmd })
@@ -183,5 +187,37 @@ describe('end to end through the band: the prompt the mod sends is runnable once
     expect((await $.tool.call({ tool: 'Bash', command: cmds[0] ?? '' })).text).toBe('stub ran')
     expect((await $.tool.call({ tool: 'Bash', command: cmds[0] ?? '' })).deny).toContain('Only the user')
     expect((await $.tool.call({ tool: 'Bash', command: cmds[1] ?? '' })).text).toBe('stub ran')
+  })
+})
+
+describe('where the script is', () => {
+  const move = { type: 'advance', from: 'plan', to: 'build', ...person } as const
+
+  test('with the plugin folder known, the prompt names the full path and nothing else changes', () => {
+    const text = followUp(move, null, '/plugins/temper/scripts/temper') ?? ''
+    expect(text).toContain('`/plugins/temper/scripts/temper state advance plan_complete build`')
+    expect(text).not.toContain('`scripts/temper ')
+    expect(text).not.toContain('plugin folder, not in the project')
+  })
+
+  test('with no path known, the prompt says the script is in the plugin folder, not in the project', () => {
+    const text = followUp(move) ?? ''
+    expect(text).toContain('`scripts/temper state advance plan_complete build`')
+    expect(text).toContain('The script is in the Temper plugin folder, not in the project.')
+    expect(text.endsWith('Do this now. Reply with one short line.')).toBe(true)
+  })
+
+  test('the real mod hands Claude a full path that ends in scripts/temper', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }))
+    await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
+    const band = await $.ui.mount({
+      plugin: 'temper',
+      surface: 'terminal',
+      component: 'AbovePrompt',
+      props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} },
+    })
+    await band.press({ key: 'action-approve' })
+    const prompt = w.prompts.find(p => p.includes('state advance')) ?? ''
+    expect(prompt).toMatch(/`\/\S+\/scripts\/temper state advance plan_complete build`/)
   })
 })

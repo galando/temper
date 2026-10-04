@@ -5,7 +5,7 @@
 set -e
 cd "$(dirname "$0")/.."
 mkdir -p demo/out
-for pair in "Catppuccin Mocha:dark" "Catppuccin Latte:light"; do
+for pair in "Catppuccin Mocha:dark" "Catppuccin Latte:light" "Builtin Solarized Light:solarized"; do
   theme="${pair%%:*}"; suffix="${pair##*:}"
   sed -e "s/THEME_NAME/$theme/" -e "s/SUFFIX/$suffix/g" demo/screens.tape.tpl > "/tmp/screens-$suffix.tape"
   vhs "/tmp/screens-$suffix.tape"
