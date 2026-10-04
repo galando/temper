@@ -2,6 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import {
   parseEnforcement,
+  parseGameMode,
   parseMaxLoops,
   parseOnOff,
   parsePhaseModel,
@@ -58,6 +59,14 @@ describe('plain string options validated in code', () => {
     expect(parseEnforcement('maybe')).toBe('on')
     expect(parseOnOff('off', 'on')).toBe('off')
     expect(parseOnOff(undefined, 'on')).toBe('on')
+  })
+
+  test('game is on, command or off; anything else means on', () => {
+    expect(parseGameMode('on')).toBe('on')
+    expect(parseGameMode(' Command ')).toBe('command')
+    expect(parseGameMode('OFF')).toBe('off')
+    expect(parseGameMode('maybe')).toBe('on')
+    expect(parseGameMode(undefined)).toBe('on')
   })
 
   test('max loops: config key beats userConfig beats 3; junk is ignored', () => {

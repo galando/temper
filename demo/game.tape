@@ -3,8 +3,9 @@
 #     vhs demo/game.tape
 #
 # This tape is NOT run in CI. It needs an authenticated `claude` session (Claude Code 2.1.287
-# or later) and VHS with ttyd and ffmpeg. It sends no prompt to Claude. The game opens with the
-# /temper:temper play command (while Claude works, the digit 8 opens it too), and the pane takes the keyboard. The tape plays with the keys
+# or later) and VHS with ttyd and ffmpeg. It sends one short prompt to Claude (it costs a few
+# tokens), because the game is offered only while Claude works. The digit 8 opens the game (the
+# command /temper:temper play opens it too), and the pane takes the keyboard. The tape plays with the keys
 # s (start), w (jump) and q (quit) only. It never clicks and never presses Tab or Space.
 # The Sleep times are estimates: a jump has to come before a block reaches the runner.
 
@@ -31,13 +32,18 @@ Enter
 Sleep 9s
 Show
 
-# Open the game. The line "The game is open. Press s to start, w to jump, q or Esc to leave." shows.
-Type "/temper:temper play"
+# Send a short prompt. While Claude works, the band says "8: Play while you wait" and the hint under
+# the prompt says "Press 8 to play while you wait."
+Type "Write a 300 word essay about forges"
 Sleep 500ms
 Enter
+Sleep 4s
+
+# Press 8 with the prompt empty: the game pane opens and takes the keyboard.
+Type "8"
 Sleep 3s
 
-# Start, then jump over the blocks. Each w is one jump.
+# Light the flame with s, then hop over the anvils and cold water. Each w is one jump.
 Type "s"
 Sleep 2s
 Type "w"

@@ -7,8 +7,8 @@ import type { Action } from './core/actions'
 import { classifyBash } from './core/bash'
 import { HELP, followUp, parseArgs, planCommand } from './core/commands'
 import type { Bare, Parsed } from './core/commands'
-import { parseOnOff, parsePhaseModel, parsePhaseModels, parseUiMode } from './core/config'
-import type { UiMode } from './core/config'
+import { parseGameMode, parseOnOff, parsePhaseModel, parsePhaseModels, parseUiMode } from './core/config'
+import type { GameMode, UiMode } from './core/config'
 import type { Draft } from './core/events'
 import { ONLY_USER, phaseLabel } from './core/machine'
 import type { Command } from './core/machine'
@@ -49,9 +49,9 @@ let gameSeed = 1
 let gameBanner: { text: string; until: number } | null = null
 // What the Start Button says: Start before the first game, Again after a game over.
 let gameStatus: 'ready' | 'running' | 'over' = 'ready'
-// The two lines the person reads when the game opens. The second is for a pane that did not get the keys.
+// The line the person reads when the game opens. It is always this one. Whether the keys reach the
+// game, the game finds out by itself (it draws a hint after 3 seconds with no key).
 const GAME_KEYS_TEXT = 'The game is open. Press s to start, w to jump, q or Esc to leave.'
-const GAME_FOCUS_TEXT = 'The game is open. Press Ctrl+X, then Tab, to give it the keys. Then press s to start, w to jump, q or Esc to leave.'
 // Where the session draws (session.start says so); the game needs the terminal or the desktop app.
 let drawSurface: string | null = null
 
@@ -138,7 +138,12 @@ async function readUi($: Api): Promise<{ view: View; mode: UiMode } | null> {
 // ---- The game --------------------------------------------------------------------
 
 // `game` is a plain string option (on or off), checked here and never as a picker.
-const gameOn = (): boolean => parseOnOff(typeof options.game === 'string' ? options.game : undefined, 'on') === 'on'
+const gameMode = (): GameMode => parseGameMode(typeof options.game === 'string' ? options.game : undefined)
+// The command works in `on` and `command`. Offers (band, pane, hint) show in `on` only.
+const gameOn = (): boolean => gameMode() !== 'off'
+const gameOffered = (): boolean => gameMode() === 'on'
+// Whether Claude is working, as the band and the hint last saw it. The pane has no such prop.
+let working = false
 
 // The Client element exists on the terminal and the desktop app only.
 const GAME_SURFACES = ['terminal', 'desktop']
@@ -160,6 +165,13 @@ async function saveBest($: Api, score: number): Promise<void> {
   await $.store.set('gameBest', gameBest)
 }
 
+// The pane draws its game offer from `working`. When the band or the hint sees a change, redraw once.
+async function noteWorking($: Api, now: boolean): Promise<void> {
+  if (working === now) return
+  working = now
+  $.ui.invalidate('ui.render')
+}
+
 // Opens or closes the game pane. Only an action of the person calls this: the command or the band
 // button. Both ask for the keys (`focus`); the surface decides.
 async function toggleGame($: Api): Promise<string> {
@@ -174,13 +186,12 @@ async function toggleGame($: Api): Promise<string> {
   gameBest = typeof stored === 'number' ? stored : 0
   gameSeed = (Date.now() & 0x7fffffff) >>> 0
   gameStatus = 'ready'
-  // The pane asks for the keyboard and for Esc to close it. The surface grants the keys only
-  // while the prompt has them over an empty composer, so the text below says what is true.
-  const placed = await $.ui.open({ id: GAME_ID, title: 'Temper Run', focus: true, closeOnEscape: true })
+  // The pane asks for the keyboard and for Esc to close it. The surface may or may not grant the
+  // keys; the game draws a hint by itself when no key comes.
+  const placed = await $.ui.open({ id: GAME_ID, title: 'Temper Run', focus: true, closeOnEscape: true, rows: 20 })
   gameOpen = placed.isPlaced
   if (!placed.isPlaced) return 'The game needs a wider terminal.'
-  const held = (await $.ui.panes().catch(() => [])).some(p => p.id === GAME_ID && p.isFocused)
-  return held ? GAME_KEYS_TEXT : GAME_FOCUS_TEXT
+  return GAME_KEYS_TEXT
 }
 
 // Presses of the game's Buttons. Each one writes one counter in $.state, so the pane draws again
@@ -603,6 +614,7 @@ export const register: Register = (on, opts) => {
   gameBest = 0
   gameBanner = null
   gameStatus = 'ready'
+  working = false
   drawSurface = null
   live.mode = undefined
   live.enforcement = undefined
@@ -704,8 +716,9 @@ export const register: Register = (on, opts) => {
       reason => runReason($, reason).catch(() => undefined),
       e.props.bodyColumns,
       // The game button shows only while Claude works, and only when the game is on.
-      { show: e.props.isWorking && gameOn(), open: gameOpen } satisfies GameButton,
+      { show: e.props.isWorking && gameOffered(), open: gameOpen } satisfies GameButton,
     )
+    await noteWorking($, e.props.isWorking)
     return band ?? next(e)
   })
 
@@ -772,6 +785,7 @@ export const register: Register = (on, opts) => {
       action => runAction($, action).catch(() => undefined),
       (kind, id) => runFindingAction($, kind, id).catch(() => undefined),
       e.props.placement === 'inline',
+      { show: working && gameOffered(), open: gameOpen },
     )
   })
 
@@ -784,7 +798,8 @@ export const register: Register = (on, opts) => {
   // The terminal draws a dim tail after the engine's hint line; other surfaces pass.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const ui = await readUi($).catch(() => null)
-    const props = ui !== null && ui.mode === 'full' ? hintProps(e.props, ui.view, e.surface) : null
+    const props = ui !== null && ui.mode === 'full' ? hintProps(e.props, ui.view, e.surface, gameOffered()) : null
+    await noteWorking($, e.props.isWorking)
     return props === null ? next(e) : next({ ...e, props })
   })
 

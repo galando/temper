@@ -19,7 +19,7 @@ shot list for the voice or captions, and for the desktop app part the tape canno
    session, so expect a few takes.
 3. For the light and dark screenshots, run `bash demo/make-screens.sh`. It writes into
    `demo/out/` as well.
-4. For the game shot, run `vhs demo/game.tape`. It sends no prompt to Claude.
+4. For the game shot, run `vhs demo/game.tape`. It sends one short prompt to Claude, because the game is offered only while Claude works.
 5. Record the desktop app part by hand (see shot 6).
 
 ## Shot list and script
@@ -35,7 +35,7 @@ Total about 80 seconds. Times are targets, not promises.
 | 5. Build and the pane | 0:44 to 1:05 | `/temper:temper pane`, the criteria checklist ticking, a failing test then a passing one | Build starts with a failing test. The pane shows each criterion as it passes. Touch a file outside the plan and Temper asks: add to plan, revert, or allow once with a reason. |
 | 6. Desktop app | 1:05 to 1:15 | The Code tab of the desktop app with the same band and the same denial | The same mod runs in the desktop app. |
 | 7. Review, Check, done | 1:15 to 1:25 | Review findings, Check passing, `git commit` allowed, `.temper/report.md` | Review and Check follow. When Check passes, commit is allowed and the report records every override and decision. |
-| 8. A game while you wait (10 s, optional) | 1:25 to 1:35 | Run `/temper:temper play` (or press `8` while Claude works), press `s`, jump a block with `w`, then press `q` | Claude is busy and you wait? Play Temper Run. A banner tells you when a phase is ready. Press q to go back. |
+| 8. A game while you wait (10 s, optional) | 1:25 to 1:35 | While Claude works, press `8` (the band says "Play while you wait"), press `s`, hop over an anvil with `w`, then press `q` | Claude is busy and you wait? Play Temper Run. A banner tells you when a phase is ready. Press q to go back. |
 
 All six phases appear: Intent (shot 2), Plan (shot 4), Build (shot 5), Review and Check
 (shot 7), and Fix (say it in shot 7: a failing check sends the run to Fix, with a limit of

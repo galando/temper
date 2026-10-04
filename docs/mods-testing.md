@@ -84,12 +84,22 @@ Work through one run. For each phase, check the refusal and the key.
 - [ ] **The game.** Type `/temper:temper play` with an empty prompt. Expect a game pane beside the
   Temper pane (terminal and desktop app only; on the VS Code extension you get a short text) and the
   line "The game is open. Press s to start, w to jump, q or Esc to leave." Press `s`, then `w` several
-  times, with no mouse. Let it end and expect "Game over", your best score and a button that says
-  Again. Press `q` and expect the pane to close and the prompt to work. Open it again and ask Claude
-  to edit `src/users.js`: expect the same refusal as without the game. Press Esc and expect the
-  pane to close. While Claude works, press `8` at the empty prompt (the band shows `8: Play`) and expect the same pane, with the keys, so `s` starts the game. If the
-  line says "Press Ctrl+X, then Tab", the pane did not get the keys: do that and try again. Set the
-  plugin setting `game` to `off` and expect no Play button.
+  times, with no mouse. Expect a flame, anvils, cold drops or ice, embers on the ground and a header
+  with score, best and heat. Let it end and expect "Your flame went out. Score N." and a button that
+  says Again. Press `q` and expect the pane to close and the prompt to work. Open it again and ask
+  Claude to edit `src/users.js`: expect the same refusal as without the game. Press Esc and expect
+  the pane to close. Resize to 80 columns and open it again: the field must fit.
+- [ ] **The game offer.** Send a prompt that takes a while ("Write a 300 word essay about forges").
+  While Claude works, expect `8: Play while you wait` in the band (`8: Play` when the band is
+  narrow), "Play while you wait" in the Actions list of the pane, and "Press 8 to play while you
+  wait." at the start of the hint line under the prompt (terminal). Press `8` at the empty prompt and
+  expect the game pane with the keys, so `s` starts the game. When Claude stops, expect the offers to
+  go away. The toast is always "The game is open. Press s to start, w to jump, q or Esc to leave."
+  Press `s` and `w` and expect no hint in the game area. Open it again and wait 4 seconds without a
+  key: expect the dim line "No keys yet? Press Ctrl+X, then Tab, to give the game the keys." and
+  expect it to go when you press a key. Set the plugin setting `game` to `command` and expect no offer anywhere, while
+  `/temper:temper play` still works. Set it to `off` and expect "The game is off. Set game to on in
+  /config."
 - [ ] **Override needs a reason.** Press `9`. Dismiss the reason question without an
   answer. Expect a toast that an override needs a reason and no phase change.
 - [ ] **Commit gate.** Before Check passes, ask Claude to run `git commit -am wip`. Expect

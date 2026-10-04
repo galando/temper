@@ -2,12 +2,28 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import {
   FIELD,
+  FLAME_JUMP,
+  FLAME_OUT,
+  FLAME_RUN,
   GRAVITY,
+  HITBOX,
   JUMP_SPEED,
+  KINDS,
+  KIND_LIST,
+  MAX_WIDTH,
+  MIN_WIDTH,
   RUNNER,
   blockAhead,
-  frameRows,
+  drawRows,
+  flameSprite,
+  groundRow,
+  heatAt,
   isNewBest,
+  messageFor,
+  runs,
+  sparks,
+  widthFor,
+  withWidth,
   jump,
   newGame,
   nextRandom,
@@ -119,8 +135,28 @@ describe('obstacles, speed and score', () => {
       expect(o.x).toBeLessThanOrEqual(FIELD.width)
       expect(o.w).toBeGreaterThanOrEqual(1)
       expect(o.h).toBeGreaterThanOrEqual(1)
-      expect(o.h).toBeLessThanOrEqual(2)
+      expect(o.h).toBeLessThanOrEqual(3)
+      // The size of an obstacle is the size of its kind.
+      if (o.kind) expect({ w: o.w, h: o.h }).toEqual({ w: KINDS[o.kind].w, h: KINDS[o.kind].h })
     }
+  })
+
+  test('the seeded generator mixes anvils and cold things over a long run', () => {
+    const kinds = new Set<string>()
+    let g = running(11)
+    for (let i = 0; i < 4000; i++) {
+      // Keep the flame alive: remove the blocks the test does not jump.
+      g = step({ ...g, obstacles: g.obstacles.filter(o => o.x > RUNNER.x + 12) })
+      for (const o of g.obstacles) if (o.kind) kinds.add(o.kind)
+    }
+    expect([...kinds].sort()).toEqual([...KIND_LIST].sort())
+  })
+
+  test('obstacles enter at the right edge of the field, whatever its width', () => {
+    let g = withWidth(running(2), 40)
+    for (let i = 0; i < 40 && g.obstacles.length === 0; i++) g = step(g)
+    expect(g.obstacles[0]?.x).toBeLessThanOrEqual(40)
+    expect(g.obstacles[0]?.x).toBeGreaterThan(36)
   })
 
   test('the speed grows with the ticks and stops at 3', () => {
@@ -195,21 +231,198 @@ describe('blockAhead', () => {
 })
 
 describe('drawing rows', () => {
-  test('the field has the right size, the runner, the ground and the blocks', () => {
-    const g: GameState = { ...running(), obstacles: [{ x: 30, w: 2, h: 2 }] }
-    const rows = frameRows(g)
+  const text = (rows: ReturnType<typeof drawRows>): string[] => rows.map(r => r.map(c => c.ch).join(''))
+
+  test('the field has the right size: the field rows, one ground row, every row as wide as the field', () => {
+    const rows = drawRows({ ...running(), obstacles: [{ x: 30, w: 3, h: 2, kind: 'anvil_s' }] })
     expect(rows).toHaveLength(FIELD.height + 1)
     for (const r of rows) expect(r).toHaveLength(FIELD.width)
-    expect(rows[FIELD.height]).toBe('_'.repeat(FIELD.width))
-    expect(rows.join('\n')).toContain('#')
-    expect(rows[FIELD.height - 1]?.[RUNNER.x]).toBe('A')
-    expect(rows[FIELD.height - 2]?.[RUNNER.x]).toBe('^')
+    // The ground is a row of embers.
+    expect(text(rows)[FIELD.height]).toMatch(/^[▁▂▃]+$/)
   })
 
-  test('the runner moves up in the picture when it jumps', () => {
-    const rows = frameRows({ ...running(), y: 3 })
-    expect(rows[FIELD.height - 1]?.[RUNNER.x]).toBe(' ')
-    expect(rows[FIELD.height - 4]?.[RUNNER.x]).toBe('A')
+  test('the flame stands on the ground, in three rows, and an anvil is drawn in dark gray', () => {
+    const rows = drawRows({ ...running(), obstacles: [{ x: 30, w: 3, h: 2, kind: 'anvil_s' }] })
+    const t = text(rows)
+    expect(t[FIELD.height - 1]?.slice(RUNNER.x, RUNNER.x + RUNNER.w)).toBe('▀█▀')
+    expect(t[FIELD.height - 3]?.slice(RUNNER.x, RUNNER.x + RUNNER.w)).toBe(' ▲ ')
+    expect(t[FIELD.height - 1]?.slice(30, 33)).toBe('▝█▘')
+    expect(rows[FIELD.height - 1]?.[30]?.style.color).toBe('#7a7a7a')
+  })
+
+  test('the flame has yellow on top, orange in the middle and red at the base', () => {
+    const rows = drawRows(running())
+    expect(rows[FIELD.height - 3]?.[RUNNER.x + 1]?.style.color).toBe('yellow')
+    expect(rows[FIELD.height - 2]?.[RUNNER.x + 1]?.style.color).toBe('#ff8c1a')
+    expect(rows[FIELD.height - 1]?.[RUNNER.x + 1]?.style.color).toBe('red')
+  })
+
+  test('the flame moves up in the picture and stretches taller when it jumps', () => {
+    const t = text(drawRows({ ...running(), y: 3, vy: 1 }))
+    expect(t[FIELD.height - 1]?.[RUNNER.x + 1]).toBe(' ')
+    // Four rows now: the tip is one row higher than a standing flame would be at this height.
+    expect(t[FIELD.height - 1 - 3 - 3]?.slice(RUNNER.x, RUNNER.x + 3)).toBe(' ▲ ')
+    expect(flameSprite({ ...running(), y: 3, vy: 1 })).toBe(FLAME_JUMP)
+  })
+
+  test('the flame shrinks to a spark when the game is over', () => {
+    const over: GameState = { ...running(), status: 'over', y: 0 }
+    expect(flameSprite(over)).toBe(FLAME_OUT)
+    const t = text(drawRows(over))
+    expect(t[FIELD.height - 1]?.slice(RUNNER.x, RUNNER.x + 3)).toBe(' * ')
+  })
+
+  test('the flame flickers: the frame changes every 3 ticks and repeats', () => {
+    const at = (tick: number) => flameSprite({ ...running(), tick })
+    expect(at(0)).toBe(FLAME_RUN[0])
+    expect(at(2)).toBe(FLAME_RUN[0])
+    expect(at(3)).toBe(FLAME_RUN[1])
+    expect(at(6)).toBe(FLAME_RUN[2])
+    expect(at(9)).toBe(FLAME_RUN[0])
+  })
+
+  test('an obstacle without a kind is drawn as an iron rectangle of its size', () => {
+    const t = text(drawRows({ ...running(), obstacles: [{ x: 30, w: 2, h: 2 }] }))
+    expect(t[FIELD.height - 1]?.slice(30, 32)).toBe('██')
+    expect(t[FIELD.height - 2]?.slice(30, 32)).toBe('██')
+  })
+
+  test('the drawing never reaches outside the field, even for a block half off the edge', () => {
+    const rows = drawRows({ ...running(), obstacles: [{ x: FIELD.width - 1, w: 4, h: 3, kind: 'anvil_l' }, { x: -2, w: 4, h: 3, kind: 'anvil_l' }] })
+    for (const r of rows) expect(r).toHaveLength(FIELD.width)
+  })
+
+  test('the field follows its width: 36 to 60 cells, 56 before the region is measured', () => {
+    expect(widthFor(0)).toBe(56)
+    expect(widthFor(20)).toBe(MIN_WIDTH)
+    expect(widthFor(45)).toBe(45)
+    expect(widthFor(200)).toBe(MAX_WIDTH)
+    for (const w of [MIN_WIDTH, 45, MAX_WIDTH]) {
+      const rows = drawRows(withWidth(running(), w))
+      expect(rows).toHaveLength(FIELD.height + 1)
+      for (const r of rows) expect(r).toHaveLength(w)
+    }
+    expect(FIELD.height).toBeGreaterThanOrEqual(9)
+  })
+
+  test('scores print with four digits', () => {
+    expect(pad4(7)).toBe('0007')
+    expect(pad4(12345)).toBe('12345')
+    expect(pad4(-3)).toBe('0000')
+  })
+})
+
+describe('sprites are data tables', () => {
+  const all = [...FLAME_RUN, FLAME_JUMP, FLAME_OUT, ...KIND_LIST.map(k => KINDS[k].sprite)]
+
+  test('every row of a sprite has the same width, so nothing shifts', () => {
+    for (const sp of all) {
+      expect(sp.rows.length).toBeGreaterThan(0)
+      for (const row of sp.rows) expect([...row]).toHaveLength([...(sp.rows[0] as string)].length)
+      expect(sp.styles).toHaveLength(sp.rows.length)
+    }
+  })
+
+  test('the three run frames have the same size, and the jump frame is the same width and taller', () => {
+    for (const f of FLAME_RUN) {
+      expect(f.rows).toHaveLength(RUNNER.h)
+      expect([...(f.rows[0] as string)]).toHaveLength(RUNNER.w)
+    }
+    expect(FLAME_JUMP.rows.length).toBeGreaterThan(RUNNER.h)
+    expect([...(FLAME_JUMP.rows[0] as string)]).toHaveLength(RUNNER.w)
+    expect(FLAME_OUT.rows.length).toBeLessThan(RUNNER.h)
+  })
+
+  test('the hit box lies inside the flame and covers solid cells in every run frame and the jump frame', () => {
+    expect(HITBOX.dx + HITBOX.w).toBeLessThanOrEqual(RUNNER.w)
+    expect(HITBOX.h).toBeLessThanOrEqual(RUNNER.h)
+    for (const f of [...FLAME_RUN, FLAME_JUMP]) {
+      // The lower rows, counted from the base.
+      for (let r = 0; r < HITBOX.h; r++) {
+        const row = f.rows[f.rows.length - 1 - r] as string
+        for (let c = HITBOX.dx; c < HITBOX.dx + HITBOX.w; c++) expect(row[c]).not.toBe(' ')
+      }
+    }
+  })
+
+  test('every obstacle kind has a sprite as large as its collision size', () => {
+    for (const k of KIND_LIST) {
+      const spec = KINDS[k]
+      expect(spec.sprite.rows).toHaveLength(spec.h)
+      expect([...(spec.sprite.rows[0] as string)]).toHaveLength(spec.w)
+    }
+    // Two anvils (gray) and two cold things (cyan).
+    expect(KINDS.anvil_s.sprite.styles[0]?.color).toBe('#7a7a7a')
+    expect(KINDS.anvil_l.sprite.styles[0]?.color).toBe('#7a7a7a')
+    expect(KINDS.drop.sprite.styles[0]?.color).toBe('cyan')
+    expect(KINDS.ice.sprite.styles[0]?.color).toBe('cyan')
+    expect(KINDS.anvil_l.h).toBeGreaterThan(KINDS.anvil_s.h)
+  })
+
+  test('every kind can be cleared by a jump at the lowest speed', () => {
+    // Ticks in the air at a height of at least h, against the ticks the hit box overlaps the block.
+    for (const k of KIND_LIST) {
+      const spec = KINDS[k]
+      let y = 0
+      let vy = JUMP_SPEED
+      let high = 0
+      while (vy > 0 || y > 0) {
+        y += vy
+        vy -= GRAVITY
+        if (y >= spec.h) high++
+        if (y <= 0) break
+      }
+      expect(high).toBeGreaterThanOrEqual(HITBOX.w + spec.w - 1)
+    }
+  })
+})
+
+describe('heat, sparks, embers and messages', () => {
+  test('heat goes from 1 to 5 with the speed ramp and stays at 5', () => {
+    expect(heatAt(0)).toBe(1)
+    expect(heatAt(74)).toBe(1)
+    expect(heatAt(75)).toBe(2)
+    expect(heatAt(150)).toBe(3)
+    expect(heatAt(225)).toBe(4)
+    expect(heatAt(300)).toBe(5)
+    expect(heatAt(9999)).toBe(5)
+    for (let t = 1; t < 600; t++) expect(heatAt(t)).toBeGreaterThanOrEqual(heatAt(t - 1))
+  })
+
+  test('sparks are a pure function of the tick and stay inside the field', () => {
+    expect(sparks(40, 50, 10)).toEqual(sparks(40, 50, 10))
+    expect(sparks(0, 50, 10)).not.toEqual(sparks(80, 50, 10))
+    for (const t of [0, 7, 100, 999]) {
+      for (const sp of sparks(t, 40, 10)) {
+        expect(sp.x).toBeGreaterThanOrEqual(0)
+        expect(sp.x).toBeLessThan(40)
+        expect(sp.y).toBeGreaterThanOrEqual(7)
+        expect(sp.y).toBeLessThanOrEqual(9)
+        expect(['·', '*']).toContain(sp.ch)
+      }
+    }
+  })
+
+  test('the ground is red and orange embers that scroll', () => {
+    const a = groundRow(0, 36)
+    const b = groundRow(9, 36)
+    expect(a).toHaveLength(36)
+    expect(new Set(a.map(c => c.style.color))).toEqual(new Set(['red', '#ff8c1a']))
+    expect(a.map(c => c.ch).join('')).not.toEqual(b.map(c => c.ch).join(''))
+    for (const c of a) expect('▁▂▃').toContain(c.ch)
+  })
+
+  test('runs join cells of one style into one piece', () => {
+    const r = runs([{ ch: 'a', style: {} }, { ch: 'b', style: {} }, { ch: 'c', style: { color: 'red' } }])
+    expect(r).toEqual([{ text: 'ab', style: {} }, { text: 'c', style: { color: 'red' } }])
+  })
+
+  test('messages are short plain sentences', () => {
+    expect(messageFor(newGame(1), false)).toBe('Press s to light the flame. w jumps.')
+    expect(messageFor(running(), false)).toBe('w jumps. q or Esc leaves.')
+    expect(messageFor(running(), true)).toBe('Paused. Press s or w to go on. q or Esc leaves.')
+    expect(messageFor({ ...running(), status: 'over', score: 85, best: 120 }, false)).toBe('Your flame went out. Score 85. Press s to play again. q or Esc leaves.')
+    expect(messageFor({ ...running(), status: 'over', score: 130, best: 130 }, false)).toBe('New best. The forge is hot. Your flame went out. Score 130. Press s to play again. q or Esc leaves.')
   })
 
   test('scores print with four digits', () => {

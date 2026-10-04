@@ -29,8 +29,9 @@ Demo ready in /tmp/pr-demo. When Claude Code opens:
   4. With the prompt empty, press the digit 1 (check), wait, press 1 again (approve).
      Expect: the bar shows the Intent phase done and the Plan phase open.
   5. Modes:  /temper:temper mode minimal   then   off   then   full
-  6. Play:  run /temper:temper play, or press 8 on an empty prompt while Claude works.
-     Press s to start, w to jump, q or Esc to leave. You need no mouse.
+  6. Play:  while Claude works, press 8 on an empty prompt ("Play while you wait"), or
+     run /temper:temper play. Press s to light the flame, w to jump, q or Esc to leave.
+     You need no mouse. The setting "game" is on, command or off.
      (The game runs on the terminal and the desktop app only.)
   7. Always use the full name /temper:temper (the short /temper may be ambiguous).
 TXT

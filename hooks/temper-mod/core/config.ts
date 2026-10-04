@@ -41,7 +41,16 @@ export function parseOnOff(v: string | undefined, fallback: 'on' | 'off'): 'on' 
   return n === 'on' || n === 'off' ? n : fallback
 }
 
-export const parseEnforcement = (v: string | undefined): 'on' | 'off' => parseOnOff(v, 'on')
+// The game setting: `on` offers the game while Claude works and answers the command, `command`
+// answers the command only, `off` hides it all. Checked here, never as a picker.
+export type GameMode = 'on' | 'command' | 'off'
+
+export function parseGameMode(v: string | undefined): GameMode {
+  const n = norm(v)
+  return n === 'command' || n === 'off' ? n : 'on'
+}
+
+export const parseEnforcement =(v: string | undefined): 'on' | 'off' => parseOnOff(v, 'on')
 
 const positiveInt = (v: string | null | undefined): number | null => {
   if (v === null || v === undefined || !/^\s*\d+\s*$/.test(v)) return null

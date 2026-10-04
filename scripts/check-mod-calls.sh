@@ -34,7 +34,6 @@ ui.close         closes the pane (leaving full mode, a toggle, a pane that would
 ui.focus         key 9 on the band moves the focus into the override reason field
 ui.invalidate    redraws the render sites after a mode or enforcement change
 ui.open          opens the pane
-ui.panes         the game asks whether its pane holds the keyboard, so the toast tells the truth
 ui.resolve       the element table of the surface being drawn (Box, Text, Button, Markdown)
 ui.toast         one toast per phase transition and on enforcement changes
 '

@@ -95,7 +95,7 @@
     "game": {
       "type": "string",
       "title": "Game",
-      "description": "on shows the Temper Run game: key 8 on an empty prompt while Claude works, or /temper:temper play. Keys: s start, w jump, q quit. off hides it. Values: on or off.",
+      "description": "Temper Run game. on offers it while Claude works (key 8) and answers /temper:temper play. command answers the command only and offers nothing. off hides it all. Values: on, command or off.",
       "default": "on"
     }
   }

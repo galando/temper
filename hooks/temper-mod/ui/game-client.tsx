@@ -1,6 +1,6 @@
 import type { ClientModule } from 'claude-code'
 
-import { FIELD, TICK_MS, blockAhead, frameRows, isNewBest, jump, newGame, pad4, start, step } from '../core/game'
+import { TICK_MS, blockAhead, drawRows, heatAt, jump, messageFor, newGame, pad4, runs, start, step, widthFor, withWidth } from '../core/game'
 import type { GameState } from '../core/game'
 
 // The drawing and the keys of Temper Run. This module runs on the surface's own frame clock and
@@ -19,6 +19,11 @@ export type GameProps = {
 }
 
 type State = {
+  // Ticks since the game opened, counted only until the first key or press. A game cannot know
+  // whether the keys reach it, so after 3 seconds with none it says how to get them.
+  age: number
+  // Any key, click or Button press has arrived.
+  touched: boolean
   // The counters this game has already applied.
   seenJump: number
   seenStart: number
@@ -31,6 +36,9 @@ type State = {
   posted: boolean
 }
 
+// 3 seconds of 80 ms ticks, rounded up.
+const NO_KEYS_TICKS = Math.ceil(3000 / TICK_MS)
+const NO_KEYS_LINE = 'No keys yet? Press Ctrl+X, then Tab, to give the game the keys.'
 const IDLE_TICKS = 25
 // A block this close (in cells) keeps the game running, so an idle game never skips a block.
 const NEAR = 14
@@ -53,25 +61,6 @@ function pressJump(cur: State): State {
   return { ...cur, g: jump(cur.g), idle: 0 }
 }
 
-const COLOR: Record<string, { color?: string; dim?: boolean; bold?: boolean }> = {
-  '#': { color: 'blue', bold: true },
-  '^': { color: 'yellow', bold: true },
-  A: { color: 'red', bold: true },
-  _: { dim: true },
-  ' ': {},
-}
-
-// Runs of one character, so one Text carries one colour.
-function segments(row: string): Array<{ text: string; ch: string }> {
-  const out: Array<{ text: string; ch: string }> = []
-  for (const ch of row) {
-    const last = out[out.length - 1]
-    if (last && last.ch === ch) last.text += ch
-    else out.push({ text: ch, ch })
-  }
-  return out
-}
-
 const nextSeed = (g: GameState): number => (g.rng ^ Math.imul(g.tick + 1, 2654435761)) >>> 0
 
 const GameClient: ClientModule<GameProps, State> = (props, surface) => {
@@ -79,12 +68,14 @@ const GameClient: ClientModule<GameProps, State> = (props, surface) => {
   const first = surface.state === undefined
   // The counters start at what the pane shows now, so a press made before this game existed is not replayed.
   let current: State = surface.state ?? {
-    g: newGame(props.seed, props.best),
+    g: newGame(props.seed, props.best, widthFor(surface.columns)),
     idle: 0,
     paused: false,
     posted: false,
     seenJump: props.jumpCount,
     seenStart: props.startCount,
+    age: 0,
+    touched: false,
   }
 
   // New presses of the pane's Buttons: Start first, then Jump, each applied once.
@@ -92,7 +83,7 @@ const GameClient: ClientModule<GameProps, State> = (props, surface) => {
     let next = current
     if (props.startCount !== next.seenStart) next = pressStart(next)
     if (props.jumpCount !== next.seenJump) next = pressJump(next)
-    current = { ...next, seenStart: props.startCount, seenJump: props.jumpCount }
+    current = { ...next, seenStart: props.startCount, seenJump: props.jumpCount, touched: true }
     surface.setState(current)
   }
 
@@ -102,6 +93,11 @@ const GameClient: ClientModule<GameProps, State> = (props, surface) => {
 
     surface.every(TICK_MS, () => {
       const cur = surface.state
+      // Waiting for the first key: count up to the limit, then stop writing.
+      if (cur && !cur.touched && cur.g.status === 'ready') {
+        if (cur.age <= NO_KEYS_TICKS) surface.setState({ ...cur, age: cur.age + 1 })
+        return
+      }
       if (!cur || cur.g.status !== 'running' || cur.paused) return
       const idle = cur.idle + 1
       if (idle > IDLE_TICKS && !blockAhead(cur.g, NEAR)) {
@@ -121,8 +117,11 @@ const GameClient: ClientModule<GameProps, State> = (props, surface) => {
     // Keys that arrive after a click on the game. The pane's own Buttons (s, w, q) cover the
     // keyboard when the pane holds it; these keep a clicked game playable too.
     surface.onKey(event => {
-      const cur = surface.state
-      if (!cur) return
+      const seen = surface.state
+      if (!seen) return
+      // Any key proves the keys arrive, so the no keys line goes.
+      const cur = seen.touched ? seen : { ...seen, touched: true }
+      if (cur !== seen) surface.setState(cur)
       if (START_KEYS.includes(event.key)) {
         surface.setState(pressStart(cur))
         return
@@ -136,36 +135,42 @@ const GameClient: ClientModule<GameProps, State> = (props, surface) => {
     // A click gives the game the keys, so a click also wakes a paused game.
     surface.onPointer(event => {
       const cur = surface.state
-      if (!cur || event.type !== 'down' || !cur.paused) return
-      surface.setState({ ...cur, idle: 0, paused: false })
+      if (!cur || event.type !== 'down') return
+      if (!cur.paused && cur.touched) return
+      surface.setState({ ...cur, touched: true, idle: 0, paused: false })
     })
+  }
+
+  // The field follows the region: when the width changes, the game takes the new width once.
+  const width = widthFor(surface.columns)
+  if (current.g.width !== width) {
+    current = { ...current, g: withWidth(current.g, width) }
+    surface.setState(current)
   }
 
   const g = current.g
   const best = Math.max(g.best, props.best)
-  const hint =
-    g.status === 'ready'
-      ? 'Press s to start. w jumps. q or Esc leaves.'
-      : current.paused
-        ? 'Paused. Press s or w to go on. q or Esc leaves.'
-        : g.status === 'over'
-          ? `${isNewBest(g) ? 'New best score. ' : ''}Game over. Press s to play again. q or Esc leaves.`
-          : 'w jumps. q or Esc leaves.'
 
   return (
     <Box flexDirection="column">
       {props.banner ? <Text color="yellow" wrap="truncate">{props.banner}</Text> : null}
-      <Text bold>{`TEMPER RUN   score ${pad4(g.score)}   best ${pad4(best)}`}</Text>
-      {frameRows(g).map((row, i) => (
-        <Box key={`row-${i}`} flexDirection="row" width={FIELD.width}>
-          {segments(row).map((seg, j) => (
-            <Text key={`seg-${j}`} color={COLOR[seg.ch]?.color} dimColor={COLOR[seg.ch]?.dim} bold={COLOR[seg.ch]?.bold}>
-              {seg.text}
+      <Box flexDirection="row" columnGap={1} flexWrap="wrap">
+        <Text color="yellow" bold>▲ TEMPER RUN</Text>
+        <Text bold>{`score ${pad4(g.score)}`}</Text>
+        <Text bold>{`best ${pad4(best)}`}</Text>
+        <Text color="#ff8c1a" bold>{`heat ${heatAt(g.tick)}`}</Text>
+      </Box>
+      {drawRows(g).map((row, i) => (
+        <Box key={`row-${i}`} flexDirection="row" width={g.width}>
+          {runs(row).map((run, j) => (
+            <Text key={`seg-${j}`} color={run.style.color} dimColor={run.style.dim} bold={run.style.bold}>
+              {run.text}
             </Text>
           ))}
         </Box>
       ))}
-      <Text dimColor wrap="truncate">{hint}</Text>
+      <Text dimColor>{messageFor(g, current.paused)}</Text>
+      {!current.touched && g.status === 'ready' && current.age >= NO_KEYS_TICKS ? <Text dimColor>{NO_KEYS_LINE}</Text> : null}
     </Box>
   )
 }

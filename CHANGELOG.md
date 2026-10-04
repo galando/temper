@@ -34,11 +34,14 @@ All notable changes to Temper are documented here. The plugin version lives in
   `/temper enforcement on|off` controls the refusals. Both are plugin settings (`uiMode`,
   `enforcement`); a value locked by an administrator is reported, not changed. The first
   interactive `/temper` asks once.
-- An optional runner game, Temper Run, for the time Claude works: the `8: Play` button on the band
-  (only while Claude works; the digit works from an empty prompt) or `/temper:temper play` (a new reserved word, 17 in all). The pane takes the keyboard when it
-  opens: `s` starts, `w` jumps, `q` or Esc leaves, with no mouse. It runs on the terminal and the
-  desktop app only, keeps a best score, shows a banner when a phase is ready, and never
-  weakens a refusal. The plugin setting `game` (`on` or `off`) turns it off.
+- An optional runner game, Temper Run, for the time Claude works. You are a flame in a forge:
+  hop over anvils and cold water on a bed of embers, and the heat rises (heat 1 to 5). While a
+  phase works, the band (`8: Play while you wait`), the pane and the prompt hint offer it; key `8`
+  or `/temper:temper play` (a new reserved word, 17 in all) opens it. It never opens by itself.
+  The pane takes the keyboard when it opens: `s` lights the flame, `w` jumps, `q` or Esc leaves,
+  with no mouse. It runs on the terminal and the desktop app only, keeps a best score, shows a
+  banner when a phase is ready, and never weakens a refusal. The plugin setting `game` is `on`
+  (offers and command), `command` (command only) or `off`.
 - User text of the mod is written in Simplified Technical English. "Lint intent" is now
   "Check intent". Every refusal ends with a "Next:" step.
 - `.temper/report.md` is written when a run completes: phases, overrides, accepted findings,

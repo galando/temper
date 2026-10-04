@@ -232,11 +232,11 @@ treat the docs as the current behavior for the README.
 There is no manifest permission list. The engine scans the module and records what it
 calls; `claude plugin validate` prints it and admins can refuse a mod by it
 (`plugin.register` `uses`). The `calls:` line the validator prints for the built mod,
-nothing else (21 calls; the list is enforced by `scripts/check-mod-calls.sh`):
+nothing else (20 calls; the list is enforced by `scripts/check-mod-calls.sh`):
 
 `config.list, config.set, fs.list, fs.read, fs.stat, fs.write, prompt.submit,
 prompt.suggest, session.version, state.get, state.set, store.get, store.set, ui.ask,
-ui.close, ui.focus, ui.invalidate, ui.open, ui.panes, ui.resolve, ui.toast`
+ui.close, ui.focus, ui.invalidate, ui.open, ui.resolve, ui.toast`
 
 Why each call is there:
 
@@ -253,7 +253,6 @@ Why each call is there:
 | `store.get`, `store.set` | own event ids, consumed human decisions, "mode already asked" |
 | `ui.ask` | scope drift choices, the first run question, reasons |
 | `ui.open`, `ui.close` | the pane |
-| `ui.panes` | the game asks whether its pane holds the keyboard, so the toast says what is true |
 | `ui.focus` | the band's key 9 moves the focus into the override reason field |
 | `ui.invalidate` | redraw after a mode or enforcement change |
 | `ui.resolve`, `ui.toast` | the element table; one toast per transition |
@@ -489,8 +488,13 @@ nothing is asked.
 
 An optional runner game for the time Claude works. It adds no engine call.
 
-- `core/game.ts` is pure: a seeded generator, the physics, the score and the drawing rows.
-  The same seed and the same keys give the same game, so the tests need no clock.
+- `core/game.ts` is pure: a seeded generator, the physics, the score, the heat level and the
+  drawing rows. The same seed and the same keys give the same game, so the tests need no clock.
+  The art is data: a flame of three flicker frames (3 by 3), a taller jump frame and a spark;
+  two anvils and two cold obstacles. Every row of a sprite has the same width, and a test checks
+  that the hit box lies inside the sprites. The field is 36 to 60 cells wide (it follows the
+  region) and 10 rows tall. The height is fixed on purpose: a region sized by its content would
+  feed the height back into the game.
 - `ui/game-client.tsx` is a Client module (a surface module). It draws with Box and Text, reads
   keys with `onKey`, and moves the game on `surface.every`. It has no `$` call at all, and
   `scripts/check-mod-calls.sh` fails if one appears in any `*-client.tsx` file.
@@ -498,16 +502,22 @@ An optional runner game for the time Claude works. It adds no engine call.
   `surface.post`, and the `ui.message` hook in `register.tsx` validates it and calls the
   already reviewed `$.store.set`. The Buttons of the game pane (w Jump, s Start or Again, q Quit)
   add one to a counter in `$.state` (`game`); the pane passes the counters to the Client as props,
-  and the Client applies each new press once. The only new call is `$.ui.panes`, to learn whether
-  the pane holds the keyboard.
+  and the Client applies each new press once. No call is new: the reviewed list stays at 20.
 - The pane asks for the keyboard with `focus` and for Esc to close it with `closeOnEscape`. The
-  surface grants the keys only while the prompt has them over an empty composer, so a command typed
-  in the composer does not always get them. The toast then says: press Ctrl+X, then Tab. That path
-  is in the API text; it is not verified live.
+  surface may or may not grant the keys, and the mod cannot read which (`ui.panes` reported an
+  unfocused pane while the keys did reach the game, so it is not used). The toast is always the
+  same: "The game is open. Press s to start, w to jump, q or Esc to leave." The Client finds out
+  by itself: with no key, click or press within 3 seconds of opening and the game not started, it
+  draws one dim line, "No keys yet? Press Ctrl+X, then Tab, to give the game the keys." Any key
+  or press removes the line. That Ctrl+X, Tab path is in the API text; it is not verified live.
 - The pane is `temper-game`. The Client exists on the terminal and the desktop app only, so the
   hook checks `e.surface` and draws a short text elsewhere.
-- The band button `8: Play` shows only while Claude works. It takes a digit because only a digit
-  works from an empty prompt. `/temper:temper play` is the 17th
+- The offer: while Claude works, the band draws `8: Play while you wait` as a normal secondary
+  button, the pane lists it in Actions, and the terminal hint starts with "Press 8 to play while you
+  wait." (the hint is cut at the row end, so the offer comes first). The pane learns that Claude
+  works from the band and hint props, and redraws once when that changes. The setting `game` is
+  `on` (offers and command), `command` (command only) or `off`, checked in `core/config.ts`. It
+  takes a digit because only a digit works from an empty prompt. `/temper:temper play` is the 17th
   reserved word. Only a person can open the game: a call that does not come from the composer
   gets a refusal.
 - The game cannot weaken a gate. Refusals are decided in `tool.call` and do not read game state.

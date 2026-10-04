@@ -15,8 +15,25 @@ const STEP_COLOR = { done: 'green', current: 'blue', pending: undefined, stale: 
 // timeline, per finding Fix / Accept with reason / Explain, and the actions. Hotkeys are
 // unique here: 1, 2, 3 for the main actions, 9 for override, 0 for "More actions", which
 // expands the full list, each of those with its own letter.
-export function renderPane(kit: Kit, view: View, onAction: OnAction, onFinding: OnFinding, inline = false): RenderElement {
+export function renderPane(
+  kit: Kit,
+  view: View,
+  onAction: OnAction,
+  onFinding: OnFinding,
+  inline = false,
+  // The game offer: shown while a phase is working (the game setting is on). Key 8, as in the band.
+  game: { show: boolean; open: boolean } = { show: false, open: false },
+): RenderElement {
   const { Box, Text, Button, Markdown } = kit
+  const playButton = game.show ? (
+    <Button
+      key="pane-play"
+      label={game.open ? 'Close game' : 'Play while you wait'}
+      hotkey="8"
+      plain
+      onPress={() => onAction({ key: '1', id: 'play', label: 'Play', command: 'play' })}
+    />
+  ) : null
 
   if (view.phase === null) {
     return (
@@ -105,7 +122,10 @@ export function renderPane(kit: Kit, view: View, onAction: OnAction, onFinding: 
           {view.expanded
             ? a.more.map(x => <Button key={`pane-${x.id}`} label={x.label} hotkey={x.key} plain dimColor onPress={() => onAction(x)} />)
             : null}
+          {playButton}
         </Box>
+      ) : playButton ? (
+        <Box flexDirection="column">{playButton}</Box>
       ) : null}
     </Box>
   )

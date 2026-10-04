@@ -170,20 +170,32 @@ allow it once with a reason. Each choice is logged. After three failed fix loops
 
 ### The game
 
-Temper Run is a small runner game for the time Claude works. It is optional.
+Temper Run is a small runner game for the time Claude works. It is optional. You are a flame in
+a forge. You hop over anvils (dark gray) and cold water or ice (cyan) on a bed of embers. The
+header shows score, best and the heat (heat 1 to heat 5, as the speed grows). When the flame
+goes out you see "Your flame went out" and your score.
 
-- Open it with `8` at the empty prompt (the band shows `8: Play`, dim, only while Claude works, in
-  full mode) or with `/temper:temper play`. The same command closes it. Only
-  you can open it. Claude cannot.
-- The pane asks for the keyboard when it opens. Press `s` to start (the button says Again after a
-  game over), `w` to jump, `q` or Esc to leave. These are Buttons with hotkeys, so no mouse is
-  needed. If the prompt held text when you opened it, the pane may not get the keys: press Ctrl+X,
-  then Tab. After a click on the game, Space and Up also jump.
+- While a phase works, Temper offers the game in three places, in full mode: the band
+  (`8: Play while you wait`, a normal button like 2 and 3), the pane (Actions list, key 8) and the
+  prompt hint on the terminal ("Press 8 to play while you wait."). The offer goes away when Claude
+  stops. Temper never opens the game by itself and never takes the keyboard until you press 8 or
+  run the command.
+- Open it with `8` at the empty prompt or with `/temper:temper play`. The same command closes it.
+  Only you can open it. Claude cannot.
+- The setting `game` has three values: `on` (the default: the offers and the command), `command`
+  (the command only, no offers) and `off` (nothing; the command answers "The game is off. Set game
+  to on in /config.").
+- The pane asks for the keyboard when it opens. Press `s` to light the flame (the button says Again
+  after the flame goes out), `w` to jump, `q` or Esc to leave. These are Buttons with hotkeys, so no mouse is
+  needed. The text when it opens is always "The game is open. Press s to start, w to jump, q or Esc
+  to leave." If no key reaches the game within 3 seconds, it draws one dim line: "No keys yet? Press
+  Ctrl+X, then Tab, to give the game the keys." The line goes away when a key arrives. After a click
+  on the game, Space and Up also jump.
 - The game shows a banner when a phase is ready or changes, so you do not miss an approval.
 - It keeps your best score in the plugin store. The score does not change any gate.
 - It pauses by itself after a short idle time. It never writes files and never makes a call to
   Claude.
-- Turn it off with the plugin setting `game` set to `off`.
+- The field is 36 to 60 cells wide (it follows the pane) and 10 rows tall, so it plays at 80 columns.
 - It exists on the terminal and the desktop app only. On the VS Code extension and on mobile the
   command prints a short text and nothing else happens.
 - Refusals still apply while the game is open.

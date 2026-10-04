@@ -95,13 +95,16 @@ The keys of each phase are in [Commands](docs/commands.md#each-phase).
 
 ### A game while you wait
 
-Claude works and you wait? Press `8` at the empty prompt (the band shows `8: Play` while Claude
-works), or run `/temper:temper play`, to open Temper
-Run, a small runner game. The game pane takes the keyboard when it opens. Press `s` to start,
-`w` to jump and `q` or Esc to leave. You need no mouse. If the prompt held text when you opened
-the game, the pane may not get the keys: press Ctrl+X, then Tab. The game shows a banner when
-a phase is ready, so you do not miss an approval, and refusals still apply while it is open. It
-is optional: set the plugin setting `game` to `off` to hide it.
+Claude works and you wait? While a phase works, the band, the pane and the prompt hint offer
+"Play while you wait". Press `8` at the empty prompt, or run `/temper:temper play`, to open Temper
+Run. You are a small flame in the forge. Hop over anvils and cold water, and the heat rises. The
+pane takes the keyboard when it opens. Press `s` to light the flame, `w` to jump and `q` or Esc to
+leave. You need no mouse. If no key reaches the game within 3 seconds, it says "No keys yet?
+Press Ctrl+X, then Tab, to give the game the keys." and removes that line when a key arrives.
+The game never opens by itself. It shows a banner when a phase
+is ready, so you do not miss an approval, and refusals still apply while it is open. The plugin
+setting `game` has three values: `on` (the offers and the command, the default), `command` (the
+command only) and `off` (nothing).
 
 ![Temper Run, the optional game: a runner jumps over blocks while Claude works](docs/assets/game.gif)
 
