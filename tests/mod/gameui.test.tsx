@@ -80,7 +80,7 @@ describe('the game pane draws on the terminal and the desktop app', () => {
       expect(text).not.toContain('pieces')
     })
 
-    test(`the picture is 14 rows of coloured half blocks, as wide as the pane allows (36 to 72) on ${surface}`, async ($, on) => {
+    test(`the picture is 9 rows of coloured half blocks, as wide as the pane allows (36 to 72) on ${surface}`, async ($, on) => {
       world(on, runFiles({ nextStage: 'build' }))
       await $.session.start(START(surface))
       await $.command.run(run('play'))
@@ -94,17 +94,19 @@ describe('the game pane draws on the terminal and the desktop app', () => {
       }
     })
 
-    test(`an inline pane (a narrow terminal) leaves out the top 3 rows of sky and the Temper line, so the floor shows on ${surface}`, async ($, on) => {
+    test(`an inline pane (a narrow terminal) shows the whole picture, and leaves out only the Temper line on ${surface}`, async ($, on) => {
       world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }))
       await $.session.start(START(surface))
       await $.command.run(run('play'))
       const ui = await mountGame($ as never, surface, 'temper-game', GAME_INLINE)
       const g0 = newGame(SEED, 0, 56)
       const rows = sceneOf(await ui.drawn({ in: 'game' }))
-      expect(rows).toHaveLength(ROWS - 3)
-      expect(rows).toEqual(expectedScene(g0).slice(3))
+      expect(rows).toHaveLength(ROWS)
+      expect(rows).toEqual(expectedScene(g0))
+      // The picture, the heads up line, two text lines and the Buttons are 13 lines: they fit 14.
+      expect(ROWS + 4).toBeLessThanOrEqual(14)
       expect(textOf(await ui.drawn({ in: 'game' }))).not.toContain('Temper: Plan is ready')
-      // The dock keeps all 14 rows and the Temper line.
+      // The dock keeps all 9 rows and shows the Temper line.
       await ui.unmount()
       const dock = await mountGame($ as never, surface)
       expect(sceneOf(await dock.drawn({ in: 'game' }))).toHaveLength(ROWS)

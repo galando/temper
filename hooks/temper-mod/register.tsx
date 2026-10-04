@@ -191,7 +191,7 @@ async function toggleGame($: Api): Promise<string> {
   gameOver = false
   // The pane asks for the keyboard and for Esc to close it. The surface may or may not grant the
   // keys; the game draws a hint by itself when no key comes.
-  const placed = await $.ui.open({ id: GAME_ID, title: 'Temper Run', focus: true, closeOnEscape: true, rows: 22 })
+  const placed = await $.ui.open({ id: GAME_ID, title: 'Temper Run', focus: true, closeOnEscape: true, rows: 14 })
   gameOpen = placed.isPlaced
   if (!placed.isPlaced) return 'The game needs a wider terminal.'
   return GAME_KEYS_TEXT

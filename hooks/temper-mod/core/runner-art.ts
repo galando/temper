@@ -34,96 +34,77 @@ export type Frame = {
 }
 
 // ---- Ember, the dragon ------------------------------------------------------------------
-// 12 pixels wide and 12 tall (12 columns by 6 rows). It faces right. The tail on the left ends in a
-// small flame.
+// 8 pixels wide and 8 tall (8 columns by 4 rows). It faces right. Two horns, an eye, a tooth, a wing
+// in amber, a tail that ends in a small flame, and two legs.
 
-// The head with two horns, an eye and a tooth; the neck and the belly in yellow; a wing in amber on
-// the back; the tail in a darker orange with a little flame at the end; two sturdy legs.
 const RUN_A: Frame = {
   rows: [
-    '.......w.w..',
-    '......ooooo.',
-    '.v....oeooow',
-    '.vv...oooooo',
-    '.vvv..ooyyy.',
-    '..vvvvooyyy.',
-    '..OvvOooyy..',
-    '...OOooooyy.',
-    'FOOooooyyy..',
-    'yFooooyy....',
-    '...oo..oo...',
-    '..ooo.ooo...',
+    '....w.w.',
+    '...ooooo',
+    'v..oeoow',
+    'vv.ooooo',
+    'OvvoyyyO',
+    'FOOooyy.',
+    'yFoooy..',
+    '..oo.oo.',
   ],
-  hit: { x: 3, y: 2, w: 7, h: 8 },
+  hit: { x: 2, y: 1, w: 5, h: 6 },
 }
 
 // Mid stride: the legs together under the body.
 const RUN_B: Frame = {
   rows: [
-    '.......w.w..',
-    '......ooooo.',
-    '.v....oeooow',
-    '.vv...oooooo',
-    '.vvv..ooyyy.',
-    '..vvvvooyyy.',
-    '..OvvOooyy..',
-    '...OOooooyy.',
-    'FOOooooyyy..',
-    'yFooooyy....',
-    '....oooo....',
-    '....ooo.oo..',
+    '....w.w.',
+    '...ooooo',
+    'v..oeoow',
+    'vv.ooooo',
+    'OvvoyyyO',
+    'FOOooyy.',
+    'yFoooy..',
+    '...ooo..',
   ],
-  hit: { x: 3, y: 2, w: 7, h: 8 },
+  hit: { x: 2, y: 1, w: 5, h: 6 },
 }
 
 // In the air the legs are tucked.
 const JUMP: Frame = {
   rows: [
-    '.......w.w..',
-    '......ooooo.',
-    '.v....oeooow',
-    '.vv...oooooo',
-    '.vvv..ooyyy.',
-    '..vvvvooyyy.',
-    '..OvvOooyy..',
-    '...OOooooyy.',
-    'FOOooooyyy..',
-    'yFooooyy....',
-    '....oooo....',
-    '.....o.o....',
+    '....w.w.',
+    '...ooooo',
+    'v..oeoow',
+    'vv.ooooo',
+    'OvvoyyyO',
+    'FOOooyy.',
+    'yFoooy..',
+    '..o..o..',
   ],
-  hit: { x: 3, y: 2, w: 7, h: 8 },
+  hit: { x: 2, y: 1, w: 5, h: 6 },
 }
 
+// Low and long: 8 pixels wide and 4 tall (2 rows).
 const DUCK: Frame = {
   rows: [
-    '.....wow.ooo.',
-    '..O.ooooooeoo',
-    'FOOOoooooooow',
-    'yFOooooyyyyy.',
-    '..oooooyyoo..',
-    '...o.o...o.o.',
+    '.vv.w.oo',
+    'vvooeooo',
+    'FOooyyoo',
+    'yFo.o.o.',
   ],
-  hit: { x: 3, y: 1, w: 9, h: 4 },
+  hit: { x: 2, y: 1, w: 4, h: 2 },
 }
 
 // Fallen: an X for an eye, and the flame at the tail is only gray ash.
 const DEAD: Frame = {
   rows: [
-    '.......w.w..',
-    '......kokoo.',
-    '.v....okooow',
-    '.vv...kokooo',
-    '.vvv..ooyyy.',
-    '..vvvvooyyy.',
-    '..OvvOooyy..',
-    '...OOooooyy.',
-    'aOOooooyyy..',
-    '.aooooyy....',
-    '...oo..oo...',
-    '..ooo.ooo...',
+    '....w.w.',
+    '...kokoo',
+    'v..okoow',
+    'vv.kokoo',
+    'OvvoyyyO',
+    'aOOooyy.',
+    '.aoooy..',
+    '..oo.oo.',
   ],
-  hit: { x: 3, y: 2, w: 7, h: 8 },
+  hit: { x: 2, y: 1, w: 5, h: 6 },
 }
 
 export const DRAGON = {
@@ -139,37 +120,37 @@ export type Kind = 'anvil_s' | 'anvil_l' | 'bucket' | 'hammer'
 
 // An anvil: a light top face, a narrow waist, a wide base.
 export const ANVIL_S: Frame = {
-  rows: ['.GGGGGG.', 'gggggggg', '..gggg..', '..gggg..', 'gggggggg'],
-  hit: { x: 1, y: 1, w: 6, h: 3 },
+  rows: ['.GGGG.', 'gggggg', '..gg..', 'gggggg'],
+  hit: { x: 1, y: 1, w: 4, h: 2 },
 }
 
 export const ANVIL_L: Frame = {
-  rows: ['GGGGGGGGGG', 'gggggggggg', '.gggggggg.', '...gggg...', '...gggg...', '..gggggg..', 'gggggggggg'],
-  hit: { x: 1, y: 1, w: 8, h: 5 },
+  rows: ['GGGGGGGG', 'gggggggg', '.gggggg.', '..gggg..', '..gggg..', 'gggggggg'],
+  hit: { x: 1, y: 1, w: 6, h: 4 },
 }
 
 // A bucket of cold water with a handle, a few ice crystals on the water.
 export const BUCKET: Frame = {
-  rows: ['..hhhh..', '.h....h.', 'iBiBiBiB', 'bbbbbbbb', '.bbbbbb.', '.bbbbbb.', '..bbbb..'],
-  hit: { x: 1, y: 2, w: 6, h: 4 },
+  rows: ['.hhh.', 'iBiBi', 'bbbbb', '.bbb.', '.bbb.'],
+  hit: { x: 1, y: 1, w: 3, h: 3 },
 }
 
 // The hammer spins as it flies: the head up, then the head to the side.
 export const HAMMER: readonly Frame[] = [
   {
-    rows: ['GGGGGGGG', 'gggggggg', '...hh...', '...hh...', '...hh...', '...hh...'],
-    hit: { x: 1, y: 1, w: 6, h: 2 },
+    rows: ['GGGGGG', 'gggggg', '..hh..', '..hh..'],
+    hit: { x: 1, y: 1, w: 4, h: 2 },
   },
   {
-    rows: ['GGg.....', 'GGgh....', 'GGghhhhh', 'GGghhhhh', 'GGgh....', 'GGg.....'],
-    hit: { x: 1, y: 1, w: 6, h: 2 },
+    rows: ['GG....', 'GGhhhh', 'GGhhhh', 'GG....'],
+    hit: { x: 1, y: 1, w: 4, h: 2 },
   },
 ]
 
 // A hammer flies low (the dragon ducks) or high (it flies over the dragon). The number is how many
 // pixels above the floor the bottom of the picture is.
-export const HAMMER_LOW = 5
-export const HAMMER_HIGH = 15
+export const HAMMER_LOW = 4
+export const HAMMER_HIGH = 7
 
 export const OBSTACLES = {
   anvil_s: [ANVIL_S] as readonly Frame[],

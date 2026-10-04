@@ -212,7 +212,8 @@ It is made to be fair and easy to play:
 - The game shows a banner when a phase is ready or changes, so you do not miss an approval.
 - It keeps your best score in the plugin store (written once for each game over). The score does not
   change any gate. A press of a Button is one counter in the plugin state; the clock writes nothing.
-- The picture is 14 rows of coloured half blocks, as wide as the pane allows (36 to 72 columns).
+- The picture is 9 rows of coloured half blocks, as wide as the pane allows (36 to 72 columns). It
+  fits an inline pane at 80 columns. Ember is 8 pixels (4 rows) tall.
 - It exists on the terminal and the desktop app only. On the VS Code extension and on mobile the
   command prints a short text and nothing else happens.
 - Refusals still apply while the game is open.

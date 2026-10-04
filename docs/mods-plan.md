@@ -492,16 +492,18 @@ adds no engine call. Two earlier versions (a flame runner, then a merge puzzle) 
 trial: the first was not clear and not fun, the second was not what was wanted.
 
 - `core/runner-art.ts` is data: the palette and every picture as a table of rows of palette letters
-  (a letter is one pixel, a dot is none). Ember, the dragon, is 12 pixels wide and 12 tall (12
-  columns by 6 rows) in five frames (run A and B, jump, duck 6 tall, dead). The obstacles are two
-  iron anvils, a bucket of cold water and a hammer with two spin frames. Each picture has a hit box
+  (a letter is one pixel, a dot is none). Ember, the dragon, is 8 pixels wide and 8 tall (8
+  columns by 4 rows) in five frames (run A and B, jump, duck 4 tall, dead). The obstacles are two
+  iron anvils (6 by 4 and 8 by 6), a bucket of cold water (5 by 5) and a hammer (6 by 4) with two
+  spin frames. The picture is 9 rows (8 of air and 1 of floor), 18 pixels tall. An earlier size, 12
+  by 12, was too big. Each picture has a hit box
   one pixel in from the drawn pixels. Tests check equal row widths, defined letters, hit boxes inside
   the pictures, and the colours (3 to 1 or more against the wall, the glow and the floor, also after
   a change to 256 colours; two bright fills cannot reach 3 to 1, so the dragon and the obstacles
   differ in hue instead).
-- `core/runner.ts` is pure and seeded: the jump arc (11 ticks of 80 ms in the air, 12 pixels high),
+- `core/runner.ts` is pure and seeded: the jump arc (11 ticks of 80 ms in the air, 8 pixels high; speeds 1.2 to 1.9 pixels a tick),
   the input buffer (a jump pressed up to 3 ticks, 240 ms, before the landing fires on the landing),
-  the duck (10 ticks, 0.8 s, cancelled by a jump), the boxes, the score (1 point for 2 pixels) and
+  the duck (10 ticks, 0.8 s, cancelled by a jump), the boxes, the score (3 points for 4 pixels) and
   the best score, heat 1 to 5 (every 400 points), the milestone at every 100 points (a yellow flash
   of 6 ticks and a banner), and the picture as pixels and then as half block cells.
 - Fairness is code and tests, not a feeling. The generator picks only an obstacle that can be
@@ -523,9 +525,10 @@ trial: the first was not clear and not fun, the second was not what was wanted.
   send and the screen capture, so the delay of the Button route is under half a tick of 80 ms. A bot
   played from the screen through the Buttons (jump and duck from what it saw) for 170 seconds, to
   heat 5, with no game over.
-- In a narrow terminal the pane sits inline and shows about 14 lines. Then the Client leaves out the
-  top 3 rows of sky and the Temper line, so the floor, the help line and the Buttons show; the top of
-  a jump is a little cut off.
+- In a narrow terminal the pane sits inline and shows about 14 lines. The whole picture (9 rows), the
+  heads up line, the help line and the Buttons are 13 lines, so everything fits; the Client leaves
+  out only the Temper line there. The big anvil needs a window of 3 ticks, so it appears only from
+  about heat 3 (at the start speed its window is 1 tick).
 - A test hook: the plugin option `gameSeed` (a number) fixes the seed, so a test knows the run. It is
   not in `plugin.json` and has no effect unless it is set.
 - The pane asks for the keyboard with `focus` and for Esc to close it with `closeOnEscape`. The

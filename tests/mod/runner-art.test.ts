@@ -52,13 +52,13 @@ describe('the pictures are tables', () => {
     for (const c of Object.values(PALETTE)) expect(/^#[0-9a-f]{6}$/i.test(c)).toBe(true)
   })
 
-  test('the dragon is 12 pixels wide and 12 tall (12 columns by 6 rows); the duck is 6 tall', () => {
+  test('the dragon is 8 pixels wide and 8 tall (8 columns by 4 rows); the duck is 8 by 4 (2 rows)', () => {
     for (const f of [DRAGON.run[0], DRAGON.run[1], DRAGON.jump, DRAGON.dead]) {
-      expect(widthOf(f)).toBe(12)
-      expect(heightOf(f)).toBe(12)
+      expect(widthOf(f)).toBe(8)
+      expect(heightOf(f)).toBe(8)
     }
-    expect(heightOf(DRAGON.duck)).toBe(6)
-    expect(widthOf(DRAGON.duck)).toBeGreaterThanOrEqual(12)
+    expect(heightOf(DRAGON.duck)).toBe(4)
+    expect(widthOf(DRAGON.duck)).toBe(8)
     // A cell holds two pixels, so every height is even.
     for (const [name, f] of dragonFrames) expect(heightOf(f) % 2, name).toBe(0)
   })
@@ -82,7 +82,14 @@ describe('the pictures are tables', () => {
     expect(heightOf(OBSTACLES.anvil_l[0] as Frame)).toBeGreaterThan(heightOf(OBSTACLES.anvil_s[0] as Frame))
     expect(widthOf(OBSTACLES.anvil_l[0] as Frame)).toBeGreaterThan(widthOf(OBSTACLES.anvil_s[0] as Frame))
     // The big anvil is well under the height of a jump.
-    expect(heightOf(OBSTACLES.anvil_l[0] as Frame)).toBeLessThanOrEqual(8)
+    expect(heightOf(OBSTACLES.anvil_l[0] as Frame)).toBe(6)
+    expect(widthOf(OBSTACLES.anvil_l[0] as Frame)).toBe(8)
+    expect(widthOf(OBSTACLES.anvil_s[0] as Frame)).toBe(6)
+    expect(heightOf(OBSTACLES.anvil_s[0] as Frame)).toBe(4)
+    expect(widthOf(OBSTACLES.bucket[0] as Frame)).toBe(5)
+    expect(heightOf(OBSTACLES.bucket[0] as Frame)).toBe(5)
+    expect(widthOf(OBSTACLES.hammer[0] as Frame)).toBe(6)
+    expect(heightOf(OBSTACLES.hammer[0] as Frame)).toBe(4)
   })
 })
 

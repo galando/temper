@@ -22,8 +22,9 @@ export type GameProps = {
   best: number
   // A short line from Temper for the top of the game area, or null.
   banner: string | null
-  // The pane sits inline above the prompt (a narrow terminal) and shows about 14 lines. Then the top
-  // rows of sky are left out and the Temper line is not drawn, so the floor and the help line show.
+  // The pane sits inline above the prompt (a narrow terminal) and shows about 14 lines. The whole
+  // picture (9 rows), the heads up line, the help line and the Buttons fit in 13, so only the Temper
+  // line is left out there.
   compact: boolean
 }
 
@@ -40,9 +41,6 @@ type State = {
   age: number
   touched: boolean
 }
-
-// Rows of sky left out when the pane is inline: the top of a jump is then a little cut off.
-export const COMPACT_CUT = 3
 
 // 3 seconds.
 const NO_KEYS_TICKS = Math.ceil(3000 / TICK_MS)
@@ -148,7 +146,7 @@ const GameClient: ClientModule<GameProps, State> = (props, surface) => {
         {g.banner ? <Text color={YELLOW} bold>{g.banner}</Text> : null}
         <Text color={FG} bold>{`HI ${pad5(hi)}  ${pad5(g.score)}`}</Text>
       </Box>
-      {drawScene(g).slice(props.compact ? COMPACT_CUT : 0).map((row, i) => (
+      {drawScene(g).map((row, i) => (
         <Box key={`scene-${i}`} flexDirection="row" width={g.width}>
           {runs(row).map((run, j) => (
             <Text key={`px-${j}`} color={run.fg} backgroundColor={run.bg}>

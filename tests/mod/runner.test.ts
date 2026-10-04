@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
+import { ANVIL_L } from '../../hooks/temper-mod/core/runner-art'
 import { DRAGON, HAMMER_HIGH, HAMMER_LOW, OBSTACLES, PALETTE, WALL, heightOf, widthOf } from '../../hooks/temper-mod/core/runner-art'
 import type { Frame, Kind } from '../../hooks/temper-mod/core/runner-art'
 import {
@@ -80,10 +81,12 @@ describe('speed, score and heat', () => {
     expect(heatBars(5)).toBe('▮▮▮▮▮')
   })
 
-  test('one point for every 2 pixels run, and the score prints with 5 digits', () => {
+  test('three points for every 4 pixels run, and the score prints with 5 digits', () => {
     let g = running()
     g = ghost(g, 40)
-    expect(g.score).toBe(Math.floor(g.dist / 2))
+    expect(g.score).toBe(Math.floor(g.dist * 0.75 + 1e-9))
+    // About 11 points a second at the start.
+    expect((g.score / (40 * TICK_MS)) * 1000).toBeGreaterThan(9)
     expect(pad5(32)).toBe('00032')
     expect(pad5(155)).toBe('00155')
     expect(pad5(123456)).toBe('123456')
@@ -99,7 +102,7 @@ describe('speed, score and heat', () => {
 })
 
 describe('the jump', () => {
-  test('the arc rises to 12 pixels, falls back, and the air time is about 0.88 seconds', () => {
+  test('the arc rises to 8 pixels, falls back, and the air time is about 0.88 seconds', () => {
     const heights = Array.from({ length: JUMP_TICKS + 1 }, (_, t) => jumpHeight(t))
     expect(Math.max(...heights)).toBe(PEAK)
     expect(heights[0]).toBe(0)
@@ -587,8 +590,12 @@ describe('a run is deterministic and starts again', () => {
 })
 
 describe('the picture', () => {
-  test('the scene is 14 rows of the field width, each cell holds two pixels, and every colour is #rrggbb', () => {
-    expect(ROWS).toBe(14)
+  test('the scene is 9 rows of the field width (8 of air, 1 of floor), each cell holds two pixels, and every colour is #rrggbb', () => {
+    expect(ROWS).toBe(9)
+    expect(PIXEL_ROWS).toBe(18)
+    // The dragon is under a third of the picture and a jump fits in the air.
+    expect(heightOf(DRAGON.run[0])).toBeLessThanOrEqual(PIXEL_ROWS / 3 + 2)
+    expect(PEAK + heightOf(DRAGON.run[0])).toBeLessThanOrEqual(AIR_ROWS * 2)
     expect(AIR_ROWS * 2).toBe(GROUND_Y)
     for (const width of [MIN_WIDTH, 45, MAX_WIDTH]) {
       const g = running(2, 0, width)
@@ -619,7 +626,7 @@ describe('the picture', () => {
   test('an anvil is drawn on the floor and a hammer in the air', () => {
     const anvil = pixels(withObstacle(running(), { kind: 'anvil_s', x: 30 }))
     expect(anvil[GROUND_Y - 1]?.[34]).toBe(PALETTE.g)
-    expect(anvil[GROUND_Y - 5]?.[34]).toBe(PALETTE.G)
+    expect(anvil[GROUND_Y - 4]?.[33]).toBe(PALETTE.G)
     const hammer = pixels(withObstacle(running(), { kind: 'hammer', x: 30, lift: HAMMER_LOW }))
     expect(hammer[GROUND_Y - 1]?.[34]).not.toBe(PALETTE.G)
     expect(hammer.some((row, y) => y < GROUND_Y - HAMMER_LOW && row.slice(30, 38).some(c => c === PALETTE.h))).toBe(true)
@@ -634,7 +641,7 @@ describe('the picture', () => {
   test('the floor scrolls with the run, and the far wall scrolls slower', () => {
     const a = pixels({ ...running(), obstacles: [], dist: 100 })
     const b = pixels({ ...running(), obstacles: [], dist: 103 })
-    expect(a[GROUND_Y + 2]?.join('')).not.toEqual(b[GROUND_Y + 2]?.join(''))
+    expect(a[GROUND_Y]?.join('')).not.toEqual(b[GROUND_Y]?.join(''))
   })
 
   test('runs join cells of one look into one piece', () => {
@@ -665,5 +672,28 @@ describe('a kind has a hit box for every frame', () => {
       expect(b.h).toBeGreaterThan(0)
       expect(b.bottom).toBeGreaterThanOrEqual(lift)
     }
+  })
+})
+
+describe('the small sizes', () => {
+  test('a jump clears the big anvil with at least 3 pixels to spare at the top of the arc', () => {
+    const anvilTop = 1 + (ANVIL_L.hit.h as number)
+    const dragonBottom = dragonBox({ ...running(), jt: JUMP_TICKS / 2 }).bottom
+    expect(dragonBottom - anvilTop).toBeGreaterThanOrEqual(3)
+  })
+
+  test('a standing dragon is about a third of the picture or less, and a duck is half of that', () => {
+    expect(heightOf(DRAGON.run[0]) / PIXEL_ROWS).toBeLessThanOrEqual(0.45)
+    expect(heightOf(DRAGON.duck)).toBe(heightOf(DRAGON.run[0]) / 2)
+  })
+
+  test('the low hammer is hit by a standing dragon and passes over a ducking one by 2 pixels or more', () => {
+    const lowBottom = obstacleBox({ id: 0, kind: 'hammer', x: 0, lift: HAMMER_LOW }, 0).bottom
+    const duckTop = dragonBox({ ...running(), duck: DUCK_TICKS }).bottom + DRAGON.duck.hit.h
+    expect(lowBottom - duckTop).toBeGreaterThanOrEqual(2)
+    const standingTop = dragonBox(running()).bottom + DRAGON.run[0].hit.h
+    expect(lowBottom).toBeLessThan(standingTop)
+    // The high hammer flies over a standing dragon.
+    expect(obstacleBox({ id: 0, kind: 'hammer', x: 0, lift: HAMMER_HIGH }, 0).bottom).toBeGreaterThanOrEqual(standingTop)
   })
 })

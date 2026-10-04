@@ -11,9 +11,9 @@ import type { Frame, Kind } from './runner-art'
 
 export const TICK_MS = 80
 // Jump: the arc has 12 steps, and the dragon is in the air for 11 ticks (0.88 s) after the press. It
-// rises 12 pixels at the top of the arc.
+// rises 8 pixels at the top of the arc (the big anvil is 6 tall).
 export const JUMP_TICKS = 12
-export const PEAK = 12
+export const PEAK = 8
 // A jump pressed up to 3 ticks (240 ms) before the landing is kept and fires on the landing.
 export const BUFFER_TICKS = 3
 // Duck: 10 ticks (0.8 s) for each press. A jump cancels it.
@@ -26,13 +26,13 @@ export const TUTORIAL_TICKS = 50
 export const FLASH_TICKS = 6
 export const BANNER_TICKS = 16
 
-// The picture: 12 rows of air and 2 rows of floor, 14 rows, 28 pixels tall.
-export const AIR_ROWS = 12
-export const FLOOR_ROWS = 2
+// The picture: 8 rows of air and 1 row of floor, 9 rows, 18 pixels tall.
+export const AIR_ROWS = 8
+export const FLOOR_ROWS = 1
 export const ROWS = AIR_ROWS + FLOOR_ROWS
 export const GROUND_Y = AIR_ROWS * 2
 export const PIXEL_ROWS = ROWS * 2
-export const DRAGON_X = 4
+export const DRAGON_X = 3
 export const MIN_WIDTH = 36
 export const MAX_WIDTH = 72
 export const DEFAULT_WIDTH = 56
@@ -41,9 +41,11 @@ export const widthFor = (columns: number): number => (columns > 0 ? Math.min(MAX
 
 // ---- Speed, score and heat ---------------------------------------------------------------
 
-// One point for every 2 pixels. The speed starts slow and grows gently up to heat 5 (1600 points).
-export const START_SPEED = 1.8
-export const TOP_SPEED = 2.8
+// Three points for every 4 pixels run (so a run of 1.2 pixels a tick scores about 11 points a second).
+// The speed starts slow and grows gently up to heat 5 (1600 points).
+export const POINTS_PER_PIXEL = 0.75
+export const START_SPEED = 1.2
+export const TOP_SPEED = 1.9
 export const HEAT_POINTS = 400
 export const speedAt = (score: number): number => START_SPEED + ((TOP_SPEED - START_SPEED) * Math.min(Math.max(score, 0), 4 * HEAT_POINTS)) / (4 * HEAT_POINTS)
 export const heatAt = (score: number): number => Math.min(5, 1 + Math.floor(Math.max(score, 0) / HEAT_POINTS))
@@ -214,15 +216,19 @@ export function pickNext(score: number, speed: number, rngState: number): Pick {
     { kind: 'anvil_s', lift: 0, weight: 30 },
     { kind: 'bucket', lift: 0, weight: 26 },
   ]
-  if (clearStarts('anvil_l', 0, speed).length >= 3) options.push({ kind: 'anvil_l', lift: 0, weight: 16 })
+  options.push({ kind: 'anvil_l', lift: 0, weight: 16 })
   if (score >= 100) {
     options.push({ kind: 'hammer', lift: HAMMER_LOW, weight: 18 })
     options.push({ kind: 'hammer', lift: HAMMER_HIGH, weight: 10 })
   }
-  const total = options.reduce((n, o) => n + o.weight, 0)
+  // Only an obstacle with a window of 3 ticks or more at this speed. The big anvil needs the speed
+  // of a later heat level, so it waits for it.
+  const fair = options.filter(o => clearStarts(o.kind, o.lift, speed).length >= 3)
+  const pool = fair.length > 0 ? fair : options.slice(0, 1)
+  const total = pool.reduce((n, o) => n + o.weight, 0)
   let roll = a.value * total
-  let chosen = options[0] as (typeof options)[number]
-  for (const o of options) {
+  let chosen = pool[0] as (typeof pool)[number]
+  for (const o of pool) {
     if (roll < o.weight) {
       chosen = o
       break
@@ -239,7 +245,7 @@ export function newGame(seed: number, hi = 0, width = DEFAULT_WIDTH, startScore 
   return {
     status: 'ready',
     tick: 0,
-    dist: startScore * 2,
+    dist: startScore / POINTS_PER_PIXEL,
     score: startScore,
     hi,
     hiStart: hi,
@@ -293,7 +299,7 @@ export function step(state: RunState, opts: { ghost?: boolean } = {}): RunState 
   const tick = state.tick + 1
   const speed = speedAt(state.score)
   const dist = state.dist + speed
-  const score = Math.floor(dist / 2)
+  const score = Math.floor(dist * POINTS_PER_PIXEL + 1e-9)
 
   let jt = state.jt
   let buf = state.buf
@@ -396,30 +402,29 @@ export function pixels(s: RunState): string[][] {
   }
   // The far wall: furnace windows that glow, moving slowly (a fifth of the speed).
   const slow = Math.floor(s.dist * 0.2)
-  for (let i = -1; i <= Math.ceil(W / 26) + 1; i++) {
-    const x0 = i * 26 - (slow % 26) + 3
-    for (let dx = 0; dx < 10; dx++) for (let dy = 0; dy < 9; dy++) {
+  for (let i = -1; i <= Math.ceil(W / 18) + 1; i++) {
+    const x0 = i * 18 - (slow % 18) + 2
+    for (let dx = 0; dx < 6; dx++) for (let dy = 0; dy < 6; dy++) {
       // An arched window: the top corners are cut.
-      if (dy === 0 && (dx < 2 || dx > 7)) continue
-      set(x0 + dx, 5 + dy, dy < 2 ? mix(glow, wall, 0.35) : glow)
+      if (dy === 0 && (dx < 1 || dx > 4)) continue
+      set(x0 + dx, 3 + dy, dy < 2 ? mix(glow, wall, 0.35) : glow)
     }
-    // The glow shows in the bars of the window.
-    for (let dy = 1; dy < 9; dy++) set(x0 + 4, 5 + dy, wall)
+    // The glow shows in the bar of the window.
+    for (let dy = 1; dy < 6; dy++) set(x0 + 2, 3 + dy, wall)
   }
   // Sparks drift up and to the left, a little faster than the far wall.
-  for (let i = 0; i < 6; i++) {
-    const x = (((i * 23 + 11) - Math.floor(s.tick * 0.9 + i * 5)) % (W + 8) + (W + 8)) % (W + 8) - 4
-    const y = GROUND_Y - 4 - ((i * 7 + Math.floor(s.tick * 0.3)) % 14)
+  for (let i = 0; i < 5; i++) {
+    const x = (((i * 17 + 9) - Math.floor(s.tick * 0.7 + i * 4)) % (W + 6) + (W + 6)) % (W + 6) - 3
+    const y = GROUND_Y - 3 - ((i * 5 + Math.floor(s.tick * 0.25)) % 10)
     set(x, y, SPARK)
   }
-  // The floor: an edge, glowing embers, and two rows of bricks. It moves at the speed of the run.
+  // The floor, 2 pixels thick (one row of cells): glowing embers on top, and a row of bricks below.
+  // It moves at the speed of the run.
   const off = Math.floor(s.dist)
   for (let x = 0; x < W; x++) {
-    set(x, GROUND_Y, FLOOR.edge)
-    const e = (x + off) % 9
-    set(x, GROUND_Y + 1, e < 2 ? FLOOR.emberHot : e < 5 ? FLOOR.ember : FLOOR.brick)
-    set(x, GROUND_Y + 2, (x + off) % 12 === 0 ? FLOOR.mortar : FLOOR.brick)
-    set(x, GROUND_Y + 3, (x + off + 6) % 12 === 0 ? FLOOR.mortar : FLOOR.brick)
+    const e = (x + off) % 7
+    set(x, GROUND_Y, e < 2 ? FLOOR.emberHot : e < 4 ? FLOOR.ember : FLOOR.edge)
+    set(x, GROUND_Y + 1, (x + off) % 8 === 0 ? FLOOR.mortar : FLOOR.brick)
   }
   const blit = (f: Frame, x: number, lift: number, recolor?: Readonly<Record<string, string>>) => {
     const top = GROUND_Y - lift - heightOf(f)
