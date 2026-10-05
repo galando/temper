@@ -3,6 +3,14 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.6.3: the game's Client is called with its path as fixed text
+
+The directory still read "Mod loads a file whose path the directory couldn't read" on 9.6.2, at the
+line where `Client` is taken from `$.ui.resolve(e)`. The game pane wrote `<Client module="..." />`
+as JSX, which compiles to a call of `h` that is handed `Client`. It is now a direct call,
+`Client({ key: 'game', module: './ui/game-client.tsx', props })`, the form the mods guide uses,
+so the fixed path stands in the call itself. Nothing else changes.
+
 ## v9.6.2: the mod writes no file, runs only fixed commands, and loads its game by a fixed path
 
 The directory held 9.6.1 by policy. This release removes the causes it can point at in the mod's own
