@@ -17,6 +17,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # The reviewed list: one `noun.method` per line, with why the mod needs it.
 ALLOWED='
 agent.list       the reviewerModel option: tells whether a subagent step belongs to the Temper review agent (read only; the spawn is never changed)
+clock.sleep      waits 60 ms before build-state.json is read again while the CLI rewrites it (no global timer)
 command.run      a pressed Button ends with /temper:temper (the orchestrator Resume) after its decision is recorded; prompt.submit refuses a slash text
 config.list      /temper mode and enforcement read the row to see whether an administrator locked it
 config.set       the same commands change the row the way /config does (key temper.uiMode, temper.enforcement)

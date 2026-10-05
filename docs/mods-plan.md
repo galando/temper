@@ -232,9 +232,9 @@ treat the docs as the current behavior for the README.
 There is no manifest permission list. The engine scans the module and records what it
 calls; `claude plugin validate` prints it and admins can refuse a mod by it
 (`plugin.register` `uses`). The `calls:` line the validator prints for the built mod,
-nothing else (23 calls in 9.6.2; the list is enforced by `scripts/check-mod-calls.sh`):
+nothing else (24 calls in 9.6.2; the list is enforced by `scripts/check-mod-calls.sh`):
 
-`agent.list, command.run, config.list, config.set, fs.list, fs.read, fs.stat, prompt.fill,
+`agent.list, clock.sleep, command.run, config.list, config.set, fs.list, fs.read, fs.stat, prompt.fill,
 prompt.submit, prompt.suggest, session.version, state.get, state.set, store.delete, store.get,
 store.set, ui.ask, ui.close, ui.focus, ui.invalidate, ui.open, ui.resolve, ui.toast`
 
@@ -243,6 +243,7 @@ Why each call is there:
 | Call | Reason |
 |---|---|
 | `agent.list` | the optional `reviewerModel`: whether a subagent's step belongs to the Temper review agent. Read only; the spawn is passed on unchanged |
+| `clock.sleep` | (9.6.2) waits 60 ms before `build-state.json` is read again while the CLI rewrites it; replaces a `setTimeout` taken from `globalThis` |
 | `config.list`, `config.set` | `/temper mode` and `/temper enforcement` read the row (locked by an administrator or not) and change it the way `/config` does |
 | `fs.list`, `fs.read` | rebuild the run from `.temper/` files and the spec's events |
 | `fs.stat` | resolve `.` to the project root so absolute tool paths can be made relative |

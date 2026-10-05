@@ -231,7 +231,7 @@ Mods are not sandboxed, so this is the full list. No network, process, agent or 
   `/temper:temper` and passes every other command on unchanged. `session.start` and
   `classic.SessionStart` find the project root. `turn.step` applies `phaseModels`, and
   `reviewerModel` to the steps of the Temper review agent (found with `$.agent.list()`).
-- **Other:** `adapter.ts` takes `setTimeout` from `globalThis` for a 60 ms retry of a state read.
+- **Other:** it waits 60 ms with `$.clock.sleep` before it reads a state file again; it reads no global.
   `tests/mod/` (its fake engine is `world.ts`) is the test suite and is never loaded. The mod **asks**
   you for a mode, a drift choice or a reason, and **draws** the bar, the pane and the game.
 - **Tests, lint, git and `scripts/temper`** run as prompts to Claude with its normal permissions. Auto

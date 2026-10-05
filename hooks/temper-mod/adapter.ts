@@ -44,6 +44,8 @@ export type Io = {
   setRun: (run: TemperRun) => Promise<void>
   // The live mode, mirrored so a redraw sees a change at once.
   setMode: (mode: UiMode) => Promise<void>
+  // Waits ms milliseconds (the engine's clock: the mod reads no global timer).
+  pause: (ms: number) => Promise<void>
 }
 
 // A choice of the person (a move) that no mirror call has recorded in the CLI yet.
@@ -207,7 +209,7 @@ async function isOwn(io: Io, id: string, text: string): Promise<boolean> {
 
 // Event names are `{ts}-{session}-{seq}.json`. This module has no session id call, so a
 // random token per load stands in: two loads never share a name.
-const SESSION = (globalThis.crypto?.randomUUID?.() ?? Math.random().toString(16).slice(2) + '00000000').replace(/-/g, '').slice(0, 8)
+const SESSION = (Math.random().toString(16).slice(2) + '00000000').slice(0, 8)
 // The phase an event decided, so a CLI call is matched only to a decision made for it.
 function decisionOf(ev: TemperEvent, kind: DecisionKind): HumanDecision {
   // The CLI names Fix by its Check stage, as the follow up command does.
@@ -284,9 +286,8 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   // The CLI rewrites build-state.json in place, so a read in that instant sees an empty or cut file (found live: the
   // bar said "No Temper run is active" at Done). A file that exists but does not read as a run is read again
   // before the mod decides there is no run. A file that is missing is a run that ended.
-  const timer = (globalThis as { setTimeout?: (fn: () => void, ms: number) => unknown }).setTimeout
-  for (let i = 0; i < 4 && bs === null && raw !== null && typeof timer === 'function'; i++) {
-    await new Promise<void>(resolve => timer(resolve, 60))
+  for (let i = 0; i < 4 && bs === null && raw !== null; i++) {
+    await io.pause(60).catch(() => undefined)
     raw = await readText(io, statePath)
     bs = parseBuildState(raw ?? '')
   }

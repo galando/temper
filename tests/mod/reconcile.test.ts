@@ -49,6 +49,7 @@ describe('build-state.json read while the CLI rewrites it (found live: the bar s
     version: async () => '2.1.300',
     setRun: async () => undefined,
     setMode: async () => undefined,
+    pause: async () => undefined,
   })
 
   test('an empty file is read again, and the run is found', async () => {

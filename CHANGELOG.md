@@ -13,7 +13,7 @@ code. Gates, commands and agents do not change.
   now kept in the mod's own plugin store (`$.store`, keys `vf:<path>`), and the mod reads them back
   as if they were files. Event files that a 9.6.0 or 9.6.1 run wrote are still read, so a run in
   progress keeps its history. The store keeps the 40 most recent folders and drops older ones
-  (`$.store.delete`, a new reviewed call; `fs.write` is gone, so the list stays at 23 calls).
+  (`$.store.delete`, a new reviewed call; `fs.write` is gone).
 - **`/temper:temper report` shows the report** instead of writing `.temper/report.md`. The pull
   request line now says "/temper:temper report shows the report."
 - **Every command the mod runs is fixed text.** `/temper:temper continue <stage>` is written out once
@@ -24,6 +24,10 @@ code. Gates, commands and agents do not change.
 - **README.** The version badge shows the version from `plugin.json` (it showed the latest GitHub
   release); `scripts/version-bump.sh` updates it and the GitHub page's version. "What the mod reads
   and writes" says the mod writes no file.
+- **No global is read.** The 60 ms wait before `build-state.json` is read again uses `$.clock.sleep`
+  (a new reviewed call) instead of `setTimeout` taken from `globalThis`, and the session id no longer
+  reads `globalThis.crypto` (the finding "a form that can hide what its code does", `adapter.ts`
+  line 287). The reviewed list is 24 calls.
 - **`scripts/check-mod-calls.sh` fails on a cut `calls:` line.** Claude Code shortens a note over
   1000 characters, which could hide a call. All toasts now go through one helper, so the line is
   short again.

@@ -137,6 +137,7 @@ function makeIo($: Api): Io {
       return [...onDisk, ...kept.filter(n => !seen.has(n)).map(n => ({ name: n, kind: 'file' }))]
     },
     write: (path, text) => keepText($, abs(path), text),
+    pause: ms => $.clock.sleep(ms),
     storeGet: key => $.store.get(key),
     storeSet: (key, value) => $.store.set(key, value),
     version: () => $.session.version().then(v => v.version),
