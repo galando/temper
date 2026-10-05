@@ -45,12 +45,13 @@ Long description:
 > Temper adds an approval gate to AI coding. You approve the intent, then the plan. Build starts
 > with a failing test. Review and Check follow. A small CLI computes every gate verdict from an
 > evidence ledger, and a red gate blocks git commit. On Claude Code 2.1.287 or later a mod refuses
-> writes that do not belong to the current phase, draws a phase bar, and writes a report.
+> writes that do not belong to the current phase, draws a phase bar, and keeps a report of the run.
 
 Data and permissions, in plain words:
 
 - No network calls and no telemetry.
-- The mod reads and writes files under `.temper/` in your project. It never edits your code.
+- The mod reads files under `.temper/` in your project and writes no file. It keeps its records in
+  its own plugin store.
 - Tests, lint and git run through Claude's own tools and permissions.
 - The optional game keeps one number, the best score, in the plugin store.
 

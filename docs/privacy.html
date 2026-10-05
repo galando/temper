@@ -65,7 +65,7 @@
 
     <h2>Where your data lives</h2>
     <p>Everything Temper produces — plans, scenarios, review reports, metrics, learning state — is written to files inside your own project directory (<code>.temper/</code>, <code>.claude/</code>). These files stay on your machine and under your version control. Deleting them removes all Temper state.</p>
-    <p>The optional mod (Claude Code 2.1.287 or later) reads and writes only these same project files. It makes no network calls and sends no telemetry. In the plugin store on your machine it keeps a few small values: a hash of each decision it recorded, your first-run choice, and the best score of the optional game.</p>
+    <p>The optional mod (Claude Code 2.1.287 or later) reads only these same project files and writes no file. It makes no network calls and sends no telemetry. In the plugin store on your machine it keeps the decisions it recorded (with a hash of each), the run report, your first-run choice, and the best score of the optional game.</p>
 
     <h2>Claude Code</h2>
     <p>Temper runs as instructions executed by Claude Code. Your interactions with Claude Code itself are governed by <a href="https://www.anthropic.com/legal/privacy">Anthropic's Privacy Policy</a>, which is independent of Temper.</p>

@@ -6,7 +6,7 @@ import { findingActions } from './core/actions'
 import type { Action } from './core/actions'
 import { classifyBash } from './core/bash'
 import { pluginCliFrom, stageOf } from './core/cli'
-import { HELP, RESUME, followUp, parseArgs, planCommand } from './core/commands'
+import { HELP, followUp, parseArgs, planCommand } from './core/commands'
 import type { Bare, Parsed } from './core/commands'
 import { parseGameMode, parseOnOff, parsePhaseModel, parsePhaseModels, parseUiMode, versionAtLeast } from './core/config'
 import type { GameMode, UiMode } from './core/config'
@@ -66,6 +66,48 @@ const MODE_LABELS: Array<[UiMode, string]> = [
   ['off', 'Off: show nothing'],
 ]
 
+// One toast. Every toast of the mod goes through here.
+function showToast($: Api, text: string): void {
+  $.ui.toast(text)
+}
+
+// The mod writes no file. What it records (the decision events and the report) is kept in the plugin
+// store, under the full path it stands for: `vf:<path>` holds the text, `vfdir:<folder>` the names in
+// a folder. Reads and lists see a kept text as a file, and still read real files (event files a run
+// wrote before 9.6.2), so the adapter and the core work on paths as before.
+const VF = 'vf:'
+const VF_DIR = 'vfdir:'
+// The folders with kept texts, oldest first. Past VF_MAX_DIRS the oldest folder is dropped from the store,
+// so the store (4 MiB for every project on the machine) never fills up. A run keeps its events in one folder.
+const VF_DIRS = 'vfdirs'
+const VF_MAX_DIRS = 40
+
+function splitPath(full: string): [string, string] {
+  const cut = full.lastIndexOf('/')
+  return cut < 0 ? ['', full] : [full.slice(0, cut), full.slice(cut + 1)]
+}
+
+async function keptNames($: Api, dir: string): Promise<string[]> {
+  const names = await $.store.get(VF_DIR + dir)
+  return Array.isArray(names) ? names.filter((n): n is string => typeof n === 'string') : []
+}
+
+async function keepText($: Api, full: string, text: string): Promise<void> {
+  const [dir, name] = splitPath(full)
+  await $.store.set(VF + full, text)
+  const names = await keptNames($, dir)
+  if (!names.includes(name)) await $.store.set(VF_DIR + dir, [...names, name])
+  const raw = await $.store.get(VF_DIRS)
+  const dirs = (Array.isArray(raw) ? raw.filter((d): d is string => typeof d === 'string') : []).filter(d => d !== dir)
+  dirs.push(dir)
+  while (dirs.length > VF_MAX_DIRS) {
+    const old = dirs.shift() as string
+    for (const n of await keptNames($, old)) await $.store.delete(VF + old + '/' + n)
+    await $.store.delete(VF_DIR + old)
+  }
+  await $.store.set(VF_DIRS, dirs)
+}
+
 // `$` is spelled only in this file, as `$.noun.method(...)` at each call site, so the
 // adapter and the pure core stay free of it.
 function makeIo($: Api): Io {
@@ -73,9 +115,29 @@ function makeIo($: Api): Io {
   // call: without this the files of the run are not found and the band goes away.
   const abs = (path: string): string => (root && !path.startsWith('/') ? `${root.replace(/\/$/, '')}/${path}` : path)
   return {
-    read: path => $.fs.read(abs(path)).then(t => (typeof t === 'string' ? t : null)),
-    list: path => $.fs.list(abs(path)),
-    write: (path, text) => $.fs.write(abs(path), text),
+    read: async path => {
+      const full = abs(path)
+      const kept = await $.store.get(VF + full)
+      if (typeof kept === 'string') return kept
+      return $.fs.read(full).then(t => (typeof t === 'string' ? t : null))
+    },
+    list: async path => {
+      const full = abs(path).replace(/\/$/, '')
+      const kept = await keptNames($, full)
+      let onDisk: Array<{ name: string; kind: string }>
+      try {
+        onDisk = await $.fs.list(full)
+      } catch (err) {
+        if (kept.length === 0) throw err
+        onDisk = []
+      }
+      // A listing that is not a list is passed on as it came, so a broken load fails open as before.
+      if (!Array.isArray(onDisk)) return onDisk
+      const seen = new Set(onDisk.map(entry => entry.name))
+      return [...onDisk, ...kept.filter(n => !seen.has(n)).map(n => ({ name: n, kind: 'file' }))]
+    },
+    write: (path, text) => keepText($, abs(path), text),
+    pause: ms => $.clock.sleep(ms),
     storeGet: key => $.store.get(key),
     storeSet: (key, value) => $.store.set(key, value),
     version: () => $.session.version().then(v => v.version),
@@ -197,7 +259,7 @@ function announce($: Api, snap: Snapshot): void {
     const where = phase === 'done' ? 'the run is done' : `${phaseLabel(phase)} is open`
     gameBanner = { text: `Temper: ${where}. Press Esc to go back.`, until: Date.now() + 20000 }
     const toast = snap.mode === 'full' ? transitionToast(snap.state.history[snap.state.history.length - 1]) : null
-    if (toast) $.ui.toast(toast)
+    if (toast) showToast($, toast)
   }
   lastPhase = phase
 }
@@ -438,12 +500,12 @@ function runReason($: Api, text: string, drawnPhase?: string | null): Promise<vo
 async function runReasonLocked($: Api, text: string, drawnPhase?: string | null): Promise<void> {
   const reason = text.trim()
   if (!reason) {
-    $.ui.toast(REASON_HINT)
+    showToast($, REASON_HINT)
     return
   }
   const done = await decideAs($, { type: 'override', reason }, 'person', drawnPhase)
   if (done.error) {
-    $.ui.toast(done.error)
+    showToast($, done.error)
     return
   }
   const launched = await handOver($, done.events)
@@ -464,7 +526,7 @@ async function handOver($: Api, drafts: readonly Draft[]): Promise<boolean> {
       // Design is part of Plan in the mod. When the plan was approved and the CLI is at its design stage, this
       // Continue approves the design: the orchestrator does the On Continue steps of Design.
       const stage = draft.from === 'plan' && (await ensure($)).cliNext === 'design' ? 'design' : draft.from
-      await $.command.run({ command: RESUME, args: `continue ${stage}` }).then(() => undefined, () => undefined)
+      await continueStage($, stage)
       launched = true
     } else {
       const snap = await ensure($)
@@ -475,7 +537,7 @@ async function handOver($: Api, drafts: readonly Draft[]): Promise<boolean> {
       // that stage's On Continue steps (`state advance`, which the guard lets through for a skip) and launches
       // the next stage. Fix is the Check stage of the CLI.
       if (draft.type === 'override') {
-        await $.command.run({ command: RESUME, args: `continue ${stageOf(draft.phase)}` }).then(() => undefined, () => undefined)
+        await continueStage($, stageOf(draft.phase))
         launched = true
       }
     }
@@ -490,7 +552,7 @@ async function recordAgain($: Api): Promise<void> {
   const snap = await refresh($)
   const pending = snap.sync.pending
   if (pending === null) {
-    $.ui.toast('That step is already done.')
+    showToast($, 'That step is already done.')
     return
   }
   // A call that took the decision and never ran must not keep it away from the mirror call.
@@ -510,14 +572,46 @@ async function showMore($: Api, expanded?: boolean): Promise<void> {
 // arguments. Its brief for the stage (agents/*.md) is then the one that runs, not a prompt of ours.
 // `prompt.submit` refuses a text that starts with a slash, so the command is run as a command.
 async function resumeRun($: Api): Promise<void> {
-  await $.command.run({ command: RESUME, args: '' }).then(() => undefined, () => undefined)
+  await $.command.run({ command: 'temper:temper', args: '' }).then(ignore, ignore)
+}
+
+// `/temper:temper continue <stage>`: the orchestrator does the On Continue steps of a stage the person approved.
+// Each command is written out in full, so the plugin directory can read every command the mod runs. A stage
+// that is none of these runs nothing.
+async function continueStage($: Api, stage: string): Promise<void> {
+  switch (stage) {
+    case 'intent':
+      await $.command.run({ command: 'temper:temper', args: 'continue intent' }).then(ignore, ignore)
+      return
+    case 'plan':
+      await $.command.run({ command: 'temper:temper', args: 'continue plan' }).then(ignore, ignore)
+      return
+    case 'design':
+      await $.command.run({ command: 'temper:temper', args: 'continue design' }).then(ignore, ignore)
+      return
+    case 'build':
+      await $.command.run({ command: 'temper:temper', args: 'continue build' }).then(ignore, ignore)
+      return
+    case 'review':
+      await $.command.run({ command: 'temper:temper', args: 'continue review' }).then(ignore, ignore)
+      return
+    case 'check':
+      await $.command.run({ command: 'temper:temper', args: 'continue check' }).then(ignore, ignore)
+      return
+    default:
+      return
+  }
+}
+
+function ignore(): undefined {
+  return undefined
 }
 
 // Puts a draft in the prompt box so the person types the rest and presses Enter. The press itself
 // never moves the phase and writes no event.
 async function fillDraft($: Api, text: string): Promise<void> {
   const filled = await $.prompt.fill({ text, mode: 'replace' }).catch(() => undefined)
-  $.ui.toast(filled?.isFilled ? 'Type your message. Press Enter to send it.' : 'Close the pane, then type your message.')
+  showToast($, filled?.isFilled ? 'Type your message. Press Enter to send it.' : 'Close the pane, then type your message.')
 }
 
 function runAction($: Api, action: Action, requestId?: string, drawnPhase?: string | null): Promise<void> {
@@ -526,7 +620,7 @@ function runAction($: Api, action: Action, requestId?: string, drawnPhase?: stri
 
 async function runActionLocked($: Api, action: Action, requestId?: string, drawnPhase?: string | null): Promise<void> {
   if (action.id === 'play') {
-    $.ui.toast(await toggleGame($))
+    showToast($, await toggleGame($))
     return
   }
   if (action.id === 'more' || action.id === 'more-actions' || action.id === 'more-narrow') {
@@ -546,12 +640,12 @@ async function runActionLocked($: Api, action: Action, requestId?: string, drawn
   }
   // The original "Save for later" at the Commit question: nothing to record, the work stays as it is.
   if (action.id === 'save-done') {
-    $.ui.toast('Saved. Commit when you are ready.')
+    showToast($, 'Saved. Commit when you are ready.')
     return
   }
   if (action.resume && !action.command && !action.prompt) {
     if (working) {
-      $.ui.toast('Claude is working. Wait for the answer, then press 1.')
+      showToast($, 'Claude is working. Wait for the answer, then press 1.')
       return
     }
     await resumeRun($)
@@ -566,7 +660,7 @@ async function runActionLocked($: Api, action: Action, requestId?: string, drawn
   if (action.asksReason) {
     const reason = await askReason($, action.label.toLowerCase())
     if (!reason) {
-      $.ui.toast(`${action.label} needs a reason.`)
+      showToast($, `${action.label} needs a reason.`)
       return
     }
     args = `${action.command} ${reason}`
@@ -575,13 +669,13 @@ async function runActionLocked($: Api, action: Action, requestId?: string, drawn
   if (parsed === null) return
   const plan = planCommand(parsed, pendingDrift)
   if (plan.kind === 'error') {
-    $.ui.toast(plan.text)
+    showToast($, plan.text)
     return
   }
   if (plan.kind === 'local') return
   const done = await decideAs($, plan.command, 'person', drawnPhase)
   if (done.error) {
-    $.ui.toast(done.error)
+    showToast($, done.error)
     return
   }
   const launched = await handOver($, done.events)
@@ -596,12 +690,12 @@ async function runFindingAction($: Api, kind: 'fix' | 'accept' | 'explain', id: 
   if (kind === 'explain') return submitText($, explain?.prompt ?? null)
   const reason = await askReason($, `accepting finding ${id}`)
   if (!reason) {
-    $.ui.toast('Accept needs a reason.')
+    showToast($, 'Accept needs a reason.')
     return
   }
   const done = await decideAs($, { type: 'acceptFinding', id, reason }, 'person')
   if (done.error) {
-    $.ui.toast(done.error)
+    showToast($, done.error)
     return
   }
   await handOver($, done.events)
@@ -639,7 +733,7 @@ async function switchEnforcement($: Api, value: 'on' | 'off'): Promise<string> {
   live.enforcement = value
   await refresh($)
   $.ui.invalidate('ui.render')
-  $.ui.toast(`Temper enforcement: ${value}`)
+  showToast($, `Temper enforcement: ${value}`)
   return `Temper enforcement: ${value}`
 }
 
@@ -656,7 +750,7 @@ async function askMode($: Api): Promise<string> {
   if (picked === null) {
     live.mode = 'full'
     await refresh($)
-    $.ui.toast('Temper mode is full. To change it, use /temper:temper mode <full|minimal|off>.')
+    showToast($, 'Temper mode is full. To change it, use /temper:temper mode <full|minimal|off>.')
     return 'Temper mode: full'
   }
   return switchMode($, picked)
@@ -875,9 +969,8 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
       case 'timeline':
         return { text: timelineText(await refresh($)) }
       case 'report':
-        if (snap.slug === null) return { text: 'No run is active. There is no report to write.' }
-        await writeReport(makeIo($), await refresh($))
-        return { text: 'Wrote .temper/report.md' }
+        if (snap.slug === null) return { text: 'No run is active. There is no report to show.' }
+        return { text: await writeReport(makeIo($), await refresh($)) }
       case 'pr':
       case 'discuss':
       case 'continue':
@@ -1039,7 +1132,7 @@ export const register: Register = (on, opts) => {
     try {
       const snap = await ensure($)
       if (snap.inert || snap.prAttribution !== 'on' || snap.slug === null) return result
-      return { text: `${result.text}\n\nMade with Temper. The phases have gates. The report is in .temper/report.md.` }
+      return { text: `${result.text}\n\nMade with Temper. The phases have gates. /temper:temper report shows the report.` }
     } catch {
       return result
     }
@@ -1109,10 +1202,9 @@ export const register: Register = (on, opts) => {
   // The game pane: the Client element exists on the terminal and the desktop app only. The module
   // runs on its own frame clock, so nothing here redraws it per frame.
   on('ui.render', { component: 'Pane', requestId: GAME_ID }, async ($, e, next) => {
-    const kit = $.ui.resolve(e)
     // The table of another surface holds a Client that draws nothing, so the surface decides.
-    if ((e.surface !== 'terminal' && e.surface !== 'desktop') || !('Client' in kit)) {
-      const { Box, Text } = kit
+    if (e.surface !== 'terminal' && e.surface !== 'desktop') {
+      const { Box, Text } = $.ui.resolve(e)
       return (
         <Box backgroundColor={CARD_BG}>
           <Text color={FG}>The game needs the terminal or the desktop app.</Text>
@@ -1120,7 +1212,8 @@ export const register: Register = (on, opts) => {
       )
     }
     const ui = await readUi($).catch(() => null)
-    const { Client, Box, Button } = kit
+    // The Client is taken straight from the element table, so its module path is the fixed text below.
+    const { Client, Box, Button } = $.ui.resolve(e)
     const ctl = await readCtl($)
     const act = (fn: () => Promise<void>) => () => fn().catch(() => undefined)
     return (

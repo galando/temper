@@ -7,7 +7,7 @@ CLI, never asserted by a model. With Claude Code 2.1.287 or later a mod refuses 
 outside the current phase through Claude's editing tools (details in "Where enforcement works").
 
 [![Plugin directory](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
-[![Version](https://img.shields.io/github/v/release/galando/temper?include_prereleases&label=version)](https://github.com/galando/temper/releases)
+[![Version](https://img.shields.io/badge/version-v9.6.2-blue)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1.287%2B%20for%20the%20mod-blue)](#where-enforcement-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -62,7 +62,7 @@ flowchart LR
   confused model cannot.
 - **The mod makes the phases real.** Claude Code 2.1.287 or later runs a small mod that
   refuses a write that does not belong to the current phase, refuses `git commit` until Check
-  passes, draws the phase bar, and writes `.temper/report.md` at the end.
+  passes, draws the phase bar, and keeps a report of the run (`/temper:temper report`).
 
 ### One flow, two views
 
@@ -218,9 +218,8 @@ refusals, the phase bar and the report.
 Mods are not sandboxed, so this is the full list. No network, process, agent or tool call by the mod.
 
 - **Reads:** `.temper/` files (state, gates, evidence, intent, plan, tasks, config, events), its settings and store.
-- **Writes:** only event files under `.temper/specs/<name>/events/` and `.temper/report.md` (the path is
-  built from the run name), never code, build, start up, settings or instructions files. The game
-  keeps your best score in the plugin store.
+- **Writes no file.** It keeps your decisions, the run report and the game's best score in its own
+  plugin store on your machine. `/temper:temper report` shows the report.
 - **Sets** only `temper.uiMode` and `temper.enforcement` (you type `/temper:temper mode` or `enforcement`;
   a locked row stays). **Runs** only `/temper:temper` and `/temper:temper continue <stage>`, on a button press.
 - **Submits prompts:** after a button press, the fixed text of that action, the stage, a finding id,
@@ -232,7 +231,7 @@ Mods are not sandboxed, so this is the full list. No network, process, agent or 
   `/temper:temper` and passes every other command on unchanged. `session.start` and
   `classic.SessionStart` find the project root. `turn.step` applies `phaseModels`, and
   `reviewerModel` to the steps of the Temper review agent (found with `$.agent.list()`).
-- **Other:** `adapter.ts` takes `setTimeout` from `globalThis` for a 60 ms retry of a state read.
+- **Other:** it waits 60 ms with `$.clock.sleep` before it reads a state file again; it reads no global.
   `tests/mod/` (its fake engine is `world.ts`) is the test suite and is never loaded. The mod **asks**
   you for a mode, a drift choice or a reason, and **draws** the bar, the pane and the game.
 - **Tests, lint, git and `scripts/temper`** run as prompts to Claude with its normal permissions. Auto
@@ -268,9 +267,8 @@ merges. **Packs:** [docs/packs.md](docs/packs.md). **CI:** [examples/workflow/RE
 
 Markdown, a mod written in TypeScript, and about 1,700 lines of auditable bash with small
 inline Python for JSON parsing. Temper itself makes no network calls, sends no telemetry and
-installs no packages. The committed artifacts (intent, plan, design, gate ledger, diff, and the
-decision events and report from the mod) are the audit trail: who asked, what was planned, what
-the gates verified, in the same commits as the code.
+installs no packages. The committed artifacts (intent, plan, design, gate ledger and diff) are the
+audit trail: who asked, what was planned, what the gates verified, in the same commits as the code.
 
 ### What Temper runs and changes
 

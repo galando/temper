@@ -232,10 +232,10 @@ treat the docs as the current behavior for the README.
 There is no manifest permission list. The engine scans the module and records what it
 calls; `claude plugin validate` prints it and admins can refuse a mod by it
 (`plugin.register` `uses`). The `calls:` line the validator prints for the built mod,
-nothing else (23 calls; the list is enforced by `scripts/check-mod-calls.sh`):
+nothing else (24 calls in 9.6.2; the list is enforced by `scripts/check-mod-calls.sh`):
 
-`agent.list, command.run, config.list, config.set, fs.list, fs.read, fs.stat, fs.write, prompt.fill,
-prompt.submit, prompt.suggest, session.version, state.get, state.set, store.get,
+`agent.list, clock.sleep, command.run, config.list, config.set, fs.list, fs.read, fs.stat, prompt.fill,
+prompt.submit, prompt.suggest, session.version, state.get, state.set, store.delete, store.get,
 store.set, ui.ask, ui.close, ui.focus, ui.invalidate, ui.open, ui.resolve, ui.toast`
 
 Why each call is there:
@@ -243,17 +243,18 @@ Why each call is there:
 | Call | Reason |
 |---|---|
 | `agent.list` | the optional `reviewerModel`: whether a subagent's step belongs to the Temper review agent. Read only; the spawn is passed on unchanged |
+| `clock.sleep` | (9.6.2) waits 60 ms before `build-state.json` is read again while the CLI rewrites it; replaces a `setTimeout` taken from `globalThis` |
 | `config.list`, `config.set` | `/temper mode` and `/temper enforcement` read the row (locked by an administrator or not) and change it the way `/config` does |
 | `fs.list`, `fs.read` | rebuild the run from `.temper/` files and the spec's events |
 | `fs.stat` | resolve `.` to the project root so absolute tool paths can be made relative |
-| `fs.write` | the one write: event files and `.temper/report.md` |
+| `fs.write` | not used since 9.6.2: the mod writes no file. Events and the report are kept in `$.store` |
 | `command.run` | a pressed Button ends with `/temper:temper` (no arguments) so the orchestrator launches the next stage with its own brief; `prompt.submit` refuses a text that starts with a slash, so the command runs as a command |
 | `prompt.fill` | key 4 (Discuss) and key 2 at Build (Change) put a draft in the prompt box; the person types the rest and presses Enter. A press only, never from a hook; it changes no phase and writes no event |
 | `prompt.submit` | a pressed Button sends its action to Claude (never from a hook) |
 | `prompt.suggest` | the next action as a Tab suggestion after a turn |
 | `session.version` | the version guard |
 | `state.get`, `state.set` | the run view and live mode that the drawing hooks read |
-| `store.get`, `store.set` | own event ids, consumed human decisions, "mode already asked" |
+| `store.get`, `store.set`, `store.delete` | own event ids, consumed human decisions, "mode already asked", and (9.6.2) the kept events and report as `vf:<path>`; `delete` drops the oldest of 40 kept folders |
 | `ui.ask` | scope drift choices, the first run question, reasons |
 | `ui.open`, `ui.close` | the pane |
 | `ui.focus` | the band's key 9 moves the focus into the override reason field |

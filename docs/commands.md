@@ -107,7 +107,7 @@ after the command is one of these, Temper handles it instead of starting a run. 
 | `/temper:temper accept <id> <reason>` | Accept a review finding with a reason |
 | `/temper:temper drift <add\|revert\|allow> <reason>` | Decide a pending scope drift |
 | `/temper:temper pause`, `/temper:temper resume` | Hand the run over to you, take it back |
-| `/temper:temper report` | Write `.temper/report.md` now |
+| `/temper:temper report` | Show the run report (the mod keeps it in its plugin store, not in a file) |
 | `/temper:temper pr` | Ask Claude for a pull request description from the report |
 | `/temper:temper mode <full\|minimal\|off>` | Change how much Temper draws |
 | `/temper:temper enforcement <on\|off>` | Turn denials on or off |
