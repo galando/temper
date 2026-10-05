@@ -128,7 +128,7 @@ describe('Stop, timeline and the finished run', () => {
 })
 
 describe('the files of the run are found after Claude runs cd', () => {
-  test('every read, list and write names the session folder, so a changed Bash folder loses nothing', async ($, on) => {
+  test('every read, list and kept record names the session folder, so a changed Bash folder loses nothing', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }))
     await $.session.start(START)
     const ui = await band($)
@@ -136,7 +136,11 @@ describe('the files of the run are found after Claude runs cd', () => {
     // The session folder of this test is /repo. Every fs call names it, except the one that finds it.
     expect(w.rawPaths.length).toBeGreaterThan(0)
     expect(w.rawPaths.every(p => p.startsWith('/repo/'))).toBe(true)
-    expect(w.rawPaths.some(p => p.includes('/events/'))).toBe(true)
+    expect(w.rawPaths.some(p => p.includes('/events'))).toBe(true)
+    // The mod writes no file: the event it recorded is kept in the store under its full path.
+    const kept = Object.keys(w.store).filter(k => k.startsWith('vf:'))
+    expect(kept.some(k => k.includes('/events/'))).toBe(true)
+    expect(kept.every(k => k.startsWith('vf:/repo/'))).toBe(true)
   })
 })
 

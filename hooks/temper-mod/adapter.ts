@@ -471,7 +471,8 @@ export async function apply(io: Io, options: PluginOptions, snap: Snapshot, comm
   return { snap: next, events: decision.events }
 }
 
-export async function writeReport(io: Io, snap: Snapshot): Promise<void> {
+// Keeps the report (the mod writes no file: see makeIo) and returns its text.
+export async function writeReport(io: Io, snap: Snapshot): Promise<string> {
   const md = renderReport({
     state: snap.state,
     criteria: snap.criteria,
@@ -479,6 +480,7 @@ export async function writeReport(io: Io, snap: Snapshot): Promise<void> {
     unreadable: snap.unreadable,
   })
   await io.write(REPORT_PATH, md)
+  return md
 }
 
 export function composeText(snap: Snapshot): string {

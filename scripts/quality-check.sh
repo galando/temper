@@ -101,6 +101,18 @@ if [[ -f "$CHANGELOG" && -f "$PJ" ]]; then
   fi
 fi
 
+# --- README version badge ---
+if [[ -f "$README" && -f "$PJ" ]]; then
+  PLUGIN_VER=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['version'])" "$PJ")
+  if grep -qF "img.shields.io/badge/version-v${PLUGIN_VER}-" "$README"; then
+    echo "[PASS] README version badge shows v$PLUGIN_VER"
+    PASS=$((PASS+1))
+  else
+    echo "[FAIL] README version badge does not show v$PLUGIN_VER (scripts/version-bump.sh updates it)"
+    FAIL=$((FAIL+1))
+  fi
+fi
+
 # --- Panel validation (agents/*.md one-closed-panel rule) ---
 if python3 "$REPO_ROOT/scripts/validate-panels.py" >/dev/null 2>&1; then
   echo "[PASS] Every agents/*.md brief shows one closed panel"

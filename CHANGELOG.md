@@ -3,6 +3,31 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.6.2: the mod writes no file, runs only fixed commands, and loads its game by a fixed path
+
+The directory held 9.6.1 by policy. This release removes the causes it can point at in the mod's own
+code. Gates, commands and agents do not change.
+
+- **The mod writes no file.** The directory blocks a mod that writes a file at a path it cannot read
+  ("Mod writes a file that other tools run or obey"). The decision events and the run report are
+  now kept in the mod's own plugin store (`$.store`, keys `vf:<path>`), and the mod reads them back
+  as if they were files. Event files that a 9.6.0 or 9.6.1 run wrote are still read, so a run in
+  progress keeps its history. The store keeps the 40 most recent folders and drops older ones
+  (`$.store.delete`, a new reviewed call; `fs.write` is gone, so the list stays at 23 calls).
+- **`/temper:temper report` shows the report** instead of writing `.temper/report.md`. The pull
+  request line now says "/temper:temper report shows the report."
+- **Every command the mod runs is fixed text.** `/temper:temper continue <stage>` is written out once
+  for each stage (`continue intent` to `continue check`) at the call, and the Resume is
+  `/temper:temper` with no arguments.
+- **The game's `Client` comes straight from `$.ui.resolve(e)`,** so the directory can read its fixed
+  module path `./ui/game-client.tsx` (finding at line 1123).
+- **README.** The version badge shows the version from `plugin.json` (it showed the latest GitHub
+  release); `scripts/version-bump.sh` updates it and the GitHub page's version. "What the mod reads
+  and writes" says the mod writes no file.
+- **`scripts/check-mod-calls.sh` fails on a cut `calls:` line.** Claude Code shortens a note over
+  1000 characters, which could hide a call. All toasts now go through one helper, so the line is
+  short again.
+
 ## v9.6.1: clears the plugin directory validation of 9.6.0
 
 The directory's validator stopped on `hooks/temper-mod/register.tsx` and held 9.6.0. This release

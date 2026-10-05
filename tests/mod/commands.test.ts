@@ -65,10 +65,12 @@ describe('read only subcommands', () => {
     expect(r.text).toMatch(/start: start to Build/)
   })
 
-  test('report writes .temper/report.md on demand', async ($, on) => {
+  test('report shows the report and keeps it (the mod writes no file)', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'build', passedCriteria: ['AC-01'] }))
     const r = await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'composer' } } as never)
-    expect(r.text).toBe('Wrote .temper/report.md')
+    expect(r.text).toContain('# Temper report: Password reset by email')
+    expect(w.writes).toContain('.temper/report.md')
+    expect(Object.keys(w.store).some(k => k.startsWith('vf:') && k.endsWith('.temper/report.md'))).toBe(true)
     expect(w.files.get('.temper/report.md')).toContain('# Temper report: Password reset by email')
     expect(w.files.get('.temper/report.md')).toContain('Result: In progress (Build)')
   })
@@ -202,7 +204,7 @@ describe('pull request attribution', () => {
   test('adds one Temper line while a run is on', async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }))
     const r = await $.attribution.text(pr)
-    expect(r.text).toBe('Generated with Claude Code\n\nMade with Temper. The phases have gates. The report is in .temper/report.md.')
+    expect(r.text).toBe('Generated with Claude Code\n\nMade with Temper. The phases have gates. /temper:temper report shows the report.')
   })
 
   test('off by option, with no run, and for other kinds', async ($, on) => {

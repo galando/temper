@@ -5,6 +5,8 @@ import type { On } from 'claude-code'
 export type World = {
   files: Map<string, string>
   writes: string[]
+  // Every real `$.fs.write` the plugin made (the mod makes none: it keeps its records in the store).
+  fsWrites: string[]
   reads: string[]
   store: Record<string, unknown>
   // Project relative files that exist but cannot be read (chmod 000): a read answers EACCES, not ENOENT.
@@ -129,15 +131,24 @@ export const denyText = (r: { deny?: string }): string => r.deny ?? ''
 const rel = (p: string): string => /(?:^|\/)((?:\.temper|\.claude)\/.*)$/.exec(p)?.[1] ?? p
 
 export function world(on: On, files: Record<string, string> = {}, opts: WorldOptions = {}): World {
-  const w: World = { files: new Map(Object.entries(files)), writes: [], reads: [], prompts: [], rawPaths: [], commandRuns: [], filled: [], asked: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) } }
+  const w: World = { files: new Map(Object.entries(files)), writes: [], fsWrites: [], reads: [], prompts: [], rawPaths: [], commandRuns: [], filled: [], asked: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) } }
   const panes = new Map<string, boolean>()
   // The plugin store, in memory and live: a test reads what the mod stored from `w.store`.
+  // The mod keeps its records (events, the report) in the store as `vf:<full path>` (see makeIo). The world
+  // shows each one in `w.files` and `w.writes` too, so a test reads what the mod recorded the same way for
+  // a kept text and for a file, and `failWrites` fails a kept text as it fails a file write.
   on('store.get', ($, e) => ({ value: w.store[e.key] }))
   on('store.set', ($, e) => {
+    if (e.key.startsWith('vf:')) {
+      if (w.failWrites) return { deny: `EACCES: ${e.key.slice(3)}` }
+      w.files.set(rel(e.key.slice(3)), String(e.value))
+      w.writes.push(rel(e.key.slice(3)))
+    }
     w.store[e.key] = e.value
     return { value: undefined }
   })
   on('store.delete', ($, e) => {
+    if (e.key.startsWith('vf:')) w.files.delete(rel(e.key.slice(3)))
     delete w.store[e.key]
     return { value: undefined }
   })
@@ -162,6 +173,7 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
   })
   on('fs.write', ($, e) => {
     w.rawPaths.push(e.path)
+    w.fsWrites.push(e.path)
     if (outside(e.path) || w.failWrites) return { deny: `EACCES: ${e.path}` }
     w.files.set(rel(e.path), e.text)
     w.writes.push(rel(e.path))

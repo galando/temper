@@ -162,7 +162,7 @@ export const HELP = [
   '  accept <id> <why>    accept a review finding (give a reason)',
   '  drift <add|revert|allow> <reason>   decide a scope drift',
   '  pause / resume       take the run over, give it back',
-  '  report               write .temper/report.md now',
+  '  report               show the run report',
   '  pr                   ask Claude for a pull request description',
   '  play                 play Temper Run while you wait (key 8 too; r runs, w jumps, s ducks, q leaves)',
   '  discuss <text>       send a message about the step you are at (the same as key 4)',

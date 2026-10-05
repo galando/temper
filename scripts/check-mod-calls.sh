@@ -23,15 +23,15 @@ config.set       the same commands change the row the way /config does (key temp
 fs.list          lists .temper/specs/{slug}/events/ to rebuild the run
 fs.read          reads build-state, gates, status, evidence, intent, plan, tasks, temper.config and event files
 fs.stat          resolves "." to the project root so absolute tool paths can be made relative
-fs.write         the one write: Temper event files and .temper/report.md
 prompt.fill      key 4 Discuss and key 2 Change at Build put a draft in the prompt box; the person types the rest (a press only, never from a hook)
 prompt.submit    a pressed band or pane Button sends its action to Claude (never from a hook)
 prompt.suggest   offers the next action as a suggestion after a turn (Tab to take, never submitted)
 session.version  the version guard: the mod stays inert below 2.1.287
 state.get        the drawing hooks read the run view and the live mode, so a write redraws them
 state.set        publishes the run view and the live mode
-store.get        own event ids (forgery guard), consumed human decisions, "mode already asked"
-store.set        records those
+store.delete     drops the oldest kept folder, so the store stays small
+store.get        own event ids (forgery guard), consumed human decisions, "mode already asked", kept events and report
+store.set        records those (the mod writes no file)
 ui.ask           scope drift choices, the first run mode question, reasons for override and accept
 ui.close         closes the pane (leaving full mode, a toggle, a pane that would not dock)
 ui.focus         key 9 on the band moves the focus into the override reason field
@@ -54,6 +54,12 @@ else
   }
   LINE="$(printf '%s\n' "$OUT" | grep -E 'register\.tsx calls:' | head -1 || true)"
   [[ -n "$LINE" ]] || { echo "$OUT"; echo "FAIL: no 'calls:' line for the mod in the validate output"; exit 1; }
+fi
+
+# Claude Code cuts a long note ("… [+N chars]"): a cut line can hide a call, so it fails.
+if printf '%s' "$LINE" | grep -qE '\[\+[0-9]+ chars\]'; then
+  echo "FAIL: the calls: line is cut short by the validator, so a call could be hidden. Make the 'via' lists shorter (one helper per call)."
+  exit 1
 fi
 
 # "...calls: $.fs.list (via makeIo), $.store.get (via a, b), ..." -> one name per line.

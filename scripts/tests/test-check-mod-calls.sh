@@ -18,6 +18,9 @@ check "env call fails" 1 "$GOOD, \$.env.get"
 check "an unreviewed call fails" 1 "$GOOD, \$.model.complete"
 check "a lookalike name does not pass" 1 './temper-mod/register.tsx calls: $.fs.listing'
 check "an empty calls line fails" 1 './temper-mod/register.tsx calls: '
+check "a line the validator cut short fails (a call could be hidden)" 1 "$GOOD, \$.ui.toast (via announce, askMode, switchEnforce… [+5 chars]"
+check "fs.write is no longer reviewed (the mod writes no file)" 1 "$GOOD, \$.fs.write (via makeIo)"
+check "store.delete (drops the oldest kept folder) is reviewed" 0 "$GOOD, \$.store.delete (via keepText)"
 # A surface module (a file named *-client.tsx) may make no engine call at all.
 client() { # client <name> <expected exit> <file content>
   local name="$1" want="$2" body="$3" dir out rc

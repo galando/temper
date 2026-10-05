@@ -42,7 +42,7 @@ cd "$REPO_ROOT"
 echo "Bumping version to $NEW_VERSION..."
 
 # Capture the OLD version first (from plugin.json, the source of truth) so the
-# visible-string sweep below replaces exactly the previous version, never an
+# visible-string sweep below (the README version badge among them) replaces exactly the previous version, never an
 # unrelated number.
 OLD_VERSION="$(sed -n 's/.*"version": "\([0-9][0-9.]*\)".*/\1/p' .claude-plugin/plugin.json 2>/dev/null | head -1 || true)"
 
@@ -90,7 +90,7 @@ fi
 # header is left alone (idempotent).
 CHANGELOG="CHANGELOG.md"
 if [ -f "$CHANGELOG" ]; then
-    if grep -qE "^## v?${NEW_VERSION//./\\.}([[:space:]]|\(|$)" "$CHANGELOG"; then
+    if grep -qE "^## v?${NEW_VERSION//./\\.}([[:space:]]|\(|:|$)" "$CHANGELOG"; then
         echo "  -> CHANGELOG.md already has a v$NEW_VERSION entry, skipping"
     else
         ANCHOR_LINE=$(grep -nE '^## v?[0-9]+\.[0-9]+\.[0-9]+' "$CHANGELOG" | head -1 | cut -d: -f1 || true)
@@ -104,13 +104,21 @@ if [ -f "$CHANGELOG" ]; then
         # entry, which silently corrupted the insert (multi-line skeleton).
         { head -n $((ANCHOR_LINE - 1)) "$CHANGELOG"; printf '%s' "$ENTRY"; echo; tail -n "+$ANCHOR_LINE" "$CHANGELOG"; } > "$CHANGELOG.tmp" && mv "$CHANGELOG.tmp" "$CHANGELOG"
         # Verify the header landed — a silent no-insert must never report success.
-        if ! grep -qE "^## v?${NEW_VERSION//./\\.}([[:space:]]|\(|$)" "$CHANGELOG"; then
+        if ! grep -qE "^## v?${NEW_VERSION//./\\.}([[:space:]]|\(|:|$)" "$CHANGELOG"; then
             echo "Error: CHANGELOG.md insert failed verification — new header not found after insert" >&2
             exit 1
         fi
     fi
 else
     echo "Warning: CHANGELOG.md not found, skipping changelog insert" >&2
+fi
+
+# 5b. docs/index.html  "version": "X.Y.Z" (the GitHub page's structured data)
+INDEX_HTML="docs/index.html"
+if [ -f "$INDEX_HTML" ]; then
+    echo "  -> Updating $INDEX_HTML (\"version\")"
+    sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VERSION\"/" "$INDEX_HTML"
+    rm -f "$INDEX_HTML.bak"
 fi
 
 # 6. Other visible version strings — anything that visibly labels the plugin
