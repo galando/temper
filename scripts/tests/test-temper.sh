@@ -1745,6 +1745,42 @@ assert_eq "no intent.md means no status.json" "no" "$([[ -f .temper/status.json 
 assert_exit "temper status --json without intent.md exits 1" 1 "$TEMPER" status --json
 assert_exit "acceptance.py status needs its arguments" 2 python3 "$REPO_ROOT/scripts/acceptance.py" status
 
+# --- the mirror commands of the Temper mod (hooks/temper-mod/core/cli.ts) run and move the state as claimed ---
+# Every command string the mod can name in a follow up prompt, in the order of the real stage sequence
+# (STAGE_SEQ_TEMPER): the bar and the CLI must move together, so each one has to succeed and set next_stage.
+setup
+"$TEMPER" state init demo --command temper >/dev/null
+mirror_step() { # mirror_step <name> <expected next_stage> <temper args...>
+  local name="$1" want="$2"; shift 2
+  assert_exit "mirror: $name" 0 "$TEMPER" "$@"
+  assert_eq "mirror: $name sets next_stage" "$want" "$("$TEMPER" state get next_stage 2>/dev/null)"
+}
+mirror_step "intent_complete plan" plan state advance intent_complete plan
+mirror_step "plan_complete build (simple run)" build state advance plan_complete build
+mirror_step "build_complete review" review state advance build_complete review
+mirror_step "review_complete check" check state advance review_complete check
+mirror_step "check_complete commit" commit state advance check_complete commit
+# A medium or complex run goes through design.
+"$TEMPER" state advance intent_complete plan >/dev/null
+mirror_step "plan_complete design" design state advance plan_complete design
+mirror_step "design_complete build" build state advance design_complete build
+# A step back: the CLI resumes from the stage it is pointed at.
+for s in intent plan build review check; do
+  mirror_step "state set next_stage $s" "$s" state set next_stage "$s"
+done
+assert_eq "mirror: stage is recorded by state advance" "build_complete" "$("$TEMPER" state advance build_complete review >/dev/null; "$TEMPER" state get stage)"
+assert_exit "mirror: override <stage> --reason" 0 "$TEMPER" override review --reason "reviewer is on leave"
+"$TEMPER" evidence add --stage review --claim "a finding" --severity low >/dev/null
+assert_exit "mirror: evidence accept --stage review --id 1 --reason" 0 "$TEMPER" evidence accept --stage review --id 1 --reason "false positive"
+# The mod and its fake CLI keep the same stage sequence as the real one.
+REAL_SEQ="$(sed -n 's/^STAGE_SEQ_TEMPER="\(.*\)"/\1/p' "$TEMPER" | head -1)"
+assert_eq "cli.ts CLI_STAGES equals STAGE_SEQ_TEMPER" "$REAL_SEQ" "$(sed -n "s/^export const CLI_STAGES = '\(.*\)'/\1/p" "$REPO_ROOT/hooks/temper-mod/core/cli.ts")"
+assert_eq "tests/mod/world.ts CLI_SEQ equals STAGE_SEQ_TEMPER" "$REAL_SEQ" "$(sed -n "s/^export const CLI_SEQ = \[\(.*\)\]/\1/p" "$REPO_ROOT/tests/mod/world.ts" | tr -d "',")"
+# A name that is not a stage is refused: a forged next stage cannot be recorded this way.
+assert_exit "mirror: an unknown stage is refused" 1 "$TEMPER" state advance banana_complete review
+# The same commands as the mod prints them: a single quoted reason with quotes escaped.
+assert_exit "mirror: a reason with quotes and spaces" 0 bash -c "'$TEMPER' override check --reason 'it'\\''s fine; \$(not run)'"
+
 # --- version-stamp drift: every visible version string matches plugin.json ---
 # plugin.json is the single source of truth; the CLAUDE.md stamp and the top
 # CHANGELOG entry must never disagree with it (version-bump.sh keeps them in

@@ -21,6 +21,8 @@ export type SectionInput = {
   loopLimitReached?: boolean
   stale?: readonly Phase[]
   actionContext?: ActionContext
+  // The line that says the bar and the CLI do not agree (Snapshot.sync.line).
+  sync?: string | null
 }
 
 export function sectionText(input: SectionInput): string {
@@ -48,6 +50,7 @@ export function sectionText(input: SectionInput): string {
   }
 
   lines.push(`Next: ${nextStep(input.phase, { ...input.actionContext, loopLimitReached: input.loopLimitReached })}`)
+  if (input.sync) lines.push(input.sync)
   lines.push(GATE_MESSAGE)
   return lines.join('\n')
 }

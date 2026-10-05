@@ -92,6 +92,7 @@ export function renderPane(
         </Box>
         {inline ? null : <Text color={MUTED}>{LEGEND}</Text>}
         {view.now ? <Text color={FG}>{view.now}</Text> : null}
+        {view.sync ? <Text color={YELLOW}>{view.sync}</Text> : null}
       </Box>
 
       {timeline.length > 0 ? (

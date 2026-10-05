@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { SPEC, runFiles } from './run-files'
-import { world } from './world'
+import { cliTo, world } from './world'
 import type { World } from './world'
 
 const PASSTHROUGH = 'prompt based /temper:temper ran'
@@ -99,6 +99,10 @@ describe('decisions come only from the person', () => {
     // The prompt based command runs next and mirrors the override in the CLI.
     expect(r.text).toBe(PASSTHROUGH)
     expect(decisions(w)).toMatchObject([{ type: 'override', phase: 'review', reason: 'reviewer is on leave, risk accepted', origin: 'person' }])
+    // The CLI is the truth for where the run is: the bar stays at Review until the CLI moves on.
+    const before = await $.command.run({ command: 'temper', args: 'status', origin: { kind: 'composer' } } as never)
+    expect(before.text).toContain('Phase: Review')
+    cliTo(w, 'check')
     const status = await $.command.run({ command: 'temper', args: 'status', origin: { kind: 'composer' } } as never)
     expect(status.text).toContain('Phase: Check')
   })
@@ -127,7 +131,9 @@ describe('decisions come only from the person', () => {
     const ok = await $.command.run({ command: 'temper', args: 'approve', origin: { kind: 'composer' } } as never)
     expect(ok.text).toBe(PASSTHROUGH)
     expect(decisions(w)).toMatchObject([{ type: 'advance', from: 'plan', to: 'build', origin: 'person' }])
-    // Build now: a plan file is writable, other files raise scope drift.
+    // The mirror call moves the CLI to build. Build now: a plan file is writable, other files raise scope drift.
+    cliTo(w, 'build')
+    await $.command.run({ command: 'temper', args: 'status', origin: { kind: 'composer' } } as never)
     expect(((await $.tool.call({ tool: 'Write', file_path: 'src/app.ts', content: 'x' })) as { text?: string }).text).toBe('stub ran')
   })
 
@@ -137,6 +143,7 @@ describe('decisions come only from the person', () => {
     w.files.set('.temper/gates.json', JSON.stringify(Object.fromEntries(['build', 'review', 'check'].map(s => [s, { verdict: 'PASS', ts: '2020-01-01T00:00:00Z' }]))))
     expect((await $.command.run({ command: 'temper', args: 'back plan need a cache layer', origin: { kind: 'composer' } } as never)).text).toBe(PASSTHROUGH)
     expect(decisions(w)).toMatchObject([{ type: 'back', to: 'plan', reason: 'need a cache layer' }])
+    cliTo(w, 'plan')
     const status = await $.command.run({ command: 'temper', args: 'status', origin: { kind: 'composer' } } as never)
     expect(status.text).toContain('Phase: Plan')
     expect(status.text).toContain('Stale: Build, Review, Check')
@@ -177,6 +184,8 @@ describe('completion writes the audit report', () => {
   test('Check passing ends the run and writes .temper/report.md with the decisions', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'review', gates: { review: 'FAIL' }, passedCriteria: ['AC-01', 'AC-02', 'AC-03', 'AC-04'] }))
     await $.command.run({ command: 'temper', args: 'override reviewer is on leave, risk accepted', origin: { kind: 'composer' } } as never)
+    // The orchestrator moves the CLI on after the override.
+    cliTo(w, 'check')
     w.files.set('.temper/gates.json', JSON.stringify({ check: { verdict: 'PASS', ts: '2999-01-01T00:00:00Z' } }))
     // The next commit attempt reads the verdict and completes the run.
     expect((await $.tool.call({ tool: 'Bash', command: 'git commit -m feat' })).text).toBe('stub ran')

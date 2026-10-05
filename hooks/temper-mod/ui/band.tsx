@@ -96,6 +96,8 @@ export function renderBand(
   )
   // The sentence is long enough to need two lines in a narrow band, so it wraps.
   const now = view.now ? <Text>{view.now}</Text> : null
+  // The one line under the bar when it and the CLI do not agree.
+  const sync = view.sync ? <Text color="yellow">{view.sync}</Text> : null
 
   const { primary, discuss, override } = view.actions
   const size = compact ? 20 : 28
@@ -144,6 +146,7 @@ export function renderBand(
     <Box flexDirection="column" key="temper-band">
       {head}
       {now}
+      {sync}
       <Box flexDirection="row" justifyContent="space-between" flexWrap="wrap">
         {chips}
         <Box flexDirection="row" columnGap={compact ? 1 : 0} flexWrap="wrap">{buttons}{play}</Box>

@@ -3,7 +3,7 @@ import { describe, expect, test as baseTest } from 'claude-code/testing'
 import { DRAGON_X, ROWS, TICK_MS, drawScene, newGame, press, runs, start, step } from '../../hooks/temper-mod/core/runner'
 import type { RunState } from '../../hooks/temper-mod/core/runner'
 import { SPEC, runFiles } from './run-files'
-import { world } from './world'
+import { cliTo, world } from './world'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const run = (args: string, kind = 'composer') => ({ command: 'temper', args, origin: { kind } }) as never
@@ -229,6 +229,9 @@ describe('the game pane draws on the terminal and the desktop app', () => {
       const ui = await mountGame($ as never, surface)
       expect(textOf(await ui.drawn({ in: 'game' }))).toContain('Temper: Plan is ready. Press Esc to go back.')
       await $.command.run(run('approve'))
+      // The CLI is the truth: the banner changes when the mirror call has moved it.
+      cliTo(w, 'build')
+      await $.command.run(run('status'))
       expect(textOf(await ui.drawn({ in: 'game' }))).toContain('Temper: Build is open. Press Esc to go back.')
       expect(w.toasts).toEqual(['Plan approved. Build open.'])
     })

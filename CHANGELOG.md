@@ -74,6 +74,38 @@ All notable changes to Temper are documented here. The plugin version lives in
   parallel calls cannot spend one human decision; the plugin folder path is decoded before it is
   checked; the game accepts only a real number as a score; the `game` setting reads `false`, `no`,
   `0`, `disabled` and `none` as off; the demo seed never removes a folder that is not its own.
+- One source of truth. Bug fixed: after Build, "Continue to Review" moved the bar but the mirror call
+  `state advance build_complete review` was refused, because only advances out of Intent and Plan counted
+  as the person's decision. Every advance now does. The CLI state (`build-state.json`) is now the truth for
+  where the run is: the phase on the bar and in every deny comes from `next_stage`; events only say who
+  decided. A choice that the CLI has not recorded shows one line ("Temper state: the run is at Build. Your
+  last choice is not recorded yet. Press 1 to record it."), and key 1 ("Record my choice") submits the
+  mirror prompt again for the same decision. A decision is spent only after its call ran without an error.
+  A reload, /clear, a deleted or corrupted events folder cannot move a run backward. When the mod cannot
+  tell where the run is (unreadable state, an unknown next stage) it blocks nothing and writes nothing; when
+  the CLI looks reset while later checks passed, phase rules do not block writes. With the bar active the
+  orchestrator never runs `state init`, `clear`, `archive` or `loop` on its own, and a failed Resume
+  Validation stops instead of picking Start over. New tests: `tests/mod/endtoend.test.ts` (a full run
+  against a fake CLI with chaos between steps) and the mirror commands against the real CLI in
+  `scripts/tests/test-temper.sh`.
+- The orchestrator does its own "On Continue" steps. Continue no longer sends a mirror prompt of the
+  mod: the button records the decision and runs `/temper:temper continue <stage>` (a new reserved word,
+  19 in all). The orchestrator then does what the original `/temper` writes for that stage: the status
+  flip, `state advance`, the feature branch, the commit of the approved artifacts, and launches the next
+  stage. Before, the branch was never created and the Build checkpoint commits were refused. The mod's
+  commit rule now defers to the same facts as `temper gate commit`: an artifact only commit (every staged
+  file under `.temper/specs/`) passes in every phase, a Build checkpoint commit passes on the run's branch
+  with a green test run, and a refusal says why (for example the branch). The project root is fixed at the
+  first session start and kept in `$.state`: Claude's `cd`, or a hot reload in another folder, can no longer
+  make the mod read another folder's `.temper`.
+- Original only. The Temper bar holds only the options the original `/temper` asks (Continue to, Loop
+  back to, Grill me, Teach me, Walk through step by step, Open HTML review, Architecture depth review,
+  Review config suggestions, Change, Stop, Save for later, Commit), plus Discuss, Play and Skip with a
+  reason. Removed from the buttons: Ask me questions, Edit the intent, Make the plan, Show the files,
+  Try another plan, Split the tasks, Run the tests, Show the changes, Review again, Run failed checks
+  again, Show the failures, Write the PR text, Show the timeline, Save my request, Go back to, Pause the
+  run. The subcommands stay. Done offers Commit and Save for later. `scripts/check-original-options.sh`
+  and the action tests refuse any other label.
 - Third security review (#39 to #48). While a run is active, a Bash command that names the script and
   hides what it runs (`$'..'`, `${..}`, `$(..)`, a launcher, a script written then run, `bash <(cat ...)`)
   is refused, and plain readers (`sed -n`, `awk '/x/'`, `nl`, `grep`, `pytest -k`) stay allowed. Names are

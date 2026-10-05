@@ -75,7 +75,8 @@ flowchart LR
 
 The Temper bar is the same choices as the questions Temper asks at each gate, without typing. With
 the mod loaded, Temper does not ask the question twice: it prints the result of the stage and waits
-for the bar, or for a message you type. Each button has the words of the original question.
+for the bar, or for a message you type. The bar has only the options the original question had, with
+its words, plus Discuss, Play and Skip with a reason. Anything else you can ask for by typing.
 
 | Original option | Temper bar button |
 |---|---|
@@ -83,10 +84,15 @@ for the bar, or for a message you type. Each button has the words of the origina
 | Loop back to {upstream} | `1` Loop back to {upstream} (the check failed) |
 | Override and continue | `9` Skip with a reason |
 | Other (a change request) | `4` Discuss |
-| Save for later, Grill me, Teach me | `0` More, then the number shown |
+| Save for later | `0` More, Save for later (`2` at Done) |
+| Grill Me | `2` or `3` (phase dependent), else `0` More |
+| Teach Me | `3` (phase dependent), else `0` More |
 | Walk through step by step | `2` at Plan |
-| Open HTML review, Architecture depth review, Review config suggestions | `0` More, then the number shown |
-| Change, Stop (Build checkpoint) | `2` at Build, `0` More then Stop |
+| Open HTML review | `3` at Plan |
+| Architecture Depth Review | `2` at Review |
+| Review config suggestions | `2` at Check (when the file exists) |
+| Change | `2` at a Build checkpoint |
+| Stop | `3` at a Build checkpoint |
 | Commit | `1` when the run is done |
 
 Every original option is one digit away, or `0` and then a digit. Without the mod the questions

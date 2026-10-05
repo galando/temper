@@ -45,5 +45,23 @@ while IFS='|' read -r option label; do
   PASS=$((PASS+1))
 done <<< "$TABLE"
 
+# Second check: the other way round. Every button label in actions.ts must be an original option
+# (the first column above, or its label), with a suffix allowed after "Continue to", "Loop back to"
+# and "Continue with task", or one of the explicit extras. Anything else fails with its name.
+ALLOWED_LABELS="Continue to|Continue with task|Loop back to|Save for later|Grill me|Teach me|Walk through step by step|Open HTML review|Architecture depth review|Review config suggestions|Change|Stop|Commit|Start Intent|Run Phase|Discuss|Play while you wait|Skip with a reason|Resume|Fix the failures|Fix the findings|Fix|Accept|Explain"
+# Labels written as the third argument of prompt(), command(), launch() or draft().
+LABELS="$(grep -oE "(prompt|command|launch|draft)\((key|'[0-9]'), (id|'[^']+'|\`[^\`]+\`), '[^']+'" "$ACTIONS" | sed -E "s/.*, '([^']+)'$/\1/" | sort -u)"
+# Labels written as template strings: `Continue to ${next}`, `Loop back to ${...}`, `Run ${...}`.
+LABELS="$LABELS"$'\n'"$(grep -oE "\`(Continue to|Continue with task|Loop back to|Run) " "$ACTIONS" | tr -d '`' | sed -E 's/ $//; s/^Run$/Run Phase/' | sort -u)"
+while IFS= read -r label; do
+  [[ -n "$label" ]] || continue
+  if printf '%s\n' "$label" | grep -qiE "^(${ALLOWED_LABELS})( |$)"; then
+    PASS=$((PASS+1))
+  else
+    echo "FAIL: the button label \"$label\" in actions.ts is not an original option of commands/temper.md and is not an explicit extra"
+    FAIL=$((FAIL+1))
+  fi
+done <<< "$LABELS"
+
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ $FAIL -eq 0 ]]

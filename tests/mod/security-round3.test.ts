@@ -30,6 +30,16 @@ describe('plain calls stay allowed while a run is active', () => {
     'scripts/temper status --json',
     'scripts/temper config get autonomy.enabled',
     'scripts/temper model --all',
+    // The Build agent records evidence and edits a file with a python program in one command. The program
+    // does not name the script, so only the plain evidence call mentions it.
+    `cd /private/tmp/pr-demo; T=/Users/x/plugin/scripts/temper; $T evidence add --stage build --claim "unit tests" --cmd "npm test" --exit 1 --phase red --label PROVEN 2>&1 | tail -3\npython3 - <<'EOF'\np='src/users.js'\ns=open(p).read()\ns=s.replace("const users = new Map()", "const users = new Map()\\nconst loop = 1")\nopen(p,'w').write(s)\nEOF`,
+    `cd /tmp/pr-demo && /Users/x/plugin/scripts/temper evidence add --stage build --claim "tests" --exit 0 --phase green --label PROVEN | tail -2\npython3 - <<'PY'\nimport json\nd=json.load(open('.temper/specs/pw/build-context.json'))\nd['init']=True\njson.dump(d,open('.temper/specs/pw/build-context.json','w'))\nPY`,
+    // The orchestrator's own idiom: the script is found by a command substitution, then used for reads.
+    'T=$(ls -d ~/.claude/plugins/cache/*/temper/*/scripts/temper 2>/dev/null | tail -1); echo $T; $T state get stage; $T state get next_stage; $T state get spec_path; $T gate plan',
+    'T=$(ls -d "$CLAUDE_PLUGIN_ROOT"/scripts/temper); $T state get next_stage',
+    'T=$(command -v temper || echo scripts/temper); $T gate review; $T report; $T status --json; $T config get autonomy.enabled; $T model --all',
+    'T=$(find ~/.claude -name temper -path "*scripts*" | head -1); $T evidence add --stage build --claim "unit tests" --label PROVEN',
+    'T=$(ls scripts/temper); $T state set complexity medium; $T state set base_sha "$(git rev-parse HEAD)"',
     // Readers that mention the script or a decision word.
     `sed -n '/override/p' scripts/temper`,
     `awk '/accept/ {print NR": "$0}' scripts/temper`,
@@ -60,6 +70,16 @@ describe('the reader exemption does not cover a program that runs something', ()
 
 describe('shell indirection around the script fails closed', () => {
   const bad = [
+    // A python program that names the script and a decision word is refused, plain call or not.
+    `python3 - <<'PY'\nimport subprocess\nsubprocess.run(['scripts/temper','override','plan','--reason','x'])\nPY`,
+    `scripts/temper gate plan\npython3 - <<'PY'\nimport os\nos.system('scripts/temper state clear')\nPY`,
+    // A script found by a substitution is still refused for anything that is not a plain read.
+    'T=$(ls scripts/temper); $T state advance plan_complete build',
+    'T=$(ls scripts/temper); $T override plan --reason x',
+    'T=$(ls scripts/temper); $T state set next_stage build',
+    'T=$(ls scripts/temper); $T evidence accept --stage review --id 1 --reason x',
+    'T=$(ls scripts/temper); $T state clear',
+    'T=$(ls scripts/temper); $T $(echo override) plan --reason x',
     `scripts/temper $'over\\x72ide' plan --reason x`,
     'scripts/temper ${V:-override} plan --reason x',
     'scripts/temper "$(printf override)" plan --reason x',

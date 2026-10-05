@@ -9,6 +9,7 @@ const bash = (command: string) => ({ tool: 'Bash', command }) as const
 
 const PLAN_DENY =
   'Temper: Plan phase. Writing src/app.ts is not allowed until the user approves the plan. ' +
+  'Do not look for another way. Do not offer to turn Temper off. ' +
   'Next: finish plan.md and tasks.md. Then ask the user to approve them (key 1 or /temper:temper approve).'
 
 describe('tool.call enforcement', () => {

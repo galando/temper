@@ -27,6 +27,7 @@ export const RESERVED = [
   'pane',
   'play',
   'discuss',
+  'continue',
 ] as const
 
 export type Reserved = (typeof RESERVED)[number]
@@ -155,6 +156,7 @@ export const HELP = [
   '  pr                   ask Claude for a pull request description',
   '  play                 play Temper Run while you wait (key 8 too; r runs, w jumps, s ducks, q leaves)',
   '  discuss <text>       send a message about the step you are at (the same as key 4)',
+  '  continue <stage>     the Temper bar sends this after you chose Continue: Claude does the On Continue steps of that stage',
   '  mode, enforcement, pane   show or change what Temper shows and enforces',
   'Any other text after /temper:temper is a feature description. It starts or resumes a run.',
 ].join('\n')

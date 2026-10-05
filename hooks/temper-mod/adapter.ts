@@ -14,9 +14,9 @@ import type { UiMode } from './core/config'
 import { mergeCriteria, parseCriteria, parseStatus, parseTitle, progress } from './core/criteria'
 import type { MergedCriterion } from './core/criteria'
 import { encodeEvent, eventFileName, readEvents, stamp } from './core/events'
-import type { Draft, TemperEvent } from './core/events'
+import type { Draft, Phase, TemperEvent } from './core/events'
 import { stageOf } from './core/cli'
-import { parseBuildState, parseFindings, parseGates, phaseFromStage } from './core/gates'
+import { cliPhase, parseBuildState, parseFindings, parseGates, phaseFromStage, samePhase } from './core/gates'
 import type { Finding } from './core/gates'
 import { buildView } from './core/view'
 import type { View } from './core/view'
@@ -26,7 +26,8 @@ import { planFileList, taskProgress, tasksLeft } from './core/planfiles'
 import { renderReport } from './core/report'
 import { sectionText } from './core/section'
 import type { DecisionKind } from './core/bash'
-import type { HumanDecision } from './core/rules'
+import type { CommitFacts, HumanDecision } from './core/rules'
+import { normalizePath } from './core/paths'
 import type { TemperRun } from '../../types'
 
 // Everything the adapter needs from Claude Code, as plain functions. register.tsx builds
@@ -45,9 +46,30 @@ export type Io = {
   setMode: (mode: UiMode) => Promise<void>
 }
 
+// A choice of the person (a move) that no mirror call has recorded in the CLI yet.
+export type PendingMove = { id: string; draft: Draft }
+
+// How the mod's picture of the run compares with the CLI state (build-state.json). The CLI is the truth
+// for WHERE the run is: `state.phase` is always derived from it. Events only say WHO decided.
+export type Sync = {
+  // The phase the CLI is at; null when the mod cannot tell.
+  cli: Phase | 'done' | null
+  // The one line shown under the bar when something does not agree; null when all is well.
+  line: string | null
+  // The person's move that is not mirrored yet (key 1 records it again). Reused, never recreated.
+  pending: PendingMove | null
+  // The mod cannot tell where the run is: it blocks nothing and writes nothing.
+  failOpen: boolean
+  // The CLI looks reset (it is earlier than checks that passed): phase rules do not block writes.
+  looksReset: boolean
+}
+
+export const NO_SYNC: Sync = { cli: null, line: null, pending: null, failOpen: false, looksReset: false }
+
 export type Snapshot = {
   // True below the minimum Claude Code version or when it cannot be read: nothing acts.
   inert: boolean
+  sync: Sync
   enforcement: 'on' | 'off'
   mode: UiMode
   prAttribution: 'on' | 'off'
@@ -56,6 +78,12 @@ export type Snapshot = {
   autonomyEnabled: boolean
   // The run's complexity from build-state.json (decides whether Plan is followed by design).
   complexity: string | null
+  // The run's own branch and the command that started it (build-state.json): the CLI commit gate's
+  // Build checkpoint carve-out reads both.
+  branch: string | null
+  runCommand: string | null
+  // intent.md exists in the spec folder (the commit gate then wants an intent verdict).
+  hasIntent: boolean
   specDir: string
   state: RunState
   verdicts: Verdicts
@@ -100,10 +128,14 @@ export function settingsFrom(options: PluginOptions) {
 export function idleSnapshot(options: PluginOptions, inert: boolean): Snapshot {
   return {
     inert,
+    sync: NO_SYNC,
     ...settingsFrom(options),
     slug: null,
     autonomyEnabled: false,
     complexity: null,
+    branch: null,
+    runCommand: null,
+    hasIntent: false,
     specDir: '',
     state: initialState(parseMaxLoops('', str(options, 'fixMaxLoops'))),
     verdicts: {},
@@ -137,7 +169,10 @@ function humanKind(ev: TemperEvent): DecisionKind | null {
   if (ev.origin !== 'person') return null
   if (ev.type === 'override') return 'override'
   if (ev.type === 'accept') return 'accept'
-  if (ev.type === 'advance' && (ev.from === 'intent' || ev.from === 'plan')) return 'advance'
+  // Every advance the person makes pays for its own mirror call (`state advance <stage>_complete`):
+  // the guard checks every advance since the third review, so every one needs its event in the pool.
+  // Fix has no CLI stage of its own, so a move out of Fix has nothing to mirror.
+  if (ev.type === 'advance' && ev.from !== 'fix') return 'advance'
   if (ev.type === 'back') return 'back'
   return null
 }
@@ -177,6 +212,51 @@ function decisionOf(ev: TemperEvent, kind: DecisionKind): HumanDecision {
   return { id: ev.id, kind }
 }
 
+const FLOW_ORDER: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check']
+
+// Makes the phase the CLI's. The events say who decided what; they never say where the run is. When
+// the mod's phase and the CLI's differ, the CLI wins, for the display and for every deny:
+//  - the person's last move is not mirrored yet: the CLI phase stays, one line says so, key 1 records it;
+//  - the CLI moved ahead of the events (the orchestrator advanced it): follow it, write nothing;
+//  - the CLI name is not one the mod knows: fail open, say so, block nothing;
+//  - the CLI looks reset (earlier than a check that passed): do not block work those checks passed.
+export function reconcile(state: RunState, nextStage: string | null, pending: PendingMove | null): { state: RunState; sync: Sync } {
+  if (!state.started) return { state, sync: NO_SYNC }
+  const cli = cliPhase(nextStage)
+  if (cli === null) {
+    return {
+      state,
+      sync: { cli: null, line: 'Temper state: the mod cannot tell where the run is. It does not block anything until the state can be read.', pending: null, failOpen: true, looksReset: false },
+    }
+  }
+  let next = state
+  let line: string | null = null
+  let held: PendingMove | null = null
+  let behind = false
+  if (!samePhase(state.phase, cli)) {
+    const ahead = state.phase === null ? -1 : state.phase === 'done' ? 5 : state.phase === 'fix' ? 4 : FLOW_ORDER.indexOf(state.phase)
+    const at = cli === 'done' ? 5 : cli === 'fix' ? 4 : FLOW_ORDER.indexOf(cli)
+    // The CLI is earlier than the person's own choices, with nothing waiting to be mirrored and no skip
+    // that the orchestrator has yet to advance past: nobody asked for that. It looks reset.
+    behind = at >= 0 && ahead > at && pending === null && state.history[state.history.length - 1]?.kind !== 'override'
+    next = { ...state, phase: cli, since: { ...state.since, ...(cli !== 'done' && state.since[cli] === undefined ? { [cli]: 0 } : {}) } }
+    next.loopLimitReached = false
+    if (pending !== null) {
+      held = pending
+      line = `Temper state: the run is at ${phaseLabel(cli)}. Your last choice is not recorded yet. Press 1 to record it.`
+    }
+  }
+  // A check that passed later than the phase the CLI is at, or choices that went further than the CLI
+  // says with nothing pending: the CLI state looks reset.
+  let looksReset = behind
+  if (cli !== 'done' && cli !== 'fix') {
+    const at = FLOW_ORDER.indexOf(cli)
+    looksReset = looksReset || (at >= 0 && FLOW_ORDER.some((p, i) => i > at && next.gate[p] === 'fresh'))
+  }
+  if (looksReset && line === null) line = `Temper state looks reset: the run is at ${phaseLabel(cli)}, but it went further before. Temper does not block work that already passed.`
+  return { state: next, sync: { cli, line, pending: held, failOpen: false, looksReset } }
+}
+
 const BOOTSTRAP = { ts: 0, session: 'bootstrap', seq: 1 }
 let seq = 0
 
@@ -214,9 +294,10 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   // The bootstrap start has one fixed name (ts 0, session "bootstrap", seq 1), so entering a run
   // again overwrites that file instead of adding another: a lost or unwritable store cannot pile
   // up start files, and a planted or edited file under that name is replaced with a genuine one.
+  // A next_stage the CLI does not use gives no phase to start at: nothing is guessed (never Intent).
   if (!state.started) {
-    const phase = phaseFromStage(bs.nextStage)
-    if (phase !== 'done') {
+    const phase = cliPhase(bs.nextStage)
+    if (phase !== null && phase !== 'done') {
       const start = await writeEvent(io, specDir, { type: 'start', slug: bs.spec, title, phase, origin: 'system' }, BOOTSTRAP)
       events = [...events.filter(e => e.id !== start.id), start]
       own.add(start.id)
@@ -229,19 +310,29 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   const status = parseStatus((await readText(io, `${STATE_ROOT}/status.json`)) ?? '')
 
   const humanDecisions: HumanDecision[] = []
+  let pendingMove: PendingMove | null = null
   for (const ev of events) {
     const kind = humanKind(ev)
     if (kind && own.has(ev.id) && !(await io.storeGet(USED_PREFIX + ev.id))) {
       humanDecisions.push(decisionOf(ev, kind))
+      // A move of the person that no mirror call has recorded yet: the latest one is the one to record.
+      if (ev.type === 'advance' || ev.type === 'back' || ev.type === 'override') pendingMove = { id: ev.id, draft: ev }
     }
   }
 
+  const sync = reconcile(state, bs.nextStage, pendingMove)
+  state = sync.state
+
   return {
     inert: false,
+    sync: sync.sync,
     ...cfg,
     slug: bs.spec,
     autonomyEnabled,
     complexity: bs.complexity,
+    branch: bs.branch,
+    runCommand: bs.command,
+    hasIntent: intentText !== '',
     specDir,
     state,
     verdicts,
@@ -255,6 +346,36 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     configSuggestions: (await io.list(specDir).catch(() => [])).some(e => e.kind === 'file' && e.name === 'config-suggestions.json'),
     humanDecisions,
   }
+}
+
+// The facts of the CLI commit gate that the mod can read (see CommitFacts in core/rules.ts). `root` is the
+// project folder; the current branch comes from .git/HEAD. Never throws: a fact that cannot be read is false.
+export async function commitFacts(io: Io, snap: Snapshot, root: string, staged: { all: boolean; paths: string[] }): Promise<CommitFacts> {
+  const specs = !staged.all && staged.paths.length > 0 && staged.paths.every(p => normalizePath(p, root).toLowerCase().startsWith('.temper/specs/'))
+  const dir = root.replace(/\/$/, '')
+  const head = (await readText(io, `${dir}/.git/HEAD`)) ?? ''
+  const cur = /^ref:\s*refs\/heads\/(.+?)\s*$/.exec(head)?.[1] ?? null
+  const s = snap.state
+  const satisfied = (p: 'intent' | 'plan') => snap.verdicts[p]?.verdict === 'PASS' || s.overrides.some(o => o.phase === p)
+  let checkpoint = false
+  let hint: string | undefined
+  if (snap.sync.cli === 'build' && snap.runCommand === 'temper' && snap.branch !== null) {
+    if (cur !== snap.branch) {
+      hint = `A Build checkpoint commit needs the run's branch ${snap.branch}, and you are on ${cur ?? 'no branch'}.`
+    } else if (satisfied('plan') && (!snap.hasIntent || satisfied('intent'))) {
+      let rows: unknown = []
+      try {
+        rows = JSON.parse((await readText(io, `${STATE_ROOT}/evidence/build.json`)) ?? '[]')
+      } catch {
+        rows = []
+      }
+      const hits = (Array.isArray(rows) ? rows : []).filter(r => typeof r === 'object' && r !== null && (r as { phase?: unknown }).phase === 'green' && String((r as { claim?: unknown }).claim ?? '').toLowerCase().includes('test'))
+      const last = hits[hits.length - 1] as { exit_code?: unknown } | undefined
+      checkpoint = last !== undefined && Number(last.exit_code) === 0
+      if (!checkpoint) hint = 'A Build checkpoint commit needs a green test run on record.'
+    }
+  }
+  return { stagedSpecsOnly: specs, checkpoint, ...(hint ? { hint } : {}) }
 }
 
 // Writes one event file, once, under a unique name, and records a digest of its text in
@@ -309,6 +430,7 @@ export function composeText(snap: Snapshot): string {
     paused: s.paused,
     loopLimitReached: s.loopLimitReached,
     stale: s.stale,
+    sync: snap.sync.line,
     actionContext: {
       ready: s.phase !== null && s.phase !== 'done' ? s.gate[s.phase] === 'fresh' : false,
       allChecksPass: s.gate.check === 'fresh',
@@ -318,7 +440,7 @@ export function composeText(snap: Snapshot): string {
 }
 
 export const viewOf = (snap: Snapshot): View =>
-  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false })
+  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, sync: snap.sync.line, pending: snap.sync.pending !== null, enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false })
 
 // Mirrors the folded state into `$.state` for drawing and compaction.
 export async function publish(io: Io, snap: Snapshot): Promise<void> {

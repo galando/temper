@@ -1,17 +1,19 @@
 // Per-phase actions and hotkeys (mods-plan 3.7). One flow, two views: the orchestrator
 // (commands/temper.md) still runs the stages and the CLI still judges the gates. These actions are
-// the same choices the orchestrator asks as questions, with the same words, as buttons.
+// the options the original orchestrator asks as questions, with the same words, as buttons. Nothing
+// else is a button: the person can still ask for anything else by typing (key 4, Discuss).
 //
 //   1  the main step: "Continue to <next>" once the check passed, "Loop back to <upstream>" when it
 //      failed, else "Start <phase>" / "Run <phase>" (the orchestrator runs the stage)
-//   2  3  the most useful options of the phase (same words as the original questions)
+//   2  3  two more original options of the phase (Grill me, Teach me, Walk through step by step ...)
 //   4  Discuss: the original "Other": the person types any message
 //   9  Skip with a reason (the original "Override and continue")
-//   0  More: the rest of the original options as a numbered menu (1 to 9, 0 goes back)
+//   0  More: the other original options as a numbered menu (1 to 9, 0 goes back)
 //
 // A label is a short phrase that says the result. Each action has one short line (`desc`, 10 words
 // at most) that the pane shows under the label. No internal word ("gate", "override") appears in a
-// label or a line.
+// label or a line. scripts/check-original-options.sh and tests/mod/actions.test.ts refuse a label that
+// is not an original option or one of the explicit extras.
 
 import type { Phase } from './events'
 
@@ -32,11 +34,14 @@ export type Action = {
   // A reserved subcommand typed as `/temper:temper <command>`.
   command?: string
   asksReason?: boolean
-  // After the command is recorded and mirrored, submit `/temper:temper` (no arguments) so the
+  // After the command is recorded and mirrored, run `/temper:temper` (no arguments) so the
   // orchestrator launches the stage. Also set alone: the action only launches the stage.
   resume?: boolean
   // Put this draft in the prompt box and let the person type the rest (Discuss, Change).
   fill?: string
+  // Record the person's last choice in the CLI again: the mirror prompt for the pending decision is
+  // submitted once more. No new decision is made.
+  record?: boolean
 }
 
 export type ActionContext = {
@@ -55,6 +60,8 @@ export type ActionContext = {
   tasksLeft?: number | null
   // Check wrote config-suggestions.json in the spec folder.
   configSuggestions?: boolean
+  // The person's last move is not recorded in the CLI yet (Snapshot.sync.pending).
+  pending?: boolean
 }
 
 export type ActionSet = { primary: Action[]; discuss: Action; override: Action | null; more: Action[] }
@@ -94,7 +101,6 @@ const cap = (p: string): string => `${p.charAt(0).toUpperCase()}${p.slice(1)}`
 // What follows each phase, and what the orchestrator loops back to when a check fails.
 const NEXT: Record<Phase, string> = { intent: 'Plan', plan: 'Build', build: 'Review', review: 'Check', check: 'Commit', fix: 'Check' }
 const UPSTREAM: Partial<Record<Phase, Phase>> = { plan: 'intent', build: 'plan', review: 'build' }
-const BACK_ONE: Partial<Record<Phase, Phase>> = { plan: 'intent', build: 'plan', review: 'build', check: 'review', fix: 'check' }
 
 const READY_DESC: Record<Phase, string> = {
   intent: 'The intent is checked. Plan opens and Claude plans.',
@@ -105,130 +111,130 @@ const READY_DESC: Record<Phase, string> = {
   fix: 'Run the checks again.',
 }
 
+// Build is gated at every checkpoint (one task per launch): a check that fails while tasks are still
+// open is no failure, only a checkpoint. The next step is the next task.
+const isCheckpoint = (phase: Phase, ctx: ActionContext): boolean => {
+  const left = ctx.tasksLeft
+  return phase === 'build' && !ctx.ready && Boolean(ctx.task) && (left === undefined ? ctx.gate !== 'fail' : (left ?? 0) > 0)
+}
+
 // Key 1, by what the check said. The orchestrator runs every stage and its check itself, so a person
 // arriving at a phase finds the result already there.
 function main(phase: Phase, ctx: ActionContext): Action {
+  // The person chose a move that the CLI has not recorded: key 1 records it again. It is not a new choice.
+  if (ctx.pending) return { key: '1', id: 'record', label: 'Record my choice', desc: 'Temper records your last choice again.', record: true }
   const next = NEXT[phase]
   if (ctx.ready) {
     return command('1', 'continue', `Continue to ${next}`, READY_DESC[phase], phase === 'intent' || phase === 'plan' ? 'approve' : 'next', false, true, `To ${next}`)
   }
-  // Build is gated at every checkpoint (one task per launch): a check that fails while tasks are still
-  // open is no failure, only a checkpoint. The next step is the next task.
-  const left = ctx.tasksLeft
-  if (phase === 'build' && ctx.task && (left === undefined ? ctx.gate !== 'fail' : (left ?? 0) > 0)) {
+  if (isCheckpoint(phase, ctx) && ctx.task) {
     return launch('1', 'run-stage', `Continue with task ${ctx.task.n}`, 'Claude builds the task and stops for you.')
   }
   const up = UPSTREAM[phase]
-  if (ctx.gate === 'fail' && up) {
-    return command('1', 'loop-back', `Loop back to ${cap(up)}`, `The check failed. Redo ${cap(up)}. You give a reason.`, `back ${up}`, true, true, `Back to ${cap(up)}`)
-  }
+  if (ctx.gate === 'fail' && up) return loopBack(up, '1')
   if (phase === 'intent') return launch('1', 'run-stage', 'Start Intent', 'Claude writes the intent and checks it. Then you decide.')
   return launch('1', 'run-stage', ctx.gate === 'fail' ? `Run ${cap(phase)} again` : `Run ${cap(phase)}`, `Claude runs ${cap(phase)} and checks it. Then you decide.`)
 }
 
+// The original "Loop back to {upstream}": it asks for a reason, records the step back, and the orchestrator
+// launches the earlier stage again. The loop budget (loops.max-per-type) is kept by the CLI.
+const loopBack = (to: Phase, key: ActionKey): Action =>
+  command(key, 'loop-back', `Loop back to ${cap(to)}`, `Redo ${cap(to)}. You give a reason.`, `back ${to}`, true, true, `Back to ${cap(to)}`)
+
 const noun = (phase: Phase): string => ({ intent: 'intent', plan: 'plan', build: 'work', review: 'review', check: 'checks', fix: 'fix' })[phase]
 
-const grill = (phase: Phase): Action =>
-  prompt('1', 'grill-me', 'Grill me', 'Claude asks hard questions about it.', `Use the grill-me skill on the current ${noun(phase)}.`, SHOW)
-const teach = (phase: Phase): Action =>
-  prompt('1', 'teach-me', 'Teach me', 'Claude explains it so you learn it.', `Use the teach-me skill on the current ${noun(phase)}.`, SHOW)
-const timeline = (): Action => command('1', 'timeline', 'Show the timeline', 'See each step of the run.', 'timeline')
-const save = (paused: boolean): Action =>
-  paused
-    ? command('1', 'resume', 'Resume the run', 'Give the run back to Claude.', 'resume', false, true)
-    : command('1', 'pause', 'Save for later', 'Pause the run. You come back to it.', 'pause')
-const back = (phase: Phase): Action[] => {
-  const prev = BACK_ONE[phase]
-  return prev ? [command('1', 'back-one', `Go back to ${cap(prev)}`, 'Redo the step before. You give a reason.', `back ${prev}`, true, true)] : []
-}
-const prText = (): Action =>
-  prompt(
-    '1',
-    'pr-desc',
-    'Write the PR text',
-    'Claude writes the pull request text from the report.',
-    'Write a pull request description for this change. Use .temper/report.md. Write the report first if it is missing. List the skipped steps, the accepted findings and the scope drift decisions with their reasons.',
-  )
+const grill = (phase: Phase, key: ActionKey = '1'): Action =>
+  prompt(key, 'grill-me', 'Grill me', 'Claude asks hard questions about it.', `Use the grill-me skill on the current ${noun(phase)}.`, SHOW)
+const teach = (phase: Phase, key: ActionKey = '1'): Action =>
+  prompt(key, 'teach-me', 'Teach me', 'Claude explains it so you learn it.', `Use the teach-me skill on the current ${noun(phase)}.`, SHOW)
+// "Save for later" is the original pause. A paused run offers Resume in its place.
+const save = (paused: boolean, key: ActionKey = '1'): Action =>
+  paused ? command(key, 'resume', 'Resume', 'Give the run back to Claude.', 'resume', false, true) : command(key, 'pause', 'Save for later', 'Pause the run. You come back to it.', 'pause', false, false)
 
-// The rest of the original options, as a numbered menu (1 to 9). The same words as the questions.
-function menu(phase: Phase, ctx: ActionContext): Action[] {
-  const paused = ctx.paused ?? false
+const walk = (key: ActionKey): Action =>
+  prompt(
+    key,
+    'walk-through',
+    'Walk through step by step',
+    'Claude explains the plan one part at a time.',
+    'Walk me through the plan step by step: the scenarios, the files, the tasks. Stop after each part and wait for me.',
+    SHOW,
+    'Walk through',
+  )
+const htmlReview = (key: ActionKey): Action =>
+  prompt(
+    key,
+    'html-review',
+    'Open HTML review',
+    'See the plan in a web page. Add comments.',
+    'Open the HTML review of the plan: fill templates/plan-review.html from plan.md and tasks.md, open it, wait for me, then apply review-comments.json.',
+    SHOW,
+  )
+const archDepth = (key: ActionKey): Action =>
+  prompt(
+    key,
+    'arch-depth',
+    'Architecture depth review',
+    'Check the changes for seams, adapters and locality.',
+    'Run the Architecture Depth Review on the changed files. Add its ARCH-DEPTH findings to the review summary.',
+    SHOW,
+    'Depth review',
+  )
+const configSuggestions = (key: ActionKey): Action =>
+  prompt(
+    key,
+    'config-suggestions',
+    'Review config suggestions',
+    'Claude shows each suggested setting. You choose.',
+    'Show each item in config-suggestions.json. For each one, ask me to accept, reject or defer it.',
+    SHOW,
+    'Review config',
+  )
+const stop = (key: ActionKey): Action => ({
+  ...command(key, 'stop', 'Stop', 'Run the build check. Then save for later.', 'pause'),
+  prompt: `Run the build check (scripts/temper gate build). Then wait. ${SHOW}`,
+})
+
+// The two buttons after Continue, by phase, and the rest of the original options for the menu.
+function pair(phase: Phase, ctx: ActionContext): [Action, Action] {
   switch (phase) {
     case 'intent':
-      return [
-        grill(phase),
-        teach(phase),
-        prompt('1', 'capture', 'Save my request', 'Save your last request as a draft intent.', 'Write my last request as a draft intent.md for a new spec.'),
-        save(paused),
-        timeline(),
-      ]
+      return [grill(phase, '2'), teach(phase, '3')]
     case 'plan':
-      return [
-        prompt(
-          '1',
-          'html-review',
-          'Open HTML review',
-          'See the plan in a web page. Add comments.',
-          'Open the HTML review of the plan: fill templates/plan-review.html from plan.md and tasks.md, open it, wait for me, then apply review-comments.json.',
-          SHOW,
-        ),
-        prompt('1', 'alternative', 'Try another plan', 'Claude compares this plan with another way.', 'Give one other way to do the plan. Compare the two plans.', SHOW),
-        prompt('1', 'split-tasks', 'Split the tasks', 'Make the tasks smaller, each with a test command.', 'Split the plan into smaller tasks in tasks.md. Give each task its own Validate command.'),
-        grill(phase),
-        teach(phase),
-        ...back(phase),
-        save(paused),
-        timeline(),
-      ]
-    case 'build': {
-      const stop: Action = {
-        ...command('1', 'stop', 'Stop', 'Run the build check. Then save for later.', 'pause'),
-        prompt: `Run the build check (scripts/temper gate build). Then wait. ${SHOW}`,
-      }
-      return [stop, grill(phase), teach(phase), ...back(phase), save(paused), timeline()]
-    }
+      return [walk('2'), htmlReview('3')]
+    case 'build':
+      return isCheckpoint(phase, ctx)
+        ? [draft('2', 'change', 'Change', 'Tell Claude what to change in this task.', 'Change this task: '), stop('3')]
+        : [teach(phase, '2'), grill(phase, '3')]
     case 'review':
-      return [
-        prompt(
-          '1',
-          'arch-depth',
-          'Architecture depth review',
-          'Check the changes for seams, adapters and locality.',
-          'Run the Architecture Depth Review on the changed files. Add its ARCH-DEPTH findings to the review summary.',
-          SHOW,
-          'Depth review',
-        ),
-        grill(phase),
-        teach(phase),
-        ...back(phase),
-        save(paused),
-        timeline(),
-        prText(),
-      ]
+      return [archDepth('2'), grill(phase, '3')]
     case 'check':
-      return [
-        ...(ctx.configSuggestions
-          ? [
-              prompt(
-                '1',
-                'config-suggestions',
-                'Review config suggestions',
-                'Claude shows each suggested setting. You choose.',
-                'Show each item in config-suggestions.json. For each one, ask me to accept, reject or defer it.',
-                SHOW,
-                'Review config',
-              ),
-            ]
-          : []),
-        grill(phase),
-        teach(phase),
-        ...back(phase),
-        save(paused),
-        timeline(),
-        prText(),
-      ]
+      return ctx.configSuggestions ? [configSuggestions('2'), teach(phase, '3')] : [grill(phase, '2'), teach(phase, '3')]
     case 'fix':
-      return [grill(phase), teach(phase), ...back(phase), save(paused), timeline()]
+      return [grill(phase, '2'), teach(phase, '3')]
+  }
+}
+
+// The other original options, as a numbered menu (1 to 9). An option already on a main button is not repeated.
+function menu(phase: Phase, ctx: ActionContext): Action[] {
+  const paused = ctx.paused ?? false
+  const loopMain = main(phase, ctx).id === 'loop-back'
+  const shown = new Set([...pair(phase, ctx).map(a => a.id)])
+  const extra = (a: Action[]): Action[] => a.filter(x => !shown.has(x.id))
+  switch (phase) {
+    case 'intent':
+      return [save(paused)]
+    case 'plan':
+      return [...extra([grill(phase), teach(phase)]), save(paused)]
+    case 'build':
+      return isCheckpoint(phase, ctx) ? [grill(phase), teach(phase), save(paused)] : [...(loopMain ? [] : [loopBack('plan', '1')]), save(paused)]
+    case 'review':
+      return [...extra([teach(phase)]), ...(loopMain ? [] : [loopBack('build', '1')]), save(paused)]
+    case 'check':
+      return [...(ctx.configSuggestions ? extra([grill(phase)]) : []), save(paused)]
+    case 'fix':
+      // At the loop limit Save for later is already key 3.
+      return ctx.loopLimitReached ? [grill(phase), teach(phase)] : [grill(phase), teach(phase), save(paused)]
   }
 }
 
@@ -244,100 +250,51 @@ export function moreActions(phase: Phase, ctx: ActionContext): Action[] {
 }
 
 export function actionsFor(phase: Phase, ctx: ActionContext): ActionSet {
-  const more = moreActions(phase, ctx)
-  switch (phase) {
-    case 'intent':
-      return {
-        primary: [
-          main(phase, ctx),
-          prompt('2', 'clarify', 'Ask me questions', 'Claude asks you short questions to fill gaps.', 'Ask me one short question that makes the intent clear.', SHOW),
-          prompt('3', 'edit-intent', 'Edit the intent', 'Change the intent in your own words.', 'Show me intent.md. Make the changes I describe next.', SHOW),
-        ],
-        discuss: DISCUSS,
-        override: OVERRIDE,
-        more,
-      }
-    case 'plan':
-      return {
-        primary: [
-          main(phase, ctx),
-          prompt(
-            '2',
-            'walk-through',
-            'Walk through step by step',
-            'Claude explains the plan one part at a time.',
-            'Walk me through the plan step by step: the scenarios, the files, the tasks. Stop after each part and wait for me.',
-            SHOW,
-            'Walk through',
-          ),
-          prompt('3', 'plan-files', 'Show the files', 'See each file the plan changes, and why.', 'List each file the plan creates or changes. Give one reason for each file.', SHOW),
-        ],
-        discuss: DISCUSS,
-        override: OVERRIDE,
-        more,
-      }
-    case 'build':
-      return {
-        primary: [
-          main(phase, ctx),
-          draft('2', 'change', 'Change', 'Tell Claude what to change in this task.', 'Change this task: '),
-          prompt('3', 'run-tests', 'Run the tests', 'Run the tests and see the result.', 'Run the tests for the criterion we work on. Report the result.'),
-        ],
-        discuss: DISCUSS,
-        override: OVERRIDE,
-        more,
-      }
-    case 'review':
-      return {
-        primary: [
-          main(phase, ctx),
-          ...(ctx.hasFindings
-            ? [prompt('2', 'fix-all', 'Fix the problems', 'Claude fixes each problem, with a test.', 'Fix each open review finding, one at a time. Write a regression test for each fix.')]
-            : []),
-          prompt(ctx.hasFindings ? '3' : '2', 'diff', 'Show the changes', 'See the changes under review.', 'Show the git diff of the changes in review.', SHOW),
-        ],
-        discuss: DISCUSS,
-        override: OVERRIDE,
-        more,
-      }
-    case 'check':
-      return {
-        primary: [
-          main(phase, ctx),
-          prompt('2', 'rerun-failed', 'Run failed checks again', 'Run only the checks that failed.', 'Run again only the checks that failed.', ACT, 'Run failed again'),
-          prompt('3', 'failures', 'Show the failures', 'List the failed checks.', 'List the failed checks. Group them by acceptance criterion.', SHOW),
-        ],
-        discuss: DISCUSS,
-        override: OVERRIDE,
-        more,
-      }
-    case 'fix':
-      if (ctx.loopLimitReached) {
-        return {
-          primary: [
-            command('1', 'plan-again', 'Plan again', 'Go back to Plan. You give a reason.', 'back plan', true, true),
-            command('2', 'override-limit', 'Skip with a reason', 'Go on without a pass. Temper records it.', 'override', true, true),
-            command('3', 'take-over', 'Take over', 'Pause Temper. You work by hand.', 'pause'),
-          ],
-          discuss: DISCUSS,
-          override: OVERRIDE,
-          more,
-        }
-      }
-      return {
-        primary: [
-          prompt('1', 'fix-failures', 'Fix the failures', 'Claude makes the smallest change that fixes them.', 'Fix the failed checks with the smallest change. Then stop for the check run.'),
-          prompt('2', 'fix-findings', 'Fix the findings', 'Claude fixes the open review problems.', 'Fix the open review findings, one at a time.'),
-          command('3', 'to-check', 'Go back to checks', 'Run the checks again.', 'next', false, true),
-        ],
-        discuss: DISCUSS,
-        override: OVERRIDE,
-        more,
-      }
-  }
+  const set = baseActions(phase, ctx)
+  // A move of the person that the CLI has not recorded: key 1 records it again, in every phase.
+  return ctx.pending ? { ...set, primary: [main(phase, ctx), ...set.primary.slice(1)] } : set
 }
 
-// The actions of a finished run: the original Commit question, the pull request text and the timeline.
+function baseActions(phase: Phase, ctx: ActionContext): ActionSet {
+  const more = moreActions(phase, ctx)
+  if (phase === 'fix') {
+    if (ctx.loopLimitReached) {
+      return {
+        primary: [loopBack('plan', '1'), command('2', 'override-limit', 'Skip with a reason', 'Go on without a pass. Temper records it.', 'override', true, true), { ...save(ctx.paused ?? false, '3') }],
+        discuss: DISCUSS,
+        override: OVERRIDE,
+        more,
+      }
+    }
+    // The check passes again (the orchestrator re-ran it): going back to Check is the next step, and key 1.
+    if (ctx.allChecksPass) {
+      return {
+        primary: [
+          command('1', 'continue', 'Continue to Check', 'The checks pass again. Run the check step.', 'next', false, true, 'To Check'),
+          prompt('2', 'fix-failures', 'Fix the failures', 'Claude makes the smallest change that fixes them.', 'Fix the failed checks with the smallest change. Then stop for the check run.'),
+          prompt('3', 'fix-findings', 'Fix the findings', 'Claude fixes the open review problems.', 'Fix the open review findings, one at a time.'),
+        ],
+        discuss: DISCUSS,
+        override: OVERRIDE,
+        more,
+      }
+    }
+    return {
+      primary: [
+        prompt('1', 'fix-failures', 'Fix the failures', 'Claude makes the smallest change that fixes them.', 'Fix the failed checks with the smallest change. Then stop for the check run.'),
+        prompt('2', 'fix-findings', 'Fix the findings', 'Claude fixes the open review problems.', 'Fix the open review findings, one at a time.'),
+        command('3', 'to-check', 'Continue to Check', 'Run the checks again.', 'next', false, true, 'To Check'),
+      ],
+      discuss: DISCUSS,
+      override: OVERRIDE,
+      more,
+    }
+  }
+  const [two, three] = pair(phase, ctx)
+  return { primary: [main(phase, ctx), two, three], discuss: DISCUSS, override: OVERRIDE, more }
+}
+
+// The actions of a finished run: the original Commit question ("Commit" / "Save for later" / "Other").
 export function doneActions(): ActionSet {
   return {
     primary: [
@@ -348,8 +305,7 @@ export function doneActions(): ActionSet {
         'Claude commits the work. It does not push.',
         'Run scripts/temper gate commit. If it passes, commit the work with one conventional commit message. Do not push.',
       ),
-      { ...prText(), key: '2' },
-      { ...timeline(), key: '3' },
+      { key: '2', id: 'save-done', label: 'Save for later', desc: 'Leave the work as it is. Commit later.', command: 'saved' },
     ],
     discuss: DISCUSS,
     override: null,
@@ -385,23 +341,22 @@ export function nextStep(phase: Phase | 'done', ctx: ActionContext): string {
         : 'do the next task in tasks.md. Write a failing test first. Stay inside the plan files'
     case 'review':
       return ctx.hasFindings
-        ? 'fix the open findings, or ask the user to accept them with a reason (key 2, /temper:temper accept <id> <reason>)'
+        ? 'fix the open findings, or ask the user to accept them with a reason (/temper:temper accept <id> <reason>)'
         : 'run the review (key 1)'
     case 'check':
       return ctx.allChecksPass ? 'mark the run done (key 1 or /temper:temper next)' : 'run the checks (key 1 in Check or /temper:check)'
     case 'fix':
       return ctx.loopLimitReached
-        ? 'the fix loop limit is reached. Ask the user to plan again, override with a reason, or take over'
-        : 'fix the failed checks. Then go back to Check (key 3)'
+        ? 'the fix loop limit is reached. Ask the user to loop back to Plan, skip with a reason, or save the run for later'
+        : 'fix the failed checks. Then continue to Check (key 3)'
   }
 }
 
-// The one line every key 1 sentence ends with is the label's own line. The sentence under the bar
-// starts with the key and the label of the main action ("1 Continue to Build."), then its line. It
-// reads the same in the band, the pane, the hint and the line under an answer.
+// The sentence under the bar starts with the key and the label of the main action ("1 Continue to
+// Build."), then its line. It reads the same in the band, the pane, the hint and the line under an answer.
 export function nowText(phase: Phase | 'done', ctx: ActionContext): string {
   if (phase === 'done') return 'The run is done. 1 Commit when you are ready.'
-  if (phase === 'fix' && ctx.loopLimitReached) return 'Fixing did not work after several tries. Choose: 1 plan again, 2 skip with a reason, or 3 take over.'
+  if (phase === 'fix' && ctx.loopLimitReached) return 'Fixing did not work after several tries. Choose: 1 loop back to Plan, 2 skip with a reason, or 3 save for later.'
   const first = actionsFor(phase, ctx).primary[0]
   return first ? `1 ${first.label}. ${first.desc}` : ''
 }

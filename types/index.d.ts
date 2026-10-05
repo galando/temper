@@ -19,6 +19,7 @@ export type TemperAction = {
   asksReason?: boolean
   resume?: boolean
   fill?: string
+  record?: boolean
 }
 
 export type TemperView = {
@@ -37,6 +38,7 @@ export type TemperView = {
   findings: Array<{ id: string; severity: string; claim: string }>
   timeline: string[]
   now: string
+  sync: string | null
   task: { n: number; of: number } | null
   loopLimitReached: boolean
 }
@@ -61,6 +63,6 @@ export type TemperGame = {
 
 declare module 'claude-code' {
   interface PluginState {
-    temper: { run: TemperRun | null; mode: UiMode | null; game: TemperGame | null }
+    temper: { run: TemperRun | null; mode: UiMode | null; game: TemperGame | null; root: string | null }
   }
 }

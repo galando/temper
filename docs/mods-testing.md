@@ -85,6 +85,11 @@ bash demo/run-demo.sh intent   # starts at Step 1 of 6: Intent
   expect the main buttons back. Every original option (Save for later, Grill me, Teach me, Open HTML
   review, Architecture depth review, Review config suggestions, Stop, Commit, Walk through step by
   step, Change, Loop back to, Skip with a reason) must be one digit away, or `0` and one digit.
+  Expect NO button for anything the original `/temper` did not ask: no Show the files, Run the tests,
+  Show the changes, Write the PR text, Go back to, Pause the run or Show the timeline. Plan shows
+  `1 Continue to Build`, `2 Walk through`, `3 Open HTML review`, `4 Discuss`; a Build checkpoint shows
+  `1 Continue with task N`, `2 Change`, `3 Stop`; Check shows `1 Run Check` or `Continue to Commit`,
+  then Grill me or Review config suggestions, and Teach me.
 - [ ] **Ask Claude whether the mod is active.** Type
   `Does your system prompt contain a Temper enforcement line?` and expect Claude to quote
   `Temper enforcement: active`.

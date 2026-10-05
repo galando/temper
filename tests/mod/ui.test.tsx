@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { actionsFor } from '../../hooks/temper-mod/core/actions'
 import { SPEC, runFiles } from './run-files'
-import { COMPOSE, world } from './world'
+import { COMPOSE, cliTo, world } from './world'
 
 const SURFACES = ['terminal', 'desktop'] as const
 const ALL_SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
@@ -84,6 +84,9 @@ describe('phase bar (AbovePrompt)', () => {
       const w = world(on, files)
       await $.session.start(START)
       await $.command.run({ command: 'temper', args: 'back plan rework', origin: { kind: 'composer' } } as never)
+      // The mirror call moved the CLI back to plan.
+      cliTo(w, 'plan')
+      await $.command.run({ command: 'temper', args: 'status', origin: { kind: 'composer' } } as never)
       const ui = await $.ui.mount({ plugin: 'temper', surface, component: 'AbovePrompt', props: BAND })
       const texts = walk(await ui.drawn()).filter(n => n.type === 'Text').map(textOf).join(' ')
       expect(texts).toContain('\u25cf Plan')
@@ -213,13 +216,14 @@ describe('phase bar (AbovePrompt)', () => {
     // No pane is opened, and the menu is in the band itself.
     expect(w.opened).toEqual([])
     const keys = await menuKeys(band)
-    expect(keys).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '0'])
+    // Plan menu: Grill me, Teach me, Save for later.
+    expect(keys).toEqual(['1', '2', '3', '0'])
     const texts = walk(await band.drawn()).filter(n => n.type === 'Text').map(textOf).join(' ')
     expect(texts).toContain('More actions. Press the number shown.')
     // The menu is drawn above the phase chips, so it stays on screen.
     const drawn = JSON.stringify(await band.drawn())
     expect(drawn.indexOf('Press the number shown')).toBeLessThan(drawn.indexOf('step-intent'))
-    expect(drawn.indexOf('action-html-review')).toBeLessThan(drawn.indexOf('step-intent'))
+    expect(drawn.indexOf('action-grill-me')).toBeLessThan(drawn.indexOf('step-intent'))
     await band.press({ key: 'action-more' })
     expect(await menuKeys(band)).toEqual(['1', '2', '3', '4', '9', '0'])
   })
@@ -235,7 +239,7 @@ describe('phase bar (AbovePrompt)', () => {
     expect(await menuKeys(band)).toEqual(['1', '2', '3', '4', '9', '0'])
   })
 
-  test('menu choices that ask Claude use the original words: Grill me, Teach me, Open HTML review', async ($, on) => {
+  test('menu choices that ask Claude use the original words: Grill me, Teach me; Open HTML review is key 3', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'plan' }), { placed: false })
     await $.session.start(START)
     const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
@@ -243,7 +247,6 @@ describe('phase bar (AbovePrompt)', () => {
     await band.press({ key: 'action-grill-me' })
     await band.press({ key: 'action-more' })
     await band.press({ key: 'action-teach-me' })
-    await band.press({ key: 'action-more' })
     await band.press({ key: 'action-html-review' })
     expect(w.prompts[0]).toContain('grill-me skill on the current plan')
     expect(w.prompts[1]).toContain('teach-me skill on the current plan')
@@ -259,7 +262,8 @@ describe('phase bar (AbovePrompt)', () => {
     const paneKeys = () => menuKeys(pane)
     expect(await paneKeys()).toEqual(['1', '2', '3', '4', '9', '0'])
     await band.press({ key: 'action-more' })
-    expect(await paneKeys()).toEqual(['1', '2', '3', '4', '5', '6', '0'])
+    // Build checkpoint menu: Grill me, Teach me, Save for later.
+    expect(await paneKeys()).toEqual(['1', '2', '3', '0'])
     expect(JSON.stringify(await pane.drawn())).toContain('More actions. Press the number shown.')
     await band.press({ key: 'action-more' })
     expect(await paneKeys()).toEqual(['1', '2', '3', '4', '9', '0'])
@@ -360,8 +364,9 @@ describe('pane', () => {
         expect(keys).toContain('0')
         // Digits only: the menu replaces the main buttons, so no digit is used twice.
         expect(keys.every(k => /^[0-9]$/.test(k))).toBe(true)
-        expect(keys.includes('4')).toBe(true)
-        expect(keys.includes('9')).toBe(!expanded || keys.includes('9'))
+        // Discuss (4) and skip (9) are main buttons: the menu replaces them.
+        expect(keys.includes('4')).toBe(!expanded)
+        expect(keys.includes('9')).toBe(!expanded)
         await ui.unmount()
       }
     }
@@ -523,6 +528,10 @@ describe('turn line, suggestions and toasts', () => {
     await $.session.start(START)
     expect(w.toasts).toEqual([])
     await $.command.run({ command: 'temper', args: 'approve', origin: { kind: 'composer' } } as never)
+    // The bar follows the CLI: the toast comes when the mirror call has moved it.
+    expect(w.toasts).toEqual([])
+    cliTo(w, 'build')
+    await $.command.run({ command: 'temper', args: 'status', origin: { kind: 'composer' } } as never)
     expect(w.toasts).toEqual(['Plan approved. Build open.'])
   })
 

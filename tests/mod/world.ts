@@ -11,6 +11,10 @@ export type World = {
   prompts: string[]
   // The path of every fs call exactly as the plugin gave it (reads and lists and writes).
   rawPaths: string[]
+  // How many of the next `state advance|set` calls the fake CLI refuses (see fakeCli).
+  cliFailures?: number
+  // The folder the engine is in now, after a `cd` (see WorldOptions.projectRoot).
+  cwdNow?: string
   // Commands that reached the engine's own command run (after the plugin's hooks), in order.
   commandRuns: Array<{ command: string; args: string; origin: string }>
   // Drafts the mod put in the prompt box (`$.prompt.fill`), in order.
@@ -52,6 +56,54 @@ export type WorldOptions = {
   brokenList?: boolean
   // False: the prompt box refuses a draft (a dialog or the game pane holds the keys).
   fillable?: boolean
+  // Only files under this folder exist (see `outside`); a relative path is read from `w.cwdNow`.
+  projectRoot?: string
+  // True: the engine's Bash runs `scripts/temper state advance|set` against .temper/build-state.json
+  // like the real CLI does (see fakeCli).
+  fakeCli?: boolean
+}
+
+// The CLI moves the run to a stage (what a mirror call does): build-state.json next_stage. The mod
+// reads it on its next refresh (a status command, a turn end).
+export function cliTo(w: World, next: string): void {
+  const d = JSON.parse(w.files.get('.temper/build-state.json') ?? '{}') as Record<string, unknown>
+  w.files.set('.temper/build-state.json', JSON.stringify({ ...d, next_stage: next }))
+}
+
+// The stages of the CLI, in order (STAGE_SEQ_TEMPER in scripts/temper).
+export const CLI_SEQ = ['intent', 'plan', 'design', 'build', 'review', 'check']
+
+// The part of scripts/temper the mod depends on: `state advance <stage>_complete <next>` and
+// `state set next_stage <stage>` against .temper/build-state.json. Same checks as cmd_state_advance.
+// Null for any other command (the stub answers it).
+export function fakeCli(w: World, command: string): { result: string; text: string; isError?: boolean } | null {
+  const path = '.temper/build-state.json'
+  // A refused call (the CLI exits with an error): a test sets w.cliFailures to refuse the next calls.
+  if (/scripts\/temper\s+state\s+(?:advance|set)/.test(command) && (w.cliFailures ?? 0) > 0) {
+    w.cliFailures = (w.cliFailures ?? 0) - 1
+    return { result: 'FAIL: refused', text: 'FAIL: refused', isError: true }
+  }
+  const read = (): Record<string, unknown> => JSON.parse(w.files.get(path) ?? '{}') as Record<string, unknown>
+  const save = (d: Record<string, unknown>) => w.files.set(path, JSON.stringify(d))
+  const adv = /scripts\/temper\s+state\s+advance\s+(\S+)\s+(\S+)/.exec(command)
+  if (adv) {
+    const [, stage, next] = adv as unknown as [string, string, string]
+    if (!CLI_SEQ.some(s => stage === `${s}_complete`) && stage !== 'started') return { result: `FAIL: unknown stage '${stage}'`, text: `FAIL: unknown stage '${stage}'`, isError: true }
+    save({ ...read(), stage, next_stage: next })
+    return { result: `OK: advanced to ${stage} (next: ${next})`, text: `OK: advanced to ${stage} (next: ${next})` }
+  }
+  // `git checkout -b <branch>`: the current branch changes.
+  const checkout = /\bgit\s+checkout\s+-b\s+(\S+)/.exec(command)
+  if (checkout) {
+    w.files.set('/repo/.git/HEAD', `ref: refs/heads/${checkout[1]}\n`)
+    return { result: `Switched to a new branch '${checkout[1]}'`, text: `Switched to a new branch '${checkout[1]}'` }
+  }
+  const set = /scripts\/temper\s+state\s+set\s+next_stage\s+(\S+)/.exec(command)
+  if (set) {
+    save({ ...read(), next_stage: set[1] })
+    return { result: `OK: next_stage = ${set[1]}`, text: `OK: next_stage = ${set[1]}` }
+  }
+  return null
 }
 
 export const denyText = (r: { deny?: string }): string => r.deny ?? ''
@@ -74,20 +126,31 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
     return { value: undefined }
   })
   on('store.keys', () => ({ value: Object.keys(w.store) }))
+  // With `projectRoot` set, only files under it exist. A relative path is read from the folder the
+  // engine is in now (`w.cwdNow`, as after a `cd` in a Bash call), so a read that forgot the project
+  // root finds nothing, as it does in a real session.
+  const outside = (path: string): boolean => {
+    if (!opts.projectRoot) return false
+    const full = path.startsWith('/') ? path : `${w.cwdNow ?? opts.projectRoot}/${path}`
+    return !(full === opts.projectRoot || full.startsWith(`${opts.projectRoot}/`))
+  }
   on('fs.read', ($, e) => {
     w.rawPaths.push(e.path)
     w.reads.push(rel(e.path))
+    if (outside(e.path)) return { deny: `ENOENT: ${e.path}` }
     const text = w.files.get(rel(e.path))
     return text === undefined ? { deny: `ENOENT: ${e.path}` } : { value: text }
   })
   on('fs.write', ($, e) => {
     w.rawPaths.push(e.path)
+    if (outside(e.path)) return { deny: `EACCES: ${e.path}` }
     w.files.set(rel(e.path), e.text)
     w.writes.push(rel(e.path))
     return { value: undefined }
   })
   on('fs.list', ($, e) => {
     w.rawPaths.push(e.path)
+    if (outside(e.path)) return { deny: `ENOENT: ${e.path}` }
     if (opts.brokenList) return { value: 5 as never }
     const prefix = rel(e.path).replace(/\/$/, '') + '/'
     const names = [...w.files.keys()].filter(k => k.startsWith(prefix) && !k.slice(prefix.length).includes('/'))
@@ -144,6 +207,10 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
       const answer = w.answers.shift()
       if (answer === undefined) return { deny: 'no one to ask' }
       return { result: { questions, answers: { [question]: answer } }, text: answer } as never
+    }
+    if (opts.fakeCli && e.tool === 'Bash') {
+      const out = fakeCli(w, String((e as unknown as { command?: string }).command ?? ''))
+      if (out !== null) return out as never
     }
     return { result: 'stub ran', text: 'stub ran' } as never
   })

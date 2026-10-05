@@ -38,8 +38,8 @@ describe('buildView', () => {
     expect(buildView(input('fix')).steps.find(s => s.id === 'fix')?.status).toBe('current')
     const done = buildView({ ...input('check'), state: stateAt('check', [{ type: 'checkResult', result: 'pass', origin: 'system' }]) })
     expect(done.phase).toBe('done')
-    // A finished run offers the original Commit question, the PR text and the timeline, and Discuss.
-    expect(done.actions?.primary.map(a => a.label)).toEqual(['Commit', 'Write the PR text', 'Show the timeline'])
+    // A finished run offers the original Commit question (Commit, Save for later) and Discuss.
+    expect(done.actions?.primary.map(a => a.label)).toEqual(['Commit', 'Save for later'])
     expect(done.actions?.discuss.key).toBe('4')
     expect(done.actions?.override).toBeNull()
     expect(done.steps.filter(s => s.status === 'done')).toHaveLength(5)

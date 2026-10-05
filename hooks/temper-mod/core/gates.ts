@@ -28,7 +28,16 @@ export function parseGates(text: string): Verdicts {
   return out
 }
 
-export type BuildState = { spec: string; specPath: string; nextStage: string | null; task: number | null; complexity: string | null }
+export type BuildState = {
+  spec: string
+  specPath: string
+  nextStage: string | null
+  task: number | null
+  complexity: string | null
+  // The run's own branch and the command that started it (the CLI commit gate reads both).
+  branch: string | null
+  command: string | null
+}
 
 export function parseBuildState(text: string): BuildState | null {
   let raw: unknown
@@ -46,8 +55,42 @@ export function parseBuildState(text: string): BuildState | null {
     specPath,
     nextStage: typeof o.next_stage === 'string' ? o.next_stage : null,
     complexity: typeof o.complexity === 'string' ? o.complexity : null,
+    branch: typeof o.branch === 'string' && o.branch !== '' ? o.branch : null,
+    command: typeof o.command === 'string' ? o.command : null,
     task: typeof o.task === 'number' && Number.isInteger(o.task) && o.task >= 1 ? o.task : null,
   }
+}
+
+// Where the CLI says the run is, from build-state's `next_stage`: the stage that runs next is the phase
+// the person is at. Null when the name is not one the CLI uses, or there is none: then the mod cannot
+// tell, and it must not guess (see Snapshot.sync). This is the one source of truth for the phase.
+export function cliPhase(next: string | null): Phase | 'done' | null {
+  switch (next) {
+    case 'intent':
+    case 'plan':
+    case 'design':
+    case 'build':
+    case 'review':
+    case 'check':
+    case 'fix':
+    case 'rca':
+    case 'commit':
+    case 'done':
+    case 'eval':
+      return phaseFromStage(next)
+    default:
+      return null
+  }
+}
+
+// The mod's phase and the CLI's phase say the same thing. Fix is a phase of the mod after a failed check
+// (the CLI is still at check); Done after a passed check (the CLI is at check until commit); Design is
+// part of Plan.
+export function samePhase(mod: Phase | 'done' | null, cli: Phase | 'done'): boolean {
+  if (mod === cli) return true
+  if (mod === 'fix') return cli === 'check'
+  if (mod === 'done') return cli === 'check'
+  return false
 }
 
 // Where a run the CLI already started stands, from build-state's `next_stage`.

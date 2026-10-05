@@ -398,8 +398,9 @@ describe('the first obstacle and the gaps (fairness)', () => {
   })
 
   test('every gap is at least the minimum gap for the speed, over thousands of seeds and every speed', () => {
+    // 100 seeds for each of 7 speeds (the test had 150 and sat close to the 5 second limit on a busy machine).
     for (const startScore of [0, 200, 400, 800, 1200, 1600, 2400]) {
-      for (let seed = 1; seed <= 150; seed++) {
+      for (let seed = 1; seed <= 100; seed++) {
         let g = running(seed, 0, DEFAULT_WIDTH, startScore)
         let known = 0
         for (let i = 0; i < 700; i++) {

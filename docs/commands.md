@@ -113,10 +113,11 @@ after the command is one of these, Temper handles it instead of starting a run. 
 | `/temper:temper pane` | Open or close the pane. A bare `/temper:temper` does the same while a run is active. |
 | `/temper:temper play` | Open or close the Temper Run game. Only you can open it. Terminal and desktop app only. |
 | `/temper:temper discuss <text>` | Send a message about the step you are at. The same as key 4 (Discuss). It changes no phase. |
+| `/temper:temper continue <stage>` | The Temper bar sends this after you chose Continue. Claude then does the "On Continue" steps of that stage as the original `/temper` writes them (status flip, `state advance`, the feature branch, the commit of the approved artifacts) and launches the next stage. The mod records nothing for it. |
 | `/temper:temper help` | List these |
 
-These 18 words are reserved: `status`, `timeline`, `approve`, `next`, `back`, `override`, `accept`,
-`drift`, `pause`, `resume`, `report`, `pr`, `mode`, `enforcement`, `pane`, `play`, `discuss` and `help`.
+These 19 words are reserved: `status`, `timeline`, `approve`, `next`, `back`, `override`, `accept`,
+`drift`, `pause`, `resume`, `report`, `pr`, `mode`, `enforcement`, `pane`, `play`, `discuss`, `continue` and `help`.
 
 Decisions (`approve`, `override`, `accept`, `drift`, `back`) count only when you type
 them or press the button yourself. Claude cannot create one. With the mod loaded the
@@ -170,20 +171,24 @@ state, and then runs `/temper:temper` with no arguments, which is the orchestrat
 starts the next stage in its own subagent. Without the mod nothing changes and the orchestrator asks
 its questions as before.
 
+The bar holds only the options the original orchestrator has, plus Discuss, Play and Skip with a
+reason. The table is one to one. Everything else (show the files, run the tests, show the changes,
+write the PR text, go back a phase) you can still ask for by typing; the subcommands stay.
+
 | Original option (`commands/temper.md`) | Temper bar button |
 |---|---|
-| Continue to {next} (Recommended) | `1` Continue to {next} |
-| Loop back to {upstream} | `1` Loop back to {upstream} (when the check failed; it asks for a reason) |
+| Continue to {next} (Recommended) | `1` Continue to {next} (at a Build checkpoint: `1` Continue with task N) |
+| Loop back to {upstream} | `1` when the check failed (it asks for a reason); under `0` More at the Build completion gate and at Review |
 | Override and continue | `9` Skip with a reason |
-| Save for later | `0` More, Save for later (pauses the run; Resume the run when paused) |
-| Grill Me | `0` More, Grill me |
-| Teach Me | `0` More, Teach me |
+| Save for later | `0` More, Save for later (pauses the run; Resume when paused). At Done: `2` |
+| Grill Me | `2` or `3` where the phase has no better option, else `0` More, Grill me |
+| Teach Me | `3` (or `2` at the Build completion gate), else `0` More, Teach me |
 | Walk through step by step | `2` at Plan |
-| Open HTML review | `0` More, Open HTML review (Plan) |
-| Architecture Depth Review | `0` More, Architecture depth review (Review) |
-| Review config suggestions | `0` More, Review config suggestions (Check, when `config-suggestions.json` exists) |
-| Change (Build checkpoint) | `2` at Build: a draft "Change this task: " in the prompt box |
-| Stop (Build checkpoint) | `0` More, Stop (Build) |
+| Open HTML review | `3` at Plan |
+| Architecture Depth Review | `2` at Review |
+| Review config suggestions | `2` at Check, only when `config-suggestions.json` exists |
+| Change (Build checkpoint) | `2` at a Build checkpoint: a draft "Change this task: " in the prompt box |
+| Stop (Build checkpoint) | `3` at a Build checkpoint |
 | Commit | `1` when the run is done |
 | Other (a change request) | `4` Discuss: a draft "Discuss this step: " in the prompt box |
 
@@ -202,13 +207,14 @@ Key `9` is "Skip with a reason" everywhere and always asks for a reason. Key `0`
 
 | Phase | Writes allowed | Keys |
 |---|---|---|
-| Intent | `intent.md` only | 1 Start Intent, or Continue to Plan. 2 Ask me questions. 3 Edit the intent. More: Grill me, Teach me, Save my request, Save for later, Show the timeline. |
-| Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records | 1 Run Plan, Loop back to Intent, or Continue to Build. 2 Walk through step by step. 3 Show the files. More: Open HTML review, Try another plan, Split the tasks, Grill me, Teach me, Go back to Intent, Save for later, Show the timeline. |
-| Build | The files in the plan, test files and the spec folder | 1 Continue with task N, Loop back to Plan, or Continue to Review. 2 Change. 3 Run the tests. More: Stop, Grill me, Teach me, Go back to Plan, Save for later, Show the timeline. |
-| Review | The spec folder only, unless a fix for that file is active | 1 Run Review, Loop back to Build, or Continue to Check. 2 Fix the problems (when findings exist), else Show the changes. 3 Show the changes. In the pane, per finding: Fix, Accept, Explain. More: Architecture depth review, Grill me, Teach me, Go back to Build, Save for later, Show the timeline, Write the PR text. |
-| Check | The spec folder only. `git commit` stays refused until Check passes. | 1 Run Check. 2 Run failed checks again. 3 Show the failures. More: Review config suggestions, Grill me, Teach me, Go back to Review, Save for later, Show the timeline, Write the PR text. |
-| Fix | The failing files | 1 Fix the failures. 2 Fix the findings. 3 Go back to checks. At the limit: Plan again, Skip with a reason, Take over. |
-| Done | Nothing is blocked | 1 Commit (Claude commits and does not push). 2 Write the PR text. 3 Show the timeline. |
+| Intent | `intent.md` only | 1 Start Intent, or Continue to Plan. 2 Grill me. 3 Teach me. More: Save for later. |
+| Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records | 1 Run Plan, Loop back to Intent, or Continue to Build. 2 Walk through step by step. 3 Open HTML review. More: Grill me, Teach me, Save for later. |
+| Build, checkpoint (tasks are open) | The files in the plan, test files and the spec folder | 1 Continue with task N. 2 Change. 3 Stop. More: Grill me, Teach me, Save for later. |
+| Build, completion | The same | 1 Continue to Review, or Loop back to Plan when the check failed. 2 Teach me. 3 Grill me. More: Loop back to Plan, Save for later. |
+| Review | The spec folder only, unless a fix for that file is active | 1 Run Review, Loop back to Build, or Continue to Check. 2 Architecture depth review. 3 Grill me. More: Teach me, Loop back to Build, Save for later. In the pane, per finding: Fix, Accept, Explain. |
+| Check | The spec folder only. `git commit` stays refused until Check passes. | 1 Run Check. 2 Review config suggestions (only when the file exists), else Grill me. 3 Teach me. More: Save for later. |
+| Fix | The failing files | 1 Fix the failures. 2 Fix the findings. 3 Continue to Check. At the limit: Loop back to Plan, Skip with a reason, Save for later. |
+| Done | Nothing is blocked | 1 Commit (Claude commits and does not push). 2 Save for later. |
 
 A write outside the Build plan raises scope drift. You can add the file to the plan, revert it, or
 allow it once with a reason. Each choice is logged. After three failed fix loops (set with

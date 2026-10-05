@@ -400,6 +400,27 @@ file tools are not covered. The native `pre-commit` hook is the backstop. Button
 reason field and menu picks carry no origin in their handlers, so their authenticity rests on the
 platform.
 
+One source of truth for the phase. The CLI state is the truth for where the run is. The mod derives the
+phase of the bar and of every deny from `build-state.json` (`next_stage`: `cliPhase` in `core/gates.ts`,
+`reconcile` in `adapter.ts`). Events record who decided (decisions, timeline, invalidation) and are never the
+source of the phase. When the mod's picture and the CLI differ, the CLI wins; if the person's last move is not
+mirrored yet, the line "Temper state: the run is at <phase>. Your last choice is not recorded yet. Press 1 to
+record it." shows and key 1 re-submits the mirror prompt for that same pending decision (no new event, single
+use). A decision is spent after its call ran without error (`isError`), not when it is allowed. Fail open: an
+unreadable build-state or an unknown `next_stage` blocks nothing and writes nothing; a CLI that looks reset
+(earlier than checks that passed) does not block writes. A reload cannot go back; only a person `back` that
+was mirrored can.
+
+Continue and the original On Continue steps. A button that moves the run forward records the person's decision
+and runs `/temper:temper continue <stage>` through `$.command.run`. The orchestrator does the "On Continue"
+steps of that stage as `commands/temper.md` writes them. Its `state advance` is the mirror, and the guard lets
+it through once because the matching decision exists. The mod writes no mirror prompt for a move forward (back,
+override and accept keep theirs). The mod's commit rule defers to `temper gate commit`: it allows a commit when
+every gate the CLI checks passed or was overridden, when every staged file is under `.temper/specs/` (seen from
+the `git add` calls of the session), or for a Build checkpoint (next stage build, command temper, the current
+branch from `.git/HEAD` equals the run's branch, plan and intent satisfied, last build test row green). The
+project root is kept in `$.state` (key `root`) from the first session start.
+
 Third review (#39 to #48). While a run is active and enforcement is on, a Bash command is refused
 when it names `temper` (a word, a path part, a glob, or a name inside a string, compared without
 regard to case) and it is not a plain readable call, in these cases: the verb or subcommand of a Temper
@@ -493,13 +514,22 @@ prompt box (checked live).
 
 | Phase | 1 | 2 | 3 | 0 (More) shows |
 |---|---|---|---|---|
-| Intent | Start Intent, or Continue to Plan | Ask me questions | Edit the intent | Grill me, Teach me, Save my request, Save for later, Show the timeline |
-| Plan | Run Plan, Loop back to Intent, or Continue to Build | Walk through step by step | Show the files | Open HTML review, Try another plan, Split the tasks, Grill me, Teach me, Go back to Intent, Save for later, Show the timeline |
-| Build | Continue with task N, Loop back to Plan, or Continue to Review | Change | Run the tests | Stop, Grill me, Teach me, Go back to Plan, Save for later, Show the timeline |
-| Review | Run Review, Loop back to Build, or Continue to Check | Fix the problems (findings exist), else Show the changes | Show the changes | Architecture depth review, Grill me, Teach me, Go back to Build, Save for later, Show the timeline, Write the PR text |
-| Check | Run Check | Run failed checks again | Show the failures | Review config suggestions (file exists), Grill me, Teach me, Go back to Review, Save for later, Show the timeline, Write the PR text |
-| Fix | Fix the failures | Fix the findings | Go back to checks | at the limit: Plan again, Skip with a reason, Take over |
-| Done | Commit | Write the PR text | Show the timeline | |
+| Intent | Start Intent, or Continue to Plan | Grill me | Teach me | Save for later |
+| Plan | Run Plan, Loop back to Intent, or Continue to Build | Walk through step by step | Open HTML review | Grill me, Teach me, Save for later |
+| Build, checkpoint | Continue with task N | Change | Stop | Grill me, Teach me, Save for later |
+| Build, completion | Continue to Review, or Loop back to Plan (failed) | Teach me | Grill me | Loop back to Plan, Save for later |
+| Review | Run Review, Loop back to Build, or Continue to Check | Architecture depth review | Grill me | Teach me, Loop back to Build, Save for later |
+| Check | Run Check | Review config suggestions (file exists), else Grill me | Teach me | Save for later (and Grill me when the file exists) |
+| Fix | Fix the failures | Fix the findings | Continue to Check | at the limit: Loop back to Plan, Skip with a reason, Save for later on 1 to 3 |
+| Done | Commit | Save for later | | |
+
+Maintainer decision "Original only": a button is an option of the original `/temper` (`commands/temper.md`),
+or Discuss, Play, Skip with a reason, Resume (when paused), and in the Fix phase Fix the failures, Fix the
+findings and the per finding Fix, Accept and Explain. Everything else (show the files, run the tests, show
+the changes, write the PR text, go back a phase, show the timeline) is typed; the subcommands stay.
+`scripts/check-original-options.sh` and `tests/mod/actions.test.ts` refuse any other label. Where the
+original gives a choice only under a condition (Review config suggestions needs the file, Loop back needs the
+loop budget, which the CLI keeps), the button follows the same condition.
 
 Every label says its result and every action has a one line description (10 words at most) in the
 pane. The subcommand behind 9 is still `override` (no reason, no skip). A button that needs a stage to run

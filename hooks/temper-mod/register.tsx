@@ -1,6 +1,6 @@
 import type { CommandRunResult, EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import { apply, composeText, consumeDecision, idleSnapshot, live, loadSnapshot, publish, statusText, syncCheck, timelineText, writeReport } from './adapter'
+import { apply, commitFacts, composeText, consumeDecision, idleSnapshot, live, loadSnapshot, publish, statusText, syncCheck, timelineText, writeReport } from './adapter'
 import type { Io, Snapshot } from './adapter'
 import { findingActions } from './core/actions'
 import type { Action } from './core/actions'
@@ -8,7 +8,7 @@ import { classifyBash } from './core/bash'
 import { pluginCliFrom } from './core/cli'
 import { HELP, RESUME, followUp, parseArgs, planCommand } from './core/commands'
 import type { Bare, Parsed } from './core/commands'
-import { parseGameMode, parseOnOff, parsePhaseModel, parsePhaseModels, parseUiMode } from './core/config'
+import { parseGameMode, parseOnOff, parsePhaseModel, parsePhaseModels, parseUiMode, versionAtLeast } from './core/config'
 import type { GameMode, UiMode } from './core/config'
 import type { Draft } from './core/events'
 import { ONLY_USER, phaseLabel } from './core/machine'
@@ -88,8 +88,49 @@ function makeIo($: Api): Io {
 }
 
 // A failed load is a no-run snapshot (nothing enforced), never a thrown error.
-function load($: Api): Promise<Snapshot> {
+async function load($: Api): Promise<Snapshot> {
+  // After a hot reload no session.start has run yet: the project root comes back from `$.state`.
+  if (!root) root = await rememberedRoot($)
   return loadSnapshot(makeIo($), options).catch(() => idleSnapshot(options, false))
+}
+
+// ---- The project root ------------------------------------------------------------------------
+// The folder of the project is fixed once. A session folder reported later (after Claude ran `cd` into
+// the plugin folder, or another repo, and a hot reload started the session there) never replaces it:
+// the files of the run (build-state.json, gates.json, events, report) are always read and written under
+// the first root. `$.state` keeps it across a hot reload.
+
+async function rememberedRoot($: Api): Promise<string> {
+  const read = await $.state.get({ plugin: 'temper', key: 'root' } as const).catch(() => null)
+  return typeof read?.value === 'string' ? read.value : ''
+}
+
+// The nearest folder at or above `cwd` that holds .temper/build-state.json; `cwd` itself when none does.
+async function findProjectRoot($: Api, cwd: string): Promise<string> {
+  let dir = cwd.replace(/\/+$/, '')
+  for (let i = 0; i < 12 && dir !== ''; i++) {
+    if ((await $.fs.read(`${dir}/.temper/build-state.json`).catch(() => undefined)) !== undefined) return dir
+    dir = dir.slice(0, Math.max(0, dir.lastIndexOf('/')))
+  }
+  return cwd
+}
+
+// Session start: keep the remembered root; the first time, find it and remember it.
+async function settleRoot($: Api, cwd: string | undefined): Promise<void> {
+  const known = await rememberedRoot($)
+  if (known) {
+    root = known
+    return
+  }
+  if (!cwd) return
+  // An inert mod (a version below the minimum) touches no Temper file, not even to find the root.
+  const version = await $.session.version().then(v => v.version).catch(() => undefined)
+  if (!versionAtLeast(version)) {
+    root = cwd
+    return
+  }
+  root = await findProjectRoot($, cwd)
+  await $.state.set({ plugin: 'temper', key: 'root' } as const, root).catch(() => undefined)
 }
 
 function ensure($: Api): Promise<Snapshot> {
@@ -292,7 +333,9 @@ async function decideAs($: Api, command: Bare, origin: 'person' | 'model', drawn
   const fresh = await refresh($)
   if (drawnPhase !== undefined && drawnPhase !== null) {
     if (fresh.state.phase !== drawnPhase) return { error: STALE, events: [] }
-    if (MOVES.has(command.type) && Date.now() - lastMoveAt < 1000) return { error: STALE, events: [] }
+    // A test sets the plugin option `moveCooldownMs` (like `gameSeed`); nobody else needs to.
+    const cooldown = Number.isFinite(Number(options.moveCooldownMs)) && options.moveCooldownMs !== undefined ? Number(options.moveCooldownMs) : 1000
+    if (MOVES.has(command.type) && Date.now() - lastMoveAt < cooldown) return { error: STALE, events: [] }
   }
   const done = await apply(makeIo($), options, fresh, { ...command, origin, author: 'user' } as Command)
   adopt($, done.snap)
@@ -352,9 +395,43 @@ async function runReasonLocked($: Api, text: string, drawnPhase?: string | null)
     $.ui.toast(done.error)
     return
   }
-  for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity, pluginCli()))
+  const launched = await handOver($, done.events)
   // The step is skipped: the orchestrator runs the next one.
-  await resumeRun($)
+  if (!launched) await resumeRun($)
+}
+
+// Tells Claude about decisions the person just made. A move forward goes to the orchestrator as
+// `/temper:temper continue <stage>`: the person approved <stage>, the decision event exists, and the
+// orchestrator does the "On Continue" steps of that stage exactly as written (state advance, status flip,
+// branch, commit of the artifacts) and launches the next stage. The guard lets its `state advance` through
+// once, because the matching decision exists. Anything else (back, override, accept) keeps the mirror
+// prompt. Returns whether the orchestrator was launched.
+async function handOver($: Api, drafts: readonly Draft[]): Promise<boolean> {
+  let launched = false
+  for (const draft of drafts) {
+    if (draft.type === 'advance' && draft.from !== 'fix') {
+      await $.command.run({ command: RESUME, args: `continue ${draft.from}` }).then(() => undefined, () => undefined)
+      launched = true
+    } else {
+      await submitText($, followUp(draft, (await ensure($)).complexity, pluginCli()))
+    }
+  }
+  return launched
+}
+
+// Key 1 when the person's last move is not recorded in the CLI: the same pending decision, the same
+// mirror prompt, once more. No new event is written, and the decision stays single use. When the run
+// has moved by now, there is nothing to record.
+async function recordAgain($: Api): Promise<void> {
+  const snap = await refresh($)
+  const pending = snap.sync.pending
+  if (pending === null) {
+    $.ui.toast('That step is already done.')
+    return
+  }
+  // A call that took the decision and never ran must not keep it away from the mirror call.
+  reservedDecisions.delete(pending.id)
+  if (!(await handOver($, [pending.draft]))) await resumeRun($)
 }
 
 // Key 0 (and the pane's More button): show or hide the menu of the other options. The band and the
@@ -394,15 +471,18 @@ async function runActionLocked($: Api, action: Action, requestId?: string, drawn
   }
   // A choice from the menu leaves the menu: the main buttons come back.
   if (live.paneExpanded) await showMore($, false)
+  if (action.record) {
+    await recordAgain($)
+    return
+  }
   if (action.id === 'override' && requestId !== undefined && (await focusReason($, requestId))) return
   if (action.fill !== undefined) {
     await fillDraft($, action.fill)
     return
   }
-  if (action.id === 'timeline') {
-    await refresh($)
-    const shown = await readUi($).catch(() => null)
-    $.ui.toast(shown !== null && shown.view.timeline.length > 0 ? shown.view.timeline.join(' · ') : 'No phases yet.')
+  // The original "Save for later" at the Commit question: nothing to record, the work stays as it is.
+  if (action.id === 'save-done') {
+    $.ui.toast('Saved. Commit when you are ready.')
     return
   }
   if (action.resume && !action.command && !action.prompt) {
@@ -440,10 +520,10 @@ async function runActionLocked($: Api, action: Action, requestId?: string, drawn
     $.ui.toast(done.error)
     return
   }
-  for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity, pluginCli()))
+  const launched = await handOver($, done.events)
   // The prompt of an action that both records and asks (Stop), then the stage the orchestrator runs.
   if (action.prompt) await submitText($, action.prompt)
-  if (action.resume) await resumeRun($)
+  if (action.resume && !launched) await resumeRun($)
 }
 
 async function runFindingAction($: Api, kind: 'fix' | 'accept' | 'explain', id: string): Promise<void> {
@@ -460,7 +540,7 @@ async function runFindingAction($: Api, kind: 'fix' | 'accept' | 'explain', id: 
     $.ui.toast(done.error)
     return
   }
-  for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity, pluginCli()))
+  await handOver($, done.events)
 }
 
 // ---- Modes (config rows) ------------------------------------------------------------
@@ -583,47 +663,74 @@ async function resolveDrift($: Api, snap: Snapshot, path: string, fallback: stri
 }
 
 function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
-  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, complexity: snap.complexity }
+  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset }
 }
 
-// The one place this module denies. Returns the deny text, or null to pass the call on.
-async function guard($: Api, tool: string, input: Record<string, unknown>): Promise<string | null> {
+// What the guard decided for one call: a deny text, or null to pass it on. `ids` are the human decisions
+// the call took. They are spent only when the call ran and succeeded (see the tool.call hook).
+type Guarded = { deny: string | null; ids: string[] }
+
+// The one place this module denies.
+async function guard($: Api, tool: string, input: Record<string, unknown>): Promise<Guarded> {
   let snap = await ensure($)
-  if (snap.inert || snap.enforcement === 'off') return null
+  // Fail open: when the mod cannot tell where the run is, it never blocks Temper (the mod must not make
+  // Temper worse than without it).
+  if (snap.inert || snap.enforcement === 'off' || snap.sync.failOpen) return { deny: null, ids: [] }
   const io = makeIo($)
   const command = typeof input.command === 'string' ? input.command : ''
-  if (tool === 'Bash' && classifyBash(command).commits) {
+  const cls = tool === 'Bash' ? classifyBash(command) : null
+  // What this session staged with `git add` so far: a commit of spec files only is the artifact chain.
+  if (cls) {
+    staged.all = staged.all || cls.staged.all
+    staged.paths.push(...cls.staged.paths)
+  }
+  if (cls?.commits) {
     // The commit gate reads the CLI's latest verdict, so reload before deciding.
     snap = adopt($, await syncCheck(io, options, await refresh($), false))
   }
   const root = await rootOf($)
+  const commit = cls?.commits ? await commitFacts(io, snap, root, staged) : undefined
   // From here to the reservation there is no await: a parallel call cannot slip in between. A
   // decision a running call has reserved is not offered to this one.
-  const ctx = ruleContext(snap, root)
+  const ctx = { ...ruleContext(snap, root), ...(commit ? { commit } : {}) }
   const r = evaluate(snap.state, { ...ctx, humanDecisions: (ctx.humanDecisions ?? []).filter(h => !reservedDecisions.has(h.id)) }, { tool, input })
-  if ('deny' in r) return r.drift ? resolveDrift($, snap, r.drift, r.deny) : r.deny
+  // A commit that went through starts the next staging from nothing.
+  if (cls?.commits && !('deny' in r)) {
+    staged.all = false
+    staged.paths = []
+  }
+  if ('deny' in r) return { deny: r.drift ? await resolveDrift($, snap, r.drift, r.deny) : r.deny, ids: [] }
   if (r.consume === 'drift' && r.driftPath) {
     adopt($, (await apply(io, options, snap, { type: 'useDrift', path: r.driftPath, origin: 'system' })).snap)
   } else if (r.consume && r.consume !== 'drift' && r.eventIds) {
-    // Every human event a chained command matched is reserved at once, then spent, not only the first.
-    const ids = r.eventIds
-    for (const id of ids) reservedDecisions.add(id)
-    try {
-      for (const id of ids) await consumeDecision(io, id)
-      await refresh($)
-    } catch (err) {
-      // Not spent after all: give the decision back.
-      for (const id of ids) reservedDecisions.delete(id)
-      throw err
-    }
+    // Every human event a chained command matched is reserved at once, so a parallel call cannot use
+    // it too. It is spent after the call ran and did not fail: a call that failed, or never ran, gives
+    // the decision back, and the person's choice stays pending (key 1 records it again).
+    for (const id of r.eventIds) reservedDecisions.add(id)
+    return { deny: null, ids: r.eventIds }
   }
-  return null
+  return { deny: null, ids: [] }
 }
+
+// After a call that took decisions: spend them when it succeeded, give them back when it failed.
+async function settle($: Api, ids: string[], failed: boolean): Promise<void> {
+  const io = makeIo($)
+  if (failed) {
+    for (const id of ids) reservedDecisions.delete(id)
+  } else {
+    // An id stays in `reservedDecisions` once spent: a call that read its snapshot before the spend
+    // must still not use the event again.
+    for (const id of ids) await consumeDecision(io, id)
+  }
+  await refresh($)
+}
+
+// The files `git add` staged in this session (see guard). Unknown at the start: not an artifact commit.
+const staged: { all: boolean; paths: string[] } = { all: false, paths: [] }
 
 // Decision events a tool call has taken (see guard). An id stays here once spent: event ids are
 // unique, and a call that read its snapshot before the spend must still not use the event again.
 const reservedDecisions = new Set<string>()
-
 // `/temper:temper <reserved word>`: null means "not mine", and the prompt based command runs.
 async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise<CommandRunResult | null> {
   const snap = await ensure($)
@@ -653,7 +760,10 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
         return { text: 'Wrote .temper/report.md' }
       case 'pr':
       case 'discuss':
-        // Claude writes the description, or answers the message: the prompt based command handles it.
+      case 'continue':
+        // Claude writes the description, answers the message, or does the On Continue steps of a stage the
+        // person already approved (the decision event exists): the prompt based command handles it. The
+        // mod records nothing here.
         return null
       case 'play':
         // Only the person opens the game. It works in every mode, because the person asked.
@@ -715,6 +825,8 @@ export const register: Register = (on, opts) => {
   pendingDrift = null
   lastMoveAt = 0
   pressing.clear()
+  staged.all = false
+  staged.paths = []
   interactive = false
   paneOpen = false
   lastPhase = undefined
@@ -729,7 +841,8 @@ export const register: Register = (on, opts) => {
   live.paneExpanded = undefined
 
   on('session.start', async ($, e, next) => {
-    root = e.cwd
+    await settleRoot($, e.cwd)
+    current = null
     drawSurface = e.surface
     interactive = e.isInteractive
     reservedDecisions.clear()
@@ -740,7 +853,7 @@ export const register: Register = (on, opts) => {
   })
 
   on('classic.SessionStart', async ($, e, next) => {
-    if (e.cwd) root = e.cwd
+    await settleRoot($, e.cwd)
     await refresh($).catch(() => undefined)
     return next(e)
   })
@@ -790,9 +903,16 @@ export const register: Register = (on, opts) => {
   // Subagent calls arrive here too (e.agentId names the loop); they are held to the same
   // phase rules as the main loop.
   on('tool.call', async ($, e, next) => {
-    const deny = await guard($, e.tool, { ...e }).catch(() => null)
-    if (deny !== null) return { deny }
-    const result = await next(e)
+    const g = await guard($, e.tool, { ...e }).catch((): Guarded => ({ deny: null, ids: [] }))
+    if (g.deny !== null) return { deny: g.deny }
+    let result
+    try {
+      result = await next(e)
+    } catch (err) {
+      await settle($, g.ids, true).catch(() => undefined)
+      throw err
+    }
+    if (g.ids.length > 0) await settle($, g.ids, (result as { isError?: boolean }).isError === true).catch(() => undefined)
     const cmd = 'command' in e && typeof e.command === 'string' ? e.command : ''
     if (e.tool === 'Bash' && /\btemper["']?\s+gate\s+check\b/.test(cmd)) await afterGateCheck($).catch(() => undefined)
     return result

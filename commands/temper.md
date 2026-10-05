@@ -42,6 +42,7 @@ mod is absent. Any other first word is a feature description.
 | `drift <add\|revert\|allow> <reason>` | `add`: put the file in plan.md's Files table. `revert`: restore the file to its committed state. `allow`: continue once. Record the choice with `$TEMPER evidence add --stage build --phase feedback --claim "drift {path}: {choice}: {reason}"`. |
 | `pause` / `resume` | Stop at the next gate and wait for the person, or continue from it. |
 | `pr` | Write a pull request description from `$TEMPER report`: overrides, accepted findings and drift decisions with their reasons. |
+| `continue <stage>` | The person already approved `<stage>` (the Temper bar recorded the decision; the matching state advance is allowed once). Do the "On Continue" steps of that stage exactly as written for it: the status flip and `Accepted-by` for Intent, `state advance`, the feature branch (`git checkout -b feature/{slug}` when not on it) and the commit of the approved artifacts for Plan, `base_sha` before the first Build launch, and so on. Use the `state advance` of that stage as written. Then launch the next stage. Do not ask the gate question. |
 | `discuss <text>` | Treat the text as the person's message at the current gate: answer it, and if it asks for a change, make the change, run the gate again, then wait (see Gates). It never advances a stage. |
 | `mode`, `enforcement`, `pane`, `play` | These belong to the Temper mod. Without it, say they are not available here. The game needs the mod. |
 
@@ -129,6 +130,12 @@ anyway, and it's one round-trip instead of several.
   and `$TEMPER state get stage` to find where you left off. If it exists for a
   **different** feature than `$ARGUMENTS`, ask the user: resume the existing one, or
   overwrite and start fresh (`$TEMPER state clear` then re-init).
+- **With the Temper bar** (`Temper enforcement: active`): the CLI state is the truth for where the run is.
+  Never run `state init`, `state clear`, `state archive` or `state loop` on your own while a run is
+  active (the mod refuses them). If Resume Validation fails or the state looks wrong, stop, show what
+  is wrong in one line, and wait. Never choose Start over or Delete saved state yourself. If a mirror
+  call (`state advance`, `state set next_stage`) is refused or fails, say so in one line and wait: the bar
+  shows the problem and offers to record the choice again.
 - **On commit:** `$TEMPER state clear` (evidence, gates, loop counters — spec artifacts
   under `.temper/specs/` are untouched, they're the permanent record).
 

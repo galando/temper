@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { eventFile, runFiles, trusted } from './run-files'
-import { COMPOSE, world } from './world'
+import { COMPOSE, cliTo, world } from './world'
 
 
 describe('prompt.compose', () => {
@@ -60,7 +60,15 @@ describe('state comes back after /clear from the event files', () => {
     expect(first).toContain('Phase: Intent')
     w.files.set(path, text)
     await $.classic.SessionStart({ source: 'clear' })
+    // The CLI is the truth for where the run is: it still says intent, so the approval is pending.
     const second = (await $.prompt.compose(COMPOSE)).sections.at(-1)?.text ?? ''
-    expect(second).toContain('Phase: Plan')
+    expect(second).toContain('Phase: Intent')
+    expect(second).toContain('not recorded yet')
+    // Once the mirror call moved the CLI, the same events give Plan.
+    cliTo(w, 'plan')
+    await $.classic.SessionStart({ source: 'clear' })
+    const third = (await $.prompt.compose(COMPOSE)).sections.at(-1)?.text ?? ''
+    expect(third).toContain('Phase: Plan')
+    expect(third).not.toContain('not recorded yet')
   })
 })

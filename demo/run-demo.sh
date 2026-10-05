@@ -36,7 +36,8 @@ Demo ready in /tmp/pr-demo, at Step 2 of 6: Plan. When Claude Code opens:
   4. With the prompt empty, press the digit 1.
      Expect: the toast "Plan approved. Build open.", the bar moves to Build, and the orchestrator
      starts the Build stage in its own subagent. No question appears at the gate: it waits for the bar.
-     Press 4 to type a message (Discuss), or 0 for more options (Save for later, Grill me, Teach me, ...).
+     The bar has only the options the original /temper asks. Press 4 to type a message (Discuss), or 0 for
+     more (Grill me, Teach me, Save for later). Anything else, ask by typing.
   5. Play:  while Claude works, press 8 on an empty prompt ("Play while you wait"), or
      run /temper:temper play. Press r to run, w to jump, s to duck, q or Esc to leave.
      (The game runs on the terminal and the desktop app only.)

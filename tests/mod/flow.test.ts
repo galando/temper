@@ -16,18 +16,27 @@ const band = ($: unknown, props: Record<string, unknown> = {}): Promise<Mounted>
 const events = (w: ReturnType<typeof world>) => [...w.files.entries()].filter(([p]) => p.startsWith(`${SPEC}/events/`)).map(([, t]) => JSON.parse(t) as Record<string, unknown>)
 
 describe('the orchestrator starts every stage', () => {
-  test('Continue records the move, sends the mirror prompt, then runs /temper:temper with no arguments', async ($, on) => {
+  test('Continue records the move, then runs /temper:temper continue <stage>: the orchestrator does the On Continue steps', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }))
     await $.session.start(START)
     const ui = await band($)
     await ui.press({ key: 'action-continue' })
     expect(events(w).some(e => e.type === 'advance' && e.from === 'plan' && e.to === 'build')).toBe(true)
-    expect(w.prompts).toHaveLength(1)
-    expect(w.prompts[0]).toContain('state advance plan_complete build')
-    // The mirror prompt never starts the stage itself, and writes no brief of its own.
-    expect(w.prompts[0]).toContain('Do not start the next stage yourself')
-    expect(w.prompts[0]).not.toContain('Write plan.md')
-    expect(w.commandRuns).toEqual([{ command: 'temper:temper', args: '', origin: 'plugin' }])
+    // No prompt of the mod: the orchestrator's own `state advance` is the mirror, and it writes the
+    // branch, the commits and the next stage itself, with its own briefs.
+    expect(w.prompts).toEqual([])
+    expect(w.commandRuns).toEqual([{ command: 'temper:temper', args: 'continue plan', origin: 'plugin' }])
+  })
+
+  test('/temper:temper continue <stage> records nothing in the mod, from any origin', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }))
+    await $.session.start(START)
+    const before = events(w).length
+    for (const origin of ['composer', 'plugin', 'model', 'sdk']) {
+      const r = await $.command.run({ command: 'temper:temper', args: 'continue plan', origin: { kind: origin, name: 'x' } } as never)
+      expect(r.text).toBe('prompt based /temper:temper ran')
+    }
+    expect(events(w).length).toBe(before)
   })
 
   test('a refused decision starts nothing', async ($, on) => {
@@ -77,31 +86,33 @@ describe('Stop, timeline and the finished run', () => {
     const w = world(on, runFiles({ nextStage: 'build' }), { placed: false })
     await $.session.start(START)
     const ui = await band($)
-    await ui.press({ key: 'action-more' })
+    // At a Build checkpoint Stop is key 3.
     await ui.press({ key: 'action-stop' })
     expect(events(w).some(e => e.type === 'pause')).toBe(true)
     expect(w.prompts.some(p => p.includes('scripts/temper gate build'))).toBe(true)
     expect(w.commandRuns).toEqual([])
   })
 
-  test('Show the timeline answers in a toast and records nothing', async ($, on) => {
-    const w = world(on, runFiles({ nextStage: 'build' }), { placed: false })
+  test('the removed buttons are not drawn', async ($, on) => {
+    world(on, runFiles({ nextStage: 'build' }), { placed: false })
     await $.session.start(START)
-    const before = events(w).length
     const ui = await band($)
+    for (const k of ['action-run-tests', 'action-diff-plan', 'action-timeline', 'action-pr-desc', 'action-back-one']) expect(await ui.find({ key: k }), k).toBeUndefined()
     await ui.press({ key: 'action-more' })
-    await ui.press({ key: 'action-timeline' })
-    expect(w.toasts.some(t => t.includes('Run started at'))).toBe(true)
-    expect(events(w).length).toBe(before)
+    for (const k of ['action-timeline', 'action-pr-desc', 'action-back-one']) expect(await ui.find({ key: k }), k).toBeUndefined()
   })
 
-  test('a finished run draws Commit, the PR text and the timeline, and Commit asks Claude to commit without pushing', async ($, on) => {
+  test('a finished run draws Commit and Save for later; Commit asks Claude to commit without pushing', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'check', gates: { check: 'PASS' } }))
     await $.session.start(START)
     await $.tool.call({ tool: 'Bash', command: 'scripts/temper gate check' })
     const ui = await band($)
     expect(await ui.find({ key: 'action-commit' })).toBeDefined()
-    expect(await ui.find({ key: 'action-pr-desc' })).toBeDefined()
+    expect(await ui.find({ key: 'action-save-done' })).toBeDefined()
+    expect(await ui.find({ key: 'action-pr-desc' })).toBeUndefined()
+    await ui.press({ key: 'action-save-done' })
+    expect(w.toasts).toContain('Saved. Commit when you are ready.')
+    expect(w.prompts).toEqual([])
     await ui.press({ key: 'action-commit' })
     expect(w.prompts.at(-1)).toContain('Do not push')
   })
@@ -150,9 +161,11 @@ describe('a stale press (#45)', () => {
     // The person approves with the typed command; the button on screen is now for a step that is done.
     await $.command.run({ command: 'temper:temper', args: 'approve', origin: { kind: 'composer' } } as never)
     const before = events(w).filter(e => e.type === 'advance').length
-    await ui.press({ key: 'action-continue' })
+    // The CLI has not moved yet, so the bar shows "Record my choice" in place of Continue: the old
+    // button is gone, and pressing the new one writes no event.
+    expect(await ui.find({ key: 'action-continue' })).toBeUndefined()
+    await ui.press({ key: 'action-record' })
     const after = events(w).filter(e => e.type === 'advance').length
-    expect(after - before).toBeLessThanOrEqual(0)
-    expect(w.toasts).toContain('That step is already done.')
+    expect(after - before).toBe(0)
   })
 })

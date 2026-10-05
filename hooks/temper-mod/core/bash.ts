@@ -33,6 +33,10 @@ export type BashClass = {
   protectedWrites: string[]
   // The subset of protectedWrites that could not be resolved (fail closed).
   uncheckable: string[]
+  // What `git add` stages in this command: `all` when it stages the whole tree (-A, ., -u), else the
+  // paths. A commit that stages only files under .temper/specs/ is the artifact chain (the CLI commit gate
+  // lets it through in every phase).
+  staged: { all: boolean; paths: string[] }
   // The command may run the Temper CLI in a way this classifier cannot read as a plain call (a
   // glob, an unresolved variable or substitution, a launcher, an interpreter, a shell fed by a
   // pipe) AND it holds a decision verb. Fail closed: only the person decides.
@@ -356,7 +360,7 @@ const pieceNamesTemper = (text: string): boolean => TEMPER_WORD.test(text) || te
 const READERS = new Set([
   'cat', 'grep', 'egrep', 'fgrep', 'rg', 'head', 'tail', 'less', 'more', 'wc', 'ls', 'stat', 'file', 'diff', 'cmp',
   'git', 'echo', 'printf', 'cd', 'pushd', 'test', '[', 'shellcheck', 'basename', 'dirname', 'realpath', 'readlink', 'which', 'type',
-  'sed', 'awk', 'gawk', 'nl', 'tr', 'cut', 'sort', 'uniq', 'bat', 'strings', 'xxd', 'od', 'pytest',
+  'sed', 'awk', 'gawk', 'nl', 'tr', 'cut', 'sort', 'uniq', 'bat', 'strings', 'xxd', 'od', 'pytest', 'find',
 ])
 
 // Whether a text holds a git command that creates a commit: commit, cherry-pick, merge, revert, am,
@@ -383,9 +387,31 @@ export function gitCreatesCommit(text: string, anchored = false): boolean {
   return false
 }
 
+// The arguments after a command word that cannot be read are the arguments of a plain Temper read or
+// record call: the words that say what it does are literal (no $, no substitution) and name a call that
+// decides nothing (gate, report, status, model, config, evidence add|run|list|resolve, state get, state set of
+// a bookkeeping key).
+function plainTemperArgs(args: Word[], argText: string[]): boolean {
+  const lit = (i: number): string | null => (i < args.length && !args[i]?.dynamic && !/[$`]/.test(argText[i] ?? '') ? (argText[i] ?? null) : null)
+  const a0 = lit(0)
+  if (a0 === null) return false
+  if (['gate', 'report', 'status', 'model', 'config', 'bands', 'metrics'].includes(a0)) return true
+  const a1 = lit(1)
+  if (a0 === 'evidence') return a1 !== null && ['add', 'run', 'list', 'resolve'].includes(a1)
+  if (a0 === 'state') {
+    if (a1 === 'get') return true
+    if (a1 === 'set') {
+      const key = lit(2)
+      return key !== null && ['complexity', 'base_sha', 'regression_test', 'task'].includes(key)
+    }
+  }
+  return false
+}
+
 // An awk program that runs a command (system, getline, a pipe) or a sed program that does (the e command or flag).
 function readerDanger(cmd: string, args: Word[]): boolean {
   const text = args.map(a => a.text).join(' ')
+  if (cmd === 'find') return args.some(a => /^-(?:exec|execdir|ok|okdir|delete|fprint\w*|fls)$/.test(a.text))
   if (cmd === 'awk' || cmd === 'gawk') return /system\s*\(|getline|\|\s*["']?\w|\|&/.test(text)
   if (cmd === 'sed') return /(?:^|[;{}\s])[0-9$,]*e(?:\s|;|$)|s(.)(?:(?!\1).)*\1(?:(?!\1).)*\1[a-z]*e/.test(text)
   return false
@@ -538,6 +564,7 @@ export function classifyBash(command: string): BashClass {
   let wroteScript = false
   // An interpreter reads its program from standard input (a heredoc or a pipe).
   let stdinProgram = false
+  const staged = { all: false, paths: [] as string[] }
   // `cat scripts/temper` was read: a following `tee` or redirect makes a copy.
   let readsScript = false
   const vars: Vars = new Map()
@@ -712,7 +739,11 @@ export function classifyBash(command: string): BashClass {
     // Facts for the fail closed rule: a statement that is not a plain Temper call but names the
     // script (a word, a glob that can match it, a name inside a string, a directory called temper in
     // command position) or runs a command that cannot be read. Reading commands are exempt.
-    if (cmd !== 'temper' || viaXargs) {
+    // A command word that cannot be read, followed by a plain Temper read or record call, is the
+    // orchestrator's own idiom (`T=$(ls .../scripts/temper); $T state get next_stage`): it is not read as a
+    // mention of the script at all.
+    const plainDynamic = (w[0]?.dynamic || /[$`]|[<>]\(/.test(w[0]?.text ?? '')) && plainTemperArgs(args, argText)
+    if ((cmd !== 'temper' || viaXargs) && !plainDynamic) {
       const cmdText = w[0]?.text ?? ''
       // `python3 -m pytest -k "temper and accept"` runs tests: it only reads the word.
       const testRun = INTERPRETERS.test(cmd) && args.some((a, k) => a.text === '-m' && /^(?:pytest|unittest|coverage)$/.test(argText[k + 1] ?? ''))
@@ -725,7 +756,9 @@ export function classifyBash(command: string): BashClass {
         if (cmd === 'cat') readsScript = true
       }
       if (viaXargs && cmd === 'temper') mentionLoud = true
-      if (w[0]?.dynamic || /[$`]|[<>]\(/.test(cmdText)) dynamicCommand = true
+      // A command word that cannot be read (`T=$(ls .../scripts/temper); $T ...`) is the orchestrator's own
+      // idiom for finding the script. It is fine for plain reads; anything else about it fails closed.
+      if ((w[0]?.dynamic || /[$`]|[<>]\(/.test(cmdText)) && !plainTemperArgs(args, argText)) dynamicCommand = true
       // An interpreter program (python -c, node -e, perl -e) or a program on standard input that names
       // the script. A file run by an interpreter, and a test run (-m pytest -k "temper"), are not read here.
       if (INTERPRETERS.test(cmd)) {
@@ -736,7 +769,7 @@ export function classifyBash(command: string): BashClass {
       }
     }
     // A git command that creates a commit, wherever it sits (find -exec, env, watch, ...).
-    if (cmd !== 'git' && cmd !== 'temper' && !READERS.has(cmd) && gitCreatesCommit(argText.join(' '))) commits = true
+    if (cmd !== 'git' && cmd !== 'temper' && (!READERS.has(cmd) || cmd === 'find') && gitCreatesCommit(argText.join(' '))) commits = true
 
     if (cmd === 'eval') {
       for (const s of topStatements(args.map(a => expandVars(a.text, vars)).join(' '))) analyse(s, depth + 1)
@@ -760,6 +793,15 @@ export function classifyBash(command: string): BashClass {
         else break
       }
       if (gitCreatesCommit(`git ${argText.slice(i).join(' ')}`, true)) commits = true
+      // `git commit -a` or `-am` commits every changed file, whatever was staged.
+      if (argText[i] === 'commit' && argText.slice(i + 1).some(a => a === '--all' || /^-[a-zA-Z]*a[a-zA-Z]*$/.test(a))) staged.all = true
+      if (argText[i] === 'add') {
+        for (const a of argText.slice(i + 1)) {
+          if (a === '--') continue
+          if (/^(?:-A|--all|-u|--update|\.|\*)$/.test(a) || /^-[a-zA-Z]*[Au]/.test(a)) staged.all = true
+          else if (!a.startsWith('-')) staged.paths.push(a)
+        }
+      }
     }
 
     if (cmd === 'temper') {
@@ -913,7 +955,11 @@ export function classifyBash(command: string): BashClass {
   if (interpreter) for (const m of text.match(MENTION) ?? []) flag(m)
   // A program given on standard input or in a heredoc is read from the whole text.
   const textNames = TEMPER_WORD.test(text)
-  if (stdinProgram && /temper|subprocess/i.test(text)) mentionLoud = true
+  // The program is the heredoc body when there is one: a plain Temper call elsewhere in the command does
+  // not make a program that does not name the script a suspect. Without a heredoc (a pipe), the whole text is read.
+  const bodies = [...text.matchAll(/<<-?\s*['"]?(\w+)['"]?[^\n]*\n([\s\S]*?)\n\s*\1(?:\s|$)/g)].map(m => m[2] ?? '')
+  // (`.temper/specs/...` is a path inside the project, not the script: only the word `temper` counts.)
+  if (stdinProgram && (bodies.length > 0 ? bodies : [text]).some(b => TEMPER_WORD.test(b) || /subprocess/i.test(b))) mentionLoud = true
 
   // Fail closed: the command may run the Temper script in a way the text does not show. Reading
   // commands and plain, readable calls are not touched. A script that is written and run, or a
@@ -924,5 +970,5 @@ export function classifyBash(command: string): BashClass {
     (verb && textNames && (ranCreated || wroteScript)) ||
     (mentionLoud && (verb || HIDES.test(text))) ||
     (verb && (dynamicCommand || (shellStdin && (mentionAny || /temper/i.test(text)))))
-  return { commits, decisions, calls, stateOps, protectedWrites: [...new Set(writes)], uncheckable: [...new Set(uncheckable)], opaque, alias }
+  return { commits, decisions, calls, stateOps, protectedWrites: [...new Set(writes)], uncheckable: [...new Set(uncheckable)], staged, opaque, alias }
 }

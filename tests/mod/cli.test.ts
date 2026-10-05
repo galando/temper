@@ -166,12 +166,12 @@ describe('end to end through the band: the prompt the mod sends is runnable once
       props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} },
     })
     await band.press({ key: 'action-continue' })
-    const prompt = w.prompts.find(p => p.includes('state advance'))
-    expect(prompt).toContain('already recorded')
-    // After the mirror prompt, the orchestrator's own Resume runs the next stage with its brief.
-    expect(w.commandRuns).toEqual([{ command: 'temper:temper', args: '', origin: 'plugin' }])
-    const cmd = commandsIn(prompt ?? '')[0] ?? ''
-    expect(cmd).toBe(`${CLI} state advance intent_complete plan`)
+    // The mod writes no mirror prompt for a move forward: the orchestrator does the On Continue steps of
+    // the stage (its `state advance` is the mirror) and launches the next stage with its own brief.
+    expect(w.prompts).toEqual([])
+    expect(w.commandRuns).toEqual([{ command: 'temper:temper', args: 'continue intent', origin: 'plugin' }])
+    // The orchestrator's call, with the full path of the plugin folder, is let through once.
+    const cmd = `${CLI} state advance intent_complete plan`
     const first = await $.tool.call({ tool: 'Bash', command: cmd })
     expect(first.deny).toBeUndefined()
     expect(first.text).toBe('stub ran')
@@ -189,8 +189,8 @@ describe('end to end through the band: the prompt the mod sends is runnable once
       props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} },
     })
     await band.press({ key: 'action-continue' })
-    const cmds = commandsIn(w.prompts.find(p => p.includes('state advance')) ?? '')
-    expect(cmds).toEqual([`${CLI} state advance plan_complete design`, `${CLI} state advance design_complete build`])
+    expect(w.commandRuns).toEqual([{ command: 'temper:temper', args: 'continue plan', origin: 'plugin' }])
+    const cmds = [`${CLI} state advance plan_complete design`, `${CLI} state advance design_complete build`]
     expect((await $.tool.call({ tool: 'Bash', command: cmds[0] ?? '' })).text).toBe('stub ran')
     expect((await $.tool.call({ tool: 'Bash', command: cmds[0] ?? '' })).deny).toContain('Only the user')
     expect((await $.tool.call({ tool: 'Bash', command: cmds[1] ?? '' })).text).toBe('stub ran')
@@ -215,7 +215,8 @@ describe('where the script is', () => {
   })
 
   test('the real mod hands Claude a full path that ends in scripts/temper', async ($, on) => {
-    const w = world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }))
+    // A move forward goes to the orchestrator; a step back (Loop back) still names the CLI command.
+    const w = world(on, runFiles({ nextStage: 'review', gates: { review: 'FAIL' } }), { answers: ['the fix is not enough'] })
     await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
     const band = await $.ui.mount({
       plugin: 'temper',
@@ -223,8 +224,8 @@ describe('where the script is', () => {
       component: 'AbovePrompt',
       props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} },
     })
-    await band.press({ key: 'action-continue' })
-    const prompt = w.prompts.find(p => p.includes('state advance')) ?? ''
-    expect(prompt).toMatch(/`\/\S+\/scripts\/temper state advance plan_complete build`/)
+    await band.press({ key: 'action-loop-back' })
+    const prompt = w.prompts.find(p => p.includes('state set next_stage')) ?? ''
+    expect(prompt).toMatch(/`\/\S+\/scripts\/temper state set next_stage build`/)
   })
 })

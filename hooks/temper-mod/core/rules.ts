@@ -24,10 +24,29 @@ export type RuleContext = {
   humanDecisions?: readonly HumanDecision[]
   // The run's complexity (build-state.json): medium and complex runs have a design stage after plan.
   complexity?: string | null
+  // The CLI state looks reset (it is earlier than checks that passed): the phase rules do not block a
+  // write. Protected paths stay protected.
+  failOpenWrites?: boolean
+  // What the CLI commit gate (`temper gate commit`) would let through, read from the same facts. The mod's
+  // commit rule is never stricter than it.
+  commit?: CommitFacts
   // `autonomy.enabled: true` in .claude/temper.config: the person has opted in to autonomous runs.
   autonomyEnabled?: boolean
   // Files a Fix finding action is currently active for (Review phase writes).
   fixFiles?: readonly string[]
+}
+
+// The carve-outs of the CLI commit gate (scripts/temper gate_commit, docs/decisions/0009):
+//  - artifact only: every staged file is under .temper/specs/ (the intent accept commit, the plan commit);
+//  - Build checkpoint: next_stage is build, command temper, the current branch is the run's branch, the
+//    plan (and intent, design) gates are satisfied, and the last build test row is green.
+export type CommitFacts = {
+  // Every file this commit stages is under .temper/specs/ (as far as the mod saw it staged).
+  stagedSpecsOnly: boolean
+  // The Build checkpoint carve-out holds.
+  checkpoint: boolean
+  // Why a checkpoint commit would be refused, in the CLI's words, for the deny text (a branch problem).
+  hint?: string
 }
 
 export type ToolCall = { tool: string; input: Record<string, unknown> }
@@ -96,6 +115,7 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, path: 
       return {
         deny:
           `Temper: ${label} phase. Writing ${path} is not allowed until the user approves the intent. ` +
+          'Do not look for another way. Do not offer to turn Temper off. ' +
           'Next: finish intent.md. Then ask the user to approve it (key 1 or /temper:temper approve).',
       }
     case 'plan': {
@@ -107,6 +127,7 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, path: 
       return {
         deny:
           `Temper: ${label} phase. Writing ${path} is not allowed until the user approves the plan. ` +
+          'Do not look for another way. Do not offer to turn Temper off. ' +
           'Next: finish plan.md and tasks.md. Then ask the user to approve them (key 1 or /temper:temper approve).',
       }
     }
@@ -193,6 +214,15 @@ export function nextStage(stage: string, complexity: string | null | undefined):
     default:
       return null
   }
+}
+
+// The mod's commit rule defers to the CLI commit gate: a commit passes when the gate would pass it. Every
+// stage that the gate checks (plan, build, review, check) passed or was overridden; or one of its two
+// carve-outs holds (an artifact only commit, or a Build checkpoint on the run's branch).
+function commitAllowed(s: RunState, facts: CommitFacts | undefined): boolean {
+  if (facts?.stagedSpecsOnly || facts?.checkpoint) return true
+  const passed = (p: Phase) => s.gate[p] === 'fresh' || s.overrides.some(o => o.phase === p)
+  return (['plan', 'build', 'review', 'check'] as const).every(passed)
 }
 
 // The check of a stage passed (fresh PASS) or the person overrode it, and the run is at that stage.
@@ -298,9 +328,9 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
     if (first && !(c.commits && !s.paused)) return { allow: true, consume: first.kind, eventId: first.eventId, eventIds: matched }
   }
 
-  if (c.commits && isActive(s) && !s.paused) {
+  if (c.commits && isActive(s) && !s.paused && !commitAllowed(s, ctx.commit)) {
     return {
-      deny: `Temper: commit blocked. Check has not passed. Next: ${COMMIT_NEXT[s.phase]}. The native pre-commit hook is the backstop.`,
+      deny: `Temper: commit blocked. Check has not passed. ${ctx.commit?.hint ? `${ctx.commit.hint} ` : ''}Next: ${COMMIT_NEXT[s.phase]}. The native pre-commit hook is the backstop.`,
     }
   }
   return ALLOW
@@ -320,6 +350,6 @@ export function evaluate(state: RunState, ctx: RuleContext, call: ToolCall): Rul
   const kind = protectedKind(path)
   if (kind !== null) return protectedDeny(kind)
 
-  if (!isActive(state) || state.paused) return ALLOW
+  if (!isActive(state) || state.paused || ctx.failOpenWrites) return ALLOW
   return phaseWriteRule(state, ctx, path)
 }

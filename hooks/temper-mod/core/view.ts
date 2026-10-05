@@ -42,6 +42,8 @@ export type View = {
   timeline: string[]
   // One plain sentence: what to do now.
   now: string
+  // The one line that says the bar and the CLI do not agree; null when all is well.
+  sync: string | null
   task: { n: number; of: number } | null
   loopLimitReached: boolean
 }
@@ -59,6 +61,9 @@ export type ViewInput = {
   configSuggestions?: boolean
   // Tasks of tasks.md that are not done; null when unknown, left out when not read.
   tasksLeft?: number | null
+  // The sync line and whether a move of the person waits to be recorded (Snapshot.sync).
+  sync?: string | null
+  pending?: boolean
 }
 
 export const BAR: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check', 'fix']
@@ -100,6 +105,7 @@ export function buildView(input: ViewInput): View {
     task: input.task,
     tasksLeft: input.tasksLeft,
     configSuggestions: input.configSuggestions ?? false,
+    pending: input.pending ?? false,
   }
   const passed = input.criteria.filter(c => c.status === 'passed').length
   let actions: ActionSet | null = null
@@ -122,6 +128,7 @@ export function buildView(input: ViewInput): View {
     findings: [...input.findings],
     timeline: s.history.slice(-6).map(h => (KIND[h.kind] ?? KIND.advance)?.(h.from ? phaseLabel(h.from) : 'Start', phaseLabel(h.to)) ?? ''),
     now: s.phase === null ? '' : nowText(s.phase, ctx),
+    sync: input.sync ?? null,
     task: input.task,
     loopLimitReached: s.loopLimitReached,
   }
