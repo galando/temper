@@ -213,7 +213,7 @@ describe('arming autonomous mode end to end', () => {
 })
 
 describe('git commit gate', () => {
-  const FAIL_MSG = 'Temper: commit blocked. Check has not passed. Next: run the checks (key 1 in Check or /temper:check).'
+  const FAIL_MSG = 'Temper: commit blocked. Check has not passed. Next: run the checks (key 1 in Check or /temper:check). The native pre-commit hook is the backstop.'
 
   test('refused until Check passes, then allowed once gates.json says PASS', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'check', gates: { check: 'FAIL' } }))

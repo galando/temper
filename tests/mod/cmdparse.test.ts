@@ -3,8 +3,8 @@ import { describe, expect, test } from 'claude-code/testing'
 import { HELP, RESERVED, isReserved, parseArgs, planCommand } from '../../hooks/temper-mod/core/commands'
 
 describe('parseArgs', () => {
-  test('only the 17 reserved first words are claimed', () => {
-    expect(RESERVED).toHaveLength(17)
+  test('only the 18 reserved first words are claimed', () => {
+    expect(RESERVED).toHaveLength(18)
     for (const w of RESERVED) expect(parseArgs(`${w} rest of it`)).toEqual({ word: w, rest: 'rest of it' })
   })
 

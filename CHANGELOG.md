@@ -54,6 +54,34 @@ All notable changes to Temper are documented here. The plugin version lives in
   "Next:" step. Follow up prompts to Claude are short and end with "Do this now. Reply with one
   short line." They name the full path of the Temper script in the plugin folder, so Claude does not
   try a path that does not exist in the project.
+- One flow, two views. The bar is the same choices as the orchestrator's gate questions, with the
+  same words, and the orchestrator no longer asks its question a second time when the mod is active
+  (the system prompt has `Temper enforcement: active`): it prints the stage panel and the check
+  result, then waits for the bar or for a message you type. Key 1 follows the check result:
+  "Continue to Build", "Loop back to Plan", "Start Intent" or "Run Plan"; at Build every task is its
+  own checkpoint ("Continue with task 2"). Key 4 is **Discuss**, the original "Other": it puts a draft
+  in the prompt box. Key 0 (**More**) opens a numbered menu above the phase chips (digits 1 to 9,
+  because a letter would type into the prompt box): Save for later, Grill me, Teach me, Open HTML
+  review, Architecture depth review, Review config suggestions, Stop, Go back, Show the timeline,
+  Write the PR text. A finished run offers Commit. After a decision a button asks Claude to mirror it
+  in the CLI state and then runs `/temper:temper` with no arguments (the orchestrator's Resume), so
+  the next stage starts in its own subagent with its own brief. New reserved word `discuss` (18 in
+  all). Two reviewed calls are added: `command.run` (`prompt.submit` refuses a text that starts
+  with a slash) and `prompt.fill`; the list is 22 calls.
+- Security fixes from the second review: the Bash classifier reads the Temper script structurally
+  and fails closed (a link, copy, glob, variable, substitution, launcher, interpreter or `source`
+  that could run a decision call is refused); `evidence accept` is matched to its stage; two
+  parallel calls cannot spend one human decision; the plugin folder path is decoded before it is
+  checked; the game accepts only a real number as a score; the `game` setting reads `false`, `no`,
+  `0`, `disabled` and `none` as off; the demo seed never removes a folder that is not its own.
+- Third security review (#39 to #48). While a run is active, a Bash command that names the script and
+  hides what it runs (`$'..'`, `${..}`, `$(..)`, a launcher, a script written then run, `bash <(cat ...)`)
+  is refused, and plain readers (`sed -n`, `awk '/x/'`, `nl`, `grep`, `pytest -k`) stay allowed. Names are
+  compared without regard to case, `ln` of Temper state is refused, and every `state advance` and
+  `state set next_stage` needs the person's decision or the exact next stage after a passed check.
+  `git cherry-pick`, `merge`, `revert`, `am`, `commit-tree`, `rebase --continue`, a merging `pull` and
+  a `git -c alias` count as commits while the commit gate is open. A decision button locks while it runs
+  and ignores a stale press. The README says plainly what a text reader cannot see.
 - The demo is smooth: `bash demo/demo-seed.sh plan` seeds the Plan step with an accepted intent and a
   written plan (both checks pass), `bash demo/run-demo.sh` starts there, and `demo/temper.tape` is a
   15 to 20 second hero with no waiting scene.

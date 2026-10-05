@@ -13,9 +13,10 @@
 # line after the key press. Model output varies, so tune the Sleep times if a step is not done
 # before the next key press. Everything between Hide and Show is real time that the GIF skips.
 #
-# The setup copies demo/password-reset to /tmp/pr-demo and seeds a Temper run at the Plan step with
+# The setup removes an old /tmp/pr-demo only when it holds the marker file .temper-demo (delete
+# /tmp/pr-demo by hand if it is not a demo folder). It copies demo/password-reset to /tmp/pr-demo and seeds a Temper run at the Plan step with
 # the intent accepted and the plan written (demo/demo-seed.sh plan). The first key press is
-# "1 Approve the plan", so nothing waits on screen. The `claude` function in the setup switches off
+# "1 Continue to Build", so nothing waits on screen. The `claude` function in the setup switches off
 # an installed copy of the Temper plugin for this one process.
 
 Output demo/out/temper-full.gif
@@ -41,7 +42,7 @@ Enter
 Sleep 8s
 Show
 
-# 1. The bar shows "Step 2 of 6: Plan" and "1 Approve the plan." (3 seconds)
+# 1. The bar shows "Step 2 of 6: Plan" and "1 Continue to Build." (3 seconds)
 Sleep 3s
 
 # 2. Claude is asked to change code before the plan is approved. The edit is refused, with a Next step.
@@ -54,6 +55,6 @@ Show
 Sleep 5s
 
 # 3. One key press approves the plan. The toast says "Plan approved. Build open." and the bar
-# moves to Build with "1 Start the next task." (6 seconds)
+# moves to Build with "1 Continue with task 1." (6 seconds)
 Type "1"
 Sleep 6s

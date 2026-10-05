@@ -9,13 +9,16 @@ export type PhaseName = 'intent' | 'plan' | 'build' | 'review' | 'check' | 'fix'
 export type UiMode = 'full' | 'minimal' | 'off'
 
 export type TemperAction = {
-  key: '1' | '2' | '3' | '9' | '0' | 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g' | 'h'
+  key: '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0'
   id: string
   label: string
+  short?: string
   desc: string
   prompt?: string
   command?: string
   asksReason?: boolean
+  resume?: boolean
+  fill?: string
 }
 
 export type TemperView = {
@@ -25,7 +28,7 @@ export type TemperView = {
   paused: boolean
   enforcement: 'on' | 'off'
   steps: Array<{ id: PhaseName; label: string; status: 'done' | 'current' | 'pending' | 'stale' }>
-  actions: { primary: TemperAction[]; override: TemperAction; more: TemperAction[] } | null
+  actions: { primary: TemperAction[]; discuss: TemperAction; override: TemperAction | null; more: TemperAction[] } | null
   expanded: boolean
   paneOpen: boolean
   criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string }>

@@ -22,6 +22,8 @@ export type RuleContext = {
   planFiles: readonly string[]
   // Human decision events not yet matched by a CLI call.
   humanDecisions?: readonly HumanDecision[]
+  // The run's complexity (build-state.json): medium and complex runs have a design stage after plan.
+  complexity?: string | null
   // `autonomy.enabled: true` in .claude/temper.config: the person has opted in to autonomous runs.
   autonomyEnabled?: boolean
   // Files a Fix finding action is currently active for (Review phase writes).
@@ -168,6 +170,40 @@ const REPEATED_FLAG =
   'Temper: this decision call repeats a flag (--id, --stage or --reason). ' +
   'Temper cannot match it to the decision of the user. Next: run the call again. Give each flag one time.'
 
+const STATE_RESTART =
+  'Temper: state init and state loop restart or move the run. Only the user decides that. ' +
+  'Next: ask the user to use the Temper bar buttons (Loop back, Go back) or /temper:temper back <phase> <reason>.'
+
+// The stage that follows a stage in the CLI sequence (STAGE_SEQ_TEMPER in scripts/temper), with design
+// between plan and build for a medium or complex run. Null for a name that is not a stage.
+export function nextStage(stage: string, complexity: string | null | undefined): string | null {
+  switch (stage) {
+    case 'intent':
+      return 'plan'
+    case 'plan':
+      return complexity === 'medium' || complexity === 'complex' ? 'design' : 'build'
+    case 'design':
+      return 'build'
+    case 'build':
+      return 'review'
+    case 'review':
+      return 'check'
+    case 'check':
+      return 'commit'
+    default:
+      return null
+  }
+}
+
+// The check of a stage passed (fresh PASS) or the person overrode it, and the run is at that stage.
+// Design has no verdict of its own in the mod: it follows an approved plan whose check passed.
+function followsVerdict(s: RunState, stage: string, complexity?: string | null): boolean {
+  if (stage === 'design') return (complexity === 'medium' || complexity === 'complex') && planApproved(s) && (s.gate.plan === 'fresh' || s.overrides.some(o => o.phase === 'plan'))
+  if (!(stage in s.gate)) return false
+  const here = s.phase === stage || (s.phase === 'fix' && stage === 'check')
+  return here && (s.gate[stage as Phase] === 'fresh' || s.overrides.some(o => o.phase === stage))
+}
+
 const STATE_END =
   'Temper: do not clear or archive the run state during a run. Next: finish the run, ' +
   'commit, then run scripts/temper state archive.'
@@ -176,8 +212,19 @@ const stateSetDeny = (key: string): string =>
   `Temper: state set ${key} moves the run. Only the user can do this. ` +
   'Next: ask the user to run /temper:temper back <phase> <reason>.'
 
+const OPAQUE_DENY =
+  'Temper: this command runs the Temper script in a way Temper cannot read, and it holds a decision word. ' +
+  'Only the user decides. Next: ask the user to use the buttons or the /temper:temper subcommands (approve, override, accept, back).'
+
+const ALIAS_DENY =
+  'Temper: do not link, copy or source the Temper script. A second name for it hides the decision calls. ' +
+  'Next: run scripts/temper by its own path. The user decides with the buttons or /temper:temper.'
+
 function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResult {
   const c = classifyBash(command)
+
+  if (c.alias) return { deny: ALIAS_DENY }
+  if (c.opaque && isActive(s)) return { deny: OPAQUE_DENY }
 
   if (c.protectedWrites.length > 0) {
     const known = c.protectedWrites.filter(p => !c.uncheckable.includes(p))
@@ -190,6 +237,7 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
   // Removing or archiving the run's state is for after the run: while a run is active it would
   // take the gate ledger and the overrides with it.
   if (isActive(s) && c.stateOps.some(o => o.op === 'clear' || o.op === 'archive')) return { deny: STATE_END }
+  if (isActive(s) && c.stateOps.some(o => o.op === 'init' || o.op === 'loop')) return { deny: STATE_RESTART }
 
   if (isActive(s)) {
     if (c.calls.some(call => call.invalid)) return { deny: REPEATED_FLAG }
@@ -213,12 +261,32 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
       // An advance needs a person only when it leaves Intent or Plan (`intent_complete`,
       // `plan_complete`); the phase it names is the phase the person approved, whatever phase the
       // run is in by now. Later advances follow a verdict and are not guarded.
-      const approved = call.kind === 'advance' ? (call.stage === undefined ? (s.phase === 'intent' || s.phase === 'plan' ? s.phase : null) : guardedPhase(call.stage)) : null
-      if (call.kind === 'advance' && approved === null) continue
+      // Every advance is checked, not only the two approvals: the CLI stores any next stage it is given.
+      // A call passes with (a) a matching human decision, or (b) when it is the exact next stage of the
+      // run and the check of the stage it completes passed (the autonomous run, and a stage that follows
+      // its own verdict). Intent and Plan always need the person.
+      let approved: string | null = null
+      if (call.kind === 'advance') {
+        const stage = (call.stage ?? '').replace(/_complete$/, '')
+        const wellFormed = /_complete$/.test(call.stage ?? '') && nextStage(stage, ctx.complexity) !== null && call.next === nextStage(stage, ctx.complexity)
+        approved = wellFormed && stage !== 'design' ? stage : null
+        const hasHuman = approved !== null && pool.some(h => h.kind === 'advance' && (h.phase === undefined || h.phase === approved))
+        if (!hasHuman) {
+          if (wellFormed && stage !== 'intent' && stage !== 'plan' && followsVerdict(s, stage, ctx.complexity)) continue
+          return { deny: ONLY_USER }
+        }
+      }
+      // A step to another stage by `state set next_stage`: the person's back decision, or the exact next
+      // stage after a check that passed.
+      if (call.kind === 'back' && !pool.some(h => h.kind === 'back' && (call.stage === undefined || h.phase === undefined || stageName(h.phase) === stageName(call.stage)))) {
+        const cur = s.phase === 'fix' ? 'check' : s.phase
+        if (call.stage !== undefined && call.stage === nextStage(cur, ctx.complexity) && followsVerdict(s, cur)) continue
+      }
       const i = pool.findIndex(
         h =>
           h.kind === call.kind &&
-          (call.kind === 'accept' || (call.kind === 'advance' ? h.phase === undefined || h.phase === approved : call.stage === undefined || h.phase === undefined || stageName(h.phase) === stageName(call.stage))) &&
+          // An accept is for one stage's ledger: --stage must be the stage the person accepted in.
+          (call.kind === 'accept' ? call.stage !== undefined && h.phase === call.stage : (call.kind === 'advance' ? h.phase === undefined || h.phase === approved : call.stage === undefined || h.phase === undefined || stageName(h.phase) === stageName(call.stage))) &&
           (call.id === undefined || h.findingId === undefined || h.findingId === call.id),
       )
       const hit = i >= 0 ? pool[i] : undefined
@@ -232,7 +300,7 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
 
   if (c.commits && isActive(s) && !s.paused) {
     return {
-      deny: `Temper: commit blocked. Check has not passed. Next: ${COMMIT_NEXT[s.phase]}.`,
+      deny: `Temper: commit blocked. Check has not passed. Next: ${COMMIT_NEXT[s.phase]}. The native pre-commit hook is the backstop.`,
     }
   }
   return ALLOW

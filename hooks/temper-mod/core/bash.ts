@@ -18,10 +18,11 @@ export type DecisionKind = 'override' | 'accept' | 'advance' | 'back'
 // A decision CLI call as the command spells it: which kind, the phase (stage) and finding id it
 // names, and `invalid` when a flag the CLI reads (`--id`, `--stage`, `--reason`) is repeated, so
 // the CLI and the mod could read different values. An invalid call is never authorised.
-export type DecisionCall = { kind: DecisionKind; stage?: string; id?: string; invalid?: boolean }
+// `next` is the stage a `state advance <stage>_complete <next>` call names as next.
+export type DecisionCall = { kind: DecisionKind; stage?: string; id?: string; next?: string; invalid?: boolean }
 
 // A `scripts/temper state ...` call that moves or removes run state.
-export type StateOp = { op: 'set'; key: string; value?: string } | { op: 'clear' } | { op: 'archive' }
+export type StateOp = { op: 'set'; key: string; value?: string } | { op: 'clear' } | { op: 'archive' } | { op: 'init' } | { op: 'loop' }
 
 export type BashClass = {
   commits: boolean
@@ -32,16 +33,24 @@ export type BashClass = {
   protectedWrites: string[]
   // The subset of protectedWrites that could not be resolved (fail closed).
   uncheckable: string[]
+  // The command may run the Temper CLI in a way this classifier cannot read as a plain call (a
+  // glob, an unresolved variable or substitution, a launcher, an interpreter, a shell fed by a
+  // pipe) AND it holds a decision verb. Fail closed: only the person decides.
+  opaque: boolean
+  // The command makes another name or copy of the Temper script, or sources it.
+  alias: boolean
 }
 
+// Every name is compared without regard to case: macOS (APFS) and Windows folders are case
+// insensitive, so `.TEMPER/Gates.json` is the same file.
 const PROTECTED: ReadonlyArray<readonly [ProtectedKind, RegExp]> = [
-  ['events', /(^|\/)\.temper\/specs\/[^/\s]+\/events(\/|$)/],
-  ['gates', /(^|\/)\.temper\/gates\.json$/],
-  ['status', /(^|\/)\.temper\/status\.json$/],
-  ['overrides', /(^|\/)\.temper\/overrides\.json$/],
-  ['state', /(^|\/)\.temper\/build-state\.json$/],
+  ['events', /(^|\/)\.temper\/specs\/[^/\s]+\/events(\/|$)/i],
+  ['gates', /(^|\/)\.temper\/gates\.json$/i],
+  ['status', /(^|\/)\.temper\/status\.json$/i],
+  ['overrides', /(^|\/)\.temper\/overrides\.json$/i],
+  ['state', /(^|\/)\.temper\/build-state\.json$/i],
   // Folders that hold guarded files: removing or replacing one removes them too.
-  ['folder', /(^|\/)\.temper(\/specs(\/[^/\s]+)?)?\/?$/],
+  ['folder', /(^|\/)\.temper(\/specs(\/[^/\s]+)?)?\/?$/i],
 ]
 
 // Which guarded Temper path a path names, or null.
@@ -52,13 +61,13 @@ export function protectedKind(path: string): ProtectedKind | null {
   return null
 }
 
-const MENTION = /\.temper\/(?:specs\/[^\s'"`]+\/events[^\s'"`]*|gates\.json|status\.json|overrides\.json|build-state\.json)/g
+const MENTION = /\.temper\/(?:specs\/[^\s'"`]+\/events[^\s'"`]*|gates\.json|status\.json|overrides\.json|build-state\.json)/gi
 
 // The command names Temper state: strict mode, where an unresolvable write target is refused.
-const NAMED = /\.temper|gates\.json|status\.json|overrides\.json|build-state\.json|\bevents\b/
+const NAMED = /\.temper|gates\.json|status\.json|overrides\.json|build-state\.json|\bevents\b/i
 
 // A path whose text names a guarded thing even when the rest cannot be resolved.
-const NAMES_GUARDED = /gates\.json|status\.json|overrides\.json|build-state\.json|(^|\/)events(\/|$)|(^|\/)\.temper(\/|$)/
+const NAMES_GUARDED = /gates\.json|status\.json|overrides\.json|build-state\.json|(^|\/)events(\/|$)|(^|\/)\.temper(\/|$)/i
 
 const PROTECTED_NAMES = ['.temper', 'events', 'gates.json', 'status.json', 'overrides.json', 'build-state.json']
 
@@ -308,6 +317,89 @@ function seq(body: string): string[] | null {
 
 const GLOB = /[*?[\]]/
 
+// A file name that is `temper`, or a glob (`tempe[r]`, `temp*`, `*`) that can match it.
+function namesTemper(text: string): boolean {
+  const base = BASE(text).toLowerCase()
+  if (base === 'temper') return true
+  if (!GLOB.test(base)) return false
+  let re = ''
+  for (let i = 0; i < base.length; i++) {
+    const c = base[i] ?? ''
+    if (c === '*') re += '.*'
+    else if (c === '?') re += '.'
+    else if (c === '[' && base.indexOf(']', i + 2) > 0) {
+      const end = base.indexOf(']', i + 2)
+      re += `[${base.slice(i + 1, end).replace(/^!/, '^').replace(/\\/g, '\\\\')}]`
+      i = end
+    } else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+  }
+  try {
+    return new RegExp(`^${re}$`).test('temper')
+  } catch {
+    return true
+  }
+}
+
+// Words in a command that name a decision on the run. Read on the whole text of an opaque launch.
+const VERB = /\b(?:override|accept|advance|next_stage|run_mode|clear|archive|init|loop)\b/i
+const verbIn = (text: string): boolean => VERB.test(text) || (/\bstate\b/i.test(text) && /\bset\b/i.test(text))
+
+// `temper` as a word or a path component inside any text (a quoted string holds several words).
+const TEMPER_WORD = /(?:^|[\s/'"=;(&|<>`])temper(?=$|[\s/'"`;)&|<>])/i
+// A construct that hides what the shell will really run: ANSI-C string, substitution, parameter
+// expansion, here-string, process substitution, brace expansion.
+const HIDES = /\$'|\$\(|`|\$\{|<<<|<\(|>\(|\{[^{}\s]*,[^{}\s]*\}/
+const pieceNamesTemper = (text: string): boolean => TEMPER_WORD.test(text) || text.split(/[\s'"`;()&|<>=]+/).some(p => p !== '' && namesTemper(p))
+
+// Commands that only read or print: they never run the Temper script. awk and sed read too, unless
+// the program runs something (see readerDanger).
+const READERS = new Set([
+  'cat', 'grep', 'egrep', 'fgrep', 'rg', 'head', 'tail', 'less', 'more', 'wc', 'ls', 'stat', 'file', 'diff', 'cmp',
+  'git', 'echo', 'printf', 'cd', 'pushd', 'test', '[', 'shellcheck', 'basename', 'dirname', 'realpath', 'readlink', 'which', 'type',
+  'sed', 'awk', 'gawk', 'nl', 'tr', 'cut', 'sort', 'uniq', 'bat', 'strings', 'xxd', 'od', 'pytest',
+])
+
+// Whether a text holds a git command that creates a commit: commit, cherry-pick, merge, revert, am,
+// commit-tree, rebase --continue, and a pull that merges. The read only and stopping forms
+// (--abort, --quit, --skip, --show-current-patch) and `git push` are not. The pre-commit hook of
+// git does not run for most of these, so the guard has to refuse them while the commit gate is open.
+export function gitCreatesCommit(text: string, anchored = false): boolean {
+  for (const m of text.matchAll(/\bgit\s+((?:(?:-c|-C)\s+\S+\s+|--[\w-]+(?:=\S+)?\s+|-\w\s+)*)(commit-tree|commit|cherry-pick|merge|revert|am|rebase|pull)\b([^;&|\n]*)/gi)) {
+    if (anchored && m.index !== 0) break
+    const sub = (m[2] ?? '').toLowerCase()
+    const rest = m[3] ?? ''
+    if (/--(?:abort|quit|skip|show-current-patch|edit-todo)\b/.test(rest) && sub !== 'commit') continue
+    if (sub === 'rebase') {
+      if (/--continue\b/.test(rest)) return true
+      continue
+    }
+    if (sub === 'pull') {
+      if (/--ff-only\b|--rebase\b|-r\b/.test(rest)) continue
+      return true
+    }
+    if (sub === 'merge' && /--(?:abort|quit)\b/.test(rest)) continue
+    return true
+  }
+  return false
+}
+
+// An awk program that runs a command (system, getline, a pipe) or a sed program that does (the e command or flag).
+function readerDanger(cmd: string, args: Word[]): boolean {
+  const text = args.map(a => a.text).join(' ')
+  if (cmd === 'awk' || cmd === 'gawk') return /system\s*\(|getline|\|\s*["']?\w|\|&/.test(text)
+  if (cmd === 'sed') return /(?:^|[;{}\s])[0-9$,]*e(?:\s|;|$)|s(.)(?:(?!\1).)*\1(?:(?!\1).)*\1[a-z]*e/.test(text)
+  return false
+}
+
+// Shells that take a program as a string (-c) or from a file.
+const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'fish', 'ash', 'tcsh', 'csh'])
+// Commands that run another command or program.
+const EXEC = new Set([...SHELLS, 'make', 'gmake', 'awk', 'gawk', 'watch', 'script', 'parallel', 'busybox', 'xargs', 'env', 'eval', 'exec', 'find', 'nohup', 'timeout', 'sudo'])
+// A file name that is a script by its extension.
+const SCRIPT_FILE = /\.(?:sh|bash|zsh|ksh|fish|py|pl|rb|js|mjs|cjs|ts|php|mk|awk)$|(?:^|\/)makefile$/i
+// A program given on the command line to an interpreter (python -c, node -e, perl -e, php -r).
+const PROGRAM_FLAG = /^-[a-zA-Z]*[cer]$|^--eval$/
+
 function globRegExp(glob: string): RegExp {
   let re = ''
   for (const c of glob) {
@@ -315,7 +407,7 @@ function globRegExp(glob: string): RegExp {
     else if (c === '?') re += '.'
     else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&')
   }
-  return new RegExp(`^${re}$`)
+  return new RegExp(`^${re}$`, 'i')
 }
 
 // A glob such as `ev*`, `.temper/g*` or `status.js?n` could match a guarded name.
@@ -362,6 +454,8 @@ function unwrap(ws: Word[]): Word[] {
     } else if (first === 'timeout') {
       const r = skipOpts(rest, ['-s', '-k', '--signal', '--kill-after'])
       w = /^\d/.test(r[0]?.text ?? '') ? r.slice(1) : r
+    } else if (first === 'caffeinate') {
+      w = skipOpts(rest, ['-t', '-w'])
     } else if (first === 'nice') {
       w = skipOpts(rest, ['-n'])
     } else if (first === 'ionice') {
@@ -428,6 +522,24 @@ export function classifyBash(command: string): BashClass {
   let commits = false
   let interpreter = false
   let sawSed = false
+  // Launch facts for the fail closed rule: see BashClass.opaque.
+  let alias = false
+  let mentionAny = false
+  let mentionLoud = false
+  let dynamicCommand = false
+  let shellStdin = false
+  // A Temper call whose subcommand or verb cannot be read from the text ($'..', ${..}, $(..)).
+  let opaqueCall = false
+  // Files this command writes, so a script that is written and then run can be seen.
+  const created: string[] = []
+  // A file this command wrote is run by it (as a command, or as the script of a shell or interpreter).
+  let ranCreated = false
+  // A script file (by its extension) is written.
+  let wroteScript = false
+  // An interpreter reads its program from standard input (a heredoc or a pipe).
+  let stdinProgram = false
+  // `cat scripts/temper` was read: a following `tee` or redirect makes a copy.
+  let readsScript = false
   const vars: Vars = new Map()
   // The working directory the command has moved to (relative to where it started); null when unknown.
   let cwd: string | null = ''
@@ -504,37 +616,127 @@ export function classifyBash(command: string): BashClass {
 
     // Redirects first: they apply whatever the command is.
     const argv: Word[] = []
+    const targets: string[] = []
     for (let i = 0; i < ws.length; i++) {
       const t = ws[i]?.text ?? ''
       const m = /^(?:\d*|&)>{1,2}(?!&)(.*)$/.exec(t)
       if (m && !/^\d*>&/.test(t)) {
         const target = m[1] ? { text: m[1], dynamic: ws[i]?.dynamic ?? false } : ws[++i]
-        if (target) check(target)
+        if (target) {
+          check(target)
+          targets.push(expandVars(target.text, vars))
+        }
       } else if (/^\d*<</.test(t) || /^\d*<(?!\()/.test(t)) {
         if (t === '<' || /^\d*<<-?$/.test(t)) i++
       } else argv.push(ws[i] as Word)
     }
+    for (const t of targets) {
+      created.push(t)
+      if (SCRIPT_FILE.test(t)) wroteScript = true
+    }
+    // A copy of the Temper script by redirect: `cat scripts/temper > /tmp/t`.
+    if (targets.length > 0 && argv.some(x => namesTemper(expandVars(x.text, vars))) && ['cat', 'head', 'tail', 'dd', 'tee', 'sed', 'awk'].includes(BASE(argv[0]?.text ?? '').toLowerCase())) alias = true
+    // Words that name the script, before any wrapper is taken off (env -S 'scripts/temper ...').
+    const named = argv.some(x => pieceNamesTemper(expandVars(x.text, vars)))
 
-    let w = unwrap(argv)
-    // `bash scripts/temper ...` and `sh -c STRING`.
-    while (w.length > 0 && ['bash', 'sh', 'zsh', 'dash'].includes(BASE(w[0]?.text ?? ''))) {
+    // The command word, with variables filled in (`T=scripts/temper; $T gate x` runs the script).
+    const fill = (list: Word[]): Word[] => (list[0] ? [{ ...list[0], text: expandVars(list[0].text, vars) }, ...list.slice(1)] : list)
+    const viaXargs = argv.some(x => BASE(x.text).toLowerCase() === 'xargs')
+    let w = fill(unwrap(argv))
+    // A file this command wrote is run: as the command itself, or as the script of a shell,
+    // interpreter, make or source.
+    {
+      const first = expandVars(w[0]?.text ?? '', vars)
+      const base = BASE(first).toLowerCase()
+      const runner = SHELLS.has(base) || INTERPRETERS.test(base) || EXEC.has(base) || base === 'source' || base === '.'
+      if (created.includes(first) || (runner && w.slice(1).some(x => created.includes(expandVars(x.text, vars))))) ranCreated = true
+    }
+    // `source scripts/temper ...` and `. scripts/temper ...` run the script in this shell.
+    if (['source', '.'].includes(w[0]?.text ?? '') && w.slice(1).some(a => namesTemper(expandVars(a.text, vars)))) alias = true
+    // `bash scripts/temper ...`, `bash -o pipefail scripts/temper ...`, `bash -s` and `sh -c STRING`.
+    while (w.length > 0 && SHELLS.has(BASE(w[0]?.text ?? '').toLowerCase())) {
       const rest = w.slice(1)
       const ci = rest.findIndex(x => /^-\w*c$/.test(x.text))
       if (ci >= 0) {
-        const script = rest[ci + 1]?.text ?? ''
-        for (const s of topStatements(script)) analyse(s, depth + 1)
+        const script = rest[ci + 1]
+        if (script?.dynamic || /[$`]/.test(script?.text ?? '')) shellStdin = true
+        // A string given to a shell: git commit inside it counts, and so does a name of the script.
+        if (/\bgit\b/i.test(script?.text ?? '') && gitCreatesCommit(script?.text ?? '')) commits = true
+        for (const s of topStatements(script?.text ?? '')) analyse(s, depth + 1)
+        if (named || pieceNamesTemper(script?.text ?? '')) mentionAny = true
         return
       }
-      const nonOpt = rest.filter(x => !x.text.startsWith('-'))
-      if (nonOpt.length === 0) return
-      w = unwrap(nonOpt)
-      if (BASE(w[0]?.text ?? '') === 'temper') break
+      // The first word that is not an option (an option such as -o takes a value) is the script.
+      let fileAt = -1
+      for (let i = 0; i < rest.length; i++) {
+        const t = rest[i]?.text ?? ''
+        if (t === '-s') shellStdin = true
+        if (['-o', '+o', '-O', '+O'].includes(t)) i++
+        else if (!/^[-+]/.test(t)) {
+          fileAt = i
+          break
+        }
+      }
+      if (fileAt < 0) {
+        // No script file: the shell reads its commands from standard input.
+        shellStdin = true
+        return
+      }
+      if (shellStdin) {
+        // `bash -s ARGS`: the words after the options are arguments, not a script.
+        return
+      }
+      w = fill(unwrap(rest.slice(fileAt)))
+      if (BASE(w[0]?.text ?? '').toLowerCase() === 'temper') break
+      // A script that is not named temper: a glob or a variable could still stand for it, and a
+      // script given by a substitution (`bash <(cat scripts/temper)`) cannot be read.
+      if (namesTemper(w[0]?.text ?? '') || named) {
+        mentionAny = true
+        mentionLoud = true
+      }
+      if (w[0]?.dynamic || /[$`]|[<>]\(/.test(w[0]?.text ?? '')) dynamicCommand = true
       return
     }
-    if (w.length === 0) return
-    const cmd = BASE(w[0]?.text ?? '')
+    if (w.length === 0) {
+      // Everything was a wrapper: `env -S 'scripts/temper ...'` holds its command in a string.
+      if (named) {
+        mentionAny = true
+        mentionLoud = true
+      }
+      return
+    }
+    const cmd = BASE(w[0]?.text ?? '').toLowerCase()
     const args = w.slice(1)
     const argText = args.map(a => expandVars(a.text, vars))
+
+    // Facts for the fail closed rule: a statement that is not a plain Temper call but names the
+    // script (a word, a glob that can match it, a name inside a string, a directory called temper in
+    // command position) or runs a command that cannot be read. Reading commands are exempt.
+    if (cmd !== 'temper' || viaXargs) {
+      const cmdText = w[0]?.text ?? ''
+      // `python3 -m pytest -k "temper and accept"` runs tests: it only reads the word.
+      const testRun = INTERPRETERS.test(cmd) && args.some((a, k) => a.text === '-m' && /^(?:pytest|unittest|coverage)$/.test(argText[k + 1] ?? ''))
+      const safeReader = (READERS.has(cmd) && !readerDanger(cmd, args)) || testRun
+      if ((cmd === 'make' || cmd === 'gmake') && args.some(a => a.text === '-f') && !args.some(a => /^[^-]/.test(a.text) && a.text !== '')) stdinProgram = true
+      const names = named || w.some(x => namesTemper(expandVars(x.text, vars))) || cmdText.toLowerCase().split('/').includes('temper')
+      if (names) {
+        mentionAny = true
+        if (!safeReader) mentionLoud = true
+        if (cmd === 'cat') readsScript = true
+      }
+      if (viaXargs && cmd === 'temper') mentionLoud = true
+      if (w[0]?.dynamic || /[$`]|[<>]\(/.test(cmdText)) dynamicCommand = true
+      // An interpreter program (python -c, node -e, perl -e) or a program on standard input that names
+      // the script. A file run by an interpreter, and a test run (-m pytest -k "temper"), are not read here.
+      if (INTERPRETERS.test(cmd)) {
+        const flagAt = args.findIndex(a => PROGRAM_FLAG.test(a.text))
+        const program = flagAt >= 0 ? argText.slice(flagAt + 1) : []
+        if (program.some(a => /temper|subprocess/i.test(a))) mentionLoud = true
+        if (!args.some(a => !a.text.startsWith('-')) && flagAt < 0) stdinProgram = true
+      }
+    }
+    // A git command that creates a commit, wherever it sits (find -exec, env, watch, ...).
+    if (cmd !== 'git' && cmd !== 'temper' && !READERS.has(cmd) && gitCreatesCommit(argText.join(' '))) commits = true
 
     if (cmd === 'eval') {
       for (const s of topStatements(args.map(a => expandVars(a.text, vars)).join(' '))) analyse(s, depth + 1)
@@ -551,11 +753,13 @@ export function classifyBash(command: string): BashClass {
       let i = 0
       while (i < args.length) {
         const t = argText[i] ?? ''
+        // `-c alias.x=commit` or `-c alias.x=!...`: an alias can run a commit or any shell command.
+        if (t === '-c' && /^alias\./i.test(argText[i + 1] ?? '') && /=(?:!|.*\bcommit\b)/i.test(argText[i + 1] ?? '')) commits = true
         if (t === '-c' || t === '-C') i += 2
         else if (t.startsWith('-')) i += 1
         else break
       }
-      if (argText[i] === 'commit') commits = true
+      if (gitCreatesCommit(`git ${argText.slice(i).join(' ')}`, true)) commits = true
     }
 
     if (cmd === 'temper') {
@@ -569,6 +773,12 @@ export function classifyBash(command: string): BashClass {
       const sub = argText[i]
       const sub2 = argText[i + 1]
       const rest = args.slice(i + 2)
+      // The words that say what the call does must be literal. A verb built by $'..', ${..}, $(..) or
+      // a variable that cannot be resolved cannot be read, so the call fails closed.
+      const unreadable = (j: number): boolean => argText[j] !== undefined && (/[$`]/.test(argText[j] ?? '') || (args[j]?.dynamic ?? false))
+      if (sub !== undefined && unreadable(i)) opaqueCall = true
+      else if ((sub === 'state' || sub === 'evidence') && sub2 !== undefined && unreadable(i + 1)) opaqueCall = true
+      else if (sub === 'state' && sub2 === 'set' && argText[i + 2] !== undefined && unreadable(i + 2)) opaqueCall = true
       if (sub === 'override') {
         const r = args.slice(i + 1)
         const fl = readFlags(r, ['--reason'])
@@ -587,7 +797,7 @@ export function classifyBash(command: string): BashClass {
       } else if (sub === 'state' && sub2 === 'advance') {
         const r = args.slice(i + 2)
         decisions.push('advance')
-        calls.push({ kind: 'advance', stage: r[0] ? expandVars(r[0].text, vars) : undefined })
+        calls.push({ kind: 'advance', stage: r[0] ? expandVars(r[0].text, vars) : undefined, next: r[1] ? expandVars(r[1].text, vars) : undefined })
       } else if (sub === 'state' && sub2 === 'set') {
         const key = argText[i + 2] ?? ''
         const value = argText[i + 3]
@@ -596,7 +806,7 @@ export function classifyBash(command: string): BashClass {
           decisions.push('back')
           calls.push({ kind: 'back', stage: value })
         }
-      } else if (sub === 'state' && (sub2 === 'clear' || sub2 === 'archive')) {
+      } else if (sub === 'state' && (sub2 === 'clear' || sub2 === 'archive' || sub2 === 'init' || sub2 === 'loop')) {
         stateOps.push({ op: sub2 })
       }
     }
@@ -605,6 +815,25 @@ export function classifyBash(command: string): BashClass {
 
     // ---- Write capable constructs ----
     if (WRITES_ANY.has(cmd)) for (const a of args) if (!a.text.startsWith('-') || a.dynamic) check(a)
+    if (cmd === 'tee') {
+      for (const a of args) {
+        if (a.text.startsWith('-')) continue
+        const t = expandVars(a.text, vars)
+        created.push(t)
+        if (SCRIPT_FILE.test(t)) wroteScript = true
+      }
+      // `cat scripts/temper | tee /tmp/t` makes a copy.
+      if (readsScript) alias = true
+    }
+    // A link (hard or symbolic) to Temper state, or to the folder that holds it, by another name:
+    // a write through the link would not be seen as a write to the guarded path.
+    if (cmd === 'ln') {
+      for (const a of args) {
+        if (a.text.startsWith('-')) continue
+        const raw = expandVars(a.text, vars)
+        if (NAMES_GUARDED.test(raw) || candidates(a).some(r => r !== null && protectedKind(r) !== null)) flag(raw)
+      }
+    }
     if (cmd === 'dd') for (const a of args) if (a.text.startsWith('of=')) check({ text: a.text.slice(3), dynamic: a.dynamic })
     if (WRITES_LAST.has(cmd)) {
       const files = args.filter(a => !a.text.startsWith('-'))
@@ -615,6 +844,10 @@ export function classifyBash(command: string): BashClass {
         } else if (a.text.startsWith('--target-directory=')) check({ text: a.text.slice(19), dynamic: a.dynamic }, files, true)
       })
       const last = files[files.length - 1]
+      // A link or copy of the script is another name for it, whatever the command says.
+      const tDir = args.findIndex(a => a.text === '-t' || a.text === '--target-directory')
+      const sources = tDir >= 0 ? files.filter(f => f !== args[tDir + 1]) : files.slice(0, -1)
+      if (sources.some(f => namesTemper(expandVars(f.text, vars)))) alias = true
       if (last) check(last, files.slice(0, -1), true)
       // Moving a guarded file or folder away removes it.
       if (cmd === 'mv') for (const f of files.slice(0, -1)) check(f)
@@ -678,6 +911,18 @@ export function classifyBash(command: string): BashClass {
 
   // An interpreter that is told a guarded path: it can write it however it likes.
   if (interpreter) for (const m of text.match(MENTION) ?? []) flag(m)
+  // A program given on standard input or in a heredoc is read from the whole text.
+  const textNames = TEMPER_WORD.test(text)
+  if (stdinProgram && /temper|subprocess/i.test(text)) mentionLoud = true
 
-  return { commits, decisions, calls, stateOps, protectedWrites: [...new Set(writes)], uncheckable: [...new Set(uncheckable)] }
+  // Fail closed: the command may run the Temper script in a way the text does not show. Reading
+  // commands and plain, readable calls are not touched. A script that is written and run, or a
+  // program that holds the script name and a decision word, is.
+  const verb = verbIn(text)
+  const opaque =
+    opaqueCall ||
+    (verb && textNames && (ranCreated || wroteScript)) ||
+    (mentionLoud && (verb || HIDES.test(text))) ||
+    (verb && (dynamicCommand || (shellStdin && (mentionAny || /temper/i.test(text)))))
+  return { commits, decisions, calls, stateOps, protectedWrites: [...new Set(writes)], uncheckable: [...new Set(uncheckable)], opaque, alias }
 }

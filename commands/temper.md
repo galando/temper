@@ -42,6 +42,7 @@ mod is absent. Any other first word is a feature description.
 | `drift <add\|revert\|allow> <reason>` | `add`: put the file in plan.md's Files table. `revert`: restore the file to its committed state. `allow`: continue once. Record the choice with `$TEMPER evidence add --stage build --phase feedback --claim "drift {path}: {choice}: {reason}"`. |
 | `pause` / `resume` | Stop at the next gate and wait for the person, or continue from it. |
 | `pr` | Write a pull request description from `$TEMPER report`: overrides, accepted findings and drift decisions with their reasons. |
+| `discuss <text>` | Treat the text as the person's message at the current gate: answer it, and if it asks for a change, make the change, run the gate again, then wait (see Gates). It never advances a stage. |
 | `mode`, `enforcement`, `pane`, `play` | These belong to the Temper mod. Without it, say they are not available here. The game needs the mod. |
 
 ---
@@ -139,7 +140,15 @@ Every stage gate follows the same shape. After a stage Agent returns:
    not restated here).
 2. Run `$TEMPER gate {stage}`. It prints PASS/FAIL with each requirement's status and
    writes the verdict to `.temper/gates.json`.
-3. Show an `AskUserQuestion` gate:
+3. Show an `AskUserQuestion` gate. **With the Temper bar** (the system prompt has the line
+   `Temper enforcement: active`) do not show it: the bar already offers the same choices with
+   the same words (Continue to, Loop back to, Skip with a reason, Save for later, Grill me,
+   Teach me, Discuss) and records the decision. Print the stage panel and the gate result, then
+   end the turn with one line: `Waiting for you. Use the Temper bar, or type a change.` The
+   person's message at a gate is the original "Other": if the user writes a message at a gate,
+   answer it; if it asks for a change, make the change, run the gate again, then wait for the
+   user again. Every other dialog stays (the autonomy arming choice, clarifying questions, the
+   Build checkpoint feedback text). Without the line, show the gate as follows:
    - **On PASS:** `"Continue to {next} (Recommended)"` / `"Save for later"` / free-text
      `"Other"` for a change request (make the edit, re-run the gate, re-show).
    - **On FAIL:** `"Loop back to {upstream stage}"` (if `feedback.enabled` and the loop
@@ -412,7 +421,9 @@ what was actually verified, not a narrated summary.
 `/temper "new feature"` while state exists for a **different** feature → follow
 "Nested Invocation Protection" there (say "feature", not "item"). `/temper` (no args) for
 the **same** feature already in progress → "Continue from {next_stage} (Recommended)" or
-"Start over (replan)".
+"Start over (replan)". **With the Temper bar** (`Temper enforcement: active`) skip that
+question: the bar's Continue button runs `/temper` with no arguments after the person's
+decision is recorded, so continue from `{next_stage}` at once and launch its stage.
 
 ---
 

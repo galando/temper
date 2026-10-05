@@ -50,20 +50,41 @@ bash demo/run-demo.sh          # starts at Step 2 of 6: Plan, ready to approve
 bash demo/run-demo.sh intent   # starts at Step 1 of 6: Intent
 ```
 
-  The script copies the demo project to `/tmp/pr-demo`, seeds a Temper run (at Plan, with the
+  The script copies the demo project to `/tmp/pr-demo` (it replaces an old one only when it holds
+  the marker file `.temper-demo`; delete `/tmp/pr-demo` by hand if it is not a demo folder), seeds a Temper run (at Plan, with the
   intent accepted and the plan written, so both checks already pass; or at Intent), checks your
   Claude Code version, switches off your installed Temper for this one
   process only (so the branch is the only Temper, and your settings are untouched), and
   starts Claude Code with the branch loaded. When Claude Code asks, choose "Yes, I trust
   this folder". Always type the full command name `/temper:temper`.
-  Expect the TEMPER bar above the prompt ("Step 2 of 6: Plan" and "1 Approve the plan.") and no
+  Expect the TEMPER bar above the prompt ("Step 2 of 6: Plan" and "1 Continue to Build.") and no
   plugin load error. The folder is watched, so a `git pull` in `<clone>` reloads the mod without
   restarting.
 - [ ] **The smooth path.** At Plan, type `Skip the tasks: edit src/users.js now to add a resetToken
   function`. Expect a refusal with a `Next:` step. Then, with the prompt empty, press `1`. Expect the
-  toast "Plan approved. Build open.", the bar at "Step 3 of 6: Build" with "1 Start the next task.",
-  and, after Claude's one short line, `scripts/temper state get next_stage` prints `build` in
-  `/tmp/pr-demo`. Claude must not ask you to approve again.
+  toast "Plan approved. Build open.", the bar at "Step 3 of 6: Build", and, after Claude's one
+  short line, `scripts/temper state get next_stage` prints `build` in `/tmp/pr-demo`. Claude must
+  not ask you to approve again. Then expect a second turn that starts with `/temper:temper`: the
+  orchestrator launches the Build stage in its own subagent (a `temper:temper-build` agent line). No
+  AskUserQuestion dialog may appear at the gate: the stage ends with "Waiting for you. Use the Temper
+  bar, or type a change." and the bar offers the next step ("1 Continue with task 2" while tasks are
+  open, "1 Continue to Review" when the build check passes).
+- [ ] **No second question at a gate.** With the mod active, at every gate (Intent, Plan, Build,
+  Review, Check) expect no Continue / Save for later / Other dialog under the bar. Start Claude Code
+  with the mod switched off (`--settings '{"enabledPlugins":{"temper@temper":false}}'` and no
+  `--plugin-dir`) and expect the orchestrator to ask its own questions as before.
+- [ ] **Discuss.** Press `4`. Expect the prompt box to hold the draft `Discuss this step: ` and the
+  toast "Type your message. Press Enter to send it." Type `why is this file in the plan?` and press
+  Enter. Expect Claude to answer, the phase to stay the same, and no new file in
+  `.temper/specs/<name>/events/`. Open the game (`/temper:temper play`) and press `4`: expect the toast
+  "Close the pane, then type your message."
+- [ ] **More (key 0).** Press `0`. Expect the band to show the line "More actions. Press the number
+  shown." above the phase chips, then the other options as `1:` to `9:` and `0: Fewer`, in the full
+  screen layout and in the main screen layout (set `CLAUDE_CODE_NO_FLICKER=0`; test 100 and 120
+  columns). Press a number and expect the option to run and the menu to close. Press `0` twice and
+  expect the main buttons back. Every original option (Save for later, Grill me, Teach me, Open HTML
+  review, Architecture depth review, Review config suggestions, Stop, Commit, Walk through step by
+  step, Change, Loop back to, Skip with a reason) must be one digit away, or `0` and one digit.
 - [ ] **Ask Claude whether the mod is active.** Type
   `Does your system prompt contain a Temper enforcement line?` and expect Claude to quote
   `Temper enforcement: active`.
@@ -78,12 +99,13 @@ Work through one run. For each phase, check the refusal and the key.
 - [ ] **Intent denial.** While Intent is current, type `Edit src/users.js and add a resetToken field now`.
   Expect a refusal that starts `Temper: Intent phase.` and ends with `Next:` and a step.
   The write to `.temper/specs/<name>/intent.md` must still be allowed.
-- [ ] **Approve Intent with a key.** Press `1` ("Check the intent"), wait for Claude, then press `1`
-  again ("Approve the intent"). When a passing check already exists, key 1 says "Approve the intent"
-  at once. Expect the band to show Plan as current and a toast "Intent approved. Plan open."
+- [ ] **Continue from Intent with a key.** Press `1` ("Start Intent"): Claude's Intent stage writes
+  the intent and its check runs. Then key 1 says "Continue to Plan"; press it. Expect the band to
+  show Plan as current and a toast "Intent approved. Plan open."
 - [ ] **Plan denial and approval.** Repeat the denial for `src/users.js`. Expect
-  `Temper: Plan phase.` Then press `1` to approve the plan.
-- [ ] **Build.** Expect the first action to be a failing test. Ask Claude to edit a file
+  `Temper: Plan phase.` Then press `1` ("Continue to Build") to approve the plan.
+- [ ] **Build.** Expect key 1 to say "Continue with task N" and the stage to write a failing test
+  first. Ask Claude to edit a file
   that is not in the plan (for example `README.md` in the demo). Expect a question with
   three choices: Add to plan, Revert, Allow once. Choose Allow once and give a reason.
   Expect the edit to go through once.

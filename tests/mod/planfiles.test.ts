@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
+import { normalizePath } from '../../hooks/temper-mod/core/paths'
 import { parsePlanFiles, parseTaskFiles, planFileList } from '../../hooks/temper-mod/core/planfiles'
 import { spec_plan_files } from './fixtures/spec-plan-files'
 import { spec_tasks } from './fixtures/spec-tasks'
@@ -56,5 +57,20 @@ describe('planFileList', () => {
   test('unions plan and task files without duplicates', () => {
     const list = planFileList('### Files to Create\n| `a.ts` | x |\n', '**File:** `a.ts`, `b.ts`')
     expect(list).toEqual(['a.ts', 'b.ts'])
+  })
+})
+
+// The engine reports the real folder (/private/tmp/x on macOS); a tool call may name the same folder
+// through the link (/tmp/x). Both are inside the project.
+describe('normalizePath with a symlinked project folder', () => {
+  test('a path under /tmp is inside a root under /private/tmp', () => {
+    expect(normalizePath('/tmp/pr-demo/src/users.js', '/private/tmp/pr-demo')).toBe('src/users.js')
+    expect(normalizePath('/private/tmp/pr-demo/src/users.js', '/private/tmp/pr-demo')).toBe('src/users.js')
+    expect(normalizePath('/private/var/x/a.ts', '/private/var/x')).toBe('a.ts')
+    expect(normalizePath('/var/x/a.ts', '/private/var/x')).toBe('a.ts')
+  })
+  test('a path outside the project stays absolute', () => {
+    expect(normalizePath('/tmp/other/src/users.js', '/private/tmp/pr-demo')).toBe('/tmp/other/src/users.js')
+    expect(normalizePath('/tmp/pr-demo-2/a.js', '/private/tmp/pr-demo')).toBe('/tmp/pr-demo-2/a.js')
   })
 })

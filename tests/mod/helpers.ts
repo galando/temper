@@ -19,7 +19,7 @@ export function fold(drafts: Draft[], verdicts: Verdicts = {}, opts: { maxLoops?
 const CHAIN: Phase[] = ['intent', 'plan', 'build', 'review', 'check']
 
 // The folded state of a run currently in `phase`, started on spec "pw".
-export function stateAt(phase: Phase, extra: Draft[] = []): RunState {
+export function stateAt(phase: Phase, extra: Draft[] = [], verdicts: Verdicts = {}): RunState {
   const drafts: Draft[] = [{ type: 'start', slug: 'pw', title: 'Password reset', ...person }]
   const target = phase === 'fix' ? 'check' : phase
   for (let i = 0; CHAIN[i] !== target; i++) {
@@ -29,5 +29,5 @@ export function stateAt(phase: Phase, extra: Draft[] = []): RunState {
     drafts.push(adv(from, to))
   }
   if (phase === 'fix') drafts.push({ type: 'checkResult', result: 'fail', origin: 'system' })
-  return fold([...drafts, ...extra])
+  return fold([...drafts, ...extra], verdicts)
 }

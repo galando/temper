@@ -7,6 +7,8 @@ that uses a token once. Keep the store in memory, as it is now.
 
 ## Blast Radius
 
+### Files to Modify
+
 | File | Change | Why |
 |---|---|---|
 | `src/users.js` | Add `resetToken` and `useToken` | The user store owns the data |

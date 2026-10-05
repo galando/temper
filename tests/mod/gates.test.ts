@@ -2,7 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { MIN_VERSION, versionAtLeast } from '../../hooks/temper-mod/core/config'
 import { parseBuildState, parseGates, phaseFromStage } from '../../hooks/temper-mod/core/gates'
-import { taskProgress } from '../../hooks/temper-mod/core/planfiles'
+import { taskProgress, tasksLeft } from '../../hooks/temper-mod/core/planfiles'
 import { spec_tasks } from './fixtures/spec-tasks'
 
 describe('parseGates', () => {
@@ -97,5 +97,21 @@ describe('taskProgress', () => {
 
   test('no tasks is null', () => {
     expect(taskProgress('# nothing')).toBe(null)
+  })
+
+  test('a task heading with two # counts too (the demo tasks.md)', () => {
+    const md = '# Tasks\n\n## Task 1: a\n\n- [x] done\n\n## Task 2: b\n\n- [ ] open\n'
+    expect(taskProgress(md)).toEqual({ n: 2, of: 2 })
+  })
+})
+
+describe('tasksLeft', () => {
+  const md = '### Task 1: a\n- [x] done\n### Task 2: b\n- [ ] open\n### Task 3: c\n- [ ] open\n'
+  test('counts the tasks that are not done', () => {
+    expect(tasksLeft(md)).toBe(2)
+    expect(tasksLeft('### Task 1: a\n- [x] y')).toBe(0)
+  })
+  test('no tasks is null: nothing is known', () => {
+    expect(tasksLeft('# nothing')).toBe(null)
   })
 })

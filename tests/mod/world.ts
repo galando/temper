@@ -9,6 +9,12 @@ export type World = {
   store: Record<string, unknown>
   // Prompts the mod submitted to Claude, in order.
   prompts: string[]
+  // The path of every fs call exactly as the plugin gave it (reads and lists and writes).
+  rawPaths: string[]
+  // Commands that reached the engine's own command run (after the plugin's hooks), in order.
+  commandRuns: Array<{ command: string; args: string; origin: string }>
+  // Drafts the mod put in the prompt box (`$.prompt.fill`), in order.
+  filled: Array<{ text: string; mode: string | undefined }>
   // Questions the mod asked the person through the engine's dialog, in order.
   asked: string[]
   // Answers the person gives, in order; empty means nobody answers (a `-p` run).
@@ -44,6 +50,8 @@ export type WorldOptions = {
   grantFocus?: boolean
   // Answer every directory listing with something that is not a list.
   brokenList?: boolean
+  // False: the prompt box refuses a draft (a dialog or the game pane holds the keys).
+  fillable?: boolean
 }
 
 export const denyText = (r: { deny?: string }): string => r.deny ?? ''
@@ -53,7 +61,7 @@ export const denyText = (r: { deny?: string }): string => r.deny ?? ''
 const rel = (p: string): string => /(?:^|\/)((?:\.temper|\.claude)\/.*)$/.exec(p)?.[1] ?? p
 
 export function world(on: On, files: Record<string, string> = {}, opts: WorldOptions = {}): World {
-  const w: World = { files: new Map(Object.entries(files)), writes: [], reads: [], prompts: [], asked: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) } }
+  const w: World = { files: new Map(Object.entries(files)), writes: [], reads: [], prompts: [], rawPaths: [], commandRuns: [], filled: [], asked: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) } }
   const panes = new Map<string, boolean>()
   // The plugin store, in memory and live: a test reads what the mod stored from `w.store`.
   on('store.get', ($, e) => ({ value: w.store[e.key] }))
@@ -67,16 +75,19 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
   })
   on('store.keys', () => ({ value: Object.keys(w.store) }))
   on('fs.read', ($, e) => {
+    w.rawPaths.push(e.path)
     w.reads.push(rel(e.path))
     const text = w.files.get(rel(e.path))
     return text === undefined ? { deny: `ENOENT: ${e.path}` } : { value: text }
   })
   on('fs.write', ($, e) => {
+    w.rawPaths.push(e.path)
     w.files.set(rel(e.path), e.text)
     w.writes.push(rel(e.path))
     return { value: undefined }
   })
   on('fs.list', ($, e) => {
+    w.rawPaths.push(e.path)
     if (opts.brokenList) return { value: 5 as never }
     const prefix = rel(e.path).replace(/\/$/, '') + '/'
     const names = [...w.files.keys()].filter(k => k.startsWith(prefix) && !k.slice(prefix.length).includes('/'))
@@ -140,8 +151,16 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
     w.prompts.push(e.text)
     return { text: e.text }
   })
+  on('prompt.fill', ($, e) => {
+    if (opts.fillable === false) return { isFilled: false, refusal: 'dialog', draft: { text: '', cursor: 0 } } as never
+    w.filled.push({ text: e.text, mode: e.mode })
+    return { isFilled: true, draft: { text: e.text, cursor: e.text.length } } as never
+  })
   on('attribution.text', ($, e) => ({ text: e.text }))
-  on('command.run', () => ({ text: 'prompt based /temper:temper ran' }))
+  on('command.run', ($, e) => {
+    w.commandRuns.push({ command: e.command, args: e.args, origin: (e.origin as { kind?: string } | undefined)?.kind ?? '' })
+    return { text: 'prompt based /temper:temper ran' }
+  })
   on('prompt.compose', () => ({ sections: [{ id: 'intro', text: 'You are Claude.', scope: 'shared' as const }] }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('classic.SessionStart', () => ({}))

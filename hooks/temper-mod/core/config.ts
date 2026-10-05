@@ -47,7 +47,10 @@ export type GameMode = 'on' | 'command' | 'off'
 
 export function parseGameMode(v: string | undefined): GameMode {
   const n = norm(v)
-  return n === 'command' || n === 'off' ? n : 'on'
+  // Off has synonyms, so a person who writes false or no gets what they mean. Anything that is
+  // not a known word (a typo, an empty value) is on, the default, and shows no message.
+  if (['off', 'false', 'no', '0', 'disabled', 'none'].includes(n)) return 'off'
+  return n === 'command' ? 'command' : 'on'
 }
 
 export const parseEnforcement =(v: string | undefined): 'on' | 'off' => parseOnOff(v, 'on')

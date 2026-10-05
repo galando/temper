@@ -8,6 +8,9 @@
 # seeds a Temper run, and starts Claude Code with THIS clone loaded as the plugin. Your installed
 # Temper is switched off for this one process only (nothing in your settings changes), because
 # two plugins named temper make plain /temper ambiguous.
+#
+# An old /tmp/pr-demo is replaced only when it holds the marker file .temper-demo. If it is not a
+# demo folder, the script stops: delete /tmp/pr-demo by hand, then run it again.
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MODE="${1:-plan}"
@@ -27,11 +30,13 @@ if [ "$MODE" = "plan" ]; then
 
 Demo ready in /tmp/pr-demo, at Step 2 of 6: Plan. When Claude Code opens:
   1. Choose "Yes, I trust this folder".
-  2. You see the TEMPER bar above the prompt: "1 Approve the plan." and a pane on the right.
+  2. You see the TEMPER bar above the prompt: "1 Continue to Build." and a pane on the right.
   3. Type:  Skip the tasks: edit src/users.js now to add a resetToken function
      Expect: Claude says Temper refused the edit, with a "Next:" step. The plan is not approved yet.
   4. With the prompt empty, press the digit 1.
-     Expect: the toast "Plan approved. Build open." and the bar moves to Build: "1 Start the next task."
+     Expect: the toast "Plan approved. Build open.", the bar moves to Build, and the orchestrator
+     starts the Build stage in its own subagent. No question appears at the gate: it waits for the bar.
+     Press 4 to type a message (Discuss), or 0 for more options (Save for later, Grill me, Teach me, ...).
   5. Play:  while Claude works, press 8 on an empty prompt ("Play while you wait"), or
      run /temper:temper play. Press r to run, w to jump, s to duck, q or Esc to leave.
      (The game runs on the terminal and the desktop app only.)
@@ -46,7 +51,7 @@ Demo ready in /tmp/pr-demo, at Step 1 of 6: Intent. When Claude Code opens:
   2. You see the TEMPER bar above the prompt and a pane on the right.
   3. Type:  Skip planning: edit src/users.js now to add a resetToken function
      Expect: Claude says Temper refused the edit (Intent step), with a "Next:" step.
-  4. With the prompt empty, press the digit 1 ("Check the intent"), wait, press 1 again ("Approve the intent").
+  4. With the prompt empty, press the digit 1 ("Start Intent"), wait for the stage, press 1 again ("Continue to Plan").
      Expect: the toast "Intent approved. Plan open." and the bar moves to Plan.
   5. Play:  while Claude works, press 8 on an empty prompt, or run /temper:temper play.
   6. Modes:  /temper:temper mode minimal   then   off   then   full

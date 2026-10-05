@@ -38,7 +38,10 @@ describe('buildView', () => {
     expect(buildView(input('fix')).steps.find(s => s.id === 'fix')?.status).toBe('current')
     const done = buildView({ ...input('check'), state: stateAt('check', [{ type: 'checkResult', result: 'pass', origin: 'system' }]) })
     expect(done.phase).toBe('done')
-    expect(done.actions).toBe(null)
+    // A finished run offers the original Commit question, the PR text and the timeline, and Discuss.
+    expect(done.actions?.primary.map(a => a.label)).toEqual(['Commit', 'Write the PR text', 'Show the timeline'])
+    expect(done.actions?.discuss.key).toBe('4')
+    expect(done.actions?.override).toBeNull()
     expect(done.steps.filter(s => s.status === 'done')).toHaveLength(5)
   })
 
@@ -72,10 +75,12 @@ describe('texts', () => {
   })
 
   test('hint tail, turn line, question header and suggestion', () => {
-    expect(hintTail(v)).toMatch(/^Temper\. Step 3 of 6: Build\. 1 Start the next task\./)
+    expect(hintTail(v)).toMatch(/^Temper\. Step 3 of 6: Build\. 1 Continue with task 2\./)
     expect(turnLine(v)).toBe('Build \u00b7 1 of 2 criteria met \u00b7 next: Review')
     expect(questionHeader(v)).toBe('Temper: Step 3 of 6: Build, criterion 2 of 2')
-    expect(suggestion(v)).toContain('Start the next task')
+    // Key 1 launches the stage through the orchestrator: it has no prompt text to suggest.
+    expect(suggestion(v)).toBe(null)
+    expect(suggestion(buildView(input('review')))).toBe(null)
     expect(hintTail({ ...v, phase: null })).toBe(null)
     expect(turnLine({ ...v, phase: null })).toBe(null)
     expect(questionHeader({ ...v, phase: 'done' })).toBe(null)
@@ -112,6 +117,8 @@ describe('followUp', () => {
     expect(followUp({ type: 'override', phase: 'review', reason: 'r', origin: 'person' })).toContain("scripts/temper override review --reason 'r'")
     expect(followUp({ type: 'accept', findingId: '2', reason: 'fp', origin: 'person' })).toContain('evidence accept --stage review --id 2')
     expect(followUp({ type: 'advance', from: 'plan', to: 'build', origin: 'person' })).toContain('state advance plan_complete build')
+    // The orchestrator starts the next stage (RESUME), so the mirror prompt never does.
+    expect(followUp({ type: 'advance', from: 'plan', to: 'build', origin: 'person' })).toContain('Do not start the next stage yourself')
     expect(followUp({ type: 'back', to: 'plan', reason: 'x', origin: 'person' })).toContain('state set next_stage plan')
     expect(followUp({ type: 'drift', path: 'a.ts', choice: 'revert', reason: '', origin: 'person' })).toContain('a.ts')
     expect(followUp({ type: 'pause', origin: 'person' })).toBe(null)
@@ -137,16 +144,20 @@ describe('hotkeys are unique in every phase and state', () => {
             })
             const a = v.actions
             if (!a) throw new Error('no actions')
-            const band = [...a.primary.map(x => x.key), a.override.key, '0']
+            const band = [...a.primary.map(x => x.key), a.discuss.key, ...(a.override ? [a.override.key] : []), '0']
             expect(unique(band)).toBe(true)
-            expect(band).toEqual(['1', '2', '3', '9', '0'])
+            // Discuss is key 4 in every phase and state; skip is 9.
+            expect(a.discuss.key).toBe('4')
+            expect(a.override?.key).toBe('9')
+            expect(band.every(k => /^[0-9]$/.test(k))).toBe(true)
             // The band's Play button (only while Claude works) takes the digit 8: no phase uses it.
             expect(unique([...band, '8'])).toBe(true)
-            // The pane adds the letters of the full list; 0 is only ever "More actions".
-            const pane = [...a.primary.map(x => x.key), a.override.key, '0', ...a.more.map(x => x.key)]
-            expect(unique(pane)).toBe(true)
-            expect(a.more.every(x => /^[a-h]$/.test(x.key))).toBe(true)
+            // The menu (key 0) replaces the main buttons: its own digits 1 to 9 are unique, and 0 leaves it.
+            const menu = [...a.more.map(x => x.key), '0']
+            expect(unique(menu)).toBe(true)
+            expect(a.more.every(x => /^[1-9]$/.test(x.key))).toBe(true)
             expect(a.more.length).toBeGreaterThan(0)
+            expect(a.more.length).toBeLessThanOrEqual(9)
           })
         }
       }

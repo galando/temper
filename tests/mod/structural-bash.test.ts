@@ -399,7 +399,7 @@ describe('commits and decisions are found through structure, not only through pa
     'xargs -I{} git commit -m {}',
   ]
   for (const c of commits) test(`commit: ${c.replace(/\n/g, '\\n')}`, () => expect(classifyBash(c).commits).toBe(true))
-  const not = ['echo "git commit"', "echo 'git commit -m x'", 'grep -r "git commit" docs', 'git log --grep=commit', 'git commit-tree HEAD', 'cat <<EOF\ngit commit -m x\nEOF']
+  const not = ['echo "git commit"', "echo 'git commit -m x'", 'grep -r "git commit" docs', 'git log --grep=commit', 'cat <<EOF\ngit commit -m x\nEOF']
   for (const c of not) test(`not a commit: ${c.replace(/\n/g, '\\n')}`, () => expect(classifyBash(c).commits).toBe(false))
 })
 

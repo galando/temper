@@ -34,7 +34,7 @@ run every phase as prompts.
 
 From a clone of this repository, `bash demo/run-demo.sh` opens Claude Code on a small demo project
 at "Step 2 of 6: Plan", with the plan ready. Ask Claude to change `src/users.js`: Temper refuses and
-says what to do next. Then press `1` ("Approve the plan"): the bar moves to Build. Use
+says what to do next. Then press `1` ("Continue to Build"): the bar moves to Build. Use
 `bash demo/run-demo.sh intent` to start from the intent step. See [the demo script](docs/demo-script.md).
 
 ## The problem
@@ -70,6 +70,27 @@ flowchart LR
 - **The mod makes the phases real.** Claude Code 2.1.287 or later runs a small mod that
   refuses a write that does not belong to the current phase, refuses `git commit` until Check
   passes, draws the phase bar, and writes `.temper/report.md` at the end.
+
+### One flow, two views
+
+The Temper bar is the same choices as the questions Temper asks at each gate, without typing. With
+the mod loaded, Temper does not ask the question twice: it prints the result of the stage and waits
+for the bar, or for a message you type. Each button has the words of the original question.
+
+| Original option | Temper bar button |
+|---|---|
+| Continue to {next} | `1` Continue to {next} |
+| Loop back to {upstream} | `1` Loop back to {upstream} (the check failed) |
+| Override and continue | `9` Skip with a reason |
+| Other (a change request) | `4` Discuss |
+| Save for later, Grill me, Teach me | `0` More, then the number shown |
+| Walk through step by step | `2` at Plan |
+| Open HTML review, Architecture depth review, Review config suggestions | `0` More, then the number shown |
+| Change, Stop (Build checkpoint) | `2` at Build, `0` More then Stop |
+| Commit | `1` when the run is done |
+
+Every original option is one digit away, or `0` and then a digit. Without the mod the questions
+come back as they were.
 
 ### The three modes
 
@@ -172,6 +193,18 @@ MultiEdit and `git commit`. For Bash the mod resolves variables in order, expand
 closed. It cannot see a variable set in an earlier call or a profile, a Bash command can still write
 ordinary source files, and MCP file tools are not covered. The native `pre-commit` hook is the
 backstop. Button presses and the reason field carry no origin, so their authenticity rests on Claude Code.
+
+**Limits you should know.** While a run is active, a Bash command that names the Temper script and
+hides what it runs (`$(...)`, `${...}`, `$'...'`, a here-string, a script written and then run, a
+launcher such as `env -S`, `make`, `awk` or `find -exec`) is refused. It is refused even when the
+text does not show a decision word. Shell tricks that a text reader cannot see are still possible:
+a link or a script made in an earlier call, or a script already on disk and run later with no name
+in the command. So the hard guarantees are the editing tools and the native `pre-commit` hook, not
+the Bash reader. The line `Temper enforcement: active` also appears in text files that Claude can
+read. An injected copy can only hide a question, never advance a phase, because every advance still
+needs the decision of the person or a passed check. When the run is Done, a model `git commit` is
+allowed: the run is complete and the person pressed Continue. The Commit button is a prompt, not a
+gate. A later version of the CLI could check a one time decision token itself.
 
 **Without the mod** you keep the full pipeline: intent, plan, build, review and check as
 prompts, every CLI gate verdict, the commit hook and the evidence ledger. You lose the live

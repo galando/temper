@@ -104,3 +104,7 @@ jobs:
         run: |
           bash scripts/tests/test-check-mod-calls.sh
           bash scripts/check-mod-calls.sh
+      - name: Every original gate option has a button
+        run: |
+          bash scripts/check-original-options.sh
+          bash scripts/check-known-limits.sh

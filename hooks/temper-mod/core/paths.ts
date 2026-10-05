@@ -6,7 +6,11 @@
 export function normalizePath(input: string, root = ''): string {
   let p = input.replace(/\\/g, '/')
   const r = root.replace(/\\/g, '/').replace(/\/+$/, '')
+  // The engine reports the real folder (/private/tmp/x on macOS). A tool call may name it through
+  // the link (/tmp/x): that is the same folder, so both spellings are inside the root.
+  const alias = r.replace(/^\/private(?=\/)/, '')
   if (r && (p === r || p.startsWith(r + '/'))) p = p.slice(r.length).replace(/^\/+/, '')
+  else if (alias !== r && (p === alias || p.startsWith(alias + '/'))) p = p.slice(alias.length).replace(/^\/+/, '')
   const out: string[] = []
   for (const part of p.split('/')) {
     if (part === '' || part === '.') continue

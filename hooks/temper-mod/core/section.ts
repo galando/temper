@@ -7,6 +7,10 @@ import { phaseLabel } from './machine'
 
 export const SECTION_ID = 'temper:phase'
 
+// What a message from the user at a gate means. It is the original "Other" choice of the orchestrator:
+// the Temper bar (key 4, Discuss) and the prompt box both send it. Also in commands/temper.md.
+export const GATE_MESSAGE = 'If the user writes a message at a gate, answer it. If it asks for a change, make the change, run the gate again, then wait for the user again.'
+
 export type SectionInput = {
   enforcement: 'on' | 'off'
   phase: Phase | 'done' | null
@@ -44,5 +48,6 @@ export function sectionText(input: SectionInput): string {
   }
 
   lines.push(`Next: ${nextStep(input.phase, { ...input.actionContext, loopLimitReached: input.loopLimitReached })}`)
+  lines.push(GATE_MESSAGE)
   return lines.join('\n')
 }

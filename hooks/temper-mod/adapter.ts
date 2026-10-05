@@ -22,7 +22,7 @@ import { buildView } from './core/view'
 import type { View } from './core/view'
 import { decide, initialState, phaseLabel, reduce } from './core/machine'
 import type { Command, RunState, Verdicts } from './core/machine'
-import { planFileList, taskProgress } from './core/planfiles'
+import { planFileList, taskProgress, tasksLeft } from './core/planfiles'
 import { renderReport } from './core/report'
 import { sectionText } from './core/section'
 import type { DecisionKind } from './core/bash'
@@ -66,7 +66,11 @@ export type Snapshot = {
   // "task N of M": see taskProgress in core/planfiles.ts (ticked rows in tasks.md, or
   // the numeric `task` in build-state.json when the orchestrator sets one).
   task: { n: number; of: number } | null
+  // Tasks of tasks.md that are not done; null when tasks.md has no task headings.
+  tasksLeft: number | null
   unreadable: string[]
+  // Check wrote config-suggestions.json in the spec folder (offers "Review config suggestions").
+  configSuggestions: boolean
   // Unconsumed human decision events per kind, for the CLI decision guard.
   humanDecisions: HumanDecision[]
 }
@@ -108,7 +112,9 @@ export function idleSnapshot(options: PluginOptions, inert: boolean): Snapshot {
     criteria: [],
     findings: [],
     task: null,
+    tasksLeft: null,
     unreadable: [],
+    configSuggestions: false,
     humanDecisions: [],
   }
 }
@@ -244,7 +250,9 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     criteria: mergeCriteria(parseCriteria(intentText), status),
     findings: parseFindings((await readText(io, `${STATE_ROOT}/evidence/review.json`)) ?? ''),
     task: taskProgress(tasksText, bs.task),
+    tasksLeft: tasksLeft(tasksText),
     unreadable: unreadable.map(u => u.name),
+    configSuggestions: (await io.list(specDir).catch(() => [])).some(e => e.kind === 'file' && e.name === 'config-suggestions.json'),
     humanDecisions,
   }
 }
@@ -304,12 +312,13 @@ export function composeText(snap: Snapshot): string {
     actionContext: {
       ready: s.phase !== null && s.phase !== 'done' ? s.gate[s.phase] === 'fresh' : false,
       allChecksPass: s.gate.check === 'fresh',
+      hasFindings: snap.findings.length > 0,
     },
   })
 }
 
 export const viewOf = (snap: Snapshot): View =>
-  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, enforcement: snap.enforcement, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false })
+  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false })
 
 // Mirrors the folded state into `$.state` for drawing and compaction.
 export async function publish(io: Io, snap: Snapshot): Promise<void> {

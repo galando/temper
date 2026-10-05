@@ -31,7 +31,13 @@ describe('git commit detection', () => {
     'git status',
     'git log --grep="git commit"',
     'echo "run git commit later"',
-    'git commit-tree HEAD^{tree}',
+    // (git commit-tree creates a commit object: refused since the third review, #44)
+    'git merge --abort',
+    'git revert --quit',
+    'git rebase --abort',
+    'git am --skip',
+    'git pull --ff-only',
+    'git push origin main',
     'git diff --stat',
     'gitk commit',
     'grep -r "git commit" docs',
@@ -88,7 +94,7 @@ describe('evasions of the protected path guard', () => {
   test('temper global options before a decision subcommand', () => {
     expect(classifyBash('temper --spec-path .temper/specs/pw override plan --reason x').decisions).toEqual(['override'])
     expect(classifyBash('scripts/temper -q evidence accept --stage review --id 2 --reason x').calls).toMatchObject([{ kind: 'accept', stage: 'review', id: '2' }])
-    expect(classifyBash('temper state advance plan build').calls).toEqual([{ kind: 'advance', stage: 'plan' }])
+    expect(classifyBash('temper state advance plan build').calls).toEqual([{ kind: 'advance', stage: 'plan', next: 'build' }])
     expect(classifyBash('temper override review --reason x').calls).toMatchObject([{ kind: 'override', stage: 'review' }])
   })
 

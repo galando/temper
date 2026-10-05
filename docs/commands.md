@@ -112,10 +112,11 @@ after the command is one of these, Temper handles it instead of starting a run. 
 | `/temper:temper enforcement <on\|off>` | Turn denials on or off |
 | `/temper:temper pane` | Open or close the pane. A bare `/temper:temper` does the same while a run is active. |
 | `/temper:temper play` | Open or close the Temper Run game. Only you can open it. Terminal and desktop app only. |
+| `/temper:temper discuss <text>` | Send a message about the step you are at. The same as key 4 (Discuss). It changes no phase. |
 | `/temper:temper help` | List these |
 
-These 17 words are reserved: `status`, `timeline`, `approve`, `next`, `back`, `override`, `accept`,
-`drift`, `pause`, `resume`, `report`, `pr`, `mode`, `enforcement`, `pane`, `play` and `help`.
+These 18 words are reserved: `status`, `timeline`, `approve`, `next`, `back`, `override`, `accept`,
+`drift`, `pause`, `resume`, `report`, `pr`, `mode`, `enforcement`, `pane`, `play`, `discuss` and `help`.
 
 Decisions (`approve`, `override`, `accept`, `drift`, `back`) count only when you type
 them or press the button yourself. Claude cannot create one. With the mod loaded the
@@ -141,33 +142,73 @@ covered.
 ### The phase bar and its keys
 
 In `full` mode the band above the prompt shows `TEMPER`, the step in plain words ("Step 2 of 6:
-Plan"), one sentence that says what key 1 does and what happens next ("1 Make the plan. Claude
-writes the plan: which files change and the steps. Then you approve it."), the six phases as chips
+Plan"), one sentence that says what key 1 does and what happens next ("1 Continue to Build. The
+plan is checked. Build opens and Claude starts building."), the six phases as chips
 (a check mark for done, a filled chip for the phase you are in, plain chips for upcoming phases, a
-redo mark after a back step), and buttons: up to three actions on `1`, `2` and `3`, `Skip with a
-reason` on `9` and `More` on `0`. Key `9` moves the focus to a reason field below the buttons; Enter
-records the skip with that reason, and an empty reason is refused (the subcommand is still
-`/temper:temper override <reason>`). The pane repeats this with the intent title, the acceptance
-criteria ("what must be true") and a checklist, and it shows a short line under every action (10
-words at most); its `0` expands the full action list, whose entries use the letters `a`, `b`, `c`
-and so on. Under about 100 columns (for example while the
-pane is docked) the band uses a compact form without borders. `minimal` shows the chips only.
+redo mark after a back step), and buttons: up to three actions on `1`, `2` and `3`, `Discuss` on
+`4`, `Skip with a reason` on `9` and `More` on `0`. Key `9` moves the focus to a reason field below
+the buttons; Enter records the skip with that reason, and an empty reason is refused (the subcommand
+is still `/temper:temper override <reason>`). The pane repeats this with the intent title, the
+acceptance criteria ("what must be true") and a checklist, and it shows a short line under every
+action (10 words at most).
+
+Key `0` (`More`) shows a numbered menu of the other options, in the band above the phase chips and in
+the pane, with the line "More actions. Press the number shown." The menu takes the place of the main
+buttons, so its numbers are `1` to `9` (a letter would type into the prompt box), and `0` says
+"Fewer" and goes back. A choice from the menu runs and closes the menu. Under about 100 columns
+(for example while the pane is docked) the band uses a compact form without borders. `minimal`
+shows the chips only.
+
+### One flow, two views
+
+The bar is the same choices as the questions, without typing. The orchestrator
+(`commands/temper.md`) still runs every stage with its own brief and the CLI still judges every
+check. With the Temper mod loaded the orchestrator does not ask its gate question a second time: it
+prints the stage panel and the check result, and waits ("Waiting for you. Use the Temper bar, or
+type a change."). Pressing Continue records your decision, asks Claude to mirror it in the CLI
+state, and then runs `/temper:temper` with no arguments, which is the orchestrator's own Resume: it
+starts the next stage in its own subagent. Without the mod nothing changes and the orchestrator asks
+its questions as before.
+
+| Original option (`commands/temper.md`) | Temper bar button |
+|---|---|
+| Continue to {next} (Recommended) | `1` Continue to {next} |
+| Loop back to {upstream} | `1` Loop back to {upstream} (when the check failed; it asks for a reason) |
+| Override and continue | `9` Skip with a reason |
+| Save for later | `0` More, Save for later (pauses the run; Resume the run when paused) |
+| Grill Me | `0` More, Grill me |
+| Teach Me | `0` More, Teach me |
+| Walk through step by step | `2` at Plan |
+| Open HTML review | `0` More, Open HTML review (Plan) |
+| Architecture Depth Review | `0` More, Architecture depth review (Review) |
+| Review config suggestions | `0` More, Review config suggestions (Check, when `config-suggestions.json` exists) |
+| Change (Build checkpoint) | `2` at Build: a draft "Change this task: " in the prompt box |
+| Stop (Build checkpoint) | `0` More, Stop (Build) |
+| Commit | `1` when the run is done |
+| Other (a change request) | `4` Discuss: a draft "Discuss this step: " in the prompt box |
+
+Discuss and Change only put a draft in the prompt box. You type the rest and press Enter. Nothing
+moves and no event is written. If a dialog or the game holds the keys, the toast says "Close the
+pane, then type your message." Claude answers the message; if it asks for a change, Claude makes
+the change, runs the check again, and waits for you again.
 
 ### Each phase
 
-Key `1` is the main action. It changes when the phase is ready to move on. When a passing check
-already exists, key 1 says "Approve the intent" or "Approve the plan" at once, with no extra check.
-Key `9` is "Skip with a reason" everywhere and always asks for a reason. Key `0` (`More`) shows every action. It appears only when
-the phase has more actions.
+Key `1` is the main action. It follows the check result the CLI wrote: Continue to the next phase when
+the check passed, Loop back to the phase before when it failed, and Start or Run the phase when there
+is no result yet (the orchestrator runs the stage and its check itself). In Build every task is its own
+checkpoint: while tasks are open, key 1 says "Continue with task N". Key `4` is Discuss everywhere.
+Key `9` is "Skip with a reason" everywhere and always asks for a reason. Key `0` (`More`) shows the rest.
 
 | Phase | Writes allowed | Keys |
 |---|---|---|
-| Intent | `intent.md` only | 1 Approve the intent (when the check passes), otherwise Check the intent. 2 Ask me questions. 3 Edit the intent. 0 Save my request. |
-| Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records | 1 Approve the plan (when the check passes), otherwise Make the plan. 2 Show the files. 3 Try another plan. 0 Split the tasks, Go back to Intent. |
-| Build | The files in the plan, test files and the spec folder | 1 Start the next task, or Send to review when the tasks are done. 2 Run the tests. 3 Show the changes. |
-| Review | The spec folder only, unless a fix for that file is active | 1 Start the review, or Fix the problems when findings exist. 2 Review again. 3 Show the changes. In the pane, per finding: Fix, Accept, Explain. |
-| Check | The spec folder only. `git commit` stays refused until Check passes. | 1 Run the checks, or Finish the run when every check passes. 2 Run failed checks again. 3 Show the failures. |
-| Fix | The failing files | 1 Fix the failures. 2 Fix the findings. 3 Go back to checks. At the limit: Make a new plan, Skip with a reason, Take over. |
+| Intent | `intent.md` only | 1 Start Intent, or Continue to Plan. 2 Ask me questions. 3 Edit the intent. More: Grill me, Teach me, Save my request, Save for later, Show the timeline. |
+| Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records | 1 Run Plan, Loop back to Intent, or Continue to Build. 2 Walk through step by step. 3 Show the files. More: Open HTML review, Try another plan, Split the tasks, Grill me, Teach me, Go back to Intent, Save for later, Show the timeline. |
+| Build | The files in the plan, test files and the spec folder | 1 Continue with task N, Loop back to Plan, or Continue to Review. 2 Change. 3 Run the tests. More: Stop, Grill me, Teach me, Go back to Plan, Save for later, Show the timeline. |
+| Review | The spec folder only, unless a fix for that file is active | 1 Run Review, Loop back to Build, or Continue to Check. 2 Fix the problems (when findings exist), else Show the changes. 3 Show the changes. In the pane, per finding: Fix, Accept, Explain. More: Architecture depth review, Grill me, Teach me, Go back to Build, Save for later, Show the timeline, Write the PR text. |
+| Check | The spec folder only. `git commit` stays refused until Check passes. | 1 Run Check. 2 Run failed checks again. 3 Show the failures. More: Review config suggestions, Grill me, Teach me, Go back to Review, Save for later, Show the timeline, Write the PR text. |
+| Fix | The failing files | 1 Fix the failures. 2 Fix the findings. 3 Go back to checks. At the limit: Plan again, Skip with a reason, Take over. |
+| Done | Nothing is blocked | 1 Commit (Claude commits and does not push). 2 Write the PR text. 3 Show the timeline. |
 
 A write outside the Build plan raises scope drift. You can add the file to the plan, revert it, or
 allow it once with a reason. Each choice is logged. After three failed fix loops (set with
@@ -200,7 +241,8 @@ It is made to be fair and easy to play:
   Only you can open it. Claude cannot.
 - The setting `game` has three values: `on` (the default: the offers and the command), `command`
   (the command only, no offers) and `off` (nothing; the command answers "The game is off. Set game
-  to on in /config.").
+  to on in /config."). Off also reads `false`, `no`, `0`, `disabled` and `none`. On also reads
+  `true`, `yes` and `1`. Any other value, a typo for one, is on and shows no message.
 - The pane asks for the keyboard when it opens. The Buttons are `w` Jump, `s` Duck, `r` Run (it says
   Run again after a game over) and `q` Quit (Esc also leaves). They have hotkeys, so no mouse is
   needed. The text when it opens is always "The game is open. Press r to run, w to jump, s to duck,

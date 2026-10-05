@@ -5,7 +5,8 @@ import type { Io, Snapshot } from './adapter'
 import { findingActions } from './core/actions'
 import type { Action } from './core/actions'
 import { classifyBash } from './core/bash'
-import { HELP, followUp, parseArgs, planCommand } from './core/commands'
+import { pluginCliFrom } from './core/cli'
+import { HELP, RESUME, followUp, parseArgs, planCommand } from './core/commands'
 import type { Bare, Parsed } from './core/commands'
 import { parseGameMode, parseOnOff, parsePhaseModel, parsePhaseModels, parseUiMode } from './core/config'
 import type { GameMode, UiMode } from './core/config'
@@ -67,10 +68,13 @@ const MODE_LABELS: Array<[UiMode, string]> = [
 // `$` is spelled only in this file, as `$.noun.method(...)` at each call site, so the
 // adapter and the pure core stay free of it.
 function makeIo($: Api): Io {
+  // A relative path means the project the session started in, even after Claude ran `cd` in a Bash
+  // call: without this the files of the run are not found and the band goes away.
+  const abs = (path: string): string => (root && !path.startsWith('/') ? `${root.replace(/\/$/, '')}/${path}` : path)
   return {
-    read: path => $.fs.read(path).then(t => (typeof t === 'string' ? t : null)),
-    list: path => $.fs.list(path),
-    write: (path, text) => $.fs.write(path, text),
+    read: path => $.fs.read(abs(path)).then(t => (typeof t === 'string' ? t : null)),
+    list: path => $.fs.list(abs(path)),
+    write: (path, text) => $.fs.write(abs(path), text),
     storeGet: key => $.store.get(key),
     storeSet: (key, value) => $.store.set(key, value),
     version: () => $.session.version().then(v => v.version),
@@ -162,9 +166,12 @@ function bannerFor(view: View | null): string | null {
 }
 
 // Keeps the best score the game posted. This is the one place the game touches the plugin store.
-async function saveBest($: Api, score: number): Promise<void> {
-  if (!Number.isFinite(score) || score < 0 || score > 10000000 || score <= gameBest) return
-  gameBest = Math.floor(score)
+// Only a real number counts: a string, an array or a boolean is refused, not converted.
+async function saveBest($: Api, score: unknown): Promise<void> {
+  if (typeof score !== 'number' || !Number.isFinite(score)) return
+  const whole = Math.floor(score)
+  if (whole < 0 || whole > 99999 || whole <= gameBest) return
+  gameBest = whole
   await $.store.set('gameBest', gameBest)
 }
 
@@ -274,11 +281,39 @@ async function askReason($: Api, what: string): Promise<string> {
 }
 
 // Records a decision as the given origin; a person's button press is the person's own.
-async function decideAs($: Api, command: Bare, origin: 'person' | 'model'): Promise<{ error?: string; events: Draft[] }> {
+//
+// A button passes `drawnPhase`, the phase it was drawn for. When the run has moved since, the press
+// is stale and is ignored, and a move that follows another within a second is the same press twice.
+// Neither records an event. A typed command passes none.
+const STALE = 'That step is already done.'
+let lastMoveAt = 0
+const MOVES = new Set(['approve', 'advance', 'back', 'override'])
+async function decideAs($: Api, command: Bare, origin: 'person' | 'model', drawnPhase?: string | null): Promise<{ error?: string; events: Draft[] }> {
   const fresh = await refresh($)
+  if (drawnPhase !== undefined && drawnPhase !== null) {
+    if (fresh.state.phase !== drawnPhase) return { error: STALE, events: [] }
+    if (MOVES.has(command.type) && Date.now() - lastMoveAt < 1000) return { error: STALE, events: [] }
+  }
   const done = await apply(makeIo($), options, fresh, { ...command, origin, author: 'user' } as Command)
   adopt($, done.snap)
+  if (!done.error && MOVES.has(command.type)) lastMoveAt = Date.now()
   return { error: done.error, events: done.events }
+}
+
+// One decision button at a time: a second press while the first runs is dropped at once, with no
+// toast and no event. The lock is taken before the first await.
+const pressing = new Set<string>()
+const LOCK: Record<string, string> = { approve: 'move', next: 'move', back: 'move', override: 'move', accept: 'accept', pause: 'pause', resume: 'pause', drift: 'drift' }
+async function withLock(word: string | undefined, run: () => Promise<void>): Promise<void> {
+  const key = word === undefined ? undefined : LOCK[word]
+  if (key === undefined) return run()
+  if (pressing.has(key)) return
+  pressing.add(key)
+  try {
+    await run()
+  } finally {
+    pressing.delete(key)
+  }
 }
 
 // prompt.submit is allowed here (a button press runs outside any held turn).
@@ -286,14 +321,7 @@ async function decideAs($: Api, command: Bare, origin: 'person' | 'model'): Prom
 // <plugin>/hooks/temper-mod/register.tsx, so the root is two folders up. Anything else (an
 // unexpected location) gives the plain `scripts/temper`, and the prompt then says where to look.
 function pluginCli(): string {
-  try {
-    const here = new URL((import.meta as { url?: string }).url ?? '').pathname
-    const tail = '/hooks/temper-mod/register.tsx'
-    if (here.endsWith(tail) && !/\s|'/.test(here)) return `${decodeURIComponent(here.slice(0, -tail.length))}/scripts/temper`
-  } catch {
-    // no module URL here
-  }
-  return 'scripts/temper'
+  return pluginCliFrom((import.meta as { url?: string }).url)
 }
 
 async function submitText($: Api, text: string | null): Promise<void> {
@@ -308,52 +336,84 @@ async function focusReason($: Api, requestId: string): Promise<boolean> {
 }
 
 // Enter in the band's reason field: an empty reason is refused, a real one records the override.
-async function runReason($: Api, text: string): Promise<void> {
+function runReason($: Api, text: string, drawnPhase?: string | null): Promise<void> {
+  // The lock is taken here, before any await: two Enter presses at once record one skip.
+  return withLock('override', () => runReasonLocked($, text, drawnPhase))
+}
+
+async function runReasonLocked($: Api, text: string, drawnPhase?: string | null): Promise<void> {
   const reason = text.trim()
   if (!reason) {
     $.ui.toast(REASON_HINT)
     return
   }
-  const done = await decideAs($, { type: 'override', reason }, 'person')
+  const done = await decideAs($, { type: 'override', reason }, 'person', drawnPhase)
   if (done.error) {
     $.ui.toast(done.error)
     return
   }
   for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity, pluginCli()))
+  // The step is skipped: the orchestrator runs the next one.
+  await resumeRun($)
 }
 
-// Key 0 and the pane's "More actions" button. With the pane closed it opens the pane with the full
-// list. With the pane open it shows or hides the list. When no pane can seat (a narrow terminal)
-// the band shows the extra actions in a third row, and the same key hides them again.
-async function showMore($: Api): Promise<void> {
-  if (!paneOpen && !(live.paneExpanded ?? false)) {
-    live.paneExpanded = true
-    await openPane($)
-  } else {
-    live.paneExpanded = !(live.paneExpanded ?? false)
-  }
+// Key 0 (and the pane's More button): show or hide the menu of the other options. The band and the
+// pane both draw it, with the digits 1 to 9, in place of the main buttons. No pane is opened.
+async function showMore($: Api, on?: boolean): Promise<void> {
+  live.paneExpanded = on ?? !(live.paneExpanded ?? false)
   await refresh($)
   $.ui.invalidate('ui.render')
 }
 
-async function runAction($: Api, action: Action, requestId?: string): Promise<void> {
+// A button that needs a stage to run ends with the orchestrator's own Resume: `/temper:temper` with no
+// arguments. Its brief for the stage (agents/*.md) is then the one that runs, not a prompt of ours.
+// `prompt.submit` refuses a text that starts with a slash, so the command is run as a command.
+async function resumeRun($: Api): Promise<void> {
+  await $.command.run({ command: RESUME, args: '' }).then(() => undefined, () => undefined)
+}
+
+// Puts a draft in the prompt box so the person types the rest and presses Enter. The press itself
+// never moves the phase and writes no event.
+async function fillDraft($: Api, text: string): Promise<void> {
+  const filled = await $.prompt.fill({ text, mode: 'replace' }).catch(() => undefined)
+  $.ui.toast(filled?.isFilled ? 'Type your message. Press Enter to send it.' : 'Close the pane, then type your message.')
+}
+
+function runAction($: Api, action: Action, requestId?: string, drawnPhase?: string | null): Promise<void> {
+  return withLock(action.command?.split(' ')[0], () => runActionLocked($, action, requestId, drawnPhase))
+}
+
+async function runActionLocked($: Api, action: Action, requestId?: string, drawnPhase?: string | null): Promise<void> {
   if (action.id === 'play') {
     $.ui.toast(await toggleGame($))
     return
   }
-  if (action.id === 'more' || action.id === 'more-actions') {
+  if (action.id === 'more' || action.id === 'more-actions' || action.id === 'more-narrow') {
     await showMore($)
     return
   }
-  if (action.id === 'more-narrow') {
-    // A narrow band keeps the list in its own third row: no pane is opened.
-    live.paneExpanded = !(live.paneExpanded ?? false)
-    await refresh($)
-    $.ui.invalidate('ui.render')
+  // A choice from the menu leaves the menu: the main buttons come back.
+  if (live.paneExpanded) await showMore($, false)
+  if (action.id === 'override' && requestId !== undefined && (await focusReason($, requestId))) return
+  if (action.fill !== undefined) {
+    await fillDraft($, action.fill)
     return
   }
-  if (action.id === 'override' && requestId !== undefined && (await focusReason($, requestId))) return
-  if (action.prompt) {
+  if (action.id === 'timeline') {
+    await refresh($)
+    const shown = await readUi($).catch(() => null)
+    $.ui.toast(shown !== null && shown.view.timeline.length > 0 ? shown.view.timeline.join(' · ') : 'No phases yet.')
+    return
+  }
+  if (action.resume && !action.command && !action.prompt) {
+    if (working) {
+      $.ui.toast('Claude is working. Wait for the answer, then press 1.')
+      return
+    }
+    await resumeRun($)
+    return
+  }
+  if (action.prompt && !action.command) {
     await submitText($, action.prompt)
     return
   }
@@ -375,12 +435,15 @@ async function runAction($: Api, action: Action, requestId?: string): Promise<vo
     return
   }
   if (plan.kind === 'local') return
-  const done = await decideAs($, plan.command, 'person')
+  const done = await decideAs($, plan.command, 'person', drawnPhase)
   if (done.error) {
     $.ui.toast(done.error)
     return
   }
   for (const draft of done.events) await submitText($, followUp(draft, (await ensure($)).complexity, pluginCli()))
+  // The prompt of an action that both records and asks (Stop), then the stage the orchestrator runs.
+  if (action.prompt) await submitText($, action.prompt)
+  if (action.resume) await resumeRun($)
 }
 
 async function runFindingAction($: Api, kind: 'fix' | 'accept' | 'explain', id: string): Promise<void> {
@@ -503,7 +566,7 @@ async function resolveDrift($: Api, snap: Snapshot, path: string, fallback: stri
   const io = makeIo($)
   const done = await apply(io, options, snap, { type: 'drift', path, choice: choice.choice, reason: choice.reason, origin: 'person', author: 'user' })
   adopt($, done.snap)
-  if (done.error) return `Temper: scope drift on ${path} is not recorded. ${done.error}`
+  if (done.error) return `Temper: scope drift on ${path} is not recorded. ${done.error} Next: ask the user to choose again (/temper:temper drift add|revert|allow <reason>).`
   pendingDrift = null
   if (choice.choice === 'revert') {
     // prompt.submit cannot be called from a tool.call hook (the engine says it would wait
@@ -520,7 +583,7 @@ async function resolveDrift($: Api, snap: Snapshot, path: string, fallback: stri
 }
 
 function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
-  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled }
+  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, complexity: snap.complexity }
 }
 
 // The one place this module denies. Returns the deny text, or null to pass the call on.
@@ -533,17 +596,33 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
     // The commit gate reads the CLI's latest verdict, so reload before deciding.
     snap = adopt($, await syncCheck(io, options, await refresh($), false))
   }
-  const r = evaluate(snap.state, ruleContext(snap, await rootOf($)), { tool, input })
+  const root = await rootOf($)
+  // From here to the reservation there is no await: a parallel call cannot slip in between. A
+  // decision a running call has reserved is not offered to this one.
+  const ctx = ruleContext(snap, root)
+  const r = evaluate(snap.state, { ...ctx, humanDecisions: (ctx.humanDecisions ?? []).filter(h => !reservedDecisions.has(h.id)) }, { tool, input })
   if ('deny' in r) return r.drift ? resolveDrift($, snap, r.drift, r.deny) : r.deny
   if (r.consume === 'drift' && r.driftPath) {
     adopt($, (await apply(io, options, snap, { type: 'useDrift', path: r.driftPath, origin: 'system' })).snap)
   } else if (r.consume && r.consume !== 'drift' && r.eventIds) {
-    // Every human event a chained command matched is spent, not only the first.
-    for (const id of r.eventIds) await consumeDecision(io, id)
-    await refresh($)
+    // Every human event a chained command matched is reserved at once, then spent, not only the first.
+    const ids = r.eventIds
+    for (const id of ids) reservedDecisions.add(id)
+    try {
+      for (const id of ids) await consumeDecision(io, id)
+      await refresh($)
+    } catch (err) {
+      // Not spent after all: give the decision back.
+      for (const id of ids) reservedDecisions.delete(id)
+      throw err
+    }
   }
   return null
 }
+
+// Decision events a tool call has taken (see guard). An id stays here once spent: event ids are
+// unique, and a call that read its snapshot before the spend must still not use the event again.
+const reservedDecisions = new Set<string>()
 
 // `/temper:temper <reserved word>`: null means "not mine", and the prompt based command runs.
 async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise<CommandRunResult | null> {
@@ -573,7 +652,8 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
         await writeReport(makeIo($), await refresh($))
         return { text: 'Wrote .temper/report.md' }
       case 'pr':
-        // Claude writes the description: the prompt based command handles it.
+      case 'discuss':
+        // Claude writes the description, or answers the message: the prompt based command handles it.
         return null
       case 'play':
         // Only the person opens the game. It works in every mode, because the person asked.
@@ -633,6 +713,8 @@ export const register: Register = (on, opts) => {
   current = null
   root = ''
   pendingDrift = null
+  lastMoveAt = 0
+  pressing.clear()
   interactive = false
   paneOpen = false
   lastPhase = undefined
@@ -650,6 +732,7 @@ export const register: Register = (on, opts) => {
     root = e.cwd
     drawSurface = e.surface
     interactive = e.isInteractive
+    reservedDecisions.clear()
     await refresh($)
       .then(snap => autoOpenPane($, snap))
       .catch(() => undefined)
@@ -680,7 +763,9 @@ export const register: Register = (on, opts) => {
     if (parsed === null) {
       const snap = await ensure($).catch(() => null)
       const isBare = e.args.trim() === ''
-      if (isBare && snap && !snap.inert && snap.mode === 'full' && snap.state.phase !== null && snap.state.phase !== 'done') {
+      // Only the person's own bare /temper:temper toggles the pane. The same words from a plugin (the
+      // button that launches a stage) go on to the orchestrator.
+      if (isBare && isPerson && snap && !snap.inert && snap.mode === 'full' && snap.state.phase !== null && snap.state.phase !== 'done') {
         return { text: await togglePane($) }
       }
       return next(e)
@@ -738,8 +823,8 @@ export const register: Register = (on, opts) => {
       $.ui.resolve(e),
       ui.view,
       ui.mode,
-      action => runAction($, action, e.requestId).catch(() => undefined),
-      reason => runReason($, reason).catch(() => undefined),
+      action => runAction($, action, e.requestId, ui.view.phase).catch(() => undefined),
+      reason => runReason($, reason, ui.view.phase).catch(() => undefined),
       e.props.bodyColumns,
       // The game button shows only while Claude works, and only when the game is on.
       { show: e.props.isWorking && gameOffered(), open: gameOpen } satisfies GameButton,
@@ -788,7 +873,7 @@ export const register: Register = (on, opts) => {
     if (e.element !== 'game') return next(e)
     const data = e.data
     if (typeof data === 'object' && data !== null && (data as { kind?: unknown }).kind === 'game-over') {
-      await saveBest($, Number((data as { score?: unknown }).score)).catch(() => undefined)
+      await saveBest($, (data as { score?: unknown }).score).catch(() => undefined)
       gameOver = true
       $.ui.invalidate('ui.render')
     }
@@ -811,7 +896,7 @@ export const register: Register = (on, opts) => {
     return renderPane(
       $.ui.resolve(e),
       ui.view,
-      action => runAction($, action).catch(() => undefined),
+      action => runAction($, action, undefined, ui.view.phase).catch(() => undefined),
       (kind, id) => runFindingAction($, kind, id).catch(() => undefined),
       e.props.placement === 'inline',
       { show: working && gameOffered(), open: gameOpen },

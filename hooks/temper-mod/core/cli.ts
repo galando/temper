@@ -6,6 +6,20 @@ import type { Phase } from './events'
 
 export const CLI = 'scripts/temper'
 
+// The Temper script in the plugin folder as a full path, from the module URL of register.tsx
+// (<plugin>/hooks/temper-mod/register.tsx). The path is decoded FIRST and then checked, so an
+// encoded space or quote (%20, %27) cannot reach a command. Any odd location gives `scripts/temper`.
+export function pluginCliFrom(url: string | undefined): string {
+  try {
+    const here = decodeURIComponent(new URL(url ?? '').pathname)
+    const tail = '/hooks/temper-mod/register.tsx'
+    if (here.endsWith(tail) && !/[\s'"`$;&|<>()\\]/.test(here)) return `${here.slice(0, -tail.length)}/scripts/temper`
+  } catch {
+    // no module URL here
+  }
+  return CLI
+}
+
 // STAGE_SEQ_TEMPER, in order. `state advance` takes `<stage>_complete <next stage>`.
 export const CLI_STAGES = 'intent plan design build review check'
 

@@ -6,7 +6,7 @@
 // (a check mark), current ("you are here", a filled circle), upcoming (an open circle) or
 // redo (a counter clockwise arrow, after a back step).
 
-import { actionsFor, globalActions, lettered, nowText } from './actions'
+import { actionsFor, doneActions, nowText } from './actions'
 import type { Action, ActionContext, ActionSet } from './actions'
 import type { MergedCriterion } from './criteria'
 import type { Phase } from './events'
@@ -55,6 +55,10 @@ export type ViewInput = {
   enforcement: 'on' | 'off'
   expanded?: boolean
   paneOpen?: boolean
+  // Check wrote config-suggestions.json in the spec folder.
+  configSuggestions?: boolean
+  // Tasks of tasks.md that are not done; null when unknown, left out when not read.
+  tasksLeft?: number | null
 }
 
 export const BAR: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check', 'fix']
@@ -87,19 +91,20 @@ export function buildView(input: ViewInput): View {
   const gateFresh = active && s.phase !== null && s.phase !== 'done' ? s.gate[s.phase] === 'fresh' : false
   const ctx: ActionContext = {
     ready: gateFresh,
+    gate: active && s.phase !== null && s.phase !== 'done' ? s.gate[s.phase] : 'none',
     tasksDone: s.phase === 'build' && gateFresh,
     hasFindings: input.findings.length > 0,
     allChecksPass: s.gate.check === 'fresh',
     loopLimitReached: s.loopLimitReached,
+    paused: s.paused,
+    task: input.task,
+    tasksLeft: input.tasksLeft,
+    configSuggestions: input.configSuggestions ?? false,
   }
   const passed = input.criteria.filter(c => c.status === 'passed').length
   let actions: ActionSet | null = null
-  if (s.phase !== null && s.phase !== 'done') {
-    const base = actionsFor(s.phase, ctx)
-    // An action the phase already lists is not listed twice.
-    const extra = globalActions(s.phase, s.paused).filter(g => !base.more.some(m => m.id === g.id))
-    actions = { ...base, more: lettered([...base.more, ...extra]) }
-  }
+  if (s.phase === 'done') actions = doneActions()
+  else if (s.phase !== null) actions = actionsFor(s.phase, ctx)
   const stepIdx = s.phase !== null && s.phase !== 'done' ? BAR.indexOf(s.phase) : -1
   return {
     title: input.title,

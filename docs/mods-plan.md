@@ -232,11 +232,11 @@ treat the docs as the current behavior for the README.
 There is no manifest permission list. The engine scans the module and records what it
 calls; `claude plugin validate` prints it and admins can refuse a mod by it
 (`plugin.register` `uses`). The `calls:` line the validator prints for the built mod,
-nothing else (20 calls; the list is enforced by `scripts/check-mod-calls.sh`):
+nothing else (22 calls; the list is enforced by `scripts/check-mod-calls.sh`):
 
-`config.list, config.set, fs.list, fs.read, fs.stat, fs.write, prompt.submit,
-prompt.suggest, session.version, state.get, state.set, store.get, store.set, ui.ask,
-ui.close, ui.focus, ui.invalidate, ui.open, ui.resolve, ui.toast`
+`command.run, config.list, config.set, fs.list, fs.read, fs.stat, fs.write, prompt.fill,
+prompt.submit, prompt.suggest, session.version, state.get, state.set, store.get,
+store.set, ui.ask, ui.close, ui.focus, ui.invalidate, ui.open, ui.resolve, ui.toast`
 
 Why each call is there:
 
@@ -246,6 +246,8 @@ Why each call is there:
 | `fs.list`, `fs.read` | rebuild the run from `.temper/` files and the spec's events |
 | `fs.stat` | resolve `.` to the project root so absolute tool paths can be made relative |
 | `fs.write` | the one write: event files and `.temper/report.md` |
+| `command.run` | a pressed Button ends with `/temper:temper` (no arguments) so the orchestrator launches the next stage with its own brief; `prompt.submit` refuses a text that starts with a slash, so the command runs as a command |
+| `prompt.fill` | key 4 (Discuss) and key 2 at Build (Change) put a draft in the prompt box; the person types the rest and presses Enter. A press only, never from a hook; it changes no phase and writes no event |
 | `prompt.submit` | a pressed Button sends its action to Claude (never from a hook) |
 | `prompt.suggest` | the next action as a Tab suggestion after a turn |
 | `session.version` | the version guard |
@@ -398,6 +400,34 @@ file tools are not covered. The native `pre-commit` hook is the backstop. Button
 reason field and menu picks carry no origin in their handlers, so their authenticity rests on the
 platform.
 
+Third review (#39 to #48). While a run is active and enforcement is on, a Bash command is refused
+when it names `temper` (a word, a path part, a glob, or a name inside a string, compared without
+regard to case) and it is not a plain readable call, in these cases: the verb or subcommand of a Temper
+call is built by `$'..'`, `${..}`, `$(..)` or an unresolved variable; the command uses a launcher
+(`env -S`, `awk`, `make`, `find -exec`, `xargs`, `parallel`, `script`, `ksh`, `fish`, `eval`,
+`exec`, `git -c alias`); the command writes a script file that names `temper` with a decision word, or runs a
+file it wrote; it copies, links or sources the script; it feeds a shell from `cat scripts/temper` or
+`<(...)`. Reading commands (`sed -n`, `awk '/x/'`, `nl`, `cat`, `head`, `tail`, `less`, `grep`, `rg`,
+`wc`, `diff`, `pytest -k`, `git log --grep`) stay allowed. Every `state advance` and `state set
+next_stage` call needs a matching human decision, or it must be the exact next stage of the run
+(`STAGE_SEQ_TEMPER`, with design only for medium and complex runs) after a fresh PASS or an override
+of the stage it completes. `state init` and `state loop` are refused while a run is active. Guarded file
+names are compared without regard to case, and `ln` of Temper state or its folders is refused.
+`git cherry-pick`, `merge`, `revert`, `am`, `commit-tree`, `rebase --continue`, a merging `pull` and
+a `git -c alias` are treated as commits while the commit gate is open (`--abort`, `--quit`, `--skip`,
+`--ff-only` and `push` are not); the native `pre-commit` hook is the backstop. A decision button takes a lock
+before its first await, ignores a press for a phase that has already moved ("That step is already
+done."), and ignores a second move within one second.
+
+Known limits, on purpose (see `tests/mod/known-limits.test.ts`). The classifier reads command text
+only. It cannot see a link, a copy or a script made in an earlier call, a script already on disk and
+run later with no name in the command, or a variable set earlier. The marker line `Temper enforcement:
+active` also appears in text files Claude can read, so an injected copy can only hide a question,
+never advance a phase. At Done a model `git commit` is allowed because the run is complete and the
+person pressed Continue. Bash can run shell tricks that a text reader cannot see, so the hard
+guarantees are the edit tools and the native `pre-commit` hook. Future hardening: the CLI could check a
+one time decision token itself, so a decision call would carry proof from the person. That is not built.
+
 The CLI calls that matter are matched to the person's decision. A decision call that repeats
 `--id`, `--stage` or `--reason` is refused, because the CLI reads the last one and the mod must not
 read a different one. `state set next_stage` is allowed once for the stage of a person's `back`
@@ -449,21 +479,35 @@ pane when a run is active and otherwise behaves as today; `/temper pane` always 
 
 ### 3.7 Per phase actions and hotkeys
 
-Key 1 is the main action and changes when the phase is ready to move on.
+One flow, two views. The orchestrator (`commands/temper.md`) stays the driver of the stages and the CLI
+stays the judge of the gates. The bar is the decision UI when the mod is active (the system prompt has
+`Temper enforcement: active`); the orchestrator then does not ask its gate question a second time. Every
+original option is reachable with the same words, in one digit or `0` and one digit.
 
-| Phase | 1 | 2 | 3 | 0 shows also |
+Key 1 follows the check result the CLI wrote: Continue to {next} (check passed), Loop back to {upstream}
+(check failed), else Start or Run the phase (the orchestrator runs the stage and its check). In Build a
+failed check with open tasks is a checkpoint, so key 1 says Continue with task N. Key 4 is Discuss (the
+original Other) in every phase. 9 is Skip with a reason (Override and continue). 0 is More: a numbered menu
+(1 to 9, 0 goes back) that replaces the main buttons; digits only, because a letter would type into the
+prompt box (checked live).
+
+| Phase | 1 | 2 | 3 | 0 (More) shows |
 |---|---|---|---|---|
-| Intent | Approve the intent (when the check passes), else Check the intent | Ask me questions | Edit the intent | Save my request |
-| Plan | Approve the plan (when the check passes), else Make the plan | Show the files | Try another plan | Split the tasks, Go back to Intent |
-| Build | Start the next task, or Send to review when tasks are done | Run the tests | Show the changes | Pause the run |
-| Review | Start the review, or Fix the problems when findings exist | Review again | Show the changes | per finding Fix, Accept, Explain (in the pane) |
-| Check | Run the checks, or Finish the run when all pass | Run failed checks again | Show the failures | |
-| Fix | Fix the failures | Fix the findings | Go back to checks | at the limit: Make a new plan, Skip with a reason, Take over |
+| Intent | Start Intent, or Continue to Plan | Ask me questions | Edit the intent | Grill me, Teach me, Save my request, Save for later, Show the timeline |
+| Plan | Run Plan, Loop back to Intent, or Continue to Build | Walk through step by step | Show the files | Open HTML review, Try another plan, Split the tasks, Grill me, Teach me, Go back to Intent, Save for later, Show the timeline |
+| Build | Continue with task N, Loop back to Plan, or Continue to Review | Change | Run the tests | Stop, Grill me, Teach me, Go back to Plan, Save for later, Show the timeline |
+| Review | Run Review, Loop back to Build, or Continue to Check | Fix the problems (findings exist), else Show the changes | Show the changes | Architecture depth review, Grill me, Teach me, Go back to Build, Save for later, Show the timeline, Write the PR text |
+| Check | Run Check | Run failed checks again | Show the failures | Review config suggestions (file exists), Grill me, Teach me, Go back to Review, Save for later, Show the timeline, Write the PR text |
+| Fix | Fix the failures | Fix the findings | Go back to checks | at the limit: Plan again, Skip with a reason, Take over |
+| Done | Commit | Write the PR text | Show the timeline | |
 
 Every label says its result and every action has a one line description (10 words at most) in the
-pane. 9 is "Skip with a reason" everywhere (the subcommand is still `override`; no reason, no skip). Global actions
-are subcommands and pane buttons. Every action that runs something submits a prompt
-to Claude; none submit on their own.
+pane. The subcommand behind 9 is still `override` (no reason, no skip). A button that needs a stage to run
+records the decision, submits the mirror prompt (the CLI call, which the guard matches to that decision),
+and then runs `/temper:temper` with no arguments through `$.command.run` (`$.prompt.submit` refuses a text
+that starts with a slash). That is the orchestrator's Resume: it launches the stage subagent with its own
+`agents/*.md` brief. The mod writes no stage instructions of its own. Discuss (key 4) and Change (key 2 at
+Build) put a draft in the prompt box with `$.prompt.fill`; the press changes no phase and writes no event.
 
 ### 3.8 Interaction modes
 

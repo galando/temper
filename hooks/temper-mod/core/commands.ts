@@ -26,6 +26,7 @@ export const RESERVED = [
   'next',
   'pane',
   'play',
+  'discuss',
 ] as const
 
 export type Reserved = (typeof RESERVED)[number]
@@ -93,10 +94,16 @@ export function planCommand(parsed: Parsed, pendingDrift: string | null): Plan {
   }
 }
 
+// The command a button runs after the mirror prompt (`$.command.run`, as `/temper:temper` with no
+// arguments), so the orchestrator (commands/temper.md, its Resume path) launches the next stage with
+// its own brief. No arguments: the decision is already recorded and mirrored.
+export const RESUME = 'temper:temper'
+
 // What Claude is asked to do once the person decided with a button (the command path runs the
-// prompt based command instead). The decision is already recorded by the mod: the prompt says so,
-// names the exact CLI command that mirrors it in the CLI state (the commit gate reads that state),
-// and says what to do next. Every command named here is a valid `scripts/temper` invocation.
+// prompt based command instead). The decision is already recorded by the mod: the prompt says so
+// and names the exact CLI command that mirrors it in the CLI state (the commit gate reads that
+// state). It never says what to run next: RESUME does that, through the orchestrator.
+// Every command named here is a valid `scripts/temper` invocation.
 // `cli` is where the Temper script really is (the plugin folder, not the project). Without it the
 // prompt names `scripts/temper` and says the script lives in the plugin folder, so Claude does not
 // waste the one allowed run on a path that does not exist in the project.
@@ -113,16 +120,17 @@ function followUpText(draft: Draft, complexity: string | null): string | null {
   switch (draft.type) {
     case 'advance': {
       const cmds = advanceCommands(draft.from, draft.to, complexity)
-      const run = cmds.length > 0 ? ` Run ${cmds.map(c => `\`${c}\``).join(' then ')}.` : ''
+      if (cmds.length === 0) return null
+      const run = ` Run ${cmds.map(c => `\`${c}\``).join(' then ')}.`
       if (draft.to === 'done') return `Temper: the user finished the run. ${recorded}${run} Do not commit. ${ACT}`
-      return `Temper: the user moved the run from ${draft.from} to ${draft.to}. ${recorded}${run} Then start ${draft.to}. ${ACT}`
+      return `Temper: the user moved the run from ${draft.from} to ${draft.to}. ${recorded}${run} Do not start the next stage yourself. ${ACT}`
     }
     case 'override':
-      return `Temper: the user skipped ${draft.phase} (reason: ${draft.reason}). ${recorded} Run \`${overrideCommand(draft.phase, draft.reason)}\`. Then go on. ${ACT}`
+      return `Temper: the user skipped ${draft.phase} (reason: ${draft.reason}). ${recorded} Run \`${overrideCommand(draft.phase, draft.reason)}\`. Do not start the next stage yourself. ${ACT}`
     case 'accept':
       return `Temper: the user accepted finding ${draft.findingId} (reason: ${draft.reason}). ${recorded} Run \`${acceptCommand(draft.findingId, draft.reason)}\`. ${ACT}`
     case 'back':
-      return `Temper: the user went back to ${draft.to} (reason: ${draft.reason}). ${recorded} Run \`${backCommand(draft.to)}\`. Then redo ${draft.to}. ${ACT}`
+      return `Temper: the user went back to ${draft.to} (reason: ${draft.reason}). ${recorded} Run \`${backCommand(draft.to)}\`. Do not start the stage yourself. ${ACT}`
     case 'drift':
       return draft.choice === 'revert'
         ? `Temper: the user chose to revert ${draft.path}. Restore it to its committed state. Then stay inside the plan. ${ACT}`
@@ -146,6 +154,7 @@ export const HELP = [
   '  report               write .temper/report.md now',
   '  pr                   ask Claude for a pull request description',
   '  play                 play Temper Run while you wait (key 8 too; r runs, w jumps, s ducks, q leaves)',
+  '  discuss <text>       send a message about the step you are at (the same as key 4)',
   '  mode, enforcement, pane   show or change what Temper shows and enforces',
   'Any other text after /temper:temper is a feature description. It starts or resumes a run.',
 ].join('\n')

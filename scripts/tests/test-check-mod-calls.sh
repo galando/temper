@@ -10,6 +10,8 @@ check() { # check <name> <expected exit> <calls line>
 }
 GOOD='./temper-mod/register.tsx calls: $.fs.list (via makeIo), $.store.get (via firstRunAsk, makeIo), $.ui.ask (via askDrift), $.ui.resolve'
 check "reviewed calls pass, via lists included" 0 "$GOOD"
+check "command.run (the orchestrator Resume) and prompt.fill (Discuss) are reviewed" 0 "$GOOD, \$.command.run (via resumeRun), \$.prompt.fill (via fillDraft)"
+check "a lookalike of command.run does not pass" 1 "$GOOD, \$.command.register"
 check "process call fails" 1 "$GOOD, \$.process.spawn (via run)"
 check "http call fails" 1 "$GOOD, \$.http.fetch"
 check "env call fails" 1 "$GOOD, \$.env.get"

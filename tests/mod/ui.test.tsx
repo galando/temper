@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { actionsFor, globalActions } from '../../hooks/temper-mod/core/actions'
+import { actionsFor } from '../../hooks/temper-mod/core/actions'
 import { SPEC, runFiles } from './run-files'
 import { COMPOSE, world } from './world'
 
@@ -61,18 +61,21 @@ describe('phase bar (AbovePrompt)', () => {
       expect(/[\u25b6\u25b8\u2192\u279c]/.test(JSON.stringify(drawn))).toBe(false)
       expect(texts).toContain('TEMPER')
       expect(texts).toContain('Step 3 of 6: Build')
-      expect(texts).toContain('1 Start the next task. Claude writes a failing test, then the code. Then run the tests.')
-      // Buttons: three actions, override on 9, more on 0; the first is primary.
+      expect(texts).toContain('1 Continue with task 3. Claude builds the task and stops for you.')
+      // Buttons: three actions, Discuss on 4, skip on 9, more on 0; the first is primary.
       const buttons = tree.filter(n => n.type === 'Button')
-      expect(buttons).toHaveLength(5)
-      expect(buttons.map(b => b.props?.hotkey)).toEqual(['1', '2', '3', '9', '0'])
+      expect(buttons).toHaveLength(6)
+      expect(buttons.map(b => b.props?.hotkey)).toEqual(['1', '2', '3', '4', '9', '0'])
       expect(buttons[0]?.props?.variant).toBe('primary')
       expect(buttons[1]?.props?.variant).toBe('secondary')
       // The reason field and its hint.
       expect(tree.some(n => n.type === 'Input' && n.props?.key === 'override-reason')).toBe(true)
       expect(texts).toContain('A skip needs a reason. Temper writes it in the report.')
-      await ui.press({ key: 'action-next-task' })
-      expect(w.prompts.some(p => p.includes('Start the next task'))).toBe(true)
+      // Key 1 launches the stage through the orchestrator's own Resume: /temper:temper, no arguments.
+      // (prompt.submit refuses a text that starts with a slash, so it is run as a command.)
+      await ui.press({ key: 'action-run-stage' })
+      expect(w.commandRuns).toEqual([{ command: 'temper:temper', args: '', origin: 'plugin' }])
+      expect(w.prompts).toEqual([])
       await ui.unmount()
     })
 
@@ -99,16 +102,77 @@ describe('phase bar (AbovePrompt)', () => {
       const drawn = await compact.drawn()
       expect(JSON.stringify(drawn)).not.toContain('borderStyle')
       // Still every action, with short labels, and one dot.
-      expect(walk(drawn).filter(n => n.type === 'Button')).toHaveLength(5)
+      expect(walk(drawn).filter(n => n.type === 'Button')).toHaveLength(6)
       expect(JSON.stringify(drawn).match(/\u25cf/g)).toHaveLength(1)
     })
   }
 
-  test('key 1 changes with readiness: Send to Review once the build gate passed', async ($, on) => {
+  test('key 1 changes with the check: Continue to Review once the build check passed', async ($, on) => {
     world(on, runFiles({ nextStage: 'build', gates: { build: 'PASS' } }))
     await $.session.start(START)
     const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
-    expect(await ui.find({ key: 'action-to-review' })).toBeDefined()
+    expect(await ui.find({ key: 'action-continue' })).toBeDefined()
+    expect(JSON.stringify(await ui.drawn())).toContain('Continue to Review')
+  })
+
+  test('key 1 is Loop back when the check failed, and it asks for a reason', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'review', gates: { review: 'FAIL' } }), { answers: ['the fix is not enough'] })
+    await $.session.start(START)
+    const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    expect(JSON.stringify(await ui.drawn())).toContain('Loop back to Build')
+    await ui.press({ key: 'action-loop-back' })
+    expect([...w.files.values()].some(t => t.includes('"type":"back"') && t.includes('the fix is not enough'))).toBe(true)
+    // The mirror prompt first, then the orchestrator's Resume.
+    expect(w.commandRuns).toEqual([{ command: 'temper:temper', args: '', origin: 'plugin' }])
+    expect(w.prompts.some(p => p.includes('state set next_stage build'))).toBe(true)
+  })
+
+  test('4 Discuss puts a draft in the prompt box and changes nothing else', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'plan' }))
+    await $.session.start(START)
+    const before = [...w.files.keys()].length
+    const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    await ui.press({ key: 'action-discuss' })
+    expect(w.filled).toEqual([{ text: 'Discuss this step: ', mode: 'replace' }])
+    expect(w.toasts).toContain('Type your message. Press Enter to send it.')
+    expect(w.prompts).toEqual([])
+    expect([...w.files.keys()].length).toBe(before)
+  })
+
+  test('4 Discuss says so when the box cannot take the draft', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'plan' }), { fillable: false })
+    await $.session.start(START)
+    const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    await ui.press({ key: 'action-discuss' })
+    expect(w.toasts).toContain('Close the pane, then type your message.')
+    expect(w.filled).toEqual([])
+  })
+
+  test('2 Change at Build puts a change draft in the prompt box', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'build' }))
+    await $.session.start(START)
+    const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    await ui.press({ key: 'action-change' })
+    expect(w.filled).toEqual([{ text: 'Change this task: ', mode: 'replace' }])
+  })
+
+  for (const stage of ['intent', 'plan', 'build', 'review', 'check'] as const) {
+    test(`Discuss shows in ${stage}, on 4, and fits 80 columns as "4: Discuss"`, async ($, on) => {
+      world(on, runFiles({ nextStage: stage }))
+      await $.session.start(START)
+      const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 80 } })
+      const button = await ui.find({ key: 'action-discuss' })
+      expect(button).toBeDefined()
+      const n = walk(await ui.drawn()).find(x => x.type === 'Button' && x.props?.hotkey === '4')
+      expect(n?.props?.label).toBe('Discuss')
+    })
+  }
+
+  test('Discuss is drawn in minimal mode as nothing: the person types in the prompt box', { options: { uiMode: 'minimal' } }, async ($, on) => {
+    world(on, runFiles({ nextStage: 'plan' }))
+    await $.session.start(START)
+    const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    expect(walk(await ui.drawn()).filter(n => n.type === 'Button')).toHaveLength(0)
   })
 
   test('Enter in the reason field records the override with that reason; an empty reason is refused', async ($, on) => {
@@ -132,61 +196,83 @@ describe('phase bar (AbovePrompt)', () => {
     expect([...w.files.values()].some(t => t.includes('"type":"override"') && t.includes('Risk accepted'))).toBe(true)
   })
 
-  test('0 with the pane closed opens it with the full list', async ($, on) => {
-    const w = world(on, runFiles({ nextStage: 'build' }), { placed: true })
+  // The menu: key 0 shows the other options as a numbered list in the band, above the phase chips, and
+  // in the pane. Digits only: a letter would type into the prompt box.
+  const menuKeys = async (ui: { drawn: () => Promise<unknown> }) =>
+    walk(await ui.drawn())
+      .filter(n => n.type === 'Button')
+      .map(n => String(n.props?.hotkey))
+
+  test('0 shows the menu in the band with digits 1 to 9, one sentence above it, and 0 goes back', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'plan' }), { placed: false })
     await $.session.start(START)
-    // The pane opened at session start; close it as a person would.
-    await $.command.run({ command: 'temper', args: 'pane', origin: { kind: 'composer' } } as never)
-    expect(w.closed).toContain('temper')
+    const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 80 } })
     w.opened.length = 0
-    const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    expect(await menuKeys(band)).toEqual(['1', '2', '3', '4', '9', '0'])
     await band.press({ key: 'action-more' })
-    expect(w.opened).toEqual(['temper'])
-    const pane = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'Pane', requestId: 'temper', props: PANE })
-    const keys = walk(await pane.drawn()).filter(n => n.type === 'Button').map(n => n.props?.hotkey)
-    expect(keys.filter(k => typeof k === 'string' && /^[a-h]$/.test(k)).length).toBeGreaterThan(0)
+    // No pane is opened, and the menu is in the band itself.
+    expect(w.opened).toEqual([])
+    const keys = await menuKeys(band)
+    expect(keys).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '0'])
+    const texts = walk(await band.drawn()).filter(n => n.type === 'Text').map(textOf).join(' ')
+    expect(texts).toContain('More actions. Press the number shown.')
+    // The menu is drawn above the phase chips, so it stays on screen.
+    const drawn = JSON.stringify(await band.drawn())
+    expect(drawn.indexOf('Press the number shown')).toBeLessThan(drawn.indexOf('step-intent'))
+    expect(drawn.indexOf('action-html-review')).toBeLessThan(drawn.indexOf('step-intent'))
+    await band.press({ key: 'action-more' })
+    expect(await menuKeys(band)).toEqual(['1', '2', '3', '4', '9', '0'])
   })
 
-  test('0 with the pane open shows and hides the full list in the pane', async ($, on) => {
+  test('a choice from the menu runs and leaves the menu: Save for later records the pause', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'build' }), { placed: false })
+    await $.session.start(START)
+    const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    await band.press({ key: 'action-more' })
+    await band.press({ key: 'action-pause' })
+    expect([...w.files.values()].some(t => t.includes('"type":"pause"'))).toBe(true)
+    // The main buttons are back.
+    expect(await menuKeys(band)).toEqual(['1', '2', '3', '4', '9', '0'])
+  })
+
+  test('menu choices that ask Claude use the original words: Grill me, Teach me, Open HTML review', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'plan' }), { placed: false })
+    await $.session.start(START)
+    const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+    await band.press({ key: 'action-more' })
+    await band.press({ key: 'action-grill-me' })
+    await band.press({ key: 'action-more' })
+    await band.press({ key: 'action-teach-me' })
+    await band.press({ key: 'action-more' })
+    await band.press({ key: 'action-html-review' })
+    expect(w.prompts[0]).toContain('grill-me skill on the current plan')
+    expect(w.prompts[1]).toContain('teach-me skill on the current plan')
+    expect(w.prompts[2]).toContain('plan-review.html')
+  })
+
+  test('0 with the pane open shows the menu in the pane too, with the same digits', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'build' }), { placed: true })
     await $.session.start(START)
     expect(w.opened).toEqual(['temper'])
     const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
     const pane = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'Pane', requestId: 'temper', props: PANE })
-    const letters = async () => walk(await pane.drawn()).filter(n => n.type === 'Button' && /^[a-h]$/.test(String(n.props?.hotkey))).length
-    expect(await letters()).toBe(0)
+    const paneKeys = () => menuKeys(pane)
+    expect(await paneKeys()).toEqual(['1', '2', '3', '4', '9', '0'])
     await band.press({ key: 'action-more' })
-    expect(await letters()).toBeGreaterThan(0)
+    expect(await paneKeys()).toEqual(['1', '2', '3', '4', '5', '6', '0'])
+    expect(JSON.stringify(await pane.drawn())).toContain('More actions. Press the number shown.')
     await band.press({ key: 'action-more' })
-    expect(await letters()).toBe(0)
+    expect(await paneKeys()).toEqual(['1', '2', '3', '4', '9', '0'])
     // No second open: the pane was already there.
     expect(w.opened).toEqual(['temper'])
   })
 
-  test('0 with no pane that can seat shows the extra actions in a third row under the band, and hides them again', async ($, on) => {
-    const w = world(on, runFiles({ nextStage: 'build' }), { placed: false })
-    await $.session.start(START)
-    const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: { ...BAND, bodyColumns: 80 } })
-    w.opened.length = 0
-    const extra = async () => walk(await band.drawn()).filter(n => n.type === 'Button' && /^[a-h]$/.test(String(n.props?.hotkey))).length
-    expect(await extra()).toBe(0)
-    await band.press({ key: 'action-more' })
-    // A narrow band keeps the list in its own row and opens no pane.
-    expect(w.opened).toEqual([])
-    expect(await extra()).toBeGreaterThan(0)
-    // An extra action works from the band: Pause records the pause.
-    await band.press({ key: 'action-pause' })
-    expect([...w.files.values()].some(t => t.includes('"type":"pause"'))).toBe(true)
-    await band.press({ key: 'action-more' })
-    expect(await extra()).toBe(0)
-  })
-
-  test('the 0 button shows "Fewer" while the list is on', async ($, on) => {
+  test('the 0 button shows "Fewer" while the menu is on', async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }), { placed: false })
     await $.session.start(START)
     const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
     const label = async () => walk(await band.drawn()).find(n => n.type === 'Button' && n.props?.hotkey === '0')?.props?.label
-    expect(await label()).toBe('0: More'.replace('0: ', ''))
+    expect(await label()).toBe('More')
     await band.press({ key: 'action-more' })
     expect(await label()).toBe('Fewer')
   })
@@ -243,16 +329,20 @@ describe('pane', () => {
         world(on, runFiles({ nextStage: stage, ...(pass ? { gates: { [stage]: 'PASS' } } : {}) }))
         await $.session.start(START)
         const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'Pane', requestId: 'temper', props: PANE })
-        await ui.press({ key: 'pane-more-actions' })
-        const drawn = JSON.stringify(await ui.drawn())
-        const ctx = { ready: pass, tasksDone: stage === 'build' && pass, allChecksPass: stage === 'check' && pass }
+        const ctx = { ready: pass, gate: pass ? ('fresh' as const) : ('none' as const), tasksDone: stage === 'build' && pass, allChecksPass: stage === 'check' && pass, task: stage === 'build' ? { n: 3, of: 7 } : null }
         const set = actionsFor(stage, ctx)
-        // The full list gets letter keys, but the label and the line stay.
-        for (const x of [...set.primary, set.override, ...set.more, ...globalActions(stage, false)]) {
-          // The Button label starts with the key ("1  Make the plan"), so the text ends the label.
+        const has = (drawn: string, x: { label: string; desc: string }) => {
+          // The Button label starts with the key ("1  Continue to Build"), so the text ends the label.
           expect(new RegExp(`"label":"[^"]*${x.label}"`).test(drawn), `label ${x.label}`).toBe(true)
           expect(drawn.includes(x.desc), `line of ${x.label}`).toBe(true)
         }
+        // Main actions, Discuss and skip.
+        const main = JSON.stringify(await ui.drawn())
+        for (const x of [...set.primary, set.discuss, ...(set.override ? [set.override] : [])]) has(main, x)
+        // The menu on 0: the rest of the options, with their words.
+        await ui.press({ key: 'pane-more-actions' })
+        const more = JSON.stringify(await ui.drawn())
+        for (const x of set.more) has(more, x)
       })
     }
   }
@@ -268,7 +358,10 @@ describe('pane', () => {
         const keys = walk(await ui.drawn()).filter(n => n.type === 'Button').map(n => n.props?.hotkey).filter((k): k is string => typeof k === 'string')
         expect(new Set(keys).size).toBe(keys.length)
         expect(keys).toContain('0')
-        expect(keys.filter(k => /^[a-h]$/.test(k)).length > 0).toBe(expanded)
+        // Digits only: the menu replaces the main buttons, so no digit is used twice.
+        expect(keys.every(k => /^[0-9]$/.test(k))).toBe(true)
+        expect(keys.includes('4')).toBe(true)
+        expect(keys.includes('9')).toBe(!expanded || keys.includes('9'))
         await ui.unmount()
       }
     }
@@ -403,7 +496,8 @@ describe('turn line, suggestions and toasts', () => {
     expect(r.text).toBe(
       'Build \u00b7 2 of 5 criteria met \u00b7 next: Review',
     )
-    expect(w.suggestions).toEqual(['Start the next task in tasks.md. Write a failing test first. Do this now. Reply with one short line.'])
+    // Key 1 launches the stage through the orchestrator, so there is no prompt text to suggest.
+    expect(w.suggestions).toEqual([])
     expect(w.prompts).toEqual([])
   })
 

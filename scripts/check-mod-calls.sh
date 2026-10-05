@@ -16,12 +16,14 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # The reviewed list: one `noun.method` per line, with why the mod needs it.
 ALLOWED='
+command.run      a pressed Button ends with /temper:temper (the orchestrator Resume) after its decision is recorded; prompt.submit refuses a slash text
 config.list      /temper mode and enforcement read the row to see whether an administrator locked it
 config.set       the same commands change the row the way /config does (key temper.uiMode, temper.enforcement)
 fs.list          lists .temper/specs/{slug}/events/ to rebuild the run
 fs.read          reads build-state, gates, status, evidence, intent, plan, tasks, temper.config and event files
 fs.stat          resolves "." to the project root so absolute tool paths can be made relative
 fs.write         the one write: Temper event files and .temper/report.md
+prompt.fill      key 4 Discuss and key 2 Change at Build put a draft in the prompt box; the person types the rest (a press only, never from a hook)
 prompt.submit    a pressed band or pane Button sends its action to Claude (never from a hook)
 prompt.suggest   offers the next action as a suggestion after a turn (Tab to take, never submitted)
 session.version  the version guard: the mod stays inert below 2.1.287

@@ -19,9 +19,9 @@ type Move = { name: string; draft: Draft; phaseAfter: Phase; decision: HumanDeci
 const MOVES: Move[] = [
   { name: 'approve intent', draft: { type: 'advance', from: 'intent', to: 'plan', ...person }, phaseAfter: 'plan', decision: { id: 'e1', kind: 'advance', phase: 'intent' }, guarded: true },
   { name: 'approve plan', draft: { type: 'advance', from: 'plan', to: 'build', ...person }, phaseAfter: 'build', decision: { id: 'e2', kind: 'advance', phase: 'plan' }, guarded: true },
-  { name: 'build to review', draft: { type: 'advance', from: 'build', to: 'review', ...person }, phaseAfter: 'review', decision: null, guarded: false },
-  { name: 'review to check', draft: { type: 'advance', from: 'review', to: 'check', ...person }, phaseAfter: 'check', decision: null, guarded: false },
-  { name: 'check pass (done)', draft: { type: 'advance', from: 'check', to: 'done', ...person }, phaseAfter: 'check', decision: null, guarded: false },
+  { name: 'build to review', draft: { type: 'advance', from: 'build', to: 'review', ...person }, phaseAfter: 'review', decision: { id: 'e7', kind: 'advance', phase: 'build' }, guarded: true },
+  { name: 'review to check', draft: { type: 'advance', from: 'review', to: 'check', ...person }, phaseAfter: 'check', decision: { id: 'e8', kind: 'advance', phase: 'review' }, guarded: true },
+  { name: 'check pass (done)', draft: { type: 'advance', from: 'check', to: 'done', ...person }, phaseAfter: 'check', decision: { id: 'e9', kind: 'advance', phase: 'check' }, guarded: true },
   { name: 'back to plan', draft: { type: 'back', to: 'plan', reason: 'need a cache layer', ...person }, phaseAfter: 'plan', decision: { id: 'e5', kind: 'back', phase: 'plan' }, guarded: true },
   { name: 'override in fix', draft: { type: 'override', phase: 'fix', reason: 'ship it', ...person }, phaseAfter: 'check', decision: { id: 'e6', kind: 'override', phase: 'check' }, guarded: true },
   { name: 'override review', draft: { type: 'override', phase: 'review', reason: 'reviewer is on leave', ...person }, phaseAfter: 'check', decision: { id: 'e3', kind: 'override', phase: 'review' }, guarded: true },
@@ -98,9 +98,14 @@ describe('plan with design', () => {
     const cmds = commandsIn(followUp({ type: 'advance', from: 'plan', to: 'build', ...person }, 'complex') ?? '')
     expect(cmds).toHaveLength(2)
     const pool: HumanDecision[] = [{ id: 'e2', kind: 'advance', phase: 'plan' }]
-    const first = evaluate(stateAt('build'), { ...ctx, humanDecisions: pool }, bash(cmds[0] ?? ''))
+    const c = { ...ctx, complexity: 'complex' }
+    // The plan check passed and the plan was approved: design is the next stage and follows that verdict.
+    const state = stateAt('build', [], { plan: { verdict: 'PASS', ts: 999_999_999 } })
+    const first = evaluate(state, { ...c, humanDecisions: pool }, bash(cmds[0] ?? ''))
     expect('allow' in first && first.eventIds).toEqual(['e2'])
-    expect('allow' in evaluate(stateAt('build'), { ...ctx, humanDecisions: [] }, bash(cmds[1] ?? ''))).toBe(true)
+    expect('allow' in evaluate(state, { ...c, humanDecisions: [] }, bash(cmds[1] ?? ''))).toBe(true)
+    // For a simple run design is not next: the same call is refused.
+    expect('deny' in evaluate(state, { ...ctx, humanDecisions: [] }, bash(cmds[1] ?? ''))).toBe(true)
   })
 })
 
@@ -160,9 +165,11 @@ describe('end to end through the band: the prompt the mod sends is runnable once
       component: 'AbovePrompt',
       props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} },
     })
-    await band.press({ key: 'action-approve' })
+    await band.press({ key: 'action-continue' })
     const prompt = w.prompts.find(p => p.includes('state advance'))
     expect(prompt).toContain('already recorded')
+    // After the mirror prompt, the orchestrator's own Resume runs the next stage with its brief.
+    expect(w.commandRuns).toEqual([{ command: 'temper:temper', args: '', origin: 'plugin' }])
     const cmd = commandsIn(prompt ?? '')[0] ?? ''
     expect(cmd).toBe(`${CLI} state advance intent_complete plan`)
     const first = await $.tool.call({ tool: 'Bash', command: cmd })
@@ -181,7 +188,7 @@ describe('end to end through the band: the prompt the mod sends is runnable once
       component: 'AbovePrompt',
       props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} },
     })
-    await band.press({ key: 'action-approve' })
+    await band.press({ key: 'action-continue' })
     const cmds = commandsIn(w.prompts.find(p => p.includes('state advance')) ?? '')
     expect(cmds).toEqual([`${CLI} state advance plan_complete design`, `${CLI} state advance design_complete build`])
     expect((await $.tool.call({ tool: 'Bash', command: cmds[0] ?? '' })).text).toBe('stub ran')
@@ -216,7 +223,7 @@ describe('where the script is', () => {
       component: 'AbovePrompt',
       props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} },
     })
-    await band.press({ key: 'action-approve' })
+    await band.press({ key: 'action-continue' })
     const prompt = w.prompts.find(p => p.includes('state advance')) ?? ''
     expect(prompt).toMatch(/`\/\S+\/scripts\/temper state advance plan_complete build`/)
   })

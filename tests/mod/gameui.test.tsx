@@ -483,7 +483,7 @@ describe('the game never disturbs Temper work', () => {
     const denied = await $.tool.call({ tool: 'Write', file_path: 'src/app.ts', content: 'x' })
     expect(denied.deny?.startsWith('Temper: Plan phase.')).toBe(true)
     const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND(true) })
-    await band.press({ key: 'action-approve' })
+    await band.press({ key: 'action-continue' })
     expect([...w.files.keys()].some(k => k.startsWith(`${SPEC}/events/`))).toBe(true)
   })
 })

@@ -158,9 +158,12 @@ describe('Temper state paths and forged decisions', () => {
     const plan = { tool: 'Bash', input: { command: 'scripts/temper state advance plan_complete build' } }
     expect(evaluate(stateAt('plan'), ctx, intent)).toEqual({ deny: ONLY_USER })
     expect(evaluate(stateAt('build'), ctx, plan)).toEqual({ deny: ONLY_USER })
-    // Later moves follow a verdict and need no person.
+    // Later moves need a person too, unless they are the exact next stage after a check that passed
+    // (the third review, #42: the CLI stores any next stage it is given).
     const later = { tool: 'Bash', input: { command: 'scripts/temper state advance build_complete review' } }
-    expect('allow' in evaluate(stateAt('review'), ctx, later)).toBe(true)
+    expect(evaluate(stateAt('review'), ctx, later)).toEqual({ deny: ONLY_USER })
+    expect('allow' in evaluate(stateAt('build', [], { build: { verdict: 'PASS', ts: 999_999_999 } }), ctx, later)).toBe(true)
+    expect('allow' in evaluate(stateAt('review'), { ...ctx, humanDecisions: [{ id: 'e', kind: 'advance', phase: 'build' }] }, later)).toBe(true)
   })
 
   test('Bash writes that name a Temper state path are denied', () => {
@@ -222,7 +225,7 @@ describe('git commit gate', () => {
 
   test('refused with the exact reason while Check has not passed', () => {
     expect(evaluate(stateAt('check'), ctx, commit)).toEqual({
-      deny: 'Temper: commit blocked. Check has not passed. Next: run the checks (key 1 in Check or /temper:check).',
+      deny: 'Temper: commit blocked. Check has not passed. Next: run the checks (key 1 in Check or /temper:check). The native pre-commit hook is the backstop.',
     })
   })
 

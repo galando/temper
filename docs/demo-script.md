@@ -15,11 +15,11 @@ The hero GIF in the README is made from `demo/temper.tape`. It starts at the Pla
 `bash demo/demo-seed.sh plan` (the intent is accepted, the plan and the tasks are written, and both
 checks pass), so nothing waits on screen:
 
-1. The bar shows "Step 2 of 6: Plan" and "1 Approve the plan." (3 seconds)
+1. The bar shows "Step 2 of 6: Plan" and "1 Continue to Build." (3 seconds)
 2. A prompt asks Claude to edit `src/users.js`. Claude answers while the tape is hidden. Show the
    refusal with its "Next:" step. (5 seconds)
 3. Press `1`. The toast says "Plan approved. Build open." and the bar moves to Build with
-   "1 Start the next task." (6 seconds)
+   "1 Continue with task 1." (6 seconds)
 
 To try the same by hand: `bash demo/run-demo.sh` (Plan) or `bash demo/run-demo.sh intent` (Intent).
 
@@ -84,7 +84,7 @@ and `bash demo/make-screens.sh`) into `demo/out/`. The desktop app cannot be rec
 two images are left for you.
 
 1. Open the Claude desktop app, choose the Code tab, and open a copy of `demo/password-reset`
-   prepared with `bash demo/demo-seed.sh` (it creates `/tmp/pr-demo`). Load the Temper clone as a
+   prepared with `bash demo/demo-seed.sh` (it creates `/tmp/pr-demo`, or replaces one that holds the marker `.temper-demo`; delete it by hand if it is not a demo folder). Load the Temper clone as a
    plugin folder for that session; how a local plugin folder is loaded in the desktop app is not
    verified here, see the desktop section of `docs/mods-testing.md`.
 2. Run `/temper:temper mode full`, take a screenshot in light and again in dark, and save them as

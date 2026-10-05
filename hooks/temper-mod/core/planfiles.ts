@@ -55,18 +55,32 @@ export function planFileList(plan: string, tasks: string): string[] {
 // A task is done when its block carries ticked `- [x]` rows and no open `- [ ]` row
 // (the Build stage ticks a task's box when its Validate passes). N is the first task
 // not done, or M once all are. `override` (build-state's numeric `task`) wins when set.
-export function taskProgress(tasksMd: string, override: number | null = null): { n: number; of: number } | null {
+function taskBlocks(tasksMd: string): string[][] {
   const tasks: string[][] = []
   let isTask = false
   for (const line of tasksMd.split('\n')) {
-    if (/^###\s+Task\s+\d+/.test(line)) {
+    // `## Task 1:` and `### Task 1:` both start a task.
+    if (/^#{2,3}\s+Task\s+\d+/.test(line)) {
       tasks.push([])
       isTask = true
     } else if (/^#{1,3}\s/.test(line)) isTask = false
     else if (isTask) tasks[tasks.length - 1]?.push(line)
   }
+  return tasks
+}
+
+const taskDone = (b: string[]): boolean => b.some(l => /^\s*-\s+\[[xX]\]/.test(l)) && !b.some(l => /^\s*-\s+\[ \]/.test(l))
+
+// How many tasks are not done yet; null when tasks.md has no task headings (nothing is known).
+export function tasksLeft(tasksMd: string): number | null {
+  const tasks = taskBlocks(tasksMd)
+  return tasks.length === 0 ? null : tasks.filter(b => !taskDone(b)).length
+}
+
+export function taskProgress(tasksMd: string, override: number | null = null): { n: number; of: number } | null {
+  const tasks = taskBlocks(tasksMd)
   if (tasks.length === 0) return null
-  const done = (b: string[]) => b.some(l => /^\s*-\s+\[[xX]\]/.test(l)) && !b.some(l => /^\s*-\s+\[ \]/.test(l))
+  const done = taskDone
   let first = tasks.findIndex(b => !done(b))
   if (first < 0) first = tasks.length - 1
   const n = override !== null ? Math.min(Math.max(override, 1), tasks.length) : first + 1

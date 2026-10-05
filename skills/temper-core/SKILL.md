@@ -64,5 +64,8 @@ in temper.config is ignored by the CLI). Architecture Depth applies the
 | Config Suggestions | Check | Suggest CLAUDE.md/AGENTS.md updates based on what was built |
 | HTML Review | Plan | Interactive browser-based plan review with inline comments |
 
+With the Temper bar (`Temper enforcement: active`) the add-ons are buttons under key 0 (More), and the
+person's own message at a gate (key 4, Discuss) is the original "Other". Do not ask these as questions.
+
 ## Full Docs
 `$CLAUDE_PLUGIN_ROOT/reference/{command}.md`

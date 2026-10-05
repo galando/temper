@@ -2,6 +2,7 @@ import type { RenderElement } from 'claude-code'
 
 import { LEGEND, MARK, whereText } from '../core/view'
 import type { View } from '../core/view'
+import { MENU_HINT } from './band'
 import type { Kit, OnAction, OnFinding } from './kit'
 import { BLUE, CARD_BG, FG, GREEN, MUTED, PINK, YELLOW } from './palette'
 
@@ -15,8 +16,8 @@ const STEP_COLOR = { done: GREEN, current: BLUE, pending: MUTED, stale: YELLOW }
 // The pane: a card with the intent title, the acceptance criteria one per row (green check
 // when met, an empty circle when not), where you are in the six phases with a legend, a short
 // timeline, per finding Fix / Accept with reason / Explain, and the actions. Hotkeys are
-// unique here: 1, 2, 3 for the main actions, 9 for override, 0 for "More actions", which
-// expands the full list, each of those with its own letter.
+// unique here: 1, 2, 3 for the main actions, 4 for Discuss, 9 for skip, 0 for "More actions",
+// which shows a numbered menu (1 to 9) in place of the main actions.
 //
 // The card sets its own background and every text sets its own colour, so it reads the same on a
 // light terminal theme and on a dark one (the engine's frame colour follows Claude Code's theme,
@@ -120,32 +121,27 @@ export function renderPane(
 
       {a ? (
         <Box flexDirection="column">
-          <Text color={MUTED}>Actions</Text>
-          {(inline ? [] : [...a.primary, a.override]).map(x => (
+          <Text color={MUTED}>{view.expanded && a.more.length > 0 ? MENU_HINT : 'Actions'}</Text>
+          {/* The menu (key 0) takes the place of the main actions, so no digit is used twice. */}
+          {(view.expanded && a.more.length > 0 ? a.more : inline ? [] : [...a.primary, a.discuss, ...(a.override ? [a.override] : [])]).map(x => (
             <Box key={`pane-item-${x.id}`} flexDirection="column">
               <Button key={`pane-${x.id}`} label={`${x.key}  ${x.label}`} hotkey={x.key} variant="primary" onPress={() => onAction(x)} />
               <Text color={MUTED}>{`  ${x.desc}`}</Text>
             </Box>
           ))}
-          <Box key="pane-item-more-actions" flexDirection="column">
-            <Button
-              key="pane-more-actions"
-              label={view.expanded ? '0  Fewer actions' : '0  More actions'}
-              hotkey="0"
-              variant="primary"
-              onPress={() => onAction({ key: '0', id: 'more-actions', label: 'More actions', desc: 'Show or hide the other actions.', command: 'pane-expand' })}
-            />
-            <Text color={MUTED}>{'  Show or hide the other actions.'}</Text>
-          </Box>
-          {view.expanded
-            ? a.more.map(x => (
-                <Box key={`pane-item-${x.id}`} flexDirection="column">
-                  <Button key={`pane-${x.id}`} label={`${x.key}  ${x.label}`} hotkey={x.key} variant="primary" onPress={() => onAction(x)} />
-                  <Text color={MUTED}>{`  ${x.desc}`}</Text>
-                </Box>
-              ))
-            : null}
-          {playButton}
+          {a.more.length > 0 ? (
+            <Box key="pane-item-more-actions" flexDirection="column">
+              <Button
+                key="pane-more-actions"
+                label={view.expanded ? '0  Fewer actions' : '0  More actions'}
+                hotkey="0"
+                variant="primary"
+                onPress={() => onAction({ key: '0', id: 'more-actions', label: 'More actions', desc: 'Show or hide the other actions.', command: 'pane-expand' })}
+              />
+              <Text color={MUTED}>{'  Show or hide the other actions.'}</Text>
+            </Box>
+          ) : null}
+          {view.expanded && a.more.length > 0 ? null : playButton}
         </Box>
       ) : playButton ? (
         <Box flexDirection="column">{playButton}</Box>
