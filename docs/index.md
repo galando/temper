@@ -50,8 +50,6 @@ INTENT → PLAN → DESIGN? → BUILD → REVIEW → CHECK → COMMIT
   bands (pure arithmetic); a breach is drafted as the next intent and rides the same
   pipeline. Fixes write a committed `lessons.md` every future RCA reads first.
 
-Proof it catches real bugs: [evidence gallery](evidence/case-study.html).
-
 ## The Temper mod (Claude Code 2.1.287 or later)
 
 ![Temper phase bar in Claude Code: Intent, Plan, Build, Review, Check, with numbered actions](assets/temper-full.gif)

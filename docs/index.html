@@ -845,7 +845,6 @@
       <div class="nav-links">
         <a href="#loop">The Loop</a>
         <a href="#mod">The Mod</a>
-        <a href="#evidence">Evidence</a>
         <a href="#why">Methodology</a>
         <a href="#commands">Commands</a>
         <a href="https://github.com/galando/temper" target="_blank">GitHub</a>
@@ -938,36 +937,6 @@
       </div>
     </div>
     <p style="color: var(--fg-muted); font-size: 0.85rem; text-align: center; margin-top: 1.5rem;">Early access. Runs in the CLI and the desktop Code tab. Not a sandbox: it guards the editing tools and <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code>; the Bash check is best effort. <a href="mods-testing.html" style="color: var(--accent);">Try it on your machine</a>.</p>
-  </section>
-
-  <section id="evidence">
-    <div class="section-label">Evidence</div>
-    <h2 class="section-title">Does It Actually Catch Bugs?</h2>
-    <p class="section-desc">Architecture arguments are fine. Results are better. Three failure patterns the gates are built to catch &mdash; each one surfaces as a gate FAIL naming the defect.</p>
-
-    <div class="why-grid" style="grid-template-columns: repeat(3, 1fr);">
-      <div class="why-item" style="border-left: 3px solid var(--error); padding-left: 1rem;">
-        <h4 style="color: var(--error);">Missing Rate Limiting</h4>
-        <p>AI built password reset. All tests pass. The scenario coverage gate caught the gap: no test for rate limiting. Build wrote the test &rarr; failed &rarr; implemented it &rarr; passed.</p>
-      </div>
-      <div class="why-item" style="border-left: 3px solid var(--warning); padding-left: 1rem;">
-        <h4 style="color: var(--warning);">Over-Engineering</h4>
-        <p>AI planned 3 classes for a single validation rule. File-to-scenario traceability flagged it: one scenario, one function needed. Three files became zero.</p>
-      </div>
-      <div class="why-item" style="border-left: 3px solid var(--accent); padding-left: 1rem;">
-        <h4 style="color: var(--accent);">Wrong Problem Solved</h4>
-        <p>AI built the feature correctly &mdash; plus an admin-only endpoint nobody asked for. Untraced file flagged and removed before commit.</p>
-      </div>
-    </div>
-
-    <p style="text-align: center; margin-top: 1.5rem; color: var(--fg-muted); font-size: 0.9rem;">
-      Claims here are measured, not asserted &mdash; including the unflattering ones: the v8 prompt
-      rewrite cut a Plan run&rsquo;s cost 48% and held quality, but did <em>not</em> make it faster, and the changelog says so.
-    </p>
-
-    <p style="text-align: center; margin-top: 1rem;">
-      <a href="https://github.com/galando/temper/tree/main/docs/evidence" style="color: var(--accent); font-weight: 500;">See all evidence &rarr;</a>
-    </p>
   </section>
 
   <section id="why">
