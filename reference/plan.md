@@ -61,7 +61,11 @@ role), Problem, Success Criteria with stable `AC-NN` ids each carrying `Why:` an
 Target Users, labeled Open Questions, and `### Context Sources` (`consulted:` /
 `unavailable:` / `none:`) — as your first act. The two mandatory probes of the
 intent interview apply here too: what business outcome or risk does each criterion
-address, and who acts on the result with what next step.
+address, and who acts on the result with what next step. Never turn a source "should"
+or "may" into "must" silently: ask the originator, record the answer in `### Decisions`,
+and with no answer keep the source wording (`(source: …)`) plus a Blocking Open
+Question. The gate fails a draft that uses should/may/might/possibly in a criterion or
+constraint with no `(source: …)` marker.
 
 **Either way, standalone `/temper:plan` records the intent verdict itself.** Whenever
 intent.md exists at the spec path — authored fresh OR picked up as a draft — run

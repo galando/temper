@@ -14,6 +14,8 @@ carries over.
 nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 (`git status --porcelain`). Otherwise fall back to `git diff --name-only`.
 
+**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
+
 1. Read `$CLAUDE_PLUGIN_ROOT/reference/review.md` once — the full methodology (finding
    taxonomy, confidence scoring, evidence labels, pack rules). Follow it exactly; nothing
    here overrides it.
@@ -33,7 +35,9 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
    $CLAUDE_PLUGIN_ROOT/scripts/temper evidence resolve --stage review \
      --id <n> --fixed-by "<commit sha or what you changed>"           # after the fix is re-tested
    ```
-   Never clear the ledger to pass the gate; resolve is the honest path.
+   Never clear the ledger to pass the gate; resolve is the honest path. A finding the
+   person decides to keep is never accepted by you: `temper evidence accept --stage
+   review --id <n> --reason "<why>"` is their call, and it needs a reason.
    Use `--label PROVEN` only for a finding an external tool (MCP, semgrep) actually
    verified, per the evidence-label rules in `review.md`.
    **When the review is done — even if there were NO findings — record:**

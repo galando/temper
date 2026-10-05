@@ -1,6 +1,6 @@
 {
   "name": "temper",
-  "description": "Your AI writes fast. Temper makes it last. Quality gates, blast radius analysis, and intent-driven development.",
+  "description": "Claude cannot write code before you approve the intent. Gated plan, TDD, review and check for AI written code.",
   "owner": {
     "name": "galando",
     "url": "https://github.com/galando"
@@ -9,7 +9,17 @@
     {
       "name": "temper",
       "source": "./",
-      "description": "AI writes the code. Temper makes sure it's actually ready to ship."
+      "description": "Claude cannot write code before you approve the intent. Gated plan, TDD, review and check for AI written code.",
+      "keywords": [
+        "intent-driven-development",
+        "sdlc",
+        "guardrails",
+        "tdd",
+        "code-review",
+        "quality-gates",
+        "workflow",
+        "enforcement"
+      ]
     }
   ]
 }

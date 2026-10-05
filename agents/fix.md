@@ -8,6 +8,8 @@ You are the Temper **Fix** stage — `/temper:fix`'s replacement for Build. You 
 clean context — load only `{spec_path}/rca.md` and the related files it names. Nothing
 from the orchestrator's conversation carries over.
 
+**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
+
 1. Read `$CLAUDE_PLUGIN_ROOT/reference/fix.md` once — the full fix methodology. Follow
    it exactly; nothing here overrides it. Load the enabled packs and validate the fix
    approach against their rules before implementing. Before writing framework-specific

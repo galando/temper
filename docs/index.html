@@ -32,7 +32,7 @@
     "license": "https://opensource.org/licenses/MIT",
     "author": { "@type": "Person", "name": "Gal Naor", "url": "https://github.com/galando" },
     "programmingLanguage": "Markdown",
-    "version": "9.0.0"
+    "version": "9.6.0"
   }
   </script>
 
@@ -844,7 +844,7 @@
       </a>
       <div class="nav-links">
         <a href="#loop">The Loop</a>
-        <a href="#evidence">Evidence</a>
+        <a href="#mod">The Mod</a>
         <a href="#why">Methodology</a>
         <a href="#commands">Commands</a>
         <a href="https://github.com/galando/temper" target="_blank">GitHub</a>
@@ -864,7 +864,7 @@
         </div>
       </div>
       <div class="hero-image">
-        <img src="temper.png" alt="Temper Dashboard" style="width: 100%; border-radius: 6px; border: 1px solid var(--border);">
+        <img src="assets/mode-full-dark.png" alt="Temper phase bar in Claude Code, showing the current phase and numbered actions" style="width: 100%; border-radius: 6px; border: 1px solid var(--border);">
       </div>
     </div>
   </header>
@@ -915,34 +915,28 @@
     </p>
   </section>
 
-  <section id="evidence">
-    <div class="section-label">Evidence</div>
-    <h2 class="section-title">Does It Actually Catch Bugs?</h2>
-    <p class="section-desc">Architecture arguments are fine. Results are better. Three failure patterns the gates are built to catch &mdash; each one surfaces as a gate FAIL naming the defect.</p>
+  <section id="mod">
+    <div class="section-label">The Mod</div>
+    <h2 class="section-title">Claude cannot write code before you approve the intent</h2>
+    <p class="section-desc">On Claude Code 2.1.287 or later, Temper also draws a phase bar and enforces every phase at the tool layer. Older versions load the plugin as before.</p>
 
-    <div class="why-grid" style="grid-template-columns: repeat(3, 1fr);">
-      <div class="why-item" style="border-left: 3px solid var(--error); padding-left: 1rem;">
-        <h4 style="color: var(--error);">Missing Rate Limiting</h4>
-        <p>AI built password reset. All tests pass. The scenario coverage gate caught the gap: no test for rate limiting. Build wrote the test &rarr; failed &rarr; implemented it &rarr; passed.</p>
+    <img src="assets/temper-full.gif" alt="Temper phase bar in Claude Code: Intent, Plan, Build, Review, Check, with numbered actions" style="width: 100%; max-width: 900px; display: block; margin: 0 auto 2rem; border-radius: 6px; border: 1px solid var(--border);">
+
+    <div class="why-grid">
+      <div class="why-item">
+        <h4>Refuses early writes</h4>
+        <p>An edit outside the current phase is refused, and so is <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code> until the gates pass or you override them. Every refusal names the next step.</p>
       </div>
-      <div class="why-item" style="border-left: 3px solid var(--warning); padding-left: 1rem;">
-        <h4 style="color: var(--warning);">Over-Engineering</h4>
-        <p>AI planned 3 classes for a single validation rule. File-to-scenario traceability flagged it: one scenario, one function needed. Three files became zero.</p>
+      <div class="why-item">
+        <h4>You see where you are</h4>
+        <p>A phase bar and numbered actions match the original <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper</code> gates: Continue, Teach me, Grill me, Discuss, Skip with a reason.</p>
       </div>
-      <div class="why-item" style="border-left: 3px solid var(--accent); padding-left: 1rem;">
-        <h4 style="color: var(--accent);">Wrong Problem Solved</h4>
-        <p>AI built the feature correctly &mdash; plus an admin-only endpoint nobody asked for. Untraced file flagged and removed before commit.</p>
+      <div class="why-item">
+        <h4>You choose how much</h4>
+        <p><code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">uiMode</code> is full, minimal or off. <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">enforcement</code> is on or off. The CLI state stays the source of truth, and the mod blocks nothing when it cannot tell where the run is.</p>
       </div>
     </div>
-
-    <p style="text-align: center; margin-top: 1.5rem; color: var(--fg-muted); font-size: 0.9rem;">
-      Claims here are measured, not asserted &mdash; including the unflattering ones: the v8 prompt
-      rewrite cut a Plan run&rsquo;s cost 48% and held quality, but did <em>not</em> make it faster, and the changelog says so.
-    </p>
-
-    <p style="text-align: center; margin-top: 1rem;">
-      <a href="https://github.com/galando/temper/tree/main/docs/evidence" style="color: var(--accent); font-weight: 500;">See all evidence &rarr;</a>
-    </p>
+    <p style="color: var(--fg-muted); font-size: 0.85rem; text-align: center; margin-top: 1.5rem;">Early access. Runs in the CLI and the desktop Code tab. Not a sandbox: it guards the editing tools and <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code>; the Bash check is best effort. <a href="mods-testing.html" style="color: var(--accent);">Try it on your machine</a>.</p>
   </section>
 
   <section id="why">

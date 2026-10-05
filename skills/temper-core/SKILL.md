@@ -8,6 +8,8 @@ user-invocable: false
 
 Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0.0-1.0) → Review memory → Metrics.
 
+**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, make the very first sentence of your first reply in this conversation, before anything else and also when the command is one of the reserved words below, exactly "Temper enforcement is off here (no mods support); continuing with prompt based phases.", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
+
 ## Stack Detection
 1. `.claude/temper.config` → `stack` field
 2. `.claude/presets/*.yaml` → `stack` section
@@ -61,6 +63,9 @@ in temper.config is ignored by the CLI). Architecture Depth applies the
 | Teach Me | Plan, Design, Build, Check | Comprehension companion: teach + quiz the human to mastery at each teaching gate (Review excluded, taught at Build) |
 | Config Suggestions | Check | Suggest CLAUDE.md/AGENTS.md updates based on what was built |
 | HTML Review | Plan | Interactive plan review with inline comments, local or shared by link (artifact or secret Gist) |
+
+With the Temper bar (`Temper enforcement: active`) the add-ons are buttons under key 0 (More), and the
+person's own message at a gate (key 4, Discuss) is the original "Other". Do not ask these as questions.
 
 ## Full Docs
 `$CLAUDE_PLUGIN_ROOT/reference/{command}.md`

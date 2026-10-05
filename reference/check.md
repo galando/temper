@@ -17,6 +17,11 @@ the orchestrator owns it. Load `.temper/specs/{feature}/review-context.json` if 
 Apply the temper-core skill's detection order. A company preset (`.claude/temper.config`
 / `.claude/presets/*.yaml`) overrides auto-detected commands.
 
+**Configured commands first.** Before using the table below, read
+`temper config get check.commands.test`, `check.commands.lint` and
+`check.commands.typecheck`. A key that prints a command replaces the detected command
+for that level; a key that prints nothing keeps stack detection.
+
 | Manifest | Stack | test / lint / type / build |
 |---|---|---|
 | `pom.xml`/`build.gradle` | Java/Spring | `mvn(w) test` / — / — / `mvn(w) package` |

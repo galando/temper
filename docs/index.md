@@ -50,7 +50,28 @@ INTENT → PLAN → DESIGN? → BUILD → REVIEW → CHECK → COMMIT
   bands (pure arithmetic); a breach is drafted as the next intent and rides the same
   pipeline. Fixes write a committed `lessons.md` every future RCA reads first.
 
-Proof it catches real bugs: [evidence gallery](evidence/case-study.html).
+## The Temper mod (Claude Code 2.1.287 or later)
+
+![Temper phase bar in Claude Code: Intent, Plan, Build, Review, Check, with numbered actions](assets/temper-full.gif)
+
+On Claude Code 2.1.287 or later, Temper also ships a mod. It enforces the phases at the tool
+layer and shows them. Older versions load the plugin as before.
+
+- **Claude cannot write code before you approve the intent.** The mod refuses an edit that does
+  not belong to the current phase, and it refuses `git commit` until the gates pass or you
+  override them. Every refusal names the next step.
+- **You see where you are.** A phase bar shows Intent, Plan, Build, Review and Check. Numbered
+  buttons give the same choices as the original `/temper` gates: Continue, Teach me, Grill me,
+  Discuss, Skip with a reason.
+- **You choose how much it shows.** `uiMode` is full, minimal or off. `enforcement` is on or off.
+- **The CLI stays the source of truth.** The bar follows `.temper/build-state.json`. If the mod
+  cannot tell where the run is, it blocks nothing.
+- **Optional game.** Press 8 while Claude works to play Temper Run. It never changes the run.
+
+The mod is early access, runs in the CLI and the desktop Code tab, and is not a sandbox. It
+guards the editing tools and `git commit`; the Bash check is best effort. The
+[README](https://github.com/galando/temper#readme) lists the limits and what the mod reads and
+writes. To try a branch on your own machine, follow [Testing the mod](mods-testing.html).
 
 ## Commands
 
@@ -85,6 +106,7 @@ native commit gate.
 
 - [Getting Started](getting-started.html) — installation and first run
 - [Commands Reference](commands.html) — full command documentation
+- [Testing the mod](mods-testing.html) — try the phase bar and enforcement on your machine
 - [Methodology](methodology.html) — IDD + BDD + TDD, one contract file
 - [Packs](packs.html) — built-in and custom quality packs
 - [AI-Native SDLC Alignment](ai-native-sdlc.html) — temper vs Anthropic's playbook

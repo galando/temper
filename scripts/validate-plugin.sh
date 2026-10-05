@@ -136,6 +136,35 @@ print(len(agents))
   [[ -f "$TEMPER_CMD" ]] || fail "commands/temper.md missing"
 fi
 
+# --- Mods support (v9.5): the module is additive and must never stop the plugin loading ---
+# hooks/hooks.json lists the module path under "modules"; the path must exist. A userConfig
+# field that declares "options" stops the WHOLE plugin loading on Claude Code before
+# 2.1.271, so fields stay plain strings and the module validates values in code.
+if [[ -f "$PJ" && -f "$REPO_ROOT/hooks/hooks.json" ]]; then
+  MOD_ERRS=$(python3 -c "
+import json, sys, os
+root = sys.argv[1]
+pj = json.load(open(os.path.join(root, '.claude-plugin', 'plugin.json')))
+hj = json.load(open(os.path.join(root, 'hooks', 'hooks.json')))
+errs = []
+mods = hj.get('modules')
+if mods is None:
+    errs.append('hooks/hooks.json has no modules key')
+else:
+    for m in mods:
+        if not os.path.isfile(os.path.join(root, 'hooks', m)):
+            errs.append('module path does not exist: ' + m)
+for name, field in (pj.get('userConfig') or {}).items():
+    if 'options' in field:
+        errs.append('userConfig.' + name + ' declares options (breaks loading before 2.1.271)')
+t = pj.get('types')
+if t is not None and not os.path.isfile(os.path.join(root, t)):
+    errs.append('plugin.json types path does not exist: ' + t)
+print('; '.join(errs))
+" "$REPO_ROOT" 2>/dev/null || echo "mods check could not run")
+  if [[ -z "$MOD_ERRS" ]]; then ok; else fail "mods support: $MOD_ERRS"; fi
+fi
+
 # --- marketplace.json ---
 MJ="$REPO_ROOT/.claude-plugin/marketplace.json"
 if [[ ! -f "$MJ" ]]; then

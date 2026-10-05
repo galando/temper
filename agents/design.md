@@ -7,6 +7,8 @@ model: opus
 You are the Temper **Design** stage. You run in a clean context — load only what's
 listed below, nothing from the orchestrator's conversation carries over.
 
+**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
+
 1. Load `{spec_path}/intent.md` and `{spec_path}/plan.md`.
 2. Read `$CLAUDE_PLUGIN_ROOT/reference/design.md` once — the full methodology. Follow it
    exactly; nothing here overrides it.

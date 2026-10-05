@@ -3,6 +3,261 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.6.0: the Temper mod, and four CLI additions it needs
+
+### The mod (Claude Code 2.1.287 or later)
+
+- A new mod in `hooks/temper-mod/`, loaded through a `modules` entry next to the existing
+  hooks in `hooks/hooks.json`. It refuses Write, Edit and NotebookEdit outside the current
+  phase's paths, refuses `git commit` until Check passes (or is overridden), refuses
+  forged approvals (writes to the events folder, `.temper/gates.json`, `.temper/status.json`
+  or `.temper/overrides.json`, and decision CLI calls without a matching human decision),
+  and adds a `temper:phase` section to every request so Claude knows the phase, with the
+  line `Temper enforcement: active`.
+- Phase history is stored as one event file per decision under
+  `.temper/specs/<name>/events/`, written once with a unique name. Verdicts and criteria
+  status are only read from the CLI's files. Going back invalidates every later phase, and a
+  phase needs a fresh verdict after it was invalidated.
+- `/temper` gains reserved subcommands: `status`, `timeline`, `approve`, `next`, `back`,
+  `override <reason>`, `accept`, `drift`, `pause`, `resume`, `report`, `pr`, `mode`,
+  `enforcement` and `pane`. Any other first word still reaches the prompt based command.
+  Decisions count only from the person. The same words are handled in prose when the mod is
+  absent.
+- Scope drift: an edit outside the plan's files asks you to add it to the plan, revert it,
+  or allow it once with a reason, and logs the choice. After the configured number of failed
+  Check to Fix loops (default 3) the run stops and offers replan, override or hand over.
+- A phase bar above the prompt (six phases, up to three actions on keys 1, 2 and 3,
+  override on 9, all actions on 0), a pane with a live criteria checklist, the spinner text
+  `Building · criterion 2 of 5`, a hint tail, a question header, a line under each answer,
+  suggestions that are never submitted, and one toast per phase change.
+- Three modes, `full`, `minimal` and `off`, switched live with `/temper mode`. A separate
+  `/temper enforcement on|off` controls the refusals. Both are plugin settings (`uiMode`,
+  `enforcement`); a value locked by an administrator is reported, not changed. The first
+  interactive `/temper` asks once.
+- An optional game, Temper Run, for the time Claude works, in the spirit of the browser dinosaur
+  game. Ember, a small dragon drawn in half block pixel art, runs on the spot in a forge hall. Jump
+  (`w`) over iron anvils and buckets of cold water, duck (`s`) under flying hammers. The floor
+  scrolls, sparks drift, the wall warms from dark gray to deep red with the heat (levels 1 to 5), and
+  at every 100 points Ember flashes yellow and a banner says "Hot! 100". It is made to be fair: a jump
+  pressed up to 250 ms before the landing is remembered, hit boxes are smaller than the pictures, and
+  the obstacle generator keeps gaps that a bot with a slow hand can always clear. While a phase works,
+  the band (`8: Play while you wait`), the pane and the prompt hint offer it; key `8` or
+  `/temper:temper play` (a new reserved word, 17 in all) opens it. It never opens by itself. The pane
+  takes the keyboard when it opens: `r` runs, `q` or Esc leaves, with no mouse. It runs on the
+  terminal and the desktop app only, keeps a best score, shows a banner when a phase is ready, and
+  never weakens a refusal. The plugin setting `game` is `on` (offers and command), `command` (command
+  only) or `off`.
+- User text of the mod is written in Simplified Technical English, and every label says its
+  result: "Make the plan", "Approve the plan", "Start the next task", "Skip with a reason". Each
+  action has a one line description in the pane, the step reads "Step 2 of 6: Plan", and one
+  sentence under the bar says what key 1 does and what happens next. Every refusal ends with a
+  "Next:" step. Follow up prompts to Claude are short and end with "Do this now. Reply with one
+  short line." They name the full path of the Temper script in the plugin folder, so Claude does not
+  try a path that does not exist in the project.
+- One flow, two views. The bar is the same choices as the orchestrator's gate questions, with the
+  same words, and the orchestrator no longer asks its question a second time when the mod is active
+  (the system prompt has `Temper enforcement: active`): it prints the stage panel and the check
+  result, then waits for the bar or for a message you type. Key 1 follows the check result:
+  "Continue to Build", "Loop back to Plan", "Start Intent" or "Run Plan"; at Build every task is its
+  own checkpoint ("Continue with task 2"). Key 4 is **Discuss**, the original "Other": it puts a draft
+  in the prompt box. Key 0 (**More**) opens a numbered menu above the phase chips (digits 1 to 9,
+  because a letter would type into the prompt box): Save for later, Grill me, Teach me, Open HTML
+  review, Architecture depth review, Review config suggestions, Stop, Go back, Show the timeline,
+  Write the PR text. A finished run offers Commit. After a decision a button asks Claude to mirror it
+  in the CLI state and then runs `/temper:temper` with no arguments (the orchestrator's Resume), so
+  the next stage starts in its own subagent with its own brief. New reserved word `discuss` (18 in
+  all). Two reviewed calls are added: `command.run` (`prompt.submit` refuses a text that starts
+  with a slash) and `prompt.fill`; the list is 22 calls.
+- Security fixes from the second review: the Bash classifier reads the Temper script structurally
+  and fails closed (a link, copy, glob, variable, substitution, launcher, interpreter or `source`
+  that could run a decision call is refused); `evidence accept` is matched to its stage; two
+  parallel calls cannot spend one human decision; the plugin folder path is decoded before it is
+  checked; the game accepts only a real number as a score; the `game` setting reads `false`, `no`,
+  `0`, `disabled` and `none` as off; the demo seed never removes a folder that is not its own.
+- One source of truth. Bug fixed: after Build, "Continue to Review" moved the bar but the mirror call
+  `state advance build_complete review` was refused, because only advances out of Intent and Plan counted
+  as the person's decision. Every advance now does. The CLI state (`build-state.json`) is now the truth for
+  where the run is: the phase on the bar and in every deny comes from `next_stage`; events only say who
+  decided. A choice that the CLI has not recorded shows one line ("Temper state: the run is at Build. Your
+  last choice is not recorded yet. Press 1 to record it."), and key 1 ("Record my choice") submits the
+  mirror prompt again for the same decision. A decision is spent only after its call ran without an error.
+  A reload, /clear, a deleted or corrupted events folder cannot move a run backward. When the mod cannot
+  tell where the run is (unreadable state, an unknown next stage) it blocks nothing and writes nothing; when
+  the CLI looks reset while later checks passed, phase rules do not block writes. With the bar active the
+  orchestrator never runs `state init`, `clear`, `archive` or `loop` on its own, and a failed Resume
+  Validation stops instead of picking Start over. New tests: `tests/mod/endtoend.test.ts` (a full run
+  against a fake CLI with chaos between steps) and the mirror commands against the real CLI in
+  `scripts/tests/test-temper.sh`.
+- The orchestrator does its own "On Continue" steps. Continue no longer sends a mirror prompt of the
+  mod: the button records the decision and runs `/temper:temper continue <stage>` (a new reserved word,
+  19 in all). The orchestrator then does what the original `/temper` writes for that stage: the status
+  flip, `state advance`, the feature branch, the commit of the approved artifacts, and launches the next
+  stage. Before, the branch was never created and the Build checkpoint commits were refused. The mod's
+  commit rule now defers to the same facts as `temper gate commit`: an artifact only commit (every staged
+  file under `.temper/specs/`) passes in every phase, a Build checkpoint commit passes on the run's branch
+  with a green test run, and a refusal says why (for example the branch). The project root is fixed at the
+  first session start and kept in `$.state`: Claude's `cd`, or a hot reload in another folder, can no longer
+  make the mod read another folder's `.temper`.
+- Original only. The Temper bar holds only the options the original `/temper` asks (Continue to, Loop
+  back to, Grill me, Teach me, Walk through step by step, Open HTML review, Architecture depth review,
+  Review config suggestions, Change, Stop, Save for later, Commit), plus Discuss, Play and Skip with a
+  reason. Removed from the buttons: Ask me questions, Edit the intent, Make the plan, Show the files,
+  Try another plan, Split the tasks, Run the tests, Show the changes, Review again, Run failed checks
+  again, Show the failures, Write the PR text, Show the timeline, Save my request, Go back to, Pause the
+  run. The subcommands stay. Done offers Commit and Save for later. `scripts/check-original-options.sh`
+  and the action tests refuse any other label.
+- Third security review (#39 to #48). While a run is active, a Bash command that names the script and
+  hides what it runs (`$'..'`, `${..}`, `$(..)`, a launcher, a script written then run, `bash <(cat ...)`)
+  is refused, and plain readers (`sed -n`, `awk '/x/'`, `nl`, `grep`, `pytest -k`) stay allowed. Names are
+  compared without regard to case, `ln` of Temper state is refused, and every `state advance` and
+  `state set next_stage` needs the person's decision or the exact next stage after a passed check.
+  `git cherry-pick`, `merge`, `revert`, `am`, `commit-tree`, `rebase --continue`, a merging `pull` and
+  a `git -c alias` count as commits while the commit gate is open. A decision button locks while it runs
+  and ignores a stale press. The README says plainly what a text reader cannot see.
+- The demo is smooth: `bash demo/demo-seed.sh plan` seeds the Plan step with an accepted intent and a
+  written plan (both checks pass), `bash demo/run-demo.sh` starts there, and `demo/temper.tape` is a
+  15 to 20 second hero with no waiting scene.
+- `.temper/report.md` is written when a run completes: phases, overrides, accepted findings,
+  scope drift decisions with reasons, and criteria status.
+- Optional and off by default: a model or effort per phase (`phaseModels`, for example
+  `build=sonnet:high`) and a reviewer model (`reviewerModel`).
+- The mod calls only the reviewed set listed in `docs/mods-plan.md` section 2.7: no
+  `process`, `http` or `env`. `scripts/check-mod-calls.sh` enforces it in CI, which now also
+  runs `claude plugin test`, `claude plugin validate --strict` and the type check on
+  Claude Code 2.1.287.
+
+### The bar and the CLI agree on Loop back, Skip and Commit
+
+- **Commit** at Done tells the orchestrator to do the Commit steps of `commands/temper.md` (gate
+  commit, intent Status completed, `state archive`, stage the diff and the spec artifacts, one
+  commit, then `state clear`). The mod never clears or archives the state. When the CLI state is
+  gone after the run was Done, the bar shows no run; it never goes back to Intent. (When it is gone
+  in the middle of a run, the run stays enforced: see the hardening section below.)
+- **Loop back** is a loop of the CLI. The mirror message runs `state loop <from> <to>` (the budget
+  `loops.max-per-type` and the evidence of the redone stages) and then `state set next_stage`. The
+  guard lets `state loop` through only while the person's own back decision waits. The Feedback Loops
+  section of `commands/temper.md` describes this path, and says what to do on `BLOCKED`.
+- **Skip with a reason** is the person's go-ahead for that stage. The bar sends `continue <stage>`
+  after the skip, and the guard lets that stage's `state advance` through (also out of Intent and
+  Plan) until a later step back. Before this, the orchestrator was refused after a skip at Plan.
+- A medium or complex run whose project never set `phases.design: true` may go from Plan straight
+  to Build; the guard accepts both next stages unless the config says design is on. When design is
+  on and a call names the wrong next stage, the refusal now says which stage is next instead of
+  sending the model back to the person for a decision that was already made.
+- While the CLI is at its design stage after the plan approval, the bar no longer says "Temper
+  state looks reset".
+- At the design check, Continue sends `continue design` (not `continue plan`) and spends the person's
+  approval, so it no longer stays pending.
+- `git add .temper/specs/x/ 2>&1` no longer counts `2>&1` as a staged path, so the artifact only
+  commit that follows is not refused as a code commit. A commit that fails (an index lock) keeps the
+  staged list for the retry.
+- `build-state.json` is read again when a read sees an empty or cut file (the CLI rewrites it in place),
+  so the bar no longer says "No Temper run is active" for a moment at Done.
+- A failed Check that loops through Fix and returns to Check keeps a verdict that was written while
+  the run was in Fix, so the person is not sent through the same check run again.
+- **Share HTML review** has a button (in the Plan More menu). Open HTML review points at
+  `reference/plan-review.md` and `scripts/plan_review.py` instead of filling the template by hand.
+
+### Hardening after a fourth review (tests in `tests/mod/hardening.test.ts`)
+
+A read only review traced nine findings by hand. Each one got a failing test through the real guard first.
+Real exploits, fixed: 1 (a shell fed a program on stdin: `echo 'scripts/te""mper override ...' | bash`), 2, 3, 4,
+5, 6, 7, 8, and the fail open catch of 9. Not an exploit as traced: a quote split verb in a plain call
+(`scripts/te""mper ov""erride`), a glob in a stdin program, and `eval "$(echo ...)"` were refused before; the tests stay.
+
+- A shell, `eval` or `source` that is given a program the text does not show is refused while a run is
+  active (a pipe from an unknown command, a file or `/dev/stdin`, a process substitution, a `-c` string built
+  by a substitution, and a shown program that hides a word with quote splits, `$`, backticks, backslashes,
+  braces or globs). Quote and backslash splits are removed before the script name and the decision words are
+  looked for. `eval "$(ssh-agent -s)"`, `eval "$(scripts/ensure-jdk.sh --export)"` and plain heredocs stay allowed.
+- A run whose `build-state.json` turns missing, unreadable or corrupt (`chmod 000`, `find -delete`, `git clean`,
+  `git stash -u`) stays enforced from the last known state, with one line saying so. It ends on `/temper:temper
+  enforcement off`, when the file reads again, after Done, or on a reload. `chmod`, `chown`, `chflags`, `setfacl`,
+  `chattr`, `find -delete` and `-exec rm`, `xargs rm`, `git clean` and `git stash -u|-a` that can reach `.temper`
+  are refused.
+- A command that names a guarded file (or a glob that can stand for one) must be a plain read, or it is refused.
+  This replaces the list of writers (`awk`, `sort -o`, `uniq`, `patch`, `find -fprintf`, `git checkout|restore|apply`,
+  `tar`, `unzip`, `ed`, `ex`, `cp -l`, `ln -s .tem*/gates.js*`) by one rule. A comment in a command is no longer a mention.
+- The artifact only commit carve-out is for a plain `git commit` of a staged set the mod understands. Unknown ways
+  into the index (`git stage|mv|rm|apply --cached|update-index`, `xargs git add`, `add -p`, aliases, `checkout <tree> --`,
+  `stash`, `reset`) make the set unknown. A pathspec commit, `-i`, `-o`, `merge`, `cherry-pick`, `am`, `pull`,
+  `revert` and `commit-tree` never use the carve-out. `git add` paths follow `git -C` and the `cd` of the shell (carried
+  across Bash calls); the comparison with `.temper/specs/` is case sensitive, as in the CLI. `--no-verify`, `-n`,
+  `core.hooksPath`, writes to `.git/hooks` and `.git/config` are refused while a run is active. The Build checkpoint
+  now needs a design verdict when the spec has a `design.md`, as `temper gate commit` does.
+- A decision is spent by what its call changed, not by its exit status (`state advance ...; exit 1` used to give the
+  decision back). A person's approval is stale once the run goes back to its stage or an earlier one.
+- A skip is for the stage the run is at (at Review, `state advance plan_complete build` no longer passes), and no
+  `state advance` lowers the stage. `state loop` must leave the stage the run is at and uses the back decision once.
+- `.claude/temper.config` (while a run is active), `.temper/evidence/*.json`, `.temper/feedback-loops.json`, `TEMPER_DIR` and
+  `TEMPER_CONFIG` are guarded; `state set command` is refused, `state set complexity` is for the open plan only, and
+  `state set base_sha` only as a commit hash or `"$(git rev-parse HEAD)"` in Plan or Build.
+- A guard that throws refuses Bash while a run is active (other tools pass). When no run was found at the first session
+  start, the root is looked for again above the session folder until a run is seen.
+- Limits left, written in the README and `docs/mods-plan.md`: a program that builds a path at run time, the names inside
+  a patch or an archive, a staging done by a script or by the person before the session, a git alias of the person for
+  `commit`, MCP and PowerShell file tools, and a script written in an earlier call. The native `pre-commit` hook and the
+  editing tool deny stay the hard guarantees. The 22 reviewed `$` calls are unchanged.
+- Tests that encoded the old behaviour were changed on purpose: a build-state that is unreadable or deleted mid-run no
+  longer blocks nothing; rule tests that built a state ahead of the CLI now give the phase the CLI is at; `state set
+  complexity|base_sha` are tested in the phase they are allowed in.
+
+### CLI additions (these help without the mod too)
+
+- `check.commands.test`, `check.commands.lint` and `check.commands.typecheck` in
+  `.claude/temper.config` replace stack detection for Check when set.
+- `fix.max-loops` sets the Check to Fix limit. `temper config get fix.max-loops` reads 3
+  when it is unset. With the key absent, the existing `loops.max-per-type` still applies.
+- `temper evidence accept --stage review --id N --reason "..."` stops the review gate counting
+  a finding, keeping the row with the reason, the author and the time. An empty reason is
+  refused and writes nothing.
+- `temper status --json` prints per criterion `passed` or `open` with the evidence behind it,
+  and `temper gate` now writes the same view to `.temper/status.json`. Failing to write it
+  never changes a verdict.
+
+### Verdict change: `temper gate intent` (drafts only)
+
+Two requirements are new, and both apply only while the intent's Status is draft. A draft
+needs an `Out of scope:` line under `Scope and Non-goals` with real text. The second
+requirement, "open questions resolved", names any `Blocking` question still open on a draft in
+the gate detail but does not fail it, because drafts legitimately carry them. An accepted or
+completed intent skips both with a recorded PASS: a recorded
+acceptance is never revisited, so existing accepted intents keep passing. The shipped template
+and example carry the line.
+
+### Intent gate: no soft words, and the soft-source-word rule
+
+- **Verdict change.** A draft intent now fails `temper gate intent` when a Success Criteria
+  statement or a Constraints bullet uses the whole word `should`, `may`, `might` or
+  `possibly` (any case; words inside backtick code spans are ignored). The detail names each
+  hit, joined with ` | `, for example `criterion AC-01 uses should | constraint "..." uses may`.
+- A statement that carries a `(source: ...)` marker is exempt, because the hedge word belongs to
+  whoever wrote the source. An accepted or completed intent skips the check with a recorded
+  PASS, like every other draft only rule, so existing accepted intents keep passing.
+- The Intent stage and `/temper:intent` never turn a source "should" or "may" into "must"
+  silently. They ask the originator whether the source means required or optional and record
+  the answer in `### Decisions`. With no answer yet they keep the source wording and add a
+  Blocking Open Question.
+- `templates/example-intent.md` is rewritten in short, plain sentences and shows one criterion
+  that keeps a source hedge word under a `(source: ...)` marker.
+
+### Minimum versions and old versions
+
+- The mod needs Claude Code 2.1.287 or later. On older versions the plugin loads and runs the
+  prompt based phases, and the skills say once that enforcement is off. Loading was checked on
+  2.1.200 and 2.1.259; a module runs from 2.1.286 on.
+- The plugin settings (`userConfig`) are plain strings and declare no `options`. A field with
+  `options` stops the whole plugin loading on Claude Code before 2.1.271, so the values are
+  checked in code instead (an unknown `uiMode` means `full`, an unknown `enforcement` means `on`).
+- Where enforcement works, and where it does not (surfaces, organization policy, Bash being
+  best effort), is written down in the README section "Where enforcement works".
+
+### Docs
+
+- README rewritten around the one line promise, with a phase diagram, the three modes and a
+  collapsible reference for each phase. `docs/mods-testing.md` is the checklist to run the
+  branch on your own machine before release. `docs/demo-script.md` and `demo/` hold the demo.
+
 ## v9.5.0, shareable plan review, stage gotchas, per-stage effort, eval suite removed
 
 ### Share HTML review at the Plan gate

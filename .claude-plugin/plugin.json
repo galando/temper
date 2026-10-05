@@ -1,16 +1,31 @@
 {
   "name": "temper",
   "displayName": "Temper",
-  "description": "Intent-gated SDLC for AI-generated code: blast radius planning, TDD, confidence-scored review, and quality gates computed by an auditable CLI that blocks git commit while a gate is red.",
-  "version": "9.5.0",
+  "description": "Claude cannot write code before you approve the intent. Gated plan, TDD, review and check for AI written code, with a phase bar in Claude Code.",
+  "version": "9.6.0",
   "author": {
     "name": "galando",
     "url": "https://github.com/galando"
   },
   "repository": "https://github.com/galando/temper",
   "homepage": "https://github.com/galando/temper",
+  "icon": "./.claude-plugin/icon.png",
+  "documentationUrl": "https://galando.github.io/temper",
+  "supportUrl": "https://github.com/galando/temper/issues",
+  "privacyPolicyUrl": "https://galando.github.io/temper/privacy.html",
   "license": "MIT",
-  "keywords": ["temper", "quality", "code-review", "tdd", "standards", "blast-radius", "sdlc"],
+  "keywords": [
+    "intent-driven-development",
+    "sdlc",
+    "guardrails",
+    "tdd",
+    "code-review",
+    "quality-gates",
+    "blast-radius",
+    "workflow",
+    "enforcement",
+    "plan-mode"
+  ],
   "commands": [
     "./commands/temper.md",
     "./commands/intent.md",
@@ -40,5 +55,50 @@
     "./skills/source-driven-development",
     "./skills/grill-me",
     "./skills/teach-me"
-  ]
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "uiMode": {
+      "type": "string",
+      "title": "Temper UI mode",
+      "description": "How much Temper draws: full, minimal or off. Denials and slash subcommands work in every mode.",
+      "default": "full"
+    },
+    "enforcement": {
+      "type": "string",
+      "title": "Temper enforcement",
+      "description": "on refuses out-of-phase writes and early commits; off keeps the UI only. Values: on or off.",
+      "default": "on"
+    },
+    "fixMaxLoops": {
+      "type": "string",
+      "title": "Fix loop limit",
+      "description": "Failed Check to Fix loops before Temper stops and offers re-plan, override or hand over.",
+      "default": "3"
+    },
+    "prAttribution": {
+      "type": "string",
+      "title": "Pull request attribution",
+      "description": "on adds one Temper line to generated pull request descriptions. Values: on or off.",
+      "default": "on"
+    },
+    "phaseModels": {
+      "type": "string",
+      "title": "Per-phase models",
+      "description": "Optional. Comma separated phase=model pairs such as build=sonnet. Empty means no change.",
+      "default": ""
+    },
+    "reviewerModel": {
+      "type": "string",
+      "title": "Reviewer model",
+      "description": "Optional model for the Temper review agent. Empty means no change.",
+      "default": ""
+    },
+    "game": {
+      "type": "string",
+      "title": "Game",
+      "description": "Temper Run game. on offers it while Claude works (key 8) and answers /temper:temper play. command answers the command only and offers nothing. off hides it all. Off also reads false, no, 0, disabled and none. On also reads true, yes and 1. Any other value is on.",
+      "default": "on"
+    }
+  }
 }

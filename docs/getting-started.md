@@ -20,6 +20,21 @@ That's it. Claude Code loads Temper's commands and skills automatically, and you
 native commit gate that blocks a red commit. To set up explicitly instead, run
 `/temper:init`. For optional edit-time guardrails, `/temper:pack enable hooks`.
 
+### The phase bar (Claude Code 2.1.287 or later)
+
+On Claude Code 2.1.287 or later, the same install also loads the Temper mod. You get a phase bar
+with numbered actions, and Claude cannot edit code outside the current phase or commit before the
+gates pass. Check your version with `claude --version`. On an older version nothing changes.
+
+| Setting | Values | Effect |
+|---|---|---|
+| `uiMode` | `full`, `minimal`, `off` | How much Temper draws. Refusals work in every mode. |
+| `enforcement` | `on`, `off` | `off` keeps the bar and stops the refusals. |
+
+Change them with `/temper:temper mode <value>` and `/temper:temper enforcement <value>`, or in the
+plugin settings. Your organization can block mods; the plugin then works as before. See
+[Testing the mod](mods-testing.html) for a checklist.
+
 ### Other AI Assistants
 
 For any AI assistant that reads markdown:

@@ -13,65 +13,68 @@
 
 ### Problem
 
-Release engineers and the CI pipeline consume Temper's gate results, but today the
-only renderings are `temper report` (human table) and `.temper/gates.json`
-(internal state keyed by stage). A CI step that wants "did every gate pass, and
-which requirement failed" must parse the internal file and re-implement verdict
-logic. Concretely: a pipeline step that wants to fail the build when the check
-gate FAILs currently greps `gates.json` for `"verdict": "FAIL"` next to
-`"check"` — which breaks the moment the state schema gains a field. Desired:
-one stable, documented JSON rendering of the current run's ledger that a machine
-can consume without knowing Temper's internals.
+Release engineers and the CI pipeline read Temper's gate results. Today they have
+two choices. `temper report` prints a table for people. `.temper/gates.json` holds
+internal state, keyed by stage. A CI step must parse that file and copy the verdict
+logic. One pipeline greps `gates.json` for `"verdict": "FAIL"` next to `"check"`.
+That grep breaks when the state schema gains a field. We want one stable JSON
+output for the current run. A machine must be able to read it without knowing
+Temper's internals.
 
-Facts: `temper report --json` outputs `gates.json` verbatim (internal shape).
-Assumption: CI consumers want per-requirement rows, not only per-stage verdicts —
-to be confirmed by the first consumer.
+Facts: `temper report --json` prints `gates.json` as it is (the internal shape).
+Assumption: CI users want one row for each requirement, not only one verdict for
+each stage. The first CI user will confirm this.
 
 ### Success Criteria
 
-- [ ] AC-01 [required]: `temper report --ci` emits a stable JSON document whose
-  top level is a flat array, one object per stage with `stage`, `verdict`, and a
+- [ ] AC-01 [required]: `temper report --ci` prints one JSON document. Its top level is
+  a flat array. Each stage is one object with `stage`, `verdict`, and a
   `requirements[]` array of `{name, pass, detail}` (source: docs/ci-guide.md §3 | PROJ-1187)
-  Why: CI steps are the primary consumer; without a stable machine shape every
-  consumer re-derives it and breaks on internal changes.
+  Why: CI steps are the main users. Without a stable shape, each user must build
+  its own parser, and it breaks when internals change.
   Validate: scenario — covered by "CI JSON shape is stable across a run"
-- [ ] AC-02 [optional]: the JSON includes override rows with approver identity
-  for any overridden stage (proposed)
-  Why: an audit trail in CI output makes an overridden FAIL visible where the
-  merge decision is actually made.
-  Validate: manual — inspect output on a run with one override recorded
-  Deferred: needs the audit-compliance sign-off; decide at the plan gate.
+- [ ] AC-02 [optional]: The JSON may list override rows, with the approver name, for
+  each overridden stage (source: docs/ci-guide.md §4)
+  Why: an audit trail in the CI output shows an overridden FAIL at the place where
+  people decide to merge.
+  Validate: manual — read the output of a run with one recorded override
+  Deferred: needs the audit-compliance sign-off. Decide at the plan gate.
+- [ ] AC-03 [required]: The JSON output is the same for the same ledger, byte for byte
+  (proposed)
+  Why: CI caches and diffs compare the output, so random order causes false alarms.
+  Validate: scenario — covered by "Same ledger gives the same bytes"
 
 ### Constraints
 
-- JSON output must be producible with no network access and stdlib only (source: scripts/temper header contract)
-- No change to `.temper/gates.json`'s internal schema (source: CHANGELOG compatibility note | PROJ-1187)
-- Output must be deterministic — same ledger, byte-identical JSON (proposed)
+- The command makes no network call and uses only the standard library (source: scripts/temper header contract)
+- The internal schema of `.temper/gates.json` does not change (source: CHANGELOG compatibility note | PROJ-1187)
+- The output has no color codes and no progress text (proposed)
 
 ### Scope and Non-goals
 
-- In scope: `temper report` subcommand, its output contract, tests in scripts/tests/test-temper.sh
-- Out of scope: HTML renderings, remote/upload of the report, the gates.json write path
-- Must keep working: `temper report` (human table) and `temper report --json` (verbatim gates.json)
+- In scope: the `temper report` subcommand, its output contract, tests in scripts/tests/test-temper.sh
+- Out of scope: HTML output, upload of the report, the write path of gates.json
+- Must keep working: `temper report` (human table) and `temper report --json` (gates.json as it is)
 
 ### Business Outcome
 
-Teams adopt Temper's gate in CI without wrapper scripts; measurable as the count
-of downstream repos consuming `--ci` output (owner: Dana, reviewed quarterly).
+Teams use Temper's gate in CI without wrapper scripts. We measure this as the
+number of downstream repos that read `--ci` output (owner: Dana, reviewed each quarter).
 
 ### Target Users
 
-- Release engineer: pastes one `temper report --ci` line into the pipeline → the CI step fails the build on any FAIL requirement without parsing internals
-- Reviewer: opens the CI job log → sees per-requirement pass/fail rows for every stage of the run
+- Release engineer: adds one `temper report --ci` line to the pipeline → the CI step fails the build on any FAIL requirement, with no parsing of internals
+- Reviewer: opens the CI job log → sees pass or fail rows for every stage of the run
 
 ### Open Questions
 
-- Blocking: does `--ci` exit nonzero when any stage FAILs, or is exit code owned by `gate` alone; consequence: pipelines that rely on exit code would need a wrapper if we choose wrong; owner: Marco.
-- Deferred: should the array include stages with no verdict yet; consequence: consumers must handle absent stages either way; why work can proceed: shape is unaffected, absent stages can be omitted now and added compatibly; needed by: before the first external consumer.
+- Blocking: does `--ci` exit non-zero when any stage FAILs, or does `gate` alone own the exit code; consequence: pipelines that use the exit code need a wrapper if we choose wrong; owner: Marco.
+- Deferred: does the array include stages with no verdict yet; consequence: users must handle missing stages either way; why work can proceed: the shape does not change, so we can omit missing stages now and add them later; needed by: before the first outside user.
 
 ### Decisions
 
-- Include `requirements[]` per stage or only verdicts? -> per-stage verdict plus full requirements array (Dana Okafor, 2026-09-29)
+- Include `requirements[]` for each stage or only verdicts? -> a verdict plus the full requirements array for each stage (Dana Okafor, 2026-09-29)
+- The CI guide says override rows "may" appear. Is that required or optional? -> optional. We keep the source word in AC-02 (Marco Reyes, 2026-09-29)
 
 ---
 

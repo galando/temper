@@ -1,5 +1,5 @@
 {
-  "description": "Temper plugin hooks: deterministic standalone-stage gate guarantee. stage-marker.sh (UserPromptSubmit) records which gate a /temper:{plan,build,review,check} session owes; verify-stage-gate.sh (Stop) refuses to end the session until .temper/gates.json carries a verdict for it — any verdict, PASS or FAIL. Both fail open on every path except the one detected violation. See docs/decisions/0005-deterministic-stage-gate-enforcement.md.",
+  "description": "Temper plugin hooks: deterministic standalone-stage gate guarantee. stage-marker.sh (UserPromptSubmit) records which gate a /temper:{plan,build,review,check} session owes; verify-stage-gate.sh (Stop) refuses to end the session until .temper/gates.json carries a verdict for it \u2014 any verdict, PASS or FAIL. Both fail open on every path except the one detected violation. See docs/decisions/0005-deterministic-stage-gate-enforcement.md.",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -21,5 +21,8 @@
         ]
       }
     ]
-  }
+  },
+  "modules": [
+    "./temper-mod/register.tsx"
+  ]
 }

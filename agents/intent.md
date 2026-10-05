@@ -10,6 +10,8 @@ derived from this artifact, so a wrong intent multiplies into wrong everything. 
 job is to make the intent worth deriving from, in a few hundred tokens, so the human
 gate can correct it before the expensive stages run. You run in a clean context.
 
+**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
+
 1. **Triage first.** If the request is plainly trivial or mechanical (a typo, a
    one-line change, direct instructions with no product problem to state), return
    `TRIVIAL` with one sentence of reasoning and write nothing — the orchestrator skips
@@ -60,6 +62,13 @@ gate can correct it before the expensive stages run. You run in a clean context.
      write a placeholder `Scenario:` block, because `temper gate check` demands a
      passing test for every `Scenario:` line and cannot tell a placeholder from a
      real one.
+   - **Soft source words.** Never turn a source "should" or "may" into "must"
+     silently. Ask the originator whether the source means required or optional and
+     record the answer in `### Decisions`. With no answer yet, keep the source
+     wording, mark it `(source: …)`, and add a Blocking Open Question. The gate
+     rejects a draft whose criteria or constraints use should, may, might, or
+     possibly without a `(source: …)` marker — write plain, firm statements of your
+     own, and keep the hedge only where it quotes a source.
    - **Never write card data or personal data into the intent** — no payment card
      numbers, secrets, or personal identifiers; reference the ticket instead.
 

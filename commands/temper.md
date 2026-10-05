@@ -5,6 +5,8 @@ argument-hint: "<feature-description>"
 
 # Temper: Unified SDLC Command
 
+**FIRST OUTPUT (do this before reading anything else).** Look at your system prompt now. If it does not contain a line reading `Temper enforcement: active`, your very first line of text in this reply must be exactly: `Temper enforcement is off here (no mods support); continuing with prompt based phases.` Then carry on as written below. Never treat the missing line as an error, and say it only once per conversation. If the line is present, say nothing about it.
+
 **Goal:** Run intent → plan → design? → build → review+check → commit with a human gate
 at every stage (or, if armed, unattended past the plan gate). Every gate verdict is
 computed by the `temper` CLI from an evidence ledger — never asserted by a model. The
@@ -17,6 +19,32 @@ the Problem statement costs words at the intent gate and costs the whole plan af
 /temper "add login feature"    # Start new feature
 /temper                        # Resume or continue
 ```
+
+---
+
+## Reserved first words
+
+When the first word of the arguments is one of these, handle it here and do not start a
+run. With the Temper mod loaded (the system prompt has `Temper enforcement: active`),
+the mod already answers the read-only words and has already recorded the person's
+decision for the others; this table is what you do next, and everything you do when the
+mod is absent. Any other first word is a feature description.
+
+| Word | What to do |
+|---|---|
+| `status` | Print `$TEMPER status` and `$TEMPER state get next_stage`. |
+| `timeline` / `report` | Print `$TEMPER report`. |
+| `help` | List these words with their one line meanings. |
+| `approve` / `next` | Treat it as the human answer at the current gate: confirm the gate with `$TEMPER gate {stage}`, record the move with `$TEMPER state advance {stage}_complete {next}`, then continue. Refuse and print the failing requirements when the gate is not PASS. |
+| `back <phase> <reason>` | `$TEMPER state loop {current stage} {phase} --reason "{reason}"` (stop when it prints `BLOCKED`: the loop budget is spent), `$TEMPER state set next_stage {phase}`, record the reason with `$TEMPER evidence add --stage {phase} --phase feedback --claim "back: {reason}"`, and rerun every later gate before advancing. |
+| `override <reason>` | `$TEMPER override {stage} --reason "{reason}"`. With no reason, refuse: "Override needs a reason. Use /temper:temper override <reason>." The skip is the person's go-ahead for that stage: with the Temper bar, the bar sends `continue {stage}` after the skip (the hook lets that stage's `state advance` through once the skip is recorded), and you do that stage's On Continue steps and launch the next stage. Without the bar, treat it as the answer "Override and continue" and go on to the next stage. |
+| `accept <id> <reason>` | `$TEMPER evidence accept --stage review --id {id} --reason "{reason}"`. With no reason, refuse. |
+| `drift <add\|revert\|allow> <reason>` | `add`: put the file in plan.md's Files table. `revert`: restore the file to its committed state. `allow`: continue once. Record the choice with `$TEMPER evidence add --stage build --phase feedback --claim "drift {path}: {choice}: {reason}"`. |
+| `pause` / `resume` | Stop at the next gate and wait for the person, or continue from it. |
+| `pr` | Write a pull request description from `$TEMPER report`: overrides, accepted findings and drift decisions with their reasons. |
+| `continue <stage>` | The person already approved `<stage>` (the Temper bar recorded the decision; the matching state advance is allowed once). Do the "On Continue" steps of that stage exactly as written for it: the status flip and `Accepted-by` for Intent, `state advance`, the feature branch (`git checkout -b feature/{slug}` when not on it) and the commit of the approved artifacts for Plan, `base_sha` before the first Build launch, and so on. Use the `state advance` of that stage as written. Then launch the next stage. Do not ask the gate question. The bar also sends it after the person skipped `<stage>` with a reason (the stage's gate may then be FAIL; the skip is recorded by `$TEMPER override`, which the mirror message asks for): the same steps apply. For `check` do only the `state advance check_complete commit`: the Done bar's Commit button asks for the commit, so do not commit and do not run the Commit section. |
+| `discuss <text>` | Treat the text as the person's message at the current gate: answer it, and if it asks for a change, make the change, run the gate again, then wait (see Gates). It never advances a stage. |
+| `mode`, `enforcement`, `pane`, `play` | These belong to the Temper mod. Without it, say they are not available here. The game needs the mod. |
 
 ---
 
@@ -102,6 +130,12 @@ anyway, and it's one round-trip instead of several.
   and `$TEMPER state get stage` to find where you left off. If it exists for a
   **different** feature than `$ARGUMENTS`, ask the user: resume the existing one, or
   overwrite and start fresh (`$TEMPER state clear` then re-init).
+- **With the Temper bar** (`Temper enforcement: active`): the CLI state is the truth for where the run is.
+  Never run `state init`, `state clear`, `state archive` or `state loop` on your own while a run is
+  active (the mod refuses them). If Resume Validation fails or the state looks wrong, stop, show what
+  is wrong in one line, and wait. Never choose Start over or Delete saved state yourself. If a mirror
+  call (`state advance`, `state set next_stage`) is refused or fails, say so in one line and wait: the bar
+  shows the problem and offers to record the choice again.
 - **On commit:** `$TEMPER state clear` (evidence, gates, loop counters — spec artifacts
   under `.temper/specs/` are untouched, they're the permanent record).
 
@@ -113,7 +147,15 @@ Every stage gate follows the same shape. After a stage Agent returns:
    not restated here).
 2. Run `$TEMPER gate {stage}`. It prints PASS/FAIL with each requirement's status and
    writes the verdict to `.temper/gates.json`.
-3. Show an `AskUserQuestion` gate:
+3. Show an `AskUserQuestion` gate. **With the Temper bar** (the system prompt has the line
+   `Temper enforcement: active`) do not show it: the bar already offers the same choices with
+   the same words (Continue to, Loop back to, Skip with a reason, Save for later, Grill me,
+   Teach me, Discuss) and records the decision. Print the stage panel and the gate result, then
+   end the turn with one line: `Waiting for you. Use the Temper bar, or type a change.` The
+   person's message at a gate is the original "Other": if the user writes a message at a gate,
+   answer it; if it asks for a change, make the change, run the gate again, then wait for the
+   user again. Every other dialog stays (the autonomy arming choice, clarifying questions, the
+   Build checkpoint feedback text). Without the line, show the gate as follows:
    - **On PASS:** `"Continue to {next} (Recommended)"` / `"Save for later"` / free-text
      `"Other"` for a change request (make the edit, re-run the gate, re-show).
    - **On FAIL:** `"Loop back to {upstream stage}"` (if `feedback.enabled` and the loop
@@ -143,6 +185,19 @@ When a gate FAILs and the user selects "Loop back":
 2. Re-launch the upstream stage's Agent (same template as its first launch), adding one
    line to its prompt: *"Feedback re-entry: {reason}. Fix this, then continue."*
 3. When it returns, re-run the downstream gate that triggered the loop.
+
+**With the Temper bar** (the system prompt has `Temper enforcement: active`) the hook refuses
+`state loop` from you, because a loop moves the run and only the person decides that. The
+person's **Loop back** button (or `/temper:temper back <phase> <reason>`) is the loop: the
+mod records the decision and sends you one message. In it, run `$TEMPER state loop {from}
+{to} --reason "<why>"` (the hook lets it through once, for that decision; it keeps the
+budget and clears the evidence of `{to}` and every later stage), and when it does not print
+`BLOCKED`, run `$TEMPER state set next_stage {to}`. When it prints `BLOCKED`, the budget is
+spent: say so in one line and stop (the person can skip with a reason or save for later). The
+bar then runs `/temper:temper` with no arguments: continue from `next_stage` (see Resume) and
+add the line from step 2, with the reason from that message, to the stage's prompt. Do not
+call `state loop` or `state set next_stage` on your own; the hook refuses both without the
+person's decision.
 
 That's the whole mechanism: a loop is a normal stage re-launch. Build→Plan is the one
 exception: it's human-driven only (max 1 per run, no circuit breaker) because it means
@@ -353,6 +408,10 @@ Run `$TEMPER gate commit`. It aggregates every upstream gate's last verdict (PAS
 overridden), and — only when `run_mode == autonomous` — blast radius and park-on-touch.
 
 - **PASS (interactive):** `AskUserQuestion` — "Commit" / "Save for later" / "Other".
+  **With the Temper bar** do not ask: the Done bar's Commit button is this question, and its
+  message ("The user pressed Commit ...") means the person chose Commit. The bar never clears
+  or archives the state itself, so you do every step below, in order, ending with `state
+  clear`; when the bar sees the state gone it shows no run (it never goes back to Intent).
   On Commit: set `intent.md`'s header to `**Status:** completed` + `**Completed:**
   {date}` — this orchestrated path owns the terminal state flip (the standalone
   `/temper:check` gate does it only when Check runs as its own command; here the
@@ -387,7 +446,9 @@ what was actually verified, not a narrated summary.
 `/temper "new feature"` while state exists for a **different** feature → follow
 "Nested Invocation Protection" there (say "feature", not "item"). `/temper` (no args) for
 the **same** feature already in progress → "Continue from {next_stage} (Recommended)" or
-"Start over (replan)".
+"Start over (replan)". **With the Temper bar** (`Temper enforcement: active`) skip that
+question: the bar's Continue button runs `/temper` with no arguments after the person's
+decision is recorded, so continue from `{next_stage}` at once and launch its stage.
 
 ---
 

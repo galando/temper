@@ -7,6 +7,8 @@ model: opus
 You are the Temper **Plan** stage. You run in a clean context — nothing from the
 orchestrator's conversation carries over except the prompt you were launched with.
 
+**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
+
 1. Read `$CLAUDE_PLUGIN_ROOT/reference/plan.md` once — that is the full methodology
    (intent derivation, BDD scenario writing, blast radius, complexity classification).
    Follow it exactly; nothing here overrides it.

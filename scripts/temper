@@ -11,11 +11,12 @@
 #   temper init                                  scaffold .temper/ in the current project
 #   temper state <get|set|advance|loop|archive|clear> ..  read/write .temper/build-state.json;
 #                                                 archive writes {spec}/gate-ledger.json
-#   temper evidence <add|run|list|resolve|clear> ...  append/execute-and-record/read/mark-fixed/clear the ledger
+#   temper evidence <add|run|list|resolve|accept|clear> ...  append/execute-and-record/read/mark-fixed/clear the ledger
 #   temper gate <stage> [--spec-path P]           compute PASS/FAIL for a stage, record verdict
 #   temper model <stage> | --all                  resolve a stage's model (config override > frontmatter)
 #   temper override <stage> --reason "..."        record a human override of a FAIL gate
 #   temper report [--json]                        render the current run's gate ledger
+#   temper status [--json] [--spec-path P]        per-criterion passed/open view; writes .temper/status.json
 #   temper bands [--json]                         deterministic control-band drift check
 #                                                 over .temper/metrics.json history
 #   temper metrics append <series> <value>        append a numeric point to <series>_history
@@ -39,6 +40,7 @@ CONFIG_FILE="${TEMPER_CONFIG:-$REPO_ROOT/.claude/temper.config}"
 STATE_FILE="$TEMPER_DIR/build-state.json"
 LOOPS_FILE="$TEMPER_DIR/feedback-loops.json"
 GATES_FILE="$TEMPER_DIR/gates.json"
+STATUS_FILE="$TEMPER_DIR/status.json"
 OVERRIDES_FILE="$TEMPER_DIR/overrides.json"
 EVIDENCE_DIR="$TEMPER_DIR/evidence"
 METRICS_FILE="$TEMPER_DIR/metrics.json"
@@ -441,6 +443,11 @@ cmd_state_loop() { # temper state loop <from> <to> --reason "..."
   [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
   local max_per_type
   max_per_type="$(_cfg_get loops.max-per-type 2)"
+  # fix.max-loops bounds the check->fix/build pair only when the key is set (Decision 5);
+  # every other pair, and an install without the key, keep loops.max-per-type.
+  if [[ "$from" == "check" && ( "$to" == "fix" || "$to" == "build" ) ]]; then
+    max_per_type="$(_cfg_get fix.max-loops "$max_per_type")"
+  fi
   local result
   result=$(python3 -c "
 import json, sys
@@ -628,6 +635,8 @@ for i, e in enumerate(json.load(open(sys.argv[1])), 1):
         line += f\" (severity: {e.get('severity')})\"
     if e.get('resolved'):
         line += f\" [resolved: {e['resolved'].get('fixed_by')}]\"
+    if e.get('accepted'):
+        line += f\" [accepted: {e['accepted'].get('reason')}]\"
     if e.get('cmd'):
         line += f\" (cmd: {e.get('cmd')}, exit {e.get('exit_code')})\"
     if e.get('scenario'):
@@ -669,9 +678,57 @@ if not e.get('severity'):
     sys.exit("FAIL: finding #%s carries no severity, so it never counted against a gate" % id_s)
 if e.get('resolved'):
     sys.exit("FAIL: finding #%s is already resolved (%s)" % (id_s, e['resolved'].get('fixed_by')))
+if e.get('accepted'):
+    sys.exit("FAIL: finding #%s is already accepted (%s)" % (id_s, e['accepted'].get('reason')))
 e['resolved'] = {'fixed_by': fixed_by, 'ts': ts}
 json.dump(entries, open(f, 'w'), indent=2)
 print("OK: %s finding #%s resolved — %s" % (e.get('severity'), id_s, fixed_by))
+PY
+}
+
+cmd_evidence_accept() { # temper evidence accept --stage <s> --id <n> --reason "<why>"
+  # A person decides a finding stays as it is. Like resolve, the row is kept — the ledger
+  # still shows what was found — but the gate stops counting it, and the decision carries
+  # a reason, an author (git identity, as override does) and a time.
+  _ensure_dirs
+  local stage="" id="" reason=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --stage) stage="$2"; shift 2 ;;
+      --id) id="$2"; shift 2 ;;
+      --reason) reason="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  [[ -n "$stage" && -n "$id" && -n "${reason//[[:space:]]/}" ]] || { echo "FAIL: usage: temper evidence accept --stage <s> --id <n> --reason \"<why>\" (a non-empty reason is required; ids from 'temper evidence list --stage <s>')" >&2; return 1; }
+  local file; file="$(_evidence_file "$stage")"
+  [[ -f "$file" ]] || { echo "FAIL: no evidence recorded for stage '$stage'" >&2; return 1; }
+  local by name email
+  name="$(git config user.name 2>/dev/null || true)"
+  email="$(git config user.email 2>/dev/null || true)"
+  by="$name"
+  [[ -n "$email" ]] && by="${by:+$by }<$email>"
+  [[ -n "$by" ]] || by="${USER:-unknown}"
+  python3 - "$file" "$id" "$reason" "$by" "$(_now)" <<'PY'
+import json, sys
+f, id_s, reason, by, ts = sys.argv[1:6]
+entries = json.load(open(f))
+try:
+    idx = int(id_s)
+except ValueError:
+    sys.exit("FAIL: --id must be the 1-based number shown by 'temper evidence list'")
+if idx < 1 or idx > len(entries):
+    sys.exit("FAIL: no finding #%s in this stage (it has %d entries)" % (id_s, len(entries)))
+e = entries[idx - 1]
+if not e.get('severity'):
+    sys.exit("FAIL: finding #%s carries no severity, so it never counted against a gate" % id_s)
+if e.get('resolved'):
+    sys.exit("FAIL: finding #%s is already resolved (%s)" % (id_s, e['resolved'].get('fixed_by')))
+if e.get('accepted'):
+    sys.exit("FAIL: finding #%s is already accepted (%s)" % (id_s, e['accepted'].get('reason')))
+e['accepted'] = {'reason': reason, 'author': by, 'ts': ts}
+json.dump(entries, open(f, 'w'), indent=2)
+print("OK: %s finding #%s accepted by %s — %s" % (e.get('severity'), id_s, by, reason))
 PY
 }
 
@@ -737,8 +794,9 @@ cmd_evidence() {
     run) cmd_evidence_run "$@" ;;
     list) cmd_evidence_list "$@" ;;
     resolve) cmd_evidence_resolve "$@" ;;
+    accept) cmd_evidence_accept "$@" ;;
     clear) cmd_evidence_clear "$@" ;;
-    *) echo "FAIL: usage: temper evidence <add|run|list|resolve|clear> ..." >&2; return 1 ;;
+    *) echo "FAIL: usage: temper evidence <add|run|list|resolve|accept|clear> ..." >&2; return 1 ;;
   esac
 }
 
@@ -751,7 +809,7 @@ cmd_config() {
   local sub="${1:-}"; shift || true
   case "$sub" in
     get) [[ -n "${1:-}" ]] || { echo "FAIL: usage: temper config get <dot.path> [default]" >&2; return 1; }
-         _cfg_get "$1" "${2:-}" ;;
+         if [[ "$1" == "fix.max-loops" ]]; then _cfg_get "$1" "${2:-3}"; else _cfg_get "$1" "${2:-}"; fi ;;
     *) echo "FAIL: usage: temper config get <dot.path> [default]" >&2; return 1 ;;
   esac
 }
@@ -853,7 +911,7 @@ import json, sys
 file, sev_csv = sys.argv[1:3]
 sevs = set(s for s in sev_csv.split(',') if s)
 entries = json.load(open(file))
-print(sum(1 for e in entries if e.get('severity') in sevs and not e.get('resolved')))
+print(sum(1 for e in entries if e.get('severity') in sevs and not e.get('resolved') and not e.get('accepted')))
 " "$file" "$sev_csv"
 }
 
@@ -867,6 +925,19 @@ file, sev_csv = sys.argv[1:3]
 sevs = set(s for s in sev_csv.split(',') if s)
 entries = json.load(open(file))
 print(sum(1 for e in entries if e.get('severity') in sevs and e.get('resolved')))
+" "$file" "$sev_csv"
+}
+
+_ev_count_accepted_in() { # _ev_count_accepted_in <stage> <comma-separated severities>
+  local stage="$1" sev_csv="$2"
+  local file; file="$(_evidence_file "$stage")"
+  [[ -f "$file" ]] || { echo 0; return; }
+  python3 -c "
+import json, sys
+file, sev_csv = sys.argv[1:3]
+sevs = set(s for s in sev_csv.split(',') if s)
+entries = json.load(open(file))
+print(sum(1 for e in entries if e.get('severity') in sevs and e.get('accepted')))
 " "$file" "$sev_csv"
 }
 
@@ -934,14 +1005,14 @@ def add(name, ok, detail):
     reqs.append({'name': name, 'pass': ok, 'detail': detail})
 
 m = re.search(r'^\*\*Status:\*\*\s*(draft|accepted|completed)\s*$', "\n".join(lines), re.I | re.M)
-status = m.group(1).lower() if m else 'draft'
+status = m.group(1).lower() if m else None   # None: missing or unknown Status header
 if status != 'draft':
     d = ("skipped — intent is %s; this check applies to drafts only "
          "(a recorded acceptance is never revisited)") % status
     for name in ('task context recorded', 'criteria why', 'target users action chain',
                  'criteria ids', 'criteria priority', 'criteria validate',
                  'open questions labeled', 'no duplicate question', 'header fields',
-                 'no scenarios in draft'):
+                 'no scenarios in draft', 'no soft words'):
         add(name, True, d)
     print("\n".join(json.dumps(r) for r in reqs))
     sys.exit(0)
@@ -1083,6 +1154,117 @@ add('no scenarios in draft', not scen,
     'no Scenario: lines — Plan writes the scenarios' if not scen
     else 'Scenario: line(s) at ' + ' | '.join(str(n) for _, n in scen))
 
+# --- no soft words ---------------------------------------------------------
+# A criterion or constraint states what is required. should/may/might/possibly leave
+# the reader to guess. A statement that carries a (source: ...) marker is exempt: the
+# hedge word belongs to the originator, and ### Decisions records what it means.
+SOFT_RE = re.compile(r'\b(should|may|might|possibly)\b', re.I)
+META_RE = re.compile(r'^\s*(Why|Validate|Deferred|Blocking):', re.I)
+
+def statements(sec_lines):
+    """(label, statement text) per real bullet. The statement is the bullet line plus
+    its wrapped continuation lines, up to the first Why:/Validate:/Deferred: line."""
+    out, cur = [], None
+    in_fence = False
+    for l in sec_lines:
+        if re.match(r'^\s*(`{3,}|~{3,})', l):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if A.BULLET_RE.match(l):
+            if cur: out.append(cur)
+            content = A.strip_checkbox(l)
+            if content.startswith('{'):
+                cur = None
+                continue
+            m = re.match(r'^(AC-\d+)\b', content)
+            cur = {'label': m.group(1) if m else '"%s"' % content[:30], 'text': [content], 'open': True}
+        elif cur is not None and cur['open']:
+            if META_RE.match(l):
+                cur['open'] = False
+            elif l.strip():
+                cur['text'].append(l.strip())
+    if cur: out.append(cur)
+    return [(c['label'], ' '.join(c['text'])) for c in out]
+
+soft = []
+for kind, sname in (('criterion', 'Success Criteria'), ('constraint', 'Constraints')):
+    for lab, text in statements(sec(sname)):
+        if re.search(r'\(source:', text, re.I):
+            continue
+        body = re.sub(r'`[^`]*`', ' ', text)
+        words = []
+        for w in SOFT_RE.findall(body):
+            if w.lower() not in words:
+                words.append(w.lower())
+        if words:
+            soft.append('%s %s uses %s' % (kind, lab, ', '.join(words)))
+add('no soft words', not soft,
+    'no should/may/might/possibly in a criterion or constraint without a (source: ...) marker' if not soft
+    else 'soft word in: ' + ' | '.join(soft))
+
+print("\n".join(json.dumps(r) for r in reqs))
+PY
+}
+
+_intent_closure_reqs() { # _intent_closure_reqs <intent.md> -> JSON rows: "out of scope stated"
+                         # and "open questions resolved" (both apply to drafts only; the second is informational)
+  local script_dir; script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  python3 - "$script_dir" "$1" <<'PY'
+import json, re, sys
+sys.path.insert(0, sys.argv[1])
+import acceptance as A
+
+lines = open(sys.argv[2]).read().splitlines()
+reqs = []
+def add(name, ok, detail):
+    reqs.append({'name': name, 'pass': ok, 'detail': detail})
+
+m = re.search(r'^\*\*Status:\*\*\s*(draft|accepted|completed)\s*$', "\n".join(lines), re.I | re.M)
+status = m.group(1).lower() if m else None   # None: missing or unknown Status header
+
+# Both requirements apply only while the intent is a draft: a recorded acceptance is never
+# revisited, so an accepted or completed intent skips them with a PASS.
+SKIP = ('skipped \u2014 intent is %s; this check applies to drafts only (a recorded acceptance is never revisited)' % status
+        if status else
+        'skipped \u2014 no recognized Status header (draft, accepted or completed); this check applies to drafts only, and the status header requirement reports the missing header')
+
+# --- out of scope stated: a '- Out of scope:' bullet with non-placeholder text ----------
+scope = A.section_lines(lines, 'Scope and Non-goals') or A.section_lines(lines, 'Scope')
+found = False
+for l in scope:
+    om = re.match(r'^\s*-\s*Out of scope:\s*(.*?)\s*$', l, re.I)
+    if om and re.search(r'[A-Za-z0-9]', A.blank_placeholders(om.group(1))):
+        found = True
+        break
+if status != 'draft':   # explicitly draft only
+    add('out of scope stated', True, SKIP)
+else:
+    add('out of scope stated', found,
+        'Scope states what is out of scope' if found
+        else 'no "- Out of scope:" bullet with real text under ### Scope and Non-goals')
+
+# --- open questions resolved: a draft reports its Blocking questions (informational) -------
+# Drafts legitimately carry Blocking questions (the shipped example does), so this never fails
+# a draft; it names what is still open so the person answers it before accepting.
+if status != 'draft':
+    add('open questions resolved', True, SKIP)
+else:
+    blocking = []
+    cur = None
+    for l in A.section_lines(lines, 'Open Questions'):
+        if A.BULLET_RE.match(l):
+            cur = [l]
+            blocking.append(cur)
+        elif cur is not None:
+            cur.append(l)
+    blocking = [' '.join(b).strip()[:60] for b in blocking
+                if not A.strip_checkbox(b[0]).startswith('{')
+                and re.match(r'^\W*blocking\b', A.strip_checkbox(b[0]), re.I)]
+    add('open questions resolved', True,
+        'no Blocking question remains' if not blocking
+        else '%d Blocking question(s) still open on the draft; answer them into ### Decisions before accepting: %s' % (len(blocking), ' | '.join(blocking)))
 print("\n".join(json.dumps(r) for r in reqs))
 PY
 }
@@ -1145,6 +1327,11 @@ gate_intent() {
       reqs+=("$draft_line")
       grep -q '"pass": false' <<<"$draft_line" && all_pass=0
     done < <(_intent_draft_reqs "$spec_path/intent.md")
+    while IFS= read -r draft_line; do
+      [[ -z "$draft_line" ]] && continue
+      reqs+=("$draft_line")
+      grep -q '"pass": false' <<<"$draft_line" && all_pass=0
+    done < <(_intent_closure_reqs "$spec_path/intent.md")
   fi
   local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
@@ -1369,7 +1556,7 @@ file, sev_csv = sys.argv[1:3]
 sevs = set(s for s in sev_csv.split(',') if s)
 entries = json.load(open(file))
 claims = [e.get('claim') or '(no claim)' for e in entries
-          if e.get('severity') in sevs and not e.get('resolved')]
+          if e.get('severity') in sevs and not e.get('resolved') and not e.get('accepted')]
 print('\x1f'.join(claims))
 " "$file" "$sev_csv"
 }
@@ -1396,6 +1583,8 @@ gate_review() {
   local resolved; resolved=$(_ev_count_resolved_in review "$sev_csv")
   local resolved_note=""
   [[ "$resolved" -gt 0 ]] && resolved_note=", $resolved resolved in this run"
+  local accepted; accepted=$(_ev_count_accepted_in review "$sev_csv")
+  [[ "$accepted" -gt 0 ]] && resolved_note+=", $accepted accepted"
   local all_pass=1 reqs=()
   if [[ "$n" -eq 0 ]]; then
     reqs+=("$(_req "no blocking findings" 1 "0 open findings at severity [$sev_csv]$resolved_note")")
@@ -1718,6 +1907,8 @@ cmd_gate() {
   local verdict="FAIL"
   [[ "$all_pass" == "1" ]] && verdict="PASS"
   _gate_write_verdict "$stage" "$verdict" "$reqs_json"
+  # Per-criterion status for the live view. Fail open: never changes the verdict.
+  _status_write "$spec_path" >/dev/null 2>&1 || true
 
   echo "temper gate $stage -> $verdict"
   python3 -c "
@@ -1728,6 +1919,51 @@ for r in json.loads(sys.argv[1]):
 " "$reqs_json"
 
   [[ "$verdict" == "PASS" ]] && return 0 || return 1
+}
+
+# ---------------------------------------------------------------------------
+# status — per-criterion pass/open view of intent.md against the evidence ledger,
+# written to .temper/status.json after every gate (the mods UI reads it; nothing
+# here is a verdict — gates.json owns those).
+# ---------------------------------------------------------------------------
+
+_status_write() { # _status_write <spec-path> -> writes .temper/status.json, prints it
+  local spec_path="$1" out
+  [[ -n "$spec_path" && -f "$spec_path/intent.md" ]] || return 1
+  out="$(python3 "$PLUGIN_ROOT/scripts/acceptance.py" status "$spec_path/intent.md" "$EVIDENCE_DIR")" || return 1
+  printf '%s\n' "$out" > "$STATUS_FILE" || return 1
+  printf '%s\n' "$out"
+}
+
+cmd_status() { # temper status [--json] [--spec-path P]
+  _state_migrate_legacy
+  local as_json=false spec_path_override=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) as_json=true; shift ;;
+      --spec-path) spec_path_override="$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+  _ensure_dirs
+  local spec_path; spec_path="$(_spec_path "$spec_path_override")"
+  if [[ -z "$spec_path" || ! -f "$spec_path/intent.md" ]]; then
+    echo "FAIL: no intent.md to report on — pass --spec-path <dir> or run 'temper state init' first" >&2
+    return 1
+  fi
+  local out
+  out="$(python3 "$PLUGIN_ROOT/scripts/acceptance.py" status "$spec_path/intent.md" "$EVIDENCE_DIR")" || { echo "FAIL: could not compute criteria status" >&2; return 1; }
+  printf '%s\n' "$out" > "$STATUS_FILE" 2>/dev/null || true
+  if [[ "$as_json" == "true" ]]; then
+    printf '%s\n' "$out"
+  else
+    python3 -c "
+import json, sys
+for c in json.loads(sys.argv[1])['criteria']:
+    ev = '; '.join(c['evidence']) if c['evidence'] else 'no evidence'
+    print('  [%s] %s (%s) — %s' % ('v' if c['status'] == 'passed' else ' ', c['id'], c['priority'], ev))
+" "$out"
+  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -2015,6 +2251,7 @@ main() {
     model) cmd_model "$@" ;;
     override) cmd_override "$@" ;;
     report) cmd_report "$@" ;;
+    status) cmd_status "$@" ;;
     bands) cmd_bands "$@" ;;
     metrics) cmd_metrics "$@" ;;
     config) cmd_config "$@" ;;
@@ -2025,11 +2262,12 @@ temper — the deterministic spine of the Temper plugin
 Usage:
   temper init
   temper state <init|get|set|advance|loop|archive|clear> ...
-  temper evidence <add|run|list|resolve|clear> ...
+  temper evidence <add|run|list|resolve|accept|clear> ...
   temper gate <intent|plan|design|build|review|check|commit> [--spec-path P]
   temper model <intent|plan|design|build|review|check|rca|fix> | --all
   temper override <stage> --reason "..."
   temper report [--json]
+  temper status [--json] [--spec-path P]
   temper bands [--json]
   temper metrics append <series> <value>
   temper config get <dot.path> [default]

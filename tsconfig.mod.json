@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "target": "es2023", "lib": ["es2023"], "module": "esnext", "moduleResolution": "bundler",
+    "strict": true, "noUncheckedIndexedAccess": true, "noEmit": true, "skipLibCheck": true,
+    "jsx": "react", "jsxFactory": "h", "jsxFragmentFactory": "Fragment",
+    "typeRoots": ["./.claude-plugin/types"], "types": ["claude-code"]
+  },
+  "include": ["hooks/temper-mod", "types", "tests/mod"]
+}
