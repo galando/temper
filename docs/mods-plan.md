@@ -409,10 +409,15 @@ phase of the bar and of every deny from `build-state.json` (`next_stage`: `cliPh
 source of the phase. When the mod's picture and the CLI differ, the CLI wins; if the person's last move is not
 mirrored yet, the line "Temper state: the run is at <phase>. Your last choice is not recorded yet. Press 1 to
 record it." shows and key 1 re-submits the mirror prompt for that same pending decision (no new event, single
-use). A decision is spent after its call ran without error (`isError`), not when it is allowed. Fail open: an
-unreadable build-state or an unknown `next_stage` blocks nothing and writes nothing; a CLI that looks reset
-(earlier than checks that passed) does not block writes. A reload cannot go back; only a person `back` that
-was mirrored can.
+use). A decision is spent after its call ran, judged by what the call changed, not by its exit status: when a call
+ends in an error the mod compares the CLI's files (state, overrides, gates, evidence, loop counter) with the copy it
+took before the call, and a changed copy means the decision was used (`state advance ...; exit 1`). A call that
+failed and changed nothing gives the decision back. Fail open: an unknown `next_stage` blocks nothing and writes
+nothing; a CLI that looks reset (earlier than checks that passed) does not block writes. A reload cannot go back; only
+a person `back` that was mirrored can. A run that was in progress and whose `build-state.json` turns missing,
+unreadable or corrupt (chmod 000, a delete, `git clean`) stays enforced from the last known state, with one line that
+says so; it ends when the file reads again, when the person runs `/temper:temper enforcement off`, or on a reload.
+A run that was Done and is archived is no run (`state archive` after the commit is the normal end).
 
 Continue and the original On Continue steps. A button that moves the run forward records the person's decision
 and runs `/temper:temper continue <stage>` through `$.command.run`. The orchestrator does the "On Continue"
@@ -421,8 +426,18 @@ it through once because the matching decision exists. The mod writes no mirror p
 override and accept keep theirs). The mod's commit rule defers to `temper gate commit`: it allows a commit when
 every gate the CLI checks passed or was overridden, when every staged file is under `.temper/specs/` (seen from
 the `git add` calls of the session), or for a Build checkpoint (next stage build, command temper, the current
-branch from `.git/HEAD` equals the run's branch, plan and intent satisfied, last build test row green). The
-project root is kept in `$.state` (key `root`) from the first session start.
+branch from `.git/HEAD` equals the run's branch, plan, intent and, when the spec has a `design.md`, design
+satisfied, last build test row green). The artifact carve-out is for a plain `git commit` whose staged set the mod
+fully understands: every other way into the index (`git stage`, `mv`, `rm`, `apply --cached`, `update-index`,
+`checkout <tree> -- path`, `restore --staged`, `reset`, `stash`, `xargs git add`, `add -p|-i|-N|--pathspec-from-file`,
+an alias or any subcommand the mod does not know) makes the staged set unknown, and a pathspec commit (`git commit
+src/x.ts`), `-i`, `-o`, `merge`, `cherry-pick`, `am`, `pull`, `revert` and `commit-tree` never use it. `git add`
+paths are read against `git -C` and the `cd` of the shell (carried from one Bash call to the next), and compared
+with the CLI's case sensitive `^.temper/specs/`. The mod's picture of the index is the session's own: a file the
+person staged before, or a script that stages, is not seen, and the CLI commit gate and the native `pre-commit` hook,
+which read the real index, are the backstop. The project root is kept in `$.state` (key `root`) from the first
+session start; when no run was found there, it is looked for again (walking up from the session folder) each time
+the state is read, until a run is seen.
 
 Third review (#39 to #48). While a run is active and enforcement is on, a Bash command is refused
 when it names `temper` (a word, a path part, a glob, or a name inside a string, compared without
@@ -449,9 +464,40 @@ a `git -c alias` are treated as commits while the commit gate is open (`--abort`
 before its first await, ignores a press for a phase that has already moved ("That step is already
 done."), and ignores a second move within one second.
 
+Fourth review (hardening, `tests/mod/hardening.test.ts`). The stance does not change: the classifier is structural,
+fail closed where that is cheap, best effort; the hard guarantees are the editing tool deny and the native
+`pre-commit` hook. What was added, while a run is active:
+(1) a shell, `eval` or `source` that is given a program the text does not show is refused: a pipe from anything but
+`echo`/`printf` (or `cat` of a heredoc), a file on stdin, a process substitution, `xargs sh -c '{}'`, a `-c` string
+that is a substitution or an unset variable, and, for a program that is shown, any word split by quotes, `$`,
+backticks, backslashes, braces or globs. Quote and backslash splits (`te""mper`, `ov\erride`) are removed before
+the script name and the decision words are looked for. `eval "$(ssh-agent -s)"`, `eval "$(scripts/setup.sh)"` and
+the plain heredocs stay allowed. (2) A command that names a guarded file (`gates.json`, `status.json`,
+`overrides.json`, `build-state.json`, `feedback-loops.json`, `.claude/temper.config`, `.temper/evidence/*.json`, an
+events folder, `.git/hooks`), or a glob that can stand for one (`.tem*/gates.js*`), must be a plain read (`cat`, `grep`,
+`jq`, `head`, `tail`, `ls`, `stat`, `wc`, `diff`, `test`, `sed` without `-i`, `awk` whose program does not name it,
+`find` without a delete, write or non reading `-exec`, `git diff|log|show|status|ls-files|blame|grep|cat-file`, the
+Temper CLI) or it is refused: this closes `awk`, `sort -o`, `uniq in out`, `patch`, `find -fprintf`, `git
+checkout|restore|apply`, `tar`, `unzip`, `ed`, `ex`, `cp -l`, `ln -s` and the rest of the writers by one rule instead of
+a list. A write through `xargs` is refused when the command names a guarded file anywhere. `chmod`, `chown`,
+`chflags`, `setfacl`, `chattr` and `xattr` on a guarded path, `find -delete` or a deleting `-exec` that can reach
+`.temper` (a filter such as `-name '*.pyc'` or a start folder that cannot reach it excuse it), `git clean`
+(except a dry run) and `git stash -u|-a` are refused. (3) The config, the evidence ledger files, the loop counter and
+the git hooks (and `core.hooksPath`, `--no-verify`, `-n`) are guarded; `TEMPER_DIR` and `TEMPER_CONFIG` are refused.
+The config and the hooks are guarded only while a run is active, so `/temper:init` and the hook installer still work.
+(4) A decision a person made for a plan is stale once the run goes back to that stage or an earlier one; no
+`state advance` lowers the stage the run is at; a skip is for the stage the run is at; `state loop` must leave the stage
+the run is at and uses the back decision once. (5) A guard that throws refuses Bash while a run is active (every other tool
+passes). The Bash classifier now skips shell comments, so a comment that names `.git/hooks` is no mention.
+
 Known limits, on purpose (see `tests/mod/known-limits.test.ts`). The classifier reads command text
 only. It cannot see a link, a copy or a script made in an earlier call, a script already on disk and
-run later with no name in the command, or a variable set earlier. The marker line `Temper enforcement:
+run later with no name in the command, or a variable set earlier. It cannot see a program that builds the
+script name or a guarded path at run time (`os.system('scripts/te' + 'mper ...')`), the names inside a patch or an
+archive that is applied or extracted (`patch < x.diff`, `tar xf a.tar`), a staging made by a script or by the person
+before the session, a git alias of the person for `commit`, or a `cd` made before the mod was loaded. MCP and PowerShell
+file tools are not evaluated at all. Enforcement stays on from the last known state when `build-state.json` is hidden,
+but a mod reload forgets it (a reload is the person's act). The marker line `Temper enforcement:
 active` also appears in text files Claude can read, so an injected copy can only hide a question,
 never advance a phase. At Done a model `git commit` is allowed because the run is complete and the
 person pressed Continue. Bash can run shell tricks that a text reader cannot see, so the hard
@@ -465,7 +511,9 @@ decision and otherwise refused; `state set stage|branch|spec_path` is refused wh
 `state set run_mode autonomous` is allowed only after the person approved the Plan in this run and
 `autonomy.enabled: true` is set in `.claude/temper.config` (`run_mode interactive` is always allowed); `state clear` and `state archive` are refused
 while a run is active and allowed after it is Done or when no run is active. `state set
-complexity|base_sha|regression_test` stay allowed. In follow up prompts the reason is single quoted
+regression_test|task` stay allowed; `state set complexity` only with a plain tier while the plan is open (a later
+change would drop Design), `state set base_sha` only as a commit hash or `"$(git rev-parse HEAD)"` in Plan or Build,
+and `state set command` never. In follow up prompts the reason is single quoted
 with its quotes escaped, so nothing a person types is read as shell. The native `pre-commit` hook
 stays as a second layer.
 

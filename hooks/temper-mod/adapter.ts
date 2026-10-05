@@ -330,16 +330,25 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   const tasksText = (await readText(io, `${specDir}/tasks.md`)) ?? ''
   const status = parseStatus((await readText(io, `${STATE_ROOT}/status.json`)) ?? '')
 
-  const humanDecisions: HumanDecision[] = []
-  let pendingMove: PendingMove | null = null
+  // A decision belongs to the plan it approved: when the run later goes back to that stage or an earlier one (a step
+  // back the mod trusts), a decision for that stage that was never spent is stale. It is not an approval for the
+  // plan that is made again.
+  let open: Array<{ hd: HumanDecision; ev: TemperEvent; stage: number; stalable: boolean }> = []
   for (const ev of events) {
+    if (ev.type === 'back' && own.has(ev.id)) {
+      const t = FLOW_ORDER.indexOf(ev.to === 'fix' ? 'check' : ev.to)
+      open = open.filter(o => !o.stalable || o.stage < t)
+    }
     const kind = humanKind(ev)
     if (kind && own.has(ev.id) && !(await io.storeGet(USED_PREFIX + ev.id))) {
-      humanDecisions.push(decisionOf(ev, kind))
-      // A move of the person that no mirror call has recorded yet: the latest one is the one to record.
-      if (ev.type === 'advance' || ev.type === 'back' || ev.type === 'override') pendingMove = { id: ev.id, draft: ev }
+      const stage = ev.type === 'advance' ? ev.from : ev.type === 'override' ? ev.phase : ev.type === 'accept' ? 'review' : null
+      open.push({ hd: decisionOf(ev, kind), ev, stage: stage === null ? -1 : FLOW_ORDER.indexOf(stage === 'fix' ? 'check' : stage), stalable: kind !== 'back' })
     }
   }
+  const humanDecisions: HumanDecision[] = open.map(o => o.hd)
+  // A move of the person that no mirror call has recorded yet: the latest one is the one to record.
+  let pendingMove: PendingMove | null = null
+  for (const o of open) if (o.ev.type === 'advance' || o.ev.type === 'back' || o.ev.type === 'override') pendingMove = { id: o.ev.id, draft: o.ev }
 
   const sync = reconcile(state, bs.nextStage, pendingMove)
   state = sync.state
@@ -371,10 +380,29 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   }
 }
 
+// The CLI gate wants a design verdict (PASS, or a person's override of design) exactly when the spec has a design.md
+// (scripts/temper gate_commit, the checkpoint carve-out). Without a design.md nothing is asked.
+async function designSatisfied(io: Io, snap: Snapshot): Promise<boolean> {
+  if ((await readText(io, `${snap.specDir}/design.md`)) === null) return true
+  try {
+    const gates = JSON.parse((await readText(io, `${STATE_ROOT}/gates.json`)) ?? '{}') as { design?: { verdict?: unknown } }
+    if (gates.design?.verdict === 'PASS') return true
+  } catch {
+    // an unreadable gates.json holds no verdict
+  }
+  try {
+    const rows = JSON.parse((await readText(io, `${STATE_ROOT}/overrides.json`)) ?? '[]') as unknown
+    return Array.isArray(rows) && rows.some(r => typeof r === 'object' && r !== null && (r as { stage?: unknown }).stage === 'design')
+  } catch {
+    return false
+  }
+}
+
 // The facts of the CLI commit gate that the mod can read (see CommitFacts in core/rules.ts). `root` is the
 // project folder; the current branch comes from .git/HEAD. Never throws: a fact that cannot be read is false.
 export async function commitFacts(io: Io, snap: Snapshot, root: string, staged: { all: boolean; paths: string[] }): Promise<CommitFacts> {
-  const specs = !staged.all && staged.paths.length > 0 && staged.paths.every(p => normalizePath(p, root).toLowerCase().startsWith('.temper/specs/'))
+  // Compared as the CLI gate compares (a case sensitive grep for ^.temper/specs/): `.TEMPER/SPECS` is not it.
+  const specs = !staged.all && staged.paths.length > 0 && staged.paths.every(p => normalizePath(p, root).startsWith('.temper/specs/'))
   const dir = root.replace(/\/$/, '')
   const head = (await readText(io, `${dir}/.git/HEAD`)) ?? ''
   const cur = /^ref:\s*refs\/heads\/(.+?)\s*$/.exec(head)?.[1] ?? null
@@ -385,7 +413,7 @@ export async function commitFacts(io: Io, snap: Snapshot, root: string, staged: 
   if (snap.sync.cli === 'build' && snap.runCommand === 'temper' && snap.branch !== null) {
     if (cur !== snap.branch) {
       hint = `A Build checkpoint commit needs the run's branch ${snap.branch}, and you are on ${cur ?? 'no branch'}.`
-    } else if (satisfied('plan') && (!snap.hasIntent || satisfied('intent'))) {
+    } else if (satisfied('plan') && (!snap.hasIntent || satisfied('intent')) && (await designSatisfied(io, snap))) {
       let rows: unknown = []
       try {
         rows = JSON.parse((await readText(io, `${STATE_ROOT}/evidence/build.json`)) ?? '[]')
@@ -411,6 +439,17 @@ export async function writeEvent(io: Io, specDir: string, draft: Draft, fixed?: 
   await io.write(`${specDir}/events/${eventFileName(ev)}`, text)
   await io.storeSet(OWN_PREFIX + ev.id, await digestText(text))
   return ev
+}
+
+// The CLI's own files that a decision call changes (the state, the overrides, the ledger, the verdicts), as one text.
+// A call that ends in an error may still have done its work (`state advance ...; exit 1`): when this text differs
+// from the one taken before the call, the decision was used.
+export async function runFingerprint(io: Io): Promise<string> {
+  const parts: string[] = []
+  for (const name of ['build-state.json', 'overrides.json', 'gates.json', 'feedback-loops.json']) parts.push(`${name}:${(await readText(io, `${STATE_ROOT}/${name}`)) ?? '-'}`)
+  const entries = await io.list(`${STATE_ROOT}/evidence`).catch(() => [])
+  for (const e of entries.filter(x => x.kind === 'file').sort((a, b) => a.name.localeCompare(b.name))) parts.push(`evidence/${e.name}:${(await readText(io, `${STATE_ROOT}/evidence/${e.name}`)) ?? '-'}`)
+  return parts.join('\n')
 }
 
 // Marks one human event as matched by a CLI call, so it authorizes that call only once.

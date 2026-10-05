@@ -37,20 +37,25 @@ describe('the loop the CLI keeps for a Loop back', () => {
 
   test('the guard lets state loop through while the person back decision waits, and keeps that decision for the step', () => {
     const loop = loopCommand('build', 'plan', 'why')
-    const r = evaluate(stateAt('plan'), { ...ctx, humanDecisions: [back] }, bash(loop))
+    // The guard sees the phase the CLI is at (build): the person's back decision to Plan waits for its mirror calls.
+    const r = evaluate(stateAt('build'), { ...ctx, humanDecisions: [back] }, bash(loop))
     expect('allow' in r).toBe(true)
     // Not spent: the step that follows spends it.
     expect('consume' in r && r.consume).toBeFalsy()
-    const set = evaluate(stateAt('plan'), { ...ctx, humanDecisions: [back] }, bash(`${CLI} state set next_stage plan`))
+    expect('loopIds' in r && r.loopIds).toEqual(['b1'])
+    const set = evaluate(stateAt('build'), { ...ctx, humanDecisions: [back] }, bash(`${CLI} state set next_stage plan`))
     expect('allow' in set && set.eventIds).toEqual(['b1'])
   })
 
   test('a model that loops on its own is refused: no decision, a decision for another stage, or a stage that is not plain', () => {
     const loop = loopCommand('build', 'plan', 'why')
-    expect('deny' in evaluate(stateAt('plan'), { ...ctx, humanDecisions: [] }, bash(loop))).toBe(true)
-    expect('deny' in evaluate(stateAt('plan'), { ...ctx, humanDecisions: [{ id: 'b2', kind: 'back', phase: 'intent' }] }, bash(loop))).toBe(true)
-    expect('deny' in evaluate(stateAt('plan'), { ...ctx, humanDecisions: [back] }, bash(`${CLI} state loop build "$T" --reason x`))).toBe(true)
-    expect('deny' in evaluate(stateAt('plan'), { ...ctx, humanDecisions: [{ id: 'a1', kind: 'advance', phase: 'plan' }] }, bash(loop))).toBe(true)
+    expect('deny' in evaluate(stateAt('build'), { ...ctx, humanDecisions: [] }, bash(loop))).toBe(true)
+    expect('deny' in evaluate(stateAt('build'), { ...ctx, humanDecisions: [{ id: 'b2', kind: 'back', phase: 'intent' }] }, bash(loop))).toBe(true)
+    expect('deny' in evaluate(stateAt('build'), { ...ctx, humanDecisions: [back] }, bash(`${CLI} state loop build "$T" --reason x`))).toBe(true)
+    expect('deny' in evaluate(stateAt('build'), { ...ctx, humanDecisions: [{ id: 'a1', kind: 'advance', phase: 'plan' }] }, bash(loop))).toBe(true)
+    // The loop leaves the stage the run is at, and a decision is used once.
+    expect('deny' in evaluate(stateAt('review'), { ...ctx, humanDecisions: [back] }, bash(loop))).toBe(true)
+    expect('deny' in evaluate(stateAt('build'), { ...ctx, humanDecisions: [back], loopedDecisions: ['b1'] }, bash(loop))).toBe(true)
   })
 
   test('state init stays refused, even with a back decision', () => {
@@ -60,7 +65,7 @@ describe('the loop the CLI keeps for a Loop back', () => {
   test('state loop is still not a decision call, and its target is read', () => {
     const c = classifyBash(`${CLI} state loop check fix --reason x`)
     expect(c.decisions).toEqual([])
-    expect(c.stateOps).toEqual([{ op: 'loop', to: 'fix' }])
+    expect(c.stateOps).toEqual([{ op: 'loop', from: 'check', to: 'fix' }])
   })
 })
 
@@ -71,7 +76,10 @@ describe('Skip with a reason: the advance that follows it', () => {
   test('the skip is the go-ahead: the orchestrator advance out of the skipped Plan passes with no second approval', () => {
     const s = stateAt('plan', [skip])
     expect(s.phase).toBe('build')
-    expect('allow' in evaluate(s, { ...ctx, humanDecisions: [] }, advancePlan)).toBe(true)
+    // The guard sees the phase the CLI is at: still the skipped Plan, until this advance runs.
+    expect('allow' in evaluate({ ...s, phase: 'plan' }, { ...ctx, humanDecisions: [] }, advancePlan)).toBe(true)
+    // A skip is for the stage the run is at: at Build the same call is refused (it would move the run back).
+    expect('deny' in evaluate(s, { ...ctx, humanDecisions: [] }, advancePlan)).toBe(true)
   })
 
   test('without a skip the same call is refused', () => {
@@ -92,9 +100,9 @@ describe('Skip with a reason: the advance that follows it', () => {
   })
 
   test('a skip of Intent opens the advance out of Intent, and a medium run goes through design', () => {
-    const s = stateAt('intent', [{ type: 'override', phase: 'intent', reason: 'ok', ...person }])
+    const s = { ...stateAt('intent', [{ type: 'override', phase: 'intent', reason: 'ok', ...person }]), phase: 'intent' as const }
     expect('allow' in evaluate(s, { ...ctx, humanDecisions: [] }, bash(`${CLI} state advance intent_complete plan`))).toBe(true)
-    const medium = stateAt('plan', [skip])
+    const medium = { ...stateAt('plan', [skip]), phase: 'plan' as const }
     const c = { ...ctx, complexity: 'medium', humanDecisions: [] as HumanDecision[] }
     expect('allow' in evaluate(medium, c, bash(`${CLI} state advance plan_complete design`))).toBe(true)
     expect('allow' in evaluate(medium, c, bash(`${CLI} state advance design_complete build`))).toBe(true)
@@ -105,7 +113,8 @@ describe('a medium run when the project never switched design on (found live: th
   const approve: HumanDecision[] = [{ id: 'p1', kind: 'advance', phase: 'plan' }]
   const toBuild = bash(`${CLI} state advance plan_complete build`)
   const toDesign = bash(`${CLI} state advance plan_complete design`)
-  const state = stateAt('build', [], { plan: { verdict: 'PASS', ts: 999_999_999 } })
+  // The guard sees the phase the CLI is at (plan) while the person's approval waits for its mirror call.
+  const state = { ...stateAt('build', [], { plan: { verdict: 'PASS', ts: 999_999_999 } }), phase: 'plan' as const }
 
   test('phases.design absent: both next stages pass with the person approval', () => {
     const c = { ...ctx, complexity: 'medium', humanDecisions: approve }

@@ -100,7 +100,8 @@ describe('plan with design', () => {
     const pool: HumanDecision[] = [{ id: 'e2', kind: 'advance', phase: 'plan' }]
     const c = { ...ctx, complexity: 'complex' }
     // The plan check passed and the plan was approved: design is the next stage and follows that verdict.
-    const state = stateAt('build', [], { plan: { verdict: 'PASS', ts: 999_999_999 } })
+    // The guard sees the phase the CLI is at (plan), whatever the events say.
+    const state = { ...stateAt('build', [], { plan: { verdict: 'PASS', ts: 999_999_999 } }), phase: 'plan' as const }
     const first = evaluate(state, { ...c, humanDecisions: pool }, bash(cmds[0] ?? ''))
     expect('allow' in first && first.eventIds).toEqual(['e2'])
     expect('allow' in evaluate(state, { ...c, humanDecisions: [] }, bash(cmds[1] ?? ''))).toBe(true)

@@ -37,6 +37,12 @@ export type RuleContext = {
   autonomyEnabled?: boolean
   // Files a Fix finding action is currently active for (Review phase writes).
   fixFiles?: readonly string[]
+  // The folder the shell is in (relative to the project root, or absolute), carried from the earlier Bash calls;
+  // null when it is not known. Staged paths and write targets are read against it.
+  cwd?: string | null
+  // Back decisions a `state loop` call has already used: the loop is spent once, the `state set next_stage` that follows
+  // spends the decision itself.
+  loopedDecisions?: readonly string[]
 }
 
 // The carve-outs of the CLI commit gate (scripts/temper gate_commit, docs/decisions/0009):
@@ -55,7 +61,7 @@ export type CommitFacts = {
 export type ToolCall = { tool: string; input: Record<string, unknown> }
 
 export type RuleResult =
-  | { allow: true; consume?: DecisionKind | 'drift'; driftPath?: string; eventId?: string; eventIds?: string[] }
+  | { allow: true; consume?: DecisionKind | 'drift'; driftPath?: string; eventId?: string; eventIds?: string[]; loopIds?: string[] }
   | { deny: string; drift?: string }
 
 const ALLOW: RuleResult = { allow: true }
@@ -79,6 +85,27 @@ function protectedDeny(kind: ProtectedKind): RuleResult {
       deny:
         'Temper: the .temper folders hold the run, its verdicts and its decisions. Do not remove or replace them by hand. ' +
         'Next: use scripts/temper state archive after the run, or name one file.',
+    }
+  }
+  if (kind === 'config') {
+    return {
+      deny:
+        'Temper: .claude/temper.config sets how this run is checked (autonomy, thresholds, what blocks a review). Only the user changes it while a run is active. ' +
+        'Next: ask the user to edit it themselves, or to end the run first.',
+    }
+  }
+  if (kind === 'evidence' || kind === 'loops') {
+    return {
+      deny:
+        'Temper: the evidence ledger and the loop counter belong to the temper CLI. Do not write them by hand. ' +
+        'Next: use scripts/temper evidence add, run or resolve, and scripts/temper state loop.',
+    }
+  }
+  if (kind === 'hooks') {
+    return {
+      deny:
+        'Temper: the git hooks and core.hooksPath are the native commit gate. Do not change them while a run is active. ' +
+        'Next: ask the user, or finish the run first.',
     }
   }
   if (kind === 'state') {
@@ -191,7 +218,7 @@ const AUTONOMY_DENY =
   'Temper: only the user can turn on autonomous mode, at the plan gate. ' +
   'Next: ask the user to approve the plan (key 1 or /temper:temper approve) and to set autonomy.enabled: true in .claude/temper.config. Then try again.'
 
-const GUARD_KEYS = new Set(['stage', 'next_stage', 'branch', 'spec_path', 'run_mode'])
+const GUARD_KEYS = new Set(['stage', 'next_stage', 'branch', 'spec_path', 'run_mode', 'command'])
 
 const UNCHECKABLE =
   'Temper: this command writes to a path that Temper cannot check, and it names Temper state. ' +
@@ -261,19 +288,58 @@ const ALIAS_DENY =
   'Temper: do not link, copy or source the Temper script. A second name for it hides the decision calls. ' +
   'Next: run scripts/temper by its own path. The user decides with the buttons or /temper:temper.'
 
+const HIDDEN_DENY =
+  'Temper: a shell, eval or source is given a program that this command does not show (a pipe from another command, a file on stdin, a substitution, or a word split by quotes, backslashes, braces or globs). ' +
+  'While a run is active only a program that is written out plainly passes. Next: run each command in its own Bash call, with the words written out.'
+
+const GUARDED_USE_DENY = (word: string): string =>
+  `Temper: this command names ${word}, a file of the run, and it is not a plain read. The CLI writes those files; nothing else does. ` +
+  'Next: read it with cat, grep, jq, head or git diff, or use scripts/temper gate, evidence or state.'
+
+const ENV_DENY =
+  'Temper: TEMPER_DIR and TEMPER_CONFIG point the CLI at other files than the run\'s, so its verdicts would be written for a run that is not this one. ' +
+  'Next: run scripts/temper with no TEMPER_DIR or TEMPER_CONFIG.'
+
+const HOOKS_DENY =
+  'Temper: --no-verify, -n and core.hooksPath switch the native pre-commit hook off. The hook is the commit gate for every commit. ' +
+  'Next: commit without them. If the hook blocks the commit, finish the stages it names.'
+
+const BACK_DENY =
+  'Temper: state advance cannot move the run to an earlier stage. Only the user steps back. ' +
+  'Next: ask the user to use Go back or /temper:temper back <phase> <reason>.'
+
+const KEY_DENY = (key: string): string =>
+  `Temper: state set ${key} is allowed only in the form and the phase the orchestrator uses ` +
+  '(complexity while the plan is open, base_sha as the current commit in Plan or Build, command never). ' +
+  'Next: ask the user if the run needs another value.'
+
+// Where each stage sits in the CLI sequence; the mod's phase of the same name for a run that is at it.
+const STAGE_INDEX: Record<string, number> = { intent: 0, plan: 1, design: 2, build: 3, review: 4, check: 5, commit: 6 }
+const PHASE_INDEX: Record<string, number> = { intent: 0, plan: 1, build: 3, review: 4, check: 5, fix: 5, done: 6 }
+
 function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResult {
-  const c = classifyBash(command)
+  const c = classifyBash(command, ctx.cwd === undefined ? '' : ctx.cwd)
 
   if (c.alias) return { deny: ALIAS_DENY }
   if (c.opaque && isActive(s)) return { deny: OPAQUE_DENY }
+  if (isActive(s)) {
+    if (c.hidden) return { deny: HIDDEN_DENY }
+    if (c.envTamper) return { deny: ENV_DENY }
+    if (c.hookTamper || c.noVerify) return { deny: HOOKS_DENY }
+  }
 
   if (c.protectedWrites.length > 0) {
     const known = c.protectedWrites.filter(p => !c.uncheckable.includes(p))
     if (known.length === 0) return { deny: UNCHECKABLE }
-    const kinds = known.map(p => protectedKind(p) ?? 'events')
-    const forged = kinds.find(k => k === 'events' || k === 'overrides')
-    return protectedDeny(forged ?? kinds[0] ?? 'events')
+    // The config and the git hooks are the run's only while a run is active (/temper:init writes the config before).
+    const kinds = known.map(p => protectedKind(p) ?? 'events').filter(k => isActive(s) || (k !== 'config' && k !== 'hooks'))
+    if (kinds.length > 0) {
+      const forged = kinds.find(k => k === 'events' || k === 'overrides')
+      return protectedDeny(forged ?? kinds[0] ?? 'events')
+    }
+    if (c.uncheckable.length > 0) return { deny: UNCHECKABLE }
   }
+  if (isActive(s) && c.guardedUse.length > 0) return { deny: GUARDED_USE_DENY(c.guardedUse[0] ?? 'a guarded file') }
 
   // Removing or archiving the run's state is for after the run: while a run is active it would
   // take the gate ledger and the overrides with it.
@@ -282,11 +348,22 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
   // `state loop <from> <to>` keeps the loop budget and clears the evidence of the stages that are redone.
   // While a run is active it is for the person's Loop back only: it passes when the person's back decision
   // for that stage waits unspent. The decision is spent by the `state set next_stage` call that follows.
+  // The loop leaves the stage the run is at (a loop from another stage only burns the budget), and it uses the back
+  // decision once: a second loop call needs another decision. The step that follows still spends it.
+  const loopIds: string[] = []
   if (isActive(s)) {
+    const here = stageName(s.phase)
     for (const op of c.stateOps) {
       if (op.op !== 'loop') continue
       const to = op.to
-      if (to === undefined || !(ctx.humanDecisions ?? []).some(h => h.kind === 'back' && h.phase !== undefined && stageName(h.phase) === stageName(to))) return { deny: STATE_RESTART }
+      const fromOk = op.from !== undefined && (op.from === here || (here === 'plan' && op.from === 'design'))
+      const used = ctx.loopedDecisions ?? []
+      const hit =
+        to === undefined || !fromOk
+          ? undefined
+          : (ctx.humanDecisions ?? []).find(h => h.kind === 'back' && h.phase !== undefined && stageName(h.phase) === stageName(to) && !used.includes(h.id) && !loopIds.includes(h.id))
+      if (hit === undefined) return { deny: STATE_RESTART }
+      loopIds.push(hit.id)
     }
   }
 
@@ -300,7 +377,19 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
         continue
       }
       if (op.op === 'set' && GUARD_KEYS.has(op.key) && op.key !== 'next_stage' && !(op.key === 'run_mode' && op.value === 'interactive')) {
-        return { deny: stateSetDeny(op.key) }
+        return { deny: op.key === 'command' ? KEY_DENY(op.key) : stateSetDeny(op.key) }
+      }
+      // The keys the orchestrator sets itself, only in the form and the phase it sets them: the complexity while the
+      // plan is open (a later change would drop Design), base_sha as the current commit in Plan or Build (a later one
+      // would shrink what Review and Check look at).
+      if (op.op === 'set' && op.key === 'complexity') {
+        const open = (s.phase === 'intent' || s.phase === 'plan') && !planApproved(s) && !skippedStage(s, 'plan')
+        if (!(open && /^(?:trivial|simple|medium|complex)$/.test(op.value ?? ''))) return { deny: KEY_DENY(op.key) }
+      }
+      if (op.op === 'set' && op.key === 'base_sha') {
+        const v = op.value ?? ''
+        const form = /^[0-9a-f]{7,40}$/i.test(v) || v === '$(git rev-parse HEAD)' || v === '`git rev-parse HEAD`'
+        if (!((s.phase === 'plan' || s.phase === 'build') && form)) return { deny: KEY_DENY(op.key) }
       }
     }
     // Each guarded CLI call needs its own unconsumed human decision made for that phase (and
@@ -324,10 +413,14 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
         const wellFormed = /_complete$/.test(call.stage ?? '') && expected !== null && (call.next === expected || skipsDesign)
         // Design belongs to Plan: the person's Continue at the design check spends an advance decision of Plan.
         approved = wellFormed ? (stage === 'design' ? 'plan' : stage) : null
+        // No advance lowers the stage the run is at, whoever approved it: only a step back does (the user's).
+        const target = STAGE_INDEX[call.next ?? '']
+        if (target !== undefined && target < (PHASE_INDEX[s.phase] ?? 0)) return { deny: BACK_DENY }
         const hasHuman = approved !== null && pool.some(h => h.kind === 'advance' && (h.phase === undefined || h.phase === approved))
         if (!hasHuman) {
           if (wellFormed && stage !== 'intent' && stage !== 'plan' && followsVerdict(s, stage, ctx.complexity)) continue
-          if (wellFormed && stage !== 'design' && skippedStage(s, stage)) continue
+          // A skip is for the stage the run is at: it is not an approval for a stage the run went past.
+          if (wellFormed && stage !== 'design' && skippedStage(s, stage) && stage === stageName(s.phase)) continue
           // The person's decision for this stage waits, but the call names another next stage (found live: a
           // medium run with design on, advanced straight to Build). Say which stage is next; do not send the
           // model back to the person for a decision that was already made.
@@ -361,15 +454,18 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
       matched.push(hit.id)
       first ??= { kind: call.kind, eventId: hit.id }
     }
-    if (first && !(c.commits && !s.paused)) return { allow: true, consume: first.kind, eventId: first.eventId, eventIds: matched }
+    if (first && !(c.commits && !s.paused)) return { allow: true, consume: first.kind, eventId: first.eventId, eventIds: matched, ...(loopIds.length > 0 ? { loopIds } : {}) }
   }
 
-  if (c.commits && isActive(s) && !s.paused && !commitAllowed(s, ctx.commit)) {
+  // The artifact only carve-out is for a plain `git commit` of the index: a pathspec commit, a merge, a cherry-pick,
+  // an am, a pull or a revert brings in files that no `git add` named.
+  const facts = ctx.commit && c.unplainCommit ? { ...ctx.commit, stagedSpecsOnly: false } : ctx.commit
+  if (c.commits && isActive(s) && !s.paused && !commitAllowed(s, facts)) {
     return {
       deny: `Temper: commit blocked. Check has not passed. ${ctx.commit?.hint ? `${ctx.commit.hint} ` : ''}Next: ${COMMIT_NEXT[s.phase]}. The native pre-commit hook is the backstop.`,
     }
   }
-  return ALLOW
+  return loopIds.length > 0 ? { allow: true, loopIds } : ALLOW
 }
 
 export function evaluate(state: RunState, ctx: RuleContext, call: ToolCall): RuleResult {
@@ -384,7 +480,8 @@ export function evaluate(state: RunState, ctx: RuleContext, call: ToolCall): Rul
   const path = normalizePath(raw, ctx.root)
 
   const kind = protectedKind(path)
-  if (kind !== null) return protectedDeny(kind)
+  // The config and the git hooks are guarded while a run is active (the person writes them with no run on).
+  if (kind !== null && (isActive(state) || (kind !== 'config' && kind !== 'hooks'))) return protectedDeny(kind)
 
   if (!isActive(state) || state.paused || ctx.failOpenWrites) return ALLOW
   return phaseWriteRule(state, ctx, path)

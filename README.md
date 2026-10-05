@@ -202,15 +202,21 @@ backstop. Button presses and the reason field carry no origin, so their authenti
 
 **Limits you should know.** While a run is active, a Bash command that names the Temper script and
 hides what it runs (`$(...)`, `${...}`, `$'...'`, a here-string, a script written and then run, a
-launcher such as `env -S`, `make`, `awk` or `find -exec`) is refused. It is refused even when the
-text does not show a decision word. Shell tricks that a text reader cannot see are still possible:
-a link or a script made in an earlier call, or a script already on disk and run later with no name
-in the command. So the hard guarantees are the editing tools and the native `pre-commit` hook, not
-the Bash reader. The line `Temper enforcement: active` also appears in text files that Claude can
-read. An injected copy can only hide a question, never advance a phase, because every advance still
-needs the decision of the person or a passed check. When the run is Done, a model `git commit` is
-allowed: the run is complete and the person pressed Continue. The Commit button is a prompt, not a
-gate. A later version of the CLI could check a one time decision token itself.
+launcher such as `env -S`, `make`, `awk` or `find -exec`) is refused, even when the text shows no
+decision word. A shell, `eval` or `source` given a program the text does not show (a pipe from an
+unknown command, a file on stdin, a word split by quotes, `$` or braces) is refused too. A command
+that names a file of the run (`gates.json`, `build-state.json`, the evidence ledger, `.claude/temper.config`,
+the git hooks) must be a plain read; `chmod`, `find -delete`, `git clean` and `--no-verify` are refused.
+A run whose `build-state.json` is hidden or removed stays enforced from the last known state until you
+turn enforcement off. Shell tricks that a text reader cannot see are still possible: a link or a
+script made in an earlier call, a script already on disk and run later, a program that builds the
+script name or a path at run time, or the names inside a patch or an archive. What is staged is the
+session's own picture (a script that stages is not seen). MCP and PowerShell file tools are not
+evaluated. So the hard guarantees are the editing tools and the native `pre-commit` hook, not the Bash
+reader. The line `Temper enforcement: active` also appears in text files that Claude can read. An
+injected copy can only hide a question, never advance a phase, because every advance still needs the
+decision of the person or a passed check. When the run is Done, a model `git commit` is allowed: the
+run is complete and the person pressed Continue. A later CLI could check a one time decision token.
 
 **Without the mod** you keep the full pipeline: intent, plan, build, review and check as
 prompts, every CLI gate verdict, the commit hook and the evidence ledger. You lose the live

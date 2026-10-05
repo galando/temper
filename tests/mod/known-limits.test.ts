@@ -42,6 +42,26 @@ export const KNOWN_LIMITS: Array<{ name: string; command: string; why: string }>
     why: 'The program text is in a file the classifier never reads.',
   },
   {
+    name: 'a program that builds the script name at run time',
+    command: `python3 -c "import os; os.system('scripts/te' + 'mper override plan --reason x')"`,
+    why: 'The name is never in the text whole. Only the native hook and the editing tools stop what such a program writes.',
+  },
+  {
+    name: 'a patch whose headers name a guarded file',
+    command: 'patch -p0 < /tmp/x.diff',
+    why: 'The guarded name is in the diff, a file the classifier never reads. A name on the command line is refused.',
+  },
+  {
+    name: 'an archive that holds a guarded file',
+    command: 'tar xf /tmp/a.tar',
+    why: 'The archive was made elsewhere. The names are inside it. tar -C into the .temper folder is refused.',
+  },
+  {
+    name: 'a git alias of the person for commit',
+    command: 'git ci -m x',
+    why: 'The alias lives in the git config the mod cannot read. The native pre-commit hook still checks the commit.',
+  },
+  {
     name: 'a variable set in an earlier call',
     command: '$T override plan --reason x',
     why: 'T was set in an earlier call or a profile. This one is still refused when the verb is literal, so it is checked below.',

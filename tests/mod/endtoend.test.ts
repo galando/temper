@@ -353,11 +353,28 @@ describe('the CLI moved ahead of the events: the bar follows it and writes nothi
 
 describe('fail safe: when the mod cannot tell where the run is it blocks nothing and writes nothing', () => {
   const unsure: Array<[string, (r: Run) => void]> = [
-    ['an unreadable build-state', r => void r.w.files.set('.temper/build-state.json', '{ nope')],
     ['a build-state with another stage name', r => void r.w.files.set('.temper/build-state.json', JSON.stringify({ stage: 'x', spec: 'pw', spec_path: SPEC, next_stage: 'banana' }))],
     ['a build-state with no next_stage', r => void r.w.files.set('.temper/build-state.json', JSON.stringify({ stage: 'x', spec: 'pw', spec_path: SPEC }))],
+  ]
+  // A file that turns unreadable, corrupt or missing during a run does not end the run (hardening round, finding 2):
+  // the last known state keeps applying, so hiding the file is not a way to switch the guard off.
+  const held: Array<[string, (r: Run) => void]> = [
+    ['an unreadable build-state', r => void r.w.files.set('.temper/build-state.json', '{ nope')],
     ['a deleted build-state', r => void r.w.files.delete('.temper/build-state.json')],
   ]
+  for (const [name, break_] of held) {
+    test(`${name}: the last known state keeps applying`, async ($, on) => {
+      const r = await start($ as unknown as Api, on)
+      const before = r.events().map(e => e.id)
+      break_(r)
+      await r.refresh()
+      expect(await r.write('src/app.ts')).toContain('Plan phase')
+      expect((await r.$.tool.call({ tool: 'Bash', command: 'git commit -m x' })).deny).toContain('commit blocked')
+      expect((await r.$.tool.call({ tool: 'Bash', command: 'scripts/temper gate plan' })).deny).toBeUndefined()
+      expect(r.events().map(e => e.id)).toEqual(before)
+      expect(await r.barText()).toContain('missing or unreadable')
+    })
+  }
   for (const [name, break_] of unsure) {
     test(name, async ($, on) => {
       const r = await start($ as unknown as Api, on)

@@ -23,8 +23,8 @@ describe('plain calls stay allowed while a run is active', () => {
     'scripts/temper evidence run --stage build --claim x --phase red -- bash scripts/tests/test-temper.sh',
     'scripts/temper evidence list --stage review',
     'scripts/temper state get next_stage',
-    'scripts/temper state set complexity medium',
-    'scripts/temper state set base_sha "$(git rev-parse HEAD)"',
+    // (complexity and base_sha are set in Plan and Build only, in the form the orchestrator uses: tests/mod/hardening.test.ts)
+    'scripts/temper state set task 2',
     'scripts/temper state set regression_test tests/a.test.ts',
     'scripts/temper report',
     'scripts/temper status --json',
@@ -39,7 +39,7 @@ describe('plain calls stay allowed while a run is active', () => {
     'T=$(ls -d "$CLAUDE_PLUGIN_ROOT"/scripts/temper); $T state get next_stage',
     'T=$(command -v temper || echo scripts/temper); $T gate review; $T report; $T status --json; $T config get autonomy.enabled; $T model --all',
     'T=$(find ~/.claude -name temper -path "*scripts*" | head -1); $T evidence add --stage build --claim "unit tests" --label PROVEN',
-    'T=$(ls scripts/temper); $T state set complexity medium; $T state set base_sha "$(git rev-parse HEAD)"',
+    'T=$(ls scripts/temper); $T state set task 2; $T state set regression_test t.js',
     // Readers that mention the script or a decision word.
     `sed -n '/override/p' scripts/temper`,
     `awk '/accept/ {print NR": "$0}' scripts/temper`,

@@ -7,6 +7,10 @@ export type World = {
   writes: string[]
   reads: string[]
   store: Record<string, unknown>
+  // Project relative files that exist but cannot be read (chmod 000): a read answers EACCES, not ENOENT.
+  unreadable?: Set<string>
+  // True: every write the plugin makes (`$.fs.write`) fails (a read only folder).
+  failWrites?: boolean
   // Prompts the mod submitted to Claude, in order.
   prompts: string[]
   // The path of every fs call exactly as the plugin gave it (reads and lists and writes).
@@ -63,6 +67,8 @@ export type WorldOptions = {
   // True: the engine's Bash runs `scripts/temper state advance|set` against .temper/build-state.json
   // like the real CLI does (see fakeCli).
   fakeCli?: boolean
+  // The folder that holds `.temper/` and `.claude/` (an absolute path under another folder finds none of them).
+  runAt?: string
 }
 
 // The CLI moves the run to a stage (what a mirror call does): build-state.json next_stage. The mod
@@ -90,14 +96,17 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
     w.commitFailures = (w.commitFailures ?? 0) - 1
     return { result: 'fatal: Unable to create index.lock', text: 'fatal: Unable to create index.lock', isError: true }
   }
+  // `...; exit 1`: the call takes effect and the command still ends in an error (the engine reports isError).
+  const failsAfter = /;\s*exit\s+[1-9]/.test(command)
   const read = (): Record<string, unknown> => JSON.parse(w.files.get(path) ?? '{}') as Record<string, unknown>
   const save = (d: Record<string, unknown>) => w.files.set(path, JSON.stringify(d))
-  const adv = /scripts\/temper\s+state\s+advance\s+(\S+)\s+(\S+)/.exec(command)
+  const adv = /scripts\/temper\s+state\s+advance\s+([^\s;]+)\s+([^\s;]+)/.exec(command)
   if (adv) {
     const [, stage, next] = adv as unknown as [string, string, string]
     if (!CLI_SEQ.some(s => stage === `${s}_complete`) && stage !== 'started') return { result: `FAIL: unknown stage '${stage}'`, text: `FAIL: unknown stage '${stage}'`, isError: true }
     save({ ...read(), stage, next_stage: next })
-    return { result: `OK: advanced to ${stage} (next: ${next})`, text: `OK: advanced to ${stage} (next: ${next})` }
+    // `...; exit 1`: the call took effect and the command still ends in an error (the engine reports isError).
+    return { result: `OK: advanced to ${stage} (next: ${next})`, text: `OK: advanced to ${stage} (next: ${next})`, ...(failsAfter ? { isError: true } : {}) }
   }
   // `git checkout -b <branch>`: the current branch changes.
   const checkout = /\bgit\s+checkout\s+-b\s+(\S+)/.exec(command)
@@ -105,12 +114,12 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
     w.files.set('/repo/.git/HEAD', `ref: refs/heads/${checkout[1]}\n`)
     return { result: `Switched to a new branch '${checkout[1]}'`, text: `Switched to a new branch '${checkout[1]}'` }
   }
-  const set = /scripts\/temper\s+state\s+set\s+next_stage\s+(\S+)/.exec(command)
+  const set = /scripts\/temper\s+state\s+set\s+next_stage\s+([^\s;]+)/.exec(command)
   if (set) {
     save({ ...read(), next_stage: set[1] })
-    return { result: `OK: next_stage = ${set[1]}`, text: `OK: next_stage = ${set[1]}` }
+    return { result: `OK: next_stage = ${set[1]}`, text: `OK: next_stage = ${set[1]}`, ...(failsAfter ? { isError: true } : {}) }
   }
-  return null
+  return failsAfter ? { result: 'exit 1', text: 'exit 1', isError: true } : null
 }
 
 export const denyText = (r: { deny?: string }): string => r.deny ?? ''
@@ -141,16 +150,19 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
     const full = path.startsWith('/') ? path : `${w.cwdNow ?? opts.projectRoot}/${path}`
     return !(full === opts.projectRoot || full.startsWith(`${opts.projectRoot}/`))
   }
+  // With `runAt` set, `.temper/` and `.claude/` exist only directly under it.
+  const elsewhere = (path: string): boolean => !!opts.runAt && path.startsWith('/') && /\/\.(?:temper|claude)\//.test(path) && !new RegExp(`^${opts.runAt}/\\.(?:temper|claude)/`).test(path)
   on('fs.read', ($, e) => {
     w.rawPaths.push(e.path)
     w.reads.push(rel(e.path))
-    if (outside(e.path)) return { deny: `ENOENT: ${e.path}` }
+    if (outside(e.path) || elsewhere(e.path)) return { deny: `ENOENT: ${e.path}` }
+    if (w.unreadable?.has(rel(e.path))) return { deny: `EACCES: ${e.path}` }
     const text = w.files.get(rel(e.path))
     return text === undefined ? { deny: `ENOENT: ${e.path}` } : { value: text }
   })
   on('fs.write', ($, e) => {
     w.rawPaths.push(e.path)
-    if (outside(e.path)) return { deny: `EACCES: ${e.path}` }
+    if (outside(e.path) || w.failWrites) return { deny: `EACCES: ${e.path}` }
     w.files.set(rel(e.path), e.text)
     w.writes.push(rel(e.path))
     return { value: undefined }

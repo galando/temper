@@ -11,7 +11,9 @@
 
 import { normalizePath } from './paths'
 
-export type ProtectedKind = 'events' | 'gates' | 'status' | 'overrides' | 'state' | 'folder'
+// `config` and `hooks` are protected while a run is active only (the person writes the config with
+// /temper:init, and installs the hooks, when no run is on).
+export type ProtectedKind = 'events' | 'gates' | 'status' | 'overrides' | 'state' | 'folder' | 'evidence' | 'loops' | 'config' | 'hooks'
 
 export type DecisionKind = 'override' | 'accept' | 'advance' | 'back'
 
@@ -22,7 +24,7 @@ export type DecisionKind = 'override' | 'accept' | 'advance' | 'back'
 export type DecisionCall = { kind: DecisionKind; stage?: string; id?: string; next?: string; invalid?: boolean }
 
 // A `scripts/temper state ...` call that moves or removes run state.
-export type StateOp = { op: 'set'; key: string; value?: string } | { op: 'clear' } | { op: 'archive' } | { op: 'init' } | { op: 'loop'; to?: string }
+export type StateOp = { op: 'set'; key: string; value?: string } | { op: 'clear' } | { op: 'archive' } | { op: 'init' } | { op: 'loop'; from?: string; to?: string }
 
 export type BashClass = {
   commits: boolean
@@ -43,6 +45,21 @@ export type BashClass = {
   opaque: boolean
   // The command makes another name or copy of the Temper script, or sources it.
   alias: boolean
+  // A shell, eval or source is given a program the text does not show (a pipe from an unknown command, a file on
+  // stdin, a substitution) or one that is written to hide a word (quote splits, `$`, backslashes, braces, globs).
+  hidden: boolean
+  // A word names a guarded file (or a glob that can stand for one) in a command that is not a plain read.
+  guardedUse: string[]
+  // TEMPER_DIR or TEMPER_CONFIG is set for a command: the CLI would read other files than the run's.
+  envTamper: boolean
+  // `git commit --no-verify` / -n, or a change of core.hooksPath: the native pre-commit hook would not run.
+  noVerify: boolean
+  hookTamper: boolean
+  // A commit is made in a way that is not a plain `git commit` of the index: a pathspec, -i, -o, merge,
+  // cherry-pick, am, pull, revert, commit-tree. The artifact-only carve-out never applies to it.
+  unplainCommit: boolean
+  // The working directory after the command (relative to where it started, or absolute); null when unknown.
+  cwdAfter: string | null
 }
 
 // Every name is compared without regard to case: macOS (APFS) and Windows folders are case
@@ -53,6 +70,13 @@ const PROTECTED: ReadonlyArray<readonly [ProtectedKind, RegExp]> = [
   ['status', /(^|\/)\.temper\/status\.json$/i],
   ['overrides', /(^|\/)\.temper\/overrides\.json$/i],
   ['state', /(^|\/)\.temper\/build-state\.json$/i],
+  // The evidence ledger and the loop counter are written by the CLI only.
+  // (The ledger files only: a report a command keeps next to them, `coverage-report.txt`, is no ledger.)
+  ['evidence', /(^|\/)\.temper\/evidence\/[^/]+\.json$/i],
+  ['loops', /(^|\/)\.temper\/feedback-loops\.json$/i],
+  // What decides how the run is checked (autonomy, thresholds, blocking), and the native commit gate.
+  ['config', /(^|\/)\.claude\/temper\.config$/i],
+  ['hooks', /(^|\/)\.git\/(?:hooks(\/|$)|config$)/i],
   // Folders that hold guarded files: removing or replacing one removes them too.
   ['folder', /(^|\/)\.temper(\/specs(\/[^/\s]+)?)?\/?$/i],
 ]
@@ -65,15 +89,38 @@ export function protectedKind(path: string): ProtectedKind | null {
   return null
 }
 
-const MENTION = /\.temper\/(?:specs\/[^\s'"`]+\/events[^\s'"`]*|gates\.json|status\.json|overrides\.json|build-state\.json)/gi
+const MENTION = /\.temper\/(?:specs\/[^\s'"`]+\/events[^\s'"`]*|gates\.json|status\.json|overrides\.json|build-state\.json|feedback-loops\.json|evidence\/[^\s'"`]*\.json)|\.claude\/temper\.config(?![\w.])|\.git\/(?:hooks|config)(?![\w.-])/gi
+// An interpreter program that holds a guarded file name on its own (`os.path.join('.temper', 'gates.json')`), or the
+// folder itself next to a call that removes or moves things (`shutil.rmtree('.temper')`).
+const BARE_NAMES = /(?<![\w.-])(?:gates|status|overrides)\.json(?![\w])|(?<![\w.-])build-state\.json|(?<![\w.-])feedback-loops\.json/gi
+const FOLDER_QUOTED = /(?<=['"`])\.temper\/?(?=['"`])/
+const REMOVER = /\b(?:rmtree|rmdir|removedirs|unlink|rimraf|rmSync|unlinkSync|renameSync|os\.rename|os\.replace|os\.remove|shutil\.move|truncate|chmod|chown)\w*/i
 
 // The command names Temper state: strict mode, where an unresolvable write target is refused.
-const NAMED = /\.temper|gates\.json|status\.json|overrides\.json|build-state\.json|\bevents\b/i
+const NAMED = /\.temper|gates\.json|status\.json|overrides\.json|build-state\.json|\bevents\b|temper\.config|\.git\/(?:hooks|config)/i
 
 // A path whose text names a guarded thing even when the rest cannot be resolved.
-const NAMES_GUARDED = /gates\.json|status\.json|overrides\.json|build-state\.json|(^|\/)events(\/|$)|(^|\/)\.temper(\/|$)/i
+const NAMES_GUARDED = /gates\.json|status\.json|overrides\.json|build-state\.json|temper\.config|feedback-loops\.json|\.git\/(?:hooks|config)|(^|\/)events(\/|$)|(^|\/)\.temper(\/|$)/i
 
-const PROTECTED_NAMES = ['.temper', 'events', 'gates.json', 'status.json', 'overrides.json', 'build-state.json']
+const PROTECTED_NAMES = ['.temper', 'events', 'gates.json', 'status.json', 'overrides.json', 'build-state.json', 'feedback-loops.json', 'temper.config']
+
+// A command that names one of these files is a plain read, or it is refused while a run is active.
+const GUARDED_FILE = /gates\.json|status\.json|overrides\.json|build-state\.json|feedback-loops\.json|(?:^|\/)temper\.config$|\.temper\/specs\/[^/\s'"`]+\/events|\.temper\/evidence\/[^\s'"`]*\.json|\.git\/(?:hooks|config$)/i
+
+// Whether one word (quotes already removed, variables filled in) names a guarded file, or a glob that
+// can stand for one: `.tem*/gates.js*`. A glob counts when its segment has three literal characters or
+// starts with a dot (`.t*`), so `*` and `build/*` do not.
+function mentionsGuarded(word: string, globs = true): boolean {
+  if (GUARDED_FILE.test(word)) return true
+  if (!globs) return false
+  for (const seg of word.split(/[\s/=:,'"`;()&|<>]+/)) {
+    if (!GLOB.test(seg)) continue
+    const literals = seg.replace(/[*?[\]]/g, '').length
+    if (literals < 3 && !seg.startsWith('.')) continue
+    if (PROTECTED_NAMES.some(n => globRegExp(seg.replace(/[[\]]/g, '?')).test(n))) return true
+  }
+  return false
+}
 
 // ---- Statements and words ----------------------------------------------------------------
 
@@ -83,14 +130,26 @@ type Word = { text: string; dynamic: boolean }
 // quotes and substitutions, and leaves heredoc bodies out (they are data or code for another
 // interpreter, which the interpreter rule reads from the whole text).
 function topStatements(cmd: string): string[] {
-  const out: string[] = []
+  return statementsOf(cmd).map(x => x.stmt)
+}
+
+// The same, with the statement a single `|` pipes into this one (null when there is none): a shell that
+// reads its program from a pipe needs to know what produced it.
+function statementsOf(cmd: string): Array<{ stmt: string; from: string | null }> {
+  const out: Array<{ stmt: string; from: string | null }> = []
   let cur = ''
   let quote: '' | "'" | '"' = ''
   let depth = 0
   let heredoc: { tag: string; dash: boolean } | null = null
   const pending: Array<{ tag: string; dash: boolean }> = []
+  let piped = false
+  let prev: string | null = null
   const flush = () => {
-    if (cur.trim()) out.push(cur.trim())
+    if (cur.trim()) {
+      out.push({ stmt: cur.trim(), from: piped ? prev : null })
+      prev = cur.trim()
+      piped = false
+    }
     cur = ''
   }
   for (let i = 0; i < cmd.length; i++) {
@@ -117,6 +176,12 @@ function topStatements(cmd: string): string[] {
     if (c === "'" || c === '"') {
       quote = c
       cur += c
+      continue
+    }
+    // A comment (`# ...` at the start of a word) is not part of any command: `bash install.sh  # into .git/hooks`.
+    if (c === '#' && (i === 0 || /[\s;&|(]/.test(cmd[i - 1] ?? ''))) {
+      const nl = cmd.indexOf('\n', i)
+      i = nl < 0 ? cmd.length : nl - 1
       continue
     }
     if (c === '$' && cmd[i + 1] === '(') {
@@ -156,8 +221,11 @@ function topStatements(cmd: string): string[] {
         cur += c
         continue
       }
+      const single = c === '|' && cmd[i + 1] !== '|'
       if ((c === '&' || c === '|') && cmd[i + 1] === c) i++
       flush()
+      if (single) piped = true
+      else prev = null
       if (c === '\n' && pending.length > 0) heredoc = pending.shift() ?? null
       continue
     }
@@ -537,8 +605,98 @@ function readFlags(ws: Word[], names: readonly string[]): Flags {
   return flags
 }
 
-export function classifyBash(command: string): BashClass {
+// Programs that print the lines an `eval "$(...)"` or `source <(...)` of a shell setup takes. Anything else
+// built by a substitution is a program the text does not show.
+const ENV_NAMES = new Set(['ssh-agent', 'pyenv', 'rbenv', 'nodenv', 'jenv', 'goenv', 'direnv', 'fnm', 'mise', 'asdf', 'brew', 'conda', 'minikube', 'docker-machine', 'starship', 'zoxide', 'dircolors', 'opam', 'keychain', 'gpg-agent', 'thefuck', 'register-python-argcomplete'])
+
+// Substitutions of a plain lookup that cannot build a command: `$(pwd)`, `$(git rev-parse HEAD)`.
+const TRIVIAL_SUBST = /^\s*(?:pwd|date|nproc|uname|whoami|hostname|git\s+rev-parse|which|command\s+-v|basename|dirname|realpath|mktemp)\b/
+// Programs that print any text they are given: a substitution of one of them can build a command from pieces.
+const GENERATORS = new Set(['echo', 'printf', 'cat', 'python', 'python3', 'node', 'perl', 'ruby', 'awk', 'gawk', 'sed', 'tr', 'base64', 'curl', 'wget', 'openssl', 'xxd', 'rev', 'head', 'tail', 'cut', 'jq', 'sh', 'bash', 'zsh', 'env', 'printenv', 'yes', 'seq', 'tee', 'dd', 'php', 'deno', 'bun'])
+// A substitution whose command is a shell setup tool, a plain lookup, or a program run by its path
+// (`$(scripts/ensure-jdk.sh --export)`): the text shows what produces the program. A text generator is not that.
+function safeSubst(inner: string): boolean {
+  const first = inner.trim().split(/\s+/)[0] ?? ''
+  const base = first.replace(/^.*\//, '').toLowerCase()
+  if (ENV_NAMES.has(base) || TRIVIAL_SUBST.test(inner)) return true
+  return first.includes('/') && !GENERATORS.has(base.replace(/[\d.]+$/, ''))
+}
+const stripSafe = (t: string): string => t.replace(/\$\(([^()`$]*)\)/g, (m: string, inner: string) => (safeSubst(inner) ? '' : m))
+// A program text that still holds a substitution or a variable after the shell setup idioms and the plain lookups.
+const hiddenText = (t: string): boolean => /[$`]/.test(stripSafe(t))
+
+// Commands that only read when they are given a guarded file.
+const PLAIN_READERS = new Set([
+  'cat', 'grep', 'egrep', 'fgrep', 'rg', 'head', 'tail', 'less', 'more', 'wc', 'ls', 'stat', 'file', 'diff', 'cmp', 'jq',
+  'echo', 'printf', 'test', '[', 'basename', 'dirname', 'realpath', 'readlink', 'which', 'type', 'nl', 'cut', 'tr', 'strings',
+  'xxd', 'od', 'bat', 'md5', 'md5sum', 'shasum', 'sha1sum', 'sha256sum', 'sha512sum', 'cd', 'pushd', 'temper', 'true', 'false',
+])
+// git subcommands that only read.
+const GIT_READS = new Set([
+  'diff', 'log', 'show', 'status', 'ls-files', 'blame', 'grep', 'cat-file', 'rev-parse', 'show-ref', 'check-ignore', 'ls-tree',
+  'shortlog', 'describe', 'rev-list', 'diff-tree', 'diff-files', 'diff-index', 'whatchanged', 'reflog', 'name-rev', 'version', 'help',
+])
+// git subcommands that never change the index.
+const GIT_NO_INDEX = new Set([
+  ...GIT_READS, 'branch', 'push', 'fetch', 'remote', 'tag', 'config', 'init', 'clone', 'switch', 'worktree', 'gc', 'fsck', 'bisect',
+  'submodule', 'prune', 'remote-show', 'notes', 'archive', 'bundle', 'apply',
+])
+const PERMS = new Set(['chmod', 'chown', 'chgrp', 'chflags', 'setfacl', 'chattr', 'xattr'])
+// Commands that change files, as they would be run through xargs.
+const XARGS_WRITERS = new Set(['tee', 'rm', 'touch', 'truncate', 'shred', 'unlink', 'cp', 'mv', 'install', 'ln', 'rsync', 'dd', 'sed', 'perl', 'tar', 'unzip', 'patch', ...PERMS])
+// `-exec` commands of find that only read.
+const FIND_SAFE_EXEC = new Set(['cat', 'grep', 'egrep', 'fgrep', 'rg', 'head', 'tail', 'wc', 'ls', 'stat', 'file', 'echo', 'printf', 'basename', 'dirname', 'shasum', 'md5', 'md5sum', 'sha256sum', 'jq', 'diff', 'cmp', 'test', '['])
+const FIND_PATH_FILTERS = new Set(['-name', '-iname', '-path', '-ipath', '-wholename', '-iwholename', '-regex', '-iregex', '-lname', '-ilname'])
+// Paths find looks at that no command reads from: a temporary folder cannot hold the run.
+const FIND_ELSEWHERE = /^\/(?:private\/)?(?:tmp|var\/folders|var\/tmp)(?:\/|$)|^\/dev(?:\/|$)/
+const FIND_SAMPLES = ['.temper', '.temper/gates.json', '.temper/status.json', '.temper/overrides.json', '.temper/build-state.json', '.temper/feedback-loops.json', '.temper/evidence/build.json', '.temper/specs/x/events/1.json']
+
+// Whether a find filter (-name '*.pyc', -path '*/node_modules/*', -regex ...) can match a guarded file.
+function findFilterCouldMatch(flag: string, value: string): boolean {
+  if (/^-i?regex$/.test(flag)) {
+    try {
+      const re = new RegExp(`^(?:${value})$`, 'i')
+      return FIND_SAMPLES.some(p => re.test(`./${p}`) || re.test(p))
+    } catch {
+      return true
+    }
+  }
+  if (/name$/.test(flag)) {
+    const re = globRegExp(value.replace(/\[[^\]]*\]/g, '?'))
+    return PROTECTED_NAMES.some(n => re.test(n))
+  }
+  const re = globRegExp(value.replace(/\[[^\]]*\]/g, '?'))
+  return FIND_SAMPLES.some(p => re.test(`./${p}`) || re.test(p))
+}
+
+// A find that deletes, writes a file, or runs something that is not a plain reader.
+function findWrites(args: Word[]): boolean {
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i]?.text ?? ''
+    if (t === '-delete' || /^-f(?:print0?|printf|ls)$/.test(t)) return true
+    if (/^-(?:exec|execdir|ok|okdir)$/.test(t)) {
+      if (!FIND_SAFE_EXEC.has(BASE(args[i + 1]?.text ?? '').toLowerCase())) return true
+    }
+  }
+  return false
+}
+
+// Index of the git subcommand in the words after `git`, skipping the options that take a value.
+function gitSubAt(list: string[]): number {
+  let i = 0
+  while (i < list.length) {
+    const t = list[i] ?? ''
+    if (['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--super-prefix', '--exec-path'].includes(t)) i += 2
+    else if (t.startsWith('-')) i += 1
+    else break
+  }
+  return i
+}
+
+export function classifyBash(command: string, startCwd: string | null = ''): BashClass {
   const text = command.replace(/>\|/g, '>')
+  // The same text without the quotes and backslashes that split a word (`te""mper`, `ov\erride`).
+  const squash = text.replace(/["'\\]/g, '')
   const strict = NAMED.test(text)
   const decisions: DecisionKind[] = []
   const calls: DecisionCall[] = []
@@ -569,7 +727,19 @@ export function classifyBash(command: string): BashClass {
   let readsScript = false
   const vars: Vars = new Map()
   // The working directory the command has moved to (relative to where it started); null when unknown.
-  let cwd: string | null = ''
+  let cwd: string | null = startCwd
+  // Hardening facts (see BashClass).
+  let hidden = false
+  let envTamper = false
+  let noVerify = false
+  let hookTamper = false
+  let unplainCommit = false
+  const guardedUse: string[] = []
+  // Any statement names a guarded file; a write through xargs is read against it after the walk.
+  let anyMention = false
+  let xargsWriter = false
+  // A shell reads its program from standard input.
+  let stdinShell = false
 
   const flag = (path: string, unknown = false) => {
     writes.push(path)
@@ -617,13 +787,20 @@ export function classifyBash(command: string): BashClass {
     }
   }
 
-  const analyse = (stmt: string, depth: number): void => {
+  const analyse = (stmt: string, depth: number, pipedFrom: string | null = null): void => {
     if (depth > 6) return
-    for (const sub of substitutions(stmt)) for (const s of topStatements(sub)) analyse(s, depth + 1)
+    // A substitution or a subshell runs in a copy of the shell: a `cd` inside does not move this one.
+    for (const sub of substitutions(stmt)) {
+      const keep = cwd
+      for (const s of statementsOf(sub)) analyse(s.stmt, depth + 1, s.from)
+      cwd = keep
+    }
     let ws = wordsOf(stmt)
     // A subshell or group: analyse what is inside.
     if (ws.length > 0 && /^\(.*\)$/.test(stmt.trim())) {
-      for (const s of topStatements(stmt.trim().slice(1, -1))) analyse(s, depth + 1)
+      const keep = cwd
+      for (const s of statementsOf(stmt.trim().slice(1, -1))) analyse(s.stmt, depth + 1, s.from)
+      cwd = keep
       return
     }
 
@@ -636,6 +813,7 @@ export function classifyBash(command: string): BashClass {
       }
       const m = /^([A-Za-z_]\w*)\+?=(.*)$/.exec(first)
       if (!m) break
+      if (/^TEMPER_(?:DIR|CONFIG)$/i.test(m[1] ?? '')) envTamper = true
       vars.set(m[1] ?? '', expandVars(m[2] ?? '', vars))
       ws = ws.slice(1)
     }
@@ -654,7 +832,7 @@ export function classifyBash(command: string): BashClass {
           targets.push(expandVars(target.text, vars))
         }
       } else if (/^\d*<</.test(t) || /^\d*<(?!\()/.test(t)) {
-        if (t === '<' || /^\d*<<-?$/.test(t)) i++
+        if (t === '<' || /^\d*<<<?-?$/.test(t)) i++
       } else argv.push(ws[i] as Word)
     }
     for (const t of targets) {
@@ -670,6 +848,50 @@ export function classifyBash(command: string): BashClass {
     const fill = (list: Word[]): Word[] => (list[0] ? [{ ...list[0], text: expandVars(list[0].text, vars) }, ...list.slice(1)] : list)
     const viaXargs = argv.some(x => BASE(x.text).toLowerCase() === 'xargs')
     let w = fill(unwrap(argv))
+    // TEMPER_DIR / TEMPER_CONFIG set for the command (`env TEMPER_DIR=x ...`, `env -S "TEMPER_CONFIG=x ..."`).
+    if (argv.some(x => /(?:^|[\s;&|(])TEMPER_(?:DIR|CONFIG)\+?=/i.test(x.text))) envTamper = true
+    // A guarded file named by this command is read, or the command is refused while a run is active.
+    {
+      const first = BASE(expandVars(w[0]?.text ?? '', vars)).toLowerCase()
+      const shellC = SHELLS.has(first) && w.slice(1).some(x => /^-\w*c$/.test(x.text))
+      if (!shellC && (w.length > 0 || argv.length > 0)) {
+        let words = (w.length > 0 ? w.slice(1) : argv).map(x => expandVars(x.text, vars))
+        // A commit message is text, not a file: `git commit -m "fix gates.json"`.
+        if (first === 'git') {
+          const skip = new Set<number>()
+          words.forEach((t, k) => {
+            if (t === '-m' || t === '--message' || /^-[a-zA-Z]*m$/.test(t)) skip.add(k + 1)
+            if (/^--message=/.test(t)) skip.add(k)
+            if (/^-m./.test(t)) skip.add(k)
+          })
+          words = words.filter((_, k) => !skip.has(k))
+        }
+        // The program of sed and awk is a program, not a path: only a name written out counts there, not a glob.
+        const progLike = first === 'sed' || first === 'awk' || first === 'gawk'
+        const hits = words.filter(t => mentionsGuarded(t, !progLike))
+        if (hits.length > 0) {
+          anyMention = true
+          let reads = PLAIN_READERS.has(first)
+          if (first === 'git') {
+            const sub = words[gitSubAt(words)]
+            reads = sub !== undefined && (GIT_READS.has(sub) || sub === 'commit')
+          }
+          if (first === 'find') reads = !findWrites(w.slice(1))
+          // sed reads unless it edits in place or runs a command; its `w file` is read from the whole text below.
+          if (first === 'sed') reads = !words.some(t => /^-[a-zA-Z]*i|^--in-place/.test(t)) && !readerDanger('sed', w.slice(1))
+          // awk reads unless a guarded name sits in its program (a redirect inside it writes) or it edits in place.
+          if (first === 'awk' || first === 'gawk') {
+            const progAt = words.findIndex((t, k) => !t.startsWith('-') && !['-v', '-F', '-f', '-i'].includes(words[k - 1] ?? ''))
+            reads = !readerDanger(first, w.slice(1)) && !words.some(t => /^-[a-zA-Z]*i$|^--in-place$/.test(t)) && (progAt < 0 || !mentionsGuarded(words[progAt] ?? '', false))
+          }
+          // The plugin's own acceptance checker reads the evidence ledger and prints.
+          if (INTERPRETERS.test(first) && /(^|\/)scripts\/acceptance\.py$/.test(words.find(t => !t.startsWith('-')) ?? '')) reads = true
+          if (!reads) guardedUse.push(hits[0] ?? '')
+        }
+      }
+    }
+    if (XARGS_WRITERS.has(BASE(w[0]?.text ?? '').toLowerCase()) && viaXargs) xargsWriter = true
+    if (viaXargs && BASE(w[0]?.text ?? '').toLowerCase() === 'git') staged.all = true
     // A file this command wrote is run: as the command itself, or as the script of a shell,
     // interpreter, make or source.
     {
@@ -686,31 +908,41 @@ export function classifyBash(command: string): BashClass {
       const ci = rest.findIndex(x => /^-\w*c$/.test(x.text))
       if (ci >= 0) {
         const script = rest[ci + 1]
+        const scriptText = expandVars(script?.text ?? '', vars)
         if (script?.dynamic || /[$`]/.test(script?.text ?? '')) shellStdin = true
+        // The program is built by a substitution (or is a variable nothing set): it is not shown by the text.
+        if (script?.dynamic ? hiddenText(scriptText) : /^\s*\$/.test(scriptText)) hidden = true
+        // xargs hands the words it reads to the shell as its program: `xargs -I{} sh -c '{}'`.
+        if (viaXargs && /^\s*(?:\{\}|"?\$(?:@|\*|\d)"?)\s*$/.test(scriptText)) hidden = true
         // A string given to a shell: git commit inside it counts, and so does a name of the script.
-        if (/\bgit\b/i.test(script?.text ?? '') && gitCreatesCommit(script?.text ?? '')) commits = true
-        for (const s of topStatements(script?.text ?? '')) analyse(s, depth + 1)
-        if (named || pieceNamesTemper(script?.text ?? '')) mentionAny = true
+        if (/\bgit\b/i.test(scriptText) && gitCreatesCommit(scriptText)) commits = true
+        for (const s of statementsOf(scriptText)) analyse(s.stmt, depth + 1, s.from)
+        if (named || pieceNamesTemper(scriptText)) mentionAny = true
         return
       }
       // The first word that is not an option (an option such as -o takes a value) is the script.
       let fileAt = -1
+      let sSeen = false
       for (let i = 0; i < rest.length; i++) {
         const t = rest[i]?.text ?? ''
-        if (t === '-s') shellStdin = true
+        if (t === '-s') {
+          shellStdin = true
+          sSeen = true
+        }
         if (['-o', '+o', '-O', '+O'].includes(t)) i++
         else if (!/^[-+]/.test(t)) {
           fileAt = i
           break
         }
       }
-      if (fileAt < 0) {
-        // No script file: the shell reads its commands from standard input.
+      if (fileAt < 0 || sSeen) {
+        // No script file (or `bash -s ARGS`, the words after the options are arguments): the shell reads its
+        // commands from standard input. A heredoc or a here-string is in the text; a pipe is shown only when
+        // an echo or a printf (or a cat of a heredoc) feeds it.
         shellStdin = true
-        return
-      }
-      if (shellStdin) {
-        // `bash -s ARGS`: the words after the options are arguments, not a script.
+        stdinShell = true
+        const shown = /<</.test(stmt) || (pipedFrom !== null && (/^(?:echo|printf)\s/.test(pipedFrom) || (/^cat\b/.test(pipedFrom) && /<</.test(pipedFrom))))
+        if (!shown) hidden = true
         return
       }
       w = fill(unwrap(rest.slice(fileAt)))
@@ -769,45 +1001,152 @@ export function classifyBash(command: string): BashClass {
       }
     }
     // A git command that creates a commit, wherever it sits (find -exec, env, watch, ...).
-    if (cmd !== 'git' && cmd !== 'temper' && (!READERS.has(cmd) || cmd === 'find') && gitCreatesCommit(argText.join(' '))) commits = true
+    if (cmd !== 'git' && cmd !== 'temper' && (!READERS.has(cmd) || cmd === 'find') && gitCreatesCommit(argText.join(' '))) {
+      commits = true
+      unplainCommit = true
+    }
 
     if (cmd === 'eval') {
-      for (const s of topStatements(args.map(a => expandVars(a.text, vars)).join(' '))) analyse(s, depth + 1)
+      const joined = args.map(a => expandVars(a.text, vars)).join(' ')
+      // A program built by a substitution (not a shell setup idiom such as `eval "$(ssh-agent -s)"`) is not shown.
+      if ((args.some(a => a.dynamic) || /[$`]/.test(joined)) && hiddenText(joined)) hidden = true
+      for (const s of statementsOf(stripSafe(joined))) analyse(s.stmt, depth + 1, s.from)
       if (strict && args.some(a => /[$`]/.test(expandVars(a.text, vars)))) flag('eval', true)
       return
     }
+    if (cmd === 'source' || cmd === '.') {
+      const arg = args.find(a => !a.text.startsWith('-'))
+      const t = expandVars(arg?.text ?? '', vars)
+      if (/^\/dev\/(?:stdin|fd\/\d+)$/.test(t)) {
+        stdinShell = true
+        if (!(/<</.test(stmt) || (pipedFrom !== null && /^(?:echo|printf)\s/.test(pipedFrom)))) hidden = true
+      } else if (/[<>]\(/.test(t) ? !/^<\(\s*(?:direnv|pyenv|rbenv|fnm|mise|asdf|brew|conda|starship|zoxide|thefuck|register-python-argcomplete)\b/.test(t) : (arg?.dynamic ?? false) && hiddenText(t)) hidden = true
+    }
     if (cmd === 'cd' || cmd === 'pushd') {
-      const target = args[0]
-      cwd = target ? (candidates(target)[0] ?? null) : cwd
+      // `cd` alone goes home and `cd -` goes back: neither place is known. A flag such as -P is not a place.
+      const target = args.find(a => !/^-[LPe@]+$/.test(a.text))
+      cwd = target && target.text !== '-' ? (candidates(target)[0] ?? null) : null
       return
     }
 
     if (cmd === 'git') {
-      let i = 0
-      while (i < args.length) {
-        const t = argText[i] ?? ''
-        // `-c alias.x=commit` or `-c alias.x=!...`: an alias can run a commit or any shell command.
-        if (t === '-c' && /^alias\./i.test(argText[i + 1] ?? '') && /=(?:!|.*\bcommit\b)/i.test(argText[i + 1] ?? '')) commits = true
-        if (t === '-c' || t === '-C') i += 2
-        else if (t.startsWith('-')) i += 1
-        else break
+      const i = gitSubAt(argText)
+      // The folder the command works in: the shell's, moved by `-C`. `--git-dir` and `--work-tree` make it unknown.
+      const joinPath = (base: string | null, p: string): string | null => (p.startsWith('/') ? normalizePath(p) : base === null ? null : normalizePath(base ? `${base}/${p}` : p))
+      let gitCwd: string | null = cwd
+      for (let k = 0; k < i; k++) {
+        const t = argText[k] ?? ''
+        if (t === '-c') {
+          const kv = argText[k + 1] ?? ''
+          // `-c alias.x=commit` or `-c alias.x=!...`: an alias can run a commit or any shell command.
+          if (/^alias\./i.test(kv) && /=(?:!|.*\bcommit\b)/i.test(kv)) commits = true
+          if (/^core\.hookspath=/i.test(kv)) hookTamper = true
+          k++
+        } else if (t === '-C') {
+          gitCwd = joinPath(gitCwd, argText[k + 1] ?? '')
+          k++
+        } else if (t === '--git-dir' || t === '--work-tree') {
+          gitCwd = null
+          k++
+        } else if (t.startsWith('--git-dir=') || t.startsWith('--work-tree=')) gitCwd = null
+        else if (['--namespace', '--super-prefix', '--exec-path'].includes(t)) k++
       }
-      if (gitCreatesCommit(`git ${argText.slice(i).join(' ')}`, true)) commits = true
-      // `git commit -a` or `-am` commits every changed file, whatever was staged.
-      if (argText[i] === 'commit' && argText.slice(i + 1).some(a => a === '--all' || /^-[a-zA-Z]*a[a-zA-Z]*$/.test(a))) staged.all = true
-      if (argText[i] === 'add') {
-        const addArgs = argText.slice(i + 1)
-        for (let k = 0; k < addArgs.length; k++) {
-          const a = addArgs[k] ?? ''
+      const sub = argText[i] ?? ''
+      // A redirect that stays in the words (`2>&1`) is no argument.
+      const subArgs = argText.slice(i + 1).filter(a => !/^(?:\d*|&)(?:>>?|<)&\S*$/.test(a))
+      if (gitCreatesCommit(`git ${argText.slice(i).join(' ')}`, true)) {
+        commits = true
+        if (sub !== 'commit') unplainCommit = true
+      }
+      if (sub === 'commit') {
+        // Flags that take a value, so the value is not read as a path. A path after `commit` (or after `--`) is a
+        // pathspec commit: it commits those files whatever the index holds. -i and -o are the same thing.
+        const VALUE = new Set(['-m', '--message', '-F', '--file', '-C', '--reuse-message', '-c', '--reedit-message', '--author', '--date', '--template', '-t', '--fixup', '--squash', '--cleanup', '--trailer'])
+        let afterDashes = false
+        for (let k = 0; k < subArgs.length; k++) {
+          const t = subArgs[k] ?? ''
+          if (afterDashes) {
+            unplainCommit = true
+            continue
+          }
+          if (t === '--') afterDashes = true
+          else if (VALUE.has(t)) k++
+          else if (/^--(?:message|file|reuse-message|reedit-message|author|date|template|fixup|squash|cleanup|trailer)=/.test(t)) continue
+          else if (t === '--no-verify') noVerify = true
+          else if (t === '--all') staged.all = true
+          else if (t === '--include' || t === '--only' || t === '--pathspec-from-file' || /^--pathspec-from-file=/.test(t)) unplainCommit = true
+          else if (t.startsWith('--')) continue
+          else if (/^-[a-zA-Z]+$/.test(t)) {
+            // A cluster such as -am or -nm: `a` commits every changed file, `n` skips the hook, `i` and `o` make a
+            // pathspec commit; a value flag takes the rest of the cluster or the next word.
+            for (let c = 1; c < t.length; c++) {
+              const ch = t[c] ?? ''
+              if (ch === 'n') noVerify = true
+              if (ch === 'a') staged.all = true
+              if (ch === 'i' || ch === 'o') unplainCommit = true
+              if (ch === 'S' || ch === 'u') break
+              if ('mFCct'.includes(ch)) {
+                if (c === t.length - 1) k++
+                break
+              }
+            }
+          } else if (!t.startsWith('-')) unplainCommit = true
+        }
+      } else if (sub === 'add' || sub === 'stage') {
+        for (let k = 0; k < subArgs.length; k++) {
+          const a = subArgs[k] ?? ''
           if (a === '--') continue
           // A redirect is no path (found live: `git add .temper/specs/x/ 2>&1` made the staging look like code).
           if (/^(?:\d*|&)(?:>>?|<)&?\S*$/.test(a)) {
             if (/^(?:\d*|&)(?:>>?|<)$/.test(a)) k += 1
             continue
           }
-          if (/^(?:-A|--all|-u|--update|\.|\*)$/.test(a) || /^-[a-zA-Z]*[Au]/.test(a)) staged.all = true
-          else if (!a.startsWith('-')) staged.paths.push(a)
+          // Staging the whole tree, and the forms whose staged set the text does not show (patch mode, a path list
+          // in a file, intent to add): the staged set is not known, so the commit rule is strict.
+          if (/^(?:-A|--all|--no-ignore-removal|-u|--update|\.|\*)$/.test(a) || /^-[a-zA-Z]*[Au]/.test(a)) staged.all = true
+          else if (/^(?:--patch|--interactive|--edit|--intent-to-add|--chmod(?:=.*)?|--pathspec-from-file(?:=.*)?|--pathspec-file-nul)$/.test(a) || /^-[a-zA-Z]*[pieN]/.test(a)) staged.all = true
+          else if (a.startsWith('-')) continue
+          else if (a.startsWith(':')) staged.all = true
+          else {
+            const full = joinPath(gitCwd, a)
+            if (full === null) staged.all = true
+            else staged.paths.push(full)
+          }
         }
+      } else if (sub === 'config') {
+        const flags = subArgs.filter(a => a.startsWith('-'))
+        const pos = subArgs.filter(a => !a.startsWith('-'))
+        // Setting or unsetting core.hooksPath moves the native pre-commit hook away; reading it is fine.
+        if (pos.some(a => /^core\.hookspath$/i.test(a)) && (pos.length >= 2 || flags.some(f => /^--(?:unset|unset-all|replace-all|add|edit)$|^-e$/.test(f)))) hookTamper = true
+      } else if (sub === 'clean') {
+        // Removes untracked files, which can include .temper (the run) unless it is a dry run.
+        if (!subArgs.some(a => /^-[a-zA-Z]*n|^--dry-run$/.test(a))) flag('.temper')
+      } else if (sub === 'stash') {
+        const verb = subArgs.find(a => !a.startsWith('-')) ?? 'push'
+        if (['list', 'show', 'drop', 'clear', 'branch'].includes(verb)) {
+          // no change to the index
+        } else {
+          if (subArgs.some(a => /^-[a-zA-Z]*[ua]|^--(?:include-untracked|all)$/.test(a))) flag('.temper')
+          staged.all = true
+        }
+      } else if (sub === 'checkout') {
+        // `git checkout <tree> -- path` and `git checkout <tree> path` put files in the index.
+        let positional = 0
+        let dashes = false
+        for (let k = 0; k < subArgs.length; k++) {
+          const a = subArgs[k] ?? ''
+          if (a === '--') dashes = true
+          else if (['-b', '-B', '--orphan'].includes(a)) k++
+          else if (!a.startsWith('-')) positional++
+        }
+        if (dashes || positional >= 2) staged.all = true
+      } else if (sub === 'restore') {
+        if (subArgs.some(a => a === '--staged' || /^-[a-zA-Z]*S/.test(a))) staged.all = true
+      } else if (sub === 'apply') {
+        if (subArgs.some(a => /^--(?:cached|index)$/.test(a))) staged.all = true
+      } else if (sub !== '' && !GIT_NO_INDEX.has(sub)) {
+        // merge, cherry-pick, am, pull, revert, rebase, mv, rm, reset, update-index, an alias: the index is not known.
+        staged.all = true
       }
     }
 
@@ -857,14 +1196,17 @@ export function classifyBash(command: string): BashClass {
         }
       } else if (sub === 'state' && sub2 === 'loop') {
         // The stage the loop goes back to, only when it is a plain word: a built or unresolved one is not read.
+        const from = argText[i + 2]
         const to = argText[i + 3]
-        stateOps.push({ op: 'loop', ...(to !== undefined && !/[$`]/.test(to) && !(args[i + 3]?.dynamic ?? false) ? { to } : {}) })
+        const plain = (j: number): boolean => argText[j] !== undefined && !/[$`]/.test(argText[j] ?? '') && !(args[j]?.dynamic ?? false)
+        stateOps.push({ op: 'loop', ...(plain(i + 2) ? { from } : {}), ...(plain(i + 3) ? { to } : {}) })
       } else if (sub === 'state' && (sub2 === 'clear' || sub2 === 'archive' || sub2 === 'init')) {
         stateOps.push({ op: sub2 })
       }
     }
 
-    if (INTERPRETERS.test(cmd)) interpreter = true
+    // (The plugin's acceptance checker only reads: python3 scripts/acceptance.py check intent.md .temper/evidence/check.json.)
+    if (INTERPRETERS.test(cmd) && !/(^|\/)scripts\/acceptance\.py$/.test(argText.find(t => !t.startsWith('-')) ?? '')) interpreter = true
 
     // ---- Write capable constructs ----
     if (WRITES_ANY.has(cmd)) for (const a of args) if (!a.text.startsWith('-') || a.dynamic) check(a)
@@ -905,11 +1247,44 @@ export function classifyBash(command: string): BashClass {
       // Moving a guarded file or folder away removes it.
       if (cmd === 'mv') for (const f of files.slice(0, -1)) check(f)
     }
-    if (cmd === 'find' && (args.some(a => a.text === '-delete') || args.some(a => a.text === '-exec' || a.text === '-execdir'))) {
+    // chmod, chown, chflags, setfacl, chattr: a file made unreadable or immutable switches the run off as surely as a delete.
+    if (PERMS.has(cmd)) {
+      const recursive = args.some(a => /^-[a-zA-Z]*[Rr]|^--recursive$/.test(a.text))
+      for (const a of args) {
+        if (a.text.startsWith('-') && !a.dynamic) continue
+        // `chmod +x scripts/*` is no business of the run's; a glob that can stand for a guarded file is.
+        if (GLOB.test(a.text) && !mentionsGuarded(expandVars(a.text, vars))) continue
+        check(a)
+        // `chmod -R 000 .` reaches .temper through the folder that holds it.
+        if (recursive && ['.', '..', '~', '/', './', '../'].includes(expandVars(a.text, vars))) flag('.temper')
+      }
+    }
+    // find: delete, write or run something in the folders that hold the run. A filter that cannot match a guarded
+    // name (-name '*.pyc') and a start folder that cannot reach .temper are the usual, harmless uses.
+    if (cmd === 'find' && findWrites(args)) {
+      const starts: Word[] = []
       for (const a of args) {
         if (a.text.startsWith('-') || a.text === '(' || a.text === '!') break
-        check(a)
+        starts.push(a)
       }
+      // -maxdepth 0 looks at the start paths themselves and goes into none of them.
+      const shallow = args.some((a, k) => a.text === '-maxdepth' && args[k + 1]?.text === '0')
+      const reaches = (starts.length === 0 && !shallow) || starts.some(a => {
+        const raw = expandVars(a.text, vars)
+        if (/^\//.test(raw)) return !FIND_ELSEWHERE.test(raw) && !shallow
+        return candidates(a).some(r => r === null || (!shallow && (r === '' || r.startsWith('..') || r.startsWith('/'))) || protectedKind(r) !== null || r.toLowerCase().startsWith('.temper') || (GLOB.test(r) && globCouldMatch(r)))
+      })
+      const negated = args.some(a => a.text === '!' || a.text === '-not')
+      const filters: Array<[string, string]> = []
+      args.forEach((a, k) => {
+        if (FIND_PATH_FILTERS.has(a.text) && args[k + 1]) filters.push([a.text, expandVars(args[k + 1]?.text ?? '', vars)])
+      })
+      const narrowed = !negated && filters.length > 0 && !filters.some(([f, v]) => findFilterCouldMatch(f, v))
+      if (reaches && !narrowed) flag('.temper')
+      // The file a -fprint, -fprintf or -fls writes.
+      args.forEach((a, k) => {
+        if (/^-f(?:print0?|printf|ls)$/.test(a.text) && args[k + 1]) check(args[k + 1] as Word)
+      })
     }
     if (cmd === 'sed' || cmd === 'perl' || cmd === 'awk') {
       if (args.some(a => a.text === '--in-place' || /^-[a-zA-Z]*i/.test(a.text))) for (const a of inPlaceFiles(args)) check(a)
@@ -957,29 +1332,62 @@ export function classifyBash(command: string): BashClass {
     }
   }
 
-  for (const stmt of topStatements(text)) analyse(stmt, 0)
+  for (const s of statementsOf(text)) analyse(s.stmt, 0, s.from)
 
   // sed's `w FILE` can sit after a `;` inside the script, so the whole command is read.
   if (sawSed) for (const m of text.matchAll(/(?:^|[\s;{}/'"])w\s+([^\s;}'"]+)/g)) check({ text: m[1] ?? '', dynamic: false })
 
   // An interpreter that is told a guarded path: it can write it however it likes.
-  if (interpreter) for (const m of text.match(MENTION) ?? []) flag(m)
-  // A program given on standard input or in a heredoc is read from the whole text.
-  const textNames = TEMPER_WORD.test(text)
+  if (interpreter) {
+    for (const m of text.match(MENTION) ?? []) flag(m)
+    // The folder written as a string of its own is a path built in pieces: a guarded name next to it, or a call that
+    // removes or moves things, is the run's files by the back door.
+    if (FOLDER_QUOTED.test(text)) {
+      for (const m of text.match(BARE_NAMES) ?? []) flag(`.temper/${m.toLowerCase()}`)
+      if (REMOVER.test(text)) flag('.temper')
+    }
+  }
+  // A program given on standard input or in a heredoc is read from the whole text, without the quote and
+  // backslash splits that hide a word (`te""mper`).
+  const textNames = TEMPER_WORD.test(squash)
   // The program is the heredoc body when there is one: a plain Temper call elsewhere in the command does
   // not make a program that does not name the script a suspect. Without a heredoc (a pipe), the whole text is read.
   const bodies = [...text.matchAll(/<<-?\s*['"]?(\w+)['"]?[^\n]*\n([\s\S]*?)\n\s*\1(?:\s|$)/g)].map(m => m[2] ?? '')
   // (`.temper/specs/...` is a path inside the project, not the script: only the word `temper` counts.)
-  if (stdinProgram && (bodies.length > 0 ? bodies : [text]).some(b => TEMPER_WORD.test(b) || /subprocess/i.test(b))) mentionLoud = true
+  if (stdinProgram && (bodies.length > 0 ? bodies : [text]).some(b => TEMPER_WORD.test(b.replace(/["'\\]/g, '')) || /subprocess/i.test(b))) mentionLoud = true
 
   // Fail closed: the command may run the Temper script in a way the text does not show. Reading
   // commands and plain, readable calls are not touched. A script that is written and run, or a
   // program that holds the script name and a decision word, is.
-  const verb = verbIn(text)
+  const verb = verbIn(squash)
   const opaque =
     opaqueCall ||
     (verb && textNames && (ranCreated || wroteScript)) ||
     (mentionLoud && (verb || HIDES.test(text))) ||
-    (verb && (dynamicCommand || (shellStdin && (mentionAny || /temper/i.test(text)))))
-  return { commits, decisions, calls, stateOps, protectedWrites: [...new Set(writes)], uncheckable: [...new Set(uncheckable)], staged, opaque, alias }
+    (verb && (dynamicCommand || (shellStdin && (mentionAny || /temper/i.test(squash)))))
+  // A shell that reads its program from standard input: what hides a word in it (quote splits, `$`, backticks,
+  // backslashes, braces, globs) makes the program one the text does not show.
+  if (stdinShell && /[$`\\]|\{[^{}\s]*,[^{}\s]*\}|""|''|[*?]/.test(text)) hidden = true
+  // A write through xargs names its files on stdin: when the command names a guarded file anywhere, it is refused.
+  if (xargsWriter && anyMention) flag('.temper')
+  // git reads core.hooksPath from the environment too.
+  if (/GIT_CONFIG_(?:KEY_\d+|PARAMETERS)\s*=[^\n;&|]*hookspath/i.test(text)) hookTamper = true
+  return {
+    commits,
+    decisions,
+    calls,
+    stateOps,
+    protectedWrites: [...new Set(writes)],
+    uncheckable: [...new Set(uncheckable)],
+    staged,
+    opaque,
+    alias,
+    hidden,
+    guardedUse: [...new Set(guardedUse)],
+    envTamper,
+    noVerify,
+    hookTamper,
+    unplainCommit,
+    cwdAfter: cwd,
+  }
 }

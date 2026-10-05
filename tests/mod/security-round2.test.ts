@@ -26,8 +26,8 @@ describe('legitimate Temper CLI flows stay allowed', () => {
     'scripts/temper evidence run --stage build --claim x --phase red -- bash scripts/tests/test-temper.sh',
     'scripts/temper evidence resolve --stage review --id 3 --reason fixed',
     'scripts/temper state get next_stage',
-    'scripts/temper state set complexity medium',
-    'scripts/temper state set base_sha abc123',
+    // (complexity and base_sha are set in Plan and Build only, in the form the orchestrator uses: tests/mod/hardening.test.ts)
+    'scripts/temper state set task 2',
     'scripts/temper state set regression_test tests/a.test.ts',
     'scripts/temper report',
     'scripts/temper status',

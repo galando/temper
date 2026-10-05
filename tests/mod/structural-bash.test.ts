@@ -237,9 +237,12 @@ describe('state commands that move or end the run', () => {
   })
 
   test('the keys the flows need stay allowed', () => {
-    for (const k of ['complexity medium', 'base_sha abc', 'regression_test t.js']) {
+    for (const k of ['task 2', 'base_sha abc1234', 'regression_test t.js']) {
       expect('allow' in run(stateAt('build'), `scripts/temper state set ${k}`)).toBe(true)
     }
+    // The complexity is set while the plan is open, not after it.
+    expect('allow' in run(stateAt('plan'), 'scripts/temper state set complexity medium')).toBe(true)
+    expect('deny' in run(stateAt('build'), 'scripts/temper state set complexity medium')).toBe(true)
   })
 
   test('state clear and archive only after the run, or with no run', () => {

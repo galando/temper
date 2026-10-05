@@ -131,7 +131,8 @@ All notable changes to Temper are documented here. The plugin version lives in
 - **Commit** at Done tells the orchestrator to do the Commit steps of `commands/temper.md` (gate
   commit, intent Status completed, `state archive`, stage the diff and the spec artifacts, one
   commit, then `state clear`). The mod never clears or archives the state. When the CLI state is
-  gone, the bar shows no run; it never goes back to Intent.
+  gone after the run was Done, the bar shows no run; it never goes back to Intent. (When it is gone
+  in the middle of a run, the run stays enforced: see the hardening section below.)
 - **Loop back** is a loop of the CLI. The mirror message runs `state loop <from> <to>` (the budget
   `loops.max-per-type` and the evidence of the redone stages) and then `state set next_stage`. The
   guard lets `state loop` through only while the person's own back decision waits. The Feedback Loops
@@ -156,6 +157,50 @@ All notable changes to Temper are documented here. The plugin version lives in
   the run was in Fix, so the person is not sent through the same check run again.
 - **Share HTML review** has a button (in the Plan More menu). Open HTML review points at
   `reference/plan-review.md` and `scripts/plan_review.py` instead of filling the template by hand.
+
+### Hardening after a fourth review (tests in `tests/mod/hardening.test.ts`)
+
+A read only review traced nine findings by hand. Each one got a failing test through the real guard first.
+Real exploits, fixed: 1 (a shell fed a program on stdin: `echo 'scripts/te""mper override ...' | bash`), 2, 3, 4,
+5, 6, 7, 8, and the fail open catch of 9. Not an exploit as traced: a quote split verb in a plain call
+(`scripts/te""mper ov""erride`), a glob in a stdin program, and `eval "$(echo ...)"` were refused before; the tests stay.
+
+- A shell, `eval` or `source` that is given a program the text does not show is refused while a run is
+  active (a pipe from an unknown command, a file or `/dev/stdin`, a process substitution, a `-c` string built
+  by a substitution, and a shown program that hides a word with quote splits, `$`, backticks, backslashes,
+  braces or globs). Quote and backslash splits are removed before the script name and the decision words are
+  looked for. `eval "$(ssh-agent -s)"`, `eval "$(scripts/ensure-jdk.sh --export)"` and plain heredocs stay allowed.
+- A run whose `build-state.json` turns missing, unreadable or corrupt (`chmod 000`, `find -delete`, `git clean`,
+  `git stash -u`) stays enforced from the last known state, with one line saying so. It ends on `/temper:temper
+  enforcement off`, when the file reads again, after Done, or on a reload. `chmod`, `chown`, `chflags`, `setfacl`,
+  `chattr`, `find -delete` and `-exec rm`, `xargs rm`, `git clean` and `git stash -u|-a` that can reach `.temper`
+  are refused.
+- A command that names a guarded file (or a glob that can stand for one) must be a plain read, or it is refused.
+  This replaces the list of writers (`awk`, `sort -o`, `uniq`, `patch`, `find -fprintf`, `git checkout|restore|apply`,
+  `tar`, `unzip`, `ed`, `ex`, `cp -l`, `ln -s .tem*/gates.js*`) by one rule. A comment in a command is no longer a mention.
+- The artifact only commit carve-out is for a plain `git commit` of a staged set the mod understands. Unknown ways
+  into the index (`git stage|mv|rm|apply --cached|update-index`, `xargs git add`, `add -p`, aliases, `checkout <tree> --`,
+  `stash`, `reset`) make the set unknown. A pathspec commit, `-i`, `-o`, `merge`, `cherry-pick`, `am`, `pull`,
+  `revert` and `commit-tree` never use the carve-out. `git add` paths follow `git -C` and the `cd` of the shell (carried
+  across Bash calls); the comparison with `.temper/specs/` is case sensitive, as in the CLI. `--no-verify`, `-n`,
+  `core.hooksPath`, writes to `.git/hooks` and `.git/config` are refused while a run is active. The Build checkpoint
+  now needs a design verdict when the spec has a `design.md`, as `temper gate commit` does.
+- A decision is spent by what its call changed, not by its exit status (`state advance ...; exit 1` used to give the
+  decision back). A person's approval is stale once the run goes back to its stage or an earlier one.
+- A skip is for the stage the run is at (at Review, `state advance plan_complete build` no longer passes), and no
+  `state advance` lowers the stage. `state loop` must leave the stage the run is at and uses the back decision once.
+- `.claude/temper.config` (while a run is active), `.temper/evidence/*.json`, `.temper/feedback-loops.json`, `TEMPER_DIR` and
+  `TEMPER_CONFIG` are guarded; `state set command` is refused, `state set complexity` is for the open plan only, and
+  `state set base_sha` only as a commit hash or `"$(git rev-parse HEAD)"` in Plan or Build.
+- A guard that throws refuses Bash while a run is active (other tools pass). When no run was found at the first session
+  start, the root is looked for again above the session folder until a run is seen.
+- Limits left, written in the README and `docs/mods-plan.md`: a program that builds a path at run time, the names inside
+  a patch or an archive, a staging done by a script or by the person before the session, a git alias of the person for
+  `commit`, MCP and PowerShell file tools, and a script written in an earlier call. The native `pre-commit` hook and the
+  editing tool deny stay the hard guarantees. The 22 reviewed `$` calls are unchanged.
+- Tests that encoded the old behaviour were changed on purpose: a build-state that is unreadable or deleted mid-run no
+  longer blocks nothing; rule tests that built a state ahead of the CLI now give the phase the CLI is at; `state set
+  complexity|base_sha` are tested in the phase they are allowed in.
 
 ### CLI additions (these help without the mod too)
 

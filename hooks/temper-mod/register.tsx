@@ -1,6 +1,6 @@
 import type { CommandRunResult, EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import { apply, commitFacts, composeText, consumeDecision, idleSnapshot, live, loadSnapshot, publish, statusText, syncCheck, timelineText, writeReport } from './adapter'
+import { apply, commitFacts, composeText, consumeDecision, idleSnapshot, live, loadSnapshot, publish, runFingerprint, settingsFrom, statusText, syncCheck, timelineText, writeReport } from './adapter'
 import type { Io, Snapshot } from './adapter'
 import { findingActions } from './core/actions'
 import type { Action } from './core/actions'
@@ -13,6 +13,7 @@ import type { GameMode, UiMode } from './core/config'
 import type { Draft } from './core/events'
 import { ONLY_USER, phaseLabel } from './core/machine'
 import type { Command } from './core/machine'
+import { normalizePath } from './core/paths'
 import { evaluate } from './core/rules'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
@@ -87,11 +88,57 @@ function makeIo($: Api): Io {
   }
 }
 
-// A failed load is a no-run snapshot (nothing enforced), never a thrown error.
+// The last snapshot that held a run. Enforcement is sticky: once the mod has seen a run in progress, a
+// build-state.json that turns missing, unreadable or corrupt (chmod 000, a delete, a git clean) does not end it.
+// The last known state keeps applying until the file reads again, the person turns enforcement off, or the mod reloads.
+let lastRun: Snapshot | null = null
+
+const LOST_STATE =
+  'Temper state: .temper/build-state.json is missing or unreadable. The last known state still applies. Restore the file, or turn enforcement off with /temper:temper enforcement off.'
+
+// The last known run, when it was in progress; null when it was over (Done) or never seen.
+function heldRun(): Snapshot | null {
+  const r = lastRun
+  if (r === null || r.inert || r.sync.failOpen) return null
+  const phase = r.state.phase
+  if (phase === null || phase === 'done') return null
+  // The settings are the live ones (the person may have turned enforcement off since); the run is the last known.
+  return { ...r, ...settingsFrom(options), sync: { ...r.sync, line: LOST_STATE } }
+}
+
+// Whether the folder the mod reads the run from has been seen to hold one (see load).
+let rootVerified = false
+// Where the session began (session.start); used to look for the CLI's root again.
+let sessionCwd = ''
+
+// A failed load never throws. With no run it is a no-run snapshot (nothing enforced); a run that was in progress
+// stays enforced (see lastRun).
 async function load($: Api): Promise<Snapshot> {
   // After a hot reload no session.start has run yet: the project root comes back from `$.state`.
   if (!root) root = await rememberedRoot($)
-  return loadSnapshot(makeIo($), options).catch(() => idleSnapshot(options, false))
+  let snap: Snapshot | null = await loadSnapshot(makeIo($), options).catch(() => null)
+  if (snap !== null && snap.slug === null && !snap.inert && lastRun === null && !rootVerified && sessionCwd) {
+    // No run in the folder the mod chose at the first session start. A run the CLI starts later may live in a folder
+    // above it (the CLI root): look again before deciding there is none.
+    const found = await locateRoot($, sessionCwd)
+    if (found !== null && found !== root) {
+      root = found
+      await $.state.set({ plugin: 'temper', key: 'root' } as const, root).catch(() => undefined)
+      snap = await loadSnapshot(makeIo($), options).catch(() => null)
+    }
+  }
+  if (snap !== null && snap.slug !== null) {
+    lastRun = snap
+    rootVerified = true
+    return snap
+  }
+  const held = heldRun()
+  if (held !== null) {
+    lastRun = held
+    return held
+  }
+  lastRun = null
+  return snap ?? idleSnapshot(options, false)
 }
 
 // ---- The project root ------------------------------------------------------------------------
@@ -105,14 +152,14 @@ async function rememberedRoot($: Api): Promise<string> {
   return typeof read?.value === 'string' ? read.value : ''
 }
 
-// The nearest folder at or above `cwd` that holds .temper/build-state.json; `cwd` itself when none does.
-async function findProjectRoot($: Api, cwd: string): Promise<string> {
+// The nearest folder at or above `cwd` that holds .temper/build-state.json; null when none does.
+async function locateRoot($: Api, cwd: string): Promise<string | null> {
   let dir = cwd.replace(/\/+$/, '')
   for (let i = 0; i < 12 && dir !== ''; i++) {
     if ((await $.fs.read(`${dir}/.temper/build-state.json`).catch(() => undefined)) !== undefined) return dir
     dir = dir.slice(0, Math.max(0, dir.lastIndexOf('/')))
   }
-  return cwd
+  return null
 }
 
 // Session start: keep the remembered root; the first time, find it and remember it.
@@ -129,7 +176,11 @@ async function settleRoot($: Api, cwd: string | undefined): Promise<void> {
     root = cwd
     return
   }
-  root = await findProjectRoot($, cwd)
+  const found = await locateRoot($, cwd)
+  root = found ?? cwd
+  rootVerified = found !== null
+  // No run was found: the root is the session folder for now, and a run that starts above it is looked for later (see load).
+  sessionCwd = found === null ? cwd : ''
   await $.state.set({ plugin: 'temper', key: 'root' } as const, root).catch(() => undefined)
 }
 
@@ -681,7 +732,33 @@ function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
 
 // What the guard decided for one call: a deny text, or null to pass it on. `ids` are the human decisions
 // the call took. They are spent only when the call ran and succeeded (see the tool.call hook).
-type Guarded = { deny: string | null; ids: string[]; undoStaged?: { all: boolean; paths: string[] } }
+// `fingerprint` is the CLI's files before a call that took decisions or a loop: after a call that ended in an error it
+// says whether the call took effect anyway. `loopIds` are back decisions a `state loop` call used.
+type Guarded = { deny: string | null; ids: string[]; undoStaged?: { all: boolean; paths: string[] }; loopIds?: string[]; fingerprint?: string }
+
+// The shell's folder, carried from one Bash call to the next (the engine keeps it). A folder outside the project, or one
+// that cannot be read, is taken as the project root: the engine puts the shell back there.
+let bashCwd = ''
+const loopedDecisions = new Set<string>()
+
+function carryCwd(after: string | null, rootDir: string): string {
+  if (after === null || after === '') return ''
+  if (!after.startsWith('/')) return after
+  const rel = normalizePath(after, rootDir)
+  return rel.startsWith('/') || rel.startsWith('..') ? '' : rel
+}
+
+const GUARD_ERROR =
+  'Temper: the guard hit an error while it checked this command, and a run is active. Temper does not pass a command it could not check. ' +
+  'Next: run the command again. If it keeps failing, ask the user (the user can turn enforcement off with /temper:temper enforcement off).'
+
+// A guard that threw: Bash is refused while a run is active (a command the guard cannot read is the one to refuse),
+// every other tool passes (the mod must not make Temper worse than without it).
+function failedGuard(tool: string): Guarded {
+  const r = lastRun
+  const active = r !== null && !r.inert && r.enforcement !== 'off' && !r.sync.failOpen && r.state.phase !== null && r.state.phase !== 'done'
+  return tool === 'Bash' && active ? { deny: GUARD_ERROR, ids: [] } : { deny: null, ids: [] }
+}
 
 // The one place this module denies.
 async function guard($: Api, tool: string, input: Record<string, unknown>): Promise<Guarded> {
@@ -691,7 +768,7 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
   if (snap.inert || snap.enforcement === 'off' || snap.sync.failOpen) return { deny: null, ids: [] }
   const io = makeIo($)
   const command = typeof input.command === 'string' ? input.command : ''
-  const cls = tool === 'Bash' ? classifyBash(command) : null
+  const cls = tool === 'Bash' ? classifyBash(command, bashCwd) : null
   // What this session staged with `git add` so far: a commit of spec files only is the artifact chain.
   if (cls) {
     staged.all = staged.all || cls.staged.all
@@ -705,7 +782,7 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
   const commit = cls?.commits ? await commitFacts(io, snap, root, staged) : undefined
   // From here to the reservation there is no await: a parallel call cannot slip in between. A
   // decision a running call has reserved is not offered to this one.
-  const ctx = { ...ruleContext(snap, root), ...(commit ? { commit } : {}) }
+  const ctx = { ...ruleContext(snap, root), cwd: bashCwd, loopedDecisions: [...loopedDecisions], ...(commit ? { commit } : {}) }
   const r = evaluate(snap.state, { ...ctx, humanDecisions: (ctx.humanDecisions ?? []).filter(h => !reservedDecisions.has(h.id)) }, { tool, input })
   // A commit that went through starts the next staging from nothing. If the commit then fails (an index lock,
   // a hook), the files are still staged: tool.call gives the list back (found live: the retry was refused).
@@ -716,16 +793,35 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
     staged.paths = []
   }
   if ('deny' in r) return { deny: r.drift ? await resolveDrift($, snap, r.drift, r.deny) : r.deny, ids: [] }
+  // The command will run: the shell's folder is where it leaves it.
+  if (cls) bashCwd = carryCwd(cls.cwdAfter, root)
+  // A `state loop` call used the person's back decision once: a second one needs another decision.
+  const loopIds = r.loopIds ?? []
+  for (const id of loopIds) loopedDecisions.add(id)
   if (r.consume === 'drift' && r.driftPath) {
     adopt($, (await apply(io, options, snap, { type: 'useDrift', path: r.driftPath, origin: 'system' })).snap)
   } else if (r.consume && r.consume !== 'drift' && r.eventIds) {
     // Every human event a chained command matched is reserved at once, so a parallel call cannot use
-    // it too. It is spent after the call ran and did not fail: a call that failed, or never ran, gives
-    // the decision back, and the person's choice stays pending (key 1 records it again).
+    // it too. It is spent after the call ran, also when the call ended in an error but changed the CLI's files (see
+    // tookEffect). A call that failed and changed nothing, or never ran, gives the decision back, and the person's
+    // choice stays pending (key 1 records it again).
     for (const id of r.eventIds) reservedDecisions.add(id)
-    return { deny: null, ids: r.eventIds, ...(undoStaged ? { undoStaged } : {}) }
+    return { deny: null, ids: r.eventIds, ...(undoStaged ? { undoStaged } : {}), ...(loopIds.length > 0 ? { loopIds } : {}), fingerprint: await runFingerprint(io).catch(() => '') }
   }
-  return { deny: null, ids: [], ...(undoStaged ? { undoStaged } : {}) }
+  return { deny: null, ids: [], ...(undoStaged ? { undoStaged } : {}), ...(loopIds.length > 0 ? { loopIds, fingerprint: await runFingerprint(io).catch(() => '') } : {}) }
+}
+
+// After a call that ended in an error: did it change the CLI's files all the same (`state advance ...; exit 1`)?
+// The decision it used is then spent, as for a call that ended well. The exit status says nothing about the effect.
+async function tookEffect($: Api, g: Guarded): Promise<boolean> {
+  if (g.fingerprint === undefined || g.fingerprint === '') return false
+  const after = await runFingerprint(makeIo($)).catch(() => g.fingerprint)
+  return after !== g.fingerprint
+}
+
+// A `state loop` call that failed with no effect gives the back decision's one use back.
+function releaseLoops(g: Guarded, failed: boolean): void {
+  if (failed) for (const id of g.loopIds ?? []) loopedDecisions.delete(id)
 }
 
 // A commit call that failed did not use the staged files: the list the guard cleared comes back.
@@ -845,6 +941,11 @@ export const register: Register = (on, opts) => {
   options = opts
   current = null
   root = ''
+  lastRun = null
+  rootVerified = false
+  sessionCwd = ''
+  bashCwd = ''
+  loopedDecisions.clear()
   pendingDrift = null
   lastMoveAt = 0
   pressing.clear()
@@ -926,18 +1027,24 @@ export const register: Register = (on, opts) => {
   // Subagent calls arrive here too (e.agentId names the loop); they are held to the same
   // phase rules as the main loop.
   on('tool.call', async ($, e, next) => {
-    const g = await guard($, e.tool, { ...e }).catch((): Guarded => ({ deny: null, ids: [] }))
+    const g = await guard($, e.tool, { ...e }).catch((): Guarded => failedGuard(e.tool))
     if (g.deny !== null) return { deny: g.deny }
     let result
     try {
       result = await next(e)
     } catch (err) {
-      await settle($, g.ids, true).catch(() => undefined)
+      const failed = !(await tookEffect($, g).catch(() => false))
+      await settle($, g.ids, failed).catch(() => undefined)
+      releaseLoops(g, failed)
       restoreStaged(g, true)
       throw err
     }
-    restoreStaged(g, (result as { isError?: boolean }).isError === true)
-    if (g.ids.length > 0) await settle($, g.ids, (result as { isError?: boolean }).isError === true).catch(() => undefined)
+    const errored = (result as { isError?: boolean }).isError === true
+    restoreStaged(g, errored)
+    // An error status is not "nothing happened": the decision is given back only when the CLI's files did not change.
+    const failed = errored && !(g.ids.length + (g.loopIds?.length ?? 0) > 0 && (await tookEffect($, g).catch(() => false)))
+    releaseLoops(g, failed)
+    if (g.ids.length > 0) await settle($, g.ids, failed).catch(() => undefined)
     const cmd = 'command' in e && typeof e.command === 'string' ? e.command : ''
     if (e.tool === 'Bash' && /\btemper["']?\s+gate\s+check\b/.test(cmd)) await afterGateCheck($).catch(() => undefined)
     return result
