@@ -41,29 +41,24 @@ Run these from `<clone>`. None of them needs you to be signed in.
 - [ ] `bash scripts/tests/test-temper.sh` ends with `FAIL: 0`.
 - [ ] `bash scripts/quality-check.sh` ends with `All checks passed.`
 
-## 3. The demo session
+## 3. A test session
 
-- [ ] **Start the demo with one command.** From the root of your clone:
+- [ ] **Start a run in a small test project.** Use any small git project you can throw away
+  (`<project>`). Start Claude Code there with the branch loaded:
 
 ```bash
-bash demo/run-demo.sh          # starts at Step 2 of 6: Plan, ready to approve
-bash demo/run-demo.sh intent   # starts at Step 1 of 6: Intent
+cd <project> && claude --plugin-dir <clone>
 ```
 
-  The script copies the demo project to `/tmp/pr-demo` (it replaces an old one only when it holds
-  the marker file `.temper-demo`; delete `/tmp/pr-demo` by hand if it is not a demo folder), seeds a Temper run (at Plan, with the
-  intent accepted and the plan written, so both checks already pass; or at Intent), checks your
-  Claude Code version, switches off your installed Temper for this one
-  process only (so the branch is the only Temper, and your settings are untouched), and
-  starts Claude Code with the branch loaded. When Claude Code asks, choose "Yes, I trust
-  this folder". Always type the full command name `/temper:temper`.
-  Expect the TEMPER bar above the prompt ("Step 2 of 6: Plan" and "1 Continue to Build.") and no
-  plugin load error. The folder is watched, so a `git pull` in `<clone>` reloads the mod without
-  restarting.
-- [ ] **The smooth path.** At Plan, type `Skip the tasks: edit src/users.js now to add a resetToken
+  When Claude Code asks, choose "Yes, I trust this folder". Always type the full command name
+  `/temper:temper`. Type `/temper:temper "add a small function"` and approve the intent, so the run
+  is at Plan with the plan written. Expect the TEMPER bar above the prompt ("Step 2 of 6: Plan" and
+  "1 Continue to Build.") and no plugin load error. The folder is watched, so a `git pull` in
+  `<clone>` reloads the mod without restarting.
+- [ ] **The smooth path.** At Plan, type `Skip the tasks: edit a source file now to add the
   function`. Expect a refusal with a `Next:` step. Then, with the prompt empty, press `1`. Expect the
   toast "Plan approved. Build open.", the bar at "Step 3 of 6: Build", and, after Claude's one
-  short line, `scripts/temper state get next_stage` prints `build` in `/tmp/pr-demo`. Claude must
+  short line, `scripts/temper state get next_stage` prints `build` in `<project>`. Claude must
   not ask you to approve again. Then expect a second turn that starts with `/temper:temper`: the
   orchestrator launches the Build stage in its own subagent (a `temper:temper-build` agent line). No
   AskUserQuestion dialog may appear at the gate: the stage ends with "Waiting for you. Use the Temper
@@ -101,17 +96,17 @@ bash demo/run-demo.sh intent   # starts at Step 1 of 6: Intent
 
 Work through one run. For each phase, check the refusal and the key.
 
-- [ ] **Intent denial.** While Intent is current, type `Edit src/users.js and add a resetToken field now`.
+- [ ] **Intent denial.** While Intent is current, type `Edit a source file of the project and add a field now`.
   Expect a refusal that starts `Temper: Intent phase.` and ends with `Next:` and a step.
   The write to `.temper/specs/<name>/intent.md` must still be allowed.
 - [ ] **Continue from Intent with a key.** Press `1` ("Start Intent"): Claude's Intent stage writes
   the intent and its check runs. Then key 1 says "Continue to Plan"; press it. Expect the band to
   show Plan as current and a toast "Intent approved. Plan open."
-- [ ] **Plan denial and approval.** Repeat the denial for `src/users.js`. Expect
+- [ ] **Plan denial and approval.** Repeat the denial for the same file. Expect
   `Temper: Plan phase.` Then press `1` ("Continue to Build") to approve the plan.
 - [ ] **Build.** Expect key 1 to say "Continue with task N" and the stage to write a failing test
   first. Ask Claude to edit a file
-  that is not in the plan (for example `README.md` in the demo). Expect a question with
+  that is not in the plan (for example `README.md`). Expect a question with
   three choices: Add to plan, Revert, Allow once. Choose Allow once and give a reason.
   Expect the edit to go through once.
 - [ ] **The pane.** Type `/temper:temper pane`. Expect a pane with the criteria checklist, the
@@ -125,7 +120,7 @@ Work through one run. For each phase, check the refusal and the key.
   100 points expect a banner "Hot! 100" and a yellow flash. Let Ember hit something and expect
   "Game over. Your forge went cold." and "Press r to run again. q or Esc leaves.", and the button
   `r  Run again`. Press `q` and expect the pane to close. While the game is open, ask Claude to edit
-  `src/users.js`: expect the same refusal as without the game. Press Esc and expect the pane to close
+  a source file: expect the same refusal as without the game. Press Esc and expect the pane to close
   and the prompt to work. Resize to 80 columns and open it again: the picture must fit.
 - [ ] **The game feels right.** With the Buttons only (no click), expect a jump to start within a
   fraction of a second of the key (measured here: about 40 ms, see `docs/mods-plan.md` 3.8a). A jump pressed
@@ -202,7 +197,7 @@ phases. Run each of these from `<clone>`, which does not touch your installed Cl
 This part was not verified by the author. How to load a local plugin folder into the
 desktop app depends on your installation, so treat the first step as an experiment.
 
-- [ ] Open the Code tab of the desktop app on the demo project. Load the clone as a plugin
+- [ ] Open the Code tab of the desktop app on `<project>`. Load the clone as a plugin
   (for example by adding `<clone>` as a local marketplace through the plugin settings, with
   the installed Temper disabled as in step 1). If your build has no way to do this, mark
   the step skipped and note it.
@@ -226,7 +221,7 @@ jq 'del(.pluginConfigs["temper@inline"], .pluginConfigs.temper)' ~/.claude/setti
   Expect `jq '.pluginConfigs' ~/.claude/settings.json` to show no Temper entry. If your
   settings file already had a `pluginConfigs` entry for a Temper you installed, keep that
   one: only remove the entry that the test added.
-- [ ] Delete the demo copy: `rm -rf /tmp/password-reset-demo`.
+- [ ] Delete `<project>` if you made it only for this test.
 
 When every box is ticked (or marked skipped with a reason), the branch is ready to merge
 and release with the existing release process.

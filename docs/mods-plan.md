@@ -174,7 +174,7 @@ treat the docs as the current behavior for the README.
 | compaction | event is `session.compact`; `$.state` survives compaction; `session.start` does **not** fire after `/clear`, `/resume`, `/branch` | rebuild state on `classic.SessionStart` as well |
 | `attribution.text` | kinds `commit`, `pr`, `exemption`, `remedy` | add one Temper line to `pr` when enabled |
 | `turn.step` per phase model or effort | async generator; `next({ ...e, model })` or `effort` | optional, off by default |
-| `agent.spawn` reviewer model | returns `{ model }`; can rewrite it | optional: rewrite the model for the `temper:review` agent |
+| reviewer model | `turn.step` in a subagent carries `agentId`; `$.agent.list()` names its type | optional: the steps of the `temper-review` agent run on `reviewerModel`; the `agent.spawn` event is never changed (9.6.1) |
 
 ### 2.4 userConfig at load or live (Part C.5)
 
@@ -232,9 +232,9 @@ treat the docs as the current behavior for the README.
 There is no manifest permission list. The engine scans the module and records what it
 calls; `claude plugin validate` prints it and admins can refuse a mod by it
 (`plugin.register` `uses`). The `calls:` line the validator prints for the built mod,
-nothing else (22 calls; the list is enforced by `scripts/check-mod-calls.sh`):
+nothing else (23 calls; the list is enforced by `scripts/check-mod-calls.sh`):
 
-`command.run, config.list, config.set, fs.list, fs.read, fs.stat, fs.write, prompt.fill,
+`agent.list, command.run, config.list, config.set, fs.list, fs.read, fs.stat, fs.write, prompt.fill,
 prompt.submit, prompt.suggest, session.version, state.get, state.set, store.get,
 store.set, ui.ask, ui.close, ui.focus, ui.invalidate, ui.open, ui.resolve, ui.toast`
 
@@ -242,6 +242,7 @@ Why each call is there:
 
 | Call | Reason |
 |---|---|
+| `agent.list` | the optional `reviewerModel`: whether a subagent's step belongs to the Temper review agent. Read only; the spawn is passed on unchanged |
 | `config.list`, `config.set` | `/temper mode` and `/temper enforcement` read the row (locked by an administrator or not) and change it the way `/config` does |
 | `fs.list`, `fs.read` | rebuild the run from `.temper/` files and the spec's events |
 | `fs.stat` | resolve `.` to the project root so absolute tool paths can be made relative |

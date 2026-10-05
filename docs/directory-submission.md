@@ -17,7 +17,7 @@ script can check.
 | The README has an Install heading and a "What the mod reads and writes" heading | A reader must see how to install it and what it touches. |
 | A plain text line of the phases comes before the Mermaid diagram | Some pages do not draw Mermaid. |
 | Every image has alt text | Accessibility. |
-| No text file names the bundled assets folder outside a link target | Image files may move. Tapes and screenshots write into `demo/out/`. |
+| No text file names the bundled assets folder outside a link target | Image files may move. |
 | No `options` key in `plugin.json` or `marketplace.json` | A settings field with options stops the plugin loading before Claude Code 2.1.271. |
 | `plugin.json` has a description, keywords and a version | The listing uses them. |
 | `marketplace.json` lists the same plugin | The names must match. |
@@ -29,8 +29,7 @@ script can check.
 - [ ] `claude plugin test .` passes.
 - [ ] The version in `plugin.json` matches the top entry of `CHANGELOG.md`.
 - [ ] The README images load on the GitHub page (open the page and look).
-- [ ] The hero GIF shows the real mod. The game picture is a placeholder until you record
-      `demo/game.tape`.
+- [ ] The hero GIF shows the real mod.
 - [ ] The privacy page is public: https://galando.github.io/temper/privacy.html
 - [ ] You tried the install steps in a clean folder: `/plugin marketplace add galando/temper`,
       then `/plugin install temper`.

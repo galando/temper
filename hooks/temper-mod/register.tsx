@@ -469,7 +469,7 @@ async function handOver($: Api, drafts: readonly Draft[]): Promise<boolean> {
     } else {
       const snap = await ensure($)
       // The phase a step back left, from the run's own history: the CLI loop is from -> to.
-      const left = draft.type === 'back' ? ([...snap.state.history].reverse().find(h => h.kind === 'back' && h.to === draft.to)?.from ?? null) : null
+      const left = draft.type === 'back' ? ([...snap.state.history].reverse().find(step => step.kind === 'back' && step.to === draft.to)?.from ?? null) : null
       await submitText($, followUp(draft, snap.complexity, pluginCli(), left))
       // A skip is a move on, like a Continue: the CLI is still at the skipped stage, so the orchestrator does
       // that stage's On Continue steps (`state advance`, which the guard lets through for a skip) and launches
@@ -500,8 +500,8 @@ async function recordAgain($: Api): Promise<void> {
 
 // Key 0 (and the pane's More button): show or hide the menu of the other options. The band and the
 // pane both draw it, with the digits 1 to 9, in place of the main buttons. No pane is opened.
-async function showMore($: Api, on?: boolean): Promise<void> {
-  live.paneExpanded = on ?? !(live.paneExpanded ?? false)
+async function showMore($: Api, expanded?: boolean): Promise<void> {
+  live.paneExpanded = expanded ?? !(live.paneExpanded ?? false)
   await refresh($)
   $.ui.invalidate('ui.render')
 }
@@ -618,7 +618,8 @@ async function setRow($: Api, key: RowKey, label: string, value: string): Promis
   const rows = await $.config.list()
   const row = rows.find(r => r.key === key)
   if (row?.isLocked) return `Your organization set Temper's ${label} to ${String(row.value)}. Ask your admin to change it.`
-  const result = await $.config.set({ key, value })
+  // Each key is written as fixed text, so a reader (and the plugin directory) sees which setting changes.
+  const result = key === 'temper.uiMode' ? await $.config.set({ key: 'temper.uiMode', value: value }) : await $.config.set({ key: 'temper.enforcement', value: value })
   return result.deny ?? null
 }
 
@@ -783,7 +784,7 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
   // From here to the reservation there is no await: a parallel call cannot slip in between. A
   // decision a running call has reserved is not offered to this one.
   const ctx = { ...ruleContext(snap, root), cwd: bashCwd, loopedDecisions: [...loopedDecisions], ...(commit ? { commit } : {}) }
-  const r = evaluate(snap.state, { ...ctx, humanDecisions: (ctx.humanDecisions ?? []).filter(h => !reservedDecisions.has(h.id)) }, { tool, input })
+  const r = evaluate(snap.state, { ...ctx, humanDecisions: (ctx.humanDecisions ?? []).filter(decision => !reservedDecisions.has(decision.id)) }, { tool, input })
   // A commit that went through starts the next staging from nothing. If the commit then fails (an index lock,
   // a hook), the files are still staged: tool.call gives the list back (found live: the retry was refused).
   let undoStaged: Guarded['undoStaged']
@@ -922,18 +923,37 @@ async function afterGateCheck($: Api): Promise<void> {
   adopt($, await syncCheck(makeIo($), options, await refresh($), true))
 }
 
-// The phase and effort a step runs with, from the phaseModels option; null leaves the step
-// exactly as the engine built it.
+const REVIEWERS = ['temper-review', 'temper:temper-review']
+
+// Whether each subagent seen at turn.step is the Temper review agent, by its id. The agent list is read once per id.
+const reviewerIds = new Map<string, boolean>()
+
+async function isReviewer($: Api, agentId: string): Promise<boolean> {
+  const known = reviewerIds.get(agentId)
+  if (known !== undefined) return known
+  const agents = await $.agent.list()
+  const found = agents.find(a => a.id === agentId)
+  if (found === undefined) return false
+  const yes = REVIEWERS.includes(found.type)
+  reviewerIds.set(agentId, yes)
+  return yes
+}
+
+// The model and effort a step runs with: on the main loop from the phaseModels option, in the Temper review agent
+// from the reviewerModel option. Null leaves the step exactly as the engine built it. The spawn of an agent is never
+// changed: the reviewer model applies to the steps of that agent only.
 async function phasePick($: Api, agentId: string | undefined): Promise<{ model?: string; effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max' } | null> {
+  if (agentId !== undefined) {
+    const model = typeof options.reviewerModel === 'string' ? options.reviewerModel.trim() : ''
+    return model && (await isReviewer($, agentId)) ? { model } : null
+  }
   const raw = options.phaseModels
-  if (agentId !== undefined || typeof raw !== 'string' || raw.trim() === '') return null
+  if (typeof raw !== 'string' || raw.trim() === '') return null
   const snap = await ensure($)
   if (snap.inert || snap.state.phase === null || snap.state.phase === 'done') return null
   const pick = parsePhaseModel(parsePhaseModels(raw)[snap.state.phase])
   return pick.model || pick.effort ? pick : null
 }
-
-const REVIEWERS = ['temper-review', 'temper:temper-review']
 
 // Wiring only. Every hook fails open: an exception passes the call through, except the
 // detected violation, which is the one place this module denies.
@@ -963,6 +983,7 @@ export const register: Register = (on, opts) => {
   live.mode = undefined
   live.enforcement = undefined
   live.paneExpanded = undefined
+  reviewerIds.clear()
 
   on('session.start', async ($, e, next) => {
     await settleRoot($, e.cwd)
@@ -1195,17 +1216,11 @@ export const register: Register = (on, opts) => {
     }
   })
 
-  // Optional: a model or effort per phase (userConfig phaseModels, "build=sonnet:high").
-  // Empty means the step is passed on exactly as the engine built it.
+  // Optional: a model or effort per phase (userConfig phaseModels, "build=sonnet:high"), and a model for the steps
+  // of the Temper review agent (userConfig reviewerModel). Empty means the step is passed on exactly as the engine
+  // built it.
   on('turn.step', async function* ($, e, next) {
     const pick = await phasePick($, e.agentId).catch(() => null)
     return yield* next(pick ? { ...e, ...pick } : e)
-  })
-
-  // Optional: a reviewer model for the Temper review agent (userConfig reviewerModel).
-  on('agent.spawn', async (_$, e, next) => {
-    const model = typeof options.reviewerModel === 'string' ? options.reviewerModel.trim() : ''
-    if (!model || !REVIEWERS.includes(e.subagentType)) return next(e)
-    return next({ ...e, model })
   })
 }

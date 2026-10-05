@@ -65,7 +65,7 @@ while IFS= read -r f; do
   hit="$(sed -E 's/\]\([^)]*\)//g' "$f" | grep -nF "$ASSETS_DIR_NAME" | head -2 || true)"
   [[ -n "$hit" ]] && LEAKS+="  $rel: $(printf '%s' "$hit" | head -1 | cut -c1-100)"$'\n'
 done < <(find "$ROOT" \( -path "$ROOT/.git" -o -path "$ROOT/node_modules" -o -path "$ROOT/.temper" \
-          -o -path "$ROOT/docs/history" -o -path "$ROOT/demo/out" -o -path "$ROOT/scripts/validate-directory.sh" \
+          -o -path "$ROOT/docs/history" -o -path "$ROOT/scripts/validate-directory.sh" \
           -o -path "$ROOT/scripts/tests" \) -prune -o -type f \
           \( -name '*.md' -o -name '*.sh' -o -name '*.tape' -o -name '*.tpl' -o -name '*.json' -o -name '*.ts' -o -name '*.tsx' \) -print 2>/dev/null)
 if [[ -n "$LEAKS" ]]; then
