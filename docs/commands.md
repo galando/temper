@@ -209,7 +209,7 @@ Key `9` is "Skip with a reason" everywhere and always asks for a reason. Key `0`
 | Phase | Writes allowed | Keys |
 |---|---|---|
 | Intent | `intent.md` only | 1 Start Intent, or Continue to Plan. 2 Grill me. 3 Teach me. More: Save for later. |
-| Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records | 1 Run Plan, Loop back to Intent, or Continue to Build. 2 Walk through step by step. 3 Open HTML review. More: Grill me, Teach me, Save for later. |
+| Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records | 1 Run Plan, Loop back to Intent, or Continue to Build. 2 Walk through step by step. 3 Open HTML review. More: Grill me, Teach me, Share HTML review, Save for later. |
 | Build, checkpoint (tasks are open) | The files in the plan, test files and the spec folder | 1 Continue with task N. 2 Change. 3 Stop. More: Grill me, Teach me, Save for later. |
 | Build, completion | The same | 1 Continue to Review, or Loop back to Plan when the check failed. 2 Teach me. 3 Grill me. More: Loop back to Plan, Save for later. |
 | Review | The spec folder only, unless a fix for that file is active | 1 Run Review, Loop back to Build, or Continue to Check. 2 Architecture depth review. 3 Grill me. More: Teach me, Loop back to Build, Save for later. In the pane, per finding: Fix, Accept, Explain. |
@@ -288,6 +288,10 @@ without starting the pipeline.
   config), Problem, measurable Success Criteria, Constraints, Target Users, and Open
   Questions — **no scenarios and no architecture**; those are Plan's job, derived from
   the measured blast radius later
+- Keeps criteria and constraints firm: `temper gate intent` fails a draft that uses
+  should, may, might, or possibly in one, unless the line carries a `(source: ...)`
+  marker (the hedge belongs to the source). A source "should" or "may" is never turned
+  into "must" without asking the originator; the answer goes into `### Decisions`
 - Offers to commit the draft, so author, timestamp, and revision history live in
   version control from the moment the idea is real
 

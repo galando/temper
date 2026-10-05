@@ -24,6 +24,9 @@ export type RuleContext = {
   humanDecisions?: readonly HumanDecision[]
   // The run's complexity (build-state.json): medium and complex runs have a design stage after plan.
   complexity?: string | null
+  // `phases.design: true` is written in .claude/temper.config. When it is not, the orchestrator may go from a
+  // medium or complex plan straight to Build (the project never switched design on), so that step is accepted too.
+  designRequired?: boolean
   // The CLI state looks reset (it is earlier than checks that passed): the phase rules do not block a
   // write. Protected paths stay protected.
   failOpenWrites?: boolean
@@ -165,6 +168,14 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, path: 
 // The CLI has no Fix stage: a decision made in Fix is a decision about the Check stage.
 const stageName = (p: string): string => (p === 'fix' ? 'check' : p)
 
+// The person skipped this stage with a reason (the override event) and has not stepped back since. A skip is the
+// person's own decision to go on, so the `state advance` that follows it needs no second approval, also for Intent
+// and Plan. A later step back ends it: a re-planned Plan must be approved again.
+function skippedStage(s: RunState, stage: string): boolean {
+  const lastBack = s.history.reduce((t, h) => (h.kind === 'back' ? Math.max(t, h.ts) : t), -Infinity)
+  return s.overrides.some(o => stageName(o.phase) === stage && o.ts >= lastBack)
+}
+
 // The Plan was approved by the person in this run: a trusted advance out of Plan, not undone by a
 // later back step to Intent or Plan. Untrusted event files never reach the state, so they never count.
 const planApproved = (s: RunState): boolean => {
@@ -228,7 +239,7 @@ function commitAllowed(s: RunState, facts: CommitFacts | undefined): boolean {
 // The check of a stage passed (fresh PASS) or the person overrode it, and the run is at that stage.
 // Design has no verdict of its own in the mod: it follows an approved plan whose check passed.
 function followsVerdict(s: RunState, stage: string, complexity?: string | null): boolean {
-  if (stage === 'design') return (complexity === 'medium' || complexity === 'complex') && planApproved(s) && (s.gate.plan === 'fresh' || s.overrides.some(o => o.phase === 'plan'))
+  if (stage === 'design') return (complexity === 'medium' || complexity === 'complex') && (planApproved(s) || skippedStage(s, 'plan')) && (s.gate.plan === 'fresh' || s.overrides.some(o => o.phase === 'plan'))
   if (!(stage in s.gate)) return false
   const here = s.phase === stage || (s.phase === 'fix' && stage === 'check')
   return here && (s.gate[stage as Phase] === 'fresh' || s.overrides.some(o => o.phase === stage))
@@ -267,7 +278,17 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
   // Removing or archiving the run's state is for after the run: while a run is active it would
   // take the gate ledger and the overrides with it.
   if (isActive(s) && c.stateOps.some(o => o.op === 'clear' || o.op === 'archive')) return { deny: STATE_END }
-  if (isActive(s) && c.stateOps.some(o => o.op === 'init' || o.op === 'loop')) return { deny: STATE_RESTART }
+  if (isActive(s) && c.stateOps.some(o => o.op === 'init')) return { deny: STATE_RESTART }
+  // `state loop <from> <to>` keeps the loop budget and clears the evidence of the stages that are redone.
+  // While a run is active it is for the person's Loop back only: it passes when the person's back decision
+  // for that stage waits unspent. The decision is spent by the `state set next_stage` call that follows.
+  if (isActive(s)) {
+    for (const op of c.stateOps) {
+      if (op.op !== 'loop') continue
+      const to = op.to
+      if (to === undefined || !(ctx.humanDecisions ?? []).some(h => h.kind === 'back' && h.phase !== undefined && stageName(h.phase) === stageName(to))) return { deny: STATE_RESTART }
+    }
+  }
 
   if (isActive(s)) {
     if (c.calls.some(call => call.invalid)) return { deny: REPEATED_FLAG }
@@ -298,11 +319,26 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
       let approved: string | null = null
       if (call.kind === 'advance') {
         const stage = (call.stage ?? '').replace(/_complete$/, '')
-        const wellFormed = /_complete$/.test(call.stage ?? '') && nextStage(stage, ctx.complexity) !== null && call.next === nextStage(stage, ctx.complexity)
-        approved = wellFormed && stage !== 'design' ? stage : null
+        const expected = nextStage(stage, ctx.complexity)
+        const skipsDesign = stage === 'plan' && expected === 'design' && ctx.designRequired !== true && call.next === 'build'
+        const wellFormed = /_complete$/.test(call.stage ?? '') && expected !== null && (call.next === expected || skipsDesign)
+        // Design belongs to Plan: the person's Continue at the design check spends an advance decision of Plan.
+        approved = wellFormed ? (stage === 'design' ? 'plan' : stage) : null
         const hasHuman = approved !== null && pool.some(h => h.kind === 'advance' && (h.phase === undefined || h.phase === approved))
         if (!hasHuman) {
           if (wellFormed && stage !== 'intent' && stage !== 'plan' && followsVerdict(s, stage, ctx.complexity)) continue
+          if (wellFormed && stage !== 'design' && skippedStage(s, stage)) continue
+          // The person's decision for this stage waits, but the call names another next stage (found live: a
+          // medium run with design on, advanced straight to Build). Say which stage is next; do not send the
+          // model back to the person for a decision that was already made.
+          const waits = pool.some(h => h.kind === 'advance' && (h.phase === undefined || h.phase === stage))
+          if (!wellFormed && waits && expected !== null && /_complete$/.test(call.stage ?? '')) {
+            return {
+              deny:
+                `Temper: after ${stage} the next stage of this run is ${expected}, not ${call.next ?? 'none'}. ` +
+                `Next: run scripts/temper state advance ${stage}_complete ${expected}. The user's approval is already recorded.`,
+            }
+          }
           return { deny: ONLY_USER }
         }
       }

@@ -43,6 +43,10 @@ presents for acceptance.
    immediately, as `{question} -> {answer} ({who decided}, {date})`. **Never write
    card data or personal data into the intent** — reference the ticket instead.
    When a ticket key is linked, prefix the slug with it (`{KEY}-{slug}`).
+   **Soft source words:** never turn a source "should" or "may" into "must"
+   silently. Ask the originator whether the source means required or optional and
+   record the answer in `### Decisions`. With no answer yet, keep the source wording
+   (marked `(source: …)`) and add a Blocking Open Question.
 
 2. **Write the draft** to `.temper/specs/{slug}/intent.md` using
    `$CLAUDE_PLUGIN_ROOT/templates/intent.md`:
@@ -64,7 +68,8 @@ presents for acceptance.
 
 3. **Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate intent --spec-path
    .temper/specs/{slug}`** and fix any FAIL (empty/placeholder Problem, no real
-   criteria, missing Status value) — the same deterministic floor the pipeline's
+   criteria, missing Status value, a should/may/might/possibly in a criterion or
+   constraint that has no `(source: …)` marker) — the same deterministic floor the pipeline's
    Intent gate applies. `--spec-path` is required here: this command never runs
    `temper state init`, and without a spec path the gate refuses to guess (usage
    error, no verdict) rather than vacuously passing on a path it never looked at.

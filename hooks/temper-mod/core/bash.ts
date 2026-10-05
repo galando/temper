@@ -22,7 +22,7 @@ export type DecisionKind = 'override' | 'accept' | 'advance' | 'back'
 export type DecisionCall = { kind: DecisionKind; stage?: string; id?: string; next?: string; invalid?: boolean }
 
 // A `scripts/temper state ...` call that moves or removes run state.
-export type StateOp = { op: 'set'; key: string; value?: string } | { op: 'clear' } | { op: 'archive' } | { op: 'init' } | { op: 'loop' }
+export type StateOp = { op: 'set'; key: string; value?: string } | { op: 'clear' } | { op: 'archive' } | { op: 'init' } | { op: 'loop'; to?: string }
 
 export type BashClass = {
   commits: boolean
@@ -796,8 +796,15 @@ export function classifyBash(command: string): BashClass {
       // `git commit -a` or `-am` commits every changed file, whatever was staged.
       if (argText[i] === 'commit' && argText.slice(i + 1).some(a => a === '--all' || /^-[a-zA-Z]*a[a-zA-Z]*$/.test(a))) staged.all = true
       if (argText[i] === 'add') {
-        for (const a of argText.slice(i + 1)) {
+        const addArgs = argText.slice(i + 1)
+        for (let k = 0; k < addArgs.length; k++) {
+          const a = addArgs[k] ?? ''
           if (a === '--') continue
+          // A redirect is no path (found live: `git add .temper/specs/x/ 2>&1` made the staging look like code).
+          if (/^(?:\d*|&)(?:>>?|<)&?\S*$/.test(a)) {
+            if (/^(?:\d*|&)(?:>>?|<)$/.test(a)) k += 1
+            continue
+          }
           if (/^(?:-A|--all|-u|--update|\.|\*)$/.test(a) || /^-[a-zA-Z]*[Au]/.test(a)) staged.all = true
           else if (!a.startsWith('-')) staged.paths.push(a)
         }
@@ -848,7 +855,11 @@ export function classifyBash(command: string): BashClass {
           decisions.push('back')
           calls.push({ kind: 'back', stage: value })
         }
-      } else if (sub === 'state' && (sub2 === 'clear' || sub2 === 'archive' || sub2 === 'init' || sub2 === 'loop')) {
+      } else if (sub === 'state' && sub2 === 'loop') {
+        // The stage the loop goes back to, only when it is a plain word: a built or unresolved one is not read.
+        const to = argText[i + 3]
+        stateOps.push({ op: 'loop', ...(to !== undefined && !/[$`]/.test(to) && !(args[i + 3]?.dynamic ?? false) ? { to } : {}) })
+      } else if (sub === 'state' && (sub2 === 'clear' || sub2 === 'archive' || sub2 === 'init')) {
         stateOps.push({ op: sub2 })
       }
     }

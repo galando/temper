@@ -28,6 +28,14 @@ describe('the orchestrator starts every stage', () => {
     expect(w.commandRuns).toEqual([{ command: 'temper:temper', args: 'continue plan', origin: 'plugin' }])
   })
 
+  test('Continue at the design check (the CLI is at design, the mod at Plan) runs continue design (found live)', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'design', complexity: 'medium', gates: { plan: 'PASS' } }))
+    await $.session.start(START)
+    const ui = await band($)
+    await ui.press({ key: 'action-continue' })
+    expect(w.commandRuns).toEqual([{ command: 'temper:temper', args: 'continue design', origin: 'plugin' }])
+  })
+
   test('/temper:temper continue <stage> records nothing in the mod, from any origin', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }))
     await $.session.start(START)
@@ -67,7 +75,8 @@ describe('the orchestrator starts every stage', () => {
     await ui.press({ key: 'action-override' })
     expect(events(w).some(e => e.type === 'override')).toBe(true)
     expect(w.prompts.some(p => p.includes('override'))).toBe(true)
-    expect(w.commandRuns).toEqual([{ command: 'temper:temper', args: '', origin: 'plugin' }])
+    // A skip is a move on: the orchestrator does the On Continue steps of the skipped stage, then runs the next one.
+    expect(w.commandRuns).toEqual([{ command: 'temper:temper', args: 'continue review', origin: 'plugin' }])
   })
 
   test('only the person bare /temper:temper toggles the pane; the same command from a plugin reaches the orchestrator', async ($, on) => {

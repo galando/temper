@@ -20,6 +20,7 @@ Grill Me|Grill me
 Teach Me|Teach me
 Walk through step by step|Walk through step by step
 Open HTML review|Open HTML review
+Share HTML review|Share HTML review
 Loop back|Loop back to
 Override and continue|Skip with a reason
 Architecture Depth Review|Architecture depth review
@@ -48,7 +49,7 @@ done <<< "$TABLE"
 # Second check: the other way round. Every button label in actions.ts must be an original option
 # (the first column above, or its label), with a suffix allowed after "Continue to", "Loop back to"
 # and "Continue with task", or one of the explicit extras. Anything else fails with its name.
-ALLOWED_LABELS="Continue to|Continue with task|Loop back to|Save for later|Grill me|Teach me|Walk through step by step|Open HTML review|Architecture depth review|Review config suggestions|Change|Stop|Commit|Start Intent|Run Phase|Discuss|Play while you wait|Skip with a reason|Resume|Fix the failures|Fix the findings|Fix|Accept|Explain"
+ALLOWED_LABELS="Continue to|Continue with task|Loop back to|Save for later|Grill me|Teach me|Walk through step by step|Open HTML review|Share HTML review|Architecture depth review|Review config suggestions|Change|Stop|Commit|Start Intent|Run Phase|Discuss|Play while you wait|Skip with a reason|Resume|Fix the failures|Fix the findings|Fix|Accept|Explain"
 # Labels written as the third argument of prompt(), command(), launch() or draft().
 LABELS="$(grep -oE "(prompt|command|launch|draft)\((key|'[0-9]'), (id|'[^']+'|\`[^\`]+\`), '[^']+'" "$ACTIONS" | sed -E "s/.*, '([^']+)'$/\1/" | sort -u)"
 # Labels written as template strings: `Continue to ${next}`, `Loop back to ${...}`, `Run ${...}`.

@@ -5,7 +5,7 @@
 import type { Draft, DriftChoice, Phase } from './events'
 import { PHASES } from './events'
 import { ACT } from './actions'
-import { CLI, acceptCommand, advanceCommands, backCommand, overrideCommand } from './cli'
+import { CLI, acceptCommand, advanceCommands, backCommand, loopCommand, overrideCommand } from './cli'
 import type { Command } from './machine'
 
 export const RESERVED = [
@@ -108,14 +108,15 @@ export const RESUME = 'temper:temper'
 // `cli` is where the Temper script really is (the plugin folder, not the project). Without it the
 // prompt names `scripts/temper` and says the script lives in the plugin folder, so Claude does not
 // waste the one allowed run on a path that does not exist in the project.
-export function followUp(draft: Draft, complexity: string | null = null, cli: string = CLI): string | null {
-  const text = followUpText(draft, complexity)
+// `from` is the phase a back step leaves (the loop the CLI keeps is from -> to). Without it, only the step is mirrored.
+export function followUp(draft: Draft, complexity: string | null = null, cli: string = CLI, from: Phase | null = null): string | null {
+  const text = followUpText(draft, complexity, from)
   if (text === null) return null
   if (cli !== CLI) return text.split(`\`${CLI} `).join(`\`${cli} `)
   return text.includes(`\`${CLI} `) ? text.replace(` ${ACT}`, ` The script is in the Temper plugin folder, not in the project. ${ACT}`) : text
 }
 
-function followUpText(draft: Draft, complexity: string | null): string | null {
+function followUpText(draft: Draft, complexity: string | null, from: Phase | null): string | null {
   // Short on purpose: one or two lines, and no narration.
   const recorded = 'The decision is already recorded.'
   switch (draft.type) {
@@ -131,6 +132,15 @@ function followUpText(draft: Draft, complexity: string | null): string | null {
     case 'accept':
       return `Temper: the user accepted finding ${draft.findingId} (reason: ${draft.reason}). ${recorded} Run \`${acceptCommand(draft.findingId, draft.reason)}\`. ${ACT}`
     case 'back':
+      // A loop back is a loop of the CLI: `state loop` keeps the budget (loops.max-per-type) and clears the evidence of
+      // the stages that are redone. The guard lets it through once, for this decision. The step itself follows it.
+      if (from !== null && from !== draft.to) {
+        return (
+          `Temper: the user went back to ${draft.to} (reason: ${draft.reason}). ${recorded} ` +
+          `Run \`${loopCommand(from, draft.to, draft.reason)}\`. If it prints BLOCKED, the loop budget is spent: say so and stop. ` +
+          `Otherwise run \`${backCommand(draft.to)}\`. Do not start the stage yourself. ${ACT}`
+        )
+      }
       return `Temper: the user went back to ${draft.to} (reason: ${draft.reason}). ${recorded} Run \`${backCommand(draft.to)}\`. Do not start the stage yourself. ${ACT}`
     case 'drift':
       return draft.choice === 'revert'

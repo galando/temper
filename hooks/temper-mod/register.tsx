@@ -5,7 +5,7 @@ import type { Io, Snapshot } from './adapter'
 import { findingActions } from './core/actions'
 import type { Action } from './core/actions'
 import { classifyBash } from './core/bash'
-import { pluginCliFrom } from './core/cli'
+import { pluginCliFrom, stageOf } from './core/cli'
 import { HELP, RESUME, followUp, parseArgs, planCommand } from './core/commands'
 import type { Bare, Parsed } from './core/commands'
 import { parseGameMode, parseOnOff, parsePhaseModel, parsePhaseModels, parseUiMode, versionAtLeast } from './core/config'
@@ -410,10 +410,23 @@ async function handOver($: Api, drafts: readonly Draft[]): Promise<boolean> {
   let launched = false
   for (const draft of drafts) {
     if (draft.type === 'advance' && draft.from !== 'fix') {
-      await $.command.run({ command: RESUME, args: `continue ${draft.from}` }).then(() => undefined, () => undefined)
+      // Design is part of Plan in the mod. When the plan was approved and the CLI is at its design stage, this
+      // Continue approves the design: the orchestrator does the On Continue steps of Design.
+      const stage = draft.from === 'plan' && (await ensure($)).cliNext === 'design' ? 'design' : draft.from
+      await $.command.run({ command: RESUME, args: `continue ${stage}` }).then(() => undefined, () => undefined)
       launched = true
     } else {
-      await submitText($, followUp(draft, (await ensure($)).complexity, pluginCli()))
+      const snap = await ensure($)
+      // The phase a step back left, from the run's own history: the CLI loop is from -> to.
+      const left = draft.type === 'back' ? ([...snap.state.history].reverse().find(h => h.kind === 'back' && h.to === draft.to)?.from ?? null) : null
+      await submitText($, followUp(draft, snap.complexity, pluginCli(), left))
+      // A skip is a move on, like a Continue: the CLI is still at the skipped stage, so the orchestrator does
+      // that stage's On Continue steps (`state advance`, which the guard lets through for a skip) and launches
+      // the next stage. Fix is the Check stage of the CLI.
+      if (draft.type === 'override') {
+        await $.command.run({ command: RESUME, args: `continue ${stageOf(draft.phase)}` }).then(() => undefined, () => undefined)
+        launched = true
+      }
     }
   }
   return launched
@@ -663,12 +676,12 @@ async function resolveDrift($: Api, snap: Snapshot, path: string, fallback: stri
 }
 
 function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
-  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset }
+  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, designRequired: snap.designRequired, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset }
 }
 
 // What the guard decided for one call: a deny text, or null to pass it on. `ids` are the human decisions
 // the call took. They are spent only when the call ran and succeeded (see the tool.call hook).
-type Guarded = { deny: string | null; ids: string[] }
+type Guarded = { deny: string | null; ids: string[]; undoStaged?: { all: boolean; paths: string[] } }
 
 // The one place this module denies.
 async function guard($: Api, tool: string, input: Record<string, unknown>): Promise<Guarded> {
@@ -694,8 +707,11 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
   // decision a running call has reserved is not offered to this one.
   const ctx = { ...ruleContext(snap, root), ...(commit ? { commit } : {}) }
   const r = evaluate(snap.state, { ...ctx, humanDecisions: (ctx.humanDecisions ?? []).filter(h => !reservedDecisions.has(h.id)) }, { tool, input })
-  // A commit that went through starts the next staging from nothing.
+  // A commit that went through starts the next staging from nothing. If the commit then fails (an index lock,
+  // a hook), the files are still staged: tool.call gives the list back (found live: the retry was refused).
+  let undoStaged: Guarded['undoStaged']
   if (cls?.commits && !('deny' in r)) {
+    undoStaged = { all: staged.all, paths: [...staged.paths] }
     staged.all = false
     staged.paths = []
   }
@@ -707,9 +723,16 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
     // it too. It is spent after the call ran and did not fail: a call that failed, or never ran, gives
     // the decision back, and the person's choice stays pending (key 1 records it again).
     for (const id of r.eventIds) reservedDecisions.add(id)
-    return { deny: null, ids: r.eventIds }
+    return { deny: null, ids: r.eventIds, ...(undoStaged ? { undoStaged } : {}) }
   }
-  return { deny: null, ids: [] }
+  return { deny: null, ids: [], ...(undoStaged ? { undoStaged } : {}) }
+}
+
+// A commit call that failed did not use the staged files: the list the guard cleared comes back.
+function restoreStaged(g: Guarded, failed: boolean): void {
+  if (!failed || !g.undoStaged) return
+  staged.all = staged.all || g.undoStaged.all
+  staged.paths = [...g.undoStaged.paths, ...staged.paths]
 }
 
 // After a call that took decisions: spend them when it succeeded, give them back when it failed.
@@ -910,8 +933,10 @@ export const register: Register = (on, opts) => {
       result = await next(e)
     } catch (err) {
       await settle($, g.ids, true).catch(() => undefined)
+      restoreStaged(g, true)
       throw err
     }
+    restoreStaged(g, (result as { isError?: boolean }).isError === true)
     if (g.ids.length > 0) await settle($, g.ids, (result as { isError?: boolean }).isError === true).catch(() => undefined)
     const cmd = 'command' in e && typeof e.command === 'string' ? e.command : ''
     if (e.tool === 'Bash' && /\btemper["']?\s+gate\s+check\b/.test(cmd)) await afterGateCheck($).catch(() => undefined)

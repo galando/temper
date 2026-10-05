@@ -228,6 +228,10 @@ Mods are not sandboxed, so this is the full list. The mod uses no network and st
 - **Asks:** you, with questions, for a mode, a scope drift choice, or a reason for an override.
 - **Draws:** the phase bar, the pane and, if you open it, the game.
 - **Tests, lint and git** run as prompts to Claude through Claude's normal tools and permissions.
+  So do the `scripts/temper` calls that record your choices (Skip with a reason, Loop back, accept).
+  In auto mode Claude Code's own permission check may refuse a skip, because it looks like a gate
+  bypass. The bar then keeps your choice and says "Press 1 to record it". Allow the call once in your
+  project settings, for example `Bash(*scripts/temper override*)`, or run it yourself with `!`.
 
 CI fails if the mod gains any `process`, `http` or `env` call, or any call outside the reviewed list
 in [scripts/check-mod-calls.sh](scripts/check-mod-calls.sh).

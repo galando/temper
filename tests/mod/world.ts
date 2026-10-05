@@ -13,6 +13,8 @@ export type World = {
   rawPaths: string[]
   // How many of the next `state advance|set` calls the fake CLI refuses (see fakeCli).
   cliFailures?: number
+  // How many of the next `git commit` calls the fake CLI fails (see fakeCli).
+  commitFailures?: number
   // The folder the engine is in now, after a `cd` (see WorldOptions.projectRoot).
   cwdNow?: string
   // Commands that reached the engine's own command run (after the plugin's hooks), in order.
@@ -82,6 +84,11 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
   if (/scripts\/temper\s+state\s+(?:advance|set)/.test(command) && (w.cliFailures ?? 0) > 0) {
     w.cliFailures = (w.cliFailures ?? 0) - 1
     return { result: 'FAIL: refused', text: 'FAIL: refused', isError: true }
+  }
+  // `git commit` that fails (an index lock, a hook): a test sets w.commitFailures to fail the next commits.
+  if (/\bgit\s+commit\b/.test(command) && (w.commitFailures ?? 0) > 0) {
+    w.commitFailures = (w.commitFailures ?? 0) - 1
+    return { result: 'fatal: Unable to create index.lock', text: 'fatal: Unable to create index.lock', isError: true }
   }
   const read = (): Record<string, unknown> => JSON.parse(w.files.get(path) ?? '{}') as Record<string, unknown>
   const save = (d: Record<string, unknown>) => w.files.set(path, JSON.stringify(d))

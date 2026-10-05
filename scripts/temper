@@ -1012,7 +1012,7 @@ if status != 'draft':
     for name in ('task context recorded', 'criteria why', 'target users action chain',
                  'criteria ids', 'criteria priority', 'criteria validate',
                  'open questions labeled', 'no duplicate question', 'header fields',
-                 'no scenarios in draft'):
+                 'no scenarios in draft', 'no soft words'):
         add(name, True, d)
     print("\n".join(json.dumps(r) for r in reqs))
     sys.exit(0)
@@ -1153,6 +1153,56 @@ scen = A.scenario_lines(lines)
 add('no scenarios in draft', not scen,
     'no Scenario: lines — Plan writes the scenarios' if not scen
     else 'Scenario: line(s) at ' + ' | '.join(str(n) for _, n in scen))
+
+# --- no soft words ---------------------------------------------------------
+# A criterion or constraint states what is required. should/may/might/possibly leave
+# the reader to guess. A statement that carries a (source: ...) marker is exempt: the
+# hedge word belongs to the originator, and ### Decisions records what it means.
+SOFT_RE = re.compile(r'\b(should|may|might|possibly)\b', re.I)
+META_RE = re.compile(r'^\s*(Why|Validate|Deferred|Blocking):', re.I)
+
+def statements(sec_lines):
+    """(label, statement text) per real bullet. The statement is the bullet line plus
+    its wrapped continuation lines, up to the first Why:/Validate:/Deferred: line."""
+    out, cur = [], None
+    in_fence = False
+    for l in sec_lines:
+        if re.match(r'^\s*(`{3,}|~{3,})', l):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if A.BULLET_RE.match(l):
+            if cur: out.append(cur)
+            content = A.strip_checkbox(l)
+            if content.startswith('{'):
+                cur = None
+                continue
+            m = re.match(r'^(AC-\d+)\b', content)
+            cur = {'label': m.group(1) if m else '"%s"' % content[:30], 'text': [content], 'open': True}
+        elif cur is not None and cur['open']:
+            if META_RE.match(l):
+                cur['open'] = False
+            elif l.strip():
+                cur['text'].append(l.strip())
+    if cur: out.append(cur)
+    return [(c['label'], ' '.join(c['text'])) for c in out]
+
+soft = []
+for kind, sname in (('criterion', 'Success Criteria'), ('constraint', 'Constraints')):
+    for lab, text in statements(sec(sname)):
+        if re.search(r'\(source:', text, re.I):
+            continue
+        body = re.sub(r'`[^`]*`', ' ', text)
+        words = []
+        for w in SOFT_RE.findall(body):
+            if w.lower() not in words:
+                words.append(w.lower())
+        if words:
+            soft.append('%s %s uses %s' % (kind, lab, ', '.join(words)))
+add('no soft words', not soft,
+    'no should/may/might/possibly in a criterion or constraint without a (source: ...) marker' if not soft
+    else 'soft word in: ' + ' | '.join(soft))
 
 print("\n".join(json.dumps(r) for r in reqs))
 PY

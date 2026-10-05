@@ -167,8 +167,18 @@ const htmlReview = (key: ActionKey): Action =>
     'html-review',
     'Open HTML review',
     'See the plan in a web page. Add comments.',
-    'Open the HTML review of the plan: fill templates/plan-review.html from plan.md and tasks.md, open it, wait for me, then apply review-comments.json.',
+    'Open the HTML review of the plan as written in reference/plan-review.md: render it with scripts/plan_review.py, open it, wait for me, then apply review-comments.json.',
     SHOW,
+  )
+const shareReview = (key: ActionKey): Action =>
+  prompt(
+    key,
+    'share-review',
+    'Share HTML review',
+    'Publish the plan page so others can comment.',
+    'Share the HTML review of the plan as written in reference/plan-review.md. Ask me before anything leaves this machine.',
+    SHOW,
+    'Share review',
   )
 const archDepth = (key: ActionKey): Action =>
   prompt(
@@ -225,7 +235,7 @@ function menu(phase: Phase, ctx: ActionContext): Action[] {
     case 'intent':
       return [save(paused)]
     case 'plan':
-      return [...extra([grill(phase), teach(phase)]), save(paused)]
+      return [...extra([grill(phase), teach(phase), shareReview('1')]), save(paused)]
     case 'build':
       return isCheckpoint(phase, ctx) ? [grill(phase), teach(phase), save(paused)] : [...(loopMain ? [] : [loopBack('plan', '1')]), save(paused)]
     case 'review':
@@ -303,7 +313,10 @@ export function doneActions(): ActionSet {
         'commit',
         'Commit',
         'Claude commits the work. It does not push.',
-        'Run scripts/temper gate commit. If it passes, commit the work with one conventional commit message. Do not push.',
+        'The user pressed Commit. Do the Commit steps of /temper now, as written in the Commit section of commands/temper.md in the Temper plugin. ' +
+          'In short: run scripts/temper gate commit. If it passes, set intent.md to Status completed, run scripts/temper state archive, ' +
+          'stage the diff and the .temper/specs artifacts, make one conventional commit, then run scripts/temper state clear. ' +
+          'Do not ask the Commit question again. Do not push.',
       ),
       { key: '2', id: 'save-done', label: 'Save for later', desc: 'Leave the work as it is. Commit later.', command: 'saved' },
     ],

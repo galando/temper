@@ -91,6 +91,32 @@ describe('artifact only commits pass in every phase', () => {
     expect(await commit($, `git add ${SPEC}/intent.md ${SPEC}/plan.md && git commit -m "docs: x"`)).toBeUndefined()
   })
 
+  for (const add of [`git add ${SPEC}/ 2>&1`, `git checkout -b feature/pw 2>&1; git add ${SPEC}/ 2>&1; git status --short`, `git add ${SPEC}/ > /dev/null 2>&1`, `git add ${SPEC}/ 2> /dev/null`, `git add ${SPEC}/ &> /dev/null`]) {
+    test(`a redirect after git add is no staged path (found live): ${add}`, async ($, on) => {
+      world(on, files({ next: 'review', head: 'main' }))
+      await $.session.start(START)
+      expect(await commit($, add)).toBeUndefined()
+      expect(await commit($, 'git commit -m "docs(plan): approve plan - pw"')).toBeUndefined()
+    })
+  }
+
+  test('a code file next to a redirect is still code', async ($, on) => {
+    world(on, files({ next: 'review', head: 'main' }))
+    await $.session.start(START)
+    await commit($, `git add ${SPEC}/ src/app.ts 2>&1`)
+    expect(await commit($, 'git commit -m x')).toContain('Temper: commit blocked.')
+  })
+
+  test('a commit that failed (an index lock) keeps the staged list: the retry is still an artifact commit (found live)', async ($, on) => {
+    const w = world(on, files({ next: 'review', head: 'main' }), { fakeCli: true, projectRoot: '/repo' })
+    await $.session.start(START)
+    w.commitFailures = 1
+    // Both in one call, as the orchestrator does; the engine reports the failed commit.
+    const first = await ($ as unknown as { tool: { call: (a: unknown) => Promise<{ deny?: string; isError?: boolean }> } }).tool.call({ tool: 'Bash', command: `git add ${SPEC}/ && git commit -m "docs(plan): approve plan - pw"` })
+    expect(first.deny).toBeUndefined()
+    expect(await commit($, 'git commit -m "docs(plan): approve plan - pw"')).toBeUndefined()
+  })
+
   test('one staged file outside .temper/specs/ makes it a code commit', async ($, on) => {
     world(on, files({ next: 'review', head: 'main' }))
     await $.session.start(START)

@@ -62,6 +62,13 @@ gate can correct it before the expensive stages run. You run in a clean context.
      write a placeholder `Scenario:` block, because `temper gate check` demands a
      passing test for every `Scenario:` line and cannot tell a placeholder from a
      real one.
+   - **Soft source words.** Never turn a source "should" or "may" into "must"
+     silently. Ask the originator whether the source means required or optional and
+     record the answer in `### Decisions`. With no answer yet, keep the source
+     wording, mark it `(source: …)`, and add a Blocking Open Question. The gate
+     rejects a draft whose criteria or constraints use should, may, might, or
+     possibly without a `(source: …)` marker — write plain, firm statements of your
+     own, and keep the hedge only where it quotes a source.
    - **Never write card data or personal data into the intent** — no payment card
      numbers, secrets, or personal identifiers; reference the ticket instead.
 

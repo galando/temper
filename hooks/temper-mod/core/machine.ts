@@ -128,7 +128,12 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
       }
       case 'advance':
         if (s.phase === ev.from) {
+          const failedAt = s.since.fix
           enter(ev.to, ev.ts)
+          // Back from Fix to Check: the check that failed is the one this Check answers. A verdict written after
+          // that failure (the orchestrator ran the check again while the run was in Fix) counts for this Check, so
+          // the person is not sent through the same check run again.
+          if (ev.from === 'fix' && ev.to === 'check' && failedAt !== undefined) s.since.check = failedAt
           s.history.push({ ts: ev.ts, kind: 'advance', from: ev.from, to: ev.to })
         }
         break

@@ -1342,8 +1342,52 @@ open('.temper/specs/demo/intent.md','w').write(s)
 EOF
 OUT=$("$TEMPER" gate intent 2>&1; true)
 assert_exit "an accepted intent PASSes even where the draft would FAIL" 0 "$TEMPER" gate intent
-assert_eq "each draft-only requirement records a skip detail, never revisited" "12/12" \
-  "$(echo "$OUT" | grep -c 'skipped — intent is accepted; this check applies to drafts only')/12"
+assert_eq "each draft-only requirement records a skip detail, never revisited" "13/13" \
+  "$(echo "$OUT" | grep -c 'skipped — intent is accepted; this check applies to drafts only')/13"
+
+# --- gate intent: no soft words (should / may / might / possibly) ---
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('criterion one', 'the export should finish fast')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_exit "a soft word in a criterion FAILs the draft intent gate" 1 "$TEMPER" gate intent
+assert_eq "the detail names the criterion and the word" "yes" \
+  "$(echo "$OUT" | grep -q 'soft word in: criterion AC-01 uses should' && echo yes || echo no)"
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('criterion one', 'the export Might finish')
+s = s.replace('### Target Users', '### Constraints\n- output may differ per run\n- no network (possibly offline)\n\n### Target Users')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "several soft words are named and joined with ' | '" "yes" \
+  "$(echo "$OUT" | grep -q 'criterion AC-01 uses might | constraint "output may differ per run" uses may | constraint "no network (possibly offline)" uses possibly' && echo yes || echo no)"
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('criterion one', 'the export should finish (source: PROJ-9)')
+s = s.replace('### Target Users', '### Constraints\n- output may differ per run (source: ops guide)\n\n### Target Users')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+assert_exit "a (source: ...) marker exempts the originator's hedge word" 0 "$TEMPER" gate intent
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('criterion one', 'the export should finish')
+s = s.replace('**Status:** draft', '**Status:** accepted')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+assert_exit "an accepted intent skips the no-soft-words check" 0 "$TEMPER" gate intent
+
+setup; good_draft
+python3 - <<'EOF'
+s = open('.temper/specs/demo/intent.md').read().replace('criterion one', 'the export finishes in 2 s (mayhem is not a hit; `should` in code is not a hit)')
+open('.temper/specs/demo/intent.md','w').write(s)
+EOF
+assert_exit "a clean criterion (whole words only, code spans ignored) passes" 0 "$TEMPER" gate intent
 
 # templates/example-intent.md must pass the intent gate as-is.
 setup
@@ -1780,7 +1824,6 @@ assert_eq "tests/mod/world.ts CLI_SEQ equals STAGE_SEQ_TEMPER" "$REAL_SEQ" "$(se
 assert_exit "mirror: an unknown stage is refused" 1 "$TEMPER" state advance banana_complete review
 # The same commands as the mod prints them: a single quoted reason with quotes escaped.
 assert_exit "mirror: a reason with quotes and spaces" 0 bash -c "'$TEMPER' override check --reason 'it'\\''s fine; \$(not run)'"
-=======
 # --- plan_review.py: deterministic HTML plan review (render + merge) ---
 PR="$REPO_ROOT/scripts/plan_review.py"
 PRD="$WORKDIR/pr/demo-feature"; mkdir -p "$PRD"

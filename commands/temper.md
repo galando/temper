@@ -36,13 +36,13 @@ mod is absent. Any other first word is a feature description.
 | `timeline` / `report` | Print `$TEMPER report`. |
 | `help` | List these words with their one line meanings. |
 | `approve` / `next` | Treat it as the human answer at the current gate: confirm the gate with `$TEMPER gate {stage}`, record the move with `$TEMPER state advance {stage}_complete {next}`, then continue. Refuse and print the failing requirements when the gate is not PASS. |
-| `back <phase> <reason>` | `$TEMPER state set next_stage {phase}`, record the reason with `$TEMPER evidence add --stage {phase} --phase feedback --claim "back: {reason}"`, and rerun every later gate before advancing. |
-| `override <reason>` | `$TEMPER override {stage} --reason "{reason}"`. With no reason, refuse: "Override needs a reason. Use /temper:temper override <reason>." |
+| `back <phase> <reason>` | `$TEMPER state loop {current stage} {phase} --reason "{reason}"` (stop when it prints `BLOCKED`: the loop budget is spent), `$TEMPER state set next_stage {phase}`, record the reason with `$TEMPER evidence add --stage {phase} --phase feedback --claim "back: {reason}"`, and rerun every later gate before advancing. |
+| `override <reason>` | `$TEMPER override {stage} --reason "{reason}"`. With no reason, refuse: "Override needs a reason. Use /temper:temper override <reason>." The skip is the person's go-ahead for that stage: with the Temper bar, the bar sends `continue {stage}` after the skip (the hook lets that stage's `state advance` through once the skip is recorded), and you do that stage's On Continue steps and launch the next stage. Without the bar, treat it as the answer "Override and continue" and go on to the next stage. |
 | `accept <id> <reason>` | `$TEMPER evidence accept --stage review --id {id} --reason "{reason}"`. With no reason, refuse. |
 | `drift <add\|revert\|allow> <reason>` | `add`: put the file in plan.md's Files table. `revert`: restore the file to its committed state. `allow`: continue once. Record the choice with `$TEMPER evidence add --stage build --phase feedback --claim "drift {path}: {choice}: {reason}"`. |
 | `pause` / `resume` | Stop at the next gate and wait for the person, or continue from it. |
 | `pr` | Write a pull request description from `$TEMPER report`: overrides, accepted findings and drift decisions with their reasons. |
-| `continue <stage>` | The person already approved `<stage>` (the Temper bar recorded the decision; the matching state advance is allowed once). Do the "On Continue" steps of that stage exactly as written for it: the status flip and `Accepted-by` for Intent, `state advance`, the feature branch (`git checkout -b feature/{slug}` when not on it) and the commit of the approved artifacts for Plan, `base_sha` before the first Build launch, and so on. Use the `state advance` of that stage as written. Then launch the next stage. Do not ask the gate question. |
+| `continue <stage>` | The person already approved `<stage>` (the Temper bar recorded the decision; the matching state advance is allowed once). Do the "On Continue" steps of that stage exactly as written for it: the status flip and `Accepted-by` for Intent, `state advance`, the feature branch (`git checkout -b feature/{slug}` when not on it) and the commit of the approved artifacts for Plan, `base_sha` before the first Build launch, and so on. Use the `state advance` of that stage as written. Then launch the next stage. Do not ask the gate question. The bar also sends it after the person skipped `<stage>` with a reason (the stage's gate may then be FAIL; the skip is recorded by `$TEMPER override`, which the mirror message asks for): the same steps apply. For `check` do only the `state advance check_complete commit`: the Done bar's Commit button asks for the commit, so do not commit and do not run the Commit section. |
 | `discuss <text>` | Treat the text as the person's message at the current gate: answer it, and if it asks for a change, make the change, run the gate again, then wait (see Gates). It never advances a stage. |
 | `mode`, `enforcement`, `pane`, `play` | These belong to the Temper mod. Without it, say they are not available here. The game needs the mod. |
 
@@ -185,6 +185,19 @@ When a gate FAILs and the user selects "Loop back":
 2. Re-launch the upstream stage's Agent (same template as its first launch), adding one
    line to its prompt: *"Feedback re-entry: {reason}. Fix this, then continue."*
 3. When it returns, re-run the downstream gate that triggered the loop.
+
+**With the Temper bar** (the system prompt has `Temper enforcement: active`) the hook refuses
+`state loop` from you, because a loop moves the run and only the person decides that. The
+person's **Loop back** button (or `/temper:temper back <phase> <reason>`) is the loop: the
+mod records the decision and sends you one message. In it, run `$TEMPER state loop {from}
+{to} --reason "<why>"` (the hook lets it through once, for that decision; it keeps the
+budget and clears the evidence of `{to}` and every later stage), and when it does not print
+`BLOCKED`, run `$TEMPER state set next_stage {to}`. When it prints `BLOCKED`, the budget is
+spent: say so in one line and stop (the person can skip with a reason or save for later). The
+bar then runs `/temper:temper` with no arguments: continue from `next_stage` (see Resume) and
+add the line from step 2, with the reason from that message, to the stage's prompt. Do not
+call `state loop` or `state set next_stage` on your own; the hook refuses both without the
+person's decision.
 
 That's the whole mechanism: a loop is a normal stage re-launch. Build→Plan is the one
 exception: it's human-driven only (max 1 per run, no circuit breaker) because it means
@@ -395,6 +408,10 @@ Run `$TEMPER gate commit`. It aggregates every upstream gate's last verdict (PAS
 overridden), and — only when `run_mode == autonomous` — blast radius and park-on-touch.
 
 - **PASS (interactive):** `AskUserQuestion` — "Commit" / "Save for later" / "Other".
+  **With the Temper bar** do not ask: the Done bar's Commit button is this question, and its
+  message ("The user pressed Commit ...") means the person chose Commit. The bar never clears
+  or archives the state itself, so you do every step below, in order, ending with `state
+  clear`; when the bar sees the state gone it shows no run (it never goes back to Intent).
   On Commit: set `intent.md`'s header to `**Status:** completed` + `**Completed:**
   {date}` — this orchestrated path owns the terminal state flip (the standalone
   `/temper:check` gate does it only when Check runs as its own command; here the

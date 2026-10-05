@@ -126,6 +126,37 @@ All notable changes to Temper are documented here. The plugin version lives in
   runs `claude plugin test`, `claude plugin validate --strict` and the type check on
   Claude Code 2.1.287.
 
+### The bar and the CLI agree on Loop back, Skip and Commit
+
+- **Commit** at Done tells the orchestrator to do the Commit steps of `commands/temper.md` (gate
+  commit, intent Status completed, `state archive`, stage the diff and the spec artifacts, one
+  commit, then `state clear`). The mod never clears or archives the state. When the CLI state is
+  gone, the bar shows no run; it never goes back to Intent.
+- **Loop back** is a loop of the CLI. The mirror message runs `state loop <from> <to>` (the budget
+  `loops.max-per-type` and the evidence of the redone stages) and then `state set next_stage`. The
+  guard lets `state loop` through only while the person's own back decision waits. The Feedback Loops
+  section of `commands/temper.md` describes this path, and says what to do on `BLOCKED`.
+- **Skip with a reason** is the person's go-ahead for that stage. The bar sends `continue <stage>`
+  after the skip, and the guard lets that stage's `state advance` through (also out of Intent and
+  Plan) until a later step back. Before this, the orchestrator was refused after a skip at Plan.
+- A medium or complex run whose project never set `phases.design: true` may go from Plan straight
+  to Build; the guard accepts both next stages unless the config says design is on. When design is
+  on and a call names the wrong next stage, the refusal now says which stage is next instead of
+  sending the model back to the person for a decision that was already made.
+- While the CLI is at its design stage after the plan approval, the bar no longer says "Temper
+  state looks reset".
+- At the design check, Continue sends `continue design` (not `continue plan`) and spends the person's
+  approval, so it no longer stays pending.
+- `git add .temper/specs/x/ 2>&1` no longer counts `2>&1` as a staged path, so the artifact only
+  commit that follows is not refused as a code commit. A commit that fails (an index lock) keeps the
+  staged list for the retry.
+- `build-state.json` is read again when a read sees an empty or cut file (the CLI rewrites it in place),
+  so the bar no longer says "No Temper run is active" for a moment at Done.
+- A failed Check that loops through Fix and returns to Check keeps a verdict that was written while
+  the run was in Fix, so the person is not sent through the same check run again.
+- **Share HTML review** has a button (in the Plan More menu). Open HTML review points at
+  `reference/plan-review.md` and `scripts/plan_review.py` instead of filling the template by hand.
+
 ### CLI additions (these help without the mod too)
 
 - `check.commands.test`, `check.commands.lint` and `check.commands.typecheck` in
@@ -148,6 +179,22 @@ the gate detail but does not fail it, because drafts legitimately carry them. An
 completed intent skips both with a recorded PASS: a recorded
 acceptance is never revisited, so existing accepted intents keep passing. The shipped template
 and example carry the line.
+
+### Intent gate: no soft words, and the soft-source-word rule
+
+- **Verdict change.** A draft intent now fails `temper gate intent` when a Success Criteria
+  statement or a Constraints bullet uses the whole word `should`, `may`, `might` or
+  `possibly` (any case; words inside backtick code spans are ignored). The detail names each
+  hit, joined with ` | `, for example `criterion AC-01 uses should | constraint "..." uses may`.
+- A statement that carries a `(source: ...)` marker is exempt, because the hedge word belongs to
+  whoever wrote the source. An accepted or completed intent skips the check with a recorded
+  PASS, like every other draft only rule, so existing accepted intents keep passing.
+- The Intent stage and `/temper:intent` never turn a source "should" or "may" into "must"
+  silently. They ask the originator whether the source means required or optional and record
+  the answer in `### Decisions`. With no answer yet they keep the source wording and add a
+  Blocking Open Question.
+- `templates/example-intent.md` is rewritten in short, plain sentences and shows one criterion
+  that keeps a source hedge word under a `(source: ...)` marker.
 
 ### Minimum versions and old versions
 

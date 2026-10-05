@@ -64,6 +64,10 @@ export const acceptCommand = (findingId: string, reason: string): string => `${C
 // Sending a run back: the CLI resumes from the stage it is pointed at.
 export const backCommand = (to: Phase): string => `${CLI} state set next_stage ${stageOf(to)}`
 
+// The loop the CLI keeps for a step back: it counts against loops.max-per-type and clears the evidence of
+// the stage that is redone and every later one.
+export const loopCommand = (from: Phase, to: Phase, reason: string): string => `${CLI} state loop ${stageOf(from)} ${stageOf(to)} --reason ${shellQuote(reason)}`
+
 // The stage of a `state advance <stage>_complete <next>` call, as a phase of the mod, only for
 // the two approvals that need a person: leaving Intent and leaving Plan. Design belongs to
 // Plan but its own advance needs no second approval, so it is not mapped.

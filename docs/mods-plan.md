@@ -290,7 +290,10 @@ surface has. No `Svg`, `Raster` or `Image`, so no fallback is needed.
 | Check | `check` | PASS unlocks commit ("Done") |
 | Fix | Check FAIL loop; also the entry phase of `/temper:fix` (RCA is its first action) | |
 
-Commit is not a phase: after Check passes, the state is Done and `git commit` is allowed.
+Commit is not a phase: after Check passes, the state is Done and `git commit` is allowed. The Commit
+button at Done tells the orchestrator to do the Commit steps of `commands/temper.md` (gate commit, intent
+Status completed, `state archive`, stage the diff and the spec artifacts, one commit, then `state clear`). The mod
+never clears or archives the state itself. When the CLI state is gone the bar shows no run, never Intent.
 
 ### 3.2 Pure module (`hooks/temper-mod/core/`, no `claude-code` import)
 
@@ -432,7 +435,13 @@ file it wrote; it copies, links or sources the script; it feeds a shell from `ca
 `wc`, `diff`, `pytest -k`, `git log --grep`) stay allowed. Every `state advance` and `state set
 next_stage` call needs a matching human decision, or it must be the exact next stage of the run
 (`STAGE_SEQ_TEMPER`, with design only for medium and complex runs) after a fresh PASS or an override
-of the stage it completes. `state init` and `state loop` are refused while a run is active. Guarded file
+of the stage it completes. A person's Skip with a reason is the go-ahead for that stage: the `state advance`
+that follows it passes with no second approval (also out of Intent and Plan) until a later step back.
+`state init` is refused while a run is active; `state loop <from> <to>` is refused too, except for the
+person's own Loop back: it passes while that person's back decision for `<to>` waits unspent (the `state set
+next_stage` call that follows spends it). So a Loop back is a loop of the CLI: it keeps the budget
+(`loops.max-per-type`) and clears the evidence of the stages that are redone. When the CLI prints BLOCKED the
+budget is spent, the step is not recorded, and Skip with a reason or Save for later remain. Guarded file
 names are compared without regard to case, and `ln` of Temper state or its folders is refused.
 `git cherry-pick`, `merge`, `revert`, `am`, `commit-tree`, `rebase --continue`, a merging `pull` and
 a `git -c alias` are treated as commits while the commit gate is open (`--abort`, `--quit`, `--skip`,
@@ -515,7 +524,7 @@ prompt box (checked live).
 | Phase | 1 | 2 | 3 | 0 (More) shows |
 |---|---|---|---|---|
 | Intent | Start Intent, or Continue to Plan | Grill me | Teach me | Save for later |
-| Plan | Run Plan, Loop back to Intent, or Continue to Build | Walk through step by step | Open HTML review | Grill me, Teach me, Save for later |
+| Plan | Run Plan, Loop back to Intent, or Continue to Build | Walk through step by step | Open HTML review | Grill me, Teach me, Share HTML review, Save for later |
 | Build, checkpoint | Continue with task N | Change | Stop | Grill me, Teach me, Save for later |
 | Build, completion | Continue to Review, or Loop back to Plan (failed) | Teach me | Grill me | Loop back to Plan, Save for later |
 | Review | Run Review, Loop back to Build, or Continue to Check | Architecture depth review | Grill me | Teach me, Loop back to Build, Save for later |

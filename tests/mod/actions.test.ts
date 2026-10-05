@@ -24,6 +24,7 @@ const ORIGINAL = [
   'Teach me',
   'Walk through step by step',
   'Open HTML review',
+  'Share HTML review',
   'Architecture depth review',
   'Review config suggestions',
   'Change',
@@ -117,7 +118,7 @@ describe('keys 1 to 4 per phase', () => {
 
   test('Plan: Continue to Build, Walk through step by step, Open HTML review', () => {
     expect(labels('plan', { ready: true, gate: 'fresh' })).toEqual(['Continue to Build', 'Walk through step by step', 'Open HTML review'])
-    expect(menu('plan')).toEqual(['Grill me', 'Teach me', 'Save for later'])
+    expect(menu('plan')).toEqual(['Grill me', 'Teach me', 'Share HTML review', 'Save for later'])
   })
 
   test('Build checkpoint: Continue with task N, Change, Stop', () => {
@@ -350,6 +351,7 @@ describe('every original option maps to a button', () => {
     ['Teach Me', 'plan', {}, 'Teach me'],
     ['Walk through step by step', 'plan', {}, 'Walk through step by step'],
     ['Open HTML review', 'plan', {}, 'Open HTML review'],
+    ['Share HTML review', 'plan', {}, 'Share HTML review'],
     ['Loop back', 'review', { gate: 'fail' }, 'Loop back to'],
     ['Override and continue', 'plan', {}, 'Skip with a reason'],
     ['Architecture Depth Review', 'review', {}, 'Architecture depth review'],

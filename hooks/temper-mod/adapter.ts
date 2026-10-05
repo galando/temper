@@ -76,8 +76,12 @@ export type Snapshot = {
   slug: string | null
   // autonomy.enabled in .claude/temper.config.
   autonomyEnabled: boolean
+  // phases.design: true in .claude/temper.config (design is switched on for medium and complex runs).
+  designRequired: boolean
   // The run's complexity from build-state.json (decides whether Plan is followed by design).
   complexity: string | null
+  // The CLI's next stage, as written in build-state.json (the mod's phases are coarser: design is Plan).
+  cliNext: string | null
   // The run's own branch and the command that started it (build-state.json): the CLI commit gate's
   // Build checkpoint carve-out reads both.
   branch: string | null
@@ -132,7 +136,9 @@ export function idleSnapshot(options: PluginOptions, inert: boolean): Snapshot {
     ...settingsFrom(options),
     slug: null,
     autonomyEnabled: false,
+    designRequired: false,
     complexity: null,
+    cliNext: null,
     branch: null,
     runCommand: null,
     hasIntent: false,
@@ -238,7 +244,10 @@ export function reconcile(state: RunState, nextStage: string | null, pending: Pe
     const at = cli === 'done' ? 5 : cli === 'fix' ? 4 : FLOW_ORDER.indexOf(cli)
     // The CLI is earlier than the person's own choices, with nothing waiting to be mirrored and no skip
     // that the orchestrator has yet to advance past: nobody asked for that. It looks reset.
-    behind = at >= 0 && ahead > at && pending === null && state.history[state.history.length - 1]?.kind !== 'override'
+    // Design is part of Plan in the mod: the person approved the plan, and the CLI is at its design stage.
+    // That is the run going on (found live), not a reset.
+    const designing = nextStage === 'design' && state.phase === 'build'
+    behind = at >= 0 && ahead > at && pending === null && !designing && state.history[state.history.length - 1]?.kind !== 'override'
     next = { ...state, phase: cli, since: { ...state.since, ...(cli !== 'done' && state.since[cli] === undefined ? { [cli]: 0 } : {}) } }
     next.loopLimitReached = false
     if (pending !== null) {
@@ -268,7 +277,19 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   const configText = (await readText(io, '.claude/temper.config')) ?? ''
   const maxLoops = parseMaxLoops(configText, str(options, 'fixMaxLoops'))
   const autonomyEnabled = readConfigValue(configText, 'autonomy.enabled') === 'true'
-  const bs = parseBuildState((await readText(io, `${STATE_ROOT}/build-state.json`)) ?? '')
+  const designRequired = readConfigValue(configText, 'phases.design') === 'true'
+  const statePath = `${STATE_ROOT}/build-state.json`
+  let raw = await readText(io, statePath)
+  let bs = parseBuildState(raw ?? '')
+  // The CLI rewrites build-state.json in place, so a read in that instant sees an empty or cut file (found live: the
+  // bar said "No Temper run is active" at Done). A file that exists but does not read as a run is read again
+  // before the mod decides there is no run. A file that is missing is a run that ended.
+  const timer = (globalThis as { setTimeout?: (fn: () => void, ms: number) => unknown }).setTimeout
+  for (let i = 0; i < 4 && bs === null && raw !== null && typeof timer === 'function'; i++) {
+    await new Promise<void>(resolve => timer(resolve, 60))
+    raw = await readText(io, statePath)
+    bs = parseBuildState(raw ?? '')
+  }
   if (!bs) return { ...idleSnapshot(options, false), state: initialState(maxLoops) }
 
   const specDir = bs.specPath
@@ -329,7 +350,9 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     ...cfg,
     slug: bs.spec,
     autonomyEnabled,
+    designRequired,
     complexity: bs.complexity,
+    cliNext: bs.nextStage,
     branch: bs.branch,
     runCommand: bs.command,
     hasIntent: intentText !== '',

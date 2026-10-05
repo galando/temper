@@ -216,8 +216,8 @@ describe('phase bar (AbovePrompt)', () => {
     // No pane is opened, and the menu is in the band itself.
     expect(w.opened).toEqual([])
     const keys = await menuKeys(band)
-    // Plan menu: Grill me, Teach me, Save for later.
-    expect(keys).toEqual(['1', '2', '3', '0'])
+    // Plan menu: Grill me, Teach me, Share HTML review, Save for later.
+    expect(keys).toEqual(['1', '2', '3', '4', '0'])
     const texts = walk(await band.drawn()).filter(n => n.type === 'Text').map(textOf).join(' ')
     expect(texts).toContain('More actions. Press the number shown.')
     // The menu is drawn above the phase chips, so it stays on screen.
@@ -250,7 +250,7 @@ describe('phase bar (AbovePrompt)', () => {
     await band.press({ key: 'action-html-review' })
     expect(w.prompts[0]).toContain('grill-me skill on the current plan')
     expect(w.prompts[1]).toContain('teach-me skill on the current plan')
-    expect(w.prompts[2]).toContain('plan-review.html')
+    expect(w.prompts[2]).toContain('reference/plan-review.md')
   })
 
   test('0 with the pane open shows the menu in the pane too, with the same digits', async ($, on) => {
