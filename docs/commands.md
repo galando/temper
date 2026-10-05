@@ -61,6 +61,7 @@ At each stage, you see a nice summary and choose to proceed:
 | **Walk through step by step** | Interactive walkthrough: each section explained in detail |
 | **Grill Me** | Socratic challenge mode — adversarial questions that stress-test your plan |
 | **Open HTML review** | Browser-based review with inline comments (Google Doc-style) |
+| **Share HTML review** | Publish the same review so other people can comment by link: a Claude artifact (comments come back automatically) or, without one, a secret Gist (comments come back by paste). Asks before anything leaves your machine |
 | **Save for later** | Stop, save state, resume later with `/temper` |
 | **Other** | Type a change request, edits applied, gate re-appears |
 

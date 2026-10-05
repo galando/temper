@@ -61,6 +61,20 @@ listed in your launch prompt. Nothing from the orchestrator's conversation carri
 7. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
+**Gotchas** (each one is a gate or hook that rejects the stage when missed):
+- RED must really fail. The gate needs a recorded failing run before a passing one,
+  so a test that passes on its first run proves nothing. Record the real exit code.
+- Record evidence as you go. Reconstructing it afterward means inventing commands and
+  exit codes, which the ledger exists to prevent.
+- `git add` and `git commit` go in two separate tool calls, so the in-agent commit
+  gate sees the staged set. Never `git add -A`, never `--no-verify`.
+- Tick a task's `- [x]` box only when that task is done. Feedback may edit a later
+  task's unchecked row, never a checked one.
+- A call to a framework API that does not exist is the cheapest defect to prevent.
+  Verify it against current docs (the `source-driven-development` skill) before
+  writing it.
+- On a checkpoint run, execute only task N.
+
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
 the right border) and nothing outside it. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N

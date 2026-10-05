@@ -166,8 +166,8 @@ Every stage gate follows the same shape. After a stage Agent returns:
 
 Every gate also offers, unconditionally (no config toggle): **"Grill Me"** (skill
 `grill-me`), **"Teach Me"** (skill `teach-me`), and at Plan: **"Walk through step by
-step"** and **"Open HTML review"**. Each returns to the same gate — none advance or
-block the pipeline.
+step"**, **"Open HTML review"** and **"Share HTML review"**. Each returns to the same
+gate — none advance or block the pipeline.
 
 Never re-derive gate logic here or in a stage prompt — a gate mechanics change is a
 `scripts/temper` edit plus a `test-temper.sh` case, not a prompt edit.
@@ -261,10 +261,11 @@ reason."
 ```
 
 Gate: `$TEMPER gate plan` — see `reference/plan.md` → "Approval" for the walkthrough
-mechanics. **"Open HTML review"** (in addition to reference/plan.md's options): render
-`templates/plan-review.html` with the `plan.md`/`tasks.md` sections filled in, open it,
-wait for the user, then look for `review-comments.json` in the spec dir and apply it
-(task-change / scenario-change / plan-change / general-note, mapped to its artifact).
+mechanics. **"Open HTML review"** and **"Share HTML review"** (in addition to
+reference/plan.md's options): follow `reference/plan-review.md` — `scripts/plan_review.py`
+renders the page, sharing publishes it only after the user confirms where it goes, and
+the comments come back as `review-comments.json` to apply (task-change /
+scenario-change / plan-change / general-note, mapped to its artifact).
 
 **On Continue:** `$TEMPER state advance plan_complete design-or-build` (pick `design` if
 `phases.design: true` and complexity is medium/complex, else `build`). (Intent

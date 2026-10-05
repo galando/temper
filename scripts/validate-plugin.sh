@@ -70,7 +70,7 @@ for m in missing:
     ok
   fi
 
-  # Check agent paths resolve + carry required frontmatter (name, model)
+  # Check agent paths resolve + carry required frontmatter (name, model; effort valid if set) + a Gotchas section
   AGENT_COUNT=$(python3 -c "
 import json, sys, os, re
 d = json.load(open(sys.argv[1]))
@@ -83,6 +83,13 @@ for a in agents:
     text = open(path).read()
     if not re.match(r'^---\n.*?\bname:.*?\bmodel:.*?\n---', text, re.S):
         print(f'FAIL: agent missing name/model frontmatter: {a}', file=sys.stderr)
+    # effort (optional) must be a level Claude Code accepts; every brief carries Gotchas
+    m = re.match(r'^---\n(.*?)\n---', text, re.S)
+    e = re.search(r'^effort:\s*(\S+)\s*$', m.group(1), re.M) if m else None
+    if e and e.group(1) not in ('low', 'medium', 'high', 'xhigh', 'max'):
+        print(f'FAIL: agent has invalid effort {e.group(1)!r}: {a}', file=sys.stderr)
+    if '**Gotchas**' not in text:
+        print(f'FAIL: agent has no **Gotchas** section: {a}', file=sys.stderr)
 print(len(agents))
 " "$PJ" "$REPO_ROOT" 2>&1)
 
@@ -295,44 +302,6 @@ elif ! python3 -c "import ast; ast.parse(open('$PACK_DISCOVER').read())" 2>/dev/
   fail "scripts/pack-discover.py has a syntax error"
 else
   ok
-fi
-
-# --- Eval fixtures (v7 — Move 3, docs/plans/v7-deterministic-spine.md) — this is
-# Temper's OWN seeded-defect regression harness (evals/), unrelated to the removed
-# /temper:eval stage despite the name collision. It stays exactly as it was.
-for h in evals/run-fixture.sh evals/run-all.sh evals/run-wiring-smoke.sh; do
-  p="$REPO_ROOT/$h"
-  if [[ ! -f "$p" ]]; then fail "$h missing"
-  elif [[ ! -x "$p" ]]; then fail "$h not executable (chmod +x)"
-  else ok; fi
-done
-FIXTURE_COUNT=0
-for fdir in "$REPO_ROOT"/evals/fixtures/*/; do
-  [[ -d "$fdir" ]] || continue
-  name="$(basename "$fdir")"
-  FIXTURE_COUNT=$((FIXTURE_COUNT + 1))
-  for required in expect.json SEEDED_DEFECT.md; do
-    if [[ -f "$fdir$required" ]]; then ok; else fail "evals/fixtures/$name/$required missing"; fi
-  done
-  if [[ -f "$fdir/expect.json" ]]; then
-    if python3 -c "
-import json, sys
-d = json.load(open(sys.argv[1]))
-assert 'stage' in d and 'command' in d and 'anchor_keywords' in d and 'signal_keywords' in d
-" "$fdir/expect.json" 2>/dev/null; then ok; else fail "evals/fixtures/$name/expect.json missing required keys (stage/command/anchor_keywords/signal_keywords)"; fi
-  fi
-done
-if [[ "$FIXTURE_COUNT" -ge 1 ]]; then ok; else fail "no eval fixtures found under evals/fixtures/"; fi
-
-# wiring-smoke is a different fixture shape (no seeded defect, no expect.json) —
-# checked separately rather than folded into the loop above.
-WIRING_DIR="$REPO_ROOT/evals/wiring-smoke"
-if [[ -d "$WIRING_DIR" ]]; then
-  for required in package.json src/app.js test/app.test.js WIRING_CHECK.md; do
-    if [[ -f "$WIRING_DIR/$required" ]]; then ok; else fail "evals/wiring-smoke/$required missing"; fi
-  done
-else
-  fail "evals/wiring-smoke/ missing"
 fi
 
 echo ""

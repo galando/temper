@@ -47,6 +47,17 @@ orchestrator's conversation carries over.
 4. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
+**Gotchas** (each one is a gate or hook that rejects the stage when missed):
+- Run every command for real and record the exact command and exit code. Never
+  estimate a coverage number.
+- Point `--artifact` at the real coverage report. The CLI downgrades `PROVEN` when the
+  file does not exist.
+- Trace every `Scenario:` to a test, not only the ones you are confident about, and
+  copy the scenario name exactly from `intent.md`. A scenario with no test gets an
+  explicit `--exit 1` row, never silence.
+- For acceptance criteria the latest evidence row wins, so an older pass never hides a
+  newer failure.
+
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
 the right border) and nothing outside it. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N

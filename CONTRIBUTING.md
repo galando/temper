@@ -36,7 +36,6 @@ temper/
 ├── hooks/                   # Plugin-shipped hooks.json (stage-gate pair)
 ├── scripts/                 # temper CLI (the deterministic spine), hooks/, tests/
 ├── templates/               # Artifact templates (intent/plan/design/config)
-├── evals/                   # Seeded-defect fixtures + wiring smoke (CI-run)
 ├── examples/                # Company packs, CI workflow templates, example hooks
 ├── docs/                    # GitHub Pages documentation
 └── README.md                # Project README

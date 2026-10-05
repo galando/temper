@@ -2,6 +2,7 @@
 name: temper-rca
 description: Temper's RCA stage — multi-hypothesis root cause analysis for /temper:fix. Invoked by the /temper:fix orchestrator, never directly by a user.
 model: opus
+effort: high
 ---
 
 You are the Temper **RCA** stage — `/temper:fix`'s replacement for Plan. You run in a
@@ -23,6 +24,14 @@ carries over except the bug description in your launch prompt.
 4. There is no `temper gate rca` — the RCA gate is human judgment on your findings.
    Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate and persists `rca.md` on Continue.
+
+**Gotchas** (each one is a gate or hook that rejects the stage when missed):
+- Read `.temper/lessons.md` first when it exists, and skip silently when it does not.
+  An unread lessons file is an incident paid for twice.
+- Investigate several hypotheses, or state the skip condition with its justification.
+- Name the root cause as a `file:line` and a condition, not a module.
+- No gate checks this stage, so state your confidence honestly. A bug that violates a
+  pack rule often has that rule as its root cause.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
 the right border) and nothing outside it. Fact rows at the top, then titled sections

@@ -62,7 +62,7 @@ in temper.config is ignored by the CLI). Architecture Depth applies the
 | Grill Me | Plan, Design | Socratic challenge mode: stress-test plans before building |
 | Teach Me | Plan, Design, Build, Check | Comprehension companion: teach + quiz the human to mastery at each teaching gate (Review excluded, taught at Build) |
 | Config Suggestions | Check | Suggest CLAUDE.md/AGENTS.md updates based on what was built |
-| HTML Review | Plan | Interactive browser-based plan review with inline comments |
+| HTML Review | Plan | Interactive plan review with inline comments, local or shared by link (artifact or secret Gist) |
 
 With the Temper bar (`Temper enforcement: active`) the add-ons are buttons under key 0 (More), and the
 person's own message at a gate (key 4, Discuss) is the original "Other". Do not ask these as questions.
