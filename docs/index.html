@@ -32,7 +32,7 @@
     "license": "https://opensource.org/licenses/MIT",
     "author": { "@type": "Person", "name": "Gal Naor", "url": "https://github.com/galando" },
     "programmingLanguage": "Markdown",
-    "version": "9.0.0"
+    "version": "9.6.0"
   }
   </script>
 
@@ -844,6 +844,7 @@
       </a>
       <div class="nav-links">
         <a href="#loop">The Loop</a>
+        <a href="#mod">The Mod</a>
         <a href="#evidence">Evidence</a>
         <a href="#why">Methodology</a>
         <a href="#commands">Commands</a>
@@ -913,6 +914,30 @@
       Works with any CI &mdash; the automation surface is commands and exit codes, no platform files.
       &nbsp;<a href="https://github.com/galando/temper/blob/main/docs/ai-native-sdlc.md" style="color: var(--accent);">Temper vs the AI-native SDLC playbook &rarr;</a>
     </p>
+  </section>
+
+  <section id="mod">
+    <div class="section-label">The Mod</div>
+    <h2 class="section-title">Claude cannot write code before you approve the intent</h2>
+    <p class="section-desc">On Claude Code 2.1.287 or later, Temper also draws a phase bar and enforces every phase at the tool layer. Older versions load the plugin as before.</p>
+
+    <img src="assets/temper-full.gif" alt="Temper phase bar in Claude Code: Intent, Plan, Build, Review, Check, with numbered actions" style="width: 100%; max-width: 900px; display: block; margin: 0 auto 2rem; border-radius: 6px; border: 1px solid var(--border);">
+
+    <div class="why-grid">
+      <div class="why-item">
+        <h4>Refuses early writes</h4>
+        <p>An edit outside the current phase is refused, and so is <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code> until the gates pass or you override them. Every refusal names the next step.</p>
+      </div>
+      <div class="why-item">
+        <h4>You see where you are</h4>
+        <p>A phase bar and numbered actions match the original <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper</code> gates: Continue, Teach me, Grill me, Discuss, Skip with a reason.</p>
+      </div>
+      <div class="why-item">
+        <h4>You choose how much</h4>
+        <p><code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">uiMode</code> is full, minimal or off. <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">enforcement</code> is on or off. The CLI state stays the source of truth, and the mod blocks nothing when it cannot tell where the run is.</p>
+      </div>
+    </div>
+    <p style="color: var(--fg-muted); font-size: 0.85rem; text-align: center; margin-top: 1.5rem;">Early access. Runs in the CLI and the desktop Code tab. Not a sandbox: it guards the editing tools and <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code>; the Bash check is best effort. <a href="mods-testing.html">Try it on your machine</a>.</p>
   </section>
 
   <section id="evidence">
