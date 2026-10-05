@@ -30,13 +30,6 @@ folder and a `pre-commit` hook that blocks `git commit` while any gate is red. T
 works. Use Claude Code 2.1.287 or later for the phase bar and the refusals below. Older versions
 run every phase as prompts.
 
-### Try the demo
-
-From a clone of this repository, `bash demo/run-demo.sh` opens Claude Code on a small demo project
-at "Step 2 of 6: Plan", with the plan ready. Ask Claude to change `src/users.js`: Temper refuses and
-says what to do next. Then press `1` ("Continue to Build"): the bar moves to Build. Use
-`bash demo/run-demo.sh intent` to start from the intent step. See [the demo script](docs/demo-script.md).
-
 ## The problem
 
 AI writes code fast, with predictable failures: happy paths without edge cases, features
@@ -110,8 +103,7 @@ phase bar only. Off draws nothing, and a write outside the phase is still refuse
 | ![Minimal mode, dark: the phase bar only](docs/assets/mode-minimal-dark.png) | ![Minimal mode, light: the phase bar only](docs/assets/mode-minimal-light.png) |
 | ![Off mode, dark: nothing drawn, denials still apply](docs/assets/mode-off-dark.png) | ![Off mode, light: nothing drawn, denials still apply](docs/assets/mode-off-light.png) |
 
-The rows are Full, Minimal and Off. The same mod runs in the desktop app (Code tab). A desktop
-screenshot is not in the repository yet; [the demo script](docs/demo-script.md) says how to add one.
+The rows are Full, Minimal and Off. The same mod runs in the desktop app (Code tab).
 
 ### Each phase
 
@@ -145,8 +137,7 @@ values: `on` (the offers and the command, the default), `command` (the command o
 ![Temper Run, the optional game: Ember the dragon jumps over an anvil while Claude works](docs/assets/game.gif)
 
 The game runs on the terminal and the desktop app only. It was verified by hand on the
-terminal, with the keyboard only. The image above is a placeholder until the recording from
-`demo/game.tape` replaces it.
+terminal, with the keyboard only.
 
 ## Where enforcement works
 
@@ -224,20 +215,29 @@ refusals, the phase bar and the report.
 
 ## What the mod reads and writes
 
-Mods are not sandboxed, so this is the full list. The mod uses no network and starts no process.
+Mods are not sandboxed, so this is the full list. No network, process, agent or tool call by the mod.
 
-- **Reads:** files under `.temper/` (state, gates, evidence, intent, plan, tasks, config) and the
-  event files of the current run. It also reads the plugin settings (`uiMode`, `enforcement`,
-  `game` and a few more) and its own stored decisions.
-- **Writes:** event files under `.temper/specs/<name>/events/` and `.temper/report.md`. It never
-  edits your code. The game keeps one number, your best score, in the plugin store.
-- **Asks:** you, with questions, for a mode, a scope drift choice, or a reason for an override.
-- **Draws:** the phase bar, the pane and, if you open it, the game.
-- **Tests, lint and git** run as prompts to Claude through Claude's normal tools and permissions.
-  So do the `scripts/temper` calls that record your choices (Skip with a reason, Loop back, accept).
-  In auto mode Claude Code's own permission check may refuse a skip, because it looks like a gate
-  bypass. The bar then keeps your choice and says "Press 1 to record it". Allow the call once in your
-  project settings, for example `Bash(*scripts/temper override*)`, or run it yourself with `!`.
+- **Reads:** `.temper/` files (state, gates, evidence, intent, plan, tasks, config, events), its settings and store.
+- **Writes:** only event files under `.temper/specs/<name>/events/` and `.temper/report.md` (the path is
+  built from the run name), never code, build, start up, settings or instructions files. The game
+  keeps your best score in the plugin store.
+- **Sets** only `temper.uiMode` and `temper.enforcement` (you type `/temper:temper mode` or `enforcement`;
+  a locked row stays). **Runs** only `/temper:temper` and `/temper:temper continue <stage>`, on a button press.
+- **Submits prompts:** after a button press, the fixed text of that action, the stage, a finding id,
+  your reason, a path outside the plan and the `scripts/temper` calls that record your choice. The
+  `temper:phase` section on each request holds the phase, run title, task, criteria progress and
+  next step. No other text from your files goes into a prompt.
+- **Hooks:** `tool.call` reads Write, Edit and NotebookEdit paths and Bash text, then refuses or
+  passes the call (it never answers for a tool). `command.run` answers the reserved words of
+  `/temper:temper` and passes every other command on unchanged. `session.start` and
+  `classic.SessionStart` find the project root. `turn.step` applies `phaseModels`, and
+  `reviewerModel` to the steps of the Temper review agent (found with `$.agent.list()`).
+- **Other:** `adapter.ts` takes `setTimeout` from `globalThis` for a 60 ms retry of a state read.
+  `tests/mod/` (its fake engine is `world.ts`) is the test suite and is never loaded. The mod **asks**
+  you for a mode, a drift choice or a reason, and **draws** the bar, the pane and the game.
+- **Tests, lint, git and `scripts/temper`** run as prompts to Claude with its normal permissions. Auto
+  mode may refuse a skip as a gate bypass; the bar then says "Press 1 to record it". Allow it once,
+  for example `Bash(*scripts/temper override*)`, or run it yourself with `!`.
 
 CI fails if the mod gains any `process`, `http` or `env` call, or any call outside the reviewed list
 in [scripts/check-mod-calls.sh](scripts/check-mod-calls.sh).
@@ -292,7 +292,7 @@ Temper's scripts run locally with `bash`, `git` and `python3`, and write only in
 ## Documentation
 
 - [Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [Packs](docs/packs.md)
-- [Methodology](docs/methodology.md) · [Testing the mod](docs/mods-testing.md) · [Demo script](docs/demo-script.md) · [AI Native SDLC](docs/ai-native-sdlc.md)
+- [Methodology](docs/methodology.md) · [Testing the mod](docs/mods-testing.md) · [AI Native SDLC](docs/ai-native-sdlc.md)
 - [Recommended Setup](docs/recommended-setup.md) · [Enterprise](docs/enterprise.md) · [Directory submission](docs/directory-submission.md) · [Privacy](https://galando.github.io/temper/privacy.html)
 
 ## Contributing and license

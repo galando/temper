@@ -3,6 +3,34 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.6.1: clears the plugin directory validation of 9.6.0
+
+The directory's validator stopped on `hooks/temper-mod/register.tsx` and held 9.6.0. This release
+fixes each finding it marked "Needs you" and adds the README text it asks for. No change to gates,
+commands or agents.
+
+- **`h` and `on` are no longer used as names.** Two arrow function parameters in `register.tsx`
+  were named `h`, the name JSX compiles to, and `showMore` had a parameter named `on`, the name of
+  the registration function. They are now `step`, `decision` and `expanded`.
+- **`config.set` names its key as fixed text.** `/temper:temper mode` writes
+  `{ key: 'temper.uiMode', value: value }` and `/temper:temper enforcement` writes
+  `{ key: 'temper.enforcement', value: value }`, so the directory can read which setting changes.
+- **The mod no longer changes an agent spawn.** `reviewerModel` was applied by an `agent.spawn` hook
+  that passed a changed event on. Now the spawn is not hooked at all: a `turn.step` hook gives the
+  steps of the Temper review agent the reviewer model, and `$.agent.list()` (read only) tells which
+  steps belong to that agent. The reviewed call list is 23 calls (`agent.list` added in
+  `scripts/check-mod-calls.sh` and `docs/mods-plan.md` section 2.7).
+- **README.** "What the mod reads and writes" now says which commands the mod runs and when, which
+  settings it sets, what goes into the prompts it submits and the `temper:phase` section, what the
+  `tool.call`, `command.run` and classic hooks do, where it writes, why `adapter.ts` reads
+  `setTimeout` from `globalThis`, and that `tests/mod/` is not loaded.
+- **The demo is removed.** The `demo/` folder (the sample project, the seed and run scripts, the VHS
+  tapes), `docs/demo-script.md`, the "Try the demo" section of the README and the unused demo styles
+  of the GitHub page are gone. `docs/mods-testing.md` now starts the manual test in any small project.
+- **Test files the directory read as mod source.** The four fixtures in `tests/mod/fixtures/` are
+  one string per source line instead of one long line, and the zero width space in
+  `tests/mod/review-exploits-3.test.ts` is written as `\u200b`.
+
 ## v9.6.0: the Temper mod, and four CLI additions it needs
 
 ### The mod (Claude Code 2.1.287 or later)

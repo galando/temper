@@ -73,19 +73,48 @@ describe('per phase model and effort (turn.step)', () => {
   })
 })
 
-describe('reviewer model (agent.spawn)', () => {
-  test('empty reviewerModel passes every spawn through', async ($, on) => {
+describe('reviewer model (turn.step in the review agent)', () => {
+  const seen: Array<{ model: string; agentId?: string }> = []
+  const AGENTS = [
+    { id: 'rev', type: 'temper:temper-review', description: 'review', status: 'running' },
+    { id: 'rev2', type: 'temper-review', description: 'review', status: 'running' },
+    { id: 'exp', type: 'Explore', description: 'look', status: 'running' },
+    { id: 'bld', type: 'temper:temper-build', description: 'build', status: 'running' },
+  ]
+  const listen = (on: Parameters<typeof world>[0]) => {
+    seen.length = 0
+    on('agent.list', () => ({ value: AGENTS as never }))
+    on('turn.step', async function* ($2, e) {
+      seen.push({ model: e.model, agentId: e.agentId })
+      return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn' } as never
+    })
+  }
+
+  test('empty reviewerModel leaves every step alone', async ($, on) => {
     world(on, {})
-    on('agent.spawn', ($2, e) => ({ model: e.model ?? 'inherit' }))
-    expect((await $.agent.spawn(SPAWN as never)).model).toBe('inherit')
+    listen(on)
+    for await (const _chunk of $.turn.step({ ...STEP, agentId: 'rev' } as never)) void _chunk
+    expect(seen).toEqual([{ model: 'opus', agentId: 'rev' }])
   })
 
-  test('the Temper review agent runs on reviewerModel; other agents do not', { options: { reviewerModel: 'opus' } }, async ($, on) => {
+  test('the Temper review agent runs on reviewerModel; other agents and the main loop do not', { options: { reviewerModel: 'haiku' } }, async ($, on) => {
     world(on, {})
-    on('agent.spawn', ($2, e) => ({ model: e.model ?? 'inherit' }))
-    expect((await $.agent.spawn(SPAWN as never)).model).toBe('opus')
-    expect((await $.agent.spawn({ ...SPAWN, subagentType: 'temper-review' } as never)).model).toBe('opus')
-    expect((await $.agent.spawn({ ...SPAWN, subagentType: 'Explore' } as never)).model).toBe('inherit')
-    expect((await $.agent.spawn({ ...SPAWN, subagentType: 'temper:temper-build' } as never)).model).toBe('inherit')
+    listen(on)
+    for (const agentId of ['rev', 'rev2', 'exp', 'bld', 'gone', undefined]) {
+      for await (const _chunk of $.turn.step({ ...STEP, ...(agentId ? { agentId } : {}) } as never)) void _chunk
+    }
+    expect(seen.map(s => s.model)).toEqual(['haiku', 'haiku', 'opus', 'opus', 'opus', 'opus'])
+  })
+
+  test('a spawn passes through unchanged', { options: { reviewerModel: 'haiku' } }, async ($, on) => {
+    world(on, {})
+    const spawned: unknown[] = []
+    on('agent.spawn', ($2, e) => {
+      spawned.push(e)
+      return { model: e.model ?? 'inherit', agentId: 'rev' }
+    })
+    expect((await $.agent.spawn(SPAWN as never)).model).toBe('inherit')
+    expect(spawned).toEqual([expect.objectContaining({ subagentType: 'temper:temper-review' })])
+    expect((spawned[0] as { model?: string }).model).toBeUndefined()
   })
 })
