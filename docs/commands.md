@@ -61,7 +61,7 @@ At each stage, you see a nice summary and choose to proceed:
 | **Walk through step by step** | Interactive walkthrough: each section explained in detail |
 | **Grill Me** | Socratic challenge mode — adversarial questions that stress-test your plan |
 | **Open HTML review** | Browser-based review with inline comments (Google Doc-style) |
-| **Share HTML review** | Publish the same review so other people can comment by link: a Claude artifact (comments come back automatically) or, without one, a secret Gist (comments come back by paste). Asks before anything leaves your machine |
+| **Share HTML review** | Publish the same review as a Claude artifact so other people can comment by link, and their comments come back automatically. Without the Artifact tool it offers Open HTML review instead. Asks before anything leaves your machine |
 | **Save for later** | Stop, save state, resume later with `/temper` |
 | **Other** | Type a change request, edits applied, gate re-appears |
 
@@ -603,11 +603,11 @@ Confidence: 91%
 
 **External Engine: open-code-review:**
 
-When the `ocr` CLI is installed, `/temper:review` automatically runs a second defect-detection pass during Step 2.5. OCR handles line-level defects; Temper keeps intent validation, security analysis, and architecture depth.
+OCR is off by default. When you set `tools.ocr.mode` to `auto` or `require` and the `ocr` CLI is on your `PATH`, `/temper:review` runs a second defect-detection pass during Step 2.5. OCR handles line-level defects; Temper keeps intent validation, security analysis, and architecture depth.
 
 | Config Key | Default | Description |
 |------------|---------|-------------|
-| `tools.ocr.mode` | `auto` | `auto` (use if available), `off` (never invoke), `require` (block if missing) |
+| `tools.ocr.mode` | `off` | `off` (never invoke), `auto` (use if available), `require` (block if missing) |
 | `tools.ocr.replace-defect-subagent` | `true` | Drop generic defect hunting from Temper subagents when OCR is active |
 | `tools.ocr.timeout` | `10` | Minutes before OCR invocation is killed |
 | `tools.ocr.concurrency` | `8` | Max concurrent file reviews by OCR |
@@ -624,7 +624,7 @@ When the `ocr` CLI is installed, `/temper:review` automatically runs a second de
 |------|--------------|-------------|---------------------|
 | `auto` | Run + dedupe | Skip silently | Warn + degrade |
 | `require` | Run + dedupe | BLOCK with install instructions | Warn + degrade |
-| `off` | Never invoke | Never invoke | Never invoke |
+| `off` (default) | Never invoke | Never invoke | Never invoke |
 
 ---
 
@@ -690,7 +690,7 @@ One-command project setup. Idempotent — safe to re-run; never overwrites an ex
 
 - Seeds `.claude/temper.config` from the bundled default (if absent; an existing config is left untouched, with a note about any retired blocks in it)
 - Scaffolds `.temper/` (the gate ledger, overrides log, feedback-loop registry)
-- Installs the **native commit gate** — the pre-commit hook that blocks `git commit` while any gate is red (backs up a prior non-Temper hook first)
+- Writes the **native commit gate**, the pre-commit hook that blocks `git commit` while any gate is red, to `.git/hooks` or to a `core.hooksPath` folder inside the repository (backs up a prior non-Temper hook first)
 
 **You usually don't run it by hand** — your first `/temper "…"` in an un-set-up project does all of this automatically. Optional edit-time guardrails are a separate `/temper:pack enable guardrails`.
 

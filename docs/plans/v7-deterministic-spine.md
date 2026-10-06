@@ -117,8 +117,8 @@ always allowed to proceed, but the override lands in the ledger and the final re
 ### 1.4 The commit hook — the promise becomes a program
 
 - PreToolUse hook (Bash matcher on `git commit`) runs `temper gate commit`; exit 2 blocks
-  with the failed requirement named. Native `pre-commit` hook via the existing
-  `scripts/guards/install.sh` path covers raw commits outside the agent.
+  with the failed requirement named. The native `pre-commit` hook (written by
+  `scripts/guards/install.sh`) covers raw commits outside the agent.
 - **"Parks before commit" and "never commits without green gates" stop being README
   promises and become mechanical facts** — including under Autonomous Continuation, whose
   park conditions (blast radius, `park-on-touch` paths, budget trips) become CLI checks
@@ -126,7 +126,7 @@ always allowed to proceed, but the override lands in the ledger and the final re
 
 ### 1.5 Tests
 
-- `bats` (or plain-shell) unit tests for every subcommand and every gate function, plus
+- Plain-shell unit tests for every subcommand and every gate function, plus
   the existing hook scripts (currently untested). Runs in `quality.yml` CI.
 
 **Acceptance (M1):** all state transitions and gate verdicts produced by the CLI; commit
@@ -149,7 +149,7 @@ provides natively replaces its hand-rolled equivalent.
 | Observability capture algorithm + source-provenance rules | `temper evidence` / `temper report` (numbers only ever come from measured commands; anything else is labeled estimated by the CLI) |
 | All "byte-identical to v5.x/v6.x when off" contracts | the eval suite (Move 3) guards behavior; contracts are retired |
 | ~190 of 211 config lines (`tokens.*`, `models.*` resolution knobs, capability toggles kept only for freeze-compat) | ~20-line config (below) |
-| Cursor export maintenance (`.cursor/`, `generate-cursor.sh`, `install-cursor.sh`) | archived at v5.1 with one README line; removed from the release process |
+| Cursor export maintenance (`.cursor/` and its two scripts) | archived at v5.1 with one README line; removed from the release process |
 
 ### 2.2 Target config (complete file, ~20 lines)
 
@@ -160,8 +160,6 @@ review:
   block-on: [critical]
 check:
   coverage-threshold: 80
-eval:
-  enabled: true
 autonomy:
   enabled: false            # plan-gate-armed, as today
   park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]
@@ -214,7 +212,7 @@ the park is mechanical.
 
 ### 3.2 CI harness
 
-- Runs the real pipeline headless (`claude -p "/temper:temper ..."`) per fixture and
+- Runs the real pipeline headless per fixture and
   asserts against the **machine-readable evidence ledger** — not transcript grep:
   gate verdicts, seeded-defect caught, commit blocked, autonomy parked.
 - **Baseline pinning:** before any Move 2 deletion lands, run the suite against v6.0.1

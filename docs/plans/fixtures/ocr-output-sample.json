@@ -28,9 +28,9 @@
     },
     {
       "path": "test.js",
-      "content": "Security Issue (Hardcoded Secret): API key is hardcoded in plain text in the source code. This exposes sensitive credentials in version control. Use environment variables or a secrets manager instead.",
-      "suggestion_code": "const API_KEY = process.env.API_KEY;",
-      "existing_code": "const API_KEY = \"sk-1234567890abcdef\";",
+      "content": "Warning (Debug flag): Debug logging is left on in production code. It writes internal details to the log on every request. Turn the flag off before release.",
+      "suggestion_code": "const DEBUG = false;",
+      "existing_code": "const DEBUG = true;",
       "start_line": 14,
       "end_line": 14
     }

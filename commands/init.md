@@ -37,13 +37,26 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    It installs a native git pre-commit hook that runs `temper gate commit` (and the
    secret scan) on every commit, fails open if temper isn't in use for a commit, and
    backs up any existing non-Temper pre-commit hook first. It writes the project's
-   `.git/hooks/pre-commit`, or the `pre-commit` file in the folder an existing relative
-   `core.hooksPath` names (husky and lefthook set one), so the gate isn't written where
-   git would ignore it. Re-running is idempotent, and it refreshes a stale Temper hook
-   (one whose embedded CLI path no longer exists, as after a plugin upgrade). If the project
-   isn't a git repo yet, install.sh exits non-zero — report "not a git repo yet; run
-   /temper:init again after `git init` to install the commit gate" and continue (the
-   config + scaffold still succeeded).
+   `.git/hooks/pre-commit`, or the `pre-commit` file in the folder an existing
+   `core.hooksPath` names (husky and lefthook set one) when that folder is inside the
+   repository, so the gate isn't written where git would ignore it. Re-running is
+   idempotent: it rewrites a Temper hook in place with the current plugin paths, and it
+   warns when the old hook pointed at a different plugin path (a stale hook, as after a
+   plugin upgrade, whose checks were failing open).
+   Report by how it ended:
+   a. Exit 0 → the gate is installed; carry its "Installed ..." line into the report.
+   b. Exit 1 with "FAIL: not inside a git repository" → report "not a git repo yet; run
+      /temper:init again after `git init` to install the commit gate" and continue (the
+      config + scaffold still succeeded).
+   c. Exit 1 with any other FAIL line → nothing was written. install.sh prints the
+      lines to add to a pre-commit hook by hand and exits 1 when core.hooksPath is
+      outside the repository, contains '..', '~' or other unusual characters, or names
+      a folder that holds a JSON file (`.git/hooks` gets the same JSON check), and when
+      core.hooksPath is not set and the checkout's .git is not a folder (a linked
+      worktree or a submodule). Report "commit gate not installed: {the FAIL reason}",
+      show the user the lines it printed, and say they can add those lines to their own
+      pre-commit hook, or point core.hooksPath at a plain folder inside the repository
+      and run /temper:init again. Continue (the config + scaffold still succeeded).
 
 5. Report done, and name the one optional add-on in a single line:
    "Set up. Optional: `/temper:pack enable guardrails` adds edit-time guardrails (secret
@@ -57,8 +70,9 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
   own hooks file) and work on install with no merge; the fuller edit-time guardrail
   set is the opt-in `/temper:pack enable guardrails` above, because merging into a user's
   `settings.json` is a change they should choose.
-- It does **not** overwrite an existing config or an existing non-Temper git hook
-  (that one is backed up, never destroyed).
+- It does **not** overwrite an existing config, and it never destroys an existing
+  non-Temper git hook: install.sh copies that hook to `pre-commit.bak.<timestamp>` next
+  to it before writing the Temper hook.
 
 ## Migrating from an older version
 

@@ -333,7 +333,7 @@ cmd_model() {
 
   local m; m="$(_resolve_model "$stage")"
   # Fail loudly rather than printing an empty string the orchestrator would paste into
-  # an Agent launch — this is only reachable if the plugin install is broken.
+  # an Agent launch. That is only reachable if the plugin's files are incomplete.
   [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$stage' (is its brief in the plugin's agents folder?)" >&2; return 1; }
   echo "$m"
 }
@@ -1747,7 +1747,9 @@ gate_check() {
     fi
   fi
   local cov_val; cov_val=$(_ev_last_value check coverage)
-  if [[ -n "$cov_val" ]] && python3 -c "import sys; sys.exit(0 if float('$cov_val') >= float('$threshold') else 1)"; then
+  # Both values cross as argv, never as Python source: the threshold comes from the
+  # project config and the value from the ledger. A value that is not a number FAILs.
+  if [[ -n "$cov_val" ]] && python3 -c "import sys; sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)" "$cov_val" "$threshold" 2>/dev/null; then
     reqs+=("$(_req "coverage >= threshold" 1 "$cov_val% >= $threshold% threshold")")
   else
     reqs+=("$(_req "coverage >= threshold" 0 "recorded coverage '${cov_val:-none}' vs threshold $threshold%")")
@@ -2105,11 +2107,12 @@ cmd_report() {
     cat "$GATES_FILE"
     return
   fi
+  # The two file paths cross as argv, never as Python source: the project path may hold a quote.
   python3 -c "
-import json
-d = json.load(open('$GATES_FILE'))
+import json, sys
+d = json.load(open(sys.argv[1]))
 try:
-    overrides = json.load(open('$OVERRIDES_FILE'))
+    overrides = json.load(open(sys.argv[2]))
 except Exception:
     overrides = []
 overridden = {o['stage'] for o in overrides}
@@ -2127,7 +2130,7 @@ for stage in ['intent', 'plan', 'design', 'build', 'review', 'check', 'commit']:
 if overridden:
     print()
     print(f'{len(overridden)} gate(s) overridden by a human — see .temper/overrides.json')
-"
+" "$GATES_FILE" "$OVERRIDES_FILE"
 }
 
 # ---------------------------------------------------------------------------

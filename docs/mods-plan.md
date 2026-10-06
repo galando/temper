@@ -96,7 +96,7 @@ rule. They also help users without mods.
 Sources: the docs pages overview, create, reference, interface, events, api, test,
 admin and troubleshoot under `code.claude.com/docs/en/plugins/mods/`, and the types
 Claude Code 2.1.287 generated at `.claude-plugin/types/claude-code/index.d.ts` when I
-loaded a probe mod with `claude -p --plugin-dir`. The generated file matches the one
+loaded a probe mod for one session. The generated file matches the one
 the plugin authoring skill ships, except that built in tool inputs moved to a separate
 `claude-code-tools/index.d.ts`.
 
@@ -372,16 +372,16 @@ Bash coverage is best effort, but structural and conservative. The hard guarante
 tool layer: Write, Edit, NotebookEdit and MultiEdit, and `git commit` through Bash. For Bash the
 classifier splits the command into statements (quote, heredoc and substitution aware, heredoc
 bodies left out), strips wrappers (`env`, `timeout`, `nice`, `ionice`, `nohup`, `time`, `xargs`,
-`command`, `builtin`, `exec`, `sudo`, a path to `git` or `temper`, `bash scripts/temper`, `sh -c`,
-`eval`), and resolves shell variables statement by statement, left to right, in `export`,
+`command`, `builtin`, `exec`, `sudo`, a path to `git` or `temper`, a shell given the script or a
+`-c` string, and the eval builtin), and resolves shell variables statement by statement, left to right, in `export`,
 `declare`, `local`, `readonly` and `typeset` forms and in env prefixes, to a fixed depth. Brace
 expansion is expanded to a fixed cap, `..` segments are collapsed, `cd` is followed, and quotes and
 backslashes are removed before a path is compared.
 
 Every write capable construct in the command is then checked: redirects (including `>|` and
 `&>`), `tee` (every target), `dd of=`, `cp`, `mv`, `install`, `ln`, `rsync`, `rm`, `truncate`,
-`touch`, `sed -i` and `sed w`, `curl -o`, `wget -O`, `tar -C`, `find -delete` and `-exec`. The
-rules are:
+`touch`, `sed -i` and `sed w`, the output file option (`-o`, `-O`) of a transfer tool, `tar -C`,
+`find -delete` and `-exec`. The rules are:
 
 - A target that resolves to a guarded file (events, `gates.json`, `status.json`, `overrides.json`,
   `build-state.json`) is refused.
@@ -445,10 +445,10 @@ Third review (#39 to #48). While a run is active and enforcement is on, a Bash c
 when it names `temper` (a word, a path part, a glob, or a name inside a string, compared without
 regard to case) and it is not a plain readable call, in these cases: the verb or subcommand of a Temper
 call is built by `$'..'`, `${..}`, `$(..)` or an unresolved variable; the command uses a launcher
-(`env -S`, `awk`, `make`, `find -exec`, `xargs`, `parallel`, `script`, `ksh`, `fish`, `eval`,
-`exec`, `git -c alias`); the command writes a script file that names `temper` with a decision word, or runs a
-file it wrote; it copies, links or sources the script; it feeds a shell from `cat scripts/temper` or
-`<(...)`. Reading commands (`sed -n`, `awk '/x/'`, `nl`, `cat`, `head`, `tail`, `less`, `grep`, `rg`,
+(`env -S`, `awk`, `make`, `find -exec`, `xargs`, `parallel`, `script`, `ksh`, `fish`, the eval and
+exec builtins, `git -c alias`); the command writes a script file that names `temper` with a decision word, or runs a
+file it wrote; it copies, links or sources the script; it feeds a shell the script's text or a
+process substitution. Reading commands (`sed -n`, `awk '/x/'`, `nl`, `cat`, `head`, `tail`, `less`, `grep`, `rg`,
 `wc`, `diff`, `pytest -k`, `git log --grep`) stay allowed. Every `state advance` and `state set
 next_stage` call needs a matching human decision, or it must be the exact next stage of the run
 (`STAGE_SEQ_TEMPER`, with design only for medium and complex runs) after a fresh PASS or an override
@@ -469,12 +469,13 @@ done."), and ignores a second move within one second.
 Fourth review (hardening, the mod's hardening tests). The stance does not change: the classifier is structural,
 fail closed where that is cheap, best effort; the hard guarantees are the editing tool deny and the native
 `pre-commit` hook. What was added, while a run is active:
-(1) a shell, `eval` or `source` that is given a program the text does not show is refused: a pipe from anything but
-`echo`/`printf` (or `cat` of a heredoc), a file on stdin, a process substitution, `xargs sh -c '{}'`, a `-c` string
+(1) a shell, or a builtin that runs text as commands (such as `source`), that is given a program the text does not
+show is refused: a pipe from anything but `echo`/`printf` (or `cat` of a heredoc), a file on stdin, a process
+substitution, xargs handing what it reads to a shell as the program, a `-c` string
 that is a substitution or an unset variable, and, for a program that is shown, any word split by quotes, `$`,
 backticks, backslashes, braces or globs. Quote and backslash splits (`te""mper`, `ov\erride`) are removed before
-the script name and the decision words are looked for. `eval "$(ssh-agent -s)"`, `eval "$(scripts/setup.sh)"` and
-the plain heredocs stay allowed. (2) A command that names a guarded file (`gates.json`, `status.json`,
+the script name and the decision words are looked for. Shell setup idioms (what `pyenv init -` or a project setup
+script prints) and the plain heredocs stay allowed. (2) A command that names a guarded file (`gates.json`, `status.json`,
 `overrides.json`, `build-state.json`, `feedback-loops.json`, `.claude/temper.config`, `.temper/evidence/*.json`, an
 events folder, `.git/hooks`), or a glob that can stand for one (`.tem*/gates.js*`), must be a plain read (`cat`, `grep`,
 `jq`, `head`, `tail`, `ls`, `stat`, `wc`, `diff`, `test`, `sed` without `-i`, `awk` whose program does not name it,
@@ -495,7 +496,7 @@ passes). The Bash classifier now skips shell comments, so a comment that names `
 Known limits, on purpose (see the mod's known limits test). The classifier reads command text
 only. It cannot see a link, a copy or a script made in an earlier call, a script already on disk and
 run later with no name in the command, or a variable set earlier. It cannot see a program that builds the
-script name or a guarded path at run time (`os.system('scripts/te' + 'mper ...')`), the names inside a patch or an
+script name or a guarded path at run time (a Python call that joins the name from two pieces), the names inside a patch or an
 archive that is applied or extracted (`patch < x.diff`, `tar xf a.tar`), a staging made by a script or by the person
 before the session, a git alias of the person for `commit`, or a `cd` made before the mod was loaded. MCP and PowerShell
 file tools are not evaluated at all. Enforcement stays on from the last known state when `build-state.json` is hidden,
@@ -737,9 +738,8 @@ and `agent.spawn` features; `claude plugin test` coverage of every listed area;
    player). A repo relative `.mp4` link does not play inline. I will verify the
    method on an existing public README before recommending it, and you do the upload.
 
-**Feasible with effort and retries:** the hero GIF. VHS is not installed, but Go and
-ffmpeg are, so I can build VHS and ttyd here. Claude is signed in here, so a recording
-works, but each take costs tokens and output varies. The `.tape` file is committed;
+**Feasible with effort and retries:** the hero GIF, recorded in this container. A recording
+works here, but each take costs tokens and output varies. The `.tape` file is committed;
 nothing runs in CI. Light and dark terminal screenshots come from VHS themes.
 
 ---
@@ -754,41 +754,17 @@ nothing runs in CI. Light and dark terminal screenshots come from VHS themes.
   report output; UI mounted on `terminal` and `desktop` (and a smoke on `vscode`,
   `mobile`); composition with a simulated prepend tier guard; version guard inertness.
 - `bash scripts/tests/test-temper.sh` cases for each CLI addition.
-- CI (`quality.yml`): install Claude Code 2.1.287 with npm, run `claude plugin test`
-  and `claude plugin validate --strict`, assert the `calls:` line. No sign in needed.
+- CI (`quality.yml`) runs `claude plugin test` and `claude plugin validate --strict` on Claude
+  Code 2.1.287 and asserts the `calls:` line. No sign in needed.
 - Manual matrix: terminal at 80, 120 and 160 columns, fullscreen and main screen;
   desktop; `claude -p`; 2.1.200 and 2.1.259 (plugin loads, prompt based phases work);
   `/compact` keeps the section.
 
 ## 6. Test on your laptop before merge and release
 
-Nothing is released from this branch until you have run it in your own terminal.
-Deliverable: `docs/mods-testing.md`, a checklist you tick by hand. The steps:
-
-1. Claude Code 2.1.287 or later: `claude --version`, then `claude update` if older.
-2. Get the branch: `git fetch origin ccr-ea3cb3cc-wsa4sb && git checkout ccr-ea3cb3cc-wsa4sb`
-   in your Temper clone (or a fresh clone).
-3. If you have Temper installed from the marketplace, turn that copy off for the test
-   so only one Temper runs: `claude plugin disable temper@<marketplace>` (the id is
-   shown by `/plugin`). Turn it back on afterwards with `claude plugin enable`.
-4. Run the automated checks from the clone: `claude plugin validate --strict .` and
-   `claude plugin test .` (no sign in needed), plus `bash scripts/tests/test-temper.sh`.
-5. Open a project with the branch loaded for that session only:
-   `cd <project> && claude --plugin-dir <clone>`. The clone is watched,
-   so a `git pull` of the branch reloads the mod without restarting.
-6. Walk the checklist: each phase's denials and hotkeys; `/temper mode full`, `minimal`,
-   `off`; `/compact` keeps "Temper enforcement: active"; a narrow (80 columns) and a
-   wide (160 columns, fullscreen) terminal; light and dark themes.
-7. Old version check without touching your installed CLI:
-   `npx @anthropic-ai/claude-code@2.1.259 -p --plugin-dir <clone> "/temper status"`
-   should answer through the prompt based path with no load error.
-8. Your installed Temper is untouched by all of this: `--plugin-dir` lasts one session
-   and writes nothing to your settings, except the mode you pick with `/temper mode`,
-   which is stored in your user settings under `pluginConfigs`. The checklist ends with
-   how to clear it.
-
-After you tick the checklist: merge, then release with the existing
-`release-bump.yml` and `release.yml` workflows as today.
+The steps are the checklist in [Testing the mod](mods-testing.md), ticked by hand before
+merge and release. After that, release with the existing `release-bump.yml` and
+`release.yml` workflows.
 
 ## 7. Delivery
 

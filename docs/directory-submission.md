@@ -89,7 +89,7 @@ Claude Code itself accepts the plugin.
 | Prompts, commands, settings, hooks the mod uses | The README section "What the mod reads and writes". Change it in the same commit as the code. |
 | Tool calls, `config.set`, `command.run`, an agent spawn in the mod's test suite | Temper's fake engine (built on Claude Code's test kit) and one test's stub spawn. Not reported on 9.6.4, once the README described them. |
 | Fields the directory does not recognize | Removed in 9.6.5: `documentationUrl`, `supportUrl` and `privacyPolicyUrl`, and `icon` with the images. |
-| Images, credentials, download and run text | Since 9.6.5 the repo holds no image; the README loads its pictures by URL. The rest is text in docs, tests and the Bash guard's patterns, explained in notes for the reviewer. |
+| Images, credentials, download and run text | Since 9.6.5 the repo holds no image; the README loads its pictures by URL. Since 9.6.5 Share HTML review publishes only as a Claude artifact, and OCR (which sends the diff to the provider you set up) is off unless you turn it on. The docs show no command that reads keys or Claude Code settings files, and the install steps are slash commands in a text block. The rest is text in tests and the Bash guard's patterns, explained in notes for the reviewer. |
 
 ## What is not verified
 

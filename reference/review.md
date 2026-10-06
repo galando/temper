@@ -42,10 +42,14 @@ a `review.block-on` severity, or a security finding: those bypass every filter,
 REVIEW.md included. Policy can re-aim the review; only config + packs can lower the
 gate. Absent → skip silently.
 
-**OCR (external review engine, optional):** if `tools.ocr.mode` isn't `off`,
-`command -v ocr` then probe `ocr review --preview`; ready → record `ocr_status = ready`
-(merge mechanics in `$CLAUDE_PLUGIN_ROOT/docs/recommended-setup.md`). Absent/failing: `require` blocks with
-the install command, `auto` skips with a one-line notice.
+**OCR (external review engine, optional, off by default):** read the mode with
+`$CLAUDE_PLUGIN_ROOT/scripts/temper config get tools.ocr.mode off`. The default is `off`, and a config
+without the key reads as `off`: skip OCR silently and never run `ocr`. OCR sends the diff
+to the model provider the user set up for it, so it runs only when the user turns it on
+by setting `tools.ocr.mode` to `auto` or `require` under `tools:` in `.claude/temper.config`.
+When it is on, `command -v ocr` then probe `ocr review --preview`; ready → record
+`ocr_status = ready` (merge mechanics in `$CLAUDE_PLUGIN_ROOT/docs/recommended-setup.md`). Absent/failing:
+`require` blocks with the install command, `auto` skips with a one-line notice.
 
 ## Step 1.5: Diff-Aware Fingerprinting
 

@@ -282,7 +282,8 @@ orchestrated flow that already happened at the Intent gate). Commit the artifact
 two steps — `git add .temper/specs/{slug}/` first, then `git commit -m "docs(plan):
 approve plan — {slug}"` as a separate call (not `add && commit`: the in-agent
 commit-gate hook checks `temper gate commit` when the commit is submitted, and the
-artifact-only carve-out that passes it mid-run reads the already-staged set). Skip
+artifact-only carve-out that lets this commit through mid-pipeline reads the
+already-staged set). Skip
 with a note if the project gitignores `.temper/specs/`. Standalone mode loads only
 `tasks.md` + `intent.md` for Build. Subprocess mode: the orchestrator handles the
 transition.

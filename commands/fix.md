@@ -53,7 +53,8 @@ user's project, the current directory; nothing in a run writes under
 `$CLAUDE_PLUGIN_ROOT`.
 
 **Why this command gates at all:** the commit hook (installed by `/temper:init`) runs
-`temper gate commit` on **every** `git commit`, regardless of which command produced it.
+`temper gate commit` on **every** `git commit` in a project with a `.temper` folder,
+regardless of which command produced it.
 Fix maps onto the `build` gate (a regression test is exactly a RED-then-GREEN pair);
 Review and Check are the literal same stages as `/temper`, sharing the review and check
 briefs. Skipping evidence here would leave every `/temper:fix` commit wrongly blocked
@@ -98,8 +99,9 @@ re-show this gate).
 
 **On Continue:**
 1. Save the agent's returned findings to the project's `.temper/specs/{bug-slug}/rca.md`
-   (create the directory if needed). A bug slug is letters, digits and hyphens only
-   (no `/`, no `..`).
+   (create the directory if needed). The bug slug, which step 2 passes to `state init`,
+   is lowercase letters, digits, '.', '_' or '-', starts with a letter or digit, and
+   has no '..' (the CLI refuses anything else).
 2. `$CLAUDE_PLUGIN_ROOT/scripts/temper state init {bug-slug} --command fix` (first time only — also sets branch
    `fix/{bug-slug}`), else `$CLAUDE_PLUGIN_ROOT/scripts/temper state advance rca_complete fix`.
 3. If the git pack is enabled and `git branch --show-current` is main/master:

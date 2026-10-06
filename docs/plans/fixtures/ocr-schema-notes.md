@@ -3,6 +3,8 @@
 **Captured from:** `ocr` v1.3.1 (open-code-review)
 **Date:** 2026-06-12
 **Command:** `ocr review --commit <sha> --format json --audience agent --concurrency 8`
+**Sample:** `ocr-output-sample.json`. Its third comment is an edited stand-in (a debug flag
+warning), not captured output.
 
 ## Top-Level Structure
 
@@ -55,7 +57,7 @@ in the `content` prose (e.g., "Critical Bug:", "Security Vulnerability",
 
 **Category extraction from content:**
 - SQL Injection, XSS, CSRF -> security
-- Hardcoded Secret, API Key -> security
+- Hardcoded secret -> security
 - NPE, TypeError, null check -> logic
 - Performance, N+1 -> performance
 - Default -> quality

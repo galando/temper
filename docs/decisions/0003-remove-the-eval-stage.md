@@ -23,30 +23,30 @@ cutting the prompt surface by ≥35%. Every byte of the Eval stage counted again
 
 ## Decision
 
-Delete the Eval stage entirely — the gate, the agent, the command, the reference doc, the
-skill, the template and the `eval:` config block — rather than disabling it by default.
-`temper gate eval` becomes a usage error; `temper gate check` advances straight to the
+Delete the Eval stage entirely (the gate, the agent, the command, the reference doc, the
+skill, the template and the Eval stage's config block) rather than disabling it by default.
+The Eval gate becomes a usage error; `temper gate check` advances straight to the
 commit gate; `STAGES` and `STAGE_SEQ_TEMPER` lose the token.
 
-`evals/` — `run-all.sh`, `run-fixture.sh`, `run-wiring-smoke.sh` and `fixtures/` — is
+`evals/` (its runner scripts and `fixtures/`) is
 explicitly **not** part of this decision and must remain byte-identical. It is the only
 behavioral verifier for the prompt-shortening work happening in the same release.
 
 Backward compatibility is by omission where the artifact is inert, and by migration where
-it is not (see ADR-0004): a stale `eval:` block in a user's config is never read because
-`_cfg_get` returns the caller's default for unknown keys; a stale `"eval"` key in
+it is not (see ADR-0004): a stale Eval config block in a user's config is never read because
+`_cfg_get` returns the caller's default for unknown keys; a stale Eval key in
 `.temper/gates.json` is never visited because `gate_commit` iterates a fixed
 `stages_to_check` list.
 
 ## Alternatives Considered
 
-### Flip `eval.enabled` to `false` in the config template, keep the code
+### Turn the Eval stage's enabled key off in the config template, keep the code
 
 - **Pros:** Reversible in one line. No test churn. No risk to `gate commit`.
 - **Cons:** Leaves ~10 KB of reference doc, a 5.5 KB skill, an agent, a command and a
   template on disk — all still loaded by `generate-cursor.sh`, still asserted by
   `validate-plugin.sh`, still counted against the 35% reduction target, and still
-  discoverable as `/temper:eval` in the command list.
+  discoverable as the Eval command in the command list.
 - **Why not chosen:** A disabled stage is still a stage the reader has to understand and
   the maintainer has to keep passing CI. It directly contradicts the size goal that
   motivated the release.
@@ -63,7 +63,7 @@ it is not (see ADR-0004): a stale `eval:` block in a user's config is never read
 ### Positive
 - Six-stage pipeline: plan → design → build → review → check → commit.
 - ~18 KB of prompt surface and one gate branch removed.
-- The `/temper:eval` vs `evals/` name collision disappears.
+- The name collision between the Eval command and `evals/` disappears.
 
 ### Negative
 - **Breaking change for v7.0.1 users** — a shipped stage and a shipped config key are
@@ -72,8 +72,8 @@ it is not (see ADR-0004): a stale `eval:` block in a user's config is never read
   replacement.
 
 ### Neutral
-- The four generated `.cursor/` eval artifacts need no explicit delete: `generate-cursor.sh`
-  does `rm -rf` on the output directory before rebuilding. The *assertions* in
+- The four generated `.cursor/` Eval artifacts need no explicit delete: `generate-cursor.sh`
+  empties its output directory before rebuilding. The *assertions* in
   `validate-plugin.sh:222-234` do need removing, in the same commit.
   *(Moot as of v8.0.0: Cursor support and its generator were removed later in the same
   release. Left as written — this records the decision as it was made.)*

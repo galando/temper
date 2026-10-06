@@ -137,7 +137,7 @@ Create a template repository with Temper pre-configured. New services inherit fr
 
 If you have an internal plugin marketplace:
 
-```bash
+```text
 /plugin marketplace add internal/temper
 /plugin install temper
 ```

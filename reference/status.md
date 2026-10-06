@@ -34,7 +34,9 @@ a verdict). Nothing here is a verdict; `.temper/gates.json` owns those.
 - **code-review-graph / semgrep:** probe with a trivial tool call (e.g.
   `get_impact_radius_tool` on the current file, or `security_check`); tool responds →
   available, errors/missing → unavailable.
-- **ocr:** `command -v ocr` → not-installed if missing; else `ocr --version` then probe
+- **ocr:** read `$CLAUDE_PLUGIN_ROOT/scripts/temper config get tools.ocr.mode off` first. `off`
+  (the default, also when the key is absent) → report off and run nothing. Otherwise
+  `command -v ocr` → not-installed if missing; else `ocr --version` then probe
   `ocr review --preview --from HEAD~1 --to HEAD` → ready, or not-configured if the probe
   fails (LLM not set up).
 - Read `tools.mode` (`auto`/`heuristic-only`/`require`) and report accordingly.

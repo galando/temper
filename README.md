@@ -17,7 +17,7 @@ outside the current phase through Claude's editing tools (details in "Where enfo
 
 ## Install
 
-```bash
+```text
 /plugin marketplace add galando/temper
 /plugin install temper
 ```
@@ -152,23 +152,23 @@ closed. It cannot see a variable set in an earlier call or a profile, a Bash com
 ordinary source files, and MCP file tools are not covered. The native `pre-commit` hook is the
 backstop. Button presses and the reason field carry no origin, so their authenticity rests on Claude Code.
 
-**Limits you should know.** While a run is active, a Bash command that names the Temper script and
-hides what it runs (`$(...)`, `${...}`, `$'...'`, a here-string, a script written and then run, a
-launcher such as `env -S`, `make`, `awk` or `find -exec`) is refused, even when the text shows no
-decision word. A shell, `eval` or `source` given a program the text does not show (a pipe from an
-unknown command, a file on stdin, a word split by quotes, `$` or braces) is refused too. A command
-that names a file of the run (`gates.json`, `build-state.json`, the evidence ledger, `.claude/temper.config`,
-the git hooks) must be a plain read; `chmod`, `find -delete`, `git clean` and `--no-verify` are refused.
-A run whose `build-state.json` is hidden or removed stays enforced from the last known state until you
-turn enforcement off. Shell tricks that a text reader cannot see are still possible: a link or a
-script made in an earlier call, a script already on disk and run later, a program that builds the
-script name or a path at run time, or the names inside a patch or an archive. What is staged is the
-session's own picture (a script that stages is not seen). MCP and PowerShell file tools are not
-evaluated. So the hard guarantees are the editing tools and the native `pre-commit` hook, not the Bash
-reader. The line `Temper enforcement: active` also appears in text files that Claude can read. An
+**Limits you should know.** While a run is active, a Bash command that names the Temper script and hides
+what it runs (`$(...)`, `${...}`, `$'...'`, a here-string, a script the same command writes and starts, a
+launcher such as `env -S`, `make`, `awk` or `find -exec`) is refused, even when the text shows no decision
+word. A shell, or a builtin that runs text as commands (such as `source`), given a program the text does
+not show (a pipe from an unknown command, a file on stdin, a word split by quotes, `$` or braces) is
+refused too. A command that names a file of the run (`gates.json`, `build-state.json`, the evidence
+ledger, `.claude/temper.config`, the git hooks) must be a plain read; `chmod`, `find -delete`, `git clean`
+and `--no-verify` are refused. A run whose `build-state.json` is hidden or removed stays enforced from the
+last known state until you turn enforcement off. Shell tricks that a text reader cannot see are still
+possible: a link or a script made in an earlier call, a script already on disk and started later, a
+program that builds the script name or a path at run time, or the names inside a patch or an archive. What
+is staged is the session's own picture (a script that stages is not seen). MCP and PowerShell file tools
+are not evaluated. So the hard guarantees are the editing tools and the native `pre-commit` hook, not the
+Bash reader. The line `Temper enforcement: active` also appears in text files that Claude can read. An
 injected copy can only hide a question, never advance a phase, because every advance still needs the
-decision of the person or a passed check. When the run is Done, a model `git commit` is allowed: the
-run is complete and the person pressed Continue. A later CLI could check a one time decision token.
+decision of the person or a passed check. When the run is Done, a model `git commit` is allowed: the run
+is complete and the person pressed Continue. A later CLI could check a one time decision token.
 
 **Without the mod** you keep the full pipeline: intent, plan, build, review and check as prompts, every
 CLI gate verdict, the commit hook and the evidence ledger. You lose the live refusals, bar and report.
@@ -267,26 +267,26 @@ merges. **Packs:** [docs/packs.md](docs/packs.md). **CI:** [examples/workflow/RE
 ## Trust
 
 Markdown, a mod written in TypeScript, and about 1,700 lines of auditable bash with small inline Python
-for JSON parsing. Temper itself makes no network calls, sends no telemetry and installs no packages. The
+for JSON parsing. Temper itself makes no network calls, sends no telemetry and adds no packages. The
 committed artifacts (intent, plan, design, gate ledger and diff) are the audit trail, in the same commits as the code.
 
 ### What Temper runs and changes
 
-Temper's scripts run locally with `bash`, `git` and `python3`, and write only inside your project
-(the `pre-commit` hook goes where your `core.hooksPath` points, if you set one).
+Temper's scripts run locally with `bash`, `git` and `python3`, and write only inside your project.
 
 - **Plugin hooks.** The plugin's hooks file registers two classic hooks and the mod module.
   `UserPromptSubmit` runs `scripts/guards/stage-marker.sh`, which notes which gate a standalone
   stage command owes. `Stop` runs `scripts/guards/verify-stage-gate.sh`, which can ask Claude to
   keep working (at most twice per stage) until that gate has a verdict. Both fail open.
-- **Git hook.** On first run `scripts/guards/install.sh` writes a `pre-commit` hook (secret scan and
-  `temper gate commit`) into the active hooks folder, backing up any existing one. Delete it to remove it.
+- **Git hook.** The first run writes a `pre-commit` hook (secret scan and `temper gate commit`, from
+  `scripts/guards/install.sh`) to `.git/hooks`, or `.git/temper-git-hooks` with its `--global`, or a
+  `core.hooksPath` folder inside the repository, backing up a hook that is not Temper's. Delete it to remove it.
 - **Your toolchain.** Build and check run the test, lint and type check commands of your stack (detected,
   or set in `check.commands.*` in `.claude/temper.config`) and record their exit codes as evidence.
-- **Optional tools you install yourself.** If `ocr` (open code review) is on your `PATH`,
-  `/temper:review` runs it on the diff, and `ocr` sends that diff to the provider you set up.
-  Set `tools.ocr.mode: off` to skip it. Temper never installs any tool, and
-  `/temper:pack enable guardrails` or autonomous continuation only run when you ask.
+- **Optional tools already on your machine.** OCR (open code review) is off by default. With `tools.ocr.mode`
+  set to `auto` or `require` and `ocr` on your `PATH`, `/temper:review` uses it, and `ocr` sends the diff to
+  the provider you set up. Temper adds no tool; the guardrails pack and autonomy run only when you ask.
+- **Sharing a plan.** Share HTML review publishes the plan review only as a Claude artifact, after you confirm.
 
 ## Documentation
 

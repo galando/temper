@@ -31,12 +31,16 @@ it can.
   slug of `state init` (lowercase letters, digits, `.`, `_`, `-`, no `..`) and any `spec_path` it
   stores, no longer honours a `TEMPER_DIR` override, and reads the evidence files by name instead of
   a glob. Before this, a crafted stage name could overwrite a file outside `.temper/`.
-- Two places in the CLI handed a config or ledger value to Python as source text; they now pass it
-  as an argument, so a crafted coverage threshold or project path can no longer run code.
+- Two places in the CLI handed a value to Python as program text (the coverage threshold check and
+  `temper report`); both now pass it as an argument, so a crafted threshold can no longer run code
+  and `temper report` works from a project folder whose name holds a quote.
 - `install.sh` writes only `.git/hooks/pre-commit`, `.git/temper-git-hooks/pre-commit` (with
   `--global`), or a `core.hooksPath` folder inside the repository; for anything else it prints the
   lines to add by hand. The hook it writes holds the full paths of the CLI and the two guard scripts
   as plain text, with no environment override. An earlier Temper hook is still recognised.
+  `/temper:init` and the first `/temper` run say when it refused and show the lines it printed.
+- The slug for `state init`, a bug slug and a ticket key prefix are lowercase letters, digits, `.`,
+  `_` and `-`; the commands say so, since the CLI refuses anything else.
 - `plan_review.py` refuses an output inside the plugin folder; `run-formatter.sh` formats only
   project files; `stage-marker.sh` and `verify-stage-gate.sh` do nothing inside the plugin folder,
   and the stage gate log is now `.temper/stage-gate.log`.
@@ -52,9 +56,10 @@ it can.
   reported as unrecognized; each option is marked as not sensitive. `types` stays: Claude Code's own
   validator needs it for the mod's `$.state` keys.
 - Credentials: Share HTML review now shares only through a Claude artifact (the fallback that used
-  the GitHub command line's login is gone), the OCR reviewer runs only when `tools.ocr.mode` turns it
-  on, and test inputs, docs and history no longer show commands that read the user's keys, logins or
-  Claude Code files.
+  the GitHub command line's login is gone; without the Artifact tool it offers the local review). The
+  OCR reviewer is off by default and runs only when `tools.ocr.mode` is `auto` or `require` (a
+  missing key now reads as off; a project config that already says `auto` keeps it on). Test inputs,
+  docs and history no longer show commands that read the user's keys, logins or Claude Code files.
 - Download and run: install steps are shown as slash commands, not shell, and docs, comments and
   test inputs describe the guard's patterns in words where a literal adds nothing; the guard's
   detection itself is unchanged.

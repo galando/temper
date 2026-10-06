@@ -9,7 +9,7 @@ nav_order: 2
 
 ### Claude Code
 
-```bash
+```text
 /plugin marketplace add galando/temper
 /plugin install temper
 ```

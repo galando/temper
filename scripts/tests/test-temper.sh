@@ -214,6 +214,34 @@ assert_exit "check gate FAILs below coverage threshold (60 < 80)" 1 "$TEMPER" ga
 "$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
 assert_exit "check gate PASSes above coverage threshold (90 >= 80)" 0 "$TEMPER" gate check
 
+# --- check gate: the coverage threshold is data, never Python source ---
+# A threshold that closes the quote and calls open() would have written a file when the
+# config value was spliced into the program text. Passed as argv it is just a string
+# that is not a number: the gate FAILs and nothing is written.
+setup
+python3 - .claude/temper.config <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+s = s.replace("  coverage-threshold: 80\n",
+              "  coverage-threshold: 0') and open('threshold-injected','w').write('x') and float('0\n")
+open(p, 'w').write(s)
+PY
+assert_eq "the quote-bearing threshold is read back unchanged" \
+  "0') and open('threshold-injected','w').write('x') and float('0" "$("$TEMPER" config get check.coverage-threshold)"
+"$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+"$TEMPER" evidence add --stage check --claim "coverage" --value 90 >/dev/null
+"$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
+"$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
+rm -f threshold-injected
+assert_exit "check gate FAILs on a quote-bearing coverage threshold" 1 "$TEMPER" gate check
+assert_eq "a quote-bearing coverage threshold writes no file" "no" "$([[ -e threshold-injected ]] && echo yes || echo no)"
+OUT=$("$TEMPER" gate check 2>&1; true)
+assert_eq "the FAIL names the coverage row" "yes" \
+  "$(echo "$OUT" | grep -q '\[x\] coverage >= threshold' && echo yes || echo no)"
+assert_eq "still no file after the gate runs again" "no" "$([[ -e threshold-injected ]] && echo yes || echo no)"
+rm -f threshold-injected
+
 # --- check gate: scenarios must be traced to a test (the flagship "rate limiting" story) ---
 setup
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
@@ -886,6 +914,21 @@ setup
 # python still writing gets SIGPIPE, which turned this into a timing-dependent failure
 # on a loaded machine. Reading to EOF makes the pipeline's status grep's own.
 assert_eq "temper report renders the intent row" "yes" "$("$TEMPER" report | grep '^intent' >/dev/null && echo yes || echo no)"
+
+# temper report from a project whose path holds quotes: the ledger paths cross as argv,
+# so a quote in the folder name cannot end the program text early.
+QUOTED_DIR="$WORKDIR/it's a \"quoted\" project"
+mkdir -p "$QUOTED_DIR/.temper"
+cd "$QUOTED_DIR" || exit 1
+printf '%s\n' '{"intent": {"verdict": "FAIL", "requirements": [{"name": "demo row", "pass": false, "detail": "d"}], "ts": "t"}}' > .temper/gates.json
+printf '%s\n' '[{"stage": "intent", "reason": "r", "by": "b", "ts": "t"}]' > .temper/overrides.json
+assert_exit "temper report runs when the project path holds a quote" 0 "$TEMPER" report
+assert_eq "temper report reads gates.json from a quoted project path" "yes" \
+  "$("$TEMPER" report | grep 'demo row' >/dev/null && echo yes || echo no)"
+assert_eq "temper report reads overrides.json from a quoted project path" "yes" \
+  "$("$TEMPER" report | grep '^intent *FAIL (overridden)' >/dev/null && echo yes || echo no)"
+cd "$WORKDIR" || exit 1
+rm -rf "$QUOTED_DIR"
 
 # The commit gate demands an intent verdict exactly when intent.md exists.
 setup
@@ -2219,7 +2262,7 @@ rm -rf "$PD_HOME" .claude/commands
 # sync — this test catches a hand-bump that misses one). Resolved from the
 # script's own location so it works from any cwd.
 VR_ROOT="$REPO_ROOT"   # captured before setup() cds into WORKDIR
-PLUGIN_VERSION="$(python3 -c "import json; print(json.load(open('$VR_ROOT/.claude-plugin/plugin.json'))['version'])" 2>/dev/null || echo MISSING)"
+PLUGIN_VERSION="$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['version'])" "$VR_ROOT/.claude-plugin/plugin.json" 2>/dev/null || echo MISSING)"
 assert_eq "plugin.json version is readable" "yes" "$([[ "$PLUGIN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo yes || echo no)"
 CLAUDE_MD_VERSION="$(sed -n 's/^\*\*Version:\*\* \([0-9.]*\).*/\1/p' "$VR_ROOT/.claude/CLAUDE.md" | head -1)"
 assert_eq ".claude/CLAUDE.md version stamp matches plugin.json" "$PLUGIN_VERSION" "${CLAUDE_MD_VERSION:-MISSING}"

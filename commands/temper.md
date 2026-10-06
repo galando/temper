@@ -112,14 +112,20 @@ in place:
 2. **Scaffold** — run `$CLAUDE_PLUGIN_ROOT/scripts/temper init` (idempotent).
 3. **Commit gate** — this is the headline guarantee, and the easiest to leave missing.
    The installer writes the project's `.git/hooks/pre-commit`, or the `pre-commit` file
-   in the folder an existing relative `core.hooksPath` names (husky and lefthook set
-   one, and git then ignores `.git/hooks`). Install it when it isn't installed yet (that
-   file is missing, or it is not a Temper hook) **or when it is stale**: a plugin
-   upgrade moves the plugin folder, and a hook whose embedded CLI path no longer exists
-   fails open silently. Either way, run `bash $CLAUDE_PLUGIN_ROOT/scripts/guards/install.sh`
-   (it reports what it did and re-embeds the current path). Not a git repo yet → say so
-   in one line and continue (config + scaffold still done); the gate installs on the
-   next run after `git init`.
+   in the folder an existing `core.hooksPath` names when that folder is inside the
+   repository (husky and lefthook set one, and git then ignores `.git/hooks`). Install
+   it when it isn't installed yet (that file is missing, or it is not a Temper hook)
+   **or when it is stale**: a plugin upgrade moves the plugin folder, and a hook whose
+   embedded CLI path no longer exists fails open silently. Either way, run
+   `bash $CLAUDE_PLUGIN_ROOT/scripts/guards/install.sh` (it reports what it did and
+   re-embeds the current path). Not a git repo yet ("FAIL: not inside a git
+   repository") → say so in one line and continue (config + scaffold still done); the
+   gate installs on the next run after `git init`. Any other FAIL line means install.sh
+   refused and wrote nothing: core.hooksPath is outside the repository, contains '..',
+   '~' or other unusual characters, or names a folder that holds a JSON file, or
+   core.hooksPath is not set and `.git` is not a folder. It printed the lines to add to
+   a pre-commit hook by hand and exited 1. Say in one line that the commit gate is not
+   installed and why, show those lines, and continue.
 
 If a step ran, print a one-line "Set up." note naming what was done; if everything was
 already in place, continue into Plan silently. This per-piece check is what makes
@@ -138,8 +144,9 @@ anyway, and it's one round-trip instead of several.
   folders in the project's `.temper/specs` folder, and if one of them already holds an
   `intent.md` for this feature, reuse that folder's name as the slug in place of a new
   one — the Intent stage then refines the committed draft in place rather than creating
-  a sibling. Carry the draft's `**Ticket:**` header forward on pickup. A slug is
-  letters, digits and hyphens only (no `/`, no `..`). Then
+  a sibling. Carry the draft's `**Ticket:**` header forward on pickup. The slug passed
+  to `state init` is lowercase letters, digits, '.', '_' or '-', starts with a letter
+  or digit, and has no '..' (the CLI refuses anything else). Then
   `$CLAUDE_PLUGIN_ROOT/scripts/temper state init {slug} --command temper` (creates it,
   `stage: started`, branch `feature/{slug}`).
 - **Advance:** after each gate's "Continue", `$CLAUDE_PLUGIN_ROOT/scripts/temper state advance {stage}_complete {next}`.
@@ -293,7 +300,7 @@ reason."
 Gate: `$CLAUDE_PLUGIN_ROOT/scripts/temper gate plan` — see `$CLAUDE_PLUGIN_ROOT/reference/plan.md` → "Approval" for
 the walkthrough mechanics. **"Open HTML review"** and **"Share HTML review"** (in addition
 to that file's options): follow `$CLAUDE_PLUGIN_ROOT/reference/plan-review.md` —
-`$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py` renders the page, sharing publishes it only after the user confirms where it goes, and
+`$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py` renders the page, sharing publishes it as a Claude artifact only after the user confirms where it goes (without the `Artifact` tool, offer Open HTML review instead), and
 the comments come back as `review-comments.json` to apply (task-change /
 scenario-change / plan-change / general-note, mapped to its artifact).
 

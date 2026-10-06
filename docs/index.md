@@ -94,7 +94,7 @@ commands and exit codes, the same under GitHub Actions, GitLab, Jenkins, or cron
 
 ## Install
 
-```bash
+```text
 /plugin marketplace add galando/temper
 /plugin install temper
 ```

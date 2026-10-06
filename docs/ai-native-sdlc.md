@@ -137,8 +137,8 @@ the play's **UI feedback loop** (screenshot-vs-mock iteration for front-end work
 temper's verification is tests, coverage, and scenarios only.
 
 **Continuous evals in CI.** Not provided. Temper's own seeded-defect fixture suite was
-removed in v9.5.0: its CI job skipped without an API secret, so it never gated a
-merge. What guards Temper's own behavior is `scripts/tests/test-temper.sh` (the gate
+removed in v9.5.0: its CI job never ran, so it never gated a merge. What guards
+Temper's own behavior is `scripts/tests/test-temper.sh` (the gate
 logic, deterministically) plus the stage-gate Stop hook, which refuses to end a
 session until the owed gate has actually run. Scaffolding an eval harness for a
 *user project's* own agent config is open — see [Remaining gaps](#remaining-gaps).
