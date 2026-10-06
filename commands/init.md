@@ -49,8 +49,8 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
 
 ## What this deliberately does NOT do
 
-- It does **not** edit `settings.json`. The stage-gate hooks ship with the plugin
-  (`hooks/hooks.json`) and work on install with no merge; the fuller edit-time guardrail
+- It does **not** edit `settings.json`. The stage-gate hooks ship with the plugin (in its
+  own hooks file) and work on install with no merge; the fuller edit-time guardrail
   set is the opt-in `/temper:pack enable hooks` above, because merging into a user's
   `settings.json` is a change they should choose.
 - It does **not** overwrite an existing config or an existing non-Temper git hook

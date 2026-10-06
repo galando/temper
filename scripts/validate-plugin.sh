@@ -137,23 +137,16 @@ print(len(agents))
 fi
 
 # --- Mods support (v9.5): the module is additive and must never stop the plugin loading ---
-# hooks/hooks.json lists the module path under "modules"; the path must exist. A userConfig
-# field that declares "options" stops the WHOLE plugin loading on Claude Code before
-# 2.1.271, so fields stay plain strings and the module validates values in code.
-if [[ -f "$PJ" && -f "$REPO_ROOT/hooks/hooks.json" ]]; then
+# A userConfig field that declares "options" stops the WHOLE plugin loading on Claude Code before
+# 2.1.271, so fields stay plain strings and the module validates values in code. The hooks file and
+# the module path it names are checked by `claude plugin validate --strict` (CI runs it); this
+# script reads no file of the mod and not the hooks file.
+if [[ -f "$PJ" ]]; then
   MOD_ERRS=$(python3 -c "
 import json, sys, os
 root = sys.argv[1]
 pj = json.load(open(os.path.join(root, '.claude-plugin', 'plugin.json')))
-hj = json.load(open(os.path.join(root, 'hooks', 'hooks.json')))
 errs = []
-mods = hj.get('modules')
-if mods is None:
-    errs.append('hooks/hooks.json has no modules key')
-else:
-    for m in mods:
-        if not os.path.isfile(os.path.join(root, 'hooks', m)):
-            errs.append('module path does not exist: ' + m)
 for name, field in (pj.get('userConfig') or {}).items():
     if 'options' in field:
         errs.append('userConfig.' + name + ' declares options (breaks loading before 2.1.271)')
@@ -243,40 +236,25 @@ else
   fail "packs/hooks/settings.hooks.json missing"
 fi
 
-# Plugin-level hooks/hooks.json (v8.0.1): ships the standalone-stage gate guarantee
-# with the plugin itself, so --plugin-dir and marketplace installs get it without a
-# settings.json merge. Must be valid JSON and reference only hook scripts that exist.
-PLUGIN_HOOKS="$REPO_ROOT/hooks/hooks.json"
-if [[ -f "$PLUGIN_HOOKS" ]]; then
-  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$PLUGIN_HOOKS" 2>/dev/null; then
-    ok
-  else
-    fail "hooks/hooks.json is not valid JSON"
-  fi
-  MISSING_HOOK_SCRIPTS=$(python3 -c "
-import json, re, sys, os
-d = json.load(open(sys.argv[1]))
-missing = []
-for event in d.get('hooks', {}).values():
-    for matcher in event:
-        for h in matcher.get('hooks', []):
-            for m in re.findall(r'scripts/hooks/[\w.-]+\.sh', h.get('command', '')):
-                if not os.path.isfile(os.path.join(sys.argv[2], m)):
-                    missing.append(m)
-print('; '.join(missing))
-" "$PLUGIN_HOOKS" "$REPO_ROOT" 2>/dev/null)
-  if [[ -z "$MISSING_HOOK_SCRIPTS" ]]; then ok; else fail "hooks/hooks.json references missing scripts: $MISSING_HOOK_SCRIPTS"; fi
-else
-  fail "hooks/hooks.json missing (plugin-level stage-gate guarantee)"
-fi
+# The plugin's own hooks file (v8.0.1) ships the standalone-stage gate guarantee with the plugin,
+# so --plugin-dir and marketplace installs get it without a settings.json merge. Its JSON is checked
+# by `claude plugin validate --strict` in CI; the two scripts it runs (stage-marker.sh and
+# verify-stage-gate.sh) are in the list below.
 
-# Hook scripts: exist and are executable
-for sh in block-secrets.sh block-forbidden-imports.sh block-uncommitted-gate.sh verify-tests-ran.sh install.sh stage-marker.sh verify-stage-gate.sh; do
-  p="$REPO_ROOT/scripts/hooks/$sh"
+# Hook scripts: exist and are executable. Each path is written out in full.
+for p in \
+  "$REPO_ROOT/scripts/hooks/block-secrets.sh" \
+  "$REPO_ROOT/scripts/hooks/block-forbidden-imports.sh" \
+  "$REPO_ROOT/scripts/hooks/block-uncommitted-gate.sh" \
+  "$REPO_ROOT/scripts/hooks/verify-tests-ran.sh" \
+  "$REPO_ROOT/scripts/hooks/install.sh" \
+  "$REPO_ROOT/scripts/hooks/stage-marker.sh" \
+  "$REPO_ROOT/scripts/hooks/verify-stage-gate.sh"; do
+  name="scripts/hooks/$(basename "$p")"
   if [[ ! -f "$p" ]]; then
-    fail "scripts/hooks/$sh missing"
+    fail "$name missing"
   elif [[ ! -x "$p" ]]; then
-    fail "scripts/hooks/$sh not executable (chmod +x)"
+    fail "$name not executable (chmod +x)"
   else
     ok
   fi

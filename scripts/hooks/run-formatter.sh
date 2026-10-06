@@ -21,7 +21,9 @@ _main() {
 
   local dir="${CLAUDE_PROJECT_DIR:-$PWD}"
   local temper_cli
-  temper_cli="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/temper"
+  # The CLI sits in the parent of this script's folder (scripts/temper).
+  local here; here="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+  temper_cli="$(dirname "$here")/temper"
   [[ -x "$temper_cli" ]] || return 0
 
   local fmt

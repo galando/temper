@@ -33,6 +33,10 @@ if [[ -z "$TARGET_ROOT" ]]; then
   echo "Run this from the project where you want the pre-commit hook installed." >&2
   exit 1
 fi
+# The plugin folder (the parent of scripts/) and its own hooks folder, where the mod lives.
+# A git hook is never written there, whatever core.hooksPath says.
+PLUGIN_DIR="$(dirname "$(dirname "$HOOKS_DIR")")"
+PLUGIN_HOOKS_FOLDER="$PLUGIN_DIR/hooks"
 
 # Resolve the git hooks location.
 if [[ "$MODE" == "global" ]]; then
@@ -57,6 +61,11 @@ else
   mkdir -p "$TARGET_DIR"
 fi
 
+case "$(cd "$TARGET_DIR" && pwd)/" in
+  "$PLUGIN_HOOKS_FOLDER"/*)
+    echo "FAIL: the git hooks folder ($TARGET_DIR) is the Temper plugin's own hooks folder; refusing to write there." >&2
+    exit 1 ;;
+esac
 PRECOMMIT="$TARGET_DIR/pre-commit"
 
 # Don't clobber an existing pre-commit hook silently. A Temper-managed hook
@@ -112,7 +121,7 @@ cd "\$(git rev-parse --show-toplevel)" || exit 0
 # 2. Every /temper gate must be green (or explicitly overridden) — the commit gate
 # itself, computed by the temper CLI from the evidence ledger. Absent .temper/ state
 # (repo doesn't use /temper for this commit, or CLI missing) => fail-open.
-TEMPER_BIN="\$TEMPER_HOOKS_DIR/../temper"
+TEMPER_BIN="\$(dirname "\$TEMPER_HOOKS_DIR")/temper"
 if [[ -x "\$TEMPER_BIN" && -d .temper ]]; then
   "\$TEMPER_BIN" gate commit || exit 1
 elif [[ -f "\$TEMPER_HOOKS_DIR/verify-tests-ran.sh" ]]; then

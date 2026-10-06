@@ -24,7 +24,7 @@ is kept as a fallback for a project that installed only this pack, without the C
 
 **Plugin-shipped subset (v8):** the standalone-stage gate pair (`stage-marker.sh` +
 `verify-stage-gate.sh`, last two rows of the catalog) also ships in the plugin's own
-`hooks/hooks.json`, so any install of the Temper plugin — `--plugin-dir` or marketplace —
+hooks file, so any install of the Temper plugin — `--plugin-dir` or marketplace —
 gets that guarantee with **no settings merge and no pack enablement**. Enabling this pack
 adds the remaining hooks (secrets, imports, in-agent commit gate); if both are active the
 stage-gate pair fires twice per event. On the satisfied path the second firing sees the
@@ -83,7 +83,7 @@ idempotent (no backup pile-up).
 
 Every hook in this pack follows two non-negotiable rules:
 
-1. **Absent script → no-op.** If the referenced `scripts/hooks/*.sh` is missing, the hook
+1. **Absent script → no-op.** If the guardrail script a hook names is missing, the hook
    event must `exit 0` and block nothing. Missing tooling never blocks a commit.
 2. **Internal error → fail-open (exit 0).** A bug or unexpected input in the script itself
    must NOT block the workflow. Only a *detected violation* (secret, forbidden import, check

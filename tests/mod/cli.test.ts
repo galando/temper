@@ -8,7 +8,7 @@ import { evaluate } from '../../hooks/temper-mod/core/rules'
 import type { HumanDecision } from '../../hooks/temper-mod/core/rules'
 import { person, stateAt } from './helpers'
 import { SPEC, runFiles } from './run-files'
-import { world } from './world'
+import { CLI_SEQ, world } from './world'
 
 const ctx = { specDir: SPEC, planFiles: [] as string[] }
 const bash = (command: string) => ({ tool: 'Bash', input: { command } })
@@ -107,6 +107,20 @@ describe('plan with design', () => {
     expect('allow' in evaluate(state, { ...c, humanDecisions: [] }, bash(cmds[1] ?? ''))).toBe(true)
     // For a simple run design is not next: the same call is refused.
     expect('deny' in evaluate(state, { ...ctx, humanDecisions: [] }, bash(cmds[1] ?? ''))).toBe(true)
+  })
+})
+
+// The CLI's stage order (STAGE_SEQ_TEMPER in scripts/temper) is pinned to this text in
+// scripts/tests/test-temper.sh. The mod and its fake engine are pinned to the same text here, so a
+// change on either side fails a test.
+const CLI_STAGE_ORDER = 'intent plan design build review check'
+
+describe('the mod keeps the CLI stage order', () => {
+  test('CLI_STAGES is the CLI stage order', () => {
+    expect(CLI_STAGES).toBe(CLI_STAGE_ORDER)
+  })
+  test('the fake engine uses the same order', () => {
+    expect(CLI_SEQ.join(' ')).toBe(CLI_STAGE_ORDER)
   })
 })
 
