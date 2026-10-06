@@ -11,7 +11,7 @@ simple/trivial. Active when `phases.design: true` AND complexity >= medium.
 subprocess (from `/temper`) starts clean, no `AskUserQuestion` gate — return the summary,
 the orchestrator owns it. Load `intent.md`, `plan.md`, and the enabled packs' `rules.md`
 (project `.claude/packs/` shadows global `~/.claude/packs/` shadows
-the built-in files listed in `$CLAUDE_PLUGIN_ROOT/reference/pack.md`, kept where `phases` is `all` or contains
+the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept where `phases` is `all` or contains
 `design`), plus the project's `.claude/packs/stacks/{detected-stack}.md` if present.
 
 ## Step 1: Analyze the Plan
@@ -42,11 +42,11 @@ design→build crossing must not let through).
 
 ## Step 3: Generate `design.md`
 
-Write the project's `.temper/specs/{feature}/design.md` from `$CLAUDE_PLUGIN_ROOT/templates/design.md`.
+Write the project's `.temper/specs/{feature}/design.md` from `${CLAUDE_PLUGIN_ROOT}/templates/design.md`.
 
 ## Step 4: Summary + Gate
 
-The panel format is owned by the design brief (`$CLAUDE_PLUGIN_ROOT/agents/design.md`) — render exactly the panel it defines
+The panel format is owned by the design brief (`${CLAUDE_PLUGIN_ROOT}/agents/design.md`) — render exactly the panel it defines
 (76 columns, fact rows then `AREAS OF CONCERN` and `DECISIONS` titled sections; the
 concerns section is omitted entirely when design.md says "None flagged — {why}").
 Never carry a second, different box here: whichever box a clean-context stage reads
@@ -79,7 +79,7 @@ styling/naming/code-organization/test-structure choices — those never get an A
 For each qualifying decision, write the project's `docs/decisions/NNNN-{slug}.md` (`NNNN`
 sequential, check existing ADRs for the next number starting at 0001; `{slug}` kebab-case:
 lowercase letters, digits and hyphens only, no `/`, no `..`) from
-`$CLAUDE_PLUGIN_ROOT/templates/adr.md` — Status (Proposed), Date, Context, Decision, Alternatives
+`${CLAUDE_PLUGIN_ROOT}/templates/adr.md` — Status (Proposed), Date, Context, Decision, Alternatives
 Considered, Consequences. Never delete an ADR; supersede it with a new one referencing
 `Supersedes: ADR-{NNNN}`. No qualifying decision → skip ADR generation entirely.
 

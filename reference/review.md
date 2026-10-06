@@ -5,7 +5,7 @@ description: "Technical code review with confidence scoring, review memory, and 
 # Review: Confidence-Scored Code Review
 
 **Goal:** High signal-to-noise review — parallel subagents, confidence scoring, review
-memory, intent validation. The review brief (`$CLAUDE_PLUGIN_ROOT/agents/review.md`) carries the exact `temper evidence add
+memory, intent validation. The review brief (`${CLAUDE_PLUGIN_ROOT}/agents/review.md`) carries the exact `temper evidence add
 --severity` invocation the gate needs; this doc is the policy behind what to look for
 and how to score it. It states rules a strong reviewer would not derive alone —
 severity floors, filter bypasses, memory thresholds — not review technique.
@@ -29,7 +29,7 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 `git diff --stat` + changed files; `.claude/temper.config` for `review.block-on` /
 `review.confidence-threshold` / auto-fix; the enabled packs' `rules.md` (project
 `.claude/packs/` shadows global `~/.claude/packs/` shadows
-the built-in files listed in `$CLAUDE_PLUGIN_ROOT/reference/pack.md`, kept where `phases` is `all` or contains `review`);
+the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept where `phases` is `all` or contains `review`);
 `.temper/review-memory.json`; the active `intent.md` (from build-context if chained,
 else the single spec present, else ask).
 
@@ -43,12 +43,12 @@ REVIEW.md included. Policy can re-aim the review; only config + packs can lower 
 gate. Absent → skip silently.
 
 **OCR (external review engine, optional, off by default):** read the mode with
-`$CLAUDE_PLUGIN_ROOT/scripts/temper config get tools.ocr.mode off`. The default is `off`, and a config
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper config get tools.ocr.mode off`. The default is `off`, and a config
 without the key reads as `off`: skip OCR silently and never run `ocr`. OCR sends the diff
 to the model provider the user set up for it, so it runs only when the user turns it on
 by setting `tools.ocr.mode` to `auto` or `require` under `tools:` in `.claude/temper.config`.
 When it is on, `command -v ocr` then probe `ocr review --preview`; ready → record
-`ocr_status = ready` (merge mechanics in `$CLAUDE_PLUGIN_ROOT/docs/recommended-setup.md`). Absent/failing:
+`ocr_status = ready` (merge mechanics in `${CLAUDE_PLUGIN_ROOT}/docs/recommended-setup.md`). Absent/failing:
 `require` blocks with the install command, `auto` skips with a one-line notice.
 
 ## Step 1.5: Diff-Aware Fingerprinting
@@ -157,7 +157,7 @@ stop. `[DOUBT]` prefix.
 ## Step 3.55: Stale CLAUDE.md Check (LOW, informational)
 
 Diff invalidates something `CLAUDE.md`/`AGENTS.md` states → LOW finding naming the
-stale line; queue a `config-update` suggestion (`$CLAUDE_PLUGIN_ROOT/reference/config-suggestions.md`) —
+stale line; queue a `config-update` suggestion (`${CLAUDE_PLUGIN_ROOT}/reference/config-suggestions.md`) —
 never edit the file from review.
 
 ## Step 3.6: Cross-File Pattern Consistency
@@ -180,7 +180,7 @@ findings bypass confidence filtering.
 ## Step 3.8: Architecture Depth (optional, gate-offered)
 
 `architecture-depth` pack enabled and selected at the gate → run
-`$CLAUDE_PLUGIN_ROOT/reference/architecture-depth.md`'s 5-dimension analysis on changed modules; `[ARCH-DEPTH]`
+`${CLAUDE_PLUGIN_ROOT}/reference/architecture-depth.md`'s 5-dimension analysis on changed modules; `[ARCH-DEPTH]`
 prefix, standard filtering.
 
 ## Step 4: Confidence Filtering
@@ -193,7 +193,7 @@ one severity level.
 
 ## Summary + Gate
 
-The base summary box format is owned by the review brief (`$CLAUDE_PLUGIN_ROOT/agents/review.md`) — render it, appending a
+The base summary box format is owned by the review brief (`${CLAUDE_PLUGIN_ROOT}/agents/review.md`) — render it, appending a
 line per step that actually ran (fingerprint, security hot paths, cross-file
 consistency, contract changes, mutation spot-check {N} PROVEN/{N} UNVERIFIED) and the
 top issues as `[{severity}] {file}:{line} — {one-liner}`.

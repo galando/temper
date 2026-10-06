@@ -12,7 +12,7 @@ from the orchestrator's conversation carries over. `{spec_path}` is the project'
 
 **Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
 
-1. Read `$CLAUDE_PLUGIN_ROOT/reference/fix.md` once — the full fix methodology. Follow
+1. Read `${CLAUDE_PLUGIN_ROOT}/reference/fix.md` once — the full fix methodology. Follow
    it exactly; nothing here overrides it. Load the enabled packs and validate the fix
    approach against their rules before implementing. Before writing framework-specific
    code, apply the `source-driven-development` skill (verify calls against current
@@ -22,10 +22,10 @@ from the orchestrator's conversation carries over. `{spec_path}` is the project'
    RED-then-GREEN pair; the "no unchecked tasks" requirement is skipped automatically —
    fixes have no `tasks.md`). Record as you go:
    ```
-   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage build \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
      --claim "regression test" --cmd "<the exact test command>" --exit <code> \
      --phase red --label PROVEN    # failing, before the fix
-   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage build \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
      --claim "regression test" --cmd "<the exact test command>" --exit 0 \
      --phase green --label PROVEN  # passing, after the fix
    ```
@@ -33,13 +33,13 @@ from the orchestrator's conversation carries over. `{spec_path}` is the project'
    shield (`protect-regression-test.sh` blocks you from editing that file; fix the
    code, not the test):
    ```
-   $CLAUDE_PLUGIN_ROOT/scripts/temper state set regression_test "<test file path>"
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper state set regression_test "<test file path>"
    ```
 3. Implement the **minimal** fix (test MUST PASS), then check the blast radius: if the
    `code-review-graph` MCP server is available, use `get_impact_radius_tool`
    (`[PROVEN]`), else grep-based detection (`[HEURISTIC]`). Fix same-pattern
    occurrences `rca.md` flagged. Cross-reference an active `intent.md` if one exists.
-4. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate build` yourself before returning and
+4. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` yourself before returning and
    fix any FAIL it reports.
 5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.

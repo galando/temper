@@ -8,14 +8,14 @@ description: "Execute plan with TDD and quality gates"
 
 ## Execution
 
-> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/reference/build.md`
+> **Full methodology:** Read `${CLAUDE_PLUGIN_ROOT}/reference/build.md`
 
 ### Subprocess Mode
 
-If `$CLAUDE_PLUGIN_ROOT/scripts/temper config get stages.subprocess false` returns
+If `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get stages.subprocess false` returns
 `true`, don't run the methodology inline (skip the reference read and Quick Reference
 below). Launch the same isolated subprocess `/temper` uses — model from `temper model
-build`, prompt: *"Follow $CLAUDE_PLUGIN_ROOT/agents/build.md exactly. Spec:
+build`, prompt: *"Follow ${CLAUDE_PLUGIN_ROOT}/agents/build.md exactly. Spec:
 .temper/specs/{feature-slug}. Standalone run — pass --spec-path
 .temper/specs/{feature-slug} to every temper gate call."* Print the returned box
 verbatim, then run the gate + report per **Deterministic Gate** below (the subprocess
@@ -47,7 +47,7 @@ either way.
 
 ### Deterministic Gate
 
-Follow `$CLAUDE_PLUGIN_ROOT/agents/build.md` steps 2-3 (record RED/GREEN test evidence
+Follow `${CLAUDE_PLUGIN_ROOT}/agents/build.md` steps 2-3 (record RED/GREEN test evidence
 via `temper evidence add --stage build --phase red|green`) as you implement each task,
 then run `temper gate build --spec-path .temper/specs/{feature-slug}` before reporting
 results — same reason as Plan/Review/Check: skipping this leaves `temper gate commit`

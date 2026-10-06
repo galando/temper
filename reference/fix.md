@@ -7,7 +7,7 @@ argument-hint: "<bug-description-or-JIRA-123>"
 
 **Goal:** find the real root cause, prove it with a failing test, apply the minimal fix,
 validate. Never guess — a fix without a reproduction is a hope. This doc is the
-methodology; `$CLAUDE_PLUGIN_ROOT/commands/fix.md` is the orchestrator (routing, the RED/GREEN evidence
+methodology; `${CLAUDE_PLUGIN_ROOT}/commands/fix.md` is the orchestrator (routing, the RED/GREEN evidence
 rows the build gate reads, stage gates). Fix maps onto the `build` gate — a regression
 test is a RED-then-GREEN pair — then Review and Check are the ordinary stages.
 
@@ -71,7 +71,7 @@ at once — you can't tell which worked.
    (`shouldHandleExpiredTokenGracefully`). Run it — it MUST fail, with an assertion
    error about the bug (not an NPE or compile error). Then record it as this run's proof:
    ```
-   $CLAUDE_PLUGIN_ROOT/scripts/temper state set regression_test {test file path}
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper state set regression_test {test file path}
    ```
    With the guardrails pack enabled, `protect-regression-test.sh` now blocks any edit to that
    file for the rest of the run — fix the code, not the test. A genuinely-wrong test is a

@@ -23,7 +23,7 @@ metrics yet. Run /temper:review or /temper:check to start tracking."
 
 ### Step 1.4: Criteria Status
 
-When the current spec has an `intent.md`, run `$CLAUDE_PLUGIN_ROOT/scripts/temper status`
+When the current spec has an `intent.md`, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper status`
 and show its rows: each acceptance criterion as passed or open with the evidence rows
 that support it. `temper status --json` prints the same data as JSON, and every
 `temper gate` run refreshes `.temper/status.json` with it (a failed write never changes
@@ -34,7 +34,7 @@ a verdict). Nothing here is a verdict; `.temper/gates.json` owns those.
 - **code-review-graph / semgrep:** probe with a trivial tool call (e.g.
   `get_impact_radius_tool` on the current file, or `security_check`); tool responds →
   available, errors/missing → unavailable.
-- **ocr:** read `$CLAUDE_PLUGIN_ROOT/scripts/temper config get tools.ocr.mode off` first. `off`
+- **ocr:** read `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get tools.ocr.mode off` first. `off`
   (the default, also when the key is absent) → report off and run nothing. Otherwise
   `command -v ocr` → not-installed if missing; else `ocr --version` then probe
   `ocr review --preview --from HEAD~1 --to HEAD` → ready, or not-configured if the probe
@@ -45,9 +45,9 @@ a verdict). Nothing here is a verdict; `.temper/gates.json` owns those.
 
 ### Step 1.6: Control Bands (closing the loop)
 
-Run `$CLAUDE_PLUGIN_ROOT/scripts/temper bands` — a deterministic drift check of the
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` — a deterministic drift check of the
 metric history arrays against rolling mean ± k·sigma bands (config: `bands:` in
-`.claude/temper.config`; see `$CLAUDE_PLUGIN_ROOT/templates/temper.config.default`). Three verdicts:
+`.claude/temper.config`; see `${CLAUDE_PLUGIN_ROOT}/templates/temper.config.default`). Three verdicts:
 `OK`, `INSUFFICIENT-DATA` (too few recorded points — report it, never an error), and
 `BREACH` (a metric at 2sigma+, exit 1). Keep the raw per-metric lines for the panel; a
 `propose`-tier breach also arms Step 3.7 below.
@@ -89,7 +89,7 @@ degrade to the notices above, not an error.
 ### Step 2.5: Gate Ledger Panel
 
 Render from `.temper/gates.json`, `.temper/overrides.json` and the evidence ledger
-(read through `$CLAUDE_PLUGIN_ROOT/scripts/temper report`), the same ledger `temper gate`
+(read through `${CLAUDE_PLUGIN_ROOT}/scripts/temper report`), the same ledger `temper gate`
 computes verdicts from: per-stage verdict + requirement
 detail (`temper report`), override count + reason per stage, and the PROVEN/HEURISTIC/
 SEMANTIC evidence-label mix as a rough proxy for how much of the run was mechanically
@@ -106,7 +106,7 @@ report), loop budget used (sum `iteration` across `active_loops[]` + `history[]`
 ### Step 3: Rule-Promotion Prompt (from review memory)
 
 Read `.temper/review-memory.json`, the single finding memory. For a pattern that meets
-the promotion criteria from `$CLAUDE_PLUGIN_ROOT/reference/review.md`
+the promotion criteria from `${CLAUDE_PLUGIN_ROOT}/reference/review.md`
 → "Metrics + Memory" (3+ accepted @ ≥70% → WARN candidate; 5+ accepted @ ≥80% and
 security/architecture → BLOCK candidate) with no auto-rule yet: `AskUserQuestion` —
 "Yes, add as BLOCK rule" (active pack's Mandatory Rules) / "Yes, add as WARN rule"
@@ -156,7 +156,7 @@ Only when Step 1.6 reported a `propose`-tier breach (default: 3sigma). `AskUserQ
 - **"Draft intent.md from this breach (Recommended)"** — write the project's
   `.temper/specs/{metric}-breach-{date}/intent.md` (`{metric}` is the bands metric name,
   letters, digits, hyphens and underscores only; `{date}` is YYYY-MM-DD) in the standard shape from
-  `$CLAUDE_PLUGIN_ROOT/templates/intent.md`, complete enough to pass `temper gate intent` itself:
+  `${CLAUDE_PLUGIN_ROOT}/templates/intent.md`, complete enough to pass `temper gate intent` itself:
   header including `**Author:** temper bands (control-band monitor)`,
   `**Status:** draft`, `**Created:** {date}`, and a `**Reviewer:**` — ask who
   reviews it; a name, not a role, and never a guessed default. Then the body:

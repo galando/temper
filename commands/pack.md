@@ -11,14 +11,14 @@ Read `.claude/temper.config` packs section (in the project). Three tiers:
   that holds a `rules.md`
 - global: each folder in `~/.claude/packs` that holds a `rules.md`
 - built-in (lowest): exactly these files, nothing else from the plugin:
-  - `$CLAUDE_PLUGIN_ROOT/packs/quality/rules.md`
-  - `$CLAUDE_PLUGIN_ROOT/packs/tdd/rules.md`
-  - `$CLAUDE_PLUGIN_ROOT/packs/security/rules.md`
-  - `$CLAUDE_PLUGIN_ROOT/packs/git/rules.md`
-  - `$CLAUDE_PLUGIN_ROOT/packs/performance/rules.md`
-  - `$CLAUDE_PLUGIN_ROOT/packs/api-design/rules.md`
-  - `$CLAUDE_PLUGIN_ROOT/packs/architecture-depth/rules.md`
-  - `$CLAUDE_PLUGIN_ROOT/packs/guardrails/rules.md`
+  - `${CLAUDE_PLUGIN_ROOT}/packs/quality/rules.md`
+  - `${CLAUDE_PLUGIN_ROOT}/packs/tdd/rules.md`
+  - `${CLAUDE_PLUGIN_ROOT}/packs/security/rules.md`
+  - `${CLAUDE_PLUGIN_ROOT}/packs/git/rules.md`
+  - `${CLAUDE_PLUGIN_ROOT}/packs/performance/rules.md`
+  - `${CLAUDE_PLUGIN_ROOT}/packs/api-design/rules.md`
+  - `${CLAUDE_PLUGIN_ROOT}/packs/architecture-depth/rules.md`
+  - `${CLAUDE_PLUGIN_ROOT}/packs/guardrails/rules.md`
 
 Deduplicate by name (highest tier wins). A `packs:` entry named `hooks` (the guardrails
 pack's old name) means `guardrails`. For each pack: read rules.md header, check enabled status, read `phases` and `link` from config.
@@ -35,7 +35,7 @@ Format each row using actual data:
 - **CONNECTED** — check if link target actually exists on filesystem
 
 Example structure (populate with real data only) — the panel format is owned by
-`$CLAUDE_PLUGIN_ROOT/reference/pack.md` → "Step 1: Discover + Display"; render exactly that box, never a
+`${CLAUDE_PLUGIN_ROOT}/reference/pack.md` → "Step 1: Discover + Display"; render exactly that box, never a
 second, different shape here:
 
 ## Step 3: AskUserQuestion (max 4 options)
@@ -65,7 +65,7 @@ Multi-select AskUserQuestion with all packs. Update `.claude/temper.config` `pac
 a given filesystem, so this is a script, not a prompt-embedded scan:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/scripts/pack-discover.py"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/pack-discover.py"
 ```
 
 Each line is `TYPE|name|path|description`, already deduplicated (one row per
@@ -119,6 +119,6 @@ Return to Step 3.
 
 ## Step 7: Full Interactive Pack Builder
 
-> Read `$CLAUDE_PLUGIN_ROOT/reference/pack.md` → "Step 5: Full Interactive Pack Builder" section for the codebase scan + interview + generation methodology.
+> Read `${CLAUDE_PLUGIN_ROOT}/reference/pack.md` → "Step 5: Full Interactive Pack Builder" section for the codebase scan + interview + generation methodology.
 
 This is the ONLY step that requires loading the reference doc. All other steps are self-contained above.

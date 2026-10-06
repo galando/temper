@@ -27,7 +27,7 @@ Do this **incrementally, phase by phase** — not all at once at the end. Before
 
 Keep a single markdown doc with a checklist of everything the user should understand:
 `comprehension.md` in the spec folder, the project's `.temper/specs/{slug}/comprehension.md`
-(get `spec_path` from `$CLAUDE_PLUGIN_ROOT/scripts/temper state get spec_path`; it is always
+(get `spec_path` from `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path`; it is always
 a project path, never one under `$CLAUDE_PLUGIN_ROOT`).
 
 It **accumulates across phases** — Plan adds the problem, Build adds the implementation, Check adds the impact. Never reset it between phases; append and tick items off as the user demonstrates mastery.

@@ -15,9 +15,9 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
 ## Steps
 
 ```
-1. Resolve $CLAUDE_PLUGIN_ROOT ($CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md →
+1. Resolve $CLAUDE_PLUGIN_ROOT (${CLAUDE_PLUGIN_ROOT}/reference/orchestrator-patterns.md →
    "$CLAUDE_PLUGIN_ROOT Resolution"). Every path below that does not start with
-   $CLAUDE_PLUGIN_ROOT/ is in the user's project, the current directory.
+   ${CLAUDE_PLUGIN_ROOT}/ is in the user's project, the current directory.
 
 2. Config — .claude/temper.config:
    a. EXISTS → report "Temper config already present" and do NOT overwrite it (it's the
@@ -26,14 +26,14 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
       Print one "NOTE: '{key}:' block found — retired, now ignored" line per match; if
       none, print nothing. Read-only — never edits the file.
    b. MISSING → mkdir -p .claude, copy
-      $CLAUDE_PLUGIN_ROOT/templates/temper.config.default → .claude/temper.config,
+      ${CLAUDE_PLUGIN_ROOT}/templates/temper.config.default → .claude/temper.config,
       report "Created .claude/temper.config from the default template."
 
-3. Scaffold — run `$CLAUDE_PLUGIN_ROOT/scripts/temper init` (creates .temper/: gates
+3. Scaffold — run `${CLAUDE_PLUGIN_ROOT}/scripts/temper init` (creates .temper/: gates
    ledger, overrides log, feedback-loops registry). Idempotent.
 
 4. Commit gate — the headline guarantee. Run:
-      bash $CLAUDE_PLUGIN_ROOT/scripts/guards/install.sh
+      bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh
    It installs a native git pre-commit hook that runs `temper gate commit` (and the
    secret scan) on every commit, fails open if temper isn't in use for a commit, and
    backs up any existing non-Temper pre-commit hook first. It writes the project's
@@ -78,4 +78,4 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
 
 A pre-v7 config (`tokens:`/`models:`/`observability:`/`capabilities:` blocks) or a v7
 `eval:` block still parses — the CLI ignores keys it doesn't use. Nothing breaks; step 2
-just reports what's now inert. See `$CLAUDE_PLUGIN_ROOT/CHANGELOG.md` for the mapping.
+just reports what's now inert. See `${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md` for the mapping.

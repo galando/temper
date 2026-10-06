@@ -1,5 +1,5 @@
 {
-  "_comment": "settings.json hook block for the Temper guardrails pack. NOTE: Claude Code has NO 'PreCommit' event (PreToolUse/PostToolUse/Stop/Notification/SubagentStop/PreCompact/SessionStart/SessionEnd/UserPromptSubmit only). The blocks below cover the IN-AGENT path (edits, writes, agent-driven commits). For deterministic commit-time enforcement on a RAW 'git commit', install the native git pre-commit hook with /temper:init (it runs bash $CLAUDE_PLUGIN_ROOT/scripts/guards/install.sh) — that is the only gate that fires regardless of the agent. See $CLAUDE_PLUGIN_ROOT/packs/guardrails/rules.md.",
+  "_comment": "settings.json hook block for the Temper guardrails pack. NOTE: Claude Code has NO 'PreCommit' event (PreToolUse/PostToolUse/Stop/Notification/SubagentStop/PreCompact/SessionStart/SessionEnd/UserPromptSubmit only). The blocks below cover the IN-AGENT path (edits, writes, agent-driven commits). For deterministic commit-time enforcement on a RAW 'git commit', install the native git pre-commit hook with /temper:init (it runs bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh) — that is the only gate that fires regardless of the agent. See ${CLAUDE_PLUGIN_ROOT}/packs/guardrails/rules.md.",
   "hooks": {
     "PreToolUse": [
       {
@@ -7,15 +7,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/block-secrets.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-secrets.sh"
           },
           {
             "type": "command",
-            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/protect-regression-test.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/protect-regression-test.sh"
           },
           {
             "type": "command",
-            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/block-protected-paths.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-protected-paths.sh"
           }
         ]
       },
@@ -24,15 +24,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/block-secrets.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-secrets.sh"
           },
           {
             "type": "command",
-            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/block-uncommitted-gate.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-uncommitted-gate.sh"
           },
           {
             "type": "command",
-            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/confirm-override.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh"
           }
         ]
       }
@@ -43,11 +43,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/block-forbidden-imports.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-forbidden-imports.sh"
           },
           {
             "type": "command",
-            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/run-formatter.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/run-formatter.sh"
           }
         ]
       }
@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/stage-marker.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/stage-marker.sh"
           }
         ]
       }
@@ -67,7 +67,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/verify-stage-gate.sh"
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-stage-gate.sh"
           }
         ]
       }

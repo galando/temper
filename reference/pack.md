@@ -22,14 +22,14 @@ The built-in tier is exactly these files (see Built-in Packs for what each does)
 nothing else from the plugin:
 
 ```
-$CLAUDE_PLUGIN_ROOT/packs/quality/rules.md
-$CLAUDE_PLUGIN_ROOT/packs/tdd/rules.md
-$CLAUDE_PLUGIN_ROOT/packs/security/rules.md
-$CLAUDE_PLUGIN_ROOT/packs/git/rules.md
-$CLAUDE_PLUGIN_ROOT/packs/performance/rules.md
-$CLAUDE_PLUGIN_ROOT/packs/api-design/rules.md
-$CLAUDE_PLUGIN_ROOT/packs/architecture-depth/rules.md
-$CLAUDE_PLUGIN_ROOT/packs/guardrails/rules.md
+${CLAUDE_PLUGIN_ROOT}/packs/quality/rules.md
+${CLAUDE_PLUGIN_ROOT}/packs/tdd/rules.md
+${CLAUDE_PLUGIN_ROOT}/packs/security/rules.md
+${CLAUDE_PLUGIN_ROOT}/packs/git/rules.md
+${CLAUDE_PLUGIN_ROOT}/packs/performance/rules.md
+${CLAUDE_PLUGIN_ROOT}/packs/api-design/rules.md
+${CLAUDE_PLUGIN_ROOT}/packs/architecture-depth/rules.md
+${CLAUDE_PLUGIN_ROOT}/packs/guardrails/rules.md
 ```
 
 Every stage reads this live at phase start (no cache): read the project and global pack
@@ -74,7 +74,7 @@ first of these that exists says so:
 
 `all` in either place means every phase. An **empty list (`[]`) means no phase loads it** —
 that's a real value, not a missing one. The guardrails pack's rules.md
-(`$CLAUDE_PLUGIN_ROOT/packs/guardrails/rules.md`) uses it: the file documents bash
+(`${CLAUDE_PLUGIN_ROOT}/packs/guardrails/rules.md`) uses it: the file documents bash
 guard scripts that enforce themselves at edit- and commit-time, so there is nothing in
 it for a stage agent to apply, and loading it into all five stages was ~140 lines of
 pure cost.
@@ -140,7 +140,7 @@ write the selected set back to `packs:` in `.claude/temper.config` (keep each en
 
 ### Step 3: Quick-Create Launcher Pack
 
-**Discover targets:** run `python3 $CLAUDE_PLUGIN_ROOT/scripts/pack-discover.py`
+**Discover targets:** run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/pack-discover.py`
 (bounded, deduplicated, one correct answer for a given filesystem — see the script's own
 header for its output contract: 4 pipe-separated fields, `TYPE|name|path|description`,
 `TYPE` one of `SKILL`/`CMD`/`PLUGIN`/`LOCAL_CMD`/`GLOBAL_CMD`). Filter out any target

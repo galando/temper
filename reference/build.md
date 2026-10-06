@@ -5,14 +5,14 @@ description: "Execute the plan, implementing tasks one-by-one with quality gates
 # Build: Execute Plan with Quality Gates
 
 **Goal:** Implement the approved plan, task by task, with real TDD discipline.
-The build brief (`$CLAUDE_PLUGIN_ROOT/agents/build.md`) carries the exact `temper evidence add --phase red/green` invocations
+The build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) carries the exact `temper evidence add --phase red/green` invocations
 the gate needs; this doc is the methodology behind what to test and in what order.
 
 **Modes:** Standalone (`/temper:build`) runs in the current context, own gate. Agent
 subprocess (from `/temper`) starts clean — no `AskUserQuestion` gate, return the summary,
 the orchestrator owns it. Load `tasks.md`, `intent.md` (if it exists), `plan.md`'s
 Prerequisites/blast-radius section, active packs' `rules.md` (project `.claude/packs/`
-shadows global `~/.claude/packs/` shadows the built-in files listed in `$CLAUDE_PLUGIN_ROOT/reference/pack.md`, kept
+shadows global `~/.claude/packs/` shadows the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept
 where `phases` is `all` or contains `build`), and the project's `.claude/packs/stacks/{stack}.md` if
 present. Verify you're on a feature branch (auto-create `feature/{spec-slug}` if the git
 pack is enabled and you're on main).
@@ -150,7 +150,7 @@ applicable). A change typed via "Other" is never approval — make the edit, re-
 same gate; the user must explicitly pick "Continue" to advance. Subprocess mode: skip the
 gate, return the summary.
 
-The panel format is owned by the build brief (`$CLAUDE_PLUGIN_ROOT/agents/build.md`) — render exactly the panel it defines
+The panel format is owned by the build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) — render exactly the panel it defines
 (76 columns, fact rows then titled sections; `SEARCH:` row, and `COMMITS` / `FEEDBACK`
 sections on a checkpoint run). Never carry a second, different box here: whichever
 box a clean-context stage reads first is the one that renders, and two shapes means

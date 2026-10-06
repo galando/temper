@@ -11,7 +11,7 @@ is the project's `.temper/specs/{slug}` folder, never a path under `$CLAUDE_PLUG
 **Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
 
 1. Load `{spec_path}/intent.md` and `{spec_path}/plan.md`.
-2. Read `$CLAUDE_PLUGIN_ROOT/reference/design.md` once — the full methodology. Follow it
+2. Read `${CLAUDE_PLUGIN_ROOT}/reference/design.md` once — the full methodology. Follow it
    exactly; nothing here overrides it.
 3. Produce `{spec_path}/design.md` as it describes — including its **Areas of Concern**
    section, always present: flagged conflicts with owners, or an explicit
@@ -19,7 +19,7 @@ is the project's `.temper/specs/{slug}` folder, never a path under `$CLAUDE_PLUG
 4. `temper gate design` mechanically checks exactly one thing: design.md carries an
    Areas of Concern heading. Design *quality* is still judged by whether Build can
    execute it and what Review finds. Run
-   `$CLAUDE_PLUGIN_ROOT/scripts/temper gate design` yourself before returning and fix
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate design` yourself before returning and fix
    a FAIL (add the section).
 5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.

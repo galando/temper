@@ -44,7 +44,7 @@ gate can correct it before the expensive stages run. You run in a clean context.
 
 5. **Otherwise derive the intent** from the feature description in your launch prompt,
    with at most a quick look at the repo for naming and context. Write
-   `{spec_path}/intent.md` from `$CLAUDE_PLUGIN_ROOT/templates/intent.md`:
+   `{spec_path}/intent.md` from `${CLAUDE_PLUGIN_ROOT}/templates/intent.md`:
    - Header: `**Author:**` (git config user.name/email), `**Status:** draft`,
      `**Created:**`, `**Ticket:**` if one was given, `**Reviewer:**` (see the
      interview rules below), `**Complexity:**` (a first guess; Plan records the
@@ -83,7 +83,7 @@ gate can correct it before the expensive stages run. You run in a clean context.
    and what happens next?"* (the Target Users action chain). Ask only where the
    uncertainty changes the outcome — no fixed round count, one question at a time.
 
-6. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate intent` yourself before returning and
+6. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent` yourself before returning and
    fix any FAIL it reports (an empty Problem, no real criteria, a missing header
    field, an unlabeled open question, a criterion without a `Why:`).
 

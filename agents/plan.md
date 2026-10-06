@@ -9,14 +9,14 @@ orchestrator's conversation carries over except the prompt you were launched wit
 
 **Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
 
-1. Read `$CLAUDE_PLUGIN_ROOT/reference/plan.md` once — that is the full methodology
+1. Read `${CLAUDE_PLUGIN_ROOT}/reference/plan.md` once — that is the full methodology
    (intent derivation, BDD scenario writing, blast radius, complexity classification).
    Follow it exactly; nothing here overrides it.
 2. Produce the artifacts it describes under `.temper/specs/{feature-slug}/`: `intent.md`
    (Success Criteria + Gherkin Scenarios), `tasks.md`, `plan.md`. In the orchestrated
    flow the Intent stage already wrote `intent.md` and a human accepted it — it is your
    INPUT: derive scenarios and architecture from it, refine only with a stated reason,
-   never re-derive the Problem (`$CLAUDE_PLUGIN_ROOT/reference/plan.md` covers the standalone case where you
+   never re-derive the Problem (`${CLAUDE_PLUGIN_ROOT}/reference/plan.md` covers the standalone case where you
    author it yourself and run `temper gate intent` first).
 3. **Re-read the intent's context sources.** Under `## Source Traceability` →
    `### Context Sources`, re-read every `- consulted:` source yourself (ticket, MR/PR,
@@ -25,7 +25,7 @@ orchestrator's conversation carries over except the prompt you were launched wit
    and, if it hides a decision, add an Open Question back into `intent.md`. Do not
    re-derive context Intent already gathered — reuse its Decisions rows.
 4. As soon as you classify complexity, record it:
-   `$CLAUDE_PLUGIN_ROOT/scripts/temper state set complexity <trivial|simple|medium|complex>`
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <trivial|simple|medium|complex>`
    — `temper gate plan` reads this to decide whether a Blast Radius section is required.
 5. **Cross-repo code search.** When any cross-repo code search tool is connected (for
    example a Sourcegraph MCP), use it — for blast radius (callers of the changed code
@@ -49,7 +49,7 @@ orchestrator's conversation carries over except the prompt you were launched wit
    ```gherkin fence; and `plan.md` records `## Cross-Repo Search`. **Only for
    `medium`/`complex`**: `plan.md` also needs a `## Blast Radius` section. Do not
    treat this list as the whole of "done" — it is a floor, not the methodology. Run
-   `$CLAUDE_PLUGIN_ROOT/scripts/temper gate plan` yourself before returning, and fix
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` yourself before returning, and fix
    any FAIL it reports.
 8. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.

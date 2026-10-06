@@ -12,7 +12,7 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 
 **Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
 
-1. Read `$CLAUDE_PLUGIN_ROOT/reference/build.md` once — the full TDD methodology (RED →
+1. Read `${CLAUDE_PLUGIN_ROOT}/reference/build.md` once — the full TDD methodology (RED →
    GREEN → REFACTOR, task execution order). Follow it exactly; nothing here overrides it.
    When a task calls a framework/library API, apply the `source-driven-development`
    skill (verify the call against current docs, don't trust trained-in memory) — it's
@@ -21,7 +21,7 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 2. **Checkpoint mode.** Your launch prompt may carry a `Checkpoint: task {N}.` line
    plus one `Checkpoint feedback #{K}: {text}` line per pending feedback item.
    - With a checkpoint: FIRST answer every feedback item — for each, record
-     `$CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage build --phase
+     `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase
      feedback-resolved --claim "feedback #{K}: applied — {what changed}"` or
      `"feedback #{K}: declined — {reason}"`. A decline ALWAYS carries a reason;
      `applied` with no detail counts as answered. Feedback that changes a LATER task
@@ -43,10 +43,10 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    `feedback` row has a matching `feedback-resolved` row. Record evidence as you go,
    not as an afterthought:
    ```
-   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage build \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
      --claim "unit tests" --cmd "<the exact test command>" --exit <code> \
      --phase red --label PROVEN     # after the RED run
-   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage build \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
      --claim "unit tests" --cmd "<the exact test command>" --exit 0 \
      --phase green --label PROVEN   # after the GREEN run
    ```
@@ -58,7 +58,7 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    `git commit -m "feat({slug}): {scenario} [AC-NN]"`. Never `git add -A`, never
    `--no-verify`. An infrastructure-only task (no scenario) makes no commit.
 
-6. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate build` yourself before returning and fix
+6. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` yourself before returning and fix
    any FAIL it reports.
 7. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.

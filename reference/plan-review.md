@@ -13,7 +13,7 @@ Two plan gate options use this page:
 
 ## Template
 
-The HTML template is at `$CLAUDE_PLUGIN_ROOT/templates/plan-review.html`. It contains:
+The HTML template is at `${CLAUDE_PLUGIN_ROOT}/templates/plan-review.html`. It contains:
 - All CSS inline (dark and light theme, responsive down to phone width)
 - All JS inline (comment system, copy/export, markdown rendering)
 - No external dependencies (no CDN, no build tools)
@@ -22,12 +22,12 @@ The HTML template is at `$CLAUDE_PLUGIN_ROOT/templates/plan-review.html`. It con
 
 ## HTML Generation
 
-Never fill the template by hand. `$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py` does it deterministically, escapes every value for the place it lands in, and splits sections the same way every time:
+Never fill the template by hand. `${CLAUDE_PLUGIN_ROOT}/scripts/plan_review.py` does it deterministically, escapes every value for the place it lands in, and splits sections the same way every time:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py" render ".temper/specs/{feature}"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/plan_review.py" render ".temper/specs/{feature}"
 # writes .temper/specs/{feature}/review.html and prints its path
-python3 "$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py" render ".temper/specs/{feature}" \
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/plan_review.py" render ".temper/specs/{feature}" \
   --target artifact -o ".temper/review-artifact-{feature}.html"
 ```
 
@@ -116,7 +116,7 @@ Use it when the `Artifact` tool is in your tool list.
 6. Show an `AskUserQuestion` gate: **"Comments are in"** / **"Skip the review"**.
 7. On "Comments are in", read both collections with `ArtifactData` (`list` on `comments`, then `list` on `done`), save the documents' bodies as `{"comments": [...], "done": [...]}` in a temp file, and normalize:
    ```bash
-   python3 "$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py" merge --feature "{feature}" \
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/plan_review.py" merge --feature "{feature}" \
      -o ".temper/specs/{feature}/review-comments.json" "{temp file}"
    ```
    Report how many comments came back and which reviewers marked themselves done (`reviewers_done`), then apply them as above.

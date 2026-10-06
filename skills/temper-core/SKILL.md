@@ -20,18 +20,18 @@ Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0
 Three-tier: project-local > global > built-in. Read live (no cache) by every stage command (build, review, check, plan, design) for phase-filtered loading.
 - `.claude/packs/{name}/rules.md` (project)
 - `~/.claude/packs/{name}/rules.md` (global)
-- built-in, exactly these files: `$CLAUDE_PLUGIN_ROOT/packs/quality/rules.md`,
-  `$CLAUDE_PLUGIN_ROOT/packs/tdd/rules.md`, `$CLAUDE_PLUGIN_ROOT/packs/security/rules.md`,
-  `$CLAUDE_PLUGIN_ROOT/packs/git/rules.md`, `$CLAUDE_PLUGIN_ROOT/packs/performance/rules.md`,
-  `$CLAUDE_PLUGIN_ROOT/packs/api-design/rules.md`,
-  `$CLAUDE_PLUGIN_ROOT/packs/architecture-depth/rules.md`,
-  `$CLAUDE_PLUGIN_ROOT/packs/guardrails/rules.md`
+- built-in, exactly these files: `${CLAUDE_PLUGIN_ROOT}/packs/quality/rules.md`,
+  `${CLAUDE_PLUGIN_ROOT}/packs/tdd/rules.md`, `${CLAUDE_PLUGIN_ROOT}/packs/security/rules.md`,
+  `${CLAUDE_PLUGIN_ROOT}/packs/git/rules.md`, `${CLAUDE_PLUGIN_ROOT}/packs/performance/rules.md`,
+  `${CLAUDE_PLUGIN_ROOT}/packs/api-design/rules.md`,
+  `${CLAUDE_PLUGIN_ROOT}/packs/architecture-depth/rules.md`,
+  `${CLAUDE_PLUGIN_ROOT}/packs/guardrails/rules.md`
 
 A pack name is lowercase letters, digits and hyphens only. A `packs:` entry named `hooks`
 (the old name) means `guardrails`. Packs support `link: plugin://name | skill://name` and `phases: [build, review, ...]` —
 declared in the pack's `rules.md` frontmatter, overridable per project on the `packs:`
 config entry, defaulting to `all` when neither says. `[]` means no stage loads it.
-Precedence and rationale: `$CLAUDE_PLUGIN_ROOT/reference/pack.md` → "Pack Configuration Schema".
+Precedence and rationale: `${CLAUDE_PLUGIN_ROOT}/reference/pack.md` → "Pack Configuration Schema".
 
 ## Quality Gates
 - **SUGGEST**: Non-blocking
@@ -55,7 +55,7 @@ written by `/temper:review` and surfaced at `/temper:status`.
 
 **Graceful degradation:** absent `review-memory.json` → every command works unchanged.
 
-Full docs: `$CLAUDE_PLUGIN_ROOT/reference/review.md` → "Metrics + Memory".
+Full docs: `${CLAUDE_PLUGIN_ROOT}/reference/review.md` → "Metrics + Memory".
 
 ## Gate add-ons
 
@@ -77,17 +77,17 @@ person's own message at a gate (key 4, Discuss) is the original "Other". Do not 
 ## Full Docs
 One methodology file per command, each written out in full:
 
-- `/temper:plan`: `$CLAUDE_PLUGIN_ROOT/reference/plan.md` (HTML review:
-  `$CLAUDE_PLUGIN_ROOT/reference/plan-review.md`)
-- `/temper:design`: `$CLAUDE_PLUGIN_ROOT/reference/design.md`
-- `/temper:build`: `$CLAUDE_PLUGIN_ROOT/reference/build.md`
-- `/temper:review`: `$CLAUDE_PLUGIN_ROOT/reference/review.md` (architecture depth:
-  `$CLAUDE_PLUGIN_ROOT/reference/architecture-depth.md`)
-- `/temper:check`: `$CLAUDE_PLUGIN_ROOT/reference/check.md` (config suggestions:
-  `$CLAUDE_PLUGIN_ROOT/reference/config-suggestions.md`)
-- `/temper:fix`: `$CLAUDE_PLUGIN_ROOT/reference/fix.md`
-- `/temper:pack`: `$CLAUDE_PLUGIN_ROOT/reference/pack.md`
-- `/temper:status`: `$CLAUDE_PLUGIN_ROOT/reference/status.md`
+- `/temper:plan`: `${CLAUDE_PLUGIN_ROOT}/reference/plan.md` (HTML review:
+  `${CLAUDE_PLUGIN_ROOT}/reference/plan-review.md`)
+- `/temper:design`: `${CLAUDE_PLUGIN_ROOT}/reference/design.md`
+- `/temper:build`: `${CLAUDE_PLUGIN_ROOT}/reference/build.md`
+- `/temper:review`: `${CLAUDE_PLUGIN_ROOT}/reference/review.md` (architecture depth:
+  `${CLAUDE_PLUGIN_ROOT}/reference/architecture-depth.md`)
+- `/temper:check`: `${CLAUDE_PLUGIN_ROOT}/reference/check.md` (config suggestions:
+  `${CLAUDE_PLUGIN_ROOT}/reference/config-suggestions.md`)
+- `/temper:fix`: `${CLAUDE_PLUGIN_ROOT}/reference/fix.md`
+- `/temper:pack`: `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`
+- `/temper:status`: `${CLAUDE_PLUGIN_ROOT}/reference/status.md`
 - `/temper` and `/temper:fix` orchestration:
-  `$CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md` and
-  `$CLAUDE_PLUGIN_ROOT/reference/autonomy.md`
+  `${CLAUDE_PLUGIN_ROOT}/reference/orchestrator-patterns.md` and
+  `${CLAUDE_PLUGIN_ROOT}/reference/autonomy.md`

@@ -11,7 +11,7 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 
 **Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
 
-1. Read `$CLAUDE_PLUGIN_ROOT/reference/check.md` once — the full methodology (stack
+1. Read `${CLAUDE_PLUGIN_ROOT}/reference/check.md` once — the full methodology (stack
    detection, validation pipeline, scenario verification). Follow it exactly; nothing
    here overrides it.
 2. `temper gate check` mechanically checks: a recorded passing test run; a recorded
@@ -21,9 +21,9 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    and every acceptance criterion carrying a supported passing evidence row
    (`acceptance.py check`). Record real results from real commands — never estimate:
    ```
-   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage check \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage check \
      --claim "tests" --cmd "<the exact test command>" --exit <code> --label PROVEN
-   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage check \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage check \
      --claim "coverage" --cmd "<the exact coverage command>" --exit <code> \
      --value <the parsed coverage percentage> --artifact <path to the coverage report> \
      --label PROVEN
@@ -35,7 +35,7 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    find the test that exercises it (by name, by asserted behavior, or by tracing the
    scenario's Given/When/Then to actual test code) and record one row per scenario:
    ```
-   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage check \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage check \
      --scenario "<the exact scenario name from intent.md>" \
      --claim "scenario: <name> -> <test file>:<test name>" --exit 0 --label HEURISTIC
    ```
@@ -43,7 +43,7 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    (no row, or a `--exit 1` row) the gate lists it by name in its FAIL detail, but an
    explicit `--exit 1` row documents that you looked and didn't find one, not that you
    forgot to check.
-3. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate check` yourself before returning and fix
+3. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check` yourself before returning and fix
    any FAIL it reports.
 4. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.

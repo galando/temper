@@ -9,14 +9,14 @@ argument-hint: "[--skip | --force]"
 
 ## Execution
 
-> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/reference/design.md`
+> **Full methodology:** Read `${CLAUDE_PLUGIN_ROOT}/reference/design.md`
 
 ### Subprocess Mode
 
-If `$CLAUDE_PLUGIN_ROOT/scripts/temper config get stages.subprocess false` returns
+If `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get stages.subprocess false` returns
 `true`, don't run the methodology inline (skip the reference read and Quick Reference
 below). Launch the same isolated subprocess `/temper` uses — model from `temper model
-design`, prompt: *"Follow $CLAUDE_PLUGIN_ROOT/agents/design.md exactly. Spec:
+design`, prompt: *"Follow ${CLAUDE_PLUGIN_ROOT}/agents/design.md exactly. Spec:
 .temper/specs/{feature-slug}. Standalone run — pass --spec-path
 .temper/specs/{feature-slug} to every temper gate call."* Print the returned box
 verbatim, then run `temper gate design --spec-path .temper/specs/{feature-slug}` and
@@ -30,7 +30,7 @@ stays in this context either way.
 3. Explore system architecture, API contracts, DB schema
 4. Write design.md to spec directory — always including its Areas of Concern section
    (flagged conflicts with owners, or an explicit "None flagged — why")
-5. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate design` (checks that section exists);
+5. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate design` (checks that section exists);
    fix a FAIL before the gate
 6. Present design summary for approval — flagged concerns first
 

@@ -1,21 +1,21 @@
 # Temper Configuration (v7)
 #
 # Everything with exactly one correct output — model routing, gate logic, state
-# bookkeeping — lives in the temper CLI ($CLAUDE_PLUGIN_ROOT/scripts/temper) now, not
+# bookkeeping — lives in the temper CLI (${CLAUDE_PLUGIN_ROOT}/scripts/temper) now, not
 # here. This file holds only the decisions that are actually yours to make. Full
-# reference: $CLAUDE_PLUGIN_ROOT/docs/getting-started.md
+# reference: ${CLAUDE_PLUGIN_ROOT}/docs/getting-started.md
 
 # Stack: auto-detect from project files. Override: spring-boot, react-ts,
 # node-express, fastapi, go, rust
 stack: auto
 
-# Packs enforced during build/review (see $CLAUDE_PLUGIN_ROOT/docs/packs.md). Add a
+# Packs enforced during build/review (see ${CLAUDE_PLUGIN_ROOT}/docs/packs.md). Add a
 # project pack under .claude/packs/<name>/rules.md and list it here. The guardrails pack
 # was called hooks before v9.6.5; an entry named hooks still means guardrails.
 packs: [quality, tdd, security, git, performance]
 
 # MCP tool-first analysis: auto (use MCP tools when available, else heuristic) |
-# heuristic-only | require. See $CLAUDE_PLUGIN_ROOT/docs/recommended-setup.md.
+# heuristic-only | require. See ${CLAUDE_PLUGIN_ROOT}/docs/recommended-setup.md.
 tools:
   mode: auto
   # External review engine: open-code-review (ocr CLI). Off by default. /temper:review

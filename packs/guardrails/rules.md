@@ -17,7 +17,7 @@ enforcement happens in bash at edit- and commit-time whether or not any prompt m
 it. Loading it into Plan/Build/Review/Check would spend context on instructions no stage
 can act on.
 
-**v7:** the commit-time gate is now `temper gate commit` (`$CLAUDE_PLUGIN_ROOT/scripts/temper`) — it reads
+**v7:** the commit-time gate is now `temper gate commit` (`${CLAUDE_PLUGIN_ROOT}/scripts/temper`) — it reads
 the evidence ledger written by every stage (`temper evidence add`) and computes PASS/FAIL
 per gate, rather than checking a single `build-state.json` stage field. `verify-tests-ran.sh`
 is kept as a fallback for a project that installed only this pack, without the CLI.
@@ -43,14 +43,14 @@ There are **two** layers, and both are needed for the full guarantee:
 ```
 
 Enabling this pack routes through the global **update-config** skill, which block-merges
-`$CLAUDE_PLUGIN_ROOT/packs/guardrails/settings-guardrails.json` (the copy-paste source) into
+`${CLAUDE_PLUGIN_ROOT}/packs/guardrails/settings-guardrails.json` (the copy-paste source) into
 the project or user `settings.json`. This wires `PreToolUse`/`PostToolUse` blocks that fire when the **agent**
 edits or writes files (block-secrets on every Edit/Write) or runs Bash (block-secrets and
 the commit gate on every Bash call — the commit-gate check is a no-op unless the command is
 a `git commit`). The merge is additive — it never clobbers unrelated existing hooks. To
 uninstall, run `/temper:pack disable guardrails` (update-config removes the Temper hook block).
 
-You can also copy `$CLAUDE_PLUGIN_ROOT/packs/guardrails/settings-guardrails.json` into your
+You can also copy `${CLAUDE_PLUGIN_ROOT}/packs/guardrails/settings-guardrails.json` into your
 `settings.json` manually if you prefer.
 
 ### 2. Commit-time layer — native git pre-commit hook (REQUIRED for deterministic blocking)
@@ -62,8 +62,8 @@ block a raw `git commit`. The only gate that fires on every commit — agent-dri
 is a real git hook. Install it:
 
 ```
-bash $CLAUDE_PLUGIN_ROOT/scripts/guards/install.sh           # writes .git/hooks/pre-commit
-bash $CLAUDE_PLUGIN_ROOT/scripts/guards/install.sh --global  # writes .git/temper-git-hooks/pre-commit
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh           # writes .git/hooks/pre-commit
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh --global  # writes .git/temper-git-hooks/pre-commit
 ```
 
 Run it from the project's folder, or let `/temper:init` run it for you. Without `--global`
@@ -104,18 +104,18 @@ The single fail-closed path for each script is documented below. Everything else
 
 | Script | Event | Default action | Fail-closed when |
 |--------|-------|----------------|------------------|
-| `$CLAUDE_PLUGIN_ROOT/scripts/guards/block-secrets.sh` | PreToolUse / native pre-commit | **BLOCK** | A staged/edited file matches a secret pattern (AWS `AKIA...`, GitHub `gh[ps]_...`, private-key header, `sk-ant-...` / `sk-proj-...` / OpenAI legacy) |
-| `$CLAUDE_PLUGIN_ROOT/scripts/guards/block-forbidden-imports.sh` | PostToolUse | **warn** (no-op by default) | An edited file imports a name on the explicit denylist (empty by default) |
-| `$CLAUDE_PLUGIN_ROOT/scripts/guards/protect-regression-test.sh` | PreToolUse (Edit\|Write) | **BLOCK** | A /temper:fix run edits the regression test it recorded at RED (`state.regression_test`) — the fix loop's own check must not be weakened by the agent running it |
-| `$CLAUDE_PLUGIN_ROOT/scripts/guards/block-protected-paths.sh` | PreToolUse (Edit\|Write) | **BLOCK** (no-op by default) | The edited file matches a `protect: paths:` pattern in temper.config (generated classes, frozen packages) — enforced at edit time, every mode, not just at the autonomous commit gate |
-| `$CLAUDE_PLUGIN_ROOT/scripts/guards/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `temper override` — emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records the git identity (`by`) |
-| `$CLAUDE_PLUGIN_ROOT/scripts/guards/run-formatter.sh` | PostToolUse (Edit\|Write) | **format** (no-op by default) | Never blocks — runs `format: cmd:` from temper.config on each edited file so drift never accumulates; a formatter failure is a stderr warning, not a gate |
-| `$CLAUDE_PLUGIN_ROOT/scripts/guards/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `temper gate commit` FAILs (in-agent mirror of the native hook, below) |
-| `$CLAUDE_PLUGIN_ROOT/scripts/guards/stage-marker.sh` | UserPromptSubmit | **no-op** (records only) | Never — it writes `.temper/pending-stage.json` when a `/temper:intent`, `/temper:plan`, `/temper:design`, `/temper:build`, `/temper:review` or `/temper:check` prompt is submitted, and blocks nothing |
-| `$CLAUDE_PLUGIN_ROOT/scripts/guards/verify-stage-gate.sh` | Stop | **BLOCK** | A standalone stage session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage — see `$CLAUDE_PLUGIN_ROOT/docs/decisions/0005-deterministic-stage-gate-enforcement.md`. Fails open after 2 refusals |
-| `$CLAUDE_PLUGIN_ROOT/scripts/temper gate commit` | native pre-commit | **BLOCK** | Any stage's evidence-backed gate is not PASS and has no recorded `temper override` |
-| `$CLAUDE_PLUGIN_ROOT/scripts/guards/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json` shows the latest `check_complete` absent or failed — used only when the temper CLI isn't present |
-| `$CLAUDE_PLUGIN_ROOT/scripts/guards/install.sh` | n/a (installer) | **install** | Wires block-secrets + `temper gate commit` into a native git `pre-commit` hook (the deterministic commit gate) |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-secrets.sh` | PreToolUse / native pre-commit | **BLOCK** | A staged/edited file matches a secret pattern (AWS `AKIA...`, GitHub `gh[ps]_...`, private-key header, `sk-ant-...` / `sk-proj-...` / OpenAI legacy) |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-forbidden-imports.sh` | PostToolUse | **warn** (no-op by default) | An edited file imports a name on the explicit denylist (empty by default) |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/protect-regression-test.sh` | PreToolUse (Edit\|Write) | **BLOCK** | A /temper:fix run edits the regression test it recorded at RED (`state.regression_test`) — the fix loop's own check must not be weakened by the agent running it |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-protected-paths.sh` | PreToolUse (Edit\|Write) | **BLOCK** (no-op by default) | The edited file matches a `protect: paths:` pattern in temper.config (generated classes, frozen packages) — enforced at edit time, every mode, not just at the autonomous commit gate |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `temper override` — emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records the git identity (`by`) |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/run-formatter.sh` | PostToolUse (Edit\|Write) | **format** (no-op by default) | Never blocks — runs `format: cmd:` from temper.config on each edited file so drift never accumulates; a formatter failure is a stderr warning, not a gate |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `temper gate commit` FAILs (in-agent mirror of the native hook, below) |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/stage-marker.sh` | UserPromptSubmit | **no-op** (records only) | Never — it writes `.temper/pending-stage.json` when a `/temper:intent`, `/temper:plan`, `/temper:design`, `/temper:build`, `/temper:review` or `/temper:check` prompt is submitted, and blocks nothing |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-stage-gate.sh` | Stop | **BLOCK** | A standalone stage session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage — see `${CLAUDE_PLUGIN_ROOT}/docs/decisions/0005-deterministic-stage-gate-enforcement.md`. Fails open after 2 refusals |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` | native pre-commit | **BLOCK** | Any stage's evidence-backed gate is not PASS and has no recorded `temper override` |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json` shows the latest `check_complete` absent or failed — used only when the temper CLI isn't present |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh` | n/a (installer) | **install** | Wires block-secrets + `temper gate commit` into a native git `pre-commit` hook (the deterministic commit gate) |
 
 ### block-secrets.sh
 
@@ -190,7 +190,7 @@ override. Reads the project's evidence ledger (written by `temper evidence add` 
 the pipeline) and `.temper/gates.json` (the last-computed verdict per stage); prints the
 specific unmet requirement(s). `temper override <stage> --reason "..."` records a human
 override — it stays visible in `temper report` and the final summary, it does not erase
-the FAIL. See `$CLAUDE_PLUGIN_ROOT/docs/getting-started.md` for the full CLI reference. Absent `.temper/`
+the FAIL. See `${CLAUDE_PLUGIN_ROOT}/docs/getting-started.md` for the full CLI reference. Absent `.temper/`
 state → `exit 0` (degrade; a repo not running `/temper` for this commit is never blocked).
 
 ### verify-tests-ran.sh (fallback)
@@ -205,7 +205,7 @@ Every hook above is a **guardrail** — it allows or blocks with no human involv
 The third mode is an **approval gate**: the hook *asks*, deterministically, by
 refusing until a named human authorization exists. Temper's own fence ends at
 `git commit` (it never pushes, merges, or deploys), so no pack wires one — but the
-pattern is the same script shape, and `$CLAUDE_PLUGIN_ROOT/examples/gates/production-gate.sh`
+pattern is the same script shape, and `${CLAUDE_PLUGIN_ROOT}/examples/gates/production-gate.sh`
 is a copy-paste starting point (copy it into your project first): a PreToolUse (Bash) hook that blocks `deploy`+`production`
 commands until `RELEASE_APPROVAL` names an approver and change ticket, explaining the
 route to approval in its block message. Two placement rules from hard experience:
@@ -223,7 +223,7 @@ route to approval in its block message. Two placement rules from hard experience
   array, and point your own settings.json hook at the copy. Never edit the installed plugin.
 - Imports: set `TEMPER_FORBIDDEN_IMPORTS` in your environment or settings.json `env` block.
 - Gate requirements are fixed in the plugin. Propose a change upstream (see
-  `$CLAUDE_PLUGIN_ROOT/CONTRIBUTING.md`) rather than editing the installed copy.
+  `${CLAUDE_PLUGIN_ROOT}/CONTRIBUTING.md`) rather than editing the installed copy.
 
 ## Mandatory Rules (BLOCK if violated)
 - Never commit a credential matching a known secret pattern (deterministic block via block-secrets.sh)

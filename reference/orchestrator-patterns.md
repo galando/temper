@@ -5,28 +5,28 @@ description: "Shared patterns for orchestrator commands (temper.md, fix.md)"
 # Orchestrator Shared Patterns
 
 **Used by:** the `/temper` and `/temper:fix` orchestrators
-(`$CLAUDE_PLUGIN_ROOT/commands/temper.md`, `$CLAUDE_PLUGIN_ROOT/commands/fix.md`). Read
+(`${CLAUDE_PLUGIN_ROOT}/commands/temper.md`, `${CLAUDE_PLUGIN_ROOT}/commands/fix.md`). Read
 once at the start — every `→ pattern` reference in either file points here.
 
 Scope: shared, judgment-adjacent bookkeeping only (state schema, gate UX,
 resume/invocation safety, hand-off formats). Mechanism with one correct output (model
-resolution, gate logic) lives in the temper CLI (`$CLAUDE_PLUGIN_ROOT/scripts/temper`)
+resolution, gate logic) lives in the temper CLI (`${CLAUDE_PLUGIN_ROOT}/scripts/temper`)
 and in the `model:` frontmatter of each stage brief.
 
 ## $CLAUDE_PLUGIN_ROOT Resolution
 
 `$CLAUDE_PLUGIN_ROOT` is the plugin's install folder, which Claude Code provides to
-plugin commands. Use it as given. If it is empty, or `$CLAUDE_PLUGIN_ROOT/scripts/temper`
+plugin commands. Use it as given. If it is empty, or `${CLAUDE_PLUGIN_ROOT}/scripts/temper`
 does not exist, stop and say: "Cannot locate Temper plugin. Set CLAUDE_PLUGIN_ROOT or
 reinstall." Never search for the plugin folder and never guess another one. The temper
-CLI is always called by its full path, `$CLAUDE_PLUGIN_ROOT/scripts/temper`. Every path
-that does not start with `$CLAUDE_PLUGIN_ROOT/` (`.temper/`, the spec files,
+CLI is always called by its full path, `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. Every path
+that does not start with `${CLAUDE_PLUGIN_ROOT}/` (`.temper/`, the spec files,
 `.claude/temper.config`) is in the user's project, the current directory.
 
 ## Build State Schema
 
-`.temper/build-state.json`, owned by `$CLAUDE_PLUGIN_ROOT/scripts/temper state` — never hand-write it. Resolve the
-spec path from `$CLAUDE_PLUGIN_ROOT/scripts/temper state get spec_path` before launching any agent.
+`.temper/build-state.json`, owned by `${CLAUDE_PLUGIN_ROOT}/scripts/temper state` — never hand-write it. Resolve the
+spec path from `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path` before launching any agent.
 
 ```json
 { "stage": "{stage}_complete", "spec": "{slug}", "spec_path": ".temper/specs/{slug}",
@@ -40,7 +40,7 @@ build_complete | review_complete | check_complete`, branch `feature/{slug}`.
 `/temper:fix` — `rca_complete | fix_complete | review_complete | check_complete`,
 branch `fix/{slug}`.
 
-**Save/Continue:** `$CLAUDE_PLUGIN_ROOT/scripts/temper state advance {stage}_complete {next_stage}` at every
+**Save/Continue:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance {stage}_complete {next_stage}` at every
 transition. On Save, report "Saved. Run {command} when ready to continue."
 
 ## Gate Options + Enforcement
@@ -145,7 +145,7 @@ justifications a gate doesn't need but a re-launched agent does.
 
 `review-memory.json` (Review writes, Status + Review read — the single finding memory:
 pattern acceptance/dismissal, promotion, and suppression). See
-`$CLAUDE_PLUGIN_ROOT/reference/review.md` → "Metrics + Memory".
+`${CLAUDE_PLUGIN_ROOT}/reference/review.md` → "Metrics + Memory".
 
 | Stage | Reads | Writes |
 |---|---|---|
@@ -157,11 +157,11 @@ pattern acceptance/dismissal, promotion, and suppression). See
 | Check | intent.md, review-context.json | check-context.json |
 | Status | metrics.json, review-memory.json, gates.json, evidence/ | — |
 
-**Cleanup:** `$CLAUDE_PLUGIN_ROOT/scripts/temper state clear` (on commit) removes the run state (`build-state.json`,
+**Cleanup:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear` (on commit) removes the run state (`build-state.json`,
 the loop counters, `gates.json`, `overrides.json`) and the evidence ledger. Nothing under
 `.temper/specs/` is touched: `intent.md`/`tasks.md`/`plan.md`/`design.md` are the
 permanent record. Build deletes a `review-context.json` or `check-context.json` itself
-once it has acted on it (see `$CLAUDE_PLUGIN_ROOT/reference/build.md`).
+once it has acted on it (see `${CLAUDE_PLUGIN_ROOT}/reference/build.md`).
 
 ## Feedback Loop Patterns
 
@@ -178,6 +178,6 @@ with failure context.
   per run. Context: `build-context.json`'s infeasibility reason.
 
 **Circuit breaker + evidence clearing:** full mechanics (budget, auto-clear) live in
-`$CLAUDE_PLUGIN_ROOT/commands/temper.md` → "Feedback Loops" — not restated here. A loop is
+`${CLAUDE_PLUGIN_ROOT}/commands/temper.md` → "Feedback Loops" — not restated here. A loop is
 always a normal stage re-launch that reads the relevant `review-context.json` or
 `check-context.json` at startup.

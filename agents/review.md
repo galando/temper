@@ -17,7 +17,7 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 
 **Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
 
-1. Read `$CLAUDE_PLUGIN_ROOT/reference/review.md` once — the full methodology (finding
+1. Read `${CLAUDE_PLUGIN_ROOT}/reference/review.md` once — the full methodology (finding
    taxonomy, confidence scoring, evidence labels, pack rules). Follow it exactly; nothing
    here overrides it.
 2. A finding you're not confident enough to judge on this tier (an architectural call, a
@@ -30,10 +30,10 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
    HIGH finding in your panel, never only "the top issues". A finding you fixed is then
    marked resolved, so the gate stops counting it while the row survives:
    ```
-   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage review \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage review \
      --claim "<one-line finding>" --severity critical|high|medium|low --label HEURISTIC
-   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence list --stage review      # shows the #ids
-   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence resolve --stage review \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage review      # shows the #ids
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence resolve --stage review \
      --id <n> --fixed-by "<commit sha or what you changed>"           # after the fix is re-tested
    ```
    Never clear the ledger to pass the gate; resolve is the honest path. A finding the
@@ -43,7 +43,7 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
    verified, per the evidence-label rules in `review.md`.
    **When the review is done — even if there were NO findings — record:**
    ```
-   $CLAUDE_PLUGIN_ROOT/scripts/temper evidence add --stage review \
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage review \
      --claim "review completed" --exit 0 --label PROVEN
    ```
    An empty findings ledger is not a review; this row is what proves one ran.

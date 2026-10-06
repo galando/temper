@@ -52,7 +52,7 @@ presents for acceptance.
    (marked `(source: …)`) and add a Blocking Open Question.
 
 2. **Write the draft** to the project's `.temper/specs/{slug}/intent.md` using
-   `$CLAUDE_PLUGIN_ROOT/templates/intent.md`:
+   `${CLAUDE_PLUGIN_ROOT}/templates/intent.md`:
    - Header: `**Author:**` (from `git config user.name` / `user.email`),
      `**Status:** draft`, `**Created:**`, `**Ticket:**` if one was given,
      `**Reviewer:**` (from step 1), `**Complexity:**` (a first guess).
@@ -64,12 +64,12 @@ presents for acceptance.
      Questions** (each labeled `Blocking:` or `Deferred:` — carrying a question
      forward honestly beats resolving it by guess).
    - **Do not write Scenarios or pick an architecture.** BDD scenarios are derived
-     from the measured blast radius at Plan time (`$CLAUDE_PLUGIN_ROOT/reference/plan.md`), not at
+     from the measured blast radius at Plan time (`${CLAUDE_PLUGIN_ROOT}/reference/plan.md`), not at
      capture time. Leave `## Scenarios (BDD)` empty — never a placeholder
      `Scenario:` block: the check gate demands a passing test for every
      `Scenario:` line and cannot tell a placeholder from a real one.
 
-3. **Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate intent --spec-path
+3. **Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent --spec-path
    .temper/specs/{slug}`** and fix any FAIL (empty/placeholder Problem, no real
    criteria, missing Status value, a should/may/might/possibly in a criterion or
    constraint that has no `(source: …)` marker) — the same deterministic floor the pipeline's
