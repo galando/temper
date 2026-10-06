@@ -1212,17 +1212,18 @@ export const register: Register = (on, opts) => {
       )
     }
     const ui = await readUi($).catch(() => null)
-    // The Client is taken straight from the element table, so its module path is the fixed text below.
+    // The Client is taken straight from the element table and called directly with its module path as fixed text
+    // (no JSX), so the plugin directory can read which file it loads.
     const { Client, Box, Button } = $.ui.resolve(e)
     const ctl = await readCtl($)
     const act = (fn: () => Promise<void>) => () => fn().catch(() => undefined)
     return (
       <Box flexDirection="column" backgroundColor={CARD_BG}>
-        <Client
-          key="game"
-          module="./ui/game-client.tsx"
-          props={{ ...ctl, seed: seedFor(ctl.startCount), best: gameBest, banner: bannerFor(ui?.view ?? null), compact: e.props.placement === 'inline' }}
-        />
+        {Client({
+          key: 'game',
+          module: './ui/game-client.tsx',
+          props: { ...ctl, seed: seedFor(ctl.startCount), best: gameBest, banner: bannerFor(ui?.view ?? null), compact: e.props.placement === 'inline' },
+        })}
         <Box flexDirection="row" columnGap={1} flexWrap="wrap">
           <Button key="game-jump" label="w  Jump" hotkey="w" variant="primary" onPress={act(() => pressGame($, 'jumpCount'))} />
           <Button key="game-duck" label="s  Duck" hotkey="s" variant="primary" onPress={act(() => pressGame($, 'duckCount'))} />
