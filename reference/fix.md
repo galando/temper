@@ -73,7 +73,7 @@ at once — you can't tell which worked.
    ```
    $CLAUDE_PLUGIN_ROOT/scripts/temper state set regression_test {test file path}
    ```
-   With the hooks pack enabled, `protect-regression-test.sh` now blocks any edit to that
+   With the guardrails pack enabled, `protect-regression-test.sh` now blocks any edit to that
    file for the rest of the run — fix the code, not the test. A genuinely-wrong test is a
    human's call to unlock (`temper state set regression_test ""`), never the agent's.
 

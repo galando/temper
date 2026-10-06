@@ -43,7 +43,7 @@ Shared patterns: read `$CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md` o
 now — every `→ pattern` reference below points into it. `$CLAUDE_PLUGIN_ROOT`
 resolution is defined there; `$TEMPER` below means `$CLAUDE_PLUGIN_ROOT/scripts/temper`.
 
-**Why this command gates at all:** the commit hook (`scripts/hooks/install.sh`) runs
+**Why this command gates at all:** the commit hook (`scripts/guards/install.sh`) runs
 `temper gate commit` on **every** `git commit`, regardless of which command produced it.
 Fix maps onto the `build` gate (a regression test is exactly a RED-then-GREEN pair);
 Review and Check are the literal same stages as `/temper`, sharing `agents/review.md` /

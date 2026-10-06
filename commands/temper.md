@@ -97,11 +97,11 @@ in place:
 2. **Scaffold** — run `$CLAUDE_PLUGIN_ROOT/scripts/temper init` (idempotent).
 3. **Commit gate** — this is the headline guarantee, and the easiest to leave missing.
    Install it when it isn't installed yet — no `pre-commit` hook carrying the marker
-   `installed by scripts/hooks/install.sh` in the active hooks dir (`git config
+   `installed by scripts/guards/install.sh` in the active hooks dir (`git config
    core.hooksPath` if set, else `.git/hooks`) — **or when it is stale**: a plugin
    upgrade moves the plugin directory, and a hook whose embedded `TEMPER_HOOKS_DIR`
-   no longer points at the current `$CLAUDE_PLUGIN_ROOT/scripts/hooks` fails open
-   silently. Either way, run `bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh`
+   no longer points at the current `$CLAUDE_PLUGIN_ROOT/scripts/guards` fails open
+   silently. Either way, run `bash $CLAUDE_PLUGIN_ROOT/scripts/guards/install.sh`
    (it reports and re-embeds the current path). Not a git repo yet → say so in
    one line and continue (config + scaffold still done); the gate installs on the next
    run after `git init`.

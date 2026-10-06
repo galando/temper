@@ -164,7 +164,7 @@ its weakest point: every override entry records *who* approved (`by:` from git
 identity), and `confirm-override.sh` emits the ASK permission tier for any
 `temper override` command — a deterministic human click between an agent and the one
 command that clears a FAIL gate. **[NEW]** For past-the-fence release gating,
-`examples/gates/production-gate.sh` + `packs/hooks/rules.md` document the
+`examples/gates/production-gate.sh` + `packs/guardrails/rules.md` document the
 allow/ask/block pattern with the two placement rules: approval gates at the release
 boundary only (a human prompt mid-build puts a person back on every parallel
 session's critical path), and non-negotiable gates in managed settings, not the repo.
@@ -269,7 +269,7 @@ Honest list, in rough adoption order:
 
 1. `/temper "…"` → sets itself up on first run (config, scaffold, commit gate) and
    runs the intent-gated pipeline.
-2. Packs + hooks pack → skills-with-deterministic-backstops.
+2. Packs + guardrails pack → skills-with-deterministic-backstops.
 3. `/temper:intent` → capture-first flow; commit the spec artifacts.
 4. Wire `temper gate review` into whatever CI you run → the review loop, org-visible.
 5. `autonomy:` block → longer unattended arcs, parked before commit.

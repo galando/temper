@@ -52,7 +52,7 @@ INTENT → PLAN → DESIGN? → BUILD → REVIEW → CHECK → COMMIT
 
 ## The Temper mod (Claude Code 2.1.287 or later)
 
-![Temper phase bar in Claude Code: Intent, Plan, Build, Review, Check, with numbered actions](assets/temper-full.gif)
+![Temper phase bar in Claude Code: Intent, Plan, Build, Review, Check, with numbered actions](https://raw.githubusercontent.com/galando/temper/c4b892bc6081ba77db0744de49410c79a1db93d2/docs/assets/temper-full.gif)
 
 On Claude Code 2.1.287 or later, Temper also ships a mod. It enforces the phases at the tool
 layer and shows them. Older versions load the plugin as before.

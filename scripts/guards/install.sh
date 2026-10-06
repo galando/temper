@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# install.sh — wire the Temper hooks pack into a NATIVE git pre-commit hook.
+# install.sh — wire the Temper guardrails pack into a NATIVE git pre-commit hook.
 #
 # Why a native git hook? Claude Code's settings.json has NO "PreCommit" event
 # (PreToolUse/PostToolUse/Stop/... only — PreCommit is an open feature request).
@@ -10,14 +10,14 @@
 # installer installs one (via core.hooksPath, falling back to .git/hooks/).
 #
 # The scripts themselves remain usable from both worlds:
-#   - PreToolUse/PostToolUse blocks (settings.hooks.json) — in-agent edits/writes
+#   - PreToolUse/PostToolUse blocks (settings-guardrails.json) — in-agent edits/writes
 #   - native git pre-commit (this installer)      — the real commit gate
 #
 # DEGRADATION CONTRACT: if the scripts are missing, the installed git hook
 # is a no-op (exit 0). Installing this never blocks a commit by itself.
 #
-# Usage:  bash scripts/hooks/install.sh         # install into .git/hooks
-#         bash scripts/hooks/install.sh --global # install into core.hooksPath
+# Usage:  bash scripts/guards/install.sh         # install into .git/hooks
+#         bash scripts/guards/install.sh --global # install into core.hooksPath
 set -euo pipefail
 
 HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"   # where the Temper hook scripts live
@@ -26,7 +26,7 @@ MODE="local"
 
 # Resolve the TARGET repo (where to install the git hook). This is the current
 # working directory's git toplevel — NOT the repo that ships these scripts. A user
-# runs `bash /path/to/temper/scripts/hooks/install.sh` from their own project.
+# runs `bash /path/to/temper/scripts/guards/install.sh` from their own project.
 TARGET_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -z "$TARGET_ROOT" ]]; then
   echo "FAIL: not inside a git repository (cwd is not a worktree)." >&2
@@ -72,7 +72,7 @@ PRECOMMIT="$TARGET_DIR/pre-commit"
 # (recognizable by its marker line) is safe to overwrite in place; anything
 # else — husky, lefthook, or a hand-rolled hook — is backed up first so the
 # user's prior setup is recoverable, not lost.
-TEMPER_MARKER="installed by scripts/hooks/install.sh"
+TEMPER_MARKER="installed by scripts/guards/install.sh"
 # Stale-path detection: a Temper hook carries the plugin path embedded at ITS
 # install time. A plugin upgrade moves that directory, and the hook's
 # `[[ -d ... ]] || exit 0` guard then fails open SILENTLY — every commit gate
@@ -102,7 +102,7 @@ fi
 # embedded into the hook; TEMPER_HOOKS_DIR overrides it if the scripts move later.
 cat > "$PRECOMMIT" <<HOOK
 #!/usr/bin/env bash
-# Temper native pre-commit hook (installed by scripts/hooks/install.sh).
+# Temper native pre-commit hook (installed by scripts/guards/install.sh).
 # Fail-open: missing scripts never block. Only a detected violation blocks.
 set -uo pipefail
 TEMPER_HOOKS_DIR="\${TEMPER_HOOKS_DIR:-$HOOKS_DIR}"
@@ -125,7 +125,7 @@ TEMPER_BIN="\$(dirname "\$TEMPER_HOOKS_DIR")/temper"
 if [[ -x "\$TEMPER_BIN" && -d .temper ]]; then
   "\$TEMPER_BIN" gate commit || exit 1
 elif [[ -f "\$TEMPER_HOOKS_DIR/verify-tests-ran.sh" ]]; then
-  # Fallback for a project that only installed the hooks pack without the CLI.
+  # Fallback for a project that only installed the guardrails pack without the CLI.
   bash "\$TEMPER_HOOKS_DIR/verify-tests-ran.sh" || exit 1
 fi
 

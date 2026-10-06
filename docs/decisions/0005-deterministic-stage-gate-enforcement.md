@@ -30,18 +30,18 @@ zero it.
 
 Enforce the contract in the hook layer, the same place the commit gate already lives:
 
-- **`scripts/hooks/stage-marker.sh`** (UserPromptSubmit): when the submitted prompt
+- **`scripts/guards/stage-marker.sh`** (UserPromptSubmit): when the submitted prompt
   invokes a standalone stage command, record the owed gate in
   `.temper/pending-stage.json`.
-- **`scripts/hooks/verify-stage-gate.sh`** (Stop): while a marker is pending and
+- **`scripts/guards/verify-stage-gate.sh`** (Stop): while a marker is pending and
   `.temper/gates.json` has no verdict for that stage, refuse to end the session
   (exit 2) with instructions to record evidence and run the gate. **Any verdict
   satisfies it, PASS or FAIL** — the guarantee is that `temper gate <stage>` ran, not
   that it succeeded. Each firing appends to `.temper/hooks.log`.
 
 Shipped two ways: plugin-level `hooks/hooks.json` (fires for `--plugin-dir` and
-marketplace installs with no settings merge) and the hooks pack's
-`settings.hooks.json` (projects using the pack's copy-paste path).
+marketplace installs with no settings merge) and the guardrails pack's
+`settings-guardrails.json` (projects using the pack's copy-paste path).
 
 The numbered-step prompt fix is kept as defense-in-depth — it makes the first attempt
 more likely to be right, so the hook rarely has to fire.

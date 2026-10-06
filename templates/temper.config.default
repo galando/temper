@@ -81,13 +81,13 @@ check:
 #     2sigma: diagnose    # read-only diagnosis via /temper:status
 #     3sigma: propose     # draft an intent.md into .temper/specs/ for /temper to run
 
-# Edit-time protected paths (hooks pack: block-protected-paths.sh). Same **/segment/**
+# Edit-time protected paths (guardrails pack: block-protected-paths.sh). Same **/segment/**
 # shape as autonomy.park-on-touch, but enforced when the agent EDITS, in every mode —
 # generated code, frozen legacy packages. Empty/absent = no-op.
 # protect:
 #   paths: ["**/src/gen/**", "**/v1/**"]
 
-# Formatter run on each agent edit (hooks pack: run-formatter.sh). {file} is replaced
+# Formatter run on each agent edit (guardrails pack: run-formatter.sh). {file} is replaced
 # with the edited path. Never blocks; absent = no-op.
 # format:
 #   cmd: "npx prettier --write {file}"

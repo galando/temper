@@ -5,11 +5,11 @@
 # Fires on the Bash matcher. Only acts when the command being run is a `git commit`;
 # every other Bash call passes straight through. When it IS a git commit, this defers
 # to `temper gate commit` — the same deterministic verdict the native pre-commit hook
-# (installed by scripts/hooks/install.sh) enforces — so an agent-driven commit is
+# (installed by scripts/guards/install.sh) enforces — so an agent-driven commit is
 # blocked with a clear reason at the moment it's attempted, not just at the git layer.
 # This does NOT replace the native git hook (a raw `git commit` outside the agent
 # never reaches this PreToolUse event) — the two are complementary, per the hooks
-# pack's two-layer design (packs/hooks/rules.md).
+# pack's two-layer design (packs/guardrails/rules.md).
 #
 # DEGRADATION CONTRACT:
 #   - Not a `git commit` command      => exit 0 (no-op; only commits are inspected)

@@ -2,7 +2,7 @@
 phases: []
 ---
 
-# Hooks Pack
+# Guardrails Pack
 
 **Version:** 2.0.0
 **Last Updated:** 2026-07-19
@@ -39,18 +39,18 @@ There are **two** layers, and both are needed for the full guarantee:
 ### 1. In-agent layer — `settings.json` hooks (Edits/Writes)
 
 ```
-/temper:pack enable hooks
+/temper:pack enable guardrails
 ```
 
 Enabling this pack routes through the global **update-config** skill, which block-merges
-`settings.hooks.json` (the copy-paste source in this directory) into the project or user
+`settings-guardrails.json` (the copy-paste source in this directory) into the project or user
 `settings.json`. This wires `PreToolUse`/`PostToolUse` blocks that fire when the **agent**
 edits or writes files (block-secrets on every Edit/Write) or runs Bash (block-secrets and
 the commit gate on every Bash call — the commit-gate check is a no-op unless the command is
 a `git commit`). The merge is additive — it never clobbers unrelated existing hooks. To
-uninstall, run `/temper:pack disable hooks` (update-config removes the Temper hook block).
+uninstall, run `/temper:pack disable guardrails` (update-config removes the Temper hook block).
 
-You can also copy `settings.hooks.json` into your `settings.json` manually if you prefer.
+You can also copy `settings-guardrails.json` into your `settings.json` manually if you prefer.
 
 ### 2. Commit-time layer — native git pre-commit hook (REQUIRED for deterministic blocking)
 
@@ -61,8 +61,8 @@ block a raw `git commit`. The only gate that fires on every commit — agent-dri
 is a real git hook. Install it:
 
 ```
-bash scripts/hooks/install.sh          # install into .git/hooks/pre-commit
-bash scripts/hooks/install.sh --global # install via core.hooksPath
+bash scripts/guards/install.sh          # install into .git/hooks/pre-commit
+bash scripts/guards/install.sh --global # install via core.hooksPath
 ```
 
 The installed `pre-commit` runs `block-secrets.sh` then `temper gate commit` and blocks
@@ -95,18 +95,18 @@ The single fail-closed path for each script is documented below. Everything else
 
 | Script | Event | Default action | Fail-closed when |
 |--------|-------|----------------|------------------|
-| `scripts/hooks/block-secrets.sh` | PreToolUse / native pre-commit | **BLOCK** | A staged/edited file matches a secret pattern (AWS `AKIA...`, GitHub `gh[ps]_...`, private-key header, `sk-ant-...` / `sk-proj-...` / OpenAI legacy) |
-| `scripts/hooks/block-forbidden-imports.sh` | PostToolUse | **warn** (no-op by default) | An edited file imports a name on the explicit denylist (empty by default) |
-| `scripts/hooks/protect-regression-test.sh` | PreToolUse (Edit\|Write) | **BLOCK** | A /temper:fix run edits the regression test it recorded at RED (`state.regression_test`) — the fix loop's own check must not be weakened by the agent running it |
-| `scripts/hooks/block-protected-paths.sh` | PreToolUse (Edit\|Write) | **BLOCK** (no-op by default) | The edited file matches a `protect: paths:` pattern in temper.config (generated classes, frozen packages) — enforced at edit time, every mode, not just at the autonomous commit gate |
-| `scripts/hooks/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `temper override` — emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records the git identity (`by`) |
-| `scripts/hooks/run-formatter.sh` | PostToolUse (Edit\|Write) | **format** (no-op by default) | Never blocks — runs `format: cmd:` from temper.config on each edited file so drift never accumulates; a formatter failure is a stderr warning, not a gate |
-| `scripts/hooks/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `temper gate commit` FAILs (in-agent mirror of the native hook, below) |
-| `scripts/hooks/stage-marker.sh` | UserPromptSubmit | **no-op** (records only) | Never — it writes `.temper/pending-stage.json` when a `/temper:{intent,plan,design,build,review,check}` prompt is submitted, and blocks nothing |
-| `scripts/hooks/verify-stage-gate.sh` | Stop | **BLOCK** | A standalone stage session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage — see `docs/decisions/0005-deterministic-stage-gate-enforcement.md`. Fails open after 2 refusals |
+| `scripts/guards/block-secrets.sh` | PreToolUse / native pre-commit | **BLOCK** | A staged/edited file matches a secret pattern (AWS `AKIA...`, GitHub `gh[ps]_...`, private-key header, `sk-ant-...` / `sk-proj-...` / OpenAI legacy) |
+| `scripts/guards/block-forbidden-imports.sh` | PostToolUse | **warn** (no-op by default) | An edited file imports a name on the explicit denylist (empty by default) |
+| `scripts/guards/protect-regression-test.sh` | PreToolUse (Edit\|Write) | **BLOCK** | A /temper:fix run edits the regression test it recorded at RED (`state.regression_test`) — the fix loop's own check must not be weakened by the agent running it |
+| `scripts/guards/block-protected-paths.sh` | PreToolUse (Edit\|Write) | **BLOCK** (no-op by default) | The edited file matches a `protect: paths:` pattern in temper.config (generated classes, frozen packages) — enforced at edit time, every mode, not just at the autonomous commit gate |
+| `scripts/guards/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `temper override` — emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records the git identity (`by`) |
+| `scripts/guards/run-formatter.sh` | PostToolUse (Edit\|Write) | **format** (no-op by default) | Never blocks — runs `format: cmd:` from temper.config on each edited file so drift never accumulates; a formatter failure is a stderr warning, not a gate |
+| `scripts/guards/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `temper gate commit` FAILs (in-agent mirror of the native hook, below) |
+| `scripts/guards/stage-marker.sh` | UserPromptSubmit | **no-op** (records only) | Never — it writes `.temper/pending-stage.json` when a `/temper:{intent,plan,design,build,review,check}` prompt is submitted, and blocks nothing |
+| `scripts/guards/verify-stage-gate.sh` | Stop | **BLOCK** | A standalone stage session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage — see `docs/decisions/0005-deterministic-stage-gate-enforcement.md`. Fails open after 2 refusals |
 | `scripts/temper gate commit` | native pre-commit | **BLOCK** | Any stage's evidence-backed gate is not PASS and has no recorded `temper override` |
-| `scripts/hooks/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json` shows the latest `check_complete` absent or failed — used only when `scripts/temper` isn't present |
-| `scripts/hooks/install.sh` | n/a (installer) | **install** | Wires block-secrets + `temper gate commit` into a native git `pre-commit` hook (the deterministic commit gate) |
+| `scripts/guards/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json` shows the latest `check_complete` absent or failed — used only when `scripts/temper` isn't present |
+| `scripts/guards/install.sh` | n/a (installer) | **install** | Wires block-secrets + `temper gate commit` into a native git `pre-commit` hook (the deterministic commit gate) |
 
 ### block-secrets.sh
 

@@ -22,7 +22,7 @@ Two components read that file, and they sit on opposite sides of a hard boundary
 
 - `scripts/temper` (the spine) reads it via `cmd_state_get` / `cmd_state_advance` /
   `gate_commit`.
-- `scripts/hooks/verify-tests-ran.sh` is a **native git pre-commit hook**. It parses the
+- `scripts/guards/verify-tests-ran.sh` is a **native git pre-commit hook**. It parses the
   JSON with an inline `python3 -c` and cannot shell out to `scripts/temper` — the hook must
   work in repos where the plugin is not installed or not on PATH, and its degradation
   contract forbids introducing a new failure mode. It treats `check_complete` (and, today,
@@ -105,5 +105,5 @@ correct: nothing should ever advance *into* a removed stage.
 ## References
 
 - `.temper/specs/opus5-speed-refresh/design.md` — "Compatibility Contract", Decision 8
-- `scripts/hooks/verify-tests-ran.sh` — the degradation contract this decision preserves
+- `scripts/guards/verify-tests-ran.sh` — the degradation contract this decision preserves
 - ADR-0003 — the stage removal that creates the legacy values

@@ -31,7 +31,7 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    ledger, overrides log, feedback-loops registry). Idempotent.
 
 4. Commit gate — the headline guarantee. Run:
-      bash $CLAUDE_PLUGIN_ROOT/scripts/hooks/install.sh
+      bash $CLAUDE_PLUGIN_ROOT/scripts/guards/install.sh
    It installs a native git pre-commit hook that runs `temper gate commit` (and the
    secret scan) on every commit, fails open if temper isn't in use for a commit, and
    backs up any existing non-Temper pre-commit hook first. It installs into the active
@@ -42,7 +42,7 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    config + scaffold still succeeded).
 
 5. Report done, and name the one optional add-on in a single line:
-   "Set up. Optional: `/temper:pack enable hooks` adds edit-time guardrails (secret
+   "Set up. Optional: `/temper:pack enable guardrails` adds edit-time guardrails (secret
    blocking, frozen-path protection, auto-format, an approval prompt before overrides).
    The commit gate above works without it."
 ```
@@ -51,7 +51,7 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
 
 - It does **not** edit `settings.json`. The stage-gate hooks ship with the plugin (in its
   own hooks file) and work on install with no merge; the fuller edit-time guardrail
-  set is the opt-in `/temper:pack enable hooks` above, because merging into a user's
+  set is the opt-in `/temper:pack enable guardrails` above, because merging into a user's
   `settings.json` is a change they should choose.
 - It does **not** overwrite an existing config or an existing non-Temper git hook
   (that one is backed up, never destroyed).

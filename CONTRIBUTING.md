@@ -32,7 +32,7 @@ temper/
 ├── agents/                  # Stage subprocess briefs (model frontmatter = defaults)
 ├── reference/               # Per-stage methodology docs (loaded on demand)
 ├── skills/                  # Skill definitions (temper-core, grill-me, ...)
-├── packs/                   # Rule packs, stack files, hooks pack
+├── packs/                   # Rule packs, stack files, guardrails pack
 ├── hooks/                   # Plugin-shipped hooks.json (stage-gate pair)
 ├── scripts/                 # temper CLI (the deterministic spine), hooks/, tests/
 ├── templates/               # Artifact templates (intent/plan/design/config)

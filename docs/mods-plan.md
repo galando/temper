@@ -68,10 +68,10 @@ is my recommendation; say so if you want it changed.
 - Plugin `hooks/hooks.json` binds two classic hooks: `UserPromptSubmit` →
   `stage-marker.sh` and `Stop` → `verify-stage-gate.sh` (refuses to end a standalone
   stage session until a verdict exists; fails open after two blocks).
-- Opt in pack `packs/hooks/settings.hooks.json` adds `PreToolUse` guards for secrets,
+- Opt in pack `packs/guardrails/settings-guardrails.json` adds `PreToolUse` guards for secrets,
   protected paths, the regression test, and `block-uncommitted-gate.sh` (runs
   `temper gate commit` before a Bash `git commit`).
-- `scripts/hooks/install.sh` writes a native git `pre-commit` hook that runs
+- `scripts/guards/install.sh` writes a native git `pre-commit` hook that runs
   `temper gate commit`.
 - **Nothing restricts Write or Edit by stage today.** This is the gap Part A closes.
 

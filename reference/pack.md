@@ -54,7 +54,7 @@ first of these that exists says so:
    backwards-compatible default for a third-party pack written before frontmatter existed.
 
 `all` in either place means every phase. An **empty list (`[]`) means no phase loads it** —
-that's a real value, not a missing one. `packs/hooks/rules.md` uses it: the file documents
+that's a real value, not a missing one. `packs/guardrails/rules.md` uses it: the file documents
 bash hooks that enforce themselves at edit- and commit-time, so there is nothing in it for
 a stage agent to apply, and loading it into all five stages was ~140 lines of pure cost.
 

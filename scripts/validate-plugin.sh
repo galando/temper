@@ -182,7 +182,7 @@ fi
 # Every built-in pack declares which stages load it. This validates the declaration is
 # present and its values are real phases; it cannot tell you a pack was narrowed too far
 # — that's a reading of the stage docs, not a property of the file. `all` loads
-# everywhere, `[]` loads nowhere (packs/hooks, whose content is install documentation).
+# everywhere, `[]` loads nowhere (packs/guardrails, whose content is install documentation).
 PACK_PHASES_ERR=$(python3 -c "
 import glob, os, re, sys
 VALID = {'plan', 'design', 'build', 'review', 'check', 'fix'}
@@ -213,27 +213,27 @@ if [[ -z "$PACK_PHASES_ERR" ]]; then ok; else fail "pack phases: $PACK_PHASES_ER
 # --- Phase 1 Verification (v5.5.0): hooks assertions ---
 # These cover the new files added by docs/plans/phase-1-verification.md.
 
-# Hooks pack: rules.md present + settings.hooks.json valid JSON
-HOOKS_RULES="$REPO_ROOT/packs/hooks/rules.md"
-if [[ -f "$HOOKS_RULES" ]]; then ok; else fail "packs/hooks/rules.md missing"; fi
+# guardrails pack: rules.md present + settings-guardrails.json valid JSON
+GUARDRAILS_RULES="$REPO_ROOT/packs/guardrails/rules.md"
+if [[ -f "$GUARDRAILS_RULES" ]]; then ok; else fail "packs/guardrails/rules.md missing"; fi
 
-HOOKS_JSON="$REPO_ROOT/packs/hooks/settings.hooks.json"
-if [[ -f "$HOOKS_JSON" ]]; then
-  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$HOOKS_JSON" 2>/dev/null; then
+GUARDRAILS_JSON="$REPO_ROOT/packs/guardrails/settings-guardrails.json"
+if [[ -f "$GUARDRAILS_JSON" ]]; then
+  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$GUARDRAILS_JSON" 2>/dev/null; then
     ok
   else
-    fail "packs/hooks/settings.hooks.json is not valid JSON"
+    fail "packs/guardrails/settings-guardrails.json is not valid JSON"
   fi
   # Regression guard (C-1): Claude Code has NO PreCommit event — a PreCommit key is
   # silently ignored and defeats the deterministic commit guarantee. The commit gate
-  # must be the native git pre-commit hook installed by scripts/hooks/install.sh.
-  if python3 -c "import json,sys; assert 'PreCommit' not in json.load(open(sys.argv[1])).get('hooks', {})" "$HOOKS_JSON" 2>/dev/null; then
+  # must be the native git pre-commit hook installed by scripts/guards/install.sh.
+  if python3 -c "import json,sys; assert 'PreCommit' not in json.load(open(sys.argv[1])).get('hooks', {})" "$GUARDRAILS_JSON" 2>/dev/null; then
     ok
   else
-    fail "packs/hooks/settings.hooks.json uses invalid 'PreCommit' key (use scripts/hooks/install.sh for commit-time enforcement)"
+    fail "packs/guardrails/settings-guardrails.json uses invalid 'PreCommit' key (use scripts/guards/install.sh for commit-time enforcement)"
   fi
 else
-  fail "packs/hooks/settings.hooks.json missing"
+  fail "packs/guardrails/settings-guardrails.json missing"
 fi
 
 # The plugin's own hooks file (v8.0.1) ships the standalone-stage gate guarantee with the plugin,
@@ -243,14 +243,14 @@ fi
 
 # Hook scripts: exist and are executable. Each path is written out in full.
 for p in \
-  "$REPO_ROOT/scripts/hooks/block-secrets.sh" \
-  "$REPO_ROOT/scripts/hooks/block-forbidden-imports.sh" \
-  "$REPO_ROOT/scripts/hooks/block-uncommitted-gate.sh" \
-  "$REPO_ROOT/scripts/hooks/verify-tests-ran.sh" \
-  "$REPO_ROOT/scripts/hooks/install.sh" \
-  "$REPO_ROOT/scripts/hooks/stage-marker.sh" \
-  "$REPO_ROOT/scripts/hooks/verify-stage-gate.sh"; do
-  name="scripts/hooks/$(basename "$p")"
+  "$REPO_ROOT/scripts/guards/block-secrets.sh" \
+  "$REPO_ROOT/scripts/guards/block-forbidden-imports.sh" \
+  "$REPO_ROOT/scripts/guards/block-uncommitted-gate.sh" \
+  "$REPO_ROOT/scripts/guards/verify-tests-ran.sh" \
+  "$REPO_ROOT/scripts/guards/install.sh" \
+  "$REPO_ROOT/scripts/guards/stage-marker.sh" \
+  "$REPO_ROOT/scripts/guards/verify-stage-gate.sh"; do
+  name="scripts/guards/$(basename "$p")"
   if [[ ! -f "$p" ]]; then
     fail "$name missing"
   elif [[ ! -x "$p" ]]; then

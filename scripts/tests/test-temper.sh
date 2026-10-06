@@ -338,12 +338,12 @@ assert_eq "park reason names the matched path" "yes" "$(echo "$OUT" | grep -q 's
 
 # --- native pre-commit hook: does `git commit` actually get blocked/allowed for
 # real, not just gate_commit()'s decision logic in isolation? Everything above tests
-# the CLI function; this installs the real hook (scripts/hooks/install.sh) and runs a
+# the CLI function; this installs the real hook (scripts/guards/install.sh) and runs a
 # real `git commit`, the same way a human's `git commit` reaches it.
 setup
 git config user.email "test@example.com"
 git config user.name "test"
-bash "$REPO_ROOT/scripts/hooks/install.sh" >/dev/null
+bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null
 echo '{"command": "temper", "run_mode": "interactive"}' > .temper/build-state.json
 echo 'x' > file.txt
 git add file.txt >/dev/null 2>&1
@@ -423,17 +423,17 @@ assert_eq "the next_stage forward-map is written through to disk" "commit" "$(py
 setup
 git config user.email "test@example.com"
 git config user.name "test"
-bash "$REPO_ROOT/scripts/hooks/install.sh" >/dev/null
+bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null
 python3 -c "
 import json
 d = json.load(open('.temper/build-state.json'))
 d['stage'] = 'eval_complete'
 json.dump(d, open('.temper/build-state.json', 'w'))
 "
-assert_exit "verify-tests-ran.sh no longer matches a raw, unhealed 'eval_complete'" 2 bash "$REPO_ROOT/scripts/hooks/verify-tests-ran.sh"
+assert_exit "verify-tests-ran.sh no longer matches a raw, unhealed 'eval_complete'" 2 bash "$REPO_ROOT/scripts/guards/verify-tests-ran.sh"
 "$TEMPER" state get stage >/dev/null   # a CLI touch heals the on-disk value
 assert_eq "the stage forward-map is written through to disk" "check_complete" "$(python3 -c "import json; print(json.load(open('.temper/build-state.json'))['stage'])")"
-assert_exit "verify-tests-ran.sh passes once the CLI has healed the state to check_complete" 0 bash "$REPO_ROOT/scripts/hooks/verify-tests-ran.sh"
+assert_exit "verify-tests-ran.sh passes once the CLI has healed the state to check_complete" 0 bash "$REPO_ROOT/scripts/guards/verify-tests-ran.sh"
 
 # --- v8: evidence clear + state loop auto-clears downstream evidence (Decision 7) ---
 # A loop means "we are going backwards"; evidence is append-only, so a stale row from a
@@ -536,8 +536,8 @@ assert_eq "pack-discover does not emit a second, market-B-suffixed duplicate" "1
 # Stop until gates.json carries a verdict for it (any verdict), failing open after 2
 # blocks. See docs/decisions/0005-deterministic-stage-gate-enforcement.md.
 setup
-MARKER="$REPO_ROOT/scripts/hooks/stage-marker.sh"
-VERIFY="$REPO_ROOT/scripts/hooks/verify-stage-gate.sh"
+MARKER="$REPO_ROOT/scripts/guards/stage-marker.sh"
+VERIFY="$REPO_ROOT/scripts/guards/verify-stage-gate.sh"
 
 echo '{"prompt": "/temper:plan add a thing"}' | bash "$MARKER"
 assert_eq "stage-marker records the owed stage" "plan" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['stage'])")"
@@ -643,7 +643,7 @@ assert_exit "model --all succeeds with no config file" 0 "$TEMPER" model --all
 # Edit/Write targeting that file is blocked (exit 2) — the agent fixing the code must
 # not weaken the check on it. Everything else: fail-open.
 setup
-SHIELD="$REPO_ROOT/scripts/hooks/protect-regression-test.sh"
+SHIELD="$REPO_ROOT/scripts/guards/protect-regression-test.sh"
 "$TEMPER" state init bug2 --command fix >/dev/null
 mkdir -p test && echo 'assert(true)' > test/regression.spec.js
 
@@ -909,7 +909,7 @@ assert_eq "state init points a temper run at the intent stage first" "intent" \
 
 # stage-marker marks /temper:intent sessions (they owe a gate intent verdict).
 setup
-MARKER="$REPO_ROOT/scripts/hooks/stage-marker.sh"
+MARKER="$REPO_ROOT/scripts/guards/stage-marker.sh"
 echo '{"prompt": "/temper:intent capture this idea"}' | bash "$MARKER"
 assert_eq "stage-marker records the owed intent stage" "intent" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['stage'])")"
 
@@ -1023,10 +1023,10 @@ assert_exit "cli-executed RED+GREEN satisfies the build gate" 0 "$TEMPER" gate b
 
 # --- v9 hooks: protected paths, confirm-override ask tier, formatter, imports stdin ---
 setup
-PROTECT="$REPO_ROOT/scripts/hooks/block-protected-paths.sh"
-CONFIRM="$REPO_ROOT/scripts/hooks/confirm-override.sh"
-FORMATTER="$REPO_ROOT/scripts/hooks/run-formatter.sh"
-IMPORTS="$REPO_ROOT/scripts/hooks/block-forbidden-imports.sh"
+PROTECT="$REPO_ROOT/scripts/guards/block-protected-paths.sh"
+CONFIRM="$REPO_ROOT/scripts/guards/confirm-override.sh"
+FORMATTER="$REPO_ROOT/scripts/guards/run-formatter.sh"
+IMPORTS="$REPO_ROOT/scripts/guards/block-forbidden-imports.sh"
 
 assert_exit "protected-paths: no config => edit passes" 0 \
   bash -c "echo '{\"tool_input\": {\"file_path\": \"src/gen/model.ts\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PROTECT'"
@@ -1146,7 +1146,7 @@ assert_eq "park-on-touch: the real 'zauth' segment still parks" "yes" \
 
 # block-protected-paths.sh: segment match (no substring false-positive), interior glob honored.
 setup
-PP="$REPO_ROOT/scripts/hooks/block-protected-paths.sh"
+PP="$REPO_ROOT/scripts/guards/block-protected-paths.sh"
 cat >> .claude/temper.config <<'EOF'
 protect:
   paths: ["**/gen/**", "**/migrations/*.sql"]
@@ -1170,16 +1170,16 @@ git config user.name "test"
 rm -f .git/hooks/pre-commit    # clear any hook a prior test left in the shared WORKDIR
 mkdir -p .husky
 git config core.hooksPath .husky
-bash "$REPO_ROOT/scripts/hooks/install.sh" >/dev/null 2>&1
+bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
 assert_eq "install.sh honors core.hooksPath — hook lands where git looks" "yes" \
-  "$([[ -f .husky/pre-commit ]] && grep -q 'installed by scripts/hooks/install.sh' .husky/pre-commit && echo yes || echo no)"
+  "$([[ -f .husky/pre-commit ]] && grep -q 'installed by scripts/guards/install.sh' .husky/pre-commit && echo yes || echo no)"
 assert_eq "install.sh does NOT write the ignored .git/hooks/pre-commit when core.hooksPath is set" "yes" \
   "$([[ ! -f .git/hooks/pre-commit ]] && echo yes || echo no)"
 git config --unset core.hooksPath 2>/dev/null || true
 
 # confirm-override.sh: robust matcher — quoted path, doubled space, path prefix all ASK.
 setup
-CO="$REPO_ROOT/scripts/hooks/confirm-override.sh"
+CO="$REPO_ROOT/scripts/guards/confirm-override.sh"
 for cmd in \
   'temper override plan --reason x' \
   '"/abs/scripts/temper" override plan' \

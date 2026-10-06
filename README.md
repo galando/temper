@@ -11,7 +11,7 @@ outside the current phase through Claude's editing tools (details in "Where enfo
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1.287%2B%20for%20the%20mod-blue)](#where-enforcement-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-![Temper in a terminal: a refused write, then an approval with one key moves the phase bar from Intent to Plan](docs/assets/temper-full.gif)
+![Temper in a terminal: a refused write, then an approval with one key moves the phase bar from Intent to Plan](https://raw.githubusercontent.com/galando/temper/c4b892bc6081ba77db0744de49410c79a1db93d2/docs/assets/temper-full.gif)
 
 [Website](https://galando.github.io/temper) · [Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [Releases](https://github.com/galando/temper/releases)
 
@@ -75,9 +75,9 @@ Full, Minimal and Off. The same mod runs in the desktop app (Code tab).
 
 | Dark | Light |
 |---|---|
-| ![Full mode, dark: phase bar with action buttons and the pane](docs/assets/mode-full-dark.png) | ![Full mode, light: phase bar with action buttons and the pane](docs/assets/mode-full-light.png) |
-| ![Minimal mode, dark: the phase bar only](docs/assets/mode-minimal-dark.png) | ![Minimal mode, light: the phase bar only](docs/assets/mode-minimal-light.png) |
-| ![Off mode, dark: nothing drawn, denials still apply](docs/assets/mode-off-dark.png) | ![Off mode, light: nothing drawn, denials still apply](docs/assets/mode-off-light.png) |
+| ![Full mode, dark: phase bar with action buttons and the pane](https://raw.githubusercontent.com/galando/temper/c4b892bc6081ba77db0744de49410c79a1db93d2/docs/assets/mode-full-dark.png) | ![Full mode, light: phase bar with action buttons and the pane](https://raw.githubusercontent.com/galando/temper/c4b892bc6081ba77db0744de49410c79a1db93d2/docs/assets/mode-full-light.png) |
+| ![Minimal mode, dark: the phase bar only](https://raw.githubusercontent.com/galando/temper/c4b892bc6081ba77db0744de49410c79a1db93d2/docs/assets/mode-minimal-dark.png) | ![Minimal mode, light: the phase bar only](https://raw.githubusercontent.com/galando/temper/c4b892bc6081ba77db0744de49410c79a1db93d2/docs/assets/mode-minimal-light.png) |
+| ![Off mode, dark: nothing drawn, denials still apply](https://raw.githubusercontent.com/galando/temper/c4b892bc6081ba77db0744de49410c79a1db93d2/docs/assets/mode-off-dark.png) | ![Off mode, light: nothing drawn, denials still apply](https://raw.githubusercontent.com/galando/temper/c4b892bc6081ba77db0744de49410c79a1db93d2/docs/assets/mode-off-light.png) |
 
 ### Each phase
 
@@ -104,7 +104,7 @@ The game never opens by itself, shows a banner when a phase is ready, and refusa
 it is open. The plugin setting `game` is `on` (the default), `command` (the command only) or `off`.
 It runs on the terminal and the desktop app only, verified by hand on the terminal with the keyboard.
 
-![Temper Run, the optional game: Ember the dragon jumps over an anvil while Claude works](docs/assets/game.gif)
+![Temper Run, the optional game: Ember the dragon jumps over an anvil while Claude works](https://raw.githubusercontent.com/galando/temper/c4b892bc6081ba77db0744de49410c79a1db93d2/docs/assets/game.gif)
 
 ## Where enforcement works
 
@@ -277,17 +277,17 @@ Temper's scripts run locally with `bash`, `git` and `python3`, and write only in
 (the `pre-commit` hook goes where your `core.hooksPath` points, if you set one).
 
 - **Plugin hooks.** `hooks/hooks.json` registers two classic hooks and the mod module.
-  `UserPromptSubmit` runs `scripts/hooks/stage-marker.sh`, which notes which gate a standalone
-  stage command owes. `Stop` runs `scripts/hooks/verify-stage-gate.sh`, which can ask Claude to
+  `UserPromptSubmit` runs `scripts/guards/stage-marker.sh`, which notes which gate a standalone
+  stage command owes. `Stop` runs `scripts/guards/verify-stage-gate.sh`, which can ask Claude to
   keep working (at most twice per stage) until that gate has a verdict. Both fail open.
-- **Git hook.** On first run `scripts/hooks/install.sh` writes a `pre-commit` hook (secret scan and
+- **Git hook.** On first run `scripts/guards/install.sh` writes a `pre-commit` hook (secret scan and
   `temper gate commit`) into the active hooks folder, backing up any existing one. Delete it to remove it.
 - **Your toolchain.** Build and check run the test, lint and type check commands of your stack (detected,
   or set in `check.commands.*` in `.claude/temper.config`) and record their exit codes as evidence.
 - **Optional tools you install yourself.** If `ocr` (open code review) is on your `PATH`,
   `/temper:review` runs it on the diff, and `ocr` sends that diff to the provider you set up.
   Set `tools.ocr.mode: off` to skip it. Temper never installs any tool, and
-  `/temper:pack enable hooks` or autonomous continuation only run when you ask.
+  `/temper:pack enable guardrails` or autonomous continuation only run when you ask.
 
 ## Documentation
 

@@ -701,7 +701,7 @@ describe('everyday Build commands are not touched by the stricter rules', () => 
     'sed -n 20,35p templates/temper.config.default',
     "ls -t ~/.claude/projects/x/*.jsonl | xargs -I{} sh -c 'echo {}; grep -c foo {}'",
     // A comment is not part of the command.
-    'bash scripts/hooks/install.sh          # install into .git/hooks/pre-commit',
+    'bash scripts/guards/install.sh          # install into .git/hooks/pre-commit',
     'npm test # the verdict goes to .temper/gates.json',
     'echo "a # b" && ls src # build-state.json',
   ]

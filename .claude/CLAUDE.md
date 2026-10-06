@@ -22,7 +22,7 @@ every gate is the ordinary interactive one. Config: `.claude/temper.config` → 
 **v7 — the deterministic spine:** every gate verdict is computed by `scripts/temper`
 (`temper gate {stage}`) from an evidence ledger (`temper evidence add`), not asserted by
 a model. `git commit` is blocked by a native pre-commit hook + an in-agent PreToolUse
-hook whenever a gate is FAIL and unoverridden — see `packs/hooks/rules.md`.
+hook whenever a gate is FAIL and unoverridden — see `packs/guardrails/rules.md`.
 
 **Version:** 9.6.5 — see `CHANGELOG.md` for history.
 Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/reference/`
@@ -38,7 +38,7 @@ CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/d
   tsconfig.mod.json` and `bash scripts/check-mod-calls.sh`; the reviewed `$` calls live in that script.
 - Layout: `commands/` (slash commands) · `agents/` (stage subprocess briefs) ·
   `reference/` (methodology) · `packs/` (rules) · `scripts/temper` (the deterministic
-  spine — gate logic lives HERE, never in a prompt) · `scripts/hooks/` ·
+  spine — gate logic lives HERE, never in a prompt) · `scripts/guards/` ·
   `scripts/plan_review.py` (renders and merges the HTML plan review).
 - Known mistakes: a gate-mechanics change is a `scripts/temper` edit + a
   `test-temper.sh` case, not a prompt edit; hooks must fail OPEN except their one

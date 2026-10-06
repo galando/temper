@@ -9,10 +9,6 @@
   },
   "repository": "https://github.com/galando/temper",
   "homepage": "https://github.com/galando/temper",
-  "icon": "./.claude-plugin/icon.png",
-  "documentationUrl": "https://galando.github.io/temper",
-  "supportUrl": "https://github.com/galando/temper/issues",
-  "privacyPolicyUrl": "https://galando.github.io/temper/privacy.html",
   "license": "MIT",
   "keywords": [
     "intent-driven-development",

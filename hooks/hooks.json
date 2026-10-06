@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/stage-marker.sh\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/guards/stage-marker.sh\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/hooks/verify-stage-gate.sh\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-stage-gate.sh\""
           }
         ]
       }

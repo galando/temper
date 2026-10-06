@@ -1,0 +1,76 @@
+{
+  "_comment": "settings.json hook block for the Temper guardrails pack. NOTE: Claude Code has NO 'PreCommit' event (PreToolUse/PostToolUse/Stop/Notification/SubagentStop/PreCompact/SessionStart/SessionEnd/UserPromptSubmit only). The blocks below cover the IN-AGENT path (edits, writes, agent-driven commits). For deterministic commit-time enforcement on a RAW 'git commit', install the native git pre-commit hook via 'bash scripts/guards/install.sh' — that is the only gate that fires regardless of the agent. See .claude/packs/guardrails/rules.md.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/block-secrets.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/protect-regression-test.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/block-protected-paths.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/block-secrets.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/block-uncommitted-gate.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/confirm-override.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/block-forbidden-imports.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/run-formatter.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/stage-marker.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PLUGIN_ROOT/scripts/guards/verify-stage-gate.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

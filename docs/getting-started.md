@@ -18,7 +18,7 @@ nav_order: 2
 That's it. Claude Code loads Temper's commands and skills automatically, and your first
 `/temper "…"` in a project sets it up on the spot — config, `.temper/` scaffold, and the
 native commit gate that blocks a red commit. To set up explicitly instead, run
-`/temper:init`. For optional edit-time guardrails, `/temper:pack enable hooks`.
+`/temper:init`. For optional edit-time guardrails, `/temper:pack enable guardrails`.
 
 ### The phase bar (Claude Code 2.1.287 or later)
 

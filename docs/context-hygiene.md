@@ -72,7 +72,7 @@ phases: [build, review, check]
 ```
 
 `all` (or an absent block, for third-party packs) means every stage. `[]` means no stage
-loads it — `packs/hooks/rules.md` uses this, because it documents bash hooks that enforce
+loads it — `packs/guardrails/rules.md` uses this, because it documents bash hooks that enforce
 themselves at edit- and commit-time and has nothing a stage agent can act on. Declaring
 phases is the cheapest progressive-disclosure win available to a pack author: rules only
 reach the stages that can use them.

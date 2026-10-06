@@ -64,7 +64,7 @@ unchanged on the surface.
 ## Move 1 — One deterministic spine: the `temper` CLI + commit hook
 
 A single zero-dependency script at `scripts/temper` (bash, same engineering standard as
-the existing `scripts/hooks/*.sh` — explicit degradation contracts, fail-open on internal
+the existing `scripts/guards/*.sh` — explicit degradation contracts, fail-open on internal
 error, fail-closed only on an explicit violation).
 
 ### 1.1 `temper state` — state becomes impossible to corrupt
@@ -118,7 +118,7 @@ always allowed to proceed, but the override lands in the ledger and the final re
 
 - PreToolUse hook (Bash matcher on `git commit`) runs `temper gate commit`; exit 2 blocks
   with the failed requirement named. Native `pre-commit` hook via the existing
-  `scripts/hooks/install.sh` path covers raw commits outside the agent.
+  `scripts/guards/install.sh` path covers raw commits outside the agent.
 - **"Parks before commit" and "never commits without green gates" stop being README
   promises and become mechanical facts** — including under Autonomous Continuation, whose
   park conditions (blast radius, `park-on-touch` paths, budget trips) become CLI checks

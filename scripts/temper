@@ -385,7 +385,7 @@ json.dump(d, open(sys.argv[5], 'w'), indent=2)
 _state_migrate_legacy() { # idempotent; called before any state read/write and by cmd_gate.
                            # Heals a v7.0.x build-state.json left with next_stage/stage
                            # pointing at the removed eval stage. Write-through (not
-                           # read-only): scripts/hooks/verify-tests-ran.sh (L1) reads
+                           # read-only): scripts/guards/verify-tests-ran.sh (L1) reads
                            # build-state.json directly and cannot call this CLI, so a
                            # stale on-disk value would block every future `git commit`.
   [[ -f "$STATE_FILE" ]] || return 0
@@ -1994,7 +1994,7 @@ cmd_override() {
   _ensure_dirs
   [[ -f "$OVERRIDES_FILE" ]] || echo '[]' > "$OVERRIDES_FILE"
   # An override is a human decision — record WHO, not just why. git identity is the
-  # best deterministic proxy available here; the confirm-override hook (hooks pack)
+  # best deterministic proxy available here; the confirm-override hook (guardrails pack)
   # additionally puts a human permission prompt between an agent and this command.
   local by name email
   name="$(git config user.name 2>/dev/null || true)"

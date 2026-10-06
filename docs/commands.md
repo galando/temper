@@ -692,7 +692,7 @@ One-command project setup. Idempotent — safe to re-run; never overwrites an ex
 - Scaffolds `.temper/` (the gate ledger, overrides log, feedback-loop registry)
 - Installs the **native commit gate** — the pre-commit hook that blocks `git commit` while any gate is red (backs up a prior non-Temper hook first)
 
-**You usually don't run it by hand** — your first `/temper "…"` in an un-set-up project does all of this automatically. Optional edit-time guardrails are a separate `/temper:pack enable hooks`.
+**You usually don't run it by hand** — your first `/temper "…"` in an un-set-up project does all of this automatically. Optional edit-time guardrails are a separate `/temper:pack enable guardrails`.
 
 ---
 
