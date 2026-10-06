@@ -12,7 +12,7 @@ mod", the prompts the mod submits, the slash commands it runs, the settings it s
 reviewer; the README section "What the mod reads and writes" describes each of them.
 
 **Files the directory could not inspect.** `scripts/selftest/test-temper.sh` had grown to 265 KB,
-above the 256 KB the directory reads. Its cases now live in four files of 60 to 80 KB next to it
+above the 256 KB the directory reads. Its cases now live in four files of 60 to 100 KB next to it
 (`temper-cases-1.sh` to `temper-cases-4.sh`), which the runner sources in order.
 
 **The mod stays the same.**
