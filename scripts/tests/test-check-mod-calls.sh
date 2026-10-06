@@ -21,5 +21,9 @@ check "an empty calls line fails" 1 './module calls: '
 check "a line the validator cut short fails (a call could be hidden)" 1 "$GOOD, \$.ui.toast (via announce, askMode, switchEnforce… [+5 chars]"
 check "fs.write is no longer reviewed (the mod writes no file)" 1 "$GOOD, \$.fs.write (via makeIo)"
 check "store.delete (drops the oldest kept folder) is reviewed" 0 "$GOOD, \$.store.delete (via keepText)"
+check "a forbidden call on a second calls line fails" 1 "$GOOD
+./other calls: \$.fs.list (via a), \$.process.spawn (via run)"
+check "two clean calls lines pass" 0 "$GOOD
+./other calls: \$.fs.read (via a)"
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ $FAIL -eq 0 ]]

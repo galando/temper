@@ -53,7 +53,8 @@ else
     echo "FAIL: claude plugin validate failed"
     exit 1
   }
-  LINE="$(printf '%s\n' "$OUT" | grep -E ' calls: \$\.' | head -1 || true)"
+  # Every calls: line counts, so a call in any hooks module the validator reports is checked.
+  LINE="$(printf '%s\n' "$OUT" | grep -E ' calls: \$\.' || true)"
   [[ -n "$LINE" ]] || { echo "$OUT"; echo "FAIL: no 'calls:' line for the mod in the validate output"; exit 1; }
 fi
 
@@ -87,9 +88,10 @@ while IFS= read -r call; do
   fi
 done <<< "$CALLS"
 
-# The game's surface module has no engine at all: `$` exists only as a hooks module's parameter,
-# so the mod's type check (tsc -p tsconfig.mod.json, run in CI) fails on any `$.` call in it. This
-# script reads only the validator's output and never opens a file of the mod.
+# The game's surface module has no engine at all: `$` is not defined there, so the mod's type check
+# (tsc -p tsconfig.mod.json, run in CI) fails on an engine call written as `$.`, and at run time a
+# surface module has no `$` to reach. This script reads only the validator's output and never opens
+# a file of the mod.
 
 if [[ $FAIL -eq 0 ]]; then
   echo "OK: $(printf '%s\n' "$CALLS" | wc -l | tr -d ' ') calls, all on the reviewed list, none process/http/env"

@@ -9,8 +9,12 @@ README="$(cat "$ROOT/README.md")"
 PLAN="$(cat "$ROOT/docs/mods-plan.md")"
 PASS=0; FAIL=0
 need() { # need <README|PLAN> <fixed text> <what>
-  local text="$README" name="README.md"
-  [[ "$1" == PLAN ]] && { text="$PLAN"; name="mods-plan.md"; }
+  local text name
+  case "$1" in
+    README) text="$README"; name="README.md" ;;
+    PLAN) text="$PLAN"; name="mods-plan.md" ;;
+    *) FAIL=$((FAIL+1)); echo "FAIL: unknown file key '$1' (use README or PLAN)"; return ;;
+  esac
   if grep -qiF -- "$2" <<< "$text"; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); echo "FAIL: $name does not say: $3 (\"$2\")"; fi
 }
 need README "shell tricks" "the Bash reader cannot see shell tricks"

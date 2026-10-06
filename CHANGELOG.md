@@ -16,32 +16,37 @@ code. Gates, commands, agents and what the mod does do not change.
   Client element is made in a plain statement outside the tree, on the element table itself:
   `$.ui.resolve(e).Client({ key: 'game', module: './ui/game-client.tsx', props })`. These are the two
   remedies the directory names. `claude plugin validate` reads the same surface module as before,
-  and the game draws the same. One real change: the hooks module now also loads the game module's
-  definitions when it starts (it has no top level code, so nothing runs).
+  and the game draws the same. One real change: the hooks module now also loads the game module
+  (with `core/runner.ts` and `core/runner-art.ts`) when it starts. Their top level only defines
+  constants and functions, so nothing acts, but a load error in those files now stops the hooks
+  module, not just the game pane.
 - **The three scripts the directory named** ("The directory couldn't confirm that the mod stays the
   same after it's checked"). `scripts/check-mod-calls.sh` reads only the validator's output: its
-  scan of the game file, through a computed folder and a wildcard, is gone, because the mod's type
-  check already fails on any `$` in a surface module. `scripts/check-known-limits.sh` no longer
-  names the known limits test and reads its two files by fixed paths. The approval gate example
-  moved from `examples/hooks/` to `examples/gates/` (the folder shared the name "hooks" with the
-  mod's) and no longer names `scripts/hooks/` or a wildcard.
+  scan of the game file, through a computed folder and a wildcard, is gone: `$` is not defined in a
+  surface module, so the mod's type check fails on an engine call written as `$.` there. It now
+  checks every `calls:` line the validator prints, not only the first. `scripts/check-known-limits.sh`
+  no longer names the known limits test and reads its two files by fixed paths. The approval gate
+  example moved from `examples/hooks/` to `examples/gates/` (the folder shared the name "hooks" with
+  the mod's) and no longer names `scripts/hooks/` or the `scripts/hooks/*.sh` pattern.
 - **README, "What the mod reads and writes", rewritten from the code.** It named 5 of the mod's 11
-  hook events; it now covers every hook, every file the mod reads, what each prompt holds, the
-  `temper:phase` system prompt section, the two settings and when they change, the two commands and
-  when they run, the game module as the one file loaded, and what the test suite's fake engine does.
-  It corrects three statements: the config is `.claude/temper.config`, not a `.temper/` file; no
-  path outside the plan ever goes into a prompt (it goes into the refusal and the question); and
-  `prompt.compose`, `attribution.text` and `turn.step` do change the request, so "no hook changes
-  instructions" was untrue. A prompt the mod submits is a turn of your session, marked as from the
-  Temper plugin. The gate and bar table moves to Commands, where a full copy already was, so the
-  README stays within 300 lines.
+  hook events; it now covers every hook, every file the mod reads, its session state (readable by
+  other plugins) and its store, what each prompt and refusal holds, the `temper:phase` system prompt
+  section, the two settings and when they change, the two commands and when they run, its one tool
+  call (the question dialog), the game's surface module, and what the test suite's fake engine does.
+  It corrects two statements: the config is `.claude/temper.config`, not a `.temper/` file, and no
+  path outside the plan goes into a prompt (it goes into the refusal and the question). A prompt the
+  mod submits is a turn of your session, marked as from the Temper plugin. The gate and bar table
+  moves to Commands, where a full copy already was, and other sections say the same in fewer lines,
+  so the README stays within 300 lines.
 - **The test world says what it is.** `tests/mod/world.ts` declares itself test only code, and its
   `config.set` stand in says why a test answers that call.
-- **Trust:** the `pre-commit` hook goes where `core.hooksPath` points, when you set one.
+- **Trust:** the README now says the `pre-commit` hook goes where your `core.hooksPath` points, if you
+  set one, and that check commands are detected for your stack unless `check.commands.*` sets them.
 
-Held by design: "This plugin includes a mod" always goes to a reviewer, and the findings that point
-into `tests/mod/` (the fake engine answers tool calls, `config.set` and `command.run`; one test
-spawns a stub agent) are Claude Code's test kit at work, explained in the README.
+Held by design: "This plugin includes a mod" always goes to a reviewer. The findings that point into
+`tests/mod/` come from Temper's fake engine (`tests/mod/world.ts`, built on Claude Code's test kit),
+which answers tool calls, `config.set` and `command.run`, and from one test that stubs an agent
+spawn. The README explains both.
 
 ## v9.6.3: the game's Client is called with its path as fixed text
 

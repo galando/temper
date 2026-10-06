@@ -204,7 +204,8 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
   on('config.set', ($, e) => {
     // The harness has no implementation of its own to pass a config write to (it says a test
     // answers it here), so the world records the call and answers it. The mod itself never
-    // hooks config.set; it only calls it, on the person's own mode or enforcement command.
+    // hooks config.set; it only calls it, on the person's own mode or enforcement command or their
+    // answer to the first run mode question.
     w.configSets.push({ key: e.key, value: e.value })
     return { value: e.value }
   })

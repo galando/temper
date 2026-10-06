@@ -50,8 +50,8 @@ Long description:
 Data and permissions, in plain words:
 
 - No network calls and no telemetry.
-- The mod reads files under `.temper/` in your project and writes no file. It keeps its records in
-  its own plugin store.
+- The mod reads `.claude/temper.config`, the run files under `.temper/` and `.git/HEAD` in your
+  project, and writes no file. It keeps its records in its own plugin store.
 - Tests, lint and git run through Claude's own tools and permissions.
 - The optional game keeps one number, the best score, in the plugin store.
 
@@ -76,16 +76,16 @@ listing and a smooth first install.
 ## What the directory holds, and why
 
 The directory scans every file of the tracked branch (`main`) as plugin code, the test suite
-included, and names one sample location for each kind of finding. Its reader is not the one in
+included, and names sample locations (often only one) for each kind of finding. Its reader is not the one in
 `claude plugin validate`, so a fix cannot be checked offline: the validator passing proves only that
 Claude Code itself accepts the plugin.
 
 | Kind of finding | Answered by |
 |---|---|
 | This plugin includes a mod | Always a reviewer. Nothing in the code clears it. |
-| The game's file path, the scripts that name the mod's folders | Code: see the 9.6.4 entry in `CHANGELOG.md`. Keep `module:` a fixed string outside JSX, and keep scripts out of `hooks/temper-mod/`. |
+| The game's file path, scripts it cannot confirm leave the mod unchanged | Code: see the 9.6.4 entry in `CHANGELOG.md`. Keep `module:` a fixed string outside JSX. Keep scripts from reaching the mod's files through a computed folder, an environment override or a wildcard, and keep the name `hooks` for the mod's folder only. A fixed read only path (as in `check-original-options.sh`) has not been flagged. |
 | Prompts, commands, settings, hooks the mod uses | The README section "What the mod reads and writes". Change it in the same commit as the code. |
-| Tool calls, `config.set`, `command.run`, an agent spawn in `tests/mod/` | The fake engine of the test kit. The README says so; a reviewer confirms. |
+| Tool calls, `config.set`, `command.run`, an agent spawn in `tests/mod/` | Temper's fake engine (`tests/mod/world.ts`, built on Claude Code's test kit) and one test's stub spawn. The README says so; a reviewer confirms. |
 | Images, credentials, download and run text | Notes for the reviewer: the images are plain, and the rest is text in docs, tests and the Bash guard's patterns. |
 
 ## What is not verified
