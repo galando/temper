@@ -259,7 +259,7 @@ rm -rf "$WORKDIR/dg-check"
 git config user.email "test@example.com"
 git config user.name "test"
 git config --unset core.hooksPath 2>/dev/null || true
-rm -rf .git/hooks/pre-commit .git/temper-gate .git/temper-pre-commit
+rm -rf .git/temper-gate .git/temper-pre-commit .git/default-gate
 K_HOOKS_BEFORE="$(ls -A .git/hooks)"
 bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
 assert_eq "install.sh writes .git/temper-gate/pre-commit and points core.hooksPath at its folder" "yes|$WORKDIR/.git/temper-gate" \
@@ -275,25 +275,31 @@ assert_eq "the hook has no environment override of a folder, works out no folder
 assert_eq "install.sh holds no PLUGIN_ROOT or PLUGIN_REAL variable" "0" \
   "$(grep -cE 'PLUGIN_ROOT|PLUGIN_REAL' "$REPO_ROOT/scripts/guards/install.sh")"
 # An upgrade over an install from before 9.6.5, recognized by its "Temper native pre-commit hook"
-# line in .git/hooks: core.hooksPath is pointed at the temper-gate folder, the old hook is left as
-# it was with no backup, and a note says git no longer runs it.
+# line in git's default folder: core.hooksPath is pointed at the temper-gate folder, the old hook
+# is left as it was with no backup, and a note says git no longer runs it. The default-gate copy of
+# a throwaway plugin runs here (see _dg_plugin), so the old hook sits in .git/default-gate; the
+# real installer runs again from the next case on.
 git config --unset core.hooksPath
 rm -rf .git/temper-gate
-cat > .git/hooks/pre-commit <<'EOF'
+K_DG="$WORKDIR/k-dg-plugin"
+_dg_plugin "$K_DG"
+mkdir -p .git/default-gate
+cat > .git/default-gate/pre-commit <<'EOF'
 #!/usr/bin/env bash
 # Temper native pre-commit hook (installed by an older installer).
 TEMPER_HOOKS_DIR="${TEMPER_HOOKS_DIR:-/old/plugin/scripts/old-guards}"
 EOF
-chmod +x .git/hooks/pre-commit
-K_OLD_SUM="$(cksum < .git/hooks/pre-commit)"
-OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); K_RC=$?
-assert_eq "over an older Temper hook in .git/hooks, core.hooksPath is set and a note says git no longer runs that hook" \
+chmod +x .git/default-gate/pre-commit
+K_OLD_SUM="$(cksum < .git/default-gate/pre-commit)"
+OUT=$(bash "$K_DG/scripts/guards/install.sh" 2>&1); K_RC=$?
+assert_eq "over an older Temper hook in the default folder (default-gate), core.hooksPath is set and a note says git no longer runs that hook" \
   "0|$WORKDIR/.git/temper-gate|yes" \
-  "$K_RC|$(git config --get core.hooksPath)|$(echo "$OUT" | grep -qxF "Note: git no longer runs $WORKDIR/.git/hooks/pre-commit, a hook from an older Temper; you can delete it." && echo yes || echo no)"
-assert_eq "the older Temper hook is left as it was, with no backup" "yes|0" \
-  "$([[ "$(cksum < .git/hooks/pre-commit)" == "$K_OLD_SUM" ]] && echo yes || echo no)|$(find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' | wc -l | tr -d ' ')"
-assert_eq "the kept hook carries the current CLI path" "yes" \
-  "$(grep -qxF "TEMPER_CLI=$(printf '%q' "$REPO_ROOT/scripts/temper")" .git/temper-gate/pre-commit && echo yes || echo no)"
+  "$K_RC|$(git config --get core.hooksPath)|$(echo "$OUT" | grep -qxF "Note: git no longer runs $WORKDIR/.git/default-gate/pre-commit, a hook from an older Temper; you can delete it." && echo yes || echo no)"
+assert_eq "the older Temper hook in default-gate is left as it was, with no backup" "yes|0" \
+  "$([[ "$(cksum < .git/default-gate/pre-commit)" == "$K_OLD_SUM" ]] && echo yes || echo no)|$(find .git/default-gate -maxdepth 1 -name 'pre-commit.bak.*' | wc -l | tr -d ' ')"
+assert_eq "the kept hook carries the CLI path of the plugin that ran (the default-gate copy's)" "yes" \
+  "$(grep -qxF "TEMPER_CLI=$(printf '%q' "$K_DG/scripts/temper")" .git/temper-gate/pre-commit && echo yes || echo no)"
+rm -rf .git/default-gate "$K_DG"
 python3 - <<'EOF'
 import re
 p = '.git/temper-gate/pre-commit'
@@ -321,50 +327,50 @@ rm -f "$WORKDIR/linked-hook.sh"
 # inside the repository). It keeps the hook in .git/temper-gate and prints the line that runs it,
 # with a hint naming the hook in that folder, and leaves core.hooksPath as it was.
 git config --unset core.hooksPath
-rm -rf .git/hooks/pre-commit .git/temper-gate .git/temper-pre-commit
-git config core.hooksPath sub/../dotdot-hooks
+rm -rf .git/temper-gate .git/temper-pre-commit
+git config core.hooksPath sub/../dotdot-gate
 assert_exit "install.sh refuses a core.hooksPath that is not Temper's (here with '..')" 1 bash "$REPO_ROOT/scripts/guards/install.sh"
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1; true)
 assert_eq "the refusal names the value, keeps the hook, and the hint names the hook in that folder, last" "yes|yes|yes|yes" \
-  "$(echo "$OUT" | head -1 | grep -qxF "FAIL: core.hooksPath is set to 'sub/../dotdot-hooks', a folder that is not Temper's, and this installer never writes into it." && echo yes || echo no)|$(echo "$OUT" | grep -qxF "The Temper hook is kept in $WORKDIR/.git/temper-gate/pre-commit (in the repository's git folder, never committed). Nothing else was written. To use the Temper commit gate, add the line between the BEGIN and END lines below to your pre-commit hook." && echo yes || echo no)|$(grep -q 'gate commit' .git/temper-gate/pre-commit 2>/dev/null && echo yes || echo no)|$(echo "$OUT" | tail -1 | grep -qxF "Hint: add the line to your own pre-commit hook (sub/../dotdot-hooks/pre-commit), at its start or its end. It keeps your hook's own result. Create that file, executable, if it does not exist." && echo yes || echo no)"
-assert_eq "the refusal writes nothing there, nothing in .git/hooks, and leaves core.hooksPath as it was" "no|no|no|no|sub/../dotdot-hooks" \
-  "$([[ -e dotdot-hooks ]] && echo yes || echo no)|$([[ -e sub ]] && echo yes || echo no)|$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)|$([[ -e .git/temper-pre-commit ]] && echo yes || echo no)|$(git config --get core.hooksPath)"
+  "$(echo "$OUT" | head -1 | grep -qxF "FAIL: core.hooksPath is set to 'sub/../dotdot-gate', a folder that is not Temper's, and this installer never writes into it." && echo yes || echo no)|$(echo "$OUT" | grep -qxF "The Temper hook is kept in $WORKDIR/.git/temper-gate/pre-commit (in the repository's git folder, never committed). Nothing else was written. To use the Temper commit gate, add the line between the BEGIN and END lines below to your pre-commit hook." && echo yes || echo no)|$(grep -q 'gate commit' .git/temper-gate/pre-commit 2>/dev/null && echo yes || echo no)|$(echo "$OUT" | tail -1 | grep -qxF "Hint: add the line to your own pre-commit hook (sub/../dotdot-gate/pre-commit), at its start or its end. It keeps your hook's own result. Create that file, executable, if it does not exist." && echo yes || echo no)"
+assert_eq "the refusal writes nothing there, nothing in .git/hooks, and leaves core.hooksPath as it was" "no|no|no|no|sub/../dotdot-gate" \
+  "$([[ -e dotdot-gate ]] && echo yes || echo no)|$([[ -e sub ]] && echo yes || echo no)|$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)|$([[ -e .git/temper-pre-commit ]] && echo yes || echo no)|$(git config --get core.hooksPath)"
 # A value with '..' that leads out of the repository: the same refusal, and nothing is made there.
-git config core.hooksPath ../outside-hooks
+git config core.hooksPath ../outside-gate
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); RC=$?
 assert_eq "a core.hooksPath with '..' that leads outside the repository is refused, with the hook kept" "1|yes|yes" \
-  "$RC|$(echo "$OUT" | grep -qxF "FAIL: core.hooksPath is set to '../outside-hooks', a folder that is not Temper's, and this installer never writes into it." && echo yes || echo no)|$(echo "$OUT" | grep -qxF "The Temper hook is kept in $WORKDIR/.git/temper-gate/pre-commit (in the repository's git folder, never committed). Nothing else was written. To use the Temper commit gate, add the line between the BEGIN and END lines below to your pre-commit hook." && echo yes || echo no)"
+  "$RC|$(echo "$OUT" | grep -qxF "FAIL: core.hooksPath is set to '../outside-gate', a folder that is not Temper's, and this installer never writes into it." && echo yes || echo no)|$(echo "$OUT" | grep -qxF "The Temper hook is kept in $WORKDIR/.git/temper-gate/pre-commit (in the repository's git folder, never committed). Nothing else was written. To use the Temper commit gate, add the line between the BEGIN and END lines below to your pre-commit hook." && echo yes || echo no)"
 assert_eq "that refusal makes nothing outside and writes nothing in .git/hooks" "no|no" \
-  "$([[ -e "${WORKDIR%/*}/outside-hooks" ]] && echo yes || echo no)|$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)"
-git config core.hooksPath /nonexistent-temper-hooks
+  "$([[ -e "${WORKDIR%/*}/outside-gate" ]] && echo yes || echo no)|$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)"
+git config core.hooksPath /nonexistent-temper-gate
 assert_exit "install.sh refuses an absolute core.hooksPath outside the repository" 1 bash "$REPO_ROOT/scripts/guards/install.sh"
-assert_eq "the refusal of an outside folder writes nothing" "no" "$([[ -e /nonexistent-temper-hooks ]] && echo yes || echo no)"
-K_HOME_HAD="$([[ -e "$HOME/.temper-test-hooks" ]] && echo yes || echo no)"
-git config core.hooksPath '~/.temper-test-hooks'
+assert_eq "the refusal of an outside folder writes nothing" "no" "$([[ -e /nonexistent-temper-gate ]] && echo yes || echo no)"
+K_HOME_HAD="$([[ -e "$HOME/.temper-test-gate" ]] && echo yes || echo no)"
+git config core.hooksPath '~/.temper-test-gate'
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); RC=$?
 assert_eq "install.sh refuses a core.hooksPath under the home folder, names the hook there, and makes nothing" "1|yes|$K_HOME_HAD" \
-  "$RC|$(echo "$OUT" | tail -1 | grep -qF "($HOME/.temper-test-hooks/pre-commit)" && echo yes || echo no)|$([[ -e "$HOME/.temper-test-hooks" ]] && echo yes || echo no)"
-mkdir -p cfg-hooks
-echo '{}' > cfg-hooks/settings.json
-git config core.hooksPath cfg-hooks
+  "$RC|$(echo "$OUT" | tail -1 | grep -qF "($HOME/.temper-test-gate/pre-commit)" && echo yes || echo no)|$([[ -e "$HOME/.temper-test-gate" ]] && echo yes || echo no)"
+mkdir -p cfg-gate
+echo '{}' > cfg-gate/settings.json
+git config core.hooksPath cfg-gate
 assert_exit "install.sh refuses a hooks folder that holds a JSON file" 1 bash "$REPO_ROOT/scripts/guards/install.sh"
-assert_eq "no pre-commit is written into a folder that holds a JSON file" "no" "$([[ -e cfg-hooks/pre-commit ]] && echo yes || echo no)"
+assert_eq "no pre-commit is written into a folder that holds a JSON file" "no" "$([[ -e cfg-gate/pre-commit ]] && echo yes || echo no)"
 # An absolute folder inside the repository is not written either; once its pre-commit holds the
 # line, a re-run says it calls the Temper hook.
-mkdir -p abs-hooks
-git config core.hooksPath "$(git rev-parse --show-toplevel)/abs-hooks"
+mkdir -p abs-gate
+git config core.hooksPath "$(git rev-parse --show-toplevel)/abs-gate"
 assert_exit "an absolute core.hooksPath inside the repository is refused" 1 bash "$REPO_ROOT/scripts/guards/install.sh"
 K_CALL='_temper_rc=$?; [ "$_temper_rc" -eq 0 ] || exit "$_temper_rc"; _temper_hook="$(git rev-parse --git-common-dir)/temper-gate/pre-commit"; [ ! -f "$_temper_hook" ] || bash "$_temper_hook" || exit 1'
-assert_eq "and nothing is written into it" "" "$(ls -A abs-hooks)"
-printf '#!/bin/sh\n%s\n' "$K_CALL" > abs-hooks/pre-commit
-chmod +x abs-hooks/pre-commit
+assert_eq "and nothing is written into it" "" "$(ls -A abs-gate)"
+printf '#!/bin/sh\n%s\n' "$K_CALL" > abs-gate/pre-commit
+chmod +x abs-gate/pre-commit
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); RC=$?
 assert_eq "once that folder's pre-commit holds the line, a re-run says it calls the Temper hook" "0|yes" \
-  "$RC|$(echo "$OUT" | grep -qxF "The pre-commit hook $WORKDIR/abs-hooks/pre-commit calls the Temper hook ($WORKDIR/.git/temper-gate/pre-commit), which is now current, so nothing else was written." && echo yes || echo no)"
-git config core.hooksPath ./dot-hooks/
+  "$RC|$(echo "$OUT" | grep -qxF "The pre-commit hook $WORKDIR/abs-gate/pre-commit calls the Temper hook ($WORKDIR/.git/temper-gate/pre-commit), which is now current, so nothing else was written." && echo yes || echo no)"
+git config core.hooksPath ./dot-gate/
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); RC=$?
-assert_eq "a core.hooksPath with a leading ./ and a trailing / is refused, the hint names dot-hooks/pre-commit, and nothing is made" "1|yes|no" \
-  "$RC|$(echo "$OUT" | tail -1 | grep -qF '(dot-hooks/pre-commit)' && echo yes || echo no)|$([[ -e dot-hooks ]] && echo yes || echo no)"
+assert_eq "a core.hooksPath with a leading ./ and a trailing / is refused, the hint names dot-gate/pre-commit, and nothing is made" "1|yes|no" \
+  "$RC|$(echo "$OUT" | tail -1 | grep -qF '(dot-gate/pre-commit)' && echo yes || echo no)|$([[ -e dot-gate ]] && echo yes || echo no)"
 # --global is still accepted: it prints a note and installs the same as the default.
 git config --unset core.hooksPath 2>/dev/null || true
 rm -rf .git/temper-gate
@@ -372,7 +378,7 @@ OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" --global 2>&1); RC=$?
 assert_eq "--global prints the note and installs the same as the default" "0|yes|yes|$(pwd -P)/.git/temper-gate" \
   "$RC|$(echo "$OUT" | head -1 | grep -qxF 'Note: the default install now does what --global did.' && echo yes || echo no)|$([[ -x .git/temper-gate/pre-commit ]] && echo yes || echo no)|$(git config --get core.hooksPath)"
 git config --unset core.hooksPath 2>/dev/null || true
-rm -rf .git/temper-gate .git/temper-pre-commit .git/hooks/pre-commit abs-hooks dot-hooks cfg-hooks "$WORKDIR/outside"
+rm -rf .git/temper-gate .git/temper-pre-commit abs-gate dot-gate cfg-gate "$WORKDIR/outside"
 
 # --- install.sh and the commit guards: no write through a link, the installer's own symlinks,
 # chained hooks, worktrees, --global over a set core.hooksPath, staged-only secret scans, the
@@ -381,7 +387,7 @@ setup
 git config user.email "test@example.com"
 git config user.name "test"
 git config --unset core.hooksPath 2>/dev/null || true
-rm -rf .git/hooks/pre-commit .git/hooks/pre-commit.bak.* .git/temper-git-hooks .git/temper-gate .git/temper-pre-commit
+rm -rf .git/temper-gate .git/temper-pre-commit .git/default-gate
 I_PLUG="$WORKDIR/install-plugin"
 rm -rf "$I_PLUG"
 mkdir -p "$I_PLUG/scripts/guards" "$I_PLUG/inner"
@@ -403,22 +409,34 @@ _i_clean() { # undoes an install in this repository: core.hooksPath unset, the k
   git config --unset core.hooksPath 2>/dev/null || true
   rm -rf .git/temper-gate .git/temper-pre-commit
 }
-# A pre-commit that is a hard link to a plugin file (here one that reads as an older Temper hook):
-# the installer writes nothing in .git/hooks, so the plugin file keeps its text, and the kept hook
-# in .git/temper-gate carries this plugin's CLI (install.sh itself, a hook that is not Temper's and
-# is refused, included).
-printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (plugin data)\n' > "$I_PLUG/inner/hard-target"
-ln "$I_PLUG/inner/hard-target" .git/hooks/pre-commit
-bash "$I_INSTALL" >/dev/null 2>&1
-assert_eq "install.sh never writes into .git/hooks: a hard-linked pre-commit's plugin file keeps its text, the kept hook has this CLI" "# Temper native pre-commit hook (plugin data)|2|yes" \
-  "$(sed -n 2p "$I_PLUG/inner/hard-target")|$(wc -l < "$I_PLUG/inner/hard-target" | tr -d ' ')|$(grep -qxF "$I_CLI_LINE" .git/temper-gate/pre-commit && echo yes || echo no)"
-rm -f .git/hooks/pre-commit .git/hooks/pre-commit.bak.*
+# The cases below that need hooks of the user's in git's default folder run a second throwaway
+# plugin made by _dg_plugin: its install.sh reads .git/default-gate as that folder. Its install.sh
+# is executable, as install.sh is in the plugin, so a hook hard-linked to it is one git runs.
+I_DG="$WORKDIR/install-dg-plugin"
+_dg_plugin "$I_DG"
+mkdir -p "$I_DG/inner"
+I_DG_INSTALL="$I_DG/scripts/guards/install.sh"
+chmod +x "$I_DG_INSTALL"
+I_DG_CLI_LINE="TEMPER_CLI=$(printf '%q' "$I_DG/scripts/temper")"
+# A pre-commit in the default folder that is a hard link to a plugin file (here one that reads as
+# an older Temper hook): the installer writes nothing in that folder, so the plugin file keeps its
+# text, and the kept hook in .git/temper-gate carries this plugin's CLI (install.sh itself, a hook
+# that is not Temper's and is refused, included).
+printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (plugin data)\n' > "$I_DG/inner/hard-target"
+mkdir -p .git/default-gate
+ln "$I_DG/inner/hard-target" .git/default-gate/pre-commit
+bash "$I_DG_INSTALL" >/dev/null 2>&1
+assert_eq "the default-gate copy never writes into the default folder: a hard-linked pre-commit's plugin file keeps its text, the kept hook has this CLI" "# Temper native pre-commit hook (plugin data)|2|yes" \
+  "$(sed -n 2p "$I_DG/inner/hard-target")|$(wc -l < "$I_DG/inner/hard-target" | tr -d ' ')|$(grep -qxF "$I_DG_CLI_LINE" .git/temper-gate/pre-commit && echo yes || echo no)"
+rm -rf .git/default-gate
 _i_clean
-I_SUM="$(cksum < "$I_INSTALL")"
-ln "$I_INSTALL" .git/hooks/pre-commit
-bash "$I_INSTALL" >/dev/null 2>&1
-assert_eq "a pre-commit hard-linked to install.sh itself leaves install.sh as it was" "$I_SUM" "$(cksum < "$I_INSTALL")"
-rm -f .git/hooks/pre-commit .git/hooks/pre-commit.bak.*
+I_SUM="$(cksum < "$I_DG_INSTALL")"
+mkdir -p .git/default-gate
+ln "$I_DG_INSTALL" .git/default-gate/pre-commit
+bash "$I_DG_INSTALL" >/dev/null 2>&1; I_RC=$?
+assert_eq "a pre-commit in default-gate hard-linked to install.sh itself is refused and leaves install.sh as it was" "1|$I_SUM" \
+  "$I_RC|$(cksum < "$I_DG_INSTALL")"
+rm -rf .git/default-gate
 _i_clean
 # install.sh reached through a chain of symlinks finds the real plugin folder.
 mkdir -p "$WORKDIR/inst-bin"
@@ -452,7 +470,7 @@ assert_eq "an early refusal prints the whole hook in a subshell that keeps the h
 rm -f "$WORKDIR/hook-lines.sh"
 # A refusal over an outside core.hooksPath keeps the hook in the repository's git folder and prints
 # exactly one line, which names no path of this machine.
-git config core.hooksPath ../outside-hooks
+git config core.hooksPath ../outside-gate
 OUT=$(bash "$I_INSTALL" 2>&1; true)
 git config --unset core.hooksPath
 I_LINES="$(printf '%s\n' "$OUT" | sed -n '/^----- BEGIN Temper pre-commit hook lines -----$/,/^----- END Temper pre-commit hook lines -----$/p' | sed '1d;$d')"
@@ -480,21 +498,23 @@ assert_eq "the plugin file behind .git/config is left as it was, and no hook fol
   "$(cksum < "$I_PLUG/inner/config")|$([[ -e .git/temper-gate ]] && echo yes || echo no)"
 rm -f .git/config
 mv .git/config-saved .git/config
-# A pre-commit hook that is not Temper's is refused, even with pre-commit.bak names planted as
-# symlinks into the plugin's folder (as an older installer named its backups): each is named as a
-# set-aside hook, nothing is written through them, and the hook stays as it was.
-printf '#!/bin/sh\nexit 0\n' > .git/hooks/pre-commit
-chmod +x .git/hooks/pre-commit
-echo 'plugin data' > "$I_PLUG/inner/bak-target"
+# A pre-commit hook in the default folder that is not Temper's is refused, even with pre-commit.bak
+# names planted as symlinks into the plugin's folder (as an older installer named its backups):
+# each is named as a set-aside hook, nothing is written through them, and the hook stays as it
+# was. The second plugin's default-gate copy runs here, so that folder is .git/default-gate.
+mkdir -p .git/default-gate
+printf '#!/bin/sh\nexit 0\n' > .git/default-gate/pre-commit
+chmod +x .git/default-gate/pre-commit
+echo 'plugin data' > "$I_DG/inner/bak-target"
 for ts in $(python3 -c 'import time; t = time.time(); print(" ".join(time.strftime("%Y%m%d%H%M%S", time.localtime(t + i)) for i in range(-1, 20)))'); do
-  ln -sf "$I_PLUG/inner/bak-target" ".git/hooks/pre-commit.bak.$ts"
+  ln -sf "$I_DG/inner/bak-target" ".git/default-gate/pre-commit.bak.$ts"
 done
-OUT=$(bash "$I_INSTALL" 2>&1); I_RC=$?
-assert_eq "install.sh refuses a hook that is not Temper's, with backup names planted as symlinks into the plugin's own folder" "1|21|none" \
-  "$I_RC|$(printf '%s\n' "$OUT" | grep -c '^Warning: .*/pre-commit.bak.[0-9]* is a pre-commit hook that an older Temper installer set aside')|$(git config --get core.hooksPath || echo none)"
-assert_eq "the plugin file behind the backup name and the existing hook are left as they were" "plugin data|exit 0" \
-  "$(cat "$I_PLUG/inner/bak-target")|$(sed -n 2p .git/hooks/pre-commit)"
-rm -f .git/hooks/pre-commit .git/hooks/pre-commit.bak.*
+OUT=$(bash "$I_DG_INSTALL" 2>&1); I_RC=$?
+assert_eq "the default-gate copy refuses a hook that is not Temper's, with backup names planted as symlinks into the plugin's own folder" "1|21|none" \
+  "$I_RC|$(printf '%s\n' "$OUT" | grep -c '^Warning: .*/default-gate/pre-commit.bak.[0-9]* is a pre-commit hook that an older Temper installer set aside')|$(git config --get core.hooksPath || echo none)"
+assert_eq "the plugin file behind the backup name and the existing hook in default-gate are left as they were" "plugin data|exit 0" \
+  "$(cat "$I_DG/inner/bak-target")|$(sed -n 2p .git/default-gate/pre-commit)"
+rm -rf .git/default-gate "$I_DG"
 _i_clean
 # --global over a core.hooksPath set to another folder does what the default does: it writes
 # nothing there and leaves the value as it was.
@@ -507,14 +527,12 @@ git config --unset core.hooksPath
 rm -rf .husky
 _i_clean
 # --global runs again over the core.hooksPath it set itself.
-rm -f .git/hooks/pre-commit
 bash "$I_INSTALL" --global >/dev/null 2>&1
 OUT=$(bash "$I_INSTALL" --global 2>&1); I_RC=$?
 assert_eq "--global runs again over the core.hooksPath it set itself" "0|yes" "$I_RC|$(printf '%s\n' "$OUT" | grep -q 'is already installed' && echo yes || echo no)"
 _i_gates PASS
 assert_exit "the --global hook passes a green gate" 0 bash .git/temper-gate/pre-commit
 _i_clean
-rm -f .git/hooks/pre-commit
 # block-secrets.sh as an in-agent hook scans only the text a call adds; with no JSON on stdin,
 # or with --staged (the installed hook's flag), it scans the staged files.
 I_KEY="AKIA$(printf 'Q%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)"
@@ -608,9 +626,10 @@ git -C "$I_MAIN" worktree add -q "$I_FEAT" >/dev/null 2>&1
 I_MAIN_HOOKS="$(ls -A "$I_MAIN/.git/hooks")"
 assert_exit "in a linked worktree, install.sh installs for the whole repository" 0 \
   bash -c "cd '$I_FEAT' && bash '$I_INSTALL'"
+I_MAIN_HOOKS_AFTER="$(ls -A "$I_MAIN/.git/hooks")"
 assert_eq "the hook is kept in the main checkout's .git/temper-gate, core.hooksPath points there, and .git/hooks is as it was" \
   "yes|$I_MAIN/.git/temper-gate|yes|no" \
-  "$(grep -qxF "$I_CLI_LINE" "$I_MAIN/.git/temper-gate/pre-commit" 2>/dev/null && echo yes || echo no)|$(git -C "$I_FEAT" config --get core.hooksPath)|$([[ "$(ls -A "$I_MAIN/.git/hooks")" == "$I_MAIN_HOOKS" ]] && echo yes || echo no)|$([[ -e "$I_MAIN/.git/worktrees/wt-feat/temper-gate" ]] && echo yes || echo no)"
+  "$(grep -qxF "$I_CLI_LINE" "$I_MAIN/.git/temper-gate/pre-commit" 2>/dev/null && echo yes || echo no)|$(git -C "$I_FEAT" config --get core.hooksPath)|$([[ "$I_MAIN_HOOKS_AFTER" == "$I_MAIN_HOOKS" ]] && echo yes || echo no)|$([[ -e "$I_MAIN/.git/worktrees/wt-feat/temper-gate" ]] && echo yes || echo no)"
 OUT=$(cd "$I_FEAT" && bash "$I_INSTALL" 2>&1); I_RC=$?
 assert_eq "a second run in the worktree says the hook is already installed and exits 0" "0|yes" \
   "$I_RC|$(printf '%s\n' "$OUT" | grep -qxF "The Temper pre-commit hook is already installed: $I_MAIN/.git/temper-gate/pre-commit (core.hooksPath points at its folder)." && echo yes || echo no)"
@@ -638,6 +657,42 @@ assert_eq "the hook is kept in the submodule's git folder, its config points the
 (cd "$I_SUPER/sub" && git config user.email "test@example.com" && git config user.name "test" && "$I_PLUG/scripts/temper" init >/dev/null && _i_gates FAIL && echo s > s.txt && git add s.txt)
 assert_exit "the hook blocks a real git commit on a red gate in the submodule" 1 git -C "$I_SUPER/sub" commit -q -m sm
 rm -rf "$I_SUPER" "$I_SUBSRC"
+# The kept hook's walk up from the repository skips the gate only at the plugin's own folder: a
+# folder above whose scripts folder is a real folder and the same folder as the one that holds the
+# hook's CLI. A link planted in a folder above a repository does not pass for it: scripts/temper as
+# a symlink or a hard link to the CLI, or scripts as a symlink to the plugin's scripts folder. Each
+# is planted in turn, and a real git commit on a red gate is still blocked.
+I_WALK="$WORKDIR/walk"
+rm -rf "$I_WALK"
+mkdir -p "$I_WALK/proj"
+git init -q "$I_WALK/proj"
+git -C "$I_WALK/proj" config user.email "test@example.com"
+git -C "$I_WALK/proj" config user.name "test"
+(cd "$I_WALK/proj" && "$I_PLUG/scripts/temper" init >/dev/null && _i_gates FAIL && echo w > walk.txt && git add walk.txt)
+assert_exit "install.sh installs in a repository below a folder that the next cases plant links in" 0 \
+  bash -c "cd '$I_WALK/proj' && bash '$I_INSTALL'"
+assert_exit "with nothing planted above it, the hook blocks a real git commit on a red gate there" 1 \
+  git -C "$I_WALK/proj" commit -q -m walk
+mkdir -p "$I_WALK/scripts"
+ln -s "$I_PLUG/scripts/temper" "$I_WALK/scripts/temper"
+assert_exit "a symlink to the CLI planted as scripts/temper in a folder above the repository does not skip the gate" 1 \
+  git -C "$I_WALK/proj" commit -q -m walk
+rm -f "$I_WALK/scripts/temper"
+ln "$I_PLUG/scripts/temper" "$I_WALK/scripts/temper"
+assert_exit "a hard link to the CLI planted as scripts/temper in a folder above the repository does not skip the gate" 1 \
+  git -C "$I_WALK/proj" commit -q -m walk
+rm -rf "$I_WALK/scripts"
+ln -s "$I_PLUG/scripts" "$I_WALK/scripts"
+assert_exit "a symlink to the plugin's scripts folder planted as scripts in a folder above the repository does not skip the gate" 1 \
+  git -C "$I_WALK/proj" commit -q -m walk
+# The control: the same kept hook, run from a repository inside the plugin's folder that has a red
+# gate, skips the gate there.
+mkdir -p "$I_PLUG/inner/walk-proj/.temper"
+git init -q "$I_PLUG/inner/walk-proj"
+(cd "$I_PLUG/inner/walk-proj" && _i_gates FAIL)
+assert_exit "the same kept hook skips the gate in a repository inside the plugin's folder" 0 \
+  bash -c "cd '$I_PLUG/inner/walk-proj' && bash '$I_WALK/proj/.git/temper-gate/pre-commit'"
+rm -rf "$I_WALK" "$I_PLUG/inner/walk-proj"
 # A linked worktree whose repository keeps its git folder inside the plugin's folder is refused.
 git init -q "$I_PLUG"
 git -C "$I_PLUG" config user.email "test@example.com"
@@ -728,7 +783,7 @@ setup
 git config user.email "test@example.com"
 git config user.name "test"
 git config --unset core.hooksPath 2>/dev/null || true
-rm -rf .git/temper-gate .git/temper-pre-commit .git/hooks/pre-commit
+rm -rf .git/temper-gate .git/temper-pre-commit .git/default-gate
 G_PLUG="$WORKDIR/guard-plugin"
 rm -rf "$G_PLUG"
 mkdir -p "$G_PLUG/scripts/guards" "$G_PLUG/inner/code"
@@ -737,14 +792,21 @@ cp "$REPO_ROOT/scripts/guards/install.sh" "$G_PLUG/scripts/guards/install.sh"
 # each refusal below then refuses for the reason it names.
 cp "$TEMPER" "$G_PLUG/scripts/temper"
 G_INSTALL="$G_PLUG/scripts/guards/install.sh"
+# The cases that need hooks in git's default folder run a second throwaway plugin made by
+# _dg_plugin, whose install.sh reads .git/default-gate as that folder; its inner/code folder
+# stands for any folder of it, as above.
+G_DG="$WORKDIR/guard-dg-plugin"
+_dg_plugin "$G_DG"
+mkdir -p "$G_DG/inner/code"
+G_DG_INSTALL="$G_DG/scripts/guards/install.sh"
 # install.sh: a core.hooksPath that leads into the plugin folder, directly or through a symlink,
 # is a folder that is not Temper's: refused, and nothing is written or made there.
 git config core.hooksPath guard-plugin/inner/code
 assert_exit "install.sh refuses a core.hooksPath that leads into the plugin's own folder" 1 bash "$G_INSTALL"
-ln -s "$G_PLUG/inner/code" linked-hooks
-git config core.hooksPath linked-hooks
+ln -s "$G_PLUG/inner/code" linked-gate
+git config core.hooksPath linked-gate
 assert_exit "install.sh refuses a core.hooksPath that is a symlink into the plugin's own folder" 1 bash "$G_INSTALL"
-git config core.hooksPath linked-hooks/new
+git config core.hooksPath linked-gate/new
 assert_exit "install.sh refuses a folder still to be made under a symlink into the plugin's own folder" 1 bash "$G_INSTALL"
 mkdir -p rel-dir
 ln -s ../guard-plugin/inner/code rel-dir/rel-link
@@ -752,27 +814,27 @@ git config core.hooksPath rel-dir/rel-link
 assert_exit "install.sh refuses a relative symlink with '..' that leads into the plugin's own folder" 1 bash "$G_INSTALL"
 git config --unset core.hooksPath
 rm -rf .git/temper-gate
-# A .git/hooks that is a symlink into the plugin's folder is only read: with no hook in it, the
+# A default folder that is a symlink into the plugin's folder is only read: with no hook in it, the
 # installer points core.hooksPath at the temper-gate folder and writes nothing through the link.
-mv .git/hooks .git/hooks-saved
-ln -s "$G_PLUG/inner/code" .git/hooks
-assert_exit "a .git/hooks that is a symlink into the plugin's own folder is only read, and the install goes on" 0 bash "$G_INSTALL"
-rm -f .git/hooks
-mv .git/hooks-saved .git/hooks
-assert_eq "none of these runs writes or creates anything in the plugin's folder" "no|no|" \
-  "$([[ -e "$G_PLUG/inner/code/pre-commit" ]] && echo yes || echo no)|$([[ -e "$G_PLUG/inner/code/new" ]] && echo yes || echo no)|$(ls -A "$G_PLUG/inner/code")"
+# The second plugin's default-gate copy runs here, so that folder is .git/default-gate.
+ln -s "$G_DG/inner/code" .git/default-gate
+assert_exit "a default folder (default-gate) that is a symlink into the plugin's own folder is only read, and the install goes on" 0 bash "$G_DG_INSTALL"
+rm -f .git/default-gate
+assert_eq "none of these runs writes or creates anything in either plugin's folder" "no|no||" \
+  "$([[ -e "$G_PLUG/inner/code/pre-commit" ]] && echo yes || echo no)|$([[ -e "$G_PLUG/inner/code/new" ]] && echo yes || echo no)|$(ls -A "$G_PLUG/inner/code")|$(ls -A "$G_DG/inner/code")"
 git config --unset core.hooksPath
 rm -rf .git/temper-gate
-# A pre-commit that is a symlink into the plugin folder (to a file that reads as an older Temper
-# hook) is left as it was, never written through, and git no longer runs it.
-printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (plugin file)\n' > "$G_PLUG/inner/code/pre-commit"
-rm -f .git/hooks/pre-commit
-ln -s "$G_PLUG/inner/code/pre-commit" .git/hooks/pre-commit
-OUT=$(bash "$G_INSTALL" 2>&1); G_RC=$?
-assert_eq "a pre-commit symlink into the plugin folder is left as it was; the plugin file is untouched; a note says git no longer runs it" \
+# A pre-commit in the default folder that is a symlink into the plugin folder (to a file that reads
+# as an older Temper hook) is left as it was, never written through, and git no longer runs it.
+# The second plugin's default-gate copy runs here.
+printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (plugin file)\n' > "$G_DG/inner/code/pre-commit"
+mkdir -p .git/default-gate
+ln -s "$G_DG/inner/code/pre-commit" .git/default-gate/pre-commit
+OUT=$(bash "$G_DG_INSTALL" 2>&1); G_RC=$?
+assert_eq "a pre-commit symlink in default-gate into the plugin folder is left as it was; the plugin file is untouched; a note says git no longer runs it" \
   "0|yes|# Temper native pre-commit hook (plugin file)|2|yes" \
-  "$G_RC|$([[ -L .git/hooks/pre-commit ]] && echo yes || echo no)|$(sed -n 2p "$G_PLUG/inner/code/pre-commit")|$(wc -l < "$G_PLUG/inner/code/pre-commit" | tr -d ' ')|$(printf '%s\n' "$OUT" | grep -q '^Note: git no longer runs .*/.git/hooks/pre-commit, a hook from an older Temper' && echo yes || echo no)"
-rm -f "$G_PLUG/inner/code/pre-commit" .git/hooks/pre-commit .git/hooks/pre-commit.bak.*
+  "$G_RC|$([[ -L .git/default-gate/pre-commit ]] && echo yes || echo no)|$(sed -n 2p "$G_DG/inner/code/pre-commit")|$(wc -l < "$G_DG/inner/code/pre-commit" | tr -d ' ')|$(printf '%s\n' "$OUT" | grep -q '^Note: git no longer runs .*/.git/default-gate/pre-commit, a hook from an older Temper' && echo yes || echo no)"
+rm -rf "$G_DG/inner/code/pre-commit" .git/default-gate
 git config --unset core.hooksPath
 rm -rf .git/temper-gate
 # The plugin's own repository: its .git folder is the one place in the plugin folder allowed.
@@ -782,14 +844,19 @@ assert_exit "in the plugin's own repository, a core.hooksPath into its folder is
   bash -c "cd '$G_PLUG' && bash scripts/guards/install.sh"
 git -C "$G_PLUG" config --unset core.hooksPath
 rm -rf "$G_PLUG/.git/temper-gate"
-# A hook that is not Temper's in the plugin's own repository: refused, with the hook kept in that
-# checkout's own .git folder and nothing else in the plugin folder written.
-printf '#!/bin/sh\necho mine\n' > "$G_PLUG/.git/hooks/pre-commit"
-chmod +x "$G_PLUG/.git/hooks/pre-commit"
-OUT=$(cd "$G_PLUG" && bash scripts/guards/install.sh 2>&1); G_RC=$?
-assert_eq "in the plugin's own repository, a refusal keeps the hook in its .git folder only, and sets no core.hooksPath" "1|yes|yes||none" \
-  "$G_RC|$([[ -x "$G_PLUG/.git/temper-gate/pre-commit" ]] && echo yes || echo no)|$(printf '%s\n' "$OUT" | grep -qxF "The Temper hook is kept in $G_PLUG/.git/temper-gate/pre-commit (in the repository's git folder, never committed). Nothing else was written. To use the Temper commit gate, add the line between the BEGIN and END lines below to your pre-commit hook." && echo yes || echo no)|$(ls -A "$G_PLUG/inner/code")|$(git -C "$G_PLUG" config --get core.hooksPath || echo none)"
-rm -f "$G_PLUG/.git/hooks/pre-commit"
+# A hook that is not Temper's in the default folder of the plugin's own repository: refused, with
+# the hook kept in that checkout's own .git folder and nothing else in the plugin folder written.
+# The second plugin is that repository here, so its default-gate copy reads .git/default-gate.
+git init -q "$G_DG"
+mkdir -p "$G_DG/.git/default-gate"
+printf '#!/bin/sh\necho mine\n' > "$G_DG/.git/default-gate/pre-commit"
+chmod +x "$G_DG/.git/default-gate/pre-commit"
+OUT=$(cd "$G_DG" && bash scripts/guards/install.sh 2>&1); G_RC=$?
+assert_eq "in the plugin's own repository, a refusal over a hook in default-gate keeps the hook in its .git folder only, and sets no core.hooksPath" "1|yes|yes||none" \
+  "$G_RC|$([[ -x "$G_DG/.git/temper-gate/pre-commit" ]] && echo yes || echo no)|$(printf '%s\n' "$OUT" | grep -qxF "The Temper hook is kept in $G_DG/.git/temper-gate/pre-commit (in the repository's git folder, never committed). Nothing else was written. To use the Temper commit gate, add the line between the BEGIN and END lines below to your pre-commit hook." && echo yes || echo no)|$(ls -A "$G_DG/inner/code")|$(git -C "$G_DG" config --get core.hooksPath || echo none)"
+rm -rf "$G_DG"
+# With no hook of the user's in its default folder, the install in the plugin's own repository is
+# accepted (the real installer, in the first plugin).
 assert_exit "in the plugin's own repository, the install is accepted" 0 \
   bash -c "cd '$G_PLUG' && bash scripts/guards/install.sh"
 assert_eq "the hook lands in the plugin repository's .git/temper-gate, core.hooksPath points there, and nothing else in it is written" \
@@ -835,9 +902,8 @@ assert_eq "--global with GIT_DIR and GIT_CONFIG in the plugin folder sets core.h
   "$(pwd -P)/.git/temper-gate|none|no" \
   "$(git config --local --get core.hooksPath)|$(git --git-dir="$G_PLUG/inner/gitdir" config --get core.hooksPath || echo none)|$([[ -e "$G_PLUG/inner/code/config" ]] && echo yes || echo no)"
 git config --unset core.hooksPath
-rm -rf .git/temper-gate linked-hooks rel-dir
+rm -rf .git/temper-gate linked-gate rel-dir
 # The installed hook fails open when python3 is missing, and still blocks a staged secret.
-rm -f .git/hooks/pre-commit
 bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
 echo '{"command": "temper", "run_mode": "interactive"}' > .temper/build-state.json
 echo '{"check": {"verdict": "FAIL", "requirements": [], "ts": "x"}}' > .temper/gates.json

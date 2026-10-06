@@ -166,7 +166,6 @@ assert_exit "protected-paths: a non-.sql file under migrations is not blocked" 0
 setup
 git config user.email "test@example.com"
 git config user.name "test"
-rm -f .git/hooks/pre-commit    # clear any hook a prior test left in the shared WORKDIR
 rm -rf .husky
 mkdir -p .husky
 git config core.hooksPath .husky
