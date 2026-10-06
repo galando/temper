@@ -7,16 +7,25 @@
 #   2. README.md has an "Install" heading and a "What the mod reads and writes" heading.
 #   3. README.md has a plain text line that names the phases, before the Mermaid block.
 #   4. Every image in README.md has alt text.
-#   5. No text file names the bundled assets folder outside a Markdown link target.
+#   5. No text file names the bundled assets folder outside a Markdown link target. git grep
+#      reads the files, chosen by fixed pathspecs: top level files, .claude/CLAUDE.md and the
+#      folders listed at rule 5 below. No other folder is read.
 #   6. plugin.json and marketplace.json carry no "options" key.
 #   7. plugin.json has a description, keywords and a version, and marketplace.json
 #      names the same plugin.
-#   8. A LICENSE file exists.
+#   8. A LICENSE file exists (LICENSE, LICENSE.md or LICENSE.txt).
 #
-# Test hook: VALIDATE_DIRECTORY_ROOT=<dir> checks that folder instead of this clone.
+# It checks the plugin folder it sits in, and nothing in the environment moves that folder: the
+# tests copy this script into a temporary plugin and run the copy there. The folder must be a git
+# work tree (rule 5 reads its files with git grep). This script writes nothing.
 set -uo pipefail
 
-ROOT="${VALIDATE_DIRECTORY_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+# With CDPATH set, cd prints the folder it enters, and the path below would hold it twice.
+unset CDPATH
+# The plugin folder: this script sits in its scripts folder, so strip that literal suffix.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${HERE%/scripts}"
+[[ "$ROOT" != "$HERE" ]] || { echo "FAIL: cannot find the plugin folder from $HERE"; exit 1; }
 FAIL=0
 fail() { echo "FAIL: $1"; FAIL=$((FAIL+1)); }
 
@@ -58,16 +67,33 @@ else
 fi
 
 # 5. The bundled assets folder path may appear only as a Markdown link target.
+# git grep reads the files, chosen by the fixed pathspecs below (tracked files, plus new files git
+# does not ignore): a top level file, .claude/CLAUDE.md, or a file in one of the named folders.
+# docs/history (old release notes), scripts/selftest and this script are excluded. This rule opens
+# no file itself: it only filters the lines git grep prints, keeping a file with an md, sh, tape,
+# tpl or json extension and a line that still names the folder once every Markdown link target on
+# it is removed. The other rules open only the plugin folder plus fixed text (README.md, the two
+# manifests, the license).
 ASSETS_DIR_NAME="docs/assets"
 LEAKS=""
-while IFS= read -r f; do
-  rel="${f#"$ROOT"/}"
-  hit="$(sed -E 's/\]\([^)]*\)//g' "$f" | grep -nF "$ASSETS_DIR_NAME" | head -2 || true)"
-  [[ -n "$hit" ]] && LEAKS+="  $rel: $(printf '%s' "$hit" | head -1 | cut -c1-100)"$'\n'
-done < <(find "$ROOT" \( -path "$ROOT/.git" -o -path "$ROOT/node_modules" -o -path "$ROOT/.temper" \
-          -o -path "$ROOT/docs/history" -o -path "$ROOT/scripts/validate-directory.sh" \
-          -o -path "$ROOT/scripts/tests" \) -prune -o -type f \
-          \( -name '*.md' -o -name '*.sh' -o -name '*.tape' -o -name '*.tpl' -o -name '*.json' -o -name '*.ts' -o -name '*.tsx' \) -print 2>/dev/null)
+if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  fail "rule 5 reads files with git grep, and $ROOT is not a git work tree"
+else
+  SEEN=$'\n'
+  while IFS= read -r -d '' rel && IFS= read -r -d '' lineno && IFS= read -r line; do
+    [[ "$rel" =~ \.(md|sh|tape|tpl|json)$ ]] || continue
+    [[ "$SEEN" != *$'\n'"$rel"$'\n'* ]] || continue
+    rest="$(printf '%s\n' "$line" | sed -E 's/\]\([^)]*\)//g')"
+    [[ "$rest" == *"$ASSETS_DIR_NAME"* ]] || continue
+    SEEN+="$rel"$'\n'
+    LEAKS+="  $rel: $(printf '%s:%s' "$lineno" "$rest" | cut -c1-100)"$'\n'
+  done < <(git -C "$ROOT" -c grep.column=false -c grep.fullName=false -c grep.lineNumber=true \
+             grep --untracked -z -n -I -F -e "$ASSETS_DIR_NAME" -- \
+             ':(glob)*' .claude/CLAUDE.md .claude-plugin .github agents commands docs examples \
+             packs reference scripts skills templates \
+             ':(exclude)docs/history' ':(exclude)scripts/selftest' ':(exclude)scripts/validate-directory.sh' \
+             2>/dev/null)
+fi
 if [[ -n "$LEAKS" ]]; then
   fail "the bundled assets folder path is named outside a Markdown link target:"
   printf '%s' "$LEAKS"
@@ -114,7 +140,7 @@ PY
 fi
 
 # 8. License.
-ls "$ROOT"/LICENSE* >/dev/null 2>&1 || fail "no LICENSE file"
+[[ -f "$ROOT/LICENSE" || -f "$ROOT/LICENSE.md" || -f "$ROOT/LICENSE.txt" ]] || fail "no LICENSE file"
 
 if [[ $FAIL -eq 0 ]]; then
   echo "OK: directory readiness checks passed"

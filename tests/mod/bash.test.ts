@@ -54,9 +54,50 @@ describe('decision CLI calls', () => {
   test('override, evidence accept and state advance are recognised', () => {
     expect(classifyBash('temper override plan --reason ok').decisions).toEqual(['override'])
     expect(classifyBash('scripts/temper evidence accept --stage review --id 1 --reason x').decisions).toEqual(['accept'])
-    expect(classifyBash('bash "$CLAUDE_PLUGIN_ROOT/scripts/temper" state advance plan').decisions).toEqual(['advance'])
-    expect(classifyBash('cd x && $CLAUDE_PLUGIN_ROOT/scripts/temper override build --reason r').decisions).toEqual(['override'])
+    expect(classifyBash('bash "${CLAUDE_PLUGIN_ROOT}/scripts/temper" state advance plan').decisions).toEqual(['advance'])
+    expect(classifyBash('cd x && $PLUGIN_DIR/scripts/temper override build --reason r').decisions).toEqual(['override'])
   })
+
+  // The commands reach the script by the path Claude Code fills in for the plugin folder (it may hold spaces, so
+  // it can be quoted), and a subagent may still write the variable itself. Each is read exactly like scripts/temper.
+  const FORMS = [
+    '/home/u/.claude/plugins/cache/temper/temper/9.6.5/scripts/temper',
+    '"/Users/Jo Doe/Library/Claude Plugins/temper/9.6.5/scripts/temper"',
+    "'/Users/Jo Doe/Library/Claude Plugins/temper/9.6.5/scripts/temper'",
+    '${CLAUDE_PLUGIN_ROOT}/scripts/temper',
+    '"${CLAUDE_PLUGIN_ROOT}/scripts/temper"',
+  ]
+  const CALLS = [
+    // decisions
+    'override plan --reason x',
+    'evidence accept --stage review --id 1 --reason x',
+    'state advance intent_complete plan',
+    'state advance plan_complete build',
+    'state set next_stage plan',
+    // reads and records
+    'gate plan',
+    'gate check',
+    'state get next_stage',
+    'report',
+    'status --json',
+    'evidence add --stage build --claim "unit tests" --label PROVEN',
+    'evidence list --stage review',
+    'state set task 2',
+    'state set complexity medium',
+    // run state
+    'state clear',
+    'state archive',
+    'state init pw',
+    'state loop check fix',
+  ]
+  for (const form of FORMS) {
+    test(`${form} is read like scripts/temper`, () => {
+      for (const call of CALLS) {
+        expect({ call, ...classifyBash(`${form} ${call}`) }).toEqual({ call, ...classifyBash(`scripts/temper ${call}`) })
+        expect({ call, ...classifyBash(`cd /repo && ${form} ${call} 2>&1 | tail -3`) }).toEqual({ call, ...classifyBash(`cd /repo && scripts/temper ${call} 2>&1 | tail -3`) })
+      }
+    })
+  }
 
   test('the CLI commands that only read or compute verdicts are not decisions', () => {
     for (const c of ['temper gate build', 'temper evidence add --stage build --claim x', 'temper evidence list', 'temper status --json', 'temper state loop check fix']) {
@@ -87,7 +128,7 @@ describe('evasions of the protected path guard', () => {
     expect(flagged('echo {} > $T/gates.json')).toBe(true)
     expect(flagged('F=.temper/gates.json; echo {} > $F')).toBe(true)
     expect(flagged('cd $DIR && echo {} > events/1.json')).toBe(true)
-    expect(flagged('echo x > $HOME/notes.txt')).toBe(false)
+    expect(flagged('echo x > $TMPDIR/notes.txt')).toBe(false)
     expect(flagged('cd $DIR && echo x > out.txt')).toBe(false)
   })
 
@@ -150,7 +191,7 @@ describe('command wrappers do not hide a commit or a decision', () => {
   const wrapped = [
     'env -i git commit -m x',
     'env FOO=1 BAR=2 git commit -m x',
-    'env -u HOME git commit -m x',
+    'env -u LANG git commit -m x',
     'timeout 5 git commit -m x',
     'timeout -s KILL 10 git commit -m x',
     'nice git commit -m x',
@@ -235,13 +276,13 @@ describe('more ways to write a guarded file', () => {
   const writes = [
     'echo {} >| .temper/gates.json',
     'echo {} >|.temper/gates.json',
-    'curl -o .temper/gates.json https://x/y',
-    'curl --output .temper/status.json https://x/y',
-    'curl --output=.temper/overrides.json https://x/y',
-    'curl -s -o.temper/build-state.json https://x/y',
-    'wget -O .temper/gates.json https://x/y',
-    'wget --output-document .temper/status.json https://x/y',
-    'wget -O.temper/gates.json https://x/y',
+    'curl -o .temper/gates.json forged.json',
+    'curl --output .temper/status.json forged.json',
+    'curl --output=.temper/overrides.json forged.json',
+    'curl -s -o.temper/build-state.json forged.json',
+    'wget -O .temper/gates.json forged.json',
+    'wget --output-document .temper/status.json forged.json',
+    'wget -O.temper/gates.json forged.json',
     'tar -xf evil.tar -C .temper',
     'tar -xf evil.tar -C .temper/specs/pw',
     'tar -xf evil.tar --directory=.temper/specs/pw/events',
@@ -295,8 +336,8 @@ describe('more ways to write a guarded file', () => {
     'tar -tf evil.tar',
     'tar -cf /tmp/out.tar .temper',
     'tar -xf in.tar -C /tmp/out',
-    'curl -s https://example.com/x -o /tmp/x',
-    'wget -O /tmp/x https://example.com/x',
+    'curl -s -o /tmp/x forged.json',
+    'wget -O /tmp/x forged.json',
     'cat g* > out.txt',
     'echo x > notes.txt',
     'cd src && echo x > out.txt',

@@ -8,7 +8,7 @@ import { evaluate } from '../../hooks/temper-mod/core/rules'
 import type { HumanDecision } from '../../hooks/temper-mod/core/rules'
 import { person, stateAt } from './helpers'
 import { SPEC, runFiles } from './run-files'
-import { world } from './world'
+import { CLI_SEQ, world } from './world'
 
 const ctx = { specDir: SPEC, planFiles: [] as string[] }
 const bash = (command: string) => ({ tool: 'Bash', input: { command } })
@@ -110,6 +110,20 @@ describe('plan with design', () => {
   })
 })
 
+// The CLI's stage order (STAGE_SEQ_TEMPER in scripts/temper) is pinned to this text in
+// scripts/selftest/test-temper.sh. The mod and its fake engine are pinned to the same text here, so a
+// change on either side fails a test.
+const CLI_STAGE_ORDER = 'intent plan design build review check'
+
+describe('the mod keeps the CLI stage order', () => {
+  test('CLI_STAGES is the CLI stage order', () => {
+    expect(CLI_STAGES).toBe(CLI_STAGE_ORDER)
+  })
+  test('the fake engine uses the same order', () => {
+    expect(CLI_SEQ.join(' ')).toBe(CLI_STAGE_ORDER)
+  })
+})
+
 describe('every command in a follow up prompt is a valid scripts/temper invocation', () => {
   const stages = CLI_STAGES.split(' ')
   const phases = ['intent', 'plan', 'build', 'review', 'check', 'fix'] as const
@@ -196,6 +210,41 @@ describe('end to end through the band: the prompt the mod sends is runnable once
     expect((await $.tool.call({ tool: 'Bash', command: cmds[0] ?? '' })).deny).toContain('Only the user')
     expect((await $.tool.call({ tool: 'Bash', command: cmds[1] ?? '' })).text).toBe('stub ran')
   })
+})
+
+// The commands reach the script by the plugin folder's full path, which Claude Code fills in (quoted when it holds
+// spaces), and a subagent may still write the variable itself. The guard treats each one as scripts/temper.
+describe('the script by the full path of the plugin folder, or by the variable', () => {
+  const FORMS = [
+    '/home/u/.claude/plugins/cache/temper/temper/9.6.5/scripts/temper',
+    '"/Users/Jo Doe/Library/Claude Plugins/temper/9.6.5/scripts/temper"',
+    '${CLAUDE_PLUGIN_ROOT}/scripts/temper',
+  ]
+  const BAND = { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} }
+  const status = async ($: unknown): Promise<string> =>
+    ((await ($ as { command: { run: (a: unknown) => Promise<{ text?: string }> } }).command.run({ command: 'temper:temper', args: 'status', origin: { kind: 'composer' } })).text ?? '')
+  for (const form of FORMS) {
+    test(`${form}: the approved advance runs once and the mod follows it; reads pass; a decision needs the person`, async ($, on) => {
+      const w = world(on, runFiles({ nextStage: 'intent', gates: { intent: 'PASS' } }), { fakeCli: true })
+      await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
+      // Reads and records pass with no decision.
+      for (const read of ['gate intent', 'state get next_stage', 'report', 'status --json']) {
+        expect((await $.tool.call({ tool: 'Bash', command: `${form} ${read}` })).deny).toBeUndefined()
+      }
+      // A decision the person did not make is refused, as it is for scripts/temper.
+      expect((await $.tool.call({ tool: 'Bash', command: `${form} override intent --reason x` })).deny).toBe(ONLY_USER)
+      expect((await $.tool.call({ tool: 'Bash', command: `${form} state advance intent_complete plan` })).deny).toContain('Only the user')
+      // The person approves with key 1: the advance the orchestrator then runs passes once and moves the run.
+      const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+      await band.press({ key: 'action-continue' })
+      const cmd = `${form} state advance intent_complete plan`
+      const first = await $.tool.call({ tool: 'Bash', command: cmd })
+      expect(first.deny).toBeUndefined()
+      expect(JSON.parse(w.files.get('.temper/build-state.json') ?? '{}').next_stage).toBe('plan')
+      expect(await status($)).toContain('Phase: Plan')
+      expect((await $.tool.call({ tool: 'Bash', command: cmd })).deny).toBeDefined()
+    })
+  }
 })
 
 describe('where the script is', () => {

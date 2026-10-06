@@ -23,14 +23,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # The site screenshot is kept out of the plugin tree: the Claude plugin directory
-      # holds any bundled image a script could reach for manual review. Restore it from
-      # the commit that added it, so the published site still serves it.
-      - name: Restore site screenshot
-        run: git show 63713fb4b5d17916a7f03feb2e2ab5c7ed131257:docs/temper.png > docs/temper.png
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

@@ -10,7 +10,7 @@
 # Subcommands:
 #   temper init                                  scaffold .temper/ in the current project
 #   temper state <get|set|advance|loop|archive|clear> ..  read/write .temper/build-state.json;
-#                                                 archive writes {spec}/gate-ledger.json
+#                                                 archive writes gate-ledger.json in the spec folder
 #   temper evidence <add|run|list|resolve|accept|clear> ...  append/execute-and-record/read/mark-fixed/clear the ledger
 #   temper gate <stage> [--spec-path P]           compute PASS/FAIL for a stage, record verdict
 #   temper model <stage> | --all                  resolve a stage's model (config override > frontmatter)
@@ -20,22 +20,49 @@
 #   temper bands [--json]                         deterministic control-band drift check
 #                                                 over .temper/metrics.json history
 #   temper metrics append <series> <value>        append a numeric point to <series>_history
-#   temper config get <dot.path> [default]        read temper.config (for hooks/CI scripts)
+#   temper config get <dot.path> [default]        read temper.config (for hook and CI scripts)
 #
-# DEGRADATION CONTRACT (same spirit as scripts/hooks/*.sh):
+# DEGRADATION CONTRACT (same spirit as Temper's guardrail scripts):
 #   - A stage with no evidence recorded FAILS closed (nothing to verify => not verified).
 #   - Missing python3 => every subcommand exits 1 with a clear message (JSON needs it).
 #   - Malformed state/config => treated as absent (defaults apply), never a crash.
+#   - A symlink on a path this CLI writes or reads as run state (.temper, its evidence, specs
+#     and archive folders, the fixed state and evidence files, the active run's spec folder
+#     and its gate-ledger.json) => every subcommand except config, model and help exits 3
+#     with a one-line reason on stderr, so no write can follow a link out of the project.
+#     Any other link inside a spec folder is not run state and changes nothing.
+#   - Run from the home folder => every subcommand except config, model and help exits 1:
+#     the home folder holds Claude Code's own files and is never a project.
 set -uo pipefail
+# An exported CDPATH makes `cd` print the folder it enters, which would double every
+# folder this script works out with "$(cd ... && pwd)". It is never used here.
+unset CDPATH
 
 REPO_ROOT="$(pwd)"
-# Where the plugin itself lives (this script is $PLUGIN_ROOT/scripts/temper). Used only
-# by `temper model` to read agents/*.md frontmatter — never to locate project state.
-# Prefer where this file actually sits over $CLAUDE_PLUGIN_ROOT, which belongs to
-# whichever plugin is calling; fall back to it when the script is reached via a symlink.
-PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)"
-[[ -d "$PLUGIN_ROOT/agents" ]] || PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
-TEMPER_DIR="${TEMPER_DIR:-$REPO_ROOT/.temper}"
+# Where the plugin itself lives (this script). Used only to read the stage briefs'
+# frontmatter (`temper model`), to load acceptance.py and to refuse a project folder
+# inside the plugin folder, never to locate project state. It comes from this file's
+# own location alone, never from an environment variable: when the CLI is reached
+# through a symlink (a link in a bin folder, or a chain of links), each link is followed
+# to the real file first. The plugin folder is that file's folder (resolved, so a link
+# to the folder itself is followed too) with the literal suffix /scripts removed.
+_self="${BASH_SOURCE[0]}"
+_hops=0
+while [[ -L "$_self" && $_hops -lt 40 ]]; do
+  _link_dir="$(cd -P "$(dirname "$_self")" 2>/dev/null && pwd)"
+  _self="$(readlink "$_self")"
+  [[ "$_self" == /* ]] || _self="$_link_dir/$_self"
+  _hops=$((_hops + 1))
+done
+SCRIPTS_DIR="$(cd -P "$(dirname "$_self")" 2>/dev/null && pwd)"
+PLUGIN_ROOT="${SCRIPTS_DIR%/scripts}"
+unset _self _hops _link_dir
+ACCEPTANCE_PY="$PLUGIN_ROOT/scripts/acceptance.py"
+# Run state always lives in this project's .temper folder: no environment variable moves
+# it, so every write and delete below stays inside the project.
+TEMPER_DIR="$REPO_ROOT/.temper"
+# TEMPER_CONFIG may name another config file to READ (the guard scripts pass the project's
+# own); nothing in this script ever writes to it.
 CONFIG_FILE="${TEMPER_CONFIG:-$REPO_ROOT/.claude/temper.config}"
 STATE_FILE="$TEMPER_DIR/build-state.json"
 LOOPS_FILE="$TEMPER_DIR/feedback-loops.json"
@@ -50,9 +77,39 @@ STAGES="intent plan design build review check commit"
 
 # Stages that run as an Agent subprocess and therefore have a model to resolve.
 # `commit` is not one — it's the orchestrator running `temper gate commit`.
-# rca/fix are /temper:fix's subprocess stages: model stages (agents/{rca,fix}.md
+# rca/fix are /temper:fix's subprocess stages: model stages (the rca and fix briefs'
 # frontmatter) but never gate stages — Fix evidence gates as `build`.
 AGENT_STAGES="intent plan design build review check rca fix"
+
+# The only stage names an evidence ledger file can carry: every gate stage plus the two
+# /temper:fix subprocess stages. A stage name is checked against this list before any
+# path is built from it (see _stage_ok and _evidence_file).
+EVIDENCE_STAGES="intent plan design build review check commit rca fix"
+
+_stage_ok() { # _stage_ok <stage> -> 0 only for a name on the fixed EVIDENCE_STAGES list
+  case "$1" in
+    intent|plan|design|build|review|check|commit|rca|fix) return 0 ;;
+  esac
+  return 1
+}
+
+_stage_refuse() { # _stage_refuse <stage> -> prints the usage failure for a stage not on the list
+  echo "FAIL: unknown stage '$1' (one of: $EVIDENCE_STAGES)" >&2
+  return 1
+}
+
+_slug_ok() { # _slug_ok <slug> -> 0 for a spec slug: letters (either case), digits, '.', '_', '-'
+             # starting with a letter or digit, never containing '/' or '..' (so never a path).
+             # Either case: a ticket key prefix such as PROJ-123-login is a valid slug.
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && ! [[ "$1" =~ [.][.] ]]
+}
+
+_spec_slug() { # _spec_slug <spec_path> -> the slug of a spec path of the form .temper/specs/<slug>,
+               # or "" for any other value (the only shape `state init` ever records)
+  local sp="${1%/}" slug
+  slug="${sp#.temper/specs/}"
+  if [[ "$slug" != "$sp" ]] && _slug_ok "$slug"; then echo "$slug"; else echo ""; fi
+}
 
 # Per-command state.stage sequences (bookkeeping for resume — see
 # reference/orchestrator-patterns.md "Build State Schema"). Distinct from $STAGES
@@ -68,13 +125,114 @@ _count_lines_matching() { # _count_lines_matching <pattern> <file>  (grep -c exi
   echo "${n:-0}"
 }
 
+_git_toplevel_is() { # _git_toplevel_is <folder> -> 0 when <folder> is a git work tree whose top
+                      # level is <folder> itself. Every GIT_* variable is dropped first, so a
+                      # GIT_DIR or GIT_WORK_TREE set by a caller (a git hook sets some) cannot
+                      # answer for another repository.
+  local top
+  top="$(
+    while IFS= read -r v; do unset "$v"; done < <(compgen -e | grep '^GIT_')
+    git -C "$1" rev-parse --show-toplevel 2>/dev/null
+  )" || return 1
+  [[ -n "$top" && "$top" -ef "$1" ]]
+}
+
+_under_folder() { # _under_folder <path> <folder> -> 0 when <path> is <folder> or lies inside it.
+                  # Decided by identity, not by text: <path> is resolved (links followed) and
+                  # each of its ancestors is compared with <folder> by device and inode
+                  # ([[ -ef ]]), so a path typed in another case on a file system that does
+                  # not tell case apart, a symlink or a second mount of the same folder is
+                  # still seen.
+  local d
+  d="$(cd -P "$1" 2>/dev/null && pwd)" || return 1
+  while [[ -n "$d" ]]; do
+    [[ "$d" -ef "$2" ]] && return 0
+    [[ "$d" != "/" ]] || return 1
+    d="${d%/*}"
+    [[ -n "$d" ]] || d="/"
+  done
+  return 1
+}
+
+_inside_plugin_refuse() { # -> 1 (with a message) when the current folder is the plugin folder or
+                          # lies inside it. Run state lives in the current folder's .temper, and
+                          # nothing this CLI runs may write into the plugin folder. The one
+                          # exception is developing Temper on its own repository: the plugin
+                          # folder is a project only when it is a git work tree whose top level
+                          # is that folder. An installed copy (no .git) is refused like any
+                          # folder inside it (one of its own subfolders, or a second checkout
+                          # placed in it).
+  [[ "$PLUGIN_ROOT" != "$SCRIPTS_DIR" ]] || return 0   # not laid out as a plugin: no folder to guard
+  local plugin cwd
+  plugin="$(cd -P "$PLUGIN_ROOT" 2>/dev/null && pwd)" || return 0
+  [[ -n "$plugin" && "$plugin" != "/" ]] || return 0
+  cwd="$(pwd -P)"
+  if [[ "$cwd" -ef "$plugin" ]]; then
+    _git_toplevel_is "$plugin" && return 0
+    echo "FAIL: run temper from a project folder, not from the plugin folder: this copy is not its own git repository" >&2
+    echo "      (plugin folder: $plugin). The plugin folder is a project only when it is a git work tree whose top level is that folder." >&2
+    return 1
+  fi
+  if _under_folder "$cwd" "$plugin"; then
+    echo "FAIL: run temper from a project folder, not from a folder inside the plugin folder" >&2
+    echo "      (plugin folder: $plugin; current folder: $cwd). The plugin folder itself is a project only when it is its own git repository." >&2
+    return 1
+  fi
+  return 0
+}
+
+_home_refuse() { # -> 1 (with a message) when the current folder is the home folder. The home
+                 # folder holds Claude Code's own files and is never a project, so no run state
+                 # is read or written there. Decided by identity (device and inode), so a
+                 # symlink or another spelling of the home folder is still seen.
+  [[ -n "${HOME:-}" && "$REPO_ROOT" -ef "$HOME" ]] || return 0
+  echo "FAIL: run temper from a project folder, not from the home folder ($HOME). The home folder is never a project." >&2
+  return 1
+}
+
+_unsafe_temper_refuse() { # -> 3 (with a one-line reason) when a path this CLI writes or reads as
+                          # run state is a symlink: the .temper folder, its evidence, specs and
+                          # archive folders, the fixed state files, the evidence files, the
+                          # active run's spec folder and its gate-ledger.json. A link there (a
+                          # cloned repository can carry one) could send a write out of the
+                          # project, into the plugin folder or anywhere else. Any other link
+                          # inside a spec folder is not run state: the CLI never writes through
+                          # it, so it changes nothing. Each folder is checked before any path
+                          # inside it, so no check here looks through a link.
+  [[ -e .temper || -L .temper ]] || return 0
+  local p slug link="" paths=".temper .temper/evidence .temper/specs .temper/archive"
+  for p in build-state gates overrides status metrics bands feedback-loops; do
+    paths="$paths .temper/$p.json"
+  done
+  for p in $EVIDENCE_STAGES; do
+    paths="$paths .temper/evidence/$p.json"
+  done
+  for p in $paths; do
+    [[ -L "$p" ]] && { link="$p"; break; }
+  done
+  if [[ -z "$link" && -f "$STATE_FILE" ]]; then
+    # The active run's spec folder: only the shape `state init` records names one.
+    slug="$(_spec_slug "$(_json_get_path "$STATE_FILE" spec_path "")")"
+    if [[ -n "$slug" ]]; then
+      for p in ".temper/specs/$slug" ".temper/specs/$slug/gate-ledger.json"; do
+        [[ -L "$p" ]] && { link="$p"; break; }
+      done
+    fi
+  fi
+  if [[ -n "$link" ]]; then
+    echo "FAIL: unsafe .temper: '$link' is a symlink, and no write may follow a link out of the project (replace it with a plain file or folder)" >&2
+    return 3
+  fi
+  return 0
+}
+
 _require_python() {
   command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 is required but not found in PATH" >&2; exit 1; }
 }
 
 _now() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
-_ensure_dirs() { mkdir -p "$TEMPER_DIR" "$EVIDENCE_DIR"; }
+_ensure_dirs() { mkdir -p .temper/evidence; }   # the project's .temper and its evidence folder
 
 # ---------------------------------------------------------------------------
 # Minimal JSON helpers (python3 stdlib only — no jq / pyyaml dependency)
@@ -214,7 +372,11 @@ def parse_yaml_subset(text):
                 try:
                     parent[key] = float(val)
                 except ValueError:
-                    parent[key] = val.strip('\"\\'')
+                    # One pair of matching quotes around the whole value is taken off; a
+                    # quote that ends a value ('fmt \"{file}\"') is part of it.
+                    if len(val) >= 2 and val[0] == val[-1] and val[0] in '\"\\'':
+                        val = val[1:-1]
+                    parent[key] = val
     return root
 
 text = open(sys.argv[1]).read()
@@ -239,7 +401,7 @@ else:
 # model — resolve which model a stage runs on.
 #
 # v7 replaced the v6 `models.routing`/`models.tiers` config with fixed `model:`
-# frontmatter in agents/{stage}.md, because the old block was a *resolution algorithm* a
+# frontmatter in each stage brief (see _agent_file), because the old block was a *resolution algorithm* a
 # prompt had to execute correctly on every run. That diagnosis still holds; what it cost
 # was the ability to change a model without editing plugin-owned files, which matters
 # every time a new model generation ships.
@@ -249,9 +411,23 @@ else:
 # lookup lives here — one deterministic call, no algorithm in prose.
 # ---------------------------------------------------------------------------
 
-_agent_default_model() { # <stage> -> the `model:` line in agents/<stage>.md frontmatter
-  local f="$PLUGIN_ROOT/agents/${1}.md"
-  [[ -f "$f" ]] || { echo ""; return; }
+_agent_file() { # <stage> -> its brief, each path written out in full (an unknown stage has none)
+  case "$1" in
+    intent) echo "$PLUGIN_ROOT/agents/intent.md" ;;
+    plan)   echo "$PLUGIN_ROOT/agents/plan.md" ;;
+    design) echo "$PLUGIN_ROOT/agents/design.md" ;;
+    build)  echo "$PLUGIN_ROOT/agents/build.md" ;;
+    review) echo "$PLUGIN_ROOT/agents/review.md" ;;
+    check)  echo "$PLUGIN_ROOT/agents/check.md" ;;
+    rca)    echo "$PLUGIN_ROOT/agents/rca.md" ;;
+    fix)    echo "$PLUGIN_ROOT/agents/fix.md" ;;
+    *)      echo "" ;;
+  esac
+}
+
+_agent_default_model() { # <stage> -> the `model:` line in that stage brief's frontmatter
+  local f; f="$(_agent_file "$1")"
+  [[ -n "$f" && -f "$f" ]] || { echo ""; return; }
   awk '
     /^---[[:space:]]*$/ { n++; if (n == 2) exit; next }
     n == 1 && /^model:/ { sub(/^model:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print; exit }
@@ -270,7 +446,7 @@ cmd_model() {
     local s m rc=0
     for s in $AGENT_STAGES; do
       m="$(_resolve_model "$s")"
-      [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$s' (missing $PLUGIN_ROOT/agents/$s.md?)" >&2; rc=1; continue; }
+      [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$s' (is its brief in the plugin's agents folder?)" >&2; rc=1; continue; }
       echo "${s}=${m}"
     done
     return $rc
@@ -283,8 +459,8 @@ cmd_model() {
 
   local m; m="$(_resolve_model "$stage")"
   # Fail loudly rather than printing an empty string the orchestrator would paste into
-  # an Agent launch — this is only reachable if the plugin install is broken.
-  [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$stage' (missing $PLUGIN_ROOT/agents/$stage.md?)" >&2; return 1; }
+  # an Agent launch. That is only reachable if the plugin's files are incomplete.
+  [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$stage' (is its brief in the plugin's agents folder?)" >&2; return 1; }
   echo "$m"
 }
 
@@ -305,8 +481,15 @@ cmd_init() {
 # ---------------------------------------------------------------------------
 
 cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch NAME]
+  local slug="${1:-}"; shift || true
+  # The slug becomes the spec folder .temper/specs/<slug>, which `state archive` later
+  # writes into, so it is a plain name and never a path.
+  if ! _slug_ok "$slug"; then
+    echo "FAIL: usage: temper state init <slug> [--command temper|fix] [--branch NAME]" >&2
+    echo "      (the slug is letters of either case, digits, '.', '_' or '-', starts with a letter or digit, and has no '/' or '..'; got '$slug')" >&2
+    return 1
+  fi
   _ensure_dirs
-  local slug="$1"; shift || true
   local command="temper" branch=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -319,8 +502,9 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
   # old override once satisfied a gate the new run never earned. Same discipline
   # as `state clear`: archive first, then remove runtime state. specs/ untouched.
   if [[ -f "$STATE_FILE" ]]; then
-    local archived; archived="$(_archive_ledger)"
+    local archived rc; archived="$(_archive_ledger)"; rc=$?
     [[ -n "$archived" ]] && echo "OK: prior run's gate ledger archived to $archived"
+    [[ $rc -eq 2 ]] && echo "OK: the prior run's gate ledger was NOT archived (see the warning above); starting the new run"
   else
     # No prior run — but a non-empty overrides/gates file still carries a fact
     # worth keeping (an override records a human approver). Copy, don't delete.
@@ -338,8 +522,9 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
       fi
     done
   fi
-  rm -f "$STATE_FILE" "$LOOPS_FILE" "$GATES_FILE" "$OVERRIDES_FILE"
-  rm -rf "$EVIDENCE_DIR"
+  # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
+  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json
+  rm -rf .temper/evidence
   _ensure_dirs
   # Re-scaffold the ledger files empty (same as `temper init`): a cleared run has
   # no overrides/verdicts/loops, not missing files.
@@ -369,7 +554,7 @@ json.dump(d, open(sys.argv[5], 'w'), indent=2)
 _state_migrate_legacy() { # idempotent; called before any state read/write and by cmd_gate.
                            # Heals a v7.0.x build-state.json left with next_stage/stage
                            # pointing at the removed eval stage. Write-through (not
-                           # read-only): scripts/hooks/verify-tests-ran.sh (L1) reads
+                           # read-only): scripts/guards/verify-tests-ran.sh (L1) reads
                            # build-state.json directly and cannot call this CLI, so a
                            # stale on-disk value would block every future `git commit`.
   [[ -f "$STATE_FILE" ]] || return 0
@@ -404,6 +589,13 @@ cmd_state_get() {
 }
 
 cmd_state_set() {
+  [[ $# -ge 2 ]] || { echo "FAIL: usage: temper state set <dot.path> <value>" >&2; return 1; }
+  # spec_path names the folder `state archive` writes into: only the shape `state init`
+  # records (.temper/specs/<slug>) is accepted, so it can never point anywhere else.
+  if [[ "$1" == "spec_path" && -z "$(_spec_slug "$2")" ]]; then
+    echo "FAIL: spec_path must be .temper/specs/<slug> (slug: letters of either case, digits, '.', '_' or '-', no '/' or '..'); got '$2'" >&2
+    return 1
+  fi
   [[ -f "$STATE_FILE" ]] || { echo '{}' > "$STATE_FILE"; }
   _json_set_path "$STATE_FILE" "$1" "$2" '{}'
   _json_set_path "$STATE_FILE" "updated" "$(_now)" '{}'
@@ -484,16 +676,48 @@ print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_t
   return $rc
 }
 
-_archive_ledger() { # writes {spec_path}/gate-ledger.json from the live run state.
+_spec_dir_ok() { # _spec_dir_ok <slug> -> 0 when .temper/specs/<slug> is a plain folder of this
+                 # project's own .temper/specs: no symlink on the way (.temper, specs, the
+                 # slug folder, the ledger file), and the folder's parent is, by identity
+                 # (device and inode), the specs folder in the project's .temper.
+  local d=".temper/specs/$1" real
+  [[ -d "$d" && ! -L .temper && ! -L .temper/specs && ! -L "$d" && ! -L "$d/gate-ledger.json" ]] || return 1
+  real="$(cd -P "$d" 2>/dev/null && pwd)" || return 1
+  [[ -n "$real" && "${real%/*}" -ef "$REPO_ROOT/.temper/specs" ]]
+}
+
+_archive_ledger() { # writes gate-ledger.json into the run's spec folder from the live run state.
   # The run's decision record (verdicts, overrides with approver, evidence counts) must
   # not evaporate with the runtime state — it is the audit trail the committed artifact
   # chain exists for. Called by `state archive` (before the commit, so the ledger rides
   # it) and by `state clear` (the safety net for flows that never archived). Idempotent.
-  local spec_path; spec_path="$(cmd_state_get spec_path "")"
-  if [[ -n "$spec_path" && -d "$spec_path" && -f "$GATES_FILE" ]]; then
-    python3 - "$GATES_FILE" "$OVERRIDES_FILE" "$EVIDENCE_DIR" "$spec_path/gate-ledger.json" "$(_now)" <<'PY'
-import glob, json, os, sys
-gates_f, overrides_f, evidence_dir, out_f, ts = sys.argv[1:6]
+  # The target is .temper/specs/<slug>/gate-ledger.json with the slug checked by
+  # _spec_slug: a spec_path of any other shape (a hand-edited state file) archives nothing,
+  # and says so on stderr (returning 2) so `state archive`, `state clear` and `state init`
+  # never drop the ledger without a word. The same goes for a spec folder that does not
+  # resolve to a plain folder of the project's own .temper/specs (_spec_dir_ok): the
+  # ledger is never written through a symlink.
+  local spec_path slug out
+  spec_path="$(cmd_state_get spec_path "")"
+  [[ -n "$spec_path" ]] || return 0
+  slug="$(_spec_slug "$spec_path")"
+  if [[ -z "$slug" ]]; then
+    echo "WARN: gate ledger NOT archived: spec_path '$spec_path' is not .temper/specs/<slug>" >&2
+    return 2
+  fi
+  out=".temper/specs/$slug/gate-ledger.json"
+  if [[ -d ".temper/specs/$slug" && -f "$GATES_FILE" ]] && ! _spec_dir_ok "$slug"; then
+    echo "WARN: gate ledger NOT archived: .temper/specs/$slug is not a plain folder of this project's .temper/specs (a symlink is on the way)" >&2
+    return 2
+  fi
+  if [[ -d ".temper/specs/$slug" && -f "$GATES_FILE" ]]; then
+    # One (stage, ledger file) pair per name on the fixed list: no other file is read.
+    local ev_pairs=() s
+    for s in $EVIDENCE_STAGES; do ev_pairs+=("$s" "$(_evidence_file "$s")"); done
+    python3 - "$GATES_FILE" "$OVERRIDES_FILE" "$out" "$(_now)" "${ev_pairs[@]}" <<'PY'
+import json, sys
+gates_f, overrides_f, out_f, ts = sys.argv[1:5]
+pairs = sys.argv[5:]
 def load(p, default):
     try:
         return json.load(open(p))
@@ -502,9 +726,8 @@ def load(p, default):
 gates = load(gates_f, {})
 overrides = load(overrides_f, [])
 evidence = {}
-for f in sorted(glob.glob(os.path.join(evidence_dir, '*.json'))):
-    stage = os.path.splitext(os.path.basename(f))[0]
-    rows = load(f, [])
+for stage, ledger in sorted(zip(pairs[0::2], pairs[1::2])):
+    rows = load(ledger, [])
     if rows:
         evidence[stage] = {'rows': len(rows),
                            'labels': {l: sum(1 for e in rows if e.get('label') == l)
@@ -514,7 +737,7 @@ with open(out_f, 'w') as fh:
                'archived': ts}, fh, indent=2)
     fh.write('\n')
 PY
-    [[ -f "$spec_path/gate-ledger.json" ]] && { echo "$spec_path/gate-ledger.json"; return 0; }
+    [[ -f "$out" ]] && { echo "$out"; return 0; }
   fi
   return 0
 }
@@ -522,9 +745,11 @@ PY
 cmd_state_archive() { # temper state archive — write the ledger WITHOUT touching state.
                        # Run before `git commit` so the archived record rides the commit
                        # while the live state stays intact for the pre-commit gate.
-  local out; out="$(_archive_ledger)"
+  local out rc; out="$(_archive_ledger)"; rc=$?
   if [[ -n "$out" ]]; then
     echo "OK: gate ledger archived to $out"
+  elif [[ $rc -eq 2 ]]; then
+    echo "OK: run state untouched; the gate ledger was NOT archived (see the warning above)"
   else
     echo "OK: nothing to archive (no gates recorded, or no spec dir)"
   fi
@@ -532,10 +757,12 @@ cmd_state_archive() { # temper state archive — write the ledger WITHOUT touchi
 
 cmd_state_clear() {
   local archived_note=""
-  local out; out="$(_archive_ledger)"
+  local out rc; out="$(_archive_ledger)"; rc=$?
   [[ -n "$out" ]] && archived_note=" — gate ledger archived to $out"
-  rm -f "$STATE_FILE" "$LOOPS_FILE" "$GATES_FILE" "$OVERRIDES_FILE"
-  rm -rf "$EVIDENCE_DIR"
+  [[ $rc -eq 2 ]] && archived_note="; the gate ledger was NOT archived, see the warning above"
+  # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
+  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json
+  rm -rf .temper/evidence
   echo "OK: run state cleared (spec artifacts under .temper/specs/ are untouched${archived_note})"
 }
 
@@ -558,7 +785,6 @@ cmd_state() {
 # ---------------------------------------------------------------------------
 
 cmd_evidence_add() {
-  _ensure_dirs
   local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -577,6 +803,8 @@ cmd_evidence_add() {
     esac
   done
   [[ -n "$stage" && -n "$claim" ]] || { echo "FAIL: --stage and --claim are required" >&2; return 1; }
+  _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
+  _ensure_dirs
 
   # A row claimed PROVEN is mechanically re-checked here — never taken on faith.
   # An artifact that doesn't exist, or a nonzero exit paired with PROVEN, is downgraded.
@@ -590,7 +818,7 @@ cmd_evidence_add() {
     fi
   fi
 
-  local file="$EVIDENCE_DIR/$stage.json"
+  local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || echo '[]' > "$file"
   local artifact_hash=""
   if [[ -n "$artifact" && -f "$artifact" ]]; then
@@ -621,7 +849,8 @@ cmd_evidence_list() {
       *) shift ;;
     esac
   done
-  local file="$EVIDENCE_DIR/$stage.json"
+  _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
+  local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo "[]"; return 0; }
   if [[ "$as_json" == "true" ]]; then
     cat "$file"
@@ -650,7 +879,6 @@ cmd_evidence_resolve() { # temper evidence resolve --stage <s> --id <n> --fixed-
   # Marks one recorded finding as fixed in THIS run. The row is kept — the ledger must
   # still show what was found — but the gate no longer counts it. The alternative was
   # deleting evidence to go green, which QUALITY-GATES forbids (woningscout #984).
-  _ensure_dirs
   local stage="" id="" fixed_by=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -661,6 +889,8 @@ cmd_evidence_resolve() { # temper evidence resolve --stage <s> --id <n> --fixed-
     esac
   done
   [[ -n "$stage" && -n "$id" && -n "$fixed_by" ]] || { echo "FAIL: usage: temper evidence resolve --stage <s> --id <n> --fixed-by \"<commit or note>\" (ids from 'temper evidence list --stage <s>')" >&2; return 1; }
+  _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
+  _ensure_dirs
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo "FAIL: no evidence recorded for stage '$stage'" >&2; return 1; }
   python3 - "$file" "$id" "$fixed_by" "$(_now)" <<'PY'
@@ -690,7 +920,6 @@ cmd_evidence_accept() { # temper evidence accept --stage <s> --id <n> --reason "
   # A person decides a finding stays as it is. Like resolve, the row is kept — the ledger
   # still shows what was found — but the gate stops counting it, and the decision carries
   # a reason, an author (git identity, as override does) and a time.
-  _ensure_dirs
   local stage="" id="" reason=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -701,6 +930,8 @@ cmd_evidence_accept() { # temper evidence accept --stage <s> --id <n> --reason "
     esac
   done
   [[ -n "$stage" && -n "$id" && -n "${reason//[[:space:]]/}" ]] || { echo "FAIL: usage: temper evidence accept --stage <s> --id <n> --reason \"<why>\" (a non-empty reason is required; ids from 'temper evidence list --stage <s>')" >&2; return 1; }
+  _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
+  _ensure_dirs
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo "FAIL: no evidence recorded for stage '$stage'" >&2; return 1; }
   local by name email
@@ -740,7 +971,6 @@ cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--sc
   # process that ran it is exactly as proven as a green one. Always returns 0 — the
   # record is the product; pass/fail is the gate's business (the printed line and the
   # ledger carry the exit code).
-  _ensure_dirs
   local stage="" claim="" phase="" scenario="" severity="" label="PROVEN" criterion=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -756,10 +986,13 @@ cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--sc
     esac
   done
   [[ -n "$stage" && -n "$claim" && $# -gt 0 ]] || { echo "FAIL: usage: temper evidence run --stage <s> --claim <c> -- <cmd...>" >&2; return 1; }
+  # Checked before the command runs: an unknown stage records nothing and runs nothing.
+  _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
+  _ensure_dirs
   "$@"
   local exit_code=$?
   local cmd_str="$*"
-  local file="$EVIDENCE_DIR/$stage.json"
+  local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || echo '[]' > "$file"
   local entry
   entry=$(python3 -c "
@@ -776,12 +1009,13 @@ print(json.dumps(e))
   return 0
 }
 
-cmd_evidence_clear() { # temper evidence clear --stage <s> — truncate .temper/evidence/<s>.json to []
+cmd_evidence_clear() { # temper evidence clear --stage <s> — truncate that stage's ledger file to []
   local stage=""
   while [[ $# -gt 0 ]]; do
     case "$1" in --stage) stage="$2"; shift 2 ;; *) shift ;; esac
   done
   [[ -n "$stage" ]] || { echo "FAIL: usage: temper evidence clear --stage <s>" >&2; return 1; }
+  _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
   _ensure_dirs
   echo '[]' > "$(_evidence_file "$stage")"
   echo "OK: evidence cleared for '$stage'"
@@ -802,7 +1036,7 @@ cmd_evidence() {
 
 # ---------------------------------------------------------------------------
 # config — scriptable read access to .claude/temper.config (the same parser
-# every gate uses, exposed so hooks and CI steps never re-implement it).
+# every gate uses, exposed so hook scripts and CI steps never re-implement it).
 # ---------------------------------------------------------------------------
 
 cmd_config() {
@@ -836,7 +1070,21 @@ _spec_path() {
   cmd_state_get spec_path ""
 }
 
-_evidence_file() { echo "$EVIDENCE_DIR/$1.json"; }
+_evidence_file() { # <stage> -> its ledger file, each path written out in full relative to the
+                   # project (an unknown stage has none; callers check _stage_ok first)
+  case "$1" in
+    intent) echo ".temper/evidence/intent.json" ;;
+    plan)   echo ".temper/evidence/plan.json" ;;
+    design) echo ".temper/evidence/design.json" ;;
+    build)  echo ".temper/evidence/build.json" ;;
+    review) echo ".temper/evidence/review.json" ;;
+    check)  echo ".temper/evidence/check.json" ;;
+    commit) echo ".temper/evidence/commit.json" ;;
+    rca)    echo ".temper/evidence/rca.json" ;;
+    fix)    echo ".temper/evidence/fix.json" ;;
+    *)      echo "" ;;
+  esac
+}
 
 _clear_evidence_downstream() { # _clear_evidence_downstream <to> — truncates evidence for
                                 # <to> and every gate stage after it in the run's own sequence
@@ -993,11 +1241,12 @@ print(json.dumps({'name': sys.argv[1], 'pass': sys.argv[2] == '1', 'detail': sys
 # per line (same shape _req produces); intent.md parsing is shared with
 # scripts/acceptance.py so the gate and the acceptance checker can never drift.
 _intent_draft_reqs() { # _intent_draft_reqs <intent.md>
-  local script_dir; script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  python3 - "$script_dir" "$1" <<'PY'
-import json, os, re, sys
-sys.path.insert(0, sys.argv[1])
-import acceptance as A
+  # acceptance.py is loaded from its one full path, never by adding a folder to sys.path.
+  python3 - "$ACCEPTANCE_PY" "$1" <<'PY'
+import importlib.util, json, os, re, sys
+_spec = importlib.util.spec_from_file_location('acceptance', sys.argv[1])
+A = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(A)
 
 lines = open(sys.argv[2]).read().splitlines()
 reqs = []
@@ -1009,6 +1258,11 @@ status = m.group(1).lower() if m else None   # None: missing or unknown Status h
 if status != 'draft':
     d = ("skipped — intent is %s; this check applies to drafts only "
          "(a recorded acceptance is never revisited)") % status
+    if status is None:
+        # A missing or unknown Status header is reported by the gate's own status header
+        # row; these rows say why they skipped instead of printing Python's None.
+        d = ("skipped: no recognized Status header (draft, accepted or completed); this check "
+             "applies to drafts only, and the status header requirement reports the missing header")
     for name in ('task context recorded', 'criteria why', 'target users action chain',
                  'criteria ids', 'criteria priority', 'criteria validate',
                  'open questions labeled', 'no duplicate question', 'header fields',
@@ -1210,11 +1464,11 @@ PY
 
 _intent_closure_reqs() { # _intent_closure_reqs <intent.md> -> JSON rows: "out of scope stated"
                          # and "open questions resolved" (both apply to drafts only; the second is informational)
-  local script_dir; script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  python3 - "$script_dir" "$1" <<'PY'
-import json, re, sys
-sys.path.insert(0, sys.argv[1])
-import acceptance as A
+  python3 - "$ACCEPTANCE_PY" "$1" <<'PY'
+import importlib.util, json, re, sys
+_spec = importlib.util.spec_from_file_location('acceptance', sys.argv[1])
+A = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(A)
 
 lines = open(sys.argv[2]).read().splitlines()
 reqs = []
@@ -1228,7 +1482,7 @@ status = m.group(1).lower() if m else None   # None: missing or unknown Status h
 # revisited, so an accepted or completed intent skips them with a PASS.
 SKIP = ('skipped \u2014 intent is %s; this check applies to drafts only (a recorded acceptance is never revisited)' % status
         if status else
-        'skipped \u2014 no recognized Status header (draft, accepted or completed); this check applies to drafts only, and the status header requirement reports the missing header')
+        'skipped: no recognized Status header (draft, accepted or completed); this check applies to drafts only, and the status header requirement reports the missing header')
 
 # --- out of scope stated: a '- Out of scope:' bullet with non-placeholder text ----------
 scope = A.section_lines(lines, 'Scope and Non-goals') or A.section_lines(lines, 'Scope')
@@ -1284,10 +1538,16 @@ gate_intent() {
     reqs+=("$(_req "intent artifact" 1 "intent.md absent — trivial path, no artifacts")")
   else
     local problem_lines criteria status_line
+    # A placeholder starts a line with '{' and runs to the line that closes it with '}',
+    # so the second line of a placeholder spanning two lines is not content either.
     problem_lines=$(awk '
-      /^#+[[:space:]]*Problem/ { f=1; next }
+      function depth(s,   t, o, c) { t = s; o = gsub(/\{/, "", t); t = s; c = gsub(/\}/, "", t); return o - c }
+      /^#+[[:space:]]*Problem/ { f=1; open_ph=0; next }
       f && /^#+[[:space:]]/ { f=0 }
-      f && NF && $0 !~ /^[[:space:]]*\{/ { c++ }
+      !f { next }
+      open_ph > 0 { open_ph += depth($0); next }
+      /^[[:space:]]*\{/ { open_ph = depth($0); if (open_ph < 0) open_ph = 0; next }
+      NF { c++ }
       END { print c+0 }
     ' "$spec_path/intent.md")
     if [[ "$problem_lines" -gt 0 ]]; then
@@ -1404,7 +1664,7 @@ gate_plan() {
     fi
     # Every criterion is explicitly tied to the scenario/evidence that proves it.
     local acc_out acc_rc
-    acc_out="$(python3 "$PLUGIN_ROOT/scripts/acceptance.py" plan "$spec_path/intent.md" "$(_evidence_file plan)" 2>&1)"; acc_rc=$?
+    acc_out="$(python3 "$ACCEPTANCE_PY" plan "$spec_path/intent.md" "$(_evidence_file plan)" 2>&1)"; acc_rc=$?
     if [[ "$acc_rc" -eq 0 ]]; then
       reqs+=("$(_req "criteria -> validation" 1 "$acc_out")")
     else
@@ -1650,7 +1910,9 @@ gate_check() {
     fi
   fi
   local cov_val; cov_val=$(_ev_last_value check coverage)
-  if [[ -n "$cov_val" ]] && python3 -c "import sys; sys.exit(0 if float('$cov_val') >= float('$threshold') else 1)"; then
+  # Both values cross as argv, never as Python source: the threshold comes from the
+  # project config and the value from the ledger. A value that is not a number FAILs.
+  if [[ -n "$cov_val" ]] && python3 -c "import sys; sys.exit(0 if float(sys.argv[1]) >= float(sys.argv[2]) else 1)" "$cov_val" "$threshold" 2>/dev/null; then
     reqs+=("$(_req "coverage >= threshold" 1 "$cov_val% >= $threshold% threshold")")
   else
     reqs+=("$(_req "coverage >= threshold" 0 "recorded coverage '${cov_val:-none}' vs threshold $threshold%")")
@@ -1660,7 +1922,7 @@ gate_check() {
     # Every criterion has explicit, SUPPORTED passing evidence — the same checker
     # gate plan used on the artifact's internal links, now against the ledger.
     local acc_out acc_rc
-    acc_out="$(python3 "$PLUGIN_ROOT/scripts/acceptance.py" check "$spec_path/intent.md" "$(_evidence_file check)" 2>&1)"; acc_rc=$?
+    acc_out="$(python3 "$ACCEPTANCE_PY" check "$spec_path/intent.md" "$(_evidence_file check)" 2>&1)"; acc_rc=$?
     if [[ "$acc_rc" -eq 0 ]]; then
       reqs+=("$(_req "acceptance evidence" 1 "$acc_out")")
     else
@@ -1686,10 +1948,11 @@ sys.exit(0 if any(o.get('stage') == sys.argv[2] for o in d) else 1)
 " "$OVERRIDES_FILE" "$1" 2>/dev/null
 }
 
-_glob_touch_match() { # _glob_touch_match <file> <pattern>  (pattern like **/auth/**)
-  # Proper glob match, not a substring test: **/auth/** matches the `auth` path
-  # SEGMENT, never `auth` inside `oauth` or `authenticator`; an interior `*` (e.g.
-  # **/migrations/*.sql) is honored. file + pattern cross as argv, never source.
+_glob_touch_match() { # _glob_touch_match <file> <pattern>  (a project pattern from autonomy.park-on-touch)
+  # Proper pattern match, not a substring test: a pattern naming the auth folder at any
+  # depth matches the `auth` path SEGMENT, never `auth` inside `oauth` or
+  # `authenticator`; a star inside a segment (any .sql file in a migrations folder) is
+  # honored. file + pattern cross as argv, never source.
   local file="$1" pattern="$2"
   python3 - "$file" "$pattern" <<'PY'
 import re, sys
@@ -1930,7 +2193,7 @@ for r in json.loads(sys.argv[1]):
 _status_write() { # _status_write <spec-path> -> writes .temper/status.json, prints it
   local spec_path="$1" out
   [[ -n "$spec_path" && -f "$spec_path/intent.md" ]] || return 1
-  out="$(python3 "$PLUGIN_ROOT/scripts/acceptance.py" status "$spec_path/intent.md" "$EVIDENCE_DIR")" || return 1
+  out="$(python3 "$ACCEPTANCE_PY" status "$spec_path/intent.md" "$EVIDENCE_DIR")" || return 1
   printf '%s\n' "$out" > "$STATUS_FILE" || return 1
   printf '%s\n' "$out"
 }
@@ -1952,7 +2215,7 @@ cmd_status() { # temper status [--json] [--spec-path P]
     return 1
   fi
   local out
-  out="$(python3 "$PLUGIN_ROOT/scripts/acceptance.py" status "$spec_path/intent.md" "$EVIDENCE_DIR")" || { echo "FAIL: could not compute criteria status" >&2; return 1; }
+  out="$(python3 "$ACCEPTANCE_PY" status "$spec_path/intent.md" "$EVIDENCE_DIR")" || { echo "FAIL: could not compute criteria status" >&2; return 1; }
   printf '%s\n' "$out" > "$STATUS_FILE" 2>/dev/null || true
   if [[ "$as_json" == "true" ]]; then
     printf '%s\n' "$out"
@@ -1978,7 +2241,7 @@ cmd_override() {
   _ensure_dirs
   [[ -f "$OVERRIDES_FILE" ]] || echo '[]' > "$OVERRIDES_FILE"
   # An override is a human decision — record WHO, not just why. git identity is the
-  # best deterministic proxy available here; the confirm-override hook (hooks pack)
+  # best deterministic proxy available here; the confirm-override hook (guardrails pack)
   # additionally puts a human permission prompt between an agent and this command.
   local by name email
   name="$(git config user.name 2>/dev/null || true)"
@@ -2007,11 +2270,12 @@ cmd_report() {
     cat "$GATES_FILE"
     return
   fi
+  # The two file paths cross as argv, never as Python source: the project path may hold a quote.
   python3 -c "
-import json
-d = json.load(open('$GATES_FILE'))
+import json, sys
+d = json.load(open(sys.argv[1]))
 try:
-    overrides = json.load(open('$OVERRIDES_FILE'))
+    overrides = json.load(open(sys.argv[2]))
 except Exception:
     overrides = []
 overridden = {o['stage'] for o in overrides}
@@ -2029,7 +2293,7 @@ for stage in ['intent', 'plan', 'design', 'build', 'review', 'check', 'commit']:
 if overridden:
     print()
     print(f'{len(overridden)} gate(s) overridden by a human — see .temper/overrides.json')
-"
+" "$GATES_FILE" "$OVERRIDES_FILE"
 }
 
 # ---------------------------------------------------------------------------
@@ -2243,6 +2507,19 @@ PY
 main() {
   _require_python
   local sub="${1:-}"; shift || true
+  # Every subcommand that reads or writes the project's .temper folder is refused in a
+  # folder inside the plugin folder, and in the plugin folder itself unless it is its own
+  # git repository (developing Temper). `config` and `model` only read a config file and the
+  # stage briefs, and the help text reads nothing, so the guard scripts that call them
+  # keep working wherever they run.
+  # The home folder is refused first (exit 1): it is never a project. A symlink on a path
+  # the CLI writes or reads as run state is refused too (exit 3), for the same reason.
+  case "$sub" in
+    config|model|""|-h|--help) ;;
+    *) _home_refuse || return 1
+       _inside_plugin_refuse || return 1
+       _unsafe_temper_refuse || return 3 ;;
+  esac
   case "$sub" in
     init) cmd_init "$@" ;;
     state) cmd_state "$@" ;;

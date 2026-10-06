@@ -9,22 +9,22 @@
 Removing the Eval stage (ADR-0003) leaves three kinds of stale artifact on existing
 installs. Two are inert by construction:
 
-- an `eval:` block in `.claude/temper.config` — `_cfg_get` returns the caller's default for
-  an unknown key, and after `gate_eval()` is deleted nothing asks for `eval.*`;
-- an `"eval"` key in `.temper/gates.json` — `gate_commit` iterates a fixed
+- the Eval stage's config block in `.claude/temper.config`: `_cfg_get` returns the caller's
+  default for an unknown key, and after `gate_eval()` is deleted nothing asks for its keys;
+- an Eval key in `.temper/gates.json`: `gate_commit` iterates a fixed
   `stages_to_check` list, so unlisted keys are never visited.
 
 The third is **not** inert. An in-flight v7.0.x run can leave `.temper/build-state.json`
-holding `next_stage: "eval"` or `stage: "eval_complete"`, and those values are read and
+holding the Eval stage as `next_stage` or `stage: "eval_complete"`, and those values are read and
 acted on.
 
 Two components read that file, and they sit on opposite sides of a hard boundary:
 
 - `scripts/temper` (the spine) reads it via `cmd_state_get` / `cmd_state_advance` /
   `gate_commit`.
-- `scripts/hooks/verify-tests-ran.sh` is a **native git pre-commit hook**. It parses the
-  JSON with an inline `python3 -c` and cannot shell out to `scripts/temper` — the hook must
-  work in repos where the plugin is not installed or not on PATH, and its degradation
+- `scripts/guards/verify-tests-ran.sh` is a **native git pre-commit hook**. It parses the
+  JSON with inline Python and cannot call `scripts/temper`; the hook must work in repos
+  without the plugin, or with it off PATH, and its degradation
   contract forbids introducing a new failure mode. It treats `check_complete` (and, today,
   `eval_complete`) as the green sentinel and blocks otherwise.
 
@@ -33,8 +33,8 @@ The release also drops `eval_complete` from that hook's green set.
 ## Decision
 
 Forward-map legacy values **write-through**: a `_state_migrate_legacy` helper in
-`scripts/temper` rewrites `.temper/build-state.json` in place, mapping
-`next_stage: "eval" → "commit"` and `stage: "eval_complete" → "check_complete"`. It is
+`scripts/temper` rewrites `.temper/build-state.json` in place, mapping a `next_stage` of
+the Eval stage to `"commit"` and `stage: "eval_complete" → "check_complete"`. It is
 idempotent and is called before any state read or write and at the top of `temper gate`.
 
 Three properties are load-bearing:
@@ -49,11 +49,11 @@ Three properties are load-bearing:
    for a write the caller requested and can retry. It is not tolerable for a migration that
    runs unbidden on read: an interrupt would turn recoverable stale state into no state.
    Generalising atomicity to the other writers is out of scope.
-3. **A `grep -q '"eval'` fast path** before spawning `python3`. `cmd_state_get` runs several
+3. **A plain grep fast path** before Python starts. `cmd_state_get` runs several
    times per gate; without the guard the migration would add ~40 ms to each call for a
    no-op. With it, the steady-state cost is one grep on a ~400-byte file.
 
-Migration heals *persisted* values only. Because `STAGE_SEQ_TEMPER` loses `eval`,
+Migration heals *persisted* values only. Because `STAGE_SEQ_TEMPER` loses the Eval stage,
 `temper state advance eval_complete ...` fails loudly with an unknown-stage error. That is
 correct: nothing should ever advance *into* a removed stage.
 
@@ -105,5 +105,5 @@ correct: nothing should ever advance *into* a removed stage.
 ## References
 
 - `.temper/specs/opus5-speed-refresh/design.md` — "Compatibility Contract", Decision 8
-- `scripts/hooks/verify-tests-ran.sh` — the degradation contract this decision preserves
+- `scripts/guards/verify-tests-ran.sh` — the degradation contract this decision preserves
 - ADR-0003 — the stage removal that creates the legacy values

@@ -5,5 +5,5 @@
     "jsx": "react", "jsxFactory": "h", "jsxFragmentFactory": "Fragment",
     "typeRoots": ["./.claude-plugin/types"], "types": ["claude-code"]
   },
-  "include": ["hooks/temper-mod", "types", "tests/mod"]
+  "include": ["types", "tests/mod"]
 }

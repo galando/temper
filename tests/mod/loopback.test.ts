@@ -175,7 +175,7 @@ describe('a failed Check that loops through Fix and returns to Check (found live
 describe('the Commit button at Done', () => {
   test('it tells the orchestrator to do its Commit steps, ending with state clear, and never pushes', () => {
     const text = doneActions().primary[0]?.prompt ?? ''
-    expect(text).toContain('Commit section of commands/temper.md')
+    expect(text).toContain('Commit steps of /temper:temper')
     for (const step of ['gate commit', 'Status completed', 'state archive', '.temper/specs', 'conventional commit', 'state clear', 'Do not push']) expect(text).toContain(step)
     expect(text.indexOf('state archive')).toBeLessThan(text.indexOf('state clear'))
   })

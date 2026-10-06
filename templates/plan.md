@@ -9,7 +9,7 @@
 <!-- Load-bearing only: record a decision ONLY when a real alternative was genuinely
      considered and rejected. Omit this entire section if no such decision exists.
      One genuine decision is enough. Do NOT fabricate alternatives to fill the section.
-     Structure reused from templates/adr.md "Alternatives Considered". -->
+     Structure reused from the ADR template's "Alternatives Considered". -->
 
 ### Decision {N}: {chosen approach in one line}
 - **Chosen:** {the approach selected, stated specifically — not "use X" but "use X for Y"}

@@ -6,7 +6,8 @@ Usage:
   plan_review.py merge  --feature SLUG [-o OUT] <file.json|-> [<file.json> ...]
 
 render  Fills templates/plan-review.html from <spec_dir>/plan.md and tasks.md and
-        writes it (default <spec_dir>/review.html; "-o -" prints it). Every value is
+        writes it (default <spec_dir>/review.html; "-o -" prints it; any other -o
+        is a file name ending in .html). Every value is
         escaped for the context it lands in, so plan text such as "</script>" cannot
         break the page. `--target artifact` emits the fragment shape the Artifact
         tool expects: <title>, <style> and the body content, with no
@@ -16,18 +17,29 @@ merge   Normalizes reviewer comments into the review-comments.json shape that
         reference/plan-review.md applies. Each input is either the page's exported
         JSON or a dump of the shared review's `comments` and `done` collections
         ({"comments": [...], "done": [...]}). Comments are de-duplicated by id,
-        unknown types become `general-note`, empty text is dropped.
+        unknown types become `general-note`, empty text is dropped. "-o" is "-" or
+        a file name ending in .json.
+
+Neither command writes inside this plugin's own folder: an output path that resolves
+there is refused (exit 2), so a review can never overwrite a file the plugin ships.
+The one exception: when the current folder is the plugin folder and that folder is its
+own git repository (a git work tree whose top level is the plugin folder, so never an
+installed copy), an output that resolves under its .temper folder is allowed. Inside or
+equal is decided by identity (device and inode, os.path.samefile), not by path text.
 
 python3 stdlib only. No network.
 """
 import argparse
 import html
 import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+# The plugin folder: this file's resolved path with the literal suffix removed.
+ROOT = Path(str(Path(__file__).resolve()).removesuffix("/scripts/plan_review.py"))
 TEMPLATE = ROOT / "templates" / "plan-review.html"
 SOURCES = ("plan.md", "tasks.md")
 VALID_TYPES = ("task-change", "scenario-change", "plan-change", "general-note")
@@ -89,6 +101,64 @@ def feature_name(spec_dir, override):
     return spec_dir.name.replace("-", " ").replace("_", " ").strip().capitalize()
 
 
+def _same(a, b):
+    """True when `a` and `b` are the same file or folder (device and inode)."""
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def _under(path, folder):
+    """True when `path` is `folder` or lies inside it. Decided by identity, not by text:
+    `path` is resolved (links followed) and each of its ancestors is compared with
+    `folder` by device and inode, so another case on a file system that does not tell
+    case apart, a symlink or a second mount of the same folder is still seen."""
+    p = os.path.realpath(path)
+    while True:
+        if _same(p, folder):
+            return True
+        parent = os.path.dirname(p)
+        if parent == p:
+            return False
+        p = parent
+
+
+def _own_repository(folder):
+    """True when `folder` is a git work tree whose top level is `folder` itself. Every
+    GIT_* variable is dropped first, so a caller's GIT_DIR cannot answer for it."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    try:
+        r = subprocess.run(["git", "-C", str(folder), "rev-parse", "--show-toplevel"],
+                           env=env, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    top = r.stdout.strip()
+    return r.returncode == 0 and bool(top) and _same(top, folder)
+
+
+def output_refusal(out, suffix):
+    """Why `out` may not be written, or None. An output is a file name ending in `suffix`
+    whose resolved location is outside this plugin's own folder. The one exception is the
+    plugin's own repository used as the project (the current folder is the plugin folder,
+    and that folder is a git work tree whose top level is itself): there an output under
+    its .temper folder, the run state, is allowed, provided that folder is no symlink."""
+    path = Path(out)
+    if path.suffix.lower() != suffix:
+        return f"output must be a file name ending in {suffix}: {out}"
+    if _under(path, ROOT):
+        temper = ROOT / ".temper"
+        try:
+            project_is_plugin = _same(os.getcwd(), ROOT)
+        except OSError:
+            project_is_plugin = False
+        if (project_is_plugin and temper.is_dir() and not temper.is_symlink()
+                and _under(path, temper) and _own_repository(ROOT)):
+            return None
+        return f"refusing to write inside the plugin's own folder: {out}"
+    return None
+
+
 def to_artifact_fragment(doc):
     """Drop the document wrapper; keep <title>, <style> and the body content."""
     title = re.search(r"<title>.*?</title>", doc, re.S)
@@ -112,6 +182,14 @@ def cmd_render(args):
     if not sections:
         print(f"plan_review: no plan.md or tasks.md content under {spec_dir}", file=sys.stderr)
         return 2
+    out = args.output or str(spec_dir / "review.html")
+    refusal = None if out == "-" else output_refusal(out, ".html")
+    if refusal:
+        print(f"plan_review: {refusal}", file=sys.stderr)
+        return 2
+    if not TEMPLATE.is_file():
+        print(f"plan_review: the page template is missing from the plugin: {TEMPLATE}", file=sys.stderr)
+        return 2
     values = {
         "FEATURE_NAME": html.escape(feature_name(spec_dir, args.feature)),
         "FEATURE_SLUG": js_json(spec_dir.name),
@@ -122,7 +200,6 @@ def cmd_render(args):
     doc = re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m.group(1), m.group(0)), template)
     if args.target == "artifact":
         doc = to_artifact_fragment(doc)
-    out = args.output or str(spec_dir / "review.html")
     if out == "-":
         sys.stdout.write(doc)
     else:
@@ -153,6 +230,10 @@ def normalize_comment(raw):
 
 
 def cmd_merge(args):
+    refusal = None if args.output in (None, "-") else output_refusal(args.output, ".json")
+    if refusal:
+        print(f"plan_review: {refusal}", file=sys.stderr)
+        return 2
     comments, seen, done_by, completed = [], set(), [], []
     flagged_done = False
     for src in args.inputs:

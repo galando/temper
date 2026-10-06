@@ -16,6 +16,7 @@
 // is not an original option or one of the explicit extras.
 
 import type { Phase } from './events'
+import { CLI, IN_PLUGIN, pluginRootOf } from './cli'
 
 // 1 to 9 and 0 are digits because only a digit works from an empty prompt (a letter would type into
 // the composer). The More menu reuses the digits 1 to 9; 0 leaves the menu.
@@ -62,6 +63,9 @@ export type ActionContext = {
   configSuggestions?: boolean
   // The person's last move is not recorded in the CLI yet (Snapshot.sync.pending).
   pending?: boolean
+  // Where the Temper script is: its full path in the plugin folder, or the plain `scripts/temper` when that is not
+  // known (see pluginCliFrom). A prompt names the CLI and the plugin's files by it.
+  cli?: string
 }
 
 export type ActionSet = { primary: Action[]; discuss: Action; override: Action | null; more: Action[] }
@@ -161,25 +165,35 @@ const walk = (key: ActionKey): Action =>
     SHOW,
     'Walk through',
   )
-const htmlReview = (key: ActionKey): Action =>
-  prompt(
+// The plan review files are in the plugin folder, not in the project: a prompt names them by full path. When the
+// plugin folder is not known, it names the plain paths and says where they are.
+const htmlReview = (key: ActionKey, cli: string): Action => {
+  const root = pluginRootOf(cli)
+  return prompt(
     key,
     'html-review',
     'Open HTML review',
     'See the plan in a web page. Add comments.',
-    'Open the HTML review of the plan as written in reference/plan-review.md: render it with scripts/plan_review.py, open it, wait for me, then apply review-comments.json.',
+    root === null
+      ? 'Open the HTML review of the plan as written in reference/plan-review.md: render it with scripts/plan_review.py, open it, wait for me, then apply review-comments.json. Both files are in the Temper plugin folder, not in the project.'
+      : `Open the HTML review of the plan as written in ${root}/reference/plan-review.md: render it with ${root}/scripts/plan_review.py, open it, wait for me, then apply review-comments.json.`,
     SHOW,
   )
-const shareReview = (key: ActionKey): Action =>
-  prompt(
+}
+const shareReview = (key: ActionKey, cli: string): Action => {
+  const root = pluginRootOf(cli)
+  return prompt(
     key,
     'share-review',
     'Share HTML review',
     'Publish the plan page so others can comment.',
-    'Share the HTML review of the plan as written in reference/plan-review.md. Ask me before anything leaves this machine.',
+    root === null
+      ? 'Share the HTML review of the plan as written in reference/plan-review.md in the Temper plugin folder. Ask me before anything leaves this machine.'
+      : `Share the HTML review of the plan as written in ${root}/reference/plan-review.md. Ask me before anything leaves this machine.`,
     SHOW,
     'Share review',
   )
+}
 const archDepth = (key: ActionKey): Action =>
   prompt(
     key,
@@ -200,9 +214,12 @@ const configSuggestions = (key: ActionKey): Action =>
     SHOW,
     'Review config',
   )
-const stop = (key: ActionKey): Action => ({
+// The Temper script by its full path; the plain path and where it is when the plugin folder is not known.
+const where = (cli: string): string => (pluginRootOf(cli) === null ? ` ${IN_PLUGIN}` : '')
+
+const stop = (key: ActionKey, cli: string): Action => ({
   ...command(key, 'stop', 'Stop', 'Run the build check. Then save for later.', 'pause'),
-  prompt: `Run the build check (scripts/temper gate build). Then wait. ${SHOW}`,
+  prompt: `Run the build check (${cli} gate build).${where(cli)} Then wait. ${SHOW}`,
 })
 
 // The two buttons after Continue, by phase, and the rest of the original options for the menu.
@@ -211,10 +228,10 @@ function pair(phase: Phase, ctx: ActionContext): [Action, Action] {
     case 'intent':
       return [grill(phase, '2'), teach(phase, '3')]
     case 'plan':
-      return [walk('2'), htmlReview('3')]
+      return [walk('2'), htmlReview('3', ctx.cli ?? CLI)]
     case 'build':
       return isCheckpoint(phase, ctx)
-        ? [draft('2', 'change', 'Change', 'Tell Claude what to change in this task.', 'Change this task: '), stop('3')]
+        ? [draft('2', 'change', 'Change', 'Tell Claude what to change in this task.', 'Change this task: '), stop('3', ctx.cli ?? CLI)]
         : [teach(phase, '2'), grill(phase, '3')]
     case 'review':
       return [archDepth('2'), grill(phase, '3')]
@@ -235,7 +252,7 @@ function menu(phase: Phase, ctx: ActionContext): Action[] {
     case 'intent':
       return [save(paused)]
     case 'plan':
-      return [...extra([grill(phase), teach(phase), shareReview('1')]), save(paused)]
+      return [...extra([grill(phase), teach(phase), shareReview('1', ctx.cli ?? CLI)]), save(paused)]
     case 'build':
       return isCheckpoint(phase, ctx) ? [grill(phase), teach(phase), save(paused)] : [...(loopMain ? [] : [loopBack('plan', '1')]), save(paused)]
     case 'review':
@@ -305,7 +322,8 @@ function baseActions(phase: Phase, ctx: ActionContext): ActionSet {
 }
 
 // The actions of a finished run: the original Commit question ("Commit" / "Save for later" / "Other").
-export function doneActions(): ActionSet {
+// The Commit steps are named by the slash command, and the CLI by `cli` (see ActionContext.cli).
+export function doneActions(cli: string = CLI): ActionSet {
   return {
     primary: [
       prompt(
@@ -313,9 +331,9 @@ export function doneActions(): ActionSet {
         'commit',
         'Commit',
         'Claude commits the work. It does not push.',
-        'The user pressed Commit. Do the Commit steps of /temper now, as written in the Commit section of commands/temper.md in the Temper plugin. ' +
-          'In short: run scripts/temper gate commit. If it passes, set intent.md to Status completed, run scripts/temper state archive, ' +
-          'stage the diff and the .temper/specs artifacts, make one conventional commit, then run scripts/temper state clear. ' +
+        'The user pressed Commit. Do the Commit steps of /temper:temper now. ' +
+          `In short: run ${cli} gate commit. If it passes, set intent.md to Status completed, run ${cli} state archive, ` +
+          `stage the diff and the .temper/specs artifacts, make one conventional commit, then run ${cli} state clear.${where(cli)} ` +
           'Do not ask the Commit question again. Do not push.',
       ),
       { key: '2', id: 'save-done', label: 'Save for later', desc: 'Leave the work as it is. Commit later.', command: 'saved' },

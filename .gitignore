@@ -30,7 +30,7 @@ package-lock.json
 # Build outputs (generated during build)
 dist/
 
-# Python cache (scripts/*.py runs)
+# Python cache (the plugin's Python scripts)
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -62,3 +62,5 @@ Thumbs.db
 .temper/overrides.json
 .temper/status.json
 .temper/evidence/
+.temper/stage-gate.log
+.temper/pending-stage.json

@@ -76,7 +76,6 @@ export function cliPhase(next: string | null): Phase | 'done' | null {
     case 'rca':
     case 'commit':
     case 'done':
-    case 'eval':
       return phaseFromStage(next)
     default:
       return null
@@ -110,7 +109,6 @@ export function phaseFromStage(next: string | null): Phase | 'done' {
       return 'fix'
     case 'commit':
     case 'done':
-    case 'eval':
       return 'done'
     default:
       return 'intent'

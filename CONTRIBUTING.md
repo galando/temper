@@ -12,15 +12,19 @@ cd temper
 # Create a feature branch
 git checkout -b feature/my-improvement
 
-# Make your changes
-# ...
-
-# Test in a real project
-cp -r .claude /path/to/test-project/
+# Make your changes, then run the checks
+bash scripts/selftest/test-temper.sh
+bash scripts/quality-check.sh
 
 # Submit a pull request
 git push origin feature/my-improvement
 ```
+
+To try a change in a real project, open a terminal in that project and start Claude Code with
+your clone loaded: `claude --plugin-dir <path of your clone>`. That loads your clone for one
+session and installs nothing. Copying a folder of this repository into a project does not
+install Temper: the commands, briefs, skills and CLI live in the plugin folders listed below.
+[Testing the mod](docs/mods-testing.md) has the full checklist for the mod.
 
 ## 📁 Project Structure
 
@@ -32,26 +36,29 @@ temper/
 ├── agents/                  # Stage subprocess briefs (model frontmatter = defaults)
 ├── reference/               # Per-stage methodology docs (loaded on demand)
 ├── skills/                  # Skill definitions (temper-core, grill-me, ...)
-├── packs/                   # Rule packs, stack files, hooks pack
-├── hooks/                   # Plugin-shipped hooks.json (stage-gate pair)
-├── scripts/                 # temper CLI (the deterministic spine), hooks/, tests/
+├── packs/                   # Rule packs, stack files, guardrails pack
+├── scripts/                 # temper CLI (the deterministic spine), guards/, tests/
 ├── templates/               # Artifact templates (intent/plan/design/config)
-├── examples/                # Company packs, CI workflow templates, example hooks
+├── examples/                # Company packs, CI workflow templates, an example gate
 ├── docs/                    # GitHub Pages documentation
 └── README.md                # Project README
 ```
+
+The tree leaves out the mod, the plugin's hooks file that loads it, and the mod's tests. After a
+change to any of them, run `claude plugin test .`, the type check (`tsc -p tsconfig.mod.json`
+with TypeScript 5.6) and `bash scripts/check-mod-calls.sh`.
 
 ## 🎯 Ways to Contribute
 
 ### Add a New Stack
 
-1. Create `packs/stacks/{stack-name}.md`
+1. Create a stack file in `packs/stacks/`, named after the stack (for example `packs/stacks/django.md`)
 2. Include:
    - Detection patterns (files, dependencies)
    - Validation commands (test, build, lint)
    - Patterns to follow
    - Test patterns
-3. Update README.md supported stacks table
+3. Add the stack name to the `stack:` comment in `templates/temper.config.default`
 
 **Example:**
 ```markdown
@@ -70,19 +77,19 @@ temper/
 
 ### Add a New Pack
 
-1. Create `packs/{pack-name}/rules.md`
+1. Create a folder for the pack in `packs/`, named after the pack, with a `rules.md` in it
 2. Use sections:
    - `## BLOCK` — Violations stop the build
    - `## WARN` — Violations trigger warning
    - `## SUGGEST` — Informational improvements
-3. Update README.md packs table
+3. Add the pack to the built-in list in `reference/pack.md` and to `docs/packs.md`
 
 ### Add a New Command
 
-1. Create `commands/{command}.md` (stub, ~300B)
-2. Create `reference/{command}.md` (full docs)
+1. Create the command's stub in `commands/`, named after the command (~300B)
+2. Create its full docs in `reference/`, under the same name
 3. Update `.claude-plugin/plugin.json`
-4. Update README.md commands table
+4. Update the commands table in README.md and the command's section in `docs/commands.md`
 
 ### Improve Documentation
 
@@ -122,7 +129,7 @@ refactor: simplify blast radius logic
 
 ## 🔍 Pull Request Process
 
-1. **Test your changes** — Copy `.claude/` to a real project and verify
+1. **Test your changes**: run the checks above, and try the change in a real project with `claude --plugin-dir`
 2. **Update documentation** — If adding features, update relevant docs
 3. **Keep commits atomic** — One logical change per commit
 4. **Write clear descriptions** — Explain what and why
@@ -137,15 +144,10 @@ refactor: simplify blast radius logic
 
 ## 🎮 Playground
 
-Try Temper in a sandbox before contributing:
-
-```bash
-git clone https://github.com/galando/temper-playground
-cd temper-playground
-# Follow the README to see Temper's gates in action
-```
-
-The playground has intentional flaws that Temper's gates catch — a quick way to understand how Temper works before contributing.
+Try Temper in a sandbox before contributing. The
+[temper-playground](https://github.com/galando/temper-playground) repository is a small project
+with intentional flaws that Temper's gates catch; its README shows how to use it. It is a quick
+way to understand how Temper works before contributing.
 
 ## 🤝 Code of Conduct
 

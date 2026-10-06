@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { MIN_VERSION, versionAtLeast } from '../../hooks/temper-mod/core/config'
-import { parseBuildState, parseGates, phaseFromStage } from '../../hooks/temper-mod/core/gates'
+import { cliPhase, parseBuildState, parseGates, phaseFromStage } from '../../hooks/temper-mod/core/gates'
 import { taskProgress, tasksLeft } from '../../hooks/temper-mod/core/planfiles'
 import { spec_tasks } from './fixtures/spec-tasks'
 
@@ -48,6 +48,10 @@ describe('parseBuildState and phaseFromStage', () => {
     expect(phaseFromStage('rca')).toBe('fix')
     expect(phaseFromStage('commit')).toBe('done')
     expect(phaseFromStage(null)).toBe('intent')
+    // A stage name the CLI no longer writes (the retired v7.0.x one, which the CLI rewrites on its next
+    // call) gives no phase: the mod fails open and says it cannot tell where the run is.
+    expect(cliPhase('eval')).toBe(null)
+    expect(cliPhase('retired-stage')).toBe(null)
   })
 })
 

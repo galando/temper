@@ -16,17 +16,17 @@ quality tracking."
 
 ### Step 1: Read Metrics + Build Hotspots
 
-Read `metrics.json`, `review-memory.json`, `.temper/specs/` for active specs. Scan
-`.temper/reviews/*.md` to build a file-frequency map: `issues_per_file = findings at
+Read `metrics.json`, `review-memory.json`, `.temper/specs/` for active specs. Read each
+report in the project's `.temper/reviews` folder to build a file-frequency map: `issues_per_file = findings at
 file / reviews touching file`; top 5 by density = hotspots. No `metrics.json` → "No
 metrics yet. Run /temper:review or /temper:check to start tracking."
 
 ### Step 1.4: Criteria Status
 
-When the current spec has an `intent.md`, run `$CLAUDE_PLUGIN_ROOT/scripts/temper status`
+When the current spec has an `intent.md`, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper status`
 and show its rows: each acceptance criterion as passed or open with the evidence rows
-that support it. `temper status --json` prints the same data as JSON, and every
-`temper gate` run refreshes `.temper/status.json` with it (a failed write never changes
+that support it. `${CLAUDE_PLUGIN_ROOT}/scripts/temper status --json` prints the same data as JSON, and every
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate` run refreshes `.temper/status.json` with it (a failed write never changes
 a verdict). Nothing here is a verdict; `.temper/gates.json` owns those.
 
 ### Step 1.5: External Tool Availability
@@ -34,7 +34,9 @@ a verdict). Nothing here is a verdict; `.temper/gates.json` owns those.
 - **code-review-graph / semgrep:** probe with a trivial tool call (e.g.
   `get_impact_radius_tool` on the current file, or `security_check`); tool responds →
   available, errors/missing → unavailable.
-- **ocr:** `command -v ocr` → not-installed if missing; else `ocr --version` then probe
+- **ocr:** read `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get tools.ocr.mode off` first. `off`
+  (the default, also when the key is absent) → report off and run nothing. Otherwise
+  `command -v ocr` → not-installed if missing; else `ocr --version` then probe
   `ocr review --preview --from HEAD~1 --to HEAD` → ready, or not-configured if the probe
   fails (LLM not set up).
 - Read `tools.mode` (`auto`/`heuristic-only`/`require`) and report accordingly.
@@ -43,9 +45,9 @@ a verdict). Nothing here is a verdict; `.temper/gates.json` owns those.
 
 ### Step 1.6: Control Bands (closing the loop)
 
-Run `$CLAUDE_PLUGIN_ROOT/scripts/temper bands` — a deterministic drift check of the
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` — a deterministic drift check of the
 metric history arrays against rolling mean ± k·sigma bands (config: `bands:` in
-`.claude/temper.config`; see `templates/temper.config.default`). Three verdicts:
+`.claude/temper.config`; see `${CLAUDE_PLUGIN_ROOT}/templates/temper.config.default`). Three verdicts:
 `OK`, `INSUFFICIENT-DATA` (too few recorded points — report it, never an error), and
 `BREACH` (a metric at 2sigma+, exit 1). Keep the raw per-metric lines for the panel; a
 `propose`-tier breach also arms Step 3.7 below.
@@ -74,7 +76,7 @@ metric history arrays against rolling mean ± k·sigma bands (config: `bands:` i
 |   (gates.json absent -> "No gate data yet — run /temper") |
 | CONTROL BANDS: {OK/BREACH/INSUFFICIENT-DATA}              |
 |   per-metric: {metric} z={z} {tier} -> {action}            |
-|   (verbatim from `temper bands`; insufficient data ->      |
+|   (verbatim from the bands check; insufficient data ->     |
 |    "not enough history yet — bands arm as runs accumulate")|
 | AUTONOMOUS RUNS: mode, park point + reason, loop budget   |
 |   (no autonomy-report.md -> print nothing for this panel) |
@@ -86,9 +88,10 @@ degrade to the notices above, not an error.
 
 ### Step 2.5: Gate Ledger Panel
 
-Render from `.temper/gates.json`, `.temper/overrides.json`, `.temper/evidence/*.json`,
-the same ledger `temper gate` computes verdicts from: per-stage verdict + requirement
-detail (`temper report`), override count + reason per stage, and the PROVEN/HEURISTIC/
+Render from `.temper/gates.json`, `.temper/overrides.json` and the evidence ledger
+(read through `${CLAUDE_PLUGIN_ROOT}/scripts/temper report`), the same ledger `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate`
+computes verdicts from: per-stage verdict + requirement
+detail (`${CLAUDE_PLUGIN_ROOT}/scripts/temper report`), override count + reason per stage, and the PROVEN/HEURISTIC/
 SEMANTIC evidence-label mix as a rough proxy for how much of the run was mechanically
 verified. Never render cost, latency, or token estimates: nothing mechanical backs them.
 No `gates.json` → "No gate data yet. Run /temper to populate it." — never error.
@@ -103,13 +106,15 @@ report), loop budget used (sum `iteration` across `active_loops[]` + `history[]`
 ### Step 3: Rule-Promotion Prompt (from review memory)
 
 Read `.temper/review-memory.json`, the single finding memory. For a pattern that meets
-the promotion criteria from `reference/review.md`
+the promotion criteria from `${CLAUDE_PLUGIN_ROOT}/reference/review.md`
 → "Metrics + Memory" (3+ accepted @ ≥70% → WARN candidate; 5+ accepted @ ≥80% and
 security/architecture → BLOCK candidate) with no auto-rule yet: `AskUserQuestion` —
 "Yes, add as BLOCK rule" (active pack's Mandatory Rules) / "Yes, add as WARN rule"
 (Quality Rules) / "No, keep as advisory" (mark `no-promote` in review memory). Writing
-the accepted rule into the active pack's `rules.md` is what makes it enforced from the
-next review on. One prompt per qualifying pattern, highest acceptance first.
+the accepted rule into the project's copy of the active pack, `.claude/packs/<name>/rules.md`,
+is what makes it enforced from the next review on. If the project has no copy yet (the
+pack is built-in or global), create it first from that pack's current rules so it shadows
+them. Never edit a file in the plugin folder. One prompt per qualifying pattern, highest acceptance first.
 
 ### Metrics Schema
 
@@ -140,7 +145,7 @@ next review on. One prompt per qualifying pattern, highest acceptance first.
 | Standards compliance | `(files_total - files_with_violations) / files_total * 100` |
 
 Show trend arrows (📉/📈/➡️) next to coverage and issues/review. The dashboard is the
-human-facing view; `temper bands` (Step 1.6) is the deterministic trigger layer behind
+human-facing view; `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` (Step 1.6) is the deterministic trigger layer behind
 it — runnable headless from CI or cron with no dashboard at all (exit 1 on a breach),
 which is what closes the loop without a person starting it.
 
@@ -148,13 +153,16 @@ which is what closes the loop without a person starting it.
 
 Only when Step 1.6 reported a `propose`-tier breach (default: 3sigma). `AskUserQuestion`:
 
-- **"Draft intent.md from this breach (Recommended)"** — write
-  `.temper/specs/{metric}-breach-{date}/intent.md` in the standard shape from
-  `templates/intent.md`, complete enough to pass `temper gate intent` itself:
-  header including `**Author:** temper bands (control-band monitor)`,
+- **"Draft intent.md from this breach (Recommended)"** — write the project's
+  `.temper/specs/{metric}-breach-{date}/intent.md` (`{metric}` is the bands metric name,
+  letters, digits, hyphens and underscores only; `{date}` is YYYY-MM-DD) in the standard shape from
+  `${CLAUDE_PLUGIN_ROOT}/templates/intent.md`, complete enough to pass
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent --spec-path .temper/specs/{metric}-breach-{date}`
+  itself (run it, and fix any FAIL before you report the draft):
+  header including `**Author:** Temper control-band monitor`,
   `**Status:** draft`, `**Created:** {date}`, and a `**Reviewer:**` — ask who
   reviews it; a name, not a role, and never a guessed default. Then the body:
-  **Problem** = the breach verbatim from `temper bands`
+  **Problem** = the breach verbatim from `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands`
   (metric, latest, baseline, z-score — evidence, not narrative); **Success
   Criteria** = stable `AC-NN` ids, the metric back inside its bands with
   `Validate: metric` and a `Why:` line naming the risk the band guards, plus at

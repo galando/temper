@@ -9,17 +9,18 @@ nav_order: 3
 
 **The one command for the full SDLC.**
 
-```bash
-/temper "add login feature"
-/temper "JIRA-123"
-/temper --resume              # Resume from checkpoint
+```text
+/temper:temper "add login feature"
+/temper:temper "JIRA-123"
+/temper:temper                        # Resume or continue the current run
 ```
 
-> **Headless / non-interactive (`claude -p`, CI):** the bare `/temper` alias is only
-> registered in interactive sessions. Use the fully-qualified name instead:
-> `claude -p '/temper:temper "add login feature"'`. All other commands
-> (`/temper:plan`, `/temper:build`, etc.) already use their fully-qualified form and
-> are unaffected.
+> **The short form.** `/temper` is an interactive shortcut that may not resolve in every
+> surface: in `claude -p` and CI it does not. Type the full name `/temper:temper`, for
+> example `claude -p '/temper:temper "add login feature"'`. All other commands
+> (`/temper:plan`, `/temper:build`, etc.) already use their full form. With the mod loaded
+> and enforcement on, such a headless run stops at the first gate, because only a person in
+> an interactive session can approve; with enforcement off it runs on (see [Subcommands](#subcommands)).
 
 **What it does:**
 
@@ -61,8 +62,8 @@ At each stage, you see a nice summary and choose to proceed:
 | **Walk through step by step** | Interactive walkthrough: each section explained in detail |
 | **Grill Me** | Socratic challenge mode — adversarial questions that stress-test your plan |
 | **Open HTML review** | Browser-based review with inline comments (Google Doc-style) |
-| **Share HTML review** | Publish the same review so other people can comment by link: a Claude artifact (comments come back automatically) or, without one, a secret Gist (comments come back by paste). Asks before anything leaves your machine |
-| **Save for later** | Stop, save state, resume later with `/temper` |
+| **Share HTML review** | Publish the same review as a Claude artifact so other people can comment by link, and their comments come back automatically. Without the Artifact tool it offers Open HTML review instead. Asks before anything leaves your machine |
+| **Save for later** | Stop, save state, resume later with `/temper:temper` |
 | **Other** | Type a change request, edits applied, gate re-appears |
 
 **Review Gate Additional Options:**
@@ -92,8 +93,8 @@ Each stage gate clears context and loads only what's needed:
 
 ### Subcommands
 
-The short form `/temper` works only when no other plugin has a command with the same
-name; `/temper:temper` always works, and the mod's own messages use it. When the first word
+The short form `/temper` is an interactive shortcut that may not resolve in every surface;
+`/temper:temper` always works, and the mod's own messages use it. When the first word
 after the command is one of these, Temper handles it instead of starting a run. Any other first word is a feature description, as before.
 
 | Subcommand | What it does |
@@ -124,6 +125,13 @@ Decisions (`approve`, `override`, `accept`, `drift`, `back`) count only when you
 them or press the button yourself. Claude cannot create one. With the mod loaded the
 subcommands are handled by the mod; without it the same words are handled by the prompt
 based command, so they work on every surface.
+
+With the mod loaded and enforcement on, a decision word that does not come from an
+interactive session is refused, with a note that decisions need one: press the bar, or type
+`/temper:temper approve` in the prompt box. So a headless `claude -p` run stops at the first
+gate, because only a person in an interactive session can approve. With enforcement off the
+mod accepts a decision from any origin and records where it came from, and a headless run
+goes on.
 
 ### Modes
 
@@ -167,7 +175,8 @@ The bar is the same choices as the questions, without typing. The orchestrator
 (`commands/temper.md`) still runs every stage with its own brief and the CLI still judges every
 check. With the Temper mod loaded the orchestrator does not ask its gate question a second time: it
 prints the stage panel and the check result, and waits ("Waiting for you. Use the Temper bar, or
-type a change."). Pressing Continue records your decision, asks Claude to mirror it in the CLI
+type /temper:temper approve (or back, override, pause), or type a change."; minimal and off modes draw
+no buttons, so there you type the word). Pressing Continue records your decision, asks Claude to mirror it in the CLI
 state, and then runs `/temper:temper` with no arguments, which is the orchestrator's own Resume: it
 starts the next stage in its own subagent. Without the mod nothing changes and the orchestrator asks
 its questions as before.
@@ -298,7 +307,7 @@ without starting the pipeline.
 **Who flips `Status:`** — `draft` (this command) → `accepted` (the human's Continue at
 `/temper`'s **Intent gate**; the plan gate only in a standalone `/temper:plan` run,
 where it's the first human gate to review the intent) → `completed` (the commit step).
-A later `/temper "{slug}"` presents the draft at its Intent gate and builds on it,
+A later `/temper:temper "{slug}"` presents the draft at its Intent gate and builds on it,
 never overwrites it. A `temper bands` breach drafts intents in exactly the same shape
 (see `/temper:status`).
 
@@ -603,15 +612,13 @@ Confidence: 91%
 
 **External Engine: open-code-review:**
 
-When the `ocr` CLI is installed, `/temper:review` automatically runs a second defect-detection pass during Step 2.5. OCR handles line-level defects; Temper keeps intent validation, security analysis, and architecture depth.
+OCR is off by default. When you set `tools.ocr.mode` to `auto` or `require` and the `ocr` CLI is on your `PATH`, `/temper:review` runs a second defect-detection pass (probed in Step 1, merged in Step 2). OCR handles line-level defects; Temper keeps intent validation, security analysis, and architecture depth.
 
 | Config Key | Default | Description |
 |------------|---------|-------------|
-| `tools.ocr.mode` | `auto` | `auto` (use if available), `off` (never invoke), `require` (block if missing) |
+| `tools.ocr.mode` | `off` | `off` (never invoke), `auto` (use if available), `require` (block if missing) |
 | `tools.ocr.replace-defect-subagent` | `true` | Drop generic defect hunting from Temper subagents when OCR is active |
 | `tools.ocr.timeout` | `10` | Minutes before OCR invocation is killed |
-| `tools.ocr.concurrency` | `8` | Max concurrent file reviews by OCR |
-| `tools.ocr.extra-args` | `""` | Additional CLI flags passed to `ocr review` |
 
 **Evidence labels:**
 
@@ -622,9 +629,9 @@ When the `ocr` CLI is installed, `/temper:review` automatically runs a second de
 
 | Mode | OCR available | OCR missing | OCR fails at runtime |
 |------|--------------|-------------|---------------------|
-| `auto` | Run + dedupe | Skip silently | Warn + degrade |
-| `require` | Run + dedupe | BLOCK with install instructions | Warn + degrade |
-| `off` | Never invoke | Never invoke | Never invoke |
+| `auto` | Run + dedupe | Skip with a one-line notice | Warn + degrade |
+| `require` | Run + dedupe | BLOCK, saying where to find OCR's install steps | Warn + degrade |
+| `off` (default) | Never invoke | Never invoke | Never invoke |
 
 ---
 
@@ -680,7 +687,7 @@ Root Cause: Queue consumer crashed at 2:34 AM
 
 ## `/temper:init`
 
-One-command project setup. Idempotent — safe to re-run; never overwrites an existing config or an existing non-Temper git hook.
+One-command project setup. It is idempotent, so it is safe to re-run. It never overwrites an existing config. It never writes over a git hook that is not Temper's, or over a hook file that git tracks: it keeps the Temper hook in `temper-pre-commit` in the repository's git folder instead, and shows you one line to add to that hook, with a one line hint (see "When you already have a pre-commit hook" below).
 
 ```bash
 /temper:init
@@ -690,55 +697,83 @@ One-command project setup. Idempotent — safe to re-run; never overwrites an ex
 
 - Seeds `.claude/temper.config` from the bundled default (if absent; an existing config is left untouched, with a note about any retired blocks in it)
 - Scaffolds `.temper/` (the gate ledger, overrides log, feedback-loop registry)
-- Installs the **native commit gate** — the pre-commit hook that blocks `git commit` while any gate is red (backs up a prior non-Temper hook first)
+- Writes the **native commit gate**, the pre-commit hook that blocks `git commit` while any gate is red, to the hooks folder git names for the repository: `.git/hooks`, or a `core.hooksPath` folder inside the repository or its git folder. In a linked worktree that is the main checkout's hooks folder, which every worktree shares, so a hook already there is reported as installed for this worktree; a submodule's hook goes in its own git folder. An older Temper hook is replaced. When the hook there is not Temper's, or git tracks the hook file, setup writes only `temper-pre-commit` in the git folder, shows you the line to add and the hint, and goes on without the commit gate until you add it.
+- Checks `.claude/settings.json` and `.claude/settings.local.json` in the project for a Temper guard command that does not run an existing script in the current plugin folder (a path from before 9.6.5, when the guard scripts were in another folder, or the folder of an earlier plugin version) and asks whether to replace those commands with the current guardrails set, showing the change first. It never reads or writes the settings in your home folder.
 
-**You usually don't run it by hand** — your first `/temper "…"` in an un-set-up project does all of this automatically. Optional edit-time guardrails are a separate `/temper:pack enable hooks`.
+**When you already have a pre-commit hook.** The installer leaves it as it is. It writes the full Temper hook to `temper-pre-commit` in the repository's git folder (the folder `git rev-parse --git-common-dir` names, which git never commits) and prints this line between its BEGIN and END lines:
+
+```sh
+_temper_rc=$?; [ "$_temper_rc" -eq 0 ] || exit "$_temper_rc"; _temper_hook="$(git rev-parse --git-common-dir)/temper-pre-commit"; [ ! -f "$_temper_hook" ] || bash "$_temper_hook" || exit 1
+```
+
+The line holds no path of this machine, so it is safe to commit, and it keeps your hook's own result wherever it sits: when the command before it failed, it exits with that status, and otherwise it runs the Temper hook and fails only when that hook blocks. The installer does the same when `core.hooksPath` names a folder outside the repository. Its hint says where the line goes:
+
+| Your hook | Where the line goes |
+|---|---|
+| husky (a hooks folder in `.husky`) | `.husky/pre-commit`, which is safe to commit |
+| the pre-commit framework | a local hook in `.pre-commit-config.yaml` (repo: local, language: system, pass_filenames: false, always_run: true) whose entry runs the line |
+| lefthook, which writes its hook again | a pre-commit command in `lefthook.yml` that runs the line |
+| any other hook | its start or its end |
+
+Once your hook holds the line, with no line before it that starts with `exit` or `exec`, running the installer again makes `temper-pre-commit` current, says your hook calls it, and exits 0. When an `exit` or `exec` line comes first, the line never runs, and the installer refuses and says to move it above that line. When the installer refuses before it knows the git folder, it writes nothing and prints the Temper hook's own lines instead, in a subshell, so that their exits end only the subshell and your hook's own result is kept.
+
+To remove the hook, delete it and any `temper-pre-commit` in the git folder. An older Temper version may have left a hook that was not its own as `pre-commit.bak.<timestamp>`. When one sits next to the hook, the installer warns, names it and says how to get it back: move it back to `pre-commit` and add the line between BEGIN and END in the installer's output to it (the installer writes `temper-pre-commit` first, so that line works).
+
+The installer's `--global` option writes the hook to `temper-git-hooks` in the repository's shared git folder and sets `core.hooksPath` to that folder's absolute path, so every linked worktree uses the same hook. It refuses when `core.hooksPath` is already set to another folder (husky, lefthook and the like; the default mode installs into that folder). It also refuses when `.git/hooks` holds an executable hook that git would stop running once `core.hooksPath` is set, such as a `commit-msg` hook or git-lfs's `pre-push` (any hook git knows by name, other than a Temper `pre-commit`): it names those hooks and says to run the installer without `--global`. When the repository was moved or renamed after `--global`, `core.hooksPath` still names Temper's folder at the old place, and git runs no pre-commit hook. `--global` then points it here again and prints a note; the default mode refuses and says to run the installer with `--global`, or to unset `core.hooksPath`. If you used `--global`, also unset `core.hooksPath` to remove it.
+
+**You usually don't run it by hand.** Your first `/temper:temper "…"` in a project that is not set up does all of this automatically. The optional edit-time guardrails are a separate step: `/temper:pack enable guardrails` (see [Guardrails](#guardrails)).
 
 ---
 
 ## `/temper:pack`
 
-Manage quality packs: view, toggle, or create new ones.
+Manage quality packs: view, toggle, quick-create a launcher pack, configure links and phases, or build a new pack.
 
-```bash
+```text
 /temper:pack
+/temper:pack enable guardrails
+/temper:pack disable guardrails
 ```
 
 **What it does:**
 
-- Shows all defined packs with enable/disable status
-- Lets you toggle packs on/off
-- Create new custom packs by scanning your codebase
+- Shows every pack it finds, from three places: the project's `.claude/packs` folder, your global
+  pack folder `~/.claude/packs`, and the 8 built-in packs. A project pack shadows a global one of
+  the same name, and a global one shadows a built-in one.
+- Lets you toggle packs on/off, quick-create a launcher pack, set a pack's link and phases, or build a new pack
+- Turns the guardrails pack's guard hooks on or off (see [Guardrails](#guardrails))
+- Asks whether to replace a Temper guard command in the project settings that does not run an existing script in
+  the current plugin folder with the current guardrails set (it shows the change first)
 
-**Output:**
+**Output:** a Quality Pack Manager panel (its exact shape is in `reference/pack.md`, under
+"Step 1: Discover + Display") with one row per pack, filled from what it found, and a last line
+`N packs total (X enabled, Y disabled)`. The columns:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ PACK — Quality Pack Manager                                 │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  PACK                     STATUS    RULES                    │
-│  ─────────────────────── ──────── ───────────────────────── │
-│  quality                   ON      BLOCK: 3, WARN: 5       │
-│  tdd                       ON      BLOCK: 2, WARN: 4       │
-│  security                  ON      BLOCK: 6, WARN: 2       │
-│  git                       ON      WARN: 4, SUGGEST: 4     │
-│  company                   OFF     BLOCK: 4, WARN: 3       │
-│                                                             │
-│  5 packs total (4 enabled, 1 disabled)                      │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+| Column | What it shows |
+|--------|---------------|
+| NAME | The pack's name |
+| STATUS | `ON` when the pack is in `packs:`, otherwise `OFF` |
+| PHASES | The phases that load the pack (`all` when none are set) |
+| LINK | The pack's `plugin://` or `skill://` link, if it has one |
+| CONNECTED | Whether that link target was found |
 
 **Options:**
 
 | Option | What it does |
 |--------|-------------|
-| **Toggle packs** | Enable or disable packs via multi-select |
-| **Add new pack** | Scan codebase, interview about conventions, generate custom pack |
-| **Done** | Exit pack manager |
+| **Toggle packs on/off** | Select packs to enable or disable. Turning `guardrails` on or off runs Guardrails enable or disable, which shows its change and asks first. |
+| **Quick-create launcher pack** | Wrap a skill or command as a BLOCK-level pack in the project's `.claude/packs` folder. |
+| **Configure pack (link, phases)** | Set the link target or the phases of an existing pack. |
+| **Done** | Exit. To open the full pack builder instead, choose **Other** and describe the pack. |
 
-**Adding a new pack:**
+**Link targets.** A launcher pack or a link points at a skill or command. The choices are the
+skills and commands this Claude session lists (a plugin's show as `plugin:item`) and the
+project's own commands and skills in `.claude/commands` and `.claude/skills`. A
+`plugin://name` link counts as connected when the session lists a skill or command of that
+plugin, and a `skill://name` link when the session lists that skill or the project has it.
+Temper reads no Claude Code file to find them.
+
+**The full pack builder** (choose **Other**, then describe the pack):
 
 ```
 🔍 Scanning codebase...
@@ -767,6 +802,59 @@ Generating pack...
    • SUGGEST rules: 4
    • Status: ENABLED
 ```
+
+### Guardrails
+
+The guardrails pack adds edit-time guard hooks: secret blocking, protection of the regression test
+and of frozen paths, the in-agent commit gate, an approval prompt before an override, a forbidden
+import check and auto-format. They are off until you turn them on.
+
+The secret check scans only what a call adds: the content of a Write, the new text of an Edit
+(each new text of a MultiEdit) and the command of a Bash call. So an edit that removes a secret,
+or the command that unstages one, is not refused. The staged files are scanned only by the native
+`pre-commit` hook, at commit time.
+
+`/temper:pack enable guardrails`:
+
+1. Refuses, in one line, when the project folder is your home folder (its settings files would
+   then be your user settings), or when the plugin folder's path holds a character that cannot sit
+   safely in a quoted command: a quote, a backslash, a dollar sign, a backtick or a line break.
+2. Asks which project settings file to use: `.claude/settings.local.json` (personal, the default,
+   because each command holds this machine's plugin folder) or `.claude/settings.json` (shared with
+   your team; a teammate whose plugin sits in another folder sees those commands as stale). When you
+   pick `.claude/settings.local.json` and git does not ignore it, it offers to add it to `.gitignore`.
+3. Shows the change it will make, in both project settings files: the entries it adds to the file
+   you picked, and any earlier Temper guard entry it removes from either file.
+4. When you confirm, merges the hook blocks of the pack's `settings-guardrails.json` into that
+   file. A hook in a settings file gets no CLAUDE_PLUGIN_ROOT variable, so each command is written
+   out in full: `bash`, a space, then in double quotes the plugin's absolute folder followed by
+   `/scripts/guards/` and the guard's script name, such as `block-secrets.sh`. The merge is
+   additive: your other hooks stay, and an earlier Temper guard entry is replaced instead of added
+   a second time.
+5. Adds `guardrails` to `packs:` in `.claude/temper.config`.
+
+`/temper:pack disable guardrails` removes the Temper guard entries from both project settings
+files and the `guardrails` entry from `packs:`.
+
+A Temper guard entry is a hook command that names one of the guard scripts (`block-secrets.sh`,
+`protect-regression-test.sh`, `block-protected-paths.sh`, `block-uncommitted-gate.sh`,
+`confirm-override.sh`, `block-forbidden-imports.sh`, `run-formatter.sh`, `stage-marker.sh` or
+`verify-stage-gate.sh`) under the current plugin folder, under the guard scripts folder of
+an older version or an older plugin folder outside the project, or through a path that starts with
+the CLAUDE_PLUGIN_ROOT variable. A command that runs your own copy of one of these scripts (a
+relative path, a path through `CLAUDE_PROJECT_DIR`, or a path inside the project) is yours, and
+Temper never touches it.
+
+A plugin upgrade moves the plugin folder, and a guard command written before it then points at a
+folder that is gone or out of date. `/temper:pack` (the list) and `/temper:init` check both project
+settings files for a Temper guard command that does not run an existing script in the current
+plugin folder, including a path from before 9.6.5, and ask whether to replace those commands with
+the current guardrails set (the change is shown first).
+
+The pack does not add the stage gate pair (`stage-marker.sh` and `verify-stage-gate.sh`): the
+plugin's own hooks already run them. `/temper:pack` and `/temper:init` never read or write the
+settings in your home folder. The commit-time layer is the native `pre-commit` hook, which
+`/temper:init` installs.
 
 ---
 

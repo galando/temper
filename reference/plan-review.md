@@ -9,11 +9,11 @@ description: "Interactive HTML plan review, local or shared, with inline comment
 Two plan gate options use this page:
 
 - **Open HTML review**: render to a local file and open it. One reviewer, comments come back as a JSON file.
-- **Share HTML review**: publish the page so other people can review it. Two paths, chosen by what the session has (see [Sharing](#sharing)).
+- **Share HTML review**: publish the page as a Claude artifact so other people can review it (see [Sharing](#sharing)). Without the `Artifact` tool, offer **Open HTML review** instead.
 
 ## Template
 
-The HTML template is at `templates/plan-review.html`. It contains:
+The HTML template is at `${CLAUDE_PLUGIN_ROOT}/templates/plan-review.html`. It contains:
 - All CSS inline (dark and light theme, responsive down to phone width)
 - All JS inline (comment system, copy/export, markdown rendering)
 - No external dependencies (no CDN, no build tools)
@@ -22,18 +22,18 @@ The HTML template is at `templates/plan-review.html`. It contains:
 
 ## HTML Generation
 
-Never fill the template by hand. `scripts/plan_review.py` does it deterministically, escapes every value for the place it lands in, and splits sections the same way every time:
+Never fill the template by hand. `${CLAUDE_PLUGIN_ROOT}/scripts/plan_review.py` does it deterministically, escapes every value for the place it lands in, and splits sections the same way every time:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py" render ".temper/specs/{feature}"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/plan_review.py" render ".temper/specs/{feature}"
 # writes .temper/specs/{feature}/review.html and prints its path
-python3 "$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py" render ".temper/specs/{feature}" \
-  --target artifact -o "${TMPDIR:-/tmp}/temper-review-{feature}.html"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/plan_review.py" render ".temper/specs/{feature}" \
+  --target artifact -o ".temper/review-artifact-{feature}.html"
 ```
 
 - Sections come from `plan.md` then `tasks.md`, split at each `## ` heading (headings inside code fences are ignored). Text before the first heading becomes its own section when it has content.
 - `--feature "Name"` overrides the display name (default: the `# ` heading of plan.md, else the spec directory name).
-- `--target artifact` writes the fragment the Artifact tool expects (title, style, body; no `<!doctype>`, `<html>`, `<head>` or `<body>` wrapper). Write it outside the spec directory so a shared page is never committed with the spec.
+- `--target artifact` writes the fragment the Artifact tool expects (title, style, body; no `<!doctype>`, `<html>`, `<head>` or `<body>` wrapper). Write it to the project's `.temper` folder, outside the spec directory, so a shared page is never committed with the spec. Every output goes in the project, never in the plugin folder, and `{feature}` is the spec's slug: letters (either case), digits, '.', '_' and '-', starting with a letter or digit, never containing '..' or '/'. A ticket key prefix such as `PROJ-123-login` is a valid slug.
 
 ### Section Schema
 
@@ -88,7 +88,9 @@ After the reviewer is done, get the comments into `.temper/specs/{feature}/revie
    - `task-change` → update tasks.md section matching `target`
    - `scenario-change` → update intent.md scenario matching `target`
    - `plan-change` → update plan.md section matching `target`
-   - `general-note` → add as context note to build-state.json
+   - `general-note` → add it to plan.md under a `## Review Notes` heading (create the
+     heading at the end of plan.md when it is missing), one bullet per note. Never
+     write it into `.temper/build-state.json`: the CLI owns that file
 3. Show what changed
 4. Return to Plan gate
 
@@ -102,9 +104,9 @@ After the reviewer is done, get the comments into `.temper/specs/{feature}/revie
 
 Sharing sends the plan text to a service outside this machine. Before publishing, tell the user exactly where it will go and who can read it, and publish only after they confirm. A plan names files, internal design and sometimes people.
 
-Pick the path from what the session has, in this order:
+Share HTML review has one path, the Claude artifact, and comments come back automatically.
 
-### Path A: Claude artifact (preferred, comments come back automatically)
+### Claude artifact
 
 Use it when the `Artifact` tool is in your tool list.
 
@@ -116,28 +118,13 @@ Use it when the `Artifact` tool is in your tool list.
 6. Show an `AskUserQuestion` gate: **"Comments are in"** / **"Skip the review"**.
 7. On "Comments are in", read both collections with `ArtifactData` (`list` on `comments`, then `list` on `done`), save the documents' bodies as `{"comments": [...], "done": [...]}` in a temp file, and normalize:
    ```bash
-   python3 "$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py" merge --feature "{feature}" \
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/plan_review.py" merge --feature "{feature}" \
      -o ".temper/specs/{feature}/review-comments.json" "{temp file}"
    ```
    Report how many comments came back and which reviewers marked themselves done (`reviewers_done`), then apply them as above.
 8. Leave the artifact in place unless the user asks to delete it.
 
-### Path B: secret Gist (fallback, comments come back by paste)
-
-Use it when there is no `Artifact` tool and the `gh` CLI is installed and logged in.
-
-1. Warn the user: a secret Gist is **unlisted, not private**. Anyone who has the link can read it. Publish only after they confirm.
-2. Render the local file, then `gh gist create ".temper/specs/{feature}/review.html" -d "Temper plan review {feature}"`. The Gist is secret by default; never pass `--public`.
-3. Build the viewing link from the Gist URL `https://gist.github.com/{user}/{id}`: `https://gist.githack.com/{user}/{id}/raw/review.html`. A Gist serves raw HTML as plain text, so the githack proxy is what renders it. If that link does not render, paste the raw Gist URL into raw.githack.com to get one.
-4. Tell the user the link. Reviewers read and comment in the browser, click **Done Reviewing**, then use **Copy comments** (or the box that appears) and send the JSON back.
-5. Show an `AskUserQuestion` gate asking the user to paste each reviewer's JSON through "Other", or to say where the files are. Save each paste to a temp file and normalize them together (inputs are merged and de-duplicated by comment id):
-   ```bash
-   python3 "$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py" merge --feature "{feature}" \
-     -o ".temper/specs/{feature}/review-comments.json" "{file 1}" "{file 2}"
-   ```
-6. Apply the comments as above, then offer to delete the Gist (`gh gist delete {id}`) so the plan does not stay on a public link.
-
-### Neither is available
+### Without the Artifact tool
 
 Say so, and offer **Open HTML review** (local) instead. Never invent another hosting route.
 
@@ -153,4 +140,4 @@ Say so, and offer **Open HTML review** (local) instead. Never invent another hos
 - Markdown rendering only applies to plan content (injected by `plan_review.py`, which JSON-escapes it for the script block)
 - No external resources loaded (fully self-contained)
 - Shared-review data is untrusted: `plan_review.py merge` drops empty comments and coerces unknown types to `general-note` before anything is applied
-- The only network calls are the ones the user confirmed: publishing the artifact, or creating the Gist
+- Nothing leaves the machine before the user confirms. After that, the artifact's shared store carries reviewers' comments, and `ArtifactData` reads them back

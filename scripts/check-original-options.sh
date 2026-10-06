@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
 # check-original-options.sh: every question option of the original orchestrator
-# (commands/temper.md) must still exist there AND have a button in the Temper bar's action
-# table (hooks/temper-mod/core/actions.ts), with the same words. Case does not matter.
+# (commands/temper.md) must still exist there, with the same words. Case does not matter.
+#
+# The other half lives in the mod's own action test, which imports the action table: "every
+# original option maps to a button" checks that each option below has a button with its label, and
+# "only the original options, plus Discuss, Play and Skip" checks that no button carries any other
+# label. This script reads only commands/temper.md.
 #
 # Two options are carried by a button with other words, on purpose:
 #   Override and continue -> "Skip with a reason"      (key 9)
 #   Other                 -> "Discuss"                 (key 4)
-# A new option in commands/temper.md is added to the table below, and to the action table.
+# A new option in commands/temper.md is added to the table below, and to the action test's table.
 set -uo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# With CDPATH set, cd prints the folder it enters, and the path below would hold it twice.
+unset CDPATH
+# The plugin folder: this script sits in its scripts folder, so strip that literal suffix.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${HERE%/scripts}"
+[[ "$ROOT" != "$HERE" ]] || { echo "FAIL: cannot find the plugin folder from $HERE"; exit 1; }
 MD="$ROOT/commands/temper.md"
-ACTIONS="$ROOT/hooks/temper-mod/core/actions.ts"
 
 # option in commands/temper.md | label in the action table
 TABLE='
@@ -35,34 +43,13 @@ FAIL=0
 PASS=0
 while IFS='|' read -r option label; do
   [[ -n "$option" ]] || continue
-  if ! grep -qiF -- "$option" "$MD"; then
-    echo "FAIL: \"$option\" is no longer in commands/temper.md (update scripts/check-original-options.sh)"
-    FAIL=$((FAIL+1)); continue
-  fi
-  if ! grep -qiF -- "'$label" "$ACTIONS" && ! grep -qiF -- "\`$label" "$ACTIONS"; then
-    echo "FAIL: the original option \"$option\" has no action labelled \"$label\" in hooks/temper-mod/core/actions.ts"
-    FAIL=$((FAIL+1)); continue
-  fi
-  PASS=$((PASS+1))
-done <<< "$TABLE"
-
-# Second check: the other way round. Every button label in actions.ts must be an original option
-# (the first column above, or its label), with a suffix allowed after "Continue to", "Loop back to"
-# and "Continue with task", or one of the explicit extras. Anything else fails with its name.
-ALLOWED_LABELS="Continue to|Continue with task|Loop back to|Save for later|Grill me|Teach me|Walk through step by step|Open HTML review|Share HTML review|Architecture depth review|Review config suggestions|Change|Stop|Commit|Start Intent|Run Phase|Discuss|Play while you wait|Skip with a reason|Resume|Fix the failures|Fix the findings|Fix|Accept|Explain"
-# Labels written as the third argument of prompt(), command(), launch() or draft().
-LABELS="$(grep -oE "(prompt|command|launch|draft)\((key|'[0-9]'), (id|'[^']+'|\`[^\`]+\`), '[^']+'" "$ACTIONS" | sed -E "s/.*, '([^']+)'$/\1/" | sort -u)"
-# Labels written as template strings: `Continue to ${next}`, `Loop back to ${...}`, `Run ${...}`.
-LABELS="$LABELS"$'\n'"$(grep -oE "\`(Continue to|Continue with task|Loop back to|Run) " "$ACTIONS" | tr -d '`' | sed -E 's/ $//; s/^Run$/Run Phase/' | sort -u)"
-while IFS= read -r label; do
-  [[ -n "$label" ]] || continue
-  if printf '%s\n' "$label" | grep -qiE "^(${ALLOWED_LABELS})( |$)"; then
+  if grep -qiF -- "$option" "$MD"; then
     PASS=$((PASS+1))
   else
-    echo "FAIL: the button label \"$label\" in actions.ts is not an original option of commands/temper.md and is not an explicit extra"
+    echo "FAIL: \"$option\" (button \"$label\") is no longer in commands/temper.md (update this table and the mod's action test)"
     FAIL=$((FAIL+1))
   fi
-done <<< "$LABELS"
+done <<< "$TABLE"
 
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ $FAIL -eq 0 ]]

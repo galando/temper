@@ -30,18 +30,18 @@ zero it.
 
 Enforce the contract in the hook layer, the same place the commit gate already lives:
 
-- **`scripts/hooks/stage-marker.sh`** (UserPromptSubmit): when the submitted prompt
+- **`scripts/guards/stage-marker.sh`** (UserPromptSubmit): when the submitted prompt
   invokes a standalone stage command, record the owed gate in
   `.temper/pending-stage.json`.
-- **`scripts/hooks/verify-stage-gate.sh`** (Stop): while a marker is pending and
+- **`scripts/guards/verify-stage-gate.sh`** (Stop): while a marker is pending and
   `.temper/gates.json` has no verdict for that stage, refuse to end the session
   (exit 2) with instructions to record evidence and run the gate. **Any verdict
   satisfies it, PASS or FAIL** — the guarantee is that `temper gate <stage>` ran, not
-  that it succeeded. Each firing appends to `.temper/hooks.log`.
+  that it succeeded. Each firing appends a line to the stage gate log in `.temper/`.
 
-Shipped two ways: plugin-level `hooks/hooks.json` (fires for `--plugin-dir` and
-marketplace installs with no settings merge) and the hooks pack's
-`settings.hooks.json` (projects using the pack's copy-paste path).
+Shipped two ways: the plugin's hooks file (fires for `--plugin-dir` and
+marketplace installs with no settings merge) and the guardrails pack's
+`settings-guardrails.json` (projects using the pack's copy-paste path).
 
 The numbered-step prompt fix is kept as defense-in-depth — it makes the first attempt
 more likely to be right, so the hook rarely has to fire.
@@ -76,15 +76,15 @@ Consistent with every hook in the pack — exactly one fail-closed path:
 
 ## Evidence
 
-- Unit: 15 cases in `scripts/tests/test-temper.sh` (marker detection and non-detection,
+- Unit: 15 cases in `scripts/selftest/test-temper.sh` (marker detection and non-detection,
   block/clear/loop-guard paths, corrupt inputs, FAIL-verdict acceptance, a live
   `temper gate plan` round-trip, and a pinned regression for the argv-vs-stdin bug).
-- Probe: a throwaway plugin confirmed empirically that plugin `hooks/hooks.json` fires
+- Probe: a throwaway plugin confirmed empirically that a plugin's hooks file fires
   in `claude -p` mode and that UserPromptSubmit's input field is `prompt`. (Both points
   contradicted a docs-derived answer; the probe is authoritative.)
 - Live end-to-end: `claude -p "/temper:plan ..."` on the wiring-smoke fixture with the
-  plugin loaded. `.temper/hooks.log` shows the mechanism catching the real failure mode
-  in the wild:
+  plugin loaded. The stage gate log in `.temper/` shows the mechanism catching the real
+  failure mode in the wild:
 
   ```
   18:53:55Z verify-stage-gate blocked stop (stage=plan, no verdict)

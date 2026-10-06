@@ -5,7 +5,7 @@ description: "Run the project's validation pipeline (tests, build, lint, securit
 # Check: Stack-Aware Validation Pipeline
 
 **Goal:** Run the project's real validation pipeline and record what happened — never
-estimate a result. `agents/check.md` carries the exact `temper evidence add` invocations
+estimate a result. The check brief (`${CLAUDE_PLUGIN_ROOT}/agents/check.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add` invocations
 the gate needs; this doc is the methodology behind what to run and how to interpret it.
 
 **Modes:** Standalone (`/temper:check`) runs in the current context, own gate. Agent
@@ -14,12 +14,13 @@ the orchestrator owns it. Load `.temper/specs/{feature}/review-context.json` if 
 
 ## Step 1: Detect Stack
 
-Apply the temper-core skill's detection order. A company preset (`.claude/temper.config`
-/ `.claude/presets/*.yaml`) overrides auto-detected commands.
+Apply the temper-core skill's detection order. A company preset (`.claude/temper.config`,
+or a YAML preset file in the project's `.claude/presets` folder) overrides auto-detected
+commands.
 
-**Configured commands first.** Before using the table below, read
-`temper config get check.commands.test`, `check.commands.lint` and
-`check.commands.typecheck`. A key that prints a command replaces the detected command
+**Configured commands first.** Before using the table below, run
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper config get check.commands.test`, then the same call for
+`check.commands.lint` and for `check.commands.typecheck`. A key that prints a command replaces the detected command
 for that level; a key that prints nothing keeps stack detection.
 
 | Manifest | Stack | test / lint / type / build |
@@ -38,7 +39,7 @@ missing *optional* tool.
 
 | # | Level | On failure | Skip when |
 |---|---|---|---|
-| 0 | Environment — no `.env*` looks like production | STOP immediately | no `.env*` files |
+| 0 | Environment, decided from a config key and file names only: never open a `.env` file or read what one holds. It fails when `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get check.environment` prints `production`, or, with that key unset, when the project's top folder holds a file named `.env.production` or `.env.prod` | STOP immediately; name the key or the file name that stopped it, and say that setting `check.environment` to the real environment (for example `development`) in temper.config clears it when that file is only a template | `check.environment` is set to anything but `production`, or it is unset and no such file name exists |
 | 1 | Compile/build | STOP, show error, suggest fix | — |
 | 2 | Unit tests | STOP, show failing names | — |
 | 3 | Integration tests | STOP, show failing tests | none configured |
@@ -57,8 +58,9 @@ This is the level that proves, per scenario, whether a real test exercises it �
 level that catches a scenario Build never implemented. It is the only level that
 reads `intent.md` and checks behavior against what was promised.
 
-1. Resolve `{spec}`: from `build-state.json` if present, else the most-recently-modified
-   dir under `.temper/specs/`. No specs found → SKIP this level entirely.
+1. Resolve `{spec}`: the `--spec-path` this run was given, else
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path`. Neither gives a spec path → SKIP
+   this level entirely (never pick a spec folder by guessing).
 2. Extract every `Scenario:` (name + Given/When/Then) from `intent.md`.
 3. Match each scenario to a test: MCP `query_graph_tool` by name annotation → `[PROVEN]`;
    else grep test files for the scenario name (snake_case/camelCase) → `[HEURISTIC]`; no
@@ -98,7 +100,7 @@ Dependency scan (`npm audit`, `pip-audit`, etc.) plus, if the semgrep MCP server
 available and `tools.mode` isn't `heuristic-only`: `security_check` on changed files,
 then `semgrep_scan_with_custom_rule` using each enabled pack's rules (read the enabled
 packs' `rules.md` — project `.claude/packs/` shadows global `~/.claude/packs/` shadows
-built-in `$CLAUDE_PLUGIN_ROOT/packs/`; keep rules whose `phases` is `all` or contains
+the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`; keep rules whose `phases` is `all` or contains
 `check`). Map error→CRITICAL(BLOCK), warning→HIGH(WARN), info→MEDIUM(WARN). SAST findings
 bypass confidence filtering — always shown, labeled `[PROVEN]`. No semgrep → fall back to
 the OWASP pattern-matching in `review.md` Step 2, labeled `[HEURISTIC]`.
@@ -106,9 +108,10 @@ the OWASP pattern-matching in `review.md` Step 2, labeled `[HEURISTIC]`.
 ## Step 3: Debt Tracking + Config Suggestions
 
 If `debt-tracking: true`: record coverage %, test count, and lint-violation count via
-the CLI — `$CLAUDE_PLUGIN_ROOT/scripts/temper metrics append coverage <pct>`, `temper
-metrics append tests <count>`, `temper metrics append lint_violations <count>` — never
-by hand-editing `.temper/metrics.json`: these arrays are what `temper bands` computes
+the CLI: `${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append coverage <pct>`,
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append tests <count>` and
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append lint_violations <count>`, never by
+hand-editing `.temper/metrics.json`: these arrays are what `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` computes
 control bands from, so the monitor must read a ledger the spine wrote. (Full debt
 analysis is `/temper:status`'s job, not Check's — don't slow the pipeline down
 repeating it here.)
@@ -116,14 +119,14 @@ repeating it here.)
 If every level passed and files changed: generate up to 5 config suggestions
 (confidence >= 0.6) comparing the diff against `CLAUDE.md`/`AGENTS.md`, write
 `.temper/specs/{feature}/config-suggestions.json`, and show them at the Check gate for
-Accept/Reject/Defer. Full methodology: `reference/config-suggestions.md`. (They're
+Accept/Reject/Defer. Full methodology: `${CLAUDE_PLUGIN_ROOT}/reference/config-suggestions.md`. (They're
 shown once at the gate — there's no separate re-offer queue.)
 
 Every accepted suggestion is a permanent line in a file loaded on every future session,
 so suggest one only when a *specific* thing went wrong that the config could have
 prevented — not general good practice the model would apply anyway. If `CLAUDE.md` is
 already long enough that you're hesitating, say so and suggest `/doctor` instead of
-adding to it; see `docs/context-hygiene.md`.
+adding to it; see `${CLAUDE_PLUGIN_ROOT}/docs/context-hygiene.md`.
 
 ## Context Output
 
@@ -151,7 +154,7 @@ same test failing across 2 consecutive loops stops immediately rather than loopi
 
 ## Summary + Gate
 
-The base summary box format is owned by `agents/check.md` — render it, appending: a
+The base summary box format is owned by the check brief (`${CLAUDE_PLUGIN_ROOT}/agents/check.md`) — render it, appending: a
 Live Scenarios line (`{X}/{Y}: {P} pass / {F} fail / {M} missing`), Test Gaps / API
 Diff / Perf sub-panel lines only when those levels ran, total time, and the scenario
 verdict `{X}/{Y} behaviorally verified` (STRONG assertions count full, WEAK half —
@@ -169,7 +172,7 @@ state that the final clear destroys):
    {date}`; if `build-context.json` recorded deviations (unplanned files, approach
    changes), write them into `plan.md` as a `## Deviations` section — the committed
    plan must describe what was actually built, in the same commit as the code.
-2. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper state archive` — this writes
+2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state archive` — this writes
    `.temper/specs/{slug}/gate-ledger.json` (verdicts, overrides, evidence counts)
    while the state is still intact. Do this BEFORE deleting build-state.json:
    `state archive` reads `spec_path` from that file, so deleting it first would
@@ -179,8 +182,8 @@ state that the final clear destroys):
    (separate, so the in-agent commit-gate hook sees them staged) — unless the project
    gitignores them (their choice — never force-add). The committed artifact chain is
    the audit trail; use a conventional message naming files changed / tests added.
-4. `$CLAUDE_PLUGIN_ROOT/scripts/temper state clear` (which also re-archives as a
-   safety net) — or delete `.temper/build-state.json` if the CLI is absent.
+4. `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear` (which also re-archives as a
+   safety net). The CLI always ships with the plugin; never delete the state by hand.
 
 **On Save:** write `build-state.json` with `stage: check_complete`, `next_stage:
 commit`, report "Run /temper when ready to continue."
@@ -196,5 +199,6 @@ commit`, report "Run /temper when ready to continue."
   (`eslint --fix`, `ruff format`).
 - **Security:** name the CVE, severity, affected dependency; suggest a version bump if
   one fixes it, else note it as an accepted risk with a workaround if one exists.
-- **Missing tool:** skip that level, note the install command — never fail the whole
-  pipeline for an optional tool.
+- **Missing tool:** skip that level, name the missing tool and point to its own install
+  page (never print an install command), and never fail the whole pipeline for an
+  optional tool.

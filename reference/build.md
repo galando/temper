@@ -5,15 +5,15 @@ description: "Execute the plan, implementing tasks one-by-one with quality gates
 # Build: Execute Plan with Quality Gates
 
 **Goal:** Implement the approved plan, task by task, with real TDD discipline.
-`agents/build.md` carries the exact `temper evidence add --phase red/green` invocations
+The build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --phase red/green` invocations
 the gate needs; this doc is the methodology behind what to test and in what order.
 
 **Modes:** Standalone (`/temper:build`) runs in the current context, own gate. Agent
 subprocess (from `/temper`) starts clean — no `AskUserQuestion` gate, return the summary,
 the orchestrator owns it. Load `tasks.md`, `intent.md` (if it exists), `plan.md`'s
 Prerequisites/blast-radius section, active packs' `rules.md` (project `.claude/packs/`
-shadows global `~/.claude/packs/` shadows built-in `$CLAUDE_PLUGIN_ROOT/packs/`, kept
-where `phases` is `all` or contains `build`), and `.claude/packs/stacks/{stack}.md` if
+shadows global `~/.claude/packs/` shadows the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept
+where `phases` is `all` or contains `build`), and the project's `.claude/packs/stacks/{stack}.md` if
 present. Verify you're on a feature branch (auto-create `feature/{spec-slug}` if the git
 pack is enabled and you're on main).
 
@@ -24,7 +24,7 @@ rules, read related existing code, skip branch verification (the user decides).
 
 **Checkpoint mode:** your launch prompt may carry `Checkpoint: task {N}.` plus
 `Checkpoint feedback #{K}: {text}` lines. With a checkpoint, FIRST answer every
-feedback item — `temper evidence add --stage build --phase feedback-resolved
+feedback item — `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase feedback-resolved
 --claim "feedback #{K}: applied — {what changed}"` or `"feedback #{K}: declined —
 {reason}"` (a decline always carries a reason; feedback that changes a later task
 edits that task's unchecked row, never a checked one) — then run ONLY task N.
@@ -127,8 +127,9 @@ search tool is connected.)
 
 If `review-context.json` or `check-context.json` exists in the spec dir: read it, focus
 fixes on the files/issues it names (for Check, read each `test_failures[]` entry's test
-file + implementation file and fix the actual cause), then delete the file — it's stale
-once consumed.
+file + implementation file and fix the actual cause), then delete that one file, the
+project's `.temper/specs/{slug}/review-context.json` or
+`.temper/specs/{slug}/check-context.json`. It's stale once consumed.
 
 **Infeasible plan:** if the plan itself can't work (an API doesn't exist, the
 architecture is incompatible), add "Revise plan" as a build-gate option, write
@@ -149,14 +150,14 @@ applicable). A change typed via "Other" is never approval — make the edit, re-
 same gate; the user must explicitly pick "Continue" to advance. Subprocess mode: skip the
 gate, return the summary.
 
-The panel format is owned by `agents/build.md` — render exactly the panel it defines
+The panel format is owned by the build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) — render exactly the panel it defines
 (76 columns, fact rows then titled sections; `SEARCH:` row, and `COMMITS` / `FEEDBACK`
 sections on a checkpoint run). Never carry a second, different box here: whichever
 box a clean-context stage reads first is the one that renders, and two shapes means
 two different reviews.
 
 **On Continue:** standalone loads only changed files into context for Review —
-diffed against `temper state get base_sha` when one is recorded (checkpoint commits
+diffed against the sha `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get base_sha` prints when one is recorded (checkpoint commits
 already landed, so a plain `git diff --name-only` returns nothing), plus
 still-uncommitted paths. Mark the spec header `**Status:** completed` /
 `**Completed:** {date}` if `intent.md` exists. Cleanup of `build-state.json` happens

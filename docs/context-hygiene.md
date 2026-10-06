@@ -36,7 +36,7 @@ cost per Plan run with equal blast-radius recall. Hard rules survive where a gat
 mechanically checks them, and nowhere else.
 
 **Briefs are self-contained; orchestrators relay.** Every stage runs as an isolated
-Agent subprocess launched from a small `agents/{stage}.md` brief, and (v9.1) the brief
+Agent subprocess launched from its own small brief in `agents/`, and (v9.1) the brief
 carries everything the subprocess needs — including the summary box it returns — so a
 clean context never reads the 20KB orchestrator file to fetch an 8-line template. The
 orchestrator prints the returned box verbatim rather than restating formats, and
@@ -51,10 +51,10 @@ would not derive alone (severity floors, filter bypasses, memory thresholds); wh
 was choreography.
 
 **Standalone commands can borrow the subprocess isolation.** `stages.subprocess: true`
-makes `/temper:plan` through `/temper:check` run in the same clean `agents/{stage}.md`
-subprocess the unified `/temper` uses, returning only the summary box and gate verdict
-to your session — the default stays inline, because mid-stage interactivity is the
-point of running a stage standalone.
+makes `/temper:plan` through `/temper:check` run in the same clean subprocess, from the
+same stage brief, that the unified `/temper` uses, returning only the summary box and
+gate verdict to your session — the default stays inline, because mid-stage
+interactivity is the point of running a stage standalone.
 
 **Rules live in the CLI, not in prose.** Every gate verdict is computed by
 `scripts/temper` from an evidence ledger. A prompt that restated gate logic would be a
@@ -72,7 +72,7 @@ phases: [build, review, check]
 ```
 
 `all` (or an absent block, for third-party packs) means every stage. `[]` means no stage
-loads it — `packs/hooks/rules.md` uses this, because it documents bash hooks that enforce
+loads it — `packs/guardrails/rules.md` uses this, because it documents bash hooks that enforce
 themselves at edit- and commit-time and has nothing a stage agent can act on. Declaring
 phases is the cheapest progressive-disclosure win available to a pack author: rules only
 reach the stages that can use them.

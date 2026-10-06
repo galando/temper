@@ -19,10 +19,38 @@
 #     the one fail-closed path)
 #   - No active fix run / no recorded test / different file      => exit 0
 #   - python3 absent / unparseable input / any internal error    => exit 0 (fail-open)
+#   - this script is not in a plugin's scripts/guards folder     => exit 0 (does nothing)
+#
+# The edited file is the recorded test when both name the same file (device and inode, so
+# letter case, symlinks and hard links cannot hide it); a file not made yet is compared by
+# its full path with every symlink followed.
 set -uo pipefail
+
+# cd prints the folder it changes to when CDPATH is set, which would spoil the folder worked
+# out below with cd and pwd.
+unset CDPATH
+
+_plugin_root() { # prints the folder of the plugin this script belongs to: this script's own
+                 # file (every symlink followed, as the CLI finds itself), its folder with every
+                 # symlink followed and the literal suffix /scripts/guards removed. Fails (1)
+                 # when the script is not laid out that way.
+  local self="${BASH_SOURCE[0]}" hops=0 link_dir here root
+  while [[ -L "$self" && $hops -lt 40 ]]; do
+    link_dir="$(cd -P "$(dirname "$self")" 2>/dev/null && pwd)" || return 1
+    self="$(readlink "$self")" || return 1
+    [[ "$self" == /* ]] || self="$link_dir/$self"
+    hops=$((hops + 1))
+  done
+  here="$(cd -P "$(dirname "$self")" 2>/dev/null && pwd)" || return 1
+  root="${here%/scripts/guards}"
+  [[ "$root" != "$here" ]] || return 1
+  printf '%s\n' "$root"
+}
 
 _main() {
   command -v python3 >/dev/null 2>&1 || return 0
+  local root
+  root="$(_plugin_root)" || return 0
 
   local dir="${CLAUDE_PROJECT_DIR:-$PWD}"
   local state="$dir/.temper/build-state.json"
@@ -47,18 +75,23 @@ except Exception:
     sys.exit(0)
 if not target:
     sys.exit(0)
-def norm(p):
+def full(p):
     if not os.path.isabs(p):
         p = os.path.join(project_dir, p)
-    return os.path.realpath(p)
-if norm(target) == norm(guarded):
+    return p
+t, g = full(target), full(guarded)
+try:
+    same = os.path.samefile(t, g)
+except OSError:
+    same = os.path.normcase(os.path.realpath(t)) == os.path.normcase(os.path.realpath(g))
+if same:
     print(guarded)
 " "$state" "$dir" 2>/dev/null) || return 0
 
   if [[ -n "$verdict" ]]; then
     echo "BLOCK: '$verdict' is this fix run's recorded regression test — the proof the bug exists." >&2
     echo "Fix the code, not the test. If the test itself is wrong, that is a human's call:" >&2
-    echo "  temper state set regression_test \"\"   # lifts the shield, deliberately" >&2
+    echo "  $(printf '%q' "$root/scripts/temper") state set regression_test \"\"   # lifts the shield, deliberately" >&2
     return 2
   fi
   return 0

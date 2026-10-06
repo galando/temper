@@ -1,17 +1,17 @@
 import type { CommandRunResult, EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import { apply, commitFacts, composeText, consumeDecision, idleSnapshot, live, loadSnapshot, publish, runFingerprint, settingsFrom, statusText, syncCheck, timelineText, writeReport } from './adapter'
+import { apply, commitFacts, composeText, consumeDecision, idleSnapshot, live, loadSnapshot, nothingToLose, publish, runFingerprint, settingsFrom, statusText, syncCheck, timelineText, writeReport } from './adapter'
 import type { Io, Snapshot } from './adapter'
 import { findingActions } from './core/actions'
 import type { Action } from './core/actions'
 import { classifyBash } from './core/bash'
 import { pluginCliFrom, stageOf } from './core/cli'
-import { HELP, followUp, parseArgs, planCommand } from './core/commands'
+import { DECISION_WORDS, HELP, NEEDS_INTERACTIVE, followUp, parseArgs, planCommand } from './core/commands'
 import type { Bare, Parsed } from './core/commands'
 import { parseGameMode, parseOnOff, parsePhaseModel, parsePhaseModels, parseUiMode, versionAtLeast } from './core/config'
 import type { GameMode, UiMode } from './core/config'
 import type { Draft } from './core/events'
-import { ONLY_USER, phaseLabel } from './core/machine'
+import { phaseLabel } from './core/machine'
 import type { Command } from './core/machine'
 import { normalizePath } from './core/paths'
 import { evaluate } from './core/rules'
@@ -111,8 +111,8 @@ async function keepText($: Api, full: string, text: string): Promise<void> {
   await $.store.set(VF_DIRS, dirs)
 }
 
-// `$` is spelled only in this file, as `$.noun.method(...)` at each call site, so the
-// adapter and the pure core stay free of it.
+// `$` is spelled only in this file, at each call site, so the adapter and the pure core
+// stay free of it.
 function makeIo($: Api): Io {
   // A relative path means the project the session started in, even after Claude ran `cd` in a Bash
   // call: without this the files of the run are not found and the band goes away.
@@ -150,6 +150,7 @@ function makeIo($: Api): Io {
     setMode: async mode => {
       await $.state.set({ plugin: 'temper', key: 'mode' } as const, mode)
     },
+    cli: pluginCli(),
   }
 }
 
@@ -445,7 +446,9 @@ async function askReason($: Api, what: string): Promise<string> {
 const STALE = 'That step is already done.'
 let lastMoveAt = 0
 const MOVES = new Set(['approve', 'advance', 'back', 'override'])
-async function decideAs($: Api, command: Bare, origin: 'person' | 'model', drawnPhase?: string | null): Promise<{ error?: string; events: Draft[] }> {
+// `from` is set for a decision from another origin that is accepted because enforcement is off: the origin's kind, which
+// the event keeps as its author.
+async function decideAs($: Api, command: Bare, origin: 'person' | 'model', drawnPhase?: string | null, from?: string): Promise<{ error?: string; events: Draft[] }> {
   const fresh = await refresh($)
   if (drawnPhase !== undefined && drawnPhase !== null) {
     if (fresh.state.phase !== drawnPhase) return { error: STALE, events: [] }
@@ -453,7 +456,8 @@ async function decideAs($: Api, command: Bare, origin: 'person' | 'model', drawn
     const cooldown = Number.isFinite(Number(options.moveCooldownMs)) && options.moveCooldownMs !== undefined ? Number(options.moveCooldownMs) : 1000
     if (MOVES.has(command.type) && Date.now() - lastMoveAt < cooldown) return { error: STALE, events: [] }
   }
-  const done = await apply(makeIo($), options, fresh, { ...command, origin, author: 'user' } as Command)
+  const who = from === undefined ? { author: 'user' } : { author: `${from} origin`, anyOrigin: true }
+  const done = await apply(makeIo($), options, fresh, { ...command, origin, ...who } as Command)
   adopt($, done.snap)
   if (!done.error && MOVES.has(command.type)) lastMoveAt = Date.now()
   return { error: done.error, events: done.events }
@@ -476,11 +480,13 @@ async function withLock(word: string | undefined, run: () => Promise<void>): Pro
 }
 
 // prompt.submit is allowed here (a button press runs outside any held turn).
-// The Temper script in the plugin folder, as a full path. The mod file sits at
-// <plugin>/hooks/temper-mod/register.tsx, so the root is two folders up. Anything else (an
-// unexpected location) gives the plain `scripts/temper`, and the prompt then says where to look.
+// The Temper script in the plugin folder, as a full path, from this module's own URL (see pluginCliFrom). Anything
+// else (an unexpected location) gives the plain `scripts/temper`, and the prompt then says where to look. Exported so
+// a test reads the value the mod computes; the loader reads only `register`.
+export const MOD_CLI = pluginCliFrom((import.meta as { url?: string }).url)
+
 function pluginCli(): string {
-  return pluginCliFrom((import.meta as { url?: string }).url)
+  return MOD_CLI
 }
 
 async function submitText($: Api, text: string | null): Promise<void> {
@@ -825,14 +831,16 @@ async function resolveDrift($: Api, snap: Snapshot, path: string, fallback: stri
 }
 
 function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
-  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, designRequired: snap.designRequired, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset }
+  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, designRequired: snap.designRequired, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset, cli: pluginCli() }
 }
 
 // What the guard decided for one call: a deny text, or null to pass it on. `ids` are the human decisions
 // the call took. They are spent only when the call ran and succeeded (see the tool.call hook).
 // `fingerprint` is the CLI's files before a call that took decisions or a loop: after a call that ended in an error it
 // says whether the call took effect anyway. `loopIds` are back decisions a `state loop` call used.
-type Guarded = { deny: string | null; ids: string[]; undoStaged?: { all: boolean; paths: string[] }; loopIds?: string[]; fingerprint?: string }
+// `trivialExit` is a `state clear` of a run that never left Intent (see nothingToLose): once it ran, the run it
+// cleared is not held any more (see lastRun), so the work that follows is not judged against a run that is gone.
+type Guarded = { deny: string | null; ids: string[]; undoStaged?: { all: boolean; paths: string[] }; loopIds?: string[]; fingerprint?: string; trivialExit?: boolean }
 
 // The shell's folder, carried from one Bash call to the next (the engine keeps it). A folder outside the project, or one
 // that cannot be read, is taken as the project root: the engine puts the shell back there.
@@ -876,11 +884,17 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
     // The commit gate reads the CLI's latest verdict, so reload before deciding.
     snap = adopt($, await syncCheck(io, options, await refresh($), false))
   }
+  // A `state clear` at Intent (the TRIVIAL exit) is decided on the run as it is now.
+  let clearable = false
+  if (cls?.stateOps.some(op => op.op === 'clear') && snap.state.phase === 'intent') {
+    snap = adopt($, await refresh($))
+    clearable = snap.state.phase === 'intent' && (await nothingToLose(io, snap.specDir))
+  }
   const root = await rootOf($)
   const commit = cls?.commits ? await commitFacts(io, snap, root, staged) : undefined
   // From here to the reservation there is no await: a parallel call cannot slip in between. A
   // decision a running call has reserved is not offered to this one.
-  const ctx = { ...ruleContext(snap, root), cwd: bashCwd, loopedDecisions: [...loopedDecisions], ...(commit ? { commit } : {}) }
+  const ctx = { ...ruleContext(snap, root), cwd: bashCwd, loopedDecisions: [...loopedDecisions], ...(commit ? { commit } : {}), ...(clearable ? { nothingToLose: true } : {}) }
   const r = evaluate(snap.state, { ...ctx, humanDecisions: (ctx.humanDecisions ?? []).filter(decision => !reservedDecisions.has(decision.id)) }, { tool, input })
   // A commit that went through starts the next staging from nothing. If the commit then fails (an index lock,
   // a hook), the files are still staged: tool.call gives the list back (found live: the retry was refused).
@@ -904,9 +918,17 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
     // tookEffect). A call that failed and changed nothing, or never ran, gives the decision back, and the person's
     // choice stays pending (key 1 records it again).
     for (const id of r.eventIds) reservedDecisions.add(id)
-    return { deny: null, ids: r.eventIds, ...(undoStaged ? { undoStaged } : {}), ...(loopIds.length > 0 ? { loopIds } : {}), fingerprint: await runFingerprint(io).catch(() => '') }
+    return { deny: null, ids: r.eventIds, ...(undoStaged ? { undoStaged } : {}), ...(loopIds.length > 0 ? { loopIds } : {}), fingerprint: await runFingerprint(io).catch(() => ''), ...(clearable ? { trivialExit: true } : {}) }
   }
-  return { deny: null, ids: [], ...(undoStaged ? { undoStaged } : {}), ...(loopIds.length > 0 ? { loopIds, fingerprint: await runFingerprint(io).catch(() => '') } : {}) }
+  return { deny: null, ids: [], ...(undoStaged ? { undoStaged } : {}), ...(loopIds.length > 0 ? { loopIds, fingerprint: await runFingerprint(io).catch(() => '') } : {}), ...(clearable ? { trivialExit: true } : {}) }
+}
+
+// After the TRIVIAL exit ran (or failed): the cleared run is no longer held, and the run is read again. When the clear
+// did not take effect, build-state.json is still there and the run reads back as it was.
+async function afterTrivialExit($: Api, g: Guarded): Promise<void> {
+  if (!g.trivialExit) return
+  lastRun = null
+  await refresh($)
 }
 
 // After a call that ended in an error: did it change the CLI's files all the same (`state advance ...; exit 1`)?
@@ -956,9 +978,13 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
   // resume, and a mode or enforcement change. Checked before anything else, so a refusal never
   // depends on the arguments. The read only words (status, timeline, help, report) and
   // showing the current mode stay open to any origin.
-  const changes: readonly string[] = ['approve', 'next', 'back', 'override', 'accept', 'drift', 'pause', 'resume']
+  // With enforcement off the person has switched the guard off, so a decision word is accepted from any origin (a
+  // headless run) and its event keeps that origin. Pause, resume, mode and enforcement stay the person's own.
+  const changes: readonly string[] = [...DECISION_WORDS, 'pause', 'resume']
   const changesState = changes.includes(parsed.word) || ((parsed.word === 'mode' || parsed.word === 'enforcement') && parsed.rest.trim() !== '')
-  if (changesState && originKind !== 'composer') return { text: ONLY_USER }
+  const fromPerson = originKind === 'composer'
+  const unattended = !fromPerson && snap.enforcement === 'off' && DECISION_WORDS.includes(parsed.word)
+  if (changesState && !fromPerson && !unattended) return { text: NEEDS_INTERACTIVE }
 
   const plan = planCommand(parsed, pendingDrift)
   if (plan.kind === 'error') return { text: plan.text }
@@ -1007,7 +1033,7 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
   // commit gate and the rules trust; Claude's part (mirroring it in the CLI, continuing
   // the phase) is the prompt based /temper:temper, which runs next. prompt.submit is not used
   // here: the engine refuses it from inside command.run.
-  const done = await decideAs($, plan.command, originKind === 'composer' ? 'person' : 'model')
+  const done = await decideAs($, plan.command, fromPerson ? 'person' : 'model', undefined, unattended ? originKind || 'unknown' : undefined)
   if (done.error) return { text: done.error }
   if (plan.command.type === 'pause' || plan.command.type === 'resume') {
     return { text: `The run is ${plan.command.type === 'pause' ? 'paused. You have control' : 'resumed'}.` }
@@ -1154,6 +1180,7 @@ export const register: Register = (on, opts) => {
       await settle($, g.ids, failed).catch(() => undefined)
       releaseLoops(g, failed)
       restoreStaged(g, true)
+      await afterTrivialExit($, g).catch(() => undefined)
       throw err
     }
     const errored = (result as { isError?: boolean }).isError === true
@@ -1162,6 +1189,7 @@ export const register: Register = (on, opts) => {
     const failed = errored && !(g.ids.length + (g.loopIds?.length ?? 0) > 0 && (await tookEffect($, g).catch(() => false)))
     releaseLoops(g, failed)
     if (g.ids.length > 0) await settle($, g.ids, failed).catch(() => undefined)
+    await afterTrivialExit($, g).catch(() => undefined)
     const cmd = 'command' in e && typeof e.command === 'string' ? e.command : ''
     if (e.tool === 'Bash' && /\btemper["']?\s+gate\s+check\b/.test(cmd)) await afterGateCheck($).catch(() => undefined)
     return result

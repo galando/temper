@@ -9,20 +9,9 @@ This guide explains how to deploy Temper across your organization.
 
 ## Step 1: Fork and Own
 
-```bash
-# Clone the official Temper repo
-git clone https://github.com/galando/temper.git && cd temper
-
-# Remove the original git history and start fresh
-rm -rf .git && git init
-
-# Add your internal remote
-git remote add origin https://gitlab.internal.company.com/platform/temper.git
-
-# Commit and push
-git add -A && git commit -m "feat: import Temper v1.0"
-git push -u origin main
-```
+Fork [galando/temper](https://github.com/galando/temper) on GitHub, or mirror it into your
+internal git server (for example a `platform/temper` repository), so your platform team owns
+the copy your developers install from.
 
 **Why fork?**
 
@@ -63,12 +52,13 @@ Create `.claude/packs/{company}/rules.md`:
 
 ### Option B: Use Interactive Pack Builder
 
-```
-cd your-project
+In Claude Code, in your project:
+
+```text
 /temper:pack
 ```
 
-Select "Add new pack" — Temper scans your codebase, interviews you about conventions, and generates the rules file.
+At the menu, choose **Other** and describe the pack. Temper scans your codebase, interviews you about conventions, and generates the rules file.
 
 ## Step 3: Create Stack Preset
 
@@ -112,47 +102,43 @@ branch:
 
 ## Step 4: Distribute to Teams
 
-### Option A: Mono-repo
+Temper is a Claude Code plugin, so teams get it through a plugin marketplace. Copying a folder
+of the Temper repository into a project does not install it: the commands, briefs, skills, CLI
+and mod live in the plugin's own folders, and the repository's `.claude` folder holds only its
+own developer notes and config.
 
-Copy the entire `.claude/` directory into each project:
+### Option A: Your fork as a marketplace
 
-```bash
-# In each project
-cp -r /path/to/temper/.claude .
-```
+Your fork carries the marketplace file, so each developer can add it and install from it:
 
-### Option B: Git Submodule
-
-```bash
-# In each project
-git submodule add https://gitlab.internal.company.com/platform/temper.git .claude-temper
-ln -s .claude-temper/.claude .claude
-```
-
-### Option C: Template Repository
-
-Create a template repository with Temper pre-configured. New services inherit from the template.
-
-### Option D: Internal Plugin Registry
-
-If you have an internal plugin marketplace:
-
-```bash
+```text
 /plugin marketplace add internal/temper
 /plugin install temper
 ```
+
+### Option B: Project settings
+
+To offer it in every session of a project, add your fork's marketplace and enable the plugin in
+the project's shared `.claude/settings.json` (the `extraKnownMarketplaces` and `enabledPlugins`
+settings). See the [Claude Code plugin docs](https://code.claude.com/docs/en/discover-plugins).
+
+### Option C: Template Repository
+
+Create a template repository with that project settings block and your company packs in
+`.claude/packs`. New services inherit from the template.
 
 ## Step 5: Team Onboarding
 
 **Day 1 for new developers:**
 
-```bash
-git clone project
-cd project
+Clone the project, start Claude Code in it, and accept the plugin when the project settings
+offer it. Then run:
+
+```text
 /temper:status    # See pre-configured packs and quality metrics
 ```
 
-No setup required. Everything is pre-configured.
+No other setup is needed: the project settings bring the plugin, and the project brings its packs.
 
 ## Configuration Reference
 

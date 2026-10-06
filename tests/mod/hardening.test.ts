@@ -77,7 +77,7 @@ async function seed(items: Array<{ d: Draft; ts: number; used?: boolean }>): Pro
   }
   return { files, store }
 }
-const start = (phase: 'plan' | 'check'): Draft => ({ type: 'start', slug: 'pw', title: 'Password reset', phase, origin: 'system' })
+const start = (phase: 'plan' | 'check'): Draft => ({ type: 'start', slug: 'pw', title: 'Export report', phase, origin: 'system' })
 
 // ---- 1. a shell that reads its program from standard input ---------------------------------------------------
 describe('finding 1: a shell fed a program Temper cannot read (EXPECT denied)', () => {
@@ -94,12 +94,48 @@ describe('finding 1: a shell fed a program Temper cannot read (EXPECT denied)', 
     'a glob in the name': `echo 'scripts/t?mper override plan' | bash`,
     'an unknown producer': 'cat /tmp/x.txt | bash',
     'a file as stdin': 'bash < /tmp/x.txt',
-    'base64 | bash': 'echo c2NyaXB0cy90ZW1wZXI= | base64 -d | bash',
+    'a reversed program | bash': 'echo repmet/stpircs | rev | bash',
     'eval of a substitution': `eval "$(echo '${OV}')"`,
     'eval of a variable built apart': 'A=scripts/te; B=mper; eval "$A$B override plan --reason x"',
     'source of a process substitution': `source <(echo '${OV}')`,
     'dot of a process substitution': `. <(echo '${OV}')`,
     'bash -c of a variable': 'C="scripts/te""mper override plan"; bash -c "$C"',
+    // A script argument that names standard input reads the piped program, like no script at all.
+    'a pipe into bash /dev/stdin': `echo '${OV}' | bash /dev/stdin`,
+    'a pipe into sh /dev/fd/0': `printf '%s\\n' '${OV}' | sh /dev/fd/0`,
+    'a pipe into bash /proc/self/fd/0': `echo '${OV}' | bash /proc/self/fd/0`,
+    // The same names in other spellings: `.`, `..` and doubled slashes, other /proc names, a variable, a glob or braces.
+    'a pipe into bash /dev/./stdin': `echo '${OV}' | bash /dev/./stdin`,
+    'a pipe into bash //dev/stdin': `echo '${OV}' | bash //dev/stdin`,
+    'a pipe into bash /dev//stdin': `echo '${OV}' | bash /dev//stdin`,
+    'a pipe into bash /dev/../dev/stdin': `echo '${OV}' | bash /dev/../dev/stdin`,
+    'a pipe into bash /../dev/stdin': `echo '${OV}' | bash /../dev/stdin`,
+    'a pipe into sh /dev/fd/../fd/0': `printf '%s\\n' '${OV}' | sh /dev/fd/../fd/0`,
+    'a pipe into bash /proc/thread-self/fd/0': `echo '${OV}' | bash /proc/thread-self/fd/0`,
+    'a pipe into bash /proc/<pid>/fd/0': `echo '${OV}' | bash /proc/4242/fd/0`,
+    'a pipe into bash /proc/$$/fd/0': `echo '${OV}' | bash /proc/$$/fd/0`,
+    'a pipe into bash /proc/self/task/<tid>/fd/0': `echo '${OV}' | bash /proc/self/task/12/fd/0`,
+    'a pipe into bash /proc/self/root/dev/stdin': `echo '${OV}' | bash /proc/self/root/dev/stdin`,
+    'a pipe into bash /DEV/STDIN': `echo '${OV}' | bash /DEV/STDIN`,
+    'a pipe into bash /dev/std*': `echo '${OV}' | bash /dev/std*`,
+    'a pipe into bash /dev/{stdin,null}': `echo '${OV}' | bash /dev/{stdin,null}`,
+    'a pipe into bash $D/./stdin': `D=/dev; echo '${OV}' | bash $D/./stdin`,
+    'a pipe into bash $\'/dev/stdin\'': `echo '${OV}' | bash $'/dev/stdin'`,
+    'an unknown producer into bash /dev/./stdin': 'cat /tmp/x.sh | bash /dev/./stdin',
+    'an unknown producer into bash of an unknown variable': 'cat /tmp/x.sh | bash "$S"',
+    'a plain override into bash /dev/./stdin': `echo 'scripts/temper override plan --reason x' | bash /dev/./stdin`,
+    // source and . read standard input by every one of these names too.
+    'a pipe into source /dev/stdin': `echo '${OV}' | source /dev/stdin`,
+    'a pipe into source /dev/fd/0': `echo '${OV}' | source /dev/fd/0`,
+    'a pipe into source /proc/self/fd/0': `echo '${OV}' | source /proc/self/fd/0`,
+    'a pipe into source /proc/thread-self/fd/0': `echo '${OV}' | source /proc/thread-self/fd/0`,
+    'a pipe into source //dev/stdin': `echo '${OV}' | source //dev/stdin`,
+    'a pipe into . /dev/./stdin': `echo '${OV}' | . /dev/./stdin`,
+    'a pipe into . /dev//stdin': `echo '${OV}' | . /dev//stdin`,
+    'a pipe into source /dev/../dev/stdin': `echo '${OV}' | source /dev/../dev/stdin`,
+    'an unknown producer into source /dev/./stdin': 'cat /tmp/x.sh | source /dev/./stdin',
+    // An interpreter given standard input as its program file reads the piped program.
+    'a pipe into python3 /dev/./stdin': `echo 'import os; os.system("${OV.replace(/"/g, '')}")' | python3 /dev/./stdin`,
   }
   for (const [name, cmd] of Object.entries(attempts)) {
     test(name, async ($, on) => {
@@ -118,10 +154,115 @@ describe('finding 1: plain, visible stdin programs and the usual eval idioms sti
     'echo | bash of a plain line': "echo 'ls src' | bash",
     'heredoc bash of plain lines': "bash <<'EOF'\nls src\nwc -l README.md\nEOF",
     'a temper read in a heredoc bash': "bash <<'EOF'\nscripts/temper gate build\nEOF",
-    'eval of ssh-agent': 'eval "$(ssh-agent -s)"',
+    'eval of rbenv': 'eval "$(rbenv init -)"',
     'eval of pyenv': 'eval "$(pyenv init -)"',
     'a python heredoc': "python3 - <<'EOF'\nprint('hi')\nEOF",
     'bash -c plain': "bash -c 'ls src'",
+    'echo | bash /dev/stdin of a plain line': "echo 'ls src' | bash /dev/stdin",
+    'echo | bash /dev/./stdin of a plain line': "echo 'ls src' | bash /dev/./stdin",
+    'echo | source //dev/stdin of a plain line': "echo 'export A=1' | source //dev/stdin",
+    'echo | python3 /dev/stdin of a plain program': "echo 'print(1)' | python3 /dev/stdin",
+    'a script file still runs': 'bash scripts/run.sh',
+    'a script file under a variable folder still runs': 'bash "$TMPDIR/run.sh"',
+    'a file under /dev that is not standard input is a file': 'bash /dev/null',
+  }
+  for (const [name, cmd] of Object.entries(fine)) {
+    test(name, async ($, on) => {
+      const { api } = await begin($, on, { next: 'build' })
+      expect(await sh(api, cmd)).toBeUndefined()
+    })
+  }
+})
+
+// Release review 15: standard input named by a relative path (read against the folder the shell is in), by a
+// variable of any name length, or after a shell option that takes a value (--rcfile, --init-file).
+describe('release review 15: standard input in the remaining spellings (EXPECT denied)', () => {
+  const OV = 'scripts/te""mper ov""erride plan --reason x'
+  const PLAIN = 'scripts/temper override plan --reason x'
+  const attempts: Record<string, string> = {
+    // A relative path, read against the folder the command moved to.
+    'a plain override into bash stdin after cd /dev': `cd /dev && echo '${PLAIN}' | bash stdin`,
+    'a pipe into bash stdin after cd /dev': `cd /dev && echo '${OV}' | bash stdin`,
+    'an unknown producer into bash fd/0 after cd /dev': 'cd /dev && cat /tmp/x.sh | bash fd/0',
+    'an unknown producer into bash 0 after cd /dev/fd': 'cd /dev/fd && cat /tmp/x.sh | bash 0',
+    'an unknown producer into bash dev/stdin after cd /': 'cd / && cat /tmp/x.sh | bash dev/stdin',
+    'an unknown producer into source stdin after cd /dev': 'cd /dev && cat /tmp/x.sh | source stdin',
+    'a pipe into . stdin after cd /dev': `cd /dev && echo '${OV}' | . stdin`,
+    // `..` steps out of the project may reach the root folder.
+    'an unknown producer into bash ../../../dev/stdin': 'cat /tmp/x.sh | bash ../../../dev/stdin',
+    'an unknown producer into bash ../../../../proc/self/fd/0': 'cat /tmp/x.sh | bash ../../../../proc/self/fd/0',
+    // A folder that is not known: a relative path that can end a name of standard input counts.
+    'an unknown producer into bash stdin after cd to a variable': 'cd "$X" && cat /tmp/x.sh | bash stdin',
+    'an unknown producer into sh fd/0 after cd to a variable': 'cd "$X" && cat /tmp/x.sh | sh fd/0',
+    'an unknown producer into bash stdin after cd -': 'cd - && cat /tmp/x.sh | bash stdin',
+    // A link can make any folder /dev, in the project or outside it.
+    'a pipe into bash d/stdin through a link in the project': `ln -s /dev d && echo '${OV}' | bash d/stdin`,
+    'a pipe into bash /tmp/d/stdin through a link outside': `echo '${OV}' | bash /tmp/d/stdin`,
+    'an interpreter fed a program by a relative stdin': `cd /dev && echo 'import os; os.system("${PLAIN}")' | python3 stdin`,
+    // A shell option that takes a value: the value is not the script.
+    'a plain override into bash --rcfile x /dev/stdin': `echo '${PLAIN}' | bash --rcfile x /dev/stdin`,
+    'a pipe into bash --rcfile x /dev/stdin': `echo '${OV}' | bash --rcfile x /dev/stdin`,
+    'a pipe into bash --init-file x /dev/stdin': `echo '${OV}' | bash --init-file x /dev/stdin`,
+    'an unknown producer into bash --rcfile x stdin after cd /dev': 'cd /dev && cat /tmp/x.sh | bash --rcfile x stdin',
+    // A variable is read by its whole name: the length of the name does not matter.
+    'an unknown producer into bash $D/stdin': 'cat /tmp/x.sh | bash $D/stdin',
+    'an unknown producer into bash $DEVDIR/stdin': 'cat /tmp/x.sh | bash $DEVDIR/stdin',
+    'an unknown producer into bash ${DEVDIR}/stdin': 'cat /tmp/x.sh | bash ${DEVDIR}/stdin',
+    'an unknown producer into source $F': 'cat /tmp/x.sh | source $F',
+    'an unknown producer into source $FILE': 'cat /tmp/x.sh | source $FILE',
+    'yes into bash "$S"': 'yes | bash "$S"',
+    'yes into bash "$INSTALLER"': 'yes | bash "$INSTALLER"',
+    // A part that cannot be read can hold `..` steps: only what follows the last one is known.
+    'an unknown producer into bash $X/../0': 'cat /tmp/x.sh | bash $X/../0',
+    'an unknown producer into bash /tmp/$X/stdin': 'cat /tmp/x.sh | bash /tmp/$X/stdin',
+    // Final review: a startup file the shell reads before its -c program (the file after --rcfile or --init-file,
+    // BASH_ENV, ENV) that names standard input runs the program from the pipe.
+    'an unknown producer into bash --rcfile /dev/stdin -ic true': 'base64 -d /tmp/p.b64 | bash --rcfile /dev/stdin -ic true',
+    'an unknown producer into bash --init-file /dev/stdin -ic :': 'base64 -d /tmp/p.b64 | bash --init-file /dev/stdin -ic :',
+    'an unknown producer into bash --rcfile stdin -ic : after cd /dev': 'cd /dev && cat /tmp/x.sh | bash --rcfile stdin -ic :',
+    'a pipe into bash --rcfile /dev/stdin -ic with an override': `echo '${OV}' | bash --rcfile /dev/stdin -ic true`,
+    'an unknown producer into BASH_ENV=/dev/stdin bash -c :': 'base64 -d /tmp/p.b64 | BASH_ENV=/dev/stdin bash -c :',
+    'an unknown producer into BASH_ENV=/proc/self/fd/0 bash -c true': 'cat /tmp/x.sh | BASH_ENV=/proc/self/fd/0 bash -c true',
+    'an unknown producer into env BASH_ENV=/dev/stdin bash -c :': 'cat /tmp/x.sh | env BASH_ENV=/dev/stdin bash -c :',
+    'an unknown producer into env -i BASH_ENV=/dev/fd/0 bash -c true': 'cat /tmp/x.sh | env -i BASH_ENV=/dev/fd/0 bash -c true',
+    'BASH_ENV exported, then an unknown producer into bash -c': 'export BASH_ENV=/dev/stdin; cat /tmp/x.sh | bash -c :',
+    'an unknown producer into ENV=/dev/stdin sh -ic :': 'cat /tmp/x.sh | ENV=/dev/stdin sh -ic :',
+    // xargs gives the words it reads to a shell that has no program word: the first of them is the program.
+    'an unknown producer into xargs -0 bash -c': 'base64 -d /tmp/p.b64 | xargs -0 bash -c',
+    'an unknown producer into xargs sh -c': 'cat /tmp/x | xargs sh -c',
+    'an unknown producer into xargs -n 1 bash -c': 'cat /tmp/list | xargs -n 1 bash -c',
+  }
+  for (const [name, cmd] of Object.entries(attempts)) {
+    test(name, async ($, on) => {
+      const { api } = await begin($, on, { next: 'build' })
+      expect(await sh(api, cmd)).toMatch(T)
+    })
+  }
+})
+
+describe('release review 15: scripts and visible programs still run', () => {
+  const fine: Record<string, string> = {
+    'a script in the project fed a file': 'cat data.txt | bash scripts/run.sh',
+    'a script one folder up fed a file': 'cat data.txt | bash ../run.sh',
+    'a script under a long variable folder fed a file': 'cat data.csv | python3 "$TOOLS/report.py"',
+    'a script named by a long variable, not fed': 'bash "$INSTALLER"',
+    'a file called stdin in the project, not fed': 'bash stdin',
+    'a plain program after --rcfile': "echo 'ls src' | bash --rcfile x /dev/stdin",
+    'a script after --rcfile': 'bash --rcfile x scripts/run.sh',
+    'a script after --init-file': 'bash --init-file x scripts/run.sh',
+    'a plain program into bash stdin after cd /dev': "cd /dev && echo 'ls' | bash stdin",
+    'a glob of scripts fed a file is not standard input': 'cat data.txt | bash *.sh',
+    // Final review: input from /dev/null is no input, and a `<` inside a quoted argument is no redirect.
+    'a loop over test scripts with input from /dev/null': 'for script in scripts/selftest/*.sh; do bash "$script" < /dev/null; done',
+    'a script named by a variable with input from /dev/null': 'bash "$TEST_SCRIPT" </dev/null',
+    'a script named by a variable with fd 0 from /dev/null': 'bash "$TEST_SCRIPT" 0</dev/null',
+    'a script named by a variable with a quoted < in an argument': `bash "$SCRIPT" --grep '<title>'`,
+    'a script named by a variable with a < inside a quoted option value': 'bash "$RUNNER" --filter="x<3"',
+    // A startup file that is an ordinary file, and xargs with a program written out.
+    'a -c program after --rcfile with a plain file': "bash --rcfile .bashrc -ic 'ls src'",
+    'a -c program with BASH_ENV set to a plain file': "BASH_ENV=./env.sh bash -c 'ls src'",
+    'a script with ENV set and input from a file': 'ENV=staging bash scripts/run.sh < input.txt',
+    'xargs runs bash -c with a program written out': "ls scripts/*.sh | xargs -n 1 bash -c 'shellcheck \"$0\"'",
   }
   for (const [name, cmd] of Object.entries(fine)) {
     test(name, async ($, on) => {
@@ -671,19 +812,19 @@ describe('everyday Build commands are not touched by the stricter rules', () => 
     "sed -i 's/a/b/' src/a.ts",
     'chmod +x scripts/*.sh',
     'chmod 755 scripts/run.sh',
-    'bash scripts/tests/test-temper.sh',
-    'T=$(ls ~/.claude/plugins/cache/x/temper/1/scripts/temper); $T gate build',
+    'bash scripts/selftest/test-temper.sh',
+    'T=$(ls /opt/plugins/temper/1/scripts/temper); $T gate build',
     "python3 - <<'PY'\nimport json\nprint(json.dumps({'a': 1}))\nPY",
     'echo "x" | tee notes.txt',
-    'curl -s https://example.com/api | jq .',
-    'eval "$(direnv export bash)"',
+    'cat package.json | jq .name',
+    'eval "$(mise activate zsh)"',
     'source venv/bin/activate && pytest',
     'cd src && npm test',
     'git ls-files | xargs grep -n foo',
     'ls | xargs echo',
-    'gh pr view 12',
+    'npm ls --depth=0',
     'bash -c "cd $(pwd) && make test"',
-    "bash -c 'echo $HOME'",
+    "bash -c 'echo $PWD'",
     'scripts/temper evidence run --stage build --claim "unit tests" --phase green -- npm test',
     'scripts/temper gate build',
     'scripts/temper state get next_stage',
@@ -697,11 +838,11 @@ describe('everyday Build commands are not touched by the stricter rules', () => 
     'eval "$(scripts/ensure-jdk24.sh --export)" >/dev/null',
     'mkdir -p .temper/evidence && node --test --experimental-test-coverage 2>&1 | tee .temper/evidence/coverage-report.txt | tail -20',
     "grep -E 'status=.(SURVIVED|NO_COVERAGE)' mutations.xml | sed -E 's/.*status=.([A-Z_]+).*<line>([0-9]+)<.*/\\1 \\2/' | head -20",
-    "env | grep -E '^CLAUDE' | sed 's/=.*//' | sort",
+    "env -i | sed 's/=.*//' | sort",
     'sed -n 20,35p templates/temper.config.default',
-    "ls -t ~/.claude/projects/x/*.jsonl | xargs -I{} sh -c 'echo {}; grep -c foo {}'",
+    "ls -t /var/log/x/*.log | xargs -I{} sh -c 'echo {}; grep -c foo {}'",
     // A comment is not part of the command.
-    'bash scripts/hooks/install.sh          # install into .git/hooks/pre-commit',
+    'npm test          # the hook in .git/hooks/pre-commit runs on commit',
     'npm test # the verdict goes to .temper/gates.json',
     'echo "a # b" && ls src # build-state.json',
   ]

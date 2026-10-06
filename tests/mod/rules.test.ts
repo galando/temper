@@ -65,7 +65,7 @@ describe('specific denials', () => {
 
   test('Build allows test files and plan globs and directories', () => {
     const s = stateAt('build')
-    for (const p of ['src/app.test.ts', 'tests/mod/x.test.ts', 'hooks/core/a.ts', 'docs/guide/page.md', 'pkg/test_thing.py', `${SPEC}/tasks.md`]) {
+    for (const p of ['src/app.test.ts', 'tests/unit/x.test.ts', 'hooks/core/a.ts', 'docs/guide/page.md', 'pkg/test_thing.py', `${SPEC}/tasks.md`]) {
       expect('allow' in evaluate(s, ctx, { tool: 'Edit', input: { file_path: p } })).toBe(true)
     }
     expect(isDeny(evaluate(s, ctx, { tool: 'Edit', input: { file_path: 'hooks/core/sub/a.ts' } }))).toBe(true)
@@ -172,6 +172,21 @@ describe('Temper state paths and forged decisions', () => {
     expect(isDeny(r)).toBe(true)
     const e = evaluate(stateAt('plan'), ctx, { tool: 'Bash', input: { command: 'cp x .temper/specs/pw/events/9-x-9.json' } })
     expect(e).toEqual({ deny: ONLY_USER })
+  })
+
+  // Final review: a refused Bash write to a .temper path of no known kind gets the text of the .temper folders, not the
+  // text of an approval (which sent the agent to ask the user to approve something unrelated).
+  test('a link at a .temper path of no known kind gets the .temper folder text, not the approval text', () => {
+    for (const command of ['ln -s /tmp .temper/cache-link', 'ln -s /tmp .temper/specs/pw/cache-link', 'ln .temper/notes.txt /tmp/n']) {
+      for (const phase of ['intent', 'build', 'check'] as const) {
+        const r = evaluate(stateAt(phase), { ...ctx, cli: '/Users/a/plugin/scripts/temper' }, { tool: 'Bash', input: { command } })
+        expect(r, `${phase}: ${command}`).toEqual({
+          deny:
+            'Temper: the .temper folders hold the run, its verdicts and its decisions. Do not remove or replace them by hand. ' +
+            'Next: use /Users/a/plugin/scripts/temper state archive after the run, or name one file.',
+        })
+      }
+    }
   })
 })
 

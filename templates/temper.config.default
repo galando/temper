@@ -1,49 +1,60 @@
 # Temper Configuration (v7)
 #
 # Everything with exactly one correct output — model routing, gate logic, state
-# bookkeeping — lives in scripts/temper now, not here. This file holds only the
-# decisions that are actually yours to make. Full reference: docs/getting-started.md
+# bookkeeping — lives in the temper CLI, ${CLAUDE_PLUGIN_ROOT}/scripts/temper, now, not
+# here. This file holds only the decisions that are actually yours to make. Full
+# reference: ${CLAUDE_PLUGIN_ROOT}/docs/getting-started.md
 
 # Stack: auto-detect from project files. Override: spring-boot, react-ts,
 # node-express, fastapi, go, rust
 stack: auto
 
-# Packs enforced during build/review (see docs/packs.md). Add a project pack under
-# .claude/packs/<name>/rules.md and list it here.
+# Packs enforced during build/review: see ${CLAUDE_PLUGIN_ROOT}/docs/packs.md. Add a
+# project pack under .claude/packs/<name>/rules.md and list it here. The guardrails pack
+# was called hooks before v9.6.5; an entry named hooks still means guardrails.
 packs: [quality, tdd, security, git, performance]
 
 # MCP tool-first analysis: auto (use MCP tools when available, else heuristic) |
-# heuristic-only | require. See docs/recommended-setup.md.
+# heuristic-only | require. See ${CLAUDE_PLUGIN_ROOT}/docs/recommended-setup.md.
 tools:
   mode: auto
-  # External review engine: open-code-review (ocr CLI). When installed, OCR takes
-  # over line-level defect detection in /temper:review. auto | off | require.
+  # External review engine: open-code-review (ocr CLI). Off by default. /temper:review
+  # runs ocr only when mode is auto (use it when it is installed and ready) or require
+  # (block the review when it is not). When it runs, OCR takes over line-level defect
+  # detection and sends the diff to the model provider you set up for it.
+  # off | auto | require.
   ocr:
-    mode: auto
+    mode: off
 
 review:
-  block-on: [critical]        # severities that fail `temper gate review`
+  block-on: [critical]        # severities that fail the review gate
 
 check:
-  coverage-threshold: 80      # `temper gate check` requires recorded coverage >= this
+  coverage-threshold: 80      # the check gate requires recorded coverage >= this
+  # The environment Check runs in. Check stops at once when it is production. With it
+  # unset, Check stops when the project holds a .env.production or .env.prod file; it
+  # decides from the file name only and never opens a .env file. Set it to development
+  # when such a file is only a template.
+  # environment: development
   # Commands Check runs instead of auto-detecting them for your stack. Any key left out
-  # keeps stack detection. Read with `temper config get check.commands.test`.
+  # keeps stack detection. The CLI reads it with `config get check.commands.test`.
   # commands:
   #   test: npm test
   #   lint: npm run lint
   #   typecheck: tsc --noEmit
 
-# Fix loop limit. `temper state loop check fix` blocks after this many Check to Fix
+# Fix loop limit. The CLI's `state loop check fix` blocks after this many Check to Fix
 # passes. With the key absent the limit stays loops.max-per-type (below); the key
-# reads as 3 through `temper config get fix.max-loops`.
+# reads as 3 through the CLI's `config get fix.max-loops`.
 # fix:
 #   max-loops: 3
 
 # Model per stage. With this block absent (the default), each stage runs on the model
-# declared in the plugin's agents/{stage}.md. Uncomment a key to override it — an alias
+# declared in the model: line of that stage's brief in the plugin's agents folder.
+# Uncomment a key to override it — an alias
 # (opus, sonnet, haiku) or a full model ID. This is a flat lookup, not the v6 routing
-# table that v7 retired: resolution happens in `scripts/temper`, never in a prompt.
-# `temper model --all` prints exactly what the orchestrator will launch each stage on.
+# table that v7 retired: resolution happens in the temper CLI, never in a prompt.
+# The CLI's `model --all` prints exactly what the orchestrator will launch each stage on.
 # models:
 #   plan: opus
 #   design: opus
@@ -56,20 +67,20 @@ check:
 # Standalone stage commands (/temper:plan, :design, :build, :review, :check) execute
 # inline in your session by default — full mid-stage interactivity, but the stage's
 # working context (reference doc, diff, pack rules) stays in your context window
-# afterwards. `true` runs each in the same isolated agents/{stage}.md subprocess the
+# afterwards. `true` runs each in the same isolated stage subprocess the
 # unified /temper uses: only the summary box and gate verdict return to your session.
 # /temper:intent stays inline either way — it's an interactive capture.
 # stages:
 #   subprocess: false
 
-# Control bands — closing the loop (`temper bands`). A deterministic check of the
+# Control bands: closing the loop (the CLI's `bands` check). A deterministic check of the
 # history arrays in .temper/metrics.json against rolling mean ± k·sigma bands plus a
 # same-side-run drift rule. Detection never involves a model; the response to a breach
 # is tiered here and lands in the normal pipeline (/temper:status renders the verdict;
 # a propose-tier breach is drafted as .temper/specs/<slug>/intent.md for /temper to
 # run — through every ordinary gate, never around them). The block absent = these
-# defaults; `temper bands` in CI or cron is the trigger layer, never a daemon.
-# Any series fed via `temper metrics append <name> <value>` is band-able by name —
+# defaults; the CLI's `bands` check in CI or cron is the trigger layer, never a daemon.
+# Any series fed via the CLI's `metrics append <name> <value>` is band-able by name,
 # including external ones (CI failure rate, post-deploy 5xx) appended by a pipeline step.
 # bands:
 #   window: 10            # rolling baseline: the last N points before the latest
@@ -81,16 +92,17 @@ check:
 #     2sigma: diagnose    # read-only diagnosis via /temper:status
 #     3sigma: propose     # draft an intent.md into .temper/specs/ for /temper to run
 
-# Edit-time protected paths (hooks pack: block-protected-paths.sh). Same **/segment/**
-# shape as autonomy.park-on-touch, but enforced when the agent EDITS, in every mode —
-# generated code, frozen legacy packages. Empty/absent = no-op.
+# Edit-time protected paths (guardrails pack: block-protected-paths.sh). Same folder-name
+# pattern shape as autonomy.park-on-touch, but enforced when the agent EDITS, in every
+# mode — generated code, frozen legacy packages. The patterns match paths in your project
+# only. Empty/absent = no-op.
 # protect:
 #   paths: ["**/src/gen/**", "**/v1/**"]
 
-# Formatter run on each agent edit (hooks pack: run-formatter.sh). {file} is replaced
-# with the edited path. Never blocks; absent = no-op.
+# Formatter run on each agent edit (guardrails pack: run-formatter.sh). {file} is replaced
+# with the path of the project file the agent edited. Never blocks; absent = no-op.
 # format:
-#   cmd: "npx prettier --write {file}"
+#   cmd: "npx --no-install prettier --write {file}"
 
 phases:
   design: true                 # design stage for medium/complex features (auto-skipped otherwise)
@@ -99,7 +111,7 @@ feedback:
   enabled: true                # allow Review->Build / Check->Build loops
 
 loops:
-  max-per-type: 2              # circuit breaker per feedback-loop type (enforced by `temper state loop`)
+  max-per-type: 2              # circuit breaker per feedback-loop type (enforced by the CLI's `state loop`)
 
 # ============================================================
 # Autonomous Continuation — armed by a human at the PLAN GATE, never at
@@ -114,7 +126,8 @@ loops:
 # ============================================================
 autonomy:
   enabled: false
-  max-blast-radius: 15         # `temper gate commit` parks if more files changed than this
+  max-blast-radius: 15         # the commit gate parks if more files changed than this
+  # Folder-name patterns over paths in your project only (any path before and after).
   park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]
   budget:
     max-total-loops: 4

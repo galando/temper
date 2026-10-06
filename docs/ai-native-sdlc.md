@@ -137,8 +137,8 @@ the play's **UI feedback loop** (screenshot-vs-mock iteration for front-end work
 temper's verification is tests, coverage, and scenarios only.
 
 **Continuous evals in CI.** Not provided. Temper's own seeded-defect fixture suite was
-removed in v9.5.0: its CI job skipped without an API secret, so it never gated a
-merge. What guards Temper's own behavior is `scripts/tests/test-temper.sh` (the gate
+removed in v9.5.0: its CI job never ran, so it never gated a merge. What guards
+Temper's own behavior is `scripts/selftest/test-temper.sh` (the gate
 logic, deterministically) plus the stage-gate Stop hook, which refuses to end a
 session until the owed gate has actually run. Scaffolding an eval harness for a
 *user project's* own agent config is open — see [Remaining gaps](#remaining-gaps).
@@ -164,16 +164,17 @@ its weakest point: every override entry records *who* approved (`by:` from git
 identity), and `confirm-override.sh` emits the ASK permission tier for any
 `temper override` command — a deterministic human click between an agent and the one
 command that clears a FAIL gate. **[NEW]** For past-the-fence release gating,
-`examples/gates/production-gate.sh` + `packs/hooks/rules.md` document the
+`examples/gates/production-gate.sh` + `packs/guardrails/rules.md` document the
 allow/ask/block pattern with the two placement rules: approval gates at the release
 boundary only (a human prompt mid-build puts a person back on every parallel
 session's critical path), and non-negotiable gates in managed settings, not the repo.
 
-**CI/CD integration.** The plugin runs headlessly (`claude -p "/temper:temper ..."` —
-it needs no interactive session), and its whole automation surface is
-**commands and exit codes, deliberately host-agnostic**: the same wiring works under
-GitHub Actions, GitLab CI, Jenkins, or plain cron, and temper ships no
-platform-specific pipeline files (`examples/workflow/README.md` documents the
+**CI/CD integration.** The plugin runs headlessly with `claude -p "/temper:temper ..."`.
+With the mod loaded and enforcement on, a headless run stops at the first gate, because
+only a person in an interactive session can approve; with enforcement off it runs on.
+Its whole automation surface is **commands and exit codes, deliberately host-agnostic**:
+the same wiring works under GitHub Actions, GitLab CI, Jenkins, or plain cron, and temper
+ships no platform-specific pipeline files (`examples/workflow/README.md` documents the
 contract). The playbook's pattern still holds wherever you wire it: agent work
 arrives through your host's review flow, detection steps spend no tokens, and nothing
 the agent does can pass the production gate. MCP-scoped deploy tools and rollback
@@ -269,7 +270,7 @@ Honest list, in rough adoption order:
 
 1. `/temper "…"` → sets itself up on first run (config, scaffold, commit gate) and
    runs the intent-gated pipeline.
-2. Packs + hooks pack → skills-with-deterministic-backstops.
+2. Packs + guardrails pack → skills-with-deterministic-backstops.
 3. `/temper:intent` → capture-first flow; commit the spec artifacts.
 4. Wire `temper gate review` into whatever CI you run → the review loop, org-visible.
 5. `autonomy:` block → longer unattended arcs, parked before commit.

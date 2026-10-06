@@ -5,7 +5,7 @@ description: "Technical code review with confidence scoring, review memory, and 
 # Review: Confidence-Scored Code Review
 
 **Goal:** High signal-to-noise review — parallel subagents, confidence scoring, review
-memory, intent validation. `agents/review.md` carries the exact `temper evidence add
+memory, intent validation. The review brief (`${CLAUDE_PLUGIN_ROOT}/agents/review.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add
 --severity` invocation the gate needs; this doc is the policy behind what to look for
 and how to score it. It states rules a strong reviewer would not derive alone —
 severity floors, filter bypasses, memory thresholds — not review technique.
@@ -17,7 +17,7 @@ definitions.
 **Modes:** Standalone (`/temper:review`) owns its human gate. Agent subprocess (from
 `/temper`, or from a standalone command running with `stages.subprocess: true`) starts
 clean and never shows an `AskUserQuestion` — return the summary, the caller owns the
-gate. Load the changed files — when `temper state get base_sha` returns a sha
+gate. Load the changed files: when `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get base_sha` returns a sha
 (checkpoint commits already landed, so a plain `git diff --name-only` returns
 nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 (`git status --porcelain`); otherwise fall back to `git diff --name-only` — plus
@@ -28,8 +28,8 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 
 `git diff --stat` + changed files; `.claude/temper.config` for `review.block-on` /
 `review.confidence-threshold` / auto-fix; the enabled packs' `rules.md` (project
-`.claude/packs/` shadows global `~/.claude/packs/` shadows built-in
-`$CLAUDE_PLUGIN_ROOT/packs/`, kept where `phases` is `all` or contains `review`);
+`.claude/packs/` shadows global `~/.claude/packs/` shadows
+the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept where `phases` is `all` or contains `review`);
 `.temper/review-memory.json`; the active `intent.md` (from build-context if chained,
 else the single spec present, else ask).
 
@@ -42,10 +42,28 @@ a `review.block-on` severity, or a security finding: those bypass every filter,
 REVIEW.md included. Policy can re-aim the review; only config + packs can lower the
 gate. Absent → skip silently.
 
-**OCR (external review engine, optional):** if `tools.ocr.mode` isn't `off`,
-`command -v ocr` then probe `ocr review --preview`; ready → record `ocr_status = ready`
-(merge mechanics in `docs/recommended-setup.md`). Absent/failing: `require` blocks with
-the install command, `auto` skips with a one-line notice.
+**OCR (external review engine, optional, off by default):** read the mode with
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper config get tools.ocr.mode off`. The default is `off`, and a config
+without the key reads as `off`: skip OCR silently and never run `ocr`. OCR sends the diff
+to the model provider the user set up for it, so it runs only when the user turns it on
+by setting `tools.ocr.mode` to `auto` or `require` under `tools:` in `.claude/temper.config`.
+This page is the source of truth for how OCR behaves in a review:
+
+- **Probe (here, in Step 1).** Run `command -v ocr`, then `ocr review --preview`. Both
+  succeed: record `ocr_status = ready`.
+- **`ocr` not on the PATH.** `require` blocks the review and names the tool,
+  open-code-review, with a link to its own install page,
+  https://github.com/alibaba/open-code-review (never an install command to run).
+  `auto` skips OCR with a one-line notice and the review goes on without it.
+- **`ocr` present but the probe fails** (often no model provider set up for OCR). Both
+  modes print a one-line warning and continue with Temper's own review; this never
+  blocks.
+- **Run and merge (Step 2).** When `ocr_status` is ready, run OCR over the diff under
+  `tools.ocr.timeout` (minutes, default 10) and fold its findings in as `[OCR]`, or as
+  `[OCR+TEMPER]` when a Temper finding matches; the merge mechanics are in
+  `${CLAUDE_PLUGIN_ROOT}/docs/recommended-setup.md`. A failure or a timeout during the run is
+  handled like a failed probe: a one-line warning, then Temper's own review, never a
+  block.
 
 ## Step 1.5: Diff-Aware Fingerprinting
 
@@ -60,9 +78,14 @@ Split the changed files across subagents when the diff is large enough that para
 reading pays for each subagent's context setup; a small diff is reviewed inline. One
 hard constraint, because it bounds recursion: a review subagent never spawns subagents
 of its own (say so in its prompt). Each subagent gets the pack rules, the stack pattern
-file, the fingerprint, its file list, and this prompt shape:
+file, the fingerprint, its file list, and this prompt shape (write the plugin folder in
+place of the CLAUDE_PLUGIN_ROOT variable in its first line):
 
 ```
+Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with
+/scripts/temper taken off); wherever the brief or a reference page writes the
+CLAUDE_PLUGIN_ROOT variable, use this folder.
+
 For each issue: Severity (CRITICAL/HIGH/MEDIUM/LOW), Confidence (0.0-1.0), Category
 (logic/security/performance/quality/standards/architecture/test-gap), file:line,
 Description, Suggestion.
@@ -76,9 +99,10 @@ preferences that violate no pack rule. Classify each finding REGRESSION (was wor
 now broken — highest priority) / NEW ISSUE / PRE-EXISTING (lower priority).
 ```
 
-If `ocr_status == ready`, OCR owns line-level defect detection; the subagent covers
-pack rules, security, AI-code detection, architecture drift, test gaps, and intent
-validation, folding in OCR's `[OCR]` findings.
+If `ocr_status == ready`, OCR owns line-level defect detection (unless
+`tools.ocr.replace-defect-subagent` is `false`); the subagent covers pack rules,
+security, AI-code detection, architecture drift, test gaps, and intent validation,
+folding in OCR's `[OCR]` findings.
 
 **Performance severity floors:** N+1 query, missing pagination on an unbounded list,
 sync I/O in a hot path, non-atomic shared-state mutation in a concurrent handler →
@@ -153,7 +177,7 @@ stop. `[DOUBT]` prefix.
 ## Step 3.55: Stale CLAUDE.md Check (LOW, informational)
 
 Diff invalidates something `CLAUDE.md`/`AGENTS.md` states → LOW finding naming the
-stale line; queue a `config-update` suggestion (`reference/config-suggestions.md`) —
+stale line; queue a `config-update` suggestion (`${CLAUDE_PLUGIN_ROOT}/reference/config-suggestions.md`) —
 never edit the file from review.
 
 ## Step 3.6: Cross-File Pattern Consistency
@@ -176,7 +200,7 @@ findings bypass confidence filtering.
 ## Step 3.8: Architecture Depth (optional, gate-offered)
 
 `architecture-depth` pack enabled and selected at the gate → run
-`reference/architecture-depth.md`'s 5-dimension analysis on changed modules; `[ARCH-DEPTH]`
+`${CLAUDE_PLUGIN_ROOT}/reference/architecture-depth.md`'s 5-dimension analysis on changed modules; `[ARCH-DEPTH]`
 prefix, standard filtering.
 
 ## Step 4: Confidence Filtering
@@ -189,7 +213,7 @@ one severity level.
 
 ## Summary + Gate
 
-The base summary box format is owned by `agents/review.md` — render it, appending a
+The base summary box format is owned by the review brief (`${CLAUDE_PLUGIN_ROOT}/agents/review.md`) — render it, appending a
 line per step that actually ran (fingerprint, security hot paths, cross-file
 consistency, contract changes, mutation spot-check {N} PROVEN/{N} UNVERIFIED) and the
 top issues as `[{severity}] {file}:{line} — {one-liner}`.
@@ -200,8 +224,8 @@ proceed) / "Save for later". A change typed via "Other" is never approval — ma
 edit, re-show this same gate.
 
 **Accepting a finding.** A person can keep a finding as it stands with
-`temper evidence accept --stage review --id <n> --reason "<why>"`. The row stays in the
-ledger with the reason, the author (git identity) and the time; `temper gate review`
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence accept --stage review --id <n> --reason "<why>"`. The row stays in the
+ledger with the reason, the author (git identity) and the time; `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review`
 stops counting it and its detail names the accepted count. The reason is required, an
 empty one exits 1 and writes nothing, and a finding already resolved or accepted cannot
 be accepted again. Resolve means fixed; accept means a person chose to keep it. The
@@ -244,7 +268,10 @@ suppression:
 - **Promote** (surfaced at `/temper:status`, never auto-applied): 3+ accepted at
   acceptance_rate ≥ 70% → suggest a **WARN** rule; 5+ at ≥ 80% in security or
   architecture → suggest a **BLOCK** rule. The human picks BLOCK / WARN /
-  keep-advisory; an accepted rule is written into the active pack's `rules.md`.
+  keep-advisory; an accepted rule is written into the project's copy of the active pack,
+  `.claude/packs/<name>/rules.md`. If the project has no copy yet (the pack is built-in or
+  global), create it first from that pack's current rules so it shadows them, then add the
+  rule. Never edit a file in the plugin folder.
 - **Suppress**: 3+ dismissals at acceptance_rate < 30% → downgrade one severity level;
   5+ at < 10% → auto-suppress (Step 4 then drops it).
 

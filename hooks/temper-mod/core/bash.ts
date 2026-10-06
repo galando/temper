@@ -43,9 +43,14 @@ export type BashClass = {
   // glob, an unresolved variable or substitution, a launcher, an interpreter, a shell fed by a
   // pipe) AND it holds a decision verb. Fail closed: only the person decides.
   opaque: boolean
+  // Why `opaque` is set, so the refusal tells the true reason. `dynamic`: the subcommand (or the verb) of a Temper
+  // call is written as a variable, a substitution or an escaped string, so the call cannot be read. `decision`:
+  // otherwise, the text holds a decision word. `hidden`: the command may run the script and hides part of what it
+  // runs (a substitution, an expansion, a here-string), with no decision word in the text. Null when `opaque` is false.
+  opaqueWhy: 'dynamic' | 'decision' | 'hidden' | null
   // The command makes another name or copy of the Temper script, or sources it.
   alias: boolean
-  // A shell, eval or source is given a program the text does not show (a pipe from an unknown command, a file on
+  // A shell, or a builtin that runs text as commands (source and the like), is given a program the text does not show (a pipe from an unknown command, a file on
   // stdin, a substitution) or one that is written to hide a word (quote splits, `$`, backslashes, braces, globs).
   hidden: boolean
   // A word names a guarded file (or a glob that can stand for one) in a command that is not a plain read.
@@ -178,7 +183,7 @@ function statementsOf(cmd: string): Array<{ stmt: string; from: string | null }>
       cur += c
       continue
     }
-    // A comment (`# ...` at the start of a word) is not part of any command: `bash install.sh  # into .git/hooks`.
+    // A comment (`# ...` at the start of a word) is not part of any command: `npm test  # see .git/hooks`.
     if (c === '#' && (i === 0 || /[\s;&|(]/.test(cmd[i - 1] ?? ''))) {
       const nl = cmd.indexOf('\n', i)
       i = nl < 0 ? cmd.length : nl - 1
@@ -412,6 +417,131 @@ function namesTemper(text: string): boolean {
   }
 }
 
+// ---- Standard input by any of its names -----------------------------------------------------
+
+// Standard input is /dev/stdin, /dev/fd/N, /proc/self/fd/N, /proc/thread-self/fd/N, /proc/<pid>/fd/N or
+// /proc/<pid>/task/<tid>/fd/N. Case is ignored (a folder on macOS may not tell case apart).
+const STDIN_PATH = /^\/(?:dev\/(?:stdin|fd\/\d+)|proc\/(?:self|thread-self|\d+)\/(?:task\/\d+\/)?fd\/\d+)$/i
+// What a glob, or a path with a part that cannot be read, is tried against.
+const STDIN_SAMPLES: string[] = ['/dev/stdin']
+for (let n = 0; n < 10; n++) {
+  STDIN_SAMPLES.push(`/dev/fd/${n}`)
+  for (const p of ['self', 'thread-self', '1', '42']) STDIN_SAMPLES.push(`/proc/${p}/fd/${n}`, `/proc/${p}/task/1/fd/${n}`)
+}
+// A part of a word the shell fills in that this command did not set: ${..}, $(..), `..`, $NAME (the whole name), $$
+// and the like.
+const UNREAD = /\$\{[^}]*\}|\$\([^)]*\)|`[^`]*`|\$(?:\w+|[$!#?*@-])/g
+const MARK = '\u0000'
+
+// A glob (with MARK for a part that cannot be read) as the text of a regular expression.
+function stdinGlob(p: string): string {
+  let re = ''
+  for (let i = 0; i < p.length; i++) {
+    const c = p[i] ?? ''
+    if (c === MARK) re += '.*'
+    else if (c === '*') re += '[^/]*'
+    else if (c === '?') re += '[^/]'
+    else if (c === '[' && p.indexOf(']', i + 2) > 0) {
+      const end = p.indexOf(']', i + 2)
+      re += `[${p.slice(i + 1, end).replace(/^!/, '^').replace(/\\/g, '\\\\')}]`
+      i = end
+    } else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+  }
+  return re
+}
+
+// Whether one of the names of standard input can be matched by a regular expression.
+function anyStdin(re: string, anchored: boolean): boolean {
+  try {
+    const glob = new RegExp(`${anchored ? '^' : ''}${re}$`, 'i')
+    return STDIN_SAMPLES.some(s => glob.test(s))
+  } catch {
+    return true
+  }
+}
+
+// The end of a path that is all that is known of it: what follows the last part that cannot be read (MARK), or the
+// whole of a relative path, and of that only what follows its last `..` step (such a step can undo anything before
+// it). `.` steps and doubled slashes are taken out. The result is matched against the end of the names of standard
+// input; a path that ends in a part that cannot be read can be any name.
+function stdinTail(text: string): boolean {
+  const parts = text.split('/')
+  const glued = parts[0] ?? ''
+  let rest = parts.slice(1).filter(x => x !== '' && x !== '.')
+  const up = rest.lastIndexOf('..')
+  const head = up >= 0 ? '' : glued
+  if (up >= 0) rest = rest.slice(up + 1)
+  const tail = rest.length > 0 || head === '' ? `${head}/${rest.join('/')}` : head
+  if (tail === '/' || tail === '') return true
+  return anyStdin(stdinGlob(tail), false)
+}
+
+// The last part of a path is `stdin`, or the last two are `fd/<n>`.
+const STDIN_NAME = /(?:^|\/)(?:stdin|fd\/\d+)$/i
+
+// Whether a path names standard input, in any spelling. The variables this command set are filled in first, and
+// `.`, `..`, doubled slashes and a /proc/<pid>/root prefix (the root folder again) are taken out, so /dev/./stdin,
+// //dev/stdin, /dev//stdin and /dev/../dev/stdin all count. Of a brace expansion the first word counts (it is the
+// script). A glob counts when it can match one of the names.
+// A relative path is read against `cwd`, the folder the shell is in (see classifyBash): a full folder gives the
+// full path. A folder in the project (relative to its root, whose place is not known here) gives a file of the
+// project, unless `..` steps leave the project: they may reach the root folder, so ../../../dev/stdin counts.
+// When `fed` says the command is given input (a pipe, a heredoc, a here-string or a file), that input is what may
+// run, so more counts:
+//  - a part that cannot be read (an unknown variable, a substitution) stands for any text, `..` steps too: the path
+//    counts when what follows that part can end a name of standard input (`$D/stdin`, `$S`);
+//  - a relative path counts when it can end a name of standard input (stdin, fd/0, dev/stdin), whatever the folder:
+//    the folder may not be known (`cd "$X"`), and a link in the project can lead anywhere;
+//  - a full path counts when it ends in stdin or fd/<n>, since a link can make any folder /dev.
+function readsStdin(text: string, vars: Vars, fed: boolean, cwd: string | null): boolean {
+  const t = expandVars(text, vars)
+  let marked = (braceExpand(t)?.[0] ?? t).replace(UNREAD, MARK)
+  // `$'..'` and `$".."` leave a `$` before the text. An escape inside `$'..'` cannot be read here, so it stands for any text.
+  if (marked.includes('$')) marked = /\\/.test(marked) ? MARK : marked.replace(/\$/g, '')
+  if (marked.includes(MARK)) return fed && stdinTail(marked.slice(marked.lastIndexOf(MARK) + 1))
+  if (!marked.startsWith('/')) {
+    if (cwd !== null && cwd.startsWith('/')) marked = `${cwd}/${marked}`
+    else if (fed) return STDIN_NAME.test(normalizePath(marked)) || stdinTail(`/${marked}`)
+    else if (cwd === null) return false
+    else {
+      const rel = normalizePath(cwd ? `${cwd}/${marked}` : marked)
+      if (!rel.startsWith('..')) return false
+      marked = `/${rel}`
+    }
+  }
+  let p = normalizePath(marked).replace(/^\/(?:\.\.\/)+/, '/')
+  for (let n = 0; n < 8 && /^\/proc\/[^/]*\/root\//i.test(p); n++) p = p.replace(/^\/proc\/[^/]*\/root/i, '')
+  if (fed && STDIN_NAME.test(p)) return true
+  if (!GLOB.test(p)) return STDIN_PATH.test(p)
+  return anyStdin(stdinGlob(p), true)
+}
+
+// The text of a statement with its quoted parts ('..', "..", $'..') and its escaped characters taken out.
+function unquoted(stmt: string): string {
+  let out = ''
+  let quote: '' | "'" | '"' | '$' = ''
+  for (let i = 0; i < stmt.length; i++) {
+    const c = stmt[i] ?? ''
+    if (quote === "'") {
+      if (c === "'") quote = ''
+    } else if (quote === '"' || quote === '$') {
+      if (c === '\\') i++
+      else if (c === (quote === '"' ? '"' : "'")) quote = ''
+    } else if (c === '\\') i++
+    else if (c === '$' && stmt[i + 1] === "'") {
+      quote = '$'
+      i++
+    } else if (c === "'" || c === '"') quote = c
+    else out += c
+  }
+  return out
+}
+
+// Whether a statement is given input: a pipe into it, a heredoc, a here-string or a file on standard input. A `<` inside
+// a quoted argument (`--grep '<title>'`) is no redirect, and input from /dev/null (`<`, `0<`) is no input.
+const fedInput = (stmt: string, pipedFrom: string | null): boolean =>
+  pipedFrom !== null || /(?:^|[^<>&\d])\d*<(?![(&])/.test(unquoted(stmt).replace(/(^|[^<>&\d])0?<\s*\/dev\/null(?![^\s;&|)])/g, '$1'))
+
 // Words in a command that name a decision on the run. Read on the whole text of an opaque launch.
 const VERB = /\b(?:override|accept|advance|next_stage|run_mode|clear|archive|init|loop)\b/i
 const verbIn = (text: string): boolean => VERB.test(text) || (/\bstate\b/i.test(text) && /\bset\b/i.test(text))
@@ -605,14 +735,21 @@ function readFlags(ws: Word[], names: readonly string[]): Flags {
   return flags
 }
 
-// Programs that print the lines an `eval "$(...)"` or `source <(...)` of a shell setup takes. Anything else
+// Shell setup tools: what one of them prints may be run as commands (sourced, or run from a substitution). Anything else
 // built by a substitution is a program the text does not show.
 const ENV_NAMES = new Set(['ssh-agent', 'pyenv', 'rbenv', 'nodenv', 'jenv', 'goenv', 'direnv', 'fnm', 'mise', 'asdf', 'brew', 'conda', 'minikube', 'docker-machine', 'starship', 'zoxide', 'dircolors', 'opam', 'keychain', 'gpg-agent', 'thefuck', 'register-python-argcomplete'])
 
 // Substitutions of a plain lookup that cannot build a command: `$(pwd)`, `$(git rev-parse HEAD)`.
 const TRIVIAL_SUBST = /^\s*(?:pwd|date|nproc|uname|whoami|hostname|git\s+rev-parse|which|command\s+-v|basename|dirname|realpath|mktemp)\b/
 // Programs that print any text they are given: a substitution of one of them can build a command from pieces.
-const GENERATORS = new Set(['echo', 'printf', 'cat', 'python', 'python3', 'node', 'perl', 'ruby', 'awk', 'gawk', 'sed', 'tr', 'base64', 'curl', 'wget', 'openssl', 'xxd', 'rev', 'head', 'tail', 'cut', 'jq', 'sh', 'bash', 'zsh', 'env', 'printenv', 'yes', 'seq', 'tee', 'dd', 'php', 'deno', 'bun'])
+const GENERATORS = new Set([
+  // Text tools.
+  'echo', 'printf', 'cat', 'awk', 'gawk', 'sed', 'tr', 'xxd', 'rev', 'head', 'tail', 'cut', 'jq',
+  // Transfer and encoding tools.
+  'base64', 'curl', 'wget', 'openssl',
+  // Shells, language runtimes and other producers.
+  'python', 'python3', 'node', 'perl', 'ruby', 'sh', 'bash', 'zsh', 'env', 'printenv', 'yes', 'seq', 'tee', 'dd', 'php', 'deno', 'bun',
+])
 // A substitution whose command is a shell setup tool, a plain lookup, or a program run by its path
 // (`$(scripts/ensure-jdk.sh --export)`): the text shows what produces the program. A text generator is not that.
 function safeSubst(inner: string): boolean {
@@ -714,6 +851,8 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
   let shellStdin = false
   // A Temper call whose subcommand or verb cannot be read from the text ($'..', ${..}, $(..)).
   let opaqueCall = false
+  // The same for a script found by a substitution: `$T $c`, where the command names the script.
+  let dynamicSub = false
   // Files this command writes, so a script that is written and then run can be seen.
   const created: string[] = []
   // A file this command wrote is run by it (as a command, or as the script of a shell or interpreter).
@@ -902,9 +1041,42 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
     }
     // `source scripts/temper ...` and `. scripts/temper ...` run the script in this shell.
     if (['source', '.'].includes(w[0]?.text ?? '') && w.slice(1).some(a => namesTemper(expandVars(a.text, vars)))) alias = true
-    // `bash scripts/temper ...`, `bash -o pipefail scripts/temper ...`, `bash -s` and `sh -c STRING`.
+    // A shell given the script as a file (after options such as -o), -s, or a program string after -c.
     while (w.length > 0 && SHELLS.has(BASE(w[0]?.text ?? '').toLowerCase())) {
       const rest = w.slice(1)
+      // The shell reads its commands from standard input: a heredoc or a here-string is in the text; a pipe is shown
+      // only when an echo or a printf (or a cat of a heredoc) feeds it.
+      const fromStdin = (): void => {
+        shellStdin = true
+        stdinShell = true
+        const shown = /<</.test(stmt) || (pipedFrom !== null && (/^(?:echo|printf)\s/.test(pipedFrom) || (/^cat\b/.test(pipedFrom) && /<</.test(pipedFrom))))
+        if (!shown) hidden = true
+      }
+      // The startup files the shell reads before its program or script: the value after --rcfile or --init-file among
+      // its options, BASH_ENV for bash, and ENV for an interactive shell (-i). BASH_ENV and ENV count when this command set
+      // them, before the shell or through env. One that names standard input runs the program from the pipe.
+      {
+        const startup: string[] = []
+        let interactive = false
+        for (let i = 0; i < rest.length; i++) {
+          const t = rest[i]?.text ?? ''
+          if (/^-[a-zA-Z]*i[a-zA-Z]*$/.test(t)) interactive = true
+          if (t === '--rcfile' || t === '--init-file') startup.push(rest[i + 1]?.text ?? '')
+          if (['-o', '+o', '-O', '+O', '--rcfile', '--init-file'].includes(t)) i++
+          else if (!/^[-+]/.test(t)) break
+        }
+        const setHere = (name: string): string[] => [
+          ...(vars.has(name) ? [vars.get(name) ?? ''] : []),
+          ...argv.flatMap(x => (x.text.startsWith(`${name}=`) ? [x.text.slice(name.length + 1)] : [])),
+        ]
+        if (BASE(w[0]?.text ?? '').toLowerCase() === 'bash') startup.push(...setHere('BASH_ENV'))
+        if (interactive) startup.push(...setHere('ENV'))
+        const fed = fedInput(stmt, pipedFrom)
+        if (startup.some(f => f !== '' && readsStdin(f, vars, fed, cwd))) {
+          fromStdin()
+          return
+        }
+      }
       const ci = rest.findIndex(x => /^-\w*c$/.test(x.text))
       if (ci >= 0) {
         const script = rest[ci + 1]
@@ -912,15 +1084,16 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
         if (script?.dynamic || /[$`]/.test(script?.text ?? '')) shellStdin = true
         // The program is built by a substitution (or is a variable nothing set): it is not shown by the text.
         if (script?.dynamic ? hiddenText(scriptText) : /^\s*\$/.test(scriptText)) hidden = true
-        // xargs hands the words it reads to the shell as its program: `xargs -I{} sh -c '{}'`.
-        if (viaXargs && /^\s*(?:\{\}|"?\$(?:@|\*|\d)"?)\s*$/.test(scriptText)) hidden = true
+        // xargs hands the words it reads to the shell as its program: a -c program that is only the {} placeholder, or
+        // no program word at all (the first word xargs reads is the program).
+        if (viaXargs && (script === undefined || /^\s*(?:\{\}|"?\$(?:@|\*|\d)"?)\s*$/.test(scriptText))) hidden = true
         // A string given to a shell: git commit inside it counts, and so does a name of the script.
         if (/\bgit\b/i.test(scriptText) && gitCreatesCommit(scriptText)) commits = true
         for (const s of statementsOf(scriptText)) analyse(s.stmt, depth + 1, s.from)
         if (named || pieceNamesTemper(scriptText)) mentionAny = true
         return
       }
-      // The first word that is not an option (an option such as -o takes a value) is the script.
+      // The first word that is not an option (an option such as -o, --rcfile or --init-file takes a value) is the script.
       let fileAt = -1
       let sSeen = false
       for (let i = 0; i < rest.length; i++) {
@@ -929,26 +1102,25 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
           shellStdin = true
           sSeen = true
         }
-        if (['-o', '+o', '-O', '+O'].includes(t)) i++
+        if (['-o', '+o', '-O', '+O', '--rcfile', '--init-file'].includes(t)) i++
         else if (!/^[-+]/.test(t)) {
           fileAt = i
           break
         }
       }
-      if (fileAt < 0 || sSeen) {
-        // No script file (or `bash -s ARGS`, the words after the options are arguments): the shell reads its
-        // commands from standard input. A heredoc or a here-string is in the text; a pipe is shown only when
-        // an echo or a printf (or a cat of a heredoc) feeds it.
-        shellStdin = true
-        stdinShell = true
-        const shown = /<</.test(stmt) || (pipedFrom !== null && (/^(?:echo|printf)\s/.test(pipedFrom) || (/^cat\b/.test(pipedFrom) && /<</.test(pipedFrom))))
-        if (!shown) hidden = true
+      // A script argument that names standard input in any spelling (see readsStdin) is a program read from the
+      // pipe, the same as no script file at all.
+      const stdinFile = fileAt >= 0 && readsStdin(rest[fileAt]?.text ?? '', vars, fedInput(stmt, pipedFrom), cwd)
+      if (fileAt < 0 || sSeen || stdinFile) {
+        // No script file (or -s with arguments, the words after the options are arguments): the shell reads its
+        // commands from standard input.
+        fromStdin()
         return
       }
       w = fill(unwrap(rest.slice(fileAt)))
       if (BASE(w[0]?.text ?? '').toLowerCase() === 'temper') break
       // A script that is not named temper: a glob or a variable could still stand for it, and a
-      // script given by a substitution (`bash <(cat scripts/temper)`) cannot be read.
+      // script given by a process substitution cannot be read.
       if (namesTemper(w[0]?.text ?? '') || named) {
         mentionAny = true
         mentionLoud = true
@@ -971,9 +1143,9 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
     // Facts for the fail closed rule: a statement that is not a plain Temper call but names the
     // script (a word, a glob that can match it, a name inside a string, a directory called temper in
     // command position) or runs a command that cannot be read. Reading commands are exempt.
-    // A command word that cannot be read, followed by a plain Temper read or record call, is the
-    // orchestrator's own idiom (`T=$(ls .../scripts/temper); $T state get next_stage`): it is not read as a
-    // mention of the script at all.
+    // A command word that cannot be read, followed by a plain Temper read or record call, is a script found by a
+    // command substitution, then used for reads (`T=$(command -v temper); $T state get next_stage`): it is not read
+    // as a mention of the script at all.
     const plainDynamic = (w[0]?.dynamic || /[$`]|[<>]\(/.test(w[0]?.text ?? '')) && plainTemperArgs(args, argText)
     if ((cmd !== 'temper' || viaXargs) && !plainDynamic) {
       const cmdText = w[0]?.text ?? ''
@@ -988,9 +1160,13 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
         if (cmd === 'cat') readsScript = true
       }
       if (viaXargs && cmd === 'temper') mentionLoud = true
-      // A command word that cannot be read (`T=$(ls .../scripts/temper); $T ...`) is the orchestrator's own
-      // idiom for finding the script. It is fine for plain reads; anything else about it fails closed.
-      if ((w[0]?.dynamic || /[$`]|[<>]\(/.test(cmdText)) && !plainTemperArgs(args, argText)) dynamicCommand = true
+      // A command word that cannot be read (`T=$(command -v temper); $T ...`) may be a script found by a command
+      // substitution. It is fine for plain reads; anything else about it fails closed.
+      if ((w[0]?.dynamic || /[$`]|[<>]\(/.test(cmdText)) && !plainTemperArgs(args, argText)) {
+        dynamicCommand = true
+        // The script found that way, given a subcommand that cannot be read either (`T=$(ls scripts/temper); $T $c`).
+        if (names && args[0] !== undefined && (args[0].dynamic || /[$`]/.test(argText[0] ?? ''))) dynamicSub = true
+      }
       // An interpreter program (python -c, node -e, perl -e) or a program on standard input that names
       // the script. A file run by an interpreter, and a test run (-m pytest -k "temper"), are not read here.
       if (INTERPRETERS.test(cmd)) {
@@ -998,6 +1174,9 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
         const program = flagAt >= 0 ? argText.slice(flagAt + 1) : []
         if (program.some(a => /temper|subprocess/i.test(a))) mentionLoud = true
         if (!args.some(a => !a.text.startsWith('-')) && flagAt < 0) stdinProgram = true
+        // A program file that is standard input in any spelling (python3 /dev/stdin) is a program on standard input too.
+        const fileArg = args.find(a => !a.text.startsWith('-'))
+        if (flagAt < 0 && fileArg !== undefined && readsStdin(fileArg.text, vars, fedInput(stmt, pipedFrom), cwd)) stdinProgram = true
       }
     }
     // A git command that creates a commit, wherever it sits (find -exec, env, watch, ...).
@@ -1008,16 +1187,17 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
 
     if (cmd === 'eval') {
       const joined = args.map(a => expandVars(a.text, vars)).join(' ')
-      // A program built by a substitution (not a shell setup idiom such as `eval "$(ssh-agent -s)"`) is not shown.
+      // A program built by a substitution (not a shell setup idiom from ENV_NAMES) is not shown.
       if ((args.some(a => a.dynamic) || /[$`]/.test(joined)) && hiddenText(joined)) hidden = true
       for (const s of statementsOf(stripSafe(joined))) analyse(s.stmt, depth + 1, s.from)
-      if (strict && args.some(a => /[$`]/.test(expandVars(a.text, vars)))) flag('eval', true)
+      if (strict && args.some(a => /[$`]/.test(expandVars(a.text, vars)))) flag('(built program)', true)
       return
     }
     if (cmd === 'source' || cmd === '.') {
       const arg = args.find(a => !a.text.startsWith('-'))
       const t = expandVars(arg?.text ?? '', vars)
-      if (/^\/dev\/(?:stdin|fd\/\d+)$/.test(t)) {
+      // The same names of standard input as for a shell's script (see readsStdin).
+      if (arg !== undefined && readsStdin(arg.text, vars, fedInput(stmt, pipedFrom), cwd)) {
         stdinShell = true
         if (!(/<</.test(stmt) || (pipedFrom !== null && /^(?:echo|printf)\s/.test(pipedFrom)))) hidden = true
       } else if (/[<>]\(/.test(t) ? !/^<\(\s*(?:direnv|pyenv|rbenv|fnm|mise|asdf|brew|conda|starship|zoxide|thefuck|register-python-argcomplete)\b/.test(t) : (arg?.dynamic ?? false) && hiddenText(t)) hidden = true
@@ -1381,6 +1561,7 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
     uncheckable: [...new Set(uncheckable)],
     staged,
     opaque,
+    opaqueWhy: !opaque ? null : opaqueCall || dynamicSub ? 'dynamic' : verb ? 'decision' : 'hidden',
     alias,
     hidden,
     guardedUse: [...new Set(guardedUse)],

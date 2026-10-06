@@ -8,21 +8,24 @@ description: "Show quality metrics, learning loop, and observability dashboard"
 
 ## Execution
 
-> **Full methodology:** Read `$CLAUDE_PLUGIN_ROOT/reference/status.md`
+> **Full methodology:** Read `${CLAUDE_PLUGIN_ROOT}/reference/status.md`
+
+**Plugin folder:** the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that
+path with /scripts/temper taken off). Wherever a reference page or a brief writes the
+CLAUDE_PLUGIN_ROOT variable, use this folder.
 
 ### Quick Reference
 
 1. Initialize `.temper/` directory if missing (metrics, review-memory, specs/)
 2. Read `.temper/metrics.json` + `.temper/review-memory.json`
-3. Read `.temper/gates.json` + `.temper/evidence/*.json` (the current/last run's
-   evidence-backed gate ledger — run `$CLAUDE_PLUGIN_ROOT/scripts/temper report`, or read
-   the files directly)
+3. Read `.temper/gates.json` and the evidence ledger (the current/last run's
+   evidence-backed gate ledger) through `${CLAUDE_PLUGIN_ROOT}/scripts/temper report`
 4. Read `.temper/feedback-loops.json` (if exists — active feedback loop state)
-4.2. If the current spec has an `intent.md`, run `$CLAUDE_PLUGIN_ROOT/scripts/temper status`
+4.2. If the current spec has an `intent.md`, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper status`
    (per-criterion passed/open with evidence; `--json` writes `.temper/status.json`)
-4.5. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper bands` (deterministic control-band drift
+4.5. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` (deterministic control-band drift
    check over metrics history — **CONTROL BANDS section**; a `propose`-tier breach
-   offers drafting an intent.md, see reference/status.md Step 3.7)
+   offers drafting an intent.md, see `${CLAUDE_PLUGIN_ROOT}/reference/status.md` Step 3.7)
 5. **Detect MCP tools**: attempt to call `get_impact_radius_tool` (code-review-graph) and check if semgrep tools are available. Report availability in dashboard.
 6. Display: reviews, quality trend, debt, hotspots, top patterns, learning loop, active specs, **MCP TOOLS section**, **GATE LEDGER section**, **FEEDBACK LOOPS section**, **CONTROL BANDS section**
 7. If pattern count >= 3: suggest auto-rule
@@ -30,12 +33,12 @@ description: "Show quality metrics, learning loop, and observability dashboard"
 
 ### Gate Ledger Panel
 
-Show only what `temper gate` and `temper evidence` recorded. Never render cost, latency,
+Show only what `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate` and `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence` recorded. Never render cost, latency,
 or token estimates: nothing mechanical backs them.
 
 ```
 GATE LEDGER
-  {output of: $CLAUDE_PLUGIN_ROOT/scripts/temper report}
+  {output of: ${CLAUDE_PLUGIN_ROOT}/scripts/temper report}
 
   Evidence: {N} PROVEN, {N} HEURISTIC, {N} SEMANTIC (this run)
 ```

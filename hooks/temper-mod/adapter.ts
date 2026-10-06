@@ -46,13 +46,16 @@ export type Io = {
   setMode: (mode: UiMode) => Promise<void>
   // Waits ms milliseconds (the engine's clock: the mod reads no global timer).
   pause: (ms: number) => Promise<void>
+  // Where the Temper script is (pluginCliFrom): the button prompts of the published view name the CLI by it.
+  // Left out: the plain `scripts/temper`.
+  cli?: string
 }
 
 // A choice of the person (a move) that no mirror call has recorded in the CLI yet.
 export type PendingMove = { id: string; draft: Draft }
 
 // How the mod's picture of the run compares with the CLI state (build-state.json). The CLI is the truth
-// for WHERE the run is: `state.phase` is always derived from it. Events only say WHO decided.
+// for WHERE the run is: the phase of the folded state is always derived from it. Events only say WHO decided.
 export type Sync = {
   // The phase the CLI is at; null when the mod cannot tell.
   cli: Phase | 'done' | null
@@ -208,7 +211,7 @@ async function isOwn(io: Io, id: string, text: string): Promise<boolean> {
 }
 
 // Event names are `{ts}-{session}-{seq}.json`. This module has no session id call, so a
-// random token per load stands in: two loads never share a name.
+// random id per load stands in: two loads never share a name.
 const SESSION = (Math.random().toString(16).slice(2) + '00000000').slice(0, 8)
 // The phase an event decided, so a CLI call is matched only to a decision made for it.
 function decisionOf(ev: TemperEvent, kind: DecisionKind): HumanDecision {
@@ -399,6 +402,44 @@ async function designSatisfied(io: Io, snap: Snapshot): Promise<boolean> {
   }
 }
 
+// The spec files a run writes once it has an intent; a run that holds one of them has something to lose.
+const RUN_ARTIFACTS = ['intent.md', 'plan.md', 'tasks.md', 'design.md']
+
+// The TRIVIAL exit of the orchestrator: a `state clear` of a run that never left Intent. Read fresh for the call, so a
+// file written a moment ago counts. True only when the CLI's files and the spec folder all say so:
+//  - build-state.json: Intent is next, and its stage shows no completed step (`state init` writes `started`);
+//  - gates.json holds no verdict, and overrides.json is an empty list (each may also be missing);
+//  - the spec folder holds none of intent.md, plan.md, tasks.md and design.md, as a text or as a name in its listing.
+// A gates.json or overrides.json that does not read counts as missing (the guard refuses a command that removes or locks
+// either while a run is active); one that reads but is not what the CLI writes keeps the run. The mod's own record is
+// checked by the rule (core/rules.ts).
+export async function nothingToLose(io: Io, specDir: string): Promise<boolean> {
+  // The parsed text of a file, or undefined when it does not read.
+  const json = async (path: string): Promise<unknown> => {
+    const text = await readText(io, path)
+    return text === null ? undefined : JSON.parse(text)
+  }
+  try {
+    const bs = await json(`${STATE_ROOT}/build-state.json`)
+    if (typeof bs !== 'object' || bs === null) return false
+    const { stage, next_stage: next } = bs as { stage?: unknown; next_stage?: unknown }
+    if (next !== 'intent' || typeof stage !== 'string' || stage.includes('_complete')) return false
+    const gates = await json(`${STATE_ROOT}/gates.json`)
+    if (gates !== undefined) {
+      if (typeof gates !== 'object' || gates === null || Array.isArray(gates)) return false
+      if (Object.values(gates).some(row => typeof row === 'object' && row !== null && 'verdict' in row)) return false
+    }
+    const rows = await json(`${STATE_ROOT}/overrides.json`)
+    if (rows !== undefined && (!Array.isArray(rows) || rows.length > 0)) return false
+  } catch {
+    return false
+  }
+  for (const name of RUN_ARTIFACTS) if ((await readText(io, `${specDir}/${name}`)) !== null) return false
+  // A spec folder that is not there yet (the TRIVIAL run wrote nothing) lists as empty.
+  const entries = await io.list(specDir).catch(() => [])
+  return Array.isArray(entries) && !entries.some(e => RUN_ARTIFACTS.includes(e.name))
+}
+
 // The facts of the CLI commit gate that the mod can read (see CommitFacts in core/rules.ts). `root` is the
 // project folder; the current branch comes from .git/HEAD. Never throws: a fact that cannot be read is false.
 export async function commitFacts(io: Io, snap: Snapshot, root: string, staged: { all: boolean; paths: string[] }): Promise<CommitFacts> {
@@ -504,12 +545,12 @@ export function composeText(snap: Snapshot): string {
   })
 }
 
-export const viewOf = (snap: Snapshot): View =>
-  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, sync: snap.sync.line, pending: snap.sync.pending !== null, enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false })
+export const viewOf = (snap: Snapshot, cli?: string): View =>
+  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, sync: snap.sync.line, pending: snap.sync.pending !== null, enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false, ...(cli !== undefined ? { cli } : {}) })
 
 // Mirrors the folded state into `$.state` for drawing and compaction.
 export async function publish(io: Io, snap: Snapshot): Promise<void> {
-  await io.setRun({ slug: snap.slug, phase: snap.state.phase, title: snap.title, summary: composeText(snap), view: viewOf(snap) })
+  await io.setRun({ slug: snap.slug, phase: snap.state.phase, title: snap.title, summary: composeText(snap), view: viewOf(snap, io.cli) })
   await io.setMode(snap.mode)
 }
 

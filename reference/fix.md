@@ -7,7 +7,7 @@ argument-hint: "<bug-description-or-JIRA-123>"
 
 **Goal:** find the real root cause, prove it with a failing test, apply the minimal fix,
 validate. Never guess — a fix without a reproduction is a hope. This doc is the
-methodology; `commands/fix.md` is the orchestrator (routing, the RED/GREEN evidence
+methodology; `${CLAUDE_PLUGIN_ROOT}/commands/fix.md` is the orchestrator (routing, the RED/GREEN evidence
 rows the build gate reads, stage gates). Fix maps onto the `build` gate — a regression
 test is a RED-then-GREEN pair — then Review and Check are the ordinary stages.
 
@@ -71,11 +71,12 @@ at once — you can't tell which worked.
    (`shouldHandleExpiredTokenGracefully`). Run it — it MUST fail, with an assertion
    error about the bug (not an NPE or compile error). Then record it as this run's proof:
    ```
-   $CLAUDE_PLUGIN_ROOT/scripts/temper state set regression_test {test file path}
+   ${CLAUDE_PLUGIN_ROOT}/scripts/temper state set regression_test {test file path}
    ```
-   With the hooks pack enabled, `protect-regression-test.sh` now blocks any edit to that
+   With the guardrails pack enabled, `protect-regression-test.sh` now blocks any edit to that
    file for the rest of the run — fix the code, not the test. A genuinely-wrong test is a
-   human's call to unlock (`temper state set regression_test ""`), never the agent's.
+   human's call to unlock (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state set regression_test ""`, run only
+   when the human says so), never the agent's.
 
 2. **Validate the approach against enabled packs** before writing the fix (read
    `.claude/temper.config` for the pack list + the stack pack): a BLOCK-rule violation
@@ -111,7 +112,7 @@ noted (confirm with `git stash` → test → `git stash pop`), not blamed on the
 
 ## Commit + record
 
-The commit gate is the standard one (`temper gate commit`; fix checks build/review/check,
+The commit gate is the standard one (`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit`; fix checks build/review/check,
 no plan stage). On the user's explicit **Commit** (a typed change is never approval —
 make the edit, re-show the gate): a conventional `fix({scope}): {desc}` message naming
 the root cause, the regression test, and the closed ticket.
@@ -130,16 +131,19 @@ Then two records, both committed:
   - **Fix:** {commit hash or one line}
   - **Regression test:** {test file}#{test name}
   - **Watch for:** {the generalized failure shape a future RCA should recognize}
-  {- **Band change:** only if the fix came from a `temper bands` breach — what was retuned}
+  {- **Band change:** only if the fix came from a control-band breach: what was retuned}
   ```
   Incident memory, distinct from review-memory (finding patterns): lessons record *what
   broke and why*, so the next investigation starts from evidence, not zero.
 
 ## Rollback
 
-- Tests fail after the fix → `git checkout -- {file}`, re-run, re-investigate.
-- The attempt limit is `temper config get fix.max-loops` (default 3), enforced by
-  `temper state loop check fix` once the key is set in `.claude/temper.config`.
+- Tests fail after the fix → restore the project file you changed (`git checkout -- <that file>`,
+  only ever a file inside the project), re-run, re-investigate.
+- The attempt limit is what `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get fix.max-loops` prints
+  (default 3). The loop back from Check to Fix,
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper state loop check fix`, enforces it once the key is
+  set in `.claude/temper.config`.
 - `fix.max-loops` attempts fail → keep the regression test (it proves the bug), show the RCA and
   what you tried, ask for context.
 - It's actually a design flaw, not a bug → "this needs `/temper:plan` for a redesign,

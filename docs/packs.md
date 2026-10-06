@@ -9,7 +9,8 @@ Packs are collections of rules that Temper uses to validate and guide AI-generat
 
 ## Built-in Packs
 
-Temper ships with 6 quality packs, enforced during code generation and review:
+Temper ships with 8 built-in packs: the 7 rule packs below, enforced during code generation and
+review, plus `guardrails`, whose guard hooks you turn on separately (see [Enabling Packs](#enabling-packs)).
 
 ### `quality`
 
@@ -94,7 +95,7 @@ Git workflow — conventional commits, branching strategy. Enabled by default.
 
 ## Creating Custom Packs
 
-**Recommended:** Use `/temper:pack` to create packs interactively. Select "Add new pack" to scan your codebase, define conventions, and generate a custom `rules.md` tailored to your team.
+**Recommended:** Use `/temper:pack` to create packs interactively. At its menu, choose **Other** and describe the pack: the full pack builder scans your codebase, asks about your conventions, and generates a custom `rules.md` tailored to your team. **Quick-create launcher pack** wraps a skill or command your session lists as a BLOCK-level pack.
 
 ### Manual Creation
 
@@ -160,9 +161,17 @@ packs:
   - my-custom-pack  # Your pack
 ```
 
+The guardrails pack is different: its work is done by guard hooks in a project settings file,
+so adding it to `packs:` alone turns nothing on. Use `/temper:pack enable guardrails` and
+`/temper:pack disable guardrails` instead ([Guardrails](commands.md#guardrails)).
+
 ## Pack Discovery
 
-Temper automatically discovers packs in `.claude/packs/`. Just create the folder and add `rules.md`.
+Temper discovers packs in three places, highest priority first: the project's
+`.claude/packs/<name>/rules.md`, your global pack folder `~/.claude/packs/<name>/rules.md`, and
+the built-in packs. A pack name is lowercase letters, digits and hyphens. Just create the folder
+and add `rules.md`. Apart from the mod's plugin store, the global pack folder is the one place in
+your home folder Temper reads; it reads no other Claude Code file there.
 
 ## Company Packs
 

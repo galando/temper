@@ -43,7 +43,7 @@ Before loading anything, answer:
 
 Load in this order:
 1. `.claude/temper.config` — enabled packs, stack, review settings
-2. `.claude/packs/{enabled-pack}/rules.md` — only enabled packs, only those scoped to the current phase
+2. `rules.md` of each enabled pack, from the highest tier that has it (project `.claude/packs/{enabled-pack}/rules.md`, then global, then the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`) — only enabled packs, only those scoped to the current phase
 3. `.claude/packs/stacks/{detected-stack}.md` — stack-specific patterns (if exists)
 4. `.claude/CLAUDE.md` — project conventions
 

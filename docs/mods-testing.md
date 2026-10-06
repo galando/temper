@@ -5,23 +5,24 @@ nav_order: 10
 
 # Testing the mod on your laptop
 
-Nothing is merged or released from the mods branch until you have run it in your own
-terminal. Tick each box by hand. Every step has the exact command and the result you
-should see. If a result differs, stop and write down what you saw.
+Nothing is merged or released until you have run it in your own terminal. Tick each box
+by hand. Every step has the exact command and the result you should see. If a result
+differs, stop and write down what you saw.
 
-The branch is loaded for one session with `--plugin-dir`. That does not install anything
+Your clone is loaded for one session with `--plugin-dir`. That does not install anything
 and does not touch the Temper you already have. The one thing the test writes outside the
-clone is the mode you pick with `/temper:temper mode`, which the last step clears.
+clone is the mode and enforcement you set with `/temper:temper mode` and
+`/temper:temper enforcement`, which the last step sets back to the defaults.
 
-In the commands below, `<clone>` is the path of your Temper clone. The short form `/temper` works only when no other plugin has the same command name. With the installed Temper and the branch both loaded it is an unknown command, so this checklist always types the full name `/temper:temper`.
+In the commands below, `<clone>` is the path of your Temper clone. The short form `/temper` is an interactive shortcut that may not resolve in every surface (in `claude -p` it does not, and with the installed Temper and the clone both loaded it is an unknown command), so this checklist always types the full name `/temper:temper`.
 
 ## 1. Preparation
 
 - [ ] **Claude Code 2.1.287 or later.**
   Run `claude --version`. Expect `2.1.287` or higher. If it is older, run `claude update`.
-- [ ] **Get the branch.**
-  Run `git fetch origin ccr-ea3cb3cc-wsa4sb && git checkout ccr-ea3cb3cc-wsa4sb` in your
-  Temper clone (or a fresh clone). Expect `git status` to show that branch.
+- [ ] **Pick what to test.**
+  In your Temper clone, check out the commit you want to test. Expect `git status` to show
+  it.
 - [ ] **Turn off the installed Temper for the test**, so only one Temper runs.
   Run `claude plugin list` and find the id of Temper (it looks like `temper@<marketplace>`).
   Then run `claude plugin disable <that id>`. Turn it back on at the end with
@@ -29,41 +30,36 @@ In the commands below, `<clone>` is the path of your Temper clone. The short for
 
 ## 2. Automated checks
 
-Run these from `<clone>`. None of them needs you to be signed in.
+Run these from `<clone>`. None of them sends a request.
 
 - [ ] `claude plugin validate --strict .` prints `Validation passed`.
 - [ ] `claude plugin test .` ends with `0 fail`.
-- [ ] `npx -p typescript@5.6 tsc -p tsconfig.mod.json` prints nothing. It needs the
-  generated types in `.claude-plugin/types/`. If they are missing, run
-  `ANTHROPIC_API_KEY=sk-invalid claude -p hi --plugin-dir .` once, then run the command again.
+- [ ] With TypeScript 5.6 on your machine, `tsc -p tsconfig.mod.json` prints nothing. It
+  needs the generated types in `.claude-plugin/types/`. If they are missing, start
+  `claude --plugin-dir .` in the clone once and quit: loading the plugin writes them.
 - [ ] `bash scripts/check-mod-calls.sh` prints `OK` and a count of calls, with no process,
   http or env call.
-- [ ] `bash scripts/tests/test-temper.sh` ends with `FAIL: 0`.
+- [ ] `bash scripts/selftest/test-temper.sh` ends with `FAIL: 0`.
 - [ ] `bash scripts/quality-check.sh` ends with `All checks passed.`
 
 ## 3. A test session
 
 - [ ] **Start a run in a small test project.** Use any small git project you can throw away
-  (`<project>`). Start Claude Code there with the branch loaded:
-
-```bash
-cd <project> && claude --plugin-dir <clone>
-```
-
-  When Claude Code asks, choose "Yes, I trust this folder". Always type the full command name
-  `/temper:temper`. Type `/temper:temper "add a small function"` and approve the intent, so the run
+  (`<project>`). Open a terminal in `<project>` and start Claude Code with your clone
+  loaded: `claude --plugin-dir <clone>`. When Claude Code asks, choose "Yes, I trust this
+  folder". Always type the full command name `/temper:temper`. Type `/temper:temper "add a small function"` and approve the intent, so the run
   is at Plan with the plan written. Expect the TEMPER bar above the prompt ("Step 2 of 6: Plan" and
-  "1 Continue to Build.") and no plugin load error. The folder is watched, so a `git pull` in
-  `<clone>` reloads the mod without restarting.
+  "1 Continue to Build.") and no plugin load error.
 - [ ] **The smooth path.** At Plan, type `Skip the tasks: edit a source file now to add the
   function`. Expect a refusal with a `Next:` step. Then, with the prompt empty, press `1`. Expect the
   toast "Plan approved. Build open.", the bar at "Step 3 of 6: Build", and, after Claude's one
-  short line, `scripts/temper state get next_stage` prints `build` in `<project>`. Claude must
-  not ask you to approve again. Then expect a second turn that starts with `/temper:temper`: the
+  short line, `<clone>/scripts/temper state get next_stage`, run in `<project>`, prints `build`.
+  Claude must not ask you to approve again. Then expect a second turn that starts with `/temper:temper`: the
   orchestrator launches the Build stage in its own subagent (a `temper:temper-build` agent line). No
   AskUserQuestion dialog may appear at the gate: the stage ends with "Waiting for you. Use the Temper
-  bar, or type a change." and the bar offers the next step ("1 Continue with task 2" while tasks are
-  open, "1 Continue to Review" when the build check passes).
+  bar, or type /temper:temper approve (or back, override, pause), or type a change." and the bar
+  offers the next step ("1 Continue with task 2" while tasks are open, "1 Continue to Review" when
+  the build check passes).
 - [ ] **No second question at a gate.** With the mod active, at every gate (Intent, Plan, Build,
   Review, Check) expect no Continue / Save for later / Other dialog under the bar. Start Claude Code
   with the mod switched off (`--settings '{"enabledPlugins":{"temper@temper":false}}'` and no
@@ -142,8 +138,10 @@ Work through one run. For each phase, check the refusal and the key.
 - [ ] **Commit gate.** Before Check passes, ask Claude to run `git commit -am wip`. Expect
   `Temper: commit blocked. Check has not passed.` After Check passes, the same command
   must be allowed.
-- [ ] **Review and Check.** Press `1` at each band. Expect `.temper/report.md` after Check
-  passes, listing the phases, any override and every scope decision with its reason.
+- [ ] **Review and Check.** Press `1` at each band. After Check passes, type
+  `/temper:temper report`. Expect the report, listing the phases, any override and every scope
+  decision with its reason. It is kept in the mod's plugin store, so expect no `.temper/report.md`
+  file.
 - [ ] **Forgery.** Ask Claude to write `.temper/gates.json` or to run
   `scripts/temper override plan --reason ok`. Expect a refusal that says only the user can
   approve.
@@ -159,7 +157,7 @@ Work through one run. For each phase, check the refusal and the key.
   and a toast `Temper enforcement: off`. Run `/temper:temper enforcement on` to restore it.
 - [ ] If you can, set `pluginConfigs` for Temper in a managed settings file so that
   `uiMode` is locked, then run `/temper:temper mode full`. Expect
-  `Your organization set Temper's mode to ...; ask your admin to change it.`
+  `Your organization set Temper's mode to <value>. Ask your admin to change it.`
   If you cannot set managed settings, mark this step as skipped.
 
 ## 6. Compaction and layouts
@@ -168,7 +166,8 @@ Work through one run. For each phase, check the refusal and the key.
   `Does your system prompt contain a Temper enforcement line?` Expect `Temper enforcement: active`
   and the same phase.
 - [ ] **`/clear` rebuilds the state.** Type `/clear`, then `/temper:temper status`. Expect the same
-  phase as before, rebuilt from the files in `.temper/specs/<name>/events/`.
+  phase as before, rebuilt from the decisions the mod keeps in its plugin store and the CLI's files
+  in `.temper/`.
 - [ ] **A narrow terminal.** Resize to 80 columns. Expect the bar to wrap or truncate
   without breaking the prompt, and the pane to wait instead of squeezing in.
 - [ ] **A wide terminal.** Resize to 160 columns in fullscreen. Expect the pane to dock beside
@@ -178,17 +177,23 @@ Work through one run. For each phase, check the refusal and the key.
 ## 7. Old versions and other surfaces
 
 The plugin must still load on old Claude Code versions and fall back to the prompt based
-phases. Run each of these from `<clone>`, which does not touch your installed Claude Code.
+phases. For each version below, use a copy of Claude Code at that version, set up apart
+from your own so it stays untouched, and ask it for `/temper:status` from `<clone>` with
+the clone loaded (`-p --plugin-dir .`).
 
-| Version | Command | Expect |
-|---|---|---|
-| 2.1.259 | `npx @anthropic-ai/claude-code@2.1.259 -p --plugin-dir . "/temper:status"` | No load error. The answer comes through the prompt based path. |
-| 2.1.200 | `npx @anthropic-ai/claude-code@2.1.200 -p --plugin-dir . "/temper:status"` | The same. |
-| 2.1.286 | `npx @anthropic-ai/claude-code@2.1.286 -p --plugin-dir . "/temper:status"` | The same, or the mod stays inert. |
+| Version | Expect |
+|---|---|
+| 2.1.259 | No load error. The answer comes through the prompt based path. |
+| 2.1.200 | The same. |
+| 2.1.286 | The same, or the mod stays inert. |
 
 - [ ] The three rows above behave as described. On each, the answer must not mention a
   plugin load error. The message `Temper enforcement is off here (no mods support)` is
   correct and expected when a skill runs.
+- [ ] **Enforcement turned off.** On a version that loads the mod, run
+  `/temper:temper enforcement off`, then `/temper:status`. Expect the answer to open once with
+  `Temper enforcement is off (turned off by the user)`, not the "no mods support" sentence.
+  Turn it back on with `/temper:temper enforcement on`.
 - [ ] **`claude -p` on your version.** Run `claude -p --plugin-dir . "/temper:status"`.
   Expect an answer and no question asked of you.
 
@@ -209,19 +214,12 @@ desktop app depends on your installation, so treat the first step as an experime
 
 ## 9. Clean up
 
+- [ ] **Clear the saved mode.** In a session started with `claude --plugin-dir <clone>`, so
+  the setting of the loaded clone is the one that changes, run `/temper:temper mode full` and
+  `/temper:temper enforcement on` to put the defaults back. Expect the replies
+  `Temper mode: full` and `Temper enforcement: on`.
 - [ ] Enable the installed Temper again with `claude plugin enable <that id>`.
-- [ ] **Clear the saved mode.** `/temper:temper mode` stores your choice as a `pluginConfigs`
-  entry in your user settings. Make a backup, then remove the entry:
-
-```bash
-cp ~/.claude/settings.json ~/.claude/settings.json.bak
-jq 'del(.pluginConfigs["temper@inline"], .pluginConfigs.temper)' ~/.claude/settings.json.bak > ~/.claude/settings.json
-```
-
-  Expect `jq '.pluginConfigs' ~/.claude/settings.json` to show no Temper entry. If your
-  settings file already had a `pluginConfigs` entry for a Temper you installed, keep that
-  one: only remove the entry that the test added.
 - [ ] Delete `<project>` if you made it only for this test.
 
-When every box is ticked (or marked skipped with a reason), the branch is ready to merge
+When every box is ticked (or marked skipped with a reason), the change is ready to merge
 and release with the existing release process.

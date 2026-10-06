@@ -1,24 +1,24 @@
 // Test world: the fake engine beneath the plugin's tests. This file is test only: it runs under
 // `claude plugin test` and is never loaded in a session. Files live in a Map the fs.* hooks answer
-// from; fs.write records back into it.
+// from; a file write records back into it.
 import type { On } from 'claude-code'
 
 export type World = {
   files: Map<string, string>
   writes: string[]
-  // Every real `$.fs.write` the plugin made (the mod makes none: it keeps its records in the store).
+  // Every real file write the plugin made (the mod makes none: it keeps its records in the store).
   fsWrites: string[]
   reads: string[]
   store: Record<string, unknown>
   // Project relative files that exist but cannot be read (chmod 000): a read answers EACCES, not ENOENT.
   unreadable?: Set<string>
-  // True: every write the plugin makes (`$.fs.write`) fails (a read only folder).
+  // True: every file write the plugin makes fails (a read only folder).
   failWrites?: boolean
   // Prompts the mod submitted to Claude, in order.
   prompts: string[]
   // The path of every fs call exactly as the plugin gave it (reads and lists and writes).
   rawPaths: string[]
-  // How many of the next `state advance|set` calls the fake CLI refuses (see fakeCli).
+  // How many of the next `state advance|set|clear` calls the fake CLI refuses (see fakeCli).
   cliFailures?: number
   // How many of the next `git commit` calls the fake CLI fails (see fakeCli).
   commitFailures?: number
@@ -67,7 +67,7 @@ export type WorldOptions = {
   fillable?: boolean
   // Only files under this folder exist (see `outside`); a relative path is read from `w.cwdNow`.
   projectRoot?: string
-  // True: the engine's Bash runs `scripts/temper state advance|set` against .temper/build-state.json
+  // True: the engine's Bash runs `scripts/temper state advance|set|clear` against .temper/build-state.json
   // like the real CLI does (see fakeCli).
   fakeCli?: boolean
   // The folder that holds `.temper/` and `.claude/` (an absolute path under another folder finds none of them).
@@ -84,13 +84,14 @@ export function cliTo(w: World, next: string): void {
 // The stages of the CLI, in order (STAGE_SEQ_TEMPER in scripts/temper).
 export const CLI_SEQ = ['intent', 'plan', 'design', 'build', 'review', 'check']
 
-// The part of scripts/temper the mod depends on: `state advance <stage>_complete <next>` and
-// `state set next_stage <stage>` against .temper/build-state.json. Same checks as cmd_state_advance.
-// Null for any other command (the stub answers it).
+// The part of scripts/temper the mod depends on: `state advance <stage>_complete <next>`,
+// `state set next_stage <stage>` and `state clear` against .temper/build-state.json. Same checks as cmd_state_advance.
+// The script may be named by a quoted full path ("/a b/scripts/temper" state ...). Null for any other
+// command (the stub answers it).
 export function fakeCli(w: World, command: string): { result: string; text: string; isError?: boolean } | null {
   const path = '.temper/build-state.json'
   // A refused call (the CLI exits with an error): a test sets w.cliFailures to refuse the next calls.
-  if (/scripts\/temper\s+state\s+(?:advance|set)/.test(command) && (w.cliFailures ?? 0) > 0) {
+  if (/scripts\/temper["']?\s+state\s+(?:advance|set|clear)/.test(command) && (w.cliFailures ?? 0) > 0) {
     w.cliFailures = (w.cliFailures ?? 0) - 1
     return { result: 'FAIL: refused', text: 'FAIL: refused', isError: true }
   }
@@ -103,7 +104,7 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
   const failsAfter = /;\s*exit\s+[1-9]/.test(command)
   const read = (): Record<string, unknown> => JSON.parse(w.files.get(path) ?? '{}') as Record<string, unknown>
   const save = (d: Record<string, unknown>) => w.files.set(path, JSON.stringify(d))
-  const adv = /scripts\/temper\s+state\s+advance\s+([^\s;]+)\s+([^\s;]+)/.exec(command)
+  const adv = /scripts\/temper["']?\s+state\s+advance\s+([^\s;]+)\s+([^\s;]+)/.exec(command)
   if (adv) {
     const [, stage, next] = adv as unknown as [string, string, string]
     if (!CLI_SEQ.some(s => stage === `${s}_complete`) && stage !== 'started') return { result: `FAIL: unknown stage '${stage}'`, text: `FAIL: unknown stage '${stage}'`, isError: true }
@@ -117,10 +118,16 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
     w.files.set('/repo/.git/HEAD', `ref: refs/heads/${checkout[1]}\n`)
     return { result: `Switched to a new branch '${checkout[1]}'`, text: `Switched to a new branch '${checkout[1]}'` }
   }
-  const set = /scripts\/temper\s+state\s+set\s+next_stage\s+([^\s;]+)/.exec(command)
+  const set = /scripts\/temper["']?\s+state\s+set\s+next_stage\s+([^\s;]+)/.exec(command)
   if (set) {
     save({ ...read(), next_stage: set[1] })
     return { result: `OK: next_stage = ${set[1]}`, text: `OK: next_stage = ${set[1]}`, ...(failsAfter ? { isError: true } : {}) }
+  }
+  // `state clear`: the run state goes, as cmd_state_clear removes it (the spec folder stays).
+  if (/scripts\/temper["']?\s+state\s+clear\b/.test(command)) {
+    for (const name of ['build-state.json', 'feedback-loops.json', 'gates.json', 'overrides.json']) w.files.delete(`.temper/${name}`)
+    for (const key of [...w.files.keys()]) if (key.startsWith('.temper/evidence/')) w.files.delete(key)
+    return { result: 'OK: run state cleared', text: 'OK: run state cleared', ...(failsAfter ? { isError: true } : {}) }
   }
   return failsAfter ? { result: 'exit 1', text: 'exit 1', isError: true } : null
 }
@@ -128,8 +135,13 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
 export const denyText = (r: { deny?: string }): string => r.deny ?? ''
 
 // The engine hands fs hooks absolute paths under the session's directory; the test world
-// keys files by their project relative path.
-const rel = (p: string): string => /(?:^|\/)((?:\.temper|\.claude)\/.*)$/.exec(p)?.[1] ?? p
+// keys files by their project relative path. The last .temper/ or .claude/ folder in the path
+// starts the key, so a checkout that itself sits under a .claude folder (a git worktree in
+// .claude/worktrees) keys its files the same way.
+const rel = (p: string): string => {
+  const at = [...p.matchAll(/(?:^|\/)(?=\.(?:temper|claude)\/)/g)].pop()
+  return at === undefined ? p : p.slice(at.index + at[0].length)
+}
 
 export function world(on: On, files: Record<string, string> = {}, opts: WorldOptions = {}): World {
   const w: World = { files: new Map(Object.entries(files)), writes: [], fsWrites: [], reads: [], prompts: [], rawPaths: [], commandRuns: [], filled: [], asked: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) } }

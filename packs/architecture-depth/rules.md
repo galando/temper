@@ -74,7 +74,7 @@ Apply the deletion test to any module suspected of being shallow:
 ## Context Sources
 
 - **CONTEXT.md** (if exists): Domain glossary — use glossary terms when naming modules, validate module naming against domain language
-- **docs/adr/** (if exists): Architecture Decision Records — check module compliance with established decisions. Violations of ADRs → BLOCK severity
+- **The project's `docs/adr/` folder** (if it exists): Architecture Decision Records — check module compliance with established decisions. Violations of ADRs → BLOCK severity
 
 ## Report Format
 

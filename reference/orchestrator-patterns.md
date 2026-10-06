@@ -4,24 +4,44 @@ description: "Shared patterns for orchestrator commands (temper.md, fix.md)"
 
 # Orchestrator Shared Patterns
 
-**Used by:** `commands/temper.md`, `commands/fix.md`. Read once at the start — every
-`→ pattern` reference in either file points here.
+**Used by:** the `/temper` and `/temper:fix` orchestrators
+(`${CLAUDE_PLUGIN_ROOT}/commands/temper.md`, `${CLAUDE_PLUGIN_ROOT}/commands/fix.md`). Read
+once at the start — every `→ pattern` reference in either file points here.
 
 Scope: shared, judgment-adjacent bookkeeping only (state schema, gate UX,
 resume/invocation safety, hand-off formats). Mechanism with one correct output (model
-resolution, gate logic) lives in `scripts/temper` and `agents/*.md` frontmatter.
+resolution, gate logic) lives in the temper CLI (`${CLAUDE_PLUGIN_ROOT}/scripts/temper`)
+and in the `model:` frontmatter of each stage brief.
 
-## $CLAUDE_PLUGIN_ROOT Resolution
+## The plugin folder
 
-Set and valid → use it. Unset → walk up from the command file for `.claude-plugin/`.
-Still not found → `~/.claude/plugins/temper` (default install). That doesn't exist
-either → warn "Cannot locate Temper plugin. Set CLAUDE_PLUGIN_ROOT or reinstall."
-`$TEMPER` means `$CLAUDE_PLUGIN_ROOT/scripts/temper` throughout `temper.md`/`fix.md`.
+The plugin folder is the folder Temper is installed in: the folder that holds
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper` (that path with /scripts/temper taken off).
+
+- **In a Temper command, stage brief or skill**, Claude Code writes the plugin's
+  absolute folder in place of the CLAUDE_PLUGIN_ROOT variable when it loads the text, so
+  the command text already holds the real path.
+- **In the Bash tool** the CLAUDE_PLUGIN_ROOT variable is not set. A command run in Bash
+  uses the absolute path, written out in full, exactly as the command text shows it.
+- **In a reference page** like this one, or in a brief read with the Read tool, the
+  variable is not filled in. There it means the same folder: the one the command, or the
+  `Plugin folder:` line of a stage's launch prompt, names.
+
+Only if the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall
+it." Never search the disk for the plugin folder and never guess another one. The temper
+CLI is always called by its full path, `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. Every
+path that does not start with the plugin folder (`.temper/`, the spec files,
+`.claude/temper.config`) is in the user's project, the current directory.
 
 ## Build State Schema
 
-`.temper/build-state.json`, owned by `$TEMPER state` — never hand-write it. Resolve the
-spec path from `$TEMPER state get spec_path` before launching any agent.
+`.temper/build-state.json`, owned by `${CLAUDE_PLUGIN_ROOT}/scripts/temper state` — never hand-write it. Resolve the
+spec path from `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path` before launching any agent.
+When the CLI exits 3, it refused because a path it keeps run state in (the `.temper`
+folder, its evidence, specs or archive folder, a state or evidence file, or the active
+run's spec folder or its `gate-ledger.json`) is a symlink: stop, show its one-line
+reason, and wait for the user. While a run is active, the commit hooks block every
+commit until the link is gone. Never remove, replace or follow the link yourself.
 
 ```json
 { "stage": "{stage}_complete", "spec": "{slug}", "spec_path": ".temper/specs/{slug}",
@@ -35,7 +55,7 @@ build_complete | review_complete | check_complete`, branch `feature/{slug}`.
 `/temper:fix` — `rca_complete | fix_complete | review_complete | check_complete`,
 branch `fix/{slug}`.
 
-**Save/Continue:** `$TEMPER state advance {stage}_complete {next_stage}` at every
+**Save/Continue:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance {stage}_complete {next_stage}` at every
 transition. On Save, report "Saved. Run {command} when ready to continue."
 
 ## Gate Options + Enforcement
@@ -76,8 +96,11 @@ AskUserQuestion:
     - label: "Resume existing session (Recommended)"
       description: "Continue from {next_stage} stage."
     - label: "Overwrite and start new"
-      description: "Delete existing session (temper state clear), start from scratch."
+      description: "Delete the saved run state, start from scratch."
 ```
+
+On "Overwrite and start new", run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear`, then
+start the new item from its first stage.
 
 ## Agent Failure Handling
 
@@ -98,19 +121,21 @@ later?" (changes via "Other"). Never silently proceed to the next stage.
 
 `tools.mode`: `auto` (default — try MCP, fall back to grep-based heuristic) /
 `heuristic-only` (never call MCP, forces `[HEURISTIC]`) / `require` (fail if MCP
-unavailable, no fallback). Every finding's `temper evidence add --label`:
+unavailable, no fallback). Every finding's `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --label`:
 
 | Label | Meaning |
 |---|---|
-| `PROVEN` | Mechanically verified — a real command/tool ran with a real exit code and artifact. `temper evidence add` re-checks this itself; a missing artifact or unexplained nonzero exit auto-downgrades to HEURISTIC. |
+| `PROVEN` | Mechanically verified: a real command or tool ran with a real exit code and artifact. `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add` re-checks this itself; a missing artifact or unexplained nonzero exit auto-downgrades to HEURISTIC. |
 | `HEURISTIC` | Grep/reading-based analysis, best-effort, not mechanically verified. |
 | `SEMANTIC` | Claude's judgment/interpretation — inherently subjective. |
 | `OCR` | External engine (open-code-review) finding — informational, same trust tier as HEURISTIC. |
 
-Recommended servers: `code-review-graph` (`pip install code-review-graph`) for AST-level
-dependency graphs and blast radius; `semgrep` (`brew install semgrep`,
-`claude mcp add semgrep -- semgrep --mcp`) for SAST. Both optional — absence just means
-the same analysis runs via grep, labeled `HEURISTIC` instead of `PROVEN`.
+Recommended servers: code-review-graph for AST-level dependency graphs and blast radius
+(install it as its own page says: https://github.com/tirth8205/code-review-graph), and
+Semgrep for SAST (install it and add it as an MCP server as its own page says:
+https://github.com/semgrep/semgrep). Name the tool and give its page; never print an
+install command for it. Both are optional: without them the same analysis runs via
+grep, labeled `HEURISTIC` instead of `PROVEN`.
 
 ## Context Accumulation
 
@@ -139,8 +164,8 @@ justifications a gate doesn't need but a re-launched agent does.
 ```
 
 `review-memory.json` (Review writes, Status + Review read — the single finding memory:
-pattern acceptance/dismissal, promotion, and suppression). See `reference/review.md` →
-"Metrics + Memory".
+pattern acceptance/dismissal, promotion, and suppression). See
+`${CLAUDE_PLUGIN_ROOT}/reference/review.md` → "Metrics + Memory".
 
 | Stage | Reads | Writes |
 |---|---|---|
@@ -152,9 +177,11 @@ pattern acceptance/dismissal, promotion, and suppression). See `reference/review
 | Check | intent.md, review-context.json | check-context.json |
 | Status | metrics.json, review-memory.json, gates.json, evidence/ | — |
 
-**Cleanup:** `$TEMPER state clear` (on commit) removes `*-context.json`, `gates.json`,
-`overrides.json`, the evidence ledger. `intent.md`/`tasks.md`/`plan.md`/`design.md` under
-`.temper/specs/` are kept — they're the permanent record.
+**Cleanup:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear` (on commit) removes the run state (`build-state.json`,
+the loop counters, `gates.json`, `overrides.json`) and the evidence ledger. Nothing under
+`.temper/specs/` is touched: `intent.md`/`tasks.md`/`plan.md`/`design.md` are the
+permanent record. Build deletes a `review-context.json` or `check-context.json` itself
+once it has acted on it (see `${CLAUDE_PLUGIN_ROOT}/reference/build.md`).
 
 ## Feedback Loop Patterns
 
@@ -171,5 +198,6 @@ with failure context.
   per run. Context: `build-context.json`'s infeasibility reason.
 
 **Circuit breaker + evidence clearing:** full mechanics (budget, auto-clear) live in
-`commands/temper.md` → "Feedback Loops" — not restated here. A loop is always a normal stage re-launch that reads the
-relevant `*-context.json` at startup.
+`${CLAUDE_PLUGIN_ROOT}/commands/temper.md` → "Feedback Loops" — not restated here. A loop is
+always a normal stage re-launch that reads the relevant `review-context.json` or
+`check-context.json` at startup.

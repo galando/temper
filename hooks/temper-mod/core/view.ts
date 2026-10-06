@@ -64,6 +64,8 @@ export type ViewInput = {
   // The sync line and whether a move of the person waits to be recorded (Snapshot.sync).
   sync?: string | null
   pending?: boolean
+  // Where the Temper script is (see ActionContext.cli): the prompts of the buttons name the CLI by it.
+  cli?: string
 }
 
 export const BAR: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check', 'fix']
@@ -106,10 +108,11 @@ export function buildView(input: ViewInput): View {
     tasksLeft: input.tasksLeft,
     configSuggestions: input.configSuggestions ?? false,
     pending: input.pending ?? false,
+    ...(input.cli !== undefined ? { cli: input.cli } : {}),
   }
   const passed = input.criteria.filter(c => c.status === 'passed').length
   let actions: ActionSet | null = null
-  if (s.phase === 'done') actions = doneActions()
+  if (s.phase === 'done') actions = doneActions(input.cli)
   else if (s.phase !== null) actions = actionsFor(s.phase, ctx)
   const stepIdx = s.phase !== null && s.phase !== 'done' ? BAR.indexOf(s.phase) : -1
   return {

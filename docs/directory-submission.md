@@ -28,7 +28,8 @@ script can check.
 - [ ] `claude plugin validate --strict .` passes.
 - [ ] `claude plugin test .` passes.
 - [ ] The version in `plugin.json` matches the top entry of `CHANGELOG.md`.
-- [ ] The README images load on the GitHub page (open the page and look).
+- [ ] The README images load on the GitHub page (open the page and look). The repo holds no
+      image since 9.6.5, so they load by URL.
 - [ ] The hero GIF shows the real mod.
 - [ ] The privacy page is public: https://galando.github.io/temper/privacy.html
 - [ ] You tried the install steps in a clean folder: `/plugin marketplace add galando/temper`,
@@ -52,20 +53,26 @@ Data and permissions, in plain words:
 - No network calls and no telemetry.
 - The mod reads `.claude/temper.config`, the run files under `.temper/` and `.git/HEAD` in your
   project, and writes no file. It keeps its records in its own plugin store.
+- Outside the project and the mod's plugin store, Temper reads only its own global pack folder,
+  `~/.claude/packs`, and no key, login or Claude Code file.
 - Tests, lint and git run through Claude's own tools and permissions.
+- The commit gate installer writes only in the hooks folder git uses and in the git folder. It
+  never writes over a hook of yours or a file git tracks: it keeps the Temper hook as
+  `temper-pre-commit` in the git folder and prints one line for your hook to run it.
 - The optional game keeps one number, the best score, in the plugin store.
 
 ## What the listing shows
 
 The directory builds the listing from `plugin.json` and the README. It has no other form fields
-for marketing. These facts come from the Anthropic plugin documentation.
+for marketing. These facts come from the Anthropic plugin documentation and from what the
+directory reported on earlier versions.
 
 | Listing part | Where it comes from | What Temper does |
 |---|---|---|
-| Icon | The `icon` field in `plugin.json`, a path to an image file in the plugin | An orange T on a dark square, 256 by 256 pixels, in the `.claude-plugin` folder. Before 9.5.0 the field was missing, so the card showed the plain plug icon. |
+| Icon | The `icon` field in `plugin.json`, a path to an image file in the plugin | None in 9.6.5. The repo holds no image, so `plugin.json` has no `icon` field and the card shows the plain plug icon. From 9.6.0 to 9.6.4 it was an orange T on a dark square. |
 | Short description | The `description` field. A card cuts it after about 100 characters. | The first sentence says the outcome: "Claude cannot write code before you approve the intent." |
 | Page text | The README | The first screen has the outcome, an image with alt text and the install steps. |
-| Links | `documentationUrl`, `supportUrl` and `privacyPolicyUrl` in `plugin.json` | The docs site, the GitHub issues page and the privacy page. |
+| Links | Link fields in `plugin.json`. The directory reported `documentationUrl`, `supportUrl` and `privacyPolicyUrl` as unrecognized fields. | None in 9.6.5: `plugin.json` has no link fields, only `homepage` and `repository` (the GitHub page). The README links the docs site and the privacy page, and the privacy page goes in the form. |
 | Search words | The `keywords` field | Words a person types: sdlc, tdd, code-review, guardrails, quality-gates. |
 | New versions | The tracked branch. Raise `version` in `plugin.json` with every release. | Set up the GitHub push webhook in the developer portal so a merge reaches the listing without waiting for the schedule. |
 
@@ -83,10 +90,11 @@ Claude Code itself accepts the plugin.
 | Kind of finding | Answered by |
 |---|---|
 | This plugin includes a mod | Always a reviewer. Nothing in the code clears it. |
-| The game's file path, scripts it cannot confirm leave the mod unchanged | Code: see the 9.6.4 entry in `CHANGELOG.md`. Keep `module:` a fixed string outside JSX. Keep scripts from reaching the mod's files through a computed folder, an environment override or a wildcard, and keep the name `hooks` for the mod's folder only. A fixed read only path (as in `check-original-options.sh`) has not been flagged. |
+| The game's file path, scripts it cannot confirm leave the mod unchanged | Code: see the 9.6.4 and 9.6.5 entries in `CHANGELOG.md`. Keep `module:` a fixed string outside JSX (cleared on 9.6.4). Since 9.6.5 no script, command or instruction names a file of the mod, the hooks file or a file of the mod's tests, even to read it (9.6.4 still had `check-original-options.sh` read the action table, and it was flagged), and docs and history describe them by role. Two files name them because they must: the plugin's hooks file loads the mod, and `tsconfig.mod.json` includes the mod's tests folder whole for the type check, which reaches every mod file through the tests' imports. Folders that shared a name with one of the mod's were renamed: the guard scripts are in `scripts/guards/`, the pack is `guardrails`, and the OCR notes are in `docs/plans/ocr-notes/`. Every plugin path is written out in full after the root, in every tracked file, tests and history included: no `..`, no wildcard, no placeholder, no second variable. A test that needs a bad form builds it while it runs. Commands, briefs and skills write the root in the braced form, the only one Claude Code fills in. `validate-plugin.sh` checks the plugin paths in every tracked file; it does not check for names of the mod's files, which review keeps out. No script opens a file of the mod. Outside Temper's own repository nothing Temper runs writes into the plugin folder: the CLI refuses to run when a path it keeps run state in (the `.temper` folder, its evidence, specs and archive folders, its state files, the active spec folder) is a symlink, refuses the home folder, and refuses an installed copy of the plugin as a project. Checks of the mod go in its TS tests, which import it. |
 | Prompts, commands, settings, hooks the mod uses | The README section "What the mod reads and writes". Change it in the same commit as the code. |
-| Tool calls, `config.set`, `command.run`, an agent spawn in `tests/mod/` | Temper's fake engine (`tests/mod/world.ts`, built on Claude Code's test kit) and one test's stub spawn. The README says so; a reviewer confirms. |
-| Images, credentials, download and run text | Notes for the reviewer: the images are plain, and the rest is text in docs, tests and the Bash guard's patterns. |
+| Tool calls, `config.set`, `command.run`, an agent spawn in the mod's test suite | Temper's fake engine (built on Claude Code's test kit) and one test's stub spawn. Not reported on 9.6.4, once the README described them. |
+| Fields the directory does not recognize | Removed in 9.6.5: `documentationUrl`, `supportUrl` and `privacyPolicyUrl`, and `icon` with the images. |
+| Images, credentials, download and run text | Since 9.6.5 the repo holds no image; the README loads its pictures by URL. Since 9.6.5 Share HTML review publishes only as a Claude artifact, and OCR (which sends the diff to the provider you set up) is off unless you turn it on. Temper reads no key or login, and the check stage reads no `.env` file. Apart from the mod's plugin store, it reads one place in the home folder, its own global pack folder `~/.claude/packs`, and no Claude Code file; the README's "What Temper runs and changes" says so. The mod reads the `/config` list and changes only its own two settings, through Claude Code and on your command, as the README's "What the mod reads and writes" says. `/temper:pack` takes link targets from the skills and commands the session lists and from the project's own `.claude/commands` and `.claude/skills`, not from Claude Code's plugin list. Of the Claude Code settings, `/temper:pack` and `/temper:init` read only the project's `.claude/settings.json` and `.claude/settings.local.json`, and the guardrails pack writes one of them only after you confirm. The install steps are slash commands in a text block. The docs describe the optional tools (code-review-graph, Semgrep, open-code-review) in words, with links to their own install pages. Other text of this kind is in test inputs, the Bash guard's patterns and the CI workflow (which installs Claude Code and TypeScript from npm on GitHub's runners to run the checks), explained in notes for the reviewer. |
 
 ## What is not verified
 

@@ -4,7 +4,12 @@
 set -euo pipefail
 command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 is required but not found in PATH"; exit 1; }
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# With CDPATH set, cd prints the folder it enters, and the path below would hold it twice.
+unset CDPATH
+# The plugin folder: this script sits in its scripts folder, so strip that literal suffix.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${HERE%/scripts}"
+[[ "$REPO_ROOT" != "$HERE" ]] || { echo "FAIL: cannot find the plugin folder from $HERE"; exit 1; }
 PASS=0
 FAIL=0
 
@@ -31,13 +36,18 @@ else
     fi
   done
 
-  # Check command paths resolve
+  # Check command paths resolve. Each entry must name one .md file directly in the commands
+  # folder by a plain name (no '/', no '..'), so nothing outside that folder is opened.
   CMD_COUNT=$(python3 -c "
-import json, sys, os
+import json, sys, os, re
 d = json.load(open(sys.argv[1]))
 cmds = d.get('commands', [])
-missing = [c for c in cmds if not os.path.isfile(os.path.join(sys.argv[2], c.replace('./', '')))]
-print(len(cmds) - len(missing))
+PRE = './commands/'
+bad = [c for c in cmds if not (isinstance(c, str) and c.startswith(PRE) and re.fullmatch(r'[a-z0-9-]+\.md', c[len(PRE):]))]
+missing = [c for c in cmds if c not in bad and not os.path.isfile(os.path.join(sys.argv[2], 'commands', c[len(PRE):]))]
+print(len(cmds) - len(missing) - len(bad))
+for b in bad:
+    print(f'FAIL: command path is not a plain .md name in the commands folder: {b}', file=sys.stderr)
 for m in missing:
     print(f'FAIL: command path does not exist: {m}', file=sys.stderr)
 " "$PJ" "$REPO_ROOT" 2>&1)
@@ -51,13 +61,17 @@ for m in missing:
     ok
   fi
 
-  # Check skill paths resolve
+  # Check skill paths resolve. Each entry must name one folder directly in the skills folder.
   SKILL_COUNT=$(python3 -c "
-import json, sys, os
+import json, sys, os, re
 d = json.load(open(sys.argv[1]))
 skills = d.get('skills', [])
-missing = [s for s in skills if not os.path.isdir(os.path.join(sys.argv[2], s.replace('./', '')))]
-print(len(skills) - len(missing))
+PRE = './skills/'
+bad = [s for s in skills if not (isinstance(s, str) and s.startswith(PRE) and re.fullmatch(r'[a-z0-9-]+', s[len(PRE):]))]
+missing = [s for s in skills if s not in bad and not os.path.isdir(os.path.join(sys.argv[2], 'skills', s[len(PRE):]))]
+print(len(skills) - len(missing) - len(bad))
+for b in bad:
+    print(f'FAIL: skill path is not a plain folder name in the skills folder: {b}', file=sys.stderr)
 for m in missing:
     print(f'FAIL: skill path does not exist: {m}', file=sys.stderr)
 " "$PJ" "$REPO_ROOT" 2>&1)
@@ -70,13 +84,18 @@ for m in missing:
     ok
   fi
 
-  # Check agent paths resolve + carry required frontmatter (name, model; effort valid if set) + a Gotchas section
+  # Check agent paths resolve + carry required frontmatter (name, model; effort valid if set) + a Gotchas section.
+  # Each entry must name one .md file directly in the agents folder, so only a stage brief is opened.
   AGENT_COUNT=$(python3 -c "
 import json, sys, os, re
 d = json.load(open(sys.argv[1]))
 agents = d.get('agents', [])
+PRE = './agents/'
 for a in agents:
-    path = os.path.join(sys.argv[2], a.replace('./', ''))
+    if not (isinstance(a, str) and a.startswith(PRE) and re.fullmatch(r'[a-z0-9-]+\.md', a[len(PRE):])):
+        print(f'FAIL: agent path is not a plain .md name in the agents folder: {a}', file=sys.stderr)
+        continue
+    path = os.path.join(sys.argv[2], 'agents', a[len(PRE):])
     if not os.path.isfile(path):
         print(f'FAIL: agent path does not exist: {a}', file=sys.stderr)
         continue
@@ -137,28 +156,23 @@ print(len(agents))
 fi
 
 # --- Mods support (v9.5): the module is additive and must never stop the plugin loading ---
-# hooks/hooks.json lists the module path under "modules"; the path must exist. A userConfig
-# field that declares "options" stops the WHOLE plugin loading on Claude Code before
-# 2.1.271, so fields stay plain strings and the module validates values in code.
-if [[ -f "$PJ" && -f "$REPO_ROOT/hooks/hooks.json" ]]; then
+# A userConfig field that declares "options" stops the WHOLE plugin loading on Claude Code before
+# 2.1.271, so fields stay plain strings and the module validates values in code. The plugin's hook
+# wiring and the module it loads are checked by `claude plugin validate --strict` (CI runs it); this
+# block opens only plugin.json, and the types entry is compared as text with its one fixed path.
+if [[ -f "$PJ" ]]; then
   MOD_ERRS=$(python3 -c "
 import json, sys, os
 root = sys.argv[1]
 pj = json.load(open(os.path.join(root, '.claude-plugin', 'plugin.json')))
-hj = json.load(open(os.path.join(root, 'hooks', 'hooks.json')))
 errs = []
-mods = hj.get('modules')
-if mods is None:
-    errs.append('hooks/hooks.json has no modules key')
-else:
-    for m in mods:
-        if not os.path.isfile(os.path.join(root, 'hooks', m)):
-            errs.append('module path does not exist: ' + m)
 for name, field in (pj.get('userConfig') or {}).items():
     if 'options' in field:
         errs.append('userConfig.' + name + ' declares options (breaks loading before 2.1.271)')
 t = pj.get('types')
-if t is not None and not os.path.isfile(os.path.join(root, t)):
+if t is not None and t != './types/index.d.ts':
+    errs.append('plugin.json types is not ./types/index.d.ts: ' + str(t))
+elif t is not None and not os.path.isfile(os.path.join(root, 'types', 'index.d.ts')):
     errs.append('plugin.json types path does not exist: ' + t)
 print('; '.join(errs))
 " "$REPO_ROOT" 2>/dev/null || echo "mods check could not run")
@@ -189,13 +203,26 @@ fi
 # Every built-in pack declares which stages load it. This validates the declaration is
 # present and its values are real phases; it cannot tell you a pack was narrowed too far
 # — that's a reading of the stage docs, not a property of the file. `all` loads
-# everywhere, `[]` loads nowhere (packs/hooks, whose content is install documentation).
-PACK_PHASES_ERR=$(python3 -c "
-import glob, os, re, sys
+# everywhere, `[]` loads nowhere (packs/guardrails, whose content is install documentation).
+# The built-in packs are named once in PACKS below. git ls-files only tells which packs carry a
+# rules.md, so a new pack that is missing from PACKS fails instead of going unchecked.
+PACK_PHASES_ERR=$( (cd "$REPO_ROOT" && git ls-files -- packs 2>/dev/null || true) | python3 -c "
+import os, re, sys
+PACKS = ('api-design', 'architecture-depth', 'git', 'guardrails', 'performance', 'quality', 'security', 'tdd')
 VALID = {'plan', 'design', 'build', 'review', 'check', 'fix'}
 errs = []
-for path in sorted(glob.glob(os.path.join(sys.argv[1], 'packs', '*', 'rules.md'))):
-    name = os.path.basename(os.path.dirname(path))
+tracked = set()
+for line in sys.stdin:
+    parts = line.rstrip('\n').split('/')
+    if len(parts) == 3 and parts[0] == 'packs' and parts[2] == 'rules.md':
+        tracked.add(parts[1])
+for name in sorted(tracked - set(PACKS)):
+    errs.append(f'{name}: has a rules.md but is not in the PACKS list of scripts/validate-plugin.sh')
+for name in PACKS:
+    path = os.path.join(sys.argv[1], 'packs', name, 'rules.md')
+    if not os.path.isfile(path):
+        errs.append('the ' + name + ' pack has no rules.md')
+        continue
     m = re.match(r'---\n(.*?)\n---\n', open(path).read(), re.DOTALL)
     if not m:
         errs.append(f'{name}: no frontmatter (expected a phases: block)')
@@ -217,66 +244,119 @@ print('; '.join(errs))
 " "$REPO_ROOT" 2>/dev/null)
 if [[ -z "$PACK_PHASES_ERR" ]]; then ok; else fail "pack phases: $PACK_PHASES_ERR"; fi
 
-# --- Phase 1 Verification (v5.5.0): hooks assertions ---
-# These cover the new files added by docs/plans/phase-1-verification.md.
-
-# Hooks pack: rules.md present + settings.hooks.json valid JSON
-HOOKS_RULES="$REPO_ROOT/packs/hooks/rules.md"
-if [[ -f "$HOOKS_RULES" ]]; then ok; else fail "packs/hooks/rules.md missing"; fi
-
-HOOKS_JSON="$REPO_ROOT/packs/hooks/settings.hooks.json"
-if [[ -f "$HOOKS_JSON" ]]; then
-  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$HOOKS_JSON" 2>/dev/null; then
+# --- Plugin paths in every file ---
+# Claude Code fills in only the braced form of the CLAUDE_PLUGIN_ROOT variable, and only when it
+# loads a command, agent or skill; the Bash tool does not set the variable, and a page read with
+# the Read tool is not filled in. So a plugin path is always written as the braced variable, a '/'
+# and a fixed path that names a tracked file, never a folder. The plugin directory reads every
+# file, the tests and docs included, so this check reads every file git lists (tracked, plus new
+# files git does not ignore). It fails on:
+#   - the variable written with a dollar sign and no braces;
+#   - the braced variable with no '/' right after it (nothing after it, a default value, a suffix);
+#   - a path, taken up to whitespace, a backtick or a quote, that holds '..' or any of
+#     [ ] < > ( ) { } * ? $ | % (a wildcard, a placeholder, a group or a second variable);
+#   - a path that, once trailing . , ; : and ! are removed, is not a tracked file (a folder, or a
+#     path that ends in '/', fails too).
+# The patterns are built from the variable's name when the check runs, so this script holds no
+# bad form; a test that needs one writes it at run time into a temporary plugin. Python runs git
+# grep and git ls-files and only filters the lines they print: it opens no file.
+IFS= read -r -d '' PLUGIN_PATH_CHECK <<'PY' || true
+import re, subprocess, sys
+root = sys.argv[1]
+def git(*args):
+    run = subprocess.run(['git', '-C', root, '-c', 'core.quotePath=false', *args], capture_output=True)
+    if run.returncode not in (0, 1):  # git grep exits 1 when no line matches
+        sys.exit('git failed: ' + run.stderr.decode('utf-8', 'replace').strip())
+    return run.stdout.decode('utf-8', 'replace')
+NAME = 'CLAUDE_PLUGIN_ROOT'
+DOLLAR = '$'
+UNBRACED = re.compile(re.escape(DOLLAR + NAME))
+NO_SLASH = re.compile(re.escape(DOLLAR + '{' + NAME) + r'(?!\}/)')
+# The path ends at whitespace, a backtick or a quote. A backslash that escapes a quote (a JSON
+# string) ends it too; any other backslash stays in the path.
+PATH = re.compile(re.escape(DOLLAR + '{' + NAME + '}/') + r'((?:[^\s`"\'\\]|\\(?![`"\']))*)')
+BAD_PATH = re.compile(r'\.\.|[\[\]<>(){}*?$|%]')
+deleted = {p for p in git('ls-files', '-z', '-d').split('\0') if p}
+tracked = {p for p in git('ls-files', '-z').split('\0') if p and p not in deleted}
+data = git('-c', 'grep.column=false', '-c', 'grep.fullName=false', '-c', 'grep.lineNumber=true',
+           'grep', '--untracked', '-z', '-n', '-I', '-F', '-e', NAME)
+out = []
+for m in re.finditer(r'([^\0]*)\0([0-9]+)\0([^\n]*)\n', data):
+    rel, num, line = m.groups()
+    why = []
+    if UNBRACED.search(line):
+        why.append('unbraced')
+    if NO_SLASH.search(line):
+        why.append("braced with no '/' after it")
+    for p in (x.group(1) for x in PATH.finditer(line)):
+        fixed = p.rstrip('.,;:!')
+        if BAD_PATH.search(p):
+            why.append("a path with '..' or one of [ ] < > ( ) { } * ? $ | %: " + p)
+        elif not fixed:
+            why.append("nothing after the '/'")
+        elif fixed not in tracked:
+            why.append('not a tracked file: ' + fixed)
+    if why:
+        out.append(rel + ':' + num + ': ' + ', '.join(why))
+print('\n'.join(out))
+PY
+if ! git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  fail "plugin path check: $REPO_ROOT is not a git work tree (git grep reads the files)"
+else
+  ROOT_VAR_ERRS=$(python3 -c "$PLUGIN_PATH_CHECK" "$REPO_ROOT" 2>&1 || echo "the plugin path check could not run")
+  if [[ -z "$ROOT_VAR_ERRS" ]]; then
     ok
   else
-    fail "packs/hooks/settings.hooks.json is not valid JSON"
+    fail "a plugin path must be the braced variable, '/' and the fixed path of a tracked file ($(printf '%s\n' "$ROOT_VAR_ERRS" | wc -l | tr -d ' ') line(s)):"
+    printf '%s\n' "$ROOT_VAR_ERRS" | head -40 | sed 's/^/  /'
+  fi
+fi
+
+# --- Phase 1 Verification (v5.5.0): guard script assertions ---
+# These cover the new files added by docs/plans/phase-1-verification.md.
+
+# guardrails pack: rules.md present + settings-guardrails.json valid JSON
+GUARDRAILS_RULES="$REPO_ROOT/packs/guardrails/rules.md"
+if [[ -f "$GUARDRAILS_RULES" ]]; then ok; else fail "packs/guardrails/rules.md missing"; fi
+
+GUARDRAILS_JSON="$REPO_ROOT/packs/guardrails/settings-guardrails.json"
+if [[ -f "$GUARDRAILS_JSON" ]]; then
+  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$GUARDRAILS_JSON" 2>/dev/null; then
+    ok
+  else
+    fail "packs/guardrails/settings-guardrails.json is not valid JSON"
   fi
   # Regression guard (C-1): Claude Code has NO PreCommit event — a PreCommit key is
   # silently ignored and defeats the deterministic commit guarantee. The commit gate
-  # must be the native git pre-commit hook installed by scripts/hooks/install.sh.
-  if python3 -c "import json,sys; assert 'PreCommit' not in json.load(open(sys.argv[1])).get('hooks', {})" "$HOOKS_JSON" 2>/dev/null; then
+  # must be the native git pre-commit hook installed by scripts/guards/install.sh.
+  if python3 -c "import json,sys; assert 'PreCommit' not in json.load(open(sys.argv[1])).get('hooks', {})" "$GUARDRAILS_JSON" 2>/dev/null; then
     ok
   else
-    fail "packs/hooks/settings.hooks.json uses invalid 'PreCommit' key (use scripts/hooks/install.sh for commit-time enforcement)"
+    fail "packs/guardrails/settings-guardrails.json uses invalid 'PreCommit' key (use scripts/guards/install.sh for commit-time enforcement)"
   fi
 else
-  fail "packs/hooks/settings.hooks.json missing"
+  fail "packs/guardrails/settings-guardrails.json missing"
 fi
 
-# Plugin-level hooks/hooks.json (v8.0.1): ships the standalone-stage gate guarantee
-# with the plugin itself, so --plugin-dir and marketplace installs get it without a
-# settings.json merge. Must be valid JSON and reference only hook scripts that exist.
-PLUGIN_HOOKS="$REPO_ROOT/hooks/hooks.json"
-if [[ -f "$PLUGIN_HOOKS" ]]; then
-  if python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$PLUGIN_HOOKS" 2>/dev/null; then
-    ok
-  else
-    fail "hooks/hooks.json is not valid JSON"
-  fi
-  MISSING_HOOK_SCRIPTS=$(python3 -c "
-import json, re, sys, os
-d = json.load(open(sys.argv[1]))
-missing = []
-for event in d.get('hooks', {}).values():
-    for matcher in event:
-        for h in matcher.get('hooks', []):
-            for m in re.findall(r'scripts/hooks/[\w.-]+\.sh', h.get('command', '')):
-                if not os.path.isfile(os.path.join(sys.argv[2], m)):
-                    missing.append(m)
-print('; '.join(missing))
-" "$PLUGIN_HOOKS" "$REPO_ROOT" 2>/dev/null)
-  if [[ -z "$MISSING_HOOK_SCRIPTS" ]]; then ok; else fail "hooks/hooks.json references missing scripts: $MISSING_HOOK_SCRIPTS"; fi
-else
-  fail "hooks/hooks.json missing (plugin-level stage-gate guarantee)"
-fi
+# The standalone-stage gate guarantee (v8.0.1) ships with the plugin, so --plugin-dir and
+# marketplace installs get it without a settings.json merge. `claude plugin validate --strict`
+# checks that wiring in CI; the two scripts it runs (stage-marker.sh and verify-stage-gate.sh) are
+# in the list below.
 
-# Hook scripts: exist and are executable
-for sh in block-secrets.sh block-forbidden-imports.sh block-uncommitted-gate.sh verify-tests-ran.sh install.sh stage-marker.sh verify-stage-gate.sh; do
-  p="$REPO_ROOT/scripts/hooks/$sh"
+# Guard scripts: exist and are executable. Each path is written out in full.
+for p in \
+  "$REPO_ROOT/scripts/guards/block-secrets.sh" \
+  "$REPO_ROOT/scripts/guards/block-forbidden-imports.sh" \
+  "$REPO_ROOT/scripts/guards/block-uncommitted-gate.sh" \
+  "$REPO_ROOT/scripts/guards/verify-tests-ran.sh" \
+  "$REPO_ROOT/scripts/guards/install.sh" \
+  "$REPO_ROOT/scripts/guards/stage-marker.sh" \
+  "$REPO_ROOT/scripts/guards/verify-stage-gate.sh"; do
+  name="scripts/guards/$(basename "$p")"
   if [[ ! -f "$p" ]]; then
-    fail "scripts/hooks/$sh missing"
+    fail "$name missing"
   elif [[ ! -x "$p" ]]; then
-    fail "scripts/hooks/$sh not executable (chmod +x)"
+    fail "$name not executable (chmod +x)"
   else
     ok
   fi
@@ -291,15 +371,25 @@ elif [[ ! -x "$TEMPER_CLI" ]]; then
 else
   ok
 fi
-if [[ -f "$REPO_ROOT/scripts/tests/test-temper.sh" ]]; then ok; else fail "scripts/tests/test-temper.sh missing"; fi
+if [[ -f "$REPO_ROOT/scripts/selftest/test-temper.sh" ]]; then ok; else fail "scripts/selftest/test-temper.sh missing"; fi
 
 # --- pack-discover.py (v8): /temper:pack's Step 5a discovery scan, extracted from a
 # prompt-embedded script into a testable one ---
 PACK_DISCOVER="$REPO_ROOT/scripts/pack-discover.py"
 if [[ ! -f "$PACK_DISCOVER" ]]; then
   fail "scripts/pack-discover.py missing"
-elif ! python3 -c "import ast; ast.parse(open('$PACK_DISCOVER').read())" 2>/dev/null; then
+elif ! python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" "$PACK_DISCOVER" 2>/dev/null; then
   fail "scripts/pack-discover.py has a syntax error"
+else
+  ok
+fi
+
+# --- guard-entries.py: the stale guard check of /temper:pack and /temper:init ---
+GUARD_ENTRIES="$REPO_ROOT/scripts/guard-entries.py"
+if [[ ! -f "$GUARD_ENTRIES" ]]; then
+  fail "scripts/guard-entries.py missing"
+elif ! python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" "$GUARD_ENTRIES" 2>/dev/null; then
+  fail "scripts/guard-entries.py has a syntax error"
 else
   ok
 fi

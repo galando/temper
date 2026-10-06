@@ -5,7 +5,7 @@
 import type { Draft, DriftChoice, Phase } from './events'
 import { PHASES } from './events'
 import { ACT } from './actions'
-import { CLI, acceptCommand, advanceCommands, backCommand, loopCommand, overrideCommand } from './cli'
+import { CLI, IN_PLUGIN, acceptCommand, advanceCommands, backCommand, loopCommand, overrideCommand } from './cli'
 import type { Command } from './machine'
 
 export const RESERVED = [
@@ -113,7 +113,7 @@ export function followUp(draft: Draft, complexity: string | null = null, cli: st
   const text = followUpText(draft, complexity, from)
   if (text === null) return null
   if (cli !== CLI) return text.split(`\`${CLI} `).join(`\`${cli} `)
-  return text.includes(`\`${CLI} `) ? text.replace(` ${ACT}`, ` The script is in the Temper plugin folder, not in the project. ${ACT}`) : text
+  return text.includes(`\`${CLI} `) ? text.replace(` ${ACT}`, ` ${IN_PLUGIN} ${ACT}`) : text
 }
 
 function followUpText(draft: Draft, complexity: string | null, from: Phase | null): string | null {
@@ -150,6 +150,15 @@ function followUpText(draft: Draft, complexity: string | null, from: Phase | nul
       return null
   }
 }
+
+// The answer to a word that changes the run when it did not come from the person's prompt box (a `claude -p` run, the
+// Agent SDK, Claude itself). It says where a decision is made, and never sends the person back to the same command.
+export const NEEDS_INTERACTIVE =
+  'Temper: decisions need an interactive session. Only the user decides there, with the Temper bar or with /temper:temper approve (or back, override, accept) typed in the prompt box. ' +
+  'This command came from somewhere else, such as a claude -p run, the Agent SDK or Claude. Next: continue the run in an interactive claude session.'
+
+// The words that record a decision of the person.
+export const DECISION_WORDS: readonly string[] = ['approve', 'next', 'back', 'override', 'accept', 'drift']
 
 export const HELP = [
   'Temper subcommands (type them after /temper:temper):',

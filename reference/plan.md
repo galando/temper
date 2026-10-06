@@ -19,14 +19,14 @@ rules a strong model would not derive on its own; it does not choreograph your s
 
 **Modes:** Standalone (`/temper:plan`) runs in the current context and shows its own
 gate. Agent subprocess (from `/temper`) runs in a clean context and returns a summary —
-`agents/plan.md` step 5 already tells you not to show an `AskUserQuestion` gate in that
+The plan brief (`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`) step 8 already tells you not to show an `AskUserQuestion` gate in that
 mode; the orchestrator owns it. The methodology below is identical either way.
 
 ## What You Produce
 
 **Hard rule — write exactly these three files under `.temper/specs/{feature-slug}/` for
 Medium/Complex features, never a fourth: no `spec.md`, `quickstart.md`,
-`evals/evalset.json`, README, or anything else in the spec directory.** `temper gate
+`evals/evalset.json`, README, or anything else in the spec directory.** `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate
 plan` reads only these three.
 
 - **`intent.md`** — Problem, Success Criteria (each with a `Validate:` type — see below),
@@ -49,13 +49,13 @@ Sources` records** — the intent summarizes them, but you plan against them; tr
 every `- unavailable:` line as an explicit gap (name it in `plan.md`, and add an
 Open Question back into `intent.md` if it hides a decision). Do not re-derive
 context Intent already gathered. A `Status: draft` intent (captured via
-`/temper:intent` or a `temper bands` breach, reaching you standalone) is the same
+`/temper:intent` or a control-band breach, reaching you standalone) is the same
 input, plus: resolve or explicitly re-carry each Open Question (a refine pass may
 ask only a question the draft marks `Blocking`, or one a gate FAIL forces —
 anything else thin becomes a new Open Question); the draft→accepted flip happens at
 whichever human gate reviews it first.
 Standalone `/temper:plan` with no existing intent.md: derive the intent yourself
-from `templates/intent.md` — full header (including `**Reviewer:**`, a name not a
+from `${CLAUDE_PLUGIN_ROOT}/templates/intent.md` — full header (including `**Reviewer:**`, a name not a
 role), Problem, Success Criteria with stable `AC-NN` ids each carrying `Why:` and
 `Validate:`, Constraints with source markers, Scope and Non-goals, action-chain
 Target Users, labeled Open Questions, and `### Context Sources` (`consulted:` /
@@ -69,7 +69,7 @@ constraint with no `(source: …)` marker.
 
 **Either way, standalone `/temper:plan` records the intent verdict itself.** Whenever
 intent.md exists at the spec path — authored fresh OR picked up as a draft — run
-`$CLAUDE_PLUGIN_ROOT/scripts/temper gate intent --spec-path {spec-path}` and fix any
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent --spec-path {spec-path}` and fix any
 FAIL before proceeding to blast radius. Always pass `--spec-path` explicitly: state
 may not be initialized yet in standalone mode, and without a spec path the gate
 refuses to guess (usage error, no verdict). This matters at the end of the chain: the
@@ -82,16 +82,16 @@ code; modifies a library with 5+ consumers; changes a DB schema; a module with a
 historically high defect rate (`.temper/metrics.json` if present); a CRITICAL/HIGH
 security hot path (below).
 
-## What `temper gate plan` Checks
+## What `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` Checks
 
-Quoted from `gate_plan()` in `scripts/temper` so this doc cannot drift from the gate.
+Quoted from the plan gate in the temper CLI (`${CLAUDE_PLUGIN_ROOT}/scripts/temper`) so this doc cannot drift from the gate.
 These run **at every tier**: the artifacts exist (`intent.md` + `tasks.md`); scenario
 count >= Success Criteria count; every criterion has explicit validation links
 (`acceptance.py plan` — stable `AC-NN` ids, `Why:` and `Validate:` on each, every
 `Covers:` id names a real criterion); every `Scenario:` sits inside a ```gherkin
 fence; `plan.md` records `## Cross-Repo Search`. **Only for `medium`/`complex`**:
 `plan.md` also needs a heading matching `blast radius` (any level, e.g.
-`## Blast Radius`). Record `temper state set complexity <tier>` as soon as you
+`## Blast Radius`). Record `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <tier>` as soon as you
 classify it — the gate reads it to decide whether the Blast Radius section applies.
 
 Fix any FAIL before returning: usually a missing scenario, an empty Success Criteria
@@ -119,8 +119,8 @@ Explore the repo with your own tools, in your own context — stack, structure, 
 similar code, test coverage. A nested Explore subagent is an escape hatch for a repo
 large enough that reading it directly would blow your context, not a mandatory first
 step; that judgment call is yours, not a fixed procedure. Read `.claude/temper.config`
-and enabled packs' `rules.md` (project shadows global shadows built-in; keep rules whose
-`phases` is `all` or contains `plan`) before you plan.
+and enabled packs' `rules.md` (project shadows global shadows the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`;
+keep rules whose `phases` is `all` or contains `plan`) before you plan.
 
 ## Blast Radius: Measured, Not Estimated
 
@@ -225,7 +225,7 @@ other's output or config changes — default to `[SEQUENTIAL: after Task N]` whe
 Populate `## Approach Decisions` in `plan.md` **only** when a real alternative was
 genuinely considered and rejected — an empty/absent section is valid and means exactly
 that: no load-bearing choice was made. One genuine decision beats three padded ones.
-Structure: Alternative / Pros / Cons / **Why not chosen** (`templates/adr.md`'s shape).
+Structure: Alternative / Pros / Cons / **Why not chosen** (`${CLAUDE_PLUGIN_ROOT}/templates/adr.md`'s shape).
 
 **`Why not chosen` is the load-bearing field.** Every rejection names a concrete
 constraint, risk, or cost that a reviewer could challenge from the text alone: not
@@ -238,16 +238,17 @@ practice and which alternative it beat. Mirror each as one line in the summary b
 Generate a mermaid diagram in `plan.md`'s `## Diagram` section (flowchart for component/
 data flow, `stateDiagram-v2` for lifecycles, `sequenceDiagram` for cross-boundary calls,
 `classDiagram` for type hierarchies) — under 30 nodes, `classDef` color-coding new vs.
-existing vs. modified when it helps. Render the diagram as ASCII box-drawing art in the
-terminal summary box too (the terminal can't render mermaid); keep the mermaid block in
+existing vs. modified when it helps. Render the diagram as ASCII box-drawing art right
+after the terminal summary panel too, as the one drawing allowed beside that panel (the
+terminal can't render mermaid); keep the mermaid block in
 plan.md for GitHub/tool rendering. Skip the diagram only for a single-file or config-only
 change in standalone `/temper:plan`.
 
 ## Evidence + State (batch these into one Bash call)
 
 ```
-$CLAUDE_PLUGIN_ROOT/scripts/temper state set complexity <trivial|simple|medium|complex>
-$CLAUDE_PLUGIN_ROOT/scripts/temper gate plan
+${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <trivial|simple|medium|complex>
+${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan
 ```
 
 If a security-hot-path scan ran, also persist `.temper/security-map.json` (one entry per
@@ -256,7 +257,7 @@ CRITICAL/HIGH file: `file`, `function`, `sensitivity`, `entry_points[]` with `ro
 
 ## Summary Panel
 
-The panel format is owned by `agents/plan.md` — render exactly the panel it defines
+The panel format is owned by the plan brief (`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`) — render exactly the panel it defines
 (76 columns, fact rows then titled sections, one row per item, empty sections
 omitted), appending a `SECURITY: {N} CRITICAL, {N} HIGH hot paths` fact row when the
 security scan found any. Never carry a second, different box here: whichever box a
@@ -281,8 +282,9 @@ the first human gate that reviews the intent is where acceptance is recorded (in
 orchestrated flow that already happened at the Intent gate). Commit the artifacts in
 two steps — `git add .temper/specs/{slug}/` first, then `git commit -m "docs(plan):
 approve plan — {slug}"` as a separate call (not `add && commit`: the in-agent
-commit-gate hook checks `temper gate commit` when the commit is submitted, and the
-artifact-only carve-out that passes it mid-run reads the already-staged set). Skip
+commit-gate hook checks `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` when the commit is submitted, and the
+artifact-only carve-out that lets this commit through mid-pipeline reads the
+already-staged set). Skip
 with a note if the project gitignores `.temper/specs/`. Standalone mode loads only
 `tasks.md` + `intent.md` for Build. Subprocess mode: the orchestrator handles the
 transition.

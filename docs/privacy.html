@@ -49,7 +49,7 @@
 <body>
   <main>
     <h1>Privacy Policy</h1>
-    <p class="updated">Temper plugin for Claude Code · Last updated: July 11, 2026</p>
+    <p class="updated">Temper plugin for Claude Code · Last updated: October 6, 2026</p>
 
     <p><strong>Summary: Temper collects no data. It has no servers, no telemetry, no analytics, and makes no network calls.</strong></p>
 
@@ -59,13 +59,21 @@
     <h2>Data collection</h2>
     <ul>
       <li><strong>No data is collected or transmitted.</strong> Temper contains no telemetry, analytics, crash reporting, or phone-home mechanism of any kind.</li>
-      <li><strong>No accounts.</strong> Temper requires no sign-up, login, API key, or registration.</li>
+      <li><strong>No accounts.</strong> Temper needs no account of any kind.</li>
       <li><strong>No network calls.</strong> Temper itself never contacts any server. The only network activity involved in using it is the plugin download/update from GitHub, performed by Claude Code's plugin manager.</li>
     </ul>
 
     <h2>Where your data lives</h2>
     <p>Everything Temper produces — plans, scenarios, review reports, metrics, learning state — is written to files inside your own project directory (<code>.temper/</code>, <code>.claude/</code>). These files stay on your machine and under your version control. Deleting them removes all Temper state.</p>
-    <p>The optional mod (Claude Code 2.1.287 or later) reads only these same project files, plus <code>.git/HEAD</code>, and writes no file. It makes no network calls and sends no telemetry. In the plugin store on your machine it keeps the decisions it recorded (with a hash of each), the run report, your first-run choice, and the best score of the optional game.</p>
+    <p>The optional mod (Claude Code 2.1.287 or later) reads only these same project files, plus <code>.git/HEAD</code>, and writes no file. It makes no network calls and sends no telemetry. In the plugin store on your machine it keeps the decisions it recorded (with a hash of each), the run report, your first-run choice, and the best score of the optional game. When you change its mode or enforcement, on your command (a <code>/temper:temper</code> word you type, or your answer to its mode question), it reads Claude Code's <code>/config</code> list to find its own two rows and changes only its two settings, <code>temper.uiMode</code> and <code>temper.enforcement</code>, through Claude Code, which keeps them in your user settings. It changes no other setting.</p>
+    <p>Apart from that plugin store and those two settings, Temper reads one place outside your project: its own global pack folder, <code>~/.claude/packs</code>, if you made one. It opens no other file in your home Claude Code folder: no settings file, keys, logins, plugin lists, skills or commands. The guardrails pack never reads or writes the settings in your home folder; it changes only your project's own settings files, after you confirm.</p>
+
+    <h2>When something leaves your machine</h2>
+    <p>Two optional features send text out, and only when you choose them:</p>
+    <ul>
+      <li><strong>Share HTML review.</strong> When you pick it at the plan gate and confirm, Claude Code's Artifact tool publishes the plan review as a private Claude artifact, and you decide who can open it. Without the Artifact tool, Temper offers the local review instead.</li>
+      <li><strong>OCR, off by default.</strong> If you turn it on with <code>tools.ocr.mode</code> and the <code>ocr</code> tool is on your machine, <code>/temper:review</code> uses it, and <code>ocr</code> sends the diff to the model provider you set up for it.</li>
+    </ul>
 
     <h2>Claude Code</h2>
     <p>Temper runs as instructions executed by Claude Code. Your interactions with Claude Code itself are governed by <a href="https://www.anthropic.com/legal/privacy">Anthropic's Privacy Policy</a>, which is independent of Temper.</p>

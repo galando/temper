@@ -14,27 +14,27 @@
 ### Problem
 
 Release engineers and the CI pipeline read Temper's gate results. Today they have
-two choices. `temper report` prints a table for people. `.temper/gates.json` holds
+two choices. The CLI's `report` subcommand prints a table for people. `.temper/gates.json` holds
 internal state, keyed by stage. A CI step must parse that file and copy the verdict
 logic. One pipeline greps `gates.json` for `"verdict": "FAIL"` next to `"check"`.
 That grep breaks when the state schema gains a field. We want one stable JSON
 output for the current run. A machine must be able to read it without knowing
 Temper's internals.
 
-Facts: `temper report --json` prints `gates.json` as it is (the internal shape).
+Facts: `report --json` prints `gates.json` as it is (the internal shape).
 Assumption: CI users want one row for each requirement, not only one verdict for
 each stage. The first CI user will confirm this.
 
 ### Success Criteria
 
-- [ ] AC-01 [required]: `temper report --ci` prints one JSON document. Its top level is
+- [ ] AC-01 [required]: `report --ci` prints one JSON document. Its top level is
   a flat array. Each stage is one object with `stage`, `verdict`, and a
-  `requirements[]` array of `{name, pass, detail}` (source: docs/ci-guide.md §3 | PROJ-1187)
+  `requirements[]` array of `{name, pass, detail}` (source: the CI guide §3 | PROJ-1187)
   Why: CI steps are the main users. Without a stable shape, each user must build
   its own parser, and it breaks when internals change.
   Validate: scenario — covered by "CI JSON shape is stable across a run"
 - [ ] AC-02 [optional]: The JSON may list override rows, with the approver name, for
-  each overridden stage (source: docs/ci-guide.md §4)
+  each overridden stage (source: the CI guide §4)
   Why: an audit trail in the CI output shows an overridden FAIL at the place where
   people decide to merge.
   Validate: manual — read the output of a run with one recorded override
@@ -46,15 +46,15 @@ each stage. The first CI user will confirm this.
 
 ### Constraints
 
-- The command makes no network call and uses only the standard library (source: scripts/temper header contract)
+- The command makes no network call and uses only the standard library (source: the temper CLI header contract)
 - The internal schema of `.temper/gates.json` does not change (source: CHANGELOG compatibility note | PROJ-1187)
 - The output has no color codes and no progress text (proposed)
 
 ### Scope and Non-goals
 
-- In scope: the `temper report` subcommand, its output contract, tests in scripts/tests/test-temper.sh
+- In scope: the CLI's `report` subcommand, its output contract, tests in the CLI's test suite
 - Out of scope: HTML output, upload of the report, the write path of gates.json
-- Must keep working: `temper report` (human table) and `temper report --json` (gates.json as it is)
+- Must keep working: `report` (human table) and `report --json` (gates.json as it is)
 
 ### Business Outcome
 
@@ -63,7 +63,7 @@ number of downstream repos that read `--ci` output (owner: Dana, reviewed each q
 
 ### Target Users
 
-- Release engineer: adds one `temper report --ci` line to the pipeline → the CI step fails the build on any FAIL requirement, with no parsing of internals
+- Release engineer: adds one call of the CLI's `report --ci` to the pipeline → the CI step fails the build on any FAIL requirement, with no parsing of internals
 - Reviewer: opens the CI job log → sees pass or fail rows for every stage of the run
 
 ### Open Questions

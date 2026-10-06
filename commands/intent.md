@@ -27,8 +27,20 @@ presents for acceptance.
 
 ## Execution
 
-1. **Understand the problem, not the solution.** Read `$ARGUMENTS` (detect
-   Jira/GitHub/free-text the same way `/temper:plan` Phase 0 does). Fetch every
+**Enforcement marker.** Look at your system prompt for a line that starts with
+`Temper enforcement:`. With no such line, make the first sentence of your first reply in
+this conversation exactly "Temper enforcement is off here (no mods support); continuing
+with prompt based phases." With the line `Temper enforcement: off (UI only)`, the Temper
+mod is loaded and the user turned enforcement off: make that first sentence exactly
+"Temper enforcement is off (turned off by the user); continuing with prompt based
+phases." instead. Then carry on as written below. Never treat either case as an error
+and do not mention it again. With `Temper enforcement: active`, say nothing about it.
+You state this once, in this conversation: a stage subprocess never has that line in
+its system prompt, so its brief says nothing about enforcement.
+
+1. **Understand the problem, not the solution.** Read `$ARGUMENTS` (tell a ticket
+   key such as `JIRA-123`, a GitHub issue such as `#123` and free text apart: the three
+   input forms under "Usage" in `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`). Fetch every
    source the request links (ticket, MR/PR, doc) read-only and record each under
    `### Context Sources` (`consulted:` / `unavailable:` / `none:`). Then interview
    with the full question bank — current vs desired behavior, scope and non-goals,
@@ -42,14 +54,17 @@ presents for acceptance.
    structure is your job, not theirs. Write every answer into `### Decisions`
    immediately, as `{question} -> {answer} ({who decided}, {date})`. **Never write
    card data or personal data into the intent** — reference the ticket instead.
-   When a ticket key is linked, prefix the slug with it (`{KEY}-{slug}`).
+   When a ticket key is linked, prefix the slug with the key as typed (`{KEY}-{slug}`,
+   for example `PROJ-123-login`). A slug is letters (either case), digits, '.', '_' or
+   '-', starts with a letter or digit, and has no '..' or '/': `/temper` later passes it
+   to `state init`, which refuses anything else.
    **Soft source words:** never turn a source "should" or "may" into "must"
    silently. Ask the originator whether the source means required or optional and
    record the answer in `### Decisions`. With no answer yet, keep the source wording
    (marked `(source: …)`) and add a Blocking Open Question.
 
-2. **Write the draft** to `.temper/specs/{slug}/intent.md` using
-   `$CLAUDE_PLUGIN_ROOT/templates/intent.md`:
+2. **Write the draft** to the project's `.temper/specs/{slug}/intent.md` using
+   `${CLAUDE_PLUGIN_ROOT}/templates/intent.md`:
    - Header: `**Author:**` (from `git config user.name` / `user.email`),
      `**Status:** draft`, `**Created:**`, `**Ticket:**` if one was given,
      `**Reviewer:**` (from step 1), `**Complexity:**` (a first guess).
@@ -61,17 +76,17 @@ presents for acceptance.
      Questions** (each labeled `Blocking:` or `Deferred:` — carrying a question
      forward honestly beats resolving it by guess).
    - **Do not write Scenarios or pick an architecture.** BDD scenarios are derived
-     from the measured blast radius at Plan time (`reference/plan.md`), not at
+     from the measured blast radius at Plan time (`${CLAUDE_PLUGIN_ROOT}/reference/plan.md`), not at
      capture time. Leave `## Scenarios (BDD)` empty — never a placeholder
      `Scenario:` block: the check gate demands a passing test for every
      `Scenario:` line and cannot tell a placeholder from a real one.
 
-3. **Run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate intent --spec-path
+3. **Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent --spec-path
    .temper/specs/{slug}`** and fix any FAIL (empty/placeholder Problem, no real
    criteria, missing Status value, a should/may/might/possibly in a criterion or
    constraint that has no `(source: …)` marker) — the same deterministic floor the pipeline's
    Intent gate applies. `--spec-path` is required here: this command never runs
-   `temper state init`, and without a spec path the gate refuses to guess (usage
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init`, and without a spec path the gate refuses to guess (usage
    error, no verdict) rather than vacuously passing on a path it never looked at.
 
 4. **Let the originator correct it.** Show the draft; apply their corrections; re-show.
@@ -101,4 +116,4 @@ presents for acceptance.
 | `completed` | the commit step | implemented — the change is committed, not necessarily released |
 
 No stage advances on a draft without a human accepting it — same rule as every other
-temper gate.
+Temper gate.

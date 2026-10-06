@@ -22,30 +22,30 @@ every gate is the ordinary interactive one. Config: `.claude/temper.config` → 
 **v7 — the deterministic spine:** every gate verdict is computed by `scripts/temper`
 (`temper gate {stage}`) from an evidence ledger (`temper evidence add`), not asserted by
 a model. `git commit` is blocked by a native pre-commit hook + an in-agent PreToolUse
-hook whenever a gate is FAIL and unoverridden — see `packs/hooks/rules.md`.
+hook whenever a gate is FAIL and unoverridden — see `packs/guardrails/rules.md`.
 
-**Version:** 9.6.4 — see `CHANGELOG.md` for history.
-Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/reference/`
-CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/docs/history/`
+**Version:** 9.6.5 — see `CHANGELOG.md` for history.
+Config: `.claude/temper.config` | Docs: `reference/`
+CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
 
 **Developing temper (this repo):**
-- Test: `bash scripts/tests/test-temper.sh` (ends `PASS: N  FAIL: 0`); validators:
+- Test: `bash scripts/selftest/test-temper.sh` (ends `PASS: N  FAIL: 0`); validators:
   `bash scripts/quality-check.sh` (also runs in CI via quality.yml).
 - Directory readiness: `bash scripts/validate-directory.sh` (no raw HTML in the README, no
   assets folder path in text, no `options` key). Run it before any README or manifest change.
-- The mod: `hooks/temper-mod/` (pure rules in `core/`, wiring in `register.tsx`, drawing in
-  `ui/`), tests in `tests/mod/`. Run `claude plugin test .`, `npx -p typescript@5.6 tsc -p
-  tsconfig.mod.json` and `bash scripts/check-mod-calls.sh`; the reviewed `$` calls live in that script.
+- The mod (pure rules, wiring, drawing) and its test suite: after any change to them run
+  `claude plugin test .`, `tsc -p tsconfig.mod.json` (TypeScript 5.6, as CI runs it) and
+  `bash scripts/check-mod-calls.sh`; the reviewed `$` calls live in that script.
 - Layout: `commands/` (slash commands) · `agents/` (stage subprocess briefs) ·
   `reference/` (methodology) · `packs/` (rules) · `scripts/temper` (the deterministic
-  spine — gate logic lives HERE, never in a prompt) · `scripts/hooks/` ·
+  spine — gate logic lives HERE, never in a prompt) · `scripts/guards/` ·
   `scripts/plan_review.py` (renders and merges the HTML plan review).
 - Known mistakes: a gate-mechanics change is a `scripts/temper` edit + a
   `test-temper.sh` case, not a prompt edit; hooks must fail OPEN except their one
   detected-violation path; never re-add per-stage logic to `commands/temper.md` or
-  `commands/fix.md` — it belongs in `agents/{stage}.md` (including the stage's return
-  box: a brief must never point a clean-context subprocess at an orchestrator file);
-  new commands and agents must be listed in `.claude-plugin/plugin.json`.
+  `commands/fix.md` — it belongs in that stage's own brief in `agents/` (including the
+  stage's return box: a brief must never point a clean-context subprocess at an
+  orchestrator file); new commands and agents must be listed in `.claude-plugin/plugin.json`.
 
 <!-- Nothing follows. Do not add a generated advice section here: validate-docs.sh
      rejects the TOKENOMICS:START / TOKENOMICS:END markers (docs/history/tokenomics.md).

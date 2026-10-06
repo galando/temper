@@ -6,7 +6,7 @@
 # `protect: paths:` in .claude/temper.config (generated classes, a frozen package,
 # migrations) are blocked at EDIT time, for every mode — not discovered at the commit
 # gate after the tokens were spent, and not only in autonomous runs. Patterns use the
-# same **/segment/** shape as autonomy.park-on-touch.
+# same any-depth segment shape as autonomy.park-on-touch (project paths, for example):
 #
 #   protect:
 #     paths: ["**/src/gen/**", "**/v1/**"]
@@ -20,13 +20,29 @@
 #   - Empty/absent list, other files, no python3, unparseable stdin, missing CLI
 #     => exit 0 (fail-open)
 set -uo pipefail
+# An exported CDPATH makes `cd` print the folder it enters, which would double the folder
+# worked out below with "$(cd ... && pwd)". It is never used here.
+unset CDPATH
 
 _main() {
   command -v python3 >/dev/null 2>&1 || return 0
 
   local dir="${CLAUDE_PROJECT_DIR:-$PWD}"
-  local temper_cli
-  temper_cli="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/temper"
+  # The plugin folder is this script's folder (its own file with every symlink followed,
+  # as scripts/temper finds itself, then resolved) with the literal suffix /scripts/guards
+  # removed; the CLI is scripts/temper inside it. When that suffix is missing the hook is
+  # not in a plugin's scripts/guards folder and does nothing.
+  local self="${BASH_SOURCE[0]}" hops=0 link_dir here root temper_cli
+  while [[ -L "$self" && $hops -lt 40 ]]; do
+    link_dir="$(cd -P "$(dirname "$self")" 2>/dev/null && pwd)" || return 0
+    self="$(readlink "$self")" || return 0
+    [[ "$self" == /* ]] || self="$link_dir/$self"
+    hops=$((hops + 1))
+  done
+  here="$(cd -P "$(dirname "$self")" 2>/dev/null && pwd)" || return 0
+  root="${here%/scripts/guards}"
+  [[ "$root" != "$here" ]] || return 0
+  temper_cli="$root/scripts/temper"
   [[ -x "$temper_cli" ]] || return 0
 
   local patterns
