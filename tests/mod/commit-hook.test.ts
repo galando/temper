@@ -334,3 +334,50 @@ describe('through tool.call', () => {
     expect(denyText(await $.tool.call({ tool: 'Bash', command: `cp /tmp/h ${HOOK} && chmod +x ${HOOK}` }))).toBe('')
   })
 })
+
+// Temper's older hook folders: `.git/hooks-temper` (--global up to 9.6.4) and `.git/temper-git-hooks` (--global in
+// 9.6.5). When one also holds hooks of other tools, install.sh leaves core.hooksPath on it and git runs its pre-commit,
+// so while a run is active the mod guards both exactly as it guards .git/hooks.
+describe("Temper's older hook folders are guarded as .git/hooks is", () => {
+  for (const f of ['.git/hooks-temper', '.git/temper-git-hooks']) {
+    const hook = `${f}/pre-commit`
+    for (const p of [f, `${f}/`, hook, `${f}/pre-push`, `/repo/${hook}`, `/main/${hook}`, `${f.toUpperCase()}/PRE-COMMIT`]) {
+      test(`${p} is guarded as the git hooks are`, () => {
+        expect(protectedKind(p)).toBe('hooks')
+      })
+    }
+    for (const p of [`${f}-notes`, `${f}.bak/pre-commit`, `docs/${f.slice('.git/'.length)}/pre-commit`]) {
+      test(`${p} is no guarded path`, () => {
+        expect(protectedKind(p)).toBeNull()
+      })
+    }
+    for (const [name, s] of ACTIVE) {
+      test(`${name}: the editing tools on ${hook} get the git hooks' text`, () => {
+        for (const tool of ['Write', 'Edit', 'MultiEdit'] as const) {
+          expect(evaluate(s, ctx, { tool, input: { file_path: hook } }), tool).toEqual({ deny: HOOK_DENY })
+        }
+      })
+    }
+    for (const [form, target, gitTarget] of [
+      ...FILE_FORMS.map((form): [string, string, string] => [form, hook, GIT_HOOK]),
+      ...FOLDER_FORMS.map((form): [string, string, string] => [form, f, GIT_HOOKS]),
+    ]) {
+      const command = fill(form, target)
+      test(`build: ${command}`, () => {
+        const r = bash(stateAt('build'), command)
+        expect(isDeny(r)).toBe(true)
+        expect(shape(r, target)).toBe(shape(bash(stateAt('build'), fill(form, gitTarget)), gitTarget))
+      })
+    }
+    test(`reading ${f} stays allowed while a run is active`, () => {
+      for (const command of [`cat ${hook}`, `ls -la ${f}`, `grep -n temper ${hook}`, `test -x ${hook}`]) {
+        expect(bash(stateAt('build'), command), command).toEqual({ allow: true })
+      }
+    })
+    test(`with no run active, ${f} can be changed`, () => {
+      for (const [, s] of INACTIVE) {
+        for (const command of [`rm -rf ${f}`, `echo exit 0 > ${hook}`]) expect(bash(s, command), command).toEqual({ allow: true })
+      }
+    })
+  }
+})

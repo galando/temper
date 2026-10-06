@@ -475,12 +475,14 @@ cat > "$GE_PROJ/.claude/settings.local.json" <<EOF
 {"hooks": {"PreToolUse": [{"matcher": "Edit", "hooks": [
   {"type": "command", "command": "bash \"$REPO_ROOT/scripts/guards/block-secrets.sh\""}]}]}}
 EOF
+# The guard entry that holds the plugin root variable, as the settings file has it.
+GE_ROOTVAR_CMD='${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh'
 GE_WANT="$(printf '%s\n' \
   ".claude/settings.json|PreToolUse|Edit|Write|$REPO_ROOT/scripts/guards/block-secrets.sh|current" \
   ".claude/settings.json|PreToolUse|Edit|Write|$WORKDIR/ge-link/scripts/guards/protect-regression-test.sh|current" \
   ".claude/settings.json|PreToolUse|Bash|$GE_OLD/scripts/guards/block-uncommitted-gate.sh|stale" \
   ".claude/settings.json|PreToolUse|Bash|$GE_OLD/scripts/legacy/confirm-override.sh|stale" \
-  ".claude/settings.json|PreToolUse|Bash|\${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh|stale" \
+  ".claude/settings.json|PreToolUse|Bash|$GE_ROOTVAR_CMD|stale" \
   ".claude/settings.json|PreToolUse|Bash|$REPO_ROOT/scripts/retired/run-formatter.sh|stale" \
   ".claude/settings.json|PostToolUse||$REPO_ROOT/scripts/guards/run-formatter.sh|current" \
   ".claude/settings.local.json|PreToolUse|Edit|$REPO_ROOT/scripts/guards/block-secrets.sh|current")"

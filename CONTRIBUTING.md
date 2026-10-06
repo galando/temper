@@ -118,16 +118,22 @@ Keep always-loaded content minimal:
 
 ### Scripts
 
-- No script writes into a folder named `hooks`. Git calls its hook folders
-  that (`.git/hooks`, a `core.hooksPath` folder), the same name as the plugin
-  folder that holds the mod, and git's name cannot change. So the commit gate
+- No script, test included, writes into, removes from, moves, links or makes
+  a path with a folder named `hooks`. Git calls its hook folders that
+  (`.git/hooks`, a `core.hooksPath` folder), the same name as the plugin folder
+  that holds the mod, and git's name cannot change. So the commit gate
   installer, `scripts/guards/install.sh`, keeps its hook in
   `temper-gate/pre-commit` in the repository's git folder, points
   `core.hooksPath` at that folder, and only reads git's hook folders. When
   pointing it there would switch other hooks off, it leaves `core.hooksPath` as
-  it is and prints one line for the user's own hook instead.
-- No script holds the plugin folder by itself in a variable: only its scripts
-  folder or a file, plus fixed text.
+  it is and prints one line for the user's own hook instead. A test that needs
+  hooks of the user's in git's default folder runs a copy of the installer
+  whose default folder is named `default-gate` (`_dg_plugin` in
+  `scripts/selftest/test-temper.sh`). Never build the name from pieces or take
+  it from `git rev-parse --git-path hooks` to write there: the directory reads
+  those too. `scripts/validate-directory.sh` checks this.
+- The commit gate installer holds no variable for the plugin folder by itself:
+  only its scripts folder or a file, plus fixed text.
 - Commands, briefs and skills write the plugin root variable only in its braced
   form, followed by `/` and a tracked file.
 

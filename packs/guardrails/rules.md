@@ -131,10 +131,14 @@ delete it.
 
 With `core.hooksPath` already set: when it points at the `temper-gate` folder, the
 installer makes the hook current and exits 0 (it says when it updated the plugin paths in
-it). When it holds Temper's older folder (the relative `.git/temper-git-hooks`, or an
-absolute path that ends in `/.git/temper-git-hooks`, even one from where the repository
-used to be, before it was moved or renamed), the installer points it at `temper-gate` and
-prints a note naming the old value. Any other folder (husky's `.husky/_` or `.husky`,
+it). When it holds Temper's older folder (the relative `.git/hooks-temper` that `--global`
+set from 5.5.0 to 9.6.4, the `.git/temper-git-hooks` that `--global` set in 9.6.5, an
+absolute path that ends in either, or the `temper-gate` folder of where the repository used
+to be, before it was moved or renamed), the installer points it at `temper-gate` and prints
+a note naming the old value. When that older folder holds other hooks git runs (`git lfs
+install` writes its hooks into the folder `core.hooksPath` names), pointing it elsewhere
+would stop them, so the installer leaves it, keeps the hook, and treats the `pre-commit`
+there as the host hook below. Any other folder (husky's `.husky/_` or `.husky`,
 lefthook, a team's `.githooks`) belongs to another tool: the installer never writes there
 and keeps the hook. The host hook is the `pre-commit` file in that folder (for husky's
 generated `.husky/_` folder, `.husky/pre-commit`); when it calls the Temper hook, the
@@ -142,7 +146,17 @@ installer says so and exits 0, and otherwise it refuses.
 
 A Temper hook is stale when the CLI path embedded in it no longer exists, as after a
 plugin upgrade moves the plugin folder; a stale hook fails open, and re-running the
-installer writes the current path.
+installer writes the current path into the kept hook. A `pre-commit` from an older Temper
+that git still runs (next to other hooks in `.git/hooks`, in Temper's older folder, or in
+another tool's folder, where Temper 9.6.4 and 9.6.5 wrote it) is not written: the refusal
+warns that git runs it in place of the kept hook, shows its stale path, and the hint says
+to replace all of its lines with `#!/bin/sh` and the line below.
+
+`core.hooksPath` holds an absolute path, so every worktree finds the folder. Moving or
+renaming the repository, or a folder above it, leaves it naming the old place, and git then
+runs no pre-commit hook until the installer runs again (`/temper` checks the hook on every
+run and runs it). With this pack enabled, the in-agent commit gate below still blocks the
+commits the agent makes in the meantime.
 
 The installed `pre-commit` runs `block-secrets.sh` on the staged content (read from git's
 index, which is what the commit records), then `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit`,
@@ -153,8 +167,9 @@ folder (exit 3: a path it keeps run state in is a symlink), the hook blocks the 
 while a run is active (`.temper/build-state.json` exists, as a file or a link), showing
 the CLI's reason and saying to remove the symlink; with no run active it prints a
 one-line warning and lets the commit through. It skips the gate in the home folder and in
-a repository inside the plugin's own folder: a folder at or above the repository whose
-`scripts/temper` is the same file as the CLI the hook runs.
+a repository inside the plugin's own folder: a folder above the repository whose `scripts`
+folder is a real folder (not a symlink) and the same folder as the one that holds the CLI
+the hook runs. A link to the CLI planted above a repository does not pass that test.
 
 When the installer refuses, it prints a FAIL line, says where it kept the Temper hook,
 prints one line between a BEGIN and an END line, then a one-line hint, and exits 1. The
@@ -169,7 +184,10 @@ hook's own result wherever it sits: when the command before it failed, it exits 
 status; otherwise it runs the Temper hook and fails only when that hook blocks. The hint
 says where the line goes. husky: `.husky/pre-commit`. The pre-commit framework: a local
 hook in `.pre-commit-config.yaml` (repo: local, language: system, pass_filenames: false,
-always_run: true) whose entry runs the line. lefthook, which writes its hook again: a
+always_run: true) with the entry `sh -c '<the line>'`, which the hint prints in full (the
+framework runs a system hook's entry with no shell, and the line holds no single quote).
+A hook from an older Temper: all of its lines replaced with `#!/bin/sh` and the line.
+lefthook, which writes its hook again: a
 pre-commit command in `lefthook.yml` that runs the line. Any other hook: its start or its
 end (create that file, executable, if it does not exist). A refusal that comes before the
 installer knows the git folder writes nothing and prints the Temper hook's own lines

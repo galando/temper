@@ -295,8 +295,11 @@ claude --worktree fix-rate-limit    # session 2: /temper:fix "429 not returned"
   this machine in it. To add the pre-commit framework or lefthook later, run
   `git config --unset core.hooksPath` first; the next `/temper:temper` or `/temper:init` then
   prints that line. A `core.hooksPath` that still holds Temper's older folder, even from where
-  the repository used to be, is pointed at `temper-gate`. A submodule's hook goes in its own git
-  folder.
+  the repository used to be, is pointed at `temper-gate`, unless that folder holds other hooks
+  git runs (git-lfs writes its hooks there); then it stays, and the installer prints the line.
+  Because `core.hooksPath` holds an absolute path, moving or renaming the repository leaves it
+  naming the old place, and git runs no pre-commit hook until the next `/temper:temper` or
+  `/temper:init` points it at the new place. A submodule's hook goes in its own git folder.
 - Practical ceiling: how many streams one person can *review*. Two or three is a
   sensible start; add sessions only while your review keeps up.
 

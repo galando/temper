@@ -277,10 +277,10 @@ folder `~/.claude/packs`, if you made one. A pack's link targets come from the s
 - **Git hook.** On the first run `scripts/guards/install.sh` writes a `pre-commit` hook (a secret scan of the staged
   files, then `temper gate commit`) to `temper-gate/pre-commit` in the repository's git folder and points
   `core.hooksPath` at that folder, so every worktree runs it. It never writes into a folder named `hooks`. When git
-  would stop running other hooks (in `.git/hooks`, or husky's or lefthook's `core.hooksPath`), it leaves that setting
-  and prints a path-free line for your hook, with a hint; the v9.6.6 line still counts. `--global` now does the same.
-  Unset `core.hooksPath` before adding the pre-commit framework or lefthook; `/temper` then prints the line.
-  To remove, unset `core.hooksPath`, drop any Temper line from your hook and delete `temper-gate` in the git folder.
+  would stop running other hooks (in `.git/hooks`, Temper's older folder, or husky's or lefthook's folder), it leaves
+  that setting and prints a path-free line for your hook, with a hint; the line 9.6.5 printed still counts. After a
+  move of the repository, the next `/temper` points the setting at the new place. Unset `core.hooksPath` before you
+  add the pre-commit framework or lefthook. To remove, unset it, drop any Temper line and delete `temper-gate`.
 - **Your toolchain.** Build and check run the test, lint and type check commands of your stack (detected,
   or set in `check.commands.*` in `.claude/temper.config`) and record their exit codes as evidence.
 - **Optional tools already on your machine.** OCR (open code review) is off by default. With `tools.ocr.mode`

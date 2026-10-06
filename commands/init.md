@@ -82,11 +82,22 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    `exec`, calls the Temper hook: install.sh makes the kept hook current, says so and
    exits 0. When an `exit` or `exec` line comes first, the Temper line never runs, so
    install.sh refuses and says to move it above that line.
-   A `core.hooksPath` that holds Temper's older folder (`.git/temper-git-hooks`, set
-   by `--global` in an older version, even from where the repository used to be) is
-   pointed at `temper-gate`, with a note naming the old value. When it installs while
-   an older Temper hook sits in git's own hooks folder, it notes that git no longer
-   runs that file and that it can be deleted. Re-running is idempotent: it makes the
+   A `core.hooksPath` that holds Temper's older folder (`.git/hooks-temper`, set by
+   `--global` from 5.5.0 to 9.6.4; `.git/temper-git-hooks`, set by `--global` in
+   9.6.5; or the `temper-gate` folder of where the repository used to be) is pointed
+   at `temper-gate`, with a note naming the old value, unless that folder holds other
+   hooks git runs (`git lfs install` writes its hooks into the folder `core.hooksPath`
+   names): then it stays as it is, as for git's own hooks folder, and the `pre-commit`
+   there needs the line. When it installs while an older Temper hook sits in git's own
+   hooks folder, it notes that git no longer runs that file and that it can be
+   deleted. When it refuses while git still runs a `pre-commit` from an older Temper
+   (next to other hooks, or in another tool's folder), it warns that git runs that
+   hook in place of the kept one, with the stale plugin path it carries, and the hint
+   says to replace all of its lines with `#!/bin/sh` and the line. `core.hooksPath`
+   holds an absolute path, so every worktree finds the folder; after the repository,
+   or a folder above it, is moved or renamed, git runs no pre-commit hook until
+   `/temper` or `/temper:init` runs install.sh again, which points it at the new
+   place. Re-running is idempotent: it makes the
    kept hook current, and says when it updated the plugin paths in it (as after a
    plugin upgrade, which moves the plugin folder). When an older version set a hook
    that was not Temper's aside as `pre-commit.bak.<timestamp>`, it names that file in
@@ -118,18 +129,24 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
       so the user has them to copy: one line that runs the Temper hook kept in the git
       folder, or, when it refused before it knew the git folder, the Temper hook's own
       lines in a subshell, so that their exits end only the subshell. Never only say
-      that it printed them. Then give its `Hint:` line as it printed it. The hint says
-      where the line goes: husky: `.husky/pre-commit`, safe to commit because the line
-      holds no path of this machine; the pre-commit framework: a local hook in
-      `.pre-commit-config.yaml` whose entry runs the line; lefthook: a pre-commit
-      command in `lefthook.yml`, because lefthook writes its hook again; any other
-      hook: its start or its end, because the line keeps that hook's own result (the
-      hint says to create that file, executable, when it does not exist).
+      that it printed them. Then carry each `Warning:` line it printed (a hook an older
+      version set aside, or a `pre-commit` from an older Temper that git still runs,
+      with its stale plugin path). Then give its `Hint:` line as it printed it. The
+      hint says where the line goes: husky: `.husky/pre-commit`, safe to commit
+      because the line holds no path of this machine; the pre-commit framework: a
+      local hook in `.pre-commit-config.yaml` whose entry is `sh -c '<the line>'`, as
+      the hint prints it, because the framework runs that entry with no shell;
+      lefthook: a pre-commit command in `lefthook.yml`, because lefthook writes its
+      hook again; a hook from an older Temper: in place of all of its lines, after
+      `#!/bin/sh`; any other hook: its start or its end, because the line keeps that
+      hook's own result (the hint says to create that file, executable, when it does
+      not exist).
       install.sh refuses and exits 1 when git's own hooks folder holds hooks that git
       would stop running if `core.hooksPath` pointed at Temper's folder (its FAIL line
-      names them) and the `pre-commit` there does not call the Temper hook; when
-      `core.hooksPath` names another tool's folder and the pre-commit hook there does
-      not call the Temper hook; when the user's hook holds the Temper line after an
+      names them), or a hook an older version set aside, and the `pre-commit` there
+      does not call the Temper hook; when `core.hooksPath` names another tool's folder,
+      or Temper's older folder that holds other hooks git runs, and the pre-commit hook
+      there does not call the Temper hook; when the user's hook holds the Temper line after an
       `exit` or `exec` line; when the repository, or a place it would write once
       symlinks are followed, lies inside the plugin's own folder; and when a folder or
       file it needs cannot be made. It ignores GIT_DIR, GIT_WORK_TREE and GIT_CONFIG,

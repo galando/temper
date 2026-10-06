@@ -14,6 +14,10 @@
 #   7. plugin.json has a description, keywords and a version, and marketplace.json
 #      names the same plugin.
 #   8. A LICENSE file exists (LICENSE, LICENSE.md or LICENSE.txt).
+#   9. No shell or Python script writes into, removes from, moves, links or makes a path with a
+#      folder named hooks (git's hook folders share that name with the plugin folder that holds
+#      the mod, and the directory cannot tell them apart). Comments do not count. The plugin's
+#      own hooks folder, the mod's tests folder and this script are not read.
 #
 # It checks the plugin folder it sits in, and nothing in the environment moves that folder: the
 # tests copy this script into a temporary plugin and run the copy there. The folder must be a git
@@ -141,6 +145,144 @@ fi
 
 # 8. License.
 [[ -f "$ROOT/LICENSE" || -f "$ROOT/LICENSE.md" || -f "$ROOT/LICENSE.txt" ]] || fail "no LICENSE file"
+
+# 9. No script writes into a folder named hooks. The files are the ones git lists (tracked, plus
+# new files git does not ignore): shell scripts (.sh, .bash, or a first line that runs sh or bash),
+# Python files and workflow files. A line counts when, with its comment taken off, a write (a
+# redirect, or a command or call that writes, removes, moves, links or makes a file) comes before
+# a path part with that name. Only the plugin folder is read.
+WRITE_SEGMENT_NAME="hooks"
+if command -v python3 >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  python3 - "$ROOT" "$WRITE_SEGMENT_NAME" <<'PY' || FAIL=$((FAIL+1))
+import os, re, shlex, subprocess, sys
+root, name = sys.argv[1], sys.argv[2]
+skip_dirs = (name + "/", "tests/mod/")
+skip_files = ("scripts/validate-directory.sh",)
+listed = subprocess.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                        capture_output=True, check=False).stdout.decode("utf-8", "replace").split("\0")
+writers = {"rm", "rmdir", "mv", "cp", "ln", "mkdir", "chmod", "chown", "touch", "tee", "install",
+           "rsync", "truncate", "unlink", "dd"}
+prefixes = {"sudo", "command", "exec", "env", "xargs", "nohup", "time", "then", "do", "else", "!"}
+redirect = re.compile(r"(?<![<>=-])(?:[0-9]?>>?|&>>?)\|?\s*([^\s;|&<>()]+)")
+py_write = re.compile(r"\b(?:write_text|write_bytes|makedirs|mkdir|rename|replace|symlink|link|remove|unlink|"
+                      r"rmdir|chmod|copy|copy2|copyfile|copytree|move|rmtree|touch)\s*\(|\bopen\s*\(")
+comment = re.compile(r"(?:^|\s)#.*$")
+
+
+def names_folder(word):
+    """True when a word, with its quotes taken off, has a path part equal to the name."""
+    word = word.strip("\"'`")
+    parts = re.split(r"[/\"']", word)
+    return name in parts[:-1] or (word.endswith("/" + name) or word == name)
+
+
+def shell_hits(text):
+    for m in redirect.finditer(text):
+        if names_folder(m.group(1)):
+            return True
+    for part in re.split(r"\$\(|`|&&|\|\||[;|(){}]", text):
+        try:
+            words = shlex.split(part, posix=True)
+        except ValueError:
+            words = part.split()
+        while words and (words[0] in prefixes or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0])):
+            words = words[1:]
+        if not words:
+            continue
+        cmd = os.path.basename(words[0])
+        if cmd in writers or (cmd == "find" and ("-delete" in words or "-exec" in words)):
+            if any(names_folder(w) for w in words[1:]):
+                return True
+    return False
+
+
+def call_args(text, start):
+    """The top level arguments of the call whose open paren ends just before start."""
+    args, depth, cur, quote = [], 0, "", ""
+    for ch in text[start:]:
+        if quote:
+            cur += ch
+            if ch == quote:
+                quote = ""
+            continue
+        if ch in "\"'":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            if depth == 0:
+                break
+            depth -= 1
+        elif ch == "," and depth == 0:
+            args.append(cur.strip())
+            cur = ""
+            continue
+        cur += ch
+    args.append(cur.strip())
+    return args
+
+
+def py_hits(text):
+    for m in py_write.finditer(text):
+        args = call_args(text, m.end())
+        if not any(re.search(r"(?:^|[/\s\"'(,])" + re.escape(name) + r"(?:[/\"'\s),]|$)", a) for a in args):
+            continue
+        if m.group(0).startswith("open"):
+            modes = [a.split("=", 1)[1].strip() for a in args if a.replace(" ", "").startswith("mode=")]
+            if len(args) > 1 and "=" not in args[1]:
+                modes.append(args[1])
+            if not any(re.fullmatch(r"['\"][rwabxt+]*[wax+][rwabxt+]*['\"]", md) for md in modes):
+                continue
+        return True
+    return False
+
+
+def kind(rel, path):
+    if rel.endswith((".sh", ".bash", ".py")):
+        return True
+    if rel.startswith(".github/") and rel.endswith((".yml", ".yaml")):
+        return True
+    if "." not in os.path.basename(rel):
+        try:
+            with open(path, "rb") as f:
+                first = f.readline(200)
+        except OSError:
+            return False
+        return first.startswith(b"#!") and re.search(rb"\b(?:ba)?sh\b", first) is not None
+    return False
+
+
+found = []
+for rel in listed:
+    if not rel or rel.startswith(skip_dirs) or rel in skip_files:
+        continue
+    path = os.path.join(root, rel)
+    if not os.path.isfile(path) or os.path.islink(path) or not kind(rel, path):
+        continue
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        continue
+    for n, line in enumerate(lines, 1):
+        text = comment.sub("", line)
+        if name not in text:
+            continue
+        run = re.match(r"^\s*(?:-\s*)?run:\s*(.*)$", text)
+        if run:
+            text = run.group(1)
+        if shell_hits(text) or py_hits(text):
+            found.append("  %s:%d: %s" % (rel, n, line.strip()[:100]))
+if found:
+    print("FAIL: a script writes into a path with a folder named %s:" % name)
+    print("\n".join(found[:20]))
+    if len(found) > 20:
+        print("  (and %d more)" % (len(found) - 20))
+    sys.exit(1)
+PY
+else
+  fail "rule 9 needs python3 and a git work tree at $ROOT"
+fi
 
 if [[ $FAIL -eq 0 ]]; then
   echo "OK: directory readiness checks passed"

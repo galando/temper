@@ -108,6 +108,24 @@ wrong_market()  { printf '{"name":"x","plugins":[{"name":"other","source":"./","
 no_license()    { rm -f "$1/LICENSE"; }
 license_md()    { rm -f "$1/LICENSE"; printf 'MIT\n' > "$1/LICENSE.md"; }
 
+# Rule 9 names one folder in one line. These cases change that line in the fixture's copy to the
+# name gate_dir, so the scripts they write hold no write into the real name.
+seg_name() { sed 's/^WRITE_SEGMENT_NAME=.*$/WRITE_SEGMENT_NAME="gate_dir"/' "$1/scripts/validate-directory.sh" > "$1/scripts/v" \
+               && mv "$1/scripts/v" "$1/scripts/validate-directory.sh"; }
+seg_redirect() { seg_name "$1"; printf '#!/usr/bin/env bash\nprintf "x\\n" > "$D/.git/gate_dir/pre-commit"\n' > "$1/scripts/a.sh"; }
+seg_rm()       { seg_name "$1"; printf 'set -u\ncd "$W" && rm -f .git/gate_dir/pre-commit\n' > "$1/scripts/a.sh"; }
+seg_mkdir()    { seg_name "$1"; printf 'mkdir -p "$W/old/scripts/gate_dir"\n' > "$1/scripts/a.sh"; }
+seg_ln()       { seg_name "$1"; printf 'ln -s "$T" .git/gate_dir\n' > "$1/scripts/a.sh"; }
+seg_noext()    { seg_name "$1"; printf '#!/bin/sh\nchmod +x .git/gate_dir/pre-commit\n' > "$1/scripts/tool"; }
+seg_python()   { seg_name "$1"; printf 'import os\nopen(os.path.join(d, "gate_dir", "x"), "w").write("y")\n' > "$1/scripts/a.py"; }
+seg_workflow() { seg_name "$1"; mkdir -p "$1/.github/workflows"; printf 'jobs:\n  t:\n    steps:\n      - run: cp a .git/gate_dir/x\n' > "$1/.github/workflows/ci.yml"; }
+seg_reads()    { seg_name "$1"
+                 { printf 'ls -A .git/gate_dir\nsum="$(cksum < .git/gate_dir/pre-commit)"\n'
+                   printf 'echo "install.sh never writes into .git/gate_dir"\n# rm -f .git/gate_dir/pre-commit\n'
+                   printf 'mkdir -p gate_dir-old\ncp a "$W/x" # .git/gate_dir is only read\n'; } > "$1/scripts/a.sh"
+                 printf 'import os\ndata = open(os.path.join(d, "gate_dir", "x")).read()\n' > "$1/scripts/a.py"; }
+seg_own()      { seg_name "$1"; mkdir -p "$1/gate_dir"; printf 'rm -f gate_dir/x\n' > "$1/gate_dir/a.sh"; }
+
 make_fixture good && check "a good fixture passes" 0 "$FIXTURES/good"
 
 # Inline code with a tag is allowed.
@@ -129,6 +147,15 @@ broken "an options key fails" has_options
 broken "missing keywords fails" no_keywords
 broken "marketplace without the plugin fails" wrong_market
 broken "no LICENSE fails" no_license
+broken "a redirect into the named folder fails" seg_redirect
+broken "rm in the named folder, after cd and &&, fails" seg_rm
+broken "mkdir of a path with the named folder fails" seg_mkdir
+broken "a link made at the named folder fails" seg_ln
+broken "a write in a shell script with no extension fails" seg_noext
+broken "a Python open for writing in the named folder fails" seg_python
+broken "a workflow run step that writes there fails" seg_workflow
+variant "reads, prose, comments and a longer folder name pass" 0 seg_reads
+variant "the plugin folder of that name is not read" 0 seg_own
 make_fixture no_git plain && check "a folder that is not a git work tree fails" 1 "$FIXTURES/no_git"
 
 # Nothing in the environment moves the checked folder: the variable older versions read to check

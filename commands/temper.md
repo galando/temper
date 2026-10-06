@@ -145,7 +145,10 @@ result, `FAIL: no intent.md to report on` among them, means go on:
    gate is in place when that file's path ends in `/temper-gate/pre-commit`, its second
    line starts with `# Temper native pre-commit hook`, and the CLI path written in it
    still exists (a plugin upgrade moves the plugin folder, and a hook whose CLI path no
-   longer exists fails open silently). Otherwise run
+   longer exists fails open silently). After the repository is moved or renamed,
+   `core.hooksPath` still names the old place, git runs no pre-commit hook, and that
+   file is missing, so this check fails and the installer points it at the new place.
+   Otherwise run
    `bash "${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh"`. It writes the kept hook
    with the current plugin paths and never writes into a folder named `hooks`: not
    git's own hooks folder, not the folder `git rev-parse --git-path hooks` names, and
@@ -166,9 +169,11 @@ result, `FAIL: no intent.md to report on` among them, means go on:
      own hooks folder holds hooks that git would stop running if `core.hooksPath`
      pointed at Temper's folder (a `commit-msg`, git-lfs's `pre-push`, the pre-commit
      framework's or lefthook's hooks, or a `pre-commit.bak.<timestamp>` an older
-     version left; an older Temper `pre-commit` does not count), and when
+     version left; an older Temper `pre-commit` does not count), when
      `core.hooksPath` names another tool's folder (husky's `.husky/_`, lefthook, a
-     team folder), unless the pre-commit hook there already calls the Temper hook;
+     team folder), and when it names Temper's older folder and that folder holds
+     other hooks git runs (git-lfs writes its hooks there), unless the pre-commit
+     hook there already calls the Temper hook;
      when the user's hook holds the Temper line after an `exit` or `exec` line; when
      the repository, or a place it would write once symlinks are followed, lies inside
      the plugin's own folder; and when a folder or file it needs cannot be made. It
@@ -180,9 +185,12 @@ result, `FAIL: no intent.md to report on` among them, means go on:
      show the lines it printed between its BEGIN and END lines, verbatim, in a fenced
      code block (one line that runs the kept hook, or, when it refused before it knew
      the git folder, the Temper hook's own lines in a subshell, so that their exits end
-     only the subshell), then its `Hint:` line as it printed it (where the line goes:
-     `.husky/pre-commit`, a local hook of the pre-commit framework, a command in
-     `lefthook.yml`, or the start or the end of the user's own hook), and continue.
+     only the subshell), then each `Warning:` line it printed (a hook an older version
+     set aside, or a `pre-commit` from an older Temper that git still runs, with its
+     stale plugin path), then its `Hint:` line as it printed it (where the line goes:
+     `.husky/pre-commit`, the entry of a local hook of the pre-commit framework, a
+     command in `lefthook.yml`, the start or the end of the user's own hook, or, for a
+     hook from an older Temper, in place of all of its lines), and continue.
 
 If a step ran, print a one-line "Set up." note naming what was done; if everything was
 already in place, continue into Plan silently. This per-piece check is what makes
