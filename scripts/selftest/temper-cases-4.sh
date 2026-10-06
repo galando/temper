@@ -1159,6 +1159,147 @@ assert_eq "next to a pre-commit of the user's, the warning for a set-aside hook 
   "$L_RC|$(_l_line "$OUT" "Warning: $L_CO/.git/default-gate/pre-commit.bak.20260101000000 is a pre-commit hook that an older Temper installer set aside, and git does not run it. To run it again, add its lines to $L_CO/.git/default-gate/pre-commit, a hook git runs now (do not move it over that file), and add the line between the BEGIN and END lines below to that file.")|$(_l_has "$OUT" "move it back to")|$(_l_path "$L_CO")"
 rm -rf "$L_CO"
 
+# A relative value of Temper's older folder that must stay (it holds another hook git runs): git
+# takes it from each worktree's top, so a linked worktree runs nothing there. The installer sets
+# the same folder by its absolute path, says so, and then refuses as for any older folder; once
+# that folder's pre-commit is #!/bin/sh and the line, a commit in the linked worktree is gated. The
+# older folder names both hold the word hooks, so this case runs a copy of the default-gate plugin
+# whose installer takes .git/older-gate as the older value .git/hooks-temper.
+L_RV="$WORKDIR/l1-relative-older"
+L_RV_WT="$WORKDIR/l1-relative-older-wt"
+L_RV_PLUG="$WORKDIR/l1-rv-plugin"
+_dg_plugin "$L_RV_PLUG"
+sed 's/hooks-temper/older-gate/g' "$L_RV_PLUG/scripts/guards/install.sh" > "$L_RV_PLUG/install.new"
+mv "$L_RV_PLUG/install.new" "$L_RV_PLUG/scripts/guards/install.sh"
+assert_eq "the older-gate copy names .git/older-gate where install.sh names its 5.5.0 to 9.6.4 older folder" "yes|0" \
+  "$(grep -qF '"$v" == ".git/older-gate"' "$L_RV_PLUG/scripts/guards/install.sh" && echo yes || echo no)|$(grep -c 'hooks-temper' "$L_RV_PLUG/scripts/guards/install.sh")"
+_l_repo "$L_RV"
+rm -rf "$L_RV_WT"
+git -C "$L_RV" worktree add -q "$L_RV_WT" >/dev/null 2>&1
+mkdir -p "$L_RV/.git/older-gate"
+printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (installed by an older installer).\nTEMPER_CLI=/old/plugin/scripts/temper\n' > "$L_RV/.git/older-gate/pre-commit"
+printf '#!/bin/sh\necho lfs-pre-push\n' > "$L_RV/.git/older-gate/pre-push"
+chmod +x "$L_RV/.git/older-gate/pre-commit" "$L_RV/.git/older-gate/pre-push"
+git -C "$L_RV" config core.hooksPath .git/older-gate
+OUT=$(cd "$L_RV_WT" && bash "$L_RV_PLUG/scripts/guards/install.sh" 2>&1); L_RC=$?
+assert_eq "a relative older folder that must stay is set by its absolute path, with a note, and then refused naming its other hook" "1|$L_RV/.git/older-gate|yes|yes" \
+  "$L_RC|$(_l_path "$L_RV")|$(_l_line "$OUT" "Note: core.hooksPath held '.git/older-gate', which a linked worktree cannot reach; it now holds the same folder by its absolute path, $L_RV/.git/older-gate.")|$(_l_line "$OUT" "FAIL: core.hooksPath is set to '$L_RV/.git/older-gate', a folder an older Temper set. $L_RV/.git/older-gate holds hooks git would stop running if core.hooksPath pointed at Temper's folder: pre-push.")"
+printf '#!/bin/sh\n%s\n' "$L_CALL" > "$L_RV/.git/older-gate/pre-commit"
+OUT=$(cd "$L_RV_WT" && bash "$L_RV_PLUG/scripts/guards/install.sh" 2>&1); L_RC=$?
+assert_eq "once its pre-commit is #!/bin/sh and the line, a run from the linked worktree says it calls the Temper hook" "0|yes" \
+  "$L_RC|$(_l_line "$OUT" "The pre-commit hook $L_RV/.git/older-gate/pre-commit calls the Temper hook ($L_RV/.git/temper-gate/pre-commit), which is now current, so nothing else was written.")"
+(cd "$L_RV_WT" && printf '.temper/\n' > .gitignore && git add .gitignore)
+_l_red "$L_RV_WT"
+assert_exit "a commit on a red gate in the linked worktree is blocked: it reaches the older folder by its absolute path" 1 git -C "$L_RV_WT" commit -q -m red
+rm -rf "$L_RV" "$L_RV_WT" "$L_RV_PLUG"
+
+# A copy of a repository whose core.hooksPath still names the original's temper-gate folder, where
+# another tool also wrote a hook: that folder is another repository's, and its pre-commit is that
+# repository's own current hook. The installer refuses with no hook lines and no hint to change
+# that file (the line there would make the hook run itself); the hint is to point core.hooksPath at
+# this repository's own folder.
+L_CA="$WORKDIR/l1-copy-a"
+L_CB="$WORKDIR/l1-copy-b"
+_l_repo "$L_CA"
+(cd "$L_CA" && bash "$L_INSTALL" >/dev/null 2>&1)
+printf '#!/bin/sh\necho lfs-pre-push\n' > "$L_CA/.git/temper-gate/pre-push"
+chmod +x "$L_CA/.git/temper-gate/pre-push"
+rm -rf "$L_CB"
+cp -a "$L_CA" "$L_CB"
+L_SUM="$(cksum < "$L_CA/.git/temper-gate/pre-commit")"
+OUT=$(cd "$L_CB" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "a copy pointed at the original's temper-gate folder is refused as another repository's folder, with no hook lines and no older Temper warning" "1|yes|no|no|$L_CA/.git/temper-gate" \
+  "$L_RC|$(_l_line "$OUT" "FAIL: core.hooksPath is set to '$L_CA/.git/temper-gate', the Temper folder of another repository ($L_CA/.git), which also holds hooks git runs: pre-push.")|$(_l_has "$OUT" 'BEGIN Temper pre-commit hook lines')|$(_l_has "$OUT" 'a hook from an older Temper')|$(_l_path "$L_CB")"
+assert_eq "its hint says to point core.hooksPath at this repository's own folder, the original's hook is left as it was, and this one's hook is kept" "yes|yes|yes" \
+  "$(_l_last "$OUT" "Hint: point core.hooksPath at this repository's own folder (git config --local core.hooksPath $L_CB/.git/temper-gate), then copy those hooks into it, or install them again with their tool (git lfs install --local writes into the folder core.hooksPath names).")|$([[ "$(cksum < "$L_CA/.git/temper-gate/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)|$(_l_kept "$L_CB")"
+rm -rf "$L_CA" "$L_CB"
+
+# husky's _ folder holding a pre-commit from an older Temper (9.6.4 wrote over husky's own there):
+# git runs that hook, not husky's, so .husky/pre-commit never runs, even with the line in it. The
+# installer refuses, names the older hook with its stale path, and says to have husky write its own.
+L_HO="$WORKDIR/l1-husky-older"
+_l_repo "$L_HO"
+mkdir -p "$L_HO/.husky/_"
+printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (installed by an older installer).\nTEMPER_CLI=/old/plugin/scripts/temper\n' > "$L_HO/.husky/_/pre-commit"
+printf '#!/bin/sh\necho husky-own\n' > "$L_HO/.husky/_/pre-commit.bak.20260101000000"
+printf '%s\n' "$L_CALL" > "$L_HO/.husky/pre-commit"
+chmod +x "$L_HO/.husky/_/pre-commit"
+git -C "$L_HO" config core.hooksPath .husky/_
+L_SUM="$(cksum < "$L_HO/.husky/_/pre-commit")"
+OUT=$(cd "$L_HO" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "husky's _ folder holding an older Temper pre-commit is refused even with the line in .husky/pre-commit, naming the older hook" "1|yes|yes|yes|yes" \
+  "$L_RC|$(_l_line "$OUT" "FAIL: core.hooksPath is set to '.husky/_', and git runs .husky/_/pre-commit there, a hook from an older Temper in place of husky's.")|$(_l_line "$OUT" "Warning: .husky/_/pre-commit is a hook from an older Temper, and git runs it in place of husky's own hook, so .husky/pre-commit does not run. This installer does not write it.")|$(_l_line "$OUT" "  embedded: /old/plugin/scripts/temper")|$([[ "$(cksum < "$L_HO/.husky/_/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)"
+assert_eq "its hint says to have husky write its own hooks there again, then add the line to .husky/pre-commit" "yes" \
+  "$(_l_last "$OUT" "Hint: run npx husky, which writes husky's own hooks there again (or move the pre-commit.bak.<timestamp> file there back over it), then add the line to .husky/pre-commit.")"
+rm -rf "$L_HO"
+
+# A host hook that holds the line but is not executable: git does not run it, so it does not count.
+# husky's _ folder runs .husky/pre-commit with sh, so there the execute bit is not needed.
+L_NX="$WORKDIR/l1-not-exec"
+_l_repo "$L_NX"
+mkdir -p "$L_NX/.git/default-gate"
+printf '#!/bin/sh\n%s\n' "$L_CALL" > "$L_NX/.git/default-gate/pre-commit"
+printf '#!/bin/sh\nexit 0\n' > "$L_NX/.git/default-gate/commit-msg"
+chmod +x "$L_NX/.git/default-gate/commit-msg"
+OUT=$(cd "$L_NX" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
+assert_eq "a pre-commit in the default folder that holds the line but is not executable is refused, with the chmod hint" "1|yes|yes|none" \
+  "$L_RC|$(_l_line "$OUT" "FAIL: the pre-commit hook $L_NX/.git/default-gate/pre-commit is not executable, so git does not run it, and the Temper hook with it.")|$(_l_last "$OUT" "Hint: run chmod +x $L_NX/.git/default-gate/pre-commit, then run this installer again.")|$(_l_path "$L_NX")"
+chmod +x "$L_NX/.git/default-gate/pre-commit"
+OUT=$(cd "$L_NX" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
+assert_eq "made executable, it calls the Temper hook" "0|yes" \
+  "$L_RC|$(_l_line "$OUT" "The pre-commit hook $L_NX/.git/default-gate/pre-commit calls the Temper hook ($L_NX/.git/temper-gate/pre-commit), which is now current, so nothing else was written.")"
+rm -rf "$L_NX/.git/default-gate"
+mkdir -p "$L_NX/.git/user-gate"
+printf '#!/bin/sh\n%s\n' "$L_CALL" > "$L_NX/.git/user-gate/pre-commit"
+git -C "$L_NX" config core.hooksPath .git/user-gate
+OUT=$(cd "$L_NX" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "the same in another tool's folder: refused with the chmod hint" "1|yes" \
+  "$L_RC|$(_l_last "$OUT" "Hint: run chmod +x .git/user-gate/pre-commit, then run this installer again.")"
+git -C "$L_NX" config --unset core.hooksPath
+mkdir -p "$L_NX/.husky/_"
+printf '#!/bin/sh\n. "$(dirname "$0")/h"\n' > "$L_NX/.husky/_/pre-commit"
+chmod +x "$L_NX/.husky/_/pre-commit"
+printf '%s\n' "$L_CALL" > "$L_NX/.husky/pre-commit"
+git -C "$L_NX" config core.hooksPath .husky/_
+OUT=$(cd "$L_NX" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "husky's .husky/pre-commit, which husky runs with sh, counts without the execute bit" "0|yes" \
+  "$L_RC|$(_l_has "$OUT" "The pre-commit hook .husky/pre-commit calls the Temper hook")"
+rm -rf "$L_NX"
+
+# The pre-commit framework and lefthook keep the line in their config file, not in the hook they
+# write: once that file at the repository's top holds the line, a run counts it as installed.
+L_FC="$WORKDIR/l1-framework-config"
+_l_repo "$L_FC"
+mkdir -p "$L_FC/.git/default-gate"
+printf '#!/usr/bin/env bash\n# File generated by pre-commit: https://pre-commit.com\nexec pre-commit hook-impl --hook-type=pre-commit -- "$@"\n' > "$L_FC/.git/default-gate/pre-commit"
+chmod +x "$L_FC/.git/default-gate/pre-commit"
+OUT=$(cd "$L_FC" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
+assert_eq "the framework's hook with no entry for the line in its config is refused" "1" "$L_RC"
+printf -- "- repo: local\n  hooks:\n  - id: temper\n    name: temper\n    language: system\n    pass_filenames: false\n    always_run: true\n    entry: sh -c '%s'\n" "$L_CALL" > "$L_FC/.pre-commit-config.yaml"
+OUT=$(cd "$L_FC" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
+assert_eq "once .pre-commit-config.yaml holds the entry, a run says the framework runs the Temper hook" "0|yes|none" \
+  "$L_RC|$(_l_line "$OUT" "The pre-commit hook $L_FC/.git/default-gate/pre-commit runs the Temper hook ($L_FC/.git/temper-gate/pre-commit) through .pre-commit-config.yaml, and that hook is now current, so nothing else was written.")|$(_l_path "$L_FC")"
+rm -f "$L_FC/.pre-commit-config.yaml"
+printf '#!/bin/sh\n# lefthook generated hook\nexec lefthook run "pre-commit" "$@"\n' > "$L_FC/.git/default-gate/pre-commit"
+printf 'pre-commit:\n  commands:\n    temper:\n      run: %s\n' "$L_CALL" > "$L_FC/lefthook.yml"
+OUT=$(cd "$L_FC" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
+assert_eq "once lefthook.yml holds the line, a run says lefthook runs the Temper hook" "0|yes" \
+  "$L_RC|$(_l_line "$OUT" "The pre-commit hook $L_FC/.git/default-gate/pre-commit runs the Temper hook ($L_FC/.git/temper-gate/pre-commit) through lefthook.yml, and that hook is now current, so nothing else was written.")"
+rm -rf "$L_FC"
+
+# A link planted above a repository to the plugin's scripts folder, or a hard link of install.sh in
+# a scripts/guards folder there, does not make the repository part of the plugin: the install goes on.
+L_PL="$WORKDIR/l1-planted"
+rm -rf "$L_PL"
+mkdir -p "$L_PL/a" "$L_PL/b/scripts/guards"
+ln -s "$L_PLUG/scripts" "$L_PL/a/scripts"
+ln "$L_INSTALL" "$L_PL/b/scripts/guards/install.sh"
+_l_repo "$L_PL/a/proj"
+_l_repo "$L_PL/b/proj"
+assert_exit "a scripts link to the plugin's folder planted above a repository does not stop the install" 0 bash -c "cd '$L_PL/a/proj' && bash '$L_INSTALL'"
+assert_exit "nor does a hard link of install.sh in a scripts/guards folder planted above a repository" 0 bash -c "cd '$L_PL/b/proj' && bash '$L_INSTALL'"
+rm -rf "$L_PL"
+
 # The commit hooks with the real CLI: an active run with red gates and a symlink on a run-state
 # path, or a link in the spec folder, never opens the gate.
 L_RED="$WORKDIR/l1-red"

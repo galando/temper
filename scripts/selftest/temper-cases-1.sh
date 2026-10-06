@@ -255,7 +255,7 @@ assert_eq "install.sh in a plain repository keeps the hook in .git/temper-gate a
   "$P_RC|$([[ -x .git/temper-gate/pre-commit ]] && echo yes || echo no)|$(git config --get core.hooksPath)|$(printf '%s\n' "$OUT" | grep -qxF "Installed Temper pre-commit hook -> $WORKDIR/.git/temper-gate/pre-commit (core.hooksPath points at that folder, so every worktree of this repository runs it)." && echo yes || echo no)"
 assert_eq "install.sh writes nothing in .git/hooks: its listing is the same before and after" "$P_HOOKS_BEFORE" "$(ls -A .git/hooks)"
 assert_eq "install.sh ends with how to uninstall" "yes" \
-  "$(printf '%s\n' "$OUT" | tail -1 | grep -qxF "To uninstall: run 'git config --unset core.hooksPath' (when it points at the temper-gate folder), remove the Temper line from your own hook if you added one, and delete $WORKDIR/.git/temper-gate." && echo yes || echo no)"
+  "$(printf '%s\n' "$OUT" | tail -1 | grep -qxF "To uninstall: run 'git config --unset core.hooksPath' (when it points at the temper-gate folder), remove the Temper line from your own hook if you added one, and delete $WORKDIR/.git/temper-gate (and $WORKDIR/.git/temper-pre-commit, if Temper 9.6.5 left one)." && echo yes || echo no)"
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); P_RC=$?
 assert_eq "a second run in the plain repository says the hook is already installed" "0|yes" \
   "$P_RC|$(printf '%s\n' "$OUT" | grep -qxF "The Temper pre-commit hook is already installed: $WORKDIR/.git/temper-gate/pre-commit (core.hooksPath points at its folder)." && echo yes || echo no)"

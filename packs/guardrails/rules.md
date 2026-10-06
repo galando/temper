@@ -138,7 +138,11 @@ to be, before it was moved or renamed), the installer points it at `temper-gate`
 a note naming the old value. When that older folder holds other hooks git runs (`git lfs
 install` writes its hooks into the folder `core.hooksPath` names), pointing it elsewhere
 would stop them, so the installer leaves it, keeps the hook, and treats the `pre-commit`
-there as the host hook below. Any other folder (husky's `.husky/_` or `.husky`,
+there as the host hook below. A relative value that stays is set to the same folder by its
+absolute path, since a linked worktree cannot reach a relative one. When that folder is the
+`temper-gate` folder of another repository that is still there (this one is a copy), the
+installer refuses with a hint to point `core.hooksPath` at this repository's own folder; it
+never tells you to change that repository's hook. Any other folder (husky's `.husky/_` or `.husky`,
 lefthook, a team's `.githooks`) belongs to another tool: the installer never writes there
 and keeps the hook. The host hook is the `pre-commit` file in that folder (for husky's
 generated `.husky/_` folder, `.husky/pre-commit`); when it calls the Temper hook, the
@@ -201,21 +205,28 @@ result is kept.
 A hook of your own counts as calling Temper when it holds that exact line, or the exact
 line Temper 9.6.5 printed (the same, with `temper-pre-commit` in place of
 `temper-gate/pre-commit`), with no line before it that starts with `exit` or `exec` (for
-husky v9 that hook is `.husky/pre-commit`). The installer then makes the kept hook current
+husky v9 that hook is `.husky/pre-commit`), and git can run it: a hook that is not executable
+is refused with a `chmod +x` hint (husky's `.husky/pre-commit`, which husky runs with `sh`,
+needs no execute bit). For the pre-commit framework and lefthook, their config file at the
+repository's top (`.pre-commit-config.yaml`, `lefthook.yml` and its other names) holding the
+line counts too. When husky's `.husky/_` folder holds a `pre-commit` from an older Temper, git
+runs that in place of husky's own, so the installer refuses and says to run `npx husky` first.
+The installer then makes the kept hook current
 (for the 9.6.5 line it also rewrites `temper-pre-commit` in the git folder with the current
 hook), says the hook calls it, and exits 0. When an `exit` or `exec` line comes first, the
 line never runs: the installer refuses and says to move it above that line. An older
 installer moved a hook that was not Temper's aside as `pre-commit.bak.<timestamp>`, and git
 does not run that file: when one is in `.git/hooks`, the installer names it in a warning and
-says how to bring it back (move it back to `.git/hooks/pre-commit` and add the line between
-the BEGIN and END lines to it). Every refusal prints a FAIL line, never a bare shell error.
+says how to bring it back (move it back to `pre-commit` in git's own hooks folder and add the
+line between the BEGIN and END lines to it). Every refusal prints a FAIL line, never a bare shell error.
 
 A hook tool you add later (the pre-commit framework, lefthook) works in `.git/hooks`, so
 run `git config --unset core.hooksPath` before you install it. The next `/temper` or
 `/temper:init` then keeps the Temper hook and prints the line to add to that tool's hook.
 To uninstall, run `git config --unset core.hooksPath` (when it points at the `temper-gate`
 folder), remove the Temper line from your own hook if you added one, and delete the
-`temper-gate` folder in the git folder. The installer prints these steps.
+`temper-gate` folder in the git folder (and any `temper-pre-commit` that 9.6.5 left there). The
+installer prints these steps.
 
 > **This two-layer split is the determinism guarantee.** Layer 1 catches secrets at
 > edit-time inside the agent; layer 2 catches them at commit-time, deterministically,

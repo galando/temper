@@ -87,8 +87,15 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    9.6.5; or the `temper-gate` folder of where the repository used to be) is pointed
    at `temper-gate`, with a note naming the old value, unless that folder holds other
    hooks git runs (`git lfs install` writes its hooks into the folder `core.hooksPath`
-   names): then it stays as it is, as for git's own hooks folder, and the `pre-commit`
-   there needs the line. When it installs while an older Temper hook sits in git's own
+   names): then it stays as it is, as for git's own hooks folder (a relative value is set
+   to the same folder by its absolute path, so linked worktrees reach it), and the
+   `pre-commit` there needs the line. When that folder is the `temper-gate` folder of
+   another repository that is still there (a copy), it refuses and says to point
+   `core.hooksPath` at this repository's own folder, never to change that repository's
+   hook. A host hook counts only when git can run it (executable; husky's
+   `.husky/pre-commit` excepted), and for the pre-commit framework and lefthook, a config
+   file at the repository's top that holds the line counts too. When husky's `.husky/_`
+   holds a `pre-commit` from an older Temper, it refuses and says to run `npx husky`. When it installs while an older Temper hook sits in git's own
    hooks folder, it notes that git no longer runs that file and that it can be
    deleted. When it refuses while git still runs a `pre-commit` from an older Temper
    (next to other hooks, or in another tool's folder), it warns that git runs that
@@ -106,7 +113,7 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    `--global` does the same as the default, with a note. It also prints how to
    uninstall: unset `core.hooksPath` when it points at the `temper-gate` folder,
    remove the Temper line from the user's own hook if one was added, and delete the
-   `temper-gate` folder. A hook tool added later (the pre-commit framework, lefthook)
+   `temper-gate` folder (and any `temper-pre-commit` that 9.6.5 left). A hook tool added later (the pre-commit framework, lefthook)
    works in git's own hooks folder, so `core.hooksPath` must be unset first; the next
    `/temper` or `/temper:init` then keeps the Temper hook and prints the line to add.
    Report by how it ended:

@@ -131,7 +131,10 @@ Keep always-loaded content minimal:
   whose default folder is named `default-gate` (`_dg_plugin` in
   `scripts/selftest/test-temper.sh`). Never build the name from pieces or take
   it from `git rev-parse --git-path hooks` to write there: the directory reads
-  those too. `scripts/validate-directory.sh` checks this.
+  those too. `scripts/validate-directory.sh` catches a write whose own words
+  name the folder, also through `git rev-parse` in a `$( )` span, a `cd` into
+  the folder or a variable set to such a path; a name built from pieces is for
+  review to catch.
 - The commit gate installer holds no variable for the plugin folder by itself:
   only its scripts folder or a file, plus fixed text.
 - Commands, briefs and skills write the plugin root variable only in its braced

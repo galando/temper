@@ -1033,4 +1033,4 @@ assert_eq "a CLI reached through a chain of relative symlinks finds its own plug
   "$(env -i HOME="$HOME" PATH="$PATH" "$WORKDIR/bin/chained-temper" model plan)"
 # No value of the plugin root variable can move them: the CLI and the guard scripts never name it.
 assert_eq "the CLI and the guard scripts never read the plugin root variable" "0" \
-  "$(cat "$TEMPER" "$REPO_ROOT"/scripts/guards/*.sh | grep -c 'CLAUDE_PLUGIN_ROOT')"
+  "$(cat "$TEMPER" "$REPO_ROOT"/scripts/guards/*.sh | grep -c '_PLUGIN_ROOT')"

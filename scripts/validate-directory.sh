@@ -16,8 +16,10 @@
 #   8. A LICENSE file exists (LICENSE, LICENSE.md or LICENSE.txt).
 #   9. No shell or Python script writes into, removes from, moves, links or makes a path with a
 #      folder named hooks (git's hook folders share that name with the plugin folder that holds
-#      the mod, and the directory cannot tell them apart). Comments do not count. The plugin's
-#      own hooks folder, the mod's tests folder and this script are not read.
+#      the mod, and the directory cannot tell them apart). Comments do not count, and this script
+#      is not read. It catches a write whose own words name the folder, through a $( ) span that
+#      runs git rev-parse, a cd into the folder, or a variable set to such a path in the same
+#      file; a name built from pieces at run time is for review to catch.
 #
 # It checks the plugin folder it sits in, and nothing in the environment moves that folder: the
 # tests copy this script into a temporary plugin and run the copy there. The folder must be a git
@@ -148,52 +150,179 @@ fi
 
 # 9. No script writes into a folder named hooks. The files are the ones git lists (tracked, plus
 # new files git does not ignore): shell scripts (.sh, .bash, or a first line that runs sh or bash),
-# Python files and workflow files. A line counts when, with its comment taken off, a write (a
-# redirect, or a command or call that writes, removes, moves, links or makes a file) comes before
-# a path part with that name. Only the plugin folder is read.
+# Python files and workflow files. A line counts when, with its comment taken off, the path a
+# command, a redirect or a call writes (removes, moves, links or makes) has a part with that name.
+# A cp or ln writes its last path, find only the paths it starts from, sed and perl only with -i,
+# curl, wget and tar only the file or folder they are told to write. Only the plugin folder is read.
 WRITE_SEGMENT_NAME="hooks"
 if command -v python3 >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   python3 - "$ROOT" "$WRITE_SEGMENT_NAME" <<'PY' || FAIL=$((FAIL+1))
 import os, re, shlex, subprocess, sys
 root, name = sys.argv[1], sys.argv[2]
-skip_dirs = (name + "/", "tests/mod/")
-skip_files = ("scripts/validate-directory.sh",)
+own = "scripts/validate-directory.sh"
 listed = subprocess.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
                         capture_output=True, check=False).stdout.decode("utf-8", "replace").split("\0")
-writers = {"rm", "rmdir", "mv", "cp", "ln", "mkdir", "chmod", "chown", "touch", "tee", "install",
-           "rsync", "truncate", "unlink", "dd"}
-prefixes = {"sudo", "command", "exec", "env", "xargs", "nohup", "time", "then", "do", "else", "!"}
+# Commands that write every path they are given, the last path only (or the one after -t), and
+# words that come before the command itself.
+WRITE_ALL = {"rm", "rmdir", "mv", "mkdir", "chmod", "chown", "chgrp", "touch", "truncate", "unlink", "tee", "shred"}
+WRITE_LAST = {"cp", "ln", "install", "rsync"}
+PREFIXES = {"sudo", "command", "exec", "env", "xargs", "nohup", "time", "then", "do", "else", "!", "nice"}
 redirect = re.compile(r"(?<![<>=-])(?:[0-9]?>>?|&>>?)\|?\s*([^\s;|&<>()]+)")
-py_write = re.compile(r"\b(?:write_text|write_bytes|makedirs|mkdir|rename|replace|symlink|link|remove|unlink|"
-                      r"rmdir|chmod|copy|copy2|copyfile|copytree|move|rmtree|touch)\s*\(|\bopen\s*\(")
 comment = re.compile(r"(?:^|\s)#.*$")
+var_use = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)")
+quoted = re.compile(r"""(['"])((?:\\.|(?!\1).)*)\1""")
 
 
-def names_folder(word):
-    """True when a word, with its quotes taken off, has a path part equal to the name."""
-    word = word.strip("\"'`")
-    parts = re.split(r"[/\"']", word)
-    return name in parts[:-1] or (word.endswith("/" + name) or word == name)
+def names_folder(word, folder_vars=()):
+    """True when a word names the folder as a path part, or starts with a variable that holds one."""
+    w = word.strip("\"'`")
+    m = re.match(r"^(?:-{1,2}[A-Za-z][A-Za-z-]*=|of=)(.*)$", w)
+    if m:
+        w = m.group(1)
+    parts = re.split(r"[/\"']", w)
+    if name in parts[:-1] or parts[-1] == name:
+        return True
+    v = var_use.match(w)
+    return bool(v and v.group(1) in folder_vars)
 
 
-def shell_hits(text):
-    for m in redirect.finditer(text):
-        if names_folder(m.group(1)):
-            return True
-    for part in re.split(r"\$\(|`|&&|\|\||[;|(){}]", text):
+def stand_in(body):
+    """What a $( ) or ` ` span stands for in a path: git's own folders by name, the words an echo
+    prints, and otherwise the word $X."""
+    git = re.match(r"^\s*git\b.*\brev-parse\b(.*)$", body)
+    if git:
+        path = re.search(r"--git-path[\s=]+(\S+)", git.group(1))
+        if path:
+            return ".git/" + path.group(1).strip("\"'")
+        if re.search(r"--(?:absolute-)?git-(?:common-)?dir\b", git.group(1)):
+            return ".git"
+    echo = re.match(r"^\s*(?:echo|printf\s+%s)\s+(.*)$", body)
+    if echo:
+        return echo.group(1).strip()
+    return "$X"
+
+
+def spans(text):
+    """The text with each $( ) and ` ` span put as what it stands for, and the text of each span."""
+    out, bodies, i = [], [], 0
+    while i < len(text):
+        if text.startswith("$(", i) and not text.startswith("$((", i):
+            depth, j = 1, i + 2
+            while j < len(text) and depth:
+                depth += {"(": 1, ")": -1}.get(text[j], 0)
+                j += 1
+            bodies.append(text[i + 2:j - 1])
+            out.append(stand_in(bodies[-1]))
+            i = j
+            continue
+        if text[i] == "`":
+            j = text.find("`", i + 1)
+            j = len(text) if j < 0 else j
+            bodies.append(text[i + 1:j])
+            out.append(stand_in(bodies[-1]))
+            i = j + 1
+            continue
+        out.append(text[i])
+        i += 1
+    return "".join(out), bodies
+
+
+def script_files(words):
+    """The file words of sed or perl, without the program text."""
+    files, skip, program = [], False, False
+    for a in words:
+        if skip:
+            skip = False
+            continue
+        if a in ("-e", "-f", "--expression", "--file"):
+            skip = program = True
+            continue
+        if a.startswith("-"):
+            continue
+        if not program:
+            program = True
+            continue
+        files.append(a)
+    return files
+
+
+def targets(words):
+    """The words a command writes, or [] when it writes none."""
+    cmd, args = os.path.basename(words[0]), words[1:]
+    plain = [a for a in args if not a.startswith("-")]
+    if cmd in WRITE_ALL:
+        return plain
+    if cmd in WRITE_LAST:
+        for k, a in enumerate(args):
+            if a in ("-t", "--target-directory") and k + 1 < len(args):
+                return [args[k + 1]]
+            if a.startswith("--target-directory="):
+                return [a]
+        return plain[-1:]
+    if cmd == "sed" and any(re.match(r"^-[A-Za-z]*i", a) or a.startswith("--in-place") for a in args):
+        return script_files(args)
+    if cmd == "perl" and any(re.match(r"^-[A-Za-z]*i", a) for a in args):
+        return script_files(args)
+    if cmd == "dd":
+        return [a for a in args if a.startswith("of=")]
+    out = []
+    flags = {"curl": ("-o", "--output", "--output-dir"), "wget": ("-O", "--output-document", "-P", "--directory-prefix"),
+             "tar": ("-C", "--directory"), "bsdtar": ("-C", "--directory"), "unzip": ("-d",)}.get(cmd)
+    if flags:
+        for k, a in enumerate(args):
+            if a in flags and k + 1 < len(args):
+                out.append(args[k + 1])
+            elif "=" in a and a.split("=", 1)[0] in flags:
+                out.append(a)
+            elif cmd == "curl" and re.match(r"^-[A-Za-z]*o$", a) and k + 1 < len(args):
+                out.append(args[k + 1])
+        return out
+    if cmd == "find" and any(a in ("-delete", "-exec", "-execdir") for a in args):
+        for a in args:
+            if a.startswith("-") or a in ("(", "!", "\\("):
+                break
+            out.append(a)
+        return out
+    return []
+
+
+def commands(text):
+    """Each simple command of a shell line as a list of words, prefix words taken off."""
+    for part in re.split(r"&&|\|\||[;|(){}]", text):
         try:
             words = shlex.split(part, posix=True)
         except ValueError:
             words = part.split()
-        while words and (words[0] in prefixes or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0])):
+        dropped = False
+        while words and (words[0] in PREFIXES or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0])
+                         or (dropped and words[0].startswith("-"))):
+            dropped = dropped or words[0] in PREFIXES
             words = words[1:]
-        if not words:
+        if words:
+            yield words
+
+
+def shell_hits(text, folder_vars):
+    flat, bodies = spans(text)
+    if any(shell_hits(b, folder_vars) for b in bodies):
+        return True
+    for m in redirect.finditer(flat):
+        if names_folder(m.group(1), folder_vars):
+            return True
+    in_folder = False
+    for words in commands(flat):
+        if os.path.basename(words[0]) == "cd":
+            in_folder = len(words) > 1 and names_folder(words[1], folder_vars)
             continue
-        cmd = os.path.basename(words[0])
-        if cmd in writers or (cmd == "find" and ("-delete" in words or "-exec" in words)):
-            if any(names_folder(w) for w in words[1:]):
-                return True
+        found = targets(words)
+        if any(names_folder(w, folder_vars) for w in found) or (in_folder and found):
+            return True
     return False
+
+
+PY_FUNCS = r"(?:(?:os|shutil|os\.path)\.(?:makedirs|mkdir|rename|renames|replace|symlink|link|remove|unlink|rmdir|" \
+           r"removedirs|chmod|chown|truncate|copy|copy2|copyfile|copytree|move|rmtree)|makedirs|rmtree|copyfile|copytree|copy2)\s*\("
+PY_METHODS = r"\.(?:write_text|write_bytes|mkdir|touch|unlink|rmdir|symlink_to|hardlink_to|chmod|rename|replace|open)\s*\("
 
 
 def call_args(text, start):
@@ -222,18 +351,41 @@ def call_args(text, start):
     return args
 
 
-def py_hits(text):
-    for m in py_write.finditer(text):
-        args = call_args(text, m.end())
-        if not any(re.search(r"(?:^|[/\s\"'(,])" + re.escape(name) + r"(?:[/\"'\s),]|$)", a) for a in args):
+def literal_names(text):
+    return any(names_folder(m.group(2)) for m in quoted.finditer(text))
+
+
+def write_mode(args):
+    modes = [a.split("=", 1)[1].strip() for a in args if a.replace(" ", "").startswith("mode=")]
+    modes += [a for a in args[:2] if re.fullmatch(r"['\"][rwabxt+]*['\"]", a)]
+    return any(re.fullmatch(r"['\"][rwabxt+]*[wax+][rwabxt+]*['\"]", md) for md in modes)
+
+
+def py_hits(text, folder_vars):
+    for m in re.finditer(r"\bopen\s*\(", text):
+        if text[:m.start()].rstrip().endswith("."):
             continue
-        if m.group(0).startswith("open"):
-            modes = [a.split("=", 1)[1].strip() for a in args if a.replace(" ", "").startswith("mode=")]
-            if len(args) > 1 and "=" not in args[1]:
-                modes.append(args[1])
-            if not any(re.fullmatch(r"['\"][rwabxt+]*[wax+][rwabxt+]*['\"]", md) for md in modes):
-                continue
+        args = call_args(text, m.end())
+        if args and (literal_names(args[0]) or names_folder(args[0], folder_vars)) and write_mode(args[1:]):
+            return True
+    for m in re.finditer(PY_FUNCS, text):
+        if any(literal_names(a) for a in call_args(text, m.end())):
+            return True
+    for m in re.finditer(PY_METHODS, text):
+        receiver = text[:m.start()]
+        if not re.search(r"\b(?:Pure)?(?:Posix|Windows)?Path\s*\(|\s/\s", receiver) or not literal_names(receiver):
+            continue
+        if m.group(0).startswith(".open") and not write_mode(call_args(text, m.end())):
+            continue
         return True
+    for m in re.finditer(r"\[\s*(['\"])([A-Za-z0-9_.-]+)\1\s*,", text):
+        end = text.find("]", m.start())
+        words = [q.group(2) for q in quoted.finditer(text[m.start():end if end > 0 else len(text)])]
+        if words and any(names_folder(w) for w in targets(words)):
+            return True
+    if re.search(r"\bos\.(?:system|popen)\s*\(|shell\s*=\s*True", text):
+        if any(shell_hits(q.group(2), ()) for q in quoted.finditer(text)):
+            return True
     return False
 
 
@@ -254,7 +406,7 @@ def kind(rel, path):
 
 found = []
 for rel in listed:
-    if not rel or rel.startswith(skip_dirs) or rel in skip_files:
+    if not rel or rel == own:
         continue
     path = os.path.join(root, rel)
     if not os.path.isfile(path) or os.path.islink(path) or not kind(rel, path):
@@ -264,14 +416,20 @@ for rel in listed:
             lines = f.read().splitlines()
     except OSError:
         continue
+    # Variables set to a path that names the folder, in this file: a later write through one counts.
+    folder_vars = set()
     for n, line in enumerate(lines, 1):
         text = comment.sub("", line)
-        if name not in text:
-            continue
         run = re.match(r"^\s*(?:-\s*)?run:\s*(.*)$", text)
         if run:
             text = run.group(1)
-        if shell_hits(text) or py_hits(text):
+        for m in re.finditer(r"(?:^|[\s;(])(?:local\s+|export\s+|readonly\s+)?([A-Za-z_][A-Za-z0-9_]*)\s?=\s?(\S+)", text):
+            value, _ = spans(m.group(2))
+            if names_folder(value, folder_vars) or any(names_folder(p, folder_vars) for p in re.split(r"[\s+]", value)):
+                folder_vars.add(m.group(1))
+        if name not in text and not any(v in text for v in folder_vars):
+            continue
+        if shell_hits(text, folder_vars) or py_hits(text, folder_vars):
             found.append("  %s:%d: %s" % (rel, n, line.strip()[:100]))
 if found:
     print("FAIL: a script writes into a path with a folder named %s:" % name)

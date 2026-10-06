@@ -21,7 +21,9 @@
 #   - temper-pre-commit, only when a hook of your own holds the line Temper 9.6.5 printed, which
 #     runs that file;
 #   - core.hooksPath in the repository's own config (git config --local), set to the absolute path
-#     of the temper-gate folder.
+#     of the temper-gate folder; or, when it holds a relative value of Temper's older folder that
+#     must stay (it holds other hooks), set to that same folder's absolute path, so every worktree
+#     reaches it.
 # It reads hook files to decide what to do, and writes none of them.
 #
 # What it does:
@@ -35,10 +37,15 @@
 #   - core.hooksPath a folder an older Temper set (.git/hooks-temper, .git/temper-git-hooks, or
 #     the temper-gate folder of where the repository used to be): it is pointed at the temper-gate
 #     folder, unless that folder holds other hooks git runs (git-lfs writes its hooks there); then
-#     it stays, as for the default folder.
+#     it stays, as for the default folder. When that folder is the temper-gate folder of another
+#     repository that is still there (this one is a copy), the hint says to point core.hooksPath
+#     at this repository's own folder; nothing here may change that repository's hook.
 #   - core.hooksPath any other folder (husky, lefthook, a team folder): nothing is written there.
 #     Its pre-commit hook (for husky's generated _ folder, .husky/pre-commit) counts as installed
-#     when it holds the call line; otherwise you add that line to it.
+#     when it holds the call line, and is executable where git runs it; otherwise you add that line
+#     to it. For the pre-commit framework and lefthook, their config file at the repository's top
+#     holding the line counts too. When husky's _ folder holds a pre-commit from an older Temper,
+#     git runs that in place of husky's, so the installer refuses until husky writes its own again.
 # A pre-commit from an older Temper that git still runs (next to other hooks, or in a folder that
 # is not Temper's) stays the gate until you replace it with the call line; the refusal says so,
 # with the stale plugin path it carries, if any.
@@ -50,8 +57,8 @@
 # A line before it that starts with the word exit or exec would stop it from running, so such a
 # hook is refused with that reason.
 #
-# The plugin's own folder. A path is inside the plugin when it, or a folder above it, holds
-# scripts/guards/install.sh that is the same file (device and inode) as this installer. A
+# The plugin's own folder. A path is inside the plugin when it, or a folder above it, holds a real
+# scripts/guards folder that is the same folder (device and inode) as this installer's own. A
 # repository inside the plugin, a run from a folder inside it whose repository's top is elsewhere,
 # and a repository whose git folder is inside it are refused. The one exception is the .git folder
 # of a checkout of the plugin itself (developing Temper on its own repository).
@@ -232,10 +239,18 @@ _print_lines() { # prints the hook lines between a BEGIN and an END line, on std
   echo "----- END Temper pre-commit hook lines -----" >&2
 }
 
+NO_LINES=0
 _refuse() { # _refuse <reason> [hint] -> prints the reason, the hook lines to add by hand and a
-            # one-line hint, and exits 1
+            # one-line hint, and exits 1. With NO_LINES set to 1 it prints no hook lines: the hint
+            # says what to do instead.
   echo "FAIL: $1" >&2
   local hint
+  if [[ $NO_LINES -eq 1 ]]; then
+    [[ -z "$KEPT_HOOK" ]] || echo "The Temper hook is kept in $KEPT_HOOK (in the repository's git folder, never committed). Nothing else was written." >&2
+    [[ -z "$WARNINGS" ]] || printf '%s' "$WARNINGS" >&2
+    echo "${2:-Hint: see the reason above.}" >&2
+    exit 1
+  fi
   if [[ -n "$KEPT_HOOK" ]]; then
     echo "The Temper hook is kept in $KEPT_HOOK (in the repository's git folder, never committed). Nothing else was written. To use the Temper commit gate, add the line between the BEGIN and END lines below to your pre-commit hook." >&2
     hint="Hint: add the line to your own pre-commit hook, at its start or its end. It keeps your hook's own result."
@@ -262,9 +277,12 @@ if [[ ! -f "$TEMPER_CLI" || ! -x "$TEMPER_CLI" ]]; then
   _refuse "the temper CLI next to this installer ($TEMPER_CLI) is missing or not executable, so the hook would check nothing."
 fi
 
-_plugin_at() { # _plugin_at <folder>: 0 when <folder>/scripts/guards/install.sh is this installer
-               # (the same file, by device and inode, so letter case and symlinks cannot hide it)
-  [[ -f "${1%/}/scripts/guards/install.sh" && "${1%/}/scripts/guards/install.sh" -ef "$SELF_FILE" ]]
+_plugin_at() { # _plugin_at <folder>: 0 when <folder>/scripts/guards is this installer's own folder:
+               # scripts and scripts/guards are real folders (not symlinks), and the same folder (by
+               # device and inode, so letter case cannot hide it). A folder cannot be hard linked, so
+               # a link planted above a repository cannot pass for the plugin.
+  local d="${1%/}"
+  [[ -d "$d/scripts/guards" && ! -L "$d/scripts" && ! -L "$d/scripts/guards" && "$d/scripts/guards" -ef "$GUARD_SCRIPTS" ]]
 }
 _in_plugin() { # _in_plugin <absolute path>: 0 when the path, or a folder above it, is the plugin's
                # folder by that marker
@@ -444,7 +462,7 @@ _set_hooks_path() { # points core.hooksPath at the temper-gate folder, in the re
 }
 
 _uninstall_line() {
-  echo "To uninstall: run 'git config --unset core.hooksPath' (when it points at the temper-gate folder), remove the Temper line from your own hook if you added one, and delete $GATE_DIR."
+  echo "To uninstall: run 'git config --unset core.hooksPath' (when it points at the temper-gate folder), remove the Temper line from your own hook if you added one, and delete $GATE_DIR (and $COMMON_REAL/$KEEP_965_NAME, if Temper 9.6.5 left one)."
 }
 
 _installed() { # the line a run that set core.hooksPath prints
@@ -477,6 +495,7 @@ _is_call_only() { # _is_call_only <file>: the file holds a #! line and the call 
 }
 
 HOST_HUSKY=0
+HOST_SOURCED=0
 _hint() { # _hint <hook file>: the one-line hint for adding the call line by hand
   if _is_temper_hook "$1"; then
     echo "Hint: $1 is a hook from an older Temper. Replace all of its lines with two: #!/bin/sh and the line."
@@ -498,16 +517,39 @@ _host() { # _host <hook file> <reason>: git runs that hook, and the kept hook is
           # call line and a hint. A hook from an older Temper that git runs there stays the gate
           # until it is replaced, so the refusal says so, with its stale path if it has one; this
           # installer does not write it.
-  local stale
-  case "$(_call_state "$1")" in
-    calls)
-      echo "The pre-commit hook $1 calls the Temper hook ($KEPT_HOOK), which is now current, so nothing else was written."
+  local stale state cfg
+  state="$(_call_state "$1")"
+  if [[ -z "$state" ]]; then
+    # The pre-commit framework and lefthook write their own hook, and the line goes in their
+    # config file at the repository's top: a config that holds it counts as calling the Temper hook.
+    if grep -q 'File generated by pre-commit' "$1" 2>/dev/null && grep -qF -- "$CALL_LINE" .pre-commit-config.yaml 2>/dev/null; then
+      state="config"
+      cfg=".pre-commit-config.yaml"
+    elif grep -qi 'lefthook' "$1" 2>/dev/null; then
+      for cfg in lefthook.yml .lefthook.yml lefthook.yaml .lefthook.yaml lefthook-local.yml; do
+        grep -qF -- "$CALL_LINE" "$cfg" 2>/dev/null && { state="config"; break; }
+      done
+    fi
+  fi
+  # Git runs a hook only when it is executable; husky's _ folder runs .husky/pre-commit with sh.
+  if [[ -n "$state" && "$state" != late && $HOST_SOURCED -ne 1 && ! -x "$1" ]]; then
+    _refuse "the pre-commit hook $1 is not executable, so git does not run it, and the Temper hook with it." "Hint: run chmod +x $(printf '%q' "$1"), then run this installer again."
+  fi
+  case "$state" in
+    calls|config)
+      [[ -z "$WARNINGS" ]] || printf '%s' "$WARNINGS" >&2
+      if [[ "$state" == config ]]; then
+        echo "The pre-commit hook $1 runs the Temper hook ($KEPT_HOOK) through $cfg, and that hook is now current, so nothing else was written."
+      else
+        echo "The pre-commit hook $1 calls the Temper hook ($KEPT_HOOK), which is now current, so nothing else was written."
+      fi
       _uninstall_line
       exit 0 ;;
     calls-965)
       if ! _write_hook "$COMMON_REAL" "$KEEP_965_NAME"; then
         _refuse "the pre-commit hook $1 calls the hook of Temper 9.6.5 ($COMMON_REAL/$KEEP_965_NAME), which could not be made current." "$(_hint "$1")"
       fi
+      [[ -z "$WARNINGS" ]] || printf '%s' "$WARNINGS" >&2
       echo "The pre-commit hook $1 calls the Temper hook ($COMMON_REAL/$KEEP_965_NAME), which is now current, so nothing else was written."
       _uninstall_line
       exit 0 ;;
@@ -624,6 +666,8 @@ _value_host() { # _value_host <core.hooksPath>: sets HOST, the hook of your own 
     if [[ "${parent##*/}" == ".husky" ]]; then
       HOST="$parent/pre-commit"
       HOST_HUSKY=1
+      # husky's hook in the _ folder runs that file with sh, so it needs no execute bit.
+      HOST_SOURCED=1
       return 0
     fi
   fi
@@ -676,6 +720,24 @@ if _older_value "$EXISTING_HOOKS_PATH"; then
   _scan "$OLDER_DIR"
   if [[ -n "$RUNNING$SET_ASIDE" ]]; then
     _keep_gate || _refuse "$KEEP_ERR"
+    if [[ "$OLDER_DIR" == */"$GATE_NAME" && -e "${OLDER_DIR%/*}/HEAD" ]]; then
+      # The temper-gate folder of another repository, still there (this one is a copy of it): its
+      # pre-commit is that repository's own kept hook, so nothing here may tell you to change it.
+      NO_LINES=1
+      _refuse "core.hooksPath is set to '$EXISTING_HOOKS_PATH', the Temper folder of another repository (${OLDER_DIR%/*}), which also holds hooks git runs: ${RUNNING:-none}." \
+        "Hint: point core.hooksPath at this repository's own folder (git config --local core.hooksPath $(printf '%q' "$GATE_DIR")), then copy those hooks into it, or install them again with their tool (git lfs install --local writes into the folder core.hooksPath names)."
+    fi
+    if [[ "$(_norm "$EXISTING_HOOKS_PATH")" != /* ]]; then
+      # Git takes a relative value from each worktree's top, where a linked worktree has a .git
+      # file, so no linked worktree runs that folder. The same folder by its absolute path stops
+      # no hook that runs now, and every worktree then runs it.
+      _check_config
+      git config --local core.hooksPath "$OLDER_DIR" 2>/dev/null \
+        || _refuse "core.hooksPath could not be set to $OLDER_DIR, the absolute path of '$EXISTING_HOOKS_PATH'."
+      WARNINGS="${WARNINGS}Note: core.hooksPath held '$EXISTING_HOOKS_PATH', which a linked worktree cannot reach; it now holds the same folder by its absolute path, $OLDER_DIR.
+"
+      EXISTING_HOOKS_PATH="$OLDER_DIR"
+    fi
     _scan_reason "$OLDER_DIR"
     _host "$OLDER_DIR/pre-commit" "core.hooksPath is set to '$EXISTING_HOOKS_PATH', a folder an older Temper set. $REASON"
   fi
@@ -692,4 +754,15 @@ fi
 # writes there. Its pre-commit hook runs the kept hook through the call line.
 _value_host "$EXISTING_HOOKS_PATH"
 _keep_gate || _refuse "$KEEP_ERR"
+RUN_PRE="$(_value_folder "$EXISTING_HOOKS_PATH")/pre-commit"
+if [[ "$RUN_PRE" != "$HOST" ]] && _is_temper_hook "$RUN_PRE"; then
+  # husky's _ folder: git runs its pre-commit, which an older Temper wrote over husky's own, so
+  # .husky/pre-commit, and a line added to it, never runs.
+  STALE="$(_stale_lines "$RUN_PRE")"
+  WARNINGS="${WARNINGS}Warning: $RUN_PRE is a hook from an older Temper, and git runs it in place of husky's own hook, so $HOST does not run. This installer does not write it.
+${STALE:+$STALE
+}"
+  _refuse "core.hooksPath is set to '$EXISTING_HOOKS_PATH', and git runs $RUN_PRE there, a hook from an older Temper in place of husky's." \
+    "Hint: run npx husky, which writes husky's own hooks there again (or move the pre-commit.bak.<timestamp> file there back over it), then add the line to $HOST."
+fi
 _host "$HOST" "core.hooksPath is set to '$EXISTING_HOOKS_PATH', a folder that is not Temper's, and this installer never writes into it."

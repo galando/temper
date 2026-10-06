@@ -259,7 +259,7 @@ merges. **Packs:** [docs/packs.md](docs/packs.md). **CI:** [examples/workflow/RE
 
 ## Trust
 
-Markdown, a mod written in TypeScript, about 4,200 lines of auditable bash (the CLI and the guard scripts) whose
+Markdown, a mod written in TypeScript, about 4,400 lines of auditable bash (the CLI and the guard scripts) whose
 inline Python parses and writes JSON and computes the gate requirements, and four Python scripts (about 1,000
 lines, standard library only). Temper itself makes no network calls, sends no telemetry and adds no packages. The
 committed artifacts (intent, plan, design, gate ledger and diff) are the audit trail, in the same commits as the code.
@@ -278,9 +278,9 @@ folder `~/.claude/packs`, if you made one. A pack's link targets come from the s
   files, then `temper gate commit`) to `temper-gate/pre-commit` in the repository's git folder and points
   `core.hooksPath` at that folder, so every worktree runs it. It never writes into a folder named `hooks`. When git
   would stop running other hooks (in `.git/hooks`, Temper's older folder, or husky's or lefthook's folder), it leaves
-  that setting and prints a path-free line for your hook, with a hint; the line 9.6.5 printed still counts. After a
-  move of the repository, the next `/temper` points the setting at the new place. Unset `core.hooksPath` before you
-  add the pre-commit framework or lefthook. To remove, unset it, drop any Temper line and delete `temper-gate`.
+  that setting and prints a path-free line for your hook, with a hint; 9.6.5's line still counts. After a move of the
+  repository, the next `/temper` points the setting at the new place. Unset it before adding the pre-commit framework
+  or lefthook. To remove, unset it, drop any Temper line, delete `temper-gate` and any 9.6.5 `temper-pre-commit`.
 - **Your toolchain.** Build and check run the test, lint and type check commands of your stack (detected,
   or set in `check.commands.*` in `.claude/temper.config`) and record their exit codes as evidence.
 - **Optional tools already on your machine.** OCR (open code review) is off by default. With `tools.ocr.mode`
