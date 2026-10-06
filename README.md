@@ -66,30 +66,10 @@ flowchart LR
 
 ### One flow, two views
 
-The Temper bar is the same choices as the questions Temper asks at each gate, without typing. With
-the mod loaded, Temper does not ask the question twice: it prints the result of the stage and waits
-for the bar, or for a message you type. The bar has only the options the original question had, with
-its words, plus Discuss, Play and Skip with a reason. Anything else you can ask for by typing.
-
-| Original option | Temper bar button |
-|---|---|
-| Continue to {next} | `1` Continue to {next} |
-| Loop back to {upstream} | `1` Loop back to {upstream} (the check failed) |
-| Override and continue | `9` Skip with a reason |
-| Other (a change request) | `4` Discuss |
-| Save for later | `0` More, Save for later (`2` at Done) |
-| Grill Me | `2` or `3` (phase dependent), else `0` More |
-| Teach Me | `3` (phase dependent), else `0` More |
-| Walk through step by step | `2` at Plan |
-| Open HTML review | `3` at Plan |
-| Architecture Depth Review | `2` at Review |
-| Review config suggestions | `2` at Check (when the file exists) |
-| Change | `2` at a Build checkpoint |
-| Stop | `3` at a Build checkpoint |
-| Commit | `1` when the run is done |
-
-Every original option is one digit away, or `0` and then a digit. Without the mod the questions
-come back as they were.
+The Temper bar holds the same choices as the questions Temper asks at each gate, one digit away,
+plus Discuss, Play and Skip with a reason. With the mod loaded Temper does not ask twice: it prints
+the result of the stage and waits for the bar or for a message you type. The table of every
+original option and its key is in [Commands](docs/commands.md#one-flow-two-views).
 
 ### The three modes
 
@@ -123,32 +103,25 @@ The keys of each phase are in [Commands](docs/commands.md#each-phase).
 
 ### A game while you wait
 
-Claude works and you wait? While a phase works, the band, the pane and the prompt hint offer
-"Play while you wait". Press `8` at the empty prompt, or run `/temper:temper play`, to open Temper
-Run. Ember, a small dragon, runs on the spot in a forge hall. Press `r` to run, `w` to jump over
-anvils and buckets of cold water, and `s` to duck under flying hammers. The forge gets hotter as
-your score grows. `q` or Esc leaves. You need no mouse. If no key reaches the game within 3 seconds,
-it says "No keys yet? Press Ctrl+X, then Tab, to give the game the keys." and removes that line when a
-key arrives. The game never opens by itself. It shows a banner when a phase is ready, so you do not
-miss an approval, and refusals still apply while it is open. The plugin setting `game` has three
-values: `on` (the offers and the command, the default), `command` (the command only) and `off`
-(nothing).
+While a phase works, the band, the pane and the prompt hint offer "Play while you wait". Press `8` at
+the empty prompt, or run `/temper:temper play`, to open Temper Run: Ember, a small dragon, runs in a
+forge hall. `r` runs, `w` jumps over anvils and buckets of cold water, `s` ducks under flying hammers,
+and `q` or Esc leaves. If no key reaches the game within 3 seconds, it says how to give it the keys.
+The game never opens by itself, shows a banner when a phase is ready, and refusals still apply while
+it is open. The plugin setting `game` is `on` (the default), `command` (the command only) or `off`.
 
 ![Temper Run, the optional game: Ember the dragon jumps over an anvil while Claude works](docs/assets/game.gif)
 
-The game runs on the terminal and the desktop app only. It was verified by hand on the
-terminal, with the keyboard only.
+The game runs on the terminal and the desktop app only, verified by hand on the terminal with the keyboard.
 
 ## Where enforcement works
 
-The mod needs Claude Code 2.1.287 or later. This section says plainly where that is true,
-where it is not, and what is unverified.
+The mod needs Claude Code 2.1.287 or later. Here is where that holds, where not, and what is unverified.
 
-**Older versions.** Before 2.1.287 the plugin loads and works as it always did: prompt based phases,
-the CLI gates and the native `pre-commit` hook. The mod is ignored or inert, and the skills say once
-that enforcement is off. Checked on 2.1.200 and 2.1.259 (the plugin loads, the old hooks run). The plugin
-settings declare no picker options on purpose: a settings field with options stops the whole
-plugin loading on versions before 2.1.271.
+**Older versions.** Before 2.1.287 the plugin works as it always did: prompt based phases, the CLI
+gates and the native `pre-commit` hook. The mod is inert and the skills say once that enforcement is
+off. Checked on 2.1.200 and 2.1.259. The settings declare no picker options on purpose: a settings
+field with options stops the whole plugin loading on versions before 2.1.271.
 
 | Surface | Refusals (hooks) | Drawing |
 |---|---|---|
@@ -162,24 +135,20 @@ plugin loading on versions before 2.1.271.
 | claude.ai chat, Cowork | not documented, so unverified | not documented |
 | GitHub Actions | not documented; it runs `claude -p`, so probably yes (unverified) | no |
 
-Cloud sessions only receive plugins through server managed settings, so most people get the
-prompt based phases there.
+Cloud sessions get plugins only through server managed settings, so most get the prompt based phases.
 
-**Early access API.** Claude Code's mods API is early access and may change. The adapter in
-`hooks/temper-mod/register.tsx` is deliberately thin, the rules are plain tested functions, and CI
-runs the suite on Claude Code 2.1.287.
+**Early access API.** Claude Code's mods API is early access and may change. The adapter is thin,
+the rules are plain tested functions, and CI runs the suite on Claude Code 2.1.287.
 
 **Organization policy.** An administrator can switch parts of this off:
 
-- `allowManagedModsOnly` is not a top level setting. It is an option of the built in
-  `sec-default` guard. With it on, Temper's mod does not load unless the organization ships
-  Temper itself. The rest of the plugin (commands, skills, agents, hooks) still loads.
+- `allowManagedModsOnly`, an option of the built in `sec-default` guard: with it on, Temper's mod does
+  not load unless the organization ships Temper. Commands, skills, agents and hooks still load.
 - `allowManagedHooksOnly` also stops hooks from plugins, so the classic Temper hooks stop too
   unless the plugin is force enabled.
 - `disableAllHooks` in managed settings stops every mod and every settings hook.
-- A managed guard that runs first and denies a call wins, so two guards never conflict.
-  Coexistence with the real `sec-default` was tested with a simulated prepended guard only,
-  because loading the real one needs managed settings on the machine.
+- A managed guard that runs first and denies a call wins, so two guards never conflict. This was
+  tested with a simulated `sec-default` only, as the real one needs managed settings on the machine.
 
 **You can turn it off.** Anyone can disable the plugin or run `/temper:temper enforcement off`. It guards
 a workflow for honest use; it is not a security boundary.
@@ -215,47 +184,63 @@ refusals, the phase bar and the report.
 
 ## What the mod reads and writes
 
-Mods are not sandboxed, so this is the full list. No network call, no process spawn, no agent
-started, no tool called by the mod itself: no `http`, `process` or `env` call exists in its
-reviewed call list, and CI fails if one appears.
+Mods are not sandboxed, so this is the full list. The mod makes no network, `process` or `env` call,
+starts no agent and calls no tool. CI fails on a call outside the list in `scripts/check-mod-calls.sh`.
 
-- **Reads:** `.temper/` files (state, gates, evidence, intent, plan, tasks, config, events), its settings and store.
-- **Writes no file.** It keeps your decisions, the run report and the game's best score in its own
-  plugin store on your machine. `/temper:temper report` shows the report.
-- **Sets** only `temper.uiMode` and `temper.enforcement` (you type `/temper:temper mode` or `enforcement`;
-  a locked row stays). **Runs** only `/temper:temper` and `/temper:temper continue <stage>`, on a button
-  press, each written as fixed text at the call site — never a command built from data.
-- **Submits prompts:** after a button press, the fixed text of that action, the stage, a finding id,
-  your reason, a path outside the plan and the `scripts/temper` calls that record your choice. The
-  `temper:phase` section on each request holds the phase, run title, task, criteria progress and
-  next step. No other text from your files goes into a prompt. Every prompt lands in your own
-  session, as if you had typed it; nothing is sent over the network and nothing leaves your machine.
-- **Hooks:** `tool.call` reads Write, Edit and NotebookEdit paths and Bash text, then refuses or
-  passes the call (it never answers for a tool). `command.run` answers the reserved words of
-  `/temper:temper` and passes every other command on unchanged. `session.start` and
-  `classic.SessionStart` find the project root. `turn.step` applies `phaseModels`, and
-  `reviewerModel` to the steps of the Temper review agent (found with `$.agent.list()`).
-- **Other:** it waits 60 ms with `$.clock.sleep` before it reads a state file again; it reads no global.
-  The mod **asks** you for a mode, a drift choice or a reason, and **draws** the bar, the pane and the
-  game. The one surface module it loads is the game's, `hooks/temper-mod/ui/game-client.tsx`, named as
-  a fixed string where the game pane is drawn; that module runs the game's frame clock and makes no
-  engine call at all.
-- **The test suite never runs in a session.** `tests/mod/` runs under `claude plugin test` only.
-  The `$.session.start`, `$.ui.mount`, `$.tool.call` and `$.agent.spawn` calls there are the API of
-  Claude Code's own plugin test runner (`claude-code/testing`), not another plugin. Inside a test:
-  `$.tool.call` drives the guard with fixed `scripts/temper ...` Bash commands, a Write call and one
-  AskUserQuestion; `$.agent.spawn` starts one stub review agent, to prove the mod leaves a spawn
-  unchanged. The fake engine (`world.ts`, test only code) answers AskUserQuestion from the script a
-  test sets, stands in for the Temper CLI on the fixed `state advance`, `state set` and `state loop`
-  commands, and answers the `config.set` calls a test makes (the test runner has no implementation
-  of its own for a config write, so its rule is that a test answers it; the mod itself only ever
-  calls `config.set` — on your own mode or enforcement command — and never hooks it).
+- **Reads:** `.claude/temper.config`; the run files in `.temper/` (`build-state.json`, `gates.json`,
+  `status.json`, `overrides.json`, `feedback-loops.json`, `evidence/`); the spec folder of the run
+  (`intent.md`, `plan.md`, `tasks.md`, `design.md`, `events/`); and `.git/HEAD`. To find the project
+  it looks for `.temper/build-state.json` in the session folder and up to 11 folders above it. It
+  also reads its settings, store and state, its two `/config` rows, the Claude Code version, and the
+  type of a subagent (`$.agent.list`) to find the Temper review agent.
+- **Writes no file.** Decisions, run events, the report, the game's best score and whether you were
+  asked for a mode stay in its own plugin store on your machine.
+- **Settings:** no environment variable. Only `temper.uiMode` (you type `/temper:temper mode`, or
+  answer the mode question of your first `/temper:temper`) and `temper.enforcement` (you type
+  `/temper:temper enforcement`). A row your organization locked stays as it is.
+- **Commands:** only `/temper:temper` and `/temper:temper continue <stage>` (intent, plan, design,
+  build, review or check), each written as fixed text, and only when you press a button or Enter in
+  the reason field. No command is built from data.
+- **Prompts:** only on that press, the fixed text of the action, with the phase, a finding number,
+  your reason, and the `scripts/temper` command that records your choice (with the plugin folder's
+  path). Discuss and Change put a fixed draft in your prompt box. After an answer in full mode it
+  may suggest the next fixed prompt; it never sends one. Each prompt is a turn of your session,
+  marked as from the Temper plugin; the mod sends nothing anywhere else.
+- **System prompt:** `prompt.compose` adds one section, `temper:phase`, to each request: enforcement
+  on or off, the phase, task, run title, passed criteria, stale phases, the next step, and one fixed
+  line (answer a message at a gate; after a requested change, run the gate again).
+- **Hooks:**
+  - `tool.call` sees every tool call, a subagent's too. It reads the path of Write, Edit, MultiEdit
+    and NotebookEdit and the text of Bash, then refuses the call or passes it on unchanged; it never
+    answers for a tool. A write outside the plan asks you what to do.
+  - `command.run` answers only `/temper:temper` subcommands (`status`, `timeline`, `help`, `report`,
+    `mode`, `enforcement`, `pane`, `play`, `pause`, `resume`) and a bare `/temper:temper`, which
+    toggles the pane. It records a decision word (`approve`, `next`, `back`, `override`, `accept`,
+    `drift`), then passes it on. A word that changes state, and `play`, is refused unless you typed
+    it in your prompt box. `pr`, `discuss`, `continue`, any other text and every other command pass
+    on unchanged, the two commands the mod runs itself included.
+  - `session.start` and `classic.SessionStart` find the project root and load the run; in full mode
+    `session.start` also opens the pane during a phase. Both return what the engine gives them: no
+    context, instruction or setting is added.
+  - `turn.step` sets the model and effort from `phaseModels`, and the model of the Temper review agent
+    from `reviewerModel`; empty options change nothing. `attribution.text` adds one Temper line to a
+    pull request description while a run is on and `prAttribution` is on. `turn.complete` adds a one
+    line status under an answer in full mode.
+  - `ui.render` draws the bar, pane, game, spinner word, prompt hint and a line above Claude's question
+    dialog, which stays unchanged. `ui.message` takes the game's score; `ui.close` notes a closed pane.
+- **The game** is the one file the mod loads beside itself: `hooks/temper-mod/ui/game-client.tsx`,
+  named as fixed text and imported statically. It makes no engine call and posts only the score.
+- **Other:** it asks you for a mode, a drift choice or a reason, shows a toast when the phase or the
+  enforcement changes, and waits 60 ms with `$.clock.sleep` (at most 4 times) to reread a state file.
+- **The tests never run in your session.** `tests/mod/` runs only under `claude plugin test`, against a
+  fake engine (`world.ts`); the plugin never loads it. Every `$` call there (`$.session.start`,
+  `$.ui.mount`, `$.tool.call`, `$.agent.spawn` and the rest) goes to Claude Code's own test kit
+  (`claude-code/testing`), not another plugin. Tests hand Bash commands and file edits to the guard;
+  the fake engine answers each tool call, the mod's questions, `config.set`, `fs.write` and `command.run`
+  with a stub, so nothing runs. One test spawns a stub review agent to show a spawn passes unchanged.
 - **Tests, lint, git and `scripts/temper`** run as prompts to Claude with its normal permissions. Auto
   mode may refuse a skip as a gate bypass; the bar then says "Press 1 to record it". Allow it once,
   for example `Bash(*scripts/temper override*)`, or run it yourself with `!`.
-
-CI fails if the mod gains any `process`, `http` or `env` call, or any call outside the reviewed list
-in [scripts/check-mod-calls.sh](scripts/check-mod-calls.sh).
 
 ## Commands
 
@@ -288,7 +273,8 @@ audit trail: who asked, what was planned, what the gates verified, in the same c
 
 ### What Temper runs and changes
 
-Temper's scripts run locally with `bash`, `git` and `python3`, and write only inside your project.
+Temper's scripts run locally with `bash`, `git` and `python3`, and write only inside your project
+(the `pre-commit` hook goes where your `core.hooksPath` points, if you set one).
 
 - **Plugin hooks.** `hooks/hooks.json` registers two classic hooks and the mod module.
   `UserPromptSubmit` runs `scripts/hooks/stage-marker.sh`, which notes which gate a standalone

@@ -73,6 +73,21 @@ You cannot apply for the Verified label or for a place in the directory. Anthrop
 during review. What you control is a clean review (no held files, no unclear behavior), a clear
 listing and a smooth first install.
 
+## What the directory holds, and why
+
+The directory scans every file of the tracked branch (`main`) as plugin code, the test suite
+included, and names one sample location for each kind of finding. Its reader is not the one in
+`claude plugin validate`, so a fix cannot be checked offline: the validator passing proves only that
+Claude Code itself accepts the plugin.
+
+| Kind of finding | Answered by |
+|---|---|
+| This plugin includes a mod | Always a reviewer. Nothing in the code clears it. |
+| The game's file path, the scripts that name the mod's folders | Code: see the 9.6.4 entry in `CHANGELOG.md`. Keep `module:` a fixed string outside JSX, and keep scripts out of `hooks/temper-mod/`. |
+| Prompts, commands, settings, hooks the mod uses | The README section "What the mod reads and writes". Change it in the same commit as the code. |
+| Tool calls, `config.set`, `command.run`, an agent spawn in `tests/mod/` | The fake engine of the test kit. The README says so; a reviewer confirms. |
+| Images, credentials, download and run text | Notes for the reviewer: the images are plain, and the rest is text in docs, tests and the Bash guard's patterns. |
+
 ## What is not verified
 
 - Which categories and fields a given directory asks for. Use the form as it is today.

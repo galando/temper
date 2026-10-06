@@ -650,7 +650,9 @@ trial: the first was not clear and not fun, the second was not what was wanted.
   is a Client module (a surface module): it runs the frame clock (80 ms), compares the counters with
   the values it saw last and applies each new press once, and draws. After one click it also takes
   Space and the Up arrow (jump) and the Down arrow (duck) directly through `onKey`. It has no `$`
-  call at all, and `scripts/check-mod-calls.sh` fails if one appears in any `*-client.tsx` file. It
+  call at all: `$` is only a hooks module's parameter, so the type check (`tsc -p tsconfig.mod.json`,
+  run in CI) fails if one appears. The hooks module imports it statically, and the pane names it as
+  the fixed text `./ui/game-client.tsx`. It
   posts the score once for each game over, and the `ui.message` hook keeps the best score with the
   existing `$.store.set`. No call is new: the reviewed list stays at 20.
 - Measured on the terminal (tmux, 160 columns, real Claude Code 2.1.288): from `tmux send-keys` to

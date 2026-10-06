@@ -1215,16 +1215,18 @@ export const register: Register = (on, opts) => {
       )
     }
     const ui = await readUi($).catch(() => null)
-    const { Client, Box, Button } = $.ui.resolve(e)
+    const { Box, Button } = $.ui.resolve(e)
     const ctl = await readCtl($)
     const act = (fn: () => Promise<void>) => () => fn().catch(() => undefined)
     // The game module is imported statically at the top of this file, so the file the pane loads
-    // stands in the module graph where a reader can read it; the frame clock still runs in the
-    // module, which the Client element mounts here by its fixed path.
+    // stands in the module graph. The Client element is made here, in a plain statement outside the
+    // tree, on the element table itself, with the module path as fixed text: a reader that does not
+    // walk JSX still finds which file it loads. The frame clock runs in that module.
     const props: GameProps = { ...ctl, seed: seedFor(ctl.startCount), best: gameBest, banner: bannerFor(ui?.view ?? null), compact: e.props.placement === 'inline' }
+    const game = $.ui.resolve(e).Client({ key: 'game', module: './ui/game-client.tsx', props })
     return (
       <Box flexDirection="column" backgroundColor={CARD_BG}>
-        {Client({ key: 'game', module: './ui/game-client.tsx', props })}
+        {game}
         <Box flexDirection="row" columnGap={1} flexWrap="wrap">
           <Button key="game-jump" label="w  Jump" hotkey="w" variant="primary" onPress={act(() => pressGame($, 'jumpCount'))} />
           <Button key="game-duck" label="s  Duck" hotkey="s" variant="primary" onPress={act(() => pressGame($, 'duckCount'))} />

@@ -3,38 +3,45 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## v9.6.4: the directory's holds — one static import, clean scripts, plain disclosures
+## v9.6.4: the directory's holds, answered in code and in the README
 
-The directory held 9.6.3 by policy with twelve reasons. This release removes the ones code can
-remove and answers the rest, in plain words, in the README's "What the mod reads and writes".
-Gates, commands, agents and the mod's behavior do not change.
+The directory held 9.6.3 with twelve reasons. This release changes the code where a change can clear
+a reason, and answers the rest in the README's "What the mod reads and writes", rewritten against the
+code. Gates, commands, agents and what the mod does do not change.
 
-- **The game module is a static import.** The finding "Mod loads a file whose path the directory
-  couldn't read" followed the game's `Client` element across two releases (9.6.2 drew it as JSX,
-  9.6.3 called it directly — both were held). The surface module is now also imported statically
-  (`import GameClient from './ui/game-client'`), so the file the pane loads stands in the module
-  graph a reader walks, and the props the pane hands it are typed from the module's own function
-  (`Parameters<typeof GameClient>[0]`). The `module` prop stays the fixed string
-  `./ui/game-client.tsx` and the pane draws exactly as before.
-- **No script points into the mod's folders any more** ("The directory couldn't confirm that the
-  mod stays the same after it's checked"). `scripts/check-mod-calls.sh` takes the surface module's
-  folder from the validator's own `surface modules:` line (or `CHECK_MOD_CLIENT_DIR`), instead of
-  spelling the mod's path; `scripts/check-known-limits.sh` no longer names the known limits test
-  file (it checks that mods-plan names the known limits section); and the approval gate example
-  moved from `examples/hooks/` to `examples/gates/` — its folder name shared "hooks" with the mod's
-  folder, and its header carried a `scripts/hooks/*.sh` wildcard (now one spelled-out script).
-- **The test world says what it is.** `tests/mod/world.ts` declares itself test only code that
-  never loads in a session (it no longer says "Not a test file"), and its `config.set` stand-in
-  carries a comment saying why a test answers the call: the runner has no implementation of its own
-  to pass a config write to. The mod itself only ever calls `config.set`, never hooks it.
-- **README, "What the mod reads and writes":** the no-network/no-spawn statement names the
-  enforced call list; the commands bullet says each command is fixed text at the call site; the
-  prompts bullet says where a prompt lands (your own session, nothing leaves the machine); a new
-  bullet names the test suite's harness calls one by one (`$.session.start`, `$.ui.mount`,
-  `$.tool.call`, `$.agent.spawn` — the plugin test runner's API, not another plugin), the fixed
-  `scripts/temper` commands they drive, the one stub agent spawn, and the game's surface module as
-  the one file the mod loads. These answer the directory's "say in the plugin's README" remedies
-  for the test-side findings.
+- **The game's Client.** "Mod loads a file whose path the directory couldn't read" stayed on two
+  spellings (9.6.2 drew `<Client module=... />`, 9.6.3 called `Client({...})` inside the tree), both
+  flagged at `const { Client, Box, Button } = $.ui.resolve(e)`. The game module is now imported
+  statically (`import GameClient from './ui/game-client'`, which also types its props), and the
+  Client element is made in a plain statement outside the tree, on the element table itself:
+  `$.ui.resolve(e).Client({ key: 'game', module: './ui/game-client.tsx', props })`. These are the two
+  remedies the directory names. `claude plugin validate` reads the same surface module as before,
+  and the game draws the same. One real change: the hooks module now also loads the game module's
+  definitions when it starts (it has no top level code, so nothing runs).
+- **The three scripts the directory named** ("The directory couldn't confirm that the mod stays the
+  same after it's checked"). `scripts/check-mod-calls.sh` reads only the validator's output: its
+  scan of the game file, through a computed folder and a wildcard, is gone, because the mod's type
+  check already fails on any `$` in a surface module. `scripts/check-known-limits.sh` no longer
+  names the known limits test and reads its two files by fixed paths. The approval gate example
+  moved from `examples/hooks/` to `examples/gates/` (the folder shared the name "hooks" with the
+  mod's) and no longer names `scripts/hooks/` or a wildcard.
+- **README, "What the mod reads and writes", rewritten from the code.** It named 5 of the mod's 11
+  hook events; it now covers every hook, every file the mod reads, what each prompt holds, the
+  `temper:phase` system prompt section, the two settings and when they change, the two commands and
+  when they run, the game module as the one file loaded, and what the test suite's fake engine does.
+  It corrects three statements: the config is `.claude/temper.config`, not a `.temper/` file; no
+  path outside the plan ever goes into a prompt (it goes into the refusal and the question); and
+  `prompt.compose`, `attribution.text` and `turn.step` do change the request, so "no hook changes
+  instructions" was untrue. A prompt the mod submits is a turn of your session, marked as from the
+  Temper plugin. The gate and bar table moves to Commands, where a full copy already was, so the
+  README stays within 300 lines.
+- **The test world says what it is.** `tests/mod/world.ts` declares itself test only code, and its
+  `config.set` stand in says why a test answers that call.
+- **Trust:** the `pre-commit` hook goes where `core.hooksPath` points, when you set one.
+
+Held by design: "This plugin includes a mod" always goes to a reviewer, and the findings that point
+into `tests/mod/` (the fake engine answers tool calls, `config.set` and `command.run`; one test
+spawns a stub agent) are Claude Code's test kit at work, explained in the README.
 
 ## v9.6.3: the game's Client is called with its path as fixed text
 

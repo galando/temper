@@ -46,7 +46,6 @@ allowed_names() { printf '%s\n' "$ALLOWED" | awk 'NF { print $1 }'; }
 
 if [[ -n "${CHECK_MOD_CALLS_LINE:-}" ]]; then
   LINE="$CHECK_MOD_CALLS_LINE"
-  OUT=""
 else
   command -v claude >/dev/null 2>&1 || { echo "FAIL: claude is not installed (need Claude Code 2.1.287 or later)"; exit 1; }
   OUT="$(claude plugin validate "$REPO_ROOT/.claude-plugin/plugin.json" </dev/null 2>&1)" || {
@@ -88,26 +87,11 @@ while IFS= read -r call; do
   fi
 done <<< "$CALLS"
 
-# The surface modules run on the drawing thread and have no engine at all: any dollar
-# sign followed by a dot in one fails. CHECK_MOD_CLIENT_DIR lets the test script point at
-# fixtures; with it unset, the folder comes from the validator's own "surface modules:"
-# line, so this script never spells the mod's folders itself.
-CLIENT_DIR="${CHECK_MOD_CLIENT_DIR:-}"
-if [[ -z "$CLIENT_DIR" && -n "$OUT" ]]; then
-  SM="$(printf '%s\n' "$OUT" | sed -nE 's/.*surface modules: //p' | head -1)"
-  if [[ -n "$SM" ]]; then CLIENT_DIR="$REPO_ROOT/$(dirname "$SM")"; fi
-fi
-if [[ -n "$CLIENT_DIR" ]]; then
-  for f in "$CLIENT_DIR"/*-client.tsx; do
-    [[ -e "$f" ]] || continue
-    if grep -nE '(^|[^A-Za-z0-9_])\$\.' "$f" >/dev/null; then
-      echo "FAIL: $(basename "$f") makes a \$. call; a surface module has no engine (it posts to the hooks module instead)"
-      FAIL=1
-    fi
-  done
-fi
+# The game's surface module has no engine at all: `$` exists only as a hooks module's parameter,
+# so the mod's type check (tsc -p tsconfig.mod.json, run in CI) fails on any `$.` call in it. This
+# script reads only the validator's output and never opens a file of the mod.
 
 if [[ $FAIL -eq 0 ]]; then
-  echo "OK: $(printf '%s\n' "$CALLS" | wc -l | tr -d ' ') calls, all on the reviewed list, none process/http/env; surface modules make no \$. call"
+  echo "OK: $(printf '%s\n' "$CALLS" | wc -l | tr -d ' ') calls, all on the reviewed list, none process/http/env"
 fi
 exit $FAIL
