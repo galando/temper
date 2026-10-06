@@ -20,8 +20,10 @@
 #     python3 the call cannot be split up, so it passes; the commit hook still scans.
 #   - As the git pre-commit hook (the installed hook passes --staged; a run with no JSON
 #     on stdin counts the same), it scans the staged files: the content in git's index
-#     (git show ":<path>"), which is what the commit records, not the copy in the work
-#     tree. Names are read NUL-separated, so no file name is quoted or skipped. Without
+#     (git show ":0:<path>", stage 0), which is what the commit records, not the copy in
+#     the work tree. The stage is always named, so a file name such as 1:creds.txt is not
+#     read as a stage number. Names are read NUL-separated, so no file name is quoted or
+#     skipped. Without
 #     --staged it also scans the file named by $CLAUDE_FILE_PATH and any plain text on stdin.
 # A block names where the match is: the staged file, the file, standard input or the text
 # the tool call adds.
@@ -130,7 +132,9 @@ sys.stdout.write("\n".join(parts))
   command -v git >/dev/null 2>&1 || return 0
   local f
   while IFS= read -r -d '' f; do
-    match=$(git show ":$f" 2>/dev/null | _first_match || true)
+    # The explicit stage 0: git reads ":1:creds.txt" as stage 1 of creds.txt, never as the
+    # staged file named 1:creds.txt.
+    match=$(git show ":0:$f" 2>/dev/null | _first_match || true)
     if [[ -n "$match" ]]; then _block "$match" "the staged copy of '$f'"; return 2; fi
   done < <(git diff --cached --name-only -z --diff-filter=ACMR 2>/dev/null || true)
   return 0

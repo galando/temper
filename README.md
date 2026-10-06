@@ -276,11 +276,11 @@ folder `~/.claude/packs`, if you made one. A pack's link targets come from the s
   keep working (at most twice per stage) until that gate has a verdict. Both fail open.
 - **Git hook.** On the first run `scripts/guards/install.sh` writes a `pre-commit` hook (a secret scan of the staged
   files, then `temper gate commit`) to the hooks folder git names, which linked worktrees share, or to a
-  `core.hooksPath` folder in the repository. Temper never writes over a hook that is not its own or a tracked hook
-  file: it prints the lines to add, with a hint for husky or the pre-commit framework. `--global` writes it to
-  `temper-git-hooks` in the git folder and sets that absolute path as `core.hooksPath`, so worktrees use it too
-  (refused when `core.hooksPath` is set or `.git/hooks` has such a hook). It says how to restore an older version's
-  `pre-commit.bak.<timestamp>`. To remove the hook, delete it (and unset `core.hooksPath` after `--global`).
+  `core.hooksPath` folder in the repository. Over a hook not its own or a tracked one, it writes only the Temper hook,
+  as `temper-pre-commit` in the git folder, and prints a path-free line for that hook to run it, with a hint for husky,
+  lefthook or the pre-commit framework. `--global` sets `core.hooksPath` to `.git/temper-git-hooks` (not over another
+  folder, or while `.git/hooks` has hooks git would skip). It says how to restore an old `pre-commit.bak.<timestamp>`.
+  To remove, delete the hook and any `temper-pre-commit` (after `--global`, unset `core.hooksPath`).
 - **Your toolchain.** Build and check run the test, lint and type check commands of your stack (detected,
   or set in `check.commands.*` in `.claude/temper.config`) and record their exit codes as evidence.
 - **Optional tools already on your machine.** OCR (open code review) is off by default. With `tools.ocr.mode`

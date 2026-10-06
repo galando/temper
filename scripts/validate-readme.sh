@@ -48,12 +48,14 @@ LISTED="$(cd "$REPO_ROOT" && git ls-files -co --exclude-standard 2>/dev/null || 
 DELETED="$(cd "$REPO_ROOT" && git ls-files -d 2>/dev/null || true)"
 PRESENT="$(printf '%s\n' "$LISTED" | grep -vxF -f <(printf '%s\n' "$DELETED") || true)"
 
-# in_repo <path>: a listed file, or a folder that holds one.
+# in_repo <path>: a listed file, or a folder that holds one. grep reads a here-string, not a
+# pipe: under pipefail, grep -q leaving early could end the writer with SIGPIPE and fail the
+# whole check for a link that is there.
 in_repo() {
   local t="${1%/}"
   [[ -n "$t" ]] || return 1
-  printf '%s\n' "$PRESENT" | grep -qxF -- "$t" && return 0
-  printf '%s\n' "$PRESENT" | awk -v p="$t/" 'index($0, p) == 1 { found = 1 } END { exit !found }'
+  grep -qxF -- "$t" <<< "$PRESENT" && return 0
+  awk -v p="$t/" 'index($0, p) == 1 { found = 1 } END { exit !found }' <<< "$PRESENT"
 }
 
 if [[ -z "$PRESENT" ]]; then
@@ -82,7 +84,7 @@ fi
 
 # 4. First 50 lines contain problem statement and quick start
 HEAD50=$(head -50 "$README")
-if echo "$HEAD50" | grep -qi "install\|quick start\|get started\|usage"; then
+if grep -qi "install\|quick start\|get started\|usage" <<< "$HEAD50"; then
   ok
 else
   fail "First 50 lines missing install/quick start instruction"

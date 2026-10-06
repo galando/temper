@@ -2513,14 +2513,24 @@ assert_eq "a symlinked pre-commit becomes a regular file, and its target is unto
   "$([[ -f .git/hooks/pre-commit && ! -L .git/hooks/pre-commit ]] && echo yes || echo no)|$([[ "$(cksum < "$WORKDIR/linked-hook.sh")" == "$LINKED_SUM" ]] && echo yes || echo no)"
 rm -f "$WORKDIR/linked-hook.sh"
 # core.hooksPath: accepted only inside the repository, with no '..', in a folder with no JSON file.
-rm -f .git/hooks/pre-commit
-git config core.hooksPath ../outside-hooks
+# A value with '..' that stays inside the repository is refused with the whole hook printed.
+rm -f .git/hooks/pre-commit .git/temper-pre-commit
+git config core.hooksPath sub/../dotdot-hooks
 assert_exit "install.sh refuses a core.hooksPath with '..'" 1 bash "$REPO_ROOT/scripts/guards/install.sh"
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1; true)
-assert_eq "the refusal prints the hook lines to add by hand" "yes" \
-  "$(echo "$OUT" | grep -q 'Nothing was written' && echo "$OUT" | grep -q 'gate commit' && echo yes || echo no)"
-assert_eq "the refusal writes nothing" "no|no" \
-  "$([[ -e "${WORKDIR%/*}/outside-hooks" ]] && echo yes || echo no)|$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)"
+assert_eq "the refusal prints the whole hook to add by hand, and says nothing was written" "yes|yes|yes" \
+  "$(echo "$OUT" | grep -qF "no '..', no '~' and no unusual characters" && echo yes || echo no)|$(echo "$OUT" | grep -qxF 'Nothing was written. To use the Temper commit gate, add the lines between the BEGIN and END lines below to your pre-commit hook.' && echo yes || echo no)|$(echo "$OUT" | grep -q 'gate commit' && echo yes || echo no)"
+assert_eq "the refusal writes nothing" "no|no|no" \
+  "$([[ -e dotdot-hooks ]] && echo yes || echo no)|$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)|$([[ -e .git/temper-pre-commit ]] && echo yes || echo no)"
+# A value with '..' that leads out of the repository is an outside folder: the hook is kept in the
+# repository's git folder, and only the line that runs it is printed.
+git config core.hooksPath ../outside-hooks
+OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); RC=$?
+assert_eq "a core.hooksPath with '..' that leads outside the repository is refused as an outside folder, with the hook kept" "1|yes|yes|yes" \
+  "$RC|$(echo "$OUT" | grep -qF "FAIL: core.hooksPath is set to '../outside-hooks', which is outside this repository and its git folder." && echo yes || echo no)|$(echo "$OUT" | grep -qxF "The Temper hook is kept in $WORKDIR/.git/temper-pre-commit (in the repository's git folder, never committed). Nothing else was written. To use the Temper commit gate, add the line between the BEGIN and END lines below to your pre-commit hook." && echo yes || echo no)|$(grep -q 'gate commit' .git/temper-pre-commit 2>/dev/null && echo yes || echo no)"
+assert_eq "that refusal writes nothing but the kept hook" "no|no|yes" \
+  "$([[ -e "${WORKDIR%/*}/outside-hooks" ]] && echo yes || echo no)|$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)|$([[ -f .git/temper-pre-commit ]] && echo yes || echo no)"
+rm -f .git/temper-pre-commit
 git config core.hooksPath /nonexistent-temper-hooks
 assert_exit "install.sh refuses an absolute core.hooksPath outside the repository" 1 bash "$REPO_ROOT/scripts/guards/install.sh"
 assert_eq "the refusal of an outside folder writes nothing" "no" "$([[ -e /nonexistent-temper-hooks ]] && echo yes || echo no)"
@@ -2544,7 +2554,7 @@ bash "$REPO_ROOT/scripts/guards/install.sh" --global >/dev/null 2>&1
 assert_eq "--global writes .git/temper-git-hooks/pre-commit and points core.hooksPath at its absolute path" "yes|$(pwd -P)/.git/temper-git-hooks" \
   "$([[ -x .git/temper-git-hooks/pre-commit ]] && echo yes || echo no)|$(git config --get core.hooksPath)"
 git config --unset core.hooksPath 2>/dev/null || true
-rm -rf .git/temper-git-hooks abs-hooks dot-hooks cfg-hooks "$WORKDIR/outside"
+rm -rf .git/temper-git-hooks .git/temper-pre-commit abs-hooks dot-hooks cfg-hooks "$WORKDIR/outside"
 
 # --- install.sh and the commit guards: no write through a link, the installer's own symlinks,
 # chained hooks, worktrees, --global over a set core.hooksPath, staged-only secret scans, the
@@ -2584,7 +2594,7 @@ I_SUM="$(cksum < "$I_INSTALL")"
 ln "$I_INSTALL" .git/hooks/pre-commit
 bash "$I_INSTALL" >/dev/null 2>&1
 assert_eq "a pre-commit hard-linked to install.sh itself leaves install.sh as it was" "$I_SUM" "$(cksum < "$I_INSTALL")"
-rm -f .git/hooks/pre-commit .git/hooks/pre-commit.bak.*
+rm -f .git/hooks/pre-commit .git/hooks/pre-commit.bak.* .git/temper-pre-commit
 # install.sh reached through a chain of symlinks finds the real plugin folder.
 mkdir -p "$WORKDIR/inst-bin"
 ln -s "$I_INSTALL" "$WORKDIR/inst-bin/temper-install"
@@ -2601,18 +2611,31 @@ cp "$TEMPER" "$WORKDIR/loose-installer/scripts/temper"
 assert_exit "install.sh outside a plugin's scripts/guards folder refuses" 1 bash "$WORKDIR/loose-installer/install.sh"
 chmod -x "$I_PLUG/scripts/temper"
 assert_exit "install.sh refuses when the plugin's CLI is not executable" 1 bash "$I_INSTALL"
+# A refusal before the repository's git folder is known prints the whole hook between a BEGIN and
+# an END line, without its first line and in a subshell whose exits end only it, ready to copy.
+OUT=$(bash "$I_INSTALL" 2>&1; true)
 chmod +x "$I_PLUG/scripts/temper"
-assert_eq "neither refusal writes a hook" "no" "$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)"
+assert_eq "neither refusal writes a hook" "no|no" \
+  "$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)|$([[ -e .git/temper-pre-commit ]] && echo yes || echo no)"
 rm -rf "$WORKDIR/loose-installer"
-# A refusal prints the hook lines between a BEGIN and an END line, ready to copy.
+I_LINES="$(printf '%s\n' "$OUT" | sed -n '/^----- BEGIN Temper pre-commit hook lines -----$/,/^----- END Temper pre-commit hook lines -----$/p' | sed '1d;$d')"
+printf '%s\n' "$I_LINES" > "$WORKDIR/hook-lines.sh"
+assert_eq "an early refusal prints the whole hook in a subshell that keeps the host hook's result, a valid script" \
+  '_temper_rc=$?; [ "$_temper_rc" -eq 0 ] || exit "$_temper_rc"|(|) || exit 1|yes|no|yes|yes' \
+  "$(sed -n 1p "$WORKDIR/hook-lines.sh")|$(sed -n 2p "$WORKDIR/hook-lines.sh")|$(tail -1 "$WORKDIR/hook-lines.sh")|$(grep -qxF "$I_CLI_LINE" "$WORKDIR/hook-lines.sh" && echo yes || echo no)|$(grep -qxF '#!/usr/bin/env bash' "$WORKDIR/hook-lines.sh" && echo yes || echo no)|$(bash -n "$WORKDIR/hook-lines.sh" 2>/dev/null && echo yes || echo no)|$(printf '%s\n' "$OUT" | grep -qxF 'Nothing was written. To use the Temper commit gate, add the lines between the BEGIN and END lines below to your pre-commit hook.' && echo yes || echo no)"
+rm -f "$WORKDIR/hook-lines.sh"
+# A refusal over an outside core.hooksPath keeps the hook in the repository's git folder and prints
+# exactly one line, which names no path of this machine.
 git config core.hooksPath ../outside-hooks
 OUT=$(bash "$I_INSTALL" 2>&1; true)
 git config --unset core.hooksPath
 I_LINES="$(printf '%s\n' "$OUT" | sed -n '/^----- BEGIN Temper pre-commit hook lines -----$/,/^----- END Temper pre-commit hook lines -----$/p' | sed '1d;$d')"
-printf '%s\n' "$I_LINES" > "$WORKDIR/hook-lines.sh"
-assert_eq "a refusal prints the whole hook, a valid bash script, between a BEGIN and an END line" "#!/usr/bin/env bash|yes|yes" \
-  "$(head -1 "$WORKDIR/hook-lines.sh")|$(grep -qxF "$I_CLI_LINE" "$WORKDIR/hook-lines.sh" && echo yes || echo no)|$(bash -n "$WORKDIR/hook-lines.sh" 2>/dev/null && echo yes || echo no)"
-rm -f "$WORKDIR/hook-lines.sh"
+assert_eq "a refusal that keeps the hook prints exactly the line that runs it" \
+  '_temper_rc=$?; [ "$_temper_rc" -eq 0 ] || exit "$_temper_rc"; _temper_hook="$(git rev-parse --git-common-dir)/temper-pre-commit"; [ ! -f "$_temper_hook" ] || bash "$_temper_hook" || exit 1' \
+  "$I_LINES"
+assert_eq "the kept hook is the full hook with this plugin's paths, a valid bash script" "#!/usr/bin/env bash|yes|yes" \
+  "$(head -1 .git/temper-pre-commit)|$(grep -qxF "$I_CLI_LINE" .git/temper-pre-commit && echo yes || echo no)|$(bash -n .git/temper-pre-commit 2>/dev/null && echo yes || echo no)"
+rm -f .git/temper-pre-commit
 # A run from a folder inside the plugin's folder whose repository's top is elsewhere (an
 # installed copy inside some repository) writes nothing.
 assert_exit "install.sh refuses a run from inside the plugin's folder when the repository's top is elsewhere" 1 \
@@ -2640,7 +2663,7 @@ done
 assert_exit "install.sh refuses a hook that is not Temper's, with backup names planted as symlinks into the plugin's own folder" 1 bash "$I_INSTALL"
 assert_eq "the plugin file behind the backup name and the existing hook are left as they were" "plugin data|exit 0" \
   "$(cat "$I_PLUG/inner/bak-target")|$(sed -n 2p .git/hooks/pre-commit)"
-rm -f .git/hooks/pre-commit .git/hooks/pre-commit.bak.*
+rm -f .git/hooks/pre-commit .git/hooks/pre-commit.bak.* .git/temper-pre-commit
 # --global refuses when core.hooksPath is already set: the default mode installs into that folder.
 mkdir -p .husky
 git config core.hooksPath .husky
@@ -2887,6 +2910,14 @@ git -C "$G_PLUG" config core.hooksPath inner/code
 assert_exit "in the plugin's own repository, a core.hooksPath into its folder is refused" 1 \
   bash -c "cd '$G_PLUG' && bash scripts/guards/install.sh"
 git -C "$G_PLUG" config --unset core.hooksPath
+# A hook that is not Temper's in the plugin's own repository: the hook is never kept in the
+# plugin's folder (its .git folder included), so the refusal prints the whole hook instead.
+printf '#!/bin/sh\necho mine\n' > "$G_PLUG/.git/hooks/pre-commit"
+chmod +x "$G_PLUG/.git/hooks/pre-commit"
+OUT=$(cd "$G_PLUG" && bash scripts/guards/install.sh 2>&1); G_RC=$?
+assert_eq "in the plugin's own repository, a refusal keeps no hook in the plugin's folder and prints the whole hook" "1|no|yes|yes" \
+  "$G_RC|$([[ -e "$G_PLUG/.git/temper-pre-commit" ]] && echo yes || echo no)|$(printf '%s\n' "$OUT" | grep -qxF 'Nothing was written. To use the Temper commit gate, add the lines between the BEGIN and END lines below to your pre-commit hook.' && echo yes || echo no)|$(printf '%s\n' "$OUT" | grep -qxF ') || exit 1' && echo yes || echo no)"
+rm -f "$G_PLUG/.git/hooks/pre-commit"
 assert_exit "in the plugin's own repository, the default .git/hooks is accepted" 0 \
   bash -c "cd '$G_PLUG' && bash scripts/guards/install.sh"
 assert_eq "the hook lands in the plugin repository's .git/hooks, and nowhere else in it" "yes|no" \
@@ -3413,17 +3444,20 @@ rm -rf "$CL_PLUG" "$CL_PROJ" "$CL_BIN" "$CL_LOOSE" "$CL_HOME" "$WORKDIR/cl-guard
   "$WORKDIR/cl-home-link"
 
 # --- install.sh never writes over a pre-commit hook that is not Temper's, nor a file git tracks:
-# it prints a FAIL line, the hook lines and a hint (husky v8 under sh, husky v9, the pre-commit
-# framework, a tracked hooks folder), and the lines work where the hint puts them. An older
-# Temper hook is replaced and an old installer's backup is named. --global sets an absolute
-# core.hooksPath that linked worktrees use. Both commit hooks block on the CLI's exit 3 while a
-# run is active. block-secrets --staged scans the staged content. The guard scripts follow their
-# own symlinks and do nothing outside a scripts/guards folder ---
+# it keeps the hook as temper-pre-commit in the repository's git folder and prints a FAIL line,
+# the one line that runs it and a hint (husky v8 under sh, husky v9, lefthook, the pre-commit
+# framework, a tracked hooks folder, an outside core.hooksPath). The line keeps the host hook's
+# own result at its start or its end, and a re-run finds it. An older Temper hook is replaced and
+# an old installer's backup is named. --global sets an absolute core.hooksPath that linked
+# worktrees use, refuses over hooks in .git/hooks, and repairs its own value after a move. Both
+# commit hooks block on the CLI's exit 3 while a run is active. block-secrets --staged scans the
+# staged content. The guard scripts follow their own symlinks and do nothing outside a
+# scripts/guards folder ---
 setup
 git config user.email "test@example.com"
 git config user.name "test"
 git config --unset core.hooksPath 2>/dev/null || true
-rm -rf .git/hooks/pre-commit .git/hooks/pre-commit.bak.* .git/temper-git-hooks
+rm -rf .git/hooks/pre-commit .git/hooks/pre-commit.bak.* .git/temper-git-hooks .git/temper-pre-commit
 L_PLUG="$WORKDIR/l1-plugin"
 rm -rf "$L_PLUG"
 mkdir -p "$L_PLUG/scripts/guards"
@@ -3434,6 +3468,9 @@ done
 L_INSTALL="$L_PLUG/scripts/guards/install.sh"
 L_CLI_LINE="TEMPER_CLI=$(printf '%q' "$L_PLUG/scripts/temper")"
 L_LINES="$WORKDIR/l1-hook-lines.sh"
+# The one line the installer prints once it keeps the hook (the text the docs quote).
+L_CALL='_temper_rc=$?; [ "$_temper_rc" -eq 0 ] || exit "$_temper_rc"; _temper_hook="$(git rev-parse --git-common-dir)/temper-pre-commit"; [ ! -f "$_temper_hook" ] || bash "$_temper_hook" || exit 1'
+L_KEPT_TEXT="(in the repository's git folder, never committed). Nothing else was written. To use the Temper commit gate, add the line between the BEGIN and END lines below to your pre-commit hook."
 # A PATH folder whose sh is dash when there is one (as on Debian and Ubuntu), so the hooks that
 # husky runs with sh meet a shell that knows no bash-only syntax.
 L_DASH="$(command -v dash 2>/dev/null || true)"
@@ -3460,37 +3497,236 @@ _l_repo() { # _l_repo <folder>: a new repository with one commit
   git -C "$1" config user.name "test"
   git -C "$1" commit -q --allow-empty -m init
 }
+# grep reads a here-string, not a pipe: under pipefail, grep -q leaving early could end a writer
+# with SIGPIPE and turn a match into a miss.
 _l_has() { # _l_has <text> <fixed string>: yes when a line of the text holds the string
-  printf '%s\n' "$1" | grep -qF -- "$2" && echo yes || echo no
+  grep -qF -- "$2" <<< "$1" && echo yes || echo no
+}
+_l_line() { # _l_line <text> <exact line>: yes when a whole line of the text is that line
+  grep -qxF -- "$2" <<< "$1" && echo yes || echo no
+}
+_l_kept() { # _l_kept <repository>: yes when its git folder keeps the current hook of this plugin
+  grep -qxF "$L_CLI_LINE" "$1/.git/temper-pre-commit" 2>/dev/null && [[ "$(sed -n 2p "$1/.git/temper-pre-commit")" == "# Temper native pre-commit hook"* ]] && echo yes || echo no
+}
+_l_commits() { # _l_commits <repository>: how many commits it has
+  git -C "$1" rev-list --count HEAD 2>/dev/null || echo 0
 }
 
-# A hook of the user's in .git/hooks: refused, left as it was, no backup; FAIL first, the hook
-# lines, a hint last.
+# A hook of the user's in .git/hooks: refused, left as it was, no backup; FAIL first, the kept
+# hook named, exactly the one line, a hint last.
 printf '#!/bin/sh\necho mine\n' > .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 L_SUM="$(cksum < .git/hooks/pre-commit)"
 OUT=$(bash "$L_INSTALL" 2>&1); L_RC=$?
-assert_eq "install.sh refuses a pre-commit hook that is not Temper's: FAIL first, the hook lines, a hint last" "1|yes|yes|yes" \
-  "$L_RC|$(printf '%s\n' "$OUT" | head -1 | grep -q "^FAIL: .git/hooks/pre-commit holds a pre-commit hook that is not Temper's" && echo yes || echo no)|$(_l_has "$OUT" "$L_CLI_LINE")|$(printf '%s\n' "$OUT" | tail -1 | grep -qF 'Hint: add the lines at the end of your own pre-commit hook (.git/hooks/pre-commit).' && echo yes || echo no)"
-assert_eq "the refused hook is left as it was, and no backup is made" "yes|0" \
-  "$([[ "$(cksum < .git/hooks/pre-commit)" == "$L_SUM" ]] && echo yes || echo no)|$(find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' | wc -l | tr -d ' ')"
-# The lines added at the end of that hook gate a real commit; a second run of the installer then
-# says so and writes nothing.
 _l_lines "$OUT"
+assert_eq "install.sh refuses a pre-commit hook that is not Temper's: FAIL first, the kept hook, the one line, a hint last" "1|yes|yes|$L_CALL|yes" \
+  "$L_RC|$(printf '%s\n' "$OUT" | head -1 | grep -q "^FAIL: .git/hooks/pre-commit holds a pre-commit hook that is not Temper's" && echo yes || echo no)|$(_l_line "$OUT" "The Temper hook is kept in $WORKDIR/.git/temper-pre-commit $L_KEPT_TEXT")|$(cat "$L_LINES")|$(printf '%s\n' "$OUT" | tail -1 | grep -qxF "Hint: add the line to your own pre-commit hook (.git/hooks/pre-commit), at its start or its end. It keeps your hook's own result." && echo yes || echo no)"
+assert_eq "the refused hook is left as it was, no backup is made, and the full hook is kept in the git folder" "yes|0|yes|no" \
+  "$([[ "$(cksum < .git/hooks/pre-commit)" == "$L_SUM" ]] && echo yes || echo no)|$(find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' | wc -l | tr -d ' ')|$(_l_kept "$WORKDIR")|$(_l_has "$OUT" "$L_CLI_LINE")"
+# The line added at the end of that hook gates a real commit; a second run of the installer then
+# finds it and writes nothing else.
 cat "$L_LINES" >> .git/hooks/pre-commit
 L_SUM="$(cksum < .git/hooks/pre-commit)"
 _l_red "$WORKDIR"
 echo l1 > l1-file.txt
 git add l1-file.txt >/dev/null 2>&1
-assert_exit "with the hook lines added at the end of a hook of the user's, a real commit on a red gate is blocked" 1 git commit -q -m l1
+assert_exit "with the line added at the end of a hook of the user's, a real commit on a red gate is blocked" 1 git commit -q -m l1
 OUT=$(bash "$L_INSTALL" 2>&1); L_RC=$?
-assert_eq "a hook of the user's that holds the current lines is reported and left as it was" "0|yes|yes" \
-  "$L_RC|$(_l_has "$OUT" 'already runs the current Temper hook lines')|$([[ "$(cksum < .git/hooks/pre-commit)" == "$L_SUM" ]] && echo yes || echo no)"
+assert_eq "a hook of the user's that holds the line is reported as calling the Temper hook and left as it was" "0|yes|yes" \
+  "$L_RC|$(_l_line "$OUT" "The pre-commit hook .git/hooks/pre-commit calls the Temper hook ($WORKDIR/.git/temper-pre-commit), which is now current, so nothing else was written.")|$([[ "$(cksum < .git/hooks/pre-commit)" == "$L_SUM" ]] && echo yes || echo no)"
+# A stale kept hook (a moved plugin path) is rewritten by that re-run; so is a kept hook that is a
+# symlink, which is replaced and never written through.
+python3 - <<'EOF'
+import re
+p = '.git/temper-pre-commit'
+s = open(p).read()
+open(p, 'w').write(re.sub(r'(?m)^TEMPER_CLI=.*$', 'TEMPER_CLI=/moved/plugin/scripts/temper', s))
+EOF
+OUT=$(bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "a re-run with the line in place says it calls the Temper hook and rewrites a stale kept hook" "0|yes|yes|yes" \
+  "$L_RC|$(_l_has "$OUT" 'calls the Temper hook')|$(_l_kept "$WORKDIR")|$([[ "$(cksum < .git/hooks/pre-commit)" == "$L_SUM" ]] && echo yes || echo no)"
+printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (another file)\n' > "$WORKDIR/l1-keep-target"
+L_KT_SUM="$(cksum < "$WORKDIR/l1-keep-target")"
+rm -f .git/temper-pre-commit
+ln -s "$WORKDIR/l1-keep-target" .git/temper-pre-commit
+OUT=$(bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "a kept hook that is a symlink is replaced by a regular file; the file it pointed at is untouched" "0|yes|yes|yes" \
+  "$L_RC|$([[ -f .git/temper-pre-commit && ! -L .git/temper-pre-commit ]] && echo yes || echo no)|$(_l_kept "$WORKDIR")|$([[ "$(cksum < "$WORKDIR/l1-keep-target")" == "$L_KT_SUM" ]] && echo yes || echo no)"
+rm -f "$WORKDIR/l1-keep-target"
+# A temper-pre-commit that is a folder cannot be replaced: the refusal writes nothing into it and
+# prints the whole hook instead.
+rm -f .git/temper-pre-commit
+mkdir -p .git/temper-pre-commit
+printf '#!/bin/sh\necho mine\n' > .git/hooks/pre-commit
+OUT=$(bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "a temper-pre-commit folder is left empty and the refusal prints the whole hook" "1||yes|yes" \
+  "$L_RC|$(ls -A .git/temper-pre-commit)|$(_l_line "$OUT" 'Nothing was written. To use the Temper commit gate, add the lines between the BEGIN and END lines below to your pre-commit hook.')|$(_l_has "$OUT" "$L_CLI_LINE")"
+rmdir .git/temper-pre-commit
 git rm -q --cached l1-file.txt >/dev/null 2>&1 || true
-rm -f l1-file.txt .git/hooks/pre-commit
+rm -f l1-file.txt .git/hooks/pre-commit .git/temper-pre-commit
 if [[ -n "$L_DASH" ]]; then
-  assert_exit "the hook lines are plain sh: dash reads them without a syntax error" 0 "$L_DASH" -n "$L_LINES"
+  assert_exit "the line is plain sh: dash reads it without a syntax error" 0 "$L_DASH" -n "$L_LINES"
 fi
+
+# The call line keeps the result of the hook it is added to: a hook whose last command fails still
+# blocks with the line at its end or at its start, and a hook that passes still lets a commit with
+# no run through. The whole hook an early refusal prints, in its subshell, does the same.
+L_FL="$WORKDIR/l1-failing"
+_l_repo "$L_FL"
+printf '.temper/\n' > "$L_FL/.gitignore"
+git -C "$L_FL" add .gitignore >/dev/null 2>&1
+git -C "$L_FL" commit -q -m ignore
+printf '#!/bin/sh\necho "lint: 3 errors" >&2\nfalse\n' > "$L_FL/.git/hooks/pre-commit"
+chmod +x "$L_FL/.git/hooks/pre-commit"
+echo f > "$L_FL/f.txt"
+git -C "$L_FL" add f.txt >/dev/null 2>&1
+L_N="$(_l_commits "$L_FL")"
+assert_exit "a hook of the user's whose last command fails blocks a commit" 1 git -C "$L_FL" commit -q -m f
+OUT=$(cd "$L_FL" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "that hook is refused, with the hook kept" "1|yes" "$L_RC|$(_l_kept "$L_FL")"
+printf '%s\n' "$L_CALL" >> "$L_FL/.git/hooks/pre-commit"
+assert_exit "with the line at its end, the failing hook still blocks a commit" 1 git -C "$L_FL" commit -q -m f
+printf '#!/bin/sh\n%s\necho "lint: 3 errors" >&2\nfalse\n' "$L_CALL" > "$L_FL/.git/hooks/pre-commit"
+assert_exit "with the line at its start, the failing hook still blocks a commit" 1 git -C "$L_FL" commit -q -m f
+assert_eq "no commit landed" "$L_N" "$(_l_commits "$L_FL")"
+OUT=$(cd "$L_FL" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "the line at the start of the hook is found by a re-run" "0|yes" "$L_RC|$(_l_has "$OUT" 'calls the Temper hook')"
+printf '#!/bin/sh\n%s\necho "lint: clean" >&2\n' "$L_CALL" > "$L_FL/.git/hooks/pre-commit"
+assert_exit "with the line at the start of a hook that passes, a commit with no run passes" 0 git -C "$L_FL" commit -q -m f
+_l_red "$L_FL"
+echo g > "$L_FL/g.txt"
+git -C "$L_FL" add g.txt >/dev/null 2>&1
+assert_exit "with the line at the start of a hook that passes, a commit on a red gate is blocked" 1 git -C "$L_FL" commit -q -m g
+rm -rf "$L_FL/.temper"
+# The whole hook an early refusal prints (here: the CLI does not run yet), in its subshell.
+chmod -x "$L_PLUG/scripts/temper"
+OUT=$(cd "$L_FL" && bash "$L_INSTALL" 2>&1)
+chmod +x "$L_PLUG/scripts/temper"
+_l_lines "$OUT"
+cp "$L_LINES" "$WORKDIR/l1-wrapped-lines.sh"
+if [[ -n "$L_DASH" ]]; then
+  assert_exit "the whole hook in its subshell is plain sh: dash reads it without a syntax error" 0 "$L_DASH" -n "$WORKDIR/l1-wrapped-lines.sh"
+fi
+{ printf '#!/bin/sh\necho "lint: 3 errors" >&2\nfalse\n'; cat "$WORKDIR/l1-wrapped-lines.sh"; } > "$L_FL/.git/hooks/pre-commit"
+assert_exit "with the whole hook in its subshell at its end, the failing hook still blocks a commit" 1 git -C "$L_FL" commit -q -m g
+{ printf '#!/bin/sh\n'; cat "$WORKDIR/l1-wrapped-lines.sh"; printf 'echo "lint: 3 errors" >&2\nfalse\n'; } > "$L_FL/.git/hooks/pre-commit"
+assert_exit "with the whole hook in its subshell at its start, the failing hook still blocks a commit" 1 git -C "$L_FL" commit -q -m g
+{ printf '#!/bin/sh\n'; cat "$WORKDIR/l1-wrapped-lines.sh"; printf 'echo "lint: clean" >&2\n'; } > "$L_FL/.git/hooks/pre-commit"
+assert_exit "with the whole hook in its subshell at the start of a hook that passes, a commit with no run passes" 0 git -C "$L_FL" commit -q -m g
+_l_red "$L_FL"
+echo h > "$L_FL/h.txt"
+git -C "$L_FL" add h.txt >/dev/null 2>&1
+assert_exit "with the whole hook in its subshell at the start of a hook that passes, a commit on a red gate is blocked" 1 git -C "$L_FL" commit -q -m h
+rm -rf "$L_FL" "$WORKDIR/l1-wrapped-lines.sh"
+
+# A lefthook-shaped hook (lefthook writes its hook with an early 'exit 0' for LEFTHOOK=0 and no
+# set -e): refused with the lefthook hint, and a failing lefthook run still blocks with the line
+# at the end or at the start.
+L_LH="$WORKDIR/l1-lefthook"
+_l_repo "$L_LH"
+printf '#!/bin/sh\necho "lefthook: eslint failed" >&2\nexit 1\n' > "$WORKDIR/l1-lefthook-bin"
+chmod +x "$WORKDIR/l1-lefthook-bin"
+cat > "$WORKDIR/l1-lefthook-hook" <<EOF
+#!/bin/sh
+
+if [ "\$LEFTHOOK_VERBOSE" = "1" -o "\$LEFTHOOK_VERBOSE" = "true" ]; then
+  set -x
+fi
+
+if [ "\$LEFTHOOK" = "0" ]; then
+  exit 0
+fi
+
+call_lefthook()
+{
+  "$WORKDIR/l1-lefthook-bin" "\$@"
+}
+
+call_lefthook run "pre-commit" "\$@"
+EOF
+cp "$WORKDIR/l1-lefthook-hook" "$L_LH/.git/hooks/pre-commit"
+chmod +x "$L_LH/.git/hooks/pre-commit"
+echo l > "$L_LH/l.txt"
+git -C "$L_LH" add l.txt >/dev/null 2>&1
+L_N="$(_l_commits "$L_LH")"
+assert_exit "a lefthook-shaped hook whose lefthook run fails blocks a commit" 1 git -C "$L_LH" commit -q -m l
+OUT=$(cd "$L_LH" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "the lefthook-shaped hook is refused with the lefthook hint, with the hook kept" "1|yes|yes" \
+  "$L_RC|$(printf '%s\n' "$OUT" | tail -1 | grep -qxF 'Hint: lefthook writes this hook again. Add a pre-commit command to lefthook.yml that runs the line.' && echo yes || echo no)|$(_l_kept "$L_LH")"
+printf '%s\n' "$L_CALL" >> "$L_LH/.git/hooks/pre-commit"
+assert_exit "with the line at its end, the failing lefthook-shaped hook still blocks a commit" 1 git -C "$L_LH" commit -q -m l
+{ sed -n 1p "$WORKDIR/l1-lefthook-hook"; printf '%s\n' "$L_CALL"; sed 1d "$WORKDIR/l1-lefthook-hook"; } > "$L_LH/.git/hooks/pre-commit"
+assert_exit "with the line at its start, the failing lefthook-shaped hook still blocks a commit" 1 git -C "$L_LH" commit -q -m l
+assert_eq "no commit landed in the lefthook-shaped repository" "$L_N" "$(_l_commits "$L_LH")"
+OUT=$(cd "$L_LH" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "the line at the start of the lefthook-shaped hook is found by a re-run" "0|yes" "$L_RC|$(_l_has "$OUT" 'calls the Temper hook')"
+rm -rf "$L_LH" "$WORKDIR/l1-lefthook-bin" "$WORKDIR/l1-lefthook-hook"
+
+# The line after an exit or exec line never runs: refused, and the hook is left as it was. A line
+# that only starts with the letters of exit (exit_code=...) does not count.
+L_EX="$WORKDIR/l1-exit"
+_l_repo "$L_EX"
+printf '#!/bin/sh\necho mine\nexit 0\n%s\n' "$L_CALL" > "$L_EX/.git/hooks/pre-commit"
+chmod +x "$L_EX/.git/hooks/pre-commit"
+L_SUM="$(cksum < "$L_EX/.git/hooks/pre-commit")"
+OUT=$(cd "$L_EX" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "the line after an 'exit 0' line is refused, and the hook is left as it was" "1|yes|yes" \
+  "$L_RC|$(_l_line "$OUT" 'FAIL: the Temper line in .git/hooks/pre-commit comes after an exit or exec line, so it never runs. Move it above that line.')|$([[ "$(cksum < "$L_EX/.git/hooks/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)"
+printf '#!/bin/sh\n  exec "$(dirname "$0")/other-hook" "$@"\n%s\n' "$L_CALL" > "$L_EX/.git/hooks/pre-commit"
+OUT=$(cd "$L_EX" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "the line after an indented exec line is refused" "1|yes" \
+  "$L_RC|$(_l_has "$OUT" 'comes after an exit or exec line, so it never runs')"
+printf '#!/bin/sh\nexit_code=0\nexecutable=yes\n%s\n' "$L_CALL" > "$L_EX/.git/hooks/pre-commit"
+OUT=$(cd "$L_EX" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "lines that only start with the letters of exit or exec do not count" "0|yes" \
+  "$L_RC|$(_l_has "$OUT" 'calls the Temper hook')"
+rm -rf "$L_EX"
+
+# A linked worktree runs the same kept hook through the line in the repository's hook.
+L_WM="$WORKDIR/l1-wmain"
+L_WF="$WORKDIR/l1-wfeat"
+_l_repo "$L_WM"
+rm -rf "$L_WF"
+printf '.temper/\n' > "$L_WM/.gitignore"
+git -C "$L_WM" add .gitignore >/dev/null 2>&1
+git -C "$L_WM" commit -q -m ignore
+git -C "$L_WM" worktree add -q "$L_WF" >/dev/null 2>&1
+L_WM_REAL="$(cd -P "$L_WM" && pwd)"
+printf '#!/bin/sh\necho mine\n%s\n' "$L_CALL" > "$L_WM/.git/hooks/pre-commit"
+chmod +x "$L_WM/.git/hooks/pre-commit"
+OUT=$(cd "$L_WF" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "in a linked worktree, the repository's hook that holds the line calls the one kept hook" "0|yes|yes|no" \
+  "$L_RC|$(_l_line "$OUT" "The pre-commit hook $L_WM_REAL/.git/hooks/pre-commit calls the Temper hook ($L_WM_REAL/.git/temper-pre-commit), which is now current, so nothing else was written.")|$(_l_kept "$L_WM")|$([[ -e "$L_WM/.git/worktrees/${L_WF##*/}/temper-pre-commit" ]] && echo yes || echo no)"
+echo w > "$L_WF/w.txt"
+git -C "$L_WF" add w.txt >/dev/null 2>&1
+assert_exit "in the linked worktree, a commit with no run passes through the line" 0 git -C "$L_WF" commit -q -m w
+_l_red "$L_WF"
+echo v > "$L_WF/v.txt"
+git -C "$L_WF" add v.txt >/dev/null 2>&1
+assert_exit "in the linked worktree, a commit on a red gate is blocked through the line" 1 git -C "$L_WF" commit -q -m v
+rm -rf "$L_WM" "$L_WF"
+
+# A core.hooksPath outside the repository: refused with the hook kept and the hint naming the hook
+# there; once that hook holds the line, a re-run finds it and a red commit is blocked.
+L_OUT="$WORKDIR/l1-outrepo"
+L_OUTH="$WORKDIR/l1-outside-hooks"
+_l_repo "$L_OUT"
+rm -rf "$L_OUTH"
+mkdir -p "$L_OUTH"
+printf '#!/bin/sh\necho outside\n' > "$L_OUTH/pre-commit"
+chmod +x "$L_OUTH/pre-commit"
+git -C "$L_OUT" config core.hooksPath "$L_OUTH"
+OUT=$(cd "$L_OUT" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "an outside core.hooksPath is refused with the hook kept and the hint naming the hook there" "1|yes|yes|yes" \
+  "$L_RC|$(_l_line "$OUT" "FAIL: core.hooksPath is set to '$L_OUTH', which is outside this repository and its git folder.")|$(_l_kept "$L_OUT")|$(printf '%s\n' "$OUT" | tail -1 | grep -qxF "Hint: add the line to your own pre-commit hook ($L_OUTH/pre-commit), at its start or its end. It keeps your hook's own result." && echo yes || echo no)"
+printf '%s\n' "$L_CALL" >> "$L_OUTH/pre-commit"
+OUT=$(cd "$L_OUT" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "once the outside hook holds the line, a re-run says it calls the Temper hook" "0|yes" "$L_RC|$(_l_has "$OUT" "calls the Temper hook ($(cd -P "$L_OUT" && pwd)/.git/temper-pre-commit)")"
+printf '.temper/\n' > "$L_OUT/.gitignore"
+_l_red "$L_OUT"
+git -C "$L_OUT" add .gitignore >/dev/null 2>&1
+assert_exit "through the outside hook, a commit on a red gate is blocked" 1 git -C "$L_OUT" commit -q -m red
+rm -rf "$L_OUT" "$L_OUTH"
 
 # husky v5 to v8: core.hooksPath is .husky, .husky/pre-commit is tracked and sources husky.sh,
 # which runs the hook again with sh -e.
@@ -3519,9 +3755,9 @@ git -C "$L_H8" add .gitignore .husky/pre-commit >/dev/null 2>&1
 env PATH="$L_BIN:$PATH" git -C "$L_H8" commit -q -m husky >/dev/null 2>&1
 L_SUM="$(cksum < "$L_H8/.husky/pre-commit")"
 OUT=$(cd "$L_H8" && env PATH="$L_BIN:$PATH" bash "$L_INSTALL" 2>&1); L_RC=$?
-assert_eq "husky v8: install.sh refuses the tracked .husky/pre-commit and gives the husky hint" "1|yes|yes|yes" \
-  "$L_RC|$(_l_has "$OUT" 'FAIL: .husky/pre-commit is tracked by git')|$(_l_has "$OUT" "$L_CLI_LINE")|$(printf '%s\n' "$OUT" | tail -1 | grep -q '^Hint: husky runs .husky/pre-commit with sh, so add the lines at the end of that file' && echo yes || echo no)"
-assert_eq "husky v8: the refusal leaves the tracked hook as it was and adds no file" "yes|" \
+assert_eq "husky v8: install.sh refuses the tracked .husky/pre-commit, keeps the hook, and gives the husky hint" "1|yes|yes|$L_CALL|yes" \
+  "$L_RC|$(_l_has "$OUT" 'FAIL: .husky/pre-commit is tracked by git')|$(_l_kept "$L_H8")|$(_l_lines "$OUT"; cat "$L_LINES")|$(printf '%s\n' "$OUT" | tail -1 | grep -qxF 'Hint: add the line to .husky/pre-commit. It holds no path of this machine, so it is safe to commit.' && echo yes || echo no)"
+assert_eq "husky v8: the refusal leaves the tracked hook as it was and adds no file to the work tree" "yes|" \
   "$([[ "$(cksum < "$L_H8/.husky/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)|$(git -C "$L_H8" status --short)"
 rm -f "$L_H8/husky.log"
 echo a > "$L_H8/a.txt"
@@ -3531,18 +3767,20 @@ _l_lines "$OUT"
 cat "$L_LINES" >> "$L_H8/.husky/pre-commit"
 rm -f "$L_H8/husky.log"
 echo b > "$L_H8/b.txt"
-git -C "$L_H8" add b.txt >/dev/null 2>&1
-assert_exit "husky v8: with the lines at the end of .husky/pre-commit, a commit with no run passes under sh" 0 \
+git -C "$L_H8" add b.txt .husky/pre-commit >/dev/null 2>&1
+assert_exit "husky v8: with the line at the end of .husky/pre-commit, a green commit (no run) passes under sh" 0 \
   env PATH="$L_BIN:$PATH" git -C "$L_H8" commit -q -m b
 assert_eq "husky v8: husky's own line ran once" "husky-ran" "$(cat "$L_H8/husky.log" 2>/dev/null)"
+assert_eq "husky v8: the committed .husky/pre-commit holds the line and no path of this machine" "yes|0" \
+  "$(git -C "$L_H8" show HEAD:.husky/pre-commit | grep -qxF "$L_CALL" && echo yes || echo no)|$(git -C "$L_H8" show HEAD:.husky/pre-commit | grep -cF "$WORKDIR")"
 _l_red "$L_H8"
 echo c > "$L_H8/c.txt"
 git -C "$L_H8" add c.txt >/dev/null 2>&1
-assert_exit "husky v8: with the lines at the end of .husky/pre-commit, a commit on a red gate is blocked under sh" 1 \
+assert_exit "husky v8: with the line at the end of .husky/pre-commit, a commit on a red gate is blocked under sh" 1 \
   env PATH="$L_BIN:$PATH" git -C "$L_H8" commit -q -m c
 OUT=$(cd "$L_H8" && bash "$L_INSTALL" 2>&1); L_RC=$?
-assert_eq "husky v8: once .husky/pre-commit holds the current lines, install.sh says so and writes nothing" "0|yes" \
-  "$L_RC|$(_l_has "$OUT" 'already runs the current Temper hook lines')"
+assert_eq "husky v8: once .husky/pre-commit holds the line, install.sh says it calls the Temper hook and writes nothing else" "0|yes|" \
+  "$L_RC|$(_l_line "$OUT" "The pre-commit hook .husky/pre-commit calls the Temper hook ($L_H8/.git/temper-pre-commit), which is now current, so nothing else was written.")|$(git -C "$L_H8" status --short -- .husky)"
 rm -rf "$L_H8"
 
 # husky v9: core.hooksPath is .husky/_, where husky's generated hook runs .husky/pre-commit with sh -e.
@@ -3560,24 +3798,26 @@ git -C "$L_H9" add .gitignore .husky/pre-commit >/dev/null 2>&1
 env PATH="$L_BIN:$PATH" git -C "$L_H9" commit -q -m husky >/dev/null 2>&1
 L_SUM="$(cksum < "$L_H9/.husky/_/pre-commit")"
 OUT=$(cd "$L_H9" && bash "$L_INSTALL" 2>&1); L_RC=$?
-assert_eq "husky v9: install.sh refuses husky's generated hook and gives the husky hint" "1|yes|yes|yes" \
-  "$L_RC|$(_l_has "$OUT" "FAIL: .husky/_/pre-commit holds a pre-commit hook that is not Temper's")|$([[ "$(cksum < "$L_H9/.husky/_/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)|$(printf '%s\n' "$OUT" | tail -1 | grep -q '^Hint: husky runs .husky/pre-commit' && echo yes || echo no)"
+assert_eq "husky v9: install.sh refuses husky's generated hook, keeps the hook, and gives the husky hint" "1|yes|yes|yes|$L_CALL|yes" \
+  "$L_RC|$(_l_has "$OUT" "FAIL: .husky/_/pre-commit holds a pre-commit hook that is not Temper's")|$([[ "$(cksum < "$L_H9/.husky/_/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)|$(_l_kept "$L_H9")|$(_l_lines "$OUT"; cat "$L_LINES")|$(printf '%s\n' "$OUT" | tail -1 | grep -qxF 'Hint: add the line to .husky/pre-commit. It holds no path of this machine, so it is safe to commit.' && echo yes || echo no)"
 _l_lines "$OUT"
 cat "$L_LINES" >> "$L_H9/.husky/pre-commit"
 rm -f "$L_H9/husky.log"
 echo a > "$L_H9/a.txt"
-git -C "$L_H9" add a.txt >/dev/null 2>&1
-assert_exit "husky v9: with the lines at the end of .husky/pre-commit, a commit with no run passes under sh" 0 \
+git -C "$L_H9" add a.txt .husky/pre-commit >/dev/null 2>&1
+assert_exit "husky v9: with the line at the end of .husky/pre-commit, a green commit (no run) passes under sh" 0 \
   env PATH="$L_BIN:$PATH" git -C "$L_H9" commit -q -m a
 assert_eq "husky v9: husky's own line ran once" "husky-ran" "$(cat "$L_H9/husky.log" 2>/dev/null)"
+assert_eq "husky v9: the committed .husky/pre-commit holds the line and no path of this machine" "yes|0" \
+  "$(git -C "$L_H9" show HEAD:.husky/pre-commit | grep -qxF "$L_CALL" && echo yes || echo no)|$(git -C "$L_H9" show HEAD:.husky/pre-commit | grep -cF "$WORKDIR")"
 _l_red "$L_H9"
 echo b > "$L_H9/b.txt"
 git -C "$L_H9" add b.txt >/dev/null 2>&1
-assert_exit "husky v9: with the lines at the end of .husky/pre-commit, a commit on a red gate is blocked under sh" 1 \
+assert_exit "husky v9: with the line at the end of .husky/pre-commit, a commit on a red gate is blocked under sh" 1 \
   env PATH="$L_BIN:$PATH" git -C "$L_H9" commit -q -m b
 OUT=$(cd "$L_H9" && bash "$L_INSTALL" 2>&1); L_RC=$?
-assert_eq "husky v9: once .husky/pre-commit holds the current lines, install.sh says so and writes nothing" "0|yes|yes" \
-  "$L_RC|$(_l_has "$OUT" 'already runs the current Temper hook lines')|$([[ "$(cksum < "$L_H9/.husky/_/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)"
+assert_eq "husky v9: once .husky/pre-commit holds the line, install.sh says it calls the Temper hook and writes nothing else" "0|yes|yes" \
+  "$L_RC|$(_l_line "$OUT" "The pre-commit hook .husky/pre-commit calls the Temper hook ($L_H9/.git/temper-pre-commit), which is now current, so nothing else was written.")|$([[ "$(cksum < "$L_H9/.husky/_/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)"
 rm -rf "$L_H9"
 
 # The pre-commit framework: its hook is refused with the local-hook hint. When the framework is
@@ -3601,7 +3841,7 @@ chmod +x "$L_PC/.git/hooks/pre-commit"
 cp "$L_PC/.git/hooks/pre-commit" "$WORKDIR/l1-framework-hook"
 OUT=$(cd "$L_PC" && bash "$L_INSTALL" 2>&1); L_RC=$?
 assert_eq "the pre-commit framework's hook is refused with the local-hook hint" "1|yes|yes" \
-  "$L_RC|$(_l_has "$OUT" "FAIL: .git/hooks/pre-commit holds a pre-commit hook that is not Temper's")|$(printf '%s\n' "$OUT" | tail -1 | grep -q '^Hint: the pre-commit framework owns this hook, so save the lines as a script and run it from a local hook' && echo yes || echo no)"
+  "$L_RC|$(_l_has "$OUT" "FAIL: .git/hooks/pre-commit holds a pre-commit hook that is not Temper's")|$(printf '%s\n' "$OUT" | tail -1 | grep -qxF 'Hint: the pre-commit framework owns this hook. Add a local hook to .pre-commit-config.yaml (repo: local, language: system, pass_filenames: false, always_run: true) whose entry runs the line.' && echo yes || echo no)"
 rm -f "$L_PC/.git/hooks/pre-commit"
 bash -c "cd '$L_PC' && bash '$L_INSTALL'" >/dev/null 2>&1
 mv "$L_PC/.git/hooks/pre-commit" "$L_PC/.git/hooks/pre-commit.legacy"
@@ -3655,17 +3895,26 @@ chmod +x "$L_OLD/.git/hooks/pre-commit" "$L_OLD/.git/hooks/pre-commit.bak.202601
 OUT=$(cd "$L_OLD" && bash "$L_INSTALL" 2>&1); L_RC=$?
 assert_eq "an older Temper hook is replaced with the current one" "0|yes" \
   "$L_RC|$(grep -qxF "$L_CLI_LINE" "$L_OLD/.git/hooks/pre-commit" && echo yes || echo no)"
-assert_eq "the old installer's backup is named, with the lines to add and how to move it back" "yes|yes|yes" \
-  "$(_l_has "$OUT" 'Warning: .git/hooks/pre-commit.bak.20260101000000 is a pre-commit hook that an older Temper installer set aside')|$(_l_has "$OUT" 'then move it back to .git/hooks/pre-commit')|$(_l_has "$OUT" "$L_CLI_LINE")"
+assert_eq "the old installer's backup is named, with how to move it back and the line to add" "yes|yes|$L_CALL|yes" \
+  "$(_l_has "$OUT" 'Warning: .git/hooks/pre-commit.bak.20260101000000 is a pre-commit hook that an older Temper installer set aside')|$(_l_line "$OUT" 'To run it again, move it back to .git/hooks/pre-commit and add the line between the BEGIN and END lines below to it.')|$(_l_lines "$OUT"; cat "$L_LINES")|$(_l_kept "$L_OLD")"
 assert_eq "a stale path that still exists is not called failing open, and no hook is said to run first" "no|no" \
   "$(_l_has "$OUT" 'failing open')|$(_l_has "$OUT" 'runs it first')"
+# Moved back with the line added, the user's hook runs the kept hook, so a red commit is blocked.
+mv "$L_OLD/.git/hooks/pre-commit.bak.20260101000000" "$L_OLD/.git/hooks/pre-commit"
+cat "$L_LINES" >> "$L_OLD/.git/hooks/pre-commit"
+printf '.temper/\n' > "$L_OLD/.gitignore"
+_l_red "$L_OLD"
+git -C "$L_OLD" add .gitignore >/dev/null 2>&1
+assert_exit "the backup moved back with the line added blocks a commit on a red gate" 1 git -C "$L_OLD" commit -q -m red
+rm -rf "$L_OLD/.temper"
 printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (installed by scripts/hooks/install.sh).\nTEMPER_HOOKS_DIR="${TEMPER_HOOKS_DIR:-%s}"\n' "$WORKDIR/l1-gone-plugin/scripts/hooks" > "$L_OLD/.git/hooks/pre-commit"
 OUT=$(cd "$L_OLD" && bash "$L_INSTALL" 2>&1)
 assert_eq "a stale path that is gone is reported as failing open" "yes" "$(_l_has "$OUT" 'failing open')"
 rm -rf "$L_OLD" "$WORKDIR/l1-old-plugin"
 
-# --global: refused over a hook of the user's in .git/hooks (git would skip it); otherwise it sets
-# an absolute core.hooksPath, which a linked worktree uses, so its commits are gated too.
+# --global: refused over hooks of the user's in .git/hooks (git would skip them once core.hooksPath
+# is set); otherwise it sets an absolute core.hooksPath, which a linked worktree uses, so its
+# commits are gated too.
 L_GM="$WORKDIR/l1-gmain"
 L_GW="$WORKDIR/l1-gwt"
 _l_repo "$L_GM"
@@ -3675,10 +3924,24 @@ L_GM_REAL="$(cd -P "$L_GM" && pwd)"
 printf '#!/bin/sh\necho mine\n' > "$L_GM/.git/hooks/pre-commit"
 chmod +x "$L_GM/.git/hooks/pre-commit"
 OUT=$(cd "$L_GM" && bash "$L_INSTALL" --global 2>&1); L_RC=$?
-assert_eq "--global refuses when .git/hooks/pre-commit holds a hook that is not Temper's" "1|yes|yes|none" \
-  "$L_RC|$(_l_has "$OUT" "FAIL: .git/hooks/pre-commit holds a pre-commit hook that is not Temper's. --global sets core.hooksPath")|$(_l_has "$OUT" "$L_CLI_LINE")|$(git -C "$L_GM" config --get core.hooksPath || echo none)"
+assert_eq "--global refuses when .git/hooks holds a pre-commit hook that is not Temper's" "1|yes|yes|yes|none" \
+  "$L_RC|$(_l_line "$OUT" "FAIL: .git/hooks holds hooks that git would stop running once --global sets core.hooksPath: pre-commit.")|$(printf '%s\n' "$OUT" | tail -1 | grep -qxF 'Hint: run this installer without --global.' && echo yes || echo no)|$(_l_has "$OUT" "$L_CLI_LINE")|$(git -C "$L_GM" config --get core.hooksPath || echo none)"
 rm -f "$L_GM/.git/hooks/pre-commit"
-assert_exit "--global installs in the main checkout" 0 bash -c "cd '$L_GM' && bash '$L_INSTALL' --global"
+# A commit-msg hook (and any of git's other hook names) counts too; a hook that is not executable,
+# a sample and a Temper pre-commit do not, since git would not run them anyway or --global replaces it.
+printf '#!/bin/sh\necho commit-msg-ran >&2\n' > "$L_GM/.git/hooks/commit-msg"
+printf '#!/bin/sh\necho lfs\n' > "$L_GM/.git/hooks/pre-push"
+printf '#!/bin/sh\necho off\n' > "$L_GM/.git/hooks/post-commit"
+chmod +x "$L_GM/.git/hooks/commit-msg" "$L_GM/.git/hooks/pre-push"
+chmod -x "$L_GM/.git/hooks/post-commit"
+printf '#!/bin/sh\necho sample\n' > "$L_GM/.git/hooks/post-merge.sample"
+chmod +x "$L_GM/.git/hooks/post-merge.sample"
+bash -c "cd '$L_GM' && bash '$L_INSTALL'" >/dev/null 2>&1
+OUT=$(cd "$L_GM" && bash "$L_INSTALL" --global 2>&1); L_RC=$?
+assert_eq "--global with a commit-msg and a pre-push hook is refused and names them; core.hooksPath stays unset" "1|yes|none|yes" \
+  "$L_RC|$(_l_line "$OUT" "FAIL: .git/hooks holds hooks that git would stop running once --global sets core.hooksPath: commit-msg pre-push.")|$(git -C "$L_GM" config --get core.hooksPath || echo none)|$(_l_has "$(git -C "$L_GM" commit -q --allow-empty -m cm 2>&1)" commit-msg-ran)"
+rm -f "$L_GM/.git/hooks/commit-msg" "$L_GM/.git/hooks/pre-push" "$L_GM/.git/hooks/post-commit" "$L_GM/.git/hooks/post-merge.sample"
+assert_exit "--global installs in the main checkout (a Temper pre-commit in .git/hooks does not count)" 0 bash -c "cd '$L_GM' && bash '$L_INSTALL' --global"
 assert_eq "--global sets core.hooksPath to the absolute path of the repository's temper-git-hooks folder" \
   "$L_GM_REAL/.git/temper-git-hooks|$L_GM_REAL/.git/temper-git-hooks/pre-commit" \
   "$(git -C "$L_GM" config --get core.hooksPath)|$(cd "$L_GW" && git rev-parse --git-path hooks/pre-commit)"
@@ -3699,6 +3962,32 @@ assert_eq "a relative core.hooksPath through .git in a linked worktree is refuse
 assert_exit "--global in the main checkout runs over that earlier relative value" 0 bash -c "cd '$L_GM' && bash '$L_INSTALL' --global"
 assert_eq "and sets the absolute path instead" "$L_GM_REAL/.git/temper-git-hooks" "$(git -C "$L_GM" config --get core.hooksPath)"
 rm -rf "$L_GM" "$L_GW"
+
+# --global, then the repository is moved: core.hooksPath still names the folder where it used to
+# be. The default mode refuses that value; --global again points it here, and commits are gated.
+L_MV1="$WORKDIR/l1-moved-from"
+L_MV2="$WORKDIR/l1-moved-to"
+_l_repo "$L_MV1"
+rm -rf "$L_MV2"
+printf '.temper/\n' > "$L_MV1/.gitignore"
+git -C "$L_MV1" add .gitignore >/dev/null 2>&1
+git -C "$L_MV1" commit -q -m ignore
+bash -c "cd '$L_MV1' && bash '$L_INSTALL' --global" >/dev/null 2>&1
+_l_red "$L_MV1"
+echo m > "$L_MV1/m.txt"
+git -C "$L_MV1" add m.txt >/dev/null 2>&1
+assert_exit "after --global, a commit on a red gate is blocked" 1 git -C "$L_MV1" commit -q -m m
+mv "$L_MV1" "$L_MV2"
+OUT=$(cd "$L_MV2" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "after a move, the default mode refuses Temper's own --global folder from where the repository used to be" "1|yes|yes|$L_MV1/.git/temper-git-hooks" \
+  "$L_RC|$(_l_line "$OUT" "FAIL: core.hooksPath is set to '$L_MV1/.git/temper-git-hooks', Temper's own --global folder from where this repository used to be, so git runs no pre-commit hook here.")|$(printf '%s\n' "$OUT" | tail -1 | grep -qxF 'Hint: run this installer with --global to point it here, or unset core.hooksPath.' && echo yes || echo no)|$(git -C "$L_MV2" config --get core.hooksPath)"
+OUT=$(cd "$L_MV2" && bash "$L_INSTALL" --global 2>&1); L_RC=$?
+assert_eq "after a move, --global replaces its own old value with a note and points core.hooksPath here" "0|yes|$L_MV2/.git/temper-git-hooks" \
+  "$L_RC|$(_l_line "$OUT" "Note: core.hooksPath held Temper's own folder from where this repository used to be ($L_MV1/.git/temper-git-hooks); it now points here.")|$(git -C "$L_MV2" config --get core.hooksPath)"
+assert_exit "after the move and --global again, a commit on a red gate is blocked" 1 git -C "$L_MV2" commit -q -m m
+OUT=$(cd "$L_MV2" && bash "$L_INSTALL" --global 2>&1); L_RC=$?
+assert_eq "a further --global run gives no note" "0|no" "$L_RC|$(_l_has "$OUT" 'from where this repository used to be')"
+rm -rf "$L_MV1" "$L_MV2"
 
 # The commit hooks with the real CLI: an active run with red gates and a symlink on a run-state
 # path, or a link in the spec folder, never opens the gate.
@@ -3757,6 +4046,23 @@ git -C "$L_SEC" add -- "$L_ODD" >/dev/null 2>&1
 OUT=$(cd "$L_SEC" && bash "$L_SECRETS" --staged < /dev/null 2>&1); L_RC=$?
 assert_eq "block-secrets --staged reads a staged name that git would quote, and names it" "2|yes" \
   "$L_RC|$(_l_has "$OUT" "in the staged copy of '$L_ODD'")"
+git -C "$L_SEC" reset -q -- "$L_ODD" >/dev/null 2>&1
+rm -f "$L_SEC/$L_ODD"
+# A staged name that starts with a digit and a colon is read as that file (stage 0), never as an
+# index stage of another path.
+printf 'key = %s\n' "$L_KEY" > "$L_SEC/1:creds.txt"
+git -C "$L_SEC" add -- '1:creds.txt' >/dev/null 2>&1
+OUT=$(cd "$L_SEC" && bash "$L_SECRETS" --staged < /dev/null 2>&1); L_RC=$?
+assert_eq "block-secrets --staged blocks a secret in a staged file named 1:creds.txt, and names it" "2|yes" \
+  "$L_RC|$(_l_has "$OUT" "in the staged copy of '1:creds.txt'")"
+assert_exit "a real commit of a staged 1:creds.txt that holds a secret is blocked" 1 git -C "$L_SEC" commit -q -m creds
+git -C "$L_SEC" reset -q -- '1:creds.txt' >/dev/null 2>&1
+rm -f "$L_SEC/1:creds.txt"
+printf 'key = %s\n' "$L_KEY" > "$L_SEC/0:x.txt"
+git -C "$L_SEC" add -- '0:x.txt' >/dev/null 2>&1
+OUT=$(cd "$L_SEC" && bash "$L_SECRETS" --staged < /dev/null 2>&1); L_RC=$?
+assert_eq "block-secrets --staged blocks a secret in a staged file named 0:x.txt, and names it" "2|yes" \
+  "$L_RC|$(_l_has "$OUT" "in the staged copy of '0:x.txt'")"
 rm -rf "$L_SEC"
 
 # The guard scripts follow their own symlinks (a link to the file, or to its folder) and do nothing

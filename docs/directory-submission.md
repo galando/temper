@@ -56,6 +56,9 @@ Data and permissions, in plain words:
 - Outside the project and the mod's plugin store, Temper reads only its own global pack folder,
   `~/.claude/packs`, and no key, login or Claude Code file.
 - Tests, lint and git run through Claude's own tools and permissions.
+- The commit gate installer writes only in the hooks folder git uses and in the git folder. It
+  never writes over a hook of yours or a file git tracks: it keeps the Temper hook as
+  `temper-pre-commit` in the git folder and prints one line for your hook to run it.
 - The optional game keeps one number, the best score, in the plugin store.
 
 ## What the listing shows

@@ -117,9 +117,17 @@ file there), so the installer refuses it there and points to `--global`.
 the repository's `core.hooksPath` to the absolute path of that folder, so every linked
 worktree of the repository uses the same hook. It refuses when `core.hooksPath` is already
 set to another folder (replacing it would switch the hooks there off; the default mode
-installs into that folder instead), and when `.git/hooks/pre-commit` holds a hook that is
-not Temper's (git skips `.git/hooks` once `core.hooksPath` is set, so that hook would stop
-running).
+installs into that folder instead). It also refuses when `.git/hooks` holds an executable
+hook that git would stop running once `core.hooksPath` is set: any hook git knows by name
+(`pre-commit`, `commit-msg`, `pre-push`, `post-checkout` and the rest, as git-lfs and
+Gerrit install them), except a Temper `pre-commit`. It names those hooks and says to run
+the installer without `--global`.
+
+A `core.hooksPath` that is absolute and ends in `/.git/temper-git-hooks` but is not this
+repository's own folder is Temper's own `--global` setting from where the repository used
+to be, before it was moved or renamed; git then runs no pre-commit hook. `--global`
+replaces it and prints a note naming the old value. The default mode refuses it and says
+to run the installer with `--global` to point it here, or to unset `core.hooksPath`.
 
 A Temper hook is stale when the CLI path embedded in it no longer exists, as after a
 plugin upgrade moves the plugin folder; a stale hook fails open, and re-running the
@@ -138,18 +146,40 @@ one-line warning and lets the commit through.
 The installer never writes over a `pre-commit` hook that is not Temper's (husky,
 lefthook, the pre-commit framework, a hand-rolled one), and never writes a hook file git
 tracks (husky v5 to v8 keep `.husky/pre-commit` in git, and so does a team's `.githooks`
-folder). It refuses instead: it prints a FAIL line, then the hook lines between a BEGIN
-and an END line, then a one-line hint for where they go (husky: at the end of
-`.husky/pre-commit`; the pre-commit framework: run them from a local hook in
-`.pre-commit-config.yaml`; any other hook: at the end of your own `pre-commit`), and
-exits 1. The hook lines are plain sh, so they also run at the end of an sh hook. A hook of
-your own that already runs the current lines is left as it is (exit 0). An older Temper
-hook is replaced by one that holds the current paths; the warning about its old path
-says it was failing open only when that path no longer exists. An older installer moved
-a hook that was not Temper's aside as `pre-commit.bak.<timestamp>`, and git does not run
-that file: when one sits next to the hook, the installer names it in a warning and says
-how to bring it back (add the hook lines at its end, then move it back to `pre-commit`).
-Every refusal prints a FAIL line and the hook lines, never a bare shell error.
+folder). It refuses instead, and it does the same when `core.hooksPath` lies outside the
+repository. First it writes the full Temper hook to the file `temper-pre-commit` in the
+repository's own git folder (the folder `git rev-parse --git-common-dir` names, which git
+never commits; never the plugin folder), through a new file moved into place. Then it
+prints a FAIL line, says where it kept the Temper hook, prints one line between a BEGIN
+and an END line, then a one-line hint, and exits 1. The line is:
+
+```sh
+_temper_rc=$?; [ "$_temper_rc" -eq 0 ] || exit "$_temper_rc"; _temper_hook="$(git rev-parse --git-common-dir)/temper-pre-commit"; [ ! -f "$_temper_hook" ] || bash "$_temper_hook" || exit 1
+```
+
+It holds no path of this machine, so it is safe in a tracked file. It keeps the host
+hook's own result wherever it sits: when the command before it failed, it exits with that
+status; otherwise it runs the Temper hook and fails only when that hook blocks. The hint
+says where the line goes. husky: `.husky/pre-commit`. The pre-commit framework: a local
+hook in `.pre-commit-config.yaml` (repo: local, language: system, pass_filenames: false,
+always_run: true) whose entry runs the line. lefthook, which writes its hook again: a
+pre-commit command in `lefthook.yml` that runs the line. Any other hook: its start or its
+end. A refusal that comes before the installer knows the git folder writes nothing and
+prints the Temper hook's own lines instead, in a subshell, so that their exits end only
+the subshell and the host hook's own result is kept.
+
+A hook of your own counts as calling Temper when it holds that exact line with no line
+before it that starts with `exit` or `exec` (for husky v9 that hook is
+`.husky/pre-commit`). The installer then makes `temper-pre-commit` current, says the hook
+calls it, and exits 0. When an `exit` or `exec` line comes first, the line never runs: the
+installer refuses and says to move it above that line. An older Temper hook is replaced by
+one that holds the current paths; the warning about its old path says it was failing open
+only when that path no longer exists. An older installer moved a hook that was not
+Temper's aside as `pre-commit.bak.<timestamp>`, and git does not run that file: when one
+sits next to the hook, the installer names it in a warning and says how to bring it back
+(move it back to `pre-commit` and add the line between the BEGIN and END lines to it; the
+installer writes `temper-pre-commit` first, so that line works). Every refusal prints a
+FAIL line, never a bare shell error.
 
 > **This two-layer split is the determinism guarantee.** Layer 1 catches secrets at
 > edit-time inside the agent; layer 2 catches them at commit-time, deterministically,

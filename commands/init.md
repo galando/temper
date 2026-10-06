@@ -65,36 +65,55 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    says the hook is already installed for this worktree and exits 0; otherwise it
    installs there. It never writes over a pre-commit hook that is not Temper's, and it
    never writes a file git tracks (husky v5 to v8 keep `.husky/pre-commit` in git): it
-   refuses instead, as in c below. A hook of the user's own that already runs the
-   current Temper hook lines is left as it is (exit 0). Re-running is idempotent: it
+   refuses instead, as in c below. Before it refuses for one of those two reasons, or
+   because core.hooksPath lies outside the repository, it writes the full Temper hook
+   to the file `temper-pre-commit` in the repository's own git folder (the folder
+   `git rev-parse --git-common-dir` names; never committed, never in the plugin
+   folder), so the user's own hook needs only one line, with no path of this machine in
+   it, to run the Temper hook. A pre-commit hook of the user's own that holds that exact
+   line, with no line before it that starts with `exit` or `exec`, calls the Temper
+   hook: install.sh makes `temper-pre-commit` current, says so and exits 0. When an
+   `exit` or `exec` line comes first, the Temper line never runs, so install.sh refuses
+   and says to move it above that line. Re-running is idempotent: it
    replaces an older Temper hook with one that holds the current plugin paths, and it
    warns when the old hook pointed at another plugin path (a stale hook, as after a
    plugin upgrade; it says the old hook was failing open only when that old path no
    longer exists). When an older version set a hook that was not Temper's aside as
    `pre-commit.bak.<timestamp>`, it names that file in a warning and says how to bring
-   it back: add the hook lines it prints at the end of that file, then move it back to
-   `pre-commit`.
+   it back: move it back to `pre-commit`, then add to it the line it prints between its
+   BEGIN and END lines (it writes `temper-pre-commit` first, so that line works).
    Report by how it ended:
    a. Exit 0 → the gate is installed, was already installed for this worktree, or the
-      user's own hook already runs the current lines; carry its line about that into
-      the report. Carry each `Warning:` line it printed into the report too, with the
-      restore steps and the hook lines it printed after a warning about an old
+      user's own hook calls the Temper hook, which is now current; carry its line about
+      that into the report. Carry each `Warning:` line it printed into the report too,
+      with the restore steps and the line it printed after a warning about an old
       `pre-commit.bak.<timestamp>` file, in a fenced code block.
    b. Exit 1 with "FAIL: not inside a git repository" → report "not a git repo yet; run
       /temper:init again after `git init` to install the commit gate" and continue (the
       config + scaffold still succeeded).
-   c. Any other non-zero exit → the commit gate is not installed, and nothing was
-      written. Report "commit gate not installed: {the FAIL reason}", or, when its
-      output has no FAIL line, "commit gate not installed" followed by its whole output
-      in a fenced code block. Then show the hook lines it printed between its BEGIN and
-      END lines, verbatim, in a fenced code block: the whole hook, from its
-      `#!/usr/bin/env bash` line to its last line, so the user has them to copy. Never
-      only say that it printed them. Then give its `Hint:` line as it printed it: for a
-      hook that is not Temper's, or a hook file git tracks, the hint says where the
-      lines go (husky: at the end of `.husky/pre-commit`; the pre-commit framework: in
-      a local hook of `.pre-commit-config.yaml`; any other hook: at the end of that
-      hook). install.sh refuses, prints those lines and exits 1 when the pre-commit
-      file holds a hook that is not Temper's, or is tracked by git; when core.hooksPath
+   c. Any other non-zero exit → the commit gate is not installed. Report "commit gate
+      not installed: {the FAIL reason}", or, when its output has no FAIL line, "commit
+      gate not installed" followed by its whole output in a fenced code block. When its
+      output says "The Temper hook is kept in {file}", say that install.sh kept the
+      Temper hook in that file, in the repository's git folder (never committed), and
+      wrote nothing else; otherwise say that it wrote nothing. Then, when it printed
+      lines between its BEGIN and END lines, show them verbatim in a fenced code block,
+      so the user has them to copy: one line that runs the Temper hook kept in the git
+      folder, or, when it refused before it knew the git folder, the Temper hook's own
+      lines in a subshell, so that their exits end only the subshell. Never only say
+      that it printed them. Then give its `Hint:` line as it printed it. For a hook
+      that is not Temper's, a hook file git tracks or a core.hooksPath outside the
+      repository, the hint says where the line goes: husky: `.husky/pre-commit`, safe
+      to commit because the line holds no path of this machine; the pre-commit
+      framework: a local hook in `.pre-commit-config.yaml` whose entry runs the line;
+      lefthook: a pre-commit command in `lefthook.yml`, because lefthook writes its
+      hook again; any other hook: its start or its end, because the line keeps that
+      hook's own result.
+      install.sh refuses and exits 1 when the pre-commit file holds a hook that is not
+      Temper's, or is tracked by git; when the user's hook holds the Temper line after
+      an `exit` or `exec` line; when core.hooksPath is Temper's own `--global` folder
+      from where this repository used to be (its hint says to run install.sh with
+      `--global` to point it here, or to unset core.hooksPath); when core.hooksPath
       is outside the repository and its own git folder, contains '..', '~' or other
       unusual characters, names a folder that holds a JSON file (the default hooks
       folder gets the same JSON check), or is a relative path through `.git` in a linked
@@ -143,8 +162,9 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
   guardrails set, waits for the user's answer, and Temper never reads or writes the
   user's home settings.
 - It does **not** overwrite an existing config, and it never writes over a pre-commit
-  hook that is not Temper's, or over a hook file git tracks: install.sh refuses, and
-  prints the lines to add to that hook yourself with a hint for husky and the
+  hook that is not Temper's, or over a hook file git tracks: install.sh refuses, keeps
+  the Temper hook in `temper-pre-commit` in the repository's git folder, and prints
+  the one line to add to that hook yourself, with a hint for husky, lefthook and the
   pre-commit framework.
 
 ## Migrating from an older version

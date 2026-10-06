@@ -75,18 +75,24 @@ of the folder (a case-insensitive disk, a bind mount, a doubled slash) changes n
   hooks folder, a `core.hooksPath` folder inside the repository or its git folder, or, in a linked
   worktree or a submodule, the shared hooks folder of the repository's own git folder (a second run
   there says it is already installed). It never writes over a pre-commit hook that is not Temper's,
-  and never writes a file git tracks: it prints the lines to add by hand, between BEGIN and END marker
-  lines, with a hint for husky and the pre-commit framework, and `/temper:init` and the first
-  `/temper` run show them in a code block. An older Temper hook is replaced, and a backup an older
-  version left is named, with how to restore it. With `--global` it sets `core.hooksPath` to the
-  absolute `temper-git-hooks` folder in the repository's git folder, so linked worktrees use it too,
-  and refuses when `core.hooksPath` is already set or `.git/hooks` holds a hook that is not Temper's.
+  never writes a file git tracks, and never writes into a `core.hooksPath` folder outside the
+  repository. Then it keeps Temper's hook as `temper-pre-commit` in the repository's git folder
+  (never committed) and prints one line to add to your own hook, between BEGIN and END marker lines,
+  with a hint for husky, lefthook and the pre-commit framework; `/temper:init` and the first
+  `/temper` run show it in a code block. The line holds no path of this machine, so it is safe in a
+  tracked husky file, and it keeps your hook's own result wherever it sits. A later run sees the line,
+  refreshes the kept hook, and refuses a line that sits after an `exit` or `exec`. An older Temper
+  hook is replaced, and a backup an older version left is named, with how to restore it. With
+  `--global` it sets `core.hooksPath` to the absolute `temper-git-hooks` folder in the repository's
+  git folder, so linked worktrees use it too; it refuses when `core.hooksPath` names another folder
+  or `.git/hooks` holds a hook git would stop running (a `commit-msg` or a `pre-push`, for example),
+  and it repairs its own setting after the repository moved.
   It follows every symlink before it creates anything, refuses a target that leads outside the
   repository and its git folder or into the plugin folder, refuses a repository inside the plugin
   folder, ignores every `GIT_*` variable, and writes through a temporary file, so a linked
-  `pre-commit` is replaced, never written through. Every refusal prints a FAIL line and the lines to
-  add. The hook holds the full paths of the CLI and the two guard scripts as plain text, fails open
-  when python3 is missing (the secret scan still runs), and skips the gate in a repository inside the
+  `pre-commit` is replaced, never written through. Every refusal prints a FAIL line and what to add.
+  The hook holds the full paths of the CLI and the two guard scripts as plain text, fails open when
+  python3 is missing (the secret scan still runs), and skips the gate in a repository inside the
   plugin folder or at the home folder.
 - `block-secrets.sh` as an agent hook scans only what a call adds (the written text, an edit's new
   text, a Bash command); only the commit hook scans what is staged, from the index, and names the
