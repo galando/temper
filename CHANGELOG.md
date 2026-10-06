@@ -3,6 +3,9 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.6.5 — TODO: one-line summary
+
+- TODO: maintainer fills in this entry's body.
 ## v9.6.4: the directory's holds, answered in code and in the README
 
 The directory held 9.6.3 with twelve reasons. This release changes the code where a change can clear

@@ -7,7 +7,7 @@ CLI, never asserted by a model. With Claude Code 2.1.287 or later a mod refuses 
 outside the current phase through Claude's editing tools (details in "Where enforcement works").
 
 [![Plugin directory](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
-[![Version](https://img.shields.io/badge/version-v9.6.4-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v9.6.5-blue)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1.287%2B%20for%20the%20mod-blue)](#where-enforcement-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -191,17 +191,17 @@ to ask you for a mode, a drift choice or a reason. CI fails on a call outside `s
   were asked for a mode stay in its plugin store, a JSON file in your Claude Code settings folder.
 - **Session state:** for its drawing it keeps the bar's view (run title, phase, criteria, findings),
   the mode, the project folder and the game's key counts in `$.state`, which other plugins can read.
-- **Settings:** no environment variable. Only `temper.uiMode` (you type `/temper:temper mode`, or answer
-  the mode question your first `/temper:temper` or a bare `mode` asks) and `temper.enforcement` (you
-  type `/temper:temper enforcement`). A row your organization locked stays as it is.
-- **Commands:** only `/temper:temper` and `/temper:temper continue <stage>` (intent, plan, design, build,
-  review or check), each written as fixed text, and only when you press a button or Enter in the
-  reason field. No command is built from data.
-- **Prompts:** only on that press, the fixed text of the action, with the phase, a finding number, your
-  reason, and the `scripts/temper` command that records your choice (with the plugin folder's path).
-  Discuss and Change put a fixed draft in your prompt box. After an answer in full mode it may suggest
-  the next fixed prompt; it never sends one. Each prompt is a turn of your session, marked as from the
-  Temper plugin. Apart from these, the refusals below and its session state, the mod sends no text out.
+- **Configuration and environment it sets:** no environment variable. Only `temper.uiMode` (you type
+  `/temper:temper mode`, or answer the mode question your first `/temper:temper` or a bare `mode` asks)
+  and `temper.enforcement` (you type `/temper:temper enforcement`). A row your organization locked stays.
+- **Slash commands it runs, and when:** only `/temper:temper` and `/temper:temper continue <stage>`
+  (intent, plan, design, build, review or check), each written as fixed text, and only when you press a
+  button or Enter in the reason field. No command is built from data.
+- **What it puts in the prompts it submits:** only on that press, the fixed text of the action, with the
+  phase, a finding number, your reason, and the `scripts/temper` command that records your choice (with
+  the plugin folder's path). Discuss and Change put a fixed draft in your prompt box. After an answer in
+  full mode it may suggest the next fixed prompt; it never sends one. Each prompt is a turn of your session,
+  marked as from the Temper plugin. Apart from these, the refusals below and its state, it sends no text out.
 - **System prompt:** `prompt.compose` adds one section, `temper:phase`, to each request: enforcement on
   or off, the phase (and whether paused), task, run title, passed criteria, stale phases, the next
   step, a warning when its state and the CLI's disagree, and one fixed line (answer a message at a

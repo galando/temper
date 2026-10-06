@@ -83,9 +83,9 @@ Claude Code itself accepts the plugin.
 | Kind of finding | Answered by |
 |---|---|
 | This plugin includes a mod | Always a reviewer. Nothing in the code clears it. |
-| The game's file path, scripts it cannot confirm leave the mod unchanged | Code: see the 9.6.4 entry in `CHANGELOG.md`. Keep `module:` a fixed string outside JSX. Keep scripts from reaching the mod's files through a computed folder, an environment override or a wildcard, and keep the name `hooks` for the mod's folder only. A fixed read only path (as in `check-original-options.sh`) has not been flagged. |
+| The game's file path, scripts it cannot confirm leave the mod unchanged | Code: see the 9.6.4 and 9.6.5 entries in `CHANGELOG.md`. Keep `module:` a fixed string outside JSX (cleared on 9.6.4). No script, config or instruction names a file of the mod or the hooks file, even to read it: 9.6.4 still had `check-original-options.sh` read the action table, and it was flagged. Checks of the mod go in its TS tests, which import it. Plugin paths are fixed text after the root: no `..`, no wildcard, no variable part. |
 | Prompts, commands, settings, hooks the mod uses | The README section "What the mod reads and writes". Change it in the same commit as the code. |
-| Tool calls, `config.set`, `command.run`, an agent spawn in `tests/mod/` | Temper's fake engine (`tests/mod/world.ts`, built on Claude Code's test kit) and one test's stub spawn. The README says so; a reviewer confirms. |
+| Tool calls, `config.set`, `command.run`, an agent spawn in `tests/mod/` | Temper's fake engine (`tests/mod/world.ts`, built on Claude Code's test kit) and one test's stub spawn. Not reported on 9.6.4, once the README described them. |
 | Images, credentials, download and run text | Notes for the reviewer: the images are plain, and the rest is text in docs, tests and the Bash guard's patterns. |
 
 ## What is not verified
