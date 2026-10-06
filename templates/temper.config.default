@@ -31,6 +31,11 @@ review:
 
 check:
   coverage-threshold: 80      # the check gate requires recorded coverage >= this
+  # The environment Check runs in. Check stops at once when it is production. With it
+  # unset, Check stops when the project holds a .env.production or .env.prod file; it
+  # decides from the file name only and never opens a .env file. Set it to development
+  # when such a file is only a template.
+  # environment: development
   # Commands Check runs instead of auto-detecting them for your stack. Any key left out
   # keeps stack detection. The CLI reads it with `config get check.commands.test`.
   # commands:

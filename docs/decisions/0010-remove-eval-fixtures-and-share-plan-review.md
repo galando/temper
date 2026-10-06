@@ -21,7 +21,7 @@ viewer.
 
 1. Delete `evals/` and the `Eval Fixtures` workflow, and remove every validator check
    and doc claim that depended on them. Gate logic stays covered by
-   `scripts/tests/test-temper.sh`; the wiring gap is enforced by the stage-gate Stop
+   `scripts/selftest/test-temper.sh`; the wiring gap is enforced by the stage-gate Stop
    hook (ADR 0005), not by a live run.
 2. Add **Share HTML review** at the Plan gate. It publishes the page as a Claude artifact
    with the `db` capability, so comments return through the shared store, with no manual

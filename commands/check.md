@@ -43,7 +43,9 @@ this context either way.
 ### Quick Reference
 
 Levels (stop on failure):
-0. Environment — verify not production
+0. Environment: stop when `check.environment` in temper.config is `production`, or,
+   with it unset, when the project holds a `.env.production` or `.env.prod` file.
+   Decide from that key and the file names only; never open a `.env` file.
 
 1. Compile/Build
 2. Unit Tests

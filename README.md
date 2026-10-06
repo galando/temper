@@ -121,7 +121,7 @@ purpose: a settings field with options stops the whole plugin loading on version
 | Desktop app, Code tab | yes | yes, except terminal only elements |
 | Desktop app, WSL session | no (plugins are unavailable) | no |
 | VS Code extension chat panel | yes | no |
-| `claude -p` and the Agent SDK | yes | no |
+| `claude -p` and the Agent SDK | yes; with enforcement on a run stops at the first gate, because only a person in an interactive session can approve (with enforcement off it runs on) | no |
 | Remote Control (phone or web) | yes, on your machine | only in your machine's terminal |
 | Cloud sessions (claude.ai/code) | yes, if server managed settings bring the plugin (most sessions get the prompt based phases) | no |
 | claude.ai chat, Cowork | not documented, so unverified | not documented |
@@ -157,15 +157,15 @@ runs text as commands (such as `source`), given a program the text does not show
 file on stdin, a word split by quotes, `$` or braces) is refused too. A command that names a file of the run
 (`gates.json`, `build-state.json`, the evidence ledger, `.claude/temper.config`, the git hooks) must be a plain read;
 `chmod`, `find -delete`, `git clean` and `--no-verify` are refused. A run whose `build-state.json` is hidden or
-removed stays enforced from the last known state until you turn enforcement off. Shell tricks that a text reader
-cannot see are still possible: a link or a script made in an earlier call, a script already on disk and started later,
-a program that builds the script name or a path at run time, or the names inside a patch or an archive. What is staged
-is the session's own picture (a script that stages is not seen). MCP and PowerShell file tools are not evaluated. So
-the hard guarantees are the editing tools and the native `pre-commit` hook, not the Bash reader. A `Temper
-enforcement:` line can also appear in text files that Claude can read. An injected copy can only hide a question,
-never advance a phase, because every advance still needs the decision of the person or a passed check. When the run is
-Done, a model `git commit` is allowed: the run is complete and the person pressed Continue. A later CLI could check a
-one time decision token.
+removed stays enforced from the last known state until you turn enforcement off, except after the TRIVIAL exit (`state
+clear` at Intent before any intent is written), which ends the run. Shell tricks that a text reader cannot see are
+still possible: a link or a script made in an earlier call, a script already on disk and started later, a program that
+builds the script name or a path at run time, or the names inside a patch or an archive. What is staged is the
+session's own picture (a script that stages is not seen). MCP and PowerShell file tools are not evaluated. So the hard
+guarantees are the editing tools and the native `pre-commit` hook, not the Bash reader. A `Temper enforcement:` line
+can also appear in any file Claude can read. An injected copy can only hide a question, never advance a phase, because
+every advance still needs the decision of the person or a passed check. When the run is Done, a model `git commit` is
+allowed: the run is complete and the person pressed Continue. A later CLI could check a one time decision token.
 
 ## What the mod reads and writes
 
@@ -209,16 +209,15 @@ to ask you for a mode, a drift choice or a reason. CI fails on a call outside `s
   - `command.run` handles only `/temper:temper`. It answers `status`, `timeline`, `help`, `report`, `mode`,
     `enforcement`, `pane`, `play`, `pause` and `resume`. It records an accepted decision (`approve`, `next`, `back`,
     `override`, `accept`, `drift`) and passes it on; a refused one is answered with the reason. A word that changes
-    state, and `play`, is refused unless you typed it in your prompt box. A bare `/temper:temper` you type toggles the
-    pane in full mode during a phase. `pr`, `discuss`, `continue`, any other text and every other command pass on
-    unchanged, the two commands the mod runs itself included.
+    state, and `play`, is refused unless you typed it in your prompt box; with enforcement off, a decision from any
+    origin is accepted and its origin recorded. A bare `/temper:temper` you type toggles the pane in full mode during
+    a phase. `pr`, `discuss`, `continue` and any other word or command pass on unchanged, even the two the mod runs.
   - `session.start` and `classic.SessionStart` find the project root and load the run; in full mode
     `session.start` also opens the pane during a phase. Both return what the engine gives them: no
     context, instruction or setting is added.
-  - `turn.step` sets the model and effort from `phaseModels`, and the model of the Temper review agent
-    from `reviewerModel`; empty options change nothing. `attribution.text` adds one Temper line to a
-    pull request description while a run is on and `prAttribution` is on. `turn.complete` adds a one
-    line status under an answer in full mode.
+  - `turn.step` sets the model and effort from `phaseModels` and the Temper review agent's model from `reviewerModel`;
+    empty options change nothing. `attribution.text` adds one Temper line to a pull request description during a run
+    when `prAttribution` is on. `turn.complete` adds a one line status under an answer in full mode.
   - `ui.render` draws the bar, pane, game, spinner word, prompt hint and a line above Claude's question
     dialog, which stays unchanged. `ui.message` takes the game's score; `ui.close` notes a closed pane.
 - **The game** is the mod's one surface module (the game client, with its runner, art and palette
@@ -260,8 +259,8 @@ merges. **Packs:** [docs/packs.md](docs/packs.md). **CI:** [examples/workflow/RE
 
 ## Trust
 
-Markdown, a mod written in TypeScript, about 3,300 lines of auditable bash (the CLI and the guard scripts) whose
-inline Python parses and writes JSON and computes the gate requirements, and three Python scripts (about 850
+Markdown, a mod written in TypeScript, about 4,200 lines of auditable bash (the CLI and the guard scripts) whose
+inline Python parses and writes JSON and computes the gate requirements, and four Python scripts (about 1,000
 lines, standard library only). Temper itself makes no network calls, sends no telemetry and adds no packages. The
 committed artifacts (intent, plan, design, gate ledger and diff) are the audit trail, in the same commits as the code.
 
@@ -275,12 +274,13 @@ folder `~/.claude/packs`, if you made one. A pack's link targets come from the s
   `UserPromptSubmit` runs `scripts/guards/stage-marker.sh`, which notes which gate a standalone
   stage command owes. `Stop` runs `scripts/guards/verify-stage-gate.sh`, which can ask Claude to
   keep working (at most twice per stage) until that gate has a verdict. Both fail open.
-- **Git hook.** `scripts/guards/install.sh` writes a `pre-commit` hook (a secret scan of the staged files, then
-  `temper gate commit`) on the first run: to the hooks folder git names (a linked worktree shares its main checkout's
-  hook, so one install covers every worktree), to a `core.hooksPath` folder inside the repository, or to
-  `.git/temper-git-hooks` with `--global` (refused when `core.hooksPath` is already set). A hook that is not Temper's
-  is kept as `pre-commit.bak.<timestamp>` and runs first, and its failure still stops the commit. To remove Temper's
-  hook, delete it and rename that backup to `pre-commit` (and unset `core.hooksPath` if you used `--global`).
+- **Git hook.** On the first run `scripts/guards/install.sh` writes a `pre-commit` hook (a secret scan of the staged
+  files, then `temper gate commit`) to the hooks folder git names, which linked worktrees share, or to a
+  `core.hooksPath` folder in the repository. Temper never writes over a hook that is not its own or a tracked hook
+  file: it prints the lines to add, with a hint for husky or the pre-commit framework. `--global` writes it to
+  `temper-git-hooks` in the git folder and sets that absolute path as `core.hooksPath`, so worktrees use it too
+  (refused when `core.hooksPath` is set or `.git/hooks` has such a hook). It says how to restore an older version's
+  `pre-commit.bak.<timestamp>`. To remove the hook, delete it (and unset `core.hooksPath` after `--global`).
 - **Your toolchain.** Build and check run the test, lint and type check commands of your stack (detected,
   or set in `check.commands.*` in `.claude/temper.config`) and record their exit codes as evidence.
 - **Optional tools already on your machine.** OCR (open code review) is off by default. With `tools.ocr.mode`

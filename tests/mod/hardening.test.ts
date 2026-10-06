@@ -215,6 +215,22 @@ describe('release review 15: standard input in the remaining spellings (EXPECT d
     // A part that cannot be read can hold `..` steps: only what follows the last one is known.
     'an unknown producer into bash $X/../0': 'cat /tmp/x.sh | bash $X/../0',
     'an unknown producer into bash /tmp/$X/stdin': 'cat /tmp/x.sh | bash /tmp/$X/stdin',
+    // Final review: a startup file the shell reads before its -c program (the file after --rcfile or --init-file,
+    // BASH_ENV, ENV) that names standard input runs the program from the pipe.
+    'an unknown producer into bash --rcfile /dev/stdin -ic true': 'base64 -d /tmp/p.b64 | bash --rcfile /dev/stdin -ic true',
+    'an unknown producer into bash --init-file /dev/stdin -ic :': 'base64 -d /tmp/p.b64 | bash --init-file /dev/stdin -ic :',
+    'an unknown producer into bash --rcfile stdin -ic : after cd /dev': 'cd /dev && cat /tmp/x.sh | bash --rcfile stdin -ic :',
+    'a pipe into bash --rcfile /dev/stdin -ic with an override': `echo '${OV}' | bash --rcfile /dev/stdin -ic true`,
+    'an unknown producer into BASH_ENV=/dev/stdin bash -c :': 'base64 -d /tmp/p.b64 | BASH_ENV=/dev/stdin bash -c :',
+    'an unknown producer into BASH_ENV=/proc/self/fd/0 bash -c true': 'cat /tmp/x.sh | BASH_ENV=/proc/self/fd/0 bash -c true',
+    'an unknown producer into env BASH_ENV=/dev/stdin bash -c :': 'cat /tmp/x.sh | env BASH_ENV=/dev/stdin bash -c :',
+    'an unknown producer into env -i BASH_ENV=/dev/fd/0 bash -c true': 'cat /tmp/x.sh | env -i BASH_ENV=/dev/fd/0 bash -c true',
+    'BASH_ENV exported, then an unknown producer into bash -c': 'export BASH_ENV=/dev/stdin; cat /tmp/x.sh | bash -c :',
+    'an unknown producer into ENV=/dev/stdin sh -ic :': 'cat /tmp/x.sh | ENV=/dev/stdin sh -ic :',
+    // xargs gives the words it reads to a shell that has no program word: the first of them is the program.
+    'an unknown producer into xargs -0 bash -c': 'base64 -d /tmp/p.b64 | xargs -0 bash -c',
+    'an unknown producer into xargs sh -c': 'cat /tmp/x | xargs sh -c',
+    'an unknown producer into xargs -n 1 bash -c': 'cat /tmp/list | xargs -n 1 bash -c',
   }
   for (const [name, cmd] of Object.entries(attempts)) {
     test(name, async ($, on) => {
@@ -236,6 +252,17 @@ describe('release review 15: scripts and visible programs still run', () => {
     'a script after --init-file': 'bash --init-file x scripts/run.sh',
     'a plain program into bash stdin after cd /dev': "cd /dev && echo 'ls' | bash stdin",
     'a glob of scripts fed a file is not standard input': 'cat data.txt | bash *.sh',
+    // Final review: input from /dev/null is no input, and a `<` inside a quoted argument is no redirect.
+    'a loop over test scripts with input from /dev/null': 'for script in scripts/selftest/*.sh; do bash "$script" < /dev/null; done',
+    'a script named by a variable with input from /dev/null': 'bash "$TEST_SCRIPT" </dev/null',
+    'a script named by a variable with fd 0 from /dev/null': 'bash "$TEST_SCRIPT" 0</dev/null',
+    'a script named by a variable with a quoted < in an argument': `bash "$SCRIPT" --grep '<title>'`,
+    'a script named by a variable with a < inside a quoted option value': 'bash "$RUNNER" --filter="x<3"',
+    // A startup file that is an ordinary file, and xargs with a program written out.
+    'a -c program after --rcfile with a plain file': "bash --rcfile .bashrc -ic 'ls src'",
+    'a -c program with BASH_ENV set to a plain file': "BASH_ENV=./env.sh bash -c 'ls src'",
+    'a script with ENV set and input from a file': 'ENV=staging bash scripts/run.sh < input.txt',
+    'xargs runs bash -c with a program written out': "ls scripts/*.sh | xargs -n 1 bash -c 'shellcheck \"$0\"'",
   }
   for (const [name, cmd] of Object.entries(fine)) {
     test(name, async ($, on) => {
@@ -785,7 +812,7 @@ describe('everyday Build commands are not touched by the stricter rules', () => 
     "sed -i 's/a/b/' src/a.ts",
     'chmod +x scripts/*.sh',
     'chmod 755 scripts/run.sh',
-    'bash scripts/tests/test-temper.sh',
+    'bash scripts/selftest/test-temper.sh',
     'T=$(ls /opt/plugins/temper/1/scripts/temper); $T gate build',
     "python3 - <<'PY'\nimport json\nprint(json.dumps({'a': 1}))\nPY",
     'echo "x" | tee notes.txt',

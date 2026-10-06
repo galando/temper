@@ -69,7 +69,7 @@ fi
 # 5. The bundled assets folder path may appear only as a Markdown link target.
 # git grep reads the files, chosen by the fixed pathspecs below (tracked files, plus new files git
 # does not ignore): a top level file, .claude/CLAUDE.md, or a file in one of the named folders.
-# docs/history (old release notes), scripts/tests and this script are excluded. This rule opens
+# docs/history (old release notes), scripts/selftest and this script are excluded. This rule opens
 # no file itself: it only filters the lines git grep prints, keeping a file with an md, sh, tape,
 # tpl or json extension and a line that still names the folder once every Markdown link target on
 # it is removed. The other rules open only the plugin folder plus fixed text (README.md, the two
@@ -91,7 +91,7 @@ else
              grep --untracked -z -n -I -F -e "$ASSETS_DIR_NAME" -- \
              ':(glob)*' .claude/CLAUDE.md .claude-plugin .github agents commands docs examples \
              packs reference scripts skills templates \
-             ':(exclude)docs/history' ':(exclude)scripts/tests' ':(exclude)scripts/validate-directory.sh' \
+             ':(exclude)docs/history' ':(exclude)scripts/selftest' ':(exclude)scripts/validate-directory.sh' \
              2>/dev/null)
 fi
 if [[ -n "$LEAKS" ]]; then

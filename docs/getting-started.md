@@ -287,7 +287,12 @@ claude --worktree fix-rate-limit    # session 2: /temper:fix "429 not returned"
 - The pre-commit gate is shared, not copied. Git runs a linked worktree's hooks from its main
   checkout's hooks folder, so one installed hook covers every worktree. The first
   `/temper:temper` in a worktree finds that hook and leaves it as it is, or, when no checkout has
-  it yet, installs it in that shared folder. A submodule's hook goes in its own git folder.
+  it yet, installs it in that shared folder. The installer's `--global` option sets
+  `core.hooksPath` to the absolute path of `temper-git-hooks` in the shared git folder, so every
+  linked worktree uses that hook too. A relative `core.hooksPath` (one you or a tool such as husky
+  set) names a folder inside each worktree, so it is per checkout. Temper never writes over a hook
+  that is not its own, or a hook file git tracks: it prints the lines to add to it. A submodule's
+  hook goes in its own git folder.
 - Practical ceiling: how many streams one person can *review*. Two or three is a
   sensible start; add sessions only while your review keeps up.
 

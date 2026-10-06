@@ -3,7 +3,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { classifyBash } from '../../hooks/temper-mod/core/bash'
-import { pluginCliFrom } from '../../hooks/temper-mod/core/cli'
+import { MOD_FILE, pluginCliFrom } from '../../hooks/temper-mod/core/cli'
 import { evaluate } from '../../hooks/temper-mod/core/rules'
 import type { RuleContext } from '../../hooks/temper-mod/core/rules'
 import { stateAt } from './helpers'
@@ -23,10 +23,10 @@ describe('legitimate Temper CLI flows stay allowed', () => {
     'cd demo && ../scripts/temper evidence list --stage review',
     'S=/Users/x/plugin; $S/scripts/temper gate check',
     'S=/Users/x/plugin; "$S"/scripts/temper evidence add --stage build --claim x',
-    'scripts/temper evidence run --stage build --claim x --phase red -- bash scripts/tests/test-temper.sh',
+    'scripts/temper evidence run --stage build --claim x --phase red -- bash scripts/selftest/test-temper.sh',
     'scripts/temper evidence resolve --stage review --id 3 --reason fixed',
     'scripts/temper state get next_stage',
-    // (complexity and base_sha are set in Plan and Build only, in the form the orchestrator uses: tests/mod/hardening.test.ts)
+    // (complexity and base_sha are set in Plan and Build only, in the form the orchestrator uses: see hardening.test.ts)
     'scripts/temper state set task 2',
     'scripts/temper state set regression_test tests/a.test.ts',
     'scripts/temper report',
@@ -101,7 +101,7 @@ describe('evidence accept needs the stage of the decision', () => {
 })
 
 describe('the plugin folder path in a prompt', () => {
-  const url = (p: string) => `file://${p}/hooks/temper-mod/register.tsx`
+  const url = (p: string) => `file://${p}${MOD_FILE}`
   test('a plain folder gives the full path', () => expect(pluginCliFrom(url('/Users/a/plugin'))).toBe('/Users/a/plugin/scripts/temper'))
   test('an encoded space is not put into a command', () => expect(pluginCliFrom(url('/Users/a%20b/plugin'))).toBe('scripts/temper'))
   test('an encoded quote is not put into a command', () => expect(pluginCliFrom(url('/Users/a%27b/plugin'))).toBe('scripts/temper'))

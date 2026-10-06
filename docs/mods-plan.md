@@ -755,7 +755,7 @@ nothing runs in CI. Light and dark terminal screenshots come from VHS themes.
   locked row; criteria parsing against `templates/intent.md` and the eval fixtures;
   report output; UI mounted on `terminal` and `desktop` (and a smoke on `vscode`,
   `mobile`); composition with a simulated prepend tier guard; version guard inertness.
-- `bash scripts/tests/test-temper.sh` cases for each CLI addition.
+- `bash scripts/selftest/test-temper.sh` cases for each CLI addition.
 - CI (`quality.yml`) runs `claude plugin test` and `claude plugin validate --strict` on Claude
   Code 2.1.287 and asserts the `calls:` line. No sign in needed.
 - Manual matrix: terminal at 80, 120 and 160 columns, fullscreen and main screen;

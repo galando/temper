@@ -248,14 +248,15 @@ if [[ -z "$PACK_PHASES_ERR" ]]; then ok; else fail "pack phases: $PACK_PHASES_ER
 # Claude Code fills in only the braced form of the CLAUDE_PLUGIN_ROOT variable, and only when it
 # loads a command, agent or skill; the Bash tool does not set the variable, and a page read with
 # the Read tool is not filled in. So a plugin path is always written as the braced variable, a '/'
-# and a fixed path that names a tracked file or folder. The plugin directory reads every file, the
-# tests and docs included, so this check reads every file git lists (tracked, plus new files git
-# does not ignore). It fails on:
+# and a fixed path that names a tracked file, never a folder. The plugin directory reads every
+# file, the tests and docs included, so this check reads every file git lists (tracked, plus new
+# files git does not ignore). It fails on:
 #   - the variable written with a dollar sign and no braces;
 #   - the braced variable with no '/' right after it (nothing after it, a default value, a suffix);
 #   - a path, taken up to whitespace, a backtick or a quote, that holds '..' or any of
 #     [ ] < > ( ) { } * ? $ | % (a wildcard, a placeholder, a group or a second variable);
-#   - a path that, once trailing . , ; : ! and / are removed, is not a tracked file or folder.
+#   - a path that, once trailing . , ; : and ! are removed, is not a tracked file (a folder, or a
+#     path that ends in '/', fails too).
 # The patterns are built from the variable's name when the check runs, so this script holds no
 # bad form; a test that needs one writes it at run time into a temporary plugin. Python runs git
 # grep and git ls-files and only filters the lines they print: it opens no file.
@@ -277,7 +278,6 @@ PATH = re.compile(re.escape(DOLLAR + '{' + NAME + '}/') + r'((?:[^\s`"\'\\]|\\(?
 BAD_PATH = re.compile(r'\.\.|[\[\]<>(){}*?$|%]')
 deleted = {p for p in git('ls-files', '-z', '-d').split('\0') if p}
 tracked = {p for p in git('ls-files', '-z').split('\0') if p and p not in deleted}
-folders = {p.rsplit('/', n)[0] for p in tracked for n in range(1, p.count('/') + 1)}
 data = git('-c', 'grep.column=false', '-c', 'grep.fullName=false', '-c', 'grep.lineNumber=true',
            'grep', '--untracked', '-z', '-n', '-I', '-F', '-e', NAME)
 out = []
@@ -289,13 +289,13 @@ for m in re.finditer(r'([^\0]*)\0([0-9]+)\0([^\n]*)\n', data):
     if NO_SLASH.search(line):
         why.append("braced with no '/' after it")
     for p in (x.group(1) for x in PATH.finditer(line)):
-        fixed = p.rstrip('.,;:!').rstrip('/')
+        fixed = p.rstrip('.,;:!')
         if BAD_PATH.search(p):
             why.append("a path with '..' or one of [ ] < > ( ) { } * ? $ | %: " + p)
         elif not fixed:
             why.append("nothing after the '/'")
-        elif fixed not in tracked and fixed not in folders:
-            why.append('not a tracked file or folder: ' + fixed)
+        elif fixed not in tracked:
+            why.append('not a tracked file: ' + fixed)
     if why:
         out.append(rel + ':' + num + ': ' + ', '.join(why))
 print('\n'.join(out))
@@ -307,7 +307,7 @@ else
   if [[ -z "$ROOT_VAR_ERRS" ]]; then
     ok
   else
-    fail "a plugin path must be the braced variable, '/' and a fixed tracked path ($(printf '%s\n' "$ROOT_VAR_ERRS" | wc -l | tr -d ' ') line(s)):"
+    fail "a plugin path must be the braced variable, '/' and the fixed path of a tracked file ($(printf '%s\n' "$ROOT_VAR_ERRS" | wc -l | tr -d ' ') line(s)):"
     printf '%s\n' "$ROOT_VAR_ERRS" | head -40 | sed 's/^/  /'
   fi
 fi
@@ -371,7 +371,7 @@ elif [[ ! -x "$TEMPER_CLI" ]]; then
 else
   ok
 fi
-if [[ -f "$REPO_ROOT/scripts/tests/test-temper.sh" ]]; then ok; else fail "scripts/tests/test-temper.sh missing"; fi
+if [[ -f "$REPO_ROOT/scripts/selftest/test-temper.sh" ]]; then ok; else fail "scripts/selftest/test-temper.sh missing"; fi
 
 # --- pack-discover.py (v8): /temper:pack's Step 5a discovery scan, extracted from a
 # prompt-embedded script into a testable one ---
@@ -380,6 +380,16 @@ if [[ ! -f "$PACK_DISCOVER" ]]; then
   fail "scripts/pack-discover.py missing"
 elif ! python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" "$PACK_DISCOVER" 2>/dev/null; then
   fail "scripts/pack-discover.py has a syntax error"
+else
+  ok
+fi
+
+# --- guard-entries.py: the stale guard check of /temper:pack and /temper:init ---
+GUARD_ENTRIES="$REPO_ROOT/scripts/guard-entries.py"
+if [[ ! -f "$GUARD_ENTRIES" ]]; then
+  fail "scripts/guard-entries.py missing"
+elif ! python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" "$GUARD_ENTRIES" 2>/dev/null; then
+  fail "scripts/guard-entries.py has a syntax error"
 else
   ok
 fi

@@ -79,7 +79,7 @@ Three you'll actually type. `/temper:temper` runs and routes the rest:
 
 | Command | Purpose |
 |---------|---------|
-| [`/temper:temper "…"`](commands.html#temper) | The whole pipeline, intent gate to commit |
+| [`/temper:temper "…"`](commands.html#temper-unified-command) | The whole pipeline, intent gate to commit |
 | [`/temper:fix "…"`](commands.html#temperfix) | Root cause → failing test (write-protected) → minimal fix |
 | [`/temper:intent "…"`](commands.html#temperintent) | Capture an idea as a committed draft, build it later |
 

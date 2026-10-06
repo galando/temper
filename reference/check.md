@@ -39,7 +39,7 @@ missing *optional* tool.
 
 | # | Level | On failure | Skip when |
 |---|---|---|---|
-| 0 | Environment — none of the project's `.env` and `.env.<name>` files looks like production | STOP immediately | the project has no `.env` or `.env.<name>` file |
+| 0 | Environment, decided from a config key and file names only: never open a `.env` file or read what one holds. It fails when `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get check.environment` prints `production`, or, with that key unset, when the project's top folder holds a file named `.env.production` or `.env.prod` | STOP immediately; name the key or the file name that stopped it, and say that setting `check.environment` to the real environment (for example `development`) in temper.config clears it when that file is only a template | `check.environment` is set to anything but `production`, or it is unset and no such file name exists |
 | 1 | Compile/build | STOP, show error, suggest fix | — |
 | 2 | Unit tests | STOP, show failing names | — |
 | 3 | Integration tests | STOP, show failing tests | none configured |

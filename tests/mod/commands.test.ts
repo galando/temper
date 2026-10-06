@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
+import { NEEDS_INTERACTIVE } from '../../hooks/temper-mod/core/commands'
 import { SPEC, runFiles } from './run-files'
 import { cliTo, world } from './world'
 import type { World } from './world'
@@ -120,7 +121,7 @@ describe('decisions come only from the person', () => {
     const w = world(on, runFiles({ nextStage: 'review' }))
     for (const kind of ['sdk', 'bridge', 'plugin'] as const) {
       const r = await $.command.run({ command: 'temper', args: 'override because', origin: { kind, name: 'x' } } as never)
-      expect(r.text).toBe('Only the user can approve this. Next: ask the user to press 1 or run /temper:temper approve.')
+      expect(r.text).toBe(NEEDS_INTERACTIVE)
     }
     expect(decisions(w)).toEqual([])
   })
@@ -236,7 +237,8 @@ describe('a chained command spends every human event it matched', () => {
 })
 
 describe('every state changing word needs the person', () => {
-  const ONLY = 'Only the user can approve this. Next: ask the user to press 1 or run /temper:temper approve.'
+  // A refusal from another origin says decisions need an interactive session (final review).
+  const ONLY = NEEDS_INTERACTIVE
   const words = [
     'mode full',
     'mode off',

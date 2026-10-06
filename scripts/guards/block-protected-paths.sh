@@ -28,11 +28,20 @@ _main() {
   command -v python3 >/dev/null 2>&1 || return 0
 
   local dir="${CLAUDE_PROJECT_DIR:-$PWD}"
-  # The plugin folder is this script's folder with the literal suffix /scripts/guards
-  # removed; the CLI is scripts/temper inside it.
-  local here root temper_cli
-  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 0
+  # The plugin folder is this script's folder (its own file with every symlink followed,
+  # as scripts/temper finds itself, then resolved) with the literal suffix /scripts/guards
+  # removed; the CLI is scripts/temper inside it. When that suffix is missing the hook is
+  # not in a plugin's scripts/guards folder and does nothing.
+  local self="${BASH_SOURCE[0]}" hops=0 link_dir here root temper_cli
+  while [[ -L "$self" && $hops -lt 40 ]]; do
+    link_dir="$(cd -P "$(dirname "$self")" 2>/dev/null && pwd)" || return 0
+    self="$(readlink "$self")" || return 0
+    [[ "$self" == /* ]] || self="$link_dir/$self"
+    hops=$((hops + 1))
+  done
+  here="$(cd -P "$(dirname "$self")" 2>/dev/null && pwd)" || return 0
   root="${here%/scripts/guards}"
+  [[ "$root" != "$here" ]] || return 0
   temper_cli="$root/scripts/temper"
   [[ -x "$temper_cli" ]] || return 0
 

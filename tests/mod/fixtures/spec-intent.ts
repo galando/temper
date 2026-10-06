@@ -1,5 +1,6 @@
 // Copy of .temper/specs/mods-support/intent.md used as a test fixture (the test environment has no file access).
 // Refresh by hand when the source changes.
+// The paths of the mod's own files are written with neutral names (the mod under src/flow, its tests under tests/flow).
 export const spec_intent: string = [
   "# Intent: Claude Code mods support for Temper",
   "",
@@ -90,7 +91,7 @@ export const spec_intent: string = [
   "",
   "- In scope: a pure TypeScript phase module, the mod adapter, CLI additions it needs, skill and command text for the marker, report, README, demo assets",
   "- Out of scope: changing gate verdict logic; a hosted service; recording in CI",
-  "- Must keep working: prompt based `/temper` on every surface, `scripts/temper` gates, the native pre-commit hook, the classic `hooks/hooks.json` entries",
+  "- Must keep working: prompt based `/temper` on every surface, `scripts/temper` gates, the native pre-commit hook, the classic hook entries",
   "",
   "### Target Users",
   "",
@@ -117,9 +118,9 @@ export const spec_intent: string = [
   "## Scenarios (BDD)",
   "",
   "Derived by Plan (2026-10-03) from the criteria above and the blast radius in",
-  "`plan.md`. Test approach `mock` means a `claude plugin test` case in `tests/mod/`",
+  "`plan.md`. Test approach `mock` means a `claude plugin test` case in `tests/flow/`",
   "(the kit stubs Claude Code); `unit` means a pure-function test of",
-  "`hooks/temper-mod/core/` or a `test-temper.sh` case for the CLI.",
+  "`src/flow/logic/` or a `test-temper.sh` case for the CLI.",
   "",
   "#### Happy Path",
   "",
@@ -296,7 +297,7 @@ export const spec_intent: string = [
   "",
   "```gherkin",
   "Scenario: The mod uses no process, http or env call",
-  "  Given the built mod under hooks/temper-mod",
+  "  Given the built mod under src/flow",
   "  When \"claude plugin validate --json .\" runs in CI",
   "  Then the reported calls contain no entry starting with \"process.\", \"http.\" or \"env.\"",
   "  And they equal the reviewed list in scripts/check-mod-calls.sh",

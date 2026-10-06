@@ -10,7 +10,7 @@
 cost a `gate_eval()` branch in `scripts/temper`, an agent (`agents/eval.md`), a command
 (`commands/eval.md`), a 232-line reference doc, a 5.5 KB skill (`skills/eval-judge/`), a
 JSON template (`templates/evalset.json`), a config block, four generated `.cursor/`
-artifacts and eight assertions in `scripts/tests/test-temper.sh`.
+artifacts and eight assertions in `scripts/selftest/test-temper.sh`.
 
 What it produced was an LM-judge aggregate score compared against a threshold. No other
 gate consumed it, no feedback loop acted on it, and in practice the score was read and

@@ -37,9 +37,11 @@ path that does not start with the plugin folder (`.temper/`, the spec files,
 
 `.temper/build-state.json`, owned by `${CLAUDE_PLUGIN_ROOT}/scripts/temper state` — never hand-write it. Resolve the
 spec path from `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path` before launching any agent.
-When the CLI exits 3, it refused because the project's `.temper` folder is, or holds, a
-symlink: stop, show its one-line reason, and wait for the user. Never remove, replace or
-follow the link yourself.
+When the CLI exits 3, it refused because a path it keeps run state in (the `.temper`
+folder, its evidence, specs or archive folder, a state or evidence file, or the active
+run's spec folder or its `gate-ledger.json`) is a symlink: stop, show its one-line
+reason, and wait for the user. While a run is active, the commit hooks block every
+commit until the link is gone. Never remove, replace or follow the link yourself.
 
 ```json
 { "stage": "{stage}_complete", "spec": "{slug}", "spec_path": ".temper/specs/{slug}",

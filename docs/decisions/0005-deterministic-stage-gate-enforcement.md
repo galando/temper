@@ -76,7 +76,7 @@ Consistent with every hook in the pack — exactly one fail-closed path:
 
 ## Evidence
 
-- Unit: 15 cases in `scripts/tests/test-temper.sh` (marker detection and non-detection,
+- Unit: 15 cases in `scripts/selftest/test-temper.sh` (marker detection and non-detection,
   block/clear/loop-guard paths, corrupt inputs, FAIL-verdict acceptance, a live
   `temper gate plan` round-trip, and a pinned regression for the argv-vs-stdin bug).
 - Probe: a throwaway plugin confirmed empirically that a plugin's hooks file fires

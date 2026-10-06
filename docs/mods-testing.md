@@ -39,7 +39,7 @@ Run these from `<clone>`. None of them sends a request.
   `claude --plugin-dir .` in the clone once and quit: loading the plugin writes them.
 - [ ] `bash scripts/check-mod-calls.sh` prints `OK` and a count of calls, with no process,
   http or env call.
-- [ ] `bash scripts/tests/test-temper.sh` ends with `FAIL: 0`.
+- [ ] `bash scripts/selftest/test-temper.sh` ends with `FAIL: 0`.
 - [ ] `bash scripts/quality-check.sh` ends with `All checks passed.`
 
 ## 3. A test session

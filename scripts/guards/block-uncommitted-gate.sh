@@ -15,8 +15,10 @@
 #   - Not a `git commit` command      => exit 0 (no-op; only commits are inspected)
 #   - temper CLI or .temper/ absent   => exit 0 (fail-open; nothing to gate)
 #   - repository inside the plugin folder => exit 0 (the CLI refuses to run there)
-#   - the CLI refuses the project's .temper folder (exit 3: it or an entry in it is a
-#     symlink)                        => exit 0 with a one-line warning (FAIL-OPEN)
+#   - the CLI refuses the project's .temper folder (exit 3: a path it keeps run state in
+#     is a symlink) while a run is active (.temper/build-state.json exists, as a file or a
+#     link)                           => exit 2 (BLOCK: remove the symlink)
+#   - the same refusal with no run active => exit 0 with a one-line warning (FAIL-OPEN)
 #   - `temper gate commit` FAILs      => exit 2 (BLOCK)
 #   - Internal error                  => exit 0 (FAIL-OPEN)
 set -uo pipefail
@@ -45,9 +47,10 @@ except Exception:
   [[ -d "$repo_root/.temper" ]] || return 0
 
   # The CLI of the plugin this script belongs to: the plugin folder is this script's
-  # folder (its own file with every symlink followed, as the CLI finds itself) with the
-  # literal suffix /scripts/guards removed. Never a copy at the project's root, and never
-  # one named by an environment variable.
+  # folder (its own file with every symlink followed, as the CLI finds itself, then the
+  # folder with every symlink followed) with the literal suffix /scripts/guards removed.
+  # Never a copy at the project's root, and never one named by an environment variable.
+  # When the suffix is not there, this script does nothing.
   local self="${BASH_SOURCE[0]}" hops=0 link_dir here root temper_bin
   while [[ -L "$self" && $hops -lt 40 ]]; do
     link_dir="$(cd -P "$(dirname "$self")" 2>/dev/null && pwd)" || return 0
@@ -55,7 +58,7 @@ except Exception:
     [[ "$self" == /* ]] || self="$link_dir/$self"
     hops=$((hops + 1))
   done
-  here="$(cd "$(dirname "$self")" 2>/dev/null && pwd)" || return 0
+  here="$(cd -P "$(dirname "$self")" 2>/dev/null && pwd)" || return 0
   root="${here%/scripts/guards}"
   [[ "$root" != "$here" ]] || return 0
   temper_bin="$root/scripts/temper"
@@ -73,13 +76,22 @@ except Exception:
       [[ "${up:-/}" -ef "$root" ]] && return 0
     done
   fi
+  # The home folder is never a project: the CLI refuses to run there, so there is nothing
+  # to gate.
+  [[ -n "${HOME:-}" && "$repo_real" -ef "$HOME" ]] && return 0
 
   local rc
   ( cd "$repo_root" && "$temper_bin" gate commit )
   rc=$?
   [[ $rc -eq 0 ]] && return 0
   if [[ $rc -eq 3 ]]; then
-    echo "Temper: the commit gate was skipped because the temper CLI refused this project's .temper folder (its reason is above)." >&2
+    # The CLI refused the .temper folder (a symlink on a path it keeps run state in). While
+    # a run is active that refusal must not open the gate.
+    if [[ -e "$repo_root/.temper/build-state.json" || -L "$repo_root/.temper/build-state.json" ]]; then
+      echo "BLOCK: a run is active and the temper CLI refused this project's .temper folder (its reason is above), so remove the symlink, then commit again." >&2
+      return 2
+    fi
+    echo "Temper: the commit gate was skipped because the temper CLI refused this project's .temper folder (its reason is above) and no run is active." >&2
     return 0
   fi
   echo "BLOCK: temper gate commit FAILed. To see which requirement is unmet, run: $(printf '%q' "$temper_bin") report" >&2

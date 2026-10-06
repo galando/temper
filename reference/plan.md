@@ -238,8 +238,9 @@ practice and which alternative it beat. Mirror each as one line in the summary b
 Generate a mermaid diagram in `plan.md`'s `## Diagram` section (flowchart for component/
 data flow, `stateDiagram-v2` for lifecycles, `sequenceDiagram` for cross-boundary calls,
 `classDiagram` for type hierarchies) — under 30 nodes, `classDef` color-coding new vs.
-existing vs. modified when it helps. Render the diagram as ASCII box-drawing art in the
-terminal summary box too (the terminal can't render mermaid); keep the mermaid block in
+existing vs. modified when it helps. Render the diagram as ASCII box-drawing art right
+after the terminal summary panel too, as the one drawing allowed beside that panel (the
+terminal can't render mermaid); keep the mermaid block in
 plan.md for GitHub/tool rendering. Skip the diagram only for a single-file or config-only
 change in standalone `/temper:plan`.
 

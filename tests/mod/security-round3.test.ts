@@ -20,10 +20,10 @@ describe('plain calls stay allowed while a run is active', () => {
     'S=/p; $S/scripts/temper gate check',
     'scripts/temper gate $STAGE',
     'scripts/temper evidence add --stage build --claim "$(cat note.txt)" --label HEURISTIC',
-    'scripts/temper evidence run --stage build --claim x --phase red -- bash scripts/tests/test-temper.sh',
+    'scripts/temper evidence run --stage build --claim x --phase red -- bash scripts/selftest/test-temper.sh',
     'scripts/temper evidence list --stage review',
     'scripts/temper state get next_stage',
-    // (complexity and base_sha are set in Plan and Build only, in the form the orchestrator uses: tests/mod/hardening.test.ts)
+    // (complexity and base_sha are set in Plan and Build only, in the form the orchestrator uses: see hardening.test.ts)
     'scripts/temper state set task 2',
     'scripts/temper state set regression_test tests/a.test.ts',
     'scripts/temper report',

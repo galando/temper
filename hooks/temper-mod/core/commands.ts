@@ -151,6 +151,15 @@ function followUpText(draft: Draft, complexity: string | null, from: Phase | nul
   }
 }
 
+// The answer to a word that changes the run when it did not come from the person's prompt box (a `claude -p` run, the
+// Agent SDK, Claude itself). It says where a decision is made, and never sends the person back to the same command.
+export const NEEDS_INTERACTIVE =
+  'Temper: decisions need an interactive session. Only the user decides there, with the Temper bar or with /temper:temper approve (or back, override, accept) typed in the prompt box. ' +
+  'This command came from somewhere else, such as a claude -p run, the Agent SDK or Claude. Next: continue the run in an interactive claude session.'
+
+// The words that record a decision of the person.
+export const DECISION_WORDS: readonly string[] = ['approve', 'next', 'back', 'override', 'accept', 'drift']
+
 export const HELP = [
   'Temper subcommands (type them after /temper:temper):',
   '  status               show where the run is',

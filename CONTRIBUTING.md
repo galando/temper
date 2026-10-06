@@ -13,7 +13,7 @@ cd temper
 git checkout -b feature/my-improvement
 
 # Make your changes, then run the checks
-bash scripts/tests/test-temper.sh
+bash scripts/selftest/test-temper.sh
 bash scripts/quality-check.sh
 
 # Submit a pull request

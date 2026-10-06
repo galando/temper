@@ -6,13 +6,14 @@
 # Temper's tooling). Runs entirely in a throwaway tmp dir; never touches the repo.
 set -uo pipefail
 
-# The repo root: this script's folder with the literal suffix /scripts/tests removed.
+# The repo root: this script's folder with the literal suffix /scripts/selftest removed.
 unset CDPATH
-TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="${TESTS_DIR%/scripts/tests}"
+TESTS_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${TESTS_DIR%/scripts/selftest}"
 [[ "$REPO_ROOT" != "$TESTS_DIR" && -x "$REPO_ROOT/scripts/temper" ]] || { echo "FAIL: cannot find the repo root from $TESTS_DIR"; exit 1; }
 TEMPER="$REPO_ROOT/scripts/temper"
-WORKDIR="$(mktemp -d)"
+WORKDIR="$(mktemp -d)" || exit 1
+WORKDIR="$(cd -P "$WORKDIR" && pwd)" || exit 1   # physical, as the scripts see their own folders
 trap 'rm -rf "$WORKDIR"' EXIT
 
 PASS=0
@@ -490,27 +491,15 @@ setup
 assert_eq "state loop check->build auto-clears check evidence (check is downstream of build)" "[]" "$(cat .temper/evidence/check.json | tr -d '[:space:]')"
 assert_exit "check gate FAILs closed again after the auto-clear (stale scenario coverage cannot mask a regression)" 1 "$TEMPER" gate check
 
-# --- pack-discover.py reads only the project: no Claude Code file and nothing in the home folder.
-# The fake home below holds everything older versions read (the installed plugin list, a plugin's
-# skills and commands, home commands and home skills), and the installed list also names this
-# plugin's own folder. An audit hook records every file and folder the script opens or lists;
-# none may be in that home or in this plugin's folder. ---
+# --- pack-discover.py reads only the project: nothing in the home folder and nothing in Temper's
+# own folder. HOME names a plain fake home that holds one neutral note. An audit hook records every
+# file and folder the script opens or lists (it fires for a path that does not exist too), so the
+# home needs nothing in it: none may be in that home or in this plugin's folder. ---
 setup
 PACK_HOME="$WORKDIR/fake-home"
 rm -rf "$PACK_HOME"
-mkdir -p "$PACK_HOME/.claude/plugins" "$PACK_HOME/.claude/commands" "$PACK_HOME/.claude/skills/home-skill" \
-  "$PACK_HOME/demo/.claude-plugin" "$PACK_HOME/demo/skills/demo-skill" "$PACK_HOME/demo/commands" .claude/commands
-echo '{"description": "demo plugin"}' > "$PACK_HOME/demo/.claude-plugin/plugin.json"
-printf -- '---\ndescription: plugin skill\n---\n' > "$PACK_HOME/demo/skills/demo-skill/SKILL.md"
-printf -- '---\ndescription: plugin command\n---\n' > "$PACK_HOME/demo/commands/demo-cmd.md"
-printf -- '---\ndescription: home command\n---\n' > "$PACK_HOME/.claude/commands/home-cmd.md"
-printf -- '---\ndescription: home skill\n---\n' > "$PACK_HOME/.claude/skills/home-skill/SKILL.md"
-cat > "$PACK_HOME/.claude/plugins/installed_plugins.json" <<EOF
-{"plugins": {
-  "demo@market": [{"version": "1", "installPath": "$PACK_HOME/demo", "lastUpdated": "2026-06-01T00:00:00Z"}],
-  "temper-fork@somewhere": [{"version": "1", "installPath": "$REPO_ROOT", "lastUpdated": "2026-01-01T00:00:00Z"}]
-}}
-EOF
+mkdir -p "$PACK_HOME/notes" .claude/commands
+printf -- '---\ndescription: home note\n---\n' > "$PACK_HOME/notes/home-note.md"
 printf -- '---\ndescription: local\n---\n' > .claude/commands/local-cmd.md
 # audit-run.py <watched prefixes, '|' separated> <script>: runs the script and prints, on stderr,
 # every open, scandir and listdir of a path under a watched prefix (the script file itself aside).
@@ -535,14 +524,14 @@ PD_RR_REAL="$(cd "$REPO_ROOT" && pwd -P)"
 PACK_OUT="$(HOME="$PACK_HOME" python3 -I "$WORKDIR/audit-run.py" \
   "$PACK_HOME|$PD_WD_REAL/fake-home|$REPO_ROOT|$PD_RR_REAL" "$REPO_ROOT/scripts/pack-discover.py" 2>"$WORKDIR/audit.txt")"
 assert_eq "pack-discover opens and lists nothing in the home folder or in Temper's own folder" "NO READ" "$(cat "$WORKDIR/audit.txt")"
-assert_eq "pack-discover prints only the project's rows, never a plugin, plugin skill or home command" "LOCAL_CMD|local-cmd" \
+assert_eq "pack-discover prints only the project's rows, nothing from the home folder" "LOCAL_CMD|local-cmd" \
   "$(printf '%s\n' "$PACK_OUT" | cut -d'|' -f1,2 | paste -sd' ' -)"
 # The audit hook sees reads: the same run, watching the project's own .claude folder, records them.
 HOME="$PACK_HOME" python3 -I "$WORKDIR/audit-run.py" "$PD_WD_REAL/.claude" "$REPO_ROOT/scripts/pack-discover.py" >/dev/null 2>"$WORKDIR/audit.txt"
 assert_eq "the audit hook records the project command the script reads" "1" \
   "$(grep -cxF "READ open $PD_WD_REAL/.claude/commands/local-cmd.md" "$WORKDIR/audit.txt")"
-assert_eq "pack-discover's source asks for no home folder, environment or installed plugin list" "0" \
-  "$(grep -cE 'expanduser|getenv|environ|installed_plugins|GLOBAL_CMD' "$REPO_ROOT/scripts/pack-discover.py")"
+assert_eq "pack-discover's source asks for no home folder, environment or JSON file" "0" \
+  "$(grep -cE 'expanduser|getenv|environ|\.json|GLOBAL_CMD' "$REPO_ROOT/scripts/pack-discover.py")"
 rm -rf "$PACK_HOME" .claude/commands "$WORKDIR/audit.txt"
 
 # --- pack-discover.py: each project target once, with its own description; a command and a skill
@@ -562,6 +551,148 @@ assert_eq "pack-discover prints the full resolved path of the file a link reads"
   "$(printf '%s\n' "$DEDUP_OUT" | awk -F'|' '$2 == "shared" {print $3}' | paste -sd'|' -)"
 assert_eq "pack-discover prints the same rows on every run" "$DEDUP_OUT" "$(python3 "$REPO_ROOT/scripts/pack-discover.py")"
 rm -rf .claude/commands .claude/skills
+
+# --- guard-entries.py: the Temper guard entries in the project's two settings files, each with its
+# status. The plugin folder is the one that holds the script, found after following links. The
+# commands are built at run time (GE_VAR is the plugin root variable's name), so no tracked file
+# holds a plugin path form. GE_OLD stands for an earlier plugin folder. ---
+setup
+GE="$REPO_ROOT/scripts/guard-entries.py"
+GE_VAR=CLAUDE_PLUGIN_ROOT
+GE_PROJ="$WORKDIR/ge-project"
+GE_OLD="$WORKDIR/ge-old-plugin"
+GE_HOME="$WORKDIR/ge-home"
+GE_OUTSIDE="$WORKDIR/ge-outside"
+rm -rf "$GE_PROJ" "$GE_OLD" "$GE_HOME" "$GE_OUTSIDE" "$WORKDIR/ge-link" "$WORKDIR/ge-bin" "$WORKDIR/ge-proj-link"
+mkdir -p "$GE_PROJ/.claude" "$GE_PROJ/tools/scripts/guards" "$GE_OLD/scripts/guards" "$GE_HOME" "$GE_OUTSIDE" "$WORKDIR/ge-bin"
+printf 'x\n' > "$GE_OLD/scripts/guards/block-uncommitted-gate.sh"
+ln -s "$REPO_ROOT" "$WORKDIR/ge-link"
+ln -s "$GE" "$WORKDIR/ge-bin/guard-entries.py"
+ln -s "$GE_PROJ" "$WORKDIR/ge-proj-link"
+cat > "$GE_PROJ/.claude/settings.json" <<EOF
+{"permissions": {"allow": []},
+ "hooks": {
+  "PreToolUse": [
+   {"matcher": "Edit|Write", "hooks": [
+     {"type": "command", "command": "bash \"$REPO_ROOT/scripts/guards/block-secrets.sh\""},
+     {"type": "command", "command": "bash \"$WORKDIR/ge-link/scripts/guards/protect-regression-test.sh\""},
+     {"type": "command", "command": "bash \"\$CLAUDE_PROJECT_DIR/tools/block-secrets.sh\""},
+     {"type": "command", "command": "\"\$CLAUDE_PROJECT_DIR\"/tools/block-protected-paths.sh"},
+     {"type": "command", "command": "bash tools/block-secrets.sh"},
+     {"type": "command", "command": "bash \"$GE_PROJ/tools/scripts/guards/block-secrets.sh\""},
+     {"type": "command", "command": "bash \"$GE_OLD/scripts/a/b/block-secrets.sh\""},
+     {"type": "command", "command": "bash ./my-lint.sh"}]},
+   {"matcher": "Bash", "hooks": [
+     {"type": "command", "command": "bash \"$GE_OLD/scripts/guards/block-uncommitted-gate.sh\""},
+     {"type": "command", "command": "bash $GE_OLD/scripts/legacy/confirm-override.sh"},
+     {"type": "command", "command": "bash \${$GE_VAR}/scripts/guards/confirm-override.sh"},
+     {"type": "command", "command": "bash \"$REPO_ROOT/scripts/retired/run-formatter.sh\""}]}],
+  "PostToolUse": [
+   {"hooks": [{"type": "command", "command": "bash $REPO_ROOT/scripts/guards/run-formatter.sh"}]}]}}
+EOF
+cat > "$GE_PROJ/.claude/settings.local.json" <<EOF
+{"hooks": {"PreToolUse": [{"matcher": "Edit", "hooks": [
+  {"type": "command", "command": "bash \"$REPO_ROOT/scripts/guards/block-secrets.sh\""}]}]}}
+EOF
+GE_WANT="$(printf '%s\n' \
+  ".claude/settings.json|PreToolUse|Edit|Write|$REPO_ROOT/scripts/guards/block-secrets.sh|current" \
+  ".claude/settings.json|PreToolUse|Edit|Write|$WORKDIR/ge-link/scripts/guards/protect-regression-test.sh|current" \
+  ".claude/settings.json|PreToolUse|Bash|$GE_OLD/scripts/guards/block-uncommitted-gate.sh|stale" \
+  ".claude/settings.json|PreToolUse|Bash|$GE_OLD/scripts/legacy/confirm-override.sh|stale" \
+  ".claude/settings.json|PreToolUse|Bash|\${$GE_VAR}/scripts/guards/confirm-override.sh|stale" \
+  ".claude/settings.json|PreToolUse|Bash|$REPO_ROOT/scripts/retired/run-formatter.sh|stale" \
+  ".claude/settings.json|PostToolUse||$REPO_ROOT/scripts/guards/run-formatter.sh|current" \
+  ".claude/settings.local.json|PreToolUse|Edit|$REPO_ROOT/scripts/guards/block-secrets.sh|current")"
+cd "$GE_PROJ" || exit 1
+GE_OUT="$(HOME="$GE_HOME" python3 "$GE" 2>"$WORKDIR/ge-err.txt")"; GE_RC=$?
+assert_eq "guard-entries lists both files' Temper guard entries in file order: current under this plugin folder (also through a link), stale for an earlier plugin folder, an older guard scripts folder, the plugin root variable and a missing script" \
+  "$GE_WANT" "$GE_OUT"
+assert_eq "guard-entries exits 0 and prints nothing on stderr when both files read" "0|" "$GE_RC|$(cat "$WORKDIR/ge-err.txt")"
+assert_eq "guard-entries leaves the user's copies alone (the CLAUDE_PROJECT_DIR variable, a relative path, a path inside the project, a path deeper than one folder under scripts) and a hook that names no guard script" \
+  "0" "$(printf '%s\n' "$GE_OUT" | grep -cE 'tools/|scripts/a/b/|my-lint')"
+assert_eq "guard-entries run through a link finds the plugin folder the link points at" \
+  "$GE_WANT" "$(HOME="$GE_HOME" python3 "$WORKDIR/ge-bin/guard-entries.py" 2>&1)"
+assert_eq "guard-entries prints the same lines on every run" "$GE_OUT" "$(HOME="$GE_HOME" python3 "$GE" 2>/dev/null)"
+# The home folder: refused by file identity, also when HOME spells it through a link.
+GE_REFUSE="$(HOME="$GE_PROJ" python3 "$GE" 2>&1)"; GE_RC=$?
+assert_eq "guard-entries refuses with exit 2 and one line when the project folder is the home folder" "2|1|1" \
+  "$GE_RC|$(printf '%s\n' "$GE_REFUSE" | wc -l | tr -d ' ')|$(printf '%s\n' "$GE_REFUSE" | grep -c 'home folder')"
+assert_exit "guard-entries refuses when HOME names the project folder through a link" 2 \
+  env HOME="$WORKDIR/ge-proj-link" python3 "$GE"
+# A file that is not JSON: named on stderr, exit 1, and the other file is still listed.
+printf 'not json {\n' > .claude/settings.json
+GE_OUT="$(HOME="$GE_HOME" python3 "$GE" 2>"$WORKDIR/ge-err.txt")"; GE_RC=$?
+assert_eq "guard-entries names a settings file that is not JSON, exits 1, and still lists the other file" \
+  "1|.claude/settings.local.json|PreToolUse|Edit|$REPO_ROOT/scripts/guards/block-secrets.sh|current|1" \
+  "$GE_RC|$GE_OUT|$(grep -c '^guard-entries: \.claude/settings\.json is not valid JSON' "$WORKDIR/ge-err.txt")"
+# Nothing outside the project is opened or listed: a settings file linked out of the project is
+# named, never read. audit-outside.py <project> <script> runs the script and prints, on stderr,
+# every open, scandir and listdir of a path outside that project (the script file itself and
+# Python's own files, which load as the script runs, aside).
+printf '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash %s/scripts/guards/block-secrets.sh"}]}]}}\n' \
+  "$REPO_ROOT" > "$GE_OUTSIDE/notes.json"
+rm -f .claude/settings.json
+ln -s "$GE_OUTSIDE/notes.json" .claude/settings.json
+cat > "$WORKDIR/audit-outside.py" <<'PY'
+import os, runpy, sys
+project, script = os.path.realpath(sys.argv[1]), sys.argv[2]
+own = tuple({os.path.realpath(p) + os.sep for p in (sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix)})
+seen, busy = [], []
+def hook(event, args):
+    if busy or event not in ("open", "os.scandir", "os.listdir") or not args or not isinstance(args[0], str):
+        return
+    busy.append(1)
+    try:
+        path = os.path.realpath(os.path.abspath(args[0]))
+        if path != os.path.realpath(script) and not path.startswith(project + os.sep) and not path.startswith(own):
+            seen.append(event + " " + path)
+    finally:
+        busy.pop()
+sys.addaudithook(hook)
+sys.argv = [script]
+try:
+    runpy.run_path(script, run_name="__main__")
+except SystemExit:
+    pass
+print("\n".join("READ " + s for s in seen) if seen else "NO READ", file=sys.stderr)
+PY
+GE_PROJ_REAL="$(pwd -P)"
+GE_OUT="$(HOME="$GE_HOME" python3 -I "$WORKDIR/audit-outside.py" "$GE_PROJ_REAL" "$GE" 2>"$WORKDIR/ge-audit.txt")"
+assert_eq "guard-entries opens and lists nothing outside the project, the home folder and its own plugin folder included" \
+  "NO READ" "$(grep -v '^guard-entries: ' "$WORKDIR/ge-audit.txt")"
+assert_eq "guard-entries names a settings file that resolves outside the project instead of reading it" "1|.claude/settings.local.json" \
+  "$(grep -c '^guard-entries: \.claude/settings\.json resolves outside the project folder' "$WORKDIR/ge-audit.txt")|$(printf '%s\n' "$GE_OUT" | cut -d'|' -f1)"
+# The audit hook sees reads: the same run, told the project is another folder, records the one it opens.
+HOME="$GE_HOME" python3 -I "$WORKDIR/audit-outside.py" "$GE_HOME" "$GE" >/dev/null 2>"$WORKDIR/ge-audit.txt"
+assert_eq "the audit hook records the project settings file the script opens" "1" \
+  "$(grep -cxF "READ open $GE_PROJ_REAL/.claude/settings.local.json" "$WORKDIR/ge-audit.txt")"
+assert_eq "guard-entries' source opens a file in one place and never asks for the home folder's contents" "1|0" \
+  "$(grep -c 'open(' "$GE")|$(grep -cE 'expanduser|listdir|scandir|glob|walk\(' "$GE")"
+# The plugin folder inside the project: a copy of the script in vendor/temper decides by its own
+# folder. Its scripts are Temper's (current when the file exists), another path in the project is the
+# user's, and this checkout, outside that project, is an earlier plugin folder.
+GE_IN="$WORKDIR/ge-inside"
+rm -rf "$GE_IN"
+mkdir -p "$GE_IN/.claude" "$GE_IN/vendor/temper/scripts/guards"
+cp "$GE" "$GE_IN/vendor/temper/scripts/guard-entries.py"
+printf 'x\n' > "$GE_IN/vendor/temper/scripts/guards/block-secrets.sh"
+cat > "$GE_IN/.claude/settings.local.json" <<EOF
+{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
+  {"type": "command", "command": "bash \"$GE_IN/vendor/temper/scripts/guards/block-secrets.sh\""},
+  {"type": "command", "command": "bash \"$GE_IN/vendor/temper/scripts/guards/run-formatter.sh\""},
+  {"type": "command", "command": "bash \"$GE_IN/tools/scripts/guards/block-secrets.sh\""},
+  {"type": "command", "command": "bash \"$REPO_ROOT/scripts/guards/block-secrets.sh\""}]}]}}
+EOF
+cd "$GE_IN" || exit 1
+assert_eq "guard-entries with the plugin folder inside the project: its scripts are Temper's, current or stale, the project's own path is the user's" \
+  "$(printf '%s\n' \
+    ".claude/settings.local.json|PreToolUse|Bash|$GE_IN/vendor/temper/scripts/guards/block-secrets.sh|current" \
+    ".claude/settings.local.json|PreToolUse|Bash|$GE_IN/vendor/temper/scripts/guards/run-formatter.sh|stale" \
+    ".claude/settings.local.json|PreToolUse|Bash|$REPO_ROOT/scripts/guards/block-secrets.sh|stale")" \
+  "$(HOME="$GE_HOME" python3 "$GE_IN/vendor/temper/scripts/guard-entries.py" 2>&1)"
+cd "$WORKDIR" || exit 1
+rm -rf "$GE_PROJ" "$GE_OLD" "$GE_HOME" "$GE_OUTSIDE" "$GE_IN" "$WORKDIR/ge-link" "$WORKDIR/ge-bin" "$WORKDIR/ge-proj-link" \
+  "$WORKDIR/ge-err.txt" "$WORKDIR/ge-audit.txt" "$WORKDIR/audit-outside.py"
 
 # --- stage-marker.sh + verify-stage-gate.sh: the standalone-stage gate guarantee ---
 # stage-marker records the gate a /temper:{stage} session owes; verify-stage-gate blocks
@@ -2165,7 +2296,7 @@ assert_eq "state init still starts the new run" "fresh" "$("$TEMPER" state get s
 setup
 assert_eq "a run with a valid spec_path archives with no warning" "" "$("$TEMPER" state archive 2>&1 >/dev/null)"
 
-# --- CLI: a .temper folder that is or holds a symlink is refused (exit 3): no write follows a link ---
+# --- CLI: a symlink on a run-state path is refused (exit 3): no write follows a link ---
 # A throwaway plugin folder holds a copy of the CLI; a project outside it carries links into it
 # (a cloned repository can track such a link). Every write subcommand is refused with exit 3 and
 # one line on stderr, and nothing in the plugin folder is written, changed or deleted.
@@ -2371,20 +2502,15 @@ assert_eq "a moved CLI path is reported as stale and the current one written" "y
   "$(echo "$OUT" | grep -q 'embedded: /moved/plugin/scripts/temper' && grep -qxF "TEMPER_CLI=$(printf '%q' "$REPO_ROOT/scripts/temper")" .git/hooks/pre-commit && echo yes || echo no)"
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1)
 assert_eq "a current hook is not reported as stale" "no" "$(echo "$OUT" | grep -q 'stale plugin path' && echo yes || echo no)"
-# Any other hook is backed up first.
-printf '#!/bin/sh\necho mine\n' > .git/hooks/pre-commit
-bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
-assert_eq "a non-Temper hook is backed up before it is replaced" "1" \
-  "$(find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' -exec grep -l 'echo mine' {} + | wc -l | tr -d ' ')"
-find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' -delete
-# A symlinked pre-commit is replaced by a regular file; the file it pointed at is left as it was.
-printf '#!/bin/sh\necho linked\n' > "$WORKDIR/linked-hook.sh"
+# A symlinked pre-commit (here to an older Temper hook) is replaced by a regular file; the file
+# it pointed at is left as it was.
+printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (an older install, linked).\necho linked\n' > "$WORKDIR/linked-hook.sh"
+LINKED_SUM="$(cksum < "$WORKDIR/linked-hook.sh")"
 rm -f .git/hooks/pre-commit
 ln -s "$WORKDIR/linked-hook.sh" .git/hooks/pre-commit
 bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
 assert_eq "a symlinked pre-commit becomes a regular file, and its target is untouched" "yes|yes" \
-  "$([[ -f .git/hooks/pre-commit && ! -L .git/hooks/pre-commit ]] && echo yes || echo no)|$(grep -q 'echo linked' "$WORKDIR/linked-hook.sh" && ! grep -q 'Temper native' "$WORKDIR/linked-hook.sh" && echo yes || echo no)"
-find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' -delete
+  "$([[ -f .git/hooks/pre-commit && ! -L .git/hooks/pre-commit ]] && echo yes || echo no)|$([[ "$(cksum < "$WORKDIR/linked-hook.sh")" == "$LINKED_SUM" ]] && echo yes || echo no)"
 rm -f "$WORKDIR/linked-hook.sh"
 # core.hooksPath: accepted only inside the repository, with no '..', in a folder with no JSON file.
 rm -f .git/hooks/pre-commit
@@ -2415,7 +2541,7 @@ assert_eq "a core.hooksPath with a leading ./ and a trailing / is accepted" "yes
 git config --unset core.hooksPath 2>/dev/null || true
 rm -rf .git/temper-git-hooks
 bash "$REPO_ROOT/scripts/guards/install.sh" --global >/dev/null 2>&1
-assert_eq "--global writes .git/temper-git-hooks/pre-commit and points core.hooksPath at it" "yes|.git/temper-git-hooks" \
+assert_eq "--global writes .git/temper-git-hooks/pre-commit and points core.hooksPath at its absolute path" "yes|$(pwd -P)/.git/temper-git-hooks" \
   "$([[ -x .git/temper-git-hooks/pre-commit ]] && echo yes || echo no)|$(git config --get core.hooksPath)"
 git config --unset core.hooksPath 2>/dev/null || true
 rm -rf .git/temper-git-hooks abs-hooks dot-hooks cfg-hooks "$WORKDIR/outside"
@@ -2445,13 +2571,14 @@ json.dump({s: {"verdict": sys.argv[1] if s == "check" else "PASS", "requirements
            for s in ("plan", "build", "review", "check")}, open(".temper/gates.json", "w"))' "$1"
   echo '[]' > .temper/overrides.json
 }
-# A pre-commit that is a hard link to a plugin file: the new hook is moved into place, so the
-# plugin file keeps its text (install.sh itself included).
-echo 'plugin data' > "$I_PLUG/inner/hard-target"
+# A pre-commit that is a hard link to a plugin file (here one that reads as an older Temper
+# hook, so the installer replaces it): the new hook is moved into place, so the plugin file
+# keeps its text (install.sh itself, which is not a Temper hook and is refused, included).
+printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (plugin data)\n' > "$I_PLUG/inner/hard-target"
 ln "$I_PLUG/inner/hard-target" .git/hooks/pre-commit
 bash "$I_INSTALL" >/dev/null 2>&1
-assert_eq "install.sh never writes through a hard-linked pre-commit; the plugin file keeps its text" "plugin data|yes" \
-  "$(cat "$I_PLUG/inner/hard-target")|$(grep -qxF "$I_CLI_LINE" .git/hooks/pre-commit && echo yes || echo no)"
+assert_eq "install.sh never writes through a hard-linked pre-commit; the plugin file keeps its text" "# Temper native pre-commit hook (plugin data)|2|yes" \
+  "$(sed -n 2p "$I_PLUG/inner/hard-target")|$(wc -l < "$I_PLUG/inner/hard-target" | tr -d ' ')|$(grep -qxF "$I_CLI_LINE" .git/hooks/pre-commit && echo yes || echo no)"
 rm -f .git/hooks/pre-commit .git/hooks/pre-commit.bak.*
 I_SUM="$(cksum < "$I_INSTALL")"
 ln "$I_INSTALL" .git/hooks/pre-commit
@@ -2482,8 +2609,10 @@ git config core.hooksPath ../outside-hooks
 OUT=$(bash "$I_INSTALL" 2>&1; true)
 git config --unset core.hooksPath
 I_LINES="$(printf '%s\n' "$OUT" | sed -n '/^----- BEGIN Temper pre-commit hook lines -----$/,/^----- END Temper pre-commit hook lines -----$/p' | sed '1d;$d')"
+printf '%s\n' "$I_LINES" > "$WORKDIR/hook-lines.sh"
 assert_eq "a refusal prints the whole hook, a valid bash script, between a BEGIN and an END line" "#!/usr/bin/env bash|yes|yes" \
-  "$(printf '%s\n' "$I_LINES" | head -1)|$(printf '%s\n' "$I_LINES" | grep -qxF "$I_CLI_LINE" && echo yes || echo no)|$(printf '%s\n' "$I_LINES" | bash -n 2>/dev/null && echo yes || echo no)"
+  "$(head -1 "$WORKDIR/hook-lines.sh")|$(grep -qxF "$I_CLI_LINE" "$WORKDIR/hook-lines.sh" && echo yes || echo no)|$(bash -n "$WORKDIR/hook-lines.sh" 2>/dev/null && echo yes || echo no)"
+rm -f "$WORKDIR/hook-lines.sh"
 # A run from a folder inside the plugin's folder whose repository's top is elsewhere (an
 # installed copy inside some repository) writes nothing.
 assert_exit "install.sh refuses a run from inside the plugin's folder when the repository's top is elsewhere" 1 \
@@ -2499,67 +2628,19 @@ assert_eq "the plugin file behind .git/config is left as it was, and no hook fol
   "$(cksum < "$I_PLUG/inner/config")|$([[ -e .git/temper-git-hooks ]] && echo yes || echo no)"
 rm -f .git/config
 mv .git/config-saved .git/config
-# A backup name that is a symlink into the plugin's folder (planted for the next seconds) is refused.
+# A pre-commit hook that is not Temper's is refused, even with pre-commit.bak names planted as
+# symlinks into the plugin's folder (as an older installer named its backups): nothing is
+# written through them, and the hook stays as it was.
 printf '#!/bin/sh\nexit 0\n' > .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 echo 'plugin data' > "$I_PLUG/inner/bak-target"
 for ts in $(python3 -c 'import time; t = time.time(); print(" ".join(time.strftime("%Y%m%d%H%M%S", time.localtime(t + i)) for i in range(-1, 20)))'); do
   ln -sf "$I_PLUG/inner/bak-target" ".git/hooks/pre-commit.bak.$ts"
 done
-assert_exit "install.sh refuses a backup name that is a symlink into the plugin's own folder" 1 bash "$I_INSTALL"
+assert_exit "install.sh refuses a hook that is not Temper's, with backup names planted as symlinks into the plugin's own folder" 1 bash "$I_INSTALL"
 assert_eq "the plugin file behind the backup name and the existing hook are left as they were" "plugin data|exit 0" \
   "$(cat "$I_PLUG/inner/bak-target")|$(sed -n 2p .git/hooks/pre-commit)"
 rm -f .git/hooks/pre-commit .git/hooks/pre-commit.bak.*
-# The hook install.sh replaces is backed up and runs first from the Temper hook; its failure
-# fails the commit, as it did before Temper.
-printf '#!/bin/sh\necho prior-ran >> prior.log\nexit 0\n' > .git/hooks/pre-commit
-chmod +x .git/hooks/pre-commit
-bash "$I_INSTALL" >/dev/null 2>&1
-I_PRIOR="$(find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' | head -1)"
-assert_eq "the Temper hook records the full path of the backup of the hook it replaced" "yes" \
-  "$(grep -qxF "PRIOR_HOOK=$(printf '%q' "$(pwd -P)/${I_PRIOR#./}")" .git/hooks/pre-commit && echo yes || echo no)"
-_i_gates FAIL
-rm -f prior.log
-assert_exit "the Temper hook runs the replaced hook first, then still blocks a red gate" 1 bash .git/hooks/pre-commit
-assert_eq "the replaced hook ran" "prior-ran" "$(cat prior.log 2>/dev/null)"
-_i_gates PASS
-assert_exit "with a green gate and a passing earlier hook, the Temper hook passes" 0 bash .git/hooks/pre-commit
-printf '#!/usr/bin/env bash\nexit 7\n' > "$I_PRIOR"
-assert_exit "a failing earlier hook (a bash script, run as it is) fails the commit, with its own exit code" 7 bash .git/hooks/pre-commit
-I_PRIOR_LINE="$(grep '^PRIOR_HOOK=' .git/hooks/pre-commit)"
-bash "$I_INSTALL" >/dev/null 2>&1
-assert_eq "re-running the installer keeps the earlier hook it records, and makes no new backup" "$I_PRIOR_LINE|1" \
-  "$(grep '^PRIOR_HOOK=' .git/hooks/pre-commit)|$(find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' | wc -l | tr -d ' ')"
-rm -f "$I_PRIOR"
-OUT=$(bash .git/hooks/pre-commit 2>&1); I_RC=$?
-assert_eq "a recorded earlier hook that is gone is reported and skipped" "0|yes" \
-  "$I_RC|$(printf '%s\n' "$OUT" | grep -q 'is gone' && echo yes || echo no)"
-rm -f .git/hooks/pre-commit prior.log
-# husky (v9): its generated pre-commit finds its files from the name git runs it by. After the
-# install, a real git commit still runs husky's own .husky/pre-commit script, and its failure
-# still fails the commit.
-I_HUSKY="$WORKDIR/husky-repo"
-rm -rf "$I_HUSKY"
-git init -q "$I_HUSKY"
-git -C "$I_HUSKY" config user.email "test@example.com"
-git -C "$I_HUSKY" config user.name "test"
-mkdir -p "$I_HUSKY/.husky/_"
-printf '#!/usr/bin/env sh\n. "${0%%/*}/h"\n' > "$I_HUSKY/.husky/_/pre-commit"
-printf '#!/usr/bin/env sh\nn=$(basename "$0")\ns=$(dirname "$(dirname "$0")")/$n\n[ -f "$s" ] || exit 0\nsh -e "$s" "$@"\n' > "$I_HUSKY/.husky/_/h"
-chmod +x "$I_HUSKY/.husky/_/pre-commit" "$I_HUSKY/.husky/_/h"
-printf 'echo husky-ran >> husky.log\n' > "$I_HUSKY/.husky/pre-commit"
-git -C "$I_HUSKY" config core.hooksPath .husky/_
-OUT=$(cd "$I_HUSKY" && bash "$I_INSTALL" 2>&1; true)
-assert_eq "install.sh notes that husky writes its folder again" "yes" "$(printf '%s\n' "$OUT" | grep -q 'husky writes' && echo yes || echo no)"
-echo h > "$I_HUSKY/husky-file.txt"
-git -C "$I_HUSKY" add husky-file.txt >/dev/null 2>&1
-assert_exit "a real git commit in a husky repository passes through the Temper hook" 0 git -C "$I_HUSKY" commit -q -m husky
-assert_eq "husky's own .husky/pre-commit script ran first" "husky-ran" "$(cat "$I_HUSKY/husky.log" 2>/dev/null)"
-printf 'exit 5\n' > "$I_HUSKY/.husky/pre-commit"
-echo h2 >> "$I_HUSKY/husky-file.txt"
-git -C "$I_HUSKY" add husky-file.txt >/dev/null 2>&1
-assert_exit "a failing husky pre-commit script still fails the commit" 1 git -C "$I_HUSKY" commit -q -m husky2
-rm -rf "$I_HUSKY"
 # --global refuses when core.hooksPath is already set: the default mode installs into that folder.
 mkdir -p .husky
 git config core.hooksPath .husky
@@ -2568,18 +2649,14 @@ assert_eq "the refused --global leaves core.hooksPath as it was and writes no ho
   "$(git config --get core.hooksPath)|$([[ -e .git/temper-git-hooks/pre-commit ]] && echo yes || echo no)"
 git config --unset core.hooksPath
 rm -rf .husky
-# --global keeps a .git/hooks/pre-commit running from the Temper hook, and runs again over the
-# core.hooksPath it set itself.
-printf '#!/bin/sh\necho local-ran >> local.log\nexit 0\n' > .git/hooks/pre-commit
-chmod +x .git/hooks/pre-commit
+# --global runs again over the core.hooksPath it set itself.
+rm -f .git/hooks/pre-commit
 bash "$I_INSTALL" --global >/dev/null 2>&1
 assert_exit "--global runs again over the core.hooksPath it set itself" 0 bash "$I_INSTALL" --global
 _i_gates PASS
-rm -f local.log
 assert_exit "the --global hook passes a green gate" 0 bash .git/temper-git-hooks/pre-commit
-assert_eq "the --global hook ran the .git/hooks/pre-commit that git no longer runs" "local-ran" "$(cat local.log 2>/dev/null)"
 git config --unset core.hooksPath
-rm -rf .git/temper-git-hooks .git/hooks/pre-commit local.log
+rm -rf .git/temper-git-hooks .git/hooks/pre-commit
 # block-secrets.sh as an in-agent hook scans only the text a call adds; with no JSON on stdin,
 # or with --staged (the installed hook's flag), it scans the staged files.
 I_KEY="AKIA$(printf 'Q%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)"
@@ -2620,7 +2697,9 @@ assert_eq "the regression-test shield's message names the CLI by its full path, 
 assert_exit "the regression-test shield blocks an Edit through a hard link to the recorded test (the same file)" 2 \
   bash -c "echo '{\"tool_input\": {\"file_path\": \"reg-tests/test_alias.py\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$I_SP/scripts/guards/protect-regression-test.sh'"
 rm -rf reg-tests "$I_SP"
-# The CLI refuses an unsafe .temper folder with exit 3: both commit hooks fail open with one warning line.
+# The CLI refuses an unsafe .temper folder with exit 3: while a run is active (build-state.json
+# is there) both commit hooks block and say to remove the symlink; with no run active they fail
+# open with one warning line.
 I_RP="$WORKDIR/refusing-plugin"
 rm -rf "$I_RP"
 mkdir -p "$I_RP/scripts/guards"
@@ -2632,11 +2711,19 @@ chmod +x "$I_RP/scripts/temper"
 rm -f .git/hooks/pre-commit
 bash "$I_RP/scripts/guards/install.sh" >/dev/null 2>&1
 OUT=$(bash .git/hooks/pre-commit 2>&1); I_RC=$?
-assert_eq "the installed hook fails open with one warning line when the CLI exits 3" "0|1" \
+assert_eq "the installed hook blocks, naming the symlink to remove, when the CLI exits 3 during an active run" "1|1" \
+  "$I_RC|$(printf '%s\n' "$OUT" | grep -c 'remove the symlink')"
+OUT=$(echo '{"tool_input": {"command": "git commit -m x"}}' | bash "$I_RP/scripts/guards/block-uncommitted-gate.sh" 2>&1); I_RC=$?
+assert_eq "the in-agent commit gate blocks, naming the symlink to remove, when the CLI exits 3 during an active run" "2|1" \
+  "$I_RC|$(printf '%s\n' "$OUT" | grep -c 'remove the symlink')"
+mv .temper/build-state.json "$WORKDIR/build-state.saved"
+OUT=$(bash .git/hooks/pre-commit 2>&1); I_RC=$?
+assert_eq "the installed hook fails open with one warning line when the CLI exits 3 and no run is active" "0|1" \
   "$I_RC|$(printf '%s\n' "$OUT" | grep -c 'commit gate was skipped')"
 OUT=$(echo '{"tool_input": {"command": "git commit -m x"}}' | bash "$I_RP/scripts/guards/block-uncommitted-gate.sh" 2>&1); I_RC=$?
-assert_eq "the in-agent commit gate fails open with one warning line when the CLI exits 3" "0|1" \
+assert_eq "the in-agent commit gate fails open with one warning line when the CLI exits 3 and no run is active" "0|1" \
   "$I_RC|$(printf '%s\n' "$OUT" | grep -c 'commit gate was skipped')"
+mv "$WORKDIR/build-state.saved" .temper/build-state.json
 rm -rf "$I_RP" .git/hooks/pre-commit
 # With CDPATH set, the scripts still find their own folder when called by a relative path.
 OUT=$(cd "$WORKDIR" && CDPATH="$WORKDIR" bash install-plugin/scripts/guards/install.sh 2>&1); I_RC=$?
@@ -2785,13 +2872,14 @@ rm -f .git/hooks
 mv .git/hooks-saved .git/hooks
 assert_eq "none of these refusals writes or creates anything in the plugin's folder" "no|no" \
   "$([[ -e "$G_PLUG/inner/code/pre-commit" ]] && echo yes || echo no)|$([[ -e "$G_PLUG/inner/code/new" ]] && echo yes || echo no)"
-# A pre-commit that is a symlink into the plugin folder is replaced, never written through.
-echo 'plugin file' > "$G_PLUG/inner/code/pre-commit"
+# A pre-commit that is a symlink into the plugin folder (to a file that reads as an older Temper
+# hook, so the installer replaces it) is replaced, never written through.
+printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (plugin file)\n' > "$G_PLUG/inner/code/pre-commit"
 rm -f .git/hooks/pre-commit
 ln -s "$G_PLUG/inner/code/pre-commit" .git/hooks/pre-commit
 bash "$G_INSTALL" >/dev/null 2>&1
-assert_eq "a pre-commit symlink into the plugin folder becomes a regular file; the plugin file is untouched" "yes|plugin file" \
-  "$([[ -f .git/hooks/pre-commit && ! -L .git/hooks/pre-commit ]] && echo yes || echo no)|$(cat "$G_PLUG/inner/code/pre-commit")"
+assert_eq "a pre-commit symlink into the plugin folder becomes a regular file; the plugin file is untouched" "yes|# Temper native pre-commit hook (plugin file)|2" \
+  "$([[ -f .git/hooks/pre-commit && ! -L .git/hooks/pre-commit ]] && echo yes || echo no)|$(sed -n 2p "$G_PLUG/inner/code/pre-commit")|$(wc -l < "$G_PLUG/inner/code/pre-commit" | tr -d ' ')"
 rm -f "$G_PLUG/inner/code/pre-commit" .git/hooks/pre-commit .git/hooks/pre-commit.bak.*
 # The plugin's own repository: its .git folder is the one place in the plugin folder allowed.
 git init -q "$G_PLUG"
@@ -2819,7 +2907,7 @@ git init -q --bare "$G_PLUG/inner/gitdir"
 env GIT_DIR="$G_PLUG/inner/gitdir" GIT_WORK_TREE="$WORKDIR" GIT_CONFIG="$G_PLUG/inner/code/config" \
   bash "$G_INSTALL" --global >/dev/null 2>&1
 assert_eq "--global with GIT_DIR and GIT_CONFIG in the plugin folder sets core.hooksPath in this repository only" \
-  ".git/temper-git-hooks|none|no" \
+  "$(pwd -P)/.git/temper-git-hooks|none|no" \
   "$(git config --local --get core.hooksPath)|$(git --git-dir="$G_PLUG/inner/gitdir" config --get core.hooksPath || echo none)|$([[ -e "$G_PLUG/inner/code/config" ]] && echo yes || echo no)"
 git config --unset core.hooksPath
 rm -rf .git/temper-git-hooks linked-hooks rel-dir
@@ -2864,6 +2952,20 @@ assert_exit "the in-agent commit gate blocks a red gate in a project outside the
   bash -c "echo '{\"tool_input\": {\"command\": \"git commit -m x\"}}' | bash '$G_OWN/scripts/guards/block-uncommitted-gate.sh'"
 assert_exit "the in-agent commit gate skips a repository inside the plugin folder" 0 \
   bash -c "cd '$G_OWN/inner/proj' && echo '{\"tool_input\": {\"command\": \"git commit -m x\"}}' | bash '$G_OWN/scripts/guards/block-uncommitted-gate.sh'"
+# The home folder is never a project: the CLI refuses to run there, so a repository whose top
+# is the home folder (with a .temper left by an older version) skips the gate, never blocks.
+G_HOME="$WORKDIR/gate-home"
+rm -rf "$G_HOME"
+git init -q "$G_HOME"
+cp -R .temper "$G_HOME/.temper"
+cp .git/hooks/pre-commit "$G_HOME/.git/hooks/pre-commit"
+assert_exit "the installed hook skips the gate in a repository at the home folder" 0 \
+  bash -c "cd '$G_HOME' && HOME='$G_HOME' bash .git/hooks/pre-commit"
+assert_exit "the in-agent commit gate skips a repository at the home folder" 0 \
+  bash -c "cd '$G_HOME' && echo '{\"tool_input\": {\"command\": \"git commit -m x\"}}' | HOME='$G_HOME' bash '$G_OWN/scripts/guards/block-uncommitted-gate.sh'"
+assert_exit "the same repository with another home folder still blocks a red gate" 2 \
+  bash -c "cd '$G_HOME' && echo '{\"tool_input\": {\"command\": \"git commit -m x\"}}' | HOME='$WORKDIR' bash '$G_OWN/scripts/guards/block-uncommitted-gate.sh'"
+rm -rf "$G_HOME"
 rm -rf "$G_OWN" .git/hooks/pre-commit
 # stage-marker.sh and verify-stage-gate.sh: a .temper folder, marker or log that is a symlink
 # would send the write out of the project's .temper folder, so the hooks do nothing then.
@@ -2991,12 +3093,12 @@ assert_eq "validate-docs names a command file that plugin.json does not list" "y
   "$(echo "$OUT" | grep -A1 'command files that .claude-plugin/plugin.json does not list' | grep -q 'commands/zz.md' && echo yes || echo no)"
 rm -rf "$V_PLUG"
 # validate-plugin.sh: a plugin path is the braced variable, '/' and a fixed path that names a tracked
-# file or folder, in every file git lists, the tests and docs included. The bad forms are written at
-# run time from tokens (@R@ the braced root, @O@ the root with its brace still open, @U@ the root
+# file (never a folder), in every file git lists, the tests and docs included. The bad forms are
+# written at run time from tokens (@R@ the braced root, @O@ the root with its brace still open, @U@ the root
 # with no braces), so no tracked file holds one.
 VP_PLUG="$WORKDIR/root-var-plugin"
 rm -rf "$VP_PLUG"
-mkdir -p "$VP_PLUG/scripts/tests" "$VP_PLUG/commands" "$VP_PLUG/reference" "$VP_PLUG/docs" "$VP_PLUG/packs/demo"
+mkdir -p "$VP_PLUG/scripts/selftest" "$VP_PLUG/commands" "$VP_PLUG/reference" "$VP_PLUG/docs" "$VP_PLUG/packs/demo"
 cp "$REPO_ROOT/scripts/validate-plugin.sh" "$VP_PLUG/scripts/validate-plugin.sh"
 printf 'x\n' > "$VP_PLUG/scripts/temper"
 printf 'x\n' > "$VP_PLUG/reference/plan.md"
@@ -3020,28 +3122,31 @@ List @R@/packs/demo/rule?.md first.
 Read @R@/reference/missing.md first.
 Read @R@/ first.
 Read @R@/reference/later.md first.
+See @R@/packs/demo/ for the pack.
+Read @R@/packs/demo first.
 Run `@R@/scripts/temper gate plan --spec-path .temper/specs/{slug}`.
 The CLAUDE_PLUGIN_ROOT variable names the plugin folder.
 Read @R@/packs/demo/rules.md.
-See @R@/packs/demo/ for the pack.
 "command": "bash \"@R@/scripts/temper\""
 EOF
 printf 'See @R@/reference/plan.md, then "@R@/scripts/temper".\n' | vp_expand > "$VP_PLUG/reference/ok.md"
 printf 'Docs may say @U@.\n' | vp_expand > "$VP_PLUG/docs/free.md"
-printf 'echo "@R@/../x"\n' | vp_expand > "$VP_PLUG/scripts/tests/t.sh"
+printf 'echo "@R@/../x"\n' | vp_expand > "$VP_PLUG/scripts/selftest/t.sh"
 printf 'ignored.md\n' > "$VP_PLUG/.gitignore"
 printf 'Read @U@/x first.\n' | vp_expand > "$VP_PLUG/ignored.md"
 git init -q "$VP_PLUG"
 git -C "$VP_PLUG" add -A
 printf 'x\n' > "$VP_PLUG/reference/later.md"   # on disk, not tracked
 OUT=$(bash "$VP_PLUG/scripts/validate-plugin.sh" 2>&1; true)
-assert_eq "validate-plugin flags the unbraced, no-slash, default, placeholder, '..', wildcard, bracket, group, second-variable, printf, missing, empty and untracked forms" \
-  "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16" \
+assert_eq "validate-plugin flags the unbraced, no-slash, default, placeholder, '..', wildcard, bracket, group, second-variable, printf, missing, empty, untracked and folder forms" \
+  "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18" \
   "$(echo "$OUT" | sed -n 's/^  commands\/x\.md:\([0-9]*\): .*/\1/p' | paste -sd' ' -)"
 assert_eq "validate-plugin names a path that is not a tracked file" "1|1" \
-  "$(echo "$OUT" | grep -c '^  commands/x\.md:14: not a tracked file or folder: reference/missing\.md$')|$(echo "$OUT" | grep -c '^  commands/x\.md:16: not a tracked file or folder: reference/later\.md$')"
+  "$(echo "$OUT" | grep -c '^  commands/x\.md:14: not a tracked file: reference/missing\.md$')|$(echo "$OUT" | grep -c '^  commands/x\.md:16: not a tracked file: reference/later\.md$')"
+assert_eq "validate-plugin names a tracked folder, with or without a trailing '/', as not a tracked file" "1|1" \
+  "$(echo "$OUT" | grep -c '^  commands/x\.md:17: not a tracked file: packs/demo/$')|$(echo "$OUT" | grep -c '^  commands/x\.md:18: not a tracked file: packs/demo$')"
 assert_eq "validate-plugin reads every file: docs and tests are checked too" "1|1" \
-  "$(echo "$OUT" | grep -c '^  docs/free\.md:1: unbraced')|$(echo "$OUT" | grep -c '^  scripts/tests/t\.sh:1: ')"
+  "$(echo "$OUT" | grep -c '^  docs/free\.md:1: unbraced')|$(echo "$OUT" | grep -c '^  scripts/selftest/t\.sh:1: ')"
 assert_eq "validate-plugin leaves fixed tracked paths, the variable named in prose, an ignored file and itself alone" "0|0|0" \
   "$(echo "$OUT" | grep -c '^  reference/ok\.md:')|$(echo "$OUT" | grep -c '^  ignored\.md:')|$(echo "$OUT" | grep -c '^  scripts/validate-plugin\.sh:')"
 assert_eq "validate-plugin.sh holds neither the unbraced nor the braced variable literally" "0|0" \
@@ -3061,7 +3166,7 @@ for name in sys.argv[2:]:
 ' "$REPO_ROOT" scripts/validate-plugin.sh scripts/validate-docs.sh scripts/validate-readme.sh \
     scripts/validate-directory.sh scripts/quality-check.sh scripts/check-known-limits.sh \
     scripts/check-mod-calls.sh scripts/check-original-options.sh scripts/version-bump.sh \
-    scripts/tests/test-validate-directory.sh)"
+    scripts/selftest/test-validate-directory.sh)"
 for vp_script in validate-readme.sh check-known-limits.sh check-original-options.sh; do
   assert_eq "$vp_script prints the same with CDPATH naming the plugin folder" \
     "$(cd "$REPO_ROOT" && env -u CDPATH bash "scripts/$vp_script" 2>&1)" \
@@ -3139,6 +3244,552 @@ CLAUDE_MD_VERSION="$(sed -n 's/^\*\*Version:\*\* \([0-9.]*\).*/\1/p' "$VR_ROOT/.
 assert_eq ".claude/CLAUDE.md version stamp matches plugin.json" "$PLUGIN_VERSION" "${CLAUDE_MD_VERSION:-MISSING}"
 CHANGELOG_VERSION="$(grep -m1 -oE '^## v[0-9]+\.[0-9]+\.[0-9]+' "$VR_ROOT/CHANGELOG.md" | sed 's/^## v//')"
 assert_eq "CHANGELOG top entry matches plugin.json" "$PLUGIN_VERSION" "${CHANGELOG_VERSION:-MISSING}"
+
+# --- the CLI refuses a link only on its own run state, and refuses the home folder; every guard
+# script follows its own symlinks and does nothing outside a plugin's scripts/guards folder ---
+# A throwaway plugin folder (an installed copy, with no .git of its own) holds copies of the CLI
+# and every guard script. The projects are folders outside it.
+setup
+CL_PLUG="$WORKDIR/cl-plugin"
+CL_PROJ="$WORKDIR/cl-project"
+CL_BIN="$WORKDIR/cl-bin"
+CL_LOOSE="$WORKDIR/cl-loose"
+CL_HOME="$WORKDIR/cl-home"
+rm -rf "$CL_PLUG" "$CL_PROJ" "$CL_BIN" "$CL_LOOSE" "$CL_HOME" "$WORKDIR/cl-guards-link" "$WORKDIR/cl-scripts-link" \
+  "$WORKDIR/cl-home-link"
+mkdir -p "$CL_PLUG/scripts/guards" "$CL_BIN" "$CL_LOOSE/scripts" "$CL_HOME/project"
+cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$CL_PLUG/scripts/"
+cp "$REPO_ROOT"/scripts/guards/*.sh "$CL_PLUG/scripts/guards/"
+cp -R "$REPO_ROOT/agents" "$CL_PLUG/agents"
+CL_T="$CL_PLUG/scripts/temper"
+CL_G="$CL_PLUG/scripts/guards"
+CL_T_REAL="$(cd -P "$CL_PLUG" && pwd)/scripts/temper"
+cl_project() { # a fresh git project with one commit and an active run whose gates are all missing
+  rm -rf "$CL_PROJ"
+  mkdir -p "$CL_PROJ"
+  git init -q "$CL_PROJ"
+  git -C "$CL_PROJ" config user.email "test@example.com"
+  git -C "$CL_PROJ" config user.name "test"
+  echo a > "$CL_PROJ/a.txt"
+  git -C "$CL_PROJ" add a.txt
+  git -C "$CL_PROJ" commit -qm init
+  (cd "$CL_PROJ" && "$CL_T" state init demo-run >/dev/null)
+  mkdir -p "$CL_PROJ/.temper/specs/demo-run" "$CL_PROJ/.temper/specs/other-run"
+}
+
+# A link inside a spec folder is not run state: the commit gate still computes its verdict, and
+# a red run stays blocked by the CLI, the native pre-commit hook and the in-agent hook alike.
+cl_project
+ln -s "$WORKDIR" "$CL_PROJ/.temper/specs/demo-run/notes"
+ln -s "$WORKDIR/cl-no-such-target" "$CL_PROJ/.temper/specs/other-run/dangling"
+OUT=$(cd "$CL_PROJ" && "$CL_T" gate commit 2>&1); CL_RC=$?
+assert_eq "a link inside a spec folder leaves the commit gate to fail a red run (exit 1, never 3)" "1|yes|0" \
+  "$CL_RC|$(printf '%s\n' "$OUT" | grep -q 'temper gate commit -> FAIL' && echo yes || echo no)|$(printf '%s\n' "$OUT" | grep -c 'unsafe .temper')"
+(cd "$CL_PROJ" && bash "$CL_G/install.sh" >/dev/null 2>&1)
+echo b > "$CL_PROJ/b.txt"
+git -C "$CL_PROJ" add b.txt
+OUT=$(cd "$CL_PROJ" && git commit -qm 'code with red gates' 2>&1); CL_RC=$?
+assert_eq "the native pre-commit hook blocks that red run, link and all" "blocked|yes|1" \
+  "$([[ $CL_RC -ne 0 ]] && echo blocked || echo committed)|$(printf '%s\n' "$OUT" | grep -q 'temper gate commit -> FAIL' && echo yes || echo no)|$(git -C "$CL_PROJ" rev-list --count HEAD)"
+assert_exit "the in-agent commit gate blocks it too" 2 \
+  bash -c "cd '$CL_PROJ' && echo '{\"tool_input\": {\"command\": \"git commit -m y\"}}' | bash '$CL_G/block-uncommitted-gate.sh'"
+echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_G/stage-marker.sh"
+assert_eq "stage-marker records the debt there, since the CLI runs" "yes" \
+  "$([[ -f "$CL_PROJ/.temper/pending-stage.json" ]] && echo yes || echo no)"
+# The spec folder of a run that is not the active one is not run state either.
+cl_project
+rm -rf "$CL_PROJ/.temper/specs/other-run"
+ln -s "$WORKDIR" "$CL_PROJ/.temper/specs/other-run"
+assert_exit "a spec folder of another run that is a link does not stop the active run" 0 \
+  bash -c "cd '$CL_PROJ' && '$CL_T' evidence add --stage build --claim x"
+# A link on any path the CLI writes or reads as run state is refused (exit 3) and named, and
+# nothing is written through it.
+for p in .temper/specs .temper/archive .temper/build-state.json .temper/overrides.json .temper/status.json \
+         .temper/metrics.json .temper/bands.json .temper/feedback-loops.json .temper/evidence/build.json \
+         .temper/evidence/fix.json .temper/specs/demo-run/gate-ledger.json; do
+  cl_project
+  rm -rf "${CL_PROJ:?}/$p"
+  ln -s "$WORKDIR/cl-no-such-target" "$CL_PROJ/$p"
+  OUT=$(cd "$CL_PROJ" && "$CL_T" gate commit 2>&1); CL_RC=$?
+  assert_eq "a link at $p is refused with exit 3 and named" "3|yes" \
+    "$CL_RC|$(printf '%s\n' "$OUT" | grep -qF "unsafe .temper: '$p' is a symlink" && echo yes || echo no)"
+done
+cl_project
+mv "$CL_PROJ/.temper/specs/demo-run" "$WORKDIR/cl-spec-real"
+ln -s "$WORKDIR/cl-spec-real" "$CL_PROJ/.temper/specs/demo-run"
+assert_exit "the active run's spec folder that is a link is refused (exit 3)" 3 \
+  bash -c "cd '$CL_PROJ' && '$CL_T' evidence add --stage build --claim x"
+assert_eq "no refused command created a link target or wrote through a link" "no|" \
+  "$([[ -e "$WORKDIR/cl-no-such-target" ]] && echo yes || echo no)|$(ls "$WORKDIR/cl-spec-real")"
+rm -rf "$WORKDIR/cl-spec-real"
+
+# The CLI reached through a link to its scripts folder resolves that folder: it finds its plugin
+# folder and still guards it.
+ln -s "$CL_PLUG/scripts" "$WORKDIR/cl-scripts-link"
+assert_eq "a CLI reached through a link to its scripts folder resolves a model from its plugin folder" \
+  "$("$TEMPER" model plan)" "$("$WORKDIR/cl-scripts-link/temper" model plan 2>/dev/null)"
+assert_exit "it still refuses a folder inside that plugin folder" 1 \
+  bash -c "cd '$CL_PLUG/agents' && '$WORKDIR/cl-scripts-link/temper' init"
+assert_eq "and wrote nothing there" "no" "$([[ -e "$CL_PLUG/agents/.temper" ]] && echo yes || echo no)"
+
+# Every guard script reached through a symlink (a link in a bin folder, a chain of relative links,
+# or a link to the guards folder) finds its plugin folder and works. A copy outside a
+# scripts/guards folder does nothing, even with a CLI where the failed suffix strip would look.
+cl_project
+mkdir -p "$CL_PROJ/.claude" "$CL_PROJ/src/frozen"
+printf 'protect:\n  paths: ["**/frozen/**"]\nformat:\n  cmd: "touch {file}.formatted"\n' > "$CL_PROJ/.claude/temper.config"
+echo x > "$CL_PROJ/src/a.ts"
+echo 'const cp = require("child_process.exec")' > "$CL_PROJ/risky.js"
+for g in stage-marker verify-stage-gate run-formatter block-protected-paths confirm-override block-forbidden-imports; do
+  ln -s "$CL_G/$g.sh" "$CL_BIN/$g.sh"
+  cp "$CL_G/$g.sh" "$CL_LOOSE/$g.sh"
+done
+cp "$TEMPER" "$CL_LOOSE/scripts/temper"
+ln -s block-protected-paths.sh "$CL_BIN/chain-one.sh"
+ln -s chain-one.sh "$CL_BIN/chain-two.sh"
+ln -s "$CL_G" "$WORKDIR/cl-guards-link"
+CL_FROZEN='{"tool_input": {"file_path": "src/frozen/a.ts"}}'
+for s in "$CL_BIN/block-protected-paths.sh" "$CL_BIN/chain-two.sh" "$WORKDIR/cl-guards-link/block-protected-paths.sh"; do
+  assert_exit "block-protected-paths reached as $s blocks a frozen path" 2 \
+    bash -c "echo '$CL_FROZEN' | CLAUDE_PROJECT_DIR='$CL_PROJ' bash '$s'"
+done
+assert_exit "block-protected-paths copied outside a scripts/guards folder does nothing" 0 \
+  bash -c "echo '$CL_FROZEN' | CLAUDE_PROJECT_DIR='$CL_PROJ' bash '$CL_LOOSE/block-protected-paths.sh'"
+echo "{\"tool_input\": {\"file_path\": \"$CL_PROJ/src/a.ts\"}}" | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_LOOSE/run-formatter.sh"
+assert_eq "run-formatter copied outside a scripts/guards folder formats nothing" "no" \
+  "$([[ -e "$CL_PROJ/src/a.ts.formatted" ]] && echo yes || echo no)"
+echo "{\"tool_input\": {\"file_path\": \"$CL_PROJ/src/a.ts\"}}" | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_BIN/run-formatter.sh"
+assert_eq "run-formatter reached through a symlink runs the project's formatter" "yes" \
+  "$([[ -e "$CL_PROJ/src/a.ts.formatted" ]] && echo yes || echo no)"
+OUT=$(echo '{"tool_input": {"command": "temper override plan --reason y"}}' | bash "$CL_BIN/confirm-override.sh")
+assert_eq "confirm-override reached through a symlink asks" "yes" \
+  "$(printf '%s\n' "$OUT" | grep -q '"permissionDecision": "ask"' && echo yes || echo no)"
+OUT=$(echo '{"tool_input": {"command": "temper override plan --reason y"}}' | bash "$CL_LOOSE/confirm-override.sh")
+assert_eq "confirm-override copied outside a scripts/guards folder does nothing" "" "$OUT"
+CL_RISKY="{\"tool_input\": {\"file_path\": \"$CL_PROJ/risky.js\"}}"
+assert_exit "block-forbidden-imports reached through a symlink blocks a denylisted import" 2 \
+  bash -c "cd '$CL_PROJ' && echo '$CL_RISKY' | TEMPER_FORBIDDEN_IMPORTS='child_process.exec' bash '$CL_BIN/block-forbidden-imports.sh'"
+assert_exit "block-forbidden-imports copied outside a scripts/guards folder does nothing" 0 \
+  bash -c "cd '$CL_PROJ' && echo '$CL_RISKY' | TEMPER_FORBIDDEN_IMPORTS='child_process.exec' bash '$CL_LOOSE/block-forbidden-imports.sh'"
+echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_LOOSE/stage-marker.sh"
+assert_eq "stage-marker copied outside a scripts/guards folder marks nothing" "no" \
+  "$([[ -e "$CL_PROJ/.temper/pending-stage.json" ]] && echo yes || echo no)"
+echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$CL_PLUG" bash "$CL_BIN/stage-marker.sh"
+assert_eq "stage-marker reached through a symlink still skips the installed plugin folder" "no" \
+  "$([[ -e "$CL_PLUG/.temper" ]] && echo yes || echo no)"
+echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_BIN/stage-marker.sh"
+assert_eq "stage-marker reached through a symlink marks the project" "plan" \
+  "$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['stage'])" "$CL_PROJ/.temper/pending-stage.json" 2>/dev/null)"
+assert_exit "verify-stage-gate copied outside a scripts/guards folder does nothing" 0 \
+  bash -c "echo '{}' | CLAUDE_PROJECT_DIR='$CL_PROJ' bash '$CL_LOOSE/verify-stage-gate.sh'"
+OUT=$(echo '{}' | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_BIN/verify-stage-gate.sh" 2>&1); CL_RC=$?
+assert_eq "verify-stage-gate reached through a symlink blocks and names its real CLI" "2|yes" \
+  "$CL_RC|$(printf '%s\n' "$OUT" | grep -qF "$(printf '%q' "$CL_T_REAL") gate plan" && echo yes || echo no)"
+
+# The home folder is never a project: every subcommand that keeps run state is refused there
+# (exit 1), decided by identity, and nothing is written. config and model still answer, and a
+# project folder inside the home folder runs as usual.
+ln -s "$CL_HOME" "$WORKDIR/cl-home-link"
+for sub in "init" "state init foo" "state set stage x" "state get" "state archive" "state clear" \
+           "evidence add --stage build --claim x" "evidence list --stage build" "gate intent" "status" "report" \
+           "bands" "metrics append coverage 42" "override plan --reason x"; do
+  assert_exit "the CLI refuses '$sub' in the home folder" 1 bash -c "cd '$CL_HOME' && HOME='$CL_HOME' '$CL_T' $sub"
+done
+ERR=$(cd "$CL_HOME" && HOME="$CL_HOME" "$CL_T" status 2>&1 >/dev/null; true)
+assert_eq "the home refusal is one line that says why" "1|yes" \
+  "$(printf '%s\n' "$ERR" | wc -l | tr -d ' ')|$(printf '%s\n' "$ERR" | grep -q 'not from the home folder' && echo yes || echo no)"
+assert_exit "the home folder entered through a symlink is refused too" 1 \
+  bash -c "cd '$WORKDIR/cl-home-link' && HOME='$CL_HOME' '$CL_T' init"
+assert_exit "a HOME spelled through a symlink names the same folder" 1 \
+  bash -c "cd '$CL_HOME' && HOME='$WORKDIR/cl-home-link' '$CL_T' init"
+echo '{"prompt": "/temper:plan x"}' | HOME="$CL_HOME" CLAUDE_PROJECT_DIR="$CL_HOME" bash "$CL_G/stage-marker.sh"
+assert_eq "nothing was written in the home folder, by the CLI or by stage-marker" "no" \
+  "$([[ -e "$CL_HOME/.temper" ]] && echo yes || echo no)"
+assert_eq "config get and model still answer in the home folder" "auto|$("$TEMPER" model plan)" \
+  "$(cd "$CL_HOME" && HOME="$CL_HOME" TEMPER_CONFIG="$WORKDIR/.claude/temper.config" "$CL_T" config get stack)|$(cd "$CL_HOME" && HOME="$CL_HOME" "$CL_T" model plan)"
+assert_exit "a project folder inside the home folder runs as usual" 0 \
+  bash -c "cd '$CL_HOME/project' && HOME='$CL_HOME' '$CL_T' init"
+rm -rf "$CL_PLUG" "$CL_PROJ" "$CL_BIN" "$CL_LOOSE" "$CL_HOME" "$WORKDIR/cl-guards-link" "$WORKDIR/cl-scripts-link" \
+  "$WORKDIR/cl-home-link"
+
+# --- install.sh never writes over a pre-commit hook that is not Temper's, nor a file git tracks:
+# it prints a FAIL line, the hook lines and a hint (husky v8 under sh, husky v9, the pre-commit
+# framework, a tracked hooks folder), and the lines work where the hint puts them. An older
+# Temper hook is replaced and an old installer's backup is named. --global sets an absolute
+# core.hooksPath that linked worktrees use. Both commit hooks block on the CLI's exit 3 while a
+# run is active. block-secrets --staged scans the staged content. The guard scripts follow their
+# own symlinks and do nothing outside a scripts/guards folder ---
+setup
+git config user.email "test@example.com"
+git config user.name "test"
+git config --unset core.hooksPath 2>/dev/null || true
+rm -rf .git/hooks/pre-commit .git/hooks/pre-commit.bak.* .git/temper-git-hooks
+L_PLUG="$WORKDIR/l1-plugin"
+rm -rf "$L_PLUG"
+mkdir -p "$L_PLUG/scripts/guards"
+cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$L_PLUG/scripts/"
+for g in install.sh block-secrets.sh verify-tests-ran.sh block-uncommitted-gate.sh protect-regression-test.sh; do
+  cp "$REPO_ROOT/scripts/guards/$g" "$L_PLUG/scripts/guards/$g"
+done
+L_INSTALL="$L_PLUG/scripts/guards/install.sh"
+L_CLI_LINE="TEMPER_CLI=$(printf '%q' "$L_PLUG/scripts/temper")"
+L_LINES="$WORKDIR/l1-hook-lines.sh"
+# A PATH folder whose sh is dash when there is one (as on Debian and Ubuntu), so the hooks that
+# husky runs with sh meet a shell that knows no bash-only syntax.
+L_DASH="$(command -v dash 2>/dev/null || true)"
+L_BIN="$WORKDIR/l1-bin"
+rm -rf "$L_BIN"
+mkdir -p "$L_BIN"
+[[ -z "$L_DASH" ]] || ln -s "$L_DASH" "$L_BIN/sh"
+_l_lines() { # _l_lines <installer output>: writes the lines between BEGIN and END to $L_LINES
+  printf '%s\n' "$1" | sed -n '/^----- BEGIN Temper pre-commit hook lines -----$/,/^----- END Temper pre-commit hook lines -----$/p' | sed '1d;$d' > "$L_LINES"
+}
+_l_red() { # _l_red <repository>: an active run there whose check gate failed
+  mkdir -p "$1/.temper"
+  echo '{"command": "temper", "run_mode": "interactive"}' > "$1/.temper/build-state.json"
+  python3 -c '
+import json, sys
+json.dump({s: {"verdict": "FAIL" if s == "check" else "PASS", "requirements": [], "ts": "x"}
+           for s in ("plan", "build", "review", "check")}, open(sys.argv[1], "w"))' "$1/.temper/gates.json"
+  echo '[]' > "$1/.temper/overrides.json"
+}
+_l_repo() { # _l_repo <folder>: a new repository with one commit
+  rm -rf "$1"
+  git init -q "$1"
+  git -C "$1" config user.email "test@example.com"
+  git -C "$1" config user.name "test"
+  git -C "$1" commit -q --allow-empty -m init
+}
+_l_has() { # _l_has <text> <fixed string>: yes when a line of the text holds the string
+  printf '%s\n' "$1" | grep -qF -- "$2" && echo yes || echo no
+}
+
+# A hook of the user's in .git/hooks: refused, left as it was, no backup; FAIL first, the hook
+# lines, a hint last.
+printf '#!/bin/sh\necho mine\n' > .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+L_SUM="$(cksum < .git/hooks/pre-commit)"
+OUT=$(bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "install.sh refuses a pre-commit hook that is not Temper's: FAIL first, the hook lines, a hint last" "1|yes|yes|yes" \
+  "$L_RC|$(printf '%s\n' "$OUT" | head -1 | grep -q "^FAIL: .git/hooks/pre-commit holds a pre-commit hook that is not Temper's" && echo yes || echo no)|$(_l_has "$OUT" "$L_CLI_LINE")|$(printf '%s\n' "$OUT" | tail -1 | grep -qF 'Hint: add the lines at the end of your own pre-commit hook (.git/hooks/pre-commit).' && echo yes || echo no)"
+assert_eq "the refused hook is left as it was, and no backup is made" "yes|0" \
+  "$([[ "$(cksum < .git/hooks/pre-commit)" == "$L_SUM" ]] && echo yes || echo no)|$(find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' | wc -l | tr -d ' ')"
+# The lines added at the end of that hook gate a real commit; a second run of the installer then
+# says so and writes nothing.
+_l_lines "$OUT"
+cat "$L_LINES" >> .git/hooks/pre-commit
+L_SUM="$(cksum < .git/hooks/pre-commit)"
+_l_red "$WORKDIR"
+echo l1 > l1-file.txt
+git add l1-file.txt >/dev/null 2>&1
+assert_exit "with the hook lines added at the end of a hook of the user's, a real commit on a red gate is blocked" 1 git commit -q -m l1
+OUT=$(bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "a hook of the user's that holds the current lines is reported and left as it was" "0|yes|yes" \
+  "$L_RC|$(_l_has "$OUT" 'already runs the current Temper hook lines')|$([[ "$(cksum < .git/hooks/pre-commit)" == "$L_SUM" ]] && echo yes || echo no)"
+git rm -q --cached l1-file.txt >/dev/null 2>&1 || true
+rm -f l1-file.txt .git/hooks/pre-commit
+if [[ -n "$L_DASH" ]]; then
+  assert_exit "the hook lines are plain sh: dash reads them without a syntax error" 0 "$L_DASH" -n "$L_LINES"
+fi
+
+# husky v5 to v8: core.hooksPath is .husky, .husky/pre-commit is tracked and sources husky.sh,
+# which runs the hook again with sh -e.
+L_H8="$WORKDIR/l1-husky8"
+_l_repo "$L_H8"
+mkdir -p "$L_H8/.husky/_"
+cat > "$L_H8/.husky/_/husky.sh" <<'EOF'
+#!/usr/bin/env sh
+if [ -z "$husky_skip_init" ]; then
+  readonly husky_skip_init=1
+  export husky_skip_init
+  sh -e "$0" "$@"
+  exitCode="$?"
+  if [ $exitCode != 0 ]; then
+    echo "husky - $(basename -- "$0") hook exited with code $exitCode (error)"
+  fi
+  exit $exitCode
+fi
+EOF
+printf '*\n' > "$L_H8/.husky/_/.gitignore"
+printf '#!/usr/bin/env sh\n. "$(dirname -- "$0")/_/husky.sh"\n\necho husky-ran >> husky.log\n' > "$L_H8/.husky/pre-commit"
+chmod +x "$L_H8/.husky/pre-commit"
+printf 'husky.log\n.temper/\n' > "$L_H8/.gitignore"
+git -C "$L_H8" config core.hooksPath .husky
+git -C "$L_H8" add .gitignore .husky/pre-commit >/dev/null 2>&1
+env PATH="$L_BIN:$PATH" git -C "$L_H8" commit -q -m husky >/dev/null 2>&1
+L_SUM="$(cksum < "$L_H8/.husky/pre-commit")"
+OUT=$(cd "$L_H8" && env PATH="$L_BIN:$PATH" bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "husky v8: install.sh refuses the tracked .husky/pre-commit and gives the husky hint" "1|yes|yes|yes" \
+  "$L_RC|$(_l_has "$OUT" 'FAIL: .husky/pre-commit is tracked by git')|$(_l_has "$OUT" "$L_CLI_LINE")|$(printf '%s\n' "$OUT" | tail -1 | grep -q '^Hint: husky runs .husky/pre-commit with sh, so add the lines at the end of that file' && echo yes || echo no)"
+assert_eq "husky v8: the refusal leaves the tracked hook as it was and adds no file" "yes|" \
+  "$([[ "$(cksum < "$L_H8/.husky/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)|$(git -C "$L_H8" status --short)"
+rm -f "$L_H8/husky.log"
+echo a > "$L_H8/a.txt"
+git -C "$L_H8" add a.txt >/dev/null 2>&1
+assert_exit "husky v8: after the refusal a commit still works under sh" 0 env PATH="$L_BIN:$PATH" git -C "$L_H8" commit -q -m a
+_l_lines "$OUT"
+cat "$L_LINES" >> "$L_H8/.husky/pre-commit"
+rm -f "$L_H8/husky.log"
+echo b > "$L_H8/b.txt"
+git -C "$L_H8" add b.txt >/dev/null 2>&1
+assert_exit "husky v8: with the lines at the end of .husky/pre-commit, a commit with no run passes under sh" 0 \
+  env PATH="$L_BIN:$PATH" git -C "$L_H8" commit -q -m b
+assert_eq "husky v8: husky's own line ran once" "husky-ran" "$(cat "$L_H8/husky.log" 2>/dev/null)"
+_l_red "$L_H8"
+echo c > "$L_H8/c.txt"
+git -C "$L_H8" add c.txt >/dev/null 2>&1
+assert_exit "husky v8: with the lines at the end of .husky/pre-commit, a commit on a red gate is blocked under sh" 1 \
+  env PATH="$L_BIN:$PATH" git -C "$L_H8" commit -q -m c
+OUT=$(cd "$L_H8" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "husky v8: once .husky/pre-commit holds the current lines, install.sh says so and writes nothing" "0|yes" \
+  "$L_RC|$(_l_has "$OUT" 'already runs the current Temper hook lines')"
+rm -rf "$L_H8"
+
+# husky v9: core.hooksPath is .husky/_, where husky's generated hook runs .husky/pre-commit with sh -e.
+L_H9="$WORKDIR/l1-husky9"
+_l_repo "$L_H9"
+mkdir -p "$L_H9/.husky/_"
+printf '#!/usr/bin/env sh\n. "${0%%/*}/h"\n' > "$L_H9/.husky/_/pre-commit"
+printf '#!/usr/bin/env sh\nn=$(basename "$0")\ns=$(dirname "$(dirname "$0")")/$n\n[ -f "$s" ] || exit 0\nsh -e "$s" "$@"\n' > "$L_H9/.husky/_/h"
+printf '*\n' > "$L_H9/.husky/_/.gitignore"
+chmod +x "$L_H9/.husky/_/pre-commit" "$L_H9/.husky/_/h"
+printf 'echo husky-ran >> husky.log\n' > "$L_H9/.husky/pre-commit"
+printf 'husky.log\n.temper/\n' > "$L_H9/.gitignore"
+git -C "$L_H9" config core.hooksPath .husky/_
+git -C "$L_H9" add .gitignore .husky/pre-commit >/dev/null 2>&1
+env PATH="$L_BIN:$PATH" git -C "$L_H9" commit -q -m husky >/dev/null 2>&1
+L_SUM="$(cksum < "$L_H9/.husky/_/pre-commit")"
+OUT=$(cd "$L_H9" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "husky v9: install.sh refuses husky's generated hook and gives the husky hint" "1|yes|yes|yes" \
+  "$L_RC|$(_l_has "$OUT" "FAIL: .husky/_/pre-commit holds a pre-commit hook that is not Temper's")|$([[ "$(cksum < "$L_H9/.husky/_/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)|$(printf '%s\n' "$OUT" | tail -1 | grep -q '^Hint: husky runs .husky/pre-commit' && echo yes || echo no)"
+_l_lines "$OUT"
+cat "$L_LINES" >> "$L_H9/.husky/pre-commit"
+rm -f "$L_H9/husky.log"
+echo a > "$L_H9/a.txt"
+git -C "$L_H9" add a.txt >/dev/null 2>&1
+assert_exit "husky v9: with the lines at the end of .husky/pre-commit, a commit with no run passes under sh" 0 \
+  env PATH="$L_BIN:$PATH" git -C "$L_H9" commit -q -m a
+assert_eq "husky v9: husky's own line ran once" "husky-ran" "$(cat "$L_H9/husky.log" 2>/dev/null)"
+_l_red "$L_H9"
+echo b > "$L_H9/b.txt"
+git -C "$L_H9" add b.txt >/dev/null 2>&1
+assert_exit "husky v9: with the lines at the end of .husky/pre-commit, a commit on a red gate is blocked under sh" 1 \
+  env PATH="$L_BIN:$PATH" git -C "$L_H9" commit -q -m b
+OUT=$(cd "$L_H9" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "husky v9: once .husky/pre-commit holds the current lines, install.sh says so and writes nothing" "0|yes|yes" \
+  "$L_RC|$(_l_has "$OUT" 'already runs the current Temper hook lines')|$([[ "$(cksum < "$L_H9/.husky/_/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)"
+rm -rf "$L_H9"
+
+# The pre-commit framework: its hook is refused with the local-hook hint. When the framework is
+# installed after Temper it keeps Temper's hook as pre-commit.legacy and runs it in migration
+# mode; with nothing chained that works, and a red gate still blocks.
+L_PC="$WORKDIR/l1-precommit"
+_l_repo "$L_PC"
+cat > "$L_PC/.git/hooks/pre-commit" <<'EOF'
+#!/usr/bin/env bash
+# File generated by pre-commit
+if [ -n "${PRE_COMMIT_RUNNING_LEGACY:-}" ]; then
+  echo "bug: pre-commit's script is installed in migration mode" >&2
+  exit 1
+fi
+if [ -x "${0%/*}/pre-commit.legacy" ]; then
+  PRE_COMMIT_RUNNING_LEGACY=1 "${0%/*}/pre-commit.legacy" "$@" || exit 1
+fi
+echo framework-ran >> framework.log
+EOF
+chmod +x "$L_PC/.git/hooks/pre-commit"
+cp "$L_PC/.git/hooks/pre-commit" "$WORKDIR/l1-framework-hook"
+OUT=$(cd "$L_PC" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "the pre-commit framework's hook is refused with the local-hook hint" "1|yes|yes" \
+  "$L_RC|$(_l_has "$OUT" "FAIL: .git/hooks/pre-commit holds a pre-commit hook that is not Temper's")|$(printf '%s\n' "$OUT" | tail -1 | grep -q '^Hint: the pre-commit framework owns this hook, so save the lines as a script and run it from a local hook' && echo yes || echo no)"
+rm -f "$L_PC/.git/hooks/pre-commit"
+bash -c "cd '$L_PC' && bash '$L_INSTALL'" >/dev/null 2>&1
+mv "$L_PC/.git/hooks/pre-commit" "$L_PC/.git/hooks/pre-commit.legacy"
+cp "$WORKDIR/l1-framework-hook" "$L_PC/.git/hooks/pre-commit"
+printf 'framework.log\n.temper/\n' > "$L_PC/.gitignore"
+git -C "$L_PC" add .gitignore >/dev/null 2>&1
+assert_exit "the framework installed over Temper's hook: a commit with no run passes in migration mode" 0 git -C "$L_PC" commit -q -m framework
+assert_eq "the framework's own checks ran" "framework-ran" "$(cat "$L_PC/framework.log" 2>/dev/null)"
+_l_red "$L_PC"
+echo x > "$L_PC/x.txt"
+git -C "$L_PC" add x.txt >/dev/null 2>&1
+assert_exit "the framework installed over Temper's hook: a commit on a red gate is still blocked" 1 git -C "$L_PC" commit -q -m red
+rm -rf "$L_PC" "$WORKDIR/l1-framework-hook"
+
+# A team's tracked hooks folder: a tracked pre-commit, even an older Temper hook, is never written;
+# a new hook in a folder git does not ignore comes with a note not to commit it.
+L_TR="$WORKDIR/l1-tracked"
+_l_repo "$L_TR"
+mkdir -p "$L_TR/.githooks"
+printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (installed by an older installer).\nTEMPER_CLI=/old/plugin/scripts/temper\n' > "$L_TR/.githooks/pre-commit"
+chmod +x "$L_TR/.githooks/pre-commit"
+git -C "$L_TR" add .githooks/pre-commit >/dev/null 2>&1
+git -C "$L_TR" commit -q -m hooks
+git -C "$L_TR" config core.hooksPath .githooks
+L_SUM="$(cksum < "$L_TR/.githooks/pre-commit")"
+OUT=$(cd "$L_TR" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "a tracked pre-commit (here an older Temper hook) is refused and left as it was" "1|yes|yes|" \
+  "$L_RC|$(_l_has "$OUT" 'FAIL: .githooks/pre-commit is tracked by git')|$([[ "$(cksum < "$L_TR/.githooks/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)|$(git -C "$L_TR" status --short)"
+git -C "$L_TR" config core.hooksPath team-hooks
+mkdir -p "$L_TR/team-hooks"
+OUT=$(cd "$L_TR" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "a new hook in a folder git does not ignore is written, with a note not to commit it" "0|yes|yes" \
+  "$L_RC|$(grep -qxF "$L_CLI_LINE" "$L_TR/team-hooks/pre-commit" 2>/dev/null && echo yes || echo no)|$(_l_has "$OUT" 'Note: git does not ignore team-hooks/pre-commit')"
+# A folder that cannot be made (a file is in the way) is refused with a FAIL line and the hook
+# lines, never a bare shell error.
+echo x > "$L_TR/blocked"
+git -C "$L_TR" config core.hooksPath blocked/hooks
+OUT=$(cd "$L_TR" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "a hooks folder that cannot be made gives a FAIL line and the hook lines, no shell error" "1|yes|yes|0" \
+  "$L_RC|$(_l_has "$OUT" "FAIL: the hooks folder 'blocked/hooks' could not be created")|$(_l_has "$OUT" "$L_CLI_LINE")|$(printf '%s\n' "$OUT" | grep -c 'mkdir:')"
+rm -rf "$L_TR"
+
+# An older Temper hook (9.6.4 and earlier embedded a scripts folder) is replaced; the backup the
+# old installer made of the user's hook, which it never ran, is named with how to restore it.
+L_OLD="$WORKDIR/l1-old"
+_l_repo "$L_OLD"
+mkdir -p "$WORKDIR/l1-old-plugin/scripts/hooks"
+printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (installed by scripts/hooks/install.sh).\nTEMPER_HOOKS_DIR="${TEMPER_HOOKS_DIR:-%s}"\n' "$WORKDIR/l1-old-plugin/scripts/hooks" > "$L_OLD/.git/hooks/pre-commit"
+printf '#!/bin/sh\necho user-hook\n' > "$L_OLD/.git/hooks/pre-commit.bak.20260101000000"
+chmod +x "$L_OLD/.git/hooks/pre-commit" "$L_OLD/.git/hooks/pre-commit.bak.20260101000000"
+OUT=$(cd "$L_OLD" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "an older Temper hook is replaced with the current one" "0|yes" \
+  "$L_RC|$(grep -qxF "$L_CLI_LINE" "$L_OLD/.git/hooks/pre-commit" && echo yes || echo no)"
+assert_eq "the old installer's backup is named, with the lines to add and how to move it back" "yes|yes|yes" \
+  "$(_l_has "$OUT" 'Warning: .git/hooks/pre-commit.bak.20260101000000 is a pre-commit hook that an older Temper installer set aside')|$(_l_has "$OUT" 'then move it back to .git/hooks/pre-commit')|$(_l_has "$OUT" "$L_CLI_LINE")"
+assert_eq "a stale path that still exists is not called failing open, and no hook is said to run first" "no|no" \
+  "$(_l_has "$OUT" 'failing open')|$(_l_has "$OUT" 'runs it first')"
+printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (installed by scripts/hooks/install.sh).\nTEMPER_HOOKS_DIR="${TEMPER_HOOKS_DIR:-%s}"\n' "$WORKDIR/l1-gone-plugin/scripts/hooks" > "$L_OLD/.git/hooks/pre-commit"
+OUT=$(cd "$L_OLD" && bash "$L_INSTALL" 2>&1)
+assert_eq "a stale path that is gone is reported as failing open" "yes" "$(_l_has "$OUT" 'failing open')"
+rm -rf "$L_OLD" "$WORKDIR/l1-old-plugin"
+
+# --global: refused over a hook of the user's in .git/hooks (git would skip it); otherwise it sets
+# an absolute core.hooksPath, which a linked worktree uses, so its commits are gated too.
+L_GM="$WORKDIR/l1-gmain"
+L_GW="$WORKDIR/l1-gwt"
+_l_repo "$L_GM"
+rm -rf "$L_GW"
+git -C "$L_GM" worktree add -q "$L_GW" >/dev/null 2>&1
+L_GM_REAL="$(cd -P "$L_GM" && pwd)"
+printf '#!/bin/sh\necho mine\n' > "$L_GM/.git/hooks/pre-commit"
+chmod +x "$L_GM/.git/hooks/pre-commit"
+OUT=$(cd "$L_GM" && bash "$L_INSTALL" --global 2>&1); L_RC=$?
+assert_eq "--global refuses when .git/hooks/pre-commit holds a hook that is not Temper's" "1|yes|yes|none" \
+  "$L_RC|$(_l_has "$OUT" "FAIL: .git/hooks/pre-commit holds a pre-commit hook that is not Temper's. --global sets core.hooksPath")|$(_l_has "$OUT" "$L_CLI_LINE")|$(git -C "$L_GM" config --get core.hooksPath || echo none)"
+rm -f "$L_GM/.git/hooks/pre-commit"
+assert_exit "--global installs in the main checkout" 0 bash -c "cd '$L_GM' && bash '$L_INSTALL' --global"
+assert_eq "--global sets core.hooksPath to the absolute path of the repository's temper-git-hooks folder" \
+  "$L_GM_REAL/.git/temper-git-hooks|$L_GM_REAL/.git/temper-git-hooks/pre-commit" \
+  "$(git -C "$L_GM" config --get core.hooksPath)|$(cd "$L_GW" && git rev-parse --git-path hooks/pre-commit)"
+OUT=$(cd "$L_GW" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "in a linked worktree the default mode accepts that core.hooksPath and finds the hook there" "0|yes" \
+  "$L_RC|$(_l_has "$OUT" 'already installed for this worktree')"
+_l_red "$L_GW"
+printf '.temper/\n' > "$L_GW/.gitignore"
+echo w > "$L_GW/w.txt"
+git -C "$L_GW" add .gitignore w.txt >/dev/null 2>&1
+assert_exit "after --global in the main checkout, a commit on a red gate in a linked worktree is blocked" 1 git -C "$L_GW" commit -q -m wt
+# The relative value an earlier --global wrote names no folder in a linked worktree: refused with a
+# FAIL line and the hook lines (no mkdir error), and --global in the main checkout makes it absolute.
+git -C "$L_GM" config core.hooksPath .git/temper-git-hooks
+OUT=$(cd "$L_GW" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "a relative core.hooksPath through .git in a linked worktree is refused with a FAIL line and the hook lines" "1|yes|yes|0" \
+  "$L_RC|$(_l_has "$OUT" "FAIL: core.hooksPath is set to the relative path '.git/temper-git-hooks'")|$(_l_has "$OUT" "$L_CLI_LINE")|$(printf '%s\n' "$OUT" | grep -c 'mkdir:')"
+assert_exit "--global in the main checkout runs over that earlier relative value" 0 bash -c "cd '$L_GM' && bash '$L_INSTALL' --global"
+assert_eq "and sets the absolute path instead" "$L_GM_REAL/.git/temper-git-hooks" "$(git -C "$L_GM" config --get core.hooksPath)"
+rm -rf "$L_GM" "$L_GW"
+
+# The commit hooks with the real CLI: an active run with red gates and a symlink on a run-state
+# path, or a link in the spec folder, never opens the gate.
+L_RED="$WORKDIR/l1-red"
+_l_repo "$L_RED"
+printf '.temper/\n' > "$L_RED/.gitignore"
+bash -c "cd '$L_RED' && bash '$L_INSTALL'" >/dev/null 2>&1
+(cd "$L_RED" && "$L_PLUG/scripts/temper" init >/dev/null 2>&1 && "$L_PLUG/scripts/temper" state init demo-run >/dev/null 2>&1)
+mkdir -p "$L_RED/.temper/specs/demo-run"
+echo r > "$L_RED/r.txt"
+git -C "$L_RED" add .gitignore r.txt >/dev/null 2>&1
+assert_exit "an active run with red gates blocks a real commit" 1 git -C "$L_RED" commit -q -m red
+ln -s "$WORKDIR" "$L_RED/.temper/specs/demo-run/notes"
+assert_exit "a symlink in the active run's spec folder does not open the gate" 1 git -C "$L_RED" commit -q -m red
+rm -f "$L_RED/.temper/specs/demo-run/notes"
+mv "$L_RED/.temper/gates.json" "$WORKDIR/l1-gates.json"
+ln -s "$WORKDIR/l1-gates.json" "$L_RED/.temper/gates.json"
+OUT=$(git -C "$L_RED" commit -q -m red 2>&1); L_RC=$?
+assert_eq "a symlinked gates.json during an active run: the native hook blocks and says to remove the symlink" "1|yes" \
+  "$L_RC|$(_l_has "$OUT" 'remove the symlink')"
+OUT=$(cd "$L_RED" && echo '{"tool_input": {"command": "git commit -m y"}}' | bash "$L_PLUG/scripts/guards/block-uncommitted-gate.sh" 2>&1); L_RC=$?
+assert_eq "a symlinked gates.json during an active run: the in-agent commit gate blocks too" "2|yes" \
+  "$L_RC|$(_l_has "$OUT" 'remove the symlink')"
+mv "$L_RED/.temper/build-state.json" "$WORKDIR/l1-build-state.json"
+ln -s "$WORKDIR/l1-nowhere.json" "$L_RED/.temper/build-state.json"
+assert_exit "a build-state.json that is itself a symlink (even a dangling one) still counts as an active run" 1 git -C "$L_RED" commit -q -m red
+rm -f "$L_RED/.temper/build-state.json"
+assert_exit "with no run active, the native hook fails open" 0 git -C "$L_RED" commit -q -m norun
+rm -rf "$L_RED" "$WORKDIR/l1-gates.json" "$WORKDIR/l1-build-state.json"
+
+# block-secrets --staged scans the staged content from the index, not the work tree copy, and
+# names the file; names git would quote are read too.
+L_SEC="$WORKDIR/l1-secrets"
+_l_repo "$L_SEC"
+bash -c "cd '$L_SEC' && bash '$L_INSTALL'" >/dev/null 2>&1
+L_KEY="AKIA$(printf 'Q%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)"
+L_SECRETS="$L_PLUG/scripts/guards/block-secrets.sh"
+printf 'key = %s\n' "$L_KEY" > "$L_SEC/s2.txt"
+git -C "$L_SEC" add s2.txt >/dev/null 2>&1
+echo clean > "$L_SEC/s2.txt"
+OUT=$(cd "$L_SEC" && bash "$L_SECRETS" --staged < /dev/null 2>&1); L_RC=$?
+assert_eq "block-secrets --staged blocks a staged secret the work tree copy no longer holds, and names the file" "2|yes" \
+  "$L_RC|$(_l_has "$OUT" "in the staged copy of 's2.txt'")"
+assert_exit "a real commit of a staged secret that the work tree copy no longer holds is blocked" 1 git -C "$L_SEC" commit -q -m secret
+git -C "$L_SEC" reset -q -- s2.txt >/dev/null 2>&1
+rm -f "$L_SEC/s2.txt"
+echo clean > "$L_SEC/c.txt"
+git -C "$L_SEC" add c.txt >/dev/null 2>&1
+printf 'key = %s\n' "$L_KEY" > "$L_SEC/c.txt"
+assert_exit "block-secrets --staged passes when the secret is only in the unstaged work tree copy" 0 \
+  bash -c "cd '$L_SEC' && bash '$L_SECRETS' --staged < /dev/null"
+assert_exit "a real commit whose staged copy is clean passes, whatever the work tree holds" 0 git -C "$L_SEC" commit -q -m clean
+L_ODD="$(printf 'odd name \303\251.txt')"
+printf 'key = %s\n' "$L_KEY" > "$L_SEC/$L_ODD"
+git -C "$L_SEC" add -- "$L_ODD" >/dev/null 2>&1
+OUT=$(cd "$L_SEC" && bash "$L_SECRETS" --staged < /dev/null 2>&1); L_RC=$?
+assert_eq "block-secrets --staged reads a staged name that git would quote, and names it" "2|yes" \
+  "$L_RC|$(_l_has "$OUT" "in the staged copy of '$L_ODD'")"
+rm -rf "$L_SEC"
+
+# The guard scripts follow their own symlinks (a link to the file, or to its folder) and do nothing
+# when they are not in a scripts/guards folder.
+L_GL="$WORKDIR/l1-guard-links"
+rm -rf "$L_GL"
+mkdir -p "$L_GL/bin" "$L_GL/loose"
+ln -s "$L_PLUG/scripts/guards" "$L_GL/guards"
+ln -s "$L_PLUG/scripts/guards/block-uncommitted-gate.sh" "$L_GL/bin/gate.sh"
+ln -s "$L_PLUG/scripts/guards/protect-regression-test.sh" "$L_GL/bin/shield.sh"
+cp "$L_PLUG/scripts/guards/block-uncommitted-gate.sh" "$L_PLUG/scripts/guards/protect-regression-test.sh" "$L_GL/loose/"
+_l_red "$WORKDIR"
+echo g > guard-file.txt
+git add guard-file.txt >/dev/null 2>&1
+L_COMMIT='{"tool_input": {"command": "git commit -m x"}}'
+assert_eq "uncommitted-gate blocks a red gate through a link to its file and through a link to its folder" "2|2" \
+  "$(echo "$L_COMMIT" | bash "$L_GL/bin/gate.sh" >/dev/null 2>&1; echo $?)|$(echo "$L_COMMIT" | bash "$L_GL/guards/block-uncommitted-gate.sh" >/dev/null 2>&1; echo $?)"
+assert_exit "uncommitted-gate outside a scripts/guards folder does nothing" 0 \
+  bash -c "echo '$L_COMMIT' | bash '$L_GL/loose/block-uncommitted-gate.sh'"
+mkdir -p reg-l1
+echo 'def test_l1(): pass' > reg-l1/test_l1.py
+echo '{"command": "fix", "regression_test": "reg-l1/test_l1.py"}' > .temper/build-state.json
+L_EDIT='{"tool_input": {"file_path": "reg-l1/test_l1.py"}}'
+assert_eq "the regression-test shield blocks through a link to its file and through a link to its folder" "2|2" \
+  "$(echo "$L_EDIT" | CLAUDE_PROJECT_DIR="$WORKDIR" bash "$L_GL/bin/shield.sh" >/dev/null 2>&1; echo $?)|$(echo "$L_EDIT" | CLAUDE_PROJECT_DIR="$WORKDIR" bash "$L_GL/guards/protect-regression-test.sh" >/dev/null 2>&1; echo $?)"
+assert_exit "the regression-test shield outside a scripts/guards folder does nothing" 0 \
+  bash -c "echo '$L_EDIT' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$L_GL/loose/protect-regression-test.sh'"
+rm -f .git/hooks/pre-commit
+OUT=$(bash "$L_GL/guards/install.sh" 2>&1); L_RC=$?
+assert_eq "install.sh reached through a link to its folder writes the real CLI path" "0|yes" \
+  "$L_RC|$(grep -qxF "$L_CLI_LINE" .git/hooks/pre-commit 2>/dev/null && echo yes || echo no)"
+git rm -q --cached guard-file.txt >/dev/null 2>&1 || true
+rm -rf guard-file.txt reg-l1 "$L_GL" "$L_PLUG" "$L_BIN" "$L_LINES" .git/hooks/pre-commit
 
 echo ""
 echo "=== test-temper.sh ==="

@@ -120,7 +120,15 @@ Before Stage 1, ensure the project is set up — **per piece, not all-or-nothing
 partially-set-up project (config copied but no git hook, `.temper/` present but no
 config) still ends up with every piece. All three steps are idempotent, so this is
 safe to run every time; do the ones that are missing, silently skip the ones already
-in place:
+in place.
+
+When any piece is missing, check the project folder first, before writing anything:
+when it is the home folder, stop and say in one line that the home folder holds Claude
+Code's own files and is never a project, so run `/temper` from a project folder. Then
+run `${CLAUDE_PLUGIN_ROOT}/scripts/temper status`; when it prints a line that starts
+with `FAIL: run temper from a project folder` (the home folder, an installed copy of
+the plugin, or a folder inside the plugin folder), stop and show that line. Any other
+result, `FAIL: no intent.md to report on` among them, means go on:
 
 1. **Config** — if `.claude/temper.config` is absent, copy the default template
    `${CLAUDE_PLUGIN_ROOT}/templates/temper.config.default` to `.claude/temper.config`.
@@ -137,20 +145,33 @@ in place:
    its folder) **or when it is stale**: a plugin upgrade moves the plugin folder, and
    a hook whose embedded CLI path no longer exists fails open silently. Either way, run
    `bash "${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh"` (it reports what it did and
-   re-embeds the current path; in a worktree whose shared hooks folder already holds a
+   writes the current path; in a worktree whose shared hooks folder already holds a
    current Temper hook, it says the hook is already installed for this worktree and
-   exits 0). Not a git repo yet ("FAIL: not inside a git repository") → say so in one
-   line and continue (config + scaffold still done); the gate installs on the next run
-   after `git init`. Any other FAIL line means install.sh refused and wrote nothing:
-   core.hooksPath is outside the repository, contains '..', '~' or other unusual
-   characters, or names a folder that holds a JSON file; the hooks folder (or the git
-   config file, or a backup path) leads anywhere but the repository and its own git
-   folder, or into the plugin's own folder, once symlinks are followed; or the
-   repository lies inside the plugin's own folder. It ignores GIT_DIR, GIT_WORK_TREE
-   and GIT_CONFIG. It printed the lines to add to a pre-commit hook by hand and exited
-   1. Say in one line that the commit gate is not installed and why, then show those
-   lines verbatim in a fenced code block (the whole hook it printed, from its
-   `#!/usr/bin/env bash` line to its last line), and continue.
+   exits 0). It never writes over a pre-commit hook that is not Temper's and never
+   writes a file git tracks; a hook of the user's own that already runs the current
+   Temper hook lines is left as it is, with exit 0 and a line saying nothing was
+   written, which counts as already in place. An exit 0 is the only installed result:
+   carry any `Warning:` line it printed (an old hook it replaced, or a
+   `pre-commit.bak.<timestamp>` file an older version set aside, with the restore steps
+   and the lines it printed for it) into the one-line note, and show those lines in a
+   fenced code block. Not a git repo yet ("FAIL: not inside a git repository") → say so
+   in one line and continue (config + scaffold still done); the gate installs on the
+   next run after `git init`. Any other non-zero exit means the commit gate is not
+   installed and install.sh wrote nothing. It refuses when the pre-commit file holds a
+   hook that is not Temper's or is tracked by git; when core.hooksPath is outside the
+   repository and its own git folder, contains '..', '~' or other unusual characters,
+   names a folder that holds a JSON file, or is a relative path through `.git` in a
+   linked worktree or a submodule; when the hooks folder leads anywhere but the
+   repository and its own git folder, or into the plugin's own folder, once symlinks
+   are followed; when the repository lies inside the plugin's own folder;
+   and when a folder or file it needs cannot be made. It ignores GIT_DIR, GIT_WORK_TREE
+   and GIT_CONFIG. Say in one line that the commit gate is not installed and why (its
+   FAIL reason; with no FAIL line, show its whole output in a fenced code block). Then
+   show the hook lines it printed between its BEGIN and END lines, verbatim, in a fenced
+   code block (the whole hook, from its `#!/usr/bin/env bash` line to its last line),
+   then its `Hint:` line as it printed it (for a hook that is not Temper's or a tracked
+   one, it says where the lines go: husky, the pre-commit framework, or the user's own
+   hook), and continue.
 
 If a step ran, print a one-line "Set up." note naming what was done; if everything was
 already in place, continue into Plan silently. This per-piece check is what makes
@@ -164,9 +185,12 @@ running the pipeline with no commit gate.
 for more than one `${CLAUDE_PLUGIN_ROOT}/scripts/temper` invocation in a row (state/evidence calls only, never `gate`),
 batch them into a single Bash tool call, one shell command per line — they're sequential
 anyway, and it's one round-trip instead of several. When the CLI exits 3, it refused
-because the project's `.temper` folder is, or holds, a symlink (so no write can follow
-a link out of the project): stop, show its one-line reason, and wait for the user.
-Never remove, replace or follow the link yourself.
+because a path it keeps run state in is a symlink (the `.temper` folder, its evidence,
+specs or archive folder, one of its state or evidence files, or the active run's spec
+folder or its `gate-ledger.json`), so no write can follow a link out of the project:
+stop, show its one-line reason, and wait for the user. While a run is active, the
+commit hooks block every commit until the link is gone. Never remove, replace or follow
+the link yourself.
 
 - **Start:** before `state init`, look for a matching committed draft: list the
   folders in the project's `.temper/specs` folder, and if one of them already holds an
@@ -295,11 +319,13 @@ directly, no pipeline"), run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear`,
 project's tests, and commit normally: with no active run state,
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` degrades open by design, so the
 commit hook doesn't block a run that never gated. That `state clear` is allowed even
-with the Temper bar and enforcement active: the mod lets it through while the phase is
-Intent and the run's spec folder has no `intent.md`, because a TRIVIAL return wrote
-nothing, so there is nothing to lose. Run it at once, before anything writes
-`intent.md`. If mid-change it turns out NOT to be trivial, stop and restart `/temper`
-properly.
+with the Temper bar and enforcement active, but only for a run that never left Intent:
+no stage has completed and the next stage is still Intent, no gate holds a verdict, no
+override is recorded, the spec folder holds none of `intent.md`, `plan.md`, `tasks.md`
+and `design.md`, and the bar has recorded no advance and no loop back for the run. A
+TRIVIAL return wrote nothing, so such a run has nothing to lose. Run it at once, before
+anything writes a file in the spec folder. If mid-change it turns out NOT to be
+trivial, stop and restart `/temper` properly.
 
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent` (Problem stated, >=1 criterion, Status header). Options:
 **"Continue to Plan (Recommended)"** / Grill Me / Teach Me / "Save for later" / Other

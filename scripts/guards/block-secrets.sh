@@ -19,8 +19,12 @@
 #     (the call that unstages it, or an Edit that takes it out, among them). Without
 #     python3 the call cannot be split up, so it passes; the commit hook still scans.
 #   - As the git pre-commit hook (the installed hook passes --staged; a run with no JSON
-#     on stdin counts the same), it scans the staged files. Without --staged it also scans
-#     the file named by $CLAUDE_FILE_PATH and any plain text on stdin.
+#     on stdin counts the same), it scans the staged files: the content in git's index
+#     (git show ":<path>"), which is what the commit records, not the copy in the work
+#     tree. Names are read NUL-separated, so no file name is quoted or skipped. Without
+#     --staged it also scans the file named by $CLAUDE_FILE_PATH and any plain text on stdin.
+# A block names where the match is: the staged file, the file, standard input or the text
+# the tool call adds.
 # Absence of input => exit 0.
 set -uo pipefail
 
@@ -91,38 +95,44 @@ sys.stdout.write("\n".join(parts))
     # rc 3: not a JSON tool call after all, so it is scanned as plain text below.
   fi
 
-  if [[ $hook_mode -eq 0 ]]; then
-    if [[ $staged_only -eq 0 ]]; then
-      if [[ -n "${CLAUDE_FILE_PATH:-}" && -f "${CLAUDE_FILE_PATH}" ]]; then
-        text+=$(cat "${CLAUDE_FILE_PATH}" 2>/dev/null || true)$'\n'
-      fi
-      [[ -n "$input" ]] && text+="$input"$'\n'
-    fi
-    # Staged files (pre-commit). Best-effort; ignore git failures.
-    if command -v git >/dev/null 2>&1; then
-      local staged
-      staged=$(git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
-      if [[ -n "$staged" ]]; then
-        while IFS= read -r f; do
-          [[ -f "$f" ]] && text+=$(cat "$f" 2>/dev/null || true)$'\n'
-        done <<<"$staged"
-      fi
-    fi
-  fi
-
-  # Nothing to scan => pass.
-  [[ -z "$text" ]] && return 0
-
   local joined
   joined=$(IFS='|'; echo "${patterns[*]}")
-  local match
-  # grep -E for alternation. -o to report the matched token.
-  match=$(printf '%s' "$text" | grep -Eo "$joined" 2>/dev/null | head -1 || true)
-  if [[ -n "$match" ]]; then
-    echo "BLOCK: detected likely secret pattern: '${match}'" >&2
+  _first_match() { # reads stdin and prints the first match of a pattern ('' for none). grep -E
+                   # for the alternation, -o for the matched token, -a so a binary file is
+                   # still read as text, and the C locale so the ranges are plain ASCII.
+    LC_ALL=C grep -aEo -e "$joined" 2>/dev/null | head -1
+  }
+  _block() { # _block <match> <where>
+    echo "BLOCK: detected likely secret pattern: '$1' in $2" >&2
     echo "Refusing commit/edit. Remove the secret or place it in an env var / secrets store." >&2
-    return 2
+  }
+
+  local match
+  if [[ $hook_mode -eq 1 ]]; then
+    match=$(printf '%s' "$text" | _first_match || true)
+    if [[ -n "$match" ]]; then _block "$match" "the text this tool call adds"; return 2; fi
+    return 0
   fi
+
+  if [[ $staged_only -eq 0 ]]; then
+    if [[ -n "${CLAUDE_FILE_PATH:-}" && -f "${CLAUDE_FILE_PATH}" ]]; then
+      match=$(_first_match < "${CLAUDE_FILE_PATH}" || true)
+      if [[ -n "$match" ]]; then _block "$match" "the file '${CLAUDE_FILE_PATH}'"; return 2; fi
+    fi
+    if [[ -n "$input" ]]; then
+      match=$(printf '%s' "$input" | _first_match || true)
+      if [[ -n "$match" ]]; then _block "$match" "standard input"; return 2; fi
+    fi
+  fi
+
+  # Staged files (pre-commit): the staged content, read from the index one file at a time,
+  # so a block names the file. Best-effort; git failures are ignored.
+  command -v git >/dev/null 2>&1 || return 0
+  local f
+  while IFS= read -r -d '' f; do
+    match=$(git show ":$f" 2>/dev/null | _first_match || true)
+    if [[ -n "$match" ]]; then _block "$match" "the staged copy of '$f'"; return 2; fi
+  done < <(git diff --cached --name-only -z --diff-filter=ACMR 2>/dev/null || true)
   return 0
 }
 

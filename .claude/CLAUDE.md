@@ -29,7 +29,7 @@ Config: `.claude/temper.config` | Docs: `reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
 
 **Developing temper (this repo):**
-- Test: `bash scripts/tests/test-temper.sh` (ends `PASS: N  FAIL: 0`); validators:
+- Test: `bash scripts/selftest/test-temper.sh` (ends `PASS: N  FAIL: 0`); validators:
   `bash scripts/quality-check.sh` (also runs in CI via quality.yml).
 - Directory readiness: `bash scripts/validate-directory.sh` (no raw HTML in the README, no
   assets folder path in text, no `options` key). Run it before any README or manifest change.

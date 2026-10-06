@@ -17,6 +17,8 @@
 # equal is decided by identity (device and inode), not by comparing path text. A .temper
 # folder or a marker file that is a symlink is skipped too, and so is a log file that is a
 # symlink, because writing through it would land outside the project's .temper folder.
+# The hook finds the plugin folder from its own file with every symlink followed, as the CLI
+# does; reached from anywhere that is not a plugin's scripts/guards folder, it does nothing.
 #
 # Loop guard, two layers: after MAX_BLOCKS refusals (counted in the marker itself) the
 # hook fails open — a model that cannot satisfy the gate (broken CLI, read-only disk)
@@ -37,10 +39,23 @@ unset CDPATH
 
 MAX_BLOCKS=2
 
-# This script's folder, resolved, and the plugin folder: that folder with the literal suffix
-# /scripts/guards removed. Worked out once, before the hook changes into the project folder.
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)" || HERE=""
+# This script's own file with every symlink followed (a link in a bin folder, or a chain of
+# links), the way scripts/temper finds itself. Its folder, resolved, is HERE; the plugin folder
+# is HERE with the literal suffix /scripts/guards removed. When that suffix is missing the hook
+# is not in a plugin's scripts/guards folder and does nothing. Worked out once, before the hook
+# changes into the project folder.
+_self="${BASH_SOURCE[0]}"
+_hops=0
+while [[ -L "$_self" && $_hops -lt 40 ]]; do
+  _link_dir="$(cd -P "$(dirname "$_self")" 2>/dev/null && pwd)" || exit 0
+  _self="$(readlink "$_self")" || exit 0
+  [[ "$_self" == /* ]] || _self="$_link_dir/$_self"
+  _hops=$((_hops + 1))
+done
+HERE="$(cd -P "$(dirname "$_self")" 2>/dev/null && pwd)" || exit 0
 ROOT="${HERE%/scripts/guards}"
+[[ -n "$HERE" && "$ROOT" != "$HERE" ]] || exit 0
+unset _self _hops _link_dir
 
 _log() { # append-only trace in the project's .temper folder (the cwd); never fails the hook
   [[ ! -L .temper/stage-gate.log ]] || return 0
@@ -77,14 +92,11 @@ _project_dir() { # prints the resolved project folder; fails when it lies inside
                  # folder, or is the plugin folder and that folder is not its own git
                  # repository (an installed copy)
   local proj
-  [[ -n "$HERE" ]] || return 1
   proj="$(cd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null && pwd -P)" || return 1
-  if [[ -n "$ROOT" && "$ROOT" != "$HERE" ]]; then
-    if [[ "$proj" -ef "$ROOT" ]]; then
-      _git_toplevel_is "$ROOT" || return 1
-    elif _under_folder "$proj" "$ROOT"; then
-      return 1
-    fi
+  if [[ "$proj" -ef "$ROOT" ]]; then
+    _git_toplevel_is "$ROOT" || return 1
+  elif _under_folder "$proj" "$ROOT"; then
+    return 1
   fi
   printf '%s\n' "$proj"
 }
@@ -149,8 +161,7 @@ print(f"BLOCK {stage}")
       _log "blocked stop (stage=$stage, no verdict)"
       # The CLI by its full path, quoted for the shell: the Bash tool has no `temper` on its
       # PATH, so a bare name would leave Claude guessing while this hook keeps blocking.
-      local cli="temper"
-      [[ -n "$ROOT" && "$ROOT" != "$HERE" ]] && cli="$(printf '%q' "$ROOT/scripts/temper")"
+      local cli; cli="$(printf '%q' "$ROOT/scripts/temper")"
       printf '%s\n' >&2 \
         "temper: this session ran /temper:$stage but 'temper gate $stage' was never invoked, so" \
         "no verdict exists in .temper/gates.json and 'temper gate commit' cannot see that the" \

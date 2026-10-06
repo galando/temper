@@ -16,8 +16,8 @@ folder.
 
 1. **Triage first.** If the request is plainly trivial or mechanical (a typo, a
    one-line change, direct instructions with no product problem to state), return
-   `TRIVIAL` with one sentence of reasoning and write nothing — the orchestrator skips
-   the intent gate and Plan takes its trivial path.
+   `TRIVIAL` with one sentence of reasoning and write nothing. The orchestrator then
+   clears the run and handles the change directly, outside the pipeline.
 
 2. **Gather task context before drafting.** Fetch every source the request links
    (ticket key, MR/PR, doc link, named repo history) read-only, with whatever tools

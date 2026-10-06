@@ -10,15 +10,16 @@ already gives (the prompts the mod submits, the two commands it runs, the two se
 one ("This plugin includes a mod") always goes to a reviewer. The fifth, "The directory couldn't
 confirm that the mod stays the same after it's checked", named three new sample files. This release
 clears that kind of finding across the whole plugin, not only in the samples, and answers the notes
-it can. Two review rounds before release (independent checks of every tracked file, the new code,
+it can. Three review rounds before release (independent checks of every tracked file, the new code,
 the docs and the instruction text, and a real install driven through the Claude CLI) found more;
 every one of those is fixed here too.
 
 **Nothing points at the mod or its hooks file.**
 - The guard scripts moved to `scripts/guards/`, and the hooks pack is now the guardrails pack
   (`packs/guardrails/`, settings snippet `settings-guardrails.json`); a `packs:` entry named `hooks`
-  still means it. No folder but the mod's own is called `hooks`, and the OCR notes moved to
-  `docs/plans/ocr-notes/`, so no folder shares a name with one of the mod's test folders.
+  still means it. No folder but the mod's own is called `hooks`; the OCR notes moved to
+  `docs/plans/ocr-notes/` and the shell test suites to `scripts/selftest/`, so no folder shares a
+  name with one of the mod's test folders.
 - No script, command, instruction or doc names a file of the mod, the hooks file or a file of the
   mod's tests; history entries name them by role. The two files that must name the mod still do: the
   hooks file loads it, and `tsconfig.mod.json` includes the mod's tests folder whole for the type
@@ -26,9 +27,11 @@ every one of those is fixed here too.
   checks that read the mod moved into its TS tests, which import what they check.
 - Every plugin path is fixed text after the root: no `..`, no wildcard, no placeholder, no second
   variable. Every plugin file a script opens is its plugin folder plus fixed text, a file git lists
-  as tracked, or a name checked against a fixed list or pattern. The CLI, the guard scripts and the dev scripts find the plugin folder by a
-  literal suffix of their own location, after following their own symlinks; no environment variable
-  moves it (`validate-directory.sh` lost its folder override), and `CDPATH` is cleared first.
+  as tracked, or a name checked against a fixed list or pattern. The CLI and every guard script
+  that needs the plugin folder find it by a literal suffix of their own location after following
+  their own symlinks, and such a guard script reached any other way does nothing; the dev scripts take their own
+  folder as it is. No environment variable moves it (`validate-directory.sh` lost its folder
+  override), and `CDPATH` is cleared first.
 
 **The plugin folder in instruction text.** Claude Code fills in the plugin folder only where a
 command, brief or skill writes the braced form of the CLAUDE_PLUGIN_ROOT variable, and the Bash tool
@@ -43,7 +46,8 @@ the search gone, a real install of the 9.6.5 draft could not find its CLI. Now:
   with the Read tool means that folder, written out in full in a command.
 - `validate-plugin.sh` checks every tracked file: it fails on the unbraced form, on a braced root with
   no path after it, on `..` or any of `[ ] < > ( ) { } * ? $ | %` after it, and on a path that is not
-  a tracked file. Test inputs that need a bad form build it while the test runs.
+  a tracked file (a folder does not count). Test inputs that need a bad form build it while the test
+  runs.
 
 **No write can reach the plugin folder.** The one exception is developing Temper on its own
 repository (the plugin folder is a git work tree whose top level is that folder): there the run
@@ -53,10 +57,12 @@ of the folder (a case-insensitive disk, a bind mount, a doubled slash) changes n
 - `scripts/temper` checks every stage name against a fixed list before it builds a path, checks the
   slug of `state init` and any `spec_path` it stores, no longer honours a `TEMPER_DIR` override, and
   reads the evidence files by name instead of a glob. Before this, a crafted stage name could
-  overwrite a file outside `.temper/`. It refuses to run from a folder inside the plugin folder, and
-  refuses (exit 3) when `.temper` or anything in it is a symlink, so no write can follow a link out
-  of the project; the commit hooks treat that refusal as fail open, with a warning. `config`,
-  `model` and the help text only read, so they still answer.
+  overwrite a file outside `.temper/`. It refuses to run from a folder inside the plugin folder or
+  from the home folder, and refuses (exit 3) when a path it keeps run state in is a symlink (the
+  `.temper` folder, its evidence, specs and archive folders, its state and evidence files, the active
+  spec folder and its gate ledger), so no write can follow a link out of the project. While a run is
+  active the commit hooks block on that refusal and say to remove the link; with no run they pass
+  with a warning. `config`, `model` and the help text only read, so they still answer.
 - A slug (for `state init`, a bug, a ticket key prefix) is letters of either case, digits, `.`, `_`
   and `-`, starting with a letter or digit, with no `/` and no `..`. A 9.6.4 run named like
   `PROJ-123-login` keeps working. When `state archive`, `state clear` or `state init` cannot archive
@@ -66,21 +72,26 @@ of the folder (a case-insensitive disk, a bind mount, a doubled slash) changes n
   `temper report`); both now pass it as an argument, so a crafted threshold can no longer run code
   and `temper report` works from a project folder whose name holds a quote.
 - `install.sh` asks git where the hook goes (`git rev-parse --git-path hooks`): the repository's
-  hooks folder, a `core.hooksPath` folder inside the repository, or, in a linked worktree or a
-  submodule, the shared hooks folder of the repository's own git folder (a second run there says it
-  is already installed). With `--global` it writes `.git/temper-git-hooks/pre-commit`, and refuses
-  when `core.hooksPath` is already set. It follows every symlink before it creates anything, refuses
-  a target that leads outside the repository and its git folder or into the plugin folder, refuses a
-  repository inside the plugin folder, ignores every `GIT_*` variable, and writes through a temporary
-  file, so a linked `pre-commit` is replaced, never written through. A hook that is not Temper's is
-  kept as `pre-commit.bak.<timestamp>` and runs first; its failure still stops the commit. The hook
-  holds the full paths of the CLI and the two guard scripts as plain text, fails open when python3 is
-  missing (the secret scan still runs) and in a repository inside the plugin folder. For anything it
-  refuses it prints the lines to add by hand between BEGIN and END marker lines, and `/temper:init`
-  and the first `/temper` run show them in a code block.
+  hooks folder, a `core.hooksPath` folder inside the repository or its git folder, or, in a linked
+  worktree or a submodule, the shared hooks folder of the repository's own git folder (a second run
+  there says it is already installed). It never writes over a pre-commit hook that is not Temper's,
+  and never writes a file git tracks: it prints the lines to add by hand, between BEGIN and END marker
+  lines, with a hint for husky and the pre-commit framework, and `/temper:init` and the first
+  `/temper` run show them in a code block. An older Temper hook is replaced, and a backup an older
+  version left is named, with how to restore it. With `--global` it sets `core.hooksPath` to the
+  absolute `temper-git-hooks` folder in the repository's git folder, so linked worktrees use it too,
+  and refuses when `core.hooksPath` is already set or `.git/hooks` holds a hook that is not Temper's.
+  It follows every symlink before it creates anything, refuses a target that leads outside the
+  repository and its git folder or into the plugin folder, refuses a repository inside the plugin
+  folder, ignores every `GIT_*` variable, and writes through a temporary file, so a linked
+  `pre-commit` is replaced, never written through. Every refusal prints a FAIL line and the lines to
+  add. The hook holds the full paths of the CLI and the two guard scripts as plain text, fails open
+  when python3 is missing (the secret scan still runs), and skips the gate in a repository inside the
+  plugin folder or at the home folder.
 - `block-secrets.sh` as an agent hook scans only what a call adds (the written text, an edit's new
-  text, a Bash command); only the commit hook scans the staged files. Before, one staged secret
-  refused every later call, including the one that would unstage it.
+  text, a Bash command); only the commit hook scans what is staged, from the index, and names the
+  file. Before, one staged secret refused every later call, including the one that would unstage it,
+  and a secret staged and then removed from the working copy got committed.
 - `run-formatter.sh` never formats a file inside the plugin folder, and passes the file name to
   `format.cmd` as an argument: before, a file whose name held shell text ran that text.
 - `plan_review.py` refuses an output inside the plugin folder (its own `.temper/` excepted in the
@@ -94,29 +105,39 @@ of the folder (a case-insensitive disk, a bind mount, a doubled slash) changes n
 **The Bash guard.** A shell, `source` or `.` that reads its program from standard input is refused
 like a pipe into a bare shell, in any spelling of the path: `/dev/stdin`, `/dev/./stdin`, `/dev/fd/N`,
 `/proc/self/fd/N` and the like, a relative path read against the folder the command moved to, a
-variable of any name length, and a script after `--rcfile` or `--init-file`. An interpreter that
-reads its program from standard input is refused only when the program names the Temper script. A
-refused call whose Temper subcommand is written as a variable now says that, instead of claiming it
-holds a decision word. Which calls are refused is otherwise unchanged.
+variable of any name length, a startup file given with `--rcfile` or `--init-file` or through
+`BASH_ENV` or `ENV`, and `xargs` running a shell with no visible program. An interpreter that reads
+its program from standard input is refused only when the program names the Temper script. A redirect
+from `/dev/null` or a `<` inside quotes no longer counts as feeding a shell. A refused call whose
+Temper subcommand is written as a variable now says that, instead of claiming it holds a decision
+word, and a write to an unknown `.temper` path gets the run folder's reason. Which calls are refused
+is otherwise unchanged.
 
 **The mod's prompts and the trivial path.** The prompts the mod submits on a press (Stop, Commit,
 the plan review buttons) and the next step in its refusals name the CLI and the plugin's files by
 the full path the mod already knew, so they work in a fresh session; Commit names the slash command.
-The trivial exit works with the mod on: it allows `state clear` while the run is at Intent and its
-spec folder has no `intent.md`, since nothing is lost.
+The trivial exit works with the mod on: it allows `state clear` only for a run that never left
+Intent (no completed stage, no verdict or override, none of `intent.md`, `plan.md`, `tasks.md` and
+`design.md` in the spec folder, and no advance or loop back recorded), since such a run has nothing
+to lose. With enforcement off, a decision word from any origin, a `claude -p` run included, is
+accepted and its origin recorded; with enforcement on, only a person in an interactive session
+decides, and the refusal says so.
 
 **The guardrails pack works.** Hooks in a settings file get no plugin folder, so the merged guard
 commands ran nothing. `/temper:pack enable guardrails` now asks which project settings file to use
 (`.claude/settings.local.json` by default, since each command holds this machine's folder, with an
-offer to add it to `.gitignore` when git does not ignore it; or `.claude/settings.json`), shows the
+offer to add it to `.gitignore` when git neither ignores nor tracks it; or `.claude/settings.json`),
+shows the
 change, and on confirmation writes each guard command with the plugin's absolute folder in double
 quotes, replacing any earlier Temper guard entry in either file. `/temper:pack disable guardrails`
-removes them from both. `/temper:pack` and `/temper:init` offer to rewrite a guard command whose
-script no longer exists (a path from before 9.6.5, or an earlier plugin version's folder). A guard
-command that names its script through the project is the user's own copy and is never touched. The
-two stage gate hooks left the settings block: the plugin's own hooks already run them, so they fired
-twice. Temper never reads or writes the settings in your home folder, and refuses when the project
-folder is the home folder.
+removes them from both. `/temper:pack` and `/temper:init` run `scripts/guard-entries.py`, which reads
+only the two project settings files and lists the Temper guard commands that point anywhere but the
+current plugin folder (a path from before 9.6.5, or an earlier plugin version's folder), and then ask
+whether to replace them with the current set. A guard command that names its script through the
+project is the user's own copy and is never touched. The two stage gate hooks left the settings
+block: the plugin's own hooks already run them, so they fired twice. The guardrails pack never reads
+or writes the settings in your home folder, and refuses the home folder, an installed copy of the
+plugin and a folder inside it as the project.
 
 **Gates, commands and checks.**
 - The intent gate no longer counts the second line of a placeholder as content, and a missing Status
@@ -131,6 +152,8 @@ folder is the home folder.
   after it; step references in the commands point at steps that exist; a plan review note goes into
   `plan.md`, never into the CLI's state file; `/temper:fix` stages named paths and commits in a second
   call.
+- The check stage decides whether it runs against production from a config key and file names only;
+  it never opens a `.env` file.
 - `validate-panels.py` and `validate-docs.sh` again fail on a brief or command file that
   `plugin.json` does not list.
 
@@ -146,21 +169,24 @@ folder is the home folder.
   runs only when `tools.ocr.mode` is `auto` or `require` (a missing key reads as off; a project config
   that already says `auto` keeps it on). Pack discovery reads no Claude Code file: it lists only the
   project's own commands and skills, and links to plugin and personal skills and commands come from
-  the list the Claude session already shows. Outside the project, Temper reads only its own global
-  pack folder, `~/.claude/packs`, and the mod's plugin store. Test inputs, docs and history show no
+  the list the Claude session already shows. Outside the project, Temper's scripts read only its own
+  global pack folder, `~/.claude/packs`; the mod reads its plugin store and Claude Code's `/config`
+  list and sets its own two settings, as the README says. Test inputs, docs and history show no
   command that reads the user's keys, logins or Claude Code files.
 - Download and run: install steps are slash commands; other tools' installs are described in words
   with a link to the tool's own page; `npx` lines say `--no-install`; docs, comments and test inputs
   describe the guard's patterns in words where a literal adds nothing; the guard's detection itself
-  is unchanged. The CI workflow installs its own tools.
+  is unchanged. The CI workflow installs its own tools. The unused Jekyll files (`docs/Gemfile`,
+  `docs/_config.yml`) and the website step that restored an image nothing links are gone.
 - The mod's comments name no engine call the mod does not make, and its message text no longer
   spells one shell builtin; the three places in the Bash guard that detect that builtin keep it. The
   mod now fails open, and says so, on the stage name a v7.0.x run left behind, until the CLI's next
   call rewrites it.
 - The throwaway spec files under `.temper/specs/` are no longer tracked, as `.gitignore` intends.
 - Docs: the README quick start leads with `/temper:temper` (the short form may not resolve in every
-  surface) and states the real size of the bash and Python code, how the commit hook is installed,
-  chained and removed, and which toasts appear; `docs/commands.md` and `docs/packs.md` match the OCR
+  surface) and states the real size of the bash and Python code, how the commit hook is installed
+  and removed, that a headless run stops at the first gate while enforcement is on, and which toasts
+  appear; `docs/commands.md` and `docs/packs.md` match the OCR
   method and the real `/temper:pack` options; getting started no longer offers a copy step that
   installed nothing; the plan review page says nothing leaves the machine before you confirm the share.
 
@@ -695,7 +721,7 @@ Addresses the Claude plugin directory's second validation report. No behaviour c
 
 Addresses the Claude plugin directory's validation report. No behaviour change.
 
-- **Plugin icon**: adds `.claude-plugin/icon.svg` (256 px, the website's colours).
+- **Plugin icon**: adds an icon for the plugin card (256 px, the website's colours).
 - **`verify-stage-gate.sh` is readable end to end by the validator.** Its
   Python decision step is now an inline `python3 -c` string with every input passed as
   argv, the same form `stage-marker.sh` uses, instead of a program fed on stdin. The

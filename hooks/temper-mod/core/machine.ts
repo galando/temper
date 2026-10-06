@@ -204,7 +204,9 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
   return s
 }
 
-export type Command = { origin: Origin; author?: string } & (
+// `anyOrigin`: the person turned enforcement off, so a decision is accepted from any origin (a `claude -p` run, the
+// Agent SDK). Its events keep the origin they came from.
+export type Command = { origin: Origin; author?: string; anyOrigin?: boolean } & (
   | { type: 'start'; slug: string; title: string; phase?: Phase }
   | { type: 'approve' }
   | { type: 'advance' }
@@ -233,7 +235,7 @@ function loopLimitMessage(s: RunState): string {
 export function decide(state: RunState, cmd: Command): Decision {
   const who = { origin: cmd.origin, ...(cmd.author !== undefined ? { author: cmd.author } : {}) }
   const phase = state.phase
-  const isPerson = cmd.origin === 'person'
+  const isPerson = cmd.origin === 'person' || cmd.anyOrigin === true
 
   if (cmd.type === 'start') {
     if (phase !== null && phase !== 'done') return fail('A Temper run is active. Finish it, or run /temper:temper pause.')

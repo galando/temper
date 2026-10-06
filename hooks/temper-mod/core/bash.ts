@@ -516,8 +516,31 @@ function readsStdin(text: string, vars: Vars, fed: boolean, cwd: string | null):
   return anyStdin(stdinGlob(p), true)
 }
 
-// Whether a statement is given input: a pipe into it, a heredoc, a here-string or a file on standard input.
-const fedInput = (stmt: string, pipedFrom: string | null): boolean => pipedFrom !== null || /(?:^|[^<>&\d])\d*<(?![(&])/.test(stmt)
+// The text of a statement with its quoted parts ('..', "..", $'..') and its escaped characters taken out.
+function unquoted(stmt: string): string {
+  let out = ''
+  let quote: '' | "'" | '"' | '$' = ''
+  for (let i = 0; i < stmt.length; i++) {
+    const c = stmt[i] ?? ''
+    if (quote === "'") {
+      if (c === "'") quote = ''
+    } else if (quote === '"' || quote === '$') {
+      if (c === '\\') i++
+      else if (c === (quote === '"' ? '"' : "'")) quote = ''
+    } else if (c === '\\') i++
+    else if (c === '$' && stmt[i + 1] === "'") {
+      quote = '$'
+      i++
+    } else if (c === "'" || c === '"') quote = c
+    else out += c
+  }
+  return out
+}
+
+// Whether a statement is given input: a pipe into it, a heredoc, a here-string or a file on standard input. A `<` inside
+// a quoted argument (`--grep '<title>'`) is no redirect, and input from /dev/null (`<`, `0<`) is no input.
+const fedInput = (stmt: string, pipedFrom: string | null): boolean =>
+  pipedFrom !== null || /(?:^|[^<>&\d])\d*<(?![(&])/.test(unquoted(stmt).replace(/(^|[^<>&\d])0?<\s*\/dev\/null(?![^\s;&|)])/g, '$1'))
 
 // Words in a command that name a decision on the run. Read on the whole text of an opaque launch.
 const VERB = /\b(?:override|accept|advance|next_stage|run_mode|clear|archive|init|loop)\b/i
@@ -1021,6 +1044,39 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
     // A shell given the script as a file (after options such as -o), -s, or a program string after -c.
     while (w.length > 0 && SHELLS.has(BASE(w[0]?.text ?? '').toLowerCase())) {
       const rest = w.slice(1)
+      // The shell reads its commands from standard input: a heredoc or a here-string is in the text; a pipe is shown
+      // only when an echo or a printf (or a cat of a heredoc) feeds it.
+      const fromStdin = (): void => {
+        shellStdin = true
+        stdinShell = true
+        const shown = /<</.test(stmt) || (pipedFrom !== null && (/^(?:echo|printf)\s/.test(pipedFrom) || (/^cat\b/.test(pipedFrom) && /<</.test(pipedFrom))))
+        if (!shown) hidden = true
+      }
+      // The startup files the shell reads before its program or script: the value after --rcfile or --init-file among
+      // its options, BASH_ENV for bash, and ENV for an interactive shell (-i). BASH_ENV and ENV count when this command set
+      // them, before the shell or through env. One that names standard input runs the program from the pipe.
+      {
+        const startup: string[] = []
+        let interactive = false
+        for (let i = 0; i < rest.length; i++) {
+          const t = rest[i]?.text ?? ''
+          if (/^-[a-zA-Z]*i[a-zA-Z]*$/.test(t)) interactive = true
+          if (t === '--rcfile' || t === '--init-file') startup.push(rest[i + 1]?.text ?? '')
+          if (['-o', '+o', '-O', '+O', '--rcfile', '--init-file'].includes(t)) i++
+          else if (!/^[-+]/.test(t)) break
+        }
+        const setHere = (name: string): string[] => [
+          ...(vars.has(name) ? [vars.get(name) ?? ''] : []),
+          ...argv.flatMap(x => (x.text.startsWith(`${name}=`) ? [x.text.slice(name.length + 1)] : [])),
+        ]
+        if (BASE(w[0]?.text ?? '').toLowerCase() === 'bash') startup.push(...setHere('BASH_ENV'))
+        if (interactive) startup.push(...setHere('ENV'))
+        const fed = fedInput(stmt, pipedFrom)
+        if (startup.some(f => f !== '' && readsStdin(f, vars, fed, cwd))) {
+          fromStdin()
+          return
+        }
+      }
       const ci = rest.findIndex(x => /^-\w*c$/.test(x.text))
       if (ci >= 0) {
         const script = rest[ci + 1]
@@ -1028,8 +1084,9 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
         if (script?.dynamic || /[$`]/.test(script?.text ?? '')) shellStdin = true
         // The program is built by a substitution (or is a variable nothing set): it is not shown by the text.
         if (script?.dynamic ? hiddenText(scriptText) : /^\s*\$/.test(scriptText)) hidden = true
-        // xargs hands the words it reads to the shell as its program (a -c program that is only the {} placeholder).
-        if (viaXargs && /^\s*(?:\{\}|"?\$(?:@|\*|\d)"?)\s*$/.test(scriptText)) hidden = true
+        // xargs hands the words it reads to the shell as its program: a -c program that is only the {} placeholder, or
+        // no program word at all (the first word xargs reads is the program).
+        if (viaXargs && (script === undefined || /^\s*(?:\{\}|"?\$(?:@|\*|\d)"?)\s*$/.test(scriptText))) hidden = true
         // A string given to a shell: git commit inside it counts, and so does a name of the script.
         if (/\bgit\b/i.test(scriptText) && gitCreatesCommit(scriptText)) commits = true
         for (const s of statementsOf(scriptText)) analyse(s.stmt, depth + 1, s.from)
@@ -1056,12 +1113,8 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
       const stdinFile = fileAt >= 0 && readsStdin(rest[fileAt]?.text ?? '', vars, fedInput(stmt, pipedFrom), cwd)
       if (fileAt < 0 || sSeen || stdinFile) {
         // No script file (or -s with arguments, the words after the options are arguments): the shell reads its
-        // commands from standard input. A heredoc or a here-string is in the text; a pipe is shown only when
-        // an echo or a printf (or a cat of a heredoc) feeds it.
-        shellStdin = true
-        stdinShell = true
-        const shown = /<</.test(stmt) || (pipedFrom !== null && (/^(?:echo|printf)\s/.test(pipedFrom) || (/^cat\b/.test(pipedFrom) && /<</.test(pipedFrom))))
-        if (!shown) hidden = true
+        // commands from standard input.
+        fromStdin()
         return
       }
       w = fill(unwrap(rest.slice(fileAt)))

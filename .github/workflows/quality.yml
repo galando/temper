@@ -21,7 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Run test-temper.sh
-        run: bash scripts/tests/test-temper.sh
+        run: bash scripts/selftest/test-temper.sh
 
   validate-readme:
     name: README Validation
@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Test validate-directory.sh
-        run: bash scripts/tests/test-validate-directory.sh
+        run: bash scripts/selftest/test-validate-directory.sh
       - name: Run validate-directory.sh
         run: bash scripts/validate-directory.sh
 
@@ -102,7 +102,7 @@ jobs:
         run: npx -p typescript@5.6 tsc -p tsconfig.mod.json
       - name: Assert the reviewed calls list
         run: |
-          bash scripts/tests/test-check-mod-calls.sh
+          bash scripts/selftest/test-check-mod-calls.sh
           bash scripts/check-mod-calls.sh
       - name: Every original gate option has a button
         run: |

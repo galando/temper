@@ -402,6 +402,44 @@ async function designSatisfied(io: Io, snap: Snapshot): Promise<boolean> {
   }
 }
 
+// The spec files a run writes once it has an intent; a run that holds one of them has something to lose.
+const RUN_ARTIFACTS = ['intent.md', 'plan.md', 'tasks.md', 'design.md']
+
+// The TRIVIAL exit of the orchestrator: a `state clear` of a run that never left Intent. Read fresh for the call, so a
+// file written a moment ago counts. True only when the CLI's files and the spec folder all say so:
+//  - build-state.json: Intent is next, and its stage shows no completed step (`state init` writes `started`);
+//  - gates.json holds no verdict, and overrides.json is an empty list (each may also be missing);
+//  - the spec folder holds none of intent.md, plan.md, tasks.md and design.md, as a text or as a name in its listing.
+// A gates.json or overrides.json that does not read counts as missing (the guard refuses a command that removes or locks
+// either while a run is active); one that reads but is not what the CLI writes keeps the run. The mod's own record is
+// checked by the rule (core/rules.ts).
+export async function nothingToLose(io: Io, specDir: string): Promise<boolean> {
+  // The parsed text of a file, or undefined when it does not read.
+  const json = async (path: string): Promise<unknown> => {
+    const text = await readText(io, path)
+    return text === null ? undefined : JSON.parse(text)
+  }
+  try {
+    const bs = await json(`${STATE_ROOT}/build-state.json`)
+    if (typeof bs !== 'object' || bs === null) return false
+    const { stage, next_stage: next } = bs as { stage?: unknown; next_stage?: unknown }
+    if (next !== 'intent' || typeof stage !== 'string' || stage.includes('_complete')) return false
+    const gates = await json(`${STATE_ROOT}/gates.json`)
+    if (gates !== undefined) {
+      if (typeof gates !== 'object' || gates === null || Array.isArray(gates)) return false
+      if (Object.values(gates).some(row => typeof row === 'object' && row !== null && 'verdict' in row)) return false
+    }
+    const rows = await json(`${STATE_ROOT}/overrides.json`)
+    if (rows !== undefined && (!Array.isArray(rows) || rows.length > 0)) return false
+  } catch {
+    return false
+  }
+  for (const name of RUN_ARTIFACTS) if ((await readText(io, `${specDir}/${name}`)) !== null) return false
+  // A spec folder that is not there yet (the TRIVIAL run wrote nothing) lists as empty.
+  const entries = await io.list(specDir).catch(() => [])
+  return Array.isArray(entries) && !entries.some(e => RUN_ARTIFACTS.includes(e.name))
+}
+
 // The facts of the CLI commit gate that the mod can read (see CommitFacts in core/rules.ts). `root` is the
 // project folder; the current branch comes from .git/HEAD. Never throws: a fact that cannot be read is false.
 export async function commitFacts(io: Io, snap: Snapshot, root: string, staged: { all: boolean; paths: string[] }): Promise<CommitFacts> {

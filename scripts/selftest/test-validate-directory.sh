@@ -7,7 +7,7 @@ set -uo pipefail
 # With CDPATH set, cd prints the folder it enters, and the path below would hold it twice.
 unset CDPATH
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="${HERE%/scripts/tests}"
+ROOT="${HERE%/scripts/selftest}"
 [[ "$ROOT" != "$HERE" ]] || { echo "FAIL: cannot find the plugin folder from $HERE"; exit 1; }
 command -v git >/dev/null 2>&1 || { echo "FAIL: git is required (validate-directory.sh lists files with git ls-files)"; exit 1; }
 PASS=0; FAIL=0

@@ -111,7 +111,7 @@ describe('plan with design', () => {
 })
 
 // The CLI's stage order (STAGE_SEQ_TEMPER in scripts/temper) is pinned to this text in
-// scripts/tests/test-temper.sh. The mod and its fake engine are pinned to the same text here, so a
+// scripts/selftest/test-temper.sh. The mod and its fake engine are pinned to the same text here, so a
 // change on either side fails a test.
 const CLI_STAGE_ORDER = 'intent plan design build review check'
 

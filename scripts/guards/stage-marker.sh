@@ -22,7 +22,10 @@
 # on its own repository), so an installed copy is skipped too. Inside or equal is decided
 # by identity (device and inode), not by comparing path text. A .temper folder or a marker
 # file that is a symlink is skipped too, because writing through it would land outside the
-# project's .temper folder, and so is a .temper folder that holds a symlink anywhere.
+# project's .temper folder, and so is a project folder where the plugin's CLI refuses to run
+# (the home folder, or a symlink on its run state), since the gate owed there could never run.
+# The hook finds the plugin folder from its own file with every symlink followed, as the CLI
+# does; reached from anywhere that is not a plugin's scripts/guards folder, it does nothing.
 #
 # DEGRADATION CONTRACT:
 #   - Prompt is not a marked stage command  => exit 0 (no-op)
@@ -33,10 +36,23 @@ set -uo pipefail
 # worked out below with "$(cd ... && pwd)". It is never used here.
 unset CDPATH
 
-# This script's folder, resolved, and the plugin folder: that folder with the literal suffix
-# /scripts/guards removed. Worked out once, before the hook changes into the project folder.
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)" || HERE=""
+# This script's own file with every symlink followed (a link in a bin folder, or a chain of
+# links), the way scripts/temper finds itself. Its folder, resolved, is HERE; the plugin folder
+# is HERE with the literal suffix /scripts/guards removed. When that suffix is missing the hook
+# is not in a plugin's scripts/guards folder and does nothing. Worked out once, before the hook
+# changes into the project folder.
+_self="${BASH_SOURCE[0]}"
+_hops=0
+while [[ -L "$_self" && $_hops -lt 40 ]]; do
+  _link_dir="$(cd -P "$(dirname "$_self")" 2>/dev/null && pwd)" || exit 0
+  _self="$(readlink "$_self")" || exit 0
+  [[ "$_self" == /* ]] || _self="$_link_dir/$_self"
+  _hops=$((_hops + 1))
+done
+HERE="$(cd -P "$(dirname "$_self")" 2>/dev/null && pwd)" || exit 0
 ROOT="${HERE%/scripts/guards}"
+[[ -n "$HERE" && "$ROOT" != "$HERE" ]] || exit 0
+unset _self _hops _link_dir
 
 _git_toplevel_is() { # _git_toplevel_is <folder> -> 0 when <folder> is a git work tree whose top
                       # level is <folder> itself (every GIT_* variable dropped first)
@@ -67,14 +83,11 @@ _project_dir() { # prints the resolved project folder; fails when it lies inside
                  # folder, or is the plugin folder and that folder is not its own git
                  # repository (an installed copy)
   local proj
-  [[ -n "$HERE" ]] || return 1
   proj="$(cd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null && pwd -P)" || return 1
-  if [[ -n "$ROOT" && "$ROOT" != "$HERE" ]]; then
-    if [[ "$proj" -ef "$ROOT" ]]; then
-      _git_toplevel_is "$ROOT" || return 1
-    elif _under_folder "$proj" "$ROOT"; then
-      return 1
-    fi
+  if [[ "$proj" -ef "$ROOT" ]]; then
+    _git_toplevel_is "$ROOT" || return 1
+  elif _under_folder "$proj" "$ROOT"; then
+    return 1
   fi
   printf '%s\n' "$proj"
 }
@@ -107,9 +120,13 @@ except Exception:
   local proj; proj="$(_project_dir)" || return 0
   cd "$proj" 2>/dev/null || return 0
   [[ ! -L .temper ]] || return 0
-  # A .temper folder that holds a symlink anywhere is one the CLI refuses (exit 3), so the
-  # gate this marker would ask for could never run: no debt is recorded there.
-  [[ -z "$(find -P .temper -type l -print -quit 2>/dev/null)" ]] || return 0
+  # Where the plugin's CLI refuses to run (the home folder, or a symlink on a path it keeps
+  # run state in), the gate this marker would ask for could never run: no debt is recorded
+  # there. The CLI decides, by a call that only reads (it lists the stage's evidence); a plugin
+  # folder without the CLI marks as before.
+  if [[ -x "$ROOT/scripts/temper" ]]; then
+    "$ROOT/scripts/temper" evidence list --stage "$stage" >/dev/null 2>&1 || return 0
+  fi
   mkdir -p .temper 2>/dev/null || return 0
   [[ ! -L .temper/pending-stage.json ]] || return 0
   # "since" scopes the debt in time: verify-stage-gate.sh accepts only a verdict whose

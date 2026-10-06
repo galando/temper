@@ -26,9 +26,13 @@
 #   - A stage with no evidence recorded FAILS closed (nothing to verify => not verified).
 #   - Missing python3 => every subcommand exits 1 with a clear message (JSON needs it).
 #   - Malformed state/config => treated as absent (defaults apply), never a crash.
-#   - A .temper folder that is, or holds, a symlink => every subcommand except config, model
-#     and help exits 3 with a one-line reason on stderr, so no write can follow a link out
-#     of the project. Hooks that call the CLI fail open on exit 3.
+#   - A symlink on a path this CLI writes or reads as run state (.temper, its evidence, specs
+#     and archive folders, the fixed state and evidence files, the active run's spec folder
+#     and its gate-ledger.json) => every subcommand except config, model and help exits 3
+#     with a one-line reason on stderr, so no write can follow a link out of the project.
+#     Any other link inside a spec folder is not run state and changes nothing.
+#   - Run from the home folder => every subcommand except config, model and help exits 1:
+#     the home folder holds Claude Code's own files and is never a project.
 set -uo pipefail
 # An exported CDPATH makes `cd` print the folder it enters, which would double every
 # folder this script works out with "$(cd ... && pwd)". It is never used here.
@@ -40,8 +44,8 @@ REPO_ROOT="$(pwd)"
 # inside the plugin folder, never to locate project state. It comes from this file's
 # own location alone, never from an environment variable: when the CLI is reached
 # through a symlink (a link in a bin folder, or a chain of links), each link is followed
-# to the real file first. The plugin folder is that file's folder with the literal
-# suffix /scripts removed.
+# to the real file first. The plugin folder is that file's folder (resolved, so a link
+# to the folder itself is followed too) with the literal suffix /scripts removed.
 _self="${BASH_SOURCE[0]}"
 _hops=0
 while [[ -L "$_self" && $_hops -lt 40 ]]; do
@@ -50,7 +54,7 @@ while [[ -L "$_self" && $_hops -lt 40 ]]; do
   [[ "$_self" == /* ]] || _self="$_link_dir/$_self"
   _hops=$((_hops + 1))
 done
-SCRIPTS_DIR="$(cd "$(dirname "$_self")" 2>/dev/null && pwd)"
+SCRIPTS_DIR="$(cd -P "$(dirname "$_self")" 2>/dev/null && pwd)"
 PLUGIN_ROOT="${SCRIPTS_DIR%/scripts}"
 unset _self _hops _link_dir
 ACCEPTANCE_PY="$PLUGIN_ROOT/scripts/acceptance.py"
@@ -177,14 +181,44 @@ _inside_plugin_refuse() { # -> 1 (with a message) when the current folder is the
   return 0
 }
 
-_unsafe_temper_refuse() { # -> 3 (with a one-line reason) when the project's .temper folder, or
-                          # any entry inside it, is a symlink. Every write of this CLI lands in
-                          # .temper, so a link there (a cloned repository can carry one) could
-                          # send a write out of the project, into the plugin folder or anywhere
-                          # else. Hooks that call the CLI read exit 3 as "fail open".
+_home_refuse() { # -> 1 (with a message) when the current folder is the home folder. The home
+                 # folder holds Claude Code's own files and is never a project, so no run state
+                 # is read or written there. Decided by identity (device and inode), so a
+                 # symlink or another spelling of the home folder is still seen.
+  [[ -n "${HOME:-}" && "$REPO_ROOT" -ef "$HOME" ]] || return 0
+  echo "FAIL: run temper from a project folder, not from the home folder ($HOME). The home folder is never a project." >&2
+  return 1
+}
+
+_unsafe_temper_refuse() { # -> 3 (with a one-line reason) when a path this CLI writes or reads as
+                          # run state is a symlink: the .temper folder, its evidence, specs and
+                          # archive folders, the fixed state files, the evidence files, the
+                          # active run's spec folder and its gate-ledger.json. A link there (a
+                          # cloned repository can carry one) could send a write out of the
+                          # project, into the plugin folder or anywhere else. Any other link
+                          # inside a spec folder is not run state: the CLI never writes through
+                          # it, so it changes nothing. Each folder is checked before any path
+                          # inside it, so no check here looks through a link.
   [[ -e .temper || -L .temper ]] || return 0
-  local link
-  link="$(find -P .temper -type l -print -quit 2>/dev/null)"
+  local p slug link="" paths=".temper .temper/evidence .temper/specs .temper/archive"
+  for p in build-state gates overrides status metrics bands feedback-loops; do
+    paths="$paths .temper/$p.json"
+  done
+  for p in $EVIDENCE_STAGES; do
+    paths="$paths .temper/evidence/$p.json"
+  done
+  for p in $paths; do
+    [[ -L "$p" ]] && { link="$p"; break; }
+  done
+  if [[ -z "$link" && -f "$STATE_FILE" ]]; then
+    # The active run's spec folder: only the shape `state init` records names one.
+    slug="$(_spec_slug "$(_json_get_path "$STATE_FILE" spec_path "")")"
+    if [[ -n "$slug" ]]; then
+      for p in ".temper/specs/$slug" ".temper/specs/$slug/gate-ledger.json"; do
+        [[ -L "$p" ]] && { link="$p"; break; }
+      done
+    fi
+  fi
   if [[ -n "$link" ]]; then
     echo "FAIL: unsafe .temper: '$link' is a symlink, and no write may follow a link out of the project (replace it with a plain file or folder)" >&2
     return 3
@@ -2478,10 +2512,12 @@ main() {
   # git repository (developing Temper). `config` and `model` only read a config file and the
   # stage briefs, and the help text reads nothing, so the guard scripts that call them
   # keep working wherever they run.
-  # A .temper folder that is or holds a symlink is refused too (exit 3), for the same reason.
+  # The home folder is refused first (exit 1): it is never a project. A symlink on a path
+  # the CLI writes or reads as run state is refused too (exit 3), for the same reason.
   case "$sub" in
     config|model|""|-h|--help) ;;
-    *) _inside_plugin_refuse || return 1
+    *) _home_refuse || return 1
+       _inside_plugin_refuse || return 1
        _unsafe_temper_refuse || return 3 ;;
   esac
   case "$sub" in

@@ -14,6 +14,24 @@
 #   - No denylist / no match   => exit 0 (warn-only default; empty denylist = no-op)
 #   - Internal error / missing => exit 0 (FAIL-OPEN)
 set -uo pipefail
+# An exported CDPATH makes `cd` print the folder it enters, which would double the folder
+# worked out below with "$(cd ... && pwd)". It is never used here.
+unset CDPATH
+
+# Like every guard script, this hook finds its own file with every symlink followed (a link
+# in a bin folder, or a chain of links), the way scripts/temper finds itself, and does nothing
+# when that file's resolved folder does not end in the literal suffix /scripts/guards.
+_self="${BASH_SOURCE[0]}"
+_hops=0
+while [[ -L "$_self" && $_hops -lt 40 ]]; do
+  _link_dir="$(cd -P "$(dirname "$_self")" 2>/dev/null && pwd)" || exit 0
+  _self="$(readlink "$_self")" || exit 0
+  [[ "$_self" == /* ]] || _self="$_link_dir/$_self"
+  _hops=$((_hops + 1))
+done
+_here="$(cd -P "$(dirname "$_self")" 2>/dev/null && pwd)" || exit 0
+[[ -n "$_here" && "${_here%/scripts/guards}" != "$_here" ]] || exit 0
+unset _self _hops _link_dir _here
 
 _main() {
   local denylist="${TEMPER_FORBIDDEN_IMPORTS:-}"

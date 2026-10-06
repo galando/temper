@@ -71,14 +71,16 @@ orchestrator's conversation carries over except the prompt you were launched wit
   re-derive its Problem.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
-the right border), and it is the only box you print. Fact rows at the top, then titled sections
+the right border), and it is the only panel you print; the plan's ASCII diagram, printed
+right after it, is the one other drawing allowed. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
 more"; omit an empty section including its divider — never a row saying "none"; wrap
 a long entry onto a continuation row indented two spaces.
 
-Return this panel (the orchestrator prints it verbatim) with its ASCII diagram. After
-them, on a line of its own, return the spec path. The complexity tier and the risk
-level are the panel's COMPLEXITY and RISK fields. Nothing else goes outside the panel:
+Return this panel (the orchestrator prints it verbatim), then the plan's ASCII diagram
+right after its closing border. After them, on a line of its own, return the spec path.
+The complexity tier and the risk level are the panel's COMPLEXITY and RISK fields.
+Nothing else goes outside the panel:
 
 ```
 +--------------------------------------------------------------------------+

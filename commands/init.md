@@ -21,6 +21,15 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    say "Cannot locate the Temper plugin folder. Reinstall the plugin." Never search the
    disk for another copy. Every path below that is not in the plugin folder is in the
    user's project, the current directory. Nothing here writes into the plugin folder.
+   Before anything is written, check the project folder, in this order:
+   a. When it is the home folder, stop and say in one line: "The project folder is your
+      home folder, which holds Claude Code's own files and is never a project. Run
+      /temper:init from a project folder."
+   b. Run ${CLAUDE_PLUGIN_ROOT}/scripts/temper status. When it prints a line that starts
+      with "FAIL: run temper from a project folder", the CLI refused this folder (the
+      home folder, an installed copy of the plugin, or a folder inside the plugin
+      folder): stop and show that line, and write nothing. Any other result, "FAIL: no
+      intent.md to report on" among them, means go on.
 
 2. Config — .claude/temper.config:
    a. EXISTS → report "Temper config already present" and do NOT overwrite it (it's the
@@ -49,49 +58,74 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    if Temper isn't in use for a commit. It asks git where hooks go (the file that
    `git rev-parse --git-path hooks/pre-commit` prints): the repository's hooks folder,
    or the folder an existing `core.hooksPath` names (husky and lefthook set one) when
-   that folder is inside the repository, so the gate isn't written where git would
-   ignore it. In a linked worktree or a submodule, git names the hooks folder of the
-   repository's own git folder, which the worktrees share: when that folder already
-   holds a current Temper hook, install.sh says the hook is already installed for this
-   worktree and exits 0; otherwise it installs there. An existing non-Temper
-   pre-commit hook is backed up next to itself as `pre-commit.bak.<timestamp>` and
-   chained: the Temper hook runs that backup first (its failure still fails the
-   commit), then Temper's checks. Re-running is idempotent: it rewrites a Temper hook
-   in place with the current plugin paths, and it warns when the old hook pointed at a
-   different plugin path (a stale hook, as after a plugin upgrade, whose checks were
-   failing open).
+   that folder is inside the repository or inside the repository's own git folder, so
+   the gate isn't written where git would ignore it. In a linked worktree or a
+   submodule, git names the hooks folder of the repository's own git folder, which the
+   worktrees share: when that folder already holds a current Temper hook, install.sh
+   says the hook is already installed for this worktree and exits 0; otherwise it
+   installs there. It never writes over a pre-commit hook that is not Temper's, and it
+   never writes a file git tracks (husky v5 to v8 keep `.husky/pre-commit` in git): it
+   refuses instead, as in c below. A hook of the user's own that already runs the
+   current Temper hook lines is left as it is (exit 0). Re-running is idempotent: it
+   replaces an older Temper hook with one that holds the current plugin paths, and it
+   warns when the old hook pointed at another plugin path (a stale hook, as after a
+   plugin upgrade; it says the old hook was failing open only when that old path no
+   longer exists). When an older version set a hook that was not Temper's aside as
+   `pre-commit.bak.<timestamp>`, it names that file in a warning and says how to bring
+   it back: add the hook lines it prints at the end of that file, then move it back to
+   `pre-commit`.
    Report by how it ended:
-   a. Exit 0 → the gate is installed, or was already installed for this worktree;
-      carry its last line about that into the report.
+   a. Exit 0 → the gate is installed, was already installed for this worktree, or the
+      user's own hook already runs the current lines; carry its line about that into
+      the report. Carry each `Warning:` line it printed into the report too, with the
+      restore steps and the hook lines it printed after a warning about an old
+      `pre-commit.bak.<timestamp>` file, in a fenced code block.
    b. Exit 1 with "FAIL: not inside a git repository" → report "not a git repo yet; run
       /temper:init again after `git init` to install the commit gate" and continue (the
       config + scaffold still succeeded).
-   c. Exit 1 with any other FAIL line → nothing was written. install.sh prints the
-      lines to add to a pre-commit hook by hand and exits 1 when core.hooksPath is
-      outside the repository, contains '..', '~' or other unusual characters, or names
-      a folder that holds a JSON file (the default hooks folder gets the same JSON
-      check), when the hooks folder (or the git config file, or a backup path) leads
-      anywhere but the repository and its own git folder, or into the plugin's own
-      folder, once symlinks are followed, and when the repository lies inside the
-      plugin's own folder. It ignores GIT_DIR, GIT_WORK_TREE and GIT_CONFIG, so it
-      always works on the repository that holds the current folder. Report "commit
-      gate not installed: {the FAIL reason}". Then show the user the hook lines it
-      printed, verbatim, in a fenced code block: the whole hook, from its
+   c. Any other non-zero exit → the commit gate is not installed, and nothing was
+      written. Report "commit gate not installed: {the FAIL reason}", or, when its
+      output has no FAIL line, "commit gate not installed" followed by its whole output
+      in a fenced code block. Then show the hook lines it printed between its BEGIN and
+      END lines, verbatim, in a fenced code block: the whole hook, from its
       `#!/usr/bin/env bash` line to its last line, so the user has them to copy. Never
-      only say that it printed them. Say they can add those lines to their own
-      pre-commit hook, or point core.hooksPath at a plain folder inside the repository
-      and run /temper:init again. Continue (the config + scaffold still succeeded).
+      only say that it printed them. Then give its `Hint:` line as it printed it: for a
+      hook that is not Temper's, or a hook file git tracks, the hint says where the
+      lines go (husky: at the end of `.husky/pre-commit`; the pre-commit framework: in
+      a local hook of `.pre-commit-config.yaml`; any other hook: at the end of that
+      hook). install.sh refuses, prints those lines and exits 1 when the pre-commit
+      file holds a hook that is not Temper's, or is tracked by git; when core.hooksPath
+      is outside the repository and its own git folder, contains '..', '~' or other
+      unusual characters, names a folder that holds a JSON file (the default hooks
+      folder gets the same JSON check), or is a relative path through `.git` in a linked
+      worktree or a submodule (where that folder cannot exist); when the hooks folder
+      leads anywhere but the repository and its own git folder, or into the plugin's
+      own folder, once symlinks are followed; when the
+      repository lies inside the plugin's own folder; and when a folder or file it needs
+      cannot be made. It ignores GIT_DIR, GIT_WORK_TREE and GIT_CONFIG, so it always
+      works on the repository that holds the current folder. Continue (the config +
+      scaffold still succeeded).
 
-5. Guardrails hooks. Look in the project settings files that exist,
-   .claude/settings.json and .claude/settings.local.json (never the user's home
-   settings, so skip this step when the project folder is the home folder), for a
-   stale Temper guard command, as defined in
-   ${CLAUDE_PLUGIN_ROOT}/reference/pack.md → "Guardrails Hooks": a guard command whose
-   script file does not exist, such as one naming the guard scripts folder of versions
-   before 9.6.5 or the folder of an earlier plugin version. When there is one, offer in
-   one line to rewrite it with the current plugin folder; on yes, follow that section's
-   Enable steps 1 and 3 to 7 with that file as the picked file (they show the change in
-   both project settings files before writing). When there is none, print nothing.
+5. Guardrails hooks. Run the stale guard check of
+   ${CLAUDE_PLUGIN_ROOT}/reference/pack.md → "Guardrails Hooks" (it is skipped when the
+   project folder is the home folder, so the user's home settings are never read). It
+   runs, from the project folder:
+      python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guard-entries.py"
+   which reads only .claude/settings.json and .claude/settings.local.json in the
+   project and prints one FILE|EVENT|MATCHER|SCRIPT|STATUS line per Temper guard entry
+   (a matcher can hold '|', so read FILE and EVENT from the left and SCRIPT and STATUS
+   from the right). STATUS stale means the command runs a guard script outside the
+   current plugin folder, whether it exists or not (the folder of an earlier plugin
+   version, which Claude Code keeps for a while after an upgrade, or the guard scripts
+   folder of versions before 9.6.5), a script that does not exist, or a path that still
+   holds the CLAUDE_PLUGIN_ROOT variable. Decide from its output only, never from your
+   own reading of the settings files. When no line says stale, or it exits 2, print
+   nothing. When any line says stale, ask that section's question as an
+   AskUserQuestion of its own, before step 6: "Replace them with the current
+   guardrails set (shows the change first)" / "Not now". On the first, follow that
+   section's Enable steps 1 and 3 to 7 with that file as the picked file (they show the
+   change in both project settings files and ask again before writing). On "Not now",
+   change nothing.
 
 6. Report done, and name the one optional add-on in a single line:
    "Set up. Optional: `/temper:pack enable guardrails` adds edit-time guardrails (secret
@@ -105,11 +139,13 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
   (in its own hooks file) and work on install with no merge. The fuller edit-time
   guardrail set is the opt-in `/temper:pack enable guardrails` above, because merging
   hooks into a project settings file is a change the user should choose. The one
-  settings change step 5 can make, rewriting a stale guard command, waits for the
-  user's yes, and Temper never reads or writes the user's home settings.
-- It does **not** overwrite an existing config, and it never destroys an existing
-  non-Temper git hook: install.sh copies that hook to `pre-commit.bak.<timestamp>` next
-  to it before writing the Temper hook, and the Temper hook runs that copy first.
+  settings change step 5 can make, replacing stale guard commands with the current
+  guardrails set, waits for the user's answer, and Temper never reads or writes the
+  user's home settings.
+- It does **not** overwrite an existing config, and it never writes over a pre-commit
+  hook that is not Temper's, or over a hook file git tracks: install.sh refuses, and
+  prints the lines to add to that hook yourself with a hint for husky and the
+  pre-commit framework.
 
 ## Migrating from an older version
 

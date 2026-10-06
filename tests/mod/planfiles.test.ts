@@ -8,8 +8,8 @@ import { spec_tasks } from './fixtures/spec-tasks'
 describe('plan.md tables', () => {
   test('reads the first cell of every Files to Create and Files to Modify row', () => {
     const files = parsePlanFiles(spec_plan_files)
-    expect(files).toContain('hooks/temper-mod/register.tsx')
-    expect(files).toContain('hooks/temper-mod/core/machine.ts')
+    expect(files).toContain('src/flow/main.tsx')
+    expect(files).toContain('src/flow/logic/machine.ts')
     expect(files).toContain('scripts/temper')
     expect(files).toContain('templates/temper.config.default')
     expect(files).not.toContain('Scenario')
@@ -47,9 +47,9 @@ describe('tasks.md File lines', () => {
     const files = parseTaskFiles(spec_tasks)
     expect(files).toContain('scripts/temper')
     expect(files).toContain('.gitignore')
-    expect(files).toContain('hooks/temper-mod/core/events.ts')
+    expect(files).toContain('src/flow/logic/events.ts')
     expect(files).toContain('demo/password-reset/')
-    expect(files).toContain('tests/mod/fixtures/')
+    expect(files).toContain('tests/flow/fixtures/')
     expect(new Set(files).size).toBe(files.length)
   })
 

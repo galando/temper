@@ -46,9 +46,11 @@ export type RuleContext = {
   // Where the Temper script is: its full path in the plugin folder, or the plain `scripts/temper` when that is not
   // known (see pluginCliFrom). Every deny text names the CLI by it.
   cli?: string
-  // The run's spec folder holds no intent.md, read fresh for this call. At Intent a `state clear` then loses nothing
-  // (the TRIVIAL exit of the orchestrator). Left out: not known, and the clear is refused.
-  intentMissing?: boolean
+  // The CLI's files and the spec folder show a run that never left Intent, read fresh for this call (see nothingToLose
+  // in the adapter): no completed stage, no verdict, no skip, and none of intent.md, plan.md, tasks.md and design.md.
+  // With the mod's own record holding only the start, a `state clear` then loses nothing (the TRIVIAL exit of the
+  // orchestrator). Left out: not known, and the clear is refused.
+  nothingToLose?: boolean
 }
 
 // The carve-outs of the CLI commit gate (scripts/temper gate_commit, docs/decisions/0009):
@@ -348,19 +350,21 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
     const known = c.protectedWrites.filter(p => !c.uncheckable.includes(p))
     if (known.length === 0) return { deny: UNCHECKABLE(cli) }
     // The config and the git hooks are the run's only while a run is active (/temper:init writes the config before).
-    const kinds = known.map(p => protectedKind(p) ?? 'events').filter(k => isActive(s) || (k !== 'config' && k !== 'hooks'))
+    // A path of no known kind (a link made inside .temper) gets the text of the .temper folders: it is no decision.
+    const kinds = known.map(p => protectedKind(p) ?? 'folder').filter(k => isActive(s) || (k !== 'config' && k !== 'hooks'))
     if (kinds.length > 0) {
       const forged = kinds.find(k => k === 'events' || k === 'overrides')
-      return protectedDeny(forged ?? kinds[0] ?? 'events', cli)
+      return protectedDeny(forged ?? kinds[0] ?? 'folder', cli)
     }
     if (c.uncheckable.length > 0) return { deny: UNCHECKABLE(cli) }
   }
   if (isActive(s) && c.guardedUse.length > 0) return { deny: GUARDED_USE_DENY(c.guardedUse[0] ?? 'a guarded file', cli) }
 
   // Removing or archiving the run's state is for after the run: while a run is active it would
-  // take the gate ledger and the overrides with it. One exception, the TRIVIAL exit of the orchestrator: a clear at
-  // Intent while the spec folder holds no intent.md loses nothing (the run has no intent, no plan and no verdict yet).
-  const trivialExit = s.phase === 'intent' && ctx.intentMissing === true
+  // take the gate ledger and the overrides with it. One exception, the TRIVIAL exit of the orchestrator: a clear of a run
+  // that never left Intent loses nothing. The mod's own record holds only the start (no advance, no step back, no skip),
+  // and the CLI's files and the spec folder agree (ctx.nothingToLose).
+  const trivialExit = s.phase === 'intent' && s.history.every(h => h.kind === 'start') && ctx.nothingToLose === true
   if (isActive(s) && c.stateOps.some(o => o.op === 'archive' || (o.op === 'clear' && !trivialExit))) return { deny: STATE_END(cli) }
   if (isActive(s) && c.stateOps.some(o => o.op === 'init')) return { deny: STATE_RESTART }
   // `state loop <from> <to>` keeps the loop budget and clears the evidence of the stages that are redone.
