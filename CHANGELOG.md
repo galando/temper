@@ -3,6 +3,53 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.6.6: the installer writes into no hooks folder, readable test files, a listing icon
+
+The directory's report on 9.6.5 (3f7df41) held it for six reasons. Two came from 9.6.5's own changes
+and one was left from 9.6.4; this release answers those three. The other four ("This plugin includes
+a mod", the prompts the mod submits, the slash commands it runs, the settings it sets) go to a
+reviewer; the README section "What the mod reads and writes" describes each of them.
+
+**Files the directory could not inspect.** `scripts/selftest/test-temper.sh` had grown to 265 KB,
+above the 256 KB the directory reads. Its cases now live in four files of 60 to 80 KB next to it
+(`temper-cases-1.sh` to `temper-cases-4.sh`), which the runner sources in order.
+
+**The mod stays the same.**
+- `scripts/validate-plugin.sh` no longer has the rule that checked plugin paths in every file: it
+  assembled the plugin root variable from pieces, which the directory read as pointing at the plugin
+  root. Its tests, which built the bad forms at run time, went with it, and
+  `scripts/guard-entries.py` recognizes an older entry that names the root variable by the bare name.
+- `scripts/guards/install.sh` wrote into git's folders named `hooks` (`.git/hooks`, or another
+  tool's `core.hooksPath` folder), the same name as the plugin folder that holds the mod. It now
+  never writes into a folder named `hooks`. It keeps Temper's hook as `temper-gate/pre-commit` in the
+  repository's git folder and points `core.hooksPath` at that folder, so every worktree runs it. When
+  that would stop other hooks from running (an executable hook in `.git/hooks`, or another tool's
+  `core.hooksPath`), it leaves the setting alone and prints the one line to add to your own hook,
+  with a hint for husky, lefthook and the pre-commit framework; the line 9.6.5 printed still counts.
+  An older Temper hook in `.git/hooks` stays where it is (git no longer runs it, and the installer
+  says so), an older `--global` setting moves to the new folder, and `--global` now does the same as
+  the default.
+- The installer holds no variable for the plugin folder by itself: it builds the CLI and guard paths
+  from its own scripts folder, and decides whether a path is inside the plugin by finding its own
+  file above that path. The hook it writes does the same.
+- A hook tool that installs into `.git/hooks` later (the pre-commit framework refuses while
+  `core.hooksPath` is set) needs `core.hooksPath` unset first; the next `/temper` or `/temper:init`
+  then prints the line to add.
+
+**The mod.** While a run is active, the mod refuses a change to `.git/temper-gate` (the folder and
+its hook) or to `.git/temper-pre-commit` exactly as it refuses one to `.git/hooks`, and its refusal
+names the Temper commit hook.
+
+**A listing icon.** `.claude-plugin/icon.png`, 1024 px: the orange T on a dark rounded square that
+earlier versions showed at 256 px, below the 512 px the directory asks for. It is the only image in
+the repository, and `plugin.json` has no `icon` field.
+
+Notes the directory listed that need no change: the credential note on `plugin.json` (a reviewer
+confirms it; the mod reads Claude Code's `/config` list only to find its own two rows), the `types`
+field (Claude Code's own validator needs it for the mod's `$.state` keys), and the download-and-run
+notes, which sit in docs, history, test inputs, the mod's detection code and the CLI's migration of a
+stage name that a v7.0.x run left behind.
+
 ## v9.6.5: nothing points at the mod, every plugin path written out, no images
 
 The directory's report on 9.6.4 held it for five reasons. Three ask for README text the 9.6.4 README

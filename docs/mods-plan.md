@@ -477,7 +477,7 @@ backticks, backslashes, braces or globs. Quote and backslash splits (`te""mper`,
 the script name and the decision words are looked for. Shell setup idioms (what `pyenv init -` or a project setup
 script prints) and the plain heredocs stay allowed. (2) A command that names a guarded file (`gates.json`, `status.json`,
 `overrides.json`, `build-state.json`, `feedback-loops.json`, `.claude/temper.config`, `.temper/evidence/*.json`, an
-events folder, `.git/hooks`), or a glob that can stand for one (`.tem*/gates.js*`), must be a plain read (`cat`, `grep`,
+events folder, `.git/hooks`, `.git/temper-gate`, `.git/temper-pre-commit`), or a glob that can stand for one (`.tem*/gates.js*`), must be a plain read (`cat`, `grep`,
 `jq`, `head`, `tail`, `ls`, `stat`, `wc`, `diff`, `test`, `sed` without `-i`, `awk` whose program does not name it,
 `find` without a delete, write or non reading `-exec`, `git diff|log|show|status|ls-files|blame|grep|cat-file`, the
 Temper CLI) or it is refused: this closes `awk`, `sort -o`, `uniq in out`, `patch`, `find -fprintf`, `git
@@ -486,7 +486,7 @@ a list. A write through `xargs` is refused when the command names a guarded file
 `chflags`, `setfacl`, `chattr` and `xattr` on a guarded path, `find -delete` or a deleting `-exec` that can reach
 `.temper` (a filter such as `-name '*.pyc'` or a start folder that cannot reach it excuse it), `git clean`
 (except a dry run) and `git stash -u|-a` are refused. (3) The config, the evidence ledger files, the loop counter and
-the git hooks (and `core.hooksPath`, `--no-verify`, `-n`) are guarded; `TEMPER_DIR` and `TEMPER_CONFIG` are refused.
+the git hooks and the Temper commit hook (`.git/temper-gate` and `.git/temper-pre-commit`; and `core.hooksPath`, `--no-verify`, `-n`) are guarded; `TEMPER_DIR` and `TEMPER_CONFIG` are refused.
 The config and the hooks are guarded only while a run is active, so `/temper:init` and the hook installer still work.
 (4) A decision a person made for a plan is stale once the run goes back to that stage or an earlier one; no
 `state advance` lowers the stage the run is at; a skip is for the stage the run is at; `state loop` must leave the stage

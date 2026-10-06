@@ -116,6 +116,21 @@ Keep always-loaded content minimal:
 - Keep lines under 80 characters where possible
 - Use relative links within the repo
 
+### Scripts
+
+- No script writes into a folder named `hooks`. Git calls its hook folders
+  that (`.git/hooks`, a `core.hooksPath` folder), the same name as the plugin
+  folder that holds the mod, and git's name cannot change. So the commit gate
+  installer, `scripts/guards/install.sh`, keeps its hook in
+  `temper-gate/pre-commit` in the repository's git folder, points
+  `core.hooksPath` at that folder, and only reads git's hook folders. When
+  pointing it there would switch other hooks off, it leaves `core.hooksPath` as
+  it is and prints one line for the user's own hook instead.
+- No script holds the plugin folder by itself in a variable: only its scripts
+  folder or a file, plus fixed text.
+- Commands, briefs and skills write the plugin root variable only in its braced
+  form, followed by `/` and a tracked file.
+
 ### Commit Style
 
 Use conventional commits:

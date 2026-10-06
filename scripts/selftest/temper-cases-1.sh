@@ -246,7 +246,19 @@ assert_eq "park reason names the matched path" "yes" "$(echo "$OUT" | grep -q 's
 setup
 git config user.email "test@example.com"
 git config user.name "test"
-bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null
+# A plain repository: the hook is kept in .git/temper-gate and core.hooksPath points at that
+# folder by its absolute path. Nothing is written in .git/hooks (listed before and after).
+P_HOOKS_BEFORE="$(ls -A .git/hooks)"
+OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); P_RC=$?
+assert_eq "install.sh in a plain repository keeps the hook in .git/temper-gate and points core.hooksPath at that folder" \
+  "0|yes|$WORKDIR/.git/temper-gate|yes" \
+  "$P_RC|$([[ -x .git/temper-gate/pre-commit ]] && echo yes || echo no)|$(git config --get core.hooksPath)|$(printf '%s\n' "$OUT" | grep -qxF "Installed Temper pre-commit hook -> $WORKDIR/.git/temper-gate/pre-commit (core.hooksPath points at that folder, so every worktree of this repository runs it)." && echo yes || echo no)"
+assert_eq "install.sh writes nothing in .git/hooks: its listing is the same before and after" "$P_HOOKS_BEFORE" "$(ls -A .git/hooks)"
+assert_eq "install.sh ends with how to uninstall" "yes" \
+  "$(printf '%s\n' "$OUT" | tail -1 | grep -qxF "To uninstall: run 'git config --unset core.hooksPath' (when it points at the temper-gate folder), remove the Temper line from your own hook if you added one, and delete $WORKDIR/.git/temper-gate." && echo yes || echo no)"
+OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); P_RC=$?
+assert_eq "a second run in the plain repository says the hook is already installed" "0|yes" \
+  "$P_RC|$(printf '%s\n' "$OUT" | grep -qxF "The Temper pre-commit hook is already installed: $WORKDIR/.git/temper-gate/pre-commit (core.hooksPath points at its folder)." && echo yes || echo no)"
 echo '{"command": "temper", "run_mode": "interactive"}' > .temper/build-state.json
 echo 'x' > file.txt
 git add file.txt >/dev/null 2>&1

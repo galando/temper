@@ -97,37 +97,48 @@ block a raw `git commit`. The only gate that fires on every commit — agent-dri
 is a real git hook. Install it:
 
 ```
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh"           # writes pre-commit in git's hooks folder
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh" --global  # writes .git/temper-git-hooks/pre-commit
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh"   # writes temper-gate/pre-commit in the git folder, sets core.hooksPath
 ```
 
-Run it from the project's folder, or let `/temper:init` run it for you. Without `--global`
-it asks git where hooks go and writes the `pre-commit` file there (the file
-`git rev-parse --git-path hooks/pre-commit` prints): the repository's hooks folder, or the
-folder an existing `core.hooksPath` names (husky and lefthook set one, and git then ignores
-the default hooks folder) when that folder lies inside the repository or inside the
-repository's own git folder. In a linked worktree or a submodule git names the hooks
-folder of the repository's own git folder, which the worktrees share: when that folder
-already holds a current Temper hook, the installer says it is already installed for this
-worktree and exits 0; otherwise it installs there. A relative `core.hooksPath` through
-`.git` names a folder that cannot exist in a linked worktree or a submodule (`.git` is a
-file there), so the installer refuses it there and points to `--global`.
+Run it from the project's folder, or let `/temper:init` run it for you. It writes the hook
+to `temper-gate/pre-commit` in the repository's git folder (the folder
+`git rev-parse --git-common-dir` names, with symlinks followed; git never commits it, and
+every linked worktree of the repository shares it), through a new file in that folder moved
+into place, executable. Then it runs `git config --local core.hooksPath` with the absolute
+path of that folder, so git runs that hook in every worktree of the repository, and
+`git rev-parse --git-path hooks/pre-commit` names it. `--global` is still accepted and does
+the same as the default, with a note on stderr.
 
-`--global` runs in the main checkout. It writes `.git/temper-git-hooks/pre-commit` and sets
-the repository's `core.hooksPath` to the absolute path of that folder, so every linked
-worktree of the repository uses the same hook. It refuses when `core.hooksPath` is already
-set to another folder (replacing it would switch the hooks there off; the default mode
-installs into that folder instead). It also refuses when `.git/hooks` holds an executable
-hook that git would stop running once `core.hooksPath` is set: any hook git knows by name
-(`pre-commit`, `commit-msg`, `pre-push`, `post-checkout` and the rest, as git-lfs and
-Gerrit install them), except a Temper `pre-commit`. It names those hooks and says to run
-the installer without `--global`.
+The installer never writes into a folder named `hooks`: not `.git/hooks`, not the folder
+`git rev-parse --git-path hooks` names, and not a `core.hooksPath` folder that is not
+Temper's own. It reads the hook files there only to decide. Its only writes are the
+`temper-gate` folder and its `pre-commit`, the `core.hooksPath` setting above, and the file
+`temper-pre-commit` in the git folder, which it rewrites only when a hook of yours holds the
+line Temper 9.6.5 printed (below).
 
-A `core.hooksPath` that is absolute and ends in `/.git/temper-git-hooks` but is not this
-repository's own folder is Temper's own `--global` setting from where the repository used
-to be, before it was moved or renamed; git then runs no pre-commit hook. `--global`
-replaces it and prints a note naming the old value. The default mode refuses it and says
-to run the installer with `--global` to point it here, or to unset `core.hooksPath`.
+With `core.hooksPath` unset, git runs the hooks in `.git/hooks` (the `hooks` folder of the
+repository's git folder, which linked worktrees share); once it is set, git stops running
+them. So the installer first reads `.git/hooks`. When that folder holds an
+executable hook under any of git's hook names (`pre-commit`, `commit-msg`, `pre-push`,
+`post-checkout` and the rest, as git-lfs, Gerrit, the pre-commit framework and lefthook
+install them) other than a `pre-commit` that is an older Temper hook, or a
+`pre-commit.bak.<timestamp>` that an older installer set aside, it leaves `core.hooksPath`
+unset and keeps the hook. When `.git/hooks/pre-commit` calls the Temper hook (the line
+below), it says so and exits 0; otherwise it refuses and names those hooks. With none of
+them there, it sets `core.hooksPath`; when an older Temper hook sits at
+`.git/hooks/pre-commit`, it notes that git no longer runs that file and that you can
+delete it.
+
+With `core.hooksPath` already set: when it points at the `temper-gate` folder, the
+installer makes the hook current and exits 0 (it says when it updated the plugin paths in
+it). When it holds Temper's older folder (the relative `.git/temper-git-hooks`, or an
+absolute path that ends in `/.git/temper-git-hooks`, even one from where the repository
+used to be, before it was moved or renamed), the installer points it at `temper-gate` and
+prints a note naming the old value. Any other folder (husky's `.husky/_` or `.husky`,
+lefthook, a team's `.githooks`) belongs to another tool: the installer never writes there
+and keeps the hook. The host hook is the `pre-commit` file in that folder (for husky's
+generated `.husky/_` folder, `.husky/pre-commit`); when it calls the Temper hook, the
+installer says so and exits 0, and otherwise it refuses.
 
 A Temper hook is stale when the CLI path embedded in it no longer exists, as after a
 plugin upgrade moves the plugin folder; a stale hook fails open, and re-running the
@@ -141,20 +152,16 @@ absent guard script or CLI degrades to no-op. When the CLI refuses an unsafe `.t
 folder (exit 3: a path it keeps run state in is a symlink), the hook blocks the commit
 while a run is active (`.temper/build-state.json` exists, as a file or a link), showing
 the CLI's reason and saying to remove the symlink; with no run active it prints a
-one-line warning and lets the commit through.
+one-line warning and lets the commit through. It skips the gate in the home folder and in
+a repository inside the plugin's own folder: a folder at or above the repository whose
+`scripts/temper` is the same file as the CLI the hook runs.
 
-The installer never writes over a `pre-commit` hook that is not Temper's (husky,
-lefthook, the pre-commit framework, a hand-rolled one), and never writes a hook file git
-tracks (husky v5 to v8 keep `.husky/pre-commit` in git, and so does a team's `.githooks`
-folder). It refuses instead, and it does the same when `core.hooksPath` lies outside the
-repository. First it writes the full Temper hook to the file `temper-pre-commit` in the
-repository's own git folder (the folder `git rev-parse --git-common-dir` names, which git
-never commits; never the plugin folder), through a new file moved into place. Then it
-prints a FAIL line, says where it kept the Temper hook, prints one line between a BEGIN
-and an END line, then a one-line hint, and exits 1. The line is:
+When the installer refuses, it prints a FAIL line, says where it kept the Temper hook,
+prints one line between a BEGIN and an END line, then a one-line hint, and exits 1. The
+line is:
 
 ```sh
-_temper_rc=$?; [ "$_temper_rc" -eq 0 ] || exit "$_temper_rc"; _temper_hook="$(git rev-parse --git-common-dir)/temper-pre-commit"; [ ! -f "$_temper_hook" ] || bash "$_temper_hook" || exit 1
+_temper_rc=$?; [ "$_temper_rc" -eq 0 ] || exit "$_temper_rc"; _temper_hook="$(git rev-parse --git-common-dir)/temper-gate/pre-commit"; [ ! -f "$_temper_hook" ] || bash "$_temper_hook" || exit 1
 ```
 
 It holds no path of this machine, so it is safe in a tracked file. It keeps the host
@@ -164,22 +171,29 @@ says where the line goes. husky: `.husky/pre-commit`. The pre-commit framework: 
 hook in `.pre-commit-config.yaml` (repo: local, language: system, pass_filenames: false,
 always_run: true) whose entry runs the line. lefthook, which writes its hook again: a
 pre-commit command in `lefthook.yml` that runs the line. Any other hook: its start or its
-end. A refusal that comes before the installer knows the git folder writes nothing and
-prints the Temper hook's own lines instead, in a subshell, so that their exits end only
-the subshell and the host hook's own result is kept.
+end (create that file, executable, if it does not exist). A refusal that comes before the
+installer knows the git folder writes nothing and prints the Temper hook's own lines
+instead, in a subshell, so that their exits end only the subshell and the host hook's own
+result is kept.
 
-A hook of your own counts as calling Temper when it holds that exact line with no line
-before it that starts with `exit` or `exec` (for husky v9 that hook is
-`.husky/pre-commit`). The installer then makes `temper-pre-commit` current, says the hook
-calls it, and exits 0. When an `exit` or `exec` line comes first, the line never runs: the
-installer refuses and says to move it above that line. An older Temper hook is replaced by
-one that holds the current paths; the warning about its old path says it was failing open
-only when that path no longer exists. An older installer moved a hook that was not
-Temper's aside as `pre-commit.bak.<timestamp>`, and git does not run that file: when one
-sits next to the hook, the installer names it in a warning and says how to bring it back
-(move it back to `pre-commit` and add the line between the BEGIN and END lines to it; the
-installer writes `temper-pre-commit` first, so that line works). Every refusal prints a
-FAIL line, never a bare shell error.
+A hook of your own counts as calling Temper when it holds that exact line, or the exact
+line Temper 9.6.5 printed (the same, with `temper-pre-commit` in place of
+`temper-gate/pre-commit`), with no line before it that starts with `exit` or `exec` (for
+husky v9 that hook is `.husky/pre-commit`). The installer then makes the kept hook current
+(for the 9.6.5 line it also rewrites `temper-pre-commit` in the git folder with the current
+hook), says the hook calls it, and exits 0. When an `exit` or `exec` line comes first, the
+line never runs: the installer refuses and says to move it above that line. An older
+installer moved a hook that was not Temper's aside as `pre-commit.bak.<timestamp>`, and git
+does not run that file: when one is in `.git/hooks`, the installer names it in a warning and
+says how to bring it back (move it back to `.git/hooks/pre-commit` and add the line between
+the BEGIN and END lines to it). Every refusal prints a FAIL line, never a bare shell error.
+
+A hook tool you add later (the pre-commit framework, lefthook) works in `.git/hooks`, so
+run `git config --unset core.hooksPath` before you install it. The next `/temper` or
+`/temper:init` then keeps the Temper hook and prints the line to add to that tool's hook.
+To uninstall, run `git config --unset core.hooksPath` (when it points at the `temper-gate`
+folder), remove the Temper line from your own hook if you added one, and delete the
+`temper-gate` folder in the git folder. The installer prints these steps.
 
 > **This two-layer split is the determinism guarantee.** Layer 1 catches secrets at
 > edit-time inside the agent; layer 2 catches them at commit-time, deterministically,
@@ -213,7 +227,7 @@ The single fail-closed path for each script is documented below. Everything else
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-stage-gate.sh` | Stop (plugin hook, always on) | **BLOCK** | A standalone stage session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage (see `${CLAUDE_PLUGIN_ROOT}/docs/decisions/0005-deterministic-stage-gate-enforcement.md`). Fails open after 2 refusals |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` | native pre-commit | **BLOCK** | Any stage's evidence-backed gate is not PASS and has no recorded `${CLAUDE_PLUGIN_ROOT}/scripts/temper override` |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json` shows the latest `check_complete` absent or failed — used only when the temper CLI isn't present |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh` | n/a (installer) | **install** | Wires block-secrets + `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` into a native git `pre-commit` hook (the deterministic commit gate) |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh` | n/a (installer) | **install** | Wires block-secrets + `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` into a native git `pre-commit` hook (the deterministic commit gate), kept in `temper-gate` in the repository's git folder with `core.hooksPath` pointing at that folder; it never writes into a folder named `hooks` |
 
 ### block-secrets.sh
 

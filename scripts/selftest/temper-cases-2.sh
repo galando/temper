@@ -160,20 +160,24 @@ assert_exit "protected-paths: an interior-glob pattern (*.sql) is honored" 2 \
 assert_exit "protected-paths: a non-.sql file under migrations is not blocked" 0 \
   bash -c "echo '{\"tool_input\": {\"file_path\": \"db/migrations/notes.txt\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PP'"
 
-# install.sh: respect an existing core.hooksPath (husky/lefthook) — install where git
-# actually looks, not the ignored .git/hooks folder (which would make the gate inert).
+# install.sh: an existing core.hooksPath (husky, lefthook) names the folder git runs hooks
+# from. The installer never writes into it, nor into the .git/hooks folder git then ignores: it
+# keeps the hook in .git/temper-gate and leaves core.hooksPath as it was.
 setup
 git config user.email "test@example.com"
 git config user.name "test"
 rm -f .git/hooks/pre-commit    # clear any hook a prior test left in the shared WORKDIR
+rm -rf .husky
 mkdir -p .husky
 git config core.hooksPath .husky
-bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
-assert_eq "install.sh honors core.hooksPath — hook lands where git looks" "yes" \
-  "$([[ -f .husky/pre-commit ]] && grep -q 'installed by scripts/guards/install.sh' .husky/pre-commit && echo yes || echo no)"
-assert_eq "install.sh does NOT write the ignored .git/hooks/pre-commit when core.hooksPath is set" "yes" \
-  "$([[ ! -f .git/hooks/pre-commit ]] && echo yes || echo no)"
+H_HOOKS_BEFORE="$(ls -A .git/hooks)"
+OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); H_RC=$?
+assert_eq "install.sh never writes into a core.hooksPath folder that is not Temper's, and leaves the value as it was" "1||.husky|yes" \
+  "$H_RC|$(ls -A .husky)|$(git config --get core.hooksPath)|$(printf '%s\n' "$OUT" | grep -qxF "FAIL: core.hooksPath is set to '.husky', a folder that is not Temper's, and this installer never writes into it." && echo yes || echo no)"
+assert_eq "install.sh does not write the ignored .git/hooks either; the hook is kept in .git/temper-gate" "yes|yes" \
+  "$([[ "$(ls -A .git/hooks)" == "$H_HOOKS_BEFORE" ]] && echo yes || echo no)|$(grep -q 'installed by scripts/guards/install.sh' .git/temper-gate/pre-commit 2>/dev/null && echo yes || echo no)"
 git config --unset core.hooksPath 2>/dev/null || true
+rm -rf .husky
 
 # confirm-override.sh: robust matcher — quoted path, doubled space, path prefix all ASK.
 setup
