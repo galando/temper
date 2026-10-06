@@ -250,6 +250,12 @@ assert_eq "real text after a placeholder that spans lines still counts, once" "y
 
 # --- install.sh: the kept hook in the git folder, the paths it runs written in full, refusals ---
 setup
+# The default-gate copy (see _dg_plugin) differs from install.sh in its one HOOKS_DIR line only.
+_dg_plugin "$WORKDIR/dg-check"
+assert_eq "the default-gate copy of install.sh differs from install.sh in its one HOOKS_DIR line only" \
+  '1|2|HOOKS_DIR="$COMMON_REAL/default-gate"' \
+  "$(grep -c '^HOOKS_DIR=' "$REPO_ROOT/scripts/guards/install.sh")|$(diff "$REPO_ROOT/scripts/guards/install.sh" "$WORKDIR/dg-check/scripts/guards/install.sh" | grep -c '^[<>]')|$(diff "$REPO_ROOT/scripts/guards/install.sh" "$WORKDIR/dg-check/scripts/guards/install.sh" | sed -n 's/^> //p')"
+rm -rf "$WORKDIR/dg-check"
 git config user.email "test@example.com"
 git config user.name "test"
 git config --unset core.hooksPath 2>/dev/null || true

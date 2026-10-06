@@ -133,6 +133,26 @@ EOF
   "$TEMPER" state init demo --command temper >/dev/null
 }
 
+# No case writes into a folder named hooks. While core.hooksPath is unset, git runs the hooks in
+# the hooks folder of a repository's git folder, and install.sh reads that folder to decide. A case
+# that needs hooks of the user's there makes a throwaway plugin with _dg_plugin: its install.sh is
+# install.sh with the one HOOKS_DIR line naming the folder default-gate in the git folder instead,
+# so the case puts those hooks in <git folder>/default-gate and every other line that runs is
+# install.sh's own. Git itself never runs that folder, so a case that needs git to run a hook of
+# the user's (a real commit) sets core.hooksPath to a folder of its own instead.
+_dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI, acceptance.py, the
+               # guard scripts the hook runs, and the changed install.sh)
+  local g
+  rm -rf "$1"
+  mkdir -p "$1/scripts/guards"
+  cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$1/scripts/"
+  for g in block-secrets.sh verify-tests-ran.sh block-uncommitted-gate.sh; do
+    cp "$REPO_ROOT/scripts/guards/$g" "$1/scripts/guards/$g"
+  done
+  sed 's|^HOOKS_DIR=.*$|HOOKS_DIR="$COMMON_REAL/default-gate"|' "$REPO_ROOT/scripts/guards/install.sh" \
+    > "$1/scripts/guards/install.sh"
+}
+
 # The cases live in four files next to this one, sourced in order so they share the helpers,
 # the counters and the state each case leaves for the next. Each stays well under the size a
 # reader takes in at once.

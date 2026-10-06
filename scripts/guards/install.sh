@@ -32,11 +32,19 @@
 #     older installer set aside, core.hooksPath stays unset and you add one line to your own
 #     pre-commit hook there.
 #   - core.hooksPath already the temper-gate folder: the kept hook is made current.
-#   - core.hooksPath a folder an older Temper set (.git/temper-git-hooks, or the temper-gate folder
-#     of where the repository used to be): it is pointed at the temper-gate folder.
+#   - core.hooksPath a folder an older Temper set (.git/hooks-temper, .git/temper-git-hooks, or
+#     the temper-gate folder of where the repository used to be): it is pointed at the temper-gate
+#     folder, unless that folder holds other hooks git runs (git-lfs writes its hooks there); then
+#     it stays, as for the default folder.
 #   - core.hooksPath any other folder (husky, lefthook, a team folder): nothing is written there.
 #     Its pre-commit hook (for husky's generated _ folder, .husky/pre-commit) counts as installed
 #     when it holds the call line; otherwise you add that line to it.
+# A pre-commit from an older Temper that git still runs (next to other hooks, or in a folder that
+# is not Temper's) stays the gate until you replace it with the call line; the refusal says so,
+# with the stale plugin path it carries, if any.
+# core.hooksPath holds an absolute path, so every worktree finds the folder. Moving or renaming the
+# repository, or a folder above it, leaves it naming the old place, and git then runs no
+# pre-commit hook until the installer (or /temper, which checks the hook) runs again.
 # The call line holds no path of this machine, keeps the result your hook had before it, and runs
 # the kept hook, so it works at the start or the end of your hook and is safe in a tracked file.
 # A line before it that starts with the word exit or exec would stop it from running, so such a
@@ -173,15 +181,17 @@ fi
 command -v python3 >/dev/null 2>&1 || exit 0
 # A repository inside the plugin's own folder (a second checkout or worktree placed in it)
 # is part of the plugin: the CLI refuses to run there, so the gate is skipped. Walking up
-# from the repository, a folder above it is the plugin's folder when its scripts/temper is
-# the same file (device and inode) as this hook's CLI. A checkout of the plugin itself (its
-# own top) is a project like any other.
+# from the repository, a folder above it is the plugin's folder when its scripts folder is
+# a real folder (not a symlink) and the same folder (device and inode) as the one that
+# holds this hook's CLI. A file cannot pass for a folder, and a folder cannot be hard
+# linked, so a planted link to the CLI does not skip the gate. A checkout of the plugin
+# itself (its own top) is a project like any other.
 REPO_DIR="\$(pwd -P)"
 UP_DIR="\$REPO_DIR"
 while :; do
   case "\$UP_DIR" in /?*) ;; *) break ;; esac
   UP_DIR="\${UP_DIR%/*}"
-  if [ "\$UP_DIR/scripts/temper" -ef "\$TEMPER_CLI" ]; then exit 0; fi
+  if [ ! -L "\$UP_DIR/scripts" ] && [ "\$UP_DIR/scripts" -ef "\${TEMPER_CLI%/temper}" ]; then exit 0; fi
 done
 # The home folder is never a project: the CLI refuses to run there, so the gate is skipped.
 if [ -n "\${HOME:-}" ] && [ "\$REPO_DIR" -ef "\$HOME" ]; then exit 0; fi
@@ -345,9 +355,9 @@ _is_current_hook() { # _is_current_hook <file>: the file is exactly the hook thi
   _is_temper_hook "$1" && [[ "$(cat "$1" 2>/dev/null)" == "$(_hook_body)" ]]
 }
 
-_stale_note() { # _stale_note <hook file>: when that Temper hook carries another CLI path than this
-                # plugin's, says so on stderr. A plugin upgrade moves that path, and when the old
-                # folder is gone the hook's checks fail open without a word.
+_stale_lines() { # _stale_lines <hook file>: when that Temper hook carries another CLI path than
+                 # this plugin's, prints lines that say so. A plugin upgrade moves that path, and
+                 # when the old folder is gone the hook's checks fail open without a word.
   local embedded
   _is_temper_hook "$1" || return 0
   embedded="$(sed -n 's/^TEMPER_CLI=//p' "$1" 2>/dev/null | head -1 || true)"
@@ -356,14 +366,20 @@ _stale_note() { # _stale_note <hook file>: when that Temper hook carries another
     embedded="$(sed -n 's/^TEMPER_HOOKS_DIR="\${TEMPER_HOOKS_DIR:-\(.*\)}"$/\1/p' "$1" 2>/dev/null | head -1 || true)"
   fi
   [[ -n "$embedded" && "$embedded" != "$Q_TEMPER_CLI" ]] || return 0
-  echo "Warning: the Temper hook $1 points at a stale plugin path:" >&2
-  echo "  embedded: $embedded" >&2
-  echo "  current:  $TEMPER_CLI" >&2
+  echo "Warning: the Temper hook $1 points at a stale plugin path:"
+  echo "  embedded: $embedded"
+  echo "  current:  $TEMPER_CLI"
   # The %q form of a plain path only adds backslashes; without them it is the path.
   if [[ ! -e "${embedded//\\/}" ]]; then
-    echo "  (That path does not exist, so the hook has been failing open: its gate checks did nothing.)" >&2
+    echo "  (That path does not exist, so the hook has been failing open: its gate checks did nothing.)"
   fi
-  echo "  Writing the current path now." >&2
+}
+_stale_note() { # _stale_note <hook file>: the lines of _stale_lines on stderr, before that hook is
+                # written again with the current path
+  local lines
+  lines="$(_stale_lines "$1")"
+  [[ -n "$lines" ]] || return 0
+  printf '%s\n' "$lines" "  Writing the current path now." >&2
 }
 
 WROTE=0
@@ -449,10 +465,14 @@ _call_state() { # _call_state <hook file>: prints 'calls' when the file holds th
 
 HOST_HUSKY=0
 _hint() { # _hint <hook file>: the one-line hint for adding the call line by hand
-  if [[ $HOST_HUSKY -eq 1 ]]; then
+  if _is_temper_hook "$1"; then
+    echo "Hint: $1 is a hook from an older Temper. Replace all of its lines with two: #!/bin/sh and the line."
+  elif [[ $HOST_HUSKY -eq 1 ]]; then
     echo "Hint: add the line to .husky/pre-commit. It holds no path of this machine, so it is safe to commit."
   elif grep -q 'File generated by pre-commit' "$1" 2>/dev/null; then
-    echo "Hint: the pre-commit framework owns this hook. Add a local hook to .pre-commit-config.yaml (repo: local, language: system, pass_filenames: false, always_run: true) whose entry runs the line."
+    # The framework splits a system hook's entry into words and runs it with no shell, so the
+    # entry hands the line to sh. The line holds no single quote.
+    echo "Hint: the pre-commit framework owns this hook. Add a local hook to .pre-commit-config.yaml (repo: local, language: system, pass_filenames: false, always_run: true) with this entry: sh -c '$CALL_LINE'"
   elif grep -qi 'lefthook' "$1" 2>/dev/null; then
     echo "Hint: lefthook writes this hook again. Add a pre-commit command to lefthook.yml that runs the line."
   else
@@ -460,9 +480,12 @@ _hint() { # _hint <hook file>: the one-line hint for adding the call line by han
   fi
 }
 
-_host() { # _host <hook file> <reason>: git runs a hook of your own, and the kept hook is written.
-          # When that hook calls the Temper hook, says so and exits 0; otherwise refuses with the
-          # reason, the call line and a hint.
+_host() { # _host <hook file> <reason>: git runs that hook, and the kept hook is written. When the
+          # hook calls the Temper hook, says so and exits 0; otherwise refuses with the reason, the
+          # call line and a hint. A hook from an older Temper that git runs there stays the gate
+          # until it is replaced, so the refusal says so, with its stale path if it has one; this
+          # installer does not write it.
+  local stale
   case "$(_call_state "$1")" in
     calls)
       echo "The pre-commit hook $1 calls the Temper hook ($KEPT_HOOK), which is now current, so nothing else was written."
@@ -478,6 +501,12 @@ _host() { # _host <hook file> <reason>: git runs a hook of your own, and the kep
     late)
       _refuse "the Temper line in $1 comes after an exit or exec line, so it never runs. Move it above that line." "$(_hint "$1")" ;;
   esac
+  if _is_temper_hook "$1"; then
+    stale="$(_stale_lines "$1")"
+    WARNINGS="${WARNINGS}Warning: $1 is a hook from an older Temper, and git runs it in place of the kept hook. This installer does not write it.
+${stale:+$stale
+}"
+  fi
   _refuse "$2" "$(_hint "$1")"
 }
 
@@ -506,20 +535,64 @@ _is_gate_value() { # _is_gate_value <core.hooksPath>: 0 when it names the temper
   [[ -d "$p" && -d "$GATE_DIR" && "$p" -ef "$GATE_DIR" ]]
 }
 _older_value() { # _older_value <core.hooksPath>: 0 when it is a value an older Temper wrote: the
-                 # relative .git/temper-git-hooks, an absolute folder ending in
-                 # /.git/temper-git-hooks, or the temper-gate folder of where this repository used
-                 # to be (an absolute folder ending in /temper-gate that is gone, or holds a Temper
-                 # pre-commit)
+                 # relative .git/hooks-temper (--global from 5.5.0 to 9.6.4) or
+                 # .git/temper-git-hooks, an absolute folder ending in either (--global in 9.6.5
+                 # wrote /.git/temper-git-hooks), or the temper-gate folder of where this
+                 # repository used to be (an absolute folder ending in /temper-gate that is gone,
+                 # or holds a Temper pre-commit)
   local v
   v="$(_norm "$1")"
-  [[ "$v" == ".git/temper-git-hooks" ]] && return 0
+  [[ "$v" == ".git/hooks-temper" || "$v" == ".git/temper-git-hooks" ]] && return 0
   [[ "${v:0:1}" == "/" ]] || return 1
-  [[ "$v" == */.git/temper-git-hooks ]] && return 0
+  [[ "$v" == */.git/hooks-temper || "$v" == */.git/temper-git-hooks ]] && return 0
   if [[ "$v" == */"$GATE_NAME" ]]; then
     [[ -e "$v" ]] || return 0
     [[ -d "$v" ]] && _is_temper_hook "$v/pre-commit" && return 0
   fi
   return 1
+}
+_older_folder() { # _older_folder <older core.hooksPath>: the folder git runs hooks from for it in
+                  # the main checkout: for a relative .git/<name>, that name in the repository's
+                  # git folder; an absolute value is the folder itself
+  local v
+  v="$(_norm "$1")"
+  if [[ "$v" == .git/* ]]; then printf '%s' "$COMMON_REAL/${v#.git/}"; else printf '%s' "$v"; fi
+}
+_scan() { # _scan <folder>: sets RUNNING, the hooks git runs from that folder (executable files
+          # with git's hook names, other than a pre-commit from an older Temper), and SET_ASIDE,
+          # one path per line, the pre-commit.bak.<timestamp> files an older installer made of a
+          # hook of yours. Git does not run those, but moved back into the folder it would. The
+          # files are only read.
+  local name f
+  RUNNING=""
+  SET_ASIDE=""
+  for name in $GIT_HOOK_NAMES; do
+    [[ -f "$1/$name" && -x "$1/$name" ]] || continue
+    [[ "$name" == pre-commit ]] && _is_temper_hook "$1/$name" && continue
+    RUNNING="${RUNNING:+$RUNNING }$name"
+  done
+  for f in "$1"/pre-commit.bak.*; do
+    [[ -f "$f" ]] || continue
+    case "${f##*/pre-commit.bak.}" in ''|*[!0-9]*) continue ;; esac
+    _is_temper_hook "$f" && continue
+    SET_ASIDE="$SET_ASIDE$f"$'\n'
+  done
+}
+_scan_reason() { # _scan_reason <folder>: sets REASON, the FAIL reason for what _scan found there,
+                 # and adds a warning for each hook an older installer set aside
+  local names="" f
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    names="${names:+$names }${f##*/}"
+    WARNINGS="${WARNINGS}Warning: $f is a pre-commit hook that an older Temper installer set aside, and git does not run it. To run it again, move it back to $1/pre-commit and add the line between the BEGIN and END lines below to it.
+"
+  done <<< "$SET_ASIDE"
+  if [[ -n "$RUNNING" ]]; then
+    REASON="$1 holds hooks git would stop running if core.hooksPath pointed at Temper's folder: $RUNNING."
+    [[ -z "$names" ]] || REASON="$REASON It also holds a hook an older Temper installer set aside ($names)."
+  else
+    REASON="$1 holds a hook an older Temper installer set aside ($names). Moved back, git would run it, but not once core.hooksPath pointed at Temper's folder."
+  fi
 }
 _value_host() { # _value_host <core.hooksPath>: sets HOST, the hook of your own that git runs for
                 # that folder (as written), and HOST_HUSKY. For husky's generated _ folder, that is
@@ -544,30 +617,12 @@ EXISTING_HOOKS_PATH="$(git config --get core.hooksPath 2>/dev/null || true)"
 if [[ -z "$EXISTING_HOOKS_PATH" ]]; then
   # Git runs the hooks of its default folder. Setting core.hooksPath would stop every one of them,
   # so a hook there that git runs (other than a pre-commit from an older Temper) keeps it unset,
-  # and so does a hook an older installer set aside as pre-commit.bak.<timestamp> (moved back, git
-  # would run it). Those files are only read.
-  RUNNING=""
-  for _hook_name in $GIT_HOOK_NAMES; do
-    [[ -f "$HOOKS_DIR/$_hook_name" && -x "$HOOKS_DIR/$_hook_name" ]] || continue
-    [[ "$_hook_name" == pre-commit ]] && _is_temper_hook "$HOOKS_DIR/$_hook_name" && continue
-    RUNNING="${RUNNING:+$RUNNING }$_hook_name"
-  done
-  BACKUPS=""
-  for _f in "$HOOKS_DIR"/pre-commit.bak.*; do
-    [[ -f "$_f" ]] || continue
-    case "${_f##*/pre-commit.bak.}" in ''|*[!0-9]*) continue ;; esac
-    _is_temper_hook "$_f" && continue
-    RUNNING="${RUNNING:+$RUNNING }${_f##*/}"
-    BACKUPS="$BACKUPS$_f"$'\n'
-  done
-  if [[ -n "$RUNNING" ]]; then
+  # and so does a hook an older installer set aside as pre-commit.bak.<timestamp>.
+  _scan "$HOOKS_DIR"
+  if [[ -n "$RUNNING$SET_ASIDE" ]]; then
     _keep_gate || _refuse "$KEEP_ERR"
-    while IFS= read -r _f; do
-      [[ -n "$_f" ]] || continue
-      WARNINGS="${WARNINGS}Warning: $_f is a pre-commit hook that an older Temper installer set aside, and git does not run it. To run it again, move it back to $HOST_PRE and add the line between the BEGIN and END lines below to it.
-"
-    done <<< "$BACKUPS"
-    _host "$HOST_PRE" "$HOOKS_DIR holds hooks git would stop running if core.hooksPath pointed at Temper's folder: $RUNNING."
+    _scan_reason "$HOOKS_DIR"
+    _host "$HOST_PRE" "$REASON"
   fi
   _check_config
   _keep_gate || _refuse "$KEEP_ERR"
@@ -592,8 +647,17 @@ if _is_gate_value "$EXISTING_HOOKS_PATH"; then
 fi
 
 if _older_value "$EXISTING_HOOKS_PATH"; then
-  # Git ran the hooks of that folder instead of its default folder, so pointing it at the
-  # temper-gate folder stops no hook that runs now.
+  # Git runs the hooks of that folder in place of its default folder. Other tools write theirs
+  # there too (git lfs install writes into the folder core.hooksPath names), and pointing
+  # core.hooksPath at the temper-gate folder would stop them, so a hook there that git runs
+  # (other than Temper's own pre-commit) keeps the value as it is, as in the default folder.
+  OLDER_DIR="$(_older_folder "$EXISTING_HOOKS_PATH")"
+  _scan "$OLDER_DIR"
+  if [[ -n "$RUNNING$SET_ASIDE" ]]; then
+    _keep_gate || _refuse "$KEEP_ERR"
+    _scan_reason "$OLDER_DIR"
+    _host "$OLDER_DIR/pre-commit" "core.hooksPath is set to '$EXISTING_HOOKS_PATH', a folder an older Temper set. $REASON"
+  fi
   _check_config
   _keep_gate || _refuse "$KEEP_ERR"
   _set_hooks_path
