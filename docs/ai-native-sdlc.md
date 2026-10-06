@@ -164,7 +164,7 @@ its weakest point: every override entry records *who* approved (`by:` from git
 identity), and `confirm-override.sh` emits the ASK permission tier for any
 `temper override` command — a deterministic human click between an agent and the one
 command that clears a FAIL gate. **[NEW]** For past-the-fence release gating,
-`examples/hooks/production-gate.sh` + `packs/hooks/rules.md` document the
+`examples/gates/production-gate.sh` + `packs/hooks/rules.md` document the
 allow/ask/block pattern with the two placement rules: approval gates at the release
 boundary only (a human prompt mid-build puts a person back on every parallel
 session's critical path), and non-negotiable gates in managed settings, not the repo.

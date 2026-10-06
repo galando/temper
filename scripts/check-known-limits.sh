@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check-known-limits.sh: the README limits paragraph must say, in plain words, what the Bash
-# reader cannot do. tests/mod/known-limits.test.ts holds the table of attempts that stay possible;
+# reader cannot do. The mod's known limits test holds the table of attempts that stay possible;
 # a plugin test cannot read the README, so this script checks the text.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,6 +24,6 @@ need "$PLAN" "builds the" "mods-plan states that a run time path is a known limi
 need "$PLAN" "a staging made by a script" "mods-plan states the staging limit"
 need "$PLAN" "shell tricks" "mods-plan 3.4 states the limit"
 need "$PLAN" "one time decision token" "mods-plan 3.4 records the future hardening"
-need "$PLAN" "known-limits.test.ts" "mods-plan 3.4 points at the table"
+need "$PLAN" "Known limits, on purpose" "mods-plan 3.4 names the known limits section"
 echo "PASS: $PASS  FAIL: $FAIL"
 [[ $FAIL -eq 0 ]]

@@ -7,7 +7,7 @@ CLI, never asserted by a model. With Claude Code 2.1.287 or later a mod refuses 
 outside the current phase through Claude's editing tools (details in "Where enforcement works").
 
 [![Plugin directory](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
-[![Version](https://img.shields.io/badge/version-v9.6.3-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v9.6.4-blue)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1.287%2B%20for%20the%20mod-blue)](#where-enforcement-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -215,25 +215,41 @@ refusals, the phase bar and the report.
 
 ## What the mod reads and writes
 
-Mods are not sandboxed, so this is the full list. No network, process, agent or tool call by the mod.
+Mods are not sandboxed, so this is the full list. No network call, no process spawn, no agent
+started, no tool called by the mod itself: no `http`, `process` or `env` call exists in its
+reviewed call list, and CI fails if one appears.
 
 - **Reads:** `.temper/` files (state, gates, evidence, intent, plan, tasks, config, events), its settings and store.
 - **Writes no file.** It keeps your decisions, the run report and the game's best score in its own
   plugin store on your machine. `/temper:temper report` shows the report.
 - **Sets** only `temper.uiMode` and `temper.enforcement` (you type `/temper:temper mode` or `enforcement`;
-  a locked row stays). **Runs** only `/temper:temper` and `/temper:temper continue <stage>`, on a button press.
+  a locked row stays). **Runs** only `/temper:temper` and `/temper:temper continue <stage>`, on a button
+  press, each written as fixed text at the call site — never a command built from data.
 - **Submits prompts:** after a button press, the fixed text of that action, the stage, a finding id,
   your reason, a path outside the plan and the `scripts/temper` calls that record your choice. The
   `temper:phase` section on each request holds the phase, run title, task, criteria progress and
-  next step. No other text from your files goes into a prompt.
+  next step. No other text from your files goes into a prompt. Every prompt lands in your own
+  session, as if you had typed it; nothing is sent over the network and nothing leaves your machine.
 - **Hooks:** `tool.call` reads Write, Edit and NotebookEdit paths and Bash text, then refuses or
   passes the call (it never answers for a tool). `command.run` answers the reserved words of
   `/temper:temper` and passes every other command on unchanged. `session.start` and
   `classic.SessionStart` find the project root. `turn.step` applies `phaseModels`, and
   `reviewerModel` to the steps of the Temper review agent (found with `$.agent.list()`).
 - **Other:** it waits 60 ms with `$.clock.sleep` before it reads a state file again; it reads no global.
-  `tests/mod/` (its fake engine is `world.ts`) is the test suite and is never loaded. The mod **asks**
-  you for a mode, a drift choice or a reason, and **draws** the bar, the pane and the game.
+  The mod **asks** you for a mode, a drift choice or a reason, and **draws** the bar, the pane and the
+  game. The one surface module it loads is the game's, `hooks/temper-mod/ui/game-client.tsx`, named as
+  a fixed string where the game pane is drawn; that module runs the game's frame clock and makes no
+  engine call at all.
+- **The test suite never runs in a session.** `tests/mod/` runs under `claude plugin test` only.
+  The `$.session.start`, `$.ui.mount`, `$.tool.call` and `$.agent.spawn` calls there are the API of
+  Claude Code's own plugin test runner (`claude-code/testing`), not another plugin. Inside a test:
+  `$.tool.call` drives the guard with fixed `scripts/temper ...` Bash commands, a Write call and one
+  AskUserQuestion; `$.agent.spawn` starts one stub review agent, to prove the mod leaves a spawn
+  unchanged. The fake engine (`world.ts`, test only code) answers AskUserQuestion from the script a
+  test sets, stands in for the Temper CLI on the fixed `state advance`, `state set` and `state loop`
+  commands, and answers the `config.set` calls a test makes (the test runner has no implementation
+  of its own for a config write, so its rule is that a test answers it; the mod itself only ever
+  calls `config.set` — on your own mode or enforcement command — and never hooks it).
 - **Tests, lint, git and `scripts/temper`** run as prompts to Claude with its normal permissions. Auto
   mode may refuse a skip as a gate bypass; the bar then says "Press 1 to record it". Allow it once,
   for example `Bash(*scripts/temper override*)`, or run it yourself with `!`.

@@ -3,6 +3,39 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.6.4: the directory's holds — one static import, clean scripts, plain disclosures
+
+The directory held 9.6.3 by policy with twelve reasons. This release removes the ones code can
+remove and answers the rest, in plain words, in the README's "What the mod reads and writes".
+Gates, commands, agents and the mod's behavior do not change.
+
+- **The game module is a static import.** The finding "Mod loads a file whose path the directory
+  couldn't read" followed the game's `Client` element across two releases (9.6.2 drew it as JSX,
+  9.6.3 called it directly — both were held). The surface module is now also imported statically
+  (`import GameClient from './ui/game-client'`), so the file the pane loads stands in the module
+  graph a reader walks, and the props the pane hands it are typed from the module's own function
+  (`Parameters<typeof GameClient>[0]`). The `module` prop stays the fixed string
+  `./ui/game-client.tsx` and the pane draws exactly as before.
+- **No script points into the mod's folders any more** ("The directory couldn't confirm that the
+  mod stays the same after it's checked"). `scripts/check-mod-calls.sh` takes the surface module's
+  folder from the validator's own `surface modules:` line (or `CHECK_MOD_CLIENT_DIR`), instead of
+  spelling the mod's path; `scripts/check-known-limits.sh` no longer names the known limits test
+  file (it checks that mods-plan names the known limits section); and the approval gate example
+  moved from `examples/hooks/` to `examples/gates/` — its folder name shared "hooks" with the mod's
+  folder, and its header carried a `scripts/hooks/*.sh` wildcard (now one spelled-out script).
+- **The test world says what it is.** `tests/mod/world.ts` declares itself test only code that
+  never loads in a session (it no longer says "Not a test file"), and its `config.set` stand-in
+  carries a comment saying why a test answers the call: the runner has no implementation of its own
+  to pass a config write to. The mod itself only ever calls `config.set`, never hooks it.
+- **README, "What the mod reads and writes":** the no-network/no-spawn statement names the
+  enforced call list; the commands bullet says each command is fixed text at the call site; the
+  prompts bullet says where a prompt lands (your own session, nothing leaves the machine); a new
+  bullet names the test suite's harness calls one by one (`$.session.start`, `$.ui.mount`,
+  `$.tool.call`, `$.agent.spawn` — the plugin test runner's API, not another plugin), the fixed
+  `scripts/temper` commands they drive, the one stub agent spawn, and the game's surface module as
+  the one file the mod loads. These answer the directory's "say in the plugin's README" remedies
+  for the test-side findings.
+
 ## v9.6.3: the game's Client is called with its path as fixed text
 
 The directory still read "Mod loads a file whose path the directory couldn't read" on 9.6.2, at the

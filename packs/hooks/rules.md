@@ -195,7 +195,7 @@ Every hook above is a **guardrail** — it allows or blocks with no human involv
 The third mode is an **approval gate**: the hook *asks*, deterministically, by
 refusing until a named human authorization exists. Temper's own fence ends at
 `git commit` (it never pushes, merges, or deploys), so no pack wires one — but the
-pattern is the same script shape, and `examples/hooks/production-gate.sh` is a
+pattern is the same script shape, and `examples/gates/production-gate.sh` is a
 copy-paste starting point: a PreToolUse (Bash) hook that blocks `deploy`+`production`
 commands until `RELEASE_APPROVAL` names an approver and change ticket, explaining the
 route to approval in its block message. Two placement rules from hard experience:
