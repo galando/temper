@@ -13,14 +13,24 @@ resume/invocation safety, hand-off formats). Mechanism with one correct output (
 resolution, gate logic) lives in the temper CLI (`${CLAUDE_PLUGIN_ROOT}/scripts/temper`)
 and in the `model:` frontmatter of each stage brief.
 
-## $CLAUDE_PLUGIN_ROOT Resolution
+## The plugin folder
 
-`$CLAUDE_PLUGIN_ROOT` is the plugin's install folder, which Claude Code provides to
-plugin commands. Use it as given. If it is empty, or `${CLAUDE_PLUGIN_ROOT}/scripts/temper`
-does not exist, stop and say: "Cannot locate Temper plugin. Set CLAUDE_PLUGIN_ROOT or
-reinstall." Never search for the plugin folder and never guess another one. The temper
-CLI is always called by its full path, `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. Every path
-that does not start with `${CLAUDE_PLUGIN_ROOT}/` (`.temper/`, the spec files,
+The plugin folder is the folder Temper is installed in: the folder that holds
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper` (that path with /scripts/temper taken off).
+
+- **In a Temper command, stage brief or skill**, Claude Code writes the plugin's
+  absolute folder in place of the CLAUDE_PLUGIN_ROOT variable when it loads the text, so
+  the command text already holds the real path.
+- **In the Bash tool** the CLAUDE_PLUGIN_ROOT variable is not set. A command run in Bash
+  uses the absolute path, written out in full, exactly as the command text shows it.
+- **In a reference page** like this one, or in a brief read with the Read tool, the
+  variable is not filled in. There it means the same folder: the one the command, or the
+  `Plugin folder:` line of a stage's launch prompt, names.
+
+Only if the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall
+it." Never search the disk for the plugin folder and never guess another one. The temper
+CLI is always called by its full path, `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. Every
+path that does not start with the plugin folder (`.temper/`, the spec files,
 `.claude/temper.config`) is in the user's project, the current directory.
 
 ## Build State Schema
@@ -83,6 +93,9 @@ AskUserQuestion:
     - label: "Overwrite and start new"
       description: "Delete existing session (temper state clear), start from scratch."
 ```
+
+On "Overwrite and start new", run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear`, then
+start the new item from its first stage.
 
 ## Agent Failure Handling
 

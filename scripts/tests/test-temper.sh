@@ -897,12 +897,15 @@ assert_exit "gate intent --spec-path works without state and judges the real dra
 setup
 cp "$REPO_ROOT/templates/intent.md" .temper/specs/demo/intent.md
 python3 -c "
+import re
 s = open('.temper/specs/demo/intent.md').read()
-s = s.replace('{What problem are we solving? For whom? Why is this needed?}',
-              'Handlers spend a third of call time on status-only queries.')
+# The template's Problem placeholder, which may span lines, is replaced by one real line.
+s = re.sub(r'(?m)(^#+ *Problem *\n\s*)\{[^{}]*\}',
+           lambda m: m.group(1) + 'Handlers spend a third of call time on status-only queries.', s, count=1)
 open('.temper/specs/demo/intent.md','w').write(s)
 "
 OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "the filled Problem counts as content" "yes" "$(echo "$OUT" | grep -q '\[v\] problem stated' && echo yes || echo no)"
 assert_exit "a template-verbatim intent with only the Problem filled still FAILs" 1 "$TEMPER" gate intent
 assert_eq "placeholder criteria bullets are not counted" "yes" "$(echo "$OUT" | grep -q 'no real success criteria' && echo yes || echo no)"
 assert_eq "the placeholder Status line is not accepted" "yes" "$(echo "$OUT" | grep -q 'placeholder doesn.t count' && echo yes || echo no)"
@@ -1763,7 +1766,8 @@ assert_eq "an unknown Status skips out of scope with a note" "yes" "$(echo "$OUT
 assert_eq "an unknown Status does not fail out of scope stated" "no" "$(echo "$OUT" | grep -q '\[x\] out of scope stated' && echo yes || echo no)"
 setup; status_fixture "none"
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_eq "a missing Status skips out of scope and open questions with a note" "2" "$(echo "$OUT" | grep -c 'no recognized Status header (draft, accepted or completed)')"
+assert_eq "a missing Status skips out of scope and open questions with a note" "2" \
+  "$(echo "$OUT" | grep -E 'out of scope stated|open questions resolved' | grep -c 'no recognized Status header (draft, accepted or completed)')"
 assert_exit "a missing Status still FAILs the gate through the status header requirement" 1 "$TEMPER" gate intent
 setup; status_fixture "draft"
 assert_exit "an explicit draft without Out of scope still FAILs" 1 "$TEMPER" gate intent
@@ -2008,7 +2012,7 @@ assert_eq "each listed stage writes its own ledger file" "9" \
 
 # --- state init / state set: the spec slug is a plain name, never a path ---
 setup
-for bad in "../../outside" "Bad-Slug" "a..b" "a/b" ".hidden" ""; do
+for bad in "../../outside" "-lead" "a..b" "a/b" "PROJ/1" ".hidden" "a b" ""; do
   assert_exit "state init refuses the slug '$bad'" 1 "$TEMPER" state init "$bad"
 done
 assert_eq "a refused state init keeps the run's state" "demo" "$("$TEMPER" state get spec)"
@@ -2026,10 +2030,10 @@ import json
 p = '.temper/build-state.json'
 d = json.load(open(p)); d['spec_path'] = '.temper/specs/../../outside/esc'; json.dump(d, open(p, 'w'))
 EOF
-"$TEMPER" state archive >/dev/null
+"$TEMPER" state archive >/dev/null 2>&1
 assert_eq "state archive writes no ledger through a spec_path that leaves .temper/specs" "no" \
   "$([[ -e "$WORKDIR/outside/esc/gate-ledger.json" ]] && echo yes || echo no)"
-"$TEMPER" state clear >/dev/null
+"$TEMPER" state clear >/dev/null 2>&1
 assert_eq "state clear writes no ledger there either" "no" "$([[ -e "$WORKDIR/outside/esc/gate-ledger.json" ]] && echo yes || echo no)"
 
 # --- the ledger archive and the status view read the listed stage files only ---
@@ -2052,16 +2056,133 @@ assert_eq "TEMPER_DIR is ignored: nothing is written to the folder it names" "no
 assert_eq "TEMPER_DIR is ignored: the row lands in the project's own .temper" "1" \
   "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/build.json"))))')"
 
-# --- the plugin folder: a literal suffix strip, and CLAUDE_PLUGIN_ROOT for a CLI reached through a symlink ---
+# --- the plugin folder: the CLI's own file (symlinks followed) with the literal suffix /scripts removed ---
 setup
 mkdir -p "$WORKDIR/bin"
 ln -sf "$TEMPER" "$WORKDIR/bin/temper"
-assert_eq "a CLI reached through a symlink resolves a model through CLAUDE_PLUGIN_ROOT" "$("$TEMPER" model plan)" \
-  "$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$WORKDIR/bin/temper" model plan)"
-assert_exit "a CLI reached through a symlink loads acceptance.py by its full path" 0 \
-  env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$WORKDIR/bin/temper" gate plan
+assert_eq "a CLI reached through a symlink resolves a model from its own folder, with no CLAUDE_PLUGIN_ROOT" "$("$TEMPER" model plan)" \
+  "$(env -u CLAUDE_PLUGIN_ROOT "$WORKDIR/bin/temper" model plan)"
+assert_exit "a CLI reached through a symlink loads acceptance.py by its full path, with no CLAUDE_PLUGIN_ROOT" 0 \
+  env -u CLAUDE_PLUGIN_ROOT "$WORKDIR/bin/temper" gate plan
 assert_eq "the CLI and its Python helpers list no folder by wildcard and load no folder onto sys.path" "0" \
   "$(cat "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/pack-discover.py" | grep -cE 'glob\.glob|^import glob|sys\.path\.insert|TEMPER_DIR:-')"
+
+# --- CLI: the plugin folder comes from the CLI's own file, never from an environment variable ---
+setup
+mkdir -p "$WORKDIR/bin"
+CLI_PLUGIN="$WORKDIR/cli-plugin"
+rm -rf "$CLI_PLUGIN"
+mkdir -p "$CLI_PLUGIN/scripts" "$CLI_PLUGIN/inner/sub"
+cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$CLI_PLUGIN/scripts/"
+cp -R "$REPO_ROOT/agents" "$CLI_PLUGIN/agents"
+ln -sf ../cli-plugin/scripts/temper "$WORKDIR/bin/rel-temper"
+ln -sf rel-temper "$WORKDIR/bin/chained-temper"
+assert_eq "a CLI reached through a chain of relative symlinks finds its own plugin folder" "$("$TEMPER" model plan)" \
+  "$(env -u CLAUDE_PLUGIN_ROOT "$WORKDIR/bin/chained-temper" model plan)"
+assert_eq "a CLAUDE_PLUGIN_ROOT naming another folder is ignored by the CLI" "$("$TEMPER" model plan)" \
+  "$(CLAUDE_PLUGIN_ROOT=/nonexistent "$WORKDIR/bin/chained-temper" model plan)"
+assert_eq "the CLI never reads CLAUDE_PLUGIN_ROOT" "0" "$(grep -c 'CLAUDE_PLUGIN_ROOT' "$TEMPER")"
+
+# --- CLI: a folder inside the plugin folder is refused; the plugin folder itself is a project ---
+assert_eq "the throwaway test folder is not inside the repo, so no case here runs the CLI inside the plugin folder" "no" \
+  "$(wd="$(cd "$WORKDIR" && pwd -P)"; rr="$(cd "$REPO_ROOT" && pwd -P)"; [[ "${wd#"$rr"/}" != "$wd" ]] && echo yes || echo no)"
+for sub in "init" "state init demo" "state get" "evidence add --stage build --claim x" "gate intent" \
+           "status" "report" "bands" "metrics append x 1" "override plan --reason x"; do
+  assert_exit "the CLI refuses '$sub' in a folder inside the plugin folder" 1 \
+    bash -c "cd '$CLI_PLUGIN/inner/sub' && '$CLI_PLUGIN/scripts/temper' $sub"
+done
+assert_eq "the refused commands wrote nothing in the plugin folder" "no|no" \
+  "$([[ -e "$CLI_PLUGIN/inner/sub/.temper" ]] && echo yes || echo no)|$([[ -e "$CLI_PLUGIN/.temper" ]] && echo yes || echo no)"
+OUT=$(cd "$CLI_PLUGIN/inner/sub" && "$CLI_PLUGIN/scripts/temper" init 2>&1; true)
+assert_eq "the refusal says to run from a project folder" "yes" \
+  "$(echo "$OUT" | grep -q 'run temper from a project folder, not from a folder inside the plugin folder' && echo yes || echo no)"
+ln -sfn "$CLI_PLUGIN/inner/sub" "$WORKDIR/sub-link"
+assert_exit "a folder reached through a symlink that points inside the plugin folder is refused too" 1 \
+  bash -c "cd '$WORKDIR/sub-link' && '$CLI_PLUGIN/scripts/temper' init"
+assert_exit "a CLI reached through a symlink guards its real plugin folder" 1 \
+  bash -c "cd '$CLI_PLUGIN/inner/sub' && '$WORKDIR/bin/chained-temper' init"
+assert_eq "temper model still answers there and writes nothing" "$("$TEMPER" model plan)|no" \
+  "$(cd "$CLI_PLUGIN/inner/sub" && "$CLI_PLUGIN/scripts/temper" model plan)|$([[ -e "$CLI_PLUGIN/inner/sub/.temper" ]] && echo yes || echo no)"
+assert_eq "temper config get still answers there (the guard scripts call it)" "auto" \
+  "$(cd "$CLI_PLUGIN/inner/sub" && TEMPER_CONFIG="$WORKDIR/.claude/temper.config" "$CLI_PLUGIN/scripts/temper" config get stack)"
+assert_exit "the plugin folder itself is a valid project" 0 bash -c "cd '$CLI_PLUGIN' && '$CLI_PLUGIN/scripts/temper' init"
+assert_eq "run state is written in the plugin folder's own .temper when it is the project" "yes" \
+  "$([[ -f "$CLI_PLUGIN/.temper/gates.json" ]] && echo yes || echo no)"
+rm -rf "$CLI_PLUGIN" "$WORKDIR/sub-link" "$WORKDIR/bin"
+
+# --- CLI: a slug is letters of either case, digits, '.', '_' and '-'; never '/' or '..' ---
+setup
+assert_exit "state init accepts an uppercase ticket key prefix" 0 "$TEMPER" state init PROJ-123-login
+assert_eq "the uppercase slug names its spec folder" ".temper/specs/PROJ-123-login" "$("$TEMPER" state get spec_path)"
+assert_exit "state set accepts an uppercase spec_path slug" 0 "$TEMPER" state set spec_path .temper/specs/PROJ-9-x
+assert_exit "state set still refuses a spec_path slug with a '/'" 1 "$TEMPER" state set spec_path .temper/specs/PROJ/9
+assert_exit "state set still refuses a spec_path slug with '..'" 1 "$TEMPER" state set spec_path .temper/specs/PROJ..9
+# A run started by 9.6.4 with an uppercase slug still archives its gate ledger.
+setup
+mkdir -p .temper/specs/PROJ-123-login
+python3 - <<'EOF'
+import json
+p = '.temper/build-state.json'
+d = json.load(open(p)); d['spec'] = 'PROJ-123-login'; d['spec_path'] = '.temper/specs/PROJ-123-login'; json.dump(d, open(p, 'w'))
+EOF
+echo '{"intent": {"verdict": "PASS", "requirements": [], "ts": "t"}}' > .temper/gates.json
+"$TEMPER" state archive >/dev/null
+assert_eq "state archive writes the ledger of an uppercase slug's run" "yes" \
+  "$([[ -f .temper/specs/PROJ-123-login/gate-ledger.json ]] && echo yes || echo no)"
+
+# --- CLI: a spec_path the archive refuses is reported, never dropped without a word ---
+bad_spec_path() {
+  python3 - <<'EOF'
+import json
+p = '.temper/build-state.json'
+d = json.load(open(p)); d['spec_path'] = '.temper/specs/../x'; json.dump(d, open(p, 'w'))
+EOF
+  echo '{"intent": {"verdict": "PASS", "requirements": [], "ts": "t"}}' > .temper/gates.json
+}
+setup; bad_spec_path
+ERR=$("$TEMPER" state archive 2>&1 >/dev/null)
+assert_eq "state archive warns on stderr that the ledger was not archived" "yes" \
+  "$(echo "$ERR" | grep -q "gate ledger NOT archived: spec_path '.temper/specs/../x' is not .temper/specs/<slug>" && echo yes || echo no)"
+assert_eq "state archive no longer says there was nothing to archive" "no" \
+  "$("$TEMPER" state archive 2>/dev/null | grep -q 'nothing to archive' && echo yes || echo no)"
+OUT=$("$TEMPER" state clear 2>&1)
+assert_eq "state clear shows the warning and says the ledger was not archived" "yes|yes" \
+  "$(echo "$OUT" | grep -q 'gate ledger NOT archived' && echo yes || echo no)|$(echo "$OUT" | grep -q 'the gate ledger was NOT archived' && echo yes || echo no)"
+setup; bad_spec_path
+OUT=$("$TEMPER" state init fresh 2>&1)
+assert_eq "state init shows the warning for the prior run" "yes" \
+  "$(echo "$OUT" | grep -q 'gate ledger NOT archived' && echo yes || echo no)"
+assert_eq "state init still starts the new run" "fresh" "$("$TEMPER" state get spec)"
+setup
+assert_eq "a run with a valid spec_path archives with no warning" "" "$("$TEMPER" state archive 2>&1 >/dev/null)"
+
+# --- CLI: the raw intent template never passes a requirement on placeholder text ---
+setup
+cp "$REPO_ROOT/templates/intent.md" .temper/specs/demo/intent.md
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_exit "gate intent FAILs the raw template" 1 "$TEMPER" gate intent
+assert_eq "a placeholder that spans lines is not Problem content" "yes" \
+  "$(echo "$OUT" | grep -q '\[x\] problem stated' && echo yes || echo no)"
+assert_eq "no requirement row prints Python's None" "0" "$(echo "$OUT" | grep -c 'None')"
+assert_eq "with no Status header each of the 13 draft-only rows says why it skipped" "13" \
+  "$(echo "$OUT" | grep -c 'skipped: no recognized Status header (draft, accepted or completed)')"
+cat > .temper/specs/demo/intent.md <<'EOF'
+**Status:** draft
+
+### Problem
+
+{a placeholder that runs
+over two lines}
+Support spends a third of call time on status-only queries.
+{one more {nested} placeholder
+still open here}
+
+### Success Criteria
+- [ ] AC-01 [required]: status visible in the portal
+EOF
+OUT=$("$TEMPER" gate intent 2>&1; true)
+assert_eq "real text after a placeholder that spans lines still counts, once" "yes" \
+  "$(echo "$OUT" | grep -q 'problem stated .*Problem section has 1 line(s) of content' && echo yes || echo no)"
 
 # --- install.sh: literal targets, the paths it runs written in full, refusals ---
 setup
@@ -2205,8 +2326,261 @@ assert_eq "formatter: a file of the plugin's own folder is left as it is" "p  q"
 mkdir -p "$FAKE_PLUGIN/.claude"
 cp .claude/temper.config "$FAKE_PLUGIN/.claude/temper.config"
 bash -c "echo '{\"tool_input\": {\"file_path\": \"$FAKE_PLUGIN/sub/y.txt\"}}' | CLAUDE_PROJECT_DIR='$FAKE_PLUGIN' bash '$FAKE_PLUGIN/scripts/guards/run-formatter.sh'"
-assert_eq "formatter: when the project is the plugin folder itself, its files are formatted" "p q" "$(cat "$FAKE_PLUGIN/sub/y.txt")"
+assert_eq "formatter: when the project is the plugin folder itself, its files are left as they are" "p  q" "$(cat "$FAKE_PLUGIN/sub/y.txt")"
 rm -rf "$FAKE_PLUGIN"
+
+# --- guards, plan_review.py and the validators: no write lands in the plugin's own folder ---
+# A throwaway plugin folder holds copies of the scripts; each copy finds that folder by the
+# literal suffix of its own path, as the real scripts do. inner/code stands for any folder of it.
+setup
+git config user.email "test@example.com"
+git config user.name "test"
+git config --unset core.hooksPath 2>/dev/null || true
+G_PLUG="$WORKDIR/guard-plugin"
+rm -rf "$G_PLUG"
+mkdir -p "$G_PLUG/scripts/guards" "$G_PLUG/inner/code"
+cp "$REPO_ROOT/scripts/guards/install.sh" "$G_PLUG/scripts/guards/install.sh"
+G_INSTALL="$G_PLUG/scripts/guards/install.sh"
+# install.sh: a core.hooksPath that leads into the plugin folder, directly or through a symlink.
+git config core.hooksPath guard-plugin/inner/code
+assert_exit "install.sh refuses a core.hooksPath that leads into the plugin's own folder" 1 bash "$G_INSTALL"
+ln -s "$G_PLUG/inner/code" linked-hooks
+git config core.hooksPath linked-hooks
+assert_exit "install.sh refuses a core.hooksPath that is a symlink into the plugin's own folder" 1 bash "$G_INSTALL"
+git config core.hooksPath linked-hooks/new
+assert_exit "install.sh refuses a folder still to be made under a symlink into the plugin's own folder" 1 bash "$G_INSTALL"
+mkdir -p rel-dir
+ln -s ../guard-plugin/inner/code rel-dir/rel-link
+git config core.hooksPath rel-dir/rel-link
+assert_exit "install.sh refuses a relative symlink with '..' that leads into the plugin's own folder" 1 bash "$G_INSTALL"
+git config --unset core.hooksPath
+mv .git/hooks .git/hooks-saved
+ln -s "$G_PLUG/inner/code" .git/hooks
+assert_exit "install.sh refuses a .git/hooks that is a symlink into the plugin's own folder" 1 bash "$G_INSTALL"
+rm -f .git/hooks
+mv .git/hooks-saved .git/hooks
+assert_eq "none of these refusals writes or creates anything in the plugin's folder" "no|no" \
+  "$([[ -e "$G_PLUG/inner/code/pre-commit" ]] && echo yes || echo no)|$([[ -e "$G_PLUG/inner/code/new" ]] && echo yes || echo no)"
+# A pre-commit that is a symlink into the plugin folder is replaced, never written through.
+echo 'plugin file' > "$G_PLUG/inner/code/pre-commit"
+rm -f .git/hooks/pre-commit
+ln -s "$G_PLUG/inner/code/pre-commit" .git/hooks/pre-commit
+bash "$G_INSTALL" >/dev/null 2>&1
+assert_eq "a pre-commit symlink into the plugin folder becomes a regular file; the plugin file is untouched" "yes|plugin file" \
+  "$([[ -f .git/hooks/pre-commit && ! -L .git/hooks/pre-commit ]] && echo yes || echo no)|$(cat "$G_PLUG/inner/code/pre-commit")"
+rm -f "$G_PLUG/inner/code/pre-commit" .git/hooks/pre-commit .git/hooks/pre-commit.bak.*
+# The plugin's own repository: its .git folder is the one place in the plugin folder allowed.
+git init -q "$G_PLUG"
+git -C "$G_PLUG" config core.hooksPath inner/code
+assert_exit "in the plugin's own repository, a core.hooksPath into its folder is refused" 1 \
+  bash -c "cd '$G_PLUG' && bash scripts/guards/install.sh"
+git -C "$G_PLUG" config --unset core.hooksPath
+assert_exit "in the plugin's own repository, the default .git/hooks is accepted" 0 \
+  bash -c "cd '$G_PLUG' && bash scripts/guards/install.sh"
+assert_eq "the hook lands in the plugin repository's .git/hooks, and nowhere else in it" "yes|no" \
+  "$([[ -x "$G_PLUG/.git/hooks/pre-commit" ]] && echo yes || echo no)|$([[ -e "$G_PLUG/inner/code/pre-commit" ]] && echo yes || echo no)"
+# A repository inside the plugin folder is refused outright.
+mkdir -p "$G_PLUG/inner/proj"
+git init -q "$G_PLUG/inner/proj"
+assert_exit "install.sh refuses a repository that lies inside the plugin's own folder" 1 \
+  bash -c "cd '$G_PLUG/inner/proj' && bash '$G_INSTALL'"
+assert_eq "the refused repository inside the plugin gets no hook" "no" \
+  "$([[ -e "$G_PLUG/inner/proj/.git/hooks/pre-commit" ]] && echo yes || echo no)"
+# GIT_DIR, GIT_WORK_TREE and GIT_CONFIG do not move the target.
+rm -f "$G_PLUG/.git/hooks/pre-commit" .git/hooks/pre-commit
+env GIT_DIR="$G_PLUG/.git" GIT_WORK_TREE="$G_PLUG" bash "$G_INSTALL" >/dev/null 2>&1
+assert_eq "with GIT_DIR and GIT_WORK_TREE on the plugin, the hook lands in the current folder's repository" "yes|no" \
+  "$([[ -x .git/hooks/pre-commit ]] && echo yes || echo no)|$([[ -e "$G_PLUG/.git/hooks/pre-commit" ]] && echo yes || echo no)"
+git init -q --bare "$G_PLUG/inner/gitdir"
+env GIT_DIR="$G_PLUG/inner/gitdir" GIT_WORK_TREE="$WORKDIR" GIT_CONFIG="$G_PLUG/inner/code/config" \
+  bash "$G_INSTALL" --global >/dev/null 2>&1
+assert_eq "--global with GIT_DIR and GIT_CONFIG in the plugin folder sets core.hooksPath in this repository only" \
+  ".git/temper-git-hooks|none|no" \
+  "$(git config --local --get core.hooksPath)|$(git --git-dir="$G_PLUG/inner/gitdir" config --get core.hooksPath || echo none)|$([[ -e "$G_PLUG/inner/code/config" ]] && echo yes || echo no)"
+git config --unset core.hooksPath
+rm -rf .git/temper-git-hooks linked-hooks rel-dir
+# The installed hook fails open when python3 is missing, and still blocks a staged secret.
+rm -f .git/hooks/pre-commit
+bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
+echo '{"command": "temper", "run_mode": "interactive"}' > .temper/build-state.json
+echo '{"check": {"verdict": "FAIL", "requirements": [], "ts": "x"}}' > .temper/gates.json
+echo '[]' > .temper/overrides.json
+NOPY="$WORKDIR/no-python-bin"
+mkdir -p "$NOPY"
+for t in bash env git cat grep head sed tr date dirname; do ln -sf "$(command -v "$t")" "$NOPY/$t"; done
+BASH_BIN="$(command -v bash)"
+assert_exit "with python3, the installed hook blocks on a red gate" 1 "$BASH_BIN" .git/hooks/pre-commit
+assert_exit "without python3 on PATH, the installed hook fails open" 0 env PATH="$NOPY" "$BASH_BIN" .git/hooks/pre-commit
+G_KEY="AKIA$(printf 'Q%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)"
+printf 'key = %s\n' "$G_KEY" > leaked.txt
+git add leaked.txt >/dev/null 2>&1
+assert_exit "without python3 on PATH, the installed hook still blocks a staged secret" 1 \
+  env PATH="$NOPY" "$BASH_BIN" .git/hooks/pre-commit
+git rm -q --cached leaked.txt >/dev/null 2>&1 || true
+rm -rf leaked.txt "$NOPY" .git/hooks/pre-commit
+# A repository inside the plugin's own folder (a second checkout or worktree placed in it) is
+# part of the plugin: the CLI refuses to run there, so the installed hook and the in-agent
+# commit gate skip the gate there instead of blocking every commit.
+G_OWN="$WORKDIR/gate-plugin"
+rm -rf "$G_OWN"
+mkdir -p "$G_OWN/scripts/guards" "$G_OWN/inner/proj"
+cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$G_OWN/scripts/"
+cp -R "$REPO_ROOT/agents" "$G_OWN/agents"
+for g in install.sh block-secrets.sh verify-tests-ran.sh block-uncommitted-gate.sh; do
+  cp "$REPO_ROOT/scripts/guards/$g" "$G_OWN/scripts/guards/$g"
+done
+bash "$G_OWN/scripts/guards/install.sh" >/dev/null 2>&1
+assert_exit "a hook whose CLI sits outside the project blocks a red gate" 1 bash .git/hooks/pre-commit
+git init -q "$G_OWN/inner/proj"
+cp -R .temper "$G_OWN/inner/proj/.temper"
+cp .git/hooks/pre-commit "$G_OWN/inner/proj/.git/hooks/pre-commit"
+assert_exit "the same hook skips the gate in a repository inside the plugin folder" 0 \
+  bash -c "cd '$G_OWN/inner/proj' && bash .git/hooks/pre-commit"
+assert_exit "the in-agent commit gate blocks a red gate in a project outside the plugin folder" 2 \
+  bash -c "echo '{\"tool_input\": {\"command\": \"git commit -m x\"}}' | bash '$G_OWN/scripts/guards/block-uncommitted-gate.sh'"
+assert_exit "the in-agent commit gate skips a repository inside the plugin folder" 0 \
+  bash -c "cd '$G_OWN/inner/proj' && echo '{\"tool_input\": {\"command\": \"git commit -m x\"}}' | bash '$G_OWN/scripts/guards/block-uncommitted-gate.sh'"
+rm -rf "$G_OWN" .git/hooks/pre-commit
+# stage-marker.sh and verify-stage-gate.sh: a .temper folder, marker or log that is a symlink
+# would send the write out of the project's .temper folder, so the hooks do nothing then.
+cp "$REPO_ROOT/scripts/guards/stage-marker.sh" "$REPO_ROOT/scripts/guards/verify-stage-gate.sh" "$G_PLUG/scripts/guards/"
+G_PROJ="$WORKDIR/guard-project"
+rm -rf "$G_PROJ"
+mkdir -p "$G_PROJ"
+ln -s "$G_PLUG/inner/code" "$G_PROJ/.temper"
+echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$G_PROJ" bash "$G_PLUG/scripts/guards/stage-marker.sh"
+rm -f "$G_PROJ/.temper"
+mkdir -p "$G_PROJ/.temper"
+ln -s "$G_PLUG/inner/code/marker.json" "$G_PROJ/.temper/pending-stage.json"
+echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$G_PROJ" bash "$G_PLUG/scripts/guards/stage-marker.sh"
+assert_eq "stage-marker writes nothing through a symlinked .temper folder or marker" "" "$(ls "$G_PLUG/inner/code")"
+rm -f "$G_PROJ/.temper/pending-stage.json"
+echo '{"stage": "plan", "blocks": 0}' > "$G_PROJ/.temper/pending-stage.json"
+ln -s "$G_PLUG/inner/code/log.txt" "$G_PROJ/.temper/stage-gate.log"
+assert_exit "verify-stage-gate still blocks when only its log file is a symlink" 2 \
+  bash -c "echo '{}' | CLAUDE_PROJECT_DIR='$G_PROJ' bash '$G_PLUG/scripts/guards/verify-stage-gate.sh'"
+assert_eq "verify-stage-gate writes nothing through a symlinked log file" "" "$(ls "$G_PLUG/inner/code")"
+rm -f "$G_PROJ/.temper/stage-gate.log" "$G_PROJ/.temper/pending-stage.json"
+ln -s "$G_PLUG/inner/code/marker.json" "$G_PROJ/.temper/pending-stage.json"
+echo '{"stage": "plan", "blocks": 0}' > "$G_PLUG/inner/code/marker.json"
+assert_exit "verify-stage-gate skips a marker that is a symlink" 0 \
+  bash -c "echo '{}' | CLAUDE_PROJECT_DIR='$G_PROJ' bash '$G_PLUG/scripts/guards/verify-stage-gate.sh'"
+assert_eq "the skipped marker's target is left as it was" '{"stage": "plan", "blocks": 0}' "$(cat "$G_PLUG/inner/code/marker.json")"
+rm -rf "$G_PROJ" "$G_PLUG/inner/code/marker.json"
+# run-formatter.sh: a file name is only ever a name, never shell text.
+cat >> .claude/temper.config <<'EOF'
+format:
+  cmd: "perl -pi -e 's/  +/ /g' {file}"
+EOF
+G_FMT="$REPO_ROOT/scripts/guards/run-formatter.sh"
+for name in 'a;touch INJECTED_A;.txt' 'b$(touch INJECTED_B).txt' 'c`touch INJECTED_C`.txt'; do
+  printf 'x  y\n' > "$name"
+  python3 -c 'import json, sys; print(json.dumps({"tool_input": {"file_path": sys.argv[1]}}))' "$WORKDIR/$name" \
+    | CLAUDE_PROJECT_DIR="$WORKDIR" bash "$G_FMT"
+done
+assert_eq "formatter: a file name holding ';', a command substitution or backticks runs nothing" "0" \
+  "$(find . -maxdepth 1 -name 'INJECTED*' | wc -l | tr -d ' ')"
+assert_eq "formatter: such a file is still formatted, its name passed as one argument" "x y|x y|x y" \
+  "$(cat 'a;touch INJECTED_A;.txt')|$(cat 'b$(touch INJECTED_B).txt')|$(cat 'c`touch INJECTED_C`.txt')"
+rm -f 'a;touch INJECTED_A;.txt' 'b$(touch INJECTED_B).txt' 'c`touch INJECTED_C`.txt' INJECTED_*
+for form in '"{file}"' "'{file}'"; do
+  setup
+  printf 'format:\n  cmd: perl -pi -e s/xx/x/g %s && true\n' "$form" >> .claude/temper.config
+  printf 'axxb\n' > 'with space.txt'
+  python3 -c 'import json, sys; print(json.dumps({"tool_input": {"file_path": sys.argv[1]}}))' "$WORKDIR/with space.txt" \
+    | CLAUDE_PROJECT_DIR="$WORKDIR" bash "$G_FMT"
+  assert_eq "formatter: {file} written as $form takes a name with a space as one argument" "axb" "$(cat 'with space.txt')"
+  rm -f 'with space.txt'
+done
+# The config reader takes off one pair of quotes around a whole value only, so a format.cmd
+# that ends in "{file}" keeps its closing quote.
+setup
+printf 'format:\n  cmd: perl -pi -e s/xx/x/g "{file}"\n' >> .claude/temper.config
+printf 'axxb\n' > 'end quote.txt'
+python3 -c 'import json, sys; print(json.dumps({"tool_input": {"file_path": sys.argv[1]}}))' "$WORKDIR/end quote.txt" \
+  | CLAUDE_PROJECT_DIR="$WORKDIR" bash "$G_FMT"
+assert_eq "formatter: a format.cmd that ends in \"{file}\" keeps its closing quote and runs" "axb" "$(cat 'end quote.txt')"
+rm -f 'end quote.txt'
+printf 'k1: "x y"\nk2: a "b"\nk3: \x27q\x27\n' > quoted.cfg
+assert_eq "config get takes off one pair of matching quotes around a whole value, and only that" 'x y|a "b"|q' \
+  "$(TEMPER_CONFIG=quoted.cfg "$TEMPER" config get k1)|$(TEMPER_CONFIG=quoted.cfg "$TEMPER" config get k2)|$(TEMPER_CONFIG=quoted.cfg "$TEMPER" config get k3)"
+rm -f quoted.cfg
+# plan_review.py: in the plugin's own repository (the current folder is the plugin folder), an
+# output under its .temper folder is allowed; every other place in the plugin folder is not.
+PR_OWN="$WORKDIR/pr-own-plugin"
+rm -rf "$PR_OWN"
+mkdir -p "$PR_OWN/scripts" "$PR_OWN/templates" "$PR_OWN/.temper/specs/probe"
+cp "$REPO_ROOT/scripts/plan_review.py" "$PR_OWN/scripts/plan_review.py"
+cp "$REPO_ROOT/templates/plan-review.html" "$PR_OWN/templates/plan-review.html"
+printf '# Plan: probe\n\n## Tasks\n- one\n' > "$PR_OWN/.temper/specs/probe/plan.md"
+echo '{"comments": [{"id": "c1", "type": "general-note", "text": "hi"}]}' > "$PR_OWN/.temper/specs/probe/export.json"
+assert_exit "plan_review: in the plugin's own repository, the default output under .temper is written" 0 \
+  bash -c "cd '$PR_OWN' && python3 scripts/plan_review.py render .temper/specs/probe"
+assert_exit "plan_review: in the plugin's own repository, the artifact output under .temper is written" 0 \
+  bash -c "cd '$PR_OWN' && python3 scripts/plan_review.py render .temper/specs/probe --target artifact -o .temper/review-artifact-probe.html"
+assert_exit "plan_review: in the plugin's own repository, a merge output under .temper is written" 0 \
+  bash -c "cd '$PR_OWN' && python3 scripts/plan_review.py merge --feature probe -o .temper/specs/probe/review-comments.json .temper/specs/probe/export.json"
+assert_eq "the three outputs under .temper exist" "yes|yes|yes" \
+  "$([[ -f "$PR_OWN/.temper/specs/probe/review.html" ]] && echo yes || echo no)|$([[ -f "$PR_OWN/.temper/review-artifact-probe.html" ]] && echo yes || echo no)|$([[ -f "$PR_OWN/.temper/specs/probe/review-comments.json" ]] && echo yes || echo no)"
+assert_exit "plan_review: in the plugin's own repository, an output outside .temper is still refused" 2 \
+  bash -c "cd '$PR_OWN' && python3 scripts/plan_review.py render .temper/specs/probe -o templates/copy.html"
+ln -s "$PR_OWN/templates" "$PR_OWN/.temper/specs/link"
+assert_exit "plan_review: a path under .temper that a symlink sends elsewhere in the plugin is refused" 2 \
+  bash -c "cd '$PR_OWN' && python3 scripts/plan_review.py render .temper/specs/probe -o .temper/specs/link/x.html"
+assert_exit "plan_review: from another folder, an output under the plugin's .temper is refused" 2 \
+  python3 "$PR_OWN/scripts/plan_review.py" render "$PR_OWN/.temper/specs/probe" -o "$PR_OWN/.temper/other.html"
+assert_eq "the refused outputs write nothing" "no|no|no" \
+  "$([[ -e "$PR_OWN/templates/copy.html" ]] && echo yes || echo no)|$([[ -e "$PR_OWN/templates/x.html" ]] && echo yes || echo no)|$([[ -e "$PR_OWN/.temper/other.html" ]] && echo yes || echo no)"
+rm -rf "$PR_OWN" "$G_PLUG"
+# validate-directory.sh: git grep reads the files; no file is opened by a path the script builds.
+assert_eq "validate-directory opens no file by a path it builds from a listed name" "0" \
+  "$(grep -c '"\$ROOT/\$rel"' "$REPO_ROOT/scripts/validate-directory.sh")"
+# validate-panels.py and validate-docs.sh: an agents or commands file that plugin.json does not list fails.
+V_PLUG="$WORKDIR/listing-plugin"
+rm -rf "$V_PLUG"
+mkdir -p "$V_PLUG/scripts" "$V_PLUG/.claude-plugin" "$V_PLUG/agents" "$V_PLUG/commands" "$V_PLUG/docs" "$V_PLUG/.claude"
+cp "$REPO_ROOT/scripts/validate-panels.py" "$REPO_ROOT/scripts/validate-docs.sh" "$V_PLUG/scripts/"
+echo '{"name": "x", "agents": ["./agents/a.md"], "commands": ["./commands/temper.md"]}' > "$V_PLUG/.claude-plugin/plugin.json"
+printf 'Return exactly ONE closed panel.\n' > "$V_PLUG/agents/a.md"
+printf 'temper\n' > "$V_PLUG/commands/temper.md"
+printf 'Use /temper and /temper:zz.\n' > "$V_PLUG/docs/commands.md"
+git init -q "$V_PLUG"
+assert_exit "validate-panels passes when plugin.json lists every brief and command" 0 python3 "$V_PLUG/scripts/validate-panels.py"
+printf 'Return exactly ONE closed panel.\n' > "$V_PLUG/agents/zz.md"
+printf 'zz\n' > "$V_PLUG/commands/zz.md"
+OUT=$(python3 "$V_PLUG/scripts/validate-panels.py" 2>&1; true)
+assert_eq "validate-panels names an agents and a commands file that plugin.json does not list" "yes|yes" \
+  "$(echo "$OUT" | grep -qx 'FAIL agents/zz.md is not listed in .claude-plugin/plugin.json' && echo yes || echo no)|$(echo "$OUT" | grep -qx 'FAIL commands/zz.md is not listed in .claude-plugin/plugin.json' && echo yes || echo no)"
+assert_exit "validate-panels fails on an unlisted file" 1 python3 "$V_PLUG/scripts/validate-panels.py"
+OUT=$(bash "$V_PLUG/scripts/validate-docs.sh" 2>&1; true)
+assert_eq "validate-docs names a command file that plugin.json does not list" "yes" \
+  "$(echo "$OUT" | grep -A1 'command files that .claude-plugin/plugin.json does not list' | grep -q 'commands/zz.md' && echo yes || echo no)"
+rm -rf "$V_PLUG"
+# validate-plugin.sh: a plugin path in instruction text is the braced variable, '/' and a fixed path.
+VP_PLUG="$WORKDIR/root-var-plugin"
+rm -rf "$VP_PLUG"
+mkdir -p "$VP_PLUG/scripts" "$VP_PLUG/commands" "$VP_PLUG/reference" "$VP_PLUG/docs"
+cp "$REPO_ROOT/scripts/validate-plugin.sh" "$VP_PLUG/scripts/validate-plugin.sh"
+cat > "$VP_PLUG/commands/x.md" <<'EOF'
+Run $CLAUDE_PLUGIN_ROOT/scripts/temper gate plan.
+The folder ${CLAUDE_PLUGIN_ROOT} holds it.
+Read ${CLAUDE_PLUGIN_ROOT}/packs/{name}/rules.md first.
+Read ${CLAUDE_PLUGIN_ROOT}/../outside.md first.
+List ${CLAUDE_PLUGIN_ROOT}/packs/*/rules.md first.
+Run ${CLAUDE_PLUGIN_ROOT}/$SUB/x first.
+Run ${CLAUDE_PLUGIN_ROOT:-/opt/x}/scripts/temper first.
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan --spec-path .temper/specs/{slug}`.
+The CLAUDE_PLUGIN_ROOT variable names the plugin folder.
+EOF
+printf 'See ${CLAUDE_PLUGIN_ROOT}/reference/plan.md, then "${CLAUDE_PLUGIN_ROOT}/scripts/temper".\n' > "$VP_PLUG/reference/ok.md"
+printf 'Docs may say $CLAUDE_PLUGIN_ROOT.\n' > "$VP_PLUG/docs/free.md"
+git init -q "$VP_PLUG"
+OUT=$(bash "$VP_PLUG/scripts/validate-plugin.sh" 2>&1; true)
+assert_eq "validate-plugin flags the unbraced, no-slash, placeholder, '..', wildcard and second-variable forms" "1 2 3 4 5 6 7" \
+  "$(echo "$OUT" | sed -n 's/^  commands\/x\.md:\([0-9]*\): .*/\1/p' | paste -sd' ' -)"
+assert_eq "validate-plugin leaves a fixed path, the variable named in prose, and files outside the instruction folders alone" "0|0" \
+  "$(echo "$OUT" | grep -c '^  reference/ok.md:')|$(echo "$OUT" | grep -c '^  docs/')"
+rm -rf "$VP_PLUG"
 
 # --- block-protected-paths.sh and block-uncommitted-gate.sh: the CLI next to the script ---
 setup

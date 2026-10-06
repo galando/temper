@@ -7,16 +7,16 @@
 #   2. README.md has an "Install" heading and a "What the mod reads and writes" heading.
 #   3. README.md has a plain text line that names the phases, before the Mermaid block.
 #   4. Every image in README.md has alt text.
-#   5. No text file names the bundled assets folder outside a Markdown link target. The files
-#      come from git ls-files: top level files, .claude/CLAUDE.md and the folders listed at
-#      rule 5 below. No other folder is opened.
+#   5. No text file names the bundled assets folder outside a Markdown link target. git grep
+#      reads the files, chosen by fixed pathspecs: top level files, .claude/CLAUDE.md and the
+#      folders listed at rule 5 below. No other folder is read.
 #   6. plugin.json and marketplace.json carry no "options" key.
 #   7. plugin.json has a description, keywords and a version, and marketplace.json
 #      names the same plugin.
 #   8. A LICENSE file exists (LICENSE, LICENSE.md or LICENSE.txt).
 #
 # Test hook: VALIDATE_DIRECTORY_ROOT=<dir> checks that folder instead of this clone. The folder
-# must be a git work tree (rule 5 lists its files with git ls-files). This script writes nothing.
+# must be a git work tree (rule 5 reads its files with git grep). This script writes nothing.
 set -uo pipefail
 
 # The plugin folder: this script sits in its scripts folder, so strip that literal suffix.
@@ -65,30 +65,31 @@ else
 fi
 
 # 5. The bundled assets folder path may appear only as a Markdown link target.
-# The files come from git ls-files (tracked, plus new files git does not ignore), filtered here:
-# a top level file, .claude/CLAUDE.md, or a file in one of the folders named in the case below,
-# with an md, sh, tape, tpl or json extension. Every other folder is skipped without being
-# opened, and so are docs/history (old release notes), scripts/tests and this script.
+# git grep reads the files, chosen by the fixed pathspecs below (tracked files, plus new files git
+# does not ignore): a top level file, .claude/CLAUDE.md, or a file in one of the named folders.
+# docs/history (old release notes), scripts/tests and this script are excluded. This script opens
+# no file by a path it builds: it only filters the lines git grep prints, keeping a file with an
+# md, sh, tape, tpl or json extension and a line that still names the folder once every Markdown
+# link target on it is removed.
 ASSETS_DIR_NAME="docs/assets"
 LEAKS=""
 if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  fail "rule 5 lists files with git ls-files, and $ROOT is not a git work tree"
+  fail "rule 5 reads files with git grep, and $ROOT is not a git work tree"
 else
-  while IFS= read -r -d '' rel; do
-    # A path with a '/' is kept only when its first folder is one of these names.
-    if [[ "$rel" =~ ^([^/]+)/ && "$rel" != ".claude/CLAUDE.md" ]]; then
-      case "${BASH_REMATCH[1]}" in
-        .claude-plugin|.github|agents|commands|docs|examples|packs|reference|scripts|skills|templates) ;;
-        *) continue ;;
-      esac
-    fi
-    [[ "${rel#docs/history/}" == "$rel" && "${rel#scripts/tests/}" == "$rel" ]] || continue
-    [[ "$rel" != "scripts/validate-directory.sh" ]] || continue
+  SEEN=$'\n'
+  while IFS= read -r -d '' rel && IFS= read -r -d '' lineno && IFS= read -r line; do
     [[ "$rel" =~ \.(md|sh|tape|tpl|json)$ ]] || continue
-    [[ -f "$ROOT/$rel" ]] || continue
-    hit="$(sed -E 's/\]\([^)]*\)//g' "$ROOT/$rel" | grep -nF "$ASSETS_DIR_NAME" | head -2 || true)"
-    [[ -n "$hit" ]] && LEAKS+="  $rel: $(printf '%s' "$hit" | head -1 | cut -c1-100)"$'\n'
-  done < <(git -C "$ROOT" ls-files -z -co --exclude-standard 2>/dev/null)
+    [[ "$SEEN" != *$'\n'"$rel"$'\n'* ]] || continue
+    rest="$(printf '%s\n' "$line" | sed -E 's/\]\([^)]*\)//g')"
+    [[ "$rest" == *"$ASSETS_DIR_NAME"* ]] || continue
+    SEEN+="$rel"$'\n'
+    LEAKS+="  $rel: $(printf '%s:%s' "$lineno" "$rest" | cut -c1-100)"$'\n'
+  done < <(git -C "$ROOT" -c grep.column=false -c grep.fullName=false -c grep.lineNumber=true \
+             grep --untracked -z -n -I -F -e "$ASSETS_DIR_NAME" -- \
+             ':(glob)*' .claude/CLAUDE.md .claude-plugin .github agents commands docs examples \
+             packs reference scripts skills templates \
+             ':(exclude)docs/history' ':(exclude)scripts/tests' ':(exclude)scripts/validate-directory.sh' \
+             2>/dev/null)
 fi
 if [[ -n "$LEAKS" ]]; then
   fail "the bundled assets folder path is named outside a Markdown link target:"

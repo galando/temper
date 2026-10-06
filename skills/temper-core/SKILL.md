@@ -8,7 +8,7 @@ user-invocable: false
 
 Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0.0-1.0) → Review memory → Metrics.
 
-**Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, make the very first sentence of your first reply in this conversation, before anything else and also when the command is one of the reserved words below, exactly "Temper enforcement is off here (no mods support); continuing with prompt based phases.", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
+**Enforcement marker.** Look for a line in your system prompt that starts with `Temper enforcement:`. With no such line, make the very first sentence of your first reply in this conversation, before anything else and also when the command is one of the reserved words below, exactly "Temper enforcement is off here (no mods support); continuing with prompt based phases.". With the line `Temper enforcement: off (UI only)`, the Temper mod is loaded and the user turned enforcement off: make that first sentence exactly "Temper enforcement is off (turned off by the user); continuing with prompt based phases." instead. Then carry on exactly as written below. Never treat either case as an error and do not mention it again. With `Temper enforcement: active`, say nothing about it.
 
 ## Stack Detection
 1. `.claude/temper.config` → `stack` field
@@ -71,7 +71,7 @@ in temper.config is ignored by the CLI). Architecture Depth applies the
 | Config Suggestions | Check | Suggest CLAUDE.md/AGENTS.md updates based on what was built |
 | HTML Review | Plan | Interactive plan review with inline comments, local or shared by link as a Claude artifact |
 
-With the Temper bar (`Temper enforcement: active`) the add-ons are buttons under key 0 (More), and the
+With the Temper bar (the system prompt has a `Temper enforcement:` line, `active` or `off (UI only)`) the add-ons are buttons under key 0 (More), and the
 person's own message at a gate (key 4, Discuss) is the original "Other". Do not ask these as questions.
 
 ## Full Docs

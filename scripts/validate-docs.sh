@@ -15,38 +15,52 @@ ok() { PASS=$((PASS+1)); }
 fail() { echo "FAIL: $1"; FAIL=$((FAIL+1)); }
 
 # 1. docs/commands.md names every command the plugin ships. The command list is the one in
-# .claude-plugin/plugin.json, where each command file is spelled out in full.
+# .claude-plugin/plugin.json, where each command file is spelled out in full, plus every
+# commands/<name>.md file that git ls-files prints (tracked, plus new files git does not
+# ignore; no glob). A command file that plugin.json does not list fails too.
 COMMANDS_MD="$REPO_ROOT/docs/commands.md"
 PJ="$REPO_ROOT/.claude-plugin/plugin.json"
 
 if [[ -f "$COMMANDS_MD" && -f "$PJ" ]]; then
   # Extract command names from commands.md (e.g., /temper, /temper:plan, etc.)
   MD_CMDS=$(grep -oE '/temper(:[a-z]+)?' "$COMMANDS_MD" | sort -u || true)
-  # One line per plugin.json command (its slash command name), or BAD for an entry that is
-  # not a plain .md name in the commands folder.
-  PJ_CMDS=$(python3 -c "
+  # One line per command (its slash command name), BAD for a plugin.json entry that is not a
+  # plain .md name in the commands folder, UNLISTED for a command file plugin.json leaves out.
+  PJ_CMDS=$( (cd "$REPO_ROOT" && git ls-files -z -co --exclude-standard -- commands 2>/dev/null || true) | python3 -c "
 import json, re, sys
 PRE = './commands/'
+def slash(stem):
+    return '/temper' if stem == 'temper' else '/temper:' + stem
+listed = set()
 for c in json.load(open(sys.argv[1])).get('commands', []):
     name = c[len(PRE):] if isinstance(c, str) and c.startswith(PRE) else ''
     m = re.fullmatch(r'([a-z0-9-]+)\.md', name)
     if not m:
         print('BAD ' + str(c))
-    elif m.group(1) == 'temper':
-        print('/temper')
     else:
-        print('/temper:' + m.group(1))
+        listed.add(name)
+        print(slash(m.group(1)))
+for rel in sorted(set(sys.stdin.read().split('\0'))):
+    parts = rel.split('/')
+    if len(parts) == 2 and parts[0] == 'commands' and parts[1].endswith('.md') and parts[1] not in listed:
+        print('UNLISTED ' + rel)
+        print(slash(parts[1][:-len('.md')]))
 " "$PJ" 2>/dev/null || echo "BAD plugin.json could not be read")
   BAD_CMDS=$(printf '%s\n' "$PJ_CMDS" | sed -n 's/^BAD //p')
-  FILE_CMDS=$(printf '%s\n' "$PJ_CMDS" | grep -v '^BAD ' | sort -u || true)
+  UNLISTED_CMDS=$(printf '%s\n' "$PJ_CMDS" | sed -n 's/^UNLISTED //p')
+  FILE_CMDS=$(printf '%s\n' "$PJ_CMDS" | grep -v -e '^BAD ' -e '^UNLISTED ' | sort -u || true)
 
   if [[ -n "$BAD_CMDS" ]]; then
     fail "plugin.json command entries that are not a plain .md name in the commands folder:"
     echo "$BAD_CMDS" | sed 's/^/  /'
   fi
+  if [[ -n "$UNLISTED_CMDS" ]]; then
+    fail "command files that .claude-plugin/plugin.json does not list:"
+    echo "$UNLISTED_CMDS" | sed 's/^/  /'
+  fi
   MISSING_IN_MD=$(comm -23 <(echo "$FILE_CMDS") <(echo "$MD_CMDS") || true)
   if [[ -n "$MISSING_IN_MD" ]]; then
-    fail "Commands in plugin.json but missing from docs/commands.md:"
+    fail "Commands in plugin.json or the commands folder but missing from docs/commands.md:"
     echo "$MISSING_IN_MD" | sed 's/^/  /'
   else
     ok

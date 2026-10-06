@@ -54,9 +54,50 @@ describe('decision CLI calls', () => {
   test('override, evidence accept and state advance are recognised', () => {
     expect(classifyBash('temper override plan --reason ok').decisions).toEqual(['override'])
     expect(classifyBash('scripts/temper evidence accept --stage review --id 1 --reason x').decisions).toEqual(['accept'])
-    expect(classifyBash('bash "$CLAUDE_PLUGIN_ROOT/scripts/temper" state advance plan').decisions).toEqual(['advance'])
-    expect(classifyBash('cd x && $CLAUDE_PLUGIN_ROOT/scripts/temper override build --reason r').decisions).toEqual(['override'])
+    expect(classifyBash('bash "${CLAUDE_PLUGIN_ROOT}/scripts/temper" state advance plan').decisions).toEqual(['advance'])
+    expect(classifyBash('cd x && $PLUGIN_DIR/scripts/temper override build --reason r').decisions).toEqual(['override'])
   })
+
+  // The commands reach the script by the path Claude Code fills in for the plugin folder (it may hold spaces, so
+  // it can be quoted), and a subagent may still write the variable itself. Each is read exactly like scripts/temper.
+  const FORMS = [
+    '/home/u/.claude/plugins/cache/temper/temper/9.6.5/scripts/temper',
+    '"/Users/Jo Doe/Library/Claude Plugins/temper/9.6.5/scripts/temper"',
+    "'/Users/Jo Doe/Library/Claude Plugins/temper/9.6.5/scripts/temper'",
+    '${CLAUDE_PLUGIN_ROOT}/scripts/temper',
+    '"${CLAUDE_PLUGIN_ROOT}/scripts/temper"',
+  ]
+  const CALLS = [
+    // decisions
+    'override plan --reason x',
+    'evidence accept --stage review --id 1 --reason x',
+    'state advance intent_complete plan',
+    'state advance plan_complete build',
+    'state set next_stage plan',
+    // reads and records
+    'gate plan',
+    'gate check',
+    'state get next_stage',
+    'report',
+    'status --json',
+    'evidence add --stage build --claim "unit tests" --label PROVEN',
+    'evidence list --stage review',
+    'state set task 2',
+    'state set complexity medium',
+    // run state
+    'state clear',
+    'state archive',
+    'state init pw',
+    'state loop check fix',
+  ]
+  for (const form of FORMS) {
+    test(`${form} is read like scripts/temper`, () => {
+      for (const call of CALLS) {
+        expect({ call, ...classifyBash(`${form} ${call}`) }).toEqual({ call, ...classifyBash(`scripts/temper ${call}`) })
+        expect({ call, ...classifyBash(`cd /repo && ${form} ${call} 2>&1 | tail -3`) }).toEqual({ call, ...classifyBash(`cd /repo && scripts/temper ${call} 2>&1 | tail -3`) })
+      }
+    })
+  }
 
   test('the CLI commands that only read or compute verdicts are not decisions', () => {
     for (const c of ['temper gate build', 'temper evidence add --stage build --claim x', 'temper evidence list', 'temper status --json', 'temper state loop check fix']) {

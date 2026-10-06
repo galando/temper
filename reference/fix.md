@@ -75,7 +75,8 @@ at once — you can't tell which worked.
    ```
    With the guardrails pack enabled, `protect-regression-test.sh` now blocks any edit to that
    file for the rest of the run — fix the code, not the test. A genuinely-wrong test is a
-   human's call to unlock (`temper state set regression_test ""`), never the agent's.
+   human's call to unlock (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state set regression_test ""`, run only
+   when the human says so), never the agent's.
 
 2. **Validate the approach against enabled packs** before writing the fix (read
    `.claude/temper.config` for the pack list + the stack pack): a BLOCK-rule violation
@@ -139,8 +140,10 @@ Then two records, both committed:
 
 - Tests fail after the fix → restore the project file you changed (`git checkout -- <that file>`,
   only ever a file inside the project), re-run, re-investigate.
-- The attempt limit is `temper config get fix.max-loops` (default 3), enforced by
-  `temper state loop check fix` once the key is set in `.claude/temper.config`.
+- The attempt limit is what `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get fix.max-loops` prints
+  (default 3). The loop back from Check to Fix,
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper state loop check fix`, enforces it once the key is
+  set in `.claude/temper.config`.
 - `fix.max-loops` attempts fail → keep the regression test (it proves the bug), show the RCA and
   what you tried, ask for context.
 - It's actually a design flaw, not a bug → "this needs `/temper:plan` for a redesign,

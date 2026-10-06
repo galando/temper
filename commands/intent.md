@@ -42,10 +42,10 @@ presents for acceptance.
    structure is your job, not theirs. Write every answer into `### Decisions`
    immediately, as `{question} -> {answer} ({who decided}, {date})`. **Never write
    card data or personal data into the intent** — reference the ticket instead.
-   When a ticket key is linked, prefix the slug with it in lowercase (`{key}-{slug}`).
-   A slug is lowercase letters, digits, '.', '_' or '-', starts with a letter or digit,
-   and has no '..': `/temper` later passes it to `state init`, which refuses anything
-   else.
+   When a ticket key is linked, prefix the slug with the key as typed (`{KEY}-{slug}`,
+   for example `PROJ-123-login`). A slug is letters (either case), digits, '.', '_' or
+   '-', starts with a letter or digit, and has no '..' or '/': `/temper` later passes it
+   to `state init`, which refuses anything else.
    **Soft source words:** never turn a source "should" or "may" into "must"
    silently. Ask the originator whether the source means required or optional and
    record the answer in `### Decisions`. With no answer yet, keep the source wording

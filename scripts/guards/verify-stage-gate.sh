@@ -11,7 +11,10 @@
 #
 # Every file it reads or writes is a fixed name in the project's .temper folder: the hook
 # changes into the project folder first. A project folder that lies inside this plugin's
-# own folder is skipped (exit 0): the hook never writes inside the plugin.
+# own folder is skipped (exit 0): the hook never writes inside the plugin. The plugin folder
+# itself is a project like any other (developing Temper on its own repository). A .temper
+# folder or a marker file that is a symlink is skipped too, and so is a log file that is a
+# symlink, because writing through it would land outside the project's .temper folder.
 #
 # Loop guard, two layers: after MAX_BLOCKS refusals (counted in the marker itself) the
 # hook fails open — a model that cannot satisfy the gate (broken CLI, read-only disk)
@@ -30,6 +33,7 @@ set -uo pipefail
 MAX_BLOCKS=2
 
 _log() { # append-only trace in the project's .temper folder (the cwd); never fails the hook
+  [[ ! -L .temper/stage-gate.log ]] || return 0
   printf '%s verify-stage-gate %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo -)" "$1" \
     >> .temper/stage-gate.log 2>/dev/null || true
 }
@@ -52,6 +56,7 @@ _main() {
   stdin_json="$(cat 2>/dev/null || true)"
   local proj; proj="$(_project_dir)" || return 0
   cd "$proj" 2>/dev/null || return 0
+  [[ ! -L .temper && ! -L .temper/pending-stage.json ]] || return 0
   [[ -f .temper/pending-stage.json ]] || return 0
   command -v python3 >/dev/null 2>&1 || { rm -f .temper/pending-stage.json 2>/dev/null; return 0; }
 

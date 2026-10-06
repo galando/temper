@@ -154,7 +154,7 @@ Work through one run. For each phase, check the refusal and the key.
   and a toast `Temper enforcement: off`. Run `/temper:temper enforcement on` to restore it.
 - [ ] If you can, set `pluginConfigs` for Temper in a managed settings file so that
   `uiMode` is locked, then run `/temper:temper mode full`. Expect
-  `Your organization set Temper's mode to ...; ask your admin to change it.`
+  `Your organization set Temper's mode to <value>. Ask your admin to change it.`
   If you cannot set managed settings, mark this step as skipped.
 
 ## 6. Compaction and layouts
@@ -186,6 +186,10 @@ the clone loaded (`-p --plugin-dir .`).
 - [ ] The three rows above behave as described. On each, the answer must not mention a
   plugin load error. The message `Temper enforcement is off here (no mods support)` is
   correct and expected when a skill runs.
+- [ ] **Enforcement turned off.** On a version that loads the mod, run
+  `/temper:temper enforcement off`, then `/temper:status`. Expect the answer to open once with
+  `Temper enforcement is off (turned off by the user)`, not the "no mods support" sentence.
+  Turn it back on with `/temper:temper enforcement on`.
 - [ ] **`claude -p` on your version.** Run `claude -p --plugin-dir . "/temper:status"`.
   Expect an answer and no question asked of you.
 

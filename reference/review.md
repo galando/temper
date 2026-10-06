@@ -17,7 +17,7 @@ definitions.
 **Modes:** Standalone (`/temper:review`) owns its human gate. Agent subprocess (from
 `/temper`, or from a standalone command running with `stages.subprocess: true`) starts
 clean and never shows an `AskUserQuestion` — return the summary, the caller owns the
-gate. Load the changed files — when `temper state get base_sha` returns a sha
+gate. Load the changed files: when `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get base_sha` returns a sha
 (checkpoint commits already landed, so a plain `git diff --name-only` returns
 nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 (`git status --porcelain`); otherwise fall back to `git diff --name-only` — plus
@@ -47,9 +47,22 @@ gate. Absent → skip silently.
 without the key reads as `off`: skip OCR silently and never run `ocr`. OCR sends the diff
 to the model provider the user set up for it, so it runs only when the user turns it on
 by setting `tools.ocr.mode` to `auto` or `require` under `tools:` in `.claude/temper.config`.
-When it is on, `command -v ocr` then probe `ocr review --preview`; ready → record
-`ocr_status = ready` (merge mechanics in `${CLAUDE_PLUGIN_ROOT}/docs/recommended-setup.md`). Absent/failing:
-`require` blocks with the install command, `auto` skips with a one-line notice.
+This page is the source of truth for how OCR behaves in a review:
+
+- **Probe (here, in Step 1).** Run `command -v ocr`, then `ocr review --preview`. Both
+  succeed: record `ocr_status = ready`.
+- **`ocr` not on the PATH.** `require` blocks the review and shows the install command
+  (`npm install -g @alibaba-group/open-code-review`). `auto` skips OCR with a one-line
+  notice and the review goes on without it.
+- **`ocr` present but the probe fails** (often no model provider set up for OCR). Both
+  modes print a one-line warning and continue with Temper's own review; this never
+  blocks.
+- **Run and merge (Step 2).** When `ocr_status` is ready, run OCR over the diff under
+  `tools.ocr.timeout` (minutes, default 10) and fold its findings in as `[OCR]`, or as
+  `[OCR+TEMPER]` when a Temper finding matches; the merge mechanics are in
+  `${CLAUDE_PLUGIN_ROOT}/docs/recommended-setup.md`. A failure or a timeout during the run is
+  handled like a failed probe: a one-line warning, then Temper's own review, never a
+  block.
 
 ## Step 1.5: Diff-Aware Fingerprinting
 
@@ -64,9 +77,14 @@ Split the changed files across subagents when the diff is large enough that para
 reading pays for each subagent's context setup; a small diff is reviewed inline. One
 hard constraint, because it bounds recursion: a review subagent never spawns subagents
 of its own (say so in its prompt). Each subagent gets the pack rules, the stack pattern
-file, the fingerprint, its file list, and this prompt shape:
+file, the fingerprint, its file list, and this prompt shape (write the plugin folder in
+place of the CLAUDE_PLUGIN_ROOT variable in its first line):
 
 ```
+Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with
+/scripts/temper taken off); wherever the brief or a reference page writes the
+CLAUDE_PLUGIN_ROOT variable, use this folder.
+
 For each issue: Severity (CRITICAL/HIGH/MEDIUM/LOW), Confidence (0.0-1.0), Category
 (logic/security/performance/quality/standards/architecture/test-gap), file:line,
 Description, Suggestion.
@@ -80,9 +98,10 @@ preferences that violate no pack rule. Classify each finding REGRESSION (was wor
 now broken — highest priority) / NEW ISSUE / PRE-EXISTING (lower priority).
 ```
 
-If `ocr_status == ready`, OCR owns line-level defect detection; the subagent covers
-pack rules, security, AI-code detection, architecture drift, test gaps, and intent
-validation, folding in OCR's `[OCR]` findings.
+If `ocr_status == ready`, OCR owns line-level defect detection (unless
+`tools.ocr.replace-defect-subagent` is `false`); the subagent covers pack rules,
+security, AI-code detection, architecture drift, test gaps, and intent validation,
+folding in OCR's `[OCR]` findings.
 
 **Performance severity floors:** N+1 query, missing pagination on an unbounded list,
 sync I/O in a hot path, non-atomic shared-state mutation in a concurrent handler →
@@ -204,7 +223,7 @@ proceed) / "Save for later". A change typed via "Other" is never approval — ma
 edit, re-show this same gate.
 
 **Accepting a finding.** A person can keep a finding as it stands with
-`temper evidence accept --stage review --id <n> --reason "<why>"`. The row stays in the
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence accept --stage review --id <n> --reason "<why>"`. The row stays in the
 ledger with the reason, the author (git identity) and the time; `temper gate review`
 stops counting it and its detail names the accepted count. The reason is required, an
 empty one exits 1 and writes nothing, and a finding already resolved or accepted cannot
@@ -251,7 +270,7 @@ suppression:
   keep-advisory; an accepted rule is written into the project's copy of the active pack,
   `.claude/packs/<name>/rules.md`. If the project has no copy yet (the pack is built-in or
   global), create it first from that pack's current rules so it shadows them, then add the
-  rule. Never edit a file under `$CLAUDE_PLUGIN_ROOT`.
+  rule. Never edit a file in the plugin folder.
 - **Suppress**: 3+ dismissals at acceptance_rate < 30% → downgrade one severity level;
   5+ at < 10% → auto-suppress (Step 4 then drops it).
 

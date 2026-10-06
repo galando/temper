@@ -22,36 +22,52 @@ the evidence ledger written by every stage (`temper evidence add`) and computes 
 per gate, rather than checking a single `build-state.json` stage field. `verify-tests-ran.sh`
 is kept as a fallback for a project that installed only this pack, without the CLI.
 
-**Plugin-shipped subset (v8):** the standalone-stage gate pair (`stage-marker.sh` +
-`verify-stage-gate.sh`, last two rows of the catalog) also ships in the plugin's own
-hooks file, so any install of the Temper plugin — `--plugin-dir` or marketplace —
-gets that guarantee with **no settings merge and no pack enablement**. Enabling this pack
-adds the remaining hooks (secrets, imports, in-agent commit gate); if both are active the
-stage-gate pair fires twice per event. On the satisfied path the second firing sees the
-verdict or no marker and no-ops; on the blocking path both firings increment the refusal
-counter, so the loop guard trips after one blocked stop instead of two — the error is in
-the fail-open direction, never a double-block.
+**Plugin-shipped subset (v8):** the standalone-stage gate pair (`stage-marker.sh` and
+`verify-stage-gate.sh`) ships in the plugin's own hooks file, so every install of the
+Temper plugin, `--plugin-dir` or marketplace, gets that guarantee with **no settings
+merge and no pack enablement**. Enabling this pack adds the other guards: secrets,
+protected paths, the regression test, the override prompt, the formatter, imports and
+the in-agent commit gate. The settings blocks never list the stage-gate pair, so it runs
+once per event.
 
 ## Install
 
 There are **two** layers, and both are needed for the full guarantee:
 
-### 1. In-agent layer — `settings.json` hooks (Edits/Writes)
+### 1. In-agent layer: project settings hooks (Edit, Write, Bash)
 
 ```
 /temper:pack enable guardrails
 ```
 
-Enabling this pack routes through the global **update-config** skill, which block-merges
-`${CLAUDE_PLUGIN_ROOT}/packs/guardrails/settings-guardrails.json` (the copy-paste source) into
-the project or user `settings.json`. This wires `PreToolUse`/`PostToolUse` blocks that fire when the **agent**
-edits or writes files (block-secrets on every Edit/Write) or runs Bash (block-secrets and
-the commit gate on every Bash call — the commit-gate check is a no-op unless the command is
-a `git commit`). The merge is additive — it never clobbers unrelated existing hooks. To
-uninstall, run `/temper:pack disable guardrails` (update-config removes the Temper hook block).
+This asks which project settings file to use: `.claude/settings.local.json` (personal,
+the default, because each command holds this machine's plugin folder) or
+`.claude/settings.json` (shared with everyone who works on the project; a teammate whose
+plugin sits in another folder sees those commands as stale). It shows the change, and on your confirmation merges the hook blocks of
+`${CLAUDE_PLUGIN_ROOT}/packs/guardrails/settings-guardrails.json` into that file. Hooks in a
+settings file get no CLAUDE_PLUGIN_ROOT variable, so each command gets the plugin's
+absolute folder in place of the variable, in double quotes:
+`bash "/path/to/the/plugin/scripts/guards/block-secrets.sh"`. Temper never reads or writes
+your home settings.
 
-You can also copy `${CLAUDE_PLUGIN_ROOT}/packs/guardrails/settings-guardrails.json` into your
-`settings.json` manually if you prefer.
+The blocks fire when the **agent** edits or writes files (block-secrets, the regression
+test guard and the protected paths guard on every Edit/Write, then the import check and
+the formatter after it) or runs Bash (block-secrets, the commit gate and the override
+prompt on every Bash call; the commit-gate check is a no-op unless the command is a
+`git commit`). The merge is additive: it keeps your other hooks, and it replaces an
+earlier Temper guard entry (one that names a script in `scripts/guards`, or in the
+`scripts/hooks` folder of versions before 9.6.5) instead of adding a second one. It also
+adds `guardrails` to `packs:`. To uninstall, run `/temper:pack disable guardrails`: it
+removes the Temper guard entries and the `packs:` entry.
+
+The commands hold the plugin folder as it was when you enabled the pack. After a plugin
+upgrade moves that folder, `/temper:pack` and `/temper:init` find a guard command whose
+script no longer exists and offer, in one line, to rewrite it with the current folder.
+
+To copy the blocks by hand instead, take the `hooks` object of
+`${CLAUDE_PLUGIN_ROOT}/packs/guardrails/settings-guardrails.json` and, in every command, put
+the plugin's absolute folder (the folder that holds `scripts/guards`) in place of the
+CLAUDE_PLUGIN_ROOT variable, in double quotes as above.
 
 ### 2. Commit-time layer — native git pre-commit hook (REQUIRED for deterministic blocking)
 
@@ -111,8 +127,8 @@ The single fail-closed path for each script is documented below. Everything else
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `temper override` — emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records the git identity (`by`) |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/run-formatter.sh` | PostToolUse (Edit\|Write) | **format** (no-op by default) | Never blocks — runs `format: cmd:` from temper.config on each edited file so drift never accumulates; a formatter failure is a stderr warning, not a gate |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `temper gate commit` FAILs (in-agent mirror of the native hook, below) |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/stage-marker.sh` | UserPromptSubmit | **no-op** (records only) | Never — it writes `.temper/pending-stage.json` when a `/temper:intent`, `/temper:plan`, `/temper:design`, `/temper:build`, `/temper:review` or `/temper:check` prompt is submitted, and blocks nothing |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-stage-gate.sh` | Stop | **BLOCK** | A standalone stage session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage — see `${CLAUDE_PLUGIN_ROOT}/docs/decisions/0005-deterministic-stage-gate-enforcement.md`. Fails open after 2 refusals |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/stage-marker.sh` | UserPromptSubmit (plugin hook, always on) | **no-op** (records only) | Never: it writes `.temper/pending-stage.json` when a `/temper:intent`, `/temper:plan`, `/temper:design`, `/temper:build`, `/temper:review` or `/temper:check` prompt is submitted, and blocks nothing |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-stage-gate.sh` | Stop (plugin hook, always on) | **BLOCK** | A standalone stage session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage (see `${CLAUDE_PLUGIN_ROOT}/docs/decisions/0005-deterministic-stage-gate-enforcement.md`). Fails open after 2 refusals |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` | native pre-commit | **BLOCK** | Any stage's evidence-backed gate is not PASS and has no recorded `temper override` |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json` shows the latest `check_complete` absent or failed — used only when the temper CLI isn't present |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh` | n/a (installer) | **install** | Wires block-secrets + `temper gate commit` into a native git `pre-commit` hook (the deterministic commit gate) |

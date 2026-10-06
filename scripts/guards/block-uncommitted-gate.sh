@@ -14,6 +14,7 @@
 # DEGRADATION CONTRACT:
 #   - Not a `git commit` command      => exit 0 (no-op; only commits are inspected)
 #   - temper CLI or .temper/ absent   => exit 0 (fail-open; nothing to gate)
+#   - repository inside the plugin folder => exit 0 (the CLI refuses to run there)
 #   - `temper gate commit` FAILs      => exit 2 (BLOCK)
 #   - Internal error                  => exit 0 (FAIL-OPEN)
 set -uo pipefail
@@ -45,6 +46,12 @@ except Exception:
   root="${here%/scripts/guards}"
   temper_bin="$root/scripts/temper"
   [[ -x "$temper_bin" ]] || return 0
+  # A repository inside the plugin's own folder (a second checkout or worktree placed in
+  # it) is part of the plugin: the CLI refuses to run there, so there is nothing to gate.
+  local root_real repo_real
+  root_real="$(cd "$root" 2>/dev/null && pwd -P)" || return 0
+  repo_real="$(cd "$repo_root" 2>/dev/null && pwd -P)" || return 0
+  [[ "${repo_real#"$root_real"/}" != "$repo_real" ]] && return 0
 
   if ( cd "$repo_root" && "$temper_bin" gate commit ); then
     return 0

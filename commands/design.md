@@ -11,15 +11,23 @@ argument-hint: "[--skip | --force]"
 
 > **Full methodology:** Read `${CLAUDE_PLUGIN_ROOT}/reference/design.md`
 
+**Plugin folder:** the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that
+path with /scripts/temper taken off). Wherever a reference page or a brief writes the
+CLAUDE_PLUGIN_ROOT variable, use this folder.
+
 ### Subprocess Mode
 
 If `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get stages.subprocess false` returns
 `true`, don't run the methodology inline (skip the reference read and Quick Reference
-below). Launch the same isolated subprocess `/temper` uses — model from `temper model
-design`, prompt: *"Follow ${CLAUDE_PLUGIN_ROOT}/agents/design.md exactly. Spec:
-.temper/specs/{feature-slug}. Standalone run — pass --spec-path
+below). Launch the same isolated subprocess `/temper` uses, on the model that
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper model design` prints, with this prompt: *"Follow
+${CLAUDE_PLUGIN_ROOT}/agents/design.md exactly. Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with
+/scripts/temper taken off); wherever the brief or a reference page writes the
+CLAUDE_PLUGIN_ROOT variable, use this folder. Spec:
+.temper/specs/{feature-slug}. Standalone run: pass --spec-path
 .temper/specs/{feature-slug} to every temper gate call."* Print the returned box
-verbatim, then run `temper gate design --spec-path .temper/specs/{feature-slug}` and
+verbatim, then run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate design --spec-path
+.temper/specs/{feature-slug}` and
 present for approval (concerns first) — the subprocess is headless; the human gate
 stays in this context either way.
 

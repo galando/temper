@@ -46,11 +46,18 @@ ORCHESTRATOR (this file)
 ```
 
 Shared patterns: read `${CLAUDE_PLUGIN_ROOT}/reference/orchestrator-patterns.md` once,
-now — every `→ pattern` reference below points into it. `$CLAUDE_PLUGIN_ROOT`
-resolution is defined there. The temper CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/temper`.
-Every other path below (`.temper/`, the spec files, the files being fixed) is in the
-user's project, the current directory; nothing in a run writes under
-`$CLAUDE_PLUGIN_ROOT`.
+now. Every `→ pattern` reference below points into it. Its section "The plugin folder"
+says how plugin paths work: Claude Code wrote the plugin's absolute folder in place of
+the CLAUDE_PLUGIN_ROOT variable when it loaded this file, and the Bash tool does not set
+that variable, so run each command with the path exactly as this file shows it. The
+temper CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. Every other path below
+(`.temper/`, the spec files, the files being fixed) is in the user's project, the
+current directory. Nothing in a run writes into the plugin folder, unless the project is
+the plugin folder itself (developing Temper on its own repository).
+
+**Plugin folder line.** Every stage launch prompt below carries this line, word for word,
+so the stage knows the folder that its brief and the reference pages mean:
+`Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.`
 
 **Why this command gates at all:** the commit hook (installed by `/temper:init`) runs
 `temper gate commit` on **every** `git commit` in a project with a `.temper` folder,
@@ -89,7 +96,8 @@ failure/blocker → "Agent Failure Handling". On Save → the Save/Continue rule
 
 ```
 Use the Agent tool, model: {rca}, prompt:
-"Follow ${CLAUDE_PLUGIN_ROOT}/agents/rca.md exactly. Bug: $ARGUMENTS."
+"Follow ${CLAUDE_PLUGIN_ROOT}/agents/rca.md exactly. Bug: $ARGUMENTS.
+Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
 
 Gate (human judgment — there is no `temper gate rca`): show the RCA box, then
@@ -100,8 +108,9 @@ re-show this gate).
 **On Continue:**
 1. Save the agent's returned findings to the project's `.temper/specs/{bug-slug}/rca.md`
    (create the directory if needed). The bug slug, which step 2 passes to `state init`,
-   is lowercase letters, digits, '.', '_' or '-', starts with a letter or digit, and
-   has no '..' (the CLI refuses anything else).
+   is letters (either case), digits, '.', '_' or '-', starts with a letter or digit,
+   and has no '..' or '/' (the CLI refuses anything else). A ticket key prefix keeps its
+   case as typed (`{KEY}-{slug}`, for example `JIRA-123-checkout-500`).
 2. `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {bug-slug} --command fix` (first time only — also sets branch
    `fix/{bug-slug}`), else `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance rca_complete fix`.
 3. If the git pack is enabled and `git branch --show-current` is main/master:
@@ -114,7 +123,8 @@ re-show this gate).
 
 ```
 Use the Agent tool, model: {fix}, prompt:
-"Follow ${CLAUDE_PLUGIN_ROOT}/agents/fix.md exactly. Spec: {spec_path from state}."
+"Follow ${CLAUDE_PLUGIN_ROOT}/agents/fix.md exactly. Spec: {spec_path from state}.
+Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
 
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` (RED-then-GREEN regression-test evidence; the "no unchecked
@@ -131,6 +141,7 @@ tasks" requirement is skipped automatically — fixes have no `tasks.md`). On PA
 ```
 Use the Agent tool, model: {review}, prompt:
 "Follow ${CLAUDE_PLUGIN_ROOT}/agents/review.md exactly. Spec: {spec_path from state}.
+Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.
 Fix mode: there is no intent.md — read {spec_path}/rca.md instead, and verify the fix
 addresses its root cause, the regression test proves the fix (not a trivial assert),
 and no same-pattern occurrence it flagged is left unfixed."
@@ -159,6 +170,7 @@ before re-showing the gate.
 ```
 Use the Agent tool, model: {check}, prompt:
 "Follow ${CLAUDE_PLUGIN_ROOT}/agents/check.md exactly. Spec: {spec_path from state}.
+Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.
 Fix mode: there is no intent.md, so scenario tracing doesn't apply — {spec_path}/rca.md
 names the regression test that must be in the passing run."
 ```

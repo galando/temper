@@ -122,12 +122,13 @@ if [[ -f "$README" && -f "$PJ" ]]; then
   fi
 fi
 
-# --- Panel validation (every stage brief: the one-closed-panel rule) ---
+# --- Panel validation (every stage brief: the one-closed-panel rule; every brief and
+# command file listed in plugin.json) ---
 if python3 "$REPO_ROOT/scripts/validate-panels.py" >/dev/null 2>&1; then
-  echo "[PASS] Every stage brief shows one closed panel"
+  echo "[PASS] Every stage brief shows one closed panel, and plugin.json lists every brief and command"
   PASS=$((PASS+1))
 else
-  echo "[FAIL] Panel violations in the stage briefs:"
+  echo "[FAIL] Panel or plugin.json listing violations:"
   python3 "$REPO_ROOT/scripts/validate-panels.py" 2>/dev/null | grep '^FAIL' | sed 's/^/  /'
   FAIL=$((FAIL+1))
 fi

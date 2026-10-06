@@ -114,7 +114,7 @@ security/architecture → BLOCK candidate) with no auto-rule yet: `AskUserQuesti
 the accepted rule into the project's copy of the active pack, `.claude/packs/<name>/rules.md`,
 is what makes it enforced from the next review on. If the project has no copy yet (the
 pack is built-in or global), create it first from that pack's current rules so it shadows
-them. Never edit a file under `$CLAUDE_PLUGIN_ROOT`. One prompt per qualifying pattern, highest acceptance first.
+them. Never edit a file in the plugin folder. One prompt per qualifying pattern, highest acceptance first.
 
 ### Metrics Schema
 

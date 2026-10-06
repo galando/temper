@@ -1,7 +1,7 @@
 // $.state contract for the Temper mod. Each value the module keeps in $.state is
 // declared here under the plugin name; `claude plugin validate` holds the module to it.
-// The view types repeat the shapes of hooks/temper-mod/core/view.ts and actions.ts on
-// purpose: the validator reads this file alone, so it cannot import them. TypeScript
+// The view types repeat the shapes the module defines for its run view and its actions,
+// on purpose: the validator reads this file alone, so it cannot import them. TypeScript
 // checks the two agree wherever the module writes the value.
 
 export type PhaseName = 'intent' | 'plan' | 'build' | 'review' | 'check' | 'fix'

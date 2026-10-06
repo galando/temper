@@ -12,10 +12,16 @@ titled sections — "Files: 3" tells the reader nothing) and the box-plus-loose-
 shape (panel rows leaking past the closing border — which box renders then depends
 on read order).
 
+It also fails on a stage brief or a command file that plugin.json does not list: every
+agents/<name>.md and commands/<name>.md that `git ls-files -- agents commands` prints
+(tracked, plus new files git does not ignore) must be in plugin.json's agents or commands
+list. Nothing is globbed and no folder is walked.
+
 Stdlib only. Exit 0 = all briefs conform; exit 1 names each violation.
 """
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -88,17 +94,47 @@ def plugin_root():
     return None if root == here else Path(root)
 
 
+def unlisted_files(repo, manifest):
+    """The agents/<name>.md and commands/<name>.md files git lists that plugin.json does not,
+    as a sorted list of 'folder/name.md', or None when git cannot list them."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(repo), "ls-files", "-z", "-co", "--exclude-standard", "--", "agents", "commands"],
+            capture_output=True, check=True).stdout.decode("utf-8", "replace")
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    listed = set()
+    for key in ("agents", "commands"):
+        for entry in manifest.get(key) or []:
+            if isinstance(entry, str) and entry.startswith("./"):
+                listed.add(entry[len("./"):])
+    found = set()
+    for rel in out.split("\0"):
+        parts = rel.split("/")
+        if len(parts) == 2 and parts[0] in ("agents", "commands") and parts[1].endswith(".md"):
+            found.add(rel)
+    return sorted(found - listed)
+
+
 def main():
     repo = plugin_root()
     if repo is None:
         print("FAIL: cannot find the plugin folder from %s" % Path(__file__).resolve())
         return 1
     try:
-        entries = json.loads((repo / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")).get("agents", [])
+        manifest = json.loads((repo / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        entries = manifest.get("agents", [])
     except (OSError, ValueError, AttributeError) as e:
         print("FAIL: cannot read the agents list from .claude-plugin/plugin.json: %s" % e)
         return 1
-    briefs, failures = [], 0
+    briefs, failures, listing_failures = [], 0, 0
+    unlisted = unlisted_files(repo, manifest)
+    if unlisted is None:
+        listing_failures += 1
+        print("FAIL: git ls-files could not list the agents and commands folders (a git checkout is needed)")
+    for rel in unlisted or []:
+        listing_failures += 1
+        print("FAIL %s is not listed in .claude-plugin/plugin.json" % rel)
     for entry in entries:
         ok = isinstance(entry, str) and entry.startswith(AGENTS_PREFIX)
         name = entry[len(AGENTS_PREFIX):] if ok else ""
@@ -108,7 +144,7 @@ def main():
         else:
             # (the entry as plugin.json spells it, without './'; the checked plain file name)
             briefs.append((entry[len("./"):], name))
-    if not briefs and not failures:
+    if not briefs and not failures and not listing_failures:
         print("FAIL: plugin.json lists no stage briefs")
         return 1
     for rel, name in sorted(briefs):
@@ -140,8 +176,12 @@ def main():
     print()
     if failures:
         print("FAIL: %d brief(s) violate the one-panel rule" % failures)
+    if listing_failures:
+        print("FAIL: %d file(s) in the agents or commands folder are not listed in plugin.json"
+              " (or the folders could not be listed)" % listing_failures)
+    if failures or listing_failures:
         return 1
-    print("PASS: every stage brief states and shows the one-panel rule")
+    print("PASS: every stage brief states and shows the one-panel rule, and plugin.json lists every brief and command")
     return 0
 
 

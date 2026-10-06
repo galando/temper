@@ -30,13 +30,23 @@ set -uo pipefail
 
 REPO_ROOT="$(pwd)"
 # Where the plugin itself lives (this script). Used only to read the stage briefs'
-# frontmatter (`temper model`) and to load acceptance.py, never to locate project state.
-# Prefer where this file actually sits over $CLAUDE_PLUGIN_ROOT, which belongs to
-# whichever plugin is calling; fall back to it when the script is reached via a symlink.
-# The plugin folder is this script's own folder with the literal suffix /scripts removed.
-SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+# frontmatter (`temper model`), to load acceptance.py and to refuse a project folder
+# inside the plugin folder, never to locate project state. It comes from this file's
+# own location alone, never from an environment variable: when the CLI is reached
+# through a symlink (a link in a bin folder, or a chain of links), each link is followed
+# to the real file first. The plugin folder is that file's folder with the literal
+# suffix /scripts removed.
+_self="${BASH_SOURCE[0]}"
+_hops=0
+while [[ -L "$_self" && $_hops -lt 40 ]]; do
+  _link_dir="$(cd -P "$(dirname "$_self")" 2>/dev/null && pwd)"
+  _self="$(readlink "$_self")"
+  [[ "$_self" == /* ]] || _self="$_link_dir/$_self"
+  _hops=$((_hops + 1))
+done
+SCRIPTS_DIR="$(cd "$(dirname "$_self")" 2>/dev/null && pwd)"
 PLUGIN_ROOT="${SCRIPTS_DIR%/scripts}"
-[[ "$PLUGIN_ROOT" != "$SCRIPTS_DIR" && -d "$PLUGIN_ROOT/agents" ]] || PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
+unset _self _hops _link_dir
 ACCEPTANCE_PY="$PLUGIN_ROOT/scripts/acceptance.py"
 # Run state always lives in this project's .temper folder: no environment variable moves
 # it, so every write and delete below stays inside the project.
@@ -78,9 +88,10 @@ _stage_refuse() { # _stage_refuse <stage> -> prints the usage failure for a stag
   return 1
 }
 
-_slug_ok() { # _slug_ok <slug> -> 0 for a spec slug: lowercase letters, digits, '.', '_', '-'
-             # starting with a letter or digit, never containing '..' (so never a path)
-  [[ "$1" =~ ^[a-z0-9][a-z0-9._-]*$ ]] && ! [[ "$1" =~ [.][.] ]]
+_slug_ok() { # _slug_ok <slug> -> 0 for a spec slug: letters (either case), digits, '.', '_', '-'
+             # starting with a letter or digit, never containing '/' or '..' (so never a path).
+             # Either case: a ticket key prefix such as PROJ-123-login is a valid slug.
+  [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] && ! [[ "$1" =~ [.][.] ]]
 }
 
 _spec_slug() { # _spec_slug <spec_path> -> the slug of a spec path of the form .temper/specs/<slug>,
@@ -102,6 +113,25 @@ _count_lines_matching() { # _count_lines_matching <pattern> <file>  (grep -c exi
   local n
   n=$(grep -c "$1" "$2" 2>/dev/null)
   echo "${n:-0}"
+}
+
+_inside_plugin_refuse() { # -> 1 (with a message) when the current folder is strictly inside
+                          # the plugin folder. Run state lives in the current folder's .temper,
+                          # and nothing this CLI runs may write into the plugin folder. The
+                          # plugin folder itself stays a valid project (developing Temper on its
+                          # own repository); a folder inside it (one of its own subfolders, or a
+                          # second checkout placed in it) is not.
+  [[ "$PLUGIN_ROOT" != "$SCRIPTS_DIR" ]] || return 0   # not laid out as a plugin: no folder to guard
+  local plugin cwd
+  plugin="$(cd -P "$PLUGIN_ROOT" 2>/dev/null && pwd)" || return 0
+  cwd="$(pwd -P)"
+  [[ -n "$plugin" && "$plugin" != "/" ]] || return 0
+  if [[ "${cwd#"$plugin"/}" != "$cwd" ]]; then
+    echo "FAIL: run temper from a project folder, not from a folder inside the plugin folder" >&2
+    echo "      (plugin folder: $plugin; current folder: $cwd). The plugin folder itself is a valid project." >&2
+    return 1
+  fi
+  return 0
 }
 
 _require_python() {
@@ -250,7 +280,11 @@ def parse_yaml_subset(text):
                 try:
                     parent[key] = float(val)
                 except ValueError:
-                    parent[key] = val.strip('\"\\'')
+                    # One pair of matching quotes around the whole value is taken off; a
+                    # quote that ends a value ('fmt \"{file}\"') is part of it.
+                    if len(val) >= 2 and val[0] == val[-1] and val[0] in '\"\\'':
+                        val = val[1:-1]
+                    parent[key] = val
     return root
 
 text = open(sys.argv[1]).read()
@@ -360,7 +394,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
   # writes into, so it is a plain name and never a path.
   if ! _slug_ok "$slug"; then
     echo "FAIL: usage: temper state init <slug> [--command temper|fix] [--branch NAME]" >&2
-    echo "      (the slug is lowercase letters, digits, '.', '_' or '-', starts with a letter or digit, and has no '..'; got '$slug')" >&2
+    echo "      (the slug is letters of either case, digits, '.', '_' or '-', starts with a letter or digit, and has no '/' or '..'; got '$slug')" >&2
     return 1
   fi
   _ensure_dirs
@@ -376,8 +410,9 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
   # old override once satisfied a gate the new run never earned. Same discipline
   # as `state clear`: archive first, then remove runtime state. specs/ untouched.
   if [[ -f "$STATE_FILE" ]]; then
-    local archived; archived="$(_archive_ledger)"
+    local archived rc; archived="$(_archive_ledger)"; rc=$?
     [[ -n "$archived" ]] && echo "OK: prior run's gate ledger archived to $archived"
+    [[ $rc -eq 2 ]] && echo "OK: the prior run's gate ledger was NOT archived (see the warning above); starting the new run"
   else
     # No prior run — but a non-empty overrides/gates file still carries a fact
     # worth keeping (an override records a human approver). Copy, don't delete.
@@ -466,7 +501,7 @@ cmd_state_set() {
   # spec_path names the folder `state archive` writes into: only the shape `state init`
   # records (.temper/specs/<slug>) is accepted, so it can never point anywhere else.
   if [[ "$1" == "spec_path" && -z "$(_spec_slug "$2")" ]]; then
-    echo "FAIL: spec_path must be .temper/specs/<slug> (slug: lowercase letters, digits, '.', '_' or '-', no '..'); got '$2'" >&2
+    echo "FAIL: spec_path must be .temper/specs/<slug> (slug: letters of either case, digits, '.', '_' or '-', no '/' or '..'); got '$2'" >&2
     return 1
   fi
   [[ -f "$STATE_FILE" ]] || { echo '{}' > "$STATE_FILE"; }
@@ -555,11 +590,17 @@ _archive_ledger() { # writes gate-ledger.json into the run's spec folder from th
   # chain exists for. Called by `state archive` (before the commit, so the ledger rides
   # it) and by `state clear` (the safety net for flows that never archived). Idempotent.
   # The target is .temper/specs/<slug>/gate-ledger.json with the slug checked by
-  # _spec_slug: a spec_path of any other shape (a hand-edited state file) archives nothing.
+  # _spec_slug: a spec_path of any other shape (a hand-edited state file) archives nothing,
+  # and says so on stderr (returning 2) so `state archive`, `state clear` and `state init`
+  # never drop the ledger without a word.
   local spec_path slug out
   spec_path="$(cmd_state_get spec_path "")"
+  [[ -n "$spec_path" ]] || return 0
   slug="$(_spec_slug "$spec_path")"
-  [[ -n "$slug" ]] || return 0
+  if [[ -z "$slug" ]]; then
+    echo "WARN: gate ledger NOT archived: spec_path '$spec_path' is not .temper/specs/<slug>" >&2
+    return 2
+  fi
   out=".temper/specs/$slug/gate-ledger.json"
   if [[ -d ".temper/specs/$slug" && -f "$GATES_FILE" ]]; then
     # One (stage, ledger file) pair per name on the fixed list: no other file is read.
@@ -596,9 +637,11 @@ PY
 cmd_state_archive() { # temper state archive — write the ledger WITHOUT touching state.
                        # Run before `git commit` so the archived record rides the commit
                        # while the live state stays intact for the pre-commit gate.
-  local out; out="$(_archive_ledger)"
+  local out rc; out="$(_archive_ledger)"; rc=$?
   if [[ -n "$out" ]]; then
     echo "OK: gate ledger archived to $out"
+  elif [[ $rc -eq 2 ]]; then
+    echo "OK: run state untouched; the gate ledger was NOT archived (see the warning above)"
   else
     echo "OK: nothing to archive (no gates recorded, or no spec dir)"
   fi
@@ -606,8 +649,9 @@ cmd_state_archive() { # temper state archive — write the ledger WITHOUT touchi
 
 cmd_state_clear() {
   local archived_note=""
-  local out; out="$(_archive_ledger)"
+  local out rc; out="$(_archive_ledger)"; rc=$?
   [[ -n "$out" ]] && archived_note=" — gate ledger archived to $out"
+  [[ $rc -eq 2 ]] && archived_note="; the gate ledger was NOT archived, see the warning above"
   # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
   rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json
   rm -rf .temper/evidence
@@ -1106,6 +1150,11 @@ status = m.group(1).lower() if m else None   # None: missing or unknown Status h
 if status != 'draft':
     d = ("skipped — intent is %s; this check applies to drafts only "
          "(a recorded acceptance is never revisited)") % status
+    if status is None:
+        # A missing or unknown Status header is reported by the gate's own status header
+        # row; these rows say why they skipped instead of printing Python's None.
+        d = ("skipped: no recognized Status header (draft, accepted or completed); this check "
+             "applies to drafts only, and the status header requirement reports the missing header")
     for name in ('task context recorded', 'criteria why', 'target users action chain',
                  'criteria ids', 'criteria priority', 'criteria validate',
                  'open questions labeled', 'no duplicate question', 'header fields',
@@ -1325,7 +1374,7 @@ status = m.group(1).lower() if m else None   # None: missing or unknown Status h
 # revisited, so an accepted or completed intent skips them with a PASS.
 SKIP = ('skipped \u2014 intent is %s; this check applies to drafts only (a recorded acceptance is never revisited)' % status
         if status else
-        'skipped \u2014 no recognized Status header (draft, accepted or completed); this check applies to drafts only, and the status header requirement reports the missing header')
+        'skipped: no recognized Status header (draft, accepted or completed); this check applies to drafts only, and the status header requirement reports the missing header')
 
 # --- out of scope stated: a '- Out of scope:' bullet with non-placeholder text ----------
 scope = A.section_lines(lines, 'Scope and Non-goals') or A.section_lines(lines, 'Scope')
@@ -1381,10 +1430,16 @@ gate_intent() {
     reqs+=("$(_req "intent artifact" 1 "intent.md absent — trivial path, no artifacts")")
   else
     local problem_lines criteria status_line
+    # A placeholder starts a line with '{' and runs to the line that closes it with '}',
+    # so the second line of a placeholder spanning two lines is not content either.
     problem_lines=$(awk '
-      /^#+[[:space:]]*Problem/ { f=1; next }
+      function depth(s,   t, o, c) { t = s; o = gsub(/\{/, "", t); t = s; c = gsub(/\}/, "", t); return o - c }
+      /^#+[[:space:]]*Problem/ { f=1; open_ph=0; next }
       f && /^#+[[:space:]]/ { f=0 }
-      f && NF && $0 !~ /^[[:space:]]*\{/ { c++ }
+      !f { next }
+      open_ph > 0 { open_ph += depth($0); next }
+      /^[[:space:]]*\{/ { open_ph = depth($0); if (open_ph < 0) open_ph = 0; next }
+      NF { c++ }
       END { print c+0 }
     ' "$spec_path/intent.md")
     if [[ "$problem_lines" -gt 0 ]]; then
@@ -2344,6 +2399,14 @@ PY
 main() {
   _require_python
   local sub="${1:-}"; shift || true
+  # Every subcommand that reads or writes the project's .temper folder is refused in a
+  # folder inside the plugin folder. `config` and `model` only read a config file and the
+  # stage briefs, and the help text reads nothing, so the guard scripts that call them
+  # keep working wherever they run.
+  case "$sub" in
+    config|model|""|-h|--help) ;;
+    *) _inside_plugin_refuse || return 1 ;;
+  esac
   case "$sub" in
     init) cmd_init "$@" ;;
     state) cmd_state "$@" ;;

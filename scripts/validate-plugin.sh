@@ -242,6 +242,49 @@ print('; '.join(errs))
 " "$REPO_ROOT" 2>/dev/null)
 if [[ -z "$PACK_PHASES_ERR" ]]; then ok; else fail "pack phases: $PACK_PHASES_ERR"; fi
 
+# --- Plugin paths in instruction text ---
+# Claude Code fills in only the braced form of the CLAUDE_PLUGIN_ROOT variable, and only when it
+# loads a command, agent or skill; the Bash tool does not set the variable, and a page read with
+# the Read tool is not filled in. So in the instruction text below a plugin path is always written
+# as the braced variable, a '/' and a fixed path. This fails on the unbraced form, on the braced
+# form with no '/' right after it, and on a fixed path that holds '..', a wildcard, a
+# {placeholder} or a second variable. git grep reads the files named by the fixed pathspecs
+# (tracked, plus new files git does not ignore); this script only filters the lines it prints.
+if ! git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  fail "plugin path check: $REPO_ROOT is not a git work tree (git grep reads the files)"
+else
+  # (git grep exits 1 when no line matches, which is the passing case.)
+  ROOT_VAR_ERRS=$( (git -C "$REPO_ROOT" -c grep.column=false -c grep.fullName=false -c grep.lineNumber=true \
+      grep --untracked -z -n -I -F -e 'CLAUDE_PLUGIN_ROOT' -- \
+      commands agents skills reference packs templates .claude/temper.config 2>/dev/null || true) | python3 -c "
+import re, sys
+data = sys.stdin.buffer.read().decode('utf-8', 'replace')
+UNBRACED = re.compile(r'\\\$CLAUDE_PLUGIN_ROOT')
+NO_SLASH = re.compile(r'\\\$\{CLAUDE_PLUGIN_ROOT(?!\}/)')
+PATH = re.compile(r'\\\$\{CLAUDE_PLUGIN_ROOT\}(/[^\s\`\"\'()<>|,;\[\]]*)')
+BAD_PATH = re.compile(r'\.\.|[*?{\\\$]')
+out = []
+for m in re.finditer(r'([^\0]*)\0([0-9]+)\0([^\n]*)\n', data):
+    rel, num, line = m.groups()
+    why = []
+    if UNBRACED.search(line):
+        why.append('unbraced')
+    if NO_SLASH.search(line):
+        why.append(\"braced with no '/' after it\")
+    if any(BAD_PATH.search(p.group(1)) for p in PATH.finditer(line)):
+        why.append(\"a path with '..', a wildcard, a {placeholder} or a second variable\")
+    if why:
+        out.append(rel + ':' + num + ': ' + ', '.join(why))
+print('\n'.join(out))
+" 2>&1 || echo "the plugin path check could not run")
+  if [[ -z "$ROOT_VAR_ERRS" ]]; then
+    ok
+  else
+    fail "plugin paths in instruction text must be the braced variable, '/' and a fixed path ($(printf '%s\n' "$ROOT_VAR_ERRS" | wc -l | tr -d ' ') line(s)):"
+    printf '%s\n' "$ROOT_VAR_ERRS" | head -40 | sed 's/^/  /'
+  fi
+fi
+
 # --- Phase 1 Verification (v5.5.0): guard script assertions ---
 # These cover the new files added by docs/plans/phase-1-verification.md.
 

@@ -284,6 +284,15 @@ const OPAQUE_DENY =
   'Temper: this command runs the Temper script in a way Temper cannot read, and it holds a decision word. ' +
   'Only the user decides. Next: ask the user to use the buttons or the /temper:temper subcommands (approve, override, accept, back).'
 
+const DYNAMIC_DENY =
+  'Temper: this command writes what a Temper call does (its subcommand) in a form Temper cannot read: a variable, a substitution or an escaped string. ' +
+  'It could be a decision, and only the user decides, with the buttons or the /temper:temper subcommands. ' +
+  'Next: run each scripts/temper call with its words written out, one per Bash call.'
+
+const OPAQUE_HIDDEN_DENY =
+  'Temper: this command may run the Temper script (it names the script, or starts a program that can run it) and hides part of what it runs behind a substitution, an expansion or a here-string, so Temper cannot read it. ' +
+  'Next: run scripts/temper with its words written out, in a Bash call of its own.'
+
 const ALIAS_DENY =
   'Temper: do not link, copy or source the Temper script. A second name for it hides the decision calls. ' +
   'Next: run scripts/temper by its own path. The user decides with the buttons or /temper:temper.'
@@ -321,7 +330,7 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
   const c = classifyBash(command, ctx.cwd === undefined ? '' : ctx.cwd)
 
   if (c.alias) return { deny: ALIAS_DENY }
-  if (c.opaque && isActive(s)) return { deny: OPAQUE_DENY }
+  if (c.opaque && isActive(s)) return { deny: c.opaqueWhy === 'dynamic' ? DYNAMIC_DENY : c.opaqueWhy === 'hidden' ? OPAQUE_HIDDEN_DENY : OPAQUE_DENY }
   if (isActive(s)) {
     if (c.hidden) return { deny: HIDDEN_DENY }
     if (c.envTamper) return { deny: ENV_DENY }

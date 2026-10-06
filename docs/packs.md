@@ -160,6 +160,10 @@ packs:
   - my-custom-pack  # Your pack
 ```
 
+The guardrails pack is different: its work is done by guard hooks in a project settings file,
+so adding it to `packs:` alone turns nothing on. Use `/temper:pack enable guardrails` and
+`/temper:pack disable guardrails` instead ([Guardrails](commands.md#guardrails)).
+
 ## Pack Discovery
 
 Temper automatically discovers packs in `.claude/packs/`. Just create the folder and add `rules.md`.

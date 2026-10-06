@@ -6,14 +6,18 @@
 # never a guessed command:
 #
 #   format:
-#     cmd: "npx prettier --write {file}"     # {file} is replaced with the edited path
+#     cmd: "npx prettier --write {file}"     # {file} stands for the edited path
 #
 # Absent key => no-op (the default). A formatter FAILURE never blocks anything —
 # formatting is hygiene, not a gate; a warning goes to stderr and the edit stands.
 #
+# The edited path is never pasted into the command as text. {file} (also when written
+# "{file}" or '{file}') becomes "$1", and the path is handed to the command as that
+# argument, so a file name that holds shell syntax is only ever a name.
+#
 # Only a file inside the project folder is formatted. A file outside it, or a file of
-# this plugin's own folder (unless the project IS that folder, as when developing
-# Temper), is left as it is.
+# this plugin's own folder, is left as it is, whatever the project is: when the project
+# IS the plugin folder (developing Temper), nothing is formatted.
 #
 # DEGRADATION CONTRACT:
 #   - Always exit 0. There is no fail-closed path in this hook — the only effects are
@@ -37,7 +41,7 @@ _main() {
   [[ -n "$fmt" ]] || return 0
 
   # The edited file, resolved. Printed only when it is a file inside the project folder
-  # and not a file of this plugin's folder (the project being that folder excepted).
+  # and not a file of this plugin's folder.
   local target=""
   target=$(python3 -c "
 import json, os, sys
@@ -55,15 +59,20 @@ def inside(p, folder):
     return p.startswith(folder.rstrip(os.sep) + os.sep)
 if not os.path.isfile(t) or not inside(t, proj):
     sys.exit(0)
-if proj != plug and (inside(t, plug) or inside(proj, plug)):
+if t == plug or inside(t, plug):
     sys.exit(0)
 print(t)
 " "$dir" "$root" 2>/dev/null) || return 0
   [[ -n "$target" && -f "$target" ]] || return 0
 
-  local cmd="${fmt//\{file\}/$target}"
-  if ! bash -c "$cmd" >/dev/null 2>&1; then
-    echo "WARN: format.cmd failed on '$target' (ran: $cmd) — edit stands, formatting skipped." >&2
+  # {file}, bare or inside one pair of double or single quotes, becomes "$1"; the path
+  # travels as that argument and is never parsed as shell text.
+  local arg='"$1"' cmd="$fmt"
+  cmd="${cmd//\"\{file\}\"/$arg}"
+  cmd="${cmd//\'\{file\}\'/$arg}"
+  cmd="${cmd//\{file\}/$arg}"
+  if ! bash -c "$cmd" run-formatter "$target" >/dev/null 2>&1; then
+    echo "WARN: format.cmd failed on '$target' (format.cmd: $fmt). The edit stands; formatting was skipped." >&2
   fi
   return 0
 }

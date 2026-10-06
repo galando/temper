@@ -13,11 +13,12 @@
 #   - PreToolUse/PostToolUse blocks (settings-guardrails.json) — in-agent edits/writes
 #   - native git pre-commit (this installer)      — the real commit gate
 #
-# Where it writes. The installer changes into the target repository and writes only to
-# a path relative to it, so it can never write into the plugin's own folders:
+# Where it writes. The installer works on the repository that holds the current folder
+# (it ignores GIT_DIR, GIT_WORK_TREE, GIT_COMMON_DIR, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY
+# and GIT_CONFIG), changes into its top folder and writes only to a path relative to it:
 #   - by default .git/hooks/pre-commit;
 #   - with --global, .git/temper-git-hooks/pre-commit, and it sets core.hooksPath to
-#     .git/temper-git-hooks;
+#     .git/temper-git-hooks in the repository's own .git/config;
 #   - when core.hooksPath is already set (husky, lefthook, the pre-commit framework),
 #     <that folder>/pre-commit, because git ignores .git/hooks then. The folder is
 #     accepted only when it lies inside the repository (a relative path, or an absolute
@@ -25,12 +26,25 @@
 #     JSON file (a git hooks folder never does). For any other value the installer
 #     prints the lines to add to your hook by hand and exits 1.
 #
-# DEGRADATION CONTRACT: if the scripts are missing, the installed git hook
-# is a no-op (exit 0). Installing this never blocks a commit by itself.
+# Before it creates or writes anything, the installer follows every symlink in each path
+# it will write and checks where that path really lands. A place in the repository's own
+# .git folder is accepted. A place equal to or inside the plugin's own folder is refused.
+# Any other place outside the repository is refused. A repository that lies inside the
+# plugin's folder is refused outright. So nothing is written into the plugin's folder,
+# except into the .git folder of a checkout of the plugin itself (developing Temper on
+# its own repository).
+#
+# DEGRADATION CONTRACT: if the scripts are missing, or python3 is missing, the installed
+# git hook skips the checks that need them (exit 0). Installing this never blocks a
+# commit by itself.
 #
 # Usage:  bash scripts/guards/install.sh         # install into .git/hooks
 #         bash scripts/guards/install.sh --global # install via core.hooksPath
 set -euo pipefail
+
+# Git reads these to reach another repository or config file. The installer works on the
+# repository that holds the current folder only, so none of them may move where it writes.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_CONFIG
 
 # This script's folder, and the plugin folder: that folder with the literal suffix
 # /scripts/guards removed. The hook gets each path it runs written out in full, as
@@ -43,6 +57,8 @@ TESTS_RAN_SCRIPT="$PLUGIN_ROOT/scripts/guards/verify-tests-ran.sh"
 Q_TEMPER_CLI="$(printf '%q' "$TEMPER_CLI")"
 Q_SECRETS_SCRIPT="$(printf '%q' "$SECRETS_SCRIPT")"
 Q_TESTS_RAN_SCRIPT="$(printf '%q' "$TESTS_RAN_SCRIPT")"
+# The plugin folder with every symlink followed, for the write check below.
+PLUGIN_REAL="$(cd "$PLUGIN_ROOT" && pwd -P)"
 
 MODE="local"
 [[ "${1:-}" == "--global" ]] && MODE="global"
@@ -54,7 +70,7 @@ _hook_body() {
   cat <<HOOK
 #!/usr/bin/env bash
 # Temper native pre-commit hook (installed by scripts/guards/install.sh).
-# Fail-open: missing scripts never block. Only a detected violation blocks.
+# Fail-open: a missing script or a missing python3 never blocks. Only a detected violation blocks.
 # The paths below were written in full at install time. A plugin upgrade moves them;
 # re-run the installer then (it reports a stale path and writes the current one).
 set -uo pipefail
@@ -73,6 +89,14 @@ cd "\$(git rev-parse --show-toplevel)" || exit 0
 # 2. Every /temper gate must be green (or explicitly overridden) — the commit gate
 # itself, computed by the temper CLI from the evidence ledger. Absent .temper/ state
 # (repo doesn't use /temper for this commit, or CLI missing) => fail-open.
+# Both checks below need python3. Without it they are skipped, so a missing tool never
+# blocks a commit.
+command -v python3 >/dev/null 2>&1 || exit 0
+# A repository inside the plugin's own folder (a second checkout or worktree placed in it)
+# is part of the plugin: the CLI refuses to run there, so the gate is skipped.
+PLUGIN_DIR="\$(cd "\${TEMPER_CLI%/scripts/temper}" 2>/dev/null && pwd -P)" || PLUGIN_DIR=""
+REPO_DIR="\$(pwd -P)"
+[[ -n "\$PLUGIN_DIR" && "\${REPO_DIR#"\$PLUGIN_DIR"/}" != "\$REPO_DIR" ]] && exit 0
 if [[ -x "\$TEMPER_CLI" && -d .temper ]]; then
   "\$TEMPER_CLI" gate commit || exit 1
 elif [[ -f "\$TESTS_RAN_SCRIPT" ]]; then
@@ -104,6 +128,54 @@ if [[ -z "$TARGET_ROOT" ]]; then
   exit 1
 fi
 cd "$TARGET_ROOT"
+REPO_REAL="$(pwd -P)"
+
+# A repository inside the plugin's own folder gets nothing: every place in it is part of
+# the plugin.
+if [[ "${REPO_REAL#"${PLUGIN_REAL%/}"/}" != "$REPO_REAL" ]]; then
+  _refuse "this repository lies inside the plugin's own folder ($PLUGIN_REAL)."
+fi
+
+_real_path() { # _real_path <path relative to the cwd>: prints the absolute path with every
+               # symlink followed; the parts that do not exist yet are kept as written
+  local out rest comp link hops=0
+  out="$(pwd -P)"
+  rest="$1"
+  while [[ -n "$rest" ]]; do
+    comp="${rest%%/*}"
+    if [[ "$comp" == "$rest" ]]; then rest=""; else rest="${rest#*/}"; fi
+    case "$comp" in
+      ''|.) continue ;;
+      ..) out="${out%/*}"; [[ -n "$out" ]] || out="/"; continue ;;
+    esac
+    if [[ -L "${out%/}/$comp" ]]; then
+      hops=$((hops + 1))
+      [[ $hops -le 40 ]] || return 1
+      link="$(readlink "${out%/}/$comp")" || return 1
+      if [[ "${link:0:1}" == "/" ]]; then out="/"; fi
+      rest="$link${rest:+/$rest}"
+    else
+      out="${out%/}/$comp"
+    fi
+  done
+  printf '%s\n' "$out"
+}
+
+_check_target() { # _check_target <path relative to the repository top>: returns when that
+                  # path, with every symlink followed, lands in a place this installer may
+                  # write, and refuses (exit 1) otherwise
+  local real top="${REPO_REAL%/}"
+  real="$(_real_path "$1")" || _refuse "the path '$1' could not be resolved (a symlink loop?)."
+  if [[ "${real#"$top"/.git/}" != "$real" ]]; then
+    return 0
+  fi
+  if [[ "$real" == "$PLUGIN_REAL" || "${real#"${PLUGIN_REAL%/}"/}" != "$real" ]]; then
+    _refuse "'$1' leads into the plugin's own folder ($real)."
+  fi
+  if [[ "$real" != "$top" && "${real#"$top"/}" == "$real" ]]; then
+    _refuse "'$1' leads outside this repository ($real)."
+  fi
+}
 
 # Pick the hooks folder, relative to the repository root. Two of the three are fixed text;
 # the third is the configured core.hooksPath, checked before use.
@@ -111,7 +183,7 @@ HOOKS_FOLDER=""
 if [[ "$MODE" == "global" ]]; then
   [[ -d .git ]] || _refuse "this checkout's .git is not a folder (a linked worktree or a submodule)."
   HOOKS_FOLDER=".git/temper-git-hooks"
-  mkdir -p .git/temper-git-hooks
+  _check_target .git/config
 else
   # Respect an EXISTING core.hooksPath (husky v9, lefthook, the pre-commit framework
   # all set it): git ignores .git/hooks/ entirely when core.hooksPath is set, so a hook
@@ -131,13 +203,15 @@ else
     fi
     HOOKS_FOLDER="$rel"
     echo "Note: core.hooksPath is set ($EXISTING_HOOKS_PATH) — installing there, not .git/hooks (which git would ignore)." >&2
-    mkdir -p "$HOOKS_FOLDER"
   else
     [[ -d .git ]] || _refuse "this checkout's .git is not a folder (a linked worktree or a submodule)."
     HOOKS_FOLDER=".git/hooks"
-    mkdir -p .git/hooks
   fi
 fi
+# Where the folder really lands, checked before anything is created. (The hook file itself
+# is never written through a symlink: a symlinked pre-commit is removed first, below.)
+_check_target "$HOOKS_FOLDER"
+mkdir -p "$HOOKS_FOLDER"
 
 # A git hooks folder holds hook scripts, never a JSON file. One that does may be a plugin's
 # own hooks folder reached through a symlink or a core.hooksPath; refuse to write there.
@@ -179,6 +253,7 @@ if [[ -f "$PRECOMMIT" ]] && grep -qF "$TEMPER_HOOK_LINE" "$PRECOMMIT" 2>/dev/nul
   fi
 elif [[ -e "$PRECOMMIT" ]]; then
   BACKUP="$PRECOMMIT.bak.$(date +%Y%m%d%H%M%S 2>/dev/null || echo backup)"
+  _check_target "$BACKUP"
   cp -p "$PRECOMMIT" "$BACKUP"   # set -e: a failed backup stops before anything is overwritten
   echo "Backed up existing pre-commit hook -> $BACKUP" >&2
   echo "(It was not a Temper hook. Temper will overwrite $PRECOMMIT; restore the backup to revert.)" >&2
@@ -191,7 +266,7 @@ _hook_body > "$PRECOMMIT"
 chmod +x "$PRECOMMIT"
 
 if [[ "$MODE" == "global" ]]; then
-  git config core.hooksPath .git/temper-git-hooks 2>/dev/null || true
+  git config --local core.hooksPath .git/temper-git-hooks 2>/dev/null || true
   echo "Installed Temper pre-commit hook via core.hooksPath -> $TARGET_ROOT/.git/temper-git-hooks"
 else
   echo "Installed Temper pre-commit hook -> $TARGET_ROOT/$PRECOMMIT"

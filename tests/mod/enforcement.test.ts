@@ -235,3 +235,41 @@ describe('fail open', () => {
     expect((await $.tool.call(write('src/app.ts'))).text).toBe('stub ran')
   })
 })
+
+// A ticket key slug keeps its uppercase letters (PROJ-123-login): the spec folder is found, held and written to by
+// that exact name.
+describe('a spec folder whose slug has uppercase letters', () => {
+  const UP = '.temper/specs/PROJ-123-login'
+  const upFiles = (next: string, gates: Record<string, 'PASS' | 'FAIL'> = {}): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const [k, v] of Object.entries(runFiles({ nextStage: next, gates }))) out[k.startsWith(`${SPEC}/`) ? `${UP}/${k.slice(SPEC.length + 1)}` : k] = v
+    out['.temper/build-state.json'] = JSON.stringify({ spec: 'PROJ-123-login', spec_path: UP, next_stage: next })
+    return out
+  }
+
+  test('Plan allows its plan files and refuses a source write; its events folder is guarded', async ($, on) => {
+    world(on, upFiles('plan'))
+    expect('deny' in (await $.tool.call(write(`${UP}/plan.md`)))).toBe(false)
+    expect('deny' in (await $.tool.call(write(`${UP}/tasks.md`)))).toBe(false)
+    expect(await $.tool.call(write('src/app.ts'))).toEqual({ deny: PLAN_DENY })
+    expect(await $.tool.call(write(`${UP}/events/1-x-1.json`))).toEqual({ deny: ONLY_USER })
+    expect(await $.tool.call(bash(`echo {} > ${UP}/events/1-x-1.json`))).toEqual({ deny: ONLY_USER })
+  })
+
+  test("status reads the run from it, and the person's decision is kept under that folder", async ($, on) => {
+    const w = world(on, upFiles('intent', { intent: 'PASS' }))
+    await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
+    const r = await $.command.run({ command: 'temper', args: 'status', origin: { kind: 'composer' } } as never)
+    expect((r as { text?: string }).text).toContain('Phase: Intent')
+    const band = await $.ui.mount({
+      plugin: 'temper',
+      surface: 'terminal',
+      component: 'AbovePrompt',
+      props: { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} },
+    })
+    await band.press({ key: 'action-continue' })
+    expect(w.writes.some(p => p.startsWith(`${UP}/events/`))).toBe(true)
+    expect(w.writes.some(p => p.startsWith(`${SPEC}/`) || p.startsWith('.temper/specs/proj-123-login/'))).toBe(false)
+    expect((await $.tool.call(bash('scripts/temper state advance intent_complete plan'))).deny).toBeUndefined()
+  })
+})

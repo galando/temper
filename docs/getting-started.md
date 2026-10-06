@@ -18,7 +18,12 @@ nav_order: 2
 That's it. Claude Code loads Temper's commands and skills automatically, and your first
 `/temper "…"` in a project sets it up on the spot — config, `.temper/` scaffold, and the
 native commit gate that blocks a red commit. To set up explicitly instead, run
-`/temper:init`. For optional edit-time guardrails, `/temper:pack enable guardrails`.
+`/temper:init`. For optional edit-time guardrails, run `/temper:pack enable guardrails`. It asks
+whether to use `.claude/settings.local.json` (personal, the default) or `.claude/settings.json` (shared) in
+your project, shows the change, and after you confirm adds the guard hooks with the plugin's
+absolute folder written into each command. `/temper:pack disable guardrails` removes them.
+`/temper:pack` and `/temper:init` offer to fix a guard command whose plugin folder no longer
+exists. Neither command reads or writes the settings in your home folder.
 
 ### The phase bar (Claude Code 2.1.287 or later)
 
@@ -280,8 +285,10 @@ claude --worktree fix-rate-limit    # session 2: /temper:fix "429 not returned"
   autonomy lock — sessions cannot collide on runtime state.
 - Split work so parallel tasks touch **disjoint files** (the plan's blast radius shows
   where work is independent); tasks sharing files belong in one session, sequentially.
-- The controls travel with the repo: packs, hooks in settings, and the pre-commit gate
-  apply identically in every worktree — more sessions never means fewer guardrails.
+- The controls travel with the repo: packs, guard hooks in the shared `.claude/settings.json`
+  and the pre-commit gate apply the same way in every worktree, so more sessions never means
+  fewer guardrails. Guard hooks in `.claude/settings.local.json` are personal and untracked, so a
+  new worktree does not get them from git.
 - Practical ceiling: how many streams one person can *review*. Two or three is a
   sensible start; add sessions only while your review keeps up.
 

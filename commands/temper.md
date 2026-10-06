@@ -5,7 +5,7 @@ argument-hint: "<feature-description>"
 
 # Temper: Unified SDLC Command
 
-**FIRST OUTPUT (do this before reading anything else).** Look at your system prompt now. If it does not contain a line reading `Temper enforcement: active`, your very first line of text in this reply must be exactly: `Temper enforcement is off here (no mods support); continuing with prompt based phases.` Then carry on as written below. Never treat the missing line as an error, and say it only once per conversation. If the line is present, say nothing about it.
+**FIRST OUTPUT (do this before reading anything else).** Look at your system prompt now for a line that starts with `Temper enforcement:`. If there is none, your very first line of text in this reply must be exactly: `Temper enforcement is off here (no mods support); continuing with prompt based phases.` If the line reads `Temper enforcement: off (UI only)`, the Temper mod is loaded and the user turned enforcement off, so your very first line must be exactly: `Temper enforcement is off (turned off by the user); continuing with prompt based phases.` Then carry on as written below. Never treat either case as an error, and say it only once per conversation. If the line reads `Temper enforcement: active`, say nothing about it. Wherever this file says **With the Temper bar**, it means the system prompt has a `Temper enforcement:` line, either `active` or `off (UI only)`: the mod is loaded and keeps the bar either way, and turning enforcement off only stops the mod from refusing tool calls.
 
 **Goal:** Run intent → plan → design? → build → review+check → commit with a human gate
 at every stage (or, if armed, unattended past the plan gate). Every gate verdict is
@@ -25,7 +25,7 @@ the Problem statement costs words at the intent gate and costs the whole plan af
 ## Reserved first words
 
 When the first word of the arguments is one of these, handle it here and do not start a
-run. With the Temper mod loaded (the system prompt has `Temper enforcement: active`),
+run. With the Temper mod loaded (the system prompt has a `Temper enforcement:` line),
 the mod already answers the read-only words and has already recorded the person's
 decision for the others; this table is what you do next, and everything you do when the
 mod is absent. Any other first word is a feature description.
@@ -39,7 +39,7 @@ mod is absent. Any other first word is a feature description.
 | `back <phase> <reason>` | `${CLAUDE_PLUGIN_ROOT}/scripts/temper state loop {current stage} {phase} --reason "{reason}"` (stop when it prints `BLOCKED`: the loop budget is spent), `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set next_stage {phase}`, record the reason with `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage {phase} --phase feedback --claim "back: {reason}"`, and rerun every later gate before advancing. |
 | `override <reason>` | `${CLAUDE_PLUGIN_ROOT}/scripts/temper override {stage} --reason "{reason}"`. With no reason, refuse: "Override needs a reason. Use /temper:temper override <reason>." The skip is the person's go-ahead for that stage: with the Temper bar, the bar sends `continue {stage}` after the skip (the hook lets that stage's `state advance` through once the skip is recorded), and you do that stage's On Continue steps and launch the next stage. Without the bar, treat it as the answer "Override and continue" and go on to the next stage. |
 | `accept <id> <reason>` | `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence accept --stage review --id {id} --reason "{reason}"`. With no reason, refuse. |
-| `drift <add\|revert\|allow> <reason>` | `add`: put the file in plan.md's Files table. `revert`: restore the file to its committed state (a file in the project only, never a file under `$CLAUDE_PLUGIN_ROOT`). `allow`: continue once. Record the choice with `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase feedback --claim "drift {path}: {choice}: {reason}"`. |
+| `drift <add\|revert\|allow> <reason>` | `add`: put the file in plan.md's Files table. `revert`: restore the file to its committed state (a file in the project only, never a file in the plugin folder). `allow`: continue once. Record the choice with `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase feedback --claim "drift {path}: {choice}: {reason}"`. |
 | `pause` / `resume` | Stop at the next gate and wait for the person, or continue from it. |
 | `pr` | Write a pull request description from `${CLAUDE_PLUGIN_ROOT}/scripts/temper report`: overrides, accepted findings and drift decisions with their reasons. |
 | `continue <stage>` | The person already approved `<stage>` (the Temper bar recorded the decision; the matching state advance is allowed once). Do the "On Continue" steps of that stage exactly as written for it: the status flip and `Accepted-by` for Intent, `state advance`, the feature branch (`git checkout -b feature/{slug}` when not on it) and the commit of the approved artifacts for Plan, `base_sha` before the first Build launch, and so on. Use the `state advance` of that stage as written. Then launch the next stage. Do not ask the gate question. The bar also sends it after the person skipped `<stage>` with a reason (the stage's gate may then be FAIL; the skip is recorded by `${CLAUDE_PLUGIN_ROOT}/scripts/temper override`, which the mirror message asks for): the same steps apply. For `check` do only the `state advance check_complete commit`: the Done bar's Commit button asks for the commit, so do not commit and do not run the Commit section. |
@@ -80,13 +80,20 @@ ORCHESTRATOR (this file)
   +-- temper gate commit -> commit
 ```
 
-**Paths.** `$CLAUDE_PLUGIN_ROOT` is the plugin's install folder; how to resolve it is in
-`${CLAUDE_PLUGIN_ROOT}/reference/orchestrator-patterns.md` → "$CLAUDE_PLUGIN_ROOT
-Resolution". Plugin files are always written out in full in this file, starting with
-`${CLAUDE_PLUGIN_ROOT}/`, and the temper CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. Every
-other path (`.temper/`, the spec files, `.claude/temper.config`, `CLAUDE.md`,
-`AGENTS.md`, the files being built) is in the user's project, the current directory.
-Nothing in a run writes under `$CLAUDE_PLUGIN_ROOT`.
+**Paths.** Claude Code wrote the plugin's absolute folder in place of the
+CLAUDE_PLUGIN_ROOT variable when it loaded this file, so every plugin path here is
+already a real path. The Bash tool does not set that variable: run each command with
+the path exactly as this file shows it. The details are in
+`${CLAUDE_PLUGIN_ROOT}/reference/orchestrator-patterns.md` under "The plugin folder".
+Plugin files are always written out in full in this file, and the temper CLI is
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper`. Every other path (`.temper/`, the spec files,
+`.claude/temper.config`, `CLAUDE.md`, `AGENTS.md`, the files being built) is in the
+user's project, the current directory. Nothing in a run writes into the plugin folder,
+unless the project is the plugin folder itself (developing Temper on its own repository).
+
+**Plugin folder line.** Every stage launch prompt below carries this line, word for word,
+so the stage knows the folder that its brief and the reference pages mean:
+`Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.`
 
 ## Models
 
@@ -122,8 +129,11 @@ in place:
    repository") → say so in one line and continue (config + scaffold still done); the
    gate installs on the next run after `git init`. Any other FAIL line means install.sh
    refused and wrote nothing: core.hooksPath is outside the repository, contains '..',
-   '~' or other unusual characters, or names a folder that holds a JSON file, or
-   core.hooksPath is not set and `.git` is not a folder. It printed the lines to add to
+   '~' or other unusual characters, or names a folder that holds a JSON file; the hooks
+   folder (or `.git/config`, or a backup path) leads outside the repository or into the
+   plugin's own folder once symlinks are followed; the repository lies inside the
+   plugin's own folder; or core.hooksPath is not set and `.git` is not a folder. It
+   ignores GIT_DIR, GIT_WORK_TREE and GIT_CONFIG. It printed the lines to add to
    a pre-commit hook by hand and exited 1. Say in one line that the commit gate is not
    installed and why, show those lines, and continue.
 
@@ -145,8 +155,9 @@ anyway, and it's one round-trip instead of several.
   `intent.md` for this feature, reuse that folder's name as the slug in place of a new
   one — the Intent stage then refines the committed draft in place rather than creating
   a sibling. Carry the draft's `**Ticket:**` header forward on pickup. The slug passed
-  to `state init` is lowercase letters, digits, '.', '_' or '-', starts with a letter
-  or digit, and has no '..' (the CLI refuses anything else). Then
+  to `state init` is letters (either case), digits, '.', '_' or '-', starts with a
+  letter or digit, and has no '..' or '/' (the CLI refuses anything else). A ticket key
+  prefix keeps its case as typed (`{KEY}-{slug}`, for example `PROJ-123-login`). Then
   `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --command temper` (creates it,
   `stage: started`, branch `feature/{slug}`).
 - **Advance:** after each gate's "Continue", `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance {stage}_complete {next}`.
@@ -154,9 +165,9 @@ anyway, and it's one round-trip instead of several.
   and `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get stage` to find where you left off. If it exists for a
   **different** feature than `$ARGUMENTS`, ask the user: resume the existing one, or
   overwrite and start fresh (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear` then re-init).
-- **With the Temper bar** (`Temper enforcement: active`): the CLI state is the truth for where the run is.
+- **With the Temper bar**: the CLI state is the truth for where the run is.
   Never run `state init`, `state clear`, `state archive` or `state loop` on your own while a run is
-  active (the mod refuses them). If Resume Validation fails or the state looks wrong, stop, show what
+  active (with enforcement active, the mod refuses them). If Resume Validation fails or the state looks wrong, stop, show what
   is wrong in one line, and wait. Never choose Start over or Delete saved state yourself. If a mirror
   call (`state advance`, `state set next_stage`) is refused or fails, say so in one line and wait: the bar
   shows the problem and offers to record the choice again.
@@ -171,15 +182,15 @@ Every stage gate follows the same shape. After a stage Agent returns:
    not restated here).
 2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate {stage}`. It prints PASS/FAIL with each requirement's status and
    writes the verdict to `.temper/gates.json`.
-3. Show an `AskUserQuestion` gate. **With the Temper bar** (the system prompt has the line
-   `Temper enforcement: active`) do not show it: the bar already offers the same choices with
+3. Show an `AskUserQuestion` gate. **With the Temper bar** (the system prompt has a
+   `Temper enforcement:` line, `active` or `off (UI only)`) do not show it: the bar already offers the same choices with
    the same words (Continue to, Loop back to, Skip with a reason, Save for later, Grill me,
    Teach me, Discuss) and records the decision. Print the stage panel and the gate result, then
-   end the turn with one line: `Waiting for you. Use the Temper bar, or type a change.` The
+   end the turn with one line: `Waiting for you. Use the Temper bar, or type /temper:temper approve (or back, override, pause), or type a change.` (Minimal and off modes draw no buttons, so the typed words are the way there.) The
    person's message at a gate is the original "Other": if the user writes a message at a gate,
    answer it; if it asks for a change, make the change, run the gate again, then wait for the
    user again. Every other dialog stays (the autonomy arming choice, clarifying questions, the
-   Build checkpoint feedback text). Without the line, show the gate as follows:
+   Build checkpoint feedback text). Without a `Temper enforcement:` line, show the gate as follows:
    - **On PASS:** `"Continue to {next} (Recommended)"` / `"Save for later"` / free-text
      `"Other"` for a change request (make the edit, re-run the gate, re-show).
    - **On FAIL:** `"Loop back to {upstream stage}"` (if `feedback.enabled` and the loop
@@ -210,8 +221,8 @@ When a gate FAILs and the user selects "Loop back":
    line to its prompt: *"Feedback re-entry: {reason}. Fix this, then continue."*
 3. When it returns, re-run the downstream gate that triggered the loop.
 
-**With the Temper bar** (the system prompt has `Temper enforcement: active`) the hook refuses
-`state loop` from you, because a loop moves the run and only the person decides that. The
+**With the Temper bar** a loop moves the run, and only the person decides that (with
+enforcement active, the hook also refuses `state loop` from you). The
 person's **Loop back** button (or `/temper:temper back <phase> <reason>`) is the loop: the
 mod records the decision and sends you one message. In it, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state loop {from}
 {to} --reason "<why>"` (the hook lets it through once, for that decision; it keeps the
@@ -220,8 +231,8 @@ budget and clears the evidence of `{to}` and every later stage), and when it doe
 spent: say so in one line and stop (the person can skip with a reason or save for later). The
 bar then runs `/temper:temper` with no arguments: continue from `next_stage` (see Resume) and
 add the line from step 2, with the reason from that message, to the stage's prompt. Do not
-call `state loop` or `state set next_stage` on your own; the hook refuses both without the
-person's decision.
+call `state loop` or `state set next_stage` on your own; with enforcement active, the hook
+refuses both without the person's decision.
 
 That's the whole mechanism: a loop is a normal stage re-launch. Build→Plan is the one
 exception: it's human-driven only (max 1 per run, no circuit breaker) because it means
@@ -251,7 +262,8 @@ Launch:
 ```
 Use the Agent tool, model: {intent}, prompt:
 "Follow ${CLAUDE_PLUGIN_ROOT}/agents/intent.md exactly. Feature: $ARGUMENTS.
-Spec path: {from temper state get spec_path}."
+Spec path: {what ${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path prints}.
+Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
 
 The agent returns `READY` (intent.md written, or an existing draft refined) or
@@ -292,9 +304,10 @@ Launch:
 ```
 Use the Agent tool, model: {plan}, prompt:
 "Follow ${CLAUDE_PLUGIN_ROOT}/agents/plan.md exactly. Feature: $ARGUMENTS.
-Spec path: {from temper state get spec_path}. The accepted intent.md there is your
+Spec path: {what ${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path prints}. The accepted intent.md there is your
 input — derive scenarios and architecture from it; refine it only with a stated
-reason."
+reason.
+Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
 
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` — see `${CLAUDE_PLUGIN_ROOT}/reference/plan.md` → "Approval" for
@@ -332,7 +345,8 @@ Launch:
 
 ```
 Use the Agent tool, model: {design}, prompt:
-"Follow ${CLAUDE_PLUGIN_ROOT}/agents/design.md exactly. Spec: {spec_path from state}."
+"Follow ${CLAUDE_PLUGIN_ROOT}/agents/design.md exactly. Spec: {spec_path from state}.
+Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
 
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate design` (one requirement: design.md carries an Areas of Concern
@@ -362,6 +376,7 @@ autonomy loop) should have to wait until all the work is done to redirect it.
    ```
    Use the Agent tool, model: {build}, prompt:
    "Follow ${CLAUDE_PLUGIN_ROOT}/agents/build.md exactly. Spec: {spec_path from state}.
+   Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.
    Checkpoint: task {N}.
    {One "Checkpoint feedback #{K}: {text}" line per pending feedback item.}
    {If a review-context.json or check-context.json feedback file exists, name it here.}"
@@ -395,7 +410,8 @@ Launch:
 
 ```
 Use the Agent tool, model: {review}, prompt:
-"Follow ${CLAUDE_PLUGIN_ROOT}/agents/review.md exactly. Spec: {spec_path from state}."
+"Follow ${CLAUDE_PLUGIN_ROOT}/agents/review.md exactly. Spec: {spec_path from state}.
+Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
 
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review` (zero open findings at or above `review.block-on`). An
@@ -413,7 +429,8 @@ Launch:
 
 ```
 Use the Agent tool, model: {check}, prompt:
-"Follow ${CLAUDE_PLUGIN_ROOT}/agents/check.md exactly. Spec: {spec_path from state}."
+"Follow ${CLAUDE_PLUGIN_ROOT}/agents/check.md exactly. Spec: {spec_path from state}.
+Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
 
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check` (tests pass, coverage >= threshold, every `intent.md` scenario
@@ -470,7 +487,7 @@ what was actually verified, not a narrated summary.
 `/temper "new feature"` while state exists for a **different** feature → follow
 "Nested Invocation Protection" there (say "feature", not "item"). `/temper` (no args) for
 the **same** feature already in progress → "Continue from {next_stage} (Recommended)" or
-"Start over (replan)". **With the Temper bar** (`Temper enforcement: active`) skip that
+"Start over (replan)". **With the Temper bar** skip that
 question: the bar's Continue button runs `/temper` with no arguments after the person's
 decision is recorded, so continue from `{next_stage}` at once and launch its stage.
 

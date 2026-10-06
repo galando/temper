@@ -104,6 +104,38 @@ describe('finding 1: a shell fed a program Temper cannot read (EXPECT denied)', 
     'a pipe into bash /dev/stdin': `echo '${OV}' | bash /dev/stdin`,
     'a pipe into sh /dev/fd/0': `printf '%s\\n' '${OV}' | sh /dev/fd/0`,
     'a pipe into bash /proc/self/fd/0': `echo '${OV}' | bash /proc/self/fd/0`,
+    // The same names in other spellings: `.`, `..` and doubled slashes, other /proc names, a variable, a glob or braces.
+    'a pipe into bash /dev/./stdin': `echo '${OV}' | bash /dev/./stdin`,
+    'a pipe into bash //dev/stdin': `echo '${OV}' | bash //dev/stdin`,
+    'a pipe into bash /dev//stdin': `echo '${OV}' | bash /dev//stdin`,
+    'a pipe into bash /dev/../dev/stdin': `echo '${OV}' | bash /dev/../dev/stdin`,
+    'a pipe into bash /../dev/stdin': `echo '${OV}' | bash /../dev/stdin`,
+    'a pipe into sh /dev/fd/../fd/0': `printf '%s\\n' '${OV}' | sh /dev/fd/../fd/0`,
+    'a pipe into bash /proc/thread-self/fd/0': `echo '${OV}' | bash /proc/thread-self/fd/0`,
+    'a pipe into bash /proc/<pid>/fd/0': `echo '${OV}' | bash /proc/4242/fd/0`,
+    'a pipe into bash /proc/$$/fd/0': `echo '${OV}' | bash /proc/$$/fd/0`,
+    'a pipe into bash /proc/self/task/<tid>/fd/0': `echo '${OV}' | bash /proc/self/task/12/fd/0`,
+    'a pipe into bash /proc/self/root/dev/stdin': `echo '${OV}' | bash /proc/self/root/dev/stdin`,
+    'a pipe into bash /DEV/STDIN': `echo '${OV}' | bash /DEV/STDIN`,
+    'a pipe into bash /dev/std*': `echo '${OV}' | bash /dev/std*`,
+    'a pipe into bash /dev/{stdin,null}': `echo '${OV}' | bash /dev/{stdin,null}`,
+    'a pipe into bash $D/./stdin': `D=/dev; echo '${OV}' | bash $D/./stdin`,
+    'a pipe into bash $\'/dev/stdin\'': `echo '${OV}' | bash $'/dev/stdin'`,
+    'an unknown producer into bash /dev/./stdin': 'cat /tmp/x.sh | bash /dev/./stdin',
+    'an unknown producer into bash of an unknown variable': 'cat /tmp/x.sh | bash "$S"',
+    'a plain override into bash /dev/./stdin': `echo 'scripts/temper override plan --reason x' | bash /dev/./stdin`,
+    // source and . read standard input by every one of these names too.
+    'a pipe into source /dev/stdin': `echo '${OV}' | source /dev/stdin`,
+    'a pipe into source /dev/fd/0': `echo '${OV}' | source /dev/fd/0`,
+    'a pipe into source /proc/self/fd/0': `echo '${OV}' | source /proc/self/fd/0`,
+    'a pipe into source /proc/thread-self/fd/0': `echo '${OV}' | source /proc/thread-self/fd/0`,
+    'a pipe into source //dev/stdin': `echo '${OV}' | source //dev/stdin`,
+    'a pipe into . /dev/./stdin': `echo '${OV}' | . /dev/./stdin`,
+    'a pipe into . /dev//stdin': `echo '${OV}' | . /dev//stdin`,
+    'a pipe into source /dev/../dev/stdin': `echo '${OV}' | source /dev/../dev/stdin`,
+    'an unknown producer into source /dev/./stdin': 'cat /tmp/x.sh | source /dev/./stdin',
+    // An interpreter given standard input as its program file reads the piped program.
+    'a pipe into python3 /dev/./stdin': `echo 'import os; os.system("${OV.replace(/"/g, '')}")' | python3 /dev/./stdin`,
   }
   for (const [name, cmd] of Object.entries(attempts)) {
     test(name, async ($, on) => {
@@ -127,7 +159,12 @@ describe('finding 1: plain, visible stdin programs and the usual eval idioms sti
     'a python heredoc': "python3 - <<'EOF'\nprint('hi')\nEOF",
     'bash -c plain': "bash -c 'ls src'",
     'echo | bash /dev/stdin of a plain line': "echo 'ls src' | bash /dev/stdin",
+    'echo | bash /dev/./stdin of a plain line': "echo 'ls src' | bash /dev/./stdin",
+    'echo | source //dev/stdin of a plain line': "echo 'export A=1' | source //dev/stdin",
+    'echo | python3 /dev/stdin of a plain program': "echo 'print(1)' | python3 /dev/stdin",
     'a script file still runs': 'bash scripts/run.sh',
+    'a script file under a variable folder still runs': 'bash "$TMPDIR/run.sh"',
+    'a file under /dev that is not standard input is a file': 'bash /dev/null',
   }
   for (const [name, cmd] of Object.entries(fine)) {
     test(name, async ($, on) => {

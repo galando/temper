@@ -24,7 +24,7 @@ rules, read related existing code, skip branch verification (the user decides).
 
 **Checkpoint mode:** your launch prompt may carry `Checkpoint: task {N}.` plus
 `Checkpoint feedback #{K}: {text}` lines. With a checkpoint, FIRST answer every
-feedback item — `temper evidence add --stage build --phase feedback-resolved
+feedback item — `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase feedback-resolved
 --claim "feedback #{K}: applied — {what changed}"` or `"feedback #{K}: declined —
 {reason}"` (a decline always carries a reason; feedback that changes a later task
 edits that task's unchecked row, never a checked one) — then run ONLY task N.
@@ -157,7 +157,7 @@ box a clean-context stage reads first is the one that renders, and two shapes me
 two different reviews.
 
 **On Continue:** standalone loads only changed files into context for Review —
-diffed against `temper state get base_sha` when one is recorded (checkpoint commits
+diffed against the sha `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get base_sha` prints when one is recorded (checkpoint commits
 already landed, so a plain `git diff --name-only` returns nothing), plus
 still-uncommitted paths. Mark the spec header `**Status:** completed` /
 `**Completed:** {date}` if `intent.md` exists. Cleanup of `build-state.json` happens

@@ -17,7 +17,10 @@
 #
 # The marker is a fixed name in the project's .temper folder: the hook changes into the
 # project folder first. A project folder that lies inside this plugin's own folder is
-# skipped (exit 0): the hook never writes inside the plugin.
+# skipped (exit 0): the hook never writes inside the plugin. The plugin folder itself is a
+# project like any other (developing Temper on its own repository), so its .temper folder
+# is written. A .temper folder or a marker file that is a symlink is skipped too, because
+# writing through it would land outside the project's .temper folder.
 #
 # DEGRADATION CONTRACT:
 #   - Prompt is not a marked stage command  => exit 0 (no-op)
@@ -65,7 +68,9 @@ except Exception:
 
   local proj; proj="$(_project_dir)" || return 0
   cd "$proj" 2>/dev/null || return 0
+  [[ ! -L .temper ]] || return 0
   mkdir -p .temper 2>/dev/null || return 0
+  [[ ! -L .temper/pending-stage.json ]] || return 0
   # "since" scopes the debt in time: verify-stage-gate.sh accepts only a verdict whose
   # ts is >= this moment, so a verdict left in gates.json by a PREVIOUS run cannot
   # satisfy THIS session's guarantee. Same format as scripts/temper's _now.

@@ -34,11 +34,11 @@ describe('plain calls stay allowed while a run is active', () => {
     // does not name the script, so only the plain evidence call mentions it.
     `cd /private/tmp/pr-demo; T=/Users/x/plugin/scripts/temper; $T evidence add --stage build --claim "unit tests" --cmd "npm test" --exit 1 --phase red --label PROVEN 2>&1 | tail -3\npython3 - <<'EOF'\np='src/users.js'\ns=open(p).read()\ns=s.replace("const users = new Map()", "const users = new Map()\\nconst loop = 1")\nopen(p,'w').write(s)\nEOF`,
     `cd /tmp/pr-demo && /Users/x/plugin/scripts/temper evidence add --stage build --claim "tests" --exit 0 --phase green --label PROVEN | tail -2\npython3 - <<'PY'\nimport json\nd=json.load(open('.temper/specs/pw/build-context.json'))\nd['init']=True\njson.dump(d,open('.temper/specs/pw/build-context.json','w'))\nPY`,
-    // The orchestrator's own idiom: the script is found by a command substitution, then used for reads.
-    'T=$(ls -d /opt/plugins/cache/*/temper/*/scripts/temper 2>/dev/null | tail -1); echo $T; $T state get stage; $T state get next_stage; $T state get spec_path; $T gate plan',
-    'T=$(ls -d "$CLAUDE_PLUGIN_ROOT"/scripts/temper); $T state get next_stage',
+    // A script found by a command substitution, then used for reads.
+    'T=$(command -v temper 2>/dev/null | tail -1); echo $T; $T state get stage; $T state get next_stage; $T state get spec_path; $T gate plan',
+    'T=$(ls -d "$PWD"/scripts/temper); $T state get next_stage',
     'T=$(command -v temper || echo scripts/temper); $T gate review; $T report; $T status --json; $T config get autonomy.enabled; $T model --all',
-    'T=$(find /opt/plugins -name temper -path "*scripts*" | head -1); $T evidence add --stage build --claim "unit tests" --label PROVEN',
+    'T=$(which temper | head -1); $T evidence add --stage build --claim "unit tests" --label PROVEN',
     'T=$(ls scripts/temper); $T state set task 2; $T state set regression_test t.js',
     // Readers that mention the script or a decision word.
     `sed -n '/override/p' scripts/temper`,
@@ -111,6 +111,43 @@ describe('shell indirection around the script fails closed', () => {
     const r = run('plan', `scripts/temper $'over\\x72ide' plan --reason x`)
     expect('deny' in r && r.deny).toContain('/temper:temper')
     expect('deny' in r && r.deny).toContain('buttons')
+  })
+
+  // The refusal gives the true reason: a subcommand that cannot be read is not called a decision word.
+  const reason = (cmd: string): string => {
+    const r = run('plan', cmd)
+    return 'deny' in r ? r.deny : ''
+  }
+  test('a subcommand picked by a variable is refused for that reason, not for a decision word', () => {
+    for (const cmd of [
+      'P=/opt/temper; for c in report status bands; do echo "== $c"; $P/scripts/temper $c 2>&1 | head -20; done',
+      'scripts/temper $c',
+      'scripts/temper state "$X" plan_complete build',
+      `scripts/temper $'over\\x72ide' plan --reason x`,
+      'T=$(ls scripts/temper); $T $c',
+    ]) {
+      expect(classifyBash(cmd).opaqueWhy).toBe('dynamic')
+      const d = reason(cmd)
+      expect(d).toContain('in a form Temper cannot read: a variable, a substitution or an escaped string')
+      expect(d).not.toContain('decision word')
+      expect(d).toContain('Next: run each scripts/temper call with its words written out')
+    }
+  })
+  test('a hidden launch with no decision word is refused for what it hides', () => {
+    const cmd = `python3 -c "import subprocess; subprocess.run(['scripts/temper', 'gate'])" $(cat f)`
+    expect(classifyBash(cmd).opaqueWhy).toBe('hidden')
+    const d = reason(cmd)
+    expect(d).toContain('hides part of what it runs')
+    expect(d).not.toContain('decision word')
+  })
+  test('a launch Temper cannot read that holds a decision word keeps the decision word text', () => {
+    for (const cmd of ['T=$(ls scripts/temper); $T override plan --reason x', `echo 'scripts/temper override plan --reason x' | bash /dev/./stdin`, 'tempe[r] override plan --reason x']) {
+      expect(classifyBash(cmd).opaqueWhy).toBe('decision')
+      expect(reason(cmd)).toContain('it holds a decision word')
+    }
+  })
+  test('a command that is not opaque has no reason', () => {
+    expect(classifyBash('scripts/temper gate plan').opaqueWhy).toBeNull()
   })
 
   test('a plan file that quotes the call in a heredoc is still allowed', () => {

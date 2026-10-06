@@ -33,7 +33,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/plan_review.py" render ".temper/specs/{fe
 
 - Sections come from `plan.md` then `tasks.md`, split at each `## ` heading (headings inside code fences are ignored). Text before the first heading becomes its own section when it has content.
 - `--feature "Name"` overrides the display name (default: the `# ` heading of plan.md, else the spec directory name).
-- `--target artifact` writes the fragment the Artifact tool expects (title, style, body; no `<!doctype>`, `<html>`, `<head>` or `<body>` wrapper). Write it to the project's `.temper` folder, outside the spec directory, so a shared page is never committed with the spec. Every output goes in the project, never under `$CLAUDE_PLUGIN_ROOT`, and `{feature}` is the spec's slug (lowercase letters, digits, '.', '_' or '-', starting with a letter or digit, with no '..').
+- `--target artifact` writes the fragment the Artifact tool expects (title, style, body; no `<!doctype>`, `<html>`, `<head>` or `<body>` wrapper). Write it to the project's `.temper` folder, outside the spec directory, so a shared page is never committed with the spec. Every output goes in the project, never in the plugin folder, and `{feature}` is the spec's slug: letters (either case), digits, '.', '_' and '-', starting with a letter or digit, never containing '..' or '/'. A ticket key prefix such as `PROJ-123-login` is a valid slug.
 
 ### Section Schema
 
@@ -138,4 +138,4 @@ Say so, and offer **Open HTML review** (local) instead. Never invent another hos
 - Markdown rendering only applies to plan content (injected by `plan_review.py`, which JSON-escapes it for the script block)
 - No external resources loaded (fully self-contained)
 - Shared-review data is untrusted: `plan_review.py merge` drops empty comments and coerces unknown types to `general-note` before anything is applied
-- The only network call is the one the user confirmed: publishing the artifact
+- Nothing leaves the machine before the user confirms. After that, the artifact's shared store carries reviewers' comments, and `ArtifactData` reads them back

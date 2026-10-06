@@ -212,6 +212,41 @@ describe('end to end through the band: the prompt the mod sends is runnable once
   })
 })
 
+// The commands reach the script by the plugin folder's full path, which Claude Code fills in (quoted when it holds
+// spaces), and a subagent may still write the variable itself. The guard treats each one as scripts/temper.
+describe('the script by the full path of the plugin folder, or by the variable', () => {
+  const FORMS = [
+    '/home/u/.claude/plugins/cache/temper/temper/9.6.5/scripts/temper',
+    '"/Users/Jo Doe/Library/Claude Plugins/temper/9.6.5/scripts/temper"',
+    '${CLAUDE_PLUGIN_ROOT}/scripts/temper',
+  ]
+  const BAND = { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} }
+  const status = async ($: unknown): Promise<string> =>
+    ((await ($ as { command: { run: (a: unknown) => Promise<{ text?: string }> } }).command.run({ command: 'temper:temper', args: 'status', origin: { kind: 'composer' } })).text ?? '')
+  for (const form of FORMS) {
+    test(`${form}: the approved advance runs once and the mod follows it; reads pass; a decision needs the person`, async ($, on) => {
+      const w = world(on, runFiles({ nextStage: 'intent', gates: { intent: 'PASS' } }), { fakeCli: true })
+      await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
+      // Reads and records pass with no decision.
+      for (const read of ['gate intent', 'state get next_stage', 'report', 'status --json']) {
+        expect((await $.tool.call({ tool: 'Bash', command: `${form} ${read}` })).deny).toBeUndefined()
+      }
+      // A decision the person did not make is refused, as it is for scripts/temper.
+      expect((await $.tool.call({ tool: 'Bash', command: `${form} override intent --reason x` })).deny).toBe(ONLY_USER)
+      expect((await $.tool.call({ tool: 'Bash', command: `${form} state advance intent_complete plan` })).deny).toContain('Only the user')
+      // The person approves with key 1: the advance the orchestrator then runs passes once and moves the run.
+      const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })
+      await band.press({ key: 'action-continue' })
+      const cmd = `${form} state advance intent_complete plan`
+      const first = await $.tool.call({ tool: 'Bash', command: cmd })
+      expect(first.deny).toBeUndefined()
+      expect(JSON.parse(w.files.get('.temper/build-state.json') ?? '{}').next_stage).toBe('plan')
+      expect(await status($)).toContain('Phase: Plan')
+      expect((await $.tool.call({ tool: 'Bash', command: cmd })).deny).toBeDefined()
+    })
+  }
+})
+
 describe('where the script is', () => {
   const move = { type: 'advance', from: 'plan', to: 'build', ...person } as const
 

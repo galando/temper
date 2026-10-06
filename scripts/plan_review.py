@@ -22,6 +22,8 @@ merge   Normalizes reviewer comments into the review-comments.json shape that
 
 Neither command writes inside this plugin's own folder: an output path that resolves
 there is refused (exit 2), so a review can never overwrite a file the plugin ships.
+The one exception: when the current folder resolves to the plugin folder (the project is
+the plugin's own repository), an output that resolves under its .temper folder is allowed.
 
 python3 stdlib only. No network.
 """
@@ -97,12 +99,20 @@ def feature_name(spec_dir, override):
 
 def output_refusal(out, suffix):
     """Why `out` may not be written, or None. An output is a file name ending in `suffix`
-    whose resolved location is outside this plugin's own folder."""
+    whose resolved location is outside this plugin's own folder. The one exception is the
+    plugin's own repository used as the project (the current folder resolves to the plugin
+    folder): there an output under the .temper folder, the run state, is allowed."""
     path = Path(out)
     if path.suffix.lower() != suffix:
         return f"output must be a file name ending in {suffix}: {out}"
     resolved, root = path.resolve(), ROOT.resolve()
     if resolved == root or root in resolved.parents:
+        try:
+            project_is_plugin = Path.cwd().resolve() == root
+        except OSError:
+            project_is_plugin = False
+        if project_is_plugin and (root / ".temper") in resolved.parents:
+            return None
         return f"refusing to write inside the plugin's own folder: {out}"
     return None
 

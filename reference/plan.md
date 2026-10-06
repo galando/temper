@@ -19,7 +19,7 @@ rules a strong model would not derive on its own; it does not choreograph your s
 
 **Modes:** Standalone (`/temper:plan`) runs in the current context and shows its own
 gate. Agent subprocess (from `/temper`) runs in a clean context and returns a summary —
-The plan brief (`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`) step 5 already tells you not to show an `AskUserQuestion` gate in that
+The plan brief (`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`) step 8 already tells you not to show an `AskUserQuestion` gate in that
 mode; the orchestrator owns it. The methodology below is identical either way.
 
 ## What You Produce
@@ -91,7 +91,7 @@ count >= Success Criteria count; every criterion has explicit validation links
 `Covers:` id names a real criterion); every `Scenario:` sits inside a ```gherkin
 fence; `plan.md` records `## Cross-Repo Search`. **Only for `medium`/`complex`**:
 `plan.md` also needs a heading matching `blast radius` (any level, e.g.
-`## Blast Radius`). Record `temper state set complexity <tier>` as soon as you
+`## Blast Radius`). Record `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <tier>` as soon as you
 classify it — the gate reads it to decide whether the Blast Radius section applies.
 
 Fix any FAIL before returning: usually a missing scenario, an empty Success Criteria

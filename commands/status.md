@@ -10,6 +10,10 @@ description: "Show quality metrics, learning loop, and observability dashboard"
 
 > **Full methodology:** Read `${CLAUDE_PLUGIN_ROOT}/reference/status.md`
 
+**Plugin folder:** the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that
+path with /scripts/temper taken off). Wherever a reference page or a brief writes the
+CLAUDE_PLUGIN_ROOT variable, use this folder.
+
 ### Quick Reference
 
 1. Initialize `.temper/` directory if missing (metrics, review-memory, specs/)

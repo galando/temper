@@ -18,9 +18,9 @@ Apply the temper-core skill's detection order. A company preset (`.claude/temper
 or a YAML preset file in the project's `.claude/presets` folder) overrides auto-detected
 commands.
 
-**Configured commands first.** Before using the table below, read
-`temper config get check.commands.test`, `check.commands.lint` and
-`check.commands.typecheck`. A key that prints a command replaces the detected command
+**Configured commands first.** Before using the table below, run
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper config get check.commands.test`, then the same call for
+`check.commands.lint` and for `check.commands.typecheck`. A key that prints a command replaces the detected command
 for that level; a key that prints nothing keeps stack detection.
 
 | Manifest | Stack | test / lint / type / build |
@@ -108,9 +108,10 @@ the OWASP pattern-matching in `review.md` Step 2, labeled `[HEURISTIC]`.
 ## Step 3: Debt Tracking + Config Suggestions
 
 If `debt-tracking: true`: record coverage %, test count, and lint-violation count via
-the CLI — `${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append coverage <pct>`, `temper
-metrics append tests <count>`, `temper metrics append lint_violations <count>` — never
-by hand-editing `.temper/metrics.json`: these arrays are what `temper bands` computes
+the CLI: `${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append coverage <pct>`,
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append tests <count>` and
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append lint_violations <count>`, never by
+hand-editing `.temper/metrics.json`: these arrays are what `temper bands` computes
 control bands from, so the monitor must read a ledger the spine wrote. (Full debt
 analysis is `/temper:status`'s job, not Check's — don't slow the pipeline down
 repeating it here.)
