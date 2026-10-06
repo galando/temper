@@ -10,15 +10,13 @@ is the project's `.temper/specs/{slug}` folder, never a path in the plugin folde
 
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/design.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
-**Enforcement marker.** Look for a line in your system prompt that starts with `Temper enforcement:`. With no such line, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. With the line `Temper enforcement: off (UI only)`, the Temper mod is loaded and the user turned enforcement off: say once, in one sentence, "Temper enforcement is off (turned off by the user); continuing with prompt based phases", then carry on exactly as written below. Never treat either case as an error and do not mention it again. With `Temper enforcement: active`, say nothing about it.
-
 1. Load `{spec_path}/intent.md` and `{spec_path}/plan.md`.
 2. Read `${CLAUDE_PLUGIN_ROOT}/reference/design.md` once — the full methodology. Follow it
    exactly; nothing here overrides it.
 3. Produce `{spec_path}/design.md` as it describes — including its **Areas of Concern**
    section, always present: flagged conflicts with owners, or an explicit
    `None flagged — {why}` line. Silence is not a valid claim.
-4. `temper gate design` mechanically checks exactly one thing: design.md carries an
+4. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate design` mechanically checks exactly one thing: design.md carries an
    Areas of Concern heading. Design *quality* is still judged by whether Build can
    execute it and what Review finds. Run
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate design` yourself before returning and fix
@@ -35,14 +33,15 @@ is the project's `.temper/specs/{slug}` folder, never a path in the plugin folde
 - Design flags a policy conflict and names its owner. It never silently picks a side.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
-the right border) and nothing outside it. Fact rows at the top, then titled sections
+the right border), and it is the only box you print. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
 more"; omit an empty section including its divider — never a row saying "none"; wrap
 a long entry onto a continuation row indented two spaces.
 
-Return only: this panel (the orchestrator prints it verbatim — areas of concern
-first, they are why the human is at the gate), the path to `design.md`, and the key
-architectural decisions:
+Return this panel (the orchestrator prints it verbatim; areas of concern come first,
+because they are why the human is at the gate). After it, on a line of its own, return
+the path to `design.md`. The key architectural decisions are the `DECISIONS` section.
+Nothing else goes outside the panel:
 
 ```
 +--------------------------------------------------------------------------+

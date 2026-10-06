@@ -11,12 +11,10 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/check.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
-**Enforcement marker.** Look for a line in your system prompt that starts with `Temper enforcement:`. With no such line, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. With the line `Temper enforcement: off (UI only)`, the Temper mod is loaded and the user turned enforcement off: say once, in one sentence, "Temper enforcement is off (turned off by the user); continuing with prompt based phases", then carry on exactly as written below. Never treat either case as an error and do not mention it again. With `Temper enforcement: active`, say nothing about it.
-
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/check.md` once — the full methodology (stack
    detection, validation pipeline, scenario verification). Follow it exactly; nothing
    here overrides it.
-2. `temper gate check` mechanically checks: a recorded passing test run; a recorded
+2. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check` mechanically checks: a recorded passing test run; a recorded
    coverage value >= `check.coverage-threshold` (default 80); every Gherkin scenario in
    `intent.md` traced to a test that actually exercises it — the requirement that
    catches a scenario Build never implemented (a plan promise with no test behind it);
@@ -62,13 +60,14 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
   newer failure.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
-the right border) and nothing outside it. Fact rows at the top, then titled sections
+the right border), and it is the only box you print. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
 more"; omit an empty section including its divider — never a row saying "none"; wrap
 a long entry onto a continuation row indented two spaces.
 
-Return only: this panel (the orchestrator prints it verbatim), validation results
-per level, and any scenario verification gaps:
+Return this panel (the orchestrator prints it verbatim) and nothing outside it. Its
+fact rows carry the result of each validation level, and its `SCENARIO GAPS` section
+names every scenario verification gap:
 
 ```
 +--------------------------------------------------------------------------+

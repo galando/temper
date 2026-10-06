@@ -12,6 +12,8 @@
 #   Other                 -> "Discuss"                 (key 4)
 # A new option in commands/temper.md is added to the table below, and to the action test's table.
 set -uo pipefail
+# With CDPATH set, cd prints the folder it enters, and the path below would hold it twice.
+unset CDPATH
 # The plugin folder: this script sits in its scripts folder, so strip that literal suffix.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${HERE%/scripts}"

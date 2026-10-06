@@ -45,7 +45,7 @@ export const spec_plan_files: string = [
   "| `docs/demo-script.md` | Scenario: \"README explains Temper at a glance…\" (walkthrough video script) |",
   "| `demo/password-reset/` (README.md, package.json, src/reset.js, src/reset.test.js, .claude/temper.config) | Infrastructure: required by docs/mods-testing.md step 5 and demo/temper.tape |",
   "| `demo/temper.tape` | Scenario: \"README explains Temper at a glance…\" (hero GIF source) |",
-  "| `images/temper-hero.gif`, `images/mode-full-dark.png`, `images/mode-minimal-light.png`| Scenario: \"README explains Temper at a glance…\" |",
+  "| `docs/temper-hero.md`, `docs/mode-full-dark.md`, `docs/mode-minimal-light.md`| Scenario: \"README explains Temper at a glance…\" |",
   "",
   "### Files to Modify",
   "",

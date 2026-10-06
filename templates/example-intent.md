@@ -14,20 +14,20 @@
 ### Problem
 
 Release engineers and the CI pipeline read Temper's gate results. Today they have
-two choices. `temper report` prints a table for people. `.temper/gates.json` holds
+two choices. The CLI's `report` subcommand prints a table for people. `.temper/gates.json` holds
 internal state, keyed by stage. A CI step must parse that file and copy the verdict
 logic. One pipeline greps `gates.json` for `"verdict": "FAIL"` next to `"check"`.
 That grep breaks when the state schema gains a field. We want one stable JSON
 output for the current run. A machine must be able to read it without knowing
 Temper's internals.
 
-Facts: `temper report --json` prints `gates.json` as it is (the internal shape).
+Facts: `report --json` prints `gates.json` as it is (the internal shape).
 Assumption: CI users want one row for each requirement, not only one verdict for
 each stage. The first CI user will confirm this.
 
 ### Success Criteria
 
-- [ ] AC-01 [required]: `temper report --ci` prints one JSON document. Its top level is
+- [ ] AC-01 [required]: `report --ci` prints one JSON document. Its top level is
   a flat array. Each stage is one object with `stage`, `verdict`, and a
   `requirements[]` array of `{name, pass, detail}` (source: the CI guide §3 | PROJ-1187)
   Why: CI steps are the main users. Without a stable shape, each user must build
@@ -52,9 +52,9 @@ each stage. The first CI user will confirm this.
 
 ### Scope and Non-goals
 
-- In scope: the `temper report` subcommand, its output contract, tests in the CLI's test suite
+- In scope: the CLI's `report` subcommand, its output contract, tests in the CLI's test suite
 - Out of scope: HTML output, upload of the report, the write path of gates.json
-- Must keep working: `temper report` (human table) and `temper report --json` (gates.json as it is)
+- Must keep working: `report` (human table) and `report --json` (gates.json as it is)
 
 ### Business Outcome
 
@@ -63,7 +63,7 @@ number of downstream repos that read `--ci` output (owner: Dana, reviewed each q
 
 ### Target Users
 
-- Release engineer: adds one `temper report --ci` line to the pipeline → the CI step fails the build on any FAIL requirement, with no parsing of internals
+- Release engineer: adds one call of the CLI's `report --ci` to the pipeline → the CI step fails the build on any FAIL requirement, with no parsing of internals
 - Reviewer: opens the CI job log → sees pass or fail rows for every stage of the run
 
 ### Open Questions

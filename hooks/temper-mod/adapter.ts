@@ -46,6 +46,9 @@ export type Io = {
   setMode: (mode: UiMode) => Promise<void>
   // Waits ms milliseconds (the engine's clock: the mod reads no global timer).
   pause: (ms: number) => Promise<void>
+  // Where the Temper script is (pluginCliFrom): the button prompts of the published view name the CLI by it.
+  // Left out: the plain `scripts/temper`.
+  cli?: string
 }
 
 // A choice of the person (a move) that no mirror call has recorded in the CLI yet.
@@ -504,12 +507,12 @@ export function composeText(snap: Snapshot): string {
   })
 }
 
-export const viewOf = (snap: Snapshot): View =>
-  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, sync: snap.sync.line, pending: snap.sync.pending !== null, enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false })
+export const viewOf = (snap: Snapshot, cli?: string): View =>
+  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, sync: snap.sync.line, pending: snap.sync.pending !== null, enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false, ...(cli !== undefined ? { cli } : {}) })
 
 // Mirrors the folded state into `$.state` for drawing and compaction.
 export async function publish(io: Io, snap: Snapshot): Promise<void> {
-  await io.setRun({ slug: snap.slug, phase: snap.state.phase, title: snap.title, summary: composeText(snap), view: viewOf(snap) })
+  await io.setRun({ slug: snap.slug, phase: snap.state.phase, title: snap.title, summary: composeText(snap), view: viewOf(snap, io.cli) })
   await io.setMode(snap.mode)
 }
 

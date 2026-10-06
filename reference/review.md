@@ -5,7 +5,7 @@ description: "Technical code review with confidence scoring, review memory, and 
 # Review: Confidence-Scored Code Review
 
 **Goal:** High signal-to-noise review — parallel subagents, confidence scoring, review
-memory, intent validation. The review brief (`${CLAUDE_PLUGIN_ROOT}/agents/review.md`) carries the exact `temper evidence add
+memory, intent validation. The review brief (`${CLAUDE_PLUGIN_ROOT}/agents/review.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add
 --severity` invocation the gate needs; this doc is the policy behind what to look for
 and how to score it. It states rules a strong reviewer would not derive alone —
 severity floors, filter bypasses, memory thresholds — not review technique.
@@ -51,9 +51,10 @@ This page is the source of truth for how OCR behaves in a review:
 
 - **Probe (here, in Step 1).** Run `command -v ocr`, then `ocr review --preview`. Both
   succeed: record `ocr_status = ready`.
-- **`ocr` not on the PATH.** `require` blocks the review and shows the install command
-  (`npm install -g @alibaba-group/open-code-review`). `auto` skips OCR with a one-line
-  notice and the review goes on without it.
+- **`ocr` not on the PATH.** `require` blocks the review and names the tool,
+  open-code-review, with a link to its own install page,
+  https://github.com/alibaba/open-code-review (never an install command to run).
+  `auto` skips OCR with a one-line notice and the review goes on without it.
 - **`ocr` present but the probe fails** (often no model provider set up for OCR). Both
   modes print a one-line warning and continue with Temper's own review; this never
   blocks.
@@ -224,7 +225,7 @@ edit, re-show this same gate.
 
 **Accepting a finding.** A person can keep a finding as it stands with
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence accept --stage review --id <n> --reason "<why>"`. The row stays in the
-ledger with the reason, the author (git identity) and the time; `temper gate review`
+ledger with the reason, the author (git identity) and the time; `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review`
 stops counting it and its detail names the accepted count. The reason is required, an
 empty one exits 1 and writes nothing, and a finding already resolved or accepted cannot
 be accepted again. Resolve means fixed; accept means a person chose to keep it. The

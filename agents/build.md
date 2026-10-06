@@ -12,8 +12,6 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/build.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
-**Enforcement marker.** Look for a line in your system prompt that starts with `Temper enforcement:`. With no such line, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. With the line `Temper enforcement: off (UI only)`, the Temper mod is loaded and the user turned enforcement off: say once, in one sentence, "Temper enforcement is off (turned off by the user); continuing with prompt based phases", then carry on exactly as written below. Never treat either case as an error and do not mention it again. With `Temper enforcement: active`, say nothing about it.
-
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/build.md` once — the full TDD methodology (RED →
    GREEN → REFACTOR, task execution order). Follow it exactly; nothing here overrides it.
    When a task calls a framework/library API, apply the `source-driven-development`
@@ -39,7 +37,7 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    `{"available": false, "reason": "{why}"}` — the tool's absence never fails a gate,
    a missing record does.
 
-4. `temper gate build` mechanically checks when you're done: at least one recorded
+4. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` mechanically checks when you're done: at least one recorded
    test run that FAILED before one that PASSED — real TDD discipline, not just a final
    green run; no unchecked `- [ ]` boxes left in `tasks.md`; and every pending
    `feedback` row has a matching `feedback-resolved` row. Record evidence as you go,
@@ -80,21 +78,22 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 - On a checkpoint run, execute only task N.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
-the right border) and nothing outside it. Fact rows at the top, then titled sections
+the right border), and it is the only box you print. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
 more"; omit an empty section including its divider — never a row saying "none"; wrap
 a long entry onto a continuation row indented two spaces.
 
-Return only: this panel (the orchestrator prints it verbatim), the list of files
-changed, test pass/fail counts, and any blockers. `COMMITS` and `FEEDBACK` sections
-appear only on a checkpoint run; the panel is task-scoped before the last task and
-cumulative on it:
+Return this panel (the orchestrator prints it verbatim) and nothing outside it. The
+files changed are the `CHANGED` section, the test pass and fail counts are the Tests
+row, and every blocker is a row of the `BLOCKERS` section. `COMMITS` and `FEEDBACK`
+sections appear only on a checkpoint run; the panel is task-scoped before the last
+task and cumulative on it:
 
 ```
 +--------------------------------------------------------------------------+
 | BUILD — {Feature Name}                                                   |
 +--------------------------------------------------------------------------+
-| Tasks: {N}/{N} complete   Tests: {N} added, all passing                  |
+| Tasks: {N}/{N} complete   Tests: {N} added; {N} pass, {N} fail           |
 | Files: {N} created, {N} modified   SEARCH: {tool + N queries or local}   |
 +--- CHANGED (N) ---+------------------------------------------------------+
 | {file} [{scenario}]                                                      |
@@ -102,5 +101,7 @@ cumulative on it:
 | {sha} {scenario} [AC-NN] — {files}                                       |
 +--- FEEDBACK (N) ---+-----------------------------------------------------+
 | #{K} {text} -> applied|declined: {why}                                   |
++--- BLOCKERS (N) ---+-----------------------------------------------------+
+| {what stops the task, and what it needs}                                 |
 +--------------------------------------------------------------------------+
 ```

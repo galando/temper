@@ -27,32 +27,25 @@ MCP servers provide tool-powered analysis that is mechanically verified (`[PROVE
 
 Provides AST-level dependency graphs, call chain tracing, and impact radius analysis.
 
-```bash
-pip install code-review-graph
-```
-
-Then configure in your Claude Code MCP settings:
-
-```bash
-claude mcp add code-review-graph -- code-review-graph
-```
+To set it up, install it by the steps in the
+[code-review-graph README](https://github.com/tirth8205/code-review-graph), then add it to
+Claude Code as an MCP server named `code-review-graph` (the
+[Claude Code MCP docs](https://code.claude.com/docs/en/mcp) show how). Temper does not install it.
 
 ### Semgrep (Security Scanning)
 
 Provides SAST scanning for security vulnerabilities. Replaces OWASP pattern-matching with real static analysis.
 
-```bash
-brew install semgrep
-claude mcp add semgrep -- semgrep --mcp
-```
+To set it up, install Semgrep by the steps in the [Semgrep README](https://github.com/semgrep/semgrep),
+then add it to Claude Code as an MCP server named `semgrep` that starts Semgrep in its MCP mode
+(the Semgrep docs name the option). Temper does not install it.
 
 ### open-code-review (Line-Level Defect Engine)
 
 Provides deterministic, file-bundled code review via an external LLM. OCR is off by default. When you turn it on (`tools.ocr.mode: auto` or `require`, see the config below) and `ocr` is on your `PATH`, OCR takes over line-level defect detection (NPEs, injections, thread-safety) during `/temper:review`. Temper keeps intent validation, security analysis, architecture depth, and review memory. Findings are labeled `[OCR]`; cross-validated findings that both engines agree on are labeled `[OCR+TEMPER]`.
 
-```bash
-npm install -g @alibaba-group/open-code-review
-```
+To install it, follow the steps in the
+[open-code-review README](https://github.com/alibaba/open-code-review). Temper does not install it.
 
 **Verify:**
 
@@ -72,16 +65,16 @@ each to a severity/category from its prose (`Critical Bug`/`Vulnerability` → C
 finding within ±2 lines of one Temper already found, same category family, merges to
 `[OCR+TEMPER]` at the higher severity. A runtime failure (non-zero/timeout) degrades to
 Temper's own review — it never blocks; only `mode: require` with `ocr` *absent* blocks,
-with the install command.
+and says where to find OCR's install steps.
 
 **Troubleshooting:**
 
 | Issue | Fix |
 |-------|-----|
-| `ocr: command not found` | Run `npm install -g @alibaba-group/open-code-review` |
+| `ocr: command not found` | Install OCR by the steps in its README (linked above), so `ocr` is on your `PATH` |
 | `ocr --preview` fails with LLM error | Set up OCR's model provider (see OCR docs) |
 | OCR findings seem wrong | Set `tools.ocr.mode: off` in temper.config to turn it off |
-| Review is slow with OCR | Lower `tools.ocr.concurrency` or increase `tools.ocr.timeout` |
+| Review times out with OCR | Increase `tools.ocr.timeout` |
 
 **Config** (in `.claude/temper.config`):
 
@@ -91,7 +84,6 @@ tools:
     mode: auto                      # off (the default) | auto | require
     replace-defect-subagent: true   # Drop generic defect hunting when OCR is active
     timeout: 10                     # minutes
-    concurrency: 8
 ```
 
 ### tools.mode Configuration

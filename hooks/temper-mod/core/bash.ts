@@ -428,27 +428,13 @@ for (let n = 0; n < 10; n++) {
   STDIN_SAMPLES.push(`/dev/fd/${n}`)
   for (const p of ['self', 'thread-self', '1', '42']) STDIN_SAMPLES.push(`/proc/${p}/fd/${n}`, `/proc/${p}/task/1/fd/${n}`)
 }
-// A part of a word the shell fills in that this command did not set: ${..}, $(..), `..`, $NAME, $$ and the like.
-const UNREAD = /\$\{[^}]*\}|\$\([^)]*\)|`[^`]*`|\$[\w$!#?*@-]/g
+// A part of a word the shell fills in that this command did not set: ${..}, $(..), `..`, $NAME (the whole name), $$
+// and the like.
+const UNREAD = /\$\{[^}]*\}|\$\([^)]*\)|`[^`]*`|\$(?:\w+|[$!#?*@-])/g
 const MARK = '\u0000'
 
-// Whether a path names standard input, in any spelling. The variables this command set are filled in first, and
-// `.`, `..`, doubled slashes and a /proc/<pid>/root prefix (the root folder again) are taken out, so /dev/./stdin,
-// //dev/stdin, /dev//stdin and /dev/../dev/stdin all count. Of a brace expansion the first word counts (it is the
-// script). A glob counts when it can match one of the names. A part that cannot be read (an unknown variable, a
-// substitution) can stand for any text: such a path counts only when `fed` says the command is given input (a
-// pipe, a heredoc, a here-string or a file), because that input is then what may run.
-function readsStdin(text: string, vars: Vars, fed: boolean): boolean {
-  const t = expandVars(text, vars)
-  let marked = (braceExpand(t)?.[0] ?? t).replace(UNREAD, MARK)
-  // `$'..'` and `$".."` leave a `$` before the text. An escape inside `$'..'` cannot be read here, so it stands for any text.
-  if (marked.includes('$')) marked = /\\/.test(marked) ? MARK : marked.replace(/\$/g, '')
-  const unread = marked.includes(MARK)
-  if (unread && !fed) return false
-  if (!marked.startsWith('/') && !marked.startsWith(MARK)) return false
-  let p = normalizePath(marked).replace(/^\/(?:\.\.\/)+/, '/')
-  for (let n = 0; n < 8 && /^\/proc\/[^/]*\/root\//i.test(p); n++) p = p.replace(/^\/proc\/[^/]*\/root/i, '')
-  if (!unread && !GLOB.test(p)) return STDIN_PATH.test(p)
+// A glob (with MARK for a part that cannot be read) as the text of a regular expression.
+function stdinGlob(p: string): string {
   let re = ''
   for (let i = 0; i < p.length; i++) {
     const c = p[i] ?? ''
@@ -461,12 +447,73 @@ function readsStdin(text: string, vars: Vars, fed: boolean): boolean {
       i = end
     } else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&')
   }
+  return re
+}
+
+// Whether one of the names of standard input can be matched by a regular expression.
+function anyStdin(re: string, anchored: boolean): boolean {
   try {
-    const glob = new RegExp(`^${re}$`, 'i')
+    const glob = new RegExp(`${anchored ? '^' : ''}${re}$`, 'i')
     return STDIN_SAMPLES.some(s => glob.test(s))
   } catch {
     return true
   }
+}
+
+// The end of a path that is all that is known of it: what follows the last part that cannot be read (MARK), or the
+// whole of a relative path, and of that only what follows its last `..` step (such a step can undo anything before
+// it). `.` steps and doubled slashes are taken out. The result is matched against the end of the names of standard
+// input; a path that ends in a part that cannot be read can be any name.
+function stdinTail(text: string): boolean {
+  const parts = text.split('/')
+  const glued = parts[0] ?? ''
+  let rest = parts.slice(1).filter(x => x !== '' && x !== '.')
+  const up = rest.lastIndexOf('..')
+  const head = up >= 0 ? '' : glued
+  if (up >= 0) rest = rest.slice(up + 1)
+  const tail = rest.length > 0 || head === '' ? `${head}/${rest.join('/')}` : head
+  if (tail === '/' || tail === '') return true
+  return anyStdin(stdinGlob(tail), false)
+}
+
+// The last part of a path is `stdin`, or the last two are `fd/<n>`.
+const STDIN_NAME = /(?:^|\/)(?:stdin|fd\/\d+)$/i
+
+// Whether a path names standard input, in any spelling. The variables this command set are filled in first, and
+// `.`, `..`, doubled slashes and a /proc/<pid>/root prefix (the root folder again) are taken out, so /dev/./stdin,
+// //dev/stdin, /dev//stdin and /dev/../dev/stdin all count. Of a brace expansion the first word counts (it is the
+// script). A glob counts when it can match one of the names.
+// A relative path is read against `cwd`, the folder the shell is in (see classifyBash): a full folder gives the
+// full path. A folder in the project (relative to its root, whose place is not known here) gives a file of the
+// project, unless `..` steps leave the project: they may reach the root folder, so ../../../dev/stdin counts.
+// When `fed` says the command is given input (a pipe, a heredoc, a here-string or a file), that input is what may
+// run, so more counts:
+//  - a part that cannot be read (an unknown variable, a substitution) stands for any text, `..` steps too: the path
+//    counts when what follows that part can end a name of standard input (`$D/stdin`, `$S`);
+//  - a relative path counts when it can end a name of standard input (stdin, fd/0, dev/stdin), whatever the folder:
+//    the folder may not be known (`cd "$X"`), and a link in the project can lead anywhere;
+//  - a full path counts when it ends in stdin or fd/<n>, since a link can make any folder /dev.
+function readsStdin(text: string, vars: Vars, fed: boolean, cwd: string | null): boolean {
+  const t = expandVars(text, vars)
+  let marked = (braceExpand(t)?.[0] ?? t).replace(UNREAD, MARK)
+  // `$'..'` and `$".."` leave a `$` before the text. An escape inside `$'..'` cannot be read here, so it stands for any text.
+  if (marked.includes('$')) marked = /\\/.test(marked) ? MARK : marked.replace(/\$/g, '')
+  if (marked.includes(MARK)) return fed && stdinTail(marked.slice(marked.lastIndexOf(MARK) + 1))
+  if (!marked.startsWith('/')) {
+    if (cwd !== null && cwd.startsWith('/')) marked = `${cwd}/${marked}`
+    else if (fed) return STDIN_NAME.test(normalizePath(marked)) || stdinTail(`/${marked}`)
+    else if (cwd === null) return false
+    else {
+      const rel = normalizePath(cwd ? `${cwd}/${marked}` : marked)
+      if (!rel.startsWith('..')) return false
+      marked = `/${rel}`
+    }
+  }
+  let p = normalizePath(marked).replace(/^\/(?:\.\.\/)+/, '/')
+  for (let n = 0; n < 8 && /^\/proc\/[^/]*\/root\//i.test(p); n++) p = p.replace(/^\/proc\/[^/]*\/root/i, '')
+  if (fed && STDIN_NAME.test(p)) return true
+  if (!GLOB.test(p)) return STDIN_PATH.test(p)
+  return anyStdin(stdinGlob(p), true)
 }
 
 // Whether a statement is given input: a pipe into it, a heredoc, a here-string or a file on standard input.
@@ -989,7 +1036,7 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
         if (named || pieceNamesTemper(scriptText)) mentionAny = true
         return
       }
-      // The first word that is not an option (an option such as -o takes a value) is the script.
+      // The first word that is not an option (an option such as -o, --rcfile or --init-file takes a value) is the script.
       let fileAt = -1
       let sSeen = false
       for (let i = 0; i < rest.length; i++) {
@@ -998,7 +1045,7 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
           shellStdin = true
           sSeen = true
         }
-        if (['-o', '+o', '-O', '+O'].includes(t)) i++
+        if (['-o', '+o', '-O', '+O', '--rcfile', '--init-file'].includes(t)) i++
         else if (!/^[-+]/.test(t)) {
           fileAt = i
           break
@@ -1006,7 +1053,7 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
       }
       // A script argument that names standard input in any spelling (see readsStdin) is a program read from the
       // pipe, the same as no script file at all.
-      const stdinFile = fileAt >= 0 && readsStdin(rest[fileAt]?.text ?? '', vars, fedInput(stmt, pipedFrom))
+      const stdinFile = fileAt >= 0 && readsStdin(rest[fileAt]?.text ?? '', vars, fedInput(stmt, pipedFrom), cwd)
       if (fileAt < 0 || sSeen || stdinFile) {
         // No script file (or -s with arguments, the words after the options are arguments): the shell reads its
         // commands from standard input. A heredoc or a here-string is in the text; a pipe is shown only when
@@ -1076,7 +1123,7 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
         if (!args.some(a => !a.text.startsWith('-')) && flagAt < 0) stdinProgram = true
         // A program file that is standard input in any spelling (python3 /dev/stdin) is a program on standard input too.
         const fileArg = args.find(a => !a.text.startsWith('-'))
-        if (flagAt < 0 && fileArg !== undefined && readsStdin(fileArg.text, vars, fedInput(stmt, pipedFrom))) stdinProgram = true
+        if (flagAt < 0 && fileArg !== undefined && readsStdin(fileArg.text, vars, fedInput(stmt, pipedFrom), cwd)) stdinProgram = true
       }
     }
     // A git command that creates a commit, wherever it sits (find -exec, env, watch, ...).
@@ -1097,7 +1144,7 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
       const arg = args.find(a => !a.text.startsWith('-'))
       const t = expandVars(arg?.text ?? '', vars)
       // The same names of standard input as for a shell's script (see readsStdin).
-      if (arg !== undefined && readsStdin(arg.text, vars, fedInput(stmt, pipedFrom))) {
+      if (arg !== undefined && readsStdin(arg.text, vars, fedInput(stmt, pipedFrom), cwd)) {
         stdinShell = true
         if (!(/<</.test(stmt) || (pipedFrom !== null && /^(?:echo|printf)\s/.test(pipedFrom)))) hidden = true
       } else if (/[<>]\(/.test(t) ? !/^<\(\s*(?:direnv|pyenv|rbenv|fnm|mise|asdf|brew|conda|starship|zoxide|thefuck|register-python-argcomplete)\b/.test(t) : (arg?.dynamic ?? false) && hiddenText(t)) hidden = true

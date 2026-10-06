@@ -9,8 +9,6 @@ orchestrator's conversation carries over except the prompt you were launched wit
 
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/plan.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
-**Enforcement marker.** Look for a line in your system prompt that starts with `Temper enforcement:`. With no such line, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. With the line `Temper enforcement: off (UI only)`, the Temper mod is loaded and the user turned enforcement off: say once, in one sentence, "Temper enforcement is off (turned off by the user); continuing with prompt based phases", then carry on exactly as written below. Never treat either case as an error and do not mention it again. With `Temper enforcement: active`, say nothing about it.
-
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/plan.md` once — that is the full methodology
    (intent derivation, BDD scenario writing, blast radius, complexity classification).
    Follow it exactly; nothing here overrides it.
@@ -28,7 +26,7 @@ orchestrator's conversation carries over except the prompt you were launched wit
    re-derive context Intent already gathered — reuse its Decisions rows.
 4. As soon as you classify complexity, record it:
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <trivial|simple|medium|complex>`
-   — `temper gate plan` reads this to decide whether a Blast Radius section is required.
+   (`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` reads it to decide whether a Blast Radius section is required).
 5. **Cross-repo code search.** When any cross-repo code search tool is connected (for
    example a Sourcegraph MCP), use it — for blast radius (callers of the changed code
    OUTSIDE this repo), prior art (has another repo solved this), and definitions that
@@ -44,7 +42,7 @@ orchestrator's conversation carries over except the prompt you were launched wit
    or `manual`, default `unit`) and `Covers:` (the comma-separated AC ids this
    scenario verifies; a regression-only scenario may omit it). Group the blocks under
    `#### Happy Path`, `#### Error Paths`, `#### Edge Cases`; omit an empty group.
-7. `temper gate plan` mechanically checks, **at every tier**: the artifacts exist;
+7. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` mechanically checks, **at every tier**: the artifacts exist;
    scenario count >= success-criterion count; every criterion has explicit validation
    links (`acceptance.py plan` — stable `AC-NN` ids, `Why:` and `Validate:` on each,
    every `Covers:` id names a real criterion); every `Scenario:` sits inside a
@@ -58,7 +56,7 @@ orchestrator's conversation carries over except the prompt you were launched wit
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
 - The spec directory holds exactly `intent.md`, `tasks.md` and `plan.md`. Never a
-  fourth file (no `spec.md`, `quickstart.md`, README); `temper gate plan` reads only
+  fourth file (no `spec.md`, `quickstart.md`, README); `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` reads only
   those three.
 - A `Scenario:` outside a ```gherkin fence fails the gate, and a bare one renders as a
   run-on paragraph in every review surface.
@@ -73,13 +71,14 @@ orchestrator's conversation carries over except the prompt you were launched wit
   re-derive its Problem.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
-the right border) and nothing outside it. Fact rows at the top, then titled sections
+the right border), and it is the only box you print. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
 more"; omit an empty section including its divider — never a row saying "none"; wrap
 a long entry onto a continuation row indented two spaces.
 
-Return only: this panel (the orchestrator prints it verbatim), the spec path, the
-complexity tier, and the risk level:
+Return this panel (the orchestrator prints it verbatim) with its ASCII diagram. After
+them, on a line of its own, return the spec path. The complexity tier and the risk
+level are the panel's COMPLEXITY and RISK fields. Nothing else goes outside the panel:
 
 ```
 +--------------------------------------------------------------------------+

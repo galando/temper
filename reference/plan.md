@@ -26,7 +26,7 @@ mode; the orchestrator owns it. The methodology below is identical either way.
 
 **Hard rule — write exactly these three files under `.temper/specs/{feature-slug}/` for
 Medium/Complex features, never a fourth: no `spec.md`, `quickstart.md`,
-`evals/evalset.json`, README, or anything else in the spec directory.** `temper gate
+`evals/evalset.json`, README, or anything else in the spec directory.** `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate
 plan` reads only these three.
 
 - **`intent.md`** — Problem, Success Criteria (each with a `Validate:` type — see below),
@@ -49,7 +49,7 @@ Sources` records** — the intent summarizes them, but you plan against them; tr
 every `- unavailable:` line as an explicit gap (name it in `plan.md`, and add an
 Open Question back into `intent.md` if it hides a decision). Do not re-derive
 context Intent already gathered. A `Status: draft` intent (captured via
-`/temper:intent` or a `temper bands` breach, reaching you standalone) is the same
+`/temper:intent` or a control-band breach, reaching you standalone) is the same
 input, plus: resolve or explicitly re-carry each Open Question (a refine pass may
 ask only a question the draft marks `Blocking`, or one a gate FAIL forces —
 anything else thin becomes a new Open Question); the draft→accepted flip happens at
@@ -82,7 +82,7 @@ code; modifies a library with 5+ consumers; changes a DB schema; a module with a
 historically high defect rate (`.temper/metrics.json` if present); a CRITICAL/HIGH
 security hot path (below).
 
-## What `temper gate plan` Checks
+## What `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` Checks
 
 Quoted from the plan gate in the temper CLI (`${CLAUDE_PLUGIN_ROOT}/scripts/temper`) so this doc cannot drift from the gate.
 These run **at every tier**: the artifacts exist (`intent.md` + `tasks.md`); scenario
@@ -281,7 +281,7 @@ the first human gate that reviews the intent is where acceptance is recorded (in
 orchestrated flow that already happened at the Intent gate). Commit the artifacts in
 two steps — `git add .temper/specs/{slug}/` first, then `git commit -m "docs(plan):
 approve plan — {slug}"` as a separate call (not `add && commit`: the in-agent
-commit-gate hook checks `temper gate commit` when the commit is submitted, and the
+commit-gate hook checks `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` when the commit is submitted, and the
 artifact-only carve-out that lets this commit through mid-pipeline reads the
 already-staged set). Skip
 with a note if the project gitignores `.temper/specs/`. Standalone mode loads only

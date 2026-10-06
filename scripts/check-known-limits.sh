@@ -3,6 +3,8 @@
 # reader cannot do. The mod's known limits test holds the table of attempts that stay possible;
 # a plugin test cannot read the README, so this script checks the text.
 set -uo pipefail
+# With CDPATH set, cd prints the folder it enters, and the path below would hold it twice.
+unset CDPATH
 # The plugin folder: this script sits in its scripts folder, so strip that literal suffix.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${HERE%/scripts}"

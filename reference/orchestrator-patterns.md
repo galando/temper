@@ -37,6 +37,9 @@ path that does not start with the plugin folder (`.temper/`, the spec files,
 
 `.temper/build-state.json`, owned by `${CLAUDE_PLUGIN_ROOT}/scripts/temper state` — never hand-write it. Resolve the
 spec path from `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path` before launching any agent.
+When the CLI exits 3, it refused because the project's `.temper` folder is, or holds, a
+symlink: stop, show its one-line reason, and wait for the user. Never remove, replace or
+follow the link yourself.
 
 ```json
 { "stage": "{stage}_complete", "spec": "{slug}", "spec_path": ".temper/specs/{slug}",
@@ -91,7 +94,7 @@ AskUserQuestion:
     - label: "Resume existing session (Recommended)"
       description: "Continue from {next_stage} stage."
     - label: "Overwrite and start new"
-      description: "Delete existing session (temper state clear), start from scratch."
+      description: "Delete the saved run state, start from scratch."
 ```
 
 On "Overwrite and start new", run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear`, then
@@ -116,19 +119,21 @@ later?" (changes via "Other"). Never silently proceed to the next stage.
 
 `tools.mode`: `auto` (default — try MCP, fall back to grep-based heuristic) /
 `heuristic-only` (never call MCP, forces `[HEURISTIC]`) / `require` (fail if MCP
-unavailable, no fallback). Every finding's `temper evidence add --label`:
+unavailable, no fallback). Every finding's `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --label`:
 
 | Label | Meaning |
 |---|---|
-| `PROVEN` | Mechanically verified — a real command/tool ran with a real exit code and artifact. `temper evidence add` re-checks this itself; a missing artifact or unexplained nonzero exit auto-downgrades to HEURISTIC. |
+| `PROVEN` | Mechanically verified: a real command or tool ran with a real exit code and artifact. `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add` re-checks this itself; a missing artifact or unexplained nonzero exit auto-downgrades to HEURISTIC. |
 | `HEURISTIC` | Grep/reading-based analysis, best-effort, not mechanically verified. |
 | `SEMANTIC` | Claude's judgment/interpretation — inherently subjective. |
 | `OCR` | External engine (open-code-review) finding — informational, same trust tier as HEURISTIC. |
 
-Recommended servers: `code-review-graph` (`pip install code-review-graph`) for AST-level
-dependency graphs and blast radius; `semgrep` (`brew install semgrep`,
-`claude mcp add semgrep -- semgrep --mcp`) for SAST. Both optional — absence just means
-the same analysis runs via grep, labeled `HEURISTIC` instead of `PROVEN`.
+Recommended servers: code-review-graph for AST-level dependency graphs and blast radius
+(install it as its own page says: https://github.com/tirth8205/code-review-graph), and
+Semgrep for SAST (install it and add it as an MCP server as its own page says:
+https://github.com/semgrep/semgrep). Name the tool and give its page; never print an
+install command for it. Both are optional: without them the same analysis runs via
+grep, labeled `HEURISTIC` instead of `PROVEN`.
 
 ## Context Accumulation
 

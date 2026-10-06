@@ -37,7 +37,7 @@ is blocked on input only a human can give.
 **Park:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set run_mode interactive` (so a plain resume lands here
 normally), write `.temper/autonomy-report.md` (`**Verdict:**
 SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION`, `**Parked at:**`/`**Reason:**` verbatim from
-`temper gate`, `**Branch:**`, the `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` ledger, "Run /temper to resume").
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate`, `**Branch:**`, the `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` ledger, "Run /temper to resume").
 
 **Operational safety (hardcoded — see `${CLAUDE_PLUGIN_ROOT}/templates/temper.config.default`):** refuse a
 dirty tree unless confirmed; `git commit -m "wip: {stage} passed"` after each PASS stage

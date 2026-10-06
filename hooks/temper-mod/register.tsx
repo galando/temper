@@ -150,6 +150,7 @@ function makeIo($: Api): Io {
     setMode: async mode => {
       await $.state.set({ plugin: 'temper', key: 'mode' } as const, mode)
     },
+    cli: pluginCli(),
   }
 }
 
@@ -825,14 +826,24 @@ async function resolveDrift($: Api, snap: Snapshot, path: string, fallback: stri
 }
 
 function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
-  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, designRequired: snap.designRequired, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset }
+  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, designRequired: snap.designRequired, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset, cli: pluginCli() }
+}
+
+// The TRIVIAL exit: a `state clear` while the run is at Intent. Read fresh, so a file written a moment ago counts: the
+// spec folder holds no intent.md (neither as text nor as a name in its listing), so the clear loses nothing.
+async function intentMissing(io: Io, snap: Snapshot): Promise<boolean> {
+  if (snap.hasIntent) return false
+  const entries = await io.list(snap.specDir).catch(() => [])
+  return Array.isArray(entries) && !entries.some(e => e.name === 'intent.md')
 }
 
 // What the guard decided for one call: a deny text, or null to pass it on. `ids` are the human decisions
 // the call took. They are spent only when the call ran and succeeded (see the tool.call hook).
 // `fingerprint` is the CLI's files before a call that took decisions or a loop: after a call that ended in an error it
 // says whether the call took effect anyway. `loopIds` are back decisions a `state loop` call used.
-type Guarded = { deny: string | null; ids: string[]; undoStaged?: { all: boolean; paths: string[] }; loopIds?: string[]; fingerprint?: string }
+// `trivialExit` is a `state clear` let through at Intent with no intent.md (see intentMissing): once it ran, the run it
+// cleared is not held any more (see lastRun), so the work that follows is not judged against a run that is gone.
+type Guarded = { deny: string | null; ids: string[]; undoStaged?: { all: boolean; paths: string[] }; loopIds?: string[]; fingerprint?: string; trivialExit?: boolean }
 
 // The shell's folder, carried from one Bash call to the next (the engine keeps it). A folder outside the project, or one
 // that cannot be read, is taken as the project root: the engine puts the shell back there.
@@ -876,11 +887,17 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
     // The commit gate reads the CLI's latest verdict, so reload before deciding.
     snap = adopt($, await syncCheck(io, options, await refresh($), false))
   }
+  // A `state clear` at Intent (the TRIVIAL exit) is decided on the run as it is now.
+  let noIntent = false
+  if (cls?.stateOps.some(op => op.op === 'clear') && snap.state.phase === 'intent') {
+    snap = adopt($, await refresh($))
+    noIntent = snap.state.phase === 'intent' && (await intentMissing(io, snap))
+  }
   const root = await rootOf($)
   const commit = cls?.commits ? await commitFacts(io, snap, root, staged) : undefined
   // From here to the reservation there is no await: a parallel call cannot slip in between. A
   // decision a running call has reserved is not offered to this one.
-  const ctx = { ...ruleContext(snap, root), cwd: bashCwd, loopedDecisions: [...loopedDecisions], ...(commit ? { commit } : {}) }
+  const ctx = { ...ruleContext(snap, root), cwd: bashCwd, loopedDecisions: [...loopedDecisions], ...(commit ? { commit } : {}), ...(noIntent ? { intentMissing: true } : {}) }
   const r = evaluate(snap.state, { ...ctx, humanDecisions: (ctx.humanDecisions ?? []).filter(decision => !reservedDecisions.has(decision.id)) }, { tool, input })
   // A commit that went through starts the next staging from nothing. If the commit then fails (an index lock,
   // a hook), the files are still staged: tool.call gives the list back (found live: the retry was refused).
@@ -904,9 +921,17 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
     // tookEffect). A call that failed and changed nothing, or never ran, gives the decision back, and the person's
     // choice stays pending (key 1 records it again).
     for (const id of r.eventIds) reservedDecisions.add(id)
-    return { deny: null, ids: r.eventIds, ...(undoStaged ? { undoStaged } : {}), ...(loopIds.length > 0 ? { loopIds } : {}), fingerprint: await runFingerprint(io).catch(() => '') }
+    return { deny: null, ids: r.eventIds, ...(undoStaged ? { undoStaged } : {}), ...(loopIds.length > 0 ? { loopIds } : {}), fingerprint: await runFingerprint(io).catch(() => ''), ...(noIntent ? { trivialExit: true } : {}) }
   }
-  return { deny: null, ids: [], ...(undoStaged ? { undoStaged } : {}), ...(loopIds.length > 0 ? { loopIds, fingerprint: await runFingerprint(io).catch(() => '') } : {}) }
+  return { deny: null, ids: [], ...(undoStaged ? { undoStaged } : {}), ...(loopIds.length > 0 ? { loopIds, fingerprint: await runFingerprint(io).catch(() => '') } : {}), ...(noIntent ? { trivialExit: true } : {}) }
+}
+
+// After the TRIVIAL exit ran (or failed): the cleared run is no longer held, and the run is read again. When the clear
+// did not take effect, build-state.json is still there and the run reads back as it was.
+async function afterTrivialExit($: Api, g: Guarded): Promise<void> {
+  if (!g.trivialExit) return
+  lastRun = null
+  await refresh($)
 }
 
 // After a call that ended in an error: did it change the CLI's files all the same (`state advance ...; exit 1`)?
@@ -1154,6 +1179,7 @@ export const register: Register = (on, opts) => {
       await settle($, g.ids, failed).catch(() => undefined)
       releaseLoops(g, failed)
       restoreStaged(g, true)
+      await afterTrivialExit($, g).catch(() => undefined)
       throw err
     }
     const errored = (result as { isError?: boolean }).isError === true
@@ -1162,6 +1188,7 @@ export const register: Register = (on, opts) => {
     const failed = errored && !(g.ids.length + (g.loopIds?.length ?? 0) > 0 && (await tookEffect($, g).catch(() => false)))
     releaseLoops(g, failed)
     if (g.ids.length > 0) await settle($, g.ids, failed).catch(() => undefined)
+    await afterTrivialExit($, g).catch(() => undefined)
     const cmd = 'command' in e && typeof e.command === 'string' ? e.command : ''
     if (e.tool === 'Bash' && /\btemper["']?\s+gate\s+check\b/.test(cmd)) await afterGateCheck($).catch(() => undefined)
     return result

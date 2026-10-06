@@ -11,8 +11,6 @@ carries over except the bug description in your launch prompt.
 
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/rca.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
-**Enforcement marker.** Look for a line in your system prompt that starts with `Temper enforcement:`. With no such line, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. With the line `Temper enforcement: off (UI only)`, the Temper mod is loaded and the user turned enforcement off: say once, in one sentence, "Temper enforcement is off (turned off by the user); continuing with prompt based phases", then carry on exactly as written below. Never treat either case as an error and do not mention it again. With `Temper enforcement: active`, say nothing about it.
-
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/fix.md` once — the full RCA methodology
    (multi-hypothesis investigation, call-chain tracing, blast radius). Follow it
    exactly; nothing here overrides it. Always investigate multiple hypotheses (or
@@ -23,7 +21,7 @@ carries over except the bug description in your launch prompt.
 3. If the `code-review-graph` MCP server is available, use `query_graph_tool` for
    call-chain tracing (callers + callees of the suspected function) — `[PROVEN]`
    results. Fall back to grep-based tracing if unavailable — `[HEURISTIC]`.
-4. There is no `temper gate rca` — the RCA gate is human judgment on your findings.
+4. The CLI has no RCA gate. The RCA gate is human judgment on your findings.
    Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate and persists `rca.md` on Continue.
 
@@ -36,16 +34,18 @@ carries over except the bug description in your launch prompt.
   pack rule often has that rule as its root cause.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
-the right border) and nothing outside it. Fact rows at the top, then titled sections
+the right border), and it is the only box you print. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
 more"; omit an empty section including its divider — never a row saying "none"; wrap
 a long entry onto a continuation row indented two spaces.
 
-Return only: this panel (the orchestrator prints it verbatim), plus — for
-`rca.md` — the root cause (specific line, condition, why), confidence (HIGH/MEDIUM/LOW),
-suggested minimal fix + fix location (`file:line`), the scenario the regression test
-should exercise, the blast radius (other code with the same vulnerability), and the
-related files to read before fixing:
+Return this panel (the orchestrator prints it verbatim and saves it as `rca.md`) and
+nothing outside it. The panel holds everything `rca.md` needs: the root cause (the
+specific line, condition and why) in CAUSE, the confidence (HIGH, MEDIUM or LOW) and
+the fix location (`file:line`) in AT and CONFIDENCE, the suggested minimal fix and the
+scenario the regression test should exercise in FIX and TEST, other code with the same
+vulnerability in `BLAST RADIUS`, and the related files to read before fixing in
+`READ FIRST`:
 
 ```
 +--------------------------------------------------------------------------+
@@ -57,5 +57,7 @@ related files to read before fixing:
 | FIX: {1-2 sentence minimal fix}   TEST: {scenario}                       |
 +--- BLAST RADIUS (N) ---+-------------------------------------------------+
 | {file or call site with the same vulnerability}                          |
++--- READ FIRST (N) ---+---------------------------------------------------+
+| {file to read before fixing}: {why}                                      |
 +--------------------------------------------------------------------------+
 ```

@@ -15,15 +15,17 @@
 #      names the same plugin.
 #   8. A LICENSE file exists (LICENSE, LICENSE.md or LICENSE.txt).
 #
-# Test hook: VALIDATE_DIRECTORY_ROOT=<dir> checks that folder instead of this clone. The folder
-# must be a git work tree (rule 5 reads its files with git grep). This script writes nothing.
+# It checks the plugin folder it sits in, and nothing in the environment moves that folder: the
+# tests copy this script into a temporary plugin and run the copy there. The folder must be a git
+# work tree (rule 5 reads its files with git grep). This script writes nothing.
 set -uo pipefail
 
+# With CDPATH set, cd prints the folder it enters, and the path below would hold it twice.
+unset CDPATH
 # The plugin folder: this script sits in its scripts folder, so strip that literal suffix.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${HERE%/scripts}"
 [[ "$ROOT" != "$HERE" ]] || { echo "FAIL: cannot find the plugin folder from $HERE"; exit 1; }
-ROOT="${VALIDATE_DIRECTORY_ROOT:-$ROOT}"
 FAIL=0
 fail() { echo "FAIL: $1"; FAIL=$((FAIL+1)); }
 
@@ -67,10 +69,11 @@ fi
 # 5. The bundled assets folder path may appear only as a Markdown link target.
 # git grep reads the files, chosen by the fixed pathspecs below (tracked files, plus new files git
 # does not ignore): a top level file, .claude/CLAUDE.md, or a file in one of the named folders.
-# docs/history (old release notes), scripts/tests and this script are excluded. This script opens
-# no file by a path it builds: it only filters the lines git grep prints, keeping a file with an
-# md, sh, tape, tpl or json extension and a line that still names the folder once every Markdown
-# link target on it is removed.
+# docs/history (old release notes), scripts/tests and this script are excluded. This rule opens
+# no file itself: it only filters the lines git grep prints, keeping a file with an md, sh, tape,
+# tpl or json extension and a line that still names the folder once every Markdown link target on
+# it is removed. The other rules open only the plugin folder plus fixed text (README.md, the two
+# manifests, the license).
 ASSETS_DIR_NAME="docs/assets"
 LEAKS=""
 if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then

@@ -5,7 +5,7 @@ description: "Execute the plan, implementing tasks one-by-one with quality gates
 # Build: Execute Plan with Quality Gates
 
 **Goal:** Implement the approved plan, task by task, with real TDD discipline.
-The build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) carries the exact `temper evidence add --phase red/green` invocations
+The build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --phase red/green` invocations
 the gate needs; this doc is the methodology behind what to test and in what order.
 
 **Modes:** Standalone (`/temper:build`) runs in the current context, own gate. Agent

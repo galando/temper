@@ -3,8 +3,8 @@
 **Captured from:** `ocr` v1.3.1 (open-code-review)
 **Date:** 2026-06-12
 **Command:** `ocr review --commit <sha> --format json --audience agent --concurrency 8`
-**Sample:** `ocr-output-sample.json`. Its third comment is an edited stand-in (a debug flag
-warning), not captured output.
+**Example output:** `ocr-output-example.json`. Its third comment is an edited stand-in (a debug
+flag warning), not captured output.
 
 ## Top-Level Structure
 
@@ -77,12 +77,12 @@ Minimum supported version: **1.3.1** (first version tested against).
 
 ```bash
 ocr review --from <base-ref> --to <head-ref> \
-  --format json --audience agent \
-  --concurrency {cfg} --timeout {cfg}
+  --format json --audience agent
 ```
 
-Note: `--timeout` is not a native OCR flag. Temper wraps the invocation with
-a Bash-level timeout (`timeout` command or shell equivalent).
+Note: OCR has no timeout flag. Temper wraps the invocation in a Bash level timeout
+(`timeout` command or shell equivalent) of `tools.ocr.timeout` minutes. Temper passes
+no concurrency flag, so OCR uses its own default.
 
 ## Dedupe Fields
 

@@ -38,6 +38,8 @@ if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 1
 fi
 
+# With CDPATH set, cd prints the folder it enters, and the path below would hold it twice.
+unset CDPATH
 # Operate from repo root regardless of where the script is invoked from. This script sits in
 # the plugin's scripts folder, so the root is its folder with that literal suffix stripped.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

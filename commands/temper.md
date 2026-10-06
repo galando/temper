@@ -5,7 +5,7 @@ argument-hint: "<feature-description>"
 
 # Temper: Unified SDLC Command
 
-**FIRST OUTPUT (do this before reading anything else).** Look at your system prompt now for a line that starts with `Temper enforcement:`. If there is none, your very first line of text in this reply must be exactly: `Temper enforcement is off here (no mods support); continuing with prompt based phases.` If the line reads `Temper enforcement: off (UI only)`, the Temper mod is loaded and the user turned enforcement off, so your very first line must be exactly: `Temper enforcement is off (turned off by the user); continuing with prompt based phases.` Then carry on as written below. Never treat either case as an error, and say it only once per conversation. If the line reads `Temper enforcement: active`, say nothing about it. Wherever this file says **With the Temper bar**, it means the system prompt has a `Temper enforcement:` line, either `active` or `off (UI only)`: the mod is loaded and keeps the bar either way, and turning enforcement off only stops the mod from refusing tool calls.
+**FIRST OUTPUT (do this before reading anything else).** Look at your system prompt now for a line that starts with `Temper enforcement:`. If there is none, your very first line of text in this reply must be exactly: `Temper enforcement is off here (no mods support); continuing with prompt based phases.` If the line reads `Temper enforcement: off (UI only)`, the Temper mod is loaded and the user turned enforcement off, so your very first line must be exactly: `Temper enforcement is off (turned off by the user); continuing with prompt based phases.` Then carry on as written below. Never treat either case as an error, and say it only once per conversation. If the line reads `Temper enforcement: active`, say nothing about it. You state this once, here in the main conversation: a stage subprocess never has that line in its system prompt, so its brief says nothing about enforcement, and you never ask a stage to say it. Wherever this file says **With the Temper bar**, it means the system prompt has a `Temper enforcement:` line, either `active` or `off (UI only)`: the mod is loaded and keeps the bar either way, and turning enforcement off only stops the mod from refusing tool calls.
 
 **Goal:** Run intent → plan → design? → build → review+check → commit with a human gate
 at every stage (or, if armed, unattended past the plan gate). Every gate verdict is
@@ -70,26 +70,34 @@ than reconstructing it.
 ```
 ORCHESTRATOR (this file)
   |
-  +-- Agent(intent brief)  -> intent gate -> temper gate intent (the fail-fast gate)
-  +-- Agent(plan brief)    -> plan gate   -> temper gate plan
-  +-- Agent(design brief)  -> design gate -> temper gate design (medium/complex only)
-  +-- Agent(build brief)   -> build gate  -> temper gate build
-  +-- Agent(review brief)  -> review gate -> temper gate review
-  +-- Agent(check brief)   -> check gate  -> temper gate check
+  +-- Agent(intent brief)  -> intent gate -> CLI gate intent (the fail-fast gate)
+  +-- Agent(plan brief)    -> plan gate   -> CLI gate plan
+  +-- Agent(design brief)  -> design gate -> CLI gate design (medium/complex only)
+  +-- Agent(build brief)   -> build gate  -> CLI gate build
+  +-- Agent(review brief)  -> review gate -> CLI gate review
+  +-- Agent(check brief)   -> check gate  -> CLI gate check
   |
-  +-- temper gate commit -> commit
+  +-- CLI gate commit -> commit
 ```
 
 **Paths.** Claude Code wrote the plugin's absolute folder in place of the
 CLAUDE_PLUGIN_ROOT variable when it loaded this file, so every plugin path here is
 already a real path. The Bash tool does not set that variable: run each command with
-the path exactly as this file shows it. The details are in
+the path exactly as this file shows it. A reference page you read with the Read tool
+(`${CLAUDE_PLUGIN_ROOT}/reference/plan-review.md`, `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`,
+`${CLAUDE_PLUGIN_ROOT}/reference/autonomy.md` and the others) is not filled in: there
+the CLAUDE_PLUGIN_ROOT variable means the folder that holds
+${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off). Write
+that folder out in full in every command you run from such a page, never the variable
+itself, which the Bash tool would leave empty. The details are in
 `${CLAUDE_PLUGIN_ROOT}/reference/orchestrator-patterns.md` under "The plugin folder".
 Plugin files are always written out in full in this file, and the temper CLI is
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. Every other path (`.temper/`, the spec files,
 `.claude/temper.config`, `CLAUDE.md`, `AGENTS.md`, the files being built) is in the
 user's project, the current directory. Nothing in a run writes into the plugin folder,
-unless the project is the plugin folder itself (developing Temper on its own repository).
+unless the project is the plugin folder itself (developing Temper on its own
+repository: a git checkout whose top folder is the plugin folder; an installed copy is
+never a project, and the CLI refuses it).
 
 **Plugin folder line.** Every stage launch prompt below carries this line, word for word,
 so the stage knows the folder that its brief and the reference pages mean:
@@ -118,24 +126,31 @@ in place:
    `${CLAUDE_PLUGIN_ROOT}/templates/temper.config.default` to `.claude/temper.config`.
 2. **Scaffold** — run `${CLAUDE_PLUGIN_ROOT}/scripts/temper init` (idempotent).
 3. **Commit gate** — this is the headline guarantee, and the easiest to leave missing.
-   The installer writes the project's `.git/hooks/pre-commit`, or the `pre-commit` file
-   in the folder an existing `core.hooksPath` names when that folder is inside the
-   repository (husky and lefthook set one, and git then ignores `.git/hooks`). Install
-   it when it isn't installed yet (that file is missing, or it is not a Temper hook)
-   **or when it is stale**: a plugin upgrade moves the plugin folder, and a hook whose
-   embedded CLI path no longer exists fails open silently. Either way, run
-   `bash ${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh` (it reports what it did and
-   re-embeds the current path). Not a git repo yet ("FAIL: not inside a git
-   repository") → say so in one line and continue (config + scaffold still done); the
-   gate installs on the next run after `git init`. Any other FAIL line means install.sh
-   refused and wrote nothing: core.hooksPath is outside the repository, contains '..',
-   '~' or other unusual characters, or names a folder that holds a JSON file; the hooks
-   folder (or `.git/config`, or a backup path) leads outside the repository or into the
-   plugin's own folder once symlinks are followed; the repository lies inside the
-   plugin's own folder; or core.hooksPath is not set and `.git` is not a folder. It
-   ignores GIT_DIR, GIT_WORK_TREE and GIT_CONFIG. It printed the lines to add to
-   a pre-commit hook by hand and exited 1. Say in one line that the commit gate is not
-   installed and why, show those lines, and continue.
+   Ask git which file it runs as the pre-commit hook:
+   `git rev-parse --git-path hooks/pre-commit` prints it (the repository's hooks
+   folder; the folder an existing `core.hooksPath` names, which husky and lefthook set;
+   or, in a linked worktree or a submodule, the hooks folder of the repository's own
+   git folder, which the worktrees share). Never test a fixed path under `.git`: in a
+   linked worktree or a submodule `.git` is a file, so such a path never exists there.
+   Install the hook when it isn't installed yet (that file is missing, or its second
+   line does not start with `# Temper native pre-commit hook`, as after husky rewrites
+   its folder) **or when it is stale**: a plugin upgrade moves the plugin folder, and
+   a hook whose embedded CLI path no longer exists fails open silently. Either way, run
+   `bash "${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh"` (it reports what it did and
+   re-embeds the current path; in a worktree whose shared hooks folder already holds a
+   current Temper hook, it says the hook is already installed for this worktree and
+   exits 0). Not a git repo yet ("FAIL: not inside a git repository") → say so in one
+   line and continue (config + scaffold still done); the gate installs on the next run
+   after `git init`. Any other FAIL line means install.sh refused and wrote nothing:
+   core.hooksPath is outside the repository, contains '..', '~' or other unusual
+   characters, or names a folder that holds a JSON file; the hooks folder (or the git
+   config file, or a backup path) leads anywhere but the repository and its own git
+   folder, or into the plugin's own folder, once symlinks are followed; or the
+   repository lies inside the plugin's own folder. It ignores GIT_DIR, GIT_WORK_TREE
+   and GIT_CONFIG. It printed the lines to add to a pre-commit hook by hand and exited
+   1. Say in one line that the commit gate is not installed and why, then show those
+   lines verbatim in a fenced code block (the whole hook it printed, from its
+   `#!/usr/bin/env bash` line to its last line), and continue.
 
 If a step ran, print a one-line "Set up." note naming what was done; if everything was
 already in place, continue into Plan silently. This per-piece check is what makes
@@ -148,7 +163,10 @@ running the pipeline with no commit gate.
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper state` owns `.temper/build-state.json` — never hand-write it. When a step calls
 for more than one `${CLAUDE_PLUGIN_ROOT}/scripts/temper` invocation in a row (state/evidence calls only, never `gate`),
 batch them into a single Bash tool call, one shell command per line — they're sequential
-anyway, and it's one round-trip instead of several.
+anyway, and it's one round-trip instead of several. When the CLI exits 3, it refused
+because the project's `.temper` folder is, or holds, a symlink (so no write can follow
+a link out of the project): stop, show its one-line reason, and wait for the user.
+Never remove, replace or follow the link yourself.
 
 - **Start:** before `state init`, look for a matching committed draft: list the
   folders in the project's `.temper/specs` folder, and if one of them already holds an
@@ -167,8 +185,10 @@ anyway, and it's one round-trip instead of several.
   overwrite and start fresh (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear` then re-init).
 - **With the Temper bar**: the CLI state is the truth for where the run is.
   Never run `state init`, `state clear`, `state archive` or `state loop` on your own while a run is
-  active (with enforcement active, the mod refuses them). If Resume Validation fails or the state looks wrong, stop, show what
-  is wrong in one line, and wait. Never choose Start over or Delete saved state yourself. If a mirror
+  active (with enforcement active, the mod refuses them). The one exception is the
+  `state clear` of the TRIVIAL exit in Stage 0, which the mod allows. If Resume
+  Validation fails or the state looks wrong, stop, show what is wrong in one line, and
+  wait. Never choose Start over or Delete saved state yourself. If a mirror
   call (`state advance`, `state set next_stage`) is refused or fails, say so in one line and wait: the bar
   shows the problem and offers to record the choice again.
 - **On commit:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear` (evidence, gates, loop counters — spec artifacts
@@ -272,9 +292,14 @@ The agent returns `READY` (intent.md written, or an existing draft refined) or
 through gates built for artifacts it doesn't have (`gate plan` would FAIL forever on
 "artifacts exist" with nothing fixable). Tell the user in one line ("trivial — handling
 directly, no pipeline"), run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear`, make the change directly, run the
-project's tests, and commit normally — with no active run state, `temper gate commit`
-degrades open by design, so the commit hook doesn't block a run that never gated. If
-mid-change it turns out NOT to be trivial, stop and restart `/temper` properly.
+project's tests, and commit normally: with no active run state,
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` degrades open by design, so the
+commit hook doesn't block a run that never gated. That `state clear` is allowed even
+with the Temper bar and enforcement active: the mod lets it through while the phase is
+Intent and the run's spec folder has no `intent.md`, because a TRIVIAL return wrote
+nothing, so there is nothing to lose. Run it at once, before anything writes
+`intent.md`. If mid-change it turns out NOT to be trivial, stop and restart `/temper`
+properly.
 
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent` (Problem stated, >=1 criterion, Status header). Options:
 **"Continue to Plan (Recommended)"** / Grill Me / Teach Me / "Save for later" / Other
@@ -324,7 +349,7 @@ this gate approves the *plan*.) Create the feature branch if not already on it
 (`git checkout -b feature/{slug}`), then **commit the approved plan artifacts** in two
 separate Bash calls, staging first: `git add .temper/specs/{slug}/`, then
 `git commit -m "docs(plan): approve plan — {slug}"`. They must be separate calls, not
-`add && commit`: the in-agent commit-gate hook runs `temper gate commit` at the moment
+`add && commit`: the in-agent commit-gate hook runs `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` at the moment
 the `git commit` call is submitted, and the artifact-only carve-out that lets this
 commit through mid-pipeline inspects the *already-staged* set — so the `git add` has to
 have run in a prior call. (Skip both with a one-line note if the project gitignores `.temper/specs/`

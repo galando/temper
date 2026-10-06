@@ -2,6 +2,7 @@
 # Tests for scripts/check-mod-calls.sh using canned `calls:` lines (no claude needed).
 set -uo pipefail
 # The plugin folder: this test sits in scripts/tests, so strip that literal suffix.
+unset CDPATH
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${HERE%/scripts/tests}"
 [[ "$ROOT" != "$HERE" ]] || { echo "FAIL: cannot find the plugin folder from $HERE"; exit 1; }

@@ -11,7 +11,7 @@ description: "Post-check config suggestions — analyze what was built and sugge
 After all validation levels in `/temper:check` pass (no failures), before the Commit gate:
 
 1. Check validation passed (compile, tests, coverage, lint, security all green)
-2. At least one file was changed (diffing against `temper state get base_sha` when
+2. At least one file was changed (diffing against `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get base_sha` when
    one is recorded — checkpoint commits already landed, so a plain
    `git diff --name-only` returns nothing — plus still-uncommitted paths)
 

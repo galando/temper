@@ -5,7 +5,7 @@ description: "Run the project's validation pipeline (tests, build, lint, securit
 # Check: Stack-Aware Validation Pipeline
 
 **Goal:** Run the project's real validation pipeline and record what happened — never
-estimate a result. The check brief (`${CLAUDE_PLUGIN_ROOT}/agents/check.md`) carries the exact `temper evidence add` invocations
+estimate a result. The check brief (`${CLAUDE_PLUGIN_ROOT}/agents/check.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add` invocations
 the gate needs; this doc is the methodology behind what to run and how to interpret it.
 
 **Modes:** Standalone (`/temper:check`) runs in the current context, own gate. Agent
@@ -111,7 +111,7 @@ If `debt-tracking: true`: record coverage %, test count, and lint-violation coun
 the CLI: `${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append coverage <pct>`,
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append tests <count>` and
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper metrics append lint_violations <count>`, never by
-hand-editing `.temper/metrics.json`: these arrays are what `temper bands` computes
+hand-editing `.temper/metrics.json`: these arrays are what `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` computes
 control bands from, so the monitor must read a ledger the spine wrote. (Full debt
 analysis is `/temper:status`'s job, not Check's — don't slow the pipeline down
 repeating it here.)
@@ -199,5 +199,6 @@ commit`, report "Run /temper when ready to continue."
   (`eslint --fix`, `ruff format`).
 - **Security:** name the CVE, severity, affected dependency; suggest a version bump if
   one fixes it, else note it as an accepted risk with a workaround if one exists.
-- **Missing tool:** skip that level, note the install command — never fail the whole
-  pipeline for an optional tool.
+- **Missing tool:** skip that level, name the missing tool and point to its own install
+  page (never print an install command), and never fail the whole pipeline for an
+  optional tool.

@@ -4,6 +4,8 @@
 set -euo pipefail
 command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 is required but not found in PATH"; exit 1; }
 
+# With CDPATH set, cd prints the folder it enters, and the path below would hold it twice.
+unset CDPATH
 # The plugin folder: this script sits in its scripts folder, so strip that literal suffix.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${HERE%/scripts}"
@@ -242,27 +244,42 @@ print('; '.join(errs))
 " "$REPO_ROOT" 2>/dev/null)
 if [[ -z "$PACK_PHASES_ERR" ]]; then ok; else fail "pack phases: $PACK_PHASES_ERR"; fi
 
-# --- Plugin paths in instruction text ---
+# --- Plugin paths in every file ---
 # Claude Code fills in only the braced form of the CLAUDE_PLUGIN_ROOT variable, and only when it
 # loads a command, agent or skill; the Bash tool does not set the variable, and a page read with
-# the Read tool is not filled in. So in the instruction text below a plugin path is always written
-# as the braced variable, a '/' and a fixed path. This fails on the unbraced form, on the braced
-# form with no '/' right after it, and on a fixed path that holds '..', a wildcard, a
-# {placeholder} or a second variable. git grep reads the files named by the fixed pathspecs
-# (tracked, plus new files git does not ignore); this script only filters the lines it prints.
-if ! git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  fail "plugin path check: $REPO_ROOT is not a git work tree (git grep reads the files)"
-else
-  # (git grep exits 1 when no line matches, which is the passing case.)
-  ROOT_VAR_ERRS=$( (git -C "$REPO_ROOT" -c grep.column=false -c grep.fullName=false -c grep.lineNumber=true \
-      grep --untracked -z -n -I -F -e 'CLAUDE_PLUGIN_ROOT' -- \
-      commands agents skills reference packs templates .claude/temper.config 2>/dev/null || true) | python3 -c "
-import re, sys
-data = sys.stdin.buffer.read().decode('utf-8', 'replace')
-UNBRACED = re.compile(r'\\\$CLAUDE_PLUGIN_ROOT')
-NO_SLASH = re.compile(r'\\\$\{CLAUDE_PLUGIN_ROOT(?!\}/)')
-PATH = re.compile(r'\\\$\{CLAUDE_PLUGIN_ROOT\}(/[^\s\`\"\'()<>|,;\[\]]*)')
-BAD_PATH = re.compile(r'\.\.|[*?{\\\$]')
+# the Read tool is not filled in. So a plugin path is always written as the braced variable, a '/'
+# and a fixed path that names a tracked file or folder. The plugin directory reads every file, the
+# tests and docs included, so this check reads every file git lists (tracked, plus new files git
+# does not ignore). It fails on:
+#   - the variable written with a dollar sign and no braces;
+#   - the braced variable with no '/' right after it (nothing after it, a default value, a suffix);
+#   - a path, taken up to whitespace, a backtick or a quote, that holds '..' or any of
+#     [ ] < > ( ) { } * ? $ | % (a wildcard, a placeholder, a group or a second variable);
+#   - a path that, once trailing . , ; : ! and / are removed, is not a tracked file or folder.
+# The patterns are built from the variable's name when the check runs, so this script holds no
+# bad form; a test that needs one writes it at run time into a temporary plugin. Python runs git
+# grep and git ls-files and only filters the lines they print: it opens no file.
+IFS= read -r -d '' PLUGIN_PATH_CHECK <<'PY' || true
+import re, subprocess, sys
+root = sys.argv[1]
+def git(*args):
+    run = subprocess.run(['git', '-C', root, '-c', 'core.quotePath=false', *args], capture_output=True)
+    if run.returncode not in (0, 1):  # git grep exits 1 when no line matches
+        sys.exit('git failed: ' + run.stderr.decode('utf-8', 'replace').strip())
+    return run.stdout.decode('utf-8', 'replace')
+NAME = 'CLAUDE_PLUGIN_ROOT'
+DOLLAR = '$'
+UNBRACED = re.compile(re.escape(DOLLAR + NAME))
+NO_SLASH = re.compile(re.escape(DOLLAR + '{' + NAME) + r'(?!\}/)')
+# The path ends at whitespace, a backtick or a quote. A backslash that escapes a quote (a JSON
+# string) ends it too; any other backslash stays in the path.
+PATH = re.compile(re.escape(DOLLAR + '{' + NAME + '}/') + r'((?:[^\s`"\'\\]|\\(?![`"\']))*)')
+BAD_PATH = re.compile(r'\.\.|[\[\]<>(){}*?$|%]')
+deleted = {p for p in git('ls-files', '-z', '-d').split('\0') if p}
+tracked = {p for p in git('ls-files', '-z').split('\0') if p and p not in deleted}
+folders = {p.rsplit('/', n)[0] for p in tracked for n in range(1, p.count('/') + 1)}
+data = git('-c', 'grep.column=false', '-c', 'grep.fullName=false', '-c', 'grep.lineNumber=true',
+           'grep', '--untracked', '-z', '-n', '-I', '-F', '-e', NAME)
 out = []
 for m in re.finditer(r'([^\0]*)\0([0-9]+)\0([^\n]*)\n', data):
     rel, num, line = m.groups()
@@ -270,17 +287,27 @@ for m in re.finditer(r'([^\0]*)\0([0-9]+)\0([^\n]*)\n', data):
     if UNBRACED.search(line):
         why.append('unbraced')
     if NO_SLASH.search(line):
-        why.append(\"braced with no '/' after it\")
-    if any(BAD_PATH.search(p.group(1)) for p in PATH.finditer(line)):
-        why.append(\"a path with '..', a wildcard, a {placeholder} or a second variable\")
+        why.append("braced with no '/' after it")
+    for p in (x.group(1) for x in PATH.finditer(line)):
+        fixed = p.rstrip('.,;:!').rstrip('/')
+        if BAD_PATH.search(p):
+            why.append("a path with '..' or one of [ ] < > ( ) { } * ? $ | %: " + p)
+        elif not fixed:
+            why.append("nothing after the '/'")
+        elif fixed not in tracked and fixed not in folders:
+            why.append('not a tracked file or folder: ' + fixed)
     if why:
         out.append(rel + ':' + num + ': ' + ', '.join(why))
 print('\n'.join(out))
-" 2>&1 || echo "the plugin path check could not run")
+PY
+if ! git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  fail "plugin path check: $REPO_ROOT is not a git work tree (git grep reads the files)"
+else
+  ROOT_VAR_ERRS=$(python3 -c "$PLUGIN_PATH_CHECK" "$REPO_ROOT" 2>&1 || echo "the plugin path check could not run")
   if [[ -z "$ROOT_VAR_ERRS" ]]; then
     ok
   else
-    fail "plugin paths in instruction text must be the braced variable, '/' and a fixed path ($(printf '%s\n' "$ROOT_VAR_ERRS" | wc -l | tr -d ' ') line(s)):"
+    fail "a plugin path must be the braced variable, '/' and a fixed tracked path ($(printf '%s\n' "$ROOT_VAR_ERRS" | wc -l | tr -d ' ') line(s)):"
     printf '%s\n' "$ROOT_VAR_ERRS" | head -40 | sed 's/^/  /'
   fi
 fi

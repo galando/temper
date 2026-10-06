@@ -17,6 +17,17 @@ argument-hint: "<feature-name-or-JIRA-123>"
 path with /scripts/temper taken off). Wherever a reference page or a brief writes the
 CLAUDE_PLUGIN_ROOT variable, use this folder.
 
+**Enforcement marker.** Look at your system prompt for a line that starts with
+`Temper enforcement:`. With no such line, make the first sentence of your first reply in
+this conversation exactly "Temper enforcement is off here (no mods support); continuing
+with prompt based phases." With the line `Temper enforcement: off (UI only)`, the Temper
+mod is loaded and the user turned enforcement off: make that first sentence exactly
+"Temper enforcement is off (turned off by the user); continuing with prompt based
+phases." instead. Then carry on as written below. Never treat either case as an error
+and do not mention it again. With `Temper enforcement: active`, say nothing about it.
+You state this once, in this conversation: a stage subprocess never has that line in
+its system prompt, so its brief says nothing about enforcement.
+
 ### Subprocess Mode
 
 If `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get stages.subprocess false` returns
@@ -28,7 +39,7 @@ ${CLAUDE_PLUGIN_ROOT}/agents/plan.md exactly. Plugin folder: the folder that hol
 CLAUDE_PLUGIN_ROOT variable, use this folder. Feature:
 $ARGUMENTS. Spec path: .temper/specs/{feature-slug}. Standalone run — no orchestrated
 Intent stage ran: author intent.md yourself per ${CLAUDE_PLUGIN_ROOT}/reference/plan.md's standalone case,
-and pass --spec-path .temper/specs/{feature-slug} to every temper gate call."* Print
+and pass --spec-path .temper/specs/{feature-slug} to every gate call."* Print
 the returned box verbatim, then run both gates + the approval `AskUserQuestion` per
 **Deterministic Gate** below — the subprocess is headless and already recorded its
 evidence; the human gate stays in this context either way.
@@ -66,9 +77,9 @@ Record the tier with `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity 
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent` and `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan`, each
 with `--spec-path .temper/specs/{feature-slug}`, and fix any FAIL before presenting for
 approval, for the same reason as Review/Check: skipping this
-leaves `temper gate commit` unable to see that planning happened at all (it requires
+leaves `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` unable to see that planning happened at all (it requires
 an intent verdict whenever intent.md exists). The intent gate is standalone-only
 here: in the orchestrated `/temper` flow the Intent stage already recorded it, which
 is why the plan brief (`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`) doesn't repeat it. Pass `--spec-path` explicitly rather than
-relying on `temper state` having been initialized — the intent/design gates refuse to
+relying on `${CLAUDE_PLUGIN_ROOT}/scripts/temper state` having been initialized: the intent and design gates refuse to
 run without a spec path.

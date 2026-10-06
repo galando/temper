@@ -75,11 +75,11 @@ writes. To try a branch on your own machine, follow [Testing the mod](mods-testi
 
 ## Commands
 
-Three you'll actually type — `/temper` runs and routes the rest:
+Three you'll actually type. `/temper:temper` runs and routes the rest:
 
 | Command | Purpose |
 |---------|---------|
-| [`/temper "…"`](commands.html#temper) | The whole pipeline, intent gate to commit |
+| [`/temper:temper "…"`](commands.html#temper) | The whole pipeline, intent gate to commit |
 | [`/temper:fix "…"`](commands.html#temperfix) | Root cause → failing test (write-protected) → minimal fix |
 | [`/temper:intent "…"`](commands.html#temperintent) | Capture an idea as a committed draft, build it later |
 
@@ -99,8 +99,9 @@ commands and exit codes, the same under GitHub Actions, GitLab, Jenkins, or cron
 /plugin install temper
 ```
 
-That's it. Your first `/temper "…"` sets the project up — config, scaffold, and the
-native commit gate.
+That's it. Your first `/temper:temper "…"` sets the project up: config, scaffold, and the
+native commit gate. The short form `/temper` is an interactive shortcut that may not resolve in
+every surface.
 
 ## Next Steps
 

@@ -14,8 +14,6 @@ folder.
 
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/intent.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
-**Enforcement marker.** Look for a line in your system prompt that starts with `Temper enforcement:`. With no such line, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. With the line `Temper enforcement: off (UI only)`, the Temper mod is loaded and the user turned enforcement off: say once, in one sentence, "Temper enforcement is off (turned off by the user); continuing with prompt based phases", then carry on exactly as written below. Never treat either case as an error and do not mention it again. With `Temper enforcement: active`, say nothing about it.
-
 1. **Triage first.** If the request is plainly trivial or mechanical (a typo, a
    one-line change, direct instructions with no product problem to state), return
    `TRIVIAL` with one sentence of reasoning and write nothing — the orchestrator skips
@@ -33,7 +31,7 @@ folder.
 
 3. **Pick up an existing draft — bounded refine pass.** If
    `{spec_path}/intent.md` already exists (captured via `/temper:intent`, or drafted
-   from a `temper bands` breach), it is your input. You may ask the orchestrator's
+   from a control-band breach that `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` reported), it is your input. You may ask the orchestrator's
    user only a question the draft itself marks `Blocking`, or one a gate FAIL forces.
    Anything else you find thin becomes a NEW Open Question in the file, answered once
    at the gate — do not interrogate the originator. Keep the originator's Problem and
@@ -63,7 +61,7 @@ folder.
      moment an answer arrives — this is the only record that survives the session).
    - **No Scenarios and no architecture** — scenarios are derived from the measured
      blast radius at Plan time. The `## Scenarios (BDD)` section stays EMPTY: never
-     write a placeholder `Scenario:` block, because `temper gate check` demands a
+     write a placeholder `Scenario:` block, because `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check` demands a
      passing test for every `Scenario:` line and cannot tell a placeholder from a
      real one.
    - **Soft source words.** Never turn a source "should" or "may" into "must"
@@ -93,27 +91,30 @@ folder.
    orchestrator; it owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
-- Never write a placeholder `Scenario:` block. `temper gate check` demands a passing
+- Never write a placeholder `Scenario:` block. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check` demands a passing
   test for every `Scenario:` line and cannot tell a placeholder from a real one, so
   `## Scenarios (BDD)` stays empty until Plan fills it.
 - Gather context before drafting. A source you could not read is recorded as
   `unavailable` with the reason, and thin context becomes a labeled Open Question. A
   silent guess is the failure this stage exists to prevent.
 - Every criterion needs a stable `AC-NN` id, a `Why:` line and a `Validate:` type. An
-  unlabeled open question or a missing header field fails `temper gate intent`.
+  unlabeled open question or a missing header field fails `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent`.
 - Do not explore the codebase beyond naming and context. Blast radius and architecture
   belong to Plan and Plan's budget.
 - An intent already marked `**Status:** accepted` that passes the gate is read, never
   rewritten, and never re-questioned.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
-the right border) and nothing outside it. Fact rows at the top, then titled sections
+the right border), and it is the only box you print. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
 more"; omit an empty section including its divider — never a row saying "none"; wrap
 a long entry onto a continuation row indented two spaces.
 
-Return only: this panel (the orchestrator prints it verbatim), the spec path, and
-either `READY` or `TRIVIAL`:
+Return this panel (the orchestrator prints it verbatim). After it, each on a line of
+its own, return the spec path and then one status word, `READY` or `TRIVIAL`: the
+orchestrator branches on that word. Nothing else goes outside the panel. A `TRIVIAL`
+return writes no file, and its panel holds only the title row and a PROBLEM row with
+your one sentence of reasoning:
 
 ```
 +--------------------------------------------------------------------------+

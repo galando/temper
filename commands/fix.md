@@ -8,6 +8,17 @@ argument-hint: "<bug-description-or-JIRA-123>"
 **Goal:** Investigate root cause, implement minimal fix, then **review** and **check** —
 the same full pipeline as `/temper`, with RCA replacing Plan and Fix replacing Build.
 
+**Enforcement marker.** Look at your system prompt for a line that starts with
+`Temper enforcement:`. With no such line, make the first sentence of your first reply in
+this conversation exactly "Temper enforcement is off here (no mods support); continuing
+with prompt based phases." With the line `Temper enforcement: off (UI only)`, the Temper
+mod is loaded and the user turned enforcement off: make that first sentence exactly
+"Temper enforcement is off (turned off by the user); continuing with prompt based
+phases." instead. Then carry on as written below. Never treat either case as an error
+and do not mention it again. With `Temper enforcement: active`, say nothing about it.
+You state this once, in this conversation: a stage subprocess never has that line in
+its system prompt, so its brief says nothing about enforcement.
+
 ## Usage
 
 ```
@@ -38,11 +49,11 @@ the box the agent returns verbatim.
 ORCHESTRATOR (this file)
   |
   +-- Agent(rca brief)    -> RCA gate    (human judgment — no CLI gate)
-  +-- Agent(fix brief)    -> fix gate    -> temper gate build
-  +-- Agent(review brief) -> review gate -> temper gate review
-  +-- Agent(check brief)  -> check gate  -> temper gate check
+  +-- Agent(fix brief)    -> fix gate    -> CLI gate build
+  +-- Agent(review brief) -> review gate -> CLI gate review
+  +-- Agent(check brief)  -> check gate  -> CLI gate check
   |
-  +-- temper gate commit -> commit
+  +-- CLI gate commit -> commit
 ```
 
 Shared patterns: read `${CLAUDE_PLUGIN_ROOT}/reference/orchestrator-patterns.md` once,
@@ -53,14 +64,16 @@ that variable, so run each command with the path exactly as this file shows it. 
 temper CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. Every other path below
 (`.temper/`, the spec files, the files being fixed) is in the user's project, the
 current directory. Nothing in a run writes into the plugin folder, unless the project is
-the plugin folder itself (developing Temper on its own repository).
+the plugin folder itself (developing Temper on its own repository: a git checkout whose
+top folder is the plugin folder; an installed copy is never a project, and the CLI
+refuses it).
 
 **Plugin folder line.** Every stage launch prompt below carries this line, word for word,
 so the stage knows the folder that its brief and the reference pages mean:
 `Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.`
 
 **Why this command gates at all:** the commit hook (installed by `/temper:init`) runs
-`temper gate commit` on **every** `git commit` in a project with a `.temper` folder,
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` on **every** `git commit` in a project with a `.temper` folder,
 regardless of which command produced it.
 Fix maps onto the `build` gate (a regression test is exactly a RED-then-GREEN pair);
 Review and Check are the literal same stages as `/temper`, sharing the review and check
@@ -100,7 +113,7 @@ Use the Agent tool, model: {rca}, prompt:
 Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
 
-Gate (human judgment — there is no `temper gate rca`): show the RCA box, then
+Gate (human judgment; the CLI has no RCA gate): show the RCA box, then
 "Proceed to Fix (Recommended)" / "Save for later" / Other (a change request, e.g.
 "investigate the auth module instead" — re-launch the RCA agent with that direction,
 re-show this gate).
@@ -180,9 +193,15 @@ check — a fix run has no plan gate, and `gate commit` only requires the gates 
 actually produced). After an "Other" change, re-launch the check agent to re-validate —
 never commit directly.
 
-- **On PASS:** "Commit (Recommended)" —
+- **On PASS:** "Commit (Recommended)". Commit in two separate Bash calls, staging first,
+  so the in-agent commit-gate hook sees the staged set. First stage the named paths
+  only: every file the fix changed (the Fix panel's CHANGED section, plus any file a
+  Review fix touched), the regression test, and the spec folder
+  `.temper/specs/{bug-slug}/`. Never `git add -A` or `git add .`, which would also
+  stage unrelated files such as a personal `.claude/settings.local.json`, and never
+  `git add -f` over a gitignored spec folder. Then, in the next call:
   ```
-  git add -A && git commit -m "fix({scope}): {description}
+  git commit -m "fix({scope}): {description}
 
   Root cause: {explanation}
   Regression test: {test name}

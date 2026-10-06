@@ -16,12 +16,14 @@ nav_order: 2
 
 {: .highlight }
 That's it. Claude Code loads Temper's commands and skills automatically, and your first
-`/temper "…"` in a project sets it up on the spot — config, `.temper/` scaffold, and the
-native commit gate that blocks a red commit. To set up explicitly instead, run
-`/temper:init`. For optional edit-time guardrails, run `/temper:pack enable guardrails`. It asks
+`/temper:temper "…"` in a project sets it up on the spot: config, `.temper/` scaffold, and the
+native commit gate that blocks a red commit. The short form `/temper` is an interactive shortcut
+that may not resolve in every surface, so this guide types the full name. To set up explicitly
+instead, run `/temper:init`. For optional edit-time guardrails, run `/temper:pack enable guardrails`. It asks
 whether to use `.claude/settings.local.json` (personal, the default) or `.claude/settings.json` (shared) in
 your project, shows the change, and after you confirm adds the guard hooks with the plugin's
-absolute folder written into each command. `/temper:pack disable guardrails` removes them.
+absolute folder written into each command, replacing any earlier Temper guard entry in either file.
+`/temper:pack disable guardrails` removes them from both files.
 `/temper:pack` and `/temper:init` offer to fix a guard command whose plugin folder no longer
 exists. Neither command reads or writes the settings in your home folder.
 
@@ -40,29 +42,20 @@ Change them with `/temper:temper mode <value>` and `/temper:temper enforcement <
 plugin settings. Your organization can block mods; the plugin then works as before. See
 [Testing the mod](mods-testing.html) for a checklist.
 
-### Other AI Assistants
+### A clone of the repository
 
-For any AI assistant that reads markdown:
-
-```bash
-# Clone the repository
-git clone https://github.com/galando/temper.git
-
-# Copy .claude folder to your project
-cp -r temper/.claude /path/to/your/project/
-```
+Temper runs in Claude Code only: its gates need the CLI in the plugin's `scripts` folder, and
+the phase bar needs the mod. To try a clone without installing it, open a terminal in your
+project and start Claude Code with the clone loaded: `claude --plugin-dir <path of the clone>`.
+That loads it for one session. Copying the repository's `.claude` folder into a project does
+not install Temper: that folder holds only this repository's own developer notes and config.
 
 ## Try It First
 
-Want to see Temper in action before installing? Clone the playground:
-
-```bash
-git clone https://github.com/galando/temper-playground
-cd temper-playground
-# Follow the README — see Temper's gates catch real bugs
-```
-
-The playground has intentional flaws that demonstrate Temper's scenario coverage gate, security hot path detection, and test gap analysis.
+Want to see Temper in action before installing? The
+[temper-playground](https://github.com/galando/temper-playground) repository is a small
+project with intentional flaws that demonstrate Temper's scenario coverage gate, security hot
+path detection, and test gap analysis. Its README shows how to use it.
 
 ## First Steps
 
@@ -70,9 +63,10 @@ The playground has intentional flaws that demonstrate Temper's scenario coverage
 
 The simplest way to use Temper — one command for the entire SDLC:
 
-```bash
-cd your-project
-/temper "add user authentication"
+In Claude Code, in your project:
+
+```text
+/temper:temper "add user authentication"
 ```
 
 Temper runs intent → plan → build → review → check with stage gates. The first gate is
@@ -99,7 +93,7 @@ words; correcting it after planning costs the plan. Then:
 At each stage, choose:
 - **Y** → Proceed to next stage
 - **e** → Edit the plan/scenarios
-- **n** → Stop and resume later with `/temper --resume`
+- **n** → Stop. Resume later with `/temper:temper` and no arguments.
 
 ### Option B: Individual Commands (Granular Control)
 
@@ -255,12 +249,13 @@ Works with: Jest, Vitest, pytest, Maven, Gradle, Go test, cargo test.
 
 Install optional MCP servers to upgrade heuristic analysis to proven findings:
 
-| Server | What it proves | Install |
-|--------|---------------|---------|
-| [code-review-graph](https://github.com/tirth8205/code-review-graph) | Blast radius, call chains, impact radius | `pip install code-review-graph` |
-| [Semgrep](https://github.com/semgrep/semgrep) | Security vulnerabilities (SAST) | `brew install semgrep` |
+| Server | What it proves |
+|--------|---------------|
+| [code-review-graph](https://github.com/tirth8205/code-review-graph) | Blast radius, call chains, impact radius |
+| [Semgrep](https://github.com/semgrep/semgrep) | Security vulnerabilities (SAST) |
 
-Full setup instructions: [Recommended Setup](recommended-setup)
+Install each one by the steps on its own page (linked above), then add it to Claude Code as an
+MCP server. Temper installs neither. Full setup notes: [Recommended Setup](recommended-setup)
 
 ### Verify Your Setup
 
@@ -277,7 +272,7 @@ sessions in the same checkout would fight over `build-state.json`. Git worktrees
 parallel runs safe, and everything temper needs travels with each worktree:
 
 ```bash
-claude --worktree feature-auth      # session 1: /temper "add auth"
+claude --worktree feature-auth      # session 1: /temper:temper "add auth"
 claude --worktree fix-rate-limit    # session 2: /temper:fix "429 not returned"
 ```
 
@@ -285,10 +280,14 @@ claude --worktree fix-rate-limit    # session 2: /temper:fix "429 not returned"
   autonomy lock — sessions cannot collide on runtime state.
 - Split work so parallel tasks touch **disjoint files** (the plan's blast radius shows
   where work is independent); tasks sharing files belong in one session, sequentially.
-- The controls travel with the repo: packs, guard hooks in the shared `.claude/settings.json`
-  and the pre-commit gate apply the same way in every worktree, so more sessions never means
-  fewer guardrails. Guard hooks in `.claude/settings.local.json` are personal and untracked, so a
-  new worktree does not get them from git.
+- The controls travel with the repo: packs and guard hooks in the shared `.claude/settings.json`
+  apply the same way in every worktree, so more sessions never means fewer guardrails. Guard
+  hooks in `.claude/settings.local.json` are personal and kept out of git, so a new worktree does
+  not get them from git.
+- The pre-commit gate is shared, not copied. Git runs a linked worktree's hooks from its main
+  checkout's hooks folder, so one installed hook covers every worktree. The first
+  `/temper:temper` in a worktree finds that hook and leaves it as it is, or, when no checkout has
+  it yet, installs it in that shared folder. A submodule's hook goes in its own git folder.
 - Practical ceiling: how many streams one person can *review*. Two or three is a
   sensible start; add sessions only while your review keeps up.
 

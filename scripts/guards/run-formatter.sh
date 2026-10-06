@@ -6,7 +6,7 @@
 # never a guessed command:
 #
 #   format:
-#     cmd: "npx prettier --write {file}"     # {file} stands for the edited path
+#     cmd: "npx --no-install prettier --write {file}"     # {file} stands for the edited path
 #
 # Absent key => no-op (the default). A formatter FAILURE never blocks anything —
 # formatting is hygiene, not a gate; a warning goes to stderr and the edit stands.
@@ -23,6 +23,9 @@
 #   - Always exit 0. There is no fail-closed path in this hook — the only effects are
 #     an in-place format or a stderr warning.
 set -uo pipefail
+# An exported CDPATH makes `cd` print the folder it enters, which would double the folder
+# worked out below with "$(cd ... && pwd)". It is never used here.
+unset CDPATH
 
 _main() {
   command -v python3 >/dev/null 2>&1 || return 0
@@ -41,7 +44,10 @@ _main() {
   [[ -n "$fmt" ]] || return 0
 
   # The edited file, resolved. Printed only when it is a file inside the project folder
-  # and not a file of this plugin's folder.
+  # and not a file of this plugin's folder. Inside is decided by identity, not by text:
+  # each ancestor of the resolved file is compared with the folder by device and inode
+  # (os.path.samefile), so another case on a file system that does not tell case apart,
+  # or a second mount of the same folder, is still seen.
   local target=""
   target=$(python3 -c "
 import json, os, sys
@@ -54,12 +60,23 @@ if not t:
     sys.exit(0)
 if not os.path.isabs(t):
     t = os.path.join(project, t)
-t, proj, plug = os.path.realpath(t), os.path.realpath(project), os.path.realpath(plugin)
-def inside(p, folder):
-    return p.startswith(folder.rstrip(os.sep) + os.sep)
-if not os.path.isfile(t) or not inside(t, proj):
+t = os.path.realpath(t)
+def same(a, b):
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+def under(p, folder):
+    while True:
+        if same(p, folder):
+            return True
+        parent = os.path.dirname(p)
+        if parent == p:
+            return False
+        p = parent
+if not os.path.isfile(t) or not under(os.path.dirname(t), project):
     sys.exit(0)
-if t == plug or inside(t, plug):
+if under(t, plugin):
     sys.exit(0)
 print(t)
 " "$dir" "$root" 2>/dev/null) || return 0

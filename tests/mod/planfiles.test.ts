@@ -16,6 +16,11 @@ describe('plan.md tables', () => {
     expect(files.every(f => !/\s/.test(f))).toBe(true)
   })
 
+  test('reads every path of a first cell that lists several, also with no space before the next cell', () => {
+    const files = parsePlanFiles(spec_plan_files)
+    for (const f of ['docs/temper-hero.md', 'docs/mode-full-dark.md', 'docs/mode-minimal-light.md']) expect(files).toContain(f)
+  })
+
   test('ignores tables under other headings and the header and divider rows', () => {
     const text = [
       '### Files to Modify',

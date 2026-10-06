@@ -8,7 +8,7 @@
 - Build: `npm run build` (reads from package.json scripts)
 - Test: `npm test` (reads from package.json scripts)
 - Lint: `npm run lint` (if exists in scripts)
-- Type check: `npx tsc --noEmit`
+- Type check: `npx --no-install tsc --noEmit`
 
 ## Patterns to Follow
 - Functional components with hooks (no class components)

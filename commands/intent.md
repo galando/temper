@@ -27,8 +27,20 @@ presents for acceptance.
 
 ## Execution
 
-1. **Understand the problem, not the solution.** Read `$ARGUMENTS` (detect
-   Jira/GitHub/free-text the same way `/temper:plan` Phase 0 does). Fetch every
+**Enforcement marker.** Look at your system prompt for a line that starts with
+`Temper enforcement:`. With no such line, make the first sentence of your first reply in
+this conversation exactly "Temper enforcement is off here (no mods support); continuing
+with prompt based phases." With the line `Temper enforcement: off (UI only)`, the Temper
+mod is loaded and the user turned enforcement off: make that first sentence exactly
+"Temper enforcement is off (turned off by the user); continuing with prompt based
+phases." instead. Then carry on as written below. Never treat either case as an error
+and do not mention it again. With `Temper enforcement: active`, say nothing about it.
+You state this once, in this conversation: a stage subprocess never has that line in
+its system prompt, so its brief says nothing about enforcement.
+
+1. **Understand the problem, not the solution.** Read `$ARGUMENTS` (tell a ticket
+   key such as `JIRA-123`, a GitHub issue such as `#123` and free text apart: the three
+   input forms under "Usage" in `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`). Fetch every
    source the request links (ticket, MR/PR, doc) read-only and record each under
    `### Context Sources` (`consulted:` / `unavailable:` / `none:`). Then interview
    with the full question bank — current vs desired behavior, scope and non-goals,
@@ -74,7 +86,7 @@ presents for acceptance.
    criteria, missing Status value, a should/may/might/possibly in a criterion or
    constraint that has no `(source: …)` marker) — the same deterministic floor the pipeline's
    Intent gate applies. `--spec-path` is required here: this command never runs
-   `temper state init`, and without a spec path the gate refuses to guess (usage
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init`, and without a spec path the gate refuses to guess (usage
    error, no verdict) rather than vacuously passing on a path it never looked at.
 
 4. **Let the originator correct it.** Show the draft; apply their corrections; re-show.
@@ -104,4 +116,4 @@ presents for acceptance.
 | `completed` | the commit step | implemented — the change is committed, not necessarily released |
 
 No stage advances on a draft without a human accepting it — same rule as every other
-temper gate.
+Temper gate.

@@ -17,15 +17,13 @@ in the plugin folder.
 nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 (`git status --porcelain`). Otherwise fall back to `git diff --name-only`.
 
-**Enforcement marker.** Look for a line in your system prompt that starts with `Temper enforcement:`. With no such line, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. With the line `Temper enforcement: off (UI only)`, the Temper mod is loaded and the user turned enforcement off: say once, in one sentence, "Temper enforcement is off (turned off by the user); continuing with prompt based phases", then carry on exactly as written below. Never treat either case as an error and do not mention it again. With `Temper enforcement: active`, say nothing about it.
-
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/review.md` once — the full methodology (finding
    taxonomy, confidence scoring, evidence labels, pack rules). Follow it exactly; nothing
    here overrides it.
 2. A finding you're not confident enough to judge on this tier (an architectural call, a
    correctness risk you can't fully trace) is worth spawning a nested Agent on Opus to
    re-judge — use your judgment, this isn't a fixed rule.
-3. `temper gate review` mechanically checks two things: zero *open* findings at or above
+3. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review` mechanically checks two things: zero *open* findings at or above
    `review.block-on` severity (default: `critical`), and a recorded `review completed`
    evidence row. Record every finding as evidence, including one you fix yourself during
    this stage — the ledger is the record of what was found; report EVERY CRITICAL and
@@ -39,7 +37,7 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
      --id <n> --fixed-by "<commit sha or what you changed>"           # after the fix is re-tested
    ```
    Never clear the ledger to pass the gate; resolve is the honest path. A finding the
-   person decides to keep is never accepted by you: accepting it (`temper evidence
+   person decides to keep is never accepted by you: accepting it (`${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence
    accept`, which needs a reason) is their call.
    Use `--label PROVEN` only for a finding an external tool (MCP, semgrep) actually
    verified, per the evidence-label rules in `review.md`.
@@ -66,14 +64,16 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
   (imported, registered, rendered) from an existing entry point.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
-the right border) and nothing outside it. Fact rows at the top, then titled sections
+the right border), and it is the only box you print. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset — with ONE
 named exception: MEDIUM/LOW findings may be capped at 15 rows plus
 `… and N more`. Omit an empty section including its divider — never a row saying
 "none"; wrap a long entry onto a continuation row indented two spaces.
 
-Return only: this panel (the orchestrator prints it verbatim), issues found by
-severity, auto-fixable issues, and intent-validation results:
+Return this panel (the orchestrator prints it verbatim) and nothing outside it. The
+FINDINGS row counts the issues by severity, the `FINDINGS` section lists them (end the
+row of an auto-fixable finding with `(auto-fix)`), and the INTENT row is the intent
+validation result:
 
 ```
 +--------------------------------------------------------------------------+

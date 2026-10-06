@@ -7,7 +7,7 @@
 - Build: `npm run build` (if TypeScript: `tsc`)
 - Test: `npm test`
 - Lint: `npm run lint`
-- Type check: `npx tsc --noEmit` (if tsconfig.json exists)
+- Type check: `npx --no-install tsc --noEmit` (if tsconfig.json exists)
 
 ## Patterns to Follow
 - Async/await for all async operations (no callback chains)

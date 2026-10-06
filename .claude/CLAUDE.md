@@ -34,7 +34,7 @@ CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
 - Directory readiness: `bash scripts/validate-directory.sh` (no raw HTML in the README, no
   assets folder path in text, no `options` key). Run it before any README or manifest change.
 - The mod (pure rules, wiring, drawing) and its test suite: after any change to them run
-  `claude plugin test .`, `npx -p typescript@5.6 tsc -p tsconfig.mod.json` and
+  `claude plugin test .`, `tsc -p tsconfig.mod.json` (TypeScript 5.6, as CI runs it) and
   `bash scripts/check-mod-calls.sh`; the reviewed `$` calls live in that script.
 - Layout: `commands/` (slash commands) · `agents/` (stage subprocess briefs) ·
   `reference/` (methodology) · `packs/` (rules) · `scripts/temper` (the deterministic

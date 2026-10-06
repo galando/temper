@@ -12,8 +12,6 @@ the plugin folder.
 
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/fix.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run, because the Bash tool does not set that variable. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
-**Enforcement marker.** Look for a line in your system prompt that starts with `Temper enforcement:`. With no such line, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. With the line `Temper enforcement: off (UI only)`, the Temper mod is loaded and the user turned enforcement off: say once, in one sentence, "Temper enforcement is off (turned off by the user); continuing with prompt based phases", then carry on exactly as written below. Never treat either case as an error and do not mention it again. With `Temper enforcement: active`, say nothing about it.
-
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/fix.md` once — the full fix methodology. Follow
    it exactly; nothing here overrides it. Load the enabled packs and validate the fix
    approach against their rules before implementing. Before writing framework-specific
@@ -57,13 +55,14 @@ the plugin folder.
 - Fix evidence maps onto the `build` gate, and fixes have no `tasks.md`.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
-the right border) and nothing outside it. Fact rows at the top, then titled sections
+the right border), and it is the only box you print. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
 more"; omit an empty section including its divider — never a row saying "none"; wrap
 a long entry onto a continuation row indented two spaces.
 
-Return only: this panel (the orchestrator prints it verbatim), the list of files
-changed, the regression test name and result, and any blockers:
+Return this panel (the orchestrator prints it verbatim) and nothing outside it. The
+files changed are the `CHANGED` section, the regression test name and result are the
+TEST row, and every blocker is a row of the `BLOCKERS` section:
 
 ```
 +--------------------------------------------------------------------------+
@@ -75,5 +74,7 @@ changed, the regression test name and result, and any blockers:
 | {file}                                                                   |
 +--- BLAST RADIUS (N) ---+-------------------------------------------------+
 | {consumers} consumers; same-pattern {n}/{m} — {file: each occurrence}    |
++--- BLOCKERS (N) ---+-----------------------------------------------------+
+| {what stops the fix, and what it needs}                                  |
 +--------------------------------------------------------------------------+
 ```

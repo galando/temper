@@ -18,25 +18,63 @@
 # The marker is a fixed name in the project's .temper folder: the hook changes into the
 # project folder first. A project folder that lies inside this plugin's own folder is
 # skipped (exit 0): the hook never writes inside the plugin. The plugin folder itself is a
-# project like any other (developing Temper on its own repository), so its .temper folder
-# is written. A .temper folder or a marker file that is a symlink is skipped too, because
-# writing through it would land outside the project's .temper folder.
+# project only when it is a git work tree whose top level is that folder (developing Temper
+# on its own repository), so an installed copy is skipped too. Inside or equal is decided
+# by identity (device and inode), not by comparing path text. A .temper folder or a marker
+# file that is a symlink is skipped too, because writing through it would land outside the
+# project's .temper folder, and so is a .temper folder that holds a symlink anywhere.
 #
 # DEGRADATION CONTRACT:
 #   - Prompt is not a marked stage command  => exit 0 (no-op)
 #   - python3 absent / unparseable input    => exit 0 (fail-open)
 #   - Any internal error                    => exit 0 (fail-open; never blocks a prompt)
 set -uo pipefail
+# An exported CDPATH makes `cd` print the folder it enters, which would double every folder
+# worked out below with "$(cd ... && pwd)". It is never used here.
+unset CDPATH
 
-_project_dir() { # prints the resolved project folder; fails when it is a subfolder of this
-                 # plugin's folder (this script's folder with the literal suffix
-                 # /scripts/guards removed)
-  local proj here root
+# This script's folder, resolved, and the plugin folder: that folder with the literal suffix
+# /scripts/guards removed. Worked out once, before the hook changes into the project folder.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)" || HERE=""
+ROOT="${HERE%/scripts/guards}"
+
+_git_toplevel_is() { # _git_toplevel_is <folder> -> 0 when <folder> is a git work tree whose top
+                      # level is <folder> itself (every GIT_* variable dropped first)
+  local top
+  top="$(
+    while IFS= read -r v; do unset "$v"; done < <(compgen -e | grep '^GIT_')
+    git -C "$1" rev-parse --show-toplevel 2>/dev/null
+  )" || return 1
+  [[ -n "$top" && "$top" -ef "$1" ]]
+}
+
+_under_folder() { # _under_folder <path> <folder> -> 0 when <path> is <folder> or lies inside it,
+                  # decided by identity: each ancestor of the resolved path is compared with
+                  # <folder> by device and inode ([[ -ef ]]), never by text, so another case on
+                  # a file system that does not tell case apart, or a second mount, is seen
+  local d
+  d="$(cd -P "$1" 2>/dev/null && pwd)" || return 1
+  while [[ -n "$d" ]]; do
+    [[ "$d" -ef "$2" ]] && return 0
+    [[ "$d" != "/" ]] || return 1
+    d="${d%/*}"
+    [[ -n "$d" ]] || d="/"
+  done
+  return 1
+}
+
+_project_dir() { # prints the resolved project folder; fails when it lies inside this plugin's
+                 # folder, or is the plugin folder and that folder is not its own git
+                 # repository (an installed copy)
+  local proj
+  [[ -n "$HERE" ]] || return 1
   proj="$(cd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null && pwd -P)" || return 1
-  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)" || return 1
-  root="${here%/scripts/guards}"
-  if [[ "$root" != "$here" && "$proj" != "$root" && "${proj#"$root"/}" != "$proj" ]]; then
-    return 1
+  if [[ -n "$ROOT" && "$ROOT" != "$HERE" ]]; then
+    if [[ "$proj" -ef "$ROOT" ]]; then
+      _git_toplevel_is "$ROOT" || return 1
+    elif _under_folder "$proj" "$ROOT"; then
+      return 1
+    fi
   fi
   printf '%s\n' "$proj"
 }
@@ -69,6 +107,9 @@ except Exception:
   local proj; proj="$(_project_dir)" || return 0
   cd "$proj" 2>/dev/null || return 0
   [[ ! -L .temper ]] || return 0
+  # A .temper folder that holds a symlink anywhere is one the CLI refuses (exit 3), so the
+  # gate this marker would ask for could never run: no debt is recorded there.
+  [[ -z "$(find -P .temper -type l -print -quit 2>/dev/null)" ]] || return 0
   mkdir -p .temper 2>/dev/null || return 0
   [[ ! -L .temper/pending-stage.json ]] || return 0
   # "since" scopes the debt in time: verify-stage-gate.sh accepts only a verdict whose

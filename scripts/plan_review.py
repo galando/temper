@@ -22,15 +22,19 @@ merge   Normalizes reviewer comments into the review-comments.json shape that
 
 Neither command writes inside this plugin's own folder: an output path that resolves
 there is refused (exit 2), so a review can never overwrite a file the plugin ships.
-The one exception: when the current folder resolves to the plugin folder (the project is
-the plugin's own repository), an output that resolves under its .temper folder is allowed.
+The one exception: when the current folder is the plugin folder and that folder is its
+own git repository (a git work tree whose top level is the plugin folder, so never an
+installed copy), an output that resolves under its .temper folder is allowed. Inside or
+equal is decided by identity (device and inode, os.path.samefile), not by path text.
 
 python3 stdlib only. No network.
 """
 import argparse
 import html
 import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -97,21 +101,59 @@ def feature_name(spec_dir, override):
     return spec_dir.name.replace("-", " ").replace("_", " ").strip().capitalize()
 
 
+def _same(a, b):
+    """True when `a` and `b` are the same file or folder (device and inode)."""
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def _under(path, folder):
+    """True when `path` is `folder` or lies inside it. Decided by identity, not by text:
+    `path` is resolved (links followed) and each of its ancestors is compared with
+    `folder` by device and inode, so another case on a file system that does not tell
+    case apart, a symlink or a second mount of the same folder is still seen."""
+    p = os.path.realpath(path)
+    while True:
+        if _same(p, folder):
+            return True
+        parent = os.path.dirname(p)
+        if parent == p:
+            return False
+        p = parent
+
+
+def _own_repository(folder):
+    """True when `folder` is a git work tree whose top level is `folder` itself. Every
+    GIT_* variable is dropped first, so a caller's GIT_DIR cannot answer for it."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    try:
+        r = subprocess.run(["git", "-C", str(folder), "rev-parse", "--show-toplevel"],
+                           env=env, capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    top = r.stdout.strip()
+    return r.returncode == 0 and bool(top) and _same(top, folder)
+
+
 def output_refusal(out, suffix):
     """Why `out` may not be written, or None. An output is a file name ending in `suffix`
     whose resolved location is outside this plugin's own folder. The one exception is the
-    plugin's own repository used as the project (the current folder resolves to the plugin
-    folder): there an output under the .temper folder, the run state, is allowed."""
+    plugin's own repository used as the project (the current folder is the plugin folder,
+    and that folder is a git work tree whose top level is itself): there an output under
+    its .temper folder, the run state, is allowed, provided that folder is no symlink."""
     path = Path(out)
     if path.suffix.lower() != suffix:
         return f"output must be a file name ending in {suffix}: {out}"
-    resolved, root = path.resolve(), ROOT.resolve()
-    if resolved == root or root in resolved.parents:
+    if _under(path, ROOT):
+        temper = ROOT / ".temper"
         try:
-            project_is_plugin = Path.cwd().resolve() == root
+            project_is_plugin = _same(os.getcwd(), ROOT)
         except OSError:
             project_is_plugin = False
-        if project_is_plugin and (root / ".temper") in resolved.parents:
+        if (project_is_plugin and temper.is_dir() and not temper.is_symlink()
+                and _under(path, temper) and _own_repository(ROOT)):
             return None
         return f"refusing to write inside the plugin's own folder: {out}"
     return None

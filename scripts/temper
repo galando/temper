@@ -26,7 +26,13 @@
 #   - A stage with no evidence recorded FAILS closed (nothing to verify => not verified).
 #   - Missing python3 => every subcommand exits 1 with a clear message (JSON needs it).
 #   - Malformed state/config => treated as absent (defaults apply), never a crash.
+#   - A .temper folder that is, or holds, a symlink => every subcommand except config, model
+#     and help exits 3 with a one-line reason on stderr, so no write can follow a link out
+#     of the project. Hooks that call the CLI fail open on exit 3.
 set -uo pipefail
+# An exported CDPATH makes `cd` print the folder it enters, which would double every
+# folder this script works out with "$(cd ... && pwd)". It is never used here.
+unset CDPATH
 
 REPO_ROOT="$(pwd)"
 # Where the plugin itself lives (this script). Used only to read the stage briefs'
@@ -115,21 +121,73 @@ _count_lines_matching() { # _count_lines_matching <pattern> <file>  (grep -c exi
   echo "${n:-0}"
 }
 
-_inside_plugin_refuse() { # -> 1 (with a message) when the current folder is strictly inside
-                          # the plugin folder. Run state lives in the current folder's .temper,
-                          # and nothing this CLI runs may write into the plugin folder. The
-                          # plugin folder itself stays a valid project (developing Temper on its
-                          # own repository); a folder inside it (one of its own subfolders, or a
-                          # second checkout placed in it) is not.
+_git_toplevel_is() { # _git_toplevel_is <folder> -> 0 when <folder> is a git work tree whose top
+                      # level is <folder> itself. Every GIT_* variable is dropped first, so a
+                      # GIT_DIR or GIT_WORK_TREE set by a caller (a git hook sets some) cannot
+                      # answer for another repository.
+  local top
+  top="$(
+    while IFS= read -r v; do unset "$v"; done < <(compgen -e | grep '^GIT_')
+    git -C "$1" rev-parse --show-toplevel 2>/dev/null
+  )" || return 1
+  [[ -n "$top" && "$top" -ef "$1" ]]
+}
+
+_under_folder() { # _under_folder <path> <folder> -> 0 when <path> is <folder> or lies inside it.
+                  # Decided by identity, not by text: <path> is resolved (links followed) and
+                  # each of its ancestors is compared with <folder> by device and inode
+                  # ([[ -ef ]]), so a path typed in another case on a file system that does
+                  # not tell case apart, a symlink or a second mount of the same folder is
+                  # still seen.
+  local d
+  d="$(cd -P "$1" 2>/dev/null && pwd)" || return 1
+  while [[ -n "$d" ]]; do
+    [[ "$d" -ef "$2" ]] && return 0
+    [[ "$d" != "/" ]] || return 1
+    d="${d%/*}"
+    [[ -n "$d" ]] || d="/"
+  done
+  return 1
+}
+
+_inside_plugin_refuse() { # -> 1 (with a message) when the current folder is the plugin folder or
+                          # lies inside it. Run state lives in the current folder's .temper, and
+                          # nothing this CLI runs may write into the plugin folder. The one
+                          # exception is developing Temper on its own repository: the plugin
+                          # folder is a project only when it is a git work tree whose top level
+                          # is that folder. An installed copy (no .git) is refused like any
+                          # folder inside it (one of its own subfolders, or a second checkout
+                          # placed in it).
   [[ "$PLUGIN_ROOT" != "$SCRIPTS_DIR" ]] || return 0   # not laid out as a plugin: no folder to guard
   local plugin cwd
   plugin="$(cd -P "$PLUGIN_ROOT" 2>/dev/null && pwd)" || return 0
-  cwd="$(pwd -P)"
   [[ -n "$plugin" && "$plugin" != "/" ]] || return 0
-  if [[ "${cwd#"$plugin"/}" != "$cwd" ]]; then
-    echo "FAIL: run temper from a project folder, not from a folder inside the plugin folder" >&2
-    echo "      (plugin folder: $plugin; current folder: $cwd). The plugin folder itself is a valid project." >&2
+  cwd="$(pwd -P)"
+  if [[ "$cwd" -ef "$plugin" ]]; then
+    _git_toplevel_is "$plugin" && return 0
+    echo "FAIL: run temper from a project folder, not from the plugin folder: this copy is not its own git repository" >&2
+    echo "      (plugin folder: $plugin). The plugin folder is a project only when it is a git work tree whose top level is that folder." >&2
     return 1
+  fi
+  if _under_folder "$cwd" "$plugin"; then
+    echo "FAIL: run temper from a project folder, not from a folder inside the plugin folder" >&2
+    echo "      (plugin folder: $plugin; current folder: $cwd). The plugin folder itself is a project only when it is its own git repository." >&2
+    return 1
+  fi
+  return 0
+}
+
+_unsafe_temper_refuse() { # -> 3 (with a one-line reason) when the project's .temper folder, or
+                          # any entry inside it, is a symlink. Every write of this CLI lands in
+                          # .temper, so a link there (a cloned repository can carry one) could
+                          # send a write out of the project, into the plugin folder or anywhere
+                          # else. Hooks that call the CLI read exit 3 as "fail open".
+  [[ -e .temper || -L .temper ]] || return 0
+  local link
+  link="$(find -P .temper -type l -print -quit 2>/dev/null)"
+  if [[ -n "$link" ]]; then
+    echo "FAIL: unsafe .temper: '$link' is a symlink, and no write may follow a link out of the project (replace it with a plain file or folder)" >&2
+    return 3
   fi
   return 0
 }
@@ -584,6 +642,16 @@ print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_t
   return $rc
 }
 
+_spec_dir_ok() { # _spec_dir_ok <slug> -> 0 when .temper/specs/<slug> is a plain folder of this
+                 # project's own .temper/specs: no symlink on the way (.temper, specs, the
+                 # slug folder, the ledger file), and the folder's parent is, by identity
+                 # (device and inode), the specs folder in the project's .temper.
+  local d=".temper/specs/$1" real
+  [[ -d "$d" && ! -L .temper && ! -L .temper/specs && ! -L "$d" && ! -L "$d/gate-ledger.json" ]] || return 1
+  real="$(cd -P "$d" 2>/dev/null && pwd)" || return 1
+  [[ -n "$real" && "${real%/*}" -ef "$REPO_ROOT/.temper/specs" ]]
+}
+
 _archive_ledger() { # writes gate-ledger.json into the run's spec folder from the live run state.
   # The run's decision record (verdicts, overrides with approver, evidence counts) must
   # not evaporate with the runtime state — it is the audit trail the committed artifact
@@ -592,7 +660,9 @@ _archive_ledger() { # writes gate-ledger.json into the run's spec folder from th
   # The target is .temper/specs/<slug>/gate-ledger.json with the slug checked by
   # _spec_slug: a spec_path of any other shape (a hand-edited state file) archives nothing,
   # and says so on stderr (returning 2) so `state archive`, `state clear` and `state init`
-  # never drop the ledger without a word.
+  # never drop the ledger without a word. The same goes for a spec folder that does not
+  # resolve to a plain folder of the project's own .temper/specs (_spec_dir_ok): the
+  # ledger is never written through a symlink.
   local spec_path slug out
   spec_path="$(cmd_state_get spec_path "")"
   [[ -n "$spec_path" ]] || return 0
@@ -602,6 +672,10 @@ _archive_ledger() { # writes gate-ledger.json into the run's spec folder from th
     return 2
   fi
   out=".temper/specs/$slug/gate-ledger.json"
+  if [[ -d ".temper/specs/$slug" && -f "$GATES_FILE" ]] && ! _spec_dir_ok "$slug"; then
+    echo "WARN: gate ledger NOT archived: .temper/specs/$slug is not a plain folder of this project's .temper/specs (a symlink is on the way)" >&2
+    return 2
+  fi
   if [[ -d ".temper/specs/$slug" && -f "$GATES_FILE" ]]; then
     # One (stage, ledger file) pair per name on the fixed list: no other file is read.
     local ev_pairs=() s
@@ -2400,12 +2474,15 @@ main() {
   _require_python
   local sub="${1:-}"; shift || true
   # Every subcommand that reads or writes the project's .temper folder is refused in a
-  # folder inside the plugin folder. `config` and `model` only read a config file and the
+  # folder inside the plugin folder, and in the plugin folder itself unless it is its own
+  # git repository (developing Temper). `config` and `model` only read a config file and the
   # stage briefs, and the help text reads nothing, so the guard scripts that call them
   # keep working wherever they run.
+  # A .temper folder that is or holds a symlink is refused too (exit 3), for the same reason.
   case "$sub" in
     config|model|""|-h|--help) ;;
-    *) _inside_plugin_refuse || return 1 ;;
+    *) _inside_plugin_refuse || return 1
+       _unsafe_temper_refuse || return 3 ;;
   esac
   case "$sub" in
     init) cmd_init "$@" ;;

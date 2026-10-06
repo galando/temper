@@ -267,7 +267,7 @@ export function decide(state: RunState, cmd: Command): Decision {
           return fail(`${name} needs a new check. A step back made the old check invalid.`)
         }
         if (g === 'stale' || g === 'none') {
-          return fail(`${name} has not passed its check yet. Next: run the ${phase} check (temper gate ${phase}).`)
+          return fail(`${name} has not passed its check yet. Next: run the ${phase} check, the gate command of the Temper CLI.`)
         }
         if (g === 'fail') return fail(`${name} did not pass its check. Next: fix the problems. Then run the ${phase} check again.`)
       }

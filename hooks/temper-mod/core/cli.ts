@@ -20,6 +20,16 @@ export function pluginCliFrom(url: string | undefined): string {
   return CLI
 }
 
+// The plugin folder, from where the Temper script is (what pluginCliFrom gave). Null when only the plain
+// `scripts/temper` is known: a prompt then names the plain path and says where it is (IN_PLUGIN).
+export function pluginRootOf(cli: string): string | null {
+  const tail = '/scripts/temper'
+  return cli !== CLI && cli.startsWith('/') && cli.endsWith(tail) ? cli.slice(0, -tail.length) : null
+}
+
+// What a prompt or a deny text adds when the Temper script is only known by its plain name.
+export const IN_PLUGIN = 'The script is in the Temper plugin folder, not in the project.'
+
 // STAGE_SEQ_TEMPER, in order. `state advance` takes `<stage>_complete <next stage>`.
 export const CLI_STAGES = 'intent plan design build review check'
 

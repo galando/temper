@@ -174,6 +174,77 @@ describe('finding 1: plain, visible stdin programs and the usual eval idioms sti
   }
 })
 
+// Release review 15: standard input named by a relative path (read against the folder the shell is in), by a
+// variable of any name length, or after a shell option that takes a value (--rcfile, --init-file).
+describe('release review 15: standard input in the remaining spellings (EXPECT denied)', () => {
+  const OV = 'scripts/te""mper ov""erride plan --reason x'
+  const PLAIN = 'scripts/temper override plan --reason x'
+  const attempts: Record<string, string> = {
+    // A relative path, read against the folder the command moved to.
+    'a plain override into bash stdin after cd /dev': `cd /dev && echo '${PLAIN}' | bash stdin`,
+    'a pipe into bash stdin after cd /dev': `cd /dev && echo '${OV}' | bash stdin`,
+    'an unknown producer into bash fd/0 after cd /dev': 'cd /dev && cat /tmp/x.sh | bash fd/0',
+    'an unknown producer into bash 0 after cd /dev/fd': 'cd /dev/fd && cat /tmp/x.sh | bash 0',
+    'an unknown producer into bash dev/stdin after cd /': 'cd / && cat /tmp/x.sh | bash dev/stdin',
+    'an unknown producer into source stdin after cd /dev': 'cd /dev && cat /tmp/x.sh | source stdin',
+    'a pipe into . stdin after cd /dev': `cd /dev && echo '${OV}' | . stdin`,
+    // `..` steps out of the project may reach the root folder.
+    'an unknown producer into bash ../../../dev/stdin': 'cat /tmp/x.sh | bash ../../../dev/stdin',
+    'an unknown producer into bash ../../../../proc/self/fd/0': 'cat /tmp/x.sh | bash ../../../../proc/self/fd/0',
+    // A folder that is not known: a relative path that can end a name of standard input counts.
+    'an unknown producer into bash stdin after cd to a variable': 'cd "$X" && cat /tmp/x.sh | bash stdin',
+    'an unknown producer into sh fd/0 after cd to a variable': 'cd "$X" && cat /tmp/x.sh | sh fd/0',
+    'an unknown producer into bash stdin after cd -': 'cd - && cat /tmp/x.sh | bash stdin',
+    // A link can make any folder /dev, in the project or outside it.
+    'a pipe into bash d/stdin through a link in the project': `ln -s /dev d && echo '${OV}' | bash d/stdin`,
+    'a pipe into bash /tmp/d/stdin through a link outside': `echo '${OV}' | bash /tmp/d/stdin`,
+    'an interpreter fed a program by a relative stdin': `cd /dev && echo 'import os; os.system("${PLAIN}")' | python3 stdin`,
+    // A shell option that takes a value: the value is not the script.
+    'a plain override into bash --rcfile x /dev/stdin': `echo '${PLAIN}' | bash --rcfile x /dev/stdin`,
+    'a pipe into bash --rcfile x /dev/stdin': `echo '${OV}' | bash --rcfile x /dev/stdin`,
+    'a pipe into bash --init-file x /dev/stdin': `echo '${OV}' | bash --init-file x /dev/stdin`,
+    'an unknown producer into bash --rcfile x stdin after cd /dev': 'cd /dev && cat /tmp/x.sh | bash --rcfile x stdin',
+    // A variable is read by its whole name: the length of the name does not matter.
+    'an unknown producer into bash $D/stdin': 'cat /tmp/x.sh | bash $D/stdin',
+    'an unknown producer into bash $DEVDIR/stdin': 'cat /tmp/x.sh | bash $DEVDIR/stdin',
+    'an unknown producer into bash ${DEVDIR}/stdin': 'cat /tmp/x.sh | bash ${DEVDIR}/stdin',
+    'an unknown producer into source $F': 'cat /tmp/x.sh | source $F',
+    'an unknown producer into source $FILE': 'cat /tmp/x.sh | source $FILE',
+    'yes into bash "$S"': 'yes | bash "$S"',
+    'yes into bash "$INSTALLER"': 'yes | bash "$INSTALLER"',
+    // A part that cannot be read can hold `..` steps: only what follows the last one is known.
+    'an unknown producer into bash $X/../0': 'cat /tmp/x.sh | bash $X/../0',
+    'an unknown producer into bash /tmp/$X/stdin': 'cat /tmp/x.sh | bash /tmp/$X/stdin',
+  }
+  for (const [name, cmd] of Object.entries(attempts)) {
+    test(name, async ($, on) => {
+      const { api } = await begin($, on, { next: 'build' })
+      expect(await sh(api, cmd)).toMatch(T)
+    })
+  }
+})
+
+describe('release review 15: scripts and visible programs still run', () => {
+  const fine: Record<string, string> = {
+    'a script in the project fed a file': 'cat data.txt | bash scripts/run.sh',
+    'a script one folder up fed a file': 'cat data.txt | bash ../run.sh',
+    'a script under a long variable folder fed a file': 'cat data.csv | python3 "$TOOLS/report.py"',
+    'a script named by a long variable, not fed': 'bash "$INSTALLER"',
+    'a file called stdin in the project, not fed': 'bash stdin',
+    'a plain program after --rcfile': "echo 'ls src' | bash --rcfile x /dev/stdin",
+    'a script after --rcfile': 'bash --rcfile x scripts/run.sh',
+    'a script after --init-file': 'bash --init-file x scripts/run.sh',
+    'a plain program into bash stdin after cd /dev': "cd /dev && echo 'ls' | bash stdin",
+    'a glob of scripts fed a file is not standard input': 'cat data.txt | bash *.sh',
+  }
+  for (const [name, cmd] of Object.entries(fine)) {
+    test(name, async ($, on) => {
+      const { api } = await begin($, on, { next: 'build' })
+      expect(await sh(api, cmd)).toBeUndefined()
+    })
+  }
+})
+
 // ---- 2. enforcement dropped when build-state.json is unreadable, missing or removed ---------------------------
 describe('finding 2: the run state cannot be switched off by hiding build-state.json', () => {
   const STATE = '.temper/build-state.json'

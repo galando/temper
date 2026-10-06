@@ -33,7 +33,7 @@ CLAUDE_PLUGIN_ROOT variable, use this folder.
 
 ### Gate Ledger Panel
 
-Show only what `temper gate` and `temper evidence` recorded. Never render cost, latency,
+Show only what `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate` and `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence` recorded. Never render cost, latency,
 or token estimates: nothing mechanical backs them.
 
 ```

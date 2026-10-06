@@ -6,7 +6,7 @@ import type { DecisionKind, ProtectedKind } from './bash'
 import type { Phase } from './events'
 import { ONLY_USER, phaseLabel } from './machine'
 import type { RunState } from './machine'
-import { guardedPhase } from './cli'
+import { CLI, guardedPhase } from './cli'
 import { matchesPlan, normalizePath } from './paths'
 
 // A decision the person made that no CLI call has matched yet: the event id, its kind, and
@@ -43,6 +43,12 @@ export type RuleContext = {
   // Back decisions a `state loop` call has already used: the loop is spent once, the `state set next_stage` that follows
   // spends the decision itself.
   loopedDecisions?: readonly string[]
+  // Where the Temper script is: its full path in the plugin folder, or the plain `scripts/temper` when that is not
+  // known (see pluginCliFrom). Every deny text names the CLI by it.
+  cli?: string
+  // The run's spec folder holds no intent.md, read fresh for this call. At Intent a `state clear` then loses nothing
+  // (the TRIVIAL exit of the orchestrator). Left out: not known, and the clear is refused.
+  intentMissing?: boolean
 }
 
 // The carve-outs of the CLI commit gate (scripts/temper gate_commit, docs/decisions/0009):
@@ -78,13 +84,13 @@ function targetPath(call: ToolCall): string | null {
 
 const inDir = (path: string, dir: string): boolean => path === dir || path.startsWith(dir + '/')
 
-function protectedDeny(kind: ProtectedKind): RuleResult {
+function protectedDeny(kind: ProtectedKind, cli: string): RuleResult {
   if (kind === 'events' || kind === 'overrides') return { deny: ONLY_USER }
   if (kind === 'folder') {
     return {
       deny:
         'Temper: the .temper folders hold the run, its verdicts and its decisions. Do not remove or replace them by hand. ' +
-        'Next: use scripts/temper state archive after the run, or name one file.',
+        `Next: use ${cli} state archive after the run, or name one file.`,
     }
   }
   if (kind === 'config') {
@@ -98,7 +104,7 @@ function protectedDeny(kind: ProtectedKind): RuleResult {
     return {
       deny:
         'Temper: the evidence ledger and the loop counter belong to the temper CLI. Do not write them by hand. ' +
-        'Next: use scripts/temper evidence add, run or resolve, and scripts/temper state loop.',
+        `Next: use ${cli} evidence add, run or resolve, and ${cli} state loop.`,
     }
   }
   if (kind === 'hooks') {
@@ -112,13 +118,13 @@ function protectedDeny(kind: ProtectedKind): RuleResult {
     return {
       deny:
         'Temper: use the temper CLI to change run state. Do not write it by hand. ' +
-        'Next: use scripts/temper state set or scripts/temper state advance.',
+        `Next: use ${cli} state set or ${cli} state advance.`,
     }
   }
   return {
     deny:
       'Temper: the temper CLI makes the gate verdicts. Do not write them by hand. ' +
-      'Next: run scripts/temper gate <stage> and read the verdict.',
+      `Next: run ${cli} gate <stage> and read the verdict.`,
   }
 }
 
@@ -220,10 +226,10 @@ const AUTONOMY_DENY =
 
 const GUARD_KEYS = new Set(['stage', 'next_stage', 'branch', 'spec_path', 'run_mode', 'command'])
 
-const UNCHECKABLE =
+const UNCHECKABLE = (cli: string): string =>
   'Temper: this command writes to a path that Temper cannot check, and it names Temper state. ' +
   'Next: write the exact file path with no variables, globs, braces or substitutions. Or use ' +
-  'scripts/temper gate <stage>, scripts/temper evidence or scripts/temper state.'
+  `${cli} gate <stage>, ${cli} evidence or ${cli} state.`
 
 const REPEATED_FLAG =
   'Temper: this decision call repeats a flag (--id, --stage or --reason). ' +
@@ -272,9 +278,9 @@ function followsVerdict(s: RunState, stage: string, complexity?: string | null):
   return here && (s.gate[stage as Phase] === 'fresh' || s.overrides.some(o => o.phase === stage))
 }
 
-const STATE_END =
+const STATE_END = (cli: string): string =>
   'Temper: do not clear or archive the run state during a run. Next: finish the run, ' +
-  'commit, then run scripts/temper state archive.'
+  `commit, then run ${cli} state archive.`
 
 const stateSetDeny = (key: string): string =>
   `Temper: state set ${key} moves the run. Only the user can do this. ` +
@@ -284,30 +290,30 @@ const OPAQUE_DENY =
   'Temper: this command runs the Temper script in a way Temper cannot read, and it holds a decision word. ' +
   'Only the user decides. Next: ask the user to use the buttons or the /temper:temper subcommands (approve, override, accept, back).'
 
-const DYNAMIC_DENY =
+const DYNAMIC_DENY = (cli: string): string =>
   'Temper: this command writes what a Temper call does (its subcommand) in a form Temper cannot read: a variable, a substitution or an escaped string. ' +
   'It could be a decision, and only the user decides, with the buttons or the /temper:temper subcommands. ' +
-  'Next: run each scripts/temper call with its words written out, one per Bash call.'
+  `Next: run each ${cli} call with its words written out, one per Bash call.`
 
-const OPAQUE_HIDDEN_DENY =
+const OPAQUE_HIDDEN_DENY = (cli: string): string =>
   'Temper: this command may run the Temper script (it names the script, or starts a program that can run it) and hides part of what it runs behind a substitution, an expansion or a here-string, so Temper cannot read it. ' +
-  'Next: run scripts/temper with its words written out, in a Bash call of its own.'
+  `Next: run ${cli} with its words written out, in a Bash call of its own.`
 
-const ALIAS_DENY =
+const ALIAS_DENY = (cli: string): string =>
   'Temper: do not link, copy or source the Temper script. A second name for it hides the decision calls. ' +
-  'Next: run scripts/temper by its own path. The user decides with the buttons or /temper:temper.'
+  `Next: run ${cli} by its own path. The user decides with the buttons or /temper:temper.`
 
 const HIDDEN_DENY =
   'Temper: a shell, or a builtin that runs text as commands (source and the like), is given a program that this command does not show (a pipe from another command, a file on stdin, a substitution, or a word split by quotes, backslashes, braces or globs). ' +
   'While a run is active only a program that is written out plainly passes. Next: run each command in its own Bash call, with the words written out.'
 
-const GUARDED_USE_DENY = (word: string): string =>
+const GUARDED_USE_DENY = (word: string, cli: string): string =>
   `Temper: this command names ${word}, a file of the run, and it is not a plain read. The CLI writes those files; nothing else does. ` +
-  'Next: read it with cat, grep, jq, head or git diff, or use scripts/temper gate, evidence or state.'
+  `Next: read it with cat, grep, jq, head or git diff, or use ${cli} gate, evidence or state.`
 
-const ENV_DENY =
+const ENV_DENY = (cli: string): string =>
   'Temper: TEMPER_DIR and TEMPER_CONFIG point the CLI at other files than the run\'s, so its verdicts would be written for a run that is not this one. ' +
-  'Next: run scripts/temper with no TEMPER_DIR or TEMPER_CONFIG.'
+  `Next: run ${cli} with no TEMPER_DIR or TEMPER_CONFIG.`
 
 const HOOKS_DENY =
   'Temper: --no-verify, -n and core.hooksPath switch the native pre-commit hook off. The hook is the commit gate for every commit. ' +
@@ -328,31 +334,34 @@ const PHASE_INDEX: Record<string, number> = { intent: 0, plan: 1, build: 3, revi
 
 function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResult {
   const c = classifyBash(command, ctx.cwd === undefined ? '' : ctx.cwd)
+  const cli = ctx.cli ?? CLI
 
-  if (c.alias) return { deny: ALIAS_DENY }
-  if (c.opaque && isActive(s)) return { deny: c.opaqueWhy === 'dynamic' ? DYNAMIC_DENY : c.opaqueWhy === 'hidden' ? OPAQUE_HIDDEN_DENY : OPAQUE_DENY }
+  if (c.alias) return { deny: ALIAS_DENY(cli) }
+  if (c.opaque && isActive(s)) return { deny: c.opaqueWhy === 'dynamic' ? DYNAMIC_DENY(cli) : c.opaqueWhy === 'hidden' ? OPAQUE_HIDDEN_DENY(cli) : OPAQUE_DENY }
   if (isActive(s)) {
     if (c.hidden) return { deny: HIDDEN_DENY }
-    if (c.envTamper) return { deny: ENV_DENY }
+    if (c.envTamper) return { deny: ENV_DENY(cli) }
     if (c.hookTamper || c.noVerify) return { deny: HOOKS_DENY }
   }
 
   if (c.protectedWrites.length > 0) {
     const known = c.protectedWrites.filter(p => !c.uncheckable.includes(p))
-    if (known.length === 0) return { deny: UNCHECKABLE }
+    if (known.length === 0) return { deny: UNCHECKABLE(cli) }
     // The config and the git hooks are the run's only while a run is active (/temper:init writes the config before).
     const kinds = known.map(p => protectedKind(p) ?? 'events').filter(k => isActive(s) || (k !== 'config' && k !== 'hooks'))
     if (kinds.length > 0) {
       const forged = kinds.find(k => k === 'events' || k === 'overrides')
-      return protectedDeny(forged ?? kinds[0] ?? 'events')
+      return protectedDeny(forged ?? kinds[0] ?? 'events', cli)
     }
-    if (c.uncheckable.length > 0) return { deny: UNCHECKABLE }
+    if (c.uncheckable.length > 0) return { deny: UNCHECKABLE(cli) }
   }
-  if (isActive(s) && c.guardedUse.length > 0) return { deny: GUARDED_USE_DENY(c.guardedUse[0] ?? 'a guarded file') }
+  if (isActive(s) && c.guardedUse.length > 0) return { deny: GUARDED_USE_DENY(c.guardedUse[0] ?? 'a guarded file', cli) }
 
   // Removing or archiving the run's state is for after the run: while a run is active it would
-  // take the gate ledger and the overrides with it.
-  if (isActive(s) && c.stateOps.some(o => o.op === 'clear' || o.op === 'archive')) return { deny: STATE_END }
+  // take the gate ledger and the overrides with it. One exception, the TRIVIAL exit of the orchestrator: a clear at
+  // Intent while the spec folder holds no intent.md loses nothing (the run has no intent, no plan and no verdict yet).
+  const trivialExit = s.phase === 'intent' && ctx.intentMissing === true
+  if (isActive(s) && c.stateOps.some(o => o.op === 'archive' || (o.op === 'clear' && !trivialExit))) return { deny: STATE_END(cli) }
   if (isActive(s) && c.stateOps.some(o => o.op === 'init')) return { deny: STATE_RESTART }
   // `state loop <from> <to>` keeps the loop budget and clears the evidence of the stages that are redone.
   // While a run is active it is for the person's Loop back only: it passes when the person's back decision
@@ -438,7 +447,7 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
             return {
               deny:
                 `Temper: after ${stage} the next stage of this run is ${expected}, not ${call.next ?? 'none'}. ` +
-                `Next: run scripts/temper state advance ${stage}_complete ${expected}. The user's approval is already recorded.`,
+                `Next: run ${cli} state advance ${stage}_complete ${expected}. The user's approval is already recorded.`,
             }
           }
           return { deny: ONLY_USER }
@@ -490,7 +499,7 @@ export function evaluate(state: RunState, ctx: RuleContext, call: ToolCall): Rul
 
   const kind = protectedKind(path)
   // The config and the git hooks are guarded while a run is active (the person writes them with no run on).
-  if (kind !== null && (isActive(state) || (kind !== 'config' && kind !== 'hooks'))) return protectedDeny(kind)
+  if (kind !== null && (isActive(state) || (kind !== 'config' && kind !== 'hooks'))) return protectedDeny(kind, ctx.cli ?? CLI)
 
   if (!isActive(state) || state.paused || ctx.failOpenWrites) return ALLOW
   return phaseWriteRule(state, ctx, path)

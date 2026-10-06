@@ -1,49 +1,55 @@
 #!/usr/bin/env python3
 """
-pack-discover.py — enumerate linkable pack targets (plugins, skills, commands) across
-installed plugins plus project-local and global scopes, for /temper:pack's Step 5a
-quick-create-launcher scan (see commands/pack.md).
+pack-discover.py: list the project's own link targets for the quick-create launcher of
+/temper:pack (Step 5a of commands/pack.md).
 
-Output: one line per target, 4 pipe-separated fields, deduplicated and deterministic:
+It reads only the project, the folder it runs in:
+
+    LOCAL_CMD    each visible .md file directly in <project>/.claude/commands
+    LOCAL_SKILL  each visible folder in <project>/.claude/skills that holds a SKILL.md
+
+Output: one line per target, 4 pipe-separated fields, deduplicated and deterministic (commands
+first, then skills, each sorted by name):
 
     TYPE|name|path|description
 
-TYPE is one of PLUGIN, SKILL, CMD, LOCAL_CMD, GLOBAL_CMD.
+name is the command's file name without .md, or the skill's folder name. path is the file a link
+reads: the command file, or the skill's SKILL.md, as a full resolved path. description comes from
+that file's frontmatter (empty when it has none).
 
-Security: print-only — this never execs or imports anything from a discovered path.
-Every discovered file is resolved with os.path.realpath() and must stay under its
-recorded installPath (or the project/home commands root) — a symlinked installPath
-must not become a directory-traversal read. The scan lists named subfolders with
-os.scandir (no wildcard patterns), capped by depth and total result count so a
-pathological install tree can't hang it. Temper's own folder is never scanned: an
-installed entry whose resolved installPath is this plugin's folder (or inside it) is
-skipped, whatever its name. Frontmatter is read with a line-bounded parse (first
-``---``-fenced block, ``key: value`` scalars only) — no PyYAML dependency added.
+It reads nothing in the home folder and none of Claude Code's own files: no installed plugin list,
+no plugin folder, no home commands or skills. Link targets from plugins, and from the user's own
+home skills and commands, come from the skills and slash commands the Claude session lists (see
+reference/pack.md).
+
+Security: print-only. It never runs or imports anything it finds. Each folder and file is resolved
+with os.path.realpath(): the commands and skills folders must stay inside the project, and each
+file inside the folder it was listed from, so a symlink cannot turn into a read outside the
+project (a .claude/commands linked to the home folder is not listed). Folders are listed
+with os.scandir (no wildcard patterns), hidden entries (a leading '.') are left out, and the number
+of rows is capped. Frontmatter is read with a line-bounded parse (the first block fenced by '---',
+'key: value' scalars only), so no YAML library is needed.
 """
-import json
 import os
 import sys
 
-MAX_DEPTH = 6
 MAX_RESULTS = 500
-HOME = os.path.expanduser("~")
-# This plugin's own folder: this file's resolved path with the literal suffix removed.
-SELF_ROOT = os.path.realpath(__file__).removesuffix(os.sep + os.path.join("scripts", "pack-discover.py"))
+COMMANDS = os.path.join(".claude", "commands")
+SKILLS = os.path.join(".claude", "skills")
 
 
 def read_frontmatter(path):
-    """Line-bounded frontmatter parse — first fenced ``---`` block, scalar keys only.
-    Deliberately not yaml.safe_load: no new dependency, and nothing here needs lists
-    or nested maps."""
+    """The first block fenced by '---', scalar 'key: value' pairs only. Not yaml.safe_load: no new
+    dependency, and nothing here needs lists or nested maps."""
     try:
         with open(path, "r", errors="ignore") as f:
             lines = f.readlines()
-    except Exception:
+    except OSError:
         return {}
     if not lines or lines[0].strip() != "---":
         return {}
     fm = {}
-    for line in lines[1:200]:  # bounded — frontmatter blocks are always short
+    for line in lines[1:200]:  # bounded: frontmatter blocks are always short
         stripped = line.rstrip("\n")
         if stripped.strip() == "---":
             break
@@ -57,30 +63,19 @@ def read_frontmatter(path):
     return fm
 
 
-def safe_realpath_under(path, root):
-    """realpath(path) must stay under realpath(root); refuse a symlink escape."""
+def inside(path, folder):
+    """realpath(path) when it stays inside realpath(folder), else None (a symlink escape)."""
     try:
         rp = os.path.realpath(path)
-        rroot = os.path.realpath(root)
-    except Exception:
+        rfolder = os.path.realpath(folder)
+    except (OSError, ValueError):
         return None
-    if rp == rroot or rp.startswith(rroot + os.sep):
-        return rp
-    return None
+    return rp if rp.startswith(rfolder + os.sep) else None
 
 
-def is_self(path):
-    """True when path resolves to this plugin's own folder or a folder inside it."""
-    try:
-        rp = os.path.realpath(path)
-    except Exception:
-        return False
-    return rp == SELF_ROOT or rp.startswith(SELF_ROOT + os.sep)
-
-
-def _visible_entries(folder):
-    """Entries of one folder, sorted by name, hidden ones (leading '.') left out, the
-    same names a wildcard would have listed. An unreadable folder has none."""
+def visible_entries(folder):
+    """Entries of one folder, sorted by name, hidden ones (a leading '.') left out. A missing or
+    unreadable folder has none."""
     try:
         with os.scandir(folder) as it:
             entries = [e for e in it if not e.name.startswith(".")]
@@ -89,177 +84,54 @@ def _visible_entries(folder):
     return sorted(entries, key=lambda e: e.name)
 
 
-def _keep(path, root, out):
-    """Append realpath(path) to out when it stays under root and is a file."""
-    if len(out) >= MAX_RESULTS:
+def project_folder(project, sub):
+    """<project>/<sub> when it is a folder that resolves inside the project, else None: a
+    .claude, commands or skills folder that links out of the project is never listed."""
+    folder = os.path.join(project, sub)
+    rp = inside(folder, project)
+    return folder if rp and os.path.isdir(rp) else None
+
+
+def project_commands(project):
+    """(name, path) for each visible .md file directly in <project>/.claude/commands."""
+    folder = project_folder(project, COMMANDS)
+    if folder is None:
         return
-    if os.path.relpath(path, root).count(os.sep) > MAX_DEPTH:
+    for e in visible_entries(folder):
+        if not e.name.endswith(".md"):
+            continue
+        rp = inside(os.path.join(folder, e.name), folder)
+        if rp and os.path.isfile(rp):
+            yield e.name[: -len(".md")], rp
+
+
+def project_skills(project):
+    """(name, path of SKILL.md) for each visible folder in <project>/.claude/skills that holds one."""
+    folder = project_folder(project, SKILLS)
+    if folder is None:
         return
-    rp = safe_realpath_under(path, root)
-    if rp and os.path.isfile(rp):
-        out.append(rp)
+    for e in visible_entries(folder):
+        rp = inside(os.path.join(folder, e.name, "SKILL.md"), folder)
+        if rp and os.path.isfile(rp):
+            yield e.name, rp
 
 
-def skill_files(root, sub):
-    """<root>/<sub>/<name>/SKILL.md for each visible child folder of <root>/<sub>."""
-    out = []
-    base = os.path.join(root, sub)
-    for e in _visible_entries(base):
-        if e.is_dir():
-            _keep(os.path.join(base, e.name, "SKILL.md"), root, out)
-    return out
-
-
-def markdown_files(root, sub, recursive):
-    """Visible .md files in <root>/<sub> (and, when recursive, in its visible subfolders
-    down to MAX_DEPTH below root). Symlinked folders are not followed."""
-    out = []
-    base = os.path.join(root, sub) if sub else root
-    pending = [base]
-    while pending and len(out) < MAX_RESULTS:
-        folder = pending.pop(0)
-        subfolders = []
-        for e in _visible_entries(folder):
-            path = os.path.join(folder, e.name)
-            if e.is_dir(follow_symlinks=False):
-                if recursive and os.path.relpath(path, root).count(os.sep) < MAX_DEPTH:
-                    subfolders.append(path)
-            elif e.name.endswith(".md"):
-                _keep(path, root, out)
-        pending.extend(subfolders)
-    return sorted(out)
-
-
-def discover_plugins():
-    """Installed plugins: 'name@marketplace' -> name, deduplicated. Iterates
-    plugins.items() in sorted (name@marketplace) order so which marketplace wins a
-    duplicate name is deterministic across runs, not JSON key-insertion order.
-    Install-path selection: sort each name's entries by lastUpdated descending
-    (falling back to (version, installPath) descending when lastUpdated is absent —
-    real installed_plugins.json entries often carry "version": "unknown", which would
-    otherwise make that tiebreak an unrelated path-string sort) and prefer the first
-    whose installPath actually exists on disk — entries[-1] ("latest") depended on
-    JSON key order and was not actually latest."""
-    path = os.path.join(HOME, ".claude", "plugins", "installed_plugins.json")
-    if not os.path.exists(path):
-        return []
-    try:
-        with open(path) as f:
-            data = json.load(f)
-    except Exception:
-        return []
-    plugins = data.get("plugins", data if isinstance(data, dict) else {})
-    if not isinstance(plugins, dict):
-        return []
-
-    by_pkg = {}
-    for key in sorted(plugins.keys()):
-        entries = plugins[key]
-        if not isinstance(entries, list) or not entries:
-            continue
-        pkg_name = key.split("@")[0]
-        if pkg_name == "temper":
-            continue
-        if pkg_name in by_pkg:
-            continue  # first (deterministically sorted) marketplace wins
-
-        def sort_key(e):
-            last_updated = e.get("lastUpdated")
-            has_last_updated = last_updated is not None and str(last_updated) != ""
-            # Primary: lastUpdated (when present), so the most-recently-installed
-            # entry wins. Fall back to (version, installPath) only for entries that
-            # lack lastUpdated — version is frequently "unknown" across entries, so
-            # without this, ties silently fell through to an unrelated path sort.
-            return (
-                has_last_updated,
-                str(last_updated) if has_last_updated else "",
-                str(e.get("version", "")),
-                str(e.get("installPath", "")),
-            )
-
-        candidates = sorted(entries, key=sort_key, reverse=True)
-        chosen = next(
-            (e for e in candidates if e.get("installPath") and os.path.isdir(e["installPath"])),
-            candidates[0] if candidates else None,
-        )
-        if chosen is not None:
-            by_pkg[pkg_name] = chosen
-    return sorted(by_pkg.items())
-
-
-def plugin_description(install_path):
-    pj = os.path.join(install_path, ".claude-plugin", "plugin.json")
-    try:
-        with open(pj) as f:
-            return json.load(f).get("description", "")
-    except Exception:
-        return ""
-
-
-def emit(seen, type_, name, path, desc):
-    key = (type_, name)
-    if key in seen:
-        return False
-    seen.add(key)
-    desc = (desc or "").replace("|", "/").replace("\n", " ").strip()
-    print(f"{type_}|{name}|{path}|{desc}")
-    return True
+def clean(text):
+    return (text or "").replace("|", "/").replace("\n", " ").strip()
 
 
 def main():
+    project = "."
     seen = set()
-    results = 0
-
-    for pkg_name, entry in discover_plugins():
-        if results >= MAX_RESULTS:
-            break
-        install_path = entry.get("installPath", "")
-        if not install_path or not os.path.isdir(install_path):
-            continue
-        if is_self(install_path):
-            continue  # Temper itself (a renamed fork included): never a pack target
-        plugin_desc = plugin_description(install_path)
-        emitted_any = False
-
-        skills = skill_files(install_path, "skills") + skill_files(
-            install_path, os.path.join(".claude", "skills")
-        )
-        for s in sorted(set(skills)):
-            skill_dir = os.path.basename(os.path.dirname(s))
-            fm = read_frontmatter(s)
-            if emit(seen, "SKILL", f"{pkg_name}:{skill_dir}", os.path.dirname(s), fm.get("description", plugin_desc)):
-                emitted_any = True
-                results += 1
-
-        cmd_files = markdown_files(install_path, "commands", True) + markdown_files(
-            install_path, os.path.join(".claude", "commands"), True
-        )
-        for c in sorted(set(cmd_files)):
-            cmd_name = os.path.splitext(os.path.basename(c))[0]
-            fm = read_frontmatter(c)
-            if emit(seen, "CMD", f"{pkg_name}:{cmd_name}", os.path.dirname(c), fm.get("description", plugin_desc)):
-                emitted_any = True
-                results += 1
-
-        if not emitted_any:
-            if emit(seen, "PLUGIN", pkg_name, install_path, plugin_desc):
-                results += 1
-
-    # Project-local and global commands — same 4-field arity as everything above (the
-    # arity mismatch was defect #6: these used to emit only 3 fields).
-    for label, root in (
-        ("LOCAL_CMD", os.path.join(".", ".claude", "commands")),
-        ("GLOBAL_CMD", os.path.join(HOME, ".claude", "commands")),
-    ):
-        if results >= MAX_RESULTS or not os.path.isdir(root):
-            continue
-        for c in markdown_files(root, "", False):
-            if results >= MAX_RESULTS:
-                break
-            cmd_name = os.path.splitext(os.path.basename(c))[0]
-            fm = read_frontmatter(c)
-            if emit(seen, label, cmd_name, c, fm.get("description", "")):
-                results += 1
+    for type_, targets in (("LOCAL_CMD", project_commands(project)), ("LOCAL_SKILL", project_skills(project))):
+        for name, path in targets:
+            if len(seen) >= MAX_RESULTS:
+                return
+            # A name or path with '|' or a line break would break the row format: left out.
+            if (type_, name) in seen or any(c in name + path for c in "|\n\r"):
+                continue
+            seen.add((type_, name))
+            print(f"{type_}|{name}|{path}|{clean(read_frontmatter(path).get('description', ''))}")
 
 
 if __name__ == "__main__":

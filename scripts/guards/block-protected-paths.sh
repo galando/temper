@@ -20,6 +20,9 @@
 #   - Empty/absent list, other files, no python3, unparseable stdin, missing CLI
 #     => exit 0 (fail-open)
 set -uo pipefail
+# An exported CDPATH makes `cd` print the folder it enters, which would double the folder
+# worked out below with "$(cd ... && pwd)". It is never used here.
+unset CDPATH
 
 _main() {
   command -v python3 >/dev/null 2>&1 || return 0

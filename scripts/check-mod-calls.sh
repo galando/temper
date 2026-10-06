@@ -12,6 +12,8 @@
 # Test hook: CHECK_MOD_CALLS_LINE="<a calls: line>" checks that line without running claude.
 set -euo pipefail
 
+# With CDPATH set, cd prints the folder it enters, and the path below would hold it twice.
+unset CDPATH
 # The plugin folder: this script sits in its scripts folder, so strip that literal suffix.
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${HERE%/scripts}"

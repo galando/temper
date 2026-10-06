@@ -88,7 +88,9 @@ After the reviewer is done, get the comments into `.temper/specs/{feature}/revie
    - `task-change` → update tasks.md section matching `target`
    - `scenario-change` → update intent.md scenario matching `target`
    - `plan-change` → update plan.md section matching `target`
-   - `general-note` → add as context note to build-state.json
+   - `general-note` → add it to plan.md under a `## Review Notes` heading (create the
+     heading at the end of plan.md when it is missing), one bullet per note. Never
+     write it into `.temper/build-state.json`: the CLI owns that file
 3. Show what changed
 4. Return to Plan gate
 

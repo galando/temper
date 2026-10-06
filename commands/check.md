@@ -14,6 +14,17 @@ description: "Run stack-aware validation pipeline"
 path with /scripts/temper taken off). Wherever a reference page or a brief writes the
 CLAUDE_PLUGIN_ROOT variable, use this folder.
 
+**Enforcement marker.** Look at your system prompt for a line that starts with
+`Temper enforcement:`. With no such line, make the first sentence of your first reply in
+this conversation exactly "Temper enforcement is off here (no mods support); continuing
+with prompt based phases." With the line `Temper enforcement: off (UI only)`, the Temper
+mod is loaded and the user turned enforcement off: make that first sentence exactly
+"Temper enforcement is off (turned off by the user); continuing with prompt based
+phases." instead. Then carry on as written below. Never treat either case as an error
+and do not mention it again. With `Temper enforcement: active`, say nothing about it.
+You state this once, in this conversation: a stage subprocess never has that line in
+its system prompt, so its brief says nothing about enforcement.
+
 ### Subprocess Mode
 
 If `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get stages.subprocess false` returns
@@ -24,7 +35,7 @@ ${CLAUDE_PLUGIN_ROOT}/agents/check.md exactly. Plugin folder: the folder that ho
 /scripts/temper taken off); wherever the brief or a reference page writes the
 CLAUDE_PLUGIN_ROOT variable, use this folder. Spec:
 .temper/specs/{feature-slug}. Standalone run: pass --spec-path
-.temper/specs/{feature-slug} to every temper gate call."* Print the returned box
+.temper/specs/{feature-slug} to every gate call."* Print the returned box
 verbatim, then run the gate + `AskUserQuestion` per **Deterministic Gate** below (the
 subprocess already recorded test/coverage/scenario evidence) — the human gate stays in
 this context either way.
@@ -53,7 +64,7 @@ Levels (stop on failure):
 ### Deterministic Gate
 
 This is the same gate the unified `/temper` command's Check stage runs — running this
-command standalone must not skip it, or `temper gate commit` sees no check evidence and
+command standalone must not skip it, or `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` sees no check evidence and
 wrongly blocks (or wrongly passes) a later commit. Follow
 `${CLAUDE_PLUGIN_ROOT}/agents/check.md` steps 2-3 (record test/coverage evidence, and
 trace every `intent.md` scenario to a test with `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add
@@ -61,7 +72,7 @@ trace every `intent.md` scenario to a test with `${CLAUDE_PLUGIN_ROOT}/scripts/t
 PASS/FAIL to the user via `AskUserQuestion` (this command is not a subprocess — you own
 the gate here, unlike the check brief's "never show a gate" rule).
 
-**Pass `--spec-path` explicitly** — a standalone command hasn't necessarily run `temper
-state init`, so `temper state get spec_path` may be empty, which silently skips the
+**Pass `--spec-path` explicitly.** A standalone command hasn't necessarily run
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper state init`, so `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path` may be empty, which silently skips the
 scenario-tracing requirement (it can't find `intent.md`) instead of failing loudly.
 Always call `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check --spec-path .temper/specs/{feature-slug}`.

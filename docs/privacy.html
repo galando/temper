@@ -66,6 +66,7 @@
     <h2>Where your data lives</h2>
     <p>Everything Temper produces — plans, scenarios, review reports, metrics, learning state — is written to files inside your own project directory (<code>.temper/</code>, <code>.claude/</code>). These files stay on your machine and under your version control. Deleting them removes all Temper state.</p>
     <p>The optional mod (Claude Code 2.1.287 or later) reads only these same project files, plus <code>.git/HEAD</code>, and writes no file. It makes no network calls and sends no telemetry. In the plugin store on your machine it keeps the decisions it recorded (with a hash of each), the run report, your first-run choice, and the best score of the optional game.</p>
+    <p>Apart from that plugin store, Temper reads one place outside your project: its own global pack folder, <code>~/.claude/packs</code>, if you made one. It reads no other file in your home Claude Code folder: no settings, keys, logins, plugin lists, skills or commands.</p>
 
     <h2>When something leaves your machine</h2>
     <p>Two optional features send text out, and only when you choose them:</p>

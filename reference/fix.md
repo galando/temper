@@ -112,7 +112,7 @@ noted (confirm with `git stash` → test → `git stash pop`), not blamed on the
 
 ## Commit + record
 
-The commit gate is the standard one (`temper gate commit`; fix checks build/review/check,
+The commit gate is the standard one (`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit`; fix checks build/review/check,
 no plan stage). On the user's explicit **Commit** (a typed change is never approval —
 make the edit, re-show the gate): a conventional `fix({scope}): {desc}` message naming
 the root cause, the regression test, and the closed ticket.
@@ -131,7 +131,7 @@ Then two records, both committed:
   - **Fix:** {commit hash or one line}
   - **Regression test:** {test file}#{test name}
   - **Watch for:** {the generalized failure shape a future RCA should recognize}
-  {- **Band change:** only if the fix came from a `temper bands` breach — what was retuned}
+  {- **Band change:** only if the fix came from a control-band breach: what was retuned}
   ```
   Incident memory, distinct from review-memory (finding patterns): lessons record *what
   broke and why*, so the next investigation starts from evidence, not zero.

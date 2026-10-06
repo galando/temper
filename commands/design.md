@@ -15,6 +15,17 @@ argument-hint: "[--skip | --force]"
 path with /scripts/temper taken off). Wherever a reference page or a brief writes the
 CLAUDE_PLUGIN_ROOT variable, use this folder.
 
+**Enforcement marker.** Look at your system prompt for a line that starts with
+`Temper enforcement:`. With no such line, make the first sentence of your first reply in
+this conversation exactly "Temper enforcement is off here (no mods support); continuing
+with prompt based phases." With the line `Temper enforcement: off (UI only)`, the Temper
+mod is loaded and the user turned enforcement off: make that first sentence exactly
+"Temper enforcement is off (turned off by the user); continuing with prompt based
+phases." instead. Then carry on as written below. Never treat either case as an error
+and do not mention it again. With `Temper enforcement: active`, say nothing about it.
+You state this once, in this conversation: a stage subprocess never has that line in
+its system prompt, so its brief says nothing about enforcement.
+
 ### Subprocess Mode
 
 If `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get stages.subprocess false` returns
@@ -25,7 +36,7 @@ ${CLAUDE_PLUGIN_ROOT}/agents/design.md exactly. Plugin folder: the folder that h
 /scripts/temper taken off); wherever the brief or a reference page writes the
 CLAUDE_PLUGIN_ROOT variable, use this folder. Spec:
 .temper/specs/{feature-slug}. Standalone run: pass --spec-path
-.temper/specs/{feature-slug} to every temper gate call."* Print the returned box
+.temper/specs/{feature-slug} to every gate call."* Print the returned box
 verbatim, then run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate design --spec-path
 .temper/specs/{feature-slug}` and
 present for approval (concerns first) — the subprocess is headless; the human gate

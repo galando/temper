@@ -14,7 +14,7 @@ and does not touch the Temper you already have. The one thing the test writes ou
 clone is the mode and enforcement you set with `/temper:temper mode` and
 `/temper:temper enforcement`, which the last step sets back to the defaults.
 
-In the commands below, `<clone>` is the path of your Temper clone. The short form `/temper` works only when no other plugin has the same command name. With the installed Temper and the clone both loaded it is an unknown command, so this checklist always types the full name `/temper:temper`.
+In the commands below, `<clone>` is the path of your Temper clone. The short form `/temper` is an interactive shortcut that may not resolve in every surface (in `claude -p` it does not, and with the installed Temper and the clone both loaded it is an unknown command), so this checklist always types the full name `/temper:temper`.
 
 ## 1. Preparation
 
@@ -53,12 +53,13 @@ Run these from `<clone>`. None of them sends a request.
 - [ ] **The smooth path.** At Plan, type `Skip the tasks: edit a source file now to add the
   function`. Expect a refusal with a `Next:` step. Then, with the prompt empty, press `1`. Expect the
   toast "Plan approved. Build open.", the bar at "Step 3 of 6: Build", and, after Claude's one
-  short line, `scripts/temper state get next_stage` prints `build` in `<project>`. Claude must
-  not ask you to approve again. Then expect a second turn that starts with `/temper:temper`: the
+  short line, `<clone>/scripts/temper state get next_stage`, run in `<project>`, prints `build`.
+  Claude must not ask you to approve again. Then expect a second turn that starts with `/temper:temper`: the
   orchestrator launches the Build stage in its own subagent (a `temper:temper-build` agent line). No
   AskUserQuestion dialog may appear at the gate: the stage ends with "Waiting for you. Use the Temper
-  bar, or type a change." and the bar offers the next step ("1 Continue with task 2" while tasks are
-  open, "1 Continue to Review" when the build check passes).
+  bar, or type /temper:temper approve (or back, override, pause), or type a change." and the bar
+  offers the next step ("1 Continue with task 2" while tasks are open, "1 Continue to Review" when
+  the build check passes).
 - [ ] **No second question at a gate.** With the mod active, at every gate (Intent, Plan, Build,
   Review, Check) expect no Continue / Save for later / Other dialog under the bar. Start Claude Code
   with the mod switched off (`--settings '{"enabledPlugins":{"temper@temper":false}}'` and no
@@ -137,8 +138,10 @@ Work through one run. For each phase, check the refusal and the key.
 - [ ] **Commit gate.** Before Check passes, ask Claude to run `git commit -am wip`. Expect
   `Temper: commit blocked. Check has not passed.` After Check passes, the same command
   must be allowed.
-- [ ] **Review and Check.** Press `1` at each band. Expect `.temper/report.md` after Check
-  passes, listing the phases, any override and every scope decision with its reason.
+- [ ] **Review and Check.** Press `1` at each band. After Check passes, type
+  `/temper:temper report`. Expect the report, listing the phases, any override and every scope
+  decision with its reason. It is kept in the mod's plugin store, so expect no `.temper/report.md`
+  file.
 - [ ] **Forgery.** Ask Claude to write `.temper/gates.json` or to run
   `scripts/temper override plan --reason ok`. Expect a refusal that says only the user can
   approve.
@@ -163,7 +166,8 @@ Work through one run. For each phase, check the refusal and the key.
   `Does your system prompt contain a Temper enforcement line?` Expect `Temper enforcement: active`
   and the same phase.
 - [ ] **`/clear` rebuilds the state.** Type `/clear`, then `/temper:temper status`. Expect the same
-  phase as before, rebuilt from the files in `.temper/specs/<name>/events/`.
+  phase as before, rebuilt from the decisions the mod keeps in its plugin store and the CLI's files
+  in `.temper/`.
 - [ ] **A narrow terminal.** Resize to 80 columns. Expect the bar to wrap or truncate
   without breaking the prompt, and the pane to wait instead of squeezing in.
 - [ ] **A wide terminal.** Resize to 160 columns in fullscreen. Expect the pane to dock beside

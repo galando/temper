@@ -7,6 +7,7 @@
 set -uo pipefail
 
 # The repo root: this script's folder with the literal suffix /scripts/tests removed.
+unset CDPATH
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${TESTS_DIR%/scripts/tests}"
 [[ "$REPO_ROOT" != "$TESTS_DIR" && -x "$REPO_ROOT/scripts/temper" ]] || { echo "FAIL: cannot find the repo root from $TESTS_DIR"; exit 1; }
@@ -489,78 +490,78 @@ setup
 assert_eq "state loop check->build auto-clears check evidence (check is downstream of build)" "[]" "$(cat .temper/evidence/check.json | tr -d '[:space:]')"
 assert_exit "check gate FAILs closed again after the auto-clear (stale scenario coverage cannot mask a regression)" 1 "$TEMPER" gate check
 
-# --- pack-discover.py: install-path selection uses lastUpdated, not (version, installPath)
-# (feedback re-entry fix). Real installed_plugins.json entries commonly carry
-# "version": "unknown" for every candidate, which made the old (version, installPath)
-# tiebreak an unrelated path-string sort — "install-old" > "install-new" lexicographically,
-# so the *older* entry won even though "install-new" has the newer lastUpdated. ---
+# --- pack-discover.py reads only the project: no Claude Code file and nothing in the home folder.
+# The fake home below holds everything older versions read (the installed plugin list, a plugin's
+# skills and commands, home commands and home skills), and the installed list also names this
+# plugin's own folder. An audit hook records every file and folder the script opens or lists;
+# none may be in that home or in this plugin's folder. ---
 setup
 PACK_HOME="$WORKDIR/fake-home"
-mkdir -p "$PACK_HOME/.claude/plugins" \
-  "$PACK_HOME/install-old/.claude-plugin" \
-  "$PACK_HOME/install-new/.claude-plugin" \
-  "$PACK_HOME/install-new/skills/demo"
-echo '{"description": "old install"}' > "$PACK_HOME/install-old/.claude-plugin/plugin.json"
-echo '{"description": "new install"}' > "$PACK_HOME/install-new/.claude-plugin/plugin.json"
-cat > "$PACK_HOME/install-new/skills/demo/SKILL.md" <<'EOF'
----
-description: "demo skill"
----
-EOF
+rm -rf "$PACK_HOME"
+mkdir -p "$PACK_HOME/.claude/plugins" "$PACK_HOME/.claude/commands" "$PACK_HOME/.claude/skills/home-skill" \
+  "$PACK_HOME/demo/.claude-plugin" "$PACK_HOME/demo/skills/demo-skill" "$PACK_HOME/demo/commands" .claude/commands
+echo '{"description": "demo plugin"}' > "$PACK_HOME/demo/.claude-plugin/plugin.json"
+printf -- '---\ndescription: plugin skill\n---\n' > "$PACK_HOME/demo/skills/demo-skill/SKILL.md"
+printf -- '---\ndescription: plugin command\n---\n' > "$PACK_HOME/demo/commands/demo-cmd.md"
+printf -- '---\ndescription: home command\n---\n' > "$PACK_HOME/.claude/commands/home-cmd.md"
+printf -- '---\ndescription: home skill\n---\n' > "$PACK_HOME/.claude/skills/home-skill/SKILL.md"
 cat > "$PACK_HOME/.claude/plugins/installed_plugins.json" <<EOF
-{
-  "plugins": {
-    "demo@marketA": [
-      {"version": "unknown", "installPath": "$PACK_HOME/install-old", "lastUpdated": "2026-01-01T00:00:00Z"},
-      {"version": "unknown", "installPath": "$PACK_HOME/install-new", "lastUpdated": "2026-06-01T00:00:00Z"}
-    ]
-  }
-}
+{"plugins": {
+  "demo@market": [{"version": "1", "installPath": "$PACK_HOME/demo", "lastUpdated": "2026-06-01T00:00:00Z"}],
+  "temper-fork@somewhere": [{"version": "1", "installPath": "$REPO_ROOT", "lastUpdated": "2026-01-01T00:00:00Z"}]
+}}
 EOF
-PACK_OUT="$(HOME="$PACK_HOME" python3 "$REPO_ROOT/scripts/pack-discover.py")"
-assert_eq "pack-discover picks the entry with the newest lastUpdated, not the alphabetically-last path" "1" "$(printf '%s\n' "$PACK_OUT" | grep -c "install-new")"
-assert_eq "pack-discover does not pick the older lastUpdated entry" "0" "$(printf '%s\n' "$PACK_OUT" | grep -c "install-old")"
+printf -- '---\ndescription: local\n---\n' > .claude/commands/local-cmd.md
+# audit-run.py <watched prefixes, '|' separated> <script>: runs the script and prints, on stderr,
+# every open, scandir and listdir of a path under a watched prefix (the script file itself aside).
+cat > "$WORKDIR/audit-run.py" <<'PY'
+import runpy, sys
+watch, script = sys.argv[1].split("|"), sys.argv[2]
+seen = []
+def hook(event, args):
+    if event in ("open", "os.scandir", "os.listdir") and args and isinstance(args[0], str) \
+            and args[0] != script and any(args[0].startswith(w) for w in watch):
+        seen.append(event + " " + args[0])
+sys.addaudithook(hook)
+sys.argv = [script]
+try:
+    runpy.run_path(script, run_name="__main__")
+except SystemExit:
+    pass
+print("\n".join("READ " + s for s in seen) if seen else "NO READ", file=sys.stderr)
+PY
+PD_WD_REAL="$(cd "$WORKDIR" && pwd -P)"
+PD_RR_REAL="$(cd "$REPO_ROOT" && pwd -P)"
+PACK_OUT="$(HOME="$PACK_HOME" python3 -I "$WORKDIR/audit-run.py" \
+  "$PACK_HOME|$PD_WD_REAL/fake-home|$REPO_ROOT|$PD_RR_REAL" "$REPO_ROOT/scripts/pack-discover.py" 2>"$WORKDIR/audit.txt")"
+assert_eq "pack-discover opens and lists nothing in the home folder or in Temper's own folder" "NO READ" "$(cat "$WORKDIR/audit.txt")"
+assert_eq "pack-discover prints only the project's rows, never a plugin, plugin skill or home command" "LOCAL_CMD|local-cmd" \
+  "$(printf '%s\n' "$PACK_OUT" | cut -d'|' -f1,2 | paste -sd' ' -)"
+# The audit hook sees reads: the same run, watching the project's own .claude folder, records them.
+HOME="$PACK_HOME" python3 -I "$WORKDIR/audit-run.py" "$PD_WD_REAL/.claude" "$REPO_ROOT/scripts/pack-discover.py" >/dev/null 2>"$WORKDIR/audit.txt"
+assert_eq "the audit hook records the project command the script reads" "1" \
+  "$(grep -cxF "READ open $PD_WD_REAL/.claude/commands/local-cmd.md" "$WORKDIR/audit.txt")"
+assert_eq "pack-discover's source asks for no home folder, environment or installed plugin list" "0" \
+  "$(grep -cE 'expanduser|getenv|environ|installed_plugins|GLOBAL_CMD' "$REPO_ROOT/scripts/pack-discover.py")"
+rm -rf "$PACK_HOME" .claude/commands "$WORKDIR/audit.txt"
 
-# --- pack-discover.py: cross-marketplace dedup — the SAME package name installed from
-# TWO different marketplace keys (e.g. feature-dev@marketA and feature-dev@marketB, the
-# real-world case being feature-dev installed from both claude-plugins-official and
-# claude-code-plugins) must still emit each target exactly once, not once per
-# marketplace key. Scenario: "Pack discovery deduplicates targets installed from two
-# marketplaces" (intent.md). ---
+# --- pack-discover.py: each project target once, with its own description; a command and a skill
+# that share a name are two rows; two runs print the same rows. ---
 setup
-DEDUP_HOME="$WORKDIR/fake-home-dedup"
-mkdir -p "$DEDUP_HOME/.claude/plugins" \
-  "$DEDUP_HOME/marketA-install/.claude-plugin" \
-  "$DEDUP_HOME/marketA-install/skills/feature-dev" \
-  "$DEDUP_HOME/marketB-install/.claude-plugin" \
-  "$DEDUP_HOME/marketB-install/skills/feature-dev"
-echo '{"description": "feature-dev plugin (market A)"}' > "$DEDUP_HOME/marketA-install/.claude-plugin/plugin.json"
-echo '{"description": "feature-dev plugin (market B)"}' > "$DEDUP_HOME/marketB-install/.claude-plugin/plugin.json"
-cat > "$DEDUP_HOME/marketA-install/skills/feature-dev/SKILL.md" <<'EOF'
----
-description: "Guided feature development (market A)"
----
-EOF
-cat > "$DEDUP_HOME/marketB-install/skills/feature-dev/SKILL.md" <<'EOF'
----
-description: "Guided feature development (market B)"
----
-EOF
-cat > "$DEDUP_HOME/.claude/plugins/installed_plugins.json" <<EOF
-{
-  "plugins": {
-    "feature-dev@claude-plugins-official": [
-      {"version": "1.0.0", "installPath": "$DEDUP_HOME/marketA-install", "lastUpdated": "2026-01-01T00:00:00Z"}
-    ],
-    "feature-dev@claude-code-plugins": [
-      {"version": "1.0.0", "installPath": "$DEDUP_HOME/marketB-install", "lastUpdated": "2026-06-01T00:00:00Z"}
-    ]
-  }
-}
-EOF
-DEDUP_OUT="$(HOME="$DEDUP_HOME" python3 "$REPO_ROOT/scripts/pack-discover.py")"
-assert_eq "pack-discover emits feature-dev:feature-dev exactly once across two marketplace keys" "1" "$(printf '%s\n' "$DEDUP_OUT" | grep -c "^SKILL|feature-dev:feature-dev|")"
-assert_eq "pack-discover does not emit a second, market-B-suffixed duplicate" "1" "$(printf '%s\n' "$DEDUP_OUT" | grep -c "feature-dev:feature-dev")"
+mkdir -p .claude/commands .claude/skills/shared .claude/skills/other
+printf -- '---\ndescription: "shared command"\n---\n' > .claude/commands/shared.md
+printf -- '---\ndescription: b command\n---\n' > .claude/commands/b-cmd.md
+printf -- '---\ndescription: shared skill | piped\n---\n' > .claude/skills/shared/SKILL.md
+printf 'no frontmatter\n' > .claude/skills/other/SKILL.md
+DEDUP_OUT="$(python3 "$REPO_ROOT/scripts/pack-discover.py")"
+assert_eq "pack-discover prints each project command and skill once, commands first, each sorted by name" \
+  "LOCAL_CMD|b-cmd|b command;LOCAL_CMD|shared|shared command;LOCAL_SKILL|other|;LOCAL_SKILL|shared|shared skill / piped" \
+  "$(printf '%s\n' "$DEDUP_OUT" | awk -F'|' '{print $1 "|" $2 "|" $4}' | paste -sd';' -)"
+assert_eq "pack-discover prints the full resolved path of the file a link reads" \
+  "$PD_WD_REAL/.claude/commands/shared.md|$PD_WD_REAL/.claude/skills/shared/SKILL.md" \
+  "$(printf '%s\n' "$DEDUP_OUT" | awk -F'|' '$2 == "shared" {print $3}' | paste -sd'|' -)"
+assert_eq "pack-discover prints the same rows on every run" "$DEDUP_OUT" "$(python3 "$REPO_ROOT/scripts/pack-discover.py")"
+rm -rf .claude/commands .claude/skills
 
 # --- stage-marker.sh + verify-stage-gate.sh: the standalone-stage gate guarantee ---
 # stage-marker records the gate a /temper:{stage} session owes; verify-stage-gate blocks
@@ -1090,7 +1091,9 @@ assert_exit "protected-paths: an edit elsewhere passes" 0 \
 assert_exit "protected-paths: garbage stdin fails open" 0 \
   bash -c "echo garbage | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PROTECT'"
 
-OUT=$(echo '{"tool_input": {"command": "$CLAUDE_PLUGIN_ROOT/scripts/temper override review --reason x"}}' | bash "$CONFIRM")
+# The command names the CLI by the unbraced plugin root variable, written here at run time.
+CO_VAR=CLAUDE_PLUGIN_ROOT
+OUT=$(printf '{"tool_input": {"command": "$%s/scripts/temper override review --reason x"}}' "$CO_VAR" | bash "$CONFIRM")
 assert_eq "confirm-override: a temper override command emits the ask decision" "yes" \
   "$(echo "$OUT" | grep -q '"permissionDecision": "ask"' && echo yes || echo no)"
 OUT=$(echo '{"tool_input": {"command": "git status"}}' | bash "$CONFIRM")
@@ -2105,7 +2108,13 @@ assert_eq "temper model still answers there and writes nothing" "$("$TEMPER" mod
   "$(cd "$CLI_PLUGIN/inner/sub" && "$CLI_PLUGIN/scripts/temper" model plan)|$([[ -e "$CLI_PLUGIN/inner/sub/.temper" ]] && echo yes || echo no)"
 assert_eq "temper config get still answers there (the guard scripts call it)" "auto" \
   "$(cd "$CLI_PLUGIN/inner/sub" && TEMPER_CONFIG="$WORKDIR/.claude/temper.config" "$CLI_PLUGIN/scripts/temper" config get stack)"
-assert_exit "the plugin folder itself is a valid project" 0 bash -c "cd '$CLI_PLUGIN' && '$CLI_PLUGIN/scripts/temper' init"
+assert_exit "an installed copy of the plugin folder (no .git of its own) is not a project" 1 \
+  bash -c "cd '$CLI_PLUGIN' && '$CLI_PLUGIN/scripts/temper' init"
+assert_exit "a GIT_DIR naming another repository does not make the installed copy a project" 1 \
+  bash -c "cd '$CLI_PLUGIN' && GIT_DIR='$WORKDIR/.git' '$CLI_PLUGIN/scripts/temper' init"
+assert_eq "the refused installed copy gets no .temper" "no" "$([[ -e "$CLI_PLUGIN/.temper" ]] && echo yes || echo no)"
+git init -q "$CLI_PLUGIN"
+assert_exit "the plugin folder itself is a valid project (its own git repository)" 0 bash -c "cd '$CLI_PLUGIN' && '$CLI_PLUGIN/scripts/temper' init"
 assert_eq "run state is written in the plugin folder's own .temper when it is the project" "yes" \
   "$([[ -f "$CLI_PLUGIN/.temper/gates.json" ]] && echo yes || echo no)"
 rm -rf "$CLI_PLUGIN" "$WORKDIR/sub-link" "$WORKDIR/bin"
@@ -2155,6 +2164,144 @@ assert_eq "state init shows the warning for the prior run" "yes" \
 assert_eq "state init still starts the new run" "fresh" "$("$TEMPER" state get spec)"
 setup
 assert_eq "a run with a valid spec_path archives with no warning" "" "$("$TEMPER" state archive 2>&1 >/dev/null)"
+
+# --- CLI: a .temper folder that is or holds a symlink is refused (exit 3): no write follows a link ---
+# A throwaway plugin folder holds a copy of the CLI; a project outside it carries links into it
+# (a cloned repository can track such a link). Every write subcommand is refused with exit 3 and
+# one line on stderr, and nothing in the plugin folder is written, changed or deleted.
+setup
+LNK_PLUG="$WORKDIR/link-plugin"
+LNK_PROJ="$WORKDIR/link-project"
+rm -rf "$LNK_PLUG" "$LNK_PROJ"
+mkdir -p "$LNK_PLUG/scripts/guards" "$LNK_PLUG/shipped" "$LNK_PLUG/.temper" "$LNK_PLUG/inner/sub"
+cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$LNK_PLUG/scripts/"
+cp "$REPO_ROOT/scripts/guards/stage-marker.sh" "$REPO_ROOT/scripts/guards/verify-stage-gate.sh" "$LNK_PLUG/scripts/guards/"
+cp -R "$REPO_ROOT/agents" "$LNK_PLUG/agents"
+echo '{"shipped": true}' > "$LNK_PLUG/shipped/settings.json"
+echo '{"coverage_history": []}' > "$LNK_PLUG/.temper/metrics.json"
+LNK_T="$LNK_PLUG/scripts/temper"
+link_project() { rm -rf "$LNK_PROJ"; mkdir -p "$LNK_PROJ"; git init -q "$LNK_PROJ"; }
+plugin_state() { (cd "$LNK_PLUG" && find shipped .temper inner -print | LC_ALL=C sort | tr '\n' ' '; cat shipped/settings.json .temper/metrics.json); }
+LNK_BEFORE="$(plugin_state)"
+link_project
+ln -s "$LNK_PLUG/shipped" "$LNK_PROJ/.temper"
+for sub in "init" "state init foo" "state get" "state archive" "state clear" "evidence add --stage build --claim x" \
+           "gate intent" "status" "report" "bands" "metrics append coverage 42" "override plan --reason x"; do
+  assert_exit "the CLI refuses '$sub' when .temper is a symlink (exit 3)" 3 bash -c "cd '$LNK_PROJ' && '$LNK_T' $sub"
+done
+ERR=$(cd "$LNK_PROJ" && "$LNK_T" init 2>&1 >/dev/null; true)
+assert_eq "the refusal is one line on stderr that names the link" "1|yes" \
+  "$(printf '%s\n' "$ERR" | wc -l | tr -d ' ')|$(echo "$ERR" | grep -q "unsafe .temper: '.temper' is a symlink" && echo yes || echo no)"
+assert_eq "config get and model still answer next to a symlinked .temper" "auto|$("$TEMPER" model plan)" \
+  "$(cd "$LNK_PROJ" && TEMPER_CONFIG="$WORKDIR/.claude/temper.config" "$LNK_T" config get stack)|$(cd "$LNK_PROJ" && "$LNK_T" model plan)"
+link_project
+ln -s ../link-plugin/.temper "$LNK_PROJ/.temper"
+assert_exit "metrics append refuses a relative .temper symlink to the plugin's own .temper" 3 \
+  bash -c "cd '$LNK_PROJ' && '$LNK_T' metrics append coverage 42"
+link_project
+ln -s "$WORKDIR/no-such-folder" "$LNK_PROJ/.temper"
+assert_exit "init refuses a .temper symlink whose target does not exist" 3 bash -c "cd '$LNK_PROJ' && '$LNK_T' init"
+assert_eq "the missing link target is not created" "no" "$([[ -e "$WORKDIR/no-such-folder" ]] && echo yes || echo no)"
+# A plain .temper that holds a link: the gate verdicts file, a spec folder, the evidence folder.
+link_project
+(cd "$LNK_PROJ" && "$LNK_T" state init demo >/dev/null)
+mkdir -p "$LNK_PROJ/.temper/specs/demo"
+cp "$WORKDIR/.temper/specs/demo/intent.md" "$LNK_PROJ/.temper/specs/demo/intent.md"
+rm -f "$LNK_PROJ/.temper/gates.json"
+ln -s "$LNK_PLUG/shipped/settings.json" "$LNK_PROJ/.temper/gates.json"
+assert_exit "gate intent refuses a .temper/gates.json that is a symlink" 3 \
+  bash -c "cd '$LNK_PROJ' && '$LNK_T' gate intent --spec-path .temper/specs/demo"
+rm -f "$LNK_PROJ/.temper/gates.json"
+echo '{"intent": {"verdict": "PASS", "requirements": [], "ts": "t"}}' > "$LNK_PROJ/.temper/gates.json"
+mv "$LNK_PROJ/.temper/specs/demo" "$LNK_PROJ/demo-spec"
+ln -s "$LNK_PLUG/shipped" "$LNK_PROJ/.temper/specs/demo"
+assert_exit "state archive refuses a spec folder that is a symlink" 3 bash -c "cd '$LNK_PROJ' && '$LNK_T' state archive"
+assert_exit "state clear refuses it too" 3 bash -c "cd '$LNK_PROJ' && '$LNK_T' state clear"
+assert_eq "the refused clear deleted nothing of the run state" "yes|yes" \
+  "$([[ -f "$LNK_PROJ/.temper/gates.json" ]] && echo yes || echo no)|$([[ -f "$LNK_PROJ/.temper/build-state.json" ]] && echo yes || echo no)"
+rm -f "$LNK_PROJ/.temper/specs/demo"
+mv "$LNK_PROJ/demo-spec" "$LNK_PROJ/.temper/specs/demo"
+rm -rf "$LNK_PROJ/.temper/evidence"
+ln -s "$LNK_PLUG/shipped" "$LNK_PROJ/.temper/evidence"
+assert_exit "evidence add refuses an evidence folder that is a symlink" 3 \
+  bash -c "cd '$LNK_PROJ' && '$LNK_T' evidence add --stage build --claim x"
+assert_eq "no refused command wrote, changed or deleted anything in the plugin folder" "$LNK_BEFORE" "$(plugin_state)"
+rm -f "$LNK_PROJ/.temper/evidence"
+assert_exit "with every link gone, the same project runs again" 0 \
+  bash -c "cd '$LNK_PROJ' && '$LNK_T' evidence add --stage build --claim x && '$LNK_T' state archive"
+assert_eq "and the ledger lands in the project's own spec folder" "yes" \
+  "$([[ -f "$LNK_PROJ/.temper/specs/demo/gate-ledger.json" ]] && echo yes || echo no)"
+# The ledger archive checks its spec folder itself as well (behind the refusal above): a specs
+# folder, a spec folder or a ledger file that is a symlink is never written through.
+sed -n '/^_spec_dir_ok() {/,/^}/p' "$TEMPER" > "$WORKDIR/spec-dir-ok.sh"
+spec_dir_ok() { bash -c ". '$WORKDIR/spec-dir-ok.sh'; cd '$LNK_PROJ' && REPO_ROOT=\"\$PWD\" _spec_dir_ok demo"; }
+assert_exit "the archive accepts a plain spec folder" 0 spec_dir_ok
+rm -f "$LNK_PROJ/.temper/specs/demo/gate-ledger.json"
+ln -s "$LNK_PLUG/shipped/settings.json" "$LNK_PROJ/.temper/specs/demo/gate-ledger.json"
+assert_exit "the archive refuses a ledger file that is a symlink" 1 spec_dir_ok
+rm -f "$LNK_PROJ/.temper/specs/demo/gate-ledger.json"
+mv "$LNK_PROJ/.temper/specs/demo" "$LNK_PROJ/demo-spec"
+ln -s "$LNK_PROJ/demo-spec" "$LNK_PROJ/.temper/specs/demo"
+assert_exit "the archive refuses a spec folder that is a symlink" 1 spec_dir_ok
+rm -f "$LNK_PROJ/.temper/specs/demo"
+mv "$LNK_PROJ/demo-spec" "$LNK_PROJ/.temper/specs/demo"
+mv "$LNK_PROJ/.temper/specs" "$LNK_PROJ/specs-real"
+ln -s "$LNK_PROJ/specs-real" "$LNK_PROJ/.temper/specs"
+assert_exit "the archive refuses a specs folder that is a symlink" 1 spec_dir_ok
+rm -f "$WORKDIR/spec-dir-ok.sh"
+
+# --- CLI and stage hooks: inside the plugin folder is decided by identity, not by path text ---
+# bash keeps a leading '//' in a folder it enters, so '/' plus a full path names the same folder
+# in other text (as another case does on a file system that does not tell case apart). A text
+# prefix test misses it; a device and inode comparison does not.
+assert_exit "the CLI refuses a folder inside the plugin folder reached by other path text" 1 \
+  bash -c "cd '/$LNK_PLUG/inner/sub' && '$LNK_T' init"
+echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="/$LNK_PLUG/inner/sub" bash "$LNK_PLUG/scripts/guards/stage-marker.sh"
+assert_eq "stage-marker writes nothing in a folder inside the plugin folder reached by other path text" "no" \
+  "$([[ -e "$LNK_PLUG/inner/sub/.temper" ]] && echo yes || echo no)"
+mkdir -p "$LNK_PLUG/inner/sub/.temper"
+echo '{"stage": "plan", "blocks": 0}' > "$LNK_PLUG/inner/sub/.temper/pending-stage.json"
+assert_exit "verify-stage-gate skips that folder too" 0 \
+  bash -c "echo '{}' | CLAUDE_PROJECT_DIR='/$LNK_PLUG/inner/sub' bash '$LNK_PLUG/scripts/guards/verify-stage-gate.sh'"
+assert_eq "the skipped stop hook leaves the marker as it was" "0" \
+  "$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['blocks'])" "$LNK_PLUG/inner/sub/.temper/pending-stage.json")"
+rm -rf "$LNK_PLUG/inner/sub/.temper"
+# stage-marker records no debt in a .temper folder the CLI would refuse (it holds a symlink).
+link_project
+mkdir -p "$LNK_PROJ/.temper"
+ln -s "$LNK_PLUG/shipped/settings.json" "$LNK_PROJ/.temper/gates.json"
+echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$LNK_PROJ" bash "$LNK_PLUG/scripts/guards/stage-marker.sh"
+assert_eq "stage-marker marks nothing in a .temper folder that holds a symlink" "no" \
+  "$([[ -e "$LNK_PROJ/.temper/pending-stage.json" ]] && echo yes || echo no)"
+
+# --- CLI and stage hooks: an exported CDPATH does not change where they find their own folder ---
+assert_eq "a relative CLI call with CDPATH exported still resolves a model" "$("$TEMPER" model plan)" \
+  "$(cd "$LNK_PLUG" && CDPATH="$LNK_PLUG:." scripts/temper model plan 2>/dev/null)"
+assert_exit "a relative CLI call with CDPATH exported still refuses the installed plugin folder as a project" 1 \
+  bash -c "cd '$LNK_PLUG' && CDPATH='$LNK_PLUG:.' scripts/temper init"
+(cd "$LNK_PLUG" && echo '{"prompt": "/temper:plan x"}' | CDPATH="$LNK_PLUG:." CLAUDE_PROJECT_DIR="$LNK_PLUG/inner/sub" bash scripts/guards/stage-marker.sh)
+assert_eq "stage-marker called by a relative path with CDPATH exported still writes nothing inside the plugin" "no" \
+  "$([[ -e "$LNK_PLUG/inner/sub/.temper" ]] && echo yes || echo no)"
+assert_eq "none of these cases wrote anything in the plugin folder" "$LNK_BEFORE" "$(plugin_state)"
+
+# --- verify-stage-gate.sh: the block message gives the CLI by its full path, quoted for the shell ---
+setup
+SP_PLUG="$WORKDIR/spaced plugin"
+rm -rf "$SP_PLUG"
+mkdir -p "$SP_PLUG/scripts/guards"
+cp "$REPO_ROOT/scripts/guards/stage-marker.sh" "$REPO_ROOT/scripts/guards/verify-stage-gate.sh" "$SP_PLUG/scripts/guards/"
+echo '{"prompt": "/temper:plan x"}' | bash "$SP_PLUG/scripts/guards/stage-marker.sh"
+OUT=$(echo '{}' | bash "$SP_PLUG/scripts/guards/verify-stage-gate.sh" 2>&1; true)
+LINE="$(echo "$OUT" | grep ' gate plan --spec-path .temper/specs/<feature-slug>')"
+CLI_TEXT="${LINE#  }"
+CLI_TEXT="${CLI_TEXT%% gate plan*}"
+assert_eq "the block message names the CLI as one shell word that is its full path" "1|$SP_PLUG/scripts/temper" \
+  "$(eval "set -- $CLI_TEXT"; echo "$#|$1")"
+assert_eq "the evidence commands in the message use the same full path" "2" \
+  "$(echo "$OUT" | grep -cF "'$CLI_TEXT ")"
+assert_eq "the message no longer names a bare temper command to run" "no" \
+  "$(echo "$OUT" | grep -qE "^  temper |'temper (state|evidence) " && echo yes || echo no)"
+rm -rf "$SP_PLUG" "$LNK_PLUG" "$LNK_PROJ"
 
 # --- CLI: the raw intent template never passes a requirement on placeholder text ---
 setup
@@ -2273,6 +2420,265 @@ assert_eq "--global writes .git/temper-git-hooks/pre-commit and points core.hook
 git config --unset core.hooksPath 2>/dev/null || true
 rm -rf .git/temper-git-hooks abs-hooks dot-hooks cfg-hooks "$WORKDIR/outside"
 
+# --- install.sh and the commit guards: no write through a link, the installer's own symlinks,
+# chained hooks, worktrees, --global over a set core.hooksPath, staged-only secret scans, the
+# CLI's full path in guard messages, and the CLI's refusal of an unsafe .temper folder ---
+setup
+git config user.email "test@example.com"
+git config user.name "test"
+git config --unset core.hooksPath 2>/dev/null || true
+rm -rf .git/hooks/pre-commit .git/hooks/pre-commit.bak.* .git/temper-git-hooks
+I_PLUG="$WORKDIR/install-plugin"
+rm -rf "$I_PLUG"
+mkdir -p "$I_PLUG/scripts/guards" "$I_PLUG/inner"
+cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$I_PLUG/scripts/"
+for g in install.sh block-secrets.sh verify-tests-ran.sh block-uncommitted-gate.sh protect-regression-test.sh; do
+  cp "$REPO_ROOT/scripts/guards/$g" "$I_PLUG/scripts/guards/$g"
+done
+I_INSTALL="$I_PLUG/scripts/guards/install.sh"
+I_CLI_LINE="TEMPER_CLI=$(printf '%q' "$I_PLUG/scripts/temper")"
+_i_gates() { # _i_gates PASS|FAIL: a run whose plan, build, review and check gates passed, or whose check gate failed
+  echo '{"command": "temper", "run_mode": "interactive"}' > .temper/build-state.json
+  python3 -c '
+import json, sys
+json.dump({s: {"verdict": sys.argv[1] if s == "check" else "PASS", "requirements": [], "ts": "x"}
+           for s in ("plan", "build", "review", "check")}, open(".temper/gates.json", "w"))' "$1"
+  echo '[]' > .temper/overrides.json
+}
+# A pre-commit that is a hard link to a plugin file: the new hook is moved into place, so the
+# plugin file keeps its text (install.sh itself included).
+echo 'plugin data' > "$I_PLUG/inner/hard-target"
+ln "$I_PLUG/inner/hard-target" .git/hooks/pre-commit
+bash "$I_INSTALL" >/dev/null 2>&1
+assert_eq "install.sh never writes through a hard-linked pre-commit; the plugin file keeps its text" "plugin data|yes" \
+  "$(cat "$I_PLUG/inner/hard-target")|$(grep -qxF "$I_CLI_LINE" .git/hooks/pre-commit && echo yes || echo no)"
+rm -f .git/hooks/pre-commit .git/hooks/pre-commit.bak.*
+I_SUM="$(cksum < "$I_INSTALL")"
+ln "$I_INSTALL" .git/hooks/pre-commit
+bash "$I_INSTALL" >/dev/null 2>&1
+assert_eq "a pre-commit hard-linked to install.sh itself leaves install.sh as it was" "$I_SUM" "$(cksum < "$I_INSTALL")"
+rm -f .git/hooks/pre-commit .git/hooks/pre-commit.bak.*
+# install.sh reached through a chain of symlinks finds the real plugin folder.
+mkdir -p "$WORKDIR/inst-bin"
+ln -s "$I_INSTALL" "$WORKDIR/inst-bin/temper-install"
+ln -s temper-install "$WORKDIR/inst-bin/chained-install"
+bash "$WORKDIR/inst-bin/chained-install" >/dev/null 2>&1
+assert_eq "install.sh run through a chain of symlinks writes the real CLI path into the hook" "yes" \
+  "$(grep -qxF "$I_CLI_LINE" .git/hooks/pre-commit 2>/dev/null && echo yes || echo no)"
+rm -rf "$WORKDIR/inst-bin" .git/hooks/pre-commit
+# A copy outside a scripts/guards folder (even with a CLI where the failed suffix strip would
+# look for one), or a plugin whose CLI does not run, writes no hook.
+mkdir -p "$WORKDIR/loose-installer/scripts"
+cp "$I_INSTALL" "$WORKDIR/loose-installer/install.sh"
+cp "$TEMPER" "$WORKDIR/loose-installer/scripts/temper"
+assert_exit "install.sh outside a plugin's scripts/guards folder refuses" 1 bash "$WORKDIR/loose-installer/install.sh"
+chmod -x "$I_PLUG/scripts/temper"
+assert_exit "install.sh refuses when the plugin's CLI is not executable" 1 bash "$I_INSTALL"
+chmod +x "$I_PLUG/scripts/temper"
+assert_eq "neither refusal writes a hook" "no" "$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)"
+rm -rf "$WORKDIR/loose-installer"
+# A refusal prints the hook lines between a BEGIN and an END line, ready to copy.
+git config core.hooksPath ../outside-hooks
+OUT=$(bash "$I_INSTALL" 2>&1; true)
+git config --unset core.hooksPath
+I_LINES="$(printf '%s\n' "$OUT" | sed -n '/^----- BEGIN Temper pre-commit hook lines -----$/,/^----- END Temper pre-commit hook lines -----$/p' | sed '1d;$d')"
+assert_eq "a refusal prints the whole hook, a valid bash script, between a BEGIN and an END line" "#!/usr/bin/env bash|yes|yes" \
+  "$(printf '%s\n' "$I_LINES" | head -1)|$(printf '%s\n' "$I_LINES" | grep -qxF "$I_CLI_LINE" && echo yes || echo no)|$(printf '%s\n' "$I_LINES" | bash -n 2>/dev/null && echo yes || echo no)"
+# A run from a folder inside the plugin's folder whose repository's top is elsewhere (an
+# installed copy inside some repository) writes nothing.
+assert_exit "install.sh refuses a run from inside the plugin's folder when the repository's top is elsewhere" 1 \
+  bash -c "cd '$I_PLUG/inner' && bash '$I_INSTALL'"
+assert_eq "that refusal writes no hook into the enclosing repository" "no" "$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)"
+# --global with a .git/config that is a symlink into the plugin's folder writes nothing.
+cp .git/config "$I_PLUG/inner/config"
+I_CFG_SUM="$(cksum < "$I_PLUG/inner/config")"
+mv .git/config .git/config-saved
+ln -s "$I_PLUG/inner/config" .git/config
+assert_exit "--global refuses a .git/config that is a symlink into the plugin's own folder" 1 bash "$I_INSTALL" --global
+assert_eq "the plugin file behind .git/config is left as it was, and no hook folder is made" "$I_CFG_SUM|no" \
+  "$(cksum < "$I_PLUG/inner/config")|$([[ -e .git/temper-git-hooks ]] && echo yes || echo no)"
+rm -f .git/config
+mv .git/config-saved .git/config
+# A backup name that is a symlink into the plugin's folder (planted for the next seconds) is refused.
+printf '#!/bin/sh\nexit 0\n' > .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+echo 'plugin data' > "$I_PLUG/inner/bak-target"
+for ts in $(python3 -c 'import time; t = time.time(); print(" ".join(time.strftime("%Y%m%d%H%M%S", time.localtime(t + i)) for i in range(-1, 20)))'); do
+  ln -sf "$I_PLUG/inner/bak-target" ".git/hooks/pre-commit.bak.$ts"
+done
+assert_exit "install.sh refuses a backup name that is a symlink into the plugin's own folder" 1 bash "$I_INSTALL"
+assert_eq "the plugin file behind the backup name and the existing hook are left as they were" "plugin data|exit 0" \
+  "$(cat "$I_PLUG/inner/bak-target")|$(sed -n 2p .git/hooks/pre-commit)"
+rm -f .git/hooks/pre-commit .git/hooks/pre-commit.bak.*
+# The hook install.sh replaces is backed up and runs first from the Temper hook; its failure
+# fails the commit, as it did before Temper.
+printf '#!/bin/sh\necho prior-ran >> prior.log\nexit 0\n' > .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+bash "$I_INSTALL" >/dev/null 2>&1
+I_PRIOR="$(find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' | head -1)"
+assert_eq "the Temper hook records the full path of the backup of the hook it replaced" "yes" \
+  "$(grep -qxF "PRIOR_HOOK=$(printf '%q' "$(pwd -P)/${I_PRIOR#./}")" .git/hooks/pre-commit && echo yes || echo no)"
+_i_gates FAIL
+rm -f prior.log
+assert_exit "the Temper hook runs the replaced hook first, then still blocks a red gate" 1 bash .git/hooks/pre-commit
+assert_eq "the replaced hook ran" "prior-ran" "$(cat prior.log 2>/dev/null)"
+_i_gates PASS
+assert_exit "with a green gate and a passing earlier hook, the Temper hook passes" 0 bash .git/hooks/pre-commit
+printf '#!/usr/bin/env bash\nexit 7\n' > "$I_PRIOR"
+assert_exit "a failing earlier hook (a bash script, run as it is) fails the commit, with its own exit code" 7 bash .git/hooks/pre-commit
+I_PRIOR_LINE="$(grep '^PRIOR_HOOK=' .git/hooks/pre-commit)"
+bash "$I_INSTALL" >/dev/null 2>&1
+assert_eq "re-running the installer keeps the earlier hook it records, and makes no new backup" "$I_PRIOR_LINE|1" \
+  "$(grep '^PRIOR_HOOK=' .git/hooks/pre-commit)|$(find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' | wc -l | tr -d ' ')"
+rm -f "$I_PRIOR"
+OUT=$(bash .git/hooks/pre-commit 2>&1); I_RC=$?
+assert_eq "a recorded earlier hook that is gone is reported and skipped" "0|yes" \
+  "$I_RC|$(printf '%s\n' "$OUT" | grep -q 'is gone' && echo yes || echo no)"
+rm -f .git/hooks/pre-commit prior.log
+# husky (v9): its generated pre-commit finds its files from the name git runs it by. After the
+# install, a real git commit still runs husky's own .husky/pre-commit script, and its failure
+# still fails the commit.
+I_HUSKY="$WORKDIR/husky-repo"
+rm -rf "$I_HUSKY"
+git init -q "$I_HUSKY"
+git -C "$I_HUSKY" config user.email "test@example.com"
+git -C "$I_HUSKY" config user.name "test"
+mkdir -p "$I_HUSKY/.husky/_"
+printf '#!/usr/bin/env sh\n. "${0%%/*}/h"\n' > "$I_HUSKY/.husky/_/pre-commit"
+printf '#!/usr/bin/env sh\nn=$(basename "$0")\ns=$(dirname "$(dirname "$0")")/$n\n[ -f "$s" ] || exit 0\nsh -e "$s" "$@"\n' > "$I_HUSKY/.husky/_/h"
+chmod +x "$I_HUSKY/.husky/_/pre-commit" "$I_HUSKY/.husky/_/h"
+printf 'echo husky-ran >> husky.log\n' > "$I_HUSKY/.husky/pre-commit"
+git -C "$I_HUSKY" config core.hooksPath .husky/_
+OUT=$(cd "$I_HUSKY" && bash "$I_INSTALL" 2>&1; true)
+assert_eq "install.sh notes that husky writes its folder again" "yes" "$(printf '%s\n' "$OUT" | grep -q 'husky writes' && echo yes || echo no)"
+echo h > "$I_HUSKY/husky-file.txt"
+git -C "$I_HUSKY" add husky-file.txt >/dev/null 2>&1
+assert_exit "a real git commit in a husky repository passes through the Temper hook" 0 git -C "$I_HUSKY" commit -q -m husky
+assert_eq "husky's own .husky/pre-commit script ran first" "husky-ran" "$(cat "$I_HUSKY/husky.log" 2>/dev/null)"
+printf 'exit 5\n' > "$I_HUSKY/.husky/pre-commit"
+echo h2 >> "$I_HUSKY/husky-file.txt"
+git -C "$I_HUSKY" add husky-file.txt >/dev/null 2>&1
+assert_exit "a failing husky pre-commit script still fails the commit" 1 git -C "$I_HUSKY" commit -q -m husky2
+rm -rf "$I_HUSKY"
+# --global refuses when core.hooksPath is already set: the default mode installs into that folder.
+mkdir -p .husky
+git config core.hooksPath .husky
+assert_exit "--global refuses when core.hooksPath is already set" 1 bash "$I_INSTALL" --global
+assert_eq "the refused --global leaves core.hooksPath as it was and writes no hook" ".husky|no" \
+  "$(git config --get core.hooksPath)|$([[ -e .git/temper-git-hooks/pre-commit ]] && echo yes || echo no)"
+git config --unset core.hooksPath
+rm -rf .husky
+# --global keeps a .git/hooks/pre-commit running from the Temper hook, and runs again over the
+# core.hooksPath it set itself.
+printf '#!/bin/sh\necho local-ran >> local.log\nexit 0\n' > .git/hooks/pre-commit
+chmod +x .git/hooks/pre-commit
+bash "$I_INSTALL" --global >/dev/null 2>&1
+assert_exit "--global runs again over the core.hooksPath it set itself" 0 bash "$I_INSTALL" --global
+_i_gates PASS
+rm -f local.log
+assert_exit "the --global hook passes a green gate" 0 bash .git/temper-git-hooks/pre-commit
+assert_eq "the --global hook ran the .git/hooks/pre-commit that git no longer runs" "local-ran" "$(cat local.log 2>/dev/null)"
+git config --unset core.hooksPath
+rm -rf .git/temper-git-hooks .git/hooks/pre-commit local.log
+# block-secrets.sh as an in-agent hook scans only the text a call adds; with no JSON on stdin,
+# or with --staged (the installed hook's flag), it scans the staged files.
+I_KEY="AKIA$(printf 'Q%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)"
+printf 'key = %s\n' "$I_KEY" > leak.txt
+git add leak.txt >/dev/null 2>&1
+I_SECRETS="$I_PLUG/scripts/guards/block-secrets.sh"
+_i_scan() { # _i_scan <tool name> <tool_input JSON, where KEY stands for the secret> -> the exit code
+  python3 -c 'import json, sys; print(json.dumps({"tool_name": sys.argv[1], "tool_input": json.loads(sys.argv[2].replace("KEY", sys.argv[3]))}))' "$1" "$2" "$I_KEY" \
+    | bash "$I_SECRETS" >/dev/null 2>&1
+  echo $?
+}
+assert_eq "block-secrets as an in-agent hook passes a call that unstages a staged secret, and an Edit that takes one out" "0|0" \
+  "$(_i_scan Bash '{"command": "git restore --staged leak.txt"}')|$(_i_scan Edit '{"file_path": "leak.txt", "old_string": "key = KEY", "new_string": "key = env"}')"
+assert_eq "block-secrets blocks a secret that a Write, an Edit, a MultiEdit or a Bash command adds" "2|2|2|2" \
+  "$(_i_scan Write '{"file_path": "a.txt", "content": "k = KEY"}')|$(_i_scan Edit '{"file_path": "a.txt", "old_string": "x", "new_string": "k = KEY"}')|$(_i_scan MultiEdit '{"file_path": "a.txt", "edits": [{"old_string": "a", "new_string": "b"}, {"old_string": "c", "new_string": "KEY"}]}')|$(_i_scan Bash '{"command": "echo KEY > k.txt"}')"
+assert_eq "block-secrets with no JSON on stdin, and with --staged (whatever is on stdin), scans the staged files" "2|2|2" \
+  "$(bash "$I_SECRETS" < /dev/null >/dev/null 2>&1; echo $?)|$(bash "$I_SECRETS" --staged < /dev/null >/dev/null 2>&1; echo $?)|$(echo '{"tool_input": {"command": "ls"}}' | bash "$I_SECRETS" --staged >/dev/null 2>&1; echo $?)"
+git rm -q --cached leak.txt >/dev/null 2>&1 || true
+rm -f leak.txt
+# The guard messages name the CLI by its full path, quoted for the shell.
+I_SP="$WORKDIR/space plugin"
+rm -rf "$I_SP"
+mkdir -p "$I_SP/scripts/guards"
+cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$I_SP/scripts/"
+cp "$REPO_ROOT/scripts/guards/block-uncommitted-gate.sh" "$REPO_ROOT/scripts/guards/protect-regression-test.sh" "$I_SP/scripts/guards/"
+I_SP_CLI="$(printf '%q' "$I_SP/scripts/temper")"
+_i_gates FAIL
+OUT=$(echo '{"tool_input": {"command": "git commit -m x"}}' | bash "$I_SP/scripts/guards/block-uncommitted-gate.sh" 2>&1; true)
+assert_eq "uncommitted-gate's block message names the CLI by its full path, quoted" "yes" \
+  "$(printf '%s\n' "$OUT" | grep -qF "run: $I_SP_CLI report" && echo yes || echo no)"
+mkdir -p reg-tests
+echo 'def test_x(): pass' > reg-tests/test_reg.py
+ln reg-tests/test_reg.py reg-tests/test_alias.py
+echo '{"command": "fix", "regression_test": "reg-tests/test_reg.py"}' > .temper/build-state.json
+OUT=$(echo '{"tool_input": {"file_path": "reg-tests/test_reg.py"}}' | CLAUDE_PROJECT_DIR="$WORKDIR" bash "$I_SP/scripts/guards/protect-regression-test.sh" 2>&1; true)
+assert_eq "the regression-test shield's message names the CLI by its full path, quoted" "yes" \
+  "$(printf '%s\n' "$OUT" | grep -qF "$I_SP_CLI state set regression_test \"\"" && echo yes || echo no)"
+assert_exit "the regression-test shield blocks an Edit through a hard link to the recorded test (the same file)" 2 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"reg-tests/test_alias.py\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$I_SP/scripts/guards/protect-regression-test.sh'"
+rm -rf reg-tests "$I_SP"
+# The CLI refuses an unsafe .temper folder with exit 3: both commit hooks fail open with one warning line.
+I_RP="$WORKDIR/refusing-plugin"
+rm -rf "$I_RP"
+mkdir -p "$I_RP/scripts/guards"
+for g in install.sh block-secrets.sh verify-tests-ran.sh block-uncommitted-gate.sh; do
+  cp "$REPO_ROOT/scripts/guards/$g" "$I_RP/scripts/guards/$g"
+done
+printf '#!/usr/bin/env bash\necho "FAIL: the .temper folder holds a symlink" >&2\nexit 3\n' > "$I_RP/scripts/temper"
+chmod +x "$I_RP/scripts/temper"
+rm -f .git/hooks/pre-commit
+bash "$I_RP/scripts/guards/install.sh" >/dev/null 2>&1
+OUT=$(bash .git/hooks/pre-commit 2>&1); I_RC=$?
+assert_eq "the installed hook fails open with one warning line when the CLI exits 3" "0|1" \
+  "$I_RC|$(printf '%s\n' "$OUT" | grep -c 'commit gate was skipped')"
+OUT=$(echo '{"tool_input": {"command": "git commit -m x"}}' | bash "$I_RP/scripts/guards/block-uncommitted-gate.sh" 2>&1); I_RC=$?
+assert_eq "the in-agent commit gate fails open with one warning line when the CLI exits 3" "0|1" \
+  "$I_RC|$(printf '%s\n' "$OUT" | grep -c 'commit gate was skipped')"
+rm -rf "$I_RP" .git/hooks/pre-commit
+# With CDPATH set, the scripts still find their own folder when called by a relative path.
+OUT=$(cd "$WORKDIR" && CDPATH="$WORKDIR" bash install-plugin/scripts/guards/install.sh 2>&1); I_RC=$?
+assert_eq "with CDPATH set, install.sh called by a relative path writes the real CLI path" "0|yes" \
+  "$I_RC|$(grep -qxF "$I_CLI_LINE" .git/hooks/pre-commit 2>/dev/null && echo yes || echo no)"
+assert_eq "the installed hook runs block-secrets with --staged" "yes" \
+  "$(grep -qF 'bash "$SECRETS_SCRIPT" --staged' .git/hooks/pre-commit && echo yes || echo no)"
+_i_gates FAIL
+assert_exit "with CDPATH set, uncommitted-gate called by a relative path still blocks a red gate" 2 \
+  bash -c "cd '$WORKDIR' && echo '{\"tool_input\": {\"command\": \"git commit -m x\"}}' | CDPATH='$WORKDIR' bash install-plugin/scripts/guards/block-uncommitted-gate.sh"
+rm -f .git/hooks/pre-commit
+# A linked worktree: the hook goes into the repository's own hooks folder, once, and gates
+# commits made in the worktree.
+I_MAIN="$WORKDIR/wt-main"
+I_FEAT="$WORKDIR/wt-feat"
+rm -rf "$I_MAIN" "$I_FEAT"
+git init -q "$I_MAIN"
+git -C "$I_MAIN" config user.email "test@example.com"
+git -C "$I_MAIN" config user.name "test"
+git -C "$I_MAIN" commit -q --allow-empty -m init
+git -C "$I_MAIN" worktree add -q "$I_FEAT" >/dev/null 2>&1
+assert_exit "in a linked worktree, install.sh installs into the repository's own hooks folder" 0 \
+  bash -c "cd '$I_FEAT' && bash '$I_INSTALL'"
+assert_eq "the hook lands in the main checkout's .git/hooks" "yes" \
+  "$(grep -qxF "$I_CLI_LINE" "$I_MAIN/.git/hooks/pre-commit" 2>/dev/null && echo yes || echo no)"
+OUT=$(cd "$I_FEAT" && bash "$I_INSTALL" 2>&1); I_RC=$?
+assert_eq "a second run in the worktree says the hook is already installed and exits 0" "0|yes" \
+  "$I_RC|$(printf '%s\n' "$OUT" | grep -q 'already installed for this worktree' && echo yes || echo no)"
+(cd "$I_FEAT" && "$I_PLUG/scripts/temper" init >/dev/null && _i_gates FAIL && echo x > wt.txt && git add wt.txt)
+assert_exit "the hook blocks a real git commit on a red gate in the worktree" 1 git -C "$I_FEAT" commit -q -m wt
+# A linked worktree whose repository keeps its git folder inside the plugin's folder is refused.
+git init -q "$I_PLUG"
+git -C "$I_PLUG" config user.email "test@example.com"
+git -C "$I_PLUG" config user.name "test"
+git -C "$I_PLUG" commit -q --allow-empty -m init
+git -C "$I_PLUG" worktree add -q "$WORKDIR/plug-wt" >/dev/null 2>&1
+assert_exit "in a linked worktree whose repository's git folder is inside the plugin's folder, install.sh refuses" 1 \
+  bash -c "cd '$WORKDIR/plug-wt' && bash '$I_INSTALL'"
+assert_eq "that refusal writes nothing in the plugin's git folder" "no" \
+  "$([[ -e "$I_PLUG/.git/hooks/pre-commit" ]] && echo yes || echo no)"
+rm -rf "$I_MAIN" "$I_FEAT" "$WORKDIR/plug-wt" "$I_PLUG"
+
 # --- stage-marker.sh + verify-stage-gate.sh: fixed names in the project, never inside the plugin ---
 setup
 MARKER="$REPO_ROOT/scripts/guards/stage-marker.sh"
@@ -2282,8 +2688,10 @@ echo '{"prompt": "/temper:plan x"}' | bash "$MARKER"
 OUT=$(echo '{}' | bash "$VERIFY" 2>&1; true)
 assert_eq "verify-stage-gate logs each firing to .temper/stage-gate.log" "yes" \
   "$(grep -q 'blocked stop (stage=plan' .temper/stage-gate.log && echo yes || echo no)"
+# The CLI's own full path is taken out first: the folder the repository sits in is not the message's.
+CLI_Q="$(printf '%q' "$REPO_ROOT/scripts/temper")"
 assert_eq "the block message names the stage brief without building a path from the stage" "yes|no" \
-  "$(echo "$OUT" | grep -q "that stage's brief" && echo yes || echo no)|$(echo "$OUT" | grep -q 'agents/' && echo yes || echo no)"
+  "$(echo "$OUT" | grep -q "that stage's brief" && echo yes || echo no)|$(echo "${OUT//"$CLI_Q"/CLI}" | grep -q 'agents/' && echo yes || echo no)"
 # A throwaway plugin folder holding copies of the scripts: a project folder inside it is skipped,
 # the plugin folder itself (developing Temper with Temper) is a project like any other.
 FAKE_PLUGIN="$WORKDIR/fake-plugin"
@@ -2301,8 +2709,21 @@ assert_exit "verify-stage-gate skips a project folder inside the plugin's own fo
 assert_eq "the skipped stop hook writes, changes and deletes nothing there" "no|0" \
   "$([[ -e "$FAKE_PLUGIN/sub/.temper/stage-gate.log" ]] && echo yes || echo no)|$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['blocks'])" "$FAKE_PLUGIN/sub/.temper/pending-stage.json")"
 echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$FAKE_PLUGIN" bash "$FAKE_PLUGIN/scripts/guards/stage-marker.sh"
-assert_eq "stage-marker still marks the plugin folder itself as a project" "plan" \
+assert_eq "stage-marker skips an installed copy of the plugin folder (no .git of its own)" "no" \
+  "$([[ -e "$FAKE_PLUGIN/.temper" ]] && echo yes || echo no)"
+mkdir -p "$FAKE_PLUGIN/.temper"
+echo '{"stage": "plan", "blocks": 0}' > "$FAKE_PLUGIN/.temper/pending-stage.json"
+assert_exit "verify-stage-gate skips an installed copy of the plugin folder" 0 \
+  bash -c "echo '{}' | CLAUDE_PROJECT_DIR='$FAKE_PLUGIN' bash '$FAKE_PLUGIN/scripts/guards/verify-stage-gate.sh'"
+assert_eq "the skipped stop hook leaves the installed copy's marker and log as they were" "no|0" \
+  "$([[ -e "$FAKE_PLUGIN/.temper/stage-gate.log" ]] && echo yes || echo no)|$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['blocks'])" "$FAKE_PLUGIN/.temper/pending-stage.json")"
+rm -rf "$FAKE_PLUGIN/.temper"
+git init -q "$FAKE_PLUGIN"
+echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$FAKE_PLUGIN" bash "$FAKE_PLUGIN/scripts/guards/stage-marker.sh"
+assert_eq "stage-marker still marks the plugin folder itself as a project (its own git repository)" "plan" \
   "$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['stage'])" "$FAKE_PLUGIN/.temper/pending-stage.json")"
+assert_exit "verify-stage-gate blocks in the plugin folder's own repository like in any project" 2 \
+  bash -c "echo '{}' | CLAUDE_PROJECT_DIR='$FAKE_PLUGIN' bash '$FAKE_PLUGIN/scripts/guards/verify-stage-gate.sh'"
 
 # --- run-formatter.sh: only a file inside the project, never a file of the plugin's folder ---
 setup
@@ -2340,6 +2761,9 @@ G_PLUG="$WORKDIR/guard-plugin"
 rm -rf "$G_PLUG"
 mkdir -p "$G_PLUG/scripts/guards" "$G_PLUG/inner/code"
 cp "$REPO_ROOT/scripts/guards/install.sh" "$G_PLUG/scripts/guards/install.sh"
+# The installer refuses to write a hook whose CLI is missing, so the throwaway plugin holds one:
+# each refusal below then refuses for the reason it names.
+cp "$TEMPER" "$G_PLUG/scripts/temper"
 G_INSTALL="$G_PLUG/scripts/guards/install.sh"
 # install.sh: a core.hooksPath that leads into the plugin folder, directly or through a symlink.
 git config core.hooksPath guard-plugin/inner/code
@@ -2514,6 +2938,16 @@ cp "$REPO_ROOT/scripts/plan_review.py" "$PR_OWN/scripts/plan_review.py"
 cp "$REPO_ROOT/templates/plan-review.html" "$PR_OWN/templates/plan-review.html"
 printf '# Plan: probe\n\n## Tasks\n- one\n' > "$PR_OWN/.temper/specs/probe/plan.md"
 echo '{"comments": [{"id": "c1", "type": "general-note", "text": "hi"}]}' > "$PR_OWN/.temper/specs/probe/export.json"
+# An installed copy (no .git of its own) is not the plugin's own repository: refused there.
+assert_exit "plan_review: in an installed copy, the default output under .temper is refused" 2 \
+  bash -c "cd '$PR_OWN' && python3 scripts/plan_review.py render .temper/specs/probe"
+assert_exit "plan_review: in an installed copy, a merge output under .temper is refused" 2 \
+  bash -c "cd '$PR_OWN' && python3 scripts/plan_review.py merge --feature probe -o .temper/specs/probe/review-comments.json .temper/specs/probe/export.json"
+assert_exit "plan_review: a GIT_DIR naming another repository does not make the installed copy its own repository" 2 \
+  bash -c "cd '$PR_OWN' && GIT_DIR='$WORKDIR/.git' python3 scripts/plan_review.py render .temper/specs/probe"
+assert_eq "the refused outputs in the installed copy are not written" "no|no" \
+  "$([[ -e "$PR_OWN/.temper/specs/probe/review.html" ]] && echo yes || echo no)|$([[ -e "$PR_OWN/.temper/specs/probe/review-comments.json" ]] && echo yes || echo no)"
+git init -q "$PR_OWN"
 assert_exit "plan_review: in the plugin's own repository, the default output under .temper is written" 0 \
   bash -c "cd '$PR_OWN' && python3 scripts/plan_review.py render .temper/specs/probe"
 assert_exit "plan_review: in the plugin's own repository, the artifact output under .temper is written" 0 \
@@ -2556,31 +2990,83 @@ OUT=$(bash "$V_PLUG/scripts/validate-docs.sh" 2>&1; true)
 assert_eq "validate-docs names a command file that plugin.json does not list" "yes" \
   "$(echo "$OUT" | grep -A1 'command files that .claude-plugin/plugin.json does not list' | grep -q 'commands/zz.md' && echo yes || echo no)"
 rm -rf "$V_PLUG"
-# validate-plugin.sh: a plugin path in instruction text is the braced variable, '/' and a fixed path.
+# validate-plugin.sh: a plugin path is the braced variable, '/' and a fixed path that names a tracked
+# file or folder, in every file git lists, the tests and docs included. The bad forms are written at
+# run time from tokens (@R@ the braced root, @O@ the root with its brace still open, @U@ the root
+# with no braces), so no tracked file holds one.
 VP_PLUG="$WORKDIR/root-var-plugin"
 rm -rf "$VP_PLUG"
-mkdir -p "$VP_PLUG/scripts" "$VP_PLUG/commands" "$VP_PLUG/reference" "$VP_PLUG/docs"
+mkdir -p "$VP_PLUG/scripts/tests" "$VP_PLUG/commands" "$VP_PLUG/reference" "$VP_PLUG/docs" "$VP_PLUG/packs/demo"
 cp "$REPO_ROOT/scripts/validate-plugin.sh" "$VP_PLUG/scripts/validate-plugin.sh"
-cat > "$VP_PLUG/commands/x.md" <<'EOF'
-Run $CLAUDE_PLUGIN_ROOT/scripts/temper gate plan.
-The folder ${CLAUDE_PLUGIN_ROOT} holds it.
-Read ${CLAUDE_PLUGIN_ROOT}/packs/{name}/rules.md first.
-Read ${CLAUDE_PLUGIN_ROOT}/../outside.md first.
-List ${CLAUDE_PLUGIN_ROOT}/packs/*/rules.md first.
-Run ${CLAUDE_PLUGIN_ROOT}/$SUB/x first.
-Run ${CLAUDE_PLUGIN_ROOT:-/opt/x}/scripts/temper first.
-Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan --spec-path .temper/specs/{slug}`.
+printf 'x\n' > "$VP_PLUG/scripts/temper"
+printf 'x\n' > "$VP_PLUG/reference/plan.md"
+printf 'x\n' > "$VP_PLUG/packs/demo/rules.md"
+VP_VAR=CLAUDE_PLUGIN_ROOT
+vp_expand() { sed -e "s/@R@/\${$VP_VAR}/g" -e "s/@O@/\${$VP_VAR/g" -e "s/@U@/\$$VP_VAR/g"; }
+vp_expand > "$VP_PLUG/commands/x.md" <<'EOF'
+Run @U@/scripts/temper gate plan.
+The folder @R@ holds it.
+Read @R@/packs/{name}/rules.md first.
+Read @R@/../outside.md first.
+List @R@/packs/*/rules.md first.
+Run @R@/$SUB/x first.
+Run @O@:-/opt/x}/scripts/temper first.
+Read @R@/packs/<name>/rules.md first.
+Read @R@/packs/[name]/rules.md first.
+Read @R@/packs/(name)/rules.md first.
+Read @R@/reference/(plan|build).md first.
+Read @R@/reference/%s.md first.
+List @R@/packs/demo/rule?.md first.
+Read @R@/reference/missing.md first.
+Read @R@/ first.
+Read @R@/reference/later.md first.
+Run `@R@/scripts/temper gate plan --spec-path .temper/specs/{slug}`.
 The CLAUDE_PLUGIN_ROOT variable names the plugin folder.
+Read @R@/packs/demo/rules.md.
+See @R@/packs/demo/ for the pack.
+"command": "bash \"@R@/scripts/temper\""
 EOF
-printf 'See ${CLAUDE_PLUGIN_ROOT}/reference/plan.md, then "${CLAUDE_PLUGIN_ROOT}/scripts/temper".\n' > "$VP_PLUG/reference/ok.md"
-printf 'Docs may say $CLAUDE_PLUGIN_ROOT.\n' > "$VP_PLUG/docs/free.md"
+printf 'See @R@/reference/plan.md, then "@R@/scripts/temper".\n' | vp_expand > "$VP_PLUG/reference/ok.md"
+printf 'Docs may say @U@.\n' | vp_expand > "$VP_PLUG/docs/free.md"
+printf 'echo "@R@/../x"\n' | vp_expand > "$VP_PLUG/scripts/tests/t.sh"
+printf 'ignored.md\n' > "$VP_PLUG/.gitignore"
+printf 'Read @U@/x first.\n' | vp_expand > "$VP_PLUG/ignored.md"
 git init -q "$VP_PLUG"
+git -C "$VP_PLUG" add -A
+printf 'x\n' > "$VP_PLUG/reference/later.md"   # on disk, not tracked
 OUT=$(bash "$VP_PLUG/scripts/validate-plugin.sh" 2>&1; true)
-assert_eq "validate-plugin flags the unbraced, no-slash, placeholder, '..', wildcard and second-variable forms" "1 2 3 4 5 6 7" \
+assert_eq "validate-plugin flags the unbraced, no-slash, default, placeholder, '..', wildcard, bracket, group, second-variable, printf, missing, empty and untracked forms" \
+  "1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16" \
   "$(echo "$OUT" | sed -n 's/^  commands\/x\.md:\([0-9]*\): .*/\1/p' | paste -sd' ' -)"
-assert_eq "validate-plugin leaves a fixed path, the variable named in prose, and files outside the instruction folders alone" "0|0" \
-  "$(echo "$OUT" | grep -c '^  reference/ok.md:')|$(echo "$OUT" | grep -c '^  docs/')"
+assert_eq "validate-plugin names a path that is not a tracked file" "1|1" \
+  "$(echo "$OUT" | grep -c '^  commands/x\.md:14: not a tracked file or folder: reference/missing\.md$')|$(echo "$OUT" | grep -c '^  commands/x\.md:16: not a tracked file or folder: reference/later\.md$')"
+assert_eq "validate-plugin reads every file: docs and tests are checked too" "1|1" \
+  "$(echo "$OUT" | grep -c '^  docs/free\.md:1: unbraced')|$(echo "$OUT" | grep -c '^  scripts/tests/t\.sh:1: ')"
+assert_eq "validate-plugin leaves fixed tracked paths, the variable named in prose, an ignored file and itself alone" "0|0|0" \
+  "$(echo "$OUT" | grep -c '^  reference/ok\.md:')|$(echo "$OUT" | grep -c '^  ignored\.md:')|$(echo "$OUT" | grep -c '^  scripts/validate-plugin\.sh:')"
+assert_eq "validate-plugin.sh holds neither the unbraced nor the braced variable literally" "0|0" \
+  "$(grep -cF "\$$VP_VAR" "$REPO_ROOT/scripts/validate-plugin.sh")|$(grep -cF "\${$VP_VAR" "$REPO_ROOT/scripts/validate-plugin.sh")"
 rm -rf "$VP_PLUG"
+# The dev scripts clear CDPATH before they cd: with CDPATH naming the plugin folder, cd prints the
+# folder it enters and the script's own path would hold it twice.
+assert_eq "every dev script clears CDPATH before its first cd" "" \
+  "$(python3 -c '
+import re, sys
+for name in sys.argv[2:]:
+    lines = open(sys.argv[1] + "/" + name).read().split("\n")
+    unset = next((i for i, l in enumerate(lines) if l.strip() == "unset CDPATH"), None)
+    first = next((i for i, l in enumerate(lines) if not l.lstrip().startswith("#") and re.search(r"(^|[(;&|]\s*)cd\s", l)), None)
+    if unset is None or (first is not None and first < unset):
+        print(name)
+' "$REPO_ROOT" scripts/validate-plugin.sh scripts/validate-docs.sh scripts/validate-readme.sh \
+    scripts/validate-directory.sh scripts/quality-check.sh scripts/check-known-limits.sh \
+    scripts/check-mod-calls.sh scripts/check-original-options.sh scripts/version-bump.sh \
+    scripts/tests/test-validate-directory.sh)"
+for vp_script in validate-readme.sh check-known-limits.sh check-original-options.sh; do
+  assert_eq "$vp_script prints the same with CDPATH naming the plugin folder" \
+    "$(cd "$REPO_ROOT" && env -u CDPATH bash "scripts/$vp_script" 2>&1)" \
+    "$(cd "$REPO_ROOT" && CDPATH="$REPO_ROOT" bash "scripts/$vp_script" 2>&1)"
+done
 
 # --- block-protected-paths.sh and block-uncommitted-gate.sh: the CLI next to the script ---
 setup
@@ -2600,35 +3086,46 @@ assert_exit "uncommitted-gate: any other command passes" 0 \
 git rm -q --cached gate-file.txt >/dev/null 2>&1 || true
 rm -f gate-file.txt
 
-# --- pack-discover.py: named subfolders, no wildcard; Temper's own folder is never scanned ---
+# --- pack-discover.py: named folders, no wildcard; hidden, nested and non-.md entries left out; a
+# symlink that leaves its folder is never read, one that stays inside is kept ---
 setup
-PD_HOME="$WORKDIR/fake-home-pd"
-rm -rf "$PD_HOME"
-mkdir -p "$PD_HOME/.claude/plugins" "$PD_HOME/other/.claude-plugin" "$PD_HOME/other/commands/nested/deeper" \
-  "$PD_HOME/other/skills/.hidden-skill" "$PD_HOME/other/skills/real-skill" .claude/commands
-echo '{"description": "other plugin"}' > "$PD_HOME/other/.claude-plugin/plugin.json"
-printf -- '---\ndescription: top\n---\n' > "$PD_HOME/other/commands/top.md"
-printf -- '---\ndescription: inner\n---\n' > "$PD_HOME/other/commands/nested/deeper/inner.md"
-printf -- '---\ndescription: hidden\n---\n' > "$PD_HOME/other/commands/.secret.md"
-printf -- '---\ndescription: hidden skill\n---\n' > "$PD_HOME/other/skills/.hidden-skill/SKILL.md"
-printf -- '---\ndescription: real skill\n---\n' > "$PD_HOME/other/skills/real-skill/SKILL.md"
+PD_OUTSIDE="$WORKDIR/outside-pd"
+rm -rf "$PD_OUTSIDE"
+mkdir -p "$PD_OUTSIDE/skill" .claude/commands/nested .claude/skills/real-skill .claude/skills/.hidden-skill \
+  .claude/skills/no-skill-file
+printf -- '---\ndescription: outside\n---\n' > "$PD_OUTSIDE/cmd.md"
+printf -- '---\ndescription: outside skill\n---\n' > "$PD_OUTSIDE/skill/SKILL.md"
 printf -- '---\ndescription: local\n---\n' > .claude/commands/local-cmd.md
 printf -- '---\ndescription: hidden local\n---\n' > .claude/commands/.hidden-cmd.md
-cat > "$PD_HOME/.claude/plugins/installed_plugins.json" <<EOF
-{"plugins": {
-  "temper-fork@somewhere": [{"version": "1", "installPath": "$REPO_ROOT", "lastUpdated": "2026-01-01T00:00:00Z"}],
-  "other@market": [{"version": "1", "installPath": "$PD_HOME/other", "lastUpdated": "2026-01-01T00:00:00Z"}]
-}}
-EOF
-PD_OUT="$(HOME="$PD_HOME" python3 "$REPO_ROOT/scripts/pack-discover.py")"
-assert_eq "pack-discover never scans Temper's own folder, whatever its entry is called" "0" "$(printf '%s\n' "$PD_OUT" | grep -c 'temper-fork')"
-assert_eq "pack-discover lists the commands at any depth under commands, hidden ones left out" "other:inner|other:top" \
-  "$(printf '%s\n' "$PD_OUT" | awk -F'|' '$1 == "CMD" {print $2}' | sort | paste -sd'|' -)"
-assert_eq "pack-discover lists each skill folder's SKILL.md, hidden folders left out" "other:real-skill" \
-  "$(printf '%s\n' "$PD_OUT" | awk -F'|' '$1 == "SKILL" {print $2}' | sort | paste -sd'|' -)"
-assert_eq "pack-discover lists the project's own commands, hidden ones left out" "local-cmd" \
+printf -- '---\ndescription: nested\n---\n' > .claude/commands/nested/inner.md
+printf 'not a command\n' > .claude/commands/notes.txt
+printf -- '---\ndescription: real skill\n---\n' > .claude/skills/real-skill/SKILL.md
+printf -- '---\ndescription: hidden skill\n---\n' > .claude/skills/.hidden-skill/SKILL.md
+printf 'x\n' > .claude/skills/no-skill-file/README.md
+ln -s "$PD_OUTSIDE/cmd.md" .claude/commands/escape.md
+ln -s "$PD_OUTSIDE/skill" .claude/skills/escape-skill
+ln -s local-cmd.md .claude/commands/alias.md
+PD_OUT="$(python3 "$REPO_ROOT/scripts/pack-discover.py")"
+assert_eq "pack-discover lists the project's own commands: hidden, nested, non-.md and escaping ones left out" "alias|local-cmd" \
   "$(printf '%s\n' "$PD_OUT" | awk -F'|' '$1 == "LOCAL_CMD" {print $2}' | sort | paste -sd'|' -)"
-rm -rf "$PD_HOME" .claude/commands
+assert_eq "pack-discover lists each project skill folder's SKILL.md: hidden, empty and escaping folders left out" "real-skill" \
+  "$(printf '%s\n' "$PD_OUT" | awk -F'|' '$1 == "LOCAL_SKILL" {print $2}' | sort | paste -sd'|' -)"
+assert_eq "pack-discover never prints a path outside the project's own folders" "0" "$(printf '%s\n' "$PD_OUT" | grep -c 'outside')"
+# A skills folder that is itself a link is listed while it stays inside the project, and not when
+# it links out of it (to a home skills folder, say). The project here is a folder of its own.
+PD_PROJ="$WORKDIR/pd-proj"
+rm -rf "$PD_PROJ"
+mkdir -p "$PD_PROJ/.claude" "$PD_PROJ/kept-skills/linked-skill" "$PD_OUTSIDE/skills/linked-skill"
+printf -- '---\ndescription: linked\n---\n' > "$PD_PROJ/kept-skills/linked-skill/SKILL.md"
+printf -- '---\ndescription: linked\n---\n' > "$PD_OUTSIDE/skills/linked-skill/SKILL.md"
+ln -s "$PD_PROJ/kept-skills" "$PD_PROJ/.claude/skills"
+assert_eq "pack-discover lists a skill through a skills folder linked inside the project" "1" \
+  "$(cd "$PD_PROJ" && python3 "$REPO_ROOT/scripts/pack-discover.py" | grep -c '^LOCAL_SKILL|linked-skill|')"
+rm -f "$PD_PROJ/.claude/skills"
+ln -s "$PD_OUTSIDE/skills" "$PD_PROJ/.claude/skills"
+assert_eq "pack-discover lists no skill through a skills folder that links out of the project" "0" \
+  "$(cd "$PD_PROJ" && python3 "$REPO_ROOT/scripts/pack-discover.py" | grep -c 'LOCAL_SKILL')"
+rm -rf "$PD_OUTSIDE" "$PD_PROJ" .claude/commands .claude/skills
 
 # --- version-stamp drift: every visible version string matches plugin.json ---
 # plugin.json is the single source of truth; the CLAUDE.md stamp and the top

@@ -18,7 +18,7 @@ export type World = {
   prompts: string[]
   // The path of every fs call exactly as the plugin gave it (reads and lists and writes).
   rawPaths: string[]
-  // How many of the next `state advance|set` calls the fake CLI refuses (see fakeCli).
+  // How many of the next `state advance|set|clear` calls the fake CLI refuses (see fakeCli).
   cliFailures?: number
   // How many of the next `git commit` calls the fake CLI fails (see fakeCli).
   commitFailures?: number
@@ -67,7 +67,7 @@ export type WorldOptions = {
   fillable?: boolean
   // Only files under this folder exist (see `outside`); a relative path is read from `w.cwdNow`.
   projectRoot?: string
-  // True: the engine's Bash runs `scripts/temper state advance|set` against .temper/build-state.json
+  // True: the engine's Bash runs `scripts/temper state advance|set|clear` against .temper/build-state.json
   // like the real CLI does (see fakeCli).
   fakeCli?: boolean
   // The folder that holds `.temper/` and `.claude/` (an absolute path under another folder finds none of them).
@@ -84,14 +84,14 @@ export function cliTo(w: World, next: string): void {
 // The stages of the CLI, in order (STAGE_SEQ_TEMPER in scripts/temper).
 export const CLI_SEQ = ['intent', 'plan', 'design', 'build', 'review', 'check']
 
-// The part of scripts/temper the mod depends on: `state advance <stage>_complete <next>` and
-// `state set next_stage <stage>` against .temper/build-state.json. Same checks as cmd_state_advance.
+// The part of scripts/temper the mod depends on: `state advance <stage>_complete <next>`,
+// `state set next_stage <stage>` and `state clear` against .temper/build-state.json. Same checks as cmd_state_advance.
 // The script may be named by a quoted full path ("/a b/scripts/temper" state ...). Null for any other
 // command (the stub answers it).
 export function fakeCli(w: World, command: string): { result: string; text: string; isError?: boolean } | null {
   const path = '.temper/build-state.json'
   // A refused call (the CLI exits with an error): a test sets w.cliFailures to refuse the next calls.
-  if (/scripts\/temper["']?\s+state\s+(?:advance|set)/.test(command) && (w.cliFailures ?? 0) > 0) {
+  if (/scripts\/temper["']?\s+state\s+(?:advance|set|clear)/.test(command) && (w.cliFailures ?? 0) > 0) {
     w.cliFailures = (w.cliFailures ?? 0) - 1
     return { result: 'FAIL: refused', text: 'FAIL: refused', isError: true }
   }
@@ -122,6 +122,12 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
   if (set) {
     save({ ...read(), next_stage: set[1] })
     return { result: `OK: next_stage = ${set[1]}`, text: `OK: next_stage = ${set[1]}`, ...(failsAfter ? { isError: true } : {}) }
+  }
+  // `state clear`: the run state goes, as cmd_state_clear removes it (the spec folder stays).
+  if (/scripts\/temper["']?\s+state\s+clear\b/.test(command)) {
+    for (const name of ['build-state.json', 'feedback-loops.json', 'gates.json', 'overrides.json']) w.files.delete(`.temper/${name}`)
+    for (const key of [...w.files.keys()]) if (key.startsWith('.temper/evidence/')) w.files.delete(key)
+    return { result: 'OK: run state cleared', text: 'OK: run state cleared', ...(failsAfter ? { isError: true } : {}) }
   }
   return failsAfter ? { result: 'exit 1', text: 'exit 1', isError: true } : null
 }

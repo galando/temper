@@ -19,7 +19,32 @@
 #     the one fail-closed path)
 #   - No active fix run / no recorded test / different file      => exit 0
 #   - python3 absent / unparseable input / any internal error    => exit 0 (fail-open)
+#
+# The edited file is the recorded test when both name the same file (device and inode, so
+# letter case, symlinks and hard links cannot hide it); a file not made yet is compared by
+# its full path with every symlink followed.
 set -uo pipefail
+
+# cd prints the folder it changes to when CDPATH is set, which would spoil the folder worked
+# out below with cd and pwd.
+unset CDPATH
+
+_cli_path() { # prints the temper CLI of the plugin this script belongs to, %q-quoted: this
+              # script's own file (every symlink followed, as the CLI finds itself), its folder
+              # with the literal suffix /scripts/guards removed, then scripts/temper. Prints the
+              # bare name temper when the script is not laid out that way.
+  local self="${BASH_SOURCE[0]}" hops=0 link_dir here root
+  while [[ -L "$self" && $hops -lt 40 ]]; do
+    link_dir="$(cd -P "$(dirname "$self")" 2>/dev/null && pwd)" || { echo temper; return 0; }
+    self="$(readlink "$self")" || { echo temper; return 0; }
+    [[ "$self" == /* ]] || self="$link_dir/$self"
+    hops=$((hops + 1))
+  done
+  here="$(cd "$(dirname "$self")" 2>/dev/null && pwd)" || { echo temper; return 0; }
+  root="${here%/scripts/guards}"
+  if [[ "$root" == "$here" ]]; then echo temper; return 0; fi
+  printf '%q\n' "$root/scripts/temper"
+}
 
 _main() {
   command -v python3 >/dev/null 2>&1 || return 0
@@ -47,18 +72,23 @@ except Exception:
     sys.exit(0)
 if not target:
     sys.exit(0)
-def norm(p):
+def full(p):
     if not os.path.isabs(p):
         p = os.path.join(project_dir, p)
-    return os.path.realpath(p)
-if norm(target) == norm(guarded):
+    return p
+t, g = full(target), full(guarded)
+try:
+    same = os.path.samefile(t, g)
+except OSError:
+    same = os.path.normcase(os.path.realpath(t)) == os.path.normcase(os.path.realpath(g))
+if same:
     print(guarded)
 " "$state" "$dir" 2>/dev/null) || return 0
 
   if [[ -n "$verdict" ]]; then
     echo "BLOCK: '$verdict' is this fix run's recorded regression test — the proof the bug exists." >&2
     echo "Fix the code, not the test. If the test itself is wrong, that is a human's call:" >&2
-    echo "  temper state set regression_test \"\"   # lifts the shield, deliberately" >&2
+    echo "  $(_cli_path) state set regression_test \"\"   # lifts the shield, deliberately" >&2
     return 2
   fi
   return 0

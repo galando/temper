@@ -25,8 +25,8 @@ metrics yet. Run /temper:review or /temper:check to start tracking."
 
 When the current spec has an `intent.md`, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper status`
 and show its rows: each acceptance criterion as passed or open with the evidence rows
-that support it. `temper status --json` prints the same data as JSON, and every
-`temper gate` run refreshes `.temper/status.json` with it (a failed write never changes
+that support it. `${CLAUDE_PLUGIN_ROOT}/scripts/temper status --json` prints the same data as JSON, and every
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate` run refreshes `.temper/status.json` with it (a failed write never changes
 a verdict). Nothing here is a verdict; `.temper/gates.json` owns those.
 
 ### Step 1.5: External Tool Availability
@@ -76,7 +76,7 @@ metric history arrays against rolling mean ± k·sigma bands (config: `bands:` i
 |   (gates.json absent -> "No gate data yet — run /temper") |
 | CONTROL BANDS: {OK/BREACH/INSUFFICIENT-DATA}              |
 |   per-metric: {metric} z={z} {tier} -> {action}            |
-|   (verbatim from `temper bands`; insufficient data ->      |
+|   (verbatim from the bands check; insufficient data ->     |
 |    "not enough history yet — bands arm as runs accumulate")|
 | AUTONOMOUS RUNS: mode, park point + reason, loop budget   |
 |   (no autonomy-report.md -> print nothing for this panel) |
@@ -89,9 +89,9 @@ degrade to the notices above, not an error.
 ### Step 2.5: Gate Ledger Panel
 
 Render from `.temper/gates.json`, `.temper/overrides.json` and the evidence ledger
-(read through `${CLAUDE_PLUGIN_ROOT}/scripts/temper report`), the same ledger `temper gate`
+(read through `${CLAUDE_PLUGIN_ROOT}/scripts/temper report`), the same ledger `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate`
 computes verdicts from: per-stage verdict + requirement
-detail (`temper report`), override count + reason per stage, and the PROVEN/HEURISTIC/
+detail (`${CLAUDE_PLUGIN_ROOT}/scripts/temper report`), override count + reason per stage, and the PROVEN/HEURISTIC/
 SEMANTIC evidence-label mix as a rough proxy for how much of the run was mechanically
 verified. Never render cost, latency, or token estimates: nothing mechanical backs them.
 No `gates.json` → "No gate data yet. Run /temper to populate it." — never error.
@@ -145,7 +145,7 @@ them. Never edit a file in the plugin folder. One prompt per qualifying pattern,
 | Standards compliance | `(files_total - files_with_violations) / files_total * 100` |
 
 Show trend arrows (📉/📈/➡️) next to coverage and issues/review. The dashboard is the
-human-facing view; `temper bands` (Step 1.6) is the deterministic trigger layer behind
+human-facing view; `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` (Step 1.6) is the deterministic trigger layer behind
 it — runnable headless from CI or cron with no dashboard at all (exit 1 on a breach),
 which is what closes the loop without a person starting it.
 
@@ -156,11 +156,13 @@ Only when Step 1.6 reported a `propose`-tier breach (default: 3sigma). `AskUserQ
 - **"Draft intent.md from this breach (Recommended)"** — write the project's
   `.temper/specs/{metric}-breach-{date}/intent.md` (`{metric}` is the bands metric name,
   letters, digits, hyphens and underscores only; `{date}` is YYYY-MM-DD) in the standard shape from
-  `${CLAUDE_PLUGIN_ROOT}/templates/intent.md`, complete enough to pass `temper gate intent` itself:
-  header including `**Author:** temper bands (control-band monitor)`,
+  `${CLAUDE_PLUGIN_ROOT}/templates/intent.md`, complete enough to pass
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent --spec-path .temper/specs/{metric}-breach-{date}`
+  itself (run it, and fix any FAIL before you report the draft):
+  header including `**Author:** Temper control-band monitor`,
   `**Status:** draft`, `**Created:** {date}`, and a `**Reviewer:**` — ask who
   reviews it; a name, not a role, and never a guessed default. Then the body:
-  **Problem** = the breach verbatim from `temper bands`
+  **Problem** = the breach verbatim from `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands`
   (metric, latest, baseline, z-score — evidence, not narrative); **Success
   Criteria** = stable `AC-NN` ids, the metric back inside its bands with
   `Validate: metric` and a `Why:` line naming the risk the band guards, plus at

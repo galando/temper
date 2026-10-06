@@ -5,7 +5,7 @@
 import type { Draft, DriftChoice, Phase } from './events'
 import { PHASES } from './events'
 import { ACT } from './actions'
-import { CLI, acceptCommand, advanceCommands, backCommand, loopCommand, overrideCommand } from './cli'
+import { CLI, IN_PLUGIN, acceptCommand, advanceCommands, backCommand, loopCommand, overrideCommand } from './cli'
 import type { Command } from './machine'
 
 export const RESERVED = [
@@ -113,7 +113,7 @@ export function followUp(draft: Draft, complexity: string | null = null, cli: st
   const text = followUpText(draft, complexity, from)
   if (text === null) return null
   if (cli !== CLI) return text.split(`\`${CLI} `).join(`\`${cli} `)
-  return text.includes(`\`${CLI} `) ? text.replace(` ${ACT}`, ` The script is in the Temper plugin folder, not in the project. ${ACT}`) : text
+  return text.includes(`\`${CLI} `) ? text.replace(` ${ACT}`, ` ${IN_PLUGIN} ${ACT}`) : text
 }
 
 function followUpText(draft: Draft, complexity: string | null, from: Phase | null): string | null {
