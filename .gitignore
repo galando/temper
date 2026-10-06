@@ -62,3 +62,5 @@ Thumbs.db
 .temper/overrides.json
 .temper/status.json
 .temper/evidence/
+.temper/stage-gate.log
+.temper/pending-stage.json

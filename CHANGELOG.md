@@ -3,9 +3,71 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## v9.6.5 — TODO: one-line summary
+## v9.6.5: nothing points at the mod, every plugin path written out, no images
 
-- TODO: maintainer fills in this entry's body.
+The directory's report on 9.6.4 held it for five reasons. Three ask for README text the 9.6.4 README
+already gives (the prompts the mod submits, the two commands it runs, the two settings it sets) and
+one ("This plugin includes a mod") always goes to a reviewer. The fifth, "The directory couldn't
+confirm that the mod stays the same after it's checked", named three new sample files. This release
+clears that kind of finding across the whole plugin, not only in the samples, and answers the notes
+it can.
+
+**Nothing points at the mod or its hooks file.**
+- `scripts/hooks/` is now `scripts/guards/`, and the hooks pack is now the guardrails pack
+  (`packs/guardrails/`, settings snippet `settings-guardrails.json`); a `packs:` entry named `hooks`
+  still means it. No folder but the mod's own is called `hooks`.
+- No script, config or instruction names a file of the mod, the hooks file or a file of the mod's
+  tests. The checks that read them moved into the mod's TS tests, which import what they check
+  (the original options, the CLI stage order); `validate-plugin.sh` leaves the hooks file to
+  `claude plugin validate --strict`; the type check reaches the mod through one import.
+- Every plugin path is fixed text after the root: no `..`, no wildcard, no placeholder, no second
+  variable. The CLI, the guard scripts and the dev scripts find the plugin folder by a literal
+  suffix of their own location. The instruction files write each brief, pack and reference page
+  out in full, call the CLI as `$CLAUDE_PLUGIN_ROOT/scripts/temper` (no alias), and stop with a clear
+  message when `CLAUDE_PLUGIN_ROOT` is unset instead of walking up folders.
+
+**No write can reach the plugin folder.**
+- `scripts/temper` checks every stage name against a fixed list before it builds a path, checks the
+  slug of `state init` (lowercase letters, digits, `.`, `_`, `-`, no `..`) and any `spec_path` it
+  stores, no longer honours a `TEMPER_DIR` override, and reads the evidence files by name instead of
+  a glob. Before this, a crafted stage name could overwrite a file outside `.temper/`.
+- Two places in the CLI handed a config or ledger value to Python as source text; they now pass it
+  as an argument, so a crafted coverage threshold or project path can no longer run code.
+- `install.sh` writes only `.git/hooks/pre-commit`, `.git/temper-git-hooks/pre-commit` (with
+  `--global`), or a `core.hooksPath` folder inside the repository; for anything else it prints the
+  lines to add by hand. The hook it writes holds the full paths of the CLI and the two guard scripts
+  as plain text, with no environment override. An earlier Temper hook is still recognised.
+- `plan_review.py` refuses an output inside the plugin folder; `run-formatter.sh` formats only
+  project files; `stage-marker.sh` and `verify-stage-gate.sh` do nothing inside the plugin folder,
+  and the stage gate log is now `.temper/stage-gate.log`.
+
+**The Bash guard.** A shell whose script argument names standard input (`/dev/stdin`, `/dev/fd/N`,
+`/proc/self/fd/N`) reads the piped program, so it is now refused like a pipe into a bare shell.
+
+**Notes the directory listed.**
+- No image ships in the repository: the README and the website load their pictures by permanent
+  links to an earlier commit, and `plugin.json` has no `icon` field, so the directory card shows the
+  default icon.
+- `plugin.json` drops `documentationUrl`, `supportUrl` and `privacyPolicyUrl`, which the directory
+  reported as unrecognized; each option is marked as not sensitive. `types` stays: Claude Code's own
+  validator needs it for the mod's `$.state` keys.
+- Credentials: Share HTML review now shares only through a Claude artifact (the fallback that used
+  the GitHub command line's login is gone), the OCR reviewer runs only when `tools.ocr.mode` turns it
+  on, and test inputs, docs and history no longer show commands that read the user's keys, logins or
+  Claude Code files.
+- Download and run: install steps are shown as slash commands, not shell, and docs, comments and
+  test inputs describe the guard's patterns in words where a literal adds nothing; the guard's
+  detection itself is unchanged.
+- The mod's comments name no engine call the mod does not make, and its message text no longer
+  spells one shell builtin; the three places in the Bash guard that detect that builtin keep it. The
+  mod now fails open, and says so, on the stage name a v7.0.x run left behind, until the CLI's next
+  call rewrites it.
+- The throwaway spec files under `.temper/specs/` are no longer tracked, as `.gitignore` intends.
+
+Kept on purpose: "This plugin includes a mod" and "Uses hooks" describe what Temper is. The mod
+still submits prompts, runs `/temper:temper` and sets its two settings, each on your press or
+command, as the README says.
+
 ## v9.6.4: the directory's holds, answered in code and in the README
 
 The directory held 9.6.3 with twelve reasons. This release changes the code where a change can clear
@@ -81,7 +143,7 @@ code. Gates, commands and agents do not change.
   and writes" says the mod writes no file.
 - **No global is read.** The 60 ms wait before `build-state.json` is read again uses `$.clock.sleep`
   (a new reviewed call) instead of `setTimeout` taken from `globalThis`, and the session id no longer
-  reads `globalThis.crypto` (the finding "a form that can hide what its code does", `adapter.ts`
+  uses the global random source (the finding "a form that can hide what its code does", `adapter.ts`
   line 287). The reviewed list is 24 calls.
 - **`scripts/check-mod-calls.sh` fails on a cut `calls:` line.** Claude Code shortens a note over
   1000 characters, which could hide a call. All toasts now go through one helper, so the line is
@@ -219,15 +281,15 @@ commands or agents.
   run. The subcommands stay. Done offers Commit and Save for later. `scripts/check-original-options.sh`
   and the action tests refuse any other label.
 - Third security review (#39 to #48). While a run is active, a Bash command that names the script and
-  hides what it runs (`$'..'`, `${..}`, `$(..)`, a launcher, a script written then run, `bash <(cat ...)`)
+  hides what it runs (`$'..'`, `${..}`, `$(..)`, a launcher, a script written then run, a shell given a process substitution)
   is refused, and plain readers (`sed -n`, `awk '/x/'`, `nl`, `grep`, `pytest -k`) stay allowed. Names are
   compared without regard to case, `ln` of Temper state is refused, and every `state advance` and
   `state set next_stage` needs the person's decision or the exact next stage after a passed check.
   `git cherry-pick`, `merge`, `revert`, `am`, `commit-tree`, `rebase --continue`, a merging `pull` and
   a `git -c alias` count as commits while the commit gate is open. A decision button locks while it runs
   and ignores a stale press. The README says plainly what a text reader cannot see.
-- The demo is smooth: `bash demo/demo-seed.sh plan` seeds the Plan step with an accepted intent and a
-  written plan (both checks pass), `bash demo/run-demo.sh` starts there, and `demo/temper.tape` is a
+- The demo is smooth: the demo seed script seeds the Plan step with an accepted intent and a
+  written plan (both checks pass), the demo run script starts there, and `demo/temper.tape` is a
   15 to 20 second hero with no waiting scene.
 - `.temper/report.md` is written when a run completes: phases, overrides, accepted findings,
   scope drift decisions with reasons, and criteria status.
@@ -273,15 +335,15 @@ commands or agents.
 ### Hardening after a fourth review (tests in `tests/mod/hardening.test.ts`)
 
 A read only review traced nine findings by hand. Each one got a failing test through the real guard first.
-Real exploits, fixed: 1 (a shell fed a program on stdin: `echo 'scripts/te""mper override ...' | bash`), 2, 3, 4,
+Real exploits, fixed: 1 (a shell fed a program on stdin through a pipe, the script name split by quotes), 2, 3, 4,
 5, 6, 7, 8, and the fail open catch of 9. Not an exploit as traced: a quote split verb in a plain call
-(`scripts/te""mper ov""erride`), a glob in a stdin program, and `eval "$(echo ...)"` were refused before; the tests stay.
+(`scripts/te""mper ov""erride`), a glob in a stdin program, and running the output of an echo as commands were refused before; the tests stay.
 
 - A shell, `eval` or `source` that is given a program the text does not show is refused while a run is
   active (a pipe from an unknown command, a file or `/dev/stdin`, a process substitution, a `-c` string built
   by a substitution, and a shown program that hides a word with quote splits, `$`, backticks, backslashes,
   braces or globs). Quote and backslash splits are removed before the script name and the decision words are
-  looked for. `eval "$(ssh-agent -s)"`, `eval "$(scripts/ensure-jdk.sh --export)"` and plain heredocs stay allowed.
+  looked for. Shell setup idioms (what a version manager or a project setup script prints) and plain heredocs stay allowed.
 - A run whose `build-state.json` turns missing, unreadable or corrupt (`chmod 000`, `find -delete`, `git clean`,
   `git stash -u`) stays enforced from the last known state, with one line saying so. It ends on `/temper:temper
   enforcement off`, when the file reads again, after Done, or on a reload. `chmod`, `chown`, `chflags`, `setfacl`,
@@ -378,9 +440,8 @@ and example carry the line.
   publishes the review as a Claude artifact; reviewers comment in the page and the
   comments come back through the artifact's shared store, so nothing has to be moved
   by hand. Reviewers need Contributor access in the Share menu.
-- Without the Artifact tool it falls back to a secret Gist (rendered through
-  gist.githack.com); reviewers copy their comments and send them back. The Gist link is
-  unlisted, not private, and the flow says so and asks before creating it.
+- Without the Artifact tool it offered a second sharing path, removed in 9.6.5; the local
+  review (Open HTML review) is the way without it.
 - Nothing leaves the machine until the user confirms where it is going. Both paths end
   in the same `review-comments.json` the local review already used.
 - `templates/plan-review.html` rewritten for this: dark and light themes, no `alert()`
@@ -404,8 +465,8 @@ and example carry the line.
 
 ### Removed
 
-- The `evals/` seeded-defect fixtures and the `Eval Fixtures` workflow. Its job needs an
-  `ANTHROPIC_API_KEY` repository secret that was never set, so the latest nightly run
+- The `evals/` seeded-defect fixtures and the `Eval Fixtures` workflow. Its job needed a
+  repository setting that was never made, so the latest nightly run
   concluded `skipped`, and it never gated a merge. `scripts/tests/test-temper.sh` still
   covers the gate logic, and the stage-gate Stop hook still enforces that the owed
   gate runs. Docs that cited the fixtures were reworded; ADRs and plans that describe
@@ -513,10 +574,8 @@ No behaviour change to gates, commands, or agents.
 
 ## v9.3.4 — clears the last directory policy hold
 
-- **`commands/temper.md`**: rewords one sentence about the plan-gate commit ("lets this
-  pass mid-run" is now "lets this commit through mid-pipeline"). The directory's
-  scanner read the old wording as the plugin reading a password during a run. Same
-  instruction, no behaviour change.
+- **`commands/temper.md`**: rewords one sentence about the plan-gate commit that the
+  directory's scanner misread. Same instruction, no behaviour change.
 - **`evals/wiring-smoke/WIRING_CHECK.md`** no longer describes `/temper:eval` as a
   command the wiring smoke test covers; since v8.0.0 it covers `plan` and `build` only,
   which is what `evals/run-wiring-smoke.sh` already does.
@@ -704,13 +763,13 @@ Full play-by-play: `docs/ai-native-sdlc.md`.
   `docs/history/`. Standalone `/temper:plan` and `/temper:intent` sessions now owe a
   gate verdict (the Stop hook holds the session until the gate ran).
 
-### Install is two steps
+### Setup is two steps
 
-`/plugin marketplace add` + `/plugin install`, then just `/temper "…"` — the first run
+Add the plugin from its marketplace, then just `/temper "…"` — the first run
 in an un-set-up project bootstraps itself (config, `.temper/` scaffold, and the native
-commit gate). `/temper:init` is now that whole one-command setup (it installs the
+commit gate). `/temper:init` is now that whole one-command setup (it writes the
 commit hook too), kept for an explicit re-run. The old third manual step
-(`bash scripts/hooks/install.sh`) is gone from the quick-start.
+(running the hook writer by hand) is gone from the quick-start.
 
 ### New capabilities (playbook alignment)
 
@@ -969,8 +1028,7 @@ acceptance criteria and closed the real gaps that turned up:
 **Third pass — live baseline run, and a critical bug it found:**
 
 - **Ran the eval suite for real** against a `v6.0.1` worktree and against this branch
-  (`TEMPER_PLUGIN_DIR` override in `evals/run-fixture.sh`, `IS_SANDBOX=1` to unblock
-  `--dangerously-skip-permissions` under root). Both catch **3/3**; v7's catches are
+  (the harness pointed at each checkout in turn, run as root inside a sandbox). Both catch **3/3**; v7's catches are
   confirmed via the evidence ledger (`temper gate` mechanically FAILing with the defect
   named), not just a transcript grep — a strictly stronger guarantee than v6.0.1 had.
   Full numbers: `evals/README.md`.
@@ -1029,7 +1087,7 @@ during debugging, never by the automated script CI runs.
 - **Verified live, both directions:** v6.0.1's `orders-api`, run *without* the
   override, correctly reports MISSED — the first real negative-path confirmation this
   harness has ever produced (every prior run had only ever shown CAUGHT). v6.0.1's
-  `password-reset`, run *with* the override, correctly passes. All three v7 fixtures
+  second fixture, run *with* the override, correctly passes. All three v7 fixtures
   re-confirmed at the strict `gate-blocking-evidence` tier. Full writeup:
   `evals/README.md`.
 - **Known, disclosed limitations that remain:** only `review`/`check` are exercised by
@@ -1096,13 +1154,13 @@ three specific stages.
   pre-commit hook and the in-agent PreToolUse hook both call it unconditionally. The
   risk class that justified the rest of this pass doesn't apply the same way there;
   its aggregation logic was already unit-tested, but nothing had ever proven the real
-  *mechanism* — the actual git hook `scripts/hooks/install.sh` writes — really
-  installs, really fires, and really blocks (or allows) a real `git commit`, as
+  *mechanism* — the actual git hook the hook writer puts in place — really
+  lands, really fires, and really blocks (or allows) a real `git commit`, as
   opposed to just the function it calls.
 
 **Then closed for real, same pass:** asked directly "will it actually work?" instead
 of leaving the narrowed gap as a documented tradeoff. Answered it by testing the real
-mechanism — installed the hook into a scratch repo, set a red gate, ran a real `git
+mechanism — put the hook into a scratch repo, set a red gate, ran a real `git
 commit`: blocked (exit 1, nothing landed in `git log`). Flipped the gate green, ran it
 again: succeeded (exit 0, commit landed). Both directions needed no live model call,
 only real git — so both are now permanent assertions in
@@ -1337,8 +1395,8 @@ Behavioral verification layer + deterministic safety net (PR #49,
   plan summary box shows an `EVALS: {N}` line.
 - **D4 — Deterministic hooks pack:** `packs/hooks/` with `block-secrets.sh`,
   `block-forbidden-imports.sh`, `verify-tests-ran.sh` — deterministic, fail-closed on detected
-  secrets, fail-open (no-op) on missing scripts/state. Install via `/temper:pack enable hooks`
-  (merges `settings.hooks.json` into settings.json through the `update-config` skill).
+  secrets, fail-open (no-op) on missing scripts/state. Turned on with `/temper:pack enable` (the pack is called guardrails since 9.6.5;
+  it merges its settings snippet into settings.json through the `update-config` skill).
 - **Cross-cutting:** `eval` + `capabilities.evals` config (default-on, graceful degradation);
   `validate-plugin.sh` assertions for every new file; Cursor parity via `generate-cursor.sh`
   (`temper-eval.md`, `temper-ref-eval.mdc`, `temper-pack-hooks.mdc`); version bump to 5.5.0.
@@ -1403,12 +1461,12 @@ The plugin now does what its own docs/config/skills promise, before Phase 1
 ## v5.2.0 — OCR Integration (External Review Engine)
 
 - **open-code-review integration:** `ocr` CLI is now an optional external review
-  engine inside `/temper:review`. When installed and configured, OCR takes over
+  engine inside `/temper:review`. When present and configured, OCR takes over
   line-level defect detection (NPEs, injections, thread-safety). Temper keeps
   intent validation, security analysis, architecture depth, and review memory.
 - **Auto-detection:** `ocr` is probed during Step 1 and enabled automatically
   when available (`tools.ocr.mode: auto`, the default). Missing OCR is silent
-  in auto mode; blocks in require mode with install instructions.
+  in auto mode; blocks in require mode with setup instructions.
 - **Step 2.5:** New pipeline step runs OCR between subagent launch and intent
   validation. JSON output parsed, severity-mapped, labeled `[OCR]`, and
   deduplicated against Temper findings. Cross-validated findings are labeled
