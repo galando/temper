@@ -6,7 +6,7 @@
 # Temper's own fence ends at `git commit` — it never pushes, merges, or deploys. Past
 # that fence, the same hook mechanism that blocks a red-gate commit can hold a release
 # until a NAMED human authorization exists. This is the deploy-stage counterpart to the
-# build-stage guardrails in scripts/hooks/: a guardrail allows or blocks with no human
+# build-stage guardrails Temper ships: a guardrail allows or blocks with no human
 # involved; an approval gate asks — and "asks" deterministically, by refusing until the
 # approval artifact is present.
 #
@@ -16,7 +16,7 @@
 # can commit). A block explains itself: the reason and the route to approval go to
 # stderr, which the agent sees and relays.
 #
-# DEGRADATION CONTRACT (same as scripts/hooks/*.sh):
+# DEGRADATION CONTRACT (the same contract Temper's own guardrail scripts keep):
 #   - A production deploy command with no release authorization => exit 2 (BLOCK —
 #     the one fail-closed path)
 #   - Anything else, including internal errors                  => exit 0 (fail-open)

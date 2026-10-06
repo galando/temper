@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # check-mod-calls.sh: the Temper mod's `$` surface is a reviewed list, enforced here.
 #
-# Runs `claude plugin validate` on the manifest, takes the `calls:` line it prints for
-# hooks/temper-mod/register.tsx, and FAILS when
+# Runs `claude plugin validate` on the manifest, takes the `calls:` line it prints for the
+# hooks module, and FAILS when
 #   - any call is process.*, http.* or env.* (the mod never spawns, fetches or reads the
 #     environment: tests, lint, git and CLI calls are prompts to Claude), or
 #   - any call is not on the reviewed list below.
@@ -53,7 +53,8 @@ else
     echo "FAIL: claude plugin validate failed"
     exit 1
   }
-  LINE="$(printf '%s\n' "$OUT" | grep -E 'register\.tsx calls:' | head -1 || true)"
+  # Every calls: line counts, so a call in any hooks module the validator reports is checked.
+  LINE="$(printf '%s\n' "$OUT" | grep -E ' calls: \$\.' || true)"
   [[ -n "$LINE" ]] || { echo "$OUT"; echo "FAIL: no 'calls:' line for the mod in the validate output"; exit 1; }
 fi
 
@@ -87,18 +88,12 @@ while IFS= read -r call; do
   fi
 done <<< "$CALLS"
 
-# The surface modules (the game) run on the drawing thread and have no engine at all: any dollar
-# sign followed by a dot in one fails. CHECK_MOD_CLIENT_DIR lets the test script point at fixtures.
-CLIENT_DIR="${CHECK_MOD_CLIENT_DIR:-$REPO_ROOT/hooks/temper-mod/ui}"
-for f in "$CLIENT_DIR"/*-client.tsx; do
-  [[ -e "$f" ]] || continue
-  if grep -nE '(^|[^A-Za-z0-9_])\$\.' "$f" >/dev/null; then
-    echo "FAIL: $(basename "$f") makes a \$. call; a surface module has no engine (it posts to the hooks module instead)"
-    FAIL=1
-  fi
-done
+# The game's surface module has no engine at all: `$` is not defined there, so the mod's type check
+# (tsc -p tsconfig.mod.json, run in CI) fails on an engine call written as `$.`, and at run time a
+# surface module has no `$` to reach. This script reads only the validator's output and never opens
+# a file of the mod.
 
 if [[ $FAIL -eq 0 ]]; then
-  echo "OK: $(printf '%s\n' "$CALLS" | wc -l | tr -d ' ') calls, all on the reviewed list, none process/http/env; surface modules make no \$. call"
+  echo "OK: $(printf '%s\n' "$CALLS" | wc -l | tr -d ' ') calls, all on the reviewed list, none process/http/env"
 fi
 exit $FAIL

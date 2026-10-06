@@ -1,5 +1,6 @@
-// Test world: stands in for the engine beneath the plugin. Files live in a Map the
-// fs.* hooks answer from; fs.write records back into it. Not a test file.
+// Test world: the fake engine beneath the plugin's tests. This file is test only: it runs under
+// `claude plugin test` and is never loaded in a session. Files live in a Map the fs.* hooks answer
+// from; fs.write records back into it.
 import type { On } from 'claude-code'
 
 export type World = {
@@ -201,6 +202,10 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
   })
   on('config.list', () => ({ value: w.rows.map(r => ({ ...r, label: r.key, kind: 'choice' as const, provider: { plugin: 'temper', tier: 'user' as const } })) as never }))
   on('config.set', ($, e) => {
+    // The harness has no implementation of its own to pass a config write to (it says a test
+    // answers it here), so the world records the call and answers it. The mod itself never
+    // hooks config.set; it only calls it, on the person's own mode or enforcement command or their
+    // answer to the first run mode question.
     w.configSets.push({ key: e.key, value: e.value })
     return { value: e.value }
   })

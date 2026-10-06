@@ -26,6 +26,7 @@ import { REASON_HINT } from './ui/band'
 import type { GameButton } from './ui/band'
 import { REASON_KEY } from './ui/kit'
 import { CARD_BG, FG } from './ui/palette'
+import GameClient from './ui/game-client'
 import { renderQuestion } from './ui/question'
 import { spinnerProps } from './ui/spinner'
 
@@ -55,6 +56,8 @@ let gameBanner: { text: string; until: number } | null = null
 const GAME_KEYS_TEXT = 'The game is open. Press r to run, w to jump, s to duck, q or Esc to leave.'
 // The type of the counters in $.state key game (types/index.d.ts has the same shape).
 type GameCtl = { jumpCount: number; duckCount: number; startCount: number }
+// The props of the game module, read off its function (the module is the static import above).
+type GameProps = Parameters<typeof GameClient>[0]
 // After a game over the Run Button says Run again.
 let gameOver = false
 // Where the session draws (session.start says so); the game needs the terminal or the desktop app.
@@ -1212,18 +1215,18 @@ export const register: Register = (on, opts) => {
       )
     }
     const ui = await readUi($).catch(() => null)
-    // The Client is taken straight from the element table and called directly with its module path as fixed text
-    // (no JSX), so the plugin directory can read which file it loads.
-    const { Client, Box, Button } = $.ui.resolve(e)
+    const { Box, Button } = $.ui.resolve(e)
     const ctl = await readCtl($)
     const act = (fn: () => Promise<void>) => () => fn().catch(() => undefined)
+    // The game module is imported statically at the top of this file, so the file the pane loads
+    // stands in the module graph. The Client element is made here, in a plain statement outside the
+    // tree, on the element table itself, with the module path as fixed text: a reader that does not
+    // walk JSX still finds which file it loads. The frame clock runs in that module.
+    const props: GameProps = { ...ctl, seed: seedFor(ctl.startCount), best: gameBest, banner: bannerFor(ui?.view ?? null), compact: e.props.placement === 'inline' }
+    const game = $.ui.resolve(e).Client({ key: 'game', module: './ui/game-client.tsx', props })
     return (
       <Box flexDirection="column" backgroundColor={CARD_BG}>
-        {Client({
-          key: 'game',
-          module: './ui/game-client.tsx',
-          props: { ...ctl, seed: seedFor(ctl.startCount), best: gameBest, banner: bannerFor(ui?.view ?? null), compact: e.props.placement === 'inline' },
-        })}
+        {game}
         <Box flexDirection="row" columnGap={1} flexWrap="wrap">
           <Button key="game-jump" label="w  Jump" hotkey="w" variant="primary" onPress={act(() => pressGame($, 'jumpCount'))} />
           <Button key="game-duck" label="s  Duck" hotkey="s" variant="primary" onPress={act(() => pressGame($, 'duckCount'))} />
