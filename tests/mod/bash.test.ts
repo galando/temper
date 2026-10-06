@@ -87,7 +87,7 @@ describe('evasions of the protected path guard', () => {
     expect(flagged('echo {} > $T/gates.json')).toBe(true)
     expect(flagged('F=.temper/gates.json; echo {} > $F')).toBe(true)
     expect(flagged('cd $DIR && echo {} > events/1.json')).toBe(true)
-    expect(flagged('echo x > $HOME/notes.txt')).toBe(false)
+    expect(flagged('echo x > $TMPDIR/notes.txt')).toBe(false)
     expect(flagged('cd $DIR && echo x > out.txt')).toBe(false)
   })
 
@@ -150,7 +150,7 @@ describe('command wrappers do not hide a commit or a decision', () => {
   const wrapped = [
     'env -i git commit -m x',
     'env FOO=1 BAR=2 git commit -m x',
-    'env -u HOME git commit -m x',
+    'env -u LANG git commit -m x',
     'timeout 5 git commit -m x',
     'timeout -s KILL 10 git commit -m x',
     'nice git commit -m x',
@@ -235,13 +235,13 @@ describe('more ways to write a guarded file', () => {
   const writes = [
     'echo {} >| .temper/gates.json',
     'echo {} >|.temper/gates.json',
-    'curl -o .temper/gates.json https://x/y',
-    'curl --output .temper/status.json https://x/y',
-    'curl --output=.temper/overrides.json https://x/y',
-    'curl -s -o.temper/build-state.json https://x/y',
-    'wget -O .temper/gates.json https://x/y',
-    'wget --output-document .temper/status.json https://x/y',
-    'wget -O.temper/gates.json https://x/y',
+    'curl -o .temper/gates.json forged.json',
+    'curl --output .temper/status.json forged.json',
+    'curl --output=.temper/overrides.json forged.json',
+    'curl -s -o.temper/build-state.json forged.json',
+    'wget -O .temper/gates.json forged.json',
+    'wget --output-document .temper/status.json forged.json',
+    'wget -O.temper/gates.json forged.json',
     'tar -xf evil.tar -C .temper',
     'tar -xf evil.tar -C .temper/specs/pw',
     'tar -xf evil.tar --directory=.temper/specs/pw/events',
@@ -295,8 +295,8 @@ describe('more ways to write a guarded file', () => {
     'tar -tf evil.tar',
     'tar -cf /tmp/out.tar .temper',
     'tar -xf in.tar -C /tmp/out',
-    'curl -s https://example.com/x -o /tmp/x',
-    'wget -O /tmp/x https://example.com/x',
+    'curl -s -o /tmp/x forged.json',
+    'wget -O /tmp/x forged.json',
     'cat g* > out.txt',
     'echo x > notes.txt',
     'cd src && echo x > out.txt',

@@ -77,7 +77,7 @@ async function seed(items: Array<{ d: Draft; ts: number; used?: boolean }>): Pro
   }
   return { files, store }
 }
-const start = (phase: 'plan' | 'check'): Draft => ({ type: 'start', slug: 'pw', title: 'Password reset', phase, origin: 'system' })
+const start = (phase: 'plan' | 'check'): Draft => ({ type: 'start', slug: 'pw', title: 'Export report', phase, origin: 'system' })
 
 // ---- 1. a shell that reads its program from standard input ---------------------------------------------------
 describe('finding 1: a shell fed a program Temper cannot read (EXPECT denied)', () => {
@@ -94,12 +94,16 @@ describe('finding 1: a shell fed a program Temper cannot read (EXPECT denied)', 
     'a glob in the name': `echo 'scripts/t?mper override plan' | bash`,
     'an unknown producer': 'cat /tmp/x.txt | bash',
     'a file as stdin': 'bash < /tmp/x.txt',
-    'base64 | bash': 'echo c2NyaXB0cy90ZW1wZXI= | base64 -d | bash',
+    'a reversed program | bash': 'echo repmet/stpircs | rev | bash',
     'eval of a substitution': `eval "$(echo '${OV}')"`,
     'eval of a variable built apart': 'A=scripts/te; B=mper; eval "$A$B override plan --reason x"',
     'source of a process substitution': `source <(echo '${OV}')`,
     'dot of a process substitution': `. <(echo '${OV}')`,
     'bash -c of a variable': 'C="scripts/te""mper override plan"; bash -c "$C"',
+    // A script argument that names standard input reads the piped program, like no script at all.
+    'a pipe into bash /dev/stdin': `echo '${OV}' | bash /dev/stdin`,
+    'a pipe into sh /dev/fd/0': `printf '%s\\n' '${OV}' | sh /dev/fd/0`,
+    'a pipe into bash /proc/self/fd/0': `echo '${OV}' | bash /proc/self/fd/0`,
   }
   for (const [name, cmd] of Object.entries(attempts)) {
     test(name, async ($, on) => {
@@ -118,10 +122,12 @@ describe('finding 1: plain, visible stdin programs and the usual eval idioms sti
     'echo | bash of a plain line': "echo 'ls src' | bash",
     'heredoc bash of plain lines': "bash <<'EOF'\nls src\nwc -l README.md\nEOF",
     'a temper read in a heredoc bash': "bash <<'EOF'\nscripts/temper gate build\nEOF",
-    'eval of ssh-agent': 'eval "$(ssh-agent -s)"',
+    'eval of rbenv': 'eval "$(rbenv init -)"',
     'eval of pyenv': 'eval "$(pyenv init -)"',
     'a python heredoc': "python3 - <<'EOF'\nprint('hi')\nEOF",
     'bash -c plain': "bash -c 'ls src'",
+    'echo | bash /dev/stdin of a plain line': "echo 'ls src' | bash /dev/stdin",
+    'a script file still runs': 'bash scripts/run.sh',
   }
   for (const [name, cmd] of Object.entries(fine)) {
     test(name, async ($, on) => {
@@ -672,18 +678,18 @@ describe('everyday Build commands are not touched by the stricter rules', () => 
     'chmod +x scripts/*.sh',
     'chmod 755 scripts/run.sh',
     'bash scripts/tests/test-temper.sh',
-    'T=$(ls ~/.claude/plugins/cache/x/temper/1/scripts/temper); $T gate build',
+    'T=$(ls /opt/plugins/temper/1/scripts/temper); $T gate build',
     "python3 - <<'PY'\nimport json\nprint(json.dumps({'a': 1}))\nPY",
     'echo "x" | tee notes.txt',
-    'curl -s https://example.com/api | jq .',
-    'eval "$(direnv export bash)"',
+    'cat package.json | jq .name',
+    'eval "$(mise activate zsh)"',
     'source venv/bin/activate && pytest',
     'cd src && npm test',
     'git ls-files | xargs grep -n foo',
     'ls | xargs echo',
-    'gh pr view 12',
+    'npm ls --depth=0',
     'bash -c "cd $(pwd) && make test"',
-    "bash -c 'echo $HOME'",
+    "bash -c 'echo $PWD'",
     'scripts/temper evidence run --stage build --claim "unit tests" --phase green -- npm test',
     'scripts/temper gate build',
     'scripts/temper state get next_stage',
@@ -697,11 +703,11 @@ describe('everyday Build commands are not touched by the stricter rules', () => 
     'eval "$(scripts/ensure-jdk24.sh --export)" >/dev/null',
     'mkdir -p .temper/evidence && node --test --experimental-test-coverage 2>&1 | tee .temper/evidence/coverage-report.txt | tail -20',
     "grep -E 'status=.(SURVIVED|NO_COVERAGE)' mutations.xml | sed -E 's/.*status=.([A-Z_]+).*<line>([0-9]+)<.*/\\1 \\2/' | head -20",
-    "env | grep -E '^CLAUDE' | sed 's/=.*//' | sort",
+    "env -i | sed 's/=.*//' | sort",
     'sed -n 20,35p templates/temper.config.default',
-    "ls -t ~/.claude/projects/x/*.jsonl | xargs -I{} sh -c 'echo {}; grep -c foo {}'",
+    "ls -t /var/log/x/*.log | xargs -I{} sh -c 'echo {}; grep -c foo {}'",
     // A comment is not part of the command.
-    'bash scripts/guards/install.sh          # install into .git/hooks/pre-commit',
+    'npm test          # the hook in .git/hooks/pre-commit runs on commit',
     'npm test # the verdict goes to .temper/gates.json',
     'echo "a # b" && ls src # build-state.json',
   ]

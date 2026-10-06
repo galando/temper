@@ -1,18 +1,18 @@
 // Test world: the fake engine beneath the plugin's tests. This file is test only: it runs under
 // `claude plugin test` and is never loaded in a session. Files live in a Map the fs.* hooks answer
-// from; fs.write records back into it.
+// from; a file write records back into it.
 import type { On } from 'claude-code'
 
 export type World = {
   files: Map<string, string>
   writes: string[]
-  // Every real `$.fs.write` the plugin made (the mod makes none: it keeps its records in the store).
+  // Every real file write the plugin made (the mod makes none: it keeps its records in the store).
   fsWrites: string[]
   reads: string[]
   store: Record<string, unknown>
   // Project relative files that exist but cannot be read (chmod 000): a read answers EACCES, not ENOENT.
   unreadable?: Set<string>
-  // True: every write the plugin makes (`$.fs.write`) fails (a read only folder).
+  // True: every file write the plugin makes fails (a read only folder).
   failWrites?: boolean
   // Prompts the mod submitted to Claude, in order.
   prompts: string[]

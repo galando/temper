@@ -289,7 +289,7 @@ const ALIAS_DENY =
   'Next: run scripts/temper by its own path. The user decides with the buttons or /temper:temper.'
 
 const HIDDEN_DENY =
-  'Temper: a shell, eval or source is given a program that this command does not show (a pipe from another command, a file on stdin, a substitution, or a word split by quotes, backslashes, braces or globs). ' +
+  'Temper: a shell, or a builtin that runs text as commands (source and the like), is given a program that this command does not show (a pipe from another command, a file on stdin, a substitution, or a word split by quotes, backslashes, braces or globs). ' +
   'While a run is active only a program that is written out plainly passes. Next: run each command in its own Bash call, with the words written out.'
 
 const GUARDED_USE_DENY = (word: string): string =>

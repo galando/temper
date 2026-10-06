@@ -350,7 +350,7 @@ describe('reasons are quoted so nothing in them is read as shell', () => {
     "'; rm -rf / #",
     'line one\nline two',
     'a && b || c; d | e > f',
-    '$HOME ${PATH} $((1+1))',
+    '$PWD ${LANG} $((1+1))',
     "x' --id 9 '",
   ]
   for (const reason of reasons) {

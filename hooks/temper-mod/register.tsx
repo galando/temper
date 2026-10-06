@@ -111,8 +111,8 @@ async function keepText($: Api, full: string, text: string): Promise<void> {
   await $.store.set(VF_DIRS, dirs)
 }
 
-// `$` is spelled only in this file, as `$.noun.method(...)` at each call site, so the
-// adapter and the pure core stay free of it.
+// `$` is spelled only in this file, at each call site, so the adapter and the pure core
+// stay free of it.
 function makeIo($: Api): Io {
   // A relative path means the project the session started in, even after Claude ran `cd` in a Bash
   // call: without this the files of the run are not found and the band goes away.

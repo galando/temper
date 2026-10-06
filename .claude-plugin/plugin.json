@@ -58,43 +58,50 @@
       "type": "string",
       "title": "Temper UI mode",
       "description": "How much Temper draws: full, minimal or off. Denials and slash subcommands work in every mode.",
-      "default": "full"
+      "default": "full",
+      "sensitive": false
     },
     "enforcement": {
       "type": "string",
       "title": "Temper enforcement",
       "description": "on refuses out-of-phase writes and early commits; off keeps the UI only. Values: on or off.",
-      "default": "on"
+      "default": "on",
+      "sensitive": false
     },
     "fixMaxLoops": {
       "type": "string",
       "title": "Fix loop limit",
       "description": "Failed Check to Fix loops before Temper stops and offers re-plan, override or hand over.",
-      "default": "3"
+      "default": "3",
+      "sensitive": false
     },
     "prAttribution": {
       "type": "string",
       "title": "Pull request attribution",
-      "description": "on adds one Temper line to generated pull request descriptions. Values: on or off.",
-      "default": "on"
+      "description": "on adds one Temper line to Claude Code's attribution text for pull requests. Values: on or off.",
+      "default": "on",
+      "sensitive": false
     },
     "phaseModels": {
       "type": "string",
       "title": "Per-phase models",
       "description": "Optional. Comma separated phase=model pairs such as build=sonnet. Empty means no change.",
-      "default": ""
+      "default": "",
+      "sensitive": false
     },
     "reviewerModel": {
       "type": "string",
       "title": "Reviewer model",
       "description": "Optional model for the Temper review agent. Empty means no change.",
-      "default": ""
+      "default": "",
+      "sensitive": false
     },
     "game": {
       "type": "string",
       "title": "Game",
-      "description": "Temper Run game. on offers it while Claude works (key 8) and answers /temper:temper play. command answers the command only and offers nothing. off hides it all. Off also reads false, no, 0, disabled and none. On also reads true, yes and 1. Any other value is on.",
-      "default": "on"
+      "description": "Temper Run game. on offers it while Claude works (press 8) and answers /temper:temper play. command answers the command only and offers nothing. off hides it all. Off also reads false, no, 0, disabled and none. On also reads true, yes and 1. Any other value is on.",
+      "default": "on",
+      "sensitive": false
     }
   }
 }

@@ -52,7 +52,7 @@ export type Io = {
 export type PendingMove = { id: string; draft: Draft }
 
 // How the mod's picture of the run compares with the CLI state (build-state.json). The CLI is the truth
-// for WHERE the run is: `state.phase` is always derived from it. Events only say WHO decided.
+// for WHERE the run is: the phase of the folded state is always derived from it. Events only say WHO decided.
 export type Sync = {
   // The phase the CLI is at; null when the mod cannot tell.
   cli: Phase | 'done' | null
@@ -208,7 +208,7 @@ async function isOwn(io: Io, id: string, text: string): Promise<boolean> {
 }
 
 // Event names are `{ts}-{session}-{seq}.json`. This module has no session id call, so a
-// random token per load stands in: two loads never share a name.
+// random id per load stands in: two loads never share a name.
 const SESSION = (Math.random().toString(16).slice(2) + '00000000').slice(0, 8)
 // The phase an event decided, so a CLI call is matched only to a decision made for it.
 function decisionOf(ev: TemperEvent, kind: DecisionKind): HumanDecision {
