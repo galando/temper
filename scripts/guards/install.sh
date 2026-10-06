@@ -463,6 +463,19 @@ _call_state() { # _call_state <hook file>: prints 'calls' when the file holds th
   ' "$1" 2>/dev/null || true
 }
 
+_is_call_only() { # _is_call_only <file>: the file holds a #! line and the call line and nothing else
+                  # (blank lines aside), as the hint for a hook from an older Temper makes it, so git
+                  # running it runs only the kept hook
+  [[ -f "$1" ]] || return 1
+  CALL_LINE="$CALL_LINE" awk '
+    NR == 1 && /^#!/ { next }
+    /^[ \t]*$/ { next }
+    $0 == ENVIRON["CALL_LINE"] { n++; next }
+    { bad = 1 }
+    END { exit (n == 1 && !bad) ? 0 : 1 }
+  ' "$1" 2>/dev/null
+}
+
 HOST_HUSKY=0
 _hint() { # _hint <hook file>: the one-line hint for adding the call line by hand
   if _is_temper_hook "$1"; then
@@ -547,7 +560,7 @@ _older_value() { # _older_value <core.hooksPath>: 0 when it is a value an older 
   [[ "$v" == */.git/hooks-temper || "$v" == */.git/temper-git-hooks ]] && return 0
   if [[ "$v" == */"$GATE_NAME" ]]; then
     [[ -e "$v" ]] || return 0
-    [[ -d "$v" ]] && _is_temper_hook "$v/pre-commit" && return 0
+    [[ -d "$v" ]] && { _is_temper_hook "$v/pre-commit" || _is_call_only "$v/pre-commit"; } && return 0
   fi
   return 1
 }
@@ -559,7 +572,8 @@ _older_folder() { # _older_folder <older core.hooksPath>: the folder git runs ho
   if [[ "$v" == .git/* ]]; then printf '%s' "$COMMON_REAL/${v#.git/}"; else printf '%s' "$v"; fi
 }
 _scan() { # _scan <folder>: sets RUNNING, the hooks git runs from that folder (executable files
-          # with git's hook names, other than a pre-commit from an older Temper), and SET_ASIDE,
+          # with git's hook names, other than a pre-commit from an older Temper or one that only
+          # runs the kept hook), and SET_ASIDE,
           # one path per line, the pre-commit.bak.<timestamp> files an older installer made of a
           # hook of yours. Git does not run those, but moved back into the folder it would. The
           # files are only read.
@@ -568,7 +582,7 @@ _scan() { # _scan <folder>: sets RUNNING, the hooks git runs from that folder (e
   SET_ASIDE=""
   for name in $GIT_HOOK_NAMES; do
     [[ -f "$1/$name" && -x "$1/$name" ]] || continue
-    [[ "$name" == pre-commit ]] && _is_temper_hook "$1/$name" && continue
+    [[ "$name" == pre-commit ]] && { _is_temper_hook "$1/$name" || _is_call_only "$1/$name"; } && continue
     RUNNING="${RUNNING:+$RUNNING }$name"
   done
   for f in "$1"/pre-commit.bak.*; do
@@ -580,11 +594,16 @@ _scan() { # _scan <folder>: sets RUNNING, the hooks git runs from that folder (e
 }
 _scan_reason() { # _scan_reason <folder>: sets REASON, the FAIL reason for what _scan found there,
                  # and adds a warning for each hook an older installer set aside
-  local names="" f
+  local names="" f how
+  how="move it back to $1/pre-commit and add the line between the BEGIN and END lines below to it"
+  if [[ " $RUNNING " == *" pre-commit "* ]]; then
+    # A hook of yours is there now: moving the old one back would write over it.
+    how="add its lines to $1/pre-commit, a hook git runs now (do not move it over that file), and add the line between the BEGIN and END lines below to that file"
+  fi
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
     names="${names:+$names }${f##*/}"
-    WARNINGS="${WARNINGS}Warning: $f is a pre-commit hook that an older Temper installer set aside, and git does not run it. To run it again, move it back to $1/pre-commit and add the line between the BEGIN and END lines below to it.
+    WARNINGS="${WARNINGS}Warning: $f is a pre-commit hook that an older Temper installer set aside, and git does not run it. To run it again, $how.
 "
   done <<< "$SET_ASIDE"
   if [[ -n "$RUNNING" ]]; then
@@ -630,6 +649,8 @@ if [[ -z "$EXISTING_HOOKS_PATH" ]]; then
   _installed
   if _is_temper_hook "$HOST_PRE"; then
     echo "Note: git no longer runs $HOST_PRE, a hook from an older Temper; you can delete it." >&2
+  elif _is_call_only "$HOST_PRE"; then
+    echo "Note: git no longer runs $HOST_PRE, which only ran the kept hook; you can delete it." >&2
   fi
   _uninstall_line
   exit 0

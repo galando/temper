@@ -150,7 +150,11 @@ installer writes the current path into the kept hook. A `pre-commit` from an old
 that git still runs (next to other hooks in `.git/hooks`, in Temper's older folder, or in
 another tool's folder, where Temper 9.6.4 and 9.6.5 wrote it) is not written: the refusal
 warns that git runs it in place of the kept hook, shows its stale path, and the hint says
-to replace all of its lines with `#!/bin/sh` and the line below.
+to replace all of its lines with `#!/bin/sh` and the line below. A `pre-commit` that holds only
+`#!/bin/sh` and that line runs nothing but the kept hook, so it does not count as a hook that would
+stop running: once the other hooks next to it are gone, the next run points `core.hooksPath` at
+`temper-gate`. When a hook an older installer set aside sits next to a `pre-commit` of yours that
+git runs, the warning says to add its lines to that file, not to move it over it.
 
 `core.hooksPath` holds an absolute path, so every worktree finds the folder. Moving or
 renaming the repository, or a folder above it, leaves it naming the old place, and git then

@@ -9,15 +9,15 @@ cat >> .claude/temper.config <<'EOF'
 protect:
   paths: ["**/frozen/**"]
 EOF
-assert_exit "protected-paths finds its CLI next to it, whatever CLAUDE_PLUGIN_ROOT says" 2 \
-  bash -c "echo '{\"tool_input\": {\"file_path\": \"src/frozen/a.ts\"}}' | CLAUDE_PLUGIN_ROOT=/nonexistent CLAUDE_PROJECT_DIR='$WORKDIR' bash '$REPO_ROOT/scripts/guards/block-protected-paths.sh'"
+assert_exit "protected-paths finds its CLI next to it, with an empty environment" 2 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"src/frozen/a.ts\"}}' | env -i HOME='$HOME' PATH='$PATH' CLAUDE_PROJECT_DIR='$WORKDIR' bash '$REPO_ROOT/scripts/guards/block-protected-paths.sh'"
 UG="$REPO_ROOT/scripts/guards/block-uncommitted-gate.sh"
 echo 'x' > gate-file.txt
 git add gate-file.txt >/dev/null 2>&1
-assert_exit "uncommitted-gate: a git commit on a red gate is BLOCKED, with CLAUDE_PLUGIN_ROOT pointing nowhere" 2 \
-  bash -c "echo '{\"tool_input\": {\"command\": \"git commit -m x\"}}' | CLAUDE_PLUGIN_ROOT=/nonexistent bash '$UG'"
+assert_exit "uncommitted-gate: a git commit on a red gate is BLOCKED, with an empty environment" 2 \
+  bash -c "echo '{\"tool_input\": {\"command\": \"git commit -m x\"}}' | env -i HOME='$HOME' PATH='$PATH' bash '$UG'"
 assert_exit "uncommitted-gate: any other command passes" 0 \
-  bash -c "echo '{\"tool_input\": {\"command\": \"git status\"}}' | CLAUDE_PLUGIN_ROOT=/nonexistent bash '$UG'"
+  bash -c "echo '{\"tool_input\": {\"command\": \"git status\"}}' | env -i HOME='$HOME' PATH='$PATH' bash '$UG'"
 git rm -q --cached gate-file.txt >/dev/null 2>&1 || true
 rm -f gate-file.txt
 
@@ -1118,7 +1118,46 @@ assert_exit "git runs that pre-commit from the older folder: a commit on a red g
 _l_green "$L_OR"
 assert_exit "and a commit on a green gate lands" 0 git -C "$L_OR" commit -q -m green
 assert_eq "exactly that one commit landed" "$((L_N + 1))" "$(_l_commits "$L_OR")"
+# With the pre-push gone, that pre-commit only runs the kept hook, so the folder is Temper's older
+# folder again: core.hooksPath is pointed at the temper-gate folder, and nothing there is written.
+rm -f "$L_OP/pre-push"
+L_SUM="$(cksum < "$L_OP/pre-commit")"
+OUT=$(cd "$L_OR" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "with only #!/bin/sh and the line left in the older folder, core.hooksPath is pointed at the temper-gate folder, with the note" "0|yes|$L_OR/.git/temper-gate|yes" \
+  "$L_RC|$(_l_line "$OUT" "Note: core.hooksPath held Temper's older folder ($L_OP); it now points at $L_OR/.git/temper-gate.")|$(_l_path "$L_OR")|$([[ "$(cksum < "$L_OP/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)"
 rm -rf "$L_OR" "$WORKDIR/l1-old-place"
+
+# A pre-commit that only runs the kept hook (#!/bin/sh and the line, as the hint makes of an older
+# Temper hook) is not a hook that would stop running. Next to a commit-msg in the default folder it
+# calls the Temper hook and core.hooksPath stays unset; once the commit-msg is gone, core.hooksPath
+# is pointed at the temper-gate folder. A pre-commit with a line of its own still counts.
+L_CO="$WORKDIR/l1-call-only"
+_l_repo "$L_CO"
+mkdir -p "$L_CO/.git/default-gate"
+printf '#!/bin/sh\n%s\n' "$L_CALL" > "$L_CO/.git/default-gate/pre-commit"
+printf '#!/bin/sh\nexit 0\n' > "$L_CO/.git/default-gate/commit-msg"
+chmod +x "$L_CO/.git/default-gate/pre-commit" "$L_CO/.git/default-gate/commit-msg"
+OUT=$(cd "$L_CO" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
+assert_eq "a pre-commit of #!/bin/sh and the line next to a commit-msg in the default folder calls the Temper hook, and core.hooksPath stays unset" "0|yes|none" \
+  "$L_RC|$(_l_line "$OUT" "The pre-commit hook $L_CO/.git/default-gate/pre-commit calls the Temper hook ($L_CO/.git/temper-gate/pre-commit), which is now current, so nothing else was written.")|$(_l_path "$L_CO")"
+rm -f "$L_CO/.git/default-gate/commit-msg"
+OUT=$(cd "$L_CO" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
+assert_eq "with the commit-msg gone, core.hooksPath is pointed at the temper-gate folder, and a note says the pre-commit only ran the kept hook" "0|$L_CO/.git/temper-gate|yes|yes" \
+  "$L_RC|$(_l_path "$L_CO")|$(_l_dg_kept "$L_CO")|$(_l_line "$OUT" "Note: git no longer runs $L_CO/.git/default-gate/pre-commit, which only ran the kept hook; you can delete it.")"
+git -C "$L_CO" config --unset core.hooksPath
+printf '#!/bin/sh\necho mine\n%s\n' "$L_CALL" > "$L_CO/.git/default-gate/pre-commit"
+OUT=$(cd "$L_CO" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
+assert_eq "a pre-commit with a line of its own next to the line still counts: it calls the Temper hook, and core.hooksPath stays unset" "0|yes|none" \
+  "$L_RC|$(_l_line "$OUT" "The pre-commit hook $L_CO/.git/default-gate/pre-commit calls the Temper hook ($L_CO/.git/temper-gate/pre-commit), which is now current, so nothing else was written.")|$(_l_path "$L_CO")"
+# A hook an older installer set aside, next to a pre-commit of the user's that git runs: the warning
+# says to add its lines to that file, never to move it over it.
+printf '#!/bin/sh\necho mine\n' > "$L_CO/.git/default-gate/pre-commit"
+printf '#!/bin/sh\necho older-mine\n' > "$L_CO/.git/default-gate/pre-commit.bak.20260101000000"
+chmod +x "$L_CO/.git/default-gate/pre-commit" "$L_CO/.git/default-gate/pre-commit.bak.20260101000000"
+OUT=$(cd "$L_CO" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
+assert_eq "next to a pre-commit of the user's, the warning for a set-aside hook says to add its lines to it, not to move it over it" "1|yes|no|none" \
+  "$L_RC|$(_l_line "$OUT" "Warning: $L_CO/.git/default-gate/pre-commit.bak.20260101000000 is a pre-commit hook that an older Temper installer set aside, and git does not run it. To run it again, add its lines to $L_CO/.git/default-gate/pre-commit, a hook git runs now (do not move it over that file), and add the line between the BEGIN and END lines below to that file.")|$(_l_has "$OUT" "move it back to")|$(_l_path "$L_CO")"
+rm -rf "$L_CO"
 
 # The commit hooks with the real CLI: an active run with red gates and a symlink on a run-state
 # path, or a link in the spec folder, never opens the gate.

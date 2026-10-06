@@ -1012,10 +1012,10 @@ assert_eq "TEMPER_DIR is ignored: the row lands in the project's own .temper" "1
 setup
 mkdir -p "$WORKDIR/bin"
 ln -sf "$TEMPER" "$WORKDIR/bin/temper"
-assert_eq "a CLI reached through a symlink resolves a model from its own folder, with no CLAUDE_PLUGIN_ROOT" "$("$TEMPER" model plan)" \
-  "$(env -u CLAUDE_PLUGIN_ROOT "$WORKDIR/bin/temper" model plan)"
-assert_exit "a CLI reached through a symlink loads acceptance.py by its full path, with no CLAUDE_PLUGIN_ROOT" 0 \
-  env -u CLAUDE_PLUGIN_ROOT "$WORKDIR/bin/temper" gate plan
+assert_eq "a CLI reached through a symlink resolves a model from its own folder, with an empty environment" "$("$TEMPER" model plan)" \
+  "$(env -i HOME="$HOME" PATH="$PATH" "$WORKDIR/bin/temper" model plan)"
+assert_exit "a CLI reached through a symlink loads acceptance.py by its full path, with an empty environment" 0 \
+  env -i HOME="$HOME" PATH="$PATH" "$WORKDIR/bin/temper" gate plan
 assert_eq "the CLI and its Python helpers list no folder by wildcard and load no folder onto sys.path" "0" \
   "$(cat "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/pack-discover.py" | grep -cE 'glob\.glob|^import glob|sys\.path\.insert|TEMPER_DIR:-')"
 
@@ -1030,7 +1030,7 @@ cp -R "$REPO_ROOT/agents" "$CLI_PLUGIN/agents"
 ln -sf ../cli-plugin/scripts/temper "$WORKDIR/bin/rel-temper"
 ln -sf rel-temper "$WORKDIR/bin/chained-temper"
 assert_eq "a CLI reached through a chain of relative symlinks finds its own plugin folder" "$("$TEMPER" model plan)" \
-  "$(env -u CLAUDE_PLUGIN_ROOT "$WORKDIR/bin/chained-temper" model plan)"
-assert_eq "a CLAUDE_PLUGIN_ROOT naming another folder is ignored by the CLI" "$("$TEMPER" model plan)" \
-  "$(CLAUDE_PLUGIN_ROOT=/nonexistent "$WORKDIR/bin/chained-temper" model plan)"
-assert_eq "the CLI never reads CLAUDE_PLUGIN_ROOT" "0" "$(grep -c 'CLAUDE_PLUGIN_ROOT' "$TEMPER")"
+  "$(env -i HOME="$HOME" PATH="$PATH" "$WORKDIR/bin/chained-temper" model plan)"
+# No value of the plugin root variable can move them: the CLI and the guard scripts never name it.
+assert_eq "the CLI and the guard scripts never read the plugin root variable" "0" \
+  "$(cat "$TEMPER" "$REPO_ROOT"/scripts/guards/*.sh | grep -c 'CLAUDE_PLUGIN_ROOT')"

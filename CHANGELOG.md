@@ -56,9 +56,13 @@ above the 256 KB the directory reads. Its cases now live in four files of 60 to 
 - When git still runs a `pre-commit` from an older Temper (next to other hooks in `.git/hooks`, in
   Temper's older folder, or in a team folder where 9.6.4 and 9.6.5 wrote it), the installer does not
   write it. Its refusal warns that git runs that hook in place of the kept one, shows the stale plugin
-  path it carries, and the hint says to replace all of its lines with `#!/bin/sh` and the line.
+  path it carries, and the hint says to replace all of its lines with `#!/bin/sh` and the line. A
+  `pre-commit` that holds only those two lines does not count as a hook that would stop running, so
+  once the other hooks next to it are gone, the next run points `core.hooksPath` at `temper-gate`.
 - A hook an older installer set aside as `pre-commit.bak.<timestamp>` is named on its own, not among
-  the hooks git would stop running, since git does not run it.
+  the hooks git would stop running, since git does not run it. When a `pre-commit` of yours that git
+  runs sits next to it, the warning says to add its lines to that file instead of moving it back over
+  it.
 - `core.hooksPath` holds an absolute path, so every worktree finds the folder. Moving or renaming the
   repository leaves it naming the old place, and git runs no pre-commit hook until the installer
   runs again; the next `/temper` checks the hook and runs it, which points the setting at the new
