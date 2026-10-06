@@ -12,7 +12,10 @@
 #   Other                 -> "Discuss"                 (key 4)
 # A new option in commands/temper.md is added to the table below, and to the action test's table.
 set -uo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# The plugin folder: this script sits in its scripts folder, so strip that literal suffix.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${HERE%/scripts}"
+[[ "$ROOT" != "$HERE" ]] || { echo "FAIL: cannot find the plugin folder from $HERE"; exit 1; }
 MD="$ROOT/commands/temper.md"
 
 # option in commands/temper.md | label in the action table

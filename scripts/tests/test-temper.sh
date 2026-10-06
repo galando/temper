@@ -6,7 +6,10 @@
 # Temper's tooling). Runs entirely in a throwaway tmp dir; never touches the repo.
 set -uo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# The repo root: this script's folder with the literal suffix /scripts/tests removed.
+TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${TESTS_DIR%/scripts/tests}"
+[[ "$REPO_ROOT" != "$TESTS_DIR" && -x "$REPO_ROOT/scripts/temper" ]] || { echo "FAIL: cannot find the repo root from $TESTS_DIR"; exit 1; }
 TEMPER="$REPO_ROOT/scripts/temper"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
@@ -39,7 +42,7 @@ assert_exit() { # assert_exit <name> <expected-code> <cmd...>
 }
 
 setup() {
-  cd "$WORKDIR"
+  cd "$WORKDIR" || exit 1   # never run the deletes below anywhere but the throwaway folder
   rm -rf .temper .claude
   mkdir -p .claude .temper/specs/demo
   git init -q . 2>/dev/null || true
@@ -196,8 +199,8 @@ assert_exit "evidence resolve refuses to resolve the same finding twice" 1 "$TEM
 "$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 assert_exit "review gate PASSes once the only blocking finding is resolved" 0 "$TEMPER" gate review
 assert_eq "the resolved row is still in the ledger" "3" "$("$TEMPER" evidence list --stage review --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
-assert_eq "evidence list shows the id and the resolver" "yes" "$("$TEMPER" evidence list --stage review | grep -q '#1 .*\[resolved: abc123\]' && echo yes || echo no)"
-assert_eq "the gate detail names the resolved count" "yes" "$("$TEMPER" gate review | grep -q '1 resolved in this run' && echo yes || echo no)"
+assert_eq "evidence list shows the id and the resolver" "yes" "$("$TEMPER" evidence list --stage review | grep '#1 .*\[resolved: abc123\]' >/dev/null && echo yes || echo no)"
+assert_eq "the gate detail names the resolved count" "yes" "$("$TEMPER" gate review | grep '1 resolved in this run' >/dev/null && echo yes || echo no)"
 "$TEMPER" evidence add --stage review --claim "second injection" --severity critical >/dev/null
 assert_exit "a new unresolved critical finding FAILs the gate again" 1 "$TEMPER" gate review
 
@@ -247,7 +250,7 @@ assert_exit "commit gate FAILs with an unresolved review finding, no override" 1
 "$TEMPER" override review --reason "manually verified safe" >/dev/null
 "$TEMPER" gate intent >/dev/null; "$TEMPER" gate plan >/dev/null; "$TEMPER" gate build >/dev/null 2>&1 || true
 "$TEMPER" gate check >/dev/null 2>&1 || true
-assert_eq "override is recorded and visible in report" "yes" "$("$TEMPER" report | grep -q 'overridden' && echo yes || echo no)"
+assert_eq "override is recorded and visible in report" "yes" "$("$TEMPER" report | grep 'overridden' >/dev/null && echo yes || echo no)"
 
 # --- state: illegal transitions rejected, loop budget enforced ---
 setup
@@ -289,10 +292,10 @@ assert_eq "a fix-run loop back to fix from check also clears review" "0" "$(pyth
 
 # --- state get: bare call dumps the whole state; degrades cleanly on corrupted JSON ---
 setup
-assert_eq "state get (bare) dumps the whole state file" "yes" "$("$TEMPER" state get | grep -q '"spec": "demo"' && echo yes || echo no)"
+assert_eq "state get (bare) dumps the whole state file" "yes" "$("$TEMPER" state get | grep '"spec": "demo"' >/dev/null && echo yes || echo no)"
 echo '{"stage": "started", "spec": "demo"' > .temper/build-state.json
 assert_exit "state get (bare) does not crash on a corrupted state file" 0 "$TEMPER" state get
-assert_eq "state get (bare) falls back to {} on a corrupted state file" "yes" "$("$TEMPER" state get | grep -q '^{}$' && echo yes || echo no)"
+assert_eq "state get (bare) falls back to {} on a corrupted state file" "yes" "$("$TEMPER" state get | grep '^{}$' >/dev/null && echo yes || echo no)"
 
 # --- state advance: missing args fail cleanly instead of an unbound-variable crash ---
 setup
@@ -604,9 +607,9 @@ echo '{"prompt": "/temper:plan x"}' | bash "$MARKER"
 "$TEMPER" gate plan --spec-path .temper/specs/empty >/dev/null 2>&1 || true
 assert_exit "real gate FAIL verdict unblocks the stop" 0 bash "$VERIFY"
 
-# --- temper model: config override > agents/{stage}.md frontmatter, resolved in bash ---
+# --- temper model: config override > the stage brief's frontmatter, resolved in bash ---
 setup
-# Defaults come from the real agents/*.md frontmatter — no table in the CLI to drift.
+# Defaults come from the real stage briefs' frontmatter — no table in the CLI to drift.
 assert_eq "model plan defaults to agents/plan.md frontmatter" \
   "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); print; exit}' "$REPO_ROOT/agents/plan.md")" \
   "$("$TEMPER" model plan)"
@@ -1163,7 +1166,7 @@ assert_exit "protected-paths: a non-.sql file under migrations is not blocked" 0
   bash -c "echo '{\"tool_input\": {\"file_path\": \"db/migrations/notes.txt\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PP'"
 
 # install.sh: respect an existing core.hooksPath (husky/lefthook) — install where git
-# actually looks, not the ignored .git/hooks/ (which would make the gate inert).
+# actually looks, not the ignored .git/hooks folder (which would make the gate inert).
 setup
 git config user.email "test@example.com"
 git config user.name "test"
@@ -1660,7 +1663,7 @@ git config user.email "acc@example.com"; git config user.name "Acc Person"
 "$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 assert_exit "evidence accept needs --stage, --id and --reason" 1 "$TEMPER" evidence accept --stage review --id 1
 assert_exit "evidence accept with an empty --reason exits 1" 1 "$TEMPER" evidence accept --stage review --id 1 --reason ""
-assert_eq "an empty --reason writes nothing" "no" "$("$TEMPER" evidence list --stage review --json | grep -q '"accepted"' && echo yes || echo no)"
+assert_eq "an empty --reason writes nothing" "no" "$("$TEMPER" evidence list --stage review --json | grep '"accepted"' >/dev/null && echo yes || echo no)"
 assert_exit "evidence accept rejects an unknown id" 1 "$TEMPER" evidence accept --stage review --id 9 --reason "x"
 assert_exit "evidence accept rejects an unknown stage" 1 "$TEMPER" evidence accept --stage nope --id 1 --reason "x"
 assert_exit "review gate FAILs while the critical finding is open" 1 "$TEMPER" gate review
@@ -1669,9 +1672,9 @@ assert_exit "evidence accept refuses the same finding twice" 1 "$TEMPER" evidenc
 assert_eq "accepted row stores reason, author and ts" "legacy hash, tracked in TICKET-9|Acc Person <acc@example.com>|yes" \
   "$("$TEMPER" evidence list --stage review --json | python3 -c 'import json,sys; a=json.load(sys.stdin)[0]["accepted"]; print("%s|%s|%s" % (a["reason"], a["author"], "yes" if a.get("ts") else "no"))')"
 assert_eq "the accepted row is still in the ledger" "3" "$("$TEMPER" evidence list --stage review --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
-assert_eq "evidence list shows [accepted: reason]" "yes" "$("$TEMPER" evidence list --stage review | grep -q '#1 .*\[accepted: legacy hash, tracked in TICKET-9\]' && echo yes || echo no)"
+assert_eq "evidence list shows [accepted: reason]" "yes" "$("$TEMPER" evidence list --stage review | grep '#1 .*\[accepted: legacy hash, tracked in TICKET-9\]' >/dev/null && echo yes || echo no)"
 assert_exit "review gate PASSes once the only blocking finding is accepted" 0 "$TEMPER" gate review
-assert_eq "the gate detail names the accepted count" "yes" "$("$TEMPER" gate review | grep -q '1 accepted' && echo yes || echo no)"
+assert_eq "the gate detail names the accepted count" "yes" "$("$TEMPER" gate review | grep '1 accepted' >/dev/null && echo yes || echo no)"
 assert_exit "evidence resolve refuses an already accepted finding" 1 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc
 assert_exit "evidence accept refuses an already resolved finding" 1 bash -c "'$TEMPER' evidence resolve --stage review --id 2 --fixed-by abc >/dev/null && '$TEMPER' evidence accept --stage review --id 2 --reason r"
 
@@ -1910,6 +1913,305 @@ assert_eq "merge leaves review_completed false when nobody marked done" "False" 
 echo '{not json' > "$WORKDIR/pr/bad.json"
 assert_exit "merge rejects invalid JSON" 2 python3 "$PR" merge --feature demo-feature "$WORKDIR/pr/bad.json"
 assert_exit "merge rejects a missing file" 2 python3 "$PR" merge --feature demo-feature "$WORKDIR/pr/nope.json"
+
+# plan_review.py writes only a file of its own kind, and never inside the plugin's own folder.
+assert_exit "render refuses an output name that does not end in .html" 2 python3 "$PR" render "$PRD" -o "$PRD/review.txt"
+assert_eq "the refused render writes nothing" "no" "$([[ -e "$PRD/review.txt" ]] && echo yes || echo no)"
+assert_exit "render refuses an output inside the plugin's own folder" 2 \
+  python3 "$PR" render "$PRD" -o "$REPO_ROOT/no-such-folder/review.html"
+assert_exit "merge refuses an output name that does not end in .json" 2 \
+  python3 "$PR" merge --feature demo-feature -o "$WORKDIR/pr/merged.txt" "$WORKDIR/pr/export.json"
+assert_eq "the refused merge writes nothing" "no" "$([[ -e "$WORKDIR/pr/merged.txt" ]] && echo yes || echo no)"
+assert_exit "merge refuses an output inside the plugin's own folder" 2 \
+  python3 "$PR" merge --feature demo-feature -o "$REPO_ROOT/no-such-folder/review-comments.json" "$WORKDIR/pr/export.json"
+assert_exit "merge still prints to stdout with -o -" 0 python3 "$PR" merge --feature demo-feature -o - "$WORKDIR/pr/export.json"
+# A copy in a throwaway plugin folder finds that folder by the literal suffix of its own path and
+# refuses it too, including the default output of a spec folder that lies inside it.
+PR_PLUG="$WORKDIR/pr-plugin"
+mkdir -p "$PR_PLUG/scripts" "$PR_PLUG/templates" "$PR_PLUG/specs/x"
+cp "$PR" "$PR_PLUG/scripts/plan_review.py"
+cp "$REPO_ROOT/templates/plan-review.html" "$PR_PLUG/templates/plan-review.html"
+cp "$PRD/plan.md" "$PR_PLUG/specs/x/plan.md"
+assert_exit "render refuses the default output of a spec folder inside the plugin" 2 \
+  python3 "$PR_PLUG/scripts/plan_review.py" render "$PR_PLUG/specs/x"
+assert_eq "the refused default output writes nothing" "no" "$([[ -e "$PR_PLUG/specs/x/review.html" ]] && echo yes || echo no)"
+assert_exit "the copy renders to a file outside its own folder" 0 \
+  python3 "$PR_PLUG/scripts/plan_review.py" render "$PR_PLUG/specs/x" -o "$WORKDIR/pr/copy-review.html"
+
+# ======================================================================
+# v9.6.5: every write has a fixed target, and nothing writes inside the plugin's own folder
+# ======================================================================
+
+# --- evidence: a stage name off the fixed list never becomes a path ---
+setup
+mkdir -p "$WORKDIR/outside"
+echo '{"keep": true}' > "$WORKDIR/outside/keep.json"
+assert_exit "evidence add refuses a stage that is not on the list" 1 "$TEMPER" evidence add --stage ../../outside/x --claim c
+assert_eq "the refused add created no file" "no" "$([[ -e "$WORKDIR/outside/x.json" ]] && echo yes || echo no)"
+assert_exit "evidence clear refuses a stage that is not on the list" 1 "$TEMPER" evidence clear --stage ../../outside/keep
+rm -f RAN
+assert_exit "evidence run refuses a stage that is not on the list" 1 "$TEMPER" evidence run --stage bogus --claim c -- touch RAN
+assert_eq "evidence run checks the stage before it runs the command" "no" "$([[ -f RAN ]] && echo yes || echo no)"
+assert_exit "evidence list refuses a stage that is not on the list" 1 "$TEMPER" evidence list --stage ../../outside/keep
+assert_exit "evidence list needs a stage" 1 "$TEMPER" evidence list
+assert_exit "evidence resolve refuses a stage that is not on the list" 1 "$TEMPER" evidence resolve --stage ../../outside/keep --id 1 --fixed-by x
+assert_exit "evidence accept refuses a stage that is not on the list" 1 "$TEMPER" evidence accept --stage ../../outside/keep --id 1 --reason x
+assert_eq "clear, resolve and accept left the file they named untouched" '{"keep": true}' "$(cat "$WORKDIR/outside/keep.json")"
+for s in intent plan design build review check commit rca fix; do
+  assert_exit "evidence add accepts the listed stage '$s'" 0 "$TEMPER" evidence add --stage "$s" --claim "row for $s"
+done
+assert_eq "each listed stage writes its own ledger file" "9" \
+  "$(python3 -c 'import os; print(sum(os.path.isfile(".temper/evidence/%s.json" % s) for s in "intent plan design build review check commit rca fix".split()))')"
+
+# --- state init / state set: the spec slug is a plain name, never a path ---
+setup
+for bad in "../../outside" "Bad-Slug" "a..b" "a/b" ".hidden" ""; do
+  assert_exit "state init refuses the slug '$bad'" 1 "$TEMPER" state init "$bad"
+done
+assert_eq "a refused state init keeps the run's state" "demo" "$("$TEMPER" state get spec)"
+assert_exit "state init accepts a lowercase slug with digits, dots, dashes and underscores" 0 "$TEMPER" state init "fix-1.2_b" --command fix
+assert_exit "state set refuses a spec_path outside .temper/specs" 1 "$TEMPER" state set spec_path ../../outside
+assert_exit "state set refuses a spec_path whose slug is '..'" 1 "$TEMPER" state set spec_path .temper/specs/..
+assert_exit "state set accepts a spec_path of the form .temper/specs/<slug>" 0 "$TEMPER" state set spec_path .temper/specs/demo
+assert_exit "state set needs a key and a value" 1 "$TEMPER" state set spec_path
+
+# --- state archive / clear: a hand-edited spec_path writes no ledger outside .temper/specs ---
+setup
+mkdir -p "$WORKDIR/outside/esc"
+python3 - <<'EOF'
+import json
+p = '.temper/build-state.json'
+d = json.load(open(p)); d['spec_path'] = '.temper/specs/../../outside/esc'; json.dump(d, open(p, 'w'))
+EOF
+"$TEMPER" state archive >/dev/null
+assert_eq "state archive writes no ledger through a spec_path that leaves .temper/specs" "no" \
+  "$([[ -e "$WORKDIR/outside/esc/gate-ledger.json" ]] && echo yes || echo no)"
+"$TEMPER" state clear >/dev/null
+assert_eq "state clear writes no ledger there either" "no" "$([[ -e "$WORKDIR/outside/esc/gate-ledger.json" ]] && echo yes || echo no)"
+
+# --- the ledger archive and the status view read the listed stage files only ---
+setup
+"$TEMPER" evidence add --stage build --claim "tests" --exit 0 >/dev/null
+echo '[{"claim": "stray", "criterion": "AC-01", "cmd": "x", "exit_code": 0, "ts": "2099-01-01T00:00:00Z"}]' > .temper/evidence/stray.json
+"$TEMPER" state archive >/dev/null
+assert_eq "the archived ledger counts the listed stage files only" "build" \
+  "$(python3 -c "import json; print(','.join(sorted(json.load(open('.temper/specs/demo/gate-ledger.json'))['evidence'])))")"
+assert_eq "temper status ignores a file that is not a listed stage's ledger" "open" \
+  "$("$TEMPER" status --json | python3 -c 'import json,sys; print([c["status"] for c in json.load(sys.stdin)["criteria"] if c["id"] == "AC-01"][0])')"
+rm -f .temper/evidence/stray.json
+
+# --- TEMPER_DIR no longer moves the run state ---
+setup
+rm -rf "$WORKDIR/elsewhere"
+TEMPER_DIR="$WORKDIR/elsewhere" "$TEMPER" init >/dev/null
+TEMPER_DIR="$WORKDIR/elsewhere" "$TEMPER" evidence add --stage build --claim "x" >/dev/null
+assert_eq "TEMPER_DIR is ignored: nothing is written to the folder it names" "no" "$([[ -e "$WORKDIR/elsewhere" ]] && echo yes || echo no)"
+assert_eq "TEMPER_DIR is ignored: the row lands in the project's own .temper" "1" \
+  "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/build.json"))))')"
+
+# --- the plugin folder: a literal suffix strip, and CLAUDE_PLUGIN_ROOT for a CLI reached through a symlink ---
+setup
+mkdir -p "$WORKDIR/bin"
+ln -sf "$TEMPER" "$WORKDIR/bin/temper"
+assert_eq "a CLI reached through a symlink resolves a model through CLAUDE_PLUGIN_ROOT" "$("$TEMPER" model plan)" \
+  "$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$WORKDIR/bin/temper" model plan)"
+assert_exit "a CLI reached through a symlink loads acceptance.py by its full path" 0 \
+  env CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$WORKDIR/bin/temper" gate plan
+assert_eq "the CLI and its Python helpers list no folder by wildcard and load no folder onto sys.path" "0" \
+  "$(cat "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/pack-discover.py" | grep -cE 'glob\.glob|^import glob|sys\.path\.insert|TEMPER_DIR:-')"
+
+# --- install.sh: literal targets, the paths it runs written in full, refusals ---
+setup
+git config user.email "test@example.com"
+git config user.name "test"
+git config --unset core.hooksPath 2>/dev/null || true
+rm -f .git/hooks/pre-commit
+bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
+assert_eq "install.sh writes .git/hooks/pre-commit by default" "yes" "$([[ -x .git/hooks/pre-commit ]] && echo yes || echo no)"
+assert_eq "the hook carries the CLI path written out in full" "yes" \
+  "$(grep -qxF "TEMPER_CLI=$(printf '%q' "$REPO_ROOT/scripts/temper")" .git/hooks/pre-commit && echo yes || echo no)"
+assert_eq "the hook carries each guard script path written out in full" "yes" \
+  "$(grep -qxF "SECRETS_SCRIPT=$(printf '%q' "$REPO_ROOT/scripts/guards/block-secrets.sh")" .git/hooks/pre-commit \
+     && grep -qxF "TESTS_RAN_SCRIPT=$(printf '%q' "$REPO_ROOT/scripts/guards/verify-tests-ran.sh")" .git/hooks/pre-commit && echo yes || echo no)"
+assert_eq "the hook has no environment override of a folder and works out no folder" "0" \
+  "$(grep -cE 'TEMPER_HOOKS_DIR|dirname' .git/hooks/pre-commit)"
+# An install from before 9.6.5 is recognized by its "Temper native pre-commit hook" line: it is
+# replaced in place with no backup, and its embedded folder is reported as stale.
+cat > .git/hooks/pre-commit <<'EOF'
+#!/usr/bin/env bash
+# Temper native pre-commit hook (installed by an older installer).
+TEMPER_HOOKS_DIR="${TEMPER_HOOKS_DIR:-/old/plugin/scripts/old-guards}"
+EOF
+OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1)
+assert_eq "an older Temper hook is reported as a stale path" "yes" \
+  "$(echo "$OUT" | grep -q 'stale plugin path' && echo "$OUT" | grep -q 'embedded: /old/plugin/scripts/old-guards' && echo yes || echo no)"
+assert_eq "an older Temper hook is replaced in place, with no backup" "0" \
+  "$(find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' | wc -l | tr -d ' ')"
+assert_eq "the replaced hook carries the current CLI path" "yes" \
+  "$(grep -qxF "TEMPER_CLI=$(printf '%q' "$REPO_ROOT/scripts/temper")" .git/hooks/pre-commit && echo yes || echo no)"
+python3 - <<'EOF'
+import re
+p = '.git/hooks/pre-commit'
+s = open(p).read()
+open(p, 'w').write(re.sub(r'(?m)^TEMPER_CLI=.*$', 'TEMPER_CLI=/moved/plugin/scripts/temper', s))
+EOF
+OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1)
+assert_eq "a moved CLI path is reported as stale and the current one written" "yes" \
+  "$(echo "$OUT" | grep -q 'embedded: /moved/plugin/scripts/temper' && grep -qxF "TEMPER_CLI=$(printf '%q' "$REPO_ROOT/scripts/temper")" .git/hooks/pre-commit && echo yes || echo no)"
+OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1)
+assert_eq "a current hook is not reported as stale" "no" "$(echo "$OUT" | grep -q 'stale plugin path' && echo yes || echo no)"
+# Any other hook is backed up first.
+printf '#!/bin/sh\necho mine\n' > .git/hooks/pre-commit
+bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
+assert_eq "a non-Temper hook is backed up before it is replaced" "1" \
+  "$(find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' -exec grep -l 'echo mine' {} + | wc -l | tr -d ' ')"
+find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' -delete
+# A symlinked pre-commit is replaced by a regular file; the file it pointed at is left as it was.
+printf '#!/bin/sh\necho linked\n' > "$WORKDIR/linked-hook.sh"
+rm -f .git/hooks/pre-commit
+ln -s "$WORKDIR/linked-hook.sh" .git/hooks/pre-commit
+bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
+assert_eq "a symlinked pre-commit becomes a regular file, and its target is untouched" "yes|yes" \
+  "$([[ -f .git/hooks/pre-commit && ! -L .git/hooks/pre-commit ]] && echo yes || echo no)|$(grep -q 'echo linked' "$WORKDIR/linked-hook.sh" && ! grep -q 'Temper native' "$WORKDIR/linked-hook.sh" && echo yes || echo no)"
+find .git/hooks -maxdepth 1 -name 'pre-commit.bak.*' -delete
+rm -f "$WORKDIR/linked-hook.sh"
+# core.hooksPath: accepted only inside the repository, with no '..', in a folder with no JSON file.
+rm -f .git/hooks/pre-commit
+git config core.hooksPath ../outside-hooks
+assert_exit "install.sh refuses a core.hooksPath with '..'" 1 bash "$REPO_ROOT/scripts/guards/install.sh"
+OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1; true)
+assert_eq "the refusal prints the hook lines to add by hand" "yes" \
+  "$(echo "$OUT" | grep -q 'Nothing was written' && echo "$OUT" | grep -q 'gate commit' && echo yes || echo no)"
+assert_eq "the refusal writes nothing" "no|no" \
+  "$([[ -e "${WORKDIR%/*}/outside-hooks" ]] && echo yes || echo no)|$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)"
+git config core.hooksPath /nonexistent-temper-hooks
+assert_exit "install.sh refuses an absolute core.hooksPath outside the repository" 1 bash "$REPO_ROOT/scripts/guards/install.sh"
+assert_eq "the refusal of an outside folder writes nothing" "no" "$([[ -e /nonexistent-temper-hooks ]] && echo yes || echo no)"
+git config core.hooksPath '~/.temper-test-hooks'
+assert_exit "install.sh refuses a core.hooksPath under the home folder" 1 bash "$REPO_ROOT/scripts/guards/install.sh"
+mkdir -p cfg-hooks
+echo '{}' > cfg-hooks/settings.json
+git config core.hooksPath cfg-hooks
+assert_exit "install.sh refuses a hooks folder that holds a JSON file" 1 bash "$REPO_ROOT/scripts/guards/install.sh"
+assert_eq "no pre-commit is written into a folder that holds a JSON file" "no" "$([[ -e cfg-hooks/pre-commit ]] && echo yes || echo no)"
+git config core.hooksPath "$(git rev-parse --show-toplevel)/abs-hooks"
+bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
+assert_eq "an absolute core.hooksPath inside the repository is accepted and made relative" "yes" \
+  "$([[ -x abs-hooks/pre-commit ]] && echo yes || echo no)"
+git config core.hooksPath ./dot-hooks/
+bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
+assert_eq "a core.hooksPath with a leading ./ and a trailing / is accepted" "yes" "$([[ -x dot-hooks/pre-commit ]] && echo yes || echo no)"
+git config --unset core.hooksPath 2>/dev/null || true
+rm -rf .git/temper-git-hooks
+bash "$REPO_ROOT/scripts/guards/install.sh" --global >/dev/null 2>&1
+assert_eq "--global writes .git/temper-git-hooks/pre-commit and points core.hooksPath at it" "yes|.git/temper-git-hooks" \
+  "$([[ -x .git/temper-git-hooks/pre-commit ]] && echo yes || echo no)|$(git config --get core.hooksPath)"
+git config --unset core.hooksPath 2>/dev/null || true
+rm -rf .git/temper-git-hooks abs-hooks dot-hooks cfg-hooks "$WORKDIR/outside"
+
+# --- stage-marker.sh + verify-stage-gate.sh: fixed names in the project, never inside the plugin ---
+setup
+MARKER="$REPO_ROOT/scripts/guards/stage-marker.sh"
+VERIFY="$REPO_ROOT/scripts/guards/verify-stage-gate.sh"
+rm -f .temper/pending-stage.json .temper/stage-gate.log
+echo '{"prompt": "/temper:plan x"}' | bash "$MARKER"
+OUT=$(echo '{}' | bash "$VERIFY" 2>&1; true)
+assert_eq "verify-stage-gate logs each firing to .temper/stage-gate.log" "yes" \
+  "$(grep -q 'blocked stop (stage=plan' .temper/stage-gate.log && echo yes || echo no)"
+assert_eq "the block message names the stage brief without building a path from the stage" "yes|no" \
+  "$(echo "$OUT" | grep -q "that stage's brief" && echo yes || echo no)|$(echo "$OUT" | grep -q 'agents/' && echo yes || echo no)"
+# A throwaway plugin folder holding copies of the scripts: a project folder inside it is skipped,
+# the plugin folder itself (developing Temper with Temper) is a project like any other.
+FAKE_PLUGIN="$WORKDIR/fake-plugin"
+rm -rf "$FAKE_PLUGIN"
+mkdir -p "$FAKE_PLUGIN/scripts/guards" "$FAKE_PLUGIN/sub"
+cp "$MARKER" "$VERIFY" "$REPO_ROOT/scripts/guards/run-formatter.sh" "$FAKE_PLUGIN/scripts/guards/"
+cp "$TEMPER" "$FAKE_PLUGIN/scripts/temper"
+echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$FAKE_PLUGIN/sub" bash "$FAKE_PLUGIN/scripts/guards/stage-marker.sh"
+assert_eq "stage-marker writes nothing in a project folder inside the plugin's own folder" "no" \
+  "$([[ -e "$FAKE_PLUGIN/sub/.temper" ]] && echo yes || echo no)"
+mkdir -p "$FAKE_PLUGIN/sub/.temper"
+echo '{"stage": "plan", "blocks": 0}' > "$FAKE_PLUGIN/sub/.temper/pending-stage.json"
+assert_exit "verify-stage-gate skips a project folder inside the plugin's own folder" 0 \
+  bash -c "echo '{}' | CLAUDE_PROJECT_DIR='$FAKE_PLUGIN/sub' bash '$FAKE_PLUGIN/scripts/guards/verify-stage-gate.sh'"
+assert_eq "the skipped stop hook writes, changes and deletes nothing there" "no|0" \
+  "$([[ -e "$FAKE_PLUGIN/sub/.temper/stage-gate.log" ]] && echo yes || echo no)|$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['blocks'])" "$FAKE_PLUGIN/sub/.temper/pending-stage.json")"
+echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$FAKE_PLUGIN" bash "$FAKE_PLUGIN/scripts/guards/stage-marker.sh"
+assert_eq "stage-marker still marks the plugin folder itself as a project" "plan" \
+  "$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['stage'])" "$FAKE_PLUGIN/.temper/pending-stage.json")"
+
+# --- run-formatter.sh: only a file inside the project, never a file of the plugin's folder ---
+setup
+cat >> .claude/temper.config <<'EOF'
+format:
+  cmd: "perl -pi -e 's/  +/ /g' {file}"
+EOF
+FORMATTER="$REPO_ROOT/scripts/guards/run-formatter.sh"
+OUTSIDE_DIR="$(mktemp -d)"
+echo 'a  b' > "$OUTSIDE_DIR/x.txt"
+bash -c "echo '{\"tool_input\": {\"file_path\": \"$OUTSIDE_DIR/x.txt\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$FORMATTER'"
+assert_eq "formatter: a file outside the project folder is left as it is" "a  b" "$(cat "$OUTSIDE_DIR/x.txt")"
+rm -rf "$OUTSIDE_DIR"
+echo 'r  s' > rel.txt
+bash -c "echo '{\"tool_input\": {\"file_path\": \"rel.txt\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$FORMATTER'"
+assert_eq "formatter: a relative path is taken from the project folder" "r s" "$(cat rel.txt)"
+rm -f rel.txt
+echo 'p  q' > "$FAKE_PLUGIN/sub/y.txt"
+bash -c "echo '{\"tool_input\": {\"file_path\": \"$FAKE_PLUGIN/sub/y.txt\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$FAKE_PLUGIN/scripts/guards/run-formatter.sh'"
+assert_eq "formatter: a file of the plugin's own folder is left as it is" "p  q" "$(cat "$FAKE_PLUGIN/sub/y.txt")"
+mkdir -p "$FAKE_PLUGIN/.claude"
+cp .claude/temper.config "$FAKE_PLUGIN/.claude/temper.config"
+bash -c "echo '{\"tool_input\": {\"file_path\": \"$FAKE_PLUGIN/sub/y.txt\"}}' | CLAUDE_PROJECT_DIR='$FAKE_PLUGIN' bash '$FAKE_PLUGIN/scripts/guards/run-formatter.sh'"
+assert_eq "formatter: when the project is the plugin folder itself, its files are formatted" "p q" "$(cat "$FAKE_PLUGIN/sub/y.txt")"
+rm -rf "$FAKE_PLUGIN"
+
+# --- block-protected-paths.sh and block-uncommitted-gate.sh: the CLI next to the script ---
+setup
+cat >> .claude/temper.config <<'EOF'
+protect:
+  paths: ["**/frozen/**"]
+EOF
+assert_exit "protected-paths finds its CLI next to it, whatever CLAUDE_PLUGIN_ROOT says" 2 \
+  bash -c "echo '{\"tool_input\": {\"file_path\": \"src/frozen/a.ts\"}}' | CLAUDE_PLUGIN_ROOT=/nonexistent CLAUDE_PROJECT_DIR='$WORKDIR' bash '$REPO_ROOT/scripts/guards/block-protected-paths.sh'"
+UG="$REPO_ROOT/scripts/guards/block-uncommitted-gate.sh"
+echo 'x' > gate-file.txt
+git add gate-file.txt >/dev/null 2>&1
+assert_exit "uncommitted-gate: a git commit on a red gate is BLOCKED, with CLAUDE_PLUGIN_ROOT pointing nowhere" 2 \
+  bash -c "echo '{\"tool_input\": {\"command\": \"git commit -m x\"}}' | CLAUDE_PLUGIN_ROOT=/nonexistent bash '$UG'"
+assert_exit "uncommitted-gate: any other command passes" 0 \
+  bash -c "echo '{\"tool_input\": {\"command\": \"git status\"}}' | CLAUDE_PLUGIN_ROOT=/nonexistent bash '$UG'"
+git rm -q --cached gate-file.txt >/dev/null 2>&1 || true
+rm -f gate-file.txt
+
+# --- pack-discover.py: named subfolders, no wildcard; Temper's own folder is never scanned ---
+setup
+PD_HOME="$WORKDIR/fake-home-pd"
+rm -rf "$PD_HOME"
+mkdir -p "$PD_HOME/.claude/plugins" "$PD_HOME/other/.claude-plugin" "$PD_HOME/other/commands/nested/deeper" \
+  "$PD_HOME/other/skills/.hidden-skill" "$PD_HOME/other/skills/real-skill" .claude/commands
+echo '{"description": "other plugin"}' > "$PD_HOME/other/.claude-plugin/plugin.json"
+printf -- '---\ndescription: top\n---\n' > "$PD_HOME/other/commands/top.md"
+printf -- '---\ndescription: inner\n---\n' > "$PD_HOME/other/commands/nested/deeper/inner.md"
+printf -- '---\ndescription: hidden\n---\n' > "$PD_HOME/other/commands/.secret.md"
+printf -- '---\ndescription: hidden skill\n---\n' > "$PD_HOME/other/skills/.hidden-skill/SKILL.md"
+printf -- '---\ndescription: real skill\n---\n' > "$PD_HOME/other/skills/real-skill/SKILL.md"
+printf -- '---\ndescription: local\n---\n' > .claude/commands/local-cmd.md
+printf -- '---\ndescription: hidden local\n---\n' > .claude/commands/.hidden-cmd.md
+cat > "$PD_HOME/.claude/plugins/installed_plugins.json" <<EOF
+{"plugins": {
+  "temper-fork@somewhere": [{"version": "1", "installPath": "$REPO_ROOT", "lastUpdated": "2026-01-01T00:00:00Z"}],
+  "other@market": [{"version": "1", "installPath": "$PD_HOME/other", "lastUpdated": "2026-01-01T00:00:00Z"}]
+}}
+EOF
+PD_OUT="$(HOME="$PD_HOME" python3 "$REPO_ROOT/scripts/pack-discover.py")"
+assert_eq "pack-discover never scans Temper's own folder, whatever its entry is called" "0" "$(printf '%s\n' "$PD_OUT" | grep -c 'temper-fork')"
+assert_eq "pack-discover lists the commands at any depth under commands, hidden ones left out" "other:inner|other:top" \
+  "$(printf '%s\n' "$PD_OUT" | awk -F'|' '$1 == "CMD" {print $2}' | sort | paste -sd'|' -)"
+assert_eq "pack-discover lists each skill folder's SKILL.md, hidden folders left out" "other:real-skill" \
+  "$(printf '%s\n' "$PD_OUT" | awk -F'|' '$1 == "SKILL" {print $2}' | sort | paste -sd'|' -)"
+assert_eq "pack-discover lists the project's own commands, hidden ones left out" "local-cmd" \
+  "$(printf '%s\n' "$PD_OUT" | awk -F'|' '$1 == "LOCAL_CMD" {print $2}' | sort | paste -sd'|' -)"
+rm -rf "$PD_HOME" .claude/commands
 
 # --- version-stamp drift: every visible version string matches plugin.json ---
 # plugin.json is the single source of truth; the CLAUDE.md stamp and the top

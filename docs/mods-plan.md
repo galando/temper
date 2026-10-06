@@ -26,7 +26,7 @@ is my recommendation; say so if you want it changed.
 - **Design is a seventh stage you did not list.** It is optional: skipped when
   `phases.design: false` or complexity is trivial or simple (`commands/temper.md:249`);
   `gate_design` passes when `design.md` is absent (`scripts/temper:1349`).
-- Each stage's contract lives in `agents/{stage}.md` and `reference/{stage}.md`.
+- Each stage's contract lives in its own brief in `agents/` and its own page in `reference/`.
   Gate logic lives only in `scripts/temper` (`.claude/CLAUDE.md`).
 - Build runs one task per checkpoint, with Continue, Change and Stop
   (`commands/temper.md:269-308`).
@@ -65,7 +65,7 @@ is my recommendation; say so if you want it changed.
 
 ### Enforcement today
 
-- Plugin `hooks/hooks.json` binds two classic hooks: `UserPromptSubmit` →
+- The plugin's hooks file binds two classic hooks: `UserPromptSubmit` →
   `stage-marker.sh` and `Stop` → `verify-stage-gate.sh` (refuses to end a standalone
   stage session until a verdict exists; fails open after two blocks).
 - Opt in pack `packs/guardrails/settings-guardrails.json` adds `PreToolUse` guards for secrets,
@@ -103,7 +103,7 @@ the plugin authoring skill ships, except that built in tool inputs moved to a se
 ### 2.1 Probe results (run in this container)
 
 Probe: a plugin with a classic `UserPromptSubmit` hook and a module that denies every
-`Write`, in one `hooks/hooks.json`.
+`Write`, in one hooks file.
 
 | Claude Code | Plugin loads | Classic hook runs | Module runs (Write denied) |
 |---|---|---|---|
@@ -121,7 +121,7 @@ Same probe with a `userConfig` field that declares `options` (a picker):
 
 **Conclusions for disclaimer 1:**
 
-1. A `modules` key in Temper's existing `hooks/hooks.json` is safe on old versions.
+1. A `modules` key in Temper's existing hooks file is safe on old versions.
 2. `userConfig` must **not** use `options`. The docs confirm: versions before 2.1.271
    cannot load a plugin that declares it. I will declare `uiMode` and `enforcement` as
    plain strings and validate them in code.
@@ -209,8 +209,8 @@ treat the docs as the current behavior for the README.
   in guard: managed `pluginConfigs["cc-plugin-sec-default@builtin"].options.allowManagedModsOnly`.
   With it, Temper's mod does not load unless the organization ships Temper itself;
   the rest of the plugin (commands, skills, agents, classic hooks) still loads.
-- `allowManagedHooksOnly`: also blocks user classic hooks, so Temper's
-  `hooks/hooks.json` entries stop too unless the plugin is force enabled.
+- `allowManagedHooksOnly`: also blocks user classic hooks, so the entries of
+  Temper's hooks file stop too unless the plugin is force enabled.
 - `disableAllHooks` in managed settings stops every mod and every settings hook.
 - sec-default loads first whenever the machine has managed settings or the user is on
   Team or Enterprise. Chain order: sec-default and other prepended managed mods, then
@@ -297,9 +297,9 @@ button at Done tells the orchestrator to do the Commit steps of `commands/temper
 Status completed, `state archive`, stage the diff and the spec artifacts, one commit, then `state clear`). The mod
 never clears or archives the state itself. When the CLI state is gone the bar shows no run, never Intent.
 
-### 3.2 Pure module (`hooks/temper-mod/core/`, no `claude-code` import)
+### 3.2 Pure module (the mod's pure core, no `claude-code` import)
 
-- `machine.ts`: event sourced. `reduce(events) → RunState` and
+- The state machine: event sourced. `reduce(events) → RunState` and
   `decide(state, command) → { events } | { error }`. Commands: `approve`, `advance`,
   `back(to, reason)`, `override(phase, reason)`, `acceptFinding(id, reason)`,
   `drift(path, choice, reason)`, `checkResult(pass|fail)`, `pause`, `resume`.
@@ -308,15 +308,15 @@ never clears or archives the state itself. When the CLI state is gone the bar sh
   (newer timestamp than the invalidation); Check FAIL enters Fix and counts a loop; at
   `fix.max-loops` the only legal commands are re-plan (`back` to Plan), override, or
   hand over (pause).
-- `rules.ts`: `evaluate(state, toolCall) → allow | deny(reason)`. Every reason ends
+- The rules: `evaluate(state, toolCall) → allow | deny(reason)`. Every reason ends
   with what to do next (examples in 3.4).
-- `criteria.ts`: parses `AC-NN` criteria from `intent.md` using the same patterns as
+- The criteria reader: parses `AC-NN` criteria from `intent.md` using the same patterns as
   `acceptance.py`, and merges per criterion status from `.temper/status.json`.
-- `planfiles.ts`: reads the allowed file list from `plan.md` tables and `tasks.md`.
-- `bash.ts`: classifies a Bash command (git commit, temper CLI decisions, writes into
+- The plan files reader: reads the allowed file list from `plan.md` tables and `tasks.md`.
+- The Bash classifier: classifies a Bash command (git commit, temper CLI decisions, writes into
   protected Temper paths).
-- `report.ts`: renders `.temper/report.md` from `RunState`.
-- `config.ts`: reads the few keys the mod needs from `.claude/temper.config`.
+- The report: renders `.temper/report.md` from `RunState`.
+- The config reader: reads the few keys the mod needs from `.claude/temper.config`.
 
 ### 3.3 Where state lives (decision)
 
@@ -406,8 +406,8 @@ reason field and menu picks carry no origin in their handlers, so their authenti
 platform.
 
 One source of truth for the phase. The CLI state is the truth for where the run is. The mod derives the
-phase of the bar and of every deny from `build-state.json` (`next_stage`: `cliPhase` in `core/gates.ts`,
-`reconcile` in `adapter.ts`). Events record who decided (decisions, timeline, invalidation) and are never the
+phase of the bar and of every deny from `build-state.json` (`next_stage`: `cliPhase` in the pure core,
+`reconcile` in the adapter). Events record who decided (decisions, timeline, invalidation) and are never the
 source of the phase. When the mod's picture and the CLI differ, the CLI wins; if the person's last move is not
 mirrored yet, the line "Temper state: the run is at <phase>. Your last choice is not recorded yet. Press 1 to
 record it." shows and key 1 re-submits the mirror prompt for that same pending decision (no new event, single
@@ -466,7 +466,7 @@ a `git -c alias` are treated as commits while the commit gate is open (`--abort`
 before its first await, ignores a press for a phase that has already moved ("That step is already
 done."), and ignores a second move within one second.
 
-Fourth review (hardening, `tests/mod/hardening.test.ts`). The stance does not change: the classifier is structural,
+Fourth review (hardening, the mod's hardening tests). The stance does not change: the classifier is structural,
 fail closed where that is cheap, best effort; the hard guarantees are the editing tool deny and the native
 `pre-commit` hook. What was added, while a run is active:
 (1) a shell, `eval` or `source` that is given a program the text does not show is refused: a pipe from anything but
@@ -492,7 +492,7 @@ The config and the hooks are guarded only while a run is active, so `/temper:ini
 the run is at and uses the back decision once. (5) A guard that throws refuses Bash while a run is active (every other tool
 passes). The Bash classifier now skips shell comments, so a comment that names `.git/hooks` is no mention.
 
-Known limits, on purpose (see `tests/mod/known-limits.test.ts`). The classifier reads command text
+Known limits, on purpose (see the mod's known limits test). The classifier reads command text
 only. It cannot see a link, a copy or a script made in an earlier call, a script already on disk and
 run later with no name in the command, or a variable set earlier. It cannot see a program that builds the
 script name or a guarded path at run time (`os.system('scripts/te' + 'mper ...')`), the names inside a patch or an
@@ -586,16 +586,17 @@ Maintainer decision "Original only": a button is an option of the original `/tem
 or Discuss, Play, Skip with a reason, Resume (when paused), and in the Fix phase Fix the failures, Fix the
 findings and the per finding Fix, Accept and Explain. Everything else (show the files, run the tests, show
 the changes, write the PR text, go back a phase, show the timeline) is typed; the subcommands stay.
-`scripts/check-original-options.sh` and `tests/mod/actions.test.ts` refuse any other label. Where the
-original gives a choice only under a condition (Review config suggestions needs the file, Loop back needs the
-loop budget, which the CLI keeps), the button follows the same condition.
+`scripts/check-original-options.sh` keeps the original options in `commands/temper.md`, and the mod's own
+action test refuses any other label. Where the original gives a choice only under a condition (Review config
+suggestions needs the file, Loop back needs the loop budget, which the CLI keeps), the button follows the same
+condition.
 
 Every label says its result and every action has a one line description (10 words at most) in the
 pane. The subcommand behind 9 is still `override` (no reason, no skip). A button that needs a stage to run
 records the decision, submits the mirror prompt (the CLI call, which the guard matches to that decision),
 and then runs `/temper:temper` with no arguments through `$.command.run` (`$.prompt.submit` refuses a text
 that starts with a slash). That is the orchestrator's Resume: it launches the stage subagent with its own
-`agents/*.md` brief. The mod writes no stage instructions of its own. Discuss (key 4) and Change (key 2 at
+stage brief. The mod writes no stage instructions of its own. Discuss (key 4) and Change (key 2 at
 Build) put a draft in the prompt box with `$.prompt.fill`; the press changes no phase and writes no event.
 
 ### 3.8 Interaction modes
@@ -624,7 +625,7 @@ An optional runner game for the time Claude works, in the spirit of the browser 
 adds no engine call. Two earlier versions (a flame runner, then a merge puzzle) were dropped after
 trial: the first was not clear and not fun, the second was not what was wanted.
 
-- `core/runner-art.ts` is data: the palette and every picture as a table of rows of palette letters
+- The art file is data: the palette and every picture as a table of rows of palette letters
   (a letter is one pixel, a dot is none). Ember, the dragon, is 8 pixels wide and 8 tall (8
   columns by 4 rows) in five frames (run A and B, jump, duck 4 tall, dead). The obstacles are two
   iron anvils (6 by 4 and 8 by 6), a bucket of cold water (5 by 5) and a hammer (6 by 4) with two
@@ -634,7 +635,7 @@ trial: the first was not clear and not fun, the second was not what was wanted.
   the pictures, and the colours (3 to 1 or more against the wall, the glow and the floor, also after
   a change to 256 colours; two bright fills cannot reach 3 to 1, so the dragon and the obstacles
   differ in hue instead).
-- `core/runner.ts` is pure and seeded: the jump arc (11 ticks of 80 ms in the air, 8 pixels high; speeds 1.2 to 1.9 pixels a tick),
+- The runner is pure and seeded: the jump arc (11 ticks of 80 ms in the air, 8 pixels high; speeds 1.2 to 1.9 pixels a tick),
   the input buffer (a jump pressed up to 3 ticks, 240 ms, before the landing fires on the landing),
   the duck (10 ticks, 0.8 s, cancelled by a jump), the boxes, the score (3 points for 4 pixels) and
   the best score, heat 1 to 5 (every 400 points), the milestone at every 100 points (a yellow flash
@@ -646,15 +647,14 @@ trial: the first was not clear and not fun, the second was not what was wanted.
   100 points. A property test runs thousands of seeds at every speed and checks every gap, and a bot
   that looks, presses and then waits 0, 2 or 3 ticks (up to 240 ms) survives 900 ticks in all of them.
 - The hooks module keeps only the counters of the pane Buttons in `$.state` key `game` (jumpCount,
-  duckCount, startCount): a press is one write, and the clock writes nothing. `ui/game-client.tsx`
+  duckCount, startCount): a press is one write, and the clock writes nothing. The game client
   is a Client module (a surface module): it runs the frame clock (80 ms), compares the counters with
   the values it saw last and applies each new press once, and draws. After one click it also takes
   Space and the Up arrow (jump) and the Down arrow (duck) directly through `onKey`. It has no `$`
   call at all: `$` is not defined in a surface module, so the type check (`tsc -p tsconfig.mod.json`,
-  run in CI) fails on an engine call written as `$.` there. The hooks module imports it statically, and the pane names it as
-  the fixed text `./ui/game-client.tsx`. It
-  posts the score once for each game over, and the `ui.message` hook keeps the best score with the
-  existing `$.store.set`. The game added no call to the reviewed list.
+  run in CI) fails on an engine call written as `$.` there. The hooks module imports it statically, and the
+  pane names its module path as fixed text. It posts the score once for each game over, and the `ui.message`
+  hook keeps the best score with the existing `$.store.set`. The game added no call to the reviewed list.
 - Measured on the terminal (tmux, 160 columns, real Claude Code 2.1.288): from `tmux send-keys` to
   Ember leaving the floor on the screen, 14 trials, median 40 ms, from 35 to 53 ms. That includes the
   send and the screen capture, so the delay of the Button route is under half a tick of 80 ms. A bot
@@ -679,7 +679,7 @@ trial: the first was not clear and not fun, the second was not what was wanted.
   button, the pane lists it in Actions, and the terminal hint starts with "Press 8 to play while you
   wait." (the hint is cut at the row end, so the offer comes first). The pane learns that Claude
   works from the band and hint props, and redraws once when that changes. The setting `game` is
-  `on` (offers and command), `command` (command only) or `off`, checked in `core/config.ts`. It
+  `on` (offers and command), `command` (command only) or `off`, checked in the pure core's config reader. It
   takes a digit because only a digit works from an empty prompt. `/temper:temper play` is the 17th
   reserved word. Only a person can open the game: a call that does not come from the composer
   gets a refusal.
@@ -690,14 +690,12 @@ trial: the first was not clear and not fun, the second was not what was wanted.
 
 ### 3.9 Layout in the repo
 
-```
-hooks/hooks.json             + "modules": ["./temper-mod/register.tsx"]
-hooks/temper-mod/register.tsx   adapter: wiring only
-hooks/temper-mod/core/*.ts      pure module (3.2)
-hooks/temper-mod/ui/*.tsx       band, pane, hint, spinner, question header
-types/index.d.ts             $.state contract (named in plugin.json "types")
-tests/mod/*.test.ts(x)       claude plugin test
-```
+- The plugin's hooks file gains one `modules` entry, which names the hooks module.
+- The hooks module (the adapter) holds the wiring only.
+- The pure core holds the rules (3.2).
+- The drawing files hold the band, pane, hint, spinner and question header.
+- The `$.state` contract is a type file that `plugin.json` names in `types`.
+- The mod's test suite runs under `claude plugin test`.
 
 `plugin.json` gains `userConfig` (`uiMode`, `enforcement`, `fixMaxLoops`,
 `prAttribution`, `phaseModels`, `reviewerModel`; plain types, no `options`) and
@@ -748,7 +746,7 @@ nothing runs in CI. Light and dark terminal screenshots come from VHS themes.
 
 ## 5. Test plan
 
-- `claude plugin test` (no sign in, no network), in `tests/mod/`:
+- `claude plugin test` (no sign in, no network), in the mod's test suite:
   state machine transitions and invalidation; every deny rule per phase and tool;
   forgery guard; human only decisions (origin checks); override with and without
   reason; accept finding; each drift choice; fix loop limit; mode switching including a
@@ -775,8 +773,8 @@ Deliverable: `docs/mods-testing.md`, a checklist you tick by hand. The steps:
    shown by `/plugin`). Turn it back on afterwards with `claude plugin enable`.
 4. Run the automated checks from the clone: `claude plugin validate --strict .` and
    `claude plugin test .` (no sign in needed), plus `bash scripts/tests/test-temper.sh`.
-5. Open the demo project with the branch loaded for that session only:
-   `cd <clone>/demo/<fixture> && claude --plugin-dir <clone>`. The folder is watched,
+5. Open a project with the branch loaded for that session only:
+   `cd <project> && claude --plugin-dir <clone>`. The clone is watched,
    so a `git pull` of the branch reloads the mod without restarting.
 6. Walk the checklist: each phase's denials and hotkeys; `/temper mode full`, `minimal`,
    `off`; `/compact` keeps "Temper enforcement: active"; a narrow (80 columns) and a

@@ -51,7 +51,7 @@ wrongly blocks (or wrongly passes) a later commit. Follow
 evidence add --stage review --severity ...`) as you review, then run
 `$CLAUDE_PLUGIN_ROOT/scripts/temper gate review` and show its PASS/FAIL to the user via
 `AskUserQuestion` (this command is not a subprocess — you own the gate here, unlike
-`agents/review.md`'s "never show a gate" rule).
+the review brief's "never show a gate" rule).
 
 **Pass `--spec-path` explicitly** — a standalone command hasn't necessarily run `temper
 state init`, so `temper state get spec_path` may be empty. Always call

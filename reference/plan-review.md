@@ -13,7 +13,7 @@ Two plan gate options use this page:
 
 ## Template
 
-The HTML template is at `templates/plan-review.html`. It contains:
+The HTML template is at `$CLAUDE_PLUGIN_ROOT/templates/plan-review.html`. It contains:
 - All CSS inline (dark and light theme, responsive down to phone width)
 - All JS inline (comment system, copy/export, markdown rendering)
 - No external dependencies (no CDN, no build tools)
@@ -22,18 +22,18 @@ The HTML template is at `templates/plan-review.html`. It contains:
 
 ## HTML Generation
 
-Never fill the template by hand. `scripts/plan_review.py` does it deterministically, escapes every value for the place it lands in, and splits sections the same way every time:
+Never fill the template by hand. `$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py` does it deterministically, escapes every value for the place it lands in, and splits sections the same way every time:
 
 ```bash
 python3 "$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py" render ".temper/specs/{feature}"
 # writes .temper/specs/{feature}/review.html and prints its path
 python3 "$CLAUDE_PLUGIN_ROOT/scripts/plan_review.py" render ".temper/specs/{feature}" \
-  --target artifact -o "${TMPDIR:-/tmp}/temper-review-{feature}.html"
+  --target artifact -o ".temper/review-artifact-{feature}.html"
 ```
 
 - Sections come from `plan.md` then `tasks.md`, split at each `## ` heading (headings inside code fences are ignored). Text before the first heading becomes its own section when it has content.
 - `--feature "Name"` overrides the display name (default: the `# ` heading of plan.md, else the spec directory name).
-- `--target artifact` writes the fragment the Artifact tool expects (title, style, body; no `<!doctype>`, `<html>`, `<head>` or `<body>` wrapper). Write it outside the spec directory so a shared page is never committed with the spec.
+- `--target artifact` writes the fragment the Artifact tool expects (title, style, body; no `<!doctype>`, `<html>`, `<head>` or `<body>` wrapper). Write it to the project's `.temper` folder, outside the spec directory, so a shared page is never committed with the spec. Every output goes in the project, never under `$CLAUDE_PLUGIN_ROOT`, and `{feature}` is the spec's slug (letters, digits and hyphens only).
 
 ### Section Schema
 

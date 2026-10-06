@@ -33,10 +33,10 @@ temper/
 ├── reference/               # Per-stage methodology docs (loaded on demand)
 ├── skills/                  # Skill definitions (temper-core, grill-me, ...)
 ├── packs/                   # Rule packs, stack files, guardrails pack
-├── hooks/                   # Plugin-shipped hooks.json (stage-gate pair)
-├── scripts/                 # temper CLI (the deterministic spine), hooks/, tests/
+├── hooks/                   # The plugin's hooks file and the mod
+├── scripts/                 # temper CLI (the deterministic spine), guards/, tests/
 ├── templates/               # Artifact templates (intent/plan/design/config)
-├── examples/                # Company packs, CI workflow templates, example hooks
+├── examples/                # Company packs, CI workflow templates, an example gate
 ├── docs/                    # GitHub Pages documentation
 └── README.md                # Project README
 ```
@@ -45,7 +45,7 @@ temper/
 
 ### Add a New Stack
 
-1. Create `packs/stacks/{stack-name}.md`
+1. Create a stack file in `packs/stacks/`, named after the stack (for example `packs/stacks/django.md`)
 2. Include:
    - Detection patterns (files, dependencies)
    - Validation commands (test, build, lint)
@@ -70,7 +70,7 @@ temper/
 
 ### Add a New Pack
 
-1. Create `packs/{pack-name}/rules.md`
+1. Create a folder for the pack in `packs/`, named after the pack, with a `rules.md` in it
 2. Use sections:
    - `## BLOCK` — Violations stop the build
    - `## WARN` — Violations trigger warning
@@ -79,8 +79,8 @@ temper/
 
 ### Add a New Command
 
-1. Create `commands/{command}.md` (stub, ~300B)
-2. Create `reference/{command}.md` (full docs)
+1. Create the command's stub in `commands/`, named after the command (~300B)
+2. Create its full docs in `reference/`, under the same name
 3. Update `.claude-plugin/plugin.json`
 4. Update README.md commands table
 

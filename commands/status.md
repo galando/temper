@@ -14,15 +14,14 @@ description: "Show quality metrics, learning loop, and observability dashboard"
 
 1. Initialize `.temper/` directory if missing (metrics, review-memory, specs/)
 2. Read `.temper/metrics.json` + `.temper/review-memory.json`
-3. Read `.temper/gates.json` + `.temper/evidence/*.json` (the current/last run's
-   evidence-backed gate ledger — run `$CLAUDE_PLUGIN_ROOT/scripts/temper report`, or read
-   the files directly)
+3. Read `.temper/gates.json` and the evidence ledger (the current/last run's
+   evidence-backed gate ledger) through `$CLAUDE_PLUGIN_ROOT/scripts/temper report`
 4. Read `.temper/feedback-loops.json` (if exists — active feedback loop state)
 4.2. If the current spec has an `intent.md`, run `$CLAUDE_PLUGIN_ROOT/scripts/temper status`
    (per-criterion passed/open with evidence; `--json` writes `.temper/status.json`)
 4.5. Run `$CLAUDE_PLUGIN_ROOT/scripts/temper bands` (deterministic control-band drift
    check over metrics history — **CONTROL BANDS section**; a `propose`-tier breach
-   offers drafting an intent.md, see reference/status.md Step 3.7)
+   offers drafting an intent.md, see `$CLAUDE_PLUGIN_ROOT/reference/status.md` Step 3.7)
 5. **Detect MCP tools**: attempt to call `get_impact_radius_tool` (code-review-graph) and check if semgrep tools are available. Report availability in dashboard.
 6. Display: reviews, quality trend, debt, hotspots, top patterns, learning loop, active specs, **MCP TOOLS section**, **GATE LEDGER section**, **FEEDBACK LOOPS section**, **CONTROL BANDS section**
 7. If pattern count >= 3: suggest auto-rule

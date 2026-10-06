@@ -42,13 +42,14 @@ presents for acceptance.
    structure is your job, not theirs. Write every answer into `### Decisions`
    immediately, as `{question} -> {answer} ({who decided}, {date})`. **Never write
    card data or personal data into the intent** — reference the ticket instead.
-   When a ticket key is linked, prefix the slug with it (`{KEY}-{slug}`).
+   When a ticket key is linked, prefix the slug with it (`{KEY}-{slug}`). A slug is
+   letters, digits and hyphens only (no `/`, no `..`).
    **Soft source words:** never turn a source "should" or "may" into "must"
    silently. Ask the originator whether the source means required or optional and
    record the answer in `### Decisions`. With no answer yet, keep the source wording
    (marked `(source: …)`) and add a Blocking Open Question.
 
-2. **Write the draft** to `.temper/specs/{slug}/intent.md` using
+2. **Write the draft** to the project's `.temper/specs/{slug}/intent.md` using
    `$CLAUDE_PLUGIN_ROOT/templates/intent.md`:
    - Header: `**Author:**` (from `git config user.name` / `user.email`),
      `**Status:** draft`, `**Created:**`, `**Ticket:**` if one was given,
@@ -61,7 +62,7 @@ presents for acceptance.
      Questions** (each labeled `Blocking:` or `Deferred:` — carrying a question
      forward honestly beats resolving it by guess).
    - **Do not write Scenarios or pick an architecture.** BDD scenarios are derived
-     from the measured blast radius at Plan time (`reference/plan.md`), not at
+     from the measured blast radius at Plan time (`$CLAUDE_PLUGIN_ROOT/reference/plan.md`), not at
      capture time. Leave `## Scenarios (BDD)` empty — never a placeholder
      `Scenario:` block: the check gate demands a passing test for every
      `Scenario:` line and cannot tell a placeholder from a real one.

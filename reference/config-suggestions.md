@@ -31,7 +31,7 @@ After all validation levels in `/temper:check` pass (no failures), before the Co
 | Category | Detection | Example |
 |----------|-----------|---------|
 | New pattern | Code introduces a reusable pattern not in existing docs | "Services use Result<> for error handling" |
-| Learned convention | Naming/structure convention observed consistently in new code | "Test files follow *.test.ts naming" |
+| Learned convention | Naming/structure convention observed consistently in new code | "Test file names end in .test.ts" |
 | Architectural decision | Structural choice that affects future code | "All API routes use /api/v2/ prefix" |
 | Tooling config | New tool or config discovered | "Add ESLint rule for async/await" |
 

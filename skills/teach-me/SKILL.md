@@ -26,7 +26,9 @@ Do this **incrementally, phase by phase** — not all at once at the end. Before
 ## The Running Comprehension Doc
 
 Keep a single markdown doc with a checklist of everything the user should understand:
-`{spec_path}/comprehension.md` (resolve `spec_path` from `.temper/build-state.json`).
+`comprehension.md` in the spec folder, the project's `.temper/specs/{slug}/comprehension.md`
+(get `spec_path` from `$CLAUDE_PLUGIN_ROOT/scripts/temper state get spec_path`; it is always
+a project path, never one under `$CLAUDE_PLUGIN_ROOT`).
 
 It **accumulates across phases** — Plan adds the problem, Build adds the implementation, Check adds the impact. Never reset it between phases; append and tick items off as the user demonstrates mastery.
 
@@ -168,4 +170,4 @@ The teaching for a phase is not complete until the user has **demonstrated** —
 
 This skill is invoked from the teaching stage gates in the `/temper` unified command (Plan, Design, Build, Check) when the user selects "Teach Me" — always available, no config toggle. Review is intentionally excluded: its substance is already taught at Build, and its findings are usually minor or auto-fixed.
 
-The orchestrator passes the current phase and its artifacts. The skill reads/updates `{spec_path}/comprehension.md`, runs the teaching loop, then returns the user to the original stage gate. The phase's recommended action (e.g. "Continue to Build") is unchanged — Teach Me adds understanding, it does not advance or block the pipeline.
+The orchestrator passes the current phase and its artifacts. The skill reads/updates the spec's `comprehension.md` in the project, runs the teaching loop, then returns the user to the original stage gate. The phase's recommended action (e.g. "Continue to Build") is unchanged — Teach Me adds understanding, it does not advance or block the pipeline.

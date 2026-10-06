@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """validate-panels.py — one closed panel per stage brief.
 
-Every agents/*.md brief must:
+Every stage brief (each agents entry in .claude-plugin/plugin.json) must:
   1. state the panel rule itself (the brief is all a clean-context stage reads);
   2. show at most ONE panel (a fenced code block containing box borders), and that
      panel must be a single closed box: every line the same width, `+` corners,
@@ -14,6 +14,7 @@ on read order).
 
 Stdlib only. Exit 0 = all briefs conform; exit 1 names each violation.
 """
+import json
 import re
 import sys
 from pathlib import Path
@@ -24,6 +25,10 @@ FULL_BORDER = re.compile(r"^\+[-+]*\+$")
 TITLED_BORDER = re.compile(r"^\+--- [^+]*?\(N\)[^+]*?\+-[-+]*\+$")
 BORDER = re.compile(r"^(?:\+[-+]*\+|\+--- [^+]*?\(N\)[^+]*?\+-[-+]*\+)$")
 TITLED = TITLED_BORDER
+# A plugin.json agents entry is the agents folder prefix and then one plain .md file name
+# (letters, digits and '-': no '/', no '..').
+AGENTS_PREFIX = "./agents/"
+PLAIN_MD_NAME = re.compile(r"[a-z0-9-]+\.md")
 
 
 def extract_fences(text):
@@ -76,16 +81,44 @@ def validate_panel(block):
     return errs
 
 
+def plugin_root():
+    """The plugin folder: this file is scripts/validate-panels.py in it (a literal suffix)."""
+    here = str(Path(__file__).resolve())
+    root = here.removesuffix("/scripts/validate-panels.py")
+    return None if root == here else Path(root)
+
+
 def main():
-    repo = Path(__file__).resolve().parent.parent
-    agents_dir = repo / "agents"
-    files = sorted(agents_dir.glob("*.md"))
-    if not files:
-        print("FAIL: no agents/*.md found")
+    repo = plugin_root()
+    if repo is None:
+        print("FAIL: cannot find the plugin folder from %s" % Path(__file__).resolve())
         return 1
-    failures = 0
-    for f in files:
-        text = f.read_text(encoding="utf-8")
+    try:
+        entries = json.loads((repo / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")).get("agents", [])
+    except (OSError, ValueError, AttributeError) as e:
+        print("FAIL: cannot read the agents list from .claude-plugin/plugin.json: %s" % e)
+        return 1
+    briefs, failures = [], 0
+    for entry in entries:
+        ok = isinstance(entry, str) and entry.startswith(AGENTS_PREFIX)
+        name = entry[len(AGENTS_PREFIX):] if ok else ""
+        if not PLAIN_MD_NAME.fullmatch(name):
+            failures += 1
+            print("FAIL %r is not a plain .md name in the agents folder" % (entry,))
+        else:
+            # (the entry as plugin.json spells it, without './'; the checked plain file name)
+            briefs.append((entry[len("./"):], name))
+    if not briefs and not failures:
+        print("FAIL: plugin.json lists no stage briefs")
+        return 1
+    for rel, name in sorted(briefs):
+        try:
+            text = (repo / "agents" / name).read_text(encoding="utf-8")
+        except OSError as e:
+            failures += 1
+            print("FAIL %s" % rel)
+            print("      - cannot be read: %s" % e)
+            continue
         errs = []
         if not RULE_PHRASE.search(text):
             errs.append("does not state the one-panel rule ('exactly ONE closed panel')")
@@ -99,11 +132,11 @@ def main():
             errs.append("shows %d panels — a stage returns exactly one" % panels)
         if errs:
             failures += 1
-            print("FAIL %s" % f.relative_to(repo))
+            print("FAIL %s" % rel)
             for e in errs:
                 print("      - %s" % e)
         else:
-            print("PASS %s" % f.relative_to(repo))
+            print("PASS %s" % rel)
     print()
     if failures:
         print("FAIL: %d brief(s) violate the one-panel rule" % failures)

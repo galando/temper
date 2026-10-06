@@ -227,22 +227,21 @@ to ask you for a mode, a drift choice or a reason. CI fails on a call outside `s
     line status under an answer in full mode.
   - `ui.render` draws the bar, pane, game, spinner word, prompt hint and a line above Claude's question
     dialog, which stays unchanged. `ui.message` takes the game's score; `ui.close` notes a closed pane.
-- **The game** is the mod's one surface module, `hooks/temper-mod/ui/game-client.tsx` (with
-  `core/runner.ts`, `core/runner-art.ts` and `ui/palette.ts`), named as fixed text and imported
-  statically. It makes no engine call and posts only the score.
+- **The game** is the mod's one surface module (the game client, with its runner, art and palette
+  files), named as fixed text and imported statically. It makes no engine call and posts only the score.
 - **Other:** key `9` moves the keys to the reason field. Toasts tell a phase change (full mode), a mode or
   enforcement change and the result of a press. It waits 60 ms (`$.clock.sleep`, at most 4 times) to reread.
-- **The tests never run in your session.** `tests/mod/` runs only under `claude plugin test`; the plugin
-  never loads it. Every `$` call there (`$.session.start`, `$.ui.mount`, `$.tool.call`, `$.agent.spawn`
-  and the rest) goes to Claude Code's own test kit (`claude-code/testing`), not another plugin. Tests
-  hand Bash, Write, Edit, NotebookEdit and Read calls to the guard. Temper's fake engine (`world.ts`)
+- **The tests never run in your session.** The mod's test suite runs only under `claude plugin test`;
+  the plugin never loads it. Every `$` call there (`$.session.start`, `$.ui.mount`, `$.tool.call`,
+  `$.agent.spawn` and the rest) goes to Claude Code's own test kit (`claude-code/testing`), not another
+  plugin. Tests hand Bash, Write, Edit, NotebookEdit and Read calls to the guard. Temper's fake engine
   answers each tool call, question, prompt, `config.set`, `fs.write` and `command.run` with a stub and
   keeps what the mod sent in memory for the test to check, so nothing runs and nothing leaves the test.
   One test spawns a stub review agent (prompt `review it`, type `temper:temper-review`, no model); a
   stub answers it, so no agent runs, and the mod leaves the spawn unchanged.
 - **Tests, lint, git and `scripts/temper`** run as prompts to Claude with its normal permissions. Auto
-  mode may refuse a skip as a gate bypass; the bar then says "Press 1 to record it". Allow it once,
-  for example `Bash(*scripts/temper override*)`, or run it yourself with `!`.
+  mode may refuse a skip as a gate bypass; the bar then says "Press 1 to record it". Allow that one
+  `scripts/temper override` command, or run it yourself with `!`.
 
 ## Commands
 
@@ -276,7 +275,7 @@ committed artifacts (intent, plan, design, gate ledger and diff) are the audit t
 Temper's scripts run locally with `bash`, `git` and `python3`, and write only inside your project
 (the `pre-commit` hook goes where your `core.hooksPath` points, if you set one).
 
-- **Plugin hooks.** `hooks/hooks.json` registers two classic hooks and the mod module.
+- **Plugin hooks.** The plugin's hooks file registers two classic hooks and the mod module.
   `UserPromptSubmit` runs `scripts/guards/stage-marker.sh`, which notes which gate a standalone
   stage command owes. `Stop` runs `scripts/guards/verify-stage-gate.sh`, which can ask Claude to
   keep working (at most twice per stage) until that gate has a verdict. Both fail open.

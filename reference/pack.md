@@ -13,15 +13,34 @@ interactive builder.
 Higher tier shadows lower, by name:
 
 ```
-.claude/packs/{name}/rules.md           project-local (highest)
-~/.claude/packs/{name}/rules.md         global
-$CLAUDE_PLUGIN_ROOT/packs/{name}/rules.md   built-in (lowest)
+.claude/packs/{name}/rules.md     project-local (highest), in the project
+~/.claude/packs/{name}/rules.md   global
+the built-in files listed below   built-in (lowest), in the plugin
 ```
 
-Every stage reads this live at phase start (no cache): scan all three tiers (excluding
-`stacks/`), keep the highest-priority `rules.md` per name, filter to packs whose `phases`
-is `all` or contains the current phase (resolved as below), read `temper.config` for
-enabled/link overrides.
+The built-in tier is exactly these files (see Built-in Packs for what each does), and
+nothing else from the plugin:
+
+```
+$CLAUDE_PLUGIN_ROOT/packs/quality/rules.md
+$CLAUDE_PLUGIN_ROOT/packs/tdd/rules.md
+$CLAUDE_PLUGIN_ROOT/packs/security/rules.md
+$CLAUDE_PLUGIN_ROOT/packs/git/rules.md
+$CLAUDE_PLUGIN_ROOT/packs/performance/rules.md
+$CLAUDE_PLUGIN_ROOT/packs/api-design/rules.md
+$CLAUDE_PLUGIN_ROOT/packs/architecture-depth/rules.md
+$CLAUDE_PLUGIN_ROOT/packs/guardrails/rules.md
+```
+
+Every stage reads this live at phase start (no cache): read the project and global pack
+folders plus the built-in files above, keep the highest-priority `rules.md` per name,
+filter to packs whose `phases` is `all` or contains the current phase (resolved as
+below), read `temper.config` for enabled/link overrides. A project or global pack name
+is lowercase letters, digits and hyphens only; skip any other folder.
+
+**Old name:** the guardrails pack was called `hooks` before v9.6.5. A `packs:` entry
+named `hooks` means `guardrails`: treat it exactly as a `guardrails` entry, and when
+`/temper:pack` writes the `packs:` list back, write `guardrails`.
 
 ## Pack Configuration Schema
 
@@ -49,14 +68,16 @@ first of these that exists says so:
    stages the pack has anything to say to. Built-in packs all declare one; `tdd` is
    `[build, review, check, fix]`, `security` is `all`. The declarations themselves are
    the source of truth — read the frontmatter, not this sentence, if they ever disagree
-   (`validate-plugin.sh` checks their syntax).
+   (the plugin's own validator checks their syntax).
 3. **`all`** — no declaration anywhere, so it loads everywhere. This is the
    backwards-compatible default for a third-party pack written before frontmatter existed.
 
 `all` in either place means every phase. An **empty list (`[]`) means no phase loads it** —
-that's a real value, not a missing one. `packs/guardrails/rules.md` uses it: the file documents
-bash hooks that enforce themselves at edit- and commit-time, so there is nothing in it for
-a stage agent to apply, and loading it into all five stages was ~140 lines of pure cost.
+that's a real value, not a missing one. The guardrails pack's rules.md
+(`$CLAUDE_PLUGIN_ROOT/packs/guardrails/rules.md`) uses it: the file documents bash
+guard scripts that enforce themselves at edit- and commit-time, so there is nothing in
+it for a stage agent to apply, and loading it into all five stages was ~140 lines of
+pure cost.
 
 ## Pack-Plugin/Skill Linking
 
@@ -66,10 +87,13 @@ injection, not code execution.
 
 - `plugin://{name}` — read `~/.claude/plugins/installed_plugins.json`, verify the
   install path exists on disk.
-- `skill://{name}` — resolve in order: `.claude/skills/{name}/SKILL.md` →
-  `~/.claude/skills/{name}/SKILL.md` → `{plugin}/skills/{name}/SKILL.md` →
-  `.claude/commands/{name}.md` (command-based fallback) →
-  `{plugin}/commands/{name}.md`. First match wins.
+- `skill://{name}` — resolve in order: the project's `.claude/skills/{name}/SKILL.md` →
+  `~/.claude/skills/{name}/SKILL.md` → the exact path `pack-discover.py` printed for
+  that skill (its third field) → the project's `.claude/commands/{name}.md`
+  (command-based fallback) → the exact path `pack-discover.py` printed for that
+  command. First match wins. Never build a path from a plugin folder and a name: an
+  installed plugin's file is only ever the path the script printed, and the script
+  never lists Temper itself.
 
 **Health:** `connected: true/false/null` (no link configured). If a link target is
 missing, the pack's own rules still load — show a warning, never block work over a
@@ -79,7 +103,8 @@ removed plugin.
 
 ### Step 1: Discover + Display
 
-Scan the three tiers (above), merge with `.claude/temper.config`, then show:
+Read the three tiers (above: the project and global pack folders, plus the built-in
+files listed there), merge with `.claude/temper.config`, then show:
 
 ```
 +--------------------------------------------------------------------------+
@@ -125,8 +150,10 @@ show targets that actually appeared in the script's output — never fabricate a
 Group by `TYPE` and show via `AskUserQuestion`, 4 options per page (3 targets + "More
 targets..." when more than 4 remain; the last page uses all 4 slots for targets).
 
-User picks a target, then types a pack name via "Other" (lowercase, hyphens). Write
-`.claude/packs/{name}/rules.md`:
+User picks a target, then types a pack name via "Other". The name must be lowercase
+letters, digits and hyphens only (no `/`, no `..`); ask again for any other name. Write
+the project's `.claude/packs/{name}/rules.md` (in the project, never under
+`$CLAUDE_PLUGIN_ROOT`):
 
 ```markdown
 # {Pack Name}
@@ -156,7 +183,8 @@ for a custom combination) / Both. Update `temper.config`, return to Step 2.
 2. **Interview** — present findings, ask 5-10 `AskUserQuestion`s about what should
    become a rule. On a genuine conflict (two patterns within 20% prevalence), ask which
    wins: Pattern A / Pattern B / "Allow both, document when" / "Defer".
-3. **Generate** `.claude/packs/{name}/rules.md` with `## Mandatory Rules (BLOCK)`, `##
+3. **Generate** the project's `.claude/packs/{name}/rules.md` (same name rule as Step 3:
+   lowercase letters, digits and hyphens only; never under `$CLAUDE_PLUGIN_ROOT`) with `## Mandatory Rules (BLOCK)`, `##
    Quality Rules (WARN)`, `## Conventions (SUGGEST)`, `## Architectural Constraints
    (BLOCK)` sections populated from the interview.
 4. Add the pack to `temper.config`, report, return to Step 2.
@@ -188,3 +216,4 @@ Show the final `packs:` configuration and exit.
 | `performance` | N+1 detection, pagination, Core Web Vitals | WARN |
 | `api-design` | Additive extension, idempotency, naming | WARN |
 | `architecture-depth` | Module depth: seams, adapters, locality, leverage | WARN |
+| `guardrails` | Install guide for the edit-time and commit-time guard scripts (old name `hooks`); `phases: []`, so no stage loads it | BLOCK (enforced by the scripts) |

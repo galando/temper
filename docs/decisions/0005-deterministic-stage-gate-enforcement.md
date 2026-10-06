@@ -37,9 +37,9 @@ Enforce the contract in the hook layer, the same place the commit gate already l
   `.temper/gates.json` has no verdict for that stage, refuse to end the session
   (exit 2) with instructions to record evidence and run the gate. **Any verdict
   satisfies it, PASS or FAIL** — the guarantee is that `temper gate <stage>` ran, not
-  that it succeeded. Each firing appends to `.temper/hooks.log`.
+  that it succeeded. Each firing appends a line to the stage gate log in `.temper/`.
 
-Shipped two ways: plugin-level `hooks/hooks.json` (fires for `--plugin-dir` and
+Shipped two ways: the plugin's hooks file (fires for `--plugin-dir` and
 marketplace installs with no settings merge) and the guardrails pack's
 `settings-guardrails.json` (projects using the pack's copy-paste path).
 
@@ -79,12 +79,12 @@ Consistent with every hook in the pack — exactly one fail-closed path:
 - Unit: 15 cases in `scripts/tests/test-temper.sh` (marker detection and non-detection,
   block/clear/loop-guard paths, corrupt inputs, FAIL-verdict acceptance, a live
   `temper gate plan` round-trip, and a pinned regression for the argv-vs-stdin bug).
-- Probe: a throwaway plugin confirmed empirically that plugin `hooks/hooks.json` fires
+- Probe: a throwaway plugin confirmed empirically that a plugin's hooks file fires
   in `claude -p` mode and that UserPromptSubmit's input field is `prompt`. (Both points
   contradicted a docs-derived answer; the probe is authoritative.)
 - Live end-to-end: `claude -p "/temper:plan ..."` on the wiring-smoke fixture with the
-  plugin loaded. `.temper/hooks.log` shows the mechanism catching the real failure mode
-  in the wild:
+  plugin loaded. The stage gate log in `.temper/` shows the mechanism catching the real
+  failure mode in the wild:
 
   ```
   18:53:55Z verify-stage-gate blocked stop (stage=plan, no verdict)

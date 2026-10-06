@@ -64,7 +64,7 @@ unchanged on the surface.
 ## Move 1 — One deterministic spine: the `temper` CLI + commit hook
 
 A single zero-dependency script at `scripts/temper` (bash, same engineering standard as
-the existing `scripts/guards/*.sh` — explicit degradation contracts, fail-open on internal
+the existing guardrail scripts — explicit degradation contracts, fail-open on internal
 error, fail-closed only on an explicit violation).
 
 ### 1.1 `temper state` — state becomes impossible to corrupt
@@ -198,7 +198,7 @@ minutes; all M1 tests still green.
 ## Move 3 — Prove it works, publicly: self-evals in CI
 
 Temper ships an eval stage for users' features but has no behavioral regression harness
-for its own prompts — `validate-*.sh` checks structure, not behavior. Every prompt edit
+for its own prompts — the validate scripts check structure, not behavior. Every prompt edit
 is currently a blind change to a 10k-line program.
 
 ### 3.1 Fixture projects with seeded defects (`evals/fixtures/`)

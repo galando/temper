@@ -15,7 +15,9 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
 ## Steps
 
 ```
-1. Resolve $CLAUDE_PLUGIN_ROOT (orchestrator-patterns.md → "$CLAUDE_PLUGIN_ROOT Resolution").
+1. Resolve $CLAUDE_PLUGIN_ROOT ($CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md →
+   "$CLAUDE_PLUGIN_ROOT Resolution"). Every path below that does not start with
+   $CLAUDE_PLUGIN_ROOT/ is in the user's project, the current directory.
 
 2. Config — .claude/temper.config:
    a. EXISTS → report "Temper config already present" and do NOT overwrite it (it's the
@@ -34,9 +36,11 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
       bash $CLAUDE_PLUGIN_ROOT/scripts/guards/install.sh
    It installs a native git pre-commit hook that runs `temper gate commit` (and the
    secret scan) on every commit, fails open if temper isn't in use for a commit, and
-   backs up any existing non-Temper pre-commit hook first. It installs into the active
-   hooks dir — respecting an existing `core.hooksPath` (husky/lefthook) so the gate
-   isn't written where git would ignore it. Re-running is idempotent. If the project
+   backs up any existing non-Temper pre-commit hook first. It writes the project's
+   `.git/hooks/pre-commit`, or the `pre-commit` file in the folder an existing relative
+   `core.hooksPath` names (husky and lefthook set one), so the gate isn't written where
+   git would ignore it. Re-running is idempotent, and it refreshes a stale Temper hook
+   (one whose embedded CLI path no longer exists, as after a plugin upgrade). If the project
    isn't a git repo yet, install.sh exits non-zero — report "not a git repo yet; run
    /temper:init again after `git init` to install the commit gate" and continue (the
    config + scaffold still succeeded).
@@ -60,4 +64,4 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
 
 A pre-v7 config (`tokens:`/`models:`/`observability:`/`capabilities:` blocks) or a v7
 `eval:` block still parses — the CLI ignores keys it doesn't use. Nothing breaks; step 2
-just reports what's now inert. See `CHANGELOG.md` for the mapping.
+just reports what's now inert. See `$CLAUDE_PLUGIN_ROOT/CHANGELOG.md` for the mapping.

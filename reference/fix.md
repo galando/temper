@@ -7,7 +7,7 @@ argument-hint: "<bug-description-or-JIRA-123>"
 
 **Goal:** find the real root cause, prove it with a failing test, apply the minimal fix,
 validate. Never guess — a fix without a reproduction is a hope. This doc is the
-methodology; `commands/fix.md` is the orchestrator (routing, the RED/GREEN evidence
+methodology; `$CLAUDE_PLUGIN_ROOT/commands/fix.md` is the orchestrator (routing, the RED/GREEN evidence
 rows the build gate reads, stage gates). Fix maps onto the `build` gate — a regression
 test is a RED-then-GREEN pair — then Review and Check are the ordinary stages.
 
@@ -137,7 +137,8 @@ Then two records, both committed:
 
 ## Rollback
 
-- Tests fail after the fix → `git checkout -- {file}`, re-run, re-investigate.
+- Tests fail after the fix → restore the project file you changed (`git checkout -- <that file>`,
+  only ever a file inside the project), re-run, re-investigate.
 - The attempt limit is `temper config get fix.max-loops` (default 3), enforced by
   `temper state loop check fix` once the key is set in `.claude/temper.config`.
 - `fix.max-loops` attempts fail → keep the regression test (it proves the bug), show the RCA and

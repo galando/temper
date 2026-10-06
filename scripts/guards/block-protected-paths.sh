@@ -6,7 +6,7 @@
 # `protect: paths:` in .claude/temper.config (generated classes, a frozen package,
 # migrations) are blocked at EDIT time, for every mode — not discovered at the commit
 # gate after the tokens were spent, and not only in autonomous runs. Patterns use the
-# same **/segment/** shape as autonomy.park-on-touch.
+# same any-depth segment shape as autonomy.park-on-touch (project paths, for example):
 #
 #   protect:
 #     paths: ["**/src/gen/**", "**/v1/**"]
@@ -25,10 +25,12 @@ _main() {
   command -v python3 >/dev/null 2>&1 || return 0
 
   local dir="${CLAUDE_PROJECT_DIR:-$PWD}"
-  local temper_cli
-  # The CLI sits in the parent of this script's folder (scripts/temper).
-  local here; here="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
-  temper_cli="$(dirname "$here")/temper"
+  # The plugin folder is this script's folder with the literal suffix /scripts/guards
+  # removed; the CLI is scripts/temper inside it.
+  local here root temper_cli
+  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 0
+  root="${here%/scripts/guards}"
+  temper_cli="$root/scripts/temper"
   [[ -x "$temper_cli" ]] || return 0
 
   local patterns

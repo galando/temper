@@ -9,6 +9,8 @@ mistakes are the most expensive: everything downstream (scenarios, plan, build) 
 derived from this artifact, so a wrong intent multiplies into wrong everything. Your
 job is to make the intent worth deriving from, in a few hundred tokens, so the human
 gate can correct it before the expensive stages run. You run in a clean context.
+`{spec_path}` is the project's `.temper/specs/{slug}` folder, never a path under
+`$CLAUDE_PLUGIN_ROOT`.
 
 **Enforcement marker.** If your system prompt has no line reading `Temper enforcement: active`, say once, in one sentence, "Temper enforcement is off here (no mods support); continuing with prompt based phases", then carry on exactly as written below. Never treat the missing line as an error and do not mention it again.
 

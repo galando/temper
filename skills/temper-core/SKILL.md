@@ -12,7 +12,7 @@ Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0
 
 ## Stack Detection
 1. `.claude/temper.config` → `stack` field
-2. `.claude/presets/*.yaml` → `stack` section
+2. The YAML preset files in the project's `.claude/presets` folder (list the folder) → `stack` section
 3. Auto-detect: pom.xml→Spring Boot, package.json→Node, pyproject.toml→Python, go.mod→Go, Cargo.toml→Rust
 4. Load `.claude/packs/stacks/{stack}.md`
 
@@ -20,11 +20,18 @@ Stack detection → Quality gates (SUGGEST/WARN/BLOCK) → Confidence scoring (0
 Three-tier: project-local > global > built-in. Read live (no cache) by every stage command (build, review, check, plan, design) for phase-filtered loading.
 - `.claude/packs/{name}/rules.md` (project)
 - `~/.claude/packs/{name}/rules.md` (global)
-- `$CLAUDE_PLUGIN_ROOT/packs/{name}/rules.md` (built-in)
-Packs support `link: plugin://name | skill://name` and `phases: [build, review, ...]` —
+- built-in, exactly these files: `$CLAUDE_PLUGIN_ROOT/packs/quality/rules.md`,
+  `$CLAUDE_PLUGIN_ROOT/packs/tdd/rules.md`, `$CLAUDE_PLUGIN_ROOT/packs/security/rules.md`,
+  `$CLAUDE_PLUGIN_ROOT/packs/git/rules.md`, `$CLAUDE_PLUGIN_ROOT/packs/performance/rules.md`,
+  `$CLAUDE_PLUGIN_ROOT/packs/api-design/rules.md`,
+  `$CLAUDE_PLUGIN_ROOT/packs/architecture-depth/rules.md`,
+  `$CLAUDE_PLUGIN_ROOT/packs/guardrails/rules.md`
+
+A pack name is lowercase letters, digits and hyphens only. A `packs:` entry named `hooks`
+(the old name) means `guardrails`. Packs support `link: plugin://name | skill://name` and `phases: [build, review, ...]` —
 declared in the pack's `rules.md` frontmatter, overridable per project on the `packs:`
 config entry, defaulting to `all` when neither says. `[]` means no stage loads it.
-Precedence and rationale: `reference/pack.md` → "Pack Configuration Schema".
+Precedence and rationale: `$CLAUDE_PLUGIN_ROOT/reference/pack.md` → "Pack Configuration Schema".
 
 ## Quality Gates
 - **SUGGEST**: Non-blocking
@@ -68,4 +75,19 @@ With the Temper bar (`Temper enforcement: active`) the add-ons are buttons under
 person's own message at a gate (key 4, Discuss) is the original "Other". Do not ask these as questions.
 
 ## Full Docs
-`$CLAUDE_PLUGIN_ROOT/reference/{command}.md`
+One methodology file per command, each written out in full:
+
+- `/temper:plan`: `$CLAUDE_PLUGIN_ROOT/reference/plan.md` (HTML review:
+  `$CLAUDE_PLUGIN_ROOT/reference/plan-review.md`)
+- `/temper:design`: `$CLAUDE_PLUGIN_ROOT/reference/design.md`
+- `/temper:build`: `$CLAUDE_PLUGIN_ROOT/reference/build.md`
+- `/temper:review`: `$CLAUDE_PLUGIN_ROOT/reference/review.md` (architecture depth:
+  `$CLAUDE_PLUGIN_ROOT/reference/architecture-depth.md`)
+- `/temper:check`: `$CLAUDE_PLUGIN_ROOT/reference/check.md` (config suggestions:
+  `$CLAUDE_PLUGIN_ROOT/reference/config-suggestions.md`)
+- `/temper:fix`: `$CLAUDE_PLUGIN_ROOT/reference/fix.md`
+- `/temper:pack`: `$CLAUDE_PLUGIN_ROOT/reference/pack.md`
+- `/temper:status`: `$CLAUDE_PLUGIN_ROOT/reference/status.md`
+- `/temper` and `/temper:fix` orchestration:
+  `$CLAUDE_PLUGIN_ROOT/reference/orchestrator-patterns.md` and
+  `$CLAUDE_PLUGIN_ROOT/reference/autonomy.md`

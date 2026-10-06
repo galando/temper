@@ -25,17 +25,17 @@ a model. `git commit` is blocked by a native pre-commit hook + an in-agent PreTo
 hook whenever a gate is FAIL and unoverridden — see `packs/guardrails/rules.md`.
 
 **Version:** 9.6.5 — see `CHANGELOG.md` for history.
-Config: `.claude/temper.config` | Docs: `$CLAUDE_PLUGIN_ROOT/reference/`
-CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/docs/history/`
+Config: `.claude/temper.config` | Docs: `reference/`
+CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
 
 **Developing temper (this repo):**
 - Test: `bash scripts/tests/test-temper.sh` (ends `PASS: N  FAIL: 0`); validators:
   `bash scripts/quality-check.sh` (also runs in CI via quality.yml).
 - Directory readiness: `bash scripts/validate-directory.sh` (no raw HTML in the README, no
   assets folder path in text, no `options` key). Run it before any README or manifest change.
-- The mod: `hooks/temper-mod/` (pure rules in `core/`, wiring in `register.tsx`, drawing in
-  `ui/`), tests in `tests/mod/`. Run `claude plugin test .`, `npx -p typescript@5.6 tsc -p
-  tsconfig.mod.json` and `bash scripts/check-mod-calls.sh`; the reviewed `$` calls live in that script.
+- The mod (pure rules, wiring, drawing) and its test suite: after any change to them run
+  `claude plugin test .`, `npx -p typescript@5.6 tsc -p tsconfig.mod.json` and
+  `bash scripts/check-mod-calls.sh`; the reviewed `$` calls live in that script.
 - Layout: `commands/` (slash commands) · `agents/` (stage subprocess briefs) ·
   `reference/` (methodology) · `packs/` (rules) · `scripts/temper` (the deterministic
   spine — gate logic lives HERE, never in a prompt) · `scripts/guards/` ·
@@ -43,9 +43,9 @@ CLI reference: `scripts/temper --help` | Retired systems: `$CLAUDE_PLUGIN_ROOT/d
 - Known mistakes: a gate-mechanics change is a `scripts/temper` edit + a
   `test-temper.sh` case, not a prompt edit; hooks must fail OPEN except their one
   detected-violation path; never re-add per-stage logic to `commands/temper.md` or
-  `commands/fix.md` — it belongs in `agents/{stage}.md` (including the stage's return
-  box: a brief must never point a clean-context subprocess at an orchestrator file);
-  new commands and agents must be listed in `.claude-plugin/plugin.json`.
+  `commands/fix.md` — it belongs in that stage's own brief in `agents/` (including the
+  stage's return box: a brief must never point a clean-context subprocess at an
+  orchestrator file); new commands and agents must be listed in `.claude-plugin/plugin.json`.
 
 <!-- Nothing follows. Do not add a generated advice section here: validate-docs.sh
      rejects the TOKENOMICS:START / TOKENOMICS:END markers (docs/history/tokenomics.md).

@@ -7,7 +7,8 @@ effort: high
 
 You are the Temper **Review** stage. You run in a clean context — load only the changed
 files plus `{spec_path}/intent.md`. Nothing from the orchestrator's conversation
-carries over.
+carries over. `{spec_path}` is the project's `.temper/specs/{slug}` folder, never a path
+under `$CLAUDE_PLUGIN_ROOT`.
 
 **Which files are "changed":** if `temper state get base_sha` returns a sha
 (checkpoint commits land before Review, so a plain `git diff --name-only` returns

@@ -52,7 +52,7 @@ wrongly blocks (or wrongly passes) a later commit. Follow
 trace every `intent.md` scenario to a test via `temper evidence add --scenario`) as you
 validate, then run `$CLAUDE_PLUGIN_ROOT/scripts/temper gate check` and show its
 PASS/FAIL to the user via `AskUserQuestion` (this command is not a subprocess — you own
-the gate here, unlike `agents/check.md`'s "never show a gate" rule).
+the gate here, unlike the check brief's "never show a gate" rule).
 
 **Pass `--spec-path` explicitly** — a standalone command hasn't necessarily run `temper
 state init`, so `temper state get spec_path` may be empty, which silently skips the

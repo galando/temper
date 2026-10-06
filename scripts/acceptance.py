@@ -7,7 +7,9 @@ Usage: acceptance.py <stage> <intent.md> <evidence.json>
 `status` prints {criteria: [{id, priority, status: passed|open, evidence}], ts} as
 JSON for `.temper/status.json`: a criterion is passed when its latest `criterion` row
 is a supported pass, or when it is Covered by scenarios that ALL have a supported
-passing latest row. Rows from every stage file in the evidence dir are merged by ts.
+passing latest row. Rows from each stage's ledger file in the evidence dir (one file per
+name on the fixed EVIDENCE_STAGES list, the same list scripts/temper allows) are merged
+by ts.
 
 Prints `every criterion has explicit validation links` on success, or the errors
 joined with `; ` and exits non-zero. python3 stdlib only.
@@ -32,6 +34,9 @@ AC_RE = re.compile(r"^AC-\d{2,}$")
 COVERS_RE = re.compile(r"^\s*Covers:\s*(.+?)\s*$", re.I)
 VALIDATE_RE = re.compile(r"^\s*Validate:\s*(\w+)\s*[—-]\s*(.*)$", re.I)
 BULLET_RE = re.compile(r"^(\s*)-\s+")
+# The stage names a ledger file can carry (scripts/temper EVIDENCE_STAGES). `status`
+# reads one file per name, in this order, and no other file in the evidence dir.
+EVIDENCE_STAGES = ("build", "check", "commit", "design", "fix", "intent", "plan", "rca", "review")
 
 
 def blank_placeholders(text):
@@ -174,15 +179,13 @@ def latest_by_key(rows, key):
 def status_report(intent_path, ev_dir):
     """Per-criterion status for the live view (`temper status --json`)."""
     import datetime
-    import glob
     import os
     lines = open(intent_path).read().splitlines()
     real = [c for c in parse_criteria(section_lines(lines, "Success Criteria"))
             if not c.get("placeholder") and c.get("id")]
     rows = []
-    for f in sorted(glob.glob(os.path.join(ev_dir, "*.json"))):
-        stage = os.path.splitext(os.path.basename(f))[0]
-        for i, r in enumerate(load_evidence(f), 1):
+    for stage in EVIDENCE_STAGES:
+        for i, r in enumerate(load_evidence(os.path.join(ev_dir, stage + ".json")), 1):
             if isinstance(r, dict):
                 rows.append((r.get("ts") or "", stage, i, r))
     rows.sort(key=lambda t: t[0])   # stable: equal ts keeps file order

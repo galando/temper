@@ -13,7 +13,10 @@
 #                                  the FIRST existing entry (maintainer fills
 #                                  the body) — verified, exit 1 on no anchor
 #   5. every other visible version string (README badge fallback, docs page
-#                                  labels) — kept in sync with plugin.json
+#                                  labels) in README.md, docs/index.md and
+#                                  docs/getting-started.md, kept in sync with plugin.json
+#
+# Every file this script rewrites is named literally below, relative to the plugin folder.
 #
 # Idempotent: re-running with the same version is a no-op. Tolerant of missing
 # files: a missing stamp file is skipped with a warning (pack/skill layouts may
@@ -35,8 +38,14 @@ if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 1
 fi
 
-# Operate from repo root regardless of where the script is invoked from.
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Operate from repo root regardless of where the script is invoked from. This script sits in
+# the plugin's scripts folder, so the root is its folder with that literal suffix stripped.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${HERE%/scripts}"
+if [ "$REPO_ROOT" = "$HERE" ]; then
+    echo "Error: cannot find the plugin folder from $HERE" >&2
+    exit 1
+fi
 cd "$REPO_ROOT"
 
 echo "Bumping version to $NEW_VERSION..."
@@ -47,39 +56,36 @@ echo "Bumping version to $NEW_VERSION..."
 OLD_VERSION="$(sed -n 's/.*"version": "\([0-9][0-9.]*\)".*/\1/p' .claude-plugin/plugin.json 2>/dev/null | head -1 || true)"
 
 # 1. plugin.json (required — the single source of truth)
-PJ=".claude-plugin/plugin.json"
-if [ -f "$PJ" ]; then
-    echo "  -> Updating $PJ"
-    sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VERSION\"/" "$PJ"
-    rm -f "$PJ.bak"
+if [ -f .claude-plugin/plugin.json ]; then
+    echo "  -> Updating .claude-plugin/plugin.json"
+    sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VERSION\"/" .claude-plugin/plugin.json
+    rm -f .claude-plugin/plugin.json.bak
 else
-    echo "Error: $PJ not found (required source of truth)" >&2
+    echo "Error: .claude-plugin/plugin.json not found (required source of truth)" >&2
     exit 1
 fi
 
 # 3. .claude/CLAUDE.md  **Version:** X.Y.Z
-CLAUDE_MD=".claude/CLAUDE.md"
-if [ -f "$CLAUDE_MD" ]; then
-    echo "  -> Updating $CLAUDE_MD (**Version:**)"
+if [ -f .claude/CLAUDE.md ]; then
+    echo "  -> Updating .claude/CLAUDE.md (**Version:**)"
     # Match the marker exactly; tolerate any prior X.Y.Z or X.Y.Z-rcN.
-    sed -i.bak -E "s/(\*\*Version:\*\*) [0-9][0-9.]+([-+0-9A-Za-z.]*)?/\1 $NEW_VERSION/" "$CLAUDE_MD"
-    rm -f "$CLAUDE_MD.bak"
+    sed -i.bak -E "s/(\*\*Version:\*\*) [0-9][0-9.]+([-+0-9A-Za-z.]*)?/\1 $NEW_VERSION/" .claude/CLAUDE.md
+    rm -f .claude/CLAUDE.md.bak
 else
-    echo "  -> $CLAUDE_MD not found, skipping"
+    echo "  -> .claude/CLAUDE.md not found, skipping"
 fi
 
 # 4. commands/temper.md header  (vX.Y.Z)
-TEMPER_CMD="commands/temper.md"
-if [ -f "$TEMPER_CMD" ]; then
-    echo "  -> Updating $TEMPER_CMD header (vX.Y.Z)"
+if [ -f commands/temper.md ]; then
+    echo "  -> Updating commands/temper.md header (vX.Y.Z)"
     # Only the title header line carries the plugin version stamp:
     #   "# Temper: Unified SDLC Command (vX.Y.Z)"
     # Other "(vN.N.N)" markers in the file denote when a *feature* was
     # introduced (e.g. "## Feedback Loops (v4.0.0)") and must NOT be bumped.
-    sed -i.bak -E "/^# Temper:.*\(v[0-9]/ s/\(v[0-9][0-9.]+([-+0-9A-Za-z.]*)?\)/(v$NEW_VERSION)/" "$TEMPER_CMD"
-    rm -f "$TEMPER_CMD.bak"
+    sed -i.bak -E "/^# Temper:.*\(v[0-9]/ s/\(v[0-9][0-9.]+([-+0-9A-Za-z.]*)?\)/(v$NEW_VERSION)/" commands/temper.md
+    rm -f commands/temper.md.bak
 else
-    echo "  -> $TEMPER_CMD not found, skipping"
+    echo "  -> commands/temper.md not found, skipping"
 fi
 
 # 5. CHANGELOG.md — insert a skeleton entry for the new version BEFORE the
@@ -88,12 +94,11 @@ fi
 # verified to have landed (an anchor that never matches must FAIL, never print
 # success with nothing inserted), and a file that already carries the new
 # header is left alone (idempotent).
-CHANGELOG="CHANGELOG.md"
-if [ -f "$CHANGELOG" ]; then
-    if grep -qE "^## v?${NEW_VERSION//./\\.}([[:space:]]|\(|:|$)" "$CHANGELOG"; then
+if [ -f CHANGELOG.md ]; then
+    if grep -qE "^## v?${NEW_VERSION//./\\.}([[:space:]]|\(|:|$)" CHANGELOG.md; then
         echo "  -> CHANGELOG.md already has a v$NEW_VERSION entry, skipping"
     else
-        ANCHOR_LINE=$(grep -nE '^## v?[0-9]+\.[0-9]+\.[0-9]+' "$CHANGELOG" | head -1 | cut -d: -f1 || true)
+        ANCHOR_LINE=$(grep -nE '^## v?[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | head -1 | cut -d: -f1 || true)
         if [ -z "$ANCHOR_LINE" ]; then
             echo "Error: CHANGELOG.md has no '## vX.Y.Z' entry to anchor against — refusing to bump silently" >&2
             exit 1
@@ -102,9 +107,9 @@ if [ -f "$CHANGELOG" ]; then
         ENTRY=$(printf '## v%s — TODO: one-line summary\n\n- TODO: maintainer fills in this entry'"'"'s body.\n' "$NEW_VERSION")
         # head/tail splice, not awk -v: awk's -v rejects embedded newlines in the
         # entry, which silently corrupted the insert (multi-line skeleton).
-        { head -n $((ANCHOR_LINE - 1)) "$CHANGELOG"; printf '%s' "$ENTRY"; echo; tail -n "+$ANCHOR_LINE" "$CHANGELOG"; } > "$CHANGELOG.tmp" && mv "$CHANGELOG.tmp" "$CHANGELOG"
+        { head -n $((ANCHOR_LINE - 1)) CHANGELOG.md; printf '%s' "$ENTRY"; echo; tail -n "+$ANCHOR_LINE" CHANGELOG.md; } > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
         # Verify the header landed — a silent no-insert must never report success.
-        if ! grep -qE "^## v?${NEW_VERSION//./\\.}([[:space:]]|\(|:|$)" "$CHANGELOG"; then
+        if ! grep -qE "^## v?${NEW_VERSION//./\\.}([[:space:]]|\(|:|$)" CHANGELOG.md; then
             echo "Error: CHANGELOG.md insert failed verification — new header not found after insert" >&2
             exit 1
         fi
@@ -114,11 +119,10 @@ else
 fi
 
 # 5b. docs/index.html  "version": "X.Y.Z" (the GitHub page's structured data)
-INDEX_HTML="docs/index.html"
-if [ -f "$INDEX_HTML" ]; then
-    echo "  -> Updating $INDEX_HTML (\"version\")"
-    sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VERSION\"/" "$INDEX_HTML"
-    rm -f "$INDEX_HTML.bak"
+if [ -f docs/index.html ]; then
+    echo "  -> Updating docs/index.html (\"version\")"
+    sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VERSION\"/" docs/index.html
+    rm -f docs/index.html.bak
 fi
 
 # 6. Other visible version strings — anything that visibly labels the plugin
@@ -127,9 +131,11 @@ fi
 # badge, nothing hardcoded); this sweep catches forks and docs that hardcode a
 # literal. Only exact OLD-version tokens are replaced, so unrelated numbers in
 # prose are never touched. Zero matches is fine (nothing hardcoded to drift).
+# The files are the ones that label the plugin with its current version, each named here.
+# Other docs mention past versions on purpose (release history), so they are left alone.
 if [ -n "$OLD_VERSION" ] && [ "$OLD_VERSION" != "$NEW_VERSION" ]; then
     OLD_ESC="${OLD_VERSION//./\\.}"
-    for f in README.md docs/*.md; do
+    for f in README.md docs/index.md docs/getting-started.md; do
         [ -f "$f" ] || continue
         if grep -qE "v?${OLD_ESC}([^0-9.]|$)" "$f" 2>/dev/null; then
             echo "  -> Updating visible version strings in $f"
@@ -144,8 +150,8 @@ echo "Version bumped to $NEW_VERSION"
 echo ""
 echo "Files updated:"
 echo "   * .claude-plugin/plugin.json"
-[ -f "$CLAUDE_MD" ]         && echo "   * $CLAUDE_MD"
-[ -f "$TEMPER_CMD" ]        && echo "   * $TEMPER_CMD"
+[ -f .claude/CLAUDE.md ]    && echo "   * .claude/CLAUDE.md"
+[ -f commands/temper.md ]   && echo "   * commands/temper.md"
 echo ""
 echo "Next steps:"
 echo "   1. Fill in the '## v$NEW_VERSION' CHANGELOG entry body (skeleton inserted)"

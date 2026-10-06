@@ -7,7 +7,11 @@
 # for that stage. Any verdict satisfies it — PASS or FAIL — because what this enforces
 # is that `temper gate <stage>` was actually invoked, not that it succeeded; a FAIL
 # verdict is the interactive gate's problem, not this hook's. Appends one line per
-# firing to .temper/hooks.log so a live run leaves a checkable trace.
+# firing to .temper/stage-gate.log so a live run leaves a checkable trace.
+#
+# Every file it reads or writes is a fixed name in the project's .temper folder: the hook
+# changes into the project folder first. A project folder that lies inside this plugin's
+# own folder is skipped (exit 0): the hook never writes inside the plugin.
 #
 # Loop guard, two layers: after MAX_BLOCKS refusals (counted in the marker itself) the
 # hook fails open — a model that cannot satisfy the gate (broken CLI, read-only disk)
@@ -25,19 +29,31 @@ set -uo pipefail
 
 MAX_BLOCKS=2
 
-_log() { # append-only trace; never fails the hook
-  local dir="$1" line="$2"
-  printf '%s verify-stage-gate %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo -)" "$line" \
-    >> "$dir/.temper/hooks.log" 2>/dev/null || true
+_log() { # append-only trace in the project's .temper folder (the cwd); never fails the hook
+  printf '%s verify-stage-gate %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo -)" "$1" \
+    >> .temper/stage-gate.log 2>/dev/null || true
+}
+
+_project_dir() { # prints the resolved project folder; fails when it is a subfolder of this
+                 # plugin's folder (this script's folder with the literal suffix
+                 # /scripts/guards removed)
+  local proj here root
+  proj="$(cd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null && pwd -P)" || return 1
+  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)" || return 1
+  root="${here%/scripts/guards}"
+  if [[ "$root" != "$here" && "$proj" != "$root" && "${proj#"$root"/}" != "$proj" ]]; then
+    return 1
+  fi
+  printf '%s\n' "$proj"
 }
 
 _main() {
-  local dir="${CLAUDE_PROJECT_DIR:-$PWD}"
-  local marker="$dir/.temper/pending-stage.json"
   local stdin_json=""
   stdin_json="$(cat 2>/dev/null || true)"
-  [[ -f "$marker" ]] || return 0
-  command -v python3 >/dev/null 2>&1 || { rm -f "$marker" 2>/dev/null; return 0; }
+  local proj; proj="$(_project_dir)" || return 0
+  cd "$proj" 2>/dev/null || return 0
+  [[ -f .temper/pending-stage.json ]] || return 0
+  command -v python3 >/dev/null 2>&1 || { rm -f .temper/pending-stage.json 2>/dev/null; return 0; }
 
   # One python pass: read marker + gates.json + harness input, decide, update the
   # marker in place. Prints "CLEAR", "OPEN" (fail-open), or "BLOCK <stage>". The
@@ -77,23 +93,23 @@ if hook_input.get("stop_hook_active") and blocks == 0:
 m["blocks"] = blocks + 1
 json.dump(m, open(marker_path, "w"))
 print(f"BLOCK {stage}")
-' "$marker" "$dir/.temper/gates.json" "$MAX_BLOCKS" "$stdin_json" 2>/dev/null) || decision="OPEN"
+' .temper/pending-stage.json .temper/gates.json "$MAX_BLOCKS" "$stdin_json" 2>/dev/null) || decision="OPEN"
 
   case "$decision" in
     CLEAR)
-      _log "$dir" "cleared (verdict recorded)"
-      rm -f "$marker" 2>/dev/null
+      _log "cleared (verdict recorded)"
+      rm -f .temper/pending-stage.json 2>/dev/null
       return 0
       ;;
     BLOCK*)
       local stage="${decision#BLOCK }"
-      _log "$dir" "blocked stop (stage=$stage, no verdict)"
+      _log "blocked stop (stage=$stage, no verdict)"
       printf '%s\n' >&2 \
         "temper: this session ran /temper:$stage but 'temper gate $stage' was never invoked, so" \
         "no verdict exists in .temper/gates.json and 'temper gate commit' cannot see that the" \
-        "stage happened. Before finishing: record the stage's evidence as agents/$stage.md" \
-        "specifies (e.g. 'temper state set complexity <tier>' for plan, 'temper evidence add'" \
-        "for build/review/check), then run:" \
+        "stage happened. Before finishing: record the stage's evidence as that stage's brief in" \
+        "the plugin's agents folder specifies (e.g. 'temper state set complexity <tier>' for plan," \
+        "'temper evidence add' for build/review/check), then run:" \
         "  temper gate $stage --spec-path .temper/specs/<feature-slug>" \
         "(the temper CLI in this plugin's scripts/ folder)." \
         "A FAIL verdict is fine to finish on if the user chose to stop — the requirement is that" \
@@ -101,8 +117,8 @@ print(f"BLOCK {stage}")
       return 2
       ;;
     *)
-      _log "$dir" "fail-open (marker unreadable or block budget spent)"
-      rm -f "$marker" 2>/dev/null
+      _log "fail-open (marker unreadable or block budget spent)"
+      rm -f .temper/pending-stage.json 2>/dev/null
       return 0
       ;;
   esac

@@ -8,7 +8,7 @@
 # (installed by scripts/guards/install.sh) enforces — so an agent-driven commit is
 # blocked with a clear reason at the moment it's attempted, not just at the git layer.
 # This does NOT replace the native git hook (a raw `git commit` outside the agent
-# never reaches this PreToolUse event) — the two are complementary, per the hooks
+# never reaches this PreToolUse event) — the two are complementary, per the guardrails
 # pack's two-layer design (packs/guardrails/rules.md).
 #
 # DEGRADATION CONTRACT:
@@ -37,10 +37,13 @@ except Exception:
   repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
   [[ -d "$repo_root/.temper" ]] || return 0
 
-  local temper_bin="$repo_root/scripts/temper"
-  # A project consuming Temper as an installed plugin (not the Temper repo itself)
-  # won't have scripts/temper at its own root — fall back to the plugin's own copy.
-  [[ -x "$temper_bin" ]] || temper_bin="${CLAUDE_PLUGIN_ROOT:-__none__}/scripts/temper"
+  # The CLI of the plugin this script belongs to: the plugin folder is this script's
+  # folder with the literal suffix /scripts/guards removed. Never a copy at the project's
+  # root, and never one named by an environment variable.
+  local here root temper_bin
+  here="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 0
+  root="${here%/scripts/guards}"
+  temper_bin="$root/scripts/temper"
   [[ -x "$temper_bin" ]] || return 0
 
   if ( cd "$repo_root" && "$temper_bin" gate commit ); then

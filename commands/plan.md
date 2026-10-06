@@ -20,7 +20,7 @@ If `$CLAUDE_PLUGIN_ROOT/scripts/temper config get stages.subprocess false` retur
 below). Launch the same isolated subprocess `/temper` uses — model from `temper model
 plan`, prompt: *"Follow $CLAUDE_PLUGIN_ROOT/agents/plan.md exactly. Feature:
 $ARGUMENTS. Spec path: .temper/specs/{feature-slug}. Standalone run — no orchestrated
-Intent stage ran: author intent.md yourself per reference/plan.md's standalone case,
+Intent stage ran: author intent.md yourself per $CLAUDE_PLUGIN_ROOT/reference/plan.md's standalone case,
 and pass --spec-path .temper/specs/{feature-slug} to every temper gate call."* Print
 the returned box verbatim, then run both gates + the approval `AskUserQuestion` per
 **Deterministic Gate** below — the subprocess is headless and already recorded its
@@ -60,6 +60,6 @@ FAIL before presenting for approval — same reason as Review/Check: skipping th
 leaves `temper gate commit` unable to see that planning happened at all (it requires
 an intent verdict whenever intent.md exists). The intent gate is standalone-only
 here: in the orchestrated `/temper` flow the Intent stage already recorded it, which
-is why `agents/plan.md` doesn't repeat it. Pass `--spec-path` explicitly rather than
+is why the plan brief (`$CLAUDE_PLUGIN_ROOT/agents/plan.md`) doesn't repeat it. Pass `--spec-path` explicitly rather than
 relying on `temper state` having been initialized — the intent/design gates refuse to
 run without a spec path.

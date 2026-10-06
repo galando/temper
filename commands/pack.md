@@ -6,12 +6,22 @@ description: "Manage quality packs: view, toggle, quick-create launchers, config
 
 ## Step 1: Discover Packs
 
-Read `.claude/temper.config` packs section. Scan three tiers:
-- `.claude/packs/{name}/rules.md` (project-local, highest priority)
-- `~/.claude/packs/{name}/rules.md` (global)
-- `$CLAUDE_PLUGIN_ROOT/packs/{name}/rules.md` (built-in)
+Read `.claude/temper.config` packs section (in the project). Three tiers:
+- project-local (highest priority): each folder in the project's `.claude/packs` folder
+  that holds a `rules.md`
+- global: each folder in `~/.claude/packs` that holds a `rules.md`
+- built-in (lowest): exactly these files, nothing else from the plugin:
+  - `$CLAUDE_PLUGIN_ROOT/packs/quality/rules.md`
+  - `$CLAUDE_PLUGIN_ROOT/packs/tdd/rules.md`
+  - `$CLAUDE_PLUGIN_ROOT/packs/security/rules.md`
+  - `$CLAUDE_PLUGIN_ROOT/packs/git/rules.md`
+  - `$CLAUDE_PLUGIN_ROOT/packs/performance/rules.md`
+  - `$CLAUDE_PLUGIN_ROOT/packs/api-design/rules.md`
+  - `$CLAUDE_PLUGIN_ROOT/packs/architecture-depth/rules.md`
+  - `$CLAUDE_PLUGIN_ROOT/packs/guardrails/rules.md`
 
-Deduplicate by name (highest tier wins). For each pack: read rules.md header, check enabled status, read `phases` and `link` from config.
+Deduplicate by name (highest tier wins). A `packs:` entry named `hooks` (the guardrails
+pack's old name) means `guardrails`. For each pack: read rules.md header, check enabled status, read `phases` and `link` from config.
 
 ## Step 2: Display Pack Table
 
@@ -25,7 +35,7 @@ Format each row using actual data:
 - **CONNECTED** — check if link target actually exists on filesystem
 
 Example structure (populate with real data only) — the panel format is owned by
-`reference/pack.md` → "Step 1: Discover + Display"; render exactly that box, never a
+`$CLAUDE_PLUGIN_ROOT/reference/pack.md` → "Step 1: Discover + Display"; render exactly that box, never a
 second, different shape here:
 
 ## Step 3: AskUserQuestion (max 4 options)
@@ -96,7 +106,7 @@ Project Commands:
 
 Show via AskUserQuestion (max 4 at a time, use "More targets..." to paginate).
 
-**5b:** User picks target, types pack name via "Other". Generate `.claude/packs/{name}/rules.md` with BLOCK-level enforcement. Update `temper.config`. Return to Step 3.
+**5b:** User picks target, types pack name via "Other". The name must be lowercase letters, digits and hyphens only (no `/`, no `..`); ask again for any other name. Generate `rules.md` in a folder of that name inside the project's `.claude/packs` folder (in the project, never under `$CLAUDE_PLUGIN_ROOT`) with BLOCK-level enforcement. Update `temper.config`. Return to Step 3.
 
 ## Step 6: Configure Pack
 

@@ -19,7 +19,7 @@ rules a strong model would not derive on its own; it does not choreograph your s
 
 **Modes:** Standalone (`/temper:plan`) runs in the current context and shows its own
 gate. Agent subprocess (from `/temper`) runs in a clean context and returns a summary —
-`agents/plan.md` step 5 already tells you not to show an `AskUserQuestion` gate in that
+The plan brief (`$CLAUDE_PLUGIN_ROOT/agents/plan.md`) step 5 already tells you not to show an `AskUserQuestion` gate in that
 mode; the orchestrator owns it. The methodology below is identical either way.
 
 ## What You Produce
@@ -55,7 +55,7 @@ ask only a question the draft marks `Blocking`, or one a gate FAIL forces —
 anything else thin becomes a new Open Question); the draft→accepted flip happens at
 whichever human gate reviews it first.
 Standalone `/temper:plan` with no existing intent.md: derive the intent yourself
-from `templates/intent.md` — full header (including `**Reviewer:**`, a name not a
+from `$CLAUDE_PLUGIN_ROOT/templates/intent.md` — full header (including `**Reviewer:**`, a name not a
 role), Problem, Success Criteria with stable `AC-NN` ids each carrying `Why:` and
 `Validate:`, Constraints with source markers, Scope and Non-goals, action-chain
 Target Users, labeled Open Questions, and `### Context Sources` (`consulted:` /
@@ -84,7 +84,7 @@ security hot path (below).
 
 ## What `temper gate plan` Checks
 
-Quoted from `gate_plan()` in `scripts/temper` so this doc cannot drift from the gate.
+Quoted from the plan gate in the temper CLI (`$CLAUDE_PLUGIN_ROOT/scripts/temper`) so this doc cannot drift from the gate.
 These run **at every tier**: the artifacts exist (`intent.md` + `tasks.md`); scenario
 count >= Success Criteria count; every criterion has explicit validation links
 (`acceptance.py plan` — stable `AC-NN` ids, `Why:` and `Validate:` on each, every
@@ -119,8 +119,8 @@ Explore the repo with your own tools, in your own context — stack, structure, 
 similar code, test coverage. A nested Explore subagent is an escape hatch for a repo
 large enough that reading it directly would blow your context, not a mandatory first
 step; that judgment call is yours, not a fixed procedure. Read `.claude/temper.config`
-and enabled packs' `rules.md` (project shadows global shadows built-in; keep rules whose
-`phases` is `all` or contains `plan`) before you plan.
+and enabled packs' `rules.md` (project shadows global shadows the built-in files listed in `$CLAUDE_PLUGIN_ROOT/reference/pack.md`;
+keep rules whose `phases` is `all` or contains `plan`) before you plan.
 
 ## Blast Radius: Measured, Not Estimated
 
@@ -225,7 +225,7 @@ other's output or config changes — default to `[SEQUENTIAL: after Task N]` whe
 Populate `## Approach Decisions` in `plan.md` **only** when a real alternative was
 genuinely considered and rejected — an empty/absent section is valid and means exactly
 that: no load-bearing choice was made. One genuine decision beats three padded ones.
-Structure: Alternative / Pros / Cons / **Why not chosen** (`templates/adr.md`'s shape).
+Structure: Alternative / Pros / Cons / **Why not chosen** (`$CLAUDE_PLUGIN_ROOT/templates/adr.md`'s shape).
 
 **`Why not chosen` is the load-bearing field.** Every rejection names a concrete
 constraint, risk, or cost that a reviewer could challenge from the text alone: not
@@ -256,7 +256,7 @@ CRITICAL/HIGH file: `file`, `function`, `sensitivity`, `entry_points[]` with `ro
 
 ## Summary Panel
 
-The panel format is owned by `agents/plan.md` — render exactly the panel it defines
+The panel format is owned by the plan brief (`$CLAUDE_PLUGIN_ROOT/agents/plan.md`) — render exactly the panel it defines
 (76 columns, fact rows then titled sections, one row per item, empty sections
 omitted), appending a `SECURITY: {N} CRITICAL, {N} HIGH hot paths` fact row when the
 security scan found any. Never carry a second, different box here: whichever box a

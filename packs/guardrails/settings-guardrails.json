@@ -1,5 +1,5 @@
 {
-  "_comment": "settings.json hook block for the Temper guardrails pack. NOTE: Claude Code has NO 'PreCommit' event (PreToolUse/PostToolUse/Stop/Notification/SubagentStop/PreCompact/SessionStart/SessionEnd/UserPromptSubmit only). The blocks below cover the IN-AGENT path (edits, writes, agent-driven commits). For deterministic commit-time enforcement on a RAW 'git commit', install the native git pre-commit hook via 'bash scripts/guards/install.sh' — that is the only gate that fires regardless of the agent. See .claude/packs/guardrails/rules.md.",
+  "_comment": "settings.json hook block for the Temper guardrails pack. NOTE: Claude Code has NO 'PreCommit' event (PreToolUse/PostToolUse/Stop/Notification/SubagentStop/PreCompact/SessionStart/SessionEnd/UserPromptSubmit only). The blocks below cover the IN-AGENT path (edits, writes, agent-driven commits). For deterministic commit-time enforcement on a RAW 'git commit', install the native git pre-commit hook with /temper:init (it runs bash $CLAUDE_PLUGIN_ROOT/scripts/guards/install.sh) — that is the only gate that fires regardless of the agent. See $CLAUDE_PLUGIN_ROOT/packs/guardrails/rules.md.",
   "hooks": {
     "PreToolUse": [
       {

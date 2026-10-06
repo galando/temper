@@ -28,7 +28,8 @@ script can check.
 - [ ] `claude plugin validate --strict .` passes.
 - [ ] `claude plugin test .` passes.
 - [ ] The version in `plugin.json` matches the top entry of `CHANGELOG.md`.
-- [ ] The README images load on the GitHub page (open the page and look).
+- [ ] The README images load on the GitHub page (open the page and look). The repo holds no
+      image since 9.6.5, so they load by URL.
 - [ ] The hero GIF shows the real mod.
 - [ ] The privacy page is public: https://galando.github.io/temper/privacy.html
 - [ ] You tried the install steps in a clean folder: `/plugin marketplace add galando/temper`,
@@ -58,14 +59,15 @@ Data and permissions, in plain words:
 ## What the listing shows
 
 The directory builds the listing from `plugin.json` and the README. It has no other form fields
-for marketing. These facts come from the Anthropic plugin documentation.
+for marketing. These facts come from the Anthropic plugin documentation and from what the
+directory reported on earlier versions.
 
 | Listing part | Where it comes from | What Temper does |
 |---|---|---|
-| Icon | The `icon` field in `plugin.json`, a path to an image file in the plugin | An orange T on a dark square, 256 by 256 pixels, in the `.claude-plugin` folder. Before 9.5.0 the field was missing, so the card showed the plain plug icon. |
+| Icon | The `icon` field in `plugin.json`, a path to an image file in the plugin | None in 9.6.5. The repo holds no image, so `plugin.json` has no `icon` field and the card shows the plain plug icon. From 9.5.0 to 9.6.4 it was an orange T on a dark square. |
 | Short description | The `description` field. A card cuts it after about 100 characters. | The first sentence says the outcome: "Claude cannot write code before you approve the intent." |
 | Page text | The README | The first screen has the outcome, an image with alt text and the install steps. |
-| Links | `documentationUrl`, `supportUrl` and `privacyPolicyUrl` in `plugin.json` | The docs site, the GitHub issues page and the privacy page. |
+| Links | Link fields in `plugin.json`. The directory reported `documentationUrl`, `supportUrl` and `privacyPolicyUrl` as unrecognized fields. | None in 9.6.5: `plugin.json` has no link fields, only `homepage` and `repository` (the GitHub page). The README links the docs site and the privacy page, and the privacy page goes in the form. |
 | Search words | The `keywords` field | Words a person types: sdlc, tdd, code-review, guardrails, quality-gates. |
 | New versions | The tracked branch. Raise `version` in `plugin.json` with every release. | Set up the GitHub push webhook in the developer portal so a merge reaches the listing without waiting for the schedule. |
 
@@ -83,10 +85,11 @@ Claude Code itself accepts the plugin.
 | Kind of finding | Answered by |
 |---|---|
 | This plugin includes a mod | Always a reviewer. Nothing in the code clears it. |
-| The game's file path, scripts it cannot confirm leave the mod unchanged | Code: see the 9.6.4 and 9.6.5 entries in `CHANGELOG.md`. Keep `module:` a fixed string outside JSX (cleared on 9.6.4). No script, config or instruction names a file of the mod or the hooks file, even to read it: 9.6.4 still had `check-original-options.sh` read the action table, and it was flagged. Checks of the mod go in its TS tests, which import it. Plugin paths are fixed text after the root: no `..`, no wildcard, no variable part. |
+| The game's file path, scripts it cannot confirm leave the mod unchanged | Code: see the 9.6.4 and 9.6.5 entries in `CHANGELOG.md`. Keep `module:` a fixed string outside JSX (cleared on 9.6.4). Since 9.6.5 no script, command, config or instruction names a file of the mod, the plugin's hooks file or the mod's tests, even to read it (9.6.4 still had `check-original-options.sh` read the action table, and it was flagged). The folders that shared the name "hooks" with the mod's were renamed: the guard scripts are in `scripts/guards/` and the pack is `guardrails`. Every plugin path is written out in full after the root: no `..`, no wildcard, no placeholder, no second variable. Checks of the mod go in its TS tests, which import it. |
 | Prompts, commands, settings, hooks the mod uses | The README section "What the mod reads and writes". Change it in the same commit as the code. |
-| Tool calls, `config.set`, `command.run`, an agent spawn in `tests/mod/` | Temper's fake engine (`tests/mod/world.ts`, built on Claude Code's test kit) and one test's stub spawn. Not reported on 9.6.4, once the README described them. |
-| Images, credentials, download and run text | Notes for the reviewer: the images are plain, and the rest is text in docs, tests and the Bash guard's patterns. |
+| Tool calls, `config.set`, `command.run`, an agent spawn in the mod's test suite | Temper's fake engine (built on Claude Code's test kit) and one test's stub spawn. Not reported on 9.6.4, once the README described them. |
+| Fields the directory does not recognize | Removed in 9.6.5: `documentationUrl`, `supportUrl` and `privacyPolicyUrl`, and `icon` with the images. |
+| Images, credentials, download and run text | Since 9.6.5 the repo holds no image; the README loads its pictures by URL. The rest is text in docs, tests and the Bash guard's patterns, explained in notes for the reviewer. |
 
 ## What is not verified
 

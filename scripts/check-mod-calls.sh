@@ -3,8 +3,8 @@
 #
 # Runs `claude plugin validate` on the manifest, takes the `calls:` line it prints for the
 # hooks module, and FAILS when
-#   - any call is process.*, http.* or env.* (the mod never spawns, fetches or reads the
-#     environment: tests, lint, git and CLI calls are prompts to Claude), or
+#   - any call is in the process, http or env namespace (the mod never spawns, fetches or
+#     reads the environment: tests, lint, git and CLI calls are prompts to Claude), or
 #   - any call is not on the reviewed list below.
 # A new call is a reviewed change: add it here AND to docs/mods-plan.md section 2.7 with a
 # one line reason.
@@ -12,7 +12,10 @@
 # Test hook: CHECK_MOD_CALLS_LINE="<a calls: line>" checks that line without running claude.
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# The plugin folder: this script sits in its scripts folder, so strip that literal suffix.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${HERE%/scripts}"
+[[ "$REPO_ROOT" != "$HERE" ]] || { echo "FAIL: cannot find the plugin folder from $HERE"; exit 1; }
 
 # The reviewed list: one `noun.method` per line, with why the mod needs it.
 ALLOWED='
@@ -21,7 +24,7 @@ clock.sleep      waits 60 ms before build-state.json is read again while the CLI
 command.run      a pressed Button ends with /temper:temper (the orchestrator Resume) after its decision is recorded; prompt.submit refuses a slash text
 config.list      /temper mode and enforcement read the row to see whether an administrator locked it
 config.set       the same commands change the row the way /config does (key temper.uiMode, temper.enforcement)
-fs.list          lists .temper/specs/{slug}/events/ to rebuild the run
+fs.list          lists the events folder of a spec under .temper/specs to rebuild the run
 fs.read          reads build-state, gates, status, evidence, intent, plan, tasks, temper.config and event files
 fs.stat          resolves "." to the project root so absolute tool paths can be made relative
 prompt.fill      key 4 Discuss and key 2 Change at Build put a draft in the prompt box; the person types the rest (a press only, never from a hook)
@@ -75,8 +78,9 @@ CALLS="$(printf '%s\n' "$LINE" \
 
 FAIL=0
 while IFS= read -r call; do
-  case "$call" in
-    process.*|http.*|env.*)
+  # The namespace is the part before the first dot, compared with three fixed words.
+  case "${call%%.*}" in
+    process|http|env)
       echo "FAIL: forbidden call \$.$call (the mod never spawns, fetches or reads the environment)"
       FAIL=1
       continue
@@ -89,9 +93,8 @@ while IFS= read -r call; do
 done <<< "$CALLS"
 
 # The game's surface module has no engine at all: `$` is not defined there, so the mod's type check
-# (tsc -p tsconfig.mod.json, run in CI) fails on an engine call written as `$.`, and at run time a
-# surface module has no `$` to reach. This script reads only the validator's output and never opens
-# a file of the mod.
+# in CI fails on an engine call written as `$.`, and at run time a surface module has no `$` to
+# reach. This script reads only the validator's output and never opens a file of the mod.
 
 if [[ $FAIL -eq 0 ]]; then
   echo "OK: $(printf '%s\n' "$CALLS" | wc -l | tr -d ' ') calls, all on the reviewed list, none process/http/env"

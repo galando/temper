@@ -5,7 +5,10 @@
 set -euo pipefail
 command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 is required but not found in PATH"; exit 1; }
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# The plugin folder: this script sits in its scripts folder, so strip that literal suffix.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${HERE%/scripts}"
+[[ "$REPO_ROOT" != "$HERE" ]] || { echo "FAIL: cannot find the plugin folder from $HERE"; exit 1; }
 PASS=0
 FAIL=0
 
@@ -44,22 +47,28 @@ else
 fi
 
 # --- Referenced files exist ---
+# Each reference must be a plain name directly in its folder (no '/', no '..'): a .md file in
+# commands or agents, a folder in skills. Anything else is reported, never looked up.
 if [[ -f "$PJ" ]]; then
   MISSING=$(python3 -c "
-import json, sys, os
+import json, sys, os, re
 d = json.load(open(sys.argv[1]))
 root = sys.argv[2]
 missing = []
-for ref in d.get('commands', []) + d.get('skills', []) + d.get('agents', []):
-    path = os.path.join(root, ref.replace('./', ''))
-    kind = 'file' if ref.endswith('.md') else 'dir'
-    if kind == 'file' and not os.path.isfile(path):
-        missing.append(ref)
-    elif kind == 'dir' and not os.path.isdir(path):
-        missing.append(ref)
+for key, prefix, pattern, isfile in (('commands', './commands/', r'[a-z0-9-]+\.md', True),
+                                     ('skills', './skills/', r'[a-z0-9-]+', False),
+                                     ('agents', './agents/', r'[a-z0-9-]+\.md', True)):
+    for ref in d.get(key, []):
+        name = ref[len(prefix):] if isinstance(ref, str) and ref.startswith(prefix) else ''
+        if not re.fullmatch(pattern, name):
+            missing.append(str(ref) + ' (not a plain name in the ' + key + ' folder)')
+            continue
+        path = os.path.join(root, key, name)
+        if (isfile and not os.path.isfile(path)) or (not isfile and not os.path.isdir(path)):
+            missing.append(ref)
 for m in missing:
     print(m)
-" "$PJ" "$REPO_ROOT" 2>/dev/null || true)
+" "$PJ" "$REPO_ROOT" 2>/dev/null || echo "(the reference check could not run)")
 
   if [[ -z "$MISSING" ]]; then
     echo "[PASS] All plugin.json references resolve"
@@ -113,12 +122,12 @@ if [[ -f "$README" && -f "$PJ" ]]; then
   fi
 fi
 
-# --- Panel validation (agents/*.md one-closed-panel rule) ---
+# --- Panel validation (every stage brief: the one-closed-panel rule) ---
 if python3 "$REPO_ROOT/scripts/validate-panels.py" >/dev/null 2>&1; then
-  echo "[PASS] Every agents/*.md brief shows one closed panel"
+  echo "[PASS] Every stage brief shows one closed panel"
   PASS=$((PASS+1))
 else
-  echo "[FAIL] Panel violations in agents/*.md:"
+  echo "[FAIL] Panel violations in the stage briefs:"
   python3 "$REPO_ROOT/scripts/validate-panels.py" 2>/dev/null | grep '^FAIL' | sed 's/^/  /'
   FAIL=$((FAIL+1))
 fi

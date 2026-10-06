@@ -13,19 +13,22 @@ TYPE is one of PLUGIN, SKILL, CMD, LOCAL_CMD, GLOBAL_CMD.
 Security: print-only — this never execs or imports anything from a discovered path.
 Every discovered file is resolved with os.path.realpath() and must stay under its
 recorded installPath (or the project/home commands root) — a symlinked installPath
-must not become a directory-traversal read. Glob walks are capped by depth and total
-result count so a pathological install tree can't hang the scan. Frontmatter is read
-with a line-bounded parse (first ``---``-fenced block, ``key: value`` scalars only) —
-no PyYAML dependency added.
+must not become a directory-traversal read. The scan lists named subfolders with
+os.scandir (no wildcard patterns), capped by depth and total result count so a
+pathological install tree can't hang it. Temper's own folder is never scanned: an
+installed entry whose resolved installPath is this plugin's folder (or inside it) is
+skipped, whatever its name. Frontmatter is read with a line-bounded parse (first
+``---``-fenced block, ``key: value`` scalars only) — no PyYAML dependency added.
 """
 import json
 import os
-import glob
 import sys
 
 MAX_DEPTH = 6
 MAX_RESULTS = 500
 HOME = os.path.expanduser("~")
+# This plugin's own folder: this file's resolved path with the literal suffix removed.
+SELF_ROOT = os.path.realpath(__file__).removesuffix(os.sep + os.path.join("scripts", "pack-discover.py"))
 
 
 def read_frontmatter(path):
@@ -66,24 +69,65 @@ def safe_realpath_under(path, root):
     return None
 
 
-def bounded_glob(root, pattern):
-    """glob under root, capped by MAX_DEPTH (path components beyond root) and
-    MAX_RESULTS; every hit is realpath-checked to stay under root."""
-    out = []
+def is_self(path):
+    """True when path resolves to this plugin's own folder or a folder inside it."""
     try:
-        hits = glob.glob(os.path.join(root, pattern), recursive=True)
+        rp = os.path.realpath(path)
     except Exception:
-        return out
-    for p in sorted(hits):
-        if len(out) >= MAX_RESULTS:
-            break
-        rel = os.path.relpath(p, root)
-        if rel.count(os.sep) > MAX_DEPTH:
-            continue
-        rp = safe_realpath_under(p, root)
-        if rp and os.path.isfile(rp):
-            out.append(rp)
+        return False
+    return rp == SELF_ROOT or rp.startswith(SELF_ROOT + os.sep)
+
+
+def _visible_entries(folder):
+    """Entries of one folder, sorted by name, hidden ones (leading '.') left out, the
+    same names a wildcard would have listed. An unreadable folder has none."""
+    try:
+        with os.scandir(folder) as it:
+            entries = [e for e in it if not e.name.startswith(".")]
+    except OSError:
+        return []
+    return sorted(entries, key=lambda e: e.name)
+
+
+def _keep(path, root, out):
+    """Append realpath(path) to out when it stays under root and is a file."""
+    if len(out) >= MAX_RESULTS:
+        return
+    if os.path.relpath(path, root).count(os.sep) > MAX_DEPTH:
+        return
+    rp = safe_realpath_under(path, root)
+    if rp and os.path.isfile(rp):
+        out.append(rp)
+
+
+def skill_files(root, sub):
+    """<root>/<sub>/<name>/SKILL.md for each visible child folder of <root>/<sub>."""
+    out = []
+    base = os.path.join(root, sub)
+    for e in _visible_entries(base):
+        if e.is_dir():
+            _keep(os.path.join(base, e.name, "SKILL.md"), root, out)
     return out
+
+
+def markdown_files(root, sub, recursive):
+    """Visible .md files in <root>/<sub> (and, when recursive, in its visible subfolders
+    down to MAX_DEPTH below root). Symlinked folders are not followed."""
+    out = []
+    base = os.path.join(root, sub) if sub else root
+    pending = [base]
+    while pending and len(out) < MAX_RESULTS:
+        folder = pending.pop(0)
+        subfolders = []
+        for e in _visible_entries(folder):
+            path = os.path.join(folder, e.name)
+            if e.is_dir(follow_symlinks=False):
+                if recursive and os.path.relpath(path, root).count(os.sep) < MAX_DEPTH:
+                    subfolders.append(path)
+            elif e.name.endswith(".md"):
+                _keep(path, root, out)
+        pending.extend(subfolders)
+    return sorted(out)
 
 
 def discover_plugins():
@@ -172,21 +216,23 @@ def main():
         install_path = entry.get("installPath", "")
         if not install_path or not os.path.isdir(install_path):
             continue
+        if is_self(install_path):
+            continue  # Temper itself (a renamed fork included): never a pack target
         plugin_desc = plugin_description(install_path)
         emitted_any = False
 
-        skill_files = bounded_glob(install_path, "skills/*/SKILL.md") + bounded_glob(
-            install_path, ".claude/skills/*/SKILL.md"
+        skills = skill_files(install_path, "skills") + skill_files(
+            install_path, os.path.join(".claude", "skills")
         )
-        for s in sorted(set(skill_files)):
+        for s in sorted(set(skills)):
             skill_dir = os.path.basename(os.path.dirname(s))
             fm = read_frontmatter(s)
             if emit(seen, "SKILL", f"{pkg_name}:{skill_dir}", os.path.dirname(s), fm.get("description", plugin_desc)):
                 emitted_any = True
                 results += 1
 
-        cmd_files = bounded_glob(install_path, "commands/**/*.md") + bounded_glob(
-            install_path, ".claude/commands/**/*.md"
+        cmd_files = markdown_files(install_path, "commands", True) + markdown_files(
+            install_path, os.path.join(".claude", "commands"), True
         )
         for c in sorted(set(cmd_files)):
             cmd_name = os.path.splitext(os.path.basename(c))[0]
@@ -207,7 +253,7 @@ def main():
     ):
         if results >= MAX_RESULTS or not os.path.isdir(root):
             continue
-        for c in bounded_glob(root, "*.md"):
+        for c in markdown_files(root, "", False):
             if results >= MAX_RESULTS:
                 break
             cmd_name = os.path.splitext(os.path.basename(c))[0]
