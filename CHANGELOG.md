@@ -70,8 +70,10 @@ could no longer be read; 9.6.0 kept the file. With no run active, `report` now s
 last in the project (a report file an older Temper wrote counts too), and says there is none only
 when nothing is kept. It decides on a fresh read of the run, so a turn cut short after the clear,
 or a run started since, cannot make it show or keep the wrong report, and a run held from memory
-(its state file gone) is shown but not kept. Five mod tests drive it, one through a whole run to
-Done and its `state clear`; the ones for the stale cases fail without the fresh read.
+(its state file gone) is shown, marked as such, but not kept. A run the commit gate completes is
+remembered as done, so once it is cleared its Done report is shown, not the phase before. Seven mod
+tests drive it, two through a whole run to Done and its `state clear`; the ones for the stale cases
+fail without the fix.
 
 **A hook tool's own hook is never written over.** lefthook, installed after Temper, writes its
 `pre-commit` into the folder `core.hooksPath` names, which is Temper's `temper-gate` folder (it
@@ -83,7 +85,7 @@ that folder), and says how to move it out, unset `core.hooksPath` and install th
 again. It names any other hook git runs from that folder (Git LFS writes its hooks there too),
 since those stop running once `core.hooksPath` is unset. A link to a Temper hook, or to nothing,
 is replaced as before, never written through. The docs no longer say lefthook installs into git's
-own hooks folder. Eight new installer cases cover it; the ones that refuse fail without the fix. The selftest runner also gives every case an empty standard input,
+own hooks folder. Ten new installer cases cover it; the ones that refuse fail without the fix. The selftest runner also gives every case an empty standard input,
 so a hook a case runs with no input of its own never waits on an open terminal.
 
 **Changed in 9.6.5 and not said then** (found by the same audit; each is deliberate and stays):

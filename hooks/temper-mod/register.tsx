@@ -268,9 +268,11 @@ function announce($: Api, snap: Snapshot): void {
   lastPhase = phase
 }
 
-// Takes a snapshot an `apply` produced as the current one.
+// Takes a snapshot an `apply` produced as the current one. A run it holds is the last known run too,
+// so a run that reached Done here is not held from memory as the phase before once its state goes.
 function adopt($: Api, snap: Snapshot): Snapshot {
   current = Promise.resolve(snap)
+  if (snap.slug !== null) lastRun = snap
   announce($, snap)
   return snap
 }
@@ -1008,7 +1010,7 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
         }
         // A run held from memory (its state file is gone) is shown but not kept, so its report never
         // replaces the one a finished run kept.
-        if (fresh.sync.line === LOST_STATE) return { text: reportText(fresh) }
+        if (fresh.sync.line === LOST_STATE) return { text: `${LOST_STATE}\n\n${reportText(fresh)}` }
         return { text: await writeReport(makeIo($), fresh) }
       }
       case 'pr':

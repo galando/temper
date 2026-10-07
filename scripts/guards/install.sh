@@ -465,6 +465,8 @@ _keep_gate() { # writes the kept hook temper-gate/pre-commit in the repository's
         [[ "$name" != pre-commit && -f "$GATE_DIR/$name" && -x "$GATE_DIR/$name" ]] && others="${others:+$others }$name"
       done
       KEEP_ERR="$GATE_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there (lefthook, for one, writes its hooks into the folder core.hooksPath names). Git runs it in place of the Temper hook, and this installer does not write over it."
+      # Git runs a hook only when it is executable.
+      [[ -x "$GATE_HOOK" ]] || KEEP_ERR="$GATE_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there (lefthook, for one, writes its hooks into the folder core.hooksPath names). It is not executable, so git runs no pre-commit hook at all, and this installer does not write over it."
       KEEP_HINT="Hint: run git config --unset core.hooksPath, move $GATE_HOOK out of that folder, install that tool's hooks again (it then writes them into git's own hooks folder), then run this installer again; it prints the line to add."
       if [[ -n "$others" ]]; then
         KEEP_ERR="$KEEP_ERR Git also runs these hooks from that folder, and they stop running once core.hooksPath is unset: $others."
@@ -472,7 +474,11 @@ _keep_gate() { # writes the kept hook temper-gate/pre-commit in the repository's
       fi
     else
       KEEP_ERR="$GATE_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there, and this installer does not write over it. Git does not run it, since core.hooksPath does not point at that folder."
-      KEEP_HINT="Hint: move $GATE_HOOK out of that folder. If a hook tool wrote it, install that tool's hooks again while core.hooksPath is unset (it then writes them into git's own hooks folder). Then run this installer again; it prints the line to add."
+      if [[ -z "${EXISTING_HOOKS_PATH:-}" ]]; then
+        KEEP_HINT="Hint: move $GATE_HOOK out of that folder, then run this installer again. If a hook tool wrote it, install that tool's hooks again first: with core.hooksPath unset they go into git's own hooks folder, and this installer then prints the line to add to them."
+      else
+        KEEP_HINT="Hint: move $GATE_HOOK out of that folder (git does not run it while core.hooksPath names another folder), then run this installer again."
+      fi
     fi
     return 1
   fi

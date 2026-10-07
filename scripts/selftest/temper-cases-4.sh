@@ -1376,7 +1376,16 @@ assert_eq "another tool's pre-commit in Temper's folder that git runs is refused
 git -C "$L_TL" config --unset core.hooksPath
 OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
 assert_eq "with core.hooksPath unset, the copy left in Temper's folder is refused the same way and left as it was" "1|yes|yes|yes|none" \
-  "$L_RC|$([[ "$(cksum < "$L_TL_HOOK")" == "$L_SUM" ]] && echo yes || echo no)|$(_l_line "$OUT" "FAIL: $L_TL_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there, and this installer does not write over it. Git does not run it, since core.hooksPath does not point at that folder.")|$(_l_last "$OUT" "Hint: move $L_TL_HOOK out of that folder. If a hook tool wrote it, install that tool's hooks again while core.hooksPath is unset (it then writes them into git's own hooks folder). Then run this installer again; it prints the line to add.")|$(_l_path "$L_TL")"
+  "$L_RC|$([[ "$(cksum < "$L_TL_HOOK")" == "$L_SUM" ]] && echo yes || echo no)|$(_l_line "$OUT" "FAIL: $L_TL_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there, and this installer does not write over it. Git does not run it, since core.hooksPath does not point at that folder.")|$(_l_last "$OUT" "Hint: move $L_TL_HOOK out of that folder, then run this installer again. If a hook tool wrote it, install that tool's hooks again first: with core.hooksPath unset they go into git's own hooks folder, and this installer then prints the line to add to them.")|$(_l_path "$L_TL")"
+# With core.hooksPath on another folder (a team folder here), git does not run the copy either, and
+# the hint says only to move it out.
+mkdir -p "$L_TL/team-gate"
+git -C "$L_TL" config core.hooksPath team-gate
+OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "with core.hooksPath on another folder, the copy in Temper's folder is refused, with the hint to move it out" "1|yes|yes" \
+  "$L_RC|$([[ "$(cksum < "$L_TL_HOOK")" == "$L_SUM" ]] && echo yes || echo no)|$(_l_last "$OUT" "Hint: move $L_TL_HOOK out of that folder (git does not run it while core.hooksPath names another folder), then run this installer again.")"
+git -C "$L_TL" config --unset core.hooksPath
+rm -rf "$L_TL/team-gate"
 mv "$L_TL_HOOK" "$L_TL/tool-pre-commit"
 OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
 assert_eq "once the copy is moved out, the installer keeps the hook and points core.hooksPath at its folder again" "0|$L_TL/.git/temper-gate|yes" \
@@ -1394,6 +1403,13 @@ OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
 assert_eq "with Git LFS's pre-push next to it, the refusal names that hook and the hint says to install it again" "1|yes|yes" \
   "$L_RC|$(_l_line "$OUT" "FAIL: $L_TL_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there (lefthook, for one, writes its hooks into the folder core.hooksPath names). Git runs it in place of the Temper hook, and this installer does not write over it. Git also runs these hooks from that folder, and they stop running once core.hooksPath is unset: pre-push.")|$(_l_last "$OUT" "Hint: run git config --unset core.hooksPath, move $L_TL_HOOK and those hooks out of that folder, install them again with their tools (they then write into git's own hooks folder; git lfs install --local does it for Git LFS), then run this installer again; it prints the line to add.")"
 rm -f "$L_TL/.git/temper-gate/pre-push"
+# Git runs a hook only when it is executable: one that is not is refused too, and the reason says
+# that git then runs no pre-commit hook at all.
+chmod -x "$L_TL_HOOK"
+OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "another tool's pre-commit there that is not executable is refused, and the reason says git runs none" "1|yes" \
+  "$L_RC|$(_l_line "$OUT" "FAIL: $L_TL_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there (lefthook, for one, writes its hooks into the folder core.hooksPath names). It is not executable, so git runs no pre-commit hook at all, and this installer does not write over it.")"
+chmod +x "$L_TL_HOOK"
 # A symlink there is judged by the file it leads to: one that leads to another tool's hook is
 # refused and left as it is.
 mv "$L_TL_HOOK" "$L_TL/tool-hook"
