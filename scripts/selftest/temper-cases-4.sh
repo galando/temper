@@ -1183,7 +1183,7 @@ chmod +x "$L_RV/.git/older-gate/pre-commit" "$L_RV/.git/older-gate/pre-push"
 git -C "$L_RV" config core.hooksPath .git/older-gate
 OUT=$(cd "$L_RV_WT" && bash "$L_RV_PLUG/scripts/guards/install.sh" 2>&1); L_RC=$?
 assert_eq "a relative older folder that must stay is set by its absolute path, with a note, and then refused naming its other hook" "1|$L_RV/.git/older-gate|yes|yes" \
-  "$L_RC|$(_l_path "$L_RV")|$(_l_line "$OUT" "Note: core.hooksPath held '.git/older-gate', which a linked worktree cannot reach; it now holds the same folder by its absolute path, $L_RV/.git/older-gate.")|$(_l_line "$OUT" "FAIL: core.hooksPath is set to '$L_RV/.git/older-gate', a folder an older Temper set. $L_RV/.git/older-gate holds hooks git would stop running if core.hooksPath pointed at Temper's folder: pre-push.")"
+  "$L_RC|$(_l_path "$L_RV")|$(_l_line "$OUT" "Note: core.hooksPath held '.git/older-gate'; it now holds $L_RV/.git/older-gate, the same older Temper folder in this repository's git folder by its absolute path, which every worktree reaches.")|$(_l_line "$OUT" "FAIL: core.hooksPath is set to '$L_RV/.git/older-gate', a folder an older Temper set. $L_RV/.git/older-gate holds hooks git would stop running if core.hooksPath pointed at Temper's folder: pre-push.")"
 printf '#!/bin/sh\n%s\n' "$L_CALL" > "$L_RV/.git/older-gate/pre-commit"
 OUT=$(cd "$L_RV_WT" && bash "$L_RV_PLUG/scripts/guards/install.sh" 2>&1); L_RC=$?
 assert_eq "once its pre-commit is #!/bin/sh and the line, a run from the linked worktree says it calls the Temper hook" "0|yes" \
@@ -1209,7 +1209,7 @@ cp -a "$L_CA" "$L_CB"
 L_SUM="$(cksum < "$L_CA/.git/temper-gate/pre-commit")"
 OUT=$(cd "$L_CB" && bash "$L_INSTALL" 2>&1); L_RC=$?
 assert_eq "a copy pointed at the original's temper-gate folder is refused as another repository's folder, with no hook lines and no older Temper warning" "1|yes|no|no|$L_CA/.git/temper-gate" \
-  "$L_RC|$(_l_line "$OUT" "FAIL: core.hooksPath is set to '$L_CA/.git/temper-gate', the Temper folder of another repository ($L_CA/.git), which also holds hooks git runs: pre-push.")|$(_l_has "$OUT" 'BEGIN Temper pre-commit hook lines')|$(_l_has "$OUT" 'a hook from an older Temper')|$(_l_path "$L_CB")"
+  "$L_RC|$(_l_line "$OUT" "FAIL: core.hooksPath is set to '$L_CA/.git/temper-gate', the Temper folder of another repository ($L_CA/.git), which also holds other hooks: pre-push.")|$(_l_has "$OUT" 'BEGIN Temper pre-commit hook lines')|$(_l_has "$OUT" 'a hook from an older Temper')|$(_l_path "$L_CB")"
 assert_eq "its hint says to point core.hooksPath at this repository's own folder, the original's hook is left as it was, and this one's hook is kept" "yes|yes|yes" \
   "$(_l_last "$OUT" "Hint: point core.hooksPath at this repository's own folder (git config --local core.hooksPath $L_CB/.git/temper-gate), then copy those hooks into it, or install them again with their tool (git lfs install --local writes into the folder core.hooksPath names).")|$([[ "$(cksum < "$L_CA/.git/temper-gate/pre-commit")" == "$L_SUM" ]] && echo yes || echo no)|$(_l_kept "$L_CB")"
 rm -rf "$L_CA" "$L_CB"
@@ -1278,13 +1278,20 @@ assert_eq "the framework's hook with no entry for the line in its config is refu
 printf -- "- repo: local\n  hooks:\n  - id: temper\n    name: temper\n    language: system\n    pass_filenames: false\n    always_run: true\n    entry: sh -c '%s'\n" "$L_CALL" > "$L_FC/.pre-commit-config.yaml"
 OUT=$(cd "$L_FC" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
 assert_eq "once .pre-commit-config.yaml holds the entry, a run says the framework runs the Temper hook" "0|yes|none" \
-  "$L_RC|$(_l_line "$OUT" "The pre-commit hook $L_FC/.git/default-gate/pre-commit runs the Temper hook ($L_FC/.git/temper-gate/pre-commit) through .pre-commit-config.yaml, and that hook is now current, so nothing else was written.")|$(_l_path "$L_FC")"
+  "$L_RC|$(_l_line "$OUT" "The pre-commit hook $L_FC/.git/default-gate/pre-commit runs the Temper hook ($L_FC/.git/temper-gate/pre-commit) through .pre-commit-config.yaml, and that hook is now current, so nothing else was written. (Only the text of .pre-commit-config.yaml was read: a stages or skip setting in it can still keep the line from running on a commit.)")|$(_l_path "$L_FC")"
+# The line in a comment of that file does not count: the framework does not run it.
+printf -- "- repo: local\n  hooks:\n  - id: temper\n    name: temper\n    language: system\n    # entry: sh -c '%s'\n    entry: true\n" "$L_CALL" > "$L_FC/.pre-commit-config.yaml"
+OUT=$(cd "$L_FC" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
+assert_eq "an entry for the line that is only in a comment of .pre-commit-config.yaml does not count" "1" "$L_RC"
 rm -f "$L_FC/.pre-commit-config.yaml"
 printf '#!/bin/sh\n# lefthook generated hook\nexec lefthook run "pre-commit" "$@"\n' > "$L_FC/.git/default-gate/pre-commit"
+printf 'pre-commit:\n  commands:\n    temper:\n      # run: %s\n      run: "true"\n' "$L_CALL" > "$L_FC/lefthook.yml"
+OUT=$(cd "$L_FC" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
+assert_eq "a command for the line that is only in a comment of lefthook.yml does not count" "1" "$L_RC"
 printf 'pre-commit:\n  commands:\n    temper:\n      run: %s\n' "$L_CALL" > "$L_FC/lefthook.yml"
 OUT=$(cd "$L_FC" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
 assert_eq "once lefthook.yml holds the line, a run says lefthook runs the Temper hook" "0|yes" \
-  "$L_RC|$(_l_line "$OUT" "The pre-commit hook $L_FC/.git/default-gate/pre-commit runs the Temper hook ($L_FC/.git/temper-gate/pre-commit) through lefthook.yml, and that hook is now current, so nothing else was written.")"
+  "$L_RC|$(_l_line "$OUT" "The pre-commit hook $L_FC/.git/default-gate/pre-commit runs the Temper hook ($L_FC/.git/temper-gate/pre-commit) through lefthook.yml, and that hook is now current, so nothing else was written. (Only the text of lefthook.yml was read: a stages or skip setting in it can still keep the line from running on a commit.)")"
 rm -rf "$L_FC"
 
 # A link planted above a repository to the plugin's scripts folder, or a hard link of install.sh in
@@ -1299,6 +1306,55 @@ _l_repo "$L_PL/b/proj"
 assert_exit "a scripts link to the plugin's folder planted above a repository does not stop the install" 0 bash -c "cd '$L_PL/a/proj' && bash '$L_INSTALL'"
 assert_exit "nor does a hard link of install.sh in a scripts/guards folder planted above a repository" 0 bash -c "cd '$L_PL/b/proj' && bash '$L_INSTALL'"
 rm -rf "$L_PL"
+
+# A kept older folder after the repository moves: core.hooksPath still names the old place, where
+# git runs no hook, and the next run sets this repository's own older folder again by its absolute
+# path, so its other hooks keep running and the gate holds. (The copy of the default-gate plugin
+# takes .git/older-gate as the older value .git/hooks-temper, as in the case above.)
+L_MV="$WORKDIR/l1-move-older"
+L_MV2="$WORKDIR/l1-move-older-2"
+L_MV_PLUG="$WORKDIR/l1-mv-plugin"
+_dg_plugin "$L_MV_PLUG"
+sed 's/hooks-temper/older-gate/g' "$L_MV_PLUG/scripts/guards/install.sh" > "$L_MV_PLUG/install.new"
+mv "$L_MV_PLUG/install.new" "$L_MV_PLUG/scripts/guards/install.sh"
+_l_repo "$L_MV"
+mkdir -p "$L_MV/.git/older-gate"
+printf '#!/bin/sh\n%s\n' "$L_CALL" > "$L_MV/.git/older-gate/pre-commit"
+printf '#!/bin/sh\necho lfs-pre-push\n' > "$L_MV/.git/older-gate/pre-push"
+chmod +x "$L_MV/.git/older-gate/pre-commit" "$L_MV/.git/older-gate/pre-push"
+git -C "$L_MV" config core.hooksPath .git/older-gate
+OUT=$(cd "$L_MV" && bash "$L_MV_PLUG/scripts/guards/install.sh" 2>&1); L_RC=$?
+assert_eq "a kept relative older folder whose pre-commit holds only the line is set by its absolute path and calls the Temper hook" "0|$L_MV/.git/older-gate" \
+  "$L_RC|$(_l_path "$L_MV")"
+rm -rf "$L_MV2"
+mv "$L_MV" "$L_MV2"
+OUT=$(cd "$L_MV2" && bash "$L_MV_PLUG/scripts/guards/install.sh" 2>&1); L_RC=$?
+assert_eq "after a move, the next run sets this repository's own older folder again, with a note, and its other hooks stay" "0|$L_MV2/.git/older-gate|yes|yes" \
+  "$L_RC|$(_l_path "$L_MV2")|$(_l_line "$OUT" "Note: core.hooksPath held '$L_MV/.git/older-gate'; it now holds $L_MV2/.git/older-gate, the same older Temper folder in this repository's git folder by its absolute path, which every worktree reaches.")|$([[ -x "$L_MV2/.git/older-gate/pre-push" ]] && echo yes || echo no)"
+(cd "$L_MV2" && printf '.temper/\n' > .gitignore && git add .gitignore)
+_l_red "$L_MV2"
+assert_exit "after the move and the run, a commit on a red gate is blocked" 1 git -C "$L_MV2" commit -q -m red
+rm -rf "$L_MV2" "$L_MV_PLUG"
+
+# husky v9: git runs husky's own hook in .husky/_, which runs .husky/pre-commit. When that hook is
+# missing (a fresh clone before npm install) or not executable, .husky/pre-commit never runs, so a
+# line in it does not count.
+L_HM="$WORKDIR/l1-husky-missing"
+_l_repo "$L_HM"
+mkdir -p "$L_HM/.husky"
+printf '%s\n' "$L_CALL" > "$L_HM/.husky/pre-commit"
+git -C "$L_HM" config core.hooksPath .husky/_
+OUT=$(cd "$L_HM" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "with husky's own hook missing, the line in .husky/pre-commit does not count" "1|yes|yes" \
+  "$L_RC|$(_l_line "$OUT" "FAIL: git runs .husky/_/pre-commit, husky's own hook, which is missing or not executable, so .husky/pre-commit does not run.")|$(_l_last "$OUT" "Hint: run npx husky (npm install runs it too, through husky's prepare script), then run this installer again.")"
+mkdir -p "$L_HM/.husky/_"
+printf '#!/bin/sh\n. "$(dirname "$0")/h"\n' > "$L_HM/.husky/_/pre-commit"
+OUT=$(cd "$L_HM" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "with husky's own hook not executable, it does not count either" "1" "$L_RC"
+chmod +x "$L_HM/.husky/_/pre-commit"
+OUT=$(cd "$L_HM" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "with husky's own hook in place and executable, the line counts" "0" "$L_RC"
+rm -rf "$L_HM"
 
 # The commit hooks with the real CLI: an active run with red gates and a symlink on a run-state
 # path, or a link in the spec folder, never opens the gate.

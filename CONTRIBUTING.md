@@ -132,9 +132,10 @@ Keep always-loaded content minimal:
   `scripts/selftest/test-temper.sh`). Never build the name from pieces or take
   it from `git rev-parse --git-path hooks` to write there: the directory reads
   those too. `scripts/validate-directory.sh` catches a write whose own words
-  name the folder, also through `git rev-parse` in a `$( )` span, a `cd` into
-  the folder or a variable set to such a path; a name built from pieces is for
-  review to catch.
+  name the folder, also through `git rev-parse` in a `$( )` span, `${NAME}` or
+  its default, a `cd` or `pushd` into the folder (on the same line, or alone on
+  a line before), or a variable (shell, or Python in a `.py` file) set to such
+  a path earlier in the file; a name built from pieces is for review to catch.
 - The commit gate installer holds no variable for the plugin folder by itself:
   only its scripts folder or a file, plus fixed text.
 - Commands, briefs and skills write the plugin root variable only in its braced

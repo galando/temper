@@ -138,8 +138,9 @@ to be, before it was moved or renamed), the installer points it at `temper-gate`
 a note naming the old value. When that older folder holds other hooks git runs (`git lfs
 install` writes its hooks into the folder `core.hooksPath` names), pointing it elsewhere
 would stop them, so the installer leaves it, keeps the hook, and treats the `pre-commit`
-there as the host hook below. A relative value that stays is set to the same folder by its
-absolute path, since a linked worktree cannot reach a relative one. When that folder is the
+there as the host hook below. A value that stays is set to this repository's own older folder
+by its absolute path: a relative one, which a linked worktree cannot reach, or an absolute one of
+another place, as after a move or a copy. When that folder is the
 `temper-gate` folder of another repository that is still there (this one is a copy), the
 installer refuses with a hint to point `core.hooksPath` at this repository's own folder; it
 never tells you to change that repository's hook. Any other folder (husky's `.husky/_` or `.husky`,
@@ -206,10 +207,12 @@ A hook of your own counts as calling Temper when it holds that exact line, or th
 line Temper 9.6.5 printed (the same, with `temper-pre-commit` in place of
 `temper-gate/pre-commit`), with no line before it that starts with `exit` or `exec` (for
 husky v9 that hook is `.husky/pre-commit`), and git can run it: a hook that is not executable
-is refused with a `chmod +x` hint (husky's `.husky/pre-commit`, which husky runs with `sh`,
-needs no execute bit). For the pre-commit framework and lefthook, their config file at the
-repository's top (`.pre-commit-config.yaml`, `lefthook.yml` and its other names) holding the
-line counts too. When husky's `.husky/_` folder holds a `pre-commit` from an older Temper, git
+is refused with a `chmod +x` hint. husky's `.husky/pre-commit` needs no execute bit, since
+husky's own hook in `.husky/_` runs it with `sh`, but that hook must be there and executable
+(run `npx husky` in a fresh clone). For the pre-commit framework and lefthook, their config file
+at the repository's top (`.pre-commit-config.yaml`, `lefthook.yml` and its other names) holding
+the line outside a comment counts too; the installer reads only its text, so a `stages` or
+`skip` setting there can still keep the line from running. When husky's `.husky/_` folder holds a `pre-commit` from an older Temper, git
 runs that in place of husky's own, so the installer refuses and says to run `npx husky` first.
 The installer then makes the kept hook current
 (for the 9.6.5 line it also rewrites `temper-pre-commit` in the git folder with the current

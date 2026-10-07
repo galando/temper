@@ -88,13 +88,15 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    at `temper-gate`, with a note naming the old value, unless that folder holds other
    hooks git runs (`git lfs install` writes its hooks into the folder `core.hooksPath`
    names): then it stays as it is, as for git's own hooks folder (a relative value is set
-   to the same folder by its absolute path, so linked worktrees reach it), and the
+   to this repository's own older folder by its absolute path, so linked worktrees, and a
+   moved or copied repository, reach it), and the
    `pre-commit` there needs the line. When that folder is the `temper-gate` folder of
    another repository that is still there (a copy), it refuses and says to point
    `core.hooksPath` at this repository's own folder, never to change that repository's
-   hook. A host hook counts only when git can run it (executable; husky's
-   `.husky/pre-commit` excepted), and for the pre-commit framework and lefthook, a config
-   file at the repository's top that holds the line counts too. When husky's `.husky/_`
+   hook. A host hook counts only when git can run it (executable; for husky v9, husky's own
+   hook in `.husky/_` must be there and executable instead), and for the pre-commit
+   framework and lefthook, a config file at the repository's top that holds the line
+   outside a comment counts too (its text only, which the installer's line says). When husky's `.husky/_`
    holds a `pre-commit` from an older Temper, it refuses and says to run `npx husky`. When it installs while an older Temper hook sits in git's own
    hooks folder, it notes that git no longer runs that file and that it can be
    deleted. When it refuses while git still runs a `pre-commit` from an older Temper

@@ -134,6 +134,20 @@ seg_find()     { seg_name "$1"; printf 'find .git/gate_dir -name pre-commit -del
 seg_pathlib()  { seg_name "$1"; printf 'from pathlib import Path\nPath(".git/gate_dir/pre-commit").write_text("x")\n' > "$1/scripts/a.py"; }
 seg_argv()     { seg_name "$1"; printf 'import subprocess\nsubprocess.run(["cp", src, ".git/gate_dir/pre-commit"])\n' > "$1/scripts/a.py"; }
 seg_system()   { seg_name "$1"; printf 'import os\nos.system("rm -f .git/gate_dir/pre-commit")\n' > "$1/scripts/a.py"; }
+seg_braced()   { seg_name "$1"; printf 'cp x "${GIT_DIR}/gate_dir/pre-commit"\nln -s x "${HOOKS:-.git/gate_dir}/pre-commit"\n' > "$1/scripts/a.sh"; }
+seg_spanvar()  { seg_name "$1"; printf 'D="$(git rev-parse --git-path gate_dir)"\ncp a "$D/pre-commit"\n' > "$1/scripts/a.sh"; }
+seg_cdline()   { seg_name "$1"; printf 'cd .git/gate_dir\nln -sf ../../x pre-commit\n' > "$1/scripts/a.sh"; }
+seg_pushd()    { seg_name "$1"; printf 'pushd .git/gate_dir\nrm -f pre-commit\npopd\n' > "$1/scripts/a.sh"; }
+seg_pyvar()    { seg_name "$1"; printf 'import os\nHOOK = os.path.join(".git", "gate_dir", "pre-commit")\nopen(HOOK, "w").write("x")\n' > "$1/scripts/a.py"; }
+seg_pathvar()  { seg_name "$1"; printf 'from pathlib import Path\nhook = Path(".git/gate_dir/pre-commit")\nhook.write_text("x")\n' > "$1/scripts/a.py"; }
+seg_osopen()   { seg_name "$1"; printf 'import os\nfd = os.open(".git/gate_dir/pre-commit", os.O_WRONLY | os.O_CREAT)\n' > "$1/scripts/a.py"; }
+seg_more_ok()  { seg_name "$1"
+                 { printf "find gate_dir -name '*.ts' -exec grep -l TODO {} +\n"
+                   printf 'echo "to remove it: (cd .git/gate_dir && rm -f pre-commit)"\n'
+                   printf '[[ $a > gate_dir ]] && echo yes\n'
+                   printf 'cd .git/gate_dir && ls\ncat .git/gate_dir/pre-commit > /tmp/copy\ncd /tmp\nrm -f x\n'; } > "$1/scripts/a.sh"
+                 { printf 'import shutil, subprocess\nshutil.copy("gate_dir/x.json", out)\nshutil.copytree("gate_dir", out)\n'
+                   printf 'subprocess.run(["cp", "gate_dir/x.json", out])\nentries = d.get("gate_dir", {})\n'; } > "$1/scripts/a.py"; }
 seg_misc_ok()  { seg_name "$1"
                  { printf "find . -path ./gate_dir -prune -o -name '*.tmp' -delete\n"
                    printf 'cp gate_dir/gate_dir.json "$OUT/manifest.json"\n'
@@ -182,6 +196,14 @@ broken "a pathlib write in the named folder fails" seg_pathlib
 broken "a subprocess argument list that writes there fails" seg_argv
 broken "os.system with a write there fails" seg_system
 variant "a pruned find, a copy out of the folder, sed on other files and str.replace pass" 0 seg_misc_ok
+broken "a \${NAME} path, or a default in one, that writes there fails" seg_braced
+broken "a variable set from git rev-parse, then written, fails" seg_spanvar
+broken "a cd into the folder alone on a line, then a write, fails" seg_cdline
+broken "pushd into the folder, then a write, fails" seg_pushd
+broken "a Python variable set to such a path, then opened for writing, fails" seg_pyvar
+broken "a pathlib variable set to such a path, then written, fails" seg_pathvar
+broken "os.open for writing there fails" seg_osopen
+variant "find -exec grep, quoted text, a test, a cd with a read, and copies out of the folder pass" 0 seg_more_ok
 make_fixture no_git plain && check "a folder that is not a git work tree fails" 1 "$FIXTURES/no_git"
 
 # Nothing in the environment moves the checked folder: the variable older versions read to check

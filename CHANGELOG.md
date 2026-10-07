@@ -12,7 +12,7 @@ mod", the prompts the mod submits, the slash commands it runs, the settings it s
 reviewer; the README section "What the mod reads and writes" describes each of them.
 
 **Files the directory could not inspect.** `scripts/selftest/test-temper.sh` had grown to 265 KB,
-above the 256 KB the directory reads. Its cases now live in four files of 60 to 100 KB next to it
+above the 256 KB the directory reads. Its cases now live in four files next to it, each well under that limit
 (`temper-cases-1.sh` to `temper-cases-4.sh`), which the runner sources in order.
 
 **The mod stays the same.**
@@ -39,8 +39,10 @@ above the 256 KB the directory reads. Its cases now live in four files of 60 to 
   hook sets `core.hooksPath` to a folder of its own. The fake older plugin's `scripts/hooks` folder
   is now `scripts/old-guards`. A new rule in `scripts/validate-directory.sh` fails when a shell or
   Python script, tests included, writes into, removes from, moves, links or makes a path with a
-  folder named `hooks` in its own words, also through `git rev-parse` in a `$( )` span, a `cd`
-  into the folder or a variable set to such a path; a name built from pieces is left to review.
+  folder named `hooks` in its own words, also through `git rev-parse` in a `$( )` span, `${NAME}`
+  or its default, a `cd` or `pushd` into the folder (on the same line, or alone on a line before), or
+  a variable (shell, or Python in a `.py` file) set to such a path earlier in the file; a name built
+  from pieces is left to review.
 - The installer holds no variable for the plugin folder by itself: it builds the CLI and guard paths
   from its own scripts folder. It decides whether a path is inside the plugin by finding its own
   `scripts/guards` folder above that path, and the hook it writes decides it by finding its CLI's
@@ -54,9 +56,9 @@ above the 256 KB the directory reads. Its cases now live in four files of 60 to 
   9.6.5) and the `temper-gate` folder of where a repository used to be are pointed at the current
   `temper-gate` folder, with a note, unless that folder holds other hooks git runs (`git lfs install`
   writes its hooks into the folder `core.hooksPath` names): then the setting stays, as for
-  `.git/hooks`. A relative value that stays is set to the same folder by its absolute path, with a
-  note, since git takes a relative value from each worktree's top and a linked worktree would run
-  nothing. When that folder is the `temper-gate` folder of another repository that is still there
+  `.git/hooks`. A value that stays is set to this repository's own older folder by its absolute
+  path, with a note: a relative value, since git takes it from each worktree's top and a linked
+  worktree would run nothing, and an absolute value of another place, as after a move or a copy. When that folder is the `temper-gate` folder of another repository that is still there
   (a copy of a repository), the installer never tells you to change its hook, which is that
   repository's own; the hint is to point `core.hooksPath` at this repository's folder.
 - When git still runs a `pre-commit` from an older Temper (next to other hooks in `.git/hooks`, in
@@ -77,9 +79,12 @@ above the 256 KB the directory reads. Its cases now live in four files of 60 to 
   own there) is refused: git runs that hook in place of husky's, so `.husky/pre-commit` never runs.
   The hint says to run `npx husky`, then add the line to `.husky/pre-commit`.
 - A hook that holds the line counts only when git can run it: one that is not executable is refused
-  with a `chmod +x` hint (husky's `.husky/pre-commit`, which husky runs with `sh`, needs no execute
-  bit). For the pre-commit framework and lefthook, a config file at the repository's top that holds
-  the line (`.pre-commit-config.yaml`, `lefthook.yml` and its other names) counts as installed.
+  with a `chmod +x` hint. husky's `.husky/pre-commit` needs no execute bit, since husky's own hook in
+  `.husky/_` runs it with `sh`, but that hook must be there and executable (a fresh clone has none
+  until `npx husky` or `npm install`). For the pre-commit framework and lefthook, a config file at
+  the repository's top (`.pre-commit-config.yaml`, `lefthook.yml` and its other names) that holds
+  the line outside a comment counts as installed; the installer reads only its text, so it says
+  that a `stages` or `skip` setting there can still keep the line from running.
 - The uninstall steps name the `temper-pre-commit` file that 9.6.5 may have left.
 - A hook tool that installs into `.git/hooks` later (the pre-commit framework refuses while
   `core.hooksPath` is set) needs `core.hooksPath` unset first; the next `/temper` or `/temper:init`
