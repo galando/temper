@@ -81,6 +81,13 @@ say lefthook installs into git's own hooks folder. Six new installer cases cover
 refuse fail without the fix. The selftest runner also gives every case an empty standard input,
 so a hook a case runs with no input of its own never waits on an open terminal.
 
+**Changed in 9.6.5 and not said then** (found by the same audit; each is deliberate and stays):
+the check stage's live scenario level no longer picks the most recently changed spec folder when
+no run names one, and skips that level instead; a review rule you promote goes into the project's
+copy of the pack (`.claude/packs/<name>/rules.md`), which from then on stands in for the built-in
+pack, so later plugin updates to that pack's rules do not reach the project; the formatter hook no
+longer formats a file outside the project folder; `temper evidence list` needs `--stage`.
+
 `scripts/plan_review.py` (the HTML plan review) runs on Python 3.6 to 3.8 again, as in 9.6.0: 9.6.5
 had used a string call that needs Python 3.9.
 
