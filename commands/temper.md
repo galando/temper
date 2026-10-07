@@ -135,55 +135,62 @@ result, `FAIL: no intent.md to report on` among them, means go on:
 2. **Scaffold** — run `${CLAUDE_PLUGIN_ROOT}/scripts/temper init` (idempotent).
 3. **Commit gate** — this is the headline guarantee, and the easiest to leave missing.
    Ask git which file it runs as the pre-commit hook:
-   `git rev-parse --git-path hooks/pre-commit` prints it (the repository's hooks
-   folder; the folder an existing `core.hooksPath` names, which husky and lefthook set;
-   or, in a linked worktree or a submodule, the hooks folder of the repository's own
-   git folder, which the worktrees share). Never test a fixed path under `.git`: in a
-   linked worktree or a submodule `.git` is a file, so such a path never exists there.
-   Install the hook when it isn't installed yet (that file is missing, or its second
-   line does not start with `# Temper native pre-commit hook`, as after husky rewrites
-   its folder) **or when it is stale**: a plugin upgrade moves the plugin folder, and
-   a hook whose embedded CLI path no longer exists fails open silently. Either way, run
-   `bash "${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh"` (it reports what it did and
-   writes the current path; in a worktree whose shared hooks folder already holds a
-   current Temper hook, it says the hook is already installed for this worktree and
-   exits 0). It never writes over a pre-commit hook that is not Temper's and never
-   writes a file git tracks. Before it refuses for one of those reasons, or because
-   core.hooksPath lies outside the repository, it writes the full Temper hook to
-   `temper-pre-commit` in the repository's own git folder (never committed, never in
-   the plugin folder), so the user's hook needs one line, with no path of this machine
-   in it, to run it. A hook of the user's own that holds that line, with no line
-   starting with `exit` or `exec` before it, calls the Temper hook: install.sh makes
-   `temper-pre-commit` current and exits 0 with a line saying so and that nothing else
-   was written, which counts as already in place. An exit 0 is the only installed result:
-   carry any `Warning:` line it printed (an old hook it replaced, or a
-   `pre-commit.bak.<timestamp>` file an older version set aside, with the restore steps
-   and the line it printed for it) into the one-line note, and show that line in a
-   fenced code block. Not a git repo yet ("FAIL: not inside a git repository") → say so
-   in one line and continue (config + scaffold still done); the gate installs on the
-   next run after `git init`. Any other non-zero exit means the commit gate is not
-   installed. It refuses when the pre-commit file holds a hook that is not Temper's or
-   is tracked by git; when the user's hook holds the Temper line after an `exit` or
-   `exec` line; when core.hooksPath is Temper's own `--global` folder from where this
-   repository used to be (its hint says to run install.sh with `--global` to point it
-   here, or to unset core.hooksPath); when core.hooksPath is outside the
-   repository and its own git folder, contains '..', '~' or other unusual characters,
-   names a folder that holds a JSON file, or is a relative path through `.git` in a
-   linked worktree or a submodule; when the hooks folder leads anywhere but the
-   repository and its own git folder, or into the plugin's own folder, once symlinks
-   are followed; when the repository lies inside the plugin's own folder;
-   and when a folder or file it needs cannot be made. It ignores GIT_DIR, GIT_WORK_TREE
-   and GIT_CONFIG. Say in one line that the commit gate is not installed and why (its
-   FAIL reason; with no FAIL line, show its whole output in a fenced code block). When
-   it printed "The Temper hook is kept in {file}", name that file: the Temper hook it
-   kept in the repository's git folder, never committed, and the only thing it wrote;
-   otherwise it wrote nothing. Then show the lines it printed between its BEGIN and END
-   lines, verbatim, in a fenced code block (one line that runs that kept hook, or, when
-   it refused before it knew the git folder, the Temper hook's own lines in a subshell,
-   so that their exits end only the subshell), then its `Hint:` line as it printed it
-   (for a hook that is not Temper's, a tracked one or a core.hooksPath outside the
-   repository, it says where the line goes: husky, the pre-commit framework, lefthook,
-   or the start or the end of the user's own hook), and continue.
+   `git rev-parse --git-path hooks/pre-commit` prints it. When the repository's
+   `core.hooksPath` points at Temper's folder, that file is the kept Temper hook,
+   `temper-gate/pre-commit` in the repository's git folder (the folder
+   `git rev-parse --git-common-dir` names, which every worktree of the repository
+   shares); otherwise it is a file in git's own hooks folder or in the folder another
+   tool set (husky, lefthook). Never test a fixed path under `.git`: in a linked
+   worktree or a submodule `.git` is a file, so such a path never exists there. The
+   gate is in place when that file's path ends in `/temper-gate/pre-commit`, its second
+   line starts with `# Temper native pre-commit hook`, and the CLI path written in it
+   still exists (a plugin upgrade moves the plugin folder, and a hook whose CLI path no
+   longer exists fails open silently). After the repository is moved or renamed,
+   `core.hooksPath` still names the old place, git runs no pre-commit hook, and that
+   file is missing, so this check fails and the installer points it at the new place.
+   Otherwise run
+   `bash "${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh"`. It writes the kept hook
+   with the current plugin paths and never writes into a folder named `hooks`: not
+   git's own hooks folder, not the folder `git rev-parse --git-path hooks` names, and
+   not a `core.hooksPath` folder of another tool. It only reads the hooks there. Its
+   other writes are `git config --local core.hooksPath` set to the kept hook's folder,
+   and, only when the user's hook holds the line Temper 9.6.5 printed, the file
+   `temper-pre-commit` in the git folder. Read its result:
+   - Exit 0 → in place. It installed the hook and pointed `core.hooksPath` at its
+     folder, found it already installed (or updated its plugin paths), or found that
+     the user's own pre-commit hook calls the Temper hook (its line says so, and that
+     nothing else was written), which counts as already in place. Carry each `Note:`
+     and `Warning:` line it printed into the one-line note. After a warning about a
+     `pre-commit.bak.<timestamp>` file an older version set aside, give its restore
+     steps and show the line it printed for it in a fenced code block.
+   - "FAIL: not inside a git repository" → say so in one line and continue (config +
+     scaffold still done); the gate installs on the next run after `git init`.
+   - Any other non-zero exit → the commit gate is not installed. It refuses when git's
+     own hooks folder holds hooks that git would stop running if `core.hooksPath`
+     pointed at Temper's folder (a `commit-msg`, git-lfs's `pre-push`, the pre-commit
+     framework's or lefthook's hooks, or a `pre-commit.bak.<timestamp>` an older
+     version left; an older Temper `pre-commit` does not count), when
+     `core.hooksPath` names another tool's folder (husky's `.husky/_`, lefthook, a
+     team folder), and when it names Temper's older folder and that folder holds
+     other hooks git runs (git-lfs writes its hooks there), unless the pre-commit
+     hook there already calls the Temper hook;
+     when the user's hook holds the Temper line after an `exit` or `exec` line; when
+     the repository, or a place it would write once symlinks are followed, lies inside
+     the plugin's own folder; and when a folder or file it needs cannot be made. It
+     ignores GIT_DIR, GIT_WORK_TREE and GIT_CONFIG. Say in one line that the commit
+     gate is not installed and why (its FAIL reason; with no FAIL line, show its whole
+     output in a fenced code block). When it printed "The Temper hook is kept in
+     {file}", name that file: the Temper hook it kept in the repository's git folder,
+     never committed, and the only thing it wrote; otherwise it wrote nothing. Then
+     show the lines it printed between its BEGIN and END lines, verbatim, in a fenced
+     code block (one line that runs the kept hook, or, when it refused before it knew
+     the git folder, the Temper hook's own lines in a subshell, so that their exits end
+     only the subshell), then each `Warning:` line it printed (a hook an older version
+     set aside, or a `pre-commit` from an older Temper that git still runs, with its
+     stale plugin path), then its `Hint:` line as it printed it (where the line goes:
+     `.husky/pre-commit`, the entry of a local hook of the pre-commit framework, a
+     command in `lefthook.yml`, the start or the end of the user's own hook, or, for a
+     hook from an older Temper, in place of all of its lines), and continue.
 
 If a step ran, print a one-line "Set up." note naming what was done; if everything was
 already in place, continue into Plan silently. This per-piece check is what makes

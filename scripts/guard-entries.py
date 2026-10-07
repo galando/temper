@@ -69,9 +69,9 @@ GUARD_SCRIPTS = (
     "stage-marker.sh",
     "verify-stage-gate.sh",
 )
-# Built from its name, so this file holds no plugin path form.
-ROOT_VAR = "$" + "CLAUDE_PLUGIN_ROOT"
-ROOT_VAR_BRACED = "$" + "{" + "CLAUDE_PLUGIN_ROOT"
+# The name of the plugin root variable. A command that starts with a dollar sign and this name
+# (with or without braces) comes from an older merge; a settings hook gets no such variable.
+ROOT_VAR_NAME = "CLAUDE_PLUGIN_ROOT"
 # A path holding one of these is never tested as a file: it counts as stale.
 UNSAFE = ("'", '"', "\\", "$", "`", "\n", "\r")
 
@@ -129,7 +129,7 @@ def script_path(command):
 
 def classify(path, plugin, project):
     """'current' or 'stale' for a Temper guard entry, None for the user's own copy."""
-    if path.startswith(ROOT_VAR) or path.startswith(ROOT_VAR_BRACED):
+    if path.startswith("$") and path[1:].lstrip("{").startswith(ROOT_VAR_NAME):
         return "stale"
     if not path.startswith("/"):
         return None

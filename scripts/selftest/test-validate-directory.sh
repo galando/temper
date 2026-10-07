@@ -108,6 +108,54 @@ wrong_market()  { printf '{"name":"x","plugins":[{"name":"other","source":"./","
 no_license()    { rm -f "$1/LICENSE"; }
 license_md()    { rm -f "$1/LICENSE"; printf 'MIT\n' > "$1/LICENSE.md"; }
 
+# Rule 9 names one folder in one line. These cases change that line in the fixture's copy to the
+# name gate_dir, so the scripts they write hold no write into the real name.
+seg_name() { sed 's/^WRITE_SEGMENT_NAME=.*$/WRITE_SEGMENT_NAME="gate_dir"/' "$1/scripts/validate-directory.sh" > "$1/scripts/v" \
+               && mv "$1/scripts/v" "$1/scripts/validate-directory.sh"; }
+seg_redirect() { seg_name "$1"; printf '#!/usr/bin/env bash\nprintf "x\\n" > "$D/.git/gate_dir/pre-commit"\n' > "$1/scripts/a.sh"; }
+seg_rm()       { seg_name "$1"; printf 'set -u\ncd "$W" && rm -f .git/gate_dir/pre-commit\n' > "$1/scripts/a.sh"; }
+seg_mkdir()    { seg_name "$1"; printf 'mkdir -p "$W/old/scripts/gate_dir"\n' > "$1/scripts/a.sh"; }
+seg_ln()       { seg_name "$1"; printf 'ln -s "$T" .git/gate_dir\n' > "$1/scripts/a.sh"; }
+seg_noext()    { seg_name "$1"; printf '#!/bin/sh\nchmod +x .git/gate_dir/pre-commit\n' > "$1/scripts/tool"; }
+seg_python()   { seg_name "$1"; printf 'import os\nopen(os.path.join(d, "gate_dir", "x"), "w").write("y")\n' > "$1/scripts/a.py"; }
+seg_workflow() { seg_name "$1"; mkdir -p "$1/.github/workflows"; printf 'jobs:\n  t:\n    steps:\n      - run: cp a .git/gate_dir/x\n' > "$1/.github/workflows/ci.yml"; }
+seg_reads()    { seg_name "$1"
+                 { printf 'ls -A .git/gate_dir\nsum="$(cksum < .git/gate_dir/pre-commit)"\n'
+                   printf 'echo "install.sh never writes into .git/gate_dir"\n# rm -f .git/gate_dir/pre-commit\n'
+                   printf 'mkdir -p gate_dir-old\ncp a "$W/x" # .git/gate_dir is only read\n'; } > "$1/scripts/a.sh"
+                 printf 'import os\ndata = open(os.path.join(d, "gate_dir", "x")).read()\n' > "$1/scripts/a.py"; }
+seg_subst()    { seg_name "$1"; printf 'cp a "$(git rev-parse --git-path gate_dir)/pre-commit"\nln -s a "$(git rev-parse --git-common-dir)/gate_dir/x"\n' > "$1/scripts/a.sh"; }
+seg_sed()      { seg_name "$1"; printf "sed -i 's/exit 1/exit 0/' .git/gate_dir/pre-commit\n" > "$1/scripts/a.sh"; }
+seg_fetch()    { seg_name "$1"; printf 'curl -fsSo .git/gate_dir/pre-commit https://example.com/h\n' > "$1/scripts/a.sh"; }
+seg_tar()      { seg_name "$1"; printf 'tar -xf h.tar -C .git/gate_dir\n' > "$1/scripts/a.sh"; }
+seg_cd()       { seg_name "$1"; printf 'cd .git/gate_dir && rm -f pre-commit\n' > "$1/scripts/a.sh"; }
+seg_var()      { seg_name "$1"; printf 'H=.git/gate_dir/pre-commit\necho "exit 0" > "$H"\n' > "$1/scripts/a.sh"; }
+seg_find()     { seg_name "$1"; printf 'find .git/gate_dir -name pre-commit -delete\n' > "$1/scripts/a.sh"; }
+seg_pathlib()  { seg_name "$1"; printf 'from pathlib import Path\nPath(".git/gate_dir/pre-commit").write_text("x")\n' > "$1/scripts/a.py"; }
+seg_argv()     { seg_name "$1"; printf 'import subprocess\nsubprocess.run(["cp", src, ".git/gate_dir/pre-commit"])\n' > "$1/scripts/a.py"; }
+seg_system()   { seg_name "$1"; printf 'import os\nos.system("rm -f .git/gate_dir/pre-commit")\n' > "$1/scripts/a.py"; }
+seg_braced()   { seg_name "$1"; printf 'cp x "${GIT_DIR}/gate_dir/pre-commit"\nln -s x "${HOOKS:-.git/gate_dir}/pre-commit"\n' > "$1/scripts/a.sh"; }
+seg_spanvar()  { seg_name "$1"; printf 'D="$(git rev-parse --git-path gate_dir)"\ncp a "$D/pre-commit"\n' > "$1/scripts/a.sh"; }
+seg_cdline()   { seg_name "$1"; printf 'cd .git/gate_dir\nln -sf ../../x pre-commit\n' > "$1/scripts/a.sh"; }
+seg_pushd()    { seg_name "$1"; printf 'pushd .git/gate_dir\nrm -f pre-commit\npopd\n' > "$1/scripts/a.sh"; }
+seg_pyvar()    { seg_name "$1"; printf 'import os\nHOOK = os.path.join(".git", "gate_dir", "pre-commit")\nopen(HOOK, "w").write("x")\n' > "$1/scripts/a.py"; }
+seg_pathvar()  { seg_name "$1"; printf 'from pathlib import Path\nhook = Path(".git/gate_dir/pre-commit")\nhook.write_text("x")\n' > "$1/scripts/a.py"; }
+seg_osopen()   { seg_name "$1"; printf 'import os\nfd = os.open(".git/gate_dir/pre-commit", os.O_WRONLY | os.O_CREAT)\n' > "$1/scripts/a.py"; }
+seg_more_ok()  { seg_name "$1"
+                 { printf "find gate_dir -name '*.ts' -exec grep -l TODO {} +\n"
+                   printf 'echo "to remove it: (cd .git/gate_dir && rm -f pre-commit)"\n'
+                   printf '[[ $a > gate_dir ]] && echo yes\n'
+                   printf 'cd .git/gate_dir && ls\ncat .git/gate_dir/pre-commit > /tmp/copy\ncd /tmp\nrm -f x\n'; } > "$1/scripts/a.sh"
+                 { printf 'import shutil, subprocess\nshutil.copy("gate_dir/x.json", out)\nshutil.copytree("gate_dir", out)\n'
+                   printf 'subprocess.run(["cp", "gate_dir/x.json", out])\nentries = d.get("gate_dir", {})\n'; } > "$1/scripts/a.py"; }
+seg_misc_ok()  { seg_name "$1"
+                 { printf "find . -path ./gate_dir -prune -o -name '*.tmp' -delete\n"
+                   printf 'cp gate_dir/gate_dir.json "$OUT/manifest.json"\n'
+                   printf "sed 's|scripts/gate_dir|scripts/guards|' a > b\n"
+                   printf "sed -i 's|scripts/gate_dir|scripts/guards|' notes.txt\n"
+                   printf 'git rev-parse --git-path gate_dir/pre-commit\n'; } > "$1/scripts/a.sh"
+                 printf 'rel = path.replace("gate_dir/", "")\nprint(Path("gate_dir/x.json").read_text())\n' > "$1/scripts/a.py"; }
+
 make_fixture good && check "a good fixture passes" 0 "$FIXTURES/good"
 
 # Inline code with a tag is allowed.
@@ -129,6 +177,33 @@ broken "an options key fails" has_options
 broken "missing keywords fails" no_keywords
 broken "marketplace without the plugin fails" wrong_market
 broken "no LICENSE fails" no_license
+broken "a redirect into the named folder fails" seg_redirect
+broken "rm in the named folder, after cd and &&, fails" seg_rm
+broken "mkdir of a path with the named folder fails" seg_mkdir
+broken "a link made at the named folder fails" seg_ln
+broken "a write in a shell script with no extension fails" seg_noext
+broken "a Python open for writing in the named folder fails" seg_python
+broken "a workflow run step that writes there fails" seg_workflow
+variant "reads, prose, comments and a longer folder name pass" 0 seg_reads
+broken "a path from git rev-parse in a \$( ) span fails" seg_subst
+broken "sed -i on a file in the named folder fails" seg_sed
+broken "curl writing into the named folder fails" seg_fetch
+broken "tar unpacking into the named folder fails" seg_tar
+broken "cd into the named folder, then a write, fails" seg_cd
+broken "a variable set to such a path, then written, fails" seg_var
+broken "find -delete in the named folder fails" seg_find
+broken "a pathlib write in the named folder fails" seg_pathlib
+broken "a subprocess argument list that writes there fails" seg_argv
+broken "os.system with a write there fails" seg_system
+variant "a pruned find, a copy out of the folder, sed on other files and str.replace pass" 0 seg_misc_ok
+broken "a \${NAME} path, or a default in one, that writes there fails" seg_braced
+broken "a variable set from git rev-parse, then written, fails" seg_spanvar
+broken "a cd into the folder alone on a line, then a write, fails" seg_cdline
+broken "pushd into the folder, then a write, fails" seg_pushd
+broken "a Python variable set to such a path, then opened for writing, fails" seg_pyvar
+broken "a pathlib variable set to such a path, then written, fails" seg_pathvar
+broken "os.open for writing there fails" seg_osopen
+variant "find -exec grep, quoted text, a test, a cd with a read, and copies out of the folder pass" 0 seg_more_ok
 make_fixture no_git plain && check "a folder that is not a git work tree fails" 1 "$FIXTURES/no_git"
 
 # Nothing in the environment moves the checked folder: the variable older versions read to check

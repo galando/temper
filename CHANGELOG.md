@@ -3,6 +3,108 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.6.6: nothing writes into a hooks folder, readable test files, a listing icon
+
+The directory's report on 9.6.5 (3f7df41) held it for six reasons. This release answers the two
+that code can answer: a file the directory could not inspect, and two scripts it could not confirm
+leave the mod the same (one reason, named for both files). The other four ("This plugin includes a
+mod", the prompts the mod submits, the slash commands it runs, the settings it sets) go to a
+reviewer; the README section "What the mod reads and writes" describes each of them.
+
+**Files the directory could not inspect.** `scripts/selftest/test-temper.sh` had grown to 265 KB,
+above the 256 KB the directory reads. Its cases now live in four files next to it, each well under that limit
+(`temper-cases-1.sh` to `temper-cases-4.sh`), which the runner sources in order.
+
+**The mod stays the same.**
+- `scripts/validate-plugin.sh` no longer has the rule that checked plugin paths in every file: it
+  assembled the plugin root variable from pieces, which the directory read as pointing at the plugin
+  root. Its tests, which built the bad forms at run time, went with it, and
+  `scripts/guard-entries.py` recognizes an older entry that names the root variable by the bare name.
+  The test lines that name the root variable now write it in the braced form, followed by a tracked
+  file and ended by a quote or a space, and no test sets or unsets the variable. The comments in the
+  config template and the guardrails settings file no longer run a plugin path into a comma or a
+  full stop.
+- `scripts/guards/install.sh` wrote into git's folders named `hooks` (`.git/hooks`, or another
+  tool's `core.hooksPath` folder), the same name as the plugin folder that holds the mod. It now
+  never writes into a folder named `hooks`. It keeps Temper's hook as `temper-gate/pre-commit` in the
+  repository's git folder and points `core.hooksPath` at that folder, so every worktree runs it. When
+  that would stop other hooks from running (an executable hook in `.git/hooks`, another tool's
+  `core.hooksPath`, or other hooks in Temper's older folder), it leaves the setting alone and prints
+  the one line to add to your own hook, with a hint for husky, lefthook and the pre-commit framework
+  (for the framework, the exact entry: `sh -c '<the line>'`); the line 9.6.5 printed still counts.
+  `--global` now does the same as the default.
+- The test files, now readable, wrote into `.git/hooks` too, about 80 times. None does now. A case
+  that needs hooks of the user's in git's default folder runs a copy of the installer whose one
+  `HOOKS_DIR` line names a folder called `default-gate`, and a case where git must run the user's
+  hook sets `core.hooksPath` to a folder of its own. The fake older plugin's `scripts/hooks` folder
+  is now `scripts/old-guards`. A new rule in `scripts/validate-directory.sh` fails when a shell or
+  Python script, tests included, writes into, removes from, moves, links or makes a path with a
+  folder named `hooks` in its own words, also through `git rev-parse` in a `$( )` span, `${NAME}`
+  or its default, a `cd` or `pushd` into the folder (on the same line, or alone on a line before), or
+  a variable (shell, or Python in a `.py` file) set to such a path earlier in the file; a name built
+  from pieces is left to review.
+- The installer holds no variable for the plugin folder by itself: it builds the CLI and guard paths
+  from its own scripts folder. It decides whether a path is inside the plugin by finding its own
+  `scripts/guards` folder above that path, and the hook it writes decides it by finding its CLI's
+  `scripts` folder: real folders (not symlinks), the same folder by device and inode. A link planted
+  above a repository therefore cannot skip the gate, and cannot stop an install either.
+
+**Upgrades from older installs.**
+- With nothing else in `.git/hooks` that git runs, an older Temper hook there stays where it is;
+  git no longer runs it, and the installer says you can delete it.
+- An older `--global` setting (`.git/hooks-temper` from 5.5.0 to 9.6.4, `.git/temper-git-hooks` from
+  9.6.5) and the `temper-gate` folder of where a repository used to be are pointed at the current
+  `temper-gate` folder, with a note, unless that folder holds other hooks git runs (`git lfs install`
+  writes its hooks into the folder `core.hooksPath` names): then the setting stays, as for
+  `.git/hooks`. A value that stays is set to this repository's own older folder by its absolute
+  path, with a note: a relative value, since git takes it from each worktree's top and a linked
+  worktree would run nothing, and an absolute value of another place, as after a move or a copy. When that folder is the `temper-gate` folder of another repository that is still there
+  (a copy of a repository), the installer never tells you to change its hook, which is that
+  repository's own; the hint is to point `core.hooksPath` at this repository's folder.
+- When git still runs a `pre-commit` from an older Temper (next to other hooks in `.git/hooks`, in
+  Temper's older folder, or in a team folder where 9.6.4 and 9.6.5 wrote it), the installer does not
+  write it. Its refusal warns that git runs that hook in place of the kept one, shows the stale plugin
+  path it carries, and the hint says to replace all of its lines with `#!/bin/sh` and the line. A
+  `pre-commit` that holds only those two lines does not count as a hook that would stop running, so
+  once the other hooks next to it are gone, the next run points `core.hooksPath` at `temper-gate`.
+- A hook an older installer set aside as `pre-commit.bak.<timestamp>` is named on its own, not among
+  the hooks git would stop running, since git does not run it. When a `pre-commit` of yours that git
+  runs sits next to it, the warning says to add its lines to that file instead of moving it back over
+  it.
+- `core.hooksPath` holds an absolute path, so every worktree finds the folder. Moving or renaming the
+  repository leaves it naming the old place, and git runs no pre-commit hook until the installer
+  runs again; the next `/temper` checks the hook and runs it, which points the setting at the new
+  place.
+- husky's `.husky/_` folder holding a `pre-commit` from an older Temper (9.6.4 wrote over husky's
+  own there) is refused: git runs that hook in place of husky's, so `.husky/pre-commit` never runs.
+  The hint says to run `npx husky`, then add the line to `.husky/pre-commit`.
+- A hook that holds the line counts only when git can run it: one that is not executable is refused
+  with a `chmod +x` hint. husky's `.husky/pre-commit` needs no execute bit, since husky's own hook in
+  `.husky/_` runs it with `sh`, but that hook must be there and executable (a fresh clone has none
+  until `npx husky` or `npm install`). For the pre-commit framework and lefthook, a config file at
+  the repository's top (`.pre-commit-config.yaml`, `lefthook.yml` and its other names) that holds
+  the line outside a comment counts as installed; the installer reads only its text, so it says
+  that a `stages` or `skip` setting there can still keep the line from running.
+- The uninstall steps name the `temper-pre-commit` file that 9.6.5 may have left.
+- A hook tool that installs into `.git/hooks` later (the pre-commit framework refuses while
+  `core.hooksPath` is set) needs `core.hooksPath` unset first; the next `/temper` or `/temper:init`
+  then prints the line to add.
+
+**The mod.** While a run is active, the mod refuses a change to `.git/temper-gate` (the folder and
+its hook), to `.git/temper-pre-commit`, or to Temper's older folders `.git/hooks-temper` and
+`.git/temper-git-hooks` (git still runs hooks from one when the installer leaves `core.hooksPath` on
+it) exactly as it refuses one to `.git/hooks`, and its refusal names the Temper commit hook.
+
+**A listing icon.** `.claude-plugin/icon.png`, 1024 px: the orange T on a dark rounded square that
+earlier versions showed at 256 px, below the 512 px the directory asks for. It is the only image in
+the repository, and `plugin.json` has no `icon` field.
+
+Notes the directory listed that need no change: the credential note on `plugin.json` (a reviewer
+confirms it; the mod reads Claude Code's `/config` list only to find its own two rows), the `types`
+field (Claude Code's own validator needs it for the mod's `$.state` keys), and the download-and-run
+notes, which sit in docs, history, test inputs, the mod's detection code and the CLI's migration of a
+stage name that a v7.0.x run left behind.
+
 ## v9.6.5: nothing points at the mod, every plugin path written out, no images
 
 The directory's report on 9.6.4 held it for five reasons. Three ask for README text the 9.6.4 README

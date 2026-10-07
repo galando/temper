@@ -112,7 +112,7 @@ function protectedDeny(kind: ProtectedKind, cli: string): RuleResult {
   if (kind === 'hooks') {
     return {
       deny:
-        'Temper: the git hooks and core.hooksPath are the native commit gate. Do not change them while a run is active. ' +
+        'Temper: the git hooks, the Temper commit hook and core.hooksPath are the native commit gate. Do not change them while a run is active. ' +
         'Next: ask the user, or finish the run first.',
     }
   }
@@ -349,7 +349,8 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
   if (c.protectedWrites.length > 0) {
     const known = c.protectedWrites.filter(p => !c.uncheckable.includes(p))
     if (known.length === 0) return { deny: UNCHECKABLE(cli) }
-    // The config and the git hooks are the run's only while a run is active (/temper:init writes the config before).
+    // The config, the git hooks and the Temper commit hook are the run's only while a run is active (/temper:init writes
+    // the config and installs the hook before).
     // A path of no known kind (a link made inside .temper) gets the text of the .temper folders: it is no decision.
     const kinds = known.map(p => protectedKind(p) ?? 'folder').filter(k => isActive(s) || (k !== 'config' && k !== 'hooks'))
     if (kinds.length > 0) {
@@ -502,7 +503,8 @@ export function evaluate(state: RunState, ctx: RuleContext, call: ToolCall): Rul
   const path = normalizePath(raw, ctx.root)
 
   const kind = protectedKind(path)
-  // The config and the git hooks are guarded while a run is active (the person writes them with no run on).
+  // The config, the git hooks and the Temper commit hook are guarded while a run is active (the person writes them with
+  // no run on).
   if (kind !== null && (isActive(state) || (kind !== 'config' && kind !== 'hooks'))) return protectedDeny(kind, ctx.cli ?? CLI)
 
   if (!isActive(state) || state.paused || ctx.failOpenWrites) return ALLOW

@@ -284,18 +284,22 @@ claude --worktree fix-rate-limit    # session 2: /temper:fix "429 not returned"
   apply the same way in every worktree, so more sessions never means fewer guardrails. Guard
   hooks in `.claude/settings.local.json` are personal and kept out of git, so a new worktree does
   not get them from git.
-- The pre-commit gate is shared, not copied. Git runs a linked worktree's hooks from its main
-  checkout's hooks folder, so one installed hook covers every worktree. The first
-  `/temper:temper` in a worktree finds that hook and leaves it as it is, or, when no checkout has
-  it yet, installs it in that shared folder. The installer's `--global` option sets
-  `core.hooksPath` to the absolute path of `temper-git-hooks` in the shared git folder, so every
-  linked worktree uses that hook too. It refuses while `.git/hooks` holds hooks that git would
-  then stop running. After the repository moves, run it again: it points `core.hooksPath` at the
-  new place. A relative `core.hooksPath` (one you or a tool such as husky set) names a folder
-  inside each worktree, so it is per checkout. Temper never writes over a hook that is not its
-  own, or a hook file git tracks: it keeps the Temper hook in `temper-pre-commit` in the shared
-  git folder, which every worktree reaches, and prints one line to add to your hook, with no path
-  of this machine in it. A submodule's hook goes in its own git folder.
+- The pre-commit gate is shared, not copied. The installer keeps the Temper hook in
+  `temper-gate/pre-commit` in the repository's git folder, which every worktree shares, and sets
+  the repository's `core.hooksPath` to that folder's absolute path, so one hook covers every
+  worktree. The first `/temper:temper` in a worktree finds that hook and leaves it as it is, or
+  installs it when no checkout has it yet. The installer never writes into a folder named
+  `hooks`. When `.git/hooks` holds hooks that git would stop running once `core.hooksPath` is
+  set, or `core.hooksPath` already names another tool's folder (husky, lefthook), it leaves them
+  as they are, keeps the Temper hook, and prints one line to add to your hook, with no path of
+  this machine in it. To add the pre-commit framework or lefthook later, run
+  `git config --unset core.hooksPath` first; the next `/temper:temper` or `/temper:init` then
+  prints that line. A `core.hooksPath` that still holds Temper's older folder, even from where
+  the repository used to be, is pointed at `temper-gate`, unless that folder holds other hooks
+  git runs (git-lfs writes its hooks there); then it stays, and the installer prints the line.
+  Because `core.hooksPath` holds an absolute path, moving or renaming the repository leaves it
+  naming the old place, and git runs no pre-commit hook until the next `/temper:temper` or
+  `/temper:init` points it at the new place. A submodule's hook goes in its own git folder.
 - Practical ceiling: how many streams one person can *review*. Two or three is a
   sensible start; add sessions only while your review keeps up.
 
