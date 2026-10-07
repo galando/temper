@@ -1,5 +1,5 @@
-// `.temper/report.md`: the audit artifact written when a run completes. Pure; the
-// adapter writes the returned text.
+// The run report: the audit text made when a run completes or on `/temper:temper report`. Pure;
+// the adapter keeps the returned text in the plugin store (the mod writes no file).
 
 import type { MergedCriterion } from './criteria'
 import { progress } from './criteria'

@@ -502,7 +502,7 @@ export async function consumeDecision(io: Io, eventId: string): Promise<void> {
 export type Applied = { snap: Snapshot; error?: string; events: Draft[] }
 
 // Runs one command through the machine; on success writes its events, reloads the
-// snapshot, and writes `.temper/report.md` when the run reached Done.
+// snapshot, and keeps the report when the run reached Done.
 export async function apply(io: Io, options: PluginOptions, snap: Snapshot, command: Command): Promise<Applied> {
   const decision = decide(snap.state, command)
   if ('error' in decision) return { snap, error: decision.error, events: [] }
@@ -523,6 +523,14 @@ export async function writeReport(io: Io, snap: Snapshot): Promise<string> {
   })
   await io.write(REPORT_PATH, md)
   return md
+}
+
+// The report kept last in this project, for `/temper:temper report` with no run active: a finished
+// run's Commit steps clear its run state, and its report stays readable. A report file that a 9.6.0
+// or 9.6.1 run wrote is read too. Null when there is none.
+export async function keptReport(io: Io): Promise<string | null> {
+  const text = await readText(io, REPORT_PATH)
+  return text !== null && text.trim() !== '' ? text : null
 }
 
 export function composeText(snap: Snapshot): string {

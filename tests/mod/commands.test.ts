@@ -76,6 +76,18 @@ describe('read only subcommands', () => {
     expect(w.files.get('.temper/report.md')).toContain('Result: In progress (Build)')
   })
 
+  test('with no run active, a report file an older Temper wrote is shown', async ($, on) => {
+    world(on, { '.temper/report.md': '# Temper report: Old run\n\nResult: Done\n' })
+    const old = await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'composer' } } as never)
+    expect(old.text).toBe('No run is active. The last report kept for this project:\n\n# Temper report: Old run\n\nResult: Done\n')
+  })
+
+  test('with no run active and no report kept, report says there is none', async ($, on) => {
+    world(on, {})
+    const r = await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'composer' } } as never)
+    expect(r.text).toBe('No run is active. There is no report to show.')
+  })
+
   test('mode and enforcement show the current values', { options: { uiMode: 'minimal', enforcement: 'off' } }, async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }))
     expect((await $.command.run({ command: 'temper', args: 'mode', origin: { kind: 'composer' } } as never)).text).toBe('Temper mode: minimal')

@@ -1,6 +1,6 @@
 import type { CommandRunResult, EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import { apply, commitFacts, composeText, consumeDecision, idleSnapshot, live, loadSnapshot, nothingToLose, publish, runFingerprint, settingsFrom, statusText, syncCheck, timelineText, writeReport } from './adapter'
+import { apply, commitFacts, composeText, consumeDecision, idleSnapshot, keptReport, live, loadSnapshot, nothingToLose, publish, runFingerprint, settingsFrom, statusText, syncCheck, timelineText, writeReport } from './adapter'
 import type { Io, Snapshot } from './adapter'
 import { findingActions } from './core/actions'
 import type { Action } from './core/actions'
@@ -997,9 +997,14 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
         return { text: statusText(await refresh($)) }
       case 'timeline':
         return { text: timelineText(await refresh($)) }
-      case 'report':
-        if (snap.slug === null) return { text: 'No run is active. There is no report to show.' }
+      case 'report': {
+        if (snap.slug === null) {
+          // A finished run's Commit steps clear its run state; the report it kept is still shown.
+          const kept = await keptReport(makeIo($))
+          return { text: kept === null ? 'No run is active. There is no report to show.' : `No run is active. The last report kept for this project:\n\n${kept}` }
+        }
         return { text: await writeReport(makeIo($), await refresh($)) }
+      }
       case 'pr':
       case 'discuss':
       case 'continue':

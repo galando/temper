@@ -57,9 +57,18 @@ Each case checks that what it took is the braced root form. No test lists plugin
 wildcard, links the plugin folder itself, or points a script's output into it.
 
 **No bundled image.** The 1024 px icon that 9.6.6 added holds the plugin for review, as a bundled
-image did in 9.3.3, and the directory reads an icon only when the plugin is first saved or
-submitted. It leaves the repository; upload it in the developer portal instead. No text names an
-image file of the repository.
+image did in 9.3.3. It could not become the listing icon either: the directory takes an icon only
+the first time a plugin is saved or submitted, and adding or changing it later does not change the
+listing (its own note on 9.6.5 says so). Temper was first submitted without one, and the developer
+portal has no upload for it. The icon leaves the repository, and no text names an image file of the
+repository.
+
+**The report of a finished run can be read again.** Since 9.6.2 the mod keeps the run report in its
+plugin store instead of writing `.temper/report.md`, but `/temper:temper report` answered "There is
+no report to show" as soon as the Commit steps cleared the run state, so a finished run's report
+could no longer be read; 9.6.0 kept the file. With no run active, `report` now shows the report kept
+last in the project (a report file an older Temper wrote counts too), and says there is none only
+when nothing is kept. Two mod tests drive it, one through a whole run to Done and its `state clear`.
 
 No test pairs a host with something that looks like a credential: the curl case in the validator's
 selftest and a fake pre-commit framework hook carry no URL, and the file the secret scan's case
