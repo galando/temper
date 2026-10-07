@@ -164,6 +164,19 @@ seg_misc_ok()  { seg_name "$1"
                    printf 'git rev-parse --git-path gate_dir/pre-commit\n'; } > "$1/scripts/a.sh"
                  printf 'rel = path.replace("gate_dir/", "")\nprint(Path("gate_dir/x.json").read_text())\n' > "$1/scripts/a.py"; }
 
+# Rule 11 needs no name: a wildcard after a variable fails wherever it is.
+glob_for()     { printf 'for f in "$1"/pre-commit.bak.*; do echo "$f"; done\n' > "$1/scripts/a.sh"; }
+glob_cp()      { printf 'cp "$SRC"/scripts/*.sh "$OUT/"\n' > "$1/scripts/a.sh"; }
+glob_subst()   { printf 'n="$(cat "$A" "$B"/x/*.sh | wc -l)"\n' > "$1/scripts/a.sh"; }
+glob_bare()    { printf 'ls $DIR/*.json\n' > "$1/scripts/a.sh"; }
+glob_comment() { printf '# lists "$d"/*.sh\nexit 0\n' > "$1/scripts/a.sh"; }
+glob_python()  { printf 'import glob, os\nfiles = glob.glob(os.path.join(d, "x.sh"))\n' > "$1/scripts/a.py"; }
+glob_pathlib() { printf 'from pathlib import Path\nfiles = sorted(Path(d).glob("x.json"))\n' > "$1/scripts/a.py"; }
+glob_ok()      { { printf 'n="${f##*/}"\nd="${p%%/*}"\n[[ "$v" == */x ]] && echo a\n[[ "$p" == "$X"/* ]] && echo b\n'
+                   printf 'echo "$d/*"\nfind "$d" -mindepth 1 -maxdepth 1 -print0\ncase "$n" in pre-commit.bak.*) echo c ;; esac\n'
+                   printf 'echo "$((a * b))"\nrm -f ./*.tmp\n'; } > "$1/scripts/a.sh"
+                 printf 'import fnmatch, os\nnames = [n for n in sorted(os.listdir(d)) if fnmatch.fnmatch(n, "x.json")]\n' > "$1/scripts/a.py"; }
+
 make_fixture good && check "a good fixture passes" 0 "$FIXTURES/good"
 
 # Inline code with a tag is allowed.
@@ -217,6 +230,14 @@ broken "rule 10: a variable path that ends in the named folder fails" named_var
 broken "rule 10: a comment that names such a path fails" named_comment
 broken "rule 10: a Python path with the named folder fails" named_python
 variant "rule 10: a bare word, a longer folder name and prose pass" 0 named_ok
+broken "rule 11: a for loop over a wildcard after a variable fails" glob_for
+broken "rule 11: a cp of a wildcard after a variable fails" glob_cp
+broken "rule 11: a wildcard after a variable in a quoted \$( ) span fails" glob_subst
+broken "rule 11: a wildcard after an unquoted variable fails" glob_bare
+broken "rule 11: a comment with such a wildcard fails" glob_comment
+broken "rule 11: a Python glob.glob call fails" glob_python
+broken "rule 11: a pathlib glob call fails" glob_pathlib
+variant "rule 11: \${ } patterns, [[ == ]] patterns, quoted text, find, case, arithmetic and listdir pass" 0 glob_ok
 make_fixture no_git plain && check "a folder that is not a git work tree fails" 1 "$FIXTURES/no_git"
 
 # Nothing in the environment moves the checked folder: the variable older versions read to check

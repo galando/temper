@@ -135,8 +135,12 @@ Keep always-loaded content minimal:
   rules 9 and 10 check this.
 - No script or test names the plugin root variable: a test that needs a
   command in the root form takes it from the plugin's own files.
-- The commit gate installer holds no variable for the plugin folder by itself:
-  only its scripts folder or a file, plus fixed text.
+- No script lists a folder by a wildcard after a variable (`"$dir"/name.*`):
+  list it with `find` and match each name. No script builds a plugin path
+  under a folder it climbs to: the commit gate installer finds the plugin's
+  folder as the guard scripts do (its own folder without the literal
+  `/scripts/guards`) and compares each folder with it by device and inode.
+  `scripts/validate-directory.sh` rule 11 checks the wildcard.
 - Commands, briefs and skills write the plugin root variable only in its braced
   form, followed by `/` and a tracked file.
 

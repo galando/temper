@@ -9,9 +9,14 @@ The directory's report on 9.6.6 (878248e) held it for five reasons. Four are for
 plugin includes a mod", the prompts the mod submits, the slash commands it runs, the settings it
 sets); the README section "What the mod reads and writes" describes each. The fifth, that it
 "couldn't confirm that the mod stays the same", named `scripts/guards/install.sh`,
-`scripts/selftest/temper-cases-1.sh` and `temper-cases-2.sh`. The directory names at most three
-files per finding, in path order, so this release clears the whole kind in every file, not only
-the three it named.
+`scripts/selftest/temper-cases-1.sh` and `temper-cases-2.sh`. It does not say which lines it
+held. The same report names nine files for one note, so the three are most likely all it held, and
+`temper-cases-3.sh`, which read git's hooks folder as the first two did, passed. That points at
+what only the named files had. In the installer: a path that ended in a folder named `hooks`, a
+wildcard over that folder, and a path built under each folder above a repository. In the first two
+test files: the plugin root variable, a link to the plugin folder, and output pointed into it. This
+release removes all of them, and every other path to a folder named `hooks` in a script, so neither
+reading of the report is left open.
 
 **No script names a path with a folder named `hooks`.** Git's hook folders share that name with
 the plugin folder that holds the mod, and the three scripts the directory held all built or read
@@ -24,8 +29,25 @@ such a path, though none of them wrote there any more.
 - The installer refuses a `core.hooksPath` that leads into the plugin's own folder before it reads
   anything there, and builds Temper's older folders from fixed names, never from the value.
 - A new rule 10 in `scripts/validate-directory.sh` fails on any shell, Python or workflow file that
-  names a path with a folder named `hooks`, read or write, comments included. Run on 878248e, its
-  first three findings are the three files the directory named, in the same order.
+  names a path with a folder named `hooks`, read or write, comments included. Run on 878248e, it
+  fails on the three files the directory named and on two more test files, so it is stricter than
+  the directory.
+
+**The installer lists no folder by wildcard and builds no path under a folder it climbs to.**
+- It found the hooks an older installer set aside with a wildcard after a variable
+  (`"$1"/pre-commit.bak.*`), over git's hooks folder among others. It now lists the folder with
+  `find` and matches each name. The remedy asks for no wildcard, and a script held in 9.6.3
+  scanned a computed folder with a wildcard too.
+- It told the plugin's folder by building `<folder>/scripts/guards` under each folder above a
+  path, and its hook built `<folder>/scripts` the same way. Both now compare each folder with the
+  plugin's own folder by device and inode, as the guard scripts and the CLI do, and build no path
+  under it. A link planted above a repository still cannot pass for the plugin, because the
+  folders compared are taken with every symlink followed.
+- A new rule 11 in `scripts/validate-directory.sh` fails on a wildcard after a variable in any
+  shell, Python or workflow file, comments included. Run on 878248e, it fails on the installer,
+  `temper-cases-2.sh` and `temper-cases-4.sh` (the last was not held, so it is stricter than the
+  directory). Neither test uses a wildcard there now: one lists the files with `git ls-files`,
+  the other copies the folder whole.
 
 **No test names the plugin root variable.** The guard-entries case takes the pack's own hook
 command from `packs/guardrails/settings-guardrails.json` (as an entry copied by hand has it), the

@@ -57,10 +57,11 @@
 # A line before it that starts with the word exit or exec would stop it from running, so such a
 # hook is refused with that reason.
 #
-# The plugin's own folder. A path is inside the plugin when it, or a folder above it, holds a real
-# scripts/guards folder that is the same folder (device and inode) as this installer's own. A
-# repository inside the plugin, a run from a folder inside it whose repository's top is elsewhere,
-# and a repository whose git folder is inside it are refused. The one exception is the .git folder
+# The plugin's own folder. A path is inside the plugin when it, or a folder above it, is the
+# plugin's folder (this installer's folder without its literal /scripts/guards suffix), compared by
+# device and inode with every symlink followed. A repository inside the plugin, a run from a
+# folder inside it whose repository's top is elsewhere, and a repository whose git folder is
+# inside it are refused. The one exception is the .git folder
 # of a checkout of the plugin itself (developing Temper on its own repository).
 #
 # No file is written in place: each is written to a new file made by mktemp in its folder and
@@ -188,17 +189,18 @@ fi
 command -v python3 >/dev/null 2>&1 || exit 0
 # A repository inside the plugin's own folder (a second checkout or worktree placed in it)
 # is part of the plugin: the CLI refuses to run there, so the gate is skipped. Walking up
-# from the repository, a folder above it is the plugin's folder when its scripts folder is
-# a real folder (not a symlink) and the same folder (device and inode) as the one that
-# holds this hook's CLI. A file cannot pass for a folder, and a folder cannot be hard
-# linked, so a planted link to the CLI does not skip the gate. A checkout of the plugin
-# itself (its own top) is a project like any other.
+# from the repository, a folder above it is the plugin's folder when it is the same folder
+# (device and inode) as the one that holds this hook's CLI in its scripts folder. The
+# folders come from pwd -P, with every symlink followed, so a link planted above the
+# repository is never one of them, and a folder cannot be hard linked. A checkout of the
+# plugin itself (its own top) is a project like any other.
 REPO_DIR="\$(pwd -P)"
 UP_DIR="\$REPO_DIR"
 while :; do
   case "\$UP_DIR" in /?*) ;; *) break ;; esac
   UP_DIR="\${UP_DIR%/*}"
-  if [ ! -L "\$UP_DIR/scripts" ] && [ "\$UP_DIR/scripts" -ef "\${TEMPER_CLI%/temper}" ]; then exit 0; fi
+  [ -n "\$UP_DIR" ] || UP_DIR=/
+  if [ "\$UP_DIR" -ef "\${TEMPER_CLI%/scripts/temper}" ]; then exit 0; fi
 done
 # The home folder is never a project: the CLI refuses to run there, so the gate is skipped.
 if [ -n "\${HOME:-}" ] && [ "\$REPO_DIR" -ef "\$HOME" ]; then exit 0; fi
@@ -277,15 +279,18 @@ if [[ ! -f "$TEMPER_CLI" || ! -x "$TEMPER_CLI" ]]; then
   _refuse "the temper CLI next to this installer ($TEMPER_CLI) is missing or not executable, so the hook would check nothing."
 fi
 
-_plugin_at() { # _plugin_at <folder>: 0 when <folder>/scripts/guards is this installer's own folder:
-               # scripts and scripts/guards are real folders (not symlinks), and the same folder (by
-               # device and inode, so letter case cannot hide it). A folder cannot be hard linked, so
-               # a link planted above a repository cannot pass for the plugin.
-  local d="${1%/}"
-  [[ -d "$d/scripts/guards" && ! -L "$d/scripts" && ! -L "$d/scripts/guards" && "$d/scripts/guards" -ef "$GUARD_SCRIPTS" ]]
+# The plugin's own folder: this installer's folder with the literal suffix /scripts/guards
+# removed, as the guard scripts find theirs. Every folder below is compared with it by device and
+# inode; no path is built under a folder that is compared.
+ROOT="${GUARD_SCRIPTS%/scripts/guards}"
+_plugin_at() { # _plugin_at <folder, every symlink followed>: 0 when it is the plugin's own folder,
+               # the same folder by device and inode (so letter case cannot hide it). Every caller
+               # passes a folder with its symlinks followed, so a link planted above a repository is
+               # never one of them, and a folder cannot be hard linked.
+  [[ -d "$1" && "$1" -ef "$ROOT" ]]
 }
-_in_plugin() { # _in_plugin <absolute path>: 0 when the path, or a folder above it, is the plugin's
-               # folder by that marker
+_in_plugin() { # _in_plugin <absolute path, every symlink followed>: 0 when the path, or a folder
+               # above it, is the plugin's own folder
   local p="$1"
   while :; do
     _plugin_at "$p" && return 0
@@ -664,7 +669,7 @@ _scan() { # _scan <folder>: sets RUNNING, the hooks git runs from that folder (e
           # one path per line, the pre-commit.bak.<timestamp> files an older installer made of a
           # hook of yours. Git does not run those, but moved back into the folder it would. The
           # files are only read.
-  local name f
+  local name f n ts
   RUNNING=""
   SET_ASIDE=""
   for name in $GIT_HOOK_NAMES; do
@@ -672,12 +677,14 @@ _scan() { # _scan <folder>: sets RUNNING, the hooks git runs from that folder (e
     [[ "$name" == pre-commit ]] && { _is_temper_hook "$1/$name" || _is_call_only "$1/$name"; } && continue
     RUNNING="${RUNNING:+$RUNNING }$name"
   done
-  for f in "$1"/pre-commit.bak.*; do
-    [[ -f "$f" ]] || continue
-    case "${f##*/pre-commit.bak.}" in ''|*[!0-9]*) continue ;; esac
+  # The folder's own listing, sorted, one name at a time: no wildcard over the folder.
+  while IFS= read -r -d '' f; do
+    n="${f##*/}"
+    ts="${n#pre-commit.bak.}"
+    [[ "$ts" != "$n" && -n "$ts" && -z "${ts//[0-9]/}" && -f "$f" ]] || continue
     _is_temper_hook "$f" && continue
     SET_ASIDE="$SET_ASIDE$f"$'\n'
-  done
+  done < <(find -H "$1" -mindepth 1 -maxdepth 1 -print0 2>/dev/null | LC_ALL=C sort -z)
 }
 _scan_reason() { # _scan_reason <folder>: sets REASON, the FAIL reason for what _scan found there,
                  # and adds a warning for each hook an older installer set aside

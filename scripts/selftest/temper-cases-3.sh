@@ -272,8 +272,8 @@ assert_eq "the hook carries each guard script path written out in full" "yes" \
      && grep -qxF "TESTS_RAN_SCRIPT=$(printf '%q' "$REPO_ROOT/scripts/guards/verify-tests-ran.sh")" .git/temper-gate/pre-commit && echo yes || echo no)"
 assert_eq "the hook has no environment override of a folder, works out no folder, and holds no plugin folder variable" "0" \
   "$(grep -cE 'TEMPER_HOOKS_DIR|dirname|PLUGIN_DIR' .git/temper-gate/pre-commit)"
-assert_eq "install.sh holds no PLUGIN_ROOT or PLUGIN_REAL variable" "0" \
-  "$(grep -cE 'PLUGIN_ROOT|PLUGIN_REAL' "$REPO_ROOT/scripts/guards/install.sh")"
+assert_eq "install.sh and its hook compare each folder they climb to with the plugin's by device and inode, and build no path under it" "0" \
+  "$(grep -cE '[$](d|p|up|UP_DIR)/scripts' "$REPO_ROOT/scripts/guards/install.sh" .git/temper-gate/pre-commit | awk -F: '{ n += $NF } END { print n + 0 }')"
 # An upgrade over an install from before 9.6.5, recognized by its "Temper native pre-commit hook"
 # line in git's default folder: core.hooksPath is pointed at the temper-gate folder, the old hook
 # is left as it was with no backup, and a note says git no longer runs it. The default-gate copy of
@@ -660,8 +660,9 @@ assert_eq "the hook is kept in the submodule's git folder, its config points the
 assert_exit "the hook blocks a real git commit on a red gate in the submodule" 1 git -C "$I_SUPER/sub" commit -q -m sm
 rm -rf "$I_SUPER" "$I_SUBSRC"
 # The kept hook's walk up from the repository skips the gate only at the plugin's own folder: a
-# folder above whose scripts folder is a real folder and the same folder as the one that holds the
-# hook's CLI. A link planted in a folder above a repository does not pass for it: scripts/temper as
+# folder above it (with every symlink followed) that is the same folder, by device and inode, as
+# the one whose scripts folder holds the hook's CLI. A link planted in a folder above a repository
+# does not pass for it: scripts/temper as
 # a symlink or a hard link to the CLI, or scripts as a symlink to the plugin's scripts folder. Each
 # is planted in turn, and a real git commit on a red gate is still blocked.
 I_WALK="$WORKDIR/walk"

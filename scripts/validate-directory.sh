@@ -24,6 +24,9 @@
 #  10. No such script names a path with a folder named hooks at all, read or write, comments
 #      included (a word with a slash and a part of that name). A bare word with no slash, as in
 #      git rev-parse --git-path, does not count.
+#  11. No such script lists a folder by a wildcard after a variable ("$dir"/name.*, or a glob
+#      call in a Python file), comments included; a wildcard in quotes, in ${ } or in a pattern
+#      after [[ ... == lists nothing and does not count.
 #
 # It checks the plugin folder it sits in, and nothing in the environment moves that folder: the
 # tests copy this script into a temporary plugin and run the copy there. The folder must be a git
@@ -587,6 +590,117 @@ if found:
 PY
 else
   fail "rule 10 needs python3 and a git work tree at $ROOT"
+fi
+
+# 11. No script lists a folder by a wildcard after a variable: "$dir"/name.*, $dir/*, or a glob
+# call in a Python file. The directory asks for plugin paths with no wildcard, and a folder held
+# in a variable may be the plugin's own as far as it can tell: it held a script that globbed a
+# computed folder each time. List the folder with find and match each name instead. A wildcard
+# inside quotes, inside ${ } (as in ${f##*/}) or in a pattern after [[ ... == does not list
+# anything and does not count; comments count. The files are those of rule 9.
+if command -v python3 >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  python3 - "$ROOT" <<'PY' || FAIL=$((FAIL+1))
+import os, re, subprocess, sys
+root = sys.argv[1]
+own = "scripts/validate-directory.sh"
+listed = subprocess.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                        capture_output=True, check=False).stdout.decode("utf-8", "replace").split("\0")
+braced = re.compile(r"\$\{[^{}]*\}")
+py_glob = re.compile(r"(?:\.[ri]?glob|\bi?glob)\s*\(")
+
+
+def shell_globs(line):
+    """True when a word of the line, outside quotes, has a variable or a $( ) span, then a slash,
+    then * or ?. A $( ) span inside double quotes is a command of its own."""
+    line = braced.sub("$V", line)
+    # The pattern side of a [[ ... == ... ]] or [[ ... != ... ]] test matches text; it lists nothing.
+    line = re.sub(r"(?:==|!=|=~)\s*\S+", " ", line)
+    stack = [""]  # "" a command, "(" a command inside $( ), '"' and "'" quotes
+    var = slash = False
+    i = 0
+    while i < len(line):
+        ch, top = line[i], stack[-1]
+        if top == "'":
+            if ch == "'":
+                stack.pop()
+        elif ch == "\\":
+            i += 1
+        elif ch == "$" and line[i + 1:i + 2] == "(":
+            stack.append("(")
+            var = slash = False
+            i += 1
+        elif top == '"':
+            if ch == '"':
+                stack.pop()
+            elif ch == "$":
+                var = True
+            elif ch == "/" and var:
+                slash = True
+        elif ch in "\"'":
+            stack.append(ch)
+        elif ch == ")" and top == "(":
+            stack.pop()
+            var, slash = True, False
+        elif ch.isspace() or ch in ";|&()<>":
+            var = slash = False
+        elif ch == "$":
+            var = True
+        elif ch == "/" and var:
+            slash = True
+        elif ch in "*?" and slash:
+            return True
+        i += 1
+    return False
+
+
+def kind(rel, path):
+    if rel.endswith((".sh", ".bash")):
+        return "sh"
+    if rel.endswith(".py"):
+        return "py"
+    if rel.startswith(".github/") and rel.endswith((".yml", ".yaml")):
+        return "sh"
+    if "." not in os.path.basename(rel):
+        try:
+            with open(path, "rb") as f:
+                first = f.readline(200)
+        except OSError:
+            return ""
+        if first.startswith(b"#!") and re.search(rb"\b(?:ba)?sh\b", first):
+            return "sh"
+        if first.startswith(b"#!") and b"python" in first:
+            return "py"
+    return ""
+
+
+found = []
+for rel in listed:
+    if not rel or rel == own:
+        continue
+    path = os.path.join(root, rel)
+    if not os.path.isfile(path) or os.path.islink(path):
+        continue
+    k = kind(rel, path)
+    if not k:
+        continue
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        continue
+    for n, line in enumerate(lines, 1):
+        hit = shell_globs(line) if k == "sh" else bool(py_glob.search(line))
+        if hit:
+            found.append("  %s:%d: %s" % (rel, n, line.strip()[:100]))
+if found:
+    print("FAIL: a script lists a folder by a wildcard after a variable (list it with find and match each name):")
+    print("\n".join(found[:20]))
+    if len(found) > 20:
+        print("  (and %d more)" % (len(found) - 20))
+    sys.exit(1)
+PY
+else
+  fail "rule 11 needs python3 and a git work tree at $ROOT"
 fi
 
 if [[ $FAIL -eq 0 ]]; then
