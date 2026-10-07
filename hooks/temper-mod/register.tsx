@@ -270,9 +270,14 @@ function announce($: Api, snap: Snapshot): void {
 
 // Takes a snapshot an `apply` produced as the current one. A run it holds is the last known run too,
 // so a run that reached Done here is not held from memory as the phase before once its state goes.
-function adopt($: Api, snap: Snapshot): Snapshot {
+// `apply` reads the files only: with the state file gone it finds no run, and a run held from memory
+// must stay enforced (see heldRun), so that run is taken again and drawn.
+function adopt($: Api, applied: Snapshot): Snapshot {
+  const held = applied.slug === null ? heldRun() : null
+  const snap = held ?? applied
   current = Promise.resolve(snap)
   if (snap.slug !== null) lastRun = snap
+  if (held !== null) void publish(makeIo($), held).catch(() => undefined)
   announce($, snap)
   return snap
 }

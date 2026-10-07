@@ -75,6 +75,13 @@ remembered as done, so once it is cleared its Done report is shown, not the phas
 tests drive it, two through a whole run to Done and its `state clear`; the ones for the stale cases
 fail without the fix.
 
+**A run held from memory stays enforced after a decision.** When a run's state file goes missing,
+the mod keeps enforcing the last known run (as the README says). A decision word or button in that
+state (approve, next, back, override, accept) made the mod take an empty snapshot as current, so
+until the next refresh the phase rules let writes through and Claude was told no run was active;
+the commit gate still held. The mod now keeps the held run after a decision and draws it. This is
+older than 9.6.7; the review of this release found it. A new mod test fails without the fix.
+
 **A hook tool's own hook is never written over.** lefthook, installed after Temper, writes its
 `pre-commit` into the folder `core.hooksPath` names, which is Temper's `temper-gate` folder (it
 renames Temper's hook to `pre-commit.old`). The next `/temper` then ran the installer, which wrote

@@ -162,6 +162,20 @@ async function doneAndCleared(r: Run): Promise<void> {
   expect(clear.deny).toBeUndefined()
 }
 
+describe('a run held from memory stays enforced after a decision', () => {
+  test('the state file is gone, the person overrides: a write the phase refuses is still refused', async ($, on) => {
+    const r = await start($ as unknown as Api, on)
+    await r.refresh()
+    r.w.files.delete('.temper/build-state.json')
+    await r.refresh()
+    expect(await r.write('src/app.ts')).toMatch(/Plan phase/)
+    await r.$.command.run({ command: 'temper:temper', args: 'override needed now', origin: { kind: 'composer' } })
+    expect(await r.write('src/app.ts')).toMatch(/Plan phase/)
+    const status = await r.$.command.run({ command: 'temper:temper', args: 'status', origin: { kind: 'composer' } })
+    expect(status.text).toContain('Temper state: .temper/build-state.json is missing or unreadable.')
+  })
+})
+
 describe('after Done, the report stays readable', () => {
   test('a turn cut short right after the clear (no refresh in between): report shows the finished run, every time', { options: { moveCooldownMs: 0 } }, async ($, on) => {
     on('turn.complete', ($2, e) => ({ text: e.answer }))
