@@ -38,8 +38,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-# The plugin folder: this file's resolved path with the literal suffix removed.
-ROOT = Path(str(Path(__file__).resolve()).removesuffix("/scripts/plan_review.py"))
+# The plugin folder: this file's resolved path with the literal suffix removed (written so that
+# Python 3.6 to 3.8 run it too, as 9.6.0 did).
+_SELF = str(Path(__file__).resolve())
+_SUFFIX = "/scripts/plan_review.py"
+ROOT = Path(_SELF[: -len(_SUFFIX)] if _SELF.endswith(_SUFFIX) else _SELF)
 TEMPLATE = ROOT / "templates" / "plan-review.html"
 SOURCES = ("plan.md", "tasks.md")
 VALID_TYPES = ("task-change", "scenario-change", "plan-change", "general-note")

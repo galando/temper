@@ -70,6 +70,9 @@ could no longer be read; 9.6.0 kept the file. With no run active, `report` now s
 last in the project (a report file an older Temper wrote counts too), and says there is none only
 when nothing is kept. Two mod tests drive it, one through a whole run to Done and its `state clear`.
 
+`scripts/plan_review.py` (the HTML plan review) runs on Python 3.6 to 3.8 again, as in 9.6.0: 9.6.5
+had used a string call that needs Python 3.9.
+
 No test pairs a host with something that looks like a credential: the curl case in the validator's
 selftest and a fake pre-commit framework hook carry no URL, and the file the secret scan's case
 writes its fake key into is named `1:notes.txt`.
