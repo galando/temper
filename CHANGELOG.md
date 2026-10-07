@@ -3,6 +3,44 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.6.7: no script names a hooks folder, no plugin root variable in tests, no bundled image
+
+The directory's report on 9.6.6 (878248e) held it for five reasons. Four are for a reviewer ("This
+plugin includes a mod", the prompts the mod submits, the slash commands it runs, the settings it
+sets); the README section "What the mod reads and writes" describes each. The fifth, that it
+"couldn't confirm that the mod stays the same", named `scripts/guards/install.sh`,
+`scripts/selftest/temper-cases-1.sh` and `temper-cases-2.sh`. The directory names at most three
+files per finding, in path order, so this release clears the whole kind in every file, not only
+the three it named.
+
+**No script names a path with a folder named `hooks`.** Git's hook folders share that name with
+the plugin folder that holds the mod, and the three scripts the directory held all built or read
+such a path, though none of them wrote there any more.
+- The installer asks git for its own hooks folder (`git rev-parse --git-path hooks`) instead of
+  building a path that ends in that folder name, and its comments name no such path.
+- The tests name none either: where a case showed that the installer writes nothing in git's own
+  hooks folder, it now shows that the installer writes nothing in the whole git folder but
+  Temper's own `temper-gate` (a listing before and after), which is the stronger check.
+- The installer refuses a `core.hooksPath` that leads into the plugin's own folder before it reads
+  anything there, and builds Temper's older folders from fixed names, never from the value.
+- A new rule 10 in `scripts/validate-directory.sh` fails on any shell, Python or workflow file that
+  names a path with a folder named `hooks`, read or write, comments included. Run on 878248e, its
+  first three findings are the three files the directory named, in the same order.
+
+**No test names the plugin root variable.** The guard-entries case takes the pack's own hook
+command from `packs/guardrails/settings-guardrails.json` (as an entry copied by hand has it), the
+confirm-override case takes the CLI's spelling from `commands/temper.md`, and the check that the
+CLI and the guard scripts never read the variable takes its name from `scripts/guard-entries.py`.
+Each case checks that what it took is the braced root form. No test lists plugin files by
+wildcard, links the plugin folder itself, or points a script's output into it.
+
+**No bundled image.** The 1024 px icon that 9.6.6 added holds the plugin for review, as a bundled
+image did in 9.3.3, and the directory reads an icon only when the plugin is first saved or
+submitted. It leaves the repository; upload it in the developer portal instead. No text names an
+image file of the repository.
+
+The curl case in the validator's selftest carries no URL.
+
 ## v9.6.6: nothing writes into a hooks folder, readable test files, a listing icon
 
 The directory's report on 9.6.5 (3f7df41) held it for six reasons. This release answers the two

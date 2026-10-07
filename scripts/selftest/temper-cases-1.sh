@@ -444,10 +444,11 @@ GE_PROJ="$WORKDIR/ge-project"
 GE_OLD="$WORKDIR/ge-old-plugin"
 GE_HOME="$WORKDIR/ge-home"
 GE_OUTSIDE="$WORKDIR/ge-outside"
-rm -rf "$GE_PROJ" "$GE_OLD" "$GE_HOME" "$GE_OUTSIDE" "$WORKDIR/ge-link" "$WORKDIR/ge-bin" "$WORKDIR/ge-proj-link"
+rm -rf "$GE_PROJ" "$GE_OLD" "$GE_HOME" "$GE_OUTSIDE" "$WORKDIR/ge-bin" "$WORKDIR/ge-proj-link"
+rm -f "$WORKDIR/ge-guards-link"
 mkdir -p "$GE_PROJ/.claude" "$GE_PROJ/tools/scripts/guards" "$GE_OLD/scripts/guards" "$GE_HOME" "$GE_OUTSIDE" "$WORKDIR/ge-bin"
 printf 'x\n' > "$GE_OLD/scripts/guards/block-uncommitted-gate.sh"
-ln -s "$REPO_ROOT" "$WORKDIR/ge-link"
+ln -s "$REPO_ROOT/scripts/guards" "$WORKDIR/ge-guards-link"
 ln -s "$GE" "$WORKDIR/ge-bin/guard-entries.py"
 ln -s "$GE_PROJ" "$WORKDIR/ge-proj-link"
 # The guard entry that holds the plugin root variable comes from the pack's own settings file, as
@@ -465,7 +466,7 @@ cat > "$GE_PROJ/.claude/settings.json" <<EOF
   "PreToolUse": [
    {"matcher": "Edit|Write", "hooks": [
      {"type": "command", "command": "bash \"$REPO_ROOT/scripts/guards/block-secrets.sh\""},
-     {"type": "command", "command": "bash \"$WORKDIR/ge-link/scripts/guards/protect-regression-test.sh\""},
+     {"type": "command", "command": "bash \"$WORKDIR/ge-guards-link/protect-regression-test.sh\""},
      {"type": "command", "command": "bash \"\$CLAUDE_PROJECT_DIR/tools/block-secrets.sh\""},
      {"type": "command", "command": "\"\$CLAUDE_PROJECT_DIR\"/tools/block-protected-paths.sh"},
      {"type": "command", "command": "bash tools/block-secrets.sh"},
@@ -486,7 +487,7 @@ cat > "$GE_PROJ/.claude/settings.local.json" <<EOF
 EOF
 GE_WANT="$(printf '%s\n' \
   ".claude/settings.json|PreToolUse|Edit|Write|$REPO_ROOT/scripts/guards/block-secrets.sh|current" \
-  ".claude/settings.json|PreToolUse|Edit|Write|$WORKDIR/ge-link/scripts/guards/protect-regression-test.sh|current" \
+  ".claude/settings.json|PreToolUse|Edit|Write|$WORKDIR/ge-guards-link/protect-regression-test.sh|current" \
   ".claude/settings.json|PreToolUse|Bash|$GE_OLD/scripts/guards/block-uncommitted-gate.sh|stale" \
   ".claude/settings.json|PreToolUse|Bash|$GE_OLD/scripts/legacy/confirm-override.sh|stale" \
   ".claude/settings.json|PreToolUse|Bash|$GE_ROOTVAR_CMD|stale" \
@@ -581,8 +582,9 @@ assert_eq "guard-entries with the plugin folder inside the project: its scripts 
     ".claude/settings.local.json|PreToolUse|Bash|$REPO_ROOT/scripts/guards/block-secrets.sh|stale")" \
   "$(HOME="$GE_HOME" python3 "$GE_IN/vendor/temper/scripts/guard-entries.py" 2>&1)"
 cd "$WORKDIR" || exit 1
-rm -rf "$GE_PROJ" "$GE_OLD" "$GE_HOME" "$GE_OUTSIDE" "$GE_IN" "$WORKDIR/ge-link" "$WORKDIR/ge-bin" "$WORKDIR/ge-proj-link" \
+rm -rf "$GE_PROJ" "$GE_OLD" "$GE_HOME" "$GE_OUTSIDE" "$GE_IN" "$WORKDIR/ge-bin" "$WORKDIR/ge-proj-link" \
   "$WORKDIR/ge-err.txt" "$WORKDIR/ge-audit.txt" "$WORKDIR/audit-outside.py"
+rm -f "$WORKDIR/ge-guards-link"
 
 # --- stage-marker.sh + verify-stage-gate.sh: the standalone-stage gate guarantee ---
 # stage-marker records the gate a /temper:{stage} session owes; verify-stage-gate blocks

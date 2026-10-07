@@ -920,13 +920,9 @@ assert_exit "merge rejects a missing file" 2 python3 "$PR" merge --feature demo-
 # plan_review.py writes only a file of its own kind, and never inside the plugin's own folder.
 assert_exit "render refuses an output name that does not end in .html" 2 python3 "$PR" render "$PRD" -o "$PRD/review.txt"
 assert_eq "the refused render writes nothing" "no" "$([[ -e "$PRD/review.txt" ]] && echo yes || echo no)"
-assert_exit "render refuses an output inside the plugin's own folder" 2 \
-  python3 "$PR" render "$PRD" -o "$REPO_ROOT/no-such-folder/review.html"
 assert_exit "merge refuses an output name that does not end in .json" 2 \
   python3 "$PR" merge --feature demo-feature -o "$WORKDIR/pr/merged.txt" "$WORKDIR/pr/export.json"
 assert_eq "the refused merge writes nothing" "no" "$([[ -e "$WORKDIR/pr/merged.txt" ]] && echo yes || echo no)"
-assert_exit "merge refuses an output inside the plugin's own folder" 2 \
-  python3 "$PR" merge --feature demo-feature -o "$REPO_ROOT/no-such-folder/review-comments.json" "$WORKDIR/pr/export.json"
 assert_exit "merge still prints to stdout with -o -" 0 python3 "$PR" merge --feature demo-feature -o - "$WORKDIR/pr/export.json"
 # A copy in a throwaway plugin folder finds that folder by the literal suffix of its own path and
 # refuses it too, including the default output of a spec folder that lies inside it.
@@ -934,6 +930,11 @@ PR_PLUG="$WORKDIR/pr-plugin"
 mkdir -p "$PR_PLUG/scripts" "$PR_PLUG/templates" "$PR_PLUG/specs/x"
 cp "$PR" "$PR_PLUG/scripts/plan_review.py"
 cp "$REPO_ROOT/templates/plan-review.html" "$PR_PLUG/templates/plan-review.html"
+assert_exit "render refuses an output inside the plugin's own folder" 2 \
+  python3 "$PR_PLUG/scripts/plan_review.py" render "$PRD" -o "$PR_PLUG/no-such-folder/review.html"
+assert_exit "merge refuses an output inside the plugin's own folder" 2 \
+  python3 "$PR_PLUG/scripts/plan_review.py" merge --feature demo-feature -o "$PR_PLUG/no-such-folder/review-comments.json" "$WORKDIR/pr/export.json"
+assert_eq "neither refusal makes the folder" "no" "$([[ -e "$PR_PLUG/no-such-folder" ]] && echo yes || echo no)"
 cp "$PRD/plan.md" "$PR_PLUG/specs/x/plan.md"
 assert_exit "render refuses the default output of a spec folder inside the plugin" 2 \
   python3 "$PR_PLUG/scripts/plan_review.py" render "$PR_PLUG/specs/x"

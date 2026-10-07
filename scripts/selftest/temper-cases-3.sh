@@ -449,6 +449,7 @@ rm -rf "$WORKDIR/inst-bin"
 _i_clean
 # A copy outside a scripts/guards folder (even with a CLI where the failed suffix strip would
 # look for one), or a plugin whose CLI does not run, writes no hook.
+I_GIT_BEFORE="$(_git_list .git)"
 mkdir -p "$WORKDIR/loose-installer/scripts"
 cp "$I_INSTALL" "$WORKDIR/loose-installer/install.sh"
 cp "$TEMPER" "$WORKDIR/loose-installer/scripts/temper"
@@ -459,8 +460,8 @@ assert_exit "install.sh refuses when the plugin's CLI is not executable" 1 bash 
 # an END line, without its first line and in a subshell whose exits end only it, ready to copy.
 OUT=$(bash "$I_INSTALL" 2>&1; true)
 chmod +x "$I_PLUG/scripts/temper"
-assert_eq "neither refusal writes a hook or sets core.hooksPath" "no|no|no|none" \
-  "$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)|$([[ -e .git/temper-pre-commit ]] && echo yes || echo no)|$([[ -e .git/temper-gate ]] && echo yes || echo no)|$(git config --get core.hooksPath || echo none)"
+assert_eq "neither refusal writes a hook or sets core.hooksPath" "same|no|no|none" \
+  "$([[ "$(_git_list .git)" == "$I_GIT_BEFORE" ]] && echo same || echo changed)|$([[ -e .git/temper-pre-commit ]] && echo yes || echo no)|$([[ -e .git/temper-gate ]] && echo yes || echo no)|$(git config --get core.hooksPath || echo none)"
 rm -rf "$WORKDIR/loose-installer"
 I_LINES="$(printf '%s\n' "$OUT" | sed -n '/^----- BEGIN Temper pre-commit hook lines -----$/,/^----- END Temper pre-commit hook lines -----$/p' | sed '1d;$d')"
 printf '%s\n' "$I_LINES" > "$WORKDIR/hook-lines.sh"
@@ -482,10 +483,11 @@ assert_eq "the kept hook is the full hook with this plugin's paths, a valid bash
 _i_clean
 # A run from a folder inside the plugin's folder whose repository's top is elsewhere (an
 # installed copy inside some repository) writes nothing.
+I_GIT_BEFORE="$(_git_list .git)"
 assert_exit "install.sh refuses a run from inside the plugin's folder when the repository's top is elsewhere" 1 \
   bash -c "cd '$I_PLUG/inner' && bash '$I_INSTALL'"
-assert_eq "that refusal writes no hook into the enclosing repository and sets no core.hooksPath" "no|no|none" \
-  "$([[ -e .git/hooks/pre-commit ]] && echo yes || echo no)|$([[ -e .git/temper-gate ]] && echo yes || echo no)|$(git config --get core.hooksPath || echo none)"
+assert_eq "that refusal writes no hook into the enclosing repository and sets no core.hooksPath" "same|no|none" \
+  "$([[ "$(_git_list .git)" == "$I_GIT_BEFORE" ]] && echo same || echo changed)|$([[ -e .git/temper-gate ]] && echo yes || echo no)|$(git config --get core.hooksPath || echo none)"
 # A .git/config that is a symlink into the plugin's folder (git config writes through it) is
 # refused, by the default run and by --global, before anything is written.
 cp .git/config "$I_PLUG/inner/config"
@@ -699,10 +701,11 @@ git -C "$I_PLUG" config user.email "test@example.com"
 git -C "$I_PLUG" config user.name "test"
 git -C "$I_PLUG" commit -q --allow-empty -m init
 git -C "$I_PLUG" worktree add -q "$WORKDIR/plug-wt" >/dev/null 2>&1
+I_PLUG_GIT="$(_git_list "$I_PLUG/.git")"
 assert_exit "in a linked worktree whose repository's git folder is inside the plugin's folder, install.sh refuses" 1 \
   bash -c "cd '$WORKDIR/plug-wt' && bash '$I_INSTALL'"
-assert_eq "that refusal writes nothing in the plugin's git folder" "no|no|none" \
-  "$([[ -e "$I_PLUG/.git/hooks/pre-commit" ]] && echo yes || echo no)|$([[ -e "$I_PLUG/.git/temper-gate" ]] && echo yes || echo no)|$(git -C "$I_PLUG" config --get core.hooksPath || echo none)"
+assert_eq "that refusal writes nothing in the plugin's git folder" "same|no|none" \
+  "$([[ "$(_git_list "$I_PLUG/.git")" == "$I_PLUG_GIT" ]] && echo same || echo changed)|$([[ -e "$I_PLUG/.git/temper-gate" ]] && echo yes || echo no)|$(git -C "$I_PLUG" config --get core.hooksPath || echo none)"
 rm -rf "$I_MAIN" "$I_FEAT" "$WORKDIR/plug-wt" "$I_PLUG"
 
 # --- stage-marker.sh + verify-stage-gate.sh: fixed names in the project, never inside the plugin ---
@@ -803,6 +806,9 @@ G_DG_INSTALL="$G_DG/scripts/guards/install.sh"
 # is a folder that is not Temper's: refused, and nothing is written or made there.
 git config core.hooksPath guard-plugin/inner/code
 assert_exit "install.sh refuses a core.hooksPath that leads into the plugin's own folder" 1 bash "$G_INSTALL"
+OUT=$(bash "$G_INSTALL" 2>&1; true)
+assert_eq "that refusal says the value leads into the plugin's folder, prints no hook lines, and its hint names no file there" "yes|no|yes|no" \
+  "$(printf '%s\n' "$OUT" | grep -qxF "FAIL: core.hooksPath is set to 'guard-plugin/inner/code', which leads into the plugin's own folder; this installer reads and writes nothing there." && echo yes || echo no)|$(printf '%s\n' "$OUT" | grep -q 'BEGIN Temper pre-commit hook lines' && echo yes || echo no)|$(printf '%s\n' "$OUT" | tail -1 | grep -qxF 'Hint: point core.hooksPath at a folder of your own, or unset it, then run this installer again.' && echo yes || echo no)|$(printf '%s\n' "$OUT" | grep -q 'inner/code/pre-commit' && echo yes || echo no)"
 ln -s "$G_PLUG/inner/code" linked-gate
 git config core.hooksPath linked-gate
 assert_exit "install.sh refuses a core.hooksPath that is a symlink into the plugin's own folder" 1 bash "$G_INSTALL"
@@ -857,19 +863,21 @@ assert_eq "in the plugin's own repository, a refusal over a hook in default-gate
 rm -rf "$G_DG"
 # With no hook of the user's in its default folder, the install in the plugin's own repository is
 # accepted (the real installer, in the first plugin).
+G_PLUG_GIT="$(_git_list "$G_PLUG/.git")"
 assert_exit "in the plugin's own repository, the install is accepted" 0 \
   bash -c "cd '$G_PLUG' && bash scripts/guards/install.sh"
 assert_eq "the hook lands in the plugin repository's .git/temper-gate, core.hooksPath points there, and nothing else in it is written" \
-  "yes|$G_PLUG/.git/temper-gate|no|" \
-  "$([[ -x "$G_PLUG/.git/temper-gate/pre-commit" ]] && echo yes || echo no)|$(git -C "$G_PLUG" config --get core.hooksPath)|$([[ -e "$G_PLUG/.git/hooks/pre-commit" ]] && echo yes || echo no)|$(ls -A "$G_PLUG/inner/code")"
+  "yes|$G_PLUG/.git/temper-gate|same|" \
+  "$([[ -x "$G_PLUG/.git/temper-gate/pre-commit" ]] && echo yes || echo no)|$(git -C "$G_PLUG" config --get core.hooksPath)|$([[ "$(_git_list "$G_PLUG/.git")" == "$G_PLUG_GIT" ]] && echo same || echo changed)|$(ls -A "$G_PLUG/inner/code")"
 # A repository inside the plugin folder is refused outright. The plugin's folder is told by the
 # same file as this installer: a folder whose scripts/guards/install.sh is only a copy is not it.
 mkdir -p "$G_PLUG/inner/proj"
 git init -q "$G_PLUG/inner/proj"
+G_PROJ_GIT="$(_git_list "$G_PLUG/inner/proj/.git")"
 assert_exit "install.sh refuses a repository that lies inside the plugin's own folder" 1 \
   bash -c "cd '$G_PLUG/inner/proj' && bash '$G_INSTALL'"
-assert_eq "the refused repository inside the plugin gets no hook and no core.hooksPath" "no|no|none" \
-  "$([[ -e "$G_PLUG/inner/proj/.git/hooks/pre-commit" ]] && echo yes || echo no)|$([[ -e "$G_PLUG/inner/proj/.git/temper-gate" ]] && echo yes || echo no)|$(git -C "$G_PLUG/inner/proj" config --get core.hooksPath || echo none)"
+assert_eq "the refused repository inside the plugin gets no hook and no core.hooksPath" "same|no|none" \
+  "$([[ "$(_git_list "$G_PLUG/inner/proj/.git")" == "$G_PROJ_GIT" ]] && echo same || echo changed)|$([[ -e "$G_PLUG/inner/proj/.git/temper-gate" ]] && echo yes || echo no)|$(git -C "$G_PLUG/inner/proj" config --get core.hooksPath || echo none)"
 G_COPY="$WORKDIR/copy-plugin"
 rm -rf "$G_COPY"
 mkdir -p "$G_COPY/scripts/guards" "$G_COPY/inner"

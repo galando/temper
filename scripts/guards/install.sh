@@ -13,8 +13,8 @@
 #
 # Where it writes. The installer works on the repository that holds the current folder (it clears
 # every GIT_* variable first, so GIT_DIR, GIT_WORK_TREE, GIT_CONFIG and the rest cannot move it).
-# It never writes into a folder named hooks: not .git/hooks, not the folder that git rev-parse
-# --git-path hooks names, and not a core.hooksPath folder that is not Temper's own. Its only
+# It never writes into a folder named hooks: not git's own hooks folder (the one git rev-parse
+# --git-path hooks names), and not a core.hooksPath folder that is not Temper's own. Its only
 # writes are these, all in the repository's own git folder (the folder git rev-parse
 # --git-common-dir names, with every symlink followed, which every worktree of it shares):
 #   - the folder temper-gate, and the hook temper-gate/pre-commit in it (the kept hook);
@@ -27,7 +27,7 @@
 # It reads hook files to decide what to do, and writes none of them.
 #
 # What it does:
-#   - core.hooksPath unset: when git's default hooks folder (<git folder>/hooks) holds no hook git
+#   - core.hooksPath unset: when git's own hooks folder (the one git rev-parse names) holds no hook git
 #     runs, other than a pre-commit from an older Temper, core.hooksPath is set to the temper-gate
 #     folder, so git runs the kept hook in every worktree. When that folder holds such a hook (git
 #     skips the whole folder once core.hooksPath is set, so it would stop running), or a hook an
@@ -628,18 +628,35 @@ _older_folder() { # _older_folder <older core.hooksPath>: the older folder in th
                   # place after a move or a copy); otherwise the folder the value names
   local v
   v="$(_norm "$1")"
-  if [[ "$v" == .git/* ]]; then
-    printf '%s' "$COMMON_REAL/${v#.git/}"
-    return 0
-  fi
   case "$v" in
-    */.git/hooks-temper|*/.git/temper-git-hooks)
-      if [[ -d "$COMMON_REAL/${v##*/}" ]]; then
-        printf '%s' "$COMMON_REAL/${v##*/}"
-        return 0
-      fi ;;
+    .git/hooks-temper) printf '%s' "$COMMON_REAL/hooks-temper"; return 0 ;;
+    .git/temper-git-hooks) printf '%s' "$COMMON_REAL/temper-git-hooks"; return 0 ;;
+    */.git/hooks-temper)
+      if [[ -d "$COMMON_REAL/hooks-temper" ]]; then printf '%s' "$COMMON_REAL/hooks-temper"; return 0; fi ;;
+    */.git/temper-git-hooks)
+      if [[ -d "$COMMON_REAL/temper-git-hooks" ]]; then printf '%s' "$COMMON_REAL/temper-git-hooks"; return 0; fi ;;
   esac
   printf '%s' "$v"
+}
+_not_in_plugin() { # _not_in_plugin <folder git runs hooks from>: refuses, reading and naming nothing
+                   # there, when that folder (with every symlink followed, a relative one from the
+                   # repository's top) lies inside the plugin's own folder
+  local real up
+  real="$(_real_path "$1" 2>/dev/null)" || real=""
+  [[ -n "$real" ]] || return 0
+  # A checkout of the plugin itself: its own git folder is the one place in it allowed.
+  if [[ $OWN_CHECKOUT -eq 1 ]]; then
+    up="$real"
+    while [[ "$up" == /?* ]]; do
+      [[ -e "$up" && "$up" -ef "$COMMON_REAL" ]] && return 0
+      up="${up%/*}"
+    done
+  fi
+  if _in_plugin "$real"; then
+    NO_LINES=1
+    _refuse "core.hooksPath is set to '$EXISTING_HOOKS_PATH', which leads into the plugin's own folder; this installer reads and writes nothing there." \
+      "Hint: point core.hooksPath at a folder of your own, or unset it, then run this installer again."
+  fi
 }
 _scan() { # _scan <folder>: sets RUNNING, the hooks git runs from that folder (executable files
           # with git's hook names, other than a pre-commit from an older Temper or one that only
@@ -746,6 +763,7 @@ if _older_value "$EXISTING_HOOKS_PATH"; then
   # core.hooksPath at the temper-gate folder would stop them, so a hook there that git runs
   # (other than Temper's own pre-commit) keeps the value as it is, as in the default folder.
   OLDER_DIR="$(_older_folder "$EXISTING_HOOKS_PATH")"
+  _not_in_plugin "$OLDER_DIR"
   _scan "$OLDER_DIR"
   if [[ -n "$RUNNING$SET_ASIDE" ]]; then
     _keep_gate || _refuse "$KEEP_ERR"
@@ -787,6 +805,7 @@ fi
 
 # Another folder (husky, lefthook, a team's folder): git runs its hooks, and this installer never
 # writes there. Its pre-commit hook runs the kept hook through the call line.
+_not_in_plugin "$(_value_folder "$EXISTING_HOOKS_PATH")"
 _value_host "$EXISTING_HOOKS_PATH"
 _keep_gate || _refuse "$KEEP_ERR"
 RUN_PRE="$(_value_folder "$EXISTING_HOOKS_PATH")/pre-commit"

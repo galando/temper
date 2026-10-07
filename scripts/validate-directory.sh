@@ -21,6 +21,9 @@
 #      that runs git rev-parse, ${NAME} or its default, a cd or pushd into the folder (on the same
 #      line, or alone on a line before), or a variable (shell, or Python in a .py file) set to such
 #      a path earlier in the same file; a name built from pieces at run time is for review.
+#  10. No such script names a path with a folder named hooks at all, read or write, comments
+#      included (a word with a slash and a part of that name). A bare word with no slash, as in
+#      git rev-parse --git-path, does not count.
 #
 # It checks the plugin folder it sits in, and nothing in the environment moves that folder: the
 # tests copy this script into a temporary plugin and run the copy there. The folder must be a git
@@ -519,6 +522,71 @@ if found:
 PY
 else
   fail "rule 9 needs python3 and a git work tree at $ROOT"
+fi
+
+# 10. No script names a path with a folder named hooks at all, read or write, comments included:
+# the directory cannot tell git's hook folders from the plugin folder that holds the mod, and it
+# held every script that built or read such a path. A line counts when a part with that name sits
+# next to a slash (.git/<name>, $X/<name>, <name>/x). A bare word, as in git rev-parse --git-path
+# <name>, has no slash and does not count. The files are those of rule 9: the shell scripts,
+# Python files and workflow files git lists (the mod and its tests are TypeScript, never read).
+NAMED_SEGMENT_NAME="hooks"
+if command -v python3 >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  python3 - "$ROOT" "$NAMED_SEGMENT_NAME" <<'PY' || FAIL=$((FAIL+1))
+import os, re, subprocess, sys
+root, name = sys.argv[1], sys.argv[2]
+own = "scripts/validate-directory.sh"
+listed = subprocess.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                        capture_output=True, check=False).stdout.decode("utf-8", "replace").split("\0")
+
+
+def names_path(line):
+    """True when a word of the line holds a slash and has a part equal to the name."""
+    for word in re.split(r"[\s\"'`=();|<>,]+", line):
+        if "/" in word and name in word.split("/"):
+            return True
+    return False
+
+
+def kind(rel, path):
+    if rel.endswith((".sh", ".bash", ".py")):
+        return True
+    if rel.startswith(".github/") and rel.endswith((".yml", ".yaml")):
+        return True
+    if "." not in os.path.basename(rel):
+        try:
+            with open(path, "rb") as f:
+                first = f.readline(200)
+        except OSError:
+            return False
+        return first.startswith(b"#!") and re.search(rb"\b(?:ba)?sh\b", first) is not None
+    return False
+
+
+found = []
+for rel in listed:
+    if not rel or rel == own:
+        continue
+    path = os.path.join(root, rel)
+    if not os.path.isfile(path) or os.path.islink(path) or not kind(rel, path):
+        continue
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        continue
+    for k, line in enumerate(lines, 1):
+        if names_path(line):
+            found.append("  %s:%d: %s" % (rel, k, line.strip()[:100]))
+if found:
+    print("FAIL: a script names a path with a folder named %s:" % name)
+    print("\n".join(found[:20]))
+    if len(found) > 20:
+        print("  (and %d more)" % (len(found) - 20))
+    sys.exit(1)
+PY
+else
+  fail "rule 10 needs python3 and a git work tree at $ROOT"
 fi
 
 if [[ $FAIL -eq 0 ]]; then

@@ -148,6 +148,14 @@ seg_more_ok()  { seg_name "$1"
                    printf 'cd .git/gate_dir && ls\ncat .git/gate_dir/pre-commit > /tmp/copy\ncd /tmp\nrm -f x\n'; } > "$1/scripts/a.sh"
                  { printf 'import shutil, subprocess\nshutil.copy("gate_dir/x.json", out)\nshutil.copytree("gate_dir", out)\n'
                    printf 'subprocess.run(["cp", "gate_dir/x.json", out])\nentries = d.get("gate_dir", {})\n'; } > "$1/scripts/a.py"; }
+# Rule 10 names one folder in one line too; these cases change it to gate_dir the same way.
+named_name()   { sed 's/^NAMED_SEGMENT_NAME=.*$/NAMED_SEGMENT_NAME="gate_dir"/' "$1/scripts/validate-directory.sh" > "$1/scripts/v" \
+                   && mv "$1/scripts/v" "$1/scripts/validate-directory.sh"; }
+named_read()    { named_name "$1"; printf 'ls -A .git/gate_dir\n' > "$1/scripts/a.sh"; }
+named_var()     { named_name "$1"; printf 'D="$COMMON/gate_dir"\n[ -d "$D" ] && echo yes\n' > "$1/scripts/a.sh"; }
+named_comment() { named_name "$1"; printf '# never writes into .git/gate_dir\nexit 0\n' > "$1/scripts/a.sh"; }
+named_python()  { named_name "$1"; printf 'import os\nprint(os.path.exists("gate_dir/x.json"))\n' > "$1/scripts/a.py"; }
+named_ok()      { named_name "$1"; printf 'D="$(git rev-parse --git-path gate_dir)"\nmkdir -p .git/gate_dir-temper/x\necho "the gate_dir folder"\n' > "$1/scripts/a.sh"; }
 seg_misc_ok()  { seg_name "$1"
                  { printf "find . -path ./gate_dir -prune -o -name '*.tmp' -delete\n"
                    printf 'cp gate_dir/gate_dir.json "$OUT/manifest.json"\n'
@@ -204,6 +212,11 @@ broken "a Python variable set to such a path, then opened for writing, fails" se
 broken "a pathlib variable set to such a path, then written, fails" seg_pathvar
 broken "os.open for writing there fails" seg_osopen
 variant "find -exec grep, quoted text, a test, a cd with a read, and copies out of the folder pass" 0 seg_more_ok
+broken "rule 10: a read of a path with the named folder fails" named_read
+broken "rule 10: a variable path that ends in the named folder fails" named_var
+broken "rule 10: a comment that names such a path fails" named_comment
+broken "rule 10: a Python path with the named folder fails" named_python
+variant "rule 10: a bare word, a longer folder name and prose pass" 0 named_ok
 make_fixture no_git plain && check "a folder that is not a git work tree fails" 1 "$FIXTURES/no_git"
 
 # Nothing in the environment moves the checked folder: the variable older versions read to check
