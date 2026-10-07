@@ -155,7 +155,9 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
       names them), or a hook an older version set aside, and the `pre-commit` there
       does not call the Temper hook; when `core.hooksPath` names another tool's folder,
       or Temper's older folder that holds other hooks git runs, and the pre-commit hook
-      there does not call the Temper hook; when the user's hook holds the Temper line after an
+      there does not call the Temper hook; when the `pre-commit` in Temper's own folder is not
+      Temper's (a hook tool such as lefthook wrote it there; the installer never writes over it,
+      and its hint says how to move it out); when the user's hook holds the Temper line after an
       `exit` or `exec` line; when the repository, or a place it would write once
       symlinks are followed, lies inside the plugin's own folder; and when a folder or
       file it needs cannot be made. It ignores GIT_DIR, GIT_WORK_TREE and GIT_CONFIG,

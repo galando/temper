@@ -5,6 +5,9 @@
 # Plain-bash assertions, no test framework dependency (consistent with the rest of
 # Temper's tooling). Runs entirely in a throwaway tmp dir; never touches the repo.
 set -uo pipefail
+# No case reads the terminal: a hook a case runs with no input of its own reads an empty standard
+# input, also when the suite itself is started with one left open.
+exec </dev/null
 
 # The repo root: this script's folder with the literal suffix /scripts/selftest removed.
 unset CDPATH

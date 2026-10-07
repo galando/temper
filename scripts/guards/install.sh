@@ -139,6 +139,7 @@ COMMON_REAL=""
 KEPT_HOOK=""
 KEPT_CHANGED=0
 KEEP_ERR=""
+KEEP_HINT=""
 GATE_NAME="temper-gate"
 KEEP_965_NAME="temper-pre-commit"
 # Lines a refusal prints after the kept text and before the hook lines.
@@ -434,8 +435,9 @@ _write_hook() { # _write_hook <folder> <file name>: writes the full hook to that
 
 _keep_gate() { # writes the kept hook temper-gate/pre-commit in the repository's git folder, and
                # sets KEPT_HOOK and KEPT_CHANGED. Returns 1 with KEEP_ERR set, writing nothing
-               # more, when the temper-gate folder is a symlink or not a folder, or the hook
-               # cannot be written.
+               # more, when the temper-gate folder is a symlink or not a folder, when the pre-commit
+               # there is not Temper's (KEEP_HINT then says what to do), or when the hook cannot be
+               # written.
   if [[ -L "$GATE_DIR" ]]; then
     KEEP_ERR="$GATE_DIR is a symlink. This installer writes the hook only into a real folder there."
     return 1
@@ -446,6 +448,21 @@ _keep_gate() { # writes the kept hook temper-gate/pre-commit in the repository's
   fi
   if [[ ! -d "$GATE_DIR" ]] && ! mkdir "$GATE_DIR" 2>/dev/null; then
     KEEP_ERR="the folder $GATE_DIR could not be made."
+    return 1
+  fi
+  # A pre-commit there that is not Temper's: something else wrote it (lefthook writes its hooks into
+  # the folder core.hooksPath names). It is never written over, and no line is printed, since the
+  # line runs the hook kept there. A symlink is replaced as before, never written through, and an
+  # empty file holds nothing to lose.
+  if [[ -f "$GATE_HOOK" && ! -L "$GATE_HOOK" && -s "$GATE_HOOK" ]] && ! _is_temper_hook "$GATE_HOOK"; then
+    NO_LINES=1
+    if [[ -n "${EXISTING_HOOKS_PATH:-}" ]] && _is_gate_value "$EXISTING_HOOKS_PATH"; then
+      KEEP_ERR="$GATE_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there (lefthook, for one, writes its hooks into the folder core.hooksPath names). Git runs it in place of the Temper hook, and this installer does not write over it."
+      KEEP_HINT="Hint: run git config --unset core.hooksPath, move $GATE_HOOK out of that folder, install that tool's hooks again (it then writes them into git's own hooks folder), then run this installer again; it prints the line to add."
+    else
+      KEEP_ERR="$GATE_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there, and this installer does not write over it. Git does not run it, since core.hooksPath does not point at that folder."
+      KEEP_HINT="Hint: move $GATE_HOOK out of that folder (a copy another tool left there), then run this installer again."
+    fi
     return 1
   fi
   if ! _write_hook "$GATE_DIR" pre-commit; then
@@ -736,12 +753,12 @@ if [[ -z "$EXISTING_HOOKS_PATH" ]]; then
   [[ -n "$HOOKS_DIR" ]] || _refuse "git did not say where its own hooks folder is."
   _scan "$HOOKS_DIR"
   if [[ -n "$RUNNING$SET_ASIDE" ]]; then
-    _keep_gate || _refuse "$KEEP_ERR"
+    _keep_gate || _refuse "$KEEP_ERR" "$KEEP_HINT"
     _scan_reason "$HOOKS_DIR"
     _host "$HOST_PRE" "$REASON"
   fi
   _check_config
-  _keep_gate || _refuse "$KEEP_ERR"
+  _keep_gate || _refuse "$KEEP_ERR" "$KEEP_HINT"
   _set_hooks_path
   _installed
   if _is_temper_hook "$HOST_PRE"; then
@@ -754,7 +771,7 @@ if [[ -z "$EXISTING_HOOKS_PATH" ]]; then
 fi
 
 if _is_gate_value "$EXISTING_HOOKS_PATH"; then
-  _keep_gate || _refuse "$KEEP_ERR"
+  _keep_gate || _refuse "$KEEP_ERR" "$KEEP_HINT"
   if [[ $KEPT_CHANGED -eq 1 ]]; then
     echo "The Temper pre-commit hook $GATE_HOOK was updated to the current plugin paths."
   else
@@ -773,7 +790,7 @@ if _older_value "$EXISTING_HOOKS_PATH"; then
   _not_in_plugin "$OLDER_DIR"
   _scan "$OLDER_DIR"
   if [[ -n "$RUNNING$SET_ASIDE" ]]; then
-    _keep_gate || _refuse "$KEEP_ERR"
+    _keep_gate || _refuse "$KEEP_ERR" "$KEEP_HINT"
     if [[ "$OLDER_DIR" == */"$GATE_NAME" && -e "${OLDER_DIR%/*}/HEAD" ]]; then
       # The temper-gate folder of another repository, still there (this one is a copy of it): its
       # pre-commit is that repository's own kept hook, so nothing here may tell you to change it.
@@ -802,7 +819,7 @@ if _older_value "$EXISTING_HOOKS_PATH"; then
     _host "$OLDER_DIR/pre-commit" "core.hooksPath is set to '$EXISTING_HOOKS_PATH', a folder an older Temper set. $REASON"
   fi
   _check_config
-  _keep_gate || _refuse "$KEEP_ERR"
+  _keep_gate || _refuse "$KEEP_ERR" "$KEEP_HINT"
   _set_hooks_path
   _installed
   echo "Note: core.hooksPath held Temper's older folder ($EXISTING_HOOKS_PATH); it now points at $GATE_DIR." >&2
@@ -814,7 +831,7 @@ fi
 # writes there. Its pre-commit hook runs the kept hook through the call line.
 _not_in_plugin "$(_value_folder "$EXISTING_HOOKS_PATH")"
 _value_host "$EXISTING_HOOKS_PATH"
-_keep_gate || _refuse "$KEEP_ERR"
+_keep_gate || _refuse "$KEEP_ERR" "$KEEP_HINT"
 RUN_PRE="$(_value_folder "$EXISTING_HOOKS_PATH")/pre-commit"
 if [[ "$RUN_PRE" != "$HOST" ]] && _is_temper_hook "$RUN_PRE"; then
   # husky's _ folder: git runs its pre-commit, which an older Temper wrote over husky's own, so

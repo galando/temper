@@ -223,9 +223,12 @@ does not run that file: when one is in `.git/hooks`, the installer names it in a
 says how to bring it back (move it back to `pre-commit` in git's own hooks folder and add the
 line between the BEGIN and END lines to it). Every refusal prints a FAIL line, never a bare shell error.
 
-A hook tool you add later (the pre-commit framework, lefthook) works in `.git/hooks`, so
-run `git config --unset core.hooksPath` before you install it. The next `/temper` or
-`/temper:init` then keeps the Temper hook and prints the line to add to that tool's hook.
+A hook tool you add later needs `core.hooksPath` unset first: the pre-commit framework
+refuses to install while it is set, and lefthook installs into the folder it names, which is
+Temper's. So run `git config --unset core.hooksPath` before you install one. The next
+`/temper` or `/temper:init` then keeps the Temper hook and prints the line to add to that
+tool's hook. If a tool has already written its `pre-commit` into Temper's folder, the
+installer never writes over it: it refuses and says how to move it out.
 To uninstall, run `git config --unset core.hooksPath` (when it points at the `temper-gate`
 folder), remove the Temper line from your own hook if you added one, and delete the
 `temper-gate` folder in the git folder (and any `temper-pre-commit` that 9.6.5 left there). The

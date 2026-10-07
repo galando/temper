@@ -70,6 +70,17 @@ could no longer be read; 9.6.0 kept the file. With no run active, `report` now s
 last in the project (a report file an older Temper wrote counts too), and says there is none only
 when nothing is kept. Two mod tests drive it, one through a whole run to Done and its `state clear`.
 
+**A hook tool's own hook is never written over.** lefthook, installed after Temper, writes its
+`pre-commit` into the folder `core.hooksPath` names, which is Temper's `temper-gate` folder (it
+renames Temper's hook to `pre-commit.old`). The next `/temper` then ran the installer, which wrote
+over lefthook's hook with no copy and said the hook "was updated"; 9.6.0 always kept a copy before
+it wrote. Now a `pre-commit` in Temper's folder that is not Temper's is never written over: the
+installer refuses, prints no line to add (the line runs the hook kept in that folder), and says
+how to move it out, unset `core.hooksPath` and install the tool's hooks again. The docs no longer
+say lefthook installs into git's own hooks folder. Six new installer cases cover it; the two that
+refuse fail without the fix. The selftest runner also gives every case an empty standard input,
+so a hook a case runs with no input of its own never waits on an open terminal.
+
 `scripts/plan_review.py` (the HTML plan review) runs on Python 3.6 to 3.8 again, as in 9.6.0: 9.6.5
 had used a string call that needs Python 3.9.
 

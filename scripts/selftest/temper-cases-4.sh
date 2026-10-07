@@ -1356,6 +1356,40 @@ OUT=$(cd "$L_HM" && bash "$L_INSTALL" 2>&1); L_RC=$?
 assert_eq "with husky's own hook in place and executable, the line counts" "0" "$L_RC"
 rm -rf "$L_HM"
 
+# A hook tool installed after Temper writes its own pre-commit into the folder core.hooksPath names
+# (lefthook renames the hook it finds there to pre-commit.old). The installer never writes over
+# it: it refuses with no line to add (the line runs the hook kept there) and says how to undo it.
+# With core.hooksPath unset, the copy left there is refused the same way, and once it is moved out
+# the installer goes on and the gate holds.
+L_TL="$WORKDIR/l1-tool-later"
+L_TL_HOOK="$L_TL/.git/temper-gate/pre-commit"
+_l_repo "$L_TL"
+OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "in a fresh repository the hook is kept and core.hooksPath points at its folder" "0|$L_TL/.git/temper-gate" "$L_RC|$(_l_path "$L_TL")"
+mv "$L_TL_HOOK" "$L_TL/.git/temper-gate/pre-commit.old"
+printf '#!/bin/sh\n# the hook another tool writes\necho tool-hook\n' > "$L_TL_HOOK"
+chmod +x "$L_TL_HOOK"
+L_SUM="$(cksum < "$L_TL_HOOK")"
+OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "another tool's pre-commit in Temper's folder that git runs is refused and left as it was, with no line and the undo hint" "1|yes|yes|no|yes|$L_TL/.git/temper-gate" \
+  "$L_RC|$([[ "$(cksum < "$L_TL_HOOK")" == "$L_SUM" ]] && echo yes || echo no)|$(_l_line "$OUT" "FAIL: $L_TL_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there (lefthook, for one, writes its hooks into the folder core.hooksPath names). Git runs it in place of the Temper hook, and this installer does not write over it.")|$(_l_has "$OUT" "BEGIN Temper pre-commit hook lines")|$(_l_last "$OUT" "Hint: run git config --unset core.hooksPath, move $L_TL_HOOK out of that folder, install that tool's hooks again (it then writes them into git's own hooks folder), then run this installer again; it prints the line to add.")|$(_l_path "$L_TL")"
+git -C "$L_TL" config --unset core.hooksPath
+OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "with core.hooksPath unset, the copy left in Temper's folder is refused the same way and left as it was" "1|yes|yes|yes|none" \
+  "$L_RC|$([[ "$(cksum < "$L_TL_HOOK")" == "$L_SUM" ]] && echo yes || echo no)|$(_l_line "$OUT" "FAIL: $L_TL_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there, and this installer does not write over it. Git does not run it, since core.hooksPath does not point at that folder.")|$(_l_last "$OUT" "Hint: move $L_TL_HOOK out of that folder (a copy another tool left there), then run this installer again.")|$(_l_path "$L_TL")"
+mv "$L_TL_HOOK" "$L_TL/tool-pre-commit"
+OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "once the copy is moved out, the installer keeps the hook and points core.hooksPath at its folder again" "0|$L_TL/.git/temper-gate|yes" \
+  "$L_RC|$(_l_path "$L_TL")|$(_l_kept "$L_TL")"
+(cd "$L_TL" && printf '.temper/\n' > .gitignore && git add .gitignore)
+_l_red "$L_TL"
+assert_exit "after that, a commit on a red gate is blocked" 1 git -C "$L_TL" commit -q -m red
+# An empty pre-commit there holds nothing to lose: it is written over as before.
+: > "$L_TL_HOOK"
+OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "an empty pre-commit in Temper's folder is written over with the current hook" "0|yes" "$L_RC|$(_l_kept "$L_TL")"
+rm -rf "$L_TL"
+
 # The commit hooks with the real CLI: an active run with red gates and a symlink on a run-state
 # path, or a link in the spec folder, never opens the gate.
 L_RED="$WORKDIR/l1-red"
