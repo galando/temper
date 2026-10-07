@@ -115,9 +115,12 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    `--global` does the same as the default, with a note. It also prints how to
    uninstall: unset `core.hooksPath` when it points at the `temper-gate` folder,
    remove the Temper line from the user's own hook if one was added, and delete the
-   `temper-gate` folder (and any `temper-pre-commit` that 9.6.5 left). A hook tool added later (the pre-commit framework, lefthook)
-   works in git's own hooks folder, so `core.hooksPath` must be unset first; the next
-   `/temper` or `/temper:init` then keeps the Temper hook and prints the line to add.
+   `temper-gate` folder (and any `temper-pre-commit` that 9.6.5 left). A hook tool added
+   later needs `core.hooksPath` unset first: the pre-commit framework refuses to install
+   while it is set, and lefthook installs into the folder it names, which is Temper's. The
+   next `/temper` or `/temper:init` then keeps the Temper hook and prints the line to add.
+   If a tool already wrote its `pre-commit` into Temper's folder, the installer refuses and
+   its hint says how to move it out.
    Report by how it ended:
    a. Exit 0 → the gate is installed, was already installed (or was updated to the
       current plugin paths), or the user's own hook calls the Temper hook, which is

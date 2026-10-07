@@ -245,7 +245,7 @@ Why each call is there:
 | `agent.list` | the optional `reviewerModel`: whether a subagent's step belongs to the Temper review agent. Read only; the spawn is passed on unchanged |
 | `clock.sleep` | (9.6.2) waits 60 ms before `build-state.json` is read again while the CLI rewrites it; replaces a `setTimeout` taken from `globalThis` |
 | `config.list`, `config.set` | `/temper mode` and `/temper enforcement` read the row (locked by an administrator or not) and change it the way `/config` does |
-| `fs.list`, `fs.read` | rebuild the run from `.temper/` files and the spec's events |
+| `fs.list`, `fs.read` | rebuild the run from `.temper/` files and the spec's events, and read a report an older Temper wrote |
 | `fs.stat` | resolve `.` to the project root so absolute tool paths can be made relative |
 | `fs.write` | not used since 9.6.2: the mod writes no file. Events and the report are kept in `$.store` |
 | `command.run` | a pressed Button ends with `/temper:temper` (no arguments) so the orchestrator launches the next stage with its own brief; `prompt.submit` refuses a text that starts with a slash, so the command runs as a command |

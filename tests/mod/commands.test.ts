@@ -82,6 +82,28 @@ describe('read only subcommands', () => {
     expect(old.text).toBe('No run is active. The last report kept for this project:\n\n# Temper report: Old run\n\nResult: Done\n')
   })
 
+  test('a run started after a report was kept: report shows the run, not the old report', async ($, on) => {
+    const w = world(on, { '.temper/report.md': '# Temper report: Old run\n\nResult: Done\n' })
+    const before = await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'composer' } } as never)
+    expect(before.text).toContain('# Temper report: Old run')
+    for (const [path, text] of Object.entries(runFiles({ nextStage: 'build' }))) w.files.set(path, text)
+    const r = await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'sdk' } } as never)
+    expect(r.text).toContain('# Temper report: Password reset by email')
+    expect(r.text).toContain('Result: In progress (Build)')
+  })
+
+  test('a run held from memory (its state file is gone) is reported but not kept', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'build' }))
+    await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'composer' } } as never)
+    const key = Object.keys(w.store).find(k => k.startsWith('vf:') && k.endsWith('.temper/report.md')) ?? ''
+    const kept = w.store[key]
+    expect(typeof kept).toBe('string')
+    w.files.delete('.temper/build-state.json')
+    const r = await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'composer' } } as never)
+    expect(r.text).toContain('# Temper report: Password reset by email')
+    expect(w.store[key]).toBe(kept)
+  })
+
   test('with no run active and no report kept, report says there is none', async ($, on) => {
     world(on, {})
     const r = await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'composer' } } as never)

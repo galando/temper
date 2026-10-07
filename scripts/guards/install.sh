@@ -438,6 +438,7 @@ _keep_gate() { # writes the kept hook temper-gate/pre-commit in the repository's
                # more, when the temper-gate folder is a symlink or not a folder, when the pre-commit
                # there is not Temper's (KEEP_HINT then says what to do), or when the hook cannot be
                # written.
+  local name others
   if [[ -L "$GATE_DIR" ]]; then
     KEEP_ERR="$GATE_DIR is a symlink. This installer writes the hook only into a real folder there."
     return 1
@@ -452,16 +453,26 @@ _keep_gate() { # writes the kept hook temper-gate/pre-commit in the repository's
   fi
   # A pre-commit there that is not Temper's: something else wrote it (lefthook writes its hooks into
   # the folder core.hooksPath names). It is never written over, and no line is printed, since the
-  # line runs the hook kept there. A symlink is replaced as before, never written through, and an
-  # empty file holds nothing to lose.
-  if [[ -f "$GATE_HOOK" && ! -L "$GATE_HOOK" && -s "$GATE_HOOK" ]] && ! _is_temper_hook "$GATE_HOOK"; then
+  # line runs the hook kept there. A symlink is judged by the file it leads to: one that leads to a
+  # Temper hook, or to nothing, is replaced as before, never written through. An empty file holds
+  # nothing to lose.
+  if [[ -f "$GATE_HOOK" && -s "$GATE_HOOK" ]] && ! _is_temper_hook "$GATE_HOOK"; then
     NO_LINES=1
     if [[ -n "${EXISTING_HOOKS_PATH:-}" ]] && _is_gate_value "$EXISTING_HOOKS_PATH"; then
+      # The other hooks git runs from that folder stop running once core.hooksPath is unset.
+      others=""
+      for name in $GIT_HOOK_NAMES; do
+        [[ "$name" != pre-commit && -f "$GATE_DIR/$name" && -x "$GATE_DIR/$name" ]] && others="${others:+$others }$name"
+      done
       KEEP_ERR="$GATE_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there (lefthook, for one, writes its hooks into the folder core.hooksPath names). Git runs it in place of the Temper hook, and this installer does not write over it."
       KEEP_HINT="Hint: run git config --unset core.hooksPath, move $GATE_HOOK out of that folder, install that tool's hooks again (it then writes them into git's own hooks folder), then run this installer again; it prints the line to add."
+      if [[ -n "$others" ]]; then
+        KEEP_ERR="$KEEP_ERR Git also runs these hooks from that folder, and they stop running once core.hooksPath is unset: $others."
+        KEEP_HINT="Hint: run git config --unset core.hooksPath, move $GATE_HOOK and those hooks out of that folder, install them again with their tools (they then write into git's own hooks folder; git lfs install --local does it for Git LFS), then run this installer again; it prints the line to add."
+      fi
     else
       KEEP_ERR="$GATE_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there, and this installer does not write over it. Git does not run it, since core.hooksPath does not point at that folder."
-      KEEP_HINT="Hint: move $GATE_HOOK out of that folder (a copy another tool left there), then run this installer again."
+      KEEP_HINT="Hint: move $GATE_HOOK out of that folder. If a hook tool wrote it, install that tool's hooks again while core.hooksPath is unset (it then writes them into git's own hooks folder). Then run this installer again; it prints the line to add."
     fi
     return 1
   fi

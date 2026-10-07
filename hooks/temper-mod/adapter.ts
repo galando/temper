@@ -513,14 +513,19 @@ export async function apply(io: Io, options: PluginOptions, snap: Snapshot, comm
   return { snap: next, events: decision.events }
 }
 
-// Keeps the report (the mod writes no file: see makeIo) and returns its text.
-export async function writeReport(io: Io, snap: Snapshot): Promise<string> {
-  const md = renderReport({
+// The report of the run as it stands, not kept.
+export function reportText(snap: Snapshot): string {
+  return renderReport({
     state: snap.state,
     criteria: snap.criteria,
     generatedAt: Date.now(),
     unreadable: snap.unreadable,
   })
+}
+
+// Keeps the report (the mod writes no file: see makeIo) and returns its text.
+export async function writeReport(io: Io, snap: Snapshot): Promise<string> {
+  const md = reportText(snap)
   await io.write(REPORT_PATH, md)
   return md
 }

@@ -1376,7 +1376,7 @@ assert_eq "another tool's pre-commit in Temper's folder that git runs is refused
 git -C "$L_TL" config --unset core.hooksPath
 OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
 assert_eq "with core.hooksPath unset, the copy left in Temper's folder is refused the same way and left as it was" "1|yes|yes|yes|none" \
-  "$L_RC|$([[ "$(cksum < "$L_TL_HOOK")" == "$L_SUM" ]] && echo yes || echo no)|$(_l_line "$OUT" "FAIL: $L_TL_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there, and this installer does not write over it. Git does not run it, since core.hooksPath does not point at that folder.")|$(_l_last "$OUT" "Hint: move $L_TL_HOOK out of that folder (a copy another tool left there), then run this installer again.")|$(_l_path "$L_TL")"
+  "$L_RC|$([[ "$(cksum < "$L_TL_HOOK")" == "$L_SUM" ]] && echo yes || echo no)|$(_l_line "$OUT" "FAIL: $L_TL_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there, and this installer does not write over it. Git does not run it, since core.hooksPath does not point at that folder.")|$(_l_last "$OUT" "Hint: move $L_TL_HOOK out of that folder. If a hook tool wrote it, install that tool's hooks again while core.hooksPath is unset (it then writes them into git's own hooks folder). Then run this installer again; it prints the line to add.")|$(_l_path "$L_TL")"
 mv "$L_TL_HOOK" "$L_TL/tool-pre-commit"
 OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
 assert_eq "once the copy is moved out, the installer keeps the hook and points core.hooksPath at its folder again" "0|$L_TL/.git/temper-gate|yes" \
@@ -1384,6 +1384,25 @@ assert_eq "once the copy is moved out, the installer keeps the hook and points c
 (cd "$L_TL" && printf '.temper/\n' > .gitignore && git add .gitignore)
 _l_red "$L_TL"
 assert_exit "after that, a commit on a red gate is blocked" 1 git -C "$L_TL" commit -q -m red
+# Git LFS writes its hooks into the folder core.hooksPath names too: the refusal names them, since
+# they stop running once core.hooksPath is unset, and the hint says to install them again.
+mv "$L_TL_HOOK" "$L_TL/.git/temper-gate/pre-commit.old"
+printf '#!/bin/sh\n# the hook another tool writes\necho tool-hook\n' > "$L_TL_HOOK"
+printf '#!/bin/sh\necho lfs-pre-push\n' > "$L_TL/.git/temper-gate/pre-push"
+chmod +x "$L_TL_HOOK" "$L_TL/.git/temper-gate/pre-push"
+OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "with Git LFS's pre-push next to it, the refusal names that hook and the hint says to install it again" "1|yes|yes" \
+  "$L_RC|$(_l_line "$OUT" "FAIL: $L_TL_HOOK, the pre-commit hook in Temper's own folder, is not Temper's: something else wrote it there (lefthook, for one, writes its hooks into the folder core.hooksPath names). Git runs it in place of the Temper hook, and this installer does not write over it. Git also runs these hooks from that folder, and they stop running once core.hooksPath is unset: pre-push.")|$(_l_last "$OUT" "Hint: run git config --unset core.hooksPath, move $L_TL_HOOK and those hooks out of that folder, install them again with their tools (they then write into git's own hooks folder; git lfs install --local does it for Git LFS), then run this installer again; it prints the line to add.")"
+rm -f "$L_TL/.git/temper-gate/pre-push"
+# A symlink there is judged by the file it leads to: one that leads to another tool's hook is
+# refused and left as it is.
+mv "$L_TL_HOOK" "$L_TL/tool-hook"
+ln -s "$L_TL/tool-hook" "$L_TL_HOOK"
+L_SUM="$(cksum < "$L_TL/tool-hook")"
+OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?
+assert_eq "a symlink in Temper's folder to another tool's hook is refused, and the link and its file stay as they were" "1|yes|yes" \
+  "$L_RC|$([[ -L "$L_TL_HOOK" ]] && echo yes || echo no)|$([[ "$(cksum < "$L_TL/tool-hook")" == "$L_SUM" ]] && echo yes || echo no)"
+rm -f "$L_TL_HOOK"
 # An empty pre-commit there holds nothing to lose: it is written over as before.
 : > "$L_TL_HOOK"
 OUT=$(cd "$L_TL" && bash "$L_INSTALL" 2>&1); L_RC=$?

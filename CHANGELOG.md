@@ -68,17 +68,22 @@ plugin store instead of writing `.temper/report.md`, but `/temper:temper report`
 no report to show" as soon as the Commit steps cleared the run state, so a finished run's report
 could no longer be read; 9.6.0 kept the file. With no run active, `report` now shows the report kept
 last in the project (a report file an older Temper wrote counts too), and says there is none only
-when nothing is kept. Two mod tests drive it, one through a whole run to Done and its `state clear`.
+when nothing is kept. It decides on a fresh read of the run, so a turn cut short after the clear,
+or a run started since, cannot make it show or keep the wrong report, and a run held from memory
+(its state file gone) is shown but not kept. Five mod tests drive it, one through a whole run to
+Done and its `state clear`; the ones for the stale cases fail without the fresh read.
 
 **A hook tool's own hook is never written over.** lefthook, installed after Temper, writes its
 `pre-commit` into the folder `core.hooksPath` names, which is Temper's `temper-gate` folder (it
 renames Temper's hook to `pre-commit.old`). The next `/temper` then ran the installer, which wrote
 over lefthook's hook with no copy and said the hook "was updated"; 9.6.0 always kept a copy before
-it wrote. Now a `pre-commit` in Temper's folder that is not Temper's is never written over: the
-installer refuses, prints no line to add (the line runs the hook kept in that folder), and says
-how to move it out, unset `core.hooksPath` and install the tool's hooks again. The docs no longer
-say lefthook installs into git's own hooks folder. Six new installer cases cover it; the two that
-refuse fail without the fix. The selftest runner also gives every case an empty standard input,
+it wrote. Now a `pre-commit` in Temper's folder that is not Temper's, a file or a link to one, is
+never written over: the installer refuses, prints no line to add (the line runs the hook kept in
+that folder), and says how to move it out, unset `core.hooksPath` and install the tool's hooks
+again. It names any other hook git runs from that folder (Git LFS writes its hooks there too),
+since those stop running once `core.hooksPath` is unset. A link to a Temper hook, or to nothing,
+is replaced as before, never written through. The docs no longer say lefthook installs into git's
+own hooks folder. Eight new installer cases cover it; the ones that refuse fail without the fix. The selftest runner also gives every case an empty standard input,
 so a hook a case runs with no input of its own never waits on an open terminal.
 
 **Changed in 9.6.5 and not said then** (found by the same audit; each is deliberate and stays):
@@ -88,7 +93,7 @@ copy of the pack (`.claude/packs/<name>/rules.md`), which from then on stands in
 pack, so later plugin updates to that pack's rules do not reach the project; the formatter hook no
 longer formats a file outside the project folder; `temper evidence list` needs `--stage`.
 
-`scripts/plan_review.py` (the HTML plan review) runs on Python 3.6 to 3.8 again, as in 9.6.0: 9.6.5
+`scripts/plan_review.py` (the HTML plan review) runs on Python 3.7 and 3.8 again, as in 9.6.0: 9.6.5
 had used a string call that needs Python 3.9.
 
 No test pairs a host with something that looks like a credential: the curl case in the validator's

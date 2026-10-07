@@ -174,7 +174,7 @@ and starts no agent. Its one tool call is Claude Code's question dialog (`$.ui.a
 to ask you for a mode, a drift choice or a reason. CI fails on a call outside `scripts/check-mod-calls.sh`.
 
 - **Reads:** `.claude/temper.config`; the run files in `.temper/` (`build-state.json`, `gates.json`, `status.json`,
-  `overrides.json`, `feedback-loops.json`, `evidence/`); the spec folder of the run (`intent.md`, `plan.md`,
+  `overrides.json`, `feedback-loops.json`, `evidence/`, and a `report.md` an older Temper wrote); the spec folder of the run (`intent.md`, `plan.md`,
   `tasks.md`, `design.md`, `events/`, `config-suggestions.json`); and `.git/HEAD`. To find the project it stats the
   session folder and looks for `.temper/build-state.json` there and in up to 11 folders above it. It reads its
   settings, store and state and the Claude Code version. When you change the mode or enforcement it reads the
