@@ -3,6 +3,105 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.6.7: no script names a hooks folder, no plugin root variable in tests, no bundled image
+
+The directory's report on 9.6.6 (878248e) held it for five reasons. Four are for a reviewer ("This
+plugin includes a mod", the prompts the mod submits, the slash commands it runs, the settings it
+sets); the README section "What the mod reads and writes" describes each. The fifth, that it
+"couldn't confirm that the mod stays the same", named `scripts/guards/install.sh`,
+`scripts/selftest/temper-cases-1.sh` and `temper-cases-2.sh`. It does not say which lines it
+held. The same report names nine files for one note, so the three are most likely all it held, and
+`temper-cases-3.sh`, which read git's hooks folder as the first two did, passed. That points at
+what only the named files had. In the installer: a path that ended in a folder named `hooks`, a
+wildcard over that folder, and a path built under each folder above a repository. In the first two
+test files: the plugin root variable, a link to the plugin folder, and output pointed into it. This
+release removes all of them, and every other path to a folder named `hooks` in a script, so neither
+reading of the report is left open.
+
+**No script names a path with a folder named `hooks`.** Git's hook folders share that name with
+the plugin folder that holds the mod, and the three scripts the directory held all built or read
+such a path, though none of them wrote there any more.
+- The installer asks git for its own hooks folder (`git rev-parse --git-path hooks`) instead of
+  building a path that ends in that folder name, and its comments name no such path.
+- The tests name none either: where a case showed that the installer writes nothing in git's own
+  hooks folder, it now shows that the installer writes nothing in the whole git folder but
+  Temper's own `temper-gate` (a listing before and after), which is the stronger check.
+- The installer refuses a `core.hooksPath` that leads into the plugin's own folder before it reads
+  anything there, and builds Temper's older folders from fixed names, never from the value.
+- A new rule 10 in `scripts/validate-directory.sh` fails on any shell, Python or workflow file that
+  names a path with a folder named `hooks`, read or write, comments included. Run on 878248e, it
+  fails on the three files the directory named and on two more test files, so it is stricter than
+  the directory.
+
+**The installer lists no folder by wildcard and builds no path under a folder it climbs to.**
+- It found the hooks an older installer set aside with a wildcard after a variable
+  (`"$1"/pre-commit.bak.*`), over git's hooks folder among others. It now lists the folder with
+  `find` and matches each name. The remedy asks for no wildcard, and a script held in 9.6.3
+  scanned a computed folder with a wildcard too.
+- It told the plugin's folder by building `<folder>/scripts/guards` under each folder above a
+  path, and its hook built `<folder>/scripts` the same way. Both now compare each folder with the
+  plugin's own folder by device and inode, as the guard scripts and the CLI do, and build no path
+  under it. A link planted above a repository still cannot pass for the plugin, because the
+  folders compared are taken with every symlink followed.
+- A new rule 11 in `scripts/validate-directory.sh` fails on a wildcard after a variable in any
+  shell, Python or workflow file, comments included. Run on 878248e, it fails on the installer,
+  `temper-cases-2.sh` and `temper-cases-4.sh` (the last was not held, so it is stricter than the
+  directory). Neither test uses a wildcard there now: one lists the files with `git ls-files`,
+  the other copies the folder whole.
+
+**No test names the plugin root variable.** The guard-entries case takes the pack's own hook
+command from `packs/guardrails/settings-guardrails.json` (as an entry copied by hand has it), the
+confirm-override case takes the CLI's spelling from `commands/temper.md`, and the check that the
+CLI and the guard scripts never read the variable takes its name from `scripts/guard-entries.py`.
+Each case checks that what it took is the braced root form. No test lists plugin files by
+wildcard, links the plugin folder itself, or points a script's output into it.
+
+**No bundled image.** The 1024 px icon that 9.6.6 added holds the plugin for review, as a bundled
+image did in 9.3.3. It could not become the listing icon either: the directory takes an icon only
+the first time a plugin is saved or submitted, and adding or changing it later does not change the
+listing (its own note on 9.6.5 says so). Temper was first submitted without one, and the developer
+portal has no upload for it. The icon leaves the repository, and no text names an image file of the
+repository.
+
+**The report of a finished run can be read again.** Since 9.6.2 the mod keeps the run report in its
+plugin store instead of writing `.temper/report.md`, but `/temper:temper report` answered "There is
+no report to show" as soon as the Commit steps cleared the run state, so a finished run's report
+could no longer be read; 9.6.0 kept the file. With no run active, `report` now shows the report kept
+last in the project (a report file an older Temper wrote counts too), and says there is none only
+when nothing is kept. It decides on a fresh read of the run, so a turn cut short after the clear,
+or a run started since, cannot make it show or keep the wrong report, and a run held from memory
+(its state file gone) is shown, marked as such, but not kept. A run the commit gate completes is
+remembered as done, so once it is cleared its Done report is shown, not the phase before. Seven mod
+tests drive it, two through a whole run to Done and its `state clear`; the ones for the stale cases
+fail without the fix.
+
+**A hook tool's own hook is never written over.** lefthook, installed after Temper, writes its
+`pre-commit` into the folder `core.hooksPath` names, which is Temper's `temper-gate` folder (it
+renames Temper's hook to `pre-commit.old`). The next `/temper` then ran the installer, which wrote
+over lefthook's hook with no copy and said the hook "was updated"; 9.6.0 always kept a copy before
+it wrote. Now a `pre-commit` in Temper's folder that is not Temper's, a file or a link to one, is
+never written over: the installer refuses, prints no line to add (the line runs the hook kept in
+that folder), and says how to move it out, unset `core.hooksPath` and install the tool's hooks
+again. It names any other hook git runs from that folder (Git LFS writes its hooks there too),
+since those stop running once `core.hooksPath` is unset. A link to a Temper hook, or to nothing,
+is replaced as before, never written through. The docs no longer say lefthook installs into git's
+own hooks folder. Ten new installer cases cover it; the ones that refuse fail without the fix. The selftest runner also gives every case an empty standard input,
+so a hook a case runs with no input of its own never waits on an open terminal.
+
+**Changed in 9.6.5 and not said then** (found by the same audit; each is deliberate and stays):
+the check stage's live scenario level no longer picks the most recently changed spec folder when
+no run names one, and skips that level instead; a review rule you promote goes into the project's
+copy of the pack (`.claude/packs/<name>/rules.md`), which from then on stands in for the built-in
+pack, so later plugin updates to that pack's rules do not reach the project; the formatter hook no
+longer formats a file outside the project folder; `temper evidence list` needs `--stage`.
+
+`scripts/plan_review.py` (the HTML plan review) runs on Python 3.7 and 3.8 again, as in 9.6.0: 9.6.5
+had used a string call that needs Python 3.9.
+
+No test pairs a host with something that looks like a credential: the curl case in the validator's
+selftest and a fake pre-commit framework hook carry no URL, and the file the secret scan's case
+writes its fake key into is named `1:notes.txt`.
+
 ## v9.6.6: nothing writes into a hooks folder, readable test files, a listing icon
 
 The directory's report on 9.6.5 (3f7df41) held it for six reasons. This release answers the two
@@ -95,9 +194,9 @@ its hook), to `.git/temper-pre-commit`, or to Temper's older folders `.git/hooks
 `.git/temper-git-hooks` (git still runs hooks from one when the installer leaves `core.hooksPath` on
 it) exactly as it refuses one to `.git/hooks`, and its refusal names the Temper commit hook.
 
-**A listing icon.** `.claude-plugin/icon.png`, 1024 px: the orange T on a dark rounded square that
-earlier versions showed at 256 px, below the 512 px the directory asks for. It is the only image in
-the repository, and `plugin.json` has no `icon` field.
+**A listing icon.** A 1024 px PNG in the manifest folder: the orange T on a dark rounded square that
+earlier versions showed at 256 px, below the 512 px the directory asks for. (9.6.7 took it out again:
+a bundled image holds the plugin for review.)
 
 Notes the directory listed that need no change: the credential note on `plugin.json` (a reviewer
 confirms it; the mod reads Claude Code's `/config` list only to find its own two rows), the `types`

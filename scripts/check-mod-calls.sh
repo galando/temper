@@ -27,7 +27,7 @@ command.run      a pressed Button ends with /temper:temper (the orchestrator Res
 config.list      /temper mode and enforcement read the row to see whether an administrator locked it
 config.set       the same commands change the row the way /config does (key temper.uiMode, temper.enforcement)
 fs.list          lists the events folder of a spec under .temper/specs to rebuild the run
-fs.read          reads build-state, gates, status, evidence, intent, plan, tasks, temper.config and event files
+fs.read          reads build-state, gates, status, evidence, intent, plan, tasks, temper.config, event files and an older report
 fs.stat          resolves "." to the project root so absolute tool paths can be made relative
 prompt.fill      key 4 Discuss and key 2 Change at Build put a draft in the prompt box; the person types the rest (a press only, never from a hook)
 prompt.submit    a pressed band or pane Button sends its action to Claude (never from a hook)

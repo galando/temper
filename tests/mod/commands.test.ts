@@ -76,6 +76,51 @@ describe('read only subcommands', () => {
     expect(w.files.get('.temper/report.md')).toContain('Result: In progress (Build)')
   })
 
+  test('with no run active, a report file an older Temper wrote is shown', async ($, on) => {
+    world(on, { '.temper/report.md': '# Temper report: Old run\n\nResult: Done\n' })
+    const old = await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'composer' } } as never)
+    expect(old.text).toBe('No run is active. The last report kept for this project:\n\n# Temper report: Old run\n\nResult: Done\n')
+  })
+
+  test('a run started after a report was kept: report shows the run, not the old report', async ($, on) => {
+    const w = world(on, { '.temper/report.md': '# Temper report: Old run\n\nResult: Done\n' })
+    const before = await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'composer' } } as never)
+    expect(before.text).toContain('# Temper report: Old run')
+    for (const [path, text] of Object.entries(runFiles({ nextStage: 'build' }))) w.files.set(path, text)
+    const r = await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'sdk' } } as never)
+    expect(r.text).toContain('# Temper report: Password reset by email')
+    expect(r.text).toContain('Result: In progress (Build)')
+  })
+
+  test('a run held from memory (its state file is gone) is reported, marked as such, and not kept', async ($, on) => {
+    const FINISHED = '# Temper report: Finished elsewhere\n\nResult: Done\n'
+    const w = world(on, runFiles({ nextStage: 'build' }), { store: { 'vf:.temper/report.md': FINISHED } })
+    await $.command.run({ command: 'temper', args: 'status', origin: { kind: 'composer' } } as never)
+    w.files.delete('.temper/build-state.json')
+    const r = await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'composer' } } as never)
+    expect(r.text).toMatch(/^Temper state: \.temper\/build-state\.json is missing or unreadable/)
+    expect(r.text).toContain('# Temper report: Password reset by email')
+    // Nothing is kept under any key: the finished report stays the only one.
+    expect(Object.entries(w.store).filter(([k]) => k.startsWith('vf:') && k.endsWith('.temper/report.md'))).toEqual([['vf:.temper/report.md', FINISHED]])
+  })
+
+  test('a run the commit gate completed, then cleared: report shows its Done report, not the phase before', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'check', passedCriteria: ['AC-01'] }), { fakeCli: true })
+    await $.command.run({ command: 'temper', args: 'status', origin: { kind: 'composer' } } as never)
+    w.files.set('.temper/gates.json', JSON.stringify({ check: { verdict: 'PASS', ts: '2999-01-01T00:00:00Z' } }))
+    await $.tool.call({ tool: 'Bash', command: 'git commit -m feat' })
+    await $.tool.call({ tool: 'Bash', command: '/Users/x/plugin/scripts/temper state clear' })
+    const r = await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'composer' } } as never)
+    expect(r.text).toMatch(/^No run is active\. The last report kept for this project:\n\n# Temper report: /)
+    expect(r.text).toContain('Result: Done')
+  })
+
+  test('with no run active and no report kept, report says there is none', async ($, on) => {
+    world(on, {})
+    const r = await $.command.run({ command: 'temper', args: 'report', origin: { kind: 'composer' } } as never)
+    expect(r.text).toBe('No run is active. There is no report to show.')
+  })
+
   test('mode and enforcement show the current values', { options: { uiMode: 'minimal', enforcement: 'off' } }, async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }))
     expect((await $.command.run({ command: 'temper', args: 'mode', origin: { kind: 'composer' } } as never)).text).toBe('Temper mode: minimal')

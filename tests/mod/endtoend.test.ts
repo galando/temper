@@ -146,6 +146,64 @@ describe('the bar and the CLI move together through a full run', () => {
   })
 })
 
+// The run from Plan to Done, marked done by the person, then the last of the orchestrator's Commit
+// steps (`state clear`) through the guard as Claude runs it.
+async function doneAndCleared(r: Run): Promise<void> {
+  await r.tasks(2)
+  await r.mirror(await r.press('continue'))
+  await r.gate('build')
+  await r.mirror(await r.press('continue'))
+  await r.gate('review')
+  await r.mirror(await r.press('continue'))
+  await r.gate('check')
+  await r.mirror(await r.press('continue'))
+  await r.$.command.run({ command: 'temper:temper', args: 'next', origin: { kind: 'composer' } })
+  const clear = await r.$.tool.call({ tool: 'Bash', command: '/Users/x/plugin/scripts/temper state clear' })
+  expect(clear.deny).toBeUndefined()
+}
+
+describe('after Done, the report stays readable', () => {
+  test('a turn cut short right after the clear (no refresh in between): report shows the finished run, every time', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    on('turn.complete', ($2, e) => ({ text: e.answer }))
+    const r = await start($ as unknown as Api, on)
+    await doneAndCleared(r)
+    await ($ as unknown as { turn: { complete: (a: unknown) => Promise<unknown> } }).turn.complete({ answer: '', durationMs: 10, isAborted: true, turnId: 't9', reason: 'aborted' })
+    for (let i = 0; i < 2; i++) {
+      const report = await r.$.command.run({ command: 'temper:temper', args: 'report', origin: { kind: 'composer' } })
+      expect(report.text).toMatch(/^No run is active\. The last report kept for this project:\n\n# Temper report: /)
+      expect(report.text).toContain('Result: Done')
+    }
+  })
+
+  test('the Commit steps clear the run state, and report still shows the finished run', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const r = await start($ as unknown as Api, on)
+    await r.tasks(2)
+    await r.mirror(await r.press('continue'))
+    await r.gate('build')
+    await r.mirror(await r.press('continue'))
+    await r.gate('review')
+    await r.mirror(await r.press('continue'))
+    await r.gate('check')
+    await r.mirror(await r.press('continue'))
+    expect(r.cliNext()).toBe('commit')
+    // The person marks the run done (key 1), and the Done bar's Commit hands the Commit steps over.
+    const done = await r.$.command.run({ command: 'temper:temper', args: 'next', origin: { kind: 'composer' } })
+    expect(done.text, done.text).not.toMatch(/refus|cannot/i)
+    const atDone = await r.$.command.run({ command: 'temper:temper', args: 'status', origin: { kind: 'composer' } })
+    expect(atDone.text).toContain('Phase: Done')
+    // The last of the orchestrator's Commit steps, through the guard as Claude runs it.
+    const clear = await r.$.tool.call({ tool: 'Bash', command: '/Users/x/plugin/scripts/temper state clear' })
+    expect(clear.deny).toBeUndefined()
+    expect(r.w.files.has('.temper/build-state.json')).toBe(false)
+    const status = await r.$.command.run({ command: 'temper:temper', args: 'status', origin: { kind: 'composer' } })
+    expect(status.text).toBe('No Temper run is active. Start one with /temper:temper <feature description>.')
+    const report = await r.$.command.run({ command: 'temper:temper', args: 'report', origin: { kind: 'composer' } })
+    expect(report.text).toMatch(/^No run is active\. The last report kept for this project:\n\n# Temper report: /)
+    expect(report.text).toContain('Result: Done')
+    expect(r.w.fsWrites).toEqual([])
+  })
+})
+
 // ---- chaos -------------------------------------------------------------------------------------------
 
 // The step the bar shows, as a number (Done is 7), read from what is drawn.

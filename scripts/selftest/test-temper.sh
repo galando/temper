@@ -5,6 +5,9 @@
 # Plain-bash assertions, no test framework dependency (consistent with the rest of
 # Temper's tooling). Runs entirely in a throwaway tmp dir; never touches the repo.
 set -uo pipefail
+# No case reads the terminal: a hook a case runs with no input of its own reads an empty standard
+# input, also when the suite itself is started with one left open.
+exec </dev/null
 
 # The repo root: this script's folder with the literal suffix /scripts/selftest removed.
 unset CDPATH
@@ -140,6 +143,11 @@ EOF
 # so the case puts those hooks in <git folder>/default-gate and every other line that runs is
 # install.sh's own. Git itself never runs that folder, so a case that needs git to run a hook of
 # the user's (a real commit) sets core.hooksPath to a folder of its own instead.
+_git_list() { # _git_list <git folder>: every file and folder in it, sorted, but for Temper's own
+              # temper-gate folder and temper-pre-commit file and git's index and logs (which git
+              # itself rewrites), so a case can show the installer wrote nothing else there
+  (cd "$1" && find . \( -path ./temper-gate -o -path ./temper-pre-commit -o -path ./logs -o -name 'index*' -o -name '*.lock' \) -prune -o -print | LC_ALL=C sort)
+}
 _dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI, acceptance.py, the
                # guard scripts the hook runs, and the changed install.sh)
   local g

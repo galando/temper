@@ -126,7 +126,7 @@ seg_reads()    { seg_name "$1"
                  printf 'import os\ndata = open(os.path.join(d, "gate_dir", "x")).read()\n' > "$1/scripts/a.py"; }
 seg_subst()    { seg_name "$1"; printf 'cp a "$(git rev-parse --git-path gate_dir)/pre-commit"\nln -s a "$(git rev-parse --git-common-dir)/gate_dir/x"\n' > "$1/scripts/a.sh"; }
 seg_sed()      { seg_name "$1"; printf "sed -i 's/exit 1/exit 0/' .git/gate_dir/pre-commit\n" > "$1/scripts/a.sh"; }
-seg_fetch()    { seg_name "$1"; printf 'curl -fsSo .git/gate_dir/pre-commit https://example.com/h\n' > "$1/scripts/a.sh"; }
+seg_fetch()    { seg_name "$1"; printf 'curl -fsS -o .git/gate_dir/pre-commit "$SOURCE"\n' > "$1/scripts/a.sh"; }
 seg_tar()      { seg_name "$1"; printf 'tar -xf h.tar -C .git/gate_dir\n' > "$1/scripts/a.sh"; }
 seg_cd()       { seg_name "$1"; printf 'cd .git/gate_dir && rm -f pre-commit\n' > "$1/scripts/a.sh"; }
 seg_var()      { seg_name "$1"; printf 'H=.git/gate_dir/pre-commit\necho "exit 0" > "$H"\n' > "$1/scripts/a.sh"; }
@@ -148,6 +148,14 @@ seg_more_ok()  { seg_name "$1"
                    printf 'cd .git/gate_dir && ls\ncat .git/gate_dir/pre-commit > /tmp/copy\ncd /tmp\nrm -f x\n'; } > "$1/scripts/a.sh"
                  { printf 'import shutil, subprocess\nshutil.copy("gate_dir/x.json", out)\nshutil.copytree("gate_dir", out)\n'
                    printf 'subprocess.run(["cp", "gate_dir/x.json", out])\nentries = d.get("gate_dir", {})\n'; } > "$1/scripts/a.py"; }
+# Rule 10 names one folder in one line too; these cases change it to gate_dir the same way.
+named_name()   { sed 's/^NAMED_SEGMENT_NAME=.*$/NAMED_SEGMENT_NAME="gate_dir"/' "$1/scripts/validate-directory.sh" > "$1/scripts/v" \
+                   && mv "$1/scripts/v" "$1/scripts/validate-directory.sh"; }
+named_read()    { named_name "$1"; printf 'ls -A .git/gate_dir\n' > "$1/scripts/a.sh"; }
+named_var()     { named_name "$1"; printf 'D="$COMMON/gate_dir"\n[ -d "$D" ] && echo yes\n' > "$1/scripts/a.sh"; }
+named_comment() { named_name "$1"; printf '# never writes into .git/gate_dir\nexit 0\n' > "$1/scripts/a.sh"; }
+named_python()  { named_name "$1"; printf 'import os\nprint(os.path.exists("gate_dir/x.json"))\n' > "$1/scripts/a.py"; }
+named_ok()      { named_name "$1"; printf 'D="$(git rev-parse --git-path gate_dir)"\nmkdir -p .git/gate_dir-temper/x\necho "the gate_dir folder"\n' > "$1/scripts/a.sh"; }
 seg_misc_ok()  { seg_name "$1"
                  { printf "find . -path ./gate_dir -prune -o -name '*.tmp' -delete\n"
                    printf 'cp gate_dir/gate_dir.json "$OUT/manifest.json"\n'
@@ -155,6 +163,19 @@ seg_misc_ok()  { seg_name "$1"
                    printf "sed -i 's|scripts/gate_dir|scripts/guards|' notes.txt\n"
                    printf 'git rev-parse --git-path gate_dir/pre-commit\n'; } > "$1/scripts/a.sh"
                  printf 'rel = path.replace("gate_dir/", "")\nprint(Path("gate_dir/x.json").read_text())\n' > "$1/scripts/a.py"; }
+
+# Rule 11 needs no name: a wildcard after a variable fails wherever it is.
+glob_for()     { printf 'for f in "$1"/pre-commit.bak.*; do echo "$f"; done\n' > "$1/scripts/a.sh"; }
+glob_cp()      { printf 'cp "$SRC"/scripts/*.sh "$OUT/"\n' > "$1/scripts/a.sh"; }
+glob_subst()   { printf 'n="$(cat "$A" "$B"/x/*.sh | wc -l)"\n' > "$1/scripts/a.sh"; }
+glob_bare()    { printf 'ls $DIR/*.json\n' > "$1/scripts/a.sh"; }
+glob_comment() { printf '# lists "$d"/*.sh\nexit 0\n' > "$1/scripts/a.sh"; }
+glob_python()  { printf 'import glob, os\nfiles = glob.glob(os.path.join(d, "x.sh"))\n' > "$1/scripts/a.py"; }
+glob_pathlib() { printf 'from pathlib import Path\nfiles = sorted(Path(d).glob("x.json"))\n' > "$1/scripts/a.py"; }
+glob_ok()      { { printf 'n="${f##*/}"\nd="${p%%/*}"\n[[ "$v" == */x ]] && echo a\n[[ "$p" == "$X"/* ]] && echo b\n'
+                   printf 'echo "$d/*"\nfind "$d" -mindepth 1 -maxdepth 1 -print0\ncase "$n" in pre-commit.bak.*) echo c ;; esac\n'
+                   printf 'echo "$((a * b))"\nrm -f ./*.tmp\n'; } > "$1/scripts/a.sh"
+                 printf 'import fnmatch, os\nnames = [n for n in sorted(os.listdir(d)) if fnmatch.fnmatch(n, "x.json")]\n' > "$1/scripts/a.py"; }
 
 make_fixture good && check "a good fixture passes" 0 "$FIXTURES/good"
 
@@ -204,6 +225,19 @@ broken "a Python variable set to such a path, then opened for writing, fails" se
 broken "a pathlib variable set to such a path, then written, fails" seg_pathvar
 broken "os.open for writing there fails" seg_osopen
 variant "find -exec grep, quoted text, a test, a cd with a read, and copies out of the folder pass" 0 seg_more_ok
+broken "rule 10: a read of a path with the named folder fails" named_read
+broken "rule 10: a variable path that ends in the named folder fails" named_var
+broken "rule 10: a comment that names such a path fails" named_comment
+broken "rule 10: a Python path with the named folder fails" named_python
+variant "rule 10: a bare word, a longer folder name and prose pass" 0 named_ok
+broken "rule 11: a for loop over a wildcard after a variable fails" glob_for
+broken "rule 11: a cp of a wildcard after a variable fails" glob_cp
+broken "rule 11: a wildcard after a variable in a quoted \$( ) span fails" glob_subst
+broken "rule 11: a wildcard after an unquoted variable fails" glob_bare
+broken "rule 11: a comment with such a wildcard fails" glob_comment
+broken "rule 11: a Python glob.glob call fails" glob_python
+broken "rule 11: a pathlib glob call fails" glob_pathlib
+variant "rule 11: \${ } patterns, [[ == ]] patterns, quoted text, find, case, arithmetic and listdir pass" 0 glob_ok
 make_fixture no_git plain && check "a folder that is not a git work tree fails" 1 "$FIXTURES/no_git"
 
 # Nothing in the environment moves the checked folder: the variable older versions read to check

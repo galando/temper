@@ -38,8 +38,12 @@ assert_exit "protected-paths: an edit elsewhere passes" 0 \
 assert_exit "protected-paths: garbage stdin fails open" 0 \
   bash -c "echo garbage | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PROTECT'"
 
-# The command names the CLI through the braced plugin root variable, as a command file writes it.
-OUT=$(printf '%s\n' '{"tool_input": {"command": "${CLAUDE_PLUGIN_ROOT}/scripts/temper override review --reason x"}}' | bash "$CONFIRM")
+# The command names the CLI as the plugin's own command files write it (the spelling is taken from
+# commands/temper.md, so the case follows it).
+CO_CLI="$(grep -m1 -oE '[^[:space:]`"(]+/scripts/temper override' "$REPO_ROOT/commands/temper.md")"
+assert_eq "commands/temper.md names the CLI through the braced plugin root variable" "yes" \
+  "$([[ "${CO_CLI:0:2}" == '${' ]] && echo yes || echo no)"
+OUT=$(python3 -c 'import json, sys; print(json.dumps({"tool_input": {"command": sys.argv[1] + " review --reason x"}}))' "$CO_CLI" | bash "$CONFIRM")
 assert_eq "confirm-override: a temper override command emits the ask decision" "yes" \
   "$(echo "$OUT" | grep -q '"permissionDecision": "ask"' && echo yes || echo no)"
 OUT=$(echo '{"tool_input": {"command": "git status"}}' | bash "$CONFIRM")
@@ -161,20 +165,20 @@ assert_exit "protected-paths: a non-.sql file under migrations is not blocked" 0
   bash -c "echo '{\"tool_input\": {\"file_path\": \"db/migrations/notes.txt\"}}' | CLAUDE_PROJECT_DIR='$WORKDIR' bash '$PP'"
 
 # install.sh: an existing core.hooksPath (husky, lefthook) names the folder git runs hooks
-# from. The installer never writes into it, nor into the .git/hooks folder git then ignores: it
-# keeps the hook in .git/temper-gate and leaves core.hooksPath as it was.
+# from. The installer never writes into it, nor anywhere else in the git folder: it keeps the hook
+# in .git/temper-gate and leaves core.hooksPath as it was.
 setup
 git config user.email "test@example.com"
 git config user.name "test"
 rm -rf .husky
 mkdir -p .husky
 git config core.hooksPath .husky
-H_HOOKS_BEFORE="$(ls -A .git/hooks)"
+H_GIT_BEFORE="$(_git_list .git)"
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); H_RC=$?
 assert_eq "install.sh never writes into a core.hooksPath folder that is not Temper's, and leaves the value as it was" "1||.husky|yes" \
   "$H_RC|$(ls -A .husky)|$(git config --get core.hooksPath)|$(printf '%s\n' "$OUT" | grep -qxF "FAIL: core.hooksPath is set to '.husky', a folder that is not Temper's, and this installer never writes into it." && echo yes || echo no)"
-assert_eq "install.sh does not write the ignored .git/hooks either; the hook is kept in .git/temper-gate" "yes|yes" \
-  "$([[ "$(ls -A .git/hooks)" == "$H_HOOKS_BEFORE" ]] && echo yes || echo no)|$(grep -q 'installed by scripts/guards/install.sh' .git/temper-gate/pre-commit 2>/dev/null && echo yes || echo no)"
+assert_eq "install.sh writes nothing else in the git folder either; the hook is kept in .git/temper-gate" "yes|yes" \
+  "$([[ "$(_git_list .git)" == "$H_GIT_BEFORE" ]] && echo yes || echo no)|$(grep -q 'installed by scripts/guards/install.sh' .git/temper-gate/pre-commit 2>/dev/null && echo yes || echo no)"
 git config --unset core.hooksPath 2>/dev/null || true
 rm -rf .husky
 
@@ -916,13 +920,9 @@ assert_exit "merge rejects a missing file" 2 python3 "$PR" merge --feature demo-
 # plan_review.py writes only a file of its own kind, and never inside the plugin's own folder.
 assert_exit "render refuses an output name that does not end in .html" 2 python3 "$PR" render "$PRD" -o "$PRD/review.txt"
 assert_eq "the refused render writes nothing" "no" "$([[ -e "$PRD/review.txt" ]] && echo yes || echo no)"
-assert_exit "render refuses an output inside the plugin's own folder" 2 \
-  python3 "$PR" render "$PRD" -o "$REPO_ROOT/no-such-folder/review.html"
 assert_exit "merge refuses an output name that does not end in .json" 2 \
   python3 "$PR" merge --feature demo-feature -o "$WORKDIR/pr/merged.txt" "$WORKDIR/pr/export.json"
 assert_eq "the refused merge writes nothing" "no" "$([[ -e "$WORKDIR/pr/merged.txt" ]] && echo yes || echo no)"
-assert_exit "merge refuses an output inside the plugin's own folder" 2 \
-  python3 "$PR" merge --feature demo-feature -o "$REPO_ROOT/no-such-folder/review-comments.json" "$WORKDIR/pr/export.json"
 assert_exit "merge still prints to stdout with -o -" 0 python3 "$PR" merge --feature demo-feature -o - "$WORKDIR/pr/export.json"
 # A copy in a throwaway plugin folder finds that folder by the literal suffix of its own path and
 # refuses it too, including the default output of a spec folder that lies inside it.
@@ -930,6 +930,11 @@ PR_PLUG="$WORKDIR/pr-plugin"
 mkdir -p "$PR_PLUG/scripts" "$PR_PLUG/templates" "$PR_PLUG/specs/x"
 cp "$PR" "$PR_PLUG/scripts/plan_review.py"
 cp "$REPO_ROOT/templates/plan-review.html" "$PR_PLUG/templates/plan-review.html"
+assert_exit "render refuses an output inside the plugin's own folder" 2 \
+  python3 "$PR_PLUG/scripts/plan_review.py" render "$PRD" -o "$PR_PLUG/no-such-folder/review.html"
+assert_exit "merge refuses an output inside the plugin's own folder" 2 \
+  python3 "$PR_PLUG/scripts/plan_review.py" merge --feature demo-feature -o "$PR_PLUG/no-such-folder/review-comments.json" "$WORKDIR/pr/export.json"
+assert_eq "neither refusal makes the folder" "no" "$([[ -e "$PR_PLUG/no-such-folder" ]] && echo yes || echo no)"
 cp "$PRD/plan.md" "$PR_PLUG/specs/x/plan.md"
 assert_exit "render refuses the default output of a spec folder inside the plugin" 2 \
   python3 "$PR_PLUG/scripts/plan_review.py" render "$PR_PLUG/specs/x"
@@ -1032,5 +1037,8 @@ ln -sf rel-temper "$WORKDIR/bin/chained-temper"
 assert_eq "a CLI reached through a chain of relative symlinks finds its own plugin folder" "$("$TEMPER" model plan)" \
   "$(env -i HOME="$HOME" PATH="$PATH" "$WORKDIR/bin/chained-temper" model plan)"
 # No value of the plugin root variable can move them: the CLI and the guard scripts never name it.
-assert_eq "the CLI and the guard scripts never read the plugin root variable" "0" \
-  "$(cat "$TEMPER" "$REPO_ROOT"/scripts/guards/*.sh | grep -c '_PLUGIN_ROOT')"
+# Its name is taken from guard-entries.py, which looks for it in settings files.
+ROOT_VAR_NAME="$(sed -n 's/^ROOT_VAR_NAME = "\(.*\)"$/\1/p' "$REPO_ROOT/scripts/guard-entries.py")"
+GUARD_FILES="$(git -C "$REPO_ROOT" ls-files -- scripts/guards | sed "s|^|$REPO_ROOT/|")"
+assert_eq "the CLI and the guard scripts never read the plugin root variable" "yes|yes|0" \
+  "$([[ -n "$ROOT_VAR_NAME" ]] && echo yes || echo no)|$([[ -n "$GUARD_FILES" ]] && echo yes || echo no)|$({ cat "$TEMPER"; while IFS= read -r f; do cat "$f"; done <<< "$GUARD_FILES"; } | grep -cF -- "$ROOT_VAR_NAME")"

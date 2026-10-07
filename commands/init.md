@@ -115,9 +115,12 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    `--global` does the same as the default, with a note. It also prints how to
    uninstall: unset `core.hooksPath` when it points at the `temper-gate` folder,
    remove the Temper line from the user's own hook if one was added, and delete the
-   `temper-gate` folder (and any `temper-pre-commit` that 9.6.5 left). A hook tool added later (the pre-commit framework, lefthook)
-   works in git's own hooks folder, so `core.hooksPath` must be unset first; the next
-   `/temper` or `/temper:init` then keeps the Temper hook and prints the line to add.
+   `temper-gate` folder (and any `temper-pre-commit` that 9.6.5 left). A hook tool added
+   later needs `core.hooksPath` unset first: the pre-commit framework refuses to install
+   while it is set, and lefthook installs into the folder it names, which is Temper's. The
+   next `/temper` or `/temper:init` then keeps the Temper hook and prints the line to add.
+   If a tool already wrote its `pre-commit` into Temper's folder, the installer refuses and
+   its hint says how to move it out.
    Report by how it ended:
    a. Exit 0 → the gate is installed, was already installed (or was updated to the
       current plugin paths), or the user's own hook calls the Temper hook, which is
@@ -155,7 +158,9 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
       names them), or a hook an older version set aside, and the `pre-commit` there
       does not call the Temper hook; when `core.hooksPath` names another tool's folder,
       or Temper's older folder that holds other hooks git runs, and the pre-commit hook
-      there does not call the Temper hook; when the user's hook holds the Temper line after an
+      there does not call the Temper hook; when the `pre-commit` in Temper's own folder is not
+      Temper's (a hook tool such as lefthook wrote it there; the installer never writes over it,
+      and its hint says how to move it out); when the user's hook holds the Temper line after an
       `exit` or `exec` line; when the repository, or a place it would write once
       symlinks are followed, lies inside the plugin's own folder; and when a folder or
       file it needs cannot be made. It ignores GIT_DIR, GIT_WORK_TREE and GIT_CONFIG,

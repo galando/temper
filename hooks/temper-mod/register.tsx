@@ -1,6 +1,6 @@
 import type { CommandRunResult, EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import { apply, commitFacts, composeText, consumeDecision, idleSnapshot, live, loadSnapshot, nothingToLose, publish, runFingerprint, settingsFrom, statusText, syncCheck, timelineText, writeReport } from './adapter'
+import { apply, commitFacts, composeText, consumeDecision, idleSnapshot, keptReport, live, loadSnapshot, nothingToLose, publish, reportText, runFingerprint, settingsFrom, statusText, syncCheck, timelineText, writeReport } from './adapter'
 import type { Io, Snapshot } from './adapter'
 import { findingActions } from './core/actions'
 import type { Action } from './core/actions'
@@ -268,9 +268,11 @@ function announce($: Api, snap: Snapshot): void {
   lastPhase = phase
 }
 
-// Takes a snapshot an `apply` produced as the current one.
+// Takes a snapshot an `apply` produced as the current one. A run it holds is the last known run too,
+// so a run that reached Done here is not held from memory as the phase before once its state goes.
 function adopt($: Api, snap: Snapshot): Snapshot {
   current = Promise.resolve(snap)
+  if (snap.slug !== null) lastRun = snap
   announce($, snap)
   return snap
 }
@@ -997,9 +999,20 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
         return { text: statusText(await refresh($)) }
       case 'timeline':
         return { text: timelineText(await refresh($)) }
-      case 'report':
-        if (snap.slug === null) return { text: 'No run is active. There is no report to show.' }
-        return { text: await writeReport(makeIo($), await refresh($)) }
+      case 'report': {
+        // Decided on a fresh read of the run, not the cached one: the Commit steps' state clear, or a run
+        // started since, changes nothing the cache sees until a turn ends with an answer.
+        const fresh = await refresh($)
+        if (fresh.slug === null) {
+          // A finished run's Commit steps clear its run state; the report it kept is still shown.
+          const kept = await keptReport(makeIo($))
+          return { text: kept === null ? 'No run is active. There is no report to show.' : `No run is active. The last report kept for this project:\n\n${kept}` }
+        }
+        // A run held from memory (its state file is gone) is shown but not kept, so its report never
+        // replaces the one a finished run kept.
+        if (fresh.sync.line === LOST_STATE) return { text: `${LOST_STATE}\n\n${reportText(fresh)}` }
+        return { text: await writeReport(makeIo($), fresh) }
+      }
       case 'pr':
       case 'discuss':
       case 'continue':

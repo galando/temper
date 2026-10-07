@@ -7,7 +7,7 @@ CLI, never asserted by a model. With Claude Code 2.1.287 or later a mod refuses 
 outside the current phase through Claude's editing tools (details in "Where enforcement works").
 
 [![Plugin directory](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
-[![Version](https://img.shields.io/badge/version-v9.6.6-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v9.6.7-blue)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1.287%2B%20for%20the%20mod-blue)](#where-enforcement-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -174,7 +174,7 @@ and starts no agent. Its one tool call is Claude Code's question dialog (`$.ui.a
 to ask you for a mode, a drift choice or a reason. CI fails on a call outside `scripts/check-mod-calls.sh`.
 
 - **Reads:** `.claude/temper.config`; the run files in `.temper/` (`build-state.json`, `gates.json`, `status.json`,
-  `overrides.json`, `feedback-loops.json`, `evidence/`); the spec folder of the run (`intent.md`, `plan.md`,
+  `overrides.json`, `feedback-loops.json`, `evidence/`, and a `report.md` an older Temper wrote); the spec folder of the run (`intent.md`, `plan.md`,
   `tasks.md`, `design.md`, `events/`, `config-suggestions.json`); and `.git/HEAD`. To find the project it stats the
   session folder and looks for `.temper/build-state.json` there and in up to 11 folders above it. It reads its
   settings, store and state and the Claude Code version. When you change the mode or enforcement it reads the

@@ -174,7 +174,9 @@ result, `FAIL: no intent.md to report on` among them, means go on:
      team folder), and when it names Temper's older folder and that folder holds
      other hooks git runs (git-lfs writes its hooks there), unless the pre-commit
      hook there already calls the Temper hook;
-     when the user's hook holds the Temper line after an `exit` or `exec` line; when
+     when the `pre-commit` in Temper's own folder is not Temper's (a hook tool such as
+     lefthook wrote it there; the installer never writes over it, and its hint says how
+     to move it out); when the user's hook holds the Temper line after an `exit` or `exec` line; when
      the repository, or a place it would write once symlinks are followed, lies inside
      the plugin's own folder; and when a folder or file it needs cannot be made. It
      ignores GIT_DIR, GIT_WORK_TREE and GIT_CONFIG. Say in one line that the commit

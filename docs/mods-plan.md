@@ -245,7 +245,7 @@ Why each call is there:
 | `agent.list` | the optional `reviewerModel`: whether a subagent's step belongs to the Temper review agent. Read only; the spawn is passed on unchanged |
 | `clock.sleep` | (9.6.2) waits 60 ms before `build-state.json` is read again while the CLI rewrites it; replaces a `setTimeout` taken from `globalThis` |
 | `config.list`, `config.set` | `/temper mode` and `/temper enforcement` read the row (locked by an administrator or not) and change it the way `/config` does |
-| `fs.list`, `fs.read` | rebuild the run from `.temper/` files and the spec's events |
+| `fs.list`, `fs.read` | rebuild the run from `.temper/` files and the spec's events, and read a report an older Temper wrote |
 | `fs.stat` | resolve `.` to the project root so absolute tool paths can be made relative |
 | `fs.write` | not used since 9.6.2: the mod writes no file. Events and the report are kept in `$.store` |
 | `command.run` | a pressed Button ends with `/temper:temper` (no arguments) so the orchestrator launches the next stage with its own brief; `prompt.submit` refuses a text that starts with a slash, so the command runs as a command |
@@ -268,7 +268,8 @@ markdown command, so nothing is registered; and no status line is drawn.
 
 - No `process.*`, `http.*` or `env.*`. Tests, lint, git and every CLI call are prompts
   to Claude, so they pass through Claude's normal tools and permissions.
-- `fs.write` is the one write: Temper's own event files and `.temper/report.md`. No
+- The mod writes no file (since 9.6.2): its event records and the run report are kept in its
+  plugin store, and `/temper:temper report` shows the report, also after the run is cleared. No
   exception is needed for process spawning.
 - A CI step asserts the `calls:` line so new surface needs a reviewed change.
 
@@ -315,14 +316,14 @@ never clears or archives the state itself. When the CLI state is gone the bar sh
 - The plan files reader: reads the allowed file list from `plan.md` tables and `tasks.md`.
 - The Bash classifier: classifies a Bash command (git commit, temper CLI decisions, writes into
   protected Temper paths).
-- The report: renders `.temper/report.md` from `RunState`.
+- The report: renders the run report from `RunState` (kept in the plugin store since 9.6.2).
 - The config reader: reads the few keys the mod needs from `.claude/temper.config`.
 
 ### 3.3 Where state lives (decision)
 
 | Data | Store | Why |
 |---|---|---|
-| Phase history: approvals, transitions, back, overrides, accepted findings, drift decisions, pauses | **append only event files** in `.temper/specs/{slug}/events/`, one small JSON file per event, named `{ts}-{session}-{seq}.json`, written once and never rewritten | survives sessions and machines; committed with the spec as the audit trail (Temper already commits `.temper/specs/` in user projects); a torn write damages one event, which the reader skips and reports; two sessions never overwrite each other because names are unique. This is how I get safe writes out of a non atomic `$.fs.write` |
+| Phase history: approvals, transitions, back, overrides, accepted findings, drift decisions, pauses | (since 9.6.2 kept as one record per event in the mod's plugin store, under the same names, on this machine only; event files an older run wrote are still read. The original design follows.) **append only event files** in `.temper/specs/{slug}/events/`, one small JSON file per event, named `{ts}-{session}-{seq}.json`, written once and never rewritten | survives sessions and machines; committed with the spec as the audit trail (Temper already commits `.temper/specs/` in user projects); a torn write damages one event, which the reader skips and reports; two sessions never overwrite each other because names are unique. This is how I get safe writes out of a non atomic `$.fs.write` |
 | Gate verdicts, criteria status | read only from `.temper/gates.json` and `.temper/status.json` | the CLI owns verdicts (repo rule) |
 | Folded run state for drawing | `$.state` | redraws readers; survives reload and compaction; rebuilt from files on `session.start` and `classic.SessionStart` |
 | User preferences: first run asked | `$.store` | machine wide is right for a preference |
