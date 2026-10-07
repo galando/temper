@@ -140,6 +140,11 @@ EOF
 # so the case puts those hooks in <git folder>/default-gate and every other line that runs is
 # install.sh's own. Git itself never runs that folder, so a case that needs git to run a hook of
 # the user's (a real commit) sets core.hooksPath to a folder of its own instead.
+_git_list() { # _git_list <git folder>: every file and folder in it, sorted, but for Temper's own
+              # temper-gate folder and temper-pre-commit file and git's index and logs (which git
+              # itself rewrites), so a case can show the installer wrote nothing else there
+  (cd "$1" && find . \( -path ./temper-gate -o -path ./temper-pre-commit -o -path ./logs -o -name 'index*' -o -name '*.lock' \) -prune -o -print | LC_ALL=C sort)
+}
 _dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI, acceptance.py, the
                # guard scripts the hook runs, and the changed install.sh)
   local g

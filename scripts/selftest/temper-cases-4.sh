@@ -89,7 +89,7 @@ rm -rf "$CL_PLUG" "$CL_PROJ" "$CL_BIN" "$CL_LOOSE" "$CL_HOME" "$WORKDIR/cl-guard
   "$WORKDIR/cl-home-link"
 mkdir -p "$CL_PLUG/scripts/guards" "$CL_BIN" "$CL_LOOSE/scripts" "$CL_HOME/project"
 cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$CL_PLUG/scripts/"
-cp "$REPO_ROOT"/scripts/guards/*.sh "$CL_PLUG/scripts/guards/"
+cp -R "$REPO_ROOT/scripts/guards/." "$CL_PLUG/scripts/guards/"
 cp -R "$REPO_ROOT/agents" "$CL_PLUG/agents"
 CL_T="$CL_PLUG/scripts/temper"
 CL_G="$CL_PLUG/scripts/guards"
@@ -1015,7 +1015,7 @@ printf '#!/usr/bin/env bash\n# Temper native pre-commit hook (installed by an ol
 assert_exit "--global installs in the main checkout (an older Temper pre-commit in the default folder does not count)" 0 bash -c "cd '$L_GM' && bash '$L_DG_INSTALL' --global"
 assert_eq "--global sets core.hooksPath to the absolute path of the repository's temper-gate folder" \
   "$L_GM_REAL/.git/temper-gate|$L_GM_REAL/.git/temper-gate/pre-commit" \
-  "$(_l_path "$L_GM")|$(cd "$L_GW" && git rev-parse --git-path hooks/pre-commit)"
+  "$(_l_path "$L_GM")|$(git -C "$L_GW" config --get core.hooksPath)/pre-commit"
 OUT=$(cd "$L_GW" && bash "$L_DG_INSTALL" 2>&1); L_RC=$?
 assert_eq "in a linked worktree the default mode accepts that core.hooksPath and finds the hook there" "0|yes" \
   "$L_RC|$(_l_line "$OUT" "The Temper pre-commit hook is already installed: $L_GM_REAL/.git/temper-gate/pre-commit (core.hooksPath points at its folder).")"

@@ -247,13 +247,13 @@ setup
 git config user.email "test@example.com"
 git config user.name "test"
 # A plain repository: the hook is kept in .git/temper-gate and core.hooksPath points at that
-# folder by its absolute path. Nothing is written in .git/hooks (listed before and after).
-P_HOOKS_BEFORE="$(ls -A .git/hooks)"
+# folder by its absolute path. Nothing else is written in the git folder (listed before and after).
+P_GIT_BEFORE="$(_git_list .git)"
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); P_RC=$?
 assert_eq "install.sh in a plain repository keeps the hook in .git/temper-gate and points core.hooksPath at that folder" \
   "0|yes|$WORKDIR/.git/temper-gate|yes" \
   "$P_RC|$([[ -x .git/temper-gate/pre-commit ]] && echo yes || echo no)|$(git config --get core.hooksPath)|$(printf '%s\n' "$OUT" | grep -qxF "Installed Temper pre-commit hook -> $WORKDIR/.git/temper-gate/pre-commit (core.hooksPath points at that folder, so every worktree of this repository runs it)." && echo yes || echo no)"
-assert_eq "install.sh writes nothing in .git/hooks: its listing is the same before and after" "$P_HOOKS_BEFORE" "$(ls -A .git/hooks)"
+assert_eq "install.sh writes nothing else in the git folder: its listing is the same before and after" "$P_GIT_BEFORE" "$(_git_list .git)"
 assert_eq "install.sh ends with how to uninstall" "yes" \
   "$(printf '%s\n' "$OUT" | tail -1 | grep -qxF "To uninstall: run 'git config --unset core.hooksPath' (when it points at the temper-gate folder), remove the Temper line from your own hook if you added one, and delete $WORKDIR/.git/temper-gate (and $WORKDIR/.git/temper-pre-commit, if Temper 9.6.5 left one)." && echo yes || echo no)"
 OUT=$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1); P_RC=$?
@@ -450,6 +450,15 @@ printf 'x\n' > "$GE_OLD/scripts/guards/block-uncommitted-gate.sh"
 ln -s "$REPO_ROOT" "$WORKDIR/ge-link"
 ln -s "$GE" "$WORKDIR/ge-bin/guard-entries.py"
 ln -s "$GE_PROJ" "$WORKDIR/ge-proj-link"
+# The guard entry that holds the plugin root variable comes from the pack's own settings file, as
+# an entry copied by hand has it (the pack's command, with the variable not replaced).
+GE_ROOTVAR_FULL="$(python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+print(next(h["command"] for e in d["hooks"]["PreToolUse"] for h in e["hooks"] if h["command"].endswith("/confirm-override.sh")))' "$REPO_ROOT/packs/guardrails/settings-guardrails.json")"
+GE_ROOTVAR_CMD="${GE_ROOTVAR_FULL#bash }"
+assert_eq "the pack's confirm-override command names its script through the plugin root variable" "yes|yes" \
+  "$([[ "${GE_ROOTVAR_CMD:0:2}" == '${' ]] && echo yes || echo no)|$([[ "$GE_ROOTVAR_CMD" == */scripts/guards/confirm-override.sh ]] && echo yes || echo no)"
 cat > "$GE_PROJ/.claude/settings.json" <<EOF
 {"permissions": {"allow": []},
  "hooks": {
@@ -466,7 +475,7 @@ cat > "$GE_PROJ/.claude/settings.json" <<EOF
    {"matcher": "Bash", "hooks": [
      {"type": "command", "command": "bash \"$GE_OLD/scripts/guards/block-uncommitted-gate.sh\""},
      {"type": "command", "command": "bash $GE_OLD/scripts/legacy/confirm-override.sh"},
-     {"type": "command", "command": "bash \${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh"},
+     {"type": "command", "command": "$GE_ROOTVAR_FULL"},
      {"type": "command", "command": "bash \"$REPO_ROOT/scripts/retired/run-formatter.sh\""}]}],
   "PostToolUse": [
    {"hooks": [{"type": "command", "command": "bash $REPO_ROOT/scripts/guards/run-formatter.sh"}]}]}}
@@ -475,8 +484,6 @@ cat > "$GE_PROJ/.claude/settings.local.json" <<EOF
 {"hooks": {"PreToolUse": [{"matcher": "Edit", "hooks": [
   {"type": "command", "command": "bash \"$REPO_ROOT/scripts/guards/block-secrets.sh\""}]}]}}
 EOF
-# The guard entry that holds the plugin root variable, as the settings file has it.
-GE_ROOTVAR_CMD='${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh'
 GE_WANT="$(printf '%s\n' \
   ".claude/settings.json|PreToolUse|Edit|Write|$REPO_ROOT/scripts/guards/block-secrets.sh|current" \
   ".claude/settings.json|PreToolUse|Edit|Write|$WORKDIR/ge-link/scripts/guards/protect-regression-test.sh|current" \

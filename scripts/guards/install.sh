@@ -335,7 +335,11 @@ if [[ "${COMMON_REAL##*/}" == hooks ]]; then
 fi
 GATE_DIR="$COMMON_REAL/$GATE_NAME"
 GATE_HOOK="$GATE_DIR/pre-commit"
-HOOKS_DIR="$COMMON_REAL/hooks"
+# Git's own hooks folder, as git itself names it (relative to the repository's top, or absolute in
+# a linked worktree). Git runs the hooks there while core.hooksPath is unset, the only case this
+# value is used for; it is only read.
+HOOKS_DIR="$(git rev-parse --git-path hooks 2>/dev/null || true)"
+[[ -z "$HOOKS_DIR" || "${HOOKS_DIR:0:1}" == "/" ]] || HOOKS_DIR="$REPO_REAL/$HOOKS_DIR"
 HOST_PRE="$HOOKS_DIR/pre-commit"
 
 _real_path() { # _real_path <path, absolute or relative to the cwd>: prints the absolute path
@@ -705,6 +709,7 @@ if [[ -z "$EXISTING_HOOKS_PATH" ]]; then
   # Git runs the hooks of its default folder. Setting core.hooksPath would stop every one of them,
   # so a hook there that git runs (other than a pre-commit from an older Temper) keeps it unset,
   # and so does a hook an older installer set aside as pre-commit.bak.<timestamp>.
+  [[ -n "$HOOKS_DIR" ]] || _refuse "git did not say where its own hooks folder is."
   _scan "$HOOKS_DIR"
   if [[ -n "$RUNNING$SET_ASIDE" ]]; then
     _keep_gate || _refuse "$KEEP_ERR"

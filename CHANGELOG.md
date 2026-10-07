@@ -95,9 +95,9 @@ its hook), to `.git/temper-pre-commit`, or to Temper's older folders `.git/hooks
 `.git/temper-git-hooks` (git still runs hooks from one when the installer leaves `core.hooksPath` on
 it) exactly as it refuses one to `.git/hooks`, and its refusal names the Temper commit hook.
 
-**A listing icon.** `.claude-plugin/icon.png`, 1024 px: the orange T on a dark rounded square that
-earlier versions showed at 256 px, below the 512 px the directory asks for. It is the only image in
-the repository, and `plugin.json` has no `icon` field.
+**A listing icon.** A 1024 px PNG in the manifest folder: the orange T on a dark rounded square that
+earlier versions showed at 256 px, below the 512 px the directory asks for. (9.6.7 took it out again:
+a bundled image holds the plugin for review.)
 
 Notes the directory listed that need no change: the credential note on `plugin.json` (a reviewer
 confirms it; the mod reads Claude Code's `/config` list only to find its own two rows), the `types`

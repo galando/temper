@@ -126,7 +126,7 @@ seg_reads()    { seg_name "$1"
                  printf 'import os\ndata = open(os.path.join(d, "gate_dir", "x")).read()\n' > "$1/scripts/a.py"; }
 seg_subst()    { seg_name "$1"; printf 'cp a "$(git rev-parse --git-path gate_dir)/pre-commit"\nln -s a "$(git rev-parse --git-common-dir)/gate_dir/x"\n' > "$1/scripts/a.sh"; }
 seg_sed()      { seg_name "$1"; printf "sed -i 's/exit 1/exit 0/' .git/gate_dir/pre-commit\n" > "$1/scripts/a.sh"; }
-seg_fetch()    { seg_name "$1"; printf 'curl -fsSo .git/gate_dir/pre-commit https://example.com/h\n' > "$1/scripts/a.sh"; }
+seg_fetch()    { seg_name "$1"; printf 'curl -fsS -o .git/gate_dir/pre-commit "$SOURCE"\n' > "$1/scripts/a.sh"; }
 seg_tar()      { seg_name "$1"; printf 'tar -xf h.tar -C .git/gate_dir\n' > "$1/scripts/a.sh"; }
 seg_cd()       { seg_name "$1"; printf 'cd .git/gate_dir && rm -f pre-commit\n' > "$1/scripts/a.sh"; }
 seg_var()      { seg_name "$1"; printf 'H=.git/gate_dir/pre-commit\necho "exit 0" > "$H"\n' > "$1/scripts/a.sh"; }
