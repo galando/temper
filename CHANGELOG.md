@@ -39,7 +39,9 @@ image did in 9.3.3, and the directory reads an icon only when the plugin is firs
 submitted. It leaves the repository; upload it in the developer portal instead. No text names an
 image file of the repository.
 
-The curl case in the validator's selftest carries no URL.
+No test pairs a host with something that looks like a credential: the curl case in the validator's
+selftest and a fake pre-commit framework hook carry no URL, and the file the secret scan's case
+writes its fake key into is named `1:notes.txt`.
 
 ## v9.6.6: nothing writes into a hooks folder, readable test files, a listing icon
 
