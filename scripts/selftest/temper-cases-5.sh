@@ -876,6 +876,10 @@ gc_setup() { # gc_setup <grouped|per-task>: autonomous run, max-blast-radius 3, 
   [[ "$1" == "grouped" ]] || sed -i.bak 's/mode: grouped/mode: per-task/' .claude/temper.config
   sed 's/max-blast-radius: 15/max-blast-radius: 3/' .claude/temper.config > .claude/temper.config.new && mv .claude/temper.config.new .claude/temper.config
   "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+  # setup keeps the work tree, so the four files an earlier gc_setup left would be committed into this
+  # base with the same content and stop counting as changes (the per-task case below then rested on
+  # two config entries, one more than its limit). Clear them first so every call starts from the same tree.
+  rm -rf src tests
   git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -q -m base >/dev/null 2>&1
   mkdir -p src tests
   for f in src/a.sh tests/a_test.sh src/b.sh src/c.sh; do echo "x" > "$f"; done
@@ -890,8 +894,9 @@ echo z > src/zzz.sh
 assert_eq "grouped commit gate: one undeclared file FAILs the row and names it" "1|1" \
   "$(gc_row | grep -c 'changed outside declared files: .*src/zzz.sh')|$(gc_row | grep -c '^ *\[x\]')"
 gc_setup per-task; sed -i.bak 's/max-blast-radius: 3/max-blast-radius: 1/' .claude/temper.config
-assert_eq "per-task commit gate keeps the count rule (2 changed entries > 1 fails)" "1|0" \
-  "$(gc_row | grep -c 'exceeds autonomy.max-blast-radius=1')|$(gc_row | grep -c 'all declared')"
+gc_out="$(gc_row)"
+assert_eq "per-task commit gate keeps the count rule (changed entries > 1 fail) [$gc_out]" "1|0" \
+  "$(printf '%s\n' "$gc_out" | grep -c 'exceeds autonomy.max-blast-radius=1')|$(printf '%s\n' "$gc_out" | grep -c 'all declared')"
 gc_setup grouped; "$TEMPER" state set run_mode interactive >/dev/null 2>&1
 assert_eq "grouped commit gate: a non-autonomous run has no blast radius row" "0" "$(gc_row | wc -l | tr -d ' ')"
 setup
