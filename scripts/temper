@@ -1877,6 +1877,170 @@ if not ready:
 PY
 }
 
+# Grouped Build (9.7.0): groups.json is CLI-owned run state. Every write goes through here: the lock
+# is held around the read-modify-write, the file is replaced atomically, and the python body only
+# sees `d` (the whole document) and `a` (the extra arguments). A body that calls sys.exit(n) writes
+# nothing and returns n.
+_groups_mutate() { # _groups_mutate <python-body> [args...]
+  local body="$1" rc; shift
+  _lock_acquire
+  python3 - "$GROUPS_FILE" "$body" "$@" <<'PY'
+import json, os, sys
+f, body, a = sys.argv[1], sys.argv[2], sys.argv[3:]
+try:
+    d = json.load(open(f))
+except Exception:
+    d = {}
+if not isinstance(d, dict):
+    d = {}
+exec(body)
+tmp = '%s.tmp.%d' % (f, os.getpid())
+with open(tmp, 'w') as fh:
+    json.dump(d, fh, indent=2)
+    fh.write('\n')
+os.replace(tmp, f)
+PY
+  rc=$?
+  _lock_release
+  return $rc
+}
+
+# git needs an identity for the merge commits the CLI makes; use the project's own, else a fixed one.
+_git_id_args() { # prints "-c user.name=... -c user.email=..." only when the project has none
+  if [[ -z "$(git config user.email 2>/dev/null)" ]]; then
+    echo "-c user.name=Temper -c user.email=temper@localhost"
+  fi
+}
+
+_default_branch() { # the remote's default branch when one is recorded, else ""
+  local ref; ref="$(git symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null)" || return 0
+  echo "${ref#refs/remotes/origin/}"
+}
+
+# temper group start G: one worktree per group at .claude/worktrees/temper-{slug}-{G}, branch
+# temper/{slug}/{G}, based on the feature branch HEAD with every Depends group's branch merged in.
+# Idempotent: a worktree already on the right branch is reused. Exit 3: a protected branch, or a
+# folder at the worktree path that is not this group's worktree.
+cmd_group_start() {
+  local g="${1:-}"
+  if [[ ! "$g" =~ ^G[0-9]+$ ]]; then
+    echo "FAIL: usage: temper group start G<n>" >&2
+    return 1
+  fi
+  local spec_path slug feature cur
+  spec_path="$(_spec_path "")"
+  slug="$(_spec_slug "$spec_path")"
+  if [[ -z "$slug" || ! -f "$spec_path/tasks.md" ]]; then
+    echo "FAIL: no tasks.md for the active run (temper state init, then plan)" >&2
+    return 1
+  fi
+  local deps
+  deps="$(python3 - "$g" "$(_grouped_parse "$spec_path/tasks.md")" <<'PY'
+import json, sys
+plan = json.loads(sys.argv[2])
+for grp in plan['groups']:
+    if grp['id'] == sys.argv[1]:
+        print('ok ' + ' '.join(grp['depends']))
+        sys.exit(0)
+print('unknown')
+PY
+)"
+  if [[ "$deps" == "unknown" ]]; then
+    echo "FAIL: tasks.md has no group $g" >&2
+    return 1
+  fi
+  deps="${deps#ok}"
+  feature="$(cmd_state_get branch "")"
+  cur="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  local protected="main master $(_default_branch)" b
+  for b in $protected; do
+    if [[ "$feature" == "$b" || "$cur" == "$b" ]]; then
+      echo "FAIL: refusing to start a group worktree on the protected branch '$b' (use a feature branch)" >&2
+      return 3
+    fi
+  done
+  if [[ -z "$feature" || "$cur" != "$feature" ]]; then
+    echo "FAIL: group start runs on the run's feature branch '$feature' (current branch: '${cur:-none}')" >&2
+    return 1
+  fi
+  local d
+  for d in $deps; do
+    if [[ "$(python3 -c "
+import json, sys
+try:
+    print(((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('gate', {}).get('verdict', ''))
+except Exception:
+    print('')" "$GROUPS_FILE" "$d")" != "PASS" ]]; then
+      echo "FAIL: $g depends on $d, whose group gate has not passed" >&2
+      return 1
+    fi
+  done
+
+  local wt=".claude/worktrees/temper-$slug-$g" branch="temper/$slug/$g" abs
+  abs="$(pwd -P)/$wt"
+  local reuse=0
+  if git worktree list --porcelain 2>/dev/null | awk -v p="$abs" -v b="refs/heads/$branch" '
+      $1 == "worktree" { path = $2 } $1 == "branch" && path == p && $2 == b { found = 1 } END { exit !found }'; then
+    reuse=1
+  elif [[ -e "$wt" || -L "$wt" ]]; then
+    echo "FAIL: $wt exists and is not the worktree of $g; move it away" >&2
+    return 3
+  fi
+
+  if [[ "$reuse" == "0" ]]; then
+    # the worktrees folder is local to this clone: info/exclude, never .gitignore
+    local ex; ex="$(git rev-parse --git-common-dir)/info/exclude"
+    mkdir -p "$(dirname "$ex")"
+    grep -qxF '/.claude/worktrees/' "$ex" 2>/dev/null || printf '/.claude/worktrees/\n' >> "$ex"
+    local wt_out
+    if ! wt_out="$(git worktree add -q -b "$branch" "$wt" HEAD 2>&1)"; then
+      echo "FAIL: git worktree add failed: $(printf '%s' "$wt_out" | head -1)" >&2
+      return 1
+    fi
+    local idargs; idargs="$(_git_id_args)"
+    for d in $deps; do
+      # shellcheck disable=SC2086
+      if ! git -C "$wt" $idargs merge --no-ff -q -m "merge($slug): $d into $g base" "temper/$slug/$d" >/dev/null 2>&1; then
+        local files; files="$(git -C "$wt" diff --name-only --diff-filter=U 2>/dev/null | paste -sd, -)"
+        git -C "$wt" merge --abort >/dev/null 2>&1 || true
+        git worktree remove --force "$wt" >/dev/null 2>&1 || true
+        git branch -D "$branch" >/dev/null 2>&1 || true
+        echo "FAIL: merge conflict: $d into $g base in ${files:-unknown files}" >&2
+        return 1
+      fi
+    done
+  fi
+
+  local base_sha; base_sha="$(git -C "$wt" rev-parse HEAD)"
+  _groups_mutate "
+d['version'] = 1
+d['slug'] = a[0]
+d['feature_branch'] = a[1]
+d.setdefault('groups', {})
+d.setdefault('tasks', {})
+e = d['groups'].setdefault(a[2], {})
+e['status'] = 'running' if e.get('status') in (None, 'pending') else e['status']
+e['worktree'] = a[3]
+e['branch'] = a[4]
+e.setdefault('base_sha', a[5])
+e.setdefault('started_at', a[6])
+e.setdefault('finished_at', None)
+" "$slug" "$feature" "$g" "$wt" "$branch" "$base_sha" "$(_now)" || return 1
+  echo "OK: group $g started ($wt on $branch)"
+}
+
+cmd_group() {
+  local sub="${1:-}"; shift || true
+  if ! _grouped_on; then
+    echo "FAIL: grouped mode is off (build.mode)" >&2
+    return 1
+  fi
+  case "$sub" in
+    start) cmd_group_start "$@" ;;
+    *) echo "FAIL: usage: temper group <start> ..." >&2; return 1 ;;
+  esac
+}
+
 # Grouped plan-gate rows: one JSON requirement object per line (same shape _req emits).
 _grouped_plan_reqs() { # _grouped_plan_reqs <tasks.md> <max-blast-radius>
   local model; model="$(_grouped_parse "$1")"
@@ -2874,6 +3038,7 @@ main() {
     metrics) cmd_metrics "$@" ;;
     config) cmd_config "$@" ;;
     schedule) cmd_schedule "$@" ;;
+    group) cmd_group "$@" ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -2891,6 +3056,7 @@ Usage:
   temper metrics append <series> <value>
   temper config get <dot.path> [default]
   temper schedule [--json]        (grouped Build: the launchable tasks, one JSON line each)
+  temper group start G<n>         (grouped Build: the group's worktree off the feature branch)
 EOF
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;

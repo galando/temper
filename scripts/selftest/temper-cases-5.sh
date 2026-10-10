@@ -289,3 +289,94 @@ out="$("$TEMPER" schedule 2>&1)"; rc=$?
 assert_eq "grouped off: schedule exits 1 and names build.mode" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'grouped mode is off (build.mode)')"
 assert_eq "grouped off: schedule prints no JSON line" "0" "$(printf '%s' "$out" | grep -c '^{')"
 setup
+
+# --- Grouped Build (9.7.0): group worktrees (temper group start) ---
+# Scenario: Each group gets its own worktree off the feature branch [AC-04, AC-09]
+# Every case runs in the throwaway folder's own git repository, never in this repository's.
+sw_setup() { # sg_setup + a fresh repository with one commit, on the run's feature branch
+  sg_setup
+  rm -rf .git README; git init -q . 2>/dev/null
+  git config user.email t@example.com; git config user.name T
+  echo base > README; git add README; git commit -q -m base
+  git checkout -q -B feature/demo
+}
+sw_head() { git rev-parse HEAD; }
+sw_field() { # sw_field <G> <field>
+  python3 -c "import json,sys; print(json.load(open('.temper/groups.json'))['groups'][sys.argv[1]].get(sys.argv[2],''))" "$1" "$2"
+}
+
+sw_setup; BASE="$(sw_head)"
+assert_exit "group start G1 exits 0" 0 "$TEMPER" group start G1
+assert_exit "group start G2 exits 0" 0 "$TEMPER" group start G2
+assert_eq "group start: the worktree folder exists for each group" "yes|yes" \
+  "$([[ -d .claude/worktrees/temper-demo-G1 ]] && echo yes || echo no)|$([[ -d .claude/worktrees/temper-demo-G2 ]] && echo yes || echo no)"
+assert_eq "group start: git lists both worktrees" "2" "$(git worktree list --porcelain | grep -c 'worktrees/temper-demo-G')"
+assert_eq "group start: each worktree is on its group branch" "temper/demo/G1|temper/demo/G2" \
+  "$(git -C .claude/worktrees/temper-demo-G1 rev-parse --abbrev-ref HEAD)|$(git -C .claude/worktrees/temper-demo-G2 rev-parse --abbrev-ref HEAD)"
+assert_eq "group start: both worktrees start at the feature branch HEAD" "$BASE|$BASE" \
+  "$(git -C .claude/worktrees/temper-demo-G1 rev-parse HEAD)|$(git -C .claude/worktrees/temper-demo-G2 rev-parse HEAD)"
+assert_eq "group start: info/exclude holds the worktrees folder exactly once" "1" \
+  "$(grep -cx '/.claude/worktrees/' "$(git rev-parse --git-common-dir)/info/exclude")"
+assert_eq "group start: .gitignore is never written" "no" "$([[ -e .gitignore ]] && echo yes || echo no)"
+assert_eq "group start: the main checkout status does not list the worktrees" "0" "$(git status --porcelain | grep -c 'worktrees')"
+assert_eq "group start: groups.json records worktree, branch, base and status" \
+  ".claude/worktrees/temper-demo-G1|temper/demo/G1|$BASE|running" \
+  "$(sw_field G1 worktree)|$(sw_field G1 branch)|$(sw_field G1 base_sha)|$(sw_field G1 status)"
+assert_eq "group start: groups.json records the slug and feature branch" "demo|feature/demo" \
+  "$(python3 -c "import json; d=json.load(open('.temper/groups.json')); print(d['slug']+'|'+d['feature_branch'])")"
+assert_eq "group start: the run is valid JSON with the earlier task state kept" "1" \
+  "$(python3 -c "import json; d=json.load(open('.temper/groups.json')); print(1 if d.get('version')==1 and isinstance(d.get('tasks'),dict) else 0)")"
+# idempotent
+assert_exit "group start: a second start of the same group exits 0" 0 "$TEMPER" group start G1
+assert_eq "group start: the second start reuses the worktree (still two)" "2" "$(git worktree list --porcelain | grep -c 'worktrees/temper-demo-G')"
+assert_eq "group start: the second start keeps the base" "$BASE" "$(sw_field G1 base_sha)"
+assert_eq "group start: the exclude line is not written twice" "1" "$(grep -cx '/.claude/worktrees/' "$(git rev-parse --git-common-dir)/info/exclude")"
+
+# the native pre-commit hook lets a commit in a group worktree through (no run state there)
+bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
+echo work > .claude/worktrees/temper-demo-G1/work.txt
+git -C .claude/worktrees/temper-demo-G1 add work.txt
+assert_exit "group start: a commit in a group worktree passes the native pre-commit hook" 0 \
+  git -C .claude/worktrees/temper-demo-G1 commit -q -m "feat(demo): work"
+
+# a group that depends on G1 starts from G1's branch merged in, once G1 passed its group gate
+sw_setup; gp_mut '## Group G2: Edge
+**Depends:** none' '## Group G2: Edge
+**Depends:** G1'
+"$TEMPER" group start G1 >/dev/null 2>&1
+echo g1work > .claude/worktrees/temper-demo-G1/g1.txt
+git -C .claude/worktrees/temper-demo-G1 add g1.txt; git -C .claude/worktrees/temper-demo-G1 commit -q -m "g1" 2>/dev/null
+out="$("$TEMPER" group start G2 2>&1)"; rc=$?
+assert_eq "group start: a group behind an unpassed group gate is refused (exit 1) and names it" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'G1')"
+assert_eq "group start: the refused group made no worktree" "no" "$([[ -d .claude/worktrees/temper-demo-G2 ]] && echo yes || echo no)"
+python3 - <<'PY'
+import json
+d = json.load(open('.temper/groups.json'))
+d['groups']['G1']['gate'] = {'verdict': 'PASS'}
+json.dump(d, open('.temper/groups.json', 'w'))
+PY
+assert_exit "group start: once G1's gate passed, G2 starts" 0 "$TEMPER" group start G2
+assert_eq "group start: the dependent worktree holds the file G1 committed" "g1work" "$(cat .claude/worktrees/temper-demo-G2/g1.txt 2>/dev/null)"
+assert_eq "group start: the dependent base is a merge of the feature HEAD and G1" "2" \
+  "$(git -C .claude/worktrees/temper-demo-G2 rev-list --parents -n 1 "$(sw_field G2 base_sha)" | awk '{print NF-1}')"
+assert_eq "group start: the dependent base_sha is the worktree HEAD" "$(git -C .claude/worktrees/temper-demo-G2 rev-parse HEAD)" "$(sw_field G2 base_sha)"
+
+# refusals
+sw_setup
+assert_exit "group start: an unknown group exits 1" 1 "$TEMPER" group start G9
+assert_exit "group start: no group argument exits 1" 1 "$TEMPER" group start
+assert_exit "group start: an unknown group subcommand exits 1" 1 "$TEMPER" group frobnicate
+git checkout -q -b other
+assert_exit "group start: off the run's feature branch exits 1" 1 "$TEMPER" group start G1
+git checkout -q feature/demo
+mkdir -p .claude/worktrees/temper-demo-G1; echo squatter > .claude/worktrees/temper-demo-G1/x
+assert_exit "group start: a folder at the worktree path that is not this worktree exits 3" 3 "$TEMPER" group start G1
+assert_eq "group start: the squatting folder is left alone" "squatter" "$(cat .claude/worktrees/temper-demo-G1/x)"
+sw_setup; "$TEMPER" state init demo --branch main >/dev/null 2>&1; git checkout -q -B main
+assert_exit "group start: the main branch is refused (exit 3)" 3 "$TEMPER" group start G1
+assert_eq "group start: the refused main run made no worktree" "no" "$([[ -d .claude/worktrees/temper-demo-G1 ]] && echo yes || echo no)"
+# grouped off
+setup; gp_base
+assert_exit "grouped off: group start exits 1" 1 "$TEMPER" group start G1
+assert_eq "grouped off: group start writes no groups.json" "no" "$([[ -e .temper/groups.json ]] && echo yes || echo no)"
+setup
