@@ -42,8 +42,9 @@ multi-group feature is no longer parked by default.
 **The slim task brief and its budgets.** New `agents/build-task.md` (listed in `plugin.json`)
 replaces the full build brief, `reference/build.md` and the pack rules for a task agent. Its size
 budget is 6144 bytes for the brief, 4096 for a group Context and 1536 for a task block, so one
-launch carries at most about 11.5 KB (D-06). The budgets are constants in `scripts/temper`, checked
-at the plan gate, and are to be tuned after the comparison run.
+launch carries at most about 11.5 KB (D-06). The budgets are constants in `scripts/temper`: the plan
+gate checks the Context and task block budgets, the selftest checks the brief's size, and all three
+are to be tuned after the comparison run.
 
 **The mod.** `.temper/groups.json` and `.temper/usage.json` are protected like the other CLI-owned
 run files; writes inside a group worktree map to the project's own paths for the rules; and
