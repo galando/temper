@@ -3,6 +3,9 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.7.0 — TODO: one-line summary
+
+- TODO: maintainer fills in this entry's body.
 ## v9.6.7: no script names a hooks folder, no plugin root variable in tests, no bundled image
 
 The directory's report on 9.6.6 (878248e) held it for five reasons. Four are for a reviewer ("This
