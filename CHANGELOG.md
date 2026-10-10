@@ -27,7 +27,8 @@ pin that commit. The Pages workflow restores the videos at deploy time, so the s
 `docs/mod.md`: the bar, the three modes, each phase, scope drift, the game, where enforcement works,
 and the full list of what the mod reads and writes. The README keeps a short "What the mod reads and
 writes" section, because the plugin directory asks for it, and links to the full list. The Trust
-section moves to `docs/trust.md`.
+section moves to `docs/trust.md`. The known limits check (`scripts/check-known-limits.sh`) now reads
+the limits from `docs/mod.md`, where they moved.
 
 ## v9.6.7: no script names a hooks folder, no plugin root variable in tests, no bundled image
 

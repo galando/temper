@@ -189,11 +189,10 @@ The staged list is the session's own picture. The mod does not see a script that
 PowerShell file tools are not checked. Thus the hard guarantees are the editing tools and the native
 `pre-commit` hook, not the Bash reader.
 
-A `Temper enforcement:` line can also be in any file that Claude can read. An injected copy can only
-hide a question. It cannot advance a phase, because each advance needs a decision of the person or a
-passed check.
+A `Temper enforcement:` line can also be in any file that Claude can read.
+An injected copy can only hide a question. It cannot advance a phase, because each advance needs a decision of the person or a passed check.
 
-When the run is Done, a `git commit` from the model is allowed. The run is complete, and the person
+When the run is Done, a model `git commit` is allowed. The run is complete, and the person
 pressed Continue. A later CLI could check a decision token that works one time only.
 
 ## What the mod reads and writes
