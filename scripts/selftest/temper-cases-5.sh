@@ -186,3 +186,106 @@ gp_mut '**File:** `src/b.sh`
 ' ''
 assert_exit "grouped off: a missing **File:** is not checked" 0 "$TEMPER" gate plan
 setup
+
+# --- Grouped Build (9.7.0): grouped run state and the ready set (temper schedule) ---
+# Scenarios: The ready set holds only tasks with met dependencies and disjoint files; Grouped mode
+# off keeps the per-task Build unchanged [AC-03, AC-04, AC-01]
+sg_setup() { setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; gp_base; }
+sg_groups() { # sg_groups <json>: write .temper/groups.json the way a started run would hold it
+  printf '%s\n' "$1" > .temper/groups.json
+}
+SG_RUN='"G1":{"status":"running","worktree":".claude/worktrees/temper-demo-G1","branch":"temper/demo/G1"},"G2":{"status":"running","worktree":".claude/worktrees/temper-demo-G2","branch":"temper/demo/G2"}'
+sg_state() { # sg_state <tasks-json> [groups-json]: both groups started, plus per-task state
+  sg_groups "{\"version\":1,\"slug\":\"demo\",\"groups\":{${2:-$SG_RUN}},\"tasks\":$1}"
+}
+sg_ready() { # the ready task numbers, comma separated, in the order printed
+  "$TEMPER" schedule 2>/dev/null | python3 -c "
+import json, sys
+print(','.join(str(json.loads(l)['task']) for l in sys.stdin if l.strip().startswith('{') and 'task' in json.loads(l)))"
+}
+sg_last() { "$TEMPER" schedule 2>/dev/null | tail -1; }
+
+# before any group started: nothing is ready, work remains
+sg_setup
+assert_exit "schedule: no groups.json yet exits 0" 0 "$TEMPER" schedule
+assert_eq "schedule: nothing is ready before a group starts" "" "$(sg_ready)"
+assert_eq "schedule: a waiting line says work remains" "1" "$(sg_last | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(1 if d.get('done') is False and d.get('waiting') else 0)")"
+assert_eq "schedule: schedule writes nothing" "no" "$([[ -e .temper/groups.json ]] && echo yes || echo no)"
+
+# both groups started, no task started: the tasks with no Depends are ready
+sg_setup; sg_state '{}'
+assert_eq "schedule: independent tasks of started groups are ready, ordered by task" "1,3" "$(sg_ready)"
+assert_eq "schedule: a ready line carries task, group, worktree, project, model and attempt" \
+  '{"task": 1, "group": "G1", "title": "Alpha", "worktree": ".claude/worktrees/temper-demo-G1", "project": "'"$PWD"'", "model": "claude-haiku-5-5", "attempt": 1}' \
+  "$("$TEMPER" schedule | head -1)"
+
+# a task whose Depends is not passed waits; a running task is not offered again
+sg_setup; sg_state '{"1":{"group":"G1","status":"running","attempt":1}}'
+assert_eq "schedule: a running task is not offered and its dependent waits" "3" "$(sg_ready)"
+
+# the files of a running task are excluded
+sg_setup; gp_mut '**File:** `src/c.sh`' '**File:** `src/a.sh`'; sg_state '{"1":{"group":"G1","status":"running","attempt":1}}'
+assert_eq "schedule: a task sharing a file with a running task is not offered" "" "$(sg_ready)"
+assert_eq "schedule: the waiting line names the overlapping task" "1" "$(sg_last | grep -c 'Task 3.*Task 1')"
+# two ready tasks that share a file: only the first is offered
+sg_setup; gp_mut '**File:** `src/c.sh`' '**File:** `./src/a.sh`'; sg_state '{}'
+assert_eq "schedule: of two ready tasks sharing a file only the first is offered" "1" "$(sg_ready)"
+
+# after Task 1 passes its dependent appears
+sg_setup; sg_state '{"1":{"group":"G1","status":"passed","attempt":1}}'
+assert_eq "schedule: after Task 1 passed, Task 2 and Task 3 are ready" "2,3" "$(sg_ready)"
+
+# a group whose Depends group has not passed its group gate waits
+sg_setup; gp_mut '## Group G2: Edge
+**Depends:** none' '## Group G2: Edge
+**Depends:** G1'; sg_state '{"1":{"group":"G1","status":"passed","attempt":1}}'
+assert_eq "schedule: a group behind an unpassed group gate offers none of its tasks" "2" "$(sg_ready)"
+sg_state '{"1":{"group":"G1","status":"passed","attempt":1}}' '"G1":{"status":"running","worktree":".claude/worktrees/temper-demo-G1","gate":{"verdict":"PASS"}},"G2":{"status":"running","worktree":".claude/worktrees/temper-demo-G2"}'
+assert_eq "schedule: once G1's group gate passed, G2's task is offered" "2,3" "$(sg_ready)"
+
+# a group that has not started (no worktree) offers nothing; a parked group offers nothing
+sg_setup; sg_state '{}' '"G1":{"status":"running","worktree":".claude/worktrees/temper-demo-G1"}'
+assert_eq "schedule: a group with no worktree offers no task" "1" "$(sg_ready)"
+sg_setup; sg_state '{}' '"G1":{"status":"parked","worktree":".claude/worktrees/temper-demo-G1","parked_reason":"Task 1 failed 3 attempts"},"G2":{"status":"running","worktree":".claude/worktrees/temper-demo-G2"}'
+assert_eq "schedule: a parked group is skipped while another group is still offered" "3" "$(sg_ready)"
+assert_eq "schedule: the waiting line is absent while tasks are ready" "0" "$("$TEMPER" schedule | grep -c waiting)"
+sg_state '{}' '"G1":{"status":"parked","worktree":".claude/worktrees/temper-demo-G1"},"G2":{"status":"parked","worktree":".claude/worktrees/temper-demo-G2"}'
+assert_eq "schedule: with every group parked the last line lists them" "1" "$(sg_last | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(1 if d.get('parked')==['G1','G2'] and d.get('done') is False else 0)")"
+
+# attempt and model: a failed task is offered again with its next attempt; attempt 3 uses the escalation model
+sg_setup; sg_state '{"1":{"group":"G1","status":"failed","attempt":1,"attempts":[{"n":1,"outcome":"FAIL"}]}}'
+assert_eq "schedule: attempt 2 is offered on the task model" "claude-haiku-5-5|2" \
+  "$("$TEMPER" schedule | head -1 | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print('%s|%s' % (d['model'], d['attempt']))")"
+sg_state '{"1":{"group":"G1","status":"failed","attempt":2,"attempts":[{"n":1,"outcome":"FAIL"},{"n":2,"outcome":"FAIL"}]}}'
+assert_eq "schedule: attempt 3 is offered on the escalation model" "sonnet|3" \
+  "$("$TEMPER" schedule | head -1 | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print('%s|%s' % (d['model'], d['attempt']))")"
+
+# max-parallel caps the launchable set (default 4, configurable)
+sg_setup; printf '  grouped:\n    max-parallel: 1\n' >> .claude/temper.config; sg_state '{}'
+assert_eq "schedule: max-parallel 1 offers a single task" "1" "$(sg_ready)"
+sg_state '{"3":{"group":"G2","status":"running","attempt":1}}'
+assert_eq "schedule: a running task counts against max-parallel" "" "$(sg_ready)"
+assert_eq "schedule: the waiting line names the cap" "1" "$(sg_last | grep -c 'max-parallel')"
+sg_setup; sg_state '{}'
+assert_eq "schedule: the default cap of 4 does not hold back 2 tasks" "1,3" "$(sg_ready)"
+
+# every group passed its group gate: done
+sg_setup; sg_state '{"1":{"group":"G1","status":"passed"},"2":{"group":"G1","status":"passed"},"3":{"group":"G2","status":"passed"}}' \
+  '"G1":{"status":"passed","worktree":"w1","gate":{"verdict":"PASS"}},"G2":{"status":"passed","worktree":"w2","gate":{"verdict":"PASS"}}'
+assert_eq "schedule: every group passed ends with the integrate line" '{"done": true, "next": "temper integrate"}' "$(sg_last)"
+assert_eq "schedule: done offers no task" "" "$(sg_ready)"
+
+# groups.json is CLI-owned run state: a symlink is refused and state clear removes it
+sg_setup; sg_state '{}'
+"$TEMPER" state clear >/dev/null 2>&1
+assert_eq "state clear removes groups.json" "no" "$([[ -e .temper/groups.json ]] && echo yes || echo no)"
+sg_setup; mkdir -p "$WORKDIR/gj-target"; echo '{}' > "$WORKDIR/gj-target/g.json"; ln -s "$WORKDIR/gj-target/g.json" .temper/groups.json
+assert_exit "a symlinked .temper/groups.json is refused" 3 "$TEMPER" schedule
+rm -f .temper/groups.json
+
+# grouped off: exits 1, prints the reason, writes nothing
+setup; gp_base; sg_state '{}'
+out="$("$TEMPER" schedule 2>&1)"; rc=$?
+assert_eq "grouped off: schedule exits 1 and names build.mode" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'grouped mode is off (build.mode)')"
+assert_eq "grouped off: schedule prints no JSON line" "0" "$(printf '%s' "$out" | grep -c '^{')"
+setup

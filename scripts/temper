@@ -78,6 +78,7 @@ STAGES="intent plan design build review check commit"
 TASK_BRIEF_MAX_BYTES=6144
 GROUP_CONTEXT_MAX_BYTES=4096
 TASK_BLOCK_MAX_BYTES=1536
+GROUPS_FILE=".temper/groups.json"   # grouped run state: CLI-owned, every write holds the lock
 
 # Stages that run as an Agent subprocess and therefore have a model to resolve.
 # `commit` is not one — it's the orchestrator running `temper gate commit`.
@@ -205,7 +206,7 @@ _unsafe_temper_refuse() { # -> 3 (with a one-line reason) when a path this CLI w
                           # inside it, so no check here looks through a link.
   [[ -e .temper || -L .temper ]] || return 0
   local p slug link="" paths=".temper .temper/.lock .temper/evidence .temper/specs .temper/archive"
-  for p in build-state gates overrides status metrics bands feedback-loops; do
+  for p in build-state gates overrides status metrics bands feedback-loops groups; do
     paths="$paths .temper/$p.json"
   done
   for p in $EVIDENCE_STAGES; do
@@ -300,7 +301,7 @@ import os, sys, time
 try:
     sys.exit(0 if time.time() - os.path.getmtime(sys.argv[1]) > 30 else 1)
 except OSError:
-    sys.exit(0)" "$_LOCK_DIR" 2>/dev/null; then
+    sys.exit(1)   # the lock vanished between mkdir and here: not stale, retry the mkdir" "$_LOCK_DIR" 2>/dev/null; then
       rmdir "$_LOCK_DIR" 2>/dev/null || true   # stale: its holder is gone
       i=$(( i + 1 ))
       continue
@@ -607,7 +608,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
     done
   fi
   # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
-  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json
+  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json
   rm -rf .temper/evidence
   _ensure_dirs
   # Re-scaffold the ledger files empty (same as `temper init`): a cleared run has
@@ -845,7 +846,7 @@ cmd_state_clear() {
   [[ -n "$out" ]] && archived_note=" — gate ledger archived to $out"
   [[ $rc -eq 2 ]] && archived_note="; the gate ledger was NOT archived, see the warning above"
   # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
-  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json
+  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json
   rm -rf .temper/evidence
   echo "OK: run state cleared (spec artifacts under .temper/specs/ are untouched${archived_note})"
 }
@@ -1800,6 +1801,79 @@ for t in tasks:
     t['block'] = ('### Task %d: %s\n%s' % (t['n'], t['title'], t['block'])).strip('\n')
     t['block_bytes'] = len(t['block'].encode('utf-8'))
 print(json.dumps({'groups': groups, 'tasks': tasks, 'integration': integration}))
+PY
+}
+
+# Grouped Build (9.7.0): the ready set. Read-only: it writes nothing, so it needs no lock; only
+# `task start` (a later task) changes run state. Prints one JSON line per launchable task, ordered by
+# group then task number; with nothing launchable a trailing {"waiting"...} line, or {"done"...}.
+cmd_schedule() { # temper schedule [--json]
+  if ! _grouped_on; then
+    echo "FAIL: grouped mode is off (build.mode)" >&2
+    return 1
+  fi
+  local spec_path; spec_path="$(_spec_path "")"
+  if [[ -z "$spec_path" || ! -f "$spec_path/tasks.md" ]]; then
+    echo "FAIL: no tasks.md for the active run (temper state init, then plan)" >&2
+    return 1
+  fi
+  local max; max="$(_cfg_get build.grouped.max-parallel 4)"
+  [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
+  python3 - "$GROUPS_FILE" "$max" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" "$PWD" "$(_grouped_parse "$spec_path/tasks.md")" <<'PY'
+import json, sys
+gfile, max_par, task_model, esc_model, project = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5]
+plan = json.loads(sys.argv[6])
+try:
+    run = json.load(open(gfile))
+except Exception:
+    run = {}
+rg, rt = run.get('groups') or {}, run.get('tasks') or {}
+def norm(p):
+    p = p.strip()
+    return p[2:] if p.startswith('./') else p
+tasks = sorted(plan['tasks'], key=lambda t: ([g['id'] for g in plan['groups']].index(t['group']) if t['group'] in [g['id'] for g in plan['groups']] else 999, t['n']))
+gdep = {g['id']: g['depends'] for g in plan['groups']}
+declared = {t['n']: {norm(f) for f in t['files']} for t in tasks}
+def status(n): return (rt.get(str(n)) or {}).get('status', 'pending')
+def gstatus(g): return (rg.get(g) or {}).get('status', 'pending')
+def gpass(g): return ((rg.get(g) or {}).get('gate') or {}).get('verdict') == 'PASS'
+running = [t['n'] for t in tasks if status(t['n']) == 'running']
+busy = set()
+for n in running: busy |= declared[n]
+slots = max_par - len(running)
+ready, waiting = [], []
+for t in tasks:
+    n, g = t['n'], t['group']
+    if status(n) not in ('pending', 'failed'):
+        continue
+    why = None
+    unmet = [d for d in t['depends'] if status(d) != 'passed']
+    gwait = [d for d in gdep.get(g, []) if not gpass(d)]
+    if gstatus(g) == 'parked': why = 'group %s is parked' % g
+    elif not (rg.get(g) or {}).get('worktree'): why = 'group %s not started' % g
+    elif gwait: why = 'group %s depends on %s' % (g, ', '.join(gwait))
+    elif unmet: why = 'depends on %s' % ', '.join('Task %d' % d for d in unmet)
+    else:
+        clash = [m for m in list(running) + [r['task'] for r in ready]
+                 if declared[m] & declared[n]]
+        if clash: why = 'files overlap Task %d' % clash[0]
+        elif slots <= len(ready): why = 'max-parallel %d reached' % max_par
+    if why:
+        waiting.append('Task %d (%s)' % (n, why))
+        continue
+    attempt = len((rt.get(str(n)) or {}).get('attempts') or []) + 1
+    ready.append({'task': n, 'group': g, 'title': t['title'], 'worktree': rg[g]['worktree'],
+                  'project': project, 'model': task_model if attempt <= 2 else esc_model,
+                  'attempt': attempt})
+for r in ready:
+    print(json.dumps(r))
+if not ready:
+    ids = [g['id'] for g in plan['groups']]
+    if ids and all(gpass(g) for g in ids):
+        print(json.dumps({'done': True, 'next': 'temper integrate'}))
+    else:
+        print(json.dumps({'waiting': waiting, 'parked': [g for g in ids if gstatus(g) == 'parked'],
+                          'done': False}))
 PY
 }
 
@@ -2799,6 +2873,7 @@ main() {
     bands) cmd_bands "$@" ;;
     metrics) cmd_metrics "$@" ;;
     config) cmd_config "$@" ;;
+    schedule) cmd_schedule "$@" ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -2815,6 +2890,7 @@ Usage:
   temper bands [--json]
   temper metrics append <series> <value>
   temper config get <dot.path> [default]
+  temper schedule [--json]        (grouped Build: the launchable tasks, one JSON line each)
 EOF
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;
