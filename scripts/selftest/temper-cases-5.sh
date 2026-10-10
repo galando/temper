@@ -967,3 +967,63 @@ done
 assert_eq "header comment documents the grouped subcommands" "1|1|1|1" \
   "$(grep -c '^#   temper schedule' "$TEMPER")|$(grep -c '^#   temper group' "$TEMPER")|$(grep -c '^#   temper task' "$TEMPER")|$(grep -c '^#   temper integrate' "$TEMPER")"
 setup
+
+# --- Whole-flow usage (9.7.0, intent D-07): temper usage add, the report section, the archive ---
+# Scenario: Run state records the numbers the cost comparison needs [AC-12]
+us_json() { "$TEMPER" report --json 2>/dev/null | python3 -c "
+import json,sys
+v=json.load(sys.stdin)
+for k in sys.argv[1].split('.'):
+    v=v.get(k,'') if isinstance(v,dict) else ''
+print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"; }
+setup
+assert_exit "usage add: a recorded row exits 0" 0 "$TEMPER" usage add --stage plan --model sonnet --tokens 1000 --ms 4000
+"$TEMPER" usage add --stage build --model claude-haiku-5-5 --tokens 300 --ms 2000 --task 4 >/dev/null 2>&1
+"$TEMPER" usage add --stage build --model sonnet --tokens 700 >/dev/null 2>&1
+assert_eq "usage add: rows land in .temper/usage.json with the task and group" "3|4" \
+  "$(python3 -c "import json; r=json.load(open('.temper/usage.json')); print('%d|%s' % (len(r), r[1].get('task')))")"
+assert_eq "usage add: a missing value is recorded as null and never blocks" "None|None" \
+  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[2]; print('%s|%s' % (r['ms'], r.get('group')))")"
+assert_exit "usage add: an unknown stage exits 1" 1 "$TEMPER" usage add --stage commit --model sonnet
+assert_exit "usage add: a stage name that is not on the list exits 1" 1 "$TEMPER" usage add --stage ../x --model sonnet
+assert_exit "usage add: a non-numeric --tokens exits 1" 1 "$TEMPER" usage add --stage plan --model sonnet --tokens lots
+assert_exit "usage add: a missing --stage exits 1" 1 "$TEMPER" usage add --model sonnet
+assert_exit "usage add: an unknown flag exits 1" 1 "$TEMPER" usage add --stage plan --bogus 1
+assert_eq "usage add: all four value flags may be absent (a null row)" "0|4" \
+  "$("$TEMPER" usage add --stage check >/dev/null 2>&1; echo $?)|$(python3 -c "import json; print(len(json.load(open('.temper/usage.json'))))")"
+assert_eq "report --json: usage totals tokens and ms, skipping nulls" "2000|6000|4" \
+  "$(us_json usage.total.tokens)|$(us_json usage.total.ms)|$(us_json usage.total.rows)"
+assert_eq "report --json: usage per stage" "1000|2000" \
+  "$(us_json usage.by_stage.build.tokens)|$(us_json usage.by_stage.build.ms)"
+assert_eq "report --json: usage per model" "1700|300" \
+  "$(us_json usage.by_model.sonnet.tokens)|$(us_json usage.by_model.claude-haiku-5-5.tokens)"
+out="$("$TEMPER" report 2>&1)"
+assert_eq "report: the text form has a usage section with the stages and the total" "1|1|1" \
+  "$(printf '%s' "$out" | grep -c '^Usage')|$(printf '%s' "$out" | grep -c 'build.*1000')|$(printf '%s' "$out" | grep -c 'total.*2000')"
+setup
+assert_eq "report --json: a run with no usage rows has no usage key" "" "$(us_json usage)"
+assert_eq "report: a run with no usage rows prints no usage section" "0" "$("$TEMPER" report 2>&1 | grep -c '^Usage')"
+# grouped task attempts count once
+gg_setup
+"$TEMPER" usage add --stage plan --model sonnet --tokens 50 --ms 10 >/dev/null 2>&1
+for a in 1 2; do "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model claude-haiku-5-5 --tokens 100 --ms 1000 >/dev/null 2>&1; done
+"$TEMPER" task start 1 >/dev/null 2>&1
+ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+"$TEMPER" task gate 1 --model sonnet --tokens 500 --ms 3000 >/dev/null 2>&1
+assert_eq "task gate: every attempt (failed and passed) writes one task usage row" "3|3" \
+  "$(python3 -c "import json; r=[x for x in json.load(open('.temper/usage.json')) if x['stage']=='task']; print(len(r))")|$(python3 -c "import json; r=[x for x in json.load(open('.temper/usage.json')) if x['stage']=='task' and x.get('task')==1 and x.get('group')=='G1']; print(len(r))")"
+assert_eq "report --json: grouped attempts count once in the totals (700 task + 50 plan)" "750" "$(us_json usage.total.tokens)"
+assert_eq "report --json: the task stage total is the attempts once" "700|2" \
+  "$(us_json usage.by_stage.task.tokens)|$(python3 -c "import json; print(len([x for x in json.load(open('.temper/usage.json')) if x['stage']=='task' and x['model']=='claude-haiku-5-5']))")"
+"$TEMPER" task start 2 >/dev/null 2>&1; "$TEMPER" task gate 2 >/dev/null 2>&1
+assert_eq "task gate: no --model/--tokens/--ms still writes a null usage row" "4" \
+  "$(python3 -c "import json; print(len([x for x in json.load(open('.temper/usage.json')) if x['stage']=='task']))")"
+assert_eq "group report: still totals from groups.json (unchanged by the usage file)" '{"claude-haiku-5-5": 200, "sonnet": 500}' "$(gr_json tokens_by_model)"
+"$TEMPER" gate plan >/dev/null 2>&1; "$TEMPER" state archive >/dev/null 2>&1
+assert_eq "state archive: gate-ledger.json keeps the usage section" "700|50" \
+  "$(python3 -c "import json; u=json.load(open('.temper/specs/demo/gate-ledger.json'))['usage']; print('%s|%s' % (u['by_stage']['task']['tokens'], u['by_stage']['plan']['tokens']))" 2>/dev/null)"
+"$TEMPER" state clear >/dev/null 2>&1
+assert_eq "state clear: removes the usage file" "0" "$([[ -f .temper/usage.json ]] && echo 1 || echo 0)"
+assert_eq "help documents: usage add" "1" "$("$TEMPER" --help | grep -cF -- 'usage add')"
+assert_eq "header comment documents temper usage" "1" "$(grep -c '^#   temper usage' "$TEMPER")"
+setup

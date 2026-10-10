@@ -27,6 +27,9 @@
 #   temper task <start|show|test|gate> N          one task's lifecycle (test runs the declared command)
 #   temper integrate                              merge the passed groups, run the suite, check Interfaces
 #   temper model <task|task-escalation>           the task agent's model and its escalation model
+#   temper usage add --stage S [--model M] [--tokens T] [--ms D] [--task N] [--group G]
+#                                                 one agent launch's usage (any stage, both Build modes);
+#                                                 report and state archive show it; missing values are null
 #
 # DEGRADATION CONTRACT (same spirit as Temper's guardrail scripts):
 #   - A stage with no evidence recorded FAILS closed (nothing to verify => not verified).
@@ -84,6 +87,7 @@ STAGES="intent plan design build review check commit"
 TASK_BRIEF_MAX_BYTES=6144
 GROUP_CONTEXT_MAX_BYTES=4096
 TASK_BLOCK_MAX_BYTES=1536
+USAGE_FILE=".temper/usage.json"     # whole-flow usage rows (D-07): CLI-owned, every write holds the lock
 GROUPS_FILE=".temper/groups.json"   # grouped run state: CLI-owned, every write holds the lock
 
 # Stages that run as an Agent subprocess and therefore have a model to resolve.
@@ -212,7 +216,7 @@ _unsafe_temper_refuse() { # -> 3 (with a one-line reason) when a path this CLI w
                           # inside it, so no check here looks through a link.
   [[ -e .temper || -L .temper ]] || return 0
   local p slug link="" paths=".temper .temper/.lock .temper/evidence .temper/specs .temper/archive"
-  for p in build-state gates overrides status metrics bands feedback-loops groups; do
+  for p in build-state gates overrides status metrics bands feedback-loops groups usage; do
     paths="$paths .temper/$p.json"
   done
   for p in $EVIDENCE_STAGES; do
@@ -614,7 +618,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
     done
   fi
   # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
-  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json
+  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json .temper/usage.json
   rm -rf .temper/evidence
   _ensure_dirs
   # Re-scaffold the ledger files empty (same as `temper init`): a cleared run has
@@ -813,10 +817,11 @@ import json, sys
 d = json.loads(sys.argv[1]); d['task_model'] = sys.argv[2]; d['escalation_model'] = sys.argv[3]
 print(json.dumps(d))" "$grouped_json" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)")"
     fi
-    python3 - "$GATES_FILE" "$OVERRIDES_FILE" "$out" "$(_now)" "$grouped_json" "${ev_pairs[@]}" <<'PY'
+    local usage_json; usage_json="$(_usage_json)"
+    python3 - "$GATES_FILE" "$OVERRIDES_FILE" "$out" "$(_now)" "$grouped_json" "$usage_json" "${ev_pairs[@]}" <<'PY'
 import json, sys
-gates_f, overrides_f, out_f, ts, grouped = sys.argv[1:6]
-pairs = sys.argv[6:]
+gates_f, overrides_f, out_f, ts, grouped, usage = sys.argv[1:7]
+pairs = sys.argv[7:]
 def load(p, default):
     try:
         return json.load(open(p))
@@ -834,6 +839,8 @@ for stage, ledger in sorted(zip(pairs[0::2], pairs[1::2])):
 doc = {'gates': gates, 'overrides': overrides, 'evidence': evidence, 'archived': ts}
 if grouped:
     doc['grouped'] = json.loads(grouped)
+if usage:
+    doc['usage'] = json.loads(usage)
 with open(out_f, 'w') as fh:
     json.dump(doc, fh, indent=2)
     fh.write('\n')
@@ -862,7 +869,7 @@ cmd_state_clear() {
   [[ -n "$out" ]] && archived_note=" — gate ledger archived to $out"
   [[ $rc -eq 2 ]] && archived_note="; the gate ledger was NOT archived, see the warning above"
   # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).
-  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json
+  rm -f .temper/build-state.json .temper/feedback-loops.json .temper/gates.json .temper/overrides.json .temper/groups.json .temper/usage.json
   rm -rf .temper/evidence
   echo "OK: run state cleared (spec artifacts under .temper/specs/ are untouched${archived_note})"
 }
@@ -2728,6 +2735,10 @@ cmd_task_gate() {
   v="$(_task_py verdict "$_T_PLAN" "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$_T_ABS")" || return 1
   verdict="$(_jget "$v" verdict)"; reason="$(_jget "$v" reason)"
   local group slug title; group="$(_jget "$v" group)"; slug="$(_jget "$v" slug)"; title="$(_jget "$v" title)"
+  # D-07: this launch's usage, once, whatever the verdict (a failed attempt spent tokens too).
+  [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=""
+  [[ "$ms" =~ ^[0-9]+$ ]] || ms=""
+  _usage_append task "$model" "$tokens" "$ms" "$n" "$group" || true
 
   if [[ "$verdict" != "PASS" ]]; then
     # D-03: attempt 1 retries on the task model, attempt 2 escalates once, attempt 3 parks the group.
@@ -3699,8 +3710,18 @@ cmd_report() {
   local as_json=false
   [[ "${1:-}" == "--json" ]] && as_json=true
   [[ -f "$GATES_FILE" ]] || echo '{}' > "$GATES_FILE"
+  local usage_json; usage_json="$(_usage_json)"
   if [[ "$as_json" == "true" ]]; then
-    cat "$GATES_FILE"
+    if [[ -z "$usage_json" ]]; then
+      cat "$GATES_FILE"
+    else
+      # gates.json as it is, plus a "usage" key only when usage rows exist
+      python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+d['usage'] = json.loads(sys.argv[2])
+print(json.dumps(d, indent=2))" "$GATES_FILE" "$usage_json"
+    fi
     return
   fi
   # The two file paths cross as argv, never as Python source: the project path may hold a quote.
@@ -3727,6 +3748,93 @@ if overridden:
     print()
     print(f'{len(overridden)} gate(s) overridden by a human — see .temper/overrides.json')
 " "$GATES_FILE" "$OVERRIDES_FILE"
+  [[ -z "$usage_json" ]] || python3 -c "
+import json, sys
+u = json.loads(sys.argv[1])
+def n(v): return '-' if v is None else str(v)
+print()
+print('Usage (per-agent totals as Claude Code returns them; the orchestrator session is not counted)')
+print('  %-10s %6s %12s %12s' % ('stage', 'rows', 'tokens', 'ms'))
+for k, v in u['by_stage'].items():
+    print('  %-10s %6d %12s %12s' % (k, v['rows'], n(v['tokens']), n(v['ms'])))
+print('  %-10s %6s %12s %12s' % ('model', '', 'tokens', 'ms'))
+for k, v in u['by_model'].items():
+    print('  %-10s %6d %12s %12s' % (k, v['rows'], n(v['tokens']), n(v['ms'])))
+t = u['total']
+print('  %-10s %6d %12s %12s' % ('total', t['rows'], n(t['tokens']), n(t['ms'])))" "$usage_json"
+}
+
+# Whole-flow usage (9.7.0, intent D-07). .temper/usage.json is a CLI-owned array of rows
+# {stage, model, tokens, ms, task, group, ts}; a value that was not given is null. The grouped
+# `task gate --tokens --ms` writes its row here too, and `group report` keeps reading groups.json
+# attempts, so the two views never meet in one total: the usage totals count each launch once.
+_usage_append() { # _usage_append <stage> <model> <tokens> <ms> <task> <group>
+  local row
+  row="$(python3 -c "
+import json, sys
+a = sys.argv[1:]
+def num(x): return int(x) if x.isdigit() else None
+print(json.dumps({'stage': a[0], 'model': a[1] or None, 'tokens': num(a[2]), 'ms': num(a[3]),
+                  'task': num(a[4]), 'group': a[5] or None, 'ts': a[6]}))" "$@" "$(_now)")" || return 1
+  _ensure_dirs
+  _json_append "$USAGE_FILE" "$row"
+}
+
+_usage_json() { # prints the usage summary as one JSON line, or nothing when no row was recorded
+  [[ -f "$USAGE_FILE" ]] || return 0
+  python3 - "$USAGE_FILE" <<'PY'
+import json, sys
+try:
+    rows = json.load(open(sys.argv[1]))
+except Exception:
+    rows = []
+rows = [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+if not rows:
+    sys.exit(0)
+def add(acc, r):
+    acc['rows'] += 1
+    for k in ('tokens', 'ms'):
+        if isinstance(r.get(k), int):
+            acc[k] = (acc[k] or 0) + r[k]
+by_stage, by_model, total = {}, {}, {'rows': 0, 'tokens': None, 'ms': None}
+fresh = lambda: {'rows': 0, 'tokens': None, 'ms': None}
+for r in rows:
+    add(by_stage.setdefault(r.get('stage') or 'unknown', fresh()), r)
+    add(by_model.setdefault(r.get('model') or 'unknown', fresh()), r)
+    add(total, r)
+print(json.dumps({'by_stage': by_stage, 'by_model': by_model, 'total': total}, sort_keys=True))
+PY
+}
+
+cmd_usage() { # temper usage add --stage S [--model M] [--tokens T] [--ms D] [--task N] [--group G]
+  local sub="${1:-}"; shift || true
+  if [[ "$sub" != "add" ]]; then
+    echo "FAIL: usage: temper usage add --stage <intent|plan|design|build|review|check|rca|fix|task> [--model M] [--tokens T] [--ms D] [--task N] [--group G]" >&2
+    return 1
+  fi
+  local stage="" model="" tokens="" ms="" task="" group=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --stage) stage="${2:-}"; shift 2 || true ;;
+      --model) model="${2:-}"; shift 2 || true ;;
+      --tokens) tokens="${2:-}"; shift 2 || true ;;
+      --ms) ms="${2:-}"; shift 2 || true ;;
+      --task) task="${2:-}"; shift 2 || true ;;
+      --group) group="${2:-}"; shift 2 || true ;;
+      *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
+    esac
+  done
+  case " $AGENT_STAGES task " in
+    *" $stage "*) [[ -n "$stage" ]] || { echo "FAIL: --stage is required" >&2; return 1; } ;;
+    *) echo "FAIL: --stage must be one of: $AGENT_STAGES task (got '$stage')" >&2; return 1 ;;
+  esac
+  local v
+  for v in "$tokens" "$ms" "$task"; do
+    [[ -z "$v" || "$v" =~ ^[0-9]+$ ]] || { echo "FAIL: --tokens, --ms and --task take whole numbers (got '$v')" >&2; return 1; }
+  done
+  [[ -z "$group" || "$group" =~ ^G[0-9]+$ ]] || { echo "FAIL: --group takes G<n> (got '$group')" >&2; return 1; }
+  _usage_append "$stage" "$model" "$tokens" "$ms" "$task" "$group" || return 1
+  echo "OK: usage recorded ($stage)"
 }
 
 # ---------------------------------------------------------------------------
@@ -3969,6 +4077,7 @@ main() {
     group) cmd_group "$@" ;;
     task) cmd_task "$@" ;;
     integrate) cmd_integrate "$@" ;;
+    usage) cmd_usage "$@" ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -3990,6 +4099,7 @@ Usage:
   temper group <start|gate|reopen|report> G<n>  (grouped Build: worktree, group verdict, Change, measurement report [--json])
   temper task <start|show|test|gate> N  (grouped Build: one task's lifecycle)
   temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
+  temper usage add --stage S [--model M] [--tokens T] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
 EOF
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;
