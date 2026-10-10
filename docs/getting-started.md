@@ -265,6 +265,14 @@ MCP server. Temper installs neither. Full setup notes: [Recommended Setup](recom
 
 Shows live scenario verification status, MCP tool availability, and evidence ratio.
 
+## Grouped Build (experimental)
+
+Set `build.mode: grouped` in `.claude/temper.config` to split Build into groups of small
+tasks run by Haiku agents, with one human gate per group. It is opt-in and experimental in
+9.7.0. See [Grouped Build](grouped-build.md). It writes `.temper/groups.json`,
+`.temper/usage.json` and `.temper/.lock/`; like the other `.temper/` runtime files, do not
+commit them.
+
 ## Parallel Runs (worktrees)
 
 Temper's state is per-checkout — `.temper/` lives in the working directory, so two

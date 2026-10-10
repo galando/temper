@@ -1,6 +1,6 @@
 # ADR-0011: Grouped Build with CLI-scheduled task agents
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-10-10
 **Supersedes:** (none)
 
@@ -33,6 +33,53 @@ work happens, and who commits and merges it. Full design:
    (`.temper/.lock`). It is stale after 30 s and fails open after 10 s. Each write goes
    to a temp file and then `os.replace`. The lock is held only for writes, never while
    a test runs.
+5. **The group context lives in `tasks.md`**, as a `**Context:**` block under the group
+   heading, not in a fourth spec file. The spec folder holds exactly `intent.md`,
+   `tasks.md` and `plan.md`, and `temper gate plan` reads only those.
+6. **Task agents never commit.** The CLI commits a task's declared paths at task-gate PASS.
+   Parallel agents would race on `index.lock`, and a commit made inside a worktree sees no
+   run state.
+7. **Task model and write scope are CLI-resolved.** The task model comes from the agent
+   brief frontmatter (`claude-haiku-5-5`), overridable in `.claude/temper.config`, through
+   a separate resolver so `temper model --all` stays at eight lines when grouped mode is off.
+   Declared-file overlap is rejected for any two tasks (or groups) not ordered by
+   `Depends`, because a cross-group overlap is a guaranteed integration conflict.
+
+### Intent decisions this ADR rests on
+
+- **D-01** `autonomy.max-blast-radius` bounds each single group's declared files (Plan
+  splits a larger group); the commit gate parks when files change outside the union of
+  declared files. It is no longer compared with the feature total.
+- **D-02** Change at a group gate records feedback and re-runs only the tasks it concerns,
+  with the usual retry and escalation. Re-planning is a separate "Loop back to Plan".
+- **D-03** A task that fails on Haiku, its Haiku retry and the Sonnet escalation stops its
+  group and parks the run for a human, with every attempt recorded. Independent groups may
+  finish first.
+- **D-04** The AC-12 comparison run is a follow-up, not a 9.7.0 blocker. 9.7.0 ships grouped
+  mode opt-in and experimental, with the measurement recording and procedure built in.
+- **D-05** Nested subagents work by default but the user can turn them off, so the
+  orchestrator launches every task agent (decision 1).
+- **D-06** Size budgets: task brief 6144 bytes, group Context 4096, task block 1536, as
+  constants in `scripts/temper`, tuned after the AC-12 comparison.
+- **D-07** Usage is recorded for every agent launch in every stage and both Build modes
+  (`temper usage add`; `temper report` shows per stage and per model). Numbers are the
+  per-agent totals Claude Code returns, not split into input/output/cache; the orchestrator
+  session's own usage is not recorded.
+
+### Resolutions at the design gate (2026-10-10)
+
+1. **Narrowed autonomy invariant.** Autonomy may let the CLI make local commits of a task's
+   declared files on `temper/{slug}/{G}` group branches and the local `temper integrate`
+   merge into the feature branch. It still never pushes, never merges to a remote, never
+   re-plans, and never makes the final feature commit (it always parks). Recorded in
+   `reference/autonomy.md`.
+2. **Packs distilled into Context.** Plan must distil the pack rules that apply to each
+   group into that group's Context block, security rules always. Review still checks the
+   full packs.
+3. **Task-scoped tests.** Each task declares its own scoped test command. The CLI runs it,
+   records the output, and the task gate judges only that. Parallelism inside a group stays;
+   the residual attribution risk (a sibling's unfinished edit) is documented in
+   `docs/grouped-build.md`.
 
 ## Alternatives Considered
 
@@ -67,11 +114,12 @@ work happens, and who commits and merges it. Full design:
   parallel.
 
 ### Negative
-- For the first time, the CLI makes git commits and merges. This sits in tension with
-  the autonomy invariant "never commits, pushes, or merges", which a human must settle
-  (design.md, Areas of Concern 1) before this ADR is Accepted.
+- For the first time, the CLI makes git commits and merges. The autonomy invariant is
+  narrowed to allow exactly these local writes (Resolution 1).
 - Tasks of one group that run at the same time share a worktree. One task's test run
-  can see a sibling's unfinished edit (design.md, Areas of Concern 2 and 3).
+  can see a sibling's unfinished edit; task-scoped tests limit but do not remove this.
+- Haiku task agents see only distilled pack rules (Resolution 2).
+- Grouped mode is experimental in 9.7.0: its cost and time saving is unmeasured (D-04).
 
 ### Neutral
 - Merge commits run no pre-commit hook. The CLI's own ADR 0009 check before each merge
@@ -80,4 +128,4 @@ work happens, and who commits and merges it. Full design:
 ## References
 
 - ADR 0009 (build checkpoint commit carve-out)
-- `.temper/specs/grouped-haiku-build/intent.md` D-01..D-06
+- `.temper/specs/grouped-haiku-build/intent.md` D-01..D-07, `docs/grouped-build.md`

@@ -197,6 +197,20 @@ else
   echo "$CHOREO" | sed 's/^/  /'
 fi
 
+# 7. Grouped Build docs: the user guide exists, says opt-in + experimental, names every run state
+# file, is linked from getting-started.md, and ADR 0011 is Accepted.
+GB="$REPO_ROOT/docs/grouped-build.md"
+ADR="$REPO_ROOT/docs/decisions/0011-grouped-build.md"
+if [[ -f "$GB" ]] && grep -qi 'experimental' "$GB" && grep -q 'opt-in' "$GB" \
+   && grep -q '\.temper/groups\.json' "$GB" && grep -q '\.temper/usage\.json' "$GB" && grep -q '\.temper/\.lock/' "$GB" \
+   && grep -q 'temper group report --json' "$GB" && grep -q 'temper report --json' "$GB" \
+   && grep -q 'grouped-build.md' "$REPO_ROOT/docs/getting-started.md" \
+   && [[ -f "$ADR" ]] && grep -q '^\*\*Status:\*\* Accepted' "$ADR" && grep -q 'D-07' "$ADR"; then
+  ok
+else
+  fail "grouped Build docs incomplete (docs/grouped-build.md, link in getting-started.md, ADR 0011 Accepted with D-01..D-07)"
+fi
+
 echo ""
 echo "=== validate-docs.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"
