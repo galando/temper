@@ -21,6 +21,12 @@
 #                                                 over .temper/metrics.json history
 #   temper metrics append <series> <value>        append a numeric point to <series>_history
 #   temper config get <dot.path> [default]        read temper.config (for hook and CI scripts)
+# Grouped Build (build.mode: grouped; each of these exits 1 with grouped off):
+#   temper schedule [--json]                      the launchable tasks, one JSON line each
+#   temper group <start|gate|reopen|report> ..    worktree, group verdict, Change, measurement report [--json]
+#   temper task <start|show|test|gate> N          one task's lifecycle (test runs the declared command)
+#   temper integrate                              merge the passed groups, run the suite, check Interfaces
+#   temper model <task|task-escalation>           the task agent's model and its escalation model
 #
 # DEGRADATION CONTRACT (same spirit as Temper's guardrail scripts):
 #   - A stage with no evidence recorded FAILS closed (nothing to verify => not verified).
@@ -799,10 +805,18 @@ _archive_ledger() { # writes gate-ledger.json into the run's spec folder from th
     # One (stage, ledger file) pair per name on the fixed list: no other file is read.
     local ev_pairs=() s
     for s in $EVIDENCE_STAGES; do ev_pairs+=("$s" "$(_evidence_file "$s")"); done
-    python3 - "$GATES_FILE" "$OVERRIDES_FILE" "$out" "$(_now)" "${ev_pairs[@]}" <<'PY'
+    local grouped_json=""
+    if [[ -f "$GROUPS_FILE" ]]; then
+      grouped_json="$(_group_report_json)"
+      grouped_json="$(python3 -c "
 import json, sys
-gates_f, overrides_f, out_f, ts = sys.argv[1:5]
-pairs = sys.argv[5:]
+d = json.loads(sys.argv[1]); d['task_model'] = sys.argv[2]; d['escalation_model'] = sys.argv[3]
+print(json.dumps(d))" "$grouped_json" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)")"
+    fi
+    python3 - "$GATES_FILE" "$OVERRIDES_FILE" "$out" "$(_now)" "$grouped_json" "${ev_pairs[@]}" <<'PY'
+import json, sys
+gates_f, overrides_f, out_f, ts, grouped = sys.argv[1:6]
+pairs = sys.argv[6:]
 def load(p, default):
     try:
         return json.load(open(p))
@@ -817,9 +831,11 @@ for stage, ledger in sorted(zip(pairs[0::2], pairs[1::2])):
         evidence[stage] = {'rows': len(rows),
                            'labels': {l: sum(1 for e in rows if e.get('label') == l)
                                       for l in {e.get('label') for e in rows if e.get('label')}}}
+doc = {'gates': gates, 'overrides': overrides, 'evidence': evidence, 'archived': ts}
+if grouped:
+    doc['grouped'] = json.loads(grouped)
 with open(out_f, 'w') as fh:
-    json.dump({'gates': gates, 'overrides': overrides, 'evidence': evidence,
-               'archived': ts}, fh, indent=2)
+    json.dump(doc, fh, indent=2)
     fh.write('\n')
 PY
     [[ -f "$out" ]] && { echo "$out"; return 0; }
@@ -2189,6 +2205,72 @@ if g.get('status') in ('parked', 'passed'):
   echo "OK: reopened ${tasks[*]/#/Task } in group $g"
 }
 
+# Grouped Build (9.7.0): the measurement report (AC-12). Pure read of groups.json and the review
+# ledger; `state archive` embeds the same JSON in gate-ledger.json. Wall time per group is its
+# started_at (first `group start`) to the group gate PASS (finished_at); the total spans the earliest
+# start to the latest finish.
+_group_report_json() {
+  python3 - "$GROUPS_FILE" "$(_evidence_file review)" <<'PY'
+import calendar, json, sys, time
+def load(p, default):
+    try:
+        return json.load(open(p))
+    except Exception:
+        return default
+run = load(sys.argv[1], {})
+rev = load(sys.argv[2], [])
+def secs(s):
+    try:
+        return calendar.timegm(time.strptime(s, '%Y-%m-%dT%H:%M:%SZ'))
+    except Exception:
+        return None
+tokens, attempts, esc = {}, {}, 0
+for n, t in sorted((run.get('tasks') or {}).items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 0):
+    rows = list(t.get('attempts_prior') or []) + list(t.get('attempts') or [])
+    attempts[n] = rows
+    for r in rows:
+        if isinstance(r.get('tokens'), int):
+            tokens[r.get('model') or 'unknown'] = tokens.get(r.get('model') or 'unknown', 0) + r['tokens']
+        if isinstance(r.get('n'), int) and r['n'] >= 3:
+            esc += 1
+groups = run.get('groups') or {}
+wall, starts, ends = {}, [], []
+for g, v in sorted(groups.items()):
+    a, b = secs(v.get('started_at') or ''), secs(v.get('finished_at') or '')
+    if a is not None:
+        starts.append(a)
+    if a is not None and b is not None and (v.get('gate') or {}).get('verdict') == 'PASS':
+        wall[g] = (b - a) * 1000
+        ends.append(b)
+total = (max(ends) - min(starts)) * 1000 if starts and ends else 0
+openf = sum(1 for e in rev if isinstance(e, dict) and e.get('severity') and not e.get('resolved') and not e.get('accepted'))
+print(json.dumps({'tokens_by_model': tokens, 'attempts': attempts, 'escalations': esc,
+                  'parked': sorted(g for g, v in groups.items() if v.get('status') == 'parked'),
+                  'wall_ms_by_group': wall, 'build_wall_ms': total, 'review_findings_open': openf},
+                 sort_keys=True))
+PY
+}
+
+cmd_group_report() { # temper group report [--json]
+  local j; j="$(_group_report_json)"
+  if [[ "${1:-}" == "--json" ]]; then echo "$j"; return 0; fi
+  python3 - "$j" <<'PY'
+import json, sys
+r = json.loads(sys.argv[1])
+print('Grouped Build report')
+for m, n in sorted(r['tokens_by_model'].items()):
+    print('  tokens %-24s %d' % (m, n))
+print('  escalations: %d' % r['escalations'])
+print('  parked groups: %s' % (', '.join(r['parked']) or '-'))
+for g, ms in sorted(r['wall_ms_by_group'].items()):
+    print('  wall %s: %d ms' % (g, ms))
+print('  build wall: %d ms' % r['build_wall_ms'])
+print('  open review findings: %d' % r['review_findings_open'])
+for n, rows in sorted(r['attempts'].items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 0):
+    print('  Task %s: %s' % (n, ', '.join('%s %s' % (a.get('model'), a.get('outcome')) for a in rows) or 'no attempts'))
+PY
+}
+
 cmd_group() {
   local sub="${1:-}"; shift || true
   if ! _grouped_on; then
@@ -2199,7 +2281,8 @@ cmd_group() {
     start) cmd_group_start "$@" ;;
     gate) cmd_group_gate "$@" ;;
     reopen) cmd_group_reopen "$@" ;;
-    *) echo "FAIL: usage: temper group <start|gate|reopen> ..." >&2; return 1 ;;
+    report) cmd_group_report "$@" ;;
+    *) echo "FAIL: usage: temper group <start|gate|reopen|report> ..." >&2; return 1 ;;
   esac
 }
 
@@ -3902,8 +3985,9 @@ Usage:
   temper bands [--json]
   temper metrics append <series> <value>
   temper config get <dot.path> [default]
+  temper model task | task-escalation   (grouped Build: the task agent's model and its escalation model)
   temper schedule [--json]        (grouped Build: the launchable tasks, one JSON line each)
-  temper group start G<n>         (grouped Build: the group's worktree off the feature branch)
+  temper group <start|gate|reopen|report> G<n>  (grouped Build: worktree, group verdict, Change, measurement report [--json])
   temper task <start|show|test|gate> N  (grouped Build: one task's lifecycle)
   temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
 EOF

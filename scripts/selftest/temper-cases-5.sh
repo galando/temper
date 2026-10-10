@@ -895,3 +895,75 @@ assert_eq "per-task commit gate keeps the count rule (2 changed entries > 1 fail
 gc_setup grouped; "$TEMPER" state set run_mode interactive >/dev/null 2>&1
 assert_eq "grouped commit gate: a non-autonomous run has no blast radius row" "0" "$(gc_row | wc -l | tr -d ' ')"
 setup
+
+# --- Grouped Build (9.7.0): measurement report and ledger archive (AC-12) ---
+# Scenario: Run state records the numbers the cost comparison needs
+gr_json() { "$TEMPER" group report --json 2>/dev/null | python3 -c "
+import json,sys
+v=json.load(sys.stdin)
+for k in sys.argv[1].split('.'):
+    v=v.get(k,'') if isinstance(v,dict) else ''
+print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"; }
+gg_setup
+# Task 1 fails twice (haiku, haiku) then passes on the escalation model; Task 2 passes at once
+for a in 1 2; do
+  "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model claude-haiku-5-5 --tokens 100 --ms 1000 >/dev/null 2>&1
+done
+"$TEMPER" task start 1 >/dev/null 2>&1
+ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+"$TEMPER" task gate 1 --model sonnet --tokens 500 --ms 3000 >/dev/null 2>&1
+gg_pass 2 src/b.sh
+"$TEMPER" group gate G1 >/dev/null 2>&1
+assert_eq "group report: tokens are totalled per model across every attempt" '{"claude-haiku-5-5": 210, "sonnet": 500}' "$(gr_json tokens_by_model)"
+assert_eq "group report: attempts per task carry model and outcome" "3|1" \
+  "$(gr_json attempts | python3 -c "import json,sys; a=json.load(sys.stdin); print(len(a['1']))")|$(gr_json attempts | python3 -c "import json,sys; a=json.load(sys.stdin); print(len(a['2']))")"
+assert_eq "group report: attempt rows keep model, outcome, tokens and ms" "sonnet|PASS|500|3000" \
+  "$(gr_json attempts | python3 -c "import json,sys; r=json.load(sys.stdin)['1'][-1]; print('%s|%s|%s|%s' % (r['model'],r['outcome'],r['tokens'],r['ms']))")"
+assert_eq "group report: one escalation (Task 1 ran a third attempt)" "1" "$(gr_json escalations)"
+assert_eq "group report: no parked group, no open review findings" "[]|0" "$(gr_json parked)|$(gr_json review_findings_open)"
+assert_eq "group report: wall time is recorded for the passed group only" "yes|no" \
+  "$(gr_json wall_ms_by_group | python3 -c "import json,sys; d=json.load(sys.stdin); print('yes' if isinstance(d.get('G1'),int) and d['G1']>=0 else 'no')")|$(gr_json wall_ms_by_group | python3 -c "import json,sys; print('yes' if 'G2' in json.load(sys.stdin) else 'no')")"
+assert_eq "group report: total Build wall time is a number" "yes" \
+  "$(gr_json build_wall_ms | python3 -c "import sys; print('yes' if sys.stdin.read().strip().isdigit() else 'no')")"
+assert_eq "group report: a group's wall time spans first start to gate PASS" "ok" \
+  "$(python3 - <<'PY'
+import json, calendar, time
+d = json.load(open('.temper/groups.json'))['groups']['G1']
+f = lambda s: calendar.timegm(time.strptime(s, '%Y-%m-%dT%H:%M:%SZ'))
+print('ok' if d['finished_at'] and f(d['finished_at']) >= f(d['started_at']) else 'bad')
+PY
+)"
+"$TEMPER" evidence add --stage review --claim "null deref in a.sh" --severity high >/dev/null 2>&1
+"$TEMPER" evidence add --stage review --claim "style nit" --severity low >/dev/null 2>&1
+assert_eq "group report: open review findings are counted from the review ledger" "2" "$(gr_json review_findings_open)"
+"$TEMPER" evidence resolve --stage review --id 2 --fixed-by "abc" >/dev/null 2>&1
+assert_eq "group report: a resolved finding is no longer open" "1" "$(gr_json review_findings_open)"
+out="$("$TEMPER" group report 2>&1)"; rc=$?
+assert_eq "group report: the text form prints exit 0 and the headline numbers" "0|1|1" \
+  "$rc|$(printf '%s' "$out" | grep -c 'escalations: 1')|$(printf '%s' "$out" | grep -c 'claude-haiku-5-5.*210')"
+# parked group
+gg_setup
+for i in 1 2 3; do "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model m >/dev/null 2>&1; done
+assert_eq "group report: a parked group is listed" '["G1"]' "$(gr_json parked)"
+# archive
+gg_setup; gg_pass 1 src/a.sh; gg_pass 2 src/b.sh; "$TEMPER" group gate G1 >/dev/null 2>&1
+"$TEMPER" gate plan >/dev/null 2>&1
+"$TEMPER" state archive >/dev/null 2>&1
+assert_eq "state archive: gate-ledger.json gets a grouped block with the report and the models" "1|claude-haiku-5-5|sonnet|2" \
+  "$(python3 -c "
+import json
+g=json.load(open('.temper/specs/demo/gate-ledger.json')).get('grouped') or {}
+print('%s|%s|%s|%s' % (1 if g else 0, g.get('task_model'), g.get('escalation_model'), len(g.get('attempts') or {})))")"
+assert_eq "state archive: the grouped block carries tokens_by_model" "1" \
+  "$(python3 -c "import json; print(1 if json.load(open('.temper/specs/demo/gate-ledger.json'))['grouped']['tokens_by_model'] else 0)")"
+setup; sw_setup >/dev/null 2>&1; setup
+"$TEMPER" gate plan >/dev/null 2>&1; "$TEMPER" state archive >/dev/null 2>&1
+assert_eq "state archive: a per-task run has no grouped block" "0" \
+  "$(python3 -c "import json; print(1 if 'grouped' in json.load(open('.temper/specs/demo/gate-ledger.json')) else 0)" 2>/dev/null || echo 0)"
+assert_exit "group report: grouped off exits 1" 1 "$TEMPER" group report
+for sub in 'schedule' 'group <start|gate|reopen|report>' 'task <start|show|test|gate>' 'integrate' 'model task' 'task-escalation'; do
+  assert_eq "help documents: $sub" "1" "$("$TEMPER" --help | grep -cF -- "$sub")"
+done
+assert_eq "header comment documents the grouped subcommands" "1|1|1|1" \
+  "$(grep -c '^#   temper schedule' "$TEMPER")|$(grep -c '^#   temper group' "$TEMPER")|$(grep -c '^#   temper task' "$TEMPER")|$(grep -c '^#   temper integrate' "$TEMPER")"
+setup
