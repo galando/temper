@@ -74,6 +74,10 @@ METRICS_FILE="$TEMPER_DIR/metrics.json"
 BANDS_FILE="$TEMPER_DIR/bands.json"
 
 STAGES="intent plan design build review check commit"
+# Grouped Build (9.7.0) byte budgets: the slim task brief, a group's Context block, one task block.
+TASK_BRIEF_MAX_BYTES=6144
+GROUP_CONTEXT_MAX_BYTES=4096
+TASK_BLOCK_MAX_BYTES=1536
 
 # Stages that run as an Agent subprocess and therefore have a model to resolve.
 # `commit` is not one — it's the orchestrator running `temper gate commit`.
@@ -1721,6 +1725,179 @@ print('Cross-Repo Search section has no "- used:" / "- not available:" line with
 PY
 }
 
+# Grouped Build (9.7.0): the tasks.md parser. One embedded python parser shared by every grouped
+# subcommand, JSON out: {groups:[{id,title,depends,validate,interfaces,context,context_bytes,tasks}],
+# tasks:[{n,title,group,files,depends,test,block_bytes,block}], integration}.
+# File tokens are the same backticked paths the mod's planfiles.ts reads from **File:** lines.
+_grouped_parse() { # _grouped_parse <tasks.md>
+  python3 - "$1" <<'PY'
+import json, re, sys
+try:
+    lines = open(sys.argv[1], encoding='utf-8').read().split('\n')
+except Exception:
+    lines = []
+FIELD = re.compile(r'^\*\*(Depends|Validate|Interfaces|Integration|Context|File|Test):\*\*\s*(.*)$')
+groups, tasks = [], []
+integration = None
+cur_g = cur_t = None
+ctx_open = False
+def path_tokens(text):
+    out = []
+    for m in re.finditer(r'`([^`]+)`', text):
+        t = m.group(1).strip()
+        if re.fullmatch(r'[\w.@\-/*?]+', t) and ('/' in t or '.' in t) and t.lower() != 'none':
+            out.append(t[2:] if t.startswith('./') else t)
+    return list(dict.fromkeys(out))
+def cmd_of(text):
+    m = re.search(r'`([^`]+)`', text)
+    return m.group(1).strip() if m else text.strip()
+for line in lines:
+    gm = re.match(r'^##\s+Group\s+(G\d+)\s*:\s*(.*?)\s*$', line)
+    tm = re.match(r'^###\s+Task\s+(\d+)\s*:\s*(.*?)\s*$', line)
+    if gm:
+        cur_g = {'id': gm.group(1), 'title': gm.group(2), 'depends': [], 'validate': '',
+                 'interfaces': [], 'context': '', 'context_bytes': 0, 'tasks': []}
+        groups.append(cur_g); cur_t = None; ctx_open = False
+        continue
+    if tm:
+        cur_t = {'n': int(tm.group(1)), 'title': tm.group(2), 'group': cur_g['id'] if cur_g else None,
+                 'files': [], 'depends': [], 'test': '', 'block_bytes': 0, 'block': ''}
+        tasks.append(cur_t); ctx_open = False
+        if cur_g: cur_g['tasks'].append(cur_t['n'])
+        continue
+    if re.match(r'^#{1,2}\s', line):
+        cur_t = None; ctx_open = False
+        continue
+    fm = FIELD.match(line)
+    if fm:
+        key, val = fm.group(1), fm.group(2)
+        if key == 'Integration':
+            integration = cmd_of(val); ctx_open = False; continue
+        if cur_t is not None:
+            if key == 'File': cur_t['files'] = path_tokens(val)
+            elif key == 'Depends': cur_t['depends'] = [int(x) for x in re.findall(r'Task\s+(\d+)', val)]
+            elif key == 'Test': cur_t['test'] = cmd_of(val)
+            cur_t['block'] += line + '\n'; continue
+        if cur_g is not None:
+            ctx_open = False
+            if key == 'Depends': cur_g['depends'] = re.findall(r'G\d+', val)
+            elif key == 'Validate': cur_g['validate'] = cmd_of(val)
+            elif key == 'Interfaces':
+                cur_g['interfaces'] += [{'path': a, 'literal': b} for a, b in
+                                        re.findall(r'`([^`]+)`\s*[—\-]+\s*`([^`]+)`', val)]
+            elif key == 'Context':
+                ctx_open = True
+                if val.strip(): cur_g['context'] += val + '\n'
+            continue
+    if cur_t is not None:
+        cur_t['block'] += line + '\n'
+    elif cur_g is not None and ctx_open:
+        cur_g['context'] += line + '\n'
+for g in groups:
+    g['context'] = g['context'].strip()
+    g['context_bytes'] = len(g['context'].encode('utf-8'))
+for t in tasks:
+    t['block'] = ('### Task %d: %s\n%s' % (t['n'], t['title'], t['block'])).strip('\n')
+    t['block_bytes'] = len(t['block'].encode('utf-8'))
+print(json.dumps({'groups': groups, 'tasks': tasks, 'integration': integration}))
+PY
+}
+
+# Grouped plan-gate rows: one JSON requirement object per line (same shape _req emits).
+_grouped_plan_reqs() { # _grouped_plan_reqs <tasks.md> <max-blast-radius>
+  local model; model="$(_grouped_parse "$1")"
+  python3 - "$2" "$GROUP_CONTEXT_MAX_BYTES" "$TASK_BLOCK_MAX_BYTES" "$model" <<'PY'
+import json, sys
+max_blast, ctx_max, blk_max = int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
+m = json.loads(sys.argv[4])
+groups, tasks = m['groups'], m['tasks']
+def row(name, bad, ok_detail):
+    print(json.dumps({'name': name, 'pass': not bad, 'detail': '; '.join(bad) if bad else ok_detail}))
+by_n = {}
+bad = []
+if not groups: bad.append('no "## Group G<n>: title" heading')
+for t in tasks:
+    if t['n'] in by_n: bad.append('duplicate Task %d' % t['n'])
+    by_n.setdefault(t['n'], t)
+    if not t['group']: bad.append('Task %d is outside any group' % t['n'])
+row('grouped plan', bad, '%d groups: %s' % (len(groups), ', '.join('%s (%d tasks)' % (g['id'], len(g['tasks'])) for g in groups)))
+row('declared files', ['Task %d: no declared files' % t['n'] for t in tasks if not t['files']],
+    'every task declares its files')
+row('task test command', ['Task %d: no test command' % t['n'] for t in tasks if not t['test']],
+    'every task declares its own scoped test command')
+row('group context', ['%s: no group context' % g['id'] for g in groups if not g['context']],
+    'every group has a context block')
+row('context budget', ['%s: context %d bytes > %d' % (g['id'], g['context_bytes'], ctx_max)
+                       for g in groups if g['context_bytes'] > ctx_max], 'every context within %d bytes' % ctx_max)
+row('task block budget', ['Task %d: block %d bytes > %d' % (t['n'], t['block_bytes'], blk_max)
+                          for t in tasks if t['block_bytes'] > blk_max], 'every task block within %d bytes' % blk_max)
+gids = {g['id'] for g in groups}
+dep_bad = []
+for t in tasks:
+    for d in t['depends']:
+        if d not in by_n: dep_bad.append('Task %d depends on unknown Task %d' % (t['n'], d))
+for g in groups:
+    for d in g['depends']:
+        if d not in gids: dep_bad.append('%s depends on unknown %s' % (g['id'], d))
+def find_cycle(nodes, edges, label):
+    state = {}
+    def visit(n, path):
+        state[n] = 1
+        for d in edges.get(n, []):
+            if d not in nodes: continue
+            if state.get(d) == 1:
+                return ' -> '.join(label(x) for x in path[path.index(d):] + [d])
+            if d not in state:
+                r = visit(d, path + [d])
+                if r: return r
+        state[n] = 2
+        return None
+    for n in nodes:
+        if n not in state:
+            r = visit(n, [n])
+            if r: return r
+    return None
+c = find_cycle(list(by_n), {n: t['depends'] for n, t in by_n.items()}, lambda x: 'Task %d' % x)
+if c: dep_bad.append('Depends cycle: ' + c)
+gdeps = {g['id']: g['depends'] for g in groups}
+c = find_cycle(list(gids), gdeps, str)
+if c: dep_bad.append('Depends cycle: ' + c)
+row('dependencies', dep_bad, 'no cycles, no unknown dependencies')
+# A precedes B when A is a transitive task ancestor of B, or B's group transitively depends on A's group.
+def closure(start, edges, ok):
+    seen, stack = set(), list(edges.get(start, []))
+    while stack:
+        x = stack.pop()
+        if x in seen or not ok(x): continue
+        seen.add(x); stack.extend(edges.get(x, []))
+    return seen
+tdeps = {n: t['depends'] for n, t in by_n.items()}
+ordered = set()
+for n, t in by_n.items():
+    for a in closure(n, tdeps, lambda x: x in by_n): ordered.add((a, n))
+    if t['group']:
+        for ag in closure(t['group'], gdeps, lambda x: x in gids):
+            for o in tasks:
+                if o['group'] == ag: ordered.add((o['n'], n))
+ov = []
+ts = sorted(by_n)
+for i, a in enumerate(ts):
+    for b in ts[i + 1:]:
+        if (a, b) in ordered or (b, a) in ordered: continue
+        for f in by_n[a]['files']:
+            if f in by_n[b]['files']:
+                ov.append('file ownership overlap: %s in Task %d and Task %d' % (f, a, b))
+row('file ownership', ov, 'tasks that can run together declare disjoint files')
+big = []
+for g in groups:
+    files = {f for n in g['tasks'] for f in by_n[n]['files']}
+    if len(files) > max_blast:
+        big.append('%s declares %d files > autonomy.max-blast-radius=%d: split the group' % (g['id'], len(files), max_blast))
+row('group blast radius', big, 'every group within autonomy.max-blast-radius=%d' % max_blast)
+row('integration command', [] if m['integration'] else ['no **Integration:** line'], 'integration command declared')
+PY
+}
+
 gate_plan() {
   local spec_path="$1"
   local reqs=() all_pass=1
@@ -1795,6 +1972,16 @@ gate_plan() {
       reqs+=("$(_req "blast radius documented" 0 "plan.md missing a Blast Radius section — required for $complexity complexity")")
       all_pass=0
     fi
+  fi
+  # Grouped Build: extra requirement rows, only when build.mode is grouped (off => output unchanged).
+  if _grouped_on && [[ -f "$spec_path/tasks.md" ]]; then
+    local g_line g_ok
+    while IFS= read -r g_line; do
+      [[ -n "$g_line" ]] || continue
+      reqs+=("$g_line")
+      g_ok="$(python3 -c "import json,sys; print(1 if json.loads(sys.argv[1])['pass'] else 0)" "$g_line")"
+      [[ "$g_ok" == "1" ]] || all_pass=0
+    done <<<"$(_grouped_plan_reqs "$spec_path/tasks.md" "$(_cfg_get autonomy.max-blast-radius 15)")"
   fi
   local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
