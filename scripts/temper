@@ -2099,7 +2099,7 @@ def ctx(plan, run, n):
     status = rt.get('status', 'pending')
     attempts = rt.get('attempts') or []
     return {'n': n, 'title': t['title'], 'group': g['id'], 'files': t['files'], 'block': t['block'],
-            'context': g['context'], 'worktree': rg.get('worktree', ''), 'status': status,
+            'test': t['test'], 'context': g['context'], 'worktree': rg.get('worktree', ''), 'status': status,
             'attempt': rt.get('attempt', 1) if status == 'running' else len(attempts) + 1,
             'attempts': attempts, 'start_sha': rt.get('start_sha', ''), 'started_at': rt.get('started_at', ''),
             'snapshot': rt.get('snapshot') or {}, 'slug': run.get('slug', '')}
@@ -2321,8 +2321,8 @@ cmd_task_test() {
       *) break ;;
     esac
   done
-  if [[ ! "$phase" =~ ^(red|green)$ || $# -eq 0 ]]; then
-    echo "FAIL: usage: temper task test <N> --phase red|green -- <command...>" >&2
+  if [[ ! "$phase" =~ ^(red|green)$ ]]; then
+    echo "FAIL: usage: temper task test <N> --phase red|green" >&2
     return 1
   fi
   _task_load "$n" || return 1
@@ -2330,10 +2330,21 @@ cmd_task_test() {
     echo "FAIL: Task $n is not running (temper task start $n)" >&2
     return 1
   fi
+  # The command is the task's own declared **Test:** command (design Resolution 3). An agent-supplied
+  # command after -- is accepted only when it IS the declared one; any other is refused, no row.
+  local declared; declared="$(_jget "$_T_CTX" test)"
+  if [[ -z "$declared" ]]; then
+    echo "FAIL: Task $n declares no **Test:** command in tasks.md" >&2
+    return 1
+  fi
+  if [[ $# -gt 0 && "$*" != "$declared" ]]; then
+    echo "FAIL: Task $n runs only its declared test command: $declared (not: $*)" >&2
+    return 1
+  fi
   local rowfile rc
   rowfile="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
   _task_py testrun "$_T_ABS" "${TEMPER_TASK_TEST_TIMEOUT_S:-600}" "$rowfile" "$n" "$(_jget "$_T_CTX" group)" \
-    "$(_jget "$_T_CTX" attempt)" "$phase" -- "$@"
+    "$(_jget "$_T_CTX" attempt)" "$phase" -- "$declared"
   rc=$?
   _ensure_dirs
   [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"

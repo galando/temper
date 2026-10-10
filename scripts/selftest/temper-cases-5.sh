@@ -390,6 +390,10 @@ ST_WT=".claude/worktrees/temper-demo-G1"
 st_setup() { # sw_setup + the upstream gates ADR 0009 asks for + both groups started
   sw_setup
   printf '{"plan":{"verdict":"PASS"},"intent":{"verdict":"PASS"}}\n' > .temper/gates.json
+  # the declared Test: commands are controllable from outside the worktree: ST_EXIT is the exit, ST_SLEEP
+  # hangs, ST_LONG prints a long output
+  local t="bash -c 'echo boom; pwd; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
+  gp_mut '`bash tests/a_test.sh`' "\`$t\`"; gp_mut '`bash tests/b_test.sh`' "\`$t\`"; gp_mut '`bash tests/c_test.sh`' "\`$t\`"
   "$TEMPER" group start G1 >/dev/null 2>&1; "$TEMPER" group start G2 >/dev/null 2>&1
 }
 st_field() { # st_field <task> <field>
@@ -432,36 +436,56 @@ assert_eq "task show: the worktree and project lines are absolute" "1|1" \
   "$(printf '%s\n' "$SHOW" | grep -c "^WORKTREE: $PWD/$ST_WT\$")|$(printf '%s\n' "$SHOW" | grep -c "^PROJECT:  $PWD\$")"
 assert_eq "task show: the declared files line" "1" "$(printf '%s\n' "$SHOW" | grep -c '^DECLARED FILES: src/a.sh, tests/a_test.sh$')"
 assert_eq "task show: the task block and the group context are inside" "1|1|1" \
-  "$(printf '%s\n' "$SHOW" | grep -c '^--- TASK ---$')|$(printf '%s\n' "$SHOW" | grep -c 'Test:\*\* `bash tests/a_test.sh`')|$(printf '%s\n' "$SHOW" | grep -c 'Shared notes for G1')"
+  "$(printf '%s\n' "$SHOW" | grep -c '^--- TASK ---$')|$(printf '%s\n' "$SHOW" | grep -c 'Test:\*\* `bash -c .echo boom')|$(printf '%s\n' "$SHOW" | grep -c 'Shared notes for G1')"
 assert_eq "task show: another group's context is not inside" "0" "$(printf '%s\n' "$SHOW" | grep -c 'Notes for G2')"
 assert_eq "task show: a first attempt has no previous-attempt section" "0" "$(printf '%s\n' "$SHOW" | grep -c 'PREVIOUS ATTEMPT')"
 assert_exit "task show: an unknown task exits 1" 1 "$TEMPER" task show 99
 
 # task test
 st_setup; "$TEMPER" task start 1 >/dev/null 2>&1
-out="$("$TEMPER" task test 1 --phase red -- bash -c 'echo boom; exit 3')"; rc=$?
+out="$(ST_EXIT=3 "$TEMPER" task test 1 --phase red)"; rc=$?
 assert_eq "task test: the command's exit is the exit and its output is shown" "3|1" "$rc|$(printf '%s' "$out" | grep -c boom)"
-"$TEMPER" task test 1 --phase green -- bash -c 'pwd' >/dev/null 2>&1
+"$TEMPER" task test 1 --phase green >/dev/null 2>&1
 assert_eq "task test: rows carry phase and exit" "red:3,green:0" "$(st_rows 1)"
 assert_eq "task test: the row is tagged task, group, attempt and executed_by" "1|G1|1|cli" \
   "$(python3 -c "import json; r=json.load(open('.temper/evidence/build.json'))[0]; print('%s|%s|%s|%s' % (r['task'],r['group'],r['attempt'],r['executed_by']))")"
 assert_eq "task test: the claim is a test claim of the build stage" "1" \
   "$(python3 -c "import json; print(1 if 'test' in json.load(open('.temper/evidence/build.json'))[0]['claim'].lower() else 0)")"
-assert_eq "task test: the command ran with the worktree as its cwd" "$PWD/$ST_WT" "$("$TEMPER" task test 1 --phase green -- bash -c pwd | head -1)"
-assert_exit "task test: a phase other than red or green exits 1" 1 "$TEMPER" task test 1 --phase blue -- true
-assert_exit "task test: no command exits 1" 1 "$TEMPER" task test 1 --phase red
-assert_exit "task test: a task that is not running exits 1" 1 "$TEMPER" task test 3 --phase red -- true
+assert_eq "task test: the command ran with the worktree as its cwd" "$PWD/$ST_WT" "$("$TEMPER" task test 1 --phase green | sed -n 2p)"
+assert_exit "task test: a phase other than red or green exits 1" 1 "$TEMPER" task test 1 --phase blue
+assert_exit "task test: a missing phase exits 1" 1 "$TEMPER" task test 1
+assert_exit "task test: a task that is not running exits 1" 1 "$TEMPER" task test 3 --phase red
 assert_eq "task test: a refused call records no row" "0" "$(st_rows 3 | tr -cd ',' | wc -c | tr -d ' ')"
-TEMPER_TASK_TEST_TIMEOUT_S=1 "$TEMPER" task test 1 --phase red -- sleep 5 >/dev/null 2>&1; rc=$?
+ST_SLEEP=5 TEMPER_TASK_TEST_TIMEOUT_S=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; rc=$?
 assert_eq "task test: a hung command is killed and exits 124" "124" "$rc"
 assert_eq "task test: the timed-out run is recorded with exit 124" "124" \
   "$(python3 -c "import json; print(json.load(open('.temper/evidence/build.json'))[-1]['exit_code'])")"
 
+# task test runs the task's own declared Test: command (design Resolution 3); a substituted one is refused
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1
+out="$("$TEMPER" task test 1 --phase red -- false 2>&1)"; rc=$?
+assert_eq "task test: a substituted command is refused (exit 1) naming the declared one" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'declared')"
+assert_exit "task test: a substituted green command is refused too" 1 "$TEMPER" task test 1 --phase green -- true
+assert_eq "task test: a refused substitution records no row" "" "$(st_rows 1)"
+st_edit src/a.sh
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "task gate: false-for-RED and true-for-GREEN substitution cannot pass the gate" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL: no green run')"
+assert_eq "task gate: the substituted attempt is not committed or ticked" "3|failed" "$(st_unticked)|$(st_field 1 status)"
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1
+DECL="bash -c 'echo boom; pwd; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
+ST_EXIT=2 "$TEMPER" task test 1 --phase red -- "$DECL" >/dev/null 2>&1; rc=$?
+assert_eq "task test: the declared command itself after -- is accepted, exit passed through" "2|red:2" "$rc|$(st_rows 1)"
+assert_eq "task test: the row records the declared command" "1" \
+  "$(python3 -c "import json; r=json.load(open('.temper/evidence/build.json'))[-1]; print(1 if 'echo boom' in r['cmd'] else 0)")"
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh
+"$TEMPER" task test 1 --phase green >/dev/null 2>&1
+assert_exit "task gate: RED and GREEN of the declared command pass the gate" 0 "$TEMPER" task gate 1
+
 # task gate: the pass path
 st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; BASE="$(st_field 1 start_sha)"
-"$TEMPER" task test 1 --phase red -- bash -c 'exit 1' >/dev/null 2>&1
+ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
 st_edit src/a.sh; st_edit tests/a_test.sh
-"$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
 assert_eq "task gate: RED then GREEN with declared files only passes" "0|1|1" \
   "$rc|$(printf '%s' "$out" | grep -c '^PASS: Task 1')|$(printf '%s' "$out" | grep -c '^NEXT: schedule')"
@@ -479,16 +503,16 @@ assert_exit "task gate: a task that already passed exits 1" 1 "$TEMPER" task gat
 
 # task gate: the dirty file that was there before the start is not this task's change
 st_setup; echo pre > "$ST_WT/pre.txt"; "$TEMPER" task start 1 >/dev/null 2>&1
-"$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1; st_edit src/a.sh; "$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1
+ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 assert_exit "task gate: a file that was dirty before the start and is unchanged passes" 0 "$TEMPER" task gate 1
 assert_eq "task gate: the pre-existing file is not committed" "src/a.sh" "$(git -C "$ST_WT" show --name-only --format= HEAD)"
 
 # task gate: sibling tasks in one worktree
 st_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'
 "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 2 >/dev/null 2>&1
-"$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1; "$TEMPER" task test 2 --phase red -- false >/dev/null 2>&1
+ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
 st_edit src/a.sh; st_edit src/b.sh
-"$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1; "$TEMPER" task test 2 --phase green -- true >/dev/null 2>&1
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
 assert_exit "task gate: a sibling's file in the shared worktree is not an undeclared change" 0 "$TEMPER" task gate 1
 assert_eq "task gate: the first task's commit leaves the sibling's file alone" "src/a.sh" "$(git -C "$ST_WT" show --name-only --format= HEAD)"
 assert_exit "task gate: the sibling then passes with its own file" 0 "$TEMPER" task gate 2
@@ -497,9 +521,9 @@ assert_eq "task gate: the sibling's commit holds its own file" "src/b.sh" "$(git
 # task gate: FAIL reasons
 st_fail() { # st_fail <red-exit|none> <green-exit|none> [more ledger shape]: start 1, record, gate; prints the output
   "$TEMPER" task start 1 >/dev/null 2>&1
-  [[ "$1" != "none" ]] && "$TEMPER" task test 1 --phase red -- bash -c "exit $1" >/dev/null 2>&1
+  [[ "$1" != "none" ]] && ST_EXIT=$1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
   st_edit src/a.sh
-  [[ "$2" != "none" ]] && "$TEMPER" task test 1 --phase green -- bash -c "exit $2" >/dev/null 2>&1
+  [[ "$2" != "none" ]] && ST_EXIT=$2 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
   "$TEMPER" task gate 1 2>&1
 }
 NEEDRED='need a failing run before a passing run for this task and attempt'
@@ -512,35 +536,35 @@ st_setup; out="$(st_fail 1 none)"; rc=$?
 assert_eq "task gate: RED only fails with the no-green reason" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL: no green run for this task and attempt')"
 st_setup; out="$(st_fail none none)"
 assert_eq "task gate: no runs at all fails with the no-green reason" "1" "$(printf '%s' "$out" | grep -c '^FAIL: no green run')"
-st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1; "$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 2>&1)"
 assert_eq "task gate: GREEN before RED fails" "1" "$(printf '%s' "$out" | grep -c "^FAIL: $NEEDRED")"
 st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 3 >/dev/null 2>&1
-"$TEMPER" task test 3 --phase red -- false >/dev/null 2>&1; "$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1
+ST_EXIT=1 "$TEMPER" task test 3 --phase red >/dev/null 2>&1; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 2>&1)"
 assert_eq "task gate: another task's RED does not count" "1" "$(printf '%s' "$out" | grep -c "^FAIL: $NEEDRED")"
 # a RED from an earlier attempt does not count for the next one
-st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1; "$TEMPER" task gate 1 >/dev/null 2>&1
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; "$TEMPER" task gate 1 >/dev/null 2>&1
 assert_exit "task start: a failed task can be started again" 0 "$TEMPER" task start 1
 assert_eq "task start: the second start is attempt 2" "2" "$(st_field 1 attempt)"
-"$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 2>&1)"
 assert_eq "task gate: attempt 2 does not reuse attempt 1's RED" "1" "$(printf '%s' "$out" | grep -c "^FAIL: $NEEDRED")"
 # undeclared change
 st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; HEADBEFORE="$(git -C "$ST_WT" rev-parse HEAD)"
-"$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1; st_edit src/a.sh; st_edit stray.txt
-"$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1
+ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; st_edit stray.txt
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
 assert_eq "task gate: an undeclared file fails the gate and names it" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL: undeclared change: stray.txt')"
 assert_eq "task gate: the undeclared change is not committed or ticked" "$HEADBEFORE|3" "$(git -C "$ST_WT" rev-parse HEAD)|$(st_unticked)"
 # an edit to a file that was already dirty at the start is a change too
-st_setup; echo pre > "$ST_WT/pre.txt"; "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1
-echo changed > "$ST_WT/pre.txt"; st_edit src/a.sh; "$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1
+st_setup; echo pre > "$ST_WT/pre.txt"; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+echo changed > "$ST_WT/pre.txt"; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 assert_eq "task gate: a pre-dirty file edited during the task is undeclared" "1" "$("$TEMPER" task gate 1 2>&1 | grep -c 'undeclared change: pre.txt')"
 assert_exit "task gate: a task that was never started exits 1" 1 "$TEMPER" task gate 3
 
 # ADR 0009: the CLI's own commit checks the upstream gates the native hook cannot see in a worktree
-st_pass_ready() { "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1; st_edit src/a.sh; "$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1; }
+st_pass_ready() { "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1; }
 st_setup; st_pass_ready; HEADBEFORE="$(git -C "$ST_WT" rev-parse HEAD)"; printf '{"intent":{"verdict":"PASS"}}\n' > .temper/gates.json
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
 assert_eq "task gate: no plan verdict refuses the commit (exit 3) and names the stage" "3|1" "$rc|$(printf '%s' "$out" | grep -c 'plan')"
@@ -559,7 +583,7 @@ p = '.temper/specs/demo/tasks.md'
 s = open(p).read().replace('Shared notes for G1. Use bash.', '\n'.join('c' * 60 + str(i) for i in range(64)))
 open(p, 'w').write(s)
 PY
-"$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task test 1 --phase red -- bash -c 'for i in $(seq 1 400); do echo "line $i of a long failing output"; done; exit 1' >/dev/null 2>&1
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_LONG=1 ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
 "$TEMPER" task gate 1 >/dev/null 2>&1; "$TEMPER" task start 1 >/dev/null 2>&1
 SHOW="$("$TEMPER" task show 1)"
 assert_eq "task show: a retry carries the previous attempt with its reason" "1|1" \
@@ -573,7 +597,7 @@ assert_eq "task show: the group context is kept whole inside the budget" "64" "$
 setup; gp_base
 assert_exit "grouped off: task start exits 1" 1 "$TEMPER" task start 1
 assert_exit "grouped off: task show exits 1" 1 "$TEMPER" task show 1
-assert_exit "grouped off: task test exits 1" 1 "$TEMPER" task test 1 --phase red -- true
+assert_exit "grouped off: task test exits 1" 1 "$TEMPER" task test 1 --phase red
 assert_exit "grouped off: task gate exits 1" 1 "$TEMPER" task gate 1
 assert_eq "grouped off: no groups.json is written" "no" "$([[ -e .temper/groups.json ]] && echo yes || echo no)"
 assert_exit "an unknown task subcommand exits 1" 1 "$TEMPER" task frobnicate
