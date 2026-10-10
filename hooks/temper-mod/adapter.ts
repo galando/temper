@@ -81,6 +81,8 @@ export type Snapshot = {
   slug: string | null
   // autonomy.enabled in .claude/temper.config.
   autonomyEnabled: boolean
+  // .temper/groups.json exists: a grouped Build run is active (the CLI owns the run's tasks.md).
+  groupedActive: boolean
   // phases.design: true in .claude/temper.config (design is switched on for medium and complex runs).
   designRequired: boolean
   // The run's complexity from build-state.json (decides whether Plan is followed by design).
@@ -141,6 +143,7 @@ export function idleSnapshot(options: PluginOptions, inert: boolean): Snapshot {
     ...settingsFrom(options),
     slug: null,
     autonomyEnabled: false,
+    groupedActive: false,
     designRequired: false,
     complexity: null,
     cliNext: null,
@@ -363,6 +366,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     ...cfg,
     slug: bs.spec,
     autonomyEnabled,
+    groupedActive: (await readText(io, `${STATE_ROOT}/groups.json`)) !== null,
     designRequired,
     complexity: bs.complexity,
     cliNext: bs.nextStage,

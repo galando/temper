@@ -51,6 +51,8 @@ export type RuleContext = {
   // With the mod's own record holding only the start, a `state clear` then loses nothing (the TRIVIAL exit of the
   // orchestrator). Left out: not known, and the clear is refused.
   nothingToLose?: boolean
+  // .temper/groups.json exists: a grouped Build run is active, and the CLI (not an agent) ticks the run's tasks.md.
+  groupedActive?: boolean
 }
 
 // The carve-outs of the CLI commit gate (scripts/temper gate_commit, docs/decisions/0009):
@@ -141,7 +143,28 @@ const COMMIT_NEXT: Record<Phase, string> = {
 
 const isActive = (s: RunState): s is RunState & { phase: Phase } => s.phase !== null && s.phase !== 'done'
 
-function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, path: string): RuleResult {
+// The path inside a group worktree of THIS run (`.claude/worktrees/temper-{slug}-G{n}/...`), relative to that worktree;
+// null for any other path (another run's slug, another prefix, a malformed group number). The path is normalized
+// already, so a `..` after the prefix has been collapsed and cannot leave the worktree this way.
+function worktreeRelative(path: string, specDir: string): string | null {
+  const slug = normalizePath(specDir).split('/').pop() ?? ''
+  if (slug === '') return null
+  const prefix = `.claude/worktrees/temper-${slug}-G`
+  if (!path.startsWith(prefix)) return null
+  const m = /^(\d+)\/(.+)$/.exec(path.slice(prefix.length))
+  return m?.[2] ?? null
+}
+
+const TASKS_OWNED =
+  'Next: the temper CLI ticks task boxes and records task verdicts. Run the task through the CLI (task test, task gate), or ask the user to end the grouped Build run first.'
+
+function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, rawPath: string): RuleResult {
+  // A write in a group worktree of this run is judged by its worktree-relative path, with the same rule.
+  const rel = worktreeRelative(rawPath, ctx.specDir)
+  const path = rel ?? rawPath
+  if (ctx.groupedActive && (s.phase === 'build' || s.phase === 'fix') && path === `${normalizePath(ctx.specDir)}/tasks.md`) {
+    return { deny: `Temper: grouped Build is active. Writing ${rawPath} is not allowed: the run's tasks.md belongs to the temper CLI. ${TASKS_OWNED}` }
+  }
   const spec = normalizePath(ctx.specDir)
   const inSpec = inDir(path, spec)
   const specFile = (name: string) => path === `${spec}/${name}`

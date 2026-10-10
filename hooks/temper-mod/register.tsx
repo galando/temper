@@ -833,7 +833,7 @@ async function resolveDrift($: Api, snap: Snapshot, path: string, fallback: stri
 }
 
 function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
-  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, designRequired: snap.designRequired, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset, cli: pluginCli() }
+  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, groupedActive: snap.groupedActive, designRequired: snap.designRequired, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset, cli: pluginCli() }
 }
 
 // What the guard decided for one call: a deny text, or null to pass it on. `ids` are the human decisions

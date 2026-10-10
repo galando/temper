@@ -78,6 +78,9 @@ const PROTECTED: ReadonlyArray<readonly [ProtectedKind, RegExp]> = [
   ['status', /(^|\/)\.temper\/status\.json$/i],
   ['overrides', /(^|\/)\.temper\/overrides\.json$/i],
   ['state', /(^|\/)\.temper\/build-state\.json$/i],
+  // The grouped Build record (every task verdict) and the token usage record: written by the CLI only.
+  ['state', /(^|\/)\.temper\/groups\.json$/i],
+  ['state', /(^|\/)\.temper\/usage\.json$/i],
   // The evidence ledger and the loop counter are written by the CLI only.
   // (The ledger files only: a report a command keeps next to them, `coverage-report.txt`, is no ledger.)
   ['evidence', /(^|\/)\.temper\/evidence\/[^/]+\.json$/i],
@@ -102,10 +105,10 @@ export function protectedKind(path: string): ProtectedKind | null {
   return null
 }
 
-const MENTION = /\.temper\/(?:specs\/[^\s'"`]+\/events[^\s'"`]*|gates\.json|status\.json|overrides\.json|build-state\.json|feedback-loops\.json|evidence\/[^\s'"`]*\.json)|\.claude\/temper\.config(?![\w.])|\.git\/(?:hooks|hooks-temper|temper-git-hooks|config|temper-gate|temper-pre-commit)(?![\w.-])/gi
+const MENTION = /\.temper\/(?:specs\/[^\s'"`]+\/events[^\s'"`]*|gates\.json|status\.json|overrides\.json|build-state\.json|groups\.json|usage\.json|feedback-loops\.json|evidence\/[^\s'"`]*\.json)|\.claude\/temper\.config(?![\w.])|\.git\/(?:hooks|hooks-temper|temper-git-hooks|config|temper-gate|temper-pre-commit)(?![\w.-])/gi
 // An interpreter program that holds a guarded file name on its own (`os.path.join('.temper', 'gates.json')`), or the
 // folder itself next to a call that removes or moves things (`shutil.rmtree('.temper')`).
-const BARE_NAMES = /(?<![\w.-])(?:gates|status|overrides)\.json(?![\w])|(?<![\w.-])build-state\.json|(?<![\w.-])feedback-loops\.json/gi
+const BARE_NAMES = /(?<![\w.-])(?:gates|status|overrides)\.json(?![\w])|(?<![\w.-])build-state\.json|(?<![\w.-])groups\.json|(?<![\w.-])usage\.json|(?<![\w.-])feedback-loops\.json/gi
 const FOLDER_QUOTED = /(?<=['"`])\.temper\/?(?=['"`])/
 const REMOVER = /\b(?:rmtree|rmdir|removedirs|unlink|rimraf|rmSync|unlinkSync|renameSync|os\.rename|os\.replace|os\.remove|shutil\.move|truncate|chmod|chown)\w*/i
 
@@ -115,7 +118,7 @@ const NAMED = /\.temper|gates\.json|status\.json|overrides\.json|build-state\.js
 // A path whose text names a guarded thing even when the rest cannot be resolved.
 const NAMES_GUARDED = /gates\.json|status\.json|overrides\.json|build-state\.json|temper\.config|feedback-loops\.json|\.git\/(?:hooks|temper-git-hooks|config|temper-gate|temper-pre-commit)|(^|\/)events(\/|$)|(^|\/)\.temper(\/|$)/i
 
-const PROTECTED_NAMES = ['.temper', 'events', 'gates.json', 'status.json', 'overrides.json', 'build-state.json', 'feedback-loops.json', 'temper.config']
+const PROTECTED_NAMES = ['.temper', 'events', 'gates.json', 'status.json', 'overrides.json', 'build-state.json', 'groups.json', 'usage.json', 'feedback-loops.json', 'temper.config']
 
 // A command that names one of these files is a plain read, or it is refused while a run is active.
 const GUARDED_FILE = /gates\.json|status\.json|overrides\.json|build-state\.json|feedback-loops\.json|(?:^|\/)temper\.config$|\.temper\/specs\/[^/\s'"`]+\/events|\.temper\/evidence\/[^\s'"`]*\.json|\.git\/(?:hooks|temper-git-hooks|config$|temper-gate|temper-pre-commit)/i
