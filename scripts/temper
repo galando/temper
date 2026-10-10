@@ -1827,6 +1827,38 @@ print(json.dumps({'groups': groups, 'tasks': tasks, 'integration': integration})
 PY
 }
 
+# H3: the approved grouped plan, as a digest. Task blocks (File, Depends, Test), group Validate/Interfaces/Context
+# and Integration count; titles, prose and checkbox ticks do not, so the CLI's own tick is no change.
+_plan_digest() { # _plan_digest <parsed-plan-json>
+  python3 -c "
+import hashlib, json, sys
+m = json.loads(sys.argv[1])
+def n(p):
+    p = p.strip()
+    return p[2:] if p.startswith('./') else p
+core = {'tasks': [{'n': t['n'], 'group': t['group'], 'files': [n(f) for f in t['files']], 'depends': t['depends'], 'test': t['test']} for t in m['tasks']],
+        'groups': [{'id': g['id'], 'depends': g['depends'], 'validate': g['validate'], 'interfaces': g['interfaces'], 'context': g['context'], 'tasks': g['tasks']} for g in m['groups']],
+        'integration': m['integration']}
+print(hashlib.sha256(json.dumps(core, sort_keys=True).encode('utf-8')).hexdigest())" "$1"
+}
+
+# Refuses (returns 1) when the plan changed since the first group start recorded its digest. No digest
+# recorded yet (no group started): nothing to compare.
+_plan_fresh() { # _plan_fresh <parsed-plan-json>
+  local want have
+  want="$(python3 -c "
+import json, sys
+try:
+    print(json.load(open(sys.argv[1])).get('plan_hash') or '')
+except Exception:
+    print('')" "$GROUPS_FILE")"
+  [[ -z "$want" ]] && return 0
+  have="$(_plan_digest "$1")"
+  [[ "$have" == "$want" ]] && return 0
+  echo "FAIL: the approved plan changed since the grouped run started (tasks.md **File:**, **Depends:**, **Test:**, group Validate/Interfaces/Context or Integration differ). Restore tasks.md, or end the run and re-plan." >&2
+  return 1
+}
+
 # Grouped Build (9.7.0): the ready set. Read-only: it writes nothing, so it needs no lock; only
 # `task start` (a later task) changes run state. Prints one JSON line per launchable task, ordered by
 # group then task number; with nothing launchable a trailing {"waiting"...} line, or {"done"...}.
@@ -1962,8 +1994,11 @@ cmd_group_start() {
     echo "FAIL: no tasks.md for the active run (temper state init, then plan)" >&2
     return 1
   fi
-  local deps
-  deps="$(python3 - "$g" "$(_grouped_parse "$spec_path/tasks.md")" <<'PY'
+  local deps pplan phash
+  pplan="$(_grouped_parse "$spec_path/tasks.md")"
+  _plan_fresh "$pplan" || return 1
+  phash="$(_plan_digest "$pplan")"
+  deps="$(python3 - "$g" "$pplan" <<'PY'
 import json, sys
 plan = json.loads(sys.argv[2])
 for grp in plan['groups']:
@@ -2042,6 +2077,7 @@ except Exception:
   local base_sha; base_sha="$(git -C "$wt" rev-parse HEAD)"
   _groups_mutate "
 d['version'] = 1
+d.setdefault('plan_hash', a[7])
 d['slug'] = a[0]
 d['feature_branch'] = a[1]
 d.setdefault('groups', {})
@@ -2053,7 +2089,7 @@ e['branch'] = a[4]
 e.setdefault('base_sha', a[5])
 e.setdefault('started_at', a[6])
 e.setdefault('finished_at', None)
-" "$slug" "$feature" "$g" "$wt" "$branch" "$base_sha" "$(_now)" || return 1
+" "$slug" "$feature" "$g" "$wt" "$branch" "$base_sha" "$(_now)" "$phash" || return 1
   echo "OK: group $g started ($wt on $branch)"
 }
 
@@ -2072,6 +2108,7 @@ cmd_group_gate() {
     return 1
   fi
   plan="$(_grouped_parse "$spec_path/tasks.md")"
+  _plan_fresh "$plan" || return 1
   chk="$(_task_py gatecheck "$plan" "$GROUPS_FILE" "$g")" || return 1
   validate="$(printf '%s\n' "$chk" | sed -n 1p)"; notpassed="$(printf '%s\n' "$chk" | sed -n 2p)"
   wt="$(python3 -c "
@@ -2304,7 +2341,7 @@ cmd_group() {
 TASK_SHOW_MAX_BYTES=6000
 _task_py() { # _task_py <mode> [args...]
   python3 - "$@" <<'PY'
-import fnmatch, hashlib, json, os, re, shlex, signal, subprocess, sys, time
+import hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
 def norm(p):
     p = p.strip()
@@ -2381,7 +2418,7 @@ def ctx(plan, run, n):
             'snapshot': rt.get('snapshot') or {}, 'slug': run.get('slug', '')}
 
 def matches(path, pats):
-    return any(path == norm(p) or fnmatch.fnmatchcase(path, norm(p)) for p in pats)
+    return any(path == norm(p) for p in pats)   # H4: exact paths only; the plan gate refuses glob characters
 
 mode = sys.argv[1]
 
@@ -2641,6 +2678,7 @@ _task_load() { # _task_load <N>: sets _T_SPEC _T_PLAN _T_CTX _T_ABS for task N, 
     return 1
   fi
   _T_PLAN="$(_grouped_parse "$_T_SPEC/tasks.md")"
+  _plan_fresh "$_T_PLAN" || return 1
   _T_CTX="$(_task_py ctx "$_T_PLAN" "$GROUPS_FILE" "$n")" || return 1
   local wt; wt="$(_jget "$_T_CTX" worktree)"
   _T_ABS=""
@@ -2901,6 +2939,7 @@ except Exception:
   fi
   local plan facts notpassed suite
   plan="$(_grouped_parse "$spec_path/tasks.md")"
+  _plan_fresh "$plan" || return 1
   facts="$(_task_py integplan "$plan" "$GROUPS_FILE")" || return 1
   notpassed="$(python3 -c "import json, sys; print(', '.join(json.loads(sys.argv[1])['notpassed']))" "$facts")"
   suite="$(_jget "$facts" integration)"
@@ -2995,6 +3034,9 @@ for t in tasks:
 row('grouped plan', bad, '%d groups: %s' % (len(groups), ', '.join('%s (%d tasks)' % (g['id'], len(g['tasks'])) for g in groups)))
 row('declared files', ['Task %d: no declared files' % t['n'] for t in tasks if not t['files']],
     'every task declares its files')
+row('exact file paths', ['Task %d: **File:** %s is a glob (declare exact paths)' % (t['n'], f)
+                         for t in tasks for f in t['files'] if any(c in f for c in '*?[')],
+    'every **File:** is an exact path')
 def test_path(cmd):  # the first path-like argument of a test command, else ''
     try: parts = shlex.split(cmd)
     except ValueError: return ''
@@ -3582,13 +3624,13 @@ print('yes' if any(o.get('stage') == sys.argv[2] for o in d) else 'no')
                        git -C "$REPO_ROOT" diff --name-only "$base_sha" 2>/dev/null; fi
                      git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //; s/^"//; s/"$//'
                    } | sort -u | python3 -c "
-import fnmatch, json, sys
+import json, sys
 plan = json.loads(sys.argv[1]); spec = sys.argv[2].rstrip('/')
 declared = sorted({f for t in plan['tasks'] for f in t['files']})
 def ok(p):
     if spec and (p == spec or p.startswith(spec + '/')): return True
     if p.startswith('.temper/') or p.startswith('.claude/worktrees/'): return True   # run state the CLI owns
-    return any(p == d or fnmatch.fnmatch(p, d) for d in declared)
+    return any(p == d for d in declared)   # H4: exact paths
 changed = [l.strip() for l in sys.stdin if l.strip()]
 bad = [c for c in changed if not ok(c)]
 if bad: print('FAIL changed outside declared files: ' + ', '.join(bad[:5]))

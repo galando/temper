@@ -97,7 +97,15 @@ Notes for G2.
 - [ ] done
 GP
 }
-gp_mut() { # gp_mut <old> <new>: replace the first occurrence in the demo tasks.md
+gp_mut() { # gp_mut <old> <new>: a fixture edit; a started run's recorded plan digest is dropped (H3), as if re-approved
+  gp_tamper "$1" "$2" || return 1
+  [[ -f .temper/groups.json ]] && python3 -c "
+import json
+d = json.load(open('.temper/groups.json')); d.pop('plan_hash', None)
+json.dump(d, open('.temper/groups.json', 'w'))"
+  return 0
+}
+gp_tamper() { # gp_tamper <old> <new>: replace the first occurrence in the demo tasks.md, keeping groups.json as is
   python3 - "$1" "$2" <<'PY'
 import sys
 p = '.temper/specs/demo/tasks.md'
@@ -422,6 +430,7 @@ st_setup() { # sw_setup + the upstream gates ADR 0009 asks for + both groups sta
   # hangs, ST_LONG prints a long output
   local t="bash -c 'echo boom; pwd; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
   gp_mut '`bash tests/a_test.sh`' "\`$t\`"; gp_mut '`bash tests/b_test.sh`' "\`$t\`"; gp_mut '`bash tests/c_test.sh`' "\`$t\`"
+  [[ -z "${ST_PRE:-}" ]] || eval "$ST_PRE"   # a case may edit the plan before the first group start
   "$TEMPER" group start G1 >/dev/null 2>&1; "$TEMPER" group start G2 >/dev/null 2>&1
 }
 st_field() { # st_field <task> <field>
@@ -606,11 +615,7 @@ printf '[{"stage":"design","reason":"accepted risk","ts":"2026-01-01T00:00:00Z"}
 assert_exit "task gate: a human override satisfies an upstream gate" 0 "$TEMPER" task gate 1
 
 # the launch payload stays within its byte budget
-st_setup; python3 - <<'PY'
-p = '.temper/specs/demo/tasks.md'
-s = open(p).read().replace('Shared notes for G1. Use bash.', '\n'.join('c' * 60 + str(i) for i in range(64)))
-open(p, 'w').write(s)
-PY
+ST_PRE="gp_mut 'Shared notes for G1. Use bash.' \"\$(for i in \$(seq 0 63); do printf 'c%.0s' \$(seq 1 60); echo \$i; done)\"" st_setup; ST_PRE=""
 "$TEMPER" task start 1 >/dev/null 2>&1; ST_LONG=1 ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
 "$TEMPER" task gate 1 >/dev/null 2>&1; "$TEMPER" task start 1 >/dev/null 2>&1
 SHOW="$("$TEMPER" task show 1)"
@@ -1185,4 +1190,38 @@ assert_eq "M2: the declared file is restored too (existing behaviour)" "no" "$([
 "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
 assert_eq "M2: the retry then passes without the earlier stray file" "0|src/a.sh" "$rc|$(git -C "$ST_WT" show --name-only --format= HEAD)"
+setup
+
+# H3: the approved plan is hashed at the first group start; a later change refuses the run's commands
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+assert_exit "H3: an unchanged plan lets the running task test" 0 env ST_EXIT=0 "$TEMPER" task test 1 --phase green
+gp_tamper 'echo boom;' 'echo hacked;'
+out="$(ST_EXIT=0 "$TEMPER" task test 1 --phase green 2>&1)"; rc=$?
+assert_eq "H3: a swapped **Test:** refuses task test, naming the plan change" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'plan.*changed')"
+assert_exit "H3: a swapped **Test:** refuses task gate" 1 "$TEMPER" task gate 1
+assert_exit "H3: a swapped **Test:** refuses task start" 1 "$TEMPER" task start 3
+assert_exit "H3: a swapped **Test:** refuses group gate" 1 "$TEMPER" group gate G1
+assert_exit "H3: a swapped **Test:** refuses integrate" 1 "$TEMPER" integrate
+assert_eq "H3: the refused task gate recorded no attempt" "running" "$(st_field 1 status)"
+gp_tamper 'echo hacked;' 'echo boom;'
+assert_exit "H3: restoring the approved text lets the run continue" 0 env ST_EXIT=0 "$TEMPER" task test 1 --phase green
+st_setup; gp_tamper '**File:** `src/b.sh`' '**File:** `src/b.sh`, `src/zzz.sh`'
+assert_exit "H3: a widened **File:** refuses task start" 1 "$TEMPER" task start 3
+st_setup; st_pass_ready
+assert_exit "H3: the CLI's own box tick is not a plan change (task gate passes)" 0 "$TEMPER" task gate 1
+assert_exit "H3: after the tick the next task still starts" 0 "$TEMPER" task start 2
+
+# H4: glob characters in **File:** are refused by the grouped plan gate; every check compares exact paths
+gp_setup; gp_mut '**File:** `src/c.sh`' '**File:** `src/*.sh`'
+assert_exit "H4: a glob in **File:** fails the grouped plan gate" 1 "$TEMPER" gate plan
+assert_eq "H4: the failing row names Task 3 and the path" "1" "$(gp_has 'Task 3.*src/\*\.sh')"
+gp_setup; gp_mut '**File:** `src/c.sh`' '**File:** `src/c?.sh`'
+assert_exit "H4: a ? in **File:** fails the grouped plan gate" 1 "$TEMPER" gate plan
+ST_PRE="gp_mut '\`src/a.sh\`, \`tests/a_test.sh\`' '\`src/*.sh\`, \`tests/a_test.sh\`'" st_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "H4: the task verdict compares exact paths (src/a.sh is not src/*.sh)" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'undeclared change: src/a.sh')"
+ST_PRE=""
+gc_setup grouped; gp_mut '**File:** `src/b.sh`' '**File:** `src/*.sh`'
+assert_eq "H4: the autonomy commit gate compares exact paths too" "1" "$(gc_row | grep -c 'changed outside declared files: .*src/b.sh')"
 setup
