@@ -1,4 +1,0 @@
-Claude cannot write code before you approve the intent. Temper gates every stage with a small CLI that computes PASS or FAIL from real evidence, and a red gate blocks git commit. There is also a dragon game for while you wait.
-
-/plugin marketplace add galando/temper
-github.com/galando/temper

@@ -105,4 +105,4 @@ Claude Code itself accepts the plugin.
 ## What is not verified
 
 - Which categories and fields a given directory asks for. Use the form as it is today.
-- The organization policy cases are tested with a simulated guard only (see the README).
+- The organization policy cases are tested with a simulated guard only (see [the mod](mod.md#organization-policy)).

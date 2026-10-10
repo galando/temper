@@ -146,8 +146,8 @@ control it, and both can be changed while a session runs:
 
 Denials and subcommands work in every mode. The first interactive `/temper:temper` asks once
 which mode you want. If your organization locked a mode, `/temper:temper mode` says so and does
-not change it. See the README section "Where enforcement works" for what is and is not
-covered.
+not change it. [Where enforcement works](mod.md#where-enforcement-works) shows what is
+covered and what is not.
 
 ### The phase bar and its keys
 
