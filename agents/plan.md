@@ -42,7 +42,10 @@ orchestrator's conversation carries over except the prompt you were launched wit
    or `manual`, default `unit`) and `Covers:` (the comma-separated AC ids this
    scenario verifies; a regression-only scenario may omit it). Group the blocks under
    `#### Happy Path`, `#### Error Paths`, `#### Edge Cases`; omit an empty group.
-7. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` mechanically checks, **at every tier**: the artifacts exist;
+7. **Grouped tasks.** When `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get build.mode` prints `grouped`,
+   write `tasks.md` in the grouped format of `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`, "Grouped tasks"
+   (copy the example in `${CLAUDE_PLUGIN_ROOT}/templates/tasks.md`); otherwise keep the per-task layout.
+8. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` mechanically checks, **at every tier**: the artifacts exist;
    scenario count >= success-criterion count; every criterion has explicit validation
    links (`acceptance.py plan` — stable `AC-NN` ids, `Why:` and `Validate:` on each,
    every `Covers:` id names a real criterion); every `Scenario:` sits inside a
@@ -51,7 +54,7 @@ orchestrator's conversation carries over except the prompt you were launched wit
    treat this list as the whole of "done" — it is a floor, not the methodology. Run
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` yourself before returning, and fix
    any FAIL it reports.
-8. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
+9. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):

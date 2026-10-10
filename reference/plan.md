@@ -244,6 +244,52 @@ terminal can't render mermaid); keep the mermaid block in
 plan.md for GitHub/tool rendering. Skip the diagram only for a single-file or config-only
 change in standalone `/temper:plan`.
 
+## Grouped tasks
+
+Only when `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get build.mode` prints `grouped`. Write `tasks.md` as
+groups of tasks instead of one flat list; the example to copy is in `${CLAUDE_PLUGIN_ROOT}/templates/tasks.md`
+(between the `grouped-example` markers). With any other value keep the per-task layout. The format below is
+what the CLI parser (`_grouped_parse`) reads and the plan gate (`_grouped_plan_reqs`) checks.
+
+**Format.**
+- A top-level `**Integration:**` line with the full-suite command in backticks. Required.
+- `## Group G<n>: title`, then `**Depends:**` (`none` or `G1, G2`), `**Validate:**` (a backticked
+  group-level test command), `**Interfaces:**` (optional; each entry is `` `path` — `literal` ``, a path and
+  a string that must appear in it after integration) and `**Context:**` (a block that runs until the
+  first `### Task`). Every group needs a Context.
+- `### Task N: description`, with `**File:**`, `**Depends:**` (`none` or `Task 1, Task 2`),
+  `**Test:**`, `**Traced to:**` and a closing `- [ ] done` box. The parser takes a task's group from the `## Group` heading it sits under (a `[group: G<n>]` tag in the
+  title is not read).
+  Task numbers are unique across the whole file.
+
+**Declared files.** `**File:**` lists backticked paths, one per file the task will write, including its test
+file. Give exact file paths. A wildcard such as `src/**` weakens the commit check that compares changed
+files to the declared union, so use one only when the files cannot be named in advance. Two tasks that can
+run together (neither depends on the other, directly or through their groups) must declare disjoint files;
+the gate rejects an overlap. Order the tasks with `**Depends:**` when they must touch the same file.
+
+**Test per task.** Every task declares its own scoped `**Test:**` command: its own test file or a filter
+for it, never the whole suite. The CLI runs it and judges the task on it alone. The whole suite runs only
+at the group's `**Validate:**` and at `**Integration:**`.
+
+**Context: distil the pack rules.** A task agent reads only its task and its group's Context, never the
+packs. Distil the rules of the enabled packs that apply to that group into its Context, in your own words
+and short: the quality, tdd and performance rules for the kind of code the group writes, and the
+security rules always, even for a group that looks harmless. Add the conventions to follow and the
+interfaces the group must keep. Review still checks the full packs, so the Context is a working summary,
+not a substitute.
+
+**Budgets (the gate fails a plan over them).** A group's Context is at most 4096 bytes. A task block (its
+heading through its last field) is at most 1536 bytes. Put long background in `plan.md`, not in tasks.md.
+
+**Splitting a group.** The gate counts the distinct files a group declares and fails a group over
+`autonomy.max-blast-radius` (default 15). Split it into two groups, with `**Depends:**` between them when
+the second needs the first's files.
+
+**Interfaces and Integration.** Name in `**Interfaces:**` each seam another group relies on, so
+`temper integrate` can confirm it after the merge. `**Integration:**` is the command that runs after every
+group branch is merged.
+
 ## Evidence + State (batch these into one Bash call)
 
 ```

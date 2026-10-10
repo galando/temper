@@ -1047,3 +1047,20 @@ assert_eq "task brief: names every CLI command it relies on" "3" \
 assert_eq "task brief: never points at an orchestrator file" "0" "$(grep -c 'commands/temper.md' "$TB" 2>/dev/null | tr -d ' ')"
 assert_eq "model --all still has 8 lines with the brief present and grouped off" "8" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
 setup
+
+# --- Grouped Build (9.7.0): plan brief, plan reference and templates for grouped output ---
+# Scenarios: A three-level grouped plan passes the plan gate; Task and escalation models resolve from
+# config with defaults [AC-02, AC-06]. The grouped example in templates/tasks.md must pass the gate.
+TPL="$REPO_ROOT/templates/tasks.md"
+gp_setup
+awk '/^<!-- grouped-example:begin/{f=1;next} /^<!-- grouped-example:end/{f=0} f' "$TPL" > .temper/specs/demo/tasks.md
+assert_eq "template: the grouped example is non-empty" "yes" "$([[ -s .temper/specs/demo/tasks.md ]] && echo yes || echo no)"
+assert_exit "template: the grouped example passes temper gate plan in grouped mode" 0 "$TEMPER" gate plan
+assert_eq "template: the grouped example declares groups, Integration, Interfaces and Context" "4" \
+  "$(for k in '^## Group G1' '^\*\*Integration:\*\*' '^\*\*Interfaces:\*\*' '^\*\*Context:\*\*'; do grep -qE -- "$k" .temper/specs/demo/tasks.md && echo x; done | wc -l | tr -d ' ')"
+assert_eq "plan brief: one step points at the grouped format" "1" "$(grep -c 'config get build.mode' "$REPO_ROOT/agents/plan.md" | tr -d ' ')"
+assert_eq "plan reference: documents the grouped format, budgets and pack distilling" "4" \
+  "$(for k in '^## Grouped tasks' '4096' '1536' 'distil'; do grep -qE -- "$k" "$REPO_ROOT/reference/plan.md" && echo x; done | wc -l | tr -d ' ')"
+assert_eq "config default: commented build block names every grouped key" "4" \
+  "$(for k in '^# build:' 'task-model' 'escalation-model' 'max-parallel'; do grep -qE -- "$k" "$REPO_ROOT/templates/temper.config.default" && echo x; done | wc -l | tr -d ' ')"
+setup

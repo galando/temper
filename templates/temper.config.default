@@ -114,6 +114,17 @@ feedback:
 loops:
   max-per-type: 2              # circuit breaker per feedback-loop type (enforced by the CLI's `state loop`)
 
+# Grouped Build (opt-in). With build.mode absent or per-task, Build runs one task at a
+# time exactly as before. With grouped, Plan writes tasks.md in groups, each group gets
+# its own worktree, and a cheaper model runs the tasks in parallel. The CLI reads each
+# key with `config get`; `temper model task` and `model task-escalation` resolve them.
+# build:
+#   mode: grouped                      # grouped | per-task (default)
+#   grouped:
+#     task-model: claude-haiku-5-5     # model of the task agents (default: the build-task brief)
+#     escalation-model: sonnet         # the one retry after two failed attempts
+#     max-parallel: 4                  # tasks running at once
+
 # ============================================================
 # Autonomous Continuation — armed by a human at the PLAN GATE, never at
 # invocation. /temper always runs Plan first and stops for human review.
