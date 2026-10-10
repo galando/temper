@@ -270,7 +270,10 @@ the gate rejects an overlap. Order the tasks with `**Depends:**` when they must 
 
 **Test per task.** Every task declares its own scoped `**Test:**` command: its own test file or a filter
 for it, never the whole suite. The CLI runs it and judges the task on it alone. The whole suite runs only
-at the group's `**Validate:**` and at `**Integration:**`.
+at the group's `**Validate:**` and at `**Integration:**`. The test file a task creates must be in that
+task's `**File:**`: the plan gate fails a task whose `**Test:**` command names a path (its first path
+argument) that is neither declared by the task nor already in the project, because the task's commit check
+would otherwise reject the new test file as an undeclared change.
 
 **Context: distil the pack rules.** A task agent reads only its task and its group's Context, never the
 packs. Distil the rules of the enabled packs that apply to that group into its Context, in your own words

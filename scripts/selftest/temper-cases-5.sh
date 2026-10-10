@@ -106,7 +106,8 @@ assert sys.argv[1] in s, 'fixture text not found: ' + sys.argv[1]
 open(p, 'w').write(s.replace(sys.argv[1], sys.argv[2], 1))
 PY
 }
-gp_setup() { setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; gp_base; }
+# tests/b_test.sh and tests/c_test.sh exist already (undeclared), as a test path must exist or be declared
+gp_setup() { setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; gp_base; mkdir -p tests; : > tests/b_test.sh; : > tests/c_test.sh; }
 gp_gate() { "$TEMPER" gate plan 2>&1; }
 gp_has() { gp_gate | grep -c -- "$1" | tr -d ' '; }
 
@@ -118,6 +119,19 @@ gp_setup; gp_mut '**File:** `src/b.sh`
 ' ''
 assert_exit "grouped plan: a task with no **File:** fails" 1 "$TEMPER" gate plan
 assert_eq "grouped plan: the failing row names Task 2" "1" "$(gp_has 'Task 2: no declared files')"
+
+# a Test command's first path must exist in the project or be declared by that task (feedback #5)
+gp_setup; gp_mut '**Test:** `bash tests/c_test.sh`' '**Test:** `bash tests/zzz_test.sh`'
+assert_exit "grouped plan: a test path neither existing nor declared fails" 1 "$TEMPER" gate plan
+assert_eq "grouped plan: the failing row names Task 3 and the path" "1" "$(gp_has 'Task 3: test path tests/zzz_test.sh is not declared')"
+gp_setup; gp_mut '**Test:** `bash tests/c_test.sh`' '**Test:** `bash tests/zzz_test.sh`'
+mkdir -p tests && : > tests/zzz_test.sh
+assert_exit "grouped plan: a test path that already exists passes" 0 "$TEMPER" gate plan
+rm -f tests/zzz_test.sh
+gp_setup; gp_mut '**Test:** `bash tests/c_test.sh`' '**Test:** `bash -n tests/c_test.sh && echo ok`'
+assert_exit "grouped plan: the first path argument is the declared one, so it passes" 0 "$TEMPER" gate plan
+gp_setup; gp_mut '**Test:** `bash tests/c_test.sh`' '**Test:** `npm test`'
+assert_exit "grouped plan: a test command with no path is not checked" 0 "$TEMPER" gate plan
 
 gp_setup; gp_mut '**Context:**
 Notes for G2.
@@ -216,8 +230,22 @@ assert_eq "schedule: schedule writes nothing" "no" "$([[ -e .temper/groups.json 
 sg_setup; sg_state '{}'
 assert_eq "schedule: independent tasks of started groups are ready, ordered by task" "1,3" "$(sg_ready)"
 assert_eq "schedule: a ready line carries task, group, worktree, project, model and attempt" \
-  '{"task": 1, "group": "G1", "title": "Alpha", "worktree": ".claude/worktrees/temper-demo-G1", "project": "'"$PWD"'", "model": "claude-haiku-5-5", "attempt": 1}' \
+  '{"task": 1, "group": "G1", "title": "Alpha", "worktree": ".claude/worktrees/temper-demo-G1", "project": "'"$PWD"'", "model": "claude-haiku-5-5", "agent_model": "haiku", "attempt": 1}' \
   "$("$TEMPER" schedule | head -1)"
+
+# agent_model: the alias the Agent tool takes, derived from the model id (feedback #4)
+sg_amodel() { # sg_amodel <task-model>: agent_model of the first ready line under that task-model
+  sg_setup; printf '  grouped:\n    task-model: %s\n' "$1" >> .claude/temper.config; sg_state '{}'
+  "$TEMPER" schedule | head -1 | python3 -c "import json,sys; print(json.loads(sys.stdin.read())['agent_model'])"
+}
+assert_eq "schedule: claude-haiku-* maps to haiku" "haiku" "$(sg_amodel claude-haiku-5-5)"
+assert_eq "schedule: claude-sonnet-* maps to sonnet" "sonnet" "$(sg_amodel claude-sonnet-5-5)"
+assert_eq "schedule: claude-opus-* maps to opus" "opus" "$(sg_amodel claude-opus-4-1)"
+assert_eq "schedule: an alias is unchanged" "opus" "$(sg_amodel opus)"
+assert_eq "schedule: an unknown id is unchanged" "my-model-1" "$(sg_amodel my-model-1)"
+sg_setup; sg_state '{"1":{"status":"failed","attempts":[{},{}]}}'
+assert_eq "schedule: the escalation attempt carries its alias too" "sonnet|sonnet" \
+  "$("$TEMPER" schedule | head -1 | python3 -c "import json,sys; d=json.loads(sys.stdin.read()); print(d['model']+'|'+d['agent_model'])")"
 
 # a task whose Depends is not passed waits; a running task is not offered again
 sg_setup; sg_state '{"1":{"group":"G1","status":"running","attempt":1}}'

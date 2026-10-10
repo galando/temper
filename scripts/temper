@@ -1858,6 +1858,10 @@ tasks = sorted(plan['tasks'], key=lambda t: ([g['id'] for g in plan['groups']].i
 gdep = {g['id']: g['depends'] for g in plan['groups']}
 declared = {t['n']: {norm(f) for f in t['files']} for t in tasks}
 def status(n): return (rt.get(str(n)) or {}).get('status', 'pending')
+def agent_alias(m):  # the Agent tool's model parameter takes aliases, not full ids
+    for a in ('haiku', 'sonnet', 'opus'):
+        if m.startswith('claude-' + a + '-'): return a
+    return m
 def gstatus(g): return (rg.get(g) or {}).get('status', 'pending')
 def gpass(g): return ((rg.get(g) or {}).get('gate') or {}).get('verdict') == 'PASS'
 running = [t['n'] for t in tasks if status(t['n']) == 'running']
@@ -1885,8 +1889,9 @@ for t in tasks:
         waiting.append('Task %d (%s)' % (n, why))
         continue
     attempt = len((rt.get(str(n)) or {}).get('attempts') or []) + 1
+    mdl = task_model if attempt <= 2 else esc_model
     ready.append({'task': n, 'group': g, 'title': t['title'], 'worktree': rg[g]['worktree'],
-                  'project': project, 'model': task_model if attempt <= 2 else esc_model,
+                  'project': project, 'model': mdl, 'agent_model': agent_alias(mdl),
                   'attempt': attempt})
 for r in ready:
     print(json.dumps(r))
@@ -2937,8 +2942,8 @@ cmd_task() {
 # Grouped plan-gate rows: one JSON requirement object per line (same shape _req emits).
 _grouped_plan_reqs() { # _grouped_plan_reqs <tasks.md> <max-blast-radius>
   local model; model="$(_grouped_parse "$1")"
-  python3 - "$2" "$GROUP_CONTEXT_MAX_BYTES" "$TASK_BLOCK_MAX_BYTES" "$model" <<'PY'
-import json, sys
+  python3 - "$2" "$GROUP_CONTEXT_MAX_BYTES" "$TASK_BLOCK_MAX_BYTES" "$model" "$PWD" <<'PY'
+import json, os, shlex, sys
 max_blast, ctx_max, blk_max = int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
 m = json.loads(sys.argv[4])
 groups, tasks = m['groups'], m['tasks']
@@ -2954,7 +2959,22 @@ for t in tasks:
 row('grouped plan', bad, '%d groups: %s' % (len(groups), ', '.join('%s (%d tasks)' % (g['id'], len(g['tasks'])) for g in groups)))
 row('declared files', ['Task %d: no declared files' % t['n'] for t in tasks if not t['files']],
     'every task declares its files')
-row('task test command', ['Task %d: no test command' % t['n'] for t in tasks if not t['test']],
+def test_path(cmd):  # the first path-like argument of a test command, else ''
+    try: parts = shlex.split(cmd)
+    except ValueError: return ''
+    for a in parts[1:]:
+        if a.startswith('-') or any(c in a for c in '$*?[{`'): continue
+        if '/' in a or os.path.splitext(a)[1] in ('.sh', '.py', '.js', '.ts', '.bats', '.rb'): return a
+    return ''
+def undeclared_test(t):
+    p = test_path(t['test'])
+    if not p: return None
+    q = p[2:] if p.startswith('./') else p
+    if q in {f.strip()[2:] if f.strip().startswith('./') else f.strip() for f in t['files']}: return None
+    if os.path.exists(os.path.join(sys.argv[5], q)): return None
+    return 'Task %d: test path %s is not declared in **File:** and does not exist yet' % (t['n'], q)
+row('task test command', ['Task %d: no test command' % t['n'] for t in tasks if not t['test']]
+    + [m for m in map(undeclared_test, tasks) if m],
     'every task declares its own scoped test command')
 row('group context', ['%s: no group context' % g['id'] for g in groups if not g['context']],
     'every group has a context block')

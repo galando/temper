@@ -49,7 +49,7 @@ interfaces it must keep. Not the whole plan.
 - [ ] done
 
 ### Task 2: {description}
-**File:** `src/report.sh`
+**File:** `src/report.sh`, `tests/report_test.sh`
 **Depends:** Task 1
 **Test:** `bash tests/report_test.sh`
 **Traced to:** Scenario: "name1", "name2"
@@ -62,7 +62,7 @@ interfaces it must keep. Not the whole plan.
 Distilled rules and conventions for G2.
 
 ### Task 3: {description}
-**File:** `src/cli.sh`
+**File:** `src/cli.sh`, `tests/cli_test.sh`
 **Depends:** none
 **Test:** `bash tests/cli_test.sh`
 **Traced to:** Infrastructure: required by G1

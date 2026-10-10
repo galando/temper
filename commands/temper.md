@@ -492,10 +492,10 @@ The loop holds no rules of its own: every decision is a CLI output, so relay it.
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper group start G<n>` (it makes the group's worktree).
 2. `${CLAUDE_PLUGIN_ROOT}/scripts/temper schedule` prints one JSON line per ready task (task, group, title, worktree,
    model, attempt). Before each launch run `${CLAUDE_PLUGIN_ROOT}/scripts/temper task start N`. Launch **every ready
-   task in ONE turn**, so they run in parallel, each on the `model` its line prints:
+   task in ONE turn**, so they run in parallel, each on the `agent_model` its line prints (the alias the Agent tool takes; `model` is the full id):
 
    ```
-   Use the Agent tool, model: {model from the schedule line}, prompt:
+   Use the Agent tool, model: {agent_model}, prompt:
    "Follow ${CLAUDE_PLUGIN_ROOT}/agents/build-task.md exactly.
    Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.
    Task: {N}."
