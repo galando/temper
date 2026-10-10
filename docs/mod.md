@@ -9,7 +9,7 @@ The mod does four things:
 - It draws the phase bar, the pane and the actions.
 - It keeps a report of the run. Run `/temper:temper report` to see it.
 
-The README section "What the mod reads and writes" lists every file, hook and call of the mod.
+[What the mod reads and writes](#what-the-mod-reads-and-writes) lists every file, hook and call of the mod.
 
 ## One flow, two views
 
@@ -195,3 +195,72 @@ passed check.
 
 When the run is Done, a `git commit` from the model is allowed. The run is complete, and the person
 pressed Continue. A later CLI could check a decision token that works one time only.
+
+## What the mod reads and writes
+
+Mods are not sandboxed, so this is the full list. The mod makes no network, `process` or `env` call
+and starts no agent. Its one tool call is Claude Code's question dialog (`$.ui.ask`, AskUserQuestion),
+to ask you for a mode or a reason. CI fails on a call outside `scripts/check-mod-calls.sh`.
+
+- **Reads:** `.claude/temper.config`; the run files in `.temper/` (`build-state.json`, `gates.json`, `status.json`,
+  `overrides.json`, `feedback-loops.json`, `evidence/`, and a `report.md` an older Temper wrote); the spec folder of the run (`intent.md`, `plan.md`,
+  `tasks.md`, `design.md`, `events/`, `config-suggestions.json`); and `.git/HEAD`. To find the project it stats the
+  session folder and looks for `.temper/build-state.json` there and in up to 11 folders above it. It reads its
+  settings, store and state and the Claude Code version. When you change the mode or enforcement it reads the
+  `/config` list (every row) to find its two rows and whether your organization locked them. When `reviewerModel` is
+  set it reads the session's agent list and keeps only the id and type, to find the Temper review agent.
+- **Writes no file itself.** Decisions, run events, the report, the game's best score and whether you
+  were asked for a mode stay in its plugin store, a JSON file in your Claude Code settings folder.
+- **Session state:** for its drawing it keeps the bar's view (run title, phase, criteria, findings),
+  the mode, the project folder and the game's key counts in `$.state`, which other plugins can read.
+- **Configuration and environment it sets:** no environment variable. Only `temper.uiMode` (you type
+  `/temper:temper mode`, or answer the mode question your first `/temper:temper` or a bare `mode` asks)
+  and `temper.enforcement` (you type `/temper:temper enforcement`). A row your organization locked stays.
+- **Slash commands it runs, and when:** only `/temper:temper` and `/temper:temper continue <stage>`
+  (intent, plan, design, build, review or check), each written as fixed text, and only when you press a
+  button or Enter in the reason field. No command is built from data.
+- **What it puts in the prompts it submits:** only on that press, the fixed text of the action, with the phase, a
+  finding number, your reason, and the plugin folder's path wherever the text names a Temper file (the
+  `scripts/temper` command that records your choice, the Stop and Commit steps, the plan review files). Discuss and
+  Change put a fixed draft in your prompt box. After an answer in full mode it may suggest the next fixed prompt; it
+  never sends one. Each prompt is a turn of your session, marked as from the Temper plugin. Apart from these, the
+  refusals below and its state, it sends no text out.
+- **System prompt:** `prompt.compose` adds one section, `temper:phase`, to each request: enforcement on
+  or off, the phase (and whether paused), task, run title, passed criteria, stale phases, the next
+  step, a warning when its state and the CLI's disagree, and one fixed line (answer a message at a
+  gate; after a requested change, run the gate again).
+- **Hooks:**
+  - `tool.call` sees every tool call, a subagent's too. It reads the path of Write, Edit, MultiEdit and NotebookEdit
+    and the text of Bash, then refuses the call with a fixed reason and next step for Claude (a next step that runs
+    `scripts/temper` gives the plugin folder's path), or passes it on and returns its result unchanged; it never
+    answers for a tool. A write outside the plan is refused until you answer Claude's Scope drift question (why, the
+    change, then Add to plan, Revert or Allow once); the mod records your answer from the dialog's result only.
+  - `command.run` handles only `/temper:temper`. It answers `status`, `timeline`, `help`, `report`, `mode`,
+    `enforcement`, `pane`, `play`, `pause` and `resume`. It records an accepted decision (`approve`, `next`, `back`,
+    `override`, `accept`, `drift`) and passes it on; a refused one is answered with the reason. A word that changes
+    state, and `play`, is refused unless you typed it in your prompt box; with enforcement off, a decision from any
+    origin is accepted and its origin recorded. A bare `/temper:temper` you type toggles the pane in full mode during
+    a phase. `pr`, `discuss`, `continue` and any other word or command pass on unchanged, even the two the mod runs.
+  - `session.start` and `classic.SessionStart` find the project root and load the run; in full mode
+    `session.start` also opens the pane during a phase. Both return what the engine gives them: no
+    context, instruction or setting is added.
+  - `turn.step` sets the model and effort from `phaseModels` and the Temper review agent's model from `reviewerModel`;
+    empty options change nothing. `attribution.text` adds one Temper line to a pull request description during a run
+    when `prAttribution` is on. `turn.complete` adds a one line status under an answer in full mode.
+  - `ui.render` draws the bar, pane, game, spinner word, prompt hint and a line above Claude's question
+    dialog, which stays unchanged. `ui.message` takes the game's score; `ui.close` notes a closed pane.
+- **The game** is the mod's one surface module (the game client, with its runner, art and palette
+  files), named as fixed text and imported statically. It makes no engine call and posts only the score.
+- **Other:** key `9` moves the keys to the reason field. Toasts tell a phase change (full mode), an enforcement
+  change, the default mode when you dismiss the mode question, and the result of a press. It waits 60 ms
+  (`$.clock.sleep`, at most 4 times) to reread.
+- **The tests never run in your session.** The mod's test suite runs only under `claude plugin test`; the plugin never
+  loads it. Every `$` call there (`$.session.start`, `$.ui.mount`, `$.tool.call`, `$.agent.spawn` and the rest) goes
+  to Claude Code's own test kit (`claude-code/testing`), not another plugin. Tests hand Bash, Write, Edit,
+  NotebookEdit and Read calls to the guard. Temper's fake engine answers each tool call, question, prompt,
+  `config.set`, `fs.write` and `command.run` with a stub and keeps what the mod sent in memory for the test to check,
+  so nothing runs and nothing leaves the test. One test spawns a stub review agent (prompt `review it`, type
+  `temper:temper-review`, no model); a stub answers it, so no agent runs, and the mod leaves the spawn unchanged.
+- **Tests, lint, git and `scripts/temper`** run as prompts to Claude with its normal permissions. Auto
+  mode may refuse a skip as a gate bypass; the bar then says "Press 1 to record it". Allow that one
+  `scripts/temper override` command, or run it yourself with `!`.

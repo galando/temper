@@ -23,9 +23,11 @@ second video of the mod. The repository holds no video. One commit holds the two
 pin that commit. The Pages workflow restores the videos at deploy time, so the site serves them as
 `video/mp4`.
 
-**A shorter README.** The mod details move to `docs/mod.md`: the bar, the three modes, each phase,
-scope drift, the game and where enforcement works. The README goes from 300 to about 200 lines. The
-section "What the mod reads and writes" stays in the README for the plugin directory.
+**A shorter README.** The README goes from 300 to about 100 lines. The mod details move to
+`docs/mod.md`: the bar, the three modes, each phase, scope drift, the game, where enforcement works,
+and the full list of what the mod reads and writes. The README keeps a short "What the mod reads and
+writes" section, because the plugin directory asks for it, and links to the full list. The Trust
+section moves to `docs/trust.md`.
 
 ## v9.6.7: no script names a hooks folder, no plugin root variable in tests, no bundled image
 
