@@ -666,3 +666,104 @@ assert_exit "grouped off: task gate exits 1" 1 "$TEMPER" task gate 1
 assert_eq "grouped off: no groups.json is written" "no" "$([[ -e .temper/groups.json ]] && echo yes || echo no)"
 assert_exit "an unknown task subcommand exits 1" 1 "$TEMPER" task frobnicate
 setup
+
+# --- Grouped Build (9.7.0): group gate and Change at a group gate ---
+# Scenarios: A group gate passes when every task gate passed and the group tests pass; Change at a
+# group gate reruns only the named tasks [AC-09, D-02]
+gg_setup() { # st_setup + a controllable G1 Validate command (GV_EXIT is its exit)
+  st_setup
+  gp_mut '`bash tests/g1.sh`' "\`bash -c 'echo validating; pwd; exit \${GV_EXIT:-0}'\`"
+}
+gg_pass() { # gg_pass <task> <file>: drive one task through RED, an edit, GREEN and its gate
+  "$TEMPER" task start "$1" >/dev/null 2>&1
+  ST_EXIT=1 "$TEMPER" task test "$1" --phase red >/dev/null 2>&1
+  st_edit "$2"
+  ST_EXIT=0 "$TEMPER" task test "$1" --phase green >/dev/null 2>&1
+  "$TEMPER" task gate "$1" --model claude-haiku-5-5 --tokens 10 --ms 5 >/dev/null 2>&1
+}
+gg_g() { # gg_g <group> <field>
+  python3 -c "
+import json,sys
+v=json.load(open('.temper/groups.json'))['groups'][sys.argv[1]]
+for k in sys.argv[2].split('.'):
+    v=(v or {}).get(k,'') if isinstance(v,dict) else ''
+print(v)" "$1" "$2"
+}
+gg_ready_g1() { "$TEMPER" schedule | python3 -c "
+import json,sys
+print(','.join('%d@%d' % (r['task'], r['attempt']) for r in (json.loads(l) for l in sys.stdin if l.startswith('{')) if r.get('group')=='G1'))"; }
+
+# PASS path
+gg_setup; gg_pass 1 src/a.sh; gg_pass 2 src/b.sh
+out="$("$TEMPER" group gate G1 2>&1)"; rc=$?
+assert_eq "group gate: every task passed and Validate exits 0 -> PASS (exit 0)" "0|1" "$rc|$(printf '%s' "$out" | grep -c '^PASS: group G1')"
+assert_eq "group gate: the Validate command ran in the worktree" "1" "$(printf '%s\n' "$out" | grep -c "^$PWD/$ST_WT\$")"
+assert_eq "group gate: verdict, status and finished_at are recorded" "PASS|passed|1" \
+  "$(gg_g G1 gate.verdict)|$(gg_g G1 status)|$([[ -n "$(gg_g G1 finished_at)" ]] && echo 1 || echo 0)"
+assert_eq "group gate: a build row is tagged with the group, executed by the CLI" "G1|cli|0" \
+  "$(python3 -c "import json; r=[x for x in json.load(open('.temper/evidence/build.json')) if x.get('group')=='G1' and not x.get('task')][-1]; print('%s|%s|%s' % (r['group'],r['executed_by'],r['exit_code']))")"
+assert_eq "group gate: the group row is not a task RED/GREEN row (gate build counts unchanged)" "0" \
+  "$(python3 -c "import json; print(len([x for x in json.load(open('.temper/evidence/build.json')) if x.get('group')=='G1' and not x.get('task') and x.get('phase') in ('red','green')]))")"
+
+# one task not passed -> FAIL, Validate never runs
+gg_setup; gg_pass 1 src/a.sh
+out="$("$TEMPER" group gate G1 2>&1)"; rc=$?
+assert_eq "group gate: a task that has not passed fails the group, naming it (exit 1)" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL:.*Task 2')"
+assert_eq "group gate: Validate did not run and no gate verdict PASS is stored" "0|" \
+  "$(printf '%s' "$out" | grep -c validating)|$(gg_g G1 gate.verdict | grep PASS)"
+
+# Validate exits 1 -> FAIL, group stays running
+gg_setup; gg_pass 1 src/a.sh; gg_pass 2 src/b.sh
+out="$(GV_EXIT=1 "$TEMPER" group gate G1 2>&1)"; rc=$?
+assert_eq "group gate: Validate exit 1 -> FAIL naming the exit (exit 1)" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL:.*exit 1')"
+assert_eq "group gate: a failing Validate leaves the group running with a FAIL verdict" "running|FAIL" "$(gg_g G1 status)|$(gg_g G1 gate.verdict)"
+assert_eq "group gate: the failing run is recorded as a row" "1" \
+  "$(python3 -c "import json; print(len([x for x in json.load(open('.temper/evidence/build.json')) if x.get('group')=='G1' and not x.get('task') and x.get('exit_code')==1]))")"
+out="$("$TEMPER" group gate G1 2>&1)"; rc=$?
+assert_eq "group gate: a later run with Validate green flips the verdict to PASS" "0|PASS" "$rc|$(gg_g G1 gate.verdict)"
+assert_exit "group gate: an unknown group exits 1" 1 "$TEMPER" group gate G9
+assert_exit "group gate: a malformed group id exits 1" 1 "$TEMPER" group gate foo
+setup; gp_base; printf 'build:\n  mode: grouped\n' >> .claude/temper.config
+assert_exit "group gate: a group that was never started exits 1" 1 "$TEMPER" group gate G1
+
+# Change at a group gate: reopen only the named task (D-02)
+gg_setup; gg_pass 1 src/a.sh; gg_pass 2 src/b.sh; "$TEMPER" group gate G1 >/dev/null 2>&1
+T1COMMIT="$(st_field 1 commit)"
+out="$("$TEMPER" group reopen G1 --task 2 --feedback 1 2>&1)"; rc=$?
+assert_eq "group reopen: exits 0 and says OK" "0|1" "$rc|$(printf '%s' "$out" | grep -c '^OK:')"
+assert_eq "group reopen: only Task 2 of G1 is unticked (G2's Task 3 was never ticked)" "2|1" \
+  "$(st_unticked | tr -d ' ')|$(awk '/^### Task 2:/{f=1} /^## Group G2/{f=0} f' .temper/specs/demo/tasks.md | grep -c '^- \[ \]')"
+assert_eq "group reopen: Task 2 is pending at attempt 1 with its history moved aside" "pending|0|1" \
+  "$(st_field 2 status)|$(python3 -c "import json; print(len(json.load(open('.temper/groups.json'))['tasks']['2']['attempts']))")|$(python3 -c "import json; print(len(json.load(open('.temper/groups.json'))['tasks']['2']['attempts_prior']))")"
+assert_eq "group reopen: Task 1 keeps its passed gate and its ticked box" "passed|$T1COMMIT" "$(st_field 1 status)|$(st_field 1 commit)"
+assert_eq "group reopen: the group gate is cleared" "" "$(gg_g G1 gate.verdict)"
+assert_eq "group reopen: Task 2's file is reverted, Task 1's file stays" "no|yes" \
+  "$([[ -e "$ST_WT/src/b.sh" ]] && echo yes || echo no)|$([[ -e "$ST_WT/src/a.sh" ]] && echo yes || echo no)"
+assert_eq "group reopen: one revert commit touching only Task 2's file" "revert(demo): reopen Task 2|src/b.sh" \
+  "$(git -C "$ST_WT" log -1 --format=%s)|$(git -C "$ST_WT" show --name-only --format= HEAD)"
+assert_eq "group reopen: the worktree is clean" "" "$(git -C "$ST_WT" status --porcelain)"
+assert_eq "group reopen: the feedback id is recorded on the task" "1" \
+  "$(python3 -c "import json; print(json.load(open('.temper/groups.json'))['tasks']['2']['reopened'][0]['feedback'])")"
+assert_eq "group reopen: the schedule offers only Task 2 of G1, at attempt 1" "2@1" "$(gg_ready_g1)"
+assert_eq "group reopen: Task 2 can pass again and the group gate re-runs" "0|PASS" \
+  "$(gg_pass 2 src/b.sh; "$TEMPER" group gate G1 >/dev/null 2>&1; echo $?)|$(gg_g G1 gate.verdict)"
+
+# two tasks, plus the refusals
+gg_setup; gg_pass 1 src/a.sh; gg_pass 2 src/b.sh
+assert_exit "group reopen: two --task flags reopen both" 0 "$TEMPER" group reopen G1 --task 1 --task 2
+assert_eq "group reopen: both boxes are unticked and G2's is untouched" "3" "$(st_unticked)"
+gg_setup; gg_pass 1 src/a.sh
+assert_exit "group reopen: a task of another group exits 1" 1 "$TEMPER" group reopen G1 --task 3
+assert_exit "group reopen: no --task exits 1" 1 "$TEMPER" group reopen G1
+assert_exit "group reopen: an unknown task exits 1" 1 "$TEMPER" group reopen G1 --task 99
+"$TEMPER" task start 2 >/dev/null 2>&1
+assert_exit "group reopen: a running task exits 1" 1 "$TEMPER" group reopen G1 --task 2
+gg_setup; gg_pass 1 src/a.sh; printf '{"intent":{"verdict":"PASS"}}\n' > .temper/gates.json
+assert_exit "group reopen: the CLI commit checks the upstream gates (ADR 0009, exit 3)" 3 "$TEMPER" group reopen G1 --task 1
+# a reopen un-parks the group so the named task can run again
+gg_setup
+for i in 1 2 3; do "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model m >/dev/null 2>&1; done
+assert_eq "group reopen: the group is parked after three failures" "parked" "$(gg_g G1 status)"
+assert_exit "group reopen: reopening a parked task exits 0" 0 "$TEMPER" group reopen G1 --task 1
+assert_eq "group reopen: the group runs again and the task is offered at attempt 1" "running|1@1" "$(gg_g G1 status)|$(gg_ready_g1)"
+setup

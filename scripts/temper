@@ -2029,6 +2029,166 @@ e.setdefault('finished_at', None)
   echo "OK: group $g started ($wt on $branch)"
 }
 
+# temper group gate G: PASS when every task of G passed and the group's own Validate command, run by the
+# CLI in the group worktree, exits 0. Recorded as a build row tagged with the group (phase 'group').
+cmd_group_gate() {
+  local g="${1:-}"
+  if [[ ! "$g" =~ ^G[0-9]+$ ]]; then
+    echo "FAIL: usage: temper group gate G<n>" >&2
+    return 1
+  fi
+  local spec_path plan chk validate notpassed wt
+  spec_path="$(_spec_path "")"
+  if [[ -z "$spec_path" || ! -f "$spec_path/tasks.md" ]]; then
+    echo "FAIL: no tasks.md for the active run (temper state init, then plan)" >&2
+    return 1
+  fi
+  plan="$(_grouped_parse "$spec_path/tasks.md")"
+  chk="$(_task_py gatecheck "$plan" "$GROUPS_FILE" "$g")" || return 1
+  validate="$(printf '%s\n' "$chk" | sed -n 1p)"; notpassed="$(printf '%s\n' "$chk" | sed -n 2p)"
+  wt="$(python3 -c "
+import json, sys
+try:
+    print(((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('worktree', ''))
+except Exception:
+    print('')" "$GROUPS_FILE" "$g")"
+  if [[ -z "$wt" ]]; then
+    echo "FAIL: group $g is not started (temper group start $g)" >&2
+    return 1
+  fi
+  local reason=""
+  if [[ -n "$notpassed" ]]; then
+    reason="not every task has passed its task gate: $notpassed"
+  elif [[ -z "$validate" ]]; then
+    reason="group $g declares no **Validate:** command"
+  fi
+  if [[ -z "$reason" ]]; then
+    local rowfile rc
+    rowfile="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
+    _task_py grouprun "$(pwd -P)/$wt" "${TEMPER_TASK_TEST_TIMEOUT_S:-600}" "$rowfile" "$g" -- "$validate"
+    rc=$?
+    _ensure_dirs
+    [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
+    rm -f "$rowfile"
+    [[ "$rc" -ne 0 ]] && reason="group $g Validate failed (exit $rc): $validate"
+  fi
+  if [[ -n "$reason" ]]; then
+    _groups_mutate "
+g = d.setdefault('groups', {}).setdefault(a[0], {})
+g['gate'] = {'verdict': 'FAIL', 'reason': a[1], 'ts': a[2]}
+" "$g" "$reason" "$(_now)" || return 1
+    echo "FAIL: $reason"
+    return 1
+  fi
+  _groups_mutate "
+g = d.setdefault('groups', {}).setdefault(a[0], {})
+g['gate'] = {'verdict': 'PASS', 'ts': a[1]}
+g['status'] = 'passed'
+g['finished_at'] = a[1]
+" "$g" "$(_now)" || return 1
+  echo "PASS: group $g"
+}
+
+# temper group reopen G --task N [--task M] [--feedback ID]: the Change choice at a group gate (D-02).
+# Only the named tasks re-run: their files go back to the content they had when the task started (one
+# revert commit on the group branch, that task's declared paths only), their boxes are unticked, their
+# attempts move to attempts_prior, and the group gate is cleared. A parked group runs again.
+cmd_group_reopen() {
+  local g="${1:-}"; shift || true
+  if [[ ! "$g" =~ ^G[0-9]+$ ]]; then
+    echo "FAIL: usage: temper group reopen G<n> --task N [--task M] [--feedback ID]" >&2
+    return 1
+  fi
+  local tasks=() feedback=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --task) [[ "${2:-}" =~ ^[0-9]+$ ]] || { echo "FAIL: --task needs a task number" >&2; return 1; }
+              tasks+=("$2"); shift 2 ;;
+      --feedback) feedback="${2:-}"; shift 2 || true ;;
+      *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
+    esac
+  done
+  if [[ ${#tasks[@]} -eq 0 ]]; then
+    echo "FAIL: usage: temper group reopen $g --task N [--task M] [--feedback ID]" >&2
+    return 1
+  fi
+  local spec_path slug plan wt
+  spec_path="$(_spec_path "")"
+  slug="$(_spec_slug "$spec_path")"
+  if [[ -z "$spec_path" || ! -f "$spec_path/tasks.md" ]]; then
+    echo "FAIL: no tasks.md for the active run (temper state init, then plan)" >&2
+    return 1
+  fi
+  plan="$(_grouped_parse "$spec_path/tasks.md")"
+  local chk; chk="$(_task_py reopencheck "$plan" "$GROUPS_FILE" "$g" "${tasks[@]}")" || return 1
+  wt="$(python3 -c "
+import json, sys
+try:
+    print(((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('worktree', ''))
+except Exception:
+    print('')" "$GROUPS_FILE" "$g")"
+  if [[ -z "$wt" ]]; then
+    echo "FAIL: group $g is not started (temper group start $g)" >&2
+    return 1
+  fi
+  local missing
+  if ! missing="$(_adr0009_upstream_check "$spec_path")"; then
+    echo "FAIL: refusing the reopen commit: upstream gate(s) not satisfied: $missing (ADR 0009)" >&2
+    return 3
+  fi
+  local abs; abs="$(pwd -P)/$wt"
+  local idargs; idargs="$(_git_id_args)"
+  local line n files sha
+  while IFS=$'\t' read -r n files sha; do
+    [[ -n "$n" ]] || continue
+    local paths=() p
+    IFS=',' read -r -a paths <<<"$files"
+    if [[ -n "$sha" && ${#paths[@]} -gt 0 ]]; then
+      local json; json="$(python3 -c "import json, sys; print(json.dumps(sys.argv[1:]))" "${paths[@]}")"
+      _task_py restore "$abs" "$sha" "$json"
+      git --literal-pathspecs -C "$abs" add -A -- "${paths[@]}" >/dev/null 2>&1 || true
+      if ! git --literal-pathspecs -C "$abs" diff --cached --quiet -- "${paths[@]}" 2>/dev/null; then
+        # shellcheck disable=SC2086
+        if ! git --literal-pathspecs -C "$abs" $idargs commit -q -m "revert($slug): reopen Task $n" -- "${paths[@]}" >/dev/null 2>&1; then
+          echo "FAIL: could not commit the revert of Task $n in $wt" >&2
+          return 1
+        fi
+      fi
+    fi
+    python3 - "$spec_path/tasks.md" "$n" <<'PY'
+import re, sys
+p, n = sys.argv[1], sys.argv[2]
+lines = open(p, encoding='utf-8').read().split('\n')
+inside = False
+for i, l in enumerate(lines):
+    m = re.match(r'^###\s+Task\s+(\d+)\s*:', l)
+    if m: inside = (m.group(1) == n)
+    elif re.match(r'^#{1,2}\s', l): inside = False
+    elif inside and re.match(r'^\s*- \[x\]', l):
+        lines[i] = l.replace('- [x]', '- [ ]', 1)
+        break
+open(p, 'w', encoding='utf-8').write('\n'.join(lines))
+PY
+    _groups_mutate "
+t = d.setdefault('tasks', {}).setdefault(a[0], {})
+t.setdefault('attempts_prior', []).extend(t.get('attempts') or [])
+t['attempts'] = []
+t['status'] = 'pending'
+t['attempt'] = 1
+for k in ('commit', 'passed_at', 'snapshot', 'start_sha', 'started_at'):
+    t.pop(k, None)
+t.setdefault('reopened', []).append({'ts': a[1], 'feedback': a[2] or None})
+g = d.setdefault('groups', {}).setdefault(a[3], {})
+g.pop('gate', None)
+g.pop('finished_at', None)
+if g.get('status') in ('parked', 'passed'):
+    g['status'] = 'running'
+    g.pop('parked_reason', None)
+" "$n" "$(_now)" "$feedback" "$g" || return 1
+  done <<<"$chk"
+  echo "OK: reopened ${tasks[*]/#/Task } in group $g"
+}
+
 cmd_group() {
   local sub="${1:-}"; shift || true
   if ! _grouped_on; then
@@ -2037,7 +2197,9 @@ cmd_group() {
   fi
   case "$sub" in
     start) cmd_group_start "$@" ;;
-    *) echo "FAIL: usage: temper group <start> ..." >&2; return 1 ;;
+    gate) cmd_group_gate "$@" ;;
+    reopen) cmd_group_reopen "$@" ;;
+    *) echo "FAIL: usage: temper group <start|gate|reopen> ..." >&2; return 1 ;;
   esac
 }
 
@@ -2086,6 +2248,25 @@ def load_run(gfile):
         return d if isinstance(d, dict) else {}
     except Exception:
         return {}
+
+def run_cmd(wt, timeout, cmd):
+    """Run cmd (one string runs through bash -c) in wt with a kill timeout; returns (output bytes, exit)."""
+    args = ['bash', '-c', cmd[0]] if len(cmd) == 1 else cmd
+    try:
+        p = subprocess.Popen(args, cwd=wt, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+        try:
+            out, _ = p.communicate(timeout=float(timeout))
+            rc = p.returncode if p.returncode >= 0 else 128 - p.returncode
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except OSError:
+                pass
+            out, _ = p.communicate()
+            rc = 124
+    except OSError as e:
+        out, rc = ('%s\n' % e).encode(), 127
+    return out, rc
 
 def ctx(plan, run, n):
     t = next((x for x in plan['tasks'] if x['n'] == n), None)
@@ -2156,21 +2337,7 @@ elif mode == 'show':
 elif mode == 'testrun':
     wt, timeout, rowfile, n, group, attempt, phase = sys.argv[2:9]
     cmd = sys.argv[10:]   # argv[9] is the '--' separator
-    args = ['bash', '-c', cmd[0]] if len(cmd) == 1 else cmd
-    try:
-        p = subprocess.Popen(args, cwd=wt, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
-        try:
-            out, _ = p.communicate(timeout=float(timeout))
-            rc = p.returncode if p.returncode >= 0 else 128 - p.returncode
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(p.pid, signal.SIGKILL)
-            except OSError:
-                pass
-            out, _ = p.communicate()
-            rc = 124
-    except OSError as e:
-        out, rc = ('%s\n' % e).encode(), 127
+    out, rc = run_cmd(wt, timeout, cmd)
     sys.stdout.write(out.decode('utf-8', 'replace'))
     sys.stdout.flush()
     row = {'claim': 'Task %s unit test %s' % (n, phase), 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
@@ -2180,6 +2347,53 @@ elif mode == 'testrun':
            'output': out[-4096:].decode('utf-8', 'replace')}
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
+
+elif mode == 'grouprun':
+    # the group's own Validate command, run by the CLI in the group worktree; the row is tagged with the
+    # group and carries phase 'group', so it never counts as a task RED or GREEN run
+    wt, timeout, rowfile, group = sys.argv[2:6]
+    cmd = sys.argv[7:]    # argv[6] is the '--' separator
+    out, rc = run_cmd(wt, timeout, cmd)
+    sys.stdout.write(out.decode('utf-8', 'replace'))
+    sys.stdout.flush()
+    row = {'claim': 'Group %s validate' % group, 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
+           'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'group', 'scenario': None,
+           'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'group': group,
+           'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+           'output': out[-4096:].decode('utf-8', 'replace')}
+    json.dump(row, open(rowfile, 'w'))
+    sys.exit(rc)
+
+elif mode == 'gatecheck':
+    # gatecheck <plan> <groups.json> <G>: prints the group's validate command on the first line and the
+    # tasks that have not passed (comma separated) on the second
+    plan, run, g = json.loads(sys.argv[2]), load_run(sys.argv[3]), sys.argv[4]
+    grp = next((x for x in plan['groups'] if x['id'] == g), None)
+    if grp is None:
+        fail('tasks.md has no group %s' % g)
+    rt = run.get('tasks') or {}
+    notpassed = ['Task %d' % n for n in grp['tasks'] if (rt.get(str(n)) or {}).get('status', 'pending') != 'passed']
+    print(grp['validate'])
+    print(', '.join(notpassed))
+
+elif mode == 'reopencheck':
+    # reopencheck <plan> <groups.json> <G> <N>...: prints one "N<TAB>declared files, comma separated<TAB>start_sha"
+    # line per task, or fails naming the first task that cannot be reopened
+    plan, run, g = json.loads(sys.argv[2]), load_run(sys.argv[3]), sys.argv[4]
+    grp = next((x for x in plan['groups'] if x['id'] == g), None)
+    if grp is None:
+        fail('tasks.md has no group %s' % g)
+    for a in sys.argv[5:]:
+        n = int(a)
+        t = next((x for x in plan['tasks'] if x['n'] == n), None)
+        if t is None:
+            fail('tasks.md has no Task %d' % n)
+        if n not in grp['tasks']:
+            fail('Task %d is not in group %s' % (n, g))
+        st = (run.get('tasks') or {}).get(str(n)) or {}
+        if st.get('status', 'pending') == 'running':
+            fail('Task %d is running; let it finish or fail first' % n)
+        print('%d\t%s\t%s' % (n, ','.join(t['files']), st.get('start_sha', '')))
 
 elif mode == 'restore':
     wt, sha, paths = sys.argv[2], sys.argv[3], json.loads(sys.argv[4])
