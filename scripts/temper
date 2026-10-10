@@ -200,7 +200,7 @@ _unsafe_temper_refuse() { # -> 3 (with a one-line reason) when a path this CLI w
                           # it, so it changes nothing. Each folder is checked before any path
                           # inside it, so no check here looks through a link.
   [[ -e .temper || -L .temper ]] || return 0
-  local p slug link="" paths=".temper .temper/evidence .temper/specs .temper/archive"
+  local p slug link="" paths=".temper .temper/.lock .temper/evidence .temper/specs .temper/archive"
   for p in build-state gates overrides status metrics bands feedback-loops; do
     paths="$paths .temper/$p.json"
   done
@@ -278,10 +278,50 @@ else:
 " "$file" "$path" "$default" 2>/dev/null || echo "$default"
 }
 
+# Write lock for the shared run files under .temper/. A mkdir lock (portable: macOS has no flock):
+# `mkdir` either creates the folder or fails, atomically. A lock older than 30 s belongs to a crashed
+# holder and is broken; a lock still held after TEMPER_LOCK_WAIT_S (default 10) seconds is written
+# past with a WARN (fail open), so a stuck holder never wedges a run. A lock this call did not take
+# is never released. Held only around a file write, never while a test runs.
+_LOCK_DIR=".temper/.lock"
+_LOCK_HELD=0
+_lock_acquire() {
+  [[ "$_LOCK_HELD" == "1" ]] && return 0       # already held by this call chain: no self-deadlock
+  [[ -d .temper ]] || return 0                 # nothing to lock before a run has a folder
+  local i=0 max=$(( ${TEMPER_LOCK_WAIT_S:-10} * 50 ))
+  while :; do
+    if mkdir "$_LOCK_DIR" 2>/dev/null; then _LOCK_HELD=1; return 0; fi
+    if (( i % 50 == 0 )) && python3 -c "
+import os, sys, time
+try:
+    sys.exit(0 if time.time() - os.path.getmtime(sys.argv[1]) > 30 else 1)
+except OSError:
+    sys.exit(0)" "$_LOCK_DIR" 2>/dev/null; then
+      rmdir "$_LOCK_DIR" 2>/dev/null || true   # stale: its holder is gone
+      i=$(( i + 1 ))
+      continue
+    fi
+    if (( i >= max )); then
+      echo "WARN: could not take $_LOCK_DIR within ${TEMPER_LOCK_WAIT_S:-10}s; writing without the lock" >&2
+      return 0
+    fi
+    python3 -c "import time; time.sleep(0.02)"
+    i=$(( i + 1 ))
+  done
+}
+_lock_release() {
+  [[ "$_LOCK_HELD" == "1" ]] || return 0
+  rmdir "$_LOCK_DIR" 2>/dev/null || true
+  _LOCK_HELD=0
+}
+
+# Every JSON write below goes through a temp file in the same folder and os.replace, so a reader
+# never sees a truncated file even when a writer is killed half way.
 _json_set_path() { # _json_set_path <file> <dot.path> <value> <default-json>
-  local file="$1" path="$2" value="$3" default="$4"
+  local file="$1" path="$2" value="$3" default="$4" rc
+  _lock_acquire
   python3 -c "
-import json, sys
+import json, os, sys
 path, value, default = sys.argv[2], sys.argv[3], sys.argv[4]
 try:
     d = json.load(open(sys.argv[1]))
@@ -303,16 +343,22 @@ keys = path.split('.')
 for k in keys[:-1]:
     cur = cur.setdefault(k, {})
 cur[keys[-1]] = v
-with open(sys.argv[1], 'w') as f:
+tmp = '%s.tmp.%d' % (sys.argv[1], os.getpid())
+with open(tmp, 'w') as f:
     json.dump(d, f, indent=2)
     f.write('\n')
+os.replace(tmp, sys.argv[1])
 " "$file" "$path" "$value" "$default"
+  rc=$?
+  _lock_release
+  return $rc
 }
 
 _json_append() { # _json_append <file> <entry-json>  (file holds a JSON array)
-  local file="$1" entry="$2"
+  local file="$1" entry="$2" rc
+  _lock_acquire
   python3 -c "
-import json, sys
+import json, os, sys
 try:
     d = json.load(open(sys.argv[1]))
     if not isinstance(d, list):
@@ -320,10 +366,15 @@ try:
 except Exception:
     d = []
 d.append(json.loads(sys.argv[2]))
-with open(sys.argv[1], 'w') as f:
+tmp = '%s.tmp.%d' % (sys.argv[1], os.getpid())
+with open(tmp, 'w') as f:
     json.dump(d, f, indent=2)
     f.write('\n')
+os.replace(tmp, sys.argv[1])
 " "$file" "$entry"
+  rc=$?
+  _lock_release
+  return $rc
 }
 
 # ---------------------------------------------------------------------------
@@ -848,7 +899,7 @@ cmd_evidence_add() {
   fi
 
   local file; file="$(_evidence_file "$stage")"
-  [[ -f "$file" ]] || echo '[]' > "$file"
+  [[ -f "$file" ]] || (set -C; echo '[]' > "$file") 2>/dev/null || true
   local artifact_hash=""
   if [[ -n "$artifact" && -f "$artifact" ]]; then
     artifact_hash="$(python3 -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "$artifact" 2>/dev/null || echo "")"
@@ -1022,7 +1073,7 @@ cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--sc
   local exit_code=$?
   local cmd_str="$*"
   local file; file="$(_evidence_file "$stage")"
-  [[ -f "$file" ]] || echo '[]' > "$file"
+  [[ -f "$file" ]] || (set -C; echo '[]' > "$file") 2>/dev/null || true
   local entry
   entry=$(python3 -c "
 import json, sys
