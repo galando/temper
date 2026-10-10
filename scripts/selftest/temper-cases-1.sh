@@ -171,6 +171,18 @@ assert_eq "a temper-run loop keeps the plan evidence above the target" "1" "$(py
 assert_eq "a temper-run loop clears build evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/build.json"))))')"
 assert_eq "a temper-run loop clears review evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/review.json"))))')"
 assert_eq "a temper-run loop clears check evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/check.json"))))')"
+# P1: the loop sends the run back to its target stage, so the build-checkpoint commit carve-out applies
+assert_eq "state loop review build sets next_stage to build" "build" "$("$TEMPER" state get next_stage)"
+setup
+"$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
+"$TEMPER" state advance review_complete check >/dev/null
+"$TEMPER" gate intent >/dev/null; "$TEMPER" gate plan >/dev/null
+echo 'fix' > loopfix.js; git add loopfix.js >/dev/null 2>&1
+"$TEMPER" state loop check build --reason "review found a defect" >/dev/null
+"$TEMPER" evidence add --stage build --claim "fix tests" --phase green --exit 0 --cmd pytest >/dev/null
+assert_eq "state loop check build: next_stage is build" "build" "$("$TEMPER" state get next_stage)"
+assert_eq "after a loop back to build, a fix commit rides the checkpoint carve-out" "yes" \
+  "$("$TEMPER" gate commit 2>&1 | grep -q 'build checkpoint commit' && echo yes || echo no)"
 
 # --- state loop: a /temper:fix run clears build, review and check on a loop back to fix (woningscout #984) ---
 setup

@@ -311,8 +311,8 @@ above. When `autonomy.enabled: true`, read `${CLAUDE_PLUGIN_ROOT}/reference/auto
 gate on PASS** — its arming point, never at invocation or mid-run — and follow it for
 every post-plan gate. Two invariants, restated here because they bound the whole
 feature: autonomy never pushes, merges to a remote or makes the final feature commit
-(PASS or FAIL at commit, it always parks; grouped Build's local task commits and the local
-`temper integrate` merge, both made by the CLI, are allowed), and
+(PASS or FAIL at commit, it always parks; besides its `wip:` stage checkpoints, the only commits it
+allows are grouped Build's local task commits and the local `temper integrate` merge, both made by the CLI), and
 the Intent gate is always interactive.
 
 ---

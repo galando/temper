@@ -811,6 +811,11 @@ print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_t
   # substitute for it: this is the backstop for standalone CLI users with no
   # orchestrator to do the kill.
   [[ $rc -eq 0 ]] && _clear_evidence_downstream "$to"
+  # P1: the run goes back to the loop's target stage, so the build-checkpoint commit carve-out applies to it
+  if [[ $rc -eq 0 && -f "$STATE_FILE" ]]; then
+    _json_set_path "$STATE_FILE" "next_stage" "$to" '{}'
+    _json_set_path "$STATE_FILE" "updated" "$(_now)" '{}'
+  fi
   return $rc
 }
 
@@ -2120,7 +2125,15 @@ except Exception:
     mkdir -p "$(dirname "$ex")"
     grep -qxF '/.claude/worktrees/' "$ex" 2>/dev/null || printf '/.claude/worktrees/\n' >> "$ex"
     local wt_out
-    if ! wt_out="$(git worktree add -q -b "$branch" "$wt" HEAD 2>&1)"; then
+    if git show-ref --verify --quiet "refs/heads/$branch"; then
+      # L4: the group branch outlives its worktree (integrate removes worktrees before its suite runs and
+      # keeps the branches on FAIL): attach a worktree to the existing branch, its base already holds the deps
+      if ! wt_out="$(git worktree add -q "$wt" "$branch" 2>&1)"; then
+        echo "FAIL: git worktree add failed: $(printf '%s' "$wt_out" | head -1)" >&2
+        return 1
+      fi
+      deps=""
+    elif ! wt_out="$(git worktree add -q -b "$branch" "$wt" HEAD 2>&1)"; then
       echo "FAIL: git worktree add failed: $(printf '%s' "$wt_out" | head -1)" >&2
       return 1
     fi
@@ -2285,10 +2298,15 @@ except Exception:
     if [[ -n "$sha" && ${#paths[@]} -gt 0 ]]; then
       local json; json="$(python3 -c "import json, sys; print(json.dumps(sys.argv[1:]))" "${paths[@]}")"
       _task_py restore "$abs" "$sha" "$json"
-      git --literal-pathspecs -C "$abs" add -A -- "${paths[@]}" >/dev/null 2>&1 || true
-      if ! git --literal-pathspecs -C "$abs" diff --cached --quiet -- "${paths[@]}" 2>/dev/null; then
+      # only the declared paths the restore actually changed (a pathspec git has never seen fails the whole add)
+      local cpaths=()
+      for p in "${paths[@]}"; do
+        [[ -n "$(git --literal-pathspecs -C "$abs" status --porcelain -- "$p" 2>/dev/null)" ]] && cpaths+=("$p")
+      done
+      [[ ${#cpaths[@]} -gt 0 ]] && git --literal-pathspecs -C "$abs" add -A -- "${cpaths[@]}" >/dev/null 2>&1
+      if [[ ${#cpaths[@]} -gt 0 ]] && ! git --literal-pathspecs -C "$abs" diff --cached --quiet -- "${cpaths[@]}" 2>/dev/null; then
         # shellcheck disable=SC2086
-        if ! git --literal-pathspecs -C "$abs" $idargs commit -q -m "revert($slug): reopen Task $n" -- "${paths[@]}" >/dev/null 2>&1; then
+        if ! git --literal-pathspecs -C "$abs" $idargs commit -q -m "revert($slug): reopen Task $n" -- "${cpaths[@]}" >/dev/null 2>&1; then
           echo "FAIL: could not commit the revert of Task $n in $wt" >&2
           return 1
         fi
@@ -2635,9 +2653,18 @@ elif mode == 'reopencheck':
     grp = next((x for x in plan['groups'] if x['id'] == g), None)
     if grp is None:
         fail('tasks.md has no group %s' % g)
+    by_n = {x['n']: x for x in plan['tasks']}
+    def ancestors(n, seen=None):  # every task n depends on, directly or not
+        seen = set() if seen is None else seen
+        for d in (by_n.get(n) or {}).get('depends', []):
+            if d not in seen:
+                seen.add(d)
+                ancestors(d, seen)
+        return seen
+    wanted = []
     for a in sys.argv[5:]:
         n = int(a)
-        t = next((x for x in plan['tasks'] if x['n'] == n), None)
+        t = by_n.get(n)
         if t is None:
             fail('tasks.md has no Task %d' % n)
         if n not in grp['tasks']:
@@ -2645,7 +2672,24 @@ elif mode == 'reopencheck':
         st = (run.get('tasks') or {}).get(str(n)) or {}
         if st.get('status', 'pending') == 'running':
             fail('Task %d is running; let it finish or fail first' % n)
-        print('%d\t%s\t%s' % (n, ','.join(t['files']), st.get('start_sha', '')))
+        if n not in wanted:
+            wanted.append(n)
+    # M3: restoring Task N's files to its start_sha would revert a later task's edits to the same file while
+    # that task stays passed. A later task (one that depends on N, directly or not) that already ran and shares
+    # a file must be reopened with it.
+    for n in wanted:
+        for m in grp['tasks']:
+            if m in wanted or n not in ancestors(m):
+                continue
+            ms = (run.get('tasks') or {}).get(str(m)) or {}
+            shared = sorted(set(by_n[n]['files']) & set(by_n[m]['files']))
+            if shared and ms.get('status', 'pending') in ('passed', 'running'):
+                fail('Task %d (depends on Task %d) also edits %s; reopen it too (--task %d)' % (m, n, ', '.join(shared), m))
+    # dependents first: a later task restores to a start_sha that already holds its ancestors' edits
+    wanted.sort(key=lambda n: -len(ancestors(n)))
+    for n in wanted:
+        st = (run.get('tasks') or {}).get(str(n)) or {}
+        print('%d\t%s\t%s' % (n, ','.join(by_n[n]['files']), st.get('start_sha', '')))
 
 elif mode == 'restore':
     wt, sha, paths = sys.argv[2], sys.argv[3], json.loads(sys.argv[4])

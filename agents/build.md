@@ -50,6 +50,8 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
      --claim "unit tests" --cmd "<the exact test command>" --exit 0 \
      --phase green --label PROVEN   # after the GREEN run
    ```
+   Keep the word `test` in the green row's `--claim` (as in `unit tests`): the build-checkpoint
+   commit carve-out of `temper gate commit` only recognises a green row whose claim names a test.
    Tick every task's `- [x]` box in `tasks.md` as you complete it.
 
 5. **Commit per GREEN scenario.** The moment a scenario's test goes GREEN, commit it

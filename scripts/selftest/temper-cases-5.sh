@@ -1325,3 +1325,58 @@ sleep 0.2
 wait $LP
 assert_eq "L3: a start whose ready check went stale while it waited is refused and the state is kept" "1|passed" "$rc|$(st_field 2 status)"
 setup
+
+# --- Grouped Build (9.7.0): review loop 1, M3 / M4 / L4 ---
+# M3: reopening Task N restores N's files to its start; a later task (Depends: N) that shares a file stays
+# passed with its edit reverted unless it is reopened too. The CLI refuses and names it; reopening both
+# restores dependents first, so the shared file ends at its content before either task.
+gg_setup; gp_mut '**File:** `src/b.sh`' '**File:** `src/b.sh`, `src/a.sh`'
+gg_pass 1 src/a.sh
+"$TEMPER" task start 2 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
+st_edit src/b.sh; echo "work two" >> "$ST_WT/src/a.sh"; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
+"$TEMPER" task gate 2 --model m >/dev/null 2>&1
+HEAD0="$(git -C "$ST_WT" rev-parse HEAD)"
+out="$("$TEMPER" group reopen G1 --task 1 2>&1)"; rc=$?
+assert_eq "M3 reopen: Task 1 alone is refused when passed Task 2 (Depends: Task 1) edits src/a.sh, naming Task 2" "1|1" \
+  "$rc|$(printf '%s' "$out" | grep -c '^FAIL:.*Task 2.*src/a.sh.*--task 2')"
+assert_eq "M3 reopen: the refusal changed nothing (head, Task 1 and Task 2 stay passed)" "$HEAD0|passed|passed" \
+  "$(git -C "$ST_WT" rev-parse HEAD)|$(st_field 1 status)|$(st_field 2 status)"
+out="$("$TEMPER" group reopen G1 --task 1 --task 2 2>&1)"; rc=$?
+assert_eq "M3 reopen: naming both tasks succeeds" "0" "$rc"
+assert_eq "M3 reopen: both tasks' files are back to before either ran (dependent restored first)" "no|no" \
+  "$([[ -e "$ST_WT/src/a.sh" ]] && echo yes || echo no)|$([[ -e "$ST_WT/src/b.sh" ]] && echo yes || echo no)"
+assert_eq "M3 reopen: the worktree is clean and both tasks are pending" "|pending|pending" \
+  "$(git -C "$ST_WT" status --porcelain)|$(st_field 1 status)|$(st_field 2 status)"
+# a dependent that shares no file does not block the reopen
+gg_setup; gg_pass 1 src/a.sh; gg_pass 2 src/b.sh
+assert_exit "M3 reopen: a dependent with disjoint files does not block reopening Task 1" 0 "$TEMPER" group reopen G1 --task 1
+
+# M4: concurrent `task test` runs each land their own row (the evidence write is serialized)
+gg_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 3 >/dev/null 2>&1
+for i in 1 2 3 4; do
+  ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1 &
+  ST_EXIT=1 "$TEMPER" task test 3 --phase red >/dev/null 2>&1 &
+done
+wait
+assert_eq "M4 parallel task test: all 8 rows land, 4 per task, and the ledger is valid JSON" "8|4|4" \
+  "$(python3 -c "
+import json
+r = json.load(open('.temper/evidence/build.json'))
+print('%d|%d|%d' % (len(r), len([x for x in r if x.get('task') == 1]), len([x for x in r if x.get('task') == 3])))" 2>/dev/null || echo invalid)"
+assert_eq "M4 parallel task test: the lock is released and no temp file is left" "no|0" \
+  "$([[ -e .temper/.lock ]] && echo yes || echo no)|$(find .temper -name '*.tmp*' | wc -l | tr -d ' ')"
+
+# L4: after an integration FAIL the worktrees are gone but the group branches stay; group start attaches a
+# fresh worktree to the existing branch so a Change (reopen) can run, and a later integrate PASSes
+gi_all
+GI_EXIT=1 "$TEMPER" integrate >/dev/null 2>&1
+assert_eq "L4: after the suite FAIL the worktree folder is gone and the branch is kept" "no|yes" \
+  "$([[ -d .claude/worktrees/temper-demo-G1 ]] && echo yes || echo no)|$(git show-ref --verify --quiet refs/heads/temper/demo/G1 && echo yes || echo no)"
+out="$("$TEMPER" group start G1 2>&1)"; rc=$?
+assert_eq "L4: group start G1 recreates the worktree on the existing branch (exit 0)" "0|yes|temper/demo/G1" \
+  "$rc|$([[ -d .claude/worktrees/temper-demo-G1 ]] && echo yes || echo no)|$(git -C .claude/worktrees/temper-demo-G1 rev-parse --abbrev-ref HEAD 2>/dev/null)"
+assert_exit "L4: a Change can reopen a task in the recreated worktree" 0 "$TEMPER" group reopen G1 --task 2
+gi_pass 2 G1 src/b.sh 'b_main() { :; } # second try'
+"$TEMPER" group gate G1 >/dev/null 2>&1
+assert_eq "L4: integrate after the Change merges the new commit and PASSes" "0|PASS" "$("$TEMPER" integrate >/dev/null 2>&1; echo $?)|$(gi_int verdict)"

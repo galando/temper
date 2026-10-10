@@ -30,7 +30,7 @@ with every upstream gate — PASS or FAIL, **always park**, autonomy never makes
 merges to a remote, never re-plans unattended and never makes the final feature commit; it
 always parks. It does allow the two local, CLI-made writes of grouped Build: the task
 commits of a task's declared files on its `temper/{slug}/{G}` group branch (`temper task
-gate`) and the local `temper integrate` merge into the feature branch. Nothing else commits.
+gate`) and the local `temper integrate` merge into the feature branch. Besides the `wip:` stage checkpoints (see Operational safety), nothing else commits.
 
 **Groups (`build.mode: grouped`):** each group's gate (`temper group gate G`) auto-continues
 on PASS, with no `AskUserQuestion`; the group panel still prints. **Change** (`temper group
