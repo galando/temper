@@ -1,0 +1,352 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Temper brag</title>
+<style>
+@font-face { font-family: 'DM Serif Display'; src: url(fonts/dm-serif-display-latin-400-normal.woff2); font-weight: 400; font-style: normal; }
+@font-face { font-family: 'DM Serif Display'; src: url(fonts/dm-serif-display-latin-400-italic.woff2); font-weight: 400; font-style: italic; }
+@font-face { font-family: 'IBM Plex Mono'; src: url(fonts/ibm-plex-mono-latin-400-normal.woff2); font-weight: 400; }
+@font-face { font-family: 'IBM Plex Mono'; src: url(fonts/ibm-plex-mono-latin-500-normal.woff2); font-weight: 500; }
+@font-face { font-family: 'IBM Plex Mono'; src: url(fonts/ibm-plex-mono-latin-600-normal.woff2); font-weight: 600; }
+@font-face { font-family: 'Inter'; src: url(fonts/inter-latin-400-normal.woff2); font-weight: 400; }
+@font-face { font-family: 'Inter'; src: url(fonts/inter-latin-500-normal.woff2); font-weight: 500; }
+@font-face { font-family: 'Inter'; src: url(fonts/inter-latin-600-normal.woff2); font-weight: 600; }
+@font-face { font-family: 'Inter'; src: url(fonts/inter-latin-700-normal.woff2); font-weight: 700; }
+
+/* Tokens from docs/index.html */
+:root {
+  --bg: #0f0a06; --bg-alt: #15100a; --bg-elevated: #1c1510; --fg: #f5f0ea; --fg-muted: #9a9085;
+  --accent: #ff6b35; --accent-secondary: #f7931a; --border: #2a2420;
+  --success: #4ade80; --warning: #fbbf24; --error: #ef4444;
+  /* Band colours from hooks/temper-mod/ui/palette.ts and band.tsx */
+  --green: #87d787; --blue: #87afff; --chip: #3a5fcd; --pink: #ffafd7; --muted: #a8a8a8;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+body { font-family: 'Inter', sans-serif; color: var(--fg); -webkit-font-smoothing: antialiased; }
+#stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--bg); }
+#glow { position: absolute; inset: 0; }
+#sparks { position: absolute; inset: 0; }
+.scene { position: absolute; inset: 0; opacity: 0; }
+.abs { position: absolute; }
+.serif { font-family: 'DM Serif Display', serif; font-weight: 400; letter-spacing: -0.02em; }
+.mono { font-family: 'IBM Plex Mono', 'DejaVu Sans Mono', monospace; }
+.grad { font-style: italic; background: linear-gradient(135deg, var(--accent), var(--accent-secondary));
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; padding-right: 0.08em; }
+
+/* Terminal card */
+.term { position: absolute; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 40px 120px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,107,53,0.04); overflow: hidden; }
+.term .bar { height: 54px; border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 22px; gap: 10px; background: var(--bg-alt); }
+.term .dot { width: 14px; height: 14px; border-radius: 50%; background: #3a3029; }
+.term .title { margin-left: 16px; font-family: 'IBM Plex Mono', monospace; font-size: 20px; color: var(--fg-muted); }
+.term .body { padding: 34px 44px; font-family: 'IBM Plex Mono', 'DejaVu Sans Mono', monospace; font-size: 31px; line-height: 1.55; white-space: pre; }
+.line { opacity: 0; }
+.caret { display: inline-block; width: 0.58em; height: 1.1em; background: var(--fg); vertical-align: -0.18em; margin-left: 2px; }
+.muted { color: var(--fg-muted); }
+.red { color: #ff6b6b; }
+.acc { color: var(--accent); }
+.wordmark { font-family: 'Inter'; font-weight: 600; font-size: 40px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 14px; }
+.wordmark .gem { color: var(--accent); font-size: 30px; }
+
+/* Band, scaled up from band.tsx */
+.band { position: absolute; left: 160px; width: 1600px; top: 420px; background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 14px; padding: 40px 48px 44px; font-family: 'IBM Plex Mono', 'DejaVu Sans Mono', monospace; font-size: 30px; line-height: 1.5;
+  box-shadow: 0 40px 120px rgba(0,0,0,0.55); }
+.band .label { color: var(--pink); font-weight: 600; }
+.chips { display: flex; gap: 16px; margin: 26px 0 26px; }
+.chip { border: 2px solid #4a4440; border-radius: 14px; padding: 8px 22px; color: #6f665e; font-weight: 500; }
+.chip.done { border-color: var(--green); color: var(--green); }
+.chip.cur { border-color: var(--chip); background: var(--chip); color: #fff; font-weight: 600; }
+.keys b { color: var(--blue); font-weight: 600; }
+.keycap { position: absolute; width: 150px; height: 150px; border-radius: 22px; background: #2b221b; border: 2px solid #4a3c31;
+  box-shadow: 0 10px 0 #1a130e, 0 24px 50px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
+  font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 76px; color: var(--fg); }
+
+canvas { image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="glow" width="1920" height="1080"></canvas>
+  <canvas id="sparks" width="1920" height="1080"></canvas>
+
+  <!-- 1. Hook -->
+  <section class="scene" id="s1">
+    <div class="term" id="t1" style="left:160px; top:170px; width:1600px; height:520px;">
+      <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="title">claude · pr-demo</span></div>
+      <div class="body" style="font-size:42px; padding:40px 54px;"><div id="t1-prompt"><span class="acc">› </span><span id="t1-typed"></span><span class="caret" id="t1-caret"></span></div>
+<div class="line" id="t1-a" style="margin-top:22px"><span style="color:var(--green)">●</span> Update(src/users.js)</div><div class="line red" id="t1-b">  ⎿ Error editing file</div><div class="line muted" id="t1-c" style="white-space:pre-wrap; width:1480px; margin-top:10px; font-size:34px; line-height:1.45">Temper: Intent phase. Writing src/users.js is not allowed until the user approves the intent.</div></div>
+    </div>
+    <div class="abs serif" id="stamp" style="right:130px; top:690px; font-size:240px; line-height:1; color:var(--accent); transform-origin:center;">Refused.</div>
+  </section>
+
+  <!-- 2. Reveal -->
+  <section class="scene" id="s2">
+    <div class="abs wordmark" id="s2-mark" style="left:0; right:0; top:300px; justify-content:center;"><span class="gem">◆</span>Temper</div>
+    <div class="abs serif" style="left:0; right:0; top:400px; text-align:center; font-size:118px; line-height:1.12;">
+      <div id="s2-l1">Claude cannot write code</div>
+      <div id="s2-l2">before you <span class="grad">approve the intent.</span></div>
+    </div>
+  </section>
+
+  <!-- 3. The bar -->
+  <section class="scene" id="s3">
+    <div class="abs" id="s3-cap" style="left:160px; top:150px;">
+      <div class="serif" style="font-size:96px; line-height:1.05;">One key to approve.</div>
+      <div style="font-size:44px; color:var(--fg-muted); margin-top:18px; font-weight:500;">A human gate at every stage.</div>
+    </div>
+    <div class="keycap" id="key" style="right:160px; top:180px;">1</div>
+    <div class="band" id="band">
+      <div><span class="label">TEMPER</span> <span id="b-step">Step 1 of 6: Intent</span> <span class="muted">· criteria 0 of 2 · enforcement on</span></div>
+      <div id="b-line">1 Continue to Plan. The intent is checked. Plan opens and Claude plans.</div>
+      <div class="chips" id="chips"></div>
+      <div class="keys" id="b-keys"></div>
+    </div>
+  </section>
+
+  <!-- 4. The gate -->
+  <section class="scene" id="s4">
+    <div class="abs" id="s4-cap" style="left:160px; top:120px;">
+      <div class="serif" style="font-size:96px; line-height:1.05;">Every gate is computed by a CLI.</div>
+      <div style="font-size:44px; color:var(--fg-muted); margin-top:18px; font-weight:500;">Never asserted by a model.</div>
+    </div>
+    <div class="term" id="t4" style="left:160px; top:400px; width:1600px; height:480px;">
+      <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="title">zsh · feature/password-reset</span></div>
+      <div class="body" style="font-size:30px;"><div><span class="acc">$ </span><span id="t4-typed"></span><span class="caret" id="t4-caret"></span></div><div class="line" id="g0">temper gate commit -&gt; <span class="red" style="font-weight:600">FAIL</span></div><div class="line" id="g1">  <span class="red">[x]</span> plan gate <span class="muted">— MISSING, no override recorded</span></div><div class="line" id="g2">  <span class="red">[x]</span> build gate <span class="muted">— MISSING, no override recorded</span></div><div class="line" id="g3">  <span class="red">[x]</span> review gate <span class="muted">— MISSING, no override recorded</span></div><div class="line" id="g4">  <span class="red">[x]</span> check gate <span class="muted">— MISSING, no override recorded</span></div><div class="line acc" id="g5" style="font-weight:600">BLOCK: temper gate commit FAILed.</div></div>
+    </div>
+  </section>
+
+  <!-- 5. The game -->
+  <section class="scene" id="s5">
+    <div class="abs" id="s5-cap" style="left:160px; top:150px;">
+      <div class="serif" style="font-size:96px; line-height:1.05;">Waiting on Claude?</div>
+      <div style="font-size:44px; color:var(--fg-muted); margin-top:18px; font-weight:500;">Press 8. Play Temper Run.</div>
+    </div>
+    <div class="abs" id="game-wrap" style="left:160px; top:430px; width:1600px; height:500px; border-radius:14px; overflow:hidden; border:1px solid var(--border); box-shadow: 0 40px 120px rgba(0,0,0,0.55);">
+      <canvas id="game" width="1600" height="500"></canvas>
+      <div class="abs mono" style="left:30px; top:20px; font-size:26px; color:#ffaf87; font-weight:600;">▲ TEMPER RUN</div>
+      <div class="abs mono" id="score" style="right:30px; top:20px; font-size:26px; color:#e4e4e4; font-weight:600;"></div>
+    </div>
+  </section>
+
+  <!-- 6. Outro -->
+  <section class="scene" id="s6">
+    <div class="abs wordmark" id="s6-mark" style="left:0; right:0; top:190px; justify-content:center;"><span class="gem">◆</span>Temper</div>
+    <div class="abs serif" style="left:0; right:0; top:285px; text-align:center; font-size:120px; line-height:1.1;">
+      <div id="s6-l1">Your AI writes fast.</div>
+      <div id="s6-l2">Temper makes it <span class="grad">last.</span></div>
+    </div>
+    <div class="abs mono" id="s6-install" style="left:50%; top:620px; transform:translateX(-50%); background:var(--bg-alt); border:1px solid var(--border); border-radius:12px; padding:30px 44px; font-size:34px; line-height:1.6; color:var(--fg); white-space:pre;"><span class="muted">/plugin marketplace add</span> galando/temper
+<span class="muted">/plugin install</span> temper</div>
+    <div class="abs" id="s6-url" style="left:0; right:0; top:900px; text-align:center; font-size:34px; color:var(--fg-muted); font-weight:500;">github.com/galando/temper</div>
+  </section>
+</div>
+
+<script src="runner-art.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lin = (t, a, b) => clamp((t - a) / (b - a));
+const easeOut = x => 1 - Math.pow(1 - x, 3);
+const easeIn = x => x * x * x;
+const easeOutBack = x => { const c = 1.6; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+
+// Enter between a and a+d (rise and fade), leave between b and b+e (fade and lift).
+function show(el, t, a, b, { d = 0.4, e = 0.25, dy = 36, dyOut = -20, scale = 0 } = {}) {
+  const i = easeOut(lin(t, a, a + d));
+  const o = easeIn(lin(t, b, b + e));
+  el.style.opacity = (i * (1 - o)).toFixed(4);
+  const y = (1 - i) * dy + o * dyOut;
+  const s = 1 + (1 - i) * scale;
+  el.style.transform = `translateY(${y.toFixed(2)}px) scale(${s.toFixed(4)})`;
+}
+function on(el, t, a) { el.style.opacity = t >= a ? 1 : 0; }
+function typeOut(el, text, t, a, cps) { const n = clamp(Math.floor((t - a) * cps), 0, text.length); el.textContent = text.slice(0, n); return n === text.length; }
+
+// Scene windows (seconds). Cuts sit on the beat (120 BPM).
+const S = { s1: [0, 3.5], s2: [3.5, 7.5], s3: [7.5, 11.5], s4: [11.5, 15.5], s5: [15.5, 18.5], s6: [18.5, 22.0] };
+function sceneOpacity(id, t) {
+  const [a, b] = S[id];
+  const el = $(id);
+  const i = a === 0 ? 1 : easeOut(lin(t, a, a + 0.18));
+  const o = b >= 22 ? 0 : easeIn(lin(t, b - 0.22, b));
+  el.style.opacity = (t < a || t >= b && b < 22) ? 0 : (i * (1 - o)).toFixed(4);
+}
+
+// ---- background: warm forge glow plus slow sparks (pure functions of t) ----
+const g = $('glow').getContext('2d');
+function drawGlow(t) {
+  g.clearRect(0, 0, 1920, 1080);
+  const breathe = 0.5 + 0.5 * Math.sin(t * 1.3);
+  const r = g.createRadialGradient(960, 1250, 80, 960, 1250, 1100);
+  r.addColorStop(0, `rgba(255,107,53,${0.16 + 0.03 * breathe})`);
+  r.addColorStop(0.45, 'rgba(255,107,53,0.05)');
+  r.addColorStop(1, 'rgba(15,10,6,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 1920, 1080);
+}
+const sp = $('sparks').getContext('2d');
+const SPARKS = Array.from({ length: 46 }, (_, i) => {
+  const h = n => { const x = Math.sin(i * 127.1 + n * 311.7) * 43758.5453; return x - Math.floor(x); };
+  return { x: h(1) * 1920, speed: 40 + h(2) * 70, phase: h(3) * 30, size: 2 + h(4) * 3, sway: 10 + h(5) * 30, life: 9 + h(6) * 6 };
+});
+function drawSparks(t) {
+  sp.clearRect(0, 0, 1920, 1080);
+  for (const s of SPARKS) {
+    const age = ((t + s.phase) % s.life);
+    const y = 1100 - age * s.speed;
+    const x = s.x + Math.sin((t + s.phase) * 0.9) * s.sway;
+    const a = Math.min(1, age / 1.5) * Math.max(0, 1 - age / s.life) * 0.55;
+    sp.fillStyle = `rgba(255,${150 + Math.floor(s.size * 15)},90,${a.toFixed(3)})`;
+    sp.fillRect(x, y, s.size, s.size);
+  }
+}
+
+// ---- scene 3: the band ----
+const PHASES = ['Intent', 'Plan', 'Build', 'Review', 'Check', 'Fix'];
+const BAND = [
+  { step: 'Step 1 of 6: Intent', line: '1 Continue to Plan. The intent is checked. Plan opens and Claude plans.', next: 'Plan' },
+  { step: 'Step 2 of 6: Plan', line: '1 Continue to Build. The plan is checked. Build opens and Claude starts building.', next: 'Build' },
+  { step: 'Step 3 of 6: Build', line: '1 Continue with task 1. Claude builds the task and stops for you.', next: 'task 1' },
+];
+const PRESS = [8.5, 9.5];
+function drawBand(t) {
+  const k = t >= PRESS[1] ? 2 : t >= PRESS[0] ? 1 : 0;
+  const b = BAND[k];
+  $('b-step').textContent = b.step;
+  $('b-line').textContent = b.line;
+  $('chips').innerHTML = PHASES.map((p, i) => i < k ? `<span class="chip done">✓ ${p}</span>` : i === k ? `<span class="chip cur">● ${p}</span>` : `<span class="chip">${p}</span>`).join('');
+  $('b-keys').innerHTML = `<b>1:</b> To ${b.next}  <b>2:</b> Grill me  <b>3:</b> Teach me  <b>4:</b> Discuss  <b>9:</b> Skip with a reason  <b>0:</b> More`.replace(/  /g, '&nbsp;&nbsp;');
+  // the current chip pops in on each press
+  const since = Math.min(...PRESS.map(p => t >= p ? t - p : 99));
+  const cur = document.querySelector('.chip.cur');
+  if (cur && since < 0.35) cur.style.transform = `scale(${(1 + 0.18 * (1 - easeOut(since / 0.35))).toFixed(3)})`;
+  // keycap press
+  const key = $('key');
+  const d = PRESS.reduce((m, p) => Math.min(m, Math.abs(t - p - 0.04)), 9);
+  const down = clamp(1 - d / 0.09);
+  key.style.transform = `translateY(${(down * 9).toFixed(1)}px)`;
+  key.style.boxShadow = `0 ${(10 - down * 9).toFixed(1)}px 0 #1a130e, 0 24px 50px rgba(0,0,0,0.5)`;
+  key.style.borderColor = down > 0.2 ? '#ff6b35' : '#4a3c31';
+  key.style.color = down > 0.2 ? '#ff6b35' : '#f5f0ea';
+}
+
+// ---- scene 5: Temper Run, drawn from runner-art.ts ----
+const gc = $('game').getContext('2d');
+const P = 22; // screen px per art pixel
+const FLOOR_Y = 390; // top of the floor in canvas px
+function sprite(frame, x, yBottom, colorOverride) {
+  const rows = frame.rows, h = rows.length;
+  for (let r = 0; r < h; r++) for (let c = 0; c < rows[r].length; c++) {
+    const ch = rows[r][c]; if (ch === '.') continue;
+    gc.fillStyle = colorOverride || ART.PALETTE[ch];
+    gc.fillRect(Math.round(x + c * P), Math.round(yBottom - (h - r) * P), P, P);
+  }
+}
+const OBS = [ { kind: 'anvil_l', hit: 16.55 }, { kind: 'bucket', hit: 17.55 } ];
+const DRAGON_X = 300, SPEED = 620; // px per second
+function jumpHeight(t) {
+  let y = 0;
+  for (const o of OBS) { const a = o.hit - 0.32, d = 0.64; const u = (t - a) / d; if (u > 0 && u < 1) y = Math.max(y, 4 * u * (1 - u) * 230); }
+  return y;
+}
+function drawGame(t) {
+  gc.fillStyle = ART.WALL[1]; gc.fillRect(0, 0, 1600, 500);
+  // furnace windows in the far wall, slow parallax
+  for (let i = 0; i < 6; i++) {
+    const x = ((i * 320 - t * 90) % 1920 + 1920) % 1920 - 160;
+    gc.fillStyle = ART.GLOW[2]; gc.fillRect(x, 120, 112, 150);
+    gc.fillStyle = ART.WALL[1]; gc.fillRect(x + 42, 120, 28, 150);
+  }
+  // floor: edge, bricks with mortar, glowing embers
+  gc.fillStyle = ART.FLOOR.edge; gc.fillRect(0, FLOOR_Y, 1600, P);
+  gc.fillStyle = ART.FLOOR.brick; gc.fillRect(0, FLOOR_Y + P, 1600, 100);
+  const off = (t * SPEED) % 112;
+  gc.fillStyle = ART.FLOOR.mortar;
+  for (let x = -off; x < 1600; x += 112) gc.fillRect(Math.round(x), FLOOR_Y + P, 6, 100);
+  gc.fillRect(0, FLOOR_Y + P + 42, 1600, 5);
+  for (let x = -off + 56; x < 1600; x += 224) { gc.fillStyle = Math.sin(t * 6 + x) > 0 ? ART.FLOOR.emberHot : ART.FLOOR.ember; gc.fillRect(Math.round(x), FLOOR_Y + P + 62, 28, 14); }
+  // obstacles reach the dragon's middle at their hit time
+  for (const o of OBS) {
+    const f = ART.OBSTACLES[o.kind][0];
+    const x = DRAGON_X + 4 * P + (o.hit - t) * SPEED - ART.widthOf(f) * P / 2;
+    if (x > -200 && x < 1700) sprite(f, x, FLOOR_Y);
+  }
+  // sparks behind the dragon
+  for (let i = 0; i < 5; i++) {
+    const a = ((t * 2.2 + i * 0.37) % 1);
+    gc.fillStyle = ART.SPARK; gc.globalAlpha = 1 - a;
+    gc.fillRect(DRAGON_X - 20 - a * 140, FLOOR_Y - 40 - a * 60 - i * 9, 7, 7);
+  }
+  gc.globalAlpha = 1;
+  const jy = jumpHeight(t);
+  const frame = jy > 0 ? ART.DRAGON.jump : ART.DRAGON.run[Math.floor(t / 0.11) % 2];
+  sprite(frame, DRAGON_X, FLOOR_Y - jy);
+  const score = Math.floor(Math.max(0, t - 15.5) * 15);
+  $('score').textContent = `HI 02472  ${String(score).padStart(5, '0')}`;
+}
+
+function render(t) {
+  drawGlow(t); drawSparks(t);
+  for (const id of Object.keys(S)) sceneOpacity(id, t);
+
+  // 1. Hook
+  if (t < 3.6) {
+    show($('t1'), t, -1, 3.25, { dy: 0 });
+    const done = typeOut($('t1-typed'), 'edit src/users.js now. skip the intent.', t, 0.15, 36);
+    $('t1-caret').style.opacity = (!done || Math.floor(t * 2.5) % 2 === 0) && t < 1.4 ? 1 : 0;
+    show($('t1-a'), t, 1.45, 9, { d: 0.18, dy: 10 });
+    show($('t1-b'), t, 1.62, 9, { d: 0.18, dy: 10 });
+    show($('t1-c'), t, 1.8, 9, { d: 0.25, dy: 10 });
+    const st = $('stamp');
+    const i = lin(t, 2.0, 2.28), o = easeIn(lin(t, 3.2, 3.45));
+    st.style.opacity = (Math.min(1, i * 1.6) * (1 - o)).toFixed(3);
+    st.style.transform = `rotate(-5deg) scale(${(i < 1 ? 1.5 - 0.5 * easeOutBack(i) : 1).toFixed(3)})`;
+    // a small shake on the card when the stamp lands
+    const sh = t > 2.2 && t < 2.45 ? Math.sin(t * 160) * 7 * (1 - lin(t, 2.2, 2.45)) : 0;
+    $('t1').style.transform = `translateX(${sh.toFixed(1)}px)`;
+  }
+  // 2. Reveal
+  if (t >= 3.4 && t < 7.6) {
+    show($('s2-mark'), t, 3.6, 7.25, { d: 0.35, dy: 16 });
+    show($('s2-l1'), t, 3.68, 7.25, { d: 0.45, dy: 46 });
+    show($('s2-l2'), t, 3.85, 7.25, { d: 0.45, dy: 46 });
+  }
+  // 3. Bar
+  if (t >= 7.4 && t < 11.6) {
+    show($('s3-cap'), t, 7.6, 11.25, { d: 0.4, dy: 30 });
+    show($('band'), t, 7.72, 11.25, { d: 0.45, dy: 50 });
+    show($('key'), t, 7.9, 11.25, { d: 0.35, dy: 0, scale: 0.25 });
+    drawBand(t);
+  }
+  // 4. Gate
+  if (t >= 11.4 && t < 15.6) {
+    show($('s4-cap'), t, 11.6, 15.25, { d: 0.4, dy: 30 });
+    show($('t4'), t, 11.7, 15.25, { d: 0.45, dy: 50 });
+    const done = typeOut($('t4-typed'), 'git commit -m "Add password reset tokens"', t, 11.95, 52);
+    $('t4-caret').style.opacity = !done ? 1 : 0;
+    const L = [12.85, 13.1, 13.3, 13.5, 13.7, 14.0];
+    L.forEach((a, i) => show($('g' + i), t, a, 99, { d: 0.16, dy: 8 }));
+  }
+  // 5. Game
+  if (t >= 15.4 && t < 18.6) {
+    show($('s5-cap'), t, 15.6, 18.25, { d: 0.4, dy: 30 });
+    show($('game-wrap'), t, 15.68, 18.25, { d: 0.45, dy: 50 });
+    drawGame(t);
+  }
+  // 6. Outro
+  if (t >= 18.4) {
+    show($('s6-mark'), t, 18.6, 99, { d: 0.35, dy: 16 });
+    show($('s6-l1'), t, 18.66, 99, { d: 0.45, dy: 46 });
+    show($('s6-l2'), t, 18.82, 99, { d: 0.45, dy: 46 });
+    show($('s6-install'), t, 19.1, 99, { d: 0.45, dy: 30 });
+    $('s6-install').style.transform += ' translateX(-50%)';
+    show($('s6-url'), t, 19.3, 99, { d: 0.45, dy: 20 });
+  }
+}
+window.render = render;
+window.ready = Promise.all([document.fonts.ready, ...['400 30px "IBM Plex Mono"', '600 30px "IBM Plex Mono"', '30px "DM Serif Display"', 'italic 30px "DM Serif Display"', '600 30px Inter', '500 30px Inter'].map(f => document.fonts.load(f))]);
+</script>
+</body>
+</html>
