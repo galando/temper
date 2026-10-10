@@ -3,9 +3,79 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## v9.7.0 — TODO: one-line summary
+## v9.7.0: grouped Build with small Haiku task agents (opt-in, experimental)
 
-- TODO: maintainer fills in this entry's body.
+Build can now run as groups of small tasks, each handed to a slim Haiku agent, with one human
+review per group instead of one gate per task. It is opt-in and experimental: with `build.mode`
+absent, Build runs one task at a time exactly as before. This release makes no claim about cost
+or speed; the comparison against the per-task Build is a follow-up (D-04, below).
+
+**Grouped mode (`build.mode: grouped`).** Plan writes `tasks.md` as feature, groups, tasks. Each
+task declares its files and dependencies, and each group carries a `**Context:**` block (shared
+files, interfaces, conventions) that `temper task show` hands to its task agents. The CLI keeps one
+git worktree per group (`.claude/worktrees/temper-{slug}-{G}`, branch `temper/{slug}/{G}`).
+- New config keys under `build:` in `.claude/temper.config`: `mode` (`grouped` or `per-task`, the
+  default), `grouped.task-model` (default `claude-haiku-5-5`), `grouped.escalation-model` (default
+  `sonnet`) and `grouped.max-parallel` (default 4).
+- `temper schedule` prints the ready set (dependencies met, group not parked, declared files
+  disjoint from running tasks, within `max-parallel`). The orchestrator launches every printed task
+  in one turn on the model the CLI printed; no agent launches another agent.
+- A task that fails on Haiku is retried on Haiku, then escalated to the escalation model; if that
+  fails too, its group stops and the run parks for a human with every attempt recorded (D-03).
+  Independent groups may finish first.
+- Change at a group gate records the feedback and re-runs only the tasks it concerns, with the
+  usual retry and escalation (D-02). Re-planning stays the separate "Loop back to Plan" choice.
+
+**New CLI subcommands.** `temper schedule`; `temper group start|gate|reopen|report`;
+`temper task start|show|test|gate`; `temper integrate`; `temper model task|task-escalation`; and
+`temper usage add`. `temper task test` runs only the task's declared Test command, never the
+whole suite. The CLI makes the local task commits in the group worktree and the `integrate` merge
+into the feature branch. The autonomy invariant is narrowed to match: autonomous runs still never
+push and never make the final commit, but grouped Build's CLI-made local commits and the integrate
+merge are allowed (`reference/autonomy.md`).
+
+**`autonomy.max-blast-radius` in grouped mode (D-01).** Plan rejects (and splits) any single group
+whose declared files exceed the limit, and the commit gate parks when files changed fall outside
+the union of the declared files, instead of comparing the feature total to the limit. A large
+multi-group feature is no longer parked by default.
+
+**The slim task brief and its budgets.** New `agents/build-task.md` (listed in `plugin.json`)
+replaces the full build brief, `reference/build.md` and the pack rules for a task agent. Its size
+budget is 6144 bytes for the brief, 4096 for a group Context and 1536 for a task block, so one
+launch carries at most about 11.5 KB (D-06). The budgets are constants in `scripts/temper`, checked
+at the plan gate, and are to be tuned after the comparison run.
+
+**The mod.** `.temper/groups.json` and `.temper/usage.json` are protected like the other CLI-owned
+run files; writes inside a group worktree map to the project's own paths for the rules; and
+`tasks.md` is refused during a grouped run (task agents cannot tick or rewrite it). Mod tests
+cover each.
+
+**Write lock on the CLI's run files (affects every run, grouped or not).** Writes to the shared
+files under `.temper/` now hold a short `mkdir` lock (`.temper/.lock/`, stale after 30 s, waits up
+to 10 s, then writes past with a warning so a stuck holder never wedges a run). It is never held
+while a test runs.
+
+**Whole-flow usage (D-07).** Every stage and both Build modes now record usage for each agent
+launch through `temper usage add --stage S --model M --tokens T --ms D`. `temper report` gains a
+usage section (tokens and time per stage, per model and in total), and `state archive` keeps the
+rows in `gate-ledger.json`. Limits: the numbers are the per-agent totals Claude Code returns (not
+split into input, output and cache tokens), and the orchestrator session's own usage is not
+visible and is not recorded.
+
+**Run state not to commit.** `.temper/groups.json`, `.temper/usage.json` and `.temper/.lock/` are
+CLI-owned; this repository's `.gitignore` lists them, and a project should add the same lines.
+
+**Docs.** `docs/grouped-build.md` (what it changes, switching it on, what a run looks like, limits,
+run files and the measurement procedure), ADR 0011 (`docs/decisions/0011-grouped-build.md`,
+Accepted), and updates to `reference/plan.md`, `reference/autonomy.md`,
+`reference/orchestrator-patterns.md`, `docs/getting-started.md` and `templates/`.
+
+**Follow-up (D-04).** The real comparison of grouped against per-task Build (tokens, wall time,
+Review findings) is not part of this release. 9.7.0 ships the recording and a documented
+measurement procedure so that run can be made later.
+
+**Migration.** Nothing to do. With `build.mode` absent, per-task Build is unchanged.
+
 ## v9.6.7: no script names a hooks folder, no plugin root variable in tests, no bundled image
 
 The directory's report on 9.6.6 (878248e) held it for five reasons. Four are for a reviewer ("This
