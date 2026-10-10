@@ -1,6 +1,7 @@
 // Deny rules: `evaluate(state, ctx, toolCall)` answers allow or deny for one tool call.
 // Pure. Every deny reason ends with what to do next (mods-plan 3.4).
 
+import { DRIFT_HEADER, DRIFT_PREFIX } from './drift'
 import { classifyBash, protectedKind } from './bash'
 import type { DecisionKind, ProtectedKind } from './bash'
 import type { Phase } from './events'
@@ -191,9 +192,12 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, path: 
       if (s.allowOnce.some(p => normalizePath(p) === path)) return { allow: true, consume: 'drift', driftPath: path }
       return {
         deny:
-          `Temper: scope drift. ${path} is not in the plan. ` +
-          'Next: ask the user to choose: add to plan, revert, or allow once with a reason ' +
-          '(/temper:temper drift add|revert|allow <reason>).',
+          `Temper: scope drift. ${path} is not in the plan, so the user decides first: add to plan, revert, or allow once. ` +
+          'Do not write it another way. Next: in the Build stage, stop this task and list the file in the DRIFT section of your ' +
+          'panel, with why it is needed and what you would change. In the main conversation, ask with AskUserQuestion: ' +
+          `header "${DRIFT_HEADER}", a question whose first line is "${DRIFT_PREFIX} ${path}", then a "Why:" line and a ` +
+          '"Change:" line, and the options Add to plan, Revert, Allow once. The user can also type ' +
+          '/temper:temper drift add|revert|allow <reason>.',
         drift: path,
       }
     }

@@ -140,6 +140,11 @@ Use the Agent tool, model: {fix}, prompt:
 Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
 
+**If the panel has a `DRIFT` section**, ask the person about each row first, exactly as
+`/temper` Stage 2 step 3 does (the `Scope drift` question with Why and Change, the three
+options, the evidence row), then relaunch Fix with one `Drift decision: {path}: {choice}`
+line per answer. A drift is never answered for the person.
+
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` (RED-then-GREEN regression-test evidence; the "no unchecked
 tasks" requirement is skipped automatically — fixes have no `tasks.md`). On PASS:
 "Continue to Review (Recommended)". On FAIL: fix and re-run, or "Override and continue"

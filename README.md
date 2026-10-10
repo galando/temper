@@ -88,7 +88,7 @@ asks for a reason. Key `0` shows every action. The keys of each phase are in [Co
 |---|---|
 | Intent | `intent.md` only |
 | Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records |
-| Build | The plan's files, test files and the spec folder. Other files raise scope drift. |
+| Build | The plan's files, test files and the spec folder. Another file waits for your answer to the Scope drift question. |
 | Review | The spec folder only, unless a fix for that file is active |
 | Check | The spec folder only. `git commit` stays refused until Check passes. |
 | Fix | The failing files. After three failed loops Temper stops and offers Plan again, Override or Take over. |
@@ -171,7 +171,7 @@ allowed: the run is complete and the person pressed Continue. A later CLI could 
 
 Mods are not sandboxed, so this is the full list. The mod makes no network, `process` or `env` call
 and starts no agent. Its one tool call is Claude Code's question dialog (`$.ui.ask`, AskUserQuestion),
-to ask you for a mode, a drift choice or a reason. CI fails on a call outside `scripts/check-mod-calls.sh`.
+to ask you for a mode or a reason. CI fails on a call outside `scripts/check-mod-calls.sh`.
 
 - **Reads:** `.claude/temper.config`; the run files in `.temper/` (`build-state.json`, `gates.json`, `status.json`,
   `overrides.json`, `feedback-loops.json`, `evidence/`, and a `report.md` an older Temper wrote); the spec folder of the run (`intent.md`, `plan.md`,
@@ -204,8 +204,8 @@ to ask you for a mode, a drift choice or a reason. CI fails on a call outside `s
   - `tool.call` sees every tool call, a subagent's too. It reads the path of Write, Edit, MultiEdit and NotebookEdit
     and the text of Bash, then refuses the call with a fixed reason and next step for Claude (a next step that runs
     `scripts/temper` gives the plugin folder's path), or passes it on and returns its result unchanged; it never
-    answers for a tool. A write outside the plan asks you what to do (after Revert, the refusal asks Claude to restore
-    the file).
+    answers for a tool. A write outside the plan is refused until you answer Claude's Scope drift question (why, the
+    change, then Add to plan, Revert or Allow once); the mod records your answer from the dialog's result only.
   - `command.run` handles only `/temper:temper`. It answers `status`, `timeline`, `help`, `report`, `mode`,
     `enforcement`, `pane`, `play`, `pause` and `resume`. It records an accepted decision (`approve`, `next`, `back`,
     `override`, `accept`, `drift`) and passes it on; a refused one is answered with the reason. A word that changes
