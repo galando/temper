@@ -2181,6 +2181,22 @@ elif mode == 'testrun':
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 
+elif mode == 'restore':
+    wt, sha, paths = sys.argv[2], sys.argv[3], json.loads(sys.argv[4])
+    for p in paths:
+        tracked = subprocess.run(['git', '--literal-pathspecs', '-C', wt, 'cat-file', '-e', '%s:%s' % (sha, p)],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+        if tracked:
+            subprocess.run(['git', '--literal-pathspecs', '-C', wt, 'checkout', sha, '--', p],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(['git', '--literal-pathspecs', '-C', wt, 'reset', '-q', 'HEAD', '--', p],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            try:
+                os.remove(os.path.join(wt, p))
+            except OSError:
+                pass
+
 elif mode == 'verdict':
     plan, run, ledger, n, wt = json.loads(sys.argv[2]), load_run(sys.argv[3]), sys.argv[4], int(sys.argv[5]), sys.argv[6]
     c = ctx(plan, run, n)
@@ -2375,14 +2391,30 @@ cmd_task_gate() {
   local group slug title; group="$(_jget "$v" group)"; slug="$(_jget "$v" slug)"; title="$(_jget "$v" title)"
 
   if [[ "$verdict" != "PASS" ]]; then
+    # D-03: attempt 1 retries on the task model, attempt 2 escalates once, attempt 3 parks the group.
+    # The restore comes first so the next attempt starts from the snapshot, and the one write below
+    # records the attempt and the parking together.
+    local att; att="$(_jget "$v" attempt)"
+    _task_py restore "$_T_ABS" "$(_jget "$_T_CTX" start_sha)" "$(_jget "$v" commit_paths)"
     _groups_mutate "
 t = d['tasks'][a[0]]
 def num(x): return int(x) if x.isdigit() else None
 t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'FAIL', 'reason': a[3],
     'tokens': num(a[4]), 'ms': num(a[5]), 'ts': a[6], 'output': a[7]})
 t['status'] = 'failed'
-" "$n" "$(_jget "$v" attempt)" "$model" "$reason" "$tokens" "$ms" "$(_now)" "$(_jget "$v" output)" || return 1
+if int(a[1]) >= 3:
+    g = d.setdefault('groups', {}).setdefault(a[8], {})
+    g['status'] = 'parked'
+    g['parked_reason'] = 'Task %s failed %s attempts' % (a[0], a[1])
+" "$n" "$att" "$model" "$reason" "$tokens" "$ms" "$(_now)" "$(_jget "$v" output)" "$group" || return 1
     echo "FAIL: $reason"
+    if [[ "$att" -le 1 ]]; then
+      echo "NEXT: retry Task $n on $(_resolve_task_model)"
+    elif [[ "$att" -eq 2 ]]; then
+      echo "NEXT: escalate Task $n on $(_resolve_task_escalation_model)"
+    else
+      echo "NEXT: park group $group"
+    fi
     return 1
   fi
 

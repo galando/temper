@@ -593,6 +593,70 @@ assert_eq "task show: the previous attempt shows 20 lines of output and no more"
 assert_eq "task show: the whole payload is at most 6000 bytes" "1" "$([[ "$(printf '%s' "$SHOW" | wc -c | tr -d ' ')" -le 6000 ]] && echo 1 || echo 0)"
 assert_eq "task show: the group context is kept whole inside the budget" "64" "$(printf '%s\n' "$SHOW" | grep -c '^cccccccccc')"
 
+# retry -> escalate -> park (D-03), restore on FAIL, usage recording
+st_nextcount() { printf '%s\n' "$1" | grep -c '^NEXT:'; }
+st_attempt() { # st_attempt <model> <tokens> <ms>: start Task 1, write a declared file and a stray one, no RED: a FAIL
+  "$TEMPER" task start 1 >/dev/null 2>&1
+  st_edit src/a.sh; st_edit stray.txt
+  "$TEMPER" task gate 1 --model "$1" --tokens "$2" --ms "$3" 2>&1
+}
+st_setup
+out="$(st_attempt claude-haiku-5-5 2100 41000)"; rc=$?
+assert_eq "retry: attempt 1 FAIL prints exactly one NEXT line, retry on the task model" "1|NEXT: retry Task 1 on claude-haiku-5-5" \
+  "$(st_nextcount "$out")|$(printf '%s\n' "$out" | grep '^NEXT:')"
+assert_eq "retry: the declared file the failed attempt wrote is restored (removed)" "no" "$([[ -e "$ST_WT/src/a.sh" ]] && echo yes || echo no)"
+assert_eq "retry: an undeclared file is left alone" "yes" "$([[ -e "$ST_WT/stray.txt" ]] && echo yes || echo no)"
+assert_eq "retry: the group is not parked after one failure and Task 1 is offered again" "running|attempt 2" \
+  "$(python3 -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1']['status'])")|attempt $("$TEMPER" schedule | python3 -c "
+import json,sys
+print(next(json.loads(l)['attempt'] for l in sys.stdin if l.startswith('{') and json.loads(l).get('task')==1))")"
+out="$(st_attempt claude-haiku-5-5 1900 39000)"
+assert_eq "retry: attempt 2 FAIL prints one NEXT line, escalate on the escalation model" "1|NEXT: escalate Task 1 on sonnet" \
+  "$(st_nextcount "$out")|$(printf '%s\n' "$out" | grep '^NEXT:')"
+assert_eq "retry: the schedule offers the escalation model for attempt 3" "sonnet|3" \
+  "$("$TEMPER" schedule | python3 -c "
+import json,sys
+r=next(json.loads(l) for l in sys.stdin if l.startswith('{') and json.loads(l).get('task')==1)
+print('%s|%s' % (r['model'], r['attempt']))")"
+out="$(st_attempt sonnet 5200 90000)"; rc=$?
+assert_eq "retry: attempt 3 FAIL prints one NEXT line, park the group, exit 1" "1|1|NEXT: park group G1" \
+  "$rc|$(st_nextcount "$out")|$(printf '%s\n' "$out" | grep '^NEXT:')"
+assert_eq "park: the group is parked with a reason naming the task" "parked|1" \
+  "$(python3 -c "import json; g=json.load(open('.temper/groups.json'))['groups']['G1']; print(g['status'])")|$(python3 -c "import json; g=json.load(open('.temper/groups.json'))['groups']['G1']; print(1 if 'Task 1' in g.get('parked_reason','') and '3' in g.get('parked_reason','') else 0)")"
+assert_eq "park: the schedule stops offering G1 tasks and still offers G2" "3" "$(sg_ready)"
+out="$("$TEMPER" task start 1 2>&1)"; rc=$?
+assert_eq "park: a fourth attempt cannot start (exit 1, names the parked group)" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'parked')"
+assert_eq "usage: three attempts carry model, outcome, reason, tokens and ms" \
+  "claude-haiku-5-5/FAIL/2100/41000,claude-haiku-5-5/FAIL/1900/39000,sonnet/FAIL/5200/90000" \
+  "$(python3 -c "
+import json
+a=json.load(open('.temper/groups.json'))['tasks']['1']['attempts']
+assert all(x['reason'] for x in a)
+print(','.join('%s/%s/%s/%s' % (x['model'],x['outcome'],x['tokens'],x['ms']) for x in a))")"
+# the other group is unaffected and can still pass
+"$TEMPER" task start 3 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 3 --phase red >/dev/null 2>&1
+mkdir -p "$ST_WT/../temper-demo-G2/src" 2>/dev/null; echo c > ".claude/worktrees/temper-demo-G2/src/c.sh"
+ST_EXIT=0 "$TEMPER" task test 3 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 3 --model claude-haiku-5-5 --tokens 10 --ms 5 2>&1)"
+assert_eq "park: a task in the other group still passes and prints only NEXT: schedule" "0|NEXT: schedule" \
+  "$(printf '%s\n' "$out" | grep -c '^FAIL')|$(printf '%s\n' "$out" | grep '^NEXT:')"
+
+# restore puts a tracked declared file back to its start content
+st_setup
+mkdir -p "$ST_WT/src"; echo original > "$ST_WT/src/a.sh"
+git -C "$ST_WT" add src/a.sh >/dev/null 2>&1; git -C "$ST_WT" -c user.name=t -c user.email=t@t commit -q -m seed >/dev/null 2>&1
+"$TEMPER" task start 1 >/dev/null 2>&1; echo changed > "$ST_WT/src/a.sh"
+"$TEMPER" task gate 1 --model claude-haiku-5-5 >/dev/null 2>&1
+assert_eq "retry: a tracked declared file is restored to its start content" "original" "$(cat "$ST_WT/src/a.sh")"
+assert_eq "retry: tokens and ms are optional (recorded as null)" "None|None" \
+  "$(python3 -c "import json; a=json.load(open('.temper/groups.json'))['tasks']['1']['attempts'][0]; print('%s|%s' % (a['tokens'],a['ms']))")"
+# a passing gate prints no retry/escalate/park line
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 --model claude-haiku-5-5 --tokens 7 --ms 9 2>&1)"
+assert_eq "usage: a PASS records tokens and ms and prints only NEXT: schedule" "7/9|NEXT: schedule" \
+  "$(python3 -c "import json; a=json.load(open('.temper/groups.json'))['tasks']['1']['attempts'][0]; print('%s/%s' % (a['tokens'],a['ms']))")|$(printf '%s\n' "$out" | grep '^NEXT:')"
+
 # grouped off: every task subcommand exits 1 and writes nothing
 setup; gp_base
 assert_exit "grouped off: task start exits 1" 1 "$TEMPER" task start 1
