@@ -2041,6 +2041,403 @@ cmd_group() {
   esac
 }
 
+# Grouped Build (9.7.0): the task lifecycle. One embedded python program with a mode per job, so the
+# snapshot, the changed-file rule and the verdict are computed in one place. Bash only sequences it:
+# groups.json writes go through _groups_mutate (the lock), ledger rows through _json_append.
+TASK_SHOW_MAX_BYTES=6000
+_task_py() { # _task_py <mode> [args...]
+  python3 - "$@" <<'PY'
+import fnmatch, hashlib, json, os, shlex, signal, subprocess, sys, time
+
+def norm(p):
+    p = p.strip()
+    return p[2:] if p.startswith('./') else p
+
+def fail(msg):
+    print('FAIL: ' + msg, file=sys.stderr)
+    sys.exit(1)
+
+def snap(wt):
+    """sha256 of every dirty or untracked path in the worktree ('DELETED' for a path that is gone)."""
+    r = subprocess.run(['git', '--literal-pathspecs', '-C', wt, 'status', '--porcelain=v1', '-z', '-uall'],
+                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    ents = r.stdout.decode('utf-8', 'replace').split('\0')
+    out, i = {}, 0
+    while i < len(ents):
+        e = ents[i]; i += 1
+        if len(e) < 4:
+            continue
+        xy, path = e[:2], e[3:]
+        if xy[0] in 'RC' or xy[1] in 'RC':
+            old = ents[i] if i < len(ents) else ''
+            i += 1
+            if old:
+                out[old] = 'DELETED'
+        fp = os.path.join(wt, path)
+        try:
+            out[path] = hashlib.sha256(open(fp, 'rb').read()).hexdigest() if os.path.isfile(fp) else 'DELETED'
+        except OSError:
+            out[path] = 'DELETED'
+    return out
+
+def load_run(gfile):
+    try:
+        d = json.load(open(gfile))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+def ctx(plan, run, n):
+    t = next((x for x in plan['tasks'] if x['n'] == n), None)
+    if t is None:
+        fail('tasks.md has no Task %d' % n)
+    g = next((x for x in plan['groups'] if x['id'] == t['group']), None)
+    if g is None:
+        fail('Task %d is outside any group' % n)
+    rg = (run.get('groups') or {}).get(g['id']) or {}
+    rt = (run.get('tasks') or {}).get(str(n)) or {}
+    status = rt.get('status', 'pending')
+    attempts = rt.get('attempts') or []
+    return {'n': n, 'title': t['title'], 'group': g['id'], 'files': t['files'], 'block': t['block'],
+            'context': g['context'], 'worktree': rg.get('worktree', ''), 'status': status,
+            'attempt': rt.get('attempt', 1) if status == 'running' else len(attempts) + 1,
+            'attempts': attempts, 'start_sha': rt.get('start_sha', ''), 'started_at': rt.get('started_at', ''),
+            'snapshot': rt.get('snapshot') or {}, 'slug': run.get('slug', '')}
+
+def matches(path, pats):
+    return any(path == norm(p) or fnmatch.fnmatchcase(path, norm(p)) for p in pats)
+
+mode = sys.argv[1]
+
+if mode == 'ctx':
+    print(json.dumps(ctx(json.loads(sys.argv[2]), load_run(sys.argv[3]), int(sys.argv[4]))))
+
+elif mode == 'why':
+    plan, run, n, max_par = json.loads(sys.argv[2]), load_run(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
+    c = ctx(plan, run, n)
+    t = next(x for x in plan['tasks'] if x['n'] == n)
+    rg, rt = run.get('groups') or {}, run.get('tasks') or {}
+    def st(m): return (rt.get(str(m)) or {}).get('status', 'pending')
+    g = next(x for x in plan['groups'] if x['id'] == c['group'])
+    gwait = [d for d in g['depends'] if ((rg.get(d) or {}).get('gate') or {}).get('verdict') != 'PASS']
+    unmet = [d for d in t['depends'] if st(d) != 'passed']
+    running = [x for x in plan['tasks'] if st(x['n']) == 'running']
+    clash = [x['n'] for x in running if {norm(f) for f in x['files']} & {norm(f) for f in t['files']}]
+    if (rg.get(c['group']) or {}).get('status') == 'parked': print('group %s is parked' % c['group'])
+    elif gwait: print('group %s depends on %s' % (c['group'], ', '.join(gwait)))
+    elif unmet: print('depends on %s' % ', '.join('Task %d' % d for d in unmet))
+    elif clash: print('files overlap Task %d' % clash[0])
+    elif len(running) >= max_par: print('max-parallel %d reached' % max_par)
+    else: print('')
+
+elif mode == 'snap':
+    print(json.dumps(snap(sys.argv[2])))
+
+elif mode == 'show':
+    plan, run, n, project = json.loads(sys.argv[2]), load_run(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
+    c = ctx(plan, run, n)
+    if not c['worktree']:
+        fail('group %s is not started (temper group start %s)' % (c['group'], c['group']))
+    head = 'TASK %d (group %s, attempt %d): %s\nWORKTREE: %s\nPROJECT:  %s\nDECLARED FILES: %s\n' % (
+        n, c['group'], c['attempt'], c['title'], os.path.join(project, c['worktree']), project, ', '.join(c['files']))
+    body = head + '--- TASK ---\n' + c['block'] + '\n--- GROUP CONTEXT ---\n' + c['context'] + '\n'
+    if c['attempts']:
+        last = c['attempts'][-1]
+        prev = '--- PREVIOUS ATTEMPT ---\n%s: %s\n%s\n' % (last.get('outcome', 'FAIL'), last.get('reason', ''),
+                                                           last.get('output', ''))
+        room = int(sys.argv[6]) - len(body.encode('utf-8'))
+        pb = prev.encode('utf-8')
+        if len(pb) > room:
+            note = b'\n[truncated]\n'
+            pb = pb[:max(room - len(note), 0)].decode('utf-8', 'ignore').encode('utf-8') + note if room > len(note) else b''
+        body += pb.decode('utf-8', 'ignore')
+    sys.stdout.write(body)
+
+elif mode == 'testrun':
+    wt, timeout, rowfile, n, group, attempt, phase = sys.argv[2:9]
+    cmd = sys.argv[10:]   # argv[9] is the '--' separator
+    args = ['bash', '-c', cmd[0]] if len(cmd) == 1 else cmd
+    try:
+        p = subprocess.Popen(args, cwd=wt, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+        try:
+            out, _ = p.communicate(timeout=float(timeout))
+            rc = p.returncode if p.returncode >= 0 else 128 - p.returncode
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(p.pid, signal.SIGKILL)
+            except OSError:
+                pass
+            out, _ = p.communicate()
+            rc = 124
+    except OSError as e:
+        out, rc = ('%s\n' % e).encode(), 127
+    sys.stdout.write(out.decode('utf-8', 'replace'))
+    sys.stdout.flush()
+    row = {'claim': 'Task %s unit test %s' % (n, phase), 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
+           'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': phase, 'scenario': None,
+           'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'task': int(n), 'group': group,
+           'attempt': int(attempt), 'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+           'output': out[-4096:].decode('utf-8', 'replace')}
+    json.dump(row, open(rowfile, 'w'))
+    sys.exit(rc)
+
+elif mode == 'verdict':
+    plan, run, ledger, n, wt = json.loads(sys.argv[2]), load_run(sys.argv[3]), sys.argv[4], int(sys.argv[5]), sys.argv[6]
+    c = ctx(plan, run, n)
+    try:
+        rows = json.load(open(ledger))
+    except Exception:
+        rows = []
+    mine = [r for r in rows if r.get('task') == n and r.get('attempt') == c['attempt'] and r.get('executed_by') == 'cli']
+    green = next((i for i, r in enumerate(mine) if r.get('phase') == 'green' and r.get('exit_code') == 0), None)
+    reason = ''
+    if green is None:
+        reason = 'no green run for this task and attempt'
+    elif not any(r.get('phase') == 'red' and r.get('exit_code') not in (0, None) for r in mine[:green]):
+        reason = 'need a failing run before a passing run for this task and attempt'
+    now = snap(wt)
+    old = c['snapshot']
+    changed = sorted(p for p in set(now) | set(old) if now.get(p, 'CLEAN') != old.get(p, 'CLEAN'))
+    others = []
+    for t in plan['tasks']:
+        if t['group'] != c['group'] or t['n'] == n:
+            continue
+        st = (run.get('tasks') or {}).get(str(t['n'])) or {}
+        if st.get('status') == 'running' or (st.get('status') == 'passed' and st.get('passed_at', '') >= c['started_at']):
+            others += t['files']
+    mine_changed = [p for p in changed if matches(p, c['files'])]
+    undeclared = [p for p in changed if not matches(p, c['files']) and not matches(p, others)]
+    if not reason and undeclared:
+        reason = 'undeclared change: ' + ', '.join(undeclared)
+    tail = ''
+    if reason:
+        last = [r for r in mine if r.get('output')]
+        tail = '\n'.join((last[-1]['output'] if last else '').split('\n')[:20]).rstrip('\n')
+    print(json.dumps({'verdict': 'FAIL' if reason else 'PASS', 'reason': reason, 'commit_paths': mine_changed,
+                      'output': tail, 'attempt': c['attempt'], 'title': c['title'], 'group': c['group'],
+                      'slug': c['slug']}))
+PY
+}
+
+_jget() { # _jget <json> <key> -> the value (lists and objects as JSON)
+  python3 -c "
+import json, sys
+v = json.loads(sys.argv[1]).get(sys.argv[2], '')
+print(json.dumps(v) if isinstance(v, (list, dict)) else ('' if v is None else v))" "$1" "$2"
+}
+
+_task_load() { # _task_load <N>: sets _T_SPEC _T_PLAN _T_CTX _T_ABS for task N, or returns 1 with the reason
+  local n="${1:-}"
+  if [[ ! "$n" =~ ^[0-9]+$ ]]; then
+    echo "FAIL: usage: temper task <start|show|test|gate> <N> ..." >&2
+    return 1
+  fi
+  _T_SPEC="$(_spec_path "")"
+  if [[ -z "$_T_SPEC" || ! -f "$_T_SPEC/tasks.md" ]]; then
+    echo "FAIL: no tasks.md for the active run (temper state init, then plan)" >&2
+    return 1
+  fi
+  _T_PLAN="$(_grouped_parse "$_T_SPEC/tasks.md")"
+  _T_CTX="$(_task_py ctx "$_T_PLAN" "$GROUPS_FILE" "$n")" || return 1
+  local wt; wt="$(_jget "$_T_CTX" worktree)"
+  _T_ABS=""
+  [[ -n "$wt" ]] && _T_ABS="$(pwd -P)/$wt"
+  return 0
+}
+
+# ADR 0009 for CLI commits: the native pre-commit hook fails open in a group worktree (no run state
+# there), so the CLI checks the upstream gates itself: plan, intent while intent.md exists, design
+# while design.md exists. Prints the unsatisfied stages and returns 1.
+_adr0009_upstream_check() { # _adr0009_upstream_check <spec_path>
+  local sp="$1" missing=""
+  _stage_satisfied plan || missing="$missing plan"
+  if [[ -f "$sp/intent.md" ]]; then _stage_satisfied intent || missing="$missing intent"; fi
+  if [[ -f "$sp/design.md" ]]; then _stage_satisfied design || missing="$missing design"; fi
+  [[ -z "$missing" ]] && return 0
+  echo "${missing# }"
+  return 1
+}
+
+cmd_task_start() {
+  _task_load "${1:-}" || return 1
+  local n="$1" group wt status
+  group="$(_jget "$_T_CTX" group)"; wt="$(_jget "$_T_CTX" worktree)"; status="$(_jget "$_T_CTX" status)"
+  local why=""
+  if [[ -z "$wt" ]]; then
+    why="group $group is not started (temper group start $group)"
+  elif [[ "$status" == "running" || "$status" == "passed" ]]; then
+    why="it is already $status"
+  else
+    local ready max
+    ready="$(cmd_schedule 2>/dev/null | python3 -c "
+import json, sys
+n = int(sys.argv[1])
+print(1 if any(l.strip().startswith('{') and json.loads(l).get('task') == n for l in sys.stdin) else 0)" "$n")"
+    if [[ "$ready" != "1" ]]; then
+      max="$(_cfg_get build.grouped.max-parallel 4)"; [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
+      why="$(_task_py why "$_T_PLAN" "$GROUPS_FILE" "$n" "$max")"
+      [[ -n "$why" ]] || why="it is not in the ready set"
+    fi
+  fi
+  if [[ -n "$why" ]]; then
+    echo "FAIL: Task $n is not ready: $why" >&2
+    return 1
+  fi
+  local snap sha
+  snap="$(_task_py snap "$_T_ABS")" || return 1
+  sha="$(git -C "$_T_ABS" rev-parse HEAD)" || return 1
+  _groups_mutate "
+t = d.setdefault('tasks', {}).setdefault(a[0], {})
+if t.get('status') == 'running':
+    print('FAIL: Task %s is already running' % a[0], file=sys.stderr)
+    sys.exit(1)
+t.setdefault('attempts', [])
+t['group'] = a[1]
+t['status'] = 'running'
+t['attempt'] = len(t['attempts']) + 1
+t['start_sha'] = a[2]
+t['snapshot'] = json.loads(a[3])
+t['started_at'] = a[4]
+" "$n" "$group" "$sha" "$snap" "$(_now)" || return 1
+  echo "OK: Task $n started (group $group, worktree $wt)"
+}
+
+cmd_task_show() {
+  _task_load "${1:-}" || return 1
+  if [[ -z "$_T_ABS" ]]; then
+    echo "FAIL: group $(_jget "$_T_CTX" group) is not started (temper group start)" >&2
+    return 1
+  fi
+  _task_py show "$_T_PLAN" "$GROUPS_FILE" "$1" "$(pwd -P)" "$TASK_SHOW_MAX_BYTES"
+}
+
+cmd_task_test() {
+  local n="${1:-}"; shift || true
+  local phase=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --phase) phase="${2:-}"; shift 2 || true ;;
+      --) shift; break ;;
+      *) break ;;
+    esac
+  done
+  if [[ ! "$phase" =~ ^(red|green)$ || $# -eq 0 ]]; then
+    echo "FAIL: usage: temper task test <N> --phase red|green -- <command...>" >&2
+    return 1
+  fi
+  _task_load "$n" || return 1
+  if [[ "$(_jget "$_T_CTX" status)" != "running" ]]; then
+    echo "FAIL: Task $n is not running (temper task start $n)" >&2
+    return 1
+  fi
+  local rowfile rc
+  rowfile="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
+  _task_py testrun "$_T_ABS" "${TEMPER_TASK_TEST_TIMEOUT_S:-600}" "$rowfile" "$n" "$(_jget "$_T_CTX" group)" \
+    "$(_jget "$_T_CTX" attempt)" "$phase" -- "$@"
+  rc=$?
+  _ensure_dirs
+  [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
+  rm -f "$rowfile"
+  return $rc
+}
+
+cmd_task_gate() {
+  local n="${1:-}"; shift || true
+  local model="" tokens="" ms=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --model) model="${2:-}"; shift 2 || true ;;
+      --tokens) tokens="${2:-}"; shift 2 || true ;;
+      --ms) ms="${2:-}"; shift 2 || true ;;
+      *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
+    esac
+  done
+  _task_load "$n" || return 1
+  local status; status="$(_jget "$_T_CTX" status)"
+  if [[ "$status" != "running" ]]; then
+    echo "FAIL: Task $n is not running (status: $status)" >&2
+    return 1
+  fi
+  local v verdict reason
+  v="$(_task_py verdict "$_T_PLAN" "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$_T_ABS")" || return 1
+  verdict="$(_jget "$v" verdict)"; reason="$(_jget "$v" reason)"
+  local group slug title; group="$(_jget "$v" group)"; slug="$(_jget "$v" slug)"; title="$(_jget "$v" title)"
+
+  if [[ "$verdict" != "PASS" ]]; then
+    _groups_mutate "
+t = d['tasks'][a[0]]
+def num(x): return int(x) if x.isdigit() else None
+t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'FAIL', 'reason': a[3],
+    'tokens': num(a[4]), 'ms': num(a[5]), 'ts': a[6], 'output': a[7]})
+t['status'] = 'failed'
+" "$n" "$(_jget "$v" attempt)" "$model" "$reason" "$tokens" "$ms" "$(_now)" "$(_jget "$v" output)" || return 1
+    echo "FAIL: $reason"
+    return 1
+  fi
+
+  # ADR 0009 (design.md "Gate for CLI-made commits"): the CLI checks the upstream gates itself.
+  local missing
+  if ! missing="$(_adr0009_upstream_check "$_T_SPEC")"; then
+    echo "FAIL: refusing the Task $n commit: upstream gate(s) not satisfied: $missing (ADR 0009)" >&2
+    return 3
+  fi
+
+  local paths=() p sha=""
+  while IFS= read -r p; do [[ -n "$p" ]] && paths+=("$p"); done < <(python3 -c "
+import json, sys
+for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
+  if [[ ${#paths[@]} -gt 0 ]]; then
+    local idargs; idargs="$(_git_id_args)"
+    # shellcheck disable=SC2086
+    if ! git --literal-pathspecs -C "$_T_ABS" add -A -- "${paths[@]}" >/dev/null 2>&1 \
+       || ! git --literal-pathspecs -C "$_T_ABS" $idargs commit -q -m "feat($slug): Task $n $title [$group]" -- "${paths[@]}" >/dev/null 2>&1; then
+      echo "FAIL: could not commit Task $n in $(_jget "$_T_CTX" worktree)" >&2
+      return 1
+    fi
+    sha="$(git -C "$_T_ABS" rev-parse HEAD)"
+  fi
+  python3 - "$_T_SPEC/tasks.md" "$n" <<'PY'
+import re, sys
+p, n = sys.argv[1], sys.argv[2]
+lines = open(p, encoding='utf-8').read().split('\n')
+inside = False
+for i, l in enumerate(lines):
+    m = re.match(r'^###\s+Task\s+(\d+)\s*:', l)
+    if m: inside = (m.group(1) == n)
+    elif re.match(r'^#{1,2}\s', l): inside = False
+    elif inside and re.match(r'^\s*- \[ \]', l):
+        lines[i] = l.replace('- [ ]', '- [x]', 1)
+        break
+open(p, 'w', encoding='utf-8').write('\n'.join(lines))
+PY
+  _groups_mutate "
+t = d['tasks'][a[0]]
+def num(x): return int(x) if x.isdigit() else None
+t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'PASS', 'reason': '',
+    'tokens': num(a[3]), 'ms': num(a[4]), 'ts': a[5]})
+t['status'] = 'passed'
+t['passed_at'] = a[5]
+t['commit'] = a[6] or None
+" "$n" "$(_jget "$v" attempt)" "$model" "$tokens" "$ms" "$(_now)" "$sha" || return 1
+  echo "PASS: Task $n"
+  echo "NEXT: schedule"
+}
+
+cmd_task() {
+  local sub="${1:-}"; shift || true
+  if ! _grouped_on; then
+    echo "FAIL: grouped mode is off (build.mode)" >&2
+    return 1
+  fi
+  case "$sub" in
+    start) cmd_task_start "$@" ;;
+    show) cmd_task_show "$@" ;;
+    test) cmd_task_test "$@" ;;
+    gate) cmd_task_gate "$@" ;;
+    *) echo "FAIL: usage: temper task <start|show|test|gate> ..." >&2; return 1 ;;
+  esac
+}
+
 # Grouped plan-gate rows: one JSON requirement object per line (same shape _req emits).
 _grouped_plan_reqs() { # _grouped_plan_reqs <tasks.md> <max-blast-radius>
   local model; model="$(_grouped_parse "$1")"
@@ -3039,6 +3436,7 @@ main() {
     config) cmd_config "$@" ;;
     schedule) cmd_schedule "$@" ;;
     group) cmd_group "$@" ;;
+    task) cmd_task "$@" ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -3057,6 +3455,7 @@ Usage:
   temper config get <dot.path> [default]
   temper schedule [--json]        (grouped Build: the launchable tasks, one JSON line each)
   temper group start G<n>         (grouped Build: the group's worktree off the feature branch)
+  temper task <start|show|test|gate> N  (grouped Build: one task's lifecycle)
 EOF
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;

@@ -380,3 +380,201 @@ setup; gp_base
 assert_exit "grouped off: group start exits 1" 1 "$TEMPER" group start G1
 assert_eq "grouped off: group start writes no groups.json" "no" "$([[ -e .temper/groups.json ]] && echo yes || echo no)"
 setup
+
+# --- Grouped Build (9.7.0): task lifecycle (task start / show / test / gate) ---
+# Scenarios: A task with its own RED then GREEN and only declared files passes its gate; A task gate
+# fails without its own RED before GREEN; An undeclared file change fails the task gate; The task
+# launch payload stays within its byte budget [AC-05, AC-07, AC-08, AC-09]
+# Every case runs in the throwaway folder's own git repository, never in this repository's.
+ST_WT=".claude/worktrees/temper-demo-G1"
+st_setup() { # sw_setup + the upstream gates ADR 0009 asks for + both groups started
+  sw_setup
+  printf '{"plan":{"verdict":"PASS"},"intent":{"verdict":"PASS"}}\n' > .temper/gates.json
+  "$TEMPER" group start G1 >/dev/null 2>&1; "$TEMPER" group start G2 >/dev/null 2>&1
+}
+st_field() { # st_field <task> <field>
+  python3 -c "import json,sys; print(json.load(open('.temper/groups.json'))['tasks'][sys.argv[1]].get(sys.argv[2],''))" "$1" "$2"
+}
+st_rows() { # st_rows <task>: the ledger rows of one task as phase:exit,phase:exit
+  python3 -c "
+import json,sys
+rows=json.load(open('.temper/evidence/build.json'))
+print(','.join('%s:%s' % (r['phase'], r['exit_code']) for r in rows if r.get('task')==int(sys.argv[1])))" "$1" 2>/dev/null
+}
+st_edit() { # st_edit <task-file-relative-path>: write a file into G1's worktree
+  mkdir -p "$ST_WT/$(dirname "$1")"; echo "work $1" > "$ST_WT/$1"
+}
+st_unticked() { # the number of unticked boxes in the demo tasks.md
+  grep -c '^- \[ \]' .temper/specs/demo/tasks.md
+}
+
+# task start
+st_setup; BASE="$(git -C "$ST_WT" rev-parse HEAD)"; echo pre > "$ST_WT/pre.txt"
+assert_exit "task start 1 exits 0" 0 "$TEMPER" task start 1
+assert_eq "task start: status running, attempt 1, start_sha = the worktree HEAD" "running|1|$BASE" \
+  "$(st_field 1 status)|$(st_field 1 attempt)|$(st_field 1 start_sha)"
+assert_eq "task start: the snapshot holds a hash for the dirty file" "1" \
+  "$(python3 -c "import json; d=json.load(open('.temper/groups.json'))['tasks']['1']['snapshot']; print(1 if len(d.get('pre.txt',''))==64 else 0)")"
+assert_eq "task start: the task is bound to its group" "G1" "$(st_field 1 group)"
+assert_exit "task start: a task that is already running exits 1" 1 "$TEMPER" task start 1
+out="$("$TEMPER" task start 2 2>&1)"; rc=$?
+assert_eq "task start: a task behind an unpassed Depends exits 1 and names it" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'Task 2 is not ready.*Task 1')"
+assert_exit "task start: an unknown task exits 1" 1 "$TEMPER" task start 99
+assert_exit "task start: no task number exits 1" 1 "$TEMPER" task start
+sw_setup; printf '{"plan":{"verdict":"PASS"}}\n' > .temper/gates.json
+assert_exit "task start: a group that was not started exits 1" 1 "$TEMPER" task start 1
+
+# task show
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1
+SHOW="$("$TEMPER" task show 1)"
+assert_eq "task show: the header names task, group, attempt and title" "1" "$(printf '%s\n' "$SHOW" | grep -c '^TASK 1 (group G1, attempt 1): Alpha$')"
+assert_eq "task show: the worktree and project lines are absolute" "1|1" \
+  "$(printf '%s\n' "$SHOW" | grep -c "^WORKTREE: $PWD/$ST_WT\$")|$(printf '%s\n' "$SHOW" | grep -c "^PROJECT:  $PWD\$")"
+assert_eq "task show: the declared files line" "1" "$(printf '%s\n' "$SHOW" | grep -c '^DECLARED FILES: src/a.sh, tests/a_test.sh$')"
+assert_eq "task show: the task block and the group context are inside" "1|1|1" \
+  "$(printf '%s\n' "$SHOW" | grep -c '^--- TASK ---$')|$(printf '%s\n' "$SHOW" | grep -c 'Test:\*\* `bash tests/a_test.sh`')|$(printf '%s\n' "$SHOW" | grep -c 'Shared notes for G1')"
+assert_eq "task show: another group's context is not inside" "0" "$(printf '%s\n' "$SHOW" | grep -c 'Notes for G2')"
+assert_eq "task show: a first attempt has no previous-attempt section" "0" "$(printf '%s\n' "$SHOW" | grep -c 'PREVIOUS ATTEMPT')"
+assert_exit "task show: an unknown task exits 1" 1 "$TEMPER" task show 99
+
+# task test
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1
+out="$("$TEMPER" task test 1 --phase red -- bash -c 'echo boom; exit 3')"; rc=$?
+assert_eq "task test: the command's exit is the exit and its output is shown" "3|1" "$rc|$(printf '%s' "$out" | grep -c boom)"
+"$TEMPER" task test 1 --phase green -- bash -c 'pwd' >/dev/null 2>&1
+assert_eq "task test: rows carry phase and exit" "red:3,green:0" "$(st_rows 1)"
+assert_eq "task test: the row is tagged task, group, attempt and executed_by" "1|G1|1|cli" \
+  "$(python3 -c "import json; r=json.load(open('.temper/evidence/build.json'))[0]; print('%s|%s|%s|%s' % (r['task'],r['group'],r['attempt'],r['executed_by']))")"
+assert_eq "task test: the claim is a test claim of the build stage" "1" \
+  "$(python3 -c "import json; print(1 if 'test' in json.load(open('.temper/evidence/build.json'))[0]['claim'].lower() else 0)")"
+assert_eq "task test: the command ran with the worktree as its cwd" "$PWD/$ST_WT" "$("$TEMPER" task test 1 --phase green -- bash -c pwd | head -1)"
+assert_exit "task test: a phase other than red or green exits 1" 1 "$TEMPER" task test 1 --phase blue -- true
+assert_exit "task test: no command exits 1" 1 "$TEMPER" task test 1 --phase red
+assert_exit "task test: a task that is not running exits 1" 1 "$TEMPER" task test 3 --phase red -- true
+assert_eq "task test: a refused call records no row" "0" "$(st_rows 3 | tr -cd ',' | wc -c | tr -d ' ')"
+TEMPER_TASK_TEST_TIMEOUT_S=1 "$TEMPER" task test 1 --phase red -- sleep 5 >/dev/null 2>&1; rc=$?
+assert_eq "task test: a hung command is killed and exits 124" "124" "$rc"
+assert_eq "task test: the timed-out run is recorded with exit 124" "124" \
+  "$(python3 -c "import json; print(json.load(open('.temper/evidence/build.json'))[-1]['exit_code'])")"
+
+# task gate: the pass path
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; BASE="$(st_field 1 start_sha)"
+"$TEMPER" task test 1 --phase red -- bash -c 'exit 1' >/dev/null 2>&1
+st_edit src/a.sh; st_edit tests/a_test.sh
+"$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "task gate: RED then GREEN with declared files only passes" "0|1|1" \
+  "$rc|$(printf '%s' "$out" | grep -c '^PASS: Task 1')|$(printf '%s' "$out" | grep -c '^NEXT: schedule')"
+assert_eq "task gate: the status is passed" "passed" "$(st_field 1 status)"
+assert_eq "task gate: only Task 1's box is ticked" "2" "$(st_unticked)"
+assert_eq "task gate: Task 1's own box is the ticked one" "1" "$(awk '/^### Task 1:/{f=1} /^### Task 2:/{f=0} f' .temper/specs/demo/tasks.md | grep -c '^- \[x\]')"
+assert_eq "task gate: one commit on the group branch, subject names task and group" "feat(demo): Task 1 Alpha [G1]" \
+  "$(git -C "$ST_WT" log -1 --format=%s)"
+assert_eq "task gate: the commit holds exactly the declared files" "src/a.sh,tests/a_test.sh" \
+  "$(git -C "$ST_WT" show --name-only --format= HEAD | sort | paste -sd, -)"
+assert_eq "task gate: the commit is on top of the start sha" "$BASE" "$(git -C "$ST_WT" rev-parse HEAD~1)"
+assert_eq "task gate: the verdict goes to groups.json, not gates.json" "0" "$(grep -c '"task"' .temper/gates.json)"
+assert_eq "task gate: the dependent task is now offered" "2,3" "$(sg_ready)"
+assert_exit "task gate: a task that already passed exits 1" 1 "$TEMPER" task gate 1
+
+# task gate: the dirty file that was there before the start is not this task's change
+st_setup; echo pre > "$ST_WT/pre.txt"; "$TEMPER" task start 1 >/dev/null 2>&1
+"$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1; st_edit src/a.sh; "$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1
+assert_exit "task gate: a file that was dirty before the start and is unchanged passes" 0 "$TEMPER" task gate 1
+assert_eq "task gate: the pre-existing file is not committed" "src/a.sh" "$(git -C "$ST_WT" show --name-only --format= HEAD)"
+
+# task gate: sibling tasks in one worktree
+st_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'
+"$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 2 >/dev/null 2>&1
+"$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1; "$TEMPER" task test 2 --phase red -- false >/dev/null 2>&1
+st_edit src/a.sh; st_edit src/b.sh
+"$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1; "$TEMPER" task test 2 --phase green -- true >/dev/null 2>&1
+assert_exit "task gate: a sibling's file in the shared worktree is not an undeclared change" 0 "$TEMPER" task gate 1
+assert_eq "task gate: the first task's commit leaves the sibling's file alone" "src/a.sh" "$(git -C "$ST_WT" show --name-only --format= HEAD)"
+assert_exit "task gate: the sibling then passes with its own file" 0 "$TEMPER" task gate 2
+assert_eq "task gate: the sibling's commit holds its own file" "src/b.sh" "$(git -C "$ST_WT" show --name-only --format= HEAD)"
+
+# task gate: FAIL reasons
+st_fail() { # st_fail <red-exit|none> <green-exit|none> [more ledger shape]: start 1, record, gate; prints the output
+  "$TEMPER" task start 1 >/dev/null 2>&1
+  [[ "$1" != "none" ]] && "$TEMPER" task test 1 --phase red -- bash -c "exit $1" >/dev/null 2>&1
+  st_edit src/a.sh
+  [[ "$2" != "none" ]] && "$TEMPER" task test 1 --phase green -- bash -c "exit $2" >/dev/null 2>&1
+  "$TEMPER" task gate 1 2>&1
+}
+NEEDRED='need a failing run before a passing run for this task and attempt'
+st_setup; out="$(st_fail none 0)"; rc=$?
+assert_eq "task gate: GREEN only fails (exit 1) naming the missing RED" "1|1" "$rc|$(printf '%s' "$out" | grep -c "^FAIL: $NEEDRED")"
+assert_eq "task gate: a failed task is not ticked, not committed, and its status is failed" "3|failed|0" \
+  "$(st_unticked)|$(st_field 1 status)|$(git -C "$ST_WT" log --oneline | grep -c Task)"
+assert_eq "task gate: the failed attempt is recorded" "1" "$(python3 -c "import json; a=json.load(open('.temper/groups.json'))['tasks']['1']['attempts']; print(len(a) if a[0]['outcome']=='FAIL' else 0)")"
+st_setup; out="$(st_fail 1 none)"; rc=$?
+assert_eq "task gate: RED only fails with the no-green reason" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL: no green run for this task and attempt')"
+st_setup; out="$(st_fail none none)"
+assert_eq "task gate: no runs at all fails with the no-green reason" "1" "$(printf '%s' "$out" | grep -c '^FAIL: no green run')"
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1; "$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"
+assert_eq "task gate: GREEN before RED fails" "1" "$(printf '%s' "$out" | grep -c "^FAIL: $NEEDRED")"
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 3 >/dev/null 2>&1
+"$TEMPER" task test 3 --phase red -- false >/dev/null 2>&1; "$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"
+assert_eq "task gate: another task's RED does not count" "1" "$(printf '%s' "$out" | grep -c "^FAIL: $NEEDRED")"
+# a RED from an earlier attempt does not count for the next one
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1; "$TEMPER" task gate 1 >/dev/null 2>&1
+assert_exit "task start: a failed task can be started again" 0 "$TEMPER" task start 1
+assert_eq "task start: the second start is attempt 2" "2" "$(st_field 1 attempt)"
+"$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"
+assert_eq "task gate: attempt 2 does not reuse attempt 1's RED" "1" "$(printf '%s' "$out" | grep -c "^FAIL: $NEEDRED")"
+# undeclared change
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; HEADBEFORE="$(git -C "$ST_WT" rev-parse HEAD)"
+"$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1; st_edit src/a.sh; st_edit stray.txt
+"$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "task gate: an undeclared file fails the gate and names it" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL: undeclared change: stray.txt')"
+assert_eq "task gate: the undeclared change is not committed or ticked" "$HEADBEFORE|3" "$(git -C "$ST_WT" rev-parse HEAD)|$(st_unticked)"
+# an edit to a file that was already dirty at the start is a change too
+st_setup; echo pre > "$ST_WT/pre.txt"; "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1
+echo changed > "$ST_WT/pre.txt"; st_edit src/a.sh; "$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1
+assert_eq "task gate: a pre-dirty file edited during the task is undeclared" "1" "$("$TEMPER" task gate 1 2>&1 | grep -c 'undeclared change: pre.txt')"
+assert_exit "task gate: a task that was never started exits 1" 1 "$TEMPER" task gate 3
+
+# ADR 0009: the CLI's own commit checks the upstream gates the native hook cannot see in a worktree
+st_pass_ready() { "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task test 1 --phase red -- false >/dev/null 2>&1; st_edit src/a.sh; "$TEMPER" task test 1 --phase green -- true >/dev/null 2>&1; }
+st_setup; st_pass_ready; HEADBEFORE="$(git -C "$ST_WT" rev-parse HEAD)"; printf '{"intent":{"verdict":"PASS"}}\n' > .temper/gates.json
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "task gate: no plan verdict refuses the commit (exit 3) and names the stage" "3|1" "$rc|$(printf '%s' "$out" | grep -c 'plan')"
+assert_eq "task gate: the refused commit changed nothing" "$HEADBEFORE|3|running" "$(git -C "$ST_WT" rev-parse HEAD)|$(st_unticked)|$(st_field 1 status)"
+printf '{"plan":{"verdict":"PASS"}}\n' > .temper/gates.json
+assert_exit "task gate: the intent verdict is required while intent.md exists (exit 3)" 3 "$TEMPER" task gate 1
+printf '{"plan":{"verdict":"PASS"},"intent":{"verdict":"PASS"}}\n' > .temper/gates.json; echo '# Design' > .temper/specs/demo/design.md
+assert_exit "task gate: the design verdict is required while design.md exists (exit 3)" 3 "$TEMPER" task gate 1
+printf '{"plan":{"verdict":"PASS"},"intent":{"verdict":"PASS"},"design":{"verdict":"FAIL"}}\n' > .temper/gates.json
+printf '[{"stage":"design","reason":"accepted risk","ts":"2026-01-01T00:00:00Z"}]\n' > .temper/overrides.json
+assert_exit "task gate: a human override satisfies an upstream gate" 0 "$TEMPER" task gate 1
+
+# the launch payload stays within its byte budget
+st_setup; python3 - <<'PY'
+p = '.temper/specs/demo/tasks.md'
+s = open(p).read().replace('Shared notes for G1. Use bash.', '\n'.join('c' * 60 + str(i) for i in range(64)))
+open(p, 'w').write(s)
+PY
+"$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task test 1 --phase red -- bash -c 'for i in $(seq 1 400); do echo "line $i of a long failing output"; done; exit 1' >/dev/null 2>&1
+"$TEMPER" task gate 1 >/dev/null 2>&1; "$TEMPER" task start 1 >/dev/null 2>&1
+SHOW="$("$TEMPER" task show 1)"
+assert_eq "task show: a retry carries the previous attempt with its reason" "1|1" \
+  "$(printf '%s\n' "$SHOW" | grep -c '^--- PREVIOUS ATTEMPT ---$')|$(printf '%s\n' "$SHOW" | grep -c 'no green run for this task and attempt')"
+assert_eq "task show: the previous attempt shows 20 lines of output and no more" "1" \
+  "$(n=$(printf '%s\n' "$SHOW" | grep -c '^line '); [[ $n -ge 19 && $n -le 20 ]] && echo 1 || echo "$n")"
+assert_eq "task show: the whole payload is at most 6000 bytes" "1" "$([[ "$(printf '%s' "$SHOW" | wc -c | tr -d ' ')" -le 6000 ]] && echo 1 || echo 0)"
+assert_eq "task show: the group context is kept whole inside the budget" "64" "$(printf '%s\n' "$SHOW" | grep -c '^cccccccccc')"
+
+# grouped off: every task subcommand exits 1 and writes nothing
+setup; gp_base
+assert_exit "grouped off: task start exits 1" 1 "$TEMPER" task start 1
+assert_exit "grouped off: task show exits 1" 1 "$TEMPER" task show 1
+assert_exit "grouped off: task test exits 1" 1 "$TEMPER" task test 1 --phase red -- true
+assert_exit "grouped off: task gate exits 1" 1 "$TEMPER" task gate 1
+assert_eq "grouped off: no groups.json is written" "no" "$([[ -e .temper/groups.json ]] && echo yes || echo no)"
+assert_exit "an unknown task subcommand exits 1" 1 "$TEMPER" task frobnicate
+setup
