@@ -19,9 +19,9 @@ the person's answer from the result of the Scope drift question, never from what
 A typed `/temper:temper drift` still decides a pending drift.
 
 **Two narrated videos.** The README and the website show a 26 second video of the workflow and a 31
-second video of the mod. The repository holds no video. One commit holds the two videos, and the links
-pin that commit. The Pages workflow restores the videos at deploy time, so the site serves them as
-`video/mp4`.
+second video of the mod. The README plays them from GitHub attachments. The repository holds no
+video: one commit holds the two videos, and the website links pin that commit. The Pages workflow
+restores the videos at deploy time, so the site serves them as `video/mp4`.
 
 **A shorter README.** The README goes from 300 to about 100 lines. The mod details move to
 `docs/mod.md`: the bar, the three modes, each phase, scope drift, the game, where enforcement works,

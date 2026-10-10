@@ -11,7 +11,7 @@ the current phase ([the mod](docs/mod.md)).
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1.287%2B%20for%20the%20mod-blue)](docs/mod.md#where-enforcement-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-[![Temper in 26 seconds, a narrated video: the intent comes first, then one loop with a computed gate at every stage. Click to watch it on the website](https://raw.githubusercontent.com/galando/temper/07228492dbed8e80acf7676c592a681ffa54ba1d/docs/assets/temper-sdlc.jpg)](https://galando.github.io/temper/#video)
+https://github.com/user-attachments/assets/ad593a29-a75d-407b-8945-94aa93e8439d
 
 [Website](https://galando.github.io/temper) · [Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [The mod](docs/mod.md) · [Releases](https://github.com/galando/temper/releases)
 
@@ -66,7 +66,7 @@ flowchart LR
 - **The mod makes the phases real.** It refuses writes outside the phase, and `git commit` until Check
   passes. It draws the phase bar and keeps a report of the run. [The mod](docs/mod.md) has the details.
 
-[![The Temper mod in 31 seconds, a narrated video: the phase bar, one key to approve, refused writes and commits, the Scope drift question, the three modes and the game. Click to watch it on the website](https://raw.githubusercontent.com/galando/temper/07228492dbed8e80acf7676c592a681ffa54ba1d/docs/assets/temper-mod.jpg)](https://galando.github.io/temper/#mod)
+https://github.com/user-attachments/assets/627e1385-cbc0-4ad9-bd3a-05ca2b8bb09e
 
 ## What the mod reads and writes
 
