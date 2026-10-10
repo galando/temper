@@ -633,7 +633,7 @@ out="$(st_attempt claude-haiku-5-5 2100 41000)"; rc=$?
 assert_eq "retry: attempt 1 FAIL prints exactly one NEXT line, retry on the task model" "1|NEXT: retry Task 1 on claude-haiku-5-5" \
   "$(st_nextcount "$out")|$(printf '%s\n' "$out" | grep '^NEXT:')"
 assert_eq "retry: the declared file the failed attempt wrote is restored (removed)" "no" "$([[ -e "$ST_WT/src/a.sh" ]] && echo yes || echo no)"
-assert_eq "retry: an undeclared file is left alone" "yes" "$([[ -e "$ST_WT/stray.txt" ]] && echo yes || echo no)"
+assert_eq "retry: the undeclared file the verdict named is removed too (M2)" "no" "$([[ -e "$ST_WT/stray.txt" ]] && echo yes || echo no)"
 assert_eq "retry: the group is not parked after one failure and Task 1 is offered again" "running|attempt 2" \
   "$(python3 -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1']['status'])")|attempt $("$TEMPER" schedule | python3 -c "
 import json,sys
@@ -1119,4 +1119,70 @@ assert_eq "autonomy.md: narrowed invariant and group rules" "4" \
 assert_eq "config default: hardcoded invariant states the narrowed wording" "yes|0" \
   "$(grep -qiF 'final feature commit' "$REPO_ROOT/templates/temper.config.default" && echo yes || echo no)|$(grep -c 'NEVER commits, pushes, or merges' "$REPO_ROOT/templates/temper.config.default" | tr -d ' ')"
 assert_eq "orchestrator: the autonomy paragraph states the narrowed invariant" "yes" "$(grep -qiF 'final feature commit' "$OT" && echo yes || echo no)"
+setup
+
+# --- Grouped Build (9.7.0), review loop 1: the task gate verdict and its restore path [H1, H2, H5, M2] ---
+# H1: the verdict reads the LAST run of the attempt, so a failing REFACTOR re-run cannot ride on an earlier green
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+HEADBEFORE="$(git -C "$ST_WT" rev-parse HEAD)"
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "H1: a failing green re-run after a passing one fails the gate and names the final run" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL: .*final run')"
+assert_eq "H1: the broken state is not committed or ticked" "$HEADBEFORE|3|failed" "$(git -C "$ST_WT" rev-parse HEAD)|$(st_unticked)|$(st_field 1 status)"
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+assert_exit "H1: red, green, green (a passing re-run) still passes" 0 "$TEMPER" task gate 1
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+assert_exit "H1: a failing run after the green fails the gate" 1 "$TEMPER" task gate 1
+
+# H2: a commit made inside the worktree cannot hide an undeclared file
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; st_edit stray.txt
+git -C "$ST_WT" add stray.txt; git -C "$ST_WT" commit -q -m "sneaky" 2>/dev/null
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "H2: an undeclared file committed in the worktree fails the gate and names it" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL: undeclared change: stray.txt')"
+assert_eq "H2: the failure also names the commit the CLI did not make" "1" "$(printf '%s' "$out" | grep -c 'not made by the CLI')"
+assert_eq "H2: the task is not ticked" "3" "$(st_unticked)"
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; git -C "$ST_WT" add src/a.sh; git -C "$ST_WT" commit -q -m "own commit" 2>/dev/null
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "H2: a declared file committed by hand still fails (not a CLI commit)" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'not made by the CLI')"
+
+# H5: the commit hook writes .temper/gates.json inside the worktree; that is not an undeclared change
+h5_hook() { # a native pre-commit hook that writes run state in the commit's own top folder, as the real one does
+  local hd; hd="$(git rev-parse --git-common-dir)/ho""oks"; mkdir -p "$hd"
+  printf '#!/bin/sh\nmkdir -p .temper && echo "{}" > .temper/gates.json\nexit 0\n' > "$hd/pre-commit"; chmod +x "$hd/pre-commit"
+}
+st_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'; h5_hook
+"$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 2 >/dev/null 2>&1
+ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
+st_edit src/a.sh; st_edit src/b.sh
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
+assert_exit "H5: the first of two parallel tasks passes and is committed by the CLI" 0 "$TEMPER" task gate 1
+assert_eq "H5: the hook left an untracked .temper/gates.json in the worktree" "yes" "$([[ -f $ST_WT/.temper/gates.json ]] && echo yes || echo no)"
+out="$("$TEMPER" task gate 2 2>&1)"; rc=$?
+assert_eq "H5: the second parallel task, still running, then PASSes" "0|1" "$rc|$(printf '%s' "$out" | grep -c '^PASS: Task 2')"
+assert_eq "H5: the second commit holds only its own file" "src/b.sh" "$(git -C "$ST_WT" show --name-only --format= HEAD)"
+# a model-written file in the worktree's .temper/ is ignored too, but a real undeclared file still fails
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; st_edit .temper/gates.json; st_edit stray.txt; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"
+assert_eq "H5: only the real undeclared file is named, not .temper/" "1|0" \
+  "$(printf '%s' "$out" | grep -c '^FAIL: undeclared change: stray.txt$')|$(printf '%s' "$out" | grep -c '\.temper')"
+
+# M2: a FAIL also removes or restores the undeclared changes the verdict named, and only those
+st_setup; echo pre > "$ST_WT/pre.txt"; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; st_edit stray.txt; echo edited >> "$ST_WT/README"; echo changed > "$ST_WT/pre.txt"
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+"$TEMPER" task gate 1 >/dev/null 2>&1
+assert_eq "M2: an undeclared new file is removed after the FAIL" "no" "$([[ -e $ST_WT/stray.txt ]] && echo yes || echo no)"
+assert_eq "M2: an undeclared edit of a tracked file is restored" "base" "$(cat "$ST_WT/README")"
+assert_eq "M2: a file that was already dirty at the start is left alone" "changed" "$(cat "$ST_WT/pre.txt")"
+assert_eq "M2: the declared file is restored too (existing behaviour)" "no" "$([[ -e $ST_WT/src/a.sh ]] && echo yes || echo no)"
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "M2: the retry then passes without the earlier stray file" "0|src/a.sh" "$rc|$(git -C "$ST_WT" show --name-only --format= HEAD)"
 setup

@@ -2304,7 +2304,7 @@ cmd_group() {
 TASK_SHOW_MAX_BYTES=6000
 _task_py() { # _task_py <mode> [args...]
   python3 - "$@" <<'PY'
-import fnmatch, hashlib, json, os, shlex, signal, subprocess, sys, time
+import fnmatch, hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
 def norm(p):
     p = p.strip()
@@ -2556,15 +2556,42 @@ elif mode == 'verdict':
     except Exception:
         rows = []
     mine = [r for r in rows if r.get('task') == n and r.get('attempt') == c['attempt'] and r.get('executed_by') == 'cli']
-    green = next((i for i, r in enumerate(mine) if r.get('phase') == 'green' and r.get('exit_code') == 0), None)
+    # H1: the verdict reads the LAST run of the attempt: a red run, then a passing green after it, and the
+    # attempt's final run must itself be that green (a failing re-run after a green is not forgiven).
+    green = None
+    for i, r in enumerate(mine):
+        if r.get('phase') == 'green' and r.get('exit_code') == 0:
+            green = i
     reason = ''
     if green is None:
         reason = 'no green run for this task and attempt'
     elif not any(r.get('phase') == 'red' and r.get('exit_code') not in (0, None) for r in mine[:green]):
         reason = 'need a failing run before a passing run for this task and attempt'
+    elif green != len(mine) - 1:
+        reason = 'the final run of this attempt is not green'
+    # the worktree's own run state (the commit hook writes .temper/gates.json there) is not the task's change
+    def internal(p):
+        return p.startswith('.temper/') or p.startswith('.claude/worktrees/')
     now = snap(wt)
     old = c['snapshot']
-    changed = sorted(p for p in set(now) | set(old) if now.get(p, 'CLEAN') != old.get(p, 'CLEAN'))
+    changed = sorted(p for p in set(now) | set(old) if now.get(p, 'CLEAN') != old.get(p, 'CLEAN') and not internal(p))
+    # H2: files changed by commits made in the worktree since the task's start also count
+    foreign = []
+    committed = []
+    if c['start_sha']:
+        rl = subprocess.run(['git', '-C', wt, 'log', '--format=%H%x00%s', '%s..HEAD' % c['start_sha']],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        known = {(v or {}).get('commit') for v in (run.get('tasks') or {}).values()}
+        pat = re.compile(r'^feat\(%s\): Task \d+ .* \[%s\]$' % (re.escape(c['slug']), re.escape(c['group'])))
+        for ln in rl.stdout.decode('utf-8', 'replace').split('\n'):
+            if not ln.strip():
+                continue
+            sha, _, subj = ln.partition('\0')
+            if sha not in known and not pat.match(subj):
+                foreign.append(sha[:7])
+        df = subprocess.run(['git', '-C', wt, 'diff', '--name-only', '--no-renames', '-z', c['start_sha'], 'HEAD'],
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        committed = sorted(p for p in df.stdout.decode('utf-8', 'replace').split('\0') if p and not internal(p))
     others = []
     for t in plan['tasks']:
         if t['group'] != c['group'] or t['n'] == n:
@@ -2573,14 +2600,23 @@ elif mode == 'verdict':
         if st.get('status') == 'running' or (st.get('status') == 'passed' and st.get('passed_at', '') >= c['started_at']):
             others += t['files']
     mine_changed = [p for p in changed if matches(p, c['files'])]
-    undeclared = [p for p in changed if not matches(p, c['files']) and not matches(p, others)]
-    if not reason and undeclared:
-        reason = 'undeclared change: ' + ', '.join(undeclared)
+    undeclared = sorted(p for p in set(changed) | set(committed) if not matches(p, c['files']) and not matches(p, others))
+    problems = []
+    if undeclared:
+        problems.append('undeclared change: ' + ', '.join(undeclared))
+    if foreign:
+        problems.append('commit not made by the CLI: ' + ', '.join(foreign))
+    if not reason and problems:
+        reason = '; '.join(problems)
+    # M2: on a FAIL the undeclared changes named are removed or restored too, except a path that was already
+    # dirty at the start (its original content is only a hash in the snapshot)
+    restore_paths = mine_changed + [p for p in undeclared if p not in old]
     tail = ''
     if reason:
         last = [r for r in mine if r.get('output')]
         tail = '\n'.join((last[-1]['output'] if last else '').split('\n')[:20]).rstrip('\n')
     print(json.dumps({'verdict': 'FAIL' if reason else 'PASS', 'reason': reason, 'commit_paths': mine_changed,
+                      'restore_paths': restore_paths,
                       'output': tail, 'attempt': c['attempt'], 'title': c['title'], 'group': c['group'],
                       'slug': c['slug']}))
 PY
@@ -2750,7 +2786,7 @@ cmd_task_gate() {
     # The restore comes first so the next attempt starts from the snapshot, and the one write below
     # records the attempt and the parking together.
     local att; att="$(_jget "$v" attempt)"
-    _task_py restore "$_T_ABS" "$(_jget "$_T_CTX" start_sha)" "$(_jget "$v" commit_paths)"
+    _task_py restore "$_T_ABS" "$(_jget "$_T_CTX" start_sha)" "$(_jget "$v" restore_paths)"
     _groups_mutate "
 t = d['tasks'][a[0]]
 def num(x): return int(x) if x.isdigit() else None
