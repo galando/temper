@@ -1027,3 +1027,23 @@ assert_eq "state clear: removes the usage file" "0" "$([[ -f .temper/usage.json 
 assert_eq "help documents: usage add" "1" "$("$TEMPER" --help | grep -cF -- 'usage add')"
 assert_eq "header comment documents temper usage" "1" "$(grep -c '^#   temper usage' "$TEMPER")"
 setup
+
+# --- Grouped Build (9.7.0): the slim task brief ---
+# Scenario: The task launch payload stays within its byte budget [AC-05]
+TB="$REPO_ROOT/agents/build-task.md"
+TB_MAX="$(grep -m1 '^TASK_BRIEF_MAX_BYTES=' "$TEMPER" | sed 's/^[^=]*=//' | tr -dc '0-9')"
+assert_eq "task brief: agents/build-task.md exists" "1" "$([[ -f "$TB" ]] && echo 1 || echo 0)"
+assert_eq "task brief: within TASK_BRIEF_MAX_BYTES (read from the script)" "1" \
+  "$([[ -f "$TB" && -n "$TB_MAX" && "$(wc -c < "$TB" | tr -d ' ')" -le "$TB_MAX" ]] && echo 1 || echo 0)"
+assert_eq "task brief: frontmatter name and model" "temper-build-task|claude-haiku-5-5" \
+  "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^name:/{sub(/^name:[[:space:]]*/,""); a=$0} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); b=$0} END{print a "|" b}' "$TB" 2>/dev/null)"
+assert_eq "model task reads the brief frontmatter as the default" "claude-haiku-5-5" "$(setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; "$TEMPER" model task)"
+assert_eq "plugin.json lists ./agents/build-task.md" "1" "$(python3 -c "import json; print(int('./agents/build-task.md' in json.load(open('$REPO_ROOT/.claude-plugin/plugin.json'))['agents']))")"
+# Scenario: Grouped logic stays in the briefs and the CLI [AC-05]
+assert_eq "task brief: states the panel rule and the plugin folder rule" "1|1" \
+  "$(grep -ciE 'exactly one closed panel' "$TB" 2>/dev/null | head -1 | sed 's/^[1-9][0-9]*$/1/')|$(grep -c 'Plugin folder' "$TB" 2>/dev/null | sed 's/^[1-9][0-9]*$/1/')"
+assert_eq "task brief: names every CLI command it relies on" "3" \
+  "$(for c in 'task show' 'task test' '--phase red'; do grep -qF -- "$c" "$TB" 2>/dev/null && echo x; done | wc -l | tr -d ' ')"
+assert_eq "task brief: never points at an orchestrator file" "0" "$(grep -c 'commands/temper.md' "$TB" 2>/dev/null | tr -d ' ')"
+assert_eq "model --all still has 8 lines with the brief present and grouped off" "8" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
+setup

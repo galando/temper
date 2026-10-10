@@ -40,6 +40,7 @@
     "./agents/plan.md",
     "./agents/design.md",
     "./agents/build.md",
+    "./agents/build-task.md",
     "./agents/review.md",
     "./agents/check.md",
     "./agents/rca.md",
