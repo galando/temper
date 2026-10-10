@@ -440,6 +440,26 @@ _resolve_model() { # <stage> -> config override, else frontmatter default, else 
   _agent_default_model "$1"
 }
 
+_grouped_on() { # build.mode: grouped turns grouped Build on; absent, per-task or anything else is off
+  [[ "$(_cfg_get build.mode "")" == "grouped" ]]
+}
+
+_resolve_task_model() { # grouped task agent: config, else agents/build-task.md frontmatter, else the constant
+  local m; m="$(_cfg_get build.grouped.task-model "")"
+  [[ -n "$m" ]] && { echo "$m"; return; }
+  local f="$PLUGIN_ROOT/agents/build-task.md"
+  [[ -f "$f" ]] && m="$(awk '
+    /^---[[:space:]]*$/ { n++; if (n == 2) exit; next }
+    n == 1 && /^model:/ { sub(/^model:[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print; exit }
+  ' "$f" 2>/dev/null)"
+  echo "${m:-claude-haiku-5-5}"
+}
+
+_resolve_task_escalation_model() {
+  local m; m="$(_cfg_get build.grouped.escalation-model "")"
+  echo "${m:-sonnet}"
+}
+
 cmd_model() {
   local stage="${1:-}"
   if [[ -z "$stage" || "$stage" == "--all" ]]; then
@@ -449,8 +469,17 @@ cmd_model() {
       [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$s' (is its brief in the plugin's agents folder?)" >&2; rc=1; continue; }
       echo "${s}=${m}"
     done
+    if _grouped_on; then
+      echo "task=$(_resolve_task_model)"
+      echo "task-escalation=$(_resolve_task_escalation_model)"
+    fi
     return $rc
   fi
+
+  case "$stage" in
+    task) _resolve_task_model; return 0 ;;
+    task-escalation) _resolve_task_escalation_model; return 0 ;;
+  esac
 
   case " $AGENT_STAGES " in
     *" $stage "*) ;;

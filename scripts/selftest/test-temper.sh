@@ -161,13 +161,14 @@ _dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI
     > "$1/scripts/guards/install.sh"
 }
 
-# The cases live in four files next to this one, sourced in order so they share the helpers,
+# The cases live in five files next to this one, sourced in order so they share the helpers,
 # the counters and the state each case leaves for the next. Each stays well under the size a
 # reader takes in at once.
 source "$TESTS_DIR/temper-cases-1.sh"
 source "$TESTS_DIR/temper-cases-2.sh"
 source "$TESTS_DIR/temper-cases-3.sh"
 source "$TESTS_DIR/temper-cases-4.sh"
+source "$TESTS_DIR/temper-cases-5.sh"
 
 echo ""
 echo "=== test-temper.sh ==="
