@@ -868,3 +868,30 @@ assert_exit "integrate: autonomy lets the local integration merge run (design re
 setup
 assert_exit "integrate: grouped mode off exits 1" 1 "$TEMPER" integrate
 assert_eq "integrate: grouped off keeps gate build without an integration row" "0" "$("$TEMPER" gate build 2>&1 | grep -c integration)"
+
+# --- Grouped Build (9.7.0): max-blast-radius at the autonomy commit gate (D-01) ---
+# Scenario: Autonomy commit gate in grouped mode compares changes to the declared union [AC-11]
+gc_setup() { # gc_setup <grouped|per-task>: autonomous run, max-blast-radius 3, four declared files changed
+  gp_setup
+  [[ "$1" == "grouped" ]] || sed -i.bak 's/mode: grouped/mode: per-task/' .claude/temper.config
+  sed 's/max-blast-radius: 15/max-blast-radius: 3/' .claude/temper.config > .claude/temper.config.new && mv .claude/temper.config.new .claude/temper.config
+  "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+  git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -q -m base >/dev/null 2>&1
+  mkdir -p src tests
+  for f in src/a.sh tests/a_test.sh src/b.sh src/c.sh; do echo "x" > "$f"; done
+}
+gc_row() { "$TEMPER" gate commit 2>&1 | grep 'blast radius'; }
+gc_setup grouped
+assert_eq "grouped commit gate: 4 declared changes with max-blast-radius 3 -> blast radius row PASS" "1|0" \
+  "$(gc_row | grep -c '4 changed, all declared')|$(gc_row | grep -c 'exceeds')"
+echo y > .temper/specs/demo/notes.md
+assert_eq "grouped commit gate: a spec-folder file counts as declared" "1" "$(gc_row | grep -c 'all declared')"
+echo z > src/zzz.sh
+assert_eq "grouped commit gate: one undeclared file FAILs the row and names it" "1|1" \
+  "$(gc_row | grep -c 'changed outside declared files: .*src/zzz.sh')|$(gc_row | grep -c '^ *\[x\]')"
+gc_setup per-task; sed -i.bak 's/max-blast-radius: 3/max-blast-radius: 1/' .claude/temper.config
+assert_eq "per-task commit gate keeps the count rule (2 changed entries > 1 fails)" "1|0" \
+  "$(gc_row | grep -c 'exceeds autonomy.max-blast-radius=1')|$(gc_row | grep -c 'all declared')"
+gc_setup grouped; "$TEMPER" state set run_mode interactive >/dev/null 2>&1
+assert_eq "grouped commit gate: a non-autonomous run has no blast radius row" "0" "$(gc_row | wc -l | tr -d ' ')"
+setup

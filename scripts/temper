@@ -3423,7 +3423,34 @@ print('yes' if any(o.get('stage') == sys.argv[2] for o in d) else 'no')
     else
       changed_n=$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
     fi
-    if [[ "$changed_n" -le "$max_blast" ]]; then
+    if _grouped_on; then
+      # D-01: in grouped mode a group may legitimately exceed the count, so the row compares the
+      # changed set (base_sha-relative plus uncommitted) with the union of declared files instead.
+      local gspec; gspec="$(_spec_path "")"
+      local gverdict
+      gverdict="$( { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
+                       git -C "$REPO_ROOT" diff --name-only "$base_sha" 2>/dev/null; fi
+                     git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //; s/^"//; s/"$//'
+                   } | sort -u | python3 -c "
+import fnmatch, json, sys
+plan = json.loads(sys.argv[1]); spec = sys.argv[2].rstrip('/')
+declared = sorted({f for t in plan['tasks'] for f in t['files']})
+def ok(p):
+    if spec and (p == spec or p.startswith(spec + '/')): return True
+    if p.startswith('.temper/') or p.startswith('.claude/worktrees/'): return True   # run state the CLI owns
+    return any(p == d or fnmatch.fnmatch(p, d) for d in declared)
+changed = [l.strip() for l in sys.stdin if l.strip()]
+bad = [c for c in changed if not ok(c)]
+if bad: print('FAIL changed outside declared files: ' + ', '.join(bad[:5]))
+else: print('PASS %d changed, all declared' % len(changed))
+" "$(_grouped_parse "$gspec/tasks.md")" "${gspec#"$REPO_ROOT"/}")"
+      if [[ "$gverdict" == PASS* ]]; then
+        reqs+=("$(_req "blast radius" 1 "${gverdict#PASS }")")
+      else
+        reqs+=("$(_req "blast radius" 0 "${gverdict#FAIL }")")
+        all_pass=0
+      fi
+    elif [[ "$changed_n" -le "$max_blast" ]]; then
       reqs+=("$(_req "blast radius" 1 "$changed_n file(s) <= $max_blast")")
     else
       reqs+=("$(_req "blast radius" 0 "$changed_n file(s) exceeds autonomy.max-blast-radius=$max_blast")")
