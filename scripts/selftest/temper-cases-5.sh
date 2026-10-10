@@ -767,3 +767,104 @@ assert_eq "group reopen: the group is parked after three failures" "parked" "$(g
 assert_exit "group reopen: reopening a parked task exits 0" 0 "$TEMPER" group reopen G1 --task 1
 assert_eq "group reopen: the group runs again and the task is offered at attempt 1" "running|1@1" "$(gg_g G1 status)|$(gg_ready_g1)"
 setup
+
+# --- Grouped Build (9.7.0): integration (temper integrate) and the build gate's integration row ---
+# Scenarios: Integration merges every passed group and verifies the result; A merge conflict stops the
+# run before Review [AC-10]. Every case runs in the throwaway folder's own git repository.
+gi_setup() { # both groups started, G1/G2 Validate and the Integration suite controllable (GI_EXIT)
+  rm -rf src tests shared.txt   # files an earlier case merged into the shared throwaway folder
+  gg_setup
+  gp_mut '`bash tests/g2.sh`' '`true`'
+  gp_mut '`bash run-all.sh`' "\`bash -c 'echo integrating; pwd; ls src; exit \${GI_EXIT:-0}'\`"
+  "$TEMPER" group start G2 >/dev/null 2>&1
+}
+gi_pass() { # gi_pass <task> <group-worktree-name> <file> <content>: RED, edit, GREEN, task gate
+  local wt=".claude/worktrees/temper-demo-$2"
+  "$TEMPER" task start "$1" >/dev/null 2>&1
+  ST_EXIT=1 "$TEMPER" task test "$1" --phase red >/dev/null 2>&1
+  mkdir -p "$wt/$(dirname "$3")"; printf '%s\n' "$4" > "$wt/$3"
+  ST_EXIT=0 "$TEMPER" task test "$1" --phase green >/dev/null 2>&1
+  "$TEMPER" task gate "$1" --model claude-haiku-5-5 --tokens 10 --ms 5 >/dev/null 2>&1
+}
+gi_all() { # every task passed and both group gates PASS
+  gi_setup
+  gi_pass 1 G1 src/a.sh 'a_main() { :; }'; gi_pass 2 G1 src/b.sh 'b_main() { :; }'
+  gi_pass 3 G2 src/c.sh 'c_main() { :; }'
+  "$TEMPER" group gate G1 >/dev/null 2>&1; "$TEMPER" group gate G2 >/dev/null 2>&1
+}
+gi_int() { python3 -c "
+import json,sys
+v=json.load(open('.temper/groups.json')).get('integration') or {}
+for k in sys.argv[1].split('.'):
+    v=v.get(k,'') if isinstance(v,dict) else ''
+print(v if not isinstance(v,list) else ','.join(v))" "$1"; }
+gi_gate_row() { "$TEMPER" gate build 2>&1 | grep -c "integration"; }
+
+gi_all; BASE="$(git rev-parse HEAD)"
+out="$("$TEMPER" integrate 2>&1)"; rc=$?
+assert_eq "integrate: two clean groups merge and verify -> exit 0 and PASS" "0|1" "$rc|$(printf '%s' "$out" | grep -c '^PASS: integrated')"
+assert_eq "integrate: one --no-ff merge commit per group, in order, on the feature branch" "merge(demo): group G2|merge(demo): group G1" \
+  "$(git log --merges --format=%s | sed -n 1p)|$(git log --merges --format=%s | sed -n 2p)"
+assert_eq "integrate: every group's files are on the feature branch" "yes|yes|yes" \
+  "$([[ -f src/a.sh && -f src/b.sh ]] && echo yes || echo no)|$([[ -f src/c.sh ]] && echo yes || echo no)|$([[ "$(git rev-parse --abbrev-ref HEAD)" == feature/demo ]] && echo yes || echo no)"
+assert_eq "integrate: the suite ran in the project folder, after the worktrees were removed" "1|1|0" \
+  "$(printf '%s\n' "$out" | grep -c "^$PWD\$")|$(printf '%s\n' "$out" | grep -c '^integrating$')|$(git worktree list --porcelain | grep -c 'worktrees/temper-demo-G')"
+assert_eq "integrate: the worktree folders are gone and the group branches are deleted" "no|no|0" \
+  "$([[ -d .claude/worktrees/temper-demo-G1 ]] && echo yes || echo no)|$([[ -d .claude/worktrees/temper-demo-G2 ]] && echo yes || echo no)|$(git branch --list 'temper/demo/*' | wc -l | tr -d ' ')"
+assert_eq "integrate: the suite run is a CLI-executed build row tagged integration" "integration|cli|0" \
+  "$(python3 -c "import json; r=[x for x in json.load(open('.temper/evidence/build.json')) if x.get('phase')=='integration'][-1]; print('%s|%s|%s' % (r['phase'],r['executed_by'],r['exit_code']))")"
+assert_eq "integrate: the integration row is not a task RED/GREEN row" "0" \
+  "$(python3 -c "import json; print(len([x for x in json.load(open('.temper/evidence/build.json')) if x.get('phase') in ('red','green') and not x.get('task')]))")"
+assert_eq "integrate: groups.json records the PASS verdict" "PASS" "$(gi_int verdict)"
+assert_eq "integrate: gate build shows an integration row" "1" "$(gi_gate_row)"
+assert_eq "integrate: the integration row is PASS" "1" "$("$TEMPER" gate build 2>&1 | grep -c 'integration — groups merged')"
+out="$("$TEMPER" integrate 2>&1)"; rc=$?
+assert_eq "integrate: a second run after PASS is a no-op that exits 0" "0|1" "$rc|$(printf '%s' "$out" | grep -c 'already integrated')"
+
+# a group gate that has not passed stops it before any merge
+gi_all; "$TEMPER" group reopen G2 --task 3 >/dev/null 2>&1; HEAD0="$(git rev-parse HEAD)"
+out="$("$TEMPER" integrate 2>&1)"; rc=$?
+assert_eq "integrate: a group whose gate has not passed -> exit 1 naming it" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL:.*G2')"
+assert_eq "integrate: nothing was merged" "$HEAD0" "$(git rev-parse HEAD)"
+assert_eq "integrate: gate build FAILs on the integration row" "1" "$("$TEMPER" gate build 2>&1 | grep -c 'FAIL.*integration\|integration.*FAIL\|integration.*not run')"
+
+# the suite fails: FAIL, branches kept for diagnosis
+gi_all
+out="$(GI_EXIT=1 "$TEMPER" integrate 2>&1)"; rc=$?
+assert_eq "integrate: a failing suite -> exit 1 naming the exit" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL:.*exit 1')"
+assert_eq "integrate: verdict FAIL is stored and the group branches are kept" "FAIL|2" "$(gi_int verdict)|$(git branch --list 'temper/demo/*' | wc -l | tr -d ' ')"
+assert_eq "integrate: gate build is FAIL on the integration row" "1" "$("$TEMPER" gate build 2>&1 | grep -c 'FAIL.*integration\|integration.*FAIL')"
+assert_eq "integrate: a rerun after the suite is fixed flips the verdict to PASS" "0|PASS" "$("$TEMPER" integrate >/dev/null 2>&1; echo $?)|$(gi_int verdict)"
+
+# an Interfaces literal that is missing from the merged tree
+gi_all; gp_mut '`src/a.sh` — `a_main`' '`src/a.sh` — `a_missing`'
+out="$("$TEMPER" integrate 2>&1)"; rc=$?
+assert_eq "integrate: a missing interface literal -> exit 1 naming it" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL: interface missing: a_missing in src/a.sh')"
+assert_eq "integrate: the interface FAIL is stored" "FAIL" "$(gi_int verdict)"
+
+# a merge conflict stops the run before Review
+gi_all
+echo one > .claude/worktrees/temper-demo-G1/shared.txt; git -C .claude/worktrees/temper-demo-G1 add shared.txt; git -C .claude/worktrees/temper-demo-G1 commit -q -m g1shared
+echo two > .claude/worktrees/temper-demo-G2/shared.txt; git -C .claude/worktrees/temper-demo-G2 add shared.txt; git -C .claude/worktrees/temper-demo-G2 commit -q -m g2shared
+out="$("$TEMPER" integrate 2>&1)"; rc=$?
+assert_eq "integrate: a conflicting pair aborts with the cause (exit 1)" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL: merge conflict: G2 in shared.txt')"
+assert_eq "integrate: the merge was aborted, the tree is clean, G1 stays merged" "|1" \
+  "$(git status --porcelain | grep -v '^??')|$(git log --merges --format=%s | grep -c 'group G1')"
+assert_eq "integrate: groups.json records the group and files" "FAIL|G2|shared.txt" "$(gi_int verdict)|$(gi_int group)|$(gi_int files)"
+assert_eq "integrate: the worktrees are kept for diagnosis and the suite never ran" "2|0" \
+  "$(git worktree list --porcelain | grep -c 'worktrees/temper-demo-G')|$(printf '%s' "$out" | grep -c integrating)"
+assert_eq "integrate: gate build FAILs on integration" "1" "$("$TEMPER" gate build 2>&1 | grep -c 'FAIL.*integration\|integration.*FAIL')"
+
+# refusals
+gi_all; git checkout -q -B main
+assert_exit "integrate: the protected branch main is refused (exit 3)" 3 "$TEMPER" integrate
+gi_all; git checkout -q -B other
+assert_exit "integrate: a branch that is not the run's feature branch exits 1" 1 "$TEMPER" integrate
+gi_all; printf '{"intent":{"verdict":"PASS"}}\n' > .temper/gates.json; HEAD0="$(git rev-parse HEAD)"
+assert_exit "integrate: the CLI merge checks the upstream gates first (ADR 0009, exit 3)" 3 "$TEMPER" integrate
+assert_eq "integrate: the refused run merged nothing" "$HEAD0" "$(git rev-parse HEAD)"
+gi_all; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+assert_exit "integrate: autonomy lets the local integration merge run (design resolution 1a)" 0 "$TEMPER" integrate
+setup
+assert_exit "integrate: grouped mode off exits 1" 1 "$TEMPER" integrate
+assert_eq "integrate: grouped off keeps gate build without an integration row" "0" "$("$TEMPER" gate build 2>&1 | grep -c integration)"

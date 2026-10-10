@@ -2364,6 +2364,48 @@ elif mode == 'grouprun':
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 
+elif mode == 'integrun':
+    # the full suite, run by the CLI in the project folder after the merges; phase 'integration' keeps it
+    # out of the task RED/GREEN counts
+    wt, timeout, rowfile = sys.argv[2:5]
+    cmd = sys.argv[6:]    # argv[5] is the '--' separator
+    out, rc = run_cmd(wt, timeout, cmd)
+    sys.stdout.write(out.decode('utf-8', 'replace'))
+    sys.stdout.flush()
+    row = {'claim': 'Integration suite', 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
+           'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'integration', 'scenario': None,
+           'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'executed_by': 'cli',
+           'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'output': out[-4096:].decode('utf-8', 'replace')}
+    json.dump(row, open(rowfile, 'w'))
+    sys.exit(rc)
+
+elif mode == 'integplan':
+    # integplan <plan> <groups.json>: the integration facts as one JSON line: the suite command, the groups whose
+    # gate has not passed, the merge order (Depends first, then group number) and the Interfaces entries
+    plan, run = json.loads(sys.argv[2]), load_run(sys.argv[3])
+    rg = run.get('groups') or {}
+    ids = [g['id'] for g in plan['groups']]
+    deps = {g['id']: [d for d in g['depends'] if d in ids] for g in plan['groups']}
+    order, done = [], set()
+    while len(order) < len(ids):
+        ready = sorted((i for i in ids if i not in done and all(d in done for d in deps[i])), key=lambda x: int(x[1:]))
+        if not ready:
+            ready = sorted((i for i in ids if i not in done), key=lambda x: int(x[1:]))
+        order.append(ready[0]); done.add(ready[0])
+    print(json.dumps({'integration': plan.get('integration') or '',
+                      'notpassed': [i for i in order if ((rg.get(i) or {}).get('gate') or {}).get('verdict') != 'PASS'],
+                      'order': order,
+                      'worktrees': {i: (rg.get(i) or {}).get('worktree', '') for i in order},
+                      'interfaces': [x for g in plan['groups'] for x in g['interfaces']]}))
+
+elif mode == 'ifcheck':
+    # ifcheck <interfaces-json>: the first Interfaces entry whose literal is not in its file at HEAD
+    for x in json.loads(sys.argv[2]):
+        r = subprocess.run(['git', 'show', 'HEAD:' + x['path']], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        if r.returncode != 0 or x['literal'] not in r.stdout.decode('utf-8', 'replace'):
+            print('interface missing: %s in %s' % (x['literal'], x['path']))
+            sys.exit(1)
+
 elif mode == 'gatecheck':
     # gatecheck <plan> <groups.json> <G>: prints the group's validate command on the first line and the
     # tasks that have not passed (comma separated) on the second
@@ -2680,6 +2722,109 @@ t['commit'] = a[6] or None
   echo "NEXT: schedule"
 }
 
+# temper integrate: merge every passed group branch into the feature branch (dependency order, --no-ff),
+# remove the group worktrees, run the plan's **Integration:** suite in the project, check each **Interfaces:**
+# literal, and on PASS delete the merged branches. A conflict aborts that merge and stops the run before Review
+# (the worktrees and branches stay for diagnosis). The verdict lives in groups.json 'integration'; gate build
+# reads it. Exit 0 PASS, 1 FAIL, 3 a protected branch or an unsatisfied upstream gate (ADR 0009).
+_integ_record() { # _integ_record <verdict> <reason> [group] [files-csv]
+  _groups_mutate "
+d['integration'] = {'verdict': a[0], 'reason': a[1], 'group': a[2] or None,
+                    'files': [f for f in a[3].split(',') if f], 'ts': a[4]}
+" "$1" "$2" "${3:-}" "${4:-}" "$(_now)"
+}
+
+cmd_integrate() {
+  local spec_path slug feature cur
+  spec_path="$(_spec_path "")"
+  slug="$(_spec_slug "$spec_path")"
+  if [[ -z "$spec_path" || ! -f "$spec_path/tasks.md" || ! -f "$GROUPS_FILE" ]]; then
+    echo "FAIL: no grouped run to integrate (temper group start first)" >&2
+    return 1
+  fi
+  if [[ "$(python3 -c "
+import json, sys
+try:
+    print((json.load(open(sys.argv[1])).get('integration') or {}).get('verdict', ''))
+except Exception:
+    print('')" "$GROUPS_FILE")" == "PASS" ]]; then
+    echo "OK: already integrated"
+    return 0
+  fi
+  feature="$(cmd_state_get branch "")"
+  cur="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  local protected="main master $(_default_branch)" b
+  for b in $protected; do
+    if [[ "$feature" == "$b" || "$cur" == "$b" ]]; then
+      echo "FAIL: refusing to integrate on the protected branch '$b' (use a feature branch)" >&2
+      return 3
+    fi
+  done
+  if [[ -z "$feature" || "$cur" != "$feature" ]]; then
+    echo "FAIL: integrate runs on the run's feature branch '$feature' (current branch: '${cur:-none}')" >&2
+    return 1
+  fi
+  local plan facts notpassed suite
+  plan="$(_grouped_parse "$spec_path/tasks.md")"
+  facts="$(_task_py integplan "$plan" "$GROUPS_FILE")" || return 1
+  notpassed="$(python3 -c "import json, sys; print(', '.join(json.loads(sys.argv[1])['notpassed']))" "$facts")"
+  suite="$(_jget "$facts" integration)"
+  if [[ -n "$notpassed" ]]; then
+    _integ_record FAIL "group gate not passed: $notpassed" || true
+    echo "FAIL: group gate has not passed for: $notpassed" >&2
+    return 1
+  fi
+  local missing
+  if ! missing="$(_adr0009_upstream_check "$spec_path")"; then
+    echo "FAIL: refusing the integration merge: upstream gate(s) not satisfied: $missing (ADR 0009)" >&2
+    return 3
+  fi
+  local idargs; idargs="$(_git_id_args)"
+  local order g
+  order="$(python3 -c "import json, sys; print(' '.join(json.loads(sys.argv[1])['order']))" "$facts")"
+  for g in $order; do
+    # shellcheck disable=SC2086
+    local mout
+    if ! mout="$(git $idargs merge --no-ff -q -m "merge($slug): group $g" "temper/$slug/$g" 2>&1)"; then
+      local files; files="$(git diff --name-only --diff-filter=U 2>/dev/null | paste -sd, -)"
+      git merge --abort >/dev/null 2>&1 || true
+      local why="${files:-$(printf '%s' "$mout" | head -1)}"
+      _integ_record FAIL "merge conflict: $g in ${why:-unknown files}" "$g" "$files" || true
+      echo "FAIL: merge conflict: $g in ${why:-unknown files}" >&2
+      return 1
+    fi
+  done
+  # worktrees go before any test run, so no runner sees the copies
+  for g in $order; do
+    local wt; wt="$(python3 -c "import json, sys; print(json.loads(sys.argv[1])['worktrees'].get(sys.argv[2], ''))" "$facts" "$g")"
+    [[ -n "$wt" ]] && git worktree remove --force "$wt" >/dev/null 2>&1
+  done
+  git worktree prune >/dev/null 2>&1 || true
+  if [[ -n "$suite" ]]; then
+    local rowfile rc
+    rowfile="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
+    _task_py integrun "$(pwd -P)" "${TEMPER_TASK_TEST_TIMEOUT_S:-600}" "$rowfile" -- "$suite"
+    rc=$?
+    _ensure_dirs
+    [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
+    rm -f "$rowfile"
+    if [[ "$rc" -ne 0 ]]; then
+      _integ_record FAIL "integration suite failed (exit $rc): $suite" || true
+      echo "FAIL: integration suite failed (exit $rc): $suite" >&2
+      return 1
+    fi
+  fi
+  local ifail
+  if ! ifail="$(_task_py ifcheck "$(python3 -c "import json, sys; print(json.dumps(json.loads(sys.argv[1])['interfaces']))" "$facts")")"; then
+    _integ_record FAIL "$ifail" || true
+    echo "FAIL: $ifail" >&2
+    return 1
+  fi
+  for g in $order; do git branch -D "temper/$slug/$g" >/dev/null 2>&1 || true; done
+  _integ_record PASS "" || return 1
+  echo "PASS: integrated $order into $feature"
+}
+
 cmd_task() {
   local sub="${1:-}"; shift || true
   if ! _grouped_on; then
@@ -2938,6 +3083,25 @@ PY
   else
     reqs+=("$(_req "checkpoint feedback answered" 0 "unanswered: $fb_detail")")
     all_pass=0
+  fi
+  if _grouped_on; then
+    local integ
+    integ="$(python3 -c "
+import json, sys
+try:
+    i = json.load(open(sys.argv[1])).get('integration') or {}
+except Exception:
+    i = {}
+print('%s|%s' % (i.get('verdict', ''), i.get('reason', '')))" "$GROUPS_FILE")"
+    if [[ "${integ%%|*}" == "PASS" ]]; then
+      reqs+=("$(_req "integration" 1 "groups merged, suite and interfaces verified (temper integrate)")")
+    elif [[ -n "${integ%%|*}" ]]; then
+      reqs+=("$(_req "integration" 0 "integration FAIL: ${integ#*|}")")
+      all_pass=0
+    else
+      reqs+=("$(_req "integration" 0 "integration not run (temper integrate)")")
+      all_pass=0
+    fi
   fi
   local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
@@ -3694,6 +3858,7 @@ main() {
     schedule) cmd_schedule "$@" ;;
     group) cmd_group "$@" ;;
     task) cmd_task "$@" ;;
+    integrate) cmd_integrate "$@" ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -3713,6 +3878,7 @@ Usage:
   temper schedule [--json]        (grouped Build: the launchable tasks, one JSON line each)
   temper group start G<n>         (grouped Build: the group's worktree off the feature branch)
   temper task <start|show|test|gate> N  (grouped Build: one task's lifecycle)
+  temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
 EOF
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;
