@@ -64,3 +64,6 @@ Thumbs.db
 .temper/evidence/
 .temper/stage-gate.log
 .temper/pending-stage.json
+.temper/groups.json
+.temper/usage.json
+.temper/.lock/
