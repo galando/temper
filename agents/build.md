@@ -58,9 +58,20 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    `git commit -m "feat({slug}): {scenario} [AC-NN]"`. Never `git add -A`, never
    `--no-verify`. An infrastructure-only task (no scenario) makes no commit.
 
-6. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` yourself before returning and fix
+6. **A file outside the plan: the person decides first.** The plan's files are the ones in
+   `plan.md`'s Files to Create and Files to Modify tables and on the `**File:**` lines of
+   `tasks.md`; test files and the spec folder are always yours. Before you change any
+   other file, stop: do not write it, not even another way. Finish what the task can do
+   without it, leave the task's box unticked, and list the file in the `DRIFT` section of
+   your panel: the path, why the task needs it (what goes wrong without it), and the change
+   you would make, in one row each. The orchestrator asks the person and launches you again
+   with one `Drift decision: {path}: {add|revert|allow-once}` line per answer. `add` and
+   `allow-once` let you make that change (`allow-once`: one edit, so make it in one);
+   `revert` means do the task without that file. Log every file you then wrote outside the
+   plan in `build-context.json`'s `unplanned_files` with the person's decision.
+7. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` yourself before returning and fix
    any FAIL it reports.
-7. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
+8. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
@@ -76,6 +87,8 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
   Verify it against current docs (the `source-driven-development` skill) before
   writing it.
 - On a checkpoint run, execute only task N.
+- A file outside the plan is never written before the person's `Drift decision:` line
+  allows it. It goes in the `DRIFT` section, with why and what, and the task waits.
 
 **Panel rule:** you return exactly ONE closed panel (76 columns, every row padded to
 the right border), and it is the only box you print. Fact rows at the top, then titled sections
@@ -99,6 +112,8 @@ task and cumulative on it:
 | {file} [{scenario}]                                                      |
 +--- COMMITS (N) ---+------------------------------------------------------+
 | {sha} {scenario} [AC-NN] — {files}                                       |
++--- DRIFT (N) ---+--------------------------------------------------------+
+| {path} — why: {what goes wrong without it} — change: {what you'd change} |
 +--- FEEDBACK (N) ---+-----------------------------------------------------+
 | #{K} {text} -> applied|declined: {why}                                   |
 +--- BLOCKERS (N) ---+-----------------------------------------------------+

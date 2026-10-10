@@ -24,6 +24,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The videos stay out of the plugin tree (the directory holds a plugin that ships media).
+      # They live in one pinned commit and are restored here, so Pages serves them as video/mp4.
+      - name: Restore the videos
+        env:
+          MEDIA_SHA: 07228492dbed8e80acf7676c592a681ffa54ba1d
+        run: |
+          git fetch --depth 1 origin "$MEDIA_SHA"
+          mkdir -p docs/media
+          for f in temper-sdlc temper-mod; do
+            git show "$MEDIA_SHA:docs/assets/$f.mp4" > "docs/media/$f.mp4"
+          done
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 

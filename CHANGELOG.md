@@ -3,6 +3,33 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.6.8: scope drift asks with why and the change, two narrated videos, a shorter README
+
+**Scope drift is one question, with the mod and without it.** Before this release, a file outside
+the plan had two different flows. Without the mod, Build wrote the file and logged a reason that
+nobody saw. With the mod, the mod stopped the write and asked with only the file path. Now Build and
+Fix never write such a file first. They list it in a new `DRIFT` section of the panel, with why the
+task needs it and the change. The orchestrator asks the person one Scope drift question: the file, a
+`Why:` line and a `Change:` line, then Add to plan, Revert or Allow once. It records the answer and
+launches the task again with a `Drift decision:` line. For Allow once, Claude's why becomes the
+recorded reason.
+
+The mod no longer has its own drift dialog. It refuses the write and tells Claude these steps. It reads
+the person's answer from the result of the Scope drift question, never from what the caller sends.
+A typed `/temper:temper drift` still decides a pending drift.
+
+**Two narrated videos.** The README and the website show a 26 second video of the workflow and a 31
+second video of the mod. The README plays them from GitHub attachments. The repository holds no
+video: one commit holds the two videos, and the website links pin that commit. The Pages workflow
+restores the videos at deploy time, so the site serves them as `video/mp4`.
+
+**A shorter README.** The README goes from 300 to about 100 lines. The mod details move to
+`docs/mod.md`: the bar, the three modes, each phase, scope drift, the game, where enforcement works,
+and the full list of what the mod reads and writes. The README keeps a short "What the mod reads and
+writes" section, because the plugin directory asks for it, and links to the full list. The Trust
+section moves to `docs/trust.md`. The known limits check (`scripts/check-known-limits.sh`) now reads
+the limits from `docs/mod.md`, where they moved.
+
 ## v9.6.7: no script names a hooks folder, no plugin root variable in tests, no bundled image
 
 The directory's report on 9.6.6 (878248e) held it for five reasons. Four are for a reviewer ("This

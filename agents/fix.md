@@ -39,9 +39,16 @@ the plugin folder.
    `code-review-graph` MCP server is available, use `get_impact_radius_tool`
    (`[PROVEN]`), else grep-based detection (`[HEURISTIC]`). Fix same-pattern
    occurrences `rca.md` flagged. Cross-reference an active `intent.md` if one exists.
-4. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` yourself before returning and
+4. **A file outside the fix: the person decides first.** The fix's files are the regression
+   test and the files `rca.md` names (the cause, the same-pattern occurrences, the related
+   files). Before you change any other file, or when Temper refuses a write as scope drift,
+   stop: do not write it another way. List it in the `DRIFT` section of your panel: the path,
+   why the fix needs it, and the change you would make. The orchestrator asks the person and
+   launches you again with one `Drift decision: {path}: {add|revert|allow-once}` line per
+   answer; `revert` means fix without that file, `allow-once` allows one edit.
+5. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` yourself before returning and
    fix any FAIL it reports.
-5. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
+6. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
@@ -74,6 +81,8 @@ TEST row, and every blocker is a row of the `BLOCKERS` section:
 | {file}                                                                   |
 +--- BLAST RADIUS (N) ---+-------------------------------------------------+
 | {consumers} consumers; same-pattern {n}/{m} — {file: each occurrence}    |
++--- DRIFT (N) ---+--------------------------------------------------------+
+| {path} — why: {what goes wrong without it} — change: {what you'd change} |
 +--- BLOCKERS (N) ---+-----------------------------------------------------+
 | {what stops the fix, and what it needs}                                  |
 +--------------------------------------------------------------------------+

@@ -255,7 +255,7 @@ Every stage gate follows the same shape. After a stage Agent returns:
    person's message at a gate is the original "Other": if the user writes a message at a gate,
    answer it; if it asks for a change, make the change, run the gate again, then wait for the
    user again. Every other dialog stays (the autonomy arming choice, clarifying questions, the
-   Build checkpoint feedback text). Without a `Temper enforcement:` line, show the gate as follows:
+   Build checkpoint feedback text, the Scope drift question). Without a `Temper enforcement:` line, show the gate as follows:
    - **On PASS:** `"Continue to {next} (Recommended)"` / `"Save for later"` / free-text
      `"Other"` for a change request (make the edit, re-run the gate, re-show).
    - **On FAIL:** `"Loop back to {upstream stage}"` (if `feedback.enabled` and the loop
@@ -453,7 +453,18 @@ autonomy loop) should have to wait until all the work is done to redirect it.
    {One "Checkpoint feedback #{K}: {text}" line per pending feedback item.}
    {If a review-context.json or check-context.json feedback file exists, name it here.}"
    ```
-3. Print the returned panel verbatim.
+3. Print the returned panel verbatim. **If it has a `DRIFT` section**, ask the person about
+   each row before the checkpoint gate, with and without the Temper bar, and in autonomous
+   mode too (a drift is never answered for the person). One `AskUserQuestion` per row:
+   header `Scope drift`; the question's first line `Outside the plan: {path}`, then
+   `Why: {why}` and `Change: {change}` from the row; options **"Add to plan"** (the file
+   becomes part of the plan), **"Revert"** (the task goes on without it) and **"Allow
+   once"** (only this change; the why is recorded as the reason). Record each answer with
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase feedback --claim "drift {path}: {choice}: {why}"`;
+   for "Add to plan", also add the file to `plan.md`'s Files to Modify table. Then
+   relaunch **the same task** with one `Drift decision: {path}: {add|revert|allow-once}`
+   line per answer. A typed answer instead of an option is a change request: handle it
+   like "Change" below.
 4. Gate with `AskUserQuestion`:
    - **"Continue (Recommended)"** — on a non-last task, go to step 2 for the next
      task. On the last task, this becomes the normal Build completion gate below.
