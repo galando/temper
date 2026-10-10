@@ -294,25 +294,64 @@ else:
 }
 
 # Write lock for the shared run files under .temper/. A mkdir lock (portable: macOS has no flock):
-# `mkdir` either creates the folder or fails, atomically. A lock older than 30 s belongs to a crashed
-# holder and is broken; a lock still held after TEMPER_LOCK_WAIT_S (default 10) seconds is written
-# past with a WARN (fail open), so a stuck holder never wedges a run. A lock this call did not take
-# is never released. Held only around a file write, never while a test runs.
+# `mkdir` either creates the folder or fails, atomically. The holder writes an owner token inside it and a
+# release removes the folder only when the token is still its own, so a lock that was broken and re-taken
+# by someone else is never released by the old holder. A lock older than 30 s belongs to a crashed holder
+# and is broken under a second short-lived lock (.lock.break), re-checked there, so two waiters never both
+# break it and one never removes a fresh lock. A lock still held after TEMPER_LOCK_WAIT_S (default 10)
+# seconds is written past with a WARN (fail open), so a stuck holder never wedges a run. A lock this call
+# did not take is never released. Calls nest (a depth count: only the outermost release frees the folder),
+# and a trap frees a held lock on EXIT/INT/TERM/HUP. Held around a file write, or a short git commit plus
+# the writes that record it, never while a test runs.
 _LOCK_DIR=".temper/.lock"
-_LOCK_HELD=0
-_lock_acquire() {
-  [[ "$_LOCK_HELD" == "1" ]] && return 0       # already held by this call chain: no self-deadlock
-  [[ -d .temper ]] || return 0                 # nothing to lock before a run has a folder
-  local i=0 max=$(( ${TEMPER_LOCK_WAIT_S:-10} * 50 ))
-  while :; do
-    if mkdir "$_LOCK_DIR" 2>/dev/null; then _LOCK_HELD=1; return 0; fi
-    if (( i % 50 == 0 )) && python3 -c "
+_LOCK_DEPTH=0
+_LOCK_OWNED=0
+_LOCK_TOKEN=""
+_lock_older_than_30s() { # _lock_older_than_30s <path>: 0 only when it exists and is older than 30 s
+  python3 -c "
 import os, sys, time
 try:
     sys.exit(0 if time.time() - os.path.getmtime(sys.argv[1]) > 30 else 1)
 except OSError:
-    sys.exit(1)   # the lock vanished between mkdir and here: not stale, retry the mkdir" "$_LOCK_DIR" 2>/dev/null; then
-      rmdir "$_LOCK_DIR" 2>/dev/null || true   # stale: its holder is gone
+    sys.exit(1)   # gone between the mkdir and here: not stale, retry the mkdir" "$1" 2>/dev/null
+}
+_lock_break_stale() {
+  local br="$_LOCK_DIR.break"
+  if ! mkdir "$br" 2>/dev/null; then
+    _lock_older_than_30s "$br" && rmdir "$br" 2>/dev/null   # a breaker that died is cleared once old
+    return 0
+  fi
+  if _lock_older_than_30s "$_LOCK_DIR"; then   # re-checked while no other waiter can break or replace it
+    rm -f "$_LOCK_DIR/owner" 2>/dev/null
+    rmdir "$_LOCK_DIR" 2>/dev/null || true
+  fi
+  rmdir "$br" 2>/dev/null || true
+}
+_lock_cleanup() { # free the lock this process still owns (EXIT/INT/TERM/HUP)
+  if [[ "$_LOCK_OWNED" == "1" && -f "$_LOCK_DIR/owner" && "$(cat "$_LOCK_DIR/owner" 2>/dev/null)" == "$_LOCK_TOKEN" ]]; then
+    rm -f "$_LOCK_DIR/owner" 2>/dev/null
+    rmdir "$_LOCK_DIR" 2>/dev/null || true
+  fi
+  _LOCK_OWNED=0
+}
+_lock_acquire() {
+  if (( _LOCK_DEPTH > 0 )); then _LOCK_DEPTH=$(( _LOCK_DEPTH + 1 )); return 0; fi   # nested: no self-deadlock
+  _LOCK_DEPTH=1
+  [[ -d .temper ]] || return 0                 # nothing to lock before a run has a folder
+  local i=0 max=$(( ${TEMPER_LOCK_WAIT_S:-10} * 50 ))
+  while :; do
+    if mkdir "$_LOCK_DIR" 2>/dev/null; then
+      _LOCK_TOKEN="$$.$RANDOM$RANDOM$(date +%s)"
+      printf '%s' "$_LOCK_TOKEN" > "$_LOCK_DIR/owner" 2>/dev/null || true
+      _LOCK_OWNED=1
+      trap '_lock_cleanup' EXIT
+      trap '_lock_cleanup; exit 130' INT
+      trap '_lock_cleanup; exit 143' TERM
+      trap '_lock_cleanup; exit 129' HUP
+      return 0
+    fi
+    if (( i % 50 == 0 )) && _lock_older_than_30s "$_LOCK_DIR"; then
+      _lock_break_stale
       i=$(( i + 1 ))
       continue
     fi
@@ -325,9 +364,13 @@ except OSError:
   done
 }
 _lock_release() {
-  [[ "$_LOCK_HELD" == "1" ]] || return 0
-  rmdir "$_LOCK_DIR" 2>/dev/null || true
-  _LOCK_HELD=0
+  (( _LOCK_DEPTH > 0 )) || return 0
+  _LOCK_DEPTH=$(( _LOCK_DEPTH - 1 ))
+  (( _LOCK_DEPTH == 0 )) || return 0
+  if [[ "$_LOCK_OWNED" == "1" ]]; then
+    _lock_cleanup
+    trap - EXIT INT TERM HUP
+  fi
 }
 
 # Every JSON write below goes through a temp file in the same folder and os.replace, so a reader
@@ -1001,8 +1044,9 @@ cmd_evidence_resolve() { # temper evidence resolve --stage <s> --id <n> --fixed-
   _ensure_dirs
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo "FAIL: no evidence recorded for stage '$stage'" >&2; return 1; }
+  _lock_acquire
   python3 - "$file" "$id" "$fixed_by" "$(_now)" <<'PY'
-import json, sys
+import json, os, sys
 f, id_s, fixed_by, ts = sys.argv[1:5]
 entries = json.load(open(f))
 try:
@@ -1019,9 +1063,15 @@ if e.get('resolved'):
 if e.get('accepted'):
     sys.exit("FAIL: finding #%s is already accepted (%s)" % (id_s, e['accepted'].get('reason')))
 e['resolved'] = {'fixed_by': fixed_by, 'ts': ts}
-json.dump(entries, open(f, 'w'), indent=2)
+tmp = '%s.tmp.%d' % (f, os.getpid())
+with open(tmp, 'w') as fh:
+    json.dump(entries, fh, indent=2)
+os.replace(tmp, f)
 print("OK: %s finding #%s resolved — %s" % (e.get('severity'), id_s, fixed_by))
 PY
+  local rc=$?
+  _lock_release
+  return $rc
 }
 
 cmd_evidence_accept() { # temper evidence accept --stage <s> --id <n> --reason "<why>"
@@ -1048,8 +1098,9 @@ cmd_evidence_accept() { # temper evidence accept --stage <s> --id <n> --reason "
   by="$name"
   [[ -n "$email" ]] && by="${by:+$by }<$email>"
   [[ -n "$by" ]] || by="${USER:-unknown}"
+  _lock_acquire
   python3 - "$file" "$id" "$reason" "$by" "$(_now)" <<'PY'
-import json, sys
+import json, os, sys
 f, id_s, reason, by, ts = sys.argv[1:6]
 entries = json.load(open(f))
 try:
@@ -1066,9 +1117,15 @@ if e.get('resolved'):
 if e.get('accepted'):
     sys.exit("FAIL: finding #%s is already accepted (%s)" % (id_s, e['accepted'].get('reason')))
 e['accepted'] = {'reason': reason, 'author': by, 'ts': ts}
-json.dump(entries, open(f, 'w'), indent=2)
+tmp = '%s.tmp.%d' % (f, os.getpid())
+with open(tmp, 'w') as fh:
+    json.dump(entries, fh, indent=2)
+os.replace(tmp, f)
 print("OK: %s finding #%s accepted by %s — %s" % (e.get('severity'), id_s, by, reason))
 PY
+  local rc=$?
+  _lock_release
+  return $rc
 }
 
 cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--scenario x]
@@ -1161,15 +1218,22 @@ cmd_config() {
 # ---------------------------------------------------------------------------
 
 _gate_write_verdict() { # _gate_write_verdict <stage> <verdict> <requirements-json-array>
-  local stage="$1" verdict="$2" reqs="$3"
+  local stage="$1" verdict="$2" reqs="$3" rc
+  _lock_acquire
   [[ -f "$GATES_FILE" ]] || echo '{}' > "$GATES_FILE"
   python3 -c "
-import json, sys
+import json, os, sys
 f, stage, verdict, reqs, ts = sys.argv[1:6]
 d = json.load(open(f))
 d[stage] = {'verdict': verdict, 'requirements': json.loads(reqs), 'ts': ts}
-json.dump(d, open(f, 'w'), indent=2)
+tmp = '%s.tmp.%d' % (f, os.getpid())
+with open(tmp, 'w') as fh:
+    json.dump(d, fh, indent=2)
+os.replace(tmp, f)
 " "$GATES_FILE" "$stage" "$verdict" "$reqs" "$(_now)"
+  rc=$?
+  _lock_release
+  return $rc
 }
 
 _spec_path() {
@@ -2158,7 +2222,17 @@ g['finished_at'] = a[1]
 # Only the named tasks re-run: their files go back to the content they had when the task started (one
 # revert commit on the group branch, that task's declared paths only), their boxes are unticked, their
 # attempts move to attempts_prior, and the group gate is cleared. A parked group runs again.
+# The reopen's revert commits are recorded as the CLI's own, so a running sibling's verdict accepts them.
 cmd_group_reopen() {
+  local rc
+  _lock_acquire
+  _group_reopen_body "$@"
+  rc=$?
+  _lock_release
+  return $rc
+}
+
+_group_reopen_body() {
   local g="${1:-}"; shift || true
   if [[ ! "$g" =~ ^G[0-9]+$ ]]; then
     echo "FAIL: usage: temper group reopen G<n> --task N [--task M] [--feedback ID]" >&2
@@ -2218,10 +2292,11 @@ except Exception:
           echo "FAIL: could not commit the revert of Task $n in $wt" >&2
           return 1
         fi
+        _groups_mutate "d.setdefault('cli_commits', []).append(a[0])" "$(git -C "$abs" rev-parse HEAD)" || return 1
       fi
     fi
     python3 - "$spec_path/tasks.md" "$n" <<'PY'
-import re, sys
+import os, re, sys
 p, n = sys.argv[1], sys.argv[2]
 lines = open(p, encoding='utf-8').read().split('\n')
 inside = False
@@ -2232,7 +2307,10 @@ for i, l in enumerate(lines):
     elif inside and re.match(r'^\s*- \[x\]', l):
         lines[i] = l.replace('- [x]', '- [ ]', 1)
         break
-open(p, 'w', encoding='utf-8').write('\n'.join(lines))
+tmp = '%s.tmp.%d' % (p, os.getpid())
+with open(tmp, 'w', encoding='utf-8') as fh:
+    fh.write('\n'.join(lines))
+os.replace(tmp, p)
 PY
     _groups_mutate "
 t = d.setdefault('tasks', {}).setdefault(a[0], {})
@@ -2618,13 +2696,15 @@ elif mode == 'verdict':
     if c['start_sha']:
         rl = subprocess.run(['git', '-C', wt, 'log', '--format=%H%x00%s', '%s..HEAD' % c['start_sha']],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        known = {(v or {}).get('commit') for v in (run.get('tasks') or {}).values()}
-        pat = re.compile(r'^feat\(%s\): Task \d+ .* \[%s\]$' % (re.escape(c['slug']), re.escape(c['group'])))
+        # A1: only shas the CLI itself recorded (a task's commit, or cli_commits) are its own; a subject that
+        # merely looks like the CLI's proves nothing. The caller holds the lock, so a sha is recorded before
+        # any verdict can read the log it sits in.
+        known = {(v or {}).get('commit') for v in (run.get('tasks') or {}).values()} | set(run.get('cli_commits') or [])
         for ln in rl.stdout.decode('utf-8', 'replace').split('\n'):
             if not ln.strip():
                 continue
             sha, _, subj = ln.partition('\0')
-            if sha not in known and not pat.match(subj):
+            if sha not in known:
                 foreign.append(sha[:7])
         df = subprocess.run(['git', '-C', wt, 'diff', '--name-only', '--no-renames', '-z', c['start_sha'], 'HEAD'],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -2699,7 +2779,17 @@ _adr0009_upstream_check() { # _adr0009_upstream_check <spec_path>
   return 1
 }
 
+# L3: the ready check and the start write happen under one lock, so a start never acts on a stale ready set.
 cmd_task_start() {
+  local rc
+  _lock_acquire
+  _task_start_body "$@"
+  rc=$?
+  _lock_release
+  return $rc
+}
+
+_task_start_body() {
   _task_load "${1:-}" || return 1
   local n="$1" group wt status
   group="$(_jget "$_T_CTX" group)"; wt="$(_jget "$_T_CTX" worktree)"; status="$(_jget "$_T_CTX" status)"
@@ -2793,7 +2883,19 @@ cmd_task_test() {
   return $rc
 }
 
+# M1/A1: the whole gate runs under the lock: the verdict reads the recorded shas, and the task commit, the
+# record of its sha and the tasks.md tick happen before any other gate or start can look. A held lock is
+# only ever waited on for a git commit and a few small file writes.
 cmd_task_gate() {
+  local rc
+  _lock_acquire
+  _task_gate_body "$@"
+  rc=$?
+  _lock_release
+  return $rc
+}
+
+_task_gate_body() {
   local n="${1:-}"; shift || true
   local model="" tokens="" ms=""
   while [[ $# -gt 0 ]]; do
@@ -2869,7 +2971,7 @@ for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
     sha="$(git -C "$_T_ABS" rev-parse HEAD)"
   fi
   python3 - "$_T_SPEC/tasks.md" "$n" <<'PY'
-import re, sys
+import os, re, sys
 p, n = sys.argv[1], sys.argv[2]
 lines = open(p, encoding='utf-8').read().split('\n')
 inside = False
@@ -2880,7 +2982,10 @@ for i, l in enumerate(lines):
     elif inside and re.match(r'^\s*- \[ \]', l):
         lines[i] = l.replace('- [ ]', '- [x]', 1)
         break
-open(p, 'w', encoding='utf-8').write('\n'.join(lines))
+tmp = '%s.tmp.%d' % (p, os.getpid())
+with open(tmp, 'w', encoding='utf-8') as fh:
+    fh.write('\n'.join(lines))
+os.replace(tmp, p)
 PY
   _groups_mutate "
 t = d['tasks'][a[0]]
@@ -2890,6 +2995,8 @@ t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'out
 t['status'] = 'passed'
 t['passed_at'] = a[5]
 t['commit'] = a[6] or None
+if a[6]:
+    d.setdefault('cli_commits', []).append(a[6])
 " "$n" "$(_jget "$v" attempt)" "$model" "$tokens" "$ms" "$(_now)" "$sha" || return 1
   echo "PASS: Task $n"
   echo "NEXT: schedule"

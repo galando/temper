@@ -1225,3 +1225,103 @@ ST_PRE=""
 gc_setup grouped; gp_mut '**File:** `src/b.sh`' '**File:** `src/*.sh`'
 assert_eq "H4: the autonomy commit gate compares exact paths too" "1" "$(gc_row | grep -c 'changed outside declared files: .*src/b.sh')"
 setup
+
+# --- Grouped Build (9.7.0), review loop 1: locking, atomic run-file writes and recorded shas [M1, L1, L2, L3, A1] ---
+slow_hook() { # a native pre-commit hook that sleeps $1 seconds, so a commit is observably in flight
+  local hd; hd="$(git rev-parse --git-common-dir)/ho""oks"; mkdir -p "$hd"
+  printf '#!/bin/sh\nsleep %s\nexit 0\n' "$1" > "$hd/pre-commit"; chmod +x "$hd/pre-commit"
+}
+lock_owner() { cat .temper/.lock/owner 2>/dev/null || echo none; }
+
+# A1: a commit the task agent makes itself, with the CLI's subject format, is still not the CLI's
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; st_edit stray.txt
+git -C "$ST_WT" add src/a.sh stray.txt; git -C "$ST_WT" commit -q -m "feat(demo): Task 1 Alpha [G1]" 2>/dev/null
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "A1: a hand-made commit with the CLI's subject format fails the task gate" "1|1|1" \
+  "$rc|$(printf '%s' "$out" | grep -c 'not made by the CLI')|$(printf '%s' "$out" | grep -c 'undeclared change: stray.txt')"
+assert_eq "A1: the task is not ticked" "3" "$(st_unticked)"
+# the CLI's own commit is recorded as a sha, so the next task in the same worktree still passes
+st_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'
+"$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 2 >/dev/null 2>&1
+ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
+st_edit src/a.sh; st_edit src/b.sh
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
+"$TEMPER" task gate 1 >/dev/null 2>&1
+assert_eq "A1: the CLI records the sha of its task commit" "$(git -C "$ST_WT" rev-parse HEAD)" "$(st_field 1 commit)"
+assert_exit "A1: a sibling that started earlier passes past the CLI's recorded commit" 0 "$TEMPER" task gate 2
+
+# M1: the task commit and the tick run under the lock; parallel gates both land
+st_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'; slow_hook 1
+"$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 2 >/dev/null 2>&1
+ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
+st_edit src/a.sh; st_edit src/b.sh
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
+"$TEMPER" task gate 1 >"$WORKDIR/g1.out" 2>&1 & GP1=$!
+sleep 0.5
+assert_eq "M1: the lock is held while the task commit runs" "yes" "$([[ -d .temper/.lock ]] && echo yes || echo no)"
+"$TEMPER" task gate 2 >"$WORKDIR/g2.out" 2>&1 & GP2=$!
+wait $GP1; R1=$?; wait $GP2; R2=$?
+assert_eq "M1: two parallel gates both PASS (no index.lock race)" "0|0" "$R1|$R2"
+assert_eq "M1: both ticks land and both shas are recorded" "1|2" \
+  "$(st_unticked)|$(python3 -c "import json; t=json.load(open('.temper/groups.json'))['tasks']; print(len([k for k in ('1','2') if t[k].get('commit')]))")"
+assert_eq "M1: the lock is released and no temp file is left" "no|0" \
+  "$([[ -e .temper/.lock ]] && echo yes || echo no)|$(find .temper .temper/specs -maxdepth 2 -name '*.tmp*' | wc -l | tr -d ' ')"
+
+# L1: an interrupted holder frees its lock (trap); a release never removes a lock someone else now owns
+st_setup; slow_hook 2
+st_pass_ready
+"$TEMPER" task gate 1 >/dev/null 2>&1 & GP1=$!
+sleep 0.7
+kill -TERM "$GP1" 2>/dev/null; wait "$GP1" 2>/dev/null
+assert_eq "L1: a terminated holder leaves no lock behind and does not tick the task" "no|3" \
+  "$([[ -e .temper/.lock ]] && echo yes || echo no)|$(st_unticked)"
+st_setup; slow_hook 1.5
+st_pass_ready
+"$TEMPER" task gate 1 >/dev/null 2>&1 & GP1=$!
+sleep 0.6
+rm -rf .temper/.lock; mkdir .temper/.lock; echo other-holder > .temper/.lock/owner
+wait "$GP1"
+assert_eq "L1: a lock taken over by another holder is not released by the first one" "other-holder" "$(lock_owner)"
+rm -rf .temper/.lock
+# stale break: many writers racing for one stale lock lose no row and leave the lock free
+setup; mkdir -p .temper/evidence .temper/.lock
+python3 -c "import os,time; t=time.time()-120; os.utime('.temper/.lock',(t,t))"
+for i in $(seq 1 16); do "$TEMPER" evidence add --stage build --claim "stale race $i" --phase red >/dev/null 2>&1 & done
+wait
+assert_eq "L1: 16 writers racing a stale lock land 16 rows and release the lock" "16|no" \
+  "$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))" 2>/dev/null || echo invalid)|$([[ -e .temper/.lock ]] && echo yes || echo no)"
+
+# L2: evidence resolve/accept and the gate verdict write under the lock, atomically
+setup; mkdir -p .temper/evidence
+for i in 1 2 3 4 5 6 7 8; do "$TEMPER" evidence add --stage review --claim "finding $i" --severity high >/dev/null 2>&1; done
+mkdir .temper/.lock
+out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence resolve --stage review --id 1 --fixed-by abc 2>&1)"
+assert_eq "L2: evidence resolve waits on the lock (WARN after the wait)" "1" "$(printf '%s' "$out" | grep -c 'WARN.*lock')"
+out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence accept --stage review --id 2 --reason ok 2>&1)"
+assert_eq "L2: evidence accept waits on the lock (WARN after the wait)" "1" "$(printf '%s' "$out" | grep -c 'WARN.*lock')"
+out="$(TEMPER_LOCK_WAIT_S=1 "$TEMPER" gate review 2>&1)"
+assert_eq "L2: the gate verdict write waits on the lock (WARN after the wait)" "1" "$(printf '%s' "$out" | grep -c 'WARN.*lock')"
+rmdir .temper/.lock
+for i in 3 4 5 6 7 8; do "$TEMPER" evidence resolve --stage review --id "$i" --fixed-by "fix $i" >/dev/null 2>&1 & done
+wait
+assert_eq "L2: six parallel resolves lose none" "6" \
+  "$(python3 -c "import json; print(len([e for e in json.load(open('.temper/evidence/review.json')) if e.get('resolved') and e['claim'] != 'finding 1']))")"
+assert_eq "L2: the lock is released and no temp file is left" "no|0" "$([[ -e .temper/.lock ]] && echo yes || echo no)|$(find .temper -name '*.tmp*' | wc -l | tr -d ' ')"
+
+# L3: the ready check and the start write share one lock, so a start never overwrites a state that changed
+# while it waited for the lock (here: another process finished Task 2 in the meantime)
+st_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'
+( mkdir .temper/.lock
+  sleep 1.2
+  python3 -c "
+import json
+d = json.load(open('.temper/groups.json')); d['tasks']['2'] = {'status': 'passed', 'group': 'G1', 'attempt': 1, 'attempts': []}
+json.dump(d, open('.temper/groups.json', 'w'))"
+  rmdir .temper/.lock ) & LP=$!
+sleep 0.2
+"$TEMPER" task start 2 >"$WORKDIR/s2.out" 2>&1; rc=$?
+wait $LP
+assert_eq "L3: a start whose ready check went stale while it waited is refused and the state is kept" "1|passed" "$rc|$(st_field 2 status)"
+setup
