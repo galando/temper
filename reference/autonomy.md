@@ -24,7 +24,22 @@ box — an unattended run must leave a scroll-back-readable record). **FAIL** �
 automatically at the same budget as interactive mode, except Build→Plan (always returns
 to a human, never auto-loops); budget exhausted → park instead of asking. **At commit:**
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` already checks blast radius + park-on-touch (autonomous-only) along
-with every upstream gate — PASS or FAIL, **always park**, autonomy never auto-commits.
+with every upstream gate — PASS or FAIL, **always park**, autonomy never makes the final feature commit.
+
+**Narrowed invariant (grouped Build, design Resolution 1):** autonomy never pushes, never
+merges to a remote, never re-plans unattended and never makes the final feature commit; it
+always parks. It does allow the two local, CLI-made writes of grouped Build: the task
+commits of a task's declared files on its `temper/{slug}/{G}` group branch (`temper task
+gate`) and the local `temper integrate` merge into the feature branch. Nothing else commits.
+
+**Groups (`build.mode: grouped`):** each group's gate (`temper group gate G`) auto-continues
+on PASS, with no `AskUserQuestion`; the group panel still prints. **Change** (`temper group
+reopen`) and **Stop** stay interactive-only. A parked group (a task failed its Haiku retry
+and the Sonnet escalation) parks the run once no other group is ready; independent groups
+finish first. An `integrate` FAIL parks the run before Review. `autonomy.max-blast-radius`
+bounds each single group's declared files (the plan gate rejects a larger group; Plan
+splits it), and the commit gate parks when files changed outside the union of declared
+files; it is no longer compared with the feature total.
 
 **The user is not watching.** You are operating autonomously. The user is not watching
 in real time and cannot answer questions mid-task, so asking 'Want me to...?' or

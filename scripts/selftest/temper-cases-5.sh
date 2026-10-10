@@ -1064,3 +1064,26 @@ assert_eq "plan reference: documents the grouped format, budgets and pack distil
 assert_eq "config default: commented build block names every grouped key" "4" \
   "$(for k in '^# build:' 'task-model' 'escalation-model' 'max-parallel'; do grep -qE -- "$k" "$REPO_ROOT/templates/temper.config.default" && echo x; done | wc -l | tr -d ' ')"
 setup
+
+# --- Grouped Build (9.7.0): the orchestrator launch loop and whole-flow usage prose (Task 15) ---
+# Scenarios: Grouped logic stays in the briefs and the CLI; The orchestrator launches every task agent
+# in a real grouped run [AC-05, AC-12]. The prose only relays CLI output, so assert it names each command.
+OT="$REPO_ROOT/commands/temper.md"
+OF="$REPO_ROOT/commands/fix.md"
+assert_eq "orchestrator: Stage 2 names the grouped CLI loop" "9" \
+  "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'group reopen' 'temper integrate' 'agents/build-task.md' 'Task: '; do grep -qF -- "$c" "$OT" && echo x; done | wc -l | tr -d ' ')"
+assert_eq "orchestrator: grouped loop acts on the NEXT: line" "yes" "$(grep -qF 'NEXT:' "$OT" && echo yes || echo no)"
+assert_eq "orchestrator: usage add follows each of the 6 stage launches in temper.md" "yes" \
+  "$([[ "$(grep -c 'usage add --stage' "$OT")" -ge 6 ]] && echo yes || echo no)"
+assert_eq "orchestrator: usage add follows each of the 4 stage launches in fix.md" "yes" \
+  "$([[ "$(grep -c 'usage add --stage' "$OF")" -ge 4 ]] && echo yes || echo no)"
+assert_eq "orchestrator: grouped task agents are not recorded with usage add" "yes" \
+  "$(grep -qiE 'not.*usage add|usage add.*not' "$OT" && echo yes || echo no)"
+assert_eq "orchestrator-patterns: state schema lists groups.json and usage.json" "2" \
+  "$(for k in 'groups.json' 'usage.json'; do grep -qF -- "$k" "$REPO_ROOT/reference/orchestrator-patterns.md" && echo x; done | wc -l | tr -d ' ')"
+assert_eq "autonomy.md: narrowed invariant and group rules" "4" \
+  "$(for k in 'final feature commit' 'never pushes' 'auto-continue' 'max-blast-radius'; do grep -qiF -- "$k" "$REPO_ROOT/reference/autonomy.md" && echo x; done | wc -l | tr -d ' ')"
+assert_eq "config default: hardcoded invariant states the narrowed wording" "yes|0" \
+  "$(grep -qiF 'final feature commit' "$REPO_ROOT/templates/temper.config.default" && echo yes || echo no)|$(grep -c 'NEVER commits, pushes, or merges' "$REPO_ROOT/templates/temper.config.default" | tr -d ' ')"
+assert_eq "orchestrator: the autonomy paragraph states the narrowed invariant" "yes" "$(grep -qiF 'final feature commit' "$OT" && echo yes || echo no)"
+setup

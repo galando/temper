@@ -132,9 +132,11 @@ loops:
 # ordinary stage-by-stage continuation.
 #
 # Hardcoded, not configurable (safety invariants, not preferences): autonomy
-# NEVER commits, pushes, or merges; NEVER re-plans unattended; always requires a
-# clean working tree before starting; always checkpoints a `wip:` commit after
-# each green stage; always takes a single-run lock.
+# NEVER pushes, merges to a remote, or makes the final feature commit (it always
+# parks); the only commits it allows are grouped Build's local task commits and
+# the local `temper integrate` merge, both made by the CLI; NEVER re-plans
+# unattended; always requires a clean working tree before starting; always
+# checkpoints a `wip:` commit after each green stage; always takes a single-run lock.
 # ============================================================
 autonomy:
   enabled: false

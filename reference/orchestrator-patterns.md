@@ -55,6 +55,14 @@ build_complete | review_complete | check_complete`, branch `feature/{slug}`.
 `/temper:fix` — `rca_complete | fix_complete | review_complete | check_complete`,
 branch `fix/{slug}`.
 
+Other run files, all owned by the CLI (never hand-write them): `.temper/usage.json`
+(whole-flow usage rows `{stage, model, tokens, ms, task, group, ts}`, written by
+`temper usage add` after every stage launch and by `temper task gate --tokens --ms` for
+grouped task agents, so each launch is counted once) and, in grouped Build,
+`.temper/groups.json` (per-group worktree, status and gate verdict; per-task status,
+attempts and commit; the integration verdict). The orchestrator reads them only through
+`temper schedule`, `temper group report` and `temper report`.
+
 **Save/Continue:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance {stage}_complete {next_stage}` at every
 transition. On Save, report "Saved. Run {command} when ready to continue."
 

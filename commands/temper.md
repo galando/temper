@@ -310,7 +310,9 @@ exist for the run: don't read anything, every gate is the ordinary interactive o
 above. When `autonomy.enabled: true`, read `${CLAUDE_PLUGIN_ROOT}/reference/autonomy.md` **once, at the plan
 gate on PASS** — its arming point, never at invocation or mid-run — and follow it for
 every post-plan gate. Two invariants, restated here because they bound the whole
-feature: autonomy **never auto-commits** (PASS or FAIL at commit, it always parks), and
+feature: autonomy never pushes, merges to a remote or makes the final feature commit
+(PASS or FAIL at commit, it always parks; grouped Build's local task commits and the local
+`temper integrate` merge, both made by the CLI, are allowed), and
 the Intent gate is always interactive.
 
 ---
@@ -330,6 +332,8 @@ Use the Agent tool, model: {intent}, prompt:
 Spec path: {what ${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path prints}.
 Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
+
+After it returns, record its usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage intent --model {intent} --tokens {subagent tokens} --ms {duration ms}` (the numbers the Agent result reports; omit a flag the result does not give).
 
 The agent returns `READY` (intent.md written, or an existing draft refined) or
 `TRIVIAL` (a typo/one-liner with no product problem to state — nothing written).
@@ -382,6 +386,8 @@ reason.
 Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
 
+After it returns, record its usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage plan --model {plan} --tokens {subagent tokens} --ms {duration ms}` (the numbers the Agent result reports; omit a flag the result does not give).
+
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` — see `${CLAUDE_PLUGIN_ROOT}/reference/plan.md` → "Approval" for
 the walkthrough mechanics. **"Open HTML review"** and **"Share HTML review"** (in addition
 to that file's options): follow `${CLAUDE_PLUGIN_ROOT}/reference/plan-review.md` —
@@ -421,6 +427,8 @@ Use the Agent tool, model: {design}, prompt:
 Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
 
+After it returns, record its usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage design --model {design} --tokens {subagent tokens} --ms {duration ms}` (the numbers the Agent result reports; omit a flag the result does not give).
+
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate design` (one requirement: design.md carries an Areas of Concern
 section — flagged conflicts with owners, or an explicit "None flagged — why"; design
 *quality* still shows up in whether Build can execute it and what Review finds). Gate
@@ -453,7 +461,7 @@ autonomy loop) should have to wait until all the work is done to redirect it.
    {One "Checkpoint feedback #{K}: {text}" line per pending feedback item.}
    {If a review-context.json or check-context.json feedback file exists, name it here.}"
    ```
-3. Print the returned panel verbatim.
+3. Print the returned panel verbatim, then record the launch's usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage build --model {build} --tokens {subagent tokens} --ms {duration ms}`.
 4. Gate with `AskUserQuestion`:
    - **"Continue (Recommended)"** — on a non-last task, go to step 2 for the next
      task. On the last task, this becomes the normal Build completion gate below.
@@ -474,6 +482,45 @@ autonomy loop) should have to wait until all the work is done to redirect it.
    and Stop stay interactive-only. The autonomy blast-radius check in
    `gate commit` uses `base_sha`-relative diffs plus still-uncommitted paths.
 
+### Grouped mode (`build.mode: grouped`)
+
+When `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get build.mode` prints `grouped`, replace steps 2 to 4 with this loop
+and keep steps 1, 5 and 6 (the per-task launch above is the default and stays unchanged).
+The loop holds no rules of its own: every decision is a CLI output, so relay it.
+
+1. For each group in `tasks.md` whose `Depends` groups have passed:
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper group start G<n>` (it makes the group's worktree).
+2. `${CLAUDE_PLUGIN_ROOT}/scripts/temper schedule` prints one JSON line per ready task (task, group, title, worktree,
+   model, attempt). Before each launch run `${CLAUDE_PLUGIN_ROOT}/scripts/temper task start N`. Launch **every ready
+   task in ONE turn**, so they run in parallel, each on the `model` its line prints:
+
+   ```
+   Use the Agent tool, model: {model from the schedule line}, prompt:
+   "Follow ${CLAUDE_PLUGIN_ROOT}/agents/build-task.md exactly.
+   Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.
+   Task: {N}."
+   ```
+3. After each returns: `${CLAUDE_PLUGIN_ROOT}/scripts/temper task gate N --model {model} --tokens {subagent tokens} --ms {duration ms}`.
+   Grouped task agents are **not** recorded with `usage add`; `task gate --tokens --ms`
+   records them, so each launch is counted once. Act on the single `NEXT:` line it
+   prints: `NEXT: schedule` goes back to step 2; `NEXT: retry Task N on {model}` and
+   `NEXT: escalate Task N on {model}` go back to step 2 (the schedule prints the model);
+   `NEXT: park group G` leaves that group parked (other groups go on).
+4. When the schedule prints `{"waiting"...}`, start any group whose dependencies have now
+   passed (step 1) and ask the schedule again. When every task of group G has passed:
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper group gate G<n>`. A parked group, or a FAIL, goes to the user with the CLI's
+   reason; nothing else is decided here.
+5. One `AskUserQuestion` per group, with the group's gate output: **"Continue (Recommended)"**
+   (next group) / **"Change"** (never approval: record the feedback, then
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper group reopen G<n> --task N --feedback {ID}` for each task it concerns, and go
+   back to step 2; only those tasks re-run) / **"Stop"** (`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build`, then save).
+6. When the schedule prints `{"done": true, ...}`: `${CLAUDE_PLUGIN_ROOT}/scripts/temper integrate`, then
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build`, and go on to the normal Build completion gate (step 5 above).
+   Show the group-level panel from the CLI output, not a per-task one.
+7. **Autonomy enabled:** every group's Continue is auto-selected; Change and Stop stay
+   interactive-only; a parked group, or an integrate FAIL, parks the run (see
+   `${CLAUDE_PLUGIN_ROOT}/reference/autonomy.md`).
+
 ---
 
 ## Stage 3: Review
@@ -485,6 +532,8 @@ Use the Agent tool, model: {review}, prompt:
 "Follow ${CLAUDE_PLUGIN_ROOT}/agents/review.md exactly. Spec: {spec_path from state}.
 Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
+
+After it returns, record its usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage review --model {review} --tokens {subagent tokens} --ms {duration ms}` (the numbers the Agent result reports; omit a flag the result does not give).
 
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review` (zero open findings at or above `review.block-on`). An
 **"Architecture Depth Review"** option is also always available — runs the 5-dimension
@@ -504,6 +553,8 @@ Use the Agent tool, model: {check}, prompt:
 "Follow ${CLAUDE_PLUGIN_ROOT}/agents/check.md exactly. Spec: {spec_path from state}.
 Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
+
+After it returns, record its usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage check --model {check} --tokens {subagent tokens} --ms {duration ms}` (the numbers the Agent result reports; omit a flag the result does not give).
 
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check` (tests pass, coverage >= threshold, every `intent.md` scenario
 traced to a test by name — the requirement that catches a scenario Build never

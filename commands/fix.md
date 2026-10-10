@@ -113,6 +113,8 @@ Use the Agent tool, model: {rca}, prompt:
 Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
 
+After it returns, record its usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage rca --model {rca} --tokens {subagent tokens} --ms {duration ms}` (the numbers the Agent result reports; omit a flag the result does not give).
+
 Gate (human judgment; the CLI has no RCA gate): show the RCA box, then
 "Proceed to Fix (Recommended)" / "Save for later" / Other (a change request, e.g.
 "investigate the auth module instead" — re-launch the RCA agent with that direction,
@@ -140,6 +142,8 @@ Use the Agent tool, model: {fix}, prompt:
 Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder."
 ```
 
+After it returns, record its usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage fix --model {fix} --tokens {subagent tokens} --ms {duration ms}` (the numbers the Agent result reports; omit a flag the result does not give).
+
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` (RED-then-GREEN regression-test evidence; the "no unchecked
 tasks" requirement is skipped automatically — fixes have no `tasks.md`). On PASS:
 "Continue to Review (Recommended)". On FAIL: fix and re-run, or "Override and continue"
@@ -159,6 +163,8 @@ Fix mode: there is no intent.md — read {spec_path}/rca.md instead, and verify 
 addresses its root cause, the regression test proves the fix (not a trivial assert),
 and no same-pattern occurrence it flagged is left unfixed."
 ```
+
+After it returns, record its usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage review --model {review} --tokens {subagent tokens} --ms {duration ms}` (the numbers the Agent result reports; omit a flag the result does not give).
 
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review` (zero open findings at or above `review.block-on`; a
 finding marked with `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence resolve` no longer counts). On FAIL:
@@ -187,6 +193,8 @@ Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that 
 Fix mode: there is no intent.md, so scenario tracing doesn't apply — {spec_path}/rca.md
 names the regression test that must be in the passing run."
 ```
+
+After it returns, record its usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage check --model {check} --tokens {subagent tokens} --ms {duration ms}` (the numbers the Agent result reports; omit a flag the result does not give).
 
 Gate: run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate check`, then `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` (aggregates build/review/
 check — a fix run has no plan gate, and `gate commit` only requires the gates the run
