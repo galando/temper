@@ -48,6 +48,33 @@ assert_eq "held lock: writes anyway with a WARN after the wait" "0|1" "$rc|$(pri
 assert_eq "held lock: the row is recorded and the foreign lock is left alone" "1|yes" \
   "$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")|$([[ -d .temper/.lock ]] && echo yes || echo no)"
 
+# R7: the stale break removes only the stale owner's lock; a fresh lock taken in the window survives
+setup
+mkdir -p .temper/evidence .temper/.lock
+printf 'stale-owner' > .temper/.lock/owner
+python3 -c "import os,time; t=time.time()-120; os.utime('.temper/.lock',(t,t)); os.utime('.temper/.lock/owner',(t,t))"
+cat > "$WORKDIR/r7-hook.sh" <<'HOOK'
+#!/usr/bin/env bash
+# runs once, between the break's re-check and its removal: the holder releases and a fresh one acquires
+[[ -e "$0.done" ]] && exit 0
+: > "$0.done"
+rm -rf .temper/.lock; mkdir .temper/.lock; printf 'fresh-owner' > .temper/.lock/owner
+HOOK
+chmod +x "$WORKDIR/r7-hook.sh"
+out="$(TEMPER_LOCK_TEST_HOOK="$WORKDIR/r7-hook.sh" TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence add --stage build --claim "r7" 2>&1)"
+assert_eq "R7: a fresh lock taken during the break is not deleted (the waiter times out on it)" "yes|fresh-owner|1" \
+  "$([[ -d .temper/.lock ]] && echo yes || echo no)|$(cat .temper/.lock/owner 2>/dev/null)|$(printf '%s' "$out" | grep -c 'WARN.*lock')"
+rm -rf .temper/.lock
+
+# R8: the lock wait is bounded by the wall clock, so TEMPER_LOCK_WAIT_S is honoured
+setup
+mkdir -p .temper/evidence .temper/.lock
+t0=$(date +%s)
+TEMPER_LOCK_WAIT_S=3 "$TEMPER" evidence add --stage build --claim "r8" >/dev/null 2>&1
+el=$(( $(date +%s) - t0 ))
+assert_eq "R8: a 3 s lock wait ends within 3..5 s of wall clock" "yes" "$([[ $el -ge 2 && $el -le 5 ]] && echo yes || echo "no(${el}s)")"
+rm -rf .temper/.lock
+
 # the lock folder is on the symlink refusal list
 setup
 mkdir -p .temper/evidence "$WORKDIR/lock-target"

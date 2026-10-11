@@ -263,8 +263,9 @@ what the CLI parser (`_grouped_parse`) reads and the plan gate (`_grouped_plan_r
   Task numbers are unique across the whole file.
 
 **Declared files.** `**File:**` lists backticked paths, one per file the task will write, including its test
-file. Give exact file paths. A wildcard such as `src/**` weakens the commit check that compares changed
-files to the declared union, so use one only when the files cannot be named in advance. Two tasks that can
+Give exact file paths, one per file. In grouped mode the plan gate refuses any glob
+character (`*`, `?`, `[`) in a `**File:**` path and the commit check compares changed files to the
+declared union by exact path, so name every file, the test file included. Two tasks that can
 run together (neither depends on the other, directly or through their groups) must declare disjoint files;
 the gate rejects an overlap. Order the tasks with `**Depends:**` when they must touch the same file.
 

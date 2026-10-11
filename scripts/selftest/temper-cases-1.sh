@@ -173,6 +173,9 @@ assert_eq "a temper-run loop clears review evidence" "0" "$(python3 -c 'import j
 assert_eq "a temper-run loop clears check evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/check.json"))))')"
 # P1: the loop sends the run back to its target stage, so the build-checkpoint commit carve-out applies
 assert_eq "state loop review build sets next_stage to build" "build" "$("$TEMPER" state get next_stage)"
+# R6: a loop target must be a known stage; a typo writes no next_stage
+assert_exit "state loop to an unknown stage is refused" 1 "$TEMPER" state loop review bogus --reason typo
+assert_eq "state loop to an unknown stage leaves next_stage alone" "build" "$("$TEMPER" state get next_stage)"
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
 "$TEMPER" state advance review_complete check >/dev/null

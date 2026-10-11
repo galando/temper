@@ -322,8 +322,18 @@ _lock_break_stale() {
     return 0
   fi
   if _lock_older_than_30s "$_LOCK_DIR"; then   # re-checked while no other waiter can break or replace it
-    rm -f "$_LOCK_DIR/owner" 2>/dev/null
-    rmdir "$_LOCK_DIR" 2>/dev/null || true
+    [[ -n "${TEMPER_LOCK_TEST_HOOK:-}" && -x "${TEMPER_LOCK_TEST_HOOK}" ]] && "$TEMPER_LOCK_TEST_HOOK" 2>/dev/null   # test seam: a release plus a fresh acquire here
+    # rename-then-verify: move the lock aside atomically, judge the moved folder, and put it back if it
+    # turns out to be a fresh holder's (never delete a lock that is not the stale one)
+    local dead="$_LOCK_DIR.dead.$$"
+    if mv "$_LOCK_DIR" "$dead" 2>/dev/null; then
+      if _lock_older_than_30s "$dead"; then
+        rm -f "$dead/owner" 2>/dev/null
+        rmdir "$dead" 2>/dev/null || true
+      elif [[ ! -e "$_LOCK_DIR" ]]; then
+        mv "$dead" "$_LOCK_DIR" 2>/dev/null || true
+      fi
+    fi
   fi
   rmdir "$br" 2>/dev/null || true
 }
@@ -338,7 +348,7 @@ _lock_acquire() {
   if (( _LOCK_DEPTH > 0 )); then _LOCK_DEPTH=$(( _LOCK_DEPTH + 1 )); return 0; fi   # nested: no self-deadlock
   _LOCK_DEPTH=1
   [[ -d .temper ]] || return 0                 # nothing to lock before a run has a folder
-  local i=0 max=$(( ${TEMPER_LOCK_WAIT_S:-10} * 50 ))
+  local i=0 deadline=$(( $(date +%s) + ${TEMPER_LOCK_WAIT_S:-10} ))   # wall clock, not loop counts
   while :; do
     if mkdir "$_LOCK_DIR" 2>/dev/null; then
       _LOCK_TOKEN="$$.$RANDOM$RANDOM$(date +%s)"
@@ -355,7 +365,7 @@ _lock_acquire() {
       i=$(( i + 1 ))
       continue
     fi
-    if (( i >= max )); then
+    if (( $(date +%s) >= deadline )); then
       echo "WARN: could not take $_LOCK_DIR within ${TEMPER_LOCK_WAIT_S:-10}s; writing without the lock" >&2
       return 0
     fi
@@ -768,6 +778,7 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
 
 cmd_state_loop() { # temper state loop <from> <to> --reason "..."
   local from="$1" to="$2"; shift 2 || true
+  _stage_ok "$to" || { _stage_refuse "$to"; return 1; }
   local reason=""
   while [[ $# -gt 0 ]]; do case "$1" in --reason) reason="$2"; shift 2 ;; *) shift ;; esac; done
   [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
