@@ -2127,7 +2127,26 @@ except Exception:
     local wt_out
     if git show-ref --verify --quiet "refs/heads/$branch"; then
       # L4: the group branch outlives its worktree (integrate removes worktrees before its suite runs and
-      # keeps the branches on FAIL): attach a worktree to the existing branch, its base already holds the deps
+      # keeps the branches on FAIL): attach a worktree to the existing branch, its base already holds the deps.
+      # R3: only a branch this run recorded (same name, and its recorded base is still in the branch's history);
+      # any other is an abandoned run's and is refused.
+      if ! python3 - "$GROUPS_FILE" "$g" "$branch" "$slug" <<'PY'
+import json, subprocess, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    e = (d.get('groups') or {}).get(sys.argv[2]) or {}
+    ok = d.get('slug') == sys.argv[4] and e.get('branch') == sys.argv[3] and bool(e.get('base_sha'))
+    if ok:
+        ok = subprocess.run(['git', 'merge-base', '--is-ancestor', e['base_sha'], sys.argv[3]],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+except Exception:
+    ok = False
+sys.exit(0 if ok else 1)
+PY
+      then
+        echo "FAIL: branch $branch already exists and this run did not create it (left by an earlier run); delete it with: git branch -D $branch (git worktree prune first if a worktree still names it), then temper group start $g" >&2
+        return 1
+      fi
       if ! wt_out="$(git worktree add -q "$wt" "$branch" 2>&1)"; then
         echo "FAIL: git worktree add failed: $(printf '%s' "$wt_out" | head -1)" >&2
         return 1
@@ -2235,7 +2254,8 @@ g['finished_at'] = a[1]
 # Only the named tasks re-run: their files go back to the content they had when the task started (one
 # revert commit on the group branch, that task's declared paths only), their boxes are unticked, their
 # attempts move to attempts_prior, and the group gate is cleared. A parked group runs again.
-# The reopen's revert commits are recorded as the CLI's own, so a running sibling's verdict accepts them.
+# The reopen's revert commits are recorded as the CLI's own and as reopen reverts, so a running sibling's
+# verdict accepts them and does not count their files as its own undeclared change.
 cmd_group_reopen() {
   local rc
   _lock_acquire
@@ -2272,6 +2292,7 @@ _group_reopen_body() {
     return 1
   fi
   plan="$(_grouped_parse "$spec_path/tasks.md")"
+  _plan_fresh "$plan" || return 1
   local chk; chk="$(_task_py reopencheck "$plan" "$GROUPS_FILE" "$g" "${tasks[@]}")" || return 1
   wt="$(python3 -c "
 import json, sys
@@ -2310,7 +2331,12 @@ except Exception:
           echo "FAIL: could not commit the revert of Task $n in $wt" >&2
           return 1
         fi
-        _groups_mutate "d.setdefault('cli_commits', []).append(a[0])" "$(git -C "$abs" rev-parse HEAD)" || return 1
+        # R2: a reopen revert is the CLI's own commit and belongs to the reopened task: a running sibling's verdict
+        # accepts the commit and leaves its files out of the sibling's undeclared set
+        _groups_mutate "
+d.setdefault('cli_commits', []).append(a[0])
+d.setdefault('reopen_reverts', []).append(a[0])
+" "$(git -C "$abs" rev-parse HEAD)" || return 1
       fi
     fi
     python3 - "$spec_path/tasks.md" "$n" <<'PY'
@@ -2735,7 +2761,10 @@ elif mode == 'verdict':
     old = c['snapshot']
     changed = sorted(p for p in set(now) | set(old) if now.get(p, 'CLEAN') != old.get(p, 'CLEAN') and not internal(p))
     # H2: files changed by commits made in the worktree since the task's start also count
-    foreign = []
+    foreign = []       # abbreviated, for the message
+    foreign_full = []  # newest first, as git log prints them
+    cli_in_range = 0
+    reopen_files = set()
     committed = []
     if c['start_sha']:
         rl = subprocess.run(['git', '-C', wt, 'log', '--format=%H%x00%s', '%s..HEAD' % c['start_sha']],
@@ -2743,13 +2772,25 @@ elif mode == 'verdict':
         # A1: only shas the CLI itself recorded (a task's commit, or cli_commits) are its own; a subject that
         # merely looks like the CLI's proves nothing. The caller holds the lock, so a sha is recorded before
         # any verdict can read the log it sits in.
-        known = {(v or {}).get('commit') for v in (run.get('tasks') or {}).values()} | set(run.get('cli_commits') or [])
+        # R1: a foreign commit the CLI already took off the branch with a revert stays recorded, so a sibling whose
+        # range holds both the commit and its revert is not blamed for it.
+        known = ({(v or {}).get('commit') for v in (run.get('tasks') or {}).values()} | set(run.get('cli_commits') or [])
+                 | set(run.get('reverted_foreign') or []))
+        reopens = set(run.get('reopen_reverts') or [])
         for ln in rl.stdout.decode('utf-8', 'replace').split('\n'):
             if not ln.strip():
                 continue
             sha, _, subj = ln.partition('\0')
+            if sha in reopens:
+                # R2: a group reopen's revert belongs to the reopened task; its files are not this task's undeclared change
+                dt = subprocess.run(['git', '-C', wt, 'diff-tree', '--no-commit-id', '--name-only', '-r', '-z', '--no-renames', sha],
+                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                reopen_files |= {x for x in dt.stdout.decode('utf-8', 'replace').split('\0') if x}
             if sha not in known:
                 foreign.append(sha[:7])
+                foreign_full.append(sha)
+            elif sha not in set(run.get('reverted_foreign') or []):
+                cli_in_range += 1
         df = subprocess.run(['git', '-C', wt, 'diff', '--name-only', '--no-renames', '-z', c['start_sha'], 'HEAD'],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         committed = sorted(p for p in df.stdout.decode('utf-8', 'replace').split('\0') if p and not internal(p))
@@ -2761,7 +2802,8 @@ elif mode == 'verdict':
         if st.get('status') == 'running' or (st.get('status') == 'passed' and st.get('passed_at', '') >= c['started_at']):
             others += t['files']
     mine_changed = [p for p in changed if matches(p, c['files'])]
-    undeclared = sorted(p for p in set(changed) | set(committed) if not matches(p, c['files']) and not matches(p, others))
+    undeclared = sorted(p for p in set(changed) | set(committed)
+                        if not matches(p, c['files']) and not matches(p, others) and p not in reopen_files)
     problems = []
     if undeclared:
         problems.append('undeclared change: ' + ', '.join(undeclared))
@@ -2771,13 +2813,24 @@ elif mode == 'verdict':
         reason = '; '.join(problems)
     # M2: on a FAIL the undeclared changes named are removed or restored too, except a path that was already
     # dirty at the start (its original content is only a hash in the snapshot)
-    restore_paths = mine_changed + [p for p in undeclared if p not in old]
+    # R1: the task's own files and the undeclared files that foreign commits brought in go back too, because the
+    # commits are taken off the branch below and their content must not stay behind in the working tree
+    restore_paths = list(mine_changed)
+    for p in [p for p in undeclared if p not in old] + [p for p in committed if matches(p, c['files'])]:
+        if p not in restore_paths:
+            restore_paths.append(p)
+    # a plain reset to the task's start is safe only when nothing but foreign commits sit after it and no running
+    # sibling started later; otherwise exactly the foreign commits are reverted
+    later_sibling = any(((run.get('tasks') or {}).get(str(t['n'])) or {}).get('status') == 'running'
+                        and ((run.get('tasks') or {}).get(str(t['n'])) or {}).get('start_sha') != c['start_sha']
+                        for t in plan['tasks'] if t['n'] != n)
+    foreign_mode = '' if not foreign_full else ('reset' if cli_in_range == 0 and not later_sibling else 'revert')
     tail = ''
     if reason:
         last = [r for r in mine if r.get('output')]
         tail = '\n'.join((last[-1]['output'] if last else '').split('\n')[:20]).rstrip('\n')
     print(json.dumps({'verdict': 'FAIL' if reason else 'PASS', 'reason': reason, 'commit_paths': mine_changed,
-                      'restore_paths': restore_paths,
+                      'restore_paths': restore_paths, 'foreign_shas': foreign_full, 'foreign_mode': foreign_mode,
                       'output': tail, 'attempt': c['attempt'], 'title': c['title'], 'group': c['group'],
                       'slug': c['slug']}))
 PY
@@ -2970,6 +3023,36 @@ _task_gate_body() {
     # The restore comes first so the next attempt starts from the snapshot, and the one write below
     # records the attempt and the parking together.
     local att; att="$(_jget "$v" attempt)"
+    # R1: a commit the agent made in the worktree is taken off the group branch before the retry can start from
+    # it: a reset to the task's start when only foreign commits follow it, else a revert of exactly those commits.
+    local park="" fmode fshas
+    fmode="$(_jget "$v" foreign_mode)"; fshas="$(_jget "$v" foreign_shas)"
+    if [[ "$fmode" == "reset" ]]; then
+      if ! git -C "$_T_ABS" reset -q --mixed "$(_jget "$_T_CTX" start_sha)" >/dev/null 2>&1; then
+        park="could not reset $(_jget "$_T_CTX" worktree) to Task $n's start; undo the commit(s) not made by the CLI by hand (git -C $(_jget "$_T_CTX" worktree) reset --mixed $(_jget "$_T_CTX" start_sha)), then temper group reopen $group --task $n"
+      fi
+    elif [[ "$fmode" == "revert" ]]; then
+      local idargs fs reverted=() rsha
+      idargs="$(_git_id_args)"
+      while IFS= read -r fs; do
+        [[ -n "$fs" ]] || continue
+        # shellcheck disable=SC2086
+        if git -C "$_T_ABS" $idargs revert --no-edit "$fs" >/dev/null 2>&1; then
+          rsha="$(git -C "$_T_ABS" rev-parse HEAD)"
+          _groups_mutate "
+d.setdefault('cli_commits', []).append(a[0])
+d.setdefault('reverted_foreign', []).append(a[1])
+" "$rsha" "$fs" || return 1
+        else
+          git -C "$_T_ABS" revert --abort >/dev/null 2>&1 || true
+          park="could not revert the commit ${fs:0:7} that was not made by the CLI; revert it by hand (git -C $(_jget "$_T_CTX" worktree) revert ${fs:0:7}), then temper group reopen $group --task $n"
+          break
+        fi
+      done < <(python3 -c "
+import json, sys
+for x in json.loads(sys.argv[1]): print(x)" "$fshas")
+    fi
+    [[ -n "$park" ]] && echo "WARN: $park" >&2
     _task_py restore "$_T_ABS" "$(_jget "$_T_CTX" start_sha)" "$(_jget "$v" restore_paths)"
     _groups_mutate "
 t = d['tasks'][a[0]]
@@ -2977,13 +3060,15 @@ def num(x): return int(x) if x.isdigit() else None
 t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'FAIL', 'reason': a[3],
     'tokens': num(a[4]), 'ms': num(a[5]), 'ts': a[6], 'output': a[7]})
 t['status'] = 'failed'
-if int(a[1]) >= 3:
+if int(a[1]) >= 3 or a[9]:
     g = d.setdefault('groups', {}).setdefault(a[8], {})
     g['status'] = 'parked'
-    g['parked_reason'] = 'Task %s failed %s attempts' % (a[0], a[1])
-" "$n" "$att" "$model" "$reason" "$tokens" "$ms" "$(_now)" "$(_jget "$v" output)" "$group" || return 1
+    g['parked_reason'] = a[9] or 'Task %s failed %s attempts' % (a[0], a[1])
+" "$n" "$att" "$model" "$reason" "$tokens" "$ms" "$(_now)" "$(_jget "$v" output)" "$group" "$park" || return 1
     echo "FAIL: $reason"
-    if [[ "$att" -le 1 ]]; then
+    if [[ -n "$park" ]]; then
+      echo "NEXT: park group $group"
+    elif [[ "$att" -le 1 ]]; then
       echo "NEXT: retry Task $n on $(_resolve_task_model)"
     elif [[ "$att" -eq 2 ]]; then
       echo "NEXT: escalate Task $n on $(_resolve_task_escalation_model)"

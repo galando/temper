@@ -1380,3 +1380,87 @@ assert_exit "L4: a Change can reopen a task in the recreated worktree" 0 "$TEMPE
 gi_pass 2 G1 src/b.sh 'b_main() { :; } # second try'
 "$TEMPER" group gate G1 >/dev/null 2>&1
 assert_eq "L4: integrate after the Change merges the new commit and PASSes" "0|PASS" "$("$TEMPER" integrate >/dev/null 2>&1; echo $?)|$(gi_int verdict)"
+
+# --- Grouped Build (9.7.0), review loop 2: foreign commits, reopen vs a running sibling, stale branches [R1, R2, R3, R5] ---
+wt_files() { git -C "$ST_WT" ls-tree -r --name-only HEAD | paste -sd, -; }
+# R1: an agent-made commit that FAILs attempt 1 is taken off the group branch, so the retry cannot absorb it
+st_setup; START1="$(git -C "$ST_WT" rev-parse HEAD)"
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; st_edit stray.txt
+git -C "$ST_WT" add src/a.sh stray.txt; git -C "$ST_WT" commit -q -m "sneaky" 2>/dev/null
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "R1: attempt 1 with an agent commit FAILs" "1|failed" "$rc|$(st_field 1 status)"
+assert_eq "R1: the group branch is back at the task's start (the foreign commit is gone)" "$START1" "$(git -C "$ST_WT" rev-parse HEAD)"
+assert_eq "R1: the undeclared and the declared file are off the tree" "no|no" \
+  "$([[ -e $ST_WT/stray.txt ]] && echo yes || echo no)|$([[ -e $ST_WT/src/a.sh ]] && echo yes || echo no)"
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "R1: the clean retry PASSes" "0" "$rc"
+assert_eq "R1: the stray file never reaches the group branch; only the declared file does" "README,src/a.sh" "$(wt_files)"
+# the retry that leaves the stray file alone cannot pass with it on the branch: a retry starting after the
+# restore has nothing foreign in its range
+st_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit stray.txt; git -C "$ST_WT" add stray.txt; git -C "$ST_WT" commit -q -m "sneaky" 2>/dev/null
+st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+"$TEMPER" task gate 1 >/dev/null 2>&1
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+"$TEMPER" task gate 1 >/dev/null 2>&1
+assert_eq "R1: attempt 2 PASSes without the stray file anywhere in the tree" "passed|README,src/a.sh" "$(st_field 1 status)|$(wt_files)"
+# another CLI commit landed after the task's start: only the foreign commit is reverted, the CLI's stays
+st_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'
+"$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 2 >/dev/null 2>&1
+ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
+st_edit src/b.sh; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
+assert_exit "R1: the sibling passes first (its commit is the CLI's)" 0 "$TEMPER" task gate 2
+st_edit stray.txt; git -C "$ST_WT" add stray.txt; git -C "$ST_WT" commit -q -m "sneaky" 2>/dev/null
+st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+"$TEMPER" task gate 1 >/dev/null 2>&1
+assert_eq "R1: with a CLI commit after the start, the foreign commit is reverted and the sibling's file stays" "failed|README,src/b.sh" \
+  "$(st_field 1 status)|$(wt_files)"
+assert_eq "R1: the revert commit is the CLI's own record" "1" \
+  "$(python3 -c "
+import json, subprocess
+d = json.load(open('.temper/groups.json'))
+h = subprocess.check_output(['git', '-C', '$ST_WT', 'rev-parse', 'HEAD']).decode().strip()
+print(1 if h in d.get('cli_commits', []) else 0)")"
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+assert_exit "R1: the retry after a revert PASSes" 0 "$TEMPER" task gate 1
+
+# R2: a group reopen's revert is the reopened task's change, not a running sibling's undeclared one
+gg_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'
+gg_pass 1 src/a.sh
+"$TEMPER" task start 2 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
+assert_exit "R2: reopening Task 1 while Task 2 runs succeeds" 0 "$TEMPER" group reopen G1 --task 1
+st_edit src/b.sh; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 2 2>&1)"; rc=$?
+assert_eq "R2: the running sibling PASSes past the reopen revert" "0|1" "$rc|$(printf '%s' "$out" | grep -c '^PASS: Task 2')"
+assert_eq "R2: the reverted file stays reverted (not re-applied by a restore)" "no" "$([[ -e $ST_WT/src/a.sh ]] && echo yes || echo no)"
+assert_eq "R2: the sibling's commit holds only its own file" "src/b.sh" "$(git -C "$ST_WT" show --name-only --format= HEAD)"
+
+# R3: an existing group branch is reused only when this run recorded it; a stale one is refused with the way out
+gi_all
+GI_EXIT=1 "$TEMPER" integrate >/dev/null 2>&1
+rm -f .temper/groups.json
+git checkout -q feature/demo 2>/dev/null
+out="$("$TEMPER" group start G1 2>&1)"; rc=$?
+assert_eq "R3: a stale branch from an earlier run is refused, naming it and the way to delete it" "1|1|1" \
+  "$rc|$(printf '%s' "$out" | grep -c '^FAIL:.*temper/demo/G1')|$(printf '%s' "$out" | grep -c 'git branch -D temper/demo/G1')"
+assert_eq "R3: the refusal made no worktree and recorded no group" "no|no" \
+  "$([[ -d .claude/worktrees/temper-demo-G1 ]] && echo yes || echo no)|$([[ -f .temper/groups.json ]] && echo yes || echo no)"
+git branch -q -D temper/demo/G1 temper/demo/G2 2>/dev/null
+assert_exit "R3: after deleting the stale branch the group starts fresh" 0 "$TEMPER" group start G1
+assert_eq "R3: the fresh branch is not the abandoned run's (no group commits on it)" "0" \
+  "$(git log --format=%s feature/demo..temper/demo/G1 | wc -l | tr -d ' ')"
+
+# R5: group reopen refuses a plan that changed after approval, like every other grouped command
+st_setup; gg_pass 1 src/a.sh
+gp_tamper 'echo boom;' 'echo hacked;'
+out="$("$TEMPER" group reopen G1 --task 1 2>&1)"; rc=$?
+assert_eq "R5: a changed plan refuses group reopen, naming the plan change" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'plan.*changed')"
+assert_eq "R5: the refused reopen changed nothing" "passed" "$(st_field 1 status)"
+setup
