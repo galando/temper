@@ -65,6 +65,18 @@ work happens, and who commits and merges it. Full design:
   (`temper usage add`; `temper report` shows per stage and per model). Numbers are the
   per-agent totals Claude Code returns, not split into input/output/cache; the orchestrator
   session's own usage is not recorded.
+- **D-08** A commit the CLI did not record is detected and stopped, never repaired. When a
+  task's range holds one, the task gate FAILs naming the sha and the files, the group parks at
+  once (a deliberate exception to D-03: a rule violation, not a test failure), and nothing is
+  written to the branch or the working tree. A parked group refuses `task gate` and `task test`
+  of its other tasks without a verdict, so running siblings keep their work. `group reopen` is
+  accepted only when the parked shas are no longer ancestors of the group branch HEAD, or when
+  the human accepts them with `--accept-foreign <sha> --reason "<text>"`, recorded like an
+  override and shown by `temper report`. The group gate also checks that every passed task's
+  commit is an ancestor of the group HEAD. This replaced an automatic undo that eight review
+  rounds kept finding invariant breaks in. **Stopping rule for this release:** fix what can
+  give a wrong result in a normal run or weaken a gate; detect and stop agent misbehaviour
+  rather than repair it; document rare or contrived cases as known limits (CHANGELOG 9.7.0).
 
 ### Resolutions at the design gate (2026-10-10)
 
@@ -128,4 +140,4 @@ work happens, and who commits and merges it. Full design:
 ## References
 
 - ADR 0009 (build checkpoint commit carve-out)
-- `.temper/specs/grouped-haiku-build/intent.md` D-01..D-07, `docs/grouped-build.md`
+- `.temper/specs/grouped-haiku-build/intent.md` D-01..D-08, `docs/grouped-build.md`

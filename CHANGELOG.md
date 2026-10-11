@@ -60,62 +60,32 @@ while a test runs.
 not asserted by an agent:
 - The final run decides: a task passes only if its last recorded test run is green (a RED then GREEN
   sequence is required, a later red run fails it).
-- Commits made in the worktree count toward the task's changed files. A failed attempt that left a
-  foreign (agent-made) commit on the group branch has exactly those commits undone, so the retry
-  starts from the restored point; only shas the CLI recorded are trusted. The undo never touches the
-  working tree of a running sibling: a plain reset when only foreign commits follow the start and no
-  running sibling in the same group is affected, else one revert commit built in a temporary index by a
-  reverse 3-way apply of each foreign commit's own diff. A later CLI commit that changed the same
-  path again keeps its change and loses only the foreign one; when the reverse apply conflicts, or the
-  result is verified to still hold foreign content, the group parks with a hint that leaves the
-  working tree alone (no stash, no reset) and says to undo by hand when no task of this group is running,
-  then `temper group reopen`. The undo is batched (one diff and one apply per commit, so thousands of
-  paths stay far below the lock wait), handles non-UTF-8 names and a file turned into a directory, waits
-  out a brief `index.lock` instead of parking, and a finished sibling's clean file follows the branch.
-  Exception: an agent's edit to a running sibling's declared file lands with that sibling's commit (the
-  sibling's own commit takes whatever its file holds), so it is not undone by the failing task's FAIL; the
-  sibling's own gate is where it shows.
-- The undo, tightened after a second focused review: all git retries of one FAIL (reset or undo, then the
-  restore) share a single wall-clock budget of about five seconds, so a stale `index.lock` costs seconds in all
-  and the park names the lock and the file to delete; every plumbing diff and apply neutralises the user's
-  colour, context and prefix settings; a merge commit is undone against its line parent (the commits it brought
-  in are not undone again, and the printed hint uses `git revert -m N` for it), and a commit whose paths are
-  already back at their earlier content is skipped; once a group is parked on a foreign commit, a running
-  sibling is not blamed for that commit or for the files it touched, and the park reason is kept until a
-  `group reopen`; a finished sibling's file is compared and written through git (`hash-object` and
-  `checkout-index`: eol filters and the repository's hash algorithm), never by raw bytes; nothing is written or
-  removed through a symbolic link a foreign commit put in place of a directory;
-  the work is limited to the paths the foreign commits touched, not the whole tree once per commit.
-- The park bookkeeping, tightened after a third focused review: the commits a group is parked on are recorded
-  for that group only (a reopen or a park in another group never clears or shares them), and only commits that
-  are really still on the branch (not ones the undo did take off before a later step parked). A running
-  sibling's path is excused for a parked commit, like for a reopen's revert, only while its working file and
-  HEAD both still hold exactly what that commit made, so the sibling's own edit of that path stays an
-  undeclared change. A second park in an already parked group adds its reason (and its exact revert) to the
-  first; `group reopen` is refused while a parked commit's content is still on the branch (the park reason
-  names the commands), so foreign content never reaches the integration. When the commits cannot be taken
-  off, the failing task's files go back to the branch's content (not to the task's start), so the revert
-  the park prints meets a clean tree and its text says what is true (the commits stay on the branch). A symbolic
-  link a foreign commit put in place of a directory is not a reason to park: the failed task's restore
-  replaces it with the directory. A merge commit is undone against its line parent: the parent whose own
-  history holds the CLI's recorded commits (the task commits and its undo and reopen commits), the first parent
-  when no parent shows any, so neither an ordinary `--no-ff` merge of a smaller side branch nor a group branch
-  merged into a side branch and fast-forwarded takes the CLI's own commits off; the printed hint uses
-  `git revert -m <that parent>`.
-- Fourth focused review: "the content of a parked commit is still on the branch" is judged by content, never by
-  whether a line is present. Per path the commit changed (against its line parent; a merge's own resolution
-  counts, and so do a deletion, a changed mode and a binary file) the CLI asks whether HEAD still holds the
-  change: the commit's blob or mode, a deletion that is still a deletion, or, when a later commit changed the
-  path again, a 3-way revert of the commit onto HEAD (clean: it is still there when the revert would alter
-  HEAD; conflicting: when the reverse patch still applies, or, for a file the commit added, when most of its
-  lines remain). Common lines (`fi`, `}`, blank) therefore no longer keep a group parked after the printed
-  revert was run and its conflict resolved for the branch, and a delete-only, mode-only, binary or merge-only
-  commit no longer counts as gone because a later commit touched the file. A symlink that replaced a directory
-  holding a finished sibling's declared file is removed by the failed task's restore and the file is written
-  back (it was left missing). The park hint for a refused reset is `git reset --hard <start>`, so the foreign
-  content is not left behind as unstaged changes. Known limit: when a later commit rewrote part of a
-  parked commit's file and the printed revert is resolved for the branch, the lines left in that file are the
-  branch's own and the reopen is accepted.
+- Commits made in the worktree count toward the task's changed files, and only shas the CLI recorded (task
+  commits, its reopen reverts) or a human accepted are trusted (D-08). When a task's range holds a commit the CLI
+  did not record, the CLI does not repair it: the task gate FAILs naming each such sha and the files it changed,
+  the group parks at once (no retry; a rule violation, not a test failure), and nothing is written to the branch
+  or the working tree (no reset, revert or restore). While a group is parked, `task gate` and `task test` of its
+  other tasks are refused without a verdict, attempt, restore or ledger row, so running siblings keep their work.
+  The park prints the two ways out: (a) when no task of the group runs, remove the commits from the branch
+  yourself (for example `git -C <worktree> rebase --onto <sha>~1 <sha>`, newest first, or a reset), then
+  `temper group reopen G --task N`; (b) keep them knowingly with `temper group reopen G --task N --accept-foreign
+  <sha>[,<sha>] --reason "<text>"`. `group reopen` is refused while a parked sha is still an ancestor of the
+  group branch HEAD unless it is accepted; an accepted sha is recorded like an override (shown by `temper
+  report`) and counts as known from then on. The group gate also fails while the group is parked, and when a
+  passed task's recorded commit is not an ancestor of the group branch HEAD (it names the task and the sha).
+  A failure without a foreign commit keeps the D-03 behaviour: the task's declared files and the undeclared
+  paths named are restored in the working tree, then retry, escalate, park.
+- Known limits of D-08 (rare or contrived cases, documented rather than repaired):
+  - Detection is by sha: an agent that rewrites history (amend, rebase, reset) can move or hide a commit; the
+    group gate's ancestor check catches a task commit that left the branch, nothing more.
+  - A reopen is judged by ancestry, not content: a commit removed and re-made (cherry-pick, rebase) has a new
+    sha and is seen as a new foreign commit by the next gate, and a rebase that drops a foreign commit also
+    rewrites the CLI commits after it, so the group gate then asks to reopen those tasks.
+  - A sibling that was running when the group parked and starts its next gate after an accepted reopen sees the
+    accepted commit's files as its own undeclared change and retries; reopen it too when its work is short.
+  - An agent's edit to a running sibling's declared file lands with that sibling's commit.
+  - A path behind a symlinked directory is left alone by the task restore (never written through the link).
+  - A stale `index.lock` outlasting the restore's five-second budget parks the group with the lock named.
 - The plan digest is taken at the first `group start`; if `tasks.md` changes afterwards (`**File:**`,
   `**Depends:**`, `**Test:**`, group Validate/Interfaces/Context, Integration), every grouped command,
   including `group reopen`, refuses to run. Declared paths are matched exactly and the plan gate

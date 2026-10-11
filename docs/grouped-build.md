@@ -64,6 +64,21 @@ commands below exit 1 with "grouped mode is off (build.mode)".
    local commit of the declared files on the group branch. On FAIL the task is retried once on
    Haiku, then escalated once to Sonnet. If that also fails, the group stops and the run parks
    for a human; independent groups finish first. Every attempt, its model and outcome are recorded.
+
+   **A park after a commit the CLI did not make.** Task agents must not run `git commit`. If one
+   does, the task gate FAILs naming the commit and its files and the group parks at once, with no
+   retry. The CLI changes nothing on the branch or in the working tree, and the group's other
+   tasks refuse `task gate` and `task test` (no verdict, no row), so tasks still running keep
+   their work. You have two ways out:
+   - (a) once no task of the group runs, take the commits off the branch yourself (the park
+     prints `git -C <worktree> rebase --onto <sha>~1 <sha>`, newest first; a reset works too),
+     then `temper group reopen G1 --task N`. Reopen is refused while a parked commit is still
+     on the branch.
+   - (b) keep them knowingly: `temper group reopen G1 --task N --accept-foreign <sha>[,<sha>]
+     --reason "<why>"`. The acceptance is recorded like an override and `temper report` lists it.
+   Known limits: detection is by sha, so rewritten history can hide a commit (the group gate
+   still checks that each passed task's commit is on the branch); a rebase that drops a commit
+   also rewrites the CLI commits after it, and the group gate then asks you to reopen those tasks.
 6. **Group gate.** `temper group gate G1` passes when every task passed and the group's
    tests pass. You choose Continue, Change or Stop. **Change** records your feedback and
    runs `temper group reopen G1 --task N [--task M] [--feedback ID]`, which re-runs only the
@@ -71,6 +86,8 @@ commands below exit 1 with "grouped mode is off (build.mode)".
    `group reopen` is an orchestrator-only command: a task agent must not run it (its revert is excused
    in a sibling's verdict only while the files still hold the revert's exact content; the mod cannot
    tell a task agent's Bash from the orchestrator's, so this is a rule, not a hook).
+   The group gate also fails while the group is parked and when a passed task's commit is no
+   longer on the group branch.
 7. **Integrate.** `temper integrate` merges the passed group branches into the feature branch
    (`--no-ff`), removes the worktrees, runs the full suite and checks the declared
    interfaces. A conflict or failure stops the run before Review with the cause recorded.
