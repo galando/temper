@@ -68,6 +68,9 @@ commands below exit 1 with "grouped mode is off (build.mode)".
    tests pass. You choose Continue, Change or Stop. **Change** records your feedback and
    runs `temper group reopen G1 --task N [--task M] [--feedback ID]`, which re-runs only the
    tasks it concerns; re-planning is the separate "Loop back to Plan" choice.
+   `group reopen` is an orchestrator-only command: a task agent must not run it (its revert is excused
+   in a sibling's verdict only while the files still hold the revert's exact content; the mod cannot
+   tell a task agent's Bash from the orchestrator's, so this is a rule, not a hook).
 7. **Integrate.** `temper integrate` merges the passed group branches into the feature branch
    (`--no-ff`), removes the worktrees, runs the full suite and checks the declared
    interfaces. A conflict or failure stops the run before Review with the cause recorded.

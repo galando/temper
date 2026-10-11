@@ -36,6 +36,7 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
 - Never run the test command yourself in place of `task test`; only the CLI's recorded
   run counts as evidence, and a RED that never failed is rejected.
 - Never edit outside the worktree, and never touch a file another task declares.
+- Never run `temper group reopen` (or any `temper group` command); reopening is the orchestrator's alone.
 - If the task cannot be done within its declared files, stop and put the reason under
   BLOCKERS instead of widening scope.
 

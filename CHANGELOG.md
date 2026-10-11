@@ -62,18 +62,23 @@ not asserted by an agent:
   sequence is required, a later red run fails it).
 - Commits made in the worktree count toward the task's changed files. A failed attempt that left a
   foreign (agent-made) commit on the group branch has exactly those commits undone, so the retry
-  starts from the restored point; only shas the CLI recorded are trusted.
+  starts from the restored point; only shas the CLI recorded are trusted. The undo never touches the
+  working tree: a plain reset when only foreign commits follow the start and no running sibling in the
+  same group is affected, else one revert commit built in a temporary index, so a running sibling's
+  files (dirty or not) and the CLI's own commits stay as they are, and a still-dirty file cannot make
+  the undo fail and park the group.
 - The plan digest is taken at the first `group start`; if `tasks.md` changes afterwards (`**File:**`,
   `**Depends:**`, `**Test:**`, group Validate/Interfaces/Context, Integration), every grouped command,
   including `group reopen`, refuses to run. Declared paths are matched exactly and the plan gate
   refuses glob characters in `**File:**`.
 - Run files (`groups.json`, `usage.json`, evidence) are written atomically under the lock, which
-  carries an owner token: only the owner releases it, and a stale lock is broken by moving it aside and
-  verifying it, so a fresh lock is never deleted. The wait deadline follows the wall clock
+  carries an owner token: only the owner releases it, and a stale lock is broken by moving it aside under
+  a private name and deleting it (nothing is put back, so no second holder or orphan folder). The wait deadline follows the wall clock
   (`TEMPER_LOCK_WAIT_S`).
 - Reopen guards: `group reopen` refuses to revert a file that a passed dependent task also edits unless that
   task is reopened too, its revert commit belongs to the reopened task and does not count against a
-  running sibling, and a group branch is reused only when this run recorded it (a stale branch from an
+  running sibling (only while the files still hold the revert's exact content; `group reopen` is
+  orchestrator-only), and a group branch is reused only when this run recorded it (a stale branch from an
   earlier run is refused with the `git branch -D` way out).
 - `state loop` validates the target stage and sets `next_stage` to it, so the build-checkpoint commit
   carve-out applies after a loop back.

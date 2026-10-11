@@ -262,7 +262,7 @@ what the CLI parser (`_grouped_parse`) reads and the plan gate (`_grouped_plan_r
   title is not read).
   Task numbers are unique across the whole file.
 
-**Declared files.** `**File:**` lists backticked paths, one per file the task will write, including its test
+**Declared files.** `**File:**` lists backticked paths, one per file the task will write, including its test file.
 Give exact file paths, one per file. In grouped mode the plan gate refuses any glob
 character (`*`, `?`, `[`) in a `**File:**` path and the commit check compares changed files to the
 declared union by exact path, so name every file, the test file included. Two tasks that can

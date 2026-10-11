@@ -48,24 +48,6 @@ assert_eq "held lock: writes anyway with a WARN after the wait" "0|1" "$rc|$(pri
 assert_eq "held lock: the row is recorded and the foreign lock is left alone" "1|yes" \
   "$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")|$([[ -d .temper/.lock ]] && echo yes || echo no)"
 
-# R7: the stale break removes only the stale owner's lock; a fresh lock taken in the window survives
-setup
-mkdir -p .temper/evidence .temper/.lock
-printf 'stale-owner' > .temper/.lock/owner
-python3 -c "import os,time; t=time.time()-120; os.utime('.temper/.lock',(t,t)); os.utime('.temper/.lock/owner',(t,t))"
-cat > "$WORKDIR/r7-hook.sh" <<'HOOK'
-#!/usr/bin/env bash
-# runs once, between the break's re-check and its removal: the holder releases and a fresh one acquires
-[[ -e "$0.done" ]] && exit 0
-: > "$0.done"
-rm -rf .temper/.lock; mkdir .temper/.lock; printf 'fresh-owner' > .temper/.lock/owner
-HOOK
-chmod +x "$WORKDIR/r7-hook.sh"
-out="$(TEMPER_LOCK_TEST_HOOK="$WORKDIR/r7-hook.sh" TEMPER_LOCK_WAIT_S=1 "$TEMPER" evidence add --stage build --claim "r7" 2>&1)"
-assert_eq "R7: a fresh lock taken during the break is not deleted (the waiter times out on it)" "yes|fresh-owner|1" \
-  "$([[ -d .temper/.lock ]] && echo yes || echo no)|$(cat .temper/.lock/owner 2>/dev/null)|$(printf '%s' "$out" | grep -c 'WARN.*lock')"
-rm -rf .temper/.lock
-
 # R8: the lock wait is bounded by the wall clock, so TEMPER_LOCK_WAIT_S is honoured
 setup
 mkdir -p .temper/evidence .temper/.lock
@@ -1490,4 +1472,104 @@ gp_tamper 'echo boom;' 'echo hacked;'
 out="$("$TEMPER" group reopen G1 --task 1 2>&1)"; rc=$?
 assert_eq "R5: a changed plan refuses group reopen, naming the plan change" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'plan.*changed')"
 assert_eq "R5: the refused reopen changed nothing" "passed" "$(st_field 1 status)"
+setup
+
+# --- Grouped Build (9.7.0), final review: undoing a foreign commit in a shared worktree [F1-F7] ---
+# Invariants: (a) a running sibling's working-tree content and the CLI's own commits are never changed by another
+# task's FAIL; (b) a foreign commit's content never stays on the group branch after a FAIL; (c) a FAIL on attempt 1
+# or 2 leads to the D-03 retry/escalate, and only an undo that cannot be done parks the group.
+f_add_t4() { # a fourth, independent G1 task (src/d.sh) with its own controllable test
+  gp_mut '### Task 2: Beta' '### Task 4: Delta
+**File:** `src/d.sh`
+**Depends:** none
+**Test:** `bash -c '"'"'exit ${ST_EXIT:-0}'"'"'`
+- [ ] done
+
+### Task 2: Beta'
+}
+f_setup() { ST_PRE=f_add_t4 st_setup; ST_PRE=""; gp_mut '**Depends:** Task 1' '**Depends:** none'; }
+f_tree() { git -C "$ST_WT" ls-tree -r --name-only HEAD | paste -sd, -; }
+# f_sweep [redirty]: Task 1 starts first, Task 4 passes (a CLI commit in Task 1's range), Task 2 starts with
+# uncommitted work in its declared file, then Task 1's agent commits everything (git add -A) and its gate runs.
+f_sweep() {
+  "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+  gg_pass 4 src/d.sh
+  "$TEMPER" task start 2 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
+  st_edit src/b.sh
+  st_edit src/a.sh; git -C "$ST_WT" add -A; git -C "$ST_WT" commit -q -m "sneaky sweep" 2>/dev/null
+  [[ "${1:-}" == "redirty" ]] && echo "edited again" >> "$ST_WT/src/a.sh"
+  ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+  F_OUT="$("$TEMPER" task gate 1 2>&1)"; F_RC=$?
+}
+
+# F1: the sibling's uncommitted file survives the undo of a commit that swept it in
+f_setup; f_sweep
+assert_eq "F1: Task 1 FAILs for the commit it made" "1|failed" "$F_RC|$(st_field 1 status)"
+assert_eq "F1: the running sibling's working file is intact" "work src/b.sh" "$(cat "$ST_WT/src/b.sh" 2>/dev/null || echo MISSING)"
+assert_eq "F1: the foreign commit's content is off the branch, the CLI's Task 4 commit stays" "README,src/d.sh" "$(f_tree)"
+assert_eq "F1: the sibling is still running" "running" "$(st_field 2 status)"
+ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
+assert_exit "F1: the sibling then passes" 0 "$TEMPER" task gate 2
+assert_eq "F1: the sibling's CLI commit holds its own file" "src/b.sh" "$(git -C "$ST_WT" show --name-only --format= HEAD)"
+
+# F2: a task running in another group does not force the revert in this one: a plain reset to the start
+f_setup; START1="$(git -C "$ST_WT" rev-parse HEAD)"
+git -C .claude/worktrees/temper-demo-G2 commit -q --allow-empty -m "g2 base" 2>/dev/null   # G2's HEAD differs from G1's
+"$TEMPER" task start 3 >/dev/null 2>&1
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; git -C "$ST_WT" add src/a.sh; git -C "$ST_WT" commit -q -m "sneaky" 2>/dev/null
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+"$TEMPER" task gate 1 >/dev/null 2>&1
+assert_eq "F2: with only another group's task running the branch is reset to the task's start" "$START1|failed|running" \
+  "$(git -C "$ST_WT" rev-parse HEAD)|$(st_field 1 status)|$(st_field 3 status)"
+
+# F3: a file still dirty after the agent's commit does not stop the undo: no park, the D-03 retry follows
+f_setup; f_sweep redirty
+assert_eq "F3: attempt 1 FAILs and the group is not parked" "1|failed|" "$F_RC|$(st_field 1 status)|$(gg_g G1 parked_reason)"
+assert_eq "F3: the next step is the retry on the task model" "1" "$(printf '%s' "$F_OUT" | grep -c '^NEXT: retry Task 1')"
+assert_eq "F3: the dirty declared file is back to the start" "no" "$([[ -e $ST_WT/src/a.sh ]] && echo yes || echo no)"
+
+# F4: only the reopen revert's own content is excused; a sibling's edit of a reopened path is undeclared
+gg_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'
+gg_pass 1 src/a.sh
+"$TEMPER" task start 2 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
+"$TEMPER" group reopen G1 --task 1 >/dev/null 2>&1
+st_edit src/b.sh; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 2 2>&1)"; rc=$?
+assert_eq "F4: a sibling edit of the reopened src/a.sh FAILs as undeclared" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'undeclared change: src/a.sh')"
+
+# F5: no test seam in production code
+assert_eq "F5: the lock code has no TEMPER_LOCK_TEST_HOOK seam" "0" "$(grep -c TEMPER_LOCK_TEST_HOOK "$TEMPER")"
+# F6: a stale lock broken by parallel waiters leaves no aside folder, one holder at a time, and every row lands
+setup
+mkdir -p .temper/evidence .temper/.lock
+printf 'stale-owner' > .temper/.lock/owner
+python3 -c "import os,time; t=time.time()-120; os.utime('.temper/.lock',(t,t)); os.utime('.temper/.lock/owner',(t,t))"
+for i in 1 2 3 4 5 6; do "$TEMPER" evidence add --stage build --claim "f6 $i" >/dev/null 2>&1 & done
+wait
+assert_eq "F6: six waiters on a stale lock lose no row, leave no .lock.dead folder and free the lock" "6|0|no" \
+  "$(python3 -c "import json; print(len(json.load(open('.temper/evidence/build.json'))))")|$(ls -d .temper/.lock.dead.* 2>/dev/null | wc -l | tr -d ' ')|$([[ -e .temper/.lock ]] && echo yes || echo no)"
+# F7: the declared-files paragraph reads as a sentence
+assert_eq "F7: reference/plan.md names the test file in the declared-files sentence" "1" \
+  "$(grep -c 'including its test file\.' "$REPO_ROOT/reference/plan.md")"
+
+# Combined (a)-(c): a sweep that also leaves the task's own file dirty, with a task running in another group
+f_setup; git -C .claude/worktrees/temper-demo-G2 commit -q --allow-empty -m "g2 base" 2>/dev/null
+"$TEMPER" task start 3 >/dev/null 2>&1; f_sweep redirty
+assert_eq "combined (a): the sibling's working file and the CLI's Task 4 commit are untouched" "work src/b.sh|README,src/d.sh" \
+  "$(cat "$ST_WT/src/b.sh" 2>/dev/null || echo MISSING)|$(f_tree)"
+assert_eq "combined (b): the foreign content is off the branch tree and off the working tree" "no|no" \
+  "$([[ "$(f_tree)" == *src/a.sh* ]] && echo yes || echo no)|$([[ -e $ST_WT/src/a.sh ]] && echo yes || echo no)"
+assert_eq "combined (c): attempt 1 retries, the group is not parked" "1|1" \
+  "$(printf '%s' "$F_OUT" | grep -c '^NEXT: retry Task 1')|$([[ -z "$(gg_g G1 parked_reason)" ]] && echo 1 || echo 0)"
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; git -C "$ST_WT" add src/a.sh; git -C "$ST_WT" commit -q -m "sneaky again" 2>/dev/null
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"
+assert_eq "combined (c): attempt 2 escalates, the sibling is still intact and running" "1|work src/b.sh|running" \
+  "$(printf '%s' "$out" | grep -c '^NEXT: escalate Task 1')|$(cat "$ST_WT/src/b.sh" 2>/dev/null || echo MISSING)|$(st_field 2 status)"
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+assert_exit "combined (c): the third attempt PASSes with only its own file" 0 "$TEMPER" task gate 1
+assert_eq "combined: Task 1's commit holds only src/a.sh" "src/a.sh" "$(git -C "$ST_WT" show --name-only --format= HEAD)"
 setup
