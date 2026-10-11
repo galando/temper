@@ -12,7 +12,9 @@ Build runs one task at a time today. Each launch runs on the session model with 
 one launch of a slim Haiku agent, and the human reviews once per group. Several parts of
 the design go beyond earlier Temper decisions: who schedules the agents, where parallel
 work happens, and who commits and merges it. Full design:
-`.temper/specs/grouped-haiku-build/design.md` (in the run's spec folder).
+`.temper/specs/grouped-haiku-build/design.md` (in the run's spec folder, which is not
+committed; copies of the intent, plan, design, tasks and every review round's findings are
+in git history at commit 9e14ce7, under `docs/plans/grouped-build-handoff/spec/`).
 
 ## Decision
 
