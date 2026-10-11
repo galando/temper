@@ -42,9 +42,9 @@ orchestrator's conversation carries over except the prompt you were launched wit
    or `manual`, default `unit`) and `Covers:` (the comma-separated AC ids this
    scenario verifies; a regression-only scenario may omit it). Group the blocks under
    `#### Happy Path`, `#### Error Paths`, `#### Edge Cases`; omit an empty group.
-7. **Grouped tasks.** When `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get build.mode` prints `grouped`,
-   write `tasks.md` in the grouped format of `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`, "Grouped tasks"
-   (copy the example in `${CLAUDE_PLUGIN_ROOT}/templates/tasks.md`); otherwise keep the per-task layout.
+7. **Grouped tasks.** Write `tasks.md` in the grouped format of `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`,
+   "Grouped tasks" (copy the example in `${CLAUDE_PLUGIN_ROOT}/templates/tasks.md`): Build runs each task
+   as one slim task agent, so each task is small, declares its files and its own test command.
 8. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` mechanically checks, **at every tier**: the artifacts exist;
    scenario count >= success-criterion count; every criterion has explicit validation
    links (`acceptance.py plan` — stable `AC-NN` ids, `Why:` and `Validate:` on each,

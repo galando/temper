@@ -137,6 +137,33 @@ work happens, and who commits and merges it. Full design:
 - Merge commits run no pre-commit hook. The CLI's own ADR 0009 check before each merge
   takes its place.
 
+## Amendment (2026-10-11): grouped is the only Build mode; one worktree per task is next
+
+**Grouped Build is the only Build mode.** One measured run (pyjokes, the same feature built per
+task and grouped from one commit; numbers in `docs/grouped-build.md`, "Why it is the default")
+cost about a fortieth for the Build stage and two thirds for Plan through Check, passed every
+gate with the same behaviour, and avoided a per-task defect (its build agent rewrote the
+CLI-owned run state). Keeping two Build modes doubled the paths every gate, brief and test had
+to cover, so `build.mode` and the per-task loop are removed. `agents/build.md` stays as the fix
+pass for Review or Check loops back to Build. The "experimental, unmeasured" item under
+Negative no longer holds; one run is still an anecdote, so the measurement procedure stays.
+
+**One worktree per task: decided yes, as the next change, not in 9.7.0.** Nearly every hard
+defect of the review rounds came from parallel tasks sharing one worktree and one branch: the
+start snapshot of dirty paths, excluding a sibling's files from a verdict by timestamps, the
+exact-content excuse for reopen reverts, restoring undeclared paths on a FAIL, marking innocent
+siblings failed when a foreign commit is found, and the known limits about a sibling's
+unfinished edit. With a private worktree per task (a branch from the group branch at `task
+start`, merged into the group branch at a task-gate PASS), a task's verdict is its own
+`base..HEAD` plus its own `git status`, any commit the CLI did not make is unambiguously that
+task's, and a FAIL or a reopen discards the worktree. The review estimated 200 to 250 lines of
+`scripts/temper` and several known limits removed. Costs: one merge per task (conflict-free
+while declared files are disjoint, which the plan gate enforces, cross-group dependencies
+included since the F3 fix), a dependent task starting only after its dependency merged, and
+the project's setup (dependency install, build cache) paid once per task worktree. It ships as
+its own change, so the rewrite of the verdict core is reviewed on its own, with the shared-
+worktree selftests replaced rather than patched.
+
 ## References
 
 - ADR 0009 (build checkpoint commit carve-out)

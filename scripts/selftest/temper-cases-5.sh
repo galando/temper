@@ -1,10 +1,10 @@
 # --- Grouped Build (9.7.0): config keys and task model resolution ---
-# Scenario: Grouped mode off keeps the per-task Build unchanged [AC-01]
+# Build always runs in groups: there is no per-task mode to switch to
 setup
-assert_eq "grouped off (no build.mode): model --all prints exactly the 8 stage lines" "8" "$("$TEMPER" model --all | wc -l | tr -d ' ')"
+assert_eq "model --all prints the 8 stage lines plus task= and task-escalation=" "10|1|1" \
+  "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep -c '^task=')|$("$TEMPER" model --all | grep -c '^task-escalation=')"
 printf 'build:\n  mode: per-task\n' >> .claude/temper.config
-assert_eq "grouped off (build.mode: per-task): model --all prints exactly the 8 stage lines" "8" "$("$TEMPER" model --all | wc -l | tr -d ' ')"
-assert_eq "grouped off: model --all has no task= line" "0" "$("$TEMPER" model --all | grep -c '^task')"
+assert_eq "a leftover build.mode: per-task changes nothing" "10" "$("$TEMPER" model --all | wc -l | tr -d ' ')"
 
 # Scenario: Task and escalation models resolve from config with defaults [AC-06, AC-01]
 setup
@@ -68,7 +68,8 @@ rm -f .temper/.lock
 # Scenarios: A three-level grouped plan passes the plan gate; The plan gate rejects a task with no
 # declared files and a group with no context; Overlapping files between tasks that can run together
 # are rejected; A group larger than max-blast-radius is rejected at plan time [AC-02, AC-03, AC-05, AC-11]
-gp_base() { # write the valid two-group fixture to the demo spec's tasks.md
+gp_base() { # write the valid two-group fixture to the demo spec's tasks.md (a plan not built yet, so no groups.json)
+  rm -f .temper/groups.json
   cat > .temper/specs/demo/tasks.md <<'GP'
 # Tasks: demo
 
@@ -209,13 +210,13 @@ gp_setup; gp_mut '## Group G2: Edge
 **Depends:** G7'
 assert_eq "grouped plan: a group Depends on an unknown group fails" "1|1" "$("$TEMPER" gate plan >/dev/null 2>&1; echo $? | sed 's/^0$/0/')|$(gp_has 'G2 depends on unknown G7')"
 
-# grouped off: the same grouped tasks.md leaves the plan gate output unchanged
-setup; gp_base
-assert_exit "grouped off: a grouped tasks.md changes nothing in the plan gate (per-task rules only)" 0 "$TEMPER" gate plan
-assert_eq "grouped off: no grouped rows appear" "0" "$(gp_has 'grouped plan\|declared files\|group context\|file ownership')"
-gp_mut '**File:** `src/b.sh`
-' ''
-assert_exit "grouped off: a missing **File:** is not checked" 0 "$TEMPER" gate plan
+# a flat (per-task) tasks.md fails the plan gate: Plan always writes groups
+setup; mkdir -p tests; : > tests/b_test.sh; : > tests/c_test.sh; gp_base
+assert_exit "without build.mode the grouped tasks.md passes the plan gate" 0 "$TEMPER" gate plan
+printf '# Tasks: demo\n\n### Task 1: Alpha [SEQUENTIAL]\n**File:** src/a.sh\n- [ ] done\n' > .temper/specs/demo/tasks.md
+assert_exit "a flat tasks.md fails the plan gate" 1 "$TEMPER" gate plan
+assert_eq "the plan gate names the missing group heading and Integration line" "1|1" \
+  "$(gp_has 'heading; Task 1 is outside any group')|$(gp_has 'no .*Integration:.* line')"
 setup
 
 # --- Grouped Build (9.7.0): grouped run state and the ready set (temper schedule) ---
@@ -328,11 +329,9 @@ sg_setup; mkdir -p "$WORKDIR/gj-target"; echo '{}' > "$WORKDIR/gj-target/g.json"
 assert_exit "a symlinked .temper/groups.json is refused" 3 "$TEMPER" schedule
 rm -f .temper/groups.json
 
-# grouped off: exits 1, prints the reason, writes nothing
-setup; gp_base; sg_state '{}'
-out="$("$TEMPER" schedule 2>&1)"; rc=$?
-assert_eq "grouped off: schedule exits 1 and names build.mode" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'grouped mode is off (build.mode)')"
-assert_eq "grouped off: schedule prints no JSON line" "0" "$(printf '%s' "$out" | grep -c '^{')"
+# a leftover build.mode: per-task is ignored: the schedule still prints the ready set
+setup; gp_base; printf 'build:\n  mode: per-task\n' >> .claude/temper.config; sg_state '{}'
+assert_eq "schedule ignores a leftover build.mode: per-task" "1,3" "$(sg_ready)"
 setup
 
 # --- Grouped Build (9.7.0): group worktrees (temper group start) ---
@@ -420,10 +419,6 @@ assert_eq "group start: the squatting folder is left alone" "squatter" "$(cat .c
 sw_setup; "$TEMPER" state init demo --branch main >/dev/null 2>&1; git checkout -q -B main
 assert_exit "group start: the main branch is refused (exit 3)" 3 "$TEMPER" group start G1
 assert_eq "group start: the refused main run made no worktree" "no" "$([[ -d .claude/worktrees/temper-demo-G1 ]] && echo yes || echo no)"
-# grouped off
-setup; gp_base
-assert_exit "grouped off: group start exits 1" 1 "$TEMPER" group start G1
-assert_eq "grouped off: group start writes no groups.json" "no" "$([[ -e .temper/groups.json ]] && echo yes || echo no)"
 setup
 
 # --- Grouped Build (9.7.0): task lifecycle (task start / show / test / gate) ---
@@ -702,13 +697,6 @@ out="$("$TEMPER" task gate 1 --model claude-haiku-5-5 --tokens 7 --ms 9 2>&1)"
 assert_eq "usage: a PASS records tokens and ms and prints only NEXT: schedule" "7/9|NEXT: schedule" \
   "$(python3 -c "import json; a=json.load(open('.temper/groups.json'))['tasks']['1']['attempts'][0]; print('%s/%s' % (a['tokens'],a['ms']))")|$(printf '%s\n' "$out" | grep '^NEXT:')"
 
-# grouped off: every task subcommand exits 1 and writes nothing
-setup; gp_base
-assert_exit "grouped off: task start exits 1" 1 "$TEMPER" task start 1
-assert_exit "grouped off: task show exits 1" 1 "$TEMPER" task show 1
-assert_exit "grouped off: task test exits 1" 1 "$TEMPER" task test 1 --phase red
-assert_exit "grouped off: task gate exits 1" 1 "$TEMPER" task gate 1
-assert_eq "grouped off: no groups.json is written" "no" "$([[ -e .temper/groups.json ]] && echo yes || echo no)"
 assert_exit "an unknown task subcommand exits 1" 1 "$TEMPER" task frobnicate
 setup
 
@@ -918,15 +906,15 @@ assert_exit "integrate: the CLI merge checks the upstream gates first (ADR 0009,
 assert_eq "integrate: the refused run merged nothing" "$HEAD0" "$(git rev-parse HEAD)"
 gi_all; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
 assert_exit "integrate: autonomy lets the local integration merge run (design resolution 1a)" 0 "$TEMPER" integrate
-setup
-assert_exit "integrate: grouped mode off exits 1" 1 "$TEMPER" integrate
-assert_eq "integrate: grouped off keeps gate build without an integration row" "0" "$("$TEMPER" gate build 2>&1 | grep -c integration)"
+setup; rm -f .temper/specs/demo/tasks.md .temper/groups.json
+assert_exit "integrate: a run without tasks.md exits 1" 1 "$TEMPER" integrate
+assert_eq "integrate: a run without tasks.md (a /temper:fix run) has no integration row in gate build" "0" "$("$TEMPER" gate build 2>&1 | grep -c integration)"
 
 # --- Grouped Build (9.7.0): max-blast-radius at the autonomy commit gate (D-01) ---
 # Scenario: Autonomy commit gate in grouped mode compares changes to the declared union [AC-11]
-gc_setup() { # gc_setup <grouped|per-task>: autonomous run, max-blast-radius 3, four declared files changed
+gc_setup() { # gc_setup <grouped|fix>: autonomous run, max-blast-radius 3, four declared files changed
   gp_setup
-  [[ "$1" == "grouped" ]] || sed -i.bak 's/mode: grouped/mode: per-task/' .claude/temper.config
+  [[ "$1" == "grouped" ]] || rm -f .temper/specs/demo/tasks.md   # a /temper:fix run has no tasks.md
   sed 's/max-blast-radius: 15/max-blast-radius: 3/' .claude/temper.config > .claude/temper.config.new && mv .claude/temper.config.new .claude/temper.config
   "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
   # setup keeps the work tree, so the four files an earlier gc_setup left would be committed into this
@@ -946,9 +934,9 @@ assert_eq "grouped commit gate: a spec-folder file counts as declared" "1" "$(gc
 echo z > src/zzz.sh
 assert_eq "grouped commit gate: one undeclared file FAILs the row and names it" "1|1" \
   "$(gc_row | grep -c 'changed outside declared files: .*src/zzz.sh')|$(gc_row | grep -c '^ *\[x\]')"
-gc_setup per-task; sed -i.bak 's/max-blast-radius: 3/max-blast-radius: 1/' .claude/temper.config
+gc_setup fix; sed -i.bak 's/max-blast-radius: 3/max-blast-radius: 1/' .claude/temper.config
 gc_out="$(gc_row)"
-assert_eq "per-task commit gate keeps the count rule (changed entries > 1 fail) [$gc_out]" "1|0" \
+assert_eq "a run without tasks.md keeps the count rule (changed entries > 1 fail) [$gc_out]" "1|0" \
   "$(printf '%s\n' "$gc_out" | grep -c 'exceeds autonomy.max-blast-radius=1')|$(printf '%s\n' "$gc_out" | grep -c 'all declared')"
 gc_setup grouped; "$TEMPER" state set run_mode interactive >/dev/null 2>&1
 assert_eq "grouped commit gate: a non-autonomous run has no blast radius row" "0" "$(gc_row | wc -l | tr -d ' ')"
@@ -1014,11 +1002,10 @@ g=json.load(open('.temper/specs/demo/gate-ledger.json')).get('grouped') or {}
 print('%s|%s|%s|%s' % (1 if g else 0, g.get('task_model'), g.get('escalation_model'), len(g.get('attempts') or {})))")"
 assert_eq "state archive: the grouped block carries tokens_by_model" "1" \
   "$(python3 -c "import json; print(1 if json.load(open('.temper/specs/demo/gate-ledger.json'))['grouped']['tokens_by_model'] else 0)")"
-setup; sw_setup >/dev/null 2>&1; setup
+setup; sw_setup >/dev/null 2>&1; setup; rm -f .temper/groups.json
 "$TEMPER" gate plan >/dev/null 2>&1; "$TEMPER" state archive >/dev/null 2>&1
-assert_eq "state archive: a per-task run has no grouped block" "0" \
+assert_eq "state archive: a run with no groups.json (a /temper:fix run) has no grouped block" "0" \
   "$(python3 -c "import json; print(1 if 'grouped' in json.load(open('.temper/specs/demo/gate-ledger.json')) else 0)" 2>/dev/null || echo 0)"
-assert_exit "group report: grouped off exits 1" 1 "$TEMPER" group report
 for sub in 'schedule' 'group <start|gate|reopen|report>' 'task <start|show|test|gate>' 'integrate' 'model task' 'task-escalation'; do
   assert_eq "help documents: $sub" "1" "$("$TEMPER" --help | grep -cF -- "$sub")"
 done
@@ -1103,7 +1090,7 @@ assert_eq "task brief: states the panel rule and the plugin folder rule" "1|1" \
 assert_eq "task brief: names every CLI command it relies on" "3" \
   "$(for c in 'task show' 'task test' '--phase red'; do grep -qF -- "$c" "$TB" 2>/dev/null && echo x; done | wc -l | tr -d ' ')"
 assert_eq "task brief: never points at an orchestrator file" "0" "$(grep -c 'commands/temper.md' "$TB" 2>/dev/null | tr -d ' ')"
-assert_eq "model --all still has 8 lines with the brief present and grouped off" "8" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
+assert_eq "model --all has 10 lines with the task brief present" "10" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
 setup
 
 # --- Grouped Build (9.7.0): plan brief, plan reference and templates for grouped output ---
@@ -1116,7 +1103,8 @@ assert_eq "template: the grouped example is non-empty" "yes" "$([[ -s .temper/sp
 assert_exit "template: the grouped example passes temper gate plan in grouped mode" 0 "$TEMPER" gate plan
 assert_eq "template: the grouped example declares groups, Integration, Interfaces and Context" "4" \
   "$(for k in '^## Group G1' '^\*\*Integration:\*\*' '^\*\*Interfaces:\*\*' '^\*\*Context:\*\*'; do grep -qE -- "$k" .temper/specs/demo/tasks.md && echo x; done | wc -l | tr -d ' ')"
-assert_eq "plan brief: one step points at the grouped format" "1" "$(grep -c 'config get build.mode' "$REPO_ROOT/agents/plan.md" | tr -d ' ')"
+assert_eq "plan brief: one step points at the grouped format, with no mode switch" "1|0" \
+  "$(grep -c 'in the grouped format' "$REPO_ROOT/agents/plan.md" | tr -d ' ')|$(grep -c 'build.mode' "$REPO_ROOT/agents/plan.md" | tr -d ' ')"
 assert_eq "plan reference: documents the grouped format, budgets and pack distilling" "4" \
   "$(for k in '^## Grouped tasks' '4096' '1536' 'distil'; do grep -qE -- "$k" "$REPO_ROOT/reference/plan.md" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "config default: commented build block names every grouped key" "4" \
@@ -1128,15 +1116,18 @@ setup
 # in a real grouped run [AC-05, AC-12]. The prose only relays CLI output, so assert it names each command.
 OT="$REPO_ROOT/commands/temper.md"
 OF="$REPO_ROOT/commands/fix.md"
-assert_eq "orchestrator: Stage 2 names the grouped CLI loop" "9" \
-  "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'group reopen' 'temper integrate' 'agents/build-task.md' 'Task: '; do grep -qF -- "$c" "$OT" && echo x; done | wc -l | tr -d ' ')"
-assert_eq "orchestrator: grouped loop acts on the NEXT: line" "yes" "$(grep -qF 'NEXT:' "$OT" && echo yes || echo no)"
-assert_eq "orchestrator: usage add follows each of the 6 stage launches in temper.md" "yes" \
-  "$([[ "$(grep -c 'usage add --stage' "$OT")" -ge 6 ]] && echo yes || echo no)"
+OB="$REPO_ROOT/reference/build-groups.md"
+assert_eq "orchestrator: Stage 2 reads the grouped loop page, and /temper:build reads it too" "1|1" \
+  "$(grep -c 'reference/build-groups.md' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$(grep -c 'reference/build-groups.md' "$REPO_ROOT/commands/build.md" | sed 's/^[1-9][0-9]*$/1/')"
+assert_eq "orchestrator: the grouped loop page names the grouped CLI loop" "9" \
+  "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'group reopen' 'temper integrate' 'agents/build-task.md' 'Task: '; do grep -qF -- "$c" "$OB" && echo x; done | wc -l | tr -d ' ')"
+assert_eq "orchestrator: grouped loop acts on the NEXT: line" "yes" "$(grep -qF 'NEXT:' "$OB" && echo yes || echo no)"
+assert_eq "orchestrator: usage add follows each of the 6 stage launches (temper.md and the Build fix pass)" "yes" \
+  "$([[ "$(cat "$OT" "$OB" | grep -c 'usage add --stage')" -ge 6 ]] && echo yes || echo no)"
 assert_eq "orchestrator: usage add follows each of the 4 stage launches in fix.md" "yes" \
   "$([[ "$(grep -c 'usage add --stage' "$OF")" -ge 4 ]] && echo yes || echo no)"
 assert_eq "orchestrator: grouped task agents are not recorded with usage add" "yes" \
-  "$(grep -qiE 'not.*usage add|usage add.*not' "$OT" && echo yes || echo no)"
+  "$(grep -qiE 'not.*usage add|usage add.*not' "$OB" && echo yes || echo no)"
 assert_eq "orchestrator-patterns: state schema lists groups.json and usage.json" "2" \
   "$(for k in 'groups.json' 'usage.json'; do grep -qF -- "$k" "$REPO_ROOT/reference/orchestrator-patterns.md" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "autonomy.md: narrowed invariant and group rules" "4" \

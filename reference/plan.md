@@ -216,9 +216,9 @@ PasswordResetService`). A file that is neither: question whether it's needed: if
 a scenario is missing — add one. In `tasks.md`, fill `Traced to:` for every task the same
 way (`Traced to: Scenario: "name"` or `Traced to: Infrastructure: required by {module}`).
 
-Order tasks by layer (infra → core → integration → tests). Mark independent tasks
-`[PARALLEL: with Task N]` only when they touch disjoint files and neither depends on the
-other's output or config changes — default to `[SEQUENTIAL: after Task N]` when unsure.
+Order tasks by layer (infra → core → integration → tests). Tasks with disjoint files and
+no `**Depends:**` between them run in parallel; give a task `**Depends:**` on another when it
+needs that task's output or config change (see "Grouped tasks" below).
 
 ## Approach Decisions
 
@@ -246,10 +246,9 @@ change in standalone `/temper:plan`.
 
 ## Grouped tasks
 
-Only when `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get build.mode` prints `grouped`. Write `tasks.md` as
-groups of tasks instead of one flat list; the example to copy is in `${CLAUDE_PLUGIN_ROOT}/templates/tasks.md`
-(between the `grouped-example` markers). With any other value keep the per-task layout. The format below is
-what the CLI parser (`_grouped_parse`) reads and the plan gate (`_grouped_plan_reqs`) checks.
+Build always runs in groups, so write `tasks.md` as groups of tasks, never one flat list; the example to
+copy is in `${CLAUDE_PLUGIN_ROOT}/templates/tasks.md` (between the `grouped-example` markers). The format
+below is what the CLI parser (`_grouped_parse`) reads and the plan gate (`_grouped_plan_reqs`) checks.
 
 **Format.**
 - A top-level `**Integration:**` line with the full-suite command in backticks. Required.

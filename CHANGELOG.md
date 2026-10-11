@@ -3,19 +3,45 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## v9.7.0: grouped Build with small Haiku task agents (opt-in, experimental)
+## v9.7.0: Build runs in groups of small Haiku task agents
 
-Build can now run as groups of small tasks, each handed to a slim Haiku agent, with one human
-review per group instead of one gate per task. It is opt-in and experimental: with `build.mode`
-absent, Build runs one task at a time exactly as before. This release makes no claim about cost
-or speed; the comparison against the per-task Build is a follow-up (D-04, below).
+Build now runs as groups of small tasks, each handed to a slim Haiku agent, with one human
+review per group instead of one gate per task. It is the only Build mode: the per-task Build and
+the `build.mode` key are gone. `agents/build.md` stays as the fix pass a Review or Check loop back
+to Build launches on the feature branch. The loop the orchestrator runs is in
+`reference/build-groups.md`, read by `/temper` and by the standalone `/temper:build`.
 
-**Grouped mode (`build.mode: grouped`).** Plan writes `tasks.md` as feature, groups, tasks. Each
+**Why it is the default (one measured run, pyjokes).** The same feature ("list N jokes that contain
+a substring", API and CLI) was built twice from one commit with this branch's Temper, once per task
+and once grouped, with the same intent and the same gates. Build tokens: per task 257,674 on Sonnet
+(4 launches); grouped 134,363 on Haiku (2 launches, both first-attempt passes, no escalation). At
+list input prices that is about $0.52 against $0.013 for the Build stage, and about $1.48 against
+$0.97 for Plan through Check. Both passed every gate with the same behaviour; grouped Review raised
+one medium finding (CLI tests mocked the API), per-task none. The per-task run also showed a defect
+the grouped run cannot hit: its build agent rewrote `.temper/build-state.json` and silently dropped
+`spec_path`, which skipped the Check gate's scenario rows (fixed below). One run is an anecdote; the
+comparison procedure in `docs/grouped-build.md` stays for the next ones.
+
+**What else the measured run and a whole-diff review changed.**
+- `reference/build.md` no longer tells the build agent to write `.temper/build-state.json`, and a
+  run state that lost `spec_path` now fails every gate with the repair line instead of skipping rows.
+- `temper init` lists the CLI's runtime files in the clone's `.git/info/exclude` (never
+  `.gitignore`), so a fresh project's tree stays clean and an autonomous run can start.
+- Change at a group gate reaches the task agent: `task show` prints the feedback, and the reopened
+  task's passing gate records the `feedback-resolved` row `gate build` needs (F1).
+- A loop back to Plan resets the grouped run: `groups.json` is archived, clean group worktrees are
+  removed, their branches renamed to `temper/{slug}/replan-{ts}/{G}` with their commits, and a
+  worktree with uncommitted work is kept and named (F2).
+- The plan gate rejects a task that depends on a task of another group unless its group depends on
+  that group (F3); the group gate refuses uncommitted changes to tracked files in the group
+  worktree (F4); untracked files a CLI test run creates (`__pycache__`, coverage files) are not
+  undeclared changes (F5).
+
+**Grouped Build.** Plan writes `tasks.md` as feature, groups, tasks. Each
 task declares its files and dependencies, and each group carries a `**Context:**` block (shared
 files, interfaces, conventions) that `temper task show` hands to its task agents. The CLI keeps one
 git worktree per group (`.claude/worktrees/temper-{slug}-{G}`, branch `temper/{slug}/{G}`).
-- New config keys under `build:` in `.claude/temper.config`: `mode` (`grouped` or `per-task`, the
-  default), `grouped.task-model` (default `claude-haiku-5-5`), `grouped.escalation-model` (default
+- New config keys under `build:` in `.claude/temper.config`: `grouped.task-model` (default `claude-haiku-5-5`), `grouped.escalation-model` (default
   `sonnet`) and `grouped.max-parallel` (default 4).
 - `temper schedule` prints the ready set (dependencies met, group not parked, declared files
   disjoint from running tasks, within `max-parallel`). The orchestrator launches every printed task
@@ -97,6 +123,8 @@ not asserted by an agent:
   - D-08 has no Gherkin scenario of its own; `scripts/selftest/temper-cases-6.sh` covers it.
   - An agent's edit to a running sibling's declared file lands with that sibling's commit.
   - A path behind a symlinked directory is left alone by the task restore (never written through the link).
+  - The usage of a task launch whose `task gate` is refused (its group parked meanwhile) is not recorded, so
+    `temper report` undercounts that launch (measurement only; no gate reads it).
   - A stale `index.lock` outlasting the restore's five-second budget parks the group with the lock named.
 - The plan digest is taken at the first `group start`; if `tasks.md` changes afterwards (`**File:**`,
   `**Depends:**`, `**Test:**`, group Validate/Interfaces/Context, Integration), every grouped command,

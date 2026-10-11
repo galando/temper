@@ -628,6 +628,7 @@ git commit --no-verify -q -m "suite baseline for base_sha" >/dev/null 2>&1 || tr
 "$TEMPER" state init demo --command temper >/dev/null   # fresh state on the committed tree
 "$TEMPER" state set run_mode autonomous >/dev/null
 "$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null
+rm -f .temper/specs/demo/tasks.md   # the count rule is for a run without tasks.md (a /temper:fix run)
 mkdir -p src && echo a > src/a.js
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_eq "base_sha diff + uncommitted paths feed the blast-radius count" "yes" \

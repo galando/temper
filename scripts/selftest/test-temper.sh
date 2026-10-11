@@ -129,11 +129,28 @@ Scenario: second
 ### Context Sources
 - none: description only — nothing linked
 EOF
+  # Build runs in groups: the default run is one already built and integrated (one group, one
+  # done task, groups.json with an integration PASS); a case about the grouped run writes its own
   cat > .temper/specs/demo/tasks.md <<'EOF'
+# Tasks: demo
+
+**Integration:** `true`
+
+## Group G1: Core
+**Depends:** none
+**Validate:** `true`
+**Context:**
+The demo group.
+
+### Task 1: done task
+**File:** `src/demo.sh`
+**Depends:** none
+**Test:** `true`
 - [x] done task
 EOF
   "$TEMPER" init >/dev/null
   "$TEMPER" state init demo --command temper >/dev/null
+  printf '{"version": 1, "slug": "demo", "groups": {}, "tasks": {}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
 }
 
 # No case writes into a folder named hooks. While core.hooksPath is unset, git runs the hooks in

@@ -283,7 +283,8 @@ When a gate FAILs and the user selects "Loop back":
    the next gate's count. If blocked, don't offer the loop option again this run; fall
    through to Override / Save.
 2. Re-launch the upstream stage's Agent (same template as its first launch), adding one
-   line to its prompt: *"Feedback re-entry: {reason}. Fix this, then continue."*
+   line to its prompt: *"Feedback re-entry: {reason}. Fix this, then continue."* For Build
+   that is the fix pass in `${CLAUDE_PLUGIN_ROOT}/reference/build-groups.md`, not the group loop.
 3. When it returns, re-run the downstream gate that triggered the loop.
 
 **With the Temper bar** a loop moves the run, and only the person decides that (with
@@ -440,86 +441,14 @@ decision log; only sections `design.md` actually has) / Save / Other.
 
 ---
 
-## Stage 2: Build (one task per checkpoint)
+## Stage 2: Build (in groups)
 
-Build runs **one task per launch**, gated at every checkpoint — nobody (human or
-autonomy loop) should have to wait until all the work is done to redirect it.
-
-1. Before the first Build launch, record the diff baseline:
-   `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set base_sha "$(git rev-parse HEAD)"`. Checkpoint commits land
-   during Build, so every later reader of "changed files" diffs against this sha,
-   not HEAD.
-2. Loop from the **next unchecked `- [ ]` task in `tasks.md`** (disk is the source
-   of truth for resume — an interrupted run picks up exactly where tasks.md says).
-   Launch:
-
-   ```
-   Use the Agent tool, model: {build}, prompt:
-   "Follow ${CLAUDE_PLUGIN_ROOT}/agents/build.md exactly. Spec: {spec_path from state}.
-   Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.
-   Checkpoint: task {N}.
-   {One "Checkpoint feedback #{K}: {text}" line per pending feedback item.}
-   {If a review-context.json or check-context.json feedback file exists, name it here.}"
-   ```
-3. Print the returned panel verbatim, then record the launch's usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage build --model {build} --tokens {subagent tokens} --ms {duration ms}`.
-4. Gate with `AskUserQuestion`:
-   - **"Continue (Recommended)"** — on a non-last task, go to step 2 for the next
-     task. On the last task, this becomes the normal Build completion gate below.
-   - **"Change"** — never approval. Record
-     `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase feedback --claim "feedback #{K}: {text}"`
-     for each item the user typed, then relaunch **the same task** with the feedback
-     lines added to its prompt.
-   - **"Stop"** — run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build`, then save for later.
-5. **On the last task's Continue** (the normal completion gate): `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build`
-   (RED-then-GREEN evidence recorded, no unchecked tasks, all feedback answered).
-   Options (four max; Override and corrections arrive via "Other"): Continue to
-   Review / Teach Me / "Loop back to Plan" (only if Build judges the plan
-   infeasible — human-driven, no circuit breaker, max 1 per run) / Save.
-   **On Continue:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance build_complete review`, launch
-   Stage 3.
-6. **Autonomy enabled:** the panel still prints and the per-scenario checkpoint
-   commits still happen, but Continue is auto-selected at every checkpoint — Change
-   and Stop stay interactive-only. The autonomy blast-radius check in
-   `gate commit` uses `base_sha`-relative diffs plus still-uncommitted paths.
-
-### Grouped mode (`build.mode: grouped`)
-
-When `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get build.mode` prints `grouped`, replace steps 2 to 4 with this loop
-and keep steps 1, 5 and 6 (the per-task launch above is the default and stays unchanged).
-The loop holds no rules of its own: every decision is a CLI output, so relay it.
-
-1. For each group in `tasks.md` whose `Depends` groups have passed:
-   `${CLAUDE_PLUGIN_ROOT}/scripts/temper group start G<n>` (it makes the group's worktree).
-2. `${CLAUDE_PLUGIN_ROOT}/scripts/temper schedule` prints one JSON line per ready task (task, group, title, worktree,
-   model, attempt). Before each launch run `${CLAUDE_PLUGIN_ROOT}/scripts/temper task start N`. Launch **every ready
-   task in ONE turn**, so they run in parallel, each on the `agent_model` its line prints (the alias the Agent tool takes; `model` is the full id):
-
-   ```
-   Use the Agent tool, model: {agent_model}, prompt:
-   "Follow ${CLAUDE_PLUGIN_ROOT}/agents/build-task.md exactly.
-   Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.
-   Task: {N}."
-   ```
-3. After each returns: `${CLAUDE_PLUGIN_ROOT}/scripts/temper task gate N --model {model} --tokens {subagent tokens} --ms {duration ms}`.
-   Grouped task agents are **not** recorded with `usage add`; `task gate --tokens --ms`
-   records them, so each launch is counted once. Act on the single `NEXT:` line it
-   prints: `NEXT: schedule` goes back to step 2; `NEXT: retry Task N on {model}` and
-   `NEXT: escalate Task N on {model}` go back to step 2 (the schedule prints the model);
-   `NEXT: park group G` leaves that group parked (other groups go on).
-4. When the schedule prints `{"waiting"...}`, start any group whose dependencies have now
-   passed (step 1) and ask the schedule again. When every task of group G has passed:
-   `${CLAUDE_PLUGIN_ROOT}/scripts/temper group gate G<n>`. A parked group, or a FAIL, goes to the user with the CLI's
-   reason; nothing else is decided here.
-5. One `AskUserQuestion` per group, with the group's gate output: **"Continue (Recommended)"**
-   (next group) / **"Change"** (never approval: record the feedback, then
-   `${CLAUDE_PLUGIN_ROOT}/scripts/temper group reopen G<n> --task N --feedback {ID}` for each task it concerns, and go
-   back to step 2; only those tasks re-run) / **"Stop"** (`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build`, then save).
-6. When the schedule prints `{"done": true, ...}`: `${CLAUDE_PLUGIN_ROOT}/scripts/temper integrate`, then
-   `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build`, and go on to the normal Build completion gate (step 5 above).
-   Show the group-level panel from the CLI output, not a per-task one.
-7. **Autonomy enabled:** every group's Continue is auto-selected; Change and Stop stay
-   interactive-only; a parked group, or an integrate FAIL, parks the run (see
-   `${CLAUDE_PLUGIN_ROOT}/reference/autonomy.md`).
+Read `${CLAUDE_PLUGIN_ROOT}/reference/build-groups.md` once, at the first Build launch, and
+run its loop: the base sha, one worktree per group, every ready task launched in one turn on
+the task model the schedule prints, `temper task gate` after each, one human gate per group,
+`temper integrate`, then the Build completion gate. Its "Fix pass" section is what a Review or
+Check loop back to Build launches. **On Continue** at the completion gate:
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance build_complete review`, launch Stage 3.
 
 ---
 

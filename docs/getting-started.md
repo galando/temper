@@ -265,13 +265,14 @@ MCP server. Temper installs neither. Full setup notes: [Recommended Setup](recom
 
 Shows live scenario verification status, MCP tool availability, and evidence ratio.
 
-## Grouped Build (experimental)
+## Build runs in groups
 
-Set `build.mode: grouped` in `.claude/temper.config` to split Build into groups of small
-tasks run by Haiku agents, with one human gate per group. It is opt-in and experimental in
-9.7.0. See [Grouped Build](grouped-build.md). It writes `.temper/groups.json`,
-`.temper/usage.json` and `.temper/.lock/`; like the other `.temper/` runtime files, do not
-commit them.
+Plan writes `tasks.md` as groups of small tasks. Build runs each task as one Haiku agent
+(`claude-haiku-5-5`, escalating to Sonnet after two failed attempts), each group in its own
+git worktree, with one human gate per group. See [Grouped Build](grouped-build.md) for the
+loop, the tuning keys (`build.grouped.*`) and the measurement that made it the default. It
+writes `.temper/groups.json`, `.temper/usage.json` and `.temper/.lock/`; like the other
+`.temper/` runtime files, do not commit them.
 
 ## Parallel Runs (worktrees)
 

@@ -8,9 +8,8 @@ description: "Execute the plan, implementing tasks one-by-one with quality gates
 The build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --phase red/green` invocations
 the gate needs; this doc is the methodology behind what to test and in what order.
 
-**Modes:** Standalone (`/temper:build`) runs in the current context, own gate. Agent
-subprocess (from `/temper`) starts clean — no `AskUserQuestion` gate, return the summary,
-the orchestrator owns it. Load `tasks.md`, `intent.md` (if it exists), `plan.md`'s
+**Modes:** the fix pass (`agents/build.md`, launched by the orchestrator) starts clean —
+no `AskUserQuestion` gate, return the summary, the orchestrator owns it. Load `tasks.md`, `intent.md` (if it exists), `plan.md`'s
 Prerequisites/blast-radius section, active packs' `rules.md` (project `.claude/packs/`
 shadows global `~/.claude/packs/` shadows the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept
 where `phases` is `all` or contains `build`), and the project's `.claude/packs/stacks/{stack}.md` if
@@ -22,14 +21,11 @@ rules, read related existing code, skip branch verification (the user decides).
 
 ## Execute Tasks in Order
 
-**Checkpoint mode:** your launch prompt may carry `Checkpoint: task {N}.` plus
-`Checkpoint feedback #{K}: {text}` lines. With a checkpoint, FIRST answer every
-feedback item — `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase feedback-resolved
---claim "feedback #{K}: applied — {what changed}"` or `"feedback #{K}: declined —
-{reason}"` (a decline always carries a reason; feedback that changes a later task
-edits that task's unchecked row, never a checked one) — then run ONLY task N.
-Without a checkpoint line, run all remaining tasks; `tasks.md` on disk is the
-source of truth for where an interrupted run resumes.
+**Who runs this.** Build runs in groups (`${CLAUDE_PLUGIN_ROOT}/reference/build-groups.md`): each
+task is one task agent following `${CLAUDE_PLUGIN_ROOT}/agents/build-task.md`, and this page is the
+TDD method behind that brief. The Build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) runs it as a
+fix pass when Review or Check loops back to Build: every task is already done, so it fixes what
+the feedback file names, test-first, and does not re-run the tasks.
 
 For each task in `tasks.md`:
 

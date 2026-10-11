@@ -21,7 +21,7 @@
 #                                                 over .temper/metrics.json history
 #   temper metrics append <series> <value>        append a numeric point to <series>_history
 #   temper config get <dot.path> [default]        read temper.config (for hook and CI scripts)
-# Grouped Build (build.mode: grouped; each of these exits 1 with grouped off):
+# Grouped Build (Build always runs in groups):
 #   temper schedule [--json]                      the launchable tasks, one JSON line each
 #   temper group <start|gate|reopen|report> ..    worktree, group verdict, Change, measurement report [--json]
 #   temper task <start|show|test|gate> N          one task's lifecycle (test runs the declared command)
@@ -562,10 +562,6 @@ _resolve_model() { # <stage> -> config override, else frontmatter default, else 
   _agent_default_model "$1"
 }
 
-_grouped_on() { # build.mode: grouped turns grouped Build on; absent, per-task or anything else is off
-  [[ "$(_cfg_get build.mode "")" == "grouped" ]]
-}
-
 _resolve_task_model() { # grouped task agent: config, else agents/build-task.md frontmatter, else the constant
   local m; m="$(_cfg_get build.grouped.task-model "")"
   [[ -n "$m" ]] && { echo "$m"; return; }
@@ -591,10 +587,8 @@ cmd_model() {
       [[ -n "$m" ]] || { echo "FAIL: no model resolved for stage '$s' (is its brief in the plugin's agents folder?)" >&2; rc=1; continue; }
       echo "${s}=${m}"
     done
-    if _grouped_on; then
-      echo "task=$(_resolve_task_model)"
-      echo "task-escalation=$(_resolve_task_escalation_model)"
-    fi
+    echo "task=$(_resolve_task_model)"
+    echo "task-escalation=$(_resolve_task_escalation_model)"
     return $rc
   fi
 
@@ -624,6 +618,18 @@ cmd_init() {
   [[ -f "$GATES_FILE" ]] || echo '{}' > "$GATES_FILE"
   [[ -f "$OVERRIDES_FILE" ]] || echo '[]' > "$OVERRIDES_FILE"
   [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
+  # The CLI's runtime files are local run state, never committed: list them in this clone's info/exclude (never
+  # .gitignore), so a fresh project's working tree stays clean (autonomy refuses a dirty tree)
+  local ex p
+  if ex="$(git rev-parse --git-common-dir 2>/dev/null)/info/exclude" && [[ "$ex" != "/info/exclude" ]]; then
+    mkdir -p "$(dirname "$ex")" 2>/dev/null
+    for p in build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
+             stage-gate.log pending-stage.json groups.json usage.json autonomy.lock coverage.json \
+             evidence/ index/ reviews/ archive/ .lock/; do
+      grep -qxF "/.temper/$p" "$ex" 2>/dev/null || printf '/.temper/%s\n' "$p" >> "$ex" 2>/dev/null || true
+    done
+    grep -qxF '/.claude/worktrees/' "$ex" 2>/dev/null || printf '/.claude/worktrees/\n' >> "$ex" 2>/dev/null || true
+  fi
   echo "OK: .temper/ scaffolded at $TEMPER_DIR"
 }
 
@@ -1980,10 +1986,6 @@ except Exception:
 # `task start` (a later task) changes run state. Prints one JSON line per launchable task, ordered by
 # group then task number; with nothing launchable a trailing {"waiting"...} line, or {"done"...}.
 cmd_schedule() { # temper schedule [--json]
-  if ! _grouped_on; then
-    echo "FAIL: grouped mode is off (build.mode)" >&2
-    return 1
-  fi
   local spec_path; spec_path="$(_spec_path "")"
   if [[ -z "$spec_path" || ! -f "$spec_path/tasks.md" ]]; then
     echo "FAIL: no tasks.md for the active run (temper state init, then plan)" >&2
@@ -2584,10 +2586,6 @@ PY
 
 cmd_group() {
   local sub="${1:-}"; shift || true
-  if ! _grouped_on; then
-    echo "FAIL: grouped mode is off (build.mode)" >&2
-    return 1
-  fi
   case "$sub" in
     start) cmd_group_start "$@" ;;
     gate) cmd_group_gate "$@" ;;
@@ -3590,10 +3588,6 @@ except Exception:
 
 cmd_task() {
   local sub="${1:-}"; shift || true
-  if ! _grouped_on; then
-    echo "FAIL: grouped mode is off (build.mode)" >&2
-    return 1
-  fi
   case "$sub" in
     start) cmd_task_start "$@" ;;
     show) cmd_task_show "$@" ;;
@@ -3805,8 +3799,8 @@ gate_plan() {
       all_pass=0
     fi
   fi
-  # Grouped Build: extra requirement rows, only when build.mode is grouped (off => output unchanged).
-  if _grouped_on && [[ -f "$spec_path/tasks.md" ]]; then
+  # Grouped Build: the grouped requirement rows of the run's tasks.md
+  if [[ -f "$spec_path/tasks.md" ]]; then
     local g_line g_ok
     while IFS= read -r g_line; do
       [[ -n "$g_line" ]] || continue
@@ -3879,7 +3873,8 @@ PY
     reqs+=("$(_req "checkpoint feedback answered" 0 "unanswered: $fb_detail")")
     all_pass=0
   fi
-  if _grouped_on; then
+  # Build runs in groups: a run with a tasks.md is integrated by `temper integrate` (a /temper:fix run has none)
+  if [[ -n "$spec_path" && -f "$spec_path/tasks.md" ]]; then
     local integ
     integ="$(python3 -c "
 import json, sys
@@ -4218,7 +4213,7 @@ print('yes' if any(o.get('stage') == sys.argv[2] for o in d) else 'no')
     else
       changed_n=$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
     fi
-    if _grouped_on; then
+    if [[ -f "$(_spec_path "")/tasks.md" ]]; then
       # D-01: in grouped mode a group may legitimately exceed the count, so the row compares the
       # changed set (base_sha-relative plus uncommitted) with the union of declared files instead.
       local gspec; gspec="$(_spec_path "")"
