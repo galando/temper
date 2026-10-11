@@ -70,7 +70,7 @@ layer and shows them. Older versions load the plugin as before.
 
 The mod is early access, runs in the CLI and the desktop Code tab, and is not a sandbox. It
 guards the editing tools and `git commit`; the Bash check is best effort. The
-[README](https://github.com/galando/temper#readme) lists the limits and what the mod reads and
+[The mod](mod.html) lists the limits and what the mod reads and
 writes. To try a branch on your own machine, follow [Testing the mod](mods-testing.html).
 
 ## Commands

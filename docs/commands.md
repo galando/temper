@@ -146,8 +146,8 @@ control it, and both can be changed while a session runs:
 
 Denials and subcommands work in every mode. The first interactive `/temper:temper` asks once
 which mode you want. If your organization locked a mode, `/temper:temper mode` says so and does
-not change it. See the README section "Where enforcement works" for what is and is not
-covered.
+not change it. [Where enforcement works](mod.md#where-enforcement-works) shows what is
+covered and what is not.
 
 ### The phase bar and its keys
 
@@ -226,8 +226,10 @@ Key `9` is "Skip with a reason" everywhere and always asks for a reason. Key `0`
 | Fix | The failing files | 1 Fix the failures. 2 Fix the findings. 3 Continue to Check. At the limit: Loop back to Plan, Skip with a reason, Save for later. |
 | Done | Nothing is blocked | 1 Commit (Claude commits and does not push). 2 Save for later. |
 
-A write outside the Build plan raises scope drift. You can add the file to the plan, revert it, or
-allow it once with a reason. Each choice is logged. After three failed fix loops (set with
+A file outside the Build plan is never written first. Build lists it with why it is needed and the
+change, and Claude asks you the Scope drift question: add the file to the plan, revert (go on
+without it), or allow it once (Claude's why becomes the recorded reason). Each choice is logged.
+This works the same with and without the mod; the mod also refuses the write until you answer. After three failed fix loops (set with
 `fix.max-loops`) Temper stops and offers the three choices in the last row.
 
 ### The game

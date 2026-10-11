@@ -30,7 +30,8 @@ runs on Haiku.
    {One "Checkpoint feedback #{K}: {text}" line per pending feedback item.}
    {If a review-context.json or check-context.json feedback file exists, name it here.}"
    ```
-3. Print the returned panel verbatim, then record the launch's usage once:
+3. Print the returned panel verbatim (a `DRIFT` section goes to the person first, as the
+   orchestrator's **Scope drift** paragraph in Stage 2 says), then record the launch's usage once:
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage build --model {build} --tokens {subagent tokens} --ms {duration ms}`.
 4. Gate with `AskUserQuestion`:
    - **"Continue (Recommended)"**: on a non-last task, go to step 2 for the next task. On the

@@ -143,6 +143,10 @@ Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that 
 ```
 
 After it returns, record its usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage fix --model {fix} --tokens {subagent tokens} --ms {duration ms}` (the numbers the Agent result reports; omit a flag the result does not give).
+**If the panel has a `DRIFT` section**, ask the person about each row first, exactly as
+`/temper` Stage 2's **Scope drift** paragraph does (the `Scope drift` question with Why and Change, the three
+options, the evidence row), then relaunch Fix with one `Drift decision: {path}: {choice}`
+line per answer. A drift is never answered for the person.
 
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` (RED-then-GREEN regression-test evidence; the "no unchecked
 tasks" requirement is skipped automatically — fixes have no `tasks.md`). On PASS:

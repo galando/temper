@@ -14,6 +14,7 @@ import type { Draft } from './core/events'
 import { phaseLabel } from './core/machine'
 import type { Command } from './core/machine'
 import { normalizePath } from './core/paths'
+import { driftAnswers } from './core/drift'
 import { evaluate } from './core/rules'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
@@ -783,53 +784,19 @@ async function firstRunAsk($: Api): Promise<void> {
 
 // ---- Scope drift ---------------------------------------------------------------------
 
-// Asks the person what to do about a write outside the plan, through the engine's own
-// dialog. Null when nobody can be asked (`claude -p`) or the dialog was dismissed.
-async function askDrift($: Api, path: string): Promise<{ choice: 'add' | 'revert' | 'allow-once'; reason: string } | null> {
-  try {
-    const answer = await $.ui.ask(`${path} is not in the plan. What do you want to do?`, {
-      options: ['Add to plan', 'Revert', 'Allow once'],
-      header: 'Scope drift',
-    })
-    if (answer === 'Add to plan') return { choice: 'add', reason: '' }
-    if (answer === 'Revert') return { choice: 'revert', reason: '' }
-    if (answer !== 'Allow once') return null
-    // Allow once needs a reason: ask again while the answer is empty, then give up.
-    for (let tries = 0; tries < 3; tries++) {
-      const reason = (
-        await $.ui.ask(`What is the reason to allow ${path} once?`, { options: ['Needed for this task', 'Short test'], header: 'Reason' })
-      ).trim()
-      if (reason) return { choice: 'allow-once', reason }
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
-// A write outside the plan: offer the three choices and log the decision as an event.
-// Returns the deny text, or null when the person let the write through.
-async function resolveDrift($: Api, snap: Snapshot, path: string, fallback: string): Promise<string | null> {
-  pendingDrift = path
-  const choice = await askDrift($, path)
-  if (choice === null) return fallback
+// Claude asks the Scope drift question (core/drift.ts); the person answers in Claude Code's own dialog.
+// The answer is read from the dialog's result, after the call ran, and recorded as the person's decision.
+// The mod asks nothing itself: the same question, with Claude's why and the change, runs without the mod.
+async function recordDriftAnswers($: Api, result: unknown): Promise<void> {
+  const found = driftAnswers(result)
+  if (found.length === 0) return
+  let snap = await refresh($)
   const io = makeIo($)
-  const done = await apply(io, options, snap, { type: 'drift', path, choice: choice.choice, reason: choice.reason, origin: 'person', author: 'user' })
-  adopt($, done.snap)
-  if (done.error) return `Temper: scope drift on ${path} is not recorded. ${done.error} Next: ask the user to choose again (/temper:temper drift add|revert|allow <reason>).`
-  pendingDrift = null
-  if (choice.choice === 'revert') {
-    // prompt.submit cannot be called from a tool.call hook (the engine says it would wait
-    // on this very turn), so the instruction rides in the deny text Claude reads next.
-    return `Temper: scope drift. The user chose to revert ${path}. It stays out of the plan. Next: restore ${path} to its committed state. Then continue inside the plan files.`
+  for (const d of found) {
+    const done = await apply(io, options, snap, { type: 'drift', path: d.path, choice: d.choice, reason: d.reason, origin: 'person', author: 'user' })
+    snap = adopt($, done.snap)
+    if (!done.error && pendingDrift === d.path) pendingDrift = null
   }
-  // Add to plan, or allow once: the decision now lets this write through.
-  const again = evaluate(done.snap.state, ruleContext(done.snap, await rootOf($)), { tool: 'Edit', input: { file_path: path } })
-  if ('deny' in again) return again.deny
-  if (again.consume === 'drift' && again.driftPath) {
-    adopt($, (await apply(io, options, done.snap, { type: 'useDrift', path: again.driftPath, origin: 'system' })).snap)
-  }
-  return null
 }
 
 function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
@@ -906,7 +873,11 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
     staged.all = false
     staged.paths = []
   }
-  if ('deny' in r) return { deny: r.drift ? await resolveDrift($, snap, r.drift, r.deny) : r.deny, ids: [] }
+  if ('deny' in r) {
+    // A write outside the plan: remember the path, so the person's typed /temper:temper drift decides it.
+    if (r.drift) pendingDrift = r.drift
+    return { deny: r.deny, ids: [] }
+  }
   // The command will run: the shell's folder is where it leaves it.
   if (cls) bashCwd = carryCwd(cls.cwdAfter, root)
   // A `state loop` call used the person's back decision once: a second one needs another decision.
@@ -1203,6 +1174,7 @@ export const register: Register = (on, opts) => {
     releaseLoops(g, failed)
     if (g.ids.length > 0) await settle($, g.ids, failed).catch(() => undefined)
     await afterTrivialExit($, g).catch(() => undefined)
+    if (e.tool === 'AskUserQuestion' && !errored) await recordDriftAnswers($, result).catch(() => undefined)
     const cmd = 'command' in e && typeof e.command === 'string' ? e.command : ''
     if (e.tool === 'Bash' && /\btemper["']?\s+gate\s+check\b/.test(cmd)) await afterGateCheck($).catch(() => undefined)
     return result

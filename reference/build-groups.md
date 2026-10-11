@@ -81,5 +81,6 @@ Feedback re-entry: {reason}. Fix this, then continue.
 {Name the review-context.json or check-context.json feedback file.}"
 ```
 
-Record its usage once (`temper usage add --stage build --model {build} ...`), then run
+A `DRIFT` section in its panel goes to the person first, as the orchestrator's **Scope drift**
+paragraph in Stage 2 says. Record its usage once (`temper usage add --stage build --model {build} ...`), then run
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` and the downstream gate that triggered the loop.

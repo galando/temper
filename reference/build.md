@@ -57,8 +57,11 @@ paths that scenario touched}`, then in a SEPARATE tool call `git commit -m
 An infrastructure-only task (no scenario) makes no commit.
 **e. Checkpoint** — tick the task's box in `tasks.md` and track deviations in the spec's
 `build-context.json` (never `.temper/build-state.json`: the temper CLI owns the run state,
-and a hand-written copy drops the fields the gates read): a file touched that isn't in `tasks.md` → `unplanned_files`
-with a one-line reason; a task skipped/failed → `skipped_tasks` with a reason; an
+and a hand-written copy drops the fields the gates read): a file outside the plan is never
+written before the person's `Drift decision:` line allows it (list it in the Build panel's
+`DRIFT` section with why and the change, and the orchestrator asks); once allowed, log it in
+`unplanned_files` with that decision and a one-line reason; a task skipped/failed →
+`skipped_tasks` with a reason; an
 approach that materially differs from the plan (different library/pattern) →
 `approach_changes`. Only track when `tasks.md` exists. The Traceability Check (below)
 reconciles these against each task's `Traced to:` field.
