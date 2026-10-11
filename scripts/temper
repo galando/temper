@@ -2016,8 +2016,6 @@ def agent_alias(m):  # the Agent tool's model parameter takes aliases, not full 
 def gstatus(g): return (rg.get(g) or {}).get('status', 'pending')
 def gpass(g): return ((rg.get(g) or {}).get('gate') or {}).get('verdict') == 'PASS'
 running = [t['n'] for t in tasks if status(t['n']) == 'running']
-busy = set()
-for n in running: busy |= declared[n]
 slots = max_par - len(running)
 ready, waiting = [], []
 for t in tasks:
@@ -2469,23 +2467,7 @@ d.setdefault('groups', {}).setdefault(a[1], {}).setdefault('reopen_reverts', [])
 " "$(git -C "$abs" rev-parse HEAD)" "$g" || return 1
       fi
     fi
-    python3 - "$spec_path/tasks.md" "$n" <<'PY'
-import os, re, sys
-p, n = sys.argv[1], sys.argv[2]
-lines = open(p, encoding='utf-8').read().split('\n')
-inside = False
-for i, l in enumerate(lines):
-    m = re.match(r'^###\s+Task\s+(\d+)\s*:', l)
-    if m: inside = (m.group(1) == n)
-    elif re.match(r'^#{1,2}\s', l): inside = False
-    elif inside and re.match(r'^\s*- \[x\]', l):
-        lines[i] = l.replace('- [x]', '- [ ]', 1)
-        break
-tmp = '%s.tmp.%d' % (p, os.getpid())
-with open(tmp, 'w', encoding='utf-8') as fh:
-    fh.write('\n'.join(lines))
-os.replace(tmp, p)
-PY
+    _task_box "$spec_path/tasks.md" "$n" " "
     _groups_mutate "
 t = d.setdefault('tasks', {}).setdefault(a[0], {})
 t.setdefault('attempts_prior', []).extend(t.get('attempts') or [])
@@ -2599,6 +2581,27 @@ cmd_group() {
 # snapshot, the changed-file rule and the verdict are computed in one place. Bash only sequences it:
 # groups.json writes go through _groups_mutate (the lock), ledger rows through _json_append.
 TASK_SHOW_MAX_BYTES=6000
+_task_box() { # _task_box <tasks.md> <N> <x|" ">: set the first box of Task N to [x] (ticked) or [ ] (unticked)
+  python3 - "$1" "$2" "$3" <<'PY'
+import os, re, sys
+p, n, to = sys.argv[1], sys.argv[2], sys.argv[3]
+frm = ' ' if to == 'x' else 'x'
+lines = open(p, encoding='utf-8').read().split('\n')
+inside = False
+for i, l in enumerate(lines):
+    m = re.match(r'^###\s+Task\s+(\d+)\s*:', l)
+    if m: inside = (m.group(1) == n)
+    elif re.match(r'^#{1,2}\s', l): inside = False
+    elif inside and re.match(r'^\s*- \[%s\]' % re.escape(frm), l):
+        lines[i] = l.replace('- [%s]' % frm, '- [%s]' % to, 1)
+        break
+tmp = '%s.tmp.%d' % (p, os.getpid())
+with open(tmp, 'w', encoding='utf-8') as fh:
+    fh.write('\n'.join(lines))
+os.replace(tmp, p)
+PY
+}
+
 _task_py() { # _task_py <mode> [args...]
   TEMPER_GROUPS_FILE="$GROUPS_FILE" python3 - "$@" <<'PY'
 import hashlib, json, os, re, shlex, signal, subprocess, sys, time
@@ -3417,23 +3420,7 @@ for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
     fi
     sha="$(git -C "$_T_ABS" rev-parse HEAD)"
   fi
-  python3 - "$_T_SPEC/tasks.md" "$n" <<'PY'
-import os, re, sys
-p, n = sys.argv[1], sys.argv[2]
-lines = open(p, encoding='utf-8').read().split('\n')
-inside = False
-for i, l in enumerate(lines):
-    m = re.match(r'^###\s+Task\s+(\d+)\s*:', l)
-    if m: inside = (m.group(1) == n)
-    elif re.match(r'^#{1,2}\s', l): inside = False
-    elif inside and re.match(r'^\s*- \[ \]', l):
-        lines[i] = l.replace('- [ ]', '- [x]', 1)
-        break
-tmp = '%s.tmp.%d' % (p, os.getpid())
-with open(tmp, 'w', encoding='utf-8') as fh:
-    fh.write('\n'.join(lines))
-os.replace(tmp, p)
-PY
+  _task_box "$_T_SPEC/tasks.md" "$n" x
   _groups_mutate "
 t = d['tasks'][a[0]]
 def num(x): return int(x) if x.isdigit() else None
