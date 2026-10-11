@@ -143,15 +143,15 @@ const COMMIT_NEXT: Record<Phase, string> = {
 
 const isActive = (s: RunState): s is RunState & { phase: Phase } => s.phase !== null && s.phase !== 'done'
 
-// The path inside a group worktree of THIS run (`.claude/worktrees/temper-{slug}-G{n}/...`), relative to that worktree;
-// null for any other path (another run's slug, another prefix, a malformed group number). The path is normalized
-// already, so a `..` after the prefix has been collapsed and cannot leave the worktree this way.
+// The path inside a group or task worktree of THIS run (`.claude/worktrees/temper-{slug}-G{n}/...` or `-T{n}/...`),
+// relative to that worktree; null for any other path (another run's slug, another prefix, a malformed number). The
+// path is normalized already, so a `..` after the prefix has been collapsed and cannot leave the worktree this way.
 function worktreeRelative(path: string, specDir: string): string | null {
   const slug = normalizePath(specDir).split('/').pop() ?? ''
   if (slug === '') return null
-  const prefix = `.claude/worktrees/temper-${slug}-G`
+  const prefix = `.claude/worktrees/temper-${slug}-`
   if (!path.startsWith(prefix)) return null
-  const m = /^(\d+)\/(.+)$/.exec(path.slice(prefix.length))
+  const m = /^[GT](\d+)\/(.+)$/.exec(path.slice(prefix.length))
   return m?.[2] ?? null
 }
 

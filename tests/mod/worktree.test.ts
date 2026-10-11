@@ -50,6 +50,12 @@ describe('groups.json and usage.json are CLI-only state', () => {
 })
 
 describe('writes in a group worktree of this run are judged by their worktree-relative path', () => {
+  test('a task worktree (temper-{slug}-T{n}) is judged the same way', () => {
+    expect('allow' in write(grouped, '.claude/worktrees/temper-pw-T3/src/app.ts')).toBe(true)
+    expect(isDeny(write(grouped, `.claude/worktrees/temper-pw-T3/${SPEC}/tasks.md`))).toBe(true)
+    expect(isDeny(write(grouped, '.claude/worktrees/temper-pw-X3/src/app.ts'))).toBe(isDeny(write(grouped, 'elsewhere/x.ts')))
+  })
+
   test('a planned source file is allowed', () => {
     expect('allow' in write(grouped, `${WT}/src/app.ts`)).toBe(true)
     expect('allow' in write(grouped, `${WT}/hooks/core/x.ts`, 'fix')).toBe(true)

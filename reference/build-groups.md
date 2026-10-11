@@ -10,9 +10,9 @@ Read by the orchestrator that runs Build: `/temper` (Stage 2) and the standalone
 On this page the CLAUDE_PLUGIN_ROOT variable means the folder that holds the temper CLI:
 write that folder out in full in every command you run.
 
-Build always runs in groups. Plan wrote `tasks.md` as groups of small tasks; each task is
-one launch of a slim task agent (`claude-haiku-5-5` by default), each group gets its own
-git worktree, and the human gate is once per group. The loop holds no rules of its own:
+Grouped Build is the default (see `build.mode` for the way back). Plan wrote `tasks.md` as groups of small tasks; each task is
+one launch of a slim task agent (`claude-haiku-5-5` by default) in its own git worktree, each
+group's branch takes the merges of its passed tasks, and the human gate is once per group. The loop holds no rules of its own:
 every decision is a CLI output, so relay it. It needs the run state (`temper state init`,
 which `/temper` does at its start).
 
@@ -23,7 +23,8 @@ which `/temper` does at its start).
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper group start G<n>` (it makes the group's worktree).
 3. **Schedule.** `${CLAUDE_PLUGIN_ROOT}/scripts/temper schedule` prints one JSON line per ready
    task (task, group, title, worktree, model, attempt). Before each launch run
-   `${CLAUDE_PLUGIN_ROOT}/scripts/temper task start N`. Launch **every ready task in ONE turn**,
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper task start N`: it gives the task its own worktree (from the
+   group branch), which `task show` names to the agent. Launch **every ready task in ONE turn**,
    so they run in parallel, each on the `agent_model` its line prints (the alias the Agent tool
    takes; `model` is the full id). The `temper:temper-build-task` agent type carries only the
    tools a task needs (Read, Edit, Write, Bash, Glob, Grep), which keeps each launch's fixed cost

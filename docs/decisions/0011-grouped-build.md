@@ -23,7 +23,7 @@ in git history at commit 9e14ce7, under `docs/plans/grouped-build-handoff/spec/`
    files disjoint from running tasks, `max-parallel`). The orchestrator launches every
    printed task in one turn, on the model the CLI printed. No agent launches another
    agent.
-2. **The CLI manages one git worktree per group.** The worktree is
+2. **The CLI manages one git worktree per group, and one per task (amendment below).** The worktree is
    `.claude/worktrees/temper-{slug}-{G}`, on branch `temper/{slug}/{G}`, based on the
    run's feature branch. The subagent `isolation: worktree` field is not used.
 3. **The CLI makes the local commits and merges.** At a task-gate PASS the CLI makes a
@@ -130,8 +130,8 @@ in git history at commit 9e14ce7, under `docs/plans/grouped-build-handoff/spec/`
 ### Negative
 - For the first time, the CLI makes git commits and merges. The autonomy invariant is
   narrowed to allow exactly these local writes (Resolution 1).
-- Tasks of one group that run at the same time share a worktree. One task's test run
-  can see a sibling's unfinished edit; task-scoped tests limit but do not remove this.
+- Each task works in its own worktree (amendment below), so a project's setup step is paid
+  once per task.
 - Haiku task agents see only distilled pack rules (Resolution 2).
 - Grouped mode is experimental in 9.7.0: its cost and time saving is unmeasured (D-04).
 
@@ -139,7 +139,7 @@ in git history at commit 9e14ce7, under `docs/plans/grouped-build-handoff/spec/`
 - Merge commits run no pre-commit hook. The CLI's own ADR 0009 check before each merge
   takes its place.
 
-## Amendment (2026-10-11): grouped is the default Build mode; one worktree per task is next
+## Amendment (2026-10-11): grouped is the default Build mode; one worktree per task
 
 **Grouped Build is the default Build.** One measured run (pyjokes, the same feature built per
 task and grouped from one commit; numbers in `docs/grouped-build.md`, "Why it is the default")
@@ -151,7 +151,7 @@ grouped gate rows and commands are off with it. `agents/build.md` stays as the f
 pass for Review or Check loops back to Build. The "experimental, unmeasured" item under
 Negative no longer holds; one run is still an anecdote, so the measurement procedure stays.
 
-**One worktree per task: decided yes, as the next change, not in 9.7.0.** Nearly every hard
+**One worktree per task: decided yes, and done in 9.7.0.** Nearly every hard
 defect of the review rounds came from parallel tasks sharing one worktree and one branch: the
 start snapshot of dirty paths, excluding a sibling's files from a verdict by timestamps, the
 exact-content excuse for reopen reverts, restoring undeclared paths on a FAIL, marking innocent
@@ -163,9 +163,8 @@ task's, and a FAIL or a reopen discards the worktree. The review estimated 200 t
 `scripts/temper` and several known limits removed. Costs: one merge per task (conflict-free
 while declared files are disjoint, which the plan gate enforces, cross-group dependencies
 included since the F3 fix), a dependent task starting only after its dependency merged, and
-the project's setup (dependency install, build cache) paid once per task worktree. It ships as
-its own change, so the rewrite of the verdict core is reviewed on its own, with the shared-
-worktree selftests replaced rather than patched.
+the project's setup (dependency install, build cache) paid once per task worktree. It landed as its
+own commit, with the shared-worktree selftests rewritten for the new model rather than patched.
 
 ## References
 

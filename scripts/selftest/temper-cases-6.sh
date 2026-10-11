@@ -1,20 +1,24 @@
 # --- Grouped Build (9.7.0), intent D-08: a commit the CLI did not record FAILs the task and parks its group; nothing is undone ---
-# Invariants: (a) a foreign commit never causes a write to the branch or the working tree (HEAD, refs, index and every file are
-# byte-identical before and after the gate); (b) a parked group refuses task gate and task test of its running siblings without a
-# verdict, attempt, restore or ledger row; (c) a reopen is accepted only when no parked sha is an ancestor of the branch HEAD any
-# more, or when the human accepts the sha with --accept-foreign and a reason (recorded like an override, shown by temper report);
-# (d) the group gate checks that every passed task's commit is still on the branch; (e) a FAIL without a foreign commit still
-# restores the task's files and retries or escalates (D-03).
+# One worktree per task: the agent's commit sits in that task's own worktree (T1W for Task 1, T2W for Task 2).
+# Invariants: (a) a foreign commit never causes a write to the task's branch or worktree (HEAD, refs, index and every file are
+# byte-identical before and after the gate), and the park keeps that worktree; (b) a parked group refuses task gate and task test
+# of its running siblings without a verdict, attempt or ledger row, and a sibling keeps its own worktree and status; (c) a reopen is
+# accepted only when no parked sha is an ancestor of the task branch's HEAD any more, or when the human accepts the sha with
+# --accept-foreign and a reason (recorded like an override, shown by temper report); (d) the group gate checks that every passed
+# task's commit is still on the group branch; (e) a FAIL without a foreign commit discards the attempt's worktree and retries or
+# escalates (D-03).
+T2W=".claude/worktrees/temper-demo-T2"
 d_setup() { f_setup; }
 d_red() { ST_EXIT=1 "$TEMPER" task test "$1" --phase red >/dev/null 2>&1; }
 d_green() { ST_EXIT=0 "$TEMPER" task test "$1" --phase green >/dev/null 2>&1; }
-d_commit() { git -C "$ST_WT" add -A -- "$@" 2>/dev/null; git -C "$ST_WT" commit -q -m "agent commit" 2>/dev/null; }
-d_state() { # HEAD, every ref, the index and the hash of every file of the group worktree, as one string
-  { git -C "$ST_WT" rev-parse HEAD
-    git -C "$ST_WT" show-ref
-    git -C "$ST_WT" status --porcelain=v1 -uall
-    git -C "$ST_WT" ls-files -s
-    ( cd "$ST_WT" && find . -name .git -prune -o -type f -print0 | sort -z | xargs -0 sha256sum )
+d_commit() { local w; w="$(st_twt "$1")"; git -C "$w" add -A -- "$@" 2>/dev/null; git -C "$w" commit -q -m "agent commit" 2>/dev/null; }
+d_state() { # d_state [worktree, default Task 1's]: HEAD, every ref, the index and the hash of every file there, as one string
+  local w="${1:-$T1W}"
+  { git -C "$w" rev-parse HEAD
+    git -C "$w" show-ref
+    git -C "$w" status --porcelain=v1 -uall
+    git -C "$w" ls-files -s
+    ( cd "$w" && find . -name .git -prune -o -type f -print0 | sort -z | xargs -0 sha256sum )
   } 2>&1 | sha256sum | cut -d' ' -f1
 }
 d_pfield() { python3 -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1'].get('$1', ''))"; }
@@ -27,8 +31,8 @@ d_park() {
   "$TEMPER" task start 2 >/dev/null 2>&1; d_red 2; st_edit src/b.sh
   "$TEMPER" task start 1 >/dev/null 2>&1; d_red 1
   st_edit src/a.sh; st_edit stray.txt; d_commit src/a.sh stray.txt
-  FSHA="$(git -C "$ST_WT" rev-parse HEAD)"
-  echo "more work" >> "$ST_WT/src/a.sh"; echo junk > "$ST_WT/untracked.txt"
+  FSHA="$(git -C "$T1W" rev-parse HEAD)"
+  echo "more work" >> "$T1W/src/a.sh"; echo junk > "$T1W/untracked.txt"
   d_green 1
   D_BEFORE="$(d_state)"
   D_OUT="$("$TEMPER" task gate 1 2>&1)"; D_RC=$?
@@ -46,22 +50,22 @@ assert_eq "D-08: the next step is to park the group (no retry)" "1|0" \
   "$(printf '%s' "$D_OUT" | grep -c '^NEXT: park group G1')|$(printf '%s' "$D_OUT" | grep -c '^NEXT: retry')"
 assert_eq "D-08: the branch and the working tree are byte-identical before and after the gate" "$D_BEFORE" "$D_AFTER"
 assert_eq "D-08: no declared file, stray file or dirty file was restored or removed" "yes|yes|yes|yes" \
-  "$([[ -e $ST_WT/stray.txt ]] && echo yes || echo no)|$([[ -e $ST_WT/untracked.txt ]] && echo yes || echo no)|$([[ "$(tail -1 "$ST_WT/src/a.sh")" == "more work" ]] && echo yes || echo no)|$([[ "$(git -C "$ST_WT" rev-parse HEAD)" == "$FSHA" ]] && echo yes || echo no)"
+  "$([[ -e $T1W/stray.txt ]] && echo yes || echo no)|$([[ -e $T1W/untracked.txt ]] && echo yes || echo no)|$([[ "$(tail -1 "$T1W/src/a.sh")" == "more work" ]] && echo yes || echo no)|$([[ "$(git -C "$T1W" rev-parse HEAD)" == "$FSHA" ]] && echo yes || echo no)"
 assert_eq "D-08: the park message prints both ways out and never a reset --hard" "1|1|0" \
   "$(printf '%s' "$D_OUT" | grep -c 'rebase --autostash --onto')|$(printf '%s' "$D_OUT" | grep -c -- '--accept-foreign')|$(printf '%s' "$D_OUT" | grep -c 'reset --hard')"
 
-# a parked group refuses its running sibling's gate and test: no verdict, attempt, restore or ledger row, its work stays
-S_BEFORE="$(d_state)"; ROWS="$(d_rows)"; SIB="$(st_rows 2)"; SATT="$(d_attempts 2)"
+# a parked group refuses its running sibling's gate and test: no verdict, attempt or ledger row, its work stays
+S_BEFORE="$(d_state "$T2W")"; ROWS="$(d_rows)"; SIB="$(st_rows 2)"; SATT="$(d_attempts 2)"
 d_green 2
 out="$("$TEMPER" task gate 2 2>&1)"; rc=$?
 assert_eq "D-08: the sibling's task gate is refused with a message naming the park" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'parked')"
 ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1; rc=$?
 assert_eq "D-08: the sibling's task test is refused too" "1" "$rc"
-# M1 changed the expected status: the park marks the running sibling failed (its attempt is stale); the refusals add nothing
-assert_eq "D-08: the refusals recorded no verdict, attempt or ledger row (the sibling was marked failed by the park, M1)" "failed|$SATT|$ROWS|$SIB" \
+# the commit is in Task 1's own worktree, so the sibling is not touched: it stays running, its refusals add nothing
+assert_eq "D-08: the refusals recorded no verdict, attempt or ledger row, and the sibling is still running" "running|$SATT|$ROWS|$SIB" \
   "$(st_field 2 status)|$(d_attempts 2)|$(d_rows)|$(st_rows 2)"
-assert_eq "D-08: the sibling's working files and the branch are untouched by the refusals" "$S_BEFORE" "$(d_state)"
-assert_eq "D-08: the sibling's own file is still its uncommitted work" "work src/b.sh" "$(cat "$ST_WT/src/b.sh")"
+assert_eq "D-08: the sibling's worktree and branch are untouched by the refusals" "$S_BEFORE" "$(d_state "$T2W")"
+assert_eq "D-08: the sibling's own file is still its uncommitted work, in its own worktree" "work src/b.sh" "$(cat "$T2W/src/b.sh")"
 # a task of another group is not affected
 git -C .claude/worktrees/temper-demo-G2 commit -q --allow-empty -m "g2 base" 2>/dev/null
 assert_exit "D-08: a task in another group still starts" 0 "$TEMPER" task start 3
@@ -82,14 +86,14 @@ assert_eq "D-08: --accept-foreign of a sha the group is not parked on is refused
 d_setup
 "$TEMPER" task start 1 >/dev/null 2>&1; d_red 1
 st_edit src/a.sh; st_edit stray.txt; d_commit src/a.sh stray.txt
-FSHA="$(git -C "$ST_WT" rev-parse HEAD)"; PARENT="$(git -C "$ST_WT" rev-parse HEAD~1)"
+FSHA="$(git -C "$T1W" rev-parse HEAD)"; PARENT="$(git -C "$T1W" rev-parse HEAD~1)"
 d_green 1
 out="$("$TEMPER" task gate 1 2>&1)"
 CMD="$(printf '%s\n' "$out" | grep -o 'git -C [^ ]* rebase --autostash --onto [0-9a-f~^]* [0-9a-f]*' | head -1)"
 assert_eq "D-08: the printed route (a) is a rebase --onto of the foreign sha's parent" "1" "$(printf '%s' "$CMD" | grep -c "rebase --autostash --onto ${FSHA:0:7}~1 ${FSHA:0:7}")"
 bash -c "$CMD" >/dev/null 2>&1; rrc=$?
-assert_eq "D-08: the printed command runs as written and takes the commit off the branch" "0|$PARENT" "$rrc|$(git -C "$ST_WT" rev-parse HEAD)"
-assert_eq "D-08: the sha is no longer on the branch" "1" "$(git -C "$ST_WT" merge-base --is-ancestor "$FSHA" HEAD >/dev/null 2>&1; echo $?)"
+assert_eq "D-08: the printed command runs as written and takes the commit off the branch" "0|$PARENT" "$rrc|$(git -C "$T1W" rev-parse HEAD)"
+assert_eq "D-08: the sha is no longer on the branch" "1" "$(git -C "$T1W" merge-base --is-ancestor "$FSHA" HEAD >/dev/null 2>&1; echo $?)"
 assert_exit "D-08: the reopen is accepted once the parked sha is off the branch" 0 "$TEMPER" group reopen G1 --task 1
 assert_eq "D-08: the reopen cleared the park and reset the task" "running|0|pending" "$(d_pfield status)|$(d_pf_count)|$(st_field 1 status)"
 # the group runs again and the task passes
@@ -105,9 +109,9 @@ assert_eq "D-08: the accepted sha is recorded in overrides.json with the reason"
 rep="$("$TEMPER" report 2>&1)"
 assert_eq "D-08: temper report shows the accepted agent commit" "1|1" \
   "$(printf '%s' "$rep" | grep -c "${FSHA:0:7}")|$(printf '%s' "$rep" | grep -c 'reviewed the agent commit')"
-# the sibling the park marked failed (M1) restarts and passes; an accepted sha counts as known, so neither it nor a later
-# reopen (M5: every commit of the branch must be recorded or accepted) calls the accepted commit one the CLI did not make
-"$TEMPER" task start 2 >/dev/null 2>&1; d_red 2; st_edit src/b.sh; d_green 2
+# the sibling, still running in its own worktree, finishes and passes; an accepted sha counts as known, so a later reopen
+# (M5: every commit of the branch must be recorded or accepted) does not call the accepted commit one the CLI did not make
+d_red 2; st_edit src/b.sh; d_green 2
 out="$("$TEMPER" task gate 2 2>&1)"; rc=$?
 assert_eq "D-08: an accepted sha counts as known, so the sibling is not told it holds a commit the CLI did not make" "0|0" \
   "$rc|$(printf '%s' "$out" | grep -c 'not made by the CLI')"
@@ -140,15 +144,15 @@ PY
 out="$("$TEMPER" group gate G1 2>&1)"; rc=$?
 assert_eq "D-08: the group gate FAILs while the group is parked" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'parked')"
 
-# a normal FAIL (no foreign commit) keeps today's behaviour: restore the declared and the named undeclared files, retry, escalate, park (D-03)
+# a normal FAIL (no foreign commit) discards the attempt's worktree, then retry, escalate, park (D-03)
 d_setup
 "$TEMPER" task start 2 >/dev/null 2>&1; d_red 2; st_edit src/b.sh
 "$TEMPER" task start 1 >/dev/null 2>&1; d_red 1; st_edit src/a.sh; st_edit stray.txt; d_green 1
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
 assert_eq "D-08: a normal FAIL names the undeclared file and retries on the task model" "1|1|1" \
   "$rc|$(printf '%s' "$out" | grep -c 'undeclared change: stray.txt')|$(printf '%s' "$out" | grep -c '^NEXT: retry Task 1')"
-assert_eq "D-08: a normal FAIL restores the task's own and the undeclared file, and not the running sibling's" "no|no|work src/b.sh|" \
-  "$([[ -e $ST_WT/src/a.sh ]] && echo yes || echo no)|$([[ -e $ST_WT/stray.txt ]] && echo yes || echo no)|$(cat "$ST_WT/src/b.sh")|$(d_pfield status | sed 's/running//')"
+assert_eq "D-08: a normal FAIL discards the task's worktree, and not the running sibling's" "no|work src/b.sh|" \
+  "$([[ -d $T1W ]] && echo yes || echo no)|$(cat "$T2W/src/b.sh")|$(d_pfield status | sed 's/running//')"
 "$TEMPER" task start 1 >/dev/null 2>&1; d_red 1; st_edit stray.txt; st_edit src/a.sh; d_green 1
 out="$("$TEMPER" task gate 1 2>&1)"
 assert_eq "D-08: attempt 2 escalates" "1" "$(printf '%s' "$out" | grep -c '^NEXT: escalate Task 1')"
@@ -166,22 +170,23 @@ assert_exit "D-08: a group parked by the retry chain reopens without --accept-fo
 d_git_lines() { printf '%s\n' "$1" | grep -E '^ +git -C ' | sed 's/^ *//'; }
 d_then_line() { printf '%s\n' "$1" | grep -E '^ +then: temper ' | head -1 | sed -E "s#^ +then: temper#$TEMPER#"; }
 
-# M1: a sibling's gate detects the commit the OTHER running task made: every running task of the group is marked failed with a
-# stale attempt, all are named in the park message and in the printed reopen, and a reopened task needs fresh RED and GREEN rows
+# M1: with one worktree per task the commit is attributed exactly: the other running task's gate does not see it and passes;
+# the culprit's own gate finds it and parks; after the printed rebase and reopen the culprit needs fresh RED and GREEN rows
 d_setup
 "$TEMPER" task start 1 >/dev/null 2>&1; d_red 1
 "$TEMPER" task start 2 >/dev/null 2>&1; d_red 2
-st_edit src/a.sh; st_edit stray.txt; d_commit src/a.sh stray.txt      # the culprit is Task 1
-FSHA="$(git -C "$ST_WT" rev-parse HEAD)"
-st_edit src/b.sh; d_green 1; d_green 2
-out="$("$TEMPER" task gate 2 2>&1)"; rc=$?                              # the gate of Task 2 runs first and finds it
-assert_eq "M1: a sibling's gate finds the foreign commit: group parked, both running tasks failed with a stale attempt" "1|parked|failed|failed|1|1" \
-  "$rc|$(d_pfield status)|$(st_field 1 status)|$(st_field 2 status)|$(d_attempts 1)|$(d_attempts 2)"
-assert_eq "M1: the park message names both tasks and the printed reopen carries both" "1|2" \
-  "$(printf '%s' "$out" | grep -c 'Task 1.*Task 2')|$(printf '%s' "$out" | grep -c -- '--task 1 --task 2')"
+st_edit src/a.sh; st_edit src/b.sh
+git -C "$T1W" add src/a.sh; echo s > "$T1W/stray.txt"; git -C "$T1W" add stray.txt; git -C "$T1W" commit -q -m "agent commit" 2>/dev/null   # the culprit is Task 1
+FSHA="$(git -C "$T1W" rev-parse HEAD)"
+d_green 1; d_green 2
+out="$("$TEMPER" task gate 2 2>&1)"; rc=$?                              # the gate of Task 2 runs first: its worktree is clean of it
+assert_eq "M1: the other task's gate does not see the culprit's commit and passes" "0|passed|running" "$rc|$(st_field 2 status)|$(st_field 1 status)"
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "M1: the culprit's own gate finds it: group parked, the culprit failed, both ways out name the culprit only" "1|parked|failed|2|0" \
+  "$rc|$(d_pfield status)|$(st_field 1 status)|$(printf '%s' "$out" | grep -c -- '--task 1')|$(printf '%s' "$out" | grep -c -- '--task 2')"
 RC1="$(d_then_line "$out")"
 while IFS= read -r l; do bash -c "$l" >/dev/null 2>&1; done < <(d_git_lines "$out")
-assert_exit "M1: the printed rebase and then the printed reopen (both tasks) are accepted" 0 bash -c "$RC1"
+assert_exit "M1: the printed rebase and then the printed reopen are accepted" 0 bash -c "$RC1"
 "$TEMPER" task start 1 >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
 assert_eq "M1: the culprit's reopened task does not pass on its pre-park RED and GREEN rows" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'no green run')"
@@ -206,23 +211,23 @@ d_setup
 "$TEMPER" task start 2 >/dev/null 2>&1; d_red 2; st_edit src/b.sh      # the sibling's uncommitted work
 "$TEMPER" task start 1 >/dev/null 2>&1; d_red 1
 st_edit src/a.sh; st_edit stray.txt; d_commit stray.txt
-FSHA="$(git -C "$ST_WT" rev-parse HEAD)"; PARENT="$(git -C "$ST_WT" rev-parse HEAD~1)"
+FSHA="$(git -C "$T1W" rev-parse HEAD)"; PARENT="$(git -C "$T1W" rev-parse HEAD~1)"
 st_edit src/a.sh; d_green 1
 out="$("$TEMPER" task gate 1 2>&1)"
 assert_eq "M4: the park message prints no reset, no 'or a reset'" "0" "$(printf '%s' "$out" | grep -c -i 'reset')"
 M4OK=0
 while IFS= read -r l; do bash -c "$l" >/dev/null 2>&1 || M4OK=1; done < <(d_git_lines "$out")
-assert_eq "M4: the printed git lines run as written (exit 0) with a dirty sibling file" "0|$PARENT" "$M4OK|$(git -C "$ST_WT" rev-parse HEAD)"
+assert_eq "M4: the printed git lines run as written (exit 0) with a dirty sibling file" "0|$PARENT" "$M4OK|$(git -C "$T1W" rev-parse HEAD)"
 assert_eq "M4: the sibling's dirty file is kept, the author's own uncommitted file too, no stash is left" "work src/b.sh|work src/a.sh|0" \
-  "$(cat "$ST_WT/src/b.sh")|$(cat "$ST_WT/src/a.sh")|$(git -C "$ST_WT" stash list | wc -l | tr -d ' ')"
+  "$(cat "$T2W/src/b.sh")|$(cat "$T1W/src/a.sh")|$(git -C "$T1W" stash list | wc -l | tr -d ' ')"
 
 # M5: an agent merge. The printed lines remove the merge; the commits it brought in leave with it; reopen is accepted
 d_setup
 "$TEMPER" task start 1 >/dev/null 2>&1; d_red 1
-git -C "$ST_WT" checkout -q -b side 2>/dev/null; echo x > "$ST_WT/side.txt"; git -C "$ST_WT" add side.txt 2>/dev/null; git -C "$ST_WT" commit -q -m "side" 2>/dev/null
-git -C "$ST_WT" checkout -q - 2>/dev/null
-git -C "$ST_WT" merge -q --no-ff -m "agent merge" side >/dev/null 2>&1
-MSHA="$(git -C "$ST_WT" rev-parse HEAD)"; MPAR="$(git -C "$ST_WT" rev-parse HEAD~1)"
+git -C "$T1W" checkout -q -b side 2>/dev/null; echo x > "$T1W/side.txt"; git -C "$T1W" add side.txt 2>/dev/null; git -C "$T1W" commit -q -m "side" 2>/dev/null
+git -C "$T1W" checkout -q - 2>/dev/null
+git -C "$T1W" merge -q --no-ff -m "agent merge" side >/dev/null 2>&1
+MSHA="$(git -C "$T1W" rev-parse HEAD)"; MPAR="$(git -C "$T1W" rev-parse HEAD~1)"
 st_edit src/a.sh; d_green 1
 out="$("$TEMPER" task gate 1 2>&1)"
 assert_eq "M5: the park names the merge and the printed rebase is for the merge only (not the side commit)" "1|1" \
@@ -230,16 +235,16 @@ assert_eq "M5: the park names the merge and the printed rebase is for the merge 
 M5OK=0
 while IFS= read -r l; do bash -c "$l" >/dev/null 2>&1 || M5OK=1; done < <(d_git_lines "$out")
 RC5="$(d_then_line "$out")"
-assert_eq "M5: after the printed lines the branch is back on the merge's first parent" "0|$MPAR" "$M5OK|$(git -C "$ST_WT" rev-parse HEAD)"
+assert_eq "M5: after the printed lines the branch is back on the merge's first parent" "0|$MPAR" "$M5OK|$(git -C "$T1W" rev-parse HEAD)"
 assert_exit "M5: the reopen is accepted" 0 bash -c "$RC5"
 # a commit replayed under a new sha is neither recorded nor accepted: reopen refuses and names it
 d_setup
 "$TEMPER" task start 1 >/dev/null 2>&1; d_red 1
-st_edit src/a.sh; st_edit stray.txt; d_commit stray.txt; S1="$(git -C "$ST_WT" rev-parse HEAD)"
-st_edit stray2.txt; d_commit stray2.txt; S2="$(git -C "$ST_WT" rev-parse HEAD)"
+st_edit src/a.sh; st_edit stray.txt; d_commit stray.txt; S1="$(git -C "$T1W" rev-parse HEAD)"
+st_edit stray2.txt; d_commit stray2.txt; S2="$(git -C "$T1W" rev-parse HEAD)"
 d_green 1; "$TEMPER" task gate 1 >/dev/null 2>&1
-git -C "$ST_WT" rebase -q --autostash --onto "${S1:0:7}~1" "${S1:0:7}" >/dev/null 2>&1     # the human removes only the older one
-S2N="$(git -C "$ST_WT" rev-parse HEAD)"
+git -C "$T1W" rebase -q --autostash --onto "${S1:0:7}~1" "${S1:0:7}" >/dev/null 2>&1     # the human removes only the older one
+S2N="$(git -C "$T1W" rev-parse HEAD)"
 out="$("$TEMPER" group reopen G1 --task 1 2>&1)"; rc=$?
 assert_eq "M5: a replayed foreign commit (new sha) is refused at reopen, named" "1|1|parked" "$rc|$(printf '%s' "$out" | grep '^FAIL' | grep -c "${S2N:0:7}")|$(d_pfield status)"
 out="$("$TEMPER" group reopen G1 --task 1 --accept-foreign "${S2N:0:7}" --reason "reviewed" 2>&1)"; rc=$?
@@ -268,8 +273,8 @@ FX_T="bash -c 'echo boom; pwd; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); d
 gg_setup
 gp_mut "\`$FX_T\`" "\`bash -c 'mkdir -p __pycache__; echo pyc > __pycache__/a.pyc; exit \${ST_EXIT:-0}'\`"
 gg_pass 1 src/a.sh
-assert_eq "F5: a test byproduct does not fail the task gate, is not committed and stays in the worktree" "passed|0|yes" \
-  "$(st_field 1 status)|$(git -C "$ST_WT" ls-tree -r --name-only HEAD | grep -c pycache)|$([[ -e $ST_WT/__pycache__/a.pyc ]] && echo yes || echo no)"
+assert_eq "F5: a test byproduct does not fail the task gate and is not committed" "passed|0" \
+  "$(st_field 1 status)|$(git -C "$ST_WT" ls-tree -r --name-only HEAD | grep -c pycache)"
 gg_setup
 "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
 st_edit src/a.sh; st_edit notes.txt; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
@@ -308,7 +313,7 @@ gg_setup; gg_pass 1 src/a.sh; gg_pass 2 src/b.sh
 SHOW="$("$TEMPER" task show 2)"
 assert_eq "F1: task show prints the group-gate feedback for the reopened task" "1|1" \
   "$(printf '%s\n' "$SHOW" | grep -c '^--- FEEDBACK #1')|$(printf '%s\n' "$SHOW" | grep -c 'name the function beta_main')"
-ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1; echo beta_main > "$ST_WT/src/b.sh"
+ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1; echo beta_main > "$T2W/src/b.sh"
 ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
 assert_exit "F1: the reopened task passes its gate" 0 "$TEMPER" task gate 2
 assert_eq "F1: the CLI recorded the feedback-resolved row, so gate build has nothing unanswered" "1|0" \

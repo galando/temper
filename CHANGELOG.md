@@ -39,6 +39,17 @@ comparison procedure in `docs/grouped-build.md` stays for the next ones.
   worktree (F4); untracked files a CLI test run creates (`__pycache__`, coverage files) are not
   undeclared changes (F5).
 
+**One worktree per task.** `temper task start` gives each task its own worktree
+(`.claude/worktrees/temper-{slug}-T{N}`, branch `temper/{slug}/T{N}`, from the group branch); the task agent
+works and tests there. A task gate PASS commits on the task branch, merges it into the group branch (a
+fast-forward when it can) and removes the worktree; a FAIL discards it, and the next attempt starts fresh. This
+removes the class of defects the shared group worktree caused in the review rounds: the start snapshot of a
+shared tree, excusing a sibling's files by timestamps, the exact-content excuse for reopen reverts, restoring
+files after a FAIL, and failing every running sibling when a commit the CLI did not make was found (it is now
+always the task's own). A commit the agent makes still parks the group; the park keeps that task's worktree,
+and the printed lines and `group reopen` work on it. The cost: a checkout per task, and a task that needs
+another's code waits for it (`**Depends:**`).
+
 **Lessons from the pyjokes run, applied to the task agents and to Plan.**
 - The task agent type (`temper:temper-build-task`) carries only Read, Edit, Write, Bash, Glob
   and Grep, and the grouped loop launches it by that type: most of a Haiku launch's tokens were
@@ -131,9 +142,7 @@ not asserted by an agent:
     commits after it; `group reopen` and `temper integrate` then refuse while any commit of the group's
     base..HEAD is neither recorded by the CLI nor accepted, and name it. Remove it, or keep it knowingly with
     `group reopen ... --accept-foreign <sha> --reason "<why>"`.
-  - A foreign commit found at a sibling's gate (the gate order in a batch is arbitrary) fails every running task
-    of the group, not only the one whose gate found it; the park message and the printed reopen name them all,
-    and a reopened task needs a fresh RED and GREEN (rows older than the attempt's start do not count).
+  - A reopened task needs a fresh RED and GREEN (rows older than the attempt's start do not count).
   - `group reopen ... --accept-foreign` is guarded like `temper override`: the guard script asks the person, and
     the mod lets only the person's own command run it.
   - Printed git lines use `rebase --autostash` (uncommitted work stays, no stash is left) and cover only commits on
@@ -143,8 +152,7 @@ not asserted by an agent:
   - The accept rows of `--accept-foreign` are recorded before the reopen's revert commit; a rerun after that
     commit failed records them again (duplicate rows in `overrides.json`).
   - D-08 has no Gherkin scenario of its own; `scripts/selftest/temper-cases-6.sh` covers it.
-  - An agent's edit to a running sibling's declared file lands with that sibling's commit.
-  - A path behind a symlinked directory is left alone by the task restore (never written through the link).
+  - A path behind a symlinked directory is left alone by a reopen's restore (never written through the link).
   - The usage of a task launch whose `task gate` is refused (its group parked meanwhile) is not recorded, so
     `temper report` undercounts that launch (measurement only; no gate reads it).
   - A stale `index.lock` outlasting the restore's five-second budget parks the group with the lock named.

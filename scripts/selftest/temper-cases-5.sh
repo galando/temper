@@ -437,6 +437,7 @@ setup
 # launch payload stays within its byte budget [AC-05, AC-07, AC-08, AC-09]
 # Every case runs in the throwaway folder's own git repository, never in this repository's.
 ST_WT=".claude/worktrees/temper-demo-G1"
+T1W=".claude/worktrees/temper-demo-T1"   # one worktree per task: Task N works in temper-demo-T<N>
 st_setup() { # sw_setup + the upstream gates ADR 0009 asks for + both groups started
   sw_setup
   printf '{"plan":{"verdict":"PASS"},"intent":{"verdict":"PASS"}}\n' > .temper/gates.json
@@ -456,11 +457,36 @@ import json,sys
 rows=json.load(open('.temper/evidence/build.json'))
 print(','.join('%s:%s' % (r['phase'], r['exit_code']) for r in rows if r.get('task')==int(sys.argv[1])))" "$1" 2>/dev/null
 }
-st_edit() { # st_edit <task-file-relative-path>: write a file into G1's worktree
+st_twt() { # st_twt [path]: the worktree a task agent writes in: the running task that declares the path, else the most
+          # recently started running task, each in its own worktree; with none running, G1's worktree
+  python3 - "${1:-}" "$ST_WT" <<'PY'
+import json, re, sys
+path, fallback = sys.argv[1], sys.argv[2]
+try:
+    d = json.load(open('.temper/groups.json'))
+except Exception:
+    d = {}
+files, n = {}, None
+try:
+    for l in open('.temper/specs/demo/tasks.md'):
+        m = re.match(r'^###\s+Task\s+(\d+)\s*:', l)
+        if m: n = int(m.group(1))
+        elif n is not None and l.startswith('**File:**'):
+            files[n] = re.findall(r'`([^`]+)`', l)
+except Exception:
+    pass
+run = sorted(((v.get('started_at') or '', int(k), v.get('worktree')) for k, v in (d.get('tasks') or {}).items()
+              if v.get('status') == 'running' and v.get('worktree')), reverse=True)
+own = [w for _, k, w in run if path and path in files.get(k, [])]
+print(own[0] if own else (run[0][2] if run else fallback))
+PY
+}
+st_edit() { # st_edit <task-file-relative-path>: write a file into the running task's worktree (st_twt)
   # Only ever inside the selftest's throwaway folder: a case that left the folder would
   # otherwise write into the repository it runs from.
   [[ "$(pwd -P)" == "$(cd "$WORKDIR" && pwd -P)"* ]] || { echo "st_edit refused: cwd $(pwd) is outside WORKDIR" >&2; return 1; }
-  mkdir -p "$ST_WT/$(dirname "$1")"; echo "work $1" > "$ST_WT/$1"
+  local w; w="$(st_twt "$1")"
+  mkdir -p "$w/$(dirname "$1")"; echo "work $1" > "$w/$1"
 }
 st_unticked() { # the number of unticked boxes in the demo tasks.md
   grep -c '^- \[ \]' .temper/specs/demo/tasks.md
@@ -471,8 +497,8 @@ st_setup; BASE="$(git -C "$ST_WT" rev-parse HEAD)"; echo pre > "$ST_WT/pre.txt"
 assert_exit "task start 1 exits 0" 0 "$TEMPER" task start 1
 assert_eq "task start: status running, attempt 1, start_sha = the worktree HEAD" "running|1|$BASE" \
   "$(st_field 1 status)|$(st_field 1 attempt)|$(st_field 1 start_sha)"
-assert_eq "task start: the snapshot holds a hash for the dirty file" "1" \
-  "$(python3 -c "import json; d=json.load(open('.temper/groups.json'))['tasks']['1']['snapshot']; print(1 if len(d.get('pre.txt',''))==64 else 0)")"
+assert_eq "task start: the task gets its own worktree on its own branch, from the group branch, clean (the group's dirty file stays there)" "$T1W|temper/demo/T1|$BASE|no|{}" \
+  "$(st_field 1 worktree)|$(git -C "$T1W" rev-parse --abbrev-ref HEAD)|$(git -C "$T1W" rev-parse HEAD)|$([[ -e $T1W/pre.txt ]] && echo yes || echo no)|$(python3 -c "import json; print(json.dumps(json.load(open('.temper/groups.json'))['tasks']['1']['snapshot']))")"
 assert_eq "task start: the task is bound to its group" "G1" "$(st_field 1 group)"
 assert_exit "task start: a task that is already running exits 1" 1 "$TEMPER" task start 1
 out="$("$TEMPER" task start 2 2>&1)"; rc=$?
@@ -487,7 +513,7 @@ st_setup; "$TEMPER" task start 1 >/dev/null 2>&1
 SHOW="$("$TEMPER" task show 1)"
 assert_eq "task show: the header names task, group, attempt and title" "1" "$(printf '%s\n' "$SHOW" | grep -c '^TASK 1 (group G1, attempt 1): Alpha$')"
 assert_eq "task show: the worktree and project lines are absolute" "1|1" \
-  "$(printf '%s\n' "$SHOW" | grep -c "^WORKTREE: $PWD/$ST_WT\$")|$(printf '%s\n' "$SHOW" | grep -c "^PROJECT:  $PWD\$")"
+  "$(printf '%s\n' "$SHOW" | grep -c "^WORKTREE: $PWD/$T1W\$")|$(printf '%s\n' "$SHOW" | grep -c "^PROJECT:  $PWD\$")"
 assert_eq "task show: the declared files line" "1" "$(printf '%s\n' "$SHOW" | grep -c '^DECLARED FILES: src/a.sh, tests/a_test.sh$')"
 assert_eq "task show: the task block and the group context are inside" "1|1|1" \
   "$(printf '%s\n' "$SHOW" | grep -c '^--- TASK ---$')|$(printf '%s\n' "$SHOW" | grep -c 'Test:\*\* `bash -c .echo boom')|$(printf '%s\n' "$SHOW" | grep -c 'Shared notes for G1')"
@@ -505,7 +531,7 @@ assert_eq "task test: the row is tagged task, group, attempt and executed_by" "1
   "$(python3 -c "import json; r=json.load(open('.temper/evidence/build.json'))[0]; print('%s|%s|%s|%s' % (r['task'],r['group'],r['attempt'],r['executed_by']))")"
 assert_eq "task test: the claim is a test claim of the build stage" "1" \
   "$(python3 -c "import json; print(1 if 'test' in json.load(open('.temper/evidence/build.json'))[0]['claim'].lower() else 0)")"
-assert_eq "task test: the command ran with the worktree as its cwd" "$PWD/$ST_WT" "$("$TEMPER" task test 1 --phase green | sed -n 2p)"
+assert_eq "task test: the command ran with the task's own worktree as its cwd" "$PWD/$T1W" "$("$TEMPER" task test 1 --phase green | sed -n 2p)"
 assert_exit "task test: a phase other than red or green exits 1" 1 "$TEMPER" task test 1 --phase blue
 assert_exit "task test: a missing phase exits 1" 1 "$TEMPER" task test 1
 assert_exit "task test: a task that is not running exits 1" 1 "$TEMPER" task test 3 --phase red
@@ -567,10 +593,13 @@ st_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'
 ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
 st_edit src/a.sh; st_edit src/b.sh
 ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
-assert_exit "task gate: a sibling's file in the shared worktree is not an undeclared change" 0 "$TEMPER" task gate 1
-assert_eq "task gate: the first task's commit leaves the sibling's file alone" "src/a.sh" "$(git -C "$ST_WT" show --name-only --format= HEAD)"
+assert_exit "task gate: parallel tasks each pass in their own worktree" 0 "$TEMPER" task gate 1
+assert_eq "task gate: the first task's commit holds only its own file" "src/a.sh" "$(git -C "$ST_WT" show --name-only --format= "$(st_field 1 commit)")"
 assert_exit "task gate: the sibling then passes with its own file" 0 "$TEMPER" task gate 2
-assert_eq "task gate: the sibling's commit holds its own file" "src/b.sh" "$(git -C "$ST_WT" show --name-only --format= HEAD)"
+assert_eq "task gate: the sibling's commit holds its own file, and both are on the group branch" "src/b.sh|yes|yes" \
+  "$(git -C "$ST_WT" show --name-only --format= "$(st_field 2 commit)")|$(git -C "$ST_WT" merge-base --is-ancestor "$(st_field 1 commit)" HEAD && echo yes || echo no)|$(git -C "$ST_WT" merge-base --is-ancestor "$(st_field 2 commit)" HEAD && echo yes || echo no)"
+assert_eq "task gate: a passed task's worktree and branch are removed" "no|no" \
+  "$([[ -d $T1W ]] && echo yes || echo no)|$(git show-ref --verify --quiet refs/heads/temper/demo/T1 && echo yes || echo no)"
 
 # task gate: FAIL reasons
 st_fail() { # st_fail <red-exit|none> <green-exit|none> [more ledger shape]: start 1, record, gate; prints the output
@@ -611,10 +640,10 @@ ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
 assert_eq "task gate: an undeclared file fails the gate and names it" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL: undeclared change: stray.txt')"
 assert_eq "task gate: the undeclared change is not committed or ticked" "$HEADBEFORE|3" "$(git -C "$ST_WT" rev-parse HEAD)|$(st_unticked)"
-# an edit to a file that was already dirty at the start is a change too
-st_setup; echo pre > "$ST_WT/pre.txt"; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
-echo changed > "$ST_WT/pre.txt"; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
-assert_eq "task gate: a pre-dirty file edited during the task is undeclared" "1" "$("$TEMPER" task gate 1 2>&1 | grep -c 'undeclared change: pre.txt')"
+# an edit to a tracked file the task did not declare is a change too
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+echo changed >> "$T1W/README"; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+assert_eq "task gate: an edit of an undeclared tracked file is undeclared" "1" "$("$TEMPER" task gate 1 2>&1 | grep -c 'undeclared change: README')"
 assert_exit "task gate: a task that was never started exits 1" 1 "$TEMPER" task gate 3
 
 # ADR 0009: the CLI's own commit checks the upstream gates the native hook cannot see in a worktree
@@ -654,8 +683,8 @@ st_setup
 out="$(st_attempt claude-haiku-5-5 2100 41000)"; rc=$?
 assert_eq "retry: attempt 1 FAIL prints exactly one NEXT line, retry on the task model" "1|NEXT: retry Task 1 on claude-haiku-5-5" \
   "$(st_nextcount "$out")|$(printf '%s\n' "$out" | grep '^NEXT:')"
-assert_eq "retry: the declared file the failed attempt wrote is restored (removed)" "no" "$([[ -e "$ST_WT/src/a.sh" ]] && echo yes || echo no)"
-assert_eq "retry: the undeclared file the verdict named is removed too (M2)" "no" "$([[ -e "$ST_WT/stray.txt" ]] && echo yes || echo no)"
+assert_eq "retry: the failed attempt's worktree and branch are discarded, the group worktree never saw its files" "no|no|no" \
+  "$([[ -d $T1W ]] && echo yes || echo no)|$(git show-ref --verify --quiet refs/heads/temper/demo/T1 && echo yes || echo no)|$([[ -e "$ST_WT/src/a.sh" || -e "$ST_WT/stray.txt" ]] && echo yes || echo no)"
 assert_eq "retry: the group is not parked after one failure and Task 1 is offered again" "running|attempt 2" \
   "$(python3 -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1']['status'])")|attempt $("$TEMPER" schedule | python3 -c "
 import json,sys
@@ -691,13 +720,14 @@ out="$("$TEMPER" task gate 3 --model claude-haiku-5-5 --tokens 10 --ms 5 2>&1)"
 assert_eq "park: a task in the other group still passes and prints only NEXT: schedule" "0|NEXT: schedule" \
   "$(printf '%s\n' "$out" | grep -c '^FAIL')|$(printf '%s\n' "$out" | grep '^NEXT:')"
 
-# restore puts a tracked declared file back to its start content
+# the next attempt starts from the group branch: a tracked declared file has its start content again
 st_setup
 mkdir -p "$ST_WT/src"; echo original > "$ST_WT/src/a.sh"
 git -C "$ST_WT" add src/a.sh >/dev/null 2>&1; git -C "$ST_WT" -c user.name=t -c user.email=t@t commit -q -m seed >/dev/null 2>&1
-"$TEMPER" task start 1 >/dev/null 2>&1; echo changed > "$ST_WT/src/a.sh"
+"$TEMPER" task start 1 >/dev/null 2>&1; echo changed > "$T1W/src/a.sh"
 "$TEMPER" task gate 1 --model claude-haiku-5-5 >/dev/null 2>&1
-assert_eq "retry: a tracked declared file is restored to its start content" "original" "$(cat "$ST_WT/src/a.sh")"
+"$TEMPER" task start 1 >/dev/null 2>&1
+assert_eq "retry: the next attempt's worktree holds the tracked declared file's start content" "original" "$(cat "$T1W/src/a.sh")"
 assert_eq "retry: tokens and ms are optional (recorded as null)" "None|None" \
   "$(python3 -c "import json; a=json.load(open('.temper/groups.json'))['tasks']['1']['attempts'][0]; print('%s|%s' % (a['tokens'],a['ms']))")"
 # a passing gate prints no retry/escalate/park line
@@ -821,8 +851,8 @@ gi_setup() { # both groups started, G1/G2 Validate and the Integration suite con
   gp_mut '`bash run-all.sh`' "\`bash -c 'echo integrating; pwd; ls src; exit \${GI_EXIT:-0}'\`"
   "$TEMPER" group start G2 >/dev/null 2>&1
 }
-gi_pass() { # gi_pass <task> <group-worktree-name> <file> <content>: RED, edit, GREEN, task gate
-  local wt=".claude/worktrees/temper-demo-$2"
+gi_pass() { # gi_pass <task> <group> <file> <content>: RED, edit in the task's own worktree, GREEN, task gate
+  local wt=".claude/worktrees/temper-demo-T$1"
   "$TEMPER" task start "$1" >/dev/null 2>&1
   ST_EXIT=1 "$TEMPER" task test "$1" --phase red >/dev/null 2>&1
   mkdir -p "$wt/$(dirname "$3")"; printf '%s\n' "$4" > "$wt/$3"
@@ -1170,14 +1200,14 @@ assert_exit "H1: a failing run after the green fails the gate" 1 "$TEMPER" task 
 # H2: a commit made inside the worktree cannot hide an undeclared file
 st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
 st_edit src/a.sh; st_edit stray.txt
-git -C "$ST_WT" add stray.txt; git -C "$ST_WT" commit -q -m "sneaky" 2>/dev/null
+git -C "$T1W" add stray.txt; git -C "$T1W" commit -q -m "sneaky" 2>/dev/null
 ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
 assert_eq "H2: an undeclared file committed in the worktree fails the gate and names it" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL: undeclared change: stray.txt')"
 assert_eq "H2: the failure also names the commit the CLI did not make" "1" "$(printf '%s' "$out" | grep -c 'not made by the CLI')"
 assert_eq "H2: the task is not ticked" "3" "$(st_unticked)"
 st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
-st_edit src/a.sh; git -C "$ST_WT" add src/a.sh; git -C "$ST_WT" commit -q -m "own commit" 2>/dev/null
+st_edit src/a.sh; git -C "$T1W" add src/a.sh; git -C "$T1W" commit -q -m "own commit" 2>/dev/null
 ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
 assert_eq "H2: a declared file committed by hand still fails (not a CLI commit)" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'not made by the CLI')"
@@ -1193,10 +1223,9 @@ ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; ST_EXIT=1 "$TEMPER"
 st_edit src/a.sh; st_edit src/b.sh
 ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
 assert_exit "H5: the first of two parallel tasks passes and is committed by the CLI" 0 "$TEMPER" task gate 1
-assert_eq "H5: the hook left an untracked .temper/gates.json in the worktree" "yes" "$([[ -f $ST_WT/.temper/gates.json ]] && echo yes || echo no)"
 out="$("$TEMPER" task gate 2 2>&1)"; rc=$?
 assert_eq "H5: the second parallel task, still running, then PASSes" "0|1" "$rc|$(printf '%s' "$out" | grep -c '^PASS: Task 2')"
-assert_eq "H5: the second commit holds only its own file" "src/b.sh" "$(git -C "$ST_WT" show --name-only --format= HEAD)"
+assert_eq "H5: the second commit holds only its own file" "src/b.sh" "$(git -C "$ST_WT" show --name-only --format= "$(st_field 2 commit)")"
 # a model-written file in the worktree's .temper/ is ignored too, but a real undeclared file still fails
 st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
 st_edit src/a.sh; st_edit .temper/gates.json; st_edit stray.txt; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
@@ -1204,18 +1233,19 @@ out="$("$TEMPER" task gate 1 2>&1)"
 assert_eq "H5: only the real undeclared file is named, not .temper/" "1|0" \
   "$(printf '%s' "$out" | grep -c '^FAIL: undeclared change: stray.txt$')|$(printf '%s' "$out" | grep -c '\.temper')"
 
-# M2: a FAIL also removes or restores the undeclared changes the verdict named, and only those
+# M2: a FAIL discards the attempt's worktree with every change in it; the group worktree is untouched
 st_setup; echo pre > "$ST_WT/pre.txt"; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
-st_edit src/a.sh; st_edit stray.txt; echo edited >> "$ST_WT/README"; echo changed > "$ST_WT/pre.txt"
+st_edit src/a.sh; st_edit stray.txt; echo edited >> "$T1W/README"
 ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 "$TEMPER" task gate 1 >/dev/null 2>&1
-assert_eq "M2: an undeclared new file is removed after the FAIL" "no" "$([[ -e $ST_WT/stray.txt ]] && echo yes || echo no)"
-assert_eq "M2: an undeclared edit of a tracked file is restored" "base" "$(cat "$ST_WT/README")"
-assert_eq "M2: a file that was already dirty at the start is left alone" "changed" "$(cat "$ST_WT/pre.txt")"
-assert_eq "M2: the declared file is restored too (existing behaviour)" "no" "$([[ -e $ST_WT/src/a.sh ]] && echo yes || echo no)"
-"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+assert_eq "M2: the failed attempt's worktree is gone, the group worktree keeps its own dirty file and README" "no|pre|base" \
+  "$([[ -d $T1W ]] && echo yes || echo no)|$(cat "$ST_WT/pre.txt")|$(cat "$ST_WT/README")"
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+assert_eq "M2: the next attempt's worktree has none of the earlier attempt's files" "no|no|base" \
+  "$([[ -e $T1W/stray.txt ]] && echo yes || echo no)|$([[ -e $T1W/src/a.sh ]] && echo yes || echo no)|$(cat "$T1W/README")"
+st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
-assert_eq "M2: the retry then passes without the earlier stray file" "0|src/a.sh" "$rc|$(git -C "$ST_WT" show --name-only --format= HEAD)"
+assert_eq "M2: the retry then passes without the earlier stray file" "0|src/a.sh" "$rc|$(git -C "$ST_WT" show --name-only --format= "$(st_field 1 commit)")"
 setup
 
 # H3: the approved plan is hashed at the first group start; a later change refuses the run's commands
@@ -1262,7 +1292,7 @@ lock_owner() { cat .temper/.lock/owner 2>/dev/null || echo none; }
 # A1: a commit the task agent makes itself, with the CLI's subject format, is still not the CLI's
 st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
 st_edit src/a.sh; st_edit stray.txt
-git -C "$ST_WT" add src/a.sh stray.txt; git -C "$ST_WT" commit -q -m "feat(demo): Task 1 Alpha [G1]" 2>/dev/null
+git -C "$T1W" add src/a.sh stray.txt; git -C "$T1W" commit -q -m "feat(demo): Task 1 Alpha [G1]" 2>/dev/null
 ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
 assert_eq "A1: a hand-made commit with the CLI's subject format fails the task gate" "1|1|1" \
@@ -1275,7 +1305,7 @@ ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; ST_EXIT=1 "$TEMPER"
 st_edit src/a.sh; st_edit src/b.sh
 ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
 "$TEMPER" task gate 1 >/dev/null 2>&1
-assert_eq "A1: the CLI records the sha of its task commit" "$(git -C "$ST_WT" rev-parse HEAD)" "$(st_field 1 commit)"
+assert_eq "A1: the CLI records the sha of its task commit (the group branch fast-forwards to it)" "$(git -C "$ST_WT" rev-parse HEAD)" "$(st_field 1 commit)"
 assert_exit "A1: a sibling that started earlier passes past the CLI's recorded commit" 0 "$TEMPER" task gate 2
 
 # M1: the task commit and the tick run under the lock; parallel gates both land
@@ -1359,7 +1389,7 @@ setup
 gg_setup; gp_mut '**File:** `src/b.sh`' '**File:** `src/b.sh`, `src/a.sh`'
 gg_pass 1 src/a.sh
 "$TEMPER" task start 2 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
-st_edit src/b.sh; echo "work two" >> "$ST_WT/src/a.sh"; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
+st_edit src/b.sh; echo "work two" >> ".claude/worktrees/temper-demo-T2/src/a.sh"; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
 "$TEMPER" task gate 2 --model m >/dev/null 2>&1
 HEAD0="$(git -C "$ST_WT" rev-parse HEAD)"
 out="$("$TEMPER" group reopen G1 --task 1 2>&1)"; rc=$?
@@ -1417,7 +1447,7 @@ st_edit src/b.sh; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 2 2>&1)"; rc=$?
 assert_eq "R2: the running sibling PASSes past the reopen revert" "0|1" "$rc|$(printf '%s' "$out" | grep -c '^PASS: Task 2')"
 assert_eq "R2: the reverted file stays reverted (not re-applied by a restore)" "no" "$([[ -e $ST_WT/src/a.sh ]] && echo yes || echo no)"
-assert_eq "R2: the sibling's commit holds only its own file" "src/b.sh" "$(git -C "$ST_WT" show --name-only --format= HEAD)"
+assert_eq "R2: the sibling's commit holds only its own file" "src/b.sh" "$(git -C "$ST_WT" show --name-only --format= "$(st_field 2 commit)")"
 
 # R3: an existing group branch is reused only when this run recorded it; a stale one is refused with the way out
 gi_all
@@ -1454,12 +1484,12 @@ f_add_t4() { # a fourth, independent G1 task (src/d.sh) with its own controllabl
 }
 f_setup() { ST_PRE=f_add_t4 st_setup; ST_PRE=""; gp_mut '**Depends:** Task 1' '**Depends:** none'; }
 f_tree() { git -C "$ST_WT" ls-tree -r --name-only HEAD | paste -sd, -; }
-# F4: only the reopen revert's own content is excused; a sibling's edit of a reopened path is undeclared
+# F4: a sibling's edit of a reopened task's path is undeclared (in its own worktree every change is its own)
 gg_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'
 gg_pass 1 src/a.sh
 "$TEMPER" task start 2 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
 "$TEMPER" group reopen G1 --task 1 >/dev/null 2>&1
-st_edit src/b.sh; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
+st_edit src/b.sh; echo "sibling edit" >> ".claude/worktrees/temper-demo-T2/src/a.sh"; ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 2 2>&1)"; rc=$?
 assert_eq "F4: a sibling edit of the reopened src/a.sh FAILs as undeclared" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'undeclared change: src/a.sh')"
 

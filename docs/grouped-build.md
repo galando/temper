@@ -63,31 +63,35 @@ one mode does not pass the other mode's plan gate.
    (task brief 6144 bytes, group Context 4096, task block 1536); declared files do not
    overlap between tasks or groups that can run at the same time; no single group declares
    more files than `autonomy.max-blast-radius`.
-2. **Start a group.** `temper group start G1` creates one git worktree,
+2. **Start a group.** `temper group start G1` creates the group's git worktree,
    `.claude/worktrees/temper-{slug}-G1`, on branch `temper/{slug}/G1`, based on the feature
-   branch.
+   branch. It only takes the merges of its passed tasks and runs the group's Validate.
 3. **Schedule.** `temper schedule` (add `--json` for the machine form) prints the launchable tasks,
    one JSON line each, with the model to use: dependencies met, group not parked, declared
    files disjoint from running tasks, `max-parallel` respected. The orchestrator launches all
    of them in one turn.
-4. **The orchestrator** runs `temper task start N` and launches the agent. **The task agent** runs `temper task show N`, edits only its
-   declared files, then `temper task test N --phase red` and `temper task test N --phase green`.
-   The CLI runs the task's own declared test command and records the output.
+4. **The orchestrator** runs `temper task start N`, which gives the task **its own worktree**
+   (`.claude/worktrees/temper-{slug}-T{N}`, branch `temper/{slug}/T{N}`, from the group branch),
+   and launches the agent. **The task agent** runs `temper task show N`, edits only its declared
+   files in that worktree, then `temper task test N --phase red` and `temper task test N --phase green`.
+   The CLI runs the task's own declared test command there and records the output. Tasks that run
+   at the same time never see each other's unfinished edits.
 5. **Task gate.** `temper task gate N --model M --tokens T --ms D` passes only with RED then
-   GREEN evidence for that task and only declared files changed. On PASS the CLI makes a
-   local commit of the declared files on the group branch. On FAIL the task is retried once on
-   Haiku, then escalated once to Sonnet. If that also fails, the group stops and the run parks
+   GREEN evidence for that task and only declared files changed in its worktree. On PASS the CLI
+   commits the declared files on the task branch, merges it into the group branch (a fast-forward
+   when it can) and removes the task's worktree. On FAIL the task's worktree is discarded and the
+   task is retried once on Haiku in a fresh one, then escalated once to Sonnet. If that also fails, the group stops and the run parks
    for a human; independent groups finish first. Every attempt, its model and outcome are recorded.
 
    **A park after a commit the CLI did not make.** Task agents must not run `git commit`. If one
    does, the task gate FAILs naming the commit and its files and the group parks at once, with no
-   retry. The CLI changes nothing on the branch or in the working tree, and the group's other
-   tasks refuse `task gate` and `task test` (no verdict, no row), so tasks still running keep
-   their work. You have two ways out:
-   - (a) once no task of the group runs, take the commits off the branch yourself (the park
-     prints `git -C <worktree> rebase --onto <sha>~1 <sha>`, newest first; a reset works too),
-     then `temper group reopen G1 --task N`. Reopen is refused while a parked commit is still
-     on the branch.
+   retry. The commit can only be that task's, since the worktree is its own. The CLI changes
+   nothing in that worktree and keeps it, and the group's other tasks refuse `task gate` and
+   `task test` until the reopen (no verdict, no row), so they keep their work. You have two ways out:
+   - (a) take the commits off the task's branch yourself (the park prints
+     `git -C <task worktree> rebase --autostash --onto <sha>~1 <sha>`, newest first), then
+     `temper group reopen G1 --task N`; the next `task start` reuses that worktree with the
+     agent's uncommitted work. Reopen is refused while a parked commit is still on the branch.
    - (b) keep them knowingly: `temper group reopen G1 --task N --accept-foreign <sha>[,<sha>]
      --reason "<why>"`. The acceptance is recorded like an override and `temper report` lists it.
    Known limits: detection is by sha, so rewritten history can hide a commit (the group gate
@@ -97,8 +101,7 @@ one mode does not pass the other mode's plan gate.
    tests pass. You choose Continue, Change or Stop. **Change** records your feedback and
    runs `temper group reopen G1 --task N [--task M] [--feedback ID]`, which re-runs only the
    tasks it concerns; re-planning is the separate "Loop back to Plan" choice.
-   `group reopen` is an orchestrator-only command: a task agent must not run it (its revert is excused
-   in a sibling's verdict only while the files still hold the revert's exact content; the mod cannot
+   `group reopen` is an orchestrator-only command: a task agent must not run it (the mod cannot
    tell a task agent's Bash from the orchestrator's, so this is a rule, not a hook).
    The group gate also fails while the group is parked and when a passed task's commit is no
    longer on the group branch.
@@ -114,9 +117,10 @@ the final feature commit.
 
 ## Limits to know about
 
-- **Parallel tasks in a group share one worktree.** One task's test run can see a sibling's
-  unfinished edit. Each task's own scoped test limits this, but a failure can still be
-  attributed to the wrong task. Order tasks with `**Depends:**` when they touch related code.
+- **One worktree per task costs a checkout each.** A task's worktree is a fresh checkout of
+  the group branch: a project whose tests need an install step or a build cache pays it once per
+  task. A task that needs another task's code must `**Depends:**` on it, so it starts after that
+  task merged.
 - **Pack rules reach task agents only as distilled text** in the group Context. Review
   still checks the full packs.
 - **Merge commits run no pre-commit hook.** The CLI checks the upstream-gate condition
