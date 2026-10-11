@@ -14,7 +14,7 @@ const ctx: RuleContext = { specDir: SPEC, planFiles: ['src/app.ts', 'hooks/core/
 const grouped: RuleContext = { ...ctx, groupedActive: true }
 const WT = '.claude/worktrees/temper-pw-G1'
 const isDeny = (r: RuleResult): r is Extract<RuleResult, { deny: string }> => 'deny' in r
-const write = (c: RuleContext, path: string, phase: 'build' | 'fix' = 'build') =>
+const write = (c: RuleContext, path: string, phase: Parameters<typeof stateAt>[0] = 'build') =>
   evaluate(stateAt(phase), c, { tool: 'Write', input: { file_path: path } })
 
 describe('groups.json and usage.json are CLI-only state', () => {
