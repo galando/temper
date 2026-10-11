@@ -13,18 +13,7 @@ a gate after every task, no Haiku; its loop is `reference/build-per-task.md`). I
 branch. The grouped loop the orchestrator runs is in `reference/build-groups.md`, read by
 `/temper` and by the standalone `/temper:build`.
 
-**Why it is the default (one measured run, pyjokes).** The same feature ("list N jokes that contain
-a substring", API and CLI) was built twice from one commit with this branch's Temper, once per task
-and once grouped, with the same intent and the same gates. Build tokens: per task 257,674 on Sonnet
-(4 launches); grouped 134,363 on Haiku (2 launches, both first-attempt passes, no escalation). At
-list input prices that is about $0.52 against $0.013 for the Build stage, and about $1.48 against
-$0.97 for Plan through Check. Both passed every gate with the same behaviour; grouped Review raised
-one medium finding (CLI tests mocked the API), per-task none. The per-task run also showed a defect
-the grouped run cannot hit: its build agent rewrote `.temper/build-state.json` and silently dropped
-`spec_path`, which skipped the Check gate's scenario rows (fixed below). One run is an anecdote; the
-comparison procedure in `docs/grouped-build.md` stays for the next ones.
-
-**What else the measured run and a whole-diff review changed.**
+**Fixes from a whole-diff review.**
 - `reference/build.md` no longer tells the build agent to write `.temper/build-state.json`, and a
   run state that lost `spec_path` now fails every gate with the repair line instead of skipping rows.
 - `temper init` lists the CLI's runtime files in the clone's `.git/info/exclude` (never
@@ -50,22 +39,21 @@ always the task's own). A commit the agent makes still parks the group; the park
 and the printed lines and `group reopen` work on it. The cost: a checkout per task, and a task that needs
 another's code waits for it (`**Depends:**`).
 
-**Lessons from the pyjokes run, applied to the task agents and to Plan.**
+**Task agents and Plan.**
 - The task agent type (`temper:temper-build-task`) carries only Read, Edit, Write, Bash, Glob
   and Grep, and the grouped loop launches it by that type: most of a Haiku launch's tokens were
-  the fixed cost of starting an agent, which the tool list drives.
+  the fixed cost of starting an agent, which the tool list drives (on Haiku, about 5,800 tokens
+  to start against about 26,600 for a general-purpose agent).
 - Task agents test the real code: the brief and Plan's group Context say to call what earlier
-  tasks built and mock only what a test cannot run (the grouped run's CLI tests had mocked the
-  API, a Review finding).
+  tasks built and mock only what a test cannot run.
 - RED must fail on the tests themselves: the task verdict rejects a RED run that exited 126 or
   127 (command missing), timed out or was killed, and a pytest RED with any exit but 1 (exit 2
   is a collection or import error; the brief says to write a stub first).
 - Plan makes few groups with parallel tasks: a new group only for a separate review unit, a
-  dependency inside one group instead of a second group (the pyjokes plan had two one-task groups,
-  so nothing ran in parallel).
+  dependency inside one group instead of a second group, so independent tasks run in parallel.
 - The complexity tier counts production files only (tests, docs and a one-line export do not
-  count), so a small feature is Simple and skips Design (pyjokes was rated Medium on six files,
-  three of them tests and docs, and paid for a Design stage).
+  count), so a small feature is Simple and skips Design. The library-consumers risk multiplier
+  counts only changes to what consumers already use, not an added function.
 - The Temper bar words a grouped Build checkpoint "Continue with the groups" instead of
   "Continue with task N".
 

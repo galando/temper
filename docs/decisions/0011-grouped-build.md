@@ -141,15 +141,12 @@ in git history at commit 9e14ce7, under `docs/plans/grouped-build-handoff/spec/`
 
 ## Amendment (2026-10-11): grouped is the default Build mode; one worktree per task
 
-**Grouped Build is the default Build.** One measured run (pyjokes, the same feature built per
-task and grouped from one commit; numbers in `docs/grouped-build.md`, "Why it is the default")
-cost about a fortieth for the Build stage and two thirds for Plan through Check, passed every
-gate with the same behaviour, and avoided a per-task defect (its build agent rewrote the
-CLI-owned run state). `build.mode: per-task` keeps the previous Build one line away, as a way back:
+**Grouped Build is the default Build.** Task agents run on Haiku with a slim brief and a
+six-tool agent type, a small fraction of the cost of the per-task Build's Sonnet agents, and
+the CLI owns every verdict, so no agent writes run state. `build.mode: per-task` keeps the previous Build one line away, as a way back:
 it is the loop Temper ran before 9.7.0, kept as written (`reference/build-per-task.md`), and the
 grouped gate rows and commands are off with it. `agents/build.md` stays as the fix
-pass for Review or Check loops back to Build. The "experimental, unmeasured" item under
-Negative no longer holds; one run is still an anecdote, so the measurement procedure stays.
+pass for Review or Check loops back to Build. Every launch is still recorded (`temper usage add`), so runs can be compared over time.
 
 **One worktree per task: decided yes, and done in 9.7.0.** Nearly every hard
 defect of the review rounds came from parallel tasks sharing one worktree and one branch: the

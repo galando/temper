@@ -353,7 +353,7 @@ assert_eq "orchestrator: Stage 2 reads the per-task loop page when build.mode is
   "$(grep -c 'reference/build-per-task.md' "$REPO_ROOT/commands/temper.md" | sed 's/^[1-9][0-9]*$/1/')|$(grep -c 'Checkpoint: task {N}' "$REPO_ROOT/reference/build-per-task.md" | sed 's/^[1-9][0-9]*$/1/')"
 setup
 
-# --- Haiku improvements from the pyjokes run ---
+# --- Task agents and Plan: fewer tools, real-code tests, a real RED, few groups, production-file tiers ---
 # RED must fail on the tests themselves: pytest exit 2 (collection or import error), 126/127 and a timeout are no RED
 FX_T2="bash -c 'echo boom; pwd; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
 red_case() { # red_case <exit of the RED run>: Task 1 runs a pytest-named command, RED with that exit, then GREEN

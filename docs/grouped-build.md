@@ -1,8 +1,8 @@
 # Grouped Build (9.7.0)
 
 Build runs in groups of small tasks, each handed to a slim Haiku agent, with one human gate
-per group. It is the default Build since 9.7.0. See
-[Why it is the default](#why-it-is-the-default) for the run that decided it, and
+per group. It is the default Build since 9.7.0: task agents on Haiku cost a small fraction of
+the per-task Build's Sonnet agents. See
 [Going back to the previous Build](#going-back-to-the-previous-build) for the one line that
 turns it off.
 
@@ -139,28 +139,6 @@ The CLI owns these `.temper/` runtime files. Do not hand-write them and do not c
 - `.temper/usage.json` - one row per agent launch: stage, model, tokens, milliseconds, task and group.
 - `.temper/.lock/` - the short-lived lock directory that serializes writes to the files above
   (stale after 30 s, never held while a test runs).
-
-## Why it is the default
-
-One feature, built twice from the same commit of [pyjokes](https://github.com/pyjokes/pyjokes)
-with this release's Temper: "list N jokes that contain a substring", from the Python API and the
-CLI. Both runs had the same accepted intent, the same config (autonomy armed at the plan gate)
-and the same gates; only Build differed.
-
-| | Per-task Build (removed) | Grouped Build |
-|---|---|---|
-| Plan | 4 sequential tasks | 2 groups, 1 task each (G2 depends on G1) |
-| Build launches | 4 on Sonnet | 2 on Haiku, both passed on attempt 1, 0 escalations |
-| Build tokens | 257,674 | 134,363 |
-| Build at list input price | about $0.52 | about $0.013 |
-| Plan to Check, at list input prices | about $1.48 | about $0.97 |
-| Tests at the end | 21 pass, coverage 94% | 25 pass, coverage 97% |
-| Review findings | none | 1 medium (CLI tests mock the API), 1 low |
-| Run state | the build agent rewrote `build-state.json` and dropped `spec_path`, so the Check gate skipped its scenario rows | intact |
-
-Token counts are the per-agent totals Claude Code reports (mostly cached input), priced at the
-input rate per million tokens: Opus 5.5 $4, Sonnet 5.5 $2, Haiku 5.5 $0.10. They show the ratio,
-not the bill. One run is an anecdote: keep measuring.
 
 ## Measuring a run
 
