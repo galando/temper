@@ -56,7 +56,7 @@ commands below exit 1 with "grouped mode is off (build.mode)".
    one JSON line each, with the model to use: dependencies met, group not parked, declared
    files disjoint from running tasks, `max-parallel` respected. The orchestrator launches all
    of them in one turn.
-4. **The task agent** runs `temper task start N`, `temper task show N`, edits only its
+4. **The orchestrator** runs `temper task start N` and launches the agent. **The task agent** runs `temper task show N`, edits only its
    declared files, then `temper task test N --phase red` and `temper task test N --phase green`.
    The CLI runs the task's own declared test command and records the output.
 5. **Task gate.** `temper task gate N --model M --tokens T --ms D` passes only with RED then

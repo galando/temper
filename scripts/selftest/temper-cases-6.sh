@@ -260,3 +260,80 @@ assert_eq "M6: no TEMPER_OVERRIDES_FILE in scripts/temper" "0" "$(grep -c 'TEMPE
 assert_eq "D-08: no automatic-undo code is left in scripts/temper" "0" \
   "$(grep -c 'stillon\|reverthint\|TEMPER_UNDO_HEAL\|reverted_foreign\|merge_info\|temper-undo' "$TEMPER")"
 setup
+
+# --- Grouped Build: whole-diff review fixes (F1-F5) and the fail-closed spec path ---
+FX_T="bash -c 'echo boom; pwd; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
+
+# F5: a file the declared test command creates (a byproduct such as __pycache__) is not an undeclared change
+gg_setup
+gp_mut "\`$FX_T\`" "\`bash -c 'mkdir -p __pycache__; echo pyc > __pycache__/a.pyc; exit \${ST_EXIT:-0}'\`"
+gg_pass 1 src/a.sh
+assert_eq "F5: a test byproduct does not fail the task gate, is not committed and stays in the worktree" "passed|0|yes" \
+  "$(st_field 1 status)|$(git -C "$ST_WT" ls-tree -r --name-only HEAD | grep -c pycache)|$([[ -e $ST_WT/__pycache__/a.pyc ]] && echo yes || echo no)"
+gg_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; st_edit notes.txt; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"
+assert_eq "F5: a file the agent wrote outside the test run is still undeclared" "1" "$(printf '%s' "$out" | grep -c 'undeclared change: notes.txt')"
+
+# F4: the group gate refuses an uncommitted change to a tracked file in the group worktree, and names it
+gg_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'
+gg_pass 1 src/a.sh; gg_pass 2 src/b.sh
+echo HACKED >> "$ST_WT/src/a.sh"
+out="$("$TEMPER" group gate G1 2>&1)"; rc=$?
+assert_eq "F4: group gate FAILs on an uncommitted edit of a passed task's file, naming it" "1|1" \
+  "$rc|$(printf '%s' "$out" | grep -c 'uncommitted changes in the group worktree.*src/a.sh')"
+git -C "$ST_WT" checkout -q -- src/a.sh
+assert_exit "F4: once the edit is reverted the group gate passes" 0 "$TEMPER" group gate G1
+
+# F3: a task that depends on a task of another group needs its group to depend on that group
+gp_setup
+gp_mut '**File:** `src/c.sh`
+**Depends:** none' '**File:** `src/c.sh`
+**Depends:** Task 1'
+assert_eq "F3: the plan gate rejects a cross-group task dependency without a group dependency" "1" \
+  "$(gp_has 'Task 3 (G2) depends on Task 1 (G1) but G2 does not depend on G1')"
+gp_mut '## Group G2: Edge
+**Depends:** none' '## Group G2: Edge
+**Depends:** G1'
+assert_eq "F3: with G2 depending on G1 the dependency row passes" "0|1" \
+  "$(gp_has 'does not depend on')|$(gp_gate | grep -c '\[v\] dependencies')"
+
+# F1: Change at a group gate: the feedback text reaches the reopened task, and passing it answers the feedback
+gg_setup; gg_pass 1 src/a.sh; gg_pass 2 src/b.sh
+"$TEMPER" group gate G1 >/dev/null 2>&1
+"$TEMPER" evidence add --stage build --phase feedback --claim "feedback #1: name the function beta_main" >/dev/null 2>&1
+"$TEMPER" group reopen G1 --task 2 --feedback 1 >/dev/null 2>&1
+"$TEMPER" task start 2 >/dev/null 2>&1
+SHOW="$("$TEMPER" task show 2)"
+assert_eq "F1: task show prints the group-gate feedback for the reopened task" "1|1" \
+  "$(printf '%s\n' "$SHOW" | grep -c '^--- FEEDBACK #1')|$(printf '%s\n' "$SHOW" | grep -c 'name the function beta_main')"
+ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1; echo beta_main > "$ST_WT/src/b.sh"
+ST_EXIT=0 "$TEMPER" task test 2 --phase green >/dev/null 2>&1
+assert_exit "F1: the reopened task passes its gate" 0 "$TEMPER" task gate 2
+assert_eq "F1: the CLI recorded the feedback-resolved row, so gate build has nothing unanswered" "1|0" \
+  "$(python3 -c "import json; print(sum(1 for r in json.load(open('.temper/evidence/build.json')) if r.get('phase')=='feedback-resolved' and r['claim'].startswith('feedback #1:')))")|$("$TEMPER" gate build 2>&1 | grep -c 'unanswered')"
+assert_eq "F1: once answered, task show no longer prints the feedback" "0" "$("$TEMPER" task show 2 | grep -c '^--- FEEDBACK')"
+
+# F2: a loop back to Plan ends the grouped run: groups.json archived, clean worktrees removed, branches renamed, work kept
+gg_setup; gg_pass 1 src/a.sh
+echo wip > .claude/worktrees/temper-demo-G2/wip.txt
+G1SHA="$(git rev-parse temper/demo/G1)"
+out="$("$TEMPER" state loop build plan --reason "the plan was wrong" 2>&1)"
+assert_eq "F2: groups.json is archived and the reset is reported" "no|1|1" \
+  "$([[ -e .temper/groups.json ]] && echo yes || echo no)|$(ls .temper/archive/groups-*.json 2>/dev/null | wc -l | tr -d ' ')|$(printf '%s' "$out" | grep -c 'grouped run reset')"
+assert_eq "F2: the clean G1 worktree is removed and its branch renamed with its commits" "no|no|$G1SHA" \
+  "$([[ -d $ST_WT ]] && echo yes || echo no)|$(git show-ref --verify --quiet refs/heads/temper/demo/G1 && echo yes || echo no)|$(git rev-parse "$(git for-each-ref --format='%(refname)' 'refs/heads/temper/demo/replan-*/G1')")"
+assert_eq "F2: a worktree with uncommitted work is kept and named" "yes|1" \
+  "$([[ -e .claude/worktrees/temper-demo-G2/wip.txt ]] && echo yes || echo no)|$(printf '%s' "$out" | grep -c 'temper-demo-G2 has uncommitted work')"
+assert_exit "F2: the re-planned run starts G1 again" 0 "$TEMPER" group start G1
+
+# fail closed: a run state that lost spec_path (an agent rewrote build-state.json) refuses every gate with the repair
+setup; "$TEMPER" state init demo >/dev/null 2>&1
+python3 -c "
+import json; p='.temper/build-state.json'; d=json.load(open(p)); d.pop('spec_path', None); json.dump(d, open(p, 'w'))"
+out="$("$TEMPER" gate check 2>&1)"; rc=$?
+assert_eq "spec_path lost: gate check refuses and prints the repair" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'state set spec_path .temper/specs/demo')"
+assert_eq "build brief: never tells the build agent to write build-state.json" "0" \
+  "$(grep -c 'write `.temper/build-state.json`' "$REPO_ROOT/reference/build.md")"
+setup

@@ -825,12 +825,46 @@ print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_t
   # substitute for it: this is the backstop for standalone CLI users with no
   # orchestrator to do the kill.
   [[ $rc -eq 0 ]] && _clear_evidence_downstream "$to"
+  # F2: going back before Build re-plans the tasks, so the grouped run starts over
+  if [[ $rc -eq 0 && -f "$GROUPS_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]]; then
+    _groups_reset
+  fi
   # P1: the run goes back to the loop's target stage, so the build-checkpoint commit carve-out applies to it
   if [[ $rc -eq 0 && -f "$STATE_FILE" ]]; then
     _json_set_path "$STATE_FILE" "next_stage" "$to" '{}'
     _json_set_path "$STATE_FILE" "updated" "$(_now)" '{}'
   fi
   return $rc
+}
+
+_groups_reset() { # F2: a loop back before Build ends the grouped run: groups.json goes to .temper/archive/, a clean
+                  # group worktree is removed and its branch renamed to temper/{slug}/replan-{ts}/{G} (its commits are
+                  # kept); a worktree with uncommitted work is left where it is and named, so nothing is lost
+  local ts; ts="$(date -u +%Y%m%dT%H%M%SZ)"
+  local g wt branch slug
+  while IFS=$'\t' read -r slug g wt branch; do
+    [[ -n "$g" ]] || continue
+    if [[ -n "$wt" && -d "$wt" ]]; then
+      if [[ -n "$(git -C "$wt" status --porcelain=v1 2>/dev/null | cut -c4- | grep -v -e '^\.temper/' -e '^\.claude/worktrees/')" ]]; then
+        echo "WARN: $wt has uncommitted work; kept. Move it away (or remove it) before the re-planned run starts $g" >&2
+        continue
+      fi
+      git worktree remove --force "$wt" >/dev/null 2>&1 || { echo "WARN: could not remove $wt; kept" >&2; continue; }
+    fi
+    if [[ -n "$branch" ]] && git show-ref --verify --quiet "refs/heads/$branch"; then
+      git branch -m "$branch" "temper/$slug/replan-$ts/$g" >/dev/null 2>&1 \
+        || echo "WARN: could not rename $branch; delete it before the re-planned run starts $g" >&2
+    fi
+  done < <(python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    d = {}
+for g, e in sorted((d.get('groups') or {}).items()):
+    print('\t'.join([d.get('slug') or '', g, e.get('worktree') or '', e.get('branch') or '']))" "$GROUPS_FILE")
+  mkdir -p .temper/archive
+  mv "$GROUPS_FILE" ".temper/archive/groups-$ts.json" && echo "OK: grouped run reset for the re-plan (groups.json -> .temper/archive/groups-$ts.json)"
 }
 
 _spec_dir_ok() { # _spec_dir_ok <slug> -> 0 when .temper/specs/<slug> is a plain folder of this
@@ -2245,6 +2279,14 @@ except Exception:
     reason="group $g declares no **Validate:** command"
   fi
   if [[ -z "$reason" ]]; then
+    # F4: Validate must run on what integrate merges: an uncommitted change to a tracked file (an agent's edit of
+    # a file whose task already passed) is not on the group branch, so the gate refuses it and names the paths
+    local dirty
+    dirty="$(git -C "$(pwd -P)/$wt" status --porcelain=v1 --untracked-files=no 2>/dev/null | cut -c4- \
+             | grep -v -e '^\.temper/' -e '^\.claude/worktrees/' | head -20 | paste -sd, - | sed 's/,/, /g')"
+    [[ -n "$dirty" ]] && reason="uncommitted changes in the group worktree, not on its branch: $dirty (revert them, or reopen the task that owns them)"
+  fi
+  if [[ -z "$reason" ]]; then
     local rowfile rc
     rowfile="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
     _task_py grouprun "$(pwd -P)/$wt" "${TEMPER_TASK_TEST_TIMEOUT_S:-600}" "$rowfile" "$g" -- "$validate"
@@ -2620,6 +2662,12 @@ def snap(wt):
             out[path] = 'DELETED'
     return out
 
+def untracked(wt):
+    """The untracked paths of the worktree (porcelain '??'), for the byproducts a CLI test run leaves behind."""
+    r = subprocess.run(['git', '--literal-pathspecs', '-C', wt, 'status', '--porcelain=v1', '-z', '-uall'],
+                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    return {e[3:] for e in r.stdout.decode('utf-8', 'surrogateescape').split('\0') if e.startswith('?? ')}
+
 def load_run(gfile):
     try:
         d = json.load(open(gfile))
@@ -2727,6 +2775,18 @@ elif mode == 'show':
     head = 'TASK %d (group %s, attempt %d): %s\nWORKTREE: %s\nPROJECT:  %s\nDECLARED FILES: %s\n' % (
         n, c['group'], c['attempt'], c['title'], os.path.join(project, c['worktree']), project, ', '.join(c['files']))
     body = head + '--- TASK ---\n' + c['block'] + '\n--- GROUP CONTEXT ---\n' + c['context'] + '\n'
+    # F1: the human's feedback from a group gate's Change (group reopen --feedback ID) reaches the task agent
+    fb_ids = [str(r['feedback']) for r in (((run.get('tasks') or {}).get(str(n)) or {}).get('reopened') or [])
+              if r.get('feedback') and not r.get('resolved')]
+    if fb_ids:
+        try:
+            rows = json.load(open(sys.argv[7]))
+        except Exception:
+            rows = []
+        for i in fb_ids:
+            text = [r.get('claim') or '' for r in rows if r.get('phase') == 'feedback'
+                    and re.match(r'feedback #%s\b' % re.escape(i), r.get('claim') or '')]
+            body += '--- FEEDBACK #%s (apply it) ---\n%s\n' % (i, text[-1] if text else '(no text recorded)')
     if c['attempts']:
         last = c['attempts'][-1]
         prev = '--- PREVIOUS ATTEMPT ---\n%s: %s\n%s\n' % (last.get('outcome', 'FAIL'), last.get('reason', ''),
@@ -2742,14 +2802,18 @@ elif mode == 'show':
 elif mode == 'testrun':
     wt, timeout, rowfile, n, group, attempt, phase = sys.argv[2:9]
     cmd = sys.argv[10:]   # argv[9] is the '--' separator
+    before = untracked(wt)
     out, rc = run_cmd(wt, timeout, cmd)
+    # F5: untracked paths that first appear during this CLI run (__pycache__, coverage files, logs) are the test
+    # command's byproducts; the task verdict does not count them as undeclared changes
+    byproducts = sorted(untracked(wt) - before)
     sys.stdout.write(out.decode('utf-8', 'replace'))
     sys.stdout.flush()
     row = {'claim': 'Task %s unit test %s' % (n, phase), 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
            'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': phase, 'scenario': None,
            'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'task': int(n), 'group': group,
            'attempt': int(attempt), 'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-           'output': out[-4096:].decode('utf-8', 'replace')}
+           'output': out[-4096:].decode('utf-8', 'replace'), 'byproducts': byproducts[:1000]}
     json.dump(row, open(rowfile, 'w'))
     sys.exit(rc)
 
@@ -3034,8 +3098,11 @@ elif mode == 'verdict':
         if st.get('status') == 'running' or (st.get('status') == 'passed' and st.get('passed_at', '') >= c['started_at']):
             others += t['files']
     mine_changed = [p for p in changed if matches(p, c['files'])]
+    # F5: a path a CLI test run of this attempt created, still untracked and in no commit, is a byproduct
+    byproducts = {p for r in mine for p in (r.get('byproducts') or [])} - set(committed)
     undeclared = sorted(p for p in set(changed) | set(committed)
-                        if not matches(p, c['files']) and not matches(p, others) and p not in excused)
+                        if not matches(p, c['files']) and not matches(p, others) and p not in excused
+                        and p not in byproducts)
     problems = []
     def named(lst, cap=20):   # a verdict with thousands of paths names the first few
         return ', '.join(lst[:cap]) + (' (and %d more)' % (len(lst) - cap) if len(lst) > cap else '')
@@ -3162,7 +3229,7 @@ cmd_task_show() {
     echo "FAIL: group $(_jget "$_T_CTX" group) is not started (temper group start)" >&2
     return 1
   fi
-  _task_py show "$_T_PLAN" "$GROUPS_FILE" "$1" "$(pwd -P)" "$TASK_SHOW_MAX_BYTES"
+  _task_py show "$_T_PLAN" "$GROUPS_FILE" "$1" "$(pwd -P)" "$TASK_SHOW_MAX_BYTES" "$(_evidence_file build)"
 }
 
 cmd_task_test() {
@@ -3380,6 +3447,27 @@ t['commit'] = a[6] or None
 if a[6]:
     d.setdefault('cli_commits', []).append(a[6])
 " "$n" "$(_jget "$v" attempt)" "$model" "$tokens" "$ms" "$(_now)" "$sha" || return 1
+  # F1: a task reopened with group-gate feedback answers it by passing: the CLI records the feedback-resolved row
+  # that gate build requires, and marks the reopen answered so task show stops printing it
+  local fid
+  for fid in $(python3 -c "
+import json, sys
+try:
+    t = (json.load(open(sys.argv[1])).get('tasks') or {}).get(sys.argv[2]) or {}
+except Exception:
+    t = {}
+print(' '.join(str(r['feedback']) for r in (t.get('reopened') or []) if r.get('feedback') and not r.get('resolved')))" "$GROUPS_FILE" "$n"); do
+    _json_append "$(_evidence_file build)" "$(python3 -c "
+import json, sys, time
+print(json.dumps({'claim': 'feedback #%s: applied — Task %s re-ran after group reopen and passed its task gate' % (sys.argv[1], sys.argv[2]),
+                  'cmd': None, 'exit_code': 0, 'artifact': None, 'sha256': None, 'value': None, 'severity': None,
+                  'phase': 'feedback-resolved', 'scenario': None, 'criterion': None, 'label': 'PROVEN', 'task': int(sys.argv[2]),
+                  'executed_by': 'cli', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}))" "$fid" "$n")"
+  done
+  _groups_mutate "
+for r in (d['tasks'][a[0]].get('reopened') or []):
+    if r.get('feedback'): r['resolved'] = True
+" "$n" || return 1
   echo "PASS: Task $n"
   echo "NEXT: schedule"
 }
@@ -3592,6 +3680,20 @@ if c: dep_bad.append('Depends cycle: ' + c)
 gdeps = {g['id']: g['depends'] for g in groups}
 c = find_cycle(list(gids), gdeps, str)
 if c: dep_bad.append('Depends cycle: ' + c)
+# F3: a group's worktree starts from the feature branch plus the groups it depends on, so a task that depends on a
+# task of another group needs its own group to depend (transitively) on that group, or it runs without that work
+def gclosure(g):
+    seen, stack = set(), list(gdeps.get(g, []))
+    while stack:
+        x = stack.pop()
+        if x in seen: continue
+        seen.add(x); stack.extend(gdeps.get(x, []))
+    return seen
+for n, t in sorted(by_n.items()):
+    for d in t['depends']:
+        dg = (by_n.get(d) or {}).get('group')
+        if dg and t['group'] and dg != t['group'] and dg not in gclosure(t['group']):
+            dep_bad.append('Task %d (%s) depends on Task %d (%s) but %s does not depend on %s' % (n, t['group'], d, dg, t['group'], dg))
 row('dependencies', dep_bad, 'no cycles, no unknown dependencies')
 # A precedes B when A is a transitive task ancestor of B, or B's group transitively depends on A's group.
 def closure(start, edges, ok):
@@ -4185,6 +4287,13 @@ cmd_gate() {
   [[ "$ok" == "true" ]] || { echo "FAIL: usage: temper gate <intent|plan|design|build|review|check|commit>" >&2; return 1; }
 
   local spec_path; spec_path="$(_spec_path "$spec_path_override")"
+  # A run whose state names its spec but lost spec_path was rewritten by something other than this CLI (an agent
+  # hand-writing build-state.json); the gates would silently skip every spec-based row, so refuse instead
+  if [[ -z "$spec_path" && -f "$STATE_FILE" && -n "$(cmd_state_get spec "")" ]]; then
+    echo "FAIL: the run state has no spec_path (build-state.json was written by something other than the temper CLI)" >&2
+    echo "      repair it: temper state set spec_path .temper/specs/$(cmd_state_get spec ""), then run the gate again" >&2
+    return 1
+  fi
   # intent and design treat an ABSENT artifact as a legitimate skip — which makes an
   # EMPTY spec path poisonous for them: with no state and no --spec-path, the gate
   # would test -f "/intent.md", find nothing, and record a vacuous PASS that never
