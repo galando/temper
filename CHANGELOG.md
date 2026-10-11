@@ -5,11 +5,13 @@ All notable changes to Temper are documented here. The plugin version lives in
 
 ## v9.7.0: Build runs in groups of small Haiku task agents
 
-Build now runs as groups of small tasks, each handed to a slim Haiku agent, with one human
-review per group instead of one gate per task. It is the only Build mode: the per-task Build and
-the `build.mode` key are gone. `agents/build.md` stays as the fix pass a Review or Check loop back
-to Build launches on the feature branch. The loop the orchestrator runs is in
-`reference/build-groups.md`, read by `/temper` and by the standalone `/temper:build`.
+Build now runs by default as groups of small tasks, each handed to a slim Haiku agent, with one
+human review per group instead of one gate per task. `build.mode: per-task` in
+`.claude/temper.config` brings back the previous Build (one task per launch on the build model,
+a gate after every task, no Haiku; its loop is `reference/build-per-task.md`). In grouped Build,
+`agents/build.md` is the fix pass a Review or Check loop back to Build launches on the feature
+branch. The grouped loop the orchestrator runs is in `reference/build-groups.md`, read by
+`/temper` and by the standalone `/temper:build`.
 
 **Why it is the default (one measured run, pyjokes).** The same feature ("list N jokes that contain
 a substring", API and CLI) was built twice from one commit with this branch's Temper, once per task
@@ -41,7 +43,8 @@ comparison procedure in `docs/grouped-build.md` stays for the next ones.
 task declares its files and dependencies, and each group carries a `**Context:**` block (shared
 files, interfaces, conventions) that `temper task show` hands to its task agents. The CLI keeps one
 git worktree per group (`.claude/worktrees/temper-{slug}-{G}`, branch `temper/{slug}/{G}`).
-- New config keys under `build:` in `.claude/temper.config`: `grouped.task-model` (default `claude-haiku-5-5`), `grouped.escalation-model` (default
+- New config keys under `build:` in `.claude/temper.config`: `mode` (`grouped`, the default, or
+  `per-task`), `grouped.task-model` (default `claude-haiku-5-5`), `grouped.escalation-model` (default
   `sonnet`) and `grouped.max-parallel` (default 4).
 - `temper schedule` prints the ready set (dependencies met, group not parked, declared files
   disjoint from running tasks, within `max-parallel`). The orchestrator launches every printed task

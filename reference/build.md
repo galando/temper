@@ -25,7 +25,10 @@ rules, read related existing code, skip branch verification (the user decides).
 task is one task agent following `${CLAUDE_PLUGIN_ROOT}/agents/build-task.md`, and this page is the
 TDD method behind that brief. The Build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) runs it as a
 fix pass when Review or Check loops back to Build: every task is already done, so it fixes what
-the feedback file names, test-first, and does not re-run the tasks.
+the feedback file names, test-first, and does not re-run the tasks. With `build.mode: per-task`
+(the previous Build) the Build brief runs one task per launch instead: a `Checkpoint: task {N}.`
+line, plus `Checkpoint feedback #{K}: {text}` lines that it answers first with
+`--phase feedback-resolved` rows, then only task N; without a checkpoint line, every remaining task.
 
 For each task in `tasks.md`:
 

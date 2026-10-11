@@ -32,7 +32,7 @@ always parks. It does allow the two local, CLI-made writes of grouped Build: the
 commits of a task's declared files on its `temper/{slug}/{G}` group branch (`temper task
 gate`) and the local `temper integrate` merge into the feature branch. Besides the `wip:` stage checkpoints (see Operational safety), nothing else commits.
 
-**Groups (Build runs in groups):** each group's gate (`temper group gate G`) auto-continues
+**Groups (grouped Build, the default):** each group's gate (`temper group gate G`) auto-continues
 on PASS, with no `AskUserQuestion`; the group panel still prints. **Change** (`temper group
 reopen`) and **Stop** stay interactive-only. A parked group (a task failed its Haiku retry
 and the Sonnet escalation) parks the run once no other group is ready; independent groups

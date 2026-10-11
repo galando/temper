@@ -283,8 +283,8 @@ When a gate FAILs and the user selects "Loop back":
    the next gate's count. If blocked, don't offer the loop option again this run; fall
    through to Override / Save.
 2. Re-launch the upstream stage's Agent (same template as its first launch), adding one
-   line to its prompt: *"Feedback re-entry: {reason}. Fix this, then continue."* For Build
-   that is the fix pass in `${CLAUDE_PLUGIN_ROOT}/reference/build-groups.md`, not the group loop.
+   line to its prompt: *"Feedback re-entry: {reason}. Fix this, then continue."* For grouped
+   Build that is the fix pass in `${CLAUDE_PLUGIN_ROOT}/reference/build-groups.md`, not the group loop.
 3. When it returns, re-run the downstream gate that triggered the loop.
 
 **With the Temper bar** a loop moves the run, and only the person decides that (with
@@ -441,9 +441,12 @@ decision log; only sections `design.md` actually has) / Save / Other.
 
 ---
 
-## Stage 2: Build (in groups)
+## Stage 2: Build (in groups by default)
 
-Read `${CLAUDE_PLUGIN_ROOT}/reference/build-groups.md` once, at the first Build launch, and
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get build.mode` once, at the first Build launch.
+When it prints `per-task`, read `${CLAUDE_PLUGIN_ROOT}/reference/build-per-task.md` and run
+its loop instead of the one below (the previous Build: one task per launch on the build model,
+a gate after every task). Otherwise read `${CLAUDE_PLUGIN_ROOT}/reference/build-groups.md` once and
 run its loop: the base sha, one worktree per group, every ready task launched in one turn on
 the task model the schedule prints, `temper task gate` after each, one human gate per group,
 `temper integrate`, then the Build completion gate. Its "Fix pass" section is what a Review or

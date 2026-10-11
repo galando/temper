@@ -8,7 +8,8 @@ description: "Execute plan with TDD and quality gates"
 
 ## Execution
 
-> **The loop:** Read `${CLAUDE_PLUGIN_ROOT}/reference/build-groups.md` and run it. The method
+> **The loop:** Read `${CLAUDE_PLUGIN_ROOT}/reference/build-groups.md` and run it (unless
+> `build.mode` is `per-task`: see **Per-task mode** below). The method
 > each task agent follows is `${CLAUDE_PLUGIN_ROOT}/agents/build-task.md`; the TDD methodology
 > behind it is `${CLAUDE_PLUGIN_ROOT}/reference/build.md`.
 
@@ -39,6 +40,27 @@ branch (create it if on main). The task agents run in their own context whatever
 
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` (the loop's step 8), report the group
 panel, then auto-chain → `/temper:review` → `/temper:check` and ask to commit.
+
+### Per-task mode (`build.mode: per-task`)
+
+When `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get build.mode` prints `per-task`, skip the
+grouped loop and run the previous Build instead, inline in this context: read
+`${CLAUDE_PLUGIN_ROOT}/reference/build.md` and follow it task by task.
+
+1. Load the plan from `.temper/specs/{feature}/tasks.md` (the flat per-task layout) and verify
+   the feature branch (create it if on main).
+2. For each task: cross-repo code search first when a search tool is connected (record
+   `"code_search"` in build-context.json), then the test from the intent.md scenario (RED),
+   record it with `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase red`,
+   implement (GREEN), record it with `--phase green`, validate, tick the task's box.
+3. Commit per GREEN scenario: `git add {paths touched}`, then a SEPARATE
+   `git commit -m "feat({slug}): {scenario} [AC-NN]"`; never `git add -A`, never `--no-verify`;
+   an infrastructure-only task makes no commit.
+4. With `stages.subprocess: true`, launch `${CLAUDE_PLUGIN_ROOT}/agents/build.md` on the model
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper model build` prints instead of working inline, and print
+   its box verbatim.
+5. After all tasks: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build --spec-path .temper/specs/{feature-slug}`,
+   then auto-chain → `/temper:review` → `/temper:check` and ask to commit.
 
 ### Active Skills
 

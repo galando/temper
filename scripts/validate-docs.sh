@@ -197,11 +197,11 @@ else
   echo "$CHOREO" | sed 's/^/  /'
 fi
 
-# 7. Grouped Build docs: the user guide exists, says it is the only Build mode, names every run
+# 7. Grouped Build docs: the user guide exists, says it is the default and how to go back, names every run
 # state file, is linked from getting-started.md, and ADR 0011 is Accepted.
 GB="$REPO_ROOT/docs/grouped-build.md"
 ADR="$REPO_ROOT/docs/decisions/0011-grouped-build.md"
-if [[ -f "$GB" ]] && grep -q 'the only Build mode' "$GB" && ! grep -q 'build\.mode: grouped' "$GB" \
+if [[ -f "$GB" ]] && grep -q 'the default Build' "$GB" && grep -q 'mode: per-task' "$GB" \
    && grep -q '\.temper/groups\.json' "$GB" && grep -q '\.temper/usage\.json' "$GB" && grep -q '\.temper/\.lock/' "$GB" \
    && grep -q 'temper group report --json' "$GB" && grep -q 'temper report --json' "$GB" \
    && grep -q 'grouped-build.md' "$REPO_ROOT/docs/getting-started.md" \

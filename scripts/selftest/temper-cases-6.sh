@@ -337,3 +337,13 @@ assert_eq "spec_path lost: gate check refuses and prints the repair" "1|1" "$rc|
 assert_eq "build brief: never tells the build agent to write build-state.json" "0" \
   "$(grep -c 'write `.temper/build-state.json`' "$REPO_ROOT/reference/build.md")"
 setup
+
+# build.mode: per-task (the previous Build): its loop page, its template example, and the orchestrator choice
+setup; printf 'build:\n  mode: per-task\n' >> .claude/temper.config; rm -f .temper/groups.json
+awk '/^<!-- per-task-example:begin/{f=1;next} /^<!-- per-task-example:end/{f=0} f' "$REPO_ROOT/templates/tasks.md" > .temper/specs/demo/tasks.md
+assert_eq "per-task template: one - [ ] box under every task" "yes" \
+  "$([[ "$(grep -c '^### Task' .temper/specs/demo/tasks.md)" -gt 0 && "$(grep -c '^### Task' .temper/specs/demo/tasks.md)" == "$(sed -n '/^## Tasks/,$p' .temper/specs/demo/tasks.md | grep -c '^- \[ \] done')" ]] && echo yes || echo no)"
+assert_eq "per-task template: the plan gate shows no grouped row" "0" "$("$TEMPER" gate plan 2>&1 | grep -c 'grouped plan\|integration command')"
+assert_eq "orchestrator: Stage 2 reads the per-task loop page when build.mode is per-task" "1|1" \
+  "$(grep -c 'reference/build-per-task.md' "$REPO_ROOT/commands/temper.md" | sed 's/^[1-9][0-9]*$/1/')|$(grep -c 'Checkpoint: task {N}' "$REPO_ROOT/reference/build-per-task.md" | sed 's/^[1-9][0-9]*$/1/')"
+setup

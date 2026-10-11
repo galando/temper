@@ -1,10 +1,8 @@
 # --- Grouped Build (9.7.0): config keys and task model resolution ---
-# Build always runs in groups: there is no per-task mode to switch to
+# Build runs in groups by default; build.mode: per-task brings back the previous Build
 setup
 assert_eq "model --all prints the 8 stage lines plus task= and task-escalation=" "10|1|1" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep -c '^task=')|$("$TEMPER" model --all | grep -c '^task-escalation=')"
-printf 'build:\n  mode: per-task\n' >> .claude/temper.config
-assert_eq "a leftover build.mode: per-task changes nothing" "10" "$("$TEMPER" model --all | wc -l | tr -d ' ')"
 
 # Scenario: Task and escalation models resolve from config with defaults [AC-06, AC-01]
 setup
@@ -329,9 +327,21 @@ sg_setup; mkdir -p "$WORKDIR/gj-target"; echo '{}' > "$WORKDIR/gj-target/g.json"
 assert_exit "a symlinked .temper/groups.json is refused" 3 "$TEMPER" schedule
 rm -f .temper/groups.json
 
-# a leftover build.mode: per-task is ignored: the schedule still prints the ready set
-setup; gp_base; printf 'build:\n  mode: per-task\n' >> .claude/temper.config; sg_state '{}'
-assert_eq "schedule ignores a leftover build.mode: per-task" "1,3" "$(sg_ready)"
+# build.mode: per-task (the previous Build): the grouped commands are off and write nothing
+setup; gp_base; printf 'build:\n  mode: per-task\n' >> .claude/temper.config; rm -f .temper/groups.json
+for c in schedule "group start G1" "task start 1" "task show 1" integrate "group report"; do
+  # shellcheck disable=SC2086
+  out="$("$TEMPER" $c 2>&1)"; rc=$?
+  assert_eq "per-task mode: temper $c exits 1 naming the mode" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'build.mode: per-task')"
+done
+assert_eq "per-task mode: no groups.json is written" "no" "$([[ -e .temper/groups.json ]] && echo yes || echo no)"
+# a flat tasks.md passes the plan gate with no grouped row, and gate build has no integration row
+printf '# Tasks: demo\n\n### Task 1: Alpha [SEQUENTIAL]\n**File:** src/a.sh\n- [x] done\n' > .temper/specs/demo/tasks.md
+assert_exit "per-task mode: a flat tasks.md passes the plan gate" 0 "$TEMPER" gate plan
+assert_eq "per-task mode: the plan gate shows no grouped row" "0" "$(gp_has 'grouped plan\|declared files\|group context\|integration command')"
+assert_eq "per-task mode: gate build has no integration row" "0" "$("$TEMPER" gate build 2>&1 | grep -c integration)"
+sed -i.bak 's/mode: per-task/mode: grouped/' .claude/temper.config
+assert_eq "build.mode: grouped (the default, written out) checks the flat tasks.md as a grouped plan" "1" "$(gp_has 'grouped plan')"
 setup
 
 # --- Grouped Build (9.7.0): group worktrees (temper group start) ---
@@ -912,9 +922,10 @@ assert_eq "integrate: a run without tasks.md (a /temper:fix run) has no integrat
 
 # --- Grouped Build (9.7.0): max-blast-radius at the autonomy commit gate (D-01) ---
 # Scenario: Autonomy commit gate in grouped mode compares changes to the declared union [AC-11]
-gc_setup() { # gc_setup <grouped|fix>: autonomous run, max-blast-radius 3, four declared files changed
+gc_setup() { # gc_setup <grouped|fix|per-task>: autonomous run, max-blast-radius 3, four declared files changed
   gp_setup
-  [[ "$1" == "grouped" ]] || rm -f .temper/specs/demo/tasks.md   # a /temper:fix run has no tasks.md
+  [[ "$1" != "fix" ]] || rm -f .temper/specs/demo/tasks.md   # a /temper:fix run has no tasks.md
+  [[ "$1" != "per-task" ]] || sed -i.bak 's/mode: grouped/mode: per-task/' .claude/temper.config
   sed 's/max-blast-radius: 15/max-blast-radius: 3/' .claude/temper.config > .claude/temper.config.new && mv .claude/temper.config.new .claude/temper.config
   "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
   # setup keeps the work tree, so the four files an earlier gc_setup left would be committed into this
@@ -937,6 +948,10 @@ assert_eq "grouped commit gate: one undeclared file FAILs the row and names it" 
 gc_setup fix; sed -i.bak 's/max-blast-radius: 3/max-blast-radius: 1/' .claude/temper.config
 gc_out="$(gc_row)"
 assert_eq "a run without tasks.md keeps the count rule (changed entries > 1 fail) [$gc_out]" "1|0" \
+  "$(printf '%s\n' "$gc_out" | grep -c 'exceeds autonomy.max-blast-radius=1')|$(printf '%s\n' "$gc_out" | grep -c 'all declared')"
+gc_setup per-task; sed -i.bak 's/max-blast-radius: 3/max-blast-radius: 1/' .claude/temper.config
+gc_out="$(gc_row)"
+assert_eq "per-task mode keeps the count rule at the commit gate [$gc_out]" "1|0" \
   "$(printf '%s\n' "$gc_out" | grep -c 'exceeds autonomy.max-blast-radius=1')|$(printf '%s\n' "$gc_out" | grep -c 'all declared')"
 gc_setup grouped; "$TEMPER" state set run_mode interactive >/dev/null 2>&1
 assert_eq "grouped commit gate: a non-autonomous run has no blast radius row" "0" "$(gc_row | wc -l | tr -d ' ')"
@@ -1103,8 +1118,8 @@ assert_eq "template: the grouped example is non-empty" "yes" "$([[ -s .temper/sp
 assert_exit "template: the grouped example passes temper gate plan in grouped mode" 0 "$TEMPER" gate plan
 assert_eq "template: the grouped example declares groups, Integration, Interfaces and Context" "4" \
   "$(for k in '^## Group G1' '^\*\*Integration:\*\*' '^\*\*Interfaces:\*\*' '^\*\*Context:\*\*'; do grep -qE -- "$k" .temper/specs/demo/tasks.md && echo x; done | wc -l | tr -d ' ')"
-assert_eq "plan brief: one step points at the grouped format, with no mode switch" "1|0" \
-  "$(grep -c 'in the grouped format' "$REPO_ROOT/agents/plan.md" | tr -d ' ')|$(grep -c 'build.mode' "$REPO_ROOT/agents/plan.md" | tr -d ' ')"
+assert_eq "plan brief: one step points at the grouped format, and at the flat layout for build.mode per-task" "1|1" \
+  "$(grep -c 'in the grouped format' "$REPO_ROOT/agents/plan.md" | tr -d ' ')|$(grep -c 'config get build.mode' "$REPO_ROOT/agents/plan.md" | tr -d ' ')"
 assert_eq "plan reference: documents the grouped format, budgets and pack distilling" "4" \
   "$(for k in '^## Grouped tasks' '4096' '1536' 'distil'; do grep -qE -- "$k" "$REPO_ROOT/reference/plan.md" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "config default: commented build block names every grouped key" "4" \

@@ -21,7 +21,7 @@
 #                                                 over .temper/metrics.json history
 #   temper metrics append <series> <value>        append a numeric point to <series>_history
 #   temper config get <dot.path> [default]        read temper.config (for hook and CI scripts)
-# Grouped Build (Build always runs in groups):
+# Grouped Build (the default; each of these exits 1 with build.mode: per-task):
 #   temper schedule [--json]                      the launchable tasks, one JSON line each
 #   temper group <start|gate|reopen|report> ..    worktree, group verdict, Change, measurement report [--json]
 #   temper task <start|show|test|gate> N          one task's lifecycle (test runs the declared command)
@@ -560,6 +560,11 @@ _resolve_model() { # <stage> -> config override, else frontmatter default, else 
   local override; override="$(_cfg_get "models.${1}" "")"
   [[ -n "$override" ]] && { echo "$override"; return; }
   _agent_default_model "$1"
+}
+
+_per_task() { # build.mode: per-task brings back the previous Build (one task per launch on the build model);
+              # absent or anything else = the default grouped Build
+  [[ "$(_cfg_get build.mode "")" == "per-task" ]]
 }
 
 _resolve_task_model() { # grouped task agent: config, else agents/build-task.md frontmatter, else the constant
@@ -1986,6 +1991,10 @@ except Exception:
 # `task start` (a later task) changes run state. Prints one JSON line per launchable task, ordered by
 # group then task number; with nothing launchable a trailing {"waiting"...} line, or {"done"...}.
 cmd_schedule() { # temper schedule [--json]
+  if _per_task; then
+    echo "FAIL: Build runs per task here (build.mode: per-task); the grouped commands are off" >&2
+    return 1
+  fi
   local spec_path; spec_path="$(_spec_path "")"
   if [[ -z "$spec_path" || ! -f "$spec_path/tasks.md" ]]; then
     echo "FAIL: no tasks.md for the active run (temper state init, then plan)" >&2
@@ -2568,6 +2577,10 @@ PY
 
 cmd_group() {
   local sub="${1:-}"; shift || true
+  if _per_task; then
+    echo "FAIL: Build runs per task here (build.mode: per-task); the grouped commands are off" >&2
+    return 1
+  fi
   case "$sub" in
     start) cmd_group_start "$@" ;;
     gate) cmd_group_gate "$@" ;;
@@ -3470,6 +3483,10 @@ d['integration'] = {'verdict': a[0], 'reason': a[1], 'group': a[2] or None,
 }
 
 cmd_integrate() {
+  if _per_task; then
+    echo "FAIL: Build runs per task here (build.mode: per-task); the grouped commands are off" >&2
+    return 1
+  fi
   local spec_path slug feature cur
   spec_path="$(_spec_path "")"
   slug="$(_spec_slug "$spec_path")"
@@ -3575,6 +3592,10 @@ except Exception:
 
 cmd_task() {
   local sub="${1:-}"; shift || true
+  if _per_task; then
+    echo "FAIL: Build runs per task here (build.mode: per-task); the grouped commands are off" >&2
+    return 1
+  fi
   case "$sub" in
     start) cmd_task_start "$@" ;;
     show) cmd_task_show "$@" ;;
@@ -3786,8 +3807,8 @@ gate_plan() {
       all_pass=0
     fi
   fi
-  # Grouped Build: the grouped requirement rows of the run's tasks.md
-  if [[ -f "$spec_path/tasks.md" ]]; then
+  # Grouped Build (the default): the grouped requirement rows of the run's tasks.md
+  if ! _per_task && [[ -f "$spec_path/tasks.md" ]]; then
     local g_line g_ok
     while IFS= read -r g_line; do
       [[ -n "$g_line" ]] || continue
@@ -3861,7 +3882,7 @@ PY
     all_pass=0
   fi
   # Build runs in groups: a run with a tasks.md is integrated by `temper integrate` (a /temper:fix run has none)
-  if [[ -n "$spec_path" && -f "$spec_path/tasks.md" ]]; then
+  if ! _per_task && [[ -n "$spec_path" && -f "$spec_path/tasks.md" ]]; then
     local integ
     integ="$(python3 -c "
 import json, sys
@@ -4200,7 +4221,7 @@ print('yes' if any(o.get('stage') == sys.argv[2] for o in d) else 'no')
     else
       changed_n=$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
     fi
-    if [[ -f "$(_spec_path "")/tasks.md" ]]; then
+    if ! _per_task && [[ -f "$(_spec_path "")/tasks.md" ]]; then
       # D-01: in grouped mode a group may legitimately exceed the count, so the row compares the
       # changed set (base_sha-relative plus uncommitted) with the union of declared files instead.
       local gspec; gspec="$(_spec_path "")"
