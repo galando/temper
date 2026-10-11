@@ -59,6 +59,8 @@ export type ActionContext = {
   // The task the Build phase works on, from tasks.md, and how many tasks are not done (null: unknown).
   task?: { n: number; of: number } | null
   tasksLeft?: number | null
+  // Build runs in groups (groups.json exists): a checkpoint continues the group loop, not one task.
+  grouped?: boolean
   // Check wrote config-suggestions.json in the spec folder.
   configSuggestions?: boolean
   // The person's last move is not recorded in the CLI yet (Snapshot.sync.pending).
@@ -115,8 +117,8 @@ const READY_DESC: Record<Phase, string> = {
   fix: 'Run the checks again.',
 }
 
-// Build is gated at every checkpoint (one task per launch): a check that fails while tasks are still
-// open is no failure, only a checkpoint. The next step is the next task.
+// Build is gated at every checkpoint (one task per launch, or one group in grouped Build): a check that fails
+// while tasks are still open is no failure, only a checkpoint. The next step is the next task or group.
 const isCheckpoint = (phase: Phase, ctx: ActionContext): boolean => {
   const left = ctx.tasksLeft
   return phase === 'build' && !ctx.ready && Boolean(ctx.task) && (left === undefined ? ctx.gate !== 'fail' : (left ?? 0) > 0)
@@ -132,6 +134,7 @@ function main(phase: Phase, ctx: ActionContext): Action {
     return command('1', 'continue', `Continue to ${next}`, READY_DESC[phase], phase === 'intent' || phase === 'plan' ? 'approve' : 'next', false, true, `To ${next}`)
   }
   if (isCheckpoint(phase, ctx) && ctx.task) {
+    if (ctx.grouped) return launch('1', 'run-stage', 'Continue with the groups', 'Claude runs the ready tasks and stops at the next group gate.')
     return launch('1', 'run-stage', `Continue with task ${ctx.task.n}`, 'Claude builds the task and stops for you.')
   }
   const up = UPSTREAM[phase]

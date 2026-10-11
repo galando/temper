@@ -563,7 +563,7 @@ export function composeText(snap: Snapshot): string {
 }
 
 export const viewOf = (snap: Snapshot, cli?: string): View =>
-  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, sync: snap.sync.line, pending: snap.sync.pending !== null, enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false, ...(cli !== undefined ? { cli } : {}) })
+  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, grouped: snap.groupedActive, sync: snap.sync.line, pending: snap.sync.pending !== null, enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false, ...(cli !== undefined ? { cli } : {}) })
 
 // Mirrors the folded state into `$.state` for drawing and compaction.
 export async function publish(io: Io, snap: Snapshot): Promise<void> {

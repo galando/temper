@@ -50,6 +50,8 @@ const ALLOWED_EXTRA = [
   'Loop back to Plan',
   // The person's last move is not recorded in the CLI yet: key 1 records it again (no new choice).
   'Record my choice',
+  // Grouped Build: a checkpoint continues the group loop (reference/build-groups.md), not one task.
+  'Continue with the groups',
 ]
 const allowedLabel = (label: string): boolean => {
   const l = label.toLowerCase()
@@ -124,6 +126,11 @@ describe('keys 1 to 4 per phase', () => {
   test('Build checkpoint: Continue with task N, Change, Stop', () => {
     expect(labels('build', CHECKPOINT)).toEqual(['Continue with task 2', 'Change', 'Stop'])
     expect(menu('build', CHECKPOINT)).toEqual(['Grill me', 'Teach me', 'Save for later'])
+  })
+
+  test('grouped Build checkpoint: Continue with the groups, Change, Stop', () => {
+    expect(labels('build', { ...CHECKPOINT, grouped: true })).toEqual(['Continue with the groups', 'Change', 'Stop'])
+    expect(actionsFor('build', { ...CHECKPOINT, grouped: true }).primary[0]?.resume).toBe(true)
   })
 
   test('Build completion gate: Continue to Review, Teach me, Grill me; Loop back to Plan under More', () => {

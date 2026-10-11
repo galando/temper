@@ -61,6 +61,8 @@ export type ViewInput = {
   configSuggestions?: boolean
   // Tasks of tasks.md that are not done; null when unknown, left out when not read.
   tasksLeft?: number | null
+  // Build runs in groups (see ActionContext.grouped).
+  grouped?: boolean
   // The sync line and whether a move of the person waits to be recorded (Snapshot.sync).
   sync?: string | null
   pending?: boolean
@@ -106,6 +108,7 @@ export function buildView(input: ViewInput): View {
     paused: s.paused,
     task: input.task,
     tasksLeft: input.tasksLeft,
+    grouped: input.grouped ?? false,
     configSuggestions: input.configSuggestions ?? false,
     pending: input.pending ?? false,
     ...(input.cli !== undefined ? { cli: input.cli } : {}),
