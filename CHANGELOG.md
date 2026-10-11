@@ -75,6 +75,17 @@ not asserted by an agent:
   Exception: an agent's edit to a running sibling's declared file lands with that sibling's commit (the
   sibling's own commit takes whatever its file holds), so it is not undone by the failing task's FAIL; the
   sibling's own gate is where it shows.
+- The undo, tightened after a second focused review: all git retries of one FAIL (reset or undo, then the
+  restore) share a single wall-clock budget of about five seconds, so a stale `index.lock` costs seconds in all
+  and the park names the lock and the file to delete; every plumbing diff and apply neutralises the user's
+  colour, context and prefix settings; a merge commit is undone against its first parent (the commits it brought
+  in are not undone again, and the printed hint uses `git revert -m 1` for it), and a commit whose paths are
+  already back at their earlier content is skipped; once a group is parked on a foreign commit, a running
+  sibling is not blamed for that commit or for the files it touched, and the park reason is kept until a
+  `group reopen`; a finished sibling's file is compared and written through git (`hash-object` and
+  `checkout-index`: eol filters and the repository's hash algorithm), never by raw bytes; nothing is written or
+  removed through a symbolic link a foreign commit put in place of a directory (the group parks and names it);
+  the work is limited to the paths the foreign commits touched, not the whole tree once per commit.
 - The plan digest is taken at the first `group start`; if `tasks.md` changes afterwards (`**File:**`,
   `**Depends:**`, `**Test:**`, group Validate/Interfaces/Context, Integration), every grouped command,
   including `group reopen`, refuses to run. Declared paths are matched exactly and the plan gate
