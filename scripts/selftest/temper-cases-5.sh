@@ -475,10 +475,16 @@ try:
             files[n] = re.findall(r'`([^`]+)`', l)
 except Exception:
     pass
-run = sorted(((v.get('started_at') or '', int(k), v.get('worktree')) for k, v in (d.get('tasks') or {}).items()
+import os
+def made(w):  # started_at has one-second resolution; two tasks started in the same second are told apart by when
+    try:      # their worktree was made (its .git file is written once, by git worktree add)
+        return os.stat(os.path.join(w, '.git')).st_mtime_ns
+    except OSError:
+        return 0
+run = sorted(((v.get('started_at') or '', made(v.get('worktree')), int(k), v.get('worktree')) for k, v in (d.get('tasks') or {}).items()
               if v.get('status') == 'running' and v.get('worktree')), reverse=True)
-own = [w for _, k, w in run if path and path in files.get(k, [])]
-print(own[0] if own else (run[0][2] if run else fallback))
+own = [w for _, _, k, w in run if path and path in files.get(k, [])]
+print(own[0] if own else (run[0][3] if run else fallback))
 PY
 }
 st_edit() { # st_edit <task-file-relative-path>: write a file into the running task's worktree (st_twt)
