@@ -387,4 +387,68 @@ assert_eq "task brief: tests call the real code, RED fails on an assertion" "1|1
 # Plan: few groups with parallel tasks, and the complexity tier counts production files only
 assert_eq "plan reference: few groups, parallel tasks, and production files only for the tier" "1|1" \
   "$(grep -c '^\*\*Few groups, parallel tasks\.\*\*' "$REPO_ROOT/reference/plan.md")|$(grep -c '^\*\*Count production files only\.\*\*' "$REPO_ROOT/reference/plan.md")"
+# --- Second whole-diff review of one worktree per task: kept work, accepted commits, the reopen check, pytest RED, merge parks ---
+d_gfile() { git -C "$ST_WT" show "HEAD:$1" 2>/dev/null; }
+d_on_g1() { git -C "$ST_WT" merge-base --is-ancestor "$1" HEAD >/dev/null 2>&1 && echo yes || echo no; }
+# an accepted agent commit, and the uncommitted work kept beside it, both reach the group branch when the reused task passes
+d_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; d_red 1; st_edit src/a.sh; d_commit src/a.sh
+FSHA="$(git -C "$T1W" rev-parse HEAD)"; echo "kept work" >> "$T1W/src/a.sh"; d_green 1
+"$TEMPER" task gate 1 >/dev/null 2>&1
+"$TEMPER" group reopen G1 --task 1 --accept-foreign "${FSHA:0:7}" --reason "reviewed, it stays" >/dev/null 2>&1
+"$TEMPER" task start 1 >/dev/null 2>&1
+assert_eq "reuse: a reused task worktree starts with an empty snapshot (its dirty work is this attempt's)" "{}" "$(st_field 1 snapshot)"
+d_red 1; d_green 1
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "reuse: the task passes, the accepted commit is on the group branch and the kept work is merged" "0|yes|kept work" \
+  "$rc|$(d_on_g1 "$FSHA")|$(d_gfile src/a.sh | tail -1)"
+assert_eq "reuse: the task's recorded commit is its branch tip, on the group branch" "yes|yes" \
+  "$([[ -n "$(st_field 1 commit)" && "$(st_field 1 commit)" != "None" ]] && echo yes || echo no)|$(d_on_g1 "$(st_field 1 commit)")"
+# an accepted commit with no further change is still merged (nothing new to commit)
+d_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; d_red 1; st_edit src/a.sh; d_commit src/a.sh
+FSHA="$(git -C "$T1W" rev-parse HEAD)"; d_green 1
+"$TEMPER" task gate 1 >/dev/null 2>&1
+"$TEMPER" group reopen G1 --task 1 --accept-foreign "${FSHA:0:7}" --reason "reviewed, it stays" >/dev/null 2>&1
+"$TEMPER" task start 1 >/dev/null 2>&1; d_red 1; d_green 1
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "accept: a pass with only the accepted commit merges it and records it as the task's commit" "0|yes|$FSHA" \
+  "$rc|$(d_on_g1 "$FSHA")|$(st_field 1 commit)"
+# reopening another task does not clear a park whose commit sits in a kept task worktree
+d_setup
+"$TEMPER" task start 2 >/dev/null 2>&1; d_red 2; st_edit src/b.sh; d_green 2; "$TEMPER" task gate 2 >/dev/null 2>&1
+"$TEMPER" task start 1 >/dev/null 2>&1; d_red 1; st_edit src/a.sh; d_commit src/a.sh
+FSHA="$(git -C "$T1W" rev-parse HEAD)"; d_green 1; "$TEMPER" task gate 1 >/dev/null 2>&1
+out="$("$TEMPER" group reopen G1 --task 2 2>&1)"; rc=$?
+assert_eq "reopen: naming another task is refused while the parked commit is in Task 1's kept worktree" "1|1|parked" \
+  "$rc|$(printf '%s' "$out" | grep -q "^FAIL: group G1 is parked on.*${FSHA:0:7}" && echo 1)|$(d_pfield status)"
+out="$("$TEMPER" group reopen G1 --task 2 --accept-foreign "${FSHA:0:7}" --reason "reviewed, it stays" 2>&1)"; rc=$?
+assert_eq "reopen: a sha accepted from any kept worktree of the group is accepted" "0|running" "$rc|$(d_pfield status)"
+# pytest at the start of the Test command: exit 2 is no RED
+gg_setup
+mkdir -p "$WORKDIR/fakebin"; printf '#!/bin/sh\nexit ${ST_EXIT:-0}\n' > "$WORKDIR/fakebin/pytest"; chmod +x "$WORKDIR/fakebin/pytest"
+gp_mut "\`$FX_T2\`" "\`pytest -q tests/a_test.py\`"
+"$TEMPER" task start 1 >/dev/null 2>&1
+PATH="$WORKDIR/fakebin:$PATH" ST_EXIT=2 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; PATH="$WORKDIR/fakebin:$PATH" ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "RED: a Test command that starts with pytest and exits 2 is no RED" "1|1" \
+  "$rc|$(printf '%s' "$out" | grep -c 'pytest exits 1')"
+# a pass that cannot be merged parks with git's reason and records the CLI's commit as its own; the reopen then works
+gg_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+mkdir -p "$ST_WT/src"; echo "in the way" > "$ST_WT/src/a.sh"
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+TSHA="$(git -C "$T1W" rev-parse HEAD)"
+assert_eq "merge park: the gate FAILs, parks, and the reason carries git's own line" "1|parked|1" \
+  "$rc|$(d_pfield status)|$(printf '%s' "$out" | grep -c 'could not be merged.*untracked')"
+assert_eq "merge park: the CLI's task commit is recorded as the CLI's" "1" \
+  "$(python3 -c "import json,sys; print(int(sys.argv[1] in json.load(open('.temper/groups.json')).get('cli_commits', [])))" "$TSHA")"
+rm -f "$ST_WT/src/a.sh"
+assert_exit "merge park: once the file is out of the way the reopen is accepted" 0 "$TEMPER" group reopen G1 --task 1
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "merge park: the rerun passes and merges the kept commit" "0|yes|work src/a.sh" "$rc|$(d_on_g1 "$TSHA")|$(d_gfile src/a.sh)"
 setup

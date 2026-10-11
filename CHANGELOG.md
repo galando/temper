@@ -76,8 +76,9 @@ git worktree per group (`.claude/worktrees/temper-{slug}-{G}`, branch `temper/{s
 **New CLI subcommands.** `temper schedule`; `temper group start|gate|reopen|report`;
 `temper task start|show|test|gate`; `temper integrate`; `temper model task|task-escalation`; and
 `temper usage add`. `temper task test` runs only the task's declared Test command, never the
-whole suite. The CLI makes the local task commits in the group worktree and the `integrate` merge
-into the feature branch. The autonomy invariant is narrowed to match: autonomous runs still never
+whole suite. The CLI makes the local task commits (each in the task's own worktree, on its task
+branch), merges each passed task branch into its group branch, and makes the `integrate` merge into
+the feature branch. The autonomy invariant is narrowed to match: autonomous runs still never
 push and never make the final commit, but grouped Build's CLI-made local commits and the integrate
 merge are allowed (`reference/autonomy.md`).
 
@@ -117,11 +118,12 @@ not asserted by an agent:
   (`git -C <worktree> rebase --autostash --onto <sha>~1 <sha>`, newest first; never a reset), then `temper group
   reopen G --task N` for every task it names; (b) keep them knowingly with `temper group reopen G --task N
   --accept-foreign <sha>[,<sha>] --reason "<text>"`. `group reopen` is refused while a parked sha is still an ancestor of the
-  group branch HEAD unless it is accepted; an accepted sha is recorded like an override (shown by `temper
+  HEAD of a kept task worktree (every one of the group is checked, whichever task is named) unless it is accepted; an accepted sha is recorded like an override (shown by `temper
   report`) and counts as known from then on. The group gate also fails while the group is parked, and when a
   passed task's recorded commit is not an ancestor of the group branch HEAD (it names the task and the sha).
-  A failure without a foreign commit keeps the D-03 behaviour: the task's declared files and the undeclared
-  paths named are restored in the working tree, then retry, escalate, park.
+  A failure without a foreign commit discards the task's worktree and branch, then retry (from a fresh worktree),
+  escalate, park. A pass whose task branch holds commits the group branch lacks (the CLI's commit, or an accepted
+  one) is merged into the group branch.
 - Known limits of D-08 (rare or contrived cases, documented rather than repaired):
   - Detection is by sha: an agent that rewrites history (amend, rebase, reset) can move or hide a commit; the
     group gate's ancestor check catches a task commit that left the branch, nothing more.
@@ -143,7 +145,8 @@ not asserted by an agent:
   - A path behind a symlinked directory is left alone by a reopen's restore (never written through the link).
   - The usage of a task launch whose `task gate` is refused (its group parked meanwhile) is not recorded, so
     `temper report` undercounts that launch (measurement only; no gate reads it).
-  - A stale `index.lock` outlasting the restore's five-second budget parks the group with the lock named.
+  - A stale `index.lock` outlasting the five-second budget of a reopen's restore fails the reopen with the lock
+    named; run it again once the lock is gone.
 - The plan digest is taken at the first `group start`; if `tasks.md` changes afterwards (`**File:**`,
   `**Depends:**`, `**Test:**`, group Validate/Interfaces/Context, Integration), every grouped command,
   including `group reopen`, refuses to run. Declared paths are matched exactly and the plan gate
@@ -155,8 +158,7 @@ not asserted by an agent:
   a few microseconds, not closed (a directory rename cannot be made conditional on its age). The wait
   deadline follows the wall clock (`TEMPER_LOCK_WAIT_S`).
 - Reopen guards: `group reopen` refuses to revert a file that a passed dependent task also edits unless that
-  task is reopened too, its revert commit belongs to the reopened task and does not count against a
-  running sibling (only while the files still hold the revert's exact content; `group reopen` is
+  task is reopened too, its revert commit is recorded as the CLI's own (`group reopen` is
   orchestrator-only), and a group branch is reused only when this run recorded it (a stale branch from an
   earlier run is refused with the `git branch -D` way out).
 - `state loop` validates the target stage and sets `next_stage` to it, so the build-checkpoint commit
@@ -170,7 +172,8 @@ split into input, output and cache tokens), and the orchestrator session's own u
 visible and is not recorded.
 
 **Run state not to commit.** `.temper/groups.json`, `.temper/usage.json` and `.temper/.lock/` are
-CLI-owned; this repository's `.gitignore` lists them, and a project should add the same lines.
+CLI-owned; `temper init` lists them in the clone's `.git/info/exclude` (this repository's own
+`.gitignore` lists them too).
 
 **Docs.** `docs/grouped-build.md` (what it changes, switching it on, what a run looks like, limits,
 run files and the measurement procedure), ADR 0011 (`docs/decisions/0011-grouped-build.md`,
@@ -181,7 +184,9 @@ Accepted), and updates to `reference/plan.md`, `reference/autonomy.md`,
 Review findings) is not part of this release. 9.7.0 ships the recording and a documented
 measurement procedure so that run can be made later.
 
-**Migration.** Nothing to do. With `build.mode` absent, per-task Build is unchanged.
+**Migration.** With `build.mode` absent, Build now runs in groups. A run planned before 9.7.0 has a
+flat `tasks.md` and no `groups.json`, so to finish it set `build.mode: per-task` in
+`.claude/temper.config` (it brings back the previous Build and its gate rows); new runs need nothing.
 ## v9.6.8: scope drift asks with why and the change, two narrated videos, a shorter README
 
 **Scope drift is one question, with the mod and without it.** Before this release, a file outside

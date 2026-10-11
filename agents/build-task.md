@@ -1,6 +1,6 @@
 ---
 name: temper-build-task
-description: Temper's grouped Build task agent — implements one task with TDD inside a group worktree. Launched by the /temper orchestrator, never directly by a user.
+description: Temper's grouped Build task agent — implements one task with TDD inside its own task worktree. Launched by the /temper orchestrator, never directly by a user.
 model: claude-haiku-5-5
 tools: Read, Edit, Write, Bash, Glob, Grep
 ---

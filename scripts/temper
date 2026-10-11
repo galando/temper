@@ -2051,7 +2051,10 @@ for t in tasks:
         continue
     attempt = len((rt.get(str(n)) or {}).get('attempts') or []) + 1
     mdl = task_model if attempt <= 2 else esc_model
-    ready.append({'task': n, 'group': g, 'title': t['title'], 'worktree': rg[g]['worktree'],
+    # the task's own worktree (temper task start makes it beside the group's: temper-{slug}-T{N} for temper-{slug}-{G})
+    gwt = rg[g]['worktree']
+    twt = gwt[:-len(g)] + 'T%d' % n if gwt.endswith('-' + g) else gwt
+    ready.append({'task': n, 'group': g, 'title': t['title'], 'worktree': twt,
                   'project': project, 'model': mdl, 'agent_model': agent_alias(mdl),
                   'attempt': attempt})
 for r in ready:
@@ -2352,8 +2355,8 @@ _park_ways_out() { # _park_ways_out <group> <worktree as printed> <tasks csv> <s
 # attempts move to attempts_prior, and the group gate is cleared. A parked group runs again.
 # The reopen's revert commits are recorded as the CLI's own and as reopen reverts, so a running sibling's
 # verdict accepts them and does not count their files as its own undeclared change.
-# D-08: a group parked on commits the CLI did not record reopens only when none of them is an ancestor of the group
-# branch any more, or when the human accepts them: --accept-foreign <sha>[,<sha>] --reason "<text>" (an override).
+# D-08: a group parked on commits the CLI did not record reopens only when none of them is an ancestor of a kept task
+# worktree's branch (or the group branch) any more, or when the human accepts them: --accept-foreign <sha>[,<sha>] --reason "<text>" (an override).
 cmd_group_reopen() {
   local rc
   _lock_acquire
@@ -2426,37 +2429,63 @@ try:
     print(json.dumps(((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('parked_foreign') or []))
 except Exception:
     print('[]')" "$GROUPS_FILE" "$g")"
-  # the commits a park is about sit in the parked task's own worktree (kept by the park); with none kept, the group's
-  local cwt="$wt" t tw
-  for t in "${tasks[@]}"; do
-    tw="$(python3 -c "
+  # the commits a park is about sit in the parked task's own worktree (kept by the park), so every kept worktree of a
+  # task of G that is not running is checked, whichever task is named, and the group's own worktree too (a task that
+  # is running has its range checked by its own gate)
+  local cwts=("$wt") cwt t
+  while IFS= read -r t; do [[ -n "$t" && -d "$t" ]] && cwts+=("$t"); done < <(python3 -c "
 import json, sys
 try:
-    print(((json.load(open(sys.argv[1])).get('tasks') or {}).get(sys.argv[2]) or {}).get('worktree') or '')
+    ts = json.load(open(sys.argv[1])).get('tasks') or {}
 except Exception:
-    print('')" "$GROUPS_FILE" "$t")"
-    if [[ -n "$tw" && -d "$tw" ]]; then cwt="$tw"; break; fi
+    ts = {}
+for k in sorted(ts, key=lambda x: int(x) if x.isdigit() else 0):
+    v = ts[k]
+    if v.get('group') == sys.argv[2] and v.get('status') != 'running' and v.get('worktree'):
+        print(v['worktree'])" "$GROUPS_FILE" "$g")
+  local kind val acc_all=() bad_all=() fcall=""
+  for cwt in "${cwts[@]}"; do
+    fc="$(_task_py foreigncheck "$(pwd -P)/$cwt" "$left" "$accept" "$GROUPS_FILE" "$g")" || return 1
+    fcall+="$(printf '%s' "$fc" | sed "s|\$| $cwt|")"$'\n'
   done
-  fc="$(_task_py foreigncheck "$(pwd -P)/$cwt" "$left" "$accept" "$GROUPS_FILE" "$g")" || return 1
-  local kind val on=() unk=()
-  while IFS=' ' read -r kind val; do
+  # a sha the human names is accepted when any checked worktree holds it, and refused only when none does
+  while IFS=' ' read -r kind val cwt; do
     case "$kind" in
-      BAD) echo "FAIL: $val is not one of the commits group $g is parked on or holds unrecorded" >&2; return 1 ;;
-      ACCEPT) accepted+=("$val") ;;
-      ON) on+=("$val") ;;
-      UNK) unk+=("$val") ;;
+      ACCEPT) [[ " ${acc_all[*]-} " == *" $val "* ]] || acc_all+=("$val") ;;
+      BAD) bad_all+=("$val") ;;
     esac
-  done <<<"$fc"
-  if [[ ${#on[@]} -gt 0 ]]; then
-    echo "FAIL: group $g is parked on commit(s) not made by the CLI that are still on the branch of $cwt: $(printf '%.7s ' "${on[@]}")" >&2
-    _park_ways_out "$g" "$cwt" "$tcsv" "${on[@]}" >&2
-    return 1
-  fi
-  if [[ ${#unk[@]} -gt 0 ]]; then
-    echo "FAIL: group $g holds commit(s) that the CLI did not record and nobody accepted: $(printf '%.7s ' "${unk[@]}")" >&2
-    _park_ways_out "$g" "$cwt" "$tcsv" "${unk[@]}" >&2
-    return 1
-  fi
+  done <<<"$fcall"
+  local b a ok
+  for b in ${bad_all[@]+"${bad_all[@]}"}; do
+    ok=""
+    for a in ${acc_all[@]+"${acc_all[@]}"}; do [[ "$a" == "$b"* ]] && ok=1; done
+    if [[ -z "$ok" ]]; then
+      echo "FAIL: $b is not one of the commits group $g is parked on or holds unrecorded" >&2
+      return 1
+    fi
+  done
+  accepted=(${acc_all[@]+"${acc_all[@]}"})
+  for cwt in "${cwts[@]}"; do
+    local on=() unk=()
+    while IFS=' ' read -r kind val t; do
+      [[ "$t" == "$cwt" ]] || continue
+      [[ " ${acc_all[*]-} " == *" $val "* ]] && continue
+      case "$kind" in
+        ON) on+=("$val") ;;
+        UNK) unk+=("$val") ;;
+      esac
+    done <<<"$fcall"
+    if [[ ${#on[@]} -gt 0 ]]; then
+      echo "FAIL: group $g is parked on commit(s) not made by the CLI that are still on the branch of $cwt: $(printf '%.7s ' "${on[@]}")" >&2
+      _park_ways_out "$g" "$cwt" "$tcsv" "${on[@]}" >&2
+      return 1
+    fi
+    if [[ ${#unk[@]} -gt 0 ]]; then
+      echo "FAIL: group $g holds commit(s) that the CLI did not record and nobody accepted: $(printf '%.7s ' "${unk[@]}")" >&2
+      _park_ways_out "$g" "$cwt" "$tcsv" "${unk[@]}" >&2
+      return 1
+    fi
+  done
   local sh
   for sh in ${accepted[@]+"${accepted[@]}"}; do
     cmd_override "foreign-commit:$g:$sh" --reason "$areason" >/dev/null || return 1
@@ -2469,7 +2498,10 @@ except Exception:
     IFS=',' read -r -a paths <<<"$files"
     if [[ -n "$sha" && ${#paths[@]} -gt 0 ]]; then
       local json; json="$(python3 -c "import json, sys; print(json.dumps(sys.argv[1:]))" "${paths[@]}")"
-      _task_py restore "$abs" "$sha" "$json"
+      if ! _task_py restore "$abs" "$sha" "$json"; then
+        echo "FAIL: could not restore the files of Task $n in $wt (another git process holds a lock there, such as index.lock); run the reopen again" >&2
+        return 1
+      fi
       # only the declared paths the restore actually changed (a pathspec git has never seen fails the whole add)
       local cpaths=()
       for p in "${paths[@]}"; do
@@ -2726,7 +2758,7 @@ def red_why(r):
     if rc in (126, 127): return 'the command could not run'
     if rc == 124: return 'it timed out'
     if isinstance(rc, int) and rc >= 128: return 'it was killed by a signal'
-    if re.search(r'(^|[\s/])pytest\b', cmd) and rc != 1:
+    if re.search(r'(^|[\s/\'"])pytest\b', cmd) and rc != 1:
         return 'pytest exits 1 when a test fails; %s is a collection, import or usage error' % rc
     return ''
 
@@ -3219,13 +3251,14 @@ print(1 if any(l.strip().startswith('{') and json.loads(l).get('task') == n for 
     return 1
   fi
   # One worktree per task, on its own branch from the group branch. A worktree kept by a park (a commit the CLI did
-  # not make, D-08) is reused after the human's reopen: its HEAD and its dirty files are this attempt's start.
+  # not make, D-08) is reused after the human's reopen: its HEAD is this attempt's start, and since the worktree is
+  # this task's alone, every dirty file in it is this task's change (an empty start snapshot), so none is dropped.
   local slug twt tb tabs snap sha
   slug="$(_jget "$_T_CTX" slug)"
   twt=".claude/worktrees/temper-$slug-T$n"; tb="temper/$slug/T$n"; tabs="$(pwd -P)/$twt"
   if git worktree list --porcelain 2>/dev/null | awk -v p="$tabs" -v b="refs/heads/$tb" '
       $1 == "worktree" { path = $2 } $1 == "branch" && path == p && $2 == b { found = 1 } END { exit !found }'; then
-    snap="$(_task_py snap "$tabs")" || return 1
+    snap='{}'
   else
     if [[ -e "$twt" || -L "$twt" ]]; then
       echo "FAIL: $twt exists and is not the worktree of Task $n; move it away" >&2
@@ -3443,13 +3476,19 @@ for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
   # commit); declared files are disjoint between tasks that run together, so a conflict means the plan was wrong
   local gabs tb mrg=""
   gabs="$(pwd -P)/$(_jget "$_T_CTX" gworktree)"; tb="$(_jget "$_T_CTX" tbranch)"
-  if [[ -n "$sha" ]]; then
-    local idm; idm="$(_git_id_args)"
+  # the merge runs whenever the task branch holds commits the group branch lacks: the CLI's commit just made, and
+  # also one kept from an earlier attempt or accepted by the human at a reopen when this attempt changed nothing more
+  local tip ahead
+  tip="$(git -C "$_T_ABS" rev-parse HEAD)" || return 1
+  ahead="$(git rev-list --count "$(_jget "$_T_CTX" gbranch)..$tip" 2>/dev/null || echo 0)"
+  if [[ "$ahead" =~ ^[1-9] ]]; then
+    local idm mout; idm="$(_git_id_args)"
     # shellcheck disable=SC2086
-    if ! git -C "$gabs" $idm merge -q --no-edit -m "merge($slug): Task $n into $group" "$tb" >/dev/null 2>&1; then
+    if ! mout="$(git -C "$gabs" $idm merge -q --no-edit -m "merge($slug): Task $n into $group" "$tb" 2>&1)"; then
       local cf; cf="$(git -C "$gabs" diff --name-only --diff-filter=U 2>/dev/null | paste -sd, -)"
       git -C "$gabs" merge --abort >/dev/null 2>&1 || true
-      reason="Task $n passed but could not be merged into the group branch (${cf:-unknown files}); its worktree is kept"
+      [[ -n "$cf" ]] || cf="$(printf '%s' "$mout" | grep -v '^[[:space:]]*$' | head -1)"
+      reason="Task $n passed but could not be merged into the group branch (${cf:-git merge failed}); its worktree is kept"
       _groups_mutate "
 t = d['tasks'][a[0]]
 t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'FAIL', 'reason': a[3], 'ts': a[4]})
@@ -3457,12 +3496,16 @@ t['status'] = 'failed'
 g = d.setdefault('groups', {}).setdefault(a[5], {})
 g['status'] = 'parked'
 g['parked_reason'] = a[3]
-" "$n" "$(_jget "$v" attempt)" "$model" "$reason" "$(_now)" "$group" || return 1
+if a[6]:   # the commit the CLI just made on the task branch is its own, so a reopen does not take it for an agent's
+    d.setdefault('cli_commits', []).append(a[6])
+" "$n" "$(_jget "$v" attempt)" "$model" "$reason" "$(_now)" "$group" "$sha" || return 1
       echo "FAIL: $reason"
       echo "NEXT: park group $group"
       return 1
     fi
-    mrg="$(git -C "$gabs" rev-parse HEAD)"; [[ "$mrg" == "$sha" ]] && mrg=""
+    mrg="$(git -C "$gabs" rev-parse HEAD)"; [[ "$mrg" == "$tip" ]] && mrg=""
+  else
+    tip=""
   fi
   _task_box "$_T_SPEC/tasks.md" "$n" x
   _groups_mutate "
@@ -3472,11 +3515,11 @@ t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'out
     'tokens': num(a[3]), 'ms': num(a[4]), 'ts': a[5]})
 t['status'] = 'passed'
 t['passed_at'] = a[5]
-t['commit'] = a[6] or None
+t['commit'] = a[8] or None
 for x in (a[6], a[7]):
     if x:
         d.setdefault('cli_commits', []).append(x)
-" "$n" "$(_jget "$v" attempt)" "$model" "$tokens" "$ms" "$(_now)" "$sha" "$mrg" || return 1
+" "$n" "$(_jget "$v" attempt)" "$model" "$tokens" "$ms" "$(_now)" "$sha" "$mrg" "$tip" || return 1
   _task_wt_discard "$n" "$(_jget "$_T_CTX" worktree)" "$tb" || return 1
   # F1: a task reopened with group-gate feedback answers it by passing: the CLI records the feedback-resolved row
   # that gate build requires, and marks the reopen answered so task show stops printing it

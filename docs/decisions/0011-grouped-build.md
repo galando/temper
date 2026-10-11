@@ -72,7 +72,8 @@ in git history at commit 9e14ce7, under `docs/plans/grouped-build-handoff/spec/`
   once (a deliberate exception to D-03: a rule violation, not a test failure), and nothing is
   written to the branch or the working tree. A parked group refuses `task gate` and `task test`
   of its other tasks without a verdict, so running siblings keep their work. `group reopen` is
-  accepted only when the parked shas are no longer ancestors of the group branch HEAD, or when
+  accepted only when the parked shas are no longer ancestors of the HEAD of any kept task
+  worktree of the group (or of the group branch), or when
   the human accepts them with `--accept-foreign <sha> --reason "<text>"`, recorded like an
   override and shown by `temper report`. The group gate also checks that every passed task's
   commit is an ancestor of the group HEAD. This replaced an automatic undo that eight review

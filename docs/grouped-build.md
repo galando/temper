@@ -132,7 +132,7 @@ the final feature commit.
 ## Run files
 
 The CLI owns these `.temper/` runtime files. Do not hand-write them and do not commit them
-(this repository's `.gitignore` lists them; add the lines to a project's `.gitignore`):
+(`temper init` lists them in the clone's `.git/info/exclude`, so a project needs no `.gitignore` lines):
 
 - `.temper/groups.json` - per-group worktree, status and gate verdict; per-task status,
   attempts and commit; the integration verdict.

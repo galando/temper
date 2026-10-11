@@ -245,8 +245,8 @@ assert_eq "schedule: schedule writes nothing" "no" "$([[ -e .temper/groups.json 
 # both groups started, no task started: the tasks with no Depends are ready
 sg_setup; sg_state '{}'
 assert_eq "schedule: independent tasks of started groups are ready, ordered by task" "1,3" "$(sg_ready)"
-assert_eq "schedule: a ready line carries task, group, worktree, project, model and attempt" \
-  '{"task": 1, "group": "G1", "title": "Alpha", "worktree": ".claude/worktrees/temper-demo-G1", "project": "'"$PWD"'", "model": "claude-haiku-5-5", "agent_model": "haiku", "attempt": 1}' \
+assert_eq "schedule: a ready line carries task, group, the task's own worktree, project, model and attempt" \
+  '{"task": 1, "group": "G1", "title": "Alpha", "worktree": ".claude/worktrees/temper-demo-T1", "project": "'"$PWD"'", "model": "claude-haiku-5-5", "agent_model": "haiku", "attempt": 1}' \
   "$("$TEMPER" schedule | head -1)"
 
 # agent_model: the alias the Agent tool takes, derived from the model id (feedback #4)

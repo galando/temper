@@ -270,7 +270,7 @@ Shows live scenario verification status, MCP tool availability, and evidence rat
 By default, Plan writes `tasks.md` as groups of small tasks. Build runs each task as one Haiku agent
 (`claude-haiku-5-5`, escalating to Sonnet after two failed attempts), each group in its own
 git worktree, with one human gate per group. See [Grouped Build](grouped-build.md) for the
-loop, the tuning keys (`build.grouped.*`) and the measurement that made it the default.
+loop, the tuning keys (`build.grouped.*`) and how to measure it against per-task Build.
 `build.mode: per-task` in `.claude/temper.config` brings back the previous Build (one task
 per launch on Sonnet, a gate after every task). It
 writes `.temper/groups.json`, `.temper/usage.json` and `.temper/.lock/`; like the other
