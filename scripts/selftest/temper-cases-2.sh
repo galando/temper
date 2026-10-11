@@ -50,6 +50,11 @@ OUT=$(echo '{"tool_input": {"command": "git status"}}' | bash "$CONFIRM")
 assert_eq "confirm-override: any other command stays silent" "" "$OUT"
 assert_exit "confirm-override: always exits 0 (ask is advisory, not a block)" 0 \
   bash -c "echo '{\"tool_input\": {\"command\": \"temper override plan --reason y\"}}' | bash '$CONFIRM'"
+# D-08 review M2: keeping an agent commit (group reopen --accept-foreign) is a decision like an override
+co_ask() { python3 -c 'import json, sys; print(json.dumps({"tool_input": {"command": sys.argv[1]}}))' "$1" | bash "$CONFIRM" | grep -c '"permissionDecision": "ask"'; }
+assert_eq "confirm-override: group reopen --accept-foreign asks (also by path, with a global option)" "1|1|1" \
+  "$(co_ask 'temper group reopen G1 --task 1 --accept-foreign abc1234 --reason ok')|$(co_ask "${CO_CLI% override} group reopen G1 --task 1 --accept-foreign abc1234 --reason ok")|$(co_ask 'temper --spec-path .temper/specs/x group reopen G1 --task 1 --accept-foreign abc1234 --reason ok')"
+assert_eq "confirm-override: a plain group reopen stays silent" "0" "$(co_ask 'temper group reopen G1 --task 1')"
 
 echo 'x  =  1' > messy.txt
 cat >> .claude/temper.config <<'EOF'

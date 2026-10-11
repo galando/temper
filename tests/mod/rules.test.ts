@@ -216,6 +216,15 @@ describe('a human decision authorizes only the call it was made for', () => {
     expect('allow' in ok && ok.eventIds).toEqual(['e1', 'e2'])
   })
 
+  test('group reopen --accept-foreign needs the user, whatever override they made for a stage', () => {
+    const keep = { tool: 'Bash', input: { command: 'temper group reopen G1 --task 1 --accept-foreign abc1234 --reason ok' } }
+    const plain = { tool: 'Bash', input: { command: 'temper group reopen G1 --task 1' } }
+    const c = { ...ctx, humanDecisions: [{ id: 'e1', kind: 'override' as const, phase: 'plan' }] }
+    expect(evaluate(stateAt('plan'), c, keep)).toEqual({ deny: ONLY_USER })
+    expect(evaluate(stateAt('plan'), ctx, keep)).toEqual({ deny: ONLY_USER })
+    expect(evaluate(stateAt('plan'), ctx, plain)).not.toEqual({ deny: ONLY_USER })
+  })
+
   test('temper global options before the subcommand are still a decision', () => {
     const call = { tool: 'Bash', input: { command: 'temper --spec-path .temper/specs/pw override plan --reason x' } }
     expect(evaluate(stateAt('plan'), ctx, call)).toEqual({ deny: ONLY_USER })

@@ -66,10 +66,10 @@ not asserted by an agent:
   the group parks at once (no retry; a rule violation, not a test failure), and nothing is written to the branch
   or the working tree (no reset, revert or restore). While a group is parked, `task gate` and `task test` of its
   other tasks are refused without a verdict, attempt, restore or ledger row, so running siblings keep their work.
-  The park prints the two ways out: (a) when no task of the group runs, remove the commits from the branch
-  yourself (for example `git -C <worktree> rebase --onto <sha>~1 <sha>`, newest first, or a reset), then
-  `temper group reopen G --task N`; (b) keep them knowingly with `temper group reopen G --task N --accept-foreign
-  <sha>[,<sha>] --reason "<text>"`. `group reopen` is refused while a parked sha is still an ancestor of the
+  The park prints the two ways out: (a) remove the commits from the branch yourself with the printed lines
+  (`git -C <worktree> rebase --autostash --onto <sha>~1 <sha>`, newest first; never a reset), then `temper group
+  reopen G --task N` for every task it names; (b) keep them knowingly with `temper group reopen G --task N
+  --accept-foreign <sha>[,<sha>] --reason "<text>"`. `group reopen` is refused while a parked sha is still an ancestor of the
   group branch HEAD unless it is accepted; an accepted sha is recorded like an override (shown by `temper
   report`) and counts as known from then on. The group gate also fails while the group is parked, and when a
   passed task's recorded commit is not an ancestor of the group branch HEAD (it names the task and the sha).
@@ -78,11 +78,23 @@ not asserted by an agent:
 - Known limits of D-08 (rare or contrived cases, documented rather than repaired):
   - Detection is by sha: an agent that rewrites history (amend, rebase, reset) can move or hide a commit; the
     group gate's ancestor check catches a task commit that left the branch, nothing more.
-  - A reopen is judged by ancestry, not content: a commit removed and re-made (cherry-pick, rebase) has a new
-    sha and is seen as a new foreign commit by the next gate, and a rebase that drops a foreign commit also
-    rewrites the CLI commits after it, so the group gate then asks to reopen those tasks.
-  - A sibling that was running when the group parked and starts its next gate after an accepted reopen sees the
-    accepted commit's files as its own undeclared change and retries; reopen it too when its work is short.
+  - A reopen is judged by ancestry and by recorded shas, not content: a commit removed and re-made (cherry-pick,
+    rebase) has a new sha and is a new foreign commit. A rebase that drops a foreign commit also rewrites the CLI
+    commits after it; `group reopen` and `temper integrate` then refuse while any commit of the group's
+    base..HEAD is neither recorded by the CLI nor accepted, and name it. Remove it, or keep it knowingly with
+    `group reopen ... --accept-foreign <sha> --reason "<why>"`.
+  - A foreign commit found at a sibling's gate (the gate order in a batch is arbitrary) fails every running task
+    of the group, not only the one whose gate found it; the park message and the printed reopen name them all,
+    and a reopened task needs a fresh RED and GREEN (rows older than the attempt's start do not count).
+  - `group reopen ... --accept-foreign` is guarded like `temper override`: the guard script asks the person, and
+    the mod lets only the person's own command run it.
+  - Printed git lines use `rebase --autostash` (uncommitted work stays, no stash is left) and cover only commits on
+    the branch's first-parent line; commits an agent merge brought in leave with the merge.
+  - `foreigncheck` treats a git error (a worktree removed by hand) as "off the branch".
+  - One hint line is printed per foreign sha on the first-parent line, with no cap.
+  - The accept rows of `--accept-foreign` are recorded before the reopen's revert commit; a rerun after that
+    commit failed records them again (duplicate rows in `overrides.json`).
+  - D-08 has no Gherkin scenario of its own; `scripts/selftest/temper-cases-6.sh` covers it.
   - An agent's edit to a running sibling's declared file lands with that sibling's commit.
   - A path behind a symlinked directory is left alone by the task restore (never written through the link).
   - A stale `index.lock` outlasting the restore's five-second budget parks the group with the lock named.

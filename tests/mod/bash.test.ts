@@ -139,6 +139,15 @@ describe('evasions of the protected path guard', () => {
     expect(classifyBash('temper override review --reason x').calls).toMatchObject([{ kind: 'override', stage: 'review' }])
   })
 
+  // D-08 review M2: keeping an agent commit is a decision like an override; a plain reopen is not
+  test('group reopen --accept-foreign is an override-kind decision for no stage', () => {
+    const c = classifyBash('temper group reopen G1 --task 1 --accept-foreign abc1234 --reason ok')
+    expect(c.decisions).toEqual(['override'])
+    expect(c.calls).toMatchObject([{ kind: 'override', stage: 'foreign-commit:G1' }])
+    expect(classifyBash('temper --spec-path .temper/specs/pw group reopen G2 --accept-foreign=abc1234 --reason ok').calls).toMatchObject([{ kind: 'override', stage: 'foreign-commit:G2' }])
+    expect(classifyBash('temper group reopen G1 --task 1').decisions).toEqual([])
+  })
+
   test('build-state.json is a protected state file', () => {
     expect(protectedKind('.temper/build-state.json')).toBe('state')
     expect(flagged('echo {} > .temper/build-state.json')).toBe(true)

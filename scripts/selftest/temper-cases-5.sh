@@ -888,6 +888,14 @@ assert_eq "integrate: the interface FAIL is stored" "FAIL" "$(gi_int verdict)"
 gi_all
 echo one > .claude/worktrees/temper-demo-G1/shared.txt; git -C .claude/worktrees/temper-demo-G1 add shared.txt; git -C .claude/worktrees/temper-demo-G1 commit -q -m g1shared
 echo two > .claude/worktrees/temper-demo-G2/shared.txt; git -C .claude/worktrees/temper-demo-G2 add shared.txt; git -C .claude/worktrees/temper-demo-G2 commit -q -m g2shared
+# D-08 review M5: integrate refuses a group branch holding a commit the CLI did not record, so the fixture records its two hand
+# commits as the CLI's own (the conflict, not the refusal, is what this case is about)
+python3 - "$(git -C .claude/worktrees/temper-demo-G1 rev-parse HEAD)" "$(git -C .claude/worktrees/temper-demo-G2 rev-parse HEAD)" <<'PY'
+import json, sys
+d = json.load(open('.temper/groups.json'))
+d.setdefault('cli_commits', []).extend(sys.argv[1:])
+json.dump(d, open('.temper/groups.json', 'w'))
+PY
 out="$("$TEMPER" integrate 2>&1)"; rc=$?
 assert_eq "integrate: a conflicting pair aborts with the cause (exit 1)" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL: merge conflict: G2 in shared.txt')"
 assert_eq "integrate: the merge was aborted, the tree is clean, G1 stays merged" "|1" \

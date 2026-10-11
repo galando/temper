@@ -1364,6 +1364,12 @@ export function classifyBash(command: string, startCwd: string | null = ''): Bas
         const stage = r[0] && !r[0].text.startsWith('-') ? expandVars(r[0].text, vars) : undefined
         decisions.push('override')
         calls.push({ kind: 'override', stage, invalid: (fl.get('--reason')?.length ?? 0) > 1 })
+      } else if (sub === 'group' && sub2 === 'reopen' && rest.some(w => /^--accept-foreign(?:=|$)/.test(expandVars(w.text, vars)))) {
+        // D-08: `group reopen G --accept-foreign <sha> --reason ..` keeps an agent commit and records an override inside the CLI:
+        // the same decision as `override`, for a "stage" no person's override names, so only the person's own command runs it.
+        const g = rest[0] ? expandVars(rest[0].text, vars) : ''
+        decisions.push('override')
+        calls.push({ kind: 'override', stage: `foreign-commit:${g}`, invalid: (readFlags(rest, ['--accept-foreign']).get('--accept-foreign')?.length ?? 0) > 1 })
       } else if (sub === 'evidence' && sub2 === 'accept') {
         const fl = readFlags(rest, ['--stage', '--id', '--reason'])
         decisions.push('accept')

@@ -2015,6 +2015,7 @@ if not ready:
     if ids and all(gpass(g) for g in ids):
         print(json.dumps({'done': True, 'next': 'temper integrate'}))
     else:
+        waiting += ['Task %d (running: temper task gate %d)' % (n, n) for n in running]   # M3: a running task has no ready line
         print(json.dumps({'waiting': waiting, 'parked': [g for g in ids if gstatus(g) == 'parked'],
                           'done': False}))
 PY
@@ -2271,13 +2272,24 @@ g['finished_at'] = a[1]
 }
 
 # D-08: what a human does about a parked foreign commit; printed by the task gate that parks the group and by a refused reopen.
-_park_ways_out() { # _park_ways_out <group> <worktree as printed> <task N> <sha>... (newest first)
-  local g="$1" wt="$2" n="${3:-N}" s csv=""; shift 3
+# The git lines run as written: --autostash keeps the uncommitted work of every task (tracked edits are stashed and put back
+# by the rebase itself; untracked files are not touched), so nothing is lost and no stash is left behind. Only commits on the
+# branch's first-parent line get a line: a commit an agent merge brought in leaves with the merge.
+_park_ways_out() { # _park_ways_out <group> <worktree as printed> <tasks csv> <sha>... (newest first)
+  local g="$1" wt="$2" tcsv="${3:-N}" s csv="" targs="" t; shift 3
+  for t in ${tcsv//,/ }; do targs="$targs --task $t"; done
+  local fp; fp="$(git -C "$wt" rev-list --first-parent HEAD 2>/dev/null)" || fp=""
+  local lines=()
+  for s in "$@"; do
+    csv="${csv:+$csv,}${s:0:7}"
+    if [[ -z "$fp" ]] || grep -qx "$s" <<<"$fp"; then lines+=("        git -C $wt rebase --autostash --onto ${s:0:7}~1 ${s:0:7}"); fi
+  done
+  [[ ${#lines[@]} -gt 0 ]] || for s in "$@"; do lines+=("        git -C $wt rebase --autostash --onto ${s:0:7}~1 ${s:0:7}"); done
   echo "Nothing was changed on the branch or in the working tree. Resolve it yourself, either:"
-  echo "  (a) when no task of $g is running, remove the commit(s) from the branch (newest first), e.g."
-  for s in "$@"; do echo "        git -C $wt rebase --onto ${s:0:7}~1 ${s:0:7}"; csv="${csv:+$csv,}${s:0:7}"; done
-  echo "      (or a reset, your choice), then: temper group reopen $g --task $n"
-  echo "  (b) or keep them knowingly: temper group reopen $g --task $n --accept-foreign $csv --reason \"<why>\""
+  echo "  (a) remove the commit(s) from the branch, newest first (each line keeps the uncommitted work of every task):"
+  printf '%s\n' "${lines[@]}"
+  echo "      then: temper group reopen $g$targs"
+  echo "  (b) or keep them knowingly: temper group reopen $g$targs --accept-foreign $csv --reason \"<why>\""
 }
 
 # temper group reopen G --task N [--task M] [--feedback ID]: the Change choice at a group gate (D-02).
@@ -2350,28 +2362,35 @@ except Exception:
   local abs; abs="$(pwd -P)/$wt"
   # D-08: a group parked on commits the CLI did not record reopens only when none of them is on its branch any more
   # (the human removed them), or when the human accepts each remaining one with --accept-foreign and a reason
-  local left fc accepted=()
+  # M5: and every commit of the group's base..HEAD must be recorded by the CLI or accepted (a commit replayed by a rebase
+  # or a merge has a new sha): the check names the first ones it finds and stops
+  local left fc accepted=() tcsv
+  tcsv="$(IFS=,; echo "${tasks[*]}")"
   left="$(python3 -c "
 import json, sys
 try:
     print(json.dumps(((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('parked_foreign') or []))
 except Exception:
     print('[]')" "$GROUPS_FILE" "$g")"
-  if [[ "$left" != "[]" || -n "$accept" ]]; then
-    fc="$(_task_py foreigncheck "$abs" "$left" "$accept")" || return 1
-    local kind val on=()
-    while IFS=' ' read -r kind val; do
-      case "$kind" in
-        BAD) echo "FAIL: $val is not one of the commits group $g is parked on" >&2; return 1 ;;
-        ACCEPT) accepted+=("$val") ;;
-        ON) on+=("$val") ;;
-      esac
-    done <<<"$fc"
-    if [[ ${#on[@]} -gt 0 ]]; then
-      echo "FAIL: group $g is parked on commit(s) not made by the CLI that are still on its branch: $(printf '%.7s ' "${on[@]}")" >&2
-      _park_ways_out "$g" "$wt" "${tasks[0]}" "${on[@]}" >&2
-      return 1
-    fi
+  fc="$(_task_py foreigncheck "$abs" "$left" "$accept" "$GROUPS_FILE" "$g")" || return 1
+  local kind val on=() unk=()
+  while IFS=' ' read -r kind val; do
+    case "$kind" in
+      BAD) echo "FAIL: $val is not one of the commits group $g is parked on or holds unrecorded" >&2; return 1 ;;
+      ACCEPT) accepted+=("$val") ;;
+      ON) on+=("$val") ;;
+      UNK) unk+=("$val") ;;
+    esac
+  done <<<"$fc"
+  if [[ ${#on[@]} -gt 0 ]]; then
+    echo "FAIL: group $g is parked on commit(s) not made by the CLI that are still on its branch: $(printf '%.7s ' "${on[@]}")" >&2
+    _park_ways_out "$g" "$wt" "$tcsv" "${on[@]}" >&2
+    return 1
+  fi
+  if [[ ${#unk[@]} -gt 0 ]]; then
+    echo "FAIL: group $g holds commit(s) that the CLI did not record and nobody accepted: $(printf '%.7s ' "${unk[@]}")" >&2
+    _park_ways_out "$g" "$wt" "$tcsv" "${unk[@]}" >&2
+    return 1
   fi
   local sh
   for sh in ${accepted[@]+"${accepted[@]}"}; do
@@ -2442,6 +2461,17 @@ if g.get('status') in ('parked', 'passed'):
 " "$n" "$(_now)" "$feedback" "$g" || return 1
   done <<<"$chk"
   echo "OK: reopened ${tasks[*]/#/Task } in group $g"
+  # M3: a task that was running when the group parked kept its work; it has no ready line in the schedule, so say how to gate it
+  local rn
+  for rn in $(python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    d = {}
+print(' '.join(sorted((k for k, v in (d.get('tasks') or {}).items() if v.get('group') == sys.argv[2] and v.get('status') == 'running'), key=int)))" "$GROUPS_FILE" "$g"); do
+    echo "NEXT: temper task gate $rn   (Task $rn was running when the group parked; its work is still in the worktree)"
+  done
 }
 
 # Grouped Build (9.7.0): the measurement report (AC-12). Pure read of groups.json and the review
@@ -2637,6 +2667,32 @@ def ctx(plan, run, n):
 def matches(path, pats):
     return any(path == norm(p) for p in pats)   # H4: exact paths only; the plan gate refuses glob characters
 
+def known_shas(run, g):
+    # D-08: the shas the CLI itself recorded (a task's commit, cli_commits) and the ones a human accepted for group g with
+    # `group reopen --accept-foreign` (an override). A subject that merely looks like the CLI's proves nothing.
+    known = {(v or {}).get('commit') for v in (run.get('tasks') or {}).values()} | set(run.get('cli_commits') or [])
+    try:
+        for o in json.load(open('.temper/overrides.json')):
+            st = str(o.get('stage', '')).split(':', 2)
+            if len(st) == 3 and st[0] == 'foreign-commit' and st[1] == g:
+                known.add(st[2])
+    except Exception:
+        pass
+    return known
+
+def unknown_commits(cwd, run, g, ref):
+    # M5: the commits of group g's base..ref that are neither recorded by the CLI nor accepted, newest first. A group
+    # without a recorded base, or a git error, reports none (the checks that follow stay as they were).
+    base = ((run.get('groups') or {}).get(g) or {}).get('base_sha')
+    if not base:
+        return []
+    rl = subprocess.run(['git', '-C', cwd, 'rev-list', '--topo-order', '%s..%s' % (base, ref)],
+                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    if rl.returncode != 0:
+        return []
+    kn = known_shas(run, g)
+    return [x for x in rl.stdout.decode('utf-8', 'replace').split() if x not in kn]
+
 mode = sys.argv[1]
 
 if mode == 'ctx':
@@ -2779,13 +2835,18 @@ elif mode == 'gatecheck':
     print(((run.get('groups') or {}).get(g) or {}).get('status', ''))
 
 elif mode == 'foreigncheck':
-    # foreigncheck <abs worktree> <parked-shas-json> <accept-csv>: one line per fact, "ACCEPT <sha>" for a parked sha the
-    # human named (a unique prefix of 4 or more characters), "BAD <given>" for one that is not parked, and "ON <sha>" for a
-    # parked sha that is still an ancestor of the worktree HEAD and was not accepted (D-08)
+    # foreigncheck <abs worktree> <parked-shas-json> <accept-csv> <groups.json> <G>: one line per fact, "ACCEPT <sha>" for a
+    # sha the human named (a unique prefix of 4 or more characters of a parked sha or of a commit of the group's base..HEAD
+    # that is neither recorded by the CLI nor accepted), "BAD <given>" for one that is neither, "ON <sha>" for a parked sha
+    # that is still an ancestor of the worktree HEAD and was not accepted (D-08), and "UNK <sha>" for such an unrecorded,
+    # unaccepted commit that is not parked (M5: a replayed commit has a new sha)
     wt, parked = sys.argv[2], json.loads(sys.argv[3])
+    run, grp = load_run(sys.argv[5]), sys.argv[6]
+    unknown = [u for u in unknown_commits(wt, run, grp, 'HEAD') if u not in parked]
+    universe = list(parked) + unknown
     acc = set()
     for a in (x.strip().lower() for x in sys.argv[4].split(',') if x.strip()):
-        hit = [p for p in parked if p.startswith(a)] if len(a) >= 4 else []
+        hit = [p for p in universe if p.startswith(a)] if len(a) >= 4 else []
         if len(hit) == 1:
             acc.add(hit[0])
             print('ACCEPT ' + hit[0])
@@ -2795,6 +2856,14 @@ elif mode == 'foreigncheck':
         if p not in acc and subprocess.run(['git', '-C', wt, 'merge-base', '--is-ancestor', p, 'HEAD'],
                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
             print('ON ' + p)
+    for u in unknown:
+        if u not in acc:
+            print('UNK ' + u)
+
+elif mode == 'unknown':
+    # unknown <project root> <groups.json> <G> <ref>: the unrecorded, unaccepted commits of G's base..ref, one per line
+    for u in unknown_commits(sys.argv[2], load_run(sys.argv[3]), sys.argv[4], sys.argv[5]):
+        print(u)
 
 elif mode == 'reopencheck':
     # reopencheck <plan> <groups.json> <G> <N>...: prints one "N<TAB>declared files, comma separated<TAB>start_sha"
@@ -2894,7 +2963,10 @@ elif mode == 'verdict':
         rows = json.load(open(ledger))
     except Exception:
         rows = []
-    mine = [r for r in rows if r.get('task') == n and r.get('attempt') == c['attempt'] and r.get('executed_by') == 'cli']
+    # M1: only the rows made since this attempt started count; a reopened task numbers its attempts from 1 again, and
+    # the rows of its earlier run must not stand in for a RED and a GREEN of this one
+    mine = [r for r in rows if r.get('task') == n and r.get('attempt') == c['attempt'] and r.get('executed_by') == 'cli'
+            and not (r.get('ts') and c['started_at'] and r['ts'] < c['started_at'])]
     # H1: the verdict reads the LAST run of the attempt: a red run, then a passing green after it, and the
     # attempt's final run must itself be that green (a failing re-run after a green is not forgiven).
     green = None
@@ -2925,14 +2997,7 @@ elif mode == 'verdict':
         # `group reopen --accept-foreign` (an override) are known; a subject that merely looks like the CLI's proves
         # nothing. The caller holds the lock, so a sha is recorded before any verdict can read the log it sits in.
         mine_g = (run.get('groups') or {}).get(c['group']) or {}
-        known = {(v or {}).get('commit') for v in (run.get('tasks') or {}).values()} | set(run.get('cli_commits') or [])
-        try:
-            for o in json.load(open(os.environ.get('TEMPER_OVERRIDES_FILE') or '.temper/overrides.json')):
-                st = str(o.get('stage', '')).split(':', 2)
-                if len(st) == 3 and st[0] == 'foreign-commit' and st[1] == c['group']:
-                    known.add(st[2])
-        except Exception:
-            pass
+        known = known_shas(run, c['group'])
         mine_reopens = set(mine_g.get('reopen_reverts') or [])
         for sha in (x for x in rl.stdout.decode('utf-8', 'replace').split('\n') if x.strip()):
             if sha in mine_reopens:
@@ -3190,12 +3255,21 @@ _task_gate_body() {
   _usage_append task "$model" "$tokens" "$ms" "$n" "$group" || true
 
   if [[ "$verdict" != "PASS" ]]; then
-    local att fshas wtrel park=""
+    local att fshas wtrel park="" stale=""
     att="$(_jget "$v" attempt)"; fshas="$(_jget "$v" foreign_shas)"; wtrel="$(_jget "$_T_CTX" worktree)"
     if [[ "$fshas" != "[]" && -n "$fshas" ]]; then
       # D-08: a commit the CLI did not record is not repaired. The task FAILs, the group parks at once (no retry: a
       # rule violation, not a test failure) and nothing is written to the branch or the working tree.
       park="the group holds commit(s) not made by the CLI"
+      # M1: the commit may be any running task's (the order of the gates in a batch is arbitrary): every other running task
+      # of the group fails too, its attempt is stale, and the reopen printed below names them all
+      stale="$(python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    d = {}
+print(' '.join(sorted((k for k, v in (d.get('tasks') or {}).items() if v.get('group') == sys.argv[2] and v.get('status') == 'running' and k != sys.argv[3]), key=int)))" "$GROUPS_FILE" "$group" "$n")"
     else
       # D-03: attempt 1 retries on the task model, attempt 2 escalates once, attempt 3 parks the group.
       # The restore comes first so the next attempt starts from the snapshot, and the one write below
@@ -3226,13 +3300,24 @@ if int(a[1]) >= 3 or a[9]:
     old = g.get('parked_reason') if g.get('status') == 'parked' else ''
     g['parked_reason'] = old + ' -- also: ' + new if old and new not in old else (old or new)
     g['status'] = 'parked'
-" "$n" "$att" "$model" "$reason" "$tokens" "$ms" "$(_now)" "$(_jget "$v" output)" "$group" "$park" "${fshas:-[]}" || return 1
+    for k in a[11].split():
+        o = d['tasks'].get(k) or {}
+        if o.get('status') == 'running':
+            o.setdefault('attempts', []).append({'n': int(o.get('attempt') or 1), 'model': None, 'outcome': 'FAIL',
+                'reason': 'the group parked on a commit not made by the CLI; this attempt is stale', 'tokens': None, 'ms': None,
+                'ts': a[6], 'output': ''})
+            o['status'] = 'failed'
+" "$n" "$att" "$model" "$reason" "$tokens" "$ms" "$(_now)" "$(_jget "$v" output)" "$group" "$park" "${fshas:-[]}" "$stale" || return 1
     echo "FAIL: $reason"
     if [[ "$fshas" != "[]" && -n "$fshas" ]]; then
       local fl=(); mapfile -t fl < <(python3 -c "
 import json, sys
 print('\n'.join(json.loads(sys.argv[1])))" "$fshas")
-      _park_ways_out "$group" "$wtrel" "$n" "${fl[@]}"
+      local tl="$n" st
+      for st in $stale; do tl="$tl,$st"; done
+      tl="$(printf '%s' "$tl" | tr ',' '\n' | sort -n | paste -sd, -)"
+      if [[ -n "$stale" ]]; then echo "Marked failed, each with a stale attempt that needs a fresh RED and GREEN: Task ${tl//,/, Task }"; fi
+      _park_ways_out "$group" "$wtrel" "$tl" "${fl[@]}"
       echo "NEXT: park group $group"
     elif [[ -n "$park" ]]; then
       echo "NEXT: park group $group"
@@ -3350,6 +3435,18 @@ except Exception:
   if [[ -n "$notpassed" ]]; then
     _integ_record FAIL "group gate not passed: $notpassed" || true
     echo "FAIL: group gate has not passed for: $notpassed" >&2
+    return 1
+  fi
+  # M5: no group branch may hold a commit that the CLI did not record and nobody accepted
+  local ug unk="" ugl
+  for ug in $(python3 -c "import json, sys; print(' '.join(json.loads(sys.argv[1])['order']))" "$facts"); do
+    ugl="$(_task_py unknown "$(pwd -P)" "$GROUPS_FILE" "$ug" "temper/$slug/$ug" | cut -c1-7 | paste -sd' ' -)"
+    [[ -z "$ugl" ]] || unk="${unk:+$unk; }$ug: $ugl"
+  done
+  if [[ -n "$unk" ]]; then
+    _integ_record FAIL "commit(s) not made by the CLI and not accepted: $unk" || true
+    echo "FAIL: commit(s) not made by the CLI and not accepted on a group branch: $unk" >&2
+    echo "Remove them from the branch, or keep them knowingly: temper group reopen <G> --task <N> --accept-foreign <sha> --reason \"<why>\"" >&2
     return 1
   fi
   local missing
