@@ -1,0 +1,320 @@
+{
+  "gates": {
+    "intent": {
+      "verdict": "PASS",
+      "requirements": [
+        {
+          "name": "problem stated",
+          "pass": true,
+          "detail": "Problem section has 21 line(s) of content"
+        },
+        {
+          "name": "success criteria",
+          "pass": true,
+          "detail": "15 criterion/criteria listed"
+        },
+        {
+          "name": "status header",
+          "pass": true,
+          "detail": "**Status:** accepted"
+        },
+        {
+          "name": "task context recorded",
+          "pass": true,
+          "detail": "skipped \u2014 intent is accepted; this check applies to drafts only (a recorded acceptance is never revisited)"
+        },
+        {
+          "name": "criteria why",
+          "pass": true,
+          "detail": "skipped \u2014 intent is accepted; this check applies to drafts only (a recorded acceptance is never revisited)"
+        },
+        {
+          "name": "target users action chain",
+          "pass": true,
+          "detail": "skipped \u2014 intent is accepted; this check applies to drafts only (a recorded acceptance is never revisited)"
+        },
+        {
+          "name": "criteria ids",
+          "pass": true,
+          "detail": "skipped \u2014 intent is accepted; this check applies to drafts only (a recorded acceptance is never revisited)"
+        },
+        {
+          "name": "criteria priority",
+          "pass": true,
+          "detail": "skipped \u2014 intent is accepted; this check applies to drafts only (a recorded acceptance is never revisited)"
+        },
+        {
+          "name": "criteria validate",
+          "pass": true,
+          "detail": "skipped \u2014 intent is accepted; this check applies to drafts only (a recorded acceptance is never revisited)"
+        },
+        {
+          "name": "open questions labeled",
+          "pass": true,
+          "detail": "skipped \u2014 intent is accepted; this check applies to drafts only (a recorded acceptance is never revisited)"
+        },
+        {
+          "name": "no duplicate question",
+          "pass": true,
+          "detail": "skipped \u2014 intent is accepted; this check applies to drafts only (a recorded acceptance is never revisited)"
+        },
+        {
+          "name": "header fields",
+          "pass": true,
+          "detail": "skipped \u2014 intent is accepted; this check applies to drafts only (a recorded acceptance is never revisited)"
+        },
+        {
+          "name": "no scenarios in draft",
+          "pass": true,
+          "detail": "skipped \u2014 intent is accepted; this check applies to drafts only (a recorded acceptance is never revisited)"
+        },
+        {
+          "name": "no soft words",
+          "pass": true,
+          "detail": "skipped \u2014 intent is accepted; this check applies to drafts only (a recorded acceptance is never revisited)"
+        },
+        {
+          "name": "out of scope stated",
+          "pass": true,
+          "detail": "skipped \u2014 intent is accepted; this check applies to drafts only (a recorded acceptance is never revisited)"
+        },
+        {
+          "name": "open questions resolved",
+          "pass": true,
+          "detail": "skipped \u2014 intent is accepted; this check applies to drafts only (a recorded acceptance is never revisited)"
+        }
+      ],
+      "ts": "2026-10-10T10:15:04Z"
+    },
+    "plan": {
+      "verdict": "PASS",
+      "requirements": [
+        {
+          "name": "artifacts exist",
+          "pass": true,
+          "detail": "intent.md + tasks.md present"
+        },
+        {
+          "name": "criteria -> scenarios",
+          "pass": true,
+          "detail": "24 scenario(s) for 15 success criterion/criteria"
+        },
+        {
+          "name": "criteria -> validation",
+          "pass": true,
+          "detail": "every criterion has explicit validation links"
+        },
+        {
+          "name": "scenarios in gherkin blocks",
+          "pass": true,
+          "detail": "24 scenario(s), all inside gherkin fences"
+        },
+        {
+          "name": "cross-repo search recorded",
+          "pass": true,
+          "detail": "plan.md records the cross-repo search (or why none ran)"
+        },
+        {
+          "name": "blast radius documented",
+          "pass": true,
+          "detail": "plan.md has a Blast Radius section (complex change)"
+        }
+      ],
+      "ts": "2026-10-10T10:17:54Z"
+    },
+    "design": {
+      "verdict": "PASS",
+      "requirements": [
+        {
+          "name": "concerns flagged",
+          "pass": true,
+          "detail": "design.md has an Areas of Concern section ('None flagged \u2014 why' counts)"
+        }
+      ],
+      "ts": "2026-10-10T10:26:45Z"
+    },
+    "commit": {
+      "verdict": "PASS",
+      "requirements": [
+        {
+          "name": "intent gate",
+          "pass": true,
+          "detail": "PASS"
+        },
+        {
+          "name": "plan gate",
+          "pass": true,
+          "detail": "PASS"
+        },
+        {
+          "name": "design gate",
+          "pass": true,
+          "detail": "PASS"
+        },
+        {
+          "name": "build gate",
+          "pass": true,
+          "detail": "PASS"
+        },
+        {
+          "name": "review gate",
+          "pass": true,
+          "detail": "PASS"
+        },
+        {
+          "name": "check gate",
+          "pass": true,
+          "detail": "FAIL, overridden by human"
+        }
+      ],
+      "ts": "2026-10-11T15:14:40Z"
+    },
+    "build": {
+      "verdict": "PASS",
+      "requirements": [
+        {
+          "name": "RED then GREEN",
+          "pass": true,
+          "detail": "9 failing-first run(s), 10 passing run(s) recorded"
+        },
+        {
+          "name": "all tasks complete",
+          "pass": true,
+          "detail": "no unchecked tasks in tasks.md"
+        },
+        {
+          "name": "checkpoint feedback answered",
+          "pass": true,
+          "detail": "every feedback row answered (applied or declined with reason)"
+        }
+      ],
+      "ts": "2026-10-11T14:14:47Z"
+    },
+    "review": {
+      "verdict": "PASS",
+      "requirements": [
+        {
+          "name": "no blocking findings",
+          "pass": true,
+          "detail": "0 open findings at severity [critical]"
+        },
+        {
+          "name": "review completed",
+          "pass": true,
+          "detail": "review completed"
+        }
+      ],
+      "ts": "2026-10-11T14:14:48Z"
+    },
+    "check": {
+      "verdict": "FAIL",
+      "requirements": [
+        {
+          "name": "tests pass",
+          "pass": true,
+          "detail": "47 green test run(s) recorded"
+        },
+        {
+          "name": "scenarios traced to tests",
+          "pass": true,
+          "detail": "24/24 scenario(s) covered"
+        },
+        {
+          "name": "coverage >= threshold",
+          "pass": false,
+          "detail": "recorded coverage 'none' vs threshold 80%"
+        },
+        {
+          "name": "acceptance evidence",
+          "pass": true,
+          "detail": "every criterion has explicit validation links"
+        }
+      ],
+      "ts": "2026-10-11T15:14:36Z"
+    }
+  },
+  "overrides": [
+    {
+      "stage": "check",
+      "reason": "coverage only: scripts/temper is a Bash CLI and no Bash coverage tool is installed, so coverage cannot be measured; behaviour is covered by 1440 selftest cases and 2663 mod tests; every other Check requirement passes (approved by galando at the Check gate)",
+      "by": "Claude <noreply@anthropic.com>",
+      "ts": "2026-10-11T15:14:40Z"
+    }
+  ],
+  "evidence": {
+    "build": {
+      "rows": 38,
+      "labels": {
+        "PROVEN": 10,
+        "HEURISTIC": 28
+      }
+    },
+    "check": {
+      "rows": 72,
+      "labels": {
+        "PROVEN": 8,
+        "HEURISTIC": 61,
+        "UNVERIFIED": 3
+      }
+    },
+    "review": {
+      "rows": 52,
+      "labels": {
+        "PROVEN": 7,
+        "HEURISTIC": 45
+      }
+    }
+  },
+  "archived": "2026-10-11T15:14:57Z",
+  "usage": {
+    "by_model": {
+      "opus": {
+        "ms": 11903687,
+        "rows": 12,
+        "tokens": 2158220
+      },
+      "sonnet": {
+        "ms": 62032707,
+        "rows": 37,
+        "tokens": 4341381
+      }
+    },
+    "by_stage": {
+      "build": {
+        "ms": 61011798,
+        "rows": 36,
+        "tokens": 4220743
+      },
+      "check": {
+        "ms": 1020909,
+        "rows": 1,
+        "tokens": 120638
+      },
+      "design": {
+        "ms": 275528,
+        "rows": 1,
+        "tokens": 128471
+      },
+      "intent": {
+        "ms": 89610,
+        "rows": 1,
+        "tokens": 71752
+      },
+      "plan": {
+        "ms": 506988,
+        "rows": 1,
+        "tokens": 213788
+      },
+      "review": {
+        "ms": 11031561,
+        "rows": 9,
+        "tokens": 1744209
+      }
+    },
+    "total": {
+      "ms": 73936394,
+      "rows": 49,
+      "tokens": 6499601
+    }
+  }
+}
