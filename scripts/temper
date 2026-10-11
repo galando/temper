@@ -299,8 +299,11 @@ else:
 # by someone else is never released by the old holder. A lock older than 30 s belongs to a crashed holder
 # and is broken under a second short-lived lock (.lock.break), re-checked there, so two waiters never both
 # break it. The break moves the folder aside under a name only that process uses and deletes it; nothing is
-# ever put back, so a waiter's mkdir at any moment simply wins the lock and no second holder or orphan folder
-# is made. A lock still held after TEMPER_LOCK_WAIT_S (default 10)
+# ever put back, so a waiter's mkdir at any moment simply wins the lock and no orphan folder is made. The age
+# check and the rename run in one process, so the window in which a lock that was released and re-taken
+# between the two could still be moved aside is narrowed to a few microseconds, not closed (a directory rename
+# cannot be made conditional on its age); it needs a holder that was past 30 s and released at that very moment.
+# A lock still held after TEMPER_LOCK_WAIT_S (default 10)
 # seconds is written past with a WARN (fail open), so a stuck holder never wedges a run. A lock this call
 # did not take is never released. Calls nest (a depth count: only the outermost release frees the folder),
 # and a trap frees a held lock on EXIT/INT/TERM/HUP. Held around a file write, or a short git commit plus
@@ -323,11 +326,18 @@ _lock_break_stale() {
     _lock_older_than_30s "$br" && rmdir "$br" 2>/dev/null   # a breaker that died is cleared once old
     return 0
   fi
-  if _lock_older_than_30s "$_LOCK_DIR"; then   # re-checked while no other waiter can break it
-    local dead="$_LOCK_DIR.dead.$$"
-    rm -rf "$dead" 2>/dev/null
-    mv "$_LOCK_DIR" "$dead" 2>/dev/null && rm -rf "$dead" 2>/dev/null
-  fi
+  # the age check and the rename happen in ONE process, a few microseconds apart (a shell check followed by a
+  # separate mv left a window of milliseconds)
+  local dead="$_LOCK_DIR.dead.$$"
+  rm -rf "$dead" 2>/dev/null
+  python3 -c "
+import os, sys, time
+try:
+    if time.time() - os.path.getmtime(sys.argv[1]) > 30:   # re-checked while no other waiter can break it
+        os.rename(sys.argv[1], sys.argv[2])
+except OSError:
+    pass" "$_LOCK_DIR" "$dead" 2>/dev/null
+  rm -rf "$dead" 2>/dev/null
   rmdir "$br" 2>/dev/null || true
 }
 _lock_cleanup() { # free the lock this process still owns (EXIT/INT/TERM/HUP)
@@ -2477,11 +2487,22 @@ def fail(msg):
     print('FAIL: ' + msg, file=sys.stderr)
     sys.exit(1)
 
+def run_retry(cmd, tries=60, delay=0.1):
+    """Run a git command; a failure that names a .lock file (index.lock, HEAD.lock: another git process holds it,
+    briefly) is retried for a few seconds, any other failure is returned at once."""
+    r = None
+    for _ in range(tries):
+        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if r.returncode == 0 or b'.lock' not in r.stderr:
+            return r
+        time.sleep(delay)
+    return r
+
 def snap(wt):
     """sha256 of every dirty or untracked path in the worktree ('DELETED' for a path that is gone)."""
     r = subprocess.run(['git', '--literal-pathspecs', '-C', wt, 'status', '--porcelain=v1', '-z', '-uall'],
                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    ents = r.stdout.decode('utf-8', 'replace').split('\0')
+    ents = r.stdout.decode('utf-8', 'surrogateescape').split('\0')
     out, i = {}, 0
     while i < len(ents):
         e = ents[i]; i += 1
@@ -2721,70 +2742,176 @@ elif mode == 'reopencheck':
         st = (run.get('tasks') or {}).get(str(n)) or {}
         print('%d\t%s\t%s' % (n, ','.join(by_n[n]['files']), st.get('start_sha', '')))
 
+elif mode == 'reset':
+    # reset <worktree> <sha>: HEAD and the index back to sha, the working tree untouched; waits out a brief .lock
+    r = run_retry(['git', '-C', sys.argv[2], 'reset', '-q', '--mixed', sys.argv[3]])
+    sys.exit(0 if r.returncode == 0 else 1)
+
 elif mode == 'restore':
-    wt, sha, paths = sys.argv[2], sys.argv[3], json.loads(sys.argv[4])
+    # restore <worktree> <sha> <paths-json | @file>: each path goes back to its content at sha (and out of the index),
+    # or is removed when sha does not have it. Batched: one ls-tree, then checkout/reset in chunks, never one git
+    # process per path.
+    wt, sha, arg = sys.argv[2], sys.argv[3], sys.argv[4]
+    paths = json.loads(open(arg[1:]).read() if arg.startswith('@') else arg)
+    lt = subprocess.run(['git', '--literal-pathspecs', '-C', wt, 'ls-tree', '-r', '-z', '--name-only', sha],
+                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    had = set(lt.stdout.split(b'\0'))
+    tracked = [p for p in paths if os.fsencode(p) in had]
     for p in paths:
-        tracked = subprocess.run(['git', '--literal-pathspecs', '-C', wt, 'cat-file', '-e', '%s:%s' % (sha, p)],
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
-        if tracked:
-            subprocess.run(['git', '--literal-pathspecs', '-C', wt, 'checkout', sha, '--', p],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(['git', '--literal-pathspecs', '-C', wt, 'reset', '-q', 'HEAD', '--', p],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        else:
+        if os.fsencode(p) not in had:
             try:
                 os.remove(os.path.join(wt, p))
             except OSError:
                 pass
+    def chunked(cmd_head, chunk):
+        return run_retry(['git', '--literal-pathspecs', '-C', wt] + cmd_head + ['--'] + chunk)
+    for i in range(0, len(tracked), 200):
+        chunk = tracked[i:i + 200]
+        if chunked(['checkout', sha], chunk).returncode != 0:
+            for p in chunk:   # one path in the chunk could not be restored: the rest still are
+                chunked(['checkout', sha], [p])
+        if chunked(['reset', '-q', 'HEAD'], chunk).returncode != 0:
+            for p in chunk:
+                chunked(['reset', '-q', 'HEAD'], [p])
 
 elif mode == 'undo':
-    # F1/F3: take the foreign commits (newest first) off the branch without touching the working tree: the tree to
-    # commit is built in a temporary index from HEAD, each path a foreign commit changed goes back to the commit's
-    # parent version unless a later commit changed it again, and one commit holds the result. A running sibling's
-    # files in the working tree, dirty or not, are never read or written.
-    import shutil, tempfile
+    # undo <worktree> <shas-json newest first> <identity args> <protected-paths-json>
+    # F1/F3: take the foreign commits off the branch without touching a running sibling: the tree to commit is built in
+    # a temporary index from HEAD, and each foreign commit's own change is reverse-applied there with a 3-way merge
+    # (git apply -R --3way --cached of the commit's diff), so a later commit that changed the same path again keeps its
+    # change and loses only the foreign one. One commit holds the result, then HEAD and the index move to it.
+    # G3: one diff and one apply per foreign commit, not one git process per path. G4: everything is bytes (-z), a
+    # file turned into a directory is just two paths, and the result is verified against the commits before success
+    # is reported. Exit 0: done (prints the new commit, or nothing when the tree needs no change); 2: the reverse
+    # apply conflicts or the result still holds foreign content (nothing was changed); 1: git failed.
+    import hashlib, shutil, tempfile
     wt, shas, idargs = sys.argv[2], json.loads(sys.argv[3]), sys.argv[4].split()
+    protect = {os.fsencode(x) for x in json.loads(sys.argv[5])} if len(sys.argv) > 5 else set()
     tmp = tempfile.mkdtemp(prefix='temper-undo.')
     env = dict(os.environ, GIT_INDEX_FILE=os.path.join(tmp, 'index'))
-    def git(args, use_env=True):
-        return subprocess.run(['git', '--literal-pathspecs', '-C', wt] + args, stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL, env=env if use_env else None)
-    zero = '0' * 40
+    def git(args, use_env=True, inp=None):
+        return subprocess.run(['git', '--literal-pathspecs', '-C', wt] + args, input=inp, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, env=env if use_env else None)
+    def parse(out, tree):   # {path: (mode, blob)}; None when an unmerged (staged > 0) entry shows up
+        d = {}
+        for rec in out.split(b'\0'):
+            if not rec:
+                continue
+            meta, _, path = rec.partition(b'\t')
+            f = meta.split()
+            if not tree and f[2] != b'0':
+                return None
+            d[path] = (f[0], f[2] if tree else f[1])
+        return d
+    def index_entries():
+        r = git(['ls-files', '-s', '-z'])
+        return parse(r.stdout, False) if r.returncode == 0 else None
+    def tree_entries(rev):
+        r = git(['ls-tree', '-r', '-z', rev], False)
+        return parse(r.stdout, True) if r.returncode == 0 else None
     try:
         if git(['read-tree', 'HEAD']).returncode != 0:
             sys.exit(1)
+        start = index_entries()
+        cur = start
+        if cur is None:
+            sys.exit(1)
         for sha in shas:
-            r = git(['diff-tree', '-r', '-z', '--no-renames', '--no-abbrev', '--raw', sha + '^', sha], False)
-            if r.returncode != 0:
+            patch = git(['diff', '-R', '--binary', '--full-index', '--no-renames', '--no-ext-diff', '--no-textconv',
+                         '--src-prefix=a/', '--dst-prefix=b/', sha + '^', sha], False)
+            if patch.returncode != 0:
                 sys.exit(1)
-            tok = r.stdout.decode('utf-8', 'replace').split('\0')
-            for i in range(0, len(tok) - 1, 2):
-                om, nm, osha, nsha = tok[i].lstrip(':').split()[:4]
-                path = tok[i + 1]
-                cur = git(['ls-files', '-s', '--', path]).stdout.decode('utf-8', 'replace').split()
-                if (cur[1] if len(cur) > 1 else zero) != nsha:
-                    continue   # a later commit changed the path again: that content is not the foreign commit's
-                if osha == zero:
-                    ok = git(['update-index', '--force-remove', '--', path]).returncode == 0
-                else:
-                    ok = git(['update-index', '--add', '--cacheinfo', '%s,%s,%s' % (om, osha, path)]).returncode == 0
-                if not ok:
-                    sys.exit(1)
+            parent, new = tree_entries(sha + '^'), tree_entries(sha)
+            if parent is None or new is None:
+                sys.exit(1)
+            if patch.stdout.strip():
+                if git(['apply', '--cached', '--3way', '--whitespace=nowarn', '-'], inp=patch.stdout).returncode != 0:
+                    sys.exit(2)
+            after = index_entries()
+            if after is None:
+                sys.exit(2)
+            # verification: a path the foreign commit changed is back at its pre-foreign content when nothing came
+            # after it, and no longer the foreign content when a later commit changed it again
+            for path in set(parent) | set(new):
+                if parent.get(path) == new.get(path):
+                    continue
+                if cur.get(path) == new.get(path):
+                    if after.get(path) != parent.get(path):
+                        sys.exit(2)
+                elif after.get(path) == new.get(path):
+                    sys.exit(2)
+            cur = after
         tree = git(['write-tree']).stdout.decode().strip()
         head = subprocess.run(['git', '-C', wt, 'rev-parse', 'HEAD^{tree}'], stdout=subprocess.PIPE,
                               stderr=subprocess.DEVNULL).stdout.decode().strip()
-        if not tree or tree == head:
+        if not tree or not head:
+            sys.exit(1)
+        if tree == head:
             sys.exit(0)
         c = subprocess.run(['git', '-C', wt] + idargs + ['commit-tree', tree, '-p', 'HEAD', '-m',
                            'revert: commit(s) not made by the CLI'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        new = c.stdout.decode().strip()
-        if c.returncode != 0 or not new:
+        new_commit = c.stdout.decode().strip()
+        if c.returncode != 0 or not new_commit:
             sys.exit(1)
-        # HEAD and the index move to the new commit; the working tree stays as it is
-        if subprocess.run(['git', '-C', wt, 'reset', '-q', '--mixed', new], stdout=subprocess.DEVNULL,
-                          stderr=subprocess.DEVNULL).returncode != 0:
+        # HEAD and the index move to the new commit; a brief .lock held by another git process is waited out
+        if run_retry(['git', '-C', wt, 'reset', '-q', '--mixed', new_commit]).returncode != 0:
             sys.exit(1)
-        print(new)
+        # the working tree stays as it is, except a file that still holds exactly the content this undo took off the
+        # branch and that no running sibling declares: it follows the branch (a finished sibling's file must not
+        # keep the foreign line); removals first so a file can turn back into a directory or the reverse
+        wtb = os.fsencode(wt)
+        def blob_id(data):
+            return hashlib.sha1(b'blob %d\0' % len(data) + data).hexdigest().encode()
+        def holds(fp, old):
+            return old is not None and os.path.isfile(fp) and not os.path.islink(fp) and blob_id(open(fp, 'rb').read()) == old[1]
+        todo = [q for q in set(start) | set(cur) if start.get(q) != cur.get(q) and q not in protect]
+        want = sorted({cur[q][1] for q in todo if q in cur and cur[q][0] in (b'100644', b'100755')})
+        blobs = {}
+        if want:
+            cb = subprocess.run(['git', '-C', wt, 'cat-file', '--batch'], input=b'\n'.join(want) + b'\n',
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            buf, pos = cb.stdout, 0
+            while pos < len(buf):
+                nl = buf.index(b'\n', pos)
+                hdr = buf[pos:nl].split()
+                if len(hdr) < 3 or hdr[1] != b'blob':
+                    pos = nl + 1
+                    continue
+                size = int(hdr[2])
+                blobs[hdr[0]] = buf[nl + 1:nl + 1 + size]
+                pos = nl + 1 + size + 1
+        for q in sorted((q for q in todo if q not in cur), reverse=True):
+            fp = os.path.join(wtb, q)
+            try:
+                if holds(fp, start.get(q)):
+                    os.remove(fp)
+                    d = os.path.dirname(fp)
+                    while len(d) > len(wtb) and os.path.isdir(d) and not os.listdir(d):
+                        os.rmdir(d)
+                        d = os.path.dirname(d)
+            except OSError:
+                pass
+        for q in sorted(q for q in todo if q in cur):
+            fp = os.path.join(wtb, q)
+            mode_, blob = cur[q]
+            if mode_ not in (b'100644', b'100755') or blob not in blobs:
+                continue
+            try:
+                if os.path.islink(fp):
+                    continue
+                if os.path.lexists(fp):
+                    if not holds(fp, start.get(q)):
+                        continue
+                elif start.get(q) is not None:
+                    continue   # the working file is gone already: not ours to bring back
+                os.makedirs(os.path.dirname(fp), exist_ok=True)
+                with open(fp, 'wb') as fh:
+                    fh.write(blobs[blob])
+                if mode_ == b'100755':
+                    os.chmod(fp, 0o755)
+            except OSError:
+                pass
+        print(new_commit)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -2845,7 +2972,7 @@ elif mode == 'verdict':
                 cli_in_range += 1
         df = subprocess.run(['git', '-C', wt, 'diff', '--name-only', '--no-renames', '-z', c['start_sha'], 'HEAD'],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        committed = sorted(p for p in df.stdout.decode('utf-8', 'replace').split('\0') if p and not internal(p))
+        committed = sorted(p for p in df.stdout.decode('utf-8', 'surrogateescape').split('\0') if p and not internal(p))
     # F4: a group reopen's revert belongs to the reopened task, but only its own content: a path is excused only while
     # the working file and HEAD both still hold the blob that revert commit made (the latest reopen of a path wins)
     def blob(args):
@@ -2855,7 +2982,7 @@ elif mode == 'verdict':
     for sha in reopen_shas:
         dt = subprocess.run(['git', '-C', wt, 'diff-tree', '--no-commit-id', '--name-only', '-r', '-z', '--no-renames', sha],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        for p in (x for x in dt.stdout.decode('utf-8', 'replace').split('\0') if x):
+        for p in (x for x in dt.stdout.decode('utf-8', 'surrogateescape').split('\0') if x):
             if p in reopen_seen:
                 continue
             reopen_seen.add(p)
@@ -2873,10 +3000,12 @@ elif mode == 'verdict':
     undeclared = sorted(p for p in set(changed) | set(committed)
                         if not matches(p, c['files']) and not matches(p, others) and p not in reopen_ok)
     problems = []
+    def named(lst, cap=20):   # a verdict with thousands of paths names the first few
+        return ', '.join(lst[:cap]) + (' (and %d more)' % (len(lst) - cap) if len(lst) > cap else '')
     if undeclared:
-        problems.append('undeclared change: ' + ', '.join(undeclared))
+        problems.append('undeclared change: ' + named(undeclared))
     if foreign:
-        problems.append('commit not made by the CLI: ' + ', '.join(foreign))
+        problems.append('commit not made by the CLI: ' + named(foreign))
     if not reason and problems:
         reason = '; '.join(problems)
     # M2: on a FAIL the undeclared changes named are removed or restored too, except a path that was already
@@ -2893,23 +3022,29 @@ elif mode == 'verdict':
     later_sibling = any(((run.get('tasks') or {}).get(str(t['n'])) or {}).get('status') == 'running'
                         and ((run.get('tasks') or {}).get(str(t['n'])) or {}).get('start_sha') != c['start_sha']
                         for t in plan['tasks'] if t['n'] != n and t['group'] == c['group'])
+    running_files = []   # declared files of the siblings still running in this group: an undo never writes them
+    for t in plan['tasks']:
+        if t['n'] != n and t['group'] == c['group'] and ((run.get('tasks') or {}).get(str(t['n'])) or {}).get('status') == 'running':
+            running_files += [norm(f) for f in t['files']]
     foreign_mode = '' if not foreign_full else ('reset' if cli_in_range == 0 and not later_sibling else 'revert')
     tail = ''
     if reason:
         last = [r for r in mine if r.get('output')]
         tail = '\n'.join((last[-1]['output'] if last else '').split('\n')[:20]).rstrip('\n')
     print(json.dumps({'verdict': 'FAIL' if reason else 'PASS', 'reason': reason, 'commit_paths': mine_changed,
-                      'restore_paths': restore_paths, 'foreign_shas': foreign_full, 'foreign_mode': foreign_mode,
+                      'restore_paths': restore_paths, 'foreign_shas': foreign_full, 'foreign_mode': foreign_mode, 'protect_paths': running_files,
                       'output': tail, 'attempt': c['attempt'], 'title': c['title'], 'group': c['group'],
                       'slug': c['slug']}))
 PY
 }
 
-_jget() { # _jget <json> <key> -> the value (lists and objects as JSON)
-  python3 -c "
+_jget() { # _jget <json> <key> -> the value (lists and objects as JSON); the JSON goes in on stdin, so a large
+          # verdict (thousands of paths) never meets the argument size limit
+  printf '%s' "$1" | python3 -c "
 import json, sys
-v = json.loads(sys.argv[1]).get(sys.argv[2], '')
-print(json.dumps(v) if isinstance(v, (list, dict)) else ('' if v is None else v))" "$1" "$2"
+v = json.load(sys.stdin).get(sys.argv[1], '')
+s = json.dumps(v) if isinstance(v, (list, dict)) else ('' if v is None else str(v))
+sys.stdout.buffer.write((s + '\\n').encode('utf-8', 'surrogateescape'))" "$2"
 }
 
 _task_load() { # _task_load <N>: sets _T_SPEC _T_PLAN _T_CTX _T_ABS for task N, or returns 1 with the reason
@@ -3094,28 +3229,41 @@ _task_gate_body() {
     local att; att="$(_jget "$v" attempt)"
     # R1: a commit the agent made in the worktree is taken off the group branch before the retry can start from
     # it: a reset to the task's start when only foreign commits follow it, else a revert of exactly those commits.
-    local park="" fmode fshas
-    fmode="$(_jget "$v" foreign_mode)"; fshas="$(_jget "$v" foreign_shas)"
+    local park="" fmode fshas wtrel
+    fmode="$(_jget "$v" foreign_mode)"; fshas="$(_jget "$v" foreign_shas)"; wtrel="$(_jget "$_T_CTX" worktree)"
+    # The hint for an undo the CLI could not do: it leaves the working tree alone (a stash without a pop, or a reset,
+    # would lose a running sibling's files, and a commit made by hand is not recorded by the CLI, so the sibling
+    # would then FAIL as foreign); the human waits for the group's running tasks, undoes the commit(s), and reopens.
+    _undo_hint() { # _undo_hint <why> <shas-json> <revert-or-reset-command>
+      echo "$1; the working tree of $wtrel was not changed. Leave it alone while a task of this group is running; when no task of this group is running, $3, then temper group reopen $group --task $n"
+    }
     if [[ "$fmode" == "reset" ]]; then
-      if ! git -C "$_T_ABS" reset -q --mixed "$(_jget "$_T_CTX" start_sha)" >/dev/null 2>&1; then
-        park="could not reset $(_jget "$_T_CTX" worktree) to Task $n's start; undo the commit(s) not made by the CLI by hand (git -C $(_jget "$_T_CTX" worktree) reset --mixed $(_jget "$_T_CTX" start_sha)), then temper group reopen $group --task $n"
+      if ! _task_py reset "$_T_ABS" "$(_jget "$_T_CTX" start_sha)" >/dev/null 2>&1; then
+        park="$(_undo_hint "could not reset $wtrel to Task $n's start" "$fshas" "undo the commit(s) not made by the CLI by hand (git -C $wtrel reset --mixed $(_jget "$_T_CTX" start_sha))")"
       fi
     elif [[ "$fmode" == "revert" ]]; then
-      local rsha
-      if rsha="$(_task_py undo "$_T_ABS" "$fshas" "$(_git_id_args)" 2>/dev/null)"; then
+      local rsha urc short
+      short="$(python3 -c "
+import json, sys
+print(' '.join(x[:7] for x in json.loads(sys.argv[1])))" "$fshas")"
+      rsha="$(_task_py undo "$_T_ABS" "$fshas" "$(_git_id_args)" "$(_jget "$v" protect_paths)" 2>/dev/null)"; urc=$?
+      if (( urc == 0 )); then
         _groups_mutate "
 if a[0]:
     d.setdefault('cli_commits', []).append(a[0])
 d.setdefault('reverted_foreign', []).extend(json.loads(a[1]))
 " "$rsha" "$fshas" || return 1
+      elif (( urc == 2 )); then
+        park="$(_undo_hint "the commit(s) not made by the CLI ($short) conflict with a later change to the same file(s) and cannot be taken off the group branch cleanly" "$fshas" "run git -C $wtrel revert --no-edit $short (newest first) and resolve the conflict")"
       else
-        park="could not take the commit(s) not made by the CLI off the group branch; in $(_jget "$_T_CTX" worktree) stash any uncommitted work, run git revert --no-edit on them newest first ($(python3 -c "
-import json, sys
-print(' '.join(x[:7] for x in json.loads(sys.argv[1])))" "$fshas")), then temper group reopen $group --task $n"
+        park="$(_undo_hint "could not take the commit(s) not made by the CLI ($short) off the group branch" "$fshas" "run git -C $wtrel revert --no-edit $short (newest first)")"
       fi
     fi
     [[ -n "$park" ]] && echo "WARN: $park" >&2
-    _task_py restore "$_T_ABS" "$(_jget "$_T_CTX" start_sha)" "$(_jget "$v" restore_paths)"
+    local rpf; rpf="$(mktemp "${TMPDIR:-/tmp}/temper-restore.XXXXXX")"   # a file, not an argument: thousands of paths
+    _jget "$v" restore_paths > "$rpf"
+    _task_py restore "$_T_ABS" "$(_jget "$_T_CTX" start_sha)" "@$rpf"
+    rm -f "$rpf"
     _groups_mutate "
 t = d['tasks'][a[0]]
 def num(x): return int(x) if x.isdigit() else None

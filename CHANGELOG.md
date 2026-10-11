@@ -63,18 +63,28 @@ not asserted by an agent:
 - Commits made in the worktree count toward the task's changed files. A failed attempt that left a
   foreign (agent-made) commit on the group branch has exactly those commits undone, so the retry
   starts from the restored point; only shas the CLI recorded are trusted. The undo never touches the
-  working tree: a plain reset when only foreign commits follow the start and no running sibling in the
-  same group is affected, else one revert commit built in a temporary index, so a running sibling's
-  files (dirty or not) and the CLI's own commits stay as they are, and a still-dirty file cannot make
-  the undo fail and park the group.
+  working tree of a running sibling: a plain reset when only foreign commits follow the start and no
+  running sibling in the same group is affected, else one revert commit built in a temporary index by a
+  reverse 3-way apply of each foreign commit's own diff. A later CLI commit that changed the same
+  path again keeps its change and loses only the foreign one; when the reverse apply conflicts, or the
+  result is verified to still hold foreign content, the group parks with a hint that leaves the
+  working tree alone (no stash, no reset) and says to undo by hand when no task of this group is running,
+  then `temper group reopen`. The undo is batched (one diff and one apply per commit, so thousands of
+  paths stay far below the lock wait), handles non-UTF-8 names and a file turned into a directory, waits
+  out a brief `index.lock` instead of parking, and a finished sibling's clean file follows the branch.
+  Exception: an agent's edit to a running sibling's declared file lands with that sibling's commit (the
+  sibling's own commit takes whatever its file holds), so it is not undone by the failing task's FAIL; the
+  sibling's own gate is where it shows.
 - The plan digest is taken at the first `group start`; if `tasks.md` changes afterwards (`**File:**`,
   `**Depends:**`, `**Test:**`, group Validate/Interfaces/Context, Integration), every grouped command,
   including `group reopen`, refuses to run. Declared paths are matched exactly and the plan gate
   refuses glob characters in `**File:**`.
 - Run files (`groups.json`, `usage.json`, evidence) are written atomically under the lock, which
   carries an owner token: only the owner releases it, and a stale lock is broken by moving it aside under
-  a private name and deleting it (nothing is put back, so no second holder or orphan folder). The wait deadline follows the wall clock
-  (`TEMPER_LOCK_WAIT_S`).
+  a private name and deleting it (nothing is put back, so no orphan folder). The age check and the rename run
+  in one process, so the window in which a lock re-taken in between could still be moved aside is narrowed to
+  a few microseconds, not closed (a directory rename cannot be made conditional on its age). The wait
+  deadline follows the wall clock (`TEMPER_LOCK_WAIT_S`).
 - Reopen guards: `group reopen` refuses to revert a file that a passed dependent task also edits unless that
   task is reopened too, its revert commit belongs to the reopened task and does not count against a
   running sibling (only while the files still hold the revert's exact content; `group reopen` is
