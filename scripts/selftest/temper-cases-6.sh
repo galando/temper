@@ -392,3 +392,172 @@ assert_eq "J6: the agent's merge is undone (retry, no park)" "1|failed||1" \
 assert_eq "J6: Task 4's CLI commit content stays, the agent's side.txt is gone, Task 4 stays passed" "work src/d.sh|0|passed" \
   "$(git -C "$ST_WT" show HEAD:src/d.sh 2>/dev/null)|$(git -C "$ST_WT" ls-tree -r --name-only HEAD | grep -c side.txt)|$(st_field 4 status)"
 setup
+
+# --- Grouped Build (9.7.0), fourth focused review: the line parent from the CLI's own commits, a content-based "still on the
+# branch", a symlink-for-directory swap healed, a hint that leaves no foreign content behind [K1-K5] ---
+# Invariants: (a) a FAIL never changes a running same-group sibling's working tree or the CLI's commits; (b) foreign content never
+# reaches integrate and success is never recorded while it stays (delete-only, mode-only, binary, merge-only content); (c) attempts
+# 1-2 retry/escalate, only a genuine undo failure parks, and every printed hint works exactly as written and leads to a reopen.
+k_lock() { git -C "$ST_WT" rev-parse --absolute-git-dir | sed 's|$|/index.lock|'; }
+k_park() { # k_park: Task 1 FAILs while a stale index.lock is held, so the undo parks the group on the foreign commits
+  local lk; lk="$(k_lock)"
+  st_edit src/a.sh; g_green 1
+  : > "$lk"; K_OUT="$("$TEMPER" task gate 1 2>&1)"; K_RC=$?; rm -f "$lk"
+}
+k_resolve() { # k_resolve <hint command>: run it as written; a conflict (exit 1) is resolved for the branch's side
+  local hrc; K_HOUT="$($1 2>&1)"; hrc=$?
+  if [[ $hrc -eq 1 ]]; then
+    git -C "$ST_WT" checkout --ours -- . >/dev/null 2>&1; git -C "$ST_WT" add -A >/dev/null 2>&1
+    GIT_EDITOR=true git -C "$ST_WT" revert --continue >/dev/null 2>&1 || git -C "$ST_WT" revert --skip >/dev/null 2>&1 \
+      || git -C "$ST_WT" revert --quit >/dev/null 2>&1
+  fi
+  K_HRC=$hrc
+}
+k_hints() { # run every printed revert or reset command (a chain of && is split) as written
+  local c
+  while IFS= read -r c; do k_resolve "$c"; done < <(gg_g G1 parked_reason | grep -oE 'git -C [^ ]+ (revert --no-edit( -m [0-9]+)?( [0-9a-f]{7,40})+|reset --hard [0-9a-f]{7,40})')
+}
+k_append4() { # Task 4 starts now, appends a line to src/d.sh and passes
+  "$TEMPER" task start 4 >/dev/null 2>&1; g_red 4
+  printf 'task4 line\n' >> "$ST_WT/src/d.sh"; g_green 4; "$TEMPER" task gate 4 >/dev/null 2>&1
+}
+k_reopen() { K_ROUT="$("$TEMPER" group reopen G1 --task 1 2>&1)"; K_RRC=$?; }
+
+# K1: an ordinary --no-ff merge of a side branch with MORE foreign commits on the group line than on the side: the line parent is
+# the parent that holds the CLI's own commits, so Task 4's CLI commit stays (it used to be reverse-applied)
+g_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; g_red 1
+K_START="$(git -C "$ST_WT" rev-parse HEAD)"; K_BR="$(git -C "$ST_WT" symbolic-ref --short HEAD)"
+gg_pass 4 src/d.sh
+git -C "$ST_WT" checkout -q -b side "$K_START"
+echo side > "$ST_WT/side.txt"; g_commit side.txt
+git -C "$ST_WT" checkout -q "$K_BR"
+echo one > "$ST_WT/line1.txt"; g_commit line1.txt; echo two > "$ST_WT/line2.txt"; g_commit line2.txt
+git -C "$ST_WT" merge -q --no-ff side -m "merge side" >/dev/null 2>&1
+st_edit src/a.sh; g_green 1; out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "K1: the ordinary merge is undone against the line parent: retry, no park" "1|failed||1" \
+  "$rc|$(st_field 1 status)|$(gg_g G1 parked_reason)|$(printf '%s' "$out" | grep -c '^NEXT: retry Task 1')"
+assert_eq "K1: Task 4's CLI commit content stays and Task 4 stays passed; every agent file is off" "work src/d.sh|passed|0" \
+  "$(git -C "$ST_WT" show HEAD:src/d.sh 2>/dev/null)|$(st_field 4 status)|$(git -C "$ST_WT" ls-tree -r --name-only HEAD | grep -c 'side.txt\|line1.txt\|line2.txt')"
+# K1 (hint): parked by a lock, the printed command reverts the merge with -m 1 (the line parent)
+g_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; g_red 1
+K_START="$(git -C "$ST_WT" rev-parse HEAD)"; K_BR="$(git -C "$ST_WT" symbolic-ref --short HEAD)"
+gg_pass 4 src/d.sh
+git -C "$ST_WT" checkout -q -b side "$K_START"
+echo side > "$ST_WT/side.txt"; g_commit side.txt
+git -C "$ST_WT" checkout -q "$K_BR"
+echo one > "$ST_WT/line1.txt"; g_commit line1.txt; echo two > "$ST_WT/line2.txt"; g_commit line2.txt
+git -C "$ST_WT" merge -q --no-ff side -m "merge side" >/dev/null 2>&1; K_MERGE="$(git -C "$ST_WT" rev-parse --short=7 HEAD)"
+k_park
+assert_eq "K1: the park hint reverts the merge with -m 1" "parked|1" "$(gg_g G1 status)|$(gg_g G1 parked_reason | grep -c "revert --no-edit -m 1 $K_MERGE")"
+k_hints; k_reopen
+assert_eq "K1: the hints run as written, Task 4's file stays, the reopen is accepted" "work src/d.sh|0|running" \
+  "$(git -C "$ST_WT" show HEAD:src/d.sh 2>/dev/null)|$K_RRC|$(gg_g G1 status)"
+
+# K2: common lines (if/fi, }, blank) in a foreign commit that a later task rewrote around: the hint, run as written, leads to a reopen
+g_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; g_red 1
+python3 -c "
+import sys
+p = sys.argv[1] + '/src/d.sh'
+l = open(p).read().split('\n')[:-1]
+l[2:2] = ['if a; then']; l[6:6] = ['fi']; l[9:9] = ['}', '']
+open(p, 'w').write('\n'.join(l) + '\n')" "$ST_WT"
+g_commit src/d.sh; K_C="$(git -C "$ST_WT" rev-parse HEAD)"
+"$TEMPER" task start 4 >/dev/null 2>&1; g_red 4
+sed -i.bak 's/^if a; then$/if b; then/' "$ST_WT/src/d.sh"; rm -f "$ST_WT/src/d.sh.bak"; g_green 4; "$TEMPER" task gate 4 >/dev/null 2>&1
+k_park
+assert_eq "K2: the conflict parks the group on the commit" "parked|$K_C" "$(gg_g G1 status)|$(j_listed G1)"
+k_hints
+assert_eq "K2: the hint ran (exit 0 or a plain conflict)" "1" "$([[ $K_HRC -le 1 ]] && echo 1 || echo 0)"
+k_reopen
+assert_eq "K2: after the hint the reopen is accepted (common lines are not content)" "0|running|" "$K_RRC|$(gg_g G1 status)|$(j_listed G1)"
+
+# K3 (delete-only): a foreign commit that only deletes a line; a later CLI commit touches the same file; the deletion is still on the branch
+g_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; g_red 1
+sed -i.bak '/^l3$/d' "$ST_WT/src/d.sh"; rm -f "$ST_WT/src/d.sh.bak"; g_commit src/d.sh; K_C="$(git -C "$ST_WT" rev-parse HEAD)"
+k_append4; k_park
+assert_eq "K3 delete-only: the lock parks the group on the deleting commit" "parked|$K_C" "$(gg_g G1 status)|$(j_listed G1)"
+k_reopen
+assert_eq "K3 delete-only: the reopen is refused while the deletion is on the branch, the list stays" "1|parked|$K_C" "$K_RRC|$(gg_g G1 status)|$(j_listed G1)"
+out="$("$TEMPER" integrate 2>&1)"; rc=$?
+assert_eq "K3 delete-only: integrate does not succeed" "1|FAIL" "$rc|$(gi_int verdict)"
+k_hints; k_reopen
+assert_eq "K3 delete-only: after the hint l3 is back, Task 4's line stays, the reopen is accepted" "l3|task4 line|0|running" \
+  "$(git -C "$ST_WT" show HEAD:src/d.sh | sed -n 3p)|$(git -C "$ST_WT" show HEAD:src/d.sh | tail -1)|$K_RRC|$(gg_g G1 status)"
+
+# K3 (mode-only)
+g_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; g_red 1
+chmod +x "$ST_WT/src/d.sh"; g_commit src/d.sh; K_C="$(git -C "$ST_WT" rev-parse HEAD)"
+k_append4; k_park
+assert_eq "K3 mode-only: parked on the mode change" "parked|$K_C|100755" "$(gg_g G1 status)|$(j_listed G1)|$(git -C "$ST_WT" ls-tree HEAD src/d.sh | cut -d' ' -f1)"
+k_reopen
+assert_eq "K3 mode-only: the reopen is refused while the mode is on the branch" "1|parked" "$K_RRC|$(gg_g G1 status)"
+k_hints; k_reopen
+assert_eq "K3 mode-only: after the hint the mode is back, Task 4's line stays, the reopen is accepted" "100644|task4 line|0" \
+  "$(git -C "$ST_WT" ls-tree HEAD src/d.sh | cut -d' ' -f1)|$(git -C "$ST_WT" show HEAD:src/d.sh | tail -1)|$K_RRC"
+
+# K3 (binary): a foreign binary file that a later commit changed again is still foreign content
+g_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; g_red 1
+printf '\000\001\002bin' > "$ST_WT/blob.bin"; g_commit blob.bin; K_C1="$(git -C "$ST_WT" rev-parse HEAD)"
+printf '\000\003more' >> "$ST_WT/blob.bin"; g_commit blob.bin; K_C2="$(git -C "$ST_WT" rev-parse HEAD)"
+k_park
+k_reopen
+assert_eq "K3 binary: the reopen is refused while the binary file is on the branch, naming the commits" "1|parked|1|1" \
+  "$K_RRC|$(gg_g G1 status)|$(printf '%s' "$K_ROUT" | grep -c "${K_C1:0:7}")|$(printf '%s' "$K_ROUT" | grep -c "${K_C2:0:7}")"
+k_hints; k_reopen
+assert_eq "K3 binary: after the hints the file is off the branch and the reopen is accepted" "0|0" \
+  "$(git -C "$ST_WT" ls-tree -r --name-only HEAD | grep -c blob.bin)|$K_RRC"
+
+# K3 (merge-only content): a merge whose conflict resolution is content neither side holds
+g_setup
+printf 'm1\nm2\nm3\n' > "$ST_WT/m.txt"; git -C "$ST_WT" add m.txt; git -C "$ST_WT" commit -q -m "m base" 2>/dev/null
+"$TEMPER" task start 1 >/dev/null 2>&1; g_red 1
+K_START="$(git -C "$ST_WT" rev-parse HEAD)"; K_BR="$(git -C "$ST_WT" symbolic-ref --short HEAD)"
+gg_pass 4 src/d.sh
+git -C "$ST_WT" checkout -q -b side "$K_START"
+sed -i.bak 's/^m1$/side/' "$ST_WT/m.txt"; rm -f "$ST_WT/m.txt.bak"; g_commit m.txt
+git -C "$ST_WT" checkout -q "$K_BR"
+sed -i.bak 's/^m1$/main/' "$ST_WT/m.txt"; rm -f "$ST_WT/m.txt.bak"; g_commit m.txt
+git -C "$ST_WT" merge --no-ff side -m "merge side" >/dev/null 2>&1
+printf 'RESOLVED\nm2\nm3\n' > "$ST_WT/m.txt"; git -C "$ST_WT" add m.txt; git -C "$ST_WT" commit -q -m "merge side" 2>/dev/null
+k_park
+k_reopen
+assert_eq "K3 merge-only: the reopen is refused while the merge's own content is on the branch" "1|parked|RESOLVED" \
+  "$K_RRC|$(gg_g G1 status)|$(git -C "$ST_WT" show HEAD:m.txt | head -1)"
+k_hints; k_reopen
+assert_eq "K3 merge-only: after the hints the content is off, Task 4's file stays, the reopen is accepted" "m1|work src/d.sh|0" \
+  "$(git -C "$ST_WT" show HEAD:m.txt | head -1)|$(git -C "$ST_WT" show HEAD:src/d.sh)|$K_RRC"
+
+# K4: a symlink put in place of the directory that holds a finished sibling's declared file: the file is written back
+OUTD="$(mktemp -d)"; : "${OUTD:?}"
+g_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; g_red 1
+gg_pass 4 src/d.sh
+git -C "$ST_WT" rm -q -r src; rm -rf "${ST_WT:?}/src"; ln -s "$OUTD" "$ST_WT/src"; git -C "$ST_WT" add src; git -C "$ST_WT" commit -q -m "src is a link" 2>/dev/null
+g_green 1; out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "K4: retry, not parked; the link is gone and the finished sibling's declared file is back in the working tree" "1|failed||work src/d.sh|no" \
+  "$rc|$(st_field 1 status)|$(gg_g G1 parked_reason)|$(cat "$ST_WT/src/d.sh" 2>/dev/null || echo MISSING)|$([[ -L $ST_WT/src ]] && echo yes || echo no)"
+assert_eq "K4: the tree is clean at src and nothing was written outside the worktree" "|0" \
+  "$(git -C "$ST_WT" status --porcelain -- src)|$(ls -A "$OUTD" | wc -l | tr -d ' ')"
+rm -rf "${OUTD:?}"
+
+# K5: a reset-mode park (the reset was refused, the restore went through): the printed hint leaves nothing foreign behind
+g_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; g_red 1
+K_START="$(git -C "$ST_WT" rev-parse HEAD)"; K_BR="$(git -C "$ST_WT" symbolic-ref --short HEAD)"
+echo foreign > "$ST_WT/f5.txt"; sed -i.bak 's/^l2$/FOREIGN2/' "$ST_WT/src/d.sh"; rm -f "$ST_WT/src/d.sh.bak"; g_commit f5.txt src/d.sh
+K_C="$(git -C "$ST_WT" rev-parse HEAD)"
+st_edit src/a.sh; g_green 1
+K_REFLOCK="$(git -C "$ST_WT" rev-parse --git-common-dir)/refs/heads/$K_BR.lock"; case "$K_REFLOCK" in /*) ;; *) K_REFLOCK="$PWD/$K_REFLOCK" ;; esac
+: > "$K_REFLOCK"; out="$("$TEMPER" task gate 1 2>&1)"; rc=$?; rm -f "$K_REFLOCK"
+assert_eq "K5: the refused reset parks the group on the commit" "parked|$K_C" "$(gg_g G1 status)|$(j_listed G1)"
+KH="$(gg_g G1 parked_reason | grep -o 'git -C [^ ]* reset --[a-z]* [0-9a-f]*' | head -1)"; $KH >/dev/null 2>&1
+assert_eq "K5: the hint ran and left no foreign content as changes (status is clean)" "1||$K_START" \
+  "$([[ -n "$KH" ]] && echo 1 || echo 0)|$(git -C "$ST_WT" status --porcelain --untracked-files=all | grep -v '^.. \.\(temper\|claude\)/')|$(git -C "$ST_WT" rev-parse HEAD)"
+k_reopen
+assert_eq "K5: the reopen is accepted after the hint" "0|running|" "$K_RRC|$(gg_g G1 status)|$(j_listed G1)"

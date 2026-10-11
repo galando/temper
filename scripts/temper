@@ -2493,7 +2493,7 @@ cmd_group() {
 # groups.json writes go through _groups_mutate (the lock), ledger rows through _json_append.
 TASK_SHOW_MAX_BYTES=6000
 _task_py() { # _task_py <mode> [args...]
-  python3 - "$@" <<'PY'
+  TEMPER_GROUPS_FILE="$GROUPS_FILE" python3 - "$@" <<'PY'
 import hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
 def norm(p):
@@ -2530,28 +2530,37 @@ def run_retry(cmd, delay=0.1):
             return r
         time.sleep(delay)
 
+def known_cli():
+    """K1: the commits the CLI itself recorded: every task's commit and cli_commits (its undo and reopen commits)."""
+    run = load_run(os.environ.get('TEMPER_GROUPS_FILE') or '.temper/groups.json')
+    return ({(v or {}).get('commit') for v in (run.get('tasks') or {}).values()} | set(run.get('cli_commits') or [])) - {None, ''}
+
 def merge_info(wt, shas):
     """({merge commit: the number of its line parent}, the commits among shas that a merge brought in). A merge is
     undone against its line parent, which already covers the commits it brought in, so those are not undone a second
-    time. The line parent is the one whose own history holds the fewest of the commits being undone (the group's
-    line carries the CLI's commits; the side the agent merged in carries the agent's), the first parent on a tie.
-    J6: an agent that merged the group branch into a side branch and fast-forwarded has the group line second."""
+    time. K1: the line parent is the parent whose own (exclusive) history holds the most of the CLI's commits (the
+    group's line carries the task commits and the CLI's undo and reopen commits; the side an agent merged in carries
+    none), the first parent when no parent shows any: the agent's own commits say nothing about which side is the line
+    (an ordinary merge may bring in fewer of them than the line holds, and a group merged into a side branch and
+    fast-forwarded has the group line second, J6)."""
     if not shas:
         return {}, set()
     r = subprocess.run(['git', '-C', wt, 'rev-list', '--parents', '--no-walk=unsorted', '--stdin'],
                        input=('\n'.join(shas) + '\n').encode(), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    ss, lines, absorbed = set(shas), {}, set()
+    ss, lines, absorbed, known = set(shas), {}, set(), None
     def revs(args):
         out = subprocess.run(['git', '-C', wt, 'rev-list'] + args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         return set(out.stdout.decode('utf-8', 'replace').split())
     for ln in r.stdout.decode('utf-8', 'replace').split('\n'):
         f = ln.split()
         if len(f) > 2:
-            parents, best, fewest = f[1:], 1, None
+            if known is None:
+                known = known_cli()
+            parents, best, most = f[1:], 1, 0
             for i, pa in enumerate(parents):
-                n = len(revs([pa, '--not'] + [x for j, x in enumerate(parents) if j != i]) & ss)
-                if fewest is None or n < fewest:
-                    best, fewest = i + 1, n
+                n = len(revs([pa, '--not'] + [x for j, x in enumerate(parents) if j != i]) & known)
+                if n > most:
+                    best, most = i + 1, n
             lines[f[0]] = best
             absorbed |= (revs([f[0], '--not', parents[best - 1]]) - {f[0]}) & ss
     return lines, absorbed
@@ -2829,44 +2838,113 @@ elif mode == 'reverthint':
 
 elif mode == 'stillon':
     # stillon <worktree> <shas-json>: the commits among shas whose own change is still in HEAD, newest first, one per line.
-    # A commit is gone when it is no longer an ancestor of HEAD (a reset), or when no path it changed still holds what it
-    # put there: a path it added or changed is absent or back at (or below) its earlier content, a path it deleted is
-    # back. A text file counts line by line (a later change to another line of the file does not hide the commit's
-    # own lines); a binary file by its blob. A merge or root commit is judged by the commits it brought in.
-    import collections
+    # K2/K3: judged by content, never by whether a line is present. A commit is gone when it is no longer an ancestor of
+    # HEAD (a reset), or when for every path it changed (against its line parent, so a merge's own content counts, and
+    # against nothing for a root commit) HEAD no longer holds its change: a path it added or changed is absent or back at
+    # its earlier blob, a path it deleted is back, a mode it changed is back. A path HEAD holds in a third state is asked
+    # of git as a revert: a 3-way merge of the commit's change reversed onto HEAD's blob (base = the commit's blob,
+    # ours = HEAD's, theirs = the earlier one); when that merges cleanly the change is still there exactly when the
+    # reverse would alter HEAD; when it conflicts (a later change rewrote the same lines) it is still there exactly when
+    # the whole reverse patch still applies to HEAD's blob, or, for a file the commit added, when most of its lines are
+    # still in HEAD's. A binary file the commit added and that still exists is still there; one a later commit changed
+    # again is not the commit's blob any more.
+    import shutil, tempfile
     wt, shas = sys.argv[2], json.loads(sys.argv[3])
-    def g(args, inp=None):
+    def g(args, inp=None, env=None):
         return subprocess.run(['git', '--literal-pathspecs', '-C', wt] + args, input=inp, stdout=subprocess.PIPE,
-                              stderr=subprocess.DEVNULL)
-    def lines_of(oid):
-        return collections.Counter(g(['cat-file', 'blob', oid]).stdout.split(b'\n')) if oid else collections.Counter()
+                              stderr=subprocess.DEVNULL, env=env)
+    plain = (b'100644', b'100755')
+    def blob(oid):
+        return g(['cat-file', 'blob', oid.decode()]).stdout if oid else b''
+    def istext(b):
+        return b'\0' not in b[:8000]
+    def reverse_applies(parent, sha, path, headmode, headoid):
+        # the commit's whole patch for this path, reversed, applies to HEAD's blob (a temporary index holds only that path)
+        patch = g(['diff', '-U3', '--no-color', '--binary', '--full-index', '--no-renames', '--no-ext-diff', '--no-textconv',
+                   '--src-prefix=a/', '--dst-prefix=b/'] + parent + [sha, '--', path.decode('utf-8', 'surrogateescape')])
+        if patch.returncode != 0 or not patch.stdout.strip():
+            return False
+        tmp = tempfile.mkdtemp(prefix='temper-stillon.')
+        try:
+            env = dict(os.environ, GIT_INDEX_FILE=os.path.join(tmp, 'index'))
+            g(['update-index', '--add', '--cacheinfo', '%s,%s,%s' % (headmode.decode(), headoid.decode(), path.decode('utf-8', 'surrogateescape'))], env=env)
+            return g(['apply', '--cached', '--check', '-R', '-'], inp=patch.stdout, env=env).returncode == 0
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+    def third_state(parent, sha, path, old, new, head):
+        # HEAD holds the path in a state that is neither the commit's blob nor the blob before it: is the change still there
+        nb, hb = blob(new[1]), blob(head[1])
+        ob = blob(old[1]) if old else b''
+        if (old and old[0] not in plain) or new[0] not in plain or head[0] not in plain or not (istext(nb) and istext(hb) and istext(ob)):
+            return old is None   # binary or a link: added and still there, or replaced by a later commit
+        tmp = tempfile.mkdtemp(prefix='temper-stillon.')
+        try:
+            fs = []
+            for name, data in (('ours', hb), ('base', nb), ('theirs', ob)):
+                fp = os.path.join(tmp, name)
+                open(fp, 'wb').write(data)
+                fs.append(fp)
+            r = subprocess.run(['git', 'merge-file', '-p'] + fs, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        if r.returncode == 0:
+            return r.stdout != hb
+        if old is None:
+            ns = g(['diff', '--numstat', new[1].decode(), head[1].decode()]).stdout.split()
+            total = len(nb.split(b'\n')) - (1 if nb.endswith(b'\n') else 0)
+            try:
+                kept = total - int(ns[1])
+            except (IndexError, ValueError):
+                kept = 0
+            return total > 0 and kept * 2 > total
+        return reverse_applies(parent, sha, path, head[0], head[1])
+    anc = [x for x in shas if g(['merge-base', '--is-ancestor', x, 'HEAD']).returncode == 0]
+    merges, _ = merge_info(wt, anc)
     present = []
-    for sha in shas:
-        if g(['merge-base', '--is-ancestor', sha, 'HEAD']).returncode != 0:
-            continue
+    for sha in anc:
         pl = g(['rev-list', '--parents', '-n', '1', sha]).stdout.split()
-        if len(pl) != 2:
+        if not pl:
             continue
-        r = g(['diff-tree', '-r', '-z', '--raw', '--no-abbrev', '--no-renames', '--no-ext-diff', '--no-textconv', pl[1], sha])
+        if len(pl) > 1:
+            parent = [pl[merges.get(sha, 1)]]
+            cmd = ['diff-tree', '-r', '-z', '--raw', '--no-abbrev', '--no-renames', '--no-ext-diff', '--no-textconv', parent[0], sha]
+        else:
+            parent = ['--root']
+            cmd = ['diff-tree', '--root', '--no-commit-id', '-r', '-z', '--raw', '--no-abbrev', '--no-renames', '--no-ext-diff', '--no-textconv', sha]
+        r = g(cmd)
         toks, ents, i = r.stdout.split(b'\0'), [], 0
         while i + 1 < len(toks):
             f = toks[i][1:].split()
             if len(f) == 5:
-                ents.append((toks[i + 1], f[2] if f[0] != b'000000' else b'', f[3] if f[1] != b'000000' else b''))
+                ents.append((toks[i + 1], (f[0], f[2]) if f[0] != b'000000' else None, (f[1], f[3]) if f[1] != b'000000' else None))
             i += 2
-        ents = [e for e in ents if b'\n' not in e[0] and e[1] != e[2]]
-        chk = g(['cat-file', '--batch-check=%(objectname)'], b''.join(b'HEAD:' + e[0] + b'\n' for e in ents)).stdout.split(b'\n')
-        for (path, old, new), head in zip(ents, chk):
-            head = b'' if head.endswith(b' missing') else head
-            if head == new:
-                stays = True            # also a deletion that is still a deletion
-            elif not new or not head:
-                stays = False           # added or changed, and gone now; or deleted, and back
-            else:
-                b_old, b_new, b_head = lines_of(old), lines_of(new), lines_of(head)
-                stays = (b'\0' not in g(['cat-file', 'blob', head]).stdout[:8000]
-                         and any(b_head[l] > b_old[l] for l in (b_new - b_old)))
-            if stays:
+        heads = {}
+        for k in range(0, len(ents), 500):
+            lt = g(['ls-tree', '-r', '-z', 'HEAD', '--'] + [e[0].decode('utf-8', 'surrogateescape') for e in ents[k:k + 500]])
+            for rec in lt.stdout.split(b'\0'):
+                meta, _, p = rec.partition(b'\t')
+                m = meta.split()
+                if len(m) == 3:
+                    heads[p] = (m[0], m[2])
+        for path, old, new in ents:
+            head = heads.get(path)
+            if old == new:
+                continue
+            on = False
+            if old and new and old[0] != new[0] and head and head[0] == new[0]:
+                on = True                                   # a mode the commit changed is still changed
+            if not on and not (old and new and old[1] == new[1]):
+                if new is None:
+                    on = head is None                       # a deletion is still a deletion
+                elif head is None:
+                    on = False                              # gone
+                elif head[1] == new[1]:
+                    on = True
+                elif old is not None and head[1] == old[1]:
+                    on = False                              # back at the earlier content
+                else:
+                    on = third_state(parent if parent[0] != '--root' else [], sha, path, old, new, head)
+            if on:
                 present.append(sha)
                 break
     if present:
@@ -2889,14 +2967,43 @@ elif mode == 'restore':
     # restore <worktree> <sha> <paths-json | @file>: each path goes back to its content at sha (and out of the index),
     # or is removed when sha does not have it. Batched: one ls-tree, then checkout/reset in chunks, never one git
     # process per path. H1: a lock that outlasts the shared retry budget ends the restore at once (exit 3).
+    import stat
     wt, sha, arg = sys.argv[2], sys.argv[3], sys.argv[4]
     paths = json.loads(open(arg[1:]).read() if arg.startswith('@') else arg)
     lt = subprocess.run(['git', '--literal-pathspecs', '-C', wt, 'ls-tree', '-r', '-z', '--name-only', sha],
                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     had = set(lt.stdout.split(b'\0'))
     tracked = [p for p in paths if os.fsencode(p) in had]
+    # K4: a symlink standing where the branch has a directory is not part of the branch: it goes (the link only, never
+    # what it points at) so the paths under it can be written; a path behind a link the branch does not have a directory
+    # for is left alone, never written or removed through the link
+    wtb, links = os.fsencode(wt), {}
+    def link_above(p):
+        cp, comps = wtb, os.fsencode(p).split(b'/')[:-1]
+        for k, comp in enumerate(comps):
+            cp = os.path.join(cp, comp)
+            rel = b'/'.join(comps[:k + 1])
+            try:
+                st = os.lstat(cp)
+            except OSError:
+                return None
+            if stat.S_ISLNK(st.st_mode):
+                if rel not in links:
+                    links[rel] = (rel not in had) and any(h.startswith(rel + b'/') for h in had)
+                if links[rel]:
+                    try:
+                        os.unlink(cp)
+                    except OSError:
+                        return rel
+                    return None
+                return rel
+            if not stat.S_ISDIR(st.st_mode):
+                return None
+        return None
+    blocked = {p for p in paths if link_above(p)}
+    tracked = [p for p in tracked if p not in blocked]
     for p in paths:
-        if os.fsencode(p) not in had:
+        if os.fsencode(p) not in had and p not in blocked:
             try:
                 os.remove(os.path.join(wt, p))
             except OSError:
@@ -3071,9 +3178,17 @@ elif mode == 'undo':
                 if not stat.S_ISDIR(st.st_mode):
                     return False
             return False
-        todo = [q for q in sorted(q for q in every if start.get(q) != cur.get(q) and q not in protect)
-                if not link_in_way(q)]
         plain = (b'100644', b'100755')
+        wanted = sorted(q for q in every if start.get(q) != cur.get(q) and q not in protect)
+        todo = [q for q in wanted if not link_in_way(q)]
+        # K4: a path the branch has again but that sits behind a symlink standing where a directory was (the foreign
+        # commit swapped them) is not written through the link; the caller's restore removes the link (it is not part of
+        # the branch any more) and then writes these paths, so a finished sibling's declared file is not left missing
+        heal = os.environ.get('TEMPER_UNDO_HEAL')
+        if heal:
+            behind = [os.fsdecode(q) for q in wanted if q in cur and cur[q][0] in plain and link_in_way(q)]
+            with open(heal, 'w') as fh:
+                json.dump(behind, fh)
         cand = [q for q in todo if q in start and start[q][0] in plain and b'\n' not in q and not q.startswith(b'"')
                 and os.path.isfile(os.path.join(wtb, q)) and not os.path.islink(os.path.join(wtb, q))]
         held = set()
@@ -3451,12 +3566,12 @@ _task_gate_body() {
     _undo_hint() { # _undo_hint <why> <revert-or-reset-command>
       echo "$1; the commit(s) stay on the group branch. Leave $wtrel alone while a task of this group is running; when no task of this group is running, $2, then temper group reopen $group --task $n"
     }
-    local urc=0 left='[]'
+    local urc=0 left='[]' healf=""
     if [[ "$fmode" == "reset" ]]; then
       TEMPER_GIT_LOCK_DEADLINE="$lockdl" _task_py reset "$_T_ABS" "$(_jget "$_T_CTX" start_sha)" >/dev/null 2>&1; urc=$?
       if (( urc != 0 )); then
         left="$fshas"
-        local byhand="undo the commit(s) not made by the CLI by hand (git -C $wtrel reset --mixed $(_jget "$_T_CTX" start_sha))"
+        local byhand="undo the commit(s) not made by the CLI by hand (git -C $wtrel reset --hard $(_jget "$_T_CTX" start_sha))"
         if (( urc == 3 )); then
           park="$(_undo_hint "$lockwhy" "$lockfix, then $byhand")"
         else
@@ -3470,7 +3585,8 @@ import json, sys
 print(' '.join(x[:7] for x in json.loads(sys.argv[1])))" "$fshas")"
       rcmd="$(_task_py reverthint "$wtrel" "$_T_ABS" "$fshas" 2>/dev/null)"
       [[ -n "$rcmd" ]] || rcmd="git -C $wtrel revert --no-edit $short"
-      uout="$(TEMPER_GIT_LOCK_DEADLINE="$lockdl" _task_py undo "$_T_ABS" "$fshas" "$(_git_id_args)" "$(_jget "$v" protect_paths)" 2>/dev/null)"; urc=$?
+      healf="$(mktemp "${TMPDIR:-/tmp}/temper-heal.XXXXXX")" || healf=""
+      uout="$(TEMPER_UNDO_HEAL="$healf" TEMPER_GIT_LOCK_DEADLINE="$lockdl" _task_py undo "$_T_ABS" "$fshas" "$(_git_id_args)" "$(_jget "$v" protect_paths)" 2>/dev/null)"; urc=$?
       rsha="${uout%%$'\n'*}"
       if (( urc == 0 )); then
         _groups_mutate "
@@ -3491,6 +3607,15 @@ d.setdefault('reverted_foreign', []).extend(json.loads(a[1]))
     fi
     local rpf; rpf="$(mktemp "${TMPDIR:-/tmp}/temper-restore.XXXXXX")"   # a file, not an argument: thousands of paths
     _jget "$v" restore_paths > "$rpf"
+    # K4: the paths the undo could not write behind a symlink that stood in place of a directory join the restore
+    if [[ -n "$healf" && -s "$healf" ]]; then
+      python3 -c "
+import json, sys
+a = json.load(open(sys.argv[1])); seen = set(a)
+a += [x for x in json.load(open(sys.argv[2])) if x not in seen]
+json.dump(a, open(sys.argv[1], 'w'))" "$rpf" "$healf" 2>/dev/null || true
+    fi
+    [[ -z "$healf" ]] || rm -f "$healf"
     local rrc
     # J5: back to the branch's content as the undo left it (the start of the task after a reset; the branch with the
     # foreign commits taken off after an undo; the unchanged branch when the commits could not be taken off), so the

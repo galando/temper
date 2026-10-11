@@ -97,10 +97,25 @@ not asserted by an agent:
   off, the failing task's files go back to the branch's content (not to the task's start), so the revert
   the park prints meets a clean tree and its text says what is true (the commits stay on the branch). A symbolic
   link a foreign commit put in place of a directory is not a reason to park: the failed task's restore
-  replaces it with the directory. A merge commit is undone against its line parent (the parent whose history
-  holds the fewest commits being undone, the first on a tie), so an agent that merged the group branch into a
-  side branch and fast-forwarded does not take the CLI's own commits off with it; the printed hint uses
+  replaces it with the directory. A merge commit is undone against its line parent: the parent whose own
+  history holds the CLI's recorded commits (the task commits and its undo and reopen commits), the first parent
+  when no parent shows any, so neither an ordinary `--no-ff` merge of a smaller side branch nor a group branch
+  merged into a side branch and fast-forwarded takes the CLI's own commits off; the printed hint uses
   `git revert -m <that parent>`.
+- Fourth focused review: "the content of a parked commit is still on the branch" is judged by content, never by
+  whether a line is present. Per path the commit changed (against its line parent; a merge's own resolution
+  counts, and so do a deletion, a changed mode and a binary file) the CLI asks whether HEAD still holds the
+  change: the commit's blob or mode, a deletion that is still a deletion, or, when a later commit changed the
+  path again, a 3-way revert of the commit onto HEAD (clean: it is still there when the revert would alter
+  HEAD; conflicting: when the reverse patch still applies, or, for a file the commit added, when most of its
+  lines remain). Common lines (`fi`, `}`, blank) therefore no longer keep a group parked after the printed
+  revert was run and its conflict resolved for the branch, and a delete-only, mode-only, binary or merge-only
+  commit no longer counts as gone because a later commit touched the file. A symlink that replaced a directory
+  holding a finished sibling's declared file is removed by the failed task's restore and the file is written
+  back (it was left missing). The park hint for a refused reset is `git reset --hard <start>`, so the foreign
+  content is not left behind as unstaged changes. Known limit: when a later commit rewrote part of a
+  parked commit's file and the printed revert is resolved for the branch, the lines left in that file are the
+  branch's own and the reopen is accepted.
 - The plan digest is taken at the first `group start`; if `tasks.md` changes afterwards (`**File:**`,
   `**Depends:**`, `**Test:**`, group Validate/Interfaces/Context, Integration), every grouped command,
   including `group reopen`, refuses to run. Declared paths are matched exactly and the plan gate
