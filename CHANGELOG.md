@@ -78,14 +78,29 @@ not asserted by an agent:
 - The undo, tightened after a second focused review: all git retries of one FAIL (reset or undo, then the
   restore) share a single wall-clock budget of about five seconds, so a stale `index.lock` costs seconds in all
   and the park names the lock and the file to delete; every plumbing diff and apply neutralises the user's
-  colour, context and prefix settings; a merge commit is undone against its first parent (the commits it brought
-  in are not undone again, and the printed hint uses `git revert -m 1` for it), and a commit whose paths are
+  colour, context and prefix settings; a merge commit is undone against its line parent (the commits it brought
+  in are not undone again, and the printed hint uses `git revert -m N` for it), and a commit whose paths are
   already back at their earlier content is skipped; once a group is parked on a foreign commit, a running
   sibling is not blamed for that commit or for the files it touched, and the park reason is kept until a
   `group reopen`; a finished sibling's file is compared and written through git (`hash-object` and
   `checkout-index`: eol filters and the repository's hash algorithm), never by raw bytes; nothing is written or
-  removed through a symbolic link a foreign commit put in place of a directory (the group parks and names it);
+  removed through a symbolic link a foreign commit put in place of a directory;
   the work is limited to the paths the foreign commits touched, not the whole tree once per commit.
+- The park bookkeeping, tightened after a third focused review: the commits a group is parked on are recorded
+  for that group only (a reopen or a park in another group never clears or shares them), and only commits that
+  are really still on the branch (not ones the undo did take off before a later step parked). A running
+  sibling's path is excused for a parked commit, like for a reopen's revert, only while its working file and
+  HEAD both still hold exactly what that commit made, so the sibling's own edit of that path stays an
+  undeclared change. A second park in an already parked group adds its reason (and its exact revert) to the
+  first; `group reopen` is refused while a parked commit's content is still on the branch (the park reason
+  names the commands), so foreign content never reaches the integration. When the commits cannot be taken
+  off, the failing task's files go back to the branch's content (not to the task's start), so the revert
+  the park prints meets a clean tree and its text says what is true (the commits stay on the branch). A symbolic
+  link a foreign commit put in place of a directory is not a reason to park: the failed task's restore
+  replaces it with the directory. A merge commit is undone against its line parent (the parent whose history
+  holds the fewest commits being undone, the first on a tie), so an agent that merged the group branch into a
+  side branch and fast-forwarded does not take the CLI's own commits off with it; the printed hint uses
+  `git revert -m <that parent>`.
 - The plan digest is taken at the first `group start`; if `tasks.md` changes afterwards (`**File:**`,
   `**Depends:**`, `**Test:**`, group Validate/Interfaces/Context, Integration), every grouped command,
   including `group reopen`, refuses to run. Declared paths are matched exactly and the plan gate

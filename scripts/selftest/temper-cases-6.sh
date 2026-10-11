@@ -228,10 +228,10 @@ st_edit src/b.sh; g_green 2; out="$("$TEMPER" task gate 2 2>&1)"; rc=$?
 assert_eq "H4: the running sibling passes (the parked foreign commit is not blamed on it)" "0|passed" "$rc|$(st_field 2 status)"
 assert_eq "H4: the group stays parked with the conflict reason" "parked|1|1" \
   "$(gg_g G1 status)|$([[ "$(gg_g G1 parked_reason)" == "$REASON1" ]] && echo 1 || echo 0)|$(gg_g G1 parked_reason | grep -c conflict)"
-# a reopen forgets the parked shas: the foreign commit still on the branch is blamed again
-out="$("$TEMPER" group reopen G1 --task 1 2>&1)"
-assert_eq "H4: reopen clears the parked foreign shas" "0" \
-  "$(python3 -c "import json; print(len(json.load(open('.temper/groups.json')).get('parked_foreign') or []))")"
+# the parked commit is still on the branch, so a reopen is refused (J3); once it is undone as the hint says, it is allowed
+out="$("$TEMPER" group reopen G1 --task 1 2>&1)"; rc=$?
+assert_eq "H4: a reopen is refused while the parked foreign commit is on the branch, and nothing changes" "1|parked|1" \
+  "$rc|$(gg_g G1 status)|$(python3 -c "import json; print(len(json.load(open('.temper/groups.json'))['groups']['G1'].get('parked_foreign') or []))")"
 
 # H5: a CRLF working file (eol=crlf) of a finished sibling follows the branch: the foreign line is not left behind
 g_setup
@@ -258,8 +258,9 @@ gg_pass 4 src/d.sh
 git -C "$ST_WT" rm -q -r sub; rm -rf "${ST_WT:?}/sub"; ln -s "$OUTD" "$ST_WT/sub"; git -C "$ST_WT" add sub; git -C "$ST_WT" commit -q -m "sub is a link" 2>/dev/null
 st_edit src/a.sh; g_green 1; out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
 assert_eq "H6: nothing was written outside the worktree" "0" "$(ls -A "$OUTD" | wc -l | tr -d ' ')"
-assert_eq "H6: the branch has the directory back and the park says why" "blob|1" \
-  "$(git -C "$ST_WT" cat-file -t HEAD:sub/x.txt 2>/dev/null)|$(gg_g G1 parked_reason | grep -ci 'symbolic link')"
+# J4: the link is not part of the group branch and the FAIL restore put the directory back, so there is nothing to park on
+assert_eq "H6: the branch has the directory back, the restore replaced the link, attempt 1 retries (no park)" "blob|dir|1|" \
+  "$(git -C "$ST_WT" cat-file -t HEAD:sub/x.txt 2>/dev/null)|$([[ -d $ST_WT/sub && ! -L $ST_WT/sub ]] && echo dir || echo other)|$(printf '%s' "$out" | grep -c '^NEXT: retry Task 1')|$(gg_g G1 parked_reason)"
 rm -rf "${OUTD:?}"
 
 # H7: the undo works on the paths the foreign commits touched, not the whole tree once per commit
@@ -284,4 +285,110 @@ g_h7 20; H7_NINE="$H_SECS"; assert_eq "H7: twenty foreign commits are undone" "1
 [[ -z "${G_VERBOSE:-}" ]] || echo "H7: 1 commit ${H7_ONE}s, 20 commits ${H7_NINE}s"
 assert_eq "H7: twenty commits cost under one commit plus 2.5 seconds (slack for a loaded machine)" "yes" \
   "$(python3 -c "import sys; print('yes' if float(sys.argv[2]) < float(sys.argv[1]) + 2.5 else 'no (%s vs %s)' % (sys.argv[2], sys.argv[1]))" "$H7_ONE" "$H7_NINE")"
+
+# --- Grouped Build (9.7.0), third focused review: parked shas per group and by exact content, parks accumulate,
+# hints that work as printed, a merge's line parent [J1-J6] ---
+# Invariants: (a) a FAIL never changes a running same-group sibling's working tree or the CLI's commits; (b) foreign content
+# never stays on a group branch at integrate and success is not recorded while it stays, also with two parks in one group
+# and a reopen in another group; (c) attempts 1-2 retry/escalate, only a genuine undo failure parks, and every printed hint
+# works exactly as written in the state the CLI leaves.
+j_conflict() { # g_setup, Tasks 1 and 2 running; the agent commits C1 (src/d.sh line 1 and f1.txt); Task 4 rewrites that line and
+               # passes; Task 1 FAILs and the group parks on C1 (J_C1)
+  g_setup
+  "$TEMPER" task start 1 >/dev/null 2>&1; g_red 1
+  "$TEMPER" task start 2 >/dev/null 2>&1; g_red 2
+  sed -i.bak 's/^l1$/FOREIGN/' "$ST_WT/src/d.sh"; rm -f "$ST_WT/src/d.sh.bak"; echo one > "$ST_WT/f1.txt"; g_commit src/d.sh f1.txt
+  J_C1="$(git -C "$ST_WT" rev-parse HEAD)"
+  "$TEMPER" task start 4 >/dev/null 2>&1; g_red 4
+  sed -i.bak 's/^FOREIGN$/other l1/' "$ST_WT/src/d.sh"; rm -f "$ST_WT/src/d.sh.bak"; g_green 4; "$TEMPER" task gate 4 >/dev/null 2>&1
+  st_edit src/a.sh; g_green 1; J_OUT="$("$TEMPER" task gate 1 2>&1)"
+}
+j_hints() { gg_g G1 parked_reason | grep -o 'git -C [^ ]* revert --no-edit [0-9a-f]*'; }   # the revert commands the park reason prints
+j_listed() { python3 -c "import json; print(','.join(json.load(open('.temper/groups.json'))['groups'][__import__('sys').argv[1]].get('parked_foreign') or []))" "$1"; }
+j_resolve() { # j_resolve <hint command>: run it as written; a conflict (exit 1) is resolved by keeping the branch's side
+  local hrc; J_HOUT="$($1 2>&1)"; hrc=$?
+  if [[ $hrc -eq 1 ]]; then
+    git -C "$ST_WT" checkout --ours -- . >/dev/null 2>&1; git -C "$ST_WT" add -A >/dev/null 2>&1
+    GIT_EDITOR=true git -C "$ST_WT" revert --continue >/dev/null 2>&1
+  fi
+  J_HRC=$hrc
+}
+
+# J1: the sibling's gate excuses a path of the parked commit only while the file still holds that commit's content
+j_conflict
+assert_eq "J1: the conflict parks the group on C1, recorded for G1 only" "parked|$J_C1" "$(gg_g G1 status)|$(j_listed G1)"
+J_REASON="$(gg_g G1 parked_reason)"
+echo mine >> "$ST_WT/f1.txt"   # Task 2's own, undeclared edit of a path the parked commit touched
+st_edit src/b.sh; g_green 2; out="$("$TEMPER" task gate 2 2>&1)"; rc=$?
+assert_eq "J1: the running sibling's own edit of f1.txt is an undeclared change (FAIL, retry)" "1|1|1" \
+  "$rc|$(printf '%s' "$out" | grep -c 'undeclared change: f1.txt')|$(printf '%s' "$out" | grep -c '^NEXT: retry Task 2')"
+assert_eq "J1: the group keeps its park reason; the sibling's file is back at the branch's content, the tree is clean at f1.txt" "1|one|" \
+  "$([[ "$(gg_g G1 parked_reason)" == "$J_REASON" ]] && echo 1 || echo 0)|$(cat "$ST_WT/f1.txt")|$(git -C "$ST_WT" status --porcelain -- f1.txt)"
+# J5: the hint, run as written in the state the CLI left, is accepted by git (the only conflict is the sibling's own line)
+HCMD="$(j_hints | head -1)"; j_resolve "$HCMD"
+assert_eq "J5: the printed revert runs (exit 0 or a plain conflict), no 'local changes' refusal" "1|0" \
+  "$([[ -n "$HCMD" && $J_HRC -le 1 ]] && echo 1 || echo 0)|$(printf '%s' "$J_HOUT" | grep -c 'local changes')"
+assert_eq "J5: after the hint the foreign file is off the branch" "0" "$(git -C "$ST_WT" ls-tree -r --name-only HEAD | grep -c '^f1.txt')"
+out="$("$TEMPER" group reopen G1 --task 1 2>&1)"; rc=$?
+assert_eq "J5: the reopen the hint names is accepted and clears this group's parked shas" "0|running|" "$rc|$(gg_g G1 status)|$(j_listed G1)"
+
+# J2: a reopen in another group leaves this group's parked shas alone; its running sibling is still not blamed
+j_conflict
+G2WT=".claude/worktrees/temper-demo-G2"
+"$TEMPER" task start 3 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 3 --phase red >/dev/null 2>&1
+mkdir -p "$G2WT/src"; echo c > "$G2WT/src/c.sh"; ST_EXIT=0 "$TEMPER" task test 3 --phase green >/dev/null 2>&1; "$TEMPER" task gate 3 >/dev/null 2>&1
+assert_exit "J2: Task 3 of G2 is reopened while G1 is parked" 0 "$TEMPER" group reopen G2 --task 3
+assert_eq "J2: G1 still lists its parked sha and G2 holds its own reopen revert" "$J_C1|0|1" \
+  "$(j_listed G1)|$(python3 -c "import json; print(len(json.load(open('.temper/groups.json')).get('reopen_reverts') or []))")|$(python3 -c "import json; print(len(json.load(open('.temper/groups.json'))['groups']['G2'].get('reopen_reverts') or []))")"
+st_edit src/b.sh; g_green 2; out="$("$TEMPER" task gate 2 2>&1)"; rc=$?
+assert_eq "J2: G1's running sibling still passes and keeps its work" "0|work src/b.sh" "$rc|$(git -C "$ST_WT" show HEAD:src/b.sh 2>/dev/null)"
+
+# J3: a second park in a parked group is added to the first; both foreign commits are off before the group runs again
+j_conflict
+st_edit src/b.sh; g_green 2   # Task 2's agent commits f2.txt; a stale index.lock makes the undo park too
+echo two > "$ST_WT/f2.txt"; g_commit f2.txt; J_C2="$(git -C "$ST_WT" rev-parse HEAD)"
+J_LOCK="$(git -C "$ST_WT" rev-parse --absolute-git-dir)/index.lock"
+: > "$J_LOCK"; out="$("$TEMPER" task gate 2 2>&1)"; rc=$?; rm -f "$J_LOCK"
+assert_eq "J3: the second park keeps the first reason and adds its own, both with the exact revert" "1|1|1|1|1" \
+  "$(gg_g G1 status | grep -c parked)|$(gg_g G1 parked_reason | grep -c "${J_C1:0:7}")|$(gg_g G1 parked_reason | grep -c "${J_C2:0:7}")|$(gg_g G1 parked_reason | grep -c 'index.lock')|$([[ "$(j_hints | wc -l | tr -d ' ')" == 2 ]] && echo 1 || echo 0)"
+assert_eq "J3: both shas are listed for G1" "$J_C1,$J_C2" "$(j_listed G1)"
+out="$("$TEMPER" integrate 2>&1)"; rc=$?
+assert_eq "J3: integrate does not succeed while the group is parked on foreign commits" "1|FAIL" "$rc|$(gi_int verdict)"
+out="$("$TEMPER" group reopen G1 --task 1 2>&1)"; rc=$?
+assert_eq "J3: the reopen is refused while either commit is on the branch, naming both" "1|1|1|parked" \
+  "$rc|$(printf '%s' "$out" | grep -c "${J_C1:0:7}")|$(printf '%s' "$out" | grep -c "${J_C2:0:7}")|$(gg_g G1 status)"
+while IFS= read -r HCMD; do j_resolve "$HCMD"; done < <(j_hints)
+assert_eq "J3: both hints, run as written, take f1.txt and f2.txt off the branch" "0" "$(git -C "$ST_WT" ls-tree -r --name-only HEAD | grep -c '^f[12].txt')"
+out="$("$TEMPER" group reopen G1 --task 1 2>&1)"; rc=$?
+assert_eq "J3: the reopen then runs and clears the group's list" "0|running|" "$rc|$(gg_g G1 status)|$(j_listed G1)"
+
+# J5 (lock park): the park leaves the working tree at the branch's content, and the printed hint works as written
+g_setup; J_LOCK="$(git -C "$ST_WT" rev-parse --absolute-git-dir)/index.lock"
+echo "base 1" > "$ST_WT/stray1.txt"; git -C "$ST_WT" add stray1.txt; git -C "$ST_WT" commit -q -m "tracked stray" 2>/dev/null
+"$TEMPER" task start 1 >/dev/null 2>&1; g_red 1
+gg_pass 4 src/d.sh
+echo "stray 1" > "$ST_WT/stray1.txt"; g_commit stray1.txt
+st_edit src/a.sh; g_green 1
+: > "$J_LOCK"; out="$("$TEMPER" task gate 1 2>&1)"; rc=$?; rm -f "$J_LOCK"
+assert_eq "J5: the lock parks the group; the tracked file is at the branch's content, clean in git status" "parked|stray 1|" \
+  "$(gg_g G1 status)|$(cat "$ST_WT/stray1.txt")|$(git -C "$ST_WT" status --porcelain -- stray1.txt)"
+HCMD="$(j_hints | head -1)"; j_resolve "$HCMD"
+assert_eq "J5: the lock hint's revert, run as written, takes the commit off (exit 0)" "1|0|base 1" \
+  "$([[ -n "$HCMD" ]] && echo 1 || echo 0)|$J_HRC|$(cat "$ST_WT/stray1.txt")"
+assert_eq "J5: the park text no longer claims the working tree was not changed" "0" "$(gg_g G1 parked_reason | grep -c 'working tree of .* was not changed')"
+
+# J6: a merge's line parent is the one that carries the group's CLI commits, not always the first parent
+g_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; g_red 1
+J_START="$(git -C "$ST_WT" rev-parse HEAD)"; J_BR="$(git -C "$ST_WT" symbolic-ref --short HEAD)"
+gg_pass 4 src/d.sh
+git -C "$ST_WT" checkout -q -b side "$J_START"
+echo side > "$ST_WT/side.txt"; g_commit side.txt
+git -C "$ST_WT" merge -q --no-ff "$J_BR" -m "merge group into side" >/dev/null 2>&1
+git -C "$ST_WT" checkout -q "$J_BR"; git -C "$ST_WT" merge -q --ff-only side >/dev/null 2>&1
+st_edit src/a.sh; g_green 1; out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
+assert_eq "J6: the agent's merge is undone (retry, no park)" "1|failed||1" \
+  "$rc|$(st_field 1 status)|$(gg_g G1 parked_reason)|$(printf '%s' "$out" | grep -c '^NEXT: retry Task 1')"
+assert_eq "J6: Task 4's CLI commit content stays, the agent's side.txt is gone, Task 4 stays passed" "work src/d.sh|0|passed" \
+  "$(git -C "$ST_WT" show HEAD:src/d.sh 2>/dev/null)|$(git -C "$ST_WT" ls-tree -r --name-only HEAD | grep -c side.txt)|$(st_field 4 status)"
 setup
