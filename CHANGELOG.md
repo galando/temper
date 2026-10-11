@@ -39,6 +39,25 @@ comparison procedure in `docs/grouped-build.md` stays for the next ones.
   worktree (F4); untracked files a CLI test run creates (`__pycache__`, coverage files) are not
   undeclared changes (F5).
 
+**Lessons from the pyjokes run, applied to the task agents and to Plan.**
+- The task agent type (`temper:temper-build-task`) carries only Read, Edit, Write, Bash, Glob
+  and Grep, and the grouped loop launches it by that type: most of a Haiku launch's tokens were
+  the fixed cost of starting an agent, which the tool list drives.
+- Task agents test the real code: the brief and Plan's group Context say to call what earlier
+  tasks built and mock only what a test cannot run (the grouped run's CLI tests had mocked the
+  API, a Review finding).
+- RED must fail on the tests themselves: the task verdict rejects a RED run that exited 126 or
+  127 (command missing), timed out or was killed, and a pytest RED with any exit but 1 (exit 2
+  is a collection or import error; the brief says to write a stub first).
+- Plan makes few groups with parallel tasks: a new group only for a separate review unit, a
+  dependency inside one group instead of a second group (the pyjokes plan had two one-task groups,
+  so nothing ran in parallel).
+- The complexity tier counts production files only (tests, docs and a one-line export do not
+  count), so a small feature is Simple and skips Design (pyjokes was rated Medium on six files,
+  three of them tests and docs, and paid for a Design stage).
+- The Temper bar words a grouped Build checkpoint "Continue with the groups" instead of
+  "Continue with task N".
+
 **Grouped Build.** Plan writes `tasks.md` as feature, groups, tasks. Each
 task declares its files and dependencies, and each group carries a `**Context:**` block (shared
 files, interfaces, conventions) that `temper task show` hands to its task agents. The CLI keeps one

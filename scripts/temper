@@ -2708,6 +2708,20 @@ def run_cmd(wt, timeout, cmd):
         out, rc = ('%s\n' % e).encode(), 127
     return out, rc
 
+def red_why(r):
+    """Why a failing RED run is not evidence ('' when it is): the command never ran the tests."""
+    rc, cmd = r.get('exit_code'), r.get('cmd') or ''
+    if rc in (126, 127): return 'the command could not run'
+    if rc == 124: return 'it timed out'
+    if isinstance(rc, int) and rc >= 128: return 'it was killed by a signal'
+    if re.search(r'(^|[\s/])pytest\b', cmd) and rc != 1:
+        return 'pytest exits 1 when a test fails; %s is a collection, import or usage error' % rc
+    return ''
+
+def red_ok(r):
+    """A RED run counts when it failed on the tests themselves, not before they ran."""
+    return r.get('phase') == 'red' and r.get('exit_code') not in (0, None) and not red_why(r)
+
 def ctx(plan, run, n):
     t = next((x for x in plan['tasks'] if x['n'] == n), None)
     if t is None:
@@ -3054,8 +3068,11 @@ elif mode == 'verdict':
     reason = ''
     if green is None:
         reason = 'no green run for this task and attempt'
-    elif not any(r.get('phase') == 'red' and r.get('exit_code') not in (0, None) for r in mine[:green]):
-        reason = 'need a failing run before a passing run for this task and attempt'
+    elif not any(red_ok(r) for r in mine[:green]):
+        bad = [r for r in mine[:green] if r.get('phase') == 'red' and r.get('exit_code') not in (0, None)]
+        reason = ('need a failing run before a passing run for this task and attempt' if not bad else
+                  'the RED run did not run the tests (exit %s: %s); it must fail on an assertion' % (
+                      bad[-1].get('exit_code'), red_why(bad[-1])))
     elif green != len(mine) - 1:
         reason = 'the final run of this attempt is not green'
     # the worktree's own run state (the commit hook writes .temper/gates.json there) is not the task's change

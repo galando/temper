@@ -25,10 +25,12 @@ which `/temper` does at its start).
    task (task, group, title, worktree, model, attempt). Before each launch run
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper task start N`. Launch **every ready task in ONE turn**,
    so they run in parallel, each on the `agent_model` its line prints (the alias the Agent tool
-   takes; `model` is the full id):
+   takes; `model` is the full id). The `temper:temper-build-task` agent type carries only the
+   tools a task needs (Read, Edit, Write, Bash, Glob, Grep), which keeps each launch's fixed cost
+   down; when that type is not offered, launch the general-purpose agent with the same prompt:
 
    ```
-   Use the Agent tool, model: {agent_model}, prompt:
+   Use the Agent tool, subagent_type: temper:temper-build-task, model: {agent_model}, prompt:
    "Follow ${CLAUDE_PLUGIN_ROOT}/agents/build-task.md exactly.
    Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.
    Task: {N}."

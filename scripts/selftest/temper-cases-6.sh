@@ -347,3 +347,39 @@ assert_eq "per-task template: the plan gate shows no grouped row" "0" "$("$TEMPE
 assert_eq "orchestrator: Stage 2 reads the per-task loop page when build.mode is per-task" "1|1" \
   "$(grep -c 'reference/build-per-task.md' "$REPO_ROOT/commands/temper.md" | sed 's/^[1-9][0-9]*$/1/')|$(grep -c 'Checkpoint: task {N}' "$REPO_ROOT/reference/build-per-task.md" | sed 's/^[1-9][0-9]*$/1/')"
 setup
+
+# --- Haiku improvements from the pyjokes run ---
+# RED must fail on the tests themselves: pytest exit 2 (collection or import error), 126/127 and a timeout are no RED
+FX_T2="bash -c 'echo boom; pwd; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
+red_case() { # red_case <exit of the RED run>: Task 1 runs a pytest-named command, RED with that exit, then GREEN
+  gg_setup
+  gp_mut "\`$FX_T2\`" "\`bash -c 'echo running pytest; exit \${ST_EXIT:-0}'\`"
+  "$TEMPER" task start 1 >/dev/null 2>&1
+  ST_EXIT="$1" "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+  st_edit src/a.sh
+  ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+  RED_OUT="$("$TEMPER" task gate 1 2>&1)"; RED_RC=$?
+}
+red_case 2
+assert_eq "RED: a pytest collection error (exit 2) is no RED, and the reason says so" "1|1" \
+  "$RED_RC|$(printf '%s' "$RED_OUT" | grep -c 'did not run the tests (exit 2: pytest exits 1')"
+red_case 1
+assert_eq "RED: a pytest assertion failure (exit 1) is a RED" "0|passed" "$RED_RC|$(st_field 1 status)"
+red_case 127
+assert_eq "RED: exit 127 (command missing) is no RED" "1|1" "$RED_RC|$(printf '%s' "$RED_OUT" | grep -c 'could not run')"
+gg_setup
+"$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=2 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+assert_exit "RED: exit 2 of a command that is not pytest is still a RED" 0 "$TEMPER" task gate 1
+
+# the task agent type carries only the tools a task needs, and the loop launches it
+assert_eq "task brief: frontmatter restricts the tools to Read, Edit, Write, Bash, Glob, Grep" "1" \
+  "$(grep -c '^tools: Read, Edit, Write, Bash, Glob, Grep$' "$REPO_ROOT/agents/build-task.md")"
+assert_eq "grouped loop: launches the temper:temper-build-task agent type" "1" \
+  "$(grep -c 'subagent_type: temper:temper-build-task' "$REPO_ROOT/reference/build-groups.md")"
+assert_eq "task brief: tests call the real code, RED fails on an assertion" "1|1" \
+  "$(grep -c 'Test the real code' "$REPO_ROOT/agents/build-task.md")|$(grep -c 'FAIL on an assertion' "$REPO_ROOT/agents/build-task.md")"
+# Plan: few groups with parallel tasks, and the complexity tier counts production files only
+assert_eq "plan reference: few groups, parallel tasks, and production files only for the tier" "1|1" \
+  "$(grep -c '^\*\*Few groups, parallel tasks\.\*\*' "$REPO_ROOT/reference/plan.md")|$(grep -c '^\*\*Count production files only\.\*\*' "$REPO_ROOT/reference/plan.md")"
+setup

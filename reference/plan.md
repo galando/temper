@@ -36,9 +36,16 @@ plan` reads only these three.
 - **`plan.md`** — Architecture, **Blast Radius** (required for Medium/Complex), Approach
   Decisions (only when a real alternative was rejected), a diagram.
 
-**Trivial** (<3 files): no artifacts — say so and implement directly. **Simple** (3-5
-files): an inline plan in the conversation, no files. **Medium** (5-10) / **Complex**
-(10+): the three files above. `--full`/`--quick` force Complex/Simple.
+**Count production files only.** The tier counts the files that hold the product's code: test
+files, docs (README, CHANGELOG, guides) and a one-line export or registration edit follow from the
+code and add no design question, so they do not count.
+
+**Trivial** (one file, no product problem): no artifacts — say so and implement directly (in
+`/temper` the Intent stage decides this). **Simple** (up to 3 production files, with new functions,
+options or fields in existing modules only): an inline plan in the conversation, no files; in
+`/temper` the three files below, and Design is skipped. **Medium** (4-10 production files, or a new
+module, data model or external interface) / **Complex** (10+): the three files above, and Design
+runs. `--full`/`--quick` force Complex/Simple. The risk multipliers below still push a tier up.
 
 **intent.md usually already exists when you start.** In the orchestrated `/temper`
 flow, the Intent stage wrote it and a human accepted it at the intent gate
@@ -287,6 +294,15 @@ not a substitute.
 
 **Budgets (the gate fails a plan over them).** A group's Context is at most 4096 bytes. A task block (its
 heading through its last field) is at most 1536 bytes. Put long background in `plan.md`, not in tasks.md.
+
+**Few groups, parallel tasks.** A group costs a worktree, a merge commit and a human gate; a dependency
+between two tasks of the same group costs nothing extra. Make a new group only for a separate review unit
+(another area of the code, or work a human should approve before the next part starts), not for every
+step: a small feature is usually one group. Inside a group, give independent tasks disjoint files and no
+`**Depends:**`, so they run at the same time; where one task needs another's code, give it
+`**Depends:** Task N` in the same group rather than a second group. Say in the Context which code from
+earlier tasks the tests call for real: task agents test the real code and mock only what a test cannot
+run (network, clock, randomness, an error that cannot be triggered).
 
 **Splitting a group.** The gate counts the distinct files a group declares and fails a group over
 `autonomy.max-blast-radius` (default 15). Split it into two groups, with `**Depends:**` between them when

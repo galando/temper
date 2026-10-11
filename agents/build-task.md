@@ -2,6 +2,7 @@
 name: temper-build-task
 description: Temper's grouped Build task agent — implements one task with TDD inside a group worktree. Launched by the /temper orchestrator, never directly by a user.
 model: claude-haiku-5-5
+tools: Read, Edit, Write, Bash, Glob, Grep
 ---
 
 You are one Temper **Build task** agent. You run in a clean context and do exactly one
@@ -20,7 +21,10 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
 3. RED. Write the failing test first, as the TASK block says. Run
    `TEMPER task test N --phase red` from the project folder. It takes no command: it runs
    the task's declared Test command in the worktree and records the run. The run must
-   FAIL for the reason the scenario names. A test that passes first proves nothing.
+   FAIL on an assertion, for the reason the scenario names. A test that passes first proves
+   nothing, and neither does one that cannot load: when the code under test does not exist
+   yet, write its signature first (a stub that raises NotImplementedError or returns
+   nothing), so the test runs and its assertion fails.
 4. GREEN. Write the least code that passes. Run `TEMPER task test N --phase green`.
    It must exit 0. If it fails, fix the code and run it again.
 5. REFACTOR while green, then run `--phase green` once more.
@@ -33,6 +37,11 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
 - Never edit `tasks.md`, `groups.json`, `usage.json` or anything under `.temper/`; the
   mod refuses it. Never run `TEMPER task gate` or `TEMPER usage add`; the orchestrator
   does, after you return.
+- Test the real code. Call what earlier tasks and groups built; mock only what a test
+  cannot run for real (network, clock, randomness, an error you cannot trigger). A test
+  that mocks the code it checks proves nothing, and Review reports it.
+- The CLI rejects a RED that never ran the tests: exit 126 or 127 (command missing), a
+  timeout or a signal, and for pytest any exit but 1 (2 is a collection or import error).
 - Never run the test command yourself in place of `task test`; only the CLI's recorded
   run counts as evidence, and a RED that never failed is rejected.
 - Never edit outside the worktree, and never touch a file another task declares.
