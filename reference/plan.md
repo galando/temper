@@ -85,7 +85,8 @@ commit gate requires an intent verdict whenever intent.md exists, so the standal
 verdict was never recorded.
 
 **Risk multipliers** (each pushes complexity up one tier): touches auth/payment/security
-code; modifies a library with 5+ consumers; changes a DB schema; a module with a
+code; changes what the consumers of a library with 5+ consumers already use (a signature,
+a behaviour, a default; adding a new function or option they never call does not count); changes a DB schema; a module with a
 historically high defect rate (`.temper/metrics.json` if present); a CRITICAL/HIGH
 security hot path (below).
 
