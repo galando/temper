@@ -452,6 +452,9 @@ rows=json.load(open('.temper/evidence/build.json'))
 print(','.join('%s:%s' % (r['phase'], r['exit_code']) for r in rows if r.get('task')==int(sys.argv[1])))" "$1" 2>/dev/null
 }
 st_edit() { # st_edit <task-file-relative-path>: write a file into G1's worktree
+  # Only ever inside the selftest's throwaway folder: a case that left the folder would
+  # otherwise write into the repository it runs from.
+  [[ "$(pwd -P)" == "$(cd "$WORKDIR" && pwd -P)"* ]] || { echo "st_edit refused: cwd $(pwd) is outside WORKDIR" >&2; return 1; }
   mkdir -p "$ST_WT/$(dirname "$1")"; echo "work $1" > "$ST_WT/$1"
 }
 st_unticked() { # the number of unticked boxes in the demo tasks.md
