@@ -247,6 +247,15 @@ Every stage gate follows the same shape. After a stage Agent returns:
    not restated here).
 2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate {stage}`. It prints PASS/FAIL with each requirement's status and
    writes the verdict to `.temper/gates.json`.
+   **Blocking questions first, in every phase, with or without the Temper bar** (the bar has
+   no buttons for them): when the run's `intent.md` holds a `Blocking:` Open Question (Intent
+   writes them; Plan and Design add theirs there), ask them in ONE `AskUserQuestion` call
+   before anything else, one question each (four at most per call; ask the rest in a second
+   call), the question's (a)/(b)/(c) choices as the options with the recommended one first,
+   plus a last option "Carry forward". Write each answer into intent.md's `### Decisions` and
+   take the question out of Open Questions, then run the gate again. A `Deferred:` question is
+   carried forward without asking. Never list Blocking questions as text for the person to
+   answer by typing.
 3. Show an `AskUserQuestion` gate. **With the Temper bar** (the system prompt has a
    `Temper enforcement:` line, `active` or `off (UI only)`) do not show it: the bar already offers the same choices with
    the same words (Continue to, Loop back to, Skip with a reason, Save for later, Grill me,
@@ -254,8 +263,8 @@ Every stage gate follows the same shape. After a stage Agent returns:
    end the turn with one line: `Waiting for you. Use the Temper bar, or type /temper:temper approve (or back, override, pause), or type a change.` (Minimal and off modes draw no buttons, so the typed words are the way there.) The
    person's message at a gate is the original "Other": if the user writes a message at a gate,
    answer it; if it asks for a change, make the change, run the gate again, then wait for the
-   user again. Every other dialog stays (the autonomy arming choice, clarifying questions, the
-   Build checkpoint feedback text, the Scope drift question). Without a `Temper enforcement:` line, show the gate as follows:
+   user again. Every other dialog stays (the autonomy arming choice, clarifying questions, Blocking
+   questions, the Build checkpoint feedback text, the Scope drift question). Without a `Temper enforcement:` line, show the gate as follows:
    - **On PASS:** `"Continue to {next} (Recommended)"` / `"Save for later"` / free-text
      `"Other"` for a change request (make the edit, re-run the gate, re-show).
    - **On FAIL:** `"Loop back to {upstream stage}"` (if `feedback.enabled` and the loop
@@ -357,9 +366,9 @@ Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent` (Problem stated, >=1 cr
 **"Continue to Plan (Recommended)"** / Grill Me / Teach Me / "Save for later" / Other
 (a correction — edit intent.md, re-run the gate, re-show; this is the whole point of
 the gate: intent corrections here cost words, the same correction after Plan costs the
-plan). Open Questions are presented FIRST — each is answered by the human here or
-explicitly carried forward; an intent accepted with open questions records that
-choice.
+plan). Open Questions come FIRST, asked as the Gates section says (Blocking questions
+first, with or without the Temper bar). An intent accepted with open questions records
+that choice.
 
 **On Continue:** flip intent.md's header `Status: draft → accepted` and add
 `**Accepted-by:** {git config user.name} <{user.email}>` — this human Continue is the

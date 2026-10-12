@@ -451,4 +451,7 @@ assert_exit "merge park: once the file is out of the way the reopen is accepted"
 ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 2>&1)"; rc=$?
 assert_eq "merge park: the rerun passes and merges the kept commit" "0|yes|work src/a.sh" "$rc|$(d_on_g1 "$TSHA")|$(d_gfile src/a.sh)"
+# Blocking questions are asked with AskUserQuestion in every phase, with or without the Temper bar
+assert_eq "orchestrator: Blocking questions go to one AskUserQuestion in every phase, bar or not" "1|1|1" \
+  "$(grep -c '^   \*\*Blocking questions first, in every phase, with or without the Temper bar\*\*' "$REPO_ROOT/commands/temper.md")|$(grep -c 'Never list Blocking questions as text' "$REPO_ROOT/commands/temper.md")|$(grep -c 'asked as the Gates section says (Blocking questions' "$REPO_ROOT/commands/temper.md")"
 setup
