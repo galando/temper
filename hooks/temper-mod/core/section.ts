@@ -9,6 +9,10 @@ export const SECTION_ID = 'temper:phase'
 
 // What a message from the user at a gate means. It is the original "Other" choice of the orchestrator:
 // the Temper bar (key 4, Discuss) and the prompt box both send it. Also in commands/temper.md.
+// The line that tells the orchestrator the bar draws no buttons (minimal and off modes): the gate is then
+// asked in the question dialog, and the mod records the answer (core/gateanswer.ts). Also in commands/temper.md.
+export const NO_BUTTONS = 'Temper buttons: none in this mode. At a gate, ask with AskUserQuestion, header `Temper gate`.'
+
 export const GATE_MESSAGE = 'If the user writes a message at a gate, answer it. If it asks for a change, make the change, run the gate again, then wait for the user again.'
 
 export type SectionInput = {
@@ -23,10 +27,13 @@ export type SectionInput = {
   actionContext?: ActionContext
   // The line that says the bar and the CLI do not agree (Snapshot.sync.line).
   sync?: string | null
+  // The bar draws the action buttons (full mode). False adds the NO_BUTTONS line. Absent means buttons.
+  buttons?: boolean
 }
 
 export function sectionText(input: SectionInput): string {
   const lines: string[] = [input.enforcement === 'on' ? 'Temper enforcement: active' : 'Temper enforcement: off (UI only)']
+  if (input.buttons === false) lines.push(NO_BUTTONS)
 
   if (input.phase === null) {
     lines.push('Phase: none. No Temper run is active.')

@@ -1046,7 +1046,7 @@ assert_eq "group report: open review findings are counted from the review ledger
 assert_eq "group report: a resolved finding is no longer open" "1" "$(gr_json review_findings_open)"
 out="$("$TEMPER" group report 2>&1)"; rc=$?
 assert_eq "group report: the text form prints exit 0 and the headline numbers" "0|1|1" \
-  "$rc|$(printf '%s' "$out" | grep -c 'escalations: 1')|$(printf '%s' "$out" | grep -c 'claude-haiku-5-5.*210')"
+  "$rc|$(printf '%s' "$out" | grep -c 'moved to the stronger model after two failed attempts: 1')|$(printf '%s' "$out" | grep -c 'claude-haiku-5-5.*210')"
 # parked group
 gg_setup
 for i in 1 2 3; do "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model m >/dev/null 2>&1; done

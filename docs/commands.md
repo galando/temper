@@ -108,6 +108,7 @@ after the command is one of these, Temper handles it instead of starting a run. 
 | `/temper:temper accept <id> <reason>` | Accept a review finding with a reason |
 | `/temper:temper drift <add\|revert\|allow> <reason>` | Decide a pending scope drift |
 | `/temper:temper pause`, `/temper:temper resume` | Hand the run over to you, take it back |
+| `/temper:temper restart <reason>` | Start over: the saved run state goes, the spec files stay (also in the bar's More menu, and as "Start over" when Temper asks about a saved run) |
 | `/temper:temper report` | Show the run report (the mod keeps it in its plugin store, not in a file) |
 | `/temper:temper pr` | Ask Claude for a pull request description from the report |
 | `/temper:temper mode <full\|minimal\|off>` | Change how much Temper draws |
@@ -118,8 +119,8 @@ after the command is one of these, Temper handles it instead of starting a run. 
 | `/temper:temper continue <stage>` | The Temper bar sends this after you chose Continue. Claude then does the "On Continue" steps of that stage as the original `/temper` writes them (status flip, `state advance`, the feature branch, the commit of the approved artifacts) and launches the next stage. The mod records nothing for it. |
 | `/temper:temper help` | List these |
 
-These 19 words are reserved: `status`, `timeline`, `approve`, `next`, `back`, `override`, `accept`,
-`drift`, `pause`, `resume`, `report`, `pr`, `mode`, `enforcement`, `pane`, `play`, `discuss`, `continue` and `help`.
+These 20 words are reserved: `status`, `timeline`, `approve`, `next`, `back`, `override`, `accept`,
+`drift`, `pause`, `resume`, `restart`, `report`, `pr`, `mode`, `enforcement`, `pane`, `play`, `discuss`, `continue` and `help`.
 
 Decisions (`approve`, `override`, `accept`, `drift`, `back`) count only when you type
 them or press the button yourself. Claude cannot create one. With the mod loaded the
@@ -141,7 +142,7 @@ control it, and both can be changed while a session runs:
 
 | Setting | Values | Effect |
 |---|---|---|
-| `uiMode` (`/temper:temper mode`) | `full`, `minimal`, `off` | `full` draws the bar with action buttons, the pane, toasts, suggestions, the spinner text, the turn line, the hint and the question header. `minimal` draws the phase bar only, with no buttons. `off` draws nothing. |
+| `uiMode` (`/temper:temper mode`) | `full`, `minimal`, `off` | `full` draws the bar with action buttons, the pane, toasts, suggestions, the spinner text, the turn line, the hint and the question header. `minimal` draws the phase bar only, with no buttons. `off` draws nothing. In `minimal` and `off` Claude asks each gate as a question, and your answer is your decision. |
 | `enforcement` (`/temper:temper enforcement`) | `on`, `off` | `on` refuses out of phase writes and an early `git commit`. `off` keeps the drawing only. |
 
 Denials and subcommands work in every mode. The first interactive `/temper:temper` asks once
@@ -175,8 +176,9 @@ The bar is the same choices as the questions, without typing. The orchestrator
 (`commands/temper.md`) still runs every stage with its own brief and the CLI still judges every
 check. With the Temper mod loaded the orchestrator does not ask its gate question a second time: it
 prints the stage panel and the check result, and waits ("Waiting for you. Use the Temper bar, or
-type /temper:temper approve (or back, override, pause), or type a change."; minimal and off modes draw
-no buttons, so there you type the word). Pressing Continue records your decision, asks Claude to mirror it in the CLI
+type /temper:temper approve (or back, override, pause), or type a change."). Minimal and off modes draw
+no buttons, so there the orchestrator asks its gate question (header `Temper gate`) as without the mod, and the
+mod records your answer as your decision: you never have to type a word. Pressing Continue records your decision, asks Claude to mirror it in the CLI
 state, and then runs `/temper:temper` with no arguments, which is the orchestrator's own Resume: it
 starts the next stage in its own subagent. Without the mod nothing changes and the orchestrator asks
 its questions as before.

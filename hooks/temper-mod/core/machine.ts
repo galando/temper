@@ -186,6 +186,8 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
       case 'resume':
         s.paused = false
         break
+      case 'restart':
+        break
     }
   }
 
@@ -232,6 +234,7 @@ export type Command = { origin: Origin; author?: string; anyOrigin?: boolean } &
   | { type: 'checkResult'; result: 'pass' | 'fail' }
   | { type: 'pause' }
   | { type: 'resume' }
+  | { type: 'restart'; reason: string }
 )
 
 export type Decision = { events: Draft[] } | { error: string }
@@ -257,6 +260,13 @@ export function decide(state: RunState, cmd: Command): Decision {
   }
   if (phase === null) return fail('No Temper run is active. Next: start one with /temper:temper <feature description>.')
 
+  // Start over works at any point of a run, paused or done too: the person throws the saved run state away. It
+  // changes no phase here; it lets the orchestrator's next state archive (or clear) and state init through once.
+  if (cmd.type === 'restart') {
+    if (!isPerson) return fail(ONLY_USER)
+    if (!cmd.reason.trim()) return fail('Start over needs a reason. Use /temper:temper restart <reason>.')
+    return { events: [{ type: 'restart', reason: cmd.reason.trim(), ...who }] }
+  }
   if (cmd.type === 'resume') {
     if (!isPerson) return fail(ONLY_USER)
     return { events: [{ type: 'resume', ...who }] }

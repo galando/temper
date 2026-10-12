@@ -28,6 +28,7 @@ export const RESERVED = [
   'play',
   'discuss',
   'continue',
+  'restart',
 ] as const
 
 export type Reserved = (typeof RESERVED)[number]
@@ -70,6 +71,8 @@ export function planCommand(parsed: Parsed, pendingDrift: string | null): Plan {
       return { kind: 'command', command: { type: 'pause' } }
     case 'resume':
       return { kind: 'command', command: { type: 'resume' } }
+    case 'restart':
+      return { kind: 'command', command: { type: 'restart', reason: rest } }
     case 'override':
       return { kind: 'command', command: { type: 'override', reason: rest } }
     case 'back': {
@@ -142,6 +145,12 @@ function followUpText(draft: Draft, complexity: string | null, from: Phase | nul
         )
       }
       return `Temper: the user went back to ${draft.to} (reason: ${draft.reason}). ${recorded} Run \`${backCommand(draft.to)}\`. Do not start the stage yourself. ${ACT}`
+    case 'restart':
+      // `state init` archives the earlier run's files before it starts the new one, and it spends the decision.
+      return (
+        `Temper: the user chose to start over (reason: ${draft.reason}). ${recorded} The files under .temper/specs stay. ` +
+        `Ask the user with AskUserQuestion which feature to start (the same one, or a new one), then run \`${CLI} state init <slug> --command temper\` for it and start that run at Intent.`
+      )
     case 'drift':
       return draft.choice === 'revert'
         ? `Temper: the user chose to revert ${draft.path}. Restore it to its committed state. Then stay inside the plan. ${ACT}`
@@ -158,7 +167,7 @@ export const NEEDS_INTERACTIVE =
   'This command came from somewhere else, such as a claude -p run, the Agent SDK or Claude. Next: continue the run in an interactive claude session.'
 
 // The words that record a decision of the person.
-export const DECISION_WORDS: readonly string[] = ['approve', 'next', 'back', 'override', 'accept', 'drift']
+export const DECISION_WORDS: readonly string[] = ['approve', 'next', 'back', 'override', 'accept', 'drift', 'restart']
 
 export const HELP = [
   'Temper subcommands (type them after /temper:temper):',
@@ -171,6 +180,7 @@ export const HELP = [
   '  accept <id> <why>    accept a review finding (give a reason)',
   '  drift <add|revert|allow> <reason>   decide a scope drift',
   '  pause / resume       take the run over, give it back',
+  '  restart <reason>     start over: the saved run state goes (the files under .temper/specs stay)',
   '  report               show the run report (with no run active, the last one kept)',
   '  pr                   ask Claude for a pull request description',
   '  play                 play Temper Run while you wait (key 8 too; r runs, w jumps, s ducks, q leaves)',

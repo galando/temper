@@ -18,7 +18,7 @@ import { normalizePath } from './paths'
 // core.hooksPath stays on one because it holds hooks of other tools).
 export type ProtectedKind = 'events' | 'gates' | 'status' | 'overrides' | 'state' | 'folder' | 'evidence' | 'loops' | 'config' | 'hooks'
 
-export type DecisionKind = 'override' | 'accept' | 'advance' | 'back'
+export type DecisionKind = 'override' | 'accept' | 'advance' | 'back' | 'restart'
 
 // A decision CLI call as the command spells it: which kind, the phase (stage) and finding id it
 // names, and `invalid` when a flag the CLI reads (`--id`, `--stage`, `--reason`) is repeated, so

@@ -232,8 +232,10 @@ the link yourself.
   Never run `state init`, `state clear`, `state archive` or `state loop` on your own while a run is
   active (with enforcement active, the mod refuses them). The one exception is the
   `state clear` of the TRIVIAL exit in Stage 0, which the mod allows. If Resume
-  Validation fails or the state looks wrong, stop, show what is wrong in one line, and
-  wait. Never choose Start over or Delete saved state yourself. If a mirror
+  Validation fails or the state looks wrong, show what is wrong in one line and ask with
+  `AskUserQuestion`, header `Temper resume`: "Start over" / "Cancel" (the person's
+  "Start over" answer lets one `state init` through; see Resume Validation). Never choose
+  Start over yourself, and never point the person at a bar button for it. If a mirror
   call (`state advance`, `state set next_stage`) is refused or fails, say so in one line and wait: the bar
   shows the problem and offers to record the choice again.
 - **On commit:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear` (evidence, gates, loop counters — spec artifacts
@@ -256,15 +258,29 @@ Every stage gate follows the same shape. After a stage Agent returns:
    take the question out of Open Questions, then run the gate again. A `Deferred:` question is
    carried forward without asking. Never list Blocking questions as text for the person to
    answer by typing.
-3. Show an `AskUserQuestion` gate. **With the Temper bar** (the system prompt has a
-   `Temper enforcement:` line, `active` or `off (UI only)`) do not show it: the bar already offers the same choices with
+3. Show an `AskUserQuestion` gate. **With the Temper bar and its buttons** (the system prompt has a
+   `Temper enforcement:` line, `active` or `off (UI only)`, and no `Temper buttons: none` line) do not show it: the bar already offers the same choices with
    the same words (Continue to, Loop back to, Skip with a reason, Save for later, Grill me,
    Teach me, Discuss) and records the decision. Print the stage panel and the gate result, then
-   end the turn with one line: `Waiting for you. Use the Temper bar, or type /temper:temper approve (or back, override, pause), or type a change.` (Minimal and off modes draw no buttons, so the typed words are the way there.) The
+   end the turn with one line: `Waiting for you. Use the Temper bar, or type /temper:temper approve (or back, override, pause), or type a change.` The
    person's message at a gate is the original "Other": if the user writes a message at a gate,
    answer it; if it asks for a change, make the change, run the gate again, then wait for the
    user again. Every other dialog stays (the autonomy arming choice, clarifying questions, Blocking
-   questions, the Build checkpoint feedback text, the Scope drift question). Without a `Temper enforcement:` line, show the gate as follows:
+   questions, the Build checkpoint feedback text, the Scope drift question).
+   **When the system prompt has the line `Temper buttons: none in this mode.`** (minimal and off modes: the bar draws
+   no buttons), show the gate below with the header `Temper gate`, so the person never has to type a command. The
+   mod reads the person's answer from the dialog's result and records it as their decision. After the answer:
+   "Continue to {next}": do that stage's On Continue steps as written (its `state advance` goes through once).
+   "Save for later": the run is paused; stop. "Loop back to {upstream stage}": do what the Temper bar paragraph
+   under Feedback Loops says (`state loop`, then `state set next_stage`, then the stage). "Override and continue":
+   run `${CLAUDE_PLUGIN_ROOT}/scripts/temper override {stage} --reason "<the reason>"`, then that stage's On Continue
+   steps. A loop back and an override need the person's reason. When the answer carries none (no text typed after
+   the choice in "Other", and no note), ask once more with the header `Temper gate` and the question
+   `Loop back to {upstream stage}. What is the reason?` (options "The check found a real problem" / "Cancel") or
+   `Override and continue. What is the reason?` (options "I accept the risk" / "It is not a real issue" /
+   "Cancel"). The person's answer is the reason; "Cancel" shows the gate again. Any other answer is the original
+   "Other", as above.
+   Without a `Temper enforcement:` line, or with the `Temper buttons: none` line, show the gate as follows:
    - **On PASS:** `"Continue to {next} (Recommended)"` / `"Save for later"` / free-text
      `"Other"` for a change request (make the edit, re-run the gate, re-show).
    - **On FAIL:** `"Loop back to {upstream stage}"` (if `feedback.enabled` and the loop
@@ -298,14 +314,15 @@ When a gate FAILs and the user selects "Loop back":
 
 **With the Temper bar** a loop moves the run, and only the person decides that (with
 enforcement active, the hook also refuses `state loop` from you). The
-person's **Loop back** button (or `/temper:temper back <phase> <reason>`) is the loop: the
-mod records the decision and sends you one message. In it, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state loop {from}
+person's **Loop back** button (or `/temper:temper back <phase> <reason>`, or the person's "Loop back to"
+answer with a reason to the `Temper gate` question) is the loop: the mod records the decision, and a button or
+typed command sends you one message. In it (or at once, after the `Temper gate` answer), run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state loop {from}
 {to} --reason "<why>"` (the hook lets it through once, for that decision; it keeps the
 budget and clears the evidence of `{to}` and every later stage), and when it does not print
 `BLOCKED`, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set next_stage {to}`. When it prints `BLOCKED`, the budget is
 spent: say so in one line and stop (the person can skip with a reason or save for later). The
-bar then runs `/temper:temper` with no arguments: continue from `next_stage` (see Resume) and
-add the line from step 2, with the reason from that message, to the stage's prompt. Do not
+bar then runs `/temper:temper` with no arguments (after the `Temper gate` answer, go on yourself): continue from `next_stage` (see Resume) and
+add the line from step 2, with the reason from that message (or from the answer), to the stage's prompt. Do not
 call `state loop` or `state set next_stage` on your own; with enforcement active, the hook
 refuses both without the person's decision.
 
@@ -528,7 +545,8 @@ Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit`. It aggregates every upst
 overridden), and — only when `run_mode == autonomous` — blast radius and park-on-touch.
 
 - **PASS (interactive):** `AskUserQuestion` — "Commit" / "Save for later" / "Other".
-  **With the Temper bar** do not ask: the Done bar's Commit button is this question, and its
+  **With the Temper bar and its buttons** do not ask (with the `Temper buttons: none` line, ask it; the run is
+  done, so Commit needs no recorded decision): the Done bar's Commit button is this question, and its
   message ("The user pressed Commit ...") means the person chose Commit. The bar never clears
   or archives the state itself, so you do every step below, in order, ending with `state
   clear`; when the bar sees the state gone it shows no run (it never goes back to Intent).

@@ -2599,7 +2599,8 @@ for g, v in sorted(groups.items()):
         ends.append(b)
 total = (max(ends) - min(starts)) * 1000 if starts and ends else 0
 openf = sum(1 for e in rev if isinstance(e, dict) and e.get('severity') and not e.get('resolved') and not e.get('accepted'))
-print(json.dumps({'tokens_by_model': tokens, 'attempts': attempts, 'escalations': esc,
+task_groups = {n: (t or {}).get('group') for n, t in (run.get('tasks') or {}).items() if (t or {}).get('group')}
+print(json.dumps({'tokens_by_model': tokens, 'attempts': attempts, 'escalations': esc, 'task_groups': task_groups,
                   'parked': sorted(g for g, v in groups.items() if v.get('status') == 'parked'),
                   'wall_ms_by_group': wall, 'build_wall_ms': total, 'review_findings_open': openf},
                  sort_keys=True))
@@ -2612,17 +2613,42 @@ cmd_group_report() { # temper group report [--json]
   python3 - "$j" <<'PY'
 import json, sys
 r = json.loads(sys.argv[1])
+def dur(ms):
+    s = int(ms or 0) // 1000
+    return '%d min %d s' % (s // 60, s % 60) if s >= 60 else '%d s' % s
+def num(n):
+    return '{:,}'.format(n)
+tasks = sorted(r['attempts'].items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 0)
+groups = r.get('task_groups') or {}
+total = sum(r['tokens_by_model'].values())
 print('Grouped Build report')
-for m, n in sorted(r['tokens_by_model'].items()):
-    print('  tokens %-24s %d' % (m, n))
-print('  escalations: %d' % r['escalations'])
-print('  parked groups: %s' % (', '.join(r['parked']) or '-'))
+print('  Tasks: %d, in %d group(s). Build time: %s.' % (len(tasks), len(r['wall_ms_by_group']) or len(set(groups.values())), dur(r['build_wall_ms'])))
+print('  Tokens used by the task agents: %s%s' % (num(total), (' (' + ', '.join('%s %s' % (m, num(n)) for m, n in sorted(r['tokens_by_model'].items())) + ')') if r['tokens_by_model'] else ''))
 for g, ms in sorted(r['wall_ms_by_group'].items()):
-    print('  wall %s: %d ms' % (g, ms))
-print('  build wall: %d ms' % r['build_wall_ms'])
-print('  open review findings: %d' % r['review_findings_open'])
-for n, rows in sorted(r['attempts'].items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 0):
-    print('  Task %s: %s' % (n, ', '.join('%s %s' % (a.get('model'), a.get('outcome')) for a in rows) or 'no attempts'))
+    print('  Group %s: passed its group gate after %s.' % (g, dur(ms)))
+print('  Groups stopped for you (parked): %s' % (', '.join(r['parked']) or 'none'))
+print('  Tasks that moved to the stronger model after two failed attempts: %d' % r['escalations'])
+print('  Open review findings: %d' % r['review_findings_open'])
+for n, rows in tasks:
+    if not rows:
+        print('  Task %s: not run yet' % n)
+        continue
+    last = rows[-1]
+    head = 'passed' if last.get('outcome') == 'PASS' else 'failed'
+    print('  Task %s: %s after %d attempt(s)' % (n, head, len(rows)))
+    for i, a in enumerate(rows, 1):
+        what = 'passed' if a.get('outcome') == 'PASS' else 'failed'
+        model = a.get('model') or 'no model given to task gate'
+        extra = []
+        if isinstance(a.get('tokens'), int):
+            extra.append('%s tokens' % num(a['tokens']))
+        if isinstance(a.get('ms'), int):
+            extra.append(dur(a['ms']))
+        line = '    attempt %d: %s (%s%s)' % (i, what, model, ''.join(', ' + x for x in extra))
+        reason = (a.get('reason') or '').strip().split('\n')[0]
+        if what == 'failed' and reason:
+            line += ': ' + (reason if len(reason) <= 160 else reason[:157] + '...')
+        print(line)
 PY
 }
 

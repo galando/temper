@@ -109,7 +109,7 @@ export const DISCUSS: Action = draft('4', 'discuss', 'Discuss', 'Type your own m
 const cap = (p: string): string => `${p.charAt(0).toUpperCase()}${p.slice(1)}`
 
 // What follows each phase, and what the orchestrator loops back to when a check fails.
-const NEXT: Record<Phase, string> = { intent: 'Plan', plan: 'Build', build: 'Review', review: 'Check', check: 'Commit', fix: 'Check' }
+export const NEXT: Record<Phase, string> = { intent: 'Plan', plan: 'Build', build: 'Review', review: 'Check', check: 'Commit', fix: 'Check' }
 const UPSTREAM: Partial<Record<Phase, Phase>> = { plan: 'intent', build: 'plan', review: 'build' }
 
 const READY_DESC: Record<Phase, string> = {
@@ -267,8 +267,17 @@ function pair(phase: Phase, ctx: ActionContext): [Action, Action] {
   }
 }
 
+// The original "Start over" of the orchestrator's Resume Validation: the saved run state goes, the spec files stay.
+// It asks for a reason, which also confirms it. The mod records it; the follow up asks Claude to start the run again.
+const restart = (key: ActionKey = '1'): Action =>
+  command(key, 'restart', 'Start over', 'Throw the saved run away. The spec files stay.', 'restart', true, false)
+
 // The other original options, as a numbered menu (1 to 9). An option already on a main button is not repeated.
 function menu(phase: Phase, ctx: ActionContext): Action[] {
+  return [...phaseMenu(phase, ctx), restart()]
+}
+
+function phaseMenu(phase: Phase, ctx: ActionContext): Action[] {
   const paused = ctx.paused ?? false
   const loopMain = main(phase, ctx).id === 'loop-back'
   const shown = new Set([...pair(phase, ctx).map(a => a.id)])

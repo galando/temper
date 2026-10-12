@@ -217,7 +217,7 @@ describe('phase bar (AbovePrompt)', () => {
     expect(w.opened).toEqual([])
     const keys = await menuKeys(band)
     // Plan menu: Grill me, Teach me, Share HTML review, Save for later.
-    expect(keys).toEqual(['1', '2', '3', '4', '0'])
+    expect(keys).toEqual(['1', '2', '3', '4', '5', '0'])
     const texts = walk(await band.drawn()).filter(n => n.type === 'Text').map(textOf).join(' ')
     expect(texts).toContain('More actions. Press the number shown.')
     // The menu is drawn above the phase chips, so it stays on screen.
@@ -263,7 +263,7 @@ describe('phase bar (AbovePrompt)', () => {
     expect(await paneKeys()).toEqual(['1', '2', '3', '4', '9', '0'])
     await band.press({ key: 'action-more' })
     // Build checkpoint menu: Grill me, Teach me, Save for later.
-    expect(await paneKeys()).toEqual(['1', '2', '3', '0'])
+    expect(await paneKeys()).toEqual(['1', '2', '3', '4', '0'])
     expect(JSON.stringify(await pane.drawn())).toContain('More actions. Press the number shown.')
     await band.press({ key: 'action-more' })
     expect(await paneKeys()).toEqual(['1', '2', '3', '4', '9', '0'])
@@ -364,9 +364,9 @@ describe('pane', () => {
         expect(keys).toContain('0')
         // Digits only: the menu replaces the main buttons, so no digit is used twice.
         expect(keys.every(k => /^[0-9]$/.test(k))).toBe(true)
-        // Discuss (4) and skip (9) are main buttons: the menu replaces them.
-        expect(keys.includes('4')).toBe(!expanded)
-        expect(keys.includes('9')).toBe(!expanded)
+        // Discuss (4) and skip (9) are main buttons; the menu replaces them and numbers its own entries from 1.
+        if (!expanded) expect(keys.includes('4') && keys.includes('9')).toBe(true)
+        else expect(keys.includes('9')).toBe(false)
         await ui.unmount()
       }
     }

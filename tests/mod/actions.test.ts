@@ -36,6 +36,8 @@ const ORIGINAL = [
   'Run Build',
   'Run Review',
   'Run Check',
+  // Resume Validation: the saved run state goes (commands/temper.md, reference/orchestrator-patterns.md).
+  'Start over',
 ]
 const ALLOWED_EXTRA = [
   'Discuss',
@@ -121,17 +123,17 @@ describe('keys 1 to 4 per phase', () => {
   test('Intent: Continue to Plan, Grill me, Teach me', () => {
     expect(labels('intent', { ready: true, gate: 'fresh' })).toEqual(['Continue to Plan', 'Grill me', 'Teach me'])
     expect(labels('intent', { gate: 'none' })).toEqual(['Start Intent', 'Grill me', 'Teach me'])
-    expect(menu('intent')).toEqual(['Save for later'])
+    expect(menu('intent')).toEqual(['Save for later', 'Start over'])
   })
 
   test('Plan: Continue to Build, Walk through step by step, Open HTML review', () => {
     expect(labels('plan', { ready: true, gate: 'fresh' })).toEqual(['Continue to Build', 'Walk through step by step', 'Open HTML review'])
-    expect(menu('plan')).toEqual(['Grill me', 'Teach me', 'Share HTML review', 'Save for later'])
+    expect(menu('plan')).toEqual(['Grill me', 'Teach me', 'Share HTML review', 'Save for later', 'Start over'])
   })
 
   test('Build checkpoint: Continue with task N, Change, Stop', () => {
     expect(labels('build', CHECKPOINT)).toEqual(['Continue with task 2', 'Change', 'Stop'])
-    expect(menu('build', CHECKPOINT)).toEqual(['Grill me', 'Teach me', 'Save for later'])
+    expect(menu('build', CHECKPOINT)).toEqual(['Grill me', 'Teach me', 'Save for later', 'Start over'])
   })
 
   test('grouped Build checkpoint: Continue with the groups, Change, Stop', () => {
@@ -141,26 +143,26 @@ describe('keys 1 to 4 per phase', () => {
 
   test('Build completion gate: Continue to Review, Teach me, Grill me; Loop back to Plan under More', () => {
     expect(labels('build', COMPLETION)).toEqual(['Continue to Review', 'Teach me', 'Grill me'])
-    expect(menu('build', COMPLETION)).toEqual(['Loop back to Plan', 'Save for later'])
+    expect(menu('build', COMPLETION)).toEqual(['Loop back to Plan', 'Save for later', 'Start over'])
   })
 
   test('Review: Continue to Check, Architecture depth review, Grill me', () => {
     expect(labels('review', { ready: true, gate: 'fresh' })).toEqual(['Continue to Check', 'Architecture depth review', 'Grill me'])
-    expect(menu('review', { ready: true, gate: 'fresh' })).toEqual(['Teach me', 'Loop back to Build', 'Save for later'])
+    expect(menu('review', { ready: true, gate: 'fresh' })).toEqual(['Teach me', 'Loop back to Build', 'Save for later', 'Start over'])
   })
 
   test('Check: Continue to Commit, then config suggestions only when the file exists', () => {
     const ok = { ready: true, gate: 'fresh' as const }
     expect(labels('check', { ...ok, configSuggestions: true })).toEqual(['Continue to Commit', 'Review config suggestions', 'Teach me'])
     expect(labels('check', ok)).toEqual(['Continue to Commit', 'Grill me', 'Teach me'])
-    expect(menu('check', ok)).toEqual(['Save for later'])
+    expect(menu('check', ok)).toEqual(['Save for later', 'Start over'])
   })
 
   test('a failed check: Loop back is key 1, and it is not listed twice', () => {
     expect(labels('plan', { gate: 'fail' })[0]).toBe('Loop back to Intent')
     expect(labels('review', { gate: 'fail' })[0]).toBe('Loop back to Build')
     expect(labels('build', { gate: 'fail', task: { n: 3, of: 3 }, tasksLeft: 0 })[0]).toBe('Loop back to Plan')
-    expect(menu('build', { gate: 'fail', task: { n: 3, of: 3 }, tasksLeft: 0 })).toEqual(['Save for later'])
+    expect(menu('build', { gate: 'fail', task: { n: 3, of: 3 }, tasksLeft: 0 })).toEqual(['Save for later', 'Start over'])
     expect(menu('review', { gate: 'fail' })).not.toContain('Loop back to Build')
     const loop = actionsFor('build', { gate: 'fail', task: null, tasksLeft: null }).primary[0]
     expect(loop?.command).toBe('back plan')
@@ -278,7 +280,7 @@ describe('keys 1 to 4 per phase', () => {
 
 describe('the menu on key 0', () => {
   test('a paused run offers Resume where it offers Save for later', () => {
-    expect(menu('intent', { paused: true })).toEqual(['Resume'])
+    expect(menu('intent', { paused: true })).toEqual(['Resume', 'Start over'])
     expect(menu('build', { ...CHECKPOINT, paused: true })).toContain('Resume')
     expect(menu('build', { ...CHECKPOINT, paused: true })).not.toContain('Save for later')
   })

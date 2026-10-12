@@ -146,12 +146,63 @@ Work through one run. For each phase, check the refusal and the key.
   `scripts/temper override plan --reason ok`. Expect a refusal that says only the user can
   approve.
 
+## 4a. Grouped Build and the cases found in hands-on runs
+
+Each step below is a problem a real run hit once. Run them on a small project (a copy of a small
+Python repository is enough), with a feature that splits into at least two tasks.
+
+- [ ] **Blocking questions are buttons.** Start a run whose intent leaves a choice open (for
+  example "list N jokes", without saying what happens when N is larger than the list). Expect
+  an `AskUserQuestion` dialog with one question per Blocking question and its choices as
+  options, never a list of questions to answer by typing. Expect the answers under
+  `### Decisions` in `intent.md`.
+- [ ] **Cases in the plan.** After Plan, open `tasks.md`. Expect `**Cases:**` under every task
+  with at least 2 concrete cases (an input and its exact expected result).
+- [ ] **Tasks in their own worktrees.** During Build, expect the folders
+  `.claude/worktrees/temper-<name>-T<N>` while tasks run, tasks of one group running at the
+  same time, and one gate per group (not one per task).
+- [ ] **A pattern for the task agent.** Run `<clone>/scripts/temper task show <N>` while a
+  task runs. Expect a `--- PATTERN TEST (...)` block with an existing test of the project
+  (none when the project has no test of that kind).
+- [ ] **Change at a group gate.** At a group gate choose Change and type a small change. Expect
+  only the named task to run again, and the group gate to come back.
+- [ ] **Loop back at Review.** When Review has open findings, expect `2: Loop back to Build` on
+  the bar's main row. Press it, give a reason, and expect Build to run again.
+- [ ] **A parked group.** Ask a task agent to commit its own work (or commit in its worktree by
+  hand). Expect its task gate to fail, the group to park with the commit named, and two ways
+  out printed. Follow one and expect `group reopen` to be accepted.
+- [ ] **No false failures.** After Build, run `<clone>/scripts/temper group report`. Expect
+  every task with its attempts in plain words. A failed attempt must name its model and its
+  reason; an attempt with "no model given to task gate" means the orchestrator gated a task
+  before its agent ran: stop and report it.
+- [ ] **Tokens in the report.** Type `/temper:temper report`. Expect a Usage section with tokens
+  and time per stage and per model, and a total.
+- [ ] **A reused feature name.** Finish or clear a run, then start a new run with the same
+  feature name. Expect key 1 at Intent to say "Continue to Plan" (never "Record my choice"),
+  the move to Plan to go through, and Plan's `state set complexity` not to be refused.
+- [ ] **A move that did not go through.** If the bar ever shows "Your move to X did not go
+  through yet", expect one press of `1` to finish it. A second refusal is a defect.
+- [ ] **Start over with a click.** In `mode off`, start `/temper:temper <another feature>` while a
+  run is saved. Expect a `Temper resume` question with "Start over" as an option (never a hint to
+  type a command or to press a button that does not exist). Choose it and expect the new run to
+  start at Intent. In `mode full`, expect "Start over" under `0` (More) too.
+- [ ] **Per-task Build still works.** Set `build.mode: per-task` in `.claude/temper.config`
+  and run a small feature. Expect a flat task list, the Sonnet build agent and a gate after
+  every task. Remove the line afterwards.
+- [ ] **Model choice.** Set `build.grouped.task-model: claude-sonnet-5-5` and run once. Expect
+  the task agents and the report to name that model.
+
 ## 5. Modes
 
 - [ ] `/temper:temper mode minimal`. Expect the reply `Temper mode: minimal`, the bar with no
   action buttons, no toasts and no pane. Denials still apply.
 - [ ] `/temper:temper mode off`. Expect the bar to disappear. Ask for a write in Plan and expect
   the refusal to still appear.
+- [ ] **Gates without buttons.** Still in `mode off` (and again in `mode minimal`), reach a gate.
+  Expect an `AskUserQuestion` dialog with the gate's choices ("Continue to ... (Recommended)",
+  "Save for later", and on a failed check "Loop back" and "Override and continue"). Choose
+  Continue and expect the next stage to start. You must never have to type
+  `/temper:temper approve`.
 - [ ] `/temper:temper mode full`. Expect the bar and the buttons back, with no restart.
 - [ ] `/temper:temper enforcement off`, then try a write in Plan. Expect the write to go through
   and a toast `Temper enforcement: off`. Run `/temper:temper enforcement on` to restore it.

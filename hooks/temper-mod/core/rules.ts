@@ -266,7 +266,7 @@ const REPEATED_FLAG =
 
 const STATE_RESTART =
   'Temper: state init and state loop restart or move the run. Only the user decides that. ' +
-  'Next: ask the user to use the Temper bar buttons (Loop back, Go back) or /temper:temper back <phase> <reason>.'
+  'Next: ask the user with AskUserQuestion, header `Temper resume`, whether to start over (or, for a step back, the Loop back choice of the gate).'
 
 // The stage that follows a stage in the CLI sequence (STAGE_SEQ_TEMPER in scripts/temper), with design
 // between plan and build for a medium or complex run. Null for a name that is not a stage.
@@ -309,7 +309,7 @@ function followsVerdict(s: RunState, stage: string, complexity?: string | null):
 
 const STATE_END = (cli: string): string =>
   'Temper: do not clear or archive the run state during a run. Next: finish the run, ' +
-  `commit, then run ${cli} state archive.`
+  `commit, then run ${cli} state archive. To throw the run away, ask the user with AskUserQuestion, header \`Temper resume\`, whether to start over.`
 
 const stateSetDeny = (key: string): string =>
   `Temper: state set ${key} moves the run. Only the user can do this. ` +
@@ -393,6 +393,13 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
   // that never left Intent loses nothing. The mod's own record holds only the start (no advance, no step back, no skip),
   // and the CLI's files and the spec folder agree (ctx.nothingToLose).
   const trivialExit = s.phase === 'intent' && s.history.every(h => h.kind === 'start') && ctx.nothingToLose === true
+  // The person's Start over (a restart decision): the saved run state may go. `state archive` and `state clear` pass
+  // while it waits unspent; `state init`, which starts the run again, spends it. Only a command that does nothing else.
+  const restart = isActive(s) ? (ctx.humanDecisions ?? []).find(d => d.kind === 'restart') : undefined
+  const resets = c.stateOps.length > 0 && c.stateOps.every(o => o.op === 'archive' || o.op === 'clear' || o.op === 'init')
+  if (restart && resets && c.calls.length === 0 && !c.commits) {
+    return c.stateOps.some(o => o.op === 'init') ? { allow: true, consume: 'restart', eventId: restart.id, eventIds: [restart.id] } : ALLOW
+  }
   if (isActive(s) && c.stateOps.some(o => o.op === 'archive' || (o.op === 'clear' && !trivialExit))) return { deny: STATE_END(cli) }
   if (isActive(s) && c.stateOps.some(o => o.op === 'init')) return { deny: STATE_RESTART }
   // `state loop <from> <to>` keeps the loop budget and clears the evidence of the stages that are redone.

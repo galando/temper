@@ -21,6 +21,8 @@ export type EventBody =
   | { type: 'checkResult'; result: 'pass' | 'fail' }
   | { type: 'pause' }
   | { type: 'resume' }
+  // The person chose to start over: the saved run state may be thrown away once (state archive or clear, then init).
+  | { type: 'restart'; reason: string }
 
 export type Draft = EventBody & { origin: Origin; author?: string }
 
@@ -78,6 +80,8 @@ function bodyProblem(o: Record<string, unknown>): string | null {
     case 'pause':
     case 'resume':
       return null
+    case 'restart':
+      return isString(o.reason) ? null : 'restart needs a reason'
     default:
       return 'unknown event type'
   }

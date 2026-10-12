@@ -38,6 +38,16 @@ The task brief writes one test per case, each asserting the exact expected value
 - The bar's `/temper:temper report` and the report kept at Done include the usage section (tokens and
   time per stage and per model).
 - Blocking questions are asked with `AskUserQuestion` in every phase, with or without the bar.
+- In `mode minimal` and `mode off` the bar draws no buttons, and the person had to type
+  `/temper:temper approve`. The bar now says so in the system prompt, the orchestrator asks every gate
+  with `AskUserQuestion` (header `Temper gate`), and the mod records the person's answer as the
+  decision a button would record. Loop back and Override take the person's reason from the answer.
+- Start over is a decision of the person: "Start over" in the `Temper resume` question the orchestrator
+  asks when a saved run does not fit, the bar's More menu, or `/temper:temper restart <reason>`. It lets
+  the orchestrator's next `state archive` and one `state init` through. Before, the orchestrator pointed
+  at a bar button that does not exist, and the mod refused the reset.
+- `temper group report` reads in plain words: tasks, build time, tokens, and each attempt with its model,
+  tokens, time and, for a failed attempt, its reason.
 
 **Fixes from a whole-diff review.**
 - `reference/build.md` no longer tells the build agent to write `.temper/build-state.json`, and a

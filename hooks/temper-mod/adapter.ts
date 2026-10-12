@@ -28,6 +28,7 @@ import { planFileList, taskProgress, tasksLeft } from './core/planfiles'
 import { parseUsage, renderReport } from './core/report'
 import type { UsageRow } from './core/report'
 import { sectionText } from './core/section'
+import { phaseBarStyle } from './core/modes'
 import type { DecisionKind } from './core/bash'
 import type { CommitFacts, HumanDecision } from './core/rules'
 import { normalizePath } from './core/paths'
@@ -194,6 +195,7 @@ function humanKind(ev: TemperEvent): DecisionKind | null {
   // Fix has no CLI stage of its own, so a move out of Fix has nothing to mirror.
   if (ev.type === 'advance' && ev.from !== 'fix') return 'advance'
   if (ev.type === 'back') return 'back'
+  if (ev.type === 'restart') return 'restart'
   return null
 }
 
@@ -587,6 +589,7 @@ export function composeText(snap: Snapshot): string {
     loopLimitReached: s.loopLimitReached,
     stale: s.stale,
     sync: snap.sync.line,
+    buttons: phaseBarStyle(snap.mode) === 'phases-and-actions',
     actionContext: {
       ready: s.phase !== null && s.phase !== 'done' ? s.gate[s.phase] === 'fresh' : false,
       allChecksPass: s.gate.check === 'fresh',

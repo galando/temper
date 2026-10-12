@@ -45,6 +45,17 @@ describe('system prompt section', () => {
     expect(t).toBe('Temper enforcement: active\nPhase: none. No Temper run is active.')
   })
 
+  test('a bar with no buttons adds one line after the enforcement line; the rest stays the same', () => {
+    const lines = sectionText({ ...base, buttons: false }).split('\n')
+    expect(lines[0]).toBe('Temper enforcement: active')
+    expect(lines[1]).toBe('Temper buttons: none in this mode. At a gate, ask with AskUserQuestion, header `Temper gate`.')
+    expect(lines.slice(2)).toEqual(sectionText(base).split('\n').slice(1))
+    expect(sectionText({ ...base, buttons: true })).toBe(sectionText(base))
+    expect(sectionText({ enforcement: 'on', phase: null, title: null, progress: null, buttons: false })).toBe(
+      'Temper enforcement: active\nTemper buttons: none in this mode. At a gate, ask with AskUserQuestion, header `Temper gate`.\nPhase: none. No Temper run is active.',
+    )
+  })
+
   test('no em or en dashes', () => {
     expect(/[\u2013\u2014]/.test(sectionText({ ...base, stale: ['build'] }))).toBe(false)
   })

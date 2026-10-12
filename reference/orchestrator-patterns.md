@@ -90,8 +90,12 @@ Before honoring saved state, check: parseable JSON; `stage` is one the command d
 have produced exist — `artifacts[]` lists the full run's expected set, so check it
 stage-aware: at `intent_complete` only `intent.md` is owed (Plan hasn't written
 `tasks.md`/`plan.md` yet); from `plan_complete` onward, every file in `artifacts[]`;
-`updated` < 30 days old (warn if older). Any check fails → show what's wrong, ask
-"Start over / Delete saved state / Cancel?"
+`updated` < 30 days old (warn if older). Any check fails → show what's wrong in one line, then ask with
+`AskUserQuestion`, header `Temper resume`: "Start over" / "Cancel". On "Start over" run
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --command temper` (it archives the old run state first;
+the files under `.temper/specs/` stay) and start the run at Intent. With the Temper mod loaded, the person's
+"Start over" answer is the decision that lets that one reset through. Never tell the person to type a command
+or to press a bar button for this.
 
 ## Nested Invocation Protection
 
@@ -99,16 +103,18 @@ stage-aware: at `intent_complete` only `intent.md` is owed (Plan hasn't written
 
 ```
 AskUserQuestion:
+  header: "Temper resume"
   question: "A saved session exists for '{existing}'. What would you like to do?"
   options:
     - label: "Resume existing session (Recommended)"
       description: "Continue from {next_stage} stage."
-    - label: "Overwrite and start new"
-      description: "Delete the saved run state, start from scratch."
+    - label: "Start over"
+      description: "Throw the saved run state away and start the new one. The spec files stay."
 ```
 
-On "Overwrite and start new", run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear`, then
-start the new item from its first stage.
+On "Start over", run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {new slug} --command {command}` (it
+archives the saved run state first), then start the new item from its first stage. With the Temper mod
+loaded, the person's "Start over" answer is the decision that lets that one reset through.
 
 ## Agent Failure Handling
 

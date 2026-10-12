@@ -15,6 +15,7 @@ import { phaseLabel } from './core/machine'
 import type { Command } from './core/machine'
 import { normalizePath } from './core/paths'
 import { driftAnswers } from './core/drift'
+import { gateAnswer, resumeAnswer } from './core/gateanswer'
 import { evaluate } from './core/rules'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
@@ -804,6 +805,28 @@ async function recordDriftAnswers($: Api, result: unknown): Promise<void> {
   }
 }
 
+// ---- The gate, asked as a question --------------------------------------------------
+
+// Without buttons (minimal and off modes) Claude asks the gate in Claude Code's own question dialog, with the
+// header `Temper gate` (core/gateanswer.ts). The person's answer is read from the dialog's result, after the
+// call ran, and recorded as the decision the matching typed /temper:temper command records. Only for the phase
+// the run is at, and only when no move of the person waits to be recorded. The orchestrator then does the
+// steps of that choice itself, in the same turn: nothing is sent to Claude here.
+async function recordGateAnswer($: Api, result: unknown): Promise<void> {
+  const snap = await refresh($)
+  if (snap.inert) return
+  // Start over is no move of the run: it is taken whatever waits to be recorded.
+  const restart = resumeAnswer(result)
+  if (restart !== null) {
+    await decideAs($, restart, 'person')
+    return
+  }
+  if (snap.sync.pending !== null) return
+  const command = gateAnswer(result, snap.state.phase)
+  if (command === null) return
+  await decideAs($, command, 'person')
+}
+
 function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
   return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, groupedActive: snap.groupedActive, designRequired: snap.designRequired, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset, cli: pluginCli() }
 }
@@ -1180,6 +1203,7 @@ export const register: Register = (on, opts) => {
     if (g.ids.length > 0) await settle($, g.ids, failed).catch(() => undefined)
     await afterTrivialExit($, g).catch(() => undefined)
     if (e.tool === 'AskUserQuestion' && !errored) await recordDriftAnswers($, result).catch(() => undefined)
+    if (e.tool === 'AskUserQuestion' && !errored) await recordGateAnswer($, result).catch(() => undefined)
     const cmd = 'command' in e && typeof e.command === 'string' ? e.command : ''
     if (e.tool === 'Bash' && /\btemper["']?\s+gate\s+check\b/.test(cmd)) await afterGateCheck($).catch(() => undefined)
     return result

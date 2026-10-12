@@ -17,7 +17,8 @@ The Temper bar has the same choices as the questions that Temper asks at each ga
 digit away. The bar also has Discuss, Play and Skip with a reason.
 
 With the mod, Temper does not ask twice. It prints the result of the stage. Then it waits for the bar,
-a typed `/temper:temper` word or a message. The full table is in
+a typed `/temper:temper` word or a message. In minimal and off modes the bar has no buttons, so Temper asks
+the gate question, as it does without the mod. The mod records your answer as your decision. The full table is in
 [Commands](commands.md#one-flow-two-views).
 
 ## The three modes
@@ -25,8 +26,8 @@ a typed `/temper:temper` word or a message. The full table is in
 Use `/temper:temper mode` to set how much Temper draws. Refusals work in every mode.
 
 - **Full** draws the bar with action buttons, the pane, toasts and suggestions.
-- **Minimal** draws the phase bar only.
-- **Off** draws nothing. A write outside the phase is still refused.
+- **Minimal** draws the phase bar only. Temper asks each gate as a question.
+- **Off** draws nothing. Temper asks each gate as a question. A write outside the phase is still refused.
 
 A toast confirms a change to enforcement in every mode. The same mod runs in the desktop app (Code tab).
 The rows below show Full, Minimal and Off.
@@ -226,17 +227,21 @@ to ask you for a mode or a reason. CI fails on a call outside `scripts/check-mod
   refusals below and its state, it sends no text out.
 - **System prompt:** `prompt.compose` adds one section, `temper:phase`, to each request: enforcement on
   or off, the phase (and whether paused), task, run title, passed criteria, stale phases, the next
-  step, a warning when its state and the CLI's disagree, and one fixed line (answer a message at a
-  gate; after a requested change, run the gate again).
+  step, a warning when its state and the CLI's disagree, one line in minimal and off modes (the bar has no
+  buttons, so ask the gate with the question dialog, header `Temper gate`), and one fixed line (answer a message
+  at a gate; after a requested change, run the gate again).
 - **Hooks:**
   - `tool.call` sees every tool call, a subagent's too. It reads the path of Write, Edit, MultiEdit and NotebookEdit
     and the text of Bash, then refuses the call with a fixed reason and next step for Claude (a next step that runs
     `scripts/temper` gives the plugin folder's path), or passes it on and returns its result unchanged; it never
     answers for a tool. A write outside the plan is refused until you answer Claude's Scope drift question (why, the
     change, then Add to plan, Revert or Allow once); the mod records your answer from the dialog's result only.
+    The same holds for your answer to a `Temper gate` question (minimal and off modes): Continue to, Save for later,
+    and Loop back to or Override and continue with your reason record the decision the typed `/temper:temper` word
+    records, for the phase the run is at only.
   - `command.run` handles only `/temper:temper`. It answers `status`, `timeline`, `help`, `report`, `mode`,
     `enforcement`, `pane`, `play`, `pause` and `resume`. It records an accepted decision (`approve`, `next`, `back`,
-    `override`, `accept`, `drift`) and passes it on; a refused one is answered with the reason. A word that changes
+    `override`, `accept`, `drift`, `restart`) and passes it on; a refused one is answered with the reason. A word that changes
     state, and `play`, is refused unless you typed it in your prompt box; with enforcement off, a decision from any
     origin is accepted and its origin recorded. A bare `/temper:temper` you type toggles the pane in full mode during
     a phase. `pr`, `discuss`, `continue` and any other word or command pass on unchanged, even the two the mod runs.
