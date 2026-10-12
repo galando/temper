@@ -63,12 +63,16 @@ export type ActionContext = {
   grouped?: boolean
   // Check wrote config-suggestions.json in the spec folder.
   configSuggestions?: boolean
-  // The person's last move is not recorded in the CLI yet (Snapshot.sync.pending).
+  // The person's last move is not recorded in the CLI yet (Snapshot.sync.pending), and what that move is.
   pending?: boolean
+  pendingMove?: PendingChoice
   // Where the Temper script is: its full path in the plugin folder, or the plain `scripts/temper` when that is not
   // known (see pluginCliFrom). A prompt names the CLI and the plugin's files by it.
   cli?: string
 }
+
+// The person's move that waits to be recorded: a Continue out of a phase, a step back, or a skip.
+export type PendingChoice = { type: 'advance'; from: Phase } | { type: 'back'; to: Phase } | { type: 'override' }
 
 export type ActionSet = { primary: Action[]; discuss: Action; override: Action | null; more: Action[] }
 
@@ -127,8 +131,9 @@ const isCheckpoint = (phase: Phase, ctx: ActionContext): boolean => {
 // Key 1, by what the check said. The orchestrator runs every stage and its check itself, so a person
 // arriving at a phase finds the result already there.
 function main(phase: Phase, ctx: ActionContext): Action {
-  // The person chose a move that the CLI has not recorded: key 1 records it again. It is not a new choice.
-  if (ctx.pending) return { key: '1', id: 'record', label: 'Record my choice', desc: 'Temper records your last choice again.', record: true }
+  // The person chose a move that the CLI has not recorded: key 1 records it again. It is not a new choice, so it
+  // carries the words of that move.
+  if (ctx.pending) return record(ctx.pendingMove)
   const next = NEXT[phase]
   if (ctx.ready) {
     return command('1', 'continue', `Continue to ${next}`, READY_DESC[phase], phase === 'intent' || phase === 'plan' ? 'approve' : 'next', false, true, `To ${next}`)
@@ -141,6 +146,22 @@ function main(phase: Phase, ctx: ActionContext): Action {
   if (ctx.gate === 'fail' && up) return loopBack(up, '1')
   if (phase === 'intent') return launch('1', 'run-stage', 'Start Intent', 'Claude writes the intent and checks it. Then you decide.')
   return launch('1', 'run-stage', ctx.gate === 'fail' ? `Run ${cap(phase)} again` : `Run ${cap(phase)}`, `Claude runs ${cap(phase)} and checks it. Then you decide.`)
+}
+
+// The line under the bar while the person's move waits: `idle` once Claude has stopped (key 1 finishes the move), `working`
+// while Claude is still carrying it out (nothing to press).
+export function pendingLines(move: PendingChoice | undefined): { idle: string; working: string } {
+  const what = move?.type === 'advance' ? `Your move to ${NEXT[move.from]}` : move?.type === 'back' ? `Your step back to ${cap(move.to)}` : move?.type === 'override' ? 'Your skip of this step' : 'Your last choice'
+  return { idle: `${what} did not go through yet. Press 1 to finish it.`, working: `Claude is finishing ${what.charAt(0).toLowerCase()}${what.slice(1)}.` }
+}
+
+// Key 1 while the person's move waits to be recorded, named by that move.
+function record(move: PendingChoice | undefined): Action {
+  const base = { key: '1' as const, id: 'record', record: true }
+  if (move?.type === 'advance') return { ...base, label: `Continue to ${NEXT[move.from]}`, short: `To ${NEXT[move.from]}`, desc: 'Not recorded yet. Temper records it and goes on.' }
+  if (move?.type === 'back') return { ...base, label: `Loop back to ${cap(move.to)}`, short: `Back to ${cap(move.to)}`, desc: 'Not recorded yet. Temper records it and goes back.' }
+  if (move?.type === 'override') return { ...base, label: 'Skip and go on', desc: 'Not recorded yet. Temper records the skip and goes on.' }
+  return { ...base, label: 'Record my choice', desc: 'Temper records your last choice again.' }
 }
 
 // The original "Loop back to {upstream}": it asks for a reason, records the step back, and the orchestrator
@@ -237,7 +258,8 @@ function pair(phase: Phase, ctx: ActionContext): [Action, Action] {
         ? [draft('2', 'change', 'Change', 'Tell Claude what to change in this task.', 'Change this task: '), stop('3', ctx.cli ?? CLI)]
         : [teach(phase, '2'), grill(phase, '3')]
     case 'review':
-      return [archDepth('2'), grill(phase, '3')]
+      // Open findings: the step back to Build is on the main row (unless key 1 already is it), depth review in the menu.
+      return ctx.hasFindings && main(phase, ctx).id !== 'loop-back' ? [loopBack('build', '2'), grill(phase, '3')] : [archDepth('2'), grill(phase, '3')]
     case 'check':
       return ctx.configSuggestions ? [configSuggestions('2'), teach(phase, '3')] : [grill(phase, '2'), teach(phase, '3')]
     case 'fix':
@@ -259,7 +281,7 @@ function menu(phase: Phase, ctx: ActionContext): Action[] {
     case 'build':
       return isCheckpoint(phase, ctx) ? [grill(phase), teach(phase), save(paused)] : [...(loopMain ? [] : [loopBack('plan', '1')]), save(paused)]
     case 'review':
-      return [...extra([teach(phase)]), ...(loopMain ? [] : [loopBack('build', '1')]), save(paused)]
+      return [...extra([teach(phase), archDepth('1')]), ...(loopMain ? [] : extra([loopBack('build', '1')])), save(paused)]
     case 'check':
       return [...(ctx.configSuggestions ? extra([grill(phase)]) : []), save(paused)]
     case 'fix':
@@ -281,8 +303,11 @@ export function moreActions(phase: Phase, ctx: ActionContext): Action[] {
 
 export function actionsFor(phase: Phase, ctx: ActionContext): ActionSet {
   const set = baseActions(phase, ctx)
-  // A move of the person that the CLI has not recorded: key 1 records it again, in every phase.
-  return ctx.pending ? { ...set, primary: [main(phase, ctx), ...set.primary.slice(1)] } : set
+  // A move of the person that the CLI has not recorded: key 1 records it again, in every phase. The menu does not
+  // offer the same move a second time.
+  if (!ctx.pending) return set
+  const first = main(phase, ctx)
+  return { ...set, primary: [first, ...set.primary.slice(1)], more: numbered(set.more.filter(a => a.label !== first.label)) }
 }
 
 function baseActions(phase: Phase, ctx: ActionContext): ActionSet {

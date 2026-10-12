@@ -32,6 +32,8 @@ export type BuildState = {
   spec: string
   specPath: string
   nextStage: string | null
+  // The stage the CLI completed last; `started` only right after `state init`.
+  stage: string | null
   task: number | null
   complexity: string | null
   // The run's own branch and the command that started it (the CLI commit gate reads both).
@@ -54,6 +56,7 @@ export function parseBuildState(text: string): BuildState | null {
     spec: o.spec,
     specPath,
     nextStage: typeof o.next_stage === 'string' ? o.next_stage : null,
+    stage: typeof o.stage === 'string' ? o.stage : null,
     complexity: typeof o.complexity === 'string' ? o.complexity : null,
     branch: typeof o.branch === 'string' && o.branch !== '' ? o.branch : null,
     command: typeof o.command === 'string' ? o.command : null,

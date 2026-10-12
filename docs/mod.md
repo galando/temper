@@ -261,5 +261,5 @@ to ask you for a mode or a reason. CI fails on a call outside `scripts/check-mod
   so nothing runs and nothing leaves the test. One test spawns a stub review agent (prompt `review it`, type
   `temper:temper-review`, no model); a stub answers it, so no agent runs, and the mod leaves the spawn unchanged.
 - **Tests, lint, git and `scripts/temper`** run as prompts to Claude with its normal permissions. Auto
-  mode may refuse a skip as a gate bypass; the bar then says "Press 1 to record it". Allow that one
+  mode may refuse a skip as a gate bypass; the bar then says "Press 1 to finish it". Allow that one
   `scripts/temper override` command, or run it yourself with `!`.

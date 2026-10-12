@@ -63,12 +63,12 @@ describe('state comes back after /clear from the event files', () => {
     // The CLI is the truth for where the run is: it still says intent, so the approval is pending.
     const second = (await $.prompt.compose(COMPOSE)).sections.at(-1)?.text ?? ''
     expect(second).toContain('Phase: Intent')
-    expect(second).toContain('not recorded yet')
+    expect(second).toContain('Your move to Plan did not go through yet. Press 1 to finish it.')
     // Once the mirror call moved the CLI, the same events give Plan.
     cliTo(w, 'plan')
     await $.classic.SessionStart({ source: 'clear' })
     const third = (await $.prompt.compose(COMPOSE)).sections.at(-1)?.text ?? ''
     expect(third).toContain('Phase: Plan')
-    expect(third).not.toContain('not recorded yet')
+    expect(third).not.toContain('did not go through yet')
   })
 })

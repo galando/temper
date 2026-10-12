@@ -38,9 +38,9 @@ const input = () => ({
 describe('renderReport', () => {
   const md = renderReport(input())
 
-  test('has the five sections in order', () => {
+  test('has the six sections in order', () => {
     const heads = md.split('\n').filter(l => l.startsWith('## '))
-    expect(heads).toEqual(['## Phases', '## Overrides', '## Accepted findings', '## Scope drift', '## Criteria'])
+    expect(heads).toEqual(['## Phases', '## Overrides', '## Accepted findings', '## Scope drift', '## Criteria', '## Usage'])
   })
 
   test('title, spec and result lead the file', () => {

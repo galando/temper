@@ -50,6 +50,8 @@ const ALLOWED_EXTRA = [
   'Loop back to Plan',
   // The person's last move is not recorded in the CLI yet: key 1 records it again (no new choice).
   'Record my choice',
+  // The same, named by the person's waiting skip.
+  'Skip and go on',
   // Grouped Build: a checkpoint continues the group loop (reference/build-groups.md), not one task.
   'Continue with the groups',
 ]
@@ -71,6 +73,10 @@ const STATES: ActionContext[] = [
   COMPLETION,
   { configSuggestions: true },
   { pending: true, gate: 'fresh', ready: true },
+  { pending: true, gate: 'fresh', ready: true, pendingMove: { type: 'advance', from: 'plan' } },
+  { pending: true, pendingMove: { type: 'back', to: 'plan' } },
+  { pending: true, pendingMove: { type: 'override' } },
+  { hasFindings: true, ready: true, gate: 'fresh' },
 ]
 
 const everyAction = (): Array<{ where: string; x: Action }> => {
@@ -186,6 +192,38 @@ describe('keys 1 to 4 per phase', () => {
       expect(first?.command).toBeUndefined()
       expect(first?.prompt).toBeUndefined()
     }
+  })
+
+  test('Review with open findings: Loop back to Build is key 2, Architecture depth review moves to the menu', () => {
+    const ctx: ActionContext = { hasFindings: true, ready: true, gate: 'fresh' }
+    expect(labels('review', ctx)).toEqual(['Continue to Check', 'Loop back to Build', 'Grill me'])
+    expect(actionsFor('review', ctx).primary[1]?.key).toBe('2')
+    expect(menu('review', ctx)).toContain('Architecture depth review')
+    expect(menu('review', ctx)).not.toContain('Loop back to Build')
+    for (const x of actionsFor('review', ctx).more) expect(/^[1-9]$/.test(x.key)).toBe(true)
+  })
+
+  test('Review with no open findings keeps Architecture depth review on key 2 and the step back in the menu', () => {
+    const ctx: ActionContext = { ready: true, gate: 'fresh' }
+    expect(labels('review', ctx)).toEqual(['Continue to Check', 'Architecture depth review', 'Grill me'])
+    expect(menu('review', ctx)).toContain('Loop back to Build')
+    expect(menu('review', ctx)).not.toContain('Architecture depth review')
+    // A failed review check already has the step back on key 1: it is not repeated on key 2.
+    expect(labels('review', { hasFindings: true, gate: 'fail' })).toEqual(['Loop back to Build', 'Architecture depth review', 'Grill me'])
+  })
+
+  test('a move that waits to be recorded is named by that move on key 1, and keeps recording it', () => {
+    const ctx: ActionContext = { pending: true, ready: true, gate: 'fresh' }
+    const cont = actionsFor('intent', { ...ctx, pendingMove: { type: 'advance', from: 'intent' } }).primary[0]
+    expect(cont?.label).toBe('Continue to Plan')
+    expect(cont?.desc).toBe('Not recorded yet. Temper records it and goes on.')
+    expect(cont?.record).toBe(true)
+    expect(cont?.command).toBeUndefined()
+    expect(actionsFor('plan', { ...ctx, pendingMove: { type: 'advance', from: 'plan' } }).primary[0]?.label).toBe('Continue to Build')
+    const back = actionsFor('build', { ...ctx, pendingMove: { type: 'back', to: 'plan' } })
+    expect(back.primary[0]?.label).toBe('Loop back to Plan')
+    expect(back.more.map(a => a.label)).not.toContain('Loop back to Plan')
+    expect(actionsFor('build', { ...ctx, pendingMove: { type: 'override' } }).primary[0]?.label).toBe('Skip and go on')
   })
 
   test('Continue records the move and then runs the orchestrator', () => {

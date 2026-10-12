@@ -401,6 +401,8 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
   // The loop leaves the stage the run is at (a loop from another stage only burns the budget), and it uses the back
   // decision once: a second loop call needs another decision. The step that follows still spends it.
   const loopIds: string[] = []
+  // The decisions a call matched: spent by it, also when the same command commits (see below).
+  let spends: RuleResult | null = null
   if (isActive(s)) {
     const here = stageName(s.phase)
     for (const op of c.stateOps) {
@@ -504,7 +506,8 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
       matched.push(hit.id)
       first ??= { kind: call.kind, eventId: hit.id }
     }
-    if (first && !(c.commits && !s.paused)) return { allow: true, consume: first.kind, eventId: first.eventId, eventIds: matched, ...(loopIds.length > 0 ? { loopIds } : {}) }
+    if (first) spends = { allow: true, consume: first.kind, eventId: first.eventId, eventIds: matched, ...(loopIds.length > 0 ? { loopIds } : {}) }
+    if (spends && !(c.commits && !s.paused)) return spends
   }
 
   // The artifact only carve-out is for a plain `git commit` of the index: a pathspec commit, a merge, a cherry-pick,
@@ -515,6 +518,9 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
       deny: `Temper: commit blocked. Check has not passed. ${ctx.commit?.hint ? `${ctx.commit.hint} ` : ''}Next: ${COMMIT_NEXT[s.phase]}. The native pre-commit hook is the backstop.`,
     }
   }
+  // A decision call chained with a commit the gate lets through still spends its decision: left unspent, the person's
+  // choice would wait as unrecorded after the CLI recorded it, and approve a later call too.
+  if (spends) return spends
   return loopIds.length > 0 ? { allow: true, loopIds } : ALLOW
 }
 

@@ -204,6 +204,20 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
   return s
 }
 
+// `state init` began a new run on a spec folder whose record holds an earlier one: the CLI writes the stage `started`
+// only there (with the first stage next: intent, or rca for a fix run), and after the record's last start a person's advance was mirrored (its `state advance` took the CLI past
+// `started`) or a check result came in. `spent` says whether a decision was used by its mirror call. The choices of
+// the earlier run do not count in the new one, as `state init` clears the CLI's own ledgers.
+export function earlierRun(events: readonly TemperEvent[], cliStage: string | null, cliNext: string | null, spent: (id: string) => boolean): boolean {
+  if (cliStage !== 'started' || (cliNext !== 'intent' && cliNext !== 'rca')) return false
+  let past = false
+  for (const ev of [...events].sort(compareEvents)) {
+    if (ev.type === 'start') past = false
+    else if ((ev.type === 'advance' && ev.origin === 'person' && spent(ev.id)) || ev.type === 'checkResult') past = true
+  }
+  return past
+}
+
 // `anyOrigin`: the person turned enforcement off, so a decision is accepted from any origin (a `claude -p` run, the
 // Agent SDK). Its events keep the origin they came from.
 export type Command = { origin: Origin; author?: string; anyOrigin?: boolean } & (

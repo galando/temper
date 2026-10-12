@@ -13,17 +13,20 @@ import { parseEnforcement, parseMaxLoops, parseOnOff, parseUiMode, readConfigVal
 import type { UiMode } from './core/config'
 import { mergeCriteria, parseCriteria, parseStatus, parseTitle, progress } from './core/criteria'
 import type { MergedCriterion } from './core/criteria'
-import { encodeEvent, eventFileName, readEvents, stamp } from './core/events'
+import { compareEvents, encodeEvent, eventFileName, readEvents, stamp } from './core/events'
 import type { Draft, Phase, TemperEvent } from './core/events'
 import { stageOf } from './core/cli'
 import { cliPhase, parseBuildState, parseFindings, parseGates, phaseFromStage, samePhase } from './core/gates'
 import type { Finding } from './core/gates'
 import { buildView } from './core/view'
+import { pendingLines } from './core/actions'
+import type { PendingChoice } from './core/actions'
 import type { View } from './core/view'
-import { decide, initialState, phaseLabel, reduce } from './core/machine'
+import { decide, earlierRun, initialState, phaseLabel, reduce } from './core/machine'
 import type { Command, RunState, Verdicts } from './core/machine'
 import { planFileList, taskProgress, tasksLeft } from './core/planfiles'
-import { renderReport } from './core/report'
+import { parseUsage, renderReport } from './core/report'
+import type { UsageRow } from './core/report'
 import { sectionText } from './core/section'
 import type { DecisionKind } from './core/bash'
 import type { CommitFacts, HumanDecision } from './core/rules'
@@ -112,6 +115,8 @@ export type Snapshot = {
   configSuggestions: boolean
   // Unconsumed human decision events per kind, for the CLI decision guard.
   humanDecisions: HumanDecision[]
+  // The CLI's usage rows (.temper/usage.json), for the report.
+  usage: UsageRow[]
 }
 
 const OWN_PREFIX = 'ev:'
@@ -162,6 +167,7 @@ export function idleSnapshot(options: PluginOptions, inert: boolean): Snapshot {
     unreadable: [],
     configSuggestions: false,
     humanDecisions: [],
+    usage: [],
   }
 }
 
@@ -260,7 +266,7 @@ export function reconcile(state: RunState, nextStage: string | null, pending: Pe
     next.loopLimitReached = false
     if (pending !== null) {
       held = pending
-      line = `Temper state: the run is at ${phaseLabel(cli)}. Your last choice is not recorded yet. Press 1 to record it.`
+      line = pendingLines(pendingChoice(pending)).idle
     }
   }
   // A check that passed later than the phase the CLI is at, or choices that went further than the CLI
@@ -333,6 +339,22 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     }
   }
 
+  // A new run on the same spec folder (see earlierRun): it starts at the phase the CLI recorded, after every earlier
+  // event, so no approval, skip or step of the earlier run is folded into it and none of its choices waits to be recorded.
+  if (state.started) {
+    const mine = events.filter(e => own.has(e.id))
+    const used = new Set<string>()
+    for (const ev of mine) if (ev.type === 'advance' && (await io.storeGet(USED_PREFIX + ev.id))) used.add(ev.id)
+    const phase = cliPhase(bs.nextStage)
+    if (phase !== null && phase !== 'done' && earlierRun(mine, bs.stage, bs.nextStage, id => used.has(id))) {
+      const last = mine.reduce((t, e) => Math.max(t, e.ts), 0)
+      const start = await writeEvent(io, specDir, { type: 'start', slug: bs.spec, title, phase, origin: 'system' }, { ts: Math.max(Date.now(), last + 1), session: 'newrun', seq: 1 })
+      events = [...events, start]
+      own.add(start.id)
+      state = fold(events)
+    }
+  }
+
   const planText = (await readText(io, `${specDir}/plan.md`)) ?? ''
   const tasksText = (await readText(io, `${specDir}/tasks.md`)) ?? ''
   const status = parseStatus((await readText(io, `${STATE_ROOT}/status.json`)) ?? '')
@@ -341,7 +363,9 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   // back the mod trusts), a decision for that stage that was never spent is stale. It is not an approval for the
   // plan that is made again.
   let open: Array<{ hd: HumanDecision; ev: TemperEvent; stage: number; stalable: boolean }> = []
-  for (const ev of events) {
+  for (const ev of [...events].sort(compareEvents)) {
+    // A start begins a run: a choice made before it belongs to an earlier run.
+    if (ev.type === 'start' && own.has(ev.id)) open = []
     if (ev.type === 'back' && own.has(ev.id)) {
       const t = FLOW_ORDER.indexOf(ev.to === 'fix' ? 'check' : ev.to)
       open = open.filter(o => !o.stalable || o.stage < t)
@@ -353,9 +377,16 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     }
   }
   const humanDecisions: HumanDecision[] = open.map(o => o.hd)
-  // A move of the person that no mirror call has recorded yet: the latest one is the one to record.
+  // A move of the person that no mirror call has recorded yet: the latest one is the one to record. A move out of
+  // another phase than the CLI's is not one: its mirror names a stage the run is not at, so the guard refuses it every
+  // time and key 1 would hand it over again and again.
+  const at = cliPhase(bs.nextStage)
   let pendingMove: PendingMove | null = null
-  for (const o of open) if (o.ev.type === 'advance' || o.ev.type === 'back' || o.ev.type === 'override') pendingMove = { id: o.ev.id, draft: o.ev }
+  for (const o of open) {
+    const ev = o.ev
+    const fits = ev.type === 'back' || (ev.type === 'advance' && ev.from === at) || (ev.type === 'override' && (ev.phase === at || (ev.phase === 'fix' && at === 'check')))
+    if (fits) pendingMove = { id: ev.id, draft: ev }
+  }
 
   const sync = reconcile(state, bs.nextStage, pendingMove)
   state = sync.state
@@ -385,6 +416,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     unreadable: unreadable.map(u => u.name),
     configSuggestions: (await io.list(specDir).catch(() => [])).some(e => e.kind === 'file' && e.name === 'config-suggestions.json'),
     humanDecisions,
+    usage: parseUsage((await readText(io, `${STATE_ROOT}/usage.json`)) ?? ''),
   }
 }
 
@@ -524,6 +556,7 @@ export function reportText(snap: Snapshot): string {
     criteria: snap.criteria,
     generatedAt: Date.now(),
     unreadable: snap.unreadable,
+    usage: snap.usage,
   })
 }
 
@@ -562,8 +595,19 @@ export function composeText(snap: Snapshot): string {
   })
 }
 
-export const viewOf = (snap: Snapshot, cli?: string): View =>
-  buildView({ state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, grouped: snap.groupedActive, sync: snap.sync.line, pending: snap.sync.pending !== null, enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false, ...(cli !== undefined ? { cli } : {}) })
+// The move that waits to be recorded, as the bar names it on key 1.
+function pendingChoice(p: PendingMove | null): PendingChoice | undefined {
+  const d = p?.draft
+  if (d?.type === 'advance') return { type: 'advance', from: d.from }
+  if (d?.type === 'back') return { type: 'back', to: d.to }
+  if (d?.type === 'override') return { type: 'override' }
+  return undefined
+}
+
+export const viewOf = (snap: Snapshot, cli?: string): View => {
+  const move = pendingChoice(snap.sync.pending)
+  return buildView({ syncWorking: snap.sync.pending !== null ? pendingLines(move).working : null, state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, grouped: snap.groupedActive, sync: snap.sync.line, pending: snap.sync.pending !== null, ...(move !== undefined ? { pendingMove: move } : {}), enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false, ...(cli !== undefined ? { cli } : {}) })
+}
 
 // Mirrors the folded state into `$.state` for drawing and compaction.
 export async function publish(io: Io, snap: Snapshot): Promise<void> {

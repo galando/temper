@@ -561,6 +561,11 @@ async function handOver($: Api, drafts: readonly Draft[]): Promise<boolean> {
 // mirror prompt, once more. No new event is written, and the decision stays single use. When the run
 // has moved by now, there is nothing to record.
 async function recordAgain($: Api): Promise<void> {
+  // Claude is still carrying the move out: a second hand over would only do it twice.
+  if (working) {
+    showToast($, 'Claude is finishing your move. Wait for the answer, then press 1 if it did not go through.')
+    return
+  }
   const snap = await refresh($)
   const pending = snap.sync.pending
   if (pending === null) {
@@ -1201,9 +1206,11 @@ export const register: Register = (on, opts) => {
     if (e.props.hasSurvey) return next(e)
     const ui = await readUi($).catch(() => null)
     if (ui === null) return next(e)
+    // While Claude works on the person's waiting move, the line says so (there is nothing to press yet).
+    const view = e.props.isWorking && ui.view.syncWorking ? { ...ui.view, sync: ui.view.syncWorking } : ui.view
     const band = renderBand(
       $.ui.resolve(e),
-      ui.view,
+      view,
       ui.mode,
       action => runAction($, action, e.requestId, ui.view.phase).catch(() => undefined),
       reason => runReason($, reason, ui.view.phase).catch(() => undefined),
@@ -1278,7 +1285,7 @@ export const register: Register = (on, opts) => {
     if (ui === null || ui.mode !== 'full') return next(e)
     return renderPane(
       $.ui.resolve(e),
-      ui.view,
+      working && ui.view.syncWorking ? { ...ui.view, sync: ui.view.syncWorking } : ui.view,
       action => runAction($, action, undefined, ui.view.phase).catch(() => undefined),
       (kind, id) => runFindingAction($, kind, id).catch(() => undefined),
       e.props.placement === 'inline',

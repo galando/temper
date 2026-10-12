@@ -13,6 +13,64 @@ export type ReportInput = {
   generatedAt: number
   unreadable?: readonly string[]
   unverified?: readonly string[]
+  // The CLI's usage rows (.temper/usage.json, see parseUsage). Left out: none recorded.
+  usage?: readonly UsageRow[]
+}
+
+// One agent launch's usage as the CLI records it (`temper usage add`): tokens and ms are null when not given.
+export type UsageRow = { stage: string; model: string; tokens: number | null; ms: number | null }
+
+// The rows of .temper/usage.json. Text that is not a list gives none; a row that is not an object is left out.
+export function parseUsage(text: string): UsageRow[] {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(raw)) return []
+  const num = (v: unknown): number | null => (typeof v === 'number' && Number.isInteger(v) ? v : null)
+  const name = (v: unknown): string => (typeof v === 'string' && v !== '' ? v : 'unknown')
+  return raw
+    .filter((r): r is Record<string, unknown> => typeof r === 'object' && r !== null && !Array.isArray(r))
+    .map(r => ({ stage: name(r.stage), model: name(r.model), tokens: num(r.tokens), ms: num(r.ms) }))
+}
+
+export const USAGE_NOTE = 'Usage (per-agent totals as Claude Code returns them; the orchestrator session is not counted)'
+
+type Sum = { rows: number; tokens: number | null; ms: number | null }
+
+const add = (acc: Sum, r: UsageRow): Sum => ({
+  rows: acc.rows + 1,
+  tokens: r.tokens === null ? acc.tokens : (acc.tokens ?? 0) + r.tokens,
+  ms: r.ms === null ? acc.ms : (acc.ms ?? 0) + r.ms,
+})
+
+// Per stage, per model and in total, as `temper report` prints them. A sum with no number given is '-'.
+function usageRows(rows: readonly UsageRow[]): string[] {
+  if (rows.length === 0) return []
+  const empty: Sum = { rows: 0, tokens: null, ms: null }
+  const group = (key: (r: UsageRow) => string): Array<[string, Sum]> => {
+    const m = new Map<string, Sum>()
+    for (const r of rows) m.set(key(r), add(m.get(key(r)) ?? empty, r))
+    return [...m.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  }
+  const n = (v: number | null): string => (v === null ? '-' : String(v))
+  const line = (name: string, x: Sum): string => `| ${name} | ${x.rows} | ${n(x.tokens)} | ${n(x.ms)} |`
+  const total = rows.reduce(add, empty)
+  return [
+    USAGE_NOTE,
+    '',
+    '| Stage | Launches | Tokens | ms |',
+    '|---|---|---|---|',
+    ...group(r => r.stage).map(([k, v]) => line(k, v)),
+    '',
+    '| Model | Launches | Tokens | ms |',
+    '|---|---|---|---|',
+    ...group(r => r.model).map(([k, v]) => line(k, v)),
+    '',
+    `Total: ${total.rows} launches, ${n(total.tokens)} tokens, ${n(total.ms)} ms`,
+  ]
 }
 
 const ROWS: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check']
@@ -60,6 +118,8 @@ export function renderReport(input: ReportInput): string {
     ...input.criteria.map(c => `| ${c.id} | ${c.priority} | ${c.status} | ${c.evidence.join('; ')} |`),
   ]
   out.push(...section('Criteria', input.criteria.length > 0 ? critRows : []))
+
+  out.push(...section('Usage', usageRows(input.usage ?? [])))
 
   const notes = [
     ...(input.unreadable ?? []).map(n => `- Unreadable event file: ${n}`),

@@ -410,8 +410,8 @@ One source of truth for the phase. The CLI state is the truth for where the run 
 phase of the bar and of every deny from `build-state.json` (`next_stage`: `cliPhase` in the pure core,
 `reconcile` in the adapter). Events record who decided (decisions, timeline, invalidation) and are never the
 source of the phase. When the mod's picture and the CLI differ, the CLI wins; if the person's last move is not
-mirrored yet, the line "Temper state: the run is at <phase>. Your last choice is not recorded yet. Press 1 to
-record it." shows and key 1 re-submits the mirror prompt for that same pending decision (no new event, single
+mirrored yet, the line "Your move to <phase> did not go through yet. Press 1 to finish it." (while Claude is still
+carrying the move out: "Claude is finishing your move to <phase>.") shows and key 1 re-submits the mirror prompt for that same pending decision (no new event, single
 use). A decision is spent after its call ran, judged by what the call changed, not by its exit status: when a call
 ends in an error the mod compares the CLI's files (state, overrides, gates, evidence, loop counter) with the copy it
 took before the call, and a changed copy means the decision was used (`state advance ...; exit 1`). A call that

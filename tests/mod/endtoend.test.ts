@@ -366,8 +366,8 @@ describe('a mirror the CLI refuses once: the choice stays pending and key 1 reco
     // The bar stays at Plan, says why in one line, and offers to record the choice again.
     const bar = await r.barText()
     expect(bar).toContain('Step 2 of 6')
-    expect(bar).toContain('Temper state: the run is at Plan. Your last choice is not recorded yet. Press 1 to record it.')
-    expect(bar).toContain('Record my choice')
+    expect(bar).toContain('Your move to Build did not go through yet. Press 1 to finish it.')
+    expect(bar).toContain('1 Continue to Build. Not recorded yet. Temper records it and goes on.')
     const events = r.events().filter(e => e.type === 'advance')
     expect(events).toHaveLength(1)
     // Key 1 submits the mirror prompt again for the SAME decision: no new event.
@@ -376,7 +376,7 @@ describe('a mirror the CLI refuses once: the choice stays pending and key 1 reco
     expect(r.cliNext()).toBe('build')
     expect(r.events().filter(e => e.type === 'advance')).toHaveLength(1)
     await r.refresh()
-    expect(await r.barText()).not.toContain('not recorded yet')
+    expect(await r.barText()).not.toContain('did not go through yet')
     // The decision is single use: a third call is refused.
     const third = await r.$.tool.call({ tool: 'Bash', command: 'scripts/temper state advance plan_complete build' })
     expect(third.deny).toContain('Only the user')
@@ -390,7 +390,7 @@ describe('a mirror the CLI refuses once: the choice stays pending and key 1 reco
     r.skipRuns()
     // The bar offers to record again, and the second hand over is allowed.
     await r.refresh()
-    expect(await r.barText()).toContain('Record my choice')
+    expect(await r.barText()).toContain('1 Continue to Build. Not recorded yet.')
     const out = await r.mirror(await r.press('record'))
     expect(out.map(o => o.deny)).toEqual([undefined])
     expect(r.cliNext()).toBe('build')
@@ -404,7 +404,7 @@ describe('the CLI moved ahead of the events: the bar follows it and writes nothi
     r.w.files.set('.temper/build-state.json', JSON.stringify({ stage: 'build_complete', spec: 'pw', spec_path: SPEC, next_stage: 'review' }))
     await r.refresh()
     expect(await barStep(r)).toBe(4)
-    expect(await r.barText()).not.toContain('not recorded yet')
+    expect(await r.barText()).not.toContain('did not go through yet')
     expect(r.events().length).toBe(before)
   })
 })
@@ -469,7 +469,7 @@ describe('the CLI looks reset while later checks passed: no work is blocked, one
     expect(await barStep(r)).toBe(1)
   })
 
-  test('a reset that clears the gate ledger too (state init): the choices went further, nothing is pending', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+  test('state init again is a new run (as the CLI clears its own ledgers): the earlier choices do not count in it', { options: { moveCooldownMs: 0 } }, async ($, on) => {
     const r = await start($ as unknown as Api, on)
     await r.tasks(0)
     await r.mirror(await r.press('continue'))
@@ -477,13 +477,13 @@ describe('the CLI looks reset while later checks passed: no work is blocked, one
     // `state init` from a shell: the CLI is at intent, the ledger is empty.
     r.w.files.set('.temper/build-state.json', JSON.stringify({ stage: 'started', spec: 'pw', spec_path: SPEC, next_stage: 'intent' }))
     r.w.files.set('.temper/gates.json', '[]')
-    const events = r.events().map(e => e.id)
+    const events = r.events().length
     await r.refresh()
     expect(await barStep(r)).toBe(1)
-    expect(await r.barText()).toContain('Temper state looks reset')
-    // Nothing is blocked, nothing is written.
-    expect(await r.write('src/app.ts')).toBeUndefined()
-    expect(r.events().map(e => e.id)).toEqual(events)
+    expect(await r.barText()).not.toContain('looks reset')
+    // One start is written for the new run, and its Intent rules apply.
+    expect(r.events().slice(events).map(e => e.type)).toEqual(['start'])
+    expect(await r.write('src/app.ts')).toContain('Intent phase')
   })
 
   test('a skip that the orchestrator has not advanced past yet is not a reset', { options: { moveCooldownMs: 0 } }, async ($, on) => {

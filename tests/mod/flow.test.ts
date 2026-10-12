@@ -174,7 +174,7 @@ describe('a stale press (#45)', () => {
     // The person approves with the typed command; the button on screen is now for a step that is done.
     await $.command.run({ command: 'temper:temper', args: 'approve', origin: { kind: 'composer' } } as never)
     const before = events(w).filter(e => e.type === 'advance').length
-    // The CLI has not moved yet, so the bar shows "Record my choice" in place of Continue: the old
+    // The CLI has not moved yet, so the bar shows key 1 "Continue to Build" that records the waiting choice: the old
     // button is gone, and pressing the new one writes no event.
     expect(await ui.find({ key: 'action-continue' })).toBeUndefined()
     await ui.press({ key: 'action-record' })

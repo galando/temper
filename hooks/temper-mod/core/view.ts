@@ -7,7 +7,7 @@
 // redo (a counter clockwise arrow, after a back step).
 
 import { actionsFor, doneActions, nowText } from './actions'
-import type { Action, ActionContext, ActionSet } from './actions'
+import type { Action, ActionContext, ActionSet, PendingChoice } from './actions'
 import type { MergedCriterion } from './criteria'
 import type { Phase } from './events'
 import type { Finding } from './gates'
@@ -44,6 +44,8 @@ export type View = {
   now: string
   // The one line that says the bar and the CLI do not agree; null when all is well.
   sync: string | null
+  // The line shown in its place while Claude works on the person's waiting move (left out: none waits).
+  syncWorking?: string | null
   task: { n: number; of: number } | null
   loopLimitReached: boolean
 }
@@ -65,7 +67,9 @@ export type ViewInput = {
   grouped?: boolean
   // The sync line and whether a move of the person waits to be recorded (Snapshot.sync).
   sync?: string | null
+  syncWorking?: string | null
   pending?: boolean
+  pendingMove?: PendingChoice
   // Where the Temper script is (see ActionContext.cli): the prompts of the buttons name the CLI by it.
   cli?: string
 }
@@ -111,6 +115,7 @@ export function buildView(input: ViewInput): View {
     grouped: input.grouped ?? false,
     configSuggestions: input.configSuggestions ?? false,
     pending: input.pending ?? false,
+    ...(input.pendingMove !== undefined ? { pendingMove: input.pendingMove } : {}),
     ...(input.cli !== undefined ? { cli: input.cli } : {}),
   }
   const passed = input.criteria.filter(c => c.status === 'passed').length
@@ -135,6 +140,7 @@ export function buildView(input: ViewInput): View {
     timeline: s.history.slice(-6).map(h => (KIND[h.kind] ?? KIND.advance)?.(h.from ? phaseLabel(h.from) : 'Start', phaseLabel(h.to)) ?? ''),
     now: s.phase === null ? '' : nowText(s.phase, ctx),
     sync: input.sync ?? null,
+    ...(input.syncWorking ? { syncWorking: input.syncWorking } : {}),
     task: input.task,
     loopLimitReached: s.loopLimitReached,
   }

@@ -13,6 +13,22 @@ a gate after every task, no Haiku; its loop is `reference/build-per-task.md`). I
 branch. The grouped loop the orchestrator runs is in `reference/build-groups.md`, read by
 `/temper` and by the standalone `/temper:build`.
 
+**Fixes from a hands-on run with the Temper bar.**
+- A new run on a spec folder that held an earlier run no longer inherits that run's choices in the bar.
+  Before, an unspent Continue of the earlier run waited as the "last choice", the bar offered only
+  "Record my choice", and pressing it sent `continue plan` at the Intent gate, which the guard refused
+  ("Only the user can approve this") in a loop. The earlier run's approved plan also made the bar refuse
+  the new Plan's `state set complexity`. The mod now starts a fresh record when `state init` began a new
+  run, and offers key 1 again only for a move out of the phase the run is at.
+- A decision call chained with a commit the gate allows now spends its decision.
+- Key 1 and the line under the bar name the waiting move in plain words ("Continue to Check"; "Your move
+  to Check did not go through yet. Press 1 to finish it."), and say "Claude is finishing your move" while
+  Claude works.
+- At Review with open findings, the bar shows "Loop back to Build" on its main row.
+- The bar's `/temper:temper report` and the report kept at Done include the usage section (tokens and
+  time per stage and per model).
+- Blocking questions are asked with `AskUserQuestion` in every phase, with or without the bar.
+
 **Fixes from a whole-diff review.**
 - `reference/build.md` no longer tells the build agent to write `.temper/build-state.json`, and a
   run state that lost `spec_path` now fails every gate with the repair line instead of skipping rows.

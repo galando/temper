@@ -39,6 +39,7 @@ export type TemperView = {
   timeline: string[]
   now: string
   sync: string | null
+  syncWorking?: string | null
   task: { n: number; of: number } | null
   loopLimitReached: boolean
 }
