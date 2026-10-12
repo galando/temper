@@ -177,7 +177,7 @@ assert_eq "state loop review build sets next_stage to build" "build" "$("$TEMPER
 assert_exit "state loop to an unknown stage is refused" 1 "$TEMPER" state loop review bogus --reason typo
 assert_eq "state loop to an unknown stage leaves next_stage alone" "build" "$("$TEMPER" state get next_stage)"
 setup
-"$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
+"$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" >/dev/null
 "$TEMPER" state advance review_complete check >/dev/null
 "$TEMPER" gate intent >/dev/null; "$TEMPER" gate plan >/dev/null
 echo 'fix' > loopfix.js; git add loopfix.js >/dev/null 2>&1
