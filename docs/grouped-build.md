@@ -14,8 +14,9 @@ turns it off.
   `**Context:**` block per group (shared files, interfaces, conventions, and the pack rules
   that apply, security rules always).
 - **Each task is one launch of a slim Haiku agent** (`claude-haiku-5-5` by default). The
-  agent reads only its task and its group's Context (a launch carries at most about 11.5 KB),
-  writes a RED then a GREEN test run, and stops. It does not commit.
+  agent reads only its task (with the test cases Plan wrote for it), its group's Context and one
+  existing test of the project as a pattern (a launch carries at most about 14 KB), writes a RED
+  then a GREEN test run, and stops. It does not commit.
 - **One human gate per group** (Continue / Change / Stop).
 
 The `temper` CLI, not a prompt, decides what is ready, what passes and what merges.
@@ -59,8 +60,9 @@ one mode does not pass the other mode's plan gate.
 ## What a run looks like
 
 1. **Plan** (Opus) writes the grouped `tasks.md`. `temper gate plan` checks it: every task
-   has files, dependencies and a test; each group has a Context; the size budgets hold
-   (task brief 6144 bytes, group Context 4096, task block 1536); declared files do not
+   has files, dependencies, a test and at least 2 concrete test cases under `**Cases:**`; each
+   group has a Context; the size budgets hold (task brief 6144 bytes, group Context 4096, task
+   block 2048); declared files do not
    overlap between tasks or groups that can run at the same time; no single group declares
    more files than `autonomy.max-blast-radius`.
 2. **Start a group.** `temper group start G1` creates the group's git worktree,

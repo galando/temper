@@ -84,12 +84,18 @@ Shared notes for G1. Use bash.
 **File:** `src/a.sh`, `tests/a_test.sh`
 **Depends:** none
 **Test:** `bash tests/a_test.sh`
+**Cases:**
+- the normal input gives the expected result
+- an empty input is refused
 - [ ] done
 
 ### Task 2: Beta
 **File:** `src/b.sh`
 **Depends:** Task 1
 **Test:** `bash tests/b_test.sh`
+**Cases:**
+- the normal input gives the expected result
+- an empty input is refused
 - [ ] done
 
 ## Group G2: Edge
@@ -102,6 +108,9 @@ Notes for G2.
 **File:** `src/c.sh`
 **Depends:** none
 **Test:** `bash tests/c_test.sh`
+**Cases:**
+- the normal input gives the expected result
+- an empty input is refused
 - [ ] done
 GP
 }
@@ -190,9 +199,9 @@ gp_setup; gp_mut 'Shared notes for G1. Use bash.' "$(python3 -c "print('x' * 420
 assert_exit "grouped plan: a context over 4096 bytes fails" 1 "$TEMPER" gate plan
 assert_eq "grouped plan: the context budget row names G1" "1" "$(gp_has 'G1: context 42[0-9][0-9] bytes > 4096')"
 gp_setup; gp_mut '### Task 2: Beta' "### Task 2: Beta
-$(python3 -c "print('y' * 1600)")"
-assert_exit "grouped plan: a task block over 1536 bytes fails" 1 "$TEMPER" gate plan
-assert_eq "grouped plan: the task block budget row names Task 2" "1" "$(gp_has 'Task 2: block 1[67][0-9][0-9] bytes > 1536')"
+$(python3 -c "print('y' * 2100)")"
+assert_exit "grouped plan: a task block over 2048 bytes fails" 1 "$TEMPER" gate plan
+assert_eq "grouped plan: the task block budget row names Task 2" "1" "$(gp_has 'Task 2: block 2[0-9][0-9][0-9] bytes > 2048')"
 
 # dependency graph
 gp_setup; gp_mut '**Depends:** none
@@ -675,7 +684,7 @@ assert_eq "task show: a retry carries the previous attempt with its reason" "1|1
   "$(printf '%s\n' "$SHOW" | grep -c '^--- PREVIOUS ATTEMPT ---$')|$(printf '%s\n' "$SHOW" | grep -c 'no green run for this task and attempt')"
 assert_eq "task show: the previous attempt shows 20 lines of output and no more" "1" \
   "$(n=$(printf '%s\n' "$SHOW" | grep -c '^line '); [[ $n -ge 19 && $n -le 20 ]] && echo 1 || echo "$n")"
-assert_eq "task show: the whole payload is at most 6000 bytes" "1" "$([[ "$(printf '%s' "$SHOW" | wc -c | tr -d ' ')" -le 6000 ]] && echo 1 || echo 0)"
+assert_eq "task show: the whole payload is at most 8600 bytes" "1" "$([[ "$(printf '%s' "$SHOW" | wc -c | tr -d ' ')" -le 8600 ]] && echo 1 || echo 0)"
 assert_eq "task show: the group context is kept whole inside the budget" "64" "$(printf '%s\n' "$SHOW" | grep -c '^cccccccccc')"
 
 # retry -> escalate -> park (D-03), restore on FAIL, usage recording
@@ -1157,7 +1166,7 @@ assert_eq "template: the grouped example declares groups, Integration, Interface
 assert_eq "plan brief: one step points at the grouped format, and at the flat layout for build.mode per-task" "1|1" \
   "$(grep -c 'in the grouped format' "$REPO_ROOT/agents/plan.md" | tr -d ' ')|$(grep -c 'config get build.mode' "$REPO_ROOT/agents/plan.md" | tr -d ' ')"
 assert_eq "plan reference: documents the grouped format, budgets and pack distilling" "4" \
-  "$(for k in '^## Grouped tasks' '4096' '1536' 'distil'; do grep -qE -- "$k" "$REPO_ROOT/reference/plan.md" && echo x; done | wc -l | tr -d ' ')"
+  "$(for k in '^## Grouped tasks' '4096' '2048' 'distil'; do grep -qE -- "$k" "$REPO_ROOT/reference/plan.md" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "config default: commented build block names every grouped key" "4" \
   "$(for k in '^# build:' 'task-model' 'escalation-model' 'max-parallel'; do grep -qE -- "$k" "$REPO_ROOT/templates/temper.config.default" && echo x; done | wc -l | tr -d ' ')"
 setup
@@ -1484,6 +1493,9 @@ f_add_t4() { # a fourth, independent G1 task (src/d.sh) with its own controllabl
 **File:** `src/d.sh`
 **Depends:** none
 **Test:** `bash -c '"'"'exit ${ST_EXIT:-0}'"'"'`
+**Cases:**
+- the normal input gives the expected result
+- an empty input is refused
 - [ ] done
 
 ### Task 2: Beta'

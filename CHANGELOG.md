@@ -13,6 +13,16 @@ a gate after every task, no Haiku; its loop is `reference/build-per-task.md`). I
 branch. The grouped loop the orchestrator runs is in `reference/build-groups.md`, read by
 `/temper` and by the standalone `/temper:build`.
 
+**Better tests from small task agents.** A hands-on comparison found weaker tests from Haiku than from
+the per-task Sonnet Build, with gaps that only Review caught. Two changes move the thinking to Plan:
+- Plan writes the test cases of every task under `**Cases:**` in `tasks.md`: a concrete input and its
+  exact expected result per bullet, the normal result first, then edge and error cases. The plan gate
+  fails a task with fewer than 2 (row `task test cases`), and the task block budget is now 2048 bytes.
+- `temper task show` adds a PATTERN TEST: the first 2048 bytes of the existing test file nearest to
+  the task's own test (the same extension, a test by its name, tracked; the declared test itself when it
+  exists already), so the agent follows the project's style, imports and fixtures.
+The task brief writes one test per case, each asserting the exact expected value.
+
 **Fixes from a hands-on run with the Temper bar.**
 - A new run on a spec folder that held an earlier run no longer inherits that run's choices in the bar.
   Before, an unspent Continue of the earlier run waited as the "last choice", the bar offered only
@@ -105,8 +115,8 @@ multi-group feature is no longer parked by default.
 
 **The slim task brief and its budgets.** New `agents/build-task.md` (listed in `plugin.json`)
 replaces the full build brief, `reference/build.md` and the pack rules for a task agent. Its size
-budget is 6144 bytes for the brief, 4096 for a group Context and 1536 for a task block, so one
-launch carries at most about 11.5 KB (D-06). The budgets are constants in `scripts/temper`: the plan
+budget is 6144 bytes for the brief, 4096 for a group Context and 2048 for a task block, plus a
+pattern test of at most 2048 bytes, so one launch carries at most about 14 KB (D-06). The budgets are constants in `scripts/temper`: the plan
 gate checks the Context and task block budgets, the selftest checks the brief's size, and all three
 are to be tuned after the comparison run.
 

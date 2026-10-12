@@ -454,4 +454,45 @@ assert_eq "merge park: the rerun passes and merges the kept commit" "0|yes|work 
 # Blocking questions are asked with AskUserQuestion in every phase, with or without the Temper bar
 assert_eq "orchestrator: Blocking questions go to one AskUserQuestion in every phase, bar or not" "1|1|1" \
   "$(grep -c '^   \*\*Blocking questions first, in every phase, with or without the Temper bar\*\*' "$REPO_ROOT/commands/temper.md")|$(grep -c 'Never list Blocking questions as text' "$REPO_ROOT/commands/temper.md")|$(grep -c 'asked as the Gates section says (Blocking questions' "$REPO_ROOT/commands/temper.md")"
+# --- Better tests from small task agents: Plan writes the cases, task show adds a pattern test ---
+gp_setup
+assert_exit "cases: the fixture plan with 2 cases per task passes" 0 "$TEMPER" gate plan
+gp_mut '**Test:** `bash tests/c_test.sh`
+**Cases:**
+- the normal input gives the expected result
+- an empty input is refused' '**Test:** `bash tests/c_test.sh`
+**Cases:**
+- the normal input gives the expected result'
+assert_exit "cases: a task with 1 case fails the plan gate" 1 "$TEMPER" gate plan
+assert_eq "cases: the row names the task and the count" "1" "$(gp_has 'Task 3: 1 case(s) under \*\*Cases:\*\*')"
+gp_setup
+gp_mut '**Test:** `bash tests/c_test.sh`
+**Cases:**
+- the normal input gives the expected result
+- an empty input is refused' '**Test:** `bash tests/c_test.sh`
+**Cases:** the normal input gives the expected result'
+assert_eq "cases: an inline value counts as one case and the checkbox does not count" "1" "$(gp_has 'Task 3: 1 case(s)')"
+gp_setup
+gp_mut '**Test:** `bash tests/c_test.sh`
+**Cases:**
+- the normal input gives the expected result
+- an empty input is refused
+' '**Test:** `bash tests/c_test.sh`
+'
+assert_eq "cases: a task with no **Cases:** fails with 0" "1" "$(gp_has 'Task 3: 0 case(s)')"
+# task show carries the cases and the nearest existing test as a pattern
+ST_PRE='mkdir -p tests; printf "# pattern marker\nsource src/helper.sh\n" > tests/helper_test.sh; printf "x\n" > tests/notes.txt; git add tests; git commit -q --no-verify -m "add tests"' st_setup; ST_PRE=""
+"$TEMPER" task start 1 >/dev/null 2>&1
+SHOW="$("$TEMPER" task show 1)"
+assert_eq "task show: the task's cases reach the agent" "1|1" \
+  "$(printf '%s\n' "$SHOW" | grep -c '^\*\*Cases:\*\*$')|$(printf '%s\n' "$SHOW" | grep -c '^- an empty input is refused$')"
+assert_eq "task show: the nearest existing test of the same kind is the pattern, with its text (empty tests are skipped)" "1|1" \
+  "$(printf '%s\n' "$SHOW" | grep -c '^--- PATTERN TEST (tests/helper_test.sh: ')|$(printf '%s\n' "$SHOW" | grep -c '^# pattern marker$')"
+ST_PRE='mkdir -p tests; python3 -c "print(\"# big\"); [print(\"line %d\" % i) for i in range(900)]" > tests/big_test.sh; git add tests; git commit -q --no-verify -m "add a big test"' st_setup; ST_PRE=""
+"$TEMPER" task start 1 >/dev/null 2>&1
+SHOW="$("$TEMPER" task show 1)"
+assert_eq "task show: a long pattern is cut at 2048 bytes on a line end and says so" "1|0|1" \
+  "$(printf '%s\n' "$SHOW" | grep -c '^\[the rest of the file is cut\]$')|$(printf '%s\n' "$SHOW" | grep -c '^line 899$')|$(printf '%s\n' "$SHOW" | grep -c '^# big$')"
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1
+assert_eq "task show: with no test in the project there is no pattern block" "0" "$("$TEMPER" task show 1 | grep -c '^--- PATTERN TEST')"
 setup

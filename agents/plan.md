@@ -44,7 +44,8 @@ orchestrator's conversation carries over except the prompt you were launched wit
    `#### Happy Path`, `#### Error Paths`, `#### Edge Cases`; omit an empty group.
 7. **Grouped tasks.** Write `tasks.md` in the grouped format of `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`,
    "Grouped tasks" (copy the example in `${CLAUDE_PLUGIN_ROOT}/templates/tasks.md`): Build runs each task
-   as one slim task agent, so each task is small, declares its files and its own test command.
+   as one slim task agent, so each task is small, declares its files, its own test command and,
+   under `**Cases:**`, the concrete cases its test must check (normal, edge and error results).
    Only when `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get build.mode` prints `per-task`, write the
    flat per-task layout of that template instead (the previous Build), a `- [ ]` box under every task.
 8. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` mechanically checks, **at every tier**: the artifacts exist;

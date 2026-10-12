@@ -12,13 +12,16 @@ task. Your launch prompt names the task number N and the Temper plugin folder in
 the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop and say:
 "Cannot locate Temper plugin. Reinstall it."
 
-1. From the PROJECT folder, run `TEMPER task show N`. Read all of it: the TASK block, the
-   DECLARED FILES, the GROUP CONTEXT (it carries the pack rules that apply, security
-   rules first), and the PREVIOUS ATTEMPT if there is one (fix what it says failed).
+1. From the PROJECT folder, run `TEMPER task show N`. Read all of it: the TASK block (with
+   its Cases), the DECLARED FILES, the GROUP CONTEXT (it carries the pack rules that apply,
+   security rules first), the PATTERN TEST, and the PREVIOUS ATTEMPT if there is one (fix
+   what it says failed).
    Read nothing else you do not need; load no pack files.
 2. The WORKTREE line is your working folder. Read and edit files by their path under it,
    and only the DECLARED FILES. A change to any other file fails the task.
-3. RED. Write the failing test first, as the TASK block says. Run
+3. RED. Write the failing test first: one test per bullet under Cases, each asserting the
+   exact expected value the case names (never only "no error" or "not empty"); add a case
+   you see the code needs. Follow the PATTERN TEST's style, imports and fixtures. Run
    `TEMPER task test N --phase red` from the project folder. It takes no command: it runs
    the task's declared Test command in the worktree and records the run. The run must
    FAIL on an assertion, for the reason the scenario names. A test that passes first proves

@@ -146,6 +146,9 @@ The demo group.
 **File:** `src/demo.sh`
 **Depends:** none
 **Test:** `true`
+**Cases:**
+- the demo runs
+- a bad input is refused
 - [x] done task
 EOF
   "$TEMPER" init >/dev/null

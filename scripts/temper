@@ -86,7 +86,7 @@ STAGES="intent plan design build review check commit"
 # Grouped Build (9.7.0) byte budgets: the slim task brief, a group's Context block, one task block.
 TASK_BRIEF_MAX_BYTES=6144
 GROUP_CONTEXT_MAX_BYTES=4096
-TASK_BLOCK_MAX_BYTES=1536
+TASK_BLOCK_MAX_BYTES=2048
 USAGE_FILE=".temper/usage.json"     # whole-flow usage rows (D-07): CLI-owned, every write holds the lock
 GROUPS_FILE=".temper/groups.json"   # grouped run state: CLI-owned, every write holds the lock
 
@@ -1891,11 +1891,14 @@ try:
     lines = open(sys.argv[1], encoding='utf-8').read().split('\n')
 except Exception:
     lines = []
-FIELD = re.compile(r'^\*\*(Depends|Validate|Interfaces|Integration|Context|File|Test):\*\*\s*(.*)$')
+FIELD = re.compile(r'^\*\*(Depends|Validate|Interfaces|Integration|Context|File|Test|Cases):\*\*\s*(.*)$')
+# a case of a task's **Cases:** list: a bullet that is not the task's checkbox
+CASE = re.compile(r'^\s*[-*]\s+(?!\[[ xX]\])\S')
 groups, tasks = [], []
 integration = None
 cur_g = cur_t = None
 ctx_open = False
+cases_open = False
 def path_tokens(text):
     out = []
     for m in re.finditer(r'`([^`]+)`', text):
@@ -1912,16 +1915,16 @@ for line in lines:
     if gm:
         cur_g = {'id': gm.group(1), 'title': gm.group(2), 'depends': [], 'validate': '',
                  'interfaces': [], 'context': '', 'context_bytes': 0, 'tasks': []}
-        groups.append(cur_g); cur_t = None; ctx_open = False
+        groups.append(cur_g); cur_t = None; ctx_open = False; cases_open = False
         continue
     if tm:
         cur_t = {'n': int(tm.group(1)), 'title': tm.group(2), 'group': cur_g['id'] if cur_g else None,
-                 'files': [], 'depends': [], 'test': '', 'block_bytes': 0, 'block': ''}
-        tasks.append(cur_t); ctx_open = False
+                 'files': [], 'depends': [], 'test': '', 'cases': 0, 'block_bytes': 0, 'block': ''}
+        tasks.append(cur_t); ctx_open = False; cases_open = False
         if cur_g: cur_g['tasks'].append(cur_t['n'])
         continue
     if re.match(r'^#{1,2}\s', line):
-        cur_t = None; ctx_open = False
+        cur_t = None; ctx_open = False; cases_open = False
         continue
     fm = FIELD.match(line)
     if fm:
@@ -1932,6 +1935,9 @@ for line in lines:
             if key == 'File': cur_t['files'] = path_tokens(val)
             elif key == 'Depends': cur_t['depends'] = [int(x) for x in re.findall(r'Task\s+(\d+)', val)]
             elif key == 'Test': cur_t['test'] = cmd_of(val)
+            # the concrete cases Plan wrote for the task's test, one bullet each (an inline value counts as one)
+            cases_open = key == 'Cases'
+            if cases_open and val.strip(): cur_t['cases'] += 1
             cur_t['block'] += line + '\n'; continue
         if cur_g is not None:
             ctx_open = False
@@ -1945,6 +1951,7 @@ for line in lines:
                 if val.strip(): cur_g['context'] += val + '\n'
             continue
     if cur_t is not None:
+        if cases_open and CASE.match(line): cur_t['cases'] += 1
         cur_t['block'] += line + '\n'
     elif cur_g is not None and ctx_open:
         cur_g['context'] += line + '\n'
@@ -2637,7 +2644,7 @@ cmd_group() {
 # Grouped Build (9.7.0): the task lifecycle. One embedded python program with a mode per job, so the
 # snapshot, the changed-file rule and the verdict are computed in one place. Bash only sequences it:
 # groups.json writes go through _groups_mutate (the lock), ledger rows through _json_append.
-TASK_SHOW_MAX_BYTES=6000
+TASK_SHOW_MAX_BYTES=8600
 _task_box() { # _task_box <tasks.md> <N> <x|" ">: set the first box of Task N to [x] (ticked) or [ ] (unticked)
   python3 - "$1" "$2" "$3" <<'PY'
 import os, re, sys
@@ -2788,6 +2795,60 @@ def ctx(plan, run, n):
             'snapshot': rt.get('snapshot') or {}, 'slug': run.get('slug', ''),
             'gstatus': rg.get('status', ''), 'gparked': rg.get('parked_reason', '')}
 
+PATTERN_MAX_BYTES = 2048
+TEST_NAME = re.compile(r'(^|/)(test_[^/]+|[^/]+_test\.[^/.]+|[^/]+\.(test|spec)\.[^/.]+|test[^/]*\.[^/.]+)$')
+
+def pattern_test(wt, test_cmd, files, planned=()):
+    """(path, first lines) of the existing test file nearest to the task's own test, or None: same extension, a test by
+    its name, tracked in the task's worktree and not empty, declared by no task of the plan (another task may be
+    rewriting it); the declared test itself when it exists already (the task extends it). Nearest is the longest
+    shared folder prefix, then the name."""
+    try:
+        parts = shlex.split(test_cmd or '')
+    except ValueError:
+        parts = []
+    own = ''
+    for a in parts[1:]:
+        if a.startswith('-') or any(ch in a for ch in '$*?[{`'):
+            continue
+        if '/' in a or os.path.splitext(a)[1]:
+            own = norm(a)
+            break
+    if not own:
+        own = next((norm(f) for f in files if TEST_NAME.search(norm(f))), '')
+    if not own:
+        return None
+    ext = os.path.splitext(own)[1]
+    declared = {norm(f) for f in files} | {norm(f) for f in planned}
+    def has_text(x):
+        try:
+            return open(os.path.join(wt, x), 'rb').read(4096).strip() != b''
+        except OSError:
+            return False
+    r = subprocess.run(['git', '-C', wt, 'ls-files', '-z'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    tracked = [x for x in r.stdout.decode('utf-8', 'surrogateescape').split('\0') if x]
+    if own in tracked and has_text(own):
+        pick = own
+    else:
+        cands = [x for x in tracked if x not in declared and os.path.splitext(x)[1] == ext and TEST_NAME.search(x) and has_text(x)]
+        if not cands:
+            return None
+        def shared(x):
+            a, b = os.path.dirname(x).split('/'), os.path.dirname(own).split('/')
+            k = 0
+            while k < min(len(a), len(b)) and a[k] == b[k]:
+                k += 1
+            return k
+        pick = sorted(cands, key=lambda x: (-shared(x), x))[0]
+    try:
+        raw = open(os.path.join(wt, pick), 'rb').read(PATTERN_MAX_BYTES + 1)
+    except OSError:
+        return None
+    text = raw[:PATTERN_MAX_BYTES].decode('utf-8', 'ignore')
+    if len(raw) > PATTERN_MAX_BYTES:
+        text = text[:text.rfind('\n') + 1] + '[the rest of the file is cut]'
+    return pick, text.rstrip('\n')
+
 def matches(path, pats):
     return any(path == norm(p) for p in pats)   # H4: exact paths only; the plan gate refuses glob characters
 
@@ -2851,6 +2912,10 @@ elif mode == 'show':
     head = 'TASK %d (group %s, attempt %d): %s\nWORKTREE: %s\nPROJECT:  %s\nDECLARED FILES: %s\n' % (
         n, c['group'], c['attempt'], c['title'], os.path.join(project, c['worktree']), project, ', '.join(c['files']))
     body = head + '--- TASK ---\n' + c['block'] + '\n--- GROUP CONTEXT ---\n' + c['context'] + '\n'
+    # an existing test of the project, so the agent copies its style, imports and fixtures instead of guessing them
+    pat = pattern_test(os.path.join(project, c['worktree']), c['test'], c['files'], [f for t in plan['tasks'] for f in t['files']])
+    if pat:
+        body += '--- PATTERN TEST (%s: follow its style, imports and fixtures) ---\n%s\n' % pat
     # F1: the human's feedback from a group gate's Change (group reopen --feedback ID) reaches the task agent
     fb_ids = [str(r['feedback']) for r in (((run.get('tasks') or {}).get(str(n)) or {}).get('reopened') or [])
               if r.get('feedback') and not r.get('resolved')]
@@ -3721,6 +3786,9 @@ def undeclared_test(t):
 row('task test command', ['Task %d: no test command' % t['n'] for t in tasks if not t['test']]
     + [m for m in map(undeclared_test, tasks) if m],
     'every task declares its own scoped test command')
+row('task test cases', ['Task %d: %d case(s) under **Cases:** (need 2 or more: the normal result and an edge or error case)' % (t['n'], t['cases'])
+                        for t in tasks if t['cases'] < 2],
+    'every task lists the concrete cases its test must check')
 row('group context', ['%s: no group context' % g['id'] for g in groups if not g['context']],
     'every group has a context block')
 row('context budget', ['%s: context %d bytes > %d' % (g['id'], g['context_bytes'], ctx_max)

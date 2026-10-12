@@ -268,7 +268,7 @@ box under every task. The format below is what the CLI parser
   a string that must appear in it after integration) and `**Context:**` (a block that runs until the
   first `### Task`). Every group needs a Context.
 - `### Task N: description`, with `**File:**`, `**Depends:**` (`none` or `Task 1, Task 2`),
-  `**Test:**`, `**Traced to:**` and a closing `- [ ] done` box. The parser takes a task's group from the `## Group` heading it sits under (a `[group: G<n>]` tag in the
+  `**Test:**`, `**Cases:**`, `**Traced to:**` and a closing `- [ ] done` box. The parser takes a task's group from the `## Group` heading it sits under (a `[group: G<n>]` tag in the
   title is not read).
   Task numbers are unique across the whole file.
 
@@ -286,6 +286,14 @@ task's `**File:**`: the plan gate fails a task whose `**Test:**` command names a
 argument) that is neither declared by the task nor already in the project, because the task's commit check
 would otherwise reject the new test file as an undeclared change.
 
+**Cases: write the test cases, not just the test file.** Under `**Cases:**`, one bullet per case the
+task's test must check, each a concrete input and its exact expected result (a value, an output line, an
+error message or exit code), never a vague "works correctly". List the normal result first, then the edge
+cases (empty, boundary, a value just over a limit) and the error cases the intent and scenarios name. The
+plan gate fails a task with fewer than 2 cases. The task agent, often a small model, writes one test per
+case and is judged on them, so the cases you write here are the quality of its tests: a case you leave out
+is a gap Review finds later.
+
 **Context: distil the pack rules.** A task agent reads only its task and its group's Context, never the
 packs. Distil the rules of the enabled packs that apply to that group into its Context, in your own words
 and short: the quality, tdd and performance rules for the kind of code the group writes, and the
@@ -294,7 +302,7 @@ interfaces the group must keep. Review still checks the full packs, so the Conte
 not a substitute.
 
 **Budgets (the gate fails a plan over them).** A group's Context is at most 4096 bytes. A task block (its
-heading through its last field) is at most 1536 bytes. Put long background in `plan.md`, not in tasks.md.
+heading through its last field, the cases included) is at most 2048 bytes. Put long background in `plan.md`, not in tasks.md.
 
 **Few groups, parallel tasks.** A group costs a worktree, a merge commit and a human gate; a dependency
 between two tasks of the same group costs nothing extra. Make a new group only for a separate review unit
