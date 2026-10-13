@@ -329,6 +329,7 @@ assert_eq "F1: once answered, task show no longer prints the feedback" "0" "$("$
 gg_setup; gg_pass 1 src/a.sh
 echo wip > .claude/worktrees/temper-demo-G2/wip.txt
 G1SHA="$(git rev-parse temper/demo/G1)"
+_at build   # a loop goes back from the stage the run is at
 out="$("$TEMPER" state loop build plan --reason "the plan was wrong" 2>&1)"
 assert_eq "F2: groups.json is archived and the reset is reported" "no|1|1" \
   "$([[ -e .temper/groups.json ]] && echo yes || echo no)|$(ls .temper/archive/groups-*.json 2>/dev/null | wc -l | tr -d ' ')|$(printf '%s' "$out" | grep -c 'grouped run reset')"

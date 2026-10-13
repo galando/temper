@@ -128,11 +128,50 @@ const TARGET_DIR = new Set(['cp', 'mv', 'install', 'ln'])
 
 const ENV_WORD = /^[A-Za-z_][A-Za-z0-9_]*=/
 
-// The program a statement runs: its first word after `VAR=value` words and `sudo`, `env`, `command`, `exec`, `nohup`.
+// Words a statement may start with before the program it runs: shell keywords (`then rm x`, `do rm x`, `{ rm x; }`,
+// `! rm x`) and programs that run the words after them.
+const LEAD = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{', 'time', 'command', 'builtin', 'exec', 'nohup', 'setsid', 'sudo', 'doas', 'env', 'nice', 'timeout', 'stdbuf', 'ionice', 'taskset'])
+// Their options that take a value in the next word, and the words they take before the program (timeout's duration,
+// taskset's mask).
+const LEAD_VALUE: Record<string, readonly string[]> = {
+  sudo: ['-u', '--user', '-g', '--group', '-C', '--close-from', '-h', '--host', '-p', '--prompt', '-r', '--role', '-t', '--type', '-U', '--other-user'],
+  doas: ['-u', '-C'],
+  env: ['-u', '--unset', '-C', '--chdir'],
+  nice: ['-n', '--adjustment'],
+  timeout: ['-s', '--signal', '-k', '--kill-after'],
+  stdbuf: ['-i', '-o', '-e', '--input', '--output', '--error'],
+  ionice: ['-c', '--class', '-n', '--classdata', '-p', '--pid', '-P', '--pgid', '-u', '--uid'],
+}
+const LEAD_POSITIONAL: Record<string, number> = { timeout: 1, taskset: 1 }
+
+// The program a statement runs: its first word after `VAR=value` words, the keywords and the wrappers above with their
+// options.
 function program(words: string[]): number {
   let i = 0
-  while (i < words.length && (ENV_WORD.test(words[i] as string) || ['sudo', 'env', 'command', 'exec', 'nohup', 'time'].includes(words[i] as string))) i++
+  while (i < words.length) {
+    const w = words[i] as string
+    if (ENV_WORD.test(w)) {
+      i++
+      continue
+    }
+    if (!LEAD.has(w)) break
+    i++
+    // The wrapper's own options, then the words it takes before the program.
+    while (i < words.length && (words[i] as string).startsWith('-') && words[i] !== '--') i += (LEAD_VALUE[w] ?? []).includes(words[i] as string) ? 2 : 1
+    if (words[i] === '--') i++
+    while (i < words.length && ENV_WORD.test(words[i] as string)) i++
+    i += LEAD_POSITIONAL[w] ?? 0
+  }
   return i
+}
+
+// `{a,b}` in a word, as bash expands it (one list at a time, at most 64 words).
+function braces(word: string): string[] {
+  const m = /^(.*?)\{([^{}]*,[^{}]*)\}(.*)$/.exec(word)
+  if (m === null) return [word]
+  const out: string[] = []
+  for (const alt of (m[2] as string).split(',')) for (const w of braces(`${m[1]}${alt}${m[3]}`)) if (out.length < 64) out.push(w)
+  return out
 }
 
 // The paths a statement writes: a redirect's target, and the files a writing program names.
@@ -143,7 +182,7 @@ function written(words: string[]): string[] {
     const to = words[i + 1]
     if (to === undefined) continue
     // `>`, `>>`, `>|` and `<>` write their file; `>&` and `>>&` write a file unless they name a file descriptor (`2>&1`).
-    if (/^(?:>[>|]?|<>)$/.test(op) || (/^>>?&$/.test(op) && !/^(?:\d+|-)$/.test(to))) out.push(to)
+    if (/^(?:>[>|]?|<>)$/.test(op) || (/^>>?&$/.test(op) && !/^(?:\d+|-)$/.test(to))) out.push(...braces(to))
   }
   const at = program(words)
   const cmd = (words[at] ?? '').split('/').pop() ?? ''
@@ -156,16 +195,22 @@ function written(words: string[]): string[] {
   let into: string | null = null
   for (let i = at + 1; i < words.length; i++) {
     const w = words[i] as string
+    const cluster = /^-([A-Za-su-z]*)t(.*)$/.exec(w)
+    const long = w.startsWith('--t') && '--target-directory'.startsWith(w.split('=')[0] as string)
     if (/^[<>]/.test(w)) i++
-    else if (TARGET_DIR.has(cmd) && (w === '-t' || w === '--target-directory')) into = words[++i] ?? null
-    else if (TARGET_DIR.has(cmd) && w.startsWith('--target-directory=')) into = w.slice('--target-directory='.length)
+    // `-t DIR`, `-at DIR`, `-tDIR`, `--target-directory DIR`, `--target=DIR` (git and coreutils take an abbreviation).
+    else if (TARGET_DIR.has(cmd) && cluster !== null) into = cluster[2] !== '' ? (cluster[2] as string) : (words[++i] ?? null)
+    else if (TARGET_DIR.has(cmd) && long) into = w.includes('=') ? w.slice(w.indexOf('=') + 1) : (words[++i] ?? null)
     else if (edits && ['-e', '-f', '--expression', '--file'].includes(w)) {
       script = true
       i++
+    } else if (edits && (/^--(?:expression|file)=/.test(w) || /^-[A-Za-z]*e./.test(w))) {
+      // The script in the same word: `--expression=s/a/b/`, `-es/a/b/`.
+      script = true
     } else if (edits && /^-[A-Za-z]*e$/.test(w)) {
       script = true
       i++
-    } else if (!w.startsWith('-')) args.push(w)
+    } else if (!w.startsWith('-')) args.push(...braces(w))
   }
   if (cmd === 'sed' && !script) args.shift()
   if (into !== null) {
@@ -173,7 +218,7 @@ function written(words: string[]): string[] {
     out.push(...(cmd === 'mv' ? args : []), ...args.map(a => `${dir}/${a.split('/').pop() ?? a}`))
   } else if (WRITERS.has(cmd)) out.push(...(TO_LAST.has(cmd) ? args.slice(-1) : args))
   // sed -i, perl -i: they rewrite the files they are given.
-  else if (edits && words.slice(at + 1).some(w => /^-[A-Za-z]*i/.test(w) || w === '--in-place')) out.push(...args)
+  else if (edits && words.slice(at + 1).some(w => /^-[A-Za-z]*i/.test(w) || w === '--in-place' || w.startsWith('--in-place='))) out.push(...args)
   else if (cmd === 'dd') out.push(...args.filter(a => a.startsWith('of=')).map(a => a.slice(3)))
   return out
 }
@@ -231,9 +276,14 @@ export function readShell(command: string): ShellRead {
         const reads = git.rest.some(w => ['--get', '--get-all', '--get-regexp', '--list', '-l'].includes(w))
         // `git config core.hooksPath` with no value reads it; with a value, or with --unset, it changes it.
         if (at >= 0 && !reads && (git.rest[at + 1] !== undefined || git.rest.some(w => w.startsWith('--unset') || w === '--replace-all' || w === '--add'))) read.hooksPath = true
-        // Removing or renaming the core section drops core.hooksPath with it.
-        const section = git.rest.findIndex(w => w === '--remove-section' || w === '--rename-section')
-        if (section >= 0 && (git.rest[section + 1] ?? '').toLowerCase() === 'core') read.hooksPath = true
+        // Removing or renaming the core section drops core.hooksPath with it (also git 2.46's `git config remove-section`).
+        const section = git.rest.findIndex(w => ['--remove-section', '--rename-section', 'remove-section', 'rename-section'].includes(w))
+        if (section >= 0 && (git.rest.slice(section + 1).find(w => !w.startsWith('-')) ?? '').toLowerCase() === 'core') read.hooksPath = true
+        // git 2.46's `git config unset core.hooksPath`.
+        if (at >= 0 && !reads && git.rest.slice(0, at).includes('unset')) read.hooksPath = true
+        // A config file included from the repository's config can set core.hooksPath (include.path, includeIf.*.path).
+        const include = git.rest.findIndex(w => /^include(?:if\..*)?\.path$/i.test(w))
+        if (include >= 0 && !reads && git.rest.slice(include + 1).some(w => !w.startsWith('-'))) read.hooksPath = true
       }
     }
     // The first word that names the script starts a call: the words after it are the call's.

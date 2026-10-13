@@ -199,7 +199,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     decisions: decisionsOf(book, at.run),
     answer: currentAnswer(book, at, rv.ask?.question.question ?? null),
     allowed: [...allowedCalls(book, at), ...rv.next.calls, ...rv.next.steps],
-    restart: restartFor(book, at.run) !== null,
+    restart: restartFor(book, at) !== null,
     drift: driftOf(book, at.run, used),
   }
 }

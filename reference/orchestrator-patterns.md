@@ -48,6 +48,9 @@ stop, show its one line reason, and wait for the person. Never remove, replace o
 Stage sequences: `/temper` is intent, plan, design (medium or complex), build, review, check, commit,
 on branch `feature/{slug}`; `/temper:fix` is rca, fix, review, check, commit, on branch `fix/{slug}`.
 Every change of `next_stage` counts one `step`; a step back clears the verdicts of the stages it redoes.
+A run moves forward only by `state advance` (a forward `state set next_stage`, and a `state loop` to a
+later stage, are refused), and entering Commit clears any earlier commit verdict, so the commit gate
+runs for the run itself.
 
 The other run files are the CLI's too: `.temper/gates.json` (each stage's verdict and rows),
 `.temper/overrides.json` (the person's skips), `.temper/feedback-loops.json` (the loop budget),

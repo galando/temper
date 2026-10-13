@@ -167,6 +167,7 @@ setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+_at review   # a loop goes back from the stage the run is at
 "$TEMPER" state loop review build --reason r1 >/dev/null
 assert_eq "a temper-run loop keeps the plan evidence above the target" "1" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/plan.json"))))')"
 assert_eq "a temper-run loop clears build evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/build.json"))))')"
@@ -196,6 +197,7 @@ setup
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 assert_exit "a fix run's review gate FAILs on the open finding" 1 "$TEMPER" gate review
+_at review
 assert_exit "state loop review fix is accepted in a fix run" 0 "$TEMPER" state loop review fix --reason "fix the injection"
 assert_eq "a fix-run loop clears the build evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/build.json"))))')"
 assert_eq "a fix-run loop clears the review evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/review.json"))))')"
@@ -203,6 +205,7 @@ assert_eq "a fix-run loop clears the check evidence" "0" "$(python3 -c 'import j
 "$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 assert_exit "the review gate can pass again after the loop" 0 "$TEMPER" gate review
 "$TEMPER" evidence add --stage review --claim "kept" --severity critical >/dev/null
+_at check
 "$TEMPER" state loop check fix --reason "second loop" >/dev/null
 assert_eq "a fix-run loop back to fix from check also clears review" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/review.json"))))')"
 
@@ -386,6 +389,7 @@ setup
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
 "$TEMPER" gate check >/dev/null
+_at check
 "$TEMPER" state loop check build --reason "regression found downstream" >/dev/null
 assert_eq "state loop check->build auto-clears check evidence (check is downstream of build)" "[]" "$(cat .temper/evidence/check.json | tr -d '[:space:]')"
 assert_exit "check gate FAILs closed again after the auto-clear (stale scenario coverage cannot mask a regression)" 1 "$TEMPER" gate check

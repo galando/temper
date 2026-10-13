@@ -2133,7 +2133,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [
-      "/plugin/scripts/temper state loop build plan --reason \"{reason}\""
+      "/plugin/scripts/temper state loop build plan --reason '{reason}'"
      ],
      "description": "Do Plan again; the stages after it are redone too.",
      "label": "Loop back to Plan",
@@ -2157,7 +2157,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [
-      "/plugin/scripts/temper override build --reason \"{reason}\"",
+      "/plugin/scripts/temper override build --reason '{reason}'",
       "/plugin/scripts/temper state advance build_complete review"
      ],
      "description": "Skip this check with your reason; the report shows it.",
@@ -2523,7 +2523,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [
-      "/plugin/scripts/temper state loop build plan --reason \"{reason}\""
+      "/plugin/scripts/temper state loop build plan --reason '{reason}'"
      ],
      "description": "Do Plan again; the stages after it are redone too.",
      "label": "Loop back to Plan",
@@ -3147,7 +3147,7 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper state loop check build --reason \"{reason}\""
+      "/plugin/scripts/temper state loop check build --reason '{reason}'"
      ],
      "description": "Do Build again; the stages after it are redone too.",
      "label": "Loop back to Build (Recommended)",
@@ -3171,7 +3171,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [
-      "/plugin/scripts/temper override check --reason \"{reason}\"",
+      "/plugin/scripts/temper override check --reason '{reason}'",
       "/plugin/scripts/temper state advance check_complete commit"
      ],
      "description": "Skip this check with your reason; the report shows it.",
@@ -4191,7 +4191,7 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper override review --reason \"{reason}\"",
+      "/plugin/scripts/temper override review --reason '{reason}'",
       "/plugin/scripts/temper gate commit"
      ],
      "description": "Skip the failed gates with your reason and commit.",
@@ -4747,7 +4747,7 @@ export const VIEWS: Record<string, unknown> = {
     "/plugin/scripts/temper report --html",
     "/plugin/scripts/temper state archive",
     "git add -- .temper/specs/pw/",
-    "git commit -m \"{a conventional commit message for the feature}\"",
+    "git commit -m '{a conventional commit message for the feature}'",
     "/plugin/scripts/temper state clear",
     "/plugin/scripts/temper report"
    ]
@@ -5188,7 +5188,7 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper state loop design plan --reason \"{reason}\""
+      "/plugin/scripts/temper state loop design plan --reason '{reason}'"
      ],
      "description": "Do Plan again; the stages after it are redone too.",
      "label": "Loop back to Plan",
@@ -5212,7 +5212,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [
-      "/plugin/scripts/temper override design --reason \"{reason}\"",
+      "/plugin/scripts/temper override design --reason '{reason}'",
       "/plugin/scripts/temper state advance design_complete build"
      ],
      "description": "Skip this check with your reason; the report shows it.",
@@ -6845,7 +6845,7 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper override intent --reason \"{reason}\"",
+      "/plugin/scripts/temper override intent --reason '{reason}'",
       "/plugin/scripts/temper intent accept",
       "git add -- .temper/specs/pw/",
       "git commit -m \"docs(intent): accept pw\"",
@@ -7588,7 +7588,7 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper state loop plan intent --reason \"{reason}\""
+      "/plugin/scripts/temper state loop plan intent --reason '{reason}'"
      ],
      "description": "Do Intent again; the stages after it are redone too.",
      "label": "Loop back to Intent",
@@ -7612,7 +7612,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [
-      "/plugin/scripts/temper override plan --reason \"{reason}\"",
+      "/plugin/scripts/temper override plan --reason '{reason}'",
       "git checkout -b feature/pw",
       "git add -- .temper/specs/pw/",
       "git commit -m \"docs(plan): approve the plan of pw\"",
@@ -8988,7 +8988,7 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [
-       "/plugin/scripts/temper evidence accept --stage review --id 1 --reason \"{reason}\"",
+       "/plugin/scripts/temper evidence accept --stage review --id 1 --reason '{reason}'",
        "/plugin/scripts/temper gate review"
       ],
       "description": "src/app.ts:12 the token never expires",
@@ -9081,7 +9081,7 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper state loop review build --reason \"{reason}\""
+      "/plugin/scripts/temper state loop review build --reason '{reason}'"
      ],
      "description": "Do Build again; the stages after it are redone too.",
      "label": "Loop back to Build (Recommended)",
@@ -9112,7 +9112,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [
-      "/plugin/scripts/temper override review --reason \"{reason}\"",
+      "/plugin/scripts/temper override review --reason '{reason}'",
       "/plugin/scripts/temper state advance review_complete check"
      ],
      "description": "Skip this check with your reason; the report shows it.",

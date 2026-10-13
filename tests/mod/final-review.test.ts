@@ -2,7 +2,7 @@
 // a command the reviewer ran against the guard at the PR head and found let through; the guard now refuses it.
 import { describe, expect, test } from 'claude-code/testing'
 
-import { currentAnswer, parseBook } from '../../hooks/temper-mod/core/decisions'
+import { currentAnswer, parseBook, restartFor } from '../../hooks/temper-mod/core/decisions'
 import { evaluate } from '../../hooks/temper-mod/core/rules'
 import type { RuleContext, RuleResult } from '../../hooks/temper-mod/core/rules'
 import { readShell, statements } from '../../hooks/temper-mod/core/shell'
@@ -96,5 +96,64 @@ describe('an answer counts for the question it answered, not for the next one at
   })
   test('a kept decision keeps the question it answered', () => {
     expect(parseBook([g1])[0]).toMatchObject({ ask: 'Group G1 (One) passed its check. Continue?' })
+  })
+})
+
+// Round 2 of the independent review.
+describe('round 2: a shell keyword or a wrapper does not hide the program', () => {
+  for (const command of [
+    'if true; then git commit --no-verify -m x; fi',
+    '{ git commit -n -m x; }',
+    'timeout 60 git commit --no-verify -m x',
+    'timeout -s KILL 60 git commit --no-verify -m x',
+    'env -i git commit --no-verify -m x',
+    'for f in a; do rm -f .temper/gates.json; done',
+    'while true; do rm .temper/gates.json; done',
+    '! rm .temper/overrides.json',
+    'nice rm .temper/gates.json',
+    'nice -n 5 rm .temper/gates.json',
+    'stdbuf -o0 rm .temper/gates.json',
+  ]) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+  test('an ordinary loop over source files is no refusal', () => {
+    expect(isDeny(bash('build', 'for f in src/*.ts; do echo $f; done'))).toBe(false)
+  })
+})
+
+describe('round 2: more spellings of a target folder, of sed in place, and a brace list', () => {
+  for (const command of [
+    'cp -at .temper /tmp/gates.json',
+    'cp -t.temper /tmp/gates.json',
+    'cp --target=.temper /tmp/gates.json',
+    "sed --in-place=.bak 's/FAIL/PASS/' .temper/gates.json",
+    "sed -i --expression='s/FAIL/PASS/' .temper/gates.json",
+    'sed -i -es/FAIL/PASS/ .temper/gates.json',
+    'rm .temper/{gates,overrides}.json',
+  ]) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+})
+
+describe('round 2: a hooks path set through another config file', () => {
+  for (const command of [
+    "printf '[core]\\n\\thooksPath = /dev/null\\n' > .git/config.worktree",
+    'git config include.path /tmp/x.cfg',
+    'git config --local includeIf.gitdir:/x/.path /tmp/x.cfg',
+    'git config unset core.hooksPath',
+    'git config remove-section core',
+  ]) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+  test('reading the config is no refusal', () => {
+    expect(isDeny(bash('build', 'git config --get include.path'))).toBe(false)
+  })
+})
+
+describe('round 2: a Start over answer counts at the step it was given', () => {
+  const restart = { id: 'r1', run: 'r', step: 0, stage: 'intent', ts: 1, kind: 'restart' as const, calls: [], reason: '' }
+  test('at the same step it counts; at a later step it is spent', () => {
+    expect(restartFor([restart], { run: 'r', step: 0 })).not.toBeNull()
+    expect(restartFor([restart], { run: 'r', step: 1 })).toBeNull()
   })
 })

@@ -40,9 +40,9 @@ export function allowedCalls(book: readonly Decision[], at: At): string[] {
   return counted.flatMap(d => [...d.calls, ...d.steps])
 }
 
-// The person's Start over for this run, if any.
-export function restartFor(book: readonly Decision[], run: string): Extract<Decision, { kind: 'restart' }> | null {
-  return book.filter((d): d is Extract<Decision, { kind: 'restart' }> => d.kind === 'restart' && d.run === run).sort(latestFirst)[0] ?? null
+// The person's Start over at the CLI's run and step, if any: like a gate answer, it is spent once the run moves on.
+export function restartFor(book: readonly Decision[], at: At): Extract<Decision, { kind: 'restart' }> | null {
+  return book.filter((d): d is Extract<Decision, { kind: 'restart' }> => d.kind === 'restart' && d.run === at.run && d.step === at.step).sort(latestFirst)[0] ?? null
 }
 
 export type DriftState = { added: string[]; allowOnce: Array<{ id: string; path: string }> }

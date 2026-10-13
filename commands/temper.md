@@ -45,7 +45,7 @@ Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`.
   `/temper:temper "<feature>"`." and stop. Otherwise pick the slug: when a folder in the project's
   `.temper/specs` already holds an `intent.md` for this feature, its name; else a short name of
   letters, digits, `.`, `_` or `-` (a ticket key keeps its case, as in `PROJ-123-login`). Run
-  `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --feature "{the feature as the person typed it}"`
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --feature '{the feature as the person typed it}'`
   and go on with the loop.
 - When a run is active and the arguments name a different feature, ask its `restart` question. On
   "Start over", run its calls, then start the new run as above. On "Cancel", go on with the loop.
@@ -63,7 +63,9 @@ again. Stop only where this section says so.
     with `{tokens}` and `{ms}` filled from the Agent result (leave a flag out when the result has no
     value for it).
   - A `steps` entry is a command to run as written, or a short instruction to carry out; `{...}` in it
-    is yours to fill (a commit message that says what the feature does). Run `git commit` in a Bash call
+    is yours to fill (a commit message that says what the feature does).
+  - **Filling a placeholder.** Every `{...}` text in a call or a step stands inside single quotes. Put the
+    text there as it is, with each `'` in it written as `'\''`, so a backquote or a `$` in it stays text. Run `git commit` in a Bash call
     of its own, after the `git add` call.
 - **`ask`**: when it has `blocking`, ask those first (see "Every question"). Then ask `ask.question`
   with AskUserQuestion exactly as given, and do what the chosen option of `ask.options` says: run its
@@ -92,7 +94,8 @@ Run the calls of one action in one Bash call, one per line, when they are only `
   them, never answer a question for them, and never choose "Start over" yourself.
 - **Reasons.** An option with `reason` needs the person's reason: their note on the option, or else
   ask its `reason_question` exactly as given. Any answer to it but "Cancel" is the reason, typed text
-  included; "Cancel" asks the first question again. Put the reason in place of `{reason}`.
+  included; "Cancel" asks the first question again. Put the reason in place of `{reason}`, as "Filling a
+  placeholder" says.
 - **Typed text.** An answer typed in "Other" (not to a reason question), or a message the person
   writes at a question, is a change request or a question: answer it; for a change, make it, run the
   action's `gate` call when it has one, and ask again. It never moves the run.
@@ -114,7 +117,7 @@ Run the calls of one action in one Bash call, one per line, when they are only `
   each row, one AskUserQuestion per row: header `Scope drift`, a question whose first line is
   `Outside the plan: {path}`, then `Why: {why}` and `Change: {change}` lines, and the options
   "Add to plan", "Revert" and "Allow once". Record each answer with
-  `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase feedback --claim "drift {path}: {choice}: {why}"`
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase feedback --claim 'drift {path}: {choice}: {why}'`
   (for "Add to plan", also add the file to plan.md's Files to Modify table), then launch the same
   agent again with one `Drift decision: {path}: {add|revert|allow-once}` line per answer. A drift is
   never answered for the person, in an armed run either. A typed answer is a change request.

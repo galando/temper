@@ -53,9 +53,10 @@ describe('allowedCalls: what the answers at this step let through', () => {
 })
 
 describe('restartFor', () => {
-  test('a restart counts for its run at any step, and not for another run', () => {
-    expect(restartFor([d({ kind: 'restart', step: 1, calls: [] })], 'r1')).not.toBeNull()
-    expect(restartFor([d({ kind: 'restart', calls: [] })], 'r2')).toBeNull()
+  test('a restart counts for its run at its step, and not at a later step or for another run', () => {
+    expect(restartFor([d({ kind: 'restart', step: 1, calls: [] })], { run: 'r1', step: 1 })).not.toBeNull()
+    expect(restartFor([d({ kind: 'restart', step: 1, calls: [] })], { run: 'r1', step: 2 })).toBeNull()
+    expect(restartFor([d({ kind: 'restart', step: 1, calls: [] })], { run: 'r2', step: 1 })).toBeNull()
   })
 })
 

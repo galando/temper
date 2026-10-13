@@ -46,7 +46,7 @@ assert_eq "ADR 0012: the skip of review moved to the archive; the skip of plan s
 assert_eq "ADR 0012: after the loop the commit gate no longer counts the old skip of review" "0" \
   "$(python3 -c "import json; r=json.load(open('.temper/gates.json')).get('commit',{}).get('requirements',[]); print(sum(1 for x in r if 'review' in x['name'] and x['pass']))")"
 
-# A state set next_stage to an earlier stage redoes like a loop; to a later stage it redoes nothing.
+# A state set next_stage to an earlier stage redoes like a loop; to a later stage it is refused.
 setup
 "$TEMPER" state init demo >/dev/null 2>&1
 _pass intent plan build
@@ -60,7 +60,7 @@ assert_eq "ADR 0012: state set next_stage to an earlier stage clears the verdict
 printf '{"plan":{"verdict":"PASS"}}\n' > .temper/gates.json
 "$TEMPER" state set complexity medium >/dev/null 2>&1
 "$TEMPER" state set next_stage design >/dev/null 2>&1
-assert_eq "ADR 0012: state set next_stage to a later stage keeps the verdicts" "plan|design" \
+assert_eq "ADR 0013: state set next_stage to a later stage is refused (state advance leaves a stage), and keeps the verdicts" "plan|plan" \
   "$(python3 -c "import json; print(','.join(sorted(json.load(open('.temper/gates.json')))))")|$(bs next_stage)"
 
 # A fix run's gates are build, review and check: a loop back to fix redoes all three.
@@ -68,6 +68,7 @@ setup
 "$TEMPER" state init demo --command fix >/dev/null 2>&1
 printf '{"build":{"verdict":"PASS"},"review":{"verdict":"FAIL"},"check":{"verdict":"FAIL"}}\n' > .temper/gates.json
 "$TEMPER" override review --reason "fix review skip" >/dev/null 2>&1
+_at check
 "$TEMPER" state loop check fix --reason again >/dev/null 2>&1
 assert_eq "ADR 0012: a fix run's loop back to fix clears build, review and check, and their skips" "|" \
   "$(python3 -c "import json; print(','.join(sorted(json.load(open('.temper/gates.json')))))")|$(python3 -c "import json; print(','.join(o['stage'] for o in json.load(open('.temper/overrides.json'))))")"

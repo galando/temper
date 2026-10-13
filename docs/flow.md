@@ -54,7 +54,7 @@ to the AskUserQuestion tool. Each entry of `options` is the same option with wha
 |---|---|
 | `label`, `description` | as in the question |
 | `move` | `approve`, `arm`, `advance`, `override`, `back`, `accept`, `keep`, `commitOverride`, `redo`, `pause`, `restart`, or `null` for an option that decides nothing |
-| `calls` | the CLI calls this answer makes, in order; `{reason}` is the person's reason |
+| `calls` | the CLI calls this answer makes, in order; `{reason}` is the person's reason. Every `{...}` text stands inside single quotes: put the text there with each `'` written as `'\''`, so a backquote or a `$` in it stays text |
 | `steps` | for Commit at a parked run: the commit steps |
 | `do` | for an option that decides nothing: what to do, then ask the question again |
 | `stop` | the run stops here (Save for later) |

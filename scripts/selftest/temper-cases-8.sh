@@ -142,9 +142,9 @@ gfail review "no blocking findings" "1 open finding"
 assert_eq "next: Review FAIL with an open finding: loop back first, accept a finding, override" \
   "Loop back to Build (Recommended)|Accept a finding|Override and continue|More options" "$(labels)"
 assert_eq "next: the accept question lists the open finding by id, with its own reason question" \
-  "Accept finding 1|accept|True|evidence accept --stage review --id 1 --reason \"{reason}\"" \
+  "Accept finding 1|accept|True|evidence accept --stage review --id 1 --reason '{reason}'" \
   "$(nx "o = d['ask']['accept']['options'][0]; '|'.join([o['label'], o['move'], str(o['reason']), o['calls'][0].split('temper ', 1)[1]])")"
-assert_eq "next: the step back is a state loop with the person's reason" "back|state loop review build --reason \"{reason}\"" \
+assert_eq "next: the step back is a state loop with the person's reason" "back|state loop review build --reason '{reason}'" \
   "$(nx "o = d['ask']['options'][0]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
 printf 'loops:\n  max-per-type: 1\n' >> .claude/temper.config
 "$TEMPER" state loop review build --reason "first" >/dev/null 2>&1
@@ -170,7 +170,7 @@ assert_eq "next: a passed commit gate gives the commit steps: the report page fi
   "$(nx "s = d['steps']; '|'.join([d['action'], s[0].split('temper ', 1)[1], s[2].split('temper ', 1)[1], s[3].split('temper ', 1)[1], s[-2].split('temper ', 1)[1], s[-1].split('temper ', 1)[1]])")"
 gfail commit "review gate" "FAIL, no override recorded"
 assert_eq "next: a failed commit gate asks to override the failed stages, with a reason" \
-  "Override and commit|commitOverride|override review --reason \"{reason}\"|gate commit" \
+  "Override and commit|commitOverride|override review --reason '{reason}'|gate commit" \
   "$(nx "o = d['ask']['options'][0]; '|'.join([o['label'], o['move'], o['calls'][0].split('temper ', 1)[1], o['calls'][-1].split('temper ', 1)[1]])")"
 
 # --- an armed run decides its own moves, and parks for the person ---
@@ -340,6 +340,70 @@ assert_eq "review 9: a run that never left Intent, with no spec file, may take t
 # 10. A door's walked stage that fails its check names the failed rows in its question.
 fresh; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --enter review >/dev/null 2>&1; gfail intent "problem stated" "no Problem section"
 assert_eq "review 10: the walked stage's question names what failed" "1" "$(nx "int('problem stated: no Problem section' in d['ask']['question']['question'])")"
+
+# --- the independent review of 9.7.0, round 2: each finding, reproduced ---
+_walk_to_commit() { # a run of the demo spec with every stage passed, at the commit stage
+  gpass intent plan build review check
+  for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check check_complete:commit; do
+    "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+}
+# 1. A commit verdict written before the run reached Commit (a spec commit's hook) is not the commit gate's verdict.
+fresh; gpass intent plan build review check
+python3 -c "import json; p='.temper/gates.json'; d=json.load(open(p)); d['commit']={'verdict':'PASS','requirements':[]}; json.dump(d,open(p,'w'))"
+for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check check_complete:commit; do
+  "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+assert_eq "round 2, 1: entering Commit drops an earlier commit verdict, so next runs the commit gate" "no|work|gate commit" \
+  "$(python3 -c "import json; print('yes' if 'commit' in json.load(open('.temper/gates.json')) else 'no')")|$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1]")"
+# 2. A run leaves a stage only by state advance: a forward state set next_stage is refused.
+fresh; gpass intent plan
+assert_exit "round 2, 2: state set next_stage forward is refused (Intent is left only by state advance)" 1 "$TEMPER" state set next_stage plan
+assert_eq "round 2, 2: the run is still at Intent" "intent" "$("$TEMPER" state get next_stage)"
+# 4. A loop goes back: to a stage before the one the run is at, never forward past a gate.
+fresh; gfail intent "problem stated" "missing"
+assert_exit "round 2, 4: state loop forward is refused" 1 "$TEMPER" state loop review build --reason x
+assert_eq "round 2, 4: the run is still at Intent" "intent" "$("$TEMPER" state get next_stage)"
+# 5. Park-on-touch reads the committed changes since base_sha too, not only the uncommitted ones.
+fresh; printf 'autonomy:\n  enabled: true\n  park-on-touch: ["**/auth/**"]\n' >> .claude/temper.config
+git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm base --no-verify >/dev/null 2>&1
+"$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null 2>&1
+mkdir -p src/auth; echo x > src/auth/login.ts; git add src/auth/login.ts; git -c user.email=t@t -c user.name=t commit -qm auth --no-verify >/dev/null 2>&1
+"$TEMPER" state set run_mode autonomous >/dev/null 2>&1; "$TEMPER" gate commit >/dev/null 2>&1
+assert_eq "round 2, 5: a committed change under a park-on-touch pattern fails the row" "False|1" \
+  "$(python3 -c "import json; r=[x for x in json.load(open('.temper/gates.json'))['commit']['requirements'] if x['name']=='park-on-touch paths']; print(str(r[0]['pass']) + '|' + str(int('src/auth/login.ts' in r[0]['detail'])))")"
+git rm -q -r src/auth >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm unauth --no-verify >/dev/null 2>&1
+# 6, 7. The commit steps add what the run changed: no untracked file that was there before the run, every name quoted.
+fresh; touch -d '2020-01-01' local.env
+mkdir -p docs; : > 'docs/café.md'; : > 'x$(touch PWNED5).txt'
+_walk_to_commit; gpass commit
+ADD="$(nx "[x for x in d['steps'] if x.startswith('git add')][0]")"
+assert_eq "round 2, 6: an untracked file older than the run is not added" "0|1" \
+  "$(grep -c 'local.env' <<<"$ADD")|$(grep -c 'café.md' <<<"$ADD")"
+( bash -c "$ADD" ) >/dev/null 2>&1; rc=$?
+assert_eq "round 2, 7: the git add step runs as printed: no file name runs, a non ASCII name is added" "0|0|1" \
+  "$rc|$([[ -e PWNED5 ]] && echo 1 || echo 0)|$(git diff --cached --name-only -z | tr '\0' '\n' | grep -c 'café.md')"
+git reset -q >/dev/null 2>&1; rm -f local.env 'docs/café.md' 'x$(touch PWNED5).txt'
+# 10. The person's own text goes into a call as one single quoted word, so a backquote in it is text.
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}, "confirmed": "x"}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
+gfail build "tests pass" "1 failed"
+CALL="$(nx "[o for o in d['ask']['options'] if o['label'] == 'Override and continue'][0]['calls'][0]")"
+REASON="it is \`touch PWNED6\` and it's fine"; Q="${REASON//\'/\'\\\'\'}"
+( bash -c "${CALL//\{reason\}/$Q}" ) >/dev/null 2>&1
+assert_eq "round 2, 10: a reason put in its placeholder as the page says is kept as written, and runs nothing" "0|1" \
+  "$([[ -e PWNED6 ]] && echo 1 || echo 0)|$(grep -c 'touch PWNED6' .temper/overrides.json)"
+assert_eq "round 2, 10: no call of flow.py puts a placeholder of the person's text in double quotes" "0" "$(grep -cE '\"\{(reason|text)\}|#\{K\}: \{text\}\"' "$REPO_ROOT/scripts/flow.py")"
+# 11. Override and commit after a park on a commit row of its own (blast radius) records the person's skip.
+fresh; _walk_to_commit; gfail commit "blast radius" "changed outside declared files: src/x"
+assert_eq "round 2, 11: Override and commit skips the commit check with the person's reason" "override commit --reason" \
+  "$(nx "' '.join([o for o in d['ask']['options'] if o['label'] == 'Override and commit'][0]['calls'][0].split('temper ', 1)[1].split()[:3])")"
+# 12. The Design door of a run with no Design stage enters at Build: the stages before are walked, not run again.
+setup; "$TEMPER" state init demo --enter design >/dev/null 2>&1; "$TEMPER" state set complexity simple >/dev/null 2>&1
+assert_eq "round 2, 12: --enter design with no Design stage walks Intent" "work|gate intent|0" \
+  "$(nx "d['action'] + '|' + (d['calls'][0].split('temper ', 1)[1] if d['calls'] else '') + '|' + str(len(d.get('agents') or []))")"
+# 13. Stop at a group question saves the run; it records no Build verdict.
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
+assert_eq "round 2, 13: the group question's Stop makes no call" "Stop|0" "$(nx "o = [o for o in d['ask']['options'] if o['label'] == 'Stop'][0]; o['label'] + '|' + str(len(o.get('calls') or []))")"
 
 # --- the view is local run state ---
 fresh; "$TEMPER" init >/dev/null 2>&1; "$TEMPER" next --json >/dev/null 2>&1

@@ -170,11 +170,14 @@ The guard has three jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-m
   and the like naming the file, its folder, or a glob that reaches it). Each stage allows its own
   writes by the editing tools.
 - **The native hook.** While a run is active, `--no-verify` (or an abbreviation git takes), `-n`, and a
-  change of `core.hooksPath` (also by removing the `core` section) are refused.
+  change of `core.hooksPath` (also by removing the `core` section, by including another config file,
+  or by writing `.git/config.worktree`) are refused.
 
-The guard reads a Bash command as text: it splits it into statements and words and honours quotes. It
-does not follow variables, substitutions, `cd` or links, and it does not read the program another
-program runs. These are still possible, and listed as known limits in the mod's tests:
+The guard reads a Bash command as text: it splits it into statements and words and honours quotes,
+joins a line ended by a backslash, looks past shell keywords (`then`, `do`, `{`, `!`) and the programs
+that run the next word (`sudo`, `env`, `nice`, `timeout` and the like), and expands a brace list
+(`{a,b}`). It does not follow variables, substitutions, `cd` or links, and it does not read the program
+another program runs. These are still possible, and listed as known limits in the mod's tests:
 
 - A call or a path in a variable, or built at run time by a program.
 - A call in a string another program runs (`sh -c`, `eval`, `xargs`, `perl -e`), or in a here document

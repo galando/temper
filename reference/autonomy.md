@@ -38,7 +38,8 @@ an armed run makes are the CLI's own local ones in Build: a task's declared file
 branch, their merge into the group branch (`temper task gate`), and the merge of the groups into
 the feature branch (`temper integrate`). The commit gate also checks, for an armed run only, that
 every changed file is one the plan declared (`autonomy.max-blast-radius` bounds each group's
-declared files at the plan gate) and that no changed file matches `autonomy.park-on-touch`.
+declared files at the plan gate) and that no changed file matches `autonomy.park-on-touch`. Changed
+means what changed since `base_sha` (Build's merges included) and what is still uncommitted.
 
 **The person is not watching.** Claude does not ask "Shall I...?" in an armed run: the only stop
 is a park.

@@ -737,9 +737,10 @@ cmd_state_set() {
       return 0
     fi
     if _stage_before "$cur" "$2"; then
-      # ADR 0013: forward is an advance, with the same rule
-      local why; why="$(python3 "$SCRIPTS_DIR/flow.py" advance-ok "${cur}_complete" "$2")" || {
-        echo "FAIL: $why" >&2; return 1; }
+      # ADR 0013: a run leaves a stage only by state advance, which records what leaving it means (the accepted
+      # intent, the approved files, base_sha) and needs the person's answer for Intent and Plan.
+      echo "FAIL: next_stage moves forward only by state advance ${cur}_complete $2 (the CLI's own step)" >&2
+      return 1
     fi
     _stage_before "$2" "$cur" && _redo_from "$2"
     _state_next "$2" >/dev/null || return 1
@@ -905,6 +906,9 @@ os.replace(tmp, p)
     fi
   fi
   _json_set_path "$STATE_FILE" "stage" "$stage" '{}'
+  # A commit verdict written before the run reached Commit (the hook of a spec commit) is not the commit gate's: the
+  # run enters Commit with no commit verdict and no commit skip, so the commit gate runs for it.
+  [[ "$next" == "commit" ]] && _redo_from commit
   _state_next "$next" >/dev/null || return 1
   echo "OK: advanced to $stage (next: $next)"
 }
@@ -913,6 +917,12 @@ cmd_state_loop() { # temper state loop <from> <to> --reason "..."
   _state_migrate_legacy
   local from="$1" to="$2"; shift 2 || true
   _stage_ok "$to" || { _stage_refuse "$to"; return 1; }
+  # A loop goes back, never forward past a gate: its stage is not after the one the run is at.
+  local cur; cur="$(_json_get_path "$STATE_FILE" next_stage "")"
+  if [[ -n "$cur" ]] && _stage_before "$cur" "$to"; then
+    echo "FAIL: a loop goes back; $to comes after $cur, the stage the run is at (leave a stage with state advance)" >&2
+    return 1
+  fi
   local reason=""
   while [[ $# -gt 0 ]]; do case "$1" in --reason) reason="$2"; shift 2 ;; *) shift ;; esac; done
   [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
@@ -4461,7 +4471,12 @@ else: print('PASS %d changed, all declared' % len(changed))
         for p in "${pats[@]}"; do
           if _glob_touch_match "$f" "$p"; then touched="$f matches $p"; fi
         done
-      done < <(git -C "$REPO_ROOT" status --porcelain 2>/dev/null | awk '{print $2}')
+      # The changed set the blast radius row reads: what changed since base_sha (grouped Build commits its work), and
+      # what is still uncommitted.
+      done < <( { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
+                    git -C "$REPO_ROOT" -c core.quotePath=false diff --name-only "$base_sha" 2>/dev/null; fi
+                  git -C "$REPO_ROOT" -c core.quotePath=false status --porcelain 2>/dev/null | cut -c4- | sed 's/.* -> //'
+                } | sort -u)
     fi
     if [[ -z "$touched" ]]; then
       reqs+=("$(_req "park-on-touch paths" 1 "no changed file matches a park-on-touch pattern")")
@@ -4712,9 +4727,7 @@ cmd_next() {
   [[ -n "$want" ]] && git show-ref --verify --quiet "refs/heads/$want" 2>/dev/null && bexists=true
   base="$(_json_get_path "$STATE_FILE" base_sha "")"
   if [[ "$(_json_get_path "$STATE_FILE" next_stage "")" == "commit" ]]; then
-    changed="$( { [[ -n "$base" ]] && git diff --name-only "$base" 2>/dev/null
-                  git status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //'
-                } | grep -v -e '^\.temper/' -e '^\.claude/' | sort -u | python3 -c "import json, sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))")"
+    changed="$(python3 "$SCRIPTS_DIR/flow.py" changed "$base" "$(_json_get_path "$STATE_FILE" started "")" 2>/dev/null || echo '[]')"
   fi
   local models; models="$(cmd_model --all 2>/dev/null)"
   local setup; setup="$(_setup_calls)"

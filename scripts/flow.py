@@ -3,6 +3,7 @@
 
   flow.py next --ctx JSON    prints the next action of the run in the current folder, as JSON
   flow.py view --ctx JSON    writes .temper/view.json and prints nothing
+  flow.py changed BASE STARTED  prints the files the run changed (for the commit steps), as JSON
 
 `scripts/temper next --json` and the CLI's view writer call this; nothing else should. The CLI
 passes what only it knows (the plugin folder, its own path, the config values, the models, the
@@ -11,6 +12,7 @@ writes a file but .temper/view.json. The schema of both outputs is in docs/flow.
 is a change of VERSION. Standard library only.
 """
 
+import datetime
 import json
 import os
 import re
@@ -317,11 +319,11 @@ class Builder:
                 return []
             return [self.opt("Loop back to %s%s" % (LABEL[back], " (Recommended)" if rec else ""),
                              "Do %s again; the stages after it are redone too." % LABEL[back], move="back",
-                             calls=[self.c('state loop %s %s --reason "{reason}"' % (stage, back))], reason=back_reasons)]
+                             calls=[self.c("state loop %s %s --reason '{reason}'" % (stage, back))], reason=back_reasons)]
 
         def override_opt(then):
             return self.opt("Override and continue", "Skip this check with your reason; the report shows it.", move="override",
-                            calls=[self.c('override %s --reason "{reason}"' % (r.gate_of(stage) or stage))] + then,
+                            calls=[self.c("override %s --reason '{reason}'" % (r.gate_of(stage) or stage))] + then,
                             reason=override_reasons)
 
         walked = self.walked(stage)
@@ -411,7 +413,7 @@ class Builder:
             first = back_opt(rec=True)
             if opens:
                 aopts = [self.opt("Accept finding %d" % f["id"], f["claim"][:150], move="accept",
-                                  calls=[self.c('evidence accept --stage review --id %d --reason "{reason}"' % f["id"]), self.c("gate review")],
+                                  calls=[self.c("evidence accept --stage review --id %d --reason '{reason}'" % f["id"]), self.c("gate review")],
                                   reason=["It is not a real issue", "I accept the risk"]) for f in opens[:3]]
                 accept = self.question(GATE_HEADER, "Review: which finding do you accept?", stage=stage,
                                        options=aopts + [self.opt("Cancel", "Back to the Review question.", do="Ask the Review question again.")])
@@ -451,7 +453,9 @@ class Builder:
         """A door started this run at a later stage: the stages before it are checked and asked, not run."""
         enter = self.r.state.get("enter") or ""
         seq = self.r.seq()
-        return bool(enter) and enter in seq and stage in seq and seq.index(stage) < seq.index(enter)
+        # By the order of all stages, so the Design door of a run with no Design stage still walks what comes before.
+        order = ["intent", "plan", "design", "build", "review", "check", "commit"]
+        return enter in order and stage in seq and stage in order and order.index(stage) < order.index(enter)
 
     # -- the work of a stage -------------------------------------------------------------------
     def agent(self, stage, extra_lines=()):
@@ -579,8 +583,8 @@ class Builder:
             self.opt("Continue (Recommended)", "Go on to the next group, or to the merge.", move="advance", calls=[self.c("group continue %s" % gid)]),
             self.opt("Change", "Give feedback; only the tasks it concerns run again.",
                      do="Record each item the person typed with %s, then run %s for each task it concerns. Then ask for the next step."
-                        % (self.c('evidence add --stage build --phase feedback --claim "feedback #{K}: {text}"'), self.c("group reopen %s --task {N} --feedback {K}" % gid))),
-            self.opt("Stop", "Save the run for later.", move="pause", calls=[self.c("gate build")], stop=True)])
+                        % (self.c("evidence add --stage build --phase feedback --claim 'feedback #{K}: {text}'"), self.c("group reopen %s --task {N} --feedback {K}" % gid))),
+            self.opt("Stop", "Save the run for later.", move="pause", calls=[], stop=True)])
         return q
 
     def group_failed(self, g, ginfo):
@@ -594,7 +598,7 @@ class Builder:
         opts = [self.opt("Run the group's tasks again (Recommended)", "Each task of %s runs again." % gid, move="redo", calls=reopen)]
         if self.r.can_loop("build", "plan"):
             opts.append(self.opt("Loop back to Plan", "The plan cannot be built as written.", move="back",
-                                 calls=[self.c('state loop build plan --reason "{reason}"')], reason=["The plan cannot be built"]))
+                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]))
         opts.append(self.save())
         return {"action": "ask", "stage": "build", "ask": self.question(
             GATE_HEADER, "Group %s failed its check (%s). Run its tasks again?" % (gid, (ginfo.get("gate") or {}).get("reason", "")), stage="build", options=opts)}
@@ -622,7 +626,7 @@ class Builder:
             opts = [self.opt("Take the commits out and run the task again (Recommended)", "Remove the agent's commits, newest first; the task runs again.",
                              move="redo", calls=lines + [self.c("group reopen %s %s" % (gid, targs))]),
                     self.opt("Keep the agent's commits", "Keep them knowingly, with your reason (recorded like a skip).", move="keep",
-                             calls=[self.c('group reopen %s %s --accept-foreign %s --reason "{reason}"' % (gid, targs, csv))],
+                             calls=[self.c("group reopen %s %s --accept-foreign %s --reason '{reason}'" % (gid, targs, csv))],
                              reason=["The commits are right", "I accept the risk"]),
                     self.save()]
             text = "Group %s is parked: a task agent made commits the CLI did not (%s). Take them out, or keep them?" % (gid, csv)
@@ -631,7 +635,7 @@ class Builder:
                              calls=[self.c("group reopen %s %s" % (gid, targs))])]
             if r.can_loop("build", "plan"):
                 opts.append(self.opt("Loop back to Plan", "The plan cannot be built as written.", move="back",
-                                     calls=[self.c('state loop build plan --reason "{reason}"')], reason=["The plan cannot be built"]))
+                                     calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]))
             opts.append(self.save())
             text = "Group %s is parked (%s). Run the task again?" % (gid, str(g.get("parked_reason", ""))[:200])
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
@@ -653,11 +657,13 @@ class Builder:
         if not r.spec_ignored() and r.spec:
             files = [r.spec + "/"] + [f for f in files if not f.startswith(r.spec + "/")]
         lessons = [".temper/lessons.md"] if r.command == "fix" and ".temper/lessons.md" not in files else []
-        steps.append("git add -- %s" % " ".join(files + lessons) if files else "git add -- (each file the run changed)%s" % "".join(" " + x for x in lessons))
+        # Each name one shell quoted word: the step runs as printed, and a file name is never shell code.
+        steps.append("git add -- %s" % " ".join(shlex.quote(f) for f in files + lessons) if files
+                     else "git add -- (each file the run changed)%s" % "".join(" " + x for x in lessons))
         if r.command == "fix":
-            steps.append('git commit -m "fix({scope}): {description}" -m "Root cause: {explanation}" -m "Regression test: {test name}"')
+            steps.append("git commit -m 'fix({scope}): {description}' -m 'Root cause: {explanation}' -m 'Regression test: {test name}'")
         else:
-            steps.append('git commit -m "{a conventional commit message for the feature}"')
+            steps.append("git commit -m '{a conventional commit message for the feature}'")
         steps.append(self.c("state clear"))
         steps.append(self.c("report"))
         return steps
@@ -679,12 +685,15 @@ class Builder:
             return {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.commit_steps(),
                     "say": "Every gate passed: the change is committed."}
         failing = sorted({re.sub(r"\s+gate$", "", str(x.get("name", ""))) for x in r.failed_rows("commit") if str(x.get("name", "")).endswith(" gate")})
+        # Only rows of the commit gate's own failed (an armed run's blast radius or park-on-touch): the person's skip is
+        # of the commit check itself, recorded with their reason like any other.
+        failing = failing or ["commit"]
         opts = []
         if r.command == "fix" and "check" in failing and r.can_loop("check", "fix"):
             opts.append(self.opt("Loop back to Fix (Recommended)", "Write the fix again; Review and Check run again.", move="back",
-                                 calls=[self.c('state loop check fix --reason "{reason}"')], reason=["The check found a real problem"]))
+                                 calls=[self.c("state loop check fix --reason '{reason}'")], reason=["The check found a real problem"]))
         opts.append(self.opt("Override and commit", "Skip the failed gates with your reason and commit.", move="commitOverride",
-                             calls=[self.c('override %s --reason "{reason}"' % s) for s in failing] + [self.c("gate commit")],
+                             calls=[self.c("override %s --reason '{reason}'" % s) for s in failing] + [self.c("gate commit")],
                              reason=["I accept the risk", "It is not a real issue"]))
         opts.append(self.save())
         why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows("commit")[:3])
@@ -1006,7 +1015,52 @@ def write_view(doc):
     os.replace(tmp, os.path.join(TEMPER, "view.json"))
 
 
+def changed_files(base, started):
+    """The files a run changed, for the commit steps' git add: what differs from base_sha, the tracked changes, and the
+    untracked files made since the run started (one older than the run, such as a local.env, is not the run's). Names
+    are read with -z, so a name with a quote, a space or a letter outside ASCII arrives as it is."""
+    def git(*args):
+        try:
+            return subprocess.run(["git", "-c", "core.quotePath=false"] + list(args), capture_output=True, check=False).stdout
+        except OSError:
+            return b""
+    names = []
+    if base:
+        names += [n for n in git("diff", "--name-only", "-z", base).decode("utf-8", "replace").split("\0") if n]
+    since = None
+    try:
+        since = datetime.datetime.strptime(started, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=datetime.timezone.utc).timestamp()
+    except (TypeError, ValueError):
+        since = None
+    fields = git("status", "--porcelain", "-z", "--untracked-files=all").decode("utf-8", "replace").split("\0")
+    i = 0
+    while i < len(fields):
+        f = fields[i]
+        i += 1
+        if len(f) < 4:
+            continue
+        code, name = f[:2], f[3:]
+        if code[0] in "RC":
+            i += 1  # the old name of a rename or copy follows
+        if code == "??" and since is not None:
+            try:
+                if os.path.getmtime(name) < since:
+                    continue
+            except OSError:
+                continue
+        names.append(name)
+    out = []
+    for n in names:
+        if n.startswith((".temper/", ".claude/")) or n in out:
+            continue
+        out.append(n)
+    return sorted(out)
+
+
 def main(argv):
+    if len(argv) >= 3 and argv[1] == "changed":
+        print(json.dumps(changed_files(argv[2], argv[3] if len(argv) > 3 else "")))
+        return 0
     if len(argv) >= 4 and argv[1] == "advance-ok":
         why = advance_ok(Run({}), argv[2], argv[3])
         if why:

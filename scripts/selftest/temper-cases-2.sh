@@ -650,7 +650,7 @@ assert_eq "config get check.commands.lint prints an unquoted command" "npm run l
 assert_eq "config get check.commands.typecheck prints the configured command" "tsc --noEmit" "$("$TEMPER" config get check.commands.typecheck)"
 assert_eq "config get fix.max-loops prints 3 when set to 3" "3" "$("$TEMPER" config get fix.max-loops)"
 # fix.max-loops bounds the check->fix pair only when set; loops.max-per-type stays 2 elsewhere.
-"$TEMPER" state init demo --command fix >/dev/null
+"$TEMPER" state init demo --command fix >/dev/null; _at check
 assert_exit "state loop check fix iteration 1 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason a
 assert_exit "state loop check fix iteration 2 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason b
 assert_exit "state loop check fix iteration 3 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason c
@@ -659,7 +659,7 @@ assert_exit "state loop review build still stops at loops.max-per-type 2 (key un
 assert_exit "state loop review build second iteration passes" 0 "$TEMPER" state loop review build --reason b
 assert_exit "state loop review build third iteration is blocked" 1 "$TEMPER" state loop review build --reason c
 setup
-"$TEMPER" state init demo --command fix >/dev/null
+"$TEMPER" state init demo --command fix >/dev/null; _at check
 "$TEMPER" state loop check fix --reason a >/dev/null; "$TEMPER" state loop check fix --reason b >/dev/null
 assert_exit "with fix.max-loops unset, check fix keeps loops.max-per-type 2" 1 "$TEMPER" state loop check fix --reason c
 

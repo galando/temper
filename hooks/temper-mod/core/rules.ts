@@ -97,7 +97,7 @@ const PROTECTED: ReadonlyArray<readonly [ProtectedKind, RegExp]> = [
   ['evidence', /(^|\/)\.temper\/evidence\/[^/]+\.json$/i],
   ['loops', /(^|\/)\.temper\/feedback-loops\.json$/i],
   ['config', /(^|\/)\.claude\/temper\.config$/i],
-  ['hooks', /(^|\/)\.git\/(?:hooks(\/|$)|hooks-temper(\/|$)|temper-git-hooks(\/|$)|config$|temper-gate(\/|$)|temper-pre-commit(\/|$))/i],
+  ['hooks', /(^|\/)\.git\/(?:hooks(\/|$)|hooks-temper(\/|$)|temper-git-hooks(\/|$)|config$|config\.worktree$|worktrees\/[^/]+\/config\.worktree$|temper-gate(\/|$)|temper-pre-commit(\/|$))/i],
   // Folders that hold guarded files: removing or replacing one removes them too.
   ['folder', /(^|\/)\.temper(\/specs(\/[^/\s]+)?|\/evidence)?\/?$/i],
 ]
