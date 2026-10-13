@@ -56,7 +56,7 @@ change, to compare.
 
 1. Build the project, in a folder that does not exist yet:
    `bash <checkout>/evals/make-fixture.sh jokes ~/temper-try/jokes`
-   (`--build-mode per-task` or `--autonomy` write those settings into its `.claude/temper.config`).
+   (`--autonomy` writes `autonomy.enabled: true` into its `.claude/temper.config`).
 2. Start Claude Code there with this checkout as the plugin:
    `cd ~/temper-try/jokes && claude --plugin-dir <checkout>`
    A synced or installed copy of Temper is shadowed by the `--plugin-dir` copy (Claude Code says

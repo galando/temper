@@ -1,10 +1,10 @@
 ---
-description: "Execute the plan, implementing tasks one-by-one with quality gates"
+description: "The TDD method of Build: what to test, in what order, and the fix pass"
 ---
 
 # Build: Execute Plan with Quality Gates
 
-**Goal:** Implement the approved plan, task by task, with real TDD discipline.
+**Goal:** Implement the approved plan with real TDD discipline.
 The build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --phase red/green` invocations
 the gate needs; this doc is the methodology behind what to test and in what order.
 
@@ -13,17 +13,14 @@ no `AskUserQuestion` gate, return the summary, the orchestrator owns it. Load `t
 Prerequisites/blast-radius section, active packs' `rules.md` (project `.claude/packs/`
 shadows global `~/.claude/packs/` shadows the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept
 where `phases` is `all` or contains `build`), and the project's `.claude/packs/stacks/{stack}.md` if
-present. Verify you're on a feature branch (auto-create `feature/{spec-slug}` if the git
-pack is enabled and you're on main).
-
-**If no plan exists** (trivial task, direct instructions): detect stack, read active pack
-rules, read related existing code, skip branch verification (the user decides).
+present. The run is on its feature branch already: leaving Plan creates it.
 
 ## Execute Tasks in Order
 
 **Who runs this.** Build runs in groups, and the temper CLI runs the group loop (`temper next`
-starts the groups, hands out the ready tasks and gates them): each task is one task agent following `${CLAUDE_PLUGIN_ROOT}/agents/build-task.md`, and this page is the
-TDD method behind that brief. The Build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) runs it as a
+starts the groups, hands out the ready tasks and gates them): each task is one task agent following `${CLAUDE_PLUGIN_ROOT}/agents/build-task.md`,
+which carries its own short method and reads nothing else (the CLI records its RED and GREEN runs and
+makes its commits). This page is the method of the fix pass, and the background of that brief. The Build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) runs it as a
 fix pass when Review or Check loops back to Build: every task is already done, so it fixes what
 the feedback file names, test-first, and does not re-run the tasks.
 
@@ -52,7 +49,7 @@ a missing record does.
 paths that scenario touched}`, then in a SEPARATE tool call `git commit -m
 "feat({spec-slug}): {scenario} [AC-NN]"` — never `git add -A`, never `--no-verify`.
 An infrastructure-only task (no scenario) makes no commit.
-**e. Checkpoint** — tick the task's box in `tasks.md` and track deviations in the spec's
+**e. Checkpoint:** leave `tasks.md` alone (the CLI ticks the boxes) and track deviations in the spec's
 `build-context.json` (never `.temper/build-state.json`: the temper CLI owns the run state,
 and a hand-written copy drops the fields the gates read): a file outside the plan is never
 written before the person's `Drift decision:` line allows it (list it in the Build panel's
@@ -65,11 +62,11 @@ reconciles these against each task's `Traced to:` field.
 **f. Simplify** — if the `code-simplifier` agent is available, run it on the files you
 just touched (not the whole codebase); preserve behavior, improve clarity only.
 
-## Scenario Coverage Gate (BDD enforcement) — blocks the build
+## Scenario Coverage (BDD): the Check gate reads it
 
 If `intent.md` exists: for every `Scenario:`, find or write the test that exercises it
-(match by name/description), and it must PASS. **Any scenario left without a passing
-test means the build cannot proceed.** Report:
+(match by name/description), and it must PASS. **A scenario left without a passing test
+fails the Check gate (row `scenarios traced to tests`).** Report:
 
 ```
 Scenario Coverage: X/Y scenarios covered
@@ -104,8 +101,8 @@ If `tasks.md` has `Traced to:` fields: for each unplanned file from the deviatio
 with no justification, WARN "trace to a scenario or mark as infrastructure"; for each
 planned file that was never touched, WARN "is the task complete?". Report `N/M files
 match plan ({D} deviations tracked)`. No `Traced to:` fields → skip (backward
-compatible). This is signal, not a gate — the Scenario Coverage Gate above is the hard
-one.
+compatible). This is signal, not a gate; the scenario coverage above is the hard one
+(at Check).
 
 ## Context Output
 
@@ -132,9 +129,9 @@ project's `.temper/specs/{slug}/review-context.json` or
 `.temper/specs/{slug}/check-context.json`. It's stale once consumed.
 
 **Infeasible plan:** if the plan itself can't work (an API doesn't exist, the
-architecture is incompatible), add "Revise plan" as a build-gate option, write
-`build-context.json` with the infeasibility reason — the orchestrator routes back to
-Plan. This is human-driven, no circuit breaker, max once per run.
+architecture is incompatible), write the infeasibility reason in `build-context.json` and
+say so in the panel. The person can choose "Loop back to Plan" at the Build question, which
+the CLI writes; the loop budget counts it.
 
 **Writing framework code:** apply the `source-driven-development` skill when a task
 uses a framework/library API — detect the pinned version, verify the call against
@@ -148,17 +145,15 @@ Run the full suite and return the summary panel. The gate is the orchestrator's 
 completion gate); a stage never shows one.
 
 The panel format is owned by the build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) — render exactly the panel it defines
-(76 columns, fact rows then titled sections; `SEARCH:` row, and `COMMITS` / `FEEDBACK`
-sections on a checkpoint run). Never carry a second, different box here: whichever
+(76 columns, fact rows then titled sections; `SEARCH:` row). Never carry a second, different box here: whichever
 box a clean-context stage reads first is the one that renders, and two shapes means
 two different reviews.
 
 **On Continue:** Review loads only changed files —
 diffed against the sha `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get base_sha` prints when one is recorded (checkpoint commits
 already landed, so a plain `git diff --name-only` returns nothing), plus
-still-uncommitted paths. Mark the spec header `**Status:** completed` /
-`**Completed:** {date}` if `intent.md` exists. Cleanup of `build-state.json` happens
-after commit, not here.
+still-uncommitted paths. The commit steps mark the intent completed (`temper intent
+complete`); the stage does not.
 
 ## Quality Gates (pattern → pack rule → level)
 

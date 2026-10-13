@@ -23,7 +23,7 @@ carries over except the bug description in your launch prompt.
    results. Fall back to grep-based tracing if unavailable — `[HEURISTIC]`.
 4. The CLI has no RCA gate. The RCA gate is human judgment on your findings.
    Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
-   orchestrator; it owns the human-facing gate and persists `rca.md` on Continue.
+   orchestrator; it saves `rca.md` when you return and asks the person the RCA question.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
 - Read `.temper/lessons.md` first when it exists, and skip silently when it does not.

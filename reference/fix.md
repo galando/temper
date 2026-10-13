@@ -7,9 +7,10 @@ argument-hint: "<bug-description-or-JIRA-123>"
 
 **Goal:** find the real root cause, prove it with a failing test, apply the minimal fix,
 validate. Never guess — a fix without a reproduction is a hope. This doc is the
-methodology; `${CLAUDE_PLUGIN_ROOT}/commands/fix.md` is the orchestrator (routing, the RED/GREEN evidence
-rows the build gate reads, stage gates). Fix maps onto the `build` gate — a regression
-test is a RED-then-GREEN pair — then Review and Check are the ordinary stages.
+methodology. `${CLAUDE_PLUGIN_ROOT}/commands/fix.md` starts the run and follows `temper next`, which gives
+every stage and question; `${CLAUDE_PLUGIN_ROOT}/agents/fix.md` records the RED and GREEN rows the build gate
+reads. Fix maps onto the `build` gate (a regression
+test is a RED then GREEN pair), then Review and Check are the ordinary stages.
 
 ## Usage
 
@@ -17,10 +18,9 @@ test is a RED-then-GREEN pair — then Review and Check are the ordinary stages.
 /temper:fix "users get 500 error on checkout" | "JIRA-123" | "#456"
 ```
 
-**Modes:** Standalone (`/temper:fix`) runs the four stages (RCA → Fix → Review → Check)
-as Agent subprocesses with its own gates. Agent subprocess (from `/temper`) starts clean
-and returns a summary — no `AskUserQuestion`, the orchestrator owns the gate. Same
-methodology either way. Apply the context-engineering skill for hierarchical loading.
+**Stages:** `/temper:fix` runs RCA, Fix, Review and Check, each as a stage agent that starts
+clean and returns a summary (no `AskUserQuestion`); the CLI judges each stage and gives the
+question the orchestrator asks. Apply the context-engineering skill for hierarchical loading.
 
 ## Stage 1 — RCA: understand WHY, not just WHERE
 
@@ -32,7 +32,7 @@ the RCA. An unread lessons file is an incident paid for twice.
 Then investigate, inline by default; hand the wide reading to an Explore subagent only
 when the codebase is large enough that reading it directly would crowd your context:
 
-- **Detect input** the way `/temper:plan` does (Jira / GitHub / prose), and extract
+- **Detect input** (a ticket key such as `JIRA-123`, a GitHub issue such as `#456`, or prose), and extract
   symptom, trigger, reproducibility, and when it started.
 - **Multi-hypothesis** only when the cause is ambiguous: list up to 5 plausible causes
   with confidence + evidence, investigate the strongest first, fall back on a denial.
@@ -104,7 +104,7 @@ at once — you can't tell which worked.
 
 ## Stage 3-4 — Review + Check
 
-Run Review then Check (`/temper:check`) as the ordinary stages. After Check passes,
+Review and Check run as the ordinary stages (`temper next` launches them). After Check passes,
 verify the regression test *individually* with the stack's single-test runner and read
 its body — classify STRONG (proves the fix) / WEAK (incomplete) / TRIVIAL (always
 passes), label `[PROVEN]` from real runner output. A pre-existing unrelated failure is
@@ -113,19 +113,17 @@ noted (confirm with `git stash` → test → `git stash pop`), not blamed on the
 ## Commit + record
 
 The commit gate is the standard one (`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit`; fix checks build/review/check,
-no plan stage). On the user's explicit **Commit** (a typed change is never approval —
-make the edit, re-show the gate): a conventional `fix({scope}): {desc}` message naming
+no plan stage). The person's **Commit** at the Check question commits (a typed change is never
+approval: make the edit and ask again), with a conventional `fix({scope}): {desc}` message naming
 the root cause, the regression test, and the closed ticket.
 
-Then two records, both committed:
+Before that commit, the commit steps of `temper next` add one record, committed with the fix:
 
-- **Metrics:** bump `.temper/metrics.json` `fixes` (total, rca_used, confidence,
-  blast-radius fixes, regression_test_added).
-- **Lessons:** append one entry to `.temper/lessons.md` (create with a `# Lessons`
-  header if absent) — this is the corpus Stage 1 reads first, so write it for a future
+- **Lessons:** append one entry to `.temper/lessons.md` (create it with a `# Lessons` header
+  when it is absent). This is the corpus Stage 1 reads first, so write it for a future
   investigator:
   ```markdown
-  ## {date} — {bug title}
+  ## {date}: {bug title}
   - **Root cause:** {the specific condition, not "a bug"}
   - **Trigger:** {data/state that provoked it}
   - **Fix:** {commit hash or one line}

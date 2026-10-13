@@ -4,7 +4,11 @@
 > ([ADR 0012](decisions/0012-the-cli-decides-the-dialog-asks-the-mod-shows.md)) the parts about
 > the bar's decision buttons, the mod's event log, the mirror messages and `/temper:temper continue`
 > no longer describe the mod: the CLI decides where the run is, the person decides only in the
-> `Temper gate` question, and the bar only shows the run. [The mod](mod.md) describes it as it is.
+> `Temper gate` question, and the bar only shows the run. Since [ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md),
+> also in 9.7.0, more of it is history: the mod reads only `.temper/view.json` (it rebuilds nothing from
+> the other `.temper` files), the game is removed, the git alias, exec and plumbing rules are gone with the
+> shell parser, and the reviewed call list no longer holds `clock.sleep`, `fs.list` or the `prompt.*`
+> calls. [The mod](mod.md) describes it as it is.
 
 **Status:** awaiting approval (Step 0). Nothing below is built yet.
 **Date:** 2026-10-02

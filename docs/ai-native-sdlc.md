@@ -80,14 +80,16 @@ acceptance is a recorded, committed event: intent acceptance at the intent gate
 (a committed `docs(plan)` commit — the commit gate passes artifact-only commits by
 design), so the diff has a committed baseline from the moment build starts; at the
 end, recorded deviations are written into plan.md as a `## Deviations` section in the
-same commit as the code. One honest residual: nothing deterministically blocks
-*source edits* before plan acceptance — that control is prompt-level (the hooks block
-commits, protected paths, and regression-test edits, not arbitrary pre-acceptance
-edits).
+same commit as the code. With the mod (Claude Code 2.1.287 or later), a source edit
+before plan acceptance is refused at the tool layer: at Intent only `intent.md` may be
+written, at Plan and Design only the spec files. Without the mod that control is
+prompt level, and Temper is not a sandbox either way: a Claude set on getting around a
+gate through Bash can ([Trust](trust.md)).
 
 **Auto mode.** Aligned, more conservative than the playbook: Autonomous Continuation
-is armed by a human at the plan gate only, checkpoints after each green stage, and
-always parks before commit — it never commits, pushes, or merges. The playbook's
+is armed by a human at the plan gate only, and always parks before the final commit:
+it never makes that commit, pushes, or merges to a remote (its only commits are the
+CLI's local task commits and merges in Build). The playbook's
 "auto-accept becomes the default for routine work" is a posture a project can adopt
 by arming it per-run; the fence stays hardcoded.
 
@@ -136,11 +138,12 @@ machine-observed rather than agent-reported. One whole clause has no counterpart
 the play's **UI feedback loop** (screenshot-vs-mock iteration for front-end work) —
 temper's verification is tests, coverage, and scenarios only.
 
-**Continuous evals in CI.** Not provided. Temper's own seeded-defect fixture suite was
-removed in v9.5.0: its CI job never ran, so it never gated a merge. What guards
-Temper's own behavior is `scripts/selftest/test-temper.sh` (the gate
-logic, deterministically) plus the stage-gate Stop hook, which refuses to end a
-session until the owed gate has actually run. Scaffolding an eval harness for a
+**Continuous evals in CI.** Partly. Since 9.7.0, `evals/` holds four small fixtures with
+planted defects, a scorer and a protocol; the self test proves every planted defect and
+scores a recorded run, but a live run (which needs a model) is made by hand, and its
+rows are in `evals/results.md`. What guards Temper's own behavior is
+`scripts/selftest/test-temper.sh` (the gate logic, deterministically) plus the Stop
+hook of a `/temper:intent` session, which refuses to end it until its gate has run. Scaffolding an eval harness for a
 *user project's* own agent config is open — see [Remaining gaps](#remaining-gaps).
 
 ### Stage 5 — Deploy
@@ -171,7 +174,8 @@ session's critical path), and non-negotiable gates in managed settings, not the 
 
 **CI/CD integration.** The plugin runs headlessly with `claude -p "/temper:temper ..."`.
 With the mod loaded and enforcement on, a headless run stops at the first gate, because
-only a person in an interactive session can approve; with enforcement off it runs on.
+only a person in an interactive session can approve; with enforcement off nothing checks
+that a person answered, so Claude may go on by itself.
 Its whole automation surface is **commands and exit codes, deliberately host-agnostic**:
 the same wiring works under GitHub Actions, GitLab CI, Jenkins, or plain cron, and temper
 ships no platform-specific pipeline files (`examples/workflow/README.md` documents the
@@ -256,12 +260,13 @@ Honest list, in rough adoption order:
   `git commit --no-verify` bypasses the spine locally; re-verifying the gates where
   your host's merge protection lives (e.g. from the committed `gate-ledger.json`)
   is wiring the project adds, not shipped.
-- **Eval reach** — Temper ships no eval suite (removed in v9.5.0); nothing scaffolds an
-  eval harness for a user project's own agent config (their CLAUDE.md, their packs).
-- **Parallel-session execution** — tasks.md computes `[PARALLEL]` groups and the
-  worktree pattern is documented, but nothing spawns per-worktree sessions from
-  those groups; stage agents carry no `tools:` restrictions (report-only roles are
-  prompt-enforced).
+- **Eval reach**: Temper's own evals (`evals/`) measure Temper on its fixtures; nothing
+  scaffolds an eval harness for a user project's own agent config (their CLAUDE.md, their packs).
+- **Parallel-session execution**: grouped Build runs the ready tasks of a plan as
+  parallel Haiku task agents, each in its own worktree (the task agent carries only
+  Read, Edit, Write, Bash, Glob and Grep); whole sessions per worktree are not spawned,
+  and the other stage agents carry no `tools:` restrictions (report only roles are
+  prompt enforced).
 - **UI feedback loop** — no screenshot-vs-mock iteration path for front-end work.
 - **Managed-settings distribution** — the enterprise guide covers fork-and-own;
   per-org managed settings for non-negotiable hooks is documented but not tooled.

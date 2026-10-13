@@ -1,7 +1,7 @@
 # Trust
 
-Markdown, a mod written in TypeScript, about 4,400 lines of auditable bash (the CLI and the guard scripts) whose
-inline Python parses and writes JSON and computes the gate requirements, and four Python scripts (about 1,000
+Markdown, a mod written in TypeScript, about 7,200 lines of auditable bash (the CLI and the guard scripts) whose
+inline Python parses and writes JSON and computes the gate requirements, and nine Python scripts (about 2,700
 lines, standard library only). Temper itself makes no network calls, sends no telemetry and adds no packages. The
 committed artifacts (intent, plan, design, gate ledger and diff) are the audit trail, in the same commits as the code.
 

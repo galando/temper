@@ -564,7 +564,7 @@ cmd_init() {
   if ex="$(git rev-parse --git-common-dir 2>/dev/null)/info/exclude" && [[ "$ex" != "/info/exclude" ]]; then
     mkdir -p "$(dirname "$ex")" 2>/dev/null
     for p in build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
-             stage-gate.log pending-stage.json groups.json usage.json autonomy.lock coverage.json \
+             stage-gate.log pending-stage.json groups.json usage.json autonomy.lock coverage.json view.json \
              evidence/ index/ reviews/ archive/ .lock/; do
       grep -qxF "/.temper/$p" "$ex" 2>/dev/null || printf '/.temper/%s\n' "$p" >> "$ex" 2>/dev/null || true
     done
@@ -2354,7 +2354,7 @@ _park_ways_out() { # _park_ways_out <group> <worktree as printed> <tasks csv> <s
     if [[ -z "$fp" ]] || grep -qx "$s" <<<"$fp"; then lines+=("        git -C $wt rebase --autostash --onto ${s:0:7}~1 ${s:0:7}"); fi
   done
   [[ ${#lines[@]} -gt 0 ]] || for s in "$@"; do lines+=("        git -C $wt rebase --autostash --onto ${s:0:7}~1 ${s:0:7}"); done
-  echo "Nothing was changed on the branch or in the task's worktree ($wt). The person chooses one of two ways out (ask them, as build-groups.md step 5 says):"
+  echo "Nothing was changed on the branch or in the task's worktree ($wt). The person chooses one of two ways out (temper next asks them):"
   echo "  (a) remove the commit(s) from its branch, newest first (each line keeps the task's uncommitted work):"
   printf '%s\n' "${lines[@]}"
   echo "      then: temper group reopen $g$targs"
@@ -3729,7 +3729,7 @@ except Exception:
   if [[ -n "$unk" ]]; then
     _integ_record FAIL "commit(s) not made by the CLI and not accepted: $unk" || true
     echo "FAIL: commit(s) not made by the CLI and not accepted on a group branch: $unk" >&2
-    echo "The person chooses (ask them, as build-groups.md step 5 says): remove them from the branch, or keep them knowingly with their reason: temper group reopen <G> --task <N> --accept-foreign <sha> --reason \"<why>\"" >&2
+    echo "The person chooses (temper next asks them): remove them from the branch, or keep them knowingly with their reason: temper group reopen <G> --task <N> --accept-foreign <sha> --reason \"<why>\"" >&2
     return 1
   fi
   local missing

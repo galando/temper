@@ -59,16 +59,16 @@ Full docs: `${CLAUDE_PLUGIN_ROOT}/reference/review.md` → "Metrics + Memory".
 
 ## Gate add-ons
 
-Always offered at their stage gates; there is no config toggle (a `capabilities:` block
-in temper.config is ignored by the CLI). Architecture Depth applies the
+Offered at the passed gates of their stages, as `temper next --json` gives them; there is no config
+toggle (a `capabilities:` block in temper.config is ignored by the CLI). Architecture Depth applies the
 `architecture-depth` pack's rules when that pack is enabled.
 
 | Add-on | Stage | Purpose |
 |-----------|-------|---------|
 | Architecture Depth | Review | Module-depth analysis: seams, adapters, locality, leverage, deletion test |
-| Grill Me | Plan, Design | Socratic challenge mode: stress-test plans before building |
-| Teach Me | Plan, Design, Build, Check | Comprehension companion: teach + quiz the human to mastery at each teaching gate (Review excluded, taught at Build) |
-| Config Suggestions | Check | Suggest CLAUDE.md/AGENTS.md updates based on what was built |
+| Grill Me | Intent, Plan, Design, Review | Socratic challenge mode: stress-test the work before the next stage |
+| Teach Me | Intent, Plan, Design, Build, Review | Comprehension companion: teach and quiz the human on what the stage produced |
+| Config Suggestions | Check | Suggest CLAUDE.md/AGENTS.md updates based on what was built (only when Check wrote `config-suggestions.json`) |
 | HTML Review | Plan | Interactive plan review with inline comments, local or shared by link as a Claude artifact |
 
 The add-ons are options of the stage's `Temper gate` question, with the mod and without it (the rest behind

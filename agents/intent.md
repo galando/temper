@@ -31,10 +31,11 @@ folder.
 
 3. **Pick up an existing draft — bounded refine pass.** If
    `{spec_path}/intent.md` already exists (captured via `/temper:intent`, or drafted
-   from a control-band breach that `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` reported), it is your input. You may ask the orchestrator's
-   user only a question the draft itself marks `Blocking`, or one a gate FAIL forces.
-   Anything else you find thin becomes a NEW Open Question in the file, answered once
-   at the gate — do not interrogate the originator. Keep the originator's Problem and
+   from a control-band breach that `${CLAUDE_PLUGIN_ROOT}/scripts/temper bands` reported), it is your input. You run headless and ask
+   nobody: a question the draft marks `Blocking` stays in Open Questions, and the
+   orchestrator asks the person before the gate question (`temper next` lists it under
+   `blocking`). Anything else you find thin becomes a NEW Open Question in the file,
+   answered once at the gate. Keep the originator's Problem and
    Constraints (correct only with a stated reason), tighten what's vague, resolve or
    explicitly re-carry each Open Question. Never overwrite it wholesale.
 
@@ -74,14 +75,15 @@ folder.
    - **Never write card data or personal data into the intent** — no payment card
      numbers, secrets, or personal identifiers; reference the ticket instead.
 
-   **Interview discipline** (when you launch with an interview budget): ask who
-   reviews the intent (the `**Reviewer:**` header — a name, not a role). Draw from
-   the full question bank: current vs desired behavior, scope and non-goals,
+   **Interview discipline.** You cannot ask while you run, so what an interview would
+   settle becomes an Open Question (`Blocking` when the answer changes the outcome),
+   including who reviews the intent (the `**Reviewer:**` header, a name, not a role).
+   Draw from the full question bank: current vs desired behavior, scope and non-goals,
    acceptance criteria, post-release outcome, blocking vs deferred decisions. Two
    probes are mandatory for every draft you author: *"what business outcome or risk
    does each criterion address?"* (the `Why:` line) and *"who acts on the result,
-   and what happens next?"* (the Target Users action chain). Ask only where the
-   uncertainty changes the outcome — no fixed round count, one question at a time.
+   and what happens next?"* (the Target Users action chain). Mark a question
+   `Blocking` only where the uncertainty changes the outcome.
 
 6. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent` yourself before returning and
    fix any FAIL it reports (an empty Problem, no real criteria, a missing header
@@ -122,7 +124,7 @@ your one sentence of reasoning:
 +--------------------------------------------------------------------------+
 | PROBLEM: {one line — whose problem, what they can't do today}            |
 | CRITERIA: {N} ({n} required / {n} optional)  TICKET: {key or none}       |
-| REVIEWER: {name or "unassigned — asked at the gate"}                     |
+| REVIEWER: {name or "unassigned (an Open Question)"}                      |
 +--- OPEN QUESTIONS (N) ---+-----------------------------------------------+
 | {Blocking|Deferred}: {question, wrapped onto continuation rows}          |
 +--- DECISIONS (N) ---+----------------------------------------------------+

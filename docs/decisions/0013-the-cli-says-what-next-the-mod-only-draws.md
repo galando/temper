@@ -90,8 +90,9 @@ the person; and the mod checks that the person answered before a step only the p
    files. A door into a later stage starts its run with `state init <slug> --enter <stage>`: the
    stages before it are gated and asked, not run again.
 8. **The mod reads `view.json` and its own store, and draws.** It parses no file of the CLI's,
-   keeps the person's answers stamped with the run and step, and draws the band, the pane and the
-   end of run report from `view.json`. No drawing decides anything; `uiMode` sets only how much is
+   keeps the person's answers stamped with the run and step, and draws the band and the pane from
+   `view.json`. The end of run report page is the CLI's (`temper report --html`, written to the spec
+   folder before the commit), made from the same file. No drawing decides anything; `uiMode` sets only how much is
    drawn. The game is removed (the person chose to delete it).
 
 ## What changes in ADR-0012

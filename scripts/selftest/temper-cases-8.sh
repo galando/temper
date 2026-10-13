@@ -279,6 +279,7 @@ fresh; gpass intent plan build review
 for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 gfail check "tests pass" "no passing test-run evidence recorded"
 assert_eq "next: Check FAIL" "Loop back to Build (Recommended)|Override and continue|Save for later" "$(labels)"
+assert_eq "next: a question names the gate of its stage" "gate check" "$(nx "d['gate'].split('temper ', 1)[1]")"
 assert_eq "next: the question names the failed row" "1" "$(nx "int('no passing test-run evidence recorded' in d['ask']['question']['question'])")"
 
 setup; "$TEMPER" state init demo --enter check >/dev/null 2>&1; gfail intent "problem stated" "missing"
@@ -289,6 +290,10 @@ fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/nul
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "gate": {"verdict": "FAIL", "reason": "Validate failed"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "next: a failed group gate asks to run its tasks again" "Run the group's tasks again (Recommended)|group reopen G1 --task 1|1" \
   "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][0].split('temper ', 1)[1] + '|' + str(int('Validate failed' in d['ask']['question']['question']))")"
+printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+assert_eq "next: an armed run parks on a failed group gate, as on every stop (nobody is there to answer)" "auto|park --verdict PARKED-NEEDS-DECISION|1" \
+  "$(nx "d['action'] + '|' + ' '.join(d['calls'][0].split('temper ', 1)[1].split()[:3]) + '|' + str(int('Validate failed' in d['calls'][0]))")"
+"$TEMPER" state set run_mode interactive >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "parked", "worktree": "w", "parked_reason": "Task 1 failed on haiku, haiku and sonnet"}}, "tasks": {"1": {"status": "failed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "next: a group parked on failed attempts" "Run the task again (Recommended)|group reopen G1 --task 1" \
   "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
@@ -307,6 +312,11 @@ assert_eq "view: a run that never left Intent with no spec file written is the T
 setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1
 assert_eq "view: a new run with an empty spec folder may take the TRIVIAL exit" "True" "$(vw "d['guard']['trivial_exit']")"
 
+# --- the view is local run state ---
+fresh; "$TEMPER" init >/dev/null 2>&1; "$TEMPER" next --json >/dev/null 2>&1
+assert_eq "init: view.json is listed in the clone's info/exclude, so it is never an untracked file of the project" "1|0" \
+  "$(grep -cx '/.temper/view.json' "$(git rev-parse --git-common-dir)/info/exclude")|$(git status --porcelain --untracked-files=all | grep -c 'view.json')"
+
 # --- a /temper:fix run ---
 setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1
 assert_eq "next: a fix run starts at the RCA question" "Proceed to Fix (Recommended)|state advance rca_complete fix" \
@@ -314,9 +324,15 @@ assert_eq "next: a fix run starts at the RCA question" "Proceed to Fix (Recommen
 mkdir -p .temper/specs/demo-bug; "$TEMPER" state advance rca_complete fix >/dev/null 2>&1
 assert_eq "next: Fix runs its brief and is judged by the build gate" "temper:temper-fix|gate build" \
   "$(nx "d['agents'][0]['type'] + '|' + d['agents'][0]['after'][-1].split('temper ', 1)[1]")"
+gpass build
+assert_eq "next: a question names the gate to run again after a typed change; at Fix it is the build gate" "ask|fix|gate build" \
+  "$(nx "d['action'] + '|' + d['stage'] + '|' + d['gate'].split('temper ', 1)[1]")"
 gpass build; "$TEMPER" state advance fix_complete review >/dev/null 2>&1
 assert_eq "next: a fix run's Review reads rca.md (fix mode)" "temper:temper-review|1" \
   "$(nx "d['agents'][0]['type'] + '|' + str(int('Fix mode: there is no intent.md' in d['agents'][0]['prompt']))")"
+gpass review check; "$TEMPER" state advance review_complete check >/dev/null 2>&1; "$TEMPER" state advance check_complete commit >/dev/null 2>&1; gpass commit
+assert_eq "next: a fix run's commit steps add the incident to .temper/lessons.md, which the next RCA reads, and commit it" "work|1|1" \
+  "$(nx "s = d['steps']; d['action'] + '|' + str(int(any('.temper/lessons.md' in x and 'reference/fix.md' in x for x in s))) + '|' + str(int(any(x.startswith('git add') and '.temper/lessons.md' in x for x in s)))")"
 setup
 
 # --- the view fixtures the mod's tests import are the CLI's own output ---

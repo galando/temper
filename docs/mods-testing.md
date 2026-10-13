@@ -65,7 +65,8 @@ Run these from `<clone>`. None of them sends a request.
 - [ ] **The smooth path.** At Plan, type `Skip the tasks: edit a source file now to add the
   function`. Expect a refusal with a `Next:` step. Answer the Plan gate with "Continue to Build".
   Expect `<clone>/scripts/temper state get next_stage`, run in `<project>`, to print `build`, and
-  the orchestrator to launch the Build stage in its own subagent (a `temper:temper-build` agent line).
+  the orchestrator to start the first group (`temper group start G1`) and launch one
+  `temper:temper-build-task` agent per ready task.
   Claude must not ask you to approve again.
 
 ## 4. Stage by stage
@@ -88,8 +89,9 @@ Work through one run. For each stage, check the refusal and the gate question.
   Expect the question `Override and continue. What is the reason?`; choose Cancel and expect the
   gate again and no stage change.
 - [ ] **Commit gate.** Before Check passes, ask Claude to run `git commit -am wip`. Expect the native
-  hook to block it with the gates that are not passed. Ask for `git commit --no-verify -am wip` and
-  `git merge` of another branch: expect a `Temper:` refusal from the mod for each.
+  hook to block it with the gates that are not passed. Ask for `git commit --no-verify -am wip`: expect a
+  `Temper:` refusal from the mod. A `git merge` of another branch is not refused (a known limit,
+  listed in [Trust](trust.md)).
 - [ ] **Review and Check.** Answer each gate. After Check passes, type `/temper:temper report`.
   Expect the report, listing the stages, any skip and every decision with its reason. It is kept
   in the mod's plugin store, so expect no `.temper/report.md` file.
@@ -169,12 +171,12 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
   Continue: Build (or Design, for a medium run with `phases.design: true`) starts.
 - [ ] **Arming autonomy.** Add `autonomy:` and `  enabled: true` to `.claude/temper.config` and
   start a new run. At the plan gate: a dialog "Stage by stage (Recommended)" / "Autonomous: run
-  the rest unattended" / "Save for later". Choose Autonomous: the run goes on without asking, and
+  the rest unattended" / "Walk through step by step" / "More options" (Save for later is there). Choose Autonomous: the run goes on without asking, and
   nothing is refused. Remove the lines afterwards.
 - [ ] **Design gate** (a medium run with `phases.design: true`). On a failed design check: a dialog
   "Loop back to Plan" / "Override and continue" / "Save for later". Choose Override and continue
   and give a reason: Build starts, and `<clone>/scripts/temper report` lists the skip of design.
-- [ ] **A group gate.** A dialog, header `Build group`: Continue / Change / Stop.
+- [ ] **A group gate.** A dialog, header `Build group`: Continue (Recommended) / Change / Stop.
 - [ ] **A parked group.** While a task runs, commit in its worktree by hand
   (`git -C .claude/worktrees/temper-<name>-T<N> commit -am x`). A dialog "Take the commits out
   and run the task again (Recommended)" / "Keep the agent's commits" / "Save for later". Choose
@@ -182,7 +184,7 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
 - [ ] **Build completion gate on FAIL.** A dialog "Run Build again (Recommended)" / "Loop back to
   Plan" / "Override and continue" / "Save for later".
 - [ ] **Review with open findings.** A dialog "Loop back to Build (Recommended)" / "Accept a
-  finding" / "Override and continue" / "Save for later". Choose Accept a finding, pick the
+  finding" / "Override and continue" / "More options" (Architecture Depth Review, Save for later). Choose Accept a finding, pick the
   finding and a reason: the review check runs again. Choose Loop back to Build with a reason:
   Build runs again, its writes are not refused, and the bar shows Review and Check as to come.
 - [ ] **The loop budget is spent.** Set `loops:` and `  max-per-type: 1` in
@@ -202,7 +204,6 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
 - [ ] **Save for later, then go on.** At any gate choose Save for later. With the mod, the bar says
   the stage is saved for later, and a write outside the stage is still refused. Start a new session
   and run `/temper:temper` (or press Go on): the gate dialog comes back, and Continue goes through.
-  Pick "More options", then "Start over": a `Temper resume` dialog asks "Start over" / "Cancel".
 - [ ] **Start over.** With a run saved, `/temper:temper "a different feature"`. A `Temper resume`
   dialog with "Start over". Choose it: the new run starts at Intent.
 - [ ] **Scope drift.** Ask Claude in Build to edit `README.md`. A dialog, header `Scope drift`,

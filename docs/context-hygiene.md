@@ -38,7 +38,7 @@ mechanically checks them, and nowhere else.
 **Briefs are self-contained; orchestrators relay.** Every stage runs as an isolated
 Agent subprocess launched from its own small brief in `agents/`, and (v9.1) the brief
 carries everything the subprocess needs — including the summary box it returns — so a
-clean context never reads the 20KB orchestrator file to fetch an 8-line template. The
+clean context never reads the orchestrator file (about 10 KB since 9.7.0) to fetch an 8-line template. The
 orchestrator prints the returned box verbatim rather than restating formats, and
 `commands/fix.md` launches its stages through the same briefs instead of inlining its
 own copies of their prompts (22.9KB → 7.1KB in v9.1).

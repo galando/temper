@@ -145,12 +145,11 @@ Write `check-context.json`:
 
 ## Feedback Loop to Build
 
-When `feedback.enabled: true` and test failures exist in newly written code: build a
-targeted fix task per failure (test name, error, file:line, the `intent.md` scenario it
-maps to), offer "Loop back to Build" while `iteration < loops.max-per-type` (default 2).
-At the budget, stop and show remaining failures — offer "Save for later" instead. The
-same test failing across 2 consecutive loops stops immediately rather than looping again
-(`.temper/feedback-loops.json` tracks the counter).
+When test failures exist in newly written code, write a targeted fix entry per failure
+(test name, error, file:line, the `intent.md` scenario it maps to) to `check-context.json`.
+The CLI's Check question offers "Loop back to Build" while the loop budget
+(`loops.max-per-type`, default 2) lasts; once it is spent, it offers only "Override and
+continue" and "Save for later".
 
 ## Summary + Gate
 

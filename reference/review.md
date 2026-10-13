@@ -29,8 +29,8 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 `review.confidence-threshold` / auto-fix; the enabled packs' `rules.md` (project
 `.claude/packs/` shadows global `~/.claude/packs/` shadows
 the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept where `phases` is `all` or contains `review`);
-`.temper/review-memory.json`; the active `intent.md` (from build-context if chained,
-else the single spec present, else ask).
+`.temper/review-memory.json`; the active `intent.md` (in the spec folder your launch
+prompt's `Spec path:` line names).
 
 **`REVIEW.md` at the repo root (optional org review policy):** apply it layered on top
 of the packs — its passes/emphases steer subagent attention; its Important-vs-Nit
@@ -165,9 +165,8 @@ directional, not proof).
 
 ## Step 3.5: Deep Doubt Mode (adversarial pass)
 
-On `--doubt`, automatically for a large/CRITICAL blast radius (3+ modules or a CRITICAL
-security hunk), or on request. Main orchestrator only — a subagent never spawns its own
-doubt mode. Extract every claim the diff makes; read only the logic (not comments);
+Automatically for a large/CRITICAL blast radius (3+ modules or a CRITICAL security hunk).
+Run it in your own context: never launch another agent for it. Extract every claim the diff makes; read only the logic (not comments);
 attack each claim. Classify **contract-misread** (CRITICAL, bypasses confidence
 filtering) / **actionable** (HIGH) / **trade-off** (MEDIUM) / **noise** (suppress). Max
 3 cycles; stop early on an all-noise cycle; one more cycle after a real finding, then
@@ -198,9 +197,9 @@ findings bypass confidence filtering.
 
 ## Step 3.8: Architecture Depth (optional, gate-offered)
 
-`architecture-depth` pack enabled and selected at the gate → run
-`${CLAUDE_PLUGIN_ROOT}/reference/architecture-depth.md`'s 5-dimension analysis on changed modules; `[ARCH-DEPTH]`
-prefix, standard filtering.
+Not part of this stage: the Review question offers "Architecture Depth Review" (under More
+options), and the orchestrator then runs `${CLAUDE_PLUGIN_ROOT}/reference/architecture-depth.md`'s
+5-dimension analysis on the changed modules (`[ARCH-DEPTH]` prefix, standard filtering).
 
 ## Step 4: Confidence Filtering
 
@@ -239,10 +238,9 @@ Write `review-context.json`:
 
 ## Feedback Loop to Build
 
-`feedback.enabled: true` and fixable issues remain → the orchestrator offers "Loop back to
-Build", with `review-context.json`, while `iteration < loops.max-per-type` (default 2); at the
-budget, stop and show the user. The same issue surviving 2 consecutive loops stops
-immediately.
+When fixable issues remain, write them to `review-context.json`. The CLI's Review question
+offers "Loop back to Build" while the loop budget (`loops.max-per-type`, default 2) lasts; once it
+is spent, it offers only "Override and continue" and "Save for later".
 
 ## Metrics + Memory
 

@@ -5,11 +5,13 @@ The mod makes the Temper stages real inside Claude Code. It needs Claude Code 2.
 The mod does four things:
 
 - It refuses a write that does not belong to the current stage.
-- It keeps the commit gate whole. The native `pre-commit` hook refuses `git commit` until Check passes;
-  the mod refuses what would go around that hook (`--no-verify`, a changed hooks path, and a commit the
-  hook does not check, such as a merge).
-- It draws the run: the stage bar above the prompt and the pane.
-- It keeps a report of the run. Run `/temper:temper report` to see it.
+- It sends `git commit` to the hook. The native `pre-commit` hook refuses `git commit` until Check
+  passes; the mod refuses `--no-verify` and a changed hooks path. A commit the hook does not check,
+  such as a merge, is a known limit ([what the guard does not see](#what-the-guard-checks-and-what-it-does-not)).
+- It refuses a step only you may take (leaving Intent or Plan, a skip, a step back, accepting a
+  finding, arming autonomy) unless you chose it in the gate question.
+- It draws the run: the stage bar above the prompt and the pane, and keeps a report of the run
+  (`/temper:temper report`).
 
 [What the mod reads and writes](#what-the-mod-reads-and-writes) lists every file, hook and call of the mod.
 
@@ -31,7 +33,7 @@ notes are in [ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws
 
 Use `/temper:temper mode` to set how much Temper draws. The rules and the questions are the same in every mode.
 
-- **Full** draws the bar (the stage timeline, the status, its details and two buttons), the pane, toasts
+- **Full** draws the bar (the stage timeline, the status, its details and one button), the pane, toasts
   and a status line under each answer.
 - **Minimal** draws the stage timeline only.
 - **Off** draws nothing. A write outside the stage is still refused.
@@ -107,7 +109,8 @@ applies when the mod does not load. You keep the full pipeline:
 - The native `pre-commit` hook.
 - The evidence ledger.
 
-You lose the live refusals, the bar and the report. This was checked on 2.1.200 and 2.1.259.
+You lose the live refusals, the bar, the pane and the mod's report; `temper report` and the
+report page written at the commit stay. This was checked on 2.1.200 and 2.1.259.
 
 The settings declare no picker options. This is intentional: a settings field with options stops the
 plugin from loading on versions before 2.1.271.
@@ -120,7 +123,7 @@ plugin from loading on versions before 2.1.271.
 | Desktop app, Code tab | yes | yes, but not the elements for the terminal only |
 | Desktop app, WSL session | no (plugins are not available) | no |
 | VS Code extension chat panel | yes | no |
-| `claude -p` and the Agent SDK | yes. With enforcement on, a run stops at the first gate, because only a person can answer the gate question. With enforcement off, it continues. | no |
+| `claude -p` and the Agent SDK | yes. With enforcement on, a run stops at the first gate, because only a person can answer the gate question. With enforcement off nothing checks that a person answered, so Claude may go on by itself. | no |
 | Remote Control (phone or web) | yes, on your machine | only in the terminal of your machine |
 | Cloud sessions (claude.ai/code) | yes, if server managed settings bring the plugin (most sessions get the stages as prompts) | no |
 | claude.ai chat, Cowork | not documented, so not verified | not documented |
@@ -183,6 +186,10 @@ program runs. These are still possible, and listed as known limits in the mod's 
 - `TEMPER_DIR` and `TEMPER_CONFIG`, which point the CLI at other files.
 
 MCP and PowerShell file tools are not checked.
+
+If the guard itself fails while it checks a Bash command (an error, or it runs out of time) and a run
+is active, it refuses that command rather than pass a command it could not check. Run it again; if it
+keeps failing, you can turn enforcement off.
 
 A decision comes from the result of the question dialog, after you chose. Its authenticity depends on
 Claude Code. Claude writes the question and its options, so read the option you pick.

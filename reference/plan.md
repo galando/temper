@@ -36,10 +36,9 @@ code and add no design question, so they do not count.
 
 **Trivial** (one file, no product problem): no artifacts — say so and implement directly (in
 `/temper` the Intent stage decides this). **Simple** (up to 3 production files, with new functions,
-options or fields in existing modules only): an inline plan in the conversation, no files; in
-`/temper` the three files below, and Design is skipped. **Medium** (4-10 production files, or a new
-module, data model or external interface) / **Complex** (10+): the three files above, and Design
-runs. `--full`/`--quick` force Complex/Simple. The risk multipliers below still push a tier up.
+options or fields in existing modules only): the three files above, and Design is skipped.
+**Medium** (4-10 production files, or a new module, data model or external interface) / **Complex**
+(10+): the three files above, and Design runs. The risk multipliers below still push a tier up.
 
 **intent.md usually already exists when you start.** In the orchestrated `/temper`
 flow, the Intent stage wrote it and a human accepted it at the intent gate
@@ -51,10 +50,10 @@ every `- unavailable:` line as an explicit gap (name it in `plan.md`, and add an
 Open Question back into `intent.md` if it hides a decision). Do not re-derive
 context Intent already gathered. A `Status: draft` intent (captured via
 `/temper:intent` or a control-band breach) is the same
-input, plus: resolve or explicitly re-carry each Open Question (a refine pass may
-ask only a question the draft marks `Blocking`, or one a gate FAIL forces —
-anything else thin becomes a new Open Question); the draft→accepted flip happens at
-whichever human gate reviews it first.
+input, plus: resolve or explicitly re-carry each Open Question (you ask nobody: a
+question that must be settled is marked `Blocking`, and the orchestrator asks it before
+the gate question); the intent is accepted (`temper intent accept`) when the person
+leaves Intent.
 **Risk multipliers** (each pushes complexity up one tier): touches auth/payment/security
 code; changes what the consumers of a library with 5+ consumers already use (a signature,
 a behaviour, a default; adding a new function or option they never call does not count); changes a DB schema; a module with a
@@ -99,7 +98,8 @@ similar code, test coverage. A nested Explore subagent is an escape hatch for a 
 large enough that reading it directly would blow your context, not a mandatory first
 step; that judgment call is yours, not a fixed procedure. Read `.claude/temper.config`
 and enabled packs' `rules.md` (project shadows global shadows the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`;
-keep rules whose `phases` is `all` or contains `plan`) before you plan.
+keep rules whose `phases` is `all` or contains `plan`, and also those that contain `build`: the
+groups' Context distils them, below) before you plan.
 
 ## Blast Radius: Measured, Not Estimated
 
@@ -181,10 +181,10 @@ infrastructure any file no scenario touches.
 | `metric` | `Validate: metric — measure support ticket volume post-deploy` |
 | `manual` | `Validate: manual — UX review needed` |
 
-Ask clarifying questions (`AskUserQuestion`, concrete options — "integrate with
-existing PaymentService or create a new one?", never "what should the architecture
-be?") only where the uncertainty changes the outcome — no fixed round count, one
-question at a time. Skip entirely when requirements are clear.
+You run headless and ask nobody. Where an uncertainty changes the outcome, write it into
+`intent.md`'s Open Questions as `Blocking`, with concrete choices ("integrate with the existing
+PaymentService, or create a new one?", never "what should the architecture be?"); the
+orchestrator asks it before the gate question. Skip it entirely when the requirements are clear.
 
 ## File-to-Scenario Traceability
 
@@ -240,7 +240,7 @@ Build runs in groups, so write `tasks.md` as groups of tasks; the example to cop
   Task numbers are unique across the whole file.
 
 **Declared files.** `**File:**` lists backticked paths, one per file the task will write, including its test file.
-Give exact file paths, one per file. In grouped mode the plan gate refuses any glob
+Give exact file paths, one per file. The plan gate refuses any glob
 character (`*`, `?`, `[`) in a `**File:**` path and the commit check compares changed files to the
 declared union by exact path, so name every file, the test file included. Two tasks that can
 run together (neither depends on the other, directly or through their groups) must declare disjoint files;
@@ -320,10 +320,10 @@ change typed via "Other" is never approval: make the edit, then ask the same gat
 
 ## Edge Cases
 
-- Vague description ("improve performance") → ask which part before exploring.
+- Vague description ("improve performance") → a `Blocking` Open Question on which part, before exploring.
 - No tests in the project → flag lower coverage expectations, add a Task 0 "set up test
   infrastructure", scope new tests to the new code only.
-- Monorepo → ask which package; still check blast radius across shared libraries.
+- Monorepo → a `Blocking` Open Question on which package; still check blast radius across shared libraries.
 - DB migration needed → Task 1, before code depending on the new schema; +1 risk tier;
   note the rollback path.
 - Feature partially exists → build on the similar code found, don't duplicate; say so.

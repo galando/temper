@@ -83,7 +83,6 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
   writing it.
 - Never write `.temper/build-state.json` or anything else the temper CLI owns; deviations
   go in the spec's `build-context.json`.
-- On a checkpoint run, execute only task N.
 - A file outside the plan is never written before the person's `Drift decision:` line
   allows it. It goes in the `DRIFT` section, with why and what, and the task waits.
 

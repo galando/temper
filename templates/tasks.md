@@ -1,4 +1,4 @@
-<!-- tasks.md is written in groups by default: Build runs each task as one slim task agent and gates once
+<!-- tasks.md is written in groups: Build runs each task as one slim task agent and gates once
 per group. The block between the grouped-example markers is a complete example that passes `temper gate plan` (a selftest case runs
 it). Details: reference/plan.md, "Grouped tasks". -->
 <!-- grouped-example:begin -->

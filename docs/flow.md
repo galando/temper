@@ -28,6 +28,7 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `say` | one sentence for the person |
 | `restart` | the `Temper resume` question (Start over or Cancel) for this run and step |
 | `blocking` | with `ask`: the Blocking open questions of `intent.md`, asked before the gate question |
+| `gate` | with `ask`: the `temper gate` call of the question's stage (Fix is judged by the build gate), run again after a change the person typed at the question |
 
 ### The actions
 

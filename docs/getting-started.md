@@ -30,8 +30,9 @@ exists. Neither command reads or writes the settings in your home folder.
 ### The stage bar (Claude Code 2.1.287 or later)
 
 On Claude Code 2.1.287 or later, the same install also loads the Temper mod. You get a stage bar
-that shows where the run is, and Claude cannot edit code outside the current stage or go around
-the commit gate. You still decide each gate in the same question as without the mod. Check your version with `claude --version`. On an older version nothing changes.
+that shows where the run is, and the mod refuses an edit outside the current stage and
+`--no-verify` on a commit. You still decide each gate in the same question as without the mod.
+It is not a sandbox: [Trust](trust.md) lists what it does not see. Check your version with `claude --version`. On an older version nothing changes.
 
 | Setting | Values | Effect |
 |---|---|---|
@@ -72,28 +73,20 @@ In Claude Code, in your project:
 Temper runs intent → plan → build → review → check with stage gates. The first gate is
 the cheapest and highest-leverage: you approve the Problem and success criteria before
 any exploration or architecture spends tokens — correcting the intent there costs
-words; correcting it after planning costs the plan. Then:
+words; correcting it after planning costs the plan. At each gate Claude asks one question in
+Claude Code's own dialog, with the options the CLI gives for that gate. After the plan:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 📋 PLAN COMPLETE — Add User Authentication                  │
-├─────────────────────────────────────────────────────────────┤
-│ 🎯 INTENT                                                   │
-│    Problem: Users can't access protected routes             │
-│    Success: JWT auth with role-based access                 │
-│    Scenarios: 5 (4 unit, 1 integration)                     │
-│                                                             │
-│ 📁 FILES: 3 create, 2 modify                                │
-│ ⚡ RISK: Medium (touches auth layer)                        │
-│                                                             │
-│ ✅ Ready to build? [Y/e(dit)/n]                             │
-└─────────────────────────────────────────────────────────────┘
+```text
+Temper gate
+Plan: the check passed. Approve the plan and continue to Build?
+  1. Continue to Build (Recommended)   Approve the plan, commit it, and start Build.
+  2. Walk through step by step         Review the plan section by section.
+  3. Open HTML review                 Open the plan as a page to comment on.
+  4. More options                      Share HTML review, Grill Me, Teach Me, Save for later
 ```
 
-At each stage, choose:
-- **Y** → Proceed to next stage
-- **e** → Edit the plan/scenarios
-- **n** → Stop. Resume later with `/temper:temper` and no arguments.
+You choose in the dialog; a message you type is not a choice. **Save for later** stops the run;
+`/temper:temper` with no arguments takes it up again.
 
 ### Option B: Start at a stage
 

@@ -43,10 +43,10 @@ To keep groups but run the tasks on another model (no Haiku), set `task-model: s
 
 1. **Plan** (Opus) writes the grouped `tasks.md`. `temper gate plan` checks it: every task
    has files, dependencies, a test and at least 2 concrete test cases under `**Cases:**`; each
-   group has a Context; the size budgets hold (task brief 6144 bytes, group Context 4096, task
-   block 2048); declared files do not
-   overlap between tasks or groups that can run at the same time; no single group declares
-   more files than `autonomy.max-blast-radius`.
+   group has a Context; the size budgets hold (group Context 4096 bytes, task block 2048; the
+   self test holds the task brief to 6144); declared files do not overlap between tasks or
+   groups that can run at the same time; no single group declares more files than
+   `autonomy.max-blast-radius`.
 2. **Start a group.** `temper group start G1` creates the group's git worktree,
    `.claude/worktrees/temper-{slug}-G1`, on branch `temper/{slug}/G1`, based on the feature
    branch. It only takes the merges of its passed tasks and runs the group's Validate.
@@ -121,10 +121,11 @@ the final feature commit.
 The CLI owns these `.temper/` runtime files. Do not hand-write them and do not commit them
 (`temper init` lists them in the clone's `.git/info/exclude`, so a project needs no `.gitignore` lines):
 
-- `.temper/groups.json` - per-group worktree, status and gate verdict; per-task status,
+- `.temper/groups.json`: per-group worktree, status and gate verdict; per-task status,
   attempts and commit; the integration verdict.
-- `.temper/usage.json` - one row per agent launch: stage, model, tokens, milliseconds, task and group.
-- `.temper/.lock/` - the short-lived lock directory that serializes writes to the files above
+- `.temper/usage.json`: one row per agent launch: stage, model, tokens, milliseconds, task and group.
+- `.temper/view.json`: the run as the mod draws it, written after every change (docs/flow.md).
+- `.temper/.lock/`: the short-lived lock directory that serializes writes to the files above
   (stale after 30 s, never held while a test runs).
 
 ## Measuring a run

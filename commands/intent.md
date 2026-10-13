@@ -39,8 +39,7 @@ You state this once, in this conversation: a stage subprocess never has that lin
 its system prompt, so its brief says nothing about enforcement.
 
 1. **Understand the problem, not the solution.** Read `$ARGUMENTS` (tell a ticket
-   key such as `JIRA-123`, a GitHub issue such as `#123` and free text apart: the three
-   input forms under "Usage" in `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`). Fetch every
+   key such as `JIRA-123`, a GitHub issue such as `#123` and free text apart). Fetch every
    source the request links (ticket, MR/PR, doc) read-only and record each under
    `### Context Sources` (`consulted:` / `unavailable:` / `none:`). Then interview
    with the full question bank — current vs desired behavior, scope and non-goals,

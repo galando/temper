@@ -58,15 +58,16 @@ Any flagged concern is presented **first** at the gate — it is the reason the 
 here. "Continue to Build" with open concerns means the human accepted them; record
 their call in the concern's line (`resolved: {what was decided}`).
 
-The orchestrator's gate (header `Temper gate`): "Continue to Build (Recommended)" / "Walk
-through design step by step" (below) / "Save for later". "Other" free-text → edit
-`design.md`, re-show this gate — a change is never approval to proceed.
+The orchestrator asks the gate question exactly as `temper next --json` gives it (header
+`Temper gate`; on a pass: "Continue to Build (Recommended)", "Walk through step by step"
+(below), "Grill Me", and "More options" with Teach Me and Save for later). "Other" free text
+edits `design.md` and asks the same question again: a change is never approval to proceed.
 
 **Walkthrough:** read `design.md`, present only the sections it actually has — Architecture
 Overview (always), API Contracts, Database Changes, Integration Points, Decision Log
 (always) — one at a time via `AskUserQuestion` ("Next step" / "Ask a question", answer
 then re-show the same section / "Other" edits then re-shows the same section). After the
-last section: "Continue to Build (Recommended)" / "Save for later".
+last section, ask the gate question again.
 
 ## ADR Generation
 
@@ -85,5 +86,6 @@ Considered, Consequences. Never delete an ADR; supersede it with a new one refer
 
 ## Skip Conditions
 
-Auto-skipped (orchestrator goes straight to Build): Trivial/Simple complexity,
-`phases.design: false`, or a config-only/single-file plan.
+The CLI decides whether a run has a Design stage: it has one when the complexity is Medium or
+Complex and `phases.design` is not `false`, or when the spec folder already holds `design.md`.
+Otherwise the run goes from Plan straight to Build.

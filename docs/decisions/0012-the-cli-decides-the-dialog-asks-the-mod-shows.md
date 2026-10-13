@@ -99,10 +99,15 @@ serious bugs that the fixes of the round before had made. Almost every finding s
   against the header, the question and the option labels that `temper next --json` gave for that
   step, not parsed from words. A move that needs a reason counts once the reason is known.
 - **Decision 6:** `core/bash.ts` is deleted, not frozen. The guard keeps the person's answer before
-  a step only the person may take, the file path rules, and a short Bash list (`--no-verify`, a
-  changed hooks path, a write into `.temper/`). "Every other advance follows the stage's own
-  verdict" moves into the CLI: `state advance` refuses to leave a failed stage the person did not
-  skip.
+  a step only the person may take, the file path rules, and a short Bash list (`--no-verify` or `-n`
+  on a commit, a changed hooks path, and a Bash write onto a protected file: the CLI's files in
+  `.temper/`, and during a run the config and the git hooks; a spec file stays Claude's to write).
+  The jobs about git aliases, git commands that run a command, git plumbing and the commits the hook
+  does not check (a merge, a cherry-pick) are dropped and listed as known limits: Temper is not a
+  sandbox (`docs/trust.md`). "Every other advance follows the stage's own verdict" moves into the
+  CLI: `state advance` refuses to leave a failed stage the person did not skip.
+- **Consequences:** "the guard keeps Claude from skipping" the native hook now means it refuses
+  `--no-verify` and a changed hooks path; a commit the hook does not check is a known limit.
 - **Decision 7:** every drawing is a plain function of `view.json`.
 
 The last consequence above ("per task Build stays as the way back") is settled too: per task Build

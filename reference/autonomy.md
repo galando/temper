@@ -23,8 +23,9 @@ having accepted the intent.
   person's. Each group's gate still runs, and its panel still prints.
 - After a failed Review or Check, it loops back to Build, within the same loop budget as an
   interactive run (`loops.max-per-type`). Build never loops back to Plan by itself.
-- It parks when the budget is spent, when Build fails, when a group parks (a task failed on Haiku,
-  its retry and the Sonnet escalation, or made a commit the CLI did not), and at the commit.
+- It parks when the budget is spent, when Build fails, when a group fails its check, when a group
+  parks (a task failed on Haiku, its retry and the Sonnet escalation, or made a commit the CLI did
+  not), and at the commit.
 
 **A park** runs `temper park`: the run turns interactive again, `.temper/autonomy-report.md` gets
 the verdict (`SHIP-PENDING-COMMIT` or `PARKED-NEEDS-DECISION`), where it parked, why, the branch

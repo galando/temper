@@ -38,33 +38,27 @@ intent. Trivial requests (a typo, a one-liner) skip it automatically.
 
 **Stage Gates:**
 
-At each stage, you see a nice summary and choose to proceed:
+At each gate Claude asks one question in Claude Code's own dialog, header `Temper gate`, with the
+options `temper next --json` gives for that gate. After the plan:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 📋 PLAN COMPLETE — Add Login Feature                        │
-├─────────────────────────────────────────────────────────────┤
-│ 🎯 INTENT                                                   │
-│    Problem: Users can't access protected routes             │
-│    Success: JWT auth with role-based access                 │
-│    Scenarios: 5 (4 unit, 1 integration)                     │
-│                                                             │
-│ 📁 FILES: 3 create, 2 modify                                │
-│ ⚡ RISK: Medium (touches auth layer)                        │
-│                                                             │
-│ ✅ Ready to build? [Y/e(dit)/n]                             │
-└─────────────────────────────────────────────────────────────┘
+```text
+Temper gate
+Plan: the check passed. Approve the plan and continue to Build?
+  1. Continue to Build (Recommended)   Approve the plan, commit it, and start Build.
+  2. Walk through step by step         Review the plan section by section.
+  3. Open HTML review                  Open the plan as a page to comment on.
+  4. More options                      Share HTML review, Grill Me, Teach Me, Save for later
 ```
 
 | Response | Action |
 |----------|--------|
-| **Continue to Build** | Proceed, context clears, next stage begins |
+| **Continue to Build** | Approve the plan, commit it, and start Build |
 | **Walk through step by step** | Interactive walkthrough: each section explained in detail |
 | **Grill Me** | Socratic challenge mode — adversarial questions that stress-test your plan |
 | **Open HTML review** | Browser-based review with inline comments (Google Doc-style) |
 | **Share HTML review** | Publish the same review as a Claude artifact so other people can comment by link, and their comments come back automatically. Without the Artifact tool it offers Open HTML review instead. Asks before anything leaves your machine |
 | **Save for later** | Stop, save state, resume later with `/temper:temper` |
-| **Other** | Type a change request, edits applied, gate re-appears |
+| **Other** | Type a change request: Claude makes it, the gate runs again, and the question comes back. It is not a move. |
 
 **Review Gate Additional Options:**
 
@@ -102,13 +96,8 @@ after the command is one of these, Temper handles it instead of starting a run. 
 |---|---|
 | `/temper:temper status` | Where the run stands: stage, task, criteria passed, loop count |
 | `/temper:temper timeline` | Your decisions in this run |
-| `/temper:temper approve`, `next` | Asks the current gate's question, with Continue first. You confirm it there. |
-| `/temper:temper back <stage> <reason>` | Asks the gate question with "Loop back to {stage}: {reason}" first. Every later stage needs a fresh verdict. |
-| `/temper:temper override <reason>` | Asks the gate question with "Override and continue: {reason}" first. The reason is recorded. |
-| `/temper:temper accept <id> <reason>` | At Review: asks the gate question with "Accept finding {id}: {reason}" first |
-| `/temper:temper drift <path> <add\|revert\|allow>` | In Build: asks the Scope drift question for that file, with that choice first |
-| `/temper:temper pause`, `/temper:temper resume` | Stop at the next gate; take the run up again |
-| `/temper:temper report` | Show the run report (the mod keeps it in its plugin store, not in a file) |
+| `/temper:temper approve`, `next`, `back`, `override`, `accept`, `drift` | Your wish, not a move: Claude runs the loop and asks the gate question exactly as the CLI gives it. You choose there. |
+| `/temper:temper report` | The run report: verdicts, skips with their reasons, loops, usage. Without the mod it is `temper report`; with it, the mod's report from `view.json` and your decisions, kept in its plugin store. The page to share is `report.html` (below). |
 | `/temper:temper pr` | Ask Claude for a pull request description from the report |
 | `/temper:temper mode <full\|minimal\|off>` | Change how much Temper draws |
 | `/temper:temper enforcement <on\|off>` | Turn denials on or off |
@@ -134,7 +123,7 @@ both can be changed while a session runs:
 | Setting | Values | Effect |
 |---|---|---|
 | `uiMode` (`/temper:temper mode`) | `full`, `minimal`, `off` | `full` draws the bar, the pane, toasts, the spinner text, the turn line, the hint and the question header. `minimal` draws the stage timeline only. `off` draws nothing. The mode changes only what is drawn: the questions and the rules are the same in every mode. |
-| `enforcement` (`/temper:temper enforcement`) | `on`, `off` | `on` refuses writes outside the stage and what would go around the commit hook. `off` keeps the drawing only. |
+| `enforcement` (`/temper:temper enforcement`) | `on`, `off` | `on` refuses writes outside the stage, `--no-verify`, a changed hooks path, and a step only you may take without your answer. `off` keeps the drawing only. |
 
 Denials and subcommands work in every mode. The first interactive `/temper:temper` asks once
 which mode you want. If your organization locked a mode, `/temper:temper mode` says so and does
@@ -161,12 +150,14 @@ writes the same as one page, `report.html` in the spec folder, to share with the
 
 ### One flow
 
-Every gate is a question in Claude Code's own dialog, header `Temper gate`, with the options of
-`commands/temper.md` (Continue to {next}, Loop back to {stage}, Override and continue, Save for later,
-Grill Me, Teach Me and the stage's own). This is the same with the mod and without it, in every mode.
+Every gate is a question in Claude Code's own dialog, header `Temper gate`, with the options that
+`temper next --json` gives for the step the run is at (Continue to {next}, Loop back to {stage},
+Override and continue, Save for later, Grill Me, Teach Me and the stage's own). Claude asks it exactly
+as given. This is the same with the mod and without it, in every mode.
 The orchestrator still runs every stage with its own brief and the CLI still judges every check. With
-the mod loaded, the mod reads your answer from the dialog's result and lets through what that answer
-allows, at the step the run is at; a step back or a skip needs your reason, and the dialog asks for it
+the mod loaded, the mod reads your answer from the dialog's result, counts it only when the header,
+the question and the label are exactly what the CLI wrote, and lets through the calls of that option,
+at the step the run is at; a step back or a skip needs your reason, and the dialog asks for it
 when your answer has none. Once the run moves on, the answer is spent.
 
 ### Each stage
@@ -183,8 +174,8 @@ when your answer has none. Once the run moves on, the answer is spent.
 A plain `git commit` goes to the native `pre-commit` hook in every stage, and the hook decides: it
 lets a spec only commit and a Build checkpoint through, and every other commit only when every gate
 passed or was skipped with a reason. A commit the hook does not check (a merge, a cherry-pick, a revert,
-a commit of named paths) waits until the Commit steps cleared the run. Save for later stops the run and
-lifts no rule.
+a commit of named paths) is not refused by the mod either; [Trust](trust.md) lists it. Save for later
+stops the run and lifts no rule.
 
 A file outside the Build plan is never written first. Build lists it with why it is needed and the
 change, and Claude asks you the Scope drift question: add the file to the plan, revert (go on
@@ -338,26 +329,24 @@ that run up ([Entering at a stage](#stage-commands-are-doors)).
      Scenario: Rate limiting enforced
      ...
 
-📋 Plan: 5 steps (6 scenario-traced, 2 infrastructure)
+📋 tasks.md: 2 groups, 4 tasks
 
-## Task 1 — Create PasswordResetService [SEQUENTIAL]
-  → Scenario: "Successful password reset"
-  → Test: PasswordResetService.test.ts
+## Group G1: Reset tokens
+### Task 1: Create PasswordResetService
+  **File:** src/auth/PasswordResetService.ts, tests/PasswordResetService.test.ts
+  **Depends:** none
+  **Cases:** a fresh token resets the password; an expired token is refused
+### Task 2: Add the reset endpoint
+  **Depends:** Task 1
 
-## Task 2 — Add reset endpoint [SEQUENTIAL: after Task 1]
-  → Scenario: "Successful password reset", "Expired token rejected"
-  → Test: AuthController.test.ts
-
-## Task 3 — Update email templates [PARALLEL: with Task 4]
-  → Infrastructure: required by PasswordResetService
-
-## Task 4 — Add rate limiting [PARALLEL: with Task 3]
-  → Scenario: "Rate limiting enforced"
-  → Test: RateLimiter.test.ts
+## Group G2: Mail and limits (depends on G1)
+### Task 3: Update the email template
+### Task 4: Add rate limiting
 ...
 ```
 
-**Note:** Tasks marked `[PARALLEL: with Task X]` can run concurrently since they touch different files.
+**Note:** tasks with no dependency between them, and with files that do not overlap, run at the same
+time, each as its own Haiku task agent in its own worktree ([Haiku Build](grouped-build.md)).
 
 ---
 
@@ -410,77 +399,21 @@ there everything happens as `/temper` does it ([Entering at a stage](#stage-comm
 
 **What it does:**
 
-- Executes the plan step by step
-- Tests derived from intent.md scenarios (RED → GREEN)
-- Runs tests after each step
-- Scenario coverage gate: every scenario must have a passing test
-- Blocks on quality gate failures
-- Tracks coverage
-- Resumes from checkpoint if interrupted
+Build runs the plan's groups ([Haiku Build](grouped-build.md)). `temper next --json` drives it:
 
-**Workflow:**
+- It starts each group whose dependencies passed, in its own worktree.
+- It hands out the ready tasks; each runs as a small Haiku task agent in its own worktree, writes the
+  test of each listed case first (RED), then the code (GREEN).
+- The CLI gates each task from its own recorded test runs, commits it on the task branch and merges it
+  into the group branch. A failed task is retried, then escalated, then parks its group.
+- You review each group once, in the `Temper gate` question.
+- The CLI merges the groups into the feature branch and gates Build.
 
-```
-🚧 Building...
+**What you see:** the bar shows the step and the groups; the pane shows the Build grid, one row per
+task with its state (waiting, running, RED, GREEN, PASS, FAIL, parked), model and retries.
 
-Step 1/5: Create PasswordResetService
-  📋 From scenario: Successful password reset
-  ✅ Write test: test_successful_reset
-  ✅ Implement
-  ✅ Tests pass (4/4)
-  ✅ Coverage: 92%
-
-Step 2/5: Add reset endpoint
-  📋 From scenario: Expired token rejected
-  ✅ Write test: test_expired_token
-  ✅ Implement
-  ✅ Tests pass (6/6)
-  ⚠️  Coverage: 74% (threshold: 80%)
-  🔧 Adding more tests...
-  ✅ Coverage: 82%
-
-Step 3/5: Email integration
-  ✅ Write tests
-  ✅ Implement
-  ✅ Tests pass (8/8)
-  ✅ Coverage: 88%
-
-...
-
-📊 Scenario Coverage Gate:
-   ✅ Successful password reset → test_successful_reset (PASS)
-   ✅ Expired token rejected → test_expired_token (PASS)
-   ✅ Rate limiting enforced → test_rate_limiting (PASS)
-   ✅ Invalid email format → test_invalid_email (PASS)
-   ✅ Non-existent user → test_nonexistent_user (PASS)
-
-   Coverage: 5/5 scenarios ✅
-
-✅ Build complete
-   • Steps: 5/5
-   • Tests: 18 passing
-   • Coverage: 86%
-   • Time: 4m 32s
-```
-
-**Resume from Checkpoint:**
-
-If your build is interrupted, Temper saves progress and offers to resume:
-
-```
-📁 Found .temper/build-state.json
-   Last completed: Task 3/5
-   Started: 2026-03-10 14:32
-
-Resume from Task 4? [Y/n] > Y
-
-🚧 Resuming from Task 4...
-
-Step 4/5: Add rate limiting
-  ✅ Tests already written
-  ✅ Implement
-  ...
-```
+**Resume:** the run's state is the CLI's, so `/temper:temper` with no arguments takes Build up where it
+stopped: `temper next` hands out the tasks that are still to do, or waits for the agents still running.
 
 ---
 

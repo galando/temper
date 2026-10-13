@@ -63,9 +63,10 @@ flowchart LR
 - **Each gate is computed.** `scripts/temper` is auditable bash with no network. It reads an evidence
   ledger and prints PASS or FAIL for each requirement. A red gate blocks `git commit` through a real
   hook. A person can override a gate, and Temper records who did it. A confused model cannot.
-- **The mod makes the stages real.** It refuses writes outside the stage, and what would go around
-  the commit hook. It draws the stage bar and keeps a report of the run. [The mod](docs/mod.md) has
-  the details.
+- **The mod makes the stages real.** It refuses writes outside the stage, `--no-verify`, and a step
+  only you may take when you did not choose it in the gate question. It draws the stage bar and the
+  run's pane, and at the commit the run writes a report page. It is not a sandbox: [Trust](docs/trust.md)
+  lists what it does not see, and [the mod](docs/mod.md) has the details.
 
 https://github.com/user-attachments/assets/627e1385-cbc0-4ad9-bd3a-05ca2b8bb09e
 
@@ -84,8 +85,8 @@ Three you will actually type. `/temper:temper` runs and routes the rest.
 | [`/temper:fix "..."`](docs/commands.md#temperfix) | Root cause, a failing test that is write protected, a minimal fix |
 | [`/temper:intent "..."`](docs/commands.md#temperintent) | Capture an idea as a committed draft, build it later |
 
-`/temper:temper` also takes subcommands such as `status`, `approve`, `override <reason>`, `back`,
-`mode` and `pane`. See [Commands](docs/commands.md#subcommands).
+`/temper:temper` also takes `status`, `report`, `pr`, `mode` and `pane`. A word such as `approve` or
+`back` only brings up the gate question, where you decide. See [Commands](docs/commands.md#subcommands).
 
 **Granular control.** Each stage on its own: [`/temper:plan`](docs/commands.md#temperplan),
 [`/temper:design`](docs/commands.md#temperdesign), [`/temper:build`](docs/commands.md#temperbuild),

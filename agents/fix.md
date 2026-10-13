@@ -41,8 +41,7 @@ the plugin folder.
    occurrences `rca.md` flagged. Cross-reference an active `intent.md` if one exists.
 4. **A file outside the fix: the person decides first.** The fix's files are the regression
    test and the files `rca.md` names (the cause, the same-pattern occurrences, the related
-   files). Before you change any other file, or when Temper refuses a write as scope drift,
-   stop: do not write it another way. List it in the `DRIFT` section of your panel: the path,
+   files). Before you change any other file, stop: do not write it another way. List it in the `DRIFT` section of your panel: the path,
    why the fix needs it, and the change you would make. The orchestrator asks the person and
    launches you again with one `Drift decision: {path}: {add|revert|allow-once}` line per
    answer; `revert` means fix without that file, `allow-once` allows one edit.

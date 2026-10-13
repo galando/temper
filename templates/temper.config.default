@@ -119,21 +119,19 @@ loops:
 #     max-parallel: 4                  # tasks running at once
 
 # ============================================================
-# Autonomous Continuation — armed by a human at the PLAN GATE, never at
-# invocation. /temper always runs Plan first and stops for human review.
-# With this block absent or enabled: false, the plan gate offers only the
-# ordinary stage-by-stage continuation.
+# Autonomous Continuation: armed by a human at the PLAN GATE, never at
+# invocation. /temper always runs Intent and Plan first, each with its own
+# question. With this block absent or enabled: false, the plan gate offers only
+# the ordinary stage-by-stage continuation.
 #
 # Hardcoded, not configurable (safety invariants, not preferences): autonomy
 # NEVER pushes, merges to a remote, or makes the final feature commit (it always
-# parks); besides the `wip:` stage checkpoints below, the only commits it allows are grouped
-# Build's local task commits and the local `temper integrate` merge, both made by the CLI; NEVER re-plans
-# unattended; always requires a clean working tree before starting; always
-# checkpoints a `wip:` commit after each green stage; always takes a single-run lock.
+# parks); the only commits it allows are grouped Build's local task commits and
+# the local `temper integrate` merge, both made by the CLI; NEVER re-plans unattended.
 # ============================================================
 autonomy:
   enabled: false
-  max-blast-radius: 15         # the commit gate parks if more files changed than this
+  max-blast-radius: 15         # the plan gate splits a group that declares more files than this
   # Folder-name patterns over paths in your project only (any path before and after).
   park-on-touch: ["**/auth/**", "**/payment/**", "**/billing/**"]
   budget:

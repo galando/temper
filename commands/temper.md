@@ -28,8 +28,8 @@ feature description.
 | `report`, `timeline` | Print `${CLAUDE_PLUGIN_ROOT}/scripts/temper report`. |
 | `help` | List these words with one line each. |
 | `approve`, `next`, `back`, `override`, `accept`, `drift` | A wish, never a decision: run the loop below. When it reaches a question, ask it as given; the person chooses there. |
-| `pr` | Write a pull request description from `${CLAUDE_PLUGIN_ROOT}/scripts/temper report`: the skips, the accepted findings and the drift answers, each with its reason. |
-| `discuss <text>` | The person's message at the current question: answer it; if it asks for a change, make it, run the stage's gate again, and ask the question again. It moves nothing. |
+| `pr` | Write a pull request description from `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` (the verdicts), `.temper/overrides.json` (each skip with its reason), `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage review` (each accepted finding with its reason), `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage build` (the drift answers) and the `loops` of `.temper/view.json`. |
+| `discuss <text>` | The person's message at the current question: answer it; if it asks for a change, make it, run the action's `gate` call, and ask the question again. It moves nothing. |
 | `mode`, `enforcement`, `pane` | These belong to the Temper mod. Without it, say they are not available here. |
 
 ## Start
@@ -67,7 +67,8 @@ again. Stop only where this section says so.
     of its own, after the `git add` call.
 - **`ask`**: when it has `blocking`, ask those first (see "Every question"). Then ask `ask.question`
   with AskUserQuestion exactly as given, and do what the chosen option of `ask.options` says: run its
-  `calls`, then its `steps`; or, for an option with `do`, do that and ask the same question again;
+  `calls`, then its `steps`; or, for an option with `do`, do what it says, then ask the same question
+  again unless it says what comes next;
   "More options" asks `ask.more.question`, "Accept a finding" asks `ask.accept.question`. An option
   with `stop` ends the turn: the run is saved.
 - **`wait`**: tasks are running. For a task whose agent you launched in this conversation, wait for
@@ -94,12 +95,12 @@ Run the calls of one action in one Bash call, one per line, when they are only `
   included; "Cancel" asks the first question again. Put the reason in place of `{reason}`.
 - **Typed text.** An answer typed in "Other" (not to a reason question), or a message the person
   writes at a question, is a change request or a question: answer it; for a change, make it, run the
-  stage's gate (`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate {stage}`) and ask again. It never moves the run.
+  action's `gate` call when it has one, and ask again. It never moves the run.
 - **Blocking questions** (the `blocking` list): ask them in one AskUserQuestion call, one question
   each, with the question's choices as options, the recommended one first, three at most, and a last
   option "Carry forward". Write each answer into intent.md's `### Decisions` and take the question out
-  of Open Questions. Then run the stage's gate and ask `next` again. Never list them as text to answer
-  by typing.
+  of Open Questions. Then run the action's `gate` call and run `next` again. Never list them as text to
+  answer by typing.
 - **A refused call.** When the mod or the CLI refuses a call an answer allowed, run it once more; when
   it is refused again, say so in one line and ask the question again.
 

@@ -29,7 +29,8 @@ phases: [build, review, check, fix]
 **RED** — write the test first and watch it fail. Cover the happy path and at least one
 error case. A test that passes before the implementation exists is a broken test, not a
 head start: investigate it rather than proceeding. The RED run is recorded as gate
-evidence (`${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add`), so it has to actually happen.
+evidence (in Build the CLI records it: `${CLAUDE_PLUGIN_ROOT}/scripts/temper task test N --phase red`;
+in a fix pass, `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add`), so it has to actually happen.
 
 **GREEN** — the minimal code that passes, in the shape the adjacent code already uses.
 Extra utilities and speculative abstraction belong to a task that asked for them.

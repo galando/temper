@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# make-fixture.sh <fixture> <dest> [--at-review] [--build-mode grouped|per-task] [--autonomy]
+# make-fixture.sh <fixture> <dest> [--at-review] [--autonomy]
 #
 # Builds one measurement fixture (evals/fixtures/<fixture>) as a git project in <dest>, a folder
 # that must not exist yet. The answer key (fixture.json) and the hidden test never go into <dest>:
@@ -12,7 +12,6 @@
 #   --at-review     (review fixtures) also starts a Temper run and moves it to Review with the CLI:
 #                   the gates of Intent and Plan are run, Build is skipped with a recorded reason
 #                   (the change is given). This is what evals/run.sh starts from.
-#   --build-mode    writes build.mode into the project's .claude/temper.config.
 #   --autonomy      writes autonomy.enabled: true, so the plan gate offers the arming choice.
 set -euo pipefail
 
@@ -20,14 +19,13 @@ EVALS="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN="${EVALS%/evals}"
 TEMPER="$PLUGIN/scripts/temper"
 
-usage() { echo "usage: make-fixture.sh <fixture> <dest> [--at-review] [--build-mode grouped|per-task] [--autonomy]" >&2; exit 2; }
+usage() { echo "usage: make-fixture.sh <fixture> <dest> [--at-review] [--autonomy]" >&2; exit 2; }
 [[ $# -ge 2 ]] || usage
 NAME="$1" DEST="$2"; shift 2
-AT_REVIEW=0 BUILD_MODE="" AUTONOMY=0
+AT_REVIEW=0 AUTONOMY=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --at-review) AT_REVIEW=1; shift ;;
-    --build-mode) BUILD_MODE="${2:-}"; [[ "$BUILD_MODE" == grouped || "$BUILD_MODE" == per-task ]] || usage; shift 2 ;;
     --autonomy) AUTONOMY=1; shift ;;
     *) usage ;;
   esac
@@ -66,7 +64,6 @@ mkdir -p .claude
   echo "  enabled: true"
   echo "loops:"
   echo "  max-per-type: 2"
-  if [[ -n "$BUILD_MODE" ]]; then echo "build:"; echo "  mode: $BUILD_MODE"; fi
   if [[ "$AUTONOMY" == 1 ]]; then echo "autonomy:"; echo "  enabled: true"; fi
 } > .claude/temper.config
 git add -A

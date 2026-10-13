@@ -1,12 +1,12 @@
 ---
-description: "Plan a feature: starts /temper, or takes up the active run, at Plan"
+description: "Plan a feature: starts /temper (Intent comes first), or takes up the active run"
 argument-hint: "<feature-description-or-JIRA-123>"
 ---
 
 # Plan
 
-This command is a door into `/temper`: it starts a run at Plan, or takes up the run that is
-active, and from there everything happens as `/temper` does it. There is one flow, and it is
+This command is a door into `/temper`: it starts a run (its Intent stage comes first, then Plan),
+or takes up the run that is active, and from there everything happens as `/temper` does it. There is one flow, and it is
 `${CLAUDE_PLUGIN_ROOT}/commands/temper.md`.
 
 Read `${CLAUDE_PLUGIN_ROOT}/commands/temper.md` now and follow it exactly, entering at **Plan**

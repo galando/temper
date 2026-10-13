@@ -65,7 +65,7 @@
     "enforcement": {
       "type": "string",
       "title": "Temper enforcement",
-      "description": "on refuses writes outside the stage and what would go around the commit hook; off keeps the drawing only. Values: on or off.",
+      "description": "on refuses writes outside the stage, --no-verify, a changed hooks path, and a step only the person may take without their answer; off keeps the drawing only. Values: on or off.",
       "default": "on",
       "sensitive": false
     },

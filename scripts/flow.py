@@ -583,6 +583,11 @@ class Builder:
 
     def group_failed(self, g, ginfo):
         gid = g["id"]
+        why = str((ginfo.get("gate") or {}).get("reason", "")).replace('"', "'")[:200]
+        if self.r.armed():  # nobody is there to answer: an armed run parks, as on every stop
+            return {"action": "auto", "stage": "build",
+                    "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason "group %s failed its check: %s"' % (gid, why))],
+                    "say": "Group %s failed its check; the armed run parks for you." % gid}
         reopen = [self.c("group reopen %s %s" % (gid, " ".join("--task %d" % n for n in g.get("tasks", []))))]
         opts = [self.opt("Run the group's tasks again (Recommended)", "Each task of %s runs again." % gid, move="redo", calls=reopen)]
         if self.r.can_loop("build", "plan"):
@@ -636,13 +641,17 @@ class Builder:
         if r.command == "temper":
             steps.append(self.c("intent complete"))
             steps.append("When %s/build-context.json records deviations from the plan, write them into plan.md as a ## Deviations section." % r.spec)
+        if r.command == "fix":
+            steps.append("Append one entry for this fix to .temper/lessons.md (create it with a # Lessons header when it is absent), "
+                         "as %s/reference/fix.md section Commit + record shows: the next RCA reads it first." % self.plugin)
         # The end of run report page goes into the spec folder first, so the commit carries it.
         steps.append(self.c("report --html"))
         steps.append(self.c("state archive"))
         files = r.ctx.get("changed") or []
         if not r.spec_ignored() and r.spec:
             files = [r.spec + "/"] + [f for f in files if not f.startswith(r.spec + "/")]
-        steps.append("git add -- %s" % " ".join(files) if files else "git add -- (each file the run changed)")
+        lessons = [".temper/lessons.md"] if r.command == "fix" and ".temper/lessons.md" not in files else []
+        steps.append("git add -- %s" % " ".join(files + lessons) if files else "git add -- (each file the run changed)%s" % "".join(" " + x for x in lessons))
         if r.command == "fix":
             steps.append('git commit -m "fix({scope}): {description}" -m "Root cause: {explanation}" -m "Regression test: {test name}"')
         else:
@@ -731,6 +740,8 @@ class Builder:
             return out
         q = self.ask(stage)
         out.update({"action": "ask", "stage": stage, "ask": q})
+        if r.gate_of(stage):  # the gate to run again after a change the person typed at this question
+            out["gate"] = self.c("gate %s" % r.gate_of(stage))
         blocking = r.blocking()
         if blocking:
             out["blocking"] = blocking

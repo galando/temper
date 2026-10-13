@@ -56,8 +56,9 @@ On Claude Code 2.1.287 or later, Temper also ships a mod. It enforces the stages
 layer and shows them. Older versions load the plugin as before.
 
 - **Claude cannot write code before you approve the intent.** The mod refuses an edit that does
-  not belong to the current stage, and anything that would go around the commit hook, which
-  refuses `git commit` until the gates pass or you override them. Every refusal names the next step.
+  not belong to the current stage, and `--no-verify` or a changed hooks path, so `git commit` goes
+  to the hook, which refuses it until the gates pass or you override them. Every refusal names the
+  next step. Temper is not a sandbox: [Trust](trust.md) lists what the mod does not see.
 - **You decide in one place.** Every gate is a question in Claude Code's own dialog, with or
   without the mod: Continue, Loop back, Override and continue, Save for later, Teach me, Grill me.
 - **You see where you are.** A stage bar shows Intent, Plan, Build, Review and Check with their

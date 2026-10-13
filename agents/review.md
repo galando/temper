@@ -25,10 +25,12 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
    re-judge — use your judgment, this isn't a fixed rule.
 3. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review` mechanically checks two things: zero *open* findings at or above
    `review.block-on` severity (default: `critical`), and a recorded `review completed`
-   evidence row. Record every finding as evidence, including one you fix yourself during
-   this stage — the ledger is the record of what was found; report EVERY CRITICAL and
-   HIGH finding in your panel, never only "the top issues". A finding you fixed is then
-   marked resolved, so the gate stops counting it while the row survives:
+   evidence row. Record every finding as evidence: the ledger is the record of what was
+   found; report EVERY CRITICAL and HIGH finding in your panel, never only "the top
+   issues". You do not change code at Review (with the mod, a write outside the spec
+   folder is refused at this stage); the person loops a finding back to Build. On a
+   Review after that loop, mark a finding the fix pass fixed and re-tested as resolved,
+   so the gate stops counting it while the row survives:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage review \
      --claim "<file>:<line> <one-line finding>" --severity critical|high|medium|low \
@@ -54,8 +56,8 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
 - An empty findings ledger is not a review. Always record the `review completed` row.
 - Report every CRITICAL and HIGH finding in the panel, never only the top issues.
-- Record a finding as evidence even when you fix it yourself, then mark it resolved
-  with `--fixed-by`. Never clear the ledger to pass the gate.
+- Record every finding as evidence; mark it resolved with `--fixed-by` only once a loop
+  back to Build fixed it and its test passes. Never clear the ledger to pass the gate.
 - Use `PROVEN` only for a finding an external tool verified. Everything you traced by
   reading is `HEURISTIC`.
 - Checkpoint commits land before Review, so a plain `git diff` shows nothing. Use
