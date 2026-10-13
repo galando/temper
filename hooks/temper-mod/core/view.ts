@@ -28,6 +28,19 @@ export type TaskCell = { n: number; title: string; state: 'waiting' | 'running' 
 
 export type GroupRow = { id: string; title: string; state: 'waiting' | 'running' | 'passed' | 'parked'; tasks: TaskCell[] }
 
+// A task in the Build grid: its state as the CLI's ledger shows it (RED and GREEN from the task's own evidence), the
+// model it ran on, and how many times it ran again.
+export type GridTask = { n: number; title: string; state: 'waiting' | 'running' | 'red' | 'green' | 'pass' | 'fail' | 'parked'; model: string | null; retries: number }
+
+export type GridGroup = { id: string; title: string; status: string; tasks: GridTask[] }
+
+// A loop back on the timeline, with the reason the person (or the armed run) gave.
+export type LoopMark = { from: string; to: string; iteration: number; max: number; reason: string }
+
+export type FindingRow = { id: number; severity: string; confidence: number | null; where: string | null; claim: string; state: 'open' | 'resolved' | 'accepted' }
+
+export type Marker = { name: string; state: 'pass' | 'fail' | 'info' | 'none'; detail: string; lines: string[] }
+
 export type View = {
   title: string | null
   stage: Stage | null
@@ -42,9 +55,20 @@ export type View = {
   failedChecks: Array<{ name: string; detail: string }>
   groups: GroupRow[] | null
   findings: Array<{ id: string; severity: string; claim: string }>
-  criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string }>
+  criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string; evidence: string[] }>
   passed: number
   total: number
+  // Minutes from the run's start to its last change, and the tokens of its agents (null and 0 when not known).
+  clock: { minutes: number | null; tokens: number }
+  loopMarks: LoopMark[]
+  // The plan's files by Build group (approved: as the person approved them at the plan gate); null with no plan.
+  planTree: { approved: boolean; groups: Array<{ id: string; title: string; files: string[] }>; other: string[] } | null
+  // Build, a cell per task; null with no grouped tasks.
+  grid: GridGroup[] | null
+  // Every Review finding, open, resolved or accepted.
+  findingRows: FindingRow[]
+  // The five Check markers: compile, tests, coverage, lint, security.
+  markers: Marker[]
   // The person's decisions in this run, as sentences, oldest first.
   decisions: string[]
   // The loops of the run with their budget: "Review to Build: 1 of 2".
@@ -132,7 +156,7 @@ export function buildView(input: ViewInput): View {
   const here = rv.stages.find(s => s.mark === 'here')
   const failed = here?.failed ?? []
   const groups = groupsOf(rv)
-  const criteria = rv.criteria.map(c => ({ id: c.id, text: c.text || c.id, status: c.status === 'passed' ? ('passed' as const) : ('open' as const), priority: c.priority }))
+  const criteria = rv.criteria.map(c => ({ id: c.id, text: c.text || c.id, status: c.status === 'passed' ? ('passed' as const) : ('open' as const), priority: c.priority, evidence: c.evidence }))
   return {
     title: rv.run?.title ?? null,
     stage,
@@ -153,8 +177,49 @@ export function buildView(input: ViewInput): View {
     loops: rv.loops.map(l => `${cap(l.from)} to ${cap(l.to)}: ${l.iteration} of ${l.max}${l.reason ? ` (${l.reason})` : ''}`),
     line: input.line ?? null,
     next: { action: rv.next.action, say: rv.next.say, header: rv.ask?.question.header ?? null },
+    clock: { minutes: minutesOf(rv.time.started, rv.time.updated), tokens: rv.usage.tokens },
+    loopMarks: rv.loops.map(l => ({ from: l.from, to: l.to, iteration: l.iteration, max: l.max, reason: l.reason })),
+    planTree: planTreeOf(rv),
+    grid: rv.build.groups.length === 0 ? null : rv.build.groups.map(g => ({ id: g.id, title: g.title, status: g.status, tasks: g.tasks.map(t => ({ n: t.n, title: t.title, state: t.state, model: t.model, retries: Math.max(t.attempts - 1, 0) })) })),
+    findingRows: rv.findings.map(f => ({ id: f.id, severity: f.severity, confidence: f.confidence, where: f.file ? `${f.file}:${f.line ?? ''}` : null, claim: f.file ? f.claim.replace(/^\s*\S+:\d+\s*/, '') : f.claim, state: f.state })),
+    markers: rv.markers.map(m => ({ name: m.name, state: m.state, detail: m.detail, lines: m.lines })),
     paneOpen: input.paneOpen ?? false,
   }
+}
+
+// Whole minutes between two ISO times; null when either does not read.
+function minutesOf(start: string | null, end: string | null): number | null {
+  const a = start ? Date.parse(start) : NaN
+  const b = end ? Date.parse(end) : NaN
+  return Number.isFinite(a) && Number.isFinite(b) && b >= a ? Math.floor((b - a) / 60000) : null
+}
+
+function planTreeOf(rv: RunView): View['planTree'] {
+  if (rv.plan.groups.length === 0 && rv.plan.files.length === 0) return null
+  const grouped = new Set(rv.plan.groups.flatMap(g => g.files))
+  return { approved: rv.plan.approved, groups: rv.plan.groups, other: rv.plan.files.filter(f => !grouped.has(f)) }
+}
+
+// "42 min · 1.2M tokens": the band's measure of the run; null when neither is known.
+export function clockText(v: View): string | null {
+  const parts: string[] = []
+  if (v.clock.minutes !== null) parts.push(v.clock.minutes >= 60 ? `${Math.floor(v.clock.minutes / 60)} h ${v.clock.minutes % 60} min` : `${v.clock.minutes} min`)
+  if (v.clock.tokens > 0) parts.push(`${v.clock.tokens >= 1e6 ? `${(v.clock.tokens / 1e6).toFixed(1)}M` : v.clock.tokens >= 1000 ? `${Math.floor(v.clock.tokens / 1000)}k` : v.clock.tokens} tokens`)
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
+// "↺ Review to Build (1 of 2): a real bug": a loop on the timeline.
+export const loopText = (l: LoopMark): string => `↺ ${cap(l.from)} to ${cap(l.to)} (${l.iteration} of ${l.max})${l.reason ? `: ${l.reason}` : ''}`
+
+// The cell of a task in the Build grid: its glyph and its word.
+export const TASK_STATE: Record<GridTask['state'], [string, string]> = {
+  waiting: ['○', 'waiting'],
+  running: ['◐', 'running'],
+  red: ['●', 'RED'],
+  green: ['●', 'GREEN'],
+  pass: ['✓', 'PASS'],
+  fail: ['✗', 'FAIL'],
+  parked: ['⏸', 'parked'],
 }
 
 const cap = (s: string): string => `${s.charAt(0).toUpperCase()}${s.slice(1)}`

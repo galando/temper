@@ -62,7 +62,7 @@ export type RunView = {
     groups: Array<{ id: string; title: string; status: string; verdict: string | null; tasks: Array<{ n: number; title: string; files: string[]; state: TaskState; model: string | null; attempts: number }> }>
     integration: string | null
   }
-  findings: Array<{ id: number; severity: string; claim: string; file: string | null; line: number | null; state: 'open' | 'resolved' | 'accepted'; label: string | null }>
+  findings: Array<{ id: number; severity: string; confidence: number | null; claim: string; file: string | null; line: number | null; state: 'open' | 'resolved' | 'accepted'; label: string | null }>
   checks: Array<{ name: string; pass: boolean; detail: string }>
   markers: Array<{ name: string; state: 'pass' | 'fail' | 'info' | 'none'; detail: string; value: number | null; lines: string[] }>
   criteria: Array<{ id: string; priority: string; status: string; text: string; evidence: string[] }>
@@ -205,6 +205,7 @@ export function parseRunView(text: string): RunView | null {
       return {
         id: num(f.id),
         severity: str(f.severity, 'unknown'),
+        confidence: numOrNull(f.confidence),
         claim: str(f.claim),
         file: strOrNull(f.file),
         line: numOrNull(f.line),

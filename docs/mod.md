@@ -40,16 +40,28 @@ A toast confirms a change to enforcement in every mode. The same mod runs in the
 
 ## The bar
 
-The bar shows where the run is: each stage with its result (passed, failed, skipped, here, to come),
-one sentence of status, and the details of the stage (the groups and tasks of Build, the open findings of
-Review, the failed checks). It has one button, and it decides nothing:
+Everything the mod draws comes from `.temper/view.json` (ADR 0013), so it shows what the CLI knows.
+
+The bar shows where the run is: each stage with its result (passed, failed, skipped, here, to come), the
+loops back with their reasons, the time and the tokens of the run, one sentence of status, and the details
+of the stage (the groups and tasks of Build, the open findings of Review, the failed checks). It has one
+button, and it decides nothing:
 
 - **Go on** (key `1`, while Claude is not working) takes the run up again: it runs `/temper:temper`, and
   Claude asks the gate question again.
 
-The pane (`/temper:temper pane`) shows the whole run on one card: the intent and its criteria, the
-stages, the status, the groups and tasks, the findings, the loops and your decisions. It has no button
-that decides.
+The pane (`/temper:temper pane`) shows the whole run on one card: the intent, the stages with your skips
+and the loops back, the plan's files by Build group as you approved them, the Build grid (each task's
+state, waiting, running, RED, GREEN, PASS, FAIL or parked, with its model and retries), the Review
+findings (severity, confidence, file and line, open, resolved or accepted), the Check markers (compile,
+tests, coverage, lint, security, with the lines that failed), the acceptance criteria with their evidence,
+and your decisions. It has no button. `minimal` draws the stages only; `off` draws nothing.
+
+At the commit the run writes its report as one page, `report.html` in the spec folder
+(`temper report --html`), from the same view: the stages, loops and skips with their reasons, the plan,
+the Build grid, the findings, the Check markers, the criteria with evidence, and the time and tokens by
+stage and by model. The
+commit carries it, so the page goes with the change.
 
 ## Each stage
 

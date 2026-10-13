@@ -200,9 +200,11 @@ class Run:
             m = re.match(r"^\s*([\w./@-]+\.\w+):(\d+)", claim)
             state = "accepted" if r.get("accepted_reason") or r.get("accepted") else (
                 "resolved" if r.get("resolved") or r.get("fixed_by") or r.get("resolved_by") else "open")
+            conf = r.get("confidence")
             out.append({"id": i, "severity": str(r.get("severity")).lower(), "claim": claim,
                         "file": m.group(1) if m else None, "line": int(m.group(2)) if m else None,
-                        "state": state, "label": r.get("label")})
+                        "state": state, "label": r.get("label"),
+                        "confidence": conf if isinstance(conf, (int, float)) and not isinstance(conf, bool) else None})
         return out
 
     def open_findings(self):
@@ -634,6 +636,8 @@ class Builder:
         if r.command == "temper":
             steps.append(self.c("intent complete"))
             steps.append("When %s/build-context.json records deviations from the plan, write them into plan.md as a ## Deviations section." % r.spec)
+        # The end of run report page goes into the spec folder first, so the commit carries it.
+        steps.append(self.c("report --html"))
         steps.append(self.c("state archive"))
         files = r.ctx.get("changed") or []
         if not r.spec_ignored() and r.spec:

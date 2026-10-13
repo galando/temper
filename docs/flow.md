@@ -83,7 +83,7 @@ question is no answer. A typed message is never a move: it is a change request o
 | `guard` | what the guard needs: `{stage, spec, slug, fix_run, grouped, armed, autonomy_enabled, plan_files, step, run_id, trivial_exit}`; `plan_files` are the files the person approved at the plan gate |
 | `plan` | `{approved, files, groups: [{id, title, files}]}` |
 | `build` | `{groups: [{id, title, status, verdict, tasks: [{n, title, files, state, model, attempts}]}], integration}`; a task's `state` is `waiting`, `running`, `red`, `green`, `pass`, `fail` or `parked` |
-| `findings` | `[{id, severity, claim, file, line, state, label}]`; `state` is `open`, `resolved` or `accepted` |
+| `findings` | `[{id, severity, confidence, claim, file, line, state, label}]`; `confidence` is the reviewer's 0 to 1 (`temper evidence add --confidence`) or `null`; `file` and `line` come from a claim that starts `file:line`; `state` is `open`, `resolved` or `accepted` |
 | `checks` | the rows of the Check gate: `[{name, pass, detail}]` |
 | `check_markers` | `[{name, state, detail, value?, lines}]` for compile, tests, coverage, lint and security; `state` is `pass`, `fail`, `info` or `none` |
 | `criteria` | `[{id, priority, status, text, evidence}]` of the intent's success criteria |
@@ -94,3 +94,12 @@ question is no answer. A typed message is never a move: it is a change request o
 
 The file is replaced whole each time (written beside it, then moved), so a reader never sees half of
 it, and a link at that path is replaced, never written through.
+
+## The end of run report
+
+`temper report --html [-o OUT]` renders the view as one page (`scripts/run_report.py`): the stages with
+the skips and the loops and their reasons, the plan's files by group, the Build grid, the Review findings,
+the Check markers with their failing lines, the criteria with their evidence, and the time and tokens by
+stage and by model. Its head says Done only once the Commit gate has passed. By default it writes
+`report.html` in the run's spec folder, and the commit steps of `temper next` run it before `git add`, so
+the commit carries the page. Every value is escaped, and it never writes inside the plugin's own folder.

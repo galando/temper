@@ -2,7 +2,7 @@ import type { RenderElement } from 'claude-code'
 
 import type { UiMode } from '../core/config'
 import { barStyle } from '../core/modes'
-import { MARK, whereText } from '../core/view'
+import { MARK, clockText, loopText, whereText } from '../core/view'
 import type { StageView, View } from '../core/view'
 import type { Kit } from './kit'
 
@@ -45,8 +45,9 @@ function chip(kit: Kit, step: StageView, compact: boolean) {
 // gate question again.
 export type BandButtons = { goOn: () => void | Promise<void> }
 
-// The band above the prompt. Full mode: TEMPER, the title, where the run is, the stage timeline, the status of the
-// stage, its details (the groups in Build, the findings in Review, the failed checks) and the Go on button. Minimal draws
+// The band above the prompt. Full mode: TEMPER, the title, where the run is, its time and tokens, the stage timeline with
+// its loops back and their reasons, the status of the stage, its details (the groups in Build, the findings in Review,
+// the failed checks) and the Go on button. Minimal draws
 // the timeline only. Off draws nothing (the caller passes next(e)).
 export function renderBand(
   kit: Kit,
@@ -82,6 +83,7 @@ export function renderBand(
       {view.title ? <Text bold>{view.title}</Text> : null}
       <Text dimColor>{`· ${whereText(view)}`}</Text>
       {view.total > 0 ? <Text dimColor>{`· criteria ${view.passed} of ${view.total}`}</Text> : null}
+      {clockText(view) ? <Text dimColor>{`· ${clockText(view)}`}</Text> : null}
       <Text dimColor={view.enforcement === 'on'} color={view.enforcement === 'on' ? undefined : 'yellow'}>{`· enforcement ${view.enforcement}`}</Text>
     </Box>
   )
@@ -104,6 +106,11 @@ export function renderBand(
     <Box flexDirection="column" key="temper-band">
       {head}
       {chips}
+      {view.loopMarks.map((l, i) => (
+        <Text key={`loop-${i}`} color="cyan">
+          {loopText(l)}
+        </Text>
+      ))}
       {status}
       {detail.map((line, i) => (
         <Text key={`detail-${i}`} dimColor>

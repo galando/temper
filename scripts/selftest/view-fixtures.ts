@@ -715,6 +715,7 @@ export const VIEWS: Record<string, unknown> = {
   "findings": [
    {
     "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
     "file": "src/app.ts",
     "id": 1,
     "label": "PROVEN",
@@ -724,6 +725,7 @@ export const VIEWS: Record<string, unknown> = {
    },
    {
     "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
     "file": "src/mail.ts",
     "id": 2,
     "label": "HEURISTIC",
@@ -1028,6 +1030,7 @@ export const VIEWS: Record<string, unknown> = {
   "findings": [
    {
     "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
     "file": "src/app.ts",
     "id": 1,
     "label": "PROVEN",
@@ -1037,6 +1040,7 @@ export const VIEWS: Record<string, unknown> = {
    },
    {
     "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
     "file": "src/mail.ts",
     "id": 2,
     "label": "HEURISTIC",
@@ -1336,6 +1340,7 @@ export const VIEWS: Record<string, unknown> = {
   "findings": [
    {
     "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
     "file": "src/app.ts",
     "id": 1,
     "label": "PROVEN",
@@ -1345,6 +1350,7 @@ export const VIEWS: Record<string, unknown> = {
    },
    {
     "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
     "file": "src/mail.ts",
     "id": 2,
     "label": "HEURISTIC",
@@ -1638,6 +1644,7 @@ export const VIEWS: Record<string, unknown> = {
   "findings": [
    {
     "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
     "file": "src/app.ts",
     "id": 1,
     "label": "PROVEN",
@@ -1647,6 +1654,7 @@ export const VIEWS: Record<string, unknown> = {
    },
    {
     "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
     "file": "src/mail.ts",
     "id": 2,
     "label": "HEURISTIC",
@@ -1945,6 +1953,7 @@ export const VIEWS: Record<string, unknown> = {
   "findings": [
    {
     "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
     "file": "src/app.ts",
     "id": 1,
     "label": "PROVEN",
@@ -1954,6 +1963,7 @@ export const VIEWS: Record<string, unknown> = {
    },
    {
     "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
     "file": "src/mail.ts",
     "id": 2,
     "label": "HEURISTIC",
@@ -3360,6 +3370,7 @@ export const VIEWS: Record<string, unknown> = {
   "findings": [
    {
     "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
     "file": "src/app.ts",
     "id": 1,
     "label": "PROVEN",
@@ -3369,6 +3380,7 @@ export const VIEWS: Record<string, unknown> = {
    },
    {
     "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
     "file": "src/mail.ts",
     "id": 2,
     "label": "HEURISTIC",
@@ -3707,6 +3719,7 @@ export const VIEWS: Record<string, unknown> = {
   "findings": [
    {
     "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
     "file": "src/app.ts",
     "id": 1,
     "label": "PROVEN",
@@ -3716,6 +3729,7 @@ export const VIEWS: Record<string, unknown> = {
    },
    {
     "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
     "file": "src/mail.ts",
     "id": 2,
     "label": "HEURISTIC",
@@ -4007,6 +4021,7 @@ export const VIEWS: Record<string, unknown> = {
   "findings": [
    {
     "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
     "file": "src/app.ts",
     "id": 1,
     "label": "PROVEN",
@@ -4016,6 +4031,7 @@ export const VIEWS: Record<string, unknown> = {
    },
    {
     "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
     "file": "src/mail.ts",
     "id": 2,
     "label": "HEURISTIC",
@@ -4370,6 +4386,7 @@ export const VIEWS: Record<string, unknown> = {
   "findings": [
    {
     "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
     "file": "src/app.ts",
     "id": 1,
     "label": "PROVEN",
@@ -4379,6 +4396,7 @@ export const VIEWS: Record<string, unknown> = {
    },
    {
     "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
     "file": "src/mail.ts",
     "id": 2,
     "label": "HEURISTIC",
@@ -4681,6 +4699,7 @@ export const VIEWS: Record<string, unknown> = {
   "findings": [
    {
     "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
     "file": "src/app.ts",
     "id": 1,
     "label": "PROVEN",
@@ -4690,6 +4709,7 @@ export const VIEWS: Record<string, unknown> = {
    },
    {
     "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
     "file": "src/mail.ts",
     "id": 2,
     "label": "HEURISTIC",
@@ -4724,6 +4744,7 @@ export const VIEWS: Record<string, unknown> = {
    "steps": [
     "/plugin/scripts/temper intent complete",
     "When .temper/specs/pw/build-context.json records deviations from the plan, write them into plan.md as a ## Deviations section.",
+    "/plugin/scripts/temper report --html",
     "/plugin/scripts/temper state archive",
     "git add -- .temper/specs/pw/",
     "git commit -m \"{a conventional commit message for the feature}\"",
@@ -4995,6 +5016,7 @@ export const VIEWS: Record<string, unknown> = {
   "findings": [
    {
     "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
     "file": "src/app.ts",
     "id": 1,
     "label": "PROVEN",
@@ -5004,6 +5026,7 @@ export const VIEWS: Record<string, unknown> = {
    },
    {
     "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
     "file": "src/mail.ts",
     "id": 2,
     "label": "HEURISTIC",
@@ -9286,6 +9309,7 @@ export const VIEWS: Record<string, unknown> = {
   "findings": [
    {
     "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
     "file": "src/app.ts",
     "id": 1,
     "label": "PROVEN",
@@ -9295,6 +9319,7 @@ export const VIEWS: Record<string, unknown> = {
    },
    {
     "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
     "file": "src/mail.ts",
     "id": 2,
     "label": "HEURISTIC",
@@ -9685,6 +9710,7 @@ export const VIEWS: Record<string, unknown> = {
   "findings": [
    {
     "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
     "file": "src/app.ts",
     "id": 1,
     "label": "PROVEN",
@@ -9694,6 +9720,7 @@ export const VIEWS: Record<string, unknown> = {
    },
    {
     "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
     "file": "src/mail.ts",
     "id": 2,
     "label": "HEURISTIC",

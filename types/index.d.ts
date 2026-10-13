@@ -22,9 +22,15 @@ export type TemperView = {
   failedChecks: Array<{ name: string; detail: string }>
   groups: Array<{ id: string; title: string; state: 'waiting' | 'running' | 'passed' | 'parked'; tasks: TemperTask[] }> | null
   findings: Array<{ id: string; severity: string; claim: string }>
-  criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string }>
+  criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string; evidence: string[] }>
   passed: number
   total: number
+  clock: { minutes: number | null; tokens: number }
+  loopMarks: Array<{ from: string; to: string; iteration: number; max: number; reason: string }>
+  planTree: { approved: boolean; groups: Array<{ id: string; title: string; files: string[] }>; other: string[] } | null
+  grid: Array<{ id: string; title: string; status: string; tasks: Array<{ n: number; title: string; state: 'waiting' | 'running' | 'red' | 'green' | 'pass' | 'fail' | 'parked'; model: string | null; retries: number }> }> | null
+  findingRows: Array<{ id: number; severity: string; confidence: number | null; where: string | null; claim: string; state: 'open' | 'resolved' | 'accepted' }>
+  markers: Array<{ name: string; state: 'pass' | 'fail' | 'info' | 'none'; detail: string; lines: string[] }>
   decisions: string[]
   loops: string[]
   line: string | null

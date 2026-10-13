@@ -1144,11 +1144,12 @@ cmd_state() {
 # ---------------------------------------------------------------------------
 
 cmd_evidence_add() {
-  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion=""
+  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion="" confidence=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stage) stage="$2"; shift 2 ;;
       --claim) claim="$2"; shift 2 ;;
+      --confidence) confidence="$2"; shift 2 ;;
       --cmd) cmd="$2"; shift 2 ;;
       --exit) exit_code="$2"; shift 2 ;;
       --artifact) artifact="$2"; shift 2 ;;
@@ -1163,6 +1164,10 @@ cmd_evidence_add() {
   done
   [[ -n "$stage" && -n "$claim" ]] || { echo "FAIL: --stage and --claim are required" >&2; return 1; }
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
+  # A review finding's confidence (reference/review.md): a number from 0 to 1.
+  if [[ -n "$confidence" ]] && ! [[ "$confidence" =~ ^(0(\.[0-9]+)?|1(\.0+)?)$ ]]; then
+    echo "FAIL: --confidence takes a number from 0 to 1 (0.85), got '$confidence'" >&2; return 1
+  fi
   _ensure_dirs
 
   # A row claimed PROVEN is mechanically re-checked here — never taken on faith.
@@ -1186,15 +1191,17 @@ cmd_evidence_add() {
   local entry
   entry=$(python3 -c "
 import json, sys
-claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, scenario, criterion, ts = sys.argv[1:]
+claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, scenario, criterion, confidence, ts = sys.argv[1:]
 e = {'claim': claim, 'cmd': cmd or None,
      'exit_code': int(exit_code) if exit_code != '' else None,
      'artifact': artifact or None, 'sha256': artifact_hash or None,
      'value': (float(value) if value != '' else None),
      'severity': severity or None, 'phase': phase or None, 'scenario': scenario or None,
      'criterion': criterion or None, 'label': label, 'ts': ts}
+if confidence != '':
+    e['confidence'] = float(confidence)
 print(json.dumps(e))
-" "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$(_now)")
+" "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$(_now)")
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim"
 }
@@ -4735,6 +4742,14 @@ _view_write() {
 cmd_report() {
   local as_json=false
   [[ "${1:-}" == "--json" ]] && as_json=true
+  # The end of run report as one page to share (scripts/run_report.py), from the view as the run stands now. It is
+  # written to the spec folder (report.html), so the commit carries it; -o OUT writes elsewhere, -o - prints it.
+  if [[ "${1:-}" == "--html" ]]; then
+    shift
+    _view_write
+    python3 "$SCRIPTS_DIR/run_report.py" render --view "$TEMPER_DIR/view.json" --root "$REPO_ROOT" "$@"
+    return
+  fi
   [[ -f "$GATES_FILE" ]] || echo '{}' > "$GATES_FILE"
   local usage_json; usage_json="$(_usage_json)"
   if [[ "$as_json" == "true" ]]; then
@@ -5137,6 +5152,7 @@ Usage:
   temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
   temper usage add --stage S [--model M] [--tokens T] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
   temper next [--json]            (what the run does next: a stage to run, a question to ask, or the commit; docs/flow.md)
+  temper report --html [-o OUT]   (the end of run report as one page, to report.html in the spec folder)
   temper intent accept|complete   (the Status header of the run's intent.md)
   temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
   temper group continue G<n>      (the person's Continue at a group question)

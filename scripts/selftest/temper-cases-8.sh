@@ -165,9 +165,9 @@ assert_eq "next: config suggestions add their option" "Commit (Recommended)|Revi
 rm -f .temper/specs/demo/config-suggestions.json
 assert_eq "next: at Commit with no verdict, the commit gate runs" "work|gate commit" "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1]")"
 gpass commit
-assert_eq "next: a passed commit gate gives the commit steps, ending with state clear and the report" \
-  "work|intent complete|state archive|state clear|report" \
-  "$(nx "s = d['steps']; '|'.join([d['action'], s[0].split('temper ', 1)[1], s[2].split('temper ', 1)[1], s[-2].split('temper ', 1)[1], s[-1].split('temper ', 1)[1]])")"
+assert_eq "next: a passed commit gate gives the commit steps: the report page first, ending with state clear and the report" \
+  "work|intent complete|report --html|state archive|state clear|report" \
+  "$(nx "s = d['steps']; '|'.join([d['action'], s[0].split('temper ', 1)[1], s[2].split('temper ', 1)[1], s[3].split('temper ', 1)[1], s[-2].split('temper ', 1)[1], s[-1].split('temper ', 1)[1]])")"
 gfail commit "review gate" "FAIL, no override recorded"
 assert_eq "next: a failed commit gate asks to override the failed stages, with a reason" \
   "Override and commit|commitOverride|override review --reason \"{reason}\"|gate commit" \
@@ -331,4 +331,36 @@ d = json.loads(open(sys.argv[1]).read().split("= ", 1)[1])
 print(d["armed-build-pass"]["next"]["calls"][0].split("temper ", 1)[1])
 PY
 )"
+# --- the end of run report page (scripts/run_report.py) ---
+fresh; printf '# Intent: </style><script>x</script>\n' > .temper/specs/demo/intent.md
+"$TEMPER" evidence add --stage review --claim "src/a.ts:3 a token </td> leaks" --severity high --confidence 0.85 >/dev/null 2>&1
+assert_eq "report --html: writes report.html in the spec folder" "OK: wrote $WORKDIR/.temper/specs/demo/report.html|1" \
+  "$("$TEMPER" report --html 2>&1)|$([[ -f .temper/specs/demo/report.html ]] && echo 1 || echo 0)"
+assert_eq "report --html: run text is escaped, so it cannot break the page" "0|yes" \
+  "$(grep -c '</style><script>' .temper/specs/demo/report.html)|$(grep -q '&lt;/style&gt;&lt;script&gt;' .temper/specs/demo/report.html && echo yes || echo no)"
+assert_eq "report --html: a finding shows its confidence and where it is" "1|1" \
+  "$(grep -c '<td>0.85</td>' .temper/specs/demo/report.html)|$(grep -c '<code>src/a.ts:3</code>' .temper/specs/demo/report.html)"
+assert_eq "report --html: -o - prints the page" "1" "$("$TEMPER" report --html -o - | grep -c '<!doctype html>')"
+assert_exit "report --html: never writes inside the plugin folder" 2 "$TEMPER" report --html -o "$REPO_ROOT/x.html"
+assert_exit "evidence add: a confidence outside 0 to 1 is refused" 1 "$TEMPER" evidence add --stage review --claim x --confidence 1.5
+"$TEMPER" usage add --stage plan --model claude-sonnet-4-6 --tokens 1500000 --ms 120000 >/dev/null 2>&1
+"$TEMPER" usage add --stage build --model claude-haiku-4-5 --tokens 2500 --ms 3000 >/dev/null 2>&1
+"$TEMPER" report --html >/dev/null 2>&1
+assert_eq "report --html: time and tokens by stage and by model, in words" "1|1|1|1" \
+  "$(grep -c '<td>claude-haiku-4-5</td><td>1</td><td>2k</td><td>3 s</td>' .temper/specs/demo/report.html)|$(grep -c '<td>claude-sonnet-4-6</td><td>1</td><td>1.5M</td><td>2 min</td>' .temper/specs/demo/report.html)|$(grep -c '<th>Model</th><th>Launches</th>' .temper/specs/demo/report.html)|$(grep -c '<td>plan</td><td>1</td><td>1.5M</td><td>2 min</td>' .temper/specs/demo/report.html)"
+# Done only once the Commit gate has passed; a run at Commit before that is still in progress.
+python3 - "$WORKDIR" <<'PY'
+import json, sys
+base = {"version": 1, "run": {"slug": "demo", "title": "t", "spec": ".temper/specs/demo", "stage": "commit"},
+        "loops": [{"from": "review", "to": "build", "reason": "a real bug", "iteration": 1, "max": 2}]}
+for name, verdict in (("passed", "PASS"), ("waiting", None)):
+    v = dict(base, stages=[{"id": "build", "label": "Build", "mark": "passed", "verdict": "PASS"},
+                           {"id": "review", "label": "Review", "mark": "passed", "verdict": "PASS"},
+                           {"id": "commit", "label": "Commit", "mark": "here", "verdict": verdict}])
+    json.dump(v, open("%s/commit-%s.json" % (sys.argv[1], name), "w"))
+PY
+assert_eq "report --html: Done once the Commit gate passed, In progress before" "1|0|1" \
+  "$(python3 "$REPO_ROOT/scripts/run_report.py" render --view commit-passed.json -o - | grep -c ' · Done</div>')|$(python3 "$REPO_ROOT/scripts/run_report.py" render --view commit-waiting.json -o - | grep -c ' · Done</div>')|$(python3 "$REPO_ROOT/scripts/run_report.py" render --view commit-waiting.json -o - | grep -c 'In progress (Commit)')"
+assert_eq "report --html: a loop back reads with the stage names and its reason" "1" \
+  "$(python3 "$REPO_ROOT/scripts/run_report.py" render --view commit-passed.json -o - | grep -c '↺ Review to Build (1 of 2): a real bug')"
 setup
