@@ -89,6 +89,7 @@ One methodology file per command, each written out in full:
 - `/temper:fix`: `${CLAUDE_PLUGIN_ROOT}/reference/fix.md`
 - `/temper:pack`: `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`
 - `/temper:status`: `${CLAUDE_PLUGIN_ROOT}/reference/status.md`
-- `/temper` and `/temper:fix` orchestration:
-  `${CLAUDE_PLUGIN_ROOT}/reference/orchestrator-patterns.md` and
+- `/temper` and `/temper:fix` orchestration: `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`
+  says each step (`${CLAUDE_PLUGIN_ROOT}/docs/flow.md`); the run files and hand off files are in
+  `${CLAUDE_PLUGIN_ROOT}/reference/orchestrator-patterns.md`, and an armed run in
   `${CLAUDE_PLUGIN_ROOT}/reference/autonomy.md`

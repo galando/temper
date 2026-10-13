@@ -31,12 +31,14 @@ the person; and the mod checks that the person answered before a step only the p
 ## Decision
 
 1. **`temper next --json` is the one source of "what comes next".** It reads the run and prints
-   one action: `none` (no run), `run` (a stage brief to launch, with its agent type, model, prompt
-   and the calls to make after it), `ask` (a question with its exact header, question and options;
-   each option names its move, whether it needs the person's reason, the reason question, and the
-   exact CLI calls and steps it maps to), `auto` (an armed run's own move), `commit` (the commit
-   steps) or `park`. The orchestrator copies the question and the options exactly as given. The
-   page no longer lists any gate's options. The schema is in `docs/flow.md`.
+   one action: `none` (no run), `work` (CLI calls to make, stage briefs to launch with their agent
+   type, model, prompt and the calls to make before and after each, and the commit steps), `ask` (a
+   question with its exact header, question and options; each option names its move, whether it
+   needs the person's reason, the reason question, and the exact CLI calls and steps it maps to),
+   `wait` (Build tasks still running), `auto` (an armed run's own move) or `broken` (the run state
+   does not fit its spec folder). A park is an `auto` call (`temper park`), after which `next` asks
+   the gate question again. The orchestrator copies the question and the options exactly as given.
+   The page no longer lists any gate's options. The schema is in `docs/flow.md`.
 2. **`.temper/view.json` is the one thing the mod reads of the CLI.** The CLI writes it after
    every command that changes the run: a version field, the run, each stage and its mark (passed,
    failed, skipped, here, to come), the status line, the current question (the same `ask` as

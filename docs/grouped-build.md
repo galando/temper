@@ -19,8 +19,8 @@ Haiku task agents cost about a fourteenth of a Sonnet build agent ([ADR 0013](de
 
 The `temper` CLI, not a prompt, decides what is ready, what passes and what merges.
 The orchestrator launches every task agent itself, so grouped Build works when subagents
-cannot launch subagents (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`). The loop it runs is
-`reference/build-groups.md`. When Review or Check loops back to Build, the groups are not
+cannot launch subagents (`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1`). `temper next --json` gives it
+each step of the loop ([the flow](flow.md)). When Review or Check loops back to Build, the groups are not
 re-run: the Build brief (`agents/build.md`) runs once on the feature branch as a fix pass.
 
 ## Tuning it

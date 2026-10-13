@@ -1114,9 +1114,9 @@ for name in sys.argv[2:]:
         print(name)
 ' "$REPO_ROOT" scripts/validate-plugin.sh scripts/validate-docs.sh scripts/validate-readme.sh \
     scripts/validate-directory.sh scripts/quality-check.sh scripts/check-known-limits.sh \
-    scripts/check-mod-calls.sh scripts/check-original-options.sh scripts/version-bump.sh \
+    scripts/check-mod-calls.sh scripts/version-bump.sh \
     scripts/selftest/test-validate-directory.sh)"
-for vp_script in validate-readme.sh check-known-limits.sh check-original-options.sh; do
+for vp_script in validate-readme.sh check-known-limits.sh; do
   assert_eq "$vp_script prints the same with CDPATH naming the plugin folder" \
     "$(cd "$REPO_ROOT" && env -u CDPATH bash "scripts/$vp_script" 2>&1)" \
     "$(cd "$REPO_ROOT" && CDPATH="$REPO_ROOT" bash "scripts/$vp_script" 2>&1)"

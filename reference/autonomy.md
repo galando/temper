@@ -1,70 +1,43 @@
 ---
-description: "Autonomous Continuation mechanics for the /temper orchestrator"
+description: "Autonomous Continuation: what an armed run does, and what it never does"
 ---
 
 # Autonomous Continuation
 
-Read by the `/temper` orchestrator (`${CLAUDE_PLUGIN_ROOT}/commands/temper.md`) **only when
-`autonomy.enabled: true`** — with the block absent or false (the default), the
-orchestrator never loads this file and every gate is the ordinary interactive one. The
-temper CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/temper`; every other path here is in the
-user's project.
+Opt in: `autonomy.enabled: true` in `.claude/temper.config`. With the block absent or `false` (the
+default), every gate is the ordinary question to the person. The temper CLI computes every move
+of an armed run (`temper next --json`, ADR 0013); this page says what those moves are. The temper
+CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/temper`.
 
-Opt-in, armed by the human at the **plan gate only** — never at invocation or mid-run.
-The Intent gate is always interactive: no unattended run starts without a human having
-accepted the intent.
+**Arming.** Only the person arms a run, only at the plan gate, and only after the plan check
+passed: the Plan question then offers "Stage by stage (Recommended)" and "Autonomous: run the rest
+unattended", asked like every gate with the header `Temper gate`. Either answer approves the plan.
+"Autonomous" runs `temper state set run_mode autonomous` while the run is still at Plan, then the
+plan's own steps. The Intent gate is always a question: no unattended run starts without a person
+having accepted the intent.
 
-**Arming** (at the plan gate, on PASS, after human review): replace "Continue to Build"
-with "Stage by stage (Recommended)" (`run_mode: interactive`) / "Autonomous: run the
-rest unattended" (`run_mode: autonomous`) / "Save for later", asked with `AskUserQuestion`,
-header `Temper gate`, as every gate. Either of the first two is the person's approval of the
-plan. For "Autonomous", first run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set run_mode autonomous`,
-while the run is still at Plan, then do the plan's On Continue steps. The order matters with
-the mod: the answer counts at the step the run is at, so the arming call goes through only
-before the plan's `state advance` moves the run on.
+**What an armed run does by itself** (each is an `auto` action of `temper next`):
 
-**While `run_mode == autonomous`, every post-plan gate:** run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate {stage}` as
-usual. **PASS** → auto-select Continue, no `AskUserQuestion` (but still print the summary
-box — an unattended run must leave a scroll-back-readable record). **FAIL** → loop
-automatically at the same budget as interactive mode, except Build→Plan (always returns
-to a human, never auto-loops); budget exhausted → park instead of asking. A Review or Check
-FAIL loops back to Build (`state loop {review|check} build`); with the Temper mod the guard lets
-that loop through only in an armed run (`run_mode: autonomous` and `autonomy.enabled: true`). **At commit:**
-`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` already checks blast radius + park-on-touch (autonomous-only) along
-with every upstream gate — PASS or FAIL, **always park**, autonomy never makes the final feature commit.
+- After a passed Design, Build, Review or Check, it goes on to the next stage.
+- In Build, each passed group's question is answered Continue; "Change" and "Stop" stay the
+  person's. Each group's gate still runs, and its panel still prints.
+- After a failed Review or Check, it loops back to Build, within the same loop budget as an
+  interactive run (`loops.max-per-type`). Build never loops back to Plan by itself.
+- It parks when the budget is spent, when Build fails, when a group parks (a task failed on Haiku,
+  its retry and the Sonnet escalation, or made a commit the CLI did not), and at the commit.
 
-**Narrowed invariant (grouped Build, design Resolution 1):** autonomy never pushes, never
-merges to a remote, never re-plans unattended and never makes the final feature commit; it
-always parks. It does allow the two local, CLI-made writes of grouped Build: the task
-commits of a task's declared files on its `temper/{slug}/T{N}` task branch and their merge into
-the `temper/{slug}/{G}` group branch (`temper task gate`) and the local `temper integrate` merge into the feature branch. Besides the `wip:` stage checkpoints (see Operational safety), nothing else commits.
+**A park** runs `temper park`: the run turns interactive again, `.temper/autonomy-report.md` gets
+the verdict (`SHIP-PENDING-COMMIT` or `PARKED-NEEDS-DECISION`), where it parked, why, the branch
+and the report, ending with "The run waits for you at the gate it parked at." The next `temper
+next` asks that gate's question; the person never has to type to go on.
 
-**Groups (grouped Build, the default):** each group's gate (`temper group gate G`) auto-continues
-on PASS, with no `AskUserQuestion`; the group panel still prints. **Change** (`temper group
-reopen`) and **Stop** stay interactive-only. A parked group (a task failed its Haiku retry
-and the Sonnet escalation) parks the run once no other group is ready; independent groups
-finish first. An `integrate` FAIL parks the run before Review. `autonomy.max-blast-radius`
-bounds each single group's declared files (the plan gate rejects a larger group; Plan
-splits it), and the commit gate parks when files changed outside the union of declared
-files; it is no longer compared with the feature total.
+**What it never does.** It never pushes, never merges to a remote, never plans again by itself, and
+never makes the final feature commit: at the commit it always parks, PASS or FAIL. The only commits
+an armed run makes are the CLI's own local ones in Build: a task's declared files on its task
+branch, their merge into the group branch (`temper task gate`), and the merge of the groups into
+the feature branch (`temper integrate`). The commit gate also checks, for an armed run only, that
+every changed file is one the plan declared (`autonomy.max-blast-radius` bounds each group's
+declared files at the plan gate) and that no changed file matches `autonomy.park-on-touch`.
 
-**The user is not watching.** You are operating autonomously. The user is not watching
-in real time and cannot answer questions mid-task, so asking 'Want me to...?' or
-'Shall I...?' will block the work. For reversible actions that follow from the approved
-plan, proceed without asking; the only stop is a park. Before ending your turn, check
-your last paragraph: if it is a plan, a question, or a promise about work you have not
-done, do that work now with tool calls. End your turn only at a park, or when the run
-is blocked on input only a human can give.
-
-**Park:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set run_mode interactive` (so a plain resume lands here
-normally), write `.temper/autonomy-report.md` (`**Verdict:**
-SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION`, `**Parked at:**`/`**Reason:**` verbatim from
-`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate`, `**Branch:**`, the `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` ledger, and "The run waits
-for you at the gate it parked at."). Then ask that gate as an interactive run would, with
-`AskUserQuestion`, header `Temper gate`, which waits for the person: at SHIP-PENDING-COMMIT the
-one Commit question of a passed Check, at a FAIL that stage's FAIL options. The person never
-has to type to go on.
-
-**Operational safety (hardcoded — see `${CLAUDE_PLUGIN_ROOT}/templates/temper.config.default`):** refuse a
-dirty tree unless confirmed; `git commit -m "wip: {stage} passed"` after each PASS stage
-(a crash loses at most one stage); `.temper/autonomy.lock` refuses a second concurrent run.
+**The person is not watching.** Claude does not ask "Shall I...?" in an armed run: the only stop
+is a park.

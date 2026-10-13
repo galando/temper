@@ -21,8 +21,8 @@ rules, read related existing code, skip branch verification (the user decides).
 
 ## Execute Tasks in Order
 
-**Who runs this.** Build runs in groups (`${CLAUDE_PLUGIN_ROOT}/reference/build-groups.md`): each
-task is one task agent following `${CLAUDE_PLUGIN_ROOT}/agents/build-task.md`, and this page is the
+**Who runs this.** Build runs in groups, and the temper CLI runs the group loop (`temper next`
+starts the groups, hands out the ready tasks and gates them): each task is one task agent following `${CLAUDE_PLUGIN_ROOT}/agents/build-task.md`, and this page is the
 TDD method behind that brief. The Build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) runs it as a
 fix pass when Review or Check loops back to Build: every task is already done, so it fixes what
 the feedback file names, test-first, and does not re-run the tasks.

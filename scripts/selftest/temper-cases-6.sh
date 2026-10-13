@@ -379,8 +379,6 @@ assert_exit "RED: exit 2 of a command that is not pytest is still a RED" 0 "$TEM
 # the task agent type carries only the tools a task needs, and the loop launches it
 assert_eq "task brief: frontmatter restricts the tools to Read, Edit, Write, Bash, Glob, Grep" "1" \
   "$(grep -c '^tools: Read, Edit, Write, Bash, Glob, Grep$' "$REPO_ROOT/agents/build-task.md")"
-assert_eq "grouped loop: launches the temper:temper-build-task agent type" "1" \
-  "$(grep -c 'subagent_type: temper:temper-build-task' "$REPO_ROOT/reference/build-groups.md")"
 assert_eq "task brief: tests call the real code, RED fails on an assertion" "1|1" \
   "$(grep -c 'Test the real code' "$REPO_ROOT/agents/build-task.md")|$(grep -c 'FAIL on an assertion' "$REPO_ROOT/agents/build-task.md")"
 # Plan: few groups with parallel tasks, and the complexity tier counts production files only
@@ -451,8 +449,8 @@ ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 --model m 2>&1)"; rc=$?
 assert_eq "merge park: the rerun passes and merges the kept commit" "0|yes|work src/a.sh" "$rc|$(d_on_g1 "$TSHA")|$(d_gfile src/a.sh)"
 # Blocking questions are asked with AskUserQuestion in every stage, with the mod or without it
-assert_eq "orchestrator: Blocking questions go to one AskUserQuestion in every stage" "1|1|1" \
-  "$(grep -c '^   \*\*Blocking questions first, in every stage:\*\*' "$REPO_ROOT/commands/temper.md")|$(grep -c 'Never list Blocking questions as text' "$REPO_ROOT/commands/temper.md")|$(grep -c 'asked as the Gates section says (Blocking questions' "$REPO_ROOT/commands/temper.md")"
+assert_eq "orchestrator: Blocking questions go to one AskUserQuestion before the gate question" "1|1" \
+  "$(grep -c '^- \*\*Blocking questions\*\* (the `blocking` list): ask them in one AskUserQuestion call' "$REPO_ROOT/commands/temper.md")|$(grep -c 'Never list them as text to answer' "$REPO_ROOT/commands/temper.md")"
 # --- Better tests from small task agents: Plan writes the cases, task show adds a pattern test ---
 gp_setup
 assert_exit "cases: the fixture plan with 2 cases per task passes" 0 "$TEMPER" gate plan

@@ -211,65 +211,42 @@ else
   fail "grouped Build docs incomplete (docs/grouped-build.md, link in getting-started.md, ADR 0011 Accepted with D-01..D-07)"
 fi
 
-# 8. One flow (ADR 0012, after the flow audit of PR #97): at every point where a run waits for the person, the
-# orchestrator pages ask an AskUserQuestion with options and never send the person to type a command or press a
-# button; the person decides only in that dialog, with the mod and without it, in every mode; the stage commands
-# are doors into /temper. Each row is a page, a regular expression it must hold (+) or must not hold (-), and why.
-# Whitespace in a pattern matches any run of spaces and line breaks, so a reflowed paragraph still matches.
+# 8. One flow (ADR 0012, ADR 0013): the orchestrator pages are a loop over `temper next`. They list no gate
+# option and name no move (the CLI gives each one), ask every question exactly as the CLI wrote it, never send
+# the person to type a command or press a button, and the stage commands are doors into /temper. Each row is a
+# page, a regular expression it must hold (+) or must not hold (-), and why. Whitespace in a pattern matches
+# any run of spaces and line breaks, so a reflowed paragraph still matches.
 FLOW_TEXT=$(python3 - "$REPO_ROOT" <<'PY'
 import re, sys
 root = sys.argv[1]
 ROWS = [
-    ('commands/temper.md', '-', r'type /temper:temper approve', 'the wait line sends the person to type a command'),
-    ('commands/temper.md', '-', r'Choose on the Temper bar', 'no wait line sends the person to the bar'),
-    ('commands/temper.md', '-', r'With the Temper bar', 'one flow: no branch of the orchestrator for the bar'),
-    ('commands/temper.md', '-', r'Temper buttons: none', 'one flow: no mode without buttons'),
-    ('commands/temper.md', '-', r'continue <stage>', 'the mod sends no continue word'),
-    ('commands/temper.md', '+', r'Ask the gate with `AskUserQuestion`, header `Temper gate`', 'every gate is the Temper gate question'),
-    ('commands/temper.md', '+', r'with the mod or without it, in every mode', 'the gate is the same in every setup'),
-    ('commands/temper.md', '-', r'state set next_stage \{to\}', 'a loop back is state loop alone'),
+    ('commands/temper.md', '+', r'scripts/temper next --json', 'the orchestrator is a loop over temper next'),
+    ('commands/temper.md', '+', r'Never compute a gate, an option or a next stage yourself', 'the CLI decides what comes next'),
+    ('commands/temper.md', '+', r'exactly as given', 'every question goes to the person as the CLI wrote it'),
+    ('commands/temper.md', '-', r'Continue to Plan \(Recommended\)', 'the page lists no gate option'),
+    ('commands/temper.md', '-', r'"Override and commit"', 'the page lists no gate option'),
+    ('commands/temper.md', '-', r'state advance [a-z]+_complete', 'the page names no move; the CLI gives each one'),
+    ('commands/temper.md', '-', r'type /temper:temper approve', 'no line sends the person to type a command'),
+    ('commands/temper.md', '-', r'Temper bar', 'no line sends the person to the bar'),
+    ('commands/temper.md', '+', r'never choose "Start over" yourself', 'only the person starts over'),
     ('commands/temper.md', '+', r'three at most', 'a Blocking question holds three choices plus Carry forward'),
-    ('commands/temper.md', '+', r'"More options"', 'a gate with more than four options puts the rest behind More options'),
-    ('commands/temper.md', '+', r'"Commit \(Recommended\)"', 'a passed Check asks one Commit question'),
-    ('reference/build-groups.md', '-', r'the bar has no group-gate buttons', 'the bar draws no group gate'),
-    ('reference/build-groups.md', '-', r'Temper bar', 'the group gates are questions'),
-    ('reference/build-groups.md', '+', r'"Run Build again \(Recommended\)"', 'the completion gate on FAIL'),
-    ('reference/build-groups.md', '+', r'never before', 'a task is gated only after its agent returned'),
-    ('reference/orchestrator-patterns.md', '+', r'state init \{slug\} --command \{command\}', 'Start over in Resume Validation keeps the command of the run'),
-    ('reference/orchestrator-patterns.md', '-', r'Run \{command\} when ready', 'a saved run says how to take it up again'),
-    ('commands/fix.md', '-', r'Start over \(re-investigate\)', 'the fix resume answer must be the plain Start over'),
-    ('commands/fix.md', '+', r'header `Temper resume`', 'the fix resume question is the Temper resume question'),
-    ('commands/temper.md', '+', r'ask the gate question again with "Override and continue"', 'a BLOCKED loop asks the gate again'),
-    ('commands/temper.md', '+', r'either answer is the person\'s approval of the plan', 'the arming question records the approval'),
-    ('reference/autonomy.md', '+', r'header `Temper gate`, as every gate', 'the arming question has the gate header'),
-    ('reference/autonomy.md', '+', r'while the run is still at Plan', 'arm before the plan advance moves the run on'),
-    ('commands/temper.md', '+', r'"Loop back to Plan" \(`state loop design plan`', 'the Design gate on FAIL'),
-    ('commands/temper.md', '+', r'`Accept finding \{id\}`', 'a Review FAIL can accept one finding by a click'),
-    ('commands/temper.md', '+', r'"Override and commit" or "Save for later"', 'the commit gate FAIL asks the Temper gate question'),
-    ('commands/fix.md', '+', r'the mod stands aside in a `/temper:fix` run', 'a fix run asks its own questions with the mod'),
-    ('reference/build-groups.md', '+', r'"Keep the agent\'s commits"', 'a parked group is a question with options'),
-    ('reference/build-groups.md', '-', r'user with the CLI\'s reason; nothing else is decided here', 'a parked group goes to the person as a question'),
-    ('reference/plan.md', '-', r'write `.temper/build-state.json`', 'the guard refuses a hand written run state'),
-    ('reference/check.md', '-', r'write `build-state.json` with', 'the guard refuses a hand written run state'),
-    ('reference/autonomy.md', '-', r'Run /temper to resume', 'a park waits at its gate question, not for a typed command'),
-    ('reference/autonomy.md', '+', r'The run waits for you at the gate it parked at', 'a park shows its gate'),
-    ('commands/temper.md', '+', r'This reason question holds for every question with the header `Temper gate`', 'the reason question in every mode'),
-    ('commands/temper.md', '+', r'Start over is under the gate question\'s "More options"', 'Start over at the resume of the same feature is a click'),
-    ('commands/temper.md', '+', r'in its own `AskUserQuestion` call', 'More options is a question of its own, so its move is read'),
-    ('commands/temper.md', '+', r'set its complexity from the `\*\*Complexity:\*\*` header', 'a door sets the complexity, so the Design door can move on to Design'),
-    ('commands/temper.md', '-', r'the bar\'s "Continue to Commit" and then its Commit button', 'no bar button is the Commit choice'),
-    ('commands/temper.md', '+', r'make the fourth \*\*"More options"\*\*', 'four options per question'),
     ('commands/temper.md', '+', r'## Entering at a stage', 'the stage commands are doors into /temper'),
+    ('commands/temper.md', '+', r'--enter \{stage\}', 'a door starts its run at its stage'),
+    ('commands/temper.md', '+', r'state set complexity \{tier\}', 'a door sets the complexity, so the Design door can move on to Design'),
     ('commands/plan.md', '+', r'"Entering at a stage"', 'the Plan command is a door into /temper'),
     ('commands/design.md', '+', r'"Entering at a stage"', 'the Design command is a door into /temper'),
     ('commands/build.md', '+', r'"Entering at a stage"', 'the Build command is a door into /temper'),
     ('commands/review.md', '+', r'"Entering at a stage"', 'the Review command is a door into /temper'),
     ('commands/check.md', '+', r'"Entering at a stage"', 'the Check command is a door into /temper'),
+    ('commands/fix.md', '+', r'the mod stands aside in a `/temper:fix` run', 'a fix run asks its own questions with the mod'),
+    ('commands/fix.md', '+', r'scripts/temper next --json', 'after its RCA a fix run is driven by temper next'),
+    ('commands/fix.md', '-', r'"Run Fix again \(Recommended\)"', 'the page lists no gate option'),
     ('commands/fix.md', '-', r'Ready to push', 'the fix run invites no typing'),
-    ('commands/fix.md', '+', r'"Run Fix again \(Recommended\)"', 'the Fix gate on FAIL'),
-    ('commands/fix.md', '+', r'"Loop back to Fix \(Recommended\)"', 'the fix Check on FAIL'),
-    ('commands/fix.md', '+', r'"Accept a finding" \(as', 'the fix Review on FAIL can accept a finding'),
-    ('reference/orchestrator-patterns.md', '-', r'choose Resume on the Temper bar', 'there is no Resume button to name'),
+    ('reference/plan.md', '-', r'write `.temper/build-state.json`', 'the guard refuses a hand written run state'),
+    ('reference/check.md', '-', r'write `build-state.json` with', 'the guard refuses a hand written run state'),
+    ('reference/autonomy.md', '-', r'Run /temper to resume', 'a park waits at its gate question, not for a typed command'),
+    ('reference/autonomy.md', '+', r'The run waits for you at the gate it parked at', 'a park shows its gate'),
+    ('reference/autonomy.md', '+', r'final feature commit', 'autonomy never makes the final feature commit'),
 ]
 for page, sign, pattern, why in ROWS:
     try:
@@ -286,7 +263,7 @@ PY
 if [[ -z "$FLOW_TEXT" ]]; then
   ok
 else
-  fail "orchestrator texts of the flow audit:"
+  fail "orchestrator texts of the one flow:"
   echo "$FLOW_TEXT" | sed 's/^/  /'
 fi
 

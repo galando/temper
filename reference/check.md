@@ -160,10 +160,9 @@ Diff / Perf sub-panel lines only when those levels ran, total time, and the scen
 verdict `{X}/{Y} behaviorally verified` (STRONG assertions count full, WEAK half —
 quality-weighted, intentionally different from Build's binary pass/fail).
 
-The gate and the commit are the orchestrator's (`${CLAUDE_PLUGIN_ROOT}/commands/temper.md`, Stage 4
-and Commit): **On PASS** the one Commit question, "Commit (Recommended)" / "Save for later";
-**On FAIL:** "Loop back to Build (Recommended)" while the feedback conditions above are met /
-"Override and continue" / "Save for later". At the loop budget the loop back is not offered.
+The gate question and the commit are the orchestrator's: `temper next --json` gives the question
+and its options (a passed Check is the one Commit question; a failed one offers the loop back to
+Build while the budget allows, a skip with a reason, and Save for later). This stage never asks it.
 
 ## Error Interpretation
 

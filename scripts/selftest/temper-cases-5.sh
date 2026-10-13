@@ -1157,31 +1157,24 @@ assert_eq "config default: commented build block names every grouped key" "4" \
   "$(for k in '^# build:' 'task-model' 'escalation-model' 'max-parallel'; do grep -qE -- "$k" "$REPO_ROOT/templates/temper.config.default" && echo x; done | wc -l | tr -d ' ')"
 setup
 
-# --- Grouped Build (9.7.0): the orchestrator launch loop and whole-flow usage prose (Task 15) ---
-# Scenarios: Grouped logic stays in the briefs and the CLI; The orchestrator launches every task agent
-# in a real grouped run [AC-05, AC-12]. The prose only relays CLI output, so assert it names each command.
+# --- the orchestrator is a loop over temper next (ADR 0013); grouped Build's loop is the CLI's ---
 OT="$REPO_ROOT/commands/temper.md"
 OF="$REPO_ROOT/commands/fix.md"
-OB="$REPO_ROOT/reference/build-groups.md"
 # /temper:build is a door into the orchestrator (ADR 0012): it reads commands/temper.md and enters at Build.
-assert_eq "orchestrator: Stage 2 reads the grouped loop page, and /temper:build is a door into it" "1|1" \
-  "$(grep -c 'reference/build-groups.md' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$(grep -qF 'commands/temper.md' "$REPO_ROOT/commands/build.md" && grep -qF 'Entering at a stage' "$REPO_ROOT/commands/build.md" && echo 1 || echo 0)"
-assert_eq "orchestrator: the grouped loop page names the grouped CLI loop" "9" \
-  "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'group reopen' 'temper integrate' 'agents/build-task.md' 'Task: '; do grep -qF -- "$c" "$OB" && echo x; done | wc -l | tr -d ' ')"
-assert_eq "orchestrator: grouped loop acts on the NEXT: line" "yes" "$(grep -qF 'NEXT:' "$OB" && echo yes || echo no)"
-assert_eq "orchestrator: usage add follows each of the 6 stage launches (temper.md and the Build fix pass)" "yes" \
-  "$([[ "$(cat "$OT" "$OB" | grep -c 'usage add --stage')" -ge 6 ]] && echo yes || echo no)"
-assert_eq "orchestrator: usage add follows each of the 4 stage launches in fix.md" "yes" \
-  "$([[ "$(grep -c 'usage add --stage' "$OF")" -ge 4 ]] && echo yes || echo no)"
-assert_eq "orchestrator: grouped task agents are not recorded with usage add" "yes" \
-  "$(grep -qiE 'not.*usage add|usage add.*not' "$OB" && echo yes || echo no)"
-assert_eq "orchestrator-patterns: state schema lists groups.json and usage.json" "2" \
+assert_eq "orchestrator: the loop runs temper next, and /temper:build is a door into it" "1|1" \
+  "$(grep -c 'scripts/temper next --json` and do what its `action` says' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$(grep -qF 'commands/temper.md' "$REPO_ROOT/commands/build.md" && grep -qF 'Entering at a stage' "$REPO_ROOT/commands/build.md" && echo 1 || echo 0)"
+assert_eq "orchestrator: the page names no grouped command and no stage brief (temper next gives them)" "0" \
+  "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'temper integrate' 'agents/build-task.md' 'agents/plan.md'; do grep -qF -- "$c" "$OT" && echo x; done | wc -l | tr -d ' ')"
+assert_eq "orchestrator: an agent's after calls run with its tokens and time filled in" "yes" \
+  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -qF 'run its `after` calls, with `{tokens}` and `{ms}` filled from the Agent result' && echo yes || echo no)"
+assert_eq "orchestrator: fix.md records the RCA launch, and the loop records the rest" "yes|yes" \
+  "$(grep -qF 'usage add --stage rca' "$OF" && echo yes || echo no)|$(grep -qF 'scripts/temper next --json' "$OF" && echo yes || echo no)"
+assert_eq "orchestrator-patterns: the run files list groups.json and usage.json" "2" \
   "$(for k in 'groups.json' 'usage.json'; do grep -qF -- "$k" "$REPO_ROOT/reference/orchestrator-patterns.md" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "autonomy.md: narrowed invariant and group rules" "4" \
-  "$(for k in 'final feature commit' 'never pushes' 'auto-continue' 'max-blast-radius'; do grep -qiF -- "$k" "$REPO_ROOT/reference/autonomy.md" && echo x; done | wc -l | tr -d ' ')"
+  "$(for k in 'final feature commit' 'never pushes' 'answered Continue' 'max-blast-radius'; do grep -qiF -- "$k" "$REPO_ROOT/reference/autonomy.md" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "config default: hardcoded invariant states the narrowed wording" "yes|0" \
   "$(grep -qiF 'final feature commit' "$REPO_ROOT/templates/temper.config.default" && echo yes || echo no)|$(grep -c 'NEVER commits, pushes, or merges' "$REPO_ROOT/templates/temper.config.default" | tr -d ' ')"
-assert_eq "orchestrator: the autonomy paragraph states the narrowed invariant" "yes" "$(grep -qiF 'final feature commit' "$OT" && echo yes || echo no)"
 setup
 
 # --- Grouped Build (9.7.0), review loop 1: the task gate verdict and its restore path [H1, H2, H5, M2] ---

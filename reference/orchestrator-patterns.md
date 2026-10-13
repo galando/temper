@@ -1,17 +1,13 @@
 ---
-description: "Shared patterns for orchestrator commands (temper.md, fix.md)"
+description: "Shared patterns of a run: the plugin folder, the run files, evidence labels, stage hand off files"
 ---
 
-# Orchestrator Shared Patterns
+# Shared patterns of a run
 
-**Used by:** the `/temper` and `/temper:fix` orchestrators
-(`${CLAUDE_PLUGIN_ROOT}/commands/temper.md`, `${CLAUDE_PLUGIN_ROOT}/commands/fix.md`). Read
-once at the start — every `→ pattern` reference in either file points here.
-
-Scope: shared, judgment-adjacent bookkeeping only (state schema, gate UX,
-resume/invocation safety, hand-off formats). Mechanism with one correct output (model
-resolution, gate logic) lives in the temper CLI (`${CLAUDE_PLUGIN_ROOT}/scripts/temper`)
-and in the `model:` frontmatter of each stage brief.
+**Read by** the stage briefs and the reference pages that point here, and by people. What comes
+next in a run, every gate question and every move are computed by the temper CLI
+(`${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`, described in `${CLAUDE_PLUGIN_ROOT}/docs/flow.md`);
+nothing on this page decides a step.
 
 ## The plugin folder
 
@@ -33,95 +29,33 @@ CLI is always called by its full path, `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. E
 path that does not start with the plugin folder (`.temper/`, the spec files,
 `.claude/temper.config`) is in the user's project, the current directory.
 
-## Build State Schema
+## The run files
 
-`.temper/build-state.json`, owned by `${CLAUDE_PLUGIN_ROOT}/scripts/temper state` — never hand-write it. Resolve the
-spec path from `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path` before launching any agent.
-When the CLI exits 3, it refused because a path it keeps run state in (the `.temper`
-folder, its evidence, specs or archive folder, a state or evidence file, or the active
-run's spec folder or its `gate-ledger.json`) is a symlink: stop, show its one-line
-reason, and wait for the user. While a run is active, the commit hooks block every
-commit until the link is gone. Never remove, replace or follow the link yourself.
+`.temper/build-state.json` is owned by `${CLAUDE_PLUGIN_ROOT}/scripts/temper state`; never hand write it.
+When the CLI exits 3, a path it keeps run state in (the `.temper` folder, its evidence, specs or archive
+folder, a state or evidence file, or the active run's spec folder or its `gate-ledger.json`) is a symlink:
+stop, show its one line reason, and wait for the person. Never remove, replace or follow the link yourself.
 
 ```json
 { "stage": "{stage}_complete", "spec": "{slug}", "spec_path": ".temper/specs/{slug}",
   "branch": "{feature|fix}/{slug}", "command": "temper|fix", "next_stage": "{next}",
-  "run_mode": "interactive|autonomous", "artifacts": ["intent.md", "tasks.md"],
-  "updated": "{ISO timestamp}" }
+  "run_mode": "interactive|autonomous", "run_id": "{16 hex}", "step": 0,
+  "feature": "{as the person typed it}", "enter": "{a door's stage}", "base_sha": "{sha}",
+  "approved_files": ["{the plan's files when the person approved it}"], "parked": "{stage}",
+  "redo": {"stage": "build", "reason": "{what to mend}"}, "started": "{ISO}", "updated": "{ISO}" }
 ```
 
-Stage sequences: `/temper` — `intent_complete | plan_complete | design_complete |
-build_complete | review_complete | check_complete`, branch `feature/{slug}`.
-`/temper:fix` — `rca_complete | fix_complete | review_complete | check_complete`,
-branch `fix/{slug}`.
+Stage sequences: `/temper` is intent, plan, design (medium or complex), build, review, check, commit,
+on branch `feature/{slug}`; `/temper:fix` is rca, fix, review, check, commit, on branch `fix/{slug}`.
+Every change of `next_stage` counts one `step`; a step back clears the verdicts of the stages it redoes.
 
-Other run files, all owned by the CLI (never hand-write them): `.temper/usage.json`
-(whole-flow usage rows `{stage, model, tokens, ms, task, group, ts}`, written by
-`temper usage add` after every stage launch and by `temper task gate --tokens --ms` for
-grouped task agents, so each launch is counted once) and, in grouped Build,
-`.temper/groups.json` (per-group worktree, status and gate verdict; per-task status,
-attempts and commit; the integration verdict). The orchestrator reads them only through
-`temper schedule`, `temper group report` and `temper report`.
-
-**Save/Continue:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance {stage}_complete {next_stage}` at every
-transition. On Save, report "Saved. When you come back, run {command} (or press Go on in the Temper bar) to take the
-run up again; its gate question comes back."
-
-## Gate Options + Enforcement
-
-Every gate: 2 explicit options plus the built-in "Other" free-text.
-
-```
-AskUserQuestion:
-  question: "What would you like to do with this {stage}?"
-  options:
-    - label: "{continue_label} (Recommended)"
-    - label: "Save for later"
-      description: "Save state and stop. Come back to it later."
-```
-
-A change typed via "Other" is **never** approval to proceed: make the edit, then **STOP**
-and re-show the same gate. The user must explicitly pick "Continue" — never infer
-approval from a change request.
-
-## Resume Validation
-
-Before honoring saved state, check: parseable JSON; `stage` is one the command defines;
-`.temper/specs/{spec}/` exists on disk; the artifacts the **completed** stages should
-have produced exist — `artifacts[]` lists the full run's expected set, so check it
-stage-aware: at `intent_complete` only `intent.md` is owed (Plan hasn't written
-`tasks.md`/`plan.md` yet); from `plan_complete` onward, every file in `artifacts[]`;
-`updated` < 30 days old (warn if older). Any check fails → show what's wrong in one line, then ask with
-`AskUserQuestion`, header `Temper resume`: "Start over" / "Cancel". On "Start over" run
-`${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --command {command}` (`temper` for `/temper`, `fix` for
-`/temper:fix`; it archives the old run state first; the files under `.temper/specs/` stay) and start the run
-at its first stage (Intent, or RCA for a fix). With the Temper mod loaded, the person's
-"Start over" answer is the decision that lets that one reset through. Never tell the person to type a command
-or to press a bar button for this.
-
-## Nested Invocation Protection
-
-`{command} "{new item}"` called while state exists for a **different** item:
-
-```
-AskUserQuestion:
-  header: "Temper resume"
-  question: "A saved session exists for '{existing}'. What would you like to do?"
-  options:
-    - label: "Resume existing session (Recommended)"
-      description: "Continue from {next_stage} stage."
-    - label: "Start over"
-      description: "Throw the saved run state away and start the new one. The spec files stay."
-```
-
-On "Start over", run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {new slug} --command {command}` (it
-archives the saved run state first), then start the new item from its first stage. With the Temper mod
-loaded, the person's "Start over" answer is the decision that lets that one reset through.
-
-## Agent Failure Handling
-
-An agent subprocess returns a failure/blocker → show the details, ask "Retry / Save for
-later?" (changes via "Other"). Never silently proceed to the next stage.
+The other run files are the CLI's too: `.temper/gates.json` (each stage's verdict and rows),
+`.temper/overrides.json` (the person's skips), `.temper/feedback-loops.json` (the loop budget),
+`.temper/usage.json` (whole flow usage rows `{stage, model, tokens, ms, task, group, ts}`, from
+`temper usage add` after each stage launch and from `temper task gate --tokens --ms` for each task
+agent, so each launch is counted once), in Build `.temper/groups.json` (each group's worktree,
+status and gate verdict; each task's status, attempts and commit; the integration verdict), and
+`.temper/view.json`, the view the mod draws (`${CLAUDE_PLUGIN_ROOT}/docs/flow.md`).
 
 ## Context Efficiency
 
@@ -213,7 +147,6 @@ with failure context.
   infeasibility context and re-approves. Human-driven only — no circuit breaker, max 1
   per run. Context: `build-context.json`'s infeasibility reason.
 
-**Circuit breaker + evidence clearing:** full mechanics (budget, auto-clear) live in
-`${CLAUDE_PLUGIN_ROOT}/commands/temper.md` → "Feedback Loops" — not restated here. A loop is
-always a normal stage re-launch that reads the relevant `review-context.json` or
-`check-context.json` at startup.
+**Budget and clearing:** `temper state loop` enforces the budget (`loops.max-per-type`) and clears
+the evidence, the verdicts and the skips of the stages it redoes. A loop is a normal stage launch that
+reads the relevant `review-context.json` or `check-context.json` at startup.

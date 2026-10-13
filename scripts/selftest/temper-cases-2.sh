@@ -40,7 +40,7 @@ assert_exit "protected-paths: garbage stdin fails open" 0 \
 
 # The command names the CLI as the plugin's own command files write it (the spelling is taken from
 # commands/temper.md, so the case follows it).
-CO_CLI="$(grep -m1 -oE '[^[:space:]`"(]+/scripts/temper override' "$REPO_ROOT/commands/temper.md")"
+CO_CLI="$(grep -m1 -oE '[^[:space:]`"(]+/scripts/temper next' "$REPO_ROOT/commands/temper.md" | sed 's/ next$/ override/')"
 assert_eq "commands/temper.md names the CLI through the braced plugin root variable" "yes" \
   "$([[ "${CO_CLI:0:2}" == '${' ]] && echo yes || echo no)"
 OUT=$(python3 -c 'import json, sys; print(json.dumps({"tool_input": {"command": sys.argv[1] + " review --reason x"}}))' "$CO_CLI" | bash "$CONFIRM")
