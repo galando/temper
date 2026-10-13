@@ -1,5 +1,5 @@
 # --- Grouped Build (9.7.0): config keys and task model resolution ---
-# Build runs in groups by default; build.mode: per-task brings back the previous Build
+# Build runs in groups of small tasks: the one Build (ADR 0013)
 setup
 assert_eq "model --all prints the 8 stage lines plus task= and task-escalation=" "10|1|1" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep -c '^task=')|$("$TEMPER" model --all | grep -c '^task-escalation=')"
@@ -217,9 +217,9 @@ gp_setup; gp_mut '## Group G2: Edge
 **Depends:** G7'
 assert_eq "grouped plan: a group Depends on an unknown group fails" "1|1" "$("$TEMPER" gate plan >/dev/null 2>&1; echo $? | sed 's/^0$/0/')|$(gp_has 'G2 depends on unknown G7')"
 
-# a flat (per-task) tasks.md fails the plan gate: Plan always writes groups
+# a flat tasks.md fails the plan gate: Plan always writes groups
 setup; mkdir -p tests; : > tests/b_test.sh; : > tests/c_test.sh; gp_base
-assert_exit "without build.mode the grouped tasks.md passes the plan gate" 0 "$TEMPER" gate plan
+assert_exit "the grouped tasks.md passes the plan gate" 0 "$TEMPER" gate plan
 printf '# Tasks: demo\n\n### Task 1: Alpha [SEQUENTIAL]\n**File:** src/a.sh\n- [ ] done\n' > .temper/specs/demo/tasks.md
 assert_exit "a flat tasks.md fails the plan gate" 1 "$TEMPER" gate plan
 assert_eq "the plan gate names the missing group heading and Integration line" "1|1" \
@@ -227,8 +227,7 @@ assert_eq "the plan gate names the missing group heading and Integration line" "
 setup
 
 # --- Grouped Build (9.7.0): grouped run state and the ready set (temper schedule) ---
-# Scenarios: The ready set holds only tasks with met dependencies and disjoint files; Grouped mode
-# off keeps the per-task Build unchanged [AC-03, AC-04, AC-01]
+# Scenario: The ready set holds only tasks with met dependencies and disjoint files [AC-03, AC-04]
 sg_setup() { setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; gp_base; }
 sg_groups() { # sg_groups <json>: write .temper/groups.json the way a started run would hold it
   printf '%s\n' "$1" > .temper/groups.json
@@ -336,21 +335,13 @@ sg_setup; mkdir -p "$WORKDIR/gj-target"; echo '{}' > "$WORKDIR/gj-target/g.json"
 assert_exit "a symlinked .temper/groups.json is refused" 3 "$TEMPER" schedule
 rm -f .temper/groups.json
 
-# build.mode: per-task (the previous Build): the grouped commands are off and write nothing
+# ADR 0013: per task Build is gone. A build.mode: per-task left in a project's config changes nothing:
+# the grouped commands work and the plan gate checks a flat tasks.md as a grouped plan
 setup; gp_base; printf 'build:\n  mode: per-task\n' >> .claude/temper.config; rm -f .temper/groups.json
-for c in schedule "group start G1" "task start 1" "task show 1" integrate "group report"; do
-  # shellcheck disable=SC2086
-  out="$("$TEMPER" $c 2>&1)"; rc=$?
-  assert_eq "per-task mode: temper $c exits 1 naming the mode" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'build.mode: per-task')"
-done
-assert_eq "per-task mode: no groups.json is written" "no" "$([[ -e .temper/groups.json ]] && echo yes || echo no)"
-# a flat tasks.md passes the plan gate with no grouped row, and gate build has no integration row
+assert_exit "a leftover build.mode: per-task: temper schedule still runs" 0 "$TEMPER" schedule
 printf '# Tasks: demo\n\n### Task 1: Alpha [SEQUENTIAL]\n**File:** src/a.sh\n- [x] done\n' > .temper/specs/demo/tasks.md
-assert_exit "per-task mode: a flat tasks.md passes the plan gate" 0 "$TEMPER" gate plan
-assert_eq "per-task mode: the plan gate shows no grouped row" "0" "$(gp_has 'grouped plan\|declared files\|group context\|integration command')"
-assert_eq "per-task mode: gate build has no integration row" "0" "$("$TEMPER" gate build 2>&1 | grep -c integration)"
-sed -i.bak 's/mode: per-task/mode: grouped/' .claude/temper.config
-assert_eq "build.mode: grouped (the default, written out) checks the flat tasks.md as a grouped plan" "1" "$(gp_has 'grouped plan')"
+assert_eq "a leftover build.mode: per-task: a flat tasks.md fails the plan gate as a grouped plan" "1|1" \
+  "$("$TEMPER" gate plan >/dev/null 2>&1; echo $?)|$(gp_has 'grouped plan')"
 setup
 
 # --- Grouped Build (9.7.0): group worktrees (temper group start) ---
@@ -967,15 +958,14 @@ assert_eq "integrate: a run without tasks.md (a /temper:fix run) has no integrat
 
 # --- Grouped Build (9.7.0): max-blast-radius at the autonomy commit gate (D-01) ---
 # Scenario: Autonomy commit gate in grouped mode compares changes to the declared union [AC-11]
-gc_setup() { # gc_setup <grouped|fix|per-task>: autonomous run, max-blast-radius 3, four declared files changed
+gc_setup() { # gc_setup <grouped|fix>: autonomous run, max-blast-radius 3, four declared files changed
   gp_setup
   [[ "$1" != "fix" ]] || rm -f .temper/specs/demo/tasks.md   # a /temper:fix run has no tasks.md
-  [[ "$1" != "per-task" ]] || sed -i.bak 's/mode: grouped/mode: per-task/' .claude/temper.config
   sed 's/max-blast-radius: 15/max-blast-radius: 3/' .claude/temper.config > .claude/temper.config.new && mv .claude/temper.config.new .claude/temper.config
   "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
   # setup keeps the work tree, so the four files an earlier gc_setup left would be committed into this
-  # base with the same content and stop counting as changes (the per-task case below then rested on
-  # two config entries, one more than its limit). Clear them first so every call starts from the same tree.
+  # base with the same content and stop counting as changes. Clear them first so every call starts from
+  # the same tree.
   rm -rf src tests
   git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -q -m base >/dev/null 2>&1
   mkdir -p src tests
@@ -993,10 +983,6 @@ assert_eq "grouped commit gate: one undeclared file FAILs the row and names it" 
 gc_setup fix; sed -i.bak 's/max-blast-radius: 3/max-blast-radius: 1/' .claude/temper.config
 gc_out="$(gc_row)"
 assert_eq "a run without tasks.md keeps the count rule (changed entries > 1 fail) [$gc_out]" "1|0" \
-  "$(printf '%s\n' "$gc_out" | grep -c 'exceeds autonomy.max-blast-radius=1')|$(printf '%s\n' "$gc_out" | grep -c 'all declared')"
-gc_setup per-task; sed -i.bak 's/max-blast-radius: 3/max-blast-radius: 1/' .claude/temper.config
-gc_out="$(gc_row)"
-assert_eq "per-task mode keeps the count rule at the commit gate [$gc_out]" "1|0" \
   "$(printf '%s\n' "$gc_out" | grep -c 'exceeds autonomy.max-blast-radius=1')|$(printf '%s\n' "$gc_out" | grep -c 'all declared')"
 gc_setup grouped; "$TEMPER" state set run_mode interactive >/dev/null 2>&1
 assert_eq "grouped commit gate: a non-autonomous run has no blast radius row" "0" "$(gc_row | wc -l | tr -d ' ')"
@@ -1163,7 +1149,7 @@ assert_eq "template: the grouped example is non-empty" "yes" "$([[ -s .temper/sp
 assert_exit "template: the grouped example passes temper gate plan in grouped mode" 0 "$TEMPER" gate plan
 assert_eq "template: the grouped example declares groups, Integration, Interfaces and Context" "4" \
   "$(for k in '^## Group G1' '^\*\*Integration:\*\*' '^\*\*Interfaces:\*\*' '^\*\*Context:\*\*'; do grep -qE -- "$k" .temper/specs/demo/tasks.md && echo x; done | wc -l | tr -d ' ')"
-assert_eq "plan brief: one step points at the grouped format, and at the flat layout for build.mode per-task" "1|1" \
+assert_eq "plan brief: one step points at the grouped format, and none at a build.mode" "1|0" \
   "$(grep -c 'in the grouped format' "$REPO_ROOT/agents/plan.md" | tr -d ' ')|$(grep -c 'config get build.mode' "$REPO_ROOT/agents/plan.md" | tr -d ' ')"
 assert_eq "plan reference: documents the grouped format, budgets and pack distilling" "4" \
   "$(for k in '^## Grouped tasks' '4096' '2048' 'distil'; do grep -qE -- "$k" "$REPO_ROOT/reference/plan.md" && echo x; done | wc -l | tr -d ' ')"

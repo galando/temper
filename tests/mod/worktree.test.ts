@@ -156,7 +156,7 @@ describe('while a grouped Build run is active, the run tasks.md is the CLI\'s', 
     expect(isDeny(write(grouped, `${WT}/${tasks}`))).toBe(true)
   })
 
-  test('per-task mode (no groups.json) keeps today\'s allowance', () => {
+  test('with no groups.json (no grouped run yet) the plan keeps its allowance', () => {
     expect('allow' in write(ctx, tasks)).toBe(true)
     expect('allow' in write({ ...ctx, groupedActive: false }, tasks)).toBe(true)
   })

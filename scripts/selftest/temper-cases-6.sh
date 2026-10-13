@@ -348,15 +348,9 @@ assert_eq "build brief: never tells the build agent to write build-state.json" "
   "$(grep -c 'write `.temper/build-state.json`' "$REPO_ROOT/reference/build.md")"
 setup
 
-# build.mode: per-task (the previous Build): its loop page, its template example, and the orchestrator choice
-setup; printf 'build:\n  mode: per-task\n' >> .claude/temper.config; rm -f .temper/groups.json
-awk '/^<!-- per-task-example:begin/{f=1;next} /^<!-- per-task-example:end/{f=0} f' "$REPO_ROOT/templates/tasks.md" > .temper/specs/demo/tasks.md
-assert_eq "per-task template: one - [ ] box under every task" "yes" \
-  "$([[ "$(grep -c '^### Task' .temper/specs/demo/tasks.md)" -gt 0 && "$(grep -c '^### Task' .temper/specs/demo/tasks.md)" == "$(sed -n '/^## Tasks/,$p' .temper/specs/demo/tasks.md | grep -c '^- \[ \] done')" ]] && echo yes || echo no)"
-assert_eq "per-task template: the plan gate shows no grouped row" "0" "$("$TEMPER" gate plan 2>&1 | grep -c 'grouped plan\|integration command')"
-assert_eq "orchestrator: Stage 2 reads the per-task loop page when build.mode is per-task" "1|1" \
-  "$(grep -c 'reference/build-per-task.md' "$REPO_ROOT/commands/temper.md" | sed 's/^[1-9][0-9]*$/1/')|$(grep -c 'Checkpoint: task {N}' "$REPO_ROOT/reference/build-per-task.md" | sed 's/^[1-9][0-9]*$/1/')"
-setup
+# ADR 0013: per task Build is gone, with its loop page and its template example
+assert_eq "per task Build: no loop page, no template example, no page that names them" "no|0|0" \
+  "$([[ -e "$REPO_ROOT/reference/build-per-task.md" ]] && echo yes || echo no)|$(grep -c 'per-task-example' "$REPO_ROOT/templates/tasks.md" | tr -d ' ')|$(grep -rl 'build-per-task' "$REPO_ROOT/commands" "$REPO_ROOT/agents" "$REPO_ROOT/reference" "$REPO_ROOT/skills" 2>/dev/null | wc -l | tr -d ' ')"
 
 # --- Task agents and Plan: fewer tools, real-code tests, a real RED, few groups, production-file tiers ---
 # RED must fail on the tests themselves: pytest exit 2 (collection or import error), 126/127 and a timeout are no RED

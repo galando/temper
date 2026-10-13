@@ -474,17 +474,14 @@ later". The Gates section says how each is asked.
 
 ## Stage 2: Build (in groups by default)
 
-Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get build.mode` once, at the first Build launch.
-When it prints `per-task`, read `${CLAUDE_PLUGIN_ROOT}/reference/build-per-task.md` and run
-its loop instead of the one below (the previous Build: one task per launch on the build model,
-a gate after every task). Otherwise read `${CLAUDE_PLUGIN_ROOT}/reference/build-groups.md` once and
+Read `${CLAUDE_PLUGIN_ROOT}/reference/build-groups.md` once and
 run its loop: the base sha, one worktree per group, every ready task launched in one turn on
 the task model the schedule prints, `temper task gate` after each, one human gate per group,
 `temper integrate`, then the Build completion gate. Its "Fix pass" section is what a Review or
 Check loop back to Build launches. **On Continue** at the completion gate:
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance build_complete review`, launch Stage 3.
 
-**Scope drift (both Build loops).** Print every panel the Build brief (`agents/build.md`) returns
+**Scope drift (the fix pass).** Print every panel the Build brief (`agents/build.md`) returns
 verbatim. **If it has a `DRIFT` section**, ask the person about each row before the checkpoint or
 fix-pass gate, with and without the mod, and in autonomous mode too (a drift is never
 answered for the person). One `AskUserQuestion` per row: header `Scope drift`; the question's

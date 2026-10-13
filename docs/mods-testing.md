@@ -153,9 +153,6 @@ Python repository is enough), with a feature that splits into at least two tasks
 - [ ] **A reused feature name.** Finish or clear a run, then start a new run with the same
   feature name. Expect the Intent gate's Continue to go through and Plan's `state set complexity`
   not to be refused.
-- [ ] **Per-task Build still works.** Set `build.mode: per-task` in `.claude/temper.config`
-  and run a small feature. Expect a flat task list, the Sonnet build agent and a gate after
-  every task. Remove the line afterwards.
 - [ ] **Model choice.** Set `build.grouped.task-model: claude-sonnet-5-5` and run once. Expect
   the task agents and the report to name that model.
 

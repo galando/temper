@@ -197,11 +197,11 @@ else
   echo "$CHOREO" | sed 's/^/  /'
 fi
 
-# 7. Grouped Build docs: the user guide exists, says it is the default and how to go back, names every run
+# 7. Grouped Build docs: the user guide exists, says it is the one Build, names every run
 # state file, is linked from getting-started.md, and ADR 0011 is Accepted.
 GB="$REPO_ROOT/docs/grouped-build.md"
 ADR="$REPO_ROOT/docs/decisions/0011-grouped-build.md"
-if [[ -f "$GB" ]] && grep -q 'the default Build' "$GB" && grep -q 'mode: per-task' "$GB" \
+if [[ -f "$GB" ]] && grep -q 'the one Build' "$GB" && ! grep -q 'mode: per-task' "$GB" \
    && grep -q '\.temper/groups\.json' "$GB" && grep -q '\.temper/usage\.json' "$GB" && grep -q '\.temper/\.lock/' "$GB" \
    && grep -q 'temper group report --json' "$GB" && grep -q 'temper report --json' "$GB" \
    && grep -q 'grouped-build.md' "$REPO_ROOT/docs/getting-started.md" \
@@ -251,8 +251,6 @@ ROWS = [
     ('reference/build-groups.md', '-', r'user with the CLI\'s reason; nothing else is decided here', 'a parked group goes to the person as a question'),
     ('reference/plan.md', '-', r'write `.temper/build-state.json`', 'the guard refuses a hand written run state'),
     ('reference/check.md', '-', r'write `build-state.json` with', 'the guard refuses a hand written run state'),
-    ('reference/build-per-task.md', '+', r'"Run Build again \(Recommended\)"', 'the per task completion gate on FAIL'),
-    ('reference/build-per-task.md', '-', r'Temper bar', 'the per task completion gate is a question'),
     ('reference/autonomy.md', '-', r'Run /temper to resume', 'a park waits at its gate question, not for a typed command'),
     ('reference/autonomy.md', '+', r'The run waits for you at the gate it parked at', 'a park shows its gate'),
     ('commands/temper.md', '+', r'This reason question holds for every question with the header `Temper gate`', 'the reason question in every mode'),

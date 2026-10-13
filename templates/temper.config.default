@@ -109,13 +109,10 @@ feedback:
 loops:
   max-per-type: 2              # circuit breaker per feedback-loop type (enforced by the CLI's `state loop`)
 
-# Build runs in groups by default: Plan writes tasks.md in groups, each group gets its own
-# worktree, and a cheaper model (Haiku) runs the small tasks in parallel. These keys tune it;
-# with the block absent the defaults below apply. `temper model task` and
-# `model task-escalation` resolve them. `mode: per-task` brings back the previous Build
-# (one task per launch on the build model, a gate after every task, no Haiku).
+# Build runs in groups: Plan writes tasks.md in groups, each task gets its own worktree, and a
+# cheaper model (Haiku) runs the small tasks in parallel. These keys tune it; with the block
+# absent the defaults below apply. `temper model task` and `model task-escalation` resolve them.
 # build:
-#   mode: grouped                      # grouped (default) | per-task
 #   grouped:
 #     task-model: claude-haiku-5-5     # model of the task agents (default: the build-task brief)
 #     escalation-model: sonnet         # the one retry after two failed attempts

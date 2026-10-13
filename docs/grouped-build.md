@@ -1,10 +1,8 @@
 # Grouped Build (9.7.0)
 
 Build runs in groups of small tasks, each handed to a slim Haiku agent, with one human gate
-per group. It is the default Build since 9.7.0: task agents on Haiku cost a small fraction of
-the per-task Build's Sonnet agents. See
-[Going back to the previous Build](#going-back-to-the-previous-build) for the one line that
-turns it off.
+per group. It is the one Build since 9.7.0: in the baseline measurement (`evals/results.md`) the
+Haiku task agents cost about a fourteenth of a Sonnet build agent ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)).
 
 ## What it does
 
@@ -40,22 +38,6 @@ build:
 `temper model --all` prints the stage lines plus `task=` and `task-escalation=`.
 
 To keep groups but run the tasks on another model (no Haiku), set `task-model: sonnet`.
-
-## Going back to the previous Build
-
-One line in `.claude/temper.config` brings back the Build Temper ran before 9.7.0:
-
-```yaml
-build:
-  mode: per-task
-```
-
-With it, Plan writes the flat `tasks.md` layout, Build runs one task per launch on the build
-model (`temper model build`, Sonnet by default) with a human gate after every task, nothing runs
-on Haiku, the grouped plan, build and commit-gate rows do not apply, and the grouped commands
-(`schedule`, `group`, `task`, `integrate`) exit 1 saying the mode is per-task. Remove the line
-to return to grouped Build. Switch between runs, not in the middle of one: a plan written for
-one mode does not pass the other mode's plan gate.
 
 ## What a run looks like
 

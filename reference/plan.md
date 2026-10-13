@@ -224,11 +224,8 @@ plan.md for GitHub/tool rendering.
 
 ## Grouped tasks
 
-Build runs in groups by default, so write `tasks.md` as groups of tasks; the example to copy is in
-`${CLAUDE_PLUGIN_ROOT}/templates/tasks.md` (between the `grouped-example` markers). Only when
-`${CLAUDE_PLUGIN_ROOT}/scripts/temper config get build.mode` prints `per-task` (the previous Build) write
-the flat layout between the `per-task-example` markers of that template instead, with a `- [ ]`
-box under every task. The format below is what the CLI parser
+Build runs in groups, so write `tasks.md` as groups of tasks; the example to copy is in
+`${CLAUDE_PLUGIN_ROOT}/templates/tasks.md` (between the `grouped-example` markers). The format below is what the CLI parser
 (`_grouped_parse`) reads and the plan gate (`_grouped_plan_reqs`) checks.
 
 **Format.**
