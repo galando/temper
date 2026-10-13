@@ -64,7 +64,12 @@ the person; and the mod checks that the person answered before a step only the p
    - the file path rules for Write, Edit, MultiEdit and NotebookEdit (the run's own files, the
      config and the git hooks during a run, the plugin data folder, and each stage's writes);
    - a short Bash list: `--no-verify` and `-n` on a commit, a changed `core.hooksPath`, and a write
-     into `.temper/`.
+     into `.temper/`. A Bash write is a redirect, or a program that writes the files it names (`rm`,
+     `mv`, `cp`, `tee`, `sed -i` and the like), written out in the command. It is held to the same list
+     of protected files as the editing tools: the CLI's files in `.temper/` (a spec file stays
+     Claude's to write), and during a run the config and the git hooks.
+   `core/shell.ts` reads a command for these: it splits the text into statements and words and
+   honours quotes, and follows no variable, substitution, `cd` or link.
    `core/bash.ts` as a shell parser is deleted, with the lists of git plumbing, aliases and exec
    forms and the tests that existed only for them. Temper is not a sandbox: it keeps a cooperating
    Claude on the path and makes a skip visible; a Claude set on getting around a gate through Bash

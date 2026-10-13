@@ -69,8 +69,7 @@ describe('release review 23: every deny text names the CLI by full path when it 
     }
     expect(at('rm -rf .temper')).toContain(`Next: use ${ABS} state archive`)
     expect(at('scripts/temper state clear')).toContain(`then run ${ABS} state archive`)
-    expect(at('ln -s scripts/temper /tmp/t')).toContain(`Next: run ${ABS} by its own path`)
-    expect(at('TEMPER_DIR=/tmp scripts/temper gate build')).toContain(`Next: run ${ABS} with no TEMPER_DIR`)
+    expect(at('echo [] > .temper/evidence/build.json')).toContain(`Next: use ${ABS} evidence add`)
     const w = evaluate(stateAt('build'), { ...base, cli: ABS }, { tool: 'Write', input: { file_path: '.temper/gates.json' } })
     expect('deny' in w ? w.deny : '').toContain(`Next: run ${ABS} gate <stage>`)
   })

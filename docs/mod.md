@@ -134,47 +134,44 @@ An administrator can turn off parts of the mod:
 Anyone can disable the plugin or run `/temper:temper enforcement off`. The mod guards a workflow for
 honest use. It is not a security boundary.
 
-### Bash is best effort
+### What the guard checks, and what it does not
 
-The hard guarantee covers the tool layer (Write, Edit, NotebookEdit, MultiEdit) and the native
-`pre-commit` hook for `git commit`.
+Temper is not a sandbox. The guard keeps a cooperating Claude on the path and makes a skip visible; a
+Claude set on getting around a gate through Bash can do it. The hard guarantees are the editing tools
+(Write, Edit, MultiEdit, NotebookEdit) and the native `pre-commit` hook for `git commit`.
 
-For Bash, the mod does these steps:
+The guard has three jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)):
 
-- It resolves variables in order.
-- It expands braces.
-- It follows `cd`.
-- It refuses a write that it cannot check when the command names Temper state.
-- It refuses, while a run is active, a git command that runs a command of its own (`rebase --exec`,
-  `bisect run`, `submodule foreach`, `filter-branch`, an editor, pager or diff program set for the
-  call), and git plumbing that makes or moves a commit without `git commit` (`update-ref`,
-  `stash create`, `stash store`, `replace`).
-- It refuses any use of Claude Code's plugin data folder (`~/.claude/plugins/data/`), where it keeps
-  your decisions, while a run is active.
+- **The person's answer.** A temper call only the person may cause (leaving Intent or Plan, a skip, a
+  step back, accepting a finding, arming autonomy, keeping an agent's commits, overriding the commit
+  gate, starting over during a run) needs your answer in the question dialog, at the run and the step
+  the CLI is at. The guard finds the call when it is written out in the command
+  (`scripts/temper ...`).
+- **Temper's own files.** The CLI's files in `.temper` (the gates, the run state, the evidence ledger,
+  the loop counter, the view), and during a run `.claude/temper.config` and the git hooks, are written by
+  neither the editing tools nor a plain Bash write (a redirect, or `rm`, `mv`, `cp`, `tee`, `sed -i`
+  and the like naming the file). Each stage allows its own writes by the editing tools.
+- **The native hook.** While a run is active, `--no-verify`, `-n` and a change of `core.hooksPath` are
+  refused.
 
-Thus common tricks fail closed. But the mod cannot see a variable that an earlier call or a profile
-set. A Bash command can still write ordinary source files. MCP file tools are not covered. The native
-`pre-commit` hook is the backstop.
+The guard reads a Bash command as text: it splits it into statements and words and honours quotes. It
+does not follow variables, substitutions, `cd` or links, and it does not read the program another
+program runs. These are still possible, and listed as known limits in the mod's tests:
+
+- A call or a path in a variable, or built at run time by a program.
+- A call in a string another program runs (`sh -c`, `eval`, `xargs`, `perl -e`), or in a here document
+  a shell reads.
+- A link or a script that an earlier call made, or a script that is already on disk.
+- A write after a `cd`, the names inside a patch or an archive, and a program the guard does not know
+  as a writer.
+- A commit the native hook does not check (`git merge`, `cherry-pick`, `revert`, git plumbing), a git
+  command that runs a command of its own, and a git alias of yours.
+- `TEMPER_DIR` and `TEMPER_CONFIG`, which point the CLI at other files.
+
+MCP and PowerShell file tools are not checked.
 
 A decision comes from the result of the question dialog, after you chose. Its authenticity depends on
 Claude Code. Claude writes the question and its options, so read the option you pick.
-
-### Limits
-
-While a run is active, the mod refuses a Bash command that names the Temper script and hides what it
-runs. It refuses the command even when the text shows no decision word. Examples:
-
-- `$(...)`, `${...}`, `$'...'` and a here-string.
-- A script that the same command writes and starts.
-- A launcher such as `env -S`, `make`, `awk` or `find -exec`.
-
-The mod also refuses a shell, or a builtin that runs text as commands (such as `source`), when the
-program is not in the text. Examples: a pipe from an unknown command, a file on stdin, or a word that
-quotes, `$` or braces split.
-
-A command that names a file of the run must be a plain read. These files are `gates.json`,
-`build-state.json`, the evidence ledger, `.claude/temper.config` and the hooks of git and Temper. The mod
-refuses `chmod`, `find -delete`, `git clean` and `--no-verify`.
 
 If a run's `build-state.json` is hidden or removed, the run stays enforced from the last known state.
 This continues until you turn enforcement off. The exception is the TRIVIAL exit (`state clear` at
@@ -182,22 +179,8 @@ Intent before the run ever moved and before Claude wrote an intent), which ends 
 decides that a change is trivial; it tells you so in one line, and you are not asked.
 
 The rules hold through the Commit stage too, until the Commit steps clear the run. A `/temper:fix`
-run is not judged move by move (its own page asks every gate), but nothing goes around the native
-hook there either: `--no-verify`, a changed hooks path, a commit the hook does not check, and a write
-to the config or the git hooks are refused.
-
-A text reader cannot see some shell tricks. These are still possible:
-
-- A link or a script that an earlier call made.
-- A script that is already on disk and starts later.
-- A program that builds the script name or a path at run time.
-- The names inside a patch or an archive.
-- Everyday git that moves a branch to another commit (`reset`, `checkout -B`, `rebase`), or a commit
-  made in a worktree outside the project, where no run is: the native hook only sees `git commit` in
-  the project.
-
-MCP and PowerShell file tools are not checked. Thus the hard guarantees are the editing tools and the
-native `pre-commit` hook, not the Bash reader.
+run is not judged move by move (its own page asks every gate), but the native hook stays on there
+too: `--no-verify`, a changed hooks path, and a write to the config or the git hooks are refused.
 
 A `Temper enforcement:` line can also be in any file that Claude can read.
 An injected copy can only hide a question. It cannot advance a stage, because each advance needs your

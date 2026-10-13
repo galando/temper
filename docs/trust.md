@@ -33,3 +33,15 @@ folder `~/.claude/packs`, if you made one. A pack's link targets come from the s
   folder's absolute path written in; `/temper:pack disable guardrails` removes them. `/temper:pack` and
   `/temper:init` offer to fix a guard path that no longer exists. They never touch the settings in your home folder.
 - **Sharing a plan.** Share HTML review publishes the plan review only as a Claude artifact, after you confirm.
+
+## Temper is not a sandbox
+
+Temper keeps a cooperating Claude on the path and makes every skip visible; it does not stop a Claude
+that is set on getting around a gate. Four things hold: the CLI computes every verdict and refuses to
+leave a stage whose check failed unless you skipped it with a reason; the native `pre-commit` hook
+blocks a commit while a gate fails; you decide each gate in the question dialog; and the mod, when it is
+loaded, refuses a move only you may make until you answered, a write onto Temper's own files, and
+`--no-verify` or a changed `core.hooksPath`. The mod reads a Bash command as plain text, so a call hidden
+in a variable, a string another program runs, a script on disk or a commit the hook does not check
+(`git merge`, `cherry-pick`, git plumbing) gets through. [The mod](mod.md#what-the-guard-checks-and-what-it-does-not)
+lists these limits, and the mod's tests hold each one, so the docs cannot claim more than the code does.

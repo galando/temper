@@ -4,8 +4,8 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { loadSnapshot } from '../../hooks/temper-mod/adapter'
 import type { Io } from '../../hooks/temper-mod/adapter'
-import { classifyBash, protectedKind } from '../../hooks/temper-mod/core/bash'
 import { check as evaluate } from './helpers'
+import { protectedKind } from '../../hooks/temper-mod/core/rules'
 import type { RuleResult } from '../../hooks/temper-mod/core/rules'
 import type { OldCtx as RuleContext } from './helpers'
 import { SPEC, runFiles } from './run-files'
@@ -40,8 +40,8 @@ describe('groups.json and usage.json are CLI-only state', () => {
     }
   })
 
-  test('a Bash redirect, copy or in-place edit of either is flagged; a read is not', () => {
-    const flagged = (c: string) => classifyBash(c).protectedWrites.length > 0
+  test('a Bash redirect, copy or in-place edit of either is refused; a read is not', () => {
+    const flagged = (c: string) => isDeny(evaluate(stateAt('build'), grouped, { tool: 'Bash', input: { command: c } }))
     expect(flagged('echo {} > .temper/groups.json')).toBe(true)
     expect(flagged('cp x.json .temper/usage.json')).toBe(true)
     expect(flagged('sed -i s/a/b/ .temper/groups.json')).toBe(true)

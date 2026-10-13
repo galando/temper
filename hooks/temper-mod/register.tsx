@@ -2,7 +2,6 @@ import type { CommandRunResult, EngineInterface, PluginOptions, Register } from 
 
 import { FIX_RUN, composeText, idleSnapshot, keepDecision, keptReport, live, loadSnapshot, nothingToLose, publish, reportText, settingsFrom, spendDecision, statusText, timelineText, viewOf, writeReport } from './adapter'
 import type { Io, Snapshot } from './adapter'
-import { classifyBash } from './core/bash'
 import { pluginCliFrom } from './core/cli'
 import { HELP, NEEDS_PERSON, parseArgs } from './core/commands'
 import type { Parsed } from './core/commands'
@@ -10,8 +9,8 @@ import { parsePhaseModel, parsePhaseModels, parseUiMode, versionAtLeast } from '
 import type { UiMode } from './core/config'
 import { driftAnswers } from './core/drift'
 import { gateAnswer, resumeAnswer } from './core/gateanswer'
-import { normalizePath } from './core/paths'
 import { evaluate } from './core/rules'
+import { readShell } from './core/shell'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
 import { hasDesign } from './core/stages'
@@ -427,17 +426,6 @@ function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
   return { run: snap.run, move: snap.move, accepts: snap.accepts, restart: snap.restart, drift: snap.drift, root: rootDir, cli: pluginCli(), fixRun: snap.runCommand === 'fix' }
 }
 
-// The shell's folder, carried from one Bash call to the next (the engine keeps it). A folder outside the project, or one
-// that cannot be read, is taken as the project root: the engine puts the shell back there.
-let bashCwd = ''
-
-function carryCwd(after: string | null, rootDir: string): string {
-  if (after === null || after === '') return ''
-  if (!after.startsWith('/')) return after
-  const rel = normalizePath(after, rootDir)
-  return rel.startsWith('/') || rel.startsWith('..') ? '' : rel
-}
-
 const GUARD_ERROR =
   'Temper: the guard hit an error while it checked this command, and a run is active. Temper does not pass a command it could not check. ' +
   'Next: run the command again. If it keeps failing, ask the user (the user can turn enforcement off with /temper:temper enforcement off).'
@@ -462,13 +450,12 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
   // Fail open: when the mod cannot tell where the run is, it never blocks Temper.
   if (snap.inert || snap.enforcement === 'off' || snap.failOpen) return { deny: null }
   const command = typeof input.command === 'string' ? input.command : ''
-  const cls = tool === 'Bash' ? classifyBash(command, bashCwd) : null
   // A `state clear` at Intent (the TRIVIAL exit) is decided on the run as it is now.
-  const clearable = cls?.stateOps.some(op => op.op === 'clear') === true && snap.run?.stage === 'intent' && (await nothingToLose(makeIo($), snap.specDir))
+  const clears = tool === 'Bash' && readShell(command).stateOps.some(op => op.op === 'clear')
+  const clearable = clears && snap.run?.stage === 'intent' && (await nothingToLose(makeIo($), snap.specDir))
   const rootDir = await rootOf($)
-  const r = evaluate({ ...ruleContext(snap, rootDir), cwd: bashCwd, ...(clearable ? { nothingToLose: true } : {}) }, { tool, input })
+  const r = evaluate({ ...ruleContext(snap, rootDir), ...(clearable ? { nothingToLose: true } : {}) }, { tool, input })
   if ('deny' in r) return { deny: r.deny }
-  if (cls) bashCwd = carryCwd(cls.cwdAfter, rootDir)
   if (r.use !== undefined) {
     await spendDecision(makeIo($), r.use)
     adopt($, await refresh($))
@@ -574,7 +561,6 @@ export const register: Register = (on, opts) => {
   lastRun = null
   rootVerified = false
   sessionCwd = ''
-  bashCwd = ''
   interactive = false
   paneOpen = false
   lastStage = undefined

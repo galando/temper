@@ -246,20 +246,12 @@ describe('commits: the native pre-commit hook is the commit gate', () => {
     expect(isDeny(bash(ctx('build'), 'git -c core.hooksPath=/dev/null commit -m x'))).toBe(true)
   })
 
-  test('a commit the hook does not check is refused while a run is active, saved, at Commit, or a fix run', () => {
-    for (const cmd of ['git merge other', 'git cherry-pick abc', 'git revert HEAD', 'git commit src/a.ts -m x']) {
-      expect(isDeny(bash(ctx('build'), cmd))).toBe(true)
+  test('saved, at Commit, or in a fix run, the hook still may not be switched off; with no run it is the person\'s', () => {
+    for (const cmd of ['git commit --no-verify -m x', 'git config core.hooksPath /tmp/none']) {
       expect(isDeny(bash(ctx('build', { move: { kind: 'pause' } }), cmd))).toBe(true)
       expect(isDeny(bash(ctx('commit'), cmd))).toBe(true)
       expect('allow' in bash({ ...ctx('build'), run: null }, cmd)).toBe(true)
     }
-  })
-
-  test('a git alias that runs a shell is refused while a run is active', () => {
-    for (const cmd of [`git -c alias.x='!scripts/temper override plan --reason x' x`, `git config alias.x '!scripts/temper override plan --reason x'`]) {
-      expect(isDeny(bash(ctx('plan'), cmd))).toBe(true)
-    }
-    expect('allow' in bash(ctx('plan'), 'git config user.name x')).toBe(true)
   })
 })
 
@@ -278,24 +270,6 @@ describe('review of the one flow: what goes around a gate', () => {
   const none = (o: Partial<RuleContext> = {}): RuleContext => ({ run: null, move: null, accepts: [], restart: false, drift: { added: [], allowOnce: [] }, ...o })
   const OV = `${CLI} override review --reason sneaky`
 
-  test('a git command that runs a command of its own is refused while a run is active', () => {
-    for (const cmd of [
-      `git rebase --autostash -x "${OV}" HEAD~1`,
-      `git rebase --exec="${OV}" main`,
-      `git bisect run ${OV}`,
-      `git submodule foreach "${OV}"`,
-      `git filter-branch --tree-filter "${OV}" HEAD`,
-      `GIT_SEQUENCE_EDITOR="${OV}" git rebase -i HEAD~1`,
-      `EDITOR="${OV}" git commit --amend`,
-      `git -c core.editor="${OV}" commit --amend`,
-      `git -c diff.external="${OV}" diff`,
-      `git difftool -x "${OV}" HEAD~1`,
-      `git fetch --upload-pack="${OV}" .`,
-    ]) {
-      const r = bash(ctx('review'), cmd)
-      expect(isDeny(r) && r.deny, cmd).toContain('runs a command of its own')
-    }
-  })
   test('the printed lines of a parked group and everyday git still run; with no run git is the person\'s', () => {
     expect('allow' in bash(ctx('build'), 'git -C .claude/worktrees/temper-pw-T2 rebase --autostash --onto abc1234~1 abc1234')).toBe(true)
     expect('allow' in bash(ctx('build'), 'git status && git log --oneline -5')).toBe(true)
@@ -305,7 +279,7 @@ describe('review of the one flow: what goes around a gate', () => {
 
   test('at the commit stage nothing goes around the hook, and no move is Claude\'s', () => {
     const c = ctx('commit')
-    for (const cmd of ['git commit --no-verify -am x', 'git config core.hooksPath /tmp/none', 'git merge other', `${CLI} state set next_stage build`, `${CLI} state set run_mode autonomous`, `${CLI} state init pw --command temper`, `${CLI} state loop commit build --reason x`]) {
+    for (const cmd of ['git commit --no-verify -am x', 'git config core.hooksPath /tmp/none', `${CLI} state set next_stage build`, `${CLI} state set run_mode autonomous`, `${CLI} state init pw --command temper`, `${CLI} state loop commit build --reason x`]) {
       expect(isDeny(bash(c, cmd)), cmd).toBe(true)
     }
     expect(isDeny(write(c, '.git/hooks/pre-commit'))).toBe(true)
@@ -322,7 +296,7 @@ describe('review of the one flow: what goes around a gate', () => {
 
   test('a /temper:fix run: its moves are not judged, but nothing goes around the hook', () => {
     const fix = none({ fixRun: true })
-    for (const cmd of ['git commit --no-verify -am x', 'git -c core.hooksPath=/dev/null commit -m x', 'git merge other', 'TEMPER_DIR=/tmp/x scripts/temper gate check']) {
+    for (const cmd of ['git commit --no-verify -am x', 'git -c core.hooksPath=/dev/null commit -m x', 'echo exit 0 > .git/hooks/pre-commit']) {
       expect(isDeny(bash(fix, cmd)), cmd).toBe(true)
     }
     expect(isDeny(write(fix, '.claude/temper.config'))).toBe(true)
@@ -351,8 +325,8 @@ describe('review of the one flow: what goes around a gate', () => {
     const saved = (s: Stage) => ctx(s, { move: { kind: 'pause' } })
     expect(isDeny(write(saved('intent'), 'src/app.ts'))).toBe(true)
     expect(isDeny(write(saved('plan'), 'CLAUDE.md'))).toBe(true)
-    expect(isDeny(bash(saved('build'), 'git merge other'))).toBe(true)
-    expect(isDeny(bash(saved('build'), 'git commit-tree HEAD^{tree} -m x'))).toBe(true)
+    expect(isDeny(bash(saved('build'), 'git commit --no-verify -m x'))).toBe(true)
+    expect(isDeny(bash(saved('build'), 'echo {} > .temper/gates.json'))).toBe(true)
   })
 
   test('Start over begins a run of the same command, never a fix run', () => {
@@ -374,24 +348,9 @@ describe('Design after Plan', () => {
 })
 
 describe('the store of the person\'s decisions', () => {
-  test('the plugin data folder is not touched while a run is active', () => {
+  test('the editing tools do not write the plugin data folder while a run is active', () => {
     const store = '/root/.claude/plugins/data/temper-inline/store.json'
     expect(isDeny(write(ctx('plan'), store))).toBe(true)
-    for (const cmd of [`echo '{}' > ${store}`, 'python3 -c "open(\'/home/u/.claude/plugins/data/temper/x\',\'w\')"', 'cat ~/.claude/plugins/data/temper-inline/store.json']) {
-      expect(isDeny(bash(ctx('plan'), cmd)), cmd).toBe(true)
-    }
-    expect('allow' in bash({ ...ctx('plan'), run: null }, `cat ${store}`)).toBe(true)
-  })
-})
-
-describe('git plumbing that the native hook never sees', () => {
-  test('update-ref, stash create or store and replace are refused while a run is active', () => {
-    for (const cmd of ['git update-ref HEAD $(git stash create)', 'git stash create', 'git stash store abc123', 'git replace abc123 def456', 'git update-ref refs/heads/feature/pw abc123']) {
-      expect(isDeny(bash(ctx('build'), cmd)), cmd).toBe(true)
-    }
-    for (const cmd of ['git stash', 'git stash pop', 'git symbolic-ref --short HEAD', 'git rev-parse HEAD']) {
-      expect('allow' in bash(ctx('build'), cmd), cmd).toBe(true)
-    }
-    expect('allow' in bash({ ...ctx('build'), run: null }, 'git update-ref refs/heads/x abc123')).toBe(true)
+    expect('allow' in write({ ...ctx('plan'), run: null }, store)).toBe(true)
   })
 })

@@ -231,7 +231,7 @@ describe('every wait point of the flow audit', () => {
     await ask(api)
     expect(await system(api)).toContain('saved the run for later')
     expect(await write(api, 'src/other.ts')).toContain('scope drift')
-    expect(await sh(api, 'git merge other')).toContain('native pre-commit hook does not check')
+    expect(await sh(api, 'git commit --no-verify -m x')).toContain('pre-commit hook')
   })
 
   test('Start over: the Temper resume answer lets the run state go', async ($, on) => {
@@ -310,13 +310,12 @@ describe('a stage command is a door into /temper', () => {
 })
 
 describe('commits: the native hook is the commit gate', () => {
-  test('a plain commit goes to the hook; --no-verify and a merge are refused while a run is active', async ($, on) => {
+  test('a plain commit goes to the hook; --no-verify is refused while a run is active', async ($, on) => {
     const api = $ as unknown as Api
     begin(on, 'build', { plan: 'PASS' })
     await api.session.start(START)
     expect(await sh(api, 'git add src/app.ts && git commit -m "feat: x"')).toBeUndefined()
     expect(await sh(api, 'git commit --no-verify -m x')).toContain('pre-commit hook')
-    expect(await sh(api, 'git merge other')).toContain('does not check')
   })
 })
 

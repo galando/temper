@@ -1,14 +1,16 @@
-// The guard (ADR 0012): `evaluate(ctx, call)` answers allow or deny for one tool call. Pure. It has three jobs:
+// The guard (ADR 0013): `evaluate(ctx, call)` answers allow or deny for one tool call. Pure. It claims only what it can
+// enforce, in three jobs:
 //  1. a CLI call that only the person may cause needs the person's move at the CLI's current step;
-//  2. Claude never writes Temper's own files, and no commit gets past the native hook (it is the commit gate);
-//  3. each stage allows its own writes.
+//  2. Temper's own files (the CLI's files in `.temper`, and during a run the config and the git hooks) are written by
+//     neither the editing tools nor a plain Bash write, and each stage allows its own writes by the editing tools;
+//  3. a short Bash list: no commit around the native hook (`--no-verify`, a changed `core.hooksPath`).
 // Where the run is, every verdict and every skip come from the CLI's files (RunFacts); the person's choices come from the
 // question dialogs (core/decisions.ts). Every deny text ends with what to do next, and names the `Temper gate` question,
-// the one place the person decides. core/bash.ts reads the shell commands; it is frozen (no new parsing).
+// the one place the person decides. core/shell.ts reads a Bash command; it is not a shell parser, and Temper is not a
+// sandbox (docs/trust.md).
 
 import { DRIFT_HEADER, DRIFT_PREFIX } from './drift'
-import { classifyBash, protectedKind } from './bash'
-import type { ProtectedKind } from './bash'
+import { readShell } from './shell'
 import type { DriftState, Move } from './decisions'
 import { CLI } from './cli'
 import { matchesPlan, normalizePath } from './paths'
@@ -55,8 +57,6 @@ export type RuleContext = {
   fixRun?: boolean
   // Absolute project root; absolute tool paths inside it are made relative.
   root?: string
-  // The folder the shell is in (relative to the project root, or absolute), carried from the earlier Bash calls.
-  cwd?: string | null
   // Where the Temper script is: every deny text names the CLI by it.
   cli?: string
   // The CLI's files and the spec folder show a run that never left Intent (see nothingToLose in the adapter): a
@@ -88,6 +88,35 @@ function targetPath(call: ToolCall): string | null {
 }
 
 const inDir = (path: string, dir: string): boolean => path === dir || path.startsWith(dir + '/')
+
+// The files the editing tools never write. `config` and `hooks` only while a run is active (the person writes the config
+// with /temper:init, and installs the hooks, when no run is on). `hooks` is the native commit gate: the git hooks, the
+// git config (core.hooksPath) and the Temper commit hook (the temper-gate folder in the git folder, the older
+// temper-pre-commit file there, and the older folders hooks-temper and temper-git-hooks).
+export type ProtectedKind = 'events' | 'gates' | 'status' | 'overrides' | 'state' | 'folder' | 'evidence' | 'loops' | 'config' | 'hooks'
+
+// Every name is compared without regard to case: macOS (APFS) and Windows folders are case insensitive.
+const PROTECTED: ReadonlyArray<readonly [ProtectedKind, RegExp]> = [
+  ['events', /(^|\/)\.temper\/specs\/[^/\s]+\/events(\/|$)/i],
+  ['gates', /(^|\/)\.temper\/gates\.json$/i],
+  ['status', /(^|\/)\.temper\/status\.json$/i],
+  ['overrides', /(^|\/)\.temper\/overrides\.json$/i],
+  // The run state, the grouped Build record, the token usage record and the view the mod draws: the CLI writes them.
+  ['state', /(^|\/)\.temper\/(?:build-state|groups|usage|view)\.json$/i],
+  ['evidence', /(^|\/)\.temper\/evidence\/[^/]+\.json$/i],
+  ['loops', /(^|\/)\.temper\/feedback-loops\.json$/i],
+  ['config', /(^|\/)\.claude\/temper\.config$/i],
+  ['hooks', /(^|\/)\.git\/(?:hooks(\/|$)|hooks-temper(\/|$)|temper-git-hooks(\/|$)|config$|temper-gate(\/|$)|temper-pre-commit(\/|$))/i],
+  // Folders that hold guarded files: removing or replacing one removes them too.
+  ['folder', /(^|\/)\.temper(\/specs(\/[^/\s]+)?)?\/?$/i],
+]
+
+// Which guarded Temper path a path names, or null. `..` and `.` segments are collapsed first.
+export function protectedKind(path: string): ProtectedKind | null {
+  const p = normalizePath(path)
+  for (const [kind, re] of PROTECTED) if (re.test(p)) return kind
+  return null
+}
 
 // A /temper run is on, at any stage up to and with Commit: the commit gate can still fail at the commit stage (a missing
 // verdict, an autonomous park), so nothing may go around it there either. Writes are free at Commit (stageWriteRule).
@@ -244,11 +273,6 @@ const AUTONOMY_DENY =
 // The keys of build-state.json that only the CLI's own moves write. next_stage is a step (see the back calls).
 const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step'])
 
-const UNCHECKABLE = (cli: string): string =>
-  'Temper: this command writes to a path that Temper cannot check, and it names Temper state. ' +
-  'Next: write the exact file path with no variables, globs, braces or substitutions. Or use ' +
-  `${cli} gate <stage>, ${cli} evidence or ${cli} state.`
-
 const DONE_OVERRIDE_DENY =
   "Temper: the run is done, and an override now is the user's choice. " +
   `Next: show the failed commit gate and ${ASK}: "Override and commit" (with a reason) or "Save for later". ` +
@@ -266,83 +290,17 @@ const STATE_END = (cli: string): string =>
   'Temper: do not clear or archive the run state during a run. Next: finish the run, ' +
   `commit, then run ${cli} state archive. To throw the run away, ask the user with AskUserQuestion, header \`Temper resume\`, whether to start over.`
 
-const OPAQUE_DENY = (cli: string): string =>
-  'Temper: this command runs the Temper script in a way Temper cannot read, and it holds a decision word. ' +
-  'Only the user decides, in the `Temper gate` question. ' +
-  `Next: run each ${cli} call with its words written out, one per Bash call.`
-
-const DYNAMIC_DENY = (cli: string): string =>
-  'Temper: this command writes what a Temper call does (its subcommand) in a form Temper cannot read: a variable, a substitution or an escaped string. ' +
-  'It could be a decision, and only the user decides, in the `Temper gate` question. ' +
-  `Next: run each ${cli} call with its words written out, one per Bash call.`
-
-const OPAQUE_HIDDEN_DENY = (cli: string): string =>
-  'Temper: this command may run the Temper script (it names the script, or starts a program that can run it) and hides part of what it runs behind a substitution, an expansion or a here-string, so Temper cannot read it. ' +
-  `Next: run ${cli} with its words written out, in a Bash call of its own.`
-
-const ALIAS_DENY = (cli: string): string =>
-  'Temper: do not link, copy or source the Temper script. A second name for it hides the decision calls. ' +
-  `Next: run ${cli} by its own path. The user decides in the \`Temper gate\` question.`
-
-const HIDDEN_DENY =
-  'Temper: a shell, or a builtin that runs text as commands (source and the like), is given a program that this command does not show (a pipe from another command, a file on stdin, a substitution, or a word split by quotes, backslashes, braces or globs). ' +
-  'While a run is active only a program that is written out plainly passes. Next: run each command in its own Bash call, with the words written out.'
-
-const GUARDED_USE_DENY = (word: string, cli: string): string =>
-  `Temper: this command names ${word}, a file of the run, and it is not a plain read. The CLI writes those files; nothing else does. ` +
-  `Next: read it with cat, grep, jq, head or git diff, or use ${cli} gate, evidence or state.`
-
-const ENV_DENY = (cli: string): string =>
-  "Temper: TEMPER_DIR and TEMPER_CONFIG point the CLI at other files than the run's, so its verdicts would be written for a run that is not this one. " +
-  `Next: run ${cli} with no TEMPER_DIR or TEMPER_CONFIG.`
-
 const HOOKS_DENY =
   'Temper: --no-verify, -n and core.hooksPath switch the native pre-commit hook off. The hook is the commit gate for every commit. ' +
   'Next: commit without them. If the hook blocks the commit, finish the stages it names.'
 
-const GIT_SHELL_ALIAS = /\balias\.[A-Za-z0-9_.-]+(?:\s*=\s*|\s+)['"]?\s*!/i
-
-const GIT_ALIAS_DENY =
-  'Temper: a git alias that runs a shell command (alias.<name>=!...) hides what it runs. ' +
-  'Next: run each command itself, in its own Bash call, with the words written out.'
-
-// git runs a command of its own: rebase --exec, bisect run, submodule foreach, filter-branch, difftool --extcmd, a
-// transport program, or an editor, pager, diff, filter or credential program set for the call. Temper cannot read that
-// command, so it could hide a decision of the person.
-const GIT_RUNS_COMMAND: readonly RegExp[] = [
-  /\bgit\b[^\n;&|]*\brebase\b[^\n;&|]*\s(?:--exec\b|-[A-Za-z]*x(?=[\s=]|$))/,
-  /\bgit\b[^\n;&|]*\bbisect\s+run\b/,
-  /\bgit\b[^\n;&|]*\bsubmodule\b[^\n;&|]*\bforeach\b/,
-  /\bgit\b[^\n;&|]*\bfilter-(?:branch|repo)\b/,
-  /\bgit\b[^\n;&|]*\bdifftool\b[^\n;&|]*\s(?:--extcmd\b|-[A-Za-z]*x(?=[\s=]|$))/,
-  /\bgit\b[^\n;&|]*\s--(?:upload-pack|receive-pack)\b/,
-  /\bgit\b[^\n;&|]*?(?:core\.(?:editor|pager|sshcommand|fsmonitor|askpass)|sequence\.editor|diff\.external|pager\.[\w.-]+|gpg\.(?:[\w-]+\.)?program|credential\.helper|interactive\.difffilter|(?:merge|filter|diff)\.[\w.-]+\.(?:driver|clean|smudge|process|textconv|command))\b/i,
-  /\b(?:GIT_EDITOR|GIT_SEQUENCE_EDITOR|GIT_PAGER|GIT_EXTERNAL_DIFF|GIT_SSH_COMMAND|GIT_SSH|GIT_ASKPASS|EDITOR|VISUAL|PAGER)\s*=[^\n;&|]*\bgit\b/,
-]
-
 // The plugin data folder of Claude Code (`~/.claude/plugins/data/`) holds the mod's store, and in it the person's
-// decisions. Nothing but the mod touches it while a run is active.
+// decisions. The editing tools do not write it while a run is active.
 const PLUGIN_DATA = /\.claude\/plugins\/data(?:\/|\b)/
 
 const PLUGIN_DATA_DENY =
-  'Temper: the plugin data folder under ~/.claude holds the decisions the user made. Do not read or change it while a run is active. ' +
+  'Temper: the plugin data folder under ~/.claude holds the decisions the user made. Do not change it while a run is active. ' +
   `Next: ${ASK} for a decision.`
-
-const GIT_EXEC_DENY =
-  'Temper: this git command runs a command of its own (rebase --exec, bisect run, submodule foreach, filter-branch, an editor, pager or diff program). ' +
-  'Temper cannot read what it runs while a run is active. Next: run that command itself, in its own Bash call, with the words written out.'
-
-// git plumbing that makes or moves a commit without git commit, so the native hook never sees it. Everyday commands that
-// move a branch (reset, checkout, rebase) are not judged here: the docs list them among the limits of the Bash reader.
-const GIT_PLUMBING = /\bgit\b[^\n;&|]*\s(?:update-ref|replace|stash\s+(?:create|store))\b/
-
-const GIT_PLUMBING_DENY =
-  'Temper: this git command makes or moves a commit without git commit (update-ref, stash create or store, replace), so the native commit hook never sees it. ' +
-  'Next: git add the files, then git commit -m "...".'
-
-const UNPLAIN_COMMIT_DENY =
-  'Temper: this command makes a commit that the native pre-commit hook does not check (a merge, cherry-pick, revert, am, pull, commit-tree, or a commit of named paths). ' +
-  'While a run is active, every commit is a plain git commit of the index, which the commit gate checks. Next: git add the files, then git commit -m "...".'
 
 const MOVE_AND_BACK =
   'Temper: this command steps the run back and moves it on in one go. The stage the run goes back to needs its own work and its own check. ' +
@@ -362,49 +320,23 @@ const KEY_DENY = (key: string): string =>
   'Next: ask the user if the run needs another value.'
 
 function evaluateBash(ctx: RuleContext, command: string): RuleResult {
-  const c = classifyBash(command, ctx.cwd === undefined ? '' : ctx.cwd)
+  const c = readShell(command)
   const cli = ctx.cli ?? CLI
   const active = isActive(ctx)
   // Nothing goes around the native commit hook while a /temper run or a /temper:fix run is active.
   const guardsCommit = active || ctx.fixRun === true
 
-  if (c.alias) return { deny: ALIAS_DENY(cli) }
-  if (c.opaque && active) return { deny: c.opaqueWhy === 'dynamic' ? DYNAMIC_DENY(cli) : c.opaqueWhy === 'hidden' ? OPAQUE_HIDDEN_DENY(cli) : OPAQUE_DENY(cli) }
-  if (active && c.hidden) return { deny: HIDDEN_DENY }
-  if (active && PLUGIN_DATA.test(command)) return { deny: PLUGIN_DATA_DENY }
-  // A command git runs itself could hide a decision (a fix run's root cause stage may use `git bisect run`).
-  if (active && GIT_RUNS_COMMAND.some(rx => rx.test(command))) return { deny: GIT_EXEC_DENY }
-  if (guardsCommit) {
-    if (c.envTamper) return { deny: ENV_DENY(cli) }
-    if (c.hookTamper || c.noVerify) return { deny: HOOKS_DENY }
-    // A git alias that runs a shell (`-c alias.x='!...'`, `git config alias.x '!...'`) hides the command it runs.
-    if (GIT_SHELL_ALIAS.test(command)) return { deny: GIT_ALIAS_DENY }
-    // The commit gate is the native pre-commit hook, which runs on a plain `git commit` only. A commit it does not see
-    // (a merge, cherry-pick, revert, am, pull, commit-tree, or a pathspec commit) waits until the run is cleared.
-    if (c.commits && c.unplainCommit) return { deny: UNPLAIN_COMMIT_DENY }
-    if (GIT_PLUMBING.test(command)) return { deny: GIT_PLUMBING_DENY }
-  }
-
-  if (c.protectedWrites.length > 0) {
-    const known = c.protectedWrites.filter(p => !c.uncheckable.includes(p))
-    if (known.length === 0) return { deny: UNCHECKABLE(cli) }
-    // The config, the git hooks and the Temper commit hook are the run's only while a run is active (/temper:init writes
-    // the config and installs the hook before). A path of no known kind (a link made inside .temper) gets the text of the
-    // .temper folders.
-    const kinds = known.map(p => protectedKind(p) ?? 'folder').filter(k => guardsCommit || (k !== 'config' && k !== 'hooks'))
-    if (kinds.length > 0) {
-      const forged = kinds.find(k => k === 'events' || k === 'overrides')
-      return protectedDeny(forged ?? kinds[0] ?? 'folder', cli)
-    }
-    if (c.uncheckable.length > 0) return { deny: UNCHECKABLE(cli) }
-  }
-  if (active && c.guardedUse.length > 0) return { deny: GUARDED_USE_DENY(c.guardedUse[0] ?? 'a guarded file', cli) }
+  if (guardsCommit && c.noVerify) return { deny: HOOKS_DENY }
+  if (guardsCommit && c.hooksPath) return protectedDeny('hooks', cli)
+  // A plain write onto a protected file: the same list, and the same texts, as the editing tools.
+  const kinds = c.writes.map(p => protectedKind(normalizePath(p, ctx.root))).filter((k): k is ProtectedKind => k !== null && (guardsCommit || (k !== 'config' && k !== 'hooks')))
+  if (kinds.length > 0) return protectedDeny(kinds.find(k => k === 'events' || k === 'overrides') ?? (kinds[0] as ProtectedKind), cli)
 
   // Removing or archiving the run's state is for after the run, or for the person's Start over. One exception, the
   // TRIVIAL exit of the orchestrator: a clear of a run that never left Intent (no step taken) loses nothing.
   const resets = c.stateOps.length > 0 && c.stateOps.every(o => o.op === 'archive' || o.op === 'clear' || o.op === 'init')
   // Start over begins a run of the same command: a /temper run never restarts as a fix run, which the mod stands aside for.
-  if (active && ctx.restart && resets && c.calls.length === 0 && !c.commits && !/--command[=\s]+['"]?fix\b/.test(command)) return ALLOW
+  if (active && ctx.restart && resets && c.calls.length === 0 && !/--command[=\s]+['"]?fix\b/.test(command)) return ALLOW
   if (active) {
     const r = ctx.run
     const trivialExit = r.stage === 'intent' && r.step <= 0 && ctx.nothingToLose === true
