@@ -1,85 +1,70 @@
-// Deny rules: `evaluate(state, ctx, toolCall)` answers allow or deny for one tool call.
-// Pure. Every deny reason ends with what to do next (mods-plan 3.4).
+// The guard (ADR 0012): `evaluate(ctx, call)` answers allow or deny for one tool call. Pure. It has three jobs:
+//  1. a CLI call that only the person may cause needs the person's move at the CLI's current step;
+//  2. Claude never writes Temper's own files, and no commit gets past the native hook (it is the commit gate);
+//  3. each stage allows its own writes.
+// Where the run is, every verdict and every skip come from the CLI's files (RunFacts); the person's choices come from the
+// question dialogs (core/decisions.ts). Every deny text ends with what to do next, and names the `Temper gate` question,
+// the one place the person decides. core/bash.ts reads the shell commands; it is frozen (no new parsing).
 
 import { DRIFT_HEADER, DRIFT_PREFIX } from './drift'
 import { classifyBash, protectedKind } from './bash'
-import type { DecisionKind, ProtectedKind } from './bash'
-import type { Phase } from './events'
-import { ONLY_USER, ONLY_USER_ASK, phaseLabel } from './machine'
-import type { RunState } from './machine'
-import { CLI, guardedPhase } from './cli'
+import type { ProtectedKind } from './bash'
+import type { DriftState, Move } from './decisions'
+import { CLI } from './cli'
 import { matchesPlan, normalizePath } from './paths'
+import type { Stage } from './stages'
+import { hasDesign, isStage, nextStage, stageIndex, stageLabel } from './stages'
 
-// A decision the person made that no CLI call has matched yet: the event id, its kind, and
-// the phase (or finding id) it was made for.
-export type HumanDecision = { id: string; kind: DecisionKind; phase?: string; findingId?: string }
-
-export type RuleContext = {
-  // Absolute project root; absolute tool paths inside it are made relative.
-  root?: string
+// What the CLI's files say about the run, for the guard.
+export type RunFacts = {
+  // The stage the CLI is at (`next_stage`). `commit`: every gate is behind the run; it is done.
+  stage: Stage
+  // The CLI's step count (ADR 0012): 0 right after `state init`, -1 for a run state written before it.
+  step: number
+  runMode: string | null
+  complexity: string | null
+  // `phases.design: true` in .claude/temper.config.
+  designRequired: boolean
+  // The run has a design verdict or is at Design: it has a Design stage whatever the config says now.
+  designSeen: boolean
+  // `autonomy.enabled: true` in .claude/temper.config: the person has opted in to autonomous runs.
+  autonomyEnabled: boolean
+  // .temper/groups.json exists: a grouped Build run is active, and the CLI (not an agent) ticks the run's tasks.md.
+  groupedActive: boolean
+  verdicts: Partial<Record<Stage, 'PASS' | 'FAIL'>>
+  skipped: ReadonlySet<Stage>
   // The spec directory, relative to the root: `.temper/specs/{slug}`.
   specDir: string
   // File entries from plan.md and tasks.md (exact paths, `dir/` prefixes or globs).
   planFiles: readonly string[]
-  // Human decision events not yet matched by a CLI call.
-  humanDecisions?: readonly HumanDecision[]
-  // The run's complexity (build-state.json): medium and complex runs have a design stage after plan.
-  complexity?: string | null
-  // `phases.design: true` is written in .claude/temper.config. When it is not, the orchestrator may go from a
-  // medium or complex plan straight to Build (the project never switched design on), so that step is accepted too.
-  designRequired?: boolean
-  // The CLI state looks reset (it is earlier than checks that passed): the phase rules do not block a
-  // write. Protected paths stay protected.
-  failOpenWrites?: boolean
-  // What the CLI commit gate (`temper gate commit`) would let through, read from the same facts. The mod's
-  // commit rule is never stricter than it.
-  commit?: CommitFacts
-  // `autonomy.enabled: true` in .claude/temper.config: the person has opted in to autonomous runs.
-  autonomyEnabled?: boolean
-  // Files a Fix finding action is currently active for (Review phase writes).
-  fixFiles?: readonly string[]
-  // The folder the shell is in (relative to the project root, or absolute), carried from the earlier Bash calls;
-  // null when it is not known. Staged paths and write targets are read against it.
-  cwd?: string | null
-  // Back decisions a `state loop` call has already used: the loop is spent once, the `state set next_stage` that follows
-  // spends the decision itself.
-  loopedDecisions?: readonly string[]
-  // Where the Temper script is: its full path in the plugin folder, or the plain `scripts/temper` when that is not
-  // known (see pluginCliFrom). Every deny text names the CLI by it.
-  cli?: string
-  // The CLI's files and the spec folder show a run that never left Intent, read fresh for this call (see nothingToLose
-  // in the adapter): no completed stage, no verdict, no skip, and none of intent.md, plan.md, tasks.md and design.md.
-  // With the mod's own record holding only the start, a `state clear` then loses nothing (the TRIVIAL exit of the
-  // orchestrator). Left out: not known, and the clear is refused.
-  nothingToLose?: boolean
-  // .temper/groups.json exists: a grouped Build run is active, and the CLI (not an agent) ticks the run's tasks.md.
-  groupedActive?: boolean
-  // The bar draws its buttons (full mode). False: the person chooses in the `Temper gate` question, so a deny names it.
-  // Left out: buttons.
-  buttons?: boolean
-  // The person armed autonomy at the plan gate (run_mode autonomous) and autonomy.enabled is on: after a failed Review or
-  // Check the run loops back to Build by itself, within the CLI's loop budget (reference/autonomy.md).
-  autonomous?: boolean
 }
 
-// The carve-outs of the CLI commit gate (scripts/temper gate_commit, docs/decisions/0009):
-//  - artifact only: every staged file is under .temper/specs/ (the intent accept commit, the plan commit);
-//  - Build checkpoint: next_stage is build, command temper, the current branch is the run's branch, the
-//    plan (and intent, design) gates are satisfied, and the last build test row is green.
-export type CommitFacts = {
-  // Every file this commit stages is under .temper/specs/ (as far as the mod saw it staged).
-  stagedSpecsOnly: boolean
-  // The Build checkpoint carve-out holds.
-  checkpoint: boolean
-  // Why a checkpoint commit would be refused, in the CLI's words, for the deny text (a branch problem).
-  hint?: string
+export type RuleContext = {
+  // The run, or null when no /temper run is active (the mod then guards only what needs no run).
+  run: RunFacts | null
+  // The person's move at the CLI's current step (the latest one), or null.
+  move: Move | null
+  // The findings the person accepted at this step.
+  accepts: readonly string[]
+  // The person chose Start over in this run.
+  restart: boolean
+  // The person's Scope drift answers in this run.
+  drift: DriftState
+  // Absolute project root; absolute tool paths inside it are made relative.
+  root?: string
+  // The folder the shell is in (relative to the project root, or absolute), carried from the earlier Bash calls.
+  cwd?: string | null
+  // Where the Temper script is: every deny text names the CLI by it.
+  cli?: string
+  // The CLI's files and the spec folder show a run that never left Intent (see nothingToLose in the adapter): a
+  // `state clear` then loses nothing (the TRIVIAL exit of the orchestrator). Left out: not known, and the clear is refused.
+  nothingToLose?: boolean
 }
 
 export type ToolCall = { tool: string; input: Record<string, unknown> }
 
-export type RuleResult =
-  | { allow: true; consume?: DecisionKind | 'drift'; driftPath?: string; eventId?: string; eventIds?: string[]; loopIds?: string[] }
-  | { deny: string; drift?: string }
+// `use`: a decision this call spends (Keep the agent's commits, an Allow once answer); it counts once.
+export type RuleResult = { allow: true; use?: string } | { deny: string; drift?: string }
 
 const ALLOW: RuleResult = { allow: true }
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
@@ -88,6 +73,12 @@ const TEST_FILE = [/(^|\/)(?:tests?|__tests__|specs?)\//, /\.(?:test|spec)\.[^/]
 
 export const isTestFile = (path: string): boolean => TEST_FILE.some(re => re.test(path))
 
+const ASK = 'ask the user with AskUserQuestion, header `Temper gate`'
+
+export const ONLY_USER = `Only the user decides this. Next: ${ASK}, then wait.`
+
+const AUTONOMY_REPORT = '.temper/autonomy-report.md'
+
 function targetPath(call: ToolCall): string | null {
   const raw = call.tool === 'NotebookEdit' ? call.input.notebook_path : call.input.file_path
   return typeof raw === 'string' && raw.length > 0 ? raw : null
@@ -95,12 +86,29 @@ function targetPath(call: ToolCall): string | null {
 
 const inDir = (path: string, dir: string): boolean => path === dir || path.startsWith(dir + '/')
 
-// Where the person makes a choice, for a deny text: the Temper bar, or the `Temper gate` question when it draws no buttons.
-const chooseAt = (ctx: RuleContext): string => (ctx.buttons === false ? 'with AskUserQuestion, header `Temper gate`' : 'on the Temper bar')
-const onlyUser = (ctx: RuleContext): RuleResult => ({ deny: ctx.buttons === false ? ONLY_USER_ASK : ONLY_USER })
+// A run that is on: at a stage before commit. At the commit stage the run is done, and only the commit gate's own
+// overrides are the person's.
+const isActive = (ctx: RuleContext): ctx is RuleContext & { run: RunFacts } => ctx.run !== null && ctx.run.stage !== 'commit'
 
-function protectedDeny(kind: ProtectedKind, cli: string, ctx: RuleContext): RuleResult {
-  if (kind === 'events' || kind === 'overrides') return onlyUser(ctx)
+const design = (r: RunFacts): boolean => hasDesign(r.complexity, r.designRequired, r.designSeen)
+
+// The stages a `state advance` from `s` may name next. A medium or complex plan goes to Design; when the project never
+// switched design on, it may go straight to Build.
+function allowedNext(r: RunFacts, s: Stage): Stage[] {
+  if (s === 'plan' && (r.complexity === 'medium' || r.complexity === 'complex') && !r.designRequired) return ['build', 'design']
+  const n = nextStage(s, design(r))
+  return n === null ? [] : [n]
+}
+
+// The stage's check passed, or the person skipped it, in this pass of the stage (the CLI clears both on a step back).
+const settled = (r: RunFacts, s: Stage): boolean => r.verdicts[s] === 'PASS' || r.skipped.has(s)
+
+// An armed autonomous run loops back to Build by itself after a failed Review or Check (never to Plan or Intent), within
+// the CLI's loop budget (reference/autonomy.md). It was armed at the plan gate, by the person.
+const armed = (r: RunFacts): boolean => r.runMode === 'autonomous' && r.autonomyEnabled
+
+function protectedDeny(kind: ProtectedKind, cli: string): RuleResult {
+  if (kind === 'events' || kind === 'overrides') return { deny: ONLY_USER }
   if (kind === 'folder') {
     return {
       deny:
@@ -131,34 +139,17 @@ function protectedDeny(kind: ProtectedKind, cli: string, ctx: RuleContext): Rule
   }
   if (kind === 'state') {
     return {
-      deny:
-        'Temper: use the temper CLI to change run state. Do not write it by hand. ' +
-        `Next: use ${cli} state set or ${cli} state advance.`,
+      deny: 'Temper: use the temper CLI to change run state. Do not write it by hand. ' + `Next: use ${cli} state set or ${cli} state advance.`,
     }
   }
   return {
-    deny:
-      'Temper: the temper CLI makes the gate verdicts. Do not write them by hand. ' +
-      `Next: run ${cli} gate <stage> and read the verdict.`,
+    deny: 'Temper: the temper CLI makes the gate verdicts. Do not write them by hand. ' + `Next: run ${cli} gate <stage> and read the verdict.`,
   }
 }
 
-const COMMIT_NEXT: Record<Phase, string> = {
-  intent: 'finish the steps up to Check',
-  plan: 'finish the steps up to Check',
-  build: 'finish Build, then Review and Check',
-  review: 'finish Review, then Check',
-  check: 'finish the check stage',
-  fix: 'fix the failed checks, then run the checks again',
-}
-
-const isActive = (s: RunState): s is RunState & { phase: Phase } => s.phase !== null && s.phase !== 'done'
-
-const AUTONOMY_REPORT = '.temper/autonomy-report.md'
-
 // The path inside a group or task worktree of THIS run (`.claude/worktrees/temper-{slug}-G{n}/...` or `-T{n}/...`),
-// relative to that worktree; null for any other path (another run's slug, another prefix, a malformed number). The
-// path is normalized already, so a `..` after the prefix has been collapsed and cannot leave the worktree this way.
+// relative to that worktree; null for any other path. The path is normalized already, so a `..` after the prefix has
+// been collapsed and cannot leave the worktree this way.
 function worktreeRelative(path: string, specDir: string): string | null {
   const slug = normalizePath(specDir).split('/').pop() ?? ''
   if (slug === '') return null
@@ -171,28 +162,31 @@ function worktreeRelative(path: string, specDir: string): string | null {
 const TASKS_OWNED =
   'Next: the temper CLI ticks task boxes and records task verdicts. Run the task through the CLI (task test, task gate), or ask the user to end the grouped Build run first.'
 
-function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, rawPath: string): RuleResult {
-  // A write in a group worktree of this run is judged by its worktree-relative path, with the same rule.
-  const rel = worktreeRelative(rawPath, ctx.specDir)
+function stageWriteRule(ctx: RuleContext & { run: RunFacts }, rawPath: string): RuleResult {
+  const r = ctx.run
+  // A write in a group or task worktree of this run is judged by its worktree-relative path, with the same rule.
+  const rel = worktreeRelative(rawPath, r.specDir)
   const path = rel ?? rawPath
-  if (ctx.groupedActive && (s.phase === 'build' || s.phase === 'fix') && path === `${normalizePath(ctx.specDir)}/tasks.md`) {
+  const spec = normalizePath(r.specDir)
+  // In grouped Build the CLI ticks the run's tasks.md: from Build on, no agent writes it.
+  if (r.groupedActive && stageIndex(r.stage) >= stageIndex('build') && path === `${spec}/tasks.md`) {
     return { deny: `Temper: grouped Build is active. Writing ${rawPath} is not allowed: the run's tasks.md belongs to the temper CLI. ${TASKS_OWNED}` }
   }
-  const spec = normalizePath(ctx.specDir)
   const inSpec = inDir(path, spec)
   const specFile = (name: string) => path === `${spec}/${name}`
-  const label = phaseLabel(s.phase)
+  const label = stageLabel(r.stage)
 
-  switch (s.phase) {
+  switch (r.stage) {
     case 'intent':
       if (specFile('intent.md') || specFile('intent-context.json')) return ALLOW
       return {
         deny:
-          `Temper: ${label} phase. Writing ${path} is not allowed until the user approves the intent. ` +
+          `Temper: ${label} stage. Writing ${path} is not allowed until the user approves the intent. ` +
           'Do not look for another way. Do not offer to turn Temper off. ' +
-          `Next: finish intent.md. Then ask the user to approve it (Continue to Plan ${chooseAt(ctx)}).`,
+          `Next: finish intent.md. Then ${ASK} (Continue to Plan).`,
       }
-    case 'plan': {
+    case 'plan':
+    case 'design': {
       const ok =
         ['intent.md', 'plan.md', 'tasks.md', 'design.md', 'config-suggestions.json'].some(specFile) ||
         (inSpec && /-context\.json$/.test(path)) ||
@@ -200,31 +194,29 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, rawPat
       if (ok) return ALLOW
       return {
         deny:
-          `Temper: ${label} phase. Writing ${path} is not allowed until the user approves the plan. ` +
+          `Temper: ${label} stage. Writing ${path} is not allowed until the user approves the plan and Build starts. ` +
           'Do not look for another way. Do not offer to turn Temper off. ' +
-          `Next: finish plan.md and tasks.md. Then ask the user to approve them (Continue ${chooseAt(ctx)}).`,
+          `Next: finish the ${r.stage === 'plan' ? 'plan' : 'design'}. Then ${ASK}.`,
       }
     }
     case 'review':
-      if (inSpec || (ctx.fixFiles ?? []).some(f => normalizePath(f, ctx.root) === path)) return ALLOW
+      if (inSpec) return ALLOW
       return {
         deny:
-          `Temper: ${label} phase. Writing ${path} is not allowed. Review changes the spec folder only. ` +
-          `Next: write the finding in the spec folder. To fix it, ask the user to loop back to Build ${chooseAt(ctx)}.`,
+          `Temper: ${label} stage. Writing ${path} is not allowed. Review changes the spec folder only. ` +
+          `Next: write the finding in the spec folder. To fix it, ${ASK} whether to loop back to Build.`,
       }
     case 'check':
       if (inSpec) return ALLOW
       return {
         deny:
-          `Temper: ${label} phase. Writing ${path} is not allowed. Check only runs checks. ` +
-          `Next: finish the check stage. To change code, ask the user to loop back to Build ${chooseAt(ctx)}.`,
+          `Temper: ${label} stage. Writing ${path} is not allowed. Check only runs checks. ` +
+          `Next: finish the check stage. To change code, ${ASK} whether to loop back to Build.`,
       }
-    case 'build':
-    case 'fix': {
-      if (inSpec || isTestFile(path) || matchesPlan(path, ctx.planFiles) || s.addedPaths.some(p => normalizePath(p) === path)) {
-        return ALLOW
-      }
-      if (s.allowOnce.some(p => normalizePath(p) === path)) return { allow: true, consume: 'drift', driftPath: path }
+    case 'build': {
+      if (inSpec || isTestFile(path) || matchesPlan(path, r.planFiles) || ctx.drift.added.some(p => normalizePath(p) === path)) return ALLOW
+      const once = ctx.drift.allowOnce.find(a => normalizePath(a.path) === path)
+      if (once) return { allow: true, use: once.id }
       return {
         deny:
           `Temper: scope drift. ${path} is not in the plan, so the user decides first: add to plan, revert, or allow once. ` +
@@ -235,45 +227,18 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, rawPat
         drift: path,
       }
     }
+    case 'commit':
+      return ALLOW
   }
-}
-
-// The CLI has no Fix stage: a decision made in Fix is a decision about the Check stage.
-const stageName = (p: string): string => (p === 'fix' ? 'check' : p)
-
-// The person skipped this stage with a reason (the override event) and has not stepped back since. A skip is the
-// person's own decision to go on, so the `state advance` that follows it needs no second approval, also for Intent
-// and Plan. A later step back ends it: a re-planned Plan must be approved again.
-function skippedStage(s: RunState, stage: string): boolean {
-  const lastBack = s.history.reduce((t, h) => (h.kind === 'back' ? Math.max(t, h.ts) : t), -Infinity)
-  return s.overrides.some(o => stageName(o.phase) === stage && o.ts >= lastBack)
-}
-
-// The person's skip of a stage still holds: no later step back redid that stage (a step back to it or to an earlier one).
-// The CLI keeps its overrides across a loop, so a skip of a Review that is redone must not let the new Review through.
-function skipHolds(s: RunState, stage: string): boolean {
-  const at = PHASE_INDEX[stage] ?? 0
-  const redone = s.history.reduce((t, h) => (h.kind === 'back' && (PHASE_INDEX[h.to] ?? 0) <= at ? Math.max(t, h.ts) : t), -Infinity)
-  return s.overrides.some(o => stageName(o.phase) === stage && o.stage !== 'design' && o.ts >= redone)
-}
-
-// The Plan was approved by the person in this run: a trusted advance out of Plan, not undone by a
-// later back step to Intent or Plan. Untrusted event files never reach the state, so they never count.
-const planApproved = (s: RunState): boolean => {
-  let approved = false
-  for (const h of s.history) {
-    if (h.kind === 'advance' && h.from === 'plan') approved = true
-    if (h.kind === 'back' && (h.to === 'intent' || h.to === 'plan')) approved = false
-  }
-  return approved
 }
 
 const AUTONOMY_DENY =
   'Temper: only the user can turn on autonomous mode, at the plan gate. ' +
-  'Next: ask the user at the plan gate with AskUserQuestion, header `Temper gate`: "Stage by stage" or "Autonomous: run the rest unattended". ' +
+  `Next: ${ASK} at the plan gate: "Stage by stage" or "Autonomous: run the rest unattended". ` +
   'It needs autonomy.enabled: true in .claude/temper.config, which only the user sets.'
 
-const GUARD_KEYS = new Set(['stage', 'next_stage', 'branch', 'spec_path', 'run_mode', 'command'])
+// The keys of build-state.json that only the CLI's own moves write. next_stage is a step (see the back calls).
+const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step'])
 
 const UNCHECKABLE = (cli: string): string =>
   'Temper: this command writes to a path that Temper cannot check, and it names Temper state. ' +
@@ -281,9 +246,9 @@ const UNCHECKABLE = (cli: string): string =>
   `${cli} gate <stage>, ${cli} evidence or ${cli} state.`
 
 const DONE_OVERRIDE_DENY =
-  'Temper: the run is done, and an override now is the user\'s choice. ' +
-  'Next: show the failed commit gate and ask the user with AskUserQuestion, header `Temper gate`: "Override and commit" (with a reason) or "Save for later". ' +
-  'Then run every override that commit needs in one Bash call.'
+  "Temper: the run is done, and an override now is the user's choice. " +
+  `Next: show the failed commit gate and ${ASK}: "Override and commit" (with a reason) or "Save for later". ` +
+  'Then run every override that commit needs.'
 
 const REPEATED_FLAG =
   'Temper: this decision call repeats a flag (--id, --stage or --reason). ' +
@@ -291,69 +256,20 @@ const REPEATED_FLAG =
 
 const STATE_RESTART =
   'Temper: state init and state loop restart or move the run. Only the user decides that. ' +
-  'Next: ask the user with AskUserQuestion, header `Temper resume`, whether to start over (or, for a step back, the Loop back choice of the gate).'
-
-// The stage that follows a stage in the CLI sequence (STAGE_SEQ_TEMPER in scripts/temper), with design
-// between plan and build for a medium or complex run. Null for a name that is not a stage.
-export function nextStage(stage: string, complexity: string | null | undefined): string | null {
-  switch (stage) {
-    case 'intent':
-      return 'plan'
-    case 'plan':
-      return complexity === 'medium' || complexity === 'complex' ? 'design' : 'build'
-    case 'design':
-      return 'build'
-    case 'build':
-      return 'review'
-    case 'review':
-      return 'check'
-    case 'check':
-      return 'commit'
-    default:
-      return null
-  }
-}
-
-// The mod's commit rule defers to the CLI commit gate: a commit passes when the gate would pass it. Every
-// stage that the gate checks (plan, build, review, check) passed or was overridden; or one of its two
-// carve-outs holds (an artifact only commit, or a Build checkpoint on the run's branch).
-function commitAllowed(s: RunState, facts: CommitFacts | undefined): boolean {
-  if (facts?.stagedSpecsOnly || facts?.checkpoint) return true
-  const passed = (p: Phase) => s.gate[p] === 'fresh' || skipHolds(s, p)
-  return (['plan', 'build', 'review', 'check'] as const).every(passed)
-}
-
-// The check of a stage passed (fresh PASS) or the person overrode it, and the run is at that stage.
-// Design follows an approved (or skipped) plan, and its own check at the Design gate: a design that passed, or the
-// person's skip of it. Where no design check is known, it follows the plan's, as before the Design gate had its own.
-function followsVerdict(s: RunState, stage: string, complexity?: string | null): boolean {
-  if (stage === 'design') {
-    if (!((complexity === 'medium' || complexity === 'complex') && (planApproved(s) || skippedStage(s, 'plan')))) return false
-    const lastBack = s.history.reduce((t, h) => (h.kind === 'back' ? Math.max(t, h.ts) : t), -Infinity)
-    if (s.designGate === 'fresh' || s.overrides.some(o => o.stage === 'design' && o.ts >= lastBack)) return true
-    return s.designGate === 'none' && (s.gate.plan === 'fresh' || s.overrides.some(o => o.phase === 'plan'))
-  }
-  if (!(stage in s.gate)) return false
-  const here = s.phase === stage || (s.phase === 'fix' && stage === 'check')
-  return here && (s.gate[stage as Phase] === 'fresh' || skipHolds(s, stage))
-}
+  'Next: ask the user with AskUserQuestion, header `Temper resume`, whether to start over (or, for a step back, the Loop back choice of the `Temper gate` question).'
 
 const STATE_END = (cli: string): string =>
   'Temper: do not clear or archive the run state during a run. Next: finish the run, ' +
   `commit, then run ${cli} state archive. To throw the run away, ask the user with AskUserQuestion, header \`Temper resume\`, whether to start over.`
 
-const stateSetDeny = (key: string, ctx: RuleContext): string =>
-  `Temper: state set ${key} moves the run. Only the user can do this. ` +
-  `Next: a step back is the user's choice: ask the user whether to loop back, ${chooseAt(ctx)}.`
-
 const OPAQUE_DENY = (cli: string): string =>
   'Temper: this command runs the Temper script in a way Temper cannot read, and it holds a decision word. ' +
-  'Only the user decides, on the Temper bar or in the `Temper gate` question. ' +
+  'Only the user decides, in the `Temper gate` question. ' +
   `Next: run each ${cli} call with its words written out, one per Bash call.`
 
 const DYNAMIC_DENY = (cli: string): string =>
   'Temper: this command writes what a Temper call does (its subcommand) in a form Temper cannot read: a variable, a substitution or an escaped string. ' +
-  'It could be a decision, and only the user decides, on the Temper bar or in the `Temper gate` question. ' +
+  'It could be a decision, and only the user decides, in the `Temper gate` question. ' +
   `Next: run each ${cli} call with its words written out, one per Bash call.`
 
 const OPAQUE_HIDDEN_DENY = (cli: string): string =>
@@ -362,7 +278,7 @@ const OPAQUE_HIDDEN_DENY = (cli: string): string =>
 
 const ALIAS_DENY = (cli: string): string =>
   'Temper: do not link, copy or source the Temper script. A second name for it hides the decision calls. ' +
-  `Next: run ${cli} by its own path. The user decides on the Temper bar or in the \`Temper gate\` question.`
+  `Next: run ${cli} by its own path. The user decides in the \`Temper gate\` question.`
 
 const HIDDEN_DENY =
   'Temper: a shell, or a builtin that runs text as commands (source and the like), is given a program that this command does not show (a pipe from another command, a file on stdin, a substitution, or a word split by quotes, backslashes, braces or globs). ' +
@@ -373,241 +289,202 @@ const GUARDED_USE_DENY = (word: string, cli: string): string =>
   `Next: read it with cat, grep, jq, head or git diff, or use ${cli} gate, evidence or state.`
 
 const ENV_DENY = (cli: string): string =>
-  'Temper: TEMPER_DIR and TEMPER_CONFIG point the CLI at other files than the run\'s, so its verdicts would be written for a run that is not this one. ' +
+  "Temper: TEMPER_DIR and TEMPER_CONFIG point the CLI at other files than the run's, so its verdicts would be written for a run that is not this one. " +
   `Next: run ${cli} with no TEMPER_DIR or TEMPER_CONFIG.`
 
 const HOOKS_DENY =
   'Temper: --no-verify, -n and core.hooksPath switch the native pre-commit hook off. The hook is the commit gate for every commit. ' +
   'Next: commit without them. If the hook blocks the commit, finish the stages it names.'
 
-const BACK_DENY = (ctx: RuleContext): string =>
-  'Temper: state advance cannot move the run to an earlier stage. Only the user steps back. ' +
-  `Next: ask the user whether to loop back, ${chooseAt(ctx)}.`
+const GIT_SHELL_ALIAS = /\balias\.[A-Za-z0-9_.-]+(?:\s*=\s*|\s+)['"]?\s*!/i
+
+const GIT_ALIAS_DENY =
+  'Temper: a git alias that runs a shell command (alias.<name>=!...) hides what it runs. ' +
+  'Next: run each command itself, in its own Bash call, with the words written out.'
+
+const UNPLAIN_COMMIT_DENY =
+  'Temper: this command makes a commit that the native pre-commit hook does not check (a merge, cherry-pick, revert, am, pull, commit-tree, or a commit of named paths). ' +
+  'While a run is active, every commit is a plain git commit of the index, which the commit gate checks. Next: git add the files, then git commit -m "...".'
+
+const BACK_DENY = `Temper: state advance cannot move the run to an earlier stage. Only the user steps back. Next: ${ASK} whether to loop back.`
+
+const NOT_HERE = (stage: string, here: Stage): string =>
+  `Temper: the run is at ${stageLabel(here)}, not at ${stage}. A move is for the stage the run is at. Next: ${ASK} at the ${stageLabel(here)} gate.`
+
+const WRONG_NEXT = (stage: Stage, next: readonly Stage[], cli: string): string =>
+  `Temper: after ${stage} the next stage of this run is ${next.join(' or ') || 'none'}. Next: run ${cli} state advance ${stage}_complete ${next[0] ?? ''}.`
 
 const KEY_DENY = (key: string): string =>
-  `Temper: state set ${key} is allowed only in the form and the phase the orchestrator uses ` +
-  '(complexity while the plan is open, base_sha as the current commit in Plan or Build, command never). ' +
+  `Temper: state set ${key} is allowed only in the form and the stage the orchestrator uses ` +
+  '(complexity while the plan is open, base_sha as the current commit in Plan or Build; run_id, step and command never). ' +
   'Next: ask the user if the run needs another value.'
 
-// Where each stage sits in the CLI sequence; the mod's phase of the same name for a run that is at it.
-const STAGE_INDEX: Record<string, number> = { intent: 0, plan: 1, design: 2, build: 3, review: 4, check: 5, commit: 6 }
-const PHASE_INDEX: Record<string, number> = { intent: 0, plan: 1, build: 3, review: 4, check: 5, fix: 5, done: 6 }
-
-function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResult {
+function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   const c = classifyBash(command, ctx.cwd === undefined ? '' : ctx.cwd)
   const cli = ctx.cli ?? CLI
+  const active = isActive(ctx)
 
   if (c.alias) return { deny: ALIAS_DENY(cli) }
-  if (c.opaque && isActive(s)) return { deny: c.opaqueWhy === 'dynamic' ? DYNAMIC_DENY(cli) : c.opaqueWhy === 'hidden' ? OPAQUE_HIDDEN_DENY(cli) : OPAQUE_DENY(cli) }
-  if (isActive(s)) {
+  if (c.opaque && active) return { deny: c.opaqueWhy === 'dynamic' ? DYNAMIC_DENY(cli) : c.opaqueWhy === 'hidden' ? OPAQUE_HIDDEN_DENY(cli) : OPAQUE_DENY(cli) }
+  if (active) {
     if (c.hidden) return { deny: HIDDEN_DENY }
     if (c.envTamper) return { deny: ENV_DENY(cli) }
     if (c.hookTamper || c.noVerify) return { deny: HOOKS_DENY }
+    // A git alias that runs a shell (`-c alias.x='!...'`, `git config alias.x '!...'`) hides the command it runs.
+    if (GIT_SHELL_ALIAS.test(command)) return { deny: GIT_ALIAS_DENY }
+    // The commit gate is the native pre-commit hook, which runs on a plain `git commit` only. A commit it does not see
+    // (a merge, cherry-pick, revert, am, pull, commit-tree, or a pathspec commit) waits until the run is done, or until
+    // the person saved it for later and has control.
+    if (c.commits && c.unplainCommit && ctx.move?.kind !== 'pause') return { deny: UNPLAIN_COMMIT_DENY }
   }
 
   if (c.protectedWrites.length > 0) {
     const known = c.protectedWrites.filter(p => !c.uncheckable.includes(p))
     if (known.length === 0) return { deny: UNCHECKABLE(cli) }
     // The config, the git hooks and the Temper commit hook are the run's only while a run is active (/temper:init writes
-    // the config and installs the hook before).
-    // A path of no known kind (a link made inside .temper) gets the text of the .temper folders: it is no decision.
-    const kinds = known.map(p => protectedKind(p) ?? 'folder').filter(k => isActive(s) || (k !== 'config' && k !== 'hooks'))
+    // the config and installs the hook before). A path of no known kind (a link made inside .temper) gets the text of the
+    // .temper folders.
+    const kinds = known.map(p => protectedKind(p) ?? 'folder').filter(k => active || (k !== 'config' && k !== 'hooks'))
     if (kinds.length > 0) {
       const forged = kinds.find(k => k === 'events' || k === 'overrides')
-      return protectedDeny(forged ?? kinds[0] ?? 'folder', cli, ctx)
+      return protectedDeny(forged ?? kinds[0] ?? 'folder', cli)
     }
     if (c.uncheckable.length > 0) return { deny: UNCHECKABLE(cli) }
   }
-  if (isActive(s) && c.guardedUse.length > 0) return { deny: GUARDED_USE_DENY(c.guardedUse[0] ?? 'a guarded file', cli) }
+  if (active && c.guardedUse.length > 0) return { deny: GUARDED_USE_DENY(c.guardedUse[0] ?? 'a guarded file', cli) }
 
-  // Removing or archiving the run's state is for after the run: while a run is active it would
-  // take the gate ledger and the overrides with it. One exception, the TRIVIAL exit of the orchestrator: a clear of a run
-  // that never left Intent loses nothing. The mod's own record holds only the start (no advance, no step back, no skip),
-  // and the CLI's files and the spec folder agree (ctx.nothingToLose).
-  const trivialExit = s.phase === 'intent' && s.history.every(h => h.kind === 'start') && ctx.nothingToLose === true
-  // The person's Start over (a restart decision): the saved run state may go. `state archive` and `state clear` pass
-  // while it waits unspent; `state init`, which starts the run again, spends it. Only a command that does nothing else.
-  const restart = isActive(s) ? (ctx.humanDecisions ?? []).find(d => d.kind === 'restart') : undefined
+  // Removing or archiving the run's state is for after the run, or for the person's Start over. One exception, the
+  // TRIVIAL exit of the orchestrator: a clear of a run that never left Intent (no step taken) loses nothing.
   const resets = c.stateOps.length > 0 && c.stateOps.every(o => o.op === 'archive' || o.op === 'clear' || o.op === 'init')
-  if (restart && resets && c.calls.length === 0 && !c.commits) {
-    return c.stateOps.some(o => o.op === 'init') ? { allow: true, consume: 'restart', eventId: restart.id, eventIds: [restart.id] } : ALLOW
+  if (active && ctx.restart && resets && c.calls.length === 0 && !c.commits) return ALLOW
+  if (active) {
+    const r = ctx.run
+    const trivialExit = r.stage === 'intent' && r.step <= 0 && ctx.nothingToLose === true
+    if (c.stateOps.some(o => o.op === 'archive' || (o.op === 'clear' && !trivialExit))) return { deny: STATE_END(cli) }
+    if (c.stateOps.some(o => o.op === 'init')) return { deny: STATE_RESTART }
   }
-  if (isActive(s) && c.stateOps.some(o => o.op === 'archive' || (o.op === 'clear' && !trivialExit))) return { deny: STATE_END(cli) }
-  if (isActive(s) && c.stateOps.some(o => o.op === 'init')) return { deny: STATE_RESTART }
-  // `state loop <from> <to>` keeps the loop budget and clears the evidence of the stages that are redone.
-  // While a run is active it is for the person's Loop back only: it passes when the person's back decision
-  // for that stage waits unspent. The decision is spent by the `state set next_stage` call that follows.
-  // The loop leaves the stage the run is at (a loop from another stage only burns the budget), and it uses the back
-  // decision once: a second loop call needs another decision. The step that follows still spends it.
-  const loopIds: string[] = []
-  // The decisions a call matched: spent by it, also when the same command commits (see below).
-  let spends: RuleResult | null = null
-  // An armed autonomous run loops back to Build by itself after a failed Review or Check (never to Plan or Intent).
-  const autoLoopsBack = (from: string): boolean => ctx.autonomous === true && planApproved(s) && (from === 'review' || from === 'check')
-  if (isActive(s)) {
-    const here = stageName(s.phase)
-    for (const op of c.stateOps) {
-      if (op.op !== 'loop') continue
-      const to = op.to
-      const fromOk = op.from !== undefined && (op.from === here || (here === 'plan' && op.from === 'design'))
-      const used = ctx.loopedDecisions ?? []
-      const hit =
-        to === undefined || !fromOk
-          ? undefined
-          : (ctx.humanDecisions ?? []).find(h => h.kind === 'back' && h.phase !== undefined && stageName(h.phase) === stageName(to) && !used.includes(h.id) && !loopIds.includes(h.id))
-      if (hit === undefined) {
-        if (fromOk && to === 'build' && autoLoopsBack(here)) continue
-        return { deny: STATE_RESTART }
-      }
-      loopIds.push(hit.id)
+
+  // After the run is done the commit gate may still FAIL: an override then is the person's "Override and commit".
+  if (ctx.run !== null && ctx.run.stage === 'commit' && c.calls.some(call => call.kind === 'override')) {
+    if (c.calls.some(call => call.invalid)) return { deny: REPEATED_FLAG }
+    return ctx.move?.kind === 'commitOverride' ? ALLOW : { deny: DONE_OVERRIDE_DENY }
+  }
+  if (!active) return ALLOW
+  const r = ctx.run
+  if (c.calls.some(call => call.invalid)) return { deny: REPEATED_FLAG }
+  const move = ctx.move
+  const backTo = (to: string): boolean => move?.kind === 'back' && move.to === to
+  // The armed run's own loop back to Build, after a failed Review or Check.
+  const autoLoop = (from: Stage, to: string): boolean => armed(r) && to === 'build' && (from === 'review' || from === 'check')
+
+  // `state loop <from> <to>`: the person's step back from the stage the run is at.
+  for (const op of c.stateOps) {
+    if (op.op !== 'loop') continue
+    if (op.from !== r.stage || op.to === undefined || !isStage(op.to) || stageIndex(op.to) >= stageIndex(r.stage)) return { deny: STATE_RESTART }
+    if (!backTo(op.to) && !autoLoop(r.stage, op.to)) return { deny: STATE_RESTART }
+  }
+
+  for (const op of c.stateOps) {
+    if (op.op !== 'set') continue
+    if (op.key === 'run_mode') {
+      if (op.value === 'interactive') continue
+      // Armed only by the person's "Autonomous" answer at the plan gate, and only where autonomy is switched on.
+      if (op.value === 'autonomous' && move?.kind === 'arm' && r.autonomyEnabled) continue
+      return { deny: AUTONOMY_DENY }
+    }
+    if (GUARD_KEYS.has(op.key)) return { deny: KEY_DENY(op.key) }
+    // The keys the orchestrator sets itself, only in the form and the stage it sets them: the complexity while the plan
+    // is open (a later change would drop Design), base_sha as the current commit in Plan or Build.
+    if (op.key === 'complexity' && !((r.stage === 'intent' || r.stage === 'plan') && /^(?:trivial|simple|medium|complex)$/.test(op.value ?? ''))) return { deny: KEY_DENY(op.key) }
+    if (op.key === 'base_sha') {
+      const v = op.value ?? ''
+      const form = /^[0-9a-f]{7,40}$/i.test(v) || v === '$(git rev-parse HEAD)' || v === '`git rev-parse HEAD`'
+      if (!((r.stage === 'plan' || r.stage === 'build') && form)) return { deny: KEY_DENY(op.key) }
     }
   }
-  // After the run is done the commit gate may still FAIL: an override then is the person's "Override and commit" (one
-  // decision covers the overrides of that one command), never Claude's own.
-  if (s.phase === 'done' && c.calls.some(call => call.kind === 'override')) {
-    if (c.calls.some(call => call.invalid)) return { deny: REPEATED_FLAG }
-    // The person's skip in the Fix step takes the record to Done before its `override check` runs: that one call mirrors it.
-    const skips = c.calls.filter(call => call.kind === 'override')
-    const fixSkip = (ctx.humanDecisions ?? []).find(h => h.kind === 'override' && (h.phase === 'check' || h.phase === 'fix'))
-    if (fixSkip && skips.length === 1 && skips[0]?.stage === 'check') return { allow: true, consume: 'override', eventId: fixSkip.id, eventIds: [fixSkip.id] }
-    const d = (ctx.humanDecisions ?? []).find(h => h.kind === 'override' && h.phase === 'commit')
-    if (!d) return { deny: DONE_OVERRIDE_DENY }
-    if (c.calls.some(call => call.kind !== 'override')) return { deny: DONE_OVERRIDE_DENY }
-    return { allow: true, consume: 'override', eventId: d.id, eventIds: [d.id] }
-  }
 
-  if (isActive(s)) {
-    if (c.calls.some(call => call.invalid)) return { deny: REPEATED_FLAG }
-    for (const op of c.stateOps) {
-      // Keys that move the run. next_stage is matched to the person's back decision below.
-      if (op.op === 'set' && op.key === 'run_mode' && op.value === 'autonomous') {
-        // Armed only after the person approved the Plan, and only where autonomy is switched on.
-        if (!(planApproved(s) && ctx.autonomyEnabled === true)) return { deny: AUTONOMY_DENY }
+  // The calls, in order: an advance moves the stage the next call of the same command is read at.
+  let here: Stage = r.stage
+  let use: string | undefined
+  for (const call of c.calls) {
+    const first = here === r.stage
+    if (call.kind === 'advance') {
+      const stage = (call.stage ?? '').replace(/_complete$/, '')
+      const next = call.next ?? ''
+      if (!/_complete$/.test(call.stage ?? '') || !isStage(stage)) return { deny: ONLY_USER }
+      // A next that is no stage (`done`, a typo) gets the stage that comes next named.
+      if (!isStage(next)) return { deny: WRONG_NEXT(stage, allowedNext(r, stage), cli) }
+      // No advance lowers the stage the run is at: only the person's step back does.
+      if (stageIndex(next) < stageIndex(here)) return { deny: BACK_DENY }
+      if (stage !== here) return { deny: NOT_HERE(stage, here) }
+      const ok = allowedNext(r, stage)
+      if (!ok.includes(next)) return { deny: WRONG_NEXT(stage, ok, cli) }
+      // Intent and Plan are left only by the person (Continue, an arming answer, or a skip). Every later stage follows
+      // its own verdict, or the person's skip.
+      const byPerson = first && (move?.kind === 'override' || ((stage === 'intent' || stage === 'plan') && (move?.kind === 'approve' || move?.kind === 'arm')))
+      const byVerdict = stage !== 'intent' && stage !== 'plan' && settled(r, stage)
+      const bySkip = (stage === 'intent' || stage === 'plan') && r.skipped.has(stage)
+      if (!byPerson && !byVerdict && !bySkip) return { deny: ONLY_USER }
+      here = next
+      continue
+    }
+    if (call.kind === 'override') {
+      const stage = call.stage ?? ''
+      if (stage.startsWith('foreign-commit:')) {
+        // Keeping a task agent's commits (`group reopen G --accept-foreign`): the person's choice, once.
+        if (!(first && r.stage === 'build' && move?.kind === 'keep')) return { deny: ONLY_USER }
+        use = move.id
         continue
       }
-      if (op.op === 'set' && GUARD_KEYS.has(op.key) && op.key !== 'next_stage' && !(op.key === 'run_mode' && op.value === 'interactive')) {
-        return { deny: op.key === 'command' ? KEY_DENY(op.key) : stateSetDeny(op.key, ctx) }
-      }
-      // The keys the orchestrator sets itself, only in the form and the phase it sets them: the complexity while the
-      // plan is open (a later change would drop Design), base_sha as the current commit in Plan or Build (a later one
-      // would shrink what Review and Check look at).
-      if (op.op === 'set' && op.key === 'complexity') {
-        const open = (s.phase === 'intent' || s.phase === 'plan') && !planApproved(s) && !skippedStage(s, 'plan')
-        if (!(open && /^(?:trivial|simple|medium|complex)$/.test(op.value ?? ''))) return { deny: KEY_DENY(op.key) }
-      }
-      if (op.op === 'set' && op.key === 'base_sha') {
-        const v = op.value ?? ''
-        const form = /^[0-9a-f]{7,40}$/i.test(v) || v === '$(git rev-parse HEAD)' || v === '`git rev-parse HEAD`'
-        if (!((s.phase === 'plan' || s.phase === 'build') && form)) return { deny: KEY_DENY(op.key) }
-      }
+      if (stage !== here) return { deny: NOT_HERE(stage, here) }
+      if (!(first && move?.kind === 'override')) return { deny: ONLY_USER }
+      continue
     }
-    // Each guarded CLI call needs its own unconsumed human decision made for that phase (and
-    // that finding, when the call names one).
-    const pool = [...(ctx.humanDecisions ?? [])]
-    let first: { kind: DecisionKind; eventId: string } | null = null
-    const matched: string[] = []
-    for (const call of c.calls) {
-      // An advance needs a person only when it leaves Intent or Plan (`intent_complete`,
-      // `plan_complete`); the phase it names is the phase the person approved, whatever phase the
-      // run is in by now. Later advances follow a verdict and are not guarded.
-      // Every advance is checked, not only the two approvals: the CLI stores any next stage it is given.
-      // A call passes with (a) a matching human decision, or (b) when it is the exact next stage of the
-      // run and the check of the stage it completes passed (the autonomous run, and a stage that follows
-      // its own verdict). Intent and Plan always need the person.
-      let approved: string | null = null
-      if (call.kind === 'advance') {
-        const stage = (call.stage ?? '').replace(/_complete$/, '')
-        const expected = nextStage(stage, ctx.complexity)
-        const skipsDesign = stage === 'plan' && expected === 'design' && ctx.designRequired !== true && call.next === 'build'
-        const wellFormed = /_complete$/.test(call.stage ?? '') && expected !== null && (call.next === expected || skipsDesign)
-        // Design belongs to Plan: the person's Continue at the design check spends an advance decision of Plan.
-        approved = wellFormed ? (stage === 'design' ? 'plan' : stage) : null
-        // No advance lowers the stage the run is at, whoever approved it: only a step back does (the user's).
-        const target = STAGE_INDEX[call.next ?? '']
-        if (target !== undefined && target < (PHASE_INDEX[s.phase] ?? 0)) return { deny: BACK_DENY(ctx) }
-        const hasHuman = approved !== null && pool.some(h => h.kind === 'advance' && (h.phase === undefined || h.phase === approved))
-        if (!hasHuman) {
-          if (wellFormed && stage !== 'intent' && stage !== 'plan' && followsVerdict(s, stage, ctx.complexity)) continue
-          // A skip is for the stage the run is at: it is not an approval for a stage the run went past.
-          if (wellFormed && stage !== 'design' && skippedStage(s, stage) && stage === stageName(s.phase)) continue
-          // The person's decision for this stage waits, but the call names another next stage (found live: a
-          // medium run with design on, advanced straight to Build). Say which stage is next; do not send the
-          // model back to the person for a decision that was already made.
-          const waits = pool.some(h => h.kind === 'advance' && (h.phase === undefined || h.phase === stage))
-          if (!wellFormed && waits && expected !== null && /_complete$/.test(call.stage ?? '')) {
-            return {
-              deny:
-                `Temper: after ${stage} the next stage of this run is ${expected}, not ${call.next ?? 'none'}. ` +
-                `Next: run ${cli} state advance ${stage}_complete ${expected}. The user's approval is already recorded.`,
-            }
-          }
-          return onlyUser(ctx)
-        }
+    if (call.kind === 'back') {
+      // `state set next_stage X`: X is where the run is (it changes nothing), the person's step back, or the stage after
+      // one whose check passed.
+      const to = call.stage ?? ''
+      if (to === here) continue
+      if (!isStage(to)) return { deny: ONLY_USER }
+      if (stageIndex(to) < stageIndex(here)) {
+        if (first && (backTo(to) || autoLoop(here, to))) continue
+        return { deny: ONLY_USER }
       }
-      // A step to another stage by `state set next_stage`: the person's back decision, or the exact next
-      // stage after a check that passed.
-      if (call.kind === 'back' && !pool.some(h => h.kind === 'back' && (call.stage === undefined || h.phase === undefined || stageName(h.phase) === stageName(call.stage)))) {
-        const cur = s.phase === 'fix' ? 'check' : s.phase
-        if (call.stage !== undefined && call.stage === nextStage(cur, ctx.complexity) && followsVerdict(s, cur)) continue
-        // The armed autonomous run's step back to Build (its `state loop` already moved the CLI there).
-        if (call.stage === 'build' && autoLoopsBack(cur)) continue
+      if (allowedNext(r, here).includes(to) && here !== 'intent' && here !== 'plan' && settled(r, here)) {
+        here = to
+        continue
       }
-      const i = pool.findIndex(
-        h =>
-          h.kind === call.kind &&
-          // An accept is for one stage's ledger: --stage must be the stage the person accepted in.
-          (call.kind === 'accept'
-            ? call.stage !== undefined && h.phase === call.stage
-            : call.kind === 'advance'
-              ? h.phase === undefined || h.phase === approved
-              : // Keeping a task agent's commits (`group reopen G --accept-foreign`) is the person's choice for any group.
-                call.stage?.startsWith('foreign-commit:') === true
-                ? h.phase === 'foreign-commit'
-                : call.stage === undefined || h.phase === undefined || stageName(h.phase) === stageName(call.stage)) &&
-          (call.id === undefined || h.findingId === undefined || h.findingId === call.id),
-      )
-      const hit = i >= 0 ? pool[i] : undefined
-      if (!hit) return onlyUser(ctx)
-      pool.splice(i, 1)
-      matched.push(hit.id)
-      first ??= { kind: call.kind, eventId: hit.id }
+      return { deny: ONLY_USER }
     }
-    if (first) spends = { allow: true, consume: first.kind, eventId: first.eventId, eventIds: matched, ...(loopIds.length > 0 ? { loopIds } : {}) }
-    if (spends && !(c.commits && !s.paused)) return spends
-  }
-
-  // The artifact only carve-out is for a plain `git commit` of the index: a pathspec commit, a merge, a cherry-pick,
-  // an am, a pull or a revert brings in files that no `git add` named.
-  const facts = ctx.commit && c.unplainCommit ? { ...ctx.commit, stagedSpecsOnly: false } : ctx.commit
-  if (c.commits && isActive(s) && !s.paused && !commitAllowed(s, facts)) {
-    return {
-      deny: `Temper: commit blocked. Check has not passed. ${ctx.commit?.hint ? `${ctx.commit.hint} ` : ''}Next: ${COMMIT_NEXT[s.phase]}. The native pre-commit hook is the backstop.`,
+    if (call.kind === 'accept') {
+      // An accept is for the Review ledger, for the finding the person accepted at this step.
+      if (call.stage !== 'review' || here !== 'review' || call.id === undefined || !ctx.accepts.includes(call.id)) return { deny: ONLY_USER }
+      continue
     }
   }
-  // A decision call chained with a commit the gate lets through still spends its decision: left unspent, the person's
-  // choice would wait as unrecorded after the CLI recorded it, and approve a later call too.
-  if (spends) return spends
-  return loopIds.length > 0 ? { allow: true, loopIds } : ALLOW
+  return use !== undefined ? { allow: true, use } : ALLOW
 }
 
-export function evaluate(state: RunState, ctx: RuleContext, call: ToolCall): RuleResult {
+export function evaluate(ctx: RuleContext, call: ToolCall): RuleResult {
   if (call.tool === 'Bash') {
     const command = typeof call.input.command === 'string' ? call.input.command : ''
-    return evaluateBash(state, ctx, command)
+    return evaluateBash(ctx, command)
   }
   if (!WRITE_TOOLS.has(call.tool)) return ALLOW
 
   const raw = targetPath(call)
   if (raw === null) return ALLOW
   const path = normalizePath(raw, ctx.root)
+  const active = isActive(ctx)
 
   const kind = protectedKind(path)
   // The config, the git hooks and the Temper commit hook are guarded while a run is active (the person writes them with
   // no run on).
-  if (kind !== null && (isActive(state) || (kind !== 'config' && kind !== 'hooks'))) return protectedDeny(kind, ctx.cli ?? CLI, ctx)
-  // The report a parked autonomous run leaves (reference/autonomy.md): a note of the run, in any phase.
+  if (kind !== null && (active || (kind !== 'config' && kind !== 'hooks'))) return protectedDeny(kind, ctx.cli ?? CLI)
+  // The report a parked autonomous run leaves (reference/autonomy.md): a note of the run, at any stage.
   if (path === AUTONOMY_REPORT) return ALLOW
 
-  if (!isActive(state) || state.paused || ctx.failOpenWrites) return ALLOW
-  return phaseWriteRule(state, ctx, path)
+  // Save for later: the person has control until the run moves on.
+  if (!isActive(ctx) || ctx.move?.kind === 'pause') return ALLOW
+  return stageWriteRule(ctx, path)
 }

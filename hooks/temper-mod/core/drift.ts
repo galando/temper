@@ -3,7 +3,7 @@
 // dialog, and the mod reads the answer from the dialog's result. The question carries the why and the
 // what in fixed lines, so the same question works with the mod and without it. Pure: no Claude imports.
 
-import type { DriftChoice } from './events'
+import type { DriftChoice } from './decisions'
 
 export const DRIFT_HEADER = 'Scope drift'
 export const DRIFT_PREFIX = 'Outside the plan:'

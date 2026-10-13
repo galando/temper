@@ -1,35 +1,9 @@
-// The reserved first words of `/temper:temper` and what each one means. Pure: this file turns
-// typed arguments into a machine command, a local answer, or an error; the adapter runs
-// the result. Anything that is not a reserved word is left to the prompt based /temper:temper.
+// The first words of `/temper:temper` that the mod answers itself: the ones that show the run or set how Temper shows
+// and enforces it. Pure. Every other word goes on to the prompt based /temper:temper: a feature description starts or
+// resumes a run, and a decision word (approve, back, override, accept, pause, restart and the like) makes Claude ask
+// the `Temper gate` question, where the person decides with a click (ADR 0012).
 
-import type { Draft, DriftChoice, Phase } from './events'
-import { PHASES } from './events'
-import { ACT } from './actions'
-import { CLI, IN_PLUGIN, acceptCommand, advanceCommands, backCommand, loopCommand, overrideCommand, shellQuote } from './cli'
-import type { Command } from './machine'
-
-export const RESERVED = [
-  'status',
-  'timeline',
-  'back',
-  'override',
-  'approve',
-  'accept',
-  'drift',
-  'pause',
-  'resume',
-  'help',
-  'report',
-  'pr',
-  'mode',
-  'enforcement',
-  'next',
-  'pane',
-  'play',
-  'discuss',
-  'continue',
-  'restart',
-] as const
+export const RESERVED = ['status', 'timeline', 'help', 'report', 'mode', 'enforcement', 'pane', 'play'] as const
 
 export type Reserved = (typeof RESERVED)[number]
 
@@ -37,7 +11,7 @@ export const isReserved = (w: string): w is Reserved => (RESERVED as readonly st
 
 export type Parsed = { word: Reserved; rest: string }
 
-// null when the first word is not reserved (a feature description, or nothing).
+// null when the first word is not one the mod answers (a feature description, a decision word, or nothing).
 export function parseArgs(args: string): Parsed | null {
   const text = args.trim()
   const m = /^(\S+)\s*([\s\S]*)$/.exec(text)
@@ -45,157 +19,18 @@ export function parseArgs(args: string): Parsed | null {
   return m && isReserved(word) ? { word, rest: (m[2] ?? '').trim() } : null
 }
 
-// What the machine is asked to do, before the origin is stamped on.
-export type Bare = Command extends infer C ? (C extends unknown ? Omit<C, 'origin' | 'author'> : never) : never
-
-export type Plan =
-  | { kind: 'command'; command: Bare }
-  | { kind: 'local'; word: Reserved; rest: string }
-  | { kind: 'error'; text: string }
-
-const FLOW_PHASES: readonly string[] = PHASES.filter(p => p !== 'fix')
-
-const split = (rest: string): [string, string] => {
-  const m = /^(\S+)\s*([\s\S]*)$/.exec(rest.trim())
-  return [m?.[1] ?? '', (m?.[2] ?? '').trim()]
-}
-
-export function planCommand(parsed: Parsed, pendingDrift: string | null): Plan {
-  const { word, rest } = parsed
-  switch (word) {
-    case 'approve':
-      return { kind: 'command', command: { type: 'approve' } }
-    case 'next':
-      return { kind: 'command', command: { type: 'advance' } }
-    case 'pause':
-      return { kind: 'command', command: { type: 'pause' } }
-    case 'resume':
-      return { kind: 'command', command: { type: 'resume' } }
-    case 'restart':
-      return { kind: 'command', command: { type: 'restart', reason: rest } }
-    case 'override':
-      return { kind: 'command', command: { type: 'override', reason: rest } }
-    case 'back': {
-      const [to, reason] = split(rest)
-      if (!FLOW_PHASES.includes(to.toLowerCase())) return { kind: 'error', text: 'Usage: /temper:temper back <intent|plan|build|review|check> <reason>' }
-      return { kind: 'command', command: { type: 'back', to: to.toLowerCase() as Phase, reason } }
-    }
-    case 'accept': {
-      const [id, reason] = split(rest)
-      if (!id) return { kind: 'error', text: 'Usage: /temper:temper accept <finding id> <reason>' }
-      return { kind: 'command', command: { type: 'acceptFinding', id, reason } }
-    }
-    case 'drift': {
-      const [choiceWord, reason] = split(rest)
-      const choices: Record<string, DriftChoice> = { add: 'add', revert: 'revert', allow: 'allow-once', 'allow-once': 'allow-once' }
-      const choice = choices[choiceWord.toLowerCase()]
-      if (!choice) return { kind: 'error', text: 'Usage: /temper:temper drift <add|revert|allow> <reason>' }
-      if (!pendingDrift) return { kind: 'error', text: 'No scope drift waits for a decision.' }
-      return { kind: 'command', command: { type: 'drift', path: pendingDrift, choice, reason } }
-    }
-    default:
-      return { kind: 'local', word, rest }
-  }
-}
-
-// The command a button runs after the mirror prompt (`$.command.run`, as `/temper:temper` with no
-// arguments), so the orchestrator (commands/temper.md, its Resume path) launches the next stage with
-// its own brief. No arguments: the decision is already recorded and mirrored.
-export const RESUME = 'temper:temper'
-
-// What Claude is asked to do once the person decided with a button (the command path runs the
-// prompt based command instead). The decision is already recorded by the mod: the prompt says so
-// and names the exact CLI command that mirrors it in the CLI state (the commit gate reads that
-// state). It never says what to run next: RESUME does that, through the orchestrator.
-// Every command named here is a valid `scripts/temper` invocation.
-// `cli` is where the Temper script really is (the plugin folder, not the project). Without it the
-// prompt names `scripts/temper` and says the script lives in the plugin folder, so Claude does not
-// waste the one allowed run on a path that does not exist in the project.
-// `from` is the phase a back step leaves (the loop the CLI keeps is from -> to). Without it, only the step is mirrored.
-export function followUp(draft: Draft, complexity: string | null = null, cli: string = CLI, from: Phase | 'design' | null = null): string | null {
-  const text = followUpText(draft, complexity, from)
-  if (text === null) return null
-  if (cli !== CLI) return text.split(`\`${CLI} `).join(`\`${cli} `)
-  return text.includes(`\`${CLI} `) ? text.replace(` ${ACT}`, ` ${IN_PLUGIN} ${ACT}`) : text
-}
-
-function followUpText(draft: Draft, complexity: string | null, from: Phase | 'design' | null): string | null {
-  // Short on purpose: one or two lines, and no narration.
-  const recorded = 'The decision is already recorded.'
-  switch (draft.type) {
-    case 'advance': {
-      const cmds = advanceCommands(draft.from, draft.to, complexity)
-      if (cmds.length === 0) return null
-      const run = ` Run ${cmds.map(c => `\`${c}\``).join(' then ')}.`
-      if (draft.to === 'done') return `Temper: the user finished the run. ${recorded}${run} Do not commit. ${ACT}`
-      return `Temper: the user moved the run from ${draft.from} to ${draft.to}. ${recorded}${run} Do not start the next stage yourself. ${ACT}`
-    }
-    case 'override':
-      if (draft.stage === 'foreign-commit') {
-        return `Temper: the user chose to keep the task agent's commits (reason: ${draft.reason}). ${recorded} Run the \`group reopen ... --accept-foreign\` line the park printed, with this reason. ${ACT}`
-      }
-      if (draft.stage === 'commit') {
-        return (
-          `Temper: the user chose Override and commit (reason: ${draft.reason}). ${recorded} ` +
-          `Run \`${CLI} override <stage> --reason ${shellQuote(draft.reason)}\` for each stage the failed commit gate names, all in one Bash call, ` +
-          `then run \`${CLI} gate commit\` again and go on with the Commit steps. ${ACT}`
-        )
-      }
-      return `Temper: the user skipped ${draft.stage === 'design' ? 'design' : draft.phase} (reason: ${draft.reason}). ${recorded} Run \`${overrideCommand(draft.phase, draft.reason, draft.stage)}\`. Do not start the next stage yourself. ${ACT}`
-    case 'accept':
-      return `Temper: the user accepted finding ${draft.findingId} (reason: ${draft.reason}). ${recorded} Run \`${acceptCommand(draft.findingId, draft.reason)}\`. ${ACT}`
-    case 'back':
-      // A loop back is a loop of the CLI: `state loop` keeps the budget (loops.max-per-type) and clears the evidence of
-      // the stages that are redone. The guard lets it through once, for this decision. The step itself follows it.
-      if (from !== null && from !== draft.to) {
-        return (
-          `Temper: the user went back to ${draft.to} (reason: ${draft.reason}). ${recorded} ` +
-          `Run \`${loopCommand(from, draft.to, draft.reason)}\`. If it prints BLOCKED, the loop budget is spent: say so and stop. ` +
-          `Otherwise run \`${backCommand(draft.to)}\`. Do not start the stage yourself. ${ACT}`
-        )
-      }
-      return `Temper: the user went back to ${draft.to} (reason: ${draft.reason}). ${recorded} Run \`${backCommand(draft.to)}\`. Do not start the stage yourself. ${ACT}`
-    case 'restart':
-      // `state init` archives the earlier run's files before it starts the new one, and it spends the decision.
-      return (
-        `Temper: the user chose to start over (reason: ${draft.reason}). ${recorded} The files under .temper/specs stay. ` +
-        `Ask the user with AskUserQuestion which feature to start (the same one, or a new one), then run \`${CLI} state init <slug> --command temper\` for it and start that run at Intent.`
-      )
-    case 'drift':
-      return draft.choice === 'revert'
-        ? `Temper: the user chose to revert ${draft.path}. Restore it to its committed state. Then stay inside the plan. ${ACT}`
-        : `Temper: the user decided the scope drift for ${draft.path} (${draft.choice}). Go on. ${ACT}`
-    default:
-      return null
-  }
-}
-
-// The answer to a word that changes the run when it did not come from the person's prompt box (a `claude -p` run, the
-// Agent SDK, Claude itself). It says where a decision is made, and never sends the person back to the same command.
-export const NEEDS_INTERACTIVE =
-  'Temper: decisions need an interactive session. Only the user decides there, with the Temper bar or with /temper:temper approve (or back, override, accept) typed in the prompt box. ' +
-  'This command came from somewhere else, such as a claude -p run, the Agent SDK or Claude. Next: continue the run in an interactive claude session.'
-
-// The words that record a decision of the person.
-export const DECISION_WORDS: readonly string[] = ['approve', 'next', 'back', 'override', 'accept', 'drift', 'restart']
+export const NEEDS_PERSON =
+  'Temper: only the user changes what Temper shows and enforces, from the prompt box. This command came from somewhere else, such as a claude -p run, the Agent SDK or Claude. ' +
+  'Next: ask the user to run it.'
 
 export const HELP = [
   'Temper subcommands (type them after /temper:temper):',
   '  status               show where the run is',
-  '  timeline             show the phases of the run',
-  '  approve              approve the current phase (Intent or Plan)',
-  '  next                 move on when the step has passed its check',
-  '  back <phase> <why>   go back (later steps need a new check)',
-  '  override <reason>    skip the current step once (give a reason)',
-  '  accept <id> <why>    accept a review finding (give a reason)',
-  '  drift <add|revert|allow> <reason>   decide a scope drift',
-  '  pause / resume       take the run over, give it back',
-  '  restart <reason>     start over: the saved run state goes (the files under .temper/specs stay)',
+  '  timeline             list your decisions in this run',
   '  report               show the run report (with no run active, the last one kept)',
-  '  pr                   ask Claude for a pull request description',
-  '  play                 play Temper Run while you wait (key 8 too; r runs, w jumps, s ducks, q leaves)',
-  '  discuss <text>       send a message about the step you are at (the same as key 4)',
-  '  continue <stage>     the Temper bar sends this after you chose Continue: Claude does the On Continue steps of that stage',
-  '  mode, enforcement, pane   show or change what Temper shows and enforces',
-  'Any other text after /temper:temper is a feature description. It starts or resumes a run.',
+  '  pane                 open or close the Temper pane (full mode)',
+  '  play                 play Temper Run while you wait (r runs, w jumps, s ducks, q leaves)',
+  '  mode, enforcement    show or change what Temper shows and enforces',
+  'You decide at every gate in the Temper gate question: Continue, Loop back, Skip with a reason, Save for later.',
+  'Any other text after /temper:temper is a feature description. It starts or resumes a run. With no text it takes the run up again.',
 ].join('\n')

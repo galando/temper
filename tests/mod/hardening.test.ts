@@ -4,22 +4,16 @@
 // regression test. Findings are numbered as in the review.
 import { describe, expect, test } from 'claude-code/testing'
 
-import { digestText } from '../../hooks/temper-mod/adapter'
-import type { Draft } from '../../hooks/temper-mod/core/events'
-import { LATER, SPEC, eventFile, runFiles } from './run-files'
+import { LATER, SPEC, runFiles } from './run-files'
 import { world } from './world'
 import type { World } from './world'
 
-type Mounted = { press: (a: { key: string }) => Promise<void> }
 type Api = {
-  ui: { mount: (a: unknown) => Promise<Mounted> }
   session: { start: (a: unknown) => Promise<unknown> }
   command: { run: (a: unknown) => Promise<{ text?: string }> }
   tool: { call: (a: unknown) => Promise<{ deny?: string; isError?: boolean; text?: string }> }
 }
 const START = { cwd: '/repo', surface: null, isInteractive: false } as const
-const BAND = { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 100, scroll: { offset: 0, bodyRows: 12 }, view: {} } as const
-const person = { origin: 'person', author: 'u' } as const
 
 type Opts = {
   next?: string
@@ -33,6 +27,8 @@ type Opts = {
   extra?: Record<string, string>
   store?: Record<string, unknown>
   cwd?: string
+  // The person's answers to the Temper gate questions, in order.
+  answers?: string[]
 }
 
 // A run as the CLI leaves it, on a feature branch (or main), with the gates that passed.
@@ -46,13 +42,15 @@ async function begin($: unknown, on: Parameters<typeof world>[0], o: Opts = {}):
     next_stage: o.next ?? 'plan',
     command: o.command ?? 'temper',
     branch: o.branch ?? 'feature/pw',
+    run_id: 'run-pw',
+    step: 3,
     ...(o.complexity ? { complexity: o.complexity } : {}),
   })
   f['.temper/gates.json'] = JSON.stringify(Object.fromEntries((o.gates ?? ['intent', 'plan']).map(g => [g, { verdict: 'PASS', ts: LATER }])))
   f['/repo/.git/HEAD'] = `ref: refs/heads/${o.head ?? 'feature/pw'}\n`
   if (o.green) f['.temper/evidence/build.json'] = JSON.stringify([{ claim: 'unit tests', exit_code: 0, phase: 'green' }])
   if (o.design) f[`${SPEC}/design.md`] = '# Design\n'
-  const w = world(on, { ...f, ...(o.extra ?? {}) }, { fakeCli: true, projectRoot: '/repo', ...(o.store ? { store: o.store } : {}) })
+  const w = world(on, { ...f, ...(o.extra ?? {}) }, { fakeCli: true, projectRoot: '/repo', ...(o.store ? { store: o.store } : {}), ...(o.answers ? { answers: o.answers } : {}) })
   await api.session.start({ ...START, ...(o.cwd ? { cwd: o.cwd } : {}) })
   return { w, api }
 }
@@ -60,24 +58,10 @@ async function begin($: unknown, on: Parameters<typeof world>[0], o: Opts = {}):
 const sh = async (api: Api, command: string): Promise<string | undefined> => (await api.tool.call({ tool: 'Bash', command })).deny
 const wr = async (api: Api, path: string): Promise<string | undefined> => (await api.tool.call({ tool: 'Write', file_path: path, content: 'x' })).deny
 const refresh = (api: Api) => api.command.run({ command: 'temper:temper', args: 'status', origin: { kind: 'composer' } })
-const press = async (api: Api, id: string): Promise<void> => (await api.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND })).press({ key: `action-${id}` })
+// The orchestrator asks the Temper gate question; the world answers it with the next of the test's answers.
+const ask = (api: Api) => api.tool.call({ tool: 'AskUserQuestion', questions: [{ question: 'What next?', header: 'Temper gate', multiSelect: false, options: [{ label: 'Continue', description: 'x' }] }] })
 // Every refusal starts with Temper: or says that only the user decides.
 const T = /Temper:|Only the user/
-
-// Event files the mod would have written (trusted by the store), optionally already spent.
-async function seed(items: Array<{ d: Draft; ts: number; used?: boolean }>): Promise<{ files: Record<string, string>; store: Record<string, unknown> }> {
-  const files: Record<string, string> = {}
-  const store: Record<string, unknown> = {}
-  for (const it of items) {
-    const [path, text] = eventFile(it.d, it.ts)
-    files[path] = text
-    const id = (path.split('/').pop() ?? '').replace(/\.json$/, '')
-    store[`ev:${id}`] = await digestText(text)
-    if (it.used) store[`used:${id}`] = 1
-  }
-  return { files, store }
-}
-const start = (phase: 'plan' | 'check'): Draft => ({ type: 'start', slug: 'pw', title: 'Export report', phase, origin: 'system' })
 
 // ---- 1. a shell that reads its program from standard input ---------------------------------------------------
 describe('finding 1: a shell fed a program Temper cannot read (EXPECT denied)', () => {
@@ -316,10 +300,10 @@ describe('finding 2: the run state cannot be switched off by hiding build-state.
 
   test('the file removed: enforcement stays (a write outside the plan is still refused at Plan)', async ($, on) => {
     const { w, api } = await begin($, on)
-    expect(await wr(api, 'src/app.ts')).toContain('Plan phase')
+    expect(await wr(api, 'src/app.ts')).toContain('Plan stage')
     w.files.delete(STATE)
     await refresh(api)
-    expect(await wr(api, 'src/app.ts')).toContain('Plan phase')
+    expect(await wr(api, 'src/app.ts')).toContain('Plan stage')
     expect((await refresh(api)).text ?? '').not.toContain('No Temper run is active')
   })
 
@@ -327,7 +311,7 @@ describe('finding 2: the run state cannot be switched off by hiding build-state.
     const { w, api } = await begin($, on)
     w.unreadable = new Set([STATE])
     await refresh(api)
-    expect(await wr(api, 'src/app.ts')).toContain('Plan phase')
+    expect(await wr(api, 'src/app.ts')).toContain('Plan stage')
     expect(await sh(api, 'scripts/temper override plan --reason x')).toMatch(T)
   })
 
@@ -335,14 +319,14 @@ describe('finding 2: the run state cannot be switched off by hiding build-state.
     const { w, api } = await begin($, on)
     w.files.set(STATE, '{"spec":')
     await refresh(api)
-    expect(await wr(api, 'src/app.ts')).toContain('Plan phase')
+    expect(await wr(api, 'src/app.ts')).toContain('Plan stage')
   })
 
-  test('the file removed, a commit is still blocked by the gate rules', async ($, on) => {
+  test('the file removed: a commit the native hook does not see is still refused', async ($, on) => {
     const { w, api } = await begin($, on, { next: 'review', gates: ['intent', 'plan', 'build'], head: 'main' })
     w.files.delete(STATE)
     await refresh(api)
-    expect(await sh(api, 'git commit -m x')).toContain('commit blocked')
+    expect(await sh(api, 'git merge feature/evil')).toContain('native pre-commit hook does not check')
   })
 
   test('the file comes back readable: the real state is read again', async ($, on) => {
@@ -468,64 +452,18 @@ describe('finding 3: a command that names a guarded file is a plain read, or it 
   })
 })
 
-// ---- 4. the commit carve-out for staged specs ---------------------------------------------------------------
-describe('finding 4: the artifact commit carve-out is only for a staging the mod fully understands', () => {
+// ---- 4. the commit gate is the native pre-commit hook (ADR 0012) ---------------------------------------------
+describe('finding 4: a plain commit is for the native hook; a commit the hook does not see waits', () => {
   const REVIEW: Opts = { next: 'review', head: 'main', gates: ['intent', 'plan', 'build'] }
-  const commitAfter = async ($: unknown, on: Parameters<typeof world>[0], stage: string, o: Opts = REVIEW) => {
-    const { api } = await begin($, on, o)
-    await sh(api, stage)
-    return sh(api, 'git commit -m "docs: x"')
-  }
 
-  const staging: Record<string, string> = {
-    'git stage': 'git stage src/x.ts',
-    'git mv': 'git mv a.ts b.ts',
-    'git rm': 'git rm src/old.ts',
-    'git apply --cached': 'git apply --cached /tmp/x.diff',
-    'git update-index --add': 'git update-index --add src/x.ts',
-    'xargs git add': 'echo src/x.ts | xargs git add',
-    'git add --pathspec-from-file': 'git add --pathspec-from-file=/tmp/list',
-    'git add -p': 'git add -p',
-    'git add -i': 'git add -i',
-    'git add -N': 'git add -N src/x.ts',
-    'git checkout from a commit': 'git checkout HEAD~1 -- src/x.ts',
-    'git restore --staged --source': 'git restore --source=HEAD~2 --staged src/x.ts',
-    'git stash pop': 'git stash pop',
-    'git reset --soft': 'git reset --soft HEAD~1',
-    'an alias': 'git -c alias.sa=add sa src/x.ts',
-    'git add in a different folder': 'git -C src add x.ts',
-    'git add after a cd': 'cd src && git add x.ts',
-    'a git add by a variable path': 'P=src/x.ts; git add $P',
-    'a subshell git add': '(cd src && git add x.ts)',
-    'a git add of an unresolved glob': 'git add src/*.ts',
-  }
-  for (const [name, cmd] of Object.entries(staging)) {
-    test(`${name}, then a spec add, then a commit: refused`, async ($, on) => {
+  // The mod does not judge what a staging holds: the hook checks every gate on the commit itself.
+  for (const cmd of ['git stage src/x.ts', 'git stash pop', 'git reset --soft HEAD~1', 'git add src/*.ts', 'cd src && git add x.ts']) {
+    test(`${cmd}, then a plain commit: left to the native hook`, async ($, on) => {
       const { api } = await begin($, on, REVIEW)
-      await sh(api, cmd)
-      await sh(api, `git add ${SPEC}/plan.md`)
-      expect(await sh(api, 'git commit -m "docs: x"'), name).toContain('commit blocked')
+      expect(await sh(api, cmd), cmd).toBeUndefined()
+      expect(await sh(api, 'git commit -m "docs: x"')).toBeUndefined()
     })
   }
-
-  test('a spec add in another folder (git -C src add .temper/specs/p.ts) is not an artifact', async ($, on) => {
-    expect(await commitAfter($, on, 'git -C src add .temper/specs/p.ts')).toContain('commit blocked')
-  })
-  test('a spec add after cd src is not an artifact', async ($, on) => {
-    expect(await commitAfter($, on, 'cd src && git add .temper/specs/p.ts')).toContain('commit blocked')
-  })
-  test('git -C . add of the specs is the same folder: still an artifact', async ($, on) => {
-    expect(await commitAfter($, on, `git -C . add ${SPEC}/plan.md`)).toBeUndefined()
-  })
-  test('git -C /repo add (the project root) is an artifact', async ($, on) => {
-    expect(await commitAfter($, on, `git -C /repo add ${SPEC}/plan.md`)).toBeUndefined()
-  })
-  test('cd /repo then add the specs is an artifact', async ($, on) => {
-    expect(await commitAfter($, on, `cd /repo && git add ${SPEC}/plan.md`)).toBeUndefined()
-  })
-  test('upper case .TEMPER/SPECS is not the specs folder for the CLI gate', async ($, on) => {
-    expect(await commitAfter($, on, `git add .TEMPER/SPECS/pw/plan.md`)).toContain('commit blocked')
-  })
 
   const commits: Record<string, string> = {
     'a pathspec commit': 'git commit src/evil.ts -m x',
@@ -540,38 +478,25 @@ describe('finding 4: the artifact commit carve-out is only for a staging the mod
     'git commit-tree': 'git commit-tree HEAD^{tree} -m x',
   }
   for (const [name, cmd] of Object.entries(commits)) {
-    test(`after a spec add, ${name} is not the artifact commit`, async ($, on) => {
+    test(`${name} is refused while a run is active`, async ($, on) => {
       const { api } = await begin($, on, REVIEW)
-      await sh(api, `git add ${SPEC}/plan.md`)
-      expect(await sh(api, cmd), name).toContain('commit blocked')
+      expect(await sh(api, cmd), name).toContain('native pre-commit hook does not check')
     })
   }
 
-  test('legit: git add of the spec folder, then a plain commit, then a Commit with -m containing a dash word', async ($, on) => {
-    const { api } = await begin($, on, REVIEW)
-    expect(await sh(api, `git add ${SPEC}/`)).toBeUndefined()
-    expect(await sh(api, 'git commit -m "docs(plan): approve plan - pw"')).toBeUndefined()
+  test('legit: the same merge after the person chose Save for later', async ($, on) => {
+    const { api } = await begin($, on, { ...REVIEW, answers: ['Save for later'] })
+    await ask(api)
+    expect(await sh(api, 'git merge feature/evil')).toBeUndefined()
   })
 
-  test('legit: git checkout -b of the run branch, git status and git diff do not unsettle the staged specs', async ($, on) => {
-    const { api } = await begin($, on, REVIEW)
-    expect(await sh(api, `git checkout -b feature/pw 2>&1; git add ${SPEC}/ 2>&1; git status --short; git diff --cached --stat`)).toBeUndefined()
-    expect(await sh(api, 'git commit -m "docs(plan): approve plan - pw"')).toBeUndefined()
-  })
-
-  test('legit: git add of two spec files in one command with the commit', async ($, on) => {
-    const { api } = await begin($, on, REVIEW)
-    expect(await sh(api, `git add ${SPEC}/intent.md ${SPEC}/plan.md && git commit -m "docs: x"`)).toBeUndefined()
-  })
-
-  test('a staging made by the person before the mod saw the session is not known: the first commit is strict', async ($, on) => {
-    const { api } = await begin($, on, REVIEW)
-    // Nothing was staged through the mod: no artifact commit.
-    expect(await sh(api, 'git commit -m "docs: x"')).toContain('commit blocked')
+  test('legit: with no run active a merge is the person\'s own', async ($, on) => {
+    world(on, {}, { fakeCli: true, projectRoot: '/repo' })
+    await ($ as Api).session.start(START)
+    expect(await sh($ as Api, 'git merge feature/evil')).toBeUndefined()
   })
 
   test('commit --no-verify and -n skip the native pre-commit hook: refused', async ($, on) => {
-    // A Build checkpoint: the commit gate lets it through, and the hook would too. The flags still are not for the model.
     const { api } = await begin($, on, { next: 'build', green: true })
     for (const cmd of ['git commit --no-verify -m x', 'git commit -n -m x', 'git commit -nm x', 'git commit -m x --no-verify', 'git -c core.hooksPath=/dev/null commit -m x']) {
       expect(await sh(api, cmd), cmd).toMatch(T)
@@ -590,94 +515,83 @@ describe('finding 4: the artifact commit carve-out is only for a staging the mod
   })
 })
 
-// ---- 5. a decision spent by effect, not by exit status; a decision belongs to the plan it approved -----------
-describe('finding 5: a decision is spent when its call took effect', () => {
-  test('advance; exit 1 executed the advance: the decision is not given back', async ($, on) => {
-    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main' })
-    await refresh(api)
-    await press(api, 'continue')
-    // The person approved the Plan. The model runs the advance and the command still ends in an error.
+// ---- 5. a decision counts at the run and the step it was made at ----------------------------------------------
+describe('finding 5: a decision counts at its run and step, and no longer', () => {
+  test('advance; exit 1 executed the advance: the approval does not approve a second advance', async ($, on) => {
+    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main', answers: ['Continue to Build'] })
+    await ask(api)
     const first = await api.tool.call({ tool: 'Bash', command: 'scripts/temper state advance plan_complete build; exit 1' })
     expect(first.deny).toBeUndefined()
     expect(first.isError).toBe(true)
     expect(JSON.parse(w.files.get('.temper/build-state.json') ?? '{}').next_stage).toBe('build')
-    // The decision was spent by the call that took effect: it is not there to approve a second advance.
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toMatch(T)
   })
 
-  test('a call that failed with no effect gives the decision back (the retry works)', async ($, on) => {
-    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main' })
-    await press(api, 'continue')
+  test('a call that failed with no effect leaves the approval in place (the retry works)', async ($, on) => {
+    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main', answers: ['Continue to Build'] })
+    await ask(api)
     w.cliFailures = 1
     const failed = await api.tool.call({ tool: 'Bash', command: 'scripts/temper state advance plan_complete build' })
     expect(failed.isError).toBe(true)
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toBeUndefined()
   })
 
-  test('an approval older than the step back to its plan is not an approval any more', async ($, on) => {
-    const { files, store } = await seed([
-      { d: start('plan'), ts: 1000, used: true },
-      { d: { type: 'advance', from: 'plan', to: 'build', ...person }, ts: 2000 },
-      { d: { type: 'back', to: 'plan', reason: 'rework', ...person }, ts: 3000, used: true },
-    ])
-    const { api } = await begin($, on, { gates: ['intent', 'plan'], extra: files, store })
+  test('an approval made before a step back to the plan is not an approval any more', async ($, on) => {
+    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], answers: ['Continue to Build', 'Loop back to Plan: rework the plan'] })
+    await ask(api)
+    expect(await sh(api, 'scripts/temper state advance plan_complete build')).toBeUndefined()
+    await ask(api)
+    expect(await sh(api, "scripts/temper state loop build plan --reason 'rework the plan'")).toBeUndefined()
+    expect(JSON.parse(w.files.get('.temper/build-state.json') ?? '{}').next_stage).toBe('plan')
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toMatch(T)
   })
 
-  test('an approval of an earlier stage survives a step back to a later one', async ($, on) => {
-    const { files, store } = await seed([
-      { d: start('plan'), ts: 1000, used: true },
-      { d: { type: 'advance', from: 'plan', to: 'build', ...person }, ts: 2000 },
-      { d: { type: 'advance', from: 'build', to: 'review', ...person }, ts: 2500, used: true },
-      { d: { type: 'back', to: 'build', reason: 'rework', ...person }, ts: 3000, used: true },
-    ])
-    const { api } = await begin($, on, { next: 'plan', gates: ['intent', 'plan'], extra: files, store })
-    // The mod phase after these events is build; the CLI says plan: the pending plan approval is still valid.
+  test('a decision of another run does not count', async ($, on) => {
+    const store = { 'dec:run-old': [{ id: 'd1', run: 'run-old', step: 3, stage: 'plan', ts: 1, kind: 'approve', reason: '' }], decruns: ['run-old'] }
+    const { api } = await begin($, on, { gates: ['intent', 'plan'], store })
+    expect(await sh(api, 'scripts/temper state advance plan_complete build')).toMatch(T)
+  })
+
+  test('a decision of an earlier step of the same run does not count', async ($, on) => {
+    const store = { 'dec:run-pw': [{ id: 'd1', run: 'run-pw', step: 2, stage: 'plan', ts: 1, kind: 'approve', reason: '' }], decruns: ['run-pw'] }
+    const { api } = await begin($, on, { gates: ['intent', 'plan'], store })
+    expect(await sh(api, 'scripts/temper state advance plan_complete build')).toMatch(T)
+  })
+
+  test('control: the same decision at the current step counts', async ($, on) => {
+    const store = { 'dec:run-pw': [{ id: 'd1', run: 'run-pw', step: 3, stage: 'plan', ts: 1, kind: 'approve', reason: '' }], decruns: ['run-pw'] }
+    const { api } = await begin($, on, { gates: ['intent', 'plan'], store })
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toBeUndefined()
   })
 })
 
-// ---- 6. a skip is for the stage the run is at ------------------------------------------------------------
-describe('finding 6: a skip does not move the run backwards, and does not switch write enforcement off', () => {
-  const seeded = () =>
-    seed([
-      { d: start('plan'), ts: 1000, used: true },
-      { d: { type: 'override', phase: 'plan', reason: 'skip plan', ...person }, ts: 2000, used: true },
-      { d: { type: 'advance', from: 'plan', to: 'build', ...person }, ts: 3000, used: true },
-      { d: { type: 'advance', from: 'build', to: 'review', ...person }, ts: 4000, used: true },
-    ])
+// ---- 6. no advance lowers the stage --------------------------------------------------------------------------
+describe('finding 6: an advance does not move the run backwards, and does not switch write enforcement off', () => {
+  const AT_REVIEW: Opts = { next: 'review', gates: ['intent', 'plan', 'build'] }
 
   test('at Review, advance plan_complete build is refused', async ($, on) => {
-    const { files, store } = await seeded()
-    const { w, api } = await begin($, on, { next: 'review', gates: ['intent', 'plan', 'build'], extra: files, store })
+    const { w, api } = await begin($, on, AT_REVIEW)
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toMatch(T)
     expect(JSON.parse(w.files.get('.temper/build-state.json') ?? '{}').next_stage).toBe('review')
   })
 
-  test('and a write outside the Review phase stays refused afterwards', async ($, on) => {
-    const { files, store } = await seeded()
-    const { api } = await begin($, on, { next: 'review', gates: ['intent', 'plan', 'build'], extra: files, store })
+  test('and a write outside the Review stage stays refused afterwards', async ($, on) => {
+    const { api } = await begin($, on, AT_REVIEW)
     await sh(api, 'scripts/temper state advance plan_complete build')
     await refresh(api)
     expect(await wr(api, 'src/app.ts')).toContain('Review')
   })
 
-  test('a lowering advance is refused even with a person decision for that stage', async ($, on) => {
-    const { files, store } = await seed([
-      { d: start('plan'), ts: 1000, used: true },
-      { d: { type: 'advance', from: 'plan', to: 'build', ...person }, ts: 2000 },
-      { d: { type: 'advance', from: 'build', to: 'review', ...person }, ts: 2500, used: true },
-    ])
-    const { api } = await begin($, on, { next: 'review', gates: ['intent', 'plan', 'build'], extra: files, store })
+  test('a lowering advance is refused even with the person\'s override at Review', async ($, on) => {
+    const { api } = await begin($, on, { ...AT_REVIEW, answers: ['Override and continue: reviewed by hand'] })
+    await ask(api)
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toMatch(T)
   })
 
-  test('legit: a skip of Plan then the advance out of Plan, at Plan', async ($, on) => {
-    const { files, store } = await seed([
-      { d: start('plan'), ts: 1000, used: true },
-      { d: { type: 'override', phase: 'plan', reason: 'skip plan', ...person }, ts: 2000, used: true },
-    ])
-    const { api } = await begin($, on, { next: 'plan', gates: ['intent'], extra: files, store })
+  test('legit: a skip of Plan, then the advance out of Plan, at Plan', async ($, on) => {
+    const { api } = await begin($, on, { next: 'plan', gates: ['intent'], answers: ['Override and continue: skip plan'] })
+    await ask(api)
+    expect(await sh(api, "scripts/temper override plan --reason 'skip plan'")).toBeUndefined()
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toBeUndefined()
   })
 })
@@ -749,36 +663,34 @@ describe('finding 7: the run controls are not writable by the model', () => {
 })
 
 // ---- 8. state loop is for the person's Loop back ----------------------------------------------------------
-describe('finding 8: state loop names the stage the run is at, and spends the back decision once', () => {
-  const seeded = () =>
-    seed([
-      { d: start('check'), ts: 1000, used: true },
-      { d: { type: 'back', to: 'build', reason: 'rework', ...person }, ts: 2000 },
-    ])
+describe('finding 8: state loop names the stage the run is at, and the back answer counts once', () => {
+  const AT_CHECK: Opts = { next: 'check', gates: ['intent', 'plan', 'build', 'review'], answers: ['Loop back to Build: rework'] }
   test('the same loop twice is refused the second time', async ($, on) => {
-    const { files, store } = await seeded()
-    const { api } = await begin($, on, { next: 'check', gates: ['intent', 'plan', 'build', 'review'], extra: files, store })
+    const { api } = await begin($, on, AT_CHECK)
+    await ask(api)
     expect(await sh(api, "scripts/temper state loop check build --reason 'rework'")).toBeUndefined()
     expect(await sh(api, "scripts/temper state loop check build --reason 'rework'")).toMatch(T)
-    // The step that follows still spends the decision.
+    // A set to the stage the run is at changes nothing, so it needs no decision.
     expect(await sh(api, 'scripts/temper state set next_stage build')).toBeUndefined()
   })
   test('a loop from another stage than the one the run is at is refused', async ($, on) => {
-    const { files, store } = await seeded()
-    const { api } = await begin($, on, { next: 'check', gates: ['intent', 'plan', 'build', 'review'], extra: files, store })
+    const { api } = await begin($, on, AT_CHECK)
+    await ask(api)
     expect(await sh(api, "scripts/temper state loop plan build --reason 'x'")).toMatch(T)
     expect(await sh(api, "scripts/temper state loop build build --reason 'x'")).toMatch(T)
     expect(await sh(api, "scripts/temper state loop check build --reason 'x'")).toBeUndefined()
   })
-  test('a loop whose call failed does not use up the decision', async ($, on) => {
-    const { files, store } = await seeded()
-    const { w, api } = await begin($, on, { next: 'check', gates: ['intent', 'plan', 'build', 'review'], extra: files, store })
-    expect(w).toBeDefined()
-    // A refused call (the engine reports an error) gives the allowance back: use the CLI failure counter on set/advance only,
-    // so a loop that ends in `; exit 1` is the closest stand in.
+  test('a loop that changed nothing leaves the answer in place (the retry works)', async ($, on) => {
+    const { api } = await begin($, on, AT_CHECK)
+    await ask(api)
+    // `; exit 1` after a loop is the fake CLI's stand in for a loop that failed and moved nothing.
     const first = await api.tool.call({ tool: 'Bash', command: "scripts/temper state loop check build --reason 'x'; exit 1" })
     expect(first.deny).toBeUndefined()
     expect(await sh(api, "scripts/temper state loop check build --reason 'x'")).toBeUndefined()
+  })
+  test('without the answer the loop is refused', async ($, on) => {
+    const { api } = await begin($, on, { ...AT_CHECK, answers: [] })
+    expect(await sh(api, "scripts/temper state loop check build --reason 'x'")).toMatch(T)
   })
 })
 
@@ -854,13 +766,14 @@ describe('everyday Build commands are not touched by the stricter rules', () => 
   }
 })
 
-// ---- 9. the guard fails closed for Bash; the root; the checkpoint --------------------------------------------
+// ---- 9. the guard fails closed for Bash; the root -------------------------------------------------------------
 describe('finding 9: failures', () => {
   test('an error inside the guard denies Bash while a run is active (it passed before)', async ($, on) => {
-    const { w, api } = await begin($, on, { next: 'check', gates: ['intent', 'plan', 'build', 'review', 'check'], head: 'main' })
+    const { w, api } = await begin($, on, { next: 'build', answers: ["Keep the agent's commits: wanted"], extra: { '.temper/groups.json': '{}' } })
+    await ask(api)
     w.failWrites = true
-    // The commit makes the guard record the passed check as an event: the write fails and the guard throws.
-    const deny = await sh(api, 'git commit -m "feat: x"')
+    // The call spends the Keep answer: the store write fails and the guard throws.
+    const deny = await sh(api, "scripts/temper group reopen G1 --accept-foreign abc123 --reason 'wanted'")
     expect(deny).toMatch(T)
     expect(deny).toContain('Next:')
   })
@@ -879,19 +792,6 @@ describe('finding 9: failures', () => {
     // The run starts at /repo (the CLI root), above the session folder.
     for (const [k, v] of Object.entries({ ...runFiles({ nextStage: 'plan' }), '.temper/build-state.json': JSON.stringify({ spec: 'pw', spec_path: SPEC, next_stage: 'plan', command: 'temper', branch: 'feature/pw' }) })) w.files.set(k, v)
     await refresh(api)
-    expect(await wr(api, '/repo/src/app.ts')).toContain('Plan phase')
-  })
-
-  test('Build checkpoint: a design.md without a design verdict is not a checkpoint (the CLI gate says so)', async ($, on) => {
-    const { api } = await begin($, on, { next: 'build', green: true, design: true })
-    expect(await sh(api, 'git commit -m "feat(pw): scenario [AC-01]"')).toContain('commit blocked')
-  })
-  test('Build checkpoint: with the design verdict it is', async ($, on) => {
-    const { api } = await begin($, on, { next: 'build', green: true, design: true, gates: ['intent', 'plan', 'design'] })
-    expect(await sh(api, 'git commit -m "feat(pw): scenario [AC-01]"')).toBeUndefined()
-  })
-  test('Build checkpoint: without a design.md nothing changes', async ($, on) => {
-    const { api } = await begin($, on, { next: 'build', green: true })
-    expect(await sh(api, 'git commit -m "feat(pw): scenario [AC-01]"')).toBeUndefined()
+    expect(await wr(api, '/repo/src/app.ts')).toContain('Plan stage')
   })
 })

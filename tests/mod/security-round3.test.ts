@@ -3,8 +3,9 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { classifyBash, gitCreatesCommit } from '../../hooks/temper-mod/core/bash'
-import { evaluate, nextStage } from '../../hooks/temper-mod/core/rules'
-import type { RuleContext } from '../../hooks/temper-mod/core/rules'
+import { nextStage } from '../../hooks/temper-mod/core/stages'
+import { check as evaluate } from './helpers'
+import type { OldCtx as RuleContext } from './helpers'
 import { stateAt } from './helpers'
 
 const ctx: RuleContext = { specDir: '.temper/specs/pw', planFiles: [] }
@@ -107,10 +108,9 @@ describe('shell indirection around the script fails closed', () => {
     })
   }
 
-  test('the deny names where the user decides (the bar or the Temper gate question), and no typed command', () => {
+  test('the deny names where the user decides (the Temper gate question), and no typed command', () => {
     const r = run('plan', `scripts/temper $'over\\x72ide' plan --reason x`)
     expect('deny' in r && r.deny).toContain('`Temper gate` question')
-    expect('deny' in r && r.deny).toContain('Temper bar')
     expect('deny' in r && r.deny).not.toContain('/temper:temper')
   })
 
@@ -178,17 +178,15 @@ describe('links to Temper state are refused', () => {
 })
 
 describe('state advance and state set next_stage need a decision or a passed check (#42)', () => {
-  test('nextStage follows STAGE_SEQ_TEMPER, with design only for medium and complex', () => {
-    expect(nextStage('intent', null)).toBe('plan')
-    expect(nextStage('plan', 'simple')).toBe('build')
-    expect(nextStage('plan', null)).toBe('build')
-    expect(nextStage('plan', 'medium')).toBe('design')
-    expect(nextStage('plan', 'complex')).toBe('design')
-    expect(nextStage('design', 'complex')).toBe('build')
-    expect(nextStage('build', null)).toBe('review')
-    expect(nextStage('review', null)).toBe('check')
-    expect(nextStage('check', null)).toBe('commit')
-    expect(nextStage('started', null)).toBe(null)
+  test('nextStage follows STAGE_SEQ_TEMPER, with design only when the run has it', () => {
+    expect(nextStage('intent', false)).toBe('plan')
+    expect(nextStage('plan', false)).toBe('build')
+    expect(nextStage('plan', true)).toBe('design')
+    expect(nextStage('design', true)).toBe('build')
+    expect(nextStage('build', false)).toBe('review')
+    expect(nextStage('review', false)).toBe('check')
+    expect(nextStage('check', false)).toBe('commit')
+    expect(nextStage('commit', false)).toBe(null)
   })
 
   const adv = (stage: string, next: string) => `scripts/temper state advance ${stage}_complete ${next}`
@@ -221,19 +219,24 @@ describe('state advance and state set next_stage need a decision or a passed che
     expect(run('plan', adv('plan', 'build'), ctx, { plan: PASS })).toHaveProperty('deny')
   })
 
+  // ADR 0012: a move counts at the step it was made at. An advance named for a stage the run already left is a stale
+  // replay, refused like any call for another stage.
   test('a person decision pays for its own move and no other', () => {
     const c: RuleContext = { ...ctx, humanDecisions: [{ id: 'e', kind: 'advance', phase: 'build' }] }
-    expect('allow' in run('review', adv('build', 'review'), c)).toBe(true)
+    expect(run('review', adv('build', 'review'), c)).toHaveProperty('deny')
     expect(run('review', adv('review', 'check'), c)).toHaveProperty('deny')
     expect(run('review', adv('build', 'commit'), c)).toHaveProperty('deny')
   })
 
-  test('design follows the plan only for a medium or complex run', () => {
-    const state = stateAt('build', [], { plan: PASS })
-    const call = { tool: 'Bash', input: { command: adv('design', 'build') } }
-    expect('allow' in evaluate(state, { ...ctx, complexity: 'complex' }, call)).toBe(true)
-    expect(evaluate(state, { ...ctx, complexity: 'simple' }, call)).toHaveProperty('deny')
-    expect(evaluate(state, ctx, call)).toHaveProperty('deny')
+  test('design follows the plan only when the run has it, and its own check', () => {
+    // Design is a stage of the CLI: at Design, its advance follows the design check.
+    expect('allow' in run('design', adv('design', 'build'), { ...ctx, complexity: 'complex', designRequired: true }, { design: PASS })).toBe(true)
+    expect(run('design', adv('design', 'build'), { ...ctx, complexity: 'complex', designRequired: true })).toHaveProperty('deny')
+    // At Plan, approved: a simple run goes on to Build, never to Design.
+    const approved: RuleContext = { ...ctx, humanDecisions: [{ id: 'a', kind: 'advance', phase: 'plan' }] }
+    expect('allow' in run('plan', adv('plan', 'build'), { ...approved, complexity: 'simple' })).toBe(true)
+    expect(run('plan', adv('plan', 'design'), { ...approved, complexity: 'simple' })).toHaveProperty('deny')
+    expect('allow' in run('plan', adv('plan', 'design'), { ...approved, complexity: 'complex', designRequired: true })).toBe(true)
   })
 
   test('state set next_stage: the exact next stage after a passed check, else the person', () => {
@@ -268,10 +271,15 @@ describe('commit forms (#44)', () => {
     `find . -maxdepth 0 -exec git commit -m x \\;`,
     'git --no-pager commit -m x',
   ]
-  for (const c of commits) test(`refused: ${c}`, () => {
+  // ADR 0012: every commit form is still read as a commit. A plain git commit runs the native pre-commit hook, the commit
+  // gate, so the guard lets it to the hook; a commit the hook does not check, and a git alias that runs a shell, are
+  // refused while a run is active.
+  const plain = new Set(['git commit -m x', 'git -c alias.c=commit c -m x', `ksh -c 'git commit -m x'`, 'git --no-pager commit -m x'])
+  for (const c of commits) test(`${plain.has(c) ? 'to the hook' : 'refused'}: ${c}`, () => {
     expect(classifyBash(c).commits).toBe(true)
     const r = run('build', c)
-    expect('deny' in r && r.deny).toMatch(/commit blocked/)
+    if (plain.has(c)) expect('deny' in r).toBe(false)
+    else expect('deny' in r && r.deny).toMatch(/pre-commit hook does not check|git alias that runs a shell/)
   })
   const reads = [
     'git status',
@@ -299,7 +307,7 @@ describe('commit forms (#44)', () => {
     expect(gitCreatesCommit('x && git cherry-pick a')).toBe(true)
     expect(gitCreatesCommit('git push')).toBe(false)
   })
-  test('the deny says the pre-commit hook is the backstop', () => {
+  test('the deny names the pre-commit hook', () => {
     const r = run('build', 'git merge other')
     expect('deny' in r && r.deny).toContain('pre-commit')
   })

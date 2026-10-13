@@ -87,10 +87,25 @@ export function cliTo(w: World, next: string): void {
 // The stages of the CLI, in order (STAGE_SEQ_TEMPER in scripts/temper).
 export const CLI_SEQ = ['intent', 'plan', 'design', 'build', 'review', 'check']
 
-// The part of scripts/temper the mod depends on: `state advance <stage>_complete <next>`,
-// `state set next_stage <stage>` and `state clear` against .temper/build-state.json. Same checks as cmd_state_advance.
-// The script may be named by a quoted full path ("/a b/scripts/temper" state ...). Null for any other
-// command (the stub answers it).
+// The part of scripts/temper the mod depends on, with the same moves as the real CLI (ADR 0012): `state advance`,
+// `state set`, `state loop`, `state clear|archive|init`, `override` and `evidence accept`, against the .temper files.
+// Every change of next_stage counts one step; a step back removes the verdicts and the skips of the stages it redoes.
+// The script may be named by a quoted full path ("/a b/scripts/temper" state ...). Null for any other command (the stub
+// answers it).
+const SEQ_ALL = [...CLI_SEQ, 'commit']
+
+function redo(w: World, to: string): void {
+  const from = SEQ_ALL.indexOf(to)
+  if (from < 0) return
+  const gone = new Set(SEQ_ALL.slice(from))
+  const gates = JSON.parse(w.files.get('.temper/gates.json') ?? '{}') as Record<string, unknown>
+  w.files.set('.temper/gates.json', JSON.stringify(Object.fromEntries(Object.entries(gates).filter(([k]) => !gone.has(k)))))
+  if (w.files.has('.temper/overrides.json')) {
+    const rows = JSON.parse(w.files.get('.temper/overrides.json') ?? '[]') as Array<{ stage?: string }>
+    w.files.set('.temper/overrides.json', JSON.stringify(rows.filter(r => !gone.has(r.stage ?? ''))))
+  }
+}
+
 export function fakeCli(w: World, command: string): { result: string; text: string; isError?: boolean } | null {
   const path = '.temper/build-state.json'
   // A refused call (the CLI exits with an error): a test sets w.cliFailures to refuse the next calls.
@@ -107,13 +122,16 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
   const failsAfter = /;\s*exit\s+[1-9]/.test(command)
   const read = (): Record<string, unknown> => JSON.parse(w.files.get(path) ?? '{}') as Record<string, unknown>
   const save = (d: Record<string, unknown>) => w.files.set(path, JSON.stringify(d))
+  const ok = (text: string) => ({ result: text, text, ...(failsAfter ? { isError: true } : {}) })
+  // Moves next_stage; a change counts one step.
+  const move = (d: Record<string, unknown>, next: string): Record<string, unknown> =>
+    d.next_stage === next ? d : { ...d, next_stage: next, step: (typeof d.step === 'number' ? d.step : 0) + 1 }
   const adv = /scripts\/temper["']?\s+state\s+advance\s+([^\s;]+)\s+([^\s;]+)/.exec(command)
   if (adv) {
     const [, stage, next] = adv as unknown as [string, string, string]
     if (!CLI_SEQ.some(s => stage === `${s}_complete`) && stage !== 'started') return { result: `FAIL: unknown stage '${stage}'`, text: `FAIL: unknown stage '${stage}'`, isError: true }
-    save({ ...read(), stage, next_stage: next })
-    // `...; exit 1`: the call took effect and the command still ends in an error (the engine reports isError).
-    return { result: `OK: advanced to ${stage} (next: ${next})`, text: `OK: advanced to ${stage} (next: ${next})`, ...(failsAfter ? { isError: true } : {}) }
+    save(move({ ...read(), stage }, next))
+    return ok(`OK: advanced to ${stage} (next: ${next})`)
   }
   // `git checkout -b <branch>`: the current branch changes.
   const checkout = /\bgit\s+checkout\s+-b\s+(\S+)/.exec(command)
@@ -129,19 +147,44 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
       const text = `BLOCKED: max iterations (2) reached for ${loop[1]}->${loop[2]}`
       return { result: text, text, isError: true }
     }
-    save({ ...read(), next_stage: loop[2] })
+    redo(w, loop[2] as string)
+    save(move(read(), loop[2] as string))
     return { result: `OK: loop ${loop[1]}->${loop[2]} iteration 1/2`, text: `OK: loop ${loop[1]}->${loop[2]} iteration 1/2` }
   }
-  const set = /scripts\/temper["']?\s+state\s+set\s+next_stage\s+([^\s;]+)/.exec(command)
+  const set = /scripts\/temper["']?\s+state\s+set\s+(\S+)\s+([^\s;]+)/.exec(command)
   if (set) {
-    save({ ...read(), next_stage: set[1] })
-    return { result: `OK: next_stage = ${set[1]}`, text: `OK: next_stage = ${set[1]}`, ...(failsAfter ? { isError: true } : {}) }
+    const [, key, value] = set as unknown as [string, string, string]
+    const d = read()
+    if (key === 'next_stage') {
+      if (d.next_stage === value) return ok(`OK: next_stage = ${value} (unchanged)`)
+      if (SEQ_ALL.indexOf(value) >= 0 && SEQ_ALL.indexOf(value) < SEQ_ALL.indexOf(String(d.next_stage))) redo(w, value)
+      save(move(read(), value))
+      return ok(`OK: next_stage = ${value}`)
+    }
+    save({ ...d, [key]: value })
+    return ok(`OK: ${key} = ${value}`)
   }
-  // `state clear`: the run state goes, as cmd_state_clear removes it (the spec folder stays).
-  if (/scripts\/temper["']?\s+state\s+clear\b/.test(command)) {
+  // `override <stage> --reason ..`: the skip is recorded.
+  const skip = /scripts\/temper["']?\s+override\s+([^\s;]+)/.exec(command)
+  if (skip) {
+    const rows = JSON.parse(w.files.get('.temper/overrides.json') ?? '[]') as unknown[]
+    w.files.set('.temper/overrides.json', JSON.stringify([...rows, { stage: skip[1], reason: 'r', by: 'u', ts: 't' }]))
+    return ok(`OK: override recorded for '${skip[1]}'`)
+  }
+  // `state clear` and `state archive`: the run state goes, as cmd_state_clear removes it (the spec folder stays).
+  if (/scripts\/temper["']?\s+state\s+(?:clear|archive)\b/.test(command)) {
     for (const name of ['build-state.json', 'feedback-loops.json', 'gates.json', 'overrides.json']) w.files.delete(`.temper/${name}`)
     for (const key of [...w.files.keys()]) if (key.startsWith('.temper/evidence/')) w.files.delete(key)
-    return { result: 'OK: run state cleared', text: 'OK: run state cleared', ...(failsAfter ? { isError: true } : {}) }
+    return ok('OK: run state cleared')
+  }
+  // `state init <slug>`: a new run, at step 0, with a new run id.
+  const init = /scripts\/temper["']?\s+state\s+init\s+([^\s;]+)/.exec(command)
+  if (init) {
+    w.files.delete('.temper/gates.json')
+    w.files.delete('.temper/overrides.json')
+    const slug = init[1] as string
+    save({ stage: 'started', spec: slug, spec_path: `.temper/specs/${slug}`, command: 'temper', next_stage: 'intent', run_mode: 'interactive', run_id: `run-${Math.random().toString(16).slice(2, 10)}`, step: 0 })
+    return ok(`OK: state initialized for ${slug}`)
   }
   return failsAfter ? { result: 'exit 1', text: 'exit 1', isError: true } : null
 }
@@ -163,11 +206,11 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
   // The plugin store, in memory and live: a test reads what the mod stored from `w.store`.
   // The mod keeps its records (events, the report) in the store as `vf:<full path>` (see makeIo). The world
   // shows each one in `w.files` and `w.writes` too, so a test reads what the mod recorded the same way for
-  // a kept text and for a file, and `failWrites` fails a kept text as it fails a file write.
+  // a kept text and for a file, and `failWrites` fails every store write as it fails a file write.
   on('store.get', ($, e) => ({ value: w.store[e.key] }))
   on('store.set', ($, e) => {
+    if (w.failWrites) return { deny: `EACCES: ${e.key.startsWith('vf:') ? e.key.slice(3) : e.key}` }
     if (e.key.startsWith('vf:')) {
-      if (w.failWrites) return { deny: `EACCES: ${e.key.slice(3)}` }
       w.files.set(rel(e.key.slice(3)), String(e.value))
       w.writes.push(rel(e.key.slice(3)))
     }

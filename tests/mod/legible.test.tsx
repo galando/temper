@@ -75,7 +75,6 @@ describe('the pane is legible on every theme', () => {
         world(on, { ...runFiles({ nextStage: stage, passedCriteria: ['AC-01'] }), '.temper/evidence/review.json': JSON.stringify([{ claim: 'x', severity: 'major' }]) })
         await $.session.start(START(surface))
         const ui = await $.ui.mount({ plugin: 'temper', surface, component: 'Pane', requestId: 'temper', props: PANE })
-        await ui.press({ key: 'pane-more-actions' }).catch(() => undefined)
         expectLegible(await ui.drawn(), `${stage}/${surface}`)
       })
     }

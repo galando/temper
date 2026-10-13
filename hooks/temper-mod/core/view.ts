@@ -1,240 +1,264 @@
-// The view model: everything the band, pane, spinner, hint and question header draw,
-// computed once from the folded run so each drawing is a plain function of plain data.
-// Pure and JSON safe: it is mirrored into `$.state`, which survives reload and compaction.
-//
-// Vocabulary, used the same way everywhere: a run has six phases; the bar shows each as done
-// (a check mark), current ("you are here", a filled circle), upcoming (an open circle) or
-// redo (a counter clockwise arrow, after a back step).
+// The view model (ADR 0012): what the bar, the pane, the spinner, the hint, the question header and the system prompt
+// show, computed once from the CLI's files and the person's decisions, so each drawing is a plain function of plain
+// data. It holds no button that decides: the person decides in the `Temper gate` question. Pure and JSON safe: it is
+// mirrored into `$.state`, which survives reload and compaction.
 
-import { actionsFor, doneActions, nowText } from './actions'
-import type { Action, ActionContext, ActionSet, PendingChoice } from './actions'
+import type { Finding, Gates, GroupRow, Loop, Requirement, Skips } from './clifiles'
 import type { MergedCriterion } from './criteria'
-import type { Phase } from './events'
-import type { Finding } from './gates'
-import { phaseGate, phaseLabel } from './machine'
-import type { HistoryRecord, RunState } from './machine'
+import type { Decision, Move } from './decisions'
+import { describe } from './decisions'
+import type { RunFacts } from './rules'
+import type { Stage } from './stages'
+import { STAGES, hasDesign, nextStage, stageIndex, stageLabel } from './stages'
 
-export type StepStatus = 'done' | 'current' | 'pending' | 'stale'
+// How a stage stands on the timeline: its check passed, failed, or the person skipped it; the run is at it; or it is
+// still to come.
+export type Mark = 'passed' | 'failed' | 'skipped' | 'current' | 'pending'
 
-export type Step = { id: Phase; label: string; status: StepStatus }
+export type StageView = { id: Stage; label: string; mark: Mark; failed: boolean; skip: string | null }
 
-export type ViewCriterion = { id: string; text: string; status: 'passed' | 'open'; priority: string }
+// What the run waits for at its current stage:
+//  gate    the stage's check ran and no choice is made yet: the person answers the `Temper gate` question
+//  chosen  the person chose; Claude carries it out
+//  saved   the person saved the run for later
+//  work    the stage is being worked (no verdict yet)
+//  armed   an armed autonomous run goes on by itself
+//  done    every gate is behind the run: Commit is next
+export type Wait = 'gate' | 'chosen' | 'saved' | 'work' | 'armed' | 'done'
 
 export type View = {
   title: string | null
-  phase: Phase | 'done' | null
-  // 1 to 6 while a phase is active, else null.
-  stepNo: number | null
-  paused: boolean
+  stage: Stage | null
   enforcement: 'on' | 'off'
-  steps: Step[]
-  // Null when no phase is active (no run, or Done): nothing to act on. `more` is the full
-  // list the pane shows when expanded, each with its own letter hotkey.
-  actions: ActionSet | null
-  // Whether the full action list is shown (in the pane, or under the band when no pane is open).
-  expanded: boolean
-  // Whether the pane is open, so the band knows where the full list shows.
-  paneOpen: boolean
-  criteria: ViewCriterion[]
+  stages: StageView[]
+  wait: Wait | null
+  // One plain sentence: where the run is and what it waits for.
+  status: string
+  // The lines under it, for the current stage: the groups in Build, the findings in Review, the failed checks.
+  detail: string[]
+  // The failed requirements of the current stage's gate, for the pane.
+  failedChecks: Requirement[]
+  groups: GroupRow[] | null
+  findings: Finding[]
+  criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string }>
   passed: number
   total: number
-  findings: Finding[]
-  timeline: string[]
-  // One plain sentence: what to do now.
-  now: string
-  // The one line that says the bar and the CLI do not agree; null when all is well.
-  sync: string | null
-  // The line shown in its place while Claude works on the person's waiting move (left out: none waits).
-  syncWorking?: string | null
   task: { n: number; of: number } | null
-  loopLimitReached: boolean
+  // The person's decisions in this run, as sentences, oldest first.
+  decisions: string[]
+  // The loops of the run with their budget: "Review to Build: 1 of 2".
+  loops: string[]
+  // The one line that says the mod cannot read the run as it should; null when all is well.
+  line: string | null
+  // Check wrote config-suggestions.json (the Commit question offers "Review config suggestions").
+  configSuggestions: boolean
+  paneOpen: boolean
 }
 
 export type ViewInput = {
-  state: RunState
+  run: RunFacts | null
   title: string | null
-  criteria: readonly MergedCriterion[]
+  gates: Gates
+  skips: Skips
+  loops: readonly Loop[]
+  groups: GroupRow[] | null
   findings: readonly Finding[]
+  criteria: readonly MergedCriterion[]
   task: { n: number; of: number } | null
+  move: Move | null
+  decisions: readonly Decision[]
   enforcement: 'on' | 'off'
-  expanded?: boolean
-  paneOpen?: boolean
-  // Check wrote config-suggestions.json in the spec folder.
   configSuggestions?: boolean
-  // Tasks of tasks.md that are not done; null when unknown, left out when not read.
-  tasksLeft?: number | null
-  // Build runs in groups (see ActionContext.grouped).
-  grouped?: boolean
-  // The sync line and whether a move of the person waits to be recorded (Snapshot.sync).
-  sync?: string | null
-  syncWorking?: string | null
-  pending?: boolean
-  pendingMove?: PendingChoice
-  // Where the Temper script is (see ActionContext.cli): the prompts of the buttons name the CLI by it.
-  cli?: string
-  // Design follows this Plan (see ActionContext.designNext).
-  designNext?: boolean
-  // Loops whose budget is spent (see ActionContext.spentLoops).
-  spentLoops?: readonly string[]
+  line?: string | null
+  paneOpen?: boolean
 }
 
-export const BAR: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check', 'fix']
-const FLOW: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check']
-
-const order = (p: Phase): number => (p === 'fix' ? FLOW.indexOf('check') + 0.5 : FLOW.indexOf(p))
-
-function stepsOf(s: RunState): Step[] {
-  return BAR.map(id => {
-    const label = phaseLabel(id)
-    if (s.phase === null) return { id, label, status: 'pending' as const }
-    if (s.phase === 'done') return { id, label, status: id !== 'fix' || s.loops > 0 ? ('done' as const) : ('pending' as const) }
-    if (id === s.phase) return { id, label, status: 'current' as const }
-    if (s.stale.includes(id)) return { id, label, status: 'stale' as const }
-    return { id, label, status: order(id) < order(s.phase) ? ('done' as const) : ('pending' as const) }
+function stagesOf(input: ViewInput): StageView[] {
+  const r = input.run
+  const design = r !== null && hasDesign(r.complexity, r.designRequired, r.designSeen)
+  return STAGES.filter(s => s !== 'design' || design).map(id => {
+    const skip = input.skips[id]?.reason ?? null
+    const failed = input.gates[id]?.verdict === 'FAIL'
+    const base = { id, label: stageLabel(id), failed, skip: skip ?? null }
+    if (r === null) return { ...base, mark: 'pending' as const }
+    if (id === r.stage) return { ...base, mark: 'current' as const }
+    if (stageIndex(id) > stageIndex(r.stage)) return { ...base, mark: 'pending' as const }
+    if (skip !== null) return { ...base, mark: 'skipped' as const }
+    return { ...base, mark: failed ? ('failed' as const) : ('passed' as const) }
   })
 }
 
-const KIND: Record<string, (from: string, to: string) => string> = {
-  start: (_f, to) => `Run started at ${to}`,
-  advance: (from, to) => `${from} done, now ${to}`,
-  back: (from, to) => `Sent back from ${from} to ${to}`,
-  override: (from, to) => `${from} skipped, now ${to}`,
-  check: (_f, to) => (to === 'Done' ? 'Checks passed, run done' : `Checks failed, now ${to}`),
+const TASK_GLYPH: Record<string, string> = { waiting: '○', running: '◐', passed: '✓', failed: '✗', parked: '⏸' }
+
+// One line a group in Build: "G2 Payments  ✓1 ✓2 ◐3 ○4".
+export function groupLine(g: GroupRow): string {
+  const tasks = g.tasks.map(t => `${TASK_GLYPH[t.state] ?? '○'}${t.n}`).join(' ')
+  const state = g.state === 'parked' ? ' (parked)' : g.state === 'passed' ? ' (passed)' : ''
+  return `${g.id}${g.title ? ` ${g.title}` : ''}${state}  ${tasks}`
+}
+
+function waitOf(input: ViewInput): Wait | null {
+  const r = input.run
+  if (r === null) return null
+  if (r.stage === 'commit') return 'done'
+  if (input.move?.kind === 'pause') return 'saved'
+  if (input.move !== null) return 'chosen'
+  if (r.runMode === 'autonomous' && r.autonomyEnabled) return 'armed'
+  return input.gates[r.stage] !== undefined || r.skipped.has(r.stage) ? 'gate' : 'work'
+}
+
+function statusOf(input: ViewInput, wait: Wait | null): string {
+  const r = input.run
+  if (r === null) return ''
+  const label = stageLabel(r.stage)
+  const verdict = input.gates[r.stage]?.verdict
+  switch (wait) {
+    case 'done':
+      return 'Every gate is behind the run. Commit is next.'
+    case 'saved':
+      return `${label} is saved for later. Go on when you are ready.`
+    case 'chosen':
+      return `${label}: your choice (${describe(input.move as Move)}). Claude carries it out.`
+    case 'armed':
+      return `${label}: the run goes on by itself (armed at the plan gate).`
+    case 'gate':
+      return `${label}: the check ${verdict === 'FAIL' ? 'failed' : 'passed'}. Waiting for you: answer the Temper gate question.`
+    default:
+      return `${label}: Claude is working on it.`
+  }
+}
+
+function detailOf(input: ViewInput): string[] {
+  const r = input.run
+  if (r === null) return []
+  const out: string[] = []
+  if (r.stage === 'build' && input.groups !== null) {
+    const done = input.groups.reduce((n, g) => n + g.tasks.filter(t => t.state === 'passed').length, 0)
+    const all = input.groups.reduce((n, g) => n + g.tasks.length, 0)
+    out.push(`Tasks: ${done} of ${all} done`)
+    for (const g of input.groups) out.push(groupLine(g))
+  } else if (r.stage === 'build' && input.task !== null) {
+    out.push(`Task ${input.task.n} of ${input.task.of}`)
+  }
+  if (r.stage === 'review') {
+    const by = new Map<string, number>()
+    for (const f of input.findings) by.set(f.severity, (by.get(f.severity) ?? 0) + 1)
+    out.push(input.findings.length === 0 ? 'No open findings.' : `Open findings: ${[...by.entries()].map(([s, n]) => `${n} ${s}`).join(', ')}`)
+  }
+  const failed = (input.gates[r.stage]?.requirements ?? []).filter(q => !q.pass)
+  if (failed.length > 0) out.push(`Failed: ${failed.map(q => q.name).join(', ')}`)
+  return out
 }
 
 export function buildView(input: ViewInput): View {
-  const s = input.state
-  const active = s.phase !== null && s.phase !== 'done'
-  const gateFresh = active && phaseGate(s) === 'fresh'
-  const ctx: ActionContext = {
-    ready: gateFresh,
-    gate: active ? phaseGate(s) : 'none',
-    tasksDone: s.phase === 'build' && gateFresh,
-    hasFindings: input.findings.length > 0,
-    allChecksPass: s.gate.check === 'fresh',
-    loopLimitReached: s.loopLimitReached,
-    paused: s.paused,
-    task: input.task,
-    tasksLeft: input.tasksLeft,
-    grouped: input.grouped ?? false,
-    configSuggestions: input.configSuggestions ?? false,
-    pending: input.pending ?? false,
-    ...(input.pendingMove !== undefined ? { pendingMove: input.pendingMove } : {}),
-    ...(input.cli !== undefined ? { cli: input.cli } : {}),
-    ...(input.designNext ? { designNext: true } : {}),
-    ...(s.atDesign ? { atDesign: true } : {}),
-    ...(input.spentLoops && input.spentLoops.length > 0 ? { spentLoops: input.spentLoops } : {}),
-  }
-  const passed = input.criteria.filter(c => c.status === 'passed').length
-  let actions: ActionSet | null = null
-  if (s.phase === 'done') actions = doneActions(input.cli, input.configSuggestions ?? false)
-  else if (s.phase !== null) actions = actionsFor(s.phase, ctx)
-  const stepIdx = s.phase !== null && s.phase !== 'done' ? BAR.indexOf(s.phase) : -1
+  const wait = waitOf(input)
+  const r = input.run
   return {
     title: input.title,
-    phase: s.phase,
-    stepNo: stepIdx >= 0 ? stepIdx + 1 : null,
-    paused: s.paused,
+    stage: r?.stage ?? null,
     enforcement: input.enforcement,
-    steps: stepsOf(s),
-    actions,
-    expanded: input.expanded ?? false,
-    paneOpen: input.paneOpen ?? false,
-    criteria: input.criteria.map(c => ({ id: c.id, text: c.text, status: c.status, priority: c.priority })),
-    passed,
-    total: input.criteria.length,
+    stages: stagesOf(input),
+    wait,
+    status: statusOf(input, wait),
+    detail: detailOf(input),
+    failedChecks: r === null ? [] : (input.gates[r.stage]?.requirements ?? []).filter(q => !q.pass),
+    groups: input.groups,
     findings: [...input.findings],
-    timeline: s.history.slice(-6).map(h => (KIND[h.kind] ?? KIND.advance)?.(h.from ? phaseLabel(h.from) : 'Start', phaseLabel(h.to)) ?? ''),
-    now: s.phase === null ? '' : nowText(s.phase, ctx),
-    sync: input.sync ?? null,
-    ...(input.syncWorking ? { syncWorking: input.syncWorking } : {}),
+    criteria: input.criteria.map(c => ({ id: c.id, text: c.text, status: c.status, priority: c.priority })),
+    passed: input.criteria.filter(c => c.status === 'passed').length,
+    total: input.criteria.length,
     task: input.task,
-    loopLimitReached: s.loopLimitReached,
+    decisions: input.decisions.map(describe),
+    loops: input.loops.map(l => `${cap(l.from)} to ${cap(l.to)}: ${l.iteration} of ${l.max}`),
+    line: input.line ?? null,
+    configSuggestions: input.configSuggestions ?? false,
+    paneOpen: input.paneOpen ?? false,
   }
 }
 
-const VERB: Record<Phase, string> = {
+const cap = (s: string): string => `${s.charAt(0).toUpperCase()}${s.slice(1)}`
+
+// The glyph for each mark on the timeline. The current stage is a filled circle; a failed check is a cross.
+export const MARK: Record<Mark, string> = { passed: '✓', failed: '✗', skipped: '↷', current: '●', pending: '○' }
+
+export const LEGEND = '✓ passed  ✗ failed  ↷ skipped  ● here  ○ to come'
+
+// "Step 4 of 7: Build" (the run's own stages, Design only when it has one).
+export function whereText(v: View): string {
+  if (v.stage === null) return ''
+  if (v.stage === 'commit') return 'Done'
+  const at = v.stages.findIndex(s => s.id === v.stage)
+  return `Step ${at + 1} of ${v.stages.length}: ${stageLabel(v.stage)}`
+}
+
+const VERB: Record<Stage, string> = {
   intent: 'Capturing intent',
   plan: 'Planning',
+  design: 'Designing',
   build: 'Building',
   review: 'Reviewing',
   check: 'Checking',
-  fix: 'Fixing',
-}
-
-// The step in plain words: "Step 3 of 6: Build".
-export function whereText(v: View): string {
-  if (v.phase === null) return ''
-  if (v.phase === 'done') return 'Done'
-  return `Step ${v.stepNo ?? 0} of 6: ${phaseLabel(v.phase)}`
+  commit: 'Committing',
 }
 
 // "Building · criterion 2 of 5": the criterion being worked is the first not yet passed.
 export function spinnerWord(v: View): string | null {
-  if (v.phase === null || v.phase === 'done') return null
-  const verb = VERB[v.phase]
+  if (v.stage === null) return null
+  const verb = VERB[v.stage]
   if (v.total === 0) return verb
   return `${verb} · criterion ${Math.min(v.passed + 1, v.total)} of ${v.total}`
 }
 
 // The dim line after the engine's prompt hint on the terminal.
 export function hintTail(v: View): string | null {
-  if (v.phase === null) return null
-  return v.phase === 'done' ? 'Temper: the run is done.' : `Temper. ${whereText(v)}. ${v.now}`
+  if (v.stage === null) return null
+  return v.stage === 'commit' ? 'Temper: the run is done.' : `Temper. ${whereText(v)}. ${v.status}`
 }
 
-// The phase that follows, for "next: Review". Check is followed by Done, and Fix by Check.
-export function nextPhaseLabel(v: View): string {
-  if (v.phase === null) return ''
-  if (v.phase === 'done') return 'commit'
-  const flow = ['intent', 'plan', 'build', 'review', 'check']
-  if (v.phase === 'fix') return 'Check'
-  const next = flow[flow.indexOf(v.phase) + 1]
-  return next ? phaseLabel(next as Phase) : 'Done'
-}
-
-// One dim line beneath an answer when a turn ends: "Build \u00b7 2 of 4 criteria met \u00b7 next: Review".
+// One dim line beneath an answer when a turn ends: "Build · 2 of 4 criteria met · next: Review".
 export function turnLine(v: View): string | null {
-  if (v.phase === null) return null
-  if (v.phase === 'done') return 'Done \u00b7 next: commit'
-  const parts = [phaseLabel(v.phase)]
+  if (v.stage === null) return null
+  if (v.stage === 'commit') return 'Done · next: commit'
+  const parts = [stageLabel(v.stage)]
   if (v.total > 0) parts.push(`${v.passed} of ${v.total} criteria met`)
-  parts.push(`next: ${nextPhaseLabel(v)}`)
-  return parts.join(' \u00b7 ')
+  const at = v.stages.findIndex(s => s.id === v.stage)
+  const next = v.stages[at + 1]
+  parts.push(`next: ${next ? next.label : 'Commit'}`)
+  return parts.join(' · ')
 }
 
 // One line above the engine's own question dialog.
 export function questionHeader(v: View): string | null {
-  if (v.phase === null || v.phase === 'done') return null
+  if (v.stage === null || v.stage === 'commit') return null
   return v.total > 0 ? `Temper: ${whereText(v)}, criterion ${Math.min(v.passed + 1, v.total)} of ${v.total}` : `Temper: ${whereText(v)}`
 }
 
-// The glyph for each state of a step. No bare arrow: the current step is a filled circle.
-export const MARK: Record<StepStatus, string> = { done: '✓', current: '●', pending: '○', stale: '↺' }
-
-export const LEGEND = '✓ done  ● you are here  ○ upcoming  ↺ redo'
-
-// The prompt the suggestion box offers (Tab to take): the main action's prompt, never sent.
-export function suggestion(v: View): string | null {
-  const first: Action | undefined = v.actions?.primary[0]
-  return first?.prompt ?? null
+// The toast when the run reaches another stage: "Build is open." Null for no run.
+export function stageToast(stage: Stage | null): string | null {
+  if (stage === null) return null
+  return stage === 'commit' ? 'The run is done. Commit is next.' : `${stageLabel(stage)} is open.`
 }
 
-// The toast for a phase change: "Plan approved \u00b7 Build open". Null for a run start.
-export function transitionToast(rec: HistoryRecord | undefined): string | null {
-  if (!rec || rec.kind === 'start') return null
-  const from = rec.from ? phaseLabel(rec.from) : ''
-  const to = rec.to === 'done' ? 'Run done' : `${phaseLabel(rec.to)} open`
-  switch (rec.kind) {
-    case 'advance':
-      return `${from} ${rec.from === 'fix' ? 'done' : 'approved'}. ${to}.`
-    case 'override':
-      return `${from} skipped. ${to}.`
-    case 'back':
-      return `Back to ${phaseLabel(rec.to as Phase)}. The later steps need a new check.`
-    case 'check':
-      return rec.to === 'done' ? 'Check passed. Run done.' : 'Check failed. Fix open.'
+// What Claude does next, for the system prompt: the gate to ask, the choice to carry out, or the stage to run.
+export function nextStep(v: View, run: RunFacts | null): string {
+  if (v.stage === null || run === null) return ''
+  const label = stageLabel(v.stage)
+  const after = nextStage(v.stage, hasDesign(run.complexity, run.designRequired, run.designSeen))
+  const failed = v.stages.find(s => s.id === v.stage)?.failed ?? false
+  switch (v.wait) {
+    case 'done':
+      return 'every gate is behind the run: commit as the Commit section of commands/temper.md says'
+    case 'saved':
+      return 'the user saved the run for later: do nothing for the run until the user takes it up again'
+    case 'chosen':
+      return 'the user chose in the `Temper gate` question: carry out that answer now, as commands/temper.md says for it'
+    case 'armed':
+      return 'the run is armed: go on by the verdicts, and park as reference/autonomy.md says'
+    case 'gate':
+      return failed
+        ? `the ${label} check failed: ask the user with AskUserQuestion, header \`Temper gate\`, with the FAIL options of the ${label} gate`
+        : `ask the user with AskUserQuestion, header \`Temper gate\`: continue to ${after ? stageLabel(after) : 'Commit'}, or the other options of the ${label} gate`
     default:
-      return null
+      return `run the ${label} stage and its check, then ask the user with AskUserQuestion, header \`Temper gate\``
   }
 }

@@ -1,52 +1,41 @@
 // $.state contract for the Temper mod. Each value the module keeps in $.state is
 // declared here under the plugin name; `claude plugin validate` holds the module to it.
-// The view types repeat the shapes the module defines for its run view and its actions,
-// on purpose: the validator reads this file alone, so it cannot import them. TypeScript
-// checks the two agree wherever the module writes the value.
+// The view types repeat the shapes the module defines for its run view, on purpose: the
+// validator reads this file alone, so it cannot import them. TypeScript checks the two
+// agree wherever the module writes the value. The view only shows the run: no decision
+// is made from it (ADR 0012).
 
-export type PhaseName = 'intent' | 'plan' | 'build' | 'review' | 'check' | 'fix'
+export type StageName = 'intent' | 'plan' | 'design' | 'build' | 'review' | 'check' | 'commit'
 
 export type UiMode = 'full' | 'minimal' | 'off'
 
-export type TemperAction = {
-  key: '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '0'
-  id: string
-  label: string
-  short?: string
-  desc: string
-  prompt?: string
-  command?: string
-  asksReason?: boolean
-  resume?: boolean
-  fill?: string
-  record?: boolean
-}
+export type TemperTask = { n: number; title: string; state: 'waiting' | 'running' | 'passed' | 'failed' | 'parked'; model: string | null; attempt: number | null }
 
 export type TemperView = {
   title: string | null
-  phase: PhaseName | 'done' | null
-  stepNo: number | null
-  paused: boolean
+  stage: StageName | null
   enforcement: 'on' | 'off'
-  steps: Array<{ id: PhaseName; label: string; status: 'done' | 'current' | 'pending' | 'stale' }>
-  actions: { primary: TemperAction[]; discuss: TemperAction; override: TemperAction | null; more: TemperAction[] } | null
-  expanded: boolean
-  paneOpen: boolean
+  stages: Array<{ id: StageName; label: string; mark: 'passed' | 'failed' | 'skipped' | 'current' | 'pending'; failed: boolean; skip: string | null }>
+  wait: 'gate' | 'chosen' | 'saved' | 'work' | 'armed' | 'done' | null
+  status: string
+  detail: string[]
+  failedChecks: Array<{ name: string; pass: boolean; detail: string }>
+  groups: Array<{ id: string; title: string; state: 'waiting' | 'running' | 'passed' | 'parked'; tasks: TemperTask[] }> | null
+  findings: Array<{ id: string; severity: string; claim: string }>
   criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string }>
   passed: number
   total: number
-  findings: Array<{ id: string; severity: string; claim: string }>
-  timeline: string[]
-  now: string
-  sync: string | null
-  syncWorking?: string | null
   task: { n: number; of: number } | null
-  loopLimitReached: boolean
+  decisions: string[]
+  loops: string[]
+  line: string | null
+  configSuggestions: boolean
+  paneOpen: boolean
 }
 
 export type TemperRun = {
   slug: string | null
-  phase: PhaseName | 'done' | null
+  stage: StageName | null
   title: string | null
   summary: string
   // Everything the band, pane, spinner, hint and question header draw.

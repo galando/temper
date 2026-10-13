@@ -5,8 +5,9 @@ import { describe, expect, test } from 'claude-code/testing'
 import { loadSnapshot } from '../../hooks/temper-mod/adapter'
 import type { Io } from '../../hooks/temper-mod/adapter'
 import { classifyBash, protectedKind } from '../../hooks/temper-mod/core/bash'
-import { evaluate } from '../../hooks/temper-mod/core/rules'
-import type { RuleContext, RuleResult } from '../../hooks/temper-mod/core/rules'
+import { check as evaluate } from './helpers'
+import type { RuleResult } from '../../hooks/temper-mod/core/rules'
+import type { OldCtx as RuleContext } from './helpers'
 import { SPEC, runFiles } from './run-files'
 import { stateAt } from './helpers'
 
@@ -58,7 +59,7 @@ describe('writes in a group worktree of this run are judged by their worktree-re
 
   test('a planned source file is allowed', () => {
     expect('allow' in write(grouped, `${WT}/src/app.ts`)).toBe(true)
-    expect('allow' in write(grouped, `${WT}/hooks/core/x.ts`, 'fix')).toBe(true)
+    expect('allow' in write(grouped, `${WT}/hooks/core/x.ts`)).toBe(true)
   })
 
   test('a test file and the plan files are allowed, like outside the worktree', () => {
@@ -76,8 +77,8 @@ describe('writes in a group worktree of this run are judged by their worktree-re
   })
 
   test('a file added to the plan by a drift decision is allowed inside the worktree too', () => {
-    const s = stateAt('build', [{ type: 'drift', path: 'src/extra.ts', choice: 'add', reason: 'needed', origin: 'person', author: 'galando' }])
-    expect('allow' in evaluate(s, grouped, { tool: 'Write', input: { file_path: `${WT}/src/extra.ts` } })).toBe(true)
+    const added = { ...grouped, drift: { added: ['src/extra.ts'], allowOnce: [] } }
+    expect('allow' in evaluate(stateAt('build'), added, { tool: 'Write', input: { file_path: `${WT}/src/extra.ts` } })).toBe(true)
     expect(isDeny(write(grouped, `${WT}/src/extra.ts`))).toBe(true)
   })
 
@@ -137,8 +138,8 @@ describe('any other worktree prefix gets no special treatment', () => {
 describe('while a grouped Build run is active, the run tasks.md is the CLI\'s', () => {
   const tasks = `${SPEC}/tasks.md`
 
-  test('Write, Edit and NotebookEdit to the run tasks.md are denied in Build and Fix', () => {
-    for (const phase of ['build', 'fix'] as const) {
+  test('Write, Edit and NotebookEdit to the run tasks.md are denied from Build on', () => {
+    for (const phase of ['build', 'review', 'check'] as const) {
       for (const [tool, input] of [['Write', { file_path: tasks }], ['Edit', { file_path: tasks }], ['NotebookEdit', { notebook_path: tasks }]] as const) {
         const r = evaluate(stateAt(phase), grouped, { tool, input })
         expect(isDeny(r)).toBe(true)
@@ -177,6 +178,7 @@ describe('the adapter reads groups.json presence into the snapshot', () => {
     write: async () => undefined,
     storeGet: async () => undefined,
     storeSet: async () => undefined,
+    storeDelete: async () => undefined,
     version: async () => '2.1.300',
     setRun: async () => undefined,
     setMode: async () => undefined,
@@ -185,11 +187,11 @@ describe('the adapter reads groups.json presence into the snapshot', () => {
 
   test('groups.json present: groupedActive is true', async () => {
     const snap = await loadSnapshot(ioWith({ ...runFiles({ nextStage: 'build' }), '.temper/groups.json': '{}' }), {})
-    expect(snap.groupedActive).toBe(true)
+    expect(snap.run?.groupedActive).toBe(true)
   })
 
   test('groups.json absent: groupedActive is false', async () => {
     const snap = await loadSnapshot(ioWith(runFiles({ nextStage: 'build' })), {})
-    expect(snap.groupedActive).toBe(false)
+    expect(snap.run?.groupedActive).toBe(false)
   })
 })

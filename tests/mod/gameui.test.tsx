@@ -2,7 +2,7 @@ import { describe, expect, test as baseTest } from 'claude-code/testing'
 
 import { DRAGON_X, ROWS, TICK_MS, drawScene, newGame, press, runs, start, step } from '../../hooks/temper-mod/core/runner'
 import type { RunState } from '../../hooks/temper-mod/core/runner'
-import { SPEC, runFiles } from './run-files'
+import { runFiles } from './run-files'
 import { cliTo, world } from './world'
 
 const SURFACES = ['terminal', 'desktop'] as const
@@ -105,12 +105,12 @@ describe('the game pane draws on the terminal and the desktop app', () => {
       expect(rows).toEqual(expectedScene(g0))
       // The picture, the heads up line, two text lines and the Buttons are 13 lines: they fit 14.
       expect(ROWS + 4).toBeLessThanOrEqual(14)
-      expect(textOf(await ui.drawn({ in: 'game' }))).not.toContain('Temper: Plan is ready')
+      expect(textOf(await ui.drawn({ in: 'game' }))).not.toContain('Temper: Plan waits for you')
       // The dock keeps all 9 rows and shows the Temper line.
       await ui.unmount()
       const dock = await mountGame($ as never, surface)
       expect(sceneOf(await dock.drawn({ in: 'game' }))).toHaveLength(ROWS)
-      expect(textOf(await dock.drawn({ in: 'game' }))).toContain('Temper: Plan is ready')
+      expect(textOf(await dock.drawn({ in: 'game' }))).toContain('Temper: Plan waits for you')
     })
 
     test(`the Run Button starts a run, and the picture is the picture the rules draw, tick by tick on ${surface}`, async ($, on) => {
@@ -227,13 +227,12 @@ describe('the game pane draws on the terminal and the desktop app', () => {
       await $.session.start(START(surface))
       await $.command.run(run('play'))
       const ui = await mountGame($ as never, surface)
-      expect(textOf(await ui.drawn({ in: 'game' }))).toContain('Temper: Plan is ready. Press Esc to go back.')
-      await $.command.run(run('approve'))
-      // The CLI is the truth: the banner changes when the mirror call has moved it.
+      expect(textOf(await ui.drawn({ in: 'game' }))).toContain('Temper: Plan waits for you. Press Esc to go back.')
+      // The CLI is the truth: the banner changes when the run has moved on (ADR 0012).
       cliTo(w, 'build')
       await $.command.run(run('status'))
       expect(textOf(await ui.drawn({ in: 'game' }))).toContain('Temper: Build is open. Press Esc to go back.')
-      expect(w.toasts).toEqual(['Plan approved. Build open.'])
+      expect(w.toasts).toEqual(['Build is open.'])
     })
 
     test(`a milestone shows the banner and the dragon flashes on ${surface}`, async ($, on) => {
@@ -476,18 +475,20 @@ describe('the Play button in the band', () => {
 })
 
 describe('the game never disturbs Temper work', () => {
-  test('enforcement still denies, phases still move and the band still works while the game runs', async ($, on) => {
-    const w = world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }))
+  test('enforcement still denies, the gate answer still counts and the band still works while the game runs', async ($, on) => {
+    const w = world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }), { answers: ['Continue to Build'] })
     await $.session.start(START('terminal'))
     await $.command.run(run('play'))
     const ui = await mountGame($ as never, 'terminal')
     await ui.press({ key: 'game-run' })
     await ui.advance(TICK_MS * 10)
     const denied = await $.tool.call({ tool: 'Write', file_path: 'src/app.ts', content: 'x' })
-    expect(denied.deny?.startsWith('Temper: Plan phase.')).toBe(true)
-    const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND(true) })
-    await band.press({ key: 'action-continue' })
-    expect([...w.files.keys()].some(k => k.startsWith(`${SPEC}/events/`))).toBe(true)
+    expect(denied.deny?.startsWith('Temper: Plan stage.')).toBe(true)
+    await $.tool.call({ tool: 'AskUserQuestion', questions: [{ question: 'What next?', header: 'Temper gate', multiSelect: false, options: [{ label: 'Continue to Build', description: 'x' }] }] } as never)
+    expect(Object.keys(w.store).some(k => k.startsWith('dec:'))).toBe(true)
+    const band = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'AbovePrompt', props: BAND(false) })
+    await band.press({ key: 'action-go-on' })
+    expect(w.commandRuns.some(c => c.command === 'temper:temper' && c.args === '')).toBe(true)
   })
 })
 

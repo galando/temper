@@ -27,12 +27,15 @@ const ask = (path: string, header = 'Scope drift', extra: Record<string, unknown
     ...extra,
   }) as never
 
-const eventTypes = (files: Map<string, string>): string[] =>
-  [...files.entries()]
-    .filter(([p]) => p.startsWith(`${SPEC}/events/`))
-    .map(([, t]) => JSON.parse(t) as { type: string; choice?: string; reason?: string; path?: string; origin?: string })
-    .filter(e => e.type === 'drift' || e.type === 'driftUsed')
-    .map(e => `${e.type}:${e.choice ?? ''}:${e.reason ?? ''}:${e.path ?? ''}:${e.origin}`)
+// The person's Scope drift answers the mod keeps (ADR 0012: in its store, one list per run), and whether each Allow once
+// was used: `drift:<choice>:<reason>:<path>`, then `used` when a write spent it.
+type W = ReturnType<typeof world>
+const eventTypes = (w: W): string[] =>
+  Object.entries(w.store)
+    .filter(([k]) => k.startsWith('dec:'))
+    .flatMap(([, v]) => v as Array<{ id: string; kind: string; choice?: string; reason?: string; path?: string }>)
+    .filter(d => d.kind === 'drift')
+    .flatMap(d => [`drift:${d.choice ?? ''}:${d.reason ?? ''}:${d.path ?? ''}`, ...(w.store[`used:${d.id}`] ? [`used:${d.path ?? ''}`] : [])])
 
 describe('scope drift in Build', () => {
   test('a write outside the plan is refused with the Scope drift question to ask, and the mod asks nothing itself', async ($, on) => {
@@ -43,7 +46,7 @@ describe('scope drift in Build', () => {
     expect(denyText(r)).toContain('Outside the plan: src/billing.ts')
     expect(denyText(r)).toContain('"Why:" line')
     expect(w.asked).toEqual([])
-    expect(eventTypes(w.files)).toEqual([])
+    expect(eventTypes(w)).toEqual([])
   })
 
   test('the person answers "Add to plan": recorded as theirs, and the file is in the plan from then on', async ($, on) => {
@@ -51,7 +54,7 @@ describe('scope drift in Build', () => {
     expect('deny' in (await $.tool.call(edit('src/billing.ts')))).toBe(true)
     await $.tool.call(ask('src/billing.ts'))
     expect(w.asked[0]).toContain('Why: a used reset token')
-    expect(eventTypes(w.files)).toEqual(['drift:add::src/billing.ts:person'])
+    expect(eventTypes(w)).toEqual(['drift:add::src/billing.ts'])
     expect((await $.tool.call(edit('src/billing.ts'))).text).toBe('stub ran')
     expect((await $.tool.call(edit('src/billing.ts'))).text).toBe('stub ran')
   })
@@ -59,7 +62,7 @@ describe('scope drift in Build', () => {
   test('"Revert" is recorded and the file stays out of the plan', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'build' }), { answers: ['Revert'] })
     await $.tool.call(ask('src/billing.ts'))
-    expect(eventTypes(w.files)).toEqual(['drift:revert::src/billing.ts:person'])
+    expect(eventTypes(w)).toEqual(['drift:revert::src/billing.ts'])
     expect(denyText(await $.tool.call(edit('src/billing.ts')))).toContain('scope drift')
   })
 
@@ -67,9 +70,9 @@ describe('scope drift in Build', () => {
     const w = world(on, runFiles({ nextStage: 'build' }), { answers: ['Allow once'] })
     await $.tool.call(ask('src/hotfix.ts'))
     expect((await $.tool.call(edit('src/hotfix.ts'))).text).toBe('stub ran')
-    expect(eventTypes(w.files)).toEqual([
-      'drift:allow-once:why (Claude): a used reset token still lets billing charge the old account.:src/hotfix.ts:person',
-      'driftUsed:::src/hotfix.ts:system',
+    expect(eventTypes(w)).toEqual([
+      'drift:allow-once:why (Claude): a used reset token still lets billing charge the old account.:src/hotfix.ts',
+      'used:src/hotfix.ts',
     ])
     expect('deny' in (await $.tool.call(edit('src/hotfix.ts')))).toBe(true)
   })
@@ -77,22 +80,22 @@ describe('scope drift in Build', () => {
   test('a question nobody answered decides nothing', async ($, on) => {
     const none = world(on, runFiles({ nextStage: 'build' }))
     await $.tool.call(ask('src/billing.ts'))
-    expect(eventTypes(none.files)).toEqual([])
+    expect(eventTypes(none)).toEqual([])
   })
 
   test('an answer the caller wrote into the question is not the person\'s answer', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'build' }))
     await $.tool.call(ask('src/billing.ts', 'Scope drift', { answers: { [question('src/billing.ts')]: 'Add to plan' } }))
-    expect(eventTypes(w.files)).toEqual([])
+    expect(eventTypes(w)).toEqual([])
     expect(denyText(await $.tool.call(edit('src/billing.ts')))).toContain('scope drift')
   })
 
-  test('the deny asks the Scope drift question and invites no typing (the typed command still works)', async ($, on) => {
+  test('the deny asks the Scope drift question and invites no typing', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'build' }))
     const r = await $.tool.call(edit('src/billing.ts'))
     expect(denyText(r)).toContain('the options Add to plan, Revert, Allow once.')
     expect(denyText(r)).not.toContain('/temper:temper')
-    expect(eventTypes(w.files)).toEqual([])
+    expect(eventTypes(w)).toEqual([])
   })
 })
 

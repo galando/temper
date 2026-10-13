@@ -1,18 +1,25 @@
-// The run report: the audit text made when a run completes or on `/temper:temper report`. Pure;
+// The run report: the audit text made on `/temper:temper report`, from the CLI's files and the person's decisions. Pure;
 // the adapter keeps the returned text in the plugin store (the mod writes no file).
 
+import type { Gates, Loop, Skips } from './clifiles'
 import type { MergedCriterion } from './criteria'
 import { progress } from './criteria'
-import type { Phase } from './events'
-import { phaseLabel } from './machine'
-import type { RunState } from './machine'
+import type { Decision } from './decisions'
+import { describe } from './decisions'
+import type { Stage } from './stages'
+import { GATED, stageIndex, stageLabel } from './stages'
 
 export type ReportInput = {
-  state: RunState
+  slug: string | null
+  title: string | null
+  // The stage the CLI is at; null with no run.
+  stage: Stage | null
+  gates: Gates
+  skips: Skips
+  loops: readonly Loop[]
+  decisions: readonly Decision[]
   criteria: readonly MergedCriterion[]
   generatedAt: number
-  unreadable?: readonly string[]
-  unverified?: readonly string[]
   // The CLI's usage rows (.temper/usage.json, see parseUsage). Left out: none recorded.
   usage?: readonly UsageRow[]
 }
@@ -73,41 +80,36 @@ function usageRows(rows: readonly UsageRow[]): string[] {
   ]
 }
 
-const ROWS: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check']
-
 const iso = (ts: number): string => new Date(ts).toISOString()
-const by = (author: string | undefined, ts: number): string => `(by ${author ?? 'unknown'}, ${iso(ts)})`
-const reasonOf = (reason: string): string => (reason ? `, reason: ${reason}` : '')
-
-const CHOICE: Record<string, string> = { add: 'add to plan', revert: 'revert', 'allow-once': 'allow once' }
-
-function phaseResult(s: RunState, p: Phase): string {
-  if (s.phase === p) return 'current'
-  if (s.stale.includes(p)) return 'stale'
-  if (s.overrides.some(o => o.phase === p)) return 'overridden'
-  const left = s.history.some(h => h.from === p && (h.kind === 'advance' || (h.kind === 'check' && h.to === 'done')))
-  return left ? 'passed' : 'not started'
-}
 
 function section(title: string, rows: readonly string[]): string[] {
   return [`## ${title}`, '', ...(rows.length > 0 ? rows : ['None.']), '']
 }
 
+// How each stage stands: its verdict, the person's skip, or where the run is.
+function stageResult(input: ReportInput, s: Stage): string {
+  if (input.stage === s) return 'current'
+  const skip = input.skips[s]
+  if (skip) return `skipped${skip.reason ? ` (${skip.reason})` : ''}`
+  const v = input.gates[s]?.verdict
+  if (v === 'PASS') return 'passed'
+  if (v === 'FAIL') return 'failed'
+  return input.stage !== null && stageIndex(s) < stageIndex(input.stage) ? 'passed (no verdict kept)' : 'not started'
+}
+
 export function renderReport(input: ReportInput): string {
-  const s = input.state
   const out: string[] = []
-  out.push(`# Temper report: ${s.title ?? 'untitled run'}`, '')
-  if (s.slug) out.push(`Spec: ${s.slug}`)
+  out.push(`# Temper report: ${input.title ?? 'untitled run'}`, '')
+  if (input.slug) out.push(`Spec: ${input.slug}`)
   out.push(`Generated: ${iso(input.generatedAt)}`)
-  out.push(s.phase === 'done' ? 'Result: Done' : `Result: In progress (${s.phase ? phaseLabel(s.phase) : 'no run'})`, '')
+  out.push(input.stage === 'commit' ? 'Result: Done' : `Result: In progress (${input.stage ? stageLabel(input.stage) : 'no run'})`, '')
 
-  const phaseRows = ['| Phase | Result |', '|---|---|', ...ROWS.map(p => `| ${phaseLabel(p)} | ${phaseResult(s, p)} |`)]
-  if (s.loops > 0) phaseRows.push('', `Check to Fix loops: ${s.loops} (limit ${s.maxLoops})`)
-  out.push(...section('Phases', phaseRows))
+  const shown = GATED.filter(s => s !== 'design' || input.gates.design !== undefined || input.skips.design !== undefined || input.stage === 'design')
+  const stageRows = ['| Stage | Result |', '|---|---|', ...shown.map(s => `| ${stageLabel(s)} | ${stageResult(input, s)} |`)]
+  for (const l of input.loops) stageRows.push('', `Loop ${l.from} to ${l.to}: ${l.iteration} of ${l.max}`)
+  out.push(...section('Stages', stageRows))
 
-  out.push(...section('Overrides', s.overrides.map(o => `- ${phaseLabel(o.phase)}: overridden${reasonOf(o.reason)} ${by(o.author, o.ts)}`)))
-  out.push(...section('Accepted findings', s.accepted.map(a => `- Finding ${a.findingId}: accepted${reasonOf(a.reason)} ${by(a.author, a.ts)}`)))
-  out.push(...section('Scope drift', s.drift.map(d => `- ${d.path}: ${CHOICE[d.choice] ?? d.choice}${reasonOf(d.reason)} ${by(d.author, d.ts)}`)))
+  out.push(...section('Your decisions', input.decisions.map(d => `- ${iso(d.ts)}: ${describe(d)}`)))
 
   const p = progress(input.criteria)
   const critRows = [
@@ -120,12 +122,6 @@ export function renderReport(input: ReportInput): string {
   out.push(...section('Criteria', input.criteria.length > 0 ? critRows : []))
 
   out.push(...section('Usage', usageRows(input.usage ?? [])))
-
-  const notes = [
-    ...(input.unreadable ?? []).map(n => `- Unreadable event file: ${n}`),
-    ...(input.unverified ?? []).map(n => `- Event that Temper does not trust: ${n}`),
-  ]
-  if (notes.length > 0) out.push(...section('Notes', notes))
 
   return out.join('\n').replace(/\n+$/, '\n')
 }

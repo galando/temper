@@ -6,12 +6,10 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { classifyBash, protectedKind } from '../../hooks/temper-mod/core/bash'
-import type { Phase } from '../../hooks/temper-mod/core/events'
-import { initialState } from '../../hooks/temper-mod/core/machine'
-import type { RunState } from '../../hooks/temper-mod/core/machine'
-import { evaluate } from '../../hooks/temper-mod/core/rules'
-import type { RuleContext, RuleResult } from '../../hooks/temper-mod/core/rules'
-import { adv, person, stateAt } from './helpers'
+import type { RuleResult } from '../../hooks/temper-mod/core/rules'
+import type { Stage } from '../../hooks/temper-mod/core/stages'
+import { check as evaluate, stateAt } from './helpers'
+import type { OldCtx, TestFacts } from './helpers'
 import { SPEC, runFiles } from './run-files'
 import { denyText, world } from './world'
 
@@ -19,7 +17,7 @@ const HOOK_DENY =
   'Temper: the git hooks, the Temper commit hook and core.hooksPath are the native commit gate. Do not change them while a run is active. ' +
   'Next: ask the user, or finish the run first.'
 
-const ctx: RuleContext = { root: '/repo', specDir: SPEC, planFiles: ['src/app.ts'] }
+const ctx: OldCtx = { root: '/repo', specDir: SPEC, planFiles: ['src/app.ts'] }
 
 // The kept hook, the folder core.hooksPath names, and the file the older line runs; each with the .git/hooks path it
 // stands next to, which the mod already guarded.
@@ -29,13 +27,14 @@ const OLDER = '.git/temper-pre-commit'
 const GIT_HOOK = '.git/hooks/pre-commit'
 const GIT_HOOKS = '.git/hooks'
 
+type RunState = TestFacts | null
 const ACTIVE: Array<[string, RunState]> = [
-  ...(['intent', 'plan', 'build', 'review', 'check', 'fix'] as Phase[]).map((p): [string, RunState] => [p, stateAt(p)]),
-  ['build, paused', stateAt('build', [{ type: 'pause', ...person }])],
+  ...(['intent', 'plan', 'design', 'build', 'review', 'check'] as Stage[]).map((p): [string, RunState] => [p, stateAt(p)]),
+  ['build, paused', stateAt('build', { paused: true })],
 ]
 const INACTIVE: Array<[string, RunState]> = [
-  ['no run', initialState()],
-  ['a finished run', stateAt('check', [adv('check', 'done')])],
+  ['no run', null],
+  ['a finished run', stateAt('done')],
 ]
 
 const isDeny = (r: RuleResult): r is Extract<RuleResult, { deny: string }> => 'deny' in r

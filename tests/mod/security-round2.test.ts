@@ -4,8 +4,8 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { classifyBash } from '../../hooks/temper-mod/core/bash'
 import { MOD_FILE, pluginCliFrom } from '../../hooks/temper-mod/core/cli'
-import { evaluate } from '../../hooks/temper-mod/core/rules'
-import type { RuleContext } from '../../hooks/temper-mod/core/rules'
+import { check as evaluate } from './helpers'
+import type { OldCtx as RuleContext } from './helpers'
 import { stateAt } from './helpers'
 import { SPEC, runFiles } from './run-files'
 import { world } from './world'
@@ -85,10 +85,9 @@ describe('the fail closed rule: more spellings are denied and say what to do', (
     expect(classifyBash('cp -r scripts/temper /tmp/t').alias).toBe(true)
   })
 
-  test('the deny names where the user decides (the bar or the Temper gate question), and no typed command', () => {
+  test('the deny names where the user decides (the Temper gate question), and no typed command', () => {
     const r = run('tempe[r] override plan --reason x', 'plan')
     expect('deny' in r && r.deny).toContain('`Temper gate` question')
-    expect('deny' in r && r.deny).toContain('Temper bar')
     expect('deny' in r && r.deny).not.toContain('/temper:temper')
   })
 })
@@ -115,7 +114,9 @@ describe('the plugin folder path in a prompt', () => {
 })
 
 describe('refusals of the commands end with Next:', () => {
-  for (const word of ['approve', 'override because', 'accept 1 because', 'pause', 'mode off']) {
+  // ADR 0012: the decision words go on to the orchestrator (it asks the Temper gate question); the mod refuses only a
+  // change of what Temper shows or enforces from another origin.
+  for (const word of ['mode off', 'enforcement off']) {
     test(`${word} from a model origin`, async ($, on) => {
       world(on, runFiles({ nextStage: 'plan' }))
       await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: false })

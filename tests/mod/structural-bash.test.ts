@@ -1,18 +1,29 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { classifyBash } from '../../hooks/temper-mod/core/bash'
-import { overrideCommand, acceptCommand, shellQuote } from '../../hooks/temper-mod/core/cli'
-import { stamp } from '../../hooks/temper-mod/core/events'
-import { ONLY_USER, decide, reduce } from '../../hooks/temper-mod/core/machine'
-import { evaluate } from '../../hooks/temper-mod/core/rules'
-import type { HumanDecision, RuleContext } from '../../hooks/temper-mod/core/rules'
-import { person, stateAt } from './helpers'
+import { ONLY_USER } from '../../hooks/temper-mod/core/rules'
+import { check as evaluate, stateAt } from './helpers'
+import type { OldCtx as RuleContext, OldDecision as HumanDecision } from './helpers'
+
+// A reason inside a shell command, as the orchestrator writes it: single quoted, quotes escaped, newlines flattened.
+const shellQuote = (text: string): string => `'${text.replace(/\r?\n/g, ' ').replace(/'/g, "'\\''")}'`
+const overrideCommand = (stage: string, reason: string): string => `scripts/temper override ${stage} --reason ${shellQuote(reason)}`
+const acceptCommand = (id: string, reason: string): string => `scripts/temper evidence accept --stage review --id ${id} --reason ${shellQuote(reason)}`
 
 const ctx: RuleContext = { specDir: '.temper/specs/pw', planFiles: [] }
 const blocked = (c: string) => classifyBash(c).protectedWrites.length > 0
-const run = (state: ReturnType<typeof stateAt>, command: string, humanDecisions: readonly HumanDecision[] = []) =>
+const run = (state: ReturnType<typeof stateAt> | null, command: string, humanDecisions: readonly HumanDecision[] = []) =>
   evaluate(state, { ...ctx, humanDecisions }, { tool: 'Bash', input: { command } })
 const denied = (r: ReturnType<typeof run>): string => ('deny' in r ? r.deny : '')
+
+// The arming call at a stage, with the person's move at that step (the Autonomous answer is an `arm` move).
+import { evaluate as evaluateNew } from '../../hooks/temper-mod/core/rules'
+import { ctxOf } from './helpers'
+function evaluateWithMove(stage: Parameters<typeof stateAt>[0], c: RuleContext, kind: 'arm' | 'approve') {
+  const base = ctxOf(stateAt(stage), c)
+  const move = { id: 'm', run: 'r', step: 3, stage: base.run?.stage ?? 'plan', ts: 1, kind, reason: '' } as const
+  return evaluateNew({ ...base, move }, { tool: 'Bash', input: { command: 'scripts/temper state set run_mode autonomous' } })
+}
 
 describe('assignments resolve in order, to any depth', () => {
   const must = [
@@ -195,7 +206,6 @@ describe('decision calls with repeated flags are refused', () => {
   test('a flag name inside the reason text is not a flag', () => {
     const r = run(stateAt('review'), acc('--stage review --id 1 --reason "see --id 2 and --stage plan"'), [h])
     expect('allow' in r).toBe(true)
-    expect('allow' in r && r.eventIds).toEqual(['e1'])
   })
 
   test('the mod reads the id the CLI reads', () => {
@@ -215,16 +225,18 @@ describe('state commands that move or end the run', () => {
     expect(denied(r)).toContain('Only the user')
   })
 
-  test('next_stage back to the stage the person chose is allowed once', () => {
+  // ADR 0012: the step back counts at its step; the CLI's move to Plan ends that step, so it cannot be used again.
+  test('next_stage back to the stage the person chose is allowed on that choice only', () => {
     const cmd = 'scripts/temper state set next_stage plan'
-    const first = run(stateAt('build'), cmd, [back('plan')])
-    expect('allow' in first && first.eventIds).toEqual(['b1'])
+    expect('allow' in run(stateAt('build'), cmd, [back('plan')])).toBe(true)
     expect('deny' in run(stateAt('build'), cmd, [])).toBe(true)
   })
 
   test('a back decision for one stage does not authorize another', () => {
     expect('deny' in run(stateAt('build'), 'scripts/temper state set next_stage review', [back('plan')])).toBe(true)
-    expect('deny' in run(stateAt('build'), 'scripts/temper state set next_stage build', [back('plan')])).toBe(true)
+    expect('deny' in run(stateAt('build'), 'scripts/temper state set next_stage intent', [back('plan')])).toBe(true)
+    // The stage the run is at: the CLI changes nothing, so it needs no choice.
+    expect('allow' in run(stateAt('build'), 'scripts/temper state set next_stage build', [])).toBe(true)
   })
 
   test('the other keys that move the run are refused with a Next: reason', () => {
@@ -248,28 +260,32 @@ describe('state commands that move or end the run', () => {
   test('state clear and archive only after the run, or with no run', () => {
     for (const sub of ['clear', 'archive']) {
       const cmd = `scripts/temper state ${sub}`
-      for (const phase of ['intent', 'plan', 'build', 'review', 'check', 'fix'] as const) {
+      for (const phase of ['intent', 'plan', 'design', 'build', 'review', 'check'] as const) {
         expect(denied(run(stateAt(phase), cmd))).toContain('Next: ')
       }
-      const done = stateAt('check', [{ type: 'checkResult', result: 'pass', origin: 'system' }])
-      expect(done.phase).toBe('done')
-      expect('allow' in run(done, cmd)).toBe(true)
-      expect('allow' in run({ ...stateAt('build'), phase: null, started: false }, cmd)).toBe(true)
+      expect('allow' in run(stateAt('done'), cmd)).toBe(true)
+      expect('allow' in run(null, cmd)).toBe(true)
     }
   })
 
   test('with enforcement not tracking a run nothing here applies', () => {
-    expect('allow' in run({ ...stateAt('build'), phase: null, started: false }, 'scripts/temper state set next_stage build')).toBe(true)
+    expect('allow' in run(null, 'scripts/temper state set next_stage build')).toBe(true)
   })
 })
 
 describe('arming autonomous mode', () => {
   const arm = 'scripts/temper state set run_mode autonomous'
   const withAutonomy = { ...ctx, autonomyEnabled: true }
-  const go = (state: ReturnType<typeof stateAt>, c: RuleContext) => evaluate(state, c, { tool: 'Bash', input: { command: arm } })
+  const armed: RuleContext = { ...withAutonomy, humanDecisions: [{ id: 'a', kind: 'override', phase: 'foreign' }] }
+  const go = (state: ReturnType<typeof stateAt> | null, c: RuleContext) => evaluate(state, c, { tool: 'Bash', input: { command: arm } })
+  // ADR 0012: only the person's "Autonomous" answer at the plan gate arms the run (an `arm` move at that step).
+  const at = (stage: Parameters<typeof stateAt>[0], c: RuleContext, kind: 'arm' | 'approve') =>
+    go(stateAt(stage), { ...c, humanDecisions: [] }) && evaluateWithMove(stage, c, kind)
+  void armed
+  void at
 
-  test('before the plan is approved it is refused with a Next: reason, whatever the config says', () => {
-    for (const phase of ['intent', 'plan'] as const) {
+  test('with no Autonomous answer it is refused with a Next: reason, whatever the config says', () => {
+    for (const phase of ['intent', 'plan', 'build', 'review', 'check'] as const) {
       const r = go(stateAt(phase), withAutonomy)
       expect('deny' in r && r.deny).toContain('at the plan gate')
       expect('deny' in r && r.deny).toContain('autonomy.enabled: true')
@@ -277,33 +293,16 @@ describe('arming autonomous mode', () => {
     }
   })
 
-  test('after the person approved the plan and autonomy is enabled it is allowed', () => {
-    for (const phase of ['build', 'review', 'check'] as const) expect('allow' in go(stateAt(phase), withAutonomy)).toBe(true)
+  test('the Autonomous answer at the plan gate arms it when autonomy is enabled', () => {
+    expect('allow' in evaluateWithMove('plan', withAutonomy, 'arm')).toBe(true)
   })
 
-  test('with autonomy off in the config it is refused even after the approval', () => {
-    expect('deny' in go(stateAt('build'), { ...ctx, autonomyEnabled: false })).toBe(true)
-    expect('deny' in go(stateAt('build'), ctx)).toBe(true)
+  test('a plain approval of the plan does not arm it', () => {
+    expect('deny' in evaluateWithMove('plan', withAutonomy, 'approve')).toBe(true)
   })
 
-  test('a back step to Plan undoes the approval until the plan is approved again', () => {
-    const back = stateAt('build', [{ type: 'back', to: 'plan', reason: 'rework', ...person }])
-    expect(back.phase).toBe('plan')
-    expect('deny' in go(back, withAutonomy)).toBe(true)
-  })
-
-  test('a plan approval that is not the mod own, or not from a person, counts for nothing', () => {
-    // An advance out of Plan from a session the mod did not write is not folded, so Plan stays current.
-    const events = [
-      stamp({ type: 'start', slug: 'pw', title: 'x', origin: 'system' }, { ts: 10_000, session: 's', seq: 1 }),
-      stamp({ type: 'advance', from: 'intent', to: 'plan', ...person }, { ts: 20_000, session: 's', seq: 2 }),
-      stamp({ type: 'advance', from: 'plan', to: 'build', origin: 'model' }, { ts: 30_000, session: 'evil', seq: 1 }),
-    ]
-    const state = reduce(events, {}, { isTrusted: ev => ev.session === 's' })
-    expect(state.phase).toBe('plan')
-    expect('deny' in go(state, withAutonomy)).toBe(true)
-    // And a model cannot make the approval: the machine refuses it.
-    expect(decide(state, { type: 'approve', origin: 'model' })).toEqual({ error: ONLY_USER })
+  test('with autonomy off in the config it is refused even with the Autonomous answer', () => {
+    expect('deny' in evaluateWithMove('plan', { ...ctx, autonomyEnabled: false }, 'arm')).toBe(true)
   })
 
   test('interactive is always allowed', () => {
@@ -313,31 +312,25 @@ describe('arming autonomous mode', () => {
   })
 
   test('with no active run nothing is guarded', () => {
-    expect('allow' in go({ ...stateAt('build'), phase: null, started: false }, ctx)).toBe(true)
+    expect('allow' in go(null, ctx)).toBe(true)
   })
 })
 
-describe('override and accept agree in every phase', () => {
-  const phases = ['intent', 'plan', 'build', 'review', 'check', 'fix'] as const
-  for (const phase of phases) {
-    test(`override in ${phase}: the follow up command is allowed on the decision, once`, () => {
-      const cmd = overrideCommand(phase, 'ship it').replace(/^/, '')
-      const stage = phase === 'fix' ? 'check' : phase
-      expect(cmd).toContain(`override ${stage} --reason`)
-      const decision: HumanDecision = { id: 'o1', kind: 'override', phase: stage }
-      expect('allow' in run(stateAt(phase), cmd, [decision])).toBe(true)
-      expect(run(stateAt(phase), cmd, [])).toEqual({ deny: ONLY_USER })
-      // A decision recorded under the mod's own phase name ("fix") matches the same call.
-      if (phase === 'fix') expect('allow' in run(stateAt(phase), cmd, [{ id: 'o2', kind: 'override', phase: 'fix' }])).toBe(true)
+describe('override and accept agree in every stage', () => {
+  const stages = ['intent', 'plan', 'design', 'build', 'review', 'check'] as const
+  for (const stage of stages) {
+    test(`override in ${stage}: the call is allowed on the person's skip at that stage`, () => {
+      const cmd = overrideCommand(stage, 'ship it')
+      expect('allow' in run(stateAt(stage), cmd, [{ id: 'o1', kind: 'override', phase: stage }])).toBe(true)
+      expect(run(stateAt(stage), cmd, [])).toEqual({ deny: ONLY_USER })
     })
   }
 
-  test('accept in review and fix', () => {
+  test('accept in review, for the finding the person accepted', () => {
     const cmd = acceptCommand('4', 'false positive')
-    for (const phase of ['review', 'fix'] as const) {
-      expect('allow' in run(stateAt(phase), cmd, [{ id: 'a1', kind: 'accept', phase: 'review', findingId: '4' }])).toBe(true)
-      expect('deny' in run(stateAt(phase), cmd, [{ id: 'a2', kind: 'accept', phase: 'review', findingId: '5' }])).toBe(true)
-    }
+    expect('allow' in run(stateAt('review'), cmd, [{ id: 'a1', kind: 'accept', phase: 'review', findingId: '4' }])).toBe(true)
+    expect('deny' in run(stateAt('review'), cmd, [{ id: 'a2', kind: 'accept', phase: 'review', findingId: '5' }])).toBe(true)
+    expect('deny' in run(stateAt('check'), cmd, [{ id: 'a3', kind: 'accept', phase: 'review', findingId: '4' }])).toBe(true)
   })
 })
 
@@ -413,10 +406,9 @@ describe('the person typed it, the model did not: ordinary people flows', () => 
       'scripts/temper evidence accept --stage review --id 1 --reason x',
       'scripts/temper state advance intent_complete plan',
       'scripts/temper state advance plan_complete build',
-      'scripts/temper state set next_stage plan',
+      'scripts/temper state set next_stage intent',
     ]) {
-      expect(run(stateAt('plan'), cmd, [])).toMatchObject({ deny: expect.stringContaining('Only the user') })
+      expect(denied(run(stateAt('plan'), cmd, []))).toMatch(/Only the user|not at intent/)
     }
-    void person
   })
 })

@@ -1,42 +1,33 @@
-// Adapter helpers: everything that touches Claude Code's `$` (files, store, state,
-// version) so register.tsx can stay wiring only. The pure rules live in core/.
+// Adapter helpers: everything that touches Claude Code's `$` (files, store, state, version), so register.tsx stays
+// wiring only. The pure rules live in core/.
 //
-// Where state lives (mods-plan 3.3): phase history is append only event files under
-// `.temper/specs/{slug}/events/`, one file per event, written once with a unique name.
-// Verdicts and criteria status are read, never written, from `.temper/gates.json` and
-// `.temper/status.json`. The folded RunState is cached in this module and mirrored to
-// `$.state` so drawing and compaction see it.
+// Where state lives (ADR 0012): where the run is, its verdicts, skips, loops and groups are the CLI's files, read and
+// never written. The person's decisions are the mod's own: kept in the plugin store, one list per run, each stamped with
+// the CLI's run id and step (core/decisions.ts). The mod keeps no run state of its own.
 
 import type { PluginOptions } from 'claude-code'
 
-import { parseEnforcement, parseMaxLoops, parseOnOff, parseUiMode, readConfigValue, versionAtLeast } from './core/config'
+import { parseEnforcement, parseOnOff, parseUiMode, readConfigValue, versionAtLeast } from './core/config'
 import type { UiMode } from './core/config'
-import { mergeCriteria, parseCriteria, parseStatus, parseTitle, progress } from './core/criteria'
+import { mergeCriteria, parseCriteria, parseStatus, parseTitle } from './core/criteria'
 import type { MergedCriterion } from './core/criteria'
-import { compareEvents, encodeEvent, eventFileName, readEvents, stamp } from './core/events'
-import type { Draft, Phase, TemperEvent } from './core/events'
-import { stageOf } from './core/cli'
-import { cliPhase, parseBuildState, parseFindings, parseGates, phaseFromStage, samePhase } from './core/gates'
-import type { Finding } from './core/gates'
-import { buildView } from './core/view'
-import { pendingLines } from './core/actions'
-import type { PendingChoice } from './core/actions'
-import type { View } from './core/view'
-import { decide, earlierRun, gateOf, initialState, phaseGate, phaseLabel, reduce } from './core/machine'
-import type { Command, RunState, Verdicts } from './core/machine'
+import { parseBuildState, parseFindings, parseGates, parseGroups, parseLoops, parseSkips } from './core/clifiles'
+import type { Finding, Gates, GroupRow, Loop, Skips } from './core/clifiles'
+import { currentMove, acceptsAt, decisionsOf, describe, driftOf, parseBook, restartFor } from './core/decisions'
+import type { At, Decision, DriftState, Move } from './core/decisions'
 import { planFileList, taskProgress, tasksLeft } from './core/planfiles'
 import { parseUsage, renderReport } from './core/report'
 import type { UsageRow } from './core/report'
+import type { RunFacts } from './core/rules'
 import { sectionText } from './core/section'
-import { phaseBarStyle } from './core/modes'
-import type { DecisionKind } from './core/bash'
-import type { CommitFacts, HumanDecision } from './core/rules'
-import { normalizePath } from './core/paths'
+import { cliStage, stageLabel } from './core/stages'
+import type { Stage } from './core/stages'
+import { buildView } from './core/view'
+import type { View } from './core/view'
 import type { TemperRun } from '../../types'
 
-// Everything the adapter needs from Claude Code, as plain functions. register.tsx builds
-// one from `$` (the module scan only follows `$` inside the file that spells it), which
-// also lets this file be tested without an engine.
+// Everything the adapter needs from Claude Code, as plain functions. register.tsx builds one from `$` (the module scan
+// only follows `$` inside the file that spells it), which also lets this file be tested without an engine.
 export type Io = {
   // File text, or null when the file is missing or unreadable.
   read: (path: string) => Promise<string | null>
@@ -44,102 +35,74 @@ export type Io = {
   write: (path: string, text: string) => Promise<void>
   storeGet: (key: string) => Promise<unknown>
   storeSet: (key: string, value: unknown) => Promise<void>
+  storeDelete: (key: string) => Promise<void>
   version: () => Promise<string | undefined>
   setRun: (run: TemperRun) => Promise<void>
   // The live mode, mirrored so a redraw sees a change at once.
   setMode: (mode: UiMode) => Promise<void>
   // Waits ms milliseconds (the engine's clock: the mod reads no global timer).
   pause: (ms: number) => Promise<void>
-  // Where the Temper script is (pluginCliFrom): the button prompts of the published view name the CLI by it.
-  // Left out: the plain `scripts/temper`.
+  // Where the Temper script is (pluginCliFrom). Left out: the plain `scripts/temper`.
   cli?: string
 }
-
-// A choice of the person (a move) that no mirror call has recorded in the CLI yet.
-export type PendingMove = { id: string; draft: Draft }
-
-// How the mod's picture of the run compares with the CLI state (build-state.json). The CLI is the truth
-// for WHERE the run is: the phase of the folded state is always derived from it. Events only say WHO decided.
-export type Sync = {
-  // The phase the CLI is at; null when the mod cannot tell.
-  cli: Phase | 'done' | null
-  // The one line shown under the bar when something does not agree; null when all is well.
-  line: string | null
-  // The person's move that is not mirrored yet (key 1 records it again). Reused, never recreated.
-  pending: PendingMove | null
-  // The mod cannot tell where the run is: it blocks nothing and writes nothing.
-  failOpen: boolean
-  // The CLI looks reset (it is earlier than checks that passed): phase rules do not block writes.
-  looksReset: boolean
-}
-
-export const NO_SYNC: Sync = { cli: null, line: null, pending: null, failOpen: false, looksReset: false }
 
 export type Snapshot = {
   // True below the minimum Claude Code version or when it cannot be read: nothing acts.
   inert: boolean
-  sync: Sync
   enforcement: 'on' | 'off'
   mode: UiMode
   prAttribution: 'on' | 'off'
+  // The CLI's next stage is no name the mod knows: it blocks nothing until the state reads again.
+  failOpen: boolean
+  // The one line shown under the bar when the mod cannot read the run as it should; null when all is well.
+  line: string | null
   slug: string | null
-  // autonomy.enabled in .claude/temper.config.
-  autonomyEnabled: boolean
-  // .temper/groups.json exists: a grouped Build run is active (the CLI owns the run's tasks.md).
-  groupedActive: boolean
-  // phases.design: true in .claude/temper.config (design is switched on for medium and complex runs).
-  designRequired: boolean
-  // The run's complexity from build-state.json (decides whether Plan is followed by design).
-  complexity: string | null
-  // The CLI's next stage, as written in build-state.json (the mod's phases are coarser: design is Plan).
-  cliNext: string | null
-  // The run's own branch and the command that started it (build-state.json): the CLI commit gate's
-  // Build checkpoint carve-out reads both.
-  branch: string | null
+  // The command that started the run (`temper` or `fix`). A /temper:fix run is left to commands/fix.md.
   runCommand: string | null
-  // intent.md exists in the spec folder (the commit gate then wants an intent verdict).
-  hasIntent: boolean
   specDir: string
-  state: RunState
-  verdicts: Verdicts
-  planFiles: string[]
+  // The CLI's `next_stage` as written.
+  cliNext: string | null
+  // The run as the guard reads it; null when no /temper run is active.
+  run: RunFacts | null
+  // The CLI's run id and step: where a new decision is stamped, and what an old one is read against.
+  at: At
   title: string | null
   criteria: MergedCriterion[]
   findings: Finding[]
-  // "task N of M": see taskProgress in core/planfiles.ts (ticked rows in tasks.md, or
-  // the numeric `task` in build-state.json when the orchestrator sets one).
+  gates: Gates
+  skips: Skips
+  loops: Loop[]
+  groups: GroupRow[] | null
   task: { n: number; of: number } | null
-  // Tasks of tasks.md that are not done; null when tasks.md has no task headings.
   tasksLeft: number | null
-  unreadable: string[]
-  // Check wrote config-suggestions.json in the spec folder (offers "Review config suggestions").
-  configSuggestions: boolean
-  // Unconsumed human decision events per kind, for the CLI decision guard.
-  humanDecisions: HumanDecision[]
-  // The CLI's usage rows (.temper/usage.json), for the report.
   usage: UsageRow[]
-  // build-state.json's run_mode: `autonomous` once the person armed autonomy at the plan gate.
-  runMode: string | null
-  // Loops whose budget the CLI has spent (`{from}>{to}`, from .temper/feedback-loops.json).
-  spentLoops: string[]
+  // Check wrote config-suggestions.json in the spec folder.
+  configSuggestions: boolean
+  // The person's decisions in this run, oldest first, and the move that counts at this step.
+  decisions: Decision[]
+  move: Move | null
+  accepts: string[]
+  restart: boolean
+  drift: DriftState
 }
 
-const OWN_PREFIX = 'ev:'
-const USED_PREFIX = 'used:'
-// A step back whose `state loop` the CLI refused (BLOCKED: the loop budget is spent). It never happened: it is not
-// folded, it waits for nothing, and the person's next choice (a skip, a save) applies to the stage the run is at.
-const VOID_PREFIX = 'void:'
 const STATE_ROOT = '.temper'
 const REPORT_PATH = `${STATE_ROOT}/report.md`
+// The store keys of the decisions: one list per run (`dec:<run id>`), the runs kept (oldest first), and the ids a call
+// spent (`used:<id>`).
+const BOOK = 'dec:'
+const RUNS = 'decruns'
+const USED = 'used:'
+const MAX_RUNS = 40
 
 const str = (options: PluginOptions, key: string): string | undefined => {
   const v = options[key]
   return typeof v === 'string' ? v : undefined
 }
 
-// Values changed live (`/temper:temper mode`, `/temper:temper enforcement`) win over the options of this
-// load until the config change reloads the module with the new options.
-export const live: { mode?: UiMode; enforcement?: 'on' | 'off'; paneExpanded?: boolean; paneOpen?: boolean } = {}
+// Values changed live (`/temper:temper mode`, `/temper:temper enforcement`) win over the options of this load until the
+// config change reloads the module with the new options.
+export const live: { mode?: UiMode; enforcement?: 'on' | 'off'; paneOpen?: boolean } = {}
 
 export function settingsFrom(options: PluginOptions) {
   return {
@@ -149,343 +112,155 @@ export function settingsFrom(options: PluginOptions) {
   }
 }
 
+const NO_DRIFT: DriftState = { added: [], allowOnce: [] }
+
 export function idleSnapshot(options: PluginOptions, inert: boolean): Snapshot {
   return {
     inert,
-    sync: NO_SYNC,
     ...settingsFrom(options),
+    failOpen: false,
+    line: null,
     slug: null,
-    autonomyEnabled: false,
-    groupedActive: false,
-    designRequired: false,
-    complexity: null,
-    cliNext: null,
-    branch: null,
     runCommand: null,
-    hasIntent: false,
     specDir: '',
-    state: initialState(parseMaxLoops('', str(options, 'fixMaxLoops'))),
-    verdicts: {},
-    planFiles: [],
+    cliNext: null,
+    run: null,
+    at: { run: '', step: -1 },
     title: null,
     criteria: [],
     findings: [],
+    gates: {},
+    skips: {},
+    loops: [],
+    groups: null,
     task: null,
     tasksLeft: null,
-    unreadable: [],
-    configSuggestions: false,
-    humanDecisions: [],
     usage: [],
-    runMode: null,
-    spentLoops: [],
-  }
-}
-
-// The loops of the CLI whose budget is spent: an active loop at its iteration limit. Unreadable means none.
-export function spentLoopsOf(text: string): string[] {
-  try {
-    const d = JSON.parse(text) as { active_loops?: unknown }
-    if (!Array.isArray(d.active_loops)) return []
-    return d.active_loops
-      .filter((l): l is { from_stage: string; to_stage: string; iteration: number; max_iterations: number } => typeof l === 'object' && l !== null && typeof (l as { from_stage?: unknown }).from_stage === 'string' && typeof (l as { to_stage?: unknown }).to_stage === 'string' && typeof (l as { iteration?: unknown }).iteration === 'number' && typeof (l as { max_iterations?: unknown }).max_iterations === 'number')
-      .filter(l => l.iteration >= l.max_iterations)
-      .map(l => `${l.from_stage}>${l.to_stage}`)
-  } catch {
-    return []
+    configSuggestions: false,
+    decisions: [],
+    move: null,
+    accepts: [],
+    restart: false,
+    drift: NO_DRIFT,
   }
 }
 
 const readText = (io: Io, path: string): Promise<string | null> => io.read(path).catch(() => null)
 
-async function readEventFiles(io: Io, dir: string): Promise<Array<{ name: string; text: string }>> {
-  const entries = await io.list(dir).catch(() => [])
-  const out: Array<{ name: string; text: string }> = []
-  for (const entry of entries) {
-    if (entry.kind !== 'file' || !entry.name.endsWith('.json')) continue
-    const text = await readText(io, `${dir}/${entry.name}`)
-    out.push({ name: entry.name, text: text ?? '' })
-  }
-  return out
+async function usedIds(io: Io, book: readonly Decision[]): Promise<Set<string>> {
+  const used = new Set<string>()
+  for (const d of book) if (d.kind === 'keep' || d.kind === 'drift') if (await io.storeGet(USED + d.id).catch(() => undefined)) used.add(d.id)
+  return used
 }
 
-// A decision event the person made that no CLI call has matched yet.
-function humanKind(ev: TemperEvent): DecisionKind | null {
-  if (ev.origin !== 'person') return null
-  if (ev.type === 'override') return 'override'
-  if (ev.type === 'accept') return 'accept'
-  // Every advance the person makes pays for its own mirror call (`state advance <stage>_complete`):
-  // the guard checks every advance since the third review, so every one needs its event in the pool.
-  // Fix has no CLI stage of its own, so a move out of Fix has nothing to mirror.
-  if (ev.type === 'advance' && ev.from !== 'fix') return 'advance'
-  if (ev.type === 'back') return 'back'
-  if (ev.type === 'restart') return 'restart'
-  return null
+// The decisions kept for one run.
+export async function readBook(io: Io, run: string): Promise<Decision[]> {
+  return parseBook(await io.storeGet(BOOK + run).catch(() => undefined))
 }
 
-// A digest of the exact text of an event file. The store keeps it under `ev:{id}`, so trust
-// follows the content, not just the name: rewriting a trusted file in place (same name,
-// different text) makes it untrusted. SHA-256 where the environment has it, else FNV-1a.
-export async function digestText(text: string): Promise<string> {
-  try {
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
-    return 'sha256:' + [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('')
-  } catch {
-    let h = 0x811c9dc5
-    for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193) >>> 0
-    return 'fnv:' + h.toString(16)
+// Keeps one decision of the person, stamped with the CLI's run and step. The store holds the decisions of the last
+// MAX_RUNS runs on this machine; an older run's list is dropped.
+export async function keepDecision(io: Io, at: At, stage: Stage, body: Record<string, unknown> & { kind: Decision['kind'] }): Promise<Decision> {
+  const now = Date.now()
+  const d = { ...body, id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 10)}`, run: at.run, step: at.step, stage, ts: now } as Decision
+  await io.storeSet(BOOK + at.run, [...(await readBook(io, at.run)), d])
+  const raw = await io.storeGet(RUNS).catch(() => undefined)
+  const runs = (Array.isArray(raw) ? raw.filter((r): r is string => typeof r === 'string') : []).filter(r => r !== at.run)
+  runs.push(at.run)
+  while (runs.length > MAX_RUNS) {
+    const old = runs.shift() as string
+    await io.storeDelete(BOOK + old).catch(() => undefined)
   }
+  await io.storeSet(RUNS, runs)
+  return d
 }
 
-async function isOwn(io: Io, id: string, text: string): Promise<boolean> {
-  try {
-    return (await io.storeGet(OWN_PREFIX + id)) === (await digestText(text))
-  } catch {
-    return false
-  }
+// A decision a call spent (Keep the agent's commits, an Allow once answer): it counts once.
+export async function spendDecision(io: Io, id: string): Promise<void> {
+  await io.storeSet(USED + id, 1)
 }
-
-// Event names are `{ts}-{session}-{seq}.json`. This module has no session id call, so a
-// random id per load stands in: two loads never share a name.
-const SESSION = (Math.random().toString(16).slice(2) + '00000000').slice(0, 8)
-// The phase an event decided, so a CLI call is matched only to a decision made for it.
-function decisionOf(ev: TemperEvent, kind: DecisionKind): HumanDecision {
-  // The CLI names Fix by its Check stage, as the follow up command does.
-  // A skip names its CLI stage when it is not the phase's own: design (the Design gate) or commit (Override and commit).
-  if (ev.type === 'override') return { id: ev.id, kind, phase: ev.stage ?? stageOf(ev.phase) }
-  if (ev.type === 'back') return { id: ev.id, kind, phase: stageOf(ev.to) }
-  if (ev.type === 'accept') return { id: ev.id, kind, phase: 'review', findingId: ev.findingId }
-  if (ev.type === 'advance') return { id: ev.id, kind, phase: ev.from }
-  return { id: ev.id, kind }
-}
-
-const FLOW_ORDER: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check']
-
-// Makes the phase the CLI's. The events say who decided what; they never say where the run is. When
-// the mod's phase and the CLI's differ, the CLI wins, for the display and for every deny:
-//  - the person's last move is not mirrored yet: the CLI phase stays, one line says so, key 1 records it;
-//  - the CLI moved ahead of the events (the orchestrator advanced it): follow it, write nothing;
-//  - the CLI name is not one the mod knows: fail open, say so, block nothing;
-//  - the CLI looks reset (earlier than a check that passed): do not block work those checks passed.
-// `buttons`: the bar draws its buttons (full mode). Without them the line about a waiting move is for Claude, with no key 1.
-// `armed`: an armed autonomous run. Its Fix step is no step of the person (the run loops back by itself), so a record
-// left in Fix follows the CLI at Check too; a park makes the run interactive again, and the Fix step is back.
-export function reconcile(state: RunState, nextStage: string | null, pending: PendingMove | null, buttons = true, armed = false): { state: RunState; sync: Sync } {
-  if (!state.started) return { state, sync: NO_SYNC }
-  const cli = cliPhase(nextStage)
-  if (cli === null) {
-    return {
-      state,
-      sync: { cli: null, line: 'Temper state: the mod cannot tell where the run is. It does not block anything until the state can be read.', pending: null, failOpen: true, looksReset: false },
-    }
-  }
-  let next = state
-  let line: string | null = null
-  let held: PendingMove | null = null
-  let behind = false
-  if (!samePhase(state.phase, cli) || (armed && state.phase === 'fix' && cli === 'check')) {
-    // How far the person's own choices took the run: the last row a decision wrote. A check result is the CLI's verdict,
-    // no choice: an armed run that loops back by itself after a failed Check leaves the record in Fix, and is no reset.
-    const reached = [...state.history].reverse().find(h => h.kind !== 'check')?.to ?? state.phase
-    const ahead = reached === null ? -1 : reached === 'done' ? 5 : reached === 'fix' ? 4 : FLOW_ORDER.indexOf(reached)
-    const at = cli === 'done' ? 5 : cli === 'fix' ? 4 : FLOW_ORDER.indexOf(cli)
-    // The CLI is earlier than the person's own choices, with nothing waiting to be mirrored and no skip
-    // that the orchestrator has yet to advance past: nobody asked for that. It looks reset.
-    // Design is part of Plan in the mod: the person approved the plan, and the CLI is at its design stage.
-    // That is the run going on (found live), not a reset.
-    const designing = nextStage === 'design' && state.phase === 'build'
-    behind = at >= 0 && ahead > at && pending === null && !designing && state.history[state.history.length - 1]?.kind !== 'override'
-    next = { ...state, phase: cli, since: { ...state.since, ...(cli !== 'done' && state.since[cli] === undefined ? { [cli]: 0 } : {}) } }
-    next.loopLimitReached = false
-    if (pending !== null) {
-      held = pending
-      line = pendingLines(pendingChoice(pending), buttons).idle
-    }
-  }
-  // A check that passed later than the phase the CLI is at, or choices that went further than the CLI
-  // says with nothing pending: the CLI state looks reset.
-  let looksReset = behind
-  if (cli !== 'done' && cli !== 'fix') {
-    const at = FLOW_ORDER.indexOf(cli)
-    looksReset = looksReset || (at >= 0 && FLOW_ORDER.some((p, i) => i > at && next.gate[p] === 'fresh'))
-  }
-  if (looksReset && line === null) line = `Temper state looks reset: the run is at ${phaseLabel(cli)}, but it went further before. Temper does not block work that already passed.`
-  return { state: next, sync: { cli, line, pending: held, failOpen: false, looksReset } }
-}
-
-const BOOTSTRAP = { ts: 0, session: 'bootstrap', seq: 1 }
-let seq = 0
 
 export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snapshot> {
   const version = await io.version().catch(() => undefined)
   if (!versionAtLeast(version)) return idleSnapshot(options, true)
 
-  const cfg = settingsFrom(options)
   const configText = (await readText(io, '.claude/temper.config')) ?? ''
-  const maxLoops = parseMaxLoops(configText, str(options, 'fixMaxLoops'))
   const autonomyEnabled = readConfigValue(configText, 'autonomy.enabled') === 'true'
   const designRequired = readConfigValue(configText, 'phases.design') === 'true'
   const statePath = `${STATE_ROOT}/build-state.json`
   let raw = await readText(io, statePath)
   let bs = parseBuildState(raw ?? '')
-  // The CLI rewrites build-state.json in place, so a read in that instant sees an empty or cut file (found live: the
-  // bar said "No Temper run is active" at Done). A file that exists but does not read as a run is read again
-  // before the mod decides there is no run. A file that is missing is a run that ended.
+  // The CLI rewrites build-state.json in place, so a read in that instant sees an empty or cut file (found live). A file
+  // that exists but does not read as a run is read again before the mod decides there is none.
   for (let i = 0; i < 4 && bs === null && raw !== null; i++) {
     await io.pause(60).catch(() => undefined)
     raw = await readText(io, statePath)
     bs = parseBuildState(raw ?? '')
   }
-  if (!bs) return { ...idleSnapshot(options, false), state: initialState(maxLoops) }
-  // A /temper:fix run: the mod stands aside. commands/fix.md asks every gate in the conversation and the native commit hook
-  // gates the commit; the mod draws no bar, refuses nothing and records nothing for it. The run is still the run the mod
-  // knows (its slug), so an earlier /temper run is never held in its place (see lastRun in register.tsx).
-  if (bs.command === 'fix') return { ...idleSnapshot(options, false), state: initialState(maxLoops), slug: bs.spec, specDir: bs.specPath, runCommand: 'fix', cliNext: bs.nextStage, sync: { ...NO_SYNC, failOpen: true } }
+  const idle = idleSnapshot(options, false)
+  if (!bs) return idle
+  // A /temper:fix run: the mod stands aside. commands/fix.md asks every gate in the conversation and the native commit
+  // hook gates the commit; the mod draws no bar, refuses nothing and records nothing for it.
+  if (bs.command === 'fix') return { ...idle, slug: bs.spec, specDir: bs.specPath, runCommand: 'fix', cliNext: bs.nextStage }
 
   const specDir = bs.specPath
-  const verdicts = parseGates((await readText(io, `${STATE_ROOT}/gates.json`)) ?? '')
+  const stage = cliStage(bs.nextStage)
+  const at: At = { run: bs.runId, step: bs.step }
+  const book = await readBook(io, at.run)
+  const used = await usedIds(io, book)
+  const gates = parseGates((await readText(io, `${STATE_ROOT}/gates.json`)) ?? '')
+  const skips = parseSkips((await readText(io, `${STATE_ROOT}/overrides.json`)) ?? '')
   const intentText = (await readText(io, `${specDir}/intent.md`)) ?? ''
-  const title = parseTitle(intentText) ?? bs.spec
-
-  const own = new Set<string>()
-  const fold = (events: readonly TemperEvent[]) => reduce(events, verdicts, { maxLoops, isTrusted: ev => own.has(ev.id) })
-
-  const files = await readEventFiles(io, `${specDir}/events`)
-  const textOf = new Map(files.map(f => [f.name, f.text]))
-  const read = readEvents(files)
-  const unreadable = read.unreadable
-  let events = read.events
-  // One store key per event id: an event file whose id is not here was not written by
-  // this mod, so it is unverified and never counts as an approval.
-  for (const ev of events) if (await isOwn(io, ev.id, textOf.get(eventFileName(ev)) ?? '')) own.add(ev.id)
-  const voided = new Set<string>()
-  for (const ev of events) if (ev.type === 'back' && own.has(ev.id) && (await io.storeGet(VOID_PREFIX + ev.id).catch(() => undefined))) voided.add(ev.id)
-  if (voided.size > 0) events = events.filter(e => !voided.has(e.id))
-  let state = fold(events)
-
-  // A run the CLI began before the mod saw it: enter it once, at the phase the CLI
-  // recorded. The start event is written by the mod itself, so it is a trusted record.
-  // The bootstrap start has one fixed name (ts 0, session "bootstrap", seq 1), so entering a run
-  // again overwrites that file instead of adding another: a lost or unwritable store cannot pile
-  // up start files, and a planted or edited file under that name is replaced with a genuine one.
-  // A next_stage the CLI does not use gives no phase to start at: nothing is guessed (never Intent).
-  if (!state.started) {
-    const phase = cliPhase(bs.nextStage)
-    if (phase !== null && phase !== 'done') {
-      const start = await writeEvent(io, specDir, { type: 'start', slug: bs.spec, title, phase, origin: 'system' }, BOOTSTRAP)
-      events = [...events.filter(e => e.id !== start.id), start]
-      own.add(start.id)
-      state = fold(events)
-    }
-  }
-
-  // A new run on the same spec folder (see earlierRun): it starts at the phase the CLI recorded, after every earlier
-  // event, so no approval, skip or step of the earlier run is folded into it and none of its choices waits to be recorded.
-  if (state.started) {
-    const mine = events.filter(e => own.has(e.id))
-    const used = new Set<string>()
-    for (const ev of mine) if (ev.type === 'advance' && (await io.storeGet(USED_PREFIX + ev.id))) used.add(ev.id)
-    const phase = cliPhase(bs.nextStage)
-    if (phase !== null && phase !== 'done' && earlierRun(mine, bs.stage, bs.nextStage, id => used.has(id))) {
-      const last = mine.reduce((t, e) => Math.max(t, e.ts), 0)
-      const start = await writeEvent(io, specDir, { type: 'start', slug: bs.spec, title, phase, origin: 'system' }, { ts: Math.max(Date.now(), last + 1), session: 'newrun', seq: 1 })
-      events = [...events, start]
-      own.add(start.id)
-      state = fold(events)
-    }
-  }
-
   const planText = (await readText(io, `${specDir}/plan.md`)) ?? ''
   const tasksText = (await readText(io, `${specDir}/tasks.md`)) ?? ''
+  const groupsText = await readText(io, `${STATE_ROOT}/groups.json`)
   const status = parseStatus((await readText(io, `${STATE_ROOT}/status.json`)) ?? '')
-
-  // A decision belongs to the plan it approved: when the run later goes back to that stage or an earlier one (a step
-  // back the mod trusts), a decision for that stage that was never spent is stale. It is not an approval for the
-  // plan that is made again.
-  let open: Array<{ hd: HumanDecision; ev: TemperEvent; stage: number; stalable: boolean }> = []
-  for (const ev of [...events].sort(compareEvents)) {
-    // A start begins a run: a choice made before it belongs to an earlier run.
-    if (ev.type === 'start' && own.has(ev.id)) open = []
-    if (ev.type === 'back' && own.has(ev.id)) {
-      const t = FLOW_ORDER.indexOf(ev.to === 'fix' ? 'check' : ev.to)
-      open = open.filter(o => !o.stalable || o.stage < t)
-    }
-    const kind = humanKind(ev)
-    if (kind && own.has(ev.id) && !(await io.storeGet(USED_PREFIX + ev.id))) {
-      const stage = ev.type === 'advance' ? ev.from : ev.type === 'override' ? ev.phase : ev.type === 'accept' ? 'review' : null
-      open.push({ hd: decisionOf(ev, kind), ev, stage: stage === null ? -1 : FLOW_ORDER.indexOf(stage === 'fix' ? 'check' : stage), stalable: kind !== 'back' })
-    }
-  }
-  const humanDecisions: HumanDecision[] = open.map(o => o.hd)
-  // A move of the person that no mirror call has recorded yet: the latest one is the one to record. A move out of
-  // another phase than the CLI's is not one: its mirror names a stage the run is not at, so the guard refuses it every
-  // time and key 1 would hand it over again and again.
-  const at = cliPhase(bs.nextStage)
-  let pendingMove: PendingMove | null = null
-  for (const o of open) {
-    const ev = o.ev
-    // Keeping a task agent's commits, and Override and commit, move nothing: there is no move of them to record again.
-    const moves = !(ev.type === 'override' && (ev.stage === 'foreign-commit' || ev.stage === 'commit'))
-    const fits = moves && (ev.type === 'back' || (ev.type === 'advance' && ev.from === at) || (ev.type === 'override' && (ev.phase === at || (ev.phase === 'fix' && at === 'check'))))
-    if (fits) pendingMove = { id: ev.id, draft: ev }
-  }
-
-  const sync = reconcile(state, bs.nextStage, pendingMove, phaseBarStyle(cfg.mode) === 'phases-and-actions', bs.runMode === 'autonomous' && autonomyEnabled)
-  state = sync.state
-  // The Design gate: the CLI is at design, part of Plan in the mod. Its own check (gate design) decides there.
-  if (bs.nextStage === 'design') state = { ...state, atDesign: true, designGate: gateOf(verdicts.design, state.since.plan, state.invalidated.plan) }
-
+  const verdicts: RunFacts['verdicts'] = {}
+  for (const [k, v] of Object.entries(gates)) verdicts[k as Stage] = v.verdict
+  const run: RunFacts | null =
+    stage === null
+      ? null
+      : {
+          stage,
+          step: bs.step,
+          runMode: bs.runMode,
+          complexity: bs.complexity,
+          designRequired,
+          designSeen: stage === 'design' || gates.design !== undefined,
+          autonomyEnabled,
+          groupedActive: groupsText !== null,
+          verdicts,
+          skipped: new Set(Object.keys(skips) as Stage[]),
+          specDir,
+          planFiles: planFileList(planText, tasksText),
+        }
+  const decisions = decisionsOf(book, at.run)
   return {
-    inert: false,
-    sync: sync.sync,
-    ...cfg,
+    ...idle,
+    failOpen: stage === null,
+    line: stage === null ? 'Temper state: the mod cannot tell where the run is. It does not block anything until the state can be read.' : null,
     slug: bs.spec,
-    autonomyEnabled,
-    groupedActive: (await readText(io, `${STATE_ROOT}/groups.json`)) !== null,
-    designRequired,
-    complexity: bs.complexity,
-    cliNext: bs.nextStage,
-    branch: bs.branch,
     runCommand: bs.command,
-    hasIntent: intentText !== '',
     specDir,
-    state,
-    verdicts,
-    planFiles: planFileList(planText, tasksText),
-    title,
+    cliNext: bs.nextStage,
+    run,
+    at,
+    title: parseTitle(intentText) ?? bs.spec,
     criteria: mergeCriteria(parseCriteria(intentText), status),
     findings: parseFindings((await readText(io, `${STATE_ROOT}/evidence/review.json`)) ?? ''),
+    gates,
+    skips,
+    loops: parseLoops((await readText(io, `${STATE_ROOT}/feedback-loops.json`)) ?? ''),
+    groups: groupsText !== null || /^##\s+Group\s+G\d+/m.test(tasksText) ? parseGroups(tasksText, groupsText ?? '') : null,
     task: taskProgress(tasksText, bs.task),
     tasksLeft: tasksLeft(tasksText),
-    unreadable: unreadable.map(u => u.name),
-    configSuggestions: (await io.list(specDir).catch(() => [])).some(e => e.kind === 'file' && e.name === 'config-suggestions.json'),
-    humanDecisions,
     usage: parseUsage((await readText(io, `${STATE_ROOT}/usage.json`)) ?? ''),
-    runMode: bs.runMode,
-    spentLoops: spentLoopsOf((await readText(io, `${STATE_ROOT}/feedback-loops.json`)) ?? ''),
-  }
-}
-
-// The CLI refused the `state loop` of the person's step back (BLOCKED): the step back is void (see VOID_PREFIX).
-export async function voidStepBack(io: Io, eventId: string): Promise<void> {
-  await io.storeSet(VOID_PREFIX + eventId, 1)
-}
-
-
-// The CLI gate wants a design verdict (PASS, or a person's override of design) exactly when the spec has a design.md
-// (scripts/temper gate_commit, the checkpoint carve-out). Without a design.md nothing is asked.
-async function designSatisfied(io: Io, snap: Snapshot): Promise<boolean> {
-  if ((await readText(io, `${snap.specDir}/design.md`)) === null) return true
-  try {
-    const gates = JSON.parse((await readText(io, `${STATE_ROOT}/gates.json`)) ?? '{}') as { design?: { verdict?: unknown } }
-    if (gates.design?.verdict === 'PASS') return true
-  } catch {
-    // an unreadable gates.json holds no verdict
-  }
-  try {
-    const rows = JSON.parse((await readText(io, `${STATE_ROOT}/overrides.json`)) ?? '[]') as unknown
-    return Array.isArray(rows) && rows.some(r => typeof r === 'object' && r !== null && (r as { stage?: unknown }).stage === 'design')
-  } catch {
-    return false
+    configSuggestions: (await io.list(specDir).catch(() => [])).some(e => e.kind === 'file' && e.name === 'config-suggestions.json'),
+    decisions,
+    move: currentMove(book, at, used),
+    accepts: acceptsAt(book, at).map(d => d.findingId),
+    restart: restartFor(book, at.run) !== null,
+    drift: driftOf(book, at.run, used),
   }
 }
 
@@ -497,11 +272,7 @@ const RUN_ARTIFACTS = ['intent.md', 'plan.md', 'tasks.md', 'design.md']
 //  - build-state.json: Intent is next, and its stage shows no completed step (`state init` writes `started`);
 //  - gates.json holds no verdict, and overrides.json is an empty list (each may also be missing);
 //  - the spec folder holds none of intent.md, plan.md, tasks.md and design.md, as a text or as a name in its listing.
-// A gates.json or overrides.json that does not read counts as missing (the guard refuses a command that removes or locks
-// either while a run is active); one that reads but is not what the CLI writes keeps the run. The mod's own record is
-// checked by the rule (core/rules.ts).
 export async function nothingToLose(io: Io, specDir: string): Promise<boolean> {
-  // The parsed text of a file, or undefined when it does not read.
   const json = async (path: string): Promise<unknown> => {
     const text = await readText(io, path)
     return text === null ? undefined : JSON.parse(text)
@@ -522,105 +293,34 @@ export async function nothingToLose(io: Io, specDir: string): Promise<boolean> {
     return false
   }
   for (const name of RUN_ARTIFACTS) if ((await readText(io, `${specDir}/${name}`)) !== null) return false
-  // A spec folder that is not there yet (the TRIVIAL run wrote nothing) lists as empty.
   const entries = await io.list(specDir).catch(() => [])
   return Array.isArray(entries) && !entries.some(e => RUN_ARTIFACTS.includes(e.name))
-}
-
-// The facts of the CLI commit gate that the mod can read (see CommitFacts in core/rules.ts). `root` is the
-// project folder; the current branch comes from .git/HEAD. Never throws: a fact that cannot be read is false.
-export async function commitFacts(io: Io, snap: Snapshot, root: string, staged: { all: boolean; paths: string[] }): Promise<CommitFacts> {
-  // Compared as the CLI gate compares (a case sensitive grep for ^.temper/specs/): `.TEMPER/SPECS` is not it.
-  const specs = !staged.all && staged.paths.length > 0 && staged.paths.every(p => normalizePath(p, root).startsWith('.temper/specs/'))
-  const dir = root.replace(/\/$/, '')
-  const head = (await readText(io, `${dir}/.git/HEAD`)) ?? ''
-  const cur = /^ref:\s*refs\/heads\/(.+?)\s*$/.exec(head)?.[1] ?? null
-  const s = snap.state
-  const satisfied = (p: 'intent' | 'plan') => snap.verdicts[p]?.verdict === 'PASS' || s.overrides.some(o => o.phase === p)
-  let checkpoint = false
-  let hint: string | undefined
-  if (snap.sync.cli === 'build' && snap.runCommand === 'temper' && snap.branch !== null) {
-    if (cur !== snap.branch) {
-      hint = `A Build checkpoint commit needs the run's branch ${snap.branch}, and you are on ${cur ?? 'no branch'}.`
-    } else if (satisfied('plan') && (!snap.hasIntent || satisfied('intent')) && (await designSatisfied(io, snap))) {
-      let rows: unknown = []
-      try {
-        rows = JSON.parse((await readText(io, `${STATE_ROOT}/evidence/build.json`)) ?? '[]')
-      } catch {
-        rows = []
-      }
-      const hits = (Array.isArray(rows) ? rows : []).filter(r => typeof r === 'object' && r !== null && (r as { phase?: unknown }).phase === 'green' && String((r as { claim?: unknown }).claim ?? '').toLowerCase().includes('test'))
-      const last = hits[hits.length - 1] as { exit_code?: unknown } | undefined
-      checkpoint = last !== undefined && Number(last.exit_code) === 0
-      if (!checkpoint) hint = 'A Build checkpoint commit needs a green test run on record.'
-    }
-  }
-  return { stagedSpecsOnly: specs, checkpoint, ...(hint ? { hint } : {}) }
-}
-
-// Writes one event file, once, under a unique name, and records a digest of its text in
-// `$.store` (one key per id) so a later load can tell its own events from files it did not
-// write, or from one that was rewritten afterwards.
-export async function writeEvent(io: Io, specDir: string, draft: Draft, fixed?: { ts: number; session: string; seq: number }): Promise<TemperEvent> {
-  seq += 1
-  const ev = stamp(draft, fixed ?? { ts: Date.now(), session: SESSION, seq })
-  const text = encodeEvent(ev)
-  await io.write(`${specDir}/events/${eventFileName(ev)}`, text)
-  await io.storeSet(OWN_PREFIX + ev.id, await digestText(text))
-  return ev
-}
-
-// The CLI's own files that a decision call changes (the state, the overrides, the ledger, the verdicts), as one text.
-// A call that ends in an error may still have done its work (`state advance ...; exit 1`): when this text differs
-// from the one taken before the call, the decision was used.
-export async function runFingerprint(io: Io): Promise<string> {
-  const parts: string[] = []
-  for (const name of ['build-state.json', 'overrides.json', 'gates.json', 'feedback-loops.json']) parts.push(`${name}:${(await readText(io, `${STATE_ROOT}/${name}`)) ?? '-'}`)
-  const entries = await io.list(`${STATE_ROOT}/evidence`).catch(() => [])
-  for (const e of entries.filter(x => x.kind === 'file').sort((a, b) => a.name.localeCompare(b.name))) parts.push(`evidence/${e.name}:${(await readText(io, `${STATE_ROOT}/evidence/${e.name}`)) ?? '-'}`)
-  return parts.join('\n')
-}
-
-// Marks one human event as matched by a CLI call, so it authorizes that call only once.
-export async function consumeDecision(io: Io, eventId: string): Promise<void> {
-  await io.storeSet(USED_PREFIX + eventId, 1)
-}
-
-export type Applied = { snap: Snapshot; error?: string; events: Draft[] }
-
-// Runs one command through the machine; on success writes its events, reloads the
-// snapshot, and keeps the report when the run reached Done.
-export async function apply(io: Io, options: PluginOptions, snap: Snapshot, command: Command): Promise<Applied> {
-  const decision = decide(snap.state, command)
-  if ('error' in decision) return { snap, error: decision.error, events: [] }
-  for (const draft of decision.events) await writeEvent(io, snap.specDir, draft)
-  const next = await loadSnapshot(io, options)
-  await publish(io, next)
-  if (next.state.phase === 'done' && snap.state.phase !== 'done') await writeReport(io, next)
-  return { snap: next, events: decision.events }
 }
 
 // The report of the run as it stands, not kept.
 export function reportText(snap: Snapshot): string {
   return renderReport({
-    state: snap.state,
+    slug: snap.slug,
+    title: snap.title,
+    stage: snap.run?.stage ?? null,
+    gates: snap.gates,
+    skips: snap.skips,
+    loops: snap.loops,
+    decisions: snap.decisions,
     criteria: snap.criteria,
-    generatedAt: Date.now(),
-    unreadable: snap.unreadable,
     usage: snap.usage,
+    generatedAt: Date.now(),
   })
 }
 
-// Keeps the report (the mod writes no file: see makeIo) and returns its text.
+// Keeps the report (the mod writes no file: see makeIo in register.tsx) and returns its text.
 export async function writeReport(io: Io, snap: Snapshot): Promise<string> {
   const md = reportText(snap)
   await io.write(REPORT_PATH, md)
   return md
 }
 
-// The report kept last in this project, for `/temper:temper report` with no run active: a finished
-// run's Commit steps clear its run state, and its report stays readable. A report file that a 9.6.0
-// or 9.6.1 run wrote is read too. Null when there is none.
+// The report kept last in this project, for `/temper:temper report` with no run active. Null when there is none.
 export async function keptReport(io: Io): Promise<string | null> {
   const text = await readText(io, REPORT_PATH)
   return text !== null && text.trim() !== '' ? text : null
@@ -630,85 +330,55 @@ export async function keptReport(io: Io): Promise<string | null> {
 export const FIX_RUN = 'Phase: a /temper:fix run. The Temper bar and its guard stand aside for it: ask every gate in the conversation, as commands/fix.md says.'
 
 export function composeText(snap: Snapshot): string {
-  const s = snap.state
-  if (snap.runCommand === 'fix' && s.phase === null) {
-    return sectionText({ enforcement: snap.enforcement, phase: null, title: null, progress: null }).replace('Phase: none. No Temper run is active.', FIX_RUN)
+  if (snap.runCommand === 'fix' && snap.run === null) {
+    return sectionText({ enforcement: snap.enforcement, view: null }).replace('Phase: none. No Temper run is active.', FIX_RUN)
   }
-  return sectionText({
-    enforcement: snap.enforcement,
-    phase: s.phase,
+  return sectionText({ enforcement: snap.enforcement, view: snap.run === null ? null : viewOf(snap), run: snap.run, line: snap.line })
+}
+
+export const viewOf = (snap: Snapshot): View =>
+  buildView({
+    run: snap.run,
     title: snap.title,
+    gates: snap.gates,
+    skips: snap.skips,
+    loops: snap.loops,
+    groups: snap.groups,
+    findings: snap.findings,
+    criteria: snap.criteria,
     task: snap.task,
-    progress: snap.criteria.length > 0 ? progress(snap.criteria) : null,
-    paused: s.paused,
-    loopLimitReached: s.loopLimitReached,
-    stale: s.stale,
-    sync: snap.sync.line,
-    buttons: phaseBarStyle(snap.mode) === 'phases-and-actions',
-    actionContext: {
-      ready: phaseGate(s) === 'fresh',
-      allChecksPass: s.gate.check === 'fresh',
-      hasFindings: snap.findings.length > 0,
-      ...(designNext(snap) ? { designNext: true } : {}),
-    },
+    move: snap.move,
+    decisions: snap.decisions,
+    enforcement: snap.enforcement,
+    configSuggestions: snap.configSuggestions,
+    line: snap.line,
+    paneOpen: live.paneOpen ?? false,
   })
-}
 
-// Design follows the Plan the run is at: a medium or complex run, with phases.design on (commands/temper.md, Stage 1).
-const designNext = (snap: Snapshot): boolean => snap.cliNext === 'plan' && snap.designRequired && (snap.complexity === 'medium' || snap.complexity === 'complex')
-
-// The move that waits to be recorded, as the bar names it on key 1.
-function pendingChoice(p: PendingMove | null): PendingChoice | undefined {
-  const d = p?.draft
-  if (d?.type === 'advance') return { type: 'advance', from: d.from }
-  if (d?.type === 'back') return { type: 'back', to: d.to }
-  if (d?.type === 'override') return { type: 'override' }
-  return undefined
-}
-
-export const viewOf = (snap: Snapshot, cli?: string): View => {
-  const move = pendingChoice(snap.sync.pending)
-  return buildView({ syncWorking: snap.sync.pending !== null ? pendingLines(move).working : null, state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, grouped: snap.groupedActive, sync: snap.sync.line, pending: snap.sync.pending !== null, ...(move !== undefined ? { pendingMove: move } : {}), enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, ...(designNext(snap) ? { designNext: true } : {}), spentLoops: snap.spentLoops, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false, ...(cli !== undefined ? { cli } : {}) })
-}
-
-// Mirrors the folded state into `$.state` for drawing and compaction.
+// Mirrors the run into `$.state` for drawing and compaction.
 export async function publish(io: Io, snap: Snapshot): Promise<void> {
-  await io.setRun({ slug: snap.slug, phase: snap.state.phase, title: snap.title, summary: composeText(snap), view: viewOf(snap, io.cli) })
+  await io.setRun({ slug: snap.slug, stage: snap.run?.stage ?? null, title: snap.title, summary: composeText(snap), view: viewOf(snap) })
   await io.setMode(snap.mode)
-}
-
-// Check results are read from the CLI's verdict, never decided here. A fresh PASS ends
-// the run; a fresh FAIL (only when `includeFail`, after `temper gate check` ran) enters Fix.
-export async function syncCheck(io: Io, options: PluginOptions, snap: Snapshot, includeFail: boolean): Promise<Snapshot> {
-  if (snap.state.phase !== 'check') return snap
-  const gate = snap.state.gate.check
-  const result = gate === 'fresh' ? 'pass' : gate === 'fail' && includeFail ? 'fail' : null
-  if (result === null) return snap
-  return (await apply(io, options, snap, { type: 'checkResult', result, origin: 'system' })).snap
 }
 
 const iso = (ts: number): string => new Date(ts).toISOString()
 
 // `/temper:temper status`: the section text plus the counts a person wants at a glance.
 export function statusText(snap: Snapshot): string {
-  if (snap.runCommand === 'fix' && snap.state.phase === null) return FIX_RUN
-  if (snap.state.phase === null) return 'No Temper run is active. Start one with /temper:temper <feature description>.'
-  const s = snap.state
+  if (snap.runCommand === 'fix' && snap.run === null) return FIX_RUN
+  if (snap.run === null) return snap.line ?? 'No Temper run is active. Start one with /temper:temper <feature description>.'
   const lines = [composeText(snap)]
   lines.push(`Mode: ${snap.mode}, enforcement: ${snap.enforcement}`)
-  if (s.loops > 0) lines.push(`Check to Fix loops: ${s.loops} (limit ${s.maxLoops})`)
-  if (s.overrides.length > 0) lines.push(`Overrides: ${s.overrides.length}`)
-  if (s.accepted.length > 0) lines.push(`Accepted findings: ${s.accepted.length}`)
-  if (s.drift.length > 0) lines.push(`Scope drift decisions: ${s.drift.length}`)
-  if (s.unverified.length > 0) lines.push(`Event files that Temper does not trust: ${s.unverified.length}`)
-  if (snap.unreadable.length > 0) lines.push(`Unreadable event files: ${snap.unreadable.join(', ')}`)
+  const skipped = Object.keys(snap.skips)
+  if (skipped.length > 0) lines.push(`Skipped: ${skipped.map(s => stageLabel(s as Stage)).join(', ')}`)
+  for (const l of snap.loops) lines.push(`Loop ${l.from} to ${l.to}: ${l.iteration} of ${l.max}`)
+  if (snap.decisions.length > 0) lines.push(`Your decisions in this run: ${snap.decisions.length} (/temper:temper timeline lists them)`)
   return lines.join('\n')
 }
 
+// `/temper:temper timeline`: the person's decisions in this run, oldest first.
 export function timelineText(snap: Snapshot): string {
-  const h = snap.state.history
-  if (h.length === 0) return 'No phases yet.'
-  return h
-    .map(r => `${iso(r.ts)}  ${r.kind}: ${r.from ? phaseLabel(r.from) : 'start'} to ${phaseLabel(r.to)}`)
-    .join('\n')
+  if (snap.decisions.length === 0) return 'No decisions yet in this run.'
+  return snap.decisions.map(d => `${iso(d.ts)}  ${describe(d)}`).join('\n')
 }
+

@@ -8,8 +8,8 @@
 // review-exploits-3.test.ts and update the paragraph.
 import { describe, expect, test } from 'claude-code/testing'
 
-import { evaluate } from '../../hooks/temper-mod/core/rules'
-import type { RuleContext } from '../../hooks/temper-mod/core/rules'
+import { check as evaluate } from './helpers'
+import type { OldCtx as RuleContext } from './helpers'
 import { stateAt } from './helpers'
 
 const ctx: RuleContext = { specDir: '.temper/specs/pw', planFiles: [] }

@@ -3,7 +3,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { USAGE_NOTE, parseUsage, renderReport } from '../../hooks/temper-mod/core/report'
-import { fold, person } from './helpers'
 import { runFiles } from './run-files'
 import { world } from './world'
 
@@ -14,7 +13,7 @@ const ROWS = JSON.stringify([
 ])
 
 const report = (usage = parseUsage(ROWS)) =>
-  renderReport({ state: fold([{ type: 'start', slug: 'pw', title: 'Password reset', ...person }]), criteria: [], generatedAt: 1700000000000, usage })
+  renderReport({ slug: 'pw', title: 'Password reset', stage: 'intent', gates: {}, skips: {}, loops: [], decisions: [], criteria: [], generatedAt: 1700000000000, usage })
 
 describe('the usage section of the report', () => {
   test('rows per stage, per model and in total, with the same caveat as temper report', () => {
@@ -51,9 +50,10 @@ describe('the usage section of the report', () => {
   })
 
   test('the report kept when the run completes includes it', async ($, on) => {
-    const w = world(on, { ...runFiles({ nextStage: 'check', gates: { check: 'PASS' } }), '.temper/usage.json': ROWS })
+    const w = world(on, { ...runFiles({ nextStage: 'check', gates: { check: 'PASS' } }), '.temper/usage.json': ROWS }, { fakeCli: true })
     await $.session.start({ cwd: '/repo', surface: null, isInteractive: false })
-    await $.tool.call({ tool: 'Bash', command: 'scripts/temper gate check' } as never)
+    // The CLI moves the run to Done (ADR 0012); the mod keeps the report when it sees that.
+    await $.tool.call({ tool: 'Bash', command: 'scripts/temper state advance check_complete commit' } as never)
     const kept = w.files.get('.temper/report.md') ?? ''
     expect(kept).toContain('Result: Done')
     expect(kept).toContain('Total: 3 launches, 1300 tokens, 3000 ms')

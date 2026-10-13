@@ -2,50 +2,36 @@ import type { RenderElement } from 'claude-code'
 
 import { LEGEND, MARK, whereText } from '../core/view'
 import type { View } from '../core/view'
-import { MENU_HINT } from './band'
-import type { Kit, OnAction, OnFinding } from './kit'
-import { BLUE, CARD_BG, FG, GREEN, MUTED, PINK, YELLOW } from './palette'
+import type { TaskCell } from '../core/clifiles'
+import type { Kit } from './kit'
+import { BLUE, CARD_BG, FG, GREEN, MUTED, ORANGE, PINK, YELLOW } from './palette'
 
 export const PANE_ID = 'temper'
 
-const clip = (s: string): string => (s.length > 8000 ? `${s.slice(0, 8000)}\n...` : s)
+// Explicit colours only, never a dim: see ui/palette.ts. Stages to come are muted, not dimmed.
+const MARK_COLOR = { passed: GREEN, failed: ORANGE, skipped: YELLOW, current: BLUE, pending: MUTED } as const
+const TASK = { waiting: ['○', MUTED], running: ['◐', BLUE], passed: ['✓', GREEN], failed: ['✗', ORANGE], parked: ['⏸', YELLOW] } as const
 
-// Explicit colours only, never a dim: see ui/palette.ts. Pending steps are muted, not dimmed.
-const STEP_COLOR = { done: GREEN, current: BLUE, pending: MUTED, stale: YELLOW } as const
+const taskText = (t: TaskCell): string => {
+  const how = t.state === 'running' ? ` (attempt ${t.attempt ?? 1})` : t.model ? ` (${t.model.replace(/^claude-/, '')})` : ''
+  return `${TASK[t.state][0]} Task ${t.n}${t.title ? `: ${t.title}` : ''}${how}`
+}
 
-// The pane: a card with the intent title, the acceptance criteria one per row (green check
-// when met, an empty circle when not), where you are in the six phases with a legend, a short
-// timeline, per finding Fix / Accept with reason / Explain, and the actions. Hotkeys are
-// unique here: 1, 2, 3 for the main actions, 4 for Discuss, 9 for skip, 0 for "More actions",
-// which shows a numbered menu (1 to 9) in place of the main actions.
+// The pane: the whole run on one card, read only. The intent and its criteria, the stages with their verdicts and the
+// person's skips, the status, the groups and tasks of Build, the open findings, the failed checks, the loops and the
+// person's decisions. The person decides in the `Temper gate` question (ADR 0012): the pane has no button that decides;
+// it offers only the game while Claude works.
 //
-// The card sets its own background and every text sets its own colour, so it reads the same on a
-// light terminal theme and on a dark one (the engine's frame colour follows Claude Code's theme,
-// not the terminal's).
+// The card sets its own background and every text its own colour, so it reads the same on a light terminal theme and on
+// a dark one.
 export function renderPane(
   kit: Kit,
   view: View,
-  onAction: OnAction,
-  onFinding: OnFinding,
   inline = false,
-  // The game offer: shown while a phase is working (the game setting is on). Key 8, as in the band.
-  game: { show: boolean; open: boolean } = { show: false, open: false },
+  game: { show: boolean; open: boolean; onPlay: () => void | Promise<void> } = { show: false, open: false, onPlay: () => undefined },
 ): RenderElement {
   const { Box, Text, Button } = kit
-  const playButton = game.show ? (
-    <Box key="pane-item-play" flexDirection="column">
-      <Button
-        key="pane-play"
-        label={game.open ? '8  Close the game' : '8  Play while you wait'}
-        hotkey="8"
-        variant="primary"
-        onPress={() => onAction({ key: '1', id: 'play', label: 'Play', desc: 'Play a small game.', command: 'play' })}
-      />
-      <Text color={MUTED}>{'  A small game for the wait.'}</Text>
-    </Box>
-  ) : null
-
-  if (view.phase === null) {
+  if (view.stage === null) {
     return (
       <Box flexDirection="column" backgroundColor={CARD_BG}>
         <Text bold color={PINK}>{'◈ Temper'}</Text>
@@ -53,15 +39,14 @@ export function renderPane(
       </Box>
     )
   }
-
-  const task = view.task ? ` · task ${view.task.n} of ${view.task.of}` : ''
-  const timeline = inline ? [] : view.timeline.map((line, i) => `${i + 1}. ${line}`)
-  // Seated inline above the prompt (a narrow terminal) the pane stays short so the band is not
-  // pushed off screen: the buttons live in the band there, and a long checklist is cut.
-  // When the person asks for the full list (key 0), it shows even here.
-  const a = inline && !view.expanded ? null : view.actions
   const criteria = inline ? view.criteria.slice(0, 4) : view.criteria
-
+  const decisions = inline ? view.decisions.slice(-3) : view.decisions.slice(-8)
+  const section = (key: string, title: string, rows: RenderElement[]) => (
+    <Box key={key} flexDirection="column">
+      <Text color={MUTED}>{title}</Text>
+      {rows}
+    </Box>
+  )
   return (
     <Box flexDirection="column" rowGap={1} backgroundColor={CARD_BG}>
       <Box flexDirection="column">
@@ -70,82 +55,72 @@ export function renderPane(
         <Text bold color={FG}>{view.title ?? 'Untitled run'}</Text>
       </Box>
 
-      <Box flexDirection="column">
-        <Text color={MUTED}>{`Acceptance criteria (what must be true) · ${view.passed} of ${view.total} met`}</Text>
-        {view.criteria.length === 0 ? <Text color={MUTED}>No criteria found in intent.md.</Text> : null}
-        {criteria.map(c => (
-          <Text key={`criterion-${c.id}`} color={c.status === 'passed' ? GREEN : FG}>
-            {`${c.status === 'passed' ? '✔' : '○'} ${c.text}`}
-          </Text>
-        ))}
-        {inline && view.criteria.length > 4 ? <Text color={MUTED}>{`and ${view.criteria.length - 4} more. Open the pane in a wider terminal.`}</Text> : null}
-      </Box>
-
-      <Box flexDirection="column">
-        <Text color={MUTED}>{`Phase · ${whereText(view)}${task}${view.paused ? ' · paused' : ''}`}</Text>
-        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
-          {view.steps.map(s => (
-            <Text key={`pane-step-${s.id}`} bold={s.status === 'current'} color={STEP_COLOR[s.status]}>
-              {`${MARK[s.status]} ${s.label}`}
+      {section('stages', `Stages · ${whereText(view)}`, [
+        <Box key="stage-row" flexDirection="row" flexWrap="wrap" columnGap={2}>
+          {view.stages.map(s => (
+            <Text key={`pane-stage-${s.id}`} bold={s.mark === 'current'} color={s.mark === 'current' && s.failed ? ORANGE : MARK_COLOR[s.mark]}>
+              {`${MARK[s.mark]} ${s.label}`}
             </Text>
           ))}
-        </Box>
-        {inline ? null : <Text color={MUTED}>{LEGEND}</Text>}
-        {view.now ? <Text color={FG}>{view.now}</Text> : null}
-        {view.sync ? <Text color={YELLOW}>{view.sync}</Text> : null}
-      </Box>
+        </Box>,
+        ...view.stages
+          .filter(s => s.skip !== null)
+          .map(s => (
+            <Text key={`skip-${s.id}`} color={YELLOW}>{`${s.label} skipped: ${s.skip}`}</Text>
+          )),
+        ...(inline ? [] : [<Text key="legend" color={MUTED}>{LEGEND}</Text>]),
+        <Text key="status" color={view.wait === 'gate' || view.wait === 'saved' ? YELLOW : FG}>{view.status}</Text>,
+        ...(view.line ? [<Text key="line" color={YELLOW}>{view.line}</Text>] : []),
+      ])}
 
-      {timeline.length > 0 ? (
-        <Box key="timeline" flexDirection="column">
-          <Text color={MUTED}>Timeline, oldest first</Text>
-          {clip(timeline.join('\n'))
-            .split('\n')
-            .map((line, i) => (
-              <Text key={`timeline-${i}`} color={FG}>{line}</Text>
-            ))}
-        </Box>
-      ) : null}
+      {view.stage === 'build' && view.groups !== null
+        ? section(
+            'groups',
+            'Build groups',
+            view.groups.map(g => (
+              <Box key={`group-${g.id}`} flexDirection="column">
+                <Text bold color={g.state === 'parked' ? YELLOW : g.state === 'passed' ? GREEN : FG}>{`${g.id}${g.title ? ` ${g.title}` : ''}${g.state === 'parked' ? ' (parked)' : g.state === 'passed' ? ' (passed)' : ''}`}</Text>
+                {(inline ? g.tasks.filter(t => t.state !== 'passed') : g.tasks).map(t => (
+                  <Text key={`task-${t.n}`} color={TASK[t.state][1]}>{`  ${taskText(t)}`}</Text>
+                ))}
+              </Box>
+            )),
+          )
+        : null}
 
-      {view.findings.length > 0 ? (
-        <Box flexDirection="column">
-          <Text color={MUTED}>{`Open findings · ${view.findings.length}`}</Text>
-          {view.findings.map(f => (
-            <Box key={`finding-${f.id}`} flexDirection="row" columnGap={1} flexWrap="wrap">
-              <Text color={FG}>{`#${f.id} ${f.severity}: ${f.claim}`}</Text>
-              <Button key={`fix-${f.id}`} label="Fix" variant="primary" onPress={() => onFinding('fix', f.id)} />
-              <Button key={`accept-${f.id}`} label="Accept with reason" variant="primary" onPress={() => onFinding('accept', f.id)} />
-              <Button key={`explain-${f.id}`} label="Explain" variant="primary" onPress={() => onFinding('explain', f.id)} />
-            </Box>
-          ))}
-        </Box>
-      ) : null}
+      {view.findings.length > 0
+        ? section(
+            'findings',
+            `Open findings · ${view.findings.length}`,
+            view.findings.map(f => <Text key={`finding-${f.id}`} color={FG}>{`#${f.id} ${f.severity}: ${f.claim}`}</Text>),
+          )
+        : null}
 
-      {a ? (
-        <Box flexDirection="column">
-          <Text color={MUTED}>{view.expanded && a.more.length > 0 ? MENU_HINT : 'Actions'}</Text>
-          {/* The menu (key 0) takes the place of the main actions, so no digit is used twice. */}
-          {(view.expanded && a.more.length > 0 ? a.more : inline ? [] : [...a.primary, a.discuss, ...(a.override ? [a.override] : [])]).map(x => (
-            <Box key={`pane-item-${x.id}`} flexDirection="column">
-              <Button key={`pane-${x.id}`} label={`${x.key}  ${x.label}`} hotkey={x.key} variant="primary" onPress={() => onAction(x)} />
-              <Text color={MUTED}>{`  ${x.desc}`}</Text>
-            </Box>
-          ))}
-          {a.more.length > 0 ? (
-            <Box key="pane-item-more-actions" flexDirection="column">
-              <Button
-                key="pane-more-actions"
-                label={view.expanded ? '0  Fewer actions' : '0  More actions'}
-                hotkey="0"
-                variant="primary"
-                onPress={() => onAction({ key: '0', id: 'more-actions', label: 'More actions', desc: 'Show or hide the other actions.', command: 'pane-expand' })}
-              />
-              <Text color={MUTED}>{'  Show or hide the other actions.'}</Text>
-            </Box>
-          ) : null}
-          {view.expanded && a.more.length > 0 ? null : playButton}
+      {view.failedChecks.length > 0
+        ? section(
+            'checks',
+            'Failed checks',
+            view.failedChecks.map((q, i) => <Text key={`check-${i}`} color={ORANGE}>{`✗ ${q.name}${q.detail ? `: ${q.detail}` : ''}`}</Text>),
+          )
+        : null}
+
+      {section('criteria', `Acceptance criteria · ${view.passed} of ${view.total} met`, [
+        ...(view.criteria.length === 0 ? [<Text key="none" color={MUTED}>No criteria found in intent.md.</Text>] : []),
+        ...criteria.map(c => (
+          <Text key={`criterion-${c.id}`} color={c.status === 'passed' ? GREEN : FG}>{`${c.status === 'passed' ? '✔' : '○'} ${c.text}`}</Text>
+        )),
+        ...(inline && view.criteria.length > 4 ? [<Text key="more" color={MUTED}>{`and ${view.criteria.length - 4} more`}</Text>] : []),
+      ])}
+
+      {view.loops.length > 0 ? section('loops', 'Loops back (used of budget)', view.loops.map((l, i) => <Text key={`loop-${i}`} color={FG}>{l}</Text>)) : null}
+
+      {decisions.length > 0 ? section('decisions', 'Your decisions', decisions.map((d, i) => <Text key={`decision-${i}`} color={FG}>{`· ${d}`}</Text>)) : null}
+
+      {game.show ? (
+        <Box key="pane-item-play" flexDirection="column">
+          <Button key="pane-play" label={game.open ? '8  Close the game' : '8  Play while you wait'} hotkey="8" variant="primary" onPress={game.onPlay} />
+          <Text color={MUTED}>{'  A small game for the wait.'}</Text>
         </Box>
-      ) : playButton ? (
-        <Box flexDirection="column">{playButton}</Box>
       ) : null}
     </Box>
   )

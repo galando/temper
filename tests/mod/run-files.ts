@@ -1,7 +1,4 @@
 // A small spec directory as the files Temper reads. Not a test file.
-import { encodeEvent, eventFileName, stamp } from '../../hooks/temper-mod/core/events'
-import { digestText } from '../../hooks/temper-mod/adapter'
-import type { Draft } from '../../hooks/temper-mod/core/events'
 
 export const SPEC = '.temper/specs/pw'
 
@@ -37,7 +34,7 @@ export function runFiles(o: RunOptions = {}): Record<string, string> {
   const gates: Record<string, unknown> = {}
   for (const [stage, verdict] of Object.entries(o.gates ?? {})) gates[stage] = { verdict, ts: LATER }
   const files: Record<string, string> = {
-    '.temper/build-state.json': JSON.stringify({ spec: 'pw', spec_path: SPEC, next_stage: o.nextStage ?? 'plan', ...(o.complexity ? { complexity: o.complexity } : {}) }),
+    '.temper/build-state.json': JSON.stringify({ spec: 'pw', spec_path: SPEC, command: 'temper', next_stage: o.nextStage ?? 'plan', run_id: 'run-pw', step: 3, ...(o.complexity ? { complexity: o.complexity } : {}) }),
     '.temper/gates.json': JSON.stringify(gates),
     [`${SPEC}/intent.md`]: INTENT,
     [`${SPEC}/plan.md`]: PLAN,
@@ -55,17 +52,4 @@ export function runFiles(o: RunOptions = {}): Record<string, string> {
     })
   }
   return files
-}
-
-// An event file as the mod writes it: [path, text].
-export function eventFile(draft: Draft, ts: number, session = 's', seq = 1): [string, string] {
-  const ev = stamp(draft, { ts, session, seq })
-  return [`${SPEC}/events/${eventFileName(ev)}`, encodeEvent(ev)]
-}
-
-// The store entries the mod would have written for these event files (a digest of each text).
-export async function trusted(files: Array<[string, string]>): Promise<Record<string, unknown>> {
-  const out: Record<string, unknown> = {}
-  for (const [path, text] of files) out[`ev:${(path.split('/').pop() ?? '').replace(/\.json$/, '')}`] = await digestText(text)
-  return out
 }
