@@ -761,3 +761,179 @@ describe('second audit 16: the Next line of the Fix step waits for the person', 
     expect(nextStep('fix', { buttons: false, allChecksPass: true })).toContain('continue to Check')
   })
 })
+
+// ---- A review of the second audit's fixes -------------------------------------------------------
+
+describe('review 1: an armed run that loops back by itself after a failed Check keeps its rules', () => {
+  test('the redone Review refuses a source write, and the run does not look reset', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'intent_complete', next_stage: 'plan' }, { intent: 'PASS', plan: 'PASS' }, { '.claude/temper.config': 'autonomy:\n  enabled: true\n' })
+    await api.session.start(START)
+    await (await band(api)).press({ key: 'action-continue' })
+    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    const d = JSON.parse(w.files.get('.temper/build-state.json') ?? '{}') as Record<string, unknown>
+    w.files.set('.temper/build-state.json', JSON.stringify({ ...d, stage: 'review_complete', next_stage: 'check', run_mode: 'autonomous' }))
+    w.files.set('.temper/gates.json', JSON.stringify({ plan: { verdict: 'PASS', ts: LATER }, build: { verdict: 'PASS', ts: LATER }, review: { verdict: 'PASS', ts: LATER }, check: { verdict: 'FAIL', ts: LATER } }))
+    await typed(api, 'status')
+    await sh(api, `${CLI} gate check`)
+    expect(await sh(api, `${CLI} state loop check build --reason 'a test fails'`)).toBeUndefined()
+    // The stages redone have no verdict yet; Build passes again and the run goes on to Review by its verdict.
+    w.files.set('.temper/gates.json', JSON.stringify({ plan: { verdict: 'PASS', ts: LATER }, build: { verdict: 'PASS', ts: LATER } }))
+    await typed(api, 'status')
+    expect(await sh(api, `${CLI} state advance build_complete review`)).toBeUndefined()
+    await typed(api, 'status')
+    expect(await system(api)).not.toContain('looks reset')
+    expect(await write(api, 'src/app.ts')).toContain('Review')
+    // The redone Review passes and the run reaches Check again: it is Check, not the Fix step of the earlier round.
+    w.files.set('.temper/gates.json', JSON.stringify({ plan: { verdict: 'PASS', ts: LATER }, build: { verdict: 'PASS', ts: LATER }, review: { verdict: 'PASS', ts: LATER } }))
+    await typed(api, 'status')
+    expect(await sh(api, `${CLI} state advance review_complete check`)).toBeUndefined()
+    await typed(api, 'status')
+    expect(await system(api)).toContain('Phase: Check')
+    expect(await write(api, 'src/app.ts')).toContain('Check only runs checks')
+  })
+})
+
+describe('review 2: a skip in the Fix step reaches the CLI', () => {
+  const skipInFix = async (api: Api) => {
+    await sh(api, `${CLI} gate check`)
+    await (await band(api)).input({ key: 'override-reason', text: 'the flaky test is known' })
+    expect(await sh(api, `${CLI} override check --reason 'the flaky test is known'`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state advance check_complete commit`)).toBeUndefined()
+  }
+
+  test('after the person moved the run on to Check', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'build_complete', next_stage: 'review' }, { plan: 'PASS', build: 'PASS', review: 'PASS' })
+    await api.session.start(START)
+    await (await band(api)).press({ key: 'action-continue' })
+    expect(await sh(api, `${CLI} state advance review_complete check`)).toBeUndefined()
+    w.files.set('.temper/gates.json', JSON.stringify({ plan: { verdict: 'PASS', ts: LATER }, build: { verdict: 'PASS', ts: LATER }, review: { verdict: 'PASS', ts: LATER }, check: { verdict: 'FAIL', ts: LATER } }))
+    await skipInFix(api)
+  })
+
+  test('after the CLI went on to Check by the verdicts alone', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'intent_complete', next_stage: 'plan' }, { intent: 'PASS', plan: 'PASS' })
+    await api.session.start(START)
+    await (await band(api)).press({ key: 'action-continue' })
+    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    const d = JSON.parse(w.files.get('.temper/build-state.json') ?? '{}') as Record<string, unknown>
+    w.files.set('.temper/build-state.json', JSON.stringify({ ...d, stage: 'review_complete', next_stage: 'check' }))
+    w.files.set('.temper/gates.json', JSON.stringify({ plan: { verdict: 'PASS', ts: LATER }, build: { verdict: 'PASS', ts: LATER }, review: { verdict: 'PASS', ts: LATER }, check: { verdict: 'FAIL', ts: LATER } }))
+    await typed(api, 'status')
+    await skipInFix(api)
+  })
+})
+
+describe('review 3: a skip made before a loop back does not count for the stage that is redone', () => {
+  test('the redone Review fails: moving on needs the person again', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'build_complete', next_stage: 'review' }, { plan: 'PASS', build: 'PASS', review: 'FAIL' }, {}, ['The check found a real problem'])
+    await api.session.start(START)
+    await (await band(api)).input({ key: 'override-reason', text: 'reviewed by hand' })
+    expect(await sh(api, `${CLI} override review --reason 'reviewed by hand'`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state advance review_complete check`)).toBeUndefined()
+    w.files.set('.temper/gates.json', JSON.stringify({ plan: { verdict: 'PASS', ts: LATER }, build: { verdict: 'PASS', ts: LATER }, review: { verdict: 'FAIL', ts: LATER }, check: { verdict: 'FAIL', ts: LATER } }))
+    await sh(api, `${CLI} gate check`)
+    await (await band(api)).press({ key: 'action-more' })
+    await (await band(api)).press({ key: 'action-loop-back' })
+    expect(await sh(api, `${CLI} state loop check build --reason 'The check found a real problem'`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state set next_stage build`)).toBeUndefined()
+    w.files.set('.temper/gates.json', JSON.stringify({ plan: { verdict: 'PASS', ts: LATER }, build: { verdict: 'PASS', ts: LATER } }))
+    await typed(api, 'status')
+    expect(await sh(api, `${CLI} state advance build_complete review`)).toBeUndefined()
+    w.files.set('.temper/gates.json', JSON.stringify({ plan: { verdict: 'PASS', ts: LATER }, build: { verdict: 'PASS', ts: LATER }, review: { verdict: 'FAIL', ts: LATER } }))
+    await typed(api, 'status')
+    expect(await sh(api, `${CLI} state advance review_complete check`)).toBe(ONLY_USER)
+  })
+})
+
+describe('review 4: a skip of an earlier run on the same spec folder', () => {
+  test('does not count in the new run', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'build_complete', next_stage: 'review' }, { plan: 'PASS', build: 'PASS', review: 'FAIL' })
+    await api.session.start(START)
+    await (await band(api)).input({ key: 'override-reason', text: 'reviewed by hand' })
+    expect(await sh(api, `${CLI} override review --reason 'reviewed by hand'`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state advance review_complete check`)).toBeUndefined()
+    // A new run on the same spec folder: state init writes the stage started with Intent next, and clears the verdicts.
+    const base = { spec: 'pw', spec_path: SPEC, command: 'temper', branch: 'feature/pw' }
+    w.files.set('.temper/build-state.json', JSON.stringify({ ...base, stage: 'started', next_stage: 'intent' }))
+    w.files.set('.temper/gates.json', '{}')
+    await typed(api, 'status')
+    // The new run reaches Review, and its review fails.
+    w.files.set('.temper/build-state.json', JSON.stringify({ ...base, stage: 'build_complete', next_stage: 'review' }))
+    w.files.set('.temper/gates.json', JSON.stringify({ plan: { verdict: 'PASS', ts: LATER }, build: { verdict: 'PASS', ts: LATER }, review: { verdict: 'FAIL', ts: LATER } }))
+    await typed(api, 'status')
+    expect(await sh(api, `${CLI} state advance review_complete check`)).toBe(ONLY_USER)
+  })
+})
+
+describe('review 5: a new choice replaces a step back that waits', () => {
+  test('minimal mode: Override and continue after Loop back to Build; the loop is not let through later', { options: { uiMode: 'minimal', moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    run(on, { stage: 'build_complete', next_stage: 'review' }, { plan: 'PASS', build: 'PASS', review: 'FAIL' }, {}, ['Loop back to Build: the token bug is real', 'Override and continue: reviewed by hand'])
+    await api.session.start(START)
+    const ask = gate('The review found problems. What next?', ['Loop back to Build', 'Override and continue', 'Save for later'])
+    await api.tool.call(ask)
+    await api.tool.call(ask)
+    expect(await sh(api, `${CLI} override review --reason 'reviewed by hand'`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state advance review_complete check`)).toBeUndefined()
+    await typed(api, 'status')
+    expect(await sh(api, `${CLI} state loop check build --reason x`)).toBeDefined()
+    expect(await sh(api, `${CLI} state set next_stage build`)).toBeDefined()
+  })
+
+  test('full mode, the Design gate: a skip after Loop back to Plan; the plan is not redone without approval', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const files = { '.claude/temper.config': 'phases:\n  design: true\n', [`${SPEC}/design.md`]: '# Design\n', '.temper/gates.json': JSON.stringify({ intent: { verdict: 'PASS', ts: LATER }, plan: { verdict: 'PASS', ts: LATER }, design: { verdict: 'FAIL', ts: LATER } }) }
+    run(on, { stage: 'plan_complete', next_stage: 'design', complexity: 'medium' }, {}, files, ['The check found a real problem'])
+    await api.session.start(START)
+    await (await band(api)).press({ key: 'action-loop-back' })
+    await (await band(api)).input({ key: 'override-reason', text: 'the concern is owned by the platform team' })
+    expect(await sh(api, `${CLI} state loop design plan --reason x`)).toBeDefined()
+  })
+})
+
+describe('review 5b: a step back the CLI already took is kept', () => {
+  test('its loop ran in an earlier session: a new move of the person leaves it, and the step that follows goes through', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'build_complete', next_stage: 'review' }, { plan: 'PASS', build: 'PASS', review: 'FAIL' }, {}, ['The check found a real problem'])
+    await api.session.start(START)
+    await (await band(api)).press({ key: 'action-loop-back' })
+    const d = JSON.parse(w.files.get('.temper/build-state.json') ?? '{}') as Record<string, unknown>
+    w.files.set('.temper/build-state.json', JSON.stringify({ ...d, next_stage: 'build' }))
+    await typed(api, 'status')
+    await (await band(api)).input({ key: 'override-reason', text: 'built by hand' })
+    expect(await sh(api, `${CLI} state set next_stage build`)).toBeUndefined()
+  })
+})
+
+describe('review 6: Run Build again takes a saved run up again', () => {
+  test('the resume is recorded, and the write rules hold again', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'plan_complete', next_stage: 'build' }, { plan: 'PASS', build: 'FAIL' }, { [`${SPEC}/tasks.md`]: ALL_DONE })
+    await api.session.start(START)
+    await typed(api, 'pause')
+    expect(await bar(api)).toContain('Run Build again')
+    await (await band(api)).press({ key: 'action-run-stage' })
+    expect(moves(w)).toEqual(['pause:::person', 'resume:::person'])
+    expect(await write(api, 'src/elsewhere.ts')).toBeDefined()
+  })
+})
+
+describe('review 7: the last group gate is for the first pass of Build', () => {
+  test('after a step back to Build (its check is stale), key 1 runs Build and Loop back to Plan stays', () => {
+    const set = actionsFor('build', { grouped: true, tasksLeft: 0, task: { n: 1, of: 1 }, gate: 'stale' })
+    expect(set.primary[0]?.label).toBe('Run Build')
+    expect(set.more.map(a => a.label)).toContain('Loop back to Plan')
+  })
+})
+
+describe('review 8: at the fix limit', () => {
+  test('the menu does not offer Accept a finding, which the limit refuses', () => {
+    expect(actionsFor('fix', { loopLimitReached: true, hasFindings: true }).more.map(a => a.label)).not.toContain('Accept a finding')
+    expect(actionsFor('fix', { hasFindings: true }).more.map(a => a.label)).toContain('Accept a finding')
+  })
+})

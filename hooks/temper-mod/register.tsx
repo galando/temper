@@ -465,6 +465,14 @@ async function decideAs($: Api, command: Bare, origin: 'person' | 'model', drawn
   const who = from === undefined ? { author: 'user' } : { author: `${from} origin`, anyOrigin: true }
   const done = await apply(makeIo($), options, fresh, { ...command, origin, ...who } as Command)
   adopt($, done.snap)
+  // A step back that waits to be recorded (its loop has not run, and the CLI is not at its stage) was the person's
+  // earlier choice: another move chosen now replaces it, so it lets no later `state loop` through.
+  if (!done.error && origin === 'person' && MOVES.has(command.type)) {
+    const waits = (h: { id: string; phase?: string }) => !loopedDecisions.has(h.id) && h.phase !== fresh.cliNext
+    const replaced = fresh.humanDecisions.filter(h => h.kind === 'back' && waits(h) && !(command.type === 'back' && h.phase === command.to))
+    for (const h of replaced) await voidStepBack(makeIo($), h.id)
+    if (replaced.length > 0) adopt($, await refresh($))
+  }
   if (!done.error && MOVES.has(command.type)) lastMoveAt = Date.now()
   return { error: done.error, events: done.events }
 }
@@ -679,6 +687,14 @@ async function runActionLocked($: Api, action: Action, requestId?: string, drawn
     return
   }
   if (action.prompt && !action.command) {
+    // A prompt that runs the stage (Run Build again) takes a saved run up again, as a launch does.
+    if (action.resume) {
+      if (working) {
+        showToast($, 'Claude is working. Wait for the answer, then press 1.')
+        return
+      }
+      await takeUp($)
+    }
     await submitText($, action.prompt)
     return
   }
@@ -871,9 +887,12 @@ async function recordGateAnswer($: Api, result: unknown): Promise<void> {
   const command = gateAnswer(result, snap.state.phase, { atDesign: snap.state.atDesign })
   if (command === null) return
   // A move that waits to be recorded: the same move asked again records nothing more (the decision is there); a
-  // different one is the person's new choice (a step back also ends the earlier choice for the stages it redoes).
-  const waiting = snap.sync.pending?.draft.type
-  const same = waiting !== undefined && (command.type === waiting || (waiting === 'advance' && command.type === 'approve'))
+  // different one, or a step back to another stage, is the person's new choice (it replaces a step back that waits, and
+  // a step back ends the earlier choice for the stages it redoes).
+  const waiting = snap.sync.pending?.draft
+  const same =
+    waiting !== undefined &&
+    (waiting.type === 'back' ? command.type === 'back' && command.to === waiting.to : command.type === waiting.type || (waiting.type === 'advance' && command.type === 'approve'))
   if (same) return
   await decideAs($, command, 'person')
 }

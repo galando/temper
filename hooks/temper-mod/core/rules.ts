@@ -249,6 +249,14 @@ function skippedStage(s: RunState, stage: string): boolean {
   return s.overrides.some(o => stageName(o.phase) === stage && o.ts >= lastBack)
 }
 
+// The person's skip of a stage still holds: no later step back redid that stage (a step back to it or to an earlier one).
+// The CLI keeps its overrides across a loop, so a skip of a Review that is redone must not let the new Review through.
+function skipHolds(s: RunState, stage: string): boolean {
+  const at = PHASE_INDEX[stage] ?? 0
+  const redone = s.history.reduce((t, h) => (h.kind === 'back' && (PHASE_INDEX[h.to] ?? 0) <= at ? Math.max(t, h.ts) : t), -Infinity)
+  return s.overrides.some(o => stageName(o.phase) === stage && o.stage !== 'design' && o.ts >= redone)
+}
+
 // The Plan was approved by the person in this run: a trusted advance out of Plan, not undone by a
 // later back step to Intent or Plan. Untrusted event files never reach the state, so they never count.
 const planApproved = (s: RunState): boolean => {
@@ -311,7 +319,7 @@ export function nextStage(stage: string, complexity: string | null | undefined):
 // carve-outs holds (an artifact only commit, or a Build checkpoint on the run's branch).
 function commitAllowed(s: RunState, facts: CommitFacts | undefined): boolean {
   if (facts?.stagedSpecsOnly || facts?.checkpoint) return true
-  const passed = (p: Phase) => s.gate[p] === 'fresh' || s.overrides.some(o => o.phase === p)
+  const passed = (p: Phase) => s.gate[p] === 'fresh' || skipHolds(s, p)
   return (['plan', 'build', 'review', 'check'] as const).every(passed)
 }
 
@@ -327,7 +335,7 @@ function followsVerdict(s: RunState, stage: string, complexity?: string | null):
   }
   if (!(stage in s.gate)) return false
   const here = s.phase === stage || (s.phase === 'fix' && stage === 'check')
-  return here && (s.gate[stage as Phase] === 'fresh' || s.overrides.some(o => o.phase === stage))
+  return here && (s.gate[stage as Phase] === 'fresh' || skipHolds(s, stage))
 }
 
 const STATE_END = (cli: string): string =>
@@ -457,9 +465,13 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
   // After the run is done the commit gate may still FAIL: an override then is the person's "Override and commit" (one
   // decision covers the overrides of that one command), never Claude's own.
   if (s.phase === 'done' && c.calls.some(call => call.kind === 'override')) {
+    if (c.calls.some(call => call.invalid)) return { deny: REPEATED_FLAG }
+    // The person's skip in the Fix step takes the record to Done before its `override check` runs: that one call mirrors it.
+    const skips = c.calls.filter(call => call.kind === 'override')
+    const fixSkip = (ctx.humanDecisions ?? []).find(h => h.kind === 'override' && (h.phase === 'check' || h.phase === 'fix'))
+    if (fixSkip && skips.length === 1 && skips[0]?.stage === 'check') return { allow: true, consume: 'override', eventId: fixSkip.id, eventIds: [fixSkip.id] }
     const d = (ctx.humanDecisions ?? []).find(h => h.kind === 'override' && h.phase === 'commit')
     if (!d) return { deny: DONE_OVERRIDE_DENY }
-    if (c.calls.some(call => call.invalid)) return { deny: REPEATED_FLAG }
     if (c.calls.some(call => call.kind !== 'override')) return { deny: DONE_OVERRIDE_DENY }
     return { allow: true, consume: 'override', eventId: d.id, eventIds: [d.id] }
   }

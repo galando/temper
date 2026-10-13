@@ -36,7 +36,8 @@ export type Action = {
   command?: string
   asksReason?: boolean
   // After the command is recorded and mirrored, run `/temper:temper` (no arguments) so the
-  // orchestrator launches the stage. Also set alone: the action only launches the stage.
+  // orchestrator launches the stage. Also set alone: the action only launches the stage. With a prompt: the prompt
+  // runs the stage, and takes a saved run up again first.
   resume?: boolean
   // Put this draft in the prompt box and let the person type the rest (Discuss, Change).
   fill?: string
@@ -145,10 +146,11 @@ const READY_DESC: Record<Phase, string> = {
 // Build is gated at every checkpoint (one task per launch, or one group in grouped Build): a check that fails
 // while tasks are still open is no failure, only a checkpoint. The next step is the next task or group.
 // In grouped Build the last group's gate comes after its tasks are all ticked: until the build check has run and failed (the
-// completion gate), that is still a checkpoint of the group loop.
+// completion gate), that is still a checkpoint of the group loop. Not after a step back to Build (its check is stale): the
+// groups are done then, and Build runs its fix pass.
 const isCheckpoint = (phase: Phase, ctx: ActionContext): boolean => {
   const left = ctx.tasksLeft
-  const lastGroup = ctx.grouped === true && left === 0 && ctx.gate !== 'fail'
+  const lastGroup = ctx.grouped === true && left === 0 && ctx.gate !== 'fail' && ctx.gate !== 'stale'
   return phase === 'build' && !ctx.ready && Boolean(ctx.task) && (left === undefined ? ctx.gate !== 'fail' : (left ?? 0) > 0 || lastGroup)
 }
 
@@ -176,17 +178,21 @@ function main(phase: Phase, ctx: ActionContext): Action {
     return loopBack(up, '1')
   }
   // A failed Build check: Claude mends what it names (the Build completion gate of the Build loop), then checks again.
+  // It runs the stage, so it takes a saved run up again as a launch does.
   if (phase === 'build' && ctx.gate === 'fail') {
-    return prompt(
-      '1',
-      'run-stage',
-      'Run Build again',
-      'Claude mends what the build check found. Then checks again.',
-      'The user chose Run Build again. Mend what the failed build check names, as the Build completion gate of the Build loop says ' +
-        '(the tasks of a group with group reopen, an integrate failure with the fix pass), then run the build check again and stop for the user.',
-      SHOW,
-      'Build again',
-    )
+    return {
+      ...prompt(
+        '1',
+        'run-stage',
+        'Run Build again',
+        'Claude mends what the build check found. Then checks again.',
+        'The user chose Run Build again. Mend what the failed build check names, as the Build completion gate of the Build loop says ' +
+          '(the tasks of a group with group reopen, an integrate failure with the fix pass), then run the build check again and stop for the user.',
+        SHOW,
+        'Build again',
+      ),
+      resume: true,
+    }
   }
   if (phase === 'intent' && ctx.gate !== 'fail') return launch('1', 'run-stage', 'Start Intent', 'Claude writes the intent and checks it. Then you decide.')
   // At the Design gate (part of Plan in the mod) the stage that runs is Design.
@@ -364,10 +370,10 @@ function phaseMenu(phase: Phase, ctx: ActionContext): Action[] {
     case 'check':
       return [...(ctx.configSuggestions ? extra([grill(phase)]) : []), save(paused)]
     case 'fix':
-      // At the loop limit Save for later is already key 3, and only a loop back to Plan is left. Before it, a failed Check
-      // can go back to Build, as the original Check gate offers.
+      // At the loop limit Save for later is already key 3, and only a loop back to Plan or a skip is left (no accepted
+      // finding either: the limit refuses it). Before it, a failed Check can go back to Build, as the original Check gate offers.
       return ctx.loopLimitReached
-        ? [grill(phase), teach(phase), ...(ctx.hasFindings ? [acceptOne] : [])]
+        ? [grill(phase), teach(phase)]
         : [...(spent(phase, 'build', ctx) ? [] : [loopBack('build', '1')]), grill(phase), teach(phase), ...(ctx.hasFindings ? [acceptOne] : []), save(paused)]
   }
 }

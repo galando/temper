@@ -241,14 +241,15 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
 
 // `state init` began a new run on a spec folder whose record holds an earlier one: the CLI writes the stage `started`
 // only there (with the first stage next: intent, or rca for a fix run), and after the record's last start a person's advance was mirrored (its `state advance` took the CLI past
-// `started`) or a check result came in. `spent` says whether a decision was used by its mirror call. The choices of
-// the earlier run do not count in the new one, as `state init` clears the CLI's own ledgers.
+// `started`), a check result came in, or a stage past Intent was skipped (a run whose only choices were skips, such as
+// one the mod first saw past Plan). `spent` says whether a decision was used by its mirror call. The choices of the
+// earlier run do not count in the new one, as `state init` clears the CLI's own ledgers.
 export function earlierRun(events: readonly TemperEvent[], cliStage: string | null, cliNext: string | null, spent: (id: string) => boolean): boolean {
   if (cliStage !== 'started' || (cliNext !== 'intent' && cliNext !== 'rca')) return false
   let past = false
   for (const ev of [...events].sort(compareEvents)) {
     if (ev.type === 'start') past = false
-    else if ((ev.type === 'advance' && ev.origin === 'person' && spent(ev.id)) || ev.type === 'checkResult') past = true
+    else if ((ev.type === 'advance' && ev.origin === 'person' && spent(ev.id)) || ev.type === 'checkResult' || (ev.type === 'override' && ev.phase !== 'intent')) past = true
   }
   return past
 }

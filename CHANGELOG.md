@@ -93,6 +93,14 @@ a dialog option everywhere, and the guard accepts the move chosen:
   `/temper:check` on FAIL, `/temper:fix` (Fix, Review and Check on FAIL) and the resume of the same
   feature in minimal and off modes all offer their moves as options; the reason question holds for
   every `Temper gate` question.
+- A review of those fixes found more, now fixed: an armed run that looped back by itself after a failed
+  Check looked reset to the mod, which then let the redone Review write code (a reset is now judged by
+  the person's own choices, and an armed run at Check is at Check, not in the Fix step); a skip in the
+  Fix step was refused when Claude recorded it in the CLI; a skip made before a loop back counted for
+  the stage that was redone; a skip of an earlier run on the same spec folder counted in a new run; a
+  step back that waited stayed open after the person chose another move; "Run Build again" did not
+  take a saved run up again; the last group gate came back after a step back to Build; and the fix
+  limit offered "Accept a finding", which the limit refuses.
 - `docs/mods-testing.md` section 4b lists every wait point to check by hand in each setup.
 
 **Fixes from a whole-diff review.**

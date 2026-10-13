@@ -267,7 +267,9 @@ const FLOW_ORDER: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'chec
 //  - the CLI name is not one the mod knows: fail open, say so, block nothing;
 //  - the CLI looks reset (earlier than a check that passed): do not block work those checks passed.
 // `buttons`: the bar draws its buttons (full mode). Without them the line about a waiting move is for Claude, with no key 1.
-export function reconcile(state: RunState, nextStage: string | null, pending: PendingMove | null, buttons = true): { state: RunState; sync: Sync } {
+// `armed`: an armed autonomous run. Its Fix step is no step of the person (the run loops back by itself), so a record
+// left in Fix follows the CLI at Check too; a park makes the run interactive again, and the Fix step is back.
+export function reconcile(state: RunState, nextStage: string | null, pending: PendingMove | null, buttons = true, armed = false): { state: RunState; sync: Sync } {
   if (!state.started) return { state, sync: NO_SYNC }
   const cli = cliPhase(nextStage)
   if (cli === null) {
@@ -280,8 +282,11 @@ export function reconcile(state: RunState, nextStage: string | null, pending: Pe
   let line: string | null = null
   let held: PendingMove | null = null
   let behind = false
-  if (!samePhase(state.phase, cli)) {
-    const ahead = state.phase === null ? -1 : state.phase === 'done' ? 5 : state.phase === 'fix' ? 4 : FLOW_ORDER.indexOf(state.phase)
+  if (!samePhase(state.phase, cli) || (armed && state.phase === 'fix' && cli === 'check')) {
+    // How far the person's own choices took the run: the last row a decision wrote. A check result is the CLI's verdict,
+    // no choice: an armed run that loops back by itself after a failed Check leaves the record in Fix, and is no reset.
+    const reached = [...state.history].reverse().find(h => h.kind !== 'check')?.to ?? state.phase
+    const ahead = reached === null ? -1 : reached === 'done' ? 5 : reached === 'fix' ? 4 : FLOW_ORDER.indexOf(reached)
     const at = cli === 'done' ? 5 : cli === 'fix' ? 4 : FLOW_ORDER.indexOf(cli)
     // The CLI is earlier than the person's own choices, with nothing waiting to be mirrored and no skip
     // that the orchestrator has yet to advance past: nobody asked for that. It looks reset.
@@ -424,7 +429,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     if (fits) pendingMove = { id: ev.id, draft: ev }
   }
 
-  const sync = reconcile(state, bs.nextStage, pendingMove, phaseBarStyle(cfg.mode) === 'phases-and-actions')
+  const sync = reconcile(state, bs.nextStage, pendingMove, phaseBarStyle(cfg.mode) === 'phases-and-actions', bs.runMode === 'autonomous' && autonomyEnabled)
   state = sync.state
   // The Design gate: the CLI is at design, part of Plan in the mod. Its own check (gate design) decides there.
   if (bs.nextStage === 'design') state = { ...state, atDesign: true, designGate: gateOf(verdicts.design, state.since.plan, state.invalidated.plan) }
