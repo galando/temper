@@ -7,8 +7,9 @@ import type { Draft, DriftChoice, Origin, Phase, TemperEvent } from './events'
 
 export type Verdict = { verdict: 'PASS' | 'FAIL'; ts: number }
 
-// The CLI's verdicts per stage (from .temper/gates.json); the mod only reads them.
-export type Verdicts = Partial<Record<Phase, Verdict>>
+// The CLI's verdicts per stage (from .temper/gates.json); the mod only reads them. Design is part of Plan in the mod: its
+// verdict judges the Design gate (RunState.designGate) while the CLI is at design.
+export type Verdicts = Partial<Record<Phase | 'design', Verdict>>
 
 export type GateState = 'fresh' | 'stale' | 'fail' | 'none'
 
@@ -18,7 +19,7 @@ export type ReduceOptions = {
   isTrusted?: (ev: TemperEvent) => boolean
 }
 
-export type OverrideRecord = { id: string; phase: Phase; reason: string; author?: string; ts: number }
+export type OverrideRecord = { id: string; phase: Phase; reason: string; author?: string; ts: number; stage?: string }
 export type AcceptRecord = { id: string; findingId: string; reason: string; author?: string; ts: number }
 export type DriftRecord = { id: string; path: string; choice: DriftChoice; reason: string; author?: string; ts: number }
 export type HistoryRecord = {
@@ -50,6 +51,10 @@ export type RunState = {
   allowOnce: string[]
   history: HistoryRecord[]
   unverified: string[]
+  // The CLI is at its design stage (part of Plan in the mod), and the state of the design check there. Set by the adapter
+  // from build-state.json; a fold of the events alone leaves them false and none.
+  atDesign: boolean
+  designGate: GateState
 }
 
 // Where only the person decides. The bar's text names its buttons; with no buttons (minimal and off modes) the person
@@ -98,7 +103,24 @@ export function initialState(maxLoops = 3): RunState {
     allowOnce: [],
     history: [],
     unverified: [],
+    atDesign: false,
+    designGate: 'none',
   }
+}
+
+// The check of the step the run is at: the design check at the Design gate (part of Plan in the mod), else the phase's own.
+export function phaseGate(s: RunState): GateState {
+  if (s.phase === null || s.phase === 'done') return 'none'
+  return s.phase === 'plan' && s.atDesign ? s.designGate : s.gate[s.phase]
+}
+
+// The state of one stage's check: its verdict against the time the stage was entered or invalidated. gates.json times
+// have whole second resolution and phase entry times are in milliseconds, so compare whole seconds and treat equal as fresh.
+export function gateOf(v: Verdict | undefined, since: number | undefined, invalidated: number | undefined): GateState {
+  const boundary = Math.max(since ?? -Infinity, invalidated ?? -Infinity)
+  if (!v) return 'none'
+  if (Math.floor(v.ts / 1000) < Math.floor(boundary / 1000)) return 'stale'
+  return v.verdict === 'PASS' ? 'fresh' : 'fail'
 }
 
 export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, opts: ReduceOptions = {}): RunState {
@@ -150,8 +172,9 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
         }
         break
       case 'override':
-        if (s.phase === ev.phase) {
-          s.overrides.push({ id: ev.id, phase: ev.phase, reason: ev.reason, author: ev.author, ts: ev.ts })
+        // A skip at the Design gate is made while the Plan approval has taken the fold to Build (the CLI is at design).
+        if (s.phase === ev.phase || (ev.stage === 'design' && ev.phase === 'plan' && s.phase === 'build')) {
+          s.overrides.push({ id: ev.id, phase: ev.phase, reason: ev.reason, author: ev.author, ts: ev.ts, ...(ev.stage ? { stage: ev.stage } : {}) })
           if (ev.phase === 'check' || ev.phase === 'fix') s.checkOverridden = true
           const to = nextOf(ev.phase)
           enter(to, ev.ts)
@@ -196,15 +219,7 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
 
   s.loopLimitReached = s.phase === 'fix' && s.loops > s.maxLoops
 
-  for (const p of FLOW) {
-    const v = verdicts[p]
-    const boundary = Math.max(s.since[p] ?? -Infinity, s.invalidated[p] ?? -Infinity)
-    // gates.json times have whole second resolution and phase entry times are in
-    // milliseconds, so compare whole seconds and treat equal as fresh.
-    if (!v) s.gate[p] = 'none'
-    else if (Math.floor(v.ts / 1000) < Math.floor(boundary / 1000)) s.gate[p] = 'stale'
-    else s.gate[p] = v.verdict === 'PASS' ? 'fresh' : 'fail'
-  }
+  for (const p of FLOW) s.gate[p] = gateOf(verdicts[p], s.since[p], s.invalidated[p])
   s.stale = FLOW.filter(p => s.invalidated[p] !== undefined && p !== s.phase && s.gate[p] !== 'fresh')
   return s
 }
@@ -230,7 +245,7 @@ export type Command = { origin: Origin; author?: string; anyOrigin?: boolean } &
   | { type: 'approve' }
   | { type: 'advance' }
   | { type: 'back'; to: Phase; reason: string }
-  | { type: 'override'; reason: string; phase?: Phase }
+  | { type: 'override'; reason: string; phase?: Phase; stage?: string }
   | { type: 'acceptFinding'; id: string; reason: string }
   | { type: 'drift'; path: string; choice: DriftChoice; reason: string }
   | { type: 'useDrift'; path: string }
@@ -272,8 +287,23 @@ export function decide(state: RunState, cmd: Command): Decision {
     if (!isPerson) return fail(ONLY_USER)
     return { events: [{ type: 'resume', ...who }] }
   }
-  if (state.paused) return fail('The run is saved for later. Next: choose Resume.')
-  if (phase === 'done') return fail('The run is done. Next: commit it.')
+  // A move the person makes on a saved run takes it up again: the resume is recorded first, then the move.
+  if (state.paused) {
+    const takesUp = isPerson && (cmd.type === 'approve' || cmd.type === 'advance' || cmd.type === 'back' || cmd.type === 'override' || cmd.type === 'acceptFinding' || cmd.type === 'drift')
+    if (!takesUp) return fail('The run is saved for later. Next: choose Resume.')
+    const inner = decide({ ...state, paused: false }, cmd)
+    return 'error' in inner ? inner : { events: [{ type: 'resume', ...who }, ...inner.events] }
+  }
+  // After the run is done, the commit gate may still FAIL (a stage it reads has no pass): the person's "Override and
+  // commit" is the one decision left. It moves nothing; the guard lets the overrides of that commit through.
+  if (phase === 'done') {
+    if (cmd.type === 'override' && (cmd.stage === undefined || cmd.stage === 'commit')) {
+      if (!isPerson) return fail(ONLY_USER)
+      if (!cmd.reason.trim()) return fail('A skip needs a reason.')
+      return { events: [{ type: 'override', phase: 'check', stage: 'commit', reason: cmd.reason.trim(), ...who }] }
+    }
+    return fail('The run is done. Next: commit it.')
+  }
 
   // At the fix loop limit only re-plan, override and pause remain.
   if (state.loopLimitReached) {
@@ -288,8 +318,9 @@ export function decide(state: RunState, cmd: Command): Decision {
       const needsPerson = cmd.type === 'approve' || phase === 'intent' || phase === 'plan'
       if (needsPerson && !isPerson) return fail(ONLY_USER)
       if (phase !== 'fix') {
-        const g = state.gate[phase]
-        const name = phaseLabel(phase)
+        const design = phase === 'plan' && state.atDesign
+        const g = design ? state.designGate : state.gate[phase]
+        const name = design ? 'Design' : phaseLabel(phase)
         if (g === 'stale' && state.invalidated[phase] !== undefined) {
           return fail(`${name} needs a new check. A step back made the old check invalid.`)
         }
@@ -303,7 +334,9 @@ export function decide(state: RunState, cmd: Command): Decision {
     case 'back': {
       if (!isPerson) return fail(ONLY_USER)
       if (!cmd.reason.trim()) return fail('A loop back needs a reason.')
-      if (cmd.to === 'fix' || !(order(cmd.to) < order(phase))) {
+      // At the Design gate the loop back to Plan redoes the plan the design was made for.
+      const redoPlan = state.atDesign && phase === 'plan' && cmd.to === 'plan'
+      if (cmd.to === 'fix' || !(order(cmd.to) < order(phase) || redoPlan)) {
         return fail(`A loop back goes to a step before ${phaseLabel(phase)}.`)
       }
       return { events: [{ type: 'back', to: cmd.to, reason: cmd.reason.trim(), ...who }] }
@@ -312,7 +345,9 @@ export function decide(state: RunState, cmd: Command): Decision {
       if (!isPerson) return fail(ONLY_USER)
       if (!cmd.reason.trim()) return fail('A skip needs a reason.')
       if (cmd.phase !== undefined && cmd.phase !== phase) return fail(`You can skip only the current step, ${phaseLabel(phase)}.`)
-      return { events: [{ type: 'override', phase, reason: cmd.reason.trim(), ...who }] }
+      // At the Design gate the skip is of the design stage: the CLI records it as `override design`.
+      const atDesign = phase === 'plan' && state.atDesign ? { stage: 'design' } : {}
+      return { events: [{ type: 'override', phase, reason: cmd.reason.trim(), ...atDesign, ...who }] }
     }
     case 'acceptFinding': {
       if (!isPerson) return fail(ONLY_USER)

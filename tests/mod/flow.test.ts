@@ -29,7 +29,8 @@ describe('the orchestrator starts every stage', () => {
   })
 
   test('Continue at the design check (the CLI is at design, the mod at Plan) runs continue design (found live)', async ($, on) => {
-    const w = world(on, runFiles({ nextStage: 'design', complexity: 'medium', gates: { plan: 'PASS' } }))
+    // The design check ran (the orchestrator runs gate design before the Design gate) and passed.
+    const w = world(on, runFiles({ nextStage: 'design', complexity: 'medium', gates: { plan: 'PASS', design: 'PASS' } }))
     await $.session.start(START)
     const ui = await band($)
     await ui.press({ key: 'action-continue' })

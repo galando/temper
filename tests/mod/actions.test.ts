@@ -33,6 +33,7 @@ const ORIGINAL = [
   'Start Intent',
   'Run Intent',
   'Run Plan',
+  'Run Design',
   'Run Build',
   'Run Review',
   'Run Check',
@@ -79,6 +80,10 @@ const STATES: ActionContext[] = [
   { pending: true, pendingMove: { type: 'back', to: 'plan' } },
   { pending: true, pendingMove: { type: 'override' } },
   { hasFindings: true, ready: true, gate: 'fresh' },
+  // The Design gate (part of Plan in the mod), and a loop whose budget is spent.
+  { atDesign: true, gate: 'fail' },
+  { atDesign: true, gate: 'none' },
+  { spentLoops: ['review>build', 'build>plan', 'check>build', 'plan>intent'], gate: 'fail', hasFindings: true },
 ]
 
 const everyAction = (): Array<{ where: string; x: Action }> => {
@@ -373,7 +378,8 @@ describe('easy words (labels, lines and prompts)', () => {
   test('the sentence under the bar starts with the key and the label of the main action', () => {
     for (const p of PHASES) for (const ctx of STATES) {
       const a = actionsFor(p, ctx)
-      const now = nowText(p, ctx)
+      // A saved run says so first: any choice takes it up again.
+      const now = nowText(p, ctx).replace(/^The run is saved for later; a choice takes it up again\. /, '')
       if (p === 'fix' && ctx.loopLimitReached) continue
       expect(now.startsWith(`1 ${a.primary[0]?.label}. `), `${p} ${JSON.stringify(ctx)}: ${now}`).toBe(true)
       expect(now.endsWith('.')).toBe(true)

@@ -69,7 +69,8 @@ export const stageOf = (phase: Phase): string => (phase === 'fix' ? 'check' : ph
 // flattened, so nothing in it (quotes, $(...), backticks) is read as shell.
 export const shellQuote = (text: string): string => `'${text.replace(/\r?\n/g, ' ').replace(/'/g, "'\\''")}'`
 
-export const overrideCommand = (phase: Phase, reason: string): string => `${CLI} override ${stageOf(phase)} --reason ${shellQuote(reason)}`
+// `stage`: the CLI stage when it is not the phase's own (design at the Design gate, see events.ts).
+export const overrideCommand = (phase: Phase, reason: string, stage?: string): string => `${CLI} override ${stage ?? stageOf(phase)} --reason ${shellQuote(reason)}`
 
 export const acceptCommand = (findingId: string, reason: string): string => `${CLI} evidence accept --stage review --id ${findingId} --reason ${shellQuote(reason)}`
 
@@ -78,7 +79,8 @@ export const backCommand = (to: Phase): string => `${CLI} state set next_stage $
 
 // The loop the CLI keeps for a step back: it counts against loops.max-per-type and clears the evidence of
 // the stage that is redone and every later one.
-export const loopCommand = (from: Phase, to: Phase, reason: string): string => `${CLI} state loop ${stageOf(from)} ${stageOf(to)} --reason ${shellQuote(reason)}`
+// `from` is a phase of the mod, or `design` when the run leaves its Design gate.
+export const loopCommand = (from: Phase | 'design', to: Phase, reason: string): string => `${CLI} state loop ${from === 'design' ? 'design' : stageOf(from)} ${stageOf(to)} --reason ${shellQuote(reason)}`
 
 // The stage of a `state advance <stage>_complete <next>` call, as a phase of the mod, only for
 // the two approvals that need a person: leaving Intent and leaving Plan. Design belongs to

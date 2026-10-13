@@ -5,7 +5,7 @@
 import type { Phase } from './events'
 import type { Verdicts } from './machine'
 
-const GATED: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check']
+const GATED: ReadonlyArray<Phase | 'design'> = ['intent', 'plan', 'design', 'build', 'review', 'check']
 
 // gates.json is `{ stage: { verdict: 'PASS'|'FAIL', ts: ISO string, ... } }`. Unreadable
 // input or a malformed row yields no verdict for that stage.
@@ -39,6 +39,8 @@ export type BuildState = {
   // The run's own branch and the command that started it (the CLI commit gate reads both).
   branch: string | null
   command: string | null
+  // `autonomous` once the person armed autonomy at the plan gate, else `interactive` (or none).
+  runMode: string | null
 }
 
 export function parseBuildState(text: string): BuildState | null {
@@ -60,6 +62,7 @@ export function parseBuildState(text: string): BuildState | null {
     complexity: typeof o.complexity === 'string' ? o.complexity : null,
     branch: typeof o.branch === 'string' && o.branch !== '' ? o.branch : null,
     command: typeof o.command === 'string' ? o.command : null,
+    runMode: typeof o.run_mode === 'string' ? o.run_mode : null,
     task: typeof o.task === 'number' && Number.isInteger(o.task) && o.task >= 1 ? o.task : null,
   }
 }

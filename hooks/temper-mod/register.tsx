@@ -1,6 +1,6 @@
 import type { CommandRunResult, EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import { apply, commitFacts, composeText, consumeDecision, idleSnapshot, keptReport, live, loadSnapshot, nothingToLose, publish, reportText, runFingerprint, settingsFrom, statusText, syncCheck, timelineText, writeReport } from './adapter'
+import { apply, commitFacts, composeText, consumeDecision, idleSnapshot, keptReport, live, loadSnapshot, nothingToLose, publish, reportText, runFingerprint, settingsFrom, statusText, syncCheck, timelineText, voidStepBack, writeReport } from './adapter'
 import type { Io, Snapshot } from './adapter'
 import { findingActions, reasonAsk } from './core/actions'
 import type { Action } from './core/actions'
@@ -545,14 +545,16 @@ async function handOver($: Api, drafts: readonly Draft[]): Promise<boolean> {
       launched = true
     } else {
       const snap = await ensure($)
-      // The phase a step back left, from the run's own history: the CLI loop is from -> to.
-      const left = draft.type === 'back' ? ([...snap.state.history].reverse().find(step => step.kind === 'back' && step.to === draft.to)?.from ?? null) : null
+      // The phase a step back left, from the run's own history: the CLI loop is from -> to. A step back from the Design
+      // gate leaves the CLI's design stage.
+      const left = draft.type === 'back' ? (snap.cliNext === 'design' ? 'design' : ([...snap.state.history].reverse().find(step => step.kind === 'back' && step.to === draft.to)?.from ?? null)) : null
       await submitText($, followUp(draft, snap.complexity, pluginCli(), left))
       // A skip is a move on, like a Continue: the CLI is still at the skipped stage, so the orchestrator does
       // that stage's On Continue steps (`state advance`, which the guard lets through for a skip) and launches
-      // the next stage. Fix is the Check stage of the CLI.
-      if (draft.type === 'override') {
-        await continueStage($, stageOf(draft.phase))
+      // the next stage. Fix is the Check stage of the CLI; a skip at the Design gate is of design. Override and commit
+      // (after the run is done) moves no stage: the mirror message says what to run.
+      if (draft.type === 'override' && draft.stage !== 'commit') {
+        await continueStage($, draft.stage ?? stageOf(draft.phase))
         launched = true
       }
     }
@@ -668,6 +670,7 @@ async function runActionLocked($: Api, action: Action, requestId?: string, drawn
       showToast($, 'Claude is working. Wait for the answer, then press 1.')
       return
     }
+    await takeUp($)
     await resumeRun($)
     return
   }
@@ -705,9 +708,19 @@ async function runActionLocked($: Api, action: Action, requestId?: string, drawn
 }
 
 async function runFindingAction($: Api, kind: 'fix' | 'accept' | 'explain', id: string): Promise<void> {
-  const [fix, , explain] = findingActions(id)
-  if (kind === 'fix') return submitText($, fix?.prompt ?? null)
+  const [, , explain] = findingActions(id)
   if (kind === 'explain') return submitText($, explain?.prompt ?? null)
+  if (kind === 'fix') {
+    // Fix is a loop back to Build for this finding: Build may change the code (Review may not), and Review runs again.
+    const claim = (await ensure($)).findings.find(f => f.id === id)?.claim ?? ''
+    const done = await decideAs($, { type: 'back', to: 'build', reason: `fix review finding ${id}${claim ? `: ${claim}` : ''}` }, 'person')
+    if (done.error) {
+      showToast($, done.error)
+      return
+    }
+    if (!(await handOver($, done.events))) await resumeRun($)
+    return
+  }
   const reason = await askReason($, reasonAsk('accept', `Accept finding ${id}`))
   if (!reason) {
     showToast($, 'Accept needs a reason.')
@@ -824,13 +837,20 @@ async function recordGateAnswer($: Api, result: unknown): Promise<void> {
     return
   }
   if (snap.sync.pending !== null) return
-  const command = gateAnswer(result, snap.state.phase)
+  const command = gateAnswer(result, snap.state.phase, { atDesign: snap.state.atDesign })
   if (command === null) return
   await decideAs($, command, 'person')
 }
 
+// A saved run is taken up again by the person's own action (a launch from the bar, a bare /temper:temper): the resume
+// is recorded, so the moves that follow are not refused as made on a saved run.
+async function takeUp($: Api): Promise<void> {
+  const snap = await ensure($)
+  if (!snap.inert && snap.state.paused && snap.state.phase !== null && snap.state.phase !== 'done') await decideAs($, { type: 'resume' }, 'person')
+}
+
 function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
-  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, groupedActive: snap.groupedActive, designRequired: snap.designRequired, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset, cli: pluginCli(), buttons: phaseBarStyle(snap.mode) === 'phases-and-actions' }
+  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, groupedActive: snap.groupedActive, designRequired: snap.designRequired, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset, cli: pluginCli(), buttons: phaseBarStyle(snap.mode) === 'phases-and-actions', autonomous: snap.runMode === 'autonomous' && snap.autonomyEnabled }
 }
 
 // What the guard decided for one call: a deny text, or null to pass it on. `ids` are the human decisions
@@ -1157,6 +1177,12 @@ export const register: Register = (on, opts) => {
     if (parsed === null) {
       const snap = await ensure($).catch(() => null)
       const isBare = e.args.trim() === ''
+      // The person's own bare /temper:temper on a saved run takes it up again: the resume is recorded and the
+      // orchestrator continues the run (its Resume).
+      if (isBare && isPerson && snap && !snap.inert && snap.state.paused && snap.state.phase !== null && snap.state.phase !== 'done') {
+        await takeUp($).catch(() => undefined)
+        return next(e)
+      }
       // Only the person's own bare /temper:temper toggles the pane. The same words from a plugin (the
       // button that launches a stage) go on to the orchestrator.
       if (isBare && isPerson && snap && !snap.inert && snap.mode === 'full' && snap.state.phase !== null && snap.state.phase !== 'done') {
@@ -1198,6 +1224,13 @@ export const register: Register = (on, opts) => {
       throw err
     }
     const errored = (result as { isError?: boolean }).isError === true
+    // The CLI refused the loop of the person's step back (BLOCKED: its budget is spent): the step back is void, so a
+    // skip or a save that follows applies to the stage the run is at.
+    const text = (result as { text?: unknown }).text
+    if (e.tool === 'Bash' && (g.loopIds?.length ?? 0) > 0 && typeof text === 'string' && /^BLOCKED\b/m.test(text)) {
+      for (const id of g.loopIds ?? []) await voidStepBack(makeIo($), id).catch(() => undefined)
+      await refresh($).catch(() => undefined)
+    }
     restoreStaged(g, errored)
     // An error status is not "nothing happened": the decision is given back only when the CLI's files did not change.
     const failed = errored && !(g.ids.length + (g.loopIds?.length ?? 0) > 0 && (await tookEffect($, g).catch(() => false)))

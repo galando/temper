@@ -4,10 +4,13 @@
 // matching typed `/temper:temper` command records. Pure: no Claude imports.
 //
 //   "Continue to {next}" (also with " (Recommended)")  approve at Intent and Plan, next after them
+//   "Stage by stage" / "Autonomous: ..."               approve at the Plan gate when autonomy is on (the arming choice)
 //   "Commit"                                           next at Check: the one question of a passed Check
 //   "Save for later"                                   pause
 //   "Loop back to {phase}"                             back, only with the person's reason
 //   "Override and continue"                            override, only with the person's reason
+//   "Accept finding {id}"                              accept that review finding, only with the person's reason
+//   "Override and commit"                              at Done, the failed commit gate: override, with a reason
 //
 // A reason is the person's own text for that question: the text typed after the choice in "Other"
 // ("Loop back to Plan: the API changed"), or the note the person added to the choice. When the choice
@@ -29,14 +32,20 @@ export const CANCEL = 'Cancel'
 
 type Question = { question?: unknown; header?: unknown }
 
+// Where the run is, beyond its phase: at the Design gate (part of Plan in the mod) a loop back to Plan redoes the plan.
+export type GateWhere = { atDesign?: boolean }
+
 // The words after a choice that carry the reason: a separator, or plain space.
 const REST = String.raw`(?:\s*\(recommended\))?(?:\s*[:;,.]\s*|\s+-\s+|\s+|$)([\s\S]*)$`
 const CONTINUE = /^continue to (\w+)(?:\s*\(recommended\))?$/i
+const ARMING = /^(?:stage by stage|autonomous\b[^\n]*)$/i
 const SAVE = /^save for later(?:\s*\(recommended\))?$/i
 const COMMIT = /^commit(?:\s*\(recommended\))?$/i
 const LOOP = new RegExp(String.raw`^loop back to (\w+)${REST}`, 'i')
 const OVERRIDE = new RegExp(String.raw`^override and continue${REST}`, 'i')
-const ASKS_REASON = new RegExp(String.raw`^\s*(loop back to \w+|override and continue)\s*[.:]\s*${escapeText(REASON_QUESTION)}`, 'i')
+const ACCEPT = new RegExp(String.raw`^accept finding (\w+)${REST}`, 'i')
+const OVERRIDE_COMMIT = new RegExp(String.raw`^override and commit${REST}`, 'i')
+const ASKS_REASON = new RegExp(String.raw`^\s*(loop back to \w+|override and continue|accept finding \w+|override and commit)\s*[.:]\s*${escapeText(REASON_QUESTION)}`, 'i')
 
 function escapeText(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -51,26 +60,34 @@ function nextNames(phase: Phase): string[] {
   return phase === 'plan' ? [next, 'design'] : [next]
 }
 
-// A step back to `to` from the phase the run is at: only to an earlier phase of the flow.
-function backTo(word: string, phase: Phase): Phase | null {
+// A step back to `to` from the phase the run is at: only to an earlier phase of the flow, or to Plan from the Design gate.
+function backTo(word: string, phase: Phase, where: GateWhere): Phase | null {
   const to = FLOW.find(p => p === word.toLowerCase())
   if (to === undefined) return null
+  if (where.atDesign && phase === 'plan' && to === 'plan') return to
   return PHASES.indexOf(to) < PHASES.indexOf(phase) ? to : null
 }
 
 // The move a choice names, with the reason the person gave for it (empty when none).
-function move(choice: string, reason: string, phase: Phase): Bare | null {
+function move(choice: string, reason: string, phase: Phase | 'done', where: GateWhere): Bare | null {
   const text = choice.trim()
+  if (phase === 'done') {
+    const commit = OVERRIDE_COMMIT.exec(text)
+    const why = commit ? (commit[1] ?? '').trim() || reason : ''
+    return commit && why !== '' ? { type: 'override', reason: why, stage: 'commit' } : null
+  }
   const go = CONTINUE.exec(text)
   if (go) {
     if (!nextNames(phase).includes((go[1] ?? '').toLowerCase())) return null
     return phase === 'intent' || phase === 'plan' ? { type: 'approve' } : { type: 'advance' }
   }
+  // The arming choice replaces Continue at the Plan gate (reference/autonomy.md): either answer approves the plan.
+  if (ARMING.test(text.replace(/\s*\(recommended\)$/i, ''))) return phase === 'plan' && !where.atDesign ? { type: 'approve' } : null
   if (SAVE.test(text)) return { type: 'pause' }
   if (COMMIT.test(text)) return phase === 'check' ? { type: 'advance' } : null
   const loop = LOOP.exec(text)
   if (loop) {
-    const to = backTo(loop[1] ?? '', phase)
+    const to = backTo(loop[1] ?? '', phase, where)
     const why = (loop[2] ?? '').trim() || reason
     return to !== null && why !== '' ? { type: 'back', to, reason: why } : null
   }
@@ -79,6 +96,11 @@ function move(choice: string, reason: string, phase: Phase): Bare | null {
     const why = (skip[1] ?? '').trim() || reason
     return why !== '' ? { type: 'override', reason: why } : null
   }
+  const accept = ACCEPT.exec(text)
+  if (accept) {
+    const why = (accept[2] ?? '').trim() || reason
+    return why !== '' && (phase === 'review' || phase === 'fix') ? { type: 'acceptFinding', id: accept[1] ?? '', reason: why } : null
+  }
   return null
 }
 
@@ -86,8 +108,8 @@ function move(choice: string, reason: string, phase: Phase): Bare | null {
 // counts: it is what the dialog returned after the person chose, not what the caller sent in. A question
 // with another header, a choice for another phase, a typed message that names no move, and a step back or
 // a skip with no reason are no decision. The first Temper gate question of the result decides.
-export function gateAnswer(result: unknown, phase: Phase | 'done' | null): Bare | null {
-  if (phase === null || phase === 'done') return null
+export function gateAnswer(result: unknown, phase: Phase | 'done' | null, where: GateWhere = {}): Bare | null {
+  if (phase === null) return null
   const r = (result && typeof result === 'object' ? (result as { result?: unknown }).result : undefined) as
     | { questions?: unknown; answers?: unknown; annotations?: unknown }
     | undefined
@@ -107,9 +129,9 @@ export function gateAnswer(result: unknown, phase: Phase | 'done' | null): Bare 
     if (asks) {
       if (answer.trim().toLowerCase() === CANCEL.toLowerCase()) return null
       const reason = [answer.trim(), typed].filter(t => t !== '').join(' ')
-      return move(asks[1] ?? '', reason, phase)
+      return move(asks[1] ?? '', reason, phase, where)
     }
-    return move(answer, typed, phase)
+    return move(answer, typed, phase, where)
   }
   return null
 }

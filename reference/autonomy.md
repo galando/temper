@@ -15,14 +15,19 @@ The Intent gate is always interactive: no unattended run starts without a human 
 accepted the intent.
 
 **Arming** (at the plan gate, on PASS, after human review): replace "Continue to Build"
-with "Stage by stage (Recommended)" (`run_mode: interactive`) / "Autonomous — run the
-rest unattended" (`run_mode: autonomous`).
+with "Stage by stage (Recommended)" (`run_mode: interactive`) / "Autonomous: run the
+rest unattended" (`run_mode: autonomous`) / "Save for later", asked with `AskUserQuestion`,
+header `Temper gate`, with or without the Temper bar. Either of the first two is the person's
+approval of the plan: do the plan's On Continue steps, then `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set run_mode autonomous`
+for "Autonomous" (the mod lets it through only after that approval).
 
 **While `run_mode == autonomous`, every post-plan gate:** run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate {stage}` as
 usual. **PASS** → auto-select Continue, no `AskUserQuestion` (but still print the summary
 box — an unattended run must leave a scroll-back-readable record). **FAIL** → loop
 automatically at the same budget as interactive mode, except Build→Plan (always returns
-to a human, never auto-loops); budget exhausted → park instead of asking. **At commit:**
+to a human, never auto-loops); budget exhausted → park instead of asking. A Review or Check
+FAIL loops back to Build (`state loop {review|check} build`); with the Temper mod the guard lets
+that loop through only in an armed run (`run_mode: autonomous` and `autonomy.enabled: true`). **At commit:**
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` already checks blast radius + park-on-touch (autonomous-only) along
 with every upstream gate — PASS or FAIL, **always park**, autonomy never makes the final feature commit.
 

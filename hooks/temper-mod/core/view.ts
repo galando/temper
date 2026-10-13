@@ -11,7 +11,7 @@ import type { Action, ActionContext, ActionSet, PendingChoice } from './actions'
 import type { MergedCriterion } from './criteria'
 import type { Phase } from './events'
 import type { Finding } from './gates'
-import { phaseLabel } from './machine'
+import { phaseGate, phaseLabel } from './machine'
 import type { HistoryRecord, RunState } from './machine'
 
 export type StepStatus = 'done' | 'current' | 'pending' | 'stale'
@@ -74,6 +74,8 @@ export type ViewInput = {
   cli?: string
   // Design follows this Plan (see ActionContext.designNext).
   designNext?: boolean
+  // Loops whose budget is spent (see ActionContext.spentLoops).
+  spentLoops?: readonly string[]
 }
 
 export const BAR: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check', 'fix']
@@ -103,10 +105,10 @@ const KIND: Record<string, (from: string, to: string) => string> = {
 export function buildView(input: ViewInput): View {
   const s = input.state
   const active = s.phase !== null && s.phase !== 'done'
-  const gateFresh = active && s.phase !== null && s.phase !== 'done' ? s.gate[s.phase] === 'fresh' : false
+  const gateFresh = active && phaseGate(s) === 'fresh'
   const ctx: ActionContext = {
     ready: gateFresh,
-    gate: active && s.phase !== null && s.phase !== 'done' ? s.gate[s.phase] : 'none',
+    gate: active ? phaseGate(s) : 'none',
     tasksDone: s.phase === 'build' && gateFresh,
     hasFindings: input.findings.length > 0,
     allChecksPass: s.gate.check === 'fresh',
@@ -120,6 +122,8 @@ export function buildView(input: ViewInput): View {
     ...(input.pendingMove !== undefined ? { pendingMove: input.pendingMove } : {}),
     ...(input.cli !== undefined ? { cli: input.cli } : {}),
     ...(input.designNext ? { designNext: true } : {}),
+    ...(s.atDesign ? { atDesign: true } : {}),
+    ...(input.spentLoops && input.spentLoops.length > 0 ? { spentLoops: input.spentLoops } : {}),
   }
   const passed = input.criteria.filter(c => c.status === 'passed').length
   let actions: ActionSet | null = null

@@ -22,7 +22,7 @@ import { buildView } from './core/view'
 import { pendingLines } from './core/actions'
 import type { PendingChoice } from './core/actions'
 import type { View } from './core/view'
-import { decide, earlierRun, initialState, phaseLabel, reduce } from './core/machine'
+import { decide, earlierRun, gateOf, initialState, phaseGate, phaseLabel, reduce } from './core/machine'
 import type { Command, RunState, Verdicts } from './core/machine'
 import { planFileList, taskProgress, tasksLeft } from './core/planfiles'
 import { parseUsage, renderReport } from './core/report'
@@ -118,10 +118,17 @@ export type Snapshot = {
   humanDecisions: HumanDecision[]
   // The CLI's usage rows (.temper/usage.json), for the report.
   usage: UsageRow[]
+  // build-state.json's run_mode: `autonomous` once the person armed autonomy at the plan gate.
+  runMode: string | null
+  // Loops whose budget the CLI has spent (`{from}>{to}`, from .temper/feedback-loops.json).
+  spentLoops: string[]
 }
 
 const OWN_PREFIX = 'ev:'
 const USED_PREFIX = 'used:'
+// A step back whose `state loop` the CLI refused (BLOCKED: the loop budget is spent). It never happened: it is not
+// folded, it waits for nothing, and the person's next choice (a skip, a save) applies to the stage the run is at.
+const VOID_PREFIX = 'void:'
 const STATE_ROOT = '.temper'
 const REPORT_PATH = `${STATE_ROOT}/report.md`
 
@@ -169,6 +176,22 @@ export function idleSnapshot(options: PluginOptions, inert: boolean): Snapshot {
     configSuggestions: false,
     humanDecisions: [],
     usage: [],
+    runMode: null,
+    spentLoops: [],
+  }
+}
+
+// The loops of the CLI whose budget is spent: an active loop at its iteration limit. Unreadable means none.
+export function spentLoopsOf(text: string): string[] {
+  try {
+    const d = JSON.parse(text) as { active_loops?: unknown }
+    if (!Array.isArray(d.active_loops)) return []
+    return d.active_loops
+      .filter((l): l is { from_stage: string; to_stage: string; iteration: number; max_iterations: number } => typeof l === 'object' && l !== null && typeof (l as { from_stage?: unknown }).from_stage === 'string' && typeof (l as { to_stage?: unknown }).to_stage === 'string' && typeof (l as { iteration?: unknown }).iteration === 'number' && typeof (l as { max_iterations?: unknown }).max_iterations === 'number')
+      .filter(l => l.iteration >= l.max_iterations)
+      .map(l => `${l.from_stage}>${l.to_stage}`)
+  } catch {
+    return []
   }
 }
 
@@ -227,7 +250,8 @@ const SESSION = (Math.random().toString(16).slice(2) + '00000000').slice(0, 8)
 // The phase an event decided, so a CLI call is matched only to a decision made for it.
 function decisionOf(ev: TemperEvent, kind: DecisionKind): HumanDecision {
   // The CLI names Fix by its Check stage, as the follow up command does.
-  if (ev.type === 'override') return { id: ev.id, kind, phase: stageOf(ev.phase) }
+  // A skip names its CLI stage when it is not the phase's own: design (the Design gate) or commit (Override and commit).
+  if (ev.type === 'override') return { id: ev.id, kind, phase: ev.stage ?? stageOf(ev.phase) }
   if (ev.type === 'back') return { id: ev.id, kind, phase: stageOf(ev.to) }
   if (ev.type === 'accept') return { id: ev.id, kind, phase: 'review', findingId: ev.findingId }
   if (ev.type === 'advance') return { id: ev.id, kind, phase: ev.from }
@@ -324,6 +348,9 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   // One store key per event id: an event file whose id is not here was not written by
   // this mod, so it is unverified and never counts as an approval.
   for (const ev of events) if (await isOwn(io, ev.id, textOf.get(eventFileName(ev)) ?? '')) own.add(ev.id)
+  const voided = new Set<string>()
+  for (const ev of events) if (ev.type === 'back' && own.has(ev.id) && (await io.storeGet(VOID_PREFIX + ev.id).catch(() => undefined))) voided.add(ev.id)
+  if (voided.size > 0) events = events.filter(e => !voided.has(e.id))
   let state = fold(events)
 
   // A run the CLI began before the mod saw it: enter it once, at the phase the CLI
@@ -393,6 +420,8 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
 
   const sync = reconcile(state, bs.nextStage, pendingMove, phaseBarStyle(cfg.mode) === 'phases-and-actions')
   state = sync.state
+  // The Design gate: the CLI is at design, part of Plan in the mod. Its own check (gate design) decides there.
+  if (bs.nextStage === 'design') state = { ...state, atDesign: true, designGate: gateOf(verdicts.design, state.since.plan, state.invalidated.plan) }
 
   return {
     inert: false,
@@ -420,8 +449,16 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     configSuggestions: (await io.list(specDir).catch(() => [])).some(e => e.kind === 'file' && e.name === 'config-suggestions.json'),
     humanDecisions,
     usage: parseUsage((await readText(io, `${STATE_ROOT}/usage.json`)) ?? ''),
+    runMode: bs.runMode,
+    spentLoops: spentLoopsOf((await readText(io, `${STATE_ROOT}/feedback-loops.json`)) ?? ''),
   }
 }
+
+// The CLI refused the `state loop` of the person's step back (BLOCKED): the step back is void (see VOID_PREFIX).
+export async function voidStepBack(io: Io, eventId: string): Promise<void> {
+  await io.storeSet(VOID_PREFIX + eventId, 1)
+}
+
 
 // The CLI gate wants a design verdict (PASS, or a person's override of design) exactly when the spec has a design.md
 // (scripts/temper gate_commit, the checkpoint carve-out). Without a design.md nothing is asked.
@@ -592,7 +629,7 @@ export function composeText(snap: Snapshot): string {
     sync: snap.sync.line,
     buttons: phaseBarStyle(snap.mode) === 'phases-and-actions',
     actionContext: {
-      ready: s.phase !== null && s.phase !== 'done' ? s.gate[s.phase] === 'fresh' : false,
+      ready: phaseGate(s) === 'fresh',
       allChecksPass: s.gate.check === 'fresh',
       hasFindings: snap.findings.length > 0,
       ...(designNext(snap) ? { designNext: true } : {}),
@@ -614,7 +651,7 @@ function pendingChoice(p: PendingMove | null): PendingChoice | undefined {
 
 export const viewOf = (snap: Snapshot, cli?: string): View => {
   const move = pendingChoice(snap.sync.pending)
-  return buildView({ syncWorking: snap.sync.pending !== null ? pendingLines(move).working : null, state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, grouped: snap.groupedActive, sync: snap.sync.line, pending: snap.sync.pending !== null, ...(move !== undefined ? { pendingMove: move } : {}), enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, ...(designNext(snap) ? { designNext: true } : {}), expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false, ...(cli !== undefined ? { cli } : {}) })
+  return buildView({ syncWorking: snap.sync.pending !== null ? pendingLines(move).working : null, state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, grouped: snap.groupedActive, sync: snap.sync.line, pending: snap.sync.pending !== null, ...(move !== undefined ? { pendingMove: move } : {}), enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, ...(designNext(snap) ? { designNext: true } : {}), spentLoops: snap.spentLoops, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false, ...(cli !== undefined ? { cli } : {}) })
 }
 
 // Mirrors the folded state into `$.state` for drawing and compaction.

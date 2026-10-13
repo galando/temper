@@ -22,6 +22,8 @@ export type World = {
   cliFailures?: number
   // How many of the next `git commit` calls the fake CLI fails (see fakeCli).
   commitFailures?: number
+  // True: the fake CLI prints BLOCKED for `state loop` (the loop budget is spent), as cmd_state_loop does.
+  loopsBlocked?: boolean
   // The folder the engine is in now, after a `cd` (see WorldOptions.projectRoot).
   cwdNow?: string
   // Commands that reached the engine's own command run (after the plugin's hooks), in order.
@@ -118,6 +120,17 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
   if (checkout) {
     w.files.set('/repo/.git/HEAD', `ref: refs/heads/${checkout[1]}\n`)
     return { result: `Switched to a new branch '${checkout[1]}'`, text: `Switched to a new branch '${checkout[1]}'` }
+  }
+  // `state loop <from> <to>`: BLOCKED when the budget is spent (exit 1, nothing moves), else the run goes back to <to>.
+  const loop = /scripts\/temper["']?\s+state\s+loop\s+([^\s;]+)\s+([^\s;]+)/.exec(command)
+  // A loop chained with `; exit 1` stays the stand in for a call that failed and changed nothing (see hardening.test.ts).
+  if (loop && !failsAfter) {
+    if (w.loopsBlocked) {
+      const text = `BLOCKED: max iterations (2) reached for ${loop[1]}->${loop[2]}`
+      return { result: text, text, isError: true }
+    }
+    save({ ...read(), next_stage: loop[2] })
+    return { result: `OK: loop ${loop[1]}->${loop[2]} iteration 1/2`, text: `OK: loop ${loop[1]}->${loop[2]} iteration 1/2` }
   }
   const set = /scripts\/temper["']?\s+state\s+set\s+next_stage\s+([^\s;]+)/.exec(command)
   if (set) {

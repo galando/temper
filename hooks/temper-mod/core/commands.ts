@@ -5,7 +5,7 @@
 import type { Draft, DriftChoice, Phase } from './events'
 import { PHASES } from './events'
 import { ACT } from './actions'
-import { CLI, IN_PLUGIN, acceptCommand, advanceCommands, backCommand, loopCommand, overrideCommand } from './cli'
+import { CLI, IN_PLUGIN, acceptCommand, advanceCommands, backCommand, loopCommand, overrideCommand, shellQuote } from './cli'
 import type { Command } from './machine'
 
 export const RESERVED = [
@@ -112,14 +112,14 @@ export const RESUME = 'temper:temper'
 // prompt names `scripts/temper` and says the script lives in the plugin folder, so Claude does not
 // waste the one allowed run on a path that does not exist in the project.
 // `from` is the phase a back step leaves (the loop the CLI keeps is from -> to). Without it, only the step is mirrored.
-export function followUp(draft: Draft, complexity: string | null = null, cli: string = CLI, from: Phase | null = null): string | null {
+export function followUp(draft: Draft, complexity: string | null = null, cli: string = CLI, from: Phase | 'design' | null = null): string | null {
   const text = followUpText(draft, complexity, from)
   if (text === null) return null
   if (cli !== CLI) return text.split(`\`${CLI} `).join(`\`${cli} `)
   return text.includes(`\`${CLI} `) ? text.replace(` ${ACT}`, ` ${IN_PLUGIN} ${ACT}`) : text
 }
 
-function followUpText(draft: Draft, complexity: string | null, from: Phase | null): string | null {
+function followUpText(draft: Draft, complexity: string | null, from: Phase | 'design' | null): string | null {
   // Short on purpose: one or two lines, and no narration.
   const recorded = 'The decision is already recorded.'
   switch (draft.type) {
@@ -131,7 +131,14 @@ function followUpText(draft: Draft, complexity: string | null, from: Phase | nul
       return `Temper: the user moved the run from ${draft.from} to ${draft.to}. ${recorded}${run} Do not start the next stage yourself. ${ACT}`
     }
     case 'override':
-      return `Temper: the user skipped ${draft.phase} (reason: ${draft.reason}). ${recorded} Run \`${overrideCommand(draft.phase, draft.reason)}\`. Do not start the next stage yourself. ${ACT}`
+      if (draft.stage === 'commit') {
+        return (
+          `Temper: the user chose Override and commit (reason: ${draft.reason}). ${recorded} ` +
+          `Run \`${CLI} override <stage> --reason ${shellQuote(draft.reason)}\` for each stage the failed commit gate names, all in one Bash call, ` +
+          `then run \`${CLI} gate commit\` again and go on with the Commit steps. ${ACT}`
+        )
+      }
+      return `Temper: the user skipped ${draft.stage === 'design' ? 'design' : draft.phase} (reason: ${draft.reason}). ${recorded} Run \`${overrideCommand(draft.phase, draft.reason, draft.stage)}\`. Do not start the next stage yourself. ${ACT}`
     case 'accept':
       return `Temper: the user accepted finding ${draft.findingId} (reason: ${draft.reason}). ${recorded} Run \`${acceptCommand(draft.findingId, draft.reason)}\`. ${ACT}`
     case 'back':

@@ -17,7 +17,7 @@ import { stateAt } from './helpers'
 const CLI = '/home/u/.claude/plugins/temper/scripts/temper'
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: false } as const
 const BAND = { hasSurvey: false, isWorking: false, maxRows: 12, bodyColumns: 120, scroll: { offset: 0, bodyRows: 12 }, view: {} } as const
-type Mounted = { press: (a: { key: string }) => Promise<void>; drawn: () => Promise<unknown> }
+type Mounted = { press: (a: { key: string }) => Promise<void>; input: (a: { key: string; text: string }) => Promise<void>; drawn: () => Promise<unknown> }
 type Api = {
   ui: { mount: (a: unknown) => Promise<Mounted> }
   session: { start: (a: unknown) => Promise<unknown> }
@@ -272,5 +272,277 @@ describe('the section text without buttons (the orchestrator pages are checked b
     expect(text).toContain('Temper buttons: none in this mode.')
     expect(text).toContain('loop back to Build, accept a finding, or override and continue')
     expect(text).not.toMatch(/key \d/)
+  })
+})
+
+// ---- Batch B: the guard and the flow ------------------------------------------------------------
+
+const PANE = { title: 'Temper', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} } as const
+const pane = (api: Api) => api.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'Pane', requestId: 'temper', props: PANE })
+const typed = (api: Api, args: string) => api.command.run({ command: 'temper:temper', args, origin: { kind: 'composer' } })
+const moves = (w: World): string[] =>
+  [...w.files.entries()]
+    .filter(([p]) => p.startsWith(`${SPEC}/events/`))
+    .map(([, t]) => JSON.parse(t) as { type: string; ts: number; seq: number; from?: string; to?: string; phase?: string; stage?: string; origin?: string })
+    .filter(e => e.type !== 'start')
+    .sort((a, b) => a.ts - b.ts || a.seq - b.seq)
+    .map(e => [e.type, e.from ?? e.phase ?? '', e.to ?? e.stage ?? '', e.origin ?? ''].join(':'))
+
+describe('finding 2: the loop budget is spent', () => {
+  test('full mode: after a BLOCKED loop the step back is void, and the skip moves the run on', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'plan_complete', next_stage: 'build' }, { plan: 'PASS', build: 'FAIL' })
+    w.loopsBlocked = true
+    await api.session.start(START)
+    await typed(api, 'back plan the plan misses a step')
+    const loop = await api.tool.call({ tool: 'Bash', command: `${CLI} state loop build plan --reason 'the plan misses a step'` })
+    expect(loop.deny).toBeUndefined()
+    // The bar is back at a failed Build, with nothing waiting to be recorded.
+    expect(await bar(api)).not.toContain('did not go through')
+    await typed(api, 'override the plan is fine, ship it')
+    expect(await sh(api, `${CLI} override build --reason 'the plan is fine, ship it'`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state advance build_complete review`)).toBeUndefined()
+  })
+
+  test('minimal mode: after a BLOCKED loop the Override answer is recorded', { options: { uiMode: 'minimal', moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'plan_complete', next_stage: 'build' }, { plan: 'PASS', build: 'FAIL' }, {}, ['Loop back to Plan: the plan misses a step', 'Override and continue: ship it'])
+    w.loopsBlocked = true
+    await api.session.start(START)
+    await api.tool.call(gate('Build failed. What next?', ['Loop back to Plan', 'Override and continue', 'Save for later']))
+    await sh(api, `${CLI} state loop build plan --reason 'the plan misses a step'`)
+    await api.tool.call(gate('The loop back is used up. What next?', ['Override and continue', 'Save for later']))
+    expect(moves(w)).toEqual(['back::plan:person', 'override:build::person'])
+    expect(await sh(api, `${CLI} override build --reason 'ship it'`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state advance build_complete review`)).toBeUndefined()
+  })
+
+  test('a spent loop is not offered again: key 1 at a failed Review skips, and the menu has no loop back', async ($, on) => {
+    const api = $ as unknown as Api
+    const loops = JSON.stringify({ version: 1, active_loops: [{ id: 'loop-1', from_stage: 'review', to_stage: 'build', reason: 'x', iteration: 2, max_iterations: 2 }], history: [] })
+    run(on, { stage: 'build_complete', next_stage: 'review' }, { plan: 'PASS', build: 'PASS', review: 'FAIL' }, { '.temper/feedback-loops.json': loops })
+    await api.session.start(START)
+    const text = await bar(api)
+    expect(text).toContain('1 Skip with a reason. Loop back is used up.')
+    expect(text).not.toContain('Loop back to Build')
+  })
+})
+
+describe('finding 3: a saved run, taken up again', () => {
+  test('minimal mode: Save for later, then Continue at the gate is recorded with the resume', { options: { uiMode: 'minimal', moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'intent_complete', next_stage: 'plan' }, { intent: 'PASS', plan: 'PASS' }, {}, ['Save for later', 'Continue to Build (Recommended)'])
+    await api.session.start(START)
+    await api.tool.call(gate('The plan check passed. What next?', ['Continue to Build (Recommended)', 'Save for later']))
+    await api.tool.call(gate('The plan check passed. What next?', ['Continue to Build (Recommended)', 'Save for later']))
+    expect(moves(w)).toEqual(['pause:::person', 'resume:::person', 'advance:plan:build:person'])
+    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+  })
+
+  test('full mode: key 1 on a saved run takes it up and moves on, and the bar says it is saved', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'intent_complete', next_stage: 'plan' }, { intent: 'PASS', plan: 'PASS' })
+    await api.session.start(START)
+    await typed(api, 'pause')
+    expect(await bar(api)).toContain('The run is saved for later; a choice takes it up again. 1 Continue to Build')
+    await (await band(api)).press({ key: 'action-continue' })
+    expect(moves(w)).toEqual(['pause:::person', 'resume:::person', 'advance:plan:build:person'])
+    expect(w.toasts.join('|')).not.toContain('saved for later')
+  })
+
+  test('a bare /temper:temper of the person on a saved run records the resume and goes to the orchestrator', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'intent_complete', next_stage: 'plan' }, { intent: 'PASS', plan: 'PASS' })
+    await api.session.start(START)
+    await typed(api, 'pause')
+    await typed(api, '')
+    expect(moves(w)).toEqual(['pause:::person', 'resume:::person'])
+    expect(w.commandRuns.at(-1)?.args).toBe('')
+  })
+})
+
+describe('finding 4: arming autonomy at the plan gate', () => {
+  test('"Stage by stage" and "Autonomous" approve the plan; not at the Design gate', () => {
+    expect(gateAnswer(result('Stage by stage (Recommended)'), 'plan')).toEqual({ type: 'approve' })
+    expect(gateAnswer(result('Autonomous: run the rest unattended'), 'plan')).toEqual({ type: 'approve' })
+    expect(gateAnswer(result('Autonomous: run the rest unattended'), 'plan', { atDesign: true })).toBeNull()
+    expect(gateAnswer(result('Autonomous: run the rest unattended'), 'build')).toBeNull()
+  })
+
+  test('full mode: the arming answer lets the plan advance and state set run_mode autonomous through', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'intent_complete', next_stage: 'plan' }, { intent: 'PASS', plan: 'PASS' }, { '.claude/temper.config': 'autonomy:\n  enabled: true\n' }, ['Autonomous: run the rest unattended'])
+    await api.session.start(START)
+    expect(await sh(api, `${CLI} state set run_mode autonomous`)).toContain('only the user can turn on autonomous mode')
+    await api.tool.call(gate('The plan check passed. How should the rest run?', ['Stage by stage (Recommended)', 'Autonomous: run the rest unattended', 'Save for later']))
+    expect(moves(w)).toEqual(['advance:plan:build:person'])
+    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state set run_mode autonomous`)).toBeUndefined()
+  })
+})
+
+describe('finding 5: an armed autonomous run that fails a check', () => {
+  const armed = { '.claude/temper.config': 'autonomy:\n  enabled: true\n' }
+  const approved = async (api: Api, w: World) => {
+    // The person approved the plan earlier in this run (the bar's Continue), and the run went on to Review.
+    await (await band(api)).press({ key: 'action-continue' })
+    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    const d = JSON.parse(w.files.get('.temper/build-state.json') ?? '{}') as Record<string, unknown>
+    w.files.set('.temper/build-state.json', JSON.stringify({ ...d, next_stage: 'review', stage: 'build_complete', run_mode: 'autonomous' }))
+    w.files.set('.temper/gates.json', JSON.stringify({ plan: { verdict: 'PASS', ts: LATER }, build: { verdict: 'PASS', ts: LATER }, review: { verdict: 'FAIL', ts: LATER } }))
+    await typed(api, 'status')
+  }
+
+  test('the loop back to Build passes the guard, and the run follows the CLI back to Build', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'intent_complete', next_stage: 'plan' }, { intent: 'PASS', plan: 'PASS' }, armed)
+    await api.session.start(START)
+    await approved(api, w)
+    expect(await sh(api, `${CLI} state loop review build --reason 'R-1 is real'`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state set next_stage build`)).toBeUndefined()
+    await typed(api, 'status')
+    const text = await system(api)
+    expect(text).toContain('Phase: Build')
+    expect(text).not.toContain('looks reset')
+    // Never back to Plan unattended.
+    expect(await sh(api, `${CLI} state loop build plan --reason x`)).toBeDefined()
+  })
+
+  test('without the armed run mode the same loop is refused', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    run(on, { stage: 'build_complete', next_stage: 'review' }, { plan: 'PASS', build: 'PASS', review: 'FAIL' }, armed)
+    await api.session.start(START)
+    expect(await sh(api, `${CLI} state loop review build --reason x`)).toBeDefined()
+  })
+
+  test('the park report may be written in any phase', async ($, on) => {
+    const api = $ as unknown as Api
+    run(on, { stage: 'build_complete', next_stage: 'review' }, { plan: 'PASS', build: 'PASS', review: 'FAIL' })
+    await api.session.start(START)
+    expect(await write(api, '.temper/autonomy-report.md')).toBeUndefined()
+    expect(await write(api, '.temper/other.md')).toBeDefined()
+  })
+})
+
+describe('finding 6: the Design gate', () => {
+  const cfg = { '.claude/temper.config': 'phases:\n  design: true\n', [`${SPEC}/design.md`]: '# Design\n' }
+  const verdicts = (design: 'PASS' | 'FAIL') => ({ '.temper/gates.json': JSON.stringify({ intent: { verdict: 'PASS', ts: LATER }, plan: { verdict: 'PASS', ts: LATER }, design: { verdict: design, ts: LATER } }) })
+  const atDesign = { stage: 'plan_complete', next_stage: 'design', complexity: 'medium' }
+
+  test('a failed design: key 1 loops back to Plan, never Continue to Build', async ($, on) => {
+    const api = $ as unknown as Api
+    run(on, atDesign, {}, { ...cfg, ...verdicts('FAIL') })
+    await api.session.start(START)
+    const text = await bar(api)
+    expect(text).toContain('1 Loop back to Plan')
+    expect(text).not.toContain('Continue to Build')
+  })
+
+  test('a passed design: key 1 continues to Build', async ($, on) => {
+    const api = $ as unknown as Api
+    run(on, atDesign, {}, { ...cfg, ...verdicts('PASS') })
+    await api.session.start(START)
+    expect(await bar(api)).toContain('1 Continue to Build')
+  })
+
+  test('the loop back to Plan is recorded and its loop from design passes the guard', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, atDesign, {}, { ...cfg, ...verdicts('FAIL') }, ['The check found a real problem'])
+    await api.session.start(START)
+    await (await band(api)).press({ key: 'action-loop-back' })
+    expect(moves(w)).toEqual(['back::plan:person'])
+    expect(w.prompts.at(-1)).toContain('state loop design plan')
+    expect(await sh(api, `${CLI} state loop design plan --reason 'The check found a real problem'`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state set next_stage plan`)).toBeUndefined()
+  })
+
+  test('Loop back to Plan is an answer at the Design gate', () => {
+    expect(gateAnswer(result('Loop back to Plan: the API changed'), 'plan', { atDesign: true })).toEqual({ type: 'back', to: 'plan', reason: 'the API changed' })
+    expect(gateAnswer(result('Loop back to Plan: the API changed'), 'plan')).toBeNull()
+  })
+
+  test('a skip at the Design gate is mirrored as override design, and the design advance follows it', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, atDesign, {}, { ...cfg, ...verdicts('FAIL') })
+    await api.session.start(START)
+    await (await band(api)).input({ key: 'override-reason', text: 'the concern is owned by the platform team' })
+    expect(moves(w)).toEqual(['override:plan:design:person'])
+    expect(w.prompts.at(-1)).toContain('override design')
+    expect(w.commandRuns.at(-1)?.args).toBe('continue design')
+    expect(await sh(api, `${CLI} override design --reason 'the concern is owned by the platform team'`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state advance design_complete build`)).toBeUndefined()
+  })
+
+  test('without a pass or a skip the design advance is refused', async ($, on) => {
+    const api = $ as unknown as Api
+    run(on, atDesign, {}, { ...cfg, ...verdicts('FAIL') })
+    await api.session.start(START)
+    expect(await sh(api, `${CLI} state advance design_complete build`)).toBeDefined()
+  })
+})
+
+describe('finding 8: the pane Fix button of a finding', () => {
+  test('Fix loops back to Build for that finding; Build may then write the file', { options: { moveCooldownMs: 0 } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'build_complete', next_stage: 'review' }, { plan: 'PASS', build: 'PASS', review: 'FAIL' }, { '.temper/evidence/review.json': JSON.stringify([{ severity: 'high', claim: 'src/app.ts: token never expires' }]) })
+    await api.session.start(START)
+    expect(await write(api, 'src/app.ts')).toBeDefined()
+    await (await pane(api)).press({ key: 'fix-1' })
+    expect(moves(w)).toEqual(['back::build:person'])
+    expect(w.prompts.at(-1)).toContain('state loop review build')
+    expect(w.prompts.at(-1)).toContain('fix review finding 1: src/app.ts: token never expires')
+    expect(await sh(api, `${CLI} state loop review build --reason 'fix review finding 1'`)).toBeUndefined()
+    expect(await sh(api, `${CLI} state set next_stage build`)).toBeUndefined()
+    expect(await write(api, 'src/app.ts')).toBeUndefined()
+  })
+})
+
+describe('finding 12: accepting one finding without buttons', () => {
+  test('"Accept finding N" with a reason, and the reason question', () => {
+    expect(gateAnswer(result('Accept finding 1: the token is short lived anyway'), 'review')).toEqual({ type: 'acceptFinding', id: '1', reason: 'the token is short lived anyway' })
+    expect(gateAnswer(result('Accept finding 2'), 'review')).toBeNull()
+    expect(gateAnswer(result('It is not a real issue', 'Temper gate', 'Accept finding 2. What is the reason?'), 'review')).toEqual({ type: 'acceptFinding', id: '2', reason: 'It is not a real issue' })
+    expect(gateAnswer(result('Accept finding 1: x'), 'build')).toBeNull()
+  })
+
+  test('minimal mode: the answer lets the evidence accept call through once', { options: { uiMode: 'minimal' } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'build_complete', next_stage: 'review' }, { plan: 'PASS', build: 'PASS', review: 'FAIL' }, { '.temper/evidence/review.json': JSON.stringify([{ severity: 'high', claim: 'x' }]) }, ['It is not a real issue'])
+    await api.session.start(START)
+    expect(await sh(api, `${CLI} evidence accept --stage review --id 1 --reason 'It is not a real issue'`)).toBeDefined()
+    await api.tool.call(gate('Accept finding 1. What is the reason?', ['It is not a real issue', 'I accept the risk', 'Cancel']))
+    expect(moves(w)).toEqual(['accept:::person'])
+    expect(await sh(api, `${CLI} evidence accept --stage review --id 1 --reason 'It is not a real issue'`)).toBeUndefined()
+  })
+})
+
+describe('U1: the commit gate FAIL after the run is done', () => {
+  const done = async (api: Api) => {
+    await api.session.start(START)
+    await sh(api, `${CLI} gate check`)
+  }
+
+  test('Claude cannot record an override the person did not choose', async ($, on) => {
+    const api = $ as unknown as Api
+    run(on, { stage: 'review_complete', next_stage: 'check' }, { plan: 'PASS', build: 'PASS', review: 'PASS', check: 'PASS' })
+    await done(api)
+    expect(await bar(api)).toContain('Commit')
+    expect(await sh(api, `${CLI} override design --reason 'no design needed'`)).toContain('"Override and commit"')
+  })
+
+  test('"Override and commit" with a reason lets the overrides of one command through, once', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'review_complete', next_stage: 'check' }, { plan: 'PASS', build: 'PASS', review: 'PASS', check: 'PASS' }, {}, ['I accept the risk'])
+    await done(api)
+    await api.tool.call(gate('Override and commit. What is the reason?', ['I accept the risk', 'It is not a real issue', 'Cancel']))
+    expect(moves(w).at(-1)).toBe('override:check:commit:person')
+    expect(await sh(api, `${CLI} override design --reason 'I accept the risk'; ${CLI} override intent --reason 'I accept the risk'`)).toBeUndefined()
+    expect(await sh(api, `${CLI} override design --reason 'again'`)).toBeDefined()
+  })
+
+  test('the answer is read at Done, and nowhere else', () => {
+    expect(gateAnswer(result('Override and commit: I accept the risk'), 'done')).toEqual({ type: 'override', reason: 'I accept the risk', stage: 'commit' })
+    expect(gateAnswer(result('Override and commit'), 'done')).toBeNull()
+    expect(gateAnswer(result('Override and commit: x'), 'check')).toBeNull()
   })
 })

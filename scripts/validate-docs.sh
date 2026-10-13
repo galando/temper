@@ -232,6 +232,12 @@ ROWS = [
     ('reference/orchestrator-patterns.md', '-', r'Run \{command\} when ready', 'a saved run names the bar first'),
     ('commands/fix.md', '-', r'Start over \(re-investigate\)', 'the fix resume answer must be the plain Start over'),
     ('commands/fix.md', '+', r'header `Temper resume`', 'the fix resume question is the Temper resume question'),
+    ('commands/temper.md', '+', r'show the gate again without the loop back', 'a BLOCKED loop shows the gate again'),
+    ('commands/temper.md', '+', r'either answer is the person\'s approval of the plan', 'the arming question records the approval'),
+    ('reference/autonomy.md', '+', r'header `Temper gate`, with or without the Temper bar', 'the arming question has the gate header'),
+    ('commands/temper.md', '+', r'"Loop back to Plan" \(`state loop design plan`', 'the Design gate on FAIL'),
+    ('commands/temper.md', '+', r'`Accept finding \{id\}`', 'a Review FAIL can accept one finding by a click'),
+    ('commands/temper.md', '+', r'"Override and commit" or "Save for later"', 'the commit gate FAIL asks the Temper gate question'),
 ]
 for page, sign, pattern, why in ROWS:
     try:

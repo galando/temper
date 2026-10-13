@@ -57,6 +57,9 @@ export type RuleContext = {
   // The bar draws its buttons (full mode). False: the person chooses in the `Temper gate` question, so a deny names it.
   // Left out: buttons.
   buttons?: boolean
+  // The person armed autonomy at the plan gate (run_mode autonomous) and autonomy.enabled is on: after a failed Review or
+  // Check the run loops back to Build by itself, within the CLI's loop budget (reference/autonomy.md).
+  autonomous?: boolean
 }
 
 // The carve-outs of the CLI commit gate (scripts/temper gate_commit, docs/decisions/0009):
@@ -150,6 +153,8 @@ const COMMIT_NEXT: Record<Phase, string> = {
 }
 
 const isActive = (s: RunState): s is RunState & { phase: Phase } => s.phase !== null && s.phase !== 'done'
+
+const AUTONOMY_REPORT = '.temper/autonomy-report.md'
 
 // The path inside a group or task worktree of THIS run (`.claude/worktrees/temper-{slug}-G{n}/...` or `-T{n}/...`),
 // relative to that worktree; null for any other path (another run's slug, another prefix, a malformed number). The
@@ -267,6 +272,11 @@ const UNCHECKABLE = (cli: string): string =>
   'Next: write the exact file path with no variables, globs, braces or substitutions. Or use ' +
   `${cli} gate <stage>, ${cli} evidence or ${cli} state.`
 
+const DONE_OVERRIDE_DENY =
+  'Temper: the run is done, and an override now is the user\'s choice. ' +
+  'Next: show the failed commit gate and ask the user with AskUserQuestion, header `Temper gate`: "Override and commit" (with a reason) or "Save for later". ' +
+  'Then run every override that commit needs in one Bash call.'
+
 const REPEATED_FLAG =
   'Temper: this decision call repeats a flag (--id, --stage or --reason). ' +
   'Temper cannot match it to the decision of the user. Next: run the call again. Give each flag one time.'
@@ -306,9 +316,15 @@ function commitAllowed(s: RunState, facts: CommitFacts | undefined): boolean {
 }
 
 // The check of a stage passed (fresh PASS) or the person overrode it, and the run is at that stage.
-// Design has no verdict of its own in the mod: it follows an approved plan whose check passed.
+// Design follows an approved (or skipped) plan, and its own check at the Design gate: a design that passed, or the
+// person's skip of it. Where no design check is known, it follows the plan's, as before the Design gate had its own.
 function followsVerdict(s: RunState, stage: string, complexity?: string | null): boolean {
-  if (stage === 'design') return (complexity === 'medium' || complexity === 'complex') && (planApproved(s) || skippedStage(s, 'plan')) && (s.gate.plan === 'fresh' || s.overrides.some(o => o.phase === 'plan'))
+  if (stage === 'design') {
+    if (!((complexity === 'medium' || complexity === 'complex') && (planApproved(s) || skippedStage(s, 'plan')))) return false
+    const lastBack = s.history.reduce((t, h) => (h.kind === 'back' ? Math.max(t, h.ts) : t), -Infinity)
+    if (s.designGate === 'fresh' || s.overrides.some(o => o.stage === 'design' && o.ts >= lastBack)) return true
+    return s.designGate === 'none' && (s.gate.plan === 'fresh' || s.overrides.some(o => o.phase === 'plan'))
+  }
   if (!(stage in s.gate)) return false
   const here = s.phase === stage || (s.phase === 'fix' && stage === 'check')
   return here && (s.gate[stage as Phase] === 'fresh' || s.overrides.some(o => o.phase === stage))
@@ -418,6 +434,8 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
   const loopIds: string[] = []
   // The decisions a call matched: spent by it, also when the same command commits (see below).
   let spends: RuleResult | null = null
+  // An armed autonomous run loops back to Build by itself after a failed Review or Check (never to Plan or Intent).
+  const autoLoopsBack = (from: string): boolean => ctx.autonomous === true && planApproved(s) && (from === 'review' || from === 'check')
   if (isActive(s)) {
     const here = stageName(s.phase)
     for (const op of c.stateOps) {
@@ -429,9 +447,21 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
         to === undefined || !fromOk
           ? undefined
           : (ctx.humanDecisions ?? []).find(h => h.kind === 'back' && h.phase !== undefined && stageName(h.phase) === stageName(to) && !used.includes(h.id) && !loopIds.includes(h.id))
-      if (hit === undefined) return { deny: STATE_RESTART }
+      if (hit === undefined) {
+        if (fromOk && to === 'build' && autoLoopsBack(here)) continue
+        return { deny: STATE_RESTART }
+      }
       loopIds.push(hit.id)
     }
+  }
+  // After the run is done the commit gate may still FAIL: an override then is the person's "Override and commit" (one
+  // decision covers the overrides of that one command), never Claude's own.
+  if (s.phase === 'done' && c.calls.some(call => call.kind === 'override')) {
+    const d = (ctx.humanDecisions ?? []).find(h => h.kind === 'override' && h.phase === 'commit')
+    if (!d) return { deny: DONE_OVERRIDE_DENY }
+    if (c.calls.some(call => call.invalid)) return { deny: REPEATED_FLAG }
+    if (c.calls.some(call => call.kind !== 'override')) return { deny: DONE_OVERRIDE_DENY }
+    return { allow: true, consume: 'override', eventId: d.id, eventIds: [d.id] }
   }
 
   if (isActive(s)) {
@@ -507,6 +537,8 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
       if (call.kind === 'back' && !pool.some(h => h.kind === 'back' && (call.stage === undefined || h.phase === undefined || stageName(h.phase) === stageName(call.stage)))) {
         const cur = s.phase === 'fix' ? 'check' : s.phase
         if (call.stage !== undefined && call.stage === nextStage(cur, ctx.complexity) && followsVerdict(s, cur)) continue
+        // The armed autonomous run's step back to Build (its `state loop` already moved the CLI there).
+        if (call.stage === 'build' && autoLoopsBack(cur)) continue
       }
       const i = pool.findIndex(
         h =>
@@ -554,6 +586,8 @@ export function evaluate(state: RunState, ctx: RuleContext, call: ToolCall): Rul
   // The config, the git hooks and the Temper commit hook are guarded while a run is active (the person writes them with
   // no run on).
   if (kind !== null && (isActive(state) || (kind !== 'config' && kind !== 'hooks'))) return protectedDeny(kind, ctx.cli ?? CLI, ctx)
+  // The report a parked autonomous run leaves (reference/autonomy.md): a note of the run, in any phase.
+  if (path === AUTONOMY_REPORT) return ALLOW
 
   if (!isActive(state) || state.paused || ctx.failOpenWrites) return ALLOW
   return phaseWriteRule(state, ctx, path)

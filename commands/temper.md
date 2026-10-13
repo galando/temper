@@ -326,7 +326,9 @@ typed command sends you one message. In it (or at once, after the `Temper gate` 
 {to} --reason "<why>"` (the hook lets it through once, for that decision; it keeps the
 budget and clears the evidence of `{to}` and every later stage), and when it does not print
 `BLOCKED`, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set next_stage {to}`. When it prints `BLOCKED`, the budget is
-spent: say so in one line and stop (the person can skip with a reason or save for later). The
+spent: say so in one line and show the gate again without the loop back. The mod drops that step back, and the bar
+no longer offers it; with the `Temper buttons: none` line ask the `Temper gate` question with "Override and continue"
+and "Save for later". The
 bar then runs `/temper:temper` with no arguments (after the `Temper gate` answer, go on yourself): continue from `next_stage` (see Resume) and
 add the line from step 2, with the reason from that message (or from the answer), to the stage's prompt. Do not
 call `state loop` or `state set next_stage` on your own; with enforcement active, the hook
@@ -444,7 +446,8 @@ against. Then launch that stage.
 
 **On PASS at the plan gate, before showing options:** if `autonomy.enabled: true`, read
 `${CLAUDE_PLUGIN_ROOT}/reference/autonomy.md` now and offer the arming choice it describes instead of a
-single "Continue" option.
+single "Continue" option. Ask it with `AskUserQuestion`, header `Temper gate`, also with the Temper bar and its
+buttons: either answer is the person's approval of the plan, and the mod records it.
 
 ---
 
@@ -467,7 +470,10 @@ section — flagged conflicts with owners, or an explicit "None flagged — why"
 *quality* still shows up in whether Build can execute it and what Review finds). Gate
 options: Continue / Grill Me / Teach Me / "Walk through step by step" (same shape as
 Plan's — architecture overview, API contracts, database changes, integration points,
-decision log; only sections `design.md` actually has) / Save / Other.
+decision log; only sections `design.md` actually has) / Save / Other. On FAIL: "Loop back
+to Plan" (`state loop design plan`, then `state set next_stage plan`, then Plan again) /
+"Override and continue" (`${CLAUDE_PLUGIN_ROOT}/scripts/temper override design --reason "<the reason>"`) / "Save for
+later". The Gates section says how each is asked; with the Temper bar the bar offers them.
 
 **On Continue:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance design_complete build`, launch Build.
 
@@ -514,7 +520,13 @@ Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that 
 
 After it returns, record its usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage review --model {review} --tokens {subagent tokens} --ms {duration ms}` (the numbers the Agent result reports; omit a flag the result does not give).
 
-Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review` (zero open findings at or above `review.block-on`). An
+Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review` (zero open findings at or above `review.block-on`). On FAIL
+the options are "Loop back to Build (Recommended)" / "Accept a finding" / "Override and continue" / "Save for later".
+"Accept a finding" asks a second question with the same header: one option per open finding, `Accept finding {id}`
+with its claim as the description (three at most; the rest through "Other"), then the reason question
+`Accept finding {id}. What is the reason?` (options "It is not a real issue" / "I accept the risk" / "Cancel"). With
+the reason, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence accept --stage review --id {id} --reason "<the reason>"`,
+run the gate again and show it again. With the Temper bar the pane has an Accept button per finding. An
 **"Architecture Depth Review"** option is also always available — runs the 5-dimension
 module-depth analysis (seams, adapters, locality, leverage, deletion test) on changed
 files and folds `[ARCH-DEPTH]` findings into the summary before re-showing the gate.
@@ -583,8 +595,12 @@ overridden), and — only when `run_mode == autonomous` — blast radius and par
   feature), then `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear`.
 - **PASS (autonomous):** never auto-commits — park with a `SHIP-PENDING-COMMIT` report
   instead (the Park step in `${CLAUDE_PLUGIN_ROOT}/reference/autonomy.md`).
-- **FAIL:** show `${CLAUDE_PLUGIN_ROOT}/scripts/temper report`, offer "Override and commit" (records the override,
-  re-run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit`, it should now PASS) or "Save for later".
+- **FAIL:** show `${CLAUDE_PLUGIN_ROOT}/scripts/temper report`, and ask with `AskUserQuestion`, header `Temper gate`
+  (with or without the Temper bar): "Override and commit" or "Save for later". "Override and commit" needs the
+  person's reason: when the answer carries none, ask `Override and commit. What is the reason?` (options "I accept
+  the risk" / "It is not a real issue" / "Cancel"). Then run `${CLAUDE_PLUGIN_ROOT}/scripts/temper override {stage} --reason "<the reason>"`
+  for every stage the gate names, all in one Bash call (the mod lets that one call through for the person's
+  answer), re-run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` (it should now PASS) and go on with the PASS steps.
 
 Print the final ledger (`${CLAUDE_PLUGIN_ROOT}/scripts/temper report`) either way — the last thing the user sees is
 what was actually verified, not a narrated summary.

@@ -74,6 +74,11 @@ export type ActionContext = {
   buttons?: boolean
   // Design follows this Plan (a medium or complex run with phases.design on): the Plan gate continues to Design.
   designNext?: boolean
+  // The run is at its Design gate (part of Plan in the mod): a failed design check loops back to Plan.
+  atDesign?: boolean
+  // Loops of the CLI whose budget is spent (`{from}>{to}` in CLI stages, from .temper/feedback-loops.json): the bar no
+  // longer offers them.
+  spentLoops?: readonly string[]
 }
 
 // The person's move that waits to be recorded: a Continue out of a phase, a step back, or a skip.
@@ -115,6 +120,15 @@ const cap = (p: string): string => `${p.charAt(0).toUpperCase()}${p.slice(1)}`
 
 // What follows each phase, and what the orchestrator loops back to when a check fails.
 export const NEXT: Record<Phase, string> = { intent: 'Plan', plan: 'Build', build: 'Review', review: 'Check', check: 'Commit', fix: 'Check' }
+// Where a failed check of the step loops back to: Plan from the Design gate, else the phase upstream.
+const upstreamOf = (phase: Phase, ctx: ActionContext): Phase | undefined => (phase === 'plan' && ctx.atDesign ? 'plan' : UPSTREAM[phase])
+
+// The CLI keeps a budget per loop (loops.max-per-type): a loop whose budget is spent is not offered again.
+function spent(phase: Phase, to: Phase, ctx: ActionContext): boolean {
+  const from = phase === 'plan' && ctx.atDesign ? 'design' : phase === 'fix' ? 'check' : phase
+  return (ctx.spentLoops ?? []).includes(`${from}>${to}`)
+}
+
 // The step after a phase for this run: Design after a Plan that has one.
 const nextName = (phase: Phase, ctx: ActionContext): string => (phase === 'plan' && ctx.designNext ? 'Design' : NEXT[phase])
 const UPSTREAM: Partial<Record<Phase, Phase>> = { plan: 'intent', build: 'plan', review: 'build' }
@@ -152,10 +166,16 @@ function main(phase: Phase, ctx: ActionContext): Action {
   }
   // A failed check sends the work back upstream on key 1. Not for Build: its completion gate fails on a task, a group or
   // the integration, which Build itself mends; going back to Plan is for a plan that cannot be built (the menu has it).
-  const up = UPSTREAM[phase]
-  if (ctx.gate === 'fail' && up && phase !== 'build') return loopBack(up, '1')
+  // At the Design gate a failed design goes back to Plan. Once that loop's budget is spent, key 1 is the skip.
+  const up = upstreamOf(phase, ctx)
+  if (ctx.gate === 'fail' && up && phase !== 'build') {
+    if (spent(phase, up, ctx)) return command('1', 'override-spent', 'Skip with a reason', 'Loop back is used up. Go on without a pass.', 'override', true, true)
+    return loopBack(up, '1')
+  }
   if (phase === 'intent' && ctx.gate !== 'fail') return launch('1', 'run-stage', 'Start Intent', 'Claude writes the intent and checks it. Then you decide.')
-  return launch('1', 'run-stage', ctx.gate === 'fail' ? `Run ${cap(phase)} again` : `Run ${cap(phase)}`, `Claude runs ${cap(phase)} and checks it. Then you decide.`)
+  // At the Design gate (part of Plan in the mod) the stage that runs is Design.
+  const step = phase === 'plan' && ctx.atDesign ? 'Design' : cap(phase)
+  return launch('1', 'run-stage', ctx.gate === 'fail' ? `Run ${step} again` : `Run ${step}`, `Claude runs ${step} and checks it. Then you decide.`)
 }
 
 // The line under the bar while the person's move waits: `idle` once Claude has stopped (key 1 finishes the move), `working`
@@ -289,7 +309,7 @@ function pair(phase: Phase, ctx: ActionContext): [Action, Action] {
         : [teach(phase, '2'), grill(phase, '3')]
     case 'review':
       // Open findings: the step back to Build is on the main row (unless key 1 already is it), depth review in the menu.
-      return ctx.hasFindings && main(phase, ctx).id !== 'loop-back' ? [loopBack('build', '2'), grill(phase, '3')] : [archDepth('2'), grill(phase, '3')]
+      return ctx.hasFindings && main(phase, ctx).id !== 'loop-back' && !spent(phase, 'build', ctx) ? [loopBack('build', '2'), grill(phase, '3')] : [archDepth('2'), grill(phase, '3')]
     case 'check':
       return ctx.configSuggestions ? [configSuggestions('2'), teach(phase, '3')] : [grill(phase, '2'), teach(phase, '3')]
     case 'fix':
@@ -318,15 +338,15 @@ function phaseMenu(phase: Phase, ctx: ActionContext): Action[] {
     case 'plan':
       return [...extra([grill(phase), teach(phase), shareReview('1', ctx.cli ?? CLI)]), save(paused)]
     case 'build':
-      return isCheckpoint(phase, ctx) ? [grill(phase), teach(phase), save(paused)] : [...(loopMain ? [] : [loopBack('plan', '1')]), save(paused)]
+      return isCheckpoint(phase, ctx) ? [grill(phase), teach(phase), save(paused)] : [...(loopMain || spent(phase, 'plan', ctx) ? [] : [loopBack('plan', '1')]), save(paused)]
     case 'review':
-      return [...extra([teach(phase), archDepth('1')]), ...(loopMain ? [] : extra([loopBack('build', '1')])), save(paused)]
+      return [...extra([teach(phase), archDepth('1')]), ...(loopMain || spent(phase, 'build', ctx) ? [] : extra([loopBack('build', '1')])), save(paused)]
     case 'check':
       return [...(ctx.configSuggestions ? extra([grill(phase)]) : []), save(paused)]
     case 'fix':
       // At the loop limit Save for later is already key 3, and only a loop back to Plan is left. Before it, a failed Check
       // can go back to Build, as the original Check gate offers.
-      return ctx.loopLimitReached ? [grill(phase), teach(phase)] : [loopBack('build', '1'), grill(phase), teach(phase), save(paused)]
+      return ctx.loopLimitReached ? [grill(phase), teach(phase)] : [...(spent(phase, 'build', ctx) ? [] : [loopBack('build', '1')]), grill(phase), teach(phase), save(paused)]
   }
 }
 
@@ -402,6 +422,7 @@ export function doneActions(cli: string = CLI, suggestions = false): ActionSet {
         'The user pressed Commit. Do the Commit steps of /temper:temper now. ' +
           `In short: run ${cli} gate commit. If it passes, set intent.md to Status completed, run ${cli} state archive, ` +
           `stage the diff and the .temper/specs artifacts, make one conventional commit, then run ${cli} state clear.${where(cli)} ` +
+          'If it fails, do the FAIL step of the Commit section (the Temper gate question, Override and commit or Save for later). ' +
           'Do not ask the Commit question again. Do not push.',
       ),
       { key: '2', id: 'save-done', label: 'Save for later', desc: 'Leave the work as it is. Commit later.', command: 'saved' },
@@ -417,7 +438,8 @@ export function doneActions(cli: string = CLI, suggestions = false): ActionSet {
 // Per finding actions, shown in the pane.
 export function findingActions(id: string): Action[] {
   return [
-    prompt('1', `fix-${id}`, 'Fix', 'Claude fixes this problem, with a test.', `Fix review finding ${id}. Write a regression test.`),
+    // Fix is a loop back to Build for this finding (the guard lets Build change code; Review then runs again).
+    { key: '1', id: `fix-${id}`, label: 'Fix', desc: 'Claude fixes it in Build. Review runs again.', command: `back build fix finding ${id}`, resume: true },
     { ...command('2', `accept-${id}`, 'Accept', 'Keep it as it is. You give a reason.', `accept ${id}`, true) },
     prompt('3', `explain-${id}`, 'Explain', 'Claude says what is wrong and why it matters.', `Explain review finding ${id}. Say what is wrong, where it is, and why it matters.`, SHOW),
   ]
@@ -460,7 +482,9 @@ export function nextStep(phase: Phase | 'done', ctx: ActionContext): string {
 // Build."), then its line. It reads the same in the band, the pane, the hint and the line under an answer.
 export function nowText(phase: Phase | 'done', ctx: ActionContext): string {
   if (phase === 'done') return 'The run is done. 1 Commit when you are ready.'
-  if (phase === 'fix' && ctx.loopLimitReached) return 'Fixing did not work after several tries. Choose: 1 loop back to Plan, 2 skip with a reason, or 3 save for later.'
+  // A saved run: any move takes it up again (the mod records the resume first).
+  const saved = ctx.paused ? 'The run is saved for later; a choice takes it up again. ' : ''
+  if (phase === 'fix' && ctx.loopLimitReached) return `${saved}Fixing did not work after several tries. Choose: 1 loop back to Plan, 2 skip with a reason, or 3 save for later.`
   const first = actionsFor(phase, ctx).primary[0]
-  return first ? `1 ${first.label}. ${first.desc}` : ''
+  return first ? `${saved}1 ${first.label}. ${first.desc}` : ''
 }
