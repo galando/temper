@@ -57,7 +57,11 @@ is blocked on input only a human can give.
 **Park:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set run_mode interactive` (so a plain resume lands here
 normally), write `.temper/autonomy-report.md` (`**Verdict:**
 SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION`, `**Parked at:**`/`**Reason:**` verbatim from
-`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate`, `**Branch:**`, the `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` ledger, "Run /temper to resume").
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate`, `**Branch:**`, the `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` ledger, and "The run waits
+for you at the gate it parked at."). Then show that gate as an interactive run would: with the Temper
+bar and its buttons the bar offers it; otherwise ask its `AskUserQuestion` (header `Temper gate` with
+the `Temper buttons: none` line), which waits for the person: at SHIP-PENDING-COMMIT the one Commit
+question of a passed Check, at a FAIL that stage's FAIL options. The person never has to type to go on.
 
 **Operational safety (hardcoded — see `${CLAUDE_PLUGIN_ROOT}/templates/temper.config.default`):** refuse a
 dirty tree unless confirmed; `git commit -m "wip: {stage} passed"` after each PASS stage

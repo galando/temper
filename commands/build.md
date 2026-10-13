@@ -40,14 +40,20 @@ approved `tasks.md`, and record its earlier gates as this run's own (the task ga
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` (and `gate design` when the spec folder has a
 `design.md`), ask "Continue to Build (Recommended)" / "Save for later" the same way, and on Continue
 run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance plan_complete build`. With the Temper mod
-each answer is the person's approval its guard needs; with a FAIL, show it and stop. Verify the
+each answer is the person's approval its guard needs. On a FAIL, show it and ask "Override and
+continue" (with the person's reason: then `${CLAUDE_PLUGIN_ROOT}/scripts/temper override {stage} --reason "<the reason>"`
+and the advance) / "Save for later". Verify the
 feature branch (create it if on main). The task agents run in their own context whatever
 `stages.subprocess` says; the human gates stay in this context.
 
 ### After the loop
 
-Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` (the loop's step 8), report the group
-panel, then auto-chain → `/temper:review` → `/temper:check` and ask to commit.
+Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` (the loop's step 8) and report the group
+panel. On PASS move the run on with `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance build_complete review`,
+then auto-chain → `/temper:review` → `/temper:check`, moving the run on after each PASS
+(`state advance review_complete check`, then `state advance check_complete commit`), and ask to
+commit with the one Commit question. The commit gate then checks Review and Check for real. On a
+FAIL, the gate's FAIL options apply (the loop's step 8).
 
 ### Per-task mode (`build.mode: per-task`)
 

@@ -155,8 +155,10 @@ line per answer. A drift is never answered for the person.
 
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` (RED-then-GREEN regression-test evidence; the "no unchecked
 tasks" requirement is skipped automatically — fixes have no `tasks.md`). On PASS:
-"Continue to Review (Recommended)". On FAIL: fix and re-run, or "Override and continue"
-(`${CLAUDE_PLUGIN_ROOT}/scripts/temper override build --reason "..."`).
+"Continue to Review (Recommended)" / "Save for later". On FAIL: "Run Fix again (Recommended)"
+(relaunch the Fix agent with the FAIL rows as its feedback, then the gate again) / "Override and
+continue" (with the person's reason: `${CLAUDE_PLUGIN_ROOT}/scripts/temper override build --reason "<the reason>"`)
+/ "Save for later".
 
 **On Continue:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance fix_complete review`, launch Stage 3.
 
@@ -176,8 +178,11 @@ and no same-pattern occurrence it flagged is left unfixed."
 After it returns, record its usage once: `${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage review --model {review} --tokens {subagent tokens} --ms {duration ms}` (the numbers the Agent result reports; omit a flag the result does not give).
 
 Gate: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review` (zero open findings at or above `review.block-on`; a
-finding marked with `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence resolve` no longer counts). On FAIL:
-"Fix all & continue to Check (Recommended)" — apply fixes for ALL open findings
+finding marked with `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence resolve` no longer counts). On FAIL
+the options are "Fix all & continue to Check (Recommended)" / "Accept a finding" (as `/temper`'s
+Review gate asks it: which finding, then the reason, then `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence accept
+--stage review --id {id} --reason "<the reason>"` and the gate again) / "Override and continue" /
+"Save for later". "Fix all & continue to Check": apply fixes for ALL open findings
 directly (no subprocess), re-run the regression test, then mark each fixed finding
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence resolve --stage review --id {n} --fixed-by "{commit or note}"`
 (ids from `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage review`) and re-run the gate. The row stays in
@@ -224,10 +229,13 @@ never commit directly.
   Regression test: {test name}
   {Closes JIRA-123 / Fixes #456}"
   ```
-  then `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear`, then report "Committed: {hash} / Branch: {branch} /
-  Ready to push?".
-- **On FAIL:** show `${CLAUDE_PLUGIN_ROOT}/scripts/temper report`; "Override and commit" (`${CLAUDE_PLUGIN_ROOT}/scripts/temper override {stage}
-  --reason "..."`, re-run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit`) or "Save for later".
+  then `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear`, then report "Committed: {hash} / Branch: {branch}.
+  Temper does not push.".
+- **On FAIL:** show `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` and ask "Loop back to Fix (Recommended)" (when the
+  check gate failed: `${CLAUDE_PLUGIN_ROOT}/scripts/temper state loop check fix --reason "<why>"`, `state set next_stage fix`,
+  relaunch Stage 2 with the re-entry line, then Review and Check again) / "Override and commit" (with the
+  person's reason: `${CLAUDE_PLUGIN_ROOT}/scripts/temper override {stage} --reason "<the reason>"` for each failing
+  stage, re-run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit`) / "Save for later".
 
 ---
 

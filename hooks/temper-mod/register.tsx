@@ -660,6 +660,10 @@ async function runActionLocked($: Api, action: Action, requestId?: string, drawn
     await fillDraft($, action.fill)
     return
   }
+  if (action.id === 'accept-finding') {
+    await acceptAFinding($)
+    return
+  }
   // The original "Save for later" at the Commit question: nothing to record, the work stays as it is.
   if (action.id === 'save-done') {
     showToast($, 'Saved. Commit when you are ready.')
@@ -705,6 +709,34 @@ async function runActionLocked($: Api, action: Action, requestId?: string, drawn
   // The prompt of an action that both records and asks (Stop), then the stage the orchestrator runs.
   if (action.prompt) await submitText($, action.prompt)
   if (action.resume && !launched) await resumeRun($)
+}
+
+// The bar's "Accept a finding": the person picks one open finding in the mod's own dialog (three a page), then gives the
+// reason, as the pane's Accept does. Nothing is recorded when the person cancels.
+const findingLabel = (f: { id: string; claim: string }): string => {
+  const text = `Finding ${f.id}: ${f.claim}`
+  return text.length > 70 ? `${text.slice(0, 69)}…` : text
+}
+async function acceptAFinding($: Api): Promise<void> {
+  const open = (await ensure($)).findings
+  if (open.length === 0) {
+    showToast($, 'No finding is open.')
+    return
+  }
+  for (let at = 0; at < open.length; at += 3) {
+    const page = open.slice(at, at + 3)
+    const more = at + 3 < open.length
+    let pick: string
+    try {
+      pick = (await $.ui.ask('Which finding do you accept?', { options: [...page.map(findingLabel), more ? 'More findings' : 'Cancel'], header: 'Accept' })).trim()
+    } catch {
+      return
+    }
+    if (pick === 'More findings') continue
+    const hit = page.find(f => findingLabel(f) === pick) ?? open.find(f => new RegExp(String.raw`^(?:finding\s+)?${f.id}\b`, 'i').test(pick))
+    if (hit) await runFindingAction($, 'accept', hit.id)
+    return
+  }
 }
 
 async function runFindingAction($: Api, kind: 'fix' | 'accept' | 'explain', id: string): Promise<void> {
@@ -836,9 +868,13 @@ async function recordGateAnswer($: Api, result: unknown): Promise<void> {
     await decideAs($, restart, 'person')
     return
   }
-  if (snap.sync.pending !== null) return
   const command = gateAnswer(result, snap.state.phase, { atDesign: snap.state.atDesign })
   if (command === null) return
+  // A move that waits to be recorded: the same move asked again records nothing more (the decision is there); a
+  // different one is the person's new choice (a step back also ends the earlier choice for the stages it redoes).
+  const waiting = snap.sync.pending?.draft.type
+  const same = waiting !== undefined && (command.type === waiting || (waiting === 'advance' && command.type === 'approve'))
+  if (same) return
   await decideAs($, command, 'person')
 }
 

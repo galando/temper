@@ -245,6 +245,22 @@ ROWS = [
     ('commands/build.md', '+', r'state advance plan_complete build', 'standalone Build moves its run to Build'),
     ('reference/plan.md', '-', r'write `.temper/build-state.json`', 'the guard refuses a hand written run state'),
     ('reference/check.md', '-', r'write `build-state.json` with', 'the guard refuses a hand written run state'),
+    ('reference/build-per-task.md', '+', r'"Run Build again \(Recommended\)"', 'the per task completion gate on FAIL'),
+    ('reference/autonomy.md', '-', r'Run /temper to resume', 'a park waits at its gate question, not for a typed command'),
+    ('reference/autonomy.md', '+', r'The run waits for you at the gate it parked at', 'a park shows its gate'),
+    ('commands/build.md', '-', r'show it and stop', 'standalone Build on a FAIL asks'),
+    ('commands/build.md', '+', r'state advance build_complete review', 'standalone Build moves the run on to Review'),
+    ('reference/check.md', '+', r'\*\*On FAIL:\*\* "Loop back to Build \(Recommended\)"', 'standalone Check on FAIL asks'),
+    ('commands/plan.md', '+', r'"Continue to Build \(Recommended\)"', 'the standalone Plan answer the mod reads'),
+    ('commands/temper.md', '+', r'This reason question holds for every question with the header `Temper gate`', 'the reason question in every mode'),
+    ('commands/temper.md', '+', r'"Continue from \{next_stage\} \(Recommended\)" or "Start over"', 'Start over at the resume of the same feature'),
+    ('commands/temper.md', '-', r'the bar\'s "Continue to Commit" and then its Commit button', 'the Done bar is the Commit choice'),
+    ('commands/temper.md', '+', r'make the fourth \*\*"More options"\*\*', 'four options per question'),
+    ('commands/fix.md', '-', r'Ready to push', 'the fix run invites no typing'),
+    ('commands/fix.md', '+', r'"Run Fix again \(Recommended\)"', 'the Fix gate on FAIL'),
+    ('commands/fix.md', '+', r'"Loop back to Fix \(Recommended\)"', 'the fix Check on FAIL'),
+    ('commands/fix.md', '+', r'"Accept a finding" \(as', 'the fix Review on FAIL can accept a finding'),
+    ('reference/orchestrator-patterns.md', '-', r'choose Resume on the Temper bar', 'there is no Resume button to name'),
 ]
 for page, sign, pattern, why in ROWS:
     try:

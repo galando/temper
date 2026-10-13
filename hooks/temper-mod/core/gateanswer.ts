@@ -39,6 +39,8 @@ export type GateWhere = { atDesign?: boolean }
 // The words after a choice that carry the reason: a separator, or plain space.
 const REST = String.raw`(?:\s*\(recommended\))?(?:\s*[:;,.]\s*|\s+-\s+|\s+|$)([\s\S]*)$`
 const CONTINUE = /^continue to (\w+)(?:\s*\(recommended\))?$/i
+// A bare "Continue": the move on from the gate the run is at (standalone pages name it so).
+const CONTINUE_BARE = /^continue(?:\s*\(recommended\))?$/i
 const ARMING = /^(?:stage by stage|autonomous\b[^\n]*)$/i
 const SAVE = /^save for later(?:\s*\(recommended\))?$/i
 const COMMIT = /^commit(?:\s*\(recommended\))?$/i
@@ -83,6 +85,7 @@ function move(choice: string, reason: string, phase: Phase | 'done', where: Gate
     if (!nextNames(phase).includes((go[1] ?? '').toLowerCase())) return null
     return phase === 'intent' || phase === 'plan' ? { type: 'approve' } : { type: 'advance' }
   }
+  if (CONTINUE_BARE.test(text)) return phase === 'intent' || phase === 'plan' ? { type: 'approve' } : { type: 'advance' }
   // The arming choice replaces Continue at the Plan gate (reference/autonomy.md): either answer approves the plan.
   if (ARMING.test(text.replace(/\s*\(recommended\)$/i, ''))) return phase === 'plan' && !where.atDesign ? { type: 'approve' } : null
   if (SAVE.test(text)) return { type: 'pause' }

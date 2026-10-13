@@ -282,7 +282,11 @@ Every stage gate follows the same shape. After a stage Agent returns:
    `Loop back to {upstream stage}. What is the reason?` (options "The check found a real problem" / "Cancel") or
    `Override and continue. What is the reason?` (options "I accept the risk" / "It is not a real issue" /
    "Cancel"). The person's answer is the reason; "Cancel" shows the gate again. Any other answer is the original
-   "Other", as above.
+   "Other", as above. This reason question holds for every question with the header `Temper gate`, in every mode
+   and wherever a page asks one (the Build loop's group and completion gates, a parked group, the Commit gate
+   FAIL): a move that needs a reason ("Loop back to ...", "Override and continue", "Override and commit", "Keep the
+   agent's commits", "Accept finding {id}") and came without one gets the question `{that move}. What is the
+   reason?` with fitting options and "Cancel".
    Without a `Temper enforcement:` line, or with the `Temper buttons: none` line, show the gate as follows:
    - **On PASS:** `"Continue to {next} (Recommended)"` / `"Save for later"` / free-text
      `"Other"` for a change request (make the edit, re-run the gate, re-show).
@@ -296,9 +300,12 @@ Every gate also offers, unconditionally (no config toggle): **"Grill Me"** (skil
 `grill-me`), **"Teach Me"** (skill `teach-me`), and at Plan: **"Walk through step by
 step"**, **"Open HTML review"** and **"Share HTML review"**. Each returns to the same
 gate — none advance or block the pipeline. A question holds four options at most (plus
-"Other"): when a gate has more, keep its move options (Continue to, Loop back to, Override
-and continue, Save for later) and put the rest behind one option **"More options"**, which
-asks a second question with them (four at most) and then shows the gate again.
+"Other"): when a gate has more, keep three on the first question, the moves first and the
+recommended one at the top (Continue to, Loop back to, Accept a finding, Override and
+continue, Run ... again), and make the fourth **"More options"**: a second question with the
+same header and the rest, four at most, "Save for later" among them when it did not fit. A
+move chosen there is the person's answer; any other option runs and then shows the gate
+again.
 
 Never re-derive gate logic here or in a stage prompt. Gate mechanics live only in the
 temper CLI and its tests, never in a prompt.
@@ -557,8 +564,8 @@ On PASS the gate question is the Commit question, asked once: **"Commit (Recomme
 "Save for later" (plus "Review config suggestions" when the file is there), with the header
 `Temper gate` when the system prompt has the `Temper buttons: none` line. "Commit" is this
 gate's Continue: do the On Continue step below, then the Commit section, and do not ask the
-Commit question there again. With the Temper bar and its buttons, the bar's "Continue to
-Commit" and then its Commit button are this choice.
+Commit question there again. With the Temper bar and its buttons, the Done bar's Commit button is
+this choice (the bar shows the Done step as soon as the check passed).
 
 **On Continue:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance check_complete commit`, proceed to Commit.
 
@@ -613,10 +620,11 @@ what was actually verified, not a narrated summary.
 `${CLAUDE_PLUGIN_ROOT}/reference/orchestrator-patterns.md` → "Resume Validation", then launch `next_stage`.
 `/temper "new feature"` while state exists for a **different** feature → follow
 "Nested Invocation Protection" there (say "feature", not "item"). `/temper` (no args) for
-the **same** feature already in progress → "Continue from {next_stage} (Recommended)" or
-"Start over (replan)". **With the Temper bar** skip that
-question: the bar's Continue button runs `/temper` with no arguments after the person's
-decision is recorded, so continue from `{next_stage}` at once and launch its stage.
+the **same** feature already in progress → ask with `AskUserQuestion`, header `Temper resume`:
+"Continue from {next_stage} (Recommended)" or "Start over" (the person's Start over lets the reset
+through). **With the Temper bar and its buttons** skip that question: the bar's Continue button runs
+`/temper` with no arguments after the person's decision is recorded, so continue from `{next_stage}` at
+once and launch its stage (Start over is under the bar's More).
 
 ---
 

@@ -144,9 +144,12 @@ const READY_DESC: Record<Phase, string> = {
 
 // Build is gated at every checkpoint (one task per launch, or one group in grouped Build): a check that fails
 // while tasks are still open is no failure, only a checkpoint. The next step is the next task or group.
+// In grouped Build the last group's gate comes after its tasks are all ticked: until the build check has run and failed (the
+// completion gate), that is still a checkpoint of the group loop.
 const isCheckpoint = (phase: Phase, ctx: ActionContext): boolean => {
   const left = ctx.tasksLeft
-  return phase === 'build' && !ctx.ready && Boolean(ctx.task) && (left === undefined ? ctx.gate !== 'fail' : (left ?? 0) > 0)
+  const lastGroup = ctx.grouped === true && left === 0 && ctx.gate !== 'fail'
+  return phase === 'build' && !ctx.ready && Boolean(ctx.task) && (left === undefined ? ctx.gate !== 'fail' : (left ?? 0) > 0 || lastGroup)
 }
 
 // Key 1, by what the check said. The orchestrator runs every stage and its check itself, so a person
@@ -171,6 +174,19 @@ function main(phase: Phase, ctx: ActionContext): Action {
   if (ctx.gate === 'fail' && up && phase !== 'build') {
     if (spent(phase, up, ctx)) return command('1', 'override-spent', 'Skip with a reason', 'Loop back is used up. Go on without a pass.', 'override', true, true)
     return loopBack(up, '1')
+  }
+  // A failed Build check: Claude mends what it names (the Build completion gate of the Build loop), then checks again.
+  if (phase === 'build' && ctx.gate === 'fail') {
+    return prompt(
+      '1',
+      'run-stage',
+      'Run Build again',
+      'Claude mends what the build check found. Then checks again.',
+      'The user chose Run Build again. Mend what the failed build check names, as the Build completion gate of the Build loop says ' +
+        '(the tasks of a group with group reopen, an integrate failure with the fix pass), then run the build check again and stop for the user.',
+      SHOW,
+      'Build again',
+    )
   }
   if (phase === 'intent' && ctx.gate !== 'fail') return launch('1', 'run-stage', 'Start Intent', 'Claude writes the intent and checks it. Then you decide.')
   // At the Design gate (part of Plan in the mod) the stage that runs is Design.
@@ -317,6 +333,10 @@ function pair(phase: Phase, ctx: ActionContext): [Action, Action] {
   }
 }
 
+// The original "Accept a finding" of a failed Review: the mod asks which open finding and the reason, in its own dialog,
+// so it works with no pane open.
+const acceptOne: Action = { key: '1', id: 'accept-finding', label: 'Accept a finding', desc: 'Keep one finding as it is. You give a reason.' }
+
 // The original "Start over" of the orchestrator's Resume Validation: the saved run state goes, the spec files stay.
 // It asks for a reason, which also confirms it. The mod records it; the follow up asks Claude to start the run again.
 const restart = (key: ActionKey = '1'): Action =>
@@ -340,13 +360,15 @@ function phaseMenu(phase: Phase, ctx: ActionContext): Action[] {
     case 'build':
       return isCheckpoint(phase, ctx) ? [grill(phase), teach(phase), save(paused)] : [...(loopMain || spent(phase, 'plan', ctx) ? [] : [loopBack('plan', '1')]), save(paused)]
     case 'review':
-      return [...extra([teach(phase), archDepth('1')]), ...(loopMain || spent(phase, 'build', ctx) ? [] : extra([loopBack('build', '1')])), save(paused)]
+      return [...extra([teach(phase), archDepth('1')]), ...(loopMain || spent(phase, 'build', ctx) ? [] : extra([loopBack('build', '1')])), ...(ctx.hasFindings ? [acceptOne] : []), save(paused)]
     case 'check':
       return [...(ctx.configSuggestions ? extra([grill(phase)]) : []), save(paused)]
     case 'fix':
       // At the loop limit Save for later is already key 3, and only a loop back to Plan is left. Before it, a failed Check
       // can go back to Build, as the original Check gate offers.
-      return ctx.loopLimitReached ? [grill(phase), teach(phase)] : [...(spent(phase, 'build', ctx) ? [] : [loopBack('build', '1')]), grill(phase), teach(phase), save(paused)]
+      return ctx.loopLimitReached
+        ? [grill(phase), teach(phase), ...(ctx.hasFindings ? [acceptOne] : [])]
+        : [...(spent(phase, 'build', ctx) ? [] : [loopBack('build', '1')]), grill(phase), teach(phase), ...(ctx.hasFindings ? [acceptOne] : []), save(paused)]
   }
 }
 
@@ -465,16 +487,16 @@ export function nextStep(phase: Phase | 'done', ctx: ActionContext): string {
     case 'review':
       if (!ctx.hasFindings) return 'run the review stage and its check'
       return bar
-        ? 'the review has open findings. Ask the user to choose on the Temper bar: loop back to Build to fix them, accept one with a reason in the Temper pane, or skip with a reason'
+        ? 'the review has open findings. Ask the user to choose on the Temper bar: loop back to Build to fix them, accept one with a reason (Accept a finding, under More), or skip with a reason'
         : 'the review has open findings. Ask the user with AskUserQuestion, header `Temper gate`: loop back to Build, accept a finding, or override and continue'
     case 'check':
       return ctx.allChecksPass ? ask(bar ? 'continue to Commit' : 'commit') : 'run the check stage and its check'
     case 'fix':
-      return ctx.loopLimitReached
-        ? 'the fix loop limit is reached. Ask the user to loop back to Plan, skip with a reason, or save the run for later'
-        : bar
-          ? 'fix the failed checks. Then ask the user to continue to Check (key 3 on the Temper bar)'
-          : 'fix the failed checks. Then run the checks again'
+      if (ctx.loopLimitReached) return 'the fix loop limit is reached. Ask the user to loop back to Plan, skip with a reason, or save the run for later'
+      if (ctx.allChecksPass) return ask('continue to Check')
+      return bar
+        ? 'the checks failed. Ask the user to choose on the Temper bar: fix the failures, loop back to Build, or skip with a reason'
+        : 'the checks failed. Ask the user with AskUserQuestion, header `Temper gate`: loop back to Build, override and continue, or save for later'
   }
 }
 

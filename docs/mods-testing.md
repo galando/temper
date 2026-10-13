@@ -192,6 +192,105 @@ Python repository is enough), with a feature that splits into at least two tasks
 - [ ] **Model choice.** Set `build.grouped.task-model: claude-sonnet-5-5` and run once. Expect
   the task agents and the report to name that model.
 
+## 4b. Every wait point, in every setup
+
+The rule for every step below: you go on with a click, a key of the bar (full mode) or an option
+of a dialog. You never type `/temper:temper` or a CLI command to go on, Claude never tells you to
+press a key the bar does not draw, and a choice you click is never refused. If any of that
+happens, stop and write down the step, the setup and the text you saw.
+
+Use a small Python project you can throw away (`<project>`), with pytest installed:
+
+```
+mkdir -p ~/temper-try/jokes && cd ~/temper-try/jokes && git init -q
+printf 'JOKES = ["a", "b", "c"]\n\ndef first():\n    return JOKES[0]\n' > jokes.py
+mkdir tests && printf 'from jokes import first\n\ndef test_first():\n    assert first() == "a"\n' > tests/test_jokes.py
+git add . && git commit -qm base
+```
+
+Run the steps four times, once per setup:
+
+| Setup | How to start it | First check |
+|---|---|---|
+| No mod | `npx -y @anthropic-ai/claude-code@2.1.259 --plugin-dir <clone>` (the mod is inert before 2.1.287) | The first reply line is `Temper enforcement is off here (no mods support); ...` |
+| Full | `claude --plugin-dir <clone>`, then `/temper:temper mode full` | The TEMPER bar with buttons |
+| Minimal | the same session, `/temper:temper mode minimal` | The bar with phases only |
+| Off | the same session, `/temper:temper mode off` | No bar |
+
+Then once more in full mode with `/temper:temper enforcement off`: every click below works the
+same, nothing is refused, and the first reply line says enforcement is off. Turn it back on.
+
+Start with `/temper:temper "list N jokes, and say what happens when N is larger than the list"`.
+In the table, "Dialog" is an `AskUserQuestion` dialog (header `Temper gate` with the mod).
+
+- [ ] **Blocking questions.** Every setup: one dialog, one question per Blocking question, three
+  choices at most plus "Carry forward". Never a list of questions to answer by typing.
+- [ ] **Intent gate.** Full: `1 Continue to Plan`. Minimal, off, no mod: a dialog
+  "Continue to Plan (Recommended)" / "Save for later" (Grill me, Teach me where they fit).
+  Choose Continue: Plan starts. If the intent check fails, full mode shows `1 Run Intent again`.
+- [ ] **Plan gate.** Full: `1 Continue to Build` (`1 Continue to Design` for a medium run with
+  `phases.design: true`). Other setups: a dialog of four options at most, the rest behind
+  "More options". Choose Continue: Build (or Design) starts.
+- [ ] **Arming autonomy.** Add `autonomy:` and `  enabled: true` to `.claude/temper.config` and
+  start a new run. At the plan gate, in every setup (full too): a dialog "Stage by stage
+  (Recommended)" / "Autonomous: run the rest unattended" / "Save for later". Choose Autonomous:
+  the run goes on without asking, and nothing is refused. Remove the lines afterwards.
+- [ ] **Design gate** (a medium run with `phases.design: true`). On a failed design check, full:
+  `1 Loop back to Plan`; other setups: a dialog "Loop back to Plan" / "Override and continue" /
+  "Save for later". Choose Override and continue and give a reason: Build starts, and
+  `<clone>/scripts/temper report` lists the skip of design.
+- [ ] **A group gate.** Full: `1 Continue with the groups`, `2 Change`, `3 Stop` and no dialog.
+  Press 2: the prompt box holds `Change in this group: `. Other setups: a dialog Continue /
+  Change / Stop.
+- [ ] **No false failures.** After Build, `<clone>/scripts/temper group report` lists no attempt
+  with "no model given to task gate".
+- [ ] **A parked group.** While a task runs, commit in its worktree by hand
+  (`git -C .claude/worktrees/temper-<name>-T<N> commit -am x`). Every setup: a dialog "Take the
+  commits out and run the task again (Recommended)" / "Keep the agent's commits" / "Save for
+  later". Choose Keep and pick a reason: the group reopens, nothing is refused.
+- [ ] **Build completion gate on FAIL.** Full: `1 Run Build again`, and `Loop back to Plan`
+  under `0`. Other setups: a dialog "Run Build again (Recommended)" / "Loop back to Plan" /
+  "Override and continue" / "Save for later".
+- [ ] **Review with open findings.** Full: `1 Loop back to Build`; under `0`, "Accept a finding"
+  asks which finding and why, and records it (no pane needed); the pane (`/temper:temper pane`)
+  shows Fix, Accept with reason and Explain per finding. Press Fix: Build runs again for that
+  finding, and its write is not refused. Other setups: a dialog "Loop back to Build (Recommended)" / "Accept a
+  finding" / "Override and continue" / "Save for later". Choose Accept a finding, pick the
+  finding and a reason: the review check runs again.
+- [ ] **The loop budget is spent.** Set `loops:` and `  max-per-type: 1` in
+  `.claude/temper.config` and loop back from Review twice. The second time Claude says the
+  budget is spent and shows the gate again with no loop back: full `1 Skip with a reason`, other
+  setups a dialog "Override and continue" / "Save for later". Skip with a reason: Check starts.
+- [ ] **Check FAIL.** Full: the Fix step, and `Loop back to Build` under `0`. Other setups: a
+  dialog "Loop back to Build" / "Override and continue" / "Save for later".
+- [ ] **Check PASS.** Minimal, off, no mod: one dialog "Commit (Recommended)" / "Save for later"
+  (and "Review config suggestions" when Check wrote them), never two dialogs in a row. Full: the
+  Done bar at once, `1 Commit` (and `3 Review config suggestions`).
+- [ ] **Commit gate FAIL.** Before you choose Commit, run `touch .temper/specs/<name>/design.md`
+  in another terminal (the commit gate then wants a design check). Every setup: a dialog
+  "Override and commit" / "Save for later". Choose it and give a reason: the commit is made.
+  Delete the empty `design.md` afterwards.
+- [ ] **An autonomous park.** In an armed run, make Review fail twice (the loop budget). Expect
+  the park report, then the gate of the step it parked at: full, the bar; other setups, its
+  dialog. Skip with a reason: the run goes on, nothing is refused.
+- [ ] **Save for later, then go on.** At any gate choose Save for later. Full: the bar says "The
+  run is saved for later; a choice takes it up again." Press 1: the run goes on. Minimal, off,
+  no mod: start a new session and run `/temper:temper` (the one thing you type, to open the
+  run): the gate dialog comes back and Continue goes through.
+- [ ] **Start over.** With a run saved, `/temper:temper "a different feature"`. Every setup: a
+  `Temper resume` dialog with "Start over"; full: also under `0`. Choose it: the new run starts
+  at Intent. In minimal and off, `/temper:temper` with no words on the same feature also asks
+  "Continue from ... (Recommended)" / "Start over".
+- [ ] **Scope drift.** Ask Claude in Build to edit `README.md`. Every setup: a dialog with Add to
+  plan / Revert / Allow once.
+- [ ] **A fix run.** `/temper:fix "first() fails on an empty list"`. With the mod, in every mode:
+  no bar buttons for the fix run, `/temper:temper status` says the bar stands aside, nothing is
+  refused, and every gate is a dialog (Proceed to Fix, Continue to Review, the review FAIL
+  options, Commit). Without the mod: the same dialogs.
+- [ ] **Standalone Build.** After a commit cleared the run, run `/temper:build` on a spec with an
+  approved plan: two dialogs (Continue to Plan, then Continue to Build), then Build runs. With the
+  mod nothing is refused.
+
 ## 5. Modes
 
 - [ ] `/temper:temper mode minimal`. Expect the reply `Temper mode: minimal`, the bar with no

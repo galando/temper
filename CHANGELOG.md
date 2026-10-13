@@ -49,6 +49,52 @@ The task brief writes one test per case, each asserting the exact expected value
 - `temper group report` reads in plain words: tasks, build time, tokens, and each attempt with its model,
   tokens, time and, for a failed attempt, its reason.
 
+**Fixes from a flow audit: a click at every point where a run waits.** Every gate, the Fix flow, the
+grouped Build gates, a parked group, a saved run, Start over, autonomy, the Design gate, a spent loop
+budget, Blocking questions, Scope drift and the Commit gate were checked with no mod, with the mod in
+full, minimal and off modes, and with enforcement on and off. The person now goes on with a bar key or
+a dialog option everywhere, and the guard accepts the move chosen:
+- "None FAIL" attempts in the group report: the schedule told the orchestrator to run `task gate` for a
+  task whose agent was still at work, which spent one of its Haiku attempts. The waiting line now says
+  `running on {model}: wait for its agent to return`, a task gate with no `--model` is refused and
+  records nothing, and the orchestrator gates a task only after its own agent returned.
+- A `/temper:fix` run: the mod stands aside (no bar buttons, no refusals) in every mode, and fix.md asks
+  every gate in the conversation. Before, every source write of the Fix agent was refused as scope drift.
+- A step back whose loop the CLI refused (BLOCKED) no longer leaves the run stuck: the skip that follows
+  goes through, and the bar no longer offers a loop whose budget is spent.
+- A move of the person on a saved run takes it up again, in every mode.
+- The Design gate has its own check: a failed design loops back to Plan or is skipped as
+  `override design`, and key 1 never says Continue to Build on a failed design.
+- Arming autonomy is a `Temper gate` question in every mode, and an armed run may loop back to Build
+  after a failed Review or Check, as `reference/autonomy.md` says.
+- A parked group is a question: take the agent's commits out, or keep them with a reason (the guard lets
+  that one `group reopen --accept-foreign` through), or save. A group gate FAIL and an integrate FAIL are
+  questions too.
+- Review: the pane's Fix on a finding is a loop back to Build for it, and without buttons a finding is
+  accepted with the answer "Accept finding N".
+- After the run is done, an override for the commit gate is the person's "Override and commit", never
+  Claude's own.
+- Standalone `/temper:build`, `/temper:plan` and `/temper:check` start or move the run with the CLI and
+  two `Temper gate` answers; nothing writes `build-state.json` by hand.
+- Texts name a click: the guard's refusals, the Next line and the toasts name the Temper bar in full mode
+  and the `Temper gate` question in minimal and off modes, never a typed command, a missing key or a
+  "Go back" button. Labels fit the step (Continue to Design, Run Build again, Run Intent again, Loop back
+  to Build from a failed Check, Review config suggestions at Done, Change in this group). A passed Check
+  asks one Commit question, a gate with more than four options puts the rest behind "More options", and
+  a Blocking question holds three choices plus Carry forward.
+- A second, independent audit of the new head found more, now fixed: a skip after the CLI went on by
+  a passed check alone (an autonomous run, a re-run Review after a loop back) was recorded but the
+  next advance was refused, and a failed Check there never opened the Fix step (the mod's record now
+  catches up with the stage the move was made at); the bar's More menu has "Accept a finding" (it asks
+  which finding and why, with no pane needed); a bare "Continue" answer counts; a different answer
+  while an earlier move waits is the person's new choice; the last group gate keeps its Continue,
+  Change and Stop; "Run Build again" tells Claude what the failed check named; an autonomous park
+  shows its gate question; the per task completion gate, standalone `/temper:build` and
+  `/temper:check` on FAIL, `/temper:fix` (Fix, Review and Check on FAIL) and the resume of the same
+  feature in minimal and off modes all offer their moves as options; the reason question holds for
+  every `Temper gate` question.
+- `docs/mods-testing.md` section 4b lists every wait point to check by hand in each setup.
+
 **Fixes from a whole-diff review.**
 - `reference/build.md` no longer tells the build agent to write `.temper/build-state.json`, and a
   run state that lost `spec_path` now fails every gate with the repair line instead of skipping rows.

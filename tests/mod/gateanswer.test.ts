@@ -158,13 +158,23 @@ describe('the gate in the question dialog, in minimal mode', () => {
     expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBe(ONLY_USER_ASK)
   })
 
-  test('a second answer while the first move waits to be recorded records nothing more', { options: { uiMode: 'minimal' } }, async ($, on) => {
+  test('the same answer again while the first move waits to be recorded records nothing more', { options: { uiMode: 'minimal' } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = atIntent(on, ['Continue to Plan (Recommended)', 'Continue to Plan (Recommended)'])
+    await api.session.start(START)
+    await api.tool.call(ask('The intent check passed. What next?', ['Continue to Plan (Recommended)', 'Save for later']))
+    await api.tool.call(ask('The intent check passed. What now?', ['Continue to Plan (Recommended)', 'Save for later']))
+    expect(events(w)).toEqual(['advance:intent:plan::person'])
+  })
+
+  // The second audit of the flow audit: a different answer is the person's new choice, not swallowed.
+  test('a different answer while the first move waits to be recorded is the person\'s new choice', { options: { uiMode: 'minimal' } }, async ($, on) => {
     const api = $ as unknown as Api
     const w = atIntent(on, ['Continue to Plan (Recommended)', 'Save for later'])
     await api.session.start(START)
     await api.tool.call(ask('The intent check passed. What next?', ['Continue to Plan (Recommended)', 'Save for later']))
     await api.tool.call(ask('The intent check passed. What now?', ['Continue to Plan (Recommended)', 'Save for later']))
-    expect(events(w)).toEqual(['advance:intent:plan::person'])
+    expect(events(w)).toEqual(['advance:intent:plan::person', 'pause::::person'])
   })
 
   test('"Save for later" pauses the run', { options: { uiMode: 'minimal' } }, async ($, on) => {

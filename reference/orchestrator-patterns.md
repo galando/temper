@@ -64,8 +64,8 @@ attempts and commit; the integration verdict). The orchestrator reads them only 
 `temper schedule`, `temper group report` and `temper report`.
 
 **Save/Continue:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance {stage}_complete {next_stage}` at every
-transition. On Save, report "Saved. When you come back, choose Resume on the Temper bar, or, where the bar shows no
-buttons, run {command} again."
+transition. On Save, report "Saved. When you come back, the Temper bar shows the next step (a choice there takes the run
+up again); where it shows no buttons, run {command} to open the run, and its gate question comes back."
 
 ## Gate Options + Enforcement
 

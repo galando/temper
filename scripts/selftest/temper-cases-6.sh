@@ -145,6 +145,8 @@ json.dump(d, open('.temper/groups.json', 'w'))
 PY
 out="$("$TEMPER" group gate G1 2>&1)"; rc=$?
 assert_eq "D-08: the group gate FAILs while the group is parked" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'parked')"
+assert_eq "flow audit: the parked group gate leaves the choice to the person and names no CLI step for them" "1|0" \
+  "$(grep -c 'the person chooses how to go on' <<<"$out")|$(grep -c 'resolve the park and run' <<<"$out")"
 
 # a normal FAIL (no foreign commit) discards the attempt's worktree, then retry, escalate, park (D-03)
 d_setup

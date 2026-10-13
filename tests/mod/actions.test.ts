@@ -41,6 +41,8 @@ const ORIGINAL = [
   'Start over',
 ]
 const ALLOWED_EXTRA = [
+  // A failed Review: the original "Accept a finding" (commands/temper.md, Stage 3).
+  'Accept a finding',
   'Discuss',
   'Play while you wait',
   'Skip with a reason',
@@ -316,8 +318,9 @@ describe('shape of every action', () => {
   test('every action does exactly one kind of thing: prompt, command, launch or draft', () => {
     for (const { where, x } of everyAction()) {
       const kinds = [Boolean(x.prompt), Boolean(x.command), Boolean(x.fill), Boolean(x.record), Boolean(x.resume && !x.command && !x.prompt)].filter(Boolean).length
-      // Stop records (pause) and asks (the build check). A command can also resume the orchestrator.
-      const ok = kinds >= 1 && (kinds === 1 || x.id === 'stop' || Boolean(x.command && x.resume)) || x.id === 'save-done'
+      // Stop records (pause) and asks (the build check). A command can also resume the orchestrator. Accept a finding asks in
+      // the mod's own dialog (which finding, then the reason), as the pane's Accept does.
+      const ok = kinds >= 1 && (kinds === 1 || x.id === 'stop' || Boolean(x.command && x.resume)) || x.id === 'save-done' || x.id === 'accept-finding'
       expect(ok, `${where} ${x.id}`).toBe(true)
     }
   })
@@ -417,6 +420,7 @@ describe('every original option maps to a button', () => {
     ['Stop', 'build', CHECKPOINT, 'Stop'],
     ['Commit', 'done', {}, 'Commit'],
     ['Other', 'plan', {}, 'Discuss'],
+    ['Accept a finding', 'review', { gate: 'fail', hasFindings: true }, 'Accept a finding'],
   ]
   for (const [option, phase, ctx, label] of TABLE) test(option, () => expect(find(phase, ctx, label), `${option} -> ${label}`).toBe(true))
 

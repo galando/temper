@@ -62,7 +62,8 @@ evidence; the human gate stays in this context either way.
     .temper/specs/{feature-slug}` (whenever intent.md exists, authored here or picked up
     as a draft) and `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan --spec-path
     .temper/specs/{feature-slug}`
-12. Present for approval with 4 options: Continue / Walkthrough / Change / Save (with the
+12. Present for approval with 4 options: "Continue to Build (Recommended)" (or "Continue to
+    Design" when Design follows) / Walkthrough / Change / "Save for later" (with the
     Temper mod, as `AskUserQuestion` with the header `Temper gate`; the run state is started
     first, as `${CLAUDE_PLUGIN_ROOT}/reference/plan.md` → "Approval" says)
 

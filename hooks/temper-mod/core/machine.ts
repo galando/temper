@@ -131,6 +131,15 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
     s.phase = to
     if (to !== 'done') s.since[to] = ts
   }
+  // A move decided at a phase the fold has not reached: the CLI went on with no move of the person (an advance on a
+  // passed check alone, an autonomous run). decide() made the move at the phase the CLI was at, so the fold catches up
+  // there first: forward only, and with no history row (it is no decision). A phase entered this way keeps the entry
+  // time it had, or counts as entered at 0, as reconcile does in the adapter.
+  const catchUp = (to: Phase) => {
+    if (s.phase === null || s.phase === 'done' || order(to) <= order(s.phase)) return
+    s.phase = to
+    if (s.since[to] === undefined) s.since[to] = 0
+  }
 
   for (const ev of sorted) {
     // Every kind of event changes what is enforced (pause lifts the rules, checkResult
@@ -152,6 +161,7 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
         break
       }
       case 'advance':
+        catchUp(ev.from)
         if (s.phase === ev.from) {
           const failedAt = s.since.fix
           enter(ev.to, ev.ts)
@@ -172,8 +182,10 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
         }
         break
       case 'override':
-        // Keeping a task agent's commits skips no stage: the run stays where it is, and Build is not overridden.
-        if (ev.stage === 'foreign-commit') break
+        // Keeping a task agent's commits skips no stage: the run stays where it is, and Build is not overridden. Override
+        // and commit (after the run is done) moves nothing either: it lets the overrides of the commit gate through.
+        if (ev.stage === 'foreign-commit' || ev.stage === 'commit') break
+        catchUp(ev.phase)
         // A skip at the Design gate is made while the Plan approval has taken the fold to Build (the CLI is at design).
         if (s.phase === ev.phase || (ev.stage === 'design' && ev.phase === 'plan' && s.phase === 'build')) {
           s.overrides.push({ id: ev.id, phase: ev.phase, reason: ev.reason, author: ev.author, ts: ev.ts, ...(ev.stage ? { stage: ev.stage } : {}) })
@@ -197,6 +209,7 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
         break
       }
       case 'checkResult':
+        catchUp('check')
         if (s.phase === 'check') {
           if (ev.result === 'pass') {
             enter('done', ev.ts)

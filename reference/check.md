@@ -160,8 +160,13 @@ Diff / Perf sub-panel lines only when those levels ran, total time, and the scen
 verdict `{X}/{Y} behaviorally verified` (STRONG assertions count full, WEAK half —
 quality-weighted, intentionally different from Build's binary pass/fail).
 
-`AskUserQuestion`: "Commit (Recommended)" / "Save for later" (+ "Loop back to Build" from
-the orchestrator when the feedback conditions above are met). A change typed via "Other"
+`AskUserQuestion` (header `Temper gate` with the Temper mod). **On PASS:** "Commit
+(Recommended)" / "Save for later". **On FAIL:** "Loop back to Build (Recommended)" while the
+feedback conditions above are met (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state loop check build --reason "<why>"`,
+`state set next_stage build`, the Build fix pass, then the checks again from the first level that
+failed, and this gate again) / "Override and continue" (with the person's reason:
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper override check --reason "<the reason>"`, then the Commit steps) / "Save for
+later". At the loop budget the loop back is not offered. A change typed via "Other"
 is never approval to commit — make the edit, re-run validation from the first level that
 had failed (skip already-passed levels), re-show this same gate.
 
@@ -187,8 +192,8 @@ state that the final clear destroys):
 
 **On Save:** when the check passed, record it with `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance
 check_complete commit`; otherwise leave the run state as the CLI keeps it (never write
-`build-state.json` by hand). Report "Saved. When you come back, choose Resume on the Temper bar, or,
-where the bar shows no buttons, run /temper:temper again."
+`build-state.json` by hand). Report "Saved. When you come back, the Temper bar shows the next step;
+where it shows no buttons, run /temper:temper to open the run, and its gate question comes back."
 
 ## Error Interpretation
 

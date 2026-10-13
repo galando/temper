@@ -2295,7 +2295,7 @@ except Exception:
   offbranch="$(printf '%s\n' "$chk" | sed -n 3p)"; gstatus="$(printf '%s\n' "$chk" | sed -n 4p)"
   local reason=""
   if [[ "$gstatus" == "parked" ]]; then
-    reason="group $g is parked; resolve the park and run temper group reopen $g --task N"
+    reason="group $g is parked (its task gate gave the reason); the person chooses how to go on"
   elif [[ -n "$notpassed" ]]; then
     reason="not every task has passed its task gate: $notpassed"
   elif [[ -n "$offbranch" ]]; then

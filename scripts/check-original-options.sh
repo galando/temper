@@ -37,6 +37,7 @@ Change|Change
 Stop|Stop
 Commit|Commit
 Other|Discuss
+Accept a finding|Accept a finding
 '
 
 FAIL=0

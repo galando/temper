@@ -42,10 +42,15 @@ runs on Haiku.
      added to its prompt.
    - **"Stop"**: run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build`, then save for later.
 5. **Completion gate** (on the last task's Continue): `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build`
-   (RED-then-GREEN evidence recorded, no unchecked tasks, all feedback answered). Options (four
-   max; Override and corrections arrive via "Other"): Continue to Review / Teach Me / "Loop
-   back to Plan" (only if Build judges the plan infeasible: human-driven, no circuit breaker,
-   max 1 per run) / Save.
+   (RED-then-GREEN evidence recorded, no unchecked tasks, all feedback answered). With the Temper
+   bar and its buttons the bar offers it: end the turn with `Waiting for you. Choose on the Temper
+   bar, or type a change.` Otherwise ask it with `AskUserQuestion` (header `Temper gate` when the
+   system prompt has the `Temper buttons: none` line), corrections via "Other". **On PASS:**
+   "Continue to Review (Recommended)" / "Teach Me" / "Loop back to Plan" / "Save for later".
+   **On FAIL:** "Run Build again (Recommended)" (relaunch the task the FAIL rows name, then the
+   gate again) / "Loop back to Plan" / "Override and continue" (with the person's reason, as the
+   Gates section of the orchestrator says) / "Save for later". "Loop back to Plan" is only for a
+   plan Build judges infeasible: human-driven, no circuit breaker, max 1 per run.
 6. **Autonomy enabled:** the panel still prints and the per-scenario checkpoint commits still
    happen, but Continue is auto-selected at every checkpoint; Change and Stop stay
    interactive-only. The autonomy blast-radius check in `gate commit` uses `base_sha`-relative
