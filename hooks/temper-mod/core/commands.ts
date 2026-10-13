@@ -131,6 +131,9 @@ function followUpText(draft: Draft, complexity: string | null, from: Phase | 'de
       return `Temper: the user moved the run from ${draft.from} to ${draft.to}. ${recorded}${run} Do not start the next stage yourself. ${ACT}`
     }
     case 'override':
+      if (draft.stage === 'foreign-commit') {
+        return `Temper: the user chose to keep the task agent's commits (reason: ${draft.reason}). ${recorded} Run the \`group reopen ... --accept-foreign\` line the park printed, with this reason. ${ACT}`
+      }
       if (draft.stage === 'commit') {
         return (
           `Temper: the user chose Override and commit (reason: ${draft.reason}). ${recorded} ` +

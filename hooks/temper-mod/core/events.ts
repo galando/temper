@@ -14,8 +14,9 @@ export type EventBody =
   | { type: 'start'; slug: string; title: string; phase?: Phase }
   | { type: 'advance'; from: Phase; to: Phase | 'done' }
   | { type: 'back'; to: Phase; reason: string }
-  // `stage`: the CLI stage skipped when it is not the phase's own: `design` (the Design gate, part of Plan in the mod) or
-  // `commit` (an override at Done, for the commit gate).
+  // `stage`: the CLI stage skipped when it is not the phase's own: `design` (the Design gate, part of Plan in the mod),
+  // `commit` (an override at Done, for the commit gate) or `foreign-commit` (keeping the commits a task agent made in a
+  // parked group of grouped Build: the CLI records that as an override; it moves no phase).
   | { type: 'override'; phase: Phase; reason: string; stage?: string }
   | { type: 'accept'; findingId: string; reason: string }
   | { type: 'drift'; path: string; choice: DriftChoice; reason: string }
@@ -68,7 +69,7 @@ function bodyProblem(o: Record<string, unknown>): string | null {
     case 'back':
       return isPhase(o.to) && isString(o.reason) ? null : 'back needs to and reason'
     case 'override':
-      return isPhase(o.phase) && isString(o.reason) && (o.stage === undefined || o.stage === 'design' || o.stage === 'commit') ? null : 'override needs phase and reason'
+      return isPhase(o.phase) && isString(o.reason) && (o.stage === undefined || o.stage === 'design' || o.stage === 'commit' || o.stage === 'foreign-commit') ? null : 'override needs phase and reason'
     case 'accept':
       return isString(o.findingId) && isString(o.reason) ? null : 'accept needs findingId and reason'
     case 'drift':

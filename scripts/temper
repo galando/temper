@@ -2352,11 +2352,11 @@ _park_ways_out() { # _park_ways_out <group> <worktree as printed> <tasks csv> <s
     if [[ -z "$fp" ]] || grep -qx "$s" <<<"$fp"; then lines+=("        git -C $wt rebase --autostash --onto ${s:0:7}~1 ${s:0:7}"); fi
   done
   [[ ${#lines[@]} -gt 0 ]] || for s in "$@"; do lines+=("        git -C $wt rebase --autostash --onto ${s:0:7}~1 ${s:0:7}"); done
-  echo "Nothing was changed on the branch or in the task's worktree ($wt). Resolve it yourself, either:"
+  echo "Nothing was changed on the branch or in the task's worktree ($wt). The person chooses one of two ways out (ask them, as build-groups.md step 5 says):"
   echo "  (a) remove the commit(s) from its branch, newest first (each line keeps the task's uncommitted work):"
   printf '%s\n' "${lines[@]}"
   echo "      then: temper group reopen $g$targs"
-  echo "  (b) or keep them knowingly: temper group reopen $g$targs --accept-foreign $csv --reason \"<why>\""
+  echo "  (b) or keep them knowingly, with the person's reason: temper group reopen $g$targs --accept-foreign $csv --reason \"<why>\""
 }
 
 # temper group reopen G --task N [--task M] [--feedback ID]: the Change choice at a group gate (D-02).
@@ -3715,7 +3715,7 @@ except Exception:
   if [[ -n "$unk" ]]; then
     _integ_record FAIL "commit(s) not made by the CLI and not accepted: $unk" || true
     echo "FAIL: commit(s) not made by the CLI and not accepted on a group branch: $unk" >&2
-    echo "Remove them from the branch, or keep them knowingly: temper group reopen <G> --task <N> --accept-foreign <sha> --reason \"<why>\"" >&2
+    echo "The person chooses (ask them, as build-groups.md step 5 says): remove them from the branch, or keep them knowingly with their reason: temper group reopen <G> --task <N> --accept-foreign <sha> --reason \"<why>\"" >&2
     return 1
   fi
   local missing

@@ -96,6 +96,11 @@ state/evidence calls (never `gate`) into a single Bash call.
 
 ## Gates
 
+**With the Temper mod** (a `Temper enforcement:` line in the system prompt) the mod stands
+aside in a `/temper:fix` run: the bar draws no buttons and the guard refuses nothing for it,
+whatever the mode. Ask every gate below with `AskUserQuestion` exactly as written, so the person
+always has an option to click; the native commit hook gates the commit as it does without the mod.
+
 Same shape as `/temper`: print the agent's returned box verbatim, run the stage's
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate`, then `AskUserQuestion` — Continue (Recommended) / "Save for later" /
 built-in "Other" free-text. A change typed via "Other" is never approval: make the

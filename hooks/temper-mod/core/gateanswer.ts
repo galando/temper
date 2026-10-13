@@ -11,6 +11,7 @@
 //   "Override and continue"                            override, only with the person's reason
 //   "Accept finding {id}"                              accept that review finding, only with the person's reason
 //   "Override and commit"                              at Done, the failed commit gate: override, with a reason
+//   "Keep the agent's commits"                         a group parked on a task agent's commits: keep them, with a reason
 //
 // A reason is the person's own text for that question: the text typed after the choice in "Other"
 // ("Loop back to Plan: the API changed"), or the note the person added to the choice. When the choice
@@ -45,7 +46,8 @@ const LOOP = new RegExp(String.raw`^loop back to (\w+)${REST}`, 'i')
 const OVERRIDE = new RegExp(String.raw`^override and continue${REST}`, 'i')
 const ACCEPT = new RegExp(String.raw`^accept finding (\w+)${REST}`, 'i')
 const OVERRIDE_COMMIT = new RegExp(String.raw`^override and commit${REST}`, 'i')
-const ASKS_REASON = new RegExp(String.raw`^\s*(loop back to \w+|override and continue|accept finding \w+|override and commit)\s*[.:]\s*${escapeText(REASON_QUESTION)}`, 'i')
+const KEEP = new RegExp(String.raw`^keep the agent'?s commits${REST}`, 'i')
+const ASKS_REASON = new RegExp(String.raw`^\s*(loop back to \w+|override and continue|accept finding \w+|override and commit|keep the agent'?s commits)\s*[.:]\s*${escapeText(REASON_QUESTION)}`, 'i')
 
 function escapeText(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -95,6 +97,11 @@ function move(choice: string, reason: string, phase: Phase | 'done', where: Gate
   if (skip) {
     const why = (skip[1] ?? '').trim() || reason
     return why !== '' ? { type: 'override', reason: why } : null
+  }
+  const keep = KEEP.exec(text)
+  if (keep) {
+    const why = (keep[1] ?? '').trim() || reason
+    return why !== '' && phase === 'build' ? { type: 'override', reason: why, stage: 'foreign-commit' } : null
   }
   const accept = ACCEPT.exec(text)
   if (accept) {

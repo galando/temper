@@ -546,3 +546,103 @@ describe('U1: the commit gate FAIL after the run is done', () => {
     expect(gateAnswer(result('Override and commit: x'), 'check')).toBeNull()
   })
 })
+
+// ---- Batch C: fix runs, parked groups, standalone commands --------------------------------------
+
+function fixRun(on: Parameters<typeof world>[0], next: string, gates: Record<string, 'PASS' | 'FAIL'> = {}, extra: Record<string, string> = {}): World {
+  const files: Record<string, string> = { ...runFiles({ gates }), ...extra }
+  for (const name of ['plan.md', 'tasks.md', 'intent.md']) delete files[`${SPEC}/${name}`]
+  files[`${SPEC}/rca.md`] = '# RCA\n'
+  files['.temper/build-state.json'] = JSON.stringify({ spec: 'pw', spec_path: SPEC, command: 'fix', branch: 'fix/pw', stage: next === 'rca' ? 'started' : 'rca_complete', next_stage: next })
+  files['/repo/.git/HEAD'] = 'ref: refs/heads/fix/pw\n'
+  return world(on, files, { fakeCli: true, projectRoot: '/repo' })
+}
+
+describe('finding 1: a /temper:fix run with the mod, enforcement on', () => {
+  for (const uiMode of ['full', 'minimal', 'off']) {
+    test(`${uiMode} mode: the mod stands aside, so every step of fix.md goes through`, { options: { uiMode } }, async ($, on) => {
+      const api = $ as unknown as Api
+      fixRun(on, 'rca', { build: 'FAIL' })
+      await api.session.start(START)
+      expect(await write(api, 'src/cart.py')).toBeUndefined()
+      expect(await sh(api, `${CLI} state advance rca_complete fix`)).toBeUndefined()
+      expect(await sh(api, `${CLI} override build --reason 'flaky test tracked'`)).toBeUndefined()
+      expect(await sh(api, `${CLI} state advance fix_complete review`)).toBeUndefined()
+      expect(await sh(api, `${CLI} state loop review fix --reason 'the fix is not enough'`)).toBeUndefined()
+      expect(await write(api, 'src/cart.py')).toBeUndefined()
+      expect(await sh(api, 'git commit -m "fix(cart): x"')).toBeUndefined()
+    })
+  }
+
+  test('the bar draws nothing for a fix run, and Claude reads that the bar stands aside', async ($, on) => {
+    const api = $ as unknown as Api
+    fixRun(on, 'fix')
+    await api.session.start(START)
+    expect(await bar(api)).not.toContain('Fix the failures')
+    expect(await system(api)).toContain('Phase: a /temper:fix run. The Temper bar and its guard stand aside for it')
+    expect((await typed(api, 'approve')).text).toContain('a /temper:fix run')
+  })
+
+  test('a /temper run held from before does not apply to the fix run that replaced it', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'intent_complete', next_stage: 'plan' }, { intent: 'PASS' })
+    await api.session.start(START)
+    expect(await write(api, 'src/cart.py')).toBeDefined()
+    w.files.set('.temper/build-state.json', JSON.stringify({ spec: 'bug', spec_path: '.temper/specs/bug', command: 'fix', stage: 'started', next_stage: 'rca' }))
+    await typed(api, 'status')
+    expect(await write(api, 'src/cart.py')).toBeUndefined()
+  })
+})
+
+describe('finding 7: a group parked on a task agent\'s commits', () => {
+  test('"Keep the agent\'s commits" with a reason is the decision, in Build only', () => {
+    expect(gateAnswer(result("Keep the agent's commits: the commit is the task's own work"), 'build')).toEqual({ type: 'override', reason: "the commit is the task's own work", stage: 'foreign-commit' })
+    expect(gateAnswer(result("Keep the agent's commits"), 'build')).toBeNull()
+    expect(gateAnswer(result('I accept the risk', 'Temper gate', "Keep the agent's commits. What is the reason?"), 'build')).toEqual({ type: 'override', reason: 'I accept the risk', stage: 'foreign-commit' })
+    expect(gateAnswer(result("Keep the agent's commits: x"), 'review')).toBeNull()
+  })
+
+  for (const uiMode of ['full', 'minimal']) {
+    test(`${uiMode} mode: the answer lets one reopen with --accept-foreign through, and moves nothing`, { options: { uiMode, moveCooldownMs: 0 } }, async ($, on) => {
+      const api = $ as unknown as Api
+      const w = run(on, { stage: 'plan_complete', next_stage: 'build', task: 2 }, { plan: 'PASS', build: 'FAIL' }, { '.temper/groups.json': '{}' }, ['The commits are right'])
+      await api.session.start(START)
+      const reopen = `${CLI} group reopen G1 --task 2 --accept-foreign abc1234 --reason 'The commits are right'`
+      expect(await sh(api, reopen)).toBeDefined()
+      await api.tool.call(gate("Keep the agent's commits. What is the reason?", ['The commits are right', 'I accept the risk', 'Cancel']))
+      expect(moves(w)).toEqual(['override:build:foreign-commit:person'])
+      // Build is not skipped and nothing waits to be recorded: the run stays at the group gate.
+      expect(await bar(api)).not.toContain('did not go through')
+      expect(await sh(api, `${CLI} override build --reason x`)).toBeDefined()
+      expect(await sh(api, `${CLI} state advance build_complete review`)).toBeDefined()
+      expect(await sh(api, reopen)).toBeUndefined()
+      expect(await sh(api, reopen)).toBeDefined()
+    })
+  }
+})
+
+describe('finding 9: standalone /temper:build starts its run and walks it to Build by clicks', () => {
+  test('with the mod: the two Temper gate answers move the new run to Build, and Build may write its plan files', { options: { uiMode: 'minimal' } }, async ($, on) => {
+    const api = $ as unknown as Api
+    const w = run(on, { stage: 'started', next_stage: 'intent' }, { intent: 'PASS' }, {}, ['Continue to Plan (Recommended)', 'Continue to Build (Recommended)'])
+    await api.session.start(START)
+    expect(await write(api, 'src/app.ts')).toBeDefined()
+    await api.tool.call(gate('The intent check passed. What next?', ['Continue to Plan (Recommended)', 'Save for later']))
+    expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBeUndefined()
+    w.files.set('.temper/gates.json', JSON.stringify({ intent: { verdict: 'PASS', ts: LATER }, plan: { verdict: 'PASS', ts: LATER } }))
+    await typed(api, 'status')
+    await api.tool.call(gate('The plan check passed. What next?', ['Continue to Build (Recommended)', 'Save for later']))
+    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    await typed(api, 'status')
+    expect(await write(api, 'src/app.ts')).toBeUndefined()
+  })
+})
+
+describe('finding 25: standalone /temper:plan and /temper:check never write the run state by hand', () => {
+  test('the guard refuses a hand written build-state.json, with or without a run', async ($, on) => {
+    const api = $ as unknown as Api
+    world(on, {}, { projectRoot: '/repo' })
+    await api.session.start(START)
+    expect(await write(api, '.temper/build-state.json')).toContain('use the temper CLI to change run state')
+  })
+})

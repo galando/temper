@@ -52,7 +52,19 @@ which `/temper` does at its start).
    left, gate a task still listed as running with the model its waiting line names, so the gate judges
    the work it left. When every task of group G has passed:
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper group gate G<n>`. A parked group, or a FAIL, goes to the
-   user with the CLI's reason; nothing else is decided here.
+   person with the CLI's reason as a question (`AskUserQuestion`, header `Temper gate`, with or
+   without the Temper bar; nothing else is decided here, and the person never types a command):
+   - **Parked on commits a task agent made** (the task gate printed two ways out): "Take the
+     commits out and run the task again (Recommended)" (run the printed `git -C ... rebase` lines
+     as written, newest first, then the printed `group reopen` line without `--accept-foreign`, and
+     go back to step 3) / "Keep the agent's commits" (it needs the person's reason: when the answer
+     carries none, ask `Keep the agent's commits. What is the reason?` with "The commits are right" /
+     "I accept the risk" / "Cancel"; then run the printed `group reopen ... --accept-foreign ...` line
+     with that reason, which the mod lets through for that answer) / "Save for later".
+   - **Parked after a task failed its attempts**: "Run the task again (Recommended)" (`group reopen
+     G<n> --task N`, then step 3) / "Loop back to Plan" (a plan that cannot be built) / "Save for later".
+   - **A group gate FAIL**: "Run the group's tasks again (Recommended)" (`group reopen G<n> --task N`
+     for each task the reason names, then step 3) / "Loop back to Plan" / "Save for later".
 6. **One human gate per group**, with the group's gate output. With the Temper bar and its buttons (a
    `Temper enforcement:` line and no `Temper buttons: none` line), do not ask it: the bar's
    **Continue with the groups**, **Change** and **Stop** are this gate. End the turn with

@@ -238,6 +238,13 @@ ROWS = [
     ('commands/temper.md', '+', r'"Loop back to Plan" \(`state loop design plan`', 'the Design gate on FAIL'),
     ('commands/temper.md', '+', r'`Accept finding \{id\}`', 'a Review FAIL can accept one finding by a click'),
     ('commands/temper.md', '+', r'"Override and commit" or "Save for later"', 'the commit gate FAIL asks the Temper gate question'),
+    ('commands/fix.md', '+', r'the mod stands aside in a `/temper:fix` run', 'a fix run asks its own questions with the mod'),
+    ('reference/build-groups.md', '+', r'"Keep the agent\'s commits"', 'a parked group is a question with options'),
+    ('reference/build-groups.md', '-', r'user with the CLI\'s reason; nothing else is decided here', 'a parked group goes to the person as a question'),
+    ('commands/build.md', '+', r'state init \{feature-slug\} --command temper', 'standalone Build starts its run at Build'),
+    ('commands/build.md', '+', r'state advance plan_complete build', 'standalone Build moves its run to Build'),
+    ('reference/plan.md', '-', r'write `.temper/build-state.json`', 'the guard refuses a hand written run state'),
+    ('reference/check.md', '-', r'write `build-state.json` with', 'the guard refuses a hand written run state'),
 ]
 for page, sign, pattern, why in ROWS:
     try:

@@ -185,8 +185,10 @@ state that the final clear destroys):
 4. `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear` (which also re-archives as a
    safety net). The CLI always ships with the plugin; never delete the state by hand.
 
-**On Save:** write `build-state.json` with `stage: check_complete`, `next_stage:
-commit`, report "Run /temper when ready to continue."
+**On Save:** when the check passed, record it with `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance
+check_complete commit`; otherwise leave the run state as the CLI keeps it (never write
+`build-state.json` by hand). Report "Saved. When you come back, choose Resume on the Temper bar, or,
+where the bar shows no buttons, run /temper:temper again."
 
 ## Error Interpretation
 

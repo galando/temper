@@ -1,6 +1,6 @@
 import type { CommandRunResult, EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import { apply, commitFacts, composeText, consumeDecision, idleSnapshot, keptReport, live, loadSnapshot, nothingToLose, publish, reportText, runFingerprint, settingsFrom, statusText, syncCheck, timelineText, voidStepBack, writeReport } from './adapter'
+import { FIX_RUN, apply, commitFacts, composeText, consumeDecision, idleSnapshot, keptReport, live, loadSnapshot, nothingToLose, publish, reportText, runFingerprint, settingsFrom, statusText, syncCheck, timelineText, voidStepBack, writeReport } from './adapter'
 import type { Io, Snapshot } from './adapter'
 import { findingActions, reasonAsk } from './core/actions'
 import type { Action } from './core/actions'
@@ -553,7 +553,7 @@ async function handOver($: Api, drafts: readonly Draft[]): Promise<boolean> {
       // that stage's On Continue steps (`state advance`, which the guard lets through for a skip) and launches
       // the next stage. Fix is the Check stage of the CLI; a skip at the Design gate is of design. Override and commit
       // (after the run is done) moves no stage: the mirror message says what to run.
-      if (draft.type === 'override' && draft.stage !== 'commit') {
+      if (draft.type === 'override' && draft.stage !== 'commit' && draft.stage !== 'foreign-commit') {
         await continueStage($, draft.stage ?? stageOf(draft.phase))
         launched = true
       }
@@ -1011,6 +1011,8 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
 
   const plan = planCommand(parsed, pendingDrift)
   if (plan.kind === 'error') return { text: plan.text }
+  // A /temper:fix run: the mod records no decision for it (it stands aside, see loadSnapshot).
+  if (plan.kind === 'command' && snap.runCommand === 'fix') return { text: FIX_RUN }
 
   if (plan.kind === 'local') {
     switch (plan.word) {

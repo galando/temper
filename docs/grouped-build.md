@@ -91,8 +91,9 @@ one mode does not pass the other mode's plan gate.
    does, the task gate FAILs naming the commit and its files and the group parks at once, with no
    retry. The commit can only be that task's, since the worktree is its own. The CLI changes
    nothing in that worktree and keeps it, and the group's other tasks refuse `task gate` and
-   `task test` until the reopen (no verdict, no row), so they keep their work. You have two ways out:
-   - (a) take the commits off the task's branch yourself (the park prints
+   `task test` until the reopen (no verdict, no row), so they keep their work. You have two ways out,
+   and the orchestrator asks you which one with a question (you click, Claude runs the lines):
+   - (a) take the commits off the task's branch (the park prints
      `git -C <task worktree> rebase --autostash --onto <sha>~1 <sha>`, newest first), then
      `temper group reopen G1 --task N`; the next `task start` reuses that worktree with the
      agent's uncommitted work. Reopen is refused while a parked commit is still on the branch.

@@ -331,6 +331,10 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     bs = parseBuildState(raw ?? '')
   }
   if (!bs) return { ...idleSnapshot(options, false), state: initialState(maxLoops) }
+  // A /temper:fix run: the mod stands aside. commands/fix.md asks every gate in the conversation and the native commit hook
+  // gates the commit; the mod draws no bar, refuses nothing and records nothing for it. The run is still the run the mod
+  // knows (its slug), so an earlier /temper run is never held in its place (see lastRun in register.tsx).
+  if (bs.command === 'fix') return { ...idleSnapshot(options, false), state: initialState(maxLoops), slug: bs.spec, specDir: bs.specPath, runCommand: 'fix', cliNext: bs.nextStage, sync: { ...NO_SYNC, failOpen: true } }
 
   const specDir = bs.specPath
   const verdicts = parseGates((await readText(io, `${STATE_ROOT}/gates.json`)) ?? '')
@@ -414,7 +418,9 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   let pendingMove: PendingMove | null = null
   for (const o of open) {
     const ev = o.ev
-    const fits = ev.type === 'back' || (ev.type === 'advance' && ev.from === at) || (ev.type === 'override' && (ev.phase === at || (ev.phase === 'fix' && at === 'check')))
+    // Keeping a task agent's commits, and Override and commit, move nothing: there is no move of them to record again.
+    const moves = !(ev.type === 'override' && (ev.stage === 'foreign-commit' || ev.stage === 'commit'))
+    const fits = moves && (ev.type === 'back' || (ev.type === 'advance' && ev.from === at) || (ev.type === 'override' && (ev.phase === at || (ev.phase === 'fix' && at === 'check'))))
     if (fits) pendingMove = { id: ev.id, draft: ev }
   }
 
@@ -615,8 +621,14 @@ export async function keptReport(io: Io): Promise<string | null> {
   return text !== null && text.trim() !== '' ? text : null
 }
 
+// The line of the system prompt for a /temper:fix run, where the mod stands aside (see loadSnapshot).
+export const FIX_RUN = 'Phase: a /temper:fix run. The Temper bar and its guard stand aside for it: ask every gate in the conversation, as commands/fix.md says.'
+
 export function composeText(snap: Snapshot): string {
   const s = snap.state
+  if (snap.runCommand === 'fix' && s.phase === null) {
+    return sectionText({ enforcement: snap.enforcement, phase: null, title: null, progress: null }).replace('Phase: none. No Temper run is active.', FIX_RUN)
+  }
   return sectionText({
     enforcement: snap.enforcement,
     phase: s.phase,
@@ -674,6 +686,7 @@ const iso = (ts: number): string => new Date(ts).toISOString()
 
 // `/temper:temper status`: the section text plus the counts a person wants at a glance.
 export function statusText(snap: Snapshot): string {
+  if (snap.runCommand === 'fix' && snap.state.phase === null) return FIX_RUN
   if (snap.state.phase === null) return 'No Temper run is active. Start one with /temper:temper <feature description>.'
   const s = snap.state
   const lines = [composeText(snap)]

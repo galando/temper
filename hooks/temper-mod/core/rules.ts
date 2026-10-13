@@ -544,7 +544,14 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
         h =>
           h.kind === call.kind &&
           // An accept is for one stage's ledger: --stage must be the stage the person accepted in.
-          (call.kind === 'accept' ? call.stage !== undefined && h.phase === call.stage : (call.kind === 'advance' ? h.phase === undefined || h.phase === approved : call.stage === undefined || h.phase === undefined || stageName(h.phase) === stageName(call.stage))) &&
+          (call.kind === 'accept'
+            ? call.stage !== undefined && h.phase === call.stage
+            : call.kind === 'advance'
+              ? h.phase === undefined || h.phase === approved
+              : // Keeping a task agent's commits (`group reopen G --accept-foreign`) is the person's choice for any group.
+                call.stage?.startsWith('foreign-commit:') === true
+                ? h.phase === 'foreign-commit'
+                : call.stage === undefined || h.phase === undefined || stageName(h.phase) === stageName(call.stage)) &&
           (call.id === undefined || h.findingId === undefined || h.findingId === call.id),
       )
       const hit = i >= 0 ? pool[i] : undefined

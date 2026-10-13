@@ -90,6 +90,8 @@ FSHA="$(git -C "$T1W" rev-parse HEAD)"; PARENT="$(git -C "$T1W" rev-parse HEAD~1
 d_green 1
 out="$("$TEMPER" task gate 1 --model m 2>&1)"
 CMD="$(printf '%s\n' "$out" | grep -o 'git -C [^ ]* rebase --autostash --onto [0-9a-f~^]* [0-9a-f]*' | head -1)"
+assert_eq "flow audit: the park says the person chooses the way out (the orchestrator asks), not to resolve it alone" "1|0" \
+  "$(grep -c 'The person chooses one of two ways out' <<<"$out")|$(grep -c 'Resolve it yourself' <<<"$out")"
 assert_eq "D-08: the printed route (a) is a rebase --onto of the foreign sha's parent" "1" "$(printf '%s' "$CMD" | grep -c "rebase --autostash --onto ${FSHA:0:7}~1 ${FSHA:0:7}")"
 bash -c "$CMD" >/dev/null 2>&1; rrc=$?
 assert_eq "D-08: the printed command runs as written and takes the commit off the branch" "0|$PARENT" "$rrc|$(git -C "$T1W" rev-parse HEAD)"

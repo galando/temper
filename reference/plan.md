@@ -351,8 +351,16 @@ Subprocess mode never shows this — return the summary and stop (see above). St
 time, `AskUserQuestion` "Next step"/"Ask a question" between each) / "Save for later". A
 change typed via "Other" is never approval — make the edit, then re-show this same gate.
 
-On Continue: write `.temper/build-state.json` (`stage: plan_complete`, `next_stage:
-build`, `artifacts: ["intent.md","tasks.md"]`); if intent.md's header still says
+Before this question, start the run state when there is none (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path`
+prints nothing): `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --command temper`, then run both gates again
+(the init starts a new ledger). With the Temper mod the run then waits at Intent: first ask
+"Continue to Plan (Recommended)" / "Save for later" (`AskUserQuestion`, header `Temper gate`; the
+person approves the intent) and on Continue run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance intent_complete plan`;
+ask this question with the same header too. The run state file is never written by hand: the
+guard refuses that.
+
+On Continue: `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance intent_complete plan` if the run is
+still at Intent, then `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance plan_complete build`; if intent.md's header still says
 `Status: draft` (standalone mode — no intent gate ran before this one), flip it to
 `Status: accepted` and add `**Accepted-by:** {git config user.name} <{user.email}>` —
 the first human gate that reviews the intent is where acceptance is recorded (in the

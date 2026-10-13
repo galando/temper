@@ -56,10 +56,12 @@ describe('Build checkpoint commits (docs/decisions/0009)', () => {
     expect(await commit($, 'git commit -m x')).toContain('green test run')
   })
 
-  test('another command than temper (a fix run) has no checkpoint carve-out', { options: {} }, async ($, on) => {
+  // The mod stands aside in a /temper:fix run (the flow audit of PR #97): the native pre-commit hook, which runs the CLI
+  // commit gate, judges the commit, and that gate has no checkpoint carve-out for another command than temper.
+  test('a fix run: the mod stands aside, and the commit is left to the native hook', { options: {} }, async ($, on) => {
     world(on, files({ next: 'build', green: 'green', command: 'fix' }))
     await $.session.start(START)
-    expect(await commit($, 'git commit -m x')).toContain('Temper: commit blocked.')
+    expect(await commit($, 'git commit -m x')).toBeUndefined()
   })
 
   test('the plan gate must be satisfied', async ($, on) => {

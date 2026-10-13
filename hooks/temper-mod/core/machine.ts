@@ -172,6 +172,8 @@ export function reduce(events: readonly TemperEvent[], verdicts: Verdicts = {}, 
         }
         break
       case 'override':
+        // Keeping a task agent's commits skips no stage: the run stays where it is, and Build is not overridden.
+        if (ev.stage === 'foreign-commit') break
         // A skip at the Design gate is made while the Plan approval has taken the fold to Build (the CLI is at design).
         if (s.phase === ev.phase || (ev.stage === 'design' && ev.phase === 'plan' && s.phase === 'build')) {
           s.overrides.push({ id: ev.id, phase: ev.phase, reason: ev.reason, author: ev.author, ts: ev.ts, ...(ev.stage ? { stage: ev.stage } : {}) })
@@ -344,6 +346,12 @@ export function decide(state: RunState, cmd: Command): Decision {
     case 'override': {
       if (!isPerson) return fail(ONLY_USER)
       if (!cmd.reason.trim()) return fail('A skip needs a reason.')
+      // The person keeps the commits a task agent made (a parked group of grouped Build): an override of the CLI that moves
+      // no phase, only in Build.
+      if (cmd.stage === 'foreign-commit') {
+        if (phase !== 'build') return fail('Keeping a task agent\'s commits is a choice of Build.')
+        return { events: [{ type: 'override', phase, stage: 'foreign-commit', reason: cmd.reason.trim(), ...who }] }
+      }
       if (cmd.phase !== undefined && cmd.phase !== phase) return fail(`You can skip only the current step, ${phaseLabel(phase)}.`)
       // At the Design gate the skip is of the design stage: the CLI records it as `override design`.
       const atDesign = phase === 'plan' && state.atDesign ? { stage: 'design' } : {}

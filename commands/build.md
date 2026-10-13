@@ -30,10 +30,18 @@ its system prompt, so its brief says nothing about enforcement.
 
 ### Before the loop
 
-The loop needs the run state: when `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path`
-prints nothing, run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {feature-slug}` first (the
-spec folder `.temper/specs/{feature-slug}` holds the approved `tasks.md`). Verify the feature
-branch (create it if on main). The task agents run in their own context whatever
+The loop needs the run state at Build: when `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path`
+prints nothing, start a run for the spec folder `.temper/specs/{feature-slug}` that holds the
+approved `tasks.md`, and record its earlier gates as this run's own (the task gate checks them):
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {feature-slug} --command temper`, then
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent`; ask the person with `AskUserQuestion`, header
+`Temper gate`: "Continue to Plan (Recommended)" / "Save for later", and on Continue run
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance intent_complete plan`; then
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` (and `gate design` when the spec folder has a
+`design.md`), ask "Continue to Build (Recommended)" / "Save for later" the same way, and on Continue
+run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance plan_complete build`. With the Temper mod
+each answer is the person's approval its guard needs; with a FAIL, show it and stop. Verify the
+feature branch (create it if on main). The task agents run in their own context whatever
 `stages.subprocess` says; the human gates stay in this context.
 
 ### After the loop
