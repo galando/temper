@@ -158,7 +158,7 @@ describe('decisions come only from the person', () => {
   test('override without a reason is refused and writes no event', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'review' }))
     const r = await $.command.run({ command: 'temper', args: 'override', origin: { kind: 'composer' } } as never)
-    expect(r.text).toBe('A skip needs a reason. Use /temper:temper override <reason>.')
+    expect(r.text).toBe('A skip needs a reason.')
     expect(decisions(w)).toEqual([])
   })
 
@@ -211,7 +211,7 @@ describe('decisions come only from the person', () => {
     await $.command.run({ command: 'temper', args: 'override risk accepted', origin: { kind: 'composer' } } as never)
     const call = { tool: 'Bash', command: 'scripts/temper override review --reason "risk accepted"' } as const
     expect((await $.tool.call(call)).text).toBe('stub ran')
-    expect(await $.tool.call(call)).toEqual({ deny: 'Only the user can approve this. Next: ask the user to press 1 or run /temper:temper approve.' })
+    expect(await $.tool.call(call)).toEqual({ deny: 'Only the user decides this. Next: ask the user to choose on the Temper bar, then wait.' })
   })
 
   test('drift decisions by command need a pending drift', async ($, on) => {
@@ -220,7 +220,9 @@ describe('decisions come only from the person', () => {
     expect(none.text).toContain('No scope drift waits for a decision')
     // A denied edit (nobody to ask) leaves the path pending; the person then decides.
     const denied = await $.tool.call({ tool: 'Edit', file_path: 'src/billing.ts', old_string: 'a', new_string: 'b' })
-    expect(denied.deny).toContain('/temper:temper drift add|revert|allow <reason>')
+    // The deny asks the Scope drift question and names no typed command; the typed command still works.
+    expect(denied.deny).toContain('header "Scope drift"')
+    expect(denied.deny).not.toContain('/temper:temper')
     const ok = await $.command.run({ command: 'temper', args: 'drift allow hotfix', origin: { kind: 'composer' } } as never)
     expect(ok.text).toBe(PASSTHROUGH)
     expect(decisions(w)).toMatchObject([{ type: 'drift', path: 'src/billing.ts', choice: 'allow-once', reason: 'hotfix', origin: 'person' }])

@@ -2,7 +2,7 @@ import type { CommandRunResult, EngineInterface, PluginOptions, Register } from 
 
 import { apply, commitFacts, composeText, consumeDecision, idleSnapshot, keptReport, live, loadSnapshot, nothingToLose, publish, reportText, runFingerprint, settingsFrom, statusText, syncCheck, timelineText, writeReport } from './adapter'
 import type { Io, Snapshot } from './adapter'
-import { findingActions } from './core/actions'
+import { findingActions, reasonAsk } from './core/actions'
 import type { Action } from './core/actions'
 import { classifyBash } from './core/bash'
 import { pluginCliFrom, stageOf } from './core/cli'
@@ -19,6 +19,7 @@ import { gateAnswer, resumeAnswer } from './core/gateanswer'
 import { evaluate } from './core/rules'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
+import { phaseBarStyle } from './core/modes'
 import { suggestion, transitionToast, turnLine } from './core/view'
 import type { View } from './core/view'
 import { hintProps } from './ui/hint'
@@ -434,9 +435,10 @@ async function autoOpenPane($: Api, snap: Snapshot): Promise<void> {
 
 // ---- Decisions by the person: buttons -------------------------------------------
 
-async function askReason($: Api, what: string): Promise<string> {
+// The reason question of a button (core/actions.ts reasonAsk): the move in the question, choices that fit it.
+async function askReason($: Api, ask: { question: string; options: string[] }): Promise<string> {
   try {
-    return (await $.ui.ask(`What is the reason for ${what}?`, { options: ['I accept the risk', 'It is not a real issue'], header: 'Reason' })).trim()
+    return (await $.ui.ask(ask.question, { options: ask.options, header: 'Reason' })).trim()
   } catch {
     return ''
   }
@@ -676,7 +678,7 @@ async function runActionLocked($: Api, action: Action, requestId?: string, drawn
   if (!action.command) return
   let args = action.command
   if (action.asksReason) {
-    const reason = await askReason($, action.label.toLowerCase())
+    const reason = await askReason($, reasonAsk(action.id, action.label))
     if (!reason) {
       showToast($, `${action.label} needs a reason.`)
       return
@@ -706,7 +708,7 @@ async function runFindingAction($: Api, kind: 'fix' | 'accept' | 'explain', id: 
   const [fix, , explain] = findingActions(id)
   if (kind === 'fix') return submitText($, fix?.prompt ?? null)
   if (kind === 'explain') return submitText($, explain?.prompt ?? null)
-  const reason = await askReason($, `accepting finding ${id}`)
+  const reason = await askReason($, reasonAsk('accept', `Accept finding ${id}`))
   if (!reason) {
     showToast($, 'Accept needs a reason.')
     return
@@ -828,7 +830,7 @@ async function recordGateAnswer($: Api, result: unknown): Promise<void> {
 }
 
 function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
-  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, groupedActive: snap.groupedActive, designRequired: snap.designRequired, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset, cli: pluginCli() }
+  return { root: rootDir, specDir: snap.specDir, planFiles: snap.planFiles, humanDecisions: snap.humanDecisions, autonomyEnabled: snap.autonomyEnabled, groupedActive: snap.groupedActive, designRequired: snap.designRequired, complexity: snap.complexity, failOpenWrites: snap.sync.looksReset, cli: pluginCli(), buttons: phaseBarStyle(snap.mode) === 'phases-and-actions' }
 }
 
 // What the guard decided for one call: a deny text, or null to pass it on. `ids` are the human decisions

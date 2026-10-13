@@ -4,6 +4,7 @@
 // matching typed `/temper:temper` command records. Pure: no Claude imports.
 //
 //   "Continue to {next}" (also with " (Recommended)")  approve at Intent and Plan, next after them
+//   "Commit"                                           next at Check: the one question of a passed Check
 //   "Save for later"                                   pause
 //   "Loop back to {phase}"                             back, only with the person's reason
 //   "Override and continue"                            override, only with the person's reason
@@ -32,6 +33,7 @@ type Question = { question?: unknown; header?: unknown }
 const REST = String.raw`(?:\s*\(recommended\))?(?:\s*[:;,.]\s*|\s+-\s+|\s+|$)([\s\S]*)$`
 const CONTINUE = /^continue to (\w+)(?:\s*\(recommended\))?$/i
 const SAVE = /^save for later(?:\s*\(recommended\))?$/i
+const COMMIT = /^commit(?:\s*\(recommended\))?$/i
 const LOOP = new RegExp(String.raw`^loop back to (\w+)${REST}`, 'i')
 const OVERRIDE = new RegExp(String.raw`^override and continue${REST}`, 'i')
 const ASKS_REASON = new RegExp(String.raw`^\s*(loop back to \w+|override and continue)\s*[.:]\s*${escapeText(REASON_QUESTION)}`, 'i')
@@ -65,6 +67,7 @@ function move(choice: string, reason: string, phase: Phase): Bare | null {
     return phase === 'intent' || phase === 'plan' ? { type: 'approve' } : { type: 'advance' }
   }
   if (SAVE.test(text)) return { type: 'pause' }
+  if (COMMIT.test(text)) return phase === 'check' ? { type: 'advance' } : null
   const loop = LOOP.exec(text)
   if (loop) {
     const to = backTo(loop[1] ?? '', phase)

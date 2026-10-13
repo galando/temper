@@ -175,8 +175,8 @@ shows the chips only.
 The bar is the same choices as the questions, without typing. The orchestrator
 (`commands/temper.md`) still runs every stage with its own brief and the CLI still judges every
 check. With the Temper mod loaded the orchestrator does not ask its gate question a second time: it
-prints the stage panel and the check result, and waits ("Waiting for you. Use the Temper bar, or
-type /temper:temper approve (or back, override, pause), or type a change."). Minimal and off modes draw
+prints the stage panel and the check result, and waits ("Waiting for you. Choose on the Temper bar,
+or type a change."). Minimal and off modes draw
 no buttons, so there the orchestrator asks its gate question (header `Temper gate`) as without the mod, and the
 mod records your answer as your decision: you never have to type a word. Pressing Continue records your decision, asks Claude to mirror it in the CLI
 state, and then runs `/temper:temper` with no arguments, which is the orchestrator's own Resume: it

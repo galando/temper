@@ -69,6 +69,11 @@ export type ActionContext = {
   // Where the Temper script is: its full path in the plugin folder, or the plain `scripts/temper` when that is not
   // known (see pluginCliFrom). A prompt names the CLI and the plugin's files by it.
   cli?: string
+  // The bar draws the action buttons (full mode). False: the person chooses in the `Temper gate` question, so a text
+  // for Claude names that question and never a key. Absent means buttons.
+  buttons?: boolean
+  // Design follows this Plan (a medium or complex run with phases.design on): the Plan gate continues to Design.
+  designNext?: boolean
 }
 
 // The person's move that waits to be recorded: a Continue out of a phase, a step back, or a skip.
@@ -110,6 +115,8 @@ const cap = (p: string): string => `${p.charAt(0).toUpperCase()}${p.slice(1)}`
 
 // What follows each phase, and what the orchestrator loops back to when a check fails.
 export const NEXT: Record<Phase, string> = { intent: 'Plan', plan: 'Build', build: 'Review', review: 'Check', check: 'Commit', fix: 'Check' }
+// The step after a phase for this run: Design after a Plan that has one.
+const nextName = (phase: Phase, ctx: ActionContext): string => (phase === 'plan' && ctx.designNext ? 'Design' : NEXT[phase])
 const UPSTREAM: Partial<Record<Phase, Phase>> = { plan: 'intent', build: 'plan', review: 'build' }
 
 const READY_DESC: Record<Phase, string> = {
@@ -134,25 +141,43 @@ function main(phase: Phase, ctx: ActionContext): Action {
   // The person chose a move that the CLI has not recorded: key 1 records it again. It is not a new choice, so it
   // carries the words of that move.
   if (ctx.pending) return record(ctx.pendingMove)
-  const next = NEXT[phase]
+  const next = nextName(phase, ctx)
   if (ctx.ready) {
-    return command('1', 'continue', `Continue to ${next}`, READY_DESC[phase], phase === 'intent' || phase === 'plan' ? 'approve' : 'next', false, true, `To ${next}`)
+    const desc = phase === 'plan' && ctx.designNext ? 'The plan is checked. Design opens and Claude designs.' : READY_DESC[phase]
+    return command('1', 'continue', `Continue to ${next}`, desc, phase === 'intent' || phase === 'plan' ? 'approve' : 'next', false, true, `To ${next}`)
   }
   if (isCheckpoint(phase, ctx) && ctx.task) {
     if (ctx.grouped) return launch('1', 'run-stage', 'Continue with the groups', 'Claude runs the ready tasks and stops at the next group gate.')
     return launch('1', 'run-stage', `Continue with task ${ctx.task.n}`, 'Claude builds the task and stops for you.')
   }
+  // A failed check sends the work back upstream on key 1. Not for Build: its completion gate fails on a task, a group or
+  // the integration, which Build itself mends; going back to Plan is for a plan that cannot be built (the menu has it).
   const up = UPSTREAM[phase]
-  if (ctx.gate === 'fail' && up) return loopBack(up, '1')
-  if (phase === 'intent') return launch('1', 'run-stage', 'Start Intent', 'Claude writes the intent and checks it. Then you decide.')
+  if (ctx.gate === 'fail' && up && phase !== 'build') return loopBack(up, '1')
+  if (phase === 'intent' && ctx.gate !== 'fail') return launch('1', 'run-stage', 'Start Intent', 'Claude writes the intent and checks it. Then you decide.')
   return launch('1', 'run-stage', ctx.gate === 'fail' ? `Run ${cap(phase)} again` : `Run ${cap(phase)}`, `Claude runs ${cap(phase)} and checks it. Then you decide.`)
 }
 
 // The line under the bar while the person's move waits: `idle` once Claude has stopped (key 1 finishes the move), `working`
 // while Claude is still carrying it out (nothing to press).
-export function pendingLines(move: PendingChoice | undefined): { idle: string; working: string } {
+// With no buttons (minimal and off modes) there is no key 1: the line is for Claude, which runs the steps of the move again.
+export function pendingLines(move: PendingChoice | undefined, buttons = true): { idle: string; working: string } {
   const what = move?.type === 'advance' ? `Your move to ${NEXT[move.from]}` : move?.type === 'back' ? `Your step back to ${cap(move.to)}` : move?.type === 'override' ? 'Your skip of this step' : 'Your last choice'
-  return { idle: `${what} did not go through yet. Press 1 to finish it.`, working: `Claude is finishing ${what.charAt(0).toLowerCase()}${what.slice(1)}.` }
+  const working = `Claude is finishing ${what.charAt(0).toLowerCase()}${what.slice(1)}.`
+  if (!buttons) {
+    const theirs = `The user's ${what.slice('Your '.length)}`
+    return { idle: `${theirs} is recorded but did not go through yet. Run its steps once more. If they fail again, say so in one line and ask the gate question again.`, working }
+  }
+  return { idle: `${what} did not go through yet. Press 1 to finish it.`, working }
+}
+
+// The question of a button that needs the person's reason, with choices that fit the move. The answer is the reason;
+// the person can also type their own.
+export function reasonAsk(id: string, label: string): { question: string; options: string[] } {
+  if (id === 'loop-back') return { question: `${label}. What is the reason?`, options: ['The check found a real problem', 'The earlier step needs a change'] }
+  if (id === 'restart') return { question: 'Start over. What is the reason?', options: ['This is the wrong feature', 'I want to start the work fresh'] }
+  if (id.startsWith('accept')) return { question: `${label}. What is the reason?`, options: ['It is not a real issue', 'I accept the risk'] }
+  return { question: 'Skip this step. What is the reason?', options: ['I accept the risk', 'It is not a real issue'] }
 }
 
 // Key 1 while the person's move waits to be recorded, named by that move.
@@ -255,7 +280,12 @@ function pair(phase: Phase, ctx: ActionContext): [Action, Action] {
       return [walk('2'), htmlReview('3', ctx.cli ?? CLI)]
     case 'build':
       return isCheckpoint(phase, ctx)
-        ? [draft('2', 'change', 'Change', 'Tell Claude what to change in this task.', 'Change this task: '), stop('3', ctx.cli ?? CLI)]
+        ? [
+            ctx.grouped
+              ? draft('2', 'change', 'Change', 'Tell Claude what to change in this group.', 'Change in this group: ')
+              : draft('2', 'change', 'Change', 'Tell Claude what to change in this task.', 'Change this task: '),
+            stop('3', ctx.cli ?? CLI),
+          ]
         : [teach(phase, '2'), grill(phase, '3')]
     case 'review':
       // Open findings: the step back to Build is on the main row (unless key 1 already is it), depth review in the menu.
@@ -294,8 +324,9 @@ function phaseMenu(phase: Phase, ctx: ActionContext): Action[] {
     case 'check':
       return [...(ctx.configSuggestions ? extra([grill(phase)]) : []), save(paused)]
     case 'fix':
-      // At the loop limit Save for later is already key 3.
-      return ctx.loopLimitReached ? [grill(phase), teach(phase)] : [grill(phase), teach(phase), save(paused)]
+      // At the loop limit Save for later is already key 3, and only a loop back to Plan is left. Before it, a failed Check
+      // can go back to Build, as the original Check gate offers.
+      return ctx.loopLimitReached ? [grill(phase), teach(phase)] : [loopBack('build', '1'), grill(phase), teach(phase), save(paused)]
   }
 }
 
@@ -360,7 +391,7 @@ function baseActions(phase: Phase, ctx: ActionContext): ActionSet {
 
 // The actions of a finished run: the original Commit question ("Commit" / "Save for later" / "Other").
 // The Commit steps are named by the slash command, and the CLI by `cli` (see ActionContext.cli).
-export function doneActions(cli: string = CLI): ActionSet {
+export function doneActions(cli: string = CLI, suggestions = false): ActionSet {
   return {
     primary: [
       prompt(
@@ -374,6 +405,8 @@ export function doneActions(cli: string = CLI): ActionSet {
           'Do not ask the Commit question again. Do not push.',
       ),
       { key: '2', id: 'save-done', label: 'Save for later', desc: 'Leave the work as it is. Commit later.', command: 'saved' },
+      // Check wrote config suggestions: the original offers them at the passed Check, before the commit.
+      ...(suggestions ? [configSuggestions('3')] : []),
     ],
     discuss: DISCUSS,
     override: null,
@@ -390,33 +423,36 @@ export function findingActions(id: string): Action[] {
   ]
 }
 
-// The sentence that goes after "Next:" in the system prompt section and in denials.
+// The sentence that goes after "Next:" in the system prompt section. Claude reads it. It names the key the person
+// presses when the bar draws buttons, and the `Temper gate` question when it does not; never a typed command.
 export function nextStep(phase: Phase | 'done', ctx: ActionContext): string {
+  const bar = ctx.buttons !== false
+  const ask = (choice: string, key = '1'): string =>
+    bar ? `ask the user to ${choice} (key ${key} on the Temper bar)` : `ask the user with AskUserQuestion, header \`Temper gate\`: ${choice}`
   switch (phase) {
     case 'done':
       return 'the run is done. Commit is allowed'
     case 'intent':
-      return ctx.ready
-        ? 'ask the user to continue to Plan (key 1 or /temper:temper approve)'
-        : 'finish intent.md until the intent check passes. Then ask the user to continue to Plan (key 1 or /temper:temper approve)'
-    case 'plan':
-      return ctx.ready
-        ? 'ask the user to continue to Build (key 1 or /temper:temper approve)'
-        : 'finish plan.md and tasks.md. Then ask the user to continue to Build (key 1 or /temper:temper approve)'
+      return ctx.ready ? ask('continue to Plan') : `finish intent.md until the intent check passes. Then ${ask('continue to Plan')}`
+    case 'plan': {
+      const next = nextName(phase, ctx)
+      return ctx.ready ? ask(`continue to ${next}`) : `finish plan.md and tasks.md. Then ${ask(`continue to ${next}`)}`
+    }
     case 'build':
-      return ctx.tasksDone
-        ? 'send the work to Review (key 1 or /temper:temper next)'
-        : 'do the next task in tasks.md. Write a failing test first. Stay inside the plan files'
+      return ctx.tasksDone ? ask('continue to Review') : 'do the next task in tasks.md. Write a failing test first. Stay inside the plan files'
     case 'review':
-      return ctx.hasFindings
-        ? 'fix the open findings, or ask the user to accept them with a reason (/temper:temper accept <id> <reason>)'
-        : 'run the review (key 1)'
+      if (!ctx.hasFindings) return 'run the review stage and its check'
+      return bar
+        ? 'the review has open findings. Ask the user to choose on the Temper bar: loop back to Build to fix them, accept one with a reason in the Temper pane, or skip with a reason'
+        : 'the review has open findings. Ask the user with AskUserQuestion, header `Temper gate`: loop back to Build, accept a finding, or override and continue'
     case 'check':
-      return ctx.allChecksPass ? 'mark the run done (key 1 or /temper:temper next)' : 'run the checks (key 1 in Check or /temper:check)'
+      return ctx.allChecksPass ? ask(bar ? 'continue to Commit' : 'commit') : 'run the check stage and its check'
     case 'fix':
       return ctx.loopLimitReached
         ? 'the fix loop limit is reached. Ask the user to loop back to Plan, skip with a reason, or save the run for later'
-        : 'fix the failed checks. Then continue to Check (key 3)'
+        : bar
+          ? 'fix the failed checks. Then ask the user to continue to Check (key 3 on the Temper bar)'
+          : 'fix the failed checks. Then run the checks again'
   }
 }
 

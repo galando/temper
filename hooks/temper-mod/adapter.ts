@@ -242,7 +242,8 @@ const FLOW_ORDER: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'chec
 //  - the CLI moved ahead of the events (the orchestrator advanced it): follow it, write nothing;
 //  - the CLI name is not one the mod knows: fail open, say so, block nothing;
 //  - the CLI looks reset (earlier than a check that passed): do not block work those checks passed.
-export function reconcile(state: RunState, nextStage: string | null, pending: PendingMove | null): { state: RunState; sync: Sync } {
+// `buttons`: the bar draws its buttons (full mode). Without them the line about a waiting move is for Claude, with no key 1.
+export function reconcile(state: RunState, nextStage: string | null, pending: PendingMove | null, buttons = true): { state: RunState; sync: Sync } {
   if (!state.started) return { state, sync: NO_SYNC }
   const cli = cliPhase(nextStage)
   if (cli === null) {
@@ -268,7 +269,7 @@ export function reconcile(state: RunState, nextStage: string | null, pending: Pe
     next.loopLimitReached = false
     if (pending !== null) {
       held = pending
-      line = pendingLines(pendingChoice(pending)).idle
+      line = pendingLines(pendingChoice(pending), buttons).idle
     }
   }
   // A check that passed later than the phase the CLI is at, or choices that went further than the CLI
@@ -390,7 +391,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     if (fits) pendingMove = { id: ev.id, draft: ev }
   }
 
-  const sync = reconcile(state, bs.nextStage, pendingMove)
+  const sync = reconcile(state, bs.nextStage, pendingMove, phaseBarStyle(cfg.mode) === 'phases-and-actions')
   state = sync.state
 
   return {
@@ -594,9 +595,13 @@ export function composeText(snap: Snapshot): string {
       ready: s.phase !== null && s.phase !== 'done' ? s.gate[s.phase] === 'fresh' : false,
       allChecksPass: s.gate.check === 'fresh',
       hasFindings: snap.findings.length > 0,
+      ...(designNext(snap) ? { designNext: true } : {}),
     },
   })
 }
+
+// Design follows the Plan the run is at: a medium or complex run, with phases.design on (commands/temper.md, Stage 1).
+const designNext = (snap: Snapshot): boolean => snap.cliNext === 'plan' && snap.designRequired && (snap.complexity === 'medium' || snap.complexity === 'complex')
 
 // The move that waits to be recorded, as the bar names it on key 1.
 function pendingChoice(p: PendingMove | null): PendingChoice | undefined {
@@ -609,7 +614,7 @@ function pendingChoice(p: PendingMove | null): PendingChoice | undefined {
 
 export const viewOf = (snap: Snapshot, cli?: string): View => {
   const move = pendingChoice(snap.sync.pending)
-  return buildView({ syncWorking: snap.sync.pending !== null ? pendingLines(move).working : null, state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, grouped: snap.groupedActive, sync: snap.sync.line, pending: snap.sync.pending !== null, ...(move !== undefined ? { pendingMove: move } : {}), enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false, ...(cli !== undefined ? { cli } : {}) })
+  return buildView({ syncWorking: snap.sync.pending !== null ? pendingLines(move).working : null, state: snap.state, title: snap.title, criteria: snap.criteria, findings: snap.findings, task: snap.task, tasksLeft: snap.tasksLeft, grouped: snap.groupedActive, sync: snap.sync.line, pending: snap.sync.pending !== null, ...(move !== undefined ? { pendingMove: move } : {}), enforcement: snap.enforcement, configSuggestions: snap.configSuggestions, ...(designNext(snap) ? { designNext: true } : {}), expanded: live.paneExpanded ?? false, paneOpen: live.paneOpen ?? false, ...(cli !== undefined ? { cli } : {}) })
 }
 
 // Mirrors the folded state into `$.state` for drawing and compaction.

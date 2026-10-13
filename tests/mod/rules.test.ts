@@ -51,7 +51,7 @@ describe('specific denials', () => {
       deny:
         'Temper: Plan phase. Writing src/app.ts is not allowed until the user approves the plan. ' +
         'Do not look for another way. Do not offer to turn Temper off. ' +
-        'Next: finish plan.md and tasks.md. Then ask the user to approve them (key 1 or /temper:temper approve).',
+        'Next: finish plan.md and tasks.md. Then ask the user to approve them (Continue on the Temper bar).',
     })
   })
 
@@ -250,7 +250,7 @@ describe('git commit gate', () => {
 
   test('refused with the exact reason while Check has not passed', () => {
     expect(evaluate(stateAt('check'), ctx, commit)).toEqual({
-      deny: 'Temper: commit blocked. Check has not passed. Next: run the checks (key 1 in Check or /temper:check). The native pre-commit hook is the backstop.',
+      deny: 'Temper: commit blocked. Check has not passed. Next: finish the check stage. The native pre-commit hook is the backstop.',
     })
   })
 

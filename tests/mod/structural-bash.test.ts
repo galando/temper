@@ -271,7 +271,7 @@ describe('arming autonomous mode', () => {
   test('before the plan is approved it is refused with a Next: reason, whatever the config says', () => {
     for (const phase of ['intent', 'plan'] as const) {
       const r = go(stateAt(phase), withAutonomy)
-      expect('deny' in r && r.deny).toContain('approve the plan')
+      expect('deny' in r && r.deny).toContain('at the plan gate')
       expect('deny' in r && r.deny).toContain('autonomy.enabled: true')
       expect('deny' in r && r.deny).toContain('Next: ')
     }

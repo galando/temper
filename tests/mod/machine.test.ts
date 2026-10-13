@@ -145,15 +145,15 @@ describe('decide', () => {
   test('back needs a reason and an earlier phase, and only the person goes back', () => {
     const s = fold(toBuild)
     expect(err(decide(s, { type: 'back', to: 'plan', reason: '  ', ...person }))).toContain('needs a reason')
-    expect(err(decide(s, { type: 'back', to: 'review', reason: 'x', ...person }))).toContain('Go back to a phase before')
+    expect(err(decide(s, { type: 'back', to: 'review', reason: 'x', ...person }))).toContain('A loop back goes to a step before')
     expect(err(decide(s, { type: 'back', to: 'plan', reason: 'x', origin: 'model' }))).toBe(ONLY_USER)
     expect(ok(decide(s, { type: 'back', to: 'plan', reason: 'x', ...person }))[0]).toMatchObject({ type: 'back', to: 'plan' })
   })
 
   test('override needs a non-empty reason and the person, and names the current phase', () => {
     const s = fold([...toBuild, adv('build', 'review')])
-    expect(err(decide(s, { type: 'override', reason: '', ...person }))).toBe('A skip needs a reason. Use /temper:temper override <reason>.')
-    expect(err(decide(s, { type: 'override', reason: '   ', ...person }))).toBe('A skip needs a reason. Use /temper:temper override <reason>.')
+    expect(err(decide(s, { type: 'override', reason: '', ...person }))).toBe('A skip needs a reason.')
+    expect(err(decide(s, { type: 'override', reason: '   ', ...person }))).toBe('A skip needs a reason.')
     expect(err(decide(s, { type: 'override', reason: 'ok', origin: 'model' }))).toBe(ONLY_USER)
     expect(ok(decide(s, { type: 'override', reason: 'risk accepted', ...person }))).toEqual([
       { type: 'override', phase: 'review', reason: 'risk accepted', ...person },
@@ -191,7 +191,7 @@ describe('decide', () => {
   test('pause blocks everything but resume', () => {
     const s = fold([...toBuild, { type: 'pause', ...person }])
     expect(s.paused).toBe(true)
-    expect(err(decide(s, { type: 'advance', origin: 'model' }))).toContain('paused')
+    expect(err(decide(s, { type: 'advance', origin: 'model' }))).toContain('saved for later')
     expect(ok(decide(s, { type: 'resume', ...person }))).toEqual([{ type: 'resume', ...person }])
   })
 
@@ -221,7 +221,7 @@ describe('fix loop limit', () => {
     expect(s.loopLimitReached).toBe(true)
     const e = err(decide(s, { type: 'advance', origin: 'model' }))
     expect(e).toContain('fix limit')
-    expect(e).toContain('make a new plan')
+    expect(e).toContain('loop back to Plan')
     const illegal: Command[] = [
       { type: 'back', to: 'build', reason: 'x', ...person },
       { type: 'acceptFinding', id: '1', reason: 'x', ...person },

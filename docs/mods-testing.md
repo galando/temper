@@ -56,8 +56,8 @@ Run these from `<clone>`. None of them sends a request.
   short line, `<clone>/scripts/temper state get next_stage`, run in `<project>`, prints `build`.
   Claude must not ask you to approve again. Then expect a second turn that starts with `/temper:temper`: the
   orchestrator launches the Build stage in its own subagent (a `temper:temper-build` agent line). No
-  AskUserQuestion dialog may appear at the gate: the stage ends with "Waiting for you. Use the Temper
-  bar, or type /temper:temper approve (or back, override, pause), or type a change." and the bar
+  AskUserQuestion dialog may appear at the gate: the stage ends with "Waiting for you. Choose on the
+  Temper bar, or type a change." and the bar
   offers the next step ("1 Continue with task 2" while tasks are open, "1 Continue to Review" when
   the build check passes).
 - [ ] **No second question at a gate.** With the mod active, at every gate (Intent, Plan, Build,

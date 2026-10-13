@@ -191,7 +191,7 @@ describe('end to end through the band: the prompt the mod sends is runnable once
     expect(first.deny).toBeUndefined()
     expect(first.text).toBe('stub ran')
     const second = await $.tool.call({ tool: 'Bash', command: cmd })
-    expect(second.deny).toContain('Only the user can approve this')
+    expect(second.deny).toContain('Only the user decides this')
   })
 
   test('approving a complex plan: both design commands run, the first once', async ($, on) => {

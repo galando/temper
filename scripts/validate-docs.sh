@@ -211,6 +211,47 @@ else
   fail "grouped Build docs incomplete (docs/grouped-build.md, link in getting-started.md, ADR 0011 Accepted with D-01..D-07)"
 fi
 
+# 8. The flow audit of PR #97: at every point where a run waits for the person, the orchestrator pages offer a click
+# (an AskUserQuestion option or a bar button) and never send the person to type a command. Each row is a page, a
+# regular expression it must hold (+) or must not hold (-), and why. Whitespace in a pattern matches any run of spaces
+# and line breaks, so a reflowed paragraph still matches.
+FLOW_TEXT=$(python3 - "$REPO_ROOT" <<'PY'
+import re, sys
+root = sys.argv[1]
+ROWS = [
+    ('commands/temper.md', '-', r'type /temper:temper approve', 'the wait line sends the person to type a command'),
+    ('commands/temper.md', '+', r'Choose on the Temper bar, or type a change', 'the wait line names the bar'),
+    ('commands/temper.md', '+', r'three at most', 'a Blocking question holds three choices plus Carry forward'),
+    ('commands/temper.md', '+', r'"More options"', 'a gate with more than four options puts the rest behind More options'),
+    ('commands/temper.md', '+', r'"Commit \(Recommended\)"', 'a passed Check asks one Commit question'),
+    ('commands/temper.md', '+', r'With the `Temper buttons: none` line there is no such button', 'a failed mirror call without buttons'),
+    ('reference/build-groups.md', '-', r'the bar has no group-gate buttons', 'the bar draws the group gate'),
+    ('reference/build-groups.md', '+', r'"Run Build again \(Recommended\)"', 'the completion gate on FAIL'),
+    ('reference/build-groups.md', '+', r'never before', 'a task is gated only after its agent returned'),
+    ('reference/orchestrator-patterns.md', '+', r'state init \{slug\} --command \{command\}', 'Start over in Resume Validation keeps the command of the run'),
+    ('reference/orchestrator-patterns.md', '-', r'Run \{command\} when ready', 'a saved run names the bar first'),
+    ('commands/fix.md', '-', r'Start over \(re-investigate\)', 'the fix resume answer must be the plain Start over'),
+    ('commands/fix.md', '+', r'header `Temper resume`', 'the fix resume question is the Temper resume question'),
+]
+for page, sign, pattern, why in ROWS:
+    try:
+        text = open(f'{root}/{page}', encoding='utf-8').read()
+    except OSError:
+        print(f'{page}: missing ({why})')
+        continue
+    rx = re.compile(r'\s+'.join(re.escape(w) if not re.search(r'[\\(\[{]', w) else w for w in pattern.split(' ')))
+    found = rx.search(text) is not None
+    if found != (sign == '+'):
+        print(f'{page}: {"missing" if sign == "+" else "still holds"} /{pattern}/ ({why})')
+PY
+)
+if [[ -z "$FLOW_TEXT" ]]; then
+  ok
+else
+  fail "orchestrator texts of the flow audit:"
+  echo "$FLOW_TEXT" | sed 's/^/  /'
+fi
+
 echo ""
 echo "=== validate-docs.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"

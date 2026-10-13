@@ -52,7 +52,10 @@ export type RunState = {
   unverified: string[]
 }
 
-export const ONLY_USER = 'Only the user can approve this. Next: ask the user to press 1 or run /temper:temper approve.'
+// Where only the person decides. The bar's text names its buttons; with no buttons (minimal and off modes) the person
+// chooses in the `Temper gate` question. Neither names a typed command.
+export const ONLY_USER = 'Only the user decides this. Next: ask the user to choose on the Temper bar, then wait.'
+export const ONLY_USER_ASK = 'Only the user decides this. Next: ask the user with AskUserQuestion, header `Temper gate`, then wait.'
 
 const FLOW: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check']
 
@@ -241,12 +244,10 @@ export type Decision = { events: Draft[] } | { error: string }
 
 const fail = (error: string): Decision => ({ error })
 
+// The texts below reach the person as a toast when a press is refused: plain words, the choices they can click, and no
+// typed command.
 function loopLimitMessage(s: RunState): string {
-  return (
-    `The fix limit is reached (${s.loops} failed check runs, limit ${s.maxLoops}). ` +
-    'Next: make a new plan (/temper:temper back plan <reason>), skip with a reason (/temper:temper override <reason>), ' +
-    'or take over (/temper:temper pause).'
-  )
+  return `The fix limit is reached (${s.loops} failed check runs, limit ${s.maxLoops}). Next: loop back to Plan, skip with a reason, or save for later.`
 }
 
 export function decide(state: RunState, cmd: Command): Decision {
@@ -255,7 +256,7 @@ export function decide(state: RunState, cmd: Command): Decision {
   const isPerson = cmd.origin === 'person' || cmd.anyOrigin === true
 
   if (cmd.type === 'start') {
-    if (phase !== null && phase !== 'done') return fail('A Temper run is active. Finish it, or run /temper:temper pause.')
+    if (phase !== null && phase !== 'done') return fail('A Temper run is active. Finish it, or save it for later.')
     return { events: [{ type: 'start', slug: cmd.slug, title: cmd.title, ...(cmd.phase ? { phase: cmd.phase } : {}), ...who }] }
   }
   if (phase === null) return fail('No Temper run is active. Next: start one with /temper:temper <feature description>.')
@@ -264,15 +265,15 @@ export function decide(state: RunState, cmd: Command): Decision {
   // changes no phase here; it lets the orchestrator's next state archive (or clear) and state init through once.
   if (cmd.type === 'restart') {
     if (!isPerson) return fail(ONLY_USER)
-    if (!cmd.reason.trim()) return fail('Start over needs a reason. Use /temper:temper restart <reason>.')
+    if (!cmd.reason.trim()) return fail('Start over needs a reason.')
     return { events: [{ type: 'restart', reason: cmd.reason.trim(), ...who }] }
   }
   if (cmd.type === 'resume') {
     if (!isPerson) return fail(ONLY_USER)
     return { events: [{ type: 'resume', ...who }] }
   }
-  if (state.paused) return fail('The run is paused. Next: run /temper:temper resume.')
-  if (phase === 'done') return fail('The run is done. Next: commit, or start a new run with /temper:temper <feature description>.')
+  if (state.paused) return fail('The run is saved for later. Next: choose Resume.')
+  if (phase === 'done') return fail('The run is done. Next: commit it.')
 
   // At the fix loop limit only re-plan, override and pause remain.
   if (state.loopLimitReached) {
@@ -293,30 +294,30 @@ export function decide(state: RunState, cmd: Command): Decision {
           return fail(`${name} needs a new check. A step back made the old check invalid.`)
         }
         if (g === 'stale' || g === 'none') {
-          return fail(`${name} has not passed its check yet. Next: run the ${phase} check, the gate command of the Temper CLI.`)
+          return fail(`${name} has not passed its check yet. Next: let Claude finish ${name} and check it.`)
         }
-        if (g === 'fail') return fail(`${name} did not pass its check. Next: fix the problems. Then run the ${phase} check again.`)
+        if (g === 'fail') return fail(`${name} did not pass its check. Next: fix the problems, loop back, or skip with a reason.`)
       }
       return { events: [{ type: 'advance', from: phase, to: phase === 'check' ? 'done' : phase === 'fix' ? 'check' : nextOf(phase), ...who }] }
     }
     case 'back': {
       if (!isPerson) return fail(ONLY_USER)
-      if (!cmd.reason.trim()) return fail('A back step needs a reason. Use /temper:temper back <phase> <reason>.')
+      if (!cmd.reason.trim()) return fail('A loop back needs a reason.')
       if (cmd.to === 'fix' || !(order(cmd.to) < order(phase))) {
-        return fail(`Go back to a phase before ${phaseLabel(phase)}.`)
+        return fail(`A loop back goes to a step before ${phaseLabel(phase)}.`)
       }
       return { events: [{ type: 'back', to: cmd.to, reason: cmd.reason.trim(), ...who }] }
     }
     case 'override': {
       if (!isPerson) return fail(ONLY_USER)
-      if (!cmd.reason.trim()) return fail('A skip needs a reason. Use /temper:temper override <reason>.')
+      if (!cmd.reason.trim()) return fail('A skip needs a reason.')
       if (cmd.phase !== undefined && cmd.phase !== phase) return fail(`You can skip only the current step, ${phaseLabel(phase)}.`)
       return { events: [{ type: 'override', phase, reason: cmd.reason.trim(), ...who }] }
     }
     case 'acceptFinding': {
       if (!isPerson) return fail(ONLY_USER)
       if (phase !== 'review' && phase !== 'fix') return fail('You can accept findings in Review or Fix.')
-      if (!cmd.reason.trim()) return fail('Accept needs a reason. Use /temper:temper accept <id> <reason>.')
+      if (!cmd.reason.trim()) return fail('Accept needs a reason.')
       return { events: [{ type: 'accept', findingId: cmd.id, reason: cmd.reason.trim(), ...who }] }
     }
     case 'drift': {

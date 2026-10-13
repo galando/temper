@@ -161,10 +161,13 @@ describe('keys 1 to 4 per phase', () => {
   test('a failed check: Loop back is key 1, and it is not listed twice', () => {
     expect(labels('plan', { gate: 'fail' })[0]).toBe('Loop back to Intent')
     expect(labels('review', { gate: 'fail' })[0]).toBe('Loop back to Build')
-    expect(labels('build', { gate: 'fail', task: { n: 3, of: 3 }, tasksLeft: 0 })[0]).toBe('Loop back to Plan')
-    expect(menu('build', { gate: 'fail', task: { n: 3, of: 3 }, tasksLeft: 0 })).toEqual(['Save for later', 'Start over'])
     expect(menu('review', { gate: 'fail' })).not.toContain('Loop back to Build')
-    const loop = actionsFor('build', { gate: 'fail', task: null, tasksLeft: null }).primary[0]
+  })
+
+  test('a failed Build runs Build again on key 1; the loop back to Plan (a plan that cannot be built) is in the menu', () => {
+    expect(labels('build', { gate: 'fail', task: { n: 3, of: 3 }, tasksLeft: 0 })[0]).toBe('Run Build again')
+    expect(menu('build', { gate: 'fail', task: { n: 3, of: 3 }, tasksLeft: 0 })).toEqual(['Loop back to Plan', 'Save for later', 'Start over'])
+    const loop = actionsFor('build', { gate: 'fail', task: null, tasksLeft: null }).more[0]
     expect(loop?.command).toBe('back plan')
     expect(loop?.asksReason).toBe(true)
     expect(loop?.resume).toBe(true)
@@ -173,7 +176,7 @@ describe('keys 1 to 4 per phase', () => {
   test('a failed build check while tasks are open is a checkpoint, not a failure', () => {
     expect(labels('build', CHECKPOINT)[0]).toBe('Continue with task 2')
     expect(actionsFor('build', CHECKPOINT).primary[0]?.resume).toBe(true)
-    expect(labels('build', { gate: 'fail', task: null, tasksLeft: null })[0]).toBe('Loop back to Plan')
+    expect(labels('build', { gate: 'fail', task: null, tasksLeft: null })[0]).toBe('Run Build again')
   })
 
   test('key 1 starts or runs the stage when no check result is there yet', () => {
@@ -319,10 +322,11 @@ describe('shape of every action', () => {
     expect(findingActions('3')[1]?.asksReason).toBe(true)
   })
 
-  test('nextStep names the key and the subcommand', () => {
-    expect(nextStep('plan', { ready: true })).toContain('/temper:temper approve')
+  test('nextStep names the key on the bar, and no typed command', () => {
+    expect(nextStep('plan', { ready: true })).toContain('key 1 on the Temper bar')
     expect(nextStep('plan', { ready: true })).toContain('continue to Build')
-    expect(nextStep('check', {})).toContain('/temper:check')
+    expect(nextStep('plan', { ready: true })).not.toContain('/temper:')
+    expect(nextStep('check', {})).toBe('run the check stage and its check')
     expect(nextStep('done', {})).toContain('Commit')
     expect(nextStep('fix', { loopLimitReached: true })).toContain('loop limit')
   })

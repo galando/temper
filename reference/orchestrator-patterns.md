@@ -64,7 +64,8 @@ attempts and commit; the integration verdict). The orchestrator reads them only 
 `temper schedule`, `temper group report` and `temper report`.
 
 **Save/Continue:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance {stage}_complete {next_stage}` at every
-transition. On Save, report "Saved. Run {command} when ready to continue."
+transition. On Save, report "Saved. When you come back, choose Resume on the Temper bar, or, where the bar shows no
+buttons, run {command} again."
 
 ## Gate Options + Enforcement
 
@@ -76,7 +77,7 @@ AskUserQuestion:
   options:
     - label: "{continue_label} (Recommended)"
     - label: "Save for later"
-      description: "Save state and stop. Run {command} later to continue."
+      description: "Save state and stop. Come back to it later."
 ```
 
 A change typed via "Other" is **never** approval to proceed: make the edit, then **STOP**
@@ -92,8 +93,9 @@ stage-aware: at `intent_complete` only `intent.md` is owed (Plan hasn't written
 `tasks.md`/`plan.md` yet); from `plan_complete` onward, every file in `artifacts[]`;
 `updated` < 30 days old (warn if older). Any check fails → show what's wrong in one line, then ask with
 `AskUserQuestion`, header `Temper resume`: "Start over" / "Cancel". On "Start over" run
-`${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --command temper` (it archives the old run state first;
-the files under `.temper/specs/` stay) and start the run at Intent. With the Temper mod loaded, the person's
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --command {command}` (`temper` for `/temper`, `fix` for
+`/temper:fix`; it archives the old run state first; the files under `.temper/specs/` stay) and start the run
+at its first stage (Intent, or RCA for a fix). With the Temper mod loaded, the person's
 "Start over" answer is the decision that lets that one reset through. Never tell the person to type a command
 or to press a bar button for this.
 

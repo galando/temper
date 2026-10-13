@@ -72,6 +72,8 @@ export type ViewInput = {
   pendingMove?: PendingChoice
   // Where the Temper script is (see ActionContext.cli): the prompts of the buttons name the CLI by it.
   cli?: string
+  // Design follows this Plan (see ActionContext.designNext).
+  designNext?: boolean
 }
 
 export const BAR: readonly Phase[] = ['intent', 'plan', 'build', 'review', 'check', 'fix']
@@ -117,10 +119,11 @@ export function buildView(input: ViewInput): View {
     pending: input.pending ?? false,
     ...(input.pendingMove !== undefined ? { pendingMove: input.pendingMove } : {}),
     ...(input.cli !== undefined ? { cli: input.cli } : {}),
+    ...(input.designNext ? { designNext: true } : {}),
   }
   const passed = input.criteria.filter(c => c.status === 'passed').length
   let actions: ActionSet | null = null
-  if (s.phase === 'done') actions = doneActions(input.cli)
+  if (s.phase === 'done') actions = doneActions(input.cli, input.configSuggestions ?? false)
   else if (s.phase !== null) actions = actionsFor(s.phase, ctx)
   const stepIdx = s.phase !== null && s.phase !== 'done' ? BAR.indexOf(s.phase) : -1
   return {

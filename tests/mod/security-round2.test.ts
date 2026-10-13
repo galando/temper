@@ -85,10 +85,11 @@ describe('the fail closed rule: more spellings are denied and say what to do', (
     expect(classifyBash('cp -r scripts/temper /tmp/t').alias).toBe(true)
   })
 
-  test('the deny names the buttons and the subcommands', () => {
+  test('the deny names where the user decides (the bar or the Temper gate question), and no typed command', () => {
     const r = run('tempe[r] override plan --reason x', 'plan')
-    expect('deny' in r && r.deny).toContain('/temper:temper')
-    expect('deny' in r && r.deny).toContain('buttons')
+    expect('deny' in r && r.deny).toContain('`Temper gate` question')
+    expect('deny' in r && r.deny).toContain('Temper bar')
+    expect('deny' in r && r.deny).not.toContain('/temper:temper')
   })
 })
 

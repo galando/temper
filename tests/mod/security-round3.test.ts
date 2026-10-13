@@ -107,10 +107,11 @@ describe('shell indirection around the script fails closed', () => {
     })
   }
 
-  test('the deny names the buttons and the subcommands', () => {
+  test('the deny names where the user decides (the bar or the Temper gate question), and no typed command', () => {
     const r = run('plan', `scripts/temper $'over\\x72ide' plan --reason x`)
-    expect('deny' in r && r.deny).toContain('/temper:temper')
-    expect('deny' in r && r.deny).toContain('buttons')
+    expect('deny' in r && r.deny).toContain('`Temper gate` question')
+    expect('deny' in r && r.deny).toContain('Temper bar')
+    expect('deny' in r && r.deny).not.toContain('/temper:temper')
   })
 
   // The refusal gives the true reason: a subcommand that cannot be read is not called a decision word.

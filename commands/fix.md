@@ -229,8 +229,10 @@ never commit directly.
 ## Resume
 
 `/temper:fix` (no arguments) with saved state → validate per → "Resume Validation"
-(valid stages: `rca_complete | fix_complete | review_complete | check_complete`), then
-"Continue from {next_stage} (Recommended)" / "Start over (re-investigate)". Resuming at
+(valid stages: `rca_complete | fix_complete | review_complete | check_complete`), then ask
+with `AskUserQuestion`, header `Temper resume`: "Continue from {next_stage} (Recommended)" /
+"Start over" (its description: the saved run state goes and the RCA runs again; the files
+under `.temper/specs/` stay). Resuming at
 `rca_complete`: re-display the RCA box (read `{spec_path}/rca.md`) before launching the
 Fix agent, so the user can re-evaluate the root cause. `/temper:fix "new bug"` while
 state exists for a **different** bug → "Nested Invocation Protection" (say "bug", not

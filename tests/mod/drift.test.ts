@@ -87,10 +87,11 @@ describe('scope drift in Build', () => {
     expect(denyText(await $.tool.call(edit('src/billing.ts')))).toContain('scope drift')
   })
 
-  test('with nobody to ask, the person can still decide by typing /temper:temper drift', async ($, on) => {
+  test('the deny asks the Scope drift question and invites no typing (the typed command still works)', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'build' }))
     const r = await $.tool.call(edit('src/billing.ts'))
-    expect(denyText(r)).toContain('/temper:temper drift add|revert|allow <reason>')
+    expect(denyText(r)).toContain('the options Add to plan, Revert, Allow once.')
+    expect(denyText(r)).not.toContain('/temper:temper')
     expect(eventTypes(w.files)).toEqual([])
   })
 })

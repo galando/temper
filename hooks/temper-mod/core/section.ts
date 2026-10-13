@@ -56,7 +56,7 @@ export function sectionText(input: SectionInput): string {
     lines.push(`Stale: ${input.stale.map(phaseLabel).join(', ')}. A back step made them invalid. Each needs a new verdict.`)
   }
 
-  lines.push(`Next: ${nextStep(input.phase, { ...input.actionContext, loopLimitReached: input.loopLimitReached })}`)
+  lines.push(`Next: ${nextStep(input.phase, { ...input.actionContext, loopLimitReached: input.loopLimitReached, buttons: input.buttons !== false })}`)
   if (input.sync) lines.push(input.sync)
   lines.push(GATE_MESSAGE)
   return lines.join('\n')

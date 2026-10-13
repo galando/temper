@@ -53,8 +53,12 @@ which `/temper` does at its start).
    the work it left. When every task of group G has passed:
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper group gate G<n>`. A parked group, or a FAIL, goes to the
    user with the CLI's reason; nothing else is decided here.
-6. **One human gate per group** (`AskUserQuestion`, with the group's gate output, also with the
-   Temper bar: the bar has no group-gate buttons): **"Continue (Recommended)"** (next group) / **"Change"** (never approval:
+6. **One human gate per group**, with the group's gate output. With the Temper bar and its buttons (a
+   `Temper enforcement:` line and no `Temper buttons: none` line), do not ask it: the bar's
+   **Continue with the groups**, **Change** and **Stop** are this gate. End the turn with
+   `Waiting for you. Choose on the Temper bar, or type a change.`; a Change arrives as the person's
+   message, a Stop as their save for later. Otherwise ask it with `AskUserQuestion`:
+   **"Continue (Recommended)"** (next group) / **"Change"** (never approval:
    record each item the user typed with
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase feedback --claim "feedback #{K}: {text}"`,
    then `${CLAUDE_PLUGIN_ROOT}/scripts/temper group reopen G<n> --task N --feedback {K}` for each
@@ -63,12 +67,19 @@ which `/temper` does at its start).
    (`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build`, then save for later).
 7. **Integrate.** When the schedule prints `{"done": true, ...}`:
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper integrate`, then `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build`.
-   Show the group-level panel from the CLI output (`temper group report`), not a per-task one.
+   Show the group-level panel from the CLI output (`temper group report`), not a per-task one. An
+   integrate FAIL makes `gate build` FAIL: show its reason and go to the completion gate's FAIL options.
 8. **Completion gate** (`gate build`: RED-then-GREEN evidence, no unchecked tasks, every
-   feedback answered, integration PASS). Options (four max; Override and corrections arrive via
-   "Other"): Continue to Review / Teach Me / "Loop back to Plan" (only if Build judges the plan
-   infeasible: human-driven, no circuit breaker, max 1 per run; `state loop build plan` resets the
-   grouped run for the new plan) / Save.
+   feedback answered, integration PASS). With the Temper bar and its buttons the bar offers it: end
+   the turn as in step 6. Otherwise ask it with `AskUserQuestion` (header `Temper gate` when the
+   system prompt has the `Temper buttons: none` line), four options at most, corrections via "Other".
+   **On PASS:** "Continue to Review (Recommended)" / "Teach Me" / "Loop back to Plan" / "Save for
+   later". **On FAIL:** "Run Build again (Recommended)" (mend what the FAIL rows name: the tasks of a
+   group with `group reopen`, an integrate failure with the fix pass below, then `temper integrate` and
+   `gate build` again) / "Loop back to Plan" / "Override and continue" (with the person's reason, as
+   the Gates section of the orchestrator says) / "Save for later". "Loop back to Plan" is only for a
+   plan Build judges infeasible: human-driven, no circuit breaker, max 1 per run; `state loop build
+   plan` resets the grouped run for the new plan.
 9. **Autonomy enabled:** every group's Continue and the completion gate's Continue are
    auto-selected on PASS; Change and Stop stay interactive-only; a parked group (once no other
    group is ready), or an integrate FAIL, parks the run (see

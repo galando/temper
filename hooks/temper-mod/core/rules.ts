@@ -5,7 +5,7 @@ import { DRIFT_HEADER, DRIFT_PREFIX } from './drift'
 import { classifyBash, protectedKind } from './bash'
 import type { DecisionKind, ProtectedKind } from './bash'
 import type { Phase } from './events'
-import { ONLY_USER, phaseLabel } from './machine'
+import { ONLY_USER, ONLY_USER_ASK, phaseLabel } from './machine'
 import type { RunState } from './machine'
 import { CLI, guardedPhase } from './cli'
 import { matchesPlan, normalizePath } from './paths'
@@ -54,6 +54,9 @@ export type RuleContext = {
   nothingToLose?: boolean
   // .temper/groups.json exists: a grouped Build run is active, and the CLI (not an agent) ticks the run's tasks.md.
   groupedActive?: boolean
+  // The bar draws its buttons (full mode). False: the person chooses in the `Temper gate` question, so a deny names it.
+  // Left out: buttons.
+  buttons?: boolean
 }
 
 // The carve-outs of the CLI commit gate (scripts/temper gate_commit, docs/decisions/0009):
@@ -89,8 +92,12 @@ function targetPath(call: ToolCall): string | null {
 
 const inDir = (path: string, dir: string): boolean => path === dir || path.startsWith(dir + '/')
 
-function protectedDeny(kind: ProtectedKind, cli: string): RuleResult {
-  if (kind === 'events' || kind === 'overrides') return { deny: ONLY_USER }
+// Where the person makes a choice, for a deny text: the Temper bar, or the `Temper gate` question when it draws no buttons.
+const chooseAt = (ctx: RuleContext): string => (ctx.buttons === false ? 'with AskUserQuestion, header `Temper gate`' : 'on the Temper bar')
+const onlyUser = (ctx: RuleContext): RuleResult => ({ deny: ctx.buttons === false ? ONLY_USER_ASK : ONLY_USER })
+
+function protectedDeny(kind: ProtectedKind, cli: string, ctx: RuleContext): RuleResult {
+  if (kind === 'events' || kind === 'overrides') return onlyUser(ctx)
   if (kind === 'folder') {
     return {
       deny:
@@ -134,12 +141,12 @@ function protectedDeny(kind: ProtectedKind, cli: string): RuleResult {
 }
 
 const COMMIT_NEXT: Record<Phase, string> = {
-  intent: 'finish the phases up to Check (key 1 or /temper:temper next)',
-  plan: 'finish the phases up to Check (key 1 or /temper:temper next)',
-  build: 'finish Build, then do Review and Check (key 1 or /temper:temper next)',
-  review: 'finish Review, then do Check (key 1 or /temper:temper next)',
-  check: 'run the checks (key 1 in Check or /temper:check)',
-  fix: 'fix the failed checks. Then run the checks again (key 1 in Fix)',
+  intent: 'finish the steps up to Check',
+  plan: 'finish the steps up to Check',
+  build: 'finish Build, then Review and Check',
+  review: 'finish Review, then Check',
+  check: 'finish the check stage',
+  fix: 'fix the failed checks, then run the checks again',
 }
 
 const isActive = (s: RunState): s is RunState & { phase: Phase } => s.phase !== null && s.phase !== 'done'
@@ -178,7 +185,7 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, rawPat
         deny:
           `Temper: ${label} phase. Writing ${path} is not allowed until the user approves the intent. ` +
           'Do not look for another way. Do not offer to turn Temper off. ' +
-          'Next: finish intent.md. Then ask the user to approve it (key 1 or /temper:temper approve).',
+          `Next: finish intent.md. Then ask the user to approve it (Continue to Plan ${chooseAt(ctx)}).`,
       }
     case 'plan': {
       const ok =
@@ -190,7 +197,7 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, rawPat
         deny:
           `Temper: ${label} phase. Writing ${path} is not allowed until the user approves the plan. ` +
           'Do not look for another way. Do not offer to turn Temper off. ' +
-          'Next: finish plan.md and tasks.md. Then ask the user to approve them (key 1 or /temper:temper approve).',
+          `Next: finish plan.md and tasks.md. Then ask the user to approve them (Continue ${chooseAt(ctx)}).`,
       }
     }
     case 'review':
@@ -198,14 +205,14 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, rawPat
       return {
         deny:
           `Temper: ${label} phase. Writing ${path} is not allowed. Review changes the spec folder only. ` +
-          'Next: write the finding in the spec folder. Fix it when the user starts Fix (key 1 in Review, Fix all).',
+          `Next: write the finding in the spec folder. To fix it, ask the user to loop back to Build ${chooseAt(ctx)}.`,
       }
     case 'check':
       if (inSpec) return ALLOW
       return {
         deny:
           `Temper: ${label} phase. Writing ${path} is not allowed. Check only runs checks. ` +
-          'Next: run the checks (key 1 in Check or /temper:check).',
+          `Next: finish the check stage. To change code, ask the user to loop back to Build ${chooseAt(ctx)}.`,
       }
     case 'build':
     case 'fix': {
@@ -219,8 +226,7 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, rawPat
           'Do not write it another way. Next: in the Build stage, stop this task and list the file in the DRIFT section of your ' +
           'panel, with why it is needed and what you would change. In the main conversation, ask with AskUserQuestion: ' +
           `header "${DRIFT_HEADER}", a question whose first line is "${DRIFT_PREFIX} ${path}", then a "Why:" line and a ` +
-          '"Change:" line, and the options Add to plan, Revert, Allow once. The user can also type ' +
-          '/temper:temper drift add|revert|allow <reason>.',
+          '"Change:" line, and the options Add to plan, Revert, Allow once.',
         drift: path,
       }
     }
@@ -251,7 +257,8 @@ const planApproved = (s: RunState): boolean => {
 
 const AUTONOMY_DENY =
   'Temper: only the user can turn on autonomous mode, at the plan gate. ' +
-  'Next: ask the user to approve the plan (key 1 or /temper:temper approve) and to set autonomy.enabled: true in .claude/temper.config. Then try again.'
+  'Next: ask the user at the plan gate with AskUserQuestion, header `Temper gate`: "Stage by stage" or "Autonomous: run the rest unattended". ' +
+  'It needs autonomy.enabled: true in .claude/temper.config, which only the user sets.'
 
 const GUARD_KEYS = new Set(['stage', 'next_stage', 'branch', 'spec_path', 'run_mode', 'command'])
 
@@ -311,17 +318,18 @@ const STATE_END = (cli: string): string =>
   'Temper: do not clear or archive the run state during a run. Next: finish the run, ' +
   `commit, then run ${cli} state archive. To throw the run away, ask the user with AskUserQuestion, header \`Temper resume\`, whether to start over.`
 
-const stateSetDeny = (key: string): string =>
+const stateSetDeny = (key: string, ctx: RuleContext): string =>
   `Temper: state set ${key} moves the run. Only the user can do this. ` +
-  'Next: ask the user to run /temper:temper back <phase> <reason>.'
+  `Next: a step back is the user's choice: ask the user whether to loop back, ${chooseAt(ctx)}.`
 
-const OPAQUE_DENY =
+const OPAQUE_DENY = (cli: string): string =>
   'Temper: this command runs the Temper script in a way Temper cannot read, and it holds a decision word. ' +
-  'Only the user decides. Next: ask the user to use the buttons or the /temper:temper subcommands (approve, override, accept, back).'
+  'Only the user decides, on the Temper bar or in the `Temper gate` question. ' +
+  `Next: run each ${cli} call with its words written out, one per Bash call.`
 
 const DYNAMIC_DENY = (cli: string): string =>
   'Temper: this command writes what a Temper call does (its subcommand) in a form Temper cannot read: a variable, a substitution or an escaped string. ' +
-  'It could be a decision, and only the user decides, with the buttons or the /temper:temper subcommands. ' +
+  'It could be a decision, and only the user decides, on the Temper bar or in the `Temper gate` question. ' +
   `Next: run each ${cli} call with its words written out, one per Bash call.`
 
 const OPAQUE_HIDDEN_DENY = (cli: string): string =>
@@ -330,7 +338,7 @@ const OPAQUE_HIDDEN_DENY = (cli: string): string =>
 
 const ALIAS_DENY = (cli: string): string =>
   'Temper: do not link, copy or source the Temper script. A second name for it hides the decision calls. ' +
-  `Next: run ${cli} by its own path. The user decides with the buttons or /temper:temper.`
+  `Next: run ${cli} by its own path. The user decides on the Temper bar or in the \`Temper gate\` question.`
 
 const HIDDEN_DENY =
   'Temper: a shell, or a builtin that runs text as commands (source and the like), is given a program that this command does not show (a pipe from another command, a file on stdin, a substitution, or a word split by quotes, backslashes, braces or globs). ' +
@@ -348,9 +356,9 @@ const HOOKS_DENY =
   'Temper: --no-verify, -n and core.hooksPath switch the native pre-commit hook off. The hook is the commit gate for every commit. ' +
   'Next: commit without them. If the hook blocks the commit, finish the stages it names.'
 
-const BACK_DENY =
+const BACK_DENY = (ctx: RuleContext): string =>
   'Temper: state advance cannot move the run to an earlier stage. Only the user steps back. ' +
-  'Next: ask the user to use Go back or /temper:temper back <phase> <reason>.'
+  `Next: ask the user whether to loop back, ${chooseAt(ctx)}.`
 
 const KEY_DENY = (key: string): string =>
   `Temper: state set ${key} is allowed only in the form and the phase the orchestrator uses ` +
@@ -366,7 +374,7 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
   const cli = ctx.cli ?? CLI
 
   if (c.alias) return { deny: ALIAS_DENY(cli) }
-  if (c.opaque && isActive(s)) return { deny: c.opaqueWhy === 'dynamic' ? DYNAMIC_DENY(cli) : c.opaqueWhy === 'hidden' ? OPAQUE_HIDDEN_DENY(cli) : OPAQUE_DENY }
+  if (c.opaque && isActive(s)) return { deny: c.opaqueWhy === 'dynamic' ? DYNAMIC_DENY(cli) : c.opaqueWhy === 'hidden' ? OPAQUE_HIDDEN_DENY(cli) : OPAQUE_DENY(cli) }
   if (isActive(s)) {
     if (c.hidden) return { deny: HIDDEN_DENY }
     if (c.envTamper) return { deny: ENV_DENY(cli) }
@@ -382,7 +390,7 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
     const kinds = known.map(p => protectedKind(p) ?? 'folder').filter(k => isActive(s) || (k !== 'config' && k !== 'hooks'))
     if (kinds.length > 0) {
       const forged = kinds.find(k => k === 'events' || k === 'overrides')
-      return protectedDeny(forged ?? kinds[0] ?? 'folder', cli)
+      return protectedDeny(forged ?? kinds[0] ?? 'folder', cli, ctx)
     }
     if (c.uncheckable.length > 0) return { deny: UNCHECKABLE(cli) }
   }
@@ -436,7 +444,7 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
         continue
       }
       if (op.op === 'set' && GUARD_KEYS.has(op.key) && op.key !== 'next_stage' && !(op.key === 'run_mode' && op.value === 'interactive')) {
-        return { deny: op.key === 'command' ? KEY_DENY(op.key) : stateSetDeny(op.key) }
+        return { deny: op.key === 'command' ? KEY_DENY(op.key) : stateSetDeny(op.key, ctx) }
       }
       // The keys the orchestrator sets itself, only in the form and the phase it sets them: the complexity while the
       // plan is open (a later change would drop Design), base_sha as the current commit in Plan or Build (a later one
@@ -474,7 +482,7 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
         approved = wellFormed ? (stage === 'design' ? 'plan' : stage) : null
         // No advance lowers the stage the run is at, whoever approved it: only a step back does (the user's).
         const target = STAGE_INDEX[call.next ?? '']
-        if (target !== undefined && target < (PHASE_INDEX[s.phase] ?? 0)) return { deny: BACK_DENY }
+        if (target !== undefined && target < (PHASE_INDEX[s.phase] ?? 0)) return { deny: BACK_DENY(ctx) }
         const hasHuman = approved !== null && pool.some(h => h.kind === 'advance' && (h.phase === undefined || h.phase === approved))
         if (!hasHuman) {
           if (wellFormed && stage !== 'intent' && stage !== 'plan' && followsVerdict(s, stage, ctx.complexity)) continue
@@ -491,7 +499,7 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
                 `Next: run ${cli} state advance ${stage}_complete ${expected}. The user's approval is already recorded.`,
             }
           }
-          return { deny: ONLY_USER }
+          return onlyUser(ctx)
         }
       }
       // A step to another stage by `state set next_stage`: the person's back decision, or the exact next
@@ -508,7 +516,7 @@ function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResul
           (call.id === undefined || h.findingId === undefined || h.findingId === call.id),
       )
       const hit = i >= 0 ? pool[i] : undefined
-      if (!hit) return { deny: ONLY_USER }
+      if (!hit) return onlyUser(ctx)
       pool.splice(i, 1)
       matched.push(hit.id)
       first ??= { kind: call.kind, eventId: hit.id }
@@ -545,7 +553,7 @@ export function evaluate(state: RunState, ctx: RuleContext, call: ToolCall): Rul
   const kind = protectedKind(path)
   // The config, the git hooks and the Temper commit hook are guarded while a run is active (the person writes them with
   // no run on).
-  if (kind !== null && (isActive(state) || (kind !== 'config' && kind !== 'hooks'))) return protectedDeny(kind, ctx.cli ?? CLI)
+  if (kind !== null && (isActive(state) || (kind !== 'config' && kind !== 'hooks'))) return protectedDeny(kind, ctx.cli ?? CLI, ctx)
 
   if (!isActive(state) || state.paused || ctx.failOpenWrites) return ALLOW
   return phaseWriteRule(state, ctx, path)

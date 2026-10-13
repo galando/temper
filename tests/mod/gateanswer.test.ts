@@ -5,7 +5,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { gateAnswer, resumeAnswer } from '../../hooks/temper-mod/core/gateanswer'
 import { parseArgs, planCommand } from '../../hooks/temper-mod/core/commands'
-import { ONLY_USER } from '../../hooks/temper-mod/core/machine'
+import { ONLY_USER, ONLY_USER_ASK } from '../../hooks/temper-mod/core/machine'
 import { SPEC, runFiles } from './run-files'
 import { COMPOSE, world } from './world'
 import type { World } from './world'
@@ -133,7 +133,7 @@ describe('the gate in the question dialog, in minimal mode', () => {
     expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBeUndefined()
     expect(cliNext(w)).toBe('plan')
     // The decision is used once: it does not approve the Plan.
-    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBe(ONLY_USER)
+    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBe(ONLY_USER_ASK)
   })
 
   test('without that answer the state advance is still refused', { options: { uiMode: 'minimal' } }, async ($, on) => {
@@ -143,7 +143,7 @@ describe('the gate in the question dialog, in minimal mode', () => {
     // Nobody answered: the dialog was refused.
     await api.tool.call(ask('The intent check passed. What next?', ['Continue to Plan (Recommended)', 'Save for later']))
     expect(events(w)).toEqual([])
-    expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBe(ONLY_USER)
+    expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBe(ONLY_USER_ASK)
     expect(cliNext(w)).toBe('intent')
   })
 
@@ -155,7 +155,7 @@ describe('the gate in the question dialog, in minimal mode', () => {
     await api.tool.call(ask('Q2?', ['Continue to Build (Recommended)', 'Save for later']))
     await api.tool.call({ ...ask('Q3?', ['Continue to Plan', 'Save for later']), answers: { 'Q3?': 'Continue to Plan' } })
     expect(events(w)).toEqual([])
-    expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBe(ONLY_USER)
+    expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBe(ONLY_USER_ASK)
   })
 
   test('a second answer while the first move waits to be recorded records nothing more', { options: { uiMode: 'minimal' } }, async ($, on) => {

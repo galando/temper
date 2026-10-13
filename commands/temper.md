@@ -237,7 +237,9 @@ the link yourself.
   "Start over" answer lets one `state init` through; see Resume Validation). Never choose
   Start over yourself, and never point the person at a bar button for it. If a mirror
   call (`state advance`, `state set next_stage`) is refused or fails, say so in one line and wait: the bar
-  shows the problem and offers to record the choice again.
+  shows the problem and offers to record the choice again. With the `Temper buttons: none` line there is
+  no such button: run the call once more (the person's choice stays recorded), and if it fails again, say
+  so in one line and ask the gate question again.
 - **On commit:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear` (evidence, gates, loop counters — spec artifacts
   under `.temper/specs/` are untouched, they're the permanent record).
 
@@ -253,8 +255,9 @@ Every stage gate follows the same shape. After a stage Agent returns:
    no buttons for them): when the run's `intent.md` holds a `Blocking:` Open Question (Intent
    writes them; Plan and Design add theirs there), ask them in ONE `AskUserQuestion` call
    before anything else, one question each (four at most per call; ask the rest in a second
-   call), the question's (a)/(b)/(c) choices as the options with the recommended one first,
-   plus a last option "Carry forward". Write each answer into intent.md's `### Decisions` and
+   call), the question's choices as the options with the recommended one first, three at most
+   (a question holds four options; any other choice stays open through "Other"), plus a last
+   option "Carry forward". Write each answer into intent.md's `### Decisions` and
    take the question out of Open Questions, then run the gate again. A `Deferred:` question is
    carried forward without asking. Never list Blocking questions as text for the person to
    answer by typing.
@@ -262,7 +265,7 @@ Every stage gate follows the same shape. After a stage Agent returns:
    `Temper enforcement:` line, `active` or `off (UI only)`, and no `Temper buttons: none` line) do not show it: the bar already offers the same choices with
    the same words (Continue to, Loop back to, Skip with a reason, Save for later, Grill me,
    Teach me, Discuss) and records the decision. Print the stage panel and the gate result, then
-   end the turn with one line: `Waiting for you. Use the Temper bar, or type /temper:temper approve (or back, override, pause), or type a change.` The
+   end the turn with one line: `Waiting for you. Choose on the Temper bar, or type a change.` The
    person's message at a gate is the original "Other": if the user writes a message at a gate,
    answer it; if it asks for a change, make the change, run the gate again, then wait for the
    user again. Every other dialog stays (the autonomy arming choice, clarifying questions, Blocking
@@ -292,7 +295,10 @@ Every stage gate follows the same shape. After a stage Agent returns:
 Every gate also offers, unconditionally (no config toggle): **"Grill Me"** (skill
 `grill-me`), **"Teach Me"** (skill `teach-me`), and at Plan: **"Walk through step by
 step"**, **"Open HTML review"** and **"Share HTML review"**. Each returns to the same
-gate — none advance or block the pipeline.
+gate — none advance or block the pipeline. A question holds four options at most (plus
+"Other"): when a gate has more, keep its move options (Continue to, Loop back to, Override
+and continue, Save for later) and put the rest behind one option **"More options"**, which
+asks a second question with them (four at most) and then shows the gate again.
 
 Never re-derive gate logic here or in a stage prompt. Gate mechanics live only in the
 temper CLI and its tests, never in a prompt.
@@ -535,6 +541,13 @@ implemented). On a clean pass, Check may also have written `{spec_path}/config-s
 — if present, offer a **"Review config suggestions"** option before Continue: show each,
 Accept (write it into the project's CLAUDE.md/AGENTS.md) / Reject / Defer, then re-show the gate.
 
+On PASS the gate question is the Commit question, asked once: **"Commit (Recommended)"** /
+"Save for later" (plus "Review config suggestions" when the file is there), with the header
+`Temper gate` when the system prompt has the `Temper buttons: none` line. "Commit" is this
+gate's Continue: do the On Continue step below, then the Commit section, and do not ask the
+Commit question there again. With the Temper bar and its buttons, the bar's "Continue to
+Commit" and then its Commit button are this choice.
+
 **On Continue:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance check_complete commit`, proceed to Commit.
 
 ---
@@ -544,7 +557,8 @@ Accept (write it into the project's CLAUDE.md/AGENTS.md) / Reject / Defer, then 
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit`. It aggregates every upstream gate's last verdict (PASS or
 overridden), and — only when `run_mode == autonomous` — blast radius and park-on-touch.
 
-- **PASS (interactive):** `AskUserQuestion` — "Commit" / "Save for later" / "Other".
+- **PASS (interactive):** `AskUserQuestion` — "Commit" / "Save for later" / "Other", unless the
+  person already chose "Commit" at the Check gate (then go on at once).
   **With the Temper bar and its buttons** do not ask (with the `Temper buttons: none` line, ask it; the run is
   done, so Commit needs no recorded decision): the Done bar's Commit button is this question, and its
   message ("The user pressed Commit ...") means the person chose Commit. The bar never clears
