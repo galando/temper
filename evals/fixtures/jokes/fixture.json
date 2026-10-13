@@ -1,0 +1,17 @@
+{
+  "name": "jokes",
+  "kind": "full",
+  "slug": "list-jokes",
+  "title": "List N jokes",
+  "feature": "Add list_jokes(n) to jokes.py: it returns the first n jokes of all_jokes(), and every joke when n is larger than the list.",
+  "test": "python3 -m unittest discover -s tests -t .",
+  "defect": {
+    "file": "jokes.py",
+    "summary": "all_jokes() drops the last joke (JOKES[: len(JOKES) - 1]), so list_jokes built on it can never return every joke.",
+    "planted_in": "base",
+    "should_catch": ["build", "review", "check"]
+  },
+  "review_anchors": ["all_jokes|JOKES\\s*\\[|len\\(JOKES\\)", "last|drop|omit|miss|skip|exclud|off.by.one|one (joke )?(short|fewer|less)"],
+  "check_anchor": "",
+  "hidden": "hidden/test_hidden.py"
+}
