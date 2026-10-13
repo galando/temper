@@ -41,18 +41,6 @@ export function parseOnOff(v: string | undefined, fallback: 'on' | 'off'): 'on' 
   return n === 'on' || n === 'off' ? n : fallback
 }
 
-// The game setting: `on` offers the game while Claude works and answers the command, `command`
-// answers the command only, `off` hides it all. Checked here, never as a picker.
-export type GameMode = 'on' | 'command' | 'off'
-
-export function parseGameMode(v: string | undefined): GameMode {
-  const n = norm(v)
-  // Off has synonyms, so a person who writes false or no gets what they mean. Anything that is
-  // not a known word (a typo, an empty value) is on, the default, and shows no message.
-  if (['off', 'false', 'no', '0', 'disabled', 'none'].includes(n)) return 'off'
-  return n === 'command' ? 'command' : 'on'
-}
-
 export const parseEnforcement =(v: string | undefined): 'on' | 'off' => parseOnOff(v, 'on')
 
 // "build=sonnet, plan=opus" -> { build: 'sonnet', plan: 'opus' }; malformed pairs skipped.

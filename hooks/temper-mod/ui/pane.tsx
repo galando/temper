@@ -19,8 +19,7 @@ const taskText = (t: TaskCell): string => {
 
 // The pane: the whole run on one card, read only. The intent and its criteria, the stages with their verdicts and the
 // person's skips, the status, the groups and tasks of Build, the open findings, the failed checks, the loops and the
-// person's decisions. The person decides in the `Temper gate` question (ADR 0012): the pane has no button that decides;
-// it offers only the game while Claude works.
+// person's decisions. The person decides in the `Temper gate` question (ADR 0012): the pane has no button.
 //
 // The card sets its own background and every text its own colour, so it reads the same on a light terminal theme and on
 // a dark one.
@@ -28,9 +27,8 @@ export function renderPane(
   kit: Kit,
   view: View,
   inline = false,
-  game: { show: boolean; open: boolean; onPlay: () => void | Promise<void> } = { show: false, open: false, onPlay: () => undefined },
 ): RenderElement {
-  const { Box, Text, Button } = kit
+  const { Box, Text } = kit
   if (view.stage === null) {
     return (
       <Box flexDirection="column" backgroundColor={CARD_BG}>
@@ -116,12 +114,6 @@ export function renderPane(
 
       {decisions.length > 0 ? section('decisions', 'Your decisions', decisions.map((d, i) => <Text key={`decision-${i}`} color={FG}>{`· ${d}`}</Text>)) : null}
 
-      {game.show ? (
-        <Box key="pane-item-play" flexDirection="column">
-          <Button key="pane-play" label={game.open ? '8  Close the game' : '8  Play while you wait'} hotkey="8" variant="primary" onPress={game.onPlay} />
-          <Text color={MUTED}>{'  A small game for the wait.'}</Text>
-        </Box>
-      ) : null}
     </Box>
   )
 }

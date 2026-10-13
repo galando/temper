@@ -84,31 +84,6 @@ Work through one run. For each stage, check the refusal and the gate question.
 - [ ] **The pane.** Type `/temper:temper pane`. Expect a pane with the stages, the status, the
   criteria checklist and your decisions, and no button that decides. Type `/temper:temper pane`
   again to close it.
-- [ ] **The game.** Type `/temper:temper play` with an empty prompt. Expect a game pane beside the
-  Temper pane (terminal and desktop app only; on the VS Code extension you get a short text) and the
-  line "The game is open. Press r to run, w to jump, s to duck, q or Esc to leave." Press `r`, then
-  `w` over an anvil or a bucket and `s` under a flying hammer, with no mouse. Expect Ember the dragon
-  (orange, with horns, a wing and a flame at the tail), anvils, buckets of cold water and spinning
-  hammers, a floor of bricks and embers, and the line "HI 00000  00032" at the top right. At every
-  100 points expect a banner "Hot! 100" and a yellow flash. Let Ember hit something and expect
-  "Game over. Your forge went cold." and "Press r to run again. q or Esc leaves.", and the button
-  `r  Run again`. Press `q` and expect the pane to close. While the game is open, ask Claude to edit
-  a source file: expect the same refusal as without the game. Press Esc and expect the pane to close
-  and the prompt to work. Resize to 80 columns and open it again: the picture must fit.
-- [ ] **The game feels right.** With the Buttons only (no click), expect a jump to start within a
-  fraction of a second of the key (measured here: about 40 ms, see `docs/mods-plan.md` 3.8a). A jump pressed
-  just before landing must fire on the landing. After one click on the game, Space and the Up arrow
-  must jump at once and the Down arrow must duck.
-- [ ] **The game offer.** Send a prompt that takes a while ("Write a 300 word essay about forges").
-  While Claude works, expect `8 Play while you wait` on the bar (`8 Play` when the bar is
-  narrow), "8  Play while you wait" in the pane, and "Press 8 to play while you
-  wait." at the start of the hint line under the prompt (terminal). Press `8` at the empty prompt and
-  expect the game pane with the keys, so `r` runs. When Claude stops, expect the offers
-  to go away. Open it again and wait 4 seconds without a key: expect the dim line "No keys yet?
-  Press Ctrl+X, then Tab, to give the game the keys." and expect it to go when you press a key.
-  Set the plugin setting `game` to `command` and expect no offer anywhere, while
-  `/temper:temper play` still works. Set it to `off` and expect "The game is off. Set game to on in
-  /config."
 - [ ] **A skip needs a reason.** At a failed check choose "Override and continue" with no reason.
   Expect the question `Override and continue. What is the reason?`; choose Cancel and expect the
   gate again and no stage change.

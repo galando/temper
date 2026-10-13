@@ -1,6 +1,6 @@
 // What the mod shows (ADR 0012): the view is built from the CLI's files and the person's decisions, and the bar and the
-// pane only show it. The bar has two buttons, Go on (it takes the run up again with /temper:temper) and Play; neither
-// decides anything. The pane has no button that decides.
+// pane only show it. The bar has one button, Go on (it takes the run up again with /temper:temper); it decides
+// nothing. The pane has no button.
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { Decision, Move } from '../../hooks/temper-mod/core/decisions'

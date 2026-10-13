@@ -89,13 +89,6 @@
       "description": "Optional model for the Temper review agent. Empty means no change.",
       "default": "",
       "sensitive": false
-    },
-    "game": {
-      "type": "string",
-      "title": "Game",
-      "description": "Temper Run game. on offers it while Claude works (press 8) and answers /temper:temper play. command answers the command only and offers nothing. off hides it all. Off also reads false, no, 0, disabled and none. On also reads true, yes and 1. Any other value is on.",
-      "default": "on",
-      "sensitive": false
     }
   }
 }

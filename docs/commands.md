@@ -113,14 +113,13 @@ after the command is one of these, Temper handles it instead of starting a run. 
 | `/temper:temper mode <full\|minimal\|off>` | Change how much Temper draws |
 | `/temper:temper enforcement <on\|off>` | Turn denials on or off |
 | `/temper:temper pane` | Open or close the pane |
-| `/temper:temper play` | Open or close the Temper Run game. Only you can open it. Terminal and desktop app only. |
 | `/temper:temper discuss <text>` | Send a message about the step you are at. It changes no stage. |
 | `/temper:temper help` | List these |
 
 A word that names a move (`approve`, `next`, `back`, `override`, `accept`, `drift`) is your wish, not
 your decision: you decide in the question dialog that follows, with one click. Claude cannot decide for
 you. With the mod loaded it answers the words that only show something (`status`, `timeline`,
-`report`, `help`, `pane`, `play`, `mode`, `enforcement`) itself; every other word goes to the prompt
+`report`, `help`, `pane`, `mode`, `enforcement`) itself; every other word goes to the prompt
 based command, so it works the same on every surface.
 
 With the mod loaded and enforcement on, a headless `claude -p` run stops at the first gate, because
@@ -152,9 +151,8 @@ question.") and the details of the stage: the groups and tasks of Build, the ope
 the failed checks. Under about 100 columns (for example while the pane is docked) the bar uses a compact
 form without borders. `minimal` shows the chips only.
 
-The bar has two buttons, and neither decides anything. **Go on** (key `1`, while Claude is not working)
-runs `/temper:temper`, so Claude takes the run up again and asks the gate question. **Play while you
-wait** (key `8`, while Claude works) opens the game. The pane repeats the run on one card, with the
+The bar has one button, and it decides nothing. **Go on** (key `1`, while Claude is not working)
+runs `/temper:temper`, so Claude takes the run up again and asks the gate question. The pane repeats the run on one card, with the
 intent, the acceptance criteria ("what must be true"), the loops and your decisions; it has no button
 that decides.
 
@@ -205,52 +203,6 @@ take up a `/temper` run at their stage, so there is one flow to keep right:
   then run their own stage.
 
 `/temper:intent` stays on its own: it captures a draft intent and builds nothing.
-
-### The game
-
-Temper Run is a small runner game for the time Claude works. It is optional. Ember, a small dragon,
-runs on the spot in a forge hall, like the dinosaur in a browser. Iron anvils and buckets of cold water
-come from the right: press `w` to jump over them. Hammers fly through the air at head height: press
-`s` to duck under a low one (a high one flies over you). The floor and the far wall scroll, sparks
-drift by, and the wall warms from dark gray to deep red as the score rises (heat 1 to 5, one level
-for every 400 points, shown as bars). At every 100 points Ember flashes yellow and a banner says
-"Hot! 100". The top right shows `HI 00155  00032`: the best score and the score.
-
-It is made to be fair and easy to play:
-- A jump takes about 0.9 seconds. A jump pressed up to 250 ms before the landing is remembered and
-  fires on the landing. A duck lasts 0.8 seconds, and a jump cancels it.
-- The hit boxes are smaller than the pictures, so a near miss is a miss.
-- The first obstacle arrives after 2.5 seconds. The game keeps a gap between obstacles that you can
-  always clear at the current speed, and it never asks for a jump and a duck too close together.
-- A help line, "Press w to jump. Press s to duck.", shows for the first 4 seconds of a run.
-
-- While a stage works, Temper offers the game in three places, in full mode: the bar
-  (`8: Play while you wait`), the pane (key 8) and the prompt hint on the terminal ("Press 8 to play
-  while you wait."). The offer goes away when Claude
-  stops. Temper never opens the game by itself and never takes the keyboard until you press 8 or
-  run the command.
-- Open it with `8` at the empty prompt or with `/temper:temper play`. The same command closes it.
-  Only you can open it. Claude cannot.
-- The setting `game` has three values: `on` (the default: the offers and the command), `command`
-  (the command only, no offers) and `off` (nothing; the command answers "The game is off. Set game
-  to on in /config."). Off also reads `false`, `no`, `0`, `disabled` and `none`. On also reads
-  `true`, `yes` and `1`. Any other value, a typo for one, is on and shows no message.
-- The pane asks for the keyboard when it opens. The Buttons are `w` Jump, `s` Duck, `r` Run (it says
-  Run again after a game over) and `q` Quit (Esc also leaves). They have hotkeys, so no mouse is
-  needed. The text when it opens is always "The game is open. Press r to run, w to jump, s to duck,
-  q or Esc to leave." If no key reaches the game within 3 seconds, it draws one dim line: "No keys
-  yet? Press Ctrl+X, then Tab, to give the game the keys." The line goes away when a key arrives.
-  After one click on the game, Space and the Up arrow jump and the Down arrow ducks, with no wait.
-- At the end you see Ember fallen, "Game over. Your forge went cold." and "Press r to run again. q or
-  Esc leaves." A score above the best shows "New record. The forge is hot."
-- The game shows a banner when the run waits for you or changes stage, so you do not miss a gate.
-- It keeps your best score in the plugin store (written once for each game over). The score does not
-  change any gate. A press of a Button is one counter in the plugin state; the clock writes nothing.
-- The picture is 9 rows of coloured half blocks, as wide as the pane allows (36 to 72 columns). It
-  fits an inline pane at 80 columns. Ember is 8 pixels (4 rows) tall.
-- It exists on the terminal and the desktop app only. On the VS Code extension and on mobile the
-  command prints a short text and nothing else happens.
-- Refusals still apply while the game is open.
 
 ---
 

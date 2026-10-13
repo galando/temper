@@ -85,7 +85,7 @@ Three you will actually type. `/temper:temper` runs and routes the rest.
 | [`/temper:intent "..."`](docs/commands.md#temperintent) | Capture an idea as a committed draft, build it later |
 
 `/temper:temper` also takes subcommands such as `status`, `approve`, `override <reason>`, `back`,
-`mode`, `pane` and `play`. See [Commands](docs/commands.md#subcommands).
+`mode` and `pane`. See [Commands](docs/commands.md#subcommands).
 
 **Granular control.** Each stage on its own: [`/temper:plan`](docs/commands.md#temperplan),
 [`/temper:design`](docs/commands.md#temperdesign), [`/temper:build`](docs/commands.md#temperbuild),

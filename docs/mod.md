@@ -40,11 +40,10 @@ A toast confirms a change to enforcement in every mode. The same mod runs in the
 
 The bar shows where the run is: each stage with its result (passed, failed, skipped, here, to come),
 one sentence of status, and the details of the stage (the groups and tasks of Build, the open findings of
-Review, the failed checks). It has two buttons, and neither decides anything:
+Review, the failed checks). It has one button, and it decides nothing:
 
 - **Go on** (key `1`, while Claude is not working) takes the run up again: it runs `/temper:temper`, and
   Claude asks the gate question again.
-- **Play while you wait** (key `8`, while Claude works) opens the game.
 
 The pane (`/temper:temper pane`) shows the whole run on one card: the intent and its criteria, the
 stages, the status, the groups and tasks, the findings, the loops and your decisions. It has no button
@@ -78,24 +77,6 @@ shows the file, why the task needs it and the change. You choose one answer:
 
 This question is the same with the mod and without it. The mod also refuses the write until you answer.
 The mod reads your answer from the result of the question, not from what Claude sends.
-
-## A game while you wait
-
-While a stage works, the bar, the pane and the prompt hint show "Play while you wait". To open the
-game, press `8` at the empty prompt or run `/temper:temper play`.
-
-The game is Temper Run. Ember, a small dragon, runs in a forge hall.
-
-- `r` runs.
-- `w` jumps over anvils and buckets of cold water.
-- `s` ducks under flying hammers.
-- `q` or Esc closes the game.
-
-If no key gets to the game in 3 seconds, the game tells you how to give it the keys. The game never
-opens by itself. It shows a banner when the run waits for you. Refusals still apply while it is open.
-
-The plugin setting `game` is `on` (the default), `command` (the command only) or `off`. The game runs
-only in the terminal and the desktop app. It was checked by hand in the terminal with the keyboard.
 
 ## Where enforcement works
 
@@ -240,10 +221,10 @@ to ask you for a mode. CI fails on a call outside `scripts/check-mod-calls.sh`.
   `/config` list (every row) to find its two rows and whether your organization locked them. When `reviewerModel` is
   set it reads the session's agent list and keeps only the id and type, to find the Temper review agent.
 - **Writes no file itself.** Your decisions (the answers you gave in the question dialogs, each with the run
-  id and the step it counts at, for the last 40 runs), the report, the game's best score and whether you were
+  id and the step it counts at, for the last 40 runs), the report and whether you were
   asked for a mode stay in its plugin store, a JSON file in your Claude Code settings folder.
 - **Session state:** for its drawing it keeps the bar's view (run title, stage, criteria, findings),
-  the mode, the project folder and the game's key counts in `$.state`, which other plugins can read.
+  the mode and the project folder in `$.state`, which other plugins can read.
 - **Configuration and environment it sets:** no environment variable. Only `temper.uiMode` (you type
   `/temper:temper mode`, or answer the mode question your first `/temper:temper` or a bare `mode` asks)
   and `temper.enforcement` (you type `/temper:temper enforcement`). A row your organization locked stays.
@@ -264,7 +245,7 @@ to ask you for a mode. CI fails on a call outside `scripts/check-mod-calls.sh`.
     Accept finding, Override and commit or Keep the agent's commits with your reason), a `Temper resume` Start over,
     or a `Scope drift` answer (Add to plan, Revert or Allow once). It keeps it for the run and the step the CLI is at.
   - `command.run` handles only `/temper:temper`. It answers `status`, `timeline`, `help`, `report`, `mode`,
-    `enforcement`, `pane` and `play`. A word that changes what is drawn or enforced, and `play`, is refused unless you
+    `enforcement` and `pane`. A word that changes what is drawn or enforced is refused unless you
     typed it in your prompt box. Every other word (`approve`, `back`, `override` and the rest) and any other command
     pass on unchanged, and the mod records nothing from them.
   - `session.start` and `classic.SessionStart` find the project root and load the run; in full mode
@@ -273,10 +254,8 @@ to ask you for a mode. CI fails on a call outside `scripts/check-mod-calls.sh`.
   - `turn.step` sets the model and effort from `phaseModels` and the Temper review agent's model from `reviewerModel`;
     empty options change nothing. `attribution.text` adds one Temper line to a pull request description during a run
     when `prAttribution` is on. `turn.complete` adds a one line status under an answer in full mode.
-  - `ui.render` draws the bar, pane, game, spinner word, prompt hint and a line above Claude's question
-    dialog, which stays unchanged. `ui.message` takes the game's score; `ui.close` notes a closed pane.
-- **The game** is the mod's one surface module (the game client, with its runner, art and palette
-  files), named as fixed text and imported statically. It makes no engine call and posts only the score.
+  - `ui.render` draws the bar, pane, spinner word, prompt hint and a line above Claude's question
+    dialog, which stays unchanged. `ui.close` notes a closed pane.
 - **Other:** toasts tell a stage change (full mode), an enforcement change and the default mode when you dismiss
   the mode question. It waits 60 ms (`$.clock.sleep`, at most 4 times) to reread a run file the CLI is writing.
 - **The tests never run in your session.** The mod's test suite runs only under `claude plugin test`; the plugin never

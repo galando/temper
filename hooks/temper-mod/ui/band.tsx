@@ -40,15 +40,13 @@ function chip(kit: Kit, step: StageView, compact: boolean) {
   )
 }
 
-// The band's two buttons. Neither decides anything: the person decides in the `Temper gate` question.
-//  Go on (1): while Claude is not working, takes the run up again (`/temper:temper` with no words): Claude reads where the
-//             run is and asks the gate question again.
-//  Play (8):  while Claude works, the game (when the game setting is on).
-export type BandButtons = { goOn: () => void | Promise<void>; play: () => void | Promise<void> }
-export type GameButton = { show: boolean; open: boolean }
+// The band's one button, Go on (1). It decides nothing: the person decides in the `Temper gate` question. While Claude
+// is not working, it takes the run up again (`/temper:temper` with no words): Claude reads where the run is and asks the
+// gate question again.
+export type BandButtons = { goOn: () => void | Promise<void> }
 
 // The band above the prompt. Full mode: TEMPER, the title, where the run is, the stage timeline, the status of the
-// stage, its details (the groups in Build, the findings in Review, the failed checks) and the two buttons. Minimal draws
+// stage, its details (the groups in Build, the findings in Review, the failed checks) and the Go on button. Minimal draws
 // the timeline only. Off draws nothing (the caller passes next(e)).
 export function renderBand(
   kit: Kit,
@@ -57,7 +55,6 @@ export function renderBand(
   buttons: BandButtons,
   columns = 120,
   working = false,
-  game: GameButton = { show: false, open: false },
 ): RenderElement | null {
   const style = barStyle(mode)
   if (style === 'none' || view.stage === null) return null
@@ -102,7 +99,6 @@ export function renderBand(
     </Box>
   )
   const goOn = !working ? box('go-on', '1', view.wait === 'saved' ? 'Go on with the run' : 'Go on', buttons.goOn, view.wait === 'gate' || view.wait === 'saved') : null
-  const play = working && game.show ? box('play', '8', game.open ? 'Close the game' : compact ? 'Play' : 'Play while you wait', buttons.play, false) : null
 
   return (
     <Box flexDirection="column" key="temper-band">
@@ -116,10 +112,9 @@ export function renderBand(
       ))}
       {more > 0 ? <Text dimColor>{`and ${more} more lines in the pane (/temper:temper pane)`}</Text> : null}
       {view.line ? <Text color="yellow">{view.line}</Text> : null}
-      {goOn || play ? (
+      {goOn ? (
         <Box flexDirection="row" columnGap={compact ? 1 : 0} flexWrap="wrap">
           {goOn}
-          {play}
         </Box>
       ) : null}
     </Box>

@@ -65,7 +65,6 @@ layer and shows them. Older versions load the plugin as before.
 - **You choose how much it shows.** `uiMode` is full, minimal or off. `enforcement` is on or off.
 - **The CLI stays the source of truth.** The bar follows `.temper/build-state.json`. If the mod
   cannot tell where the run is, it blocks nothing.
-- **Optional game.** Press 8 while Claude works to play Temper Run. It never changes the run.
 
 The mod is early access, runs in the CLI and the desktop Code tab, and is not a sandbox. It
 guards the editing tools and `git commit`; the Bash check is best effort. The

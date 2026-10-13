@@ -6,23 +6,20 @@ import { classifyBash } from './core/bash'
 import { pluginCliFrom } from './core/cli'
 import { HELP, NEEDS_PERSON, parseArgs } from './core/commands'
 import type { Parsed } from './core/commands'
-import { parseGameMode, parsePhaseModel, parsePhaseModels, parseUiMode, versionAtLeast } from './core/config'
-import type { GameMode, UiMode } from './core/config'
+import { parsePhaseModel, parsePhaseModels, parseUiMode, versionAtLeast } from './core/config'
+import type { UiMode } from './core/config'
 import { driftAnswers } from './core/drift'
 import { gateAnswer, resumeAnswer } from './core/gateanswer'
 import { normalizePath } from './core/paths'
 import { evaluate } from './core/rules'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
-import { hasDesign, stageLabel } from './core/stages'
+import { hasDesign } from './core/stages'
 import { stageToast, turnLine } from './core/view'
 import type { View } from './core/view'
 import { hintProps } from './ui/hint'
 import { renderBand } from './ui/band'
-import type { GameButton } from './ui/band'
 import { PANE_ID, renderPane } from './ui/pane'
-import { CARD_BG, FG } from './ui/palette'
-import GameClient from './ui/game-client'
 import { renderQuestion } from './ui/question'
 import { spinnerProps } from './ui/spinner'
 
@@ -39,24 +36,6 @@ let interactive = false
 let paneOpen = false
 // The last stage announced, so a toast goes out once per stage change and never at load.
 let lastStage: string | null | undefined
-
-// The game: whether its pane is open, the best score, and a banner Temper hands to it.
-const GAME_ID = 'temper-game'
-let gameOpen = false
-let gameBest = 0
-let gameSeed = 1
-let gameBanner: { text: string; until: number } | null = null
-// The line the person reads when the game opens. It is always this one. Whether the keys reach the
-// game, the game finds out by itself (it draws a hint after 3 seconds with no key).
-const GAME_KEYS_TEXT = 'The game is open. Press r to run, w to jump, s to duck, q or Esc to leave.'
-// The type of the counters in $.state key game (types/index.d.ts has the same shape).
-type GameCtl = { jumpCount: number; duckCount: number; startCount: number }
-// The props of the game module, read off its function (the module is the static import above).
-type GameProps = Parameters<typeof GameClient>[0]
-// After a game over the Run Button says Run again.
-let gameOver = false
-// Where the session draws (session.start says so); the game needs the terminal or the desktop app.
-let drawSurface: string | null = null
 
 const MODE_LABELS: Array<[UiMode, string]> = [
   ['full', 'Full: the bar with every detail, and the pane'],
@@ -251,8 +230,6 @@ function ensure($: Api): Promise<Snapshot> {
 function announce($: Api, snap: Snapshot): void {
   const stage = snap.run?.stage ?? null
   if (lastStage !== undefined && stage !== lastStage && stage !== null && !snap.inert) {
-    // The game, if it is open, shows this line for a while. The toast is the normal single one.
-    gameBanner = { text: `Temper: ${stage === 'commit' ? 'the run is done' : `${stageLabel(stage)} is open`}. Press Esc to go back.`, until: Date.now() + 20000 }
     const toast = snap.mode === 'full' ? stageToast(stage) : null
     if (toast) showToast($, toast)
   }
@@ -299,93 +276,9 @@ async function readUi($: Api): Promise<{ view: View; mode: UiMode } | null> {
   if (!run.value || !mode.value) return null
   return { view: run.value.view, mode: mode.value }
 }
-// ---- The game --------------------------------------------------------------------
-
-// `game` is a plain string option (on or off), checked here and never as a picker.
-const gameMode = (): GameMode => parseGameMode(typeof options.game === 'string' ? options.game : undefined)
-// The command works in `on` and `command`. Offers (band, pane, hint) show in `on` only.
-const gameOn = (): boolean => gameMode() !== 'off'
-const gameOffered = (): boolean => gameMode() === 'on'
-// Whether Claude is working, as the band and the hint last saw it. The pane has no such prop.
+// Whether Claude is working, as the band and the hint last saw it: Go on waits while it is.
 let working = false
 
-// The Client element exists on the terminal and the desktop app only.
-const GAME_SURFACES = ['terminal', 'desktop']
-
-// The line Temper hands to the game: a new phase for a short while, else a gate that waits for the
-// person (the first action is an approval or a move on).
-function bannerFor(view: View | null): string | null {
-  if (gameBanner && Date.now() < gameBanner.until) return gameBanner.text
-  if (view === null || view.stage === null || view.stage === 'commit') return null
-  return view.wait === 'gate' ? `Temper: ${stageLabel(view.stage)} waits for you. Press Esc to go back.` : null
-}
-
-// Keeps the best score the game posted. This is the one place the game touches the plugin store.
-// Only a real number counts: a string, an array or a boolean is refused, not converted.
-async function saveBest($: Api, score: unknown): Promise<void> {
-  if (typeof score !== 'number' || !Number.isFinite(score)) return
-  const whole = Math.floor(score)
-  if (whole < 0 || whole > 99999 || whole <= gameBest) return
-  gameBest = whole
-  await $.store.set('gameBest', gameBest)
-}
-
-// The pane draws its game offer from `working`. When the band or the hint sees a change, redraw once.
-async function noteWorking($: Api, now: boolean): Promise<void> {
-  if (working === now) return
-  working = now
-  $.ui.invalidate('ui.render')
-}
-
-// Opens or closes the game pane. Only an action of the person calls this: the command or the band
-// button. Both ask for the keys (`focus`); the surface decides.
-async function toggleGame($: Api): Promise<string> {
-  if (!gameOn()) return 'The game is off. Set game to on in /config.'
-  if (drawSurface === null || !GAME_SURFACES.includes(drawSurface)) return 'The game needs the terminal or the desktop app.'
-  if (gameOpen) {
-    await $.ui.close({ id: GAME_ID })
-    gameOpen = false
-    return 'The game is closed.'
-  }
-  const stored = await $.store.get('gameBest')
-  gameBest = typeof stored === 'number' ? stored : 0
-  gameSeed = seedFor(0)
-  gameOver = false
-  // The pane asks for the keyboard and for Esc to close it. The surface may or may not grant the
-  // keys; the game draws a hint by itself when no key comes.
-  const placed = await $.ui.open({ id: GAME_ID, title: 'Temper Run', focus: true, closeOnEscape: true, rows: 14 })
-  gameOpen = placed.isPlaced
-  if (!placed.isPlaced) return 'The game needs a wider terminal.'
-  return GAME_KEYS_TEXT
-}
-
-// A seed for a run: the clock. A test sets the plugin option `gameSeed` (a number) to get a run it
-// knows; each new run then adds the count of the Run presses, so the seeds differ.
-function seedFor(salt: number): number {
-  const fixed = typeof options.gameSeed === 'string' || typeof options.gameSeed === 'number' ? Number(options.gameSeed) : NaN
-  if (Number.isFinite(fixed)) return (Math.floor(fixed) + salt * 7919) >>> 0
-  return ((Date.now() & 0x7fffffff) + salt) >>> 0
-}
-
-// The key presses that reached the pane's Buttons, as counters in $.state (key game). The drawing
-// reads them as props, compares them with the values it saw last, and applies each new press once.
-// A press is one write; the frame clock writes nothing here.
-async function readCtl($: Api): Promise<GameCtl> {
-  const read = await $.state.get({ plugin: 'temper', key: 'game' } as const).catch(() => null)
-  return read?.value ?? { jumpCount: 0, duckCount: 0, startCount: 0 }
-}
-
-async function pressGame($: Api, which: 'jumpCount' | 'duckCount' | 'startCount'): Promise<void> {
-  const cur = await readCtl($)
-  if (which === 'startCount') gameOver = false
-  await $.state.set({ plugin: 'temper', key: 'game' } as const, { ...cur, [which]: cur[which] + 1 })
-}
-
-// The Quit Button: close the pane, as Esc does.
-async function quitGame($: Api): Promise<void> {
-  await $.ui.close({ id: GAME_ID })
-  gameOpen = false
-}
 // ---- Pane ------------------------------------------------------------------------
 
 async function openPane($: Api): Promise<boolean> {
@@ -609,9 +502,6 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
       if (fresh.line === LOST_STATE) return { text: `${LOST_STATE}\n\n${reportText(fresh)}` }
       return { text: await writeReport(makeIo($), fresh) }
     }
-    case 'play':
-      if (originKind !== 'composer') return { text: 'Only the user can open the game. Next: ask the user to run /temper:temper play.' }
-      return { text: await toggleGame($) }
     case 'mode': {
       const wanted = parsed.rest.trim().toLowerCase()
       if (wanted === '') return { text: interactive ? await askMode($) : `Temper mode: ${snap.mode}` }
@@ -688,12 +578,7 @@ export const register: Register = (on, opts) => {
   interactive = false
   paneOpen = false
   lastStage = undefined
-  gameOpen = false
-  gameBest = 0
-  gameOver = false
-  gameBanner = null
   working = false
-  drawSurface = null
   live.mode = undefined
   live.enforcement = undefined
   live.paneOpen = undefined
@@ -702,7 +587,6 @@ export const register: Register = (on, opts) => {
   on('session.start', async ($, e, next) => {
     await settleRoot($, e.cwd)
     current = null
-    drawSurface = e.surface
     interactive = e.isInteractive
     await refresh($)
       .then(snap => autoOpenPane($, snap))
@@ -797,62 +681,16 @@ export const register: Register = (on, opts) => {
       $.ui.resolve(e),
       ui.view,
       ui.mode,
-      { goOn: () => goOn($).catch(() => undefined), play: () => toggleGame($).then(text => showToast($, text), () => undefined) },
+      { goOn: () => goOn($).catch(() => undefined) },
       e.props.bodyColumns,
       e.props.isWorking,
-      { show: gameOffered(), open: gameOpen } satisfies GameButton,
     )
-    await noteWorking($, e.props.isWorking)
+    working = e.props.isWorking
     return band ?? next(e)
-  })
-
-  // The game pane: the Client element exists on the terminal and the desktop app only. The module runs on its own frame
-  // clock, so nothing here redraws it per frame.
-  on('ui.render', { component: 'Pane', requestId: GAME_ID }, async ($, e, next) => {
-    if (e.surface !== 'terminal' && e.surface !== 'desktop') {
-      const { Box, Text } = $.ui.resolve(e)
-      return (
-        <Box backgroundColor={CARD_BG}>
-          <Text color={FG}>The game needs the terminal or the desktop app.</Text>
-        </Box>
-      )
-    }
-    const ui = await readUi($).catch(() => null)
-    const { Box, Button } = $.ui.resolve(e)
-    const ctl = await readCtl($)
-    const act = (fn: () => Promise<void>) => () => fn().catch(() => undefined)
-    // The game module is imported statically at the top of this file, so the file the pane loads stands in the module
-    // graph. The Client element is made here, with the module path as fixed text.
-    const props: GameProps = { ...ctl, seed: seedFor(ctl.startCount), best: gameBest, banner: bannerFor(ui?.view ?? null), compact: e.props.placement === 'inline' }
-    const game = $.ui.resolve(e).Client({ key: 'game', module: './ui/game-client.tsx', props })
-    return (
-      <Box flexDirection="column" backgroundColor={CARD_BG}>
-        {game}
-        <Box flexDirection="row" columnGap={1} flexWrap="wrap">
-          <Button key="game-jump" label="w  Jump" hotkey="w" variant="primary" onPress={act(() => pressGame($, 'jumpCount'))} />
-          <Button key="game-duck" label="s  Duck" hotkey="s" variant="primary" onPress={act(() => pressGame($, 'duckCount'))} />
-          <Button key="game-run" label={gameOver ? 'r  Run again' : 'r  Run'} hotkey="r" variant="primary" onPress={act(() => pressGame($, 'startCount'))} />
-          <Button key="game-quit" label="q  Quit" hotkey="q" variant="primary" onPress={act(() => quitGame($))} />
-        </Box>
-      </Box>
-    )
-  })
-
-  // The score the game posts when a run ends. The data is input, so it is checked.
-  on('ui.message', async ($, e, next) => {
-    if (e.element !== 'game') return next(e)
-    const data = e.data
-    if (typeof data === 'object' && data !== null && (data as { kind?: unknown }).kind === 'game-over') {
-      await saveBest($, (data as { score?: unknown }).score).catch(() => undefined)
-      gameOver = true
-      $.ui.invalidate('ui.render')
-    }
-    return {}
   })
 
   // A pane closed by its own mark: forget it, so the next toggle opens it again.
   on('ui.close', async ($, e, next) => {
-    if (e.id === GAME_ID) gameOpen = false
     if (e.id === PANE_ID) {
       paneOpen = false
       live.paneOpen = false
@@ -863,11 +701,7 @@ export const register: Register = (on, opts) => {
   on('ui.render', { component: 'Pane', requestId: PANE_ID }, async ($, e, next) => {
     const ui = await readUi($).catch(() => null)
     if (ui === null || ui.mode !== 'full') return next(e)
-    return renderPane($.ui.resolve(e), ui.view, e.props.placement === 'inline', {
-      show: working && gameOffered(),
-      open: gameOpen,
-      onPlay: () => toggleGame($).then(text => showToast($, text), () => undefined),
-    })
+    return renderPane($.ui.resolve(e), ui.view, e.props.placement === 'inline')
   })
 
   on('ui.render', { component: 'Spinner' }, async ($, e, next) => {
@@ -879,8 +713,8 @@ export const register: Register = (on, opts) => {
   // The terminal draws a dim tail after the engine's hint line; other surfaces pass.
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const ui = await readUi($).catch(() => null)
-    const props = ui !== null && ui.mode === 'full' ? hintProps(e.props, ui.view, e.surface, gameOffered()) : null
-    await noteWorking($, e.props.isWorking)
+    const props = ui !== null && ui.mode === 'full' ? hintProps(e.props, ui.view, e.surface) : null
+    working = e.props.isWorking
     return props === null ? next(e) : next({ ...e, props })
   })
 

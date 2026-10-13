@@ -42,17 +42,8 @@ export type TemperRun = {
   view: TemperView
 }
 
-// The game, Temper Run: how many times each Button of the game pane was pressed. The drawing reads
-// the counters as props, compares them with the values it saw last, and applies each new press once.
-// Written on a key press only, never on a frame.
-export type TemperGame = {
-  jumpCount: number
-  duckCount: number
-  startCount: number
-}
-
 declare module 'claude-code' {
   interface PluginState {
-    temper: { run: TemperRun | null; mode: UiMode | null; game: TemperGame | null; root: string | null }
+    temper: { run: TemperRun | null; mode: UiMode | null; root: string | null }
   }
 }

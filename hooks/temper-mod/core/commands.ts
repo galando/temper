@@ -3,7 +3,7 @@
 // resumes a run, and a decision word (approve, back, override, accept, pause, restart and the like) makes Claude ask
 // the `Temper gate` question, where the person decides with a click (ADR 0012).
 
-export const RESERVED = ['status', 'timeline', 'help', 'report', 'mode', 'enforcement', 'pane', 'play'] as const
+export const RESERVED = ['status', 'timeline', 'help', 'report', 'mode', 'enforcement', 'pane'] as const
 
 export type Reserved = (typeof RESERVED)[number]
 
@@ -29,7 +29,6 @@ export const HELP = [
   '  timeline             list your decisions in this run',
   '  report               show the run report (with no run active, the last one kept)',
   '  pane                 open or close the Temper pane (full mode)',
-  '  play                 play Temper Run while you wait (r runs, w jumps, s ducks, q leaves)',
   '  mode, enforcement    show or change what Temper shows and enforces',
   'You decide at every gate in the Temper gate question: Continue, Loop back, Override and continue, Save for later.',
   'Any other text after /temper:temper is a feature description. It starts or resumes a run. With no text it takes the run up again.',

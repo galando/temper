@@ -33,7 +33,7 @@ session.version  the version guard: the mod stays inert below 2.1.287
 state.get        the drawing hooks read the run view and the live mode, so a write redraws them
 state.set        publishes the run view and the live mode
 store.delete     drops the oldest kept folder and the oldest run of answers, so the store stays small
-store.get        the gate answers of the person per run (dec:<run id>), "mode already asked", the kept report and the best game score
+store.get        the gate answers of the person per run (dec:<run id>), "mode already asked" and the kept report
 store.set        records those (the mod writes no file)
 ui.ask           the first run question: how much Temper shows (uiMode)
 ui.close         closes the pane (leaving full mode, a toggle, a pane that would not dock)
@@ -90,9 +90,7 @@ while IFS= read -r call; do
   fi
 done <<< "$CALLS"
 
-# The game's surface module has no engine at all: `$` is not defined there, so the mod's type check
-# in CI fails on an engine call written as `$.`, and at run time a surface module has no `$` to
-# reach. This script reads only the validator's output and never opens a file of the mod.
+# This script reads only the validator's output and never opens a file of the mod.
 
 if [[ $FAIL -eq 0 ]]; then
   echo "OK: $(printf '%s\n' "$CALLS" | wc -l | tr -d ' ') calls, all on the reviewed list, none process/http/env"

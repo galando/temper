@@ -32,7 +32,6 @@ describe('the hooks module', () => {
         'turn.complete',
         'turn.step',
         'ui.close',
-        'ui.message',
         'ui.render',
       ].sort(),
     )

@@ -66,7 +66,7 @@ export type WorldOptions = {
   grantFocus?: boolean
   // Answer every directory listing with something that is not a list.
   brokenList?: boolean
-  // False: the prompt box refuses a draft (a dialog or the game pane holds the keys).
+  // False: the prompt box refuses a draft (a dialog holds the keys).
   fillable?: boolean
   // Only files under this folder exist (see `outside`); a relative path is read from `w.cwdNow`.
   projectRoot?: string
