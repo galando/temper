@@ -88,7 +88,7 @@ CL_HOME="$WORKDIR/cl-home"
 rm -rf "$CL_PLUG" "$CL_PROJ" "$CL_BIN" "$CL_LOOSE" "$CL_HOME" "$WORKDIR/cl-guards-link" "$WORKDIR/cl-scripts-link" \
   "$WORKDIR/cl-home-link"
 mkdir -p "$CL_PLUG/scripts/guards" "$CL_BIN" "$CL_LOOSE/scripts" "$CL_HOME/project"
-cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$CL_PLUG/scripts/"
+cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/flow.py" "$CL_PLUG/scripts/"
 cp -R "$REPO_ROOT/scripts/guards/." "$CL_PLUG/scripts/guards/"
 cp -R "$REPO_ROOT/agents" "$CL_PLUG/agents"
 CL_T="$CL_PLUG/scripts/temper"
@@ -267,7 +267,7 @@ rm -rf .git/temper-pre-commit .git/temper-gate .git/default-gate .git/user-gate
 L_PLUG="$WORKDIR/l1-plugin"
 rm -rf "$L_PLUG"
 mkdir -p "$L_PLUG/scripts/guards"
-cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$L_PLUG/scripts/"
+cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/flow.py" "$L_PLUG/scripts/"
 for g in install.sh block-secrets.sh verify-tests-ran.sh block-uncommitted-gate.sh protect-regression-test.sh; do
   cp "$REPO_ROOT/scripts/guards/$g" "$L_PLUG/scripts/guards/$g"
 done

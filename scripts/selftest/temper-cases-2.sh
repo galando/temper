@@ -558,7 +558,7 @@ assert_eq "the carve-out names itself" "yes" "$(echo "$OUT" | grep -q 'active ru
 # --- gate commit: build-checkpoint carve-out ---
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
-"$TEMPER" state set next_stage build >/dev/null
+_at build
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests green task 1" --phase green --exit 0 --cmd pytest >/dev/null
@@ -571,7 +571,7 @@ assert_eq "the checkpoint carve-out names the green run" "yes" \
 
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
-"$TEMPER" state set next_stage build >/dev/null
+_at build
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests green then regress" --phase green --exit 0 --cmd pytest >/dev/null
@@ -582,7 +582,7 @@ assert_eq "the RED carve-out names the failing claim" "yes" "$(echo "$OUT" | gre
 
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
-"$TEMPER" state set next_stage build >/dev/null
+_at build
 # no plan verdict -> upstream not satisfied -> full gate applies -> FAIL (build gate never ran)
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_exit "upstream gates unmet => full commit gate applies" 1 "$TEMPER" gate commit
@@ -591,7 +591,7 @@ assert_eq "no checkpoint carve-out row when upstream is unmet" "no" \
 
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
-"$TEMPER" state set next_stage review >/dev/null   # past build => no carve-out
+_at review   # past build => no carve-out
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests green" --phase green --exit 0 --cmd pytest >/dev/null
@@ -761,8 +761,11 @@ assert_eq "STAGE_SEQ_TEMPER is the stage order the mod expects" "$MOD_STAGE_SEQ"
   "$(sed -n 's/^STAGE_SEQ_TEMPER="\(.*\)"$/\1/p' "$TEMPER")"
 setup
 "$TEMPER" state init demo --command temper >/dev/null
+_pass intent
 assert_exit "the mod's approve intent command is accepted by the CLI" 0 "$TEMPER" state advance intent_complete plan
+_pass plan design; "$TEMPER" state set complexity medium >/dev/null
 assert_exit "the mod's approve plan command (design first) is accepted by the CLI" 0 bash -c "'$TEMPER' state advance plan_complete design && '$TEMPER' state advance design_complete build"
+_pass build review check
 assert_exit "the mod's later advances are accepted by the CLI" 0 bash -c "'$TEMPER' state advance build_complete review && '$TEMPER' state advance review_complete check && '$TEMPER' state advance check_complete commit"
 assert_exit "the mod's back command is accepted by the CLI" 0 "$TEMPER" state set next_stage plan
 assert_exit "the old form 'state advance intent plan' is refused by the CLI" 1 "$TEMPER" state advance intent plan
@@ -811,6 +814,8 @@ setup
 "$TEMPER" state init demo --command temper >/dev/null
 mirror_step() { # mirror_step <name> <expected next_stage> <temper args...>
   local name="$1" want="$2"; shift 2
+  # ADR 0013: a stage is left once its check passed
+  [[ "$1 $2" == "state advance" ]] && _pass "${3%_complete}"
   assert_exit "mirror: $name" 0 "$TEMPER" "$@"
   assert_eq "mirror: $name sets next_stage" "$want" "$("$TEMPER" state get next_stage 2>/dev/null)"
 }
@@ -820,13 +825,15 @@ mirror_step "build_complete review" review state advance build_complete review
 mirror_step "review_complete check" check state advance review_complete check
 mirror_step "check_complete commit" commit state advance check_complete commit
 # A medium or complex run goes through design.
-"$TEMPER" state advance intent_complete plan >/dev/null
+_at plan plan; "$TEMPER" state set complexity medium >/dev/null
 mirror_step "plan_complete design" design state advance plan_complete design
 mirror_step "design_complete build" build state advance design_complete build
 # A step back: the CLI resumes from the stage it is pointed at.
-for s in intent plan build review check; do
+_at check
+for s in review build plan intent; do
   mirror_step "state set next_stage $s" "$s" state set next_stage "$s"
 done
+_at build build
 assert_eq "mirror: stage is recorded by state advance" "build_complete" "$("$TEMPER" state advance build_complete review >/dev/null; "$TEMPER" state get stage)"
 assert_exit "mirror: override <stage> --reason" 0 "$TEMPER" override review --reason "reviewer is on leave"
 "$TEMPER" evidence add --stage review --claim "a finding" --severity low >/dev/null
@@ -1028,7 +1035,7 @@ assert_eq "a CLI reached through a symlink resolves a model from its own folder,
 assert_exit "a CLI reached through a symlink loads acceptance.py by its full path, with an empty environment" 0 \
   env -i HOME="$HOME" PATH="$PATH" "$WORKDIR/bin/temper" gate plan
 assert_eq "the CLI and its Python helpers list no folder by wildcard and load no folder onto sys.path" "0" \
-  "$(cat "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/pack-discover.py" | grep -cE 'glob\.glob|^import glob|sys\.path\.insert|TEMPER_DIR:-')"
+  "$(cat "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/pack-discover.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/flow.py" | grep -cE 'glob\.glob|^import glob|sys\.path\.insert|TEMPER_DIR:-')"
 
 # --- CLI: the plugin folder comes from the CLI's own file, never from an environment variable ---
 setup
@@ -1036,7 +1043,7 @@ mkdir -p "$WORKDIR/bin"
 CLI_PLUGIN="$WORKDIR/cli-plugin"
 rm -rf "$CLI_PLUGIN"
 mkdir -p "$CLI_PLUGIN/scripts" "$CLI_PLUGIN/inner/sub"
-cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$CLI_PLUGIN/scripts/"
+cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/flow.py" "$CLI_PLUGIN/scripts/"
 cp -R "$REPO_ROOT/agents" "$CLI_PLUGIN/agents"
 ln -sf ../cli-plugin/scripts/temper "$WORKDIR/bin/rel-temper"
 ln -sf rel-temper "$WORKDIR/bin/chained-temper"

@@ -8,6 +8,7 @@ setup
 RUN1="$(bs run_id)"
 assert_eq "ADR 0012: state init writes a run id and step 0" "yes|0|intent" \
   "$([[ "$RUN1" =~ ^[0-9a-f]{16}$ ]] && echo yes || echo no)|$(bs step)|$(bs next_stage)"
+_pass intent plan
 "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 assert_eq "ADR 0012: every change of next_stage counts one step" "2|build" "$(bs step)|$(bs next_stage)"
@@ -26,6 +27,7 @@ assert_eq "ADR 0012: a new state init is a new run, at step 0" "yes|0" \
 # A loop back redoes the stages from its target: their verdicts leave gates.json and their skips move to the archive.
 setup
 "$TEMPER" state init demo >/dev/null 2>&1
+_pass intent plan
 "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"plan":{"verdict":"PASS"},"build":{"verdict":"PASS"},"review":{"verdict":"FAIL"},"check":{"verdict":"FAIL"}}\n' > .temper/gates.json
@@ -47,6 +49,7 @@ assert_eq "ADR 0012: after the loop the commit gate no longer counts the old ski
 # A state set next_stage to an earlier stage redoes like a loop; to a later stage it redoes nothing.
 setup
 "$TEMPER" state init demo >/dev/null 2>&1
+_pass intent plan build
 "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 "$TEMPER" state advance build_complete review >/dev/null 2>&1
@@ -55,6 +58,7 @@ printf '{"plan":{"verdict":"PASS"},"build":{"verdict":"PASS"},"review":{"verdict
 assert_eq "ADR 0012: state set next_stage to an earlier stage clears the verdicts from it" "|plan" \
   "$(python3 -c "import json; print(','.join(sorted(json.load(open('.temper/gates.json')))))")|$(bs next_stage)"
 printf '{"plan":{"verdict":"PASS"}}\n' > .temper/gates.json
+"$TEMPER" state set complexity medium >/dev/null 2>&1
 "$TEMPER" state set next_stage design >/dev/null 2>&1
 assert_eq "ADR 0012: state set next_stage to a later stage keeps the verdicts" "plan|design" \
   "$(python3 -c "import json; print(','.join(sorted(json.load(open('.temper/gates.json')))))")|$(bs next_stage)"

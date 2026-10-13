@@ -155,6 +155,7 @@ assert_eq "override is recorded and visible in report" "yes" "$("$TEMPER" report
 # --- state: illegal transitions rejected, loop budget enforced ---
 setup
 assert_exit "state advance rejects an unknown stage name" 1 "$TEMPER" state advance not_a_real_stage build
+_at build build
 assert_exit "state advance accepts a known stage" 0 "$TEMPER" state advance build_complete review
 assert_exit "state loop allows iterations up to max-per-type" 0 "$TEMPER" state loop review build --reason r1
 assert_exit "state loop allows the second iteration" 0 "$TEMPER" state loop review build --reason r2
@@ -178,7 +179,7 @@ assert_exit "state loop to an unknown stage is refused" 1 "$TEMPER" state loop r
 assert_eq "state loop to an unknown stage leaves next_stage alone" "build" "$("$TEMPER" state get next_stage)"
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" >/dev/null
-"$TEMPER" state advance review_complete check >/dev/null
+_at check
 "$TEMPER" gate intent >/dev/null; "$TEMPER" gate plan >/dev/null
 echo 'fix' > loopfix.js; git add loopfix.js >/dev/null 2>&1
 "$TEMPER" state loop check build --reason "review found a defect" >/dev/null
@@ -223,6 +224,7 @@ assert_eq "state advance with one arg prints a usage message, not an unbound-var
 # --- state advance: stage vocabulary is scoped per command (temper vs fix) ---
 setup
 assert_exit "a /temper run rejects fix-only stage names (rca_complete)" 1 "$TEMPER" state advance rca_complete design
+_at plan plan; "$TEMPER" state set complexity medium >/dev/null
 assert_exit "a /temper run accepts its own stage names" 0 "$TEMPER" state advance plan_complete design
 
 setup
@@ -996,6 +998,7 @@ assert_exit "commit gate PASSes once the intent gate ran" 0 "$TEMPER" gate commi
 
 # intent_complete is a valid /temper state transition; the fix sequence rejects it.
 setup
+_pass intent
 assert_exit "a /temper run accepts intent_complete" 0 "$TEMPER" state advance intent_complete plan
 assert_eq "state init points a temper run at the intent stage first" "intent" \
   "$(rm -f .temper/build-state.json; "$TEMPER" state init demo2 --command temper >/dev/null; "$TEMPER" state get next_stage)"

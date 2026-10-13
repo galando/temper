@@ -1,0 +1,1032 @@
+#!/usr/bin/env python3
+"""flow.py: what a Temper run does next, and the view the mod draws (ADR 0013).
+
+  flow.py next --ctx JSON    prints the next action of the run in the current folder, as JSON
+  flow.py view --ctx JSON    writes .temper/view.json and prints nothing
+
+`scripts/temper next --json` and the CLI's view writer call this; nothing else should. The CLI
+passes what only it knows (the plugin folder, its own path, the config values, the models, the
+parsed tasks.md, the schedule) in --ctx. Everything else is read from the run's own files. It never
+writes a file but .temper/view.json. The schema of both outputs is in docs/flow.md; a change to it
+is a change of VERSION. Standard library only.
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+import config_yaml
+import tasks_md
+
+VERSION = 1
+
+TEMPER = ".temper"
+GATE_HEADER = "Temper gate"
+GROUP_HEADER = "Build group"
+RESUME_HEADER = "Temper resume"
+DRIFT_HEADER = "Scope drift"
+DRIFT_PREFIX = "Outside the plan:"
+DRIFT_OPTIONS = ["Add to plan", "Revert", "Allow once"]
+SEQ = {"temper": ["intent", "plan", "design", "build", "review", "check", "commit"],
+       "fix": ["rca", "fix", "review", "check", "commit"]}
+LABEL = {"intent": "Intent", "plan": "Plan", "design": "Design", "build": "Build", "review": "Review",
+         "check": "Check", "commit": "Commit", "rca": "RCA", "fix": "Fix"}
+# The stage a gate verdict is kept under: a fix run's Fix stage is judged by the build gate.
+GATE_OF = {"fix": "build", "rca": None}
+# The stages a step back goes to, from a failed stage.
+BACK_TO = {"temper": {"plan": "intent", "design": "plan", "build": "plan", "review": "build", "check": "build"},
+           "fix": {"review": "fix", "check": "fix"}}
+# The moves only the person may make; the mod lets their CLI calls through only for the person's answer.
+PERSON_MOVES = {"approve", "arm", "override", "back", "accept", "keep", "commitOverride", "restart"}
+
+
+# ---- reading the run -----------------------------------------------------------------------
+
+def read_json(path, default):
+    try:
+        with open(path) as f:
+            d = json.load(f)
+        return d if isinstance(d, type(default)) else default
+    except (OSError, ValueError):
+        return default
+
+
+def read_text(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read()
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
+def git(*args):
+    try:
+        r = subprocess.run(["git"] + list(args), capture_output=True, text=True, timeout=20)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+class Run:
+    """The run as its files say. Nothing here decides; it only reads."""
+
+    def __init__(self, ctx):
+        self.ctx = ctx
+        self.state = read_json(os.path.join(TEMPER, "build-state.json"), {})
+        self.active = bool(self.state) and bool(self.state.get("next_stage"))
+        self.gates = read_json(os.path.join(TEMPER, "gates.json"), {})
+        self.overrides = read_json(os.path.join(TEMPER, "overrides.json"), [])
+        self.loops = read_json(os.path.join(TEMPER, "feedback-loops.json"), {})
+        self.groups = read_json(os.path.join(TEMPER, "groups.json"), {})
+        self.usage = read_json(os.path.join(TEMPER, "usage.json"), [])
+        self.command = self.state.get("command") or "temper"
+        self.stage = self.state.get("next_stage") or ""
+        self.slug = self.state.get("spec") or ""
+        self.spec = self.state.get("spec_path") or ""
+        self.config = config_yaml.load(ctx.get("config_file") or os.path.join(".claude", "temper.config"))
+        tasks = os.path.join(self.spec, "tasks.md") if self.spec else ""
+        self.plan = tasks_md.parse(tasks) if tasks and os.path.isfile(tasks) else None
+        self.intent = read_text(os.path.join(self.spec, "intent.md")) if self.spec else ""
+
+    def cfg(self, key, default=""):
+        v = config_yaml.get(self.config, key, default)
+        return default if v is None or v == "" else str(v)
+
+    def on(self, key, default=False):
+        v = self.cfg(key, "true" if default else "false").lower()
+        return v in ("true", "yes", "on", "1")
+
+    def seq(self):
+        s = list(SEQ.get(self.command, SEQ["temper"]))
+        if self.command == "temper" and not self.has_design():
+            s.remove("design")
+        return s
+
+    def has_design(self):
+        if self.command != "temper":
+            return False
+        if self.spec and os.path.isfile(os.path.join(self.spec, "design.md")):
+            return True
+        if "design" in self.gates or self.stage == "design":
+            return True
+        complexity = (self.state.get("complexity") or "").lower()
+        return self.on("phases.design", True) and complexity in ("medium", "complex")
+
+    def next_of(self, stage):
+        s = self.seq()
+        return s[s.index(stage) + 1] if stage in s and s.index(stage) + 1 < len(s) else None
+
+    def gate_of(self, stage):
+        return GATE_OF.get(stage, stage) if self.command == "fix" else stage
+
+    def verdict(self, stage):
+        g = self.gates.get(self.gate_of(stage) or "")
+        return g.get("verdict") if isinstance(g, dict) else None
+
+    def rows(self, stage):
+        g = self.gates.get(self.gate_of(stage) or "")
+        return g.get("requirements", []) if isinstance(g, dict) else []
+
+    def failed_rows(self, stage):
+        return [r for r in self.rows(stage) if isinstance(r, dict) and not r.get("pass")]
+
+    def skip(self, stage):
+        gate = self.gate_of(stage)
+        hits = [o for o in self.overrides if isinstance(o, dict) and o.get("stage") == gate]
+        return hits[-1] if hits else None
+
+    def armed(self):
+        return self.state.get("run_mode") == "autonomous" and self.on("autonomy.enabled")
+
+    def loop_count(self, frm, to):
+        for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
+            if l.get("from_stage") == frm and l.get("to_stage") == to:
+                return int(l.get("iteration") or 0)
+        return 0
+
+    def loop_budget(self, frm, to):
+        if frm == "build" and to == "plan":
+            return 1
+        mx = self.cfg("loops.max-per-type", "2")
+        if frm == "check" and to in ("build", "fix"):
+            mx = self.cfg("fix.max-loops", mx)
+        try:
+            return int(mx)
+        except ValueError:
+            return 2
+
+    def can_loop(self, frm, to):
+        if not self.on("feedback.enabled", True):
+            return False
+        return self.loop_count(frm, to) < self.loop_budget(frm, to)
+
+    def latest_feedback(self):
+        """The reason of the latest step back to Build (or Fix), or of a "Run Build again"."""
+        best, at = "", ""
+        for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
+            if l.get("to_stage") in ("build", "fix") and str(l.get("started", "")) >= at:
+                best, at = l.get("reason") or "", str(l.get("started", ""))
+        redo = self.state.get("redo") or {}
+        if isinstance(redo, dict) and str(redo.get("ts", "")) >= at and redo.get("reason"):
+            best = redo.get("reason")
+        return best
+
+    def title(self):
+        m = re.search(r"^#\s+(?:Intent:\s*)?(.+?)\s*$", self.intent, re.M)
+        return m.group(1).strip() if m else self.slug
+
+    def blocking(self):
+        out, active = [], False
+        for line in self.intent.splitlines():
+            h = re.match(r"^#{1,6}\s+(.*)$", line)
+            if h:
+                active = bool(re.match(r"open questions", h.group(1).strip(), re.I))
+                continue
+            m = re.match(r"^\s*[-*]\s+Blocking:\s*(.+)$", line) if active else None
+            if m:
+                out.append(m.group(1).strip())
+        return out
+
+    def findings(self):
+        rows = read_json(os.path.join(TEMPER, "evidence", "review.json"), [])
+        out = []
+        for i, r in enumerate(rows, 1):
+            if not isinstance(r, dict) or not r.get("severity") or r.get("claim") == "review completed":
+                continue
+            claim = str(r.get("claim") or "")
+            m = re.match(r"^\s*([\w./@-]+\.\w+):(\d+)", claim)
+            state = "accepted" if r.get("accepted_reason") or r.get("accepted") else (
+                "resolved" if r.get("resolved") or r.get("fixed_by") or r.get("resolved_by") else "open")
+            out.append({"id": i, "severity": str(r.get("severity")).lower(), "claim": claim,
+                        "file": m.group(1) if m else None, "line": int(m.group(2)) if m else None,
+                        "state": state, "label": r.get("label")})
+        return out
+
+    def open_findings(self):
+        block = [s.strip().lower() for s in re.split(r"[\x1f,\s\[\]]+", self.cfg("review.block-on", "critical")) if s.strip()]
+        return [f for f in self.findings() if f["state"] == "open" and f["severity"] in block]
+
+    def spec_ignored(self):
+        return bool(self.ctx.get("spec_ignored"))
+
+
+# ---- building the answer ---------------------------------------------------------------------
+
+class Builder:
+    def __init__(self, run):
+        self.r = run
+        self.cli = run.ctx.get("cli") or "temper"
+        self.plugin = run.ctx.get("plugin") or ""
+
+    def c(self, *words):
+        return " ".join([self.cli] + [w for w in words if w])
+
+    def run_info(self):
+        r = self.r
+        return {"id": r.state.get("run_id"), "step": r.state.get("step"), "slug": r.slug, "stage": r.stage,
+                "command": r.command, "mode": r.state.get("run_mode") or "interactive"}
+
+    def plugin_line(self):
+        return ("Plugin folder: %s; wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT "
+                "variable, use this folder." % self.plugin)
+
+    # -- options ---------------------------------------------------------------------------
+    def opt(self, label, description, move=None, calls=None, steps=None, do=None, stop=False, reason=None):
+        o = {"label": label, "description": description, "move": move, "calls": calls or []}
+        if steps:
+            o["steps"] = steps
+        if do:
+            o["do"] = do
+        if stop:
+            o["stop"] = True
+        if reason:
+            o["reason"] = True
+            o["reason_question"] = {
+                "header": GATE_HEADER, "question": "%s. What is the reason?" % label,
+                "multiSelect": False,
+                "options": [{"label": x, "description": ""} for x in reason] + [{"label": "Cancel", "description": "Back to the question before."}]}
+        return o
+
+    def save(self):
+        return self.opt("Save for later", "Stop here. The run is saved; /temper:temper takes it up again.", move="pause", stop=True)
+
+    def skill(self, name, label, what):
+        return self.opt(label, what, do="Use the %s skill on this stage's work, then ask this question again." % name)
+
+    def question(self, header, text, options, stage, more=None, extra=None):
+        q = {"header": header, "question": text, "multiSelect": False,
+             "options": [{"label": o["label"], "description": o["description"]} for o in options]}
+        out = {"stage": stage, "step": self.r.state.get("step"), "run_id": self.r.state.get("run_id"),
+               "question": q, "options": options}
+        if more:
+            out["more"] = more
+        if extra:
+            out.update(extra)
+        return out
+
+    def with_more(self, header, text, stage, first, rest, more_text):
+        """At most four options a question: the first three, then "More options" with the rest."""
+        if len(first) + len(rest) <= 4:
+            return self.question(header, text, first + rest, stage)
+        more_opt = self.opt("More options", ", ".join(o["label"] for o in rest), do="Ask the more question.")
+        more = self.question(header, more_text, rest, stage)
+        return self.question(header, text, first[:3] + [more_opt], stage, more=more)
+
+    # -- the steps that leave Intent and Plan ------------------------------------------------
+    def spec_commit(self, message):
+        if self.r.spec_ignored() or not self.r.spec:
+            return []
+        return ["git add -- %s/" % self.r.spec, 'git commit -m "%s"' % message]
+
+    def leave_intent(self):
+        return [self.c("intent accept")] + self.spec_commit("docs(intent): accept %s" % self.r.slug) + \
+               [self.c("state advance intent_complete plan")]
+
+    def leave_plan(self):
+        r, nxt = self.r, self.r.next_of("plan") or "build"
+        steps = []
+        branch = r.state.get("branch") or ""
+        if branch and (self.r.ctx.get("branch") or "") != branch:
+            steps.append("git checkout -b %s" % branch if not self.r.ctx.get("branch_exists") else "git checkout %s" % branch)
+        return steps + self.spec_commit("docs(plan): approve the plan of %s" % r.slug) + \
+            [self.c("state advance plan_complete %s" % nxt)]
+
+    # -- gate questions ----------------------------------------------------------------------
+    def ask(self, stage):
+        r = self.r
+        verdict = r.verdict(stage)
+        skipped = r.skip(stage) is not None
+        nxt = r.next_of(stage)
+        label = LABEL.get(stage, stage)
+        passed = verdict == "PASS" or skipped
+        back = BACK_TO.get(r.command, {}).get(stage)
+        rows = r.failed_rows(stage)
+        why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in rows[:3])
+        state_of = "the check passed" if verdict == "PASS" else ("skipped by you" if skipped else "the check failed")
+        override_reasons = ["I accept the risk", "It is not a real issue"]
+        back_reasons = ["The check found a real problem"]
+
+        def back_opt(rec=False):
+            if not back or not r.can_loop(stage, back):
+                return []
+            return [self.opt("Loop back to %s%s" % (LABEL[back], " (Recommended)" if rec else ""),
+                             "Do %s again; the stages after it are redone too." % LABEL[back], move="back",
+                             calls=[self.c('state loop %s %s --reason "{reason}"' % (stage, back))], reason=back_reasons)]
+
+        def override_opt(then):
+            return self.opt("Override and continue", "Skip this check with your reason; the report shows it.", move="override",
+                            calls=[self.c('override %s --reason "{reason}"' % (r.gate_of(stage) or stage))] + then,
+                            reason=override_reasons)
+
+        walked = self.walked(stage)
+        if walked:
+            text = "%s: %s (this stage ran before; it is checked, not run again). Go on to %s?" % (label, state_of, LABEL.get(nxt, nxt))
+            go = self.leave(stage)
+            if passed:
+                return self.question(GATE_HEADER, text, stage=stage, options=[
+                    self.opt("Continue to %s (Recommended)" % LABEL.get(nxt, nxt), "Go on to %s." % LABEL.get(nxt, nxt),
+                             move=self.go_move(stage), calls=go), self.save()])
+            return self.question(GATE_HEADER, text, stage=stage, options=[override_opt(go), self.save()])
+
+        if r.command == "fix" and stage == "rca":
+            return self.question(GATE_HEADER, "RCA: the root cause is in %s/rca.md. Proceed to Fix?" % r.spec, stage=stage, options=[
+                self.opt("Proceed to Fix (Recommended)", "Write the regression test and the fix.", move="approve",
+                         calls=[self.c("state advance rca_complete fix")]), self.save()])
+
+        if stage == "intent":
+            if passed:
+                return self.question(GATE_HEADER, "Intent: %s. Accept the intent and continue to Plan?" % state_of, stage=stage, options=[
+                    self.opt("Continue to Plan (Recommended)", "Accept intent.md, commit it, and start Plan.", move="approve", calls=self.leave_intent()),
+                    self.skill("grill-me", "Grill Me", "Stress test the intent first."),
+                    self.skill("teach-me", "Teach Me", "Walk through the intent."), self.save()])
+            return self.question(GATE_HEADER, "Intent: the check failed (%s). Correct intent.md, or skip the check?" % why, stage=stage, options=[
+                override_opt(self.leave_intent()[0:1] + self.leave_intent()[1:]),
+                self.skill("grill-me", "Grill Me", "Stress test the intent first."), self.save()])
+
+        if stage == "plan":
+            walk = self.opt("Walk through step by step", "Review the plan section by section.",
+                            do="Follow %s/reference/plan.md, section Approval, then ask this question again." % self.plugin)
+            html = self.opt("Open HTML review", "Open the plan as a page to comment on.",
+                            do="Follow %s/reference/plan-review.md (Open HTML review), then ask this question again." % self.plugin)
+            share = self.opt("Share HTML review", "Publish the plan as a private Claude artifact others can comment on.",
+                             do="Follow %s/reference/plan-review.md (Share HTML review), then ask this question again." % self.plugin)
+            grill = self.skill("grill-me", "Grill Me", "Stress test the plan.")
+            teach = self.skill("teach-me", "Teach Me", "Walk through the plan.")
+            if passed:
+                go = self.leave_plan()
+                nl = LABEL.get(r.next_of("plan") or "build")
+                text = "Plan: %s. Approve the plan and continue to %s?" % (state_of, nl)
+                if r.on("autonomy.enabled"):
+                    first = [self.opt("Stage by stage (Recommended)", "Approve the plan; every later stage keeps its own gate.", move="approve", calls=go),
+                             self.opt("Autonomous: run the rest unattended", "Approve the plan; Build, Review and Check go on by themselves and park before the commit.",
+                                      move="arm", calls=[self.c("state set run_mode autonomous")] + go), walk]
+                    return self.with_more(GATE_HEADER, text, stage, first, [html, share, grill, self.save()], "Plan: more options.")
+                first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go), walk, html]
+                return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.")
+            return self.question(GATE_HEADER, "Plan: the check failed (%s). Fix the plan, or skip the check?" % why, stage=stage,
+                                 options=back_opt() + [override_opt(self.leave_plan()), grill, self.save()])
+
+        if stage == "design":
+            walk = self.opt("Walk through step by step", "Review the design section by section.",
+                            do="Walk through the sections design.md has (architecture, API contracts, database changes, integration points, decision log), then ask this question again.")
+            go = [self.c("state advance design_complete build")]
+            if passed:
+                return self.with_more(GATE_HEADER, "Design: %s. Continue to Build?" % state_of, stage,
+                                      [self.opt("Continue to Build (Recommended)", "Start Build.", move="advance", calls=go), walk,
+                                       self.skill("grill-me", "Grill Me", "Stress test the design.")],
+                                      [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.")
+            return self.question(GATE_HEADER, "Design: the check failed (%s). Fix the design, or skip the check?" % why, stage=stage,
+                                 options=back_opt() + [override_opt(go), self.save()])
+
+        if stage in ("build", "fix"):
+            go = [self.c("state advance %s_complete %s" % (stage, nxt))]
+            if passed:
+                opts = [self.opt("Continue to %s (Recommended)" % LABEL[nxt], "Start %s." % LABEL[nxt], move="advance", calls=go),
+                        self.skill("teach-me", "Teach Me", "Walk through the changes.")]
+                return self.question(GATE_HEADER, "%s: %s. Continue to %s?" % (label, state_of, LABEL[nxt]), stage=stage,
+                                     options=opts + back_opt() + [self.save()])
+            again = self.opt("Run %s again (Recommended)" % label, "Mend what the failed rows name, then check %s again." % label,
+                             move="redo", calls=[self.c('state redo %s --reason "%s"' % (stage, why.replace('"', "'")[:300]))])
+            return self.question(GATE_HEADER, "%s: the check failed (%s). Run %s again?" % (label, why, label), stage=stage,
+                                 options=[again] + back_opt() + [override_opt(go), self.save()])
+
+        if stage == "review":
+            go = [self.c("state advance review_complete check")]
+            arch = self.opt("Architecture Depth Review", "Check the changed modules' depth, then come back here.",
+                            do="Run the module depth analysis of %s/reference/architecture-depth.md on the changed files, add its [ARCH-DEPTH] findings to the summary, then ask this question again." % self.plugin)
+            if passed:
+                return self.with_more(GATE_HEADER, "Review: %s. Continue to Check?" % state_of, stage,
+                                      [self.opt("Continue to Check (Recommended)", "Start Check.", move="advance", calls=go), arch,
+                                       self.skill("grill-me", "Grill Me", "Stress test the change.")],
+                                      [self.skill("teach-me", "Teach Me", "Walk through the change."), self.save()], "Review: more options.")
+            opens = r.open_findings()
+            accept = None
+            first = back_opt(rec=True)
+            if opens:
+                aopts = [self.opt("Accept finding %d" % f["id"], f["claim"][:150], move="accept",
+                                  calls=[self.c('evidence accept --stage review --id %d --reason "{reason}"' % f["id"]), self.c("gate review")],
+                                  reason=["It is not a real issue", "I accept the risk"]) for f in opens[:3]]
+                accept = self.question(GATE_HEADER, "Review: which finding do you accept?", stage=stage,
+                                       options=aopts + [self.opt("Cancel", "Back to the Review question.", do="Ask the Review question again.")])
+                first.append(self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question."))
+            first.append(override_opt(go))
+            text = "Review: the check failed (%s). Loop back to Build?" % why
+            q = self.with_more(GATE_HEADER, text, stage, first[:3], first[3:] + [arch, self.save()], "Review: more options.")
+            if accept:
+                q["accept"] = accept
+            return q
+
+        if stage == "check":
+            go = [self.c("state advance check_complete commit")]
+            if passed:
+                opts = [self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", calls=go)]
+                if r.spec and os.path.isfile(os.path.join(r.spec, "config-suggestions.json")):
+                    opts.append(self.opt("Review config suggestions", "Accept, reject or defer each suggestion, then come back here.",
+                                         do="Show each suggestion in config-suggestions.json: Accept (write it into CLAUDE.md or AGENTS.md), Reject or Defer. Then ask this question again."))
+                return self.question(GATE_HEADER, "Check: %s. Commit?" % state_of, stage=stage, options=opts + [self.save()])
+            return self.question(GATE_HEADER, "Check: the check failed (%s). Loop back to %s?" % (why, LABEL[back or "build"]), stage=stage,
+                                 options=back_opt(rec=True) + [override_opt(go), self.save()])
+
+        return None
+
+    def go_move(self, stage):
+        return "approve" if stage in ("intent", "plan") else "advance"
+
+    def leave(self, stage):
+        if stage == "intent":
+            return self.leave_intent()
+        if stage == "plan":
+            return self.leave_plan()
+        nxt = self.r.next_of(stage)
+        return [self.c("state advance %s_complete %s" % (stage, nxt))]
+
+    def walked(self, stage):
+        """A door started this run at a later stage: the stages before it are checked and asked, not run."""
+        enter = self.r.state.get("enter") or ""
+        seq = self.r.seq()
+        return bool(enter) and enter in seq and stage in seq and seq.index(stage) < seq.index(enter)
+
+    # -- the work of a stage -------------------------------------------------------------------
+    def agent(self, stage, extra_lines=()):
+        r = self.r
+        models = r.ctx.get("models") or {}
+        lines = ["Follow %s/agents/%s.md exactly." % (self.plugin, stage)]
+        if stage == "intent" and r.state.get("feature"):
+            lines.append("Feature: %s." % r.state.get("feature"))
+        lines.append("Spec path: %s." % r.spec)
+        lines.extend(extra_lines)
+        lines.append(self.plugin_line())
+        return {"type": "temper:temper-%s" % stage, "model": models.get(stage, ""), "prompt": "\n".join(lines),
+                "after": [self.c("usage add --stage %s --model %s --tokens {tokens} --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
+
+    def feedback_lines(self):
+        fb = self.r.latest_feedback()
+        lines = []
+        if fb:
+            lines.append("Feedback re-entry: %s. Fix this, then continue." % fb)
+        for name in ("review-context.json", "check-context.json"):
+            p = os.path.join(self.r.spec, name)
+            if self.r.spec and os.path.isfile(p):
+                lines.append("Feedback file: %s." % p)
+        return lines
+
+    def stage_work(self, stage):
+        r = self.r
+        extra = []
+        if r.command == "fix":
+            if stage == "review":
+                extra = ["Fix mode: there is no intent.md; read %s/rca.md instead, and verify the fix addresses its root cause, "
+                         "the regression test proves the fix (not a trivial assert), and no same pattern occurrence it flagged is left unfixed." % r.spec]
+            elif stage == "check":
+                extra = ["Fix mode: there is no intent.md, so scenario tracing does not apply; %s/rca.md names the regression test "
+                         "that must be in the passing run." % r.spec]
+            elif stage == "fix":
+                extra = self.feedback_lines()
+        a = self.agent(stage, extra)
+        a["after"].append(self.c("gate %s" % (r.gate_of(stage) or stage)))
+        return {"action": "work", "stage": stage, "calls": [], "agents": [a],
+                "say": "%s runs." % LABEL.get(stage, stage)}
+
+    def build_work(self):
+        """Grouped Build, computed: start groups, hand out ready tasks, gate tasks and groups, integrate."""
+        r = self.r
+        plan = r.plan or {"groups": [], "tasks": []}
+        rg = r.groups.get("groups") or {}
+        rt = r.groups.get("tasks") or {}
+        integ = (r.groups.get("integration") or {}).get("verdict")
+        gid = [g["id"] for g in plan.get("groups", [])]
+
+        def gpass(g):
+            return ((rg.get(g) or {}).get("gate") or {}).get("verdict") == "PASS"
+
+        # the fix pass: the groups are integrated, so Build mends what a step back or "Run Build again" names
+        if integ and all(gpass(g) for g in gid):
+            a = self.agent("build", self.feedback_lines())
+            if integ != "PASS":
+                a["after"].append(self.c("integrate"))
+            a["after"].append(self.c("gate build"))
+            return {"action": "work", "stage": "build", "calls": [], "agents": [a], "say": "Build mends what was found (the fix pass)."}
+
+        run = []
+        if not r.state.get("base_sha") and r.ctx.get("head"):
+            run.append(self.c("state set base_sha %s" % r.ctx.get("head")))
+        for g in plan.get("groups", []):
+            started = bool((rg.get(g["id"]) or {}).get("worktree"))
+            if not started and all(gpass(d) for d in g.get("depends", [])):
+                run.append(self.c("group start %s" % g["id"]))
+        if run:
+            return {"action": "work", "stage": "build", "calls": run, "agents": [], "say": "Build starts its groups."}
+
+        try:
+            mx = int(r.cfg("build.grouped.max-parallel", "4"))
+        except ValueError:
+            mx = 4
+        sched = tasks_md.schedule(plan, r.groups, mx if mx > 0 else 4, r.ctx.get("task_model") or "haiku",
+                                  r.ctx.get("escalation_model") or "sonnet", os.getcwd()) if plan.get("tasks") else []
+        ready = [x for x in sched if "task" in x]
+        if ready:
+            agents = []
+            for t in ready:
+                agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or "haiku",
+                               "before": [self.c("task start %d" % t["task"])],
+                               "prompt": "Follow %s/agents/build-task.md exactly.\n%s\nTask: %d." % (self.plugin, self.plugin_line(), t["task"]),
+                               "after": [self.c("task gate %d --model %s --tokens {tokens} --ms {ms}" % (t["task"], t.get("model")))],
+                               "task": t["task"], "group": t.get("group"), "title": t.get("title"), "attempt": t.get("attempt")})
+            return {"action": "work", "stage": "build", "calls": [], "agents": agents,
+                    "say": "Build hands out %d task%s." % (len(agents), "" if len(agents) == 1 else "s")}
+
+        running = [(int(n), v) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"]
+        if running:
+            return {"action": "wait", "stage": "build", "tasks": [
+                {"task": n, "after": [self.c("task gate %d --model %s --tokens {tokens} --ms {ms}" % (n, v.get("model") or self.r.ctx.get("task_model") or "haiku"))]}
+                for n, v in sorted(running)],
+                "say": "Tasks are running. When you launched their agents in this conversation, wait for each result, then run its after calls; "
+                       "otherwise (a new conversation) run the after calls now."}
+
+        for g in gid:
+            st = (rg.get(g) or {}).get("status")
+            if st == "parked":
+                return self.parked(g)
+        for g in plan.get("groups", []):
+            gidx = g["id"]
+            ginfo = rg.get(gidx) or {}
+            tasks = g.get("tasks", [])
+            done = tasks and all((rt.get(str(n)) or {}).get("status") == "passed" for n in tasks)
+            gate = (ginfo.get("gate") or {}).get("verdict")
+            if done and not gate:
+                return {"action": "work", "stage": "build", "calls": [self.c("group gate %s" % gidx)], "agents": [], "say": "Group %s is checked." % gidx}
+            if gate == "FAIL":
+                return self.group_failed(g, ginfo)
+            if gate == "PASS" and not ginfo.get("confirmed"):
+                if r.armed():
+                    return {"action": "auto", "stage": "build", "calls": [self.c("group continue %s" % gidx)], "say": "Group %s passed; the armed run goes on." % gidx}
+                return {"action": "ask", "stage": "build", "ask": self.group_question(g)}
+        if gid and all(gpass(g) and (rg.get(g) or {}).get("confirmed") for g in gid):
+            return {"action": "work", "stage": "build", "calls": [self.c("integrate"), self.c("gate build")], "agents": [],
+                    "say": "Every group passed: the groups are merged and Build is checked."}
+        return {"action": "work", "stage": "build", "calls": [self.c("gate build")], "agents": [], "say": "Build is checked."}
+
+    def group_question(self, g):
+        gid = g["id"]
+        q = self.question(GROUP_HEADER, "Group %s (%s) passed its check. Continue?" % (gid, g.get("title", "")), stage="build", options=[
+            self.opt("Continue (Recommended)", "Go on to the next group, or to the merge.", move="advance", calls=[self.c("group continue %s" % gid)]),
+            self.opt("Change", "Give feedback; only the tasks it concerns run again.",
+                     do="Record each item the person typed with %s, then run %s for each task it concerns. Then ask for the next step."
+                        % (self.c('evidence add --stage build --phase feedback --claim "feedback #{K}: {text}"'), self.c("group reopen %s --task {N} --feedback {K}" % gid))),
+            self.opt("Stop", "Save the run for later.", move="pause", calls=[self.c("gate build")], stop=True)])
+        return q
+
+    def group_failed(self, g, ginfo):
+        gid = g["id"]
+        reopen = [self.c("group reopen %s %s" % (gid, " ".join("--task %d" % n for n in g.get("tasks", []))))]
+        opts = [self.opt("Run the group's tasks again (Recommended)", "Each task of %s runs again." % gid, move="redo", calls=reopen)]
+        if self.r.can_loop("build", "plan"):
+            opts.append(self.opt("Loop back to Plan", "The plan cannot be built as written.", move="back",
+                                 calls=[self.c('state loop build plan --reason "{reason}"')], reason=["The plan cannot be built"]))
+        opts.append(self.save())
+        return {"action": "ask", "stage": "build", "ask": self.question(
+            GATE_HEADER, "Group %s failed its check (%s). Run its tasks again?" % (gid, (ginfo.get("gate") or {}).get("reason", "")), stage="build", options=opts)}
+
+    def parked(self, gid):
+        r = self.r
+        g = r.groups.get("groups", {}).get(gid) or {}
+        tasks = sorted(int(n) for n, v in (r.groups.get("tasks") or {}).items()
+                       if isinstance(v, dict) and v.get("group") == gid and v.get("status") in ("failed", "running"))
+        targs = " ".join("--task %d" % n for n in tasks) or "--task {N}"
+        foreign = g.get("parked_foreign") or []
+        if r.armed():
+            return {"action": "auto", "stage": "build",
+                    "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason "group %s is parked: %s"' % (gid, str(g.get("parked_reason", "")).replace('"', "'")[:200]))],
+                    "say": "Group %s is parked; the armed run parks for you." % gid}
+        if foreign:
+            wt = ""
+            for n in tasks:
+                wt = (r.groups.get("tasks", {}).get(str(n)) or {}).get("worktree") or wt
+            wt = wt or g.get("worktree", "")
+            fp = git("-C", wt, "rev-list", "--first-parent", "HEAD").split() if wt else []
+            lines = ["git -C %s rebase --autostash --onto %s~1 %s" % (wt, s[:7], s[:7]) for s in foreign if not fp or s in fp] or \
+                    ["git -C %s rebase --autostash --onto %s~1 %s" % (wt, s[:7], s[:7]) for s in foreign]
+            csv = ",".join(s[:7] for s in foreign)
+            opts = [self.opt("Take the commits out and run the task again (Recommended)", "Remove the agent's commits, newest first; the task runs again.",
+                             move="redo", calls=lines + [self.c("group reopen %s %s" % (gid, targs))]),
+                    self.opt("Keep the agent's commits", "Keep them knowingly, with your reason (recorded like a skip).", move="keep",
+                             calls=[self.c('group reopen %s %s --accept-foreign %s --reason "{reason}"' % (gid, targs, csv))],
+                             reason=["The commits are right", "I accept the risk"]),
+                    self.save()]
+            text = "Group %s is parked: a task agent made commits the CLI did not (%s). Take them out, or keep them?" % (gid, csv)
+        else:
+            opts = [self.opt("Run the task again (Recommended)", "The parked tasks run again, from Haiku.", move="redo",
+                             calls=[self.c("group reopen %s %s" % (gid, targs))])]
+            if r.can_loop("build", "plan"):
+                opts.append(self.opt("Loop back to Plan", "The plan cannot be built as written.", move="back",
+                                     calls=[self.c('state loop build plan --reason "{reason}"')], reason=["The plan cannot be built"]))
+            opts.append(self.save())
+            text = "Group %s is parked (%s). Run the task again?" % (gid, str(g.get("parked_reason", ""))[:200])
+        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
+
+    # -- the end of the run --------------------------------------------------------------------
+    def commit_steps(self):
+        r = self.r
+        steps = []
+        if r.command == "temper":
+            steps.append(self.c("intent complete"))
+            steps.append("When %s/build-context.json records deviations from the plan, write them into plan.md as a ## Deviations section." % r.spec)
+        steps.append(self.c("state archive"))
+        files = r.ctx.get("changed") or []
+        if not r.spec_ignored() and r.spec:
+            files = [r.spec + "/"] + [f for f in files if not f.startswith(r.spec + "/")]
+        steps.append("git add -- %s" % " ".join(files) if files else "git add -- (each file the run changed)")
+        if r.command == "fix":
+            steps.append('git commit -m "fix({scope}): {description}" -m "Root cause: {explanation}" -m "Regression test: {test name}"')
+        else:
+            steps.append('git commit -m "{a conventional commit message for the feature}"')
+        steps.append(self.c("state clear"))
+        steps.append(self.c("report"))
+        return steps
+
+    def commit(self):
+        r = self.r
+        verdict = r.verdict("commit")
+        if verdict is None:
+            return {"action": "work", "stage": "commit", "calls": [self.c("gate commit")], "agents": [], "say": "The commit gate is checked."}
+        if r.armed():
+            kind = "SHIP-PENDING-COMMIT" if verdict == "PASS" else "PARKED-NEEDS-DECISION"
+            why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows("commit"))[:200].replace('"', "'")
+            return {"action": "auto", "stage": "commit", "calls": [self.c('park --verdict %s --reason "%s"' % (kind, why or "every gate passed"))],
+                    "say": "The armed run parks before the commit; the person decides."}
+        if verdict == "PASS":
+            if r.state.get("parked"):
+                return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: every gate passed. Commit?", stage="commit", options=[
+                    self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", steps=self.commit_steps()), self.save()])}
+            return {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.commit_steps(),
+                    "say": "Every gate passed: the change is committed."}
+        failing = sorted({re.sub(r"\s+gate$", "", str(x.get("name", ""))) for x in r.failed_rows("commit") if str(x.get("name", "")).endswith(" gate")})
+        opts = []
+        if r.command == "fix" and "check" in failing and r.can_loop("check", "fix"):
+            opts.append(self.opt("Loop back to Fix (Recommended)", "Write the fix again; Review and Check run again.", move="back",
+                                 calls=[self.c('state loop check fix --reason "{reason}"')], reason=["The check found a real problem"]))
+        opts.append(self.opt("Override and commit", "Skip the failed gates with your reason and commit.", move="commitOverride",
+                             calls=[self.c('override %s --reason "{reason}"' % s) for s in failing] + [self.c("gate commit")],
+                             reason=["I accept the risk", "It is not a real issue"]))
+        opts.append(self.save())
+        why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows("commit")[:3])
+        return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: the commit gate failed (%s). Override and commit?" % why, stage="commit", options=opts)}
+
+    def restart(self):
+        r = self.r
+        return {"header": RESUME_HEADER, "question": "A run of %s is open at %s. Start over?" % (r.slug, LABEL.get(r.stage, r.stage)),
+                "multiSelect": False, "step": r.state.get("step"), "run_id": r.state.get("run_id"),
+                "options": [{"label": "Start over", "description": "The saved run state goes; the spec files stay.", "move": "restart",
+                             "calls": [self.c("state clear")]},
+                            {"label": "Cancel", "description": "Keep the run.", "move": None, "calls": []}]}
+
+    # -- the one entry point -------------------------------------------------------------------
+    def next(self):
+        r = self.r
+        if not r.active:
+            return {"v": VERSION, "action": "none", "run": None, "say": "No run is active."}
+        out = {"v": VERSION, "run": self.run_info(), "restart": self.restart()}
+        if r.stage not in r.seq() or (r.stage not in ("intent", "rca") and r.spec and not os.path.isdir(r.spec)):
+            out.update({"action": "broken", "say": "The run state does not fit its spec folder (%s at %s)." % (r.spec, r.stage)})
+            return out
+        stage = r.stage
+        if stage == "commit":
+            out.update(self.commit())
+            return out
+        if r.command == "fix" and stage == "rca":
+            out.update({"action": "ask", "stage": stage, "ask": self.ask(stage)})
+            return out
+        verdict = r.verdict(stage)
+        skipped = r.skip(stage) is not None
+        if verdict is None and not skipped:
+            if self.walked(stage):
+                out.update({"action": "work", "stage": stage, "calls": [self.c("gate %s" % stage)], "agents": [],
+                            "say": "%s ran before this run started; it is checked." % LABEL[stage]})
+            elif stage == "build" and r.command == "temper":
+                out.update(self.build_work())
+            else:
+                out.update(self.stage_work(stage))
+            return out
+        if r.armed() and stage not in ("intent", "plan", "rca"):
+            nxt = r.next_of(stage)
+            if verdict == "PASS" or skipped:
+                out.update({"action": "auto", "stage": stage, "calls": [self.c("state advance %s_complete %s" % (stage, nxt))],
+                            "say": "%s passed; the armed run goes on." % LABEL[stage]})
+                return out
+            back = BACK_TO.get(r.command, {}).get(stage)
+            why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows(stage))[:200].replace('"', "'")
+            if stage in ("review", "check") and back and r.can_loop(stage, back):
+                out.update({"action": "auto", "stage": stage, "calls": [self.c('state loop %s %s --reason "%s"' % (stage, back, why))],
+                            "say": "%s failed; the armed run loops back to %s." % (LABEL[stage], LABEL[back])})
+                return out
+            out.update({"action": "auto", "stage": stage, "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason "%s failed: %s"' % (LABEL[stage], why))],
+                        "say": "%s failed; the armed run parks for you." % LABEL[stage]})
+            return out
+        q = self.ask(stage)
+        out.update({"action": "ask", "stage": stage, "ask": q})
+        blocking = r.blocking()
+        if blocking:
+            out["blocking"] = blocking
+        return out
+
+
+# ---- the CLI's own checks -----------------------------------------------------------------------
+
+def advance_ok(run, done, nxt):
+    """Whether `state advance <done> <nxt>` may move the run, and why not. One place for the rule:
+    a run leaves the stage it is at, to the stage that comes next in its own sequence, once the
+    stage's check passed or the person skipped it (ADR 0013)."""
+    if not run.active:
+        return "no active run (temper state init first)"
+    if done == "started":
+        return None
+    if not done.endswith("_complete"):
+        return "'%s' is not <stage>_complete" % done
+    stage = done[: -len("_complete")]
+    seq = run.seq()
+    if stage not in seq:
+        return "'%s' is not a stage of this run (%s)" % (stage, " ".join(seq))
+    if stage != run.stage:
+        return "the run is at %s, not at %s; a stage is left only from where the run is" % (run.stage, stage)
+    expected = run.next_of(stage)
+    if nxt != expected:
+        return "after %s the next stage of this run is %s, not %s" % (stage, expected, nxt)
+    if stage == "rca":
+        return None
+    if run.verdict(stage) == "PASS" or run.skip(stage) is not None:
+        return None
+    v = run.verdict(stage)
+    if v is None:
+        return "%s has no verdict yet: run temper gate %s first" % (stage, run.gate_of(stage))
+    return ("%s failed its check and nobody skipped it: ask the person, who may skip it with "
+            "temper override %s --reason \"...\"" % (stage, run.gate_of(stage)))
+
+
+def plan_files(run_or_spec):
+    """The files a plan allows: the backticked paths of the Files to Create and Files to Modify
+    tables of plan.md, and of the **File:** lines of tasks.md."""
+    spec = run_or_spec
+    out = []
+    active, level = False, 0
+    for line in read_text(os.path.join(spec, "plan.md")).split("\n"):
+        h = re.match(r"^(#{2,6})\s+(.*?)\s*$", line)
+        if h:
+            if active and len(h.group(1)) <= level:
+                active = False
+            if re.match(r"^files to (?:create|modify)$", h.group(2), re.I):
+                active, level = True, len(h.group(1))
+            continue
+        if active and line.lstrip().startswith("|"):
+            cells = line.split("|")
+            out += path_tokens(cells[1] if len(cells) > 1 else "")
+    tasks = os.path.join(spec, "tasks.md")
+    if os.path.isfile(tasks):
+        for t in tasks_md.parse(tasks).get("tasks", []):
+            out += t.get("files", [])
+    return list(dict.fromkeys(out))
+
+
+def path_tokens(text):
+    out = []
+    for m in re.finditer(r"`([^`]+)`", text):
+        t = m.group(1).strip()
+        if re.fullmatch(r"[\w.@\-/*?]+", t) and ("/" in t or "." in t) and t.lower() != "none":
+            out.append(t[2:] if t.startswith("./") else t)
+    return out
+
+
+# ---- the view ----------------------------------------------------------------------------------
+
+def check_markers(run):
+    rows = read_json(os.path.join(TEMPER, "evidence", "check.json"), [])
+    kinds = [("compile", r"compile|build\b|type ?check|tsc|mypy"), ("tests", r"\btests?\b|unittest|pytest|jest"),
+             ("coverage", r"coverage"), ("lint", r"lint|ruff|eslint|flake8"), ("security", r"security|secret|audit|semgrep|bandit|scan")]
+    out = []
+    for name, rx in kinds:
+        hits = [r for r in rows if isinstance(r, dict) and re.search(rx, str(r.get("claim", "")), re.I)]
+        if not hits:
+            out.append({"name": name, "state": "none", "detail": "", "lines": []})
+            continue
+        last = hits[-1]
+        code = last.get("exit_code")
+        state = "pass" if code == 0 else ("fail" if isinstance(code, int) else "info")
+        if name == "coverage" and last.get("value") is not None:
+            state = "pass" if code in (0, None) else state
+        lines = [str(r.get("claim", ""))[:200] for r in hits if isinstance(r.get("exit_code"), int) and r.get("exit_code") != 0][-5:]
+        out.append({"name": name, "state": state, "detail": str(last.get("claim", ""))[:200],
+                    "value": last.get("value"), "lines": lines})
+    return out
+
+
+def criteria(run):
+    if not run.spec or not os.path.isfile(os.path.join(run.spec, "intent.md")):
+        return []
+    try:
+        import acceptance
+        report = acceptance.status_report(os.path.join(run.spec, "intent.md"), os.path.join(TEMPER, "evidence"))
+    except Exception:
+        return []
+    return report.get("criteria", [])
+
+
+def stage_marks(run, nxt):
+    out = []
+    seq = run.seq()
+    here = run.stage
+    for s in seq:
+        v = run.verdict(s) if s != "rca" else None
+        sk = run.skip(s)
+        if here not in seq:
+            mark = "todo"
+        elif seq.index(s) < seq.index(here):
+            mark = "skipped" if sk and v != "PASS" else ("failed" if v == "FAIL" else "passed")
+        elif s == here:
+            mark = "here"
+        else:
+            mark = "todo"
+        row = {"id": s, "label": LABEL.get(s, s), "mark": mark, "verdict": v,
+               "failed": [{"name": x.get("name"), "detail": x.get("detail")} for x in run.failed_rows(s)] if s != "rca" else []}
+        if sk:
+            row["skipped"] = {"reason": sk.get("reason"), "by": sk.get("by")}
+        out.append(row)
+    return out
+
+
+def status_line(run, nxt):
+    if not run.active:
+        return "No run is active."
+    label = LABEL.get(run.stage, run.stage)
+    a = nxt.get("action")
+    if a == "ask":
+        return "%s: waiting for your answer to the %s question." % (label, (nxt.get("ask") or {}).get("question", {}).get("header", GATE_HEADER))
+    if a == "auto":
+        return nxt.get("say") or "%s: the armed run goes on." % label
+    if a == "broken":
+        return nxt.get("say")
+    if run.state.get("parked") and a != "work":
+        return "%s: parked for you." % label
+    return nxt.get("say") or "%s: Claude is working on it." % label
+
+
+def build_view(run):
+    plan = run.plan or {"groups": [], "tasks": []}
+    rg = run.groups.get("groups") or {}
+    rt = run.groups.get("tasks") or {}
+    ev = read_json(os.path.join(TEMPER, "evidence", "build.json"), [])
+    groups = []
+    for g in plan.get("groups", []):
+        ginfo = rg.get(g["id"]) or {}
+        tasks = []
+        for n in g.get("tasks", []):
+            t = next((x for x in plan.get("tasks", []) if x.get("n") == n), {})
+            info = rt.get(str(n)) or {}
+            st = info.get("status", "pending")
+            phases = [str(r.get("phase")) for r in ev if isinstance(r, dict) and r.get("task") == n]
+            if st == "passed":
+                state = "pass"
+            elif st == "failed":
+                state = "parked" if ginfo.get("status") == "parked" else "fail"
+            elif st == "running":
+                state = "green" if "green" in phases else ("red" if "red" in phases else "running")
+            else:
+                state = "waiting"
+            attempts = info.get("attempts") or []
+            tasks.append({"n": n, "title": t.get("title", ""), "files": t.get("files", []), "state": state,
+                          "model": (attempts[-1].get("model") if attempts and isinstance(attempts[-1], dict) else None) or info.get("model"),
+                          "attempts": len(attempts)})
+        groups.append({"id": g["id"], "title": g.get("title", ""), "status": ginfo.get("status", "pending"),
+                       "verdict": (ginfo.get("gate") or {}).get("verdict"), "tasks": tasks})
+    return {"groups": groups, "integration": (run.groups.get("integration") or {}).get("verdict")}
+
+
+def plan_view(run):
+    plan = run.plan or {"groups": [], "tasks": []}
+    approved = run.state.get("approved_files")
+    by_group = []
+    for g in plan.get("groups", []):
+        files = []
+        for n in g.get("tasks", []):
+            t = next((x for x in plan.get("tasks", []) if x.get("n") == n), {})
+            files += [f for f in t.get("files", []) if f not in files]
+        by_group.append({"id": g["id"], "title": g.get("title", ""), "files": files})
+    return {"approved": isinstance(approved, list), "files": approved if isinstance(approved, list) else (plan_files(run.spec) if run.spec else []),
+            "groups": by_group}
+
+
+def usage(run):
+    rows = [r for r in run.usage if isinstance(r, dict)]
+    tokens = sum(r.get("tokens") or 0 for r in rows if isinstance(r.get("tokens"), int))
+    ms = sum(r.get("ms") or 0 for r in rows if isinstance(r.get("ms"), int))
+    by = {}
+    for r in rows:
+        b = by.setdefault(r.get("stage") or "unknown", {"tokens": 0, "ms": 0, "runs": 0})
+        b["runs"] += 1
+        b["tokens"] += r.get("tokens") or 0 if isinstance(r.get("tokens"), int) else 0
+        b["ms"] += r.get("ms") or 0 if isinstance(r.get("ms"), int) else 0
+    return {"tokens": tokens, "ms": ms, "by_stage": by}
+
+
+def loops(run):
+    out = []
+    for l in (run.loops.get("active_loops", []) if isinstance(run.loops, dict) else []):
+        out.append({"from": l.get("from_stage"), "to": l.get("to_stage"), "reason": l.get("reason"),
+                    "iteration": l.get("iteration"), "max": l.get("max_iterations"), "at": l.get("started")})
+    return out
+
+
+def view(run, nxt):
+    if not run.active:
+        return {"version": VERSION, "run": None, "status": "No run is active.", "drift": drift_info()}
+    r = run
+    out = {
+        "version": VERSION,
+        "run": {"id": r.state.get("run_id"), "step": r.state.get("step"), "slug": r.slug, "title": r.title(),
+                "command": r.command, "stage": r.stage, "mode": r.state.get("run_mode") or "interactive",
+                "complexity": r.state.get("complexity"), "branch": r.state.get("branch"), "spec": r.spec,
+                "feature": r.state.get("feature"), "parked": r.state.get("parked") or None},
+        "stages": stage_marks(r, nxt),
+        "status": status_line(r, nxt),
+        "next": {"action": nxt.get("action"), "stage": nxt.get("stage"), "say": nxt.get("say")},
+        "ask": nxt.get("ask") if nxt.get("action") == "ask" else None,
+        "blocking": nxt.get("blocking") or [],
+        "restart": nxt.get("restart"),
+        "drift": drift_info(),
+        "guard": {"stage": r.stage, "spec": r.spec, "slug": r.slug, "fix_run": r.command == "fix",
+                  "grouped": bool(r.groups), "armed": r.armed(), "autonomy_enabled": r.on("autonomy.enabled"),
+                  "plan_files": plan_view(r)["files"], "step": r.state.get("step"), "run_id": r.state.get("run_id"),
+                  "trivial_exit": r.stage == "intent" and int(r.state.get("step") or 0) == 0 and not r.gates and not r.overrides
+                  and not any(os.path.isfile(os.path.join(r.spec, n)) for n in ("intent.md", "plan.md", "tasks.md", "design.md"))},
+        "plan": plan_view(r),
+        "build": build_view(r),
+        "findings": r.findings(),
+        "checks": [{"name": x.get("name"), "pass": bool(x.get("pass")), "detail": x.get("detail")} for x in r.rows("check")],
+        "check_markers": check_markers(r),
+        "criteria": criteria(r),
+        "loops": loops(r),
+        "skips": [{"stage": o.get("stage"), "reason": o.get("reason"), "by": o.get("by")} for o in r.overrides if isinstance(o, dict)],
+        "usage": usage(r),
+        "time": {"started": r.state.get("started") or r.state.get("created"), "updated": r.state.get("updated")},
+    }
+    return out
+
+
+def drift_info():
+    return {"header": DRIFT_HEADER, "prefix": DRIFT_PREFIX, "options": DRIFT_OPTIONS}
+
+
+def write_view(doc):
+    os.makedirs(TEMPER, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=TEMPER, prefix=".view.", suffix=".tmp")
+    os.chmod(tmp, 0o644)
+    with os.fdopen(fd, "w") as f:
+        json.dump(doc, f, indent=1)
+        f.write("\n")
+    os.replace(tmp, os.path.join(TEMPER, "view.json"))
+
+
+def main(argv):
+    if len(argv) >= 4 and argv[1] == "advance-ok":
+        why = advance_ok(Run({}), argv[2], argv[3])
+        if why:
+            print(why)
+            return 1
+        return 0
+    if len(argv) >= 3 and argv[1] == "plan-files":
+        print(json.dumps(plan_files(argv[2])))
+        return 0
+    if len(argv) < 2 or argv[1] not in ("next", "view"):
+        print(__doc__, file=sys.stderr)
+        return 2
+    ctx = {}
+    if "--ctx" in argv:
+        try:
+            ctx = json.loads(argv[argv.index("--ctx") + 1])
+        except (ValueError, IndexError):
+            print("FAIL: --ctx needs a JSON object", file=sys.stderr)
+            return 2
+    for flag in ("plugin", "cli", "now", "config_file"):
+        f = "--" + flag.replace("_", "-")
+        if f in argv and argv.index(f) + 1 < len(argv):
+            ctx[flag] = argv[argv.index(f) + 1]
+    run = Run(ctx)
+    if argv[1] == "next":
+        out = Builder(run).next()
+        if ctx.get("setup"):
+            out["setup"] = ctx["setup"]
+        print(json.dumps(out, indent=1))
+        return 0
+    try:
+        nxt = Builder(run).next()
+    except Exception as e:  # the view still says where the run is; it never stays behind the run
+        nxt = {"action": "error", "say": "temper next failed: %s" % e}
+    doc = view(run, nxt)
+    doc["written"] = ctx.get("now")
+    write_view(doc)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

@@ -456,67 +456,7 @@ os.replace(tmp, sys.argv[1])
 _cfg_get() { # _cfg_get <dot.path> [default]
   local path="$1" default="${2:-}"
   [[ -f "$CONFIG_FILE" ]] || { echo "$default"; return; }
-  python3 -c "
-import sys
-
-# A deliberately small YAML subset: nested maps by indentation, scalars, and
-# INLINE flow lists ([a, b, c]) only — the v7 config never needs block-style
-# '- item' lists, so that form is intentionally not supported here.
-def parse_yaml_subset(text):
-    root = {}
-    stack = [(-1, root)]
-    for raw in text.splitlines():
-        line = raw.split(' #', 1)[0].rstrip()
-        if not line.strip() or line.strip().startswith('#'):
-            continue
-        indent = len(line) - len(line.lstrip(' '))
-        stripped = line.strip()
-        while len(stack) > 1 and indent <= stack[-1][0]:
-            stack.pop()
-        parent = stack[-1][1]
-        if ':' not in stripped:
-            continue
-        key, _, val = stripped.partition(':')
-        key, val = key.strip(), val.strip()
-        if val == '':
-            container = {}
-            parent[key] = container
-            stack.append((indent, container))
-        elif val.startswith('[') and val.endswith(']'):
-            items = [i.strip().strip('\"\\'') for i in val[1:-1].split(',') if i.strip()]
-            parent[key] = items
-        elif val in ('true', 'false'):
-            parent[key] = (val == 'true')
-        else:
-            try:
-                parent[key] = int(val)
-            except ValueError:
-                try:
-                    parent[key] = float(val)
-                except ValueError:
-                    # One pair of matching quotes around the whole value is taken off; a
-                    # quote that ends a value ('fmt \"{file}\"') is part of it.
-                    if len(val) >= 2 and val[0] == val[-1] and val[0] in '\"\\'':
-                        val = val[1:-1]
-                    parent[key] = val
-    return root
-
-text = open(sys.argv[1]).read()
-d = parse_yaml_subset(text)
-path, default = sys.argv[2], sys.argv[3]
-cur = d
-for k in path.split('.'):
-    if isinstance(cur, dict) and k in cur:
-        cur = cur[k]
-    else:
-        print(default); sys.exit(0)
-if isinstance(cur, list):
-    print('\x1f'.join(str(i) for i in cur))
-elif isinstance(cur, bool):
-    print('true' if cur else 'false')  # bash compares lowercase — never emit Python's True/False
-else:
-    print(cur if cur != '' else default)
-" "$CONFIG_FILE" "$path" "$default" 2>/dev/null || echo "$default"
+  python3 "$SCRIPTS_DIR/config_yaml.py" "$CONFIG_FILE" "$path" "$default" 2>/dev/null || echo "$default"
 }
 
 # ---------------------------------------------------------------------------
@@ -647,14 +587,21 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
     return 1
   fi
   _ensure_dirs
-  local command="temper" branch=""
+  local command="temper" branch="" feature="" enter=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --command) command="$2"; shift 2 ;;
       --branch) branch="$2"; shift 2 ;;
+      --feature) feature="${2:-}"; shift 2 ;;
+      --enter) enter="${2:-}"; shift 2 ;;
       *) shift ;;
     esac
   done
+  # ADR 0013: a door into a later stage starts its run there; the stages before it are checked and asked, not run again
+  case "$enter" in
+    ""|intent|plan|design|build|review|check) ;;
+    *) echo "FAIL: --enter takes a stage of a /temper run (plan, design, build, review or check); got '$enter'" >&2; return 1 ;;
+  esac
   # A new run must not inherit the previous run's overrides or gate verdicts — an
   # old override once satisfied a gate the new run never earned. Same discipline
   # as `state clear`: archive first, then remove runtime state. specs/ untouched.
@@ -705,9 +652,13 @@ d = {
     # ADR 0012: the run and the step a decision of the person belongs to. step counts every change of next_stage.
     'run_id': uuid.uuid4().hex[:16],
     'step': 0,
+    'started': sys.argv[4],
 }
+# ADR 0013: the feature as the person gave it (the Intent brief's input), and a door's stage
+if sys.argv[6]: d['feature'] = sys.argv[6]
+if sys.argv[7] and sys.argv[3] == 'temper': d['enter'] = sys.argv[7]
 json.dump(d, open(sys.argv[5], 'w'), indent=2)
-" "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE"
+" "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE" "$feature" "$enter"
   echo "OK: state initialized for '$slug' ($command, branch $branch)"
 }
 
@@ -780,6 +731,11 @@ cmd_state_set() {
       echo "OK: next_stage = $2 (unchanged)"
       return 0
     fi
+    if _stage_before "$cur" "$2"; then
+      # ADR 0013: forward is an advance, with the same rule
+      local why; why="$(python3 "$SCRIPTS_DIR/flow.py" advance-ok "${cur}_complete" "$2")" || {
+        echo "FAIL: $why" >&2; return 1; }
+    fi
     _stage_before "$2" "$cur" && _redo_from "$2"
     _state_next "$2" >/dev/null || return 1
     echo "OK: $1 = $2"
@@ -821,6 +777,7 @@ except Exception:
 same = d.get('next_stage') == nxt
 if not same:
     d['next_stage'] = nxt
+    d.pop('parked', None)   # a park ends when the run moves on
     try:
         d['step'] = int(d.get('step') or 0) + 1
     except (TypeError, ValueError):
@@ -910,6 +867,37 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
   if [[ "$known" != "true" && "$stage" != "started" ]]; then
     echo "FAIL: unknown stage '$stage' for command '$command' (expected one of: $(for s in $valid_stages; do printf '%s_complete ' "$s"; done))" >&2
     return 1
+  fi
+  # ADR 0013: the run leaves the stage it is at, to its next stage, once the check passed or the person skipped it
+  local why; why="$(python3 "$SCRIPTS_DIR/flow.py" advance-ok "$stage" "$next")" || {
+    echo "FAIL: $why" >&2; return 1; }
+  if [[ "$stage" == "plan_complete" ]]; then
+    # The commit the diff is read against, and the files the person approved: Build is held to these,
+    # so a plan.md edited during Build does not widen it
+    local spec files
+    spec="$(_json_get_path "$STATE_FILE" spec_path "")"
+    files="$(python3 "$SCRIPTS_DIR/flow.py" plan-files "$spec" 2>/dev/null || echo '[]')"
+    _lock_acquire
+    python3 -c "
+import json, os, sys
+p = sys.argv[1]
+d = json.load(open(p))
+try:
+    files = json.loads(sys.argv[2])
+except ValueError:
+    files = []
+d['approved_files'] = files if isinstance(files, list) else []
+tmp = '%s.tmp.%d' % (p, os.getpid())
+with open(tmp, 'w') as f:
+    json.dump(d, f, indent=2)
+    f.write('\\n')
+os.replace(tmp, p)
+" "$STATE_FILE" "$files"
+    _lock_release
+    if [[ -z "$(_json_get_path "$STATE_FILE" base_sha "")" ]]; then
+      local head; head="$(git rev-parse HEAD 2>/dev/null || true)"
+      [[ -n "$head" ]] && _json_set_path "$STATE_FILE" "base_sha" "$head" '{}' >/dev/null
+    fi
   fi
   _json_set_path "$STATE_FILE" "stage" "$stage" '{}'
   _state_next "$next" >/dev/null || return 1
@@ -1111,9 +1099,35 @@ cmd_state_clear() {
   echo "OK: run state cleared (spec artifacts under .temper/specs/ are untouched${archived_note})"
 }
 
+cmd_state_redo() { # temper state redo <stage> [--reason "..."]: "Run Build again" (or Fix): the stage's
+                   # verdict goes, and the reason is what the fix pass mends (ADR 0013). The run stays where it is.
+  _state_migrate_legacy
+  local stage="${1:-}" reason=""; shift || true
+  while [[ $# -gt 0 ]]; do case "$1" in --reason) reason="${2:-}"; shift 2 ;; *) shift ;; esac; done
+  [[ -f "$STATE_FILE" ]] || { echo "FAIL: no active state" >&2; return 1; }
+  local cur; cur="$(_json_get_path "$STATE_FILE" next_stage "")"
+  if [[ -z "$stage" || "$stage" != "$cur" ]]; then
+    echo "FAIL: the run is at $cur; only the stage it is at runs again" >&2
+    return 1
+  fi
+  _redo_from "$stage" || return 1
+  python3 - "$STATE_FILE" "$stage" "$reason" "$(_now)" <<'PY' || return 1
+import json, os, sys
+p, stage, reason, ts = sys.argv[1:5]
+d = json.load(open(p))
+d['redo'] = {'stage': stage, 'reason': reason, 'ts': ts}
+tmp = '%s.tmp.%d' % (p, os.getpid())
+with open(tmp, 'w') as f:
+    json.dump(d, f, indent=2); f.write('\n')
+os.replace(tmp, p)
+PY
+  echo "OK: $stage runs again${reason:+ ($reason)}"
+}
+
 cmd_state() {
   local sub="${1:-}"; shift || true
   case "$sub" in
+    redo) cmd_state_redo "$@" ;;
     init) cmd_state_init "$@" ;;
     get) cmd_state_get "$@" ;;
     set) cmd_state_set "$@" ;;
@@ -2012,84 +2026,7 @@ PY
 # tasks:[{n,title,group,files,depends,test,block_bytes,block}], integration}.
 # File tokens are the same backticked paths the mod's planfiles.ts reads from **File:** lines.
 _grouped_parse() { # _grouped_parse <tasks.md>
-  python3 - "$1" <<'PY'
-import json, re, sys
-try:
-    lines = open(sys.argv[1], encoding='utf-8').read().split('\n')
-except Exception:
-    lines = []
-FIELD = re.compile(r'^\*\*(Depends|Validate|Interfaces|Integration|Context|File|Test|Cases):\*\*\s*(.*)$')
-# a case of a task's **Cases:** list: a bullet that is not the task's checkbox
-CASE = re.compile(r'^\s*[-*]\s+(?!\[[ xX]\])\S')
-groups, tasks = [], []
-integration = None
-cur_g = cur_t = None
-ctx_open = False
-cases_open = False
-def path_tokens(text):
-    out = []
-    for m in re.finditer(r'`([^`]+)`', text):
-        t = m.group(1).strip()
-        if re.fullmatch(r'[\w.@\-/*?]+', t) and ('/' in t or '.' in t) and t.lower() != 'none':
-            out.append(t[2:] if t.startswith('./') else t)
-    return list(dict.fromkeys(out))
-def cmd_of(text):
-    m = re.search(r'`([^`]+)`', text)
-    return m.group(1).strip() if m else text.strip()
-for line in lines:
-    gm = re.match(r'^##\s+Group\s+(G\d+)\s*:\s*(.*?)\s*$', line)
-    tm = re.match(r'^###\s+Task\s+(\d+)\s*:\s*(.*?)\s*$', line)
-    if gm:
-        cur_g = {'id': gm.group(1), 'title': gm.group(2), 'depends': [], 'validate': '',
-                 'interfaces': [], 'context': '', 'context_bytes': 0, 'tasks': []}
-        groups.append(cur_g); cur_t = None; ctx_open = False; cases_open = False
-        continue
-    if tm:
-        cur_t = {'n': int(tm.group(1)), 'title': tm.group(2), 'group': cur_g['id'] if cur_g else None,
-                 'files': [], 'depends': [], 'test': '', 'cases': 0, 'block_bytes': 0, 'block': ''}
-        tasks.append(cur_t); ctx_open = False; cases_open = False
-        if cur_g: cur_g['tasks'].append(cur_t['n'])
-        continue
-    if re.match(r'^#{1,2}\s', line):
-        cur_t = None; ctx_open = False; cases_open = False
-        continue
-    fm = FIELD.match(line)
-    if fm:
-        key, val = fm.group(1), fm.group(2)
-        if key == 'Integration':
-            integration = cmd_of(val); ctx_open = False; continue
-        if cur_t is not None:
-            if key == 'File': cur_t['files'] = path_tokens(val)
-            elif key == 'Depends': cur_t['depends'] = [int(x) for x in re.findall(r'Task\s+(\d+)', val)]
-            elif key == 'Test': cur_t['test'] = cmd_of(val)
-            # the concrete cases Plan wrote for the task's test, one bullet each (an inline value counts as one)
-            cases_open = key == 'Cases'
-            if cases_open and val.strip(): cur_t['cases'] += 1
-            cur_t['block'] += line + '\n'; continue
-        if cur_g is not None:
-            ctx_open = False
-            if key == 'Depends': cur_g['depends'] = re.findall(r'G\d+', val)
-            elif key == 'Validate': cur_g['validate'] = cmd_of(val)
-            elif key == 'Interfaces':
-                cur_g['interfaces'] += [{'path': a, 'literal': b} for a, b in
-                                        re.findall(r'`([^`]+)`\s*[—\-]+\s*`([^`]+)`', val)]
-            elif key == 'Context':
-                ctx_open = True
-                if val.strip(): cur_g['context'] += val + '\n'
-            continue
-    if cur_t is not None:
-        if cases_open and CASE.match(line): cur_t['cases'] += 1
-        cur_t['block'] += line + '\n'
-    elif cur_g is not None and ctx_open:
-        cur_g['context'] += line + '\n'
-for g in groups:
-    g['context'] = g['context'].strip()
-    g['context_bytes'] = len(g['context'].encode('utf-8'))
-for t in tasks:
-    t['block'] = ('### Task %d: %s\n%s' % (t['n'], t['title'], t['block'])).strip('\n')
-    t['block_bytes'] = len(t['block'].encode('utf-8'))
-print(json.dumps({'groups': groups, 'tasks': tasks, 'integration': integration}))
-PY
+  python3 "$SCRIPTS_DIR/tasks_md.py" parse "$1"
 }
 
 # H3: the approved grouped plan, as a digest. Task blocks (File, Depends, Test), group Validate/Interfaces/Context
@@ -2135,72 +2072,7 @@ cmd_schedule() { # temper schedule [--json]
   fi
   local max; max="$(_cfg_get build.grouped.max-parallel 4)"
   [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=4
-  python3 - "$GROUPS_FILE" "$max" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" "$PWD" "$(_grouped_parse "$spec_path/tasks.md")" <<'PY'
-import json, sys
-gfile, max_par, task_model, esc_model, project = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5]
-plan = json.loads(sys.argv[6])
-try:
-    run = json.load(open(gfile))
-except Exception:
-    run = {}
-rg, rt = run.get('groups') or {}, run.get('tasks') or {}
-def norm(p):
-    p = p.strip()
-    return p[2:] if p.startswith('./') else p
-tasks = sorted(plan['tasks'], key=lambda t: ([g['id'] for g in plan['groups']].index(t['group']) if t['group'] in [g['id'] for g in plan['groups']] else 999, t['n']))
-gdep = {g['id']: g['depends'] for g in plan['groups']}
-declared = {t['n']: {norm(f) for f in t['files']} for t in tasks}
-def status(n): return (rt.get(str(n)) or {}).get('status', 'pending')
-def agent_alias(m):  # the Agent tool's model parameter takes aliases, not full ids
-    for a in ('haiku', 'sonnet', 'opus'):
-        if m.startswith('claude-' + a + '-'): return a
-    return m
-def gstatus(g): return (rg.get(g) or {}).get('status', 'pending')
-def gpass(g): return ((rg.get(g) or {}).get('gate') or {}).get('verdict') == 'PASS'
-running = [t['n'] for t in tasks if status(t['n']) == 'running']
-slots = max_par - len(running)
-ready, waiting = [], []
-for t in tasks:
-    n, g = t['n'], t['group']
-    if status(n) not in ('pending', 'failed'):
-        continue
-    why = None
-    unmet = [d for d in t['depends'] if status(d) != 'passed']
-    gwait = [d for d in gdep.get(g, []) if not gpass(d)]
-    if gstatus(g) == 'parked': why = 'group %s is parked' % g
-    elif not (rg.get(g) or {}).get('worktree'): why = 'group %s not started' % g
-    elif gwait: why = 'group %s depends on %s' % (g, ', '.join(gwait))
-    elif unmet: why = 'depends on %s' % ', '.join('Task %d' % d for d in unmet)
-    else:
-        clash = [m for m in list(running) + [r['task'] for r in ready]
-                 if declared[m] & declared[n]]
-        if clash: why = 'files overlap Task %d' % clash[0]
-        elif slots <= len(ready): why = 'max-parallel %d reached' % max_par
-    if why:
-        waiting.append('Task %d (%s)' % (n, why))
-        continue
-    attempt = len((rt.get(str(n)) or {}).get('attempts') or []) + 1
-    mdl = task_model if attempt <= 2 else esc_model
-    # the task's own worktree (temper task start makes it beside the group's: temper-{slug}-T{N} for temper-{slug}-{G})
-    gwt = rg[g]['worktree']
-    twt = gwt[:-len(g)] + 'T%d' % n if gwt.endswith('-' + g) else gwt
-    ready.append({'task': n, 'group': g, 'title': t['title'], 'worktree': twt,
-                  'project': project, 'model': mdl, 'agent_model': agent_alias(mdl),
-                  'attempt': attempt})
-for r in ready:
-    print(json.dumps(r))
-if not ready:
-    ids = [g['id'] for g in plan['groups']]
-    if ids and all(gpass(g) for g in ids):
-        print(json.dumps({'done': True, 'next': 'temper integrate'}))
-    else:
-        # A running task has no ready line. Its agent has not returned: the gate waits for that agent's result, so this
-        # line names no gate command (a gate run now finds no green run and spends one of the task's attempts).
-        def ran_on(n): return task_model if ((rt.get(str(n)) or {}).get('attempt') or 1) <= 2 else esc_model
-        waiting += ['Task %d (running on %s: wait for its agent to return)' % (n, ran_on(n)) for n in running]
-        print(json.dumps({'waiting': waiting, 'parked': [g for g in ids if gstatus(g) == 'parked'],
-                          'done': False}))
-PY
+  python3 "$SCRIPTS_DIR/tasks_md.py" schedule "$GROUPS_FILE" "$max" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" "$PWD" "$spec_path/tasks.md"
 }
 
 # Grouped Build (9.7.0): groups.json is CLI-owned run state. Every write goes through here: the lock
@@ -2781,9 +2653,29 @@ for n, rows in tasks:
 PY
 }
 
+# temper group continue G: the person's Continue at the group question (ADR 0013), recorded so `temper next` knows
+# it was given. Only a group whose gate passed is continued.
+cmd_group_continue() {
+  local g="${1:-}"
+  [[ "$g" =~ ^G[0-9]+$ ]] || { echo "FAIL: usage: temper group continue G<n>" >&2; return 1; }
+  local v; v="$(python3 -c "
+import json, sys
+try:
+    print((((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('gate') or {}).get('verdict', ''))
+except Exception:
+    print('')" "$GROUPS_FILE" "$g")"
+  [[ "$v" == "PASS" ]] || { echo "FAIL: group $g has not passed its gate (temper group gate $g)" >&2; return 1; }
+  _groups_mutate "
+g = d.setdefault('groups', {}).setdefault(a[0], {})
+g['confirmed'] = a[1]
+" "$g" "$(_now)" || return 1
+  echo "OK: group $g continues"
+}
+
 cmd_group() {
   local sub="${1:-}"; shift || true
   case "$sub" in
+    continue) cmd_group_continue "$@" ;;
     start) cmd_group_start "$@" ;;
     gate) cmd_group_gate "$@" ;;
     reopen) cmd_group_reopen "$@" ;;
@@ -4707,6 +4599,136 @@ print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'by': sys.argv[3]
 }
 
 # ---------------------------------------------------------------------------
+# intent accept|complete: the header of the run's intent.md, written by the CLI (ADR 0013).
+# accept: **Status:** accepted plus **Accepted-by:** from git config (the person's Continue at the
+# Intent gate is the acceptance). complete: **Status:** completed plus **Completed:** today.
+# Idempotent: an accepted intent stays as it is.
+# ---------------------------------------------------------------------------
+
+cmd_intent() {
+  local sub="${1:-}"
+  case "$sub" in accept|complete) ;; *) echo "FAIL: usage: temper intent accept|complete" >&2; return 1 ;; esac
+  local spec; spec="$(_spec_path "")"
+  [[ -n "$spec" && -f "$spec/intent.md" ]] || { echo "FAIL: no intent.md for the active run" >&2; return 1; }
+  local who; who="$(git config user.name 2>/dev/null || true)"
+  local email; email="$(git config user.email 2>/dev/null || true)"
+  [[ -n "$email" ]] && who="${who:+$who }<$email>"
+  python3 - "$spec/intent.md" "$sub" "${who:-${USER:-unknown}}" "$(date -u +%Y-%m-%d)" <<'PY'
+import os, re, sys
+path, sub, who, day = sys.argv[1:5]
+text = open(path, encoding='utf-8').read()
+lines = text.split('\n')
+idx = next((i for i, l in enumerate(lines) if re.match(r'^\*\*Status:\*\*', l)), None)
+want = 'accepted' if sub == 'accept' else 'completed'
+if idx is None:
+    lines.insert(0, '**Status:** %s' % want)
+    idx = 0
+else:
+    cur = re.sub(r'^\*\*Status:\*\*\s*', '', lines[idx]).strip().lower()
+    if sub == 'accept' and cur in ('accepted', 'completed'):
+        print('OK: intent.md is already %s' % cur)
+        sys.exit(0)
+    lines[idx] = '**Status:** %s' % want
+key, value = ('Accepted-by', who) if sub == 'accept' else ('Completed', day)
+if not any(re.match(r'^\*\*%s:\*\*' % re.escape(key), l) for l in lines):
+    lines.insert(idx + 1, '**%s:** %s' % (key, value))
+tmp = '%s.tmp.%d' % (path, os.getpid())
+with open(tmp, 'w', encoding='utf-8') as f:
+    f.write('\n'.join(lines))
+os.replace(tmp, path)
+print('OK: intent.md is %s' % want)
+PY
+}
+
+# temper park --verdict SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION --reason "...": an armed run stops for the person
+# (reference/autonomy.md). It writes .temper/autonomy-report.md, turns the run back to interactive and marks it
+# parked, so `temper next` asks the gate it parked at.
+cmd_park() {
+  local verdict="" reason=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --verdict) verdict="${2:-}"; shift 2 ;; --reason) reason="${2:-}"; shift 2 ;; *) shift ;; esac
+  done
+  case "$verdict" in SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION) ;; *) echo "FAIL: usage: temper park --verdict SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION --reason \"...\"" >&2; return 1 ;; esac
+  [[ -f "$STATE_FILE" ]] || { echo "FAIL: no active state" >&2; return 1; }
+  local stage branch
+  stage="$(_json_get_path "$STATE_FILE" next_stage "")"
+  branch="$(_json_get_path "$STATE_FILE" branch "")"
+  _json_set_path "$STATE_FILE" run_mode interactive '{}' >/dev/null || return 1
+  _json_set_path "$STATE_FILE" parked "$stage" '{}' >/dev/null || return 1
+  _ensure_dirs
+  {
+    echo "# Autonomy report"
+    echo
+    echo "**Verdict:** $verdict"
+    echo "**Parked at:** $stage"
+    echo "**Reason:** ${reason:-none given}"
+    echo "**Branch:** $branch"
+    echo
+    echo '```'
+    cmd_report 2>/dev/null
+    echo '```'
+    echo
+    echo "The run waits for you at the gate it parked at."
+  } > "$TEMPER_DIR/autonomy-report.md"
+  echo "OK: parked at $stage ($verdict); the report is in .temper/autonomy-report.md"
+}
+
+# The setup a project still lacks, as the calls that make it (each is idempotent): the config, the .temper
+# scaffold, and the commit gate, which is in place when git's pre-commit hook is the kept Temper hook
+# (temper-gate/pre-commit in the git folder) and names this plugin's CLI. Prints one call per line.
+_setup_calls() {
+  [[ -f "$CONFIG_FILE" ]] || echo "mkdir -p .claude && cp $PLUGIN_ROOT/templates/temper.config.default .claude/temper.config"
+  [[ -d "$TEMPER_DIR" && -f "$GATES_FILE" && -f "$OVERRIDES_FILE" ]] || echo "$PLUGIN_ROOT/scripts/temper init"
+  git rev-parse --git-dir >/dev/null 2>&1 || return 0
+  local hdir hook; hdir="$(git rev-parse --git-path hooks 2>/dev/null)"; hook="$hdir/pre-commit"
+  if [[ "$hook" != */temper-gate/pre-commit || ! -f "$hook" ]] \
+     || [[ "$(sed -n 2p "$hook" 2>/dev/null)" != "# Temper native pre-commit hook"* ]] \
+     || ! grep -qF "$PLUGIN_ROOT/scripts/temper" "$hook" 2>/dev/null; then
+    echo "bash $PLUGIN_ROOT/scripts/guards/install.sh"
+  fi
+}
+
+# temper next [--json]: the next action of the run, computed (ADR 0013, docs/flow.md). Read only.
+cmd_next() {
+  _state_migrate_legacy
+  local spec base changed="[]" ignored=false branch head bexists=false
+  spec="$(_spec_path "")"
+  branch="$(git branch --show-current 2>/dev/null || true)"
+  head="$(git rev-parse HEAD 2>/dev/null || true)"
+  if [[ -n "$spec" ]] && git check-ignore -q "$spec/intent.md" 2>/dev/null; then ignored=true; fi
+  local want; want="$(_json_get_path "$STATE_FILE" branch "")"
+  [[ -n "$want" ]] && git show-ref --verify --quiet "refs/heads/$want" 2>/dev/null && bexists=true
+  base="$(_json_get_path "$STATE_FILE" base_sha "")"
+  if [[ "$(_json_get_path "$STATE_FILE" next_stage "")" == "commit" ]]; then
+    changed="$( { [[ -n "$base" ]] && git diff --name-only "$base" 2>/dev/null
+                  git status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //'
+                } | grep -v -e '^\.temper/' -e '^\.claude/' | sort -u | python3 -c "import json, sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))")"
+  fi
+  local models; models="$(cmd_model --all 2>/dev/null)"
+  local setup; setup="$(_setup_calls)"
+  local ctx
+  ctx="$(python3 -c "
+import json, sys
+a = sys.argv[1:]
+models = dict(l.split('=', 1) for l in a[3].splitlines() if '=' in l)
+print(json.dumps({'plugin': a[0], 'cli': a[1], 'config_file': a[2], 'models': models,
+                  'task_model': models.get('task', ''), 'escalation_model': models.get('task-escalation', ''),
+                  'branch': a[4], 'head': a[5], 'branch_exists': a[6] == 'true', 'spec_ignored': a[7] == 'true',
+                  'changed': json.loads(a[8] or '[]'), 'now': a[9],
+                  'setup': [l for l in a[10].splitlines() if l.strip()]}))
+" "$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/temper" "$CONFIG_FILE" "$models" "$branch" "$head" "$bexists" "$ignored" "$changed" "$(_now)" "$setup")" || return 1
+  python3 "$SCRIPTS_DIR/flow.py" next --ctx "$ctx"
+}
+
+# .temper/view.json, the one file the mod reads (ADR 0013): written after every command that may change the run.
+# Fail open: a view that cannot be written never changes what the command did.
+_view_write() {
+  [[ -d "$TEMPER_DIR" && ! -L "$TEMPER_DIR" ]] || return 0
+  python3 "$SCRIPTS_DIR/flow.py" view --plugin "$PLUGIN_ROOT" --cli "$PLUGIN_ROOT/scripts/temper" \
+    --config-file "$CONFIG_FILE" --now "$(_now)" >/dev/null 2>&1 || true
+}
+
+# ---------------------------------------------------------------------------
 # report
 # ---------------------------------------------------------------------------
 
@@ -5089,6 +5111,9 @@ main() {
     task) cmd_task "$@" ;;
     integrate) cmd_integrate "$@" ;;
     usage) cmd_usage "$@" ;;
+    next) cmd_next "$@" ;;
+    intent) cmd_intent "$@" ;;
+    park) cmd_park "$@" ;;
     ""|-h|--help)
       cat <<'EOF'
 temper — the deterministic spine of the Temper plugin
@@ -5111,10 +5136,26 @@ Usage:
   temper task <start|show|test|gate> N  (grouped Build: one task's lifecycle)
   temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
   temper usage add --stage S [--model M] [--tokens T] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
+  temper next [--json]            (what the run does next: a stage to run, a question to ask, or the commit; docs/flow.md)
+  temper intent accept|complete   (the Status header of the run's intent.md)
+  temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
+  temper group continue G<n>      (the person's Continue at a group question)
+  temper park --verdict V --reason R      (an armed run stops for the person)
 EOF
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;
   esac
+  local rc=$?
+  # ADR 0013: every command that may change the run rewrites .temper/view.json
+  case "$sub" in
+    config|model|""|-h|--help|report|status|bands|metrics|next|schedule) ;;
+    state) [[ "${1:-}" == "get" ]] || _view_write ;;
+    evidence) [[ "${1:-}" == "list" ]] || _view_write ;;
+    group) [[ "${1:-}" == "report" ]] || _view_write ;;
+    task) [[ "${1:-}" == "show" ]] || _view_write ;;
+    *) _view_write ;;
+  esac
+  return $rc
 }
 
 main "$@"

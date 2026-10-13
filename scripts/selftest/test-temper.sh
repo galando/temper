@@ -156,6 +156,31 @@ EOF
   printf '{"version": 1, "slug": "demo", "groups": {}, "tasks": {}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
 }
 
+# Test setup only (ADR 0013: the CLI leaves a stage only once its check passed or the person skipped it):
+# _pass records a PASS verdict for each named stage; _at moves the run to a stage by hand.
+_pass() {
+  python3 - "$@" <<'PASSPY'
+import json, sys
+try:
+    g = json.load(open('.temper/gates.json'))
+except Exception:
+    g = {}
+for s in sys.argv[1:]:
+    g[s] = {'verdict': 'PASS', 'requirements': []}
+json.dump(g, open('.temper/gates.json', 'w'))
+PASSPY
+}
+_at() { # _at <stage> [stage to pass...]
+  local stage="$1"; shift
+  python3 - "$stage" <<'ATPY'
+import json, sys
+d = json.load(open('.temper/build-state.json'))
+d['next_stage'] = sys.argv[1]
+json.dump(d, open('.temper/build-state.json', 'w'), indent=2)
+ATPY
+  [[ $# -eq 0 ]] || _pass "$@"
+}
+
 # No case writes into a folder named hooks. While core.hooksPath is unset, git runs the hooks in
 # the hooks folder of a repository's git folder, and install.sh reads that folder to decide. A case
 # that needs hooks of the user's there makes a throwaway plugin with _dg_plugin: its install.sh is
@@ -173,7 +198,7 @@ _dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI
   local g
   rm -rf "$1"
   mkdir -p "$1/scripts/guards"
-  cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$1/scripts/"
+  cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/flow.py" "$1/scripts/"
   for g in block-secrets.sh verify-tests-ran.sh block-uncommitted-gate.sh; do
     cp "$REPO_ROOT/scripts/guards/$g" "$1/scripts/guards/$g"
   done
@@ -191,6 +216,7 @@ source "$TESTS_DIR/temper-cases-4.sh"
 source "$TESTS_DIR/temper-cases-5.sh"
 source "$TESTS_DIR/temper-cases-6.sh"
 source "$TESTS_DIR/temper-cases-7.sh"
+source "$TESTS_DIR/temper-cases-8.sh"
 source "$TESTS_DIR/temper-cases-evals.sh"
 
 echo ""
