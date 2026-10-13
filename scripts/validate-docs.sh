@@ -250,6 +250,7 @@ ROWS = [
     ('reference/autonomy.md', '+', r'The run waits for you at the gate it parked at', 'a park shows its gate'),
     ('commands/build.md', '-', r'show it and stop', 'standalone Build on a FAIL asks'),
     ('commands/build.md', '+', r'state advance build_complete review', 'standalone Build moves the run on to Review'),
+    ('commands/build.md', '+', r'When a run is active\s+\(`state get spec_path` prints a path\), move it on', 'per task Build moves an active run on through Review and Check'),
     ('reference/check.md', '+', r'\*\*On FAIL:\*\* "Loop back to Build \(Recommended\)"', 'standalone Check on FAIL asks'),
     ('commands/plan.md', '+', r'"Continue to Build \(Recommended\)"', 'the standalone Plan answer the mod reads'),
     ('commands/temper.md', '+', r'This reason question holds for every question with the header `Temper gate`', 'the reason question in every mode'),
