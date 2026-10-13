@@ -69,14 +69,13 @@ function showToast($: Api, text: string): void {
   $.ui.toast(text)
 }
 
-// The mod writes no file. What it records (the decision events and the report) is kept in the plugin
-// store, under the full path it stands for: `vf:<path>` holds the text, `vfdir:<folder>` the names in
-// a folder. Reads and lists see a kept text as a file, and still read real files (event files a run
-// wrote before 9.6.2), so the adapter and the core work on paths as before.
+// The mod writes no file. The report it makes at Done is kept in the plugin store, under the full path it
+// stands for: `vf:<path>` holds the text, `vfdir:<folder>` the names in a folder. Reads and lists see a kept
+// text as a file and still read real files, so the adapter and the core work on paths.
 const VF = 'vf:'
 const VF_DIR = 'vfdir:'
 // The folders with kept texts, oldest first. Past VF_MAX_DIRS the oldest folder is dropped from the store,
-// so the store (4 MiB for every project on the machine) never fills up. A run keeps its events in one folder.
+// so the store (4 MiB for every project on the machine) never fills up.
 const VF_DIRS = 'vfdirs'
 const VF_MAX_DIRS = 40
 
@@ -203,7 +202,7 @@ async function load($: Api): Promise<Snapshot> {
 // ---- The project root ------------------------------------------------------------------------
 // The folder of the project is fixed once. A session folder reported later (after Claude ran `cd` into
 // the plugin folder, or another repo, and a hot reload started the session there) never replaces it:
-// the files of the run (build-state.json, gates.json, events, report) are always read and written under
+// the files of the run (build-state.json, gates.json, the report) are always read and kept under
 // the first root. `$.state` keeps it across a hot reload.
 
 async function rememberedRoot($: Api): Promise<string> {
