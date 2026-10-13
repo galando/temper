@@ -609,29 +609,34 @@ setup
 MARKER="$REPO_ROOT/scripts/guards/stage-marker.sh"
 VERIFY="$REPO_ROOT/scripts/guards/verify-stage-gate.sh"
 
-echo '{"prompt": "/temper:plan add a thing"}' | bash "$MARKER"
-assert_eq "stage-marker records the owed stage" "plan" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['stage'])")"
+echo '{"prompt": "/temper:intent add a thing"}' | bash "$MARKER"
+assert_eq "stage-marker records the owed stage" "intent" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['stage'])")"
 
 rm -f .temper/pending-stage.json
-echo '{"prompt": "please run /temper:plan for me"}' | bash "$MARKER"
+echo '{"prompt": "please run /temper:intent for me"}' | bash "$MARKER"
 assert_eq "stage-marker ignores a mid-sentence mention" "absent" "$([[ -f .temper/pending-stage.json ]] && echo created || echo absent)"
 echo '{"prompt": "/temper add login"}' | bash "$MARKER"
 assert_eq "stage-marker ignores the unified /temper command" "absent" "$([[ -f .temper/pending-stage.json ]] && echo created || echo absent)"
+# The stage commands are doors into /temper (ADR 0012): a session may end at any gate, so none is marked.
+for door in plan design build review check; do
+  echo "{\"prompt\": \"/temper:$door add a thing\"}" | bash "$MARKER"
+  assert_eq "stage-marker does not mark the /temper:$door door" "absent" "$([[ -f .temper/pending-stage.json ]] && echo created || echo absent)"
+done
 echo 'not json at all' | bash "$MARKER"
 assert_exit "stage-marker fails open on garbage stdin" 0 bash -c "echo garbage | bash '$MARKER'"
 
 assert_exit "verify-stage-gate passes with no marker" 0 bash "$VERIFY"
 
-echo '{"prompt": "/temper:plan x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
 assert_exit "verify-stage-gate BLOCKS when no verdict exists" 2 bash "$VERIFY"
 assert_eq "block is counted in the marker" "1" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['blocks'])")"
 
-echo '{"plan": {"verdict": "FAIL"}}' > .temper/gates.json
+echo '{"intent": {"verdict": "FAIL"}}' > .temper/gates.json
 assert_exit "a FAIL verdict satisfies the guarantee (gate ran)" 0 bash "$VERIFY"
 assert_eq "marker cleared once the verdict exists" "absent" "$([[ -f .temper/pending-stage.json ]] && echo present || echo absent)"
 
 rm -f .temper/gates.json
-echo '{"prompt": "/temper:build x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
 bash "$VERIFY" >/dev/null 2>&1; bash "$VERIFY" >/dev/null 2>&1
 assert_exit "loop guard fails open on the third stop attempt" 0 bash "$VERIFY"
 assert_eq "loop-guard fail-open clears the marker" "absent" "$([[ -f .temper/pending-stage.json ]] && echo present || echo absent)"
@@ -643,23 +648,23 @@ assert_exit "corrupt marker fails open" 0 bash "$VERIFY"
 # rather than loop. (Regression: the harness JSON must travel as argv; piping it into
 # `python3 - <<heredoc` silently discards it, since the heredoc owns stdin.)
 rm -f .temper/pending-stage.json .temper/gates.json
-echo '{"prompt": "/temper:check x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
 assert_exit "stop_hook_active with a stuck counter fails open" 0 \
   bash -c "echo '{\"stop_hook_active\": true}' | bash '$VERIFY'"
 rm -f .temper/pending-stage.json
-echo '{"prompt": "/temper:check x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
 assert_exit "stop_hook_active=false still blocks normally" 2 \
   bash -c "echo '{\"stop_hook_active\": false}' | bash '$VERIFY'"
 
 # Time-scoping: a verdict from BEFORE the marker (a previous run's leftovers) must not
 # satisfy this session's debt; one recorded after it must.
 rm -f .temper/gates.json .temper/pending-stage.json
-echo '{"plan": {"verdict": "PASS", "ts": "2020-01-01T00:00:00Z"}}' > .temper/gates.json
-echo '{"prompt": "/temper:plan a new feature"}' | bash "$MARKER"
+echo '{"intent": {"verdict": "PASS", "ts": "2020-01-01T00:00:00Z"}}' > .temper/gates.json
+echo '{"prompt": "/temper:intent a new feature"}' | bash "$MARKER"
 assert_exit "a pre-marker verdict does NOT pay this session's debt" 2 bash "$VERIFY"
 python3 -c "
 import json; g=json.load(open('.temper/gates.json'))
-g['plan']['ts']='2099-01-01T00:00:00Z'; json.dump(g, open('.temper/gates.json','w'))"
+g['intent']['ts']='2099-01-01T00:00:00Z'; json.dump(g, open('.temper/gates.json','w'))"
 assert_exit "a post-marker verdict does" 0 bash "$VERIFY"
 
 # Backward compat: missing timestamps degrade to the any-verdict check, never a block.
@@ -670,9 +675,9 @@ assert_exit "verdict without ts + old marker format still clears" 0 bash "$VERIF
 
 # End-to-end with the real CLI: marker -> real `temper gate plan` FAIL -> stop allowed.
 rm -f .temper/gates.json .temper/pending-stage.json
-echo '{"prompt": "/temper:plan x"}' | bash "$MARKER"
-"$TEMPER" gate plan --spec-path .temper/specs/empty >/dev/null 2>&1 || true
-assert_exit "real gate FAIL verdict unblocks the stop" 0 bash "$VERIFY"
+echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
+"$TEMPER" gate intent --spec-path .temper/specs/empty >/dev/null 2>&1 || true
+assert_exit "a real gate verdict unblocks the stop" 0 bash "$VERIFY"
 
 # --- temper model: config override > the stage brief's frontmatter, resolved in bash ---
 setup

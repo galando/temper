@@ -123,7 +123,7 @@ assert_eq "the native pre-commit hook blocks that red run, link and all" "blocke
   "$([[ $CL_RC -ne 0 ]] && echo blocked || echo committed)|$(printf '%s\n' "$OUT" | grep -q 'temper gate commit -> FAIL' && echo yes || echo no)|$(git -C "$CL_PROJ" rev-list --count HEAD)"
 assert_exit "the in-agent commit gate blocks it too" 2 \
   bash -c "cd '$CL_PROJ' && echo '{\"tool_input\": {\"command\": \"git commit -m y\"}}' | bash '$CL_G/block-uncommitted-gate.sh'"
-echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_G/stage-marker.sh"
+echo '{"prompt": "/temper:intent x"}' | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_G/stage-marker.sh"
 assert_eq "stage-marker records the debt there, since the CLI runs" "yes" \
   "$([[ -f "$CL_PROJ/.temper/pending-stage.json" ]] && echo yes || echo no)"
 # The spec folder of a run that is not the active one is not run state either.
@@ -201,20 +201,20 @@ assert_exit "block-forbidden-imports reached through a symlink blocks a denylist
   bash -c "cd '$CL_PROJ' && echo '$CL_RISKY' | TEMPER_FORBIDDEN_IMPORTS='child_process.exec' bash '$CL_BIN/block-forbidden-imports.sh'"
 assert_exit "block-forbidden-imports copied outside a scripts/guards folder does nothing" 0 \
   bash -c "cd '$CL_PROJ' && echo '$CL_RISKY' | TEMPER_FORBIDDEN_IMPORTS='child_process.exec' bash '$CL_LOOSE/block-forbidden-imports.sh'"
-echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_LOOSE/stage-marker.sh"
+echo '{"prompt": "/temper:intent x"}' | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_LOOSE/stage-marker.sh"
 assert_eq "stage-marker copied outside a scripts/guards folder marks nothing" "no" \
   "$([[ -e "$CL_PROJ/.temper/pending-stage.json" ]] && echo yes || echo no)"
-echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$CL_PLUG" bash "$CL_BIN/stage-marker.sh"
+echo '{"prompt": "/temper:intent x"}' | CLAUDE_PROJECT_DIR="$CL_PLUG" bash "$CL_BIN/stage-marker.sh"
 assert_eq "stage-marker reached through a symlink still skips the installed plugin folder" "no" \
   "$([[ -e "$CL_PLUG/.temper" ]] && echo yes || echo no)"
-echo '{"prompt": "/temper:plan x"}' | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_BIN/stage-marker.sh"
-assert_eq "stage-marker reached through a symlink marks the project" "plan" \
+echo '{"prompt": "/temper:intent x"}' | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_BIN/stage-marker.sh"
+assert_eq "stage-marker reached through a symlink marks the project" "intent" \
   "$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['stage'])" "$CL_PROJ/.temper/pending-stage.json" 2>/dev/null)"
 assert_exit "verify-stage-gate copied outside a scripts/guards folder does nothing" 0 \
   bash -c "echo '{}' | CLAUDE_PROJECT_DIR='$CL_PROJ' bash '$CL_LOOSE/verify-stage-gate.sh'"
 OUT=$(echo '{}' | CLAUDE_PROJECT_DIR="$CL_PROJ" bash "$CL_BIN/verify-stage-gate.sh" 2>&1); CL_RC=$?
 assert_eq "verify-stage-gate reached through a symlink blocks and names its real CLI" "2|yes" \
-  "$CL_RC|$(printf '%s\n' "$OUT" | grep -qF "$(printf '%q' "$CL_T_REAL") gate plan" && echo yes || echo no)"
+  "$CL_RC|$(printf '%s\n' "$OUT" | grep -qF "$(printf '%q' "$CL_T_REAL") gate intent" && echo yes || echo no)"
 
 # The home folder is never a project: every subcommand that keeps run state is refused there
 # (exit 1), decided by identity, and nothing is written. config and model still answer, and a
@@ -232,7 +232,7 @@ assert_exit "the home folder entered through a symlink is refused too" 1 \
   bash -c "cd '$WORKDIR/cl-home-link' && HOME='$CL_HOME' '$CL_T' init"
 assert_exit "a HOME spelled through a symlink names the same folder" 1 \
   bash -c "cd '$CL_HOME' && HOME='$WORKDIR/cl-home-link' '$CL_T' init"
-echo '{"prompt": "/temper:plan x"}' | HOME="$CL_HOME" CLAUDE_PROJECT_DIR="$CL_HOME" bash "$CL_G/stage-marker.sh"
+echo '{"prompt": "/temper:intent x"}' | HOME="$CL_HOME" CLAUDE_PROJECT_DIR="$CL_HOME" bash "$CL_G/stage-marker.sh"
 assert_eq "nothing was written in the home folder, by the CLI or by stage-marker" "no" \
   "$([[ -e "$CL_HOME/.temper" ]] && echo yes || echo no)"
 assert_eq "config get and model still answer in the home folder" "auto|$("$TEMPER" model plan)" \

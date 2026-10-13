@@ -4,7 +4,7 @@
 
 Temper is an intent gated workflow for code that AI writes. A small CLI computes each gate verdict.
 The model never decides a verdict. With Claude Code 2.1.287 or later, a mod refuses writes outside
-the current phase ([the mod](docs/mod.md)).
+the current stage ([the mod](docs/mod.md)).
 
 [![Plugin directory](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
 [![Version](https://img.shields.io/badge/version-v9.7.0-blue)](CHANGELOG.md)
@@ -28,7 +28,7 @@ Your first `/temper:temper "describe the feature"` sets up the project. It adds 
 `.temper/` folder and a `pre-commit` hook. The hook blocks `git commit` while a gate is red.
 
 The short form `/temper` is an interactive shortcut. It may not work on every surface. Claude Code
-2.1.287 or later adds the phase bar and the refusals. Older versions run each phase as a prompt.
+2.1.287 or later adds the stage bar and the refusals. Older versions run each stage as a prompt.
 
 ## The problem
 
@@ -45,17 +45,17 @@ this mechanically. It does not ask the model to grade itself.
 ## How it works
 
 One loop, with a human gate at each stage. You review the cheapest artifact first.
-The order is Intent, Plan, Build, Review, Check, then Done. A failed check goes to Fix and back to Check.
+The order is Intent, Plan, Build, Review, Check, then Done. You decide each gate in one question.
+A failed Review or Check goes back to Build when you choose so.
 
 ```mermaid
 flowchart LR
-  I["Intent<br/>press 1 to approve"] --> P["Plan<br/>files it may touch"]
+  I["Intent<br/>you approve it"] --> P["Plan<br/>files it may touch"]
   P --> B["Build<br/>failing test first"]
   B --> R["Review<br/>fix or accept"]
   R --> C["Check<br/>run all checks"]
   C --> D(("Done<br/>commit allowed"))
-  C -- "a check fails" --> F["Fix<br/>three loops at most"]
-  F --> C
+  C -- "a check fails, you loop back" --> B
 ```
 
 - **The intent gate comes first.** You approve the problem and the success criteria before Claude
@@ -63,8 +63,9 @@ flowchart LR
 - **Each gate is computed.** `scripts/temper` is auditable bash with no network. It reads an evidence
   ledger and prints PASS or FAIL for each requirement. A red gate blocks `git commit` through a real
   hook. A person can override a gate, and Temper records who did it. A confused model cannot.
-- **The mod makes the phases real.** It refuses writes outside the phase, and `git commit` until Check
-  passes. It draws the phase bar and keeps a report of the run. [The mod](docs/mod.md) has the details.
+- **The mod makes the stages real.** It refuses writes outside the stage, and what would go around
+  the commit hook. It draws the stage bar and keeps a report of the run. [The mod](docs/mod.md) has
+  the details.
 
 https://github.com/user-attachments/assets/627e1385-cbc0-4ad9-bd3a-05ca2b8bb09e
 

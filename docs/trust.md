@@ -12,8 +12,9 @@ folder. Apart from the mod's plugin store, Temper reads only one place in your h
 folder `~/.claude/packs`, if you made one. A pack's link targets come from the skills and commands your session lists.
 
 - **Plugin hooks.** The plugin's hooks file registers two classic hooks and the mod module.
-  `UserPromptSubmit` runs `scripts/guards/stage-marker.sh`, which notes which gate a standalone
-  stage command owes. `Stop` runs `scripts/guards/verify-stage-gate.sh`, which can ask Claude to
+  `UserPromptSubmit` runs `scripts/guards/stage-marker.sh`, which notes that a `/temper:intent`
+  session owes an intent gate (the other stage commands are doors into `/temper` and owe none).
+  `Stop` runs `scripts/guards/verify-stage-gate.sh`, which can ask Claude to
   keep working (at most twice per stage) until that gate has a verdict. Both fail open.
 - **Git hook.** On the first run `scripts/guards/install.sh` writes a `pre-commit` hook (a secret scan of the staged
   files, then `temper gate commit`) to `temper-gate/pre-commit` in the repository's git folder and points

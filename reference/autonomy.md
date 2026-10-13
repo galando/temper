@@ -17,9 +17,11 @@ accepted the intent.
 **Arming** (at the plan gate, on PASS, after human review): replace "Continue to Build"
 with "Stage by stage (Recommended)" (`run_mode: interactive`) / "Autonomous: run the
 rest unattended" (`run_mode: autonomous`) / "Save for later", asked with `AskUserQuestion`,
-header `Temper gate`, with or without the Temper bar. Either of the first two is the person's
-approval of the plan: do the plan's On Continue steps, then `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set run_mode autonomous`
-for "Autonomous" (the mod lets it through only after that approval).
+header `Temper gate`, as every gate. Either of the first two is the person's approval of the
+plan. For "Autonomous", first run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set run_mode autonomous`,
+while the run is still at Plan, then do the plan's On Continue steps. The order matters with
+the mod: the answer counts at the step the run is at, so the arming call goes through only
+before the plan's `state advance` moves the run on.
 
 **While `run_mode == autonomous`, every post-plan gate:** run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate {stage}` as
 usual. **PASS** → auto-select Continue, no `AskUserQuestion` (but still print the summary
@@ -58,10 +60,10 @@ is blocked on input only a human can give.
 normally), write `.temper/autonomy-report.md` (`**Verdict:**
 SHIP-PENDING-COMMIT|PARKED-NEEDS-DECISION`, `**Parked at:**`/`**Reason:**` verbatim from
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate`, `**Branch:**`, the `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` ledger, and "The run waits
-for you at the gate it parked at."). Then show that gate as an interactive run would: with the Temper
-bar and its buttons the bar offers it; otherwise ask its `AskUserQuestion` (header `Temper gate` with
-the `Temper buttons: none` line), which waits for the person: at SHIP-PENDING-COMMIT the one Commit
-question of a passed Check, at a FAIL that stage's FAIL options. The person never has to type to go on.
+for you at the gate it parked at."). Then ask that gate as an interactive run would, with
+`AskUserQuestion`, header `Temper gate`, which waits for the person: at SHIP-PENDING-COMMIT the
+one Commit question of a passed Check, at a FAIL that stage's FAIL options. The person never
+has to type to go on.
 
 **Operational safety (hardcoded — see `${CLAUDE_PLUGIN_ROOT}/templates/temper.config.default`):** refuse a
 dirty tree unless confirmed; `git commit -m "wip: {stage} passed"` after each PASS stage

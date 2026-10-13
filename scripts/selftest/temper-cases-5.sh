@@ -1177,8 +1177,9 @@ setup
 OT="$REPO_ROOT/commands/temper.md"
 OF="$REPO_ROOT/commands/fix.md"
 OB="$REPO_ROOT/reference/build-groups.md"
-assert_eq "orchestrator: Stage 2 reads the grouped loop page, and /temper:build reads it too" "1|1" \
-  "$(grep -c 'reference/build-groups.md' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$(grep -c 'reference/build-groups.md' "$REPO_ROOT/commands/build.md" | sed 's/^[1-9][0-9]*$/1/')"
+# /temper:build is a door into the orchestrator (ADR 0012): it reads commands/temper.md and enters at Build.
+assert_eq "orchestrator: Stage 2 reads the grouped loop page, and /temper:build is a door into it" "1|1" \
+  "$(grep -c 'reference/build-groups.md' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$(grep -qF 'commands/temper.md' "$REPO_ROOT/commands/build.md" && grep -qF 'Entering at a stage' "$REPO_ROOT/commands/build.md" && echo 1 || echo 0)"
 assert_eq "orchestrator: the grouped loop page names the grouped CLI loop" "9" \
   "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'group reopen' 'temper integrate' 'agents/build-task.md' 'Task: '; do grep -qF -- "$c" "$OB" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "orchestrator: grouped loop acts on the NEXT: line" "yes" "$(grep -qF 'NEXT:' "$OB" && echo yes || echo no)"

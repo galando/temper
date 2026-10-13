@@ -147,11 +147,8 @@ writing, before Review has to flag it. Skip it for plain application logic.
 
 ## Post-Implementation
 
-Standalone mode: run the full suite, show the summary panel, then `AskUserQuestion` —
-"Continue to Review (Recommended)" / "Save for later" (+ "Revise plan" per above when
-applicable). A change typed via "Other" is never approval — make the edit, re-show this
-same gate; the user must explicitly pick "Continue" to advance. Subprocess mode: skip the
-gate, return the summary.
+Run the full suite and return the summary panel. The gate is the orchestrator's (its Build
+completion gate); a stage never shows one.
 
 The panel format is owned by the build brief (`${CLAUDE_PLUGIN_ROOT}/agents/build.md`) — render exactly the panel it defines
 (76 columns, fact rows then titled sections; `SEARCH:` row, and `COMMITS` / `FEEDBACK`
@@ -159,7 +156,7 @@ sections on a checkpoint run). Never carry a second, different box here: whichev
 box a clean-context stage reads first is the one that renders, and two shapes means
 two different reviews.
 
-**On Continue:** standalone loads only changed files into context for Review —
+**On Continue:** Review loads only changed files —
 diffed against the sha `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get base_sha` prints when one is recorded (checkpoint commits
 already landed, so a plain `git diff --name-only` returns nothing), plus
 still-uncommitted paths. Mark the spec header `**Status:** completed` /

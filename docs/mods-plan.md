@@ -1,5 +1,11 @@
 # Temper mods support: research and plan
 
+> **History.** This is the plan the mod was first built from. Since 9.7.0
+> ([ADR 0012](decisions/0012-the-cli-decides-the-dialog-asks-the-mod-shows.md)) the parts about
+> the bar's decision buttons, the mod's event log, the mirror messages and `/temper:temper continue`
+> no longer describe the mod: the CLI decides where the run is, the person decides only in the
+> `Temper gate` question, and the bar only shows the run. [The mod](mod.md) describes it as it is.
+
 **Status:** awaiting approval (Step 0). Nothing below is built yet.
 **Date:** 2026-10-02
 **Intent:** `.temper/specs/mods-support/intent.md` (Temper Intent gate: PASS, 13 of 13 checks)

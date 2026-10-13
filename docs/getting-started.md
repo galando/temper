@@ -27,11 +27,11 @@ absolute folder written into each command, replacing any earlier Temper guard en
 `/temper:pack` and `/temper:init` offer to fix a guard command whose plugin folder no longer
 exists. Neither command reads or writes the settings in your home folder.
 
-### The phase bar (Claude Code 2.1.287 or later)
+### The stage bar (Claude Code 2.1.287 or later)
 
-On Claude Code 2.1.287 or later, the same install also loads the Temper mod. You get a phase bar
-with numbered actions, and Claude cannot edit code outside the current phase or commit before the
-gates pass. Check your version with `claude --version`. On an older version nothing changes.
+On Claude Code 2.1.287 or later, the same install also loads the Temper mod. You get a stage bar
+that shows where the run is, and Claude cannot edit code outside the current stage or go around
+the commit gate. You still decide each gate in the same question as without the mod. Check your version with `claude --version`. On an older version nothing changes.
 
 | Setting | Values | Effect |
 |---|---|---|
@@ -45,7 +45,7 @@ plugin settings. Your organization can block mods; the plugin then works as befo
 ### A clone of the repository
 
 Temper runs in Claude Code only: its gates need the CLI in the plugin's `scripts` folder, and
-the phase bar needs the mod. To try a clone without installing it, open a terminal in your
+the stage bar needs the mod. To try a clone without installing it, open a terminal in your
 project and start Claude Code with the clone loaded: `claude --plugin-dir <path of the clone>`.
 That loads it for one session. Copying the repository's `.claude` folder into a project does
 not install Temper: that folder holds only this repository's own developer notes and config.
@@ -95,34 +95,15 @@ At each stage, choose:
 - **e** → Edit the plan/scenarios
 - **n** → Stop. Resume later with `/temper:temper` and no arguments.
 
-### Option B: Individual Commands (Granular Control)
+### Option B: Start at a stage
 
-For more control, use individual commands:
+Each stage command is a door into the same run: it starts `/temper:temper` at that stage, or takes up
+the run that is active, and you decide every gate in the same question. `/temper:plan` starts at the
+Intent gate, because the plan is derived from the intent you approve. A later stage command
+(`/temper:build`, `/temper:review`, `/temper:check`) needs a planned feature: it asks each earlier gate
+in turn, then runs its stage.
 
-### 1. Check Your Stack
-
-```bash
-cd your-project
-/temper:check
-```
-
-Temper will auto-detect your stack and report:
-
-```
-🔍 Detecting stack...
-✅ Detected: Spring Boot
-   • Build: Maven
-   • Test: mvn test
-   • Compile: mvn compile
-   • Lint: None configured
-
-📊 Quality Status:
-   • Coverage: 72%
-   • Open issues: 3
-   • Technical debt: Low
-```
-
-### 2. Plan a Feature
+### 1. Plan a Feature
 
 ```bash
 /temper:plan "add user authentication"
@@ -155,7 +136,7 @@ Temper will analyze the blast radius:
 📋 Plan: 7 steps with test gates
 ```
 
-### 3. Build with Quality Gates
+### 2. Build with Quality Gates
 
 ```bash
 /temper:build
@@ -172,7 +153,7 @@ Temper will:
 {: .highlight }
 **intent.md** defines behavior scenarios — your tests must cover all of them before build completes.
 
-### 4. Review Your Code
+### 3. Review Your Code
 
 ```bash
 /temper:review

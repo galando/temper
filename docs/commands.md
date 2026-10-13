@@ -70,7 +70,8 @@ At each stage, you see a nice summary and choose to proceed:
 
 | Response | Action |
 |----------|--------|
-| **Fix all & continue to Check** | Apply all fixes, proceed to validation |
+| **Loop back to Build** | Build fixes the open findings, then Review runs again |
+| **Accept a finding** | Keep one finding as it stands, with your reason |
 | **Architecture Depth Review** | Module-depth analysis: seams, adapters, locality, leverage, deletion test |
 
 **Check Gate Additional Options:**
@@ -99,140 +100,110 @@ after the command is one of these, Temper handles it instead of starting a run. 
 
 | Subcommand | What it does |
 |---|---|
-| `/temper:temper status` | Where the run stands: phase, task, criteria passed, loop count |
-| `/temper:temper timeline` | The phases the run went through |
-| `/temper:temper approve` | Approve the current phase (Intent or Plan). Only you can do this. |
-| `/temper:temper next` | Move on when the phase has passed its gate |
-| `/temper:temper back <phase> <reason>` | Go back. Every later phase needs a fresh verdict. |
-| `/temper:temper override <reason>` | Skip the current phase once. A reason is required and is recorded. |
-| `/temper:temper accept <id> <reason>` | Accept a review finding with a reason |
-| `/temper:temper drift <add\|revert\|allow> <reason>` | Decide a pending scope drift |
-| `/temper:temper pause`, `/temper:temper resume` | Hand the run over to you, take it back |
-| `/temper:temper restart <reason>` | Start over: the saved run state goes, the spec files stay (also in the bar's More menu, and as "Start over" when Temper asks about a saved run) |
+| `/temper:temper status` | Where the run stands: stage, task, criteria passed, loop count |
+| `/temper:temper timeline` | Your decisions in this run |
+| `/temper:temper approve`, `next` | Asks the current gate's question, with Continue first. You confirm it there. |
+| `/temper:temper back <stage> <reason>` | Asks the gate question with "Loop back to {stage}: {reason}" first. Every later stage needs a fresh verdict. |
+| `/temper:temper override <reason>` | Asks the gate question with "Override and continue: {reason}" first. The reason is recorded. |
+| `/temper:temper accept <id> <reason>` | At Review: asks the gate question with "Accept finding {id}: {reason}" first |
+| `/temper:temper drift <path> <add\|revert\|allow>` | In Build: asks the Scope drift question for that file, with that choice first |
+| `/temper:temper pause`, `/temper:temper resume` | Stop at the next gate; take the run up again |
 | `/temper:temper report` | Show the run report (the mod keeps it in its plugin store, not in a file) |
 | `/temper:temper pr` | Ask Claude for a pull request description from the report |
 | `/temper:temper mode <full\|minimal\|off>` | Change how much Temper draws |
 | `/temper:temper enforcement <on\|off>` | Turn denials on or off |
-| `/temper:temper pane` | Open or close the pane. A bare `/temper:temper` does the same while a run is active. |
+| `/temper:temper pane` | Open or close the pane |
 | `/temper:temper play` | Open or close the Temper Run game. Only you can open it. Terminal and desktop app only. |
-| `/temper:temper discuss <text>` | Send a message about the step you are at. The same as key 4 (Discuss). It changes no phase. |
-| `/temper:temper continue <stage>` | The Temper bar sends this after you chose Continue. Claude then does the "On Continue" steps of that stage as the original `/temper` writes them (status flip, `state advance`, the feature branch, the commit of the approved artifacts) and launches the next stage. The mod records nothing for it. |
+| `/temper:temper discuss <text>` | Send a message about the step you are at. It changes no stage. |
 | `/temper:temper help` | List these |
 
-These 20 words are reserved: `status`, `timeline`, `approve`, `next`, `back`, `override`, `accept`,
-`drift`, `pause`, `resume`, `restart`, `report`, `pr`, `mode`, `enforcement`, `pane`, `play`, `discuss`, `continue` and `help`.
+A word that names a move (`approve`, `next`, `back`, `override`, `accept`, `drift`) is your wish, not
+your decision: you decide in the question dialog that follows, with one click. Claude cannot decide for
+you. With the mod loaded it answers the words that only show something (`status`, `timeline`,
+`report`, `help`, `pane`, `play`, `mode`, `enforcement`) itself; every other word goes to the prompt
+based command, so it works the same on every surface.
 
-Decisions (`approve`, `override`, `accept`, `drift`, `back`) count only when you type
-them or press the button yourself. Claude cannot create one. With the mod loaded the
-subcommands are handled by the mod; without it the same words are handled by the prompt
-based command, so they work on every surface.
-
-With the mod loaded and enforcement on, a decision word that does not come from an
-interactive session is refused, with a note that decisions need one: press the bar, or type
-`/temper:temper approve` in the prompt box. So a headless `claude -p` run stops at the first
-gate, because only a person in an interactive session can approve. With enforcement off the
-mod accepts a decision from any origin and records where it came from, and a headless run
-goes on.
+With the mod loaded and enforcement on, a headless `claude -p` run stops at the first gate, because
+only a person can answer the gate question. With enforcement off a headless run goes on.
 
 ### Modes
 
-With Claude Code 2.1.287 or later, the Temper mod draws a phase bar, a pane and a few
-other elements, and refuses writes that do not belong to the current phase. Two settings
-control it, and both can be changed while a session runs:
+With Claude Code 2.1.287 or later, the Temper mod draws the run (a stage bar, a pane and a few other
+elements) and refuses writes that do not belong to the current stage. Two settings control it, and
+both can be changed while a session runs:
 
 | Setting | Values | Effect |
 |---|---|---|
-| `uiMode` (`/temper:temper mode`) | `full`, `minimal`, `off` | `full` draws the bar with action buttons, the pane, toasts, suggestions, the spinner text, the turn line, the hint and the question header. `minimal` draws the phase bar only, with no buttons. `off` draws nothing. In `minimal` and `off` Claude asks each gate as a question, and your answer is your decision. |
-| `enforcement` (`/temper:temper enforcement`) | `on`, `off` | `on` refuses out of phase writes and an early `git commit`. `off` keeps the drawing only. |
+| `uiMode` (`/temper:temper mode`) | `full`, `minimal`, `off` | `full` draws the bar, the pane, toasts, the spinner text, the turn line, the hint and the question header. `minimal` draws the stage timeline only. `off` draws nothing. The mode changes only what is drawn: the questions and the rules are the same in every mode. |
+| `enforcement` (`/temper:temper enforcement`) | `on`, `off` | `on` refuses writes outside the stage and what would go around the commit hook. `off` keeps the drawing only. |
 
 Denials and subcommands work in every mode. The first interactive `/temper:temper` asks once
 which mode you want. If your organization locked a mode, `/temper:temper mode` says so and does
 not change it. [Where enforcement works](mod.md#where-enforcement-works) shows what is
 covered and what is not.
 
-### The phase bar and its keys
+### The stage bar
 
-In `full` mode the band above the prompt shows `TEMPER`, the step in plain words ("Step 2 of 6:
-Plan"), one sentence that says what key 1 does and what happens next ("1 Continue to Build. The
-plan is checked. Build opens and Claude starts building."), the six phases as chips
-(a check mark for done, a filled chip for the phase you are in, plain chips for upcoming phases, a
-redo mark after a back step), and buttons: up to three actions on `1`, `2` and `3`, `Discuss` on
-`4`, `Skip with a reason` on `9` and `More` on `0`. Key `9` moves the focus to a reason field below
-the buttons; Enter records the skip with that reason, and an empty reason is refused (the subcommand
-is still `/temper:temper override <reason>`). The pane repeats this with the intent title, the
-acceptance criteria ("what must be true") and a checklist, and it shows a short line under every
-action (10 words at most).
+In `full` mode the bar above the prompt shows `TEMPER`, the run's title, the step in plain words
+("Step 2 of 6: Plan"), the stages as chips (green with a check for passed, red with a cross for a failed
+check, yellow for a stage you skipped, a filled chip for the stage you are at, plain chips for the stages
+to come), one sentence of status ("Plan: the check passed. Waiting for you: answer the Temper gate
+question.") and the details of the stage: the groups and tasks of Build, the open findings of Review,
+the failed checks. Under about 100 columns (for example while the pane is docked) the bar uses a compact
+form without borders. `minimal` shows the chips only.
 
-Key `0` (`More`) shows a numbered menu of the other options, in the band above the phase chips and in
-the pane, with the line "More actions. Press the number shown." The menu takes the place of the main
-buttons, so its numbers are `1` to `9` (a letter would type into the prompt box), and `0` says
-"Fewer" and goes back. A choice from the menu runs and closes the menu. Under about 100 columns
-(for example while the pane is docked) the band uses a compact form without borders. `minimal`
-shows the chips only.
+The bar has two buttons, and neither decides anything. **Go on** (key `1`, while Claude is not working)
+runs `/temper:temper`, so Claude takes the run up again and asks the gate question. **Play while you
+wait** (key `8`, while Claude works) opens the game. The pane repeats the run on one card, with the
+intent, the acceptance criteria ("what must be true"), the loops and your decisions; it has no button
+that decides.
 
-### One flow, two views
+### One flow
 
-The bar is the same choices as the questions, without typing. The orchestrator
-(`commands/temper.md`) still runs every stage with its own brief and the CLI still judges every
-check. With the Temper mod loaded the orchestrator does not ask its gate question a second time: it
-prints the stage panel and the check result, and waits ("Waiting for you. Choose on the Temper bar,
-or type a change."). Minimal and off modes draw
-no buttons, so there the orchestrator asks its gate question (header `Temper gate`) as without the mod, and the
-mod records your answer as your decision: you never have to type a word. Pressing Continue records your decision, asks Claude to mirror it in the CLI
-state, and then runs `/temper:temper` with no arguments, which is the orchestrator's own Resume: it
-starts the next stage in its own subagent. Without the mod nothing changes and the orchestrator asks
-its questions as before.
+Every gate is a question in Claude Code's own dialog, header `Temper gate`, with the options of
+`commands/temper.md` (Continue to {next}, Loop back to {stage}, Override and continue, Save for later,
+Grill Me, Teach Me and the stage's own). This is the same with the mod and without it, in every mode.
+The orchestrator still runs every stage with its own brief and the CLI still judges every check. With
+the mod loaded, the mod reads your answer from the dialog's result and lets through what that answer
+allows, at the step the run is at; a step back or a skip needs your reason, and the dialog asks for it
+when your answer has none. Once the run moves on, the answer is spent.
 
-The bar holds only the options the original orchestrator has, plus Discuss, Play and Skip with a
-reason. The table is one to one. Everything else (show the files, run the tests, show the changes,
-write the PR text, go back a phase) you can still ask for by typing; the subcommands stay.
+### Each stage
 
-| Original option (`commands/temper.md`) | Temper bar button |
+| Stage | Writes allowed |
 |---|---|
-| Continue to {next} (Recommended) | `1` Continue to {next} (at a Build checkpoint: `1` Continue with task N) |
-| Loop back to {upstream} | `1` when the check failed (it asks for a reason); under `0` More at the Build completion gate and at Review |
-| Override and continue | `9` Skip with a reason |
-| Save for later | `0` More, Save for later (pauses the run; Resume when paused). At Done: `2` |
-| Grill Me | `2` or `3` where the phase has no better option, else `0` More, Grill me |
-| Teach Me | `3` (or `2` at the Build completion gate), else `0` More, Teach me |
-| Walk through step by step | `2` at Plan |
-| Open HTML review | `3` at Plan |
-| Architecture Depth Review | `2` at Review |
-| Review config suggestions | `2` at Check, only when `config-suggestions.json` exists |
-| Change (Build checkpoint) | `2` at a Build checkpoint: a draft "Change this task: " in the prompt box |
-| Stop (Build checkpoint) | `3` at a Build checkpoint |
-| Commit | `1` when the run is done |
-| Other (a change request) | `4` Discuss: a draft "Discuss this step: " in the prompt box |
+| Intent | `intent.md` only |
+| Plan, Design | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records |
+| Build | The files in the plan, test files and the spec folder |
+| Review | The spec folder only |
+| Check | The spec folder only |
+| Done | Nothing is blocked |
 
-Discuss and Change only put a draft in the prompt box. You type the rest and press Enter. Nothing
-moves and no event is written. If a dialog or the game holds the keys, the toast says "Close the
-pane, then type your message." Claude answers the message; if it asks for a change, Claude makes
-the change, runs the check again, and waits for you again.
-
-### Each phase
-
-Key `1` is the main action. It follows the check result the CLI wrote: Continue to the next phase when
-the check passed, Loop back to the phase before when it failed, and Start or Run the phase when there
-is no result yet (the orchestrator runs the stage and its check itself). In Build every task is its own
-checkpoint: while tasks are open, key 1 says "Continue with task N". Key `4` is Discuss everywhere.
-Key `9` is "Skip with a reason" everywhere and always asks for a reason. Key `0` (`More`) shows the rest.
-
-| Phase | Writes allowed | Keys |
-|---|---|---|
-| Intent | `intent.md` only | 1 Start Intent, or Continue to Plan. 2 Grill me. 3 Teach me. More: Save for later. |
-| Plan | `intent.md`, `plan.md`, `tasks.md`, `design.md` and new decision records | 1 Run Plan, Loop back to Intent, or Continue to Build. 2 Walk through step by step. 3 Open HTML review. More: Grill me, Teach me, Share HTML review, Save for later. |
-| Build, checkpoint (tasks are open) | The files in the plan, test files and the spec folder | 1 Continue with task N. 2 Change. 3 Stop. More: Grill me, Teach me, Save for later. |
-| Build, completion | The same | 1 Continue to Review, or Loop back to Plan when the check failed. 2 Teach me. 3 Grill me. More: Loop back to Plan, Save for later. |
-| Review | The spec folder only, unless a fix for that file is active | 1 Run Review, Loop back to Build, or Continue to Check. 2 Architecture depth review. 3 Grill me. More: Teach me, Loop back to Build, Save for later. In the pane, per finding: Fix, Accept, Explain. |
-| Check | The spec folder only. `git commit` stays refused until Check passes. | 1 Run Check. 2 Review config suggestions (only when the file exists), else Grill me. 3 Teach me. More: Save for later. |
-| Fix | The failing files | 1 Fix the failures. 2 Fix the findings. 3 Continue to Check. At the limit: Loop back to Plan, Skip with a reason, Save for later. |
-| Done | Nothing is blocked | 1 Commit (Claude commits and does not push). 2 Save for later. |
+A plain `git commit` goes to the native `pre-commit` hook in every stage, and the hook decides: it
+lets a spec only commit and a Build checkpoint through, and every other commit only when every gate
+passed or was skipped with a reason. A commit the hook does not check (a merge, a cherry-pick, a revert,
+a commit of named paths) waits until the run is done, or until you chose Save for later.
 
 A file outside the Build plan is never written first. Build lists it with why it is needed and the
 change, and Claude asks you the Scope drift question: add the file to the plan, revert (go on
 without it), or allow it once (Claude's why becomes the recorded reason). Each choice is logged.
-This works the same with and without the mod; the mod also refuses the write until you answer. After three failed fix loops (set with
-`fix.max-loops`) Temper stops and offers the three choices in the last row.
+This works the same with and without the mod; the mod also refuses the write until you answer.
+A failed Review or Check loops back to Build when you choose so, as many times as the loop budget
+(`loops.max-per-type`, and `fix.max-loops` for Check) allows.
+
+### Stage commands are doors
+
+`/temper:plan`, `/temper:design`, `/temper:build`, `/temper:review` and `/temper:check` start or
+take up a `/temper` run at their stage, so there is one flow to keep right:
+
+- With a run active, they take it up where the CLI says it is. A door never moves a run: when the
+  run is at another stage, Claude says so and goes on from there.
+- With no run active, `/temper:plan` starts one at Intent. The later doors start a run for the
+  spec folder that holds the feature's `plan.md` and `tasks.md`, ask each earlier gate in turn
+  (the same `Temper gate` question, Override and continue with your reason when a gate fails),
+  then run their own stage.
+
+`/temper:intent` stays on its own: it captures a draft intent and builds nothing.
 
 ### The game
 
@@ -252,9 +223,9 @@ It is made to be fair and easy to play:
   always clear at the current speed, and it never asks for a jump and a duck too close together.
 - A help line, "Press w to jump. Press s to duck.", shows for the first 4 seconds of a run.
 
-- While a phase works, Temper offers the game in three places, in full mode: the band
-  (`8: Play while you wait`, a normal button like 2 and 3), the pane (Actions list, key 8) and the
-  prompt hint on the terminal ("Press 8 to play while you wait."). The offer goes away when Claude
+- While a stage works, Temper offers the game in three places, in full mode: the bar
+  (`8: Play while you wait`), the pane (key 8) and the prompt hint on the terminal ("Press 8 to play
+  while you wait."). The offer goes away when Claude
   stops. Temper never opens the game by itself and never takes the keyboard until you press 8 or
   run the command.
 - Open it with `8` at the empty prompt or with `/temper:temper play`. The same command closes it.
@@ -271,7 +242,7 @@ It is made to be fair and easy to play:
   After one click on the game, Space and the Up arrow jump and the Down arrow ducks, with no wait.
 - At the end you see Ember fallen, "Game over. Your forge went cold." and "Press r to run again. q or
   Esc leaves." A score above the best shows "New record. The forge is hot."
-- The game shows a banner when a phase is ready or changes, so you do not miss an approval.
+- The game shows a banner when the run waits for you or changes stage, so you do not miss a gate.
 - It keeps your best score in the plugin store (written once for each game over). The score does not
   change any gate. A press of a Button is one counter in the plugin state; the clock writes nothing.
 - The picture is 9 rows of coloured half blocks, as wide as the pane allows (36 to 72 columns). It
@@ -309,8 +280,8 @@ without starting the pipeline.
   version control from the moment the idea is real
 
 **Who flips `Status:`** — `draft` (this command) → `accepted` (the human's Continue at
-`/temper`'s **Intent gate**; the plan gate only in a standalone `/temper:plan` run,
-where it's the first human gate to review the intent) → `completed` (the commit step).
+`/temper`'s **Intent gate**, also when a stage command started the run) → `completed` (the
+commit step).
 A later `/temper:temper "{slug}"` presents the draft at its Intent gate and builds on it,
 never overwrites it. A `temper bands` breach drafts intents in exactly the same shape
 (see `/temper:status`).
@@ -319,7 +290,10 @@ never overwrites it. A `temper bands` breach drafts intents in exactly the same 
 
 ## `/temper:check`
 
-Stack validation and quality status.
+Stack validation of a planned and built feature.
+
+A door into `/temper`: it starts a run at Check, or takes up the run that is active, and from
+there everything happens as `/temper` does it ([Entering at a stage](#stage-commands-are-doors)).
 
 ```bash
 /temper:check
@@ -351,6 +325,10 @@ Stack validation and quality status.
 ## `/temper:plan`
 
 Plan with blast radius analysis, mermaid diagrams, and interactive walkthrough.
+
+A door into `/temper`: with no run active it starts one for the feature, and the Intent gate
+comes first, because the plan is derived from the accepted intent. With a run active it takes
+that run up ([Entering at a stage](#stage-commands-are-doors)).
 
 ```bash
 /temper:plan "feature description"
@@ -431,6 +409,9 @@ Plan with blast radius analysis, mermaid diagrams, and interactive walkthrough.
 
 System design for complex/medium features. Auto-skipped for simple or trivial features.
 
+A door into `/temper`: it starts a run at Design, or takes up the run that is active, and from
+there everything happens as `/temper` does it ([Entering at a stage](#stage-commands-are-doors)).
+
 ```bash
 /temper:design
 ```
@@ -463,6 +444,9 @@ phases:
 ## `/temper:build`
 
 Build with TDD + quality gates.
+
+A door into `/temper`: it starts a run at Build, or takes up the run that is active, and from
+there everything happens as `/temper` does it ([Entering at a stage](#stage-commands-are-doors)).
 
 ```bash
 /temper:build
@@ -547,6 +531,9 @@ Step 4/5: Add rate limiting
 ## `/temper:review`
 
 Code review with confidence scoring.
+
+A door into `/temper`: it starts a run at Review, or takes up the run that is active, and from
+there everything happens as `/temper` does it ([Entering at a stage](#stage-commands-are-doors)).
 
 ```bash
 /temper:review

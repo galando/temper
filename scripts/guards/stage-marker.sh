@@ -2,8 +2,8 @@
 #
 # stage-marker.sh — UserPromptSubmit half of the standalone-stage gate guarantee.
 #
-# When the submitted prompt invokes a standalone stage command (/temper:intent, :plan,
-# :design, :build, :review, :check), record which gate that session now owes in
+# When the submitted prompt invokes /temper:intent (the one stage command that runs on its own:
+# it captures a draft intent), record that the session owes an intent gate in
 # .temper/pending-stage.json. The Stop half (verify-stage-gate.sh) refuses to let the
 # session end until .temper/gates.json carries a verdict for that stage — any verdict,
 # PASS or FAIL; what's enforced is that `temper gate <stage>` actually ran, not that it
@@ -11,7 +11,10 @@
 # in 2 of 3 live runs — see docs/decisions/0005-deterministic-stage-gate-enforcement.md).
 #
 # /temper (unified) is deliberately NOT marked: its orchestrator runs each gate at the
-# stage boundary, and a session legitimately ends mid-pipeline at any human gate.
+# stage boundary, and a session legitimately ends mid-pipeline at any human gate. Since 9.7.0
+# the other stage commands (/temper:plan, :design, :build, :review, :check) are doors into
+# that same orchestrator (ADR 0012), so they are not marked either: a person who chooses
+# Save for later at an earlier gate ends the session with nothing owed.
 # /temper:fix is not marked either — its RCA phase can legitimately end a session
 # before any build evidence exists.
 #
@@ -109,11 +112,6 @@ except Exception:
   local stage=""
   case "$prompt" in
     /temper:intent*) stage="intent" ;;   # intent gained its own gate in v9 (fail-fast artifact)
-    /temper:plan*)   stage="plan" ;;
-    /temper:design*) stage="design" ;;   # design gained a real gate in v9 (Areas of Concern)
-    /temper:build*)  stage="build" ;;
-    /temper:review*) stage="review" ;;
-    /temper:check*)  stage="check" ;;
     *) return 0 ;;
   esac
 

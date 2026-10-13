@@ -1,11 +1,11 @@
 ---
-description: "The grouped Build loop, run by the orchestrator (/temper Stage 2 and /temper:build)"
+description: "The grouped Build loop, run by the orchestrator (/temper Stage 2)"
 ---
 
 # Build: the grouped loop
 
-Read by the orchestrator that runs Build: `/temper` (Stage 2) and the standalone
-`/temper:build`. A stage subprocess never reads this file. The temper CLI is
+Read by the orchestrator that runs Build: `/temper` (Stage 2, also when `/temper:build`
+starts the run). A stage subprocess never reads this file. The temper CLI is
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper`; every other path here is in the user's project.
 On this page the CLAUDE_PLUGIN_ROOT variable means the folder that holds the temper CLI:
 write that folder out in full in every command you run.
@@ -52,8 +52,8 @@ which `/temper` does at its start).
    left, gate a task still listed as running with the model its waiting line names, so the gate judges
    the work it left. When every task of group G has passed:
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper group gate G<n>`. A parked group, or a FAIL, goes to the
-   person with the CLI's reason as a question (`AskUserQuestion`, header `Temper gate`, with or
-   without the Temper bar; nothing else is decided here, and the person never types a command):
+   person with the CLI's reason as a question (`AskUserQuestion`, header `Temper gate`; nothing
+   else is decided here, and the person never types a command):
    - **Parked on commits a task agent made** (the task gate printed two ways out): "Take the
      commits out and run the task again (Recommended)" (run the printed `git -C ... rebase` lines
      as written, newest first, then the printed `group reopen` line without `--accept-foreign`, and
@@ -65,11 +65,8 @@ which `/temper` does at its start).
      G<n> --task N`, then step 3) / "Loop back to Plan" (a plan that cannot be built) / "Save for later".
    - **A group gate FAIL**: "Run the group's tasks again (Recommended)" (`group reopen G<n> --task N`
      for each task the reason names, then step 3) / "Loop back to Plan" / "Save for later".
-6. **One human gate per group**, with the group's gate output. With the Temper bar and its buttons (a
-   `Temper enforcement:` line and no `Temper buttons: none` line), do not ask it: the bar's
-   **Continue with the groups**, **Change** and **Stop** are this gate. End the turn with
-   `Waiting for you. Choose on the Temper bar, or type a change.`; a Change arrives as the person's
-   message, a Stop as their save for later. Otherwise ask it with `AskUserQuestion`:
+6. **One human gate per group**, with the group's gate output, asked with `AskUserQuestion`,
+   header `Build group` (it moves no stage, so the mod records nothing from it):
    **"Continue (Recommended)"** (next group) / **"Change"** (never approval:
    record each item the user typed with
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase feedback --claim "feedback #{K}: {text}"`,
@@ -82,9 +79,8 @@ which `/temper` does at its start).
    Show the group-level panel from the CLI output (`temper group report`), not a per-task one. An
    integrate FAIL makes `gate build` FAIL: show its reason and go to the completion gate's FAIL options.
 8. **Completion gate** (`gate build`: RED-then-GREEN evidence, no unchecked tasks, every
-   feedback answered, integration PASS). With the Temper bar and its buttons the bar offers it: end
-   the turn as in step 6. Otherwise ask it with `AskUserQuestion` (header `Temper gate` when the
-   system prompt has the `Temper buttons: none` line), four options at most, corrections via "Other".
+   feedback answered, integration PASS). Ask it with `AskUserQuestion`, header `Temper gate`, as
+   every stage gate, four options at most, corrections via "Other".
    **On PASS:** "Continue to Review (Recommended)" / "Teach Me" / "Loop back to Plan" / "Save for
    later". **On FAIL:** "Run Build again (Recommended)" (mend what the FAIL rows name: the tasks of a
    group with `group reopen`, an integrate failure with the fix pass below, then `temper integrate` and

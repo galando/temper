@@ -7,9 +7,9 @@ description: "System design exploration for complex features (optional stage)"
 **Goal:** Produce system design artifacts for complex/medium features — skipped for
 simple/trivial. Active when `phases.design: true` AND complexity >= medium.
 
-**Modes:** Standalone (`/temper:design`) runs in the current context, own gate. Agent
-subprocess (from `/temper`) starts clean, no `AskUserQuestion` gate — return the summary,
-the orchestrator owns it. Load `intent.md`, `plan.md`, and the enabled packs' `rules.md`
+**Mode:** Design runs as a stage of `/temper` (also when `/temper:design` starts it: the
+command is a door into `/temper`), in a clean subprocess with no `AskUserQuestion` gate:
+return the summary, the orchestrator owns the gate. Load `intent.md`, `plan.md`, and the enabled packs' `rules.md`
 (project `.claude/packs/` shadows global `~/.claude/packs/` shadows
 the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept where `phases` is `all` or contains
 `design`), plus the project's `.claude/packs/stacks/{detected-stack}.md` if present.
@@ -58,7 +58,7 @@ Any flagged concern is presented **first** at the gate — it is the reason the 
 here. "Continue to Build" with open concerns means the human accepted them; record
 their call in the concern's line (`resolved: {what was decided}`).
 
-`AskUserQuestion`: "Continue to Build (Recommended)" (save `design.md`, proceed) / "Walk
+The orchestrator's gate (header `Temper gate`): "Continue to Build (Recommended)" / "Walk
 through design step by step" (below) / "Save for later". "Other" free-text → edit
 `design.md`, re-show this gate — a change is never approval to proceed.
 

@@ -752,8 +752,8 @@ assert_eq "a draft with only a Deferred question reports no Blocking question" "
 
 assert_eq "the CLI header lists temper status exactly once" "1" "$(grep -c '^#   temper status' "$TEMPER")"
 
-# --- mods: the stage names the mod puts in its follow up prompts are the CLI's own ---
-# The CLI's stage order is pinned here, and the mod's CLI test pins its CLI_STAGES and its fake
+# --- mods: the stage names the mod reads and writes in its texts are the CLI's own ---
+# The CLI's stage order is pinned here, and the mod's guard test pins its STAGES and its fake
 # engine's CLI_SEQ to the same text, so a change on either side fails a test. No script here reads a
 # file of the mod.
 MOD_STAGE_SEQ="intent plan design build review check"

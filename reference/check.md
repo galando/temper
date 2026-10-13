@@ -8,9 +8,9 @@ description: "Run the project's validation pipeline (tests, build, lint, securit
 estimate a result. The check brief (`${CLAUDE_PLUGIN_ROOT}/agents/check.md`) carries the exact `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add` invocations
 the gate needs; this doc is the methodology behind what to run and how to interpret it.
 
-**Modes:** Standalone (`/temper:check`) runs in the current context, own gate. Agent
-subprocess (from `/temper`) starts clean, no AskUserQuestion gate — return the summary,
-the orchestrator owns it. Load `.temper/specs/{feature}/review-context.json` if present.
+**Mode:** Check runs as a stage of `/temper` (also when `/temper:check` starts it: the
+command is a door into `/temper`), in a clean subprocess with no `AskUserQuestion` gate:
+return the summary, the orchestrator owns the gate and the commit. Load `.temper/specs/{feature}/review-context.json` if present.
 
 ## Step 1: Detect Stack
 
@@ -160,40 +160,10 @@ Diff / Perf sub-panel lines only when those levels ran, total time, and the scen
 verdict `{X}/{Y} behaviorally verified` (STRONG assertions count full, WEAK half —
 quality-weighted, intentionally different from Build's binary pass/fail).
 
-`AskUserQuestion` (header `Temper gate` with the Temper mod). **On PASS:** "Commit
-(Recommended)" / "Save for later". **On FAIL:** "Loop back to Build (Recommended)" while the
-feedback conditions above are met (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state loop check build --reason "<why>"`,
-`state set next_stage build`, the Build fix pass, then the checks again from the first level that
-failed, and this gate again) / "Override and continue" (with the person's reason:
-`${CLAUDE_PLUGIN_ROOT}/scripts/temper override check --reason "<the reason>"`, then the Commit steps) / "Save for
-later". At the loop budget the loop back is not offered. A change typed via "Other"
-is never approval to commit — make the edit, re-run validation from the first level that
-had failed (skip already-passed levels), re-show this same gate.
-
-**On Commit**, in this order (the order matters — the ledger archive needs the live
-state that the final clear destroys):
-
-1. If `intent.md` exists, set its header to `**Status:** completed` + `**Completed:**
-   {date}`; if `build-context.json` recorded deviations (unplanned files, approach
-   changes), write them into `plan.md` as a `## Deviations` section — the committed
-   plan must describe what was actually built, in the same commit as the code.
-2. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state archive` — this writes
-   `.temper/specs/{slug}/gate-ledger.json` (verdicts, overrides, evidence counts)
-   while the state is still intact. Do this BEFORE deleting build-state.json:
-   `state archive` reads `spec_path` from that file, so deleting it first would
-   silently skip the ledger.
-3. Stage the spec artifacts (`.temper/specs/{slug}/`, now including
-   `gate-ledger.json`) alongside the diff — two calls, `git add` then `git commit`
-   (separate, so the in-agent commit-gate hook sees them staged) — unless the project
-   gitignores them (their choice — never force-add). The committed artifact chain is
-   the audit trail; use a conventional message naming files changed / tests added.
-4. `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear` (which also re-archives as a
-   safety net). The CLI always ships with the plugin; never delete the state by hand.
-
-**On Save:** when the check passed, record it with `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance
-check_complete commit`; otherwise leave the run state as the CLI keeps it (never write
-`build-state.json` by hand). Report "Saved. When you come back, the Temper bar shows the next step;
-where it shows no buttons, run /temper:temper to open the run, and its gate question comes back."
+The gate and the commit are the orchestrator's (`${CLAUDE_PLUGIN_ROOT}/commands/temper.md`, Stage 4
+and Commit): **On PASS** the one Commit question, "Commit (Recommended)" / "Save for later";
+**On FAIL:** "Loop back to Build (Recommended)" while the feedback conditions above are met /
+"Override and continue" / "Save for later". At the loop budget the loop back is not offered.
 
 ## Error Interpretation
 

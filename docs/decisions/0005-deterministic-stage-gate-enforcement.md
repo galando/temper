@@ -1,6 +1,12 @@
 # 0005 — Deterministic stage-gate enforcement for standalone commands
 
 **Status:** accepted (v8.0.0, pre-release)
+
+**Amended in 9.7.0 (ADR 0012):** the stage commands `/temper:plan`, `:design`, `:build`,
+`:review` and `:check` became doors into `/temper`, so they run the orchestrator, which runs
+each gate at its stage boundary and may end at any human gate (Save for later). They are no
+longer marked: `stage-marker.sh` marks only `/temper:intent`, which still captures a draft on
+its own and owes an intent verdict. The Stop half is unchanged.
 **Drivers:** live wiring measurement; v8's core determinism claim
 
 ## Context

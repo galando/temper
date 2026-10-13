@@ -14,10 +14,9 @@ severity floors, filter bypasses, memory thresholds — not review technique.
 succeeds. Confidence scoring and review memory follow the temper-core skill's
 definitions.
 
-**Modes:** Standalone (`/temper:review`) owns its human gate. Agent subprocess (from
-`/temper`, or from a standalone command running with `stages.subprocess: true`) starts
-clean and never shows an `AskUserQuestion` — return the summary, the caller owns the
-gate. Load the changed files: when `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get base_sha` returns a sha
+**Mode:** Review runs as a stage of `/temper` (also when `/temper:review` starts it: the
+command is a door into `/temper`), in a clean subprocess that never shows an
+`AskUserQuestion`: return the summary, the orchestrator owns the gate. Load the changed files: when `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get base_sha` returns a sha
 (checkpoint commits already landed, so a plain `git diff --name-only` returns
 nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 (`git status --porcelain`); otherwise fall back to `git diff --name-only` — plus
@@ -218,11 +217,6 @@ line per step that actually ran (fingerprint, security hot paths, cross-file
 consistency, contract changes, mutation spot-check {N} PROVEN/{N} UNVERIFIED) and the
 top issues as `[{severity}] {file}:{line} — {one-liner}`.
 
-`AskUserQuestion` (standalone mode only): "Fix all & continue to Check (Recommended)"
-(apply every fix including LOW, re-run review once — single pass, no subagents — then
-proceed) / "Save for later". A change typed via "Other" is never approval — make the
-edit, re-show this same gate.
-
 **Accepting a finding.** A person can keep a finding as it stands with
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence accept --stage review --id <n> --reason "<why>"`. The row stays in the
 ledger with the reason, the author (git identity) and the time; `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review`
@@ -230,12 +224,6 @@ stops counting it and its detail names the accepted count. The reason is require
 empty one exits 1 and writes nothing, and a finding already resolved or accepted cannot
 be accepted again. Resolve means fixed; accept means a person chose to keep it. The
 review stage never accepts a finding on its own.
-
-## Auto-Fix (only from the "Fix all" flow, never standalone)
-
-Apply each HIGH+ auto-fixable fix, run the relevant tests, re-run review once. Total
-auto-fix loops across the gate + this step: max 2; still open after that → show the
-user rather than looping again.
 
 ## Context Output
 
@@ -251,8 +239,8 @@ Write `review-context.json`:
 
 ## Feedback Loop to Build
 
-`feedback.enabled: true` and auto-fixable issues persist after auto-fix → loop to Build
-with `review-context.json` while `iteration < loops.max-per-type` (default 2); at the
+`feedback.enabled: true` and fixable issues remain → the orchestrator offers "Loop back to
+Build", with `review-context.json`, while `iteration < loops.max-per-type` (default 2); at the
 budget, stop and show the user. The same issue surviving 2 consecutive loops stops
 immediately.
 
@@ -284,9 +272,3 @@ dismissal.
 
 Same severity everywhere → keep. Mixed → highest wins. A lone CRITICAL no other
 subagent saw on that code → downgrade to HIGH. Category disagreement → `quality`.
-
-## Automatic Next Step
-
-CRITICAL/HIGH remain after auto-fix → show the report, ask. All clean and chained from
-Build → auto-chain to `/temper:check`. Invoked manually → always show the report and
-ask, regardless of findings.

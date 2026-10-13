@@ -11,7 +11,7 @@ entry point for work that isn't ready to build yet: the originator (who may not 
 implementer, or an engineer at all) describes the problem in their own words; the
 committed draft is what a product owner reviews and what `/temper` later picks up.
 
-`/temper`'s own Intent stage (and standalone `/temper:plan`) still creates intent.md
+`/temper`'s own Intent stage (also when `/temper:plan` starts the run) still creates intent.md
 when none exists — this command exists for the capture-now-build-later split, so the
 idea's author, timestamp, and revision history live in version control from the moment
 it's real. A draft captured here is exactly what the pipeline's Intent gate later
@@ -112,7 +112,7 @@ its system prompt, so its brief says nothing about enforcement.
 | Status | Written by | Meaning |
 |---|---|---|
 | `draft` | this command (or a bands-breach draft via `/temper:status`) | captured, awaiting review |
-| `accepted` | the Intent gate's human "Continue" (`/temper`'s Stage 0; the plan gate in standalone `/temper:plan`) | a person accepted it into build |
+| `accepted` | the Intent gate's human "Continue" (`/temper`'s Stage 0, also when a stage command entered the run later) | a person accepted it into build |
 | `completed` | the commit step | implemented — the change is committed, not necessarily released |
 
 No stage advances on a draft without a human accepting it — same rule as every other

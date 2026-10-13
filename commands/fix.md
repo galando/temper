@@ -97,7 +97,7 @@ state/evidence calls (never `gate`) into a single Bash call.
 ## Gates
 
 **With the Temper mod** (a `Temper enforcement:` line in the system prompt) the mod stands
-aside in a `/temper:fix` run: the bar draws no buttons and the guard refuses nothing for it,
+aside in a `/temper:fix` run: it does not draw the run and the guard refuses nothing for it,
 whatever the mode. Ask every gate below with `AskUserQuestion` exactly as written, so the person
 always has an option to click; the native commit hook gates the commit as it does without the mod.
 

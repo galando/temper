@@ -16,8 +16,7 @@ orchestrator's conversation carries over except the prompt you were launched wit
    (Success Criteria + Gherkin Scenarios), `tasks.md`, `plan.md`. In the orchestrated
    flow the Intent stage already wrote `intent.md` and a human accepted it — it is your
    INPUT: derive scenarios and architecture from it, refine only with a stated reason,
-   never re-derive the Problem (`${CLAUDE_PLUGIN_ROOT}/reference/plan.md` covers the standalone case where you
-   author it yourself and run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent` first).
+   never re-derive the Problem.
 3. **Re-read the intent's context sources.** Under `## Source Traceability` →
    `### Context Sources`, re-read every `- consulted:` source yourself (ticket, MR/PR,
    doc link) — the intent summarizes them, but you are the stage that plans against

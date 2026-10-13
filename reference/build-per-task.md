@@ -4,7 +4,7 @@ description: "The per-task Build loop (build.mode: per-task), run by the orchest
 
 # Build: the per-task loop (the previous Build)
 
-Read by the orchestrator that runs Build (`/temper` Stage 2 and `/temper:build`) only when
+Read by the orchestrator that runs Build (`/temper` Stage 2, also when `/temper:build` starts the run) only when
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get build.mode` prints `per-task`. With the key
 absent, Build runs in groups (`${CLAUDE_PLUGIN_ROOT}/reference/build-groups.md`). A stage
 subprocess never reads this file. On this page the CLAUDE_PLUGIN_ROOT variable means the folder
@@ -42,10 +42,8 @@ runs on Haiku.
      added to its prompt.
    - **"Stop"**: run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build`, then save for later.
 5. **Completion gate** (on the last task's Continue): `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build`
-   (RED-then-GREEN evidence recorded, no unchecked tasks, all feedback answered). With the Temper
-   bar and its buttons the bar offers it: end the turn with `Waiting for you. Choose on the Temper
-   bar, or type a change.` Otherwise ask it with `AskUserQuestion` (header `Temper gate` when the
-   system prompt has the `Temper buttons: none` line), corrections via "Other". **On PASS:**
+   (RED-then-GREEN evidence recorded, no unchecked tasks, all feedback answered). Ask it with
+   `AskUserQuestion`, header `Temper gate`, as every stage gate, corrections via "Other". **On PASS:**
    "Continue to Review (Recommended)" / "Teach Me" / "Loop back to Plan" / "Save for later".
    **On FAIL:** "Run Build again (Recommended)" (relaunch the task the FAIL rows name, then the
    gate again) / "Loop back to Plan" / "Override and continue" (with the person's reason, as the

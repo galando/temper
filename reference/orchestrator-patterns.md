@@ -64,8 +64,8 @@ attempts and commit; the integration verdict). The orchestrator reads them only 
 `temper schedule`, `temper group report` and `temper report`.
 
 **Save/Continue:** `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance {stage}_complete {next_stage}` at every
-transition. On Save, report "Saved. When you come back, the Temper bar shows the next step (a choice there takes the run
-up again); where it shows no buttons, run {command} to open the run, and its gate question comes back."
+transition. On Save, report "Saved. When you come back, run {command} (or press Go on in the Temper bar) to take the
+run up again; its gate question comes back."
 
 ## Gate Options + Enforcement
 
@@ -204,8 +204,8 @@ once it has acted on it (see `${CLAUDE_PLUGIN_ROOT}/reference/build.md`).
 The pipeline is cyclic, not strictly linear — a gate FAIL can send work back upstream
 with failure context.
 
-- **Review → Build:** auto-fixable HIGH/CRITICAL found → "Fix all & continue to Check" →
-  fixes applied, re-review runs. Context: `review-context.json`'s fix list.
+- **Review → Build:** open findings at or above the block level → "Loop back to Build" →
+  the Build fix pass, then Review again. Context: `review-context.json`'s fix list.
 - **Check → Build:** test failures → a targeted fix task (test name, error, file:line,
   the `intent.md` scenario it maps to) → "Loop back to Build". Context:
   `check-context.json`'s `test_failures[]`.

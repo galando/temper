@@ -211,52 +211,60 @@ else
   fail "grouped Build docs incomplete (docs/grouped-build.md, link in getting-started.md, ADR 0011 Accepted with D-01..D-07)"
 fi
 
-# 8. The flow audit of PR #97: at every point where a run waits for the person, the orchestrator pages offer a click
-# (an AskUserQuestion option or a bar button) and never send the person to type a command. Each row is a page, a
-# regular expression it must hold (+) or must not hold (-), and why. Whitespace in a pattern matches any run of spaces
-# and line breaks, so a reflowed paragraph still matches.
+# 8. One flow (ADR 0012, after the flow audit of PR #97): at every point where a run waits for the person, the
+# orchestrator pages ask an AskUserQuestion with options and never send the person to type a command or press a
+# button; the person decides only in that dialog, with the mod and without it, in every mode; the stage commands
+# are doors into /temper. Each row is a page, a regular expression it must hold (+) or must not hold (-), and why.
+# Whitespace in a pattern matches any run of spaces and line breaks, so a reflowed paragraph still matches.
 FLOW_TEXT=$(python3 - "$REPO_ROOT" <<'PY'
 import re, sys
 root = sys.argv[1]
 ROWS = [
     ('commands/temper.md', '-', r'type /temper:temper approve', 'the wait line sends the person to type a command'),
-    ('commands/temper.md', '+', r'Choose on the Temper bar, or type a change', 'the wait line names the bar'),
+    ('commands/temper.md', '-', r'Choose on the Temper bar', 'no wait line sends the person to the bar'),
+    ('commands/temper.md', '-', r'With the Temper bar', 'one flow: no branch of the orchestrator for the bar'),
+    ('commands/temper.md', '-', r'Temper buttons: none', 'one flow: no mode without buttons'),
+    ('commands/temper.md', '-', r'continue <stage>', 'the mod sends no continue word'),
+    ('commands/temper.md', '+', r'Ask the gate with `AskUserQuestion`, header `Temper gate`', 'every gate is the Temper gate question'),
+    ('commands/temper.md', '+', r'with the mod or without it, in every mode', 'the gate is the same in every setup'),
+    ('commands/temper.md', '-', r'state set next_stage \{to\}', 'a loop back is state loop alone'),
     ('commands/temper.md', '+', r'three at most', 'a Blocking question holds three choices plus Carry forward'),
     ('commands/temper.md', '+', r'"More options"', 'a gate with more than four options puts the rest behind More options'),
     ('commands/temper.md', '+', r'"Commit \(Recommended\)"', 'a passed Check asks one Commit question'),
-    ('commands/temper.md', '+', r'With the `Temper buttons: none` line there is no such button', 'a failed mirror call without buttons'),
-    ('reference/build-groups.md', '-', r'the bar has no group-gate buttons', 'the bar draws the group gate'),
+    ('reference/build-groups.md', '-', r'the bar has no group-gate buttons', 'the bar draws no group gate'),
+    ('reference/build-groups.md', '-', r'Temper bar', 'the group gates are questions'),
     ('reference/build-groups.md', '+', r'"Run Build again \(Recommended\)"', 'the completion gate on FAIL'),
     ('reference/build-groups.md', '+', r'never before', 'a task is gated only after its agent returned'),
     ('reference/orchestrator-patterns.md', '+', r'state init \{slug\} --command \{command\}', 'Start over in Resume Validation keeps the command of the run'),
-    ('reference/orchestrator-patterns.md', '-', r'Run \{command\} when ready', 'a saved run names the bar first'),
+    ('reference/orchestrator-patterns.md', '-', r'Run \{command\} when ready', 'a saved run says how to take it up again'),
     ('commands/fix.md', '-', r'Start over \(re-investigate\)', 'the fix resume answer must be the plain Start over'),
     ('commands/fix.md', '+', r'header `Temper resume`', 'the fix resume question is the Temper resume question'),
-    ('commands/temper.md', '+', r'show the gate again without the loop back', 'a BLOCKED loop shows the gate again'),
+    ('commands/temper.md', '+', r'ask the gate question again with "Override and continue"', 'a BLOCKED loop asks the gate again'),
     ('commands/temper.md', '+', r'either answer is the person\'s approval of the plan', 'the arming question records the approval'),
-    ('reference/autonomy.md', '+', r'header `Temper gate`, with or without the Temper bar', 'the arming question has the gate header'),
+    ('reference/autonomy.md', '+', r'header `Temper gate`, as every gate', 'the arming question has the gate header'),
+    ('reference/autonomy.md', '+', r'while the run is still at Plan', 'arm before the plan advance moves the run on'),
     ('commands/temper.md', '+', r'"Loop back to Plan" \(`state loop design plan`', 'the Design gate on FAIL'),
     ('commands/temper.md', '+', r'`Accept finding \{id\}`', 'a Review FAIL can accept one finding by a click'),
     ('commands/temper.md', '+', r'"Override and commit" or "Save for later"', 'the commit gate FAIL asks the Temper gate question'),
     ('commands/fix.md', '+', r'the mod stands aside in a `/temper:fix` run', 'a fix run asks its own questions with the mod'),
     ('reference/build-groups.md', '+', r'"Keep the agent\'s commits"', 'a parked group is a question with options'),
     ('reference/build-groups.md', '-', r'user with the CLI\'s reason; nothing else is decided here', 'a parked group goes to the person as a question'),
-    ('commands/build.md', '+', r'state init \{feature-slug\} --command temper', 'standalone Build starts its run at Build'),
-    ('commands/build.md', '+', r'state advance plan_complete build', 'standalone Build moves its run to Build'),
     ('reference/plan.md', '-', r'write `.temper/build-state.json`', 'the guard refuses a hand written run state'),
     ('reference/check.md', '-', r'write `build-state.json` with', 'the guard refuses a hand written run state'),
     ('reference/build-per-task.md', '+', r'"Run Build again \(Recommended\)"', 'the per task completion gate on FAIL'),
+    ('reference/build-per-task.md', '-', r'Temper bar', 'the per task completion gate is a question'),
     ('reference/autonomy.md', '-', r'Run /temper to resume', 'a park waits at its gate question, not for a typed command'),
     ('reference/autonomy.md', '+', r'The run waits for you at the gate it parked at', 'a park shows its gate'),
-    ('commands/build.md', '-', r'show it and stop', 'standalone Build on a FAIL asks'),
-    ('commands/build.md', '+', r'state advance build_complete review', 'standalone Build moves the run on to Review'),
-    ('commands/build.md', '+', r'When a run is active\s+\(`state get spec_path` prints a path\), move it on', 'per task Build moves an active run on through Review and Check'),
-    ('reference/check.md', '+', r'\*\*On FAIL:\*\* "Loop back to Build \(Recommended\)"', 'standalone Check on FAIL asks'),
-    ('commands/plan.md', '+', r'"Continue to Build \(Recommended\)"', 'the standalone Plan answer the mod reads'),
     ('commands/temper.md', '+', r'This reason question holds for every question with the header `Temper gate`', 'the reason question in every mode'),
     ('commands/temper.md', '+', r'"Continue from \{next_stage\} \(Recommended\)" or "Start over"', 'Start over at the resume of the same feature'),
-    ('commands/temper.md', '-', r'the bar\'s "Continue to Commit" and then its Commit button', 'the Done bar is the Commit choice'),
+    ('commands/temper.md', '-', r'the bar\'s "Continue to Commit" and then its Commit button', 'no bar button is the Commit choice'),
     ('commands/temper.md', '+', r'make the fourth \*\*"More options"\*\*', 'four options per question'),
+    ('commands/temper.md', '+', r'## Entering at a stage', 'the stage commands are doors into /temper'),
+    ('commands/plan.md', '+', r'"Entering at a stage"', 'the Plan command is a door into /temper'),
+    ('commands/design.md', '+', r'"Entering at a stage"', 'the Design command is a door into /temper'),
+    ('commands/build.md', '+', r'"Entering at a stage"', 'the Build command is a door into /temper'),
+    ('commands/review.md', '+', r'"Entering at a stage"', 'the Review command is a door into /temper'),
+    ('commands/check.md', '+', r'"Entering at a stage"', 'the Check command is a door into /temper'),
     ('commands/fix.md', '-', r'Ready to push', 'the fix run invites no typing'),
     ('commands/fix.md', '+', r'"Run Fix again \(Recommended\)"', 'the Fix gate on FAIL'),
     ('commands/fix.md', '+', r'"Loop back to Fix \(Recommended\)"', 'the fix Check on FAIL'),

@@ -22,8 +22,9 @@ the evidence ledger written by every stage (`${CLAUDE_PLUGIN_ROOT}/scripts/tempe
 per gate, rather than checking a single `build-state.json` stage field. `verify-tests-ran.sh`
 is kept as a fallback for a project that installed only this pack, without the CLI.
 
-**Plugin-shipped subset (v8):** the standalone-stage gate pair (`stage-marker.sh` and
-`verify-stage-gate.sh`) ships in the plugin's own hooks file, so every install of the
+**Plugin-shipped subset (v8):** the stage gate pair (`stage-marker.sh` and
+`verify-stage-gate.sh`; since 9.7.0 it marks only `/temper:intent`, as the other stage commands are
+doors into `/temper`) ships in the plugin's own hooks file, so every install of the
 Temper plugin, `--plugin-dir` or marketplace, gets that guarantee with **no settings
 merge and no pack enablement**. Enabling this pack adds the other guards: secrets,
 protected paths, the regression test, the override prompt, the formatter, imports and

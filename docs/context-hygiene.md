@@ -50,11 +50,11 @@ dieted `reference/review.md` from 19.6KB to 13.6KB: what survived is policy a re
 would not derive alone (severity floors, filter bypasses, memory thresholds); what left
 was choreography.
 
-**Standalone commands can borrow the subprocess isolation.** `stages.subprocess: true`
-makes `/temper:plan` through `/temper:check` run in the same clean subprocess, from the
-same stage brief, that the unified `/temper` uses, returning only the summary box and
-gate verdict to your session — the default stays inline, because mid-stage
-interactivity is the point of running a stage standalone.
+**The stage commands are doors into `/temper`.** Since 9.7.0 `/temper:plan` through
+`/temper:check` start or take up a `/temper` run at their stage, so every stage runs in
+the same clean subprocess, from the same stage brief, and only the summary box and the
+gate verdict return to your session. (The `stages.subprocess` key of earlier versions
+does nothing any more.)
 
 **Rules live in the CLI, not in prose.** Every gate verdict is computed by
 `scripts/temper` from an evidence ledger. A prompt that restated gate logic would be a

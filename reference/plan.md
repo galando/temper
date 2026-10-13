@@ -11,16 +11,10 @@ rules a strong model would not derive on its own; it does not choreograph your s
 
 ## Usage
 
-```
-/temper:plan "feature description" | "JIRA-123" | "#123"
-/temper:plan --full "feature"    # force full artifact set even for a small change
-/temper:plan --quick "feature"   # force a lightweight, inline plan
-```
-
-**Modes:** Standalone (`/temper:plan`) runs in the current context and shows its own
-gate. Agent subprocess (from `/temper`) runs in a clean context and returns a summary —
-The plan brief (`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`) step 8 already tells you not to show an `AskUserQuestion` gate in that
-mode; the orchestrator owns it. The methodology below is identical either way.
+Plan runs as a stage of `/temper`, in a clean subprocess from the plan brief
+(`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`), also when `/temper:plan` starts the run (it is a door
+into `/temper`). It returns a summary and never shows an `AskUserQuestion` gate: the
+orchestrator owns the gate.
 
 ## What You Produce
 
@@ -56,34 +50,11 @@ Sources` records** — the intent summarizes them, but you plan against them; tr
 every `- unavailable:` line as an explicit gap (name it in `plan.md`, and add an
 Open Question back into `intent.md` if it hides a decision). Do not re-derive
 context Intent already gathered. A `Status: draft` intent (captured via
-`/temper:intent` or a control-band breach, reaching you standalone) is the same
+`/temper:intent` or a control-band breach) is the same
 input, plus: resolve or explicitly re-carry each Open Question (a refine pass may
 ask only a question the draft marks `Blocking`, or one a gate FAIL forces —
 anything else thin becomes a new Open Question); the draft→accepted flip happens at
 whichever human gate reviews it first.
-Standalone `/temper:plan` with no existing intent.md: derive the intent yourself
-from `${CLAUDE_PLUGIN_ROOT}/templates/intent.md` — full header (including `**Reviewer:**`, a name not a
-role), Problem, Success Criteria with stable `AC-NN` ids each carrying `Why:` and
-`Validate:`, Constraints with source markers, Scope and Non-goals, action-chain
-Target Users, labeled Open Questions, and `### Context Sources` (`consulted:` /
-`unavailable:` / `none:`) — as your first act. The two mandatory probes of the
-intent interview apply here too: what business outcome or risk does each criterion
-address, and who acts on the result with what next step. Never turn a source "should"
-or "may" into "must" silently: ask the originator, record the answer in `### Decisions`,
-and with no answer keep the source wording (`(source: …)`) plus a Blocking Open
-Question. The gate fails a draft that uses should/may/might/possibly in a criterion or
-constraint with no `(source: …)` marker.
-
-**Either way, standalone `/temper:plan` records the intent verdict itself.** Whenever
-intent.md exists at the spec path — authored fresh OR picked up as a draft — run
-`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent --spec-path {spec-path}` and fix any
-FAIL before proceeding to blast radius. Always pass `--spec-path` explicitly: state
-may not be initialized yet in standalone mode, and without a spec path the gate
-refuses to guess (usage error, no verdict). This matters at the end of the chain: the
-commit gate requires an intent verdict whenever intent.md exists, so the standalone
-`/temper:plan → :build → :review → :check → commit` chain FAILs at commit if this
-verdict was never recorded.
-
 **Risk multipliers** (each pushes complexity up one tier): touches auth/payment/security
 code; changes what the consumers of a library with 5+ consumers already use (a signature,
 a behaviour, a default; adding a new function or option they never call does not count); changes a DB schema; a module with a
@@ -249,8 +220,7 @@ data flow, `stateDiagram-v2` for lifecycles, `sequenceDiagram` for cross-boundar
 existing vs. modified when it helps. Render the diagram as ASCII box-drawing art right
 after the terminal summary panel too, as the one drawing allowed beside that panel (the
 terminal can't render mermaid); keep the mermaid block in
-plan.md for GitHub/tool rendering. Skip the diagram only for a single-file or config-only
-change in standalone `/temper:plan`.
+plan.md for GitHub/tool rendering.
 
 ## Grouped tasks
 
@@ -343,36 +313,13 @@ different reviews.
 
 Trivial: a one-line box, no gate. Simple: `Files: {N} create, {N} modify` / `Risk: {L/M}`.
 
-## Approval (standalone `/temper:plan` only)
+## Approval
 
-Subprocess mode never shows this — return the summary and stop (see above). Standalone:
-`AskUserQuestion` — "Continue to Build (Recommended)" / "Walk through step by step"
-(present Intent, Diagram, Scenarios, Architecture, Blast Radius, Tasks one section at a
-time, `AskUserQuestion` "Next step"/"Ask a question" between each) / "Save for later". A
-change typed via "Other" is never approval — make the edit, then re-show this same gate.
-
-Before this question, start the run state when there is none (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state get spec_path`
-prints nothing): `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --command temper`, then run both gates again
-(the init starts a new ledger). With the Temper mod the run then waits at Intent: first ask
-"Continue to Plan (Recommended)" / "Save for later" (`AskUserQuestion`, header `Temper gate`; the
-person approves the intent) and on Continue run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance intent_complete plan`;
-ask this question with the same header too. The run state file is never written by hand: the
-guard refuses that.
-
-On Continue: `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance intent_complete plan` if the run is
-still at Intent, then `${CLAUDE_PLUGIN_ROOT}/scripts/temper state advance plan_complete build`; if intent.md's header still says
-`Status: draft` (standalone mode — no intent gate ran before this one), flip it to
-`Status: accepted` and add `**Accepted-by:** {git config user.name} <{user.email}>` —
-the first human gate that reviews the intent is where acceptance is recorded (in the
-orchestrated flow that already happened at the Intent gate). Commit the artifacts in
-two steps — `git add .temper/specs/{slug}/` first, then `git commit -m "docs(plan):
-approve plan — {slug}"` as a separate call (not `add && commit`: the in-agent
-commit-gate hook checks `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` when the commit is submitted, and the
-artifact-only carve-out that lets this commit through mid-pipeline reads the
-already-staged set). Skip
-with a note if the project gitignores `.temper/specs/`. Standalone mode loads only
-`tasks.md` + `intent.md` for Build. Subprocess mode: the orchestrator handles the
-transition.
+The orchestrator owns the plan gate (`${CLAUDE_PLUGIN_ROOT}/commands/temper.md`, Stage 1); this stage
+never shows it: return the summary and stop. The gate's "Walk through step by step" option
+presents Intent, Diagram, Scenarios, Architecture, Blast Radius and Tasks one section at a time,
+with `AskUserQuestion` "Next step" / "Ask a question" between each, then asks the gate again. A
+change typed via "Other" is never approval: make the edit, then ask the same gate again.
 
 ## Edge Cases
 

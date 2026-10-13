@@ -52,7 +52,9 @@ serious bugs that the fixes of the round before had made. Almost every finding s
      or a skip of the person), and an armed run loops back to Build by itself after a failed Review or
      Check;
    - Claude never writes Temper's own files (the run state, the config during a run, the git hooks), and
-     a commit never skips the native hook (`--no-verify`, a changed hooks path);
+     a commit never goes around the native hook: `--no-verify`, a changed hooks path, a git alias that
+     runs a shell, and, while a run is active and not saved for later, a commit the hook does not check
+     (a merge, cherry-pick, revert, am, pull, commit-tree, or a commit of named paths);
    - each stage allows its own writes (Intent: intent.md; Plan and Design: the spec files and decision
      records; Build: the plan's files, tests and the person's Scope drift answers; Review and Check: the
      spec folder), and Save for later lifts that rule until the run moves on.
@@ -64,7 +66,10 @@ serious bugs that the fixes of the round before had made. Almost every finding s
    Off: nothing. Every drawing is a plain function of the CLI's files.
 8. **The standalone stage commands are doors.** `/temper:plan`, `/temper:build`, `/temper:check` and the
    other stage commands start or resume `/temper` at their stage instead of keeping their own copy of
-   the gates.
+   the gates (the orchestrator's section "Entering at a stage"). A door never moves a run: with a run
+   active it takes it up where the CLI says; with none, a later door starts a run for the spec and asks
+   each earlier gate in turn. ADR-0005's stage hook marks only `/temper:intent` now, since a door may end
+   at any gate.
 
 ## Consequences
 
@@ -79,3 +84,5 @@ serious bugs that the fixes of the round before had made. Almost every finding s
   call (ADR-0004's write through migration). A decision made before that call is asked again.
 - The in-agent commit check is gone. The guarantee rests on the native hook, which `temper init`
   installs and which the guard keeps Claude from skipping.
+- Later, not now: per task Build (`build.mode: per-task`) stays as the way back from grouped Build. Retire
+  it once grouped Build has proven itself in real runs; that is its own decision.

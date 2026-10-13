@@ -52,17 +52,16 @@ INTENT → PLAN → DESIGN? → BUILD → REVIEW → CHECK → COMMIT
 
 ## The Temper mod (Claude Code 2.1.287 or later)
 
-![Temper phase bar in Claude Code: Intent, Plan, Build, Review, Check, with numbered actions](https://raw.githubusercontent.com/galando/temper/c4b892bc6081ba77db0744de49410c79a1db93d2/docs/assets/temper-full.gif)
-
-On Claude Code 2.1.287 or later, Temper also ships a mod. It enforces the phases at the tool
+On Claude Code 2.1.287 or later, Temper also ships a mod. It enforces the stages at the tool
 layer and shows them. Older versions load the plugin as before.
 
 - **Claude cannot write code before you approve the intent.** The mod refuses an edit that does
-  not belong to the current phase, and it refuses `git commit` until the gates pass or you
-  override them. Every refusal names the next step.
-- **You see where you are.** A phase bar shows Intent, Plan, Build, Review and Check. Numbered
-  buttons give the same choices as the original `/temper` gates: Continue, Teach me, Grill me,
-  Discuss, Skip with a reason.
+  not belong to the current stage, and anything that would go around the commit hook, which
+  refuses `git commit` until the gates pass or you override them. Every refusal names the next step.
+- **You decide in one place.** Every gate is a question in Claude Code's own dialog, with or
+  without the mod: Continue, Loop back, Override and continue, Save for later, Teach me, Grill me.
+- **You see where you are.** A stage bar shows Intent, Plan, Build, Review and Check with their
+  results, the status and the details of the stage. It never decides anything.
 - **You choose how much it shows.** `uiMode` is full, minimal or off. `enforcement` is on or off.
 - **The CLI stays the source of truth.** The bar follows `.temper/build-state.json`. If the mod
   cannot tell where the run is, it blocks nothing.
@@ -83,8 +82,9 @@ Three you'll actually type. `/temper:temper` runs and routes the rest:
 | [`/temper:fix "…"`](commands.html#temperfix) | Root cause → failing test (write-protected) → minimal fix |
 | [`/temper:intent "…"`](commands.html#temperintent) | Capture an idea as a committed draft, build it later |
 
-Each stage is also available on its own (`/temper:plan`, `:build`, `:review`,
-`:check`, `:status`, `:pack`, `:init`) — see the [commands reference](commands.html).
+Each stage command (`/temper:plan`, `:build`, `:review`, `:check`) starts the same run at its
+stage, or takes up the one that is active; `:status`, `:pack` and `:init` stand alone. See the
+[commands reference](commands.html).
 
 **Autonomy (opt-in):** after you approve the plan, `/temper` can run the remaining
 stages unattended, parking before commit. It never commits, pushes, or merges.
@@ -107,7 +107,7 @@ every surface.
 
 - [Getting Started](getting-started.html) — installation and first run
 - [Commands Reference](commands.html) — full command documentation
-- [Testing the mod](mods-testing.html) — try the phase bar and enforcement on your machine
+- [Testing the mod](mods-testing.html) — try the stage bar and enforcement on your machine
 - [Methodology](methodology.html) — IDD + BDD + TDD, one contract file
 - [Packs](packs.html) — built-in and custom quality packs
 - [AI-Native SDLC Alignment](ai-native-sdlc.html) — temper vs Anthropic's playbook

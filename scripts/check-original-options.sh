@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
-# check-original-options.sh: every question option of the original orchestrator
-# (commands/temper.md) must still exist there, with the same words. Case does not matter.
+# check-original-options.sh: every answer the Temper mod reads from a question dialog is written, with
+# the same words, in the page that asks that question (ADR 0012: the person decides only in a dialog,
+# and the mod reads the answer from its result). Case does not matter.
 #
-# The other half lives in the mod's own action test, which imports the action table: "every
-# original option maps to a button" checks that each option below has a button with its label, and
-# "only the original options, plus Discuss, Play and Skip" checks that no button carries any other
-# label. This script reads only commands/temper.md.
-#
-# Two options are carried by a button with other words, on purpose:
-#   Override and continue -> "Skip with a reason"      (key 9)
-#   Other                 -> "Discuss"                 (key 4)
-# A new option in commands/temper.md is added to the table below, and to the action test's table.
+# The other half is the mod's own test of the gate answers, which pins how each of these words is read.
+# This script reads only the pages that ask the questions. A new answer the mod reads is added to the
+# table below, with the page that asks it.
 set -uo pipefail
 # With CDPATH set, cd prints the folder it enters, and the path below would hold it twice.
 unset CDPATH
@@ -18,36 +13,32 @@ unset CDPATH
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${HERE%/scripts}"
 [[ "$ROOT" != "$HERE" ]] || { echo "FAIL: cannot find the plugin folder from $HERE"; exit 1; }
-MD="$ROOT/commands/temper.md"
-
-# option in commands/temper.md | label in the action table
+# the answer | the page that asks for it
 TABLE='
-Continue to|Continue to
-Save for later|Save for later
-Grill Me|Grill me
-Teach Me|Teach me
-Walk through step by step|Walk through step by step
-Open HTML review|Open HTML review
-Share HTML review|Share HTML review
-Loop back|Loop back to
-Override and continue|Skip with a reason
-Architecture Depth Review|Architecture depth review
-Review config suggestions|Review config suggestions
-Change|Change
-Stop|Stop
-Commit|Commit
-Other|Discuss
-Accept a finding|Accept a finding
+Continue to|commands/temper.md
+Save for later|commands/temper.md
+Loop back to|commands/temper.md
+Override and continue|commands/temper.md
+Accept finding|commands/temper.md
+Override and commit|commands/temper.md
+Commit (Recommended)|commands/temper.md
+Start over|commands/temper.md
+Keep the agent|reference/build-groups.md
+Stage by stage|reference/autonomy.md
+Autonomous|reference/autonomy.md
+Add to plan|commands/temper.md
+Revert|commands/temper.md
+Allow once|commands/temper.md
 '
 
 FAIL=0
 PASS=0
-while IFS='|' read -r option label; do
+while IFS='|' read -r option page; do
   [[ -n "$option" ]] || continue
-  if grep -qiF -- "$option" "$MD"; then
+  if grep -qiF -- "$option" "$ROOT/$page"; then
     PASS=$((PASS+1))
   else
-    echo "FAIL: \"$option\" (button \"$label\") is no longer in commands/temper.md (update this table and the mod's action test)"
+    echo "FAIL: the answer \"$option\" is no longer in $page (the mod reads it; update this table and the mod's gate answer test)"
     FAIL=$((FAIL+1))
   fi
 done <<< "$TABLE"
