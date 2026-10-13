@@ -1,5 +1,5 @@
 {
-  "description": "Temper plugin hooks: deterministic standalone-stage gate guarantee. stage-marker.sh (UserPromptSubmit) records which gate a /temper:intent, /temper:plan, /temper:design, /temper:build, /temper:review or /temper:check session owes; verify-stage-gate.sh (Stop) refuses to end the session until the project's .temper/gates.json carries a verdict for it (any verdict, PASS or FAIL). Both fail open on every path except the one detected violation. See ADR 0005, deterministic stage gate enforcement, in the plugin's docs.",
+  "description": "Temper plugin hooks: deterministic gate guarantee for /temper:intent. stage-marker.sh (UserPromptSubmit) records that a /temper:intent session owes an intent gate (the other stage commands are doors into /temper and owe none); verify-stage-gate.sh (Stop) refuses to end the session until the project's .temper/gates.json carries a verdict for it (any verdict, PASS or FAIL). Both fail open on every path except the one detected violation. See ADR 0005, deterministic stage gate enforcement, and ADR 0012 in the plugin's docs.",
   "hooks": {
     "UserPromptSubmit": [
       {

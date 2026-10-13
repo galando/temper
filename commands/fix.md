@@ -232,8 +232,8 @@ never commit directly.
   then `${CLAUDE_PLUGIN_ROOT}/scripts/temper state clear`, then report "Committed: {hash} / Branch: {branch}.
   Temper does not push.".
 - **On FAIL:** show `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` and ask "Loop back to Fix (Recommended)" (when the
-  check gate failed: `${CLAUDE_PLUGIN_ROOT}/scripts/temper state loop check fix --reason "<why>"`, `state set next_stage fix`,
-  relaunch Stage 2 with the re-entry line, then Review and Check again) / "Override and commit" (with the
+  check gate failed: `${CLAUDE_PLUGIN_ROOT}/scripts/temper state loop check fix --reason "<why>"`, which moves the run
+  back to Fix, then relaunch Stage 2 with the re-entry line, then Review and Check again) / "Override and commit" (with the
   person's reason: `${CLAUDE_PLUGIN_ROOT}/scripts/temper override {stage} --reason "<the reason>"` for each failing
   stage, re-run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit`) / "Save for later".
 

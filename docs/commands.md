@@ -182,7 +182,8 @@ when your answer has none. Once the run moves on, the answer is spent.
 A plain `git commit` goes to the native `pre-commit` hook in every stage, and the hook decides: it
 lets a spec only commit and a Build checkpoint through, and every other commit only when every gate
 passed or was skipped with a reason. A commit the hook does not check (a merge, a cherry-pick, a revert,
-a commit of named paths) waits until the run is done, or until you chose Save for later.
+a commit of named paths) waits until the Commit steps cleared the run. Save for later stops the run and
+lifts no rule.
 
 A file outside the Build plan is never written first. Build lists it with why it is needed and the
 change, and Claude asks you the Scope drift question: add the file to the plan, revert (go on

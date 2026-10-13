@@ -47,13 +47,20 @@ the fixes of the round before had made. This release keeps one of each:
 - **The guard has three jobs.** (1) The calls only the person may cause need the person's answer at the
   step the run is at: leaving Intent or Plan, a skip, a step back, an accepted finding, arming autonomy,
   keeping a task agent's commits, and the commit override. Every other advance follows the verdict, and
-  an armed run loops Review or Check back to Build by itself. (2) While a run is active it refuses writes
-  to the run's files and the git hooks, `--no-verify` and a changed hooks path, a git alias that runs a
-  shell, and a commit the native hook does not check (a merge, cherry-pick, revert, am, pull, commit-tree
-  or a commit of named paths), unless the person chose Save for later. (3) The stage write rules. A plain
-  `git commit` goes to the native pre-commit hook in every stage. The `tool.call` hook carries a
-  registration catch, so a guard that throws or outruns its budget refuses Bash while a run is active
-  instead of letting the call run unguarded.
+  an armed run loops Review or Check back to Build by itself. A step back and another move in one command
+  are refused. (2) While a run is active, the Commit stage included, it refuses writes to the run's files,
+  the git hooks and the plugin data folder that holds the decisions, `--no-verify` and a changed hooks
+  path, a git alias that runs a shell, a git command that runs a command of its own (`rebase --exec`,
+  `bisect run`, `submodule foreach`, `filter-branch`, an editor, pager or diff program), git plumbing that
+  makes or moves a commit (`update-ref`, `stash create`, `stash store`, `replace`), and a commit the
+  native hook does not check (a merge, cherry-pick, revert, am, pull, commit-tree or a commit of named
+  paths). A `/temper:fix` run keeps the commit hook protections too. (3) The stage write rules; Build is
+  held to the plan's files as the person approved them, so a `plan.md` edited during Build does not widen
+  it. Save for later stops the run and lifts no rule. A plain `git commit` goes to the native pre-commit
+  hook in every stage. The `tool.call` hook carries a registration catch, so a guard that throws or
+  outruns its budget refuses Bash while a run is active instead of letting the call run unguarded.
+  A dialog that resolved by itself while the person was away, a request for another round of questions
+  and a multi select answer decide nothing.
 - **The bar shows the run.** The stage timeline (passed, failed, skipped, here, to come), one sentence of
   status, and the details of the stage (the groups and tasks of Build, the open findings of Review, the
   failed checks). Its two buttons decide nothing: Go on (key 1) runs `/temper:temper`, and Play (key 8)

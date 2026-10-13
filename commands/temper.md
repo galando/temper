@@ -293,10 +293,10 @@ step"**, **"Open HTML review"** and **"Share HTML review"**. Each returns to the
 gate — none advance or block the pipeline. A question holds four options at most (plus
 "Other"): when a gate has more, keep three on the first question, the moves first and the
 recommended one at the top (Continue to, Loop back to, Accept a finding, Override and
-continue, Run ... again), and make the fourth **"More options"**: a second question with the
-same header and the rest, four at most, "Save for later" among them when it did not fit. A
-move chosen there is the person's answer; any other option runs and then shows the gate
-again.
+continue, Run ... again), and make the fourth **"More options"**. When the person picks it, ask
+a second question with the same header in its own `AskUserQuestion` call, with the rest, four at
+most, "Save for later" among them when it did not fit, and "Start over" (see Resume). A move
+chosen there is the person's answer; any other option runs and then shows the gate again.
 
 Never re-derive gate logic here or in a stage prompt. Gate mechanics live only in the
 temper CLI and its tests, never in a prompt.
@@ -565,9 +565,8 @@ overridden), and — only when `run_mode == autonomous` — blast radius and par
   at once). The mod never clears or archives the state itself, so you do every step below, in
   order, ending with `state clear`.
   On Commit: set `intent.md`'s header to `**Status:** completed` + `**Completed:**
-  {date}` — this orchestrated path owns the terminal state flip (the standalone
-  `/temper:check` gate does it only when Check runs as its own command; here the
-  subprocess never gates, so the orchestrator must). If `build-context.json` recorded
+  {date}` — the orchestrator owns the terminal state flip (the Check subprocess never
+  gates, so the orchestrator must). If `build-context.json` recorded
   deviations from the plan (unplanned files, approach changes), write them into
   `plan.md` as a `## Deviations` section — the committed plan describes what was
   actually built. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state archive`: it writes the run's decision record to
@@ -597,15 +596,15 @@ what was actually verified, not a narrated summary.
 
 ## Resume
 
-`/temper` with no arguments and `build-state.json` exists → validate per
-`${CLAUDE_PLUGIN_ROOT}/reference/orchestrator-patterns.md` → "Resume Validation", then launch `next_stage`.
-`/temper "new feature"` while state exists for a **different** feature → follow
-"Nested Invocation Protection" there (say "feature", not "item"). `/temper` (no args) for
-the **same** feature already in progress → ask with `AskUserQuestion`, header `Temper resume`:
-"Continue from {next_stage} (Recommended)" or "Start over" (the person's Start over lets the reset
-through). On "Continue from {next_stage}": when that stage already has a verdict (the run waits at
-its gate), ask its gate question; otherwise launch its stage. The mod's Go on button is the same
-`/temper` with no arguments.
+`/temper` with no arguments, or with the feature that is already in progress, while
+`build-state.json` exists → validate per
+`${CLAUDE_PLUGIN_ROOT}/reference/orchestrator-patterns.md` → "Resume Validation", then take the run
+up: when `next_stage` already has a verdict (the run waits at its gate, or was saved for later), ask
+its gate question; otherwise launch its stage. The mod's Go on button is this same `/temper` with no
+arguments. Start over is under the gate question's "More options": when the person picks it, ask with
+`AskUserQuestion`, header `Temper resume`: "Start over" / "Cancel" (the person's Start over answer
+lets the reset through). `/temper "new feature"` while state exists for a **different** feature →
+follow "Nested Invocation Protection" there (say "feature", not "item").
 
 ---
 
@@ -627,8 +626,12 @@ at its stage, with its arguments as the feature (Plan) or the spec folder's name
    in one line that this stage needs a planned feature and that `/temper:temper "<feature>"`
    starts one, and do nothing else). Start a run for it
    (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --command temper`; the spec files
-   stay). Then walk the stages before the door's stage in order, without running them: Intent,
-   Plan, Design when the spec folder holds `design.md`, Build, Review. For each one run
+   stay), and set its complexity from the `**Complexity:**` header of its `intent.md` when it has
+   one (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity {tier}`), as Plan does. The
+   Design door runs Design only for a run that has it (a medium or complex feature with
+   `phases.design: true`, or a spec folder that holds `design.md`); otherwise say so in one line
+   and enter at Build. Then walk the stages before the door's stage in order, without running
+   them: Intent, Plan, Design when the run has it, Build, Review. For each one run
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate {stage}` and ask its `Temper gate` question as Gates
    says (on PASS "Continue to {next} (Recommended)" / "Save for later"; on FAIL "Override and
    continue" with the person's reason / "Save for later"). On Continue run only that stage's

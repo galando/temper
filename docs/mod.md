@@ -61,7 +61,11 @@ that decides.
 | Check | The spec folder only |
 
 A step back is a loop: you choose "Loop back to {stage}" with a reason, and the run does that stage
-again. "Save for later" gives you control: the stage rules stop until the run moves on.
+again. "Save for later" stops the run where it is; every rule still holds. To work without the
+rules for a while, turn enforcement off (`/temper:temper enforcement off`).
+
+Build is held to the plan you approved: the mod keeps the plan's files with your approval, so a
+`plan.md` edited during Build does not widen it. Your "Add to plan" answers to Scope drift do.
 
 ## Scope drift
 
@@ -160,6 +164,12 @@ For Bash, the mod does these steps:
 - It expands braces.
 - It follows `cd`.
 - It refuses a write that it cannot check when the command names Temper state.
+- It refuses, while a run is active, a git command that runs a command of its own (`rebase --exec`,
+  `bisect run`, `submodule foreach`, `filter-branch`, an editor, pager or diff program set for the
+  call), and git plumbing that makes or moves a commit without `git commit` (`update-ref`,
+  `stash create`, `stash store`, `replace`).
+- It refuses any use of Claude Code's plugin data folder (`~/.claude/plugins/data/`), where it keeps
+  your decisions, while a run is active.
 
 Thus common tricks fail closed. But the mod cannot see a variable that an earlier call or a profile
 set. A Bash command can still write ordinary source files. MCP file tools are not covered. The native
@@ -187,7 +197,13 @@ refuses `chmod`, `find -delete`, `git clean` and `--no-verify`.
 
 If a run's `build-state.json` is hidden or removed, the run stays enforced from the last known state.
 This continues until you turn enforcement off. The exception is the TRIVIAL exit (`state clear` at
-Intent before the run ever moved), which ends the run.
+Intent before the run ever moved and before Claude wrote an intent), which ends the run. Claude
+decides that a change is trivial; it tells you so in one line, and you are not asked.
+
+The rules hold through the Commit stage too, until the Commit steps clear the run. A `/temper:fix`
+run is not judged move by move (its own page asks every gate), but nothing goes around the native
+hook there either: `--no-verify`, a changed hooks path, a commit the hook does not check, and a write
+to the config or the git hooks are refused.
 
 A text reader cannot see some shell tricks. These are still possible:
 
@@ -195,6 +211,9 @@ A text reader cannot see some shell tricks. These are still possible:
 - A script that is already on disk and starts later.
 - A program that builds the script name or a path at run time.
 - The names inside a patch or an archive.
+- Everyday git that moves a branch to another commit (`reset`, `checkout -B`, `rebase`), or a commit
+  made in a worktree outside the project, where no run is: the native hook only sees `git commit` in
+  the project.
 
 MCP and PowerShell file tools are not checked. Thus the hard guarantees are the editing tools and the
 native `pre-commit` hook, not the Bash reader.

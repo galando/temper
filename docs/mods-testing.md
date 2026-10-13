@@ -228,9 +228,9 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
   the park report, then the dialog of the gate it parked at. Override with a reason: the run goes
   on, nothing is refused.
 - [ ] **Save for later, then go on.** At any gate choose Save for later. With the mod, the bar says
-  the stage is saved for later. Start a new session and run `/temper:temper` (or press Go on): the
-  `Temper resume` dialog "Continue from ... (Recommended)" / "Start over", then the gate dialog,
-  and Continue goes through.
+  the stage is saved for later, and a write outside the stage is still refused. Start a new session
+  and run `/temper:temper` (or press Go on): the gate dialog comes back, and Continue goes through.
+  Pick "More options", then "Start over": a `Temper resume` dialog asks "Start over" / "Cancel".
 - [ ] **Start over.** With a run saved, `/temper:temper "a different feature"`. A `Temper resume`
   dialog with "Start over". Choose it: the new run starts at Intent.
 - [ ] **Scope drift.** Ask Claude in Build to edit `README.md`. A dialog, header `Scope drift`,

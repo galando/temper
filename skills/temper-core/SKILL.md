@@ -71,8 +71,9 @@ in temper.config is ignored by the CLI). Architecture Depth applies the
 | Config Suggestions | Check | Suggest CLAUDE.md/AGENTS.md updates based on what was built |
 | HTML Review | Plan | Interactive plan review with inline comments, local or shared by link as a Claude artifact |
 
-With the Temper bar (the system prompt has a `Temper enforcement:` line, `active` or `off (UI only)`) the add-ons are buttons under key 0 (More), and the
-person's own message at a gate (key 4, Discuss) is the original "Other". Do not ask these as questions.
+The add-ons are options of the stage's `Temper gate` question, with the mod and without it (the rest behind
+"More options" when a gate has more than four). Each runs and then asks the same gate again; none moves the run.
+The person's own message at a gate is the original "Other".
 
 ## Full Docs
 One methodology file per command, each written out in full:

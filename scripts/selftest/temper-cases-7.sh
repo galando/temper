@@ -78,3 +78,14 @@ RUNL="$(bs run_id)"
 "$TEMPER" state get next_stage >/dev/null 2>&1
 assert_eq "ADR 0012: the migration runs once" "$RUNL" "$(bs run_id)"
 setup
+# The same migration on the first state set and on the first state loop (not only on a read).
+setup
+printf '{"stage":"plan_complete","spec":"demo","spec_path":".temper/specs/demo","command":"temper","next_stage":"build","run_mode":"interactive"}\n' > .temper/build-state.json
+"$TEMPER" state set base_sha 0123456 >/dev/null 2>&1
+assert_eq "ADR 0012: an old run state gets its run id on its first state set" "yes|0" \
+  "$([[ "$(bs run_id)" =~ ^[0-9a-f]{16}$ ]] && echo yes || echo no)|$(bs step)"
+setup
+printf '{"stage":"review_complete","spec":"demo","spec_path":".temper/specs/demo","command":"temper","next_stage":"check","run_mode":"interactive"}\n' > .temper/build-state.json
+"$TEMPER" state loop check build --reason again >/dev/null 2>&1
+assert_eq "ADR 0012: an old run state gets its run id on its first state loop, which counts one step" "yes|1|build" \
+  "$([[ "$(bs run_id)" =~ ^[0-9a-f]{16}$ ]] && echo yes || echo no)|$(bs step)|$(bs next_stage)"

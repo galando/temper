@@ -51,13 +51,15 @@ serious bugs that the fixes of the round before had made. Almost every finding s
      commits, clearing the run during a run. Every other advance follows the stage's own verdict (PASS,
      or a skip of the person), and an armed run loops back to Build by itself after a failed Review or
      Check;
-   - Claude never writes Temper's own files (the run state, the config during a run, the git hooks), and
-     a commit never goes around the native hook: `--no-verify`, a changed hooks path, a git alias that
-     runs a shell, and, while a run is active and not saved for later, a commit the hook does not check
-     (a merge, cherry-pick, revert, am, pull, commit-tree, or a commit of named paths);
+   - Claude never writes Temper's own files (the run state, the config during a run, the git hooks, the
+     plugin data folder that holds the decisions), and, while a run is active (the Commit stage
+     included, and a `/temper:fix` run too), a commit never goes around the native hook: `--no-verify`,
+     a changed hooks path, a git alias that runs a shell, a git command that runs a command of its own,
+     git plumbing that makes or moves a commit, and a commit the hook does not check (a merge,
+     cherry-pick, revert, am, pull, commit-tree, or a commit of named paths);
    - each stage allows its own writes (Intent: intent.md; Plan and Design: the spec files and decision
-     records; Build: the plan's files, tests and the person's Scope drift answers; Review and Check: the
-     spec folder), and Save for later lifts that rule until the run moves on.
+     records; Build: the files of the plan the person approved, tests and the person's Scope drift
+     answers; Review and Check: the spec folder; Commit: anything). Save for later lifts no rule.
 
    The commit gate is the CLI's alone: the native pre-commit hook runs `temper gate commit`.
 7. **The mod shows the run.** uiMode sets only how much is drawn. Full: the bar with the stage timeline,

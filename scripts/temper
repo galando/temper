@@ -763,6 +763,7 @@ cmd_state_get() {
 }
 
 cmd_state_set() {
+  _state_migrate_legacy
   [[ $# -ge 2 ]] || { echo "FAIL: usage: temper state set <dot.path> <value>" >&2; return 1; }
   # spec_path names the folder `state archive` writes into: only the shape `state init`
   # records (.temper/specs/<slug>) is accepted, so it can never point anywhere else.
@@ -921,6 +922,7 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
 }
 
 cmd_state_loop() { # temper state loop <from> <to> --reason "..."
+  _state_migrate_legacy
   local from="$1" to="$2"; shift 2 || true
   _stage_ok "$to" || { _stage_refuse "$to"; return 1; }
   local reason=""
