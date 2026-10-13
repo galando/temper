@@ -74,7 +74,9 @@ grouped loop and run the previous Build instead, inline in this context: read
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper model build` prints instead of working inline, and print
    its box verbatim.
 5. After all tasks: `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build --spec-path .temper/specs/{feature-slug}`,
-   then auto-chain → `/temper:review` → `/temper:check` and ask to commit.
+   then auto-chain → `/temper:review` → `/temper:check` and ask to commit. When a run is active
+   (`state get spec_path` prints a path), move it on as "After the loop" says: `state advance
+   build_complete review` on PASS, an advance after each PASS of the chain, and the one Commit question.
 
 ### Active Skills
 
