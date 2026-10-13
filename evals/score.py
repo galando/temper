@@ -165,6 +165,7 @@ def transcript_score(paths):
                                 unanswered.append(what[1].strip()[:160])
                             answered_since_move = False
     out = {"gates_asked": asked, "moves": moves, "moves_without_answer": len(unanswered), "unanswered": unanswered[:5], "armed": armed}
+    out["agents"] = agent_tokens(paths)
     if cost:
         out["cost_usd"] = cost.get("totalCostUSD")
         out["minutes"] = round((cost.get("totalDuration") or 0) / 60000.0, 1)
@@ -174,6 +175,50 @@ def transcript_score(paths):
         a = datetime.datetime.fromisoformat(first_ts.replace("Z", "+00:00"))
         b = datetime.datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
         out["minutes"] = round((b - a).total_seconds() / 60.0, 1)
+    return out
+
+
+def usage_of(path):
+    """Token totals of the assistant messages in one transcript file."""
+    keys = {"input": "input_tokens", "cache_write": "cache_creation_input_tokens", "cache_read": "cache_read_input_tokens", "output": "output_tokens"}
+    by_id = {}
+    with open(path) as f:
+        for n, line in enumerate(f):
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            msg = e.get("message") if isinstance(e.get("message"), dict) else {}
+            u = msg.get("usage") if e.get("type") == "assistant" else None
+            if not isinstance(u, dict):
+                continue
+            # One API response is written as several entries (one per content block), and an early one
+            # may hold a partial count: keep the largest count of each response.
+            row = by_id.setdefault(msg.get("id") or n, {k: 0 for k in keys})
+            for k, field in keys.items():
+                row[k] = max(row[k], int(u.get(field) or 0))
+    return {k: sum(r[k] for r in by_id.values()) for k in keys}
+
+
+def agent_tokens(paths):
+    """The main loop's tokens and each subagent's, by agent type. Claude Code keeps a subagent's
+    transcript in <session>/subagents/agent-<id>.jsonl beside the session's, with a .meta.json
+    that names its agent type."""
+    out = {"main": None, "by_type": {}}
+    for path in paths:
+        out["main"] = usage_of(path)
+        sub = os.path.join(os.path.splitext(path)[0], "subagents")
+        if not os.path.isdir(sub):
+            continue
+        for name in sorted(os.listdir(sub)):
+            if not name.endswith(".jsonl"):
+                continue
+            meta = read_json(os.path.join(sub, name[: -len(".jsonl")] + ".meta.json"), {})
+            kind = str(meta.get("agentType") or "unknown")
+            row = out["by_type"].setdefault(kind, {"runs": 0, "input": 0, "cache_write": 0, "cache_read": 0, "output": 0})
+            row["runs"] += 1
+            for k, v in usage_of(os.path.join(sub, name)).items():
+                row[k] += v
     return out
 
 
@@ -236,7 +281,8 @@ def row_for(s):
     asked = "%s asked, %s moves, %s without an answer" % (gates.get("gates_asked", "n/a"), gates.get("moves", "n/a"), gates.get("moves_without_answer", "n/a")) if gates else "not measured"
     usage = s.get("session") or s.get("unattended") or {}
     cost = usage.get("cost_usd")
-    return "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
+    main = (gates.get("agents") or {}).get("main") if gates else None
+    return "| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
         s["date"],
         s["plugin_commit"] or "?",
         s["fixture"],
@@ -246,6 +292,7 @@ def row_for(s):
         "%s, %s" % (s["check"]["verdict"] or "no verdict", "names it" if s["check"]["flagged"] else "does not name it"),
         asked,
         fmt_tokens(usage.get("tokens")),
+        fmt_tokens(main) if main else "n/a",
         "%.2f" % cost if isinstance(cost, (int, float)) else "n/a",
         usage.get("minutes", "n/a"),
     )
