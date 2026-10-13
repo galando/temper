@@ -312,6 +312,35 @@ assert_eq "view: a run that never left Intent with no spec file written is the T
 setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1
 assert_eq "view: a new run with an empty spec folder may take the TRIVIAL exit" "True" "$(vw "d['guard']['trivial_exit']")"
 
+# --- the independent review of 9.7.0 (step 9): each finding, reproduced ---
+# 1. No advance from a stage the run is not at: `started` is the state before Intent, never a stage to leave.
+fresh
+assert_exit "review 1: state advance started build is refused" 1 "$TEMPER" state advance started build
+assert_exit "review 1: state advance started nowhere is refused" 1 "$TEMPER" state advance started nowhere
+assert_eq "review 1: the run is still at Intent" "intent" "$("$TEMPER" state get next_stage)"
+# 2. Text from a failed row or a finding is never shell code in a call the orchestrator runs as printed.
+fresh; printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config
+gpass intent plan build; for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+"$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+gfail review "no blocking findings" 'src/a.sh:4 runs $(touch PWNED1) and `touch PWNED2` on install'
+CALL="$(nx "d['calls'][0]")"; ( bash -c "$CALL" ) >/dev/null 2>&1
+assert_eq "review 2: an armed loop back runs no text of the finding, and keeps it as written" "0|0|1" \
+  "$([[ -e PWNED1 ]] && echo 1 || echo 0)|$([[ -e PWNED2 ]] && echo 1 || echo 0)|$(grep -c 'touch PWNED1' .temper/feedback-loops.json)"
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}, "confirmed": "x"}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
+gfail build "tests pass" 'npm test exited 1: `touch PWNED3` $(touch PWNED4)'
+CALL="$(nx "d['ask']['options'][0]['calls'][0]")"; ( bash -c "$CALL" ) >/dev/null 2>&1
+assert_eq "review 2: Run Build again runs no text of the failed row" "0|0" "$([[ -e PWNED3 ]] && echo 1 || echo 0)|$([[ -e PWNED4 ]] && echo 1 || echo 0)"
+# 4. The files the person approved are the CLI's: no state set changes them.
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+assert_exit "review 4: state set approved_files is refused" 1 "$TEMPER" state set approved_files none
+# 9. The TRIVIAL exit still holds after the Intent agent's after calls ran its gate.
+setup; rm -f .temper/specs/demo/*.md; "$TEMPER" state init demo >/dev/null 2>&1; "$TEMPER" gate intent >/dev/null 2>&1
+assert_eq "review 9: a run that never left Intent, with no spec file, may take the TRIVIAL exit after its gate ran" "True" "$(vw "d['guard']['trivial_exit']")"
+# 10. A door's walked stage that fails its check names the failed rows in its question.
+fresh; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init demo --enter review >/dev/null 2>&1; gfail intent "problem stated" "no Problem section"
+assert_eq "review 10: the walked stage's question names what failed" "1" "$(nx "int('problem stated: no Problem section' in d['ask']['question']['question'])")"
+
 # --- the view is local run state ---
 fresh; "$TEMPER" init >/dev/null 2>&1; "$TEMPER" next --json >/dev/null 2>&1
 assert_eq "init: view.json is listed in the clone's info/exclude, so it is never an untracked file of the project" "1|0" \

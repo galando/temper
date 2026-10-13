@@ -357,7 +357,7 @@ async function recordAnswers($: Api, result: unknown): Promise<void> {
   const stage = snap.run.stage
   let kept = false
   for (const a of answersIn(result, snap.view)) {
-    if (a.kind === 'gate') await keepDecision(io, snap.at, a.stage || stage, { kind: 'gate', label: a.option.label, move: a.option.move ?? '', calls: a.option.calls, steps: a.option.steps, reason: a.reason })
+    if (a.kind === 'gate') await keepDecision(io, snap.at, a.stage || stage, { kind: 'gate', label: a.option.label, move: a.option.move ?? '', calls: a.option.calls, steps: a.option.steps, reason: a.reason, ask: a.ask })
     else if (a.kind === 'restart') await keepDecision(io, snap.at, stage, { kind: 'restart', calls: a.option.calls, reason: '' })
     else await keepDecision(io, snap.at, stage, { kind: 'drift', path: a.path, choice: a.choice, reason: a.reason })
     kept = true

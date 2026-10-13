@@ -99,8 +99,40 @@ const PROTECTED: ReadonlyArray<readonly [ProtectedKind, RegExp]> = [
   ['config', /(^|\/)\.claude\/temper\.config$/i],
   ['hooks', /(^|\/)\.git\/(?:hooks(\/|$)|hooks-temper(\/|$)|temper-git-hooks(\/|$)|config$|temper-gate(\/|$)|temper-pre-commit(\/|$))/i],
   // Folders that hold guarded files: removing or replacing one removes them too.
-  ['folder', /(^|\/)\.temper(\/specs(\/[^/\s]+)?)?\/?$/i],
+  ['folder', /(^|\/)\.temper(\/specs(\/[^/\s]+)?|\/evidence)?\/?$/i],
 ]
+
+// A guarded path of each kind, to test a glob a Bash command writes against (`rm .temper/*.json`).
+const GUARDED_SAMPLES = [
+  '.temper', '.temper/specs', '.temper/evidence', '.temper/gates.json', '.temper/status.json', '.temper/overrides.json',
+  '.temper/build-state.json', '.temper/groups.json', '.temper/usage.json', '.temper/view.json', '.temper/feedback-loops.json',
+  '.temper/evidence/review.json', '.claude/temper.config', '.git/config', '.git/hooks', '.git/hooks/pre-commit', '.git/temper-gate',
+]
+// A glob as bash reads it, one segment at a time: `*` and `?` stay inside a segment, and a segment that starts with one
+// does not match a name that starts with a dot (bash's default: `rm -rf *` leaves `.temper` alone).
+const globRe = (glob: string): RegExp =>
+  new RegExp(
+    '^' +
+      glob
+        .split('/')
+        .map(seg => (/^[*?[]/.test(seg) ? '(?!\\.)' : '') + seg.split('').map(c => (c === '*' ? '[^/]*' : c === '?' ? '[^/]' : c === '[' || c === ']' ? c : c.replace(/[.+^${}()|\\]/g, '\\$&'))).join(''))
+        .join('/') +
+      '$',
+    'i',
+  )
+
+// Which guarded kind a glob a command writes can reach, or null (the glob against a guarded path of each kind).
+function globKind(path: string): ProtectedKind | null {
+  if (!/[*?[]/.test(path)) return null
+  let re: RegExp
+  try {
+    re = globRe(path)
+  } catch {
+    return null
+  }
+  const hit = GUARDED_SAMPLES.find(g => re.test(g))
+  return hit === undefined ? null : protectedKind(hit)
+}
 
 // Which guarded Temper path a path names, or null. `..` and `.` segments are collapsed first.
 export function protectedKind(path: string): ProtectedKind | null {
@@ -244,7 +276,7 @@ const AUTONOMY_DENY =
   'It needs autonomy.enabled: true in .claude/temper.config, which only the user sets.'
 
 // The keys of build-state.json that only the CLI's own moves write. next_stage is a step (see the back calls).
-const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step'])
+const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files'])
 
 const DONE_OVERRIDE_DENY =
   "Temper: the run is done, and an override now is the user's choice. " +
@@ -286,7 +318,7 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   if (guardsCommit && c.noVerify) return { deny: HOOKS_DENY }
   if (guardsCommit && c.hooksPath) return protectedDeny('hooks', cli)
   // A plain write onto a protected file: the same list, and the same texts, as the editing tools.
-  const kinds = c.writes.map(p => protectedKind(normalizePath(p, ctx.root))).filter((k): k is ProtectedKind => k !== null && (guardsCommit || (k !== 'config' && k !== 'hooks')))
+  const kinds = c.writes.map(p => protectedKind(normalizePath(p, ctx.root)) ?? globKind(normalizePath(p, ctx.root))).filter((k): k is ProtectedKind => k !== null && (guardsCommit || (k !== 'config' && k !== 'hooks')))
   if (kinds.length > 0) return protectedDeny(kinds.find(k => k === 'events' || k === 'overrides') ?? (kinds[0] as ProtectedKind), cli)
 
   if (!active) return ALLOW
@@ -326,7 +358,8 @@ function personOnly(w: readonly string[], r: RunFacts): boolean {
   const [a, b, c, d] = w
   if (a === 'override') return true
   if (a === 'group' && b === 'reopen') return w.some(x => x === '--accept-foreign' || x.startsWith('--accept-foreign='))
-  if (a === 'evidence') return b === 'accept'
+  // Accepting a finding, or clearing a ledger (which erases what a stage found), is the person's.
+  if (a === 'evidence') return b === 'accept' || b === 'clear'
   if (a !== 'state') return false
   if (b === 'advance') return c === 'intent_complete' || c === 'plan_complete'
   if (b === 'loop' || b === 'init' || b === 'clear' || b === 'archive') return true

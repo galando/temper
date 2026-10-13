@@ -157,7 +157,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "auto",
    "calls": [
-    "/plugin/scripts/temper park --verdict PARKED-NEEDS-DECISION --reason \"Build failed: tests pass: 2 tests fail: tests/app.test.ts\""
+    "/plugin/scripts/temper park --verdict PARKED-NEEDS-DECISION --reason 'Build failed: tests pass: 2 tests fail: tests/app.test.ts'"
    ],
    "say": "Build failed; the armed run parks for you.",
    "stage": "build",
@@ -755,7 +755,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "auto",
    "calls": [
-    "/plugin/scripts/temper state loop check build --reason \"tests pass: exit 1: 2 failed\""
+    "/plugin/scripts/temper state loop check build --reason 'tests pass: exit 1: 2 failed'"
    ],
    "say": "Check failed; the armed run loops back to Build.",
    "stage": "check",
@@ -1380,7 +1380,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "auto",
    "calls": [
-    "/plugin/scripts/temper park --verdict SHIP-PENDING-COMMIT --reason \"every gate passed\""
+    "/plugin/scripts/temper park --verdict SHIP-PENDING-COMMIT --reason 'every gate passed'"
    ],
    "say": "The armed run parks before the commit; the person decides.",
    "stage": "commit",
@@ -1684,7 +1684,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "auto",
    "calls": [
-    "/plugin/scripts/temper state loop review build --reason \"critical findings: 1 open critical finding\""
+    "/plugin/scripts/temper state loop review build --reason 'critical findings: 1 open critical finding'"
    ],
    "say": "Review failed; the armed run loops back to Build.",
    "stage": "review",
@@ -2125,7 +2125,7 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper state redo build --reason \"tests pass: 2 tests fail: tests/app.test.ts\""
+      "/plugin/scripts/temper state redo build --reason 'tests pass: 2 tests fail: tests/app.test.ts'"
      ],
      "description": "Mend what the failed rows name, then check Build again.",
      "label": "Run Build again (Recommended)",

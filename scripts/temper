@@ -722,6 +722,11 @@ cmd_state_set() {
     echo "FAIL: $1 is kept by the CLI (state init writes run_id; every change of next_stage counts a step)" >&2
     return 1
   fi
+  # ADR 0013: the files the person approved are recorded when the run leaves Plan, and Build is held to them.
+  if [[ "$1" == "approved_files" ]]; then
+    echo "FAIL: approved_files is kept by the CLI (state advance plan_complete records the plan's files as the person approved them)" >&2
+    return 1
+  fi
   [[ -f "$STATE_FILE" ]] || { echo '{}' > "$STATE_FILE"; }
   if [[ "$1" == "next_stage" ]]; then
     # The stage the run is already at changes nothing. A stage earlier in the run's sequence redoes the stages from it,
@@ -864,7 +869,7 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
   for s in $valid_stages; do
     [[ "$stage" == "${s}_complete" ]] && known=true
   done
-  if [[ "$known" != "true" && "$stage" != "started" ]]; then
+  if [[ "$known" != "true" ]]; then
     echo "FAIL: unknown stage '$stage' for command '$command' (expected one of: $(for s in $valid_stages; do printf '%s_complete ' "$s"; done))" >&2
     return 1
   fi

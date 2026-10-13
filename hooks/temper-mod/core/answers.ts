@@ -12,7 +12,8 @@ export type DriftChoice = 'add' | 'revert' | 'allow-once'
 
 export type Answer =
   // A gate question's option (and the reason, when the option needs one).
-  | { kind: 'gate'; stage: string; question: string; option: Option; reason: string }
+  // `ask` is the CLI's question of this step that the answer belongs to (More options and the reason question included).
+  | { kind: 'gate'; stage: string; question: string; ask: string; option: Option; reason: string }
   // The `Temper resume` question's Start over.
   | { kind: 'restart'; option: Option }
   // A Scope drift question's answer for one file.
@@ -67,14 +68,14 @@ export function answersIn(result: unknown, view: RunView): Answer[] {
       const option = a.options.find(o => o.label === answer)
       if (option === undefined || option.move === null) continue
       if (option.reasonQuestion !== null && note === '') continue
-      out.push({ kind: 'gate', stage: a.stage, question: q.question, option, reason: note })
+      out.push({ kind: 'gate', stage: a.stage, question: q.question, ask: view.ask?.question.question ?? q.question, option, reason: note })
     }
     // A reason question: any answer but Cancel is the reason, a typed one too.
     for (const a of asks(view.ask)) {
       for (const option of a.options) {
         const rq: Question | null = option.reasonQuestion
         if (rq === null || !same(rq, q.header, q.question) || answer === CANCEL) continue
-        out.push({ kind: 'gate', stage: a.stage, question: a.question.question, option, reason: [answer, note].filter(t => t !== '').join(' ') })
+        out.push({ kind: 'gate', stage: a.stage, question: a.question.question, ask: view.ask?.question.question ?? a.question.question, option, reason: [answer, note].filter(t => t !== '').join(' ') })
       }
     }
     // Start over.

@@ -50,11 +50,18 @@ export function statements(command: string): string[][] {
     } else if (ch === '"') {
       let j = i + 1
       for (; j < command.length && command[j] !== '"'; j++) {
+        if (command[j] === '\\' && command[j + 1] === '\n') {
+          j++
+          continue
+        }
         if (command[j] === '\\' && j + 1 < command.length) j++
         word += command[j]
       }
       inWord = true
       i = j
+    } else if (ch === '\\' && command[i + 1] === '\n') {
+      // A line continuation: bash joins the two lines.
+      i++
     } else if (ch === '\\' && i + 1 < command.length) {
       word += command[i + 1]
       inWord = true
@@ -71,7 +78,7 @@ export function statements(command: string): string[][] {
       words.push('<<')
       i = j - 1
     } else if (ch === '>' || ch === '<') {
-      // A redirect: `>`, `>>`, `>|`, `&>`, `2>`. A file descriptor number before it belongs to it.
+      // A redirect: `>`, `>>`, `>|`, `&>`, `2>`, `>&`, `<>`. A file descriptor number before it belongs to it.
       if (/^\d+$/.test(word)) {
         word = ''
         inWord = false
@@ -116,6 +123,8 @@ const SCRIPT = /(?:^|\/)temper$/
 const WRITERS = new Set(['rm', 'rmdir', 'unlink', 'shred', 'truncate', 'touch', 'chmod', 'chown', 'tee', 'mv', 'cp', 'install', 'ln', 'rsync'])
 // The ones whose last word is where they write.
 const TO_LAST = new Set(['cp', 'install', 'ln', 'rsync'])
+// The ones that take the folder they write into as `-t DIR`.
+const TARGET_DIR = new Set(['cp', 'mv', 'install', 'ln'])
 
 const ENV_WORD = /^[A-Za-z_][A-Za-z0-9_]*=/
 
@@ -130,7 +139,11 @@ function program(words: string[]): number {
 function written(words: string[]): string[] {
   const out: string[] = []
   for (let i = 0; i < words.length; i++) {
-    if (/^>[>|]?$/.test(words[i] as string) && words[i + 1] !== undefined) out.push(words[i + 1] as string)
+    const op = words[i] as string
+    const to = words[i + 1]
+    if (to === undefined) continue
+    // `>`, `>>`, `>|` and `<>` write their file; `>&` and `>>&` write a file unless they name a file descriptor (`2>&1`).
+    if (/^(?:>[>|]?|<>)$/.test(op) || (/^>>?&$/.test(op) && !/^(?:\d+|-)$/.test(to))) out.push(to)
   }
   const at = program(words)
   const cmd = (words[at] ?? '').split('/').pop() ?? ''
@@ -139,9 +152,13 @@ function written(words: string[]): string[] {
   // first word when no -e names the script).
   const args: string[] = []
   let script = false
+  // `cp -t DIR SRC...` (also mv, install, ln): the files land in DIR.
+  let into: string | null = null
   for (let i = at + 1; i < words.length; i++) {
     const w = words[i] as string
     if (/^[<>]/.test(w)) i++
+    else if (TARGET_DIR.has(cmd) && (w === '-t' || w === '--target-directory')) into = words[++i] ?? null
+    else if (TARGET_DIR.has(cmd) && w.startsWith('--target-directory=')) into = w.slice('--target-directory='.length)
     else if (edits && ['-e', '-f', '--expression', '--file'].includes(w)) {
       script = true
       i++
@@ -151,7 +168,10 @@ function written(words: string[]): string[] {
     } else if (!w.startsWith('-')) args.push(w)
   }
   if (cmd === 'sed' && !script) args.shift()
-  if (WRITERS.has(cmd)) out.push(...(TO_LAST.has(cmd) ? args.slice(-1) : args))
+  if (into !== null) {
+    const dir = into.replace(/\/+$/, '')
+    out.push(...(cmd === 'mv' ? args : []), ...args.map(a => `${dir}/${a.split('/').pop() ?? a}`))
+  } else if (WRITERS.has(cmd)) out.push(...(TO_LAST.has(cmd) ? args.slice(-1) : args))
   // sed -i, perl -i: they rewrite the files they are given.
   else if (edits && words.slice(at + 1).some(w => /^-[A-Za-z]*i/.test(w) || w === '--in-place')) out.push(...args)
   else if (cmd === 'dd') out.push(...args.filter(a => a.startsWith('of=')).map(a => a.slice(3)))
@@ -181,7 +201,8 @@ const HOOKS_PATH = /core\.hookspath/i
 function skipsHook(args: string[]): boolean {
   for (let i = 0; i < args.length; i++) {
     const w = args[i] as string
-    if (w === '--no-verify') return true
+    // git takes an unambiguous abbreviation of a long option: `--no-veri` and `--no-verif` are `--no-verify`.
+    if (/^--no-veri(?:fy?)?$/.test(w)) return true
     if (w === '--') return false
     if (!/^-[A-Za-z]+$/.test(w)) continue
     for (let k = 1; k < w.length; k++) {
@@ -210,6 +231,9 @@ export function readShell(command: string): ShellRead {
         const reads = git.rest.some(w => ['--get', '--get-all', '--get-regexp', '--list', '-l'].includes(w))
         // `git config core.hooksPath` with no value reads it; with a value, or with --unset, it changes it.
         if (at >= 0 && !reads && (git.rest[at + 1] !== undefined || git.rest.some(w => w.startsWith('--unset') || w === '--replace-all' || w === '--add'))) read.hooksPath = true
+        // Removing or renaming the core section drops core.hooksPath with it.
+        const section = git.rest.findIndex(w => w === '--remove-section' || w === '--rename-section')
+        if (section >= 0 && (git.rest[section + 1] ?? '').toLowerCase() === 'core') read.hooksPath = true
       }
     }
     // The first word that names the script starts a call: the words after it are the call's.

@@ -9,7 +9,8 @@ type Stamp = { id: string; run: string; step: number; stage: string; ts: number 
 
 export type Decision =
   // A gate answer: the option's label and move, and the exact calls and steps it maps to.
-  | (Stamp & { kind: 'gate'; label: string; move: string; calls: string[]; steps: string[]; reason: string })
+  // `ask`: the CLI's question it answered (a step may ask more than one: Build's groups, an accepted finding).
+  | (Stamp & { kind: 'gate'; label: string; move: string; calls: string[]; steps: string[]; reason: string; ask?: string })
   // Start over: the saved run state may go, until the next state init begins a new run.
   | (Stamp & { kind: 'restart'; calls: string[]; reason: string })
   // A Scope drift answer: counts for the run and the path. Allow once is used by one write.
@@ -25,8 +26,12 @@ type Gate = Extract<Decision, { kind: 'gate' }>
 const gatesAt = (book: readonly Decision[], at: At): Gate[] =>
   book.filter((d): d is Gate => d.kind === 'gate' && d.run === at.run && d.step === at.step).sort(latestFirst)
 
-// The answer that counts now: the latest gate answer at the CLI's run and step.
-export const currentAnswer = (book: readonly Decision[], at: At): Gate | null => gatesAt(book, at)[0] ?? null
+// The answer that counts now: the latest gate answer at the CLI's run and step, to the question the CLI asks now. While
+// no question is asked (Claude carries the answer out) the latest answer at the step counts.
+export const currentAnswer = (book: readonly Decision[], at: At, asked: string | null = null): Gate | null => {
+  const latest = gatesAt(book, at)[0] ?? null
+  return latest !== null && asked !== null && latest.ask !== undefined && latest.ask !== asked ? null : latest
+}
 
 // The calls the person's answers allow at this step: those of the latest answer, and of every finding accepted at it.
 export function allowedCalls(book: readonly Decision[], at: At): string[] {
@@ -83,7 +88,7 @@ export function parseBook(raw: unknown): Decision[] {
     const o = d as Record<string, unknown>
     if (!(typeof o.id === 'string' && typeof o.run === 'string' && typeof o.step === 'number' && typeof o.stage === 'string' && typeof o.ts === 'number')) return false
     if (typeof o.reason !== 'string') return false
-    if (o.kind === 'gate') return typeof o.label === 'string' && typeof o.move === 'string' && strings(o.calls) && strings(o.steps)
+    if (o.kind === 'gate') return typeof o.label === 'string' && typeof o.move === 'string' && strings(o.calls) && strings(o.steps) && (o.ask === undefined || typeof o.ask === 'string')
     if (o.kind === 'restart') return strings(o.calls)
     if (o.kind === 'drift') return typeof o.path === 'string' && (o.choice === 'add' || o.choice === 'revert' || o.choice === 'allow-once')
     return false

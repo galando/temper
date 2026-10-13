@@ -14,6 +14,7 @@ is a change of VERSION. Standard library only.
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -325,7 +326,8 @@ class Builder:
 
         walked = self.walked(stage)
         if walked:
-            text = "%s: %s (this stage ran before; it is checked, not run again). Go on to %s?" % (label, state_of, LABEL.get(nxt, nxt))
+            text = "%s: %s%s (this stage ran before; it is checked, not run again). Go on to %s?" % (
+                label, state_of, " (%s)" % why if why and not passed else "", LABEL.get(nxt, nxt))
             go = self.leave(stage)
             if passed:
                 return self.question(GATE_HEADER, text, stage=stage, options=[
@@ -391,7 +393,7 @@ class Builder:
                 return self.question(GATE_HEADER, "%s: %s. Continue to %s?" % (label, state_of, LABEL[nxt]), stage=stage,
                                      options=opts + back_opt() + [self.save()])
             again = self.opt("Run %s again (Recommended)" % label, "Mend what the failed rows name, then check %s again." % label,
-                             move="redo", calls=[self.c('state redo %s --reason "%s"' % (stage, why.replace('"', "'")[:300]))])
+                             move="redo", calls=[self.c('state redo %s --reason %s' % (stage, shlex.quote(why[:300])))])
             return self.question(GATE_HEADER, "%s: the check failed (%s). Run %s again?" % (label, why, label), stage=stage,
                                  options=[again] + back_opt() + [override_opt(go), self.save()])
 
@@ -583,10 +585,10 @@ class Builder:
 
     def group_failed(self, g, ginfo):
         gid = g["id"]
-        why = str((ginfo.get("gate") or {}).get("reason", "")).replace('"', "'")[:200]
+        why = str((ginfo.get("gate") or {}).get("reason", ""))[:200]
         if self.r.armed():  # nobody is there to answer: an armed run parks, as on every stop
             return {"action": "auto", "stage": "build",
-                    "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason "group %s failed its check: %s"' % (gid, why))],
+                    "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("group %s failed its check: %s" % (gid, why)))],
                     "say": "Group %s failed its check; the armed run parks for you." % gid}
         reopen = [self.c("group reopen %s %s" % (gid, " ".join("--task %d" % n for n in g.get("tasks", []))))]
         opts = [self.opt("Run the group's tasks again (Recommended)", "Each task of %s runs again." % gid, move="redo", calls=reopen)]
@@ -606,7 +608,7 @@ class Builder:
         foreign = g.get("parked_foreign") or []
         if r.armed():
             return {"action": "auto", "stage": "build",
-                    "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason "group %s is parked: %s"' % (gid, str(g.get("parked_reason", "")).replace('"', "'")[:200]))],
+                    "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("group %s is parked: %s" % (gid, str(g.get("parked_reason", ""))[:200])))],
                     "say": "Group %s is parked; the armed run parks for you." % gid}
         if foreign:
             wt = ""
@@ -667,8 +669,8 @@ class Builder:
             return {"action": "work", "stage": "commit", "calls": [self.c("gate commit")], "agents": [], "say": "The commit gate is checked."}
         if r.armed():
             kind = "SHIP-PENDING-COMMIT" if verdict == "PASS" else "PARKED-NEEDS-DECISION"
-            why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows("commit"))[:200].replace('"', "'")
-            return {"action": "auto", "stage": "commit", "calls": [self.c('park --verdict %s --reason "%s"' % (kind, why or "every gate passed"))],
+            why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows("commit"))[:200]
+            return {"action": "auto", "stage": "commit", "calls": [self.c('park --verdict %s --reason %s' % (kind, shlex.quote(why or "every gate passed")))],
                     "say": "The armed run parks before the commit; the person decides."}
         if verdict == "PASS":
             if r.state.get("parked"):
@@ -730,12 +732,12 @@ class Builder:
                             "say": "%s passed; the armed run goes on." % LABEL[stage]})
                 return out
             back = BACK_TO.get(r.command, {}).get(stage)
-            why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows(stage))[:200].replace('"', "'")
+            why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows(stage))[:200]
             if stage in ("review", "check") and back and r.can_loop(stage, back):
-                out.update({"action": "auto", "stage": stage, "calls": [self.c('state loop %s %s --reason "%s"' % (stage, back, why))],
+                out.update({"action": "auto", "stage": stage, "calls": [self.c('state loop %s %s --reason %s' % (stage, back, shlex.quote(why)))],
                             "say": "%s failed; the armed run loops back to %s." % (LABEL[stage], LABEL[back])})
                 return out
-            out.update({"action": "auto", "stage": stage, "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason "%s failed: %s"' % (LABEL[stage], why))],
+            out.update({"action": "auto", "stage": stage, "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("%s failed: %s" % (LABEL[stage], why)))],
                         "say": "%s failed; the armed run parks for you." % LABEL[stage]})
             return out
         q = self.ask(stage)
@@ -756,8 +758,6 @@ def advance_ok(run, done, nxt):
     stage's check passed or the person skipped it (ADR 0013)."""
     if not run.active:
         return "no active run (temper state init first)"
-    if done == "started":
-        return None
     if not done.endswith("_complete"):
         return "'%s' is not <stage>_complete" % done
     stage = done[: -len("_complete")]
@@ -976,7 +976,7 @@ def view(run, nxt):
         "guard": {"stage": r.stage, "spec": r.spec, "slug": r.slug, "fix_run": r.command == "fix",
                   "grouped": bool(r.groups), "armed": r.armed(), "autonomy_enabled": r.on("autonomy.enabled"),
                   "plan_files": plan_view(r)["files"], "step": r.state.get("step"), "run_id": r.state.get("run_id"),
-                  "trivial_exit": r.stage == "intent" and int(r.state.get("step") or 0) == 0 and not r.gates and not r.overrides
+                  "trivial_exit": r.stage == "intent" and int(r.state.get("step") or 0) == 0 and set(r.gates) <= {"intent"} and not r.overrides
                   and not any(os.path.isfile(os.path.join(r.spec, n)) for n in ("intent.md", "plan.md", "tasks.md", "design.md"))},
         "plan": plan_view(r),
         "build": build_view(r),

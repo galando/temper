@@ -167,9 +167,10 @@ The guard has three jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-m
 - **Temper's own files.** The CLI's files in `.temper` (the gates, the run state, the evidence ledger,
   the loop counter, the view), and during a run `.claude/temper.config` and the git hooks, are written by
   neither the editing tools nor a plain Bash write (a redirect, or `rm`, `mv`, `cp`, `tee`, `sed -i`
-  and the like naming the file). Each stage allows its own writes by the editing tools.
-- **The native hook.** While a run is active, `--no-verify`, `-n` and a change of `core.hooksPath` are
-  refused.
+  and the like naming the file, its folder, or a glob that reaches it). Each stage allows its own
+  writes by the editing tools.
+- **The native hook.** While a run is active, `--no-verify` (or an abbreviation git takes), `-n`, and a
+  change of `core.hooksPath` (also by removing the `core` section) are refused.
 
 The guard reads a Bash command as text: it splits it into statements and words and honours quotes. It
 does not follow variables, substitutions, `cd` or links, and it does not read the program another

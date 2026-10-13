@@ -194,7 +194,10 @@ take up a `/temper` run at their stage, so there is one flow to keep right:
 - With no run active, `/temper:plan` starts one at Intent. The later doors start a run for the
   spec folder that holds the feature's `plan.md` and `tasks.md`, ask each earlier gate in turn
   (the same `Temper gate` question, Override and continue with your reason when a gate fails),
-  then run their own stage.
+  then run their own stage. The earlier stages are checked, not run again, against what the
+  run still has: their evidence went to the archive with the run that made it, so a check that
+  reads evidence (Plan's search record, Build's RED then GREEN runs) fails, the question names
+  the failed rows, and you skip it with your reason.
 
 `/temper:intent` stays on its own: it captures a draft intent and builds nothing.
 
