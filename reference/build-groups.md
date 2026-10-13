@@ -36,15 +36,21 @@ which `/temper` does at its start).
    Plugin folder: the folder that holds ${CLAUDE_PLUGIN_ROOT}/scripts/temper (that path with /scripts/temper taken off); wherever the brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, use this folder.
    Task: {N}."
    ```
-4. **Task gate.** After each returns:
+4. **Task gate.** After each task's own agent has returned, and never before (the gate judges that
+   agent's work: a gate run while the agent still works finds no green run and spends one of the
+   task's attempts):
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper task gate N --model {model} --tokens {subagent tokens} --ms {duration ms}`.
-   Task agents are **not** recorded with `usage add`; `task gate --tokens --ms` records them, so
+   The CLI refuses a task gate with no `--model`. Task agents are **not** recorded with `usage add`; `task gate --tokens --ms` records them, so
    each launch is counted once. Act on the single `NEXT:` line it prints: `NEXT: schedule` goes
    back to step 3; `NEXT: retry Task N on {model}` and `NEXT: escalate Task N on {model}` go back
    to step 3 (the schedule prints the model); `NEXT: park group G` leaves that group parked
    (other groups go on).
 5. **Group gate.** When the schedule prints `{"waiting"...}`, start any group whose dependencies
-   have now passed (step 2) and ask the schedule again. When every task of group G has passed:
+   have now passed (step 2) and ask the schedule again once another agent has returned. A task it
+   lists as `running` still has its agent at work: wait for that agent and gate the task with its
+   result (step 4). Only after a resume in a new conversation, where no agent of the earlier one is
+   left, gate a task still listed as running with the model its waiting line names, so the gate judges
+   the work it left. When every task of group G has passed:
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper group gate G<n>`. A parked group, or a FAIL, goes to the
    user with the CLI's reason; nothing else is decided here.
 6. **One human gate per group** (`AskUserQuestion`, with the group's gate output, also with the

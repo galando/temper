@@ -78,8 +78,10 @@ one mode does not pass the other mode's plan gate.
    files in that worktree, then `temper task test N --phase red` and `temper task test N --phase green`.
    The CLI runs the task's own declared test command there and records the output. Tasks that run
    at the same time never see each other's unfinished edits.
-5. **Task gate.** `temper task gate N --model M --tokens T --ms D` passes only with RED then
-   GREEN evidence for that task and only declared files changed in its worktree. On PASS the CLI
+5. **Task gate.** `temper task gate N --model M --tokens T --ms D` runs once the task's agent
+   has returned, never before: the CLI refuses a task gate with no `--model`, and the schedule
+   lists a task whose agent still works as `running on {model}: wait for its agent to return`. It
+   passes only with RED then GREEN evidence for that task and only declared files changed in its worktree. On PASS the CLI
    commits the declared files on the task branch, merges it into the group branch (a fast-forward
    when it can) and removes the task's worktree. On FAIL the task's worktree is discarded and the
    task is retried once on Haiku in a fresh one, then escalated once to Sonnet. If that also fails, the group stops and the run parks

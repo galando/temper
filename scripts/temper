@@ -2071,7 +2071,10 @@ if not ready:
     if ids and all(gpass(g) for g in ids):
         print(json.dumps({'done': True, 'next': 'temper integrate'}))
     else:
-        waiting += ['Task %d (running: temper task gate %d)' % (n, n) for n in running]   # M3: a running task has no ready line
+        # A running task has no ready line. Its agent has not returned: the gate waits for that agent's result, so this
+        # line names no gate command (a gate run now finds no green run and spends one of the task's attempts).
+        def ran_on(n): return task_model if ((rt.get(str(n)) or {}).get('attempt') or 1) <= 2 else esc_model
+        waiting += ['Task %d (running on %s: wait for its agent to return)' % (n, ran_on(n)) for n in running]
         print(json.dumps({'waiting': waiting, 'parked': [g for g in ids if gstatus(g) == 'parked'],
                           'done': False}))
 PY
@@ -2556,7 +2559,10 @@ try:
 except Exception:
     d = {}
 print(' '.join(sorted((k for k, v in (d.get('tasks') or {}).items() if v.get('group') == sys.argv[2] and v.get('status') == 'running'), key=int)))" "$GROUPS_FILE" "$g"); do
-    echo "NEXT: temper task gate $rn   (Task $rn was running when the group parked; its work is still in its worktree)"
+    local ra rmodel
+    ra="$(python3 -c "import json, sys; print(((json.load(open(sys.argv[1])).get('tasks') or {}).get(sys.argv[2]) or {}).get('attempt') or 1)" "$GROUPS_FILE" "$rn")"
+    if [[ "$ra" =~ ^[0-9]+$ && "$ra" -ge 3 ]]; then rmodel="$(_resolve_task_escalation_model)"; else rmodel="$(_resolve_task_model)"; fi
+    echo "NEXT: temper task gate $rn --model $rmodel   (Task $rn was running when the group parked; its work is still in its worktree. Run it once its agent has returned)"
   done
 }
 
@@ -3479,6 +3485,12 @@ _task_gate_body() {
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
+  # A gate judges the result of the task's own agent, so it comes after that agent returned, with the model it ran on.
+  # A gate with no model is one run too early (found live: the attempt was spent before the agent ran): refuse it, record nothing.
+  if [[ -z "$model" ]]; then
+    echo "FAIL: task gate needs --model, the model the agent of Task $n ran on. Gate a task only after its agent has returned. Nothing was recorded." >&2
+    return 1
+  fi
   _task_load "$n" || return 1
   _task_parked_refuse "$n" gate || return 1
   local status; status="$(_jget "$_T_CTX" status)"
