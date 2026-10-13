@@ -11,7 +11,7 @@ human review per group instead of one gate per task. `build.mode: per-task` in
 a gate after every task, no Haiku; its loop is `reference/build-per-task.md`). In grouped Build,
 `agents/build.md` is the fix pass a Review or Check loop back to Build launches on the feature
 branch. The grouped loop the orchestrator runs is in `reference/build-groups.md`, read by
-`/temper` and by the standalone `/temper:build`.
+`/temper` (also when `/temper:build` starts the run).
 
 **Better tests from small task agents.** A hands-on comparison found weaker tests from Haiku than from
 the per-task Sonnet Build, with gaps that only Review caught. Two changes move the thinking to Plan:
@@ -23,85 +23,80 @@ the per-task Sonnet Build, with gaps that only Review caught. Two changes move t
   exists already), so the agent follows the project's style, imports and fixtures.
 The task brief writes one test per case, each asserting the exact expected value.
 
-**Fixes from a hands-on run with the Temper bar.**
-- A new run on a spec folder that held an earlier run no longer inherits that run's choices in the bar.
-  Before, an unspent Continue of the earlier run waited as the "last choice", the bar offered only
-  "Record my choice", and pressing it sent `continue plan` at the Intent gate, which the guard refused
-  ("Only the user can approve this") in a loop. The earlier run's approved plan also made the bar refuse
-  the new Plan's `state set complexity`. The mod now starts a fresh record when `state init` began a new
-  run, and offers key 1 again only for a move out of the phase the run is at.
-- A decision call chained with a commit the gate allows now spends its decision.
-- Key 1 and the line under the bar name the waiting move in plain words ("Continue to Check"; "Your move
-  to Check did not go through yet. Press 1 to finish it."), and say "Claude is finishing your move" while
-  Claude works.
-- At Review with open findings, the bar shows "Loop back to Build" on its main row.
-- The bar's `/temper:temper report` and the report kept at Done include the usage section (tokens and
-  time per stage and per model).
-- Blocking questions are asked with `AskUserQuestion` in every phase, with or without the bar.
-- In `mode minimal` and `mode off` the bar draws no buttons, and the person had to type
-  `/temper:temper approve`. The bar now says so in the system prompt, the orchestrator asks every gate
-  with `AskUserQuestion` (header `Temper gate`), and the mod records the person's answer as the
-  decision a button would record. Loop back and Override take the person's reason from the answer.
-- Start over is a decision of the person: "Start over" in the `Temper resume` question the orchestrator
-  asks when a saved run does not fit, the bar's More menu, or `/temper:temper restart <reason>`. It lets
-  the orchestrator's next `state archive` and one `state init` through. Before, the orchestrator pointed
-  at a bar button that does not exist, and the mod refused the reset.
-- `temper group report` reads in plain words: tasks, build time, tokens, and each attempt with its model,
-  tokens, time and, for a failed attempt, its reason.
+**One flow: the CLI decides, the dialog asks, the mod shows (ADR 0012).** A flow audit of every point
+where a run waits, in every setup, kept finding bugs on the same three seams: two records of where a run
+is (the CLI's state and the mod's own event log), two ways to decide a gate (bar buttons in full mode,
+the question dialog in the other modes), and two copies of each stage's flow (`/temper` and the
+standalone stage commands). Three audit rounds found 55 issues there, and the last round found two that
+the fixes of the round before had made. This release keeps one of each:
+- **The CLI is the only run state.** `state init` writes a `run_id` and `step` 0, and every change of
+  `next_stage` counts one step. A step back (`state loop`, or `state set next_stage` to an earlier stage)
+  removes the verdicts of the stages it redoes from `gates.json` and moves their skips to
+  `.temper/archive/overrides-redone.json`, so no skip outlives the loop that redoes its stage (in 9.6.8 it
+  did, and the native hook accepted it). `state loop` moves the run itself, so a loop back is that one
+  call. `state set` refuses `run_id` and `step`. A run state written before 9.7.0 gets both on its next
+  state call. The mod writes no event files and keeps no stage of its own.
+- **One way to decide.** Every gate is the `Temper gate` question in Claude Code's own dialog, with the
+  mod and without it, in every mode. With the mod, the mod reads the person's answer from the dialog's
+  result and keeps it, stamped with the CLI's run id and step: an answer counts only at that step, the
+  latest answer at a step wins, and once the run moves on the answer is spent. A move that needs a
+  reason (a loop back, a skip, an accepted finding, kept agent commits, the commit override) asks for it
+  when the answer has none. Start over is the "Start over" answer of the `Temper resume` question, and
+  Scope drift keeps its own question. A typed `/temper:temper approve`, `back`, `override`, `accept` or
+  `drift` records nothing: Claude asks the question with that move first, and the person confirms it.
+- **The guard has three jobs.** (1) The calls only the person may cause need the person's answer at the
+  step the run is at: leaving Intent or Plan, a skip, a step back, an accepted finding, arming autonomy,
+  keeping a task agent's commits, and the commit override. Every other advance follows the verdict, and
+  an armed run loops Review or Check back to Build by itself. (2) While a run is active it refuses writes
+  to the run's files and the git hooks, `--no-verify` and a changed hooks path, a git alias that runs a
+  shell, and a commit the native hook does not check (a merge, cherry-pick, revert, am, pull, commit-tree
+  or a commit of named paths), unless the person chose Save for later. (3) The stage write rules. A plain
+  `git commit` goes to the native pre-commit hook in every stage. The `tool.call` hook carries a
+  registration catch, so a guard that throws or outruns its budget refuses Bash while a run is active
+  instead of letting the call run unguarded.
+- **The bar shows the run.** The stage timeline (passed, failed, skipped, here, to come), one sentence of
+  status, and the details of the stage (the groups and tasks of Build, the open findings of Review, the
+  failed checks). Its two buttons decide nothing: Go on (key 1) runs `/temper:temper`, and Play (key 8)
+  opens the game. The pane is read only. `uiMode` sets only how much is drawn.
+- **The stage commands are doors into `/temper`.** `/temper:plan`, `/temper:design`, `/temper:build`,
+  `/temper:review` and `/temper:check` start or take up a `/temper` run at their stage (the
+  orchestrator's section "Entering at a stage"). With no run active, `/temper:plan` starts at Intent, and
+  a later door starts a run for the spec folder, asks each earlier gate in turn, then runs its stage.
+  Their inline copies of the stage flows and the standalone gates of `reference/` are gone, and so is the
+  `stages.subprocess` key. `stage-marker.sh` marks only `/temper:intent` (ADR 0005 is amended): a door
+  may end at any gate.
+- The mod's Fix phase and its `fixMaxLoops` setting are gone: the loop budget is the CLI's
+  `loops.max-per-type` and `fix.max-loops`. A run started for a spec folder that holds `design.md` has a
+  Design stage, as the commit gate reads it. `scripts/check-original-options.sh` checks that every answer
+  the mod reads is written in the page that asks for it.
 
-**Fixes from a flow audit: a click at every point where a run waits.** Every gate, the Fix flow, the
-grouped Build gates, a parked group, a saved run, Start over, autonomy, the Design gate, a spent loop
-budget, Blocking questions, Scope drift and the Commit gate were checked with no mod, with the mod in
-full, minimal and off modes, and with enforcement on and off. The person now goes on with a bar key or
-a dialog option everywhere, and the guard accepts the move chosen:
+**Fixes from hands-on runs and the flow audit.**
 - "None FAIL" attempts in the group report: the schedule told the orchestrator to run `task gate` for a
   task whose agent was still at work, which spent one of its Haiku attempts. The waiting line now says
   `running on {model}: wait for its agent to return`, a task gate with no `--model` is refused and
   records nothing, and the orchestrator gates a task only after its own agent returned.
-- A `/temper:fix` run: the mod stands aside (no bar buttons, no refusals) in every mode, and fix.md asks
-  every gate in the conversation. Before, every source write of the Fix agent was refused as scope drift.
-- A step back whose loop the CLI refused (BLOCKED) no longer leaves the run stuck: the skip that follows
-  goes through, and the bar no longer offers a loop whose budget is spent.
-- A move of the person on a saved run takes it up again, in every mode.
+- `temper group report` reads in plain words: tasks, build time, tokens, and each attempt with its model,
+  tokens, time and, for a failed attempt, its reason. `/temper:temper report` and the report kept at
+  Done include the usage section (tokens and time per stage and per model).
+- Blocking questions are asked with `AskUserQuestion` in every stage, three choices at most plus Carry
+  forward, never as a list to answer by typing.
+- A `/temper:fix` run: the mod stands aside (it draws nothing and refuses nothing) in every mode, and
+  `commands/fix.md` asks every gate as a question. Before, every source write of the Fix agent was
+  refused as scope drift.
+- A spent loop budget (the CLI prints BLOCKED) asks the gate again with "Override and continue" and
+  "Save for later".
 - The Design gate has its own check: a failed design loops back to Plan or is skipped as
-  `override design`, and key 1 never says Continue to Build on a failed design.
-- Arming autonomy is a `Temper gate` question in every mode, and an armed run may loop back to Build
-  after a failed Review or Check, as `reference/autonomy.md` says.
+  `override design`.
+- Arming autonomy is a `Temper gate` question at the plan gate, asked before the plan's `state advance`.
 - A parked group is a question: take the agent's commits out, or keep them with a reason (the guard lets
   that one `group reopen --accept-foreign` through), or save. A group gate FAIL and an integrate FAIL are
   questions too.
-- Review: the pane's Fix on a finding is a loop back to Build for it, and without buttons a finding is
-  accepted with the answer "Accept finding N".
-- After the run is done, an override for the commit gate is the person's "Override and commit", never
+- After the run is done, an override of the commit gate is the person's "Override and commit", never
   Claude's own.
-- Standalone `/temper:build`, `/temper:plan` and `/temper:check` start or move the run with the CLI and
-  two `Temper gate` answers; nothing writes `build-state.json` by hand.
-- Texts name a click: the guard's refusals, the Next line and the toasts name the Temper bar in full mode
-  and the `Temper gate` question in minimal and off modes, never a typed command, a missing key or a
-  "Go back" button. Labels fit the step (Continue to Design, Run Build again, Run Intent again, Loop back
-  to Build from a failed Check, Review config suggestions at Done, Change in this group). A passed Check
-  asks one Commit question, a gate with more than four options puts the rest behind "More options", and
-  a Blocking question holds three choices plus Carry forward.
-- A second, independent audit of the new head found more, now fixed: a skip after the CLI went on by
-  a passed check alone (an autonomous run, a re-run Review after a loop back) was recorded but the
-  next advance was refused, and a failed Check there never opened the Fix step (the mod's record now
-  catches up with the stage the move was made at); the bar's More menu has "Accept a finding" (it asks
-  which finding and why, with no pane needed); a bare "Continue" answer counts; a different answer
-  while an earlier move waits is the person's new choice; the last group gate keeps its Continue,
-  Change and Stop; "Run Build again" tells Claude what the failed check named; an autonomous park
-  shows its gate question; the per task completion gate, standalone `/temper:build` and
-  `/temper:check` on FAIL, `/temper:fix` (Fix, Review and Check on FAIL) and the resume of the same
-  feature in minimal and off modes all offer their moves as options; the reason question holds for
-  every `Temper gate` question.
-- A review of those fixes found more, now fixed: an armed run that looped back by itself after a failed
-  Check looked reset to the mod, which then let the redone Review write code (a reset is now judged by
-  the person's own choices, and an armed run at Check is at Check, not in the Fix step); a skip in the
-  Fix step was refused when Claude recorded it in the CLI; a skip made before a loop back counted for
-  the stage that was redone; a skip of an earlier run on the same spec folder counted in a new run; a
-  step back that waited stayed open after the person chose another move; "Run Build again" did not
-  take a saved run up again; the last group gate came back after a step back to Build; and the fix
-  limit offered "Accept a finding", which the limit refuses.
-- `docs/mods-testing.md` section 4b lists every wait point to check by hand in each setup.
+- The guard's refusals name the next step and the `Temper gate` question, never a typed command. A passed
+  Check asks one Commit question, and a gate with more than four options puts the rest behind "More
+  options".
+- `docs/mods-testing.md` section 4b lists every wait point to check by hand, with the mod and without it.
 
 **Fixes from a whole-diff review.**
 - `reference/build.md` no longer tells the build agent to write `.temper/build-state.json`, and a
@@ -144,8 +139,6 @@ another's code waits for it (`**Depends:**`).
 - The complexity tier counts production files only (tests, docs and a one-line export do not
   count), so a small feature is Simple and skips Design. The library-consumers risk multiplier
   counts only changes to what consumers already use, not an added function.
-- The Temper bar words a grouped Build checkpoint "Continue with the groups" instead of
-  "Continue with task N".
 
 **Grouped Build.** Plan writes `tasks.md` as feature, groups, tasks. Each
 task declares its files and dependencies, and each group carries a `**Context:**` block (shared
