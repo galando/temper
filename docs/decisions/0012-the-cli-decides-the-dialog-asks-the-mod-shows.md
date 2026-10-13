@@ -88,3 +88,22 @@ serious bugs that the fixes of the round before had made. Almost every finding s
   installs and which the guard keeps Claude from skipping.
 - Later, not now: per task Build (`build.mode: per-task`) stays as the way back from grouped Build. Retire
   it once grouped Build has proven itself in real runs; that is its own decision.
+
+## Amendment (ADR-0013)
+
+[ADR-0013](0013-the-cli-says-what-next-the-mod-only-draws.md) replaces four of the decisions above:
+
+- **Decision 1:** the mod no longer reads the `.temper` files. The CLI writes `.temper/view.json`
+  after every command that changes the run, and the mod reads that file only.
+- **Decision 5:** the answer still comes from the dialog's result, but it is matched exactly
+  against the header, the question and the option labels that `temper next --json` gave for that
+  step, not parsed from words. A move that needs a reason counts once the reason is known.
+- **Decision 6:** `core/bash.ts` is deleted, not frozen. The guard keeps the person's answer before
+  a step only the person may take, the file path rules, and a short Bash list (`--no-verify`, a
+  changed hooks path, a write into `.temper/`). "Every other advance follows the stage's own
+  verdict" moves into the CLI: `state advance` refuses to leave a failed stage the person did not
+  skip.
+- **Decision 7:** every drawing is a plain function of `view.json`.
+
+The last consequence above ("per task Build stays as the way back") is settled too: per task Build
+is removed in 9.7.0, and grouped Build is the one Build.

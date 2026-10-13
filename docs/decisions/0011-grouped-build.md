@@ -168,3 +168,13 @@ own commit, with the shared-worktree selftests rewritten for the new model rathe
 
 - ADR 0009 (build checkpoint commit carve-out)
 - `.temper/specs/grouped-haiku-build/intent.md` D-01..D-08, `docs/grouped-build.md`
+
+## Amendment (ADR-0013): grouped Build is the only Build
+
+`build.mode: per-task` and `reference/build-per-task.md` are removed. The baseline measurement
+(`evals/results.md`, runs A and B on the `jokes` fixture) found the Haiku task agents about 14
+times cheaper than the Sonnet agent of per task Build, both first try; what made grouped Build no cheaper in
+total was the main loop driving the group loop from prose, which `temper next` now computes
+(ADR-0013). `agents/build.md` stays as the fix pass of a Review or Check loop back to Build. D-04
+(the comparison run) is answered by those two runs for a fixture of two tasks; a larger plan is
+not measured yet.

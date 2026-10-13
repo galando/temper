@@ -30,7 +30,7 @@ assurance. This suite avoids that:
 | `jokes` | full run | `all_jokes()` in the base code drops the last joke; the feature (`list_jokes(n)`) is asked to build on it | Build's tests, Review, or Check |
 | `orders` | review | `find_order` calls `orders.find(...)`, a method Python lists do not have; no test calls it | Review; Check (untraced scenarios) |
 | `reset` | review | the hourly limit of the intent (AC-03) is not implemented and has no test | Check (untraced scenario); Review |
-| `search` | review | `search_notes` builds its SQL with an f-string (injection); the tests pass | Review only |
+| `search` | review | `search_notes` builds its SQL with a Python f string (injection); the tests pass | Review only |
 
 Each fixture folder holds `base/` (the project), for a review fixture `spec/` (the accepted
 intent, plan and tasks) and `change/` (the change under review), `hidden/` (the hidden test),
