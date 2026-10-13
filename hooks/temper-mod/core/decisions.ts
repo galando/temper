@@ -22,7 +22,9 @@ export type DriftChoice = 'add' | 'revert' | 'allow-once'
 type Stamp = { id: string; run: string; step: number; stage: Stage; ts: number }
 
 export type Decision =
-  | (Stamp & { kind: MoveKind; reason: string; to?: Stage })
+  // `files`: on the person's approval of the plan (or its skip), the plan's files as they were then. Build is judged
+  // against what the person approved, not against a plan.md edited since.
+  | (Stamp & { kind: MoveKind; reason: string; to?: Stage; files?: string[] })
   // An accepted review finding: counts at its step, for that finding.
   | (Stamp & { kind: 'accept'; findingId: string; reason: string })
   // Start over: the saved run state may go, until the next state init begins a new run.
@@ -70,6 +72,16 @@ export function driftOf(book: readonly Decision[], run: string, used: ReadonlySe
     if (d.choice === 'allow-once' && !used.has(d.id)) out.allowOnce.push({ id: d.id, path: d.path })
   }
   return out
+}
+
+// The plan's files the person approved: from the latest approval, arming or skip at the Plan stage of this run that kept
+// them. Null when none did (an older run state, or a plan approved with the mod switched off): the plan is read as it is.
+export function approvedPlanFiles(book: readonly Decision[], run: string): string[] | null {
+  const hit = book
+    .filter(d => d.run === run && d.stage === 'plan' && (d.kind === 'approve' || d.kind === 'arm' || d.kind === 'override'))
+    .filter((d): d is Move => isMove(d) && Array.isArray(d.files) && d.files.every(f => typeof f === 'string'))
+    .sort(latestFirst)[0]
+  return hit?.files ?? null
 }
 
 // The decisions of one run, oldest first: the report and the pane list them.

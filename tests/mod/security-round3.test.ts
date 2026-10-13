@@ -311,7 +311,8 @@ describe('commit forms (#44)', () => {
     const r = run('build', 'git merge other')
     expect('deny' in r && r.deny).toContain('pre-commit')
   })
-  test('while paused or at Done the commit forms are not blocked by the guard', () => {
-    expect('deny' in evaluate(stateAt('build', [{ type: 'pause', origin: 'person', author: 'u' }]), ctx, { tool: 'Bash', input: { command: 'git merge other' } })).toBe(false)
+  test('saved for later or at Done, the commit forms are still blocked by the guard', () => {
+    expect('deny' in evaluate(stateAt('build', [{ type: 'pause', origin: 'person', author: 'u' }]), ctx, { tool: 'Bash', input: { command: 'git merge other' } })).toBe(true)
+    expect('deny' in evaluate(stateAt('done'), ctx, { tool: 'Bash', input: { command: 'git merge other' } })).toBe(true)
   })
 })

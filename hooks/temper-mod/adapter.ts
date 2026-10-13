@@ -13,14 +13,14 @@ import { mergeCriteria, parseCriteria, parseStatus, parseTitle } from './core/cr
 import type { MergedCriterion } from './core/criteria'
 import { parseBuildState, parseFindings, parseGates, parseGroups, parseLoops, parseSkips } from './core/clifiles'
 import type { Finding, Gates, GroupRow, Loop, Skips } from './core/clifiles'
-import { currentMove, acceptsAt, decisionsOf, describe, driftOf, parseBook, restartFor } from './core/decisions'
+import { approvedPlanFiles, currentMove, acceptsAt, decisionsOf, describe, driftOf, parseBook, restartFor } from './core/decisions'
 import type { At, Decision, DriftState, Move } from './core/decisions'
 import { planFileList, taskProgress, tasksLeft } from './core/planfiles'
 import { parseUsage, renderReport } from './core/report'
 import type { UsageRow } from './core/report'
 import type { RunFacts } from './core/rules'
 import { sectionText } from './core/section'
-import { cliStage, stageLabel } from './core/stages'
+import { cliStage, stageIndex, stageLabel } from './core/stages'
 import type { Stage } from './core/stages'
 import { buildView } from './core/view'
 import type { View } from './core/view'
@@ -235,7 +235,8 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
           verdicts,
           skipped: new Set(Object.keys(skips) as Stage[]),
           specDir,
-          planFiles: planFileList(planText, tasksText),
+          // While the plan is written (Intent, Plan) it is read as it is; from Design on, as the person approved it.
+          planFiles: (stageIndex(stage) > stageIndex('plan') ? approvedPlanFiles(book, at.run) : null) ?? planFileList(planText, tasksText),
         }
   const decisions = decisionsOf(book, at.run)
   return {

@@ -2,6 +2,7 @@
 // a skip, an accept or a kept commit needs, and the answers that decide nothing.
 import { describe, expect, test } from 'claude-code/testing'
 
+import { driftAnswers } from '../../hooks/temper-mod/core/drift'
 import { gateAnswer, resumeAnswer } from '../../hooks/temper-mod/core/gateanswer'
 import type { Stage } from '../../hooks/temper-mod/core/stages'
 
@@ -121,5 +122,28 @@ describe('Start over, in the Temper resume question', () => {
   test('another choice, or the gate header, is no restart', () => {
     expect(resumeAnswer(result('Resume', { header: 'Temper resume' }))).toBeNull()
     expect(resumeAnswer(result('Start over'))).toBeNull()
+  })
+})
+
+describe('only a dialog the person answered decides', () => {
+  const extra = (r: ReturnType<typeof result>, more: Record<string, unknown>) => ({ result: { ...r.result, ...more } })
+  test('a dialog that resolved by itself while the person was away decides nothing', () => {
+    expect(gateAnswer(extra(result('Continue to Build (Recommended)'), { afkTimeoutMs: 60000 }), 'plan')).toBeNull()
+    expect(resumeAnswer(extra(result('Start over', { header: 'Temper resume' }), { afkTimeoutMs: 60000 }))).toBeNull()
+    const drift = { result: { questions: [{ question: 'Outside the plan: src/a.ts\nWhy: x\nChange: y', header: 'Scope drift' }], answers: { 'Outside the plan: src/a.ts\nWhy: x\nChange: y': 'Allow once' }, afkTimeoutMs: 60000 } }
+    expect(driftAnswers(drift)).toEqual([])
+    expect(driftAnswers({ result: { ...drift.result, afkTimeoutMs: undefined } })).toHaveLength(1)
+  })
+  test('a request for another round of questions decides nothing', () => {
+    expect(gateAnswer(extra(result('Continue to Build'), { followUp: true }), 'plan')).toBeNull()
+  })
+  test('a multi select gate question decides nothing', () => {
+    const r = { result: { questions: [{ question: Q, header: 'Temper gate', multiSelect: true }], answers: { [Q]: 'Override and continue, Save for later' } } }
+    expect(gateAnswer(r, 'check')).toBeNull()
+  })
+  test('More options in the first question leaves the move to the second one', () => {
+    const q2 = 'More options'
+    const r = { result: { questions: [{ question: Q, header: 'Temper gate' }, { question: q2, header: 'Temper gate' }], answers: { [Q]: 'More options', [q2]: 'Override and continue: the lint rule is wrong' } } }
+    expect(gateAnswer(r, 'check')).toEqual({ kind: 'override', reason: 'the lint rule is wrong' })
   })
 })

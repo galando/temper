@@ -515,7 +515,9 @@ async function recordAnswers($: Api, result: unknown): Promise<void> {
   }
   const answer = gateAnswer(result, r.stage, { design: hasDesign(r.complexity, r.designRequired, r.designSeen) })
   if (answer !== null) {
-    await keepDecision(io, snap.at, r.stage, answer)
+    // The person's approval of the plan keeps the plan's files as they are now: Build is judged against them.
+    const approvesPlan = r.stage === 'plan' && (answer.kind === 'approve' || answer.kind === 'arm' || answer.kind === 'override')
+    await keepDecision(io, snap.at, r.stage, approvesPlan ? { ...answer, files: [...r.planFiles] } : answer)
     kept = true
   }
   if (kept) adopt($, await refresh($))
@@ -530,7 +532,7 @@ function pluginCli(): string {
 }
 
 function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
-  return { run: snap.run, move: snap.move, accepts: snap.accepts, restart: snap.restart, drift: snap.drift, root: rootDir, cli: pluginCli() }
+  return { run: snap.run, move: snap.move, accepts: snap.accepts, restart: snap.restart, drift: snap.drift, root: rootDir, cli: pluginCli(), fixRun: snap.runCommand === 'fix' }
 }
 
 // The shell's folder, carried from one Bash call to the next (the engine keeps it). A folder outside the project, or one
@@ -552,7 +554,7 @@ const GUARD_ERROR =
 // every other tool passes (the mod must not make Temper worse than without it).
 function failedGuard(tool: string): Guarded {
   const r = lastRun
-  const active = r !== null && !r.inert && r.enforcement !== 'off' && !r.failOpen && r.run !== null && r.run.stage !== 'commit'
+  const active = r !== null && !r.inert && r.enforcement !== 'off' && !r.failOpen && r.run !== null
   return { deny: tool === 'Bash' && active ? GUARD_ERROR : null }
 }
 

@@ -484,10 +484,10 @@ describe('finding 4: a plain commit is for the native hook; a commit the hook do
     })
   }
 
-  test('legit: the same merge after the person chose Save for later', async ($, on) => {
+  test('the same merge after the person chose Save for later is still refused (it lifts no rule)', async ($, on) => {
     const { api } = await begin($, on, { ...REVIEW, answers: ['Save for later'] })
     await ask(api)
-    expect(await sh(api, 'git merge feature/evil')).toBeUndefined()
+    expect(await sh(api, 'git merge feature/evil')).toContain('native pre-commit hook does not check')
   })
 
   test('legit: with no run active a merge is the person\'s own', async ($, on) => {

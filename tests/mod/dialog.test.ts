@@ -223,19 +223,15 @@ describe('every wait point of the flow audit', () => {
     expect(await sh(api, `${CLI} override design --reason 'design.md is empty on purpose'`)).toBeUndefined()
   })
 
-  test('Save for later gives the person control until the run moves on', async ($, on) => {
+  test('Save for later stops the run: the system prompt says so, and every rule still holds', async ($, on) => {
     const api = $ as unknown as Api
-    const w = begin(on, 'build', { plan: 'PASS' }, ['Save for later'])
+    begin(on, 'build', { plan: 'PASS' }, ['Save for later'])
     await api.session.start(START)
     expect(await write(api, 'src/other.ts')).toContain('scope drift')
     await ask(api)
-    expect(await write(api, 'src/other.ts')).toBeUndefined()
     expect(await system(api)).toContain('saved the run for later')
-    // The run moves on (the person took it up again and Build passed): the rules hold again.
-    gates(w, { plan: 'PASS', build: 'PASS' })
-    w.files.set('.temper/build-state.json', JSON.stringify({ ...state(w), next_stage: 'review', step: 4 }))
-    await sh(api, 'true')
-    expect(await write(api, 'src/other.ts')).toContain('Review stage')
+    expect(await write(api, 'src/other.ts')).toContain('scope drift')
+    expect(await sh(api, 'git merge other')).toContain('native pre-commit hook does not check')
   })
 
   test('Start over: the Temper resume answer lets the run state go', async ($, on) => {
@@ -345,5 +341,37 @@ describe('the system prompt: one flow in every mode', () => {
     expect(await system(api)).toContain('the Review check failed')
     await ask(api)
     expect(await system(api)).toContain('carry out that answer now')
+  })
+})
+
+describe('Build is judged against the plan the person approved', () => {
+  test('a plan.md widened at Build does not let a file outside the approved plan through', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Continue to Build'])
+    await api.session.start(START)
+    await ask(api)
+    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    // At Build the spec folder is writable, plan.md too. A wildcard row added there must not widen the approved plan.
+    expect(await write(api, `${SPEC}/plan.md`)).toBeUndefined()
+    w.files.set(`${SPEC}/plan.md`, '### Files to Modify\n\n| File | Change |\n|---|---|\n| `src/app.ts` | edit |\n| `**/*` | anything |\n')
+    await sh(api, 'git status')
+    expect(await write(api, 'src/app.ts')).toBeUndefined()
+    expect(await write(api, 'src/billing.ts')).toContain('scope drift')
+  })
+
+  test('a plan approved again after a loop back to Plan counts with its new files', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Continue to Build', 'Loop back to Plan: the plan misses billing', 'Continue to Build'])
+    await api.session.start(START)
+    await ask(api)
+    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    gates(w, { intent: 'PASS', plan: 'PASS', build: 'FAIL' })
+    await ask(api)
+    expect(await sh(api, `${CLI} state loop build plan --reason 'the plan misses billing'`)).toBeUndefined()
+    w.files.set(`${SPEC}/plan.md`, '### Files to Modify\n\n| File | Change |\n|---|---|\n| `src/app.ts` | edit |\n| `src/billing.ts` | add |\n')
+    gates(w, { intent: 'PASS', plan: 'PASS' })
+    await ask(api)
+    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    expect(await write(api, 'src/billing.ts')).toBeUndefined()
   })
 })

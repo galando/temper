@@ -50,6 +50,9 @@ export type RuleContext = {
   restart: boolean
   // The person's Scope drift answers in this run.
   drift: DriftState
+  // A /temper:fix run is active: the mod judges none of its moves (commands/fix.md asks every gate), but nothing goes
+  // around the native commit hook, and the config and the git hooks stay the person's.
+  fixRun?: boolean
   // Absolute project root; absolute tool paths inside it are made relative.
   root?: string
   // The folder the shell is in (relative to the project root, or absolute), carried from the earlier Bash calls.
@@ -86,16 +89,17 @@ function targetPath(call: ToolCall): string | null {
 
 const inDir = (path: string, dir: string): boolean => path === dir || path.startsWith(dir + '/')
 
-// A run that is on: at a stage before commit. At the commit stage the run is done, and only the commit gate's own
-// overrides are the person's.
-const isActive = (ctx: RuleContext): ctx is RuleContext & { run: RunFacts } => ctx.run !== null && ctx.run.stage !== 'commit'
+// A /temper run is on, at any stage up to and with Commit: the commit gate can still fail at the commit stage (a missing
+// verdict, an autonomous park), so nothing may go around it there either. Writes are free at Commit (stageWriteRule).
+const isActive = (ctx: RuleContext): ctx is RuleContext & { run: RunFacts } => ctx.run !== null
 
 const design = (r: RunFacts): boolean => hasDesign(r.complexity, r.designRequired, r.designSeen)
 
 // The stages a `state advance` from `s` may name next. A medium or complex plan goes to Design; when the project never
 // switched design on, it may go straight to Build.
 function allowedNext(r: RunFacts, s: Stage): Stage[] {
-  if (s === 'plan' && (r.complexity === 'medium' || r.complexity === 'complex') && !r.designRequired) return ['build', 'design']
+  // A design.md in the spec folder makes Design the next stage (the commit gate wants its verdict then).
+  if (s === 'plan' && (r.complexity === 'medium' || r.complexity === 'complex') && !r.designRequired && !r.designSeen) return ['build', 'design']
   const n = nextStage(s, design(r))
   return n === null ? [] : [n]
 }
@@ -302,9 +306,47 @@ const GIT_ALIAS_DENY =
   'Temper: a git alias that runs a shell command (alias.<name>=!...) hides what it runs. ' +
   'Next: run each command itself, in its own Bash call, with the words written out.'
 
+// git runs a command of its own: rebase --exec, bisect run, submodule foreach, filter-branch, difftool --extcmd, a
+// transport program, or an editor, pager, diff, filter or credential program set for the call. Temper cannot read that
+// command, so it could hide a decision of the person.
+const GIT_RUNS_COMMAND: readonly RegExp[] = [
+  /\bgit\b[^\n;&|]*\brebase\b[^\n;&|]*\s(?:--exec\b|-[A-Za-z]*x(?=[\s=]|$))/,
+  /\bgit\b[^\n;&|]*\bbisect\s+run\b/,
+  /\bgit\b[^\n;&|]*\bsubmodule\b[^\n;&|]*\bforeach\b/,
+  /\bgit\b[^\n;&|]*\bfilter-(?:branch|repo)\b/,
+  /\bgit\b[^\n;&|]*\bdifftool\b[^\n;&|]*\s(?:--extcmd\b|-[A-Za-z]*x(?=[\s=]|$))/,
+  /\bgit\b[^\n;&|]*\s--(?:upload-pack|receive-pack)\b/,
+  /\bgit\b[^\n;&|]*?(?:core\.(?:editor|pager|sshcommand|fsmonitor|askpass)|sequence\.editor|diff\.external|pager\.[\w.-]+|gpg\.(?:[\w-]+\.)?program|credential\.helper|interactive\.difffilter|(?:merge|filter|diff)\.[\w.-]+\.(?:driver|clean|smudge|process|textconv|command))\b/i,
+  /\b(?:GIT_EDITOR|GIT_SEQUENCE_EDITOR|GIT_PAGER|GIT_EXTERNAL_DIFF|GIT_SSH_COMMAND|GIT_SSH|GIT_ASKPASS|EDITOR|VISUAL|PAGER)\s*=[^\n;&|]*\bgit\b/,
+]
+
+// The plugin data folder of Claude Code (`~/.claude/plugins/data/`) holds the mod's store, and in it the person's
+// decisions. Nothing but the mod touches it while a run is active.
+const PLUGIN_DATA = /\.claude\/plugins\/data(?:\/|\b)/
+
+const PLUGIN_DATA_DENY =
+  'Temper: the plugin data folder under ~/.claude holds the decisions the user made. Do not read or change it while a run is active. ' +
+  `Next: ${ASK} for a decision.`
+
+const GIT_EXEC_DENY =
+  'Temper: this git command runs a command of its own (rebase --exec, bisect run, submodule foreach, filter-branch, an editor, pager or diff program). ' +
+  'Temper cannot read what it runs while a run is active. Next: run that command itself, in its own Bash call, with the words written out.'
+
+// git plumbing that makes or moves a commit without git commit, so the native hook never sees it. Everyday commands that
+// move a branch (reset, checkout, rebase) are not judged here: the docs list them among the limits of the Bash reader.
+const GIT_PLUMBING = /\bgit\b[^\n;&|]*\s(?:update-ref|replace|stash\s+(?:create|store))\b/
+
+const GIT_PLUMBING_DENY =
+  'Temper: this git command makes or moves a commit without git commit (update-ref, stash create or store, replace), so the native commit hook never sees it. ' +
+  'Next: git add the files, then git commit -m "...".'
+
 const UNPLAIN_COMMIT_DENY =
   'Temper: this command makes a commit that the native pre-commit hook does not check (a merge, cherry-pick, revert, am, pull, commit-tree, or a commit of named paths). ' +
   'While a run is active, every commit is a plain git commit of the index, which the commit gate checks. Next: git add the files, then git commit -m "...".'
+
+const MOVE_AND_BACK =
+  'Temper: this command steps the run back and moves it on in one go. The stage the run goes back to needs its own work and its own check. ' +
+  'Next: run the step back alone, then the stage it goes back to.'
 
 const BACK_DENY = `Temper: state advance cannot move the run to an earlier stage. Only the user steps back. Next: ${ASK} whether to loop back.`
 
@@ -323,19 +365,24 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   const c = classifyBash(command, ctx.cwd === undefined ? '' : ctx.cwd)
   const cli = ctx.cli ?? CLI
   const active = isActive(ctx)
+  // Nothing goes around the native commit hook while a /temper run or a /temper:fix run is active.
+  const guardsCommit = active || ctx.fixRun === true
 
   if (c.alias) return { deny: ALIAS_DENY(cli) }
   if (c.opaque && active) return { deny: c.opaqueWhy === 'dynamic' ? DYNAMIC_DENY(cli) : c.opaqueWhy === 'hidden' ? OPAQUE_HIDDEN_DENY(cli) : OPAQUE_DENY(cli) }
-  if (active) {
-    if (c.hidden) return { deny: HIDDEN_DENY }
+  if (active && c.hidden) return { deny: HIDDEN_DENY }
+  if (active && PLUGIN_DATA.test(command)) return { deny: PLUGIN_DATA_DENY }
+  // A command git runs itself could hide a decision (a fix run's root cause stage may use `git bisect run`).
+  if (active && GIT_RUNS_COMMAND.some(rx => rx.test(command))) return { deny: GIT_EXEC_DENY }
+  if (guardsCommit) {
     if (c.envTamper) return { deny: ENV_DENY(cli) }
     if (c.hookTamper || c.noVerify) return { deny: HOOKS_DENY }
     // A git alias that runs a shell (`-c alias.x='!...'`, `git config alias.x '!...'`) hides the command it runs.
     if (GIT_SHELL_ALIAS.test(command)) return { deny: GIT_ALIAS_DENY }
     // The commit gate is the native pre-commit hook, which runs on a plain `git commit` only. A commit it does not see
-    // (a merge, cherry-pick, revert, am, pull, commit-tree, or a pathspec commit) waits until the run is done, or until
-    // the person saved it for later and has control.
-    if (c.commits && c.unplainCommit && ctx.move?.kind !== 'pause') return { deny: UNPLAIN_COMMIT_DENY }
+    // (a merge, cherry-pick, revert, am, pull, commit-tree, or a pathspec commit) waits until the run is cleared.
+    if (c.commits && c.unplainCommit) return { deny: UNPLAIN_COMMIT_DENY }
+    if (GIT_PLUMBING.test(command)) return { deny: GIT_PLUMBING_DENY }
   }
 
   if (c.protectedWrites.length > 0) {
@@ -344,7 +391,7 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
     // The config, the git hooks and the Temper commit hook are the run's only while a run is active (/temper:init writes
     // the config and installs the hook before). A path of no known kind (a link made inside .temper) gets the text of the
     // .temper folders.
-    const kinds = known.map(p => protectedKind(p) ?? 'folder').filter(k => active || (k !== 'config' && k !== 'hooks'))
+    const kinds = known.map(p => protectedKind(p) ?? 'folder').filter(k => guardsCommit || (k !== 'config' && k !== 'hooks'))
     if (kinds.length > 0) {
       const forged = kinds.find(k => k === 'events' || k === 'overrides')
       return protectedDeny(forged ?? kinds[0] ?? 'folder', cli)
@@ -356,11 +403,13 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   // Removing or archiving the run's state is for after the run, or for the person's Start over. One exception, the
   // TRIVIAL exit of the orchestrator: a clear of a run that never left Intent (no step taken) loses nothing.
   const resets = c.stateOps.length > 0 && c.stateOps.every(o => o.op === 'archive' || o.op === 'clear' || o.op === 'init')
-  if (active && ctx.restart && resets && c.calls.length === 0 && !c.commits) return ALLOW
+  // Start over begins a run of the same command: a /temper run never restarts as a fix run, which the mod stands aside for.
+  if (active && ctx.restart && resets && c.calls.length === 0 && !c.commits && !/--command[=\s]+['"]?fix\b/.test(command)) return ALLOW
   if (active) {
     const r = ctx.run
     const trivialExit = r.stage === 'intent' && r.step <= 0 && ctx.nothingToLose === true
-    if (c.stateOps.some(o => o.op === 'archive' || (o.op === 'clear' && !trivialExit))) return { deny: STATE_END(cli) }
+    // At the commit stage the Commit steps archive the run and clear it: the run is done.
+    if (r.stage !== 'commit' && c.stateOps.some(o => o.op === 'archive' || (o.op === 'clear' && !trivialExit))) return { deny: STATE_END(cli) }
     if (c.stateOps.some(o => o.op === 'init')) return { deny: STATE_RESTART }
   }
 
@@ -401,6 +450,16 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
       const form = /^[0-9a-f]{7,40}$/i.test(v) || v === '$(git rev-parse HEAD)' || v === '`git rev-parse HEAD`'
       if (!((r.stage === 'plan' || r.stage === 'build') && form)) return { deny: KEY_DENY(op.key) }
     }
+  }
+
+  // A step back and another move in one command: the move would be judged on the verdicts the step back clears. Once a
+  // command steps back, every other move in it goes to that same stage (a `state set next_stage` that repeats the loop).
+  const backTargets = new Set<string>([
+    ...c.stateOps.flatMap(o => (o.op === 'loop' && o.to !== undefined ? [o.to] : [])),
+    ...c.calls.flatMap(call => (call.kind === 'back' && isStage(call.stage ?? '') && stageIndex(call.stage as Stage) < stageIndex(r.stage) ? [call.stage as string] : [])),
+  ])
+  if (backTargets.size > 1 || (backTargets.size === 1 && c.calls.some(call => call.kind === 'advance' || (call.kind === 'back' && !backTargets.has(call.stage ?? ''))))) {
+    return { deny: MOVE_AND_BACK }
   }
 
   // The calls, in order: an advance moves the stage the next call of the same command is read at.
@@ -476,15 +535,16 @@ export function evaluate(ctx: RuleContext, call: ToolCall): RuleResult {
   if (raw === null) return ALLOW
   const path = normalizePath(raw, ctx.root)
   const active = isActive(ctx)
+  if (active && PLUGIN_DATA.test(raw)) return { deny: PLUGIN_DATA_DENY }
 
   const kind = protectedKind(path)
-  // The config, the git hooks and the Temper commit hook are guarded while a run is active (the person writes them with
-  // no run on).
-  if (kind !== null && (active || (kind !== 'config' && kind !== 'hooks'))) return protectedDeny(kind, ctx.cli ?? CLI)
+  // The config, the git hooks and the Temper commit hook are guarded while a run is active, a fix run too (the person
+  // writes them with no run on).
+  if (kind !== null && (active || ctx.fixRun === true || (kind !== 'config' && kind !== 'hooks'))) return protectedDeny(kind, ctx.cli ?? CLI)
   // The report a parked autonomous run leaves (reference/autonomy.md): a note of the run, at any stage.
   if (path === AUTONOMY_REPORT) return ALLOW
 
-  // Save for later: the person has control until the run moves on.
-  if (!isActive(ctx) || ctx.move?.kind === 'pause') return ALLOW
+  // Save for later stops the run; it lifts no rule (enforcement off is the person's way to lift them).
+  if (!active) return ALLOW
   return stageWriteRule(ctx, path)
 }

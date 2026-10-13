@@ -30,7 +30,7 @@ export const CANCEL = 'Cancel'
 
 export type Answer = { kind: MoveKind; reason: string; to?: Stage } | { kind: 'accept'; findingId: string; reason: string }
 
-type Question = { question?: unknown; header?: unknown }
+type Question = { question?: unknown; header?: unknown; multiSelect?: unknown }
 
 // The words after a choice that carry the reason: a separator, or plain space.
 const REST = String.raw`(?:\s*\(recommended\))?(?:\s*[:;,.]\s*|\s+-\s+|\s+|$)([\s\S]*)$`
@@ -107,27 +107,32 @@ function move(choice: string, reason: string, stage: Stage, where: GateWhere): A
   return null
 }
 
-type Result = { questions?: unknown; answers?: unknown; annotations?: unknown }
+type Result = { questions?: unknown; answers?: unknown; annotations?: unknown; afkTimeoutMs?: unknown; followUp?: unknown }
 
-function resultOf(result: unknown): Result | null {
+// The result of a dialog the person answered. A dialog that resolved by itself while the person was away
+// (`afkTimeoutMs`), or one the person answered by asking for another round (`followUp`), holds no decision.
+export function answeredResult(result: unknown): Result | null {
   const r = (result && typeof result === 'object' ? (result as { result?: unknown }).result : undefined) as Result | undefined
-  return r && Array.isArray(r.questions) && r.answers && typeof r.answers === 'object' ? r : null
+  if (!r || !Array.isArray(r.questions) || !r.answers || typeof r.answers !== 'object') return null
+  if (r.afkTimeoutMs !== undefined || r.followUp === true) return null
+  return r
 }
 
 // The decision in an AskUserQuestion result for the stage the run is at, or null. A question with another header, a
-// choice for another stage, a typed message that names no move, and a step back or a skip with no reason are no
-// decision. The first Temper gate question of the result decides.
+// multi-select question, a choice for another stage, a typed message that names no move, and a step back or a skip
+// with no reason are no decision. The first Temper gate question whose answer is a move decides (a first question
+// answered "More options" leaves the move to the next one).
 export function gateAnswer(result: unknown, stage: Stage | null, where: GateWhere = {}): Answer | null {
   if (stage === null) return null
-  const r = resultOf(result)
+  const r = answeredResult(result)
   if (r === null) return null
   const answers = r.answers as Record<string, unknown>
   const notes = r.annotations && typeof r.annotations === 'object' ? (r.annotations as Record<string, unknown>) : {}
   for (const q of r.questions as Question[]) {
     if (typeof q?.question !== 'string' || typeof q.header !== 'string') continue
-    if (q.header.trim().toLowerCase() !== GATE_HEADER.toLowerCase()) continue
+    if (q.header.trim().toLowerCase() !== GATE_HEADER.toLowerCase() || q.multiSelect === true) continue
     const answer = answers[q.question]
-    if (typeof answer !== 'string' || answer.trim() === '') return null
+    if (typeof answer !== 'string' || answer.trim() === '') continue
     const note = notes[q.question]
     const noted = note && typeof note === 'object' ? (note as { notes?: unknown }).notes : undefined
     const typed = typeof noted === 'string' ? noted.trim() : ''
@@ -136,9 +141,12 @@ export function gateAnswer(result: unknown, stage: Stage | null, where: GateWher
     if (asks) {
       if (answer.trim().toLowerCase() === CANCEL.toLowerCase()) return null
       const reason = [answer.trim(), typed].filter(t => t !== '').join(' ')
-      return move(asks[1] ?? '', reason, stage, where)
+      const decided = move(asks[1] ?? '', reason, stage, where)
+      if (decided !== null) return decided
+      continue
     }
-    return move(answer, typed, stage, where)
+    const decided = move(answer, typed, stage, where)
+    if (decided !== null) return decided
   }
   return null
 }
@@ -146,7 +154,7 @@ export function gateAnswer(result: unknown, stage: Stage | null, where: GateWher
 // The person's "Start over" in the `Temper resume` question: a restart, at any stage of an active run. Only the result
 // counts, as for the gate. The reason is the person's note, else the question they answered.
 export function resumeAnswer(result: unknown): { reason: string } | null {
-  const r = resultOf(result)
+  const r = answeredResult(result)
   if (r === null) return null
   const answers = r.answers as Record<string, unknown>
   const notes = r.annotations && typeof r.annotations === 'object' ? (r.annotations as Record<string, unknown>) : {}

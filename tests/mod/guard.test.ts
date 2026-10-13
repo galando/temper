@@ -81,11 +81,11 @@ describe('the stage write table: 6 stages x 3 tools x allowed and disallowed', (
     expect(isDeny(write(c, `/repo/${SPEC}/../../../src/app.ts`))).toBe(true)
   })
 
-  test('other tools, no run, the commit stage and a run saved for later pass through', () => {
+  test('other tools, no run and the commit stage pass through; a run saved for later does not', () => {
     expect('allow' in evaluate(ctx('plan'), { tool: 'Read', input: { file_path: 'src/app.ts' } })).toBe(true)
     expect('allow' in write({ ...ctx('plan'), run: null }, 'src/app.ts')).toBe(true)
     expect('allow' in write(ctx('commit'), 'src/app.ts')).toBe(true)
-    expect('allow' in write(ctx('plan', { move: { kind: 'pause' } }), 'src/app.ts')).toBe(true)
+    expect(isDeny(write(ctx('plan', { move: { kind: 'pause' } }), 'src/app.ts'))).toBe(true)
   })
 
   test('a saved run still keeps Temper own files', () => {
@@ -246,11 +246,12 @@ describe('commits: the native pre-commit hook is the commit gate', () => {
     expect(isDeny(bash(ctx('build'), 'git -c core.hooksPath=/dev/null commit -m x'))).toBe(true)
   })
 
-  test('a commit the hook does not check is refused while a run is active, not when saved or done', () => {
+  test('a commit the hook does not check is refused while a run is active, saved, at Commit, or a fix run', () => {
     for (const cmd of ['git merge other', 'git cherry-pick abc', 'git revert HEAD', 'git commit src/a.ts -m x']) {
       expect(isDeny(bash(ctx('build'), cmd))).toBe(true)
-      expect('allow' in bash(ctx('build', { move: { kind: 'pause' } }), cmd)).toBe(true)
-      expect('allow' in bash(ctx('commit'), cmd)).toBe(true)
+      expect(isDeny(bash(ctx('build', { move: { kind: 'pause' } }), cmd))).toBe(true)
+      expect(isDeny(bash(ctx('commit'), cmd))).toBe(true)
+      expect('allow' in bash({ ...ctx('build'), run: null }, cmd)).toBe(true)
     }
   })
 
@@ -269,5 +270,128 @@ describe('the stage order is the CLI\'s', () => {
     expect(STAGES.filter(s => s !== 'commit').join(' ')).toBe(seq)
     expect(STAGES.at(-1)).toBe('commit')
     expect(CLI_SEQ.join(' ')).toBe(seq)
+  })
+})
+
+// The independent review of the one flow: each case below was let through before its fix.
+describe('review of the one flow: what goes around a gate', () => {
+  const none = (o: Partial<RuleContext> = {}): RuleContext => ({ run: null, move: null, accepts: [], restart: false, drift: { added: [], allowOnce: [] }, ...o })
+  const OV = `${CLI} override review --reason sneaky`
+
+  test('a git command that runs a command of its own is refused while a run is active', () => {
+    for (const cmd of [
+      `git rebase --autostash -x "${OV}" HEAD~1`,
+      `git rebase --exec="${OV}" main`,
+      `git bisect run ${OV}`,
+      `git submodule foreach "${OV}"`,
+      `git filter-branch --tree-filter "${OV}" HEAD`,
+      `GIT_SEQUENCE_EDITOR="${OV}" git rebase -i HEAD~1`,
+      `EDITOR="${OV}" git commit --amend`,
+      `git -c core.editor="${OV}" commit --amend`,
+      `git -c diff.external="${OV}" diff`,
+      `git difftool -x "${OV}" HEAD~1`,
+      `git fetch --upload-pack="${OV}" .`,
+    ]) {
+      const r = bash(ctx('review'), cmd)
+      expect(isDeny(r) && r.deny, cmd).toContain('runs a command of its own')
+    }
+  })
+  test('the printed lines of a parked group and everyday git still run; with no run git is the person\'s', () => {
+    expect('allow' in bash(ctx('build'), 'git -C .claude/worktrees/temper-pw-T2 rebase --autostash --onto abc1234~1 abc1234')).toBe(true)
+    expect('allow' in bash(ctx('build'), 'git status && git log --oneline -5')).toBe(true)
+    expect('allow' in bash(ctx('build'), 'git rebase main')).toBe(true)
+    expect('allow' in bash(none(), `git bisect run ${CLI} gate check`)).toBe(true)
+  })
+
+  test('at the commit stage nothing goes around the hook, and no move is Claude\'s', () => {
+    const c = ctx('commit')
+    for (const cmd of ['git commit --no-verify -am x', 'git config core.hooksPath /tmp/none', 'git merge other', `${CLI} state set next_stage build`, `${CLI} state set run_mode autonomous`, `${CLI} state init pw --command temper`, `${CLI} state loop commit build --reason x`]) {
+      expect(isDeny(bash(c, cmd)), cmd).toBe(true)
+    }
+    expect(isDeny(write(c, '.git/hooks/pre-commit'))).toBe(true)
+    expect(isDeny(write(c, '.claude/temper.config'))).toBe(true)
+  })
+  test('legit at the commit stage: the Commit steps (writes, archive, a plain commit, clear)', () => {
+    const c = ctx('commit')
+    expect('allow' in write(c, `${SPEC}/intent.md`)).toBe(true)
+    expect('allow' in write(c, 'src/anything.ts')).toBe(true)
+    for (const cmd of [`${CLI} state archive`, 'git add -A && git commit -m "feat: x"', `${CLI} state clear`, `${CLI} state set run_mode interactive`]) {
+      expect('allow' in bash(c, cmd), cmd).toBe(true)
+    }
+  })
+
+  test('a /temper:fix run: its moves are not judged, but nothing goes around the hook', () => {
+    const fix = none({ fixRun: true })
+    for (const cmd of ['git commit --no-verify -am x', 'git -c core.hooksPath=/dev/null commit -m x', 'git merge other', 'TEMPER_DIR=/tmp/x scripts/temper gate check']) {
+      expect(isDeny(bash(fix, cmd)), cmd).toBe(true)
+    }
+    expect(isDeny(write(fix, '.claude/temper.config'))).toBe(true)
+    expect(isDeny(write(fix, '.git/hooks/pre-commit'))).toBe(true)
+    for (const cmd of [`${CLI} state loop check fix --reason x`, `${CLI} override check --reason x`, `git bisect run ${CLI} gate check`, 'git commit -m "fix: x"']) {
+      expect('allow' in bash(fix, cmd), cmd).toBe(true)
+    }
+    expect('allow' in write(fix, 'src/app.ts')).toBe(true)
+  })
+
+  test('a step back and a move on in one command is refused, even with the person\'s step back', () => {
+    const back = (s: Stage, to: Stage) => ctx(s, { move: { kind: 'back', to }, facts: { verdicts: { [s]: 'PASS' } } })
+    for (const [s, cmd] of [
+      ['check', `${CLI} state loop check build --reason x && ${CLI} state advance check_complete commit`],
+      ['review', `${CLI} state set next_stage build && ${CLI} state advance review_complete check`],
+      ['review', `${CLI} state set next_stage build && ${CLI} state set next_stage review`],
+      ['check', `${CLI} state loop check build --reason x && ${CLI} state set next_stage check`],
+    ] as const) {
+      expect(isDeny(bash(back(s, 'build'), cmd)), cmd).toBe(true)
+    }
+    expect('allow' in bash(back('check', 'build'), `${CLI} state loop check build --reason x`)).toBe(true)
+    expect('allow' in bash(back('check', 'build'), `${CLI} state loop check build --reason x && ${CLI} state set next_stage build`)).toBe(true)
+  })
+
+  test('Save for later stops the run and lifts no rule', () => {
+    const saved = (s: Stage) => ctx(s, { move: { kind: 'pause' } })
+    expect(isDeny(write(saved('intent'), 'src/app.ts'))).toBe(true)
+    expect(isDeny(write(saved('plan'), 'CLAUDE.md'))).toBe(true)
+    expect(isDeny(bash(saved('build'), 'git merge other'))).toBe(true)
+    expect(isDeny(bash(saved('build'), 'git commit-tree HEAD^{tree} -m x'))).toBe(true)
+  })
+
+  test('Start over begins a run of the same command, never a fix run', () => {
+    expect('allow' in bash(ctx('build', { restart: true }), `${CLI} state init pw --command temper`)).toBe(true)
+    expect(isDeny(bash(ctx('build', { restart: true }), `${CLI} state init pw --command fix`))).toBe(true)
+  })
+})
+
+describe('Design after Plan', () => {
+  const adv = (n: string) => `${CLI} state advance plan_complete ${n}`
+  test('a medium plan with Design switched off may go to Build or Design, until the spec holds design.md', () => {
+    const off = { complexity: 'medium', designRequired: false }
+    expect('allow' in bash(ctx('plan', { move: { kind: 'approve' }, facts: off }), adv('build'))).toBe(true)
+    expect('allow' in bash(ctx('plan', { move: { kind: 'approve' }, facts: off }), adv('design'))).toBe(true)
+    const seen = { ...off, designSeen: true }
+    expect(isDeny(bash(ctx('plan', { move: { kind: 'approve' }, facts: seen }), adv('build')))).toBe(true)
+    expect('allow' in bash(ctx('plan', { move: { kind: 'approve' }, facts: seen }), adv('design'))).toBe(true)
+  })
+})
+
+describe('the store of the person\'s decisions', () => {
+  test('the plugin data folder is not touched while a run is active', () => {
+    const store = '/root/.claude/plugins/data/temper-inline/store.json'
+    expect(isDeny(write(ctx('plan'), store))).toBe(true)
+    for (const cmd of [`echo '{}' > ${store}`, 'python3 -c "open(\'/home/u/.claude/plugins/data/temper/x\',\'w\')"', 'cat ~/.claude/plugins/data/temper-inline/store.json']) {
+      expect(isDeny(bash(ctx('plan'), cmd)), cmd).toBe(true)
+    }
+    expect('allow' in bash({ ...ctx('plan'), run: null }, `cat ${store}`)).toBe(true)
+  })
+})
+
+describe('git plumbing that the native hook never sees', () => {
+  test('update-ref, stash create or store and replace are refused while a run is active', () => {
+    for (const cmd of ['git update-ref HEAD $(git stash create)', 'git stash create', 'git stash store abc123', 'git replace abc123 def456', 'git update-ref refs/heads/feature/pw abc123']) {
+      expect(isDeny(bash(ctx('build'), cmd)), cmd).toBe(true)
+    }
+    for (const cmd of ['git stash', 'git stash pop', 'git symbolic-ref --short HEAD', 'git rev-parse HEAD']) {
+      expect('allow' in bash(ctx('build'), cmd), cmd).toBe(true)
+    }
+    expect('allow' in bash({ ...ctx('build'), run: null }, 'git update-ref refs/heads/x abc123')).toBe(true)
   })
 })

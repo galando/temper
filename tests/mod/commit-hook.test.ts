@@ -1,8 +1,9 @@
 // The Temper commit hook (9.6.6). The hook git runs is <git common dir>/temper-gate/pre-commit (core.hooksPath names that
 // folder), and the line an older Temper printed runs <git common dir>/temper-pre-commit. While a run is active the mod
 // guards both exactly as it guards .git/hooks: the editing tools and every Bash form that changes them are refused, with
-// the text the git hooks get, and that text names the Temper commit hook. With no run active, or a finished one, they
-// pass, so the person can install the hook. Reading them always passes.
+// the text the git hooks get, and that text names the Temper commit hook. A finished run at the Commit stage keeps them
+// guarded until the Commit steps clear it (the commit gate can still fail there). With no run active they pass, so the
+// person can install the hook. Reading them always passes.
 import { describe, expect, test } from 'claude-code/testing'
 
 import { classifyBash, protectedKind } from '../../hooks/temper-mod/core/bash'
@@ -31,11 +32,9 @@ type RunState = TestFacts | null
 const ACTIVE: Array<[string, RunState]> = [
   ...(['intent', 'plan', 'design', 'build', 'review', 'check'] as Stage[]).map((p): [string, RunState] => [p, stateAt(p)]),
   ['build, paused', stateAt('build', { paused: true })],
+  ['a finished run, at the Commit stage', stateAt('done')],
 ]
-const INACTIVE: Array<[string, RunState]> = [
-  ['no run', null],
-  ['a finished run', stateAt('done')],
-]
+const INACTIVE: Array<[string, RunState]> = [['no run', null]]
 
 const isDeny = (r: RuleResult): r is Extract<RuleResult, { deny: string }> => 'deny' in r
 const bash = (s: RunState, command: string): RuleResult => evaluate(s, ctx, { tool: 'Bash', input: { command } })
@@ -256,6 +255,19 @@ describe('Bash with no run active: the person installs, updates and removes the 
         expect(bash(s, command)).toEqual({ allow: true })
       })
     }
+  }
+})
+
+describe('Bash at the Commit stage: the hook stays guarded until the Commit steps clear the run', () => {
+  const forms = [
+    ...CASES.filter(([form]) => !form.startsWith('find ')).map(([form, target]) => fill(form, target)),
+    `git config --local core.hooksPath /repo/${FOLDER}`,
+    'git config --unset core.hooksPath',
+  ]
+  for (const command of forms) {
+    test(`a finished run: ${command}`, () => {
+      expect(isDeny(bash(stateAt('done'), command))).toBe(true)
+    })
   }
 })
 

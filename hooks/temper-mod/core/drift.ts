@@ -4,6 +4,7 @@
 // what in fixed lines, so the same question works with the mod and without it. Pure: no Claude imports.
 
 import type { DriftChoice } from './decisions'
+import { answeredResult } from './gateanswer'
 
 export const DRIFT_HEADER = 'Scope drift'
 export const DRIFT_PREFIX = 'Outside the plan:'
@@ -12,7 +13,7 @@ const LABELS: Record<string, DriftChoice> = { 'add to plan': 'add', revert: 'rev
 
 export type DriftAnswer = { path: string; choice: DriftChoice; reason: string }
 
-type Question = { question?: unknown; header?: unknown }
+type Question = { question?: unknown; header?: unknown; multiSelect?: unknown }
 
 const line = (text: string, label: string): string => {
   const m = new RegExp(`^\\s*${label}\\s*(.*)$`, 'mi').exec(text)
@@ -23,14 +24,13 @@ const line = (text: string, label: string): string => {
 // returned after the person chose, not what the caller sent in. A question that is not a Scope drift
 // question, or an answer that is not one of the three choices (a typed "Other"), is no decision.
 export function driftAnswers(result: unknown): DriftAnswer[] {
-  const r = (result && typeof result === 'object' ? (result as { result?: unknown }).result : undefined) as
-    | { questions?: unknown; answers?: unknown }
-    | undefined
-  if (!r || !Array.isArray(r.questions) || !r.answers || typeof r.answers !== 'object') return []
+  // A dialog that resolved by itself while the person was away, or a request for another round, decides nothing.
+  const r = answeredResult(result)
+  if (r === null) return []
   const answers = r.answers as Record<string, unknown>
   const out: DriftAnswer[] = []
   for (const q of r.questions as Question[]) {
-    if (typeof q?.question !== 'string' || typeof q.header !== 'string') continue
+    if (typeof q?.question !== 'string' || typeof q.header !== 'string' || q.multiSelect === true) continue
     if (q.header.trim().toLowerCase() !== DRIFT_HEADER.toLowerCase()) continue
     const path = line(q.question, DRIFT_PREFIX).split(/\s+/)[0]?.replace(/[.,;:]+$/, '') ?? ''
     const answer = answers[q.question]
