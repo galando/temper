@@ -8,14 +8,9 @@
 // Anything this does not see (a variable, a substitution, a script on disk, a program that builds a name at run time)
 // passes. Temper is not a sandbox (docs/trust.md): the native hook and the editing tool rules are the hard guarantees.
 
-// A temper call: what it does, in the words the command gives it.
-export type DecisionKind = 'override' | 'accept' | 'advance' | 'back'
-export type DecisionCall = { kind: DecisionKind; stage?: string; id?: string; next?: string; invalid?: boolean }
-export type StateOp = { op: 'set'; key: string; value?: string } | { op: 'clear' } | { op: 'archive' } | { op: 'init' } | { op: 'loop'; from?: string; to?: string }
-
 export type ShellRead = {
-  calls: DecisionCall[]
-  stateOps: StateOp[]
+  // Each temper call written out: its words after the script (`state advance plan_complete build`).
+  calls: string[][]
   // `git commit --no-verify` or `-n`: the native pre-commit hook would not run.
   noVerify: boolean
   // A change of `core.hooksPath`: git would run other hooks than Temper's.
@@ -201,46 +196,8 @@ function skipsHook(args: string[]): boolean {
   return false
 }
 
-function readTemper(args: string[], calls: DecisionCall[], stateOps: StateOp[]): void {
-  let i = 0
-  while (i < args.length && (args[i] as string).startsWith('-')) i += args[i] === '--spec-path' ? 2 : 1
-  const sub = args[i]
-  const sub2 = args[i + 1]
-  const rest = args.slice(i + 2)
-  const flag = (name: string, from: string[]): string[] => {
-    const found: string[] = []
-    for (let k = 0; k < from.length; k++) {
-      const w = from[k] as string
-      if (w === name) found.push(from[k + 1] ?? '')
-      else if (w.startsWith(`${name}=`)) found.push(w.slice(name.length + 1))
-    }
-    return found
-  }
-  if (sub === 'override') {
-    const r = args.slice(i + 1)
-    calls.push({ kind: 'override', ...(r[0] && !r[0].startsWith('-') ? { stage: r[0] } : {}), invalid: flag('--reason', r).length > 1 })
-  } else if (sub === 'group' && sub2 === 'reopen' && rest.some(w => w === '--accept-foreign' || w.startsWith('--accept-foreign='))) {
-    // Keeping a task agent's commits records an override inside the CLI: the person's choice.
-    calls.push({ kind: 'override', stage: `foreign-commit:${rest[0] ?? ''}`, invalid: flag('--accept-foreign', rest).length > 1 })
-  } else if (sub === 'evidence' && sub2 === 'accept') {
-    const stage = flag('--stage', rest)
-    const id = flag('--id', rest)
-    calls.push({ kind: 'accept', ...(stage[0] !== undefined ? { stage: stage[0] } : {}), ...(id[0] !== undefined ? { id: id[0] } : {}), invalid: stage.length > 1 || id.length > 1 || flag('--reason', rest).length > 1 })
-  } else if (sub === 'state' && sub2 === 'advance') {
-    calls.push({ kind: 'advance', ...(rest[0] !== undefined ? { stage: rest[0] } : {}), ...(rest[1] !== undefined ? { next: rest[1] } : {}) })
-  } else if (sub === 'state' && sub2 === 'set') {
-    const key = rest[0] ?? ''
-    stateOps.push({ op: 'set', key, ...(rest[1] !== undefined ? { value: rest[1] } : {}) })
-    if (key === 'next_stage') calls.push({ kind: 'back', ...(rest[1] !== undefined ? { stage: rest[1] } : {}) })
-  } else if (sub === 'state' && sub2 === 'loop') {
-    stateOps.push({ op: 'loop', ...(rest[0] !== undefined ? { from: rest[0] } : {}), ...(rest[1] !== undefined ? { to: rest[1] } : {}) })
-  } else if (sub === 'state' && (sub2 === 'clear' || sub2 === 'archive' || sub2 === 'init')) {
-    stateOps.push({ op: sub2 })
-  }
-}
-
 export function readShell(command: string): ShellRead {
-  const read: ShellRead = { calls: [], stateOps: [], noVerify: false, hooksPath: false, writes: [] }
+  const read: ShellRead = { calls: [], noVerify: false, hooksPath: false, writes: [] }
   for (const words of statements(command)) {
     read.writes.push(...written(words))
     const git = gitParts(words)
@@ -255,13 +212,31 @@ export function readShell(command: string): ShellRead {
         if (at >= 0 && !reads && (git.rest[at + 1] !== undefined || git.rest.some(w => w.startsWith('--unset') || w === '--replace-all' || w === '--add'))) read.hooksPath = true
       }
     }
-    // Every word that names the script starts a call: the words after it are the call's.
+    // The first word that names the script starts a call: the words after it are the call's.
     for (let i = 0; i < words.length; i++) {
       if (SCRIPT.test(words[i] as string)) {
-        readTemper(words.slice(i + 1), read.calls, read.stateOps)
+        read.calls.push(words.slice(i + 1))
         break
       }
     }
   }
   return read
+}
+
+// A call's words with its leading flags left out (`--spec-path X` takes a value).
+export function callWords(words: readonly string[]): string[] {
+  let i = 0
+  while (i < words.length && (words[i] as string).startsWith('-')) i += words[i] === '--spec-path' ? 2 : 1
+  return words.slice(i)
+}
+
+// Whether `words` are the call the CLI wrote in `written` (a command line it printed), word for word. A placeholder in
+// braces (`{reason}`) stands for one word that is not empty.
+export function sameCall(written: string, words: readonly string[]): boolean {
+  const st = statements(written)[0] ?? []
+  const at = st.findIndex(w => SCRIPT.test(w))
+  if (at < 0) return false
+  const want = callWords(st.slice(at + 1))
+  const have = callWords(words)
+  return want.length === have.length && want.every((w, i) => (/^\{[^{}]*\}$/.test(w) ? (have[i] ?? '') !== '' : w === have[i]))
 }

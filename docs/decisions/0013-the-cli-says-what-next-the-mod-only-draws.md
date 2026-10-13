@@ -60,7 +60,10 @@ the person; and the mod checks that the person answered before a step only the p
      starting over during a run) needs the person's answer at the current run and step. The answer
      counts only when it matches, exactly, the header, the question and one option label that the
      CLI wrote for that step; a typed message is never a move. A simple matcher finds the CLI call
-     in the command text (the words after `scripts/temper` or `temper`);
+     in the command text (the words after `scripts/temper` or `temper`), and the call passes only
+     when it is one of the calls that option maps to, word for word (a `{reason}` placeholder stands
+     for the person's reason), or one of the calls of the CLI's own action in `view.json` (an armed
+     run's move, the commit steps);
    - the file path rules for Write, Edit, MultiEdit and NotebookEdit (the run's own files, the
      config and the git hooks during a run, the plugin data folder, and each stage's writes);
    - a short Bash list: `--no-verify` and `-n` on a commit, a changed `core.hooksPath`, and a write

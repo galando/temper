@@ -8,7 +8,7 @@ import { check as evaluate } from './helpers'
 import { protectedKind } from '../../hooks/temper-mod/core/rules'
 import type { RuleResult } from '../../hooks/temper-mod/core/rules'
 import type { OldCtx as RuleContext } from './helpers'
-import { SPEC, runFiles } from './run-files'
+import { SPEC, deriveView, runFiles } from './run-files'
 import { stateAt } from './helpers'
 
 const ctx: RuleContext = { specDir: SPEC, planFiles: ['src/app.ts', 'hooks/core/*.ts', 'docs/guide/'] }
@@ -171,18 +171,17 @@ describe('while a grouped Build run is active, the run tasks.md is the CLI\'s', 
   })
 })
 
-describe('the adapter reads groups.json presence into the snapshot', () => {
+describe('the adapter reads the grouped Build from view.json into the snapshot', () => {
   const ioWith = (files: Record<string, string>): Io => ({
-    read: async path => files[path] ?? null,
-    list: async () => [],
-    write: async () => undefined,
+    read: async path => (path === '.temper/view.json' ? deriveView(p => files[p]) : files[path] ?? null),
+    keep: async () => undefined,
+    kept: async () => null,
     storeGet: async () => undefined,
     storeSet: async () => undefined,
     storeDelete: async () => undefined,
     version: async () => '2.1.300',
     setRun: async () => undefined,
     setMode: async () => undefined,
-    pause: async () => undefined,
   })
 
   test('groups.json present: groupedActive is true', async () => {

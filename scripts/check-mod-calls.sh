@@ -4,8 +4,9 @@
 # Runs `claude plugin validate` on the manifest, takes the `calls:` line it prints for the
 # hooks module, and FAILS when
 #   - any call is in the process, http or env namespace (the mod never spawns, fetches or
-#     reads the environment: tests, lint, git and CLI calls are prompts to Claude), or
-#   - any call is not on the reviewed list below.
+#     reads the environment: tests, lint, git and CLI calls are prompts to Claude),
+#   - any call is not on the reviewed list below, or
+#   - a call on the list is not made any more (the list is exact: a stale line goes).
 # A new call is a reviewed change: add it here with a one line reason. (docs/mods-plan.md 2.7 is the
 # list as first built, kept as history.)
 #
@@ -22,17 +23,15 @@ REPO_ROOT="${HERE%/scripts}"
 # The reviewed list: one `noun.method` per line, with why the mod needs it.
 ALLOWED='
 agent.list       the reviewerModel option: tells whether a subagent step belongs to the Temper review agent (read only; the spawn is never changed)
-clock.sleep      waits 60 ms before build-state.json is read again while the CLI rewrites it (no global timer)
 command.run      the Go on button runs /temper:temper, and the orchestrator takes up the run where the CLI says it is (it decides nothing)
 config.list      /temper mode and enforcement read the row to see whether an administrator locked it
 config.set       the same commands change the row the way /config does (key temper.uiMode, temper.enforcement)
-fs.list          lists the spec folder of the run (which run files exist) and a folder of kept texts
-fs.read          reads build-state, gates, status, evidence, intent, plan, tasks, temper.config and an older report
+fs.read          reads .temper/view.json, the one file the mod reads of the CLI (ADR 0013)
 fs.stat          resolves "." to the project root so absolute tool paths can be made relative
 session.version  the version guard: the mod stays inert below 2.1.287
 state.get        the drawing hooks read the run view and the live mode, so a write redraws them
 state.set        publishes the run view and the live mode
-store.delete     drops the oldest kept folder and the oldest run of answers, so the store stays small
+store.delete     drops the oldest kept report and the oldest run of answers, so the store stays small
 store.get        the gate answers of the person per run (dec:<run id>), "mode already asked" and the kept report
 store.set        records those (the mod writes no file)
 ui.ask           the first run question: how much Temper shows (uiMode)
@@ -92,7 +91,15 @@ done <<< "$CALLS"
 
 # This script reads only the validator's output and never opens a file of the mod.
 
+# The list is exact: every reviewed call is still made.
+while IFS= read -r name; do
+  if ! printf '%s\n' "$CALLS" | grep -qx -- "$name"; then
+    echo "FAIL: \$.$name is on the reviewed list but the mod no longer makes it (remove its line)"
+    FAIL=1
+  fi
+done < <(allowed_names)
+
 if [[ $FAIL -eq 0 ]]; then
-  echo "OK: $(printf '%s\n' "$CALLS" | wc -l | tr -d ' ') calls, all on the reviewed list, none process/http/env"
+  echo "OK: $(printf '%s\n' "$CALLS" | wc -l | tr -d ' ') calls, exactly the reviewed list, none process/http/env"
 fi
 exit $FAIL

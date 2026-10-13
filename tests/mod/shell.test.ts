@@ -1,9 +1,9 @@
 // The guard's reader of a Bash command (core/shell.ts, ADR 0013): it finds the temper calls written out, a commit that
-// switches the native hook off, a change of core.hooksPath, and the paths a command writes. It is not a shell parser:
-// what it does not see is listed in known-limits.test.ts.
+// switches the native hook off, a change of core.hooksPath, and the paths a command writes, and it compares a call with
+// one the CLI wrote. It is not a shell parser: what it does not see is listed in known-limits.test.ts.
 import { describe, expect, test } from 'claude-code/testing'
 
-import { readShell, statements } from '../../hooks/temper-mod/core/shell'
+import { callWords, readShell, sameCall, statements } from '../../hooks/temper-mod/core/shell'
 
 describe('statements and words', () => {
   test('quotes keep their spaces and lose their quotes; operators end a statement', () => {
@@ -28,38 +28,34 @@ describe('statements and words', () => {
 })
 
 describe('the temper calls', () => {
-  test('each kind, by its words', () => {
-    const r = readShell(
-      [
-        '/p/scripts/temper override plan --reason "a b"',
-        'scripts/temper evidence accept --stage review --id 3 --reason x',
-        'scripts/temper state advance plan_complete build',
-        'scripts/temper state set next_stage build',
-        'scripts/temper group reopen G1 --accept-foreign abc --reason x',
-      ].join('\n'),
-    )
+  test('each call written out, as its words after the script', () => {
+    const r = readShell(['/p/scripts/temper override plan --reason "a b"', 'cd x && scripts/temper evidence accept --stage review --id 3', '"${ROOT}/scripts/temper" state advance plan_complete build'].join('\n'))
     expect(r.calls).toEqual([
-      { kind: 'override', stage: 'plan', invalid: false },
-      { kind: 'accept', stage: 'review', id: '3', invalid: false },
-      { kind: 'advance', stage: 'plan_complete', next: 'build' },
-      { kind: 'back', stage: 'build' },
-      { kind: 'override', stage: 'foreign-commit:G1', invalid: false },
-    ])
-  })
-  test('a repeated flag makes the call invalid', () => {
-    expect(readShell('scripts/temper evidence accept --stage review --id 1 --id 2').calls[0]?.invalid).toBe(true)
-    expect(readShell('scripts/temper override plan --reason a --reason b').calls[0]?.invalid).toBe(true)
-  })
-  test('the state operations', () => {
-    expect(readShell('scripts/temper state clear; scripts/temper state loop check build --reason x; scripts/temper state set complexity medium').stateOps).toEqual([
-      { op: 'clear' },
-      { op: 'loop', from: 'check', to: 'build' },
-      { op: 'set', key: 'complexity', value: 'medium' },
+      ['override', 'plan', '--reason', 'a b'],
+      ['evidence', 'accept', '--stage', 'review', '--id', '3'],
+      ['state', 'advance', 'plan_complete', 'build'],
     ])
   })
   test('a word that only ends in temper inside a longer word is no call', () => {
     expect(readShell('git commit -m "fix temper override"').calls).toEqual([])
     expect(readShell('ls .temper').calls).toEqual([])
+  })
+})
+
+describe('sameCall: the call the CLI wrote, word for word', () => {
+  const written = '/plugin/scripts/temper override build --reason "{reason}"'
+  test('the same words, any path to the script, a reason in the placeholder', () => {
+    expect(sameCall(written, ['override', 'build', '--reason', 'the flaky test'])).toBe(true)
+    expect(sameCall(written, callWords(['--spec-path', '.temper/specs/pw', 'override', 'build', '--reason', 'x']))).toBe(true)
+  })
+  test('another stage, a word more, an empty reason or a repeated flag is another call', () => {
+    expect(sameCall(written, ['override', 'review', '--reason', 'x'])).toBe(false)
+    expect(sameCall(written, ['override', 'build', '--reason', 'x', '--reason', 'y'])).toBe(false)
+    expect(sameCall(written, ['override', 'build', '--reason', ''])).toBe(false)
+    expect(sameCall(written, ['override', 'build'])).toBe(false)
+  })
+  test('a step that is no temper call matches nothing', () => {
+    expect(sameCall('git add -- .temper/specs/pw/', ['state', 'clear'])).toBe(false)
   })
 })
 

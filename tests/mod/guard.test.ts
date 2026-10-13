@@ -1,14 +1,14 @@
-// The guard of ADR 0012 (core/rules.ts), unit by unit: the stage write table, Scope drift, and the table of what only the
-// person's move at the CLI's current step lets through. The CLI's files give the stage, the verdicts and the skips; the
-// person's choices come from the question dialogs.
+// The guard of ADR 0013 (core/rules.ts), unit by unit: the stage write table, Scope drift, and what only the person may
+// cause: a call that is one the person's answer at the CLI's current step maps to, word for word, as the CLI wrote it
+// in the question's options (the CLI's real views, scripts/selftest/view-fixtures.ts), or one of the CLI's own action.
 import { describe, expect, test } from 'claude-code/testing'
 
-import type { Move, MoveKind } from '../../hooks/temper-mod/core/decisions'
 import { ONLY_USER, evaluate } from '../../hooks/temper-mod/core/rules'
 import type { RuleContext, RuleResult, RunFacts } from '../../hooks/temper-mod/core/rules'
 import type { Stage } from '../../hooks/temper-mod/core/stages'
 import { STAGES } from '../../hooks/temper-mod/core/stages'
 import { stateAt } from './helpers'
+import { nextCalls, optionCalls } from './run-files'
 import { CLI_SEQ } from './world'
 
 const SPEC = '.temper/specs/pw'
@@ -18,17 +18,9 @@ const PLAN_FILES = ['src/app.ts', 'hooks/core/*.ts', 'docs/guide/']
 const isDeny = (r: RuleResult): r is Extract<RuleResult, { deny: string }> => 'deny' in r
 
 type Over = Partial<RunFacts>
-function ctx(stage: Stage, o: { move?: { kind: MoveKind; to?: Stage }; facts?: Over; accepts?: string[]; restart?: boolean; drift?: RuleContext['drift']; nothingToLose?: boolean } = {}): RuleContext {
+function ctx(stage: Stage, o: { allowed?: string[]; facts?: Over; restart?: boolean; drift?: RuleContext['drift'] } = {}): RuleContext {
   const run = stateAt(stage, { specDir: SPEC, planFiles: PLAN_FILES, ...(o.facts ?? {}) })
-  const move: Move | null = o.move ? ({ id: 'm1', run: 'r', step: 3, stage, ts: 1, reason: 'r', ...o.move } as Move) : null
-  return {
-    run,
-    move,
-    accepts: o.accepts ?? [],
-    restart: o.restart ?? false,
-    drift: o.drift ?? { added: [], allowOnce: [] },
-    ...(o.nothingToLose !== undefined ? { nothingToLose: o.nothingToLose } : {}),
-  }
+  return { run, allowed: o.allowed ?? [], restart: o.restart ?? false, drift: o.drift ?? { added: [], allowOnce: [] } }
 }
 const write = (c: RuleContext, path: string, tool = 'Write') => evaluate(c, { tool, input: tool === 'NotebookEdit' ? { notebook_path: path } : { file_path: path } })
 const bash = (c: RuleContext, command: string) => evaluate(c, { tool: 'Bash', input: { command } })
@@ -81,15 +73,13 @@ describe('the stage write table: 6 stages x 3 tools x allowed and disallowed', (
     expect(isDeny(write(c, `/repo/${SPEC}/../../../src/app.ts`))).toBe(true)
   })
 
-  test('other tools, no run and the commit stage pass through; a run saved for later does not', () => {
+  test('other tools, no run and the commit stage pass through; a run saved for later does not (it lifts no rule)', () => {
     expect('allow' in evaluate(ctx('plan'), { tool: 'Read', input: { file_path: 'src/app.ts' } })).toBe(true)
     expect('allow' in write({ ...ctx('plan'), run: null }, 'src/app.ts')).toBe(true)
     expect('allow' in write(ctx('commit'), 'src/app.ts')).toBe(true)
-    expect(isDeny(write(ctx('plan', { move: { kind: 'pause' } }), 'src/app.ts'))).toBe(true)
-  })
-
-  test('a saved run still keeps Temper own files', () => {
-    expect(isDeny(write(ctx('build', { move: { kind: 'pause' } }), '.temper/gates.json'))).toBe(true)
+    const saved = ctx('plan', { allowed: optionCalls('plan-pass', 'Save for later', { more: true }) })
+    expect(isDeny(write(saved, 'src/app.ts'))).toBe(true)
+    expect(isDeny(write(saved, '.temper/gates.json'))).toBe(true)
   })
 })
 
@@ -107,127 +97,94 @@ describe('Scope drift in Build', () => {
 })
 
 describe('what only the person may cause, at the step the run is at', () => {
-  const adv = (s: string, n: string) => `${CLI} state advance ${s}_complete ${n}`
+  const adv = (st: string, n: string) => `${CLI} state advance ${st}_complete ${n}`
 
-  test('leaving Intent and Plan needs the person (Continue, an arming answer, or a skip), even after a passed check', () => {
-    expect(bash(ctx('intent', { facts: { verdicts: { intent: 'PASS' } } }), adv('intent', 'plan'))).toEqual({ deny: ONLY_USER })
-    expect(bash(ctx('plan', { facts: { verdicts: { plan: 'PASS' } } }), adv('plan', 'build'))).toEqual({ deny: ONLY_USER })
-    for (const kind of ['approve', 'arm', 'override'] as const) {
-      expect('allow' in bash(ctx('intent', { move: { kind } }), adv('intent', 'plan'))).toBe(true)
-      expect('allow' in bash(ctx('plan', { move: { kind } }), adv('plan', 'build'))).toBe(true)
-    }
-    // Save for later or a step back is no approval.
-    expect(isDeny(bash(ctx('plan', { move: { kind: 'pause' } }), adv('plan', 'build')))).toBe(true)
-    expect(isDeny(bash(ctx('plan', { move: { kind: 'back', to: 'intent' } }), adv('plan', 'build')))).toBe(true)
+  test('leaving Intent and Plan needs the person, even after a passed check: the calls of the answer, word for word', () => {
+    expect(bash(ctx('intent'), adv('intent', 'plan'))).toEqual({ deny: ONLY_USER })
+    expect(bash(ctx('plan'), adv('plan', 'build'))).toEqual({ deny: ONLY_USER })
+    expect('allow' in bash(ctx('intent', { allowed: optionCalls('intent-pass', 'Continue to Plan (Recommended)') }), adv('intent', 'plan'))).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Continue to Build (Recommended)') }), adv('plan', 'build'))).toBe(true)
+    // The script by any path: the words after it are the call.
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Continue to Build (Recommended)') }), 'cd x && /a/b/scripts/temper state advance plan_complete build')).toBe(true)
+    // Another next stage than the answer names is another call.
+    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Continue to Build (Recommended)') }), adv('plan', 'design')))).toBe(true)
+    const design = optionCalls('design-plan-pass', 'Continue to Design (Recommended)')
+    expect('allow' in bash(ctx('plan', { allowed: design }), adv('plan', 'design'))).toBe(true)
+    expect(isDeny(bash(ctx('plan', { allowed: design }), adv('plan', 'build')))).toBe(true)
+    // Save for later is no approval.
+    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass', 'Save for later', { more: true }) }), adv('plan', 'build')))).toBe(true)
   })
 
-  test('every later stage follows its own verdict or the person skip', () => {
-    for (const [s, n] of [['design', 'build'], ['build', 'review'], ['review', 'check'], ['check', 'commit']] as const) {
-      expect(isDeny(bash(ctx(s), adv(s, n)))).toBe(true)
-      expect(isDeny(bash(ctx(s, { facts: { verdicts: { [s]: 'FAIL' } } }), adv(s, n)))).toBe(true)
-      expect('allow' in bash(ctx(s, { facts: { verdicts: { [s]: 'PASS' } } }), adv(s, n))).toBe(true)
-      expect('allow' in bash(ctx(s, { facts: { skipped: new Set([s]) } }), adv(s, n))).toBe(true)
-      expect('allow' in bash(ctx(s, { move: { kind: 'override' } }), adv(s, n))).toBe(true)
-      // The person's Continue after a failed check is no skip.
-      expect(isDeny(bash(ctx(s, { move: { kind: 'advance' }, facts: { verdicts: { [s]: 'FAIL' } } }), adv(s, n)))).toBe(true)
-    }
+  test('a later stage follows its own verdict: the CLI refuses an advance past a failed check, not the mod', () => {
+    for (const [st, n] of [['design', 'build'], ['build', 'review'], ['review', 'check'], ['check', 'commit']] as const) expect('allow' in bash(ctx(st), adv(st, n))).toBe(true)
   })
 
-  test('an advance is for the stage the run is at, to its next stage only', () => {
-    const c = ctx('review', { facts: { verdicts: { build: 'PASS', review: 'PASS' } } })
-    expect(isDeny(bash(c, adv('build', 'review')))).toBe(true)
-    expect(isDeny(bash(c, adv('review', 'commit')))).toBe(true)
-    expect(isDeny(bash(c, adv('review', 'build')))).toBe(true)
-    expect(isDeny(bash(c, `${CLI} state advance started build`))).toBe(true)
+  test('a skip needs the person\'s skip of that stage, with any reason in the placeholder', () => {
+    const skip = optionCalls('build-fail', 'Override and continue')
+    expect(bash(ctx('build'), `${CLI} override build --reason x`)).toEqual({ deny: ONLY_USER })
+    expect('allow' in bash(ctx('build', { allowed: skip }), `${CLI} override build --reason "the flaky test is known"`)).toBe(true)
+    expect(isDeny(bash(ctx('build', { allowed: skip }), `${CLI} override check --reason x`))).toBe(true)
+    expect(isDeny(bash(ctx('build', { allowed: skip }), `${CLI} override build --reason x --reason y`))).toBe(true)
   })
 
-  test('an advance to a name that is no stage gets the next stage named (the CLI calls the end commit)', () => {
-    const r = bash(ctx('check', { facts: { verdicts: { check: 'PASS' } } }), adv('check', 'done'))
-    expect(isDeny(r) && r.deny).toContain('state advance check_complete commit')
-  })
-
-  test('Plan goes on to Design only when the run has one', () => {
-    const approved = { move: { kind: 'approve' as const } }
-    expect('allow' in bash(ctx('plan', { ...approved, facts: { complexity: 'simple' } }), adv('plan', 'build'))).toBe(true)
-    expect(isDeny(bash(ctx('plan', { ...approved, facts: { complexity: 'simple' } }), adv('plan', 'design')))).toBe(true)
-    expect('allow' in bash(ctx('plan', { ...approved, facts: { complexity: 'medium', designRequired: true } }), adv('plan', 'design'))).toBe(true)
-    expect(isDeny(bash(ctx('plan', { ...approved, facts: { complexity: 'medium', designRequired: true } }), adv('plan', 'build')))).toBe(true)
-    // Design not switched on: a medium run may go either way.
-    expect('allow' in bash(ctx('plan', { ...approved, facts: { complexity: 'medium' } }), adv('plan', 'build'))).toBe(true)
-  })
-
-  test('a chained advance takes its second stage from its own verdict, never from the approval', () => {
-    const c = ctx('plan', { move: { kind: 'approve' }, facts: { complexity: 'medium', designRequired: true } })
-    expect(isDeny(bash(c, `${adv('plan', 'design')} && ${adv('design', 'build')}`))).toBe(true)
-  })
-
-  test('a skip needs the person skip of the stage the run is at', () => {
-    expect(bash(ctx('review'), `${CLI} override review --reason x`)).toEqual({ deny: ONLY_USER })
-    expect('allow' in bash(ctx('review', { move: { kind: 'override' } }), `${CLI} override review --reason x`)).toBe(true)
-    expect(isDeny(bash(ctx('review', { move: { kind: 'override' } }), `${CLI} override check --reason x`))).toBe(true)
-    expect('allow' in bash(ctx('design', { move: { kind: 'override' } }), `${CLI} override design --reason x`)).toBe(true)
-  })
-
-  test('a step back needs the person step back to that stage; a loop leaves the stage the run is at', () => {
-    const back = ctx('review', { move: { kind: 'back', to: 'build' } })
-    expect('allow' in bash(back, `${CLI} state loop review build --reason x`)).toBe(true)
-    expect('allow' in bash(back, `${CLI} state set next_stage build`)).toBe(true)
-    expect(isDeny(bash(back, `${CLI} state loop review plan --reason x`))).toBe(true)
-    expect(isDeny(bash(back, `${CLI} state loop check build --reason x`))).toBe(true)
+  test('a step back needs the person\'s step back to that stage', () => {
+    const back = optionCalls('review-fail', 'Loop back to Build (Recommended)')
+    expect('allow' in bash(ctx('review', { allowed: back }), `${CLI} state loop review build --reason "a real bug"`)).toBe(true)
+    expect(isDeny(bash(ctx('review', { allowed: back }), `${CLI} state loop review plan --reason x`))).toBe(true)
     expect(isDeny(bash(ctx('review'), `${CLI} state loop review build --reason x`))).toBe(true)
     expect(isDeny(bash(ctx('review'), `${CLI} state set next_stage build`))).toBe(true)
-    expect('allow' in bash(ctx('design', { move: { kind: 'back', to: 'plan' } }), `${CLI} state loop design plan --reason x`)).toBe(true)
   })
 
-  test('state set next_stage to the stage the run is at changes nothing, and needs no one', () => {
+  test('state set next_stage to the stage the run is at changes nothing, and a step forward is the CLI\'s to check', () => {
     expect('allow' in bash(ctx('build'), `${CLI} state set next_stage build`)).toBe(true)
+    expect('allow' in bash(ctx('build'), `${CLI} state set next_stage review`)).toBe(true)
   })
 
-  test('accepting a finding needs the person answer for that finding, in Review', () => {
-    const c = ctx('review', { accepts: ['1'] })
-    expect('allow' in bash(c, `${CLI} evidence accept --stage review --id 1 --reason x`)).toBe(true)
-    expect(isDeny(bash(c, `${CLI} evidence accept --stage review --id 2 --reason x`))).toBe(true)
-    expect(isDeny(bash(c, `${CLI} evidence accept --stage check --id 1 --reason x`))).toBe(true)
-    expect(isDeny(bash(ctx('check', { accepts: ['1'] }), `${CLI} evidence accept --stage review --id 1 --reason x`))).toBe(true)
+  test('accepting a finding needs the person\'s answer for that finding', () => {
+    const accept = optionCalls('review-fail', 'Accept finding 1', { accept: true })
+    expect('allow' in bash(ctx('review', { allowed: accept }), `${CLI} evidence accept --stage review --id 1 --reason x`)).toBe(true)
+    expect(isDeny(bash(ctx('review', { allowed: accept }), `${CLI} evidence accept --stage review --id 2 --reason x`))).toBe(true)
+    expect(isDeny(bash(ctx('review', { allowed: accept }), `${CLI} evidence accept --stage check --id 1 --reason x`))).toBe(true)
   })
 
-  test('arming autonomy needs the Autonomous answer at the plan gate, and autonomy enabled', () => {
+  test('arming autonomy needs the Autonomous answer at the plan gate', () => {
     const arm = `${CLI} state set run_mode autonomous`
-    expect('allow' in bash(ctx('plan', { move: { kind: 'arm' }, facts: { autonomyEnabled: true } }), arm)).toBe(true)
-    expect(isDeny(bash(ctx('plan', { move: { kind: 'arm' } }), arm))).toBe(true)
-    expect(isDeny(bash(ctx('plan', { move: { kind: 'approve' }, facts: { autonomyEnabled: true } }), arm))).toBe(true)
-    expect(isDeny(bash(ctx('build', { facts: { autonomyEnabled: true } }), arm))).toBe(true)
+    expect('allow' in bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Autonomous: run the rest unattended') }), arm)).toBe(true)
+    expect(isDeny(bash(ctx('plan', { allowed: optionCalls('plan-pass-autonomy', 'Stage by stage (Recommended)') }), arm))).toBe(true)
+    expect(isDeny(bash(ctx('build'), arm))).toBe(true)
     expect('allow' in bash(ctx('build'), `${CLI} state set run_mode interactive`)).toBe(true)
   })
 
-  test('an armed run loops back to Build by itself after a failed Review or Check, never further', () => {
-    const armed = (s: Stage) => ctx(s, { facts: { runMode: 'autonomous', autonomyEnabled: true } })
-    expect('allow' in bash(armed('review'), `${CLI} state loop review build --reason x`)).toBe(true)
-    expect('allow' in bash(armed('check'), `${CLI} state loop check build --reason x`)).toBe(true)
-    expect(isDeny(bash(armed('check'), `${CLI} state loop check plan --reason x`))).toBe(true)
-    expect(isDeny(bash(armed('build'), `${CLI} state loop build plan --reason x`))).toBe(true)
-    // Armed with autonomy switched off since: no loop by itself.
-    expect(isDeny(bash(ctx('review', { facts: { runMode: 'autonomous' } }), `${CLI} state loop review build --reason x`))).toBe(true)
+  test('an armed run\'s own loop back is the CLI\'s action, word for word', () => {
+    const own = nextCalls('armed-review-fail')
+    expect(own.some(c => c.includes('state loop review build'))).toBe(true)
+    const loop = (own[0] ?? '').replace(/^\S+/, CLI)
+    expect('allow' in bash(ctx('review', { allowed: own }), loop)).toBe(true)
+    expect(isDeny(bash(ctx('review', { allowed: own }), `${CLI} state loop review plan --reason x`))).toBe(true)
   })
 
-  test("keeping a task agent's commits needs the person answer, once", () => {
-    const reopen = `${CLI} group reopen G1 --accept-foreign abc123 --reason x`
+  test("keeping a task agent's commits needs the person's answer", () => {
+    const reopen = `${CLI} group reopen G1 --task 1 --accept-foreign abc123 --reason x`
     expect(bash(ctx('build'), reopen)).toEqual({ deny: ONLY_USER })
-    expect(bash(ctx('build', { move: { kind: 'keep' } }), reopen)).toEqual({ allow: true, use: 'm1' })
+    expect('allow' in bash(ctx('build', { allowed: [`${CLI} group reopen G1 --task 1 --accept-foreign abc123 --reason "{reason}"`] }), reopen)).toBe(true)
   })
 
-  test('after the run is done an override is the person Override and commit', () => {
-    expect(isDeny(bash(ctx('commit'), `${CLI} override check --reason x`))).toBe(true)
-    expect('allow' in bash(ctx('commit', { move: { kind: 'commitOverride' } }), `${CLI} override check --reason x && ${CLI} override review --reason x`)).toBe(true)
+  test('after the run is done an override is the person\'s Override and commit', () => {
+    expect(bash(ctx('commit'), `${CLI} override review --reason x`)).toHaveProperty('deny')
+    const override = optionCalls('commit-fail', 'Override and commit')
+    expect('allow' in bash(ctx('commit', { allowed: override }), `${CLI} override review --reason x && ${CLI} gate commit`)).toBe(true)
   })
 
-  test('clearing the run during a run needs the person Start over, or the TRIVIAL exit', () => {
+  test('clearing the run during a run needs the person\'s Start over, or the TRIVIAL exit, or the commit steps', () => {
     expect(isDeny(bash(ctx('build'), `${CLI} state archive`))).toBe(true)
     expect('allow' in bash(ctx('build', { restart: true }), `${CLI} state archive`)).toBe(true)
     expect('allow' in bash(ctx('build', { restart: true }), `${CLI} state init next`)).toBe(true)
-    expect('allow' in bash(ctx('intent', { facts: { step: 0 }, nothingToLose: true }), `${CLI} state clear`)).toBe(true)
-    expect(isDeny(bash(ctx('intent', { facts: { step: 2 }, nothingToLose: true }), `${CLI} state clear`))).toBe(true)
-    expect('allow' in bash(ctx('commit'), `${CLI} state archive`)).toBe(true)
+    expect(isDeny(bash(ctx('build', { restart: true }), `${CLI} state init next --command fix`))).toBe(true)
+    expect('allow' in bash(ctx('intent', { facts: { step: 0, trivialExit: true } }), `${CLI} state clear`)).toBe(true)
+    expect(isDeny(bash(ctx('intent', { facts: { step: 2 } }), `${CLI} state clear`))).toBe(true)
+    const steps = nextCalls('commit-pass')
+    expect('allow' in bash(ctx('commit', { allowed: steps }), `${CLI} state archive`)).toBe(true)
+    expect('allow' in bash(ctx('commit', { allowed: steps }), `${CLI} state clear`)).toBe(true)
   })
 
   test('the CLI own keys are refused, and the orchestrator keys only in their stage and form', () => {
@@ -238,7 +195,6 @@ describe('what only the person may cause, at the step the run is at', () => {
     expect(isDeny(bash(ctx('review'), `${CLI} state set base_sha 0123abcd`))).toBe(true)
   })
 })
-
 describe('commits: the native pre-commit hook is the commit gate', () => {
   test('a plain git commit goes to the hook; --no-verify and a changed hooks path are refused', () => {
     expect('allow' in bash(ctx('build'), 'git commit -m x')).toBe(true)
@@ -248,7 +204,7 @@ describe('commits: the native pre-commit hook is the commit gate', () => {
 
   test('saved, at Commit, or in a fix run, the hook still may not be switched off; with no run it is the person\'s', () => {
     for (const cmd of ['git commit --no-verify -m x', 'git config core.hooksPath /tmp/none']) {
-      expect(isDeny(bash(ctx('build', { move: { kind: 'pause' } }), cmd))).toBe(true)
+      expect(isDeny(bash(ctx('build', { allowed: optionCalls('build-pass', 'Save for later') }), cmd))).toBe(true)
       expect(isDeny(bash(ctx('commit'), cmd))).toBe(true)
       expect('allow' in bash({ ...ctx('build'), run: null }, cmd)).toBe(true)
     }
@@ -267,7 +223,7 @@ describe('the stage order is the CLI\'s', () => {
 
 // The independent review of the one flow: each case below was let through before its fix.
 describe('review of the one flow: what goes around a gate', () => {
-  const none = (o: Partial<RuleContext> = {}): RuleContext => ({ run: null, move: null, accepts: [], restart: false, drift: { added: [], allowOnce: [] }, ...o })
+  const none = (o: Partial<RuleContext> = {}): RuleContext => ({ run: null, allowed: [], restart: false, drift: { added: [], allowOnce: [] }, ...o })
   const OV = `${CLI} override review --reason sneaky`
 
   test('the printed lines of a parked group and everyday git still run; with no run git is the person\'s', () => {
@@ -286,7 +242,7 @@ describe('review of the one flow: what goes around a gate', () => {
     expect(isDeny(write(c, '.claude/temper.config'))).toBe(true)
   })
   test('legit at the commit stage: the Commit steps (writes, archive, a plain commit, clear)', () => {
-    const c = ctx('commit')
+    const c = ctx('commit', { allowed: nextCalls('commit-pass') })
     expect('allow' in write(c, `${SPEC}/intent.md`)).toBe(true)
     expect('allow' in write(c, 'src/anything.ts')).toBe(true)
     for (const cmd of [`${CLI} state archive`, 'git add -A && git commit -m "feat: x"', `${CLI} state clear`, `${CLI} state set run_mode interactive`]) {
@@ -307,22 +263,15 @@ describe('review of the one flow: what goes around a gate', () => {
     expect('allow' in write(fix, 'src/app.ts')).toBe(true)
   })
 
-  test('a step back and a move on in one command is refused, even with the person\'s step back', () => {
-    const back = (s: Stage, to: Stage) => ctx(s, { move: { kind: 'back', to }, facts: { verdicts: { [s]: 'PASS' } } })
-    for (const [s, cmd] of [
-      ['check', `${CLI} state loop check build --reason x && ${CLI} state advance check_complete commit`],
-      ['review', `${CLI} state set next_stage build && ${CLI} state advance review_complete check`],
-      ['review', `${CLI} state set next_stage build && ${CLI} state set next_stage review`],
-      ['check', `${CLI} state loop check build --reason x && ${CLI} state set next_stage check`],
-    ] as const) {
-      expect(isDeny(bash(back(s, 'build'), cmd)), cmd).toBe(true)
-    }
-    expect('allow' in bash(back('check', 'build'), `${CLI} state loop check build --reason x`)).toBe(true)
-    expect('allow' in bash(back('check', 'build'), `${CLI} state loop check build --reason x && ${CLI} state set next_stage build`)).toBe(true)
+  test('a step back and a move on in one command: the mod lets the step back through, the CLI refuses the move on', () => {
+    // After the loop the run is at Build; `state advance check_complete commit` then fails in the CLI (advance_ok).
+    const back = ctx('check', { allowed: optionCalls('check-fail', 'Loop back to Build (Recommended)') })
+    expect('allow' in bash(back, `${CLI} state loop check build --reason x && ${CLI} state advance check_complete commit`)).toBe(true)
+    expect(isDeny(bash(back, `${CLI} state loop check plan --reason x`))).toBe(true)
   })
 
   test('Save for later stops the run and lifts no rule', () => {
-    const saved = (s: Stage) => ctx(s, { move: { kind: 'pause' } })
+    const saved = (s: Stage) => ctx(s, { allowed: optionCalls('plan-pass', 'Save for later', { more: true }) })
     expect(isDeny(write(saved('intent'), 'src/app.ts'))).toBe(true)
     expect(isDeny(write(saved('plan'), 'CLAUDE.md'))).toBe(true)
     expect(isDeny(bash(saved('build'), 'git commit --no-verify -m x'))).toBe(true)
@@ -332,18 +281,6 @@ describe('review of the one flow: what goes around a gate', () => {
   test('Start over begins a run of the same command, never a fix run', () => {
     expect('allow' in bash(ctx('build', { restart: true }), `${CLI} state init pw --command temper`)).toBe(true)
     expect(isDeny(bash(ctx('build', { restart: true }), `${CLI} state init pw --command fix`))).toBe(true)
-  })
-})
-
-describe('Design after Plan', () => {
-  const adv = (n: string) => `${CLI} state advance plan_complete ${n}`
-  test('a medium plan with Design switched off may go to Build or Design, until the spec holds design.md', () => {
-    const off = { complexity: 'medium', designRequired: false }
-    expect('allow' in bash(ctx('plan', { move: { kind: 'approve' }, facts: off }), adv('build'))).toBe(true)
-    expect('allow' in bash(ctx('plan', { move: { kind: 'approve' }, facts: off }), adv('design'))).toBe(true)
-    const seen = { ...off, designSeen: true }
-    expect(isDeny(bash(ctx('plan', { move: { kind: 'approve' }, facts: seen }), adv('build')))).toBe(true)
-    expect('allow' in bash(ctx('plan', { move: { kind: 'approve' }, facts: seen }), adv('design'))).toBe(true)
   })
 })
 

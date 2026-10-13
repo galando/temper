@@ -4,9 +4,9 @@
 // regression test. Findings are numbered as in the review.
 import { describe, expect, test } from 'claude-code/testing'
 
-import { LATER, SPEC, runFiles } from './run-files'
-import { world } from './world'
-import type { World } from './world'
+import { LATER, SPEC, questionOf, runFiles } from './run-files'
+import { viewText, world } from './world'
+import type { Answer, World } from './world'
 
 type Api = {
   session: { start: (a: unknown) => Promise<unknown> }
@@ -28,7 +28,9 @@ type Opts = {
   store?: Record<string, unknown>
   cwd?: string
   // The person's answers to the Temper gate questions, in order.
-  answers?: string[]
+  answers?: Answer[]
+  // Stages whose check failed.
+  fail?: string[]
 }
 
 // A run as the CLI leaves it, on a feature branch (or main), with the gates that passed.
@@ -46,7 +48,7 @@ async function begin($: unknown, on: Parameters<typeof world>[0], o: Opts = {}):
     step: 3,
     ...(o.complexity ? { complexity: o.complexity } : {}),
   })
-  f['.temper/gates.json'] = JSON.stringify(Object.fromEntries((o.gates ?? ['intent', 'plan']).map(g => [g, { verdict: 'PASS', ts: LATER }])))
+  f['.temper/gates.json'] = JSON.stringify(Object.fromEntries([...(o.gates ?? ['intent', 'plan']).map(g => [g, { verdict: 'PASS', ts: LATER }]), ...(o.fail ?? []).map(g => [g, { verdict: 'FAIL', ts: LATER }])]))
   f['/repo/.git/HEAD'] = `ref: refs/heads/${o.head ?? 'feature/pw'}\n`
   if (o.green) f['.temper/evidence/build.json'] = JSON.stringify([{ claim: 'unit tests', exit_code: 0, phase: 'green' }])
   if (o.design) f[`${SPEC}/design.md`] = '# Design\n'
@@ -58,8 +60,10 @@ async function begin($: unknown, on: Parameters<typeof world>[0], o: Opts = {}):
 const sh = async (api: Api, command: string): Promise<string | undefined> => (await api.tool.call({ tool: 'Bash', command })).deny
 const wr = async (api: Api, path: string): Promise<string | undefined> => (await api.tool.call({ tool: 'Write', file_path: path, content: 'x' })).deny
 const refresh = (api: Api) => api.command.run({ command: 'temper:temper', args: 'status', origin: { kind: 'composer' } })
-// The orchestrator asks the Temper gate question; the world answers it with the next of the test's answers.
-const ask = (api: Api) => api.tool.call({ tool: 'AskUserQuestion', questions: [{ question: 'What next?', header: 'Temper gate', multiSelect: false, options: [{ label: 'Continue', description: 'x' }] }] })
+// The orchestrator asks the question `temper next --json` gives, exactly; the world answers it with the next of the
+// test's answers.
+const ask = (api: Api, w: World) => api.tool.call({ tool: 'AskUserQuestion', questions: [{ ...questionOf(viewText(w) ?? ''), multiSelect: false }] })
+const why = (label: string, note: string): Answer => ({ label, note })
 // Every refusal starts with Temper: or says that only the user decides.
 const T = /Temper:|Only the user/
 
@@ -311,8 +315,8 @@ describe('finding 4: a plain commit is for the native hook; a commit the hook do
 // ---- 5. a decision counts at the run and the step it was made at ----------------------------------------------
 describe('finding 5: a decision counts at its run and step, and no longer', () => {
   test('advance; exit 1 executed the advance: the approval does not approve a second advance', async ($, on) => {
-    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main', answers: ['Continue to Build'] })
-    await ask(api)
+    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main', answers: ['Continue to Build (Recommended)'] })
+    await ask(api, w)
     const first = await api.tool.call({ tool: 'Bash', command: 'scripts/temper state advance plan_complete build; exit 1' })
     expect(first.deny).toBeUndefined()
     expect(first.isError).toBe(true)
@@ -321,8 +325,8 @@ describe('finding 5: a decision counts at its run and step, and no longer', () =
   })
 
   test('a call that failed with no effect leaves the approval in place (the retry works)', async ($, on) => {
-    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main', answers: ['Continue to Build'] })
-    await ask(api)
+    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], head: 'main', answers: ['Continue to Build (Recommended)'] })
+    await ask(api, w)
     w.cliFailures = 1
     const failed = await api.tool.call({ tool: 'Bash', command: 'scripts/temper state advance plan_complete build' })
     expect(failed.isError).toBe(true)
@@ -330,29 +334,31 @@ describe('finding 5: a decision counts at its run and step, and no longer', () =
   })
 
   test('an approval made before a step back to the plan is not an approval any more', async ($, on) => {
-    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], answers: ['Continue to Build', 'Loop back to Plan: rework the plan'] })
-    await ask(api)
+    const { w, api } = await begin($, on, { gates: ['intent', 'plan'], answers: ['Continue to Build (Recommended)', why('Loop back to Plan', 'rework the plan')] })
+    await ask(api, w)
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toBeUndefined()
-    await ask(api)
+    w.files.set('.temper/gates.json', JSON.stringify({ intent: { verdict: 'PASS' }, plan: { verdict: 'PASS' }, build: { verdict: 'FAIL' } }))
+    w.files.delete('.temper/view.json')
+    await ask(api, w)
     expect(await sh(api, "scripts/temper state loop build plan --reason 'rework the plan'")).toBeUndefined()
     expect(JSON.parse(w.files.get('.temper/build-state.json') ?? '{}').next_stage).toBe('plan')
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toMatch(T)
   })
 
   test('a decision of another run does not count', async ($, on) => {
-    const store = { 'dec:run-old': [{ id: 'd1', run: 'run-old', step: 3, stage: 'plan', ts: 1, kind: 'approve', reason: '' }], decruns: ['run-old'] }
+    const store = { 'dec:run-old': [{ id: 'd1', run: 'run-old', step: 3, stage: 'plan', ts: 1, kind: 'gate', label: 'Continue to Build (Recommended)', move: 'approve', calls: ['scripts/temper state advance plan_complete build'], steps: [], reason: '' }], decruns: ['run-old'] }
     const { api } = await begin($, on, { gates: ['intent', 'plan'], store })
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toMatch(T)
   })
 
   test('a decision of an earlier step of the same run does not count', async ($, on) => {
-    const store = { 'dec:run-pw': [{ id: 'd1', run: 'run-pw', step: 2, stage: 'plan', ts: 1, kind: 'approve', reason: '' }], decruns: ['run-pw'] }
+    const store = { 'dec:run-pw': [{ id: 'd1', run: 'run-pw', step: 2, stage: 'plan', ts: 1, kind: 'gate', label: 'Continue to Build (Recommended)', move: 'approve', calls: ['scripts/temper state advance plan_complete build'], steps: [], reason: '' }], decruns: ['run-pw'] }
     const { api } = await begin($, on, { gates: ['intent', 'plan'], store })
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toMatch(T)
   })
 
   test('control: the same decision at the current step counts', async ($, on) => {
-    const store = { 'dec:run-pw': [{ id: 'd1', run: 'run-pw', step: 3, stage: 'plan', ts: 1, kind: 'approve', reason: '' }], decruns: ['run-pw'] }
+    const store = { 'dec:run-pw': [{ id: 'd1', run: 'run-pw', step: 3, stage: 'plan', ts: 1, kind: 'gate', label: 'Continue to Build (Recommended)', move: 'approve', calls: ['scripts/temper state advance plan_complete build'], steps: [], reason: '' }], decruns: ['run-pw'] }
     const { api } = await begin($, on, { gates: ['intent', 'plan'], store })
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toBeUndefined()
   })
@@ -376,14 +382,14 @@ describe('finding 6: an advance does not move the run backwards, and does not sw
   })
 
   test('a lowering advance is refused even with the person\'s override at Review', async ($, on) => {
-    const { api } = await begin($, on, { ...AT_REVIEW, answers: ['Override and continue: reviewed by hand'] })
-    await ask(api)
+    const { w, api } = await begin($, on, { ...AT_REVIEW, fail: ['review'], answers: [why('Override and continue', 'reviewed by hand')] })
+    await ask(api, w)
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toMatch(T)
   })
 
   test('legit: a skip of Plan, then the advance out of Plan, at Plan', async ($, on) => {
-    const { api } = await begin($, on, { next: 'plan', gates: ['intent'], answers: ['Override and continue: skip plan'] })
-    await ask(api)
+    const { w, api } = await begin($, on, { next: 'plan', gates: ['intent'], fail: ['plan'], answers: [why('Override and continue', 'skip plan')] })
+    await ask(api, w)
     expect(await sh(api, "scripts/temper override plan --reason 'skip plan'")).toBeUndefined()
     expect(await sh(api, 'scripts/temper state advance plan_complete build')).toBeUndefined()
   })
@@ -451,25 +457,25 @@ describe('finding 7: the run controls are not writable by the model', () => {
 
 // ---- 8. state loop is for the person's Loop back ----------------------------------------------------------
 describe('finding 8: state loop names the stage the run is at, and the back answer counts once', () => {
-  const AT_CHECK: Opts = { next: 'check', gates: ['intent', 'plan', 'build', 'review'], answers: ['Loop back to Build: rework'] }
+  const AT_CHECK: Opts = { next: 'check', gates: ['intent', 'plan', 'build', 'review'], fail: ['check'], answers: [why('Loop back to Build (Recommended)', 'rework')] }
   test('the same loop twice is refused the second time', async ($, on) => {
-    const { api } = await begin($, on, AT_CHECK)
-    await ask(api)
+    const { w, api } = await begin($, on, AT_CHECK)
+    await ask(api, w)
     expect(await sh(api, "scripts/temper state loop check build --reason 'rework'")).toBeUndefined()
     expect(await sh(api, "scripts/temper state loop check build --reason 'rework'")).toMatch(T)
     // A set to the stage the run is at changes nothing, so it needs no decision.
     expect(await sh(api, 'scripts/temper state set next_stage build')).toBeUndefined()
   })
   test('a loop from another stage than the one the run is at is refused', async ($, on) => {
-    const { api } = await begin($, on, AT_CHECK)
-    await ask(api)
+    const { w, api } = await begin($, on, AT_CHECK)
+    await ask(api, w)
     expect(await sh(api, "scripts/temper state loop plan build --reason 'x'")).toMatch(T)
     expect(await sh(api, "scripts/temper state loop build build --reason 'x'")).toMatch(T)
     expect(await sh(api, "scripts/temper state loop check build --reason 'x'")).toBeUndefined()
   })
   test('a loop that changed nothing leaves the answer in place (the retry works)', async ($, on) => {
-    const { api } = await begin($, on, AT_CHECK)
-    await ask(api)
+    const { w, api } = await begin($, on, AT_CHECK)
+    await ask(api, w)
     // `; exit 1` after a loop is the fake CLI's stand in for a loop that failed and moved nothing.
     const first = await api.tool.call({ tool: 'Bash', command: "scripts/temper state loop check build --reason 'x'; exit 1" })
     expect(first.deny).toBeUndefined()
@@ -555,14 +561,12 @@ describe('everyday Build commands are not touched by the stricter rules', () => 
 
 // ---- 9. the guard fails closed for Bash; the root -------------------------------------------------------------
 describe('finding 9: failures', () => {
-  test('an error inside the guard denies Bash while a run is active (it passed before)', async ($, on) => {
-    const { w, api } = await begin($, on, { next: 'build', answers: ["Keep the agent's commits: wanted"], extra: { '.temper/groups.json': '{}' } })
-    await ask(api)
+  test('an error inside the guard lets a tool that is not Bash through (the mod fails open)', async ($, on) => {
+    const { w, api } = await begin($, on, { next: 'build', answers: ['Allow once'] })
+    await api.tool.call({ tool: 'AskUserQuestion', questions: [{ question: 'Outside the plan: src/once.ts\nWhy: a fix\nChange: one line', header: 'Scope drift', multiSelect: false, options: [{ label: 'Allow once', description: 'x' }] }] })
     w.failWrites = true
-    // The call spends the Keep answer: the store write fails and the guard throws.
-    const deny = await sh(api, "scripts/temper group reopen G1 --accept-foreign abc123 --reason 'wanted'")
-    expect(deny).toMatch(T)
-    expect(deny).toContain('Next:')
+    // The write spends the Allow once answer: the store write fails and the guard throws.
+    expect(await wr(api, 'src/once.ts')).toBeUndefined()
   })
   test('an error inside the guard does not stop a tool that is not Bash', async ($, on) => {
     const { w, api } = await begin($, on, { next: 'check', gates: ['intent', 'plan', 'build', 'review', 'check'], head: 'main' })

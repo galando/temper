@@ -1,85 +1,83 @@
-// What the mod shows (ADR 0012): the view is built from the CLI's files and the person's decisions, and the bar and the
-// pane only show it. The bar has one button, Go on (it takes the run up again with /temper:temper); it decides
-// nothing. The pane has no button.
+// What the mod shows (ADR 0013): the view is built from view.json (the CLI's real output, scripts/selftest/view-fixtures.ts)
+// and the person's decisions, and the bar and the pane only show it. The bar has one button, Go on (it takes the run up
+// again with /temper:temper); it decides nothing. The pane has no button.
 import { describe, expect, test } from 'claude-code/testing'
 
-import type { Decision, Move } from '../../hooks/temper-mod/core/decisions'
+import type { Decision } from '../../hooks/temper-mod/core/decisions'
+import { parseRunView } from '../../hooks/temper-mod/core/runview'
 import { buildView, whereText } from '../../hooks/temper-mod/core/view'
 import type { ViewInput } from '../../hooks/temper-mod/core/view'
-import { stateAt } from './helpers'
-import { runFiles } from './run-files'
-import { world } from './world'
+import { deriveView, questionOf, runFiles, view } from './run-files'
+import { viewText, world } from './world'
 
-const input = (over: Partial<ViewInput> = {}): ViewInput => ({
-  run: stateAt('build'),
-  title: 'Export report',
-  gates: {},
-  skips: {},
-  loops: [],
-  groups: null,
-  findings: [],
-  criteria: [],
-  task: null,
-  move: null,
+const rv = (doc: unknown) => {
+  const v = parseRunView(typeof doc === 'string' ? doc : JSON.stringify(doc))
+  if (v === null) throw new Error('no view')
+  return v
+}
+const input = (name: string, over: Partial<ViewInput> = {}, patch: Record<string, unknown> = {}): ViewInput => ({
+  view: rv({ ...view(name), ...patch }),
   decisions: [],
+  answer: null,
   enforcement: 'on',
   ...over,
 })
-const stamp = { id: 'm1', run: 'r', step: 3, ts: 1, reason: '' }
-const marks = (over: Partial<ViewInput>) => Object.fromEntries(buildView(input(over)).stages.map(s => [s.id, s.mark]))
+const answer = (label: string, move: string, reason = ''): Extract<Decision, { kind: 'gate' }> => ({ kind: 'gate', id: 'm1', run: 'run-pw', step: 3, stage: 'build', ts: 1, label, move, calls: [], steps: [], reason })
 
 describe('the view of the run', () => {
   test('the timeline: the stages behind are passed, failed or skipped, the current one is here, the rest to come', () => {
-    expect(
-      marks({
-        run: stateAt('review'),
-        gates: { intent: { verdict: 'PASS', requirements: [] }, plan: { verdict: 'PASS', requirements: [] }, build: { verdict: 'FAIL', requirements: [] } },
-        skips: { build: { reason: 'spike', by: 'u' } },
-      }),
-    ).toEqual({ intent: 'passed', plan: 'passed', build: 'skipped', review: 'current', check: 'pending', commit: 'pending' })
+    const files: Record<string, string> = {
+      ...runFiles({ nextStage: 'review', gates: { intent: 'PASS', plan: 'PASS', build: 'FAIL' } }),
+      '.temper/overrides.json': JSON.stringify([{ stage: 'build', reason: 'spike', by: 'u' }]),
+    }
+    const v = buildView({ view: rv(deriveView(p => files[p]) ?? ''), decisions: [], answer: null, enforcement: 'on' })
+    expect(Object.fromEntries(v.stages.map(st => [st.id, st.mark]))).toEqual({ intent: 'passed', plan: 'passed', build: 'skipped', review: 'current', check: 'pending', commit: 'pending' })
+    expect(v.stages.find(st => st.id === 'build')?.skip).toBe('spike')
   })
   test('Design is on the timeline only for a run that has it', () => {
-    expect(buildView(input()).stages.map(s => s.id)).not.toContain('design')
-    expect(buildView(input({ run: stateAt('build', { complexity: 'complex', designRequired: true }) })).stages.map(s => s.id)).toContain('design')
-    expect(buildView(input({ run: stateAt('build', { complexity: 'complex' }) })).stages.map(s => s.id)).not.toContain('design')
+    expect(buildView(input('build-work')).stages.map(st => st.id)).not.toContain('design')
+    expect(buildView(input('design-work')).stages.map(st => st.id)).toContain('design')
   })
   test('where the run is, counted on its own stages', () => {
-    expect(whereText(buildView(input()))).toBe('Step 3 of 6: Build')
-    expect(whereText(buildView(input({ run: stateAt('build', { complexity: 'complex', designRequired: true }) })))).toBe('Step 4 of 7: Build')
-    expect(whereText(buildView(input({ run: stateAt('commit') })))).toBe('Done')
+    expect(whereText(buildView(input('build-work')))).toBe('Step 3 of 6: Build')
+    expect(whereText(buildView(input('design-work')))).toBe('Step 3 of 7: Design')
+    expect(whereText(buildView(input('commit-pass')))).toBe('Done')
   })
 
   test('what the run waits for', () => {
-    const passed = { build: { verdict: 'PASS' as const, requirements: [] } }
-    expect(buildView(input()).wait).toBe('work')
-    expect(buildView(input({ gates: passed })).wait).toBe('gate')
-    expect(buildView(input({ gates: passed, move: { ...stamp, stage: 'build', kind: 'advance' } as Move })).wait).toBe('chosen')
-    expect(buildView(input({ move: { ...stamp, stage: 'build', kind: 'pause' } as Move })).wait).toBe('saved')
-    expect(buildView(input({ run: stateAt('build', { runMode: 'autonomous', autonomyEnabled: true }) })).wait).toBe('armed')
-    expect(buildView(input({ run: stateAt('commit') })).wait).toBe('done')
+    expect(buildView(input('build-work')).wait).toBe('work')
+    expect(buildView(input('build-pass')).wait).toBe('gate')
+    expect(buildView(input('build-pass', { answer: answer('Continue to Review (Recommended)', 'advance') })).wait).toBe('chosen')
+    expect(buildView(input('build-pass', { answer: answer('Save for later', 'pause') })).wait).toBe('saved')
+    expect(buildView(input('armed-build-pass')).wait).toBe('armed')
+    expect(buildView(input('commit-pass')).wait).toBe('done')
   })
 
-  test('the status says what to do, in one sentence', () => {
-    expect(buildView(input({ gates: { build: { verdict: 'FAIL', requirements: [] } } })).status).toBe('Build: the check failed. Waiting for you: answer the Temper gate question.')
-    expect(buildView(input()).status).toBe('Build: Claude is working on it.')
+  test('the status is the CLI\'s sentence, or the person\'s choice', () => {
+    expect(buildView(input('build-fail')).status).toBe('Build: waiting for your answer to the Temper gate question.')
+    expect(buildView(input('build-pass', { answer: answer('Continue to Review (Recommended)', 'advance') })).status).toBe('Build: your choice (Continue to Review (Recommended)). Claude carries it out.')
+    expect(buildView(input('build-pass', { answer: answer('Save for later', 'pause') })).status).toBe('Build is saved for later. Go on when you are ready.')
   })
 
   test('the details: the groups of Build, the open findings of Review, the failed checks', () => {
-    const groups = [{ id: 'G1', title: 'Export', state: 'running' as const, tasks: [{ n: 1, title: 'a', state: 'passed' as const, model: null, attempt: null }, { n: 2, title: 'b', state: 'running' as const, model: null, attempt: 1 }] }]
-    expect(buildView(input({ groups })).detail).toEqual(['Tasks: 1 of 2 done', 'G1 Export  ✓1 ◐2'])
-    const findings = [{ id: '1', severity: 'high', claim: 'x' }, { id: '2', severity: 'high', claim: 'y' }]
-    expect(buildView(input({ run: stateAt('review'), findings })).detail).toEqual(['Open findings: 2 high'])
-    const gates = { check: { verdict: 'FAIL' as const, requirements: [{ name: 'lint', pass: false, detail: '3 errors' }, { name: 'tests', pass: true, detail: '' }] } }
-    const v = buildView(input({ run: stateAt('check'), gates }))
-    expect(v.detail).toEqual(['Failed: lint'])
-    expect(v.failedChecks).toEqual([{ name: 'lint', pass: false, detail: '3 errors' }])
+    const groups = view('build-work').build as { groups: Array<{ tasks: Array<{ state: string }> }> }
+    const g0 = groups.groups[0]
+    if (g0 === undefined || g0.tasks[0] === undefined || g0.tasks[1] === undefined) throw new Error('no group')
+    g0.tasks[0].state = 'pass'
+    g0.tasks[1].state = 'red'
+    const b = buildView(input('build-work', {}, { build: groups }))
+    expect(b.detail).toEqual(['Tasks: 1 of 3 done', 'G1 Tokens  ✓1 ◐2', 'G2 Mail  ○3'])
+    expect(buildView(input('review-fail')).detail).toEqual(['Open findings: 1 critical, 1 low', 'Failed: critical findings'])
+    const v = buildView(input('check-fail'))
+    expect(v.detail).toEqual(['Failed: tests pass'])
+    expect(v.failedChecks).toEqual([{ name: 'tests pass', detail: 'exit 1: 2 failed' }])
   })
 
-  test('the loops with their budget and the person\'s decisions as sentences', () => {
-    const decisions: Decision[] = [{ ...stamp, stage: 'review', kind: 'back', to: 'build', reason: 'a real bug' } as Decision]
-    const v = buildView(input({ loops: [{ from: 'review', to: 'build', iteration: 1, max: 2 }], decisions }))
-    expect(v.loops).toEqual(['Review to Build: 1 of 2'])
-    expect(v.decisions).toEqual(['went back from review to build (a real bug)'])
+  test('the loops with their budget and reason, and the person\'s decisions as sentences', () => {
+    const decisions: Decision[] = [{ ...answer('Loop back to Build (Recommended)', 'back', 'a real bug'), stage: 'review' }]
+    const v = buildView(input('build-work', { decisions }, { loops: [{ from: 'review', to: 'build', reason: 'a real bug', iteration: 1, max: 2, at: 't' }] }))
+    expect(v.loops).toEqual(['Review to Build: 1 of 2 (a real bug)'])
+    expect(v.decisions).toEqual(['review: Loop back to Build (Recommended) (a real bug)'])
   })
 })
 
@@ -101,7 +99,7 @@ describe('the bar above the prompt shows; it does not decide', () => {
     const band = await mount($, 'AbovePrompt', BAND(false))
     expect(await labels(band)).toEqual(['Go on'])
     const text = JSON.stringify(await band.drawn())
-    expect(text).toContain('Plan: the check passed. Waiting for you: answer the Temper gate question.')
+    expect(text).toContain('Plan: waiting for your answer to the Temper gate question.')
     await band.press({ key: 'action-go-on' })
     expect(w.commandRuns.filter(c => c.command === 'temper:temper').map(c => c.args)).toEqual([''])
     expect(Object.keys(w.store).some(k => k.startsWith('dec:'))).toBe(false)
@@ -145,20 +143,20 @@ describe('the bar above the prompt shows; it does not decide', () => {
     await $.session.start(START)
     const band = await mount($, 'AbovePrompt', BAND(false, 60))
     expect(await labels(band)).toEqual(['Go on'])
-    expect(JSON.stringify(await band.drawn())).toContain('Plan: the check passed.')
+    expect(JSON.stringify(await band.drawn())).toContain('Plan: waiting for your answer')
   })
 })
 
 describe('the pane shows the whole run, read only', () => {
   test('the intent, the stages, the status, the criteria and the decisions; no button while Claude does not work', async ($, on) => {
-    const w = world(on, runFiles({ nextStage: 'review', gates: { intent: 'PASS', plan: 'PASS', build: 'PASS', review: 'FAIL' } }), { answers: ['Loop back to Build: a real bug'] })
+    const w = world(on, runFiles({ nextStage: 'review', gates: { intent: 'PASS', plan: 'PASS', build: 'PASS', review: 'FAIL' } }), { answers: [{ label: 'Loop back to Build (Recommended)', note: 'a real bug' }] })
     await $.session.start(START)
-    await (($ as unknown) as { tool: { call: (a: unknown) => Promise<unknown> } }).tool.call({ tool: 'AskUserQuestion', questions: [{ question: 'What next?', header: 'Temper gate', multiSelect: false, options: [{ label: 'Continue', description: 'x' }] }] })
+    await (($ as unknown) as { tool: { call: (a: unknown) => Promise<unknown> } }).tool.call({ tool: 'AskUserQuestion', questions: [{ ...questionOf(viewText(w) ?? ''), multiSelect: false }] })
     expect(Object.keys(w.store).some(k => k.startsWith('dec:'))).toBe(true)
     const pane = await mount($, 'Pane', PANE, 'temper')
     const text = JSON.stringify(await pane.drawn())
     expect(text).toContain('Stages · Step 4 of 6: Review')
-    expect(text).toContain('Review: your choice (went back from review to build (a real bug)). Claude carries it out.')
+    expect(text).toContain('Review: your choice (Loop back to Build (Recommended)). Claude carries it out.')
     expect(text).toContain('Your decisions')
     expect(text).toContain('Acceptance criteria')
     expect(await labels(pane)).toEqual([])

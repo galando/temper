@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { driftAnswers } from '../../hooks/temper-mod/core/drift'
-import { SPEC, runFiles } from './run-files'
+import { answersIn } from '../../hooks/temper-mod/core/answers'
+import { parseRunView } from '../../hooks/temper-mod/core/runview'
+import { SPEC, runFiles, view } from './run-files'
 import { denyText, world } from './world'
 
 const edit = (path: string) => ({ tool: 'Edit', file_path: path, old_string: 'a', new_string: 'b' }) as const
@@ -100,24 +101,33 @@ describe('scope drift in Build', () => {
 })
 
 describe('reading the Scope drift answer', () => {
+  const rv = parseRunView(JSON.stringify(view('build-work')))
+  if (rv === null) throw new Error('no view')
   const result = (header: string, answer: string, q = question('src/a.ts')) => ({ result: { questions: [{ question: q, header }], answers: { [q]: answer } } })
+  const drift = (r: unknown) => answersIn(r, rv).filter(a => a.kind === 'drift')
 
   test('the three choices map to the three decisions', () => {
-    expect(driftAnswers(result('Scope drift', 'Add to plan'))).toEqual([{ path: 'src/a.ts', choice: 'add', reason: '' }])
-    expect(driftAnswers(result('Scope drift', 'Revert'))).toEqual([{ path: 'src/a.ts', choice: 'revert', reason: '' }])
-    expect(driftAnswers(result('scope drift', 'allow once'))[0]?.choice).toBe('allow-once')
+    expect(drift(result('Scope drift', 'Add to plan'))).toEqual([{ kind: 'drift', path: 'src/a.ts', choice: 'add', reason: '' }])
+    expect(drift(result('Scope drift', 'Revert'))).toEqual([{ kind: 'drift', path: 'src/a.ts', choice: 'revert', reason: '' }])
+    expect(drift(result('Scope drift', 'Allow once'))[0]).toMatchObject({ choice: 'allow-once' })
+  })
+
+  test('the header and the choice must be the ones the CLI wrote, exactly', () => {
+    expect(drift(result('scope drift', 'Add to plan'))).toEqual([])
+    expect(drift(result('Scope drift', 'allow once'))).toEqual([])
+    expect(drift(result('Scope drift', 'Add to plan (Recommended)'))).toEqual([])
   })
 
   test('another header, a typed answer, a missing path or no result is no decision', () => {
-    expect(driftAnswers(result('Library', 'Add to plan'))).toEqual([])
-    expect(driftAnswers(result('Scope drift', 'yes please'))).toEqual([])
-    expect(driftAnswers(result('Scope drift', 'Add to plan', 'Why: no path line'))).toEqual([])
-    expect(driftAnswers(undefined)).toEqual([])
-    expect(driftAnswers({ result: 'stub ran' })).toEqual([])
+    expect(drift(result('Library', 'Add to plan'))).toEqual([])
+    expect(drift(result('Scope drift', 'yes please'))).toEqual([])
+    expect(drift(result('Scope drift', 'Add to plan', 'Why: no path line'))).toEqual([])
+    expect(drift(undefined)).toEqual([])
+    expect(drift({ result: 'stub ran' })).toEqual([])
   })
 
   test('a trailing period after the path is not part of the path; an empty why still gives Allow once a reason', () => {
-    expect(driftAnswers(result('Scope drift', 'Add to plan', 'Outside the plan: src/a.ts.'))[0]?.path).toBe('src/a.ts')
-    expect(driftAnswers(result('Scope drift', 'Allow once', 'Outside the plan: src/a.ts'))[0]?.reason).toBe('why (Claude): not given')
+    expect(drift(result('Scope drift', 'Add to plan', 'Outside the plan: src/a.ts.'))[0]).toMatchObject({ path: 'src/a.ts' })
+    expect(drift(result('Scope drift', 'Allow once', 'Outside the plan: src/a.ts'))[0]).toMatchObject({ reason: 'why (Claude): not given' })
   })
 })

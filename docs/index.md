@@ -63,7 +63,7 @@ layer and shows them. Older versions load the plugin as before.
 - **You see where you are.** A stage bar shows Intent, Plan, Build, Review and Check with their
   results, the status and the details of the stage. It never decides anything.
 - **You choose how much it shows.** `uiMode` is full, minimal or off. `enforcement` is on or off.
-- **The CLI stays the source of truth.** The bar follows `.temper/build-state.json`. If the mod
+- **The CLI stays the source of truth.** The bar follows `.temper/view.json`, which the CLI writes. If the mod
   cannot tell where the run is, it blocks nothing.
 
 The mod is early access, runs in the CLI and the desktop Code tab, and is not a sandbox. It

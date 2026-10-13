@@ -1,8 +1,8 @@
 // The text of the `temper:phase` system prompt section. Pure: the adapter appends the returned text as a session scope
-// section on every request. One flow in every mode (ADR 0012): Claude asks every gate in the `Temper gate` question.
+// section on every request. One flow in every mode (ADR 0012, ADR 0013): `temper next --json` says what comes next, and
+// Claude asks every gate exactly as it gives the question.
 
 import { stageLabel } from './stages'
-import type { RunFacts } from './rules'
 import { nextStep } from './view'
 import type { View } from './view'
 
@@ -15,7 +15,6 @@ export type SectionInput = {
   enforcement: 'on' | 'off'
   // The run's view; null when no /temper run is active.
   view: View | null
-  run?: RunFacts | null
   // The line that says the mod cannot read the run as it should.
   line?: string | null
 }
@@ -29,7 +28,6 @@ export function sectionText(input: SectionInput): string {
     return lines.join('\n')
   }
   let phase = `Phase: ${v.stage === 'commit' ? 'Done' : stageLabel(v.stage)}`
-  if (v.task && v.stage === 'build') phase += ` (task ${v.task.n} of ${v.task.of})`
   if (v.wait === 'saved') phase += ' (saved for later)'
   if (v.title) phase += ` · Intent: "${v.title}"`
   lines.push(phase)
@@ -37,7 +35,7 @@ export function sectionText(input: SectionInput): string {
     const ids = v.criteria.filter(c => c.status === 'passed').map(c => c.id)
     lines.push(`Criteria: ${v.passed} of ${v.total} passed${ids.length > 0 ? ` (${ids.join(', ')})` : ''}`)
   }
-  const next = nextStep(v, input.run ?? null)
+  const next = nextStep(v)
   if (next) lines.push(`Next: ${next}`)
   if (input.line) lines.push(input.line)
   lines.push(GATE_MESSAGE)

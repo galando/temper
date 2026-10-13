@@ -1,19 +1,17 @@
 import type { CommandRunResult, EngineInterface, PluginOptions, Register } from 'claude-code'
 
-import { FIX_RUN, composeText, idleSnapshot, keepDecision, keptReport, live, loadSnapshot, nothingToLose, publish, reportText, settingsFrom, spendDecision, statusText, timelineText, viewOf, writeReport } from './adapter'
+import { FIX_RUN, VIEW_PATH, composeText, idleSnapshot, keepDecision, keptReport, live, loadSnapshot, publish, reportText, settingsFrom, spendDecision, statusText, timelineText, viewOf, writeReport } from './adapter'
 import type { Io, Snapshot } from './adapter'
 import { pluginCliFrom } from './core/cli'
 import { HELP, NEEDS_PERSON, parseArgs } from './core/commands'
 import type { Parsed } from './core/commands'
 import { parsePhaseModel, parsePhaseModels, parseUiMode, versionAtLeast } from './core/config'
 import type { UiMode } from './core/config'
-import { driftAnswers } from './core/drift'
-import { gateAnswer, resumeAnswer } from './core/gateanswer'
+import { answersIn } from './core/answers'
 import { evaluate } from './core/rules'
 import { readShell } from './core/shell'
 import type { RuleContext } from './core/rules'
 import { SECTION_ID } from './core/section'
-import { hasDesign } from './core/stages'
 import { stageToast, turnLine } from './core/view'
 import type { View } from './core/view'
 import { hintProps } from './ui/hint'
@@ -47,40 +45,20 @@ function showToast($: Api, text: string): void {
   $.ui.toast(text)
 }
 
-// The mod writes no file. The report it makes at Done is kept in the plugin store, under the full path it
-// stands for: `vf:<path>` holds the text, `vfdir:<folder>` the names in a folder. Reads and lists see a kept
-// text as a file and still read real files, so the adapter and the core work on paths.
+// The mod writes no file. The report it makes at Done is kept in the plugin store, under the full path it stands for
+// (`vf:<path>`). Past VF_MAX kept texts the oldest is dropped, so the store (4 MiB for every project on the machine)
+// never fills up.
 const VF = 'vf:'
-const VF_DIR = 'vfdir:'
-// The folders with kept texts, oldest first. Past VF_MAX_DIRS the oldest folder is dropped from the store,
-// so the store (4 MiB for every project on the machine) never fills up.
-const VF_DIRS = 'vfdirs'
-const VF_MAX_DIRS = 40
-
-function splitPath(full: string): [string, string] {
-  const cut = full.lastIndexOf('/')
-  return cut < 0 ? ['', full] : [full.slice(0, cut), full.slice(cut + 1)]
-}
-
-async function keptNames($: Api, dir: string): Promise<string[]> {
-  const names = await $.store.get(VF_DIR + dir)
-  return Array.isArray(names) ? names.filter((n): n is string => typeof n === 'string') : []
-}
+const VF_LIST = 'vflist'
+const VF_MAX = 40
 
 async function keepText($: Api, full: string, text: string): Promise<void> {
-  const [dir, name] = splitPath(full)
   await $.store.set(VF + full, text)
-  const names = await keptNames($, dir)
-  if (!names.includes(name)) await $.store.set(VF_DIR + dir, [...names, name])
-  const raw = await $.store.get(VF_DIRS)
-  const dirs = (Array.isArray(raw) ? raw.filter((d): d is string => typeof d === 'string') : []).filter(d => d !== dir)
-  dirs.push(dir)
-  while (dirs.length > VF_MAX_DIRS) {
-    const old = dirs.shift() as string
-    for (const n of await keptNames($, old)) await $.store.delete(VF + old + '/' + n)
-    await $.store.delete(VF_DIR + old)
-  }
-  await $.store.set(VF_DIRS, dirs)
+  const raw = await $.store.get(VF_LIST)
+  const list = (Array.isArray(raw) ? raw.filter((p): p is string => typeof p === 'string') : []).filter(p => p !== full)
+  list.push(full)
+  while (list.length > VF_MAX) await $.store.delete(VF + (list.shift() as string))
+  await $.store.set(VF_LIST, list)
 }
 
 // `$` is spelled only in this file, at each call site, so the adapter and the pure core
@@ -90,29 +68,12 @@ function makeIo($: Api): Io {
   // call: without this the files of the run are not found and the band goes away.
   const abs = (path: string): string => (root && !path.startsWith('/') ? `${root.replace(/\/$/, '')}/${path}` : path)
   return {
-    read: async path => {
-      const full = abs(path)
-      const kept = await $.store.get(VF + full)
-      if (typeof kept === 'string') return kept
-      return $.fs.read(full).then(t => (typeof t === 'string' ? t : null))
+    read: path => $.fs.read(abs(path)).then(t => (typeof t === 'string' ? t : null)),
+    keep: (name, text) => keepText($, abs(`.temper/${name}`), text),
+    kept: async name => {
+      const text = await $.store.get(VF + abs(`.temper/${name}`))
+      return typeof text === 'string' ? text : null
     },
-    list: async path => {
-      const full = abs(path).replace(/\/$/, '')
-      const kept = await keptNames($, full)
-      let onDisk: Array<{ name: string; kind: string }>
-      try {
-        onDisk = await $.fs.list(full)
-      } catch (err) {
-        if (kept.length === 0) throw err
-        onDisk = []
-      }
-      // A listing that is not a list is passed on as it came, so a broken load fails open as before.
-      if (!Array.isArray(onDisk)) return onDisk
-      const seen = new Set(onDisk.map(entry => entry.name))
-      return [...onDisk, ...kept.filter(n => !seen.has(n)).map(n => ({ name: n, kind: 'file' }))]
-    },
-    write: (path, text) => keepText($, abs(path), text),
-    pause: ms => $.clock.sleep(ms),
     storeGet: key => $.store.get(key),
     storeSet: (key, value) => $.store.set(key, value),
     storeDelete: key => $.store.delete(key),
@@ -126,13 +87,13 @@ function makeIo($: Api): Io {
     cli: pluginCli(),
   }
 }
-// The last snapshot that held a run. Enforcement is sticky: once the mod has seen a run in progress, a
-// build-state.json that turns missing, unreadable or corrupt (chmod 000, a delete, a git clean) does not end it.
+// The last snapshot that held a run. Enforcement is sticky: once the mod has seen a run in progress, a view.json that
+// turns missing, unreadable or corrupt (chmod 000, a delete, a git clean) does not end it.
 // The last known state keeps applying until the file reads again, the person turns enforcement off, or the mod reloads.
 let lastRun: Snapshot | null = null
 
 const LOST_STATE =
-  'Temper state: .temper/build-state.json is missing or unreadable. The last known state still applies. Restore the file, or turn enforcement off with /temper:temper enforcement off.'
+  'Temper state: .temper/view.json is missing or unreadable. The last known state still applies. Run temper next, which writes it again, or turn enforcement off with /temper:temper enforcement off.'
 
 // The last known run, when it was in progress; null when it was over (Done) or never seen.
 function heldRun(): Snapshot | null {
@@ -180,19 +141,18 @@ async function load($: Api): Promise<Snapshot> {
 // ---- The project root ------------------------------------------------------------------------
 // The folder of the project is fixed once. A session folder reported later (after Claude ran `cd` into
 // the plugin folder, or another repo, and a hot reload started the session there) never replaces it:
-// the files of the run (build-state.json, gates.json, the report) are always read and kept under
-// the first root. `$.state` keeps it across a hot reload.
+// view.json and the report are always read and kept under the first root. `$.state` keeps it across a hot reload.
 
 async function rememberedRoot($: Api): Promise<string> {
   const read = await $.state.get({ plugin: 'temper', key: 'root' } as const).catch(() => null)
   return typeof read?.value === 'string' ? read.value : ''
 }
 
-// The nearest folder at or above `cwd` that holds .temper/build-state.json; null when none does.
+// The nearest folder at or above `cwd` that holds .temper/view.json; null when none does.
 async function locateRoot($: Api, cwd: string): Promise<string | null> {
   let dir = cwd.replace(/\/+$/, '')
   for (let i = 0; i < 12 && dir !== ''; i++) {
-    if ((await $.fs.read(`${dir}/.temper/build-state.json`).catch(() => undefined)) !== undefined) return dir
+    if ((await $.fs.read(`${dir}/${VIEW_PATH}`).catch(() => undefined)) !== undefined) return dir
     dir = dir.slice(0, Math.max(0, dir.lastIndexOf('/')))
   }
   return null
@@ -385,30 +345,21 @@ async function firstRunAsk($: Api): Promise<void> {
 }
 // ---- The person's answers ---------------------------------------------------------------
 
-// Claude asks every gate in Claude Code's own question dialog (header `Temper gate`), Start over in the `Temper resume`
-// question and Scope drift in its own (ADR 0012). The person's answer is read from the dialog's result, after the call
-// ran, and kept as a decision stamped with the CLI's run and step. Claude then carries the answer out in the same turn;
-// nothing is sent to Claude here. Only the result counts: it is what the dialog returned after the person chose.
+// Claude asks every gate in Claude Code's own question dialog, exactly as `temper next --json` gives it (ADR 0013). The
+// person's answer is read from the dialog's result, after the call ran, matched exactly against the question view.json
+// holds (core/answers.ts), and kept as a decision stamped with the CLI's run and step. Claude then carries the answer
+// out in the same turn; nothing is sent to Claude here. Only the result counts: it is what the dialog returned after the
+// person chose.
 async function recordAnswers($: Api, result: unknown): Promise<void> {
   const snap = await refresh($)
-  if (snap.inert || snap.run === null) return
+  if (snap.inert || snap.run === null || snap.view === null) return
   const io = makeIo($)
-  const r = snap.run
+  const stage = snap.run.stage
   let kept = false
-  for (const d of driftAnswers(result)) {
-    await keepDecision(io, snap.at, r.stage, { kind: 'drift', path: d.path, choice: d.choice, reason: d.reason })
-    kept = true
-  }
-  const restart = resumeAnswer(result)
-  if (restart !== null) {
-    await keepDecision(io, snap.at, r.stage, { kind: 'restart', reason: restart.reason })
-    kept = true
-  }
-  const answer = gateAnswer(result, r.stage, { design: hasDesign(r.complexity, r.designRequired, r.designSeen) })
-  if (answer !== null) {
-    // The person's approval of the plan keeps the plan's files as they are now: Build is judged against them.
-    const approvesPlan = r.stage === 'plan' && (answer.kind === 'approve' || answer.kind === 'arm' || answer.kind === 'override')
-    await keepDecision(io, snap.at, r.stage, approvesPlan ? { ...answer, files: [...r.planFiles] } : answer)
+  for (const a of answersIn(result, snap.view)) {
+    if (a.kind === 'gate') await keepDecision(io, snap.at, a.stage || stage, { kind: 'gate', label: a.option.label, move: a.option.move ?? '', calls: a.option.calls, steps: a.option.steps, reason: a.reason })
+    else if (a.kind === 'restart') await keepDecision(io, snap.at, stage, { kind: 'restart', calls: a.option.calls, reason: '' })
+    else await keepDecision(io, snap.at, stage, { kind: 'drift', path: a.path, choice: a.choice, reason: a.reason })
     kept = true
   }
   if (kept) adopt($, await refresh($))
@@ -423,7 +374,7 @@ function pluginCli(): string {
 }
 
 function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
-  return { run: snap.run, move: snap.move, accepts: snap.accepts, restart: snap.restart, drift: snap.drift, root: rootDir, cli: pluginCli(), fixRun: snap.runCommand === 'fix' }
+  return { run: snap.run, allowed: snap.allowed, restart: snap.restart, drift: snap.drift, root: rootDir, cli: pluginCli(), fixRun: snap.runCommand === 'fix' }
 }
 
 const GUARD_ERROR =
@@ -438,10 +389,10 @@ function failedGuard(tool: string): Guarded {
   return { deny: tool === 'Bash' && active ? GUARD_ERROR : null }
 }
 
-// The one place this module denies. A decision the call spends (Keep the agent's commits, an Allow once answer) is
-// spent here, when the call is let through.
-// `trivialExit`: the call is a `state clear` of a run that never left Intent (see nothingToLose). Once it ran, the run it
-// cleared is not held any more (see lastRun), so the work that follows is not judged against a run that is gone.
+// The one place this module denies. A decision the call spends (an Allow once answer) is spent here, when the call is
+// let through.
+// `trivialExit`: the call is a `state clear` of a run that never left Intent (view.json's trivial_exit). Once it ran, the
+// run it cleared is not held any more (see lastRun), so the work that follows is not judged against a run that is gone.
 type Guarded = { deny: string | null; trivialExit?: boolean }
 
 async function guard($: Api, tool: string, input: Record<string, unknown>): Promise<Guarded> {
@@ -450,11 +401,10 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
   // Fail open: when the mod cannot tell where the run is, it never blocks Temper.
   if (snap.inert || snap.enforcement === 'off' || snap.failOpen) return { deny: null }
   const command = typeof input.command === 'string' ? input.command : ''
-  // A `state clear` at Intent (the TRIVIAL exit) is decided on the run as it is now.
-  const clears = tool === 'Bash' && readShell(command).stateOps.some(op => op.op === 'clear')
-  const clearable = clears && snap.run?.stage === 'intent' && (await nothingToLose(makeIo($), snap.specDir))
+  // A `state clear` at Intent (the TRIVIAL exit), as view.json says now.
+  const clearable = tool === 'Bash' && snap.run?.trivialExit === true && readShell(command).calls.some(w => w[0] === 'state' && w[1] === 'clear')
   const rootDir = await rootOf($)
-  const r = evaluate({ ...ruleContext(snap, rootDir), ...(clearable ? { nothingToLose: true } : {}) }, { tool, input })
+  const r = evaluate(ruleContext(snap, rootDir), { tool, input })
   if ('deny' in r) return { deny: r.deny }
   if (r.use !== undefined) {
     await spendDecision(makeIo($), r.use)

@@ -920,13 +920,15 @@ def usage(run):
     rows = [r for r in run.usage if isinstance(r, dict)]
     tokens = sum(r.get("tokens") or 0 for r in rows if isinstance(r.get("tokens"), int))
     ms = sum(r.get("ms") or 0 for r in rows if isinstance(r.get("ms"), int))
-    by = {}
-    for r in rows:
-        b = by.setdefault(r.get("stage") or "unknown", {"tokens": 0, "ms": 0, "runs": 0})
-        b["runs"] += 1
-        b["tokens"] += r.get("tokens") or 0 if isinstance(r.get("tokens"), int) else 0
-        b["ms"] += r.get("ms") or 0 if isinstance(r.get("ms"), int) else 0
-    return {"tokens": tokens, "ms": ms, "by_stage": by}
+    def by(key):
+        out = {}
+        for r in rows:
+            b = out.setdefault(r.get(key) or "unknown", {"tokens": 0, "ms": 0, "runs": 0})
+            b["runs"] += 1
+            b["tokens"] += r.get("tokens") or 0 if isinstance(r.get("tokens"), int) else 0
+            b["ms"] += r.get("ms") or 0 if isinstance(r.get("ms"), int) else 0
+        return out
+    return {"tokens": tokens, "ms": ms, "by_stage": by("stage"), "by_model": by("model")}
 
 
 def loops(run):
@@ -949,7 +951,9 @@ def view(run, nxt):
                 "feature": r.state.get("feature"), "parked": r.state.get("parked") or None},
         "stages": stage_marks(r, nxt),
         "status": status_line(r, nxt),
-        "next": {"action": nxt.get("action"), "stage": nxt.get("stage"), "say": nxt.get("say")},
+        "next": {"action": nxt.get("action"), "stage": nxt.get("stage"), "say": nxt.get("say"),
+                 "calls": nxt.get("calls") or [] if nxt.get("action") in ("work", "auto") else [],
+                 "steps": nxt.get("steps") or [] if nxt.get("action") == "work" else []},
         "ask": nxt.get("ask") if nxt.get("action") == "ask" else None,
         "blocking": nxt.get("blocking") or [],
         "restart": nxt.get("restart"),

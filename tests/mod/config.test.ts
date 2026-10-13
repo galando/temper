@@ -6,43 +6,7 @@ import {
   parsePhaseModel,
   parsePhaseModels,
   parseUiMode,
-  readConfigValue,
 } from '../../hooks/temper-mod/core/config'
-
-const CONFIG = [
-  '# comment',
-  'stack: auto',
-  'review:',
-  '  block-on: [critical]   # inline comment',
-  'fix:',
-  '  max-loops: 5',
-  'loops:',
-  '  max-per-type: 2',
-  'check:',
-  '  commands:',
-  '    test: "npm test"',
-  '# fix:',
-  '#   max-loops: 9',
-].join('\n')
-
-describe('readConfigValue', () => {
-  test('reads nested keys, strips comments and quotes', () => {
-    expect(readConfigValue(CONFIG, 'fix.max-loops')).toBe('5')
-    expect(readConfigValue(CONFIG, 'stack')).toBe('auto')
-    expect(readConfigValue(CONFIG, 'check.commands.test')).toBe('npm test')
-    expect(readConfigValue(CONFIG, 'review.block-on')).toBe('[critical]')
-  })
-
-  test('missing keys and commented keys are null', () => {
-    expect(readConfigValue(CONFIG, 'fix.nothing')).toBe(null)
-    expect(readConfigValue('# fix:\n#   max-loops: 9', 'fix.max-loops')).toBe(null)
-    expect(readConfigValue('', 'fix.max-loops')).toBe(null)
-  })
-
-  test('a sibling block does not leak into another', () => {
-    expect(readConfigValue('a:\n  x: 1\nb:\n  y: 2', 'b.x')).toBe(null)
-  })
-})
 
 describe('plain string options validated in code', () => {
   test('uiMode falls back to full', () => {

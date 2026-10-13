@@ -3,7 +3,7 @@
 // The view types repeat the shapes the module defines for its run view, on purpose: the
 // validator reads this file alone, so it cannot import them. TypeScript checks the two
 // agree wherever the module writes the value. The view only shows the run: no decision
-// is made from it (ADR 0012).
+// is made from it (ADR 0013).
 
 export type StageName = 'intent' | 'plan' | 'design' | 'build' | 'review' | 'check' | 'commit'
 
@@ -19,17 +19,16 @@ export type TemperView = {
   wait: 'gate' | 'chosen' | 'saved' | 'work' | 'armed' | 'done' | null
   status: string
   detail: string[]
-  failedChecks: Array<{ name: string; pass: boolean; detail: string }>
+  failedChecks: Array<{ name: string; detail: string }>
   groups: Array<{ id: string; title: string; state: 'waiting' | 'running' | 'passed' | 'parked'; tasks: TemperTask[] }> | null
   findings: Array<{ id: string; severity: string; claim: string }>
   criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string }>
   passed: number
   total: number
-  task: { n: number; of: number } | null
   decisions: string[]
   loops: string[]
   line: string | null
-  configSuggestions: boolean
+  next: { action: string; say: string; header: string | null }
   paneOpen: boolean
 }
 

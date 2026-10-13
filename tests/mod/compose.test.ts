@@ -14,7 +14,7 @@ describe('prompt.compose', () => {
     expect(last?.scope).toBe('session')
     const text = last?.text ?? ''
     expect(text).toContain('Temper enforcement: active')
-    expect(text).toContain('Phase: Build (task 3 of 7) · Intent: "Password reset by email"')
+    expect(text).toContain('Phase: Build · Intent: "Password reset by email"')
     expect(text).toContain('Criteria: 2 of 5 passed (AC-01, AC-03)')
     expect(text).toContain('Next: ')
     // The engine's own sections are kept, ahead of ours.
@@ -53,12 +53,12 @@ describe('prompt.compose', () => {
 describe('the run comes back after /clear from the CLI files and the kept decisions', () => {
   test('a reload on classic SessionStart reads the stage from the CLI and the answer from the store', async ($, on) => {
     // While the session was cleared the person answered Continue at the plan gate; the mod kept it for this run and step.
-    const decision = { id: 'd1', run: 'run-pw', step: 3, stage: 'plan', ts: Date.now(), kind: 'approve', reason: '' }
+    const decision = { id: 'd1', run: 'run-pw', step: 3, stage: 'plan', ts: Date.now(), kind: 'gate', label: 'Continue to Build (Recommended)', move: 'approve', calls: [], steps: [], reason: '' }
     const w = world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }), { store: { 'dec:run-pw': [decision] } })
     await $.classic.SessionStart({ source: 'clear' })
     const text = (await $.prompt.compose(COMPOSE)).sections.at(-1)?.text ?? ''
     expect(text).toContain('Phase: Plan')
-    expect(text).toContain('carry out that answer now')
+    expect(text).toContain('carry out the calls of that option')
     // Once the CLI moved on, the answer belongs to an earlier step: Build has its own.
     cliTo(w, 'build')
     const d = JSON.parse(w.files.get('.temper/build-state.json') ?? '{}') as Record<string, unknown>
@@ -66,6 +66,6 @@ describe('the run comes back after /clear from the CLI files and the kept decisi
     await $.classic.SessionStart({ source: 'clear' })
     const after = (await $.prompt.compose(COMPOSE)).sections.at(-1)?.text ?? ''
     expect(after).toContain('Phase: Build')
-    expect(after).not.toContain('carry out that answer now')
+    expect(after).not.toContain('carry out the calls of that option')
   })
 })

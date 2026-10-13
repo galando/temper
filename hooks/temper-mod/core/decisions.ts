@@ -1,57 +1,38 @@
-// The person's decisions (ADR 0012). Each one comes from the result of a question dialog the person answered (a
-// `Temper gate`, `Temper resume` or `Scope drift` question), never from what Claude sends, and the mod keeps it in its
-// own store, stamped with the CLI's run id and step. A decision counts only for that run, and a move only at that step:
-// when the CLI moves the run on, back, or starts a new one, the decision is spent by itself. Pure.
+// The person's decisions (ADR 0012, ADR 0013). Each one is an answer read from the result of a question dialog the
+// person answered (core/answers.ts), never from what Claude sends, and the mod keeps it in its own store, stamped with
+// the CLI's run id and step. A gate answer counts only at that step: when the CLI moves the run on, back, or starts a new
+// one, it is spent by itself. Pure.
 
-import type { Stage } from './stages'
-import { isStage } from './stages'
+import type { DriftChoice } from './answers'
 
-// A move decides how the run goes on from the step it is at; the latest move at a step replaces the earlier ones.
-//  approve         leave Intent or Plan (Continue, or the arming answer "Stage by stage")
-//  advance         go on from a stage that follows its own verdict (Continue after Build, Review or Check; Commit)
-//  override        skip the stage with a reason
-//  back            go back to an earlier stage, with a reason (`to`)
-//  arm             "Autonomous": approve the plan and arm the run
-//  pause           Save for later: the person has control until the run moves on
-//  keep            keep a task agent's commits in a parked group, with a reason
-//  commitOverride  after the run is done, the person's Override and commit, with a reason
-export type MoveKind = 'approve' | 'advance' | 'override' | 'back' | 'arm' | 'pause' | 'keep' | 'commitOverride'
-
-export type DriftChoice = 'add' | 'revert' | 'allow-once'
-
-type Stamp = { id: string; run: string; step: number; stage: Stage; ts: number }
+type Stamp = { id: string; run: string; step: number; stage: string; ts: number }
 
 export type Decision =
-  // `files`: on the person's approval of the plan (or its skip), the plan's files as they were then. Build is judged
-  // against what the person approved, not against a plan.md edited since.
-  | (Stamp & { kind: MoveKind; reason: string; to?: Stage; files?: string[] })
-  // An accepted review finding: counts at its step, for that finding.
-  | (Stamp & { kind: 'accept'; findingId: string; reason: string })
+  // A gate answer: the option's label and move, and the exact calls and steps it maps to.
+  | (Stamp & { kind: 'gate'; label: string; move: string; calls: string[]; steps: string[]; reason: string })
   // Start over: the saved run state may go, until the next state init begins a new run.
-  | (Stamp & { kind: 'restart'; reason: string })
+  | (Stamp & { kind: 'restart'; calls: string[]; reason: string })
   // A Scope drift answer: counts for the run and the path. Allow once is used by one write.
   | (Stamp & { kind: 'drift'; path: string; choice: DriftChoice; reason: string })
-
-export type Move = Extract<Decision, { kind: MoveKind }>
 
 // Where the CLI is: the run and the step a new decision is stamped with, and old ones are read against.
 export type At = { run: string; step: number }
 
-const MOVES: ReadonlySet<string> = new Set(['approve', 'advance', 'override', 'back', 'arm', 'pause', 'keep', 'commitOverride'])
-
-export const isMove = (d: Decision): d is Move => MOVES.has(d.kind)
-
 const latestFirst = (a: Decision, b: Decision): number => b.ts - a.ts
 
-// The move that counts now: the latest one made at the CLI's run and step. `used` holds the ids already spent (keep).
-export function currentMove(book: readonly Decision[], at: At, used: ReadonlySet<string> = new Set()): Move | null {
-  const hit = book.filter(isMove).filter(d => d.run === at.run && d.step === at.step).sort(latestFirst)[0] ?? null
-  return hit !== null && !used.has(hit.id) ? hit : null
-}
+type Gate = Extract<Decision, { kind: 'gate' }>
 
-// The findings the person accepted at this step.
-export function acceptsAt(book: readonly Decision[], at: At): Array<Extract<Decision, { kind: 'accept' }>> {
-  return book.filter((d): d is Extract<Decision, { kind: 'accept' }> => d.kind === 'accept' && d.run === at.run && d.step === at.step)
+const gatesAt = (book: readonly Decision[], at: At): Gate[] =>
+  book.filter((d): d is Gate => d.kind === 'gate' && d.run === at.run && d.step === at.step).sort(latestFirst)
+
+// The answer that counts now: the latest gate answer at the CLI's run and step.
+export const currentAnswer = (book: readonly Decision[], at: At): Gate | null => gatesAt(book, at)[0] ?? null
+
+// The calls the person's answers allow at this step: those of the latest answer, and of every finding accepted at it.
+export function allowedCalls(book: readonly Decision[], at: At): string[] {
+  const gates = gatesAt(book, at)
+  const counted = [...(gates[0] ? [gates[0]] : []), ...gates.slice(1).filter(d => d.move === 'accept')]
+  return counted.flatMap(d => [...d.calls, ...d.steps])
 }
 
 // The person's Start over for this run, if any.
@@ -74,41 +55,15 @@ export function driftOf(book: readonly Decision[], run: string, used: ReadonlySe
   return out
 }
 
-// The plan's files the person approved: from the latest approval, arming or skip at the Plan stage of this run that kept
-// them. Null when none did (an older run state, or a plan approved with the mod switched off): the plan is read as it is.
-export function approvedPlanFiles(book: readonly Decision[], run: string): string[] | null {
-  const hit = book
-    .filter(d => d.run === run && d.stage === 'plan' && (d.kind === 'approve' || d.kind === 'arm' || d.kind === 'override'))
-    .filter((d): d is Move => isMove(d) && Array.isArray(d.files) && d.files.every(f => typeof f === 'string'))
-    .sort(latestFirst)[0]
-  return hit?.files ?? null
-}
-
 // The decisions of one run, oldest first: the report and the pane list them.
 export const decisionsOf = (book: readonly Decision[], run: string): Decision[] => book.filter(d => d.run === run).sort((a, b) => a.ts - b.ts)
 
 // How a decision reads in the report, the pane and `/temper:temper timeline`.
 export function describe(d: Decision): string {
-  const why = 'reason' in d && d.reason ? ` (${d.reason})` : ''
+  const why = d.reason ? ` (${d.reason})` : ''
   switch (d.kind) {
-    case 'approve':
-      return `approved ${d.stage}`
-    case 'advance':
-      return `went on from ${d.stage}`
-    case 'override':
-      return `skipped ${d.stage}${why}`
-    case 'back':
-      return `went back from ${d.stage} to ${d.to ?? '?'}${why}`
-    case 'arm':
-      return `armed the autonomous run at ${d.stage}`
-    case 'pause':
-      return `saved the run for later at ${d.stage}`
-    case 'keep':
-      return `kept a task agent's commits${why}`
-    case 'commitOverride':
-      return `overrode the commit gate${why}`
-    case 'accept':
-      return `accepted finding ${d.findingId}${why}`
+    case 'gate':
+      return `${d.stage}: ${d.label}${why}`
     case 'restart':
       return `started over${why}`
     case 'drift': {
@@ -118,18 +73,18 @@ export function describe(d: Decision): string {
   }
 }
 
+const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === 'string')
+
 // The decisions kept in the store, from what the store holds: anything that is not a well formed decision is left out.
 export function parseBook(raw: unknown): Decision[] {
   if (!Array.isArray(raw)) return []
   return raw.filter((d): d is Decision => {
     if (typeof d !== 'object' || d === null) return false
     const o = d as Record<string, unknown>
-    if (!(typeof o.id === 'string' && typeof o.run === 'string' && typeof o.step === 'number' && typeof o.stage === 'string' && isStage(o.stage) && typeof o.ts === 'number')) return false
+    if (!(typeof o.id === 'string' && typeof o.run === 'string' && typeof o.step === 'number' && typeof o.stage === 'string' && typeof o.ts === 'number')) return false
     if (typeof o.reason !== 'string') return false
-    if (o.kind === 'back') return typeof o.to === 'string' && isStage(o.to)
-    if (typeof o.kind === 'string' && MOVES.has(o.kind)) return true
-    if (o.kind === 'accept') return typeof o.findingId === 'string'
-    if (o.kind === 'restart') return true
+    if (o.kind === 'gate') return typeof o.label === 'string' && typeof o.move === 'string' && strings(o.calls) && strings(o.steps)
+    if (o.kind === 'restart') return strings(o.calls)
     if (o.kind === 'drift') return typeof o.path === 'string' && (o.choice === 'add' || o.choice === 'revert' || o.choice === 'allow-once')
     return false
   })

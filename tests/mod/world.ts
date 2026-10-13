@@ -3,6 +3,8 @@
 // from; a file write records back into it.
 import type { On } from 'claude-code'
 
+import { deriveView, planFiles } from './run-files'
+
 export type World = {
   files: Map<string, string>
   writes: string[]
@@ -33,8 +35,9 @@ export type World = {
   // Questions the mod asked the person through the engine's dialog, in order, and the options of each.
   asked: string[]
   askedOptions: string[][]
-  // Answers the person gives, in order; empty means nobody answers (a `-p` run).
-  answers: string[]
+  // Answers the person gives, in order; empty means nobody answers (a `-p` run). An answer with a note is the person's
+  // note on the option (the dialog's annotation).
+  answers: Answer[]
   // What the mod showed or did through the engine's UI calls.
   toasts: string[]
   opened: string[]
@@ -50,13 +53,15 @@ export type World = {
   rendered: Array<{ component: string; props: Record<string, unknown> }>
 }
 
+export type Answer = string | { label: string; note: string }
+
 export type WorldOptions = {
   version?: string | null
   cwd?: string
   // Initial store entries (the mod's own event ids live under `ev:`).
   store?: Record<string, unknown>
   // Answers the person gives to the mod's questions, in order.
-  answers?: string[]
+  answers?: Answer[]
   // Config rows the mod can list; a locked one is an administrator's.
   rows?: Array<{ key: string; value: string; isLocked: boolean }>
   // False answers every pane open with "not placed" (a narrow terminal).
@@ -77,11 +82,18 @@ export type WorldOptions = {
   runAt?: string
 }
 
-// The CLI moves the run to a stage (what a mirror call does): build-state.json next_stage. The mod
-// reads it on its next refresh (a status command, a turn end).
+// The CLI moves the run to a stage: build-state.json next_stage, and the view it writes. The mod reads it on its next
+// refresh (a status command, a turn end).
 export function cliTo(w: World, next: string): void {
   const d = JSON.parse(w.files.get('.temper/build-state.json') ?? '{}') as Record<string, unknown>
   w.files.set('.temper/build-state.json', JSON.stringify({ ...d, next_stage: next }))
+  w.files.delete('.temper/view.json')
+}
+
+// The view the CLI wrote for the run in the world: a view.json the test set, else the one the world makes from the CLI's
+// state (deriveView).
+export function viewText(w: World): string | null {
+  return w.files.get('.temper/view.json') ?? deriveView(p => w.files.get(p))
 }
 
 // The stages of the CLI, in order (STAGE_SEQ_TEMPER in scripts/temper).
@@ -121,7 +133,11 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
   // `...; exit 1`: the call takes effect and the command still ends in an error (the engine reports isError).
   const failsAfter = /;\s*exit\s+[1-9]/.test(command)
   const read = (): Record<string, unknown> => JSON.parse(w.files.get(path) ?? '{}') as Record<string, unknown>
-  const save = (d: Record<string, unknown>) => w.files.set(path, JSON.stringify(d))
+  // A move of the CLI writes the view again: a view.json the test set gives way to the one made from the state.
+  const save = (d: Record<string, unknown>) => {
+    w.files.set(path, JSON.stringify(d))
+    w.files.delete('.temper/view.json')
+  }
   const ok = (text: string) => ({ result: text, text, ...(failsAfter ? { isError: true } : {}) })
   // Moves next_stage; a change counts one step.
   const move = (d: Record<string, unknown>, next: string): Record<string, unknown> =>
@@ -130,7 +146,11 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
   if (adv) {
     const [, stage, next] = adv as unknown as [string, string, string]
     if (!CLI_SEQ.some(s => stage === `${s}_complete`) && stage !== 'started') return { result: `FAIL: unknown stage '${stage}'`, text: `FAIL: unknown stage '${stage}'`, isError: true }
-    save(move({ ...read(), stage }, next))
+    // Leaving Plan records the files the person approved (approved_files), as the CLI does.
+    const d = read()
+    const spec = typeof d.spec_path === 'string' ? d.spec_path : '.temper/specs/pw'
+    const approved = stage === 'plan_complete' ? { approved_files: planFiles(w.files.get(`${spec}/plan.md`) ?? '', w.files.get(`${spec}/tasks.md`) ?? '') } : {}
+    save(move({ ...d, stage, ...approved }, next))
     return ok(`OK: advanced to ${stage} (next: ${next})`)
   }
   // `git checkout -b <branch>`: the current branch changes.
@@ -169,11 +189,12 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
   if (skip) {
     const rows = JSON.parse(w.files.get('.temper/overrides.json') ?? '[]') as unknown[]
     w.files.set('.temper/overrides.json', JSON.stringify([...rows, { stage: skip[1], reason: 'r', by: 'u', ts: 't' }]))
+    w.files.delete('.temper/view.json')
     return ok(`OK: override recorded for '${skip[1]}'`)
   }
   // `state clear` and `state archive`: the run state goes, as cmd_state_clear removes it (the spec folder stays).
   if (/scripts\/temper["']?\s+state\s+(?:clear|archive)\b/.test(command)) {
-    for (const name of ['build-state.json', 'feedback-loops.json', 'gates.json', 'overrides.json']) w.files.delete(`.temper/${name}`)
+    for (const name of ['build-state.json', 'feedback-loops.json', 'gates.json', 'overrides.json', 'view.json']) w.files.delete(`.temper/${name}`)
     for (const key of [...w.files.keys()]) if (key.startsWith('.temper/evidence/')) w.files.delete(key)
     return ok('OK: run state cleared')
   }
@@ -182,6 +203,7 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
   if (init) {
     w.files.delete('.temper/gates.json')
     w.files.delete('.temper/overrides.json')
+    w.files.delete('.temper/view.json')
     const slug = init[1] as string
     save({ stage: 'started', spec: slug, spec_path: `.temper/specs/${slug}`, command: 'temper', next_stage: 'intent', run_mode: 'interactive', run_id: `run-${Math.random().toString(16).slice(2, 10)}`, step: 0 })
     return ok(`OK: state initialized for ${slug}`)
@@ -238,6 +260,13 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
     w.reads.push(rel(e.path))
     if (outside(e.path) || elsewhere(e.path)) return { deny: `ENOENT: ${e.path}` }
     if (w.unreadable?.has(rel(e.path))) return { deny: `EACCES: ${e.path}` }
+    // The view the CLI writes after every change: read as the CLI's state stands now, unless the test set one. An
+    // unreadable run state stands for a view that cannot be read either.
+    if (rel(e.path) === '.temper/view.json') {
+      if (w.unreadable?.has('.temper/build-state.json')) return { deny: `EACCES: ${e.path}` }
+      const text = viewText(w)
+      return text === null ? { deny: `ENOENT: ${e.path}` } : { value: text }
+    }
     const text = w.files.get(rel(e.path))
     return text === undefined ? { deny: `ENOENT: ${e.path}` } : { value: text }
   })
@@ -312,7 +341,9 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
       w.askedOptions.push((questions[0] as { options?: Array<{ label?: string }> } | undefined)?.options?.map(o => o.label ?? '') ?? [])
       const answer = w.answers.shift()
       if (answer === undefined) return { deny: 'no one to ask' }
-      return { result: { questions, answers: { [question]: answer } }, text: answer } as never
+      const label = typeof answer === 'string' ? answer : answer.label
+      const annotations = typeof answer === 'string' ? {} : { annotations: { [question]: { notes: answer.note } } }
+      return { result: { questions, answers: { [question]: label }, ...annotations }, text: label } as never
     }
     if (opts.fakeCli && e.tool === 'Bash') {
       const out = fakeCli(w, String((e as unknown as { command?: string }).command ?? ''))

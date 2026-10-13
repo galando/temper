@@ -2,7 +2,6 @@
 // guard on state advance, the commit forms the guard leaves to the native hook, and the deny texts.
 import { describe, expect, test } from 'claude-code/testing'
 
-import { nextStage } from '../../hooks/temper-mod/core/stages'
 import { check as evaluate } from './helpers'
 import type { OldCtx as RuleContext } from './helpers'
 import { stateAt } from './helpers'
@@ -89,77 +88,25 @@ describe('guarded names are compared without regard to case', () => {
   }
 })
 
-describe('state advance and state set next_stage need a decision or a passed check (#42)', () => {
-  test('nextStage follows STAGE_SEQ_TEMPER, with design only when the run has it', () => {
-    expect(nextStage('intent', false)).toBe('plan')
-    expect(nextStage('plan', false)).toBe('build')
-    expect(nextStage('plan', true)).toBe('design')
-    expect(nextStage('design', true)).toBe('build')
-    expect(nextStage('build', false)).toBe('review')
-    expect(nextStage('review', false)).toBe('check')
-    expect(nextStage('check', false)).toBe('commit')
-    expect(nextStage('commit', false)).toBe(null)
-  })
-
+describe('state advance and state set next_stage (#42)', () => {
+  // ADR 0013: leaving Intent or Plan and a step back are the person's; every other advance follows the stage's own
+  // verdict, and the CLI refuses one that does not (a stage it is not at, a next stage that is not the run's, a failed
+  // check nobody skipped): scripts/selftest/temper-cases-8.sh holds those cases.
   const adv = (stage: string, next: string) => `scripts/temper state advance ${stage}_complete ${next}`
-  test('the five reviewer examples are refused', () => {
-    for (const c of [adv('review', 'build'), 'scripts/temper state advance started build', adv('design', 'build'), adv('check', 'commit'), adv('build', 'commit')]) {
-      expect(run('plan', c)).toHaveProperty('deny')
-    }
-  })
-
-  test('the legitimate sequence after each check passed', () => {
-    expect('deny' in run('build', adv('build', 'review'), ctx, { build: PASS })).toBe(false)
-    expect('deny' in run('review', adv('review', 'check'), ctx, { review: PASS })).toBe(false)
-    expect('deny' in run('check', adv('check', 'commit'), ctx, { check: PASS })).toBe(false)
-  })
-
-  test('without the verdict the same calls are refused, and a failing check is not a pass', () => {
-    expect(run('build', adv('build', 'review'))).toHaveProperty('deny')
-    expect(run('build', adv('build', 'review'), ctx, { build: { verdict: 'FAIL', ts: 999_999_999 } })).toHaveProperty('deny')
-    expect(run('check', adv('check', 'commit'), ctx, { check: { verdict: 'FAIL', ts: 999_999_999 } })).toHaveProperty('deny')
-  })
-
-  test('a passed check does not allow a jump or the wrong next stage', () => {
-    expect(run('build', adv('build', 'check'), ctx, { build: PASS })).toHaveProperty('deny')
-    expect(run('build', adv('build', 'commit'), ctx, { build: PASS })).toHaveProperty('deny')
-    expect(run('build', adv('review', 'check'), ctx, { build: PASS, review: PASS })).toHaveProperty('deny')
-  })
-
   test('intent and plan always need the person, even after a passed check', () => {
-    expect(run('intent', adv('intent', 'plan'), ctx, { intent: PASS })).toHaveProperty('deny')
-    expect(run('plan', adv('plan', 'build'), ctx, { plan: PASS })).toHaveProperty('deny')
+    expect(run('intent', adv('intent', 'plan'))).toHaveProperty('deny')
+    expect(run('plan', adv('plan', 'build'))).toHaveProperty('deny')
   })
-
-  // ADR 0012: a move counts at the step it was made at. An advance named for a stage the run already left is a stale
-  // replay, refused like any call for another stage.
-  test('a person decision pays for its own move and no other', () => {
-    const c: RuleContext = { ...ctx, humanDecisions: [{ id: 'e', kind: 'advance', phase: 'build' }] }
-    expect(run('review', adv('build', 'review'), c)).toHaveProperty('deny')
-    expect(run('review', adv('review', 'check'), c)).toHaveProperty('deny')
-    expect(run('review', adv('build', 'commit'), c)).toHaveProperty('deny')
+  test('a later advance is left to the CLI', () => {
+    expect('deny' in run('build', adv('build', 'review'))).toBe(false)
+    expect('deny' in run('review', adv('review', 'check'))).toBe(false)
   })
-
-  test('design follows the plan only when the run has it, and its own check', () => {
-    // Design is a stage of the CLI: at Design, its advance follows the design check.
-    expect('allow' in run('design', adv('design', 'build'), { ...ctx, complexity: 'complex', designRequired: true }, { design: PASS })).toBe(true)
-    expect(run('design', adv('design', 'build'), { ...ctx, complexity: 'complex', designRequired: true })).toHaveProperty('deny')
-    // At Plan, approved: a simple run goes on to Build, never to Design.
-    const approved: RuleContext = { ...ctx, humanDecisions: [{ id: 'a', kind: 'advance', phase: 'plan' }] }
-    expect('allow' in run('plan', adv('plan', 'build'), { ...approved, complexity: 'simple' })).toBe(true)
-    expect(run('plan', adv('plan', 'design'), { ...approved, complexity: 'simple' })).toHaveProperty('deny')
-    expect('allow' in run('plan', adv('plan', 'design'), { ...approved, complexity: 'complex', designRequired: true })).toBe(true)
+  test('state set next_stage: a step back needs the person; the stage the run is at changes nothing', () => {
+    expect(run('build', 'scripts/temper state set next_stage plan')).toHaveProperty('deny')
+    expect('deny' in run('build', 'scripts/temper state set next_stage build')).toBe(false)
   })
-
-  test('state set next_stage: the exact next stage after a passed check, else the person', () => {
-    expect('deny' in run('build', 'scripts/temper state set next_stage review', ctx, { build: PASS })).toBe(false)
-    expect(run('build', 'scripts/temper state set next_stage check', ctx, { build: PASS })).toHaveProperty('deny')
-    expect(run('build', 'scripts/temper state set next_stage review')).toHaveProperty('deny')
-    expect('allow' in run('build', 'scripts/temper state set next_stage plan', { ...ctx, humanDecisions: [{ id: 'e', kind: 'back', phase: 'plan' }] })).toBe(true)
-  })
-
   test('every refusal ends with Next:', () => {
-    const r = run('plan', adv('review', 'build'))
+    const r = run('plan', adv('plan', 'build'))
     expect('deny' in r && r.deny).toMatch(/Next: /)
   })
 })

@@ -1,8 +1,7 @@
 import type { RenderElement } from 'claude-code'
 
 import { LEGEND, MARK, whereText } from '../core/view'
-import type { View } from '../core/view'
-import type { TaskCell } from '../core/clifiles'
+import type { TaskCell, View } from '../core/view'
 import type { Kit } from './kit'
 import { BLUE, CARD_BG, FG, GREEN, MUTED, ORANGE, PINK, YELLOW } from './palette'
 

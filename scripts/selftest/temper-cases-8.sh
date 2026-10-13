@@ -248,8 +248,11 @@ gpass intent; "$TEMPER" evidence add --stage intent --claim "c" >/dev/null 2>&1
 assert_eq "view: the current question is the one temper next gives" "yes" \
   "$(python3 -c "import json, subprocess, sys; v = json.load(open('.temper/view.json'))['ask']; n = json.loads(subprocess.run([sys.argv[1], 'next', '--json'], capture_output=True, text=True).stdout)['ask']; print('yes' if v == n else 'no')" "$TEMPER")"
 before="$(stat -c %Y .temper/view.json 2>/dev/null || stat -f %m .temper/view.json)"; touch -d '2001-01-01' .temper/view.json 2>/dev/null || touch -t 200101010000 .temper/view.json
-"$TEMPER" state get next_stage >/dev/null 2>&1; "$TEMPER" next --json >/dev/null 2>&1
-assert_eq "view: a read (state get, next) does not rewrite it" "2001" "$(date -r .temper/view.json +%Y 2>/dev/null || stat -f %Sm -t %Y .temper/view.json)"
+"$TEMPER" state get next_stage >/dev/null 2>&1
+assert_eq "view: a read (state get) does not rewrite it" "2001" "$(date -r .temper/view.json +%Y 2>/dev/null || stat -f %Sm -t %Y .temper/view.json)"
+"$TEMPER" next --json >/dev/null 2>&1
+assert_eq "view: temper next writes it again (a view lost or from an older Temper comes back)" "no" \
+  "$([[ "$(date -r .temper/view.json +%Y 2>/dev/null || stat -f %Sm -t %Y .temper/view.json)" == 2001 ]] && echo yes || echo no)"
 "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
 assert_eq "view: an advance rewrites it: Intent passed, Plan here" "passed|here|plan" \
   "$(vw "d['stages'][0]['mark'] + '|' + d['stages'][1]['mark'] + '|' + d['run']['stage']")"
@@ -314,4 +317,18 @@ assert_eq "next: Fix runs its brief and is judged by the build gate" "temper:tem
 gpass build; "$TEMPER" state advance fix_complete review >/dev/null 2>&1
 assert_eq "next: a fix run's Review reads rca.md (fix mode)" "temper:temper-review|1" \
   "$(nx "d['agents'][0]['type'] + '|' + str(int('Fix mode: there is no intent.md' in d['agents'][0]['prompt']))")"
+setup
+
+# --- the view fixtures the mod's tests import are the CLI's own output ---
+# The mod's tests read view.json as the CLI writes it at each point of a run (the mod's tests cannot read a file, so the
+# views are a generated module). Regenerated here: a change of the view or of a question shows up as a difference.
+assert_eq "view fixtures: the module the mod's tests import is what the CLI writes now (run make-view-fixtures.sh)" "same" \
+  "$(bash "$REPO_ROOT/scripts/selftest/make-view-fixtures.sh" 2>/dev/null | cmp -s - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" && echo same || echo differs)"
+assert_eq "view fixtures: the next field carries the calls of the CLI's own action" "state advance build_complete review" \
+  "$(python3 - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" <<'PY'
+import json, sys
+d = json.loads(open(sys.argv[1]).read().split("= ", 1)[1])
+print(d["armed-build-pass"]["next"]["calls"][0].split("temper ", 1)[1])
+PY
+)"
 setup

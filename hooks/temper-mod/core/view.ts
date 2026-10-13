@@ -1,15 +1,13 @@
-// The view model (ADR 0012): what the bar, the pane, the spinner, the hint, the question header and the system prompt
-// show, computed once from the CLI's files and the person's decisions, so each drawing is a plain function of plain
-// data. It holds no button that decides: the person decides in the `Temper gate` question. Pure and JSON safe: it is
+// The view model: what the bar, the pane, the spinner, the hint, the question header and the system prompt show, made
+// once from view.json (the CLI's) and the person's decisions (the mod's), so each drawing is a plain function of plain
+// data (ADR 0013). It holds no button that decides: the person decides in the question dialog. Pure and JSON safe: it is
 // mirrored into `$.state`, which survives reload and compaction.
 
-import type { Finding, Gates, GroupRow, Loop, Requirement, Skips } from './clifiles'
-import type { MergedCriterion } from './criteria'
-import type { Decision, Move } from './decisions'
+import type { Decision } from './decisions'
 import { describe } from './decisions'
-import type { RunFacts } from './rules'
+import type { RunView } from './runview'
 import type { Stage } from './stages'
-import { STAGES, hasDesign, nextStage, stageIndex, stageLabel } from './stages'
+import { cliStage, isStage, stageLabel } from './stages'
 
 // How a stage stands on the timeline: its check passed, failed, or the person skipped it; the run is at it; or it is
 // still to come.
@@ -18,13 +16,17 @@ export type Mark = 'passed' | 'failed' | 'skipped' | 'current' | 'pending'
 export type StageView = { id: Stage; label: string; mark: Mark; failed: boolean; skip: string | null }
 
 // What the run waits for at its current stage:
-//  gate    the stage's check ran and no choice is made yet: the person answers the `Temper gate` question
+//  gate    the question is out: the person answers it
 //  chosen  the person chose; Claude carries it out
 //  saved   the person saved the run for later
-//  work    the stage is being worked (no verdict yet)
+//  work    the stage is being worked
 //  armed   an armed autonomous run goes on by itself
 //  done    every gate is behind the run: Commit is next
 export type Wait = 'gate' | 'chosen' | 'saved' | 'work' | 'armed' | 'done'
+
+export type TaskCell = { n: number; title: string; state: 'waiting' | 'running' | 'passed' | 'failed' | 'parked'; model: string | null; attempt: number | null }
+
+export type GroupRow = { id: string; title: string; state: 'waiting' | 'running' | 'passed' | 'parked'; tasks: TaskCell[] }
 
 export type View = {
   title: string | null
@@ -36,55 +38,44 @@ export type View = {
   status: string
   // The lines under it, for the current stage: the groups in Build, the findings in Review, the failed checks.
   detail: string[]
-  // The failed requirements of the current stage's gate, for the pane.
-  failedChecks: Requirement[]
+  // The failed checks of the current stage's gate, for the pane.
+  failedChecks: Array<{ name: string; detail: string }>
   groups: GroupRow[] | null
-  findings: Finding[]
+  findings: Array<{ id: string; severity: string; claim: string }>
   criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string }>
   passed: number
   total: number
-  task: { n: number; of: number } | null
   // The person's decisions in this run, as sentences, oldest first.
   decisions: string[]
   // The loops of the run with their budget: "Review to Build: 1 of 2".
   loops: string[]
   // The one line that says the mod cannot read the run as it should; null when all is well.
   line: string | null
-  // Check wrote config-suggestions.json (the Commit question offers "Review config suggestions").
-  configSuggestions: boolean
+  // What `temper next` does now (the system prompt names it).
+  next: { action: string; say: string; header: string | null }
   paneOpen: boolean
 }
 
 export type ViewInput = {
-  run: RunFacts | null
-  title: string | null
-  gates: Gates
-  skips: Skips
-  loops: readonly Loop[]
-  groups: GroupRow[] | null
-  findings: readonly Finding[]
-  criteria: readonly MergedCriterion[]
-  task: { n: number; of: number } | null
-  move: Move | null
+  view: RunView
+  // The person's decisions in this run, and the latest gate answer at the CLI's step.
   decisions: readonly Decision[]
+  answer: Extract<Decision, { kind: 'gate' }> | null
   enforcement: 'on' | 'off'
-  configSuggestions?: boolean
   line?: string | null
   paneOpen?: boolean
 }
 
-function stagesOf(input: ViewInput): StageView[] {
-  const r = input.run
-  const design = r !== null && hasDesign(r.complexity, r.designRequired, r.designSeen)
-  return STAGES.filter(s => s !== 'design' || design).map(id => {
-    const skip = input.skips[id]?.reason ?? null
-    const failed = input.gates[id]?.verdict === 'FAIL'
-    const base = { id, label: stageLabel(id), failed, skip: skip ?? null }
-    if (r === null) return { ...base, mark: 'pending' as const }
-    if (id === r.stage) return { ...base, mark: 'current' as const }
-    if (stageIndex(id) > stageIndex(r.stage)) return { ...base, mark: 'pending' as const }
-    if (skip !== null) return { ...base, mark: 'skipped' as const }
-    return { ...base, mark: failed ? ('failed' as const) : ('passed' as const) }
+const MARKS: Record<string, Mark> = { passed: 'passed', failed: 'failed', skipped: 'skipped', here: 'current', todo: 'pending' }
+
+const TASK_CELL: Record<string, TaskCell['state']> = { waiting: 'waiting', running: 'running', red: 'running', green: 'running', pass: 'passed', fail: 'failed', parked: 'parked' }
+
+function groupsOf(rv: RunView): GroupRow[] | null {
+  if (rv.build.groups.length === 0) return null
+  return rv.build.groups.map(g => {
+    const tasks = g.tasks.map(t => ({ n: t.n, title: t.title, state: TASK_CELL[t.state] ?? 'waiting', model: t.model, attempt: t.attempts > 0 ? t.attempts : null }))
+    const state: GroupRow['state'] = g.status === 'parked' ? 'parked' : g.status === 'passed' || g.status === 'merged' ? 'passed' : tasks.some(t => t.state !== 'waiting') ? 'running' : 'waiting'
+    return { id: g.id, title: g.title, state, tasks }
   })
 }
 
@@ -97,81 +88,71 @@ export function groupLine(g: GroupRow): string {
   return `${g.id}${g.title ? ` ${g.title}` : ''}${state}  ${tasks}`
 }
 
-function waitOf(input: ViewInput): Wait | null {
-  const r = input.run
-  if (r === null) return null
-  if (r.stage === 'commit') return 'done'
-  if (input.move?.kind === 'pause') return 'saved'
-  if (input.move !== null) return 'chosen'
-  if (r.runMode === 'autonomous' && r.autonomyEnabled) return 'armed'
-  return input.gates[r.stage] !== undefined || r.skipped.has(r.stage) ? 'gate' : 'work'
+function waitOf(input: ViewInput, stage: Stage | null): Wait | null {
+  const rv = input.view
+  if (stage === null) return null
+  if (stage === 'commit' && rv.next.action !== 'ask') return 'done'
+  if (input.answer?.move === 'pause') return 'saved'
+  if (input.answer !== null) return 'chosen'
+  if (rv.next.action === 'auto' || rv.guard?.armed === true) return 'armed'
+  return rv.next.action === 'ask' ? 'gate' : 'work'
 }
 
-function statusOf(input: ViewInput, wait: Wait | null): string {
-  const r = input.run
-  if (r === null) return ''
-  const label = stageLabel(r.stage)
-  const verdict = input.gates[r.stage]?.verdict
-  switch (wait) {
-    case 'done':
-      return 'Every gate is behind the run. Commit is next.'
-    case 'saved':
-      return `${label} is saved for later. Go on when you are ready.`
-    case 'chosen':
-      return `${label}: your choice (${describe(input.move as Move)}). Claude carries it out.`
-    case 'armed':
-      return `${label}: the run goes on by itself (armed at the plan gate).`
-    case 'gate':
-      return `${label}: the check ${verdict === 'FAIL' ? 'failed' : 'passed'}. Waiting for you: answer the Temper gate question.`
-    default:
-      return `${label}: Claude is working on it.`
-  }
+function statusOf(input: ViewInput, stage: Stage | null, wait: Wait | null): string {
+  if (stage === null) return ''
+  const label = stageLabel(stage)
+  if (wait === 'saved') return `${label} is saved for later. Go on when you are ready.`
+  if (wait === 'chosen' && input.answer !== null) return `${label}: your choice (${input.answer.label}). Claude carries it out.`
+  return input.view.status
 }
 
-function detailOf(input: ViewInput): string[] {
-  const r = input.run
-  if (r === null) return []
+function detailOf(rv: RunView, stage: Stage | null, groups: GroupRow[] | null, failed: ReadonlyArray<{ name: string }>): string[] {
+  if (stage === null) return []
   const out: string[] = []
-  if (r.stage === 'build' && input.groups !== null) {
-    const done = input.groups.reduce((n, g) => n + g.tasks.filter(t => t.state === 'passed').length, 0)
-    const all = input.groups.reduce((n, g) => n + g.tasks.length, 0)
+  if (stage === 'build' && groups !== null) {
+    const done = groups.reduce((n, g) => n + g.tasks.filter(t => t.state === 'passed').length, 0)
+    const all = groups.reduce((n, g) => n + g.tasks.length, 0)
     out.push(`Tasks: ${done} of ${all} done`)
-    for (const g of input.groups) out.push(groupLine(g))
-  } else if (r.stage === 'build' && input.task !== null) {
-    out.push(`Task ${input.task.n} of ${input.task.of}`)
+    for (const g of groups) out.push(groupLine(g))
   }
-  if (r.stage === 'review') {
+  if (stage === 'review') {
+    const open = rv.findings.filter(f => f.state === 'open')
     const by = new Map<string, number>()
-    for (const f of input.findings) by.set(f.severity, (by.get(f.severity) ?? 0) + 1)
-    out.push(input.findings.length === 0 ? 'No open findings.' : `Open findings: ${[...by.entries()].map(([s, n]) => `${n} ${s}`).join(', ')}`)
+    for (const f of open) by.set(f.severity, (by.get(f.severity) ?? 0) + 1)
+    out.push(open.length === 0 ? 'No open findings.' : `Open findings: ${[...by.entries()].map(([s, n]) => `${n} ${s}`).join(', ')}`)
   }
-  const failed = (input.gates[r.stage]?.requirements ?? []).filter(q => !q.pass)
   if (failed.length > 0) out.push(`Failed: ${failed.map(q => q.name).join(', ')}`)
   return out
 }
 
 export function buildView(input: ViewInput): View {
-  const wait = waitOf(input)
-  const r = input.run
+  const rv = input.view
+  const stage = cliStage(rv.run?.stage ?? null)
+  const wait = waitOf(input, stage)
+  const here = rv.stages.find(s => s.mark === 'here')
+  const failed = here?.failed ?? []
+  const groups = groupsOf(rv)
+  const criteria = rv.criteria.map(c => ({ id: c.id, text: c.text || c.id, status: c.status === 'passed' ? ('passed' as const) : ('open' as const), priority: c.priority }))
   return {
-    title: input.title,
-    stage: r?.stage ?? null,
+    title: rv.run?.title ?? null,
+    stage,
     enforcement: input.enforcement,
-    stages: stagesOf(input),
+    stages: rv.stages
+      .filter((s): s is typeof s & { id: Stage } => isStage(s.id))
+      .map(s => ({ id: s.id, label: s.label || stageLabel(s.id), mark: MARKS[s.mark] ?? 'pending', failed: s.verdict === 'FAIL', skip: s.skipped?.reason ?? null })),
     wait,
-    status: statusOf(input, wait),
-    detail: detailOf(input),
-    failedChecks: r === null ? [] : (input.gates[r.stage]?.requirements ?? []).filter(q => !q.pass),
-    groups: input.groups,
-    findings: [...input.findings],
-    criteria: input.criteria.map(c => ({ id: c.id, text: c.text, status: c.status, priority: c.priority })),
-    passed: input.criteria.filter(c => c.status === 'passed').length,
-    total: input.criteria.length,
-    task: input.task,
+    status: statusOf(input, stage, wait),
+    detail: detailOf(rv, stage, groups, failed),
+    failedChecks: failed.map(q => ({ name: q.name, detail: q.detail })),
+    groups,
+    findings: rv.findings.filter(f => f.state === 'open').map(f => ({ id: String(f.id), severity: f.severity, claim: f.claim })),
+    criteria,
+    passed: criteria.filter(c => c.status === 'passed').length,
+    total: criteria.length,
     decisions: input.decisions.map(describe),
-    loops: input.loops.map(l => `${cap(l.from)} to ${cap(l.to)}: ${l.iteration} of ${l.max}`),
+    loops: rv.loops.map(l => `${cap(l.from)} to ${cap(l.to)}: ${l.iteration} of ${l.max}${l.reason ? ` (${l.reason})` : ''}`),
     line: input.line ?? null,
-    configSuggestions: input.configSuggestions ?? false,
+    next: { action: rv.next.action, say: rv.next.say, header: rv.ask?.question.header ?? null },
     paneOpen: input.paneOpen ?? false,
   }
 }
@@ -239,26 +220,19 @@ export function stageToast(stage: Stage | null): string | null {
   return stage === 'commit' ? 'The run is done. Commit is next.' : `${stageLabel(stage)} is open.`
 }
 
-// What Claude does next, for the system prompt: the gate to ask, the choice to carry out, or the stage to run.
-export function nextStep(v: View, run: RunFacts | null): string {
-  if (v.stage === null || run === null) return ''
-  const label = stageLabel(v.stage)
-  const after = nextStage(v.stage, hasDesign(run.complexity, run.designRequired, run.designSeen))
-  const failed = v.stages.find(s => s.id === v.stage)?.failed ?? false
+// What Claude does next, for the system prompt: what `temper next --json` says, in one line.
+export function nextStep(v: View): string {
+  if (v.stage === null) return ''
   switch (v.wait) {
-    case 'done':
-      return 'every gate is behind the run: commit as the Commit section of commands/temper.md says'
     case 'saved':
       return 'the user saved the run for later: do nothing for the run until the user takes it up again'
     case 'chosen':
-      return 'the user chose in the `Temper gate` question: carry out that answer now, as commands/temper.md says for it'
-    case 'armed':
-      return 'the run is armed: go on by the verdicts, and park as reference/autonomy.md says'
+      return 'the user answered the question: carry out the calls of that option, as `temper next --json` gave them'
     case 'gate':
-      return failed
-        ? `the ${label} check failed: ask the user with AskUserQuestion, header \`Temper gate\`, with the FAIL options of the ${label} gate`
-        : `ask the user with AskUserQuestion, header \`Temper gate\`: continue to ${after ? stageLabel(after) : 'Commit'}, or the other options of the ${label} gate`
+      return `ask the \`${v.next.header ?? 'Temper gate'}\` question exactly as \`temper next --json\` gives it, then wait`
+    case 'armed':
+      return 'the run is armed: run the calls `temper next --json` gives, and never ask "Shall I...?"'
     default:
-      return `run the ${label} stage and its check, then ask the user with AskUserQuestion, header \`Temper gate\``
+      return v.next.say ? `${v.next.say} Do what \`temper next --json\` says.` : 'do what `temper next --json` says'
   }
 }

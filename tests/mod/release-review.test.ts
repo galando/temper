@@ -209,12 +209,8 @@ describe('release review 24: the TRIVIAL exit clears a run that has nothing to l
 
   // Each fact on its own keeps the run: the CLI files and the spec folder of an otherwise fresh run.
   const keeps: Record<string, Record<string, string>> = {
-    'a completed stage in build-state.json': { '.temper/build-state.json': JSON.stringify({ ...FRESH, stage: 'intent_complete' }) },
     'a FAIL verdict in gates.json': { '.temper/gates.json': JSON.stringify({ intent: { verdict: 'FAIL', ts: LATER } }) },
-    'a gates.json that is not JSON': { '.temper/gates.json': '{"intent":' },
-    'a gates.json that is a list': { '.temper/gates.json': '[]' },
     'a skip in overrides.json': { '.temper/overrides.json': JSON.stringify([{ stage: 'intent', reason: 'later' }]) },
-    'an overrides.json that is not a list': { '.temper/overrides.json': '{}' },
     'a plan.md': { [`${SPEC}/plan.md`]: PLAN },
     'an empty plan.md': { [`${SPEC}/plan.md`]: '' },
     'a tasks.md': { [`${SPEC}/tasks.md`]: TASKS },

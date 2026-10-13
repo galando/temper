@@ -5,8 +5,9 @@ Both are computed by `scripts/flow.py` from the run's own files; nothing else de
 
 - `temper next --json` prints the next action. The orchestrator (`commands/temper.md`) does what it
   says, then asks again.
-- `.temper/view.json` is written by the CLI after every command that may change the run. The mod
-  reads this file and nothing else of the CLI's, to draw the run and to check the person's answers.
+- `.temper/view.json` is written by the CLI after every command that may change the run, and by
+  `temper next`. The mod reads this file and nothing else of the CLI's, to draw the run and to check
+  the person's answers.
 
 Both carry a version: `v` in `next`, `version` in the view. This page describes version 1. A field may
 be added within a version; a field is never renamed or removed without a new version, and a reader
@@ -74,7 +75,7 @@ question is no answer. A typed message is never a move: it is a change request o
 | `run` | `{id, step, slug, title, command, stage, mode, complexity, branch, spec, feature, parked}` or `null` |
 | `stages` | `[{id, label, mark, verdict, failed, skipped?}]`; `mark` is `passed`, `failed`, `skipped`, `here` or `todo`; `failed` is the failed rows of its last check; `skipped` is `{reason, by}` |
 | `status` | one sentence: where the run is and who it waits for |
-| `next` | `{action, stage, say}` of `temper next` |
+| `next` | `{action, stage, say, calls, steps}` of `temper next`; `calls` for a `work` or `auto` action, `steps` for a `work` action (the CLI's own moves, which the mod lets through) |
 | `ask` | the current question, as `next` gives it, or `null` |
 | `blocking` | the Blocking open questions |
 | `restart` | the `Temper resume` question |
@@ -85,10 +86,10 @@ question is no answer. A typed message is never a move: it is a change request o
 | `findings` | `[{id, severity, claim, file, line, state, label}]`; `state` is `open`, `resolved` or `accepted` |
 | `checks` | the rows of the Check gate: `[{name, pass, detail}]` |
 | `check_markers` | `[{name, state, detail, value?, lines}]` for compile, tests, coverage, lint and security; `state` is `pass`, `fail`, `info` or `none` |
-| `criteria` | `[{id, priority, status, evidence}]` of the intent's success criteria |
+| `criteria` | `[{id, priority, status, text, evidence}]` of the intent's success criteria |
 | `loops` | `[{from, to, reason, iteration, max, at}]` |
 | `skips` | `[{stage, reason, by}]` |
-| `usage` | `{tokens, ms, by_stage}` from `temper usage add` |
+| `usage` | `{tokens, ms, by_stage, by_model}` from `temper usage add`; each of `by_stage` and `by_model` maps a name to `{tokens, ms, runs}` |
 | `time` | `{started, updated}` |
 
 The file is replaced whole each time (written beside it, then moved), so a reader never sees half of

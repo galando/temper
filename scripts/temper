@@ -5148,7 +5148,7 @@ EOF
   local rc=$?
   # ADR 0013: every command that may change the run rewrites .temper/view.json
   case "$sub" in
-    config|model|""|-h|--help|report|status|bands|metrics|next|schedule) ;;
+    config|model|""|-h|--help|report|status|bands|metrics|schedule) ;;
     state) [[ "${1:-}" == "get" ]] || _view_write ;;
     evidence) [[ "${1:-}" == "list" ]] || _view_write ;;
     group) [[ "${1:-}" == "report" ]] || _view_write ;;
