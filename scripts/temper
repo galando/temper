@@ -696,7 +696,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
   [[ -n "$branch" ]] || branch="feature/$slug"
   [[ "$command" == "fix" ]] && [[ "$branch" == "feature/$slug" ]] && branch="fix/$slug"
   python3 -c "
-import json, sys
+import json, sys, uuid
 d = {
     'stage': 'started',
     'spec': sys.argv[1],
@@ -707,6 +707,9 @@ d = {
     'run_mode': 'interactive',
     'artifacts': ['intent.md', 'tasks.md'] if sys.argv[3] == 'temper' else ['rca.md'],
     'updated': sys.argv[4],
+    # ADR 0012: the run and the step a decision of the person belongs to. step counts every change of next_stage.
+    'run_id': uuid.uuid4().hex[:16],
+    'step': 0,
 }
 json.dump(d, open(sys.argv[5], 'w'), indent=2)
 " "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE"
@@ -720,7 +723,8 @@ _state_migrate_legacy() { # idempotent; called before any state read/write and b
                            # build-state.json directly and cannot call this CLI, so a
                            # stale on-disk value would block every future `git commit`.
   [[ -f "$STATE_FILE" ]] || return 0
-  grep -q '"eval' "$STATE_FILE" 2>/dev/null || return 0   # fast path — no python3 spawn
+  # fast path, no python3 spawn: nothing of eval left, and the run id of ADR 0012 is there
+  if ! grep -q '"eval' "$STATE_FILE" 2>/dev/null && grep -q '"run_id"' "$STATE_FILE" 2>/dev/null; then return 0; fi
   python3 - "$STATE_FILE" <<'PY'
 import json, os, sys, tempfile
 p = sys.argv[1]
@@ -729,8 +733,16 @@ try:
 except Exception:
     sys.exit(0)                     # malformed state == absent; never crash (spine contract)
 changed = False
+if not isinstance(d, dict):
+    sys.exit(0)
 if d.get("next_stage") == "eval":       d["next_stage"] = "commit";        changed = True
 if d.get("stage") == "eval_complete":   d["stage"] = "check_complete";     changed = True
+# ADR 0012: a run state written before the run id; its step count starts here
+if "run_id" not in d:
+    import uuid
+    d["run_id"] = uuid.uuid4().hex[:16];  changed = True
+if not isinstance(d.get("step"), int):
+    d["step"] = 0;                        changed = True
 if not changed:
     sys.exit(0)
 fd, tmp = tempfile.mkstemp(dir=os.path.dirname(p) or ".")
@@ -758,10 +770,129 @@ cmd_state_set() {
     echo "FAIL: spec_path must be .temper/specs/<slug> (slug: letters of either case, digits, '.', '_' or '-', no '/' or '..'); got '$2'" >&2
     return 1
   fi
+  # ADR 0012: the run id and the step count are the CLI's own; only state init and a move of next_stage write them.
+  if [[ "$1" == "run_id" || "$1" == "step" ]]; then
+    echo "FAIL: $1 is kept by the CLI (state init writes run_id; every change of next_stage counts a step)" >&2
+    return 1
+  fi
   [[ -f "$STATE_FILE" ]] || { echo '{}' > "$STATE_FILE"; }
+  if [[ "$1" == "next_stage" ]]; then
+    # The stage the run is already at changes nothing. A stage earlier in the run's sequence redoes the stages from it,
+    # as a loop does.
+    local cur; cur="$(_json_get_path "$STATE_FILE" next_stage "")"
+    if [[ "$2" == "$cur" ]]; then
+      echo "OK: next_stage = $2 (unchanged)"
+      return 0
+    fi
+    _stage_before "$2" "$cur" && _redo_from "$2"
+    _state_next "$2" >/dev/null || return 1
+    echo "OK: $1 = $2"
+    return 0
+  fi
   _json_set_path "$STATE_FILE" "$1" "$2" '{}'
   _json_set_path "$STATE_FILE" "updated" "$(_now)" '{}'
   echo "OK: $1 = $2"
+}
+
+_run_seq() { # the run's own stage sequence, with the commit stage last (a fix run has its own)
+  local command="temper"
+  [[ -f "$STATE_FILE" ]] && command="$(_json_get_path "$STATE_FILE" command temper)"
+  if [[ "$command" == "fix" ]]; then echo "$STAGE_SEQ_FIX commit"; else echo "$STAGE_SEQ_TEMPER commit"; fi
+}
+
+_stage_before() { # _stage_before <a> <b>: 0 when stage a comes before stage b in the run's own sequence
+  local a="$1" b="$2" s ia=-1 ib=-1 i=0
+  for s in $(_run_seq); do
+    [[ "$s" == "$a" ]] && ia=$i
+    [[ "$s" == "$b" ]] && ib=$i
+    i=$((i + 1))
+  done
+  [[ $ia -ge 0 && $ib -ge 0 && $ia -lt $ib ]]
+}
+
+_state_next() { # _state_next <next_stage>: sets next_stage; a change counts one step (ADR 0012). Prints moved or same.
+  local next="$1" rc
+  _lock_acquire
+  python3 - "$STATE_FILE" "$next" "$(_now)" <<'PY'
+import json, os, sys
+p, nxt, ts = sys.argv[1:4]
+try:
+    d = json.load(open(p))
+    if not isinstance(d, dict):
+        d = {}
+except Exception:
+    d = {}
+same = d.get('next_stage') == nxt
+if not same:
+    d['next_stage'] = nxt
+    try:
+        d['step'] = int(d.get('step') or 0) + 1
+    except (TypeError, ValueError):
+        d['step'] = 1
+d['updated'] = ts
+tmp = '%s.tmp.%d' % (p, os.getpid())
+with open(tmp, 'w') as f:
+    json.dump(d, f, indent=2)
+    f.write('\n')
+os.replace(tmp, p)
+print('same' if same else 'moved')
+PY
+  rc=$?
+  _lock_release
+  return $rc
+}
+
+_redo_from() { # _redo_from <stage>: the run goes back to <stage>, so <stage> and every later stage is redone (ADR 0012).
+               # Their verdicts leave gates.json, and their skips move from overrides.json to
+               # .temper/archive/overrides-redone.json: a skip never outlives the loop that redoes its stage.
+               # A fix run's gates are build, review and check: going back to rca or fix redoes all three.
+  local to="$1" rc
+  local seq; seq="$(_run_seq)"
+  local command="temper"
+  [[ -f "$STATE_FILE" ]] && command="$(_json_get_path "$STATE_FILE" command temper)"
+  if [[ "$command" == "fix" ]]; then
+    seq="build review check commit"
+    case "$to" in rca|fix) to="build" ;; esac
+  fi
+  _ensure_dirs
+  mkdir -p "$TEMPER_DIR/archive"
+  _lock_acquire
+  python3 - "$GATES_FILE" "$OVERRIDES_FILE" "$TEMPER_DIR/archive/overrides-redone.json" "$to" "$(_now)" $seq <<'PY'
+import json, os, sys
+gates_p, over_p, redone_p, to, ts = sys.argv[1:6]
+seq = sys.argv[6:]
+if to not in seq:
+    sys.exit(0)
+redo = set(seq[seq.index(to):])
+
+def load(p, default):
+    try:
+        d = json.load(open(p))
+        return d if isinstance(d, type(default)) else default
+    except Exception:
+        return default
+
+def save(p, d):
+    tmp = '%s.tmp.%d' % (p, os.getpid())
+    with open(tmp, 'w') as f:
+        json.dump(d, f, indent=2)
+        f.write('\n')
+    os.replace(tmp, p)
+
+gates = load(gates_p, {})
+if any(k in gates for k in redo):
+    save(gates_p, {k: v for k, v in gates.items() if k not in redo})
+over = load(over_p, [])
+keep = [o for o in over if not (isinstance(o, dict) and o.get('stage') in redo)]
+gone = [o for o in over if isinstance(o, dict) and o.get('stage') in redo]
+if gone:
+    old = load(redone_p, [])
+    save(redone_p, old + [dict(o, redone_at=ts, redone_from=to) for o in gone])
+    save(over_p, keep)
+PY
+  rc=$?
+  _lock_release
+  return $rc
 }
 
 cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
@@ -785,8 +916,7 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
     return 1
   fi
   _json_set_path "$STATE_FILE" "stage" "$stage" '{}'
-  _json_set_path "$STATE_FILE" "next_stage" "$next" '{}'
-  _json_set_path "$STATE_FILE" "updated" "$(_now)" '{}'
+  _state_next "$next" >/dev/null || return 1
   echo "OK: advanced to $stage (next: $next)"
 }
 
@@ -842,8 +972,8 @@ print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_t
   fi
   # P1: the run goes back to the loop's target stage, so the build-checkpoint commit carve-out applies to it
   if [[ $rc -eq 0 && -f "$STATE_FILE" ]]; then
-    _json_set_path "$STATE_FILE" "next_stage" "$to" '{}'
-    _json_set_path "$STATE_FILE" "updated" "$(_now)" '{}'
+    _redo_from "$to"
+    _state_next "$to" >/dev/null
   fi
   return $rc
 }
