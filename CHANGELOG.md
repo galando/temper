@@ -3,280 +3,46 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## v9.7.0: Build runs in groups of small Haiku task agents
+## v9.7.0: the CLI says what comes next, the mod only draws, Build runs in groups of Haiku agents
 
-Build now runs by default as groups of small tasks, each handed to a slim Haiku agent, with one
-human review per group instead of one gate per task. `build.mode: per-task` in
-`.claude/temper.config` brings back the previous Build (one task per launch on the build model,
-a gate after every task, no Haiku; its loop is `reference/build-per-task.md`). In grouped Build,
-`agents/build.md` is the fix pass a Review or Check loop back to Build launches on the feature
-branch. The grouped loop the orchestrator runs is in `reference/build-groups.md`, read by
-`/temper` (also when `/temper:build` starts the run).
+**The CLI says what comes next (ADR 0013).** `temper next --json` prints the one next action of a run:
+work (CLI calls, a stage brief to launch, the commit steps), a question with its exact header, question
+and options (each with the CLI calls it maps to), a wait, an armed run's own move, or a broken run.
+`commands/temper.md` is a loop over it (6,870 words to 1,718), and `commands/fix.md` follows the
+same loop (2,057 to 619). The CLI writes `.temper/view.json` after every change. `state advance` refuses
+to leave a failed stage nobody skipped, a stage with no verdict, or a stage out of order, and leaving
+Plan records the approved files and `base_sha`.
 
-**Better tests from small task agents.** A hands-on comparison found weaker tests from Haiku than from
-the per-task Sonnet Build, with gaps that only Review caught. Two changes move the thinking to Plan:
-- Plan writes the test cases of every task under `**Cases:**` in `tasks.md`: a concrete input and its
-  exact expected result per bullet, the normal result first, then edge and error cases. The plan gate
-  fails a task with fewer than 2 (row `task test cases`), and the task block budget is now 2048 bytes.
-- `temper task show` adds a PATTERN TEST: the first 2048 bytes of the existing test file nearest to
-  the task's own test (the same extension, a test by its name, tracked; the declared test itself when it
-  exists already), so the agent follows the project's style, imports and fixtures.
-The task brief writes one test per case, each asserting the exact expected value.
+**One flow (ADR 0012, amended by ADR 0013).** The CLI is the only run state. The person decides every
+gate in the `Temper gate` question, with the mod or without it, in every mode. The mod counts an answer
+only when its header, question and label are exactly what the CLI wrote for that run and step; a typed
+message is never a move. The stage commands are doors into `/temper` (`state init <slug> --enter <stage>`).
 
-**One flow: the CLI decides, the dialog asks, the mod shows (ADR 0012).** A flow audit of every point
-where a run waits, in every setup, kept finding bugs on the same three seams: two records of where a run
-is (the CLI's state and the mod's own event log), two ways to decide a gate (bar buttons in full mode,
-the question dialog in the other modes), and two copies of each stage's flow (`/temper` and the
-standalone stage commands). Three audit rounds found 55 issues there, and the last round found two that
-the fixes of the round before had made. This release keeps one of each:
-- **The CLI is the only run state.** `state init` writes a `run_id` and `step` 0, and every change of
-  `next_stage` counts one step. A step back (`state loop`, or `state set next_stage` to an earlier stage)
-  removes the verdicts of the stages it redoes from `gates.json` and moves their skips to
-  `.temper/archive/overrides-redone.json`, so no skip outlives the loop that redoes its stage (in 9.6.8 it
-  did, and the native hook accepted it). `state loop` moves the run itself, so a loop back is that one
-  call. `state set` refuses `run_id` and `step`. A run state written before 9.7.0 gets both on its next
-  state call. The mod writes no event files and keeps no stage of its own.
-- **One way to decide.** Every gate is the `Temper gate` question in Claude Code's own dialog, with the
-  mod and without it, in every mode. With the mod, the mod reads the person's answer from the dialog's
-  result and keeps it, stamped with the CLI's run id and step: an answer counts only at that step, the
-  latest answer at a step wins, and once the run moves on the answer is spent. A move that needs a
-  reason (a loop back, a skip, an accepted finding, kept agent commits, the commit override) asks for it
-  when the answer has none. Start over is the "Start over" answer of the `Temper resume` question, and
-  Scope drift keeps its own question. A typed `/temper:temper approve`, `back`, `override`, `accept` or
-  `drift` records nothing: Claude asks the question with that move first, and the person confirms it.
-- **The guard has three jobs.** (1) The calls only the person may cause need the person's answer at the
-  step the run is at: leaving Intent or Plan, a skip, a step back, an accepted finding, arming autonomy,
-  keeping a task agent's commits, and the commit override. Every other advance follows the verdict, and
-  an armed run loops Review or Check back to Build by itself. A step back and another move in one command
-  are refused. (2) While a run is active, the Commit stage included, it refuses writes to the run's files,
-  the git hooks and the plugin data folder that holds the decisions, `--no-verify` and a changed hooks
-  path, a git alias that runs a shell, a git command that runs a command of its own (`rebase --exec`,
-  `bisect run`, `submodule foreach`, `filter-branch`, an editor, pager or diff program), git plumbing that
-  makes or moves a commit (`update-ref`, `stash create`, `stash store`, `replace`), and a commit the
-  native hook does not check (a merge, cherry-pick, revert, am, pull, commit-tree or a commit of named
-  paths). A `/temper:fix` run keeps the commit hook protections too. (3) The stage write rules; Build is
-  held to the plan's files as the person approved them, so a `plan.md` edited during Build does not widen
-  it. Save for later stops the run and lifts no rule. A plain `git commit` goes to the native pre-commit
-  hook in every stage. The `tool.call` hook carries a registration catch, so a guard that throws or
-  outruns its budget refuses Bash while a run is active instead of letting the call run unguarded.
-  A dialog that resolved by itself while the person was away, a request for another round of questions
-  and a multi select answer decide nothing.
-- **The bar shows the run.** The stage timeline (passed, failed, skipped, here, to come), one sentence of
-  status, and the details of the stage (the groups and tasks of Build, the open findings of Review, the
-  failed checks). Its two buttons decide nothing: Go on (key 1) runs `/temper:temper`, and Play (key 8)
-  opens the game. The pane is read only. `uiMode` sets only how much is drawn.
-- **The stage commands are doors into `/temper`.** `/temper:plan`, `/temper:design`, `/temper:build`,
-  `/temper:review` and `/temper:check` start or take up a `/temper` run at their stage (the
-  orchestrator's section "Entering at a stage"). With no run active, `/temper:plan` starts at Intent, and
-  a later door starts a run for the spec folder, asks each earlier gate in turn, then runs its stage.
-  Their inline copies of the stage flows and the standalone gates of `reference/` are gone, and so is the
-  `stages.subprocess` key. `stage-marker.sh` marks only `/temper:intent` (ADR 0005 is amended): a door
-  may end at any gate.
-- The mod's Fix phase and its `fixMaxLoops` setting are gone: the loop budget is the CLI's
-  `loops.max-per-type` and `fix.max-loops`. A run started for a spec folder that holds `design.md` has a
-  Design stage, as the commit gate reads it. `scripts/check-original-options.sh` checks that every answer
-  the mod reads is written in the page that asks for it.
+**The guard claims only what it can enforce.** A call only the person may cause (leaving Intent or Plan,
+a skip, a step back, an accepted finding, arming autonomy, kept agent commits, the commit override,
+starting over) passes only as one of the calls of the person's answer, word for word. The file rules hold
+each stage to its writes and Build to the approved files. Through Bash the mod refuses `--no-verify`, a
+changed `core.hooksPath` and a write onto a protected file. The shell parser `core/bash.ts` and its lists
+are deleted. Temper is not a sandbox: `docs/trust.md` lists what the guard does not see.
 
-**Fixes from hands-on runs and the flow audit.**
-- "None FAIL" attempts in the group report: the schedule told the orchestrator to run `task gate` for a
-  task whose agent was still at work, which spent one of its Haiku attempts. The waiting line now says
-  `running on {model}: wait for its agent to return`, a task gate with no `--model` is refused and
-  records nothing, and the orchestrator gates a task only after its own agent returned.
-- `temper group report` reads in plain words: tasks, build time, tokens, and each attempt with its model,
-  tokens, time and, for a failed attempt, its reason. `/temper:temper report` and the report kept at
-  Done include the usage section (tokens and time per stage and per model).
-- Blocking questions are asked with `AskUserQuestion` in every stage, three choices at most plus Carry
-  forward, never as a list to answer by typing.
-- A `/temper:fix` run: the mod stands aside (it draws nothing and refuses nothing) in every mode, and
-  `commands/fix.md` asks every gate as a question. Before, every source write of the Fix agent was
-  refused as scope drift.
-- A spent loop budget (the CLI prints BLOCKED) asks the gate again with "Override and continue" and
-  "Save for later".
-- The Design gate has its own check: a failed design loops back to Plan or is skipped as
-  `override design`.
-- Arming autonomy is a `Temper gate` question at the plan gate, asked before the plan's `state advance`.
-- A parked group is a question: take the agent's commits out, or keep them with a reason (the guard lets
-  that one `group reopen --accept-foreign` through), or save. A group gate FAIL and an integrate FAIL are
-  questions too.
-- After the run is done, an override of the commit gate is the person's "Override and commit", never
-  Claude's own.
-- The guard's refusals name the next step and the `Temper gate` question, never a typed command. A passed
-  Check asks one Commit question, and a gate with more than four options puts the rest behind "More
-  options".
-- `docs/mods-testing.md` section 4b lists every wait point to check by hand, with the mod and without it.
+**The mod draws the run from view.json, and reads nothing else of the CLI's.** The band: the stage
+timeline, time and tokens, the loops with their reasons, and one button, Go on. The pane, read only: plan
+files by group, the Build grid (state, model and retries per task), the Review findings with confidence
+and file:line, the Check markers with their failing lines, the criteria with their evidence. At the
+commit, `temper report --html` writes `report.html` in the spec folder. The game is removed. The mod
+went from 6,092 lines to 3,075, its tests from 8,755 to 5,089.
 
-**Fixes from a whole-diff review.**
-- `reference/build.md` no longer tells the build agent to write `.temper/build-state.json`, and a
-  run state that lost `spec_path` now fails every gate with the repair line instead of skipping rows.
-- `temper init` lists the CLI's runtime files in the clone's `.git/info/exclude` (never
-  `.gitignore`), so a fresh project's tree stays clean and an autonomous run can start.
-- Change at a group gate reaches the task agent: `task show` prints the feedback, and the reopened
-  task's passing gate records the `feedback-resolved` row `gate build` needs (F1).
-- A loop back to Plan resets the grouped run: `groups.json` is archived, clean group worktrees are
-  removed, their branches renamed to `temper/{slug}/replan-{ts}/{G}` with their commits, and a
-  worktree with uncommitted work is kept and named (F2).
-- The plan gate rejects a task that depends on a task of another group unless its group depends on
-  that group (F3); the group gate refuses uncommitted changes to tracked files in the group
-  worktree (F4); untracked files a CLI test run creates (`__pycache__`, coverage files) are not
-  undeclared changes (F5).
+**Build runs in groups of small Haiku task agents (ADR 0011, amended).** Plan writes `tasks.md` as groups
+of tasks, each with its files, dependencies and at least two test cases (an input and its exact result).
+Each task runs on Haiku in its own worktree, with a slim brief and a pattern test; a failed task is
+retried, then escalated, then parks its group, and a person reviews each group once. The CLI makes the
+task commits and the merges, and parks a group on a commit it did not record. Per task Build and
+`build.mode` are removed; `agents/build.md` is the fix pass of a loop back to Build. Every stage records
+its usage (`temper usage add`), and a fix run's commit adds its lesson to `.temper/lessons.md`.
 
-**One worktree per task.** `temper task start` gives each task its own worktree
-(`.claude/worktrees/temper-{slug}-T{N}`, branch `temper/{slug}/T{N}`, from the group branch); the task agent
-works and tests there. A task gate PASS commits on the task branch, merges it into the group branch (a
-fast-forward when it can) and removes the worktree; a FAIL discards it, and the next attempt starts fresh. This
-removes the class of defects the shared group worktree caused in the review rounds: the start snapshot of a
-shared tree, excusing a sibling's files by timestamps, the exact-content excuse for reopen reverts, restoring
-files after a FAIL, and failing every running sibling when a commit the CLI did not make was found (it is now
-always the task's own). A commit the agent makes still parks the group; the park keeps that task's worktree,
-and the printed lines and `group reopen` work on it. The cost: a checkout per task, and a task that needs
-another's code waits for it (`**Depends:**`).
+**Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
+plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.
 
-**Task agents and Plan.**
-- The task agent type (`temper:temper-build-task`) carries only Read, Edit, Write, Bash, Glob
-  and Grep, and the grouped loop launches it by that type: most of a Haiku launch's tokens were
-  the fixed cost of starting an agent, which the tool list drives (on Haiku, about 5,800 tokens
-  to start against about 26,600 for a general-purpose agent).
-- Task agents test the real code: the brief and Plan's group Context say to call what earlier
-  tasks built and mock only what a test cannot run.
-- RED must fail on the tests themselves: the task verdict rejects a RED run that exited 126 or
-  127 (command missing), timed out or was killed, and a pytest RED with any exit but 1 (exit 2
-  is a collection or import error; the brief says to write a stub first).
-- Plan makes few groups with parallel tasks: a new group only for a separate review unit, a
-  dependency inside one group instead of a second group, so independent tasks run in parallel.
-- The complexity tier counts production files only (tests, docs and a one-line export do not
-  count), so a small feature is Simple and skips Design. The library-consumers risk multiplier
-  counts only changes to what consumers already use, not an added function.
-
-**Grouped Build.** Plan writes `tasks.md` as feature, groups, tasks. Each
-task declares its files and dependencies, and each group carries a `**Context:**` block (shared
-files, interfaces, conventions) that `temper task show` hands to its task agents. The CLI keeps one
-git worktree per group (`.claude/worktrees/temper-{slug}-{G}`, branch `temper/{slug}/{G}`).
-- New config keys under `build:` in `.claude/temper.config`: `mode` (`grouped`, the default, or
-  `per-task`), `grouped.task-model` (default `claude-haiku-5-5`), `grouped.escalation-model` (default
-  `sonnet`) and `grouped.max-parallel` (default 4).
-- `temper schedule` prints the ready set (dependencies met, group not parked, declared files
-  disjoint from running tasks, within `max-parallel`). The orchestrator launches every printed task
-  in one turn on the model the CLI printed; no agent launches another agent.
-- A task that fails on Haiku is retried on Haiku, then escalated to the escalation model; if that
-  fails too, its group stops and the run parks for a human with every attempt recorded (D-03).
-  Independent groups may finish first.
-- Change at a group gate records the feedback and re-runs only the tasks it concerns, with the
-  usual retry and escalation (D-02). Re-planning stays the separate "Loop back to Plan" choice.
-
-**New CLI subcommands.** `temper schedule`; `temper group start|gate|reopen|report`;
-`temper task start|show|test|gate`; `temper integrate`; `temper model task|task-escalation`; and
-`temper usage add`. `temper task test` runs only the task's declared Test command, never the
-whole suite. The CLI makes the local task commits (each in the task's own worktree, on its task
-branch), merges each passed task branch into its group branch, and makes the `integrate` merge into
-the feature branch. The autonomy invariant is narrowed to match: autonomous runs still never
-push and never make the final commit, but grouped Build's CLI-made local commits and the integrate
-merge are allowed (`reference/autonomy.md`).
-
-**`autonomy.max-blast-radius` in grouped mode (D-01).** Plan rejects (and splits) any single group
-whose declared files exceed the limit, and the commit gate parks when files changed fall outside
-the union of the declared files, instead of comparing the feature total to the limit. A large
-multi-group feature is no longer parked by default.
-
-**The slim task brief and its budgets.** New `agents/build-task.md` (listed in `plugin.json`)
-replaces the full build brief, `reference/build.md` and the pack rules for a task agent. Its size
-budget is 6144 bytes for the brief, 4096 for a group Context and 2048 for a task block, plus a
-pattern test of at most 2048 bytes, so one launch carries at most about 14 KB (D-06). The budgets are constants in `scripts/temper`: the plan
-gate checks the Context and task block budgets, the selftest checks the brief's size, and all three
-are to be tuned after the comparison run.
-
-**The mod.** `.temper/groups.json` and `.temper/usage.json` are protected like the other CLI-owned
-run files; writes inside a group worktree map to the project's own paths for the rules; and
-`tasks.md` is refused during a grouped run (task agents cannot tick or rewrite it). Mod tests
-cover each.
-
-**Write lock on the CLI's run files (affects every run, grouped or not).** Writes to the shared
-files under `.temper/` now hold a short `mkdir` lock (`.temper/.lock/`, stale after 30 s, waits up
-to 10 s, then writes past with a warning so a stuck holder never wedges a run). It is never held
-while a test runs.
-
-**Hardening from two review loops.** Task verdicts and the commit check are computed by the CLI,
-not asserted by an agent:
-- The final run decides: a task passes only if its last recorded test run is green (a RED then GREEN
-  sequence is required, a later red run fails it).
-- Commits made in the worktree count toward the task's changed files, and only shas the CLI recorded (task
-  commits, its reopen reverts) or a human accepted are trusted (D-08). When a task's range holds a commit the CLI
-  did not record, the CLI does not repair it: the task gate FAILs naming each such sha and the files it changed,
-  the group parks at once (no retry; a rule violation, not a test failure), and nothing is written to the branch
-  or the working tree (no reset, revert or restore). While a group is parked, `task gate` and `task test` of its
-  other tasks are refused without a verdict, attempt, restore or ledger row, so running siblings keep their work.
-  The park prints the two ways out: (a) remove the commits from the branch yourself with the printed lines
-  (`git -C <worktree> rebase --autostash --onto <sha>~1 <sha>`, newest first; never a reset), then `temper group
-  reopen G --task N` for every task it names; (b) keep them knowingly with `temper group reopen G --task N
-  --accept-foreign <sha>[,<sha>] --reason "<text>"`. `group reopen` is refused while a parked sha is still an ancestor of the
-  HEAD of a kept task worktree (every one of the group is checked, whichever task is named) unless it is accepted; an accepted sha is recorded like an override (shown by `temper
-  report`) and counts as known from then on. The group gate also fails while the group is parked, and when a
-  passed task's recorded commit is not an ancestor of the group branch HEAD (it names the task and the sha).
-  A failure without a foreign commit discards the task's worktree and branch, then retry (from a fresh worktree),
-  escalate, park. A pass whose task branch holds commits the group branch lacks (the CLI's commit, or an accepted
-  one) is merged into the group branch.
-- Known limits of D-08 (rare or contrived cases, documented rather than repaired):
-  - Detection is by sha: an agent that rewrites history (amend, rebase, reset) can move or hide a commit; the
-    group gate's ancestor check catches a task commit that left the branch, nothing more.
-  - A reopen is judged by ancestry and by recorded shas, not content: a commit removed and re-made (cherry-pick,
-    rebase) has a new sha and is a new foreign commit. A rebase that drops a foreign commit also rewrites the CLI
-    commits after it; `group reopen` and `temper integrate` then refuse while any commit of the group's
-    base..HEAD is neither recorded by the CLI nor accepted, and name it. Remove it, or keep it knowingly with
-    `group reopen ... --accept-foreign <sha> --reason "<why>"`.
-  - A reopened task needs a fresh RED and GREEN (rows older than the attempt's start do not count).
-  - `group reopen ... --accept-foreign` is guarded like `temper override`: the guard script asks the person, and
-    the mod lets only the person's own command run it.
-  - Printed git lines use `rebase --autostash` (uncommitted work stays, no stash is left) and cover only commits on
-    the branch's first-parent line; commits an agent merge brought in leave with the merge.
-  - `foreigncheck` treats a git error (a worktree removed by hand) as "off the branch".
-  - One hint line is printed per foreign sha on the first-parent line, with no cap.
-  - The accept rows of `--accept-foreign` are recorded before the reopen's revert commit; a rerun after that
-    commit failed records them again (duplicate rows in `overrides.json`).
-  - D-08 has no Gherkin scenario of its own; `scripts/selftest/temper-cases-6.sh` covers it.
-  - A path behind a symlinked directory is left alone by a reopen's restore (never written through the link).
-  - The usage of a task launch whose `task gate` is refused (its group parked meanwhile) is not recorded, so
-    `temper report` undercounts that launch (measurement only; no gate reads it).
-  - A stale `index.lock` outlasting the five-second budget of a reopen's restore fails the reopen with the lock
-    named; run it again once the lock is gone.
-- The plan digest is taken at the first `group start`; if `tasks.md` changes afterwards (`**File:**`,
-  `**Depends:**`, `**Test:**`, group Validate/Interfaces/Context, Integration), every grouped command,
-  including `group reopen`, refuses to run. Declared paths are matched exactly and the plan gate
-  refuses glob characters in `**File:**`.
-- Run files (`groups.json`, `usage.json`, evidence) are written atomically under the lock, which
-  carries an owner token: only the owner releases it, and a stale lock is broken by moving it aside under
-  a private name and deleting it (nothing is put back, so no orphan folder). The age check and the rename run
-  in one process, so the window in which a lock re-taken in between could still be moved aside is narrowed to
-  a few microseconds, not closed (a directory rename cannot be made conditional on its age). The wait
-  deadline follows the wall clock (`TEMPER_LOCK_WAIT_S`).
-- Reopen guards: `group reopen` refuses to revert a file that a passed dependent task also edits unless that
-  task is reopened too, its revert commit is recorded as the CLI's own (`group reopen` is
-  orchestrator-only), and a group branch is reused only when this run recorded it (a stale branch from an
-  earlier run is refused with the `git branch -D` way out).
-- `state loop` validates the target stage and sets `next_stage` to it, so the build-checkpoint commit
-  carve-out applies after a loop back.
-
-**Whole-flow usage (D-07).** Every stage and both Build modes now record usage for each agent
-launch through `temper usage add --stage S --model M --tokens T --ms D`. `temper report` gains a
-usage section (tokens and time per stage, per model and in total), and `state archive` keeps the
-rows in `gate-ledger.json`. Limits: the numbers are the per-agent totals Claude Code returns (not
-split into input, output and cache tokens), and the orchestrator session's own usage is not
-visible and is not recorded.
-
-**Run state not to commit.** `.temper/groups.json`, `.temper/usage.json` and `.temper/.lock/` are
-CLI-owned; `temper init` lists them in the clone's `.git/info/exclude` (this repository's own
-`.gitignore` lists them too).
-
-**Docs.** `docs/grouped-build.md` (what it changes, switching it on, what a run looks like, limits,
-run files and the measurement procedure), ADR 0011 (`docs/decisions/0011-grouped-build.md`,
-Accepted), and updates to `reference/plan.md`, `reference/autonomy.md`,
-`reference/orchestrator-patterns.md`, `docs/getting-started.md` and `templates/`.
-
-**Follow-up (D-04).** The real comparison of grouped against per-task Build (tokens, wall time,
-Review findings) is not part of this release. 9.7.0 ships the recording and a documented
-measurement procedure so that run can be made later.
-
-**Migration.** With `build.mode` absent, Build now runs in groups. A run planned before 9.7.0 has a
-flat `tasks.md` and no `groups.json`, so to finish it set `build.mode: per-task` in
-`.claude/temper.config` (it brings back the previous Build and its gate rows); new runs need nothing.
 ## v9.6.8: scope drift asks with why and the change, two narrated videos, a shorter README
 
 **Scope drift is one question, with the mod and without it.** Before this release, a file outside
