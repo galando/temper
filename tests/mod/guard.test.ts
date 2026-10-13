@@ -7,7 +7,9 @@ import type { Move, MoveKind } from '../../hooks/temper-mod/core/decisions'
 import { ONLY_USER, evaluate } from '../../hooks/temper-mod/core/rules'
 import type { RuleContext, RuleResult, RunFacts } from '../../hooks/temper-mod/core/rules'
 import type { Stage } from '../../hooks/temper-mod/core/stages'
+import { STAGES } from '../../hooks/temper-mod/core/stages'
 import { stateAt } from './helpers'
+import { CLI_SEQ } from './world'
 
 const SPEC = '.temper/specs/pw'
 const CLI = 'scripts/temper'
@@ -257,5 +259,15 @@ describe('commits: the native pre-commit hook is the commit gate', () => {
       expect(isDeny(bash(ctx('plan'), cmd))).toBe(true)
     }
     expect('allow' in bash(ctx('plan'), 'git config user.name x')).toBe(true)
+  })
+})
+
+describe('the stage order is the CLI\'s', () => {
+  // scripts/selftest/temper-cases-2.sh pins STAGE_SEQ_TEMPER to the same text, so a change on either side fails a test.
+  test('the mod\'s stages and the fake CLI\'s are STAGE_SEQ_TEMPER, then commit', () => {
+    const seq = 'intent plan design build review check'
+    expect(STAGES.filter(s => s !== 'commit').join(' ')).toBe(seq)
+    expect(STAGES.at(-1)).toBe('commit')
+    expect(CLI_SEQ.join(' ')).toBe(seq)
   })
 })

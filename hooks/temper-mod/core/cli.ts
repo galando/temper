@@ -1,5 +1,4 @@
-// Where the Temper script is, for the texts that name it. Pure. The stage names are those of STAGE_SEQ_TEMPER in
-// scripts/temper (a test there keeps the two in step).
+// Where the Temper script is, for the texts that name it. Pure. The stage names are in stages.ts.
 
 export const CLI = 'scripts/temper'
 
@@ -18,17 +17,3 @@ export function pluginCliFrom(url: string | undefined): string {
   }
   return CLI
 }
-
-// The plugin folder, from where the Temper script is (what pluginCliFrom gave). Null when only the plain
-// `scripts/temper` is known.
-export function pluginRootOf(cli: string): string | null {
-  const tail = '/scripts/temper'
-  return cli !== CLI && cli.startsWith('/') && cli.endsWith(tail) ? cli.slice(0, -tail.length) : null
-}
-
-// STAGE_SEQ_TEMPER, in order.
-export const CLI_STAGES = 'intent plan design build review check'
-
-const STAGES = CLI_STAGES.split(' ')
-
-export const isCliStage = (s: string): boolean => STAGES.includes(s)

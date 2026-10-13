@@ -3,7 +3,6 @@ import { describe, expect, test } from 'claude-code/testing'
 import {
   parseEnforcement,
   parseGameMode,
-  parseMaxLoops,
   parseOnOff,
   parsePhaseModel,
   parsePhaseModels,
@@ -67,14 +66,6 @@ describe('plain string options validated in code', () => {
     expect(parseGameMode('OFF')).toBe('off')
     expect(parseGameMode('maybe')).toBe('on')
     expect(parseGameMode(undefined)).toBe('on')
-  })
-
-  test('max loops: config key beats userConfig beats 3; junk is ignored', () => {
-    expect(parseMaxLoops(CONFIG, '4')).toBe(5)
-    expect(parseMaxLoops('stack: auto', '4')).toBe(4)
-    expect(parseMaxLoops('stack: auto', undefined)).toBe(3)
-    expect(parseMaxLoops('fix:\n  max-loops: many', '0')).toBe(3)
-    expect(parseMaxLoops('fix:\n  max-loops: -2', 'x')).toBe(3)
   })
 
   test('phase models parse pairs and skip malformed ones', () => {

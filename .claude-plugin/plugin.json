@@ -58,22 +58,15 @@
     "uiMode": {
       "type": "string",
       "title": "Temper UI mode",
-      "description": "How much Temper draws: full, minimal or off. Denials and slash subcommands work in every mode.",
+      "description": "How much Temper draws: full, minimal or off. The gate questions, the denials and the subcommands are the same in every mode.",
       "default": "full",
       "sensitive": false
     },
     "enforcement": {
       "type": "string",
       "title": "Temper enforcement",
-      "description": "on refuses out-of-phase writes and early commits; off keeps the UI only. Values: on or off.",
+      "description": "on refuses writes outside the stage and what would go around the commit hook; off keeps the drawing only. Values: on or off.",
       "default": "on",
-      "sensitive": false
-    },
-    "fixMaxLoops": {
-      "type": "string",
-      "title": "Fix loop limit",
-      "description": "Failed Check to Fix loops before Temper stops and offers re-plan, override or hand over.",
-      "default": "3",
       "sensitive": false
     },
     "prAttribution": {

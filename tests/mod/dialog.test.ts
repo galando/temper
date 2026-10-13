@@ -288,6 +288,31 @@ describe('every wait point of the flow audit', () => {
   })
 })
 
+describe('a stage command is a door into /temper', () => {
+  test('a run started for a spec with design.md has Design: Plan goes on to Design, not past it', async ($, on) => {
+    const api = $ as unknown as Api
+    // A door into a later stage starts a run for the existing spec: no complexity is set yet.
+    const w = begin(on, 'plan', { intent: 'PASS', plan: 'PASS' }, ['Continue to Design'], { [`${SPEC}/design.md`]: '# Design\n' })
+    await api.session.start(START)
+    await ask(api)
+    expect(await sh(api, `${CLI} state advance plan_complete build`)).toContain('state advance plan_complete design')
+    expect(await sh(api, `${CLI} state advance plan_complete design`)).toBeUndefined()
+    expect(state(w).next_stage).toBe('design')
+  })
+
+  test('a door walks the earlier gates by the same answers: Intent, then Plan, then the stage', async ($, on) => {
+    const api = $ as unknown as Api
+    const w = begin(on, 'intent', { intent: 'PASS' }, ['Continue to Plan', 'Continue to Build'])
+    await api.session.start(START)
+    await ask(api)
+    expect(await sh(api, `${CLI} state advance intent_complete plan`)).toBeUndefined()
+    gates(w, { intent: 'PASS', plan: 'PASS' })
+    await ask(api)
+    expect(await sh(api, `${CLI} state advance plan_complete build`)).toBeUndefined()
+    expect(state(w).next_stage).toBe('build')
+  })
+})
+
 describe('commits: the native hook is the commit gate', () => {
   test('a plain commit goes to the hook; --no-verify and a merge are refused while a run is active', async ($, on) => {
     const api = $ as unknown as Api

@@ -119,9 +119,6 @@ export function parseLoops(text: string): Loop[] {
   }
 }
 
-// A loop whose budget is spent: the CLI answers BLOCKED to it, so no step back along it is offered.
-export const spentLoops = (loops: readonly Loop[]): string[] => loops.filter(l => l.iteration >= l.max).map(l => `${l.from}>${l.to}`)
-
 export type Finding = { id: string; severity: string; claim: string }
 
 // Open review findings from `.temper/evidence/review.json`: rows with a severity that are neither resolved nor

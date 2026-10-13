@@ -55,17 +55,6 @@ export function parseGameMode(v: string | undefined): GameMode {
 
 export const parseEnforcement =(v: string | undefined): 'on' | 'off' => parseOnOff(v, 'on')
 
-const positiveInt = (v: string | null | undefined): number | null => {
-  if (v === null || v === undefined || !/^\s*\d+\s*$/.test(v)) return null
-  const n = Number(v)
-  return n >= 1 ? n : null
-}
-
-// fix.max-loops in temper.config wins, then the userConfig field, then 3.
-export function parseMaxLoops(configText: string, userValue: string | undefined): number {
-  return positiveInt(readConfigValue(configText, 'fix.max-loops')) ?? positiveInt(userValue) ?? 3
-}
-
 // "build=sonnet, plan=opus" -> { build: 'sonnet', plan: 'opus' }; malformed pairs skipped.
 export function parsePhaseModels(v: string | undefined): Record<string, string> {
   const out: Record<string, string> = {}

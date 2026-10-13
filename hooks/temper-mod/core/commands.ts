@@ -31,6 +31,6 @@ export const HELP = [
   '  pane                 open or close the Temper pane (full mode)',
   '  play                 play Temper Run while you wait (r runs, w jumps, s ducks, q leaves)',
   '  mode, enforcement    show or change what Temper shows and enforces',
-  'You decide at every gate in the Temper gate question: Continue, Loop back, Skip with a reason, Save for later.',
+  'You decide at every gate in the Temper gate question: Continue, Loop back, Override and continue, Save for later.',
   'Any other text after /temper:temper is a feature description. It starts or resumes a run. With no text it takes the run up again.',
 ].join('\n')

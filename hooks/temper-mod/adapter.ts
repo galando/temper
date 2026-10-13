@@ -214,6 +214,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   const planText = (await readText(io, `${specDir}/plan.md`)) ?? ''
   const tasksText = (await readText(io, `${specDir}/tasks.md`)) ?? ''
   const groupsText = await readText(io, `${STATE_ROOT}/groups.json`)
+  const specFiles = (await io.list(specDir).catch(() => [])).filter(e => e.kind === 'file').map(e => e.name)
   const status = parseStatus((await readText(io, `${STATE_ROOT}/status.json`)) ?? '')
   const verdicts: RunFacts['verdicts'] = {}
   for (const [k, v] of Object.entries(gates)) verdicts[k as Stage] = v.verdict
@@ -226,7 +227,9 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
           runMode: bs.runMode,
           complexity: bs.complexity,
           designRequired,
-          designSeen: stage === 'design' || gates.design !== undefined,
+          // A design.md in the spec folder means the run has Design, as the CLI's commit gate reads it (it wants a
+          // design verdict exactly then): a run started for an existing spec has no complexity yet.
+          designSeen: stage === 'design' || gates.design !== undefined || specFiles.includes('design.md'),
           autonomyEnabled,
           groupedActive: groupsText !== null,
           verdicts,
@@ -255,7 +258,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
     task: taskProgress(tasksText, bs.task),
     tasksLeft: tasksLeft(tasksText),
     usage: parseUsage((await readText(io, `${STATE_ROOT}/usage.json`)) ?? ''),
-    configSuggestions: (await io.list(specDir).catch(() => [])).some(e => e.kind === 'file' && e.name === 'config-suggestions.json'),
+    configSuggestions: specFiles.includes('config-suggestions.json'),
     decisions,
     move: currentMove(book, at, used),
     accepts: acceptsAt(book, at).map(d => d.findingId),
