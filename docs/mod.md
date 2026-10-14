@@ -173,8 +173,10 @@ The guard has three jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-m
   the loop counter, the view), and during a run `.claude/temper.config` and the git hooks, are written by
   neither the editing tools nor a plain Bash write (a redirect, or `rm`, `mv`, `cp`, `tee`, `sed -i`
   and the like naming the file, its folder, or a glob that reaches it). A copy or a move into one of
-  its folders (`cp notes.md .temper/specs/pw/`) is judged by the files that land there; another write of
-  that folder in the same command is still judged as one. Each stage allows
+  its folders (`cp notes.md .temper/specs/pw/`) is judged by the files that land there (by their whole path
+  with `cp --parents` or `rsync -R`); a glob as the target, a copy of a folder's contents (`rsync dir/`, and
+  `cp -R dir/` on macOS), and another write of that folder in the same command are judged as writes of the
+  folder. Each stage allows
   its own writes by the editing tools.
 - **The native hook.** While a run is active, `--no-verify` (or an abbreviation git takes), `-n`, and a
   change of `core.hooksPath` (also by removing the `core` section, by including another config file,

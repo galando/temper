@@ -480,8 +480,9 @@ function programWrites(words: string[], at: number, cmd: string, known: (word: s
   if (WRITERS.has(cmd)) {
     // A copy, move or link into a folder (`cp a .temper/specs/pw/`): the files land in it, and it is not replaced. Its
     // last word is a target, not a write, so that another statement's write of the same path is still read as one. rsync
-    // with a source that ends in `/` copies that folder's files, whose names the guard does not know.
-    const contents = cmd === 'rsync' && args.slice(0, -1).some(a => a.endsWith('/'))
+    // with a source that ends in `/` copies that folder's files, whose names the guard does not know, and so does the cp of
+    // macOS and the BSDs (`cp -R dir/ .temper/`).
+    const contents = (cmd === 'rsync' || cmd === 'cp') && args.slice(0, -1).some(a => a.endsWith('/'))
     const sources = cmd === 'mv' ? args.slice(0, -1) : []
     if ((TO_LAST.has(cmd) || cmd === 'mv') && args.length >= 2 && !noTarget && !contents) {
       const target = args[args.length - 1] as string

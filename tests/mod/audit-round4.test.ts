@@ -226,3 +226,12 @@ describe('second review: a glob in a temper call is refused only when it could s
     test(`allowed: ${command}`, () => expect(isDeny(bash('build', command))).toBe(false))
   }
 })
+
+describe('second review: a copy of a folder\'s contents (rsync, and cp on macOS) lands where the guard cannot tell', () => {
+  for (const command of ['cp -R dir/ .temper/', 'cp -r out/ .temper/evidence']) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+  test('a copy of a folder by its name is a write into the folder', () => {
+    expect(isDeny(bash('review', 'cp -r assets .temper/specs/pw/'))).toBe(false)
+  })
+})
