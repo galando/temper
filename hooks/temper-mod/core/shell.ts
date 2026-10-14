@@ -28,9 +28,9 @@ export type ShellRead = {
   landings: string[]
   // A word that expands to more words than the guard reads (a brace list): what it writes is not known.
   tooMany: boolean
-  // A temper call with an unquoted glob in a word before its reason (`temper o?erride ...`): bash may expand it to a
-  // file's name, so the call it makes is not known.
-  globCall: boolean
+  // The unquoted glob words of each temper call, masked, but for the value of its `--reason` (`temper o?erride ...`):
+  // bash may expand one to a file's name, so the rules check whether it could spell a word they read.
+  globWords: string[][]
 }
 
 // A quoted character that bash does not expand (a brace list's braces and commas, a glob's characters) is kept apart
@@ -244,18 +244,15 @@ const WRITER_NAMES = [...WRITERS, 'sed', 'perl', 'dd']
 const TO_LAST = new Set(['cp', 'install', 'ln', 'rsync'])
 // The ones that take the folder they write into as `-t DIR`.
 const TARGET_DIR = new Set(['cp', 'mv', 'install', 'ln'])
-// A word that sets a variable (`NAME=value`).
-const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
+// A word that sets a variable (`NAME=value`, or `NAME+=value`, which appends and sets an unset one).
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*\+?=/
 
 // A word's program name: its last path segment (`/usr/bin/env` is env).
 const base = (word: string): string => word.split('/').pop() ?? ''
 
-// Whether a (masked) word can name the program `name`: its last segment is the name without regard to case, or an
-// unquoted glob with some literal text that matches it (`gi[t]`, `scripts/tempe?`). A glob of no literal text (`*`)
-// names no program here.
-function nameIs(word: string, name: string): boolean {
-  const b = base(word)
-  if (!/[*?[]/.test(b)) return unmask(b).toLowerCase() === name
+// A (masked) glob as a regular expression, and how much literal text it has: a plain character, or a bracket set
+// that lists characters (`[g]`, `[gG]`); a negated set or a class (`[!x]`, `[[:alpha:]]`) is no literal text.
+function globRegex(b: string): { re: RegExp | null; literal: number } {
   let re = ''
   let literal = 0
   for (let i = 0; i < b.length; i++) {
@@ -267,19 +264,41 @@ function nameIs(word: string, name: string): boolean {
       const inner = b.slice(i + 1, close)
       // A class (`[[:alpha:]]`), an equivalence class or a collating symbol in it: read as any one character.
       if (/\[[:=.]/.test(inner)) re += '.'
-      else re += `[${unmask(inner).replace(/^!/, '^').replace(/\\/g, '\\\\').replace(/\]/g, '\\]')}]`
+      else {
+        if (!/^[!^]/.test(inner)) literal++
+        re += `[${unmask(inner).replace(/^!/, '^').replace(/\\/g, '\\\\').replace(/\]/g, '\\]')}]`
+      }
       i = close
     } else {
       literal++
       re += unmask(c).replace(/[.*+?^${}()|\\[\]]/g, '\\$&')
     }
   }
-  if (literal === 0) return false
   try {
-    return new RegExp(`^${re}$`, 'i').test(name)
+    return { re: new RegExp(`^${re}$`, 'i'), literal }
   } catch {
-    return false
+    return { re: null, literal }
   }
+}
+
+const isGlob = (masked: string): boolean => /[*?]|\[.*\]/.test(masked)
+
+// Whether a (masked) word can name the program `name`: its last segment is the name without regard to case, or an
+// unquoted glob with some literal text that matches it (`gi[t]`, `[g][i][t]`, `scripts/tempe?`). A glob of no literal
+// text (`*`, `[[:alpha:]]*`) names no program here.
+function nameIs(word: string, name: string): boolean {
+  const b = base(word)
+  if (!/[*?[]/.test(b)) return unmask(b).toLowerCase() === name
+  const g = globRegex(b)
+  return g.literal > 0 && g.re !== null && g.re.test(name)
+}
+
+// Whether an unquoted glob word of a call (masked) could expand to `word`: bash expands it to a file's name when one
+// matches, so `o?erride` is `override` once a file of that name exists.
+export function globCould(masked: string, word: string): boolean {
+  if (!isGlob(masked)) return false
+  const g = globRegex(masked)
+  return g.re === null || g.re.test(word)
 }
 
 // Where the bracket expression that opens at `i` closes, or -1: a `]` first in it (after any `!` or `^`) is one of its
@@ -446,10 +465,16 @@ function programWrites(words: string[], at: number, cmd: string, known: (word: s
     } else if (/^-[A-Za-z]*T[A-Za-z]*$/.test(w) || w === '--no-target-directory') noTarget = true
   }
   if (cmd === 'sed' && !script) args.shift()
+  const flags = words.slice(at + 1).filter(w => w.startsWith('-'))
+  // `cp --parents a/b DIR` and `rsync -R a/b DIR` keep each source's path under DIR (`DIR/a/b`).
+  const keepPath = (cmd === 'cp' && flags.includes('--parents')) || (cmd === 'rsync' && flags.some(f => f === '--relative' || /^-[A-Za-z]*R/.test(f)))
+  const land = (dir: string, a: string): string => `${dir.replace(/\/+$/, '')}/${keepPath ? a.replace(/^(?:\/|\.\/)+/, '') : lastName(a)}`
+  // `rsync --remove-source-files` removes what it copied.
+  if (cmd === 'rsync' && flags.includes('--remove-source-files')) out.writes.push(...args.slice(0, -1))
   if (into !== null) {
     known(into)
-    const dir = into.replace(/\/+$/, '')
-    out.writes.push(...(cmd === 'mv' ? args : []), ...args.map(a => `${dir}/${lastName(a)}`))
+    const dir = into
+    out.writes.push(...(cmd === 'mv' ? args : []), ...args.map(a => land(dir, a)))
     return out
   }
   if (WRITERS.has(cmd)) {
@@ -462,7 +487,7 @@ function programWrites(words: string[], at: number, cmd: string, known: (word: s
       const target = args[args.length - 1] as string
       out.writes.push(...sources)
       out.targets.push(target)
-      out.landings.push(...args.slice(0, -1).map(a => `${target.replace(/\/+$/, '')}/${lastName(a)}`))
+      out.landings.push(...args.slice(0, -1).map(a => land(target, a)))
     } else out.writes.push(...(TO_LAST.has(cmd) ? args.slice(-1) : args))
     return out
   }
@@ -521,7 +546,7 @@ function aliasBody(read: ShellRead, body: string): void {
   read.noVerify ||= sub.noVerify
   read.hooksPath ||= sub.hooksPath
   read.tooMany ||= sub.tooMany
-  read.globCall ||= sub.globCall
+  read.globWords.push(...sub.globWords)
   read.calls.push(...sub.calls)
   read.writes.push(...sub.writes)
   read.targets.push(...sub.targets)
@@ -541,7 +566,7 @@ function configPair(read: ShellRead, pair: string, known: boolean): void {
 }
 
 export function readShell(command: string): ShellRead {
-  const read: ShellRead = { calls: [], noVerify: false, hooksPath: false, writes: [], targets: [], landings: [], tooMany: false, globCall: false }
+  const read: ShellRead = { calls: [], noVerify: false, hooksPath: false, writes: [], targets: [], landings: [], tooMany: false, globWords: [] }
   // git reads the config of the home folder it is given (`HOME=/tmp/h git ci`, `$XDG_CONFIG_HOME/git/config`), which
   // can hold an alias or a hooks path.
   let home = false
@@ -573,9 +598,9 @@ export function readShell(command: string): ShellRead {
     // to git that way.
     for (const x of words) {
       if (!ASSIGNMENT.test(x)) continue
-      if (/^(?:HOME|XDG_CONFIG_HOME)=/.test(x)) home = true
+      if (/^(?:HOME|XDG_CONFIG_HOME)\+?=/.test(x)) home = true
       if (HOOKS_PATH.test(x)) read.hooksPath = true
-      if (/^GIT_CONFIG(?:_[A-Z0-9_]*)?=/i.test(x) && /include(?:if\.[^=\s]*)?\.path|alias\.|^GIT_CONFIG(?:_GLOBAL|_SYSTEM)?=/i.test(x)) read.hooksPath = true
+      if (/^GIT_CONFIG(?:_[A-Z0-9_]*)?\+?=/i.test(x) && /include(?:if\.[^=\s]*)?\.path|alias\.|^GIT_CONFIG(?:_GLOBAL|_SYSTEM)?\+?=/i.test(x)) read.hooksPath = true
     }
     for (const gitAt of starts(masked, x => nameIs(x, 'git'))) {
       runsGit = true
@@ -611,8 +636,7 @@ export function readShell(command: string): ShellRead {
       if (!isScript(masked[i] as string)) continue
       read.calls.push(words.slice(i + 1))
       const rest = masked.slice(i + 1)
-      const reason = rest.findIndex(x => x === '--reason' || x.startsWith('--reason='))
-      if (rest.slice(0, reason < 0 ? rest.length : reason).some(x => /[*?]|\[.*\]/.test(x))) read.globCall = true
+      read.globWords.push(rest.filter((x, k) => isGlob(x) && !x.startsWith('--reason=') && rest[k - 1] !== '--reason'))
     }
   }
   if (home && runsGit) read.hooksPath = true

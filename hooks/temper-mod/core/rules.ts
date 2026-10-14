@@ -10,12 +10,12 @@
 // deny text ends with what to do next. core/shell.ts reads a Bash command; it is not a shell parser, and Temper is not a
 // sandbox (docs/trust.md).
 
-import { callWords, readShell, sameCall } from './shell'
+import { callWords, globCould, readShell, sameCall } from './shell'
 import type { DriftState } from './decisions'
 import { CLI } from './cli'
 import { matchesPlan, normalizePath } from './paths'
 import type { Stage } from './stages'
-import { isStage, stageIndex, stageLabel } from './stages'
+import { STAGES, isStage, stageIndex, stageLabel } from './stages'
 
 export const DRIFT_HEADER = 'Scope drift'
 export const DRIFT_PREFIX = 'Outside the plan:'
@@ -321,6 +321,10 @@ const TOO_MANY_DENY =
   'Temper: a word of this command expands to more words (a brace list) than the guard reads, so what it writes is not known. ' +
   'Next: write the paths out, or split the command.'
 
+// The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
+const PERSON_WORDS = ['override', 'group', 'reopen', '--accept-foreign', 'evidence', 'accept', 'clear', 'state', 'advance', 'intent_complete',
+  'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix', ...STAGES]
+
 const GLOB_DENY =
   'Temper: a word of this temper call is an unquoted glob (`*`, `?`, `[...]`), which bash may expand to the name of a file, so the call it makes is not known. ' +
   'Next: write the call out, or quote the word.'
@@ -355,9 +359,11 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
     const n = normalizePath(p, ctx.root)
     return protectedKind(n) ?? globKind(n)
   }
+  // A target that is a folder of the run is not replaced; a glob is no folder (bash may expand `.temper/[Eg][Va]*` to
+  // one file), so it is judged as a write.
   const target = (p: string): ProtectedKind | null => {
     const k = kindOf(p)
-    return k === 'folder' ? null : k
+    return k === 'folder' && !/[*?[]/.test(p) ? null : k
   }
   const kinds = [...c.writes.map(kindOf), ...c.targets.map(target), ...c.landings.map(kindOf)].filter(
     (k): k is ProtectedKind => k !== null && (guardsCommit || (k !== 'config' && k !== 'hooks')),
@@ -365,7 +371,9 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   if (kinds.length > 0) return protectedDeny(kinds.find(k => k === 'events' || k === 'overrides') ?? (kinds[0] as ProtectedKind), cli)
 
   if (!active) return ALLOW
-  if (c.globCall) return { deny: GLOB_DENY }
+  // An unquoted glob in a call that could spell a word of a call only the person may cause (`o?erride`, `lo[o]p`,
+  // `--accept-for?ign`): bash expands it when a file of that name exists. Any other glob (`sonnet[1m]`) is no refusal.
+  if (c.globWords.some(ws => ws.some(w => PERSON_WORDS.some(t => globCould(w, t) || globCould(w.split('=')[0] ?? w, t))))) return { deny: GLOB_DENY }
   const r = ctx.run
   for (const call of c.calls) {
     const w = callWords(call)

@@ -176,3 +176,53 @@ describe('re-audit: the project notes a config suggestion may go into', () => {
     expect(isDeny(evaluate(ctx('check'), { tool: 'Write', input: { file_path: '.claude/AGENTS.md' } }))).toBe(false)
   })
 })
+
+// The second narrow review of the final tree: each case reproduced against the guard, and the commits past the hook and
+// the forged ledgers against real bash, before it was fixed.
+describe('second review: a glob as a copy target is judged as a write', () => {
+  for (const command of ['cp /tmp/f.json .temper/[Eg][Va]*', 'mv /tmp/f.json .temper/[Eo][Vv]*', 'ln -sf /tmp/f.json .temper/g*', 'install /tmp/f.json .temper/[g]*']) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('review', command))).toBe(true))
+  }
+  test('a copy into a folder named plainly is still a write into it', () => {
+    expect(isDeny(bash('review', 'cp a b .temper/specs/pw/'))).toBe(false)
+  })
+})
+
+describe('second review: NAME+=value sets a variable', () => {
+  for (const command of [
+    'GIT_CONFIG_COUNT+=1 GIT_CONFIG_KEY_0+=core.hooksPath GIT_CONFIG_VALUE_0+=/dev/null git commit -m x',
+    'HOME+=/hh git ci -m x',
+    'GIT_CONFIG_GLOBAL+=/tmp/x git commit -m x',
+    `TEMPER_HOME+=/x ${CLI} override build --reason x`,
+  ]) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+})
+
+describe('second review: a program named by bracket sets alone', () => {
+  for (const command of ['/usr/bin/[g][i][t] commit -n -m x', '/p/scripts/[t][e][m][p][e][r] override build --reason x', '/usr/bin/[r][m] -rf .temper', '/usr/bin/[g][i][]t] commit -n -m x']) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+  test('a negated set or a class is no literal text, but a letter beside it is', () => {
+    expect(isDeny(bash('build', 'ls [[:alpha:]]* [!a]*'))).toBe(false)
+    expect(isDeny(bash('build', '/bin/[!x]m .temper/gates.json'))).toBe(true)
+  })
+})
+
+describe('second review: a copy that keeps the source path, and rsync that removes its sources', () => {
+  for (const command of ['cp --parents evidence/review.json .temper/', 'rsync -aR evidence/review.json .temper/', 'rsync --relative evidence/gates.json .temper/', 'rsync --remove-source-files .temper/gates.json /tmp/']) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+  test('cp --parents into a folder of the project is no refusal', () => {
+    expect(isDeny(bash('build', 'cp --parents src/a.ts out/'))).toBe(false)
+  })
+})
+
+describe('second review: a glob in a temper call is refused only when it could spell a word the person decides', () => {
+  for (const command of [`${CLI} group reopen G1 --reason x --accept-for?ign abc1234`, `${CLI} group reopen G1 --accept-for?ign=abc1234 --reason x`, `${CLI} state lo?p review build --reason x`]) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+  for (const command of [`${CLI} task gate 1 --model sonnet[1m] --tokens 1200 --ms 3400`, 'grep -rn TODO /home/user/temper --include=*.ts', 'find ~/.claude/plugins/cache/temper -name *.md']) {
+    test(`allowed: ${command}`, () => expect(isDeny(bash('build', command))).toBe(false))
+  }
+})

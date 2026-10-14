@@ -60,8 +60,9 @@ again. Stop only where this section says so.
   - An agent: first run its `before` calls. Then launch it with the Agent tool: `subagent_type` its
     `type` (when that type is not offered, the general purpose agent), `model` its `model`, and its
     `prompt` exactly. When it returns, print the box it returns verbatim, then run its `after` calls,
-    with `{tokens}` and `{ms}` filled from the Agent result (leave a flag out when the result has no
-    value for it).
+    with `{tokens}` and `{ms}` filled from the Agent result, or, for an agent run in the background,
+    from the usage of its completion notice (`subagent_tokens`, `duration_ms`); leave a flag out only
+    when neither gives a value.
   - A `steps` entry is a command to run as written, or a short instruction to carry out; `{...}` in it
     is yours to fill (a commit message that says what the feature does).
   - **Filling a placeholder.** Every `{...}` text in a call or a step stands inside single quotes. Put the
@@ -78,8 +79,8 @@ again. Stop only where this section says so.
 - **`auto`**: an armed run moves by itself: run its `calls`. The person is not watching: never ask
   "Shall I...?"; the only stop is a park, which `next` turns into a question.
 - **`broken`**: say its `say` in one line and ask its `restart` question.
-- **`none`** after a commit: print `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` (when the steps did
-  not already) and stop.
+- **`none`** after a commit: the steps printed the report before they cleared the run (a report printed
+  now is empty); the run's page is `report.html` in its spec folder. Say where it is and stop.
 
 Run the calls of one action in one Bash call, one per line, when they are only `temper` calls; a
 `git` call goes in a call of its own.

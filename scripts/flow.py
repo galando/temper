@@ -634,8 +634,16 @@ class Builder:
             if shas:
                 left[g] = shas
         if not left:
-            return {"action": "work", "stage": "build", "calls": again, "agents": [],
-                    "say": "The commits the CLI did not make were kept or taken out: the groups are merged again."}
+            # Asked, never run unattended: integrate leaves its record as it is when it stops early (another branch, a
+            # protected one), and running it again unasked would go round with no one told why.
+            if r.armed():
+                return {"action": "auto", "stage": "build",
+                        "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote("the groups are to be merged again after the commits the CLI did not make were kept or taken out"))],
+                        "say": "The armed run parks for you before the groups are merged again."}
+            return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER,
+                    "The commits the CLI did not make are kept or taken out. Merge the groups again?", stage="build", options=[
+                        self.opt("Merge the groups (Recommended)", "Merge the passed groups again and check Build.", move="redo", calls=again),
+                        self.save()])}
         gid = sorted(left)[0]
         shas = left[gid]
         csv = ",".join(x[:7] for x in shas)
@@ -659,8 +667,10 @@ class Builder:
         if len(out) == 3:
             text = "Group %s's branch holds commits the CLI did not make (%s). Take them out, or keep them?" % (gid, csv)
         else:
-            text = ("Group %s's branch holds commits the CLI did not make (%s), below the CLI's own commits, so they cannot be "
-                    "taken out here. Keep them, or save the run and take them out by hand?" % (gid, csv))
+            why = ("its worktree is gone" if not (wt and os.path.isdir(wt)) else
+                   "they are not the newest commits of the group's branch")
+            text = ("Group %s's branch holds commits the CLI did not make (%s); %s, so they cannot be taken out here. "
+                    "Keep them, or save the run and take them out by hand?" % (gid, csv, why))
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=out)}
 
     def group_question(self, g):
@@ -747,8 +757,13 @@ class Builder:
         # Each name one shell quoted word: the step runs as printed, and a file name is never shell code.
         steps.append("git add -- %s" % " ".join(shlex.quote(f) for f in files + lessons) if files
                      else "git add -- (each file the run changed)%s" % "".join(" " + x for x in lessons))
+        code = [f for f in files if not (f.startswith(r.spec + "/") or f.startswith(".temper/"))] if r.spec else files
         if r.command == "fix":
             steps.append("git commit -m 'fix({scope}): {description}' -m 'Root cause: {explanation}' -m 'Regression test: {test name}'")
+        elif files and not code:
+            # A grouped Build commits the code itself (each task, each group, the merge into this branch): this commit is
+            # the run's record, and its message says so.
+            steps.append("git commit -m %s" % shlex.quote("docs(%s): record the run: spec, gate ledger and report (the code came in with the Build merges)" % r.slug))
         else:
             steps.append("git commit -m '{a conventional commit message for the feature}'")
         # The report reads the run state, so it prints before the state is cleared.

@@ -38,9 +38,11 @@ assert_eq "round 4, 6: a Test command changed after the plan gate stops the firs
 # --- 7. A door into a later stage: the walked approvals commit only what changed, and a failed one can be run ---
 setup; rm -f .temper/build-state.json   # the earlier run is over: its spec is committed, no run is active
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm "the spec of an earlier run" >/dev/null 2>&1
+_b="$(git symbolic-ref -q HEAD)"; git branch -f temper-test-other HEAD >/dev/null 2>&1; git symbolic-ref HEAD refs/heads/temper-test-other   # on another branch than the run's, at the same commit
 "$TEMPER" state init demo --enter check >/dev/null 2>&1; gpass intent
-assert_eq "round 4, 7: a walked Intent whose spec is committed and accepted makes no empty commit" "git checkout -b feature/demo|intent accept|0|state advance intent_complete plan" \
-  "$(nx "o = d['ask']['options'][0]; c = o['calls']; c[0] + '|' + c[1].split('temper ', 1)[1] + '|' + str(sum(1 for x in c if x.startswith('git commit'))) + '|' + c[-1].split('temper ', 1)[1]")"
+assert_eq "round 4, 7: a walked Intent whose spec is committed and accepted makes no empty commit" "git checkout feature/demo|intent accept|0|state advance intent_complete plan" \
+  "$(nx "o = d['ask']['options'][0]; c = o['calls']; c[0].replace('checkout -b ', 'checkout ') + '|' + c[1].split('temper ', 1)[1] + '|' + str(sum(1 for x in c if x.startswith('git commit'))) + '|' + c[-1].split('temper ', 1)[1]")"
+git symbolic-ref HEAD "$_b"
 printf '\nA note.\n' >> .temper/specs/demo/intent.md
 assert_eq "round 4, 7: with a change in the spec folder the approval commits it" "1" \
   "$(nx "sum(1 for x in d['ask']['options'][0]['calls'] if x.startswith('git commit'))")"
@@ -119,8 +121,13 @@ GW="$PWD/.claude/worktrees/temper-demo-G1"; echo stray > "$GW/stray.txt"
 git -C "$GW" add stray.txt >/dev/null 2>&1; git -C "$GW" -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm stray >/dev/null 2>&1
 "$TEMPER" integrate >/dev/null 2>&1; "$TEMPER" gate build >/dev/null 2>&1
 eval "$(nx "d['ask']['options'][1]['calls'][0].replace('{reason}', 'wanted')")" >/dev/null 2>&1
-assert_eq "re-audit: after Keep with no integrate, next merges the groups again (no question that only fails)" "work|integrate|gate build" \
-  "$(nx "d['action'] + '|' + '|'.join(c.split('temper ')[-1] for c in d['calls'])")"
+assert_eq "re-audit: after Keep with no integrate, next asks to merge the groups again (no question that only fails, no loop unasked)" \
+  "ask|Merge the groups (Recommended)|Save for later|integrate|gate build" \
+  "$(nx "o = d['ask']['options']; '|'.join([d['action']] + [x['label'] for x in d['ask']['question']['options']] + [c.split('temper ')[-1] for c in o[0]['calls']])")"
+git checkout -q -b side >/dev/null 2>&1
+"$TEMPER" integrate >/dev/null 2>&1; "$TEMPER" gate build >/dev/null 2>&1
+assert_eq "second review: when integrate stops early (another branch), next asks again and says nothing runs unasked" "ask" "$(nx "d['action']")"
+git checkout -q feature/demo >/dev/null 2>&1
 # Re-audit: a commit the CLI did not make below one it made cannot be taken out by a rebase (the CLI's own commit would be
 # written again as one it did not make): the question offers Keep and Save only
 r4_grouped
@@ -361,3 +368,15 @@ fresh
 "$TEMPER" evidence add --stage check --scenario first --claim 'scenario: first -> tests/test_a.py:test_first (3 tests)' --exit 0 >/dev/null 2>&1
 assert_eq "live run: the tests marker of the view reads no scenario row" "none" \
   "$(vw "next(m['state'] for m in d['check_markers'] if m['name'] == 'tests')")"
+
+# --- your check: the last commit of a grouped Build holds only the run's record, and its message says so ---
+setup; rm -rf .git bare   # a repository of its own: no file an earlier case left changes under it
+git init -q . 2>/dev/null; git checkout -q -B feature/demo 2>/dev/null
+git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm base >/dev/null 2>&1
+_walk_to_commit; gpass commit; printf '\nA note.\n' >> .temper/specs/demo/intent.md
+assert_eq "check: with only the spec folder changed, the commit message names the run's record, not a feature" "1|0" \
+  "$(nx "sum(1 for x in d['steps'] if x.startswith('git commit') and 'docs(demo): record the run' in x)")|$(nx "sum(1 for x in d['steps'] if 'conventional commit message for the feature' in x)")"
+mkdir -p src; echo x > src/new.sh
+assert_eq "check: with code changed too, the commit message is the feature's" "1" \
+  "$(nx "sum(1 for x in d['steps'] if 'conventional commit message for the feature' in x)")"
+rm -rf .git src

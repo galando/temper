@@ -69,7 +69,13 @@ person was on (often main): leaving Intent now switches to the run's branch, or 
 that builds on another starts only after the person's Continue of it (`temper group start` refuses before that). A
 passed Review with open findings below the blocking severity offers Loop back to Build and Accept a finding. The end of
 the run prints the report before it clears the run state, and clearing it leaves an unchanged gate ledger as it is, so
-the commit leaves the spec folder clean. The Check marker of the tests reads no scenario row.
+the commit leaves the spec folder clean. The Check marker of the tests reads no scenario row. When Build committed the
+code itself, the last commit's message names the run's record instead of a feature. A background agent's tokens and time
+come from its completion notice. A second narrow review closed more ways around the guard: a glob as a copy target
+(`cp f .temper/[Eg][Va]*`), `NAME+=value`, a program named by bracket sets alone (`/usr/bin/[g][i][t]`), `cp --parents`
+and `rsync -R` landings, `rsync --remove-source-files`, and a glob after a call's reason; a glob in a call is refused only
+when it could spell a word the person decides (`--model sonnet[1m]` passes). After Keep the commits the person is asked
+before the groups are merged again, so a merge that stops early does not go round unasked.
 
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.
