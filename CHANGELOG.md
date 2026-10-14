@@ -94,14 +94,20 @@ and a loop back to Intent, Plan or Design gives that stage's agent the person's 
 commit that added the spec's `intent.md`, else where the branch left main or master), so committed work is
 reviewed; before, its base was HEAD and Review read an empty diff. `state init --enter` takes the tier from the
 Complexity line of `plan.md` (else of `intent.md`, which holds Intent's first guess), so a Design door no longer
-skips Design on a first guess of simple. The last commit of such a run says its code was committed before the run.
-Such a door's walked Build passes on the Build PASS the spec folder's committed `gate-ledger.json` records, while no
-file of the plan changed since that commit (before, it always failed: the door's run holds no evidence of the run that
-built the code, and Run Build built the whole plan again). A loop back from a door's run runs the stage it goes back
+skips Design on a first guess of simple. The last commit of a run whose code is all committed says the code is in the
+commits before it. Such a door's walked Build passes on the newest Build PASS the spec folder's committed
+`gate-ledger.json` records (looking back past a later door that skipped Build), while no file of the plan changed
+since that commit (before, it always failed: the door's run holds no evidence of the run that built the code, and Run
+Build built the whole plan again). When a file of the plan changed since, the check fails and names it, and Run Build
+is the fix pass on that code, not the plan built again. A loop back from a door's run runs the stage it goes back
 to, and Build's fix pass mends the code the earlier run built (before, Build was only checked again, so a door's run
 could never fix what Review found). `enter` and `built_before` are the CLI's keys. Check's tests row reads the latest
 run of each test command, so a failing integration run beside a passing unit run fails it, and a passed Check offers
 Loop back to Build, for what Check passed with a warning (a lint run, by the methodology a warning).
+Review writes no code: the CLI records the project's tracked files as Review starts, and the Review check fails, naming
+the file, when a Review agent left a change in them or made a commit (a probe it restores leaves none); a live Review
+had fixed a critical finding itself and resolved it, so no loop back ran and no test came first. A loop names only the
+feedback file of the stage it came back from, and Check's `test-gap-report.json` is kept out of git status.
 The orchestrator launches a stage agent with `run_in_background: false`, and when the tool runs it in the background
 anyway, its completion notice is the agent's return and the turn it starts runs the `after` calls: a run once sat
 idle after its Plan agent finished in the background until the person wrote. Getting Started says what to do

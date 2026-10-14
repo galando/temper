@@ -237,7 +237,7 @@ describe('second review: a copy of a folder\'s contents (rsync, and cp on macOS)
 })
 
 describe('live run 6: a door\'s stage and what an earlier run built are the CLI\'s', () => {
-  for (const command of [`${CLI} state set enter build`, `${CLI} state set built_before abc1234`]) {
+  for (const command of [`${CLI} state set enter build`, `${CLI} state set built_before abc1234`, `${CLI} state set review_snapshot x`]) {
     test(`refused: ${command}`, () => expect(isDeny(bash('review', command))).toBe(true))
   }
 })

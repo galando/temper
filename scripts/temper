@@ -566,7 +566,7 @@ cmd_init() {
   if ex="$(git rev-parse --git-common-dir 2>/dev/null)/info/exclude" && [[ "$ex" != "/info/exclude" ]]; then
     mkdir -p "$(dirname "$ex")" 2>/dev/null
     for p in build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
-             stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ security-map.json view.json \
+             stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ security-map.json test-gap-report.json view.json \
              evidence/ index/ reviews/ archive/ .lock/; do
       grep -qxF "/${pre}.temper/$p" "$ex" 2>/dev/null || printf '/%s.temper/%s\n' "$pre" "$p" >> "$ex" 2>/dev/null || true
     done
@@ -760,8 +760,8 @@ cmd_state_set() {
     echo "FAIL: archived is kept by the CLI (state archive records it when it writes the ledger the commit carries)" >&2
     return 1
   fi
-  if [[ "$1" == "enter" || "$1" == "built_before" ]]; then
-    echo "FAIL: $1 is kept by the CLI (state init --enter records a door's stage; the walked Build's check records what an earlier run built)" >&2
+  if [[ "$1" == "enter" || "$1" == "built_before" || "$1" == "review_snapshot" ]]; then
+    echo "FAIL: $1 is kept by the CLI (a door's stage, what an earlier run built and the code as Review starts are its records)" >&2
     return 1
   fi
   # The commit the run's diff is read against is recorded once (state advance plan_complete): a later one would hide
@@ -846,6 +846,8 @@ print('same' if same else 'moved')
 PY
   rc=$?
   _lock_release
+  # the project's code as Review starts, so the Review check sees a change a Review agent left
+  [[ $rc -eq 0 && "$next" == "review" ]] && _review_code save
   return $rc
 }
 
@@ -1247,6 +1249,7 @@ cmd_state_redo() { # temper state redo <stage> [--reason "..."]: "Run Build agai
     return 1
   fi
   _redo_from "$stage" || return 1
+  [[ "$stage" == "review" ]] && _review_code save
   # A run a door started at a later stage checks the stages before it instead of running them: one run again is run,
   # and so is every stage after it (the door's entry moves to it).
   local enter; enter="$(_json_get_path "$STATE_FILE" enter "")"
@@ -4245,8 +4248,9 @@ gate_plan() {
   echo "$reqs_json" "$all_pass"
 }
 
-_earlier_build() { # _earlier_build <spec_path>: prints the commit of the spec folder's gate-ledger.json when that committed
-                   # ledger records Build PASS (not skipped) and no file of the plan changed since; else why not, exit 1
+_earlier_build() { # _earlier_build <spec_path>: prints the commit of the spec folder's newest committed gate-ledger.json that
+                   # records Build PASS (not skipped); exit 0 when no file of the plan changed since, exit 2 (the commit, a
+                   # tab, and what changed) when one did, exit 1 (why) when no such ledger is committed
   python3 - "$1" "$(_grouped_parse "$1/tasks.md" 2>/dev/null)" <<'PY'
 import json, subprocess, sys
 spec = sys.argv[1].rstrip('/')
@@ -4279,7 +4283,9 @@ if not files:
     print('tasks.md declares no files'); sys.exit(1)
 rc, out = git('diff', '--name-only', sha, '--', *files)
 if rc or out.strip():
-    print('a file of the plan changed since the ledger was committed in %s: %s' % (sha[:7], ', '.join(out.split()[:3]) or 'git diff failed')); sys.exit(1)
+    print('%s\tthe ledger committed in %s records Build PASS, but a file of the plan changed since: %s' % (
+        sha, sha[:7], ', '.join(out.split()[:3]) or 'git diff failed'))
+    sys.exit(2)
 print(sha)
 PY
 }
@@ -4291,10 +4297,16 @@ gate_build() {
   # the code counts, as its committed ledger records it, while no file of the plan changed since.
   case "$(cmd_state_get enter "")" in
     review|check)
-      local before
-      if before="$(_earlier_build "$spec_path")"; then
+      local before brc
+      before="$(_earlier_build "$spec_path")"; brc=$?
+      if [[ $brc -eq 0 ]]; then
         reqs+=("$(_req "built in an earlier run" 1 "the spec folder's gate-ledger.json, committed in ${before:0:7}, records Build PASS, and no file of the plan changed since")")
-        echo "$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"${reqs[0]}")" 1
+      elif [[ $brc -eq 2 ]]; then
+        # the plan was built, and its code changed since: Run Build mends and checks that code (the fix pass)
+        reqs+=("$(_req "built in an earlier run" 0 "${before#*$'\t'}")")
+      fi
+      if [[ $brc -ne 1 ]]; then
+        echo "$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"${reqs[0]}")" "$(( brc == 0 ? 1 : 0 ))"
         return 0
       fi ;;
   esac
@@ -4447,6 +4459,55 @@ print(('%s|%s' % (hits[-1].get('exit_code'), hits[-1].get('claim') or '')) if hi
 " "$file" "$keyword"
 }
 
+_review_code() { # _review_code save|compare: the tracked files of the project (outside .temper and .claude) and HEAD as
+                 # Review starts (save, into the run state), or the ones that differ from that since (compare: prints them)
+  python3 - "$1" "$STATE_FILE" <<'PY'
+import hashlib, json, os, subprocess, sys
+mode, state = sys.argv[1:3]
+def git(*a):
+    r = subprocess.run(['git', '-c', 'core.quotePath=false', '-c', 'status.renames=false'] + list(a), capture_output=True)
+    return r.stdout.decode('utf-8', 'replace') if r.returncode == 0 else ''
+top = git('rev-parse', '--show-toplevel').strip()
+pre = git('rev-parse', '--show-prefix').strip()
+def mine(path):
+    rel = path[len(pre):] if pre and path.startswith(pre) else path
+    return None if rel.startswith(('.temper/', '.claude/')) or (pre and not path.startswith(pre)) else rel
+def snap():
+    files = {}
+    for f in git('status', '--porcelain=v1', '-z', '-uno', '--', '.').split('\0'):
+        if len(f) < 4:
+            continue
+        rel = mine(f[3:])
+        if rel is None:
+            continue
+        try:
+            files[rel] = hashlib.sha256(open(os.path.join(top, f[3:]), 'rb').read()).hexdigest()
+        except OSError:
+            files[rel] = 'DELETED'
+    return {'head': git('rev-parse', 'HEAD').strip(), 'files': files}
+try:
+    d = json.load(open(state))
+except Exception:
+    sys.exit(0)
+if mode == 'save':
+    d['review_snapshot'] = snap()
+    tmp = '%s.tmp.%d' % (state, os.getpid())
+    with open(tmp, 'w') as f:
+        json.dump(d, f, indent=2); f.write('\n')
+    os.replace(tmp, state)
+    sys.exit(0)
+old = d.get('review_snapshot')
+if not isinstance(old, dict):
+    print('NONE'); sys.exit(0)
+cur = snap()
+a, b = old.get('files') or {}, cur['files']
+changed = {k for k in b if b[k] != a.get(k)} | {k for k in a if k not in b}
+if old.get('head') and cur['head'] and old.get('head') != cur['head']:
+    changed |= {r for r in (mine(x) for x in git('diff', '--name-only', '--no-renames', old['head'], cur['head'], '--', '.').split('\n') if x) if r}
+print(', '.join(sorted(changed)[:5]))
+PY
+}
+
 gate_review() {
   local block_on sev_csv
   block_on="$(_cfg_get review.block-on critical)"
@@ -4480,6 +4541,17 @@ gate_review() {
     reqs+=("$(_req "review completed" 1 "${completion#*|}")")
   else
     reqs+=("$(_req "review completed" 0 "no review completion evidence — an empty findings ledger is not a review")")
+    all_pass=0
+  fi
+  # Review writes no code (its brief; with the mod, a write outside the spec folder is refused): a change a Review agent
+  # left in the project's tracked files, or a commit it made, fails the check; a probe it restores leaves none
+  local touched; touched="$(_review_code compare)"
+  if [[ "$touched" == "NONE" ]]; then
+    :
+  elif [[ -z "$touched" ]]; then
+    reqs+=("$(_req "no code changed at Review" 1 "no tracked file of the project changed while Review ran")")
+  else
+    reqs+=("$(_req "no code changed at Review" 0 "Review changed $touched; Review writes no code: loop back to Build, where the fix pass tests a fix first")")
     all_pass=0
   fi
   local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
@@ -4863,9 +4935,10 @@ cmd_gate() {
     _gate_write_verdict "$stage" "$verdict" "$reqs_json"
     # The walked Build of a door's run passed on the earlier run's ledger: a loop back to Build mends that code (the fix
     # pass), it does not build the plan again.
-    if [[ "$stage" == "build" && "$verdict" == "PASS" && -z "$(cmd_state_get built_before "")" ]]; then
+    if [[ "$stage" == "build" && -z "$(cmd_state_get built_before "")" ]]; then
       case "$(cmd_state_get enter "")" in
-        review|check) local bb; bb="$(_earlier_build "$spec_path")" && _json_set_path "$STATE_FILE" built_before "$bb" '{}' >/dev/null ;;
+        review|check) local bb brc; bb="$(_earlier_build "$spec_path")"; brc=$?
+          [[ $brc -ne 1 ]] && _json_set_path "$STATE_FILE" built_before "${bb%%$'\t'*}" '{}' >/dev/null ;;
       esac
     fi
     # Per-criterion status for the live view. Fail open: never changes the verdict.

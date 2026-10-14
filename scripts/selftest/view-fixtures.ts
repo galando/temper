@@ -4790,7 +4790,7 @@ export const VIEWS: Record<string, unknown> = {
     "/plugin/scripts/temper report --html",
     "/plugin/scripts/temper state archive",
     "git add -- .temper/specs/pw/",
-    "git commit -m 'docs(pw): record the run: spec, gate ledger and report (the code came in with the Build merges)'",
+    "git commit -m 'docs(pw): record the run: spec, gate ledger and report (the code is in the commits before it)'",
     "/plugin/scripts/temper report",
     "/plugin/scripts/temper state clear"
    ]

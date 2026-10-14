@@ -371,7 +371,8 @@ class Builder:
             # A stage of an earlier session leaves no evidence in this run (state init starts it empty): its check fails,
             # and the person runs it now (it and every stage after it run) or skips it.
             run = self.opt("Run %s (Recommended)" % label, "%s runs now, and every stage after it." % label, move="redo",
-                           calls=[self.c("state redo %s --reason %s" % (stage, shlex.quote("the check of %s failed when the run entered at a later stage" % label)))])
+                           calls=[self.c("state redo %s --reason %s" % (stage, shlex.quote("the check of %s failed when the run entered at a later stage%s" % (
+                               label, " (%s)" % why[:300] if why else ""))))])
             return self.question(GATE_HEADER, text, stage=stage, options=[run, override_opt(go), self.save()])
 
         if r.command == "fix" and stage == "rca":
@@ -534,9 +535,12 @@ class Builder:
         found = self.r.latest_findings()
         if found:
             lines.append("What the stage before the loop left open: %s." % "; ".join("%d. %s" % (i + 1, x) for i, x in enumerate(found)))
+        # The file of the stage the loop came back from: one an earlier run left (a Check context beside a loop from
+        # Review) is not this loop's feedback.
+        frm = (self.r.latest_loop() or {}).get("from_stage")
         for name in ("review-context.json", "check-context.json"):
             p = os.path.join(self.r.spec, name)
-            if self.r.spec and os.path.isfile(p):
+            if self.r.spec and os.path.isfile(p) and (frm not in ("review", "check") or name.startswith(frm)):
                 lines.append("Feedback file: %s." % p)
         return lines
 
@@ -802,10 +806,7 @@ class Builder:
         elif files and not code:
             # A grouped Build commits the code itself (each task, each group, the merge into this branch): this commit is
             # the run's record, and its message says so.
-            # A run that entered at Review or Check walked Build: the code was there before the run.
-            came = ("the code was committed before this run" if r.state.get("enter") in ("review", "check")
-                    else "the code came in with the Build merges")
-            steps.append("git commit -m %s" % shlex.quote("docs(%s): record the run: spec, gate ledger and report (%s)" % (r.slug, came)))
+            steps.append("git commit -m %s" % shlex.quote("docs(%s): record the run: spec, gate ledger and report (the code is in the commits before it)" % r.slug))
         else:
             steps.append("git commit -m '{a conventional commit message for the feature}'")
         # The report reads the run state, so it prints before the state is cleared.

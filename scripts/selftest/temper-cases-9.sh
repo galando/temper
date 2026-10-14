@@ -378,8 +378,8 @@ _walk_to_commit; gpass commit; printf '\nA note.\n' >> .temper/specs/demo/intent
 assert_eq "check: with only the spec folder changed, the commit message names the run's record, not a feature" "1|0" \
   "$(nx "sum(1 for x in d['steps'] if x.startswith('git commit') and 'docs(demo): record the run' in x)")|$(nx "sum(1 for x in d['steps'] if 'conventional commit message for the feature' in x)")"
 python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['enter']='review'; json.dump(d, open(p, 'w'))"
-assert_eq "live run 6: a run that entered at Review says its code was committed before it" "1" \
-  "$(nx "sum(1 for x in d['steps'] if x.startswith('git commit') and '(the code was committed before this run)' in x)")"
+assert_eq "live run 9: the record's message says the code is in the commits before it, for a door's run too" "1" \
+  "$(nx "sum(1 for x in d['steps'] if x.startswith('git commit') and '(the code is in the commits before it)' in x)")"
 mkdir -p src; echo x > src/new.sh
 assert_eq "check: with code changed too, the commit message is the feature's" "1" \
   "$(nx "sum(1 for x in d['steps'] if 'conventional commit message for the feature' in x)")"
@@ -495,8 +495,13 @@ assert_eq "live run 6: a loop back to Plan drops what the earlier run built, so 
 printf 'echo changed\n' > src/demo.sh
 _r6door check
 OUT="$("$TEMPER" gate build 2>&1)"
-assert_eq "live run 6: a plan file changed since the ledger's commit keeps the walked Build failing" "1|0|" \
-  "$(grep -c 'RED then GREEN' <<<"$OUT")|$(grep -c 'built in an earlier run' <<<"$OUT")|$("$TEMPER" state get built_before)"
+assert_eq "live run 8: a plan file changed since the ledger's commit fails the walked Build, naming the file" "1|1|0" \
+  "$(grep -c '\[x\] built in an earlier run — the ledger committed in .* records Build PASS, but a file of the plan changed since: src/demo.sh' <<<"$OUT")|$([[ "$("$TEMPER" state get built_before)" == "$(git rev-parse HEAD)" ]] && echo 1 || echo 0)|$(grep -c 'RED then GREEN' <<<"$OUT")"
+CALL="$(nx "d['ask']['options'][0]['calls'][0]")"
+assert_eq "live run 8: Run Build carries the failed row into the fix pass's reason" "1" "$(grep -c 'a file of the plan changed since: src/demo.sh' <<<"$CALL")"
+eval "$CALL" >/dev/null 2>&1
+assert_eq "live run 8: Run Build on changed code that an earlier run built is the fix pass, not the plan built again" "temper:temper-build|0|1" \
+  "$(nx "d['agents'][0]['type']")|$(nx "sum(1 for c in d.get('calls', []) if 'group start' in c)")|$(nx "int('a file of the plan changed since: src/demo.sh' in d['agents'][0]['prompt'])")"
 git checkout -q -- src/demo.sh
 printf '{"gates": {"build": {"verdict": "PASS", "requirements": []}}, "overrides": [{"stage": "build", "reason": "x"}]}\n' > .temper/specs/demo/gate-ledger.json
 git add .temper/specs/demo/gate-ledger.json; git commit -qm "an earlier door's record" >/dev/null 2>&1
@@ -520,3 +525,37 @@ assert_eq "live run 7: a later passing run of the same command clears it" "1" \
   "$("$TEMPER" gate check 2>&1 | grep -c '\[v\] tests pass')"
 _at check; gpass check
 assert_eq "live run 7: a passed Check offers Loop back to Build beside Commit" "Commit (Recommended)|Loop back to Build|Save for later" "$(labels)"
+
+# --- live run 9: Review writes no code; a change a Review agent leaves in the project fails its check ---
+setup; rm -rf .git bare; git init -q . 2>/dev/null; git checkout -q -B feature/demo 2>/dev/null
+git config user.email t@t; git config user.name t
+mkdir -p src; printf 'echo demo\n' > src/demo.sh; git add src; git commit -qm "the code" >/dev/null 2>&1
+fresh_keep() { "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1; }
+fresh_keep; gpass intent plan build; _at build
+"$TEMPER" state advance build_complete review >/dev/null 2>&1
+"$TEMPER" evidence add --stage review --claim 'review completed' --label PROVEN --exit 0 >/dev/null 2>&1
+printf 'echo probe\n' > src/demo.sh; git checkout -q -- src/demo.sh; mkdir -p .pytest_cache; echo x > .pytest_cache/v
+assert_eq "live run 9: a probe Review restores, and a cache a test run leaves, change no code" "1" \
+  "$("$TEMPER" gate review 2>&1 | grep -c '\[v\] no code changed at Review')"
+printf 'echo fixed by review\n' > src/demo.sh
+assert_eq "live run 9: a fix a Review agent leaves in the code fails Review, naming the file" "1|1" \
+  "$("$TEMPER" gate review >/dev/null 2>&1; echo $?)|$("$TEMPER" gate review 2>&1 | grep -c '\[x\] no code changed at Review — Review changed src/demo.sh')"
+git add src/demo.sh; git commit -qm "a commit at Review" >/dev/null 2>&1
+assert_eq "live run 9: so does a commit a Review agent makes" "1" "$("$TEMPER" gate review 2>&1 | grep -c 'Review changed src/demo.sh')"
+assert_exit "live run 9: the code as Review starts is the CLI's record" 1 "$TEMPER" state set review_snapshot x
+"$TEMPER" state loop review build --reason 'mend it' >/dev/null 2>&1; gpass build
+"$TEMPER" state advance build_complete review >/dev/null 2>&1
+"$TEMPER" evidence add --stage review --claim 'review completed' --label PROVEN --exit 0 >/dev/null 2>&1
+assert_exit "live run 9: back at Review after the fix pass, the code as it now is is the start" 0 "$TEMPER" gate review
+rm -rf .git src .pytest_cache
+
+# --- live run 9: a loop names the feedback file of the stage it came back from, and Check's gap report is run state ---
+fresh; "$TEMPER" init >/dev/null 2>&1; gpass intent plan build review; _at review
+echo '{}' > .temper/specs/demo/review-context.json; echo '{}' > .temper/specs/demo/check-context.json
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"gate": {"verdict": "PASS"}, "confirmed": "x"}}, "tasks": {}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
+"$TEMPER" state loop review build --reason 'mend it' >/dev/null 2>&1
+assert_eq "live run 9: a loop from Review names Review's feedback file only" "1|0" \
+  "$(nx "int('review-context.json' in d['agents'][0]['prompt'])")|$(nx "int('check-context.json' in d['agents'][0]['prompt'])")"
+echo '{}' > .temper/test-gap-report.json
+assert_eq "live run 9: Check's test gap report is in the clone's info/exclude" "0" \
+  "$(git status --porcelain --untracked-files=all | grep -c 'test-gap-report')"

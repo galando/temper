@@ -75,7 +75,7 @@ named exception: MEDIUM/LOW findings may be capped at 15 rows plus
 
 Return this panel (the orchestrator prints it verbatim) and nothing outside it. The
 FINDINGS row counts the issues by severity, the `FINDINGS` section lists them (end the
-row of an auto-fixable finding with `(auto-fix)`), and the INTENT row is the intent
+row of a finding the fix pass can fix mechanically with `(auto-fix)`; you never apply it), and the INTENT row is the intent
 validation result:
 
 ```
