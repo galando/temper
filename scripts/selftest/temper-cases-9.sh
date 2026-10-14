@@ -381,3 +381,17 @@ mkdir -p src; echo x > src/new.sh
 assert_eq "check: with code changed too, the commit message is the feature's" "1" \
   "$(nx "sum(1 for x in d['steps'] if 'conventional commit message for the feature' in x)")"
 rm -rf .git src
+
+# --- live run 1: Loop back to Build keeps what Review found, so the fix pass reads it ---
+fresh
+gpass intent plan build
+for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"gate": {"verdict": "PASS"}, "confirmed": "x"}}, "tasks": {}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
+"$TEMPER" evidence add --stage review --claim 'src/a.ts:3 a name that misleads' --severity low --label HEURISTIC >/dev/null 2>&1
+"$TEMPER" evidence add --stage review --claim 'review completed' --label HEURISTIC >/dev/null 2>&1
+gpass review
+"$TEMPER" state loop review build --reason 'fix them' >/dev/null 2>&1
+assert_eq "live run 1: the loop keeps the open finding, while the review ledger is cleared" "1|0" \
+  "$(python3 -c "import json; print(len(json.load(open('.temper/feedback-loops.json'))['active_loops'][0].get('findings') or []))")|$(python3 -c "import json; print(len(json.load(open('.temper/evidence/review.json'))))" 2>/dev/null || echo 0)"
+assert_eq "live run 1: the fix pass prompt names the finding, not only the person's reason" "1|1" \
+  "$(nx "int('[low] src/a.ts:3 a name that misleads' in d['agents'][0]['prompt'])")|$(nx "int('Feedback re-entry: fix them' in d['agents'][0]['prompt'])")"

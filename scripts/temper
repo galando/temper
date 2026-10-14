@@ -986,10 +986,27 @@ if loop['iteration'] >= max_per_type:
     sys.exit(1)
 loop['iteration'] += 1
 loop['reason'] = reason or loop['reason']
+# What the stage left open goes with the loop, since the loop clears that stage's ledger: Review's open findings, Check's
+# failed runs. The fix pass reads them (temper next names them in its prompt).
+try:
+    rows = json.load(open(sys.argv[7])) if len(sys.argv) > 7 and sys.argv[7] else []
+except Exception:
+    rows = []
+def open_row(e):
+    if not isinstance(e, dict) or e.get('resolved') or e.get('accepted'):
+        return False
+    if frm == 'review':
+        return bool(e.get('severity'))
+    return isinstance(e.get('exit_code'), int) and e.get('exit_code') != 0
+left = [('[%s] ' % e['severity'] if e.get('severity') else '') + str(e.get('claim', ''))[:300] for e in rows if open_row(e)]
+if left:
+    loop['findings'] = left[:20]
+else:
+    loop.pop('findings', None)
 d['active_loops'] = active
 json.dump(d, open(f, 'w'), indent=2)
 print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_type))
-" "$LOOPS_FILE" "$from" "$to" "$reason" "$max_per_type" "$(_now)")
+" "$LOOPS_FILE" "$from" "$to" "$reason" "$max_per_type" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)")
   local rc=$?
   echo "$result"
   # A loop means "we are going backwards" — evidence is append-only, so a stale row

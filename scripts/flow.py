@@ -166,16 +166,27 @@ class Run:
             return False
         return self.loop_count(frm, to) < self.loop_budget(frm, to)
 
+    def latest_loop(self):
+        """The latest step back to Build (or Fix), or None."""
+        best, at = None, ""
+        for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
+            if isinstance(l, dict) and l.get("to_stage") in ("build", "fix") and str(l.get("started", "")) >= at:
+                best, at = l, str(l.get("started", ""))
+        return best
+
     def latest_feedback(self):
         """The reason of the latest step back to Build (or Fix), or of a "Run Build again"."""
-        best, at = "", ""
-        for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
-            if l.get("to_stage") in ("build", "fix") and str(l.get("started", "")) >= at:
-                best, at = l.get("reason") or "", str(l.get("started", ""))
+        loop = self.latest_loop() or {}
+        best, at = loop.get("reason") or "", str(loop.get("started", ""))
         redo = self.state.get("redo") or {}
         if isinstance(redo, dict) and str(redo.get("ts", "")) >= at and redo.get("reason"):
             best = redo.get("reason")
         return best
+
+    def latest_findings(self):
+        """What the stage that looped back left open (the loop keeps it, as the loop clears that stage's ledger)."""
+        loop = self.latest_loop() or {}
+        return [str(x) for x in loop.get("findings") or [] if isinstance(x, str)]
 
     def title(self):
         m = re.search(r"^#\s+(?:Intent:\s*)?(.+?)\s*$", self.intent, re.M)
@@ -509,6 +520,9 @@ class Builder:
         lines = []
         if fb:
             lines.append("Feedback re-entry: %s. Fix this, then continue." % fb)
+        found = self.r.latest_findings()
+        if found:
+            lines.append("What the stage before the loop left open: %s." % "; ".join("%d. %s" % (i + 1, x) for i, x in enumerate(found)))
         for name in ("review-context.json", "check-context.json"):
             p = os.path.join(self.r.spec, name)
             if self.r.spec and os.path.isfile(p):
