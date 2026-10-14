@@ -4254,18 +4254,23 @@ def git(*a):
     r = subprocess.run(['git', '--literal-pathspecs', '-c', 'core.quotePath=false'] + list(a), capture_output=True, text=True)
     return r.returncode, r.stdout
 led = spec + '/gate-ledger.json'
-rc, sha = git('log', '-1', '--format=%H', '--', led)
-sha = sha.strip()
-if rc or not sha:
+rc, shas = git('log', '-n', '20', '--format=%H', '--', led)
+shas = shas.split() if rc == 0 else []
+if not shas:
     print('the spec folder holds no committed gate-ledger.json of an earlier run'); sys.exit(1)
-rc, text = git('show', '%s:./%s' % (sha, led))
-try:
-    d = json.loads(text) if rc == 0 else {}
-except ValueError:
-    d = {}
-b = (d.get('gates') or {}).get('build') or {}
-if b.get('verdict') != 'PASS' or any(isinstance(o, dict) and o.get('stage') == 'build' for o in d.get('overrides') or []):
-    print('the ledger committed in %s records no Build PASS of its own' % sha[:7]); sys.exit(1)
+def built(sha):
+    # the ledger as that commit holds it records a Build PASS of its own (not a skip)
+    rc, text = git('show', '%s:./%s' % (sha, led))
+    try:
+        d = json.loads(text) if rc == 0 else {}
+    except ValueError:
+        return False
+    b = (d.get('gates') or {}).get('build') or {} if isinstance(d, dict) else {}
+    return b.get('verdict') == 'PASS' and not any(isinstance(o, dict) and o.get('stage') == 'build' for o in d.get('overrides') or [])
+# the newest ledger that does: a later door run that skipped Build (or a run left without one) hides no earlier Build PASS
+sha = next((x for x in shas if built(x)), None)
+if not sha:
+    print('no committed gate-ledger.json of the spec folder records a Build PASS of its own'); sys.exit(1)
 try:
     files = sorted({f for t in json.loads(sys.argv[2]).get('tasks', []) for f in t.get('files', [])})
 except ValueError:

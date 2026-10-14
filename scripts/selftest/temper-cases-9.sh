@@ -501,7 +501,10 @@ git checkout -q -- src/demo.sh
 printf '{"gates": {"build": {"verdict": "PASS", "requirements": []}}, "overrides": [{"stage": "build", "reason": "x"}]}\n' > .temper/specs/demo/gate-ledger.json
 git add .temper/specs/demo/gate-ledger.json; git commit -qm "an earlier door's record" >/dev/null 2>&1
 _r6door review
-assert_exit "live run 6: an earlier Build that was skipped is no Build PASS" 1 "$TEMPER" gate build
+assert_exit "live run 8: a later door's skipped Build hides no earlier Build PASS of the same code" 0 "$TEMPER" gate build
+printf 'echo other\n' > src/demo.sh; git add src/demo.sh; git commit -qm "a change after the earlier run" >/dev/null 2>&1
+_r6door review
+assert_exit "live run 8: a plan file changed since the newest Build PASS keeps the walked Build failing" 1 "$TEMPER" gate build
 rm -rf .git src
 
 # --- live run 7: each test command counts by its latest run, and a passed Check can still go back to Build ---
