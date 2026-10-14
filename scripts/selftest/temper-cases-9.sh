@@ -263,6 +263,7 @@ rm -rf .git
 
 # --- live run of the release candidate: the first commit goes to the run's branch ---
 setup; git init -q . 2>/dev/null; git checkout -q -B main 2>/dev/null
+git config user.email t@t; git config user.name t   # the calls run git commit as printed: CI has no global identity
 sed -i 's/^\*\*Status:\*\* accepted$/**Status:** draft/' .temper/specs/demo/intent.md   # a new intent: the accept changes it
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm base >/dev/null 2>&1
 rm -f .temper/build-state.json; "$TEMPER" state init demo >/dev/null 2>&1; gpass intent
