@@ -217,7 +217,7 @@ consistency, contract changes, mutation spot-check {N} PROVEN/{N} UNVERIFIED) an
 top issues as `[{severity}] {file}:{line} — {one-liner}`.
 
 **Accepting a finding.** A person can keep a finding as it stands with
-`${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence accept --stage review --id <n> --reason "<why>"`. The row stays in the
+`${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence accept --stage review --id <n> --reason '<why>'`. The row stays in the
 ledger with the reason, the author (git identity) and the time; `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review`
 stops counting it and its detail names the accepted count. The reason is required, an
 empty one exits 1 and writes nothing, and a finding already resolved or accepted cannot

@@ -405,6 +405,29 @@ fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/nul
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "round 2, 13: the group question's Stop makes no call" "Stop|0" "$(nx "o = [o for o in d['ask']['options'] if o['label'] == 'Stop'][0]; o['label'] + '|' + str(len(o.get('calls') or []))")"
 
+# --- round 3: a narrow check of round 2 and a live run that looped back to Build ---
+# 1. A task with a **File:** line for each file declares them all (the live run's task agent was held to the last one).
+printf '# Tasks: x\n\n## Group G1: One\n**Depends:** none\n**Validate:** `true`\n\n### Task 1: a\n**File:** `orders.py`\n**File:** `tests/test_orders.py`, `orders.py`\n**Depends:** none\n**Test:** `true`\n' > r3-tasks.md
+assert_eq "round 3, 1: a task with two **File:** lines declares the files of both, each once" "orders.py tests/test_orders.py" \
+  "$(python3 "$REPO_ROOT/scripts/tasks_md.py" parse r3-tasks.md | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin)['tasks'][0]['files']))")"
+rm -f r3-tasks.md
+# 2. next_stage takes only a stage of the run's own sequence, so no other value opens a forward move.
+setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1
+assert_exit "round 3, 2: state set next_stage to a value that is no stage of the run is refused" 1 "$TEMPER" state set next_stage bogus
+assert_exit "round 3, 2: and Commit stays refused from RCA" 1 "$TEMPER" state set next_stage commit
+assert_eq "round 3, 2: the fix run is still at RCA" "rca" "$("$TEMPER" state get next_stage)"
+# 3. A project below the top of its git repository (a package of a monorepo): git names a file from the top, the
+#    commit steps run in the project folder, so the changed files are named from there.
+R3M="$WORKDIR/r3mono"; rm -rf "$R3M"; mkdir -p "$R3M/pkg/src" "$R3M/lib"; git -C "$R3M" init -q
+echo x > "$R3M/pkg/src/made.py"; echo y > "$R3M/lib/shared.py"
+assert_eq "round 3, 3: in a package of a monorepo the changed files are named from the project folder" '["../lib/shared.py", "src/made.py"]' \
+  "$(cd "$R3M/pkg" && python3 "$REPO_ROOT/scripts/flow.py" changed "" "2020-01-01T00:00:00Z")"
+assert_eq "round 3, 3: and git add finds them there" "0" "$(cd "$R3M/pkg" && git add -- src/made.py ../lib/shared.py >/dev/null 2>&1; echo $?)"
+rm -rf "$R3M"
+# 4. Every brief, reference page, command and pack puts the text an agent fills in single quotes, as the run page does.
+assert_eq "round 3, 4: no placeholder of text stands in double quotes in a call of a brief, page, command or pack" "" \
+  "$(grep -rnE -- '--[a-z-]+ "[^"]*(<[a-z]|\.\.\.)' "$REPO_ROOT/agents" "$REPO_ROOT/reference" "$REPO_ROOT/commands" "$REPO_ROOT/packs" "$REPO_ROOT/skills" "$REPO_ROOT/docs/grouped-build.md" | cut -d: -f1,2)"
+
 # --- the view is local run state ---
 fresh; "$TEMPER" init >/dev/null 2>&1; "$TEMPER" next --json >/dev/null 2>&1
 assert_eq "init: view.json is listed in the clone's info/exclude, so it is never an untracked file of the project" "1|0" \

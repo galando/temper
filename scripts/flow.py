@@ -786,7 +786,7 @@ def advance_ok(run, done, nxt):
     if v is None:
         return "%s has no verdict yet: run temper gate %s first" % (stage, run.gate_of(stage))
     return ("%s failed its check and nobody skipped it: ask the person, who may skip it with "
-            "temper override %s --reason \"...\"" % (stage, run.gate_of(stage)))
+            "temper override %s --reason '...'" % (stage, run.gate_of(stage)))
 
 
 def plan_files(run_or_spec):
@@ -1018,12 +1018,15 @@ def write_view(doc):
 def changed_files(base, started):
     """The files a run changed, for the commit steps' git add: what differs from base_sha, the tracked changes, and the
     untracked files made since the run started (one older than the run, such as a local.env, is not the run's). Names
-    are read with -z, so a name with a quote, a space or a letter outside ASCII arrives as it is."""
+    are read with -z, so a name with a quote, a space or a letter outside ASCII arrives as it is. Git gives each name
+    from the top of the work tree; the project can be a folder below it (a package of a monorepo), where the commit
+    steps run, so each name is given from the project folder."""
     def git(*args):
         try:
             return subprocess.run(["git", "-c", "core.quotePath=false"] + list(args), capture_output=True, check=False).stdout
         except OSError:
             return b""
+    top = git("rev-parse", "--show-toplevel").decode("utf-8", "replace").strip() or "."
     names = []
     if base:
         names += [n for n in git("diff", "--name-only", "-z", base).decode("utf-8", "replace").split("\0") if n]
@@ -1040,20 +1043,21 @@ def changed_files(base, started):
         if len(f) < 4:
             continue
         code, name = f[:2], f[3:]
-        if code[0] in "RC":
-            i += 1  # the old name of a rename or copy follows
+        if "R" in code or "C" in code:
+            i += 1  # the old name of a rename or copy follows, in the index or the work tree
         if code == "??" and since is not None:
             try:
-                if os.path.getmtime(name) < since:
+                if os.path.getmtime(os.path.join(top, name)) < since:
                     continue
             except OSError:
                 continue
         names.append(name)
     out = []
     for n in names:
-        if n.startswith((".temper/", ".claude/")) or n in out:
+        rel = os.path.relpath(os.path.join(top, n))
+        if rel.startswith((".temper/", ".claude/")) or rel in out:
             continue
-        out.append(n)
+        out.append(rel)
     return sorted(out)
 
 

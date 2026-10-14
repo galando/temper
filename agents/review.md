@@ -33,12 +33,14 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
    so the gate stops counting it while the row survives:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage review \
-     --claim "<file>:<line> <one-line finding>" --severity critical|high|medium|low \
+     --claim '<file>:<line> <one-line finding>' --severity critical|high|medium|low \
      --confidence <0.0-1.0> --label HEURISTIC
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage review      # shows the #ids
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence resolve --stage review \
-     --id <n> --fixed-by "<commit sha or what you changed>"           # after the fix is re-tested
+     --id <n> --fixed-by '<commit sha or what you changed>'           # after the fix is re-tested
    ```
+   Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
+   `$` in it stays text.
    Never clear the ledger to pass the gate; resolve is the honest path. A finding the
    person decides to keep is never accepted by you: accepting it (`${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence
    accept`, which needs a reason) is their call.

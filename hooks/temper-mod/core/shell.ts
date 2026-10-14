@@ -5,8 +5,9 @@
 //  - a commit that switches the native pre-commit hook off (`--no-verify`, `-n`) or a change of `core.hooksPath`;
 //  - the paths the command writes: a redirect's target, and the files a writing program names (rm, mv, cp, tee,
 //    sed -i and the like). The guard holds them to the same list of protected files as the editing tools.
-// Anything this does not see (a variable, a substitution, a script on disk, a program that builds a name at run time)
-// passes. Temper is not a sandbox (docs/trust.md): the native hook and the editing tool rules are the hard guarantees.
+// Anything this does not see (a variable, the output of a substitution, a script on disk, a program that builds a name at
+// run time) passes. Temper is not a sandbox (docs/trust.md): the native hook and the editing tool rules are the hard
+// guarantees.
 
 export type ShellRead = {
   // Each temper call written out: its words after the script (`state advance plan_complete build`).
@@ -17,11 +18,41 @@ export type ShellRead = {
   hooksPath: boolean
   // The paths the command writes, as written.
   writes: string[]
+  // A word that expands to more words than the guard reads (a brace list): what it writes is not known.
+  tooMany: boolean
+}
+
+// Where the command substitution that starts at `i` (`$(` or a backquote) ends: the index of its `)` or backquote, or
+// the end of the text.
+function substitutionEnd(command: string, i: number): number {
+  if (command[i] === '`') {
+    for (let j = i + 1; j < command.length; j++) {
+      if (command[j] === '\\') j++
+      else if (command[j] === '`') return j
+    }
+    return command.length
+  }
+  let depth = 0
+  for (let j = i + 1; j < command.length; j++) {
+    const c = command[j]
+    if (c === '\\') j++
+    else if (c === "'") {
+      const close = command.indexOf("'", j + 1)
+      j = close < 0 ? command.length : close
+    } else if (c === '"') {
+      for (j++; j < command.length && command[j] !== '"'; j++) if (command[j] === '\\') j++
+    } else if (c === '`') j = substitutionEnd(command, j)
+    else if (c === '(') depth++
+    else if (c === ')' && --depth === 0) return j
+  }
+  return command.length
 }
 
 // The text as statements of words. A quoted part keeps its spaces and loses its quotes; an operator outside quotes
-// (`;`, `&`, `|`, a newline, a bracket, a backquote) ends the statement. A redirect is a word of its own (`>`, `>>`).
-// The body of a here document is text, not commands: it is skipped.
+// (`;`, `&`, `|`, a newline, a bracket) ends the statement. A redirect is a word of its own (`>`, `>>`). A command
+// substitution (`$(...)` or a backquote, inside double quotes too) keeps its text in the word around it, as bash
+// expands braces before it runs one (`{a,$(b)}`); its commands are statements of their own, after the others. The body
+// of a here document is text, not commands: it is skipped.
 export function statements(command: string): string[][] {
   const out: string[][] = []
   let words: string[] = []
@@ -29,6 +60,15 @@ export function statements(command: string): string[][] {
   let inWord = false
   // The here documents of the current line, in order: their end words, and whether `<<-` lets the end word be indented.
   const docs: Array<{ end: string; dash: boolean }> = []
+  const inner: string[][] = []
+  // A substitution at `i`: its commands are read, and its text joins the word. Returns where it ends.
+  const substitution = (i: number): number => {
+    const end = substitutionEnd(command, i)
+    inner.push(...statements(command.slice(command[i] === '`' ? i + 1 : i + 2, end)))
+    word += command.slice(i, end + 1)
+    inWord = true
+    return end
+  }
   const endWord = () => {
     if (inWord) words.push(word)
     word = ''
@@ -52,6 +92,10 @@ export function statements(command: string): string[][] {
       for (; j < command.length && command[j] !== '"'; j++) {
         if (command[j] === '\\' && command[j + 1] === '\n') {
           j++
+          continue
+        }
+        if (command[j] === '`' || (command[j] === '$' && command[j + 1] === '(')) {
+          j = substitution(j)
           continue
         }
         if (command[j] === '\\' && j + 1 < command.length) j++
@@ -104,18 +148,17 @@ export function statements(command: string): string[][] {
     } else if (ch === '&' && command[i + 1] === '>') {
       // `&>`: the redirect of both outputs; the `>` comes next.
       endWord()
-    } else if (';&|()`'.includes(ch)) {
+    } else if (ch === '`' || (ch === '$' && command[i + 1] === '(')) {
+      i = substitution(i)
+    } else if (';&|()'.includes(ch)) {
       endStatement()
-    } else if (ch === '$' && command[i + 1] === '(') {
-      endStatement()
-      i++
     } else {
       word += ch
       inWord = true
     }
   }
   endStatement()
-  return out
+  return [...out, ...inner]
 }
 
 const SCRIPT = /(?:^|\/)temper$/
@@ -126,66 +169,110 @@ const TO_LAST = new Set(['cp', 'install', 'ln', 'rsync'])
 // The ones that take the folder they write into as `-t DIR`.
 const TARGET_DIR = new Set(['cp', 'mv', 'install', 'ln'])
 
-const ENV_WORD = /^[A-Za-z_][A-Za-z0-9_]*=/
+// A word's program name: its last path segment (`/usr/bin/env` is env).
+const base = (word: string): string => word.split('/').pop() ?? ''
 
-// Words a statement may start with before the program it runs: shell keywords (`then rm x`, `do rm x`, `{ rm x; }`,
-// `! rm x`) and programs that run the words after them.
-const LEAD = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{', 'time', 'command', 'builtin', 'exec', 'nohup', 'setsid', 'sudo', 'doas', 'env', 'nice', 'timeout', 'stdbuf', 'ionice', 'taskset'])
-// Their options that take a value in the next word, and the words they take before the program (timeout's duration,
-// taskset's mask).
-const LEAD_VALUE: Record<string, readonly string[]> = {
-  sudo: ['-u', '--user', '-g', '--group', '-C', '--close-from', '-h', '--host', '-p', '--prompt', '-r', '--role', '-t', '--type', '-U', '--other-user'],
-  doas: ['-u', '-C'],
-  env: ['-u', '--unset', '-C', '--chdir'],
-  nice: ['-n', '--adjustment'],
-  timeout: ['-s', '--signal', '-k', '--kill-after'],
-  stdbuf: ['-i', '-o', '-e', '--input', '--output', '--error'],
-  ionice: ['-c', '--class', '-n', '--classdata', '-p', '--pid', '-P', '--pgid', '-u', '--uid'],
+// Where a program the guard reads may run in a statement: every word that names it. Bash runs a program after
+// `VAR=value` words, after a keyword (`then`, `do`, `{`, `!`, `coproc`, `function f {`), and after a program that runs
+// the words that follow (`env`, `timeout 5`, `sudo -D /x`, `exec -a x`, `flock f`, a full path to one); no list of
+// these is ever whole, so each word that names the program is read as where it starts. The price: a statement that
+// only names such a command as words (`echo rm .temper/gates.json`) is read as running it.
+function starts(words: string[], named: (cmd: string) => boolean): number[] {
+  const at: number[] = []
+  for (let i = 0; i < words.length; i++) if (named(base(words[i] as string))) at.push(i)
+  return at
 }
-const LEAD_POSITIONAL: Record<string, number> = { timeout: 1, taskset: 1 }
 
-// The program a statement runs: its first word after `VAR=value` words, the keywords and the wrappers above with their
-// options.
-function program(words: string[]): number {
-  let i = 0
-  while (i < words.length) {
-    const w = words[i] as string
-    if (ENV_WORD.test(w)) {
-      i++
-      continue
+// More words than one word of a command may expand to before the guard stops reading it.
+const BRACE_CAP = 1024
+
+// The first brace list bash expands in a word: the text before it, its words (`{a,b}`, or a sequence `{1..3}`,
+// `{a..c}`, `{1..9..2}`) and the text after it. A `{` with no list or sequence in it, or one of `${`, stays as it is.
+function braceList(w: string): { pre: string; alts: string[]; post: string } | null {
+  for (let i = 0; i < w.length; i++) {
+    if (w[i] !== '{' || w[i - 1] === '$') continue
+    let depth = 0
+    let end = -1
+    const commas: number[] = []
+    for (let j = i; j < w.length && end < 0; j++) {
+      if (w[j] === '{') depth++
+      else if (w[j] === '}' && --depth === 0) end = j
+      else if (w[j] === ',' && depth === 1) commas.push(j)
     }
-    if (!LEAD.has(w)) break
-    i++
-    // The wrapper's own options, then the words it takes before the program.
-    while (i < words.length && (words[i] as string).startsWith('-') && words[i] !== '--') i += (LEAD_VALUE[w] ?? []).includes(words[i] as string) ? 2 : 1
-    if (words[i] === '--') i++
-    while (i < words.length && ENV_WORD.test(words[i] as string)) i++
-    i += LEAD_POSITIONAL[w] ?? 0
+    if (end < 0) continue
+    let alts: string[] | null = null
+    if (commas.length > 0) {
+      alts = []
+      let from = i + 1
+      for (const c of commas) {
+        alts.push(w.slice(from, c))
+        from = c + 1
+      }
+      alts.push(w.slice(from, end))
+    } else alts = sequence(w.slice(i + 1, end))
+    if (alts !== null) return { pre: w.slice(0, i), alts, post: w.slice(end + 1) }
   }
-  return i
+  return null
 }
 
-// `{a,b}` in a word, as bash expands it (one list at a time, at most 64 words).
-function braces(word: string): string[] {
-  const m = /^(.*?)\{([^{}]*,[^{}]*)\}(.*)$/.exec(word)
-  if (m === null) return [word]
+// The words of a sequence `x..y` or `x..y..step` (two integers, or two letters), at most one more than the cap; null when
+// the text is no sequence. Integers keep the width of a bound written with a leading zero (`{08..10}`).
+function sequence(text: string): string[] | null {
+  const num = /^(-?\d+)\.\.(-?\d+)(?:\.\.(-?\d+))?$/.exec(text)
+  const chr = /^([A-Za-z])\.\.([A-Za-z])(?:\.\.(-?\d+))?$/.exec(text)
+  const m = num ?? chr
+  if (m === null) return null
+  const from = num !== null ? Number(m[1]) : (m[1] as string).charCodeAt(0)
+  const to = num !== null ? Number(m[2]) : (m[2] as string).charCodeAt(0)
+  const step = Math.abs(Number(m[3] ?? 1)) || 1
+  const padded = num !== null && [m[1], m[2]].some(b => /^-?0\d/.test(b as string))
+  const width = padded ? Math.max((m[1] as string).length, (m[2] as string).length) : 0
   const out: string[] = []
-  for (const alt of (m[2] as string).split(',')) for (const w of braces(`${m[1]}${alt}${m[3]}`)) if (out.length < 64) out.push(w)
+  for (let v = from; (from <= to ? v <= to : v >= to) && out.length <= BRACE_CAP; v += from <= to ? step : -step) {
+    out.push(num !== null ? (v < 0 ? '-' + String(-v).padStart(width - 1, '0') : String(v).padStart(width, '0')) : String.fromCharCode(v))
+  }
   return out
 }
 
-// The paths a statement writes: a redirect's target, and the files a writing program names.
-function written(words: string[]): string[] {
+// A word as bash expands its brace lists, without the words it repeats; null when it expands to more than the cap.
+function braces(word: string): string[] | null {
+  const out = new Set<string>()
+  const seen = new Set<string>()
+  const expand = (w: string): boolean => {
+    if (seen.has(w)) return true
+    seen.add(w)
+    if (seen.size > BRACE_CAP * 8) return false
+    const list = braceList(w)
+    if (list === null) {
+      out.add(w)
+      return out.size <= BRACE_CAP
+    }
+    return list.alts.every(alt => expand(`${list.pre}${alt}${list.post}`))
+  }
+  return expand(word) ? [...out] : null
+}
+
+const WRITES = (cmd: string): boolean => WRITERS.has(cmd) || cmd === 'sed' || cmd === 'perl' || cmd === 'dd'
+
+// The paths a statement writes: a redirect's target, and the files a writing program names. `expand` gives a word's
+// brace expansion.
+function written(words: string[], expand: (word: string) => string[]): string[] {
   const out: string[] = []
   for (let i = 0; i < words.length; i++) {
     const op = words[i] as string
     const to = words[i + 1]
     if (to === undefined) continue
     // `>`, `>>`, `>|` and `<>` write their file; `>&` and `>>&` write a file unless they name a file descriptor (`2>&1`).
-    if (/^(?:>[>|]?|<>)$/.test(op) || (/^>>?&$/.test(op) && !/^(?:\d+|-)$/.test(to))) out.push(...braces(to))
+    if (/^(?:>[>|]?|<>)$/.test(op) || (/^>>?&$/.test(op) && !/^(?:\d+|-)$/.test(to))) out.push(...expand(to))
   }
-  const at = program(words)
-  const cmd = (words[at] ?? '').split('/').pop() ?? ''
+  for (const at of starts(words, WRITES)) out.push(...programWrites(words, at, expand))
+  return out
+}
+
+// The files the writing program at `at` names.
+function programWrites(words: string[], at: number, expand: (word: string) => string[]): string[] {
+  const out: string[] = []
+  const cmd = base(words[at] as string)
   const edits = cmd === 'sed' || cmd === 'perl'
   // The program's file words: no flag, no redirect and its file, and for sed and perl no script (`-e x`, or sed's
   // first word when no -e names the script).
@@ -210,7 +297,7 @@ function written(words: string[]): string[] {
     } else if (edits && /^-[A-Za-z]*e$/.test(w)) {
       script = true
       i++
-    } else if (!w.startsWith('-')) args.push(...braces(w))
+    } else if (!w.startsWith('-')) args.push(...expand(w))
   }
   if (cmd === 'sed' && !script) args.shift()
   if (into !== null) {
@@ -223,9 +310,8 @@ function written(words: string[]): string[] {
   return out
 }
 
-function gitParts(words: string[]): { sub: string; rest: string[]; opts: string[] } | null {
-  const at = program(words)
-  if ((words[at] ?? '').split('/').pop() !== 'git') return null
+// The git command that starts at `at`: its subcommand, the words after it, and git's own options before it.
+function gitParts(words: string[], at: number): { sub: string; rest: string[]; opts: string[] } {
   const opts: string[] = []
   let i = at + 1
   for (; i < words.length; i++) {
@@ -263,13 +349,21 @@ function skipsHook(args: string[]): boolean {
 }
 
 export function readShell(command: string): ShellRead {
-  const read: ShellRead = { calls: [], noVerify: false, hooksPath: false, writes: [] }
+  const read: ShellRead = { calls: [], noVerify: false, hooksPath: false, writes: [], tooMany: false }
+  const expand = (word: string): string[] => {
+    const all = braces(word)
+    if (all === null) read.tooMany = true
+    return all ?? [word]
+  }
   for (const words of statements(command)) {
-    read.writes.push(...written(words))
-    const git = gitParts(words)
-    if (git !== null) {
-      // `git -c core.hooksPath=...`, or the same key handed to git in its environment (GIT_CONFIG_KEY_0=core.hooksPath).
-      if (git.opts.some(o => HOOKS_PATH.test(o)) || words.slice(0, program(words)).some(w => HOOKS_PATH.test(w))) read.hooksPath = true
+    read.writes.push(...written(words, expand))
+    // A variable set to name core.hooksPath, before git or in a statement of its own (`export GIT_CONFIG_KEY_0=...`):
+    // git reads its config from the environment it is given.
+    if (words.some(w => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w) && HOOKS_PATH.test(w))) read.hooksPath = true
+    for (const gitAt of starts(words, cmd => cmd === 'git')) {
+      const git = gitParts(words, gitAt)
+      // `git -c core.hooksPath=...`.
+      if (git.opts.some(o => HOOKS_PATH.test(o))) read.hooksPath = true
       if (git.sub === 'commit' && skipsHook(git.rest)) read.noVerify = true
       if (git.sub === 'config') {
         const at = git.rest.findIndex(w => HOOKS_PATH.test(w))

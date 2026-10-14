@@ -62,7 +62,8 @@ def parse(path):
             if key == 'Integration':
                 integration = cmd_of(val); ctx_open = False; continue
             if cur_t is not None:
-                if key == 'File': cur_t['files'] = path_tokens(val)
+                # a **File:** line per file, or several on one line: every path counts, once
+                if key == 'File': cur_t['files'] += [f for f in path_tokens(val) if f not in cur_t['files']]
                 elif key == 'Depends': cur_t['depends'] = [int(x) for x in re.findall(r'Task\s+(\d+)', val)]
                 elif key == 'Test': cur_t['test'] = cmd_of(val)
                 # the concrete cases Plan wrote for the task's test, one bullet each (an inline value counts as one)

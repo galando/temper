@@ -23,12 +23,14 @@ the plugin folder.
    fixes have no `tasks.md`). Record as you go:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "regression test" --cmd "<the exact test command>" --exit <code> \
+     --claim "regression test" --cmd '<the exact test command>' --exit <code> \
      --phase red --label PROVEN    # failing, before the fix
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "regression test" --cmd "<the exact test command>" --exit 0 \
+     --claim "regression test" --cmd '<the exact test command>' --exit 0 \
      --phase green --label PROVEN  # passing, after the fix
    ```
+   Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
+   `$` in it stays text.
    As soon as RED is confirmed, also record the test's path — this arms the write
    shield (`protect-regression-test.sh` blocks you from editing that file; fix the
    code, not the test):

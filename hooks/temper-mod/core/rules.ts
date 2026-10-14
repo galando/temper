@@ -295,6 +295,10 @@ const HOOKS_DENY =
   'Temper: --no-verify, -n and core.hooksPath switch the native pre-commit hook off. The hook is the commit gate for every commit. ' +
   'Next: commit without them. If the hook blocks the commit, finish the stages it names.'
 
+const TOO_MANY_DENY =
+  'Temper: a word of this command expands to more words (a brace list) than the guard reads, so what it writes is not known. ' +
+  'Next: write the paths out, or split the command.'
+
 // The plugin data folder of Claude Code (`~/.claude/plugins/data/`) holds the mod's store, and in it the person's
 // decisions. The editing tools do not write it while a run is active.
 const PLUGIN_DATA = /\.claude\/plugins\/data(?:\/|\b)/
@@ -317,6 +321,7 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
 
   if (guardsCommit && c.noVerify) return { deny: HOOKS_DENY }
   if (guardsCommit && c.hooksPath) return protectedDeny('hooks', cli)
+  if (c.tooMany) return { deny: TOO_MANY_DENY }
   // A plain write onto a protected file: the same list, and the same texts, as the editing tools.
   const kinds = c.writes.map(p => protectedKind(normalizePath(p, ctx.root)) ?? globKind(normalizePath(p, ctx.root))).filter((k): k is ProtectedKind => k !== null && (guardsCommit || (k !== 'config' && k !== 'hooks')))
   if (kinds.length > 0) return protectedDeny(kinds.find(k => k === 'events' || k === 'overrides') ?? (kinds[0] as ProtectedKind), cli)

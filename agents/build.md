@@ -40,12 +40,14 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    not as an afterthought:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "unit tests" --cmd "<the exact test command>" --exit <code> \
+     --claim "unit tests" --cmd '<the exact test command>' --exit <code> \
      --phase red --label PROVEN     # after the RED run
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "unit tests" --cmd "<the exact test command>" --exit 0 \
+     --claim "unit tests" --cmd '<the exact test command>' --exit 0 \
      --phase green --label PROVEN   # after the GREEN run
    ```
+   Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
+   `$` in it stays text.
    Keep the word `test` in the green row's `--claim` (as in `unit tests`): the build-checkpoint
    commit carve-out of `temper gate commit` only recognises a green row whose claim names a test.
 

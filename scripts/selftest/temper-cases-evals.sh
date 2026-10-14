@@ -29,6 +29,8 @@ assert_eq "evals: a list_jokes built on the planted all_jokes fails the hidden t
 bash "$EV/make-fixture.sh" orders "$EVW/orders-at-review" --at-review >/dev/null 2>&1
 assert_eq "evals: --at-review leaves the run at Review, with Intent and Plan passed and Build skipped" "review|PASS|PASS|build" \
   "$(cd "$EVW/orders-at-review" && "$TEMPER" state get next_stage)|$(python3 -c "import json; g=json.load(open('$EVW/orders-at-review/.temper/gates.json')); print(g['intent']['verdict'] + '|' + g['plan']['verdict'])")|$(python3 -c "import json; print(','.join(o['stage'] for o in json.load(open('$EVW/orders-at-review/.temper/overrides.json'))))")"
+assert_eq "evals: --at-review leaves the project on the run's feature branch, as leaving Plan does" "feature/order-lookup" \
+  "$(git -C "$EVW/orders-at-review" branch --show-current)"
 assert_eq "evals: a folder that exists is refused" "2" \
   "$(bash "$EV/make-fixture.sh" orders "$EVW/orders" >/dev/null 2>&1; echo $?)"
 

@@ -359,6 +359,10 @@ sw_field() { # sw_field <G> <field>
   python3 -c "import json,sys; print(json.load(open('.temper/groups.json'))['groups'][sys.argv[1]].get(sys.argv[2],''))" "$1" "$2"
 }
 
+# On a protected branch the refusal names the run's branch (a live run on main guessed another name first).
+sw_setup; git checkout -q -B main
+assert_eq "group start: on main the refusal exits 3 and names the run's branch to switch to" "3|1" \
+  "$("$TEMPER" group start G1 >/dev/null 2>&1; echo $?)|$("$TEMPER" group start G1 2>&1 | grep -c "switch to the run's branch 'feature/demo'")"
 sw_setup; BASE="$(sw_head)"
 assert_exit "group start G1 exits 0" 0 "$TEMPER" group start G1
 assert_exit "group start G2 exits 0" 0 "$TEMPER" group start G2
@@ -945,6 +949,8 @@ assert_eq "integrate: gate build FAILs on integration" "1" "$("$TEMPER" gate bui
 # refusals
 gi_all; git checkout -q -B main
 assert_exit "integrate: the protected branch main is refused (exit 3)" 3 "$TEMPER" integrate
+assert_eq "integrate: on main the refusal names the run's branch to switch to" "1" \
+  "$("$TEMPER" integrate 2>&1 | grep -c "switch to the run's branch 'feature/demo'")"
 gi_all; git checkout -q -B other
 assert_exit "integrate: a branch that is not the run's feature branch exits 1" 1 "$TEMPER" integrate
 gi_all; printf '{"intent":{"verdict":"PASS"}}\n' > .temper/gates.json; HEAD0="$(git rev-parse HEAD)"

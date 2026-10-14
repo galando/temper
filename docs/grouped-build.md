@@ -80,7 +80,7 @@ To keep groups but run the tasks on another model (no Haiku), set `task-model: s
      `temper group reopen G1 --task N`; the next `task start` reuses that worktree with the
      agent's uncommitted work. Reopen is refused while a parked commit is still on the branch.
    - (b) keep them knowingly: `temper group reopen G1 --task N --accept-foreign <sha>[,<sha>]
-     --reason "<why>"`. The acceptance is recorded like an override and `temper report` lists it.
+     --reason '<why>'`. The acceptance is recorded like an override and `temper report` lists it.
    Known limits: detection is by sha, so rewritten history can hide a commit (the group gate
    still checks that each passed task's commit is on the branch); a rebase that drops a commit
    also rewrites the CLI commits after it, and the group gate then asks you to reopen those tasks.

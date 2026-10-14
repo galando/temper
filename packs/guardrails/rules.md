@@ -349,7 +349,7 @@ no-op.
 Refuses a commit if any stage's evidence-backed gate isn't PASS and has no recorded
 override. Reads the project's evidence ledger (written by `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add` throughout
 the pipeline) and `.temper/gates.json` (the last-computed verdict per stage); prints the
-specific unmet requirement(s). `${CLAUDE_PLUGIN_ROOT}/scripts/temper override <stage> --reason "..."` records a human
+specific unmet requirement(s). `${CLAUDE_PLUGIN_ROOT}/scripts/temper override <stage> --reason '...'` records a human
 override. It stays visible in `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` and the final summary, and it does not erase
 the FAIL. See `${CLAUDE_PLUGIN_ROOT}/docs/getting-started.md` for the full CLI reference. Absent `.temper/`
 state → `exit 0` (degrade; a repo not running `/temper` for this commit is never blocked).

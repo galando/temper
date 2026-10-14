@@ -731,7 +731,12 @@ cmd_state_set() {
   if [[ "$1" == "next_stage" ]]; then
     # The stage the run is already at changes nothing. A stage earlier in the run's sequence redoes the stages from it,
     # as a loop does.
-    local cur; cur="$(_json_get_path "$STATE_FILE" next_stage "")"
+    local cur s known=0; cur="$(_json_get_path "$STATE_FILE" next_stage "")"
+    for s in $(_run_seq); do [[ "$s" == "$2" ]] && known=1; done
+    if [[ $known -eq 0 ]]; then
+      echo "FAIL: next_stage must be a stage of this run ($(_run_seq)); got '$2'" >&2
+      return 1
+    fi
     if [[ "$2" == "$cur" ]]; then
       echo "OK: next_stage = $2 (unchanged)"
       return 0
@@ -2046,7 +2051,7 @@ PY
 # Grouped Build (9.7.0): the tasks.md parser. One embedded python parser shared by every grouped
 # subcommand, JSON out: {groups:[{id,title,depends,validate,interfaces,context,context_bytes,tasks}],
 # tasks:[{n,title,group,files,depends,test,block_bytes,block}], integration}.
-# File tokens are the same backticked paths the mod's planfiles.ts reads from **File:** lines.
+# File tokens are the backticked paths of the **File:** lines, as tasks_md.py reads them for every caller.
 _grouped_parse() { # _grouped_parse <tasks.md>
   python3 "$SCRIPTS_DIR/tasks_md.py" parse "$1"
 }
@@ -2178,7 +2183,11 @@ PY
   local protected="main master $(_default_branch)" b
   for b in $protected; do
     if [[ "$feature" == "$b" || "$cur" == "$b" ]]; then
-      echo "FAIL: refusing to start a group worktree on the protected branch '$b' (use a feature branch)" >&2
+      if [[ -n "$feature" && "$feature" != "$b" ]]; then
+        echo "FAIL: refusing to start a group worktree on the protected branch '$b' (switch to the run's branch '$feature' first)" >&2
+      else
+        echo "FAIL: refusing to start a group worktree on the protected branch '$b' (use a feature branch)" >&2
+      fi
       return 3
     fi
   done
@@ -3716,7 +3725,11 @@ except Exception:
   local protected="main master $(_default_branch)" b
   for b in $protected; do
     if [[ "$feature" == "$b" || "$cur" == "$b" ]]; then
-      echo "FAIL: refusing to integrate on the protected branch '$b' (use a feature branch)" >&2
+      if [[ -n "$feature" && "$feature" != "$b" ]]; then
+        echo "FAIL: refusing to integrate on the protected branch '$b' (switch to the run's branch '$feature' first)" >&2
+      else
+        echo "FAIL: refusing to integrate on the protected branch '$b' (use a feature branch)" >&2
+      fi
       return 3
     fi
   done

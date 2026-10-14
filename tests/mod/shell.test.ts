@@ -15,8 +15,8 @@ describe('statements and words', () => {
   test('a redirect is a word of its own, with its file descriptor dropped', () => {
     expect(statements('echo x 2>> log; ls &> out')).toEqual([['echo', 'x', '>>', 'log'], ['ls', '>', 'out']])
   })
-  test('a substitution and a subshell end the statement around them', () => {
-    expect(statements('echo $(scripts/temper gate plan) (ls)')).toEqual([['echo'], ['scripts/temper', 'gate', 'plan'], ['ls']])
+  test('a substitution stays in its word, its commands are statements of their own; a subshell ends the statement', () => {
+    expect(statements('echo $(scripts/temper gate plan) (ls)')).toEqual([['echo', '$(scripts/temper gate plan)'], ['ls'], ['scripts/temper', 'gate', 'plan']])
   })
   test('${VAR} stays inside its word', () => {
     expect(statements('"${ROOT}/scripts/temper" gate plan')).toEqual([['${ROOT}/scripts/temper', 'gate', 'plan']])

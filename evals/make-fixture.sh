@@ -95,6 +95,8 @@ if [[ "$AT_REVIEW" == 1 ]]; then
   "$TEMPER" gate build >/dev/null 2>&1 || true
   "$TEMPER" override build --reason "fixture: the change under review is given, Build did not run" >/dev/null
   "$TEMPER" state advance build_complete review >/dev/null
+  # Leaving Plan checks out the run's feature branch; a loop back to Build starts its groups there.
+  git checkout -q -b "$("$TEMPER" state get branch)"
 fi
 
 echo "OK: the $NAME fixture ($KIND) is in $DEST"

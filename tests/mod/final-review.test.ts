@@ -157,3 +157,89 @@ describe('round 2: a Start over answer counts at the step it was given', () => {
     expect(restartFor([restart], { run: 'r', step: 1 })).toBeNull()
   })
 })
+
+// Round 3: a narrow check of the round 2 fixes. A wrapper no list names, a full path to a wrapper, a brace list past
+// the cap or with a sequence or a substitution in it, and a substitution inside double quotes each still hid the
+// program, the write or the call.
+describe('round 3: no wrapper hides the program, whether a list names it or not', () => {
+  for (const command of [
+    '/usr/bin/env git commit --no-verify -m x',
+    '/usr/bin/timeout 5 git commit --no-verify -m x',
+    'exec -a foo git commit --no-verify -m x',
+    'coproc git commit --no-verify -m x',
+    'function f { git commit --no-verify -m x; }; f',
+    'flock /tmp/l git commit --no-verify -m x',
+    'eatmydata git commit --no-verify -m x',
+    'sudo -D /tmp git commit --no-verify -m x',
+    'exec -a foo rm .temper/gates.json',
+    '/usr/bin/env rm .temper/gates.json',
+    'coproc git config core.hooksPath /dev/null',
+    'env GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null GIT_CONFIG_COUNT=1 git commit -m x',
+  ]) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+  test('ordinary commands that name git or a writing program are no refusal', () => {
+    for (const command of [
+      'git log --oneline -3',
+      'npm install',
+      'pip install -r requirements.txt',
+      'git rm --cached src/old.ts',
+      'timeout 60 npm test',
+      'git commit -m "drop rm from the docs"',
+      'ls git',
+    ]) expect(isDeny(bash('build', command))).toBe(false)
+  })
+})
+
+describe('round 3: brace lists as bash expands them', () => {
+  for (const command of [
+    'rm .temper/{x,gates.json}{,}{,}{,}{,}{,}{,}',
+    'rm .temper/{f..g}ates.json',
+    'rm .temper/gates.{json,`true`}',
+    'rm .temper/{gates.json,$(true)}',
+  ]) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+  test('sequences, padding, steps, a nested list, and what bash leaves as it is', () => {
+    expect(readShell('rm .temper/{a..c}.json').writes).toEqual(['.temper/a.json', '.temper/b.json', '.temper/c.json'])
+    expect(readShell('rm f{08..10}').writes).toEqual(['f08', 'f09', 'f10'])
+    expect(readShell('rm f{1..5..2}').writes).toEqual(['f1', 'f3', 'f5'])
+    expect(readShell('rm f{a,{b,c}}').writes).toEqual(['fa', 'fb', 'fc'])
+    expect(readShell('rm {a{b,c}').writes).toEqual(['{ab', '{ac'])
+    expect(readShell('rm a{b}c ${x,y} f{1..a}').writes).toEqual(['a{b}c', '${x,y}', 'f{1..a}'])
+  })
+  test('a word that expands to more words than the guard reads is refused, not cut short', () => {
+    expect(readShell('touch x{1..5000}').tooMany).toBe(true)
+    expect(isDeny(bash('build', 'touch x{1..5000}'))).toBe(true)
+    expect(readShell('touch x{1..50}').tooMany).toBe(false)
+  })
+})
+
+describe('round 3: a command substitution is read, inside double quotes too', () => {
+  for (const command of [
+    'echo "$(scripts/temper override build --reason x)"',
+    'echo "`scripts/temper override build --reason x`"',
+    'echo "$(rm .temper/gates.json)"',
+    'x="$(git commit --no-verify -m x)"',
+  ]) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+  test('its text stays in the word around it, and its commands are statements of their own', () => {
+    expect(statements('x="$(git rev-parse HEAD)"; echo $x')).toEqual([['x=$(git rev-parse HEAD)'], ['echo', '$x'], ['git', 'rev-parse', 'HEAD']])
+    expect(statements('echo "a `date` b"')).toEqual([['echo', 'a `date` b'], ['date']])
+    expect(statements("echo \"$(printf ')')\"")).toEqual([["echo", "$(printf ')')"], ['printf', ')']])
+  })
+})
+
+describe('round 3: the hooks path handed to git through a variable set earlier in the command', () => {
+  for (const command of [
+    'export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/dev/null; git commit -m x',
+    'GIT_CONFIG_KEY_0=core.hooksPath; export GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0=/dev/null GIT_CONFIG_COUNT=1; git commit -m x',
+    "declare -x GIT_CONFIG_PARAMETERS=\"'core.hooksPath=/dev/null'\"; git commit -m x",
+  ]) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+  test('reading the hooks path is no refusal', () => {
+    expect(isDeny(bash('build', 'git config --get core.hooksPath'))).toBe(false)
+  })
+})
