@@ -566,7 +566,7 @@ cmd_init() {
   if ex="$(git rev-parse --git-common-dir 2>/dev/null)/info/exclude" && [[ "$ex" != "/info/exclude" ]]; then
     mkdir -p "$(dirname "$ex")" 2>/dev/null
     for p in build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
-             stage-gate.log pending-stage.json groups.json usage.json autonomy.lock coverage.json coverage/ view.json \
+             stage-gate.log pending-stage.json groups.json usage.json autonomy.lock coverage.json coverage/ security-map.json view.json \
              evidence/ index/ reviews/ archive/ .lock/; do
       grep -qxF "/${pre}.temper/$p" "$ex" 2>/dev/null || printf '/%s.temper/%s\n' "$pre" "$p" >> "$ex" 2>/dev/null || true
     done

@@ -482,8 +482,8 @@ assert_exit "evidence add: a confidence outside 0 to 1 is refused" 1 "$TEMPER" e
 "$TEMPER" usage add --stage plan --model claude-sonnet-4-6 --tokens 1500000 --ms 120000 >/dev/null 2>&1
 "$TEMPER" usage add --stage build --model claude-haiku-4-5 --tokens 2500 --ms 3000 >/dev/null 2>&1
 "$TEMPER" report --html >/dev/null 2>&1
-assert_eq "report --html: time and tokens by stage and by model, in words" "1|1|1|1" \
-  "$(grep -c '<td>claude-haiku-4-5</td><td>1</td><td>2k</td><td>3 s</td>' .temper/specs/demo/report.html)|$(grep -c '<td>claude-sonnet-4-6</td><td>1</td><td>1.5M</td><td>2 min</td>' .temper/specs/demo/report.html)|$(grep -c '<th>Model</th><th>Launches</th>' .temper/specs/demo/report.html)|$(grep -c '<td>plan</td><td>1</td><td>1.5M</td><td>2 min</td>' .temper/specs/demo/report.html)"
+assert_eq "report --html: time and tokens by stage (with the model each stage ran on) and by model, in words" "1|1|1|1" \
+  "$(grep -c '<td>claude-haiku-4-5</td><td>1</td><td>2k</td><td>3 s</td>' .temper/specs/demo/report.html)|$(grep -c '<td>claude-sonnet-4-6</td><td>1</td><td>1.5M</td><td>2 min</td>' .temper/specs/demo/report.html)|$(grep -c '<th>Model</th><th>Launches</th>' .temper/specs/demo/report.html)|$(grep -c '<td>plan</td><td>claude-sonnet-4-6</td><td>1</td><td>1.5M</td><td>2 min</td>' .temper/specs/demo/report.html)"
 # Done only once the Commit gate has passed; a run at Commit before that is still in progress.
 python3 - "$WORKDIR" <<'PY'
 import json, sys

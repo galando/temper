@@ -416,3 +416,13 @@ assert_eq "model: the line next gives before a stage runs names its model" "1" \
 "$TEMPER" usage add --stage intent --model opus --tokens 10 --ms 5 >/dev/null 2>&1
 assert_eq "model: the report's stage table names the model each stage was launched on" "1|opus" \
   "$("$TEMPER" report 2>/dev/null | grep -cE '^  intent +1 +10 +5  opus$')|$(vw "','.join(d['usage']['by_stage']['intent']['models'])")"
+
+# --- live run 3: a passed Design whose concern needs the plan changed can step back to Plan ---
+fresh; gpass intent plan design
+"$TEMPER" state set complexity medium >/dev/null 2>&1
+for s in intent_complete:plan plan_complete:design; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+assert_eq "live run 3: the passed Design question offers Loop back to Plan under More options" "design|1" \
+  "$(nx "d['stage'] + '|' + str(sum(1 for o in d['ask']['more']['options'] if o['label'] == 'Loop back to Plan'))")"
+"$TEMPER" state loop design plan --reason 'add the missing cases' >/dev/null 2>&1
+assert_eq "live run 3: a loop back to Plan gives the Plan agent the person's reason" "plan|1" \
+  "$(nx "d['stage'] + '|' + str(int('Loop back from Design: add the missing cases.' in d['agents'][0]['prompt']))")"

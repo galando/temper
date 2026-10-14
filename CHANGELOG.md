@@ -87,6 +87,8 @@ The line `temper next` gives before each launch names the model the agent runs o
 "Build hands out 2 tasks on haiku."), and the report's stage table names the model each stage was launched on (in the
 terminal, in `report.html` and in the view's `usage.by_stage`). Both name the model Temper asked for; the session
 transcript holds the model that served each turn.
+A passed Design offers Loop back to Plan (a concern can need a missing case, and the plan is closed from Design on),
+and a loop back to Intent, Plan or Design gives that stage's agent the person's reason, as Build and Fix already had.
 
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.

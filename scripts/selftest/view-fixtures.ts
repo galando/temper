@@ -5583,6 +5583,30 @@ export const VIEWS: Record<string, unknown> = {
    "more": {
     "options": [
      {
+      "calls": [
+       "/plugin/scripts/temper state loop design plan --reason '{reason}'"
+      ],
+      "description": "Do Plan again; the stages after it are redone too.",
+      "label": "Loop back to Plan",
+      "move": "back",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "The check found a real problem"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Loop back to Plan. What is the reason?"
+      }
+     },
+     {
       "calls": [],
       "description": "Walk through the design.",
       "do": "Use the teach-me skill on this stage's work, then ask this question again.",
@@ -5601,6 +5625,10 @@ export const VIEWS: Record<string, unknown> = {
      "header": "Temper gate",
      "multiSelect": false,
      "options": [
+      {
+       "description": "Do Plan again; the stages after it are redone too.",
+       "label": "Loop back to Plan"
+      },
       {
        "description": "Walk through the design.",
        "label": "Teach Me"
@@ -5641,7 +5669,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Teach Me, Save for later",
+     "description": "Loop back to Plan, Teach Me, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -5664,7 +5692,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Grill Me"
      },
      {
-      "description": "Teach Me, Save for later",
+      "description": "Loop back to Plan, Teach Me, Save for later",
       "label": "More options"
      }
     ],

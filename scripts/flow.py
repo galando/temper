@@ -166,6 +166,14 @@ class Run:
             return False
         return self.loop_count(frm, to) < self.loop_budget(frm, to)
 
+    def loop_into(self, stage):
+        """The latest active step back to `stage`, or None."""
+        best, at = None, ""
+        for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
+            if isinstance(l, dict) and l.get("to_stage") == stage and str(l.get("started", "")) >= at:
+                best, at = l, str(l.get("started", ""))
+        return best
+
     def latest_loop(self):
         """The latest step back to Build (or Fix), or None."""
         best, at = None, ""
@@ -407,10 +415,12 @@ class Builder:
                             do="Walk through the sections design.md has (architecture, API contracts, database changes, integration points, decision log), then ask this question again.")
             go = [self.c("state advance design_complete build")]
             if passed:
+                # A concern the design raises can need the plan changed (a missing case, a task): the plan is closed from
+                # here on, so the way to change it is a step back to Plan.
                 return self.with_more(GATE_HEADER, "Design: %s. Continue to Build?" % state_of, stage,
                                       [self.opt("Continue to Build (Recommended)", "Start Build.", move="advance", calls=go), walk,
                                        self.skill("grill-me", "Grill Me", "Stress test the design.")],
-                                      [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.")
+                                      back_opt() + [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.")
             return self.question(GATE_HEADER, "Design: the check failed (%s). Fix the design, or skip the check?" % why, stage=stage,
                                  options=back_opt() + [override_opt(go), self.save()])
 
@@ -541,6 +551,15 @@ class Builder:
                          "that must be in the passing run." % r.spec]
             elif stage == "fix":
                 extra = self.feedback_lines()
+        # A step back to this stage (from Design to Plan, from Review to Intent): the agent runs again for the person's
+        # reason, and with what the stage it came from left open.
+        back = r.loop_into(stage) if stage not in ("build", "fix") else None
+        if back:
+            extra = extra + ["Loop back from %s: %s. Do this stage again for it, keeping what still holds." % (
+                LABEL.get(back.get("from_stage"), back.get("from_stage")), back.get("reason") or "no reason given")]
+            if back.get("findings"):
+                extra.append("What %s left open: %s." % (LABEL.get(back.get("from_stage"), back.get("from_stage")),
+                                                          "; ".join("%d. %s" % (i + 1, x) for i, x in enumerate(back["findings"]))))
         a = self.agent(stage, extra)
         a["after"].append(self.c("gate %s" % (r.gate_of(stage) or stage)))
         return {"action": "work", "stage": stage, "calls": [], "agents": [a],
