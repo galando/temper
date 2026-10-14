@@ -235,6 +235,7 @@ ROWS = [
     ('commands/temper.md', '-', r'state set complexity \{tier\}', 'a door takes the tier Plan recorded from the CLI, not from Intent\'s first guess'),
     ('commands/temper.md', '+', r'run_in_background: false', 'a stage agent runs in the foreground, so the run goes on the moment it returns'),
     ('commands/temper.md', '+', r'Never end that turn with its `after` calls not run', 'a background agent\'s completion notice moves the run'),
+    ('commands/init.md', '+', r'temper init --foreground-agents status', 'init offers to keep stage agents in the foreground'),
     ('commands/plan.md', '+', r'"Entering at a stage"', 'the Plan command is a door into /temper'),
     ('commands/design.md', '+', r'"Entering at a stage"', 'the Design command is a door into /temper'),
     ('commands/build.md', '+', r'"Entering at a stage"', 'the Build command is a door into /temper'),

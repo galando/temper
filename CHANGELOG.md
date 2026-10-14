@@ -112,7 +112,10 @@ The orchestrator launches a stage agent with `run_in_background: false`, and whe
 anyway, its completion notice is the agent's return and the turn it starts runs the `after` calls: a run once sat
 idle after its Plan agent finished in the background until the person wrote. Getting Started says what to do
 when a run waits after an agent finished, and names `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, which keeps agents in
-the foreground. A parked commit question says the armed run parked there and where its report is.
+the foreground. A plugin cannot set that variable, so `/temper:init` asks whether to add it to the project's
+`.claude/settings.json` (`temper init --foreground-agents`, which merges the one `env` key, keeps every other key,
+and writes nothing into a file it cannot read as JSON or through a symlink); the line said when an agent goes to the
+background names `/temper:init` too. A parked commit question says the armed run parked there and where its report is.
 
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.

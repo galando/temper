@@ -167,7 +167,25 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
       so it always works on the repository that holds the current folder. Continue (the
       config + scaffold still succeeded).
 
-5. Guardrails hooks. Run the stale guard check of
+5. Agents in the foreground. Claude Code runs each Temper stage agent in the background (since
+   v2.1.198; with fork mode on, always), and a run goes on only in the turn Claude Code starts
+   when the agent finishes, which an idle session may not get. A plugin cannot change that;
+   `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` in the project's settings can. Run
+      ${CLAUDE_PLUGIN_ROOT}/scripts/temper init --foreground-agents status
+   It prints `on` (this session already runs agents in the foreground: print nothing), `set`
+   (the project's settings hold it: say in one line that it takes effect when Claude Code
+   starts again), or `off`. On `off`, ask one AskUserQuestion: header `Agents`, question "Claude
+   Code runs Temper's stage agents in the background, and a run can wait after one finishes
+   until you write. Run agents in the foreground in this project?", options "Run them in the
+   foreground (Recommended)" with the description "Adds CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 to
+   .claude/settings.json. It also turns off background Bash commands and Ctrl+B here, and takes
+   effect when Claude Code starts again." and "Not now" with the description "Change nothing;
+   any message moves a waiting run on." On the first, run
+   `${CLAUDE_PLUGIN_ROOT}/scripts/temper init --foreground-agents` and carry its `OK:` or
+   `FAIL:` line into the report (a `FAIL:` line means nothing was written). On "Not now",
+   change nothing.
+
+6. Guardrails hooks. Run the stale guard check of
    ${CLAUDE_PLUGIN_ROOT}/reference/pack.md → "Guardrails Hooks" (it is skipped when the
    project folder is the home folder, so the user's home settings are never read). It
    runs, from the project folder:
@@ -182,13 +200,13 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    holds the CLAUDE_PLUGIN_ROOT variable. Decide from its output only, never from your
    own reading of the settings files. When no line says stale, or it exits 2, print
    nothing. When any line says stale, ask that section's question as an
-   AskUserQuestion of its own, before step 6: "Replace them with the current
+   AskUserQuestion of its own, before step 7: "Replace them with the current
    guardrails set (shows the change first)" / "Not now". On the first, follow that
    section's Enable steps 1 and 3 to 7 with that file as the picked file (they show the
    change in both project settings files and ask again before writing). On "Not now",
    change nothing.
 
-6. Report done, and name the one optional add-on in a single line:
+7. Report done, and name the one optional add-on in a single line:
    "Set up. Optional: `/temper:pack enable guardrails` adds edit-time guardrails (secret
    blocking, frozen-path protection, auto-format, an approval prompt before overrides)
    to a project settings file you pick. The commit gate above works without it."
@@ -199,10 +217,10 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
 - It does **not** add hooks to a settings file. The stage-gate hooks ship with the plugin
   (in its own hooks file) and work on install with no merge. The fuller edit-time
   guardrail set is the opt-in `/temper:pack enable guardrails` above, because merging
-  hooks into a project settings file is a change the user should choose. The one
-  settings change step 5 can make, replacing stale guard commands with the current
-  guardrails set, waits for the user's answer, and Temper never reads or writes the
-  user's home settings.
+  hooks into a project settings file is a change the user should choose. The two
+  settings changes it can make wait for the user's answer: step 5 adds one `env` key to
+  `.claude/settings.json`, and step 6 replaces stale guard commands with the current
+  guardrails set. Temper never reads or writes the user's home settings.
 - It does **not** overwrite an existing config, and it never writes into a folder
   named `hooks`, so it never writes over a hook of the user's or of another tool. When
   pointing `core.hooksPath` at the `temper-gate` folder would switch such a hook off,

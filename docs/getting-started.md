@@ -94,9 +94,11 @@ does), and the run goes on in the turn Claude Code starts when the agent finishe
 not promise that turn for a session that sits idle: if a run waits after an agent finished, send any
 message, such as "go on", and the run records the agent's result and asks the next question. With
 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` set to `1`, Claude Code runs every agent in the foreground,
-with fork mode on or off, so a run never waits for that turn. Set it in the shell before `claude`
-starts, or in the `env` block of the project's `.claude/settings.json` (it applies once the folder is
-trusted), then start Claude Code again; `/temper:temper` with no arguments takes the run up:
+with fork mode on or off, so a run never waits for that turn. A plugin cannot set it for you:
+`/temper:init` asks whether to add it to the project's `.claude/settings.json` (`temper init
+--foreground-agents` is the CLI call). Or set it in the shell before `claude` starts, or in that
+file's `env` block by hand (it applies once the folder is trusted); then start Claude Code again, and
+`/temper:temper` with no arguments takes the run up:
 
 ```json
 { "env": { "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1" } }

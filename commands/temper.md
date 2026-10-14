@@ -66,7 +66,8 @@ again. Stop only where this section says so. When it lists `setup`, run those ca
     completion notice (`subagent_tokens`, `duration_ms`); leave a flag out only when neither gives a
     value. Then go on with the loop in the same turn.
   - **An agent the tool runs in the background anyway:** say in one line what is running, that the run
-    goes on when it returns, and that if it waits after the agent finished, any message moves it on.
+    goes on when it returns, that if it waits after the agent finished, any message moves it on, and
+    that `/temper:init` can keep agents in the foreground in this project.
     Its completion notice is its return: in the turn the notice starts,
     print its box, run its `after` calls and go on with the loop. Never end that turn with its `after`
     calls not run: nothing else moves the run.

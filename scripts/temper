@@ -8,7 +8,7 @@
 # No network calls. python3 stdlib only (json parsing) — no external dependencies.
 #
 # Subcommands:
-#   temper init                                  scaffold .temper/ in the current project
+#   temper init [--foreground-agents [status]]   scaffold .temper/; or keep agents in the foreground here
 #   temper state <get|set|advance|loop|archive|clear> ..  read/write .temper/build-state.json;
 #                                                 archive writes gate-ledger.json in the spec folder
 #   temper evidence <add|run|list|resolve|accept|clear> ...  append/execute-and-record/read/mark-fixed/clear the ledger
@@ -553,7 +553,47 @@ cmd_model() {
 # init
 # ---------------------------------------------------------------------------
 
+_foreground_agents() { # _foreground_agents [status]: Claude Code runs a stage agent in the background (v2.1.198; with fork mode
+                       # always), and the run goes on only in the turn its completion starts. CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1
+                       # keeps agents in the foreground; a plugin cannot set it, so this writes it into the project's
+                       # .claude/settings.json "env" (the person's choice, at /temper:init). status: on, set, or off.
+  python3 - "${1:-}" "${CLAUDE_CODE_DISABLE_BACKGROUND_TASKS:-}" <<'PY'
+import json, os, sys
+mode, live = sys.argv[1], sys.argv[2]
+KEY, p = 'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS', os.path.join('.claude', 'settings.json')
+on = live.strip().lower() in ('1', 'true')
+if os.path.islink(p) or os.path.islink('.claude'):
+    print('FAIL: .claude/settings.json (or .claude) is a symlink; nothing was written'); sys.exit(3)
+d = {}
+if os.path.exists(p):
+    try:
+        d = json.load(open(p, encoding='utf-8'))
+    except (ValueError, OSError) as e:
+        print('FAIL: .claude/settings.json is not valid JSON (%s); nothing was written' % str(e)[:120]); sys.exit(1)
+    if not isinstance(d, dict) or not isinstance(d.get('env', {}), dict):
+        print('FAIL: .claude/settings.json is not a JSON object with an env object; nothing was written'); sys.exit(1)
+written = str((d.get('env') or {}).get(KEY, '')).strip().lower() in ('1', 'true')
+if mode == 'status':
+    print('on' if on else 'set' if written else 'off'); sys.exit(0)
+if written:
+    print('OK: .claude/settings.json already sets %s=1%s' % (KEY, '' if on else '; start Claude Code again for it to take effect'))
+    sys.exit(0)
+d.setdefault('env', {})[KEY] = '1'
+os.makedirs('.claude', exist_ok=True)
+tmp = '%s.tmp.%d' % (p, os.getpid())
+with open(tmp, 'w', encoding='utf-8') as f:
+    json.dump(d, f, indent=2); f.write('\n')
+os.replace(tmp, p)
+print('OK: %s=1 added to .claude/settings.json: Claude Code runs agents in the foreground in this project once it starts '
+      'again (it also turns off background Bash commands and Ctrl+B here)' % KEY)
+PY
+}
+
 cmd_init() {
+  if [[ "${1:-}" == "--foreground-agents" ]]; then
+    _foreground_agents "${2:-}"
+    return $?
+  fi
   _ensure_dirs
   [[ -f "$GATES_FILE" ]] || echo '{}' > "$GATES_FILE"
   [[ -f "$OVERRIDES_FILE" ]] || echo '[]' > "$OVERRIDES_FILE"
@@ -5565,7 +5605,7 @@ main() {
 temper — the deterministic spine of the Temper plugin
 
 Usage:
-  temper init
+  temper init [--foreground-agents [status]]
   temper state <init|get|set|advance|loop|archive|clear> ...
   temper evidence <add|run|list|resolve|accept|clear> ...
   temper gate <intent|plan|design|build|review|check|commit> [--spec-path P]

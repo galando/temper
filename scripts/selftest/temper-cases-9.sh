@@ -559,3 +559,21 @@ assert_eq "live run 9: a loop from Review names Review's feedback file only" "1|
 echo '{}' > .temper/test-gap-report.json
 assert_eq "live run 9: Check's test gap report is in the clone's info/exclude" "0" \
   "$(git status --porcelain --untracked-files=all | grep -c 'test-gap-report')"
+
+# --- your question: init can keep stage agents in the foreground, in the project's settings only ---
+setup; rm -rf .claude/settings.json .claude/settings.local.json
+assert_eq "foreground: with nothing set, status is off" "off" "$(CLAUDE_CODE_DISABLE_BACKGROUND_TASKS= "$TEMPER" init --foreground-agents status)"
+printf '{"permissions": {"allow": ["Bash(ls)"]}, "env": {"FOO": "x"}}\n' > .claude/settings.json
+CLAUDE_CODE_DISABLE_BACKGROUND_TASKS= "$TEMPER" init --foreground-agents >/dev/null 2>&1
+assert_eq "foreground: the key joins the project's env and every other key stays" "1|x|Bash(ls)|set" \
+  "$(python3 -c "import json; d=json.load(open('.claude/settings.json')); print(d['env']['CLAUDE_CODE_DISABLE_BACKGROUND_TASKS'] + '|' + d['env']['FOO'] + '|' + d['permissions']['allow'][0])")|$(CLAUDE_CODE_DISABLE_BACKGROUND_TASKS= "$TEMPER" init --foreground-agents status)"
+cp .claude/settings.json fg-before.json; CLAUDE_CODE_DISABLE_BACKGROUND_TASKS= "$TEMPER" init --foreground-agents >/dev/null 2>&1
+assert_eq "foreground: a second run changes nothing" "same|on" \
+  "$(cmp -s .claude/settings.json fg-before.json && echo same || echo changed)|$(CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 "$TEMPER" init --foreground-agents status)"
+printf '{bad\n' > .claude/settings.json
+assert_eq "foreground: a settings file that is not JSON is refused and left as it is" "1|{bad" \
+  "$(CLAUDE_CODE_DISABLE_BACKGROUND_TASKS= "$TEMPER" init --foreground-agents >/dev/null 2>&1; echo $?)|$(cat .claude/settings.json)"
+rm -f .claude/settings.json fg-before.json; ln -s "$WORKDIR/fg-target.json" .claude/settings.json
+assert_eq "foreground: a settings file that is a symlink is refused, and nothing is written through it" "3|0" \
+  "$(CLAUDE_CODE_DISABLE_BACKGROUND_TASKS= "$TEMPER" init --foreground-agents >/dev/null 2>&1; echo $?)|$([[ -e "$WORKDIR/fg-target.json" ]] && echo 1 || echo 0)"
+rm -f .claude/settings.json
