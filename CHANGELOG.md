@@ -128,6 +128,15 @@ row instead of cutting it (the box is saved as `rca.md`). The CLI, the guard scr
 inline Python isolated (`python3 -I`): before, a file in the project named like a standard module (`json.py`) ran on
 every `temper` call; a hook installed before this is listed for `install.sh` again.
 
+**The lows of the Design run.** Three lows of a run through Design, armed at the plan gate, are fixed. The
+`resolved:` line leaving Design adds is a paragraph of its own (Markdown joined it to the concern's last list item
+or paragraph); under a list item concern it is indented to the item's text. A passing group Validate or integration suite prints
+only its last 12 lines into the main conversation (a suite of 60 tests printed about 250); a failing one prints all
+of its output, and the ledger row keeps the last 4 KB as before. `temper state set complexity` also writes the tier
+into the `**Complexity:**` line of `intent.md` (and of `plan.md`, when it has one): a tier the person changed at the
+plan gate stayed only in the run's state, `plan.md` names no tier, so a later door took Intent's first guess. The
+plan gate's new `tier recorded` row fails when such a line names another tier than the run.
+
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.
 

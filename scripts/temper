@@ -851,6 +851,44 @@ cmd_state_set() {
   _json_set_path "$STATE_FILE" "$1" "$2" '{}'
   _json_set_path "$STATE_FILE" "updated" "$(_now)" '{}'
   echo "OK: $1 = $2"
+  # The tier is recorded where a later door reads it: the Complexity line of intent.md and of plan.md, when they have one.
+  if [[ "$1" == "complexity" ]]; then
+    local sp; sp="$(_spec_path "")"
+    [[ -n "$sp" ]] && _tier_lines "$sp" write "$2"
+  fi
+  return 0
+}
+
+# _tier_lines <spec_path> check <tier> | write <tier>: the Complexity lines of intent.md and plan.md, read as
+# `state init --enter` reads them. check prints each file whose line names another tier ("intent.md says simple");
+# write sets each such line to the tier (a tier outside the four is not written) and prints what it changed.
+_tier_lines() {
+  python3 -I -c "
+import os, re, sys
+sp, mode, tier = sys.argv[1], sys.argv[2], sys.argv[3].strip().lower()
+rx = re.compile(r'^(\s*(?:\*\*Complexity:\*\*|#{1,6}\s*Complexity:)[\s*]*)(trivial|simple|medium|complex)\b', re.I | re.M)
+if tier not in ('trivial', 'simple', 'medium', 'complex'):
+    sys.exit(0)
+for name in ('intent.md', 'plan.md'):
+    p = os.path.join(sp, name)
+    try:
+        text = open(p, encoding='utf-8', errors='surrogateescape').read()
+    except OSError:
+        continue
+    said = [m.group(2).lower() for m in rx.finditer(text)]
+    other = [s for s in said if s != tier]
+    if not other:
+        continue
+    if mode == 'check':
+        print('%s says %s' % (name, other[0]))
+        continue
+    new = rx.sub(lambda m: m.group(1) + tier, text)
+    tmp = '%s.tmp.%d' % (p, os.getpid())
+    with open(tmp, 'w', encoding='utf-8', errors='surrogateescape') as f:
+        f.write(new)
+    os.replace(tmp, p)
+    print('OK: %s now says Complexity %s (it said %s)' % (name, tier, other[0]))
+" "$1" "$2" "${3:-}"
 }
 
 _run_seq() { # the run's own stage sequence, with the commit stage last (a fix run has its own)
@@ -3090,6 +3128,16 @@ def run_cmd(wt, timeout, cmd):
         out, rc = ('%s\n' % e).encode(), 127
     return out, rc
 
+def show(out, rc, keep=12):
+    """Print a suite's output for the orchestrator: a passing run only its last lines (the runner's summary), since the
+    whole output of a long suite fills the main conversation for nothing; a failing run all of it, for the failure."""
+    lines = out.decode('utf-8', 'replace').splitlines(True)
+    if rc == 0 and len(lines) > keep:
+        sys.stdout.write('[the first %d lines of the passing output are not shown]\n' % (len(lines) - keep))
+        lines = lines[-keep:]
+    sys.stdout.write(''.join(lines))
+    sys.stdout.flush()
+
 def red_why(r):
     """Why a failing RED run is not evidence ('' when it is): the command never ran the tests."""
     rc, cmd = r.get('exit_code'), r.get('cmd') or ''
@@ -3295,8 +3343,7 @@ elif mode == 'grouprun':
     wt, timeout, rowfile, group = sys.argv[2:6]
     cmd = sys.argv[7:]    # argv[6] is the '--' separator
     out, rc = run_cmd(wt, timeout, cmd)
-    sys.stdout.write(out.decode('utf-8', 'replace'))
-    sys.stdout.flush()
+    show(out, rc)
     row = {'claim': 'Group %s validate' % group, 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
            'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'group', 'scenario': None,
            'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'group': group,
@@ -3311,8 +3358,7 @@ elif mode == 'integrun':
     wt, timeout, rowfile = sys.argv[2:5]
     cmd = sys.argv[6:]    # argv[5] is the '--' separator
     out, rc = run_cmd(wt, timeout, cmd)
-    sys.stdout.write(out.decode('utf-8', 'replace'))
-    sys.stdout.flush()
+    show(out, rc)
     row = {'claim': 'Integration suite', 'cmd': ' '.join(shlex.quote(x) for x in cmd), 'exit_code': rc,
            'artifact': None, 'sha256': None, 'value': None, 'severity': None, 'phase': 'integration', 'scenario': None,
            'criterion': None, 'label': 'PROVEN' if rc == 0 else 'HEURISTIC', 'executed_by': 'cli',
@@ -4290,6 +4336,16 @@ gate_plan() {
       reqs+=("$(_req "blast radius documented" 1 "plan.md has a Blast Radius section ($complexity change)")")
     else
       reqs+=("$(_req "blast radius documented" 0 "plan.md missing a Blast Radius section — required for $complexity complexity")")
+      all_pass=0
+    fi
+  fi
+  # The tier the run records is the one its files record: a door reads it from their Complexity lines.
+  if [[ -n "$complexity" ]]; then
+    local tier_off; tier_off="$(_tier_lines "$spec_path" check "$complexity" | paste -sd';' - | sed 's/;/; /g')"
+    if [[ -z "$tier_off" ]]; then
+      reqs+=("$(_req "tier recorded" 1 "no Complexity line names another tier than the run's ($complexity)")")
+    else
+      reqs+=("$(_req "tier recorded" 0 "$tier_off, while the run records $complexity: temper state set complexity <tier> records one tier in the run and in those lines")")
       all_pass=0
     fi
   fi

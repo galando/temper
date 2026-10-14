@@ -1340,14 +1340,18 @@ def open_concerns(path):
 
 
 def design_accept(path, when):
-    """Leaving Design with open concerns is the person's acceptance of them: each gets a `resolved:` line saying so."""
+    """Leaving Design with open concerns is the person's acceptance of them: each gets a `resolved:` line saying so, as a
+    paragraph of its own after a blank line (right below a list item or a paragraph, Markdown would join it to that
+    text); under a list item concern it is indented to the item's text, so it stays in that item."""
     try:
         lines = open(path, encoding="utf-8", errors="replace").read().split("\n")
     except OSError:
         return 0
     todo = [b for b in concern_blocks(lines) if not b["resolved"]]
     for b in sorted(todo, key=lambda b: b["start"], reverse=True):
-        lines.insert(b["end"], "%sresolved: accepted as written at the Design question (%s)" % ("  " if b["item"] else "", when))
+        m = re.match(r"^(?:[-*]|\d+[.)])\s+", lines[b["start"]]) if b["item"] else None
+        lines[b["end"]:b["end"]] = ["", "%sresolved: accepted as written at the Design question (%s)" % (
+            " " * len(m.group(0)) if m else "", when)]
     if todo:
         tmp = "%s.tmp.%d" % (path, os.getpid())
         with open(tmp, "w", encoding="utf-8") as f:

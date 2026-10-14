@@ -70,7 +70,9 @@ count >= Success Criteria count; every criterion has explicit validation links
 fence; `plan.md` records `## Cross-Repo Search`. **Only for `medium`/`complex`**:
 `plan.md` also needs a heading matching `blast radius` (any level, e.g.
 `## Blast Radius`). Record `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <tier>` as soon as you
-classify it — the gate reads it to decide whether the Blast Radius section applies.
+classify it — the gate reads it to decide whether the Blast Radius section applies. The call also writes the
+tier into the `**Complexity:**` line of `intent.md` (and of `plan.md`, when it has one), where a later door
+reads it; the gate's `tier recorded` row fails when such a line names another tier than the run.
 
 Fix any FAIL before returning: usually a missing scenario, an empty Success Criteria
 section, a missing Cross-Repo Search record, or a missing Blast Radius heading.

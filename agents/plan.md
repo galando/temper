@@ -26,6 +26,7 @@ orchestrator's conversation carries over except the prompt you were launched wit
 4. As soon as you classify complexity, record it:
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <trivial|simple|medium|complex>`
    (`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` reads it to decide whether a Blast Radius section is required).
+   The call also writes the tier into intent.md's `**Complexity:**` line; never edit that line by hand.
 5. **Cross-repo code search.** When any cross-repo code search tool is connected (for
    example a Sourcegraph MCP), use it — for blast radius (callers of the changed code
    OUTSIDE this repo), prior art (has another repo solved this), and definitions that

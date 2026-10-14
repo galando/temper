@@ -628,3 +628,63 @@ printf 'import pathlib\npathlib.Path("PWNED").write_text("x")\nraise SystemExit(
 assert_eq "isolated: a json.py in the project is never run by the CLI, and the CLI still works" "0|PASS" \
   "$([[ -e PWNED ]] && echo 1 || echo 0)|$(python3 -I -c "import json; print(json.load(open('.temper/gates.json'))['intent']['verdict'])")"
 rm -f json.py PWNED
+
+# --- live run 11: the resolved line is a paragraph of its own; under a list item concern it stays in that item ---
+fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1
+for s in intent_complete:plan plan_complete:design; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+cat > .temper/specs/demo/design.md <<'MD'
+# Design: demo
+
+## Areas of Concern
+
+### The cache can serve stale prices
+
+- **Options:** accept, or shorten the time.
+- **Owner:** the person.
+
+## Decision Log
+
+- one
+MD
+gpass design; "$TEMPER" state advance design_complete build >/dev/null 2>&1
+assert_eq "design: below a list, the resolved line comes after a blank line, so Markdown keeps it out of the list" "|1" \
+  "$(grep -B1 '^resolved: accepted as written' .temper/specs/demo/design.md | head -1)|$(grep -c '^resolved: accepted as written' .temper/specs/demo/design.md)"
+fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1
+for s in intent_complete:plan plan_complete:design; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+cat > .temper/specs/demo/design.md <<'MD'
+# Design: demo
+
+## Areas of Concern
+
+1. **Cache:** stale prices for a minute.
+   Options: accept, or shorten.
+2. **Logs:** they hold the user id.
+
+## Decision Log
+MD
+gpass design; "$TEMPER" state advance design_complete build >/dev/null 2>&1
+assert_eq "design: under a numbered concern, the resolved line is indented to the item's text, after a blank line" \
+  "   Options: accept, or shorten.||   resolved: accepted|2. **Logs:** they hold the user id.||   resolved: accepted||## Decision Log" \
+  "$(sed -n '6,13p' .temper/specs/demo/design.md | sed 's/ as written.*//' | paste -sd'|' -)"
+assert_eq "design: both numbered concerns read as resolved afterwards" "0" \
+  "$(python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import flow; print(len(flow.open_concerns(sys.argv[2])))" "$(dirname "$TEMPER")" .temper/specs/demo/design.md)"
+
+# --- live run 11: the tier is recorded in the Complexity lines a door reads, and the plan gate checks they agree ---
+fresh; printf '# Plan: demo\n\n**Complexity:** simple\n' > .temper/specs/demo/plan.md
+out="$("$TEMPER" state set complexity medium 2>&1)"
+assert_eq "tier: state set complexity writes the tier into the Complexity lines of intent.md and plan.md" "medium|medium|2" \
+  "$(sed -n 's/^\*\*Complexity:\*\* *\([a-z]*\).*/\1/p' .temper/specs/demo/intent.md)|$(sed -n 's/^\*\*Complexity:\*\* *\([a-z]*\).*/\1/p' .temper/specs/demo/plan.md)|$(printf '%s\n' "$out" | grep -c 'now says Complexity medium')"
+assert_eq "tier: the plan gate's tier row passes when they agree" "1" "$("$TEMPER" gate plan 2>&1 | grep -c '\[v\] tier recorded')"
+sed -i 's/^\*\*Complexity:\*\* medium/**Complexity:** simple/' .temper/specs/demo/intent.md
+assert_eq "tier: a Complexity line changed by hand fails the plan gate, naming the file and the fix" "1|0" \
+  "$("$TEMPER" gate plan 2>&1 | grep 'tier recorded' | grep -c 'intent.md says simple, while the run records medium: temper state set complexity')|$("$TEMPER" gate plan 2>&1 | grep -c '\[v\] tier recorded')"
+"$TEMPER" state set complexity medium >/dev/null 2>&1
+assert_eq "tier: state set complexity again records one tier, and the row passes" "1" "$("$TEMPER" gate plan 2>&1 | grep -c '\[v\] tier recorded')"
+cp .temper/specs/demo/intent.md tier-before.md; "$TEMPER" state set complexity huge >/dev/null 2>&1
+assert_eq "tier: a value that is no tier is not written into the files" "same" "$(cmp -s .temper/specs/demo/intent.md tier-before.md && echo same || echo changed)"
+rm -f tier-before.md
+# run 11's case: plan.md names no tier, and the person changes it at the plan gate; a later door takes the changed tier
+fresh; "$TEMPER" state set complexity medium >/dev/null 2>&1; "$TEMPER" state clear >/dev/null 2>&1
+"$TEMPER" state init demo --enter review >/dev/null 2>&1
+assert_eq "tier: a door after a tier changed at the plan gate takes the changed tier, not Intent's first guess" "medium" \
+  "$("$TEMPER" state get complexity)"

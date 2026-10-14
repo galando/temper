@@ -59,7 +59,8 @@ here. Write each concern as its own heading under Areas of Concern (or its own l
 at the margin), so the CLI can name it: the Design question lists the open ones (a
 concern is resolved once a line of it starts with `resolved:`). "Continue to Build" with
 open concerns means the human accepted them as written: leaving Design, the CLI adds
-`resolved: accepted as written at the Design question ({date})` to each and the run
+`resolved: accepted as written at the Design question ({date})` to each, as a paragraph
+of its own (indented to the item's text under a list item concern), and the run
 commits `design.md`. Another call, typed at the question, is written into the
 concern's own `resolved: {what was decided}` line before the question is asked again.
 An armed run parks at a Design with open concerns, so the person decides them.

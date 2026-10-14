@@ -926,6 +926,25 @@ assert_eq "integrate: verdict FAIL is stored and the group branches are kept" "F
 assert_eq "integrate: gate build is FAIL on the integration row" "1" "$("$TEMPER" gate build 2>&1 | grep -c 'FAIL.*integration\|integration.*FAIL')"
 assert_eq "integrate: a rerun after the suite is fixed flips the verdict to PASS" "0|PASS" "$("$TEMPER" integrate >/dev/null 2>&1; echo $?)|$(gi_int verdict)"
 
+# live run 11: a passing Validate or suite prints only its last 12 lines into the main conversation; a failing one all
+gi_setup
+gp_mut "\`bash -c 'echo validating; pwd; exit \${GV_EXIT:-0}'\`" "\`bash -c 'seq 1 40; exit \${GV_EXIT:-0}'\`"
+gp_mut "\`bash -c 'echo integrating; pwd; ls src; exit \${GI_EXIT:-0}'\`" "\`bash -c 'seq 101 140; exit \${GI_EXIT:-0}'\`"
+gi_pass 1 G1 src/a.sh 'a_main() { :; }'; gi_pass 2 G1 src/b.sh 'b_main() { :; }'; gi_pass 3 G2 src/c.sh 'c_main() { :; }'
+nums() { printf '%s\n' "$1" | grep -x '[0-9][0-9]*' | sed -n '1p;$p' | paste -sd'-' -; printf '%s\n' "$1" | grep -cx '[0-9][0-9]*'; }
+out="$(GV_EXIT=1 "$TEMPER" group gate G1 2>&1)"
+assert_eq "group gate: a failing Validate prints all of its output" "1-40|40|0" "$(nums "$out" | paste -sd'|' -)|$(printf '%s\n' "$out" | grep -c 'not shown')"
+out="$("$TEMPER" group gate G1 2>&1)"
+assert_eq "group gate: a passing Validate prints its last 12 lines and says how many it left out" "29-40|12|1|1" \
+  "$(nums "$out" | paste -sd'|' -)|$(printf '%s\n' "$out" | grep -cx '\[the first 28 lines of the passing output are not shown\]')|$(printf '%s\n' "$out" | grep -c '^PASS: group G1')"
+"$TEMPER" group gate G2 >/dev/null 2>&1
+out="$(GI_EXIT=1 "$TEMPER" integrate 2>&1)"
+assert_eq "integrate: a failing suite prints all of its output" "101-140|40|0" "$(nums "$out" | paste -sd'|' -)|$(printf '%s\n' "$out" | grep -c 'not shown')"
+out="$("$TEMPER" integrate 2>&1)"
+assert_eq "integrate: a passing suite prints its last 12 lines, and its row keeps the output" "129-140|12|1|1" \
+  "$(nums "$out" | paste -sd'|' -)|$(printf '%s\n' "$out" | grep -c '^PASS: integrated')|$(python3 -c "import json; r=[x for x in json.load(open('.temper/evidence/build.json')) if x.get('phase')=='integration'][-1]; print(int(r['output'].startswith('101')))")"
+unset -f nums
+
 # an Interfaces literal that is missing from the merged tree
 gi_all; gp_mut '`src/a.sh` — `a_main`' '`src/a.sh` — `a_missing`'
 out="$("$TEMPER" integrate 2>&1)"; rc=$?
