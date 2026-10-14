@@ -37,7 +37,8 @@ carries over except the bug description in your launch prompt.
 the right border), and it is the only box you print. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
 more"; omit an empty section including its divider — never a row saying "none"; wrap
-a long entry onto a continuation row indented two spaces.
+a long entry, a fact row (CAUSE, FIX) too, onto continuation rows indented two spaces.
+Never cut a row short: the panel is saved as `rca.md`, so a word cut off is lost to Fix.
 
 Return this panel (the orchestrator prints it verbatim and saves it as `rca.md`) and
 nothing outside it. The panel holds everything `rca.md` needs: the root cause (the

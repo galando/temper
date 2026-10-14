@@ -108,6 +108,9 @@ class Run:
             s.remove("design")
         return s
 
+    def open_concerns(self):
+        return open_concerns(os.path.join(self.spec, "design.md")) if self.spec else []
+
     def has_design(self):
         if self.command != "temper":
             return False
@@ -414,12 +417,21 @@ class Builder:
         if stage == "design":
             walk = self.opt("Walk through step by step", "Review the design section by section.",
                             do="Walk through the sections design.md has (architecture, API contracts, database changes, integration points, decision log), then ask this question again.")
-            go = [self.c("state advance design_complete build")]
+            go = self.leave_design()
+            opens = r.open_concerns()
             if passed:
                 # A concern the design raises can need the plan changed (a missing case, a task): the plan is closed from
-                # here on, so the way to change it is a step back to Plan.
-                return self.with_more(GATE_HEADER, "Design: %s. Continue to Build?" % state_of, stage,
-                                      [self.opt("Continue to Build (Recommended)", "Start Build.", move="advance", calls=go), walk,
+                # here on, so the way to change it is a step back to Plan. The open ones are named, since the person is
+                # here for them; another call than accepting one as written is typed, and written into design.md.
+                text = "Design: %s. Continue to Build?" % state_of
+                cont = "Start Build."
+                if opens:
+                    text = "Design: %s, with %d open area(s) of concern: %s%s. Continue to Build?" % (
+                        state_of, len(opens), "; ".join("%d. %s" % (i + 1, t) for i, t in enumerate(opens[:3])),
+                        "; and %d more" % (len(opens) - 3) if len(opens) > 3 else "")
+                    cont = "Accept the open concerns as written (design.md records it) and start Build."
+                return self.with_more(GATE_HEADER, text, stage,
+                                      [self.opt("Continue to Build (Recommended)", cont, move="advance", calls=go), walk,
                                        self.skill("grill-me", "Grill Me", "Stress test the design.")],
                                       back_opt() + [self.skill("teach-me", "Teach Me", "Walk through the design."), self.save()], "Design: more options.")
             return self.question(GATE_HEADER, "Design: the check failed (%s). Fix the design, or skip the check?" % why, stage=stage,
@@ -498,11 +510,20 @@ class Builder:
     def go_move(self, stage):
         return "approve" if stage in ("intent", "plan") else "advance"
 
+    def leave_design(self):
+        """Leave Design: the CLI records the open concerns as accepted, then design.md is committed (it was left for the
+        last commit before)."""
+        r = self.r
+        return [self.c("state advance design_complete %s" % (r.next_of("design") or "build"))] + \
+            self.spec_commit("docs(design): the design of %s" % r.slug, changes=bool(r.open_concerns()))
+
     def leave(self, stage):
         if stage == "intent":
             return self.leave_intent()
         if stage == "plan":
             return self.leave_plan()
+        if stage == "design":
+            return self.leave_design()
         nxt = self.r.next_of(stage)
         return [self.c("state advance %s_complete %s" % (stage, nxt))]
 
@@ -887,6 +908,12 @@ class Builder:
             return out
         if r.armed() and stage not in ("intent", "plan", "rca"):
             nxt = r.next_of(stage)
+            if stage == "design" and r.open_concerns():
+                # a person resolves each area of concern at the Design question, before Build: an armed run parks for them
+                out.update({"action": "auto", "stage": stage, "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote(
+                    "Design has %d open area(s) of concern" % len(r.open_concerns())))],
+                            "say": "Design has open areas of concern; the armed run parks for you."})
+                return out
             if verdict == "PASS" or skipped:
                 out.update({"action": "auto", "stage": stage, "calls": [self.c("state advance %s_complete %s" % (stage, nxt))],
                             "say": "%s passed; the armed run goes on." % LABEL[stage]})
@@ -1260,6 +1287,75 @@ def project_facts(run, ctx):
             ctx[key] = get()
 
 
+# ---- design.md's Areas of Concern -------------------------------------------------------------------------------------
+
+CONCERN_STRUCT = {"open", "resolved", "closed", "accepted", "deferred", "open concerns", "resolved concerns", "closed concerns"}
+
+
+def concern_blocks(lines):
+    """The concerns of design.md's Areas of Concern section: one per heading under it (a heading such as "Open" or
+    "Resolved" only groups them), else one per list item at the margin. Each is {title, start, end, item, resolved}; end
+    is the line after its last non blank line, and a concern is resolved when a line of it starts with `resolved:`."""
+    sec = None
+    for i, l in enumerate(lines):
+        m = re.match(r"^(#{1,6})\s+(.*)$", l)
+        if m and re.search(r"areas of concern", m.group(2), re.I):
+            sec = (i, len(m.group(1)))
+            break
+    if sec is None:
+        return []
+    start, lvl = sec
+    end = next((j for j in range(start + 1, len(lines)) if (lambda m: m and len(m.group(1)) <= lvl)(re.match(r"^(#{1,6})\s", lines[j]))), len(lines))
+    body = range(start + 1, end)
+
+    def text(l):
+        return re.sub(r"[*_`]", "", re.sub(r"^\s*(?:#{1,6}|[-*]|\d+[.)])\s+", "", l)).strip()
+
+    def none_flagged(t):
+        return t.lower().startswith("none flagged")
+
+    subs = [j for j in body if re.match(r"^#{%d,6}\s+\S" % (lvl + 1), lines[j])]
+    heads = [j for j in subs if text(lines[j]).lower().rstrip(":") not in CONCERN_STRUCT and not none_flagged(text(lines[j]))]
+    if heads:
+        starts, bounds, item = heads, subs + [end], False
+    else:
+        starts = [j for j in body if re.match(r"^(?:[-*]|\d+[.)])\s+\S", lines[j]) and not none_flagged(text(lines[j]))]
+        bounds, item = [j for j in body if re.match(r"^(?:[-*]|\d+[.)])\s+\S", lines[j])] + [end], True
+    out = []
+    for h in starts:
+        stop = min(b for b in bounds if b > h)
+        while stop > h + 1 and not lines[stop - 1].strip():
+            stop -= 1
+        res = any(re.match(r"^\s*(?:[-*]\s+)?(?:\*\*|__)?resolved\s*:", lines[k], re.I) for k in range(h, stop))
+        out.append({"title": text(lines[h])[:90], "start": h, "end": stop, "item": item, "resolved": res})
+    return out
+
+
+def open_concerns(path):
+    try:
+        lines = open(path, encoding="utf-8", errors="replace").read().split("\n")
+    except OSError:
+        return []
+    return [b["title"] for b in concern_blocks(lines) if not b["resolved"]]
+
+
+def design_accept(path, when):
+    """Leaving Design with open concerns is the person's acceptance of them: each gets a `resolved:` line saying so."""
+    try:
+        lines = open(path, encoding="utf-8", errors="replace").read().split("\n")
+    except OSError:
+        return 0
+    todo = [b for b in concern_blocks(lines) if not b["resolved"]]
+    for b in sorted(todo, key=lambda b: b["start"], reverse=True):
+        lines.insert(b["end"], "%sresolved: accepted as written at the Design question (%s)" % ("  " if b["item"] else "", when))
+    if todo:
+        tmp = "%s.tmp.%d" % (path, os.getpid())
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        os.replace(tmp, path)
+    return len(todo)
+
+
 def main(argv):
     if len(argv) >= 3 and argv[1] == "changed":
         print(json.dumps(changed_files(argv[2], argv[3] if len(argv) > 3 else "")))
@@ -1269,6 +1365,11 @@ def main(argv):
         if why:
             print(why)
             return 1
+        return 0
+    if len(argv) >= 4 and argv[1] == "design-accept":
+        n = design_accept(argv[2], argv[3])
+        if n:
+            print("OK: %d open area(s) of concern recorded in design.md as accepted at the Design question" % n)
         return 0
     if len(argv) >= 3 and argv[1] == "plan-files":
         print(json.dumps(plan_files(argv[2])))

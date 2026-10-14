@@ -55,13 +55,14 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
 Return exactly ONE closed panel (76 columns, every row padded to the right border) and
 nothing outside it. Fact rows at the top, then titled sections inside the border; one
 row per item, no "and N more"; omit an empty section including its divider; wrap a long
-entry onto a continuation row indented two spaces.
+entry onto a continuation row indented two spaces. The Test field gives the exit code of the
+failing first run and of the passing run, as `red exit 1, green exit 0`.
 
 ```
 +--------------------------------------------------------------------------+
 | TASK {N} — {title}                                                       |
 +--------------------------------------------------------------------------+
-| Attempt: {n}   Test: red {exit}, green {exit}   Files: {n} changed       |
+| Attempt: {n}   Test: red exit {c}, green exit {c}   Files: {n} changed   |
 +--- CHANGED (N) ---+------------------------------------------------------+
 | {file} [{scenario}]                                                      |
 +--- BLOCKERS (N) ---+-----------------------------------------------------+

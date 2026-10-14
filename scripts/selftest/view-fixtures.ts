@@ -5257,7 +5257,9 @@ export const VIEWS: Record<string, unknown> = {
     {
      "calls": [
       "/plugin/scripts/temper override design --reason '{reason}'",
-      "/plugin/scripts/temper state advance design_complete build"
+      "/plugin/scripts/temper state advance design_complete build",
+      "git add -- .temper/specs/pw/",
+      "git commit -m \"docs(design): the design of pw\""
      ],
      "description": "Skip this check with your reason; the report shows it.",
      "label": "Override and continue",
@@ -5675,7 +5677,9 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper state advance design_complete build"
+      "/plugin/scripts/temper state advance design_complete build",
+      "git add -- .temper/specs/pw/",
+      "git commit -m \"docs(design): the design of pw\""
      ],
      "description": "Start Build.",
      "label": "Continue to Build (Recommended)",

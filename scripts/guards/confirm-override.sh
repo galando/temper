@@ -51,7 +51,7 @@ _main() {
   # (python3 -c, NOT a heredoc: the hook's JSON arrives on stdin, and a `python3 <<PY`
   # heredoc would own stdin and discard it — see test-temper.sh's stop_hook_active note.)
   local decision
-  decision=$(python3 -c '
+  decision=$(python3 -I -c '
 import json, os, shlex, sys
 try:
     cmd = json.load(sys.stdin).get("tool_input", {}).get("command", "") or ""

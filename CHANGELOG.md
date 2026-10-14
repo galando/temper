@@ -117,6 +117,17 @@ the foreground. A plugin cannot set that variable, so `/temper:init` asks whethe
 and writes nothing into a file it cannot read as JSON or through a symlink); the line said when an agent goes to the
 background names `/temper:init` too. A parked commit question says the armed run parked there and where its report is.
 
+**The lows of the live runs.** The Design question names each open area of concern (`design.md` gives each its own
+heading or list item); leaving Design records the ones the person accepted as written (`resolved: accepted as written
+at the Design question`) and commits `design.md`, which was left for the last commit; an armed run parks at a Design
+with open concerns, since a person decides them before Build. `temper next` no longer lists `temper init` after every
+finished run (a run's end removes `gates.json`, which the setup check read); it lists it when `.temper` is missing or
+the clone's exclude list lacks a run file, so a project set up before a newer run file (`security-map.json`) gets it.
+A task agent's box gives its test runs' exit codes as `red exit 1, green exit 0`, and the RCA box wraps a long fact
+row instead of cutting it (the box is saved as `rca.md`). The CLI, the guard scripts and the commit hook run their
+inline Python isolated (`python3 -I`): before, a file in the project named like a standard module (`json.py`) ran on
+every `temper` call; a hook installed before this is listed for `install.sh` again.
+
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.
 

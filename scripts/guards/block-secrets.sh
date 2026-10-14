@@ -64,7 +64,7 @@ _main() {
     # An in-agent hook: scan only what this call adds.
     command -v python3 >/dev/null 2>&1 || return 0
     local added rc
-    added=$(printf '%s' "$input" | python3 -c '
+    added=$(printf '%s' "$input" | python3 -I -c '
 import json, sys
 try:
     call = json.load(sys.stdin)

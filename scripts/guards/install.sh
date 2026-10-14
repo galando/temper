@@ -231,7 +231,7 @@ _temper_gate_here() {
 # holds a .temper folder: a project below the top (a package of a monorepo) keeps its run there. A rename is read as
 # its two names, so a file moved out of a project touches it too. A folder inside the plugin's own folder is skipped,
 # as above.
-GATE_DIRS="\$(python3 -c '
+GATE_DIRS="\$(python3 -I -c '
 import os, subprocess, sys
 top, plugin = os.getcwd(), os.path.realpath(sys.argv[1])
 out = [top]

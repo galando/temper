@@ -57,7 +57,7 @@ _main() {
   # stdin only — no value is interpolated into source); the hook prints the matched
   # pattern to stderr and this function maps a match to exit 2.
   local matched
-  matched=$(TEMPER_PROTECT_PATTERNS="$patterns" python3 -c '
+  matched=$(TEMPER_PROTECT_PATTERNS="$patterns" python3 -I -c '
 import json, os, re, sys
 try:
     target = json.load(sys.stdin).get("tool_input", {}).get("file_path", "") or ""

@@ -577,3 +577,54 @@ rm -f .claude/settings.json fg-before.json; ln -s "$WORKDIR/fg-target.json" .cla
 assert_eq "foreground: a settings file that is a symlink is refused, and nothing is written through it" "3|0" \
   "$(CLAUDE_CODE_DISABLE_BACKGROUND_TASKS= "$TEMPER" init --foreground-agents >/dev/null 2>&1; echo $?)|$([[ -e "$WORKDIR/fg-target.json" ]] && echo 1 || echo 0)"
 rm -f .claude/settings.json
+
+# --- live runs: the Design question names the open areas of concern, leaving Design records them, design.md is committed ---
+fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1
+for s in intent_complete:plan plan_complete:design; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+cat > .temper/specs/demo/design.md <<'MD'
+# Design: demo
+
+## Areas of Concern
+
+### 1. The cache can serve stale prices for a minute
+
+Options: (A) accept, (B) shorten. Owner: the person.
+
+### 2. Logs hold the user id
+
+resolved: hashed (the person)
+
+## Decision Log
+
+- one
+MD
+gpass design
+assert_eq "design: the question names each open area of concern" "1|0" \
+  "$(nx "int('with 1 open area(s) of concern: 1. 1. The cache can serve stale prices for a minute' in d['ask']['question']['question'])")|$(nx "int('Logs hold' in d['ask']['question']['question'])")"
+assert_eq "design: Continue leaves Design, then commits design.md" "state advance design_complete build|git add|git commit" \
+  "$(nx "c = d['ask']['options'][0]['calls']; c[0].split('temper ', 1)[1] + '|' + c[1][:7] + '|' + c[2][:10]")"
+python3 -c "p='.claude/temper.config'; s=open(p).read(); open(p, 'w').write(s.replace('autonomy:\n  enabled: false', 'autonomy:\n  enabled: true'))"
+python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['run_mode']='autonomous'; json.dump(d, open(p, 'w'))"
+assert_eq "design: an armed run parks at a Design with open concerns, for the person" "auto|1" \
+  "$(nx "d['action'] + '|' + str(int(any('park --verdict PARKED-NEEDS-DECISION' in c for c in d['calls'])))")"
+python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['run_mode']='interactive'; json.dump(d, open(p, 'w'))"
+python3 -c "p='.claude/temper.config'; s=open(p).read(); open(p, 'w').write(s.replace('autonomy:\n  enabled: true', 'autonomy:\n  enabled: false'))"
+"$TEMPER" state advance design_complete build >/dev/null 2>&1
+assert_eq "design: leaving Design records each open concern as accepted, once" "1|1" \
+  "$(grep -c '^resolved: accepted as written at the Design question' .temper/specs/demo/design.md)|$(grep -c 'resolved: hashed' .temper/specs/demo/design.md)"
+
+# --- live runs: a finished run asks for no init again; a missing run file in the exclude list does ---
+fresh; "$TEMPER" init >/dev/null 2>&1; "$TEMPER" state clear >/dev/null 2>&1
+assert_eq "setup: after a run's end, next lists no temper init" "0" "$(nx "sum(1 for c in d.get('setup') or [] if c.endswith('temper init'))")"
+ex="$(git rev-parse --git-common-dir)/info/exclude"; grep -v 'security-map.json' "$ex" > ex.tmp; cat ex.tmp > "$ex"; rm -f ex.tmp
+assert_eq "setup: a project whose exclude list lacks a run file gets temper init again" "1" "$(nx "sum(1 for c in d.get('setup') or [] if c.endswith('temper init'))")"
+"$TEMPER" init >/dev/null 2>&1
+assert_eq "setup: init puts it back" "1|0" "$(grep -cx '/.temper/security-map.json' "$ex")|$(nx "sum(1 for c in d.get('setup') or [] if c.endswith('temper init'))")"
+
+# --- the CLI's inline Python runs isolated: a project file named like a standard module is never imported ---
+fresh
+printf 'import pathlib\npathlib.Path("PWNED").write_text("x")\nraise SystemExit(0)\n' > json.py
+"$TEMPER" status >/dev/null 2>&1; "$TEMPER" next --json >/dev/null 2>&1; "$TEMPER" gate intent >/dev/null 2>&1
+assert_eq "isolated: a json.py in the project is never run by the CLI, and the CLI still works" "0|PASS" \
+  "$([[ -e PWNED ]] && echo 1 || echo 0)|$(python3 -I -c "import json; print(json.load(open('.temper/gates.json'))['intent']['verdict'])")"
+rm -f json.py PWNED

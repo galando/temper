@@ -58,7 +58,7 @@ _main() {
   # (os.path.samefile), so another case on a file system that does not tell case apart,
   # or a second mount of the same folder, is still seen.
   local target=""
-  target=$(python3 -c "
+  target=$(python3 -I -c "
 import json, os, sys
 project, plugin = sys.argv[1], sys.argv[2]
 try:

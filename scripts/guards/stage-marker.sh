@@ -99,7 +99,7 @@ _main() {
   command -v python3 >/dev/null 2>&1 || return 0
 
   local prompt=""
-  prompt=$(python3 -c "
+  prompt=$(python3 -I -c "
 import json, sys
 try:
     print(json.load(sys.stdin).get('prompt', ''))
