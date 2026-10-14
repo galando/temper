@@ -566,7 +566,7 @@ cmd_init() {
   if ex="$(git rev-parse --git-common-dir 2>/dev/null)/info/exclude" && [[ "$ex" != "/info/exclude" ]]; then
     mkdir -p "$(dirname "$ex")" 2>/dev/null
     for p in build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
-             stage-gate.log pending-stage.json groups.json usage.json autonomy.lock coverage.json view.json \
+             stage-gate.log pending-stage.json groups.json usage.json autonomy.lock coverage.json coverage/ view.json \
              evidence/ index/ reviews/ archive/ .lock/; do
       grep -qxF "/${pre}.temper/$p" "$ex" 2>/dev/null || printf '/%s.temper/%s\n' "$pre" "$p" >> "$ex" 2>/dev/null || true
     done
@@ -742,6 +742,10 @@ cmd_state_set() {
   # leaves Plan, and Build is held to them.
   if [[ "$1" == "approved_files" || "$1" == "plan_hash" ]]; then
     echo "FAIL: $1 is kept by the CLI (state advance plan_complete records the plan's files and its digest as the person approved them)" >&2
+    return 1
+  fi
+  if [[ "$1" == "archived" ]]; then
+    echo "FAIL: archived is kept by the CLI (state archive records it when it writes the ledger the commit carries)" >&2
     return 1
   fi
   # The commit the run's diff is read against is recorded once (state advance plan_complete): a later one would hide
@@ -1155,6 +1159,9 @@ cmd_state_archive() { # temper state archive — write the ledger WITHOUT touchi
                        # while the live state stays intact for the pre-commit gate.
   local out rc; out="$(_archive_ledger)"; rc=$?
   if [[ -n "$out" ]]; then
+    # The record the commit carries: state clear after the commit keeps it, since the commit's own hook records the
+    # spec only commit's verdict over the run's commit verdict.
+    [[ -f "$STATE_FILE" ]] && _json_set_path "$STATE_FILE" archived "$(_now)" '{}' >/dev/null 2>&1
     echo "OK: gate ledger archived to $out"
   elif [[ $rc -eq 2 ]]; then
     echo "OK: run state untouched; the gate ledger was NOT archived (see the warning above)"
@@ -1164,8 +1171,14 @@ cmd_state_archive() { # temper state archive — write the ledger WITHOUT touchi
 }
 
 cmd_state_clear() {
-  local archived_note=""
-  local out rc; out="$(_archive_ledger)"; rc=$?
+  local archived_note="" out="" rc=0 kept
+  kept="$(cmd_state_get archived "")"
+  if [[ -n "$kept" ]]; then
+    # state archive wrote the record the commit carries; it stays as committed
+    archived_note=" — the gate ledger archived at $kept is kept"
+  else
+    out="$(_archive_ledger)"; rc=$?
+  fi
   [[ -n "$out" ]] && archived_note=" — gate ledger archived to $out"
   [[ $rc -eq 2 ]] && archived_note="; the gate ledger was NOT archived, see the warning above"
   # Each target is written out in full, relative to the project (REPO_ROOT is the cwd).

@@ -772,6 +772,9 @@ class Builder:
         steps.append("git add -- %s" % " ".join(shlex.quote(f) for f in files + lessons) if files
                      else "git add -- (each file the run changed)%s" % "".join(" " + x for x in lessons))
         code = [f for f in files if not (f.startswith(r.spec + "/") or f.startswith(".temper/"))] if r.spec else files
+        # The code this commit carries: what is still uncommitted (Build commits each task, each group and the merge).
+        if code and git("rev-parse", "--verify", "-q", "HEAD"):
+            code = [f for f in code if git("status", "--porcelain", "--", f)]
         if r.command == "fix":
             steps.append("git commit -m 'fix({scope}): {description}' -m 'Root cause: {explanation}' -m 'Regression test: {test name}'")
         elif files and not code:

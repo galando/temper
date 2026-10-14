@@ -77,6 +77,13 @@ and `rsync -R` landings, `rsync --remove-source-files`, and a glob after a call'
 when it could spell a word the person decides (`--model sonnet[1m]` passes). After Keep the commits the person is asked
 before the groups are merged again, so a merge that stops early does not go round unasked.
 
+**Two more live runs.** A `/temper:fix` run in a fresh project now runs the setup calls, so its commit hook is
+installed. A loop back to Build keeps what Review (or Check) left open, and the fix pass prompt names it, since the
+loop clears that stage's ledger. The last commit's message names the run's record when the code it lists is already
+committed. `state clear` keeps the ledger `state archive` wrote for the commit, so the commit's own hook (which records
+the spec only commit's verdict) no longer changes the committed record. Check's `.temper/coverage/` folder is kept out
+of git status.
+
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.
 

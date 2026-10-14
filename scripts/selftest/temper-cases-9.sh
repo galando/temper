@@ -395,3 +395,16 @@ assert_eq "live run 1: the loop keeps the open finding, while the review ledger 
   "$(python3 -c "import json; print(len(json.load(open('.temper/feedback-loops.json'))['active_loops'][0].get('findings') or []))")|$(python3 -c "import json; print(len(json.load(open('.temper/evidence/review.json'))))" 2>/dev/null || echo 0)"
 assert_eq "live run 1: the fix pass prompt names the finding, not only the person's reason" "1|1" \
   "$(nx "int('[low] src/a.ts:3 a name that misleads' in d['agents'][0]['prompt'])")|$(nx "int('Feedback re-entry: fix them' in d['agents'][0]['prompt'])")"
+
+# --- live run 1: the commit's own hook records a spec only verdict; state clear keeps the ledger the commit carries ---
+setup; rm -rf .git bare; git init -q . 2>/dev/null; git checkout -q -B feature/demo 2>/dev/null
+git config user.email t@t; git config user.name t
+gpass intent plan build review check commit; "$TEMPER" state archive >/dev/null 2>&1
+git add -A >/dev/null 2>&1; git -c core.hooksPath=/dev/null commit -qm "the run's record" >/dev/null 2>&1
+# what the hook's gate commit does at that commit: the spec only verdict over the run's commit verdict
+python3 -c "import json; p='.temper/gates.json'; d=json.load(open(p)); d['commit']={'verdict':'PASS','requirements':[{'name':'artifact-only commit','pass':True,'detail':'x'}]}; json.dump(d, open(p, 'w'))"
+assert_exit "live run 1: state set archived is the CLI's" 1 "$TEMPER" state set archived x
+"$TEMPER" state clear >/dev/null 2>&1
+assert_eq "live run 1: state clear keeps the ledger the commit carries, with the run's own commit verdict" "|0" \
+  "$(git status --porcelain -- .temper/specs/demo/gate-ledger.json)|$(grep -c 'artifact-only commit' .temper/specs/demo/gate-ledger.json)"
+rm -rf .git
