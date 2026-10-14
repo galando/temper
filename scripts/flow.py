@@ -288,23 +288,29 @@ class Builder:
             return []
         return ["git add -- %s/" % self.r.spec, 'git commit -m "%s"' % message]
 
+    def to_branch(self):
+        """The switch to the run's branch (`feature/{slug}`) when the project is on another one: the first commit of the
+        run, the accepted intent, goes there, never onto main."""
+        branch = self.r.state.get("branch") or ""
+        if not branch or (self.r.ctx.get("branch") or "") == branch:
+            return []
+        return ["git checkout %s" % shlex.quote(branch) if self.r.ctx.get("branch_exists") else "git checkout -b %s" % shlex.quote(branch)]
+
     def leave_intent(self):
-        """Accept the intent (when there is one, and it is not accepted yet the accept changes it), commit, advance."""
+        """Switch to the run's branch, accept the intent (when there is one, and it is not accepted yet the accept changes
+        it), commit, advance."""
         r = self.r
         has = bool(r.intent)
         # The whole value, as `temper intent accept` reads it: only `accepted` or `completed` leaves the file unchanged.
         m = re.search(r"^\*\*Status:\*\*(.*)$", r.intent, re.M)
         accepts = has and not (m and m.group(1).strip().lower() in ("accepted", "completed"))
-        return ([self.c("intent accept")] if has else []) + self.spec_commit("docs(intent): accept %s" % r.slug, changes=accepts) + \
-               [self.c("state advance intent_complete plan")]
+        return self.to_branch() + ([self.c("intent accept")] if has else []) + \
+            self.spec_commit("docs(intent): accept %s" % r.slug, changes=accepts) + [self.c("state advance intent_complete plan")]
 
     def leave_plan(self):
         r, nxt = self.r, self.r.next_of("plan") or "build"
-        steps = []
-        branch = r.state.get("branch") or ""
-        if branch and (self.r.ctx.get("branch") or "") != branch:
-            steps.append("git checkout -b %s" % branch if not self.r.ctx.get("branch_exists") else "git checkout %s" % branch)
-        return steps + self.spec_commit("docs(plan): approve the plan of %s" % r.slug) + \
+        # Still on another branch (a run whose Intent was left before this step existed, or a switch since): switch now.
+        return self.to_branch() + self.spec_commit("docs(plan): approve the plan of %s" % r.slug) + \
             [self.c("state advance plan_complete %s" % nxt)]
 
     # -- gate questions ----------------------------------------------------------------------
@@ -357,7 +363,7 @@ class Builder:
         if stage == "intent":
             if passed:
                 return self.question(GATE_HEADER, "Intent: %s. Accept the intent and continue to Plan?" % state_of, stage=stage, options=[
-                    self.opt("Continue to Plan (Recommended)", "Accept intent.md, commit it, and start Plan.", move="approve", calls=self.leave_intent()),
+                    self.opt("Continue to Plan (Recommended)", "Accept intent.md, commit it on the run's branch, and start Plan.", move="approve", calls=self.leave_intent()),
                     self.skill("grill-me", "Grill Me", "Stress test the intent first."),
                     self.skill("teach-me", "Teach Me", "Walk through the intent."), self.save()])
             return self.question(GATE_HEADER, "Intent: the check failed (%s). Correct intent.md, or skip the check?" % why, stage=stage, options=[
@@ -413,12 +419,21 @@ class Builder:
             go = [self.c("state advance review_complete check")]
             arch = self.opt("Architecture Depth Review", "Check the changed modules' depth, then come back here.",
                             do="Run the module depth analysis of %s/reference/architecture-depth.md on the changed files, add its [ARCH-DEPTH] findings to the summary, then ask this question again." % self.plugin)
-            if passed:
-                return self.with_more(GATE_HEADER, "Review: %s. Continue to Check?" % state_of, stage,
-                                      [self.opt("Continue to Check (Recommended)", "Start Check.", move="advance", calls=go), arch,
-                                       self.skill("grill-me", "Grill Me", "Stress test the change.")],
-                                      [self.skill("teach-me", "Teach Me", "Walk through the change."), self.save()], "Review: more options.")
             opens = r.open_findings()
+            if passed:
+                # The open findings below the blocking severity (the gate counts only those at or above it).
+                opens = [f for f in r.findings() if f["state"] == "open"]
+                # Findings below the blocking severity are still open: Build can fix them (a loop back), or the person
+                # keeps one. A typed change is no fix here, since Review writes no code.
+                grill = self.skill("grill-me", "Grill Me", "Stress test the change.")
+                keep = [self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question.")] if opens else []
+                first = [self.opt("Continue to Check (Recommended)", "Start Check.", move="advance", calls=go)] + (back_opt() if opens else []) + [arch]
+                rest = [self.skill("teach-me", "Teach Me", "Walk through the change."), self.save()]
+                q = self.with_more(GATE_HEADER, "Review: %s. Continue to Check?" % state_of, stage,
+                                   first + ([] if opens else [grill]), keep + ([grill] if opens else []) + rest, "Review: more options.")
+                if keep:
+                    q["accept"] = self.accept_question(opens)
+                return q
             accept = None
             # A review that recorded no completion row did not finish (its agent failed or stopped): run it again first.
             unfinished = bool(rows) and all(x.get("name") == "review completed" for x in rows)
@@ -427,11 +442,7 @@ class Builder:
                 first.insert(0, self.opt("Run Review again (Recommended)", "The review did not finish; it runs again.", move="redo",
                                          calls=[self.c("state redo review --reason 'the review did not finish'")]))
             if opens:
-                aopts = [self.opt("Accept finding %d" % f["id"], f["claim"][:150], move="accept",
-                                  calls=[self.c("evidence accept --stage review --id %d --reason '{reason}'" % f["id"]), self.c("gate review")],
-                                  reason=["It is not a real issue", "I accept the risk"]) for f in opens[:3]]
-                accept = self.question(GATE_HEADER, "Review: which finding do you accept?", stage=stage,
-                                       options=aopts + [self.opt("Cancel", "Back to the Review question.", do="Ask the Review question again.")])
+                accept = self.accept_question(opens)
                 first.append(self.opt("Accept a finding", "Keep a finding as it is, with your reason.", do="Ask the accept question."))
             first.append(override_opt(go))
             text = "Review: the check failed (%s). Loop back to Build?" % why
@@ -452,6 +463,14 @@ class Builder:
                                  options=back_opt(rec=True) + [override_opt(go), self.save()])
 
         return None
+
+    def accept_question(self, opens):
+        """The `Accept a finding` question: one option per open finding (the first three), and Cancel."""
+        aopts = [self.opt("Accept finding %d" % f["id"], f["claim"][:150], move="accept",
+                          calls=[self.c("evidence accept --stage review --id %d --reason '{reason}'" % f["id"]), self.c("gate review")],
+                          reason=["It is not a real issue", "I accept the risk"]) for f in opens[:3]]
+        return self.question(GATE_HEADER, "Review: which finding do you accept?", stage="review",
+                             options=aopts + [self.opt("Cancel", "Back to the Review question.", do="Ask the Review question again.")])
 
     def go_move(self, stage):
         return "approve" if stage in ("intent", "plan") else "advance"
@@ -538,7 +557,9 @@ class Builder:
             run.append(self.c("state set base_sha %s" % r.ctx.get("head")))
         for g in plan.get("groups", []):
             started = bool((rg.get(g["id"]) or {}).get("worktree"))
-            if not started and all(gpass(d) for d in g.get("depends", [])):
+            # A group that builds on another starts after the person's Continue of it, not on its check alone: a Change
+            # there reruns work this group would build on.
+            if not started and all(gpass(d) and (rg.get(d) or {}).get("confirmed") for d in g.get("depends", [])):
                 run.append(self.c("group start %s" % g["id"]))
         if run:
             return {"action": "work", "stage": "build", "calls": run, "agents": [], "say": "Build starts its groups."}
@@ -730,8 +751,9 @@ class Builder:
             steps.append("git commit -m 'fix({scope}): {description}' -m 'Root cause: {explanation}' -m 'Regression test: {test name}'")
         else:
             steps.append("git commit -m '{a conventional commit message for the feature}'")
-        steps.append(self.c("state clear"))
+        # The report reads the run state, so it prints before the state is cleared.
         steps.append(self.c("report"))
+        steps.append(self.c("state clear"))
         return steps
 
     def commit(self):
@@ -901,7 +923,8 @@ def check_markers(run):
              ("coverage", r"coverage"), ("lint", r"lint|ruff|eslint|flake8"), ("security", r"security|secret|audit|semgrep|bandit|scan")]
     out = []
     for name, rx in kinds:
-        hits = [r for r in rows if isinstance(r, dict) and re.search(rx, str(r.get("claim", "")), re.I)]
+        # A scenario's trace row names its test; it is no run of a check (as in `temper gate check`).
+        hits = [r for r in rows if isinstance(r, dict) and not r.get("scenario") and re.search(rx, str(r.get("claim", "")), re.I)]
         if not hits:
             out.append({"name": name, "state": "none", "detail": "", "lines": []})
             continue

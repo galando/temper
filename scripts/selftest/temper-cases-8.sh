@@ -64,9 +64,9 @@ assert_eq "next: Intent PASS asks the Temper gate question with its four options
   "ask|Temper gate|Intent: the check passed. Accept the intent and continue to Plan?" \
   "$(nx "d['action'] + '|' + d['ask']['question']['header'] + '|' + d['ask']['question']['question']")"
 assert_eq "next: the Intent PASS options" "Continue to Plan (Recommended)|Grill Me|Teach Me|Save for later" "$(labels)"
-assert_eq "next: Continue to Plan is the person's approval: accept the intent, commit it, then advance" \
-  "approve|intent accept|git add -- .temper/specs/demo/|state advance intent_complete plan" \
-  "$(nx "o = d['ask']['options'][0]; '|'.join([o['move'], o['calls'][0].split('temper ', 1)[1], o['calls'][1], o['calls'][-1].split('temper ', 1)[1]])")"
+assert_eq "next: Continue to Plan is the person's approval: switch to the run's branch, accept the intent, commit it, then advance" \
+  "approve|git checkout -b feature/demo|intent accept|git add -- .temper/specs/demo/|state advance intent_complete plan" \
+  "$(nx "o = d['ask']['options'][0]; '|'.join([o['move'], o['calls'][0], o['calls'][1].split('temper ', 1)[1], o['calls'][2], o['calls'][-1].split('temper ', 1)[1]])")"
 assert_eq "next: Save for later stops the run and is a pause" "pause|True" "$(nx "o = d['ask']['options'][3]; o['move'] + '|' + str(o['stop'])")"
 assert_eq "next: the ask carries the run id and step it belongs to" "yes|0" "$(nx "('yes' if d['ask']['run_id'] == d['run']['id'] else 'no') + '|' + str(d['ask']['step'])")"
 gfail intent "problem stated" "no Problem section"
@@ -167,8 +167,8 @@ assert_eq "next: config suggestions add their option" "Commit (Recommended)|Revi
 rm -f .temper/specs/demo/config-suggestions.json
 assert_eq "next: at Commit with no verdict, the commit gate runs" "work|gate commit" "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1]")"
 gpass commit
-assert_eq "next: a passed commit gate gives the commit steps: the report page first, ending with state clear and the report" \
-  "work|intent complete|report --html|state archive|state clear|report" \
+assert_eq "next: a passed commit gate gives the commit steps: the report page first, ending with the report and then state clear" \
+  "work|intent complete|report --html|state archive|report|state clear" \
   "$(nx "s = d['steps']; '|'.join([d['action'], s[0].split('temper ', 1)[1], s[2].split('temper ', 1)[1], s[3].split('temper ', 1)[1], s[-2].split('temper ', 1)[1], s[-1].split('temper ', 1)[1]])")"
 gfail commit "review gate" "FAIL, no override recorded"
 assert_eq "next: a failed commit gate asks to override the failed stages, with a reason" \

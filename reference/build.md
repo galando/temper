@@ -13,7 +13,7 @@ no `AskUserQuestion` gate, return the summary, the orchestrator owns it. Load `t
 Prerequisites/blast-radius section, active packs' `rules.md` (project `.claude/packs/`
 shadows global `~/.claude/packs/` shadows the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept
 where `phases` is `all` or contains `build`), and the project's `.claude/packs/stacks/{stack}.md` if
-present. The run is on its feature branch already: leaving Plan creates it.
+present. The run is on its feature branch already: leaving Intent creates it (or switches to it), before the first commit of the run.
 
 ## Execute Tasks in Order
 

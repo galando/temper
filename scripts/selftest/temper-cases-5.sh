@@ -416,7 +416,11 @@ d = json.load(open('.temper/groups.json'))
 d['groups']['G1']['gate'] = {'verdict': 'PASS'}
 json.dump(d, open('.temper/groups.json', 'w'))
 PY
-assert_exit "group start: once G1's gate passed, G2 starts" 0 "$TEMPER" group start G2
+out="$("$TEMPER" group start G2 2>&1)"; rc=$?
+assert_eq "group start: G1's gate passed but the person has not continued it: G2 waits (a Change at G1 would rerun its base)" "1|1|no" \
+  "$rc|$(printf '%s' "$out" | grep -c 'has not continued')|$([[ -d .claude/worktrees/temper-demo-G2 ]] && echo yes || echo no)"
+"$TEMPER" group continue G1 >/dev/null 2>&1
+assert_exit "group start: once G1's gate passed and the person continued it, G2 starts" 0 "$TEMPER" group start G2
 assert_eq "group start: the dependent worktree holds the file G1 committed" "g1work" "$(cat .claude/worktrees/temper-demo-G2/g1.txt 2>/dev/null)"
 assert_eq "group start: the dependent base is a merge of the feature HEAD and G1" "2" \
   "$(git -C .claude/worktrees/temper-demo-G2 rev-list --parents -n 1 "$(sw_field G2 base_sha)" | awk '{print NF-1}')"

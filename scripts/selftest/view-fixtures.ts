@@ -4763,8 +4763,8 @@ export const VIEWS: Record<string, unknown> = {
     "/plugin/scripts/temper state archive",
     "git add -- .temper/specs/pw/",
     "git commit -m '{a conventional commit message for the feature}'",
-    "/plugin/scripts/temper state clear",
-    "/plugin/scripts/temper report"
+    "/plugin/scripts/temper report",
+    "/plugin/scripts/temper state clear"
    ]
   },
   "plan": {
@@ -6856,6 +6856,7 @@ export const VIEWS: Record<string, unknown> = {
     {
      "calls": [
       "/plugin/scripts/temper override intent --reason '{reason}'",
+      "git checkout -b feature/pw",
       "/plugin/scripts/temper intent accept",
       "git add -- .temper/specs/pw/",
       "git commit -m \"docs(intent): accept pw\"",
@@ -7141,12 +7142,13 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
+      "git checkout -b feature/pw",
       "/plugin/scripts/temper intent accept",
       "git add -- .temper/specs/pw/",
       "git commit -m \"docs(intent): accept pw\"",
       "/plugin/scripts/temper state advance intent_complete plan"
      ],
-     "description": "Accept intent.md, commit it, and start Plan.",
+     "description": "Accept intent.md, commit it on the run's branch, and start Plan.",
      "label": "Continue to Plan (Recommended)",
      "move": "approve"
     },
@@ -7177,7 +7179,7 @@ export const VIEWS: Record<string, unknown> = {
     "multiSelect": false,
     "options": [
      {
-      "description": "Accept intent.md, commit it, and start Plan.",
+      "description": "Accept intent.md, commit it on the run's branch, and start Plan.",
       "label": "Continue to Plan (Recommended)"
      },
      {
@@ -9488,8 +9490,113 @@ export const VIEWS: Record<string, unknown> = {
  },
  "review-pass": {
   "ask": {
+   "accept": {
+    "options": [
+     {
+      "calls": [
+       "/plugin/scripts/temper evidence accept --stage review --id 1 --reason '{reason}'",
+       "/plugin/scripts/temper gate review"
+      ],
+      "description": "src/app.ts:12 the token never expires",
+      "label": "Accept finding 1",
+      "move": "accept",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "It is not a real issue"
+        },
+        {
+         "description": "",
+         "label": "I accept the risk"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Accept finding 1. What is the reason?"
+      }
+     },
+     {
+      "calls": [
+       "/plugin/scripts/temper evidence accept --stage review --id 2 --reason '{reason}'",
+       "/plugin/scripts/temper gate review"
+      ],
+      "description": "src/mail.ts:4 the subject is not localized",
+      "label": "Accept finding 2",
+      "move": "accept",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "It is not a real issue"
+        },
+        {
+         "description": "",
+         "label": "I accept the risk"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Accept finding 2. What is the reason?"
+      }
+     },
+     {
+      "calls": [],
+      "description": "Back to the Review question.",
+      "do": "Ask the Review question again.",
+      "label": "Cancel",
+      "move": null
+     }
+    ],
+    "question": {
+     "header": "Temper gate",
+     "multiSelect": false,
+     "options": [
+      {
+       "description": "src/app.ts:12 the token never expires",
+       "label": "Accept finding 1"
+      },
+      {
+       "description": "src/mail.ts:4 the subject is not localized",
+       "label": "Accept finding 2"
+      },
+      {
+       "description": "Back to the Review question.",
+       "label": "Cancel"
+      }
+     ],
+     "question": "Review: which finding do you accept?"
+    },
+    "run_id": "run-pw",
+    "stage": "review",
+    "step": 3
+   },
    "more": {
     "options": [
+     {
+      "calls": [],
+      "description": "Keep a finding as it is, with your reason.",
+      "do": "Ask the accept question.",
+      "label": "Accept a finding",
+      "move": null
+     },
+     {
+      "calls": [],
+      "description": "Stress test the change.",
+      "do": "Use the grill-me skill on this stage's work, then ask this question again.",
+      "label": "Grill Me",
+      "move": null
+     },
      {
       "calls": [],
       "description": "Walk through the change.",
@@ -9509,6 +9616,14 @@ export const VIEWS: Record<string, unknown> = {
      "header": "Temper gate",
      "multiSelect": false,
      "options": [
+      {
+       "description": "Keep a finding as it is, with your reason.",
+       "label": "Accept a finding"
+      },
+      {
+       "description": "Stress test the change.",
+       "label": "Grill Me"
+      },
       {
        "description": "Walk through the change.",
        "label": "Teach Me"
@@ -9534,6 +9649,30 @@ export const VIEWS: Record<string, unknown> = {
      "move": "advance"
     },
     {
+     "calls": [
+      "/plugin/scripts/temper state loop review build --reason '{reason}'"
+     ],
+     "description": "Do Build again; the stages after it are redone too.",
+     "label": "Loop back to Build",
+     "move": "back",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "The check found a real problem"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Loop back to Build. What is the reason?"
+     }
+    },
+    {
      "calls": [],
      "description": "Check the changed modules' depth, then come back here.",
      "do": "Run the module depth analysis of /plugin/reference/architecture-depth.md on the changed files, add its [ARCH-DEPTH] findings to the summary, then ask this question again.",
@@ -9542,14 +9681,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Stress test the change.",
-     "do": "Use the grill-me skill on this stage's work, then ask this question again.",
-     "label": "Grill Me",
-     "move": null
-    },
-    {
-     "calls": [],
-     "description": "Teach Me, Save for later",
+     "description": "Accept a finding, Grill Me, Teach Me, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -9564,15 +9696,15 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Continue to Check (Recommended)"
      },
      {
+      "description": "Do Build again; the stages after it are redone too.",
+      "label": "Loop back to Build"
+     },
+     {
       "description": "Check the changed modules' depth, then come back here.",
       "label": "Architecture Depth Review"
      },
      {
-      "description": "Stress test the change.",
-      "label": "Grill Me"
-     },
-     {
-      "description": "Teach Me, Save for later",
+      "description": "Accept a finding, Grill Me, Teach Me, Save for later",
       "label": "More options"
      }
     ],

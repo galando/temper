@@ -64,6 +64,13 @@ project below the top, or a code file moved into the spec folder, is gated. A pr
 character keeps its run files out of `git status`. After Keep the commits, the next step merges the groups again, and
 Take the commits out is offered only for the newest commits of the branch.
 
+**Live run fixes.** A live run of the release candidate found that the accepted intent was committed on the branch the
+person was on (often main): leaving Intent now switches to the run's branch, or makes it, before that commit. A group
+that builds on another starts only after the person's Continue of it (`temper group start` refuses before that). A
+passed Review with open findings below the blocking severity offers Loop back to Build and Accept a finding. The end of
+the run prints the report before it clears the run state, and clearing it leaves an unchanged gate ledger as it is, so
+the commit leaves the spec folder clean. The Check marker of the tests reads no scenario row.
+
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.
 

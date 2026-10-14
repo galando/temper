@@ -39,8 +39,8 @@ assert_eq "round 4, 6: a Test command changed after the plan gate stops the firs
 setup; rm -f .temper/build-state.json   # the earlier run is over: its spec is committed, no run is active
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm "the spec of an earlier run" >/dev/null 2>&1
 "$TEMPER" state init demo --enter check >/dev/null 2>&1; gpass intent
-assert_eq "round 4, 7: a walked Intent whose spec is committed and accepted makes no empty commit" "intent accept|0|state advance intent_complete plan" \
-  "$(nx "o = d['ask']['options'][0]; c = o['calls']; c[0].split('temper ', 1)[1] + '|' + str(sum(1 for x in c if x.startswith('git commit'))) + '|' + c[-1].split('temper ', 1)[1]")"
+assert_eq "round 4, 7: a walked Intent whose spec is committed and accepted makes no empty commit" "git checkout -b feature/demo|intent accept|0|state advance intent_complete plan" \
+  "$(nx "o = d['ask']['options'][0]; c = o['calls']; c[0] + '|' + c[1].split('temper ', 1)[1] + '|' + str(sum(1 for x in c if x.startswith('git commit'))) + '|' + c[-1].split('temper ', 1)[1]")"
 printf '\nA note.\n' >> .temper/specs/demo/intent.md
 assert_eq "round 4, 7: with a change in the spec folder the approval commits it" "1" \
   "$(nx "sum(1 for x in d['ask']['options'][0]['calls'] if x.startswith('git commit'))")"
@@ -253,3 +253,111 @@ git init -q . 2>/dev/null; git add -A >/dev/null 2>&1; git -c user.email=t@t -c 
 assert_eq "re-audit: a Status that is not exactly accepted is rewritten by the accept, so the approval commits it" "1" \
   "$(nx "sum(1 for c in d['ask']['options'][0]['calls'] if c.startswith('git commit'))")"
 rm -rf .git
+
+# --- live run of the release candidate: the first commit goes to the run's branch ---
+setup; git init -q . 2>/dev/null; git checkout -q -B main 2>/dev/null
+sed -i 's/^\*\*Status:\*\* accepted$/**Status:** draft/' .temper/specs/demo/intent.md   # a new intent: the accept changes it
+git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm base >/dev/null 2>&1
+rm -f .temper/build-state.json; "$TEMPER" state init demo >/dev/null 2>&1; gpass intent
+CALLS="$(nx "'\n'.join(d['ask']['options'][0]['calls'])")"
+assert_eq "live run: Continue to Plan on main switches to the run's branch before the intent's commit" "git checkout -b feature/demo|1" \
+  "$(head -1 <<<"$CALLS")|$(grep -c '^git commit' <<<"$CALLS")"
+while IFS= read -r c; do eval "$c" >/dev/null 2>&1; done <<<"$CALLS"
+assert_eq "live run: the intent's commit is on feature/demo, and main has none" "feature/demo|docs(intent): accept demo|base" \
+  "$(git branch --show-current)|$(git log -1 --format=%s feature/demo)|$(git log -1 --format=%s main)"
+gpass plan
+assert_eq "live run: on the run's branch already, leaving Plan switches nothing" "0" \
+  "$(nx "sum(1 for c in d['ask']['options'][0]['calls'] if c.startswith('git checkout'))")"
+git checkout -q main 2>/dev/null; rm -rf .git
+
+# --- live run: a group that builds on another starts after the person's Continue of it ---
+r5_two_groups() { # r4_grouped with a second group G2 that depends on G1, through G1's group gate
+  cd "$WORKDIR" || exit 1
+  rm -rf .git src tests stray.txt
+  setup; rm -f .temper/groups.json
+  git checkout -q -b feature/demo 2>/dev/null || git checkout -q feature/demo
+  mkdir -p src tests; echo 'echo base' > src/parser.sh; echo 'echo p' > src/printer.sh
+  cat > .temper/specs/demo/tasks.md <<'TASKS'
+# Tasks: demo
+
+**Integration:** `bash tests/parser_test.sh`
+
+## Group G1: Parser
+**Depends:** none
+**Validate:** `bash tests/parser_test.sh`
+**Context:**
+The parser group.
+
+### Task 1: parse
+**File:** `src/parser.sh`, `tests/parser_test.sh`
+**Depends:** none
+**Test:** `bash tests/parser_test.sh`
+**Cases:**
+- `parse` prints `two`
+- nothing else is printed
+- [ ] done
+
+## Group G2: Printer
+**Depends:** G1
+**Validate:** `true`
+**Context:**
+The printer group.
+
+### Task 2: print
+**File:** `src/printer.sh`
+**Depends:** none
+**Test:** `true`
+**Cases:**
+- it prints
+- it prints once
+- [ ] done
+TASKS
+  git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm base >/dev/null 2>&1
+  gpass intent plan
+  "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+  "$TEMPER" group start G1 >/dev/null 2>&1; "$TEMPER" task start 1 >/dev/null 2>&1
+  local wt; wt="$PWD/.claude/worktrees/temper-demo-T1"; mkdir -p "$wt/tests"
+  printf 'out=$(bash src/parser.sh)\n[ "$out" = "two" ] || { echo "assert failed: $out"; exit 1; }\n' > "$wt/tests/parser_test.sh"
+  echo 'echo one' > "$wt/src/parser.sh"; "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+  echo 'echo two' > "$wt/src/parser.sh"; "$TEMPER" task test 1 --phase green >/dev/null 2>&1
+  "$TEMPER" task gate 1 --model haiku >/dev/null 2>&1; "$TEMPER" group gate G1 >/dev/null 2>&1
+}
+r5_two_groups
+assert_eq "live run: G1 passed its check: next asks the person about G1 and starts no G2" "ask|Group G1 (Parser) passed its check. Continue?|0" \
+  "$(nx "d['action'] + '|' + d['ask']['question']['question'] + '|' + str(sum(1 for c in d.get('calls') or [] if 'group start G2' in c))")"
+out="$("$TEMPER" group start G2 2>&1)"; rc=$?
+assert_eq "live run: group start G2 before the Continue of G1 is refused" "1|1" "$rc|$(grep -c 'has not continued' <<<"$out")"
+"$TEMPER" group continue G1 >/dev/null 2>&1
+assert_eq "live run: after the Continue, next starts G2" "work|1" \
+  "$(nx "d['action'] + '|' + str(sum(1 for c in d.get('calls') or [] if 'group start G2' in c))")"
+rm -rf .git src tests
+
+# --- live run: a passed Review with open findings below the blocking severity can loop them back to Build ---
+fresh; _walk_to_commit >/dev/null 2>&1; fresh
+gpass intent plan build
+for s in intent_complete:plan plan_complete:build build_complete:review; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
+"$TEMPER" evidence add --stage review --claim 'src/a.ts:3 a name that misleads' --severity low --label HEURISTIC >/dev/null 2>&1
+"$TEMPER" evidence add --stage review --claim 'review completed' --label HEURISTIC >/dev/null 2>&1
+gpass review
+assert_eq "live run: the passed Review question offers Loop back to Build, and Accept a finding under More options" \
+  "ask|Continue to Check (Recommended)|Loop back to Build|Architecture Depth Review|More options|Accept a finding|1" \
+  "$(nx "q = d['ask']; '|'.join([d['action']] + [o['label'] for o in q['question']['options']] + [q['more']['question']['options'][0]['label'], str(len(q['accept']['question']['options']) - 1)])")"
+
+# --- live run: the end of the run leaves the committed spec folder as it is, and the report prints first ---
+setup; git init -q . 2>/dev/null; git checkout -q -B feature/demo 2>/dev/null
+"$TEMPER" evidence add --stage build --claim "tests" --cmd "true" --exit 0 --phase green --label PROVEN >/dev/null 2>&1
+"$TEMPER" evidence add --stage build --claim "lint" --cmd "true" --exit 0 --label HEURISTIC >/dev/null 2>&1
+gpass commit; "$TEMPER" state archive >/dev/null 2>&1
+git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm "the change" >/dev/null 2>&1
+# the commit hook runs the commit gate again: the same verdict, a new time
+python3 -c "import json; p='.temper/gates.json'; d=json.load(open(p)); d['commit']['ts']='2099-01-01T00:00:00Z'; json.dump(d, open(p, 'w'))"
+"$TEMPER" state clear >/dev/null 2>&1
+assert_eq "live run: state clear after the commit leaves the committed gate ledger unchanged" "" \
+  "$(git status --porcelain -- .temper/specs/demo/gate-ledger.json)"
+rm -rf .git
+
+# --- live run: a scenario's trace row is no Check marker of the tests ---
+fresh
+"$TEMPER" evidence add --stage check --scenario first --claim 'scenario: first -> tests/test_a.py:test_first (3 tests)' --exit 0 >/dev/null 2>&1
+assert_eq "live run: the tests marker of the view reads no scenario row" "none" \
+  "$(vw "next(m['state'] for m in d['check_markers'] if m['name'] == 'tests')")"

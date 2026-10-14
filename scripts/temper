@@ -1109,15 +1109,24 @@ for stage, ledger in sorted(zip(pairs[0::2], pairs[1::2])):
     if rows:
         evidence[stage] = {'rows': len(rows),
                            'labels': {l: sum(1 for e in rows if e.get('label') == l)
-                                      for l in {e.get('label') for e in rows if e.get('label')}}}
+                                      for l in sorted({e.get('label') for e in rows if e.get('label')})}}
 doc = {'gates': gates, 'overrides': overrides, 'evidence': evidence, 'archived': ts}
 if grouped:
     doc['grouped'] = json.loads(grouped)
 if usage:
     doc['usage'] = json.loads(usage)
-with open(out_f, 'w') as fh:
-    json.dump(doc, fh, indent=2)
-    fh.write('\n')
+# The same record but for its times (state clear after the commit archives again): the committed file stays as it is,
+# so the commit does not leave the spec folder changed.
+def bare(o):
+    if isinstance(o, dict):
+        return {k: bare(v) for k, v in o.items() if k not in ('archived', 'ts')}
+    if isinstance(o, list):
+        return [bare(v) for v in o]
+    return o
+if bare(load(out_f, None)) != bare(doc):
+    with open(out_f, 'w') as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write('\n')
 PY
     [[ -f "$out" ]] && { echo "$out"; return 0; }
   fi
@@ -2245,15 +2254,23 @@ PY
     echo "FAIL: group start runs on the run's feature branch '$feature' (current branch: '${cur:-none}')" >&2
     return 1
   fi
-  local d
+  local d dv
   for d in $deps; do
-    if [[ "$(python3 -c "
+    # The group it builds on passed its check and the person chose Continue there: a Change at that group reruns work
+    # this one would build on.
+    dv="$(python3 -c "
 import json, sys
 try:
-    print(((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {}).get('gate', {}).get('verdict', ''))
+    g = ((json.load(open(sys.argv[1])).get('groups') or {}).get(sys.argv[2]) or {})
+    print((g.get('gate') or {}).get('verdict', '') + ('|confirmed' if g.get('confirmed') else ''))
 except Exception:
-    print('')" "$GROUPS_FILE" "$d")" != "PASS" ]]; then
+    print('')" "$GROUPS_FILE" "$d")"
+    if [[ "${dv%%|*}" != "PASS" ]]; then
       echo "FAIL: $g depends on $d, whose group gate has not passed" >&2
+      return 1
+    fi
+    if [[ "$dv" != *"|confirmed" ]]; then
+      echo "FAIL: $g depends on $d, which the person has not continued yet (the Continue at its group question: temper group continue $d)" >&2
       return 1
     fi
   done
