@@ -292,8 +292,9 @@ class Builder:
         """Accept the intent (when there is one, and it is not accepted yet the accept changes it), commit, advance."""
         r = self.r
         has = bool(r.intent)
-        m = re.search(r"^\*\*Status:\*\*\s*(\w+)", r.intent, re.M)
-        accepts = has and not (m and m.group(1).lower() in ("accepted", "completed"))
+        # The whole value, as `temper intent accept` reads it: only `accepted` or `completed` leaves the file unchanged.
+        m = re.search(r"^\*\*Status:\*\*(.*)$", r.intent, re.M)
+        accepts = has and not (m and m.group(1).strip().lower() in ("accepted", "completed"))
         return ([self.c("intent accept")] if has else []) + self.spec_commit("docs(intent): accept %s" % r.slug, changes=accepts) + \
                [self.c("state advance intent_complete plan")]
 
@@ -599,24 +600,46 @@ class Builder:
         foreign = integ.get("foreign") if integ.get("verdict") == "FAIL" else None
         if not isinstance(foreign, dict) or not foreign:
             return None
-        gid = sorted(foreign)[0]
-        shas = [x for x in foreign.get(gid) or [] if isinstance(x, str)]
-        if not shas:
-            return None
+        again = [self.c("integrate"), self.c("gate build")]
+        branches = (r.groups.get("groups") or {})
+        left = {}
+        for g in sorted(foreign):
+            # A commit the person kept already (an override) or one no longer on the group's branch is no question: the
+            # next integrate reads the branch again.
+            kept = {str(o.get("stage", "")).split(":", 2)[2] for o in r.overrides
+                    if isinstance(o, dict) and str(o.get("stage", "")).startswith("foreign-commit:%s:" % g)}
+            on = set(git("rev-list", "temper/%s/%s" % (r.slug, g)).split())
+            shas = [x for x in foreign.get(g) or [] if isinstance(x, str) and x not in kept and (not on or x in on)]
+            if shas:
+                left[g] = shas
+        if not left:
+            return {"action": "work", "stage": "build", "calls": again, "agents": [],
+                    "say": "The commits the CLI did not make were kept or taken out: the groups are merged again."}
+        gid = sorted(left)[0]
+        shas = left[gid]
         csv = ",".join(x[:7] for x in shas)
         if r.armed():
             return {"action": "auto", "stage": "build",
                     "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote("group %s's branch holds commits the CLI did not make: %s" % (gid, csv)))],
                     "say": "Group %s holds commits the CLI did not make; the armed run parks for you." % gid}
-        wt = ((r.groups.get("groups") or {}).get(gid) or {}).get("worktree") or ""
-        again = [self.c("integrate"), self.c("gate build")]
-        out = [self.opt("Take the commits out (Recommended)", "Remove them from the group's branch, newest first; the groups are merged again.", move="redo",
-                        calls=["git -C %s rebase --autostash --onto %s~1 %s" % (shlex.quote(wt), x[:7], x[:7]) for x in shas] + again),
-               self.opt("Keep the commits", "Keep them knowingly, with your reason (recorded like a skip).", move="keep",
-                        calls=[self.c("group reopen %s --accept-foreign %s --reason '{reason}'" % (gid, csv))] + again,
-                        reason=["The commits are right", "I accept the risk"]),
-               self.save()]
-        text = "Group %s's branch holds commits the CLI did not make (%s). Take them out, or keep them?" % (gid, csv)
+        wt = (branches.get(gid) or {}).get("worktree") or ""
+        # They are taken out newest first, each one by a rebase of the group's worktree onto its parent. Only when they
+        # are the newest commits of that branch: a rebase would write the CLI's own commits above them again, as commits
+        # the CLI did not make. Never with no worktree (`git -C ''` is the project's own branch).
+        tip = git("-C", wt, "rev-list", "--first-parent", "-n", str(len(shas)), "HEAD").split() if wt and os.path.isdir(wt) else []
+        out = []
+        if tip and set(tip) == set(shas):
+            out.append(self.opt("Take the commits out (Recommended)", "Remove them from the group's branch, newest first; the groups are merged again.", move="redo",
+                                calls=["git -C %s rebase --autostash --onto %s~1 %s" % (shlex.quote(wt), x[:7], x[:7]) for x in shas] + again))
+        out += [self.opt("Keep the commits", "Keep them knowingly, with your reason (recorded like a skip).", move="keep",
+                         calls=[self.c("group reopen %s --accept-foreign %s --reason '{reason}'" % (gid, csv))] + again,
+                         reason=["The commits are right", "I accept the risk"]),
+                self.save()]
+        if len(out) == 3:
+            text = "Group %s's branch holds commits the CLI did not make (%s). Take them out, or keep them?" % (gid, csv)
+        else:
+            text = ("Group %s's branch holds commits the CLI did not make (%s), below the CLI's own commits, so they cannot be "
+                    "taken out here. Keep them, or save the run and take them out by hand?" % (gid, csv))
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=out)}
 
     def group_question(self, g):

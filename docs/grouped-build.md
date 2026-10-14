@@ -102,7 +102,10 @@ To keep groups but run the tasks on another model (no Haiku), set `task-model: s
    kept. When one is not, the orchestrator asks you: take the commits out of the group's branch
    (newest first; the groups are merged again), or keep them with your reason
    (`temper group reopen G1 --accept-foreign <sha> --reason '<why>'`, with no task: nothing runs
-   again).
+   again). Take them out is offered only when they are the newest commits of the branch (a rebase
+   would write the CLI's own commits above them again, as commits it did not make); below those,
+   keep them or save the run and take them out by hand. Once every one is kept or gone, the next
+   step merges the groups again.
    Review and Check then run as today, and the final feature commit still goes through
    `temper gate commit` and a human.
 

@@ -4,7 +4,7 @@
 //  - the temper CLI calls written out (`scripts/temper ...` or `temper ...`), so a call only the person may cause needs
 //    the person's answer;
 //  - a commit that switches the native pre-commit hook off (`--no-verify`, `-n`), a change of `core.hooksPath`, or a
-//    config git is handed that can do either (an included file, an alias);
+//    config git is handed that can do either (an included file, an alias, a home folder);
 //  - the paths the command writes: a redirect's target, and the files a writing program names (rm, mv, cp, tee,
 //    sed -i and the like). The guard holds them to the same list of protected files as the editing tools.
 // A program is named by its last path segment, without regard to case (macOS and Windows file systems ignore it), and
@@ -21,13 +21,16 @@ export type ShellRead = {
   hooksPath: boolean
   // The paths the command writes, as written.
   writes: string[]
-  // The last word of a copy, move or link (`cp a b DIR`): when it is a folder the files land inside it, so the folder
-  // itself is not replaced. Each one is in `writes` too.
+  // The last word of a copy, move or link (`cp a b DIR`), kept apart from `writes`: when it is a folder the files land
+  // inside it and the folder itself is not replaced; when it is a file it is written.
   targets: string[]
   // Where the files of such a command land when its last word is a folder (`DIR/a`, `DIR/b`).
   landings: string[]
   // A word that expands to more words than the guard reads (a brace list): what it writes is not known.
   tooMany: boolean
+  // A temper call with an unquoted glob in a word before its reason (`temper o?erride ...`): bash may expand it to a
+  // file's name, so the call it makes is not known.
+  globCall: boolean
 }
 
 // A quoted character that bash does not expand (a brace list's braces and commas, a glob's characters) is kept apart
@@ -253,28 +256,47 @@ const base = (word: string): string => word.split('/').pop() ?? ''
 function nameIs(word: string, name: string): boolean {
   const b = base(word)
   if (!/[*?[]/.test(b)) return unmask(b).toLowerCase() === name
-  if (unmask(b.replace(/\[[^\]]*\]|[*?]/g, '')) === '') return false
   let re = ''
+  let literal = 0
   for (let i = 0; i < b.length; i++) {
     const c = b[i] as string
     if (c === '*') re += '.*'
     else if (c === '?') re += '.'
-    else if (c === '[') {
-      const close = b.indexOf(']', i + 2)
-      if (close < 0) {
-        re += '\\['
-        continue
-      }
-      const set = unmask(b.slice(i + 1, close)).replace(/^!/, '^').replace(/\\/g, '\\\\').replace(/\]/g, '\\]')
-      re += `[${set}]`
+    else if (c === '[' && bracketEnd(b, i) > 0) {
+      const close = bracketEnd(b, i)
+      const inner = b.slice(i + 1, close)
+      // A class (`[[:alpha:]]`), an equivalence class or a collating symbol in it: read as any one character.
+      if (/\[[:=.]/.test(inner)) re += '.'
+      else re += `[${unmask(inner).replace(/^!/, '^').replace(/\\/g, '\\\\').replace(/\]/g, '\\]')}]`
       i = close
-    } else re += unmask(c).replace(/[.+^${}()|\\[\]]/g, '\\$&')
+    } else {
+      literal++
+      re += unmask(c).replace(/[.*+?^${}()|\\[\]]/g, '\\$&')
+    }
   }
+  if (literal === 0) return false
   try {
     return new RegExp(`^${re}$`, 'i').test(name)
   } catch {
     return false
   }
+}
+
+// Where the bracket expression that opens at `i` closes, or -1: a `]` first in it (after any `!` or `^`) is one of its
+// characters, and so is a `]` inside `[:...:]`, `[=...=]` or `[. ... .]`.
+function bracketEnd(b: string, i: number): number {
+  let j = i + 1
+  if (b[j] === '!' || b[j] === '^') j++
+  if (b[j] === ']') j++
+  for (; j < b.length; j++) {
+    const kind = b[j] === '[' ? b[j + 1] : undefined
+    if (kind === ':' || kind === '=' || kind === '.') {
+      const end = b.indexOf(`${kind}]`, j + 2)
+      if (end < 0) return -1
+      j = end + 1
+    } else if (b[j] === ']') return j
+  }
+  return -1
 }
 
 // The temper script: a word naming it that sets no variable.
@@ -342,22 +364,21 @@ function sequence(text: string): string[] | null {
   return out
 }
 
-// A word as bash expands its brace lists, without the words it repeats; null when it expands to more than the cap.
+// A word as bash expands its brace lists, each word as many times as bash gives it (`-m {-n,-n}` is `-m -n -n`); null
+// when it expands to more than the cap.
 function braces(word: string): string[] | null {
-  const out = new Set<string>()
-  const seen = new Set<string>()
+  const out: string[] = []
+  let steps = 0
   const expand = (w: string): boolean => {
-    if (seen.has(w)) return true
-    seen.add(w)
-    if (seen.size > BRACE_CAP * 8) return false
+    if (++steps > BRACE_CAP * 8) return false
     const list = braceList(w)
     if (list === null) {
-      out.add(w)
-      return out.size <= BRACE_CAP
+      out.push(w)
+      return out.length <= BRACE_CAP
     }
     return list.alts.every(alt => expand(`${list.pre}${alt}${list.post}`))
   }
-  return expand(word) ? [...out] : null
+  return expand(word) ? out : null
 }
 
 type Written = { writes: string[]; targets: string[]; landings: string[] }
@@ -432,15 +453,17 @@ function programWrites(words: string[], at: number, cmd: string, known: (word: s
     return out
   }
   if (WRITERS.has(cmd)) {
-    out.writes.push(...(TO_LAST.has(cmd) ? args.slice(-1) : args))
-    // A copy, move or link into a folder (`cp a .temper/specs/pw/`): the files land in it, and it is not replaced. rsync
+    // A copy, move or link into a folder (`cp a .temper/specs/pw/`): the files land in it, and it is not replaced. Its
+    // last word is a target, not a write, so that another statement's write of the same path is still read as one. rsync
     // with a source that ends in `/` copies that folder's files, whose names the guard does not know.
     const contents = cmd === 'rsync' && args.slice(0, -1).some(a => a.endsWith('/'))
+    const sources = cmd === 'mv' ? args.slice(0, -1) : []
     if ((TO_LAST.has(cmd) || cmd === 'mv') && args.length >= 2 && !noTarget && !contents) {
       const target = args[args.length - 1] as string
+      out.writes.push(...sources)
       out.targets.push(target)
       out.landings.push(...args.slice(0, -1).map(a => `${target.replace(/\/+$/, '')}/${lastName(a)}`))
-    }
+    } else out.writes.push(...(TO_LAST.has(cmd) ? args.slice(-1) : args))
     return out
   }
   // sed -i, perl -i: they rewrite the files they are given.
@@ -498,6 +521,7 @@ function aliasBody(read: ShellRead, body: string): void {
   read.noVerify ||= sub.noVerify
   read.hooksPath ||= sub.hooksPath
   read.tooMany ||= sub.tooMany
+  read.globCall ||= sub.globCall
   read.calls.push(...sub.calls)
   read.writes.push(...sub.writes)
   read.targets.push(...sub.targets)
@@ -517,7 +541,11 @@ function configPair(read: ShellRead, pair: string, known: boolean): void {
 }
 
 export function readShell(command: string): ShellRead {
-  const read: ShellRead = { calls: [], noVerify: false, hooksPath: false, writes: [], targets: [], landings: [], tooMany: false }
+  const read: ShellRead = { calls: [], noVerify: false, hooksPath: false, writes: [], targets: [], landings: [], tooMany: false, globCall: false }
+  // git reads the config of the home folder it is given (`HOME=/tmp/h git ci`, `$XDG_CONFIG_HOME/git/config`), which
+  // can hold an alias or a hooks path.
+  let home = false
+  let runsGit = false
   for (const raw of tokens(command)) {
     // Every word as bash expands its brace lists, so no list hides a program, a call or a path (`{git,commit}`). A word
     // past the cap is read as it is: it is refused when it holds a list of words (which could name a program) or when
@@ -545,10 +573,12 @@ export function readShell(command: string): ShellRead {
     // to git that way.
     for (const x of words) {
       if (!ASSIGNMENT.test(x)) continue
+      if (/^(?:HOME|XDG_CONFIG_HOME)=/.test(x)) home = true
       if (HOOKS_PATH.test(x)) read.hooksPath = true
       if (/^GIT_CONFIG(?:_[A-Z0-9_]*)?=/i.test(x) && /include(?:if\.[^=\s]*)?\.path|alias\.|^GIT_CONFIG(?:_GLOBAL|_SYSTEM)?=/i.test(x)) read.hooksPath = true
     }
     for (const gitAt of starts(masked, x => nameIs(x, 'git'))) {
+      runsGit = true
       const git = gitParts(words, gitAt)
       // `git -c core.hooksPath=...`, `git -c include.path=...`, `git -c alias.x=...`, `git --config-env ...`.
       if (git.opts.some(o => HOOKS_PATH.test(o))) read.hooksPath = true
@@ -577,8 +607,15 @@ export function readShell(command: string): ShellRead {
       }
     }
     // Every word that names the script starts a call: the words after it are the call's.
-    for (let i = 0; i < masked.length; i++) if (isScript(masked[i] as string)) read.calls.push(words.slice(i + 1))
+    for (let i = 0; i < masked.length; i++) {
+      if (!isScript(masked[i] as string)) continue
+      read.calls.push(words.slice(i + 1))
+      const rest = masked.slice(i + 1)
+      const reason = rest.findIndex(x => x === '--reason' || x.startsWith('--reason='))
+      if (rest.slice(0, reason < 0 ? rest.length : reason).some(x => /[*?]|\[.*\]/.test(x))) read.globCall = true
+    }
   }
+  if (home && runsGit) read.hooksPath = true
   return read
 }
 

@@ -113,6 +113,24 @@ while IFS= read -r c; do eval "$c" >/dev/null 2>&1; done <<<"$CALLS"
 assert_eq "round 4, 8: Take the commits out removes them, and the groups are merged without them" "PASS|0|1" \
   "$(python3 -c "import json; print(json.load(open('.temper/groups.json'))['integration']['verdict'])")|$([[ -e stray.txt ]] && echo 1 || echo 0)|$(grep -c 'echo two' src/parser.sh)"
 assert_exit "round 4, 8: a sha that is no such commit is refused" 1 "$TEMPER" group reopen G1 --accept-foreign 1234567 --reason x
+# Re-audit: a Keep whose integrate did not run (the session ended) is no dead end: next merges the groups again
+r4_grouped
+GW="$PWD/.claude/worktrees/temper-demo-G1"; echo stray > "$GW/stray.txt"
+git -C "$GW" add stray.txt >/dev/null 2>&1; git -C "$GW" -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm stray >/dev/null 2>&1
+"$TEMPER" integrate >/dev/null 2>&1; "$TEMPER" gate build >/dev/null 2>&1
+eval "$(nx "d['ask']['options'][1]['calls'][0].replace('{reason}', 'wanted')")" >/dev/null 2>&1
+assert_eq "re-audit: after Keep with no integrate, next merges the groups again (no question that only fails)" "work|integrate|gate build" \
+  "$(nx "d['action'] + '|' + '|'.join(c.split('temper ')[-1] for c in d['calls'])")"
+# Re-audit: a commit the CLI did not make below one it made cannot be taken out by a rebase (the CLI's own commit would be
+# written again as one it did not make): the question offers Keep and Save only
+r4_grouped
+GW="$PWD/.claude/worktrees/temper-demo-G1"; echo stray > "$GW/stray.txt"
+git -C "$GW" add stray.txt >/dev/null 2>&1; git -C "$GW" -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm stray >/dev/null 2>&1
+echo own > "$GW/own.txt"; git -C "$GW" add own.txt >/dev/null 2>&1; git -C "$GW" -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm own >/dev/null 2>&1
+python3 -c "import json, sys; p='.temper/groups.json'; d=json.load(open(p)); d.setdefault('cli_commits', []).append(sys.argv[1]); json.dump(d, open(p, 'w'))" "$(git -C "$GW" rev-parse HEAD)"
+"$TEMPER" integrate >/dev/null 2>&1; "$TEMPER" gate build >/dev/null 2>&1
+assert_eq "re-audit: a commit below the CLI's own is not offered for a rebase" "ask|Keep the commits|Save for later" \
+  "$(nx "d['action'] + '|' + '|'.join(o['label'] for o in d['ask']['question']['options'])")"
 
 # --- 9 to 11: the commit steps, the Commit stage, base_sha; and the low findings ---
 D9="$WORKDIR/r4-del"; rm -rf "$D9"; mkdir -p "$D9"
@@ -195,6 +213,11 @@ assert_eq "round 4, 3: the native hook gates the commit of a project below the t
 (cd "$N/packages/app" && git reset -q && mkdir -p .temper/specs/pw2 && echo '# x' > .temper/specs/pw2/intent.md && git add .temper/specs/pw2 \
   && git -c user.email=t@t -c user.name=t commit -qm "spec only") >/dev/null 2>&1; rc=$?
 assert_eq "round 4, 3: and lets its spec only commit through" "0|spec only" "$rc|$(git -C "$N" log --format=%s -1)"
+# Re-audit: a file moved out of the project below the top is a change of that project too (git reads a rename as one name)
+mkdir -p "$N/lib"; git -C "$N" mv packages/app/src/parser.sh lib/parser.sh >/dev/null 2>&1
+(cd "$N" && git -c user.email=t@t -c user.name=t commit -qm "move out") >/dev/null 2>&1; rc=$?
+assert_eq "re-audit: the native hook gates a file moved out of a project below the top" "1|spec only" "$rc|$(git -C "$N" log --format=%s -1)"
+git -C "$N" reset -q --hard >/dev/null 2>&1
 rm -rf "$N"
 
 # --- re-audit: a scenario's trace row is no test run ---
@@ -204,3 +227,29 @@ assert_eq "re-audit: a scenario row that names its test does not count as a pass
   "$("$TEMPER" gate check 2>/dev/null | grep -c '\[v\] tests pass')"
 "$TEMPER" evidence add --stage check --claim "tests" --cmd "pytest" --exit 0 >/dev/null 2>&1
 assert_eq "re-audit: the test run row does" "1" "$("$TEMPER" gate check 2>/dev/null | grep -c '\[v\] tests pass')"
+
+# --- re-audit: a code file moved into the spec folder is no artifact only commit ---
+setup
+git init -q . 2>/dev/null; mkdir -p src; echo 'x' > src/x.ts
+git add src/x.ts .temper/specs/demo/intent.md >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm base >/dev/null 2>&1
+git mv src/x.ts .temper/specs/demo/x.ts >/dev/null 2>&1
+assert_eq "re-audit: a rename into the spec folder is a deletion of the code file, so every gate applies" "0" \
+  "$("$TEMPER" gate commit 2>&1 | grep -c 'artifact-only commit')"
+git reset -q --hard >/dev/null 2>&1; rm -rf .git src
+
+# --- re-audit: a project folder whose name holds a glob character ---
+P6="$WORKDIR/r6-prefix"; rm -rf "$P6"; mkdir -p "$P6/pk[1]/app"
+( cd "$P6" && git init -q . && echo x > 'pk[1]/app/x.txt' && git add -A && git -c user.email=t@t -c user.name=t commit -qm base ) >/dev/null 2>&1
+(cd "$P6/pk[1]/app" && "$TEMPER" init) >/dev/null 2>&1
+assert_eq "re-audit: the run files of a project in pk[1]/app stay out of git status" "0" \
+  "$(git -C "$P6" status --porcelain --untracked-files=all | grep -c '\.temper/')"
+rm -rf "$P6"
+
+# --- re-audit: leaving Intent commits the accept whenever it changes the Status line ---
+setup; rm -f .temper/build-state.json
+sed -i 's/^\*\*Status:\*\* accepted$/**Status:** accepted (pending review)/' .temper/specs/demo/intent.md
+git init -q . 2>/dev/null; git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm "a committed spec" >/dev/null 2>&1
+"$TEMPER" state init demo --enter check >/dev/null 2>&1; gpass intent
+assert_eq "re-audit: a Status that is not exactly accepted is rewritten by the accept, so the approval commits it" "1" \
+  "$(nx "sum(1 for c in d['ask']['options'][0]['calls'] if c.startswith('git commit'))")"
+rm -rf .git

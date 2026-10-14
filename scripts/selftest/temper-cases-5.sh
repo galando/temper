@@ -1061,7 +1061,7 @@ setup; sw_setup >/dev/null 2>&1; setup; rm -f .temper/groups.json
 "$TEMPER" gate plan >/dev/null 2>&1; "$TEMPER" state archive >/dev/null 2>&1
 assert_eq "state archive: a run with no groups.json (a /temper:fix run) has no grouped block" "0" \
   "$(python3 -c "import json; print(1 if 'grouped' in json.load(open('.temper/specs/demo/gate-ledger.json')) else 0)" 2>/dev/null || echo 0)"
-for sub in 'schedule' 'group <start|gate|reopen|report>' 'task <start|show|test|gate>' 'integrate' 'model task' 'task-escalation'; do
+for sub in 'schedule' 'group <start|gate|reopen|continue>' 'group report' 'task <start|show|test|gate>' 'integrate' 'model task' 'task-escalation'; do
   assert_eq "help documents: $sub" "1" "$("$TEMPER" --help | grep -cF -- "$sub")"
 done
 assert_eq "header comment documents the grouped subcommands" "1|1|1|1" \

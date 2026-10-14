@@ -55,6 +55,15 @@ The commit step skips a file deleted in a commit. `gate build` wants the passing
 did not finish offers to run again; `config get fix.max-loops` prints the limit the loop keeps. The plan gate has no
 "Walk through step by step" option.
 
+**Re-audit fixes.** The guard judges a copy's target on its own, so a copy into `.temper/` no longer lets an
+`rm -rf .temper/` in the same command through; a brace list gives each word as many times as bash does (`-m {-n,-n}`);
+a glob with a class names a program (`/usr/bin/[[:alpha:]]it`); a command that runs git and sets `HOME` or
+`XDG_CONFIG_HOME` is refused, and so is a temper call with an unquoted glob in its words. A config suggestion may go
+into `.claude/AGENTS.md`. The native hook and the commit gate read a rename by both its names, so a file moved out of a
+project below the top, or a code file moved into the spec folder, is gated. A project folder whose name holds a glob
+character keeps its run files out of `git status`. After Keep the commits, the next step merges the groups again, and
+Take the commits out is offered only for the newest commits of the branch.
+
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.
 

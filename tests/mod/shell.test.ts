@@ -74,10 +74,14 @@ describe('the native hook', () => {
 
 describe('the paths a command writes', () => {
   test('a redirect, and the files a writing program names', () => {
-    expect(readShell('echo {} > a; ls >> b; rm -f c d; cp x y z; mv m n; tee t < i; sed -i s/a/b/ e; dd if=q of=r').writes).toEqual(['a', 'b', 'c', 'd', 'z', 'm', 'n', 't', 'e', 'r'])
+    // A copy's or a move's last word is a target (judged as a folder the files land in, or as the file written).
+    const r = readShell('echo {} > a; ls >> b; rm -f c d; cp x y z; mv m n; tee t < i; sed -i s/a/b/ e; dd if=q of=r')
+    expect(r.writes).toEqual(['a', 'b', 'c', 'd', 'm', 't', 'e', 'r'])
+    expect(r.targets).toEqual(['z', 'n'])
   })
   test('a read writes nothing', () => {
     expect(readShell('cat .temper/gates.json; grep x < .temper/gates.json; jq . .temper/gates.json; ls -la .temper').writes).toEqual([])
-    expect(readShell('cp .temper/gates.json /tmp/g; npm test 2>&1 | tail').writes).toEqual(['/tmp/g'])
+    expect(readShell('cp .temper/gates.json /tmp/g; npm test 2>&1 | tail').writes).toEqual([])
+    expect(readShell('cp .temper/gates.json /tmp/g; npm test 2>&1 | tail').targets).toEqual(['/tmp/g'])
   })
 })

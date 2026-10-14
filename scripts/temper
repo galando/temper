@@ -562,7 +562,7 @@ cmd_init() {
   # .gitignore), so a fresh project's working tree stays clean (autonomy refuses a dirty tree)
   local ex p pre
   # the patterns are anchored at the top of the repository: a project below it (a package of a monorepo) has its prefix
-  pre="$(_prefix)"
+  pre="$(_prefix_glob)"
   if ex="$(git rev-parse --git-common-dir 2>/dev/null)/info/exclude" && [[ "$ex" != "/info/exclude" ]]; then
     mkdir -p "$(dirname "$ex")" 2>/dev/null
     for p in build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
@@ -1019,7 +1019,7 @@ _groups_reset() { # F2: a loop back before Build ends the grouped run: groups.js
   while IFS=$'\t' read -r slug g wt branch; do
     [[ -n "$g" ]] || continue
     if [[ -n "$wt" && -d "$wt" ]]; then
-      local pre; pre="$(_prefix)"
+      local pre; pre="$(_prefix_re)"
       if [[ -n "$(git -C "$wt" status --porcelain=v1 2>/dev/null | cut -c4- | grep -v -e "^${pre}\.temper/" -e "^${pre}\.claude/worktrees/" -e '^\.temper/' -e '^\.claude/worktrees/')" ]]; then
         echo "WARN: $wt has uncommitted work; kept. Move it away (or remove it) before the re-planned run starts $g" >&2
         continue
@@ -2174,6 +2174,9 @@ PY
 # The project's folder from the top of its git repository (`packages/app/`), or "" at the top. A group or task worktree
 # is a checkout of the whole repository, so the project's files are under this prefix in it.
 _prefix() { git rev-parse --show-prefix 2>/dev/null || true; }
+# The prefix as text in a gitignore pattern (info/exclude), and in a grep pattern: a folder named `pk[1]` is that name.
+_prefix_glob() { _prefix | sed 's/[][\\*?]/\\&/g'; }
+_prefix_re() { _prefix | sed 's/[][\\.*^$]/\\&/g'; }
 # The project folder inside a worktree: <abs worktree>/<prefix>, without a trailing slash.
 _in_wt() { local p; p="$1/$(_prefix)"; echo "${p%/}"; }
 
@@ -2270,7 +2273,7 @@ except Exception:
     # the worktrees folder is local to this clone: info/exclude, never .gitignore
     local ex; ex="$(git rev-parse --git-common-dir)/info/exclude"
     mkdir -p "$(dirname "$ex")"
-    local pre; pre="$(_prefix)"
+    local pre; pre="$(_prefix_glob)"
     grep -qxF "/${pre}.claude/worktrees/" "$ex" 2>/dev/null || printf '/%s.claude/worktrees/\n' "$pre" >> "$ex"
     local wt_out
     if git show-ref --verify --quiet "refs/heads/$branch"; then
@@ -2381,7 +2384,7 @@ except Exception:
     # F4: Validate must run on what integrate merges: an uncommitted change to a tracked file (an agent's edit of
     # a file whose task already passed) is not on the group branch, so the gate refuses it and names the paths
     local dirty
-    local pre; pre="$(_prefix)"
+    local pre; pre="$(_prefix_re)"
     dirty="$(git -C "$(pwd -P)/$wt" status --porcelain=v1 --untracked-files=no 2>/dev/null | cut -c4- \
              | grep -v -e "^${pre}\.temper/" -e "^${pre}\.claude/worktrees/" -e '^\.temper/' -e '^\.claude/worktrees/' | head -20 | paste -sd, - | sed 's/,/, /g')"
     [[ -n "$dirty" ]] && reason="uncommitted changes in the group worktree, not on its branch: $dirty (revert them, or reopen the task that owns them)"
@@ -2790,7 +2793,7 @@ cmd_group() {
     gate) cmd_group_gate "$@" ;;
     reopen) cmd_group_reopen "$@" ;;
     report) cmd_group_report "$@" ;;
-    *) echo "FAIL: usage: temper group <start|gate|reopen|report> ..." >&2; return 1 ;;
+    *) echo "FAIL: usage: temper group <start|gate|reopen|continue|report> ..." >&2; return 1 ;;
   esac
 }
 
@@ -4460,10 +4463,11 @@ gate_commit() {
   # check have verdicts would make mid-run artifact commits impossible. Code commits
   # are untouched: one staged file outside .temper/specs/ and every gate below applies.
   local staged_all staged_specs
-  staged_all=$(git -C "$REPO_ROOT" diff --cached --name-only 2>/dev/null | grep -c .)
+  # --no-renames: a file moved into the spec folder is a deletion where it was too, and that is no artifact
+  staged_all=$(git -C "$REPO_ROOT" diff --cached --name-only --no-renames 2>/dev/null | grep -c .)
   # --relative names each staged file from the project folder (and leaves out one outside it), so a project below the
   # top of its repository has its spec folder at .temper/specs/ too
-  staged_specs=$(git -C "$REPO_ROOT" diff --cached --name-only --relative 2>/dev/null | grep -c '^\.temper/specs/')
+  staged_specs=$(git -C "$REPO_ROOT" diff --cached --name-only --no-renames --relative 2>/dev/null | grep -c '^\.temper/specs/')
   if [[ "${staged_all:-0}" -gt 0 && "$staged_all" -eq "${staged_specs:-0}" ]]; then
     reqs+=("$(_req "artifact-only commit" 1 "$staged_all staged file(s), all under .temper/specs/ — the artifact chain passes the fence; code commits still need every gate")")
     local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
@@ -4589,8 +4593,8 @@ print('yes' if any(o.get('stage') == sys.argv[2] for o in d) else 'no')
       local gspec; gspec="$(_spec_path "")"
       local gverdict
       gverdict="$( { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
-                       git -C "$REPO_ROOT" diff --name-only "$base_sha" 2>/dev/null; fi
-                     git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //; s/^"//; s/"$//'
+                       git -C "$REPO_ROOT" diff --name-only --no-renames "$base_sha" 2>/dev/null; fi
+                     git -C "$REPO_ROOT" -c status.renames=false status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //; s/^"//; s/"$//'
                    } | _project_names | sort -u | python3 -c "
 import json, sys
 plan = json.loads(sys.argv[1]); spec = sys.argv[2].rstrip('/')
@@ -4627,10 +4631,10 @@ else: print('PASS %d changed, all declared' % len(changed))
           if _glob_touch_match "$f" "$p"; then touched="$f matches $p"; fi
         done
       # The changed set the blast radius row reads: what changed since base_sha (grouped Build commits its work), and
-      # what is still uncommitted.
+      # what is still uncommitted; a rename by both its names, so a file moved out of a parked path still parks.
       done < <( { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
-                    git -C "$REPO_ROOT" -c core.quotePath=false diff --name-only "$base_sha" 2>/dev/null; fi
-                  git -C "$REPO_ROOT" -c core.quotePath=false status --porcelain 2>/dev/null | cut -c4- | sed 's/.* -> //'
+                    git -C "$REPO_ROOT" -c core.quotePath=false diff --name-only --no-renames "$base_sha" 2>/dev/null; fi
+                  git -C "$REPO_ROOT" -c core.quotePath=false -c status.renames=false status --porcelain 2>/dev/null | cut -c4- | sed 's/.* -> //'
                 } | _project_names | sort -u)
     fi
     if [[ -z "$touched" ]]; then
@@ -4877,7 +4881,8 @@ cmd_park() {
 
 # The setup a project still lacks, as the calls that make it (each is idempotent): the config, the .temper
 # scaffold, and the commit gate, which is in place when git's pre-commit hook is the kept Temper hook
-# (temper-gate/pre-commit in the git folder) and names this plugin's CLI. Prints one call per line.
+# (temper-gate/pre-commit in the git folder), names this plugin's CLI, and is of this version (it gates every
+# project the commit touches, reading a rename by both its names). Prints one call per line.
 _setup_calls() {
   [[ -f "$CONFIG_FILE" ]] || echo "mkdir -p .claude && cp $PLUGIN_ROOT/templates/temper.config.default .claude/temper.config"
   [[ -d "$TEMPER_DIR" && -f "$GATES_FILE" && -f "$OVERRIDES_FILE" ]] || echo "$PLUGIN_ROOT/scripts/temper init"
@@ -4886,7 +4891,7 @@ _setup_calls() {
   if [[ "$hook" != */temper-gate/pre-commit || ! -f "$hook" ]] \
      || [[ "$(sed -n 2p "$hook" 2>/dev/null)" != "# Temper native pre-commit hook"* ]] \
      || ! grep -qF "$PLUGIN_ROOT/scripts/temper" "$hook" 2>/dev/null \
-     || ! grep -q '^# Temper hook: every project the commit touches' "$hook" 2>/dev/null; then
+     || ! grep -qF '"--cached", "--name-only", "--no-renames"' "$hook" 2>/dev/null; then
     echo "bash $PLUGIN_ROOT/scripts/guards/install.sh"
   fi
 }

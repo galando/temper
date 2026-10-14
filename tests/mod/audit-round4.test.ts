@@ -119,3 +119,60 @@ describe('round 4: a project below the top of its git repository', () => {
     expect(isDeny(write('.claude/worktrees/temper-pw-G1/lib/shared.ts'))).toBe(true)
   })
 })
+
+// The re-audit of the round 4 fixes: each case below was reproduced against the guard and, for a commit past the hook,
+// against real bash, before it was fixed.
+describe('re-audit: a copy into a folder does not let another write of that folder through', () => {
+  for (const command of ['cp /dev/null .temper/ ; rm -rf .temper/', 'mv notes.md .temper/specs/pw/ && rm -rf .temper/specs/pw', 'cp a .temper/specs/pw/; rm -r .temper/specs/pw/']) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('review', command))).toBe(true))
+  }
+  test('a copy target that is a protected file is still refused, and mv still writes its sources', () => {
+    expect(isDeny(bash('review', 'cp /tmp/x .temper/gates.json'))).toBe(true)
+    expect(isDeny(bash('review', 'ln -s /tmp/x .temper/gates.json'))).toBe(true)
+    expect(isDeny(bash('review', 'mv .temper/gates.json /tmp/x'))).toBe(true)
+  })
+})
+
+describe('re-audit: a brace list gives each word as many times as bash does', () => {
+  test('the words it repeats are kept', () => {
+    expect(readShell('rm a{,}b').writes).toEqual(['ab', 'ab'])
+  })
+  for (const command of ['git commit -m {-n,-n}', 'git commit -m {--no-verify,--no-verify}', 'git commit -F {x,x} -n']) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+})
+
+describe('re-audit: a glob with a class names a program', () => {
+  for (const command of ['/usr/bin/[[:alpha:]]it commit -n -m x', '/usr/bin/g[[:lower:]]t commit --no-verify -m x', '/bin/[[:alpha:]]m .temper/gates.json']) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+  test('a glob of classes only has no literal text and names no program', () => {
+    expect(isDeny(bash('build', 'ls [[:alpha:]]* src/[[:digit:]]?'))).toBe(false)
+  })
+})
+
+describe('re-audit: a home folder handed to git', () => {
+  for (const command of ['HOME=/tmp/h git ci -m x', 'export XDG_CONFIG_HOME=/tmp/x; git ci -m x', 'env HOME=/tmp/h git commit -m x']) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+  test('a home folder for another program is no refusal', () => {
+    expect(isDeny(bash('build', 'HOME=/tmp/h npm test'))).toBe(false)
+  })
+})
+
+describe('re-audit: a temper call with a glob in its words', () => {
+  for (const command of [`${CLI} o?erride intent --reason x`, `${CLI} state lo[o]p review build --reason x`, `${CLI} * --reason x`]) {
+    test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
+  }
+  test('a glob in the reason, or a quoted one, is no refusal', () => {
+    expect(isDeny(bash('build', `${CLI} gate build`))).toBe(false)
+    expect(isDeny(bash('build', `${CLI} evidence add --stage build --claim 'a*b' --cmd 'npm test' --exit 0 --phase green`))).toBe(false)
+    expect(isDeny(bash('build', `${CLI} usage add --stage build --reason why?`))).toBe(false)
+  })
+})
+
+describe('re-audit: the project notes a config suggestion may go into', () => {
+  test('.claude/AGENTS.md at Check, as reference/config-suggestions.md names it', () => {
+    expect(isDeny(evaluate(ctx('check'), { tool: 'Write', input: { file_path: '.claude/AGENTS.md' } }))).toBe(false)
+  })
+})

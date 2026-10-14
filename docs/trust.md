@@ -20,7 +20,8 @@ folder `~/.claude/packs`, if you made one. A pack's link targets come from the s
   files, then `temper gate commit`) to `temper-gate/pre-commit` in the repository's git folder and points
   `core.hooksPath` at that folder, so every worktree runs it. The hook runs the gate of every project the commit
   touches: the top of the repository, and each folder above a staged file that holds a `.temper` folder (a project
-  below the top, such as a package of a monorepo). It never writes into a folder named `hooks`. When git
+  below the top, such as a package of a monorepo); a moved file counts at its old place and at its new one. It never
+  writes into a folder named `hooks`. When git
   would stop running other hooks (in `.git/hooks`, Temper's older folder, or husky's or lefthook's folder), it leaves
   that setting and prints a path-free line for your hook, with a hint; 9.6.5's line still counts. After a move of the
   repository, the next `/temper` points the setting at the new place. Unset it before adding the pre-commit framework

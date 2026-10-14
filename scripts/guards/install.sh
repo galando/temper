@@ -228,13 +228,14 @@ _temper_gate_here() {
   return 0
 }
 # Temper hook: every project the commit touches. The top of the repository, and each folder above a staged file that
-# holds a .temper folder: a project below the top (a package of a monorepo) keeps its run there. A folder inside the
-# plugin's own folder is skipped, as above.
+# holds a .temper folder: a project below the top (a package of a monorepo) keeps its run there. A rename is read as
+# its two names, so a file moved out of a project touches it too. A folder inside the plugin's own folder is skipped,
+# as above.
 GATE_DIRS="\$(python3 -c '
 import os, subprocess, sys
 top, plugin = os.getcwd(), os.path.realpath(sys.argv[1])
 out = [top]
-names = subprocess.run(["git", "diff", "--cached", "--name-only", "-z"], stdout=subprocess.PIPE).stdout
+names = subprocess.run(["git", "diff", "--cached", "--name-only", "--no-renames", "-z"], stdout=subprocess.PIPE).stdout
 for n in names.decode("utf-8", "surrogateescape").split(chr(0)):
     d = os.path.split(os.path.join(top, n))[0] if n else top
     while len(d) > len(top) and d.startswith(top + os.sep):

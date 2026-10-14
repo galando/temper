@@ -167,29 +167,34 @@ The guard has three jobs ([ADR 0013](decisions/0013-the-cli-says-what-next-the-m
   step back, accepting a finding, arming autonomy, keeping an agent's commits, overriding the commit
   gate, starting over during a run) needs your answer in the question dialog, at the run and the step
   the CLI is at. The guard finds the call when it is written out in the command
-  (`scripts/temper ...`), at every word that names the script.
+  (`scripts/temper ...`), at every word that names the script. A call with an unquoted glob in a word
+  before its reason (`temper o?erride`) is refused, since bash may expand it to a file's name.
 - **Temper's own files.** The CLI's files in `.temper` (the gates, the run state, the evidence ledger,
   the loop counter, the view), and during a run `.claude/temper.config` and the git hooks, are written by
   neither the editing tools nor a plain Bash write (a redirect, or `rm`, `mv`, `cp`, `tee`, `sed -i`
   and the like naming the file, its folder, or a glob that reaches it). A copy or a move into one of
-  its folders (`cp notes.md .temper/specs/pw/`) is judged by the files that land there. Each stage allows
+  its folders (`cp notes.md .temper/specs/pw/`) is judged by the files that land there; another write of
+  that folder in the same command is still judged as one. Each stage allows
   its own writes by the editing tools.
 - **The native hook.** While a run is active, `--no-verify` (or an abbreviation git takes), `-n`, and a
   change of `core.hooksPath` (also by removing the `core` section, by including another config file,
   by writing `.git/config.worktree`, by `git -c` or `--config-env`, or by a variable that hands it to
   git, such as `GIT_CONFIG_KEY_0` or `GIT_CONFIG_GLOBAL`) are refused. So is an alias given on the
-  command line or written with `git config` whose body skips the hook.
+  command line or written with `git config` whose body skips the hook, and a command that runs git and
+  sets `HOME` or `XDG_CONFIG_HOME` (git reads that folder's config, which can hold an alias or a hooks path).
 
 The guard reads a Bash command as text: it splits it into statements and words and honours quotes
 (`'...'`, `"..."`, `$'...'` with its escapes, `$"..."`, a backslash), joins a line ended by a backslash,
 reads the commands inside a substitution (`$(...)` or backquotes, inside double quotes too), and
-expands the brace lists (`{a,b}`, `{1..3}`) of every word as bash does, a quoted one not; a list that
+expands the brace lists (`{a,b}`, `{1..3}`) of every word as bash does, a quoted one not, each word as
+many times as bash gives it; a list that
 expands to more than 1,024 words is refused when it could name a program or is a path a program
 writes. It reads every word that names git, the temper script or a writing program as where that
 program starts, so no keyword, wrapper or variable word hides it (`then`, `coproc`, `env`, `timeout`,
 `sudo`, `exec -a`, `X=1`, a full path); a name matches without regard to case and through a glob of
-some literal text (`/usr/bin/gi[t]`). The price is that a command which only names one as words
-(`echo rm .temper/gates.json`) is refused too. It does not follow variables, the output of a
+some literal text (`/usr/bin/gi[t]`, `/usr/bin/[[:alpha:]]it`). The price is that a command which only
+names one as words (`echo rm .temper/gates.json`, or `ls s* .temper/gates.json`, where `s*` could be
+`sed`) is refused too. It does not follow variables, the output of a
 substitution, `cd` or links, and it does not read the program another program runs. These are still
 possible, and listed as known limits in the mod's tests:
 

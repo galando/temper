@@ -290,7 +290,7 @@ function stageWriteRule(ctx: RuleContext & { run: RunFacts }, rawPath: string): 
 }
 
 // The project's agent instructions, where an accepted config suggestion is written (reference/config-suggestions.md).
-const PROJECT_NOTES = new Set(['CLAUDE.md', 'AGENTS.md', '.claude/CLAUDE.md'])
+const PROJECT_NOTES = new Set(['CLAUDE.md', 'AGENTS.md', '.claude/CLAUDE.md', '.claude/AGENTS.md'])
 
 const AUTONOMY_DENY =
   'Temper: only the user can turn on autonomous mode, at the plan gate. ' +
@@ -320,6 +320,10 @@ const HOOKS_DENY =
 const TOO_MANY_DENY =
   'Temper: a word of this command expands to more words (a brace list) than the guard reads, so what it writes is not known. ' +
   'Next: write the paths out, or split the command.'
+
+const GLOB_DENY =
+  'Temper: a word of this temper call is an unquoted glob (`*`, `?`, `[...]`), which bash may expand to the name of a file, so the call it makes is not known. ' +
+  'Next: write the call out, or quote the word.'
 
 // The plugin data folder of Claude Code (`~/.claude/plugins/data/`) holds the mod's store, and in it the person's
 // decisions. The editing tools do not write it while a run is active.
@@ -351,13 +355,17 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
     const n = normalizePath(p, ctx.root)
     return protectedKind(n) ?? globKind(n)
   }
-  const into = new Set(c.targets.map(p => normalizePath(p, ctx.root)))
-  const kinds = [...c.writes.map(p => (kindOf(p) === 'folder' && into.has(normalizePath(p, ctx.root)) ? null : kindOf(p))), ...c.landings.map(kindOf)].filter(
+  const target = (p: string): ProtectedKind | null => {
+    const k = kindOf(p)
+    return k === 'folder' ? null : k
+  }
+  const kinds = [...c.writes.map(kindOf), ...c.targets.map(target), ...c.landings.map(kindOf)].filter(
     (k): k is ProtectedKind => k !== null && (guardsCommit || (k !== 'config' && k !== 'hooks')),
   )
   if (kinds.length > 0) return protectedDeny(kinds.find(k => k === 'events' || k === 'overrides') ?? (kinds[0] as ProtectedKind), cli)
 
   if (!active) return ALLOW
+  if (c.globCall) return { deny: GLOB_DENY }
   const r = ctx.run
   for (const call of c.calls) {
     const w = callWords(call)
