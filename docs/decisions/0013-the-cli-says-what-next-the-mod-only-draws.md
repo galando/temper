@@ -79,7 +79,8 @@ the person; and the mod checks that the person answered before a step only the p
    can do it (`docs/trust.md`). The native `pre-commit` hook and the Stop hook stay.
 6. **One Build mode: grouped, with Haiku task agents.** `build.mode: per-task` and its loop are
    removed; `agents/build.md` stays as the fix pass when Review or Check loops back to Build. The
-   baseline runs (`evals/results.md`, runs A and B) found the Haiku task agents 14 times cheaper
+   baseline runs (A and B, on a small fixture kept out of the plugin; the numbers are in
+   galando/temper#97) found the Haiku task agents 14 times cheaper
    than the Sonnet agent of per task Build, both first try, and the grouped Build no cheaper in total only
    because the main loop spent about $0.10 more driving the group loop from prose. `temper next`
    computes that loop: it starts the groups whose dependencies passed, hands out the ready tasks

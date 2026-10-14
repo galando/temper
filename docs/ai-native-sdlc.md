@@ -138,10 +138,10 @@ machine-observed rather than agent-reported. One whole clause has no counterpart
 the play's **UI feedback loop** (screenshot-vs-mock iteration for front-end work) —
 temper's verification is tests, coverage, and scenarios only.
 
-**Continuous evals in CI.** Partly. Since 9.7.0, `evals/` holds four small fixtures with
-planted defects, a scorer and a protocol; the self test proves every planted defect and
-scores a recorded run, but a live run (which needs a model) is made by hand, and its
-rows are in `evals/results.md`. What guards Temper's own behavior is
+**Continuous evals in CI.** Not provided. Temper's own seeded-defect fixture suite was
+removed in v9.5.0 (ADR 0010): its CI job never ran, so it never gated a merge. The 9.7.0
+measurement runs used fixtures kept out of the plugin; their numbers are in the description
+of galando/temper#97. What guards Temper's own behavior is
 `scripts/selftest/test-temper.sh` (the gate logic, deterministically) plus the Stop
 hook of a `/temper:intent` session, which refuses to end it until its gate has run. Scaffolding an eval harness for a
 *user project's* own agent config is open — see [Remaining gaps](#remaining-gaps).
@@ -260,8 +260,8 @@ Honest list, in rough adoption order:
   `git commit --no-verify` bypasses the spine locally; re-verifying the gates where
   your host's merge protection lives (e.g. from the committed `gate-ledger.json`)
   is wiring the project adds, not shipped.
-- **Eval reach**: Temper's own evals (`evals/`) measure Temper on its fixtures; nothing
-  scaffolds an eval harness for a user project's own agent config (their CLAUDE.md, their packs).
+- **Eval reach**: Temper ships no eval suite (removed in v9.5.0); nothing scaffolds an
+  eval harness for a user project's own agent config (their CLAUDE.md, their packs).
 - **Parallel-session execution**: grouped Build runs the ready tasks of a plan as
   parallel Haiku task agents, each in its own worktree (the task agent carries only
   Read, Edit, Write, Bash, Glob and Grep); whole sessions per worktree are not spawned,

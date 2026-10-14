@@ -239,8 +239,8 @@ Build runs in groups, so write `tasks.md` as groups of tasks; the example to cop
   title is not read).
   Task numbers are unique across the whole file.
 
-**Declared files.** `**File:**` lists backticked paths, one per file the task will write, including its test file, on
-one line or on a `**File:**` line each (every line counts).
+**Declared files.** `**File:**` lists backticked paths, one per file the task will write, including its test file.
+They can stand on one line or on a `**File:**` line each; every line counts.
 Give exact file paths, one per file. The plan gate refuses any glob
 character (`*`, `?`, `[`) in a `**File:**` path and the commit check compares changed files to the
 declared union by exact path, so name every file, the test file included. Two tasks that can

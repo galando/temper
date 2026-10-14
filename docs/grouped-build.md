@@ -1,7 +1,7 @@
 # Grouped Build (9.7.0)
 
 Build runs in groups of small tasks, each handed to a slim Haiku agent, with one human gate
-per group. It is the one Build since 9.7.0: in the baseline measurement (`evals/results.md`) the
+per group. It is the one Build since 9.7.0: in the baseline measurement (galando/temper#97) the
 Haiku task agents cost about a fourteenth of a Sonnet build agent ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)).
 
 ## What it does
@@ -141,8 +141,8 @@ Every stage launch is recorded with `temper usage add --stage S --model M --toke
 
 The numbers are the totals the Agent tool returns. An agent Claude Code runs in the background
 (as it did in auto permission mode in the final 9.7.0 run) returns none, so its row has no tokens
-or time, and the bar shows no token count. `evals/score.py` reads the session transcripts instead,
-which hold every agent's tokens.
+or time, and the bar shows no token count. The session transcripts still hold every agent's
+tokens.
 
 To compare two runs (two models for the task agents, two plans, two versions of Temper), build
 the same feature from the same commit on two branches and compare tokens per model times that
