@@ -30,7 +30,7 @@ timeline, time and tokens, the loops with their reasons, and one button, Go on. 
 files by group, the Build grid (state, model and retries per task), the Review findings with confidence
 and file:line, the Check markers with their failing lines, the criteria with their evidence. At the
 commit, `temper report --html` writes `report.html` in the spec folder. The game is removed. The mod
-went from 6,092 lines to 3,075, its tests from 8,755 to 5,089.
+went from 6,092 lines to 3,224, its tests from 8,755 to 5,235.
 
 **Build runs in groups of small Haiku task agents (ADR 0011, amended).** Plan writes `tasks.md` as groups
 of tasks, each with its files, dependencies and at least two test cases (an input and its exact result).
