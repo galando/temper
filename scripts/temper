@@ -560,17 +560,33 @@ cmd_init() {
   [[ -f "$LOOPS_FILE" ]] || echo '{"version":1,"active_loops":[],"history":[]}' > "$LOOPS_FILE"
   # The CLI's runtime files are local run state, never committed: list them in this clone's info/exclude (never
   # .gitignore), so a fresh project's working tree stays clean (autonomy refuses a dirty tree)
-  local ex p
+  local ex p pre
+  # the patterns are anchored at the top of the repository: a project below it (a package of a monorepo) has its prefix
+  pre="$(_prefix)"
   if ex="$(git rev-parse --git-common-dir 2>/dev/null)/info/exclude" && [[ "$ex" != "/info/exclude" ]]; then
     mkdir -p "$(dirname "$ex")" 2>/dev/null
     for p in build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
              stage-gate.log pending-stage.json groups.json usage.json autonomy.lock coverage.json view.json \
              evidence/ index/ reviews/ archive/ .lock/; do
-      grep -qxF "/.temper/$p" "$ex" 2>/dev/null || printf '/.temper/%s\n' "$p" >> "$ex" 2>/dev/null || true
+      grep -qxF "/${pre}.temper/$p" "$ex" 2>/dev/null || printf '/%s.temper/%s\n' "$pre" "$p" >> "$ex" 2>/dev/null || true
     done
-    grep -qxF '/.claude/worktrees/' "$ex" 2>/dev/null || printf '/.claude/worktrees/\n' >> "$ex" 2>/dev/null || true
+    grep -qxF "/${pre}.claude/worktrees/" "$ex" 2>/dev/null || printf '/%s.claude/worktrees/\n' "$pre" >> "$ex" 2>/dev/null || true
   fi
   echo "OK: .temper/ scaffolded at $TEMPER_DIR"
+}
+
+# While a run is active, every verdict and move of it reads the project's own config: TEMPER_CONFIG (which the guard
+# scripts set for `config get`) is not followed by any other subcommand, so another file never changes the run's checks.
+_config_pin() {
+  [[ -n "${TEMPER_CONFIG:-}" && -f "$STATE_FILE" ]] || return 0
+  local own="$REPO_ROOT/.claude/temper.config"
+  _same_file "$CONFIG_FILE" "$own" && return 0
+  echo "WARN: TEMPER_CONFIG is not followed while a run is active; the project's .claude/temper.config applies" >&2
+  CONFIG_FILE="$own"
+}
+
+_same_file() { # _same_file <a> <b> -> 0 when both name the same path once every link and '..' is resolved
+  python3 -c "import os, sys; sys.exit(0 if os.path.realpath(sys.argv[1]) == os.path.realpath(sys.argv[2]) else 1)" "$1" "$2"
 }
 
 # ---------------------------------------------------------------------------
@@ -722,9 +738,16 @@ cmd_state_set() {
     echo "FAIL: $1 is kept by the CLI (state init writes run_id; every change of next_stage counts a step)" >&2
     return 1
   fi
-  # ADR 0013: the files the person approved are recorded when the run leaves Plan, and Build is held to them.
-  if [[ "$1" == "approved_files" ]]; then
-    echo "FAIL: approved_files is kept by the CLI (state advance plan_complete records the plan's files as the person approved them)" >&2
+  # ADR 0013: the files the person approved, and the digest of the tasks they approved, are recorded when the run
+  # leaves Plan, and Build is held to them.
+  if [[ "$1" == "approved_files" || "$1" == "plan_hash" ]]; then
+    echo "FAIL: $1 is kept by the CLI (state advance plan_complete records the plan's files and its digest as the person approved them)" >&2
+    return 1
+  fi
+  # The commit the run's diff is read against is recorded once (state advance plan_complete): a later one would hide
+  # what the run changed from Review and from the commit gate.
+  if [[ "$1" == "base_sha" && -f "$STATE_FILE" && -n "$(_json_get_path "$STATE_FILE" base_sha "")" ]]; then
+    echo "FAIL: base_sha is recorded already ($(_json_get_path "$STATE_FILE" base_sha "" | cut -c1-12)); the run's diff is read against it" >&2
     return 1
   fi
   [[ -f "$STATE_FILE" ]] || { echo '{}' > "$STATE_FILE"; }
@@ -883,11 +906,12 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
   local why; why="$(python3 "$SCRIPTS_DIR/flow.py" advance-ok "$stage" "$next")" || {
     echo "FAIL: $why" >&2; return 1; }
   if [[ "$stage" == "plan_complete" ]]; then
-    # The commit the diff is read against, and the files the person approved: Build is held to these,
-    # so a plan.md edited during Build does not widen it
-    local spec files
+    # The commit the diff is read against, the files the person approved and the digest of the tasks they approved:
+    # Build is held to these, so a plan.md or tasks.md edited after the plan gate does not change what Build runs
+    local spec files digest=""
     spec="$(_json_get_path "$STATE_FILE" spec_path "")"
     files="$(python3 "$SCRIPTS_DIR/flow.py" plan-files "$spec" 2>/dev/null || echo '[]')"
+    [[ -n "$spec" && -f "$spec/tasks.md" ]] && digest="$(_plan_digest "$(_grouped_parse "$spec/tasks.md")" 2>/dev/null)"
     _lock_acquire
     python3 -c "
 import json, os, sys
@@ -898,12 +922,16 @@ try:
 except ValueError:
     files = []
 d['approved_files'] = files if isinstance(files, list) else []
+if sys.argv[3]:
+    d['plan_hash'] = sys.argv[3]
+else:
+    d.pop('plan_hash', None)
 tmp = '%s.tmp.%d' % (p, os.getpid())
 with open(tmp, 'w') as f:
     json.dump(d, f, indent=2)
     f.write('\\n')
 os.replace(tmp, p)
-" "$STATE_FILE" "$files"
+" "$STATE_FILE" "$files" "$digest"
     _lock_release
     if [[ -z "$(_json_get_path "$STATE_FILE" base_sha "")" ]]; then
       local head; head="$(git rev-parse HEAD 2>/dev/null || true)"
@@ -991,7 +1019,8 @@ _groups_reset() { # F2: a loop back before Build ends the grouped run: groups.js
   while IFS=$'\t' read -r slug g wt branch; do
     [[ -n "$g" ]] || continue
     if [[ -n "$wt" && -d "$wt" ]]; then
-      if [[ -n "$(git -C "$wt" status --porcelain=v1 2>/dev/null | cut -c4- | grep -v -e '^\.temper/' -e '^\.claude/worktrees/')" ]]; then
+      local pre; pre="$(_prefix)"
+      if [[ -n "$(git -C "$wt" status --porcelain=v1 2>/dev/null | cut -c4- | grep -v -e "^${pre}\.temper/" -e "^${pre}\.claude/worktrees/" -e '^\.temper/' -e '^\.claude/worktrees/')" ]]; then
         echo "WARN: $wt has uncommitted work; kept. Move it away (or remove it) before the re-planned run starts $g" >&2
         continue
       fi
@@ -1131,10 +1160,16 @@ cmd_state_redo() { # temper state redo <stage> [--reason "..."]: "Run Build agai
     return 1
   fi
   _redo_from "$stage" || return 1
-  python3 - "$STATE_FILE" "$stage" "$reason" "$(_now)" <<'PY' || return 1
+  # A run a door started at a later stage checks the stages before it instead of running them: one run again is run,
+  # and so is every stage after it (the door's entry moves to it).
+  local enter; enter="$(_json_get_path "$STATE_FILE" enter "")"
+  [[ -n "$enter" ]] && ! _stage_before "$stage" "$enter" && enter=""
+  python3 - "$STATE_FILE" "$stage" "$reason" "$(_now)" "$enter" <<'PY' || return 1
 import json, os, sys
-p, stage, reason, ts = sys.argv[1:5]
+p, stage, reason, ts, enter = sys.argv[1:6]
 d = json.load(open(p))
+if enter:
+    d['enter'] = stage
 d['redo'] = {'stage': stage, 'reason': reason, 'ts': ts}
 tmp = '%s.tmp.%d' % (p, os.getpid())
 with open(tmp, 'w') as f:
@@ -1443,7 +1478,8 @@ cmd_config() {
   local sub="${1:-}"; shift || true
   case "$sub" in
     get) [[ -n "${1:-}" ]] || { echo "FAIL: usage: temper config get <dot.path> [default]" >&2; return 1; }
-         if [[ "$1" == "fix.max-loops" ]]; then _cfg_get "$1" "${2:-3}"; else _cfg_get "$1" "${2:-}"; fi ;;
+         # fix.max-loops prints the limit `state loop check fix` keeps: the key, else loops.max-per-type, else 2
+         if [[ "$1" == "fix.max-loops" ]]; then _cfg_get "$1" "${2:-$(_cfg_get loops.max-per-type 2)}"; else _cfg_get "$1" "${2:-}"; fi ;;
     *) echo "FAIL: usage: temper config get <dot.path> [default]" >&2; return 1 ;;
   esac
 }
@@ -2071,20 +2107,25 @@ core = {'tasks': [{'n': t['n'], 'group': t['group'], 'files': [n(f) for f in t['
 print(hashlib.sha256(json.dumps(core, sort_keys=True).encode('utf-8')).hexdigest())" "$1"
 }
 
-# Refuses (returns 1) when the plan changed since the first group start recorded its digest. No digest
-# recorded yet (no group started): nothing to compare.
+# Refuses (returns 1) when the plan changed since the person approved it: the digest `state advance plan_complete`
+# recorded, else the one the first group start recorded (a run that left Plan before the plan gate recorded one). No
+# digest recorded yet: nothing to compare.
 _plan_fresh() { # _plan_fresh <parsed-plan-json>
   local want have
   want="$(python3 -c "
 import json, sys
-try:
-    print(json.load(open(sys.argv[1])).get('plan_hash') or '')
-except Exception:
-    print('')" "$GROUPS_FILE")"
+for p in sys.argv[1:]:
+    try:
+        h = json.load(open(p)).get('plan_hash')
+    except Exception:
+        h = None
+    if h:
+        print(h)
+        break" "$STATE_FILE" "$GROUPS_FILE")"
   [[ -z "$want" ]] && return 0
   have="$(_plan_digest "$1")"
   [[ "$have" == "$want" ]] && return 0
-  echo "FAIL: the approved plan changed since the grouped run started (tasks.md **File:**, **Depends:**, **Test:**, group Validate/Interfaces/Context or Integration differ). Restore tasks.md, or end the run and re-plan." >&2
+  echo "FAIL: the approved plan changed since the person approved it at the plan gate (tasks.md **File:**, **Depends:**, **Test:**, group Validate/Interfaces/Context or Integration differ). Restore tasks.md, or loop back to Plan and approve it again." >&2
   return 1
 }
 
@@ -2129,6 +2170,12 @@ PY
   _lock_release
   return $rc
 }
+
+# The project's folder from the top of its git repository (`packages/app/`), or "" at the top. A group or task worktree
+# is a checkout of the whole repository, so the project's files are under this prefix in it.
+_prefix() { git rev-parse --show-prefix 2>/dev/null || true; }
+# The project folder inside a worktree: <abs worktree>/<prefix>, without a trailing slash.
+_in_wt() { local p; p="$1/$(_prefix)"; echo "${p%/}"; }
 
 # git needs an identity for the merge commits the CLI makes; use the project's own, else a fixed one.
 _git_id_args() { # prints "-c user.name=... -c user.email=..." only when the project has none
@@ -2223,7 +2270,8 @@ except Exception:
     # the worktrees folder is local to this clone: info/exclude, never .gitignore
     local ex; ex="$(git rev-parse --git-common-dir)/info/exclude"
     mkdir -p "$(dirname "$ex")"
-    grep -qxF '/.claude/worktrees/' "$ex" 2>/dev/null || printf '/.claude/worktrees/\n' >> "$ex"
+    local pre; pre="$(_prefix)"
+    grep -qxF "/${pre}.claude/worktrees/" "$ex" 2>/dev/null || printf '/%s.claude/worktrees/\n' "$pre" >> "$ex"
     local wt_out
     if git show-ref --verify --quiet "refs/heads/$branch"; then
       # L4: the group branch outlives its worktree (integrate removes worktrees before its suite runs and
@@ -2333,14 +2381,15 @@ except Exception:
     # F4: Validate must run on what integrate merges: an uncommitted change to a tracked file (an agent's edit of
     # a file whose task already passed) is not on the group branch, so the gate refuses it and names the paths
     local dirty
+    local pre; pre="$(_prefix)"
     dirty="$(git -C "$(pwd -P)/$wt" status --porcelain=v1 --untracked-files=no 2>/dev/null | cut -c4- \
-             | grep -v -e '^\.temper/' -e '^\.claude/worktrees/' | head -20 | paste -sd, - | sed 's/,/, /g')"
+             | grep -v -e "^${pre}\.temper/" -e "^${pre}\.claude/worktrees/" -e '^\.temper/' -e '^\.claude/worktrees/' | head -20 | paste -sd, - | sed 's/,/, /g')"
     [[ -n "$dirty" ]] && reason="uncommitted changes in the group worktree, not on its branch: $dirty (revert them, or reopen the task that owns them)"
   fi
   if [[ -z "$reason" ]]; then
     local rowfile rc
     rowfile="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
-    _task_py grouprun "$(pwd -P)/$wt" "${TEMPER_TASK_TEST_TIMEOUT_S:-600}" "$rowfile" "$g" -- "$validate"
+    _task_py grouprun "$(_in_wt "$(pwd -P)/$wt")" "${TEMPER_TASK_TEST_TIMEOUT_S:-600}" "$rowfile" "$g" -- "$validate"
     rc=$?
     _ensure_dirs
     [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
@@ -2385,6 +2434,32 @@ _park_ways_out() { # _park_ways_out <group> <worktree as printed> <tasks csv> <s
   echo "  (b) or keep them knowingly, with the person's reason: temper group reopen $g$targs --accept-foreign $csv --reason \"<why>\""
 }
 
+# temper group reopen G --accept-foreign SHA[,SHA] --reason R, with no task: the person keeps commits that the CLI did
+# not make and that `temper integrate` found on the passed group's own branch (no task runs again). Each named sha must
+# be one of those commits; each is recorded like an override (foreign-commit:G:sha), so the next integrate takes it.
+_group_accept_branch() { # _group_accept_branch <G> <csv> <reason>
+  local g="$1" csv="$2" reason="$3" slug unk s full=() n want=()
+  slug="$(_spec_slug "$(_spec_path "")")"
+  if [[ -z "$slug" || ! -f "$GROUPS_FILE" ]]; then
+    echo "FAIL: no grouped run (temper group start first)" >&2
+    return 1
+  fi
+  unk="$(_task_py unknown "$(pwd -P)" "$GROUPS_FILE" "$g" "temper/$slug/$g")"
+  IFS=',' read -r -a want <<<"$csv"
+  for s in "${want[@]}"; do
+    [[ -n "$s" ]] || continue
+    n="$(printf '%s\n' "$unk" | grep -c "^$s" || true)"
+    if [[ ! "$s" =~ ^[0-9a-f]{7,40}$ || "$n" != "1" ]]; then
+      echo "FAIL: $s is not one commit on group $g's branch that the CLI did not make (those are: $(printf '%s\n' "$unk" | cut -c1-7 | paste -sd' ' -))" >&2
+      return 1
+    fi
+    full+=("$(printf '%s\n' "$unk" | grep "^$s")")
+  done
+  [[ ${#full[@]} -gt 0 ]] || { echo "FAIL: --accept-foreign needs a sha" >&2; return 1; }
+  for s in "${full[@]}"; do cmd_override "foreign-commit:$g:$s" --reason "$reason" >/dev/null || return 1; done
+  echo "OK: kept $(printf '%.7s ' "${full[@]}")on group $g's branch, by the person's choice: $reason"
+}
+
 # temper group reopen G --task N [--task M] [--feedback ID]: the Change choice at a group gate (D-02).
 # Only the named tasks re-run: their files go back to the content they had when the task started (one
 # revert commit on the group branch, that task's declared paths only), their boxes are unticked, their
@@ -2423,6 +2498,10 @@ _group_reopen_body() {
     echo "FAIL: --accept-foreign needs --reason \"<why the agent commit stays>\" (it is recorded like an override)" >&2
     return 1
   fi
+  if [[ ${#tasks[@]} -eq 0 && -n "$accept" ]]; then
+    _group_accept_branch "$g" "$accept" "$areason"
+    return
+  fi
   if [[ ${#tasks[@]} -eq 0 ]]; then
     echo "FAIL: usage: temper group reopen $g --task N [--task M] [--feedback ID]" >&2
     return 1
@@ -2452,7 +2531,7 @@ except Exception:
     echo "FAIL: refusing the reopen commit: upstream gate(s) not satisfied: $missing (ADR 0009)" >&2
     return 3
   fi
-  local abs; abs="$(pwd -P)/$wt"
+  local abs; abs="$(_in_wt "$(pwd -P)/$wt")"
   # D-08: a group parked on commits the CLI did not record reopens only when none of them is on its branch any more
   # (the human removed them), or when the human accepts each remaining one with --accept-foreign and a reason
   # M5: and every commit of the group's base..HEAD must be recorded by the CLI or accepted (a commit replayed by a rebase
@@ -2741,8 +2820,24 @@ PY
 }
 
 _task_py() { # _task_py <mode> [args...]
-  TEMPER_GROUPS_FILE="$GROUPS_FILE" python3 - "$@" <<'PY'
+  TEMPER_GROUPS_FILE="$GROUPS_FILE" TEMPER_PREFIX="$(_prefix)" python3 - "$@" <<'PY'
 import hashlib, json, os, re, shlex, signal, subprocess, sys, time
+
+# The project's folder from the top of its repository ("" at the top). git status and git diff name a path from the
+# top of the worktree; the plan names it from the project folder, so each is read from there (a path outside the
+# project reads as ../..., which no task declares).
+PREFIX = os.environ.get('TEMPER_PREFIX', '')
+
+def R(p):
+    if not PREFIX:
+        return p
+    if p.startswith(PREFIX):
+        return p[len(PREFIX):]
+    return os.path.relpath(p, PREFIX.rstrip('/'))
+
+def top_of(wt):
+    r = subprocess.run(['git', '-C', wt, 'rev-parse', '--show-toplevel'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    return r.stdout.decode('utf-8', 'surrogateescape').strip() or wt
 
 def norm(p):
     p = p.strip()
@@ -2779,10 +2874,12 @@ def run_retry(cmd, delay=0.1):
         time.sleep(delay)
 
 def snap(wt):
-    """sha256 of every dirty or untracked path in the worktree ('DELETED' for a path that is gone)."""
+    """sha256 of every dirty or untracked path in the worktree ('DELETED' for a path that is gone), each path named from
+    the project folder (R)."""
     r = subprocess.run(['git', '--literal-pathspecs', '-C', wt, 'status', '--porcelain=v1', '-z', '-uall'],
                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     ents = r.stdout.decode('utf-8', 'surrogateescape').split('\0')
+    top = top_of(wt)
     out, i = {}, 0
     while i < len(ents):
         e = ents[i]; i += 1
@@ -2793,19 +2890,19 @@ def snap(wt):
             old = ents[i] if i < len(ents) else ''
             i += 1
             if old:
-                out[old] = 'DELETED'
-        fp = os.path.join(wt, path)
+                out[R(old)] = 'DELETED'
+        fp = os.path.join(top, path)
         try:
-            out[path] = hashlib.sha256(open(fp, 'rb').read()).hexdigest() if os.path.isfile(fp) else 'DELETED'
+            out[R(path)] = hashlib.sha256(open(fp, 'rb').read()).hexdigest() if os.path.isfile(fp) else 'DELETED'
         except OSError:
-            out[path] = 'DELETED'
+            out[R(path)] = 'DELETED'
     return out
 
 def untracked(wt):
     """The untracked paths of the worktree (porcelain '??'), for the byproducts a CLI test run leaves behind."""
     r = subprocess.run(['git', '--literal-pathspecs', '-C', wt, 'status', '--porcelain=v1', '-z', '-uall'],
                        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    return {e[3:] for e in r.stdout.decode('utf-8', 'surrogateescape').split('\0') if e.startswith('?? ')}
+    return {R(e[3:]) for e in r.stdout.decode('utf-8', 'surrogateescape').split('\0') if e.startswith('?? ')}
 
 def load_run(gfile):
     try:
@@ -2984,10 +3081,10 @@ elif mode == 'show':
     if not c['worktree']:
         fail('group %s is not started (temper group start %s)' % (c['group'], c['group']))
     head = 'TASK %d (group %s, attempt %d): %s\nWORKTREE: %s\nPROJECT:  %s\nDECLARED FILES: %s\n' % (
-        n, c['group'], c['attempt'], c['title'], os.path.join(project, c['worktree']), project, ', '.join(c['files']))
+        n, c['group'], c['attempt'], c['title'], os.path.join(project, c['worktree'], PREFIX).rstrip('/'), project, ', '.join(c['files']))
     body = head + '--- TASK ---\n' + c['block'] + '\n--- GROUP CONTEXT ---\n' + c['context'] + '\n'
     # an existing test of the project, so the agent copies its style, imports and fixtures instead of guessing them
-    pat = pattern_test(os.path.join(project, c['worktree']), c['test'], c['files'], [f for t in plan['tasks'] for f in t['files']])
+    pat = pattern_test(os.path.join(project, c['worktree'], PREFIX).rstrip('/'), c['test'], c['files'], [f for t in plan['tasks'] for f in t['files']])
     if pat:
         body += '--- PATTERN TEST (%s: follow its style, imports and fixtures) ---\n%s\n' % pat
     # F1: the human's feedback from a group gate's Change (group reopen --feedback ID) reaches the task agent
@@ -3281,7 +3378,7 @@ elif mode == 'verdict':
         foreign = [x for x in rl.stdout.decode('utf-8', 'replace').split('\n') if x.strip() and x not in known]
         df = subprocess.run(['git', '-C', wt, 'diff', '--name-only', '--no-renames', '-z', c['start_sha'], 'HEAD'],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        committed = sorted(p for p in df.stdout.decode('utf-8', 'surrogateescape').split('\0') if p and not internal(p))
+        committed = sorted(R(p) for p in df.stdout.decode('utf-8', 'surrogateescape').split('\0') if p and not internal(R(p)))
     def commit_files(sha):
         dt = subprocess.run(['git', '-C', wt, 'diff-tree', '--no-commit-id', '--name-only', '-r', '-z', '--no-renames', '-m', '--root', sha],
                             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -3337,7 +3434,8 @@ _task_load() { # _task_load <N>: sets _T_SPEC _T_PLAN _T_CTX _T_ABS for task N, 
   _T_CTX="$(_task_py ctx "$_T_PLAN" "$GROUPS_FILE" "$n")" || return 1
   local wt; wt="$(_jget "$_T_CTX" worktree)"
   _T_ABS=""
-  [[ -n "$wt" ]] && _T_ABS="$(pwd -P)/$wt"
+  # the project folder inside the task's worktree (a project below the top of its repository is under its prefix there)
+  [[ -n "$wt" ]] && _T_ABS="$(_in_wt "$(pwd -P)/$wt")"
   return 0
 }
 
@@ -3696,11 +3794,13 @@ for r in (d['tasks'][a[0]].get('reopened') or []):
 # literal, and on PASS delete the merged branches. A conflict aborts that merge and stops the run before Review
 # (the worktrees and branches stay for diagnosis). The verdict lives in groups.json 'integration'; gate build
 # reads it. Exit 0 PASS, 1 FAIL, 3 a protected branch or an unsatisfied upstream gate (ADR 0009).
-_integ_record() { # _integ_record <verdict> <reason> [group] [files-csv]
+_integ_record() { # _integ_record <verdict> <reason> [group] [files-csv] [foreign-json]
   _groups_mutate "
 d['integration'] = {'verdict': a[0], 'reason': a[1], 'group': a[2] or None,
                     'files': [f for f in a[3].split(',') if f], 'ts': a[4]}
-" "$1" "$2" "${3:-}" "${4:-}" "$(_now)"
+if a[5]:
+    d['integration']['foreign'] = json.loads(a[5])   # {group: [sha, newest first]}: the person takes them out or keeps them
+" "$1" "$2" "${3:-}" "${4:-}" "$(_now)" "${5:-}"
 }
 
 cmd_integrate() {
@@ -3749,15 +3849,21 @@ except Exception:
     return 1
   fi
   # M5: no group branch may hold a commit that the CLI did not record and nobody accepted
-  local ug unk="" ugl
+  local ug unk="" ugl ufull foreign="{}"
   for ug in $(python3 -c "import json, sys; print(' '.join(json.loads(sys.argv[1])['order']))" "$facts"); do
-    ugl="$(_task_py unknown "$(pwd -P)" "$GROUPS_FILE" "$ug" "temper/$slug/$ug" | cut -c1-7 | paste -sd' ' -)"
-    [[ -z "$ugl" ]] || unk="${unk:+$unk; }$ug: $ugl"
+    ufull="$(_task_py unknown "$(pwd -P)" "$GROUPS_FILE" "$ug" "temper/$slug/$ug")"
+    ugl="$(printf '%s\n' "$ufull" | cut -c1-7 | paste -sd' ' -)"
+    [[ -z "$ufull" ]] && continue
+    unk="${unk:+$unk; }$ug: $ugl"
+    foreign="$(python3 -c "
+import json, sys
+d = json.loads(sys.argv[1]); d[sys.argv[2]] = [x for x in sys.argv[3].split() if x]
+print(json.dumps(d))" "$foreign" "$ug" "$ufull")"
   done
   if [[ -n "$unk" ]]; then
-    _integ_record FAIL "commit(s) not made by the CLI and not accepted: $unk" || true
+    _integ_record FAIL "commit(s) not made by the CLI and not accepted: $unk" "" "" "$foreign" || true
     echo "FAIL: commit(s) not made by the CLI and not accepted on a group branch: $unk" >&2
-    echo "The person chooses (temper next asks them): remove them from the branch, or keep them knowingly with their reason: temper group reopen <G> --task <N> --accept-foreign <sha> --reason \"<why>\"" >&2
+    echo "The person chooses (temper next asks them): take them out of the group's branch, or keep them knowingly with their reason: temper group reopen <G> --accept-foreign <sha> --reason \"<why>\"" >&2
     return 1
   fi
   local missing
@@ -4044,11 +4150,26 @@ gate_plan() {
 gate_build() {
   local spec_path="$1"
   local reqs=() all_pass=1
-  local red_n green_n
+  local red_n green_n after_n
   red_n=$(_ev_count_matching build test red nonzero)
   green_n=$(_ev_count_matching build test green 0)
-  if [[ "$red_n" -gt 0 && "$green_n" -gt 0 ]]; then
+  # The order counts: a passing run recorded after a failing one (test first). GREEN rows that only come before
+  # every RED row prove no test failed first.
+  after_n="$(python3 -c "
+import json, re, sys
+try:
+    rows = json.load(open(sys.argv[1]))
+except Exception:
+    rows = []
+def test(r): return isinstance(r, dict) and re.search('test', r.get('claim') or '', re.I)
+red = [i for i, r in enumerate(rows) if test(r) and r.get('phase') == 'red' and r.get('exit_code') not in (0, None)]
+print(sum(1 for i, r in enumerate(rows) if red and i > red[0] and test(r) and r.get('phase') == 'green' and r.get('exit_code') == 0))
+" "$(_evidence_file build)" 2>/dev/null || echo 0)"
+  if [[ "$red_n" -gt 0 && "${after_n:-0}" -gt 0 ]]; then
     reqs+=("$(_req "RED then GREEN" 1 "$red_n failing-first run(s), $green_n passing run(s) recorded")")
+  elif [[ "$red_n" -gt 0 && "$green_n" -gt 0 ]]; then
+    reqs+=("$(_req "RED then GREEN" 0 "every passing run (GREEN) was recorded before the first failing run (RED); a test first fails, then passes")")
+    all_pass=0
   else
     reqs+=("$(_req "RED then GREEN" 0 "need >=1 failing test run (RED) and >=1 passing run (GREEN); have red=$red_n green=$green_n")")
     all_pass=0
@@ -4289,6 +4410,16 @@ sys.exit(0 if any(o.get('stage') == sys.argv[2] for o in d) else 1)
 " "$OVERRIDES_FILE" "$1" 2>/dev/null
 }
 
+_project_names() { # stdin: file names from the top of the repository (git diff, git status); stdout: each from the project folder
+  python3 -c "
+import os, subprocess, sys
+top = subprocess.run(['git', 'rev-parse', '--show-toplevel'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL).stdout.decode().strip()
+for l in sys.stdin:
+    n = l.rstrip('\n')
+    if n:
+        print(os.path.relpath(os.path.join(top, n)) if top else n)"
+}
+
 _glob_touch_match() { # _glob_touch_match <file> <pattern>  (a project pattern from autonomy.park-on-touch)
   # Proper pattern match, not a substring test: a pattern naming the auth folder at any
   # depth matches the `auth` path SEGMENT, never `auth` inside `oauth` or
@@ -4321,7 +4452,9 @@ gate_commit() {
   # are untouched: one staged file outside .temper/specs/ and every gate below applies.
   local staged_all staged_specs
   staged_all=$(git -C "$REPO_ROOT" diff --cached --name-only 2>/dev/null | grep -c .)
-  staged_specs=$(git -C "$REPO_ROOT" diff --cached --name-only 2>/dev/null | grep -c '^\.temper/specs/')
+  # --relative names each staged file from the project folder (and leaves out one outside it), so a project below the
+  # top of its repository has its spec folder at .temper/specs/ too
+  staged_specs=$(git -C "$REPO_ROOT" diff --cached --name-only --relative 2>/dev/null | grep -c '^\.temper/specs/')
   if [[ "${staged_all:-0}" -gt 0 && "$staged_all" -eq "${staged_specs:-0}" ]]; then
     reqs+=("$(_req "artifact-only commit" 1 "$staged_all staged file(s), all under .temper/specs/ — the artifact chain passes the fence; code commits still need every gate")")
     local reqs_json; reqs_json=$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
@@ -4449,7 +4582,7 @@ print('yes' if any(o.get('stage') == sys.argv[2] for o in d) else 'no')
       gverdict="$( { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
                        git -C "$REPO_ROOT" diff --name-only "$base_sha" 2>/dev/null; fi
                      git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //; s/^"//; s/"$//'
-                   } | sort -u | python3 -c "
+                   } | _project_names | sort -u | python3 -c "
 import json, sys
 plan = json.loads(sys.argv[1]); spec = sys.argv[2].rstrip('/')
 declared = sorted({f for t in plan['tasks'] for f in t['files']})
@@ -4489,7 +4622,7 @@ else: print('PASS %d changed, all declared' % len(changed))
       done < <( { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
                     git -C "$REPO_ROOT" -c core.quotePath=false diff --name-only "$base_sha" 2>/dev/null; fi
                   git -C "$REPO_ROOT" -c core.quotePath=false status --porcelain 2>/dev/null | cut -c4- | sed 's/.* -> //'
-                } | sort -u)
+                } | _project_names | sort -u)
     fi
     if [[ -z "$touched" ]]; then
       reqs+=("$(_req "park-on-touch paths" 1 "no changed file matches a park-on-touch pattern")")
@@ -4515,6 +4648,13 @@ cmd_gate() {
   [[ "$ok" == "true" ]] || { echo "FAIL: usage: temper gate <intent|plan|design|build|review|check|commit>" >&2; return 1; }
 
   local spec_path; spec_path="$(_spec_path "$spec_path_override")"
+  # A verdict of the active run is computed from the run's own spec folder. Another folder's (a draft /temper:intent
+  # captures beside the run) is checked and printed, and recorded nowhere: it never stands for the run.
+  local record=1 run_spec=""
+  [[ -f "$STATE_FILE" ]] && run_spec="$(cmd_state_get spec_path "")"
+  if [[ -n "$spec_path_override" && -n "$run_spec" ]] && ! _same_file "$spec_path_override" "$run_spec"; then
+    record=0
+  fi
   # A run whose state names its spec but lost spec_path was rewritten by something other than this CLI (an agent
   # hand-writing build-state.json); the gates would silently skip every spec-based row, so refuse instead
   if [[ -z "$spec_path" && -f "$STATE_FILE" && -n "$(cmd_state_get spec "")" ]]; then
@@ -4549,11 +4689,24 @@ cmd_gate() {
 
   local verdict="FAIL"
   [[ "$all_pass" == "1" ]] && verdict="PASS"
-  _gate_write_verdict "$stage" "$verdict" "$reqs_json"
-  # Per-criterion status for the live view. Fail open: never changes the verdict.
-  _status_write "$spec_path" >/dev/null 2>&1 || true
+  if [[ "$record" == "1" ]]; then
+    _gate_write_verdict "$stage" "$verdict" "$reqs_json"
+    # Per-criterion status for the live view. Fail open: never changes the verdict.
+    _status_write "$spec_path" >/dev/null 2>&1 || true
+  fi
 
   echo "temper gate $stage -> $verdict"
+  if [[ "$record" != "1" ]]; then
+    echo "  (not recorded: a run of $run_spec is active, and this verdict is of $spec_path_override)"
+    # The gate of a standalone /temper:intent ran: the debt its session owes (verify-stage-gate.sh) is paid.
+    python3 -c "
+import json, os, sys
+try:
+    if json.load(open(sys.argv[1])).get('stage') == sys.argv[2]:
+        os.remove(sys.argv[1])
+except Exception:
+    pass" "$TEMPER_DIR/pending-stage.json" "$stage" 2>/dev/null || true
+  fi
   python3 -c "
 import json, sys
 for r in json.loads(sys.argv[1]):
@@ -4723,29 +4876,37 @@ _setup_calls() {
   local hdir hook; hdir="$(git rev-parse --git-path hooks 2>/dev/null)"; hook="$hdir/pre-commit"
   if [[ "$hook" != */temper-gate/pre-commit || ! -f "$hook" ]] \
      || [[ "$(sed -n 2p "$hook" 2>/dev/null)" != "# Temper native pre-commit hook"* ]] \
-     || ! grep -qF "$PLUGIN_ROOT/scripts/temper" "$hook" 2>/dev/null; then
+     || ! grep -qF "$PLUGIN_ROOT/scripts/temper" "$hook" 2>/dev/null \
+     || ! grep -q '^# Temper hook: every project the commit touches' "$hook" 2>/dev/null; then
     echo "bash $PLUGIN_ROOT/scripts/guards/install.sh"
   fi
 }
 
-# temper next [--json]: the next action of the run, computed (ADR 0013, docs/flow.md). Read only.
-cmd_next() {
-  _state_migrate_legacy
-  local spec base changed="[]" ignored=false branch head bexists=false
+# The facts of the project the flow needs and cannot read from the run's files: the branch, HEAD, whether the spec
+# folder is ignored or has something to commit, the files the run changed (at Commit). `full` adds the models and the
+# setup calls, which only `temper next` prints. One JSON object; `temper next` and the view writer pass the same, so
+# the question the view holds is the one `next` gives.
+_flow_ctx() { # _flow_ctx [full]
+  local spec base changed="[]" ignored=false branch head bexists=false sdirty=false models="" setup=""
   spec="$(_spec_path "")"
   branch="$(git branch --show-current 2>/dev/null || true)"
   head="$(git rev-parse HEAD 2>/dev/null || true)"
   if [[ -n "$spec" ]] && git check-ignore -q "$spec/intent.md" 2>/dev/null; then ignored=true; fi
+  local lignored=false
+  git check-ignore -q .temper/lessons.md 2>/dev/null && lignored=true
+  # Whether the spec folder has anything to commit (the Intent and Plan approvals commit it only then)
+  [[ -n "$spec" && -n "$(git status --porcelain --untracked-files=all -- "$spec" 2>/dev/null)" ]] && sdirty=true
   local want; want="$(_json_get_path "$STATE_FILE" branch "")"
   [[ -n "$want" ]] && git show-ref --verify --quiet "refs/heads/$want" 2>/dev/null && bexists=true
   base="$(_json_get_path "$STATE_FILE" base_sha "")"
   if [[ "$(_json_get_path "$STATE_FILE" next_stage "")" == "commit" ]]; then
     changed="$(python3 "$SCRIPTS_DIR/flow.py" changed "$base" "$(_json_get_path "$STATE_FILE" started "")" 2>/dev/null || echo '[]')"
   fi
-  local models; models="$(cmd_model --all 2>/dev/null)"
-  local setup; setup="$(_setup_calls)"
-  local ctx
-  ctx="$(python3 -c "
+  if [[ "${1:-}" == "full" ]]; then
+    models="$(cmd_model --all 2>/dev/null)"
+    setup="$(_setup_calls)"
+  fi
+  python3 -c "
 import json, sys
 a = sys.argv[1:]
 models = dict(l.split('=', 1) for l in a[3].splitlines() if '=' in l)
@@ -4753,8 +4914,15 @@ print(json.dumps({'plugin': a[0], 'cli': a[1], 'config_file': a[2], 'models': mo
                   'task_model': models.get('task', ''), 'escalation_model': models.get('task-escalation', ''),
                   'branch': a[4], 'head': a[5], 'branch_exists': a[6] == 'true', 'spec_ignored': a[7] == 'true',
                   'changed': json.loads(a[8] or '[]'), 'now': a[9],
-                  'setup': [l for l in a[10].splitlines() if l.strip()]}))
-" "$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/temper" "$CONFIG_FILE" "$models" "$branch" "$head" "$bexists" "$ignored" "$changed" "$(_now)" "$setup")" || return 1
+                  'setup': [l for l in a[10].splitlines() if l.strip()], 'spec_dirty': a[11] == 'true',
+                  'lessons_ignored': a[12] == 'true'}))
+" "$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/temper" "$CONFIG_FILE" "$models" "$branch" "$head" "$bexists" "$ignored" "$changed" "$(_now)" "$setup" "$sdirty" "$lignored"
+}
+
+# temper next [--json]: the next action of the run, computed (ADR 0013, docs/flow.md). Read only.
+cmd_next() {
+  _state_migrate_legacy
+  local ctx; ctx="$(_flow_ctx full)" || return 1
   python3 "$SCRIPTS_DIR/flow.py" next --ctx "$ctx"
 }
 
@@ -4762,7 +4930,8 @@ print(json.dumps({'plugin': a[0], 'cli': a[1], 'config_file': a[2], 'models': mo
 # Fail open: a view that cannot be written never changes what the command did.
 _view_write() {
   [[ -d "$TEMPER_DIR" && ! -L "$TEMPER_DIR" ]] || return 0
-  python3 "$SCRIPTS_DIR/flow.py" view --plugin "$PLUGIN_ROOT" --cli "$PLUGIN_ROOT/scripts/temper" \
+  local ctx; ctx="$(_flow_ctx 2>/dev/null)" || ctx='{}'
+  python3 "$SCRIPTS_DIR/flow.py" view --ctx "$ctx" --plugin "$PLUGIN_ROOT" --cli "$PLUGIN_ROOT/scripts/temper" \
     --config-file "$CONFIG_FILE" --now "$(_now)" >/dev/null 2>&1 || true
 }
 
@@ -5138,7 +5307,8 @@ main() {
     config|model|""|-h|--help) ;;
     *) _home_refuse || return 1
        _inside_plugin_refuse || return 1
-       _unsafe_temper_refuse || return 3 ;;
+       _unsafe_temper_refuse || return 3
+       _config_pin ;;
   esac
   case "$sub" in
     init) cmd_init "$@" ;;

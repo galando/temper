@@ -34,6 +34,9 @@ export type RunFacts = {
   groupedActive: boolean
   // The run never left Intent and holds no spec file: a `state clear` loses nothing (the TRIVIAL exit).
   trivialExit: boolean
+  // The project's folder from the top of its git repository (`packages/app/`); "" or absent at the top. A group or task
+  // worktree is a checkout of the whole repository, so the project's files are under this prefix in it.
+  prefix?: string
 }
 
 export type RuleContext = {
@@ -142,7 +145,7 @@ export function protectedKind(path: string): ProtectedKind | null {
 }
 
 // A /temper run is on, at any stage up to and with Commit: the commit gate can still fail at the commit stage (a missing
-// verdict, an autonomous park), so nothing may go around it there either. Writes are free at Commit (stageWriteRule).
+// verdict, an autonomous park), so nothing may go around it there either. At Commit only the spec folder is written (stageWriteRule).
 const isActive = (ctx: RuleContext): ctx is RuleContext & { run: RunFacts } => ctx.run !== null
 
 function protectedDeny(kind: ProtectedKind, cli: string): RuleResult {
@@ -186,29 +189,37 @@ function protectedDeny(kind: ProtectedKind, cli: string): RuleResult {
 }
 
 // The path inside a group or task worktree of THIS run (`.claude/worktrees/temper-{slug}-G{n}/...` or `-T{n}/...`),
-// relative to that worktree; null for any other path. The path is normalized already, so a `..` after the prefix has
-// been collapsed and cannot leave the worktree this way.
-function worktreeRelative(path: string, specDir: string): string | null {
+// relative to the project folder in that worktree; null for any other path. The path is normalized already, so a `..`
+// after the prefix has been collapsed and cannot leave the worktree this way. A worktree is a checkout of the whole
+// repository: for a project below its top (`project`, as `packages/app/`), a path outside the project reads as `../...`,
+// which no plan names.
+function worktreeRelative(path: string, specDir: string, project = ''): string | null {
   const slug = normalizePath(specDir).split('/').pop() ?? ''
   if (slug === '') return null
   const prefix = `.claude/worktrees/temper-${slug}-`
   if (!path.startsWith(prefix)) return null
   const m = /^[GT](\d+)\/(.+)$/.exec(path.slice(prefix.length))
-  return m?.[2] ?? null
+  const rel = m?.[2]
+  if (rel === undefined) return null
+  const pre = normalizePath(project)
+  if (pre === '') return rel
+  if (rel.startsWith(pre + '/')) return rel.slice(pre.length + 1)
+  return '../'.repeat(pre.split('/').length) + rel
 }
 
 const TASKS_OWNED =
-  'Next: the temper CLI ticks task boxes and records task verdicts. Run the task through the CLI (task test, task gate), or ask the user to end the grouped Build run first.'
+  'Next: run the tasks through the CLI (task test, task gate); the CLI ticks the boxes. To change the plan, ask the user whether to loop back to Plan.'
 
 function stageWriteRule(ctx: RuleContext & { run: RunFacts }, rawPath: string): RuleResult {
   const r = ctx.run
   // A write in a group or task worktree of this run is judged by its worktree-relative path, with the same rule.
-  const rel = worktreeRelative(rawPath, r.specDir)
+  const rel = worktreeRelative(rawPath, r.specDir, r.prefix)
   const path = rel ?? rawPath
   const spec = normalizePath(r.specDir)
-  // In grouped Build the CLI ticks the run's tasks.md: from Build on, no agent writes it.
-  if (r.groupedActive && stageIndex(r.stage) >= stageIndex('build') && path === `${spec}/tasks.md`) {
-    return { deny: `Temper: grouped Build is active. Writing ${rawPath} is not allowed: the run's tasks.md belongs to the temper CLI. ${TASKS_OWNED}` }
+  // The person approved tasks.md at the plan gate, and in Build the CLI ticks it: from Design on, no agent writes it
+  // (a change needs a step back to Plan and the person's approval again).
+  if (stageIndex(r.stage) >= stageIndex('design') && path === `${spec}/tasks.md`) {
+    return { deny: `Temper: the plan is approved. Writing ${rawPath} is not allowed: the run's tasks.md is the plan the user approved, and the temper CLI ticks it. ${TASKS_OWNED}` }
   }
   const inSpec = inDir(path, spec)
   const specFile = (name: string) => path === `${spec}/${name}`
@@ -245,7 +256,8 @@ function stageWriteRule(ctx: RuleContext & { run: RunFacts }, rawPath: string): 
           `Next: write the finding in the spec folder. To fix it, ${ASK} whether to loop back to Build.`,
       }
     case 'check':
-      if (inSpec) return ALLOW
+      // A config suggestion the user accepts after Check passed goes into the project's agent instructions.
+      if (inSpec || PROJECT_NOTES.has(path)) return ALLOW
       return {
         deny:
           `Temper: ${label} stage. Writing ${path} is not allowed. Check only runs checks. ` +
@@ -266,9 +278,19 @@ function stageWriteRule(ctx: RuleContext & { run: RunFacts }, rawPath: string): 
       }
     }
     case 'commit':
-      return ALLOW
+      // Every gate has passed: the code is what Review and Check saw. The commit steps write in the spec folder only
+      // (the plan's deviations, the report page).
+      if (inSpec || PROJECT_NOTES.has(path)) return ALLOW
+      return {
+        deny:
+          `Temper: ${label} stage. Writing ${path} is not allowed: Review and Check passed on the code as it is, and the commit carries that. ` +
+          `Next: do the commit steps. To change code, ${ASK} (Save for later, then a new run), or loop back from Check before the commit.`,
+      }
   }
 }
+
+// The project's agent instructions, where an accepted config suggestion is written (reference/config-suggestions.md).
+const PROJECT_NOTES = new Set(['CLAUDE.md', 'AGENTS.md', '.claude/CLAUDE.md'])
 
 const AUTONOMY_DENY =
   'Temper: only the user can turn on autonomous mode, at the plan gate. ' +
@@ -276,7 +298,7 @@ const AUTONOMY_DENY =
   'It needs autonomy.enabled: true in .claude/temper.config, which only the user sets.'
 
 // The keys of build-state.json that only the CLI's own moves write. next_stage is a step (see the back calls).
-const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files'])
+const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash'])
 
 const DONE_OVERRIDE_DENY =
   "Temper: the run is done, and an override now is the user's choice. " +
@@ -322,8 +344,17 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   if (guardsCommit && c.noVerify) return { deny: HOOKS_DENY }
   if (guardsCommit && c.hooksPath) return protectedDeny('hooks', cli)
   if (c.tooMany) return { deny: TOO_MANY_DENY }
-  // A plain write onto a protected file: the same list, and the same texts, as the editing tools.
-  const kinds = c.writes.map(p => protectedKind(normalizePath(p, ctx.root)) ?? globKind(normalizePath(p, ctx.root))).filter((k): k is ProtectedKind => k !== null && (guardsCommit || (k !== 'config' && k !== 'hooks')))
+  // A plain write onto a protected file: the same list, and the same texts, as the editing tools. A copy, move or link
+  // whose last word is a folder of the run (`cp notes.md .temper/specs/pw/`) puts its files in that folder: the folder
+  // is not replaced, and each file that lands there is judged by its own path.
+  const kindOf = (p: string): ProtectedKind | null => {
+    const n = normalizePath(p, ctx.root)
+    return protectedKind(n) ?? globKind(n)
+  }
+  const into = new Set(c.targets.map(p => normalizePath(p, ctx.root)))
+  const kinds = [...c.writes.map(p => (kindOf(p) === 'folder' && into.has(normalizePath(p, ctx.root)) ? null : kindOf(p))), ...c.landings.map(kindOf)].filter(
+    (k): k is ProtectedKind => k !== null && (guardsCommit || (k !== 'config' && k !== 'hooks')),
+  )
   if (kinds.length > 0) return protectedDeny(kinds.find(k => k === 'events' || k === 'overrides') ?? (kinds[0] as ProtectedKind), cli)
 
   if (!active) return ALLOW

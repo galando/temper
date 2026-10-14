@@ -138,7 +138,8 @@ the spec folder's name.
    and stop). Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --enter {stage}`, then, when
    its `intent.md` has a `**Complexity:**` header, `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity {tier}`.
    The Design door enters at Build when the run has no Design stage, and says so. Then run the loop:
-   the stages before the door's are checked and asked, not run again.
+   the stages before the door's are checked and asked, not run again; the question of one whose check
+   fails offers to run it.
 
 The stage hooks mark only `/temper:intent`, which captures a draft on its own.
 

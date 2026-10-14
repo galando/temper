@@ -217,6 +217,7 @@ source "$TESTS_DIR/temper-cases-5.sh"
 source "$TESTS_DIR/temper-cases-6.sh"
 source "$TESTS_DIR/temper-cases-7.sh"
 source "$TESTS_DIR/temper-cases-8.sh"
+source "$TESTS_DIR/temper-cases-9.sh"
 
 echo ""
 echo "=== test-temper.sh ==="

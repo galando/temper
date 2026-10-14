@@ -93,8 +93,8 @@ Three you will actually type. `/temper:temper` runs and routes the rest.
 [`/temper:review`](docs/commands.md#temperreview), [`/temper:check`](docs/commands.md#tempercheck). Utilities:
 [`/temper:status`](docs/commands.md#temperstatus), [`/temper:pack`](docs/commands.md#temperpack), [`/temper:init`](docs/commands.md#temperinit).
 
-**Autonomy (opt in)** runs stages after the plan gate unattended and never commits, pushes or
-merges. **Packs:** [docs/packs.md](docs/packs.md). **CI:** [examples/workflow/README.md](examples/workflow/README.md).
+**Autonomy (opt in)** runs stages after the plan gate unattended. It never pushes, never merges to a
+remote and never makes the feature commit; its only commits are Build's local task commits and merges. **Packs:** [docs/packs.md](docs/packs.md). **CI:** [examples/workflow/README.md](examples/workflow/README.md).
 
 ## Documentation, contributing and license
 

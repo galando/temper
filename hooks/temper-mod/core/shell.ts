@@ -1,25 +1,81 @@
 // What the guard reads in a Bash command (ADR 0013). It is not a shell parser: it splits the text into statements and
-// words, honouring quotes, and looks for three things only:
+// words, honouring quotes (`'...'`, `"..."`, `$'...'` with its escapes, `$"..."`, a backslash), expands every word's
+// brace lists as bash does, and looks for three things only:
 //  - the temper CLI calls written out (`scripts/temper ...` or `temper ...`), so a call only the person may cause needs
 //    the person's answer;
-//  - a commit that switches the native pre-commit hook off (`--no-verify`, `-n`) or a change of `core.hooksPath`;
+//  - a commit that switches the native pre-commit hook off (`--no-verify`, `-n`), a change of `core.hooksPath`, or a
+//    config git is handed that can do either (an included file, an alias);
 //  - the paths the command writes: a redirect's target, and the files a writing program names (rm, mv, cp, tee,
 //    sed -i and the like). The guard holds them to the same list of protected files as the editing tools.
-// Anything this does not see (a variable, the output of a substitution, a script on disk, a program that builds a name at
-// run time) passes. Temper is not a sandbox (docs/trust.md): the native hook and the editing tool rules are the hard
-// guarantees.
+// A program is named by its last path segment, without regard to case (macOS and Windows file systems ignore it), and
+// by a glob that can expand to its name (`/usr/bin/gi[t]`). Anything this does not see (a variable, the output of a
+// substitution, a script on disk, a program that builds a name at run time) passes. Temper is not a sandbox
+// (docs/trust.md): the native hook and the editing tool rules are the hard guarantees.
 
 export type ShellRead = {
   // Each temper call written out: its words after the script (`state advance plan_complete build`).
   calls: string[][]
   // `git commit --no-verify` or `-n`: the native pre-commit hook would not run.
   noVerify: boolean
-  // A change of `core.hooksPath`: git would run other hooks than Temper's.
+  // A change of `core.hooksPath`, or a config handed to git that could make one: git would run other hooks than Temper's.
   hooksPath: boolean
   // The paths the command writes, as written.
   writes: string[]
+  // The last word of a copy, move or link (`cp a b DIR`): when it is a folder the files land inside it, so the folder
+  // itself is not replaced. Each one is in `writes` too.
+  targets: string[]
+  // Where the files of such a command land when its last word is a folder (`DIR/a`, `DIR/b`).
+  landings: string[]
   // A word that expands to more words than the guard reads (a brace list): what it writes is not known.
   tooMany: boolean
+}
+
+// A quoted character that bash does not expand (a brace list's braces and commas, a glob's characters) is kept apart
+// from an unquoted one while the guard reads the command: a private use character stands for it until the words are
+// expanded.
+const MASK: Record<string, string> = { '{': '', '}': '', ',': '', '*': '', '?': '', '[': '', ']': '' }
+const UNMASK: Record<string, string> = Object.fromEntries(Object.entries(MASK).map(([k, v]) => [v, k]))
+const mask = (text: string): string => text.replace(/[{},*?[\]]/g, c => MASK[c] ?? c)
+const unmask = (text: string): string => text.replace(/[-]/g, c => UNMASK[c] ?? c)
+
+// The text of an ANSI-C quote (`$'...'`, without its quotes) as bash reads it: `\n`, `\t`, `\\`, `\'`, octal `\nnn`,
+// `\xHH`, `\uHHHH`, `\UHHHHHHHH`, `\cX` and the rest.
+function ansiC(s: string): string {
+  const simple: Record<string, string> = { a: '\x07', b: '\b', e: '\x1b', E: '\x1b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v', '\\': '\\', "'": "'", '"': '"', '?': '?' }
+  let out = ''
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i] as string
+    if (c !== '\\' || i + 1 >= s.length) {
+      out += c
+      continue
+    }
+    const n = s[++i] as string
+    const digits = (re: RegExp, max: number): string => {
+      let d = ''
+      while (d.length < max && re.test(s[i + 1] ?? '')) d += s[++i]
+      return d
+    }
+    if (n in simple) out += simple[n]
+    else if (/[0-7]/.test(n)) out += String.fromCharCode(parseInt(n + digits(/[0-7]/, 2), 8) & 0xff)
+    else if (n === 'x') {
+      const h = digits(/[0-9a-fA-F]/, 2)
+      out += h === '' ? '\\x' : String.fromCharCode(parseInt(h, 16))
+    } else if (n === 'u' || n === 'U') {
+      const h = digits(/[0-9a-fA-F]/, n === 'u' ? 4 : 8)
+      out += h === '' ? `\\${n}` : String.fromCodePoint(Math.min(parseInt(h, 16), 0x10ffff))
+    } else if (n === 'c' && i + 1 < s.length) out += String.fromCharCode((s[++i] as string).charCodeAt(0) & 31)
+    else out += `\\${n}`
+  }
+  return out
+}
+
+// Where the ANSI-C quote that starts at `i` (`$'`) ends: the index of its closing quote, or the end of the text.
+function ansiEnd(command: string, i: number): number {
+  for (let j = i + 2; j < command.length; j++) {
+    if (command[j] === '\\') j++
+    else if (command[j] === "'") return j
+  }
+  return command.length
 }
 
 // Where the command substitution that starts at `i` (`$(` or a backquote) ends: the index of its `)` or backquote, or
@@ -48,12 +104,12 @@ function substitutionEnd(command: string, i: number): number {
   return command.length
 }
 
-// The text as statements of words. A quoted part keeps its spaces and loses its quotes; an operator outside quotes
-// (`;`, `&`, `|`, a newline, a bracket) ends the statement. A redirect is a word of its own (`>`, `>>`). A command
-// substitution (`$(...)` or a backquote, inside double quotes too) keeps its text in the word around it, as bash
-// expands braces before it runs one (`{a,$(b)}`); its commands are statements of their own, after the others. The body
-// of a here document is text, not commands: it is skipped.
-export function statements(command: string): string[][] {
+// The text as statements of words, with quoted characters masked (see MASK). A quoted part keeps its spaces and loses
+// its quotes; an operator outside quotes (`;`, `&`, `|`, a newline, a bracket) ends the statement. A redirect is a word
+// of its own (`>`, `>>`). A command substitution (`$(...)` or a backquote, inside double quotes too) keeps its text in
+// the word around it, as bash expands braces before it runs one (`{a,$(b)}`); its commands are statements of their
+// own, after the others. The body of a here document is text, not commands: it is skipped.
+function tokens(command: string): string[][] {
   const out: string[][] = []
   let words: string[] = []
   let word = ''
@@ -61,11 +117,13 @@ export function statements(command: string): string[][] {
   // The here documents of the current line, in order: their end words, and whether `<<-` lets the end word be indented.
   const docs: Array<{ end: string; dash: boolean }> = []
   const inner: string[][] = []
-  // A substitution at `i`: its commands are read, and its text joins the word. Returns where it ends.
-  const substitution = (i: number): number => {
+  // A substitution at `i`: its commands are read, and its text joins the word (masked inside double quotes, where bash
+  // expands no brace list of it). Returns where it ends.
+  const substitution = (i: number, quoted: boolean): number => {
     const end = substitutionEnd(command, i)
-    inner.push(...statements(command.slice(command[i] === '`' ? i + 1 : i + 2, end)))
-    word += command.slice(i, end + 1)
+    inner.push(...tokens(command.slice(command[i] === '`' ? i + 1 : i + 2, end)))
+    const text = command.slice(i, end + 1)
+    word += quoted ? mask(text) : text
     inWord = true
     return end
   }
@@ -84,9 +142,18 @@ export function statements(command: string): string[][] {
     if (ch === "'") {
       const close = command.indexOf("'", i + 1)
       const end = close < 0 ? command.length : close
-      word += command.slice(i + 1, end)
+      word += mask(command.slice(i + 1, end))
       inWord = true
       i = end
+    } else if (ch === '$' && command[i + 1] === "'") {
+      // `$'...'`: a quote whose escapes bash decodes.
+      const end = ansiEnd(command, i)
+      word += mask(ansiC(command.slice(i + 2, end)))
+      inWord = true
+      i = end
+    } else if (ch === '$' && command[i + 1] === '"') {
+      // `$"..."`: a double quote (bash translates it, and with no translation it is the text as it is).
+      continue
     } else if (ch === '"') {
       let j = i + 1
       for (; j < command.length && command[j] !== '"'; j++) {
@@ -95,11 +162,11 @@ export function statements(command: string): string[][] {
           continue
         }
         if (command[j] === '`' || (command[j] === '$' && command[j + 1] === '(')) {
-          j = substitution(j)
+          j = substitution(j, true)
           continue
         }
         if (command[j] === '\\' && j + 1 < command.length) j++
-        word += command[j]
+        word += mask(command[j] as string)
       }
       inWord = true
       i = j
@@ -107,7 +174,7 @@ export function statements(command: string): string[][] {
       // A line continuation: bash joins the two lines.
       i++
     } else if (ch === '\\' && i + 1 < command.length) {
-      word += command[i + 1]
+      word += mask(command[i + 1] as string)
       inWord = true
       i++
     } else if (ch === '<' && command[i + 1] === '<' && command[i + 2] !== '<') {
@@ -149,7 +216,7 @@ export function statements(command: string): string[][] {
       // `&>`: the redirect of both outputs; the `>` comes next.
       endWord()
     } else if (ch === '`' || (ch === '$' && command[i + 1] === '(')) {
-      i = substitution(i)
+      i = substitution(i, false)
     } else if (';&|()'.includes(ch)) {
       endStatement()
     } else {
@@ -161,25 +228,66 @@ export function statements(command: string): string[][] {
   return [...out, ...inner]
 }
 
-const SCRIPT = /(?:^|\/)temper$/
+// The text as statements of words, as bash reads its quotes (brace lists not expanded).
+export function statements(command: string): string[][] {
+  return tokens(command).map(st => st.map(unmask))
+}
+
 // Programs that write, remove or lock the files they name.
 const WRITERS = new Set(['rm', 'rmdir', 'unlink', 'shred', 'truncate', 'touch', 'chmod', 'chown', 'tee', 'mv', 'cp', 'install', 'ln', 'rsync'])
+// Every program whose words name what it writes: the writers, and sed and perl in place, and dd.
+const WRITER_NAMES = [...WRITERS, 'sed', 'perl', 'dd']
 // The ones whose last word is where they write.
 const TO_LAST = new Set(['cp', 'install', 'ln', 'rsync'])
 // The ones that take the folder they write into as `-t DIR`.
 const TARGET_DIR = new Set(['cp', 'mv', 'install', 'ln'])
+// A word that sets a variable (`NAME=value`).
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/
 
 // A word's program name: its last path segment (`/usr/bin/env` is env).
 const base = (word: string): string => word.split('/').pop() ?? ''
+
+// Whether a (masked) word can name the program `name`: its last segment is the name without regard to case, or an
+// unquoted glob with some literal text that matches it (`gi[t]`, `scripts/tempe?`). A glob of no literal text (`*`)
+// names no program here.
+function nameIs(word: string, name: string): boolean {
+  const b = base(word)
+  if (!/[*?[]/.test(b)) return unmask(b).toLowerCase() === name
+  if (unmask(b.replace(/\[[^\]]*\]|[*?]/g, '')) === '') return false
+  let re = ''
+  for (let i = 0; i < b.length; i++) {
+    const c = b[i] as string
+    if (c === '*') re += '.*'
+    else if (c === '?') re += '.'
+    else if (c === '[') {
+      const close = b.indexOf(']', i + 2)
+      if (close < 0) {
+        re += '\\['
+        continue
+      }
+      const set = unmask(b.slice(i + 1, close)).replace(/^!/, '^').replace(/\\/g, '\\\\').replace(/\]/g, '\\]')
+      re += `[${set}]`
+      i = close
+    } else re += unmask(c).replace(/[.+^${}()|\\[\]]/g, '\\$&')
+  }
+  try {
+    return new RegExp(`^${re}$`, 'i').test(name)
+  } catch {
+    return false
+  }
+}
+
+// The temper script: a word naming it that sets no variable.
+const isScript = (word: string): boolean => !ASSIGNMENT.test(unmask(word)) && nameIs(word, 'temper')
 
 // Where a program the guard reads may run in a statement: every word that names it. Bash runs a program after
 // `VAR=value` words, after a keyword (`then`, `do`, `{`, `!`, `coproc`, `function f {`), and after a program that runs
 // the words that follow (`env`, `timeout 5`, `sudo -D /x`, `exec -a x`, `flock f`, a full path to one); no list of
 // these is ever whole, so each word that names the program is read as where it starts. The price: a statement that
 // only names such a command as words (`echo rm .temper/gates.json`) is read as running it.
-function starts(words: string[], named: (cmd: string) => boolean): number[] {
+function starts(words: readonly string[], named: (word: string) => boolean): number[] {
   const at: number[] = []
-  for (let i = 0; i < words.length; i++) if (named(base(words[i] as string))) at.push(i)
+  for (let i = 0; i < words.length; i++) if (named(words[i] as string)) at.push(i)
   return at
 }
 
@@ -252,27 +360,39 @@ function braces(word: string): string[] | null {
   return expand(word) ? [...out] : null
 }
 
-const WRITES = (cmd: string): boolean => WRITERS.has(cmd) || cmd === 'sed' || cmd === 'perl' || cmd === 'dd'
+type Written = { writes: string[]; targets: string[]; landings: string[] }
 
-// The paths a statement writes: a redirect's target, and the files a writing program names. `expand` gives a word's
-// brace expansion.
-function written(words: string[], expand: (word: string) => string[]): string[] {
-  const out: string[] = []
-  for (let i = 0; i < words.length; i++) {
-    const op = words[i] as string
-    const to = words[i + 1]
+// The paths a statement writes: a redirect's target, and the files a writing program names. `plain` are the words,
+// `masked` the same words with their quoted characters masked (to tell what names a program), and `known` says whether
+// the guard read a word whole (a word past the cap is not).
+function written(plain: string[], masked: string[], known: (word: string) => void): Written {
+  const out: Written = { writes: [], targets: [], landings: [] }
+  for (let i = 0; i < plain.length; i++) {
+    const op = plain[i] as string
+    const to = plain[i + 1]
     if (to === undefined) continue
     // `>`, `>>`, `>|` and `<>` write their file; `>&` and `>>&` write a file unless they name a file descriptor (`2>&1`).
-    if (/^(?:>[>|]?|<>)$/.test(op) || (/^>>?&$/.test(op) && !/^(?:\d+|-)$/.test(to))) out.push(...expand(to))
+    if (/^(?:>[>|]?|<>)$/.test(op) || (/^>>?&$/.test(op) && !/^(?:\d+|-)$/.test(to))) {
+      known(to)
+      out.writes.push(to)
+    }
   }
-  for (const at of starts(words, WRITES)) out.push(...programWrites(words, at, expand))
+  for (let i = 0; i < masked.length; i++) {
+    const cmd = WRITER_NAMES.find(n => nameIs(masked[i] as string, n))
+    if (cmd === undefined) continue
+    const w = programWrites(plain, i, cmd, known)
+    out.writes.push(...w.writes)
+    out.targets.push(...w.targets)
+    out.landings.push(...w.landings)
+  }
   return out
 }
 
-// The files the writing program at `at` names.
-function programWrites(words: string[], at: number, expand: (word: string) => string[]): string[] {
-  const out: string[] = []
-  const cmd = base(words[at] as string)
+const lastName = (path: string): string => path.replace(/\/+$/, '').split('/').pop() ?? path
+
+// The files the writing program `cmd` at `at` names.
+function programWrites(words: string[], at: number, cmd: string, known: (word: string) => void): Written {
+  const out: Written = { writes: [], targets: [], landings: [] }
   const edits = cmd === 'sed' || cmd === 'perl'
   // The program's file words: no flag, no redirect and its file, and for sed and perl no script (`-e x`, or sed's
   // first word when no -e names the script).
@@ -280,6 +400,8 @@ function programWrites(words: string[], at: number, expand: (word: string) => st
   let script = false
   // `cp -t DIR SRC...` (also mv, install, ln): the files land in DIR.
   let into: string | null = null
+  // `cp -T`, `mv --no-target-directory`: the last word is the file itself, never a folder to land in.
+  let noTarget = false
   for (let i = at + 1; i < words.length; i++) {
     const w = words[i] as string
     const cluster = /^-([A-Za-su-z]*)t(.*)$/.exec(w)
@@ -297,16 +419,33 @@ function programWrites(words: string[], at: number, expand: (word: string) => st
     } else if (edits && /^-[A-Za-z]*e$/.test(w)) {
       script = true
       i++
-    } else if (!w.startsWith('-')) args.push(...expand(w))
+    } else if (!w.startsWith('-')) {
+      known(w)
+      args.push(w)
+    } else if (/^-[A-Za-z]*T[A-Za-z]*$/.test(w) || w === '--no-target-directory') noTarget = true
   }
   if (cmd === 'sed' && !script) args.shift()
   if (into !== null) {
+    known(into)
     const dir = into.replace(/\/+$/, '')
-    out.push(...(cmd === 'mv' ? args : []), ...args.map(a => `${dir}/${a.split('/').pop() ?? a}`))
-  } else if (WRITERS.has(cmd)) out.push(...(TO_LAST.has(cmd) ? args.slice(-1) : args))
+    out.writes.push(...(cmd === 'mv' ? args : []), ...args.map(a => `${dir}/${lastName(a)}`))
+    return out
+  }
+  if (WRITERS.has(cmd)) {
+    out.writes.push(...(TO_LAST.has(cmd) ? args.slice(-1) : args))
+    // A copy, move or link into a folder (`cp a .temper/specs/pw/`): the files land in it, and it is not replaced. rsync
+    // with a source that ends in `/` copies that folder's files, whose names the guard does not know.
+    const contents = cmd === 'rsync' && args.slice(0, -1).some(a => a.endsWith('/'))
+    if ((TO_LAST.has(cmd) || cmd === 'mv') && args.length >= 2 && !noTarget && !contents) {
+      const target = args[args.length - 1] as string
+      out.targets.push(target)
+      out.landings.push(...args.slice(0, -1).map(a => `${target.replace(/\/+$/, '')}/${lastName(a)}`))
+    }
+    return out
+  }
   // sed -i, perl -i: they rewrite the files they are given.
-  else if (edits && words.slice(at + 1).some(w => /^-[A-Za-z]*i/.test(w) || w === '--in-place' || w.startsWith('--in-place='))) out.push(...args)
-  else if (cmd === 'dd') out.push(...args.filter(a => a.startsWith('of=')).map(a => a.slice(3)))
+  if (edits && words.slice(at + 1).some(w => /^-[A-Za-z]*i/.test(w) || w === '--in-place' || w.startsWith('--in-place='))) out.writes.push(...args)
+  else if (cmd === 'dd') out.writes.push(...args.filter(a => a.startsWith('of=')).map(a => a.slice(3)))
   return out
 }
 
@@ -316,7 +455,7 @@ function gitParts(words: string[], at: number): { sub: string; rest: string[]; o
   let i = at + 1
   for (; i < words.length; i++) {
     const w = words[i] as string
-    if (w === '-c' || w === '-C' || w === '--git-dir' || w === '--work-tree') {
+    if (['-c', '-C', '--git-dir', '--work-tree', '--config-env', '--namespace'].includes(w)) {
       opts.push(w, words[i + 1] ?? '')
       i++
     } else if (w.startsWith('-')) opts.push(w)
@@ -326,6 +465,10 @@ function gitParts(words: string[], at: number): { sub: string; rest: string[]; o
 }
 
 const HOOKS_PATH = /core\.hookspath/i
+// A config key that loads another config file, which can set core.hooksPath.
+const INCLUDE = /^include(?:if\..*)?\.path$/i
+// A git alias: its body runs as a git command (or, after `!`, as a shell command).
+const ALIAS = /^alias\.[^=]+$/i
 
 // `git commit` with `--no-verify` or `-n`. In a cluster of short flags a letter that takes a value (`-m`, `-F`, `-C`,
 // `-c`, `-t`) takes the rest of the cluster, or the next word.
@@ -348,45 +491,93 @@ function skipsHook(args: string[]): boolean {
   return false
 }
 
-export function readShell(command: string): ShellRead {
-  const read: ShellRead = { calls: [], noVerify: false, hooksPath: false, writes: [], tooMany: false }
-  const expand = (word: string): string[] => {
-    const all = braces(word)
-    if (all === null) read.tooMany = true
-    return all ?? [word]
+// What a git alias body does, read as the command it runs, added to `read`.
+function aliasBody(read: ShellRead, body: string): void {
+  const text = body.trim()
+  const sub = readShell(text.startsWith('!') ? text.slice(1) : `git ${text}`)
+  read.noVerify ||= sub.noVerify
+  read.hooksPath ||= sub.hooksPath
+  read.tooMany ||= sub.tooMany
+  read.calls.push(...sub.calls)
+  read.writes.push(...sub.writes)
+  read.targets.push(...sub.targets)
+  read.landings.push(...sub.landings)
+}
+
+// One config pair handed to git for this call (`-c key=value`, `--config-env key=VAR`): a hooks path, an included file
+// or an alias. `known`: the value is in the text (an environment variable's value is not).
+function configPair(read: ShellRead, pair: string, known: boolean): void {
+  const eq = pair.indexOf('=')
+  const key = eq < 0 ? pair : pair.slice(0, eq)
+  if (HOOKS_PATH.test(key) || INCLUDE.test(key)) read.hooksPath = true
+  if (ALIAS.test(key)) {
+    if (!known) read.hooksPath = true
+    else aliasBody(read, eq < 0 ? '' : pair.slice(eq + 1))
   }
-  for (const words of statements(command)) {
-    read.writes.push(...written(words, expand))
+}
+
+export function readShell(command: string): ShellRead {
+  const read: ShellRead = { calls: [], noVerify: false, hooksPath: false, writes: [], targets: [], landings: [], tooMany: false }
+  for (const raw of tokens(command)) {
+    // Every word as bash expands its brace lists, so no list hides a program, a call or a path (`{git,commit}`). A word
+    // past the cap is read as it is: it is refused when it holds a list of words (which could name a program) or when
+    // it is a path a program writes.
+    const masked: string[] = []
+    const over = new Set<string>()
+    for (const w of raw) {
+      const all = braces(w)
+      if (all !== null) masked.push(...all)
+      else {
+        masked.push(w)
+        over.add(unmask(w))
+        if (/\{[^{}]*,/.test(w)) read.tooMany = true
+      }
+    }
+    const words = masked.map(unmask)
+    const w = written(words, masked, word => {
+      if (over.has(word)) read.tooMany = true
+    })
+    read.writes.push(...w.writes)
+    read.targets.push(...w.targets)
+    read.landings.push(...w.landings)
     // A variable set to name core.hooksPath, before git or in a statement of its own (`export GIT_CONFIG_KEY_0=...`):
-    // git reads its config from the environment it is given.
-    if (words.some(w => /^[A-Za-z_][A-Za-z0-9_]*=/.test(w) && HOOKS_PATH.test(w))) read.hooksPath = true
-    for (const gitAt of starts(words, cmd => cmd === 'git')) {
+    // git reads its config from the environment it is given. Also a config file, an included file or an alias handed
+    // to git that way.
+    for (const x of words) {
+      if (!ASSIGNMENT.test(x)) continue
+      if (HOOKS_PATH.test(x)) read.hooksPath = true
+      if (/^GIT_CONFIG(?:_[A-Z0-9_]*)?=/i.test(x) && /include(?:if\.[^=\s]*)?\.path|alias\.|^GIT_CONFIG(?:_GLOBAL|_SYSTEM)?=/i.test(x)) read.hooksPath = true
+    }
+    for (const gitAt of starts(masked, x => nameIs(x, 'git'))) {
       const git = gitParts(words, gitAt)
-      // `git -c core.hooksPath=...`.
+      // `git -c core.hooksPath=...`, `git -c include.path=...`, `git -c alias.x=...`, `git --config-env ...`.
       if (git.opts.some(o => HOOKS_PATH.test(o))) read.hooksPath = true
+      git.opts.forEach((o, i) => {
+        if (o === '-c') configPair(read, git.opts[i + 1] ?? '', true)
+        else if (o === '--config-env') configPair(read, git.opts[i + 1] ?? '', false)
+        else if (o.startsWith('--config-env=')) configPair(read, o.slice('--config-env='.length), false)
+      })
       if (git.sub === 'commit' && skipsHook(git.rest)) read.noVerify = true
       if (git.sub === 'config') {
-        const at = git.rest.findIndex(w => HOOKS_PATH.test(w))
-        const reads = git.rest.some(w => ['--get', '--get-all', '--get-regexp', '--list', '-l'].includes(w))
+        const at = git.rest.findIndex(x => HOOKS_PATH.test(x))
+        const reads = git.rest.some(x => ['--get', '--get-all', '--get-regexp', '--list', '-l'].includes(x))
         // `git config core.hooksPath` with no value reads it; with a value, or with --unset, it changes it.
-        if (at >= 0 && !reads && (git.rest[at + 1] !== undefined || git.rest.some(w => w.startsWith('--unset') || w === '--replace-all' || w === '--add'))) read.hooksPath = true
+        if (at >= 0 && !reads && (git.rest[at + 1] !== undefined || git.rest.some(x => x.startsWith('--unset') || x === '--replace-all' || x === '--add'))) read.hooksPath = true
         // Removing or renaming the core section drops core.hooksPath with it (also git 2.46's `git config remove-section`).
-        const section = git.rest.findIndex(w => ['--remove-section', '--rename-section', 'remove-section', 'rename-section'].includes(w))
-        if (section >= 0 && (git.rest.slice(section + 1).find(w => !w.startsWith('-')) ?? '').toLowerCase() === 'core') read.hooksPath = true
+        const section = git.rest.findIndex(x => ['--remove-section', '--rename-section', 'remove-section', 'rename-section'].includes(x))
+        if (section >= 0 && (git.rest.slice(section + 1).find(x => !x.startsWith('-')) ?? '').toLowerCase() === 'core') read.hooksPath = true
         // git 2.46's `git config unset core.hooksPath`.
         if (at >= 0 && !reads && git.rest.slice(0, at).includes('unset')) read.hooksPath = true
         // A config file included from the repository's config can set core.hooksPath (include.path, includeIf.*.path).
-        const include = git.rest.findIndex(w => /^include(?:if\..*)?\.path$/i.test(w))
-        if (include >= 0 && !reads && git.rest.slice(include + 1).some(w => !w.startsWith('-'))) read.hooksPath = true
+        const include = git.rest.findIndex(x => INCLUDE.test(x))
+        if (include >= 0 && !reads && git.rest.slice(include + 1).some(x => !x.startsWith('-'))) read.hooksPath = true
+        // An alias written into the config runs its body later: read the body as the command it is.
+        const alias = git.rest.findIndex(x => ALIAS.test(x))
+        if (alias >= 0 && !reads && git.rest[alias + 1] !== undefined) aliasBody(read, git.rest[alias + 1] as string)
       }
     }
-    // The first word that names the script starts a call: the words after it are the call's.
-    for (let i = 0; i < words.length; i++) {
-      if (SCRIPT.test(words[i] as string)) {
-        read.calls.push(words.slice(i + 1))
-        break
-      }
-    }
+    // Every word that names the script starts a call: the words after it are the call's.
+    for (let i = 0; i < masked.length; i++) if (isScript(masked[i] as string)) read.calls.push(words.slice(i + 1))
   }
   return read
 }
@@ -401,10 +592,10 @@ export function callWords(words: readonly string[]): string[] {
 // Whether `words` are the call the CLI wrote in `written` (a command line it printed), word for word. A placeholder in
 // braces (`{reason}`) stands for one word that is not empty.
 export function sameCall(written: string, words: readonly string[]): boolean {
-  const st = statements(written)[0] ?? []
-  const at = st.findIndex(w => SCRIPT.test(w))
+  const st = tokens(written)[0] ?? []
+  const at = st.findIndex(isScript)
   if (at < 0) return false
-  const want = callWords(st.slice(at + 1))
+  const want = callWords(st.slice(at + 1).map(unmask))
   const have = callWords(words)
   return want.length === have.length && want.every((w, i) => (/^\{[^{}]*\}$/.test(w) ? (have[i] ?? '') !== '' : w === have[i]))
 }

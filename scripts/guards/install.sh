@@ -205,24 +205,56 @@ while :; do
 done
 # The home folder is never a project: the CLI refuses to run there, so the gate is skipped.
 if [ -n "\${HOME:-}" ] && [ "\$REPO_DIR" -ef "\$HOME" ]; then exit 0; fi
-if [ -x "\$TEMPER_CLI" ] && [ -d .temper ]; then
-  GATE_RC=0
-  "\$TEMPER_CLI" gate commit || GATE_RC=\$?
-  if [ "\$GATE_RC" -eq 3 ]; then
-    # Exit 3: the CLI refused the .temper folder (a symlink on a path it keeps run state
-    # in). While a run is active that refusal must not open the gate.
-    if [ -e .temper/build-state.json ] || [ -L .temper/build-state.json ]; then
-      echo "Temper: commit blocked. A run is active and the temper CLI refused this project's .temper folder (its reason is above), so remove the symlink, then commit again." >&2
-      exit 1
+# The commit gate of the project in the current folder: 0 lets the commit go on, 1 blocks it.
+_temper_gate_here() {
+  if [ -x "\$TEMPER_CLI" ] && [ -d .temper ]; then
+    GATE_RC=0
+    "\$TEMPER_CLI" gate commit || GATE_RC=\$?
+    if [ "\$GATE_RC" -eq 3 ]; then
+      # Exit 3: the CLI refused the .temper folder (a symlink on a path it keeps run state
+      # in). While a run is active that refusal must not open the gate.
+      if [ -e .temper/build-state.json ] || [ -L .temper/build-state.json ]; then
+        echo "Temper: commit blocked. A run is active and the temper CLI refused this project's .temper folder (its reason is above), so remove the symlink, then commit again." >&2
+        return 1
+      fi
+      echo "Temper: the commit gate was skipped because the temper CLI refused this project's .temper folder (its reason is above) and no run is active." >&2
+      return 0
     fi
-    echo "Temper: the commit gate was skipped because the temper CLI refused this project's .temper folder (its reason is above) and no run is active." >&2
-    exit 0
+    [ "\$GATE_RC" -eq 0 ] || return 1
+  elif [ -f "\$TESTS_RAN_SCRIPT" ] && [ "\$(pwd -P)" = "\$REPO_DIR" ]; then
+    # Fallback for a project that only installed the guardrails pack without the CLI.
+    bash "\$TESTS_RAN_SCRIPT" || return 1
   fi
-  [ "\$GATE_RC" -eq 0 ] || exit 1
-elif [ -f "\$TESTS_RAN_SCRIPT" ]; then
-  # Fallback for a project that only installed the guardrails pack without the CLI.
-  bash "\$TESTS_RAN_SCRIPT" || exit 1
-fi
+  return 0
+}
+# Temper hook: every project the commit touches. The top of the repository, and each folder above a staged file that
+# holds a .temper folder: a project below the top (a package of a monorepo) keeps its run there. A folder inside the
+# plugin's own folder is skipped, as above.
+GATE_DIRS="\$(python3 -c '
+import os, subprocess, sys
+top, plugin = os.getcwd(), os.path.realpath(sys.argv[1])
+out = [top]
+names = subprocess.run(["git", "diff", "--cached", "--name-only", "-z"], stdout=subprocess.PIPE).stdout
+for n in names.decode("utf-8", "surrogateescape").split(chr(0)):
+    d = os.path.dirname(os.path.join(top, n)) if n else top
+    while len(d) > len(top) and d.startswith(top + os.sep):
+        real = os.path.realpath(d)
+        if d not in out and os.path.isdir(os.path.join(d, ".temper")) and not (real == plugin or real.startswith(plugin + os.sep)):
+            out.append(d)
+        d = os.path.dirname(d)
+print(chr(10).join(out))
+' "\${TEMPER_CLI%/scripts/temper}" 2>/dev/null)" || GATE_DIRS="\$REPO_DIR"
+[ -n "\$GATE_DIRS" ] || GATE_DIRS="\$REPO_DIR"
+set -f
+_temper_ifs="\$IFS"
+IFS='
+'
+for GATE_DIR in \$GATE_DIRS; do
+  IFS="\$_temper_ifs"
+  ( cd "\$GATE_DIR" && _temper_gate_here ) || exit 1
+done
+IFS="\$_temper_ifs"
+set +f
 
 exit 0
 HOOK

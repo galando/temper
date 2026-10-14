@@ -138,10 +138,9 @@ Before that commit, the commit steps of `temper next` add one record, committed 
 
 - Tests fail after the fix → restore the project file you changed (`git checkout -- <that file>`,
   only ever a file inside the project), re-run, re-investigate.
-- The attempt limit is what `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get fix.max-loops` prints
-  (default 3). The loop back from Check to Fix,
-  `${CLAUDE_PLUGIN_ROOT}/scripts/temper state loop check fix`, enforces it once the key is
-  set in `.claude/temper.config`.
+- The attempt limit is what `${CLAUDE_PLUGIN_ROOT}/scripts/temper config get fix.max-loops` prints:
+  the key in `.claude/temper.config`, else `loops.max-per-type` (default 2). The loop back from Check
+  to Fix, `${CLAUDE_PLUGIN_ROOT}/scripts/temper state loop check fix`, enforces the same number.
 - `fix.max-loops` attempts fail → keep the regression test (it proves the bug), show the RCA and
   what you tried, ask for context.
 - It's actually a design flaw, not a bug → "this needs `/temper:plan` for a redesign,

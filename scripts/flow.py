@@ -281,13 +281,20 @@ class Builder:
         return self.question(header, text, first[:3] + [more_opt], stage, more=more)
 
     # -- the steps that leave Intent and Plan ------------------------------------------------
-    def spec_commit(self, message):
-        if self.r.spec_ignored() or not self.r.spec:
+    def spec_commit(self, message, changes=False):
+        """The spec folder's commit, only when it has something to commit: a commit with nothing staged is refused by the
+        commit hook (no spec only carve out applies), which would stop the answer's calls."""
+        if self.r.spec_ignored() or not self.r.spec or not (changes or self.r.ctx.get("spec_dirty")):
             return []
         return ["git add -- %s/" % self.r.spec, 'git commit -m "%s"' % message]
 
     def leave_intent(self):
-        return [self.c("intent accept")] + self.spec_commit("docs(intent): accept %s" % self.r.slug) + \
+        """Accept the intent (when there is one, and it is not accepted yet the accept changes it), commit, advance."""
+        r = self.r
+        has = bool(r.intent)
+        m = re.search(r"^\*\*Status:\*\*\s*(\w+)", r.intent, re.M)
+        accepts = has and not (m and m.group(1).lower() in ("accepted", "completed"))
+        return ([self.c("intent accept")] if has else []) + self.spec_commit("docs(intent): accept %s" % r.slug, changes=accepts) + \
                [self.c("state advance intent_complete plan")]
 
     def leave_plan(self):
@@ -335,7 +342,11 @@ class Builder:
                 return self.question(GATE_HEADER, text, stage=stage, options=[
                     self.opt("Continue to %s (Recommended)" % LABEL.get(nxt, nxt), "Go on to %s." % LABEL.get(nxt, nxt),
                              move=self.go_move(stage), calls=go), self.save()])
-            return self.question(GATE_HEADER, text, stage=stage, options=[override_opt(go), self.save()])
+            # A stage of an earlier session leaves no evidence in this run (state init starts it empty): its check fails,
+            # and the person runs it now (it and every stage after it run) or skips it.
+            run = self.opt("Run %s (Recommended)" % label, "%s runs now, and every stage after it." % label, move="redo",
+                           calls=[self.c("state redo %s --reason %s" % (stage, shlex.quote("the check of %s failed when the run entered at a later stage" % label)))])
+            return self.question(GATE_HEADER, text, stage=stage, options=[run, override_opt(go), self.save()])
 
         if r.command == "fix" and stage == "rca":
             return self.question(GATE_HEADER, "RCA: the root cause is in %s/rca.md. Proceed to Fix?" % r.spec, stage=stage, options=[
@@ -353,8 +364,6 @@ class Builder:
                 self.skill("grill-me", "Grill Me", "Stress test the intent first."), self.save()])
 
         if stage == "plan":
-            walk = self.opt("Walk through step by step", "Review the plan section by section.",
-                            do="Follow %s/reference/plan.md, section Approval, then ask this question again." % self.plugin)
             html = self.opt("Open HTML review", "Open the plan as a page to comment on.",
                             do="Follow %s/reference/plan-review.md (Open HTML review), then ask this question again." % self.plugin)
             share = self.opt("Share HTML review", "Publish the plan as a private Claude artifact others can comment on.",
@@ -368,10 +377,10 @@ class Builder:
                 if r.on("autonomy.enabled"):
                     first = [self.opt("Stage by stage (Recommended)", "Approve the plan; every later stage keeps its own gate.", move="approve", calls=go),
                              self.opt("Autonomous: run the rest unattended", "Approve the plan; Build, Review and Check go on by themselves and park before the commit.",
-                                      move="arm", calls=[self.c("state set run_mode autonomous")] + go), walk]
-                    return self.with_more(GATE_HEADER, text, stage, first, [html, share, grill, self.save()], "Plan: more options.")
-                first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go), walk, html]
-                return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.")
+                                      move="arm", calls=[self.c("state set run_mode autonomous")] + go), html]
+                    return self.with_more(GATE_HEADER, text, stage, first, [share, grill, teach, self.save()], "Plan: more options.")
+                first = [self.opt("Continue to %s (Recommended)" % nl, "Approve the plan, commit it, and start %s." % nl, move="approve", calls=go), html, share]
+                return self.with_more(GATE_HEADER, text, stage, first, [grill, teach, self.save()], "Plan: more options.")
             return self.question(GATE_HEADER, "Plan: the check failed (%s). Fix the plan, or skip the check?" % why, stage=stage,
                                  options=back_opt() + [override_opt(self.leave_plan()), grill, self.save()])
 
@@ -410,7 +419,12 @@ class Builder:
                                       [self.skill("teach-me", "Teach Me", "Walk through the change."), self.save()], "Review: more options.")
             opens = r.open_findings()
             accept = None
-            first = back_opt(rec=True)
+            # A review that recorded no completion row did not finish (its agent failed or stopped): run it again first.
+            unfinished = bool(rows) and all(x.get("name") == "review completed" for x in rows)
+            first = back_opt(rec=not unfinished)
+            if unfinished:
+                first.insert(0, self.opt("Run Review again (Recommended)", "The review did not finish; it runs again.", move="redo",
+                                         calls=[self.c("state redo review --reason 'the review did not finish'")]))
             if opens:
                 aopts = [self.opt("Accept finding %d" % f["id"], f["claim"][:150], move="accept",
                                   calls=[self.c("evidence accept --stage review --id %d --reason '{reason}'" % f["id"]), self.c("gate review")],
@@ -577,6 +591,34 @@ class Builder:
                     "say": "Every group passed: the groups are merged and Build is checked."}
         return {"action": "work", "stage": "build", "calls": [self.c("gate build")], "agents": [], "say": "Build is checked."}
 
+    def foreign_branch(self):
+        """`temper integrate` found commits the CLI did not make on a passed group's branch: the person takes them out
+        or keeps them (an armed run parks for them). None when there are none."""
+        r = self.r
+        integ = r.groups.get("integration") or {}
+        foreign = integ.get("foreign") if integ.get("verdict") == "FAIL" else None
+        if not isinstance(foreign, dict) or not foreign:
+            return None
+        gid = sorted(foreign)[0]
+        shas = [x for x in foreign.get(gid) or [] if isinstance(x, str)]
+        if not shas:
+            return None
+        csv = ",".join(x[:7] for x in shas)
+        if r.armed():
+            return {"action": "auto", "stage": "build",
+                    "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote("group %s's branch holds commits the CLI did not make: %s" % (gid, csv)))],
+                    "say": "Group %s holds commits the CLI did not make; the armed run parks for you." % gid}
+        wt = ((r.groups.get("groups") or {}).get(gid) or {}).get("worktree") or ""
+        again = [self.c("integrate"), self.c("gate build")]
+        out = [self.opt("Take the commits out (Recommended)", "Remove them from the group's branch, newest first; the groups are merged again.", move="redo",
+                        calls=["git -C %s rebase --autostash --onto %s~1 %s" % (shlex.quote(wt), x[:7], x[:7]) for x in shas] + again),
+               self.opt("Keep the commits", "Keep them knowingly, with your reason (recorded like a skip).", move="keep",
+                        calls=[self.c("group reopen %s --accept-foreign %s --reason '{reason}'" % (gid, csv))] + again,
+                        reason=["The commits are right", "I accept the risk"]),
+               self.save()]
+        text = "Group %s's branch holds commits the CLI did not make (%s). Take them out, or keep them?" % (gid, csv)
+        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=out)}
+
     def group_question(self, g):
         gid = g["id"]
         q = self.question(GROUP_HEADER, "Group %s (%s) passed its check. Continue?" % (gid, g.get("title", "")), stage="build", options=[
@@ -656,7 +698,8 @@ class Builder:
         files = r.ctx.get("changed") or []
         if not r.spec_ignored() and r.spec:
             files = [r.spec + "/"] + [f for f in files if not f.startswith(r.spec + "/")]
-        lessons = [".temper/lessons.md"] if r.command == "fix" and ".temper/lessons.md" not in files else []
+        # A fix run's lesson is committed with it, unless the project keeps .temper out of git (then it stays local).
+        lessons = [".temper/lessons.md"] if r.command == "fix" and ".temper/lessons.md" not in files and not r.ctx.get("lessons_ignored") else []
         # Each name one shell quoted word: the step runs as printed, and a file name is never shell code.
         steps.append("git add -- %s" % " ".join(shlex.quote(f) for f in files + lessons) if files
                      else "git add -- (each file the run changed)%s" % "".join(" " + x for x in lessons))
@@ -720,6 +763,11 @@ class Builder:
         if stage == "commit":
             out.update(self.commit())
             return out
+        if stage == "build" and r.command == "temper":
+            fb = self.foreign_branch()
+            if fb is not None:
+                out.update(fb)
+                return out
         if r.command == "fix" and stage == "rca":
             out.update({"action": "ask", "stage": stage, "ask": self.ask(stage)})
             return out
@@ -985,6 +1033,7 @@ def view(run, nxt):
         "guard": {"stage": r.stage, "spec": r.spec, "slug": r.slug, "fix_run": r.command == "fix",
                   "grouped": bool(r.groups), "armed": r.armed(), "autonomy_enabled": r.on("autonomy.enabled"),
                   "plan_files": plan_view(r)["files"], "step": r.state.get("step"), "run_id": r.state.get("run_id"),
+                  "prefix": git("rev-parse", "--show-prefix"),
                   "trivial_exit": r.stage == "intent" and int(r.state.get("step") or 0) == 0 and set(r.gates) <= {"intent"} and not r.overrides
                   and not any(os.path.isfile(os.path.join(r.spec, n)) for n in ("intent.md", "plan.md", "tasks.md", "design.md"))},
         "plan": plan_view(r),
@@ -1052,8 +1101,16 @@ def changed_files(base, started):
             except OSError:
                 continue
         names.append(name)
+    # A name that is neither in the work tree nor in the index (a file deleted in a commit since base_sha, as grouped
+    # Build commits every task) has nothing to add, and one such name makes the whole `git add` fail.
+    gone = [n for n in dict.fromkeys(names) if not os.path.lexists(os.path.join(top, n))]
+    indexed = set()
+    if gone:
+        indexed = {x for x in git("-C", top, "ls-files", "-z", "--", *gone).decode("utf-8", "replace").split("\0") if x}
     out = []
     for n in names:
+        if n in gone and n not in indexed:
+            continue
         rel = os.path.relpath(os.path.join(top, n))
         if rel.startswith((".temper/", ".claude/")) or rel in out:
             continue

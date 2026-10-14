@@ -109,8 +109,8 @@ fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&
 printf '# Plan\n\n## Files to Modify\n| File | Change |\n|---|---|\n| `src/demo.sh` | the demo |\n| `README.md` | a line |\n' > .temper/specs/demo/plan.md
 gpass plan
 assert_eq "next: Plan PASS asks to approve the plan, three options and More options" \
-  "Continue to Build (Recommended)|Walk through step by step|Open HTML review|More options" "$(labels)"
-assert_eq "next: More options holds the rest, as its own question" "Share HTML review|Grill Me|Teach Me|Save for later" \
+  "Continue to Build (Recommended)|Open HTML review|Share HTML review|More options" "$(labels)"
+assert_eq "next: More options holds the rest, as its own question" "Grill Me|Teach Me|Save for later" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 git -c user.email=t@t -c user.name=t commit -q --allow-empty -m base >/dev/null 2>&1
 "$TEMPER" state advance plan_complete build >/dev/null 2>&1
@@ -125,9 +125,11 @@ assert_eq "view: Build is held to the approved files, not to a plan.md edited si
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 printf 'autonomy:\n  enabled: true\n' >> .claude/temper.config
 assert_eq "next: with autonomy on, the Plan question offers the arming choice" \
-  "Stage by stage (Recommended)|Autonomous: run the rest unattended|Walk through step by step|More options" "$(labels)"
+  "Stage by stage (Recommended)|Autonomous: run the rest unattended|Open HTML review|More options" "$(labels)"
 assert_eq "next: Autonomous arms the run before it advances" "arm|state set run_mode autonomous" \
   "$(nx "o = d['ask']['options'][1]; o['move'] + '|' + o['calls'][0].split('temper ', 1)[1]")"
+assert_eq "next: the Plan question has no walk through: More options holds the rest" "Share HTML review|Grill Me|Teach Me|Save for later" \
+  "$(nx "'|'.join(o['label'] for o in d['ask']['more']['question']['options'])")"
 
 fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; gpass plan
 "$TEMPER" state set complexity medium >/dev/null 2>&1

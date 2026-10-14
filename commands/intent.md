@@ -86,7 +86,9 @@ its system prompt, so its brief says nothing about enforcement.
    constraint that has no `(source: …)` marker) — the same deterministic floor the pipeline's
    Intent gate applies. `--spec-path` is required here: this command never runs
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init`, and without a spec path the gate refuses to guess (usage
-   error, no verdict) rather than vacuously passing on a path it never looked at.
+   error, no verdict) rather than vacuously passing on a path it never looked at. While a `/temper` run of
+   another feature is active, the gate prints its rows and says `not recorded`: the draft's verdict never
+   stands for that run. Fix the FAIL rows all the same.
 
 4. **Let the originator correct it.** Show the draft; apply their corrections; re-show.
    The artifact is theirs — you drafted it.

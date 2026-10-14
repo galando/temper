@@ -33,7 +33,7 @@ need MOD "earlier call" "a link or script made in an earlier call is a known lim
 need MOD "built at run time" "a program that builds the name or a path at run time is a known limit"
 need MOD "a patch or an archive" "a patch or an archive hides the names it writes"
 need MOD "A commit the native hook does not check" "a merge, a cherry-pick or git plumbing is a known limit"
-need MOD "TEMPER_DIR" "TEMPER_DIR and TEMPER_CONFIG are a known limit"
+need MOD "follows no \`TEMPER_CONFIG\` while a" "the CLI does not follow TEMPER_CONFIG during a run"
 need MOD "can only hide a question" "an injected marker copy can only hide a question"
 need MOD "goes to the native \`pre-commit\` hook in every stage" "a plain commit is for the native hook, in every stage"
 need MOD "Claude writes the question" "a decision is the option the person picks in a question Claude writes"

@@ -40,6 +40,21 @@ task commits and the merges, and parks a group on a commit it did not record. Pe
 `build.mode` are removed; `agents/build.md` is the fix pass of a loop back to Build. Every stage records
 its usage (`temper usage add`), and a fix run's commit adds its lesson to `.temper/lessons.md`.
 
+**Release audit fixes.** A verdict of the active run is computed from its own spec folder and the project's config:
+`gate --spec-path` of another folder prints the rows and records nothing, and `TEMPER_CONFIG` is not followed while a
+run is active. The plan gate records the digest of the approved `tasks.md`, so a Test, Validate or Integration command
+changed after it stops the grouped Build, and from Design on no agent writes `tasks.md`. A project below the top of its
+git repository (a package of a monorepo) builds in its own folder inside each worktree, and the native hook gates every
+project a commit touches. The guard reads `$'...'` and `$"..."` quotes, expands every word's brace lists (a quoted one
+not), finds a program through a glob or in another case and a call at every word that names the script, and refuses a
+config handed to git that can switch the hook off (`-c include.path`, `--config-env`, an alias whose body skips the hook,
+`GIT_CONFIG_GLOBAL`); a copy into the spec folder is no longer refused. At Commit only the spec folder is written.
+`base_sha` is recorded once. A door's walked approvals commit the spec only when it changed, and a walked stage whose
+check fails offers to run it. A commit the CLI did not make on a group's branch is a question (take it out or keep it).
+The commit step skips a file deleted in a commit. `gate build` wants the passing run after the failing one; a Review that
+did not finish offers to run again; `config get fix.max-loops` prints the limit the loop keeps. The plan gate has no
+"Walk through step by step" option.
+
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.
 

@@ -50,6 +50,9 @@ To keep groups but run the tasks on another model (no Haiku), set `task-model: s
 2. **Start a group.** `temper group start G1` creates the group's git worktree,
    `.claude/worktrees/temper-{slug}-G1`, on branch `temper/{slug}/G1`, based on the feature
    branch. It only takes the merges of its passed tasks and runs the group's Validate.
+   A worktree is a checkout of the whole repository: for a project below the top of its
+   repository (a package of a monorepo) the task works in the project's folder inside it, and
+   the CLI reads every path from the project folder, as the plan writes them.
 3. **Schedule.** `temper schedule` (add `--json` for the machine form) prints the launchable tasks,
    one JSON line each, with the model to use: dependencies met, group not parked, declared
    files disjoint from running tasks, `max-parallel` respected. The orchestrator launches all
@@ -95,6 +98,11 @@ To keep groups but run the tasks on another model (no Haiku), set `task-model: s
 7. **Integrate.** `temper integrate` merges the passed group branches into the feature branch
    (`--no-ff`), removes the worktrees, runs the full suite and checks the declared
    interfaces. A conflict or failure stops the run before Review with the cause recorded.
+   Before any merge it checks that every commit on each group's branch is the CLI's or one you
+   kept. When one is not, the orchestrator asks you: take the commits out of the group's branch
+   (newest first; the groups are merged again), or keep them with your reason
+   (`temper group reopen G1 --accept-foreign <sha> --reason '<why>'`, with no task: nothing runs
+   again).
    Review and Check then run as today, and the final feature commit still goes through
    `temper gate commit` and a human.
 

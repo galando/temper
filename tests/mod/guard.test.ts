@@ -63,8 +63,10 @@ describe('the stage write table: 6 stages x 3 tools x allowed and disallowed', (
   })
 
   test('Build allows test files, plan globs and folders', () => {
-    for (const p of ['src/app.test.ts', 'tests/unit/x.test.ts', 'hooks/core/a.ts', 'docs/guide/page.md', 'pkg/test_thing.py', `${SPEC}/tasks.md`]) expect('allow' in write(ctx('build'), p, 'Edit')).toBe(true)
+    for (const p of ['src/app.test.ts', 'tests/unit/x.test.ts', 'hooks/core/a.ts', 'docs/guide/page.md', 'pkg/test_thing.py', `${SPEC}/plan.md`]) expect('allow' in write(ctx('build'), p, 'Edit')).toBe(true)
     expect(isDeny(write(ctx('build'), 'hooks/core/sub/a.ts', 'Edit'))).toBe(true)
+    // tasks.md is the plan the person approved: from Design on it is the CLI's.
+    expect(isDeny(write(ctx('build'), `${SPEC}/tasks.md`, 'Edit'))).toBe(true)
   })
 
   test('absolute paths inside the root and traversal are normalised', () => {
@@ -73,13 +75,26 @@ describe('the stage write table: 6 stages x 3 tools x allowed and disallowed', (
     expect(isDeny(write(c, `/repo/${SPEC}/../../../src/app.ts`))).toBe(true)
   })
 
-  test('other tools, no run and the commit stage pass through; a run saved for later does not (it lifts no rule)', () => {
+  test('other tools and no run pass through; a run saved for later does not (it lifts no rule)', () => {
     expect('allow' in evaluate(ctx('plan'), { tool: 'Read', input: { file_path: 'src/app.ts' } })).toBe(true)
     expect('allow' in write({ ...ctx('plan'), run: null }, 'src/app.ts')).toBe(true)
-    expect('allow' in write(ctx('commit'), 'src/app.ts')).toBe(true)
     const saved = ctx('plan', { allowed: optionCalls('plan-pass', 'Save for later', { more: true }) })
     expect(isDeny(write(saved, 'src/app.ts'))).toBe(true)
     expect(isDeny(write(saved, '.temper/gates.json'))).toBe(true)
+  })
+
+  test('at Commit only the spec folder is written: the code is what Review and Check passed (round 4 of the release audit)', () => {
+    expect(isDeny(write(ctx('commit'), 'src/app.ts'))).toBe(true)
+    expect(isDeny(write(ctx('commit'), 'src/other.ts'))).toBe(true)
+    expect('allow' in write(ctx('commit'), `${SPEC}/plan.md`)).toBe(true)
+  })
+
+  test('an accepted config suggestion is written into the project notes after Check passed', () => {
+    for (const p of ['CLAUDE.md', 'AGENTS.md', '.claude/CLAUDE.md']) {
+      expect('allow' in write(ctx('check'), p)).toBe(true)
+      expect('allow' in write(ctx('commit'), p)).toBe(true)
+    }
+    expect(isDeny(write(ctx('check'), 'docs/CLAUDE.md'))).toBe(true)
   })
 })
 
@@ -244,7 +259,8 @@ describe('review of the one flow: what goes around a gate', () => {
   test('legit at the commit stage: the Commit steps (writes, archive, a plain commit, clear)', () => {
     const c = ctx('commit', { allowed: nextCalls('commit-pass') })
     expect('allow' in write(c, `${SPEC}/intent.md`)).toBe(true)
-    expect('allow' in write(c, 'src/anything.ts')).toBe(true)
+    // Round 4 of the release audit: the code is what Review and Check passed; at Commit it is not written.
+    expect(isDeny(write(c, 'src/anything.ts'))).toBe(true)
     for (const cmd of [`${CLI} state archive`, 'git add -A && git commit -m "feat: x"', `${CLI} state clear`, `${CLI} state set run_mode interactive`]) {
       expect('allow' in bash(c, cmd), cmd).toBe(true)
     }

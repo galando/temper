@@ -45,8 +45,8 @@ check:
   #   typecheck: tsc --noEmit
 
 # Fix loop limit. The CLI's `state loop check fix` blocks after this many Check to Fix
-# passes. With the key absent the limit stays loops.max-per-type (below); the key
-# reads as 3 through the CLI's `config get fix.max-loops`.
+# passes. With the key absent the limit is loops.max-per-type (below, default 2), and
+# `config get fix.max-loops` prints that.
 # fix:
 #   max-loops: 3
 

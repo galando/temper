@@ -56,6 +56,8 @@ export type RunView = {
     step: number
     runId: string
     trivialExit: boolean
+    // The project's folder from the top of its git repository (`packages/app/`), "" at the top.
+    prefix: string
   } | null
   plan: { approved: boolean; files: string[]; groups: Array<{ id: string; title: string; files: string[] }> }
   build: {
@@ -178,6 +180,7 @@ export function parseRunView(text: string): RunView | null {
             step: num(g.step, -1),
             runId: str(g.run_id),
             trivialExit: g.trivial_exit === true,
+            prefix: str(g.prefix),
           },
     plan: {
       approved: plan.approved === true,

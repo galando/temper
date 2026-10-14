@@ -87,11 +87,6 @@ export const KNOWN_LIMITS: Array<{ name: string; command: string; why: string }>
     why: 'The alias lives in the git config the mod cannot read. The native pre-commit hook still checks the commit.',
   },
   {
-    name: 'a call pointed at other run files',
-    command: 'TEMPER_DIR=/tmp/x scripts/temper gate check',
-    why: 'TEMPER_DIR and TEMPER_CONFIG make the CLI read other files. The verdicts it writes there are not this run\'s.',
-  },
-  {
     name: 'a change of the plugin data folder',
     command: 'rm -rf ~/.claude/plugins/data/temper',
     why: 'The editing tools may not write there during a run; the shell is not checked for it.',

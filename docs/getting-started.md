@@ -80,9 +80,9 @@ Claude Code's own dialog, with the options the CLI gives for that gate. After th
 Temper gate
 Plan: the check passed. Approve the plan and continue to Build?
   1. Continue to Build (Recommended)   Approve the plan, commit it, and start Build.
-  2. Walk through step by step         Review the plan section by section.
-  3. Open HTML review                 Open the plan as a page to comment on.
-  4. More options                      Share HTML review, Grill Me, Teach Me, Save for later
+  2. Open HTML review                  Open the plan as a page to comment on.
+  3. Share HTML review                 Publish the plan as a private Claude artifact others can comment on.
+  4. More options                      Grill Me, Teach Me, Save for later
 ```
 
 You choose in the dialog; a message you type is not a choice. **Save for later** stops the run;
@@ -93,8 +93,10 @@ You choose in the dialog; a message you type is not a choice. **Save for later**
 Each stage command is a door into the same run: it starts `/temper:temper` at that stage, or takes up
 the run that is active, and you decide every gate in the same question. `/temper:plan` starts at the
 Intent gate, because the plan is derived from the intent you approve. A later stage command
-(`/temper:build`, `/temper:review`, `/temper:check`) needs a planned feature: it asks each earlier gate
-in turn, then runs its stage.
+(`/temper:build`, `/temper:review`, `/temper:check`) needs a planned feature: it checks and asks each
+earlier gate in turn, then runs its stage. A new run holds no evidence of an earlier session, so an earlier
+stage whose check needs it (Build, Review) fails there: you choose **Run** it (it and every stage after it
+run) or **Override and continue** with your reason.
 
 ### 1. Plan a Feature
 

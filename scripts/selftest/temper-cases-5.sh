@@ -114,12 +114,15 @@ Notes for G2.
 - [ ] done
 GP
 }
-gp_mut() { # gp_mut <old> <new>: a fixture edit; a started run's recorded plan digest is dropped (H3), as if re-approved
+gp_mut() { # gp_mut <old> <new>: a fixture edit; a recorded plan digest (H3) is dropped, as if re-approved
   gp_tamper "$1" "$2" || return 1
-  [[ -f .temper/groups.json ]] && python3 -c "
-import json
-d = json.load(open('.temper/groups.json')); d.pop('plan_hash', None)
-json.dump(d, open('.temper/groups.json', 'w'))"
+  local f
+  for f in .temper/groups.json .temper/build-state.json; do
+    [[ -f "$f" ]] && python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1])); d.pop('plan_hash', None)
+json.dump(d, open(sys.argv[1], 'w'))" "$f"
+  done
   return 0
 }
 gp_tamper() { # gp_tamper <old> <new>: replace the first occurrence in the demo tasks.md, keeping groups.json as is

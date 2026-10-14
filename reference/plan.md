@@ -314,10 +314,8 @@ Trivial: a one-line box, no gate. Simple: `Files: {N} create, {N} modify` / `Ris
 ## Approval
 
 The orchestrator owns the plan gate (`temper next --json` gives its question); this stage never
-shows it: return the summary and stop. The gate's "Walk through step by step" option
-presents Intent, Diagram, Scenarios, Architecture, Blast Radius and Tasks one section at a time,
-with `AskUserQuestion` "Next step" / "Ask a question" between each, then asks the gate again. A
-change typed via "Other" is never approval: make the edit, then ask the same gate again.
+shows it: return the summary and stop. A change typed via "Other" is never approval: make the
+edit, then ask the same gate again.
 
 ## Edge Cases
 

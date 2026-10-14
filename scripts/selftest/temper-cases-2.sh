@@ -636,7 +636,7 @@ assert_eq "base_sha diff + uncommitted paths feed the blast-radius count" "yes" 
 
 # --- mods: check.commands.* and fix.max-loops config keys ---
 setup
-assert_eq "config get fix.max-loops defaults to 3 when the key is absent" "3" "$("$TEMPER" config get fix.max-loops)"
+assert_eq "config get fix.max-loops prints the limit the loop keeps when the key is absent (loops.max-per-type)" "2" "$("$TEMPER" config get fix.max-loops)"
 assert_eq "config get check.commands.test prints nothing when absent" "" "$("$TEMPER" config get check.commands.test)"
 cat >> .claude/temper.config <<'CFG'
 fix:

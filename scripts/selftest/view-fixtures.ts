@@ -146,6 +146,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-armed",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -434,6 +435,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-armed",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -744,6 +746,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-armed",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -1059,6 +1062,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-armed",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -1369,6 +1373,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-armed",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -1673,6 +1678,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-armed",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -1982,6 +1988,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-armed",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -2362,6 +2369,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -2723,6 +2731,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -3004,6 +3013,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -3399,6 +3409,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -3748,6 +3759,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -4050,6 +4062,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -4415,6 +4428,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -4728,6 +4742,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -5045,6 +5060,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -5413,6 +5429,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-design",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -5800,6 +5817,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-design",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -5949,13 +5967,6 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [],
-      "description": "Publish the plan as a private Claude artifact others can comment on.",
-      "do": "Follow /plugin/reference/plan-review.md (Share HTML review), then ask this question again.",
-      "label": "Share HTML review",
-      "move": null
-     },
-     {
-      "calls": [],
       "description": "Stress test the plan.",
       "do": "Use the grill-me skill on this stage's work, then ask this question again.",
       "label": "Grill Me",
@@ -5980,10 +5991,6 @@ export const VIEWS: Record<string, unknown> = {
      "header": "Temper gate",
      "multiSelect": false,
      "options": [
-      {
-       "description": "Publish the plan as a private Claude artifact others can comment on.",
-       "label": "Share HTML review"
-      },
       {
        "description": "Stress test the plan.",
        "label": "Grill Me"
@@ -6017,13 +6024,6 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Review the plan section by section.",
-     "do": "Follow /plugin/reference/plan.md, section Approval, then ask this question again.",
-     "label": "Walk through step by step",
-     "move": null
-    },
-    {
-     "calls": [],
      "description": "Open the plan as a page to comment on.",
      "do": "Follow /plugin/reference/plan-review.md (Open HTML review), then ask this question again.",
      "label": "Open HTML review",
@@ -6031,7 +6031,14 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Share HTML review, Grill Me, Teach Me, Save for later",
+     "description": "Publish the plan as a private Claude artifact others can comment on.",
+     "do": "Follow /plugin/reference/plan-review.md (Share HTML review), then ask this question again.",
+     "label": "Share HTML review",
+     "move": null
+    },
+    {
+     "calls": [],
+     "description": "Grill Me, Teach Me, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -6046,15 +6053,15 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Continue to Design (Recommended)"
      },
      {
-      "description": "Review the plan section by section.",
-      "label": "Walk through step by step"
-     },
-     {
       "description": "Open the plan as a page to comment on.",
       "label": "Open HTML review"
      },
      {
-      "description": "Share HTML review, Grill Me, Teach Me, Save for later",
+      "description": "Publish the plan as a private Claude artifact others can comment on.",
+      "label": "Share HTML review"
+     },
+     {
+      "description": "Grill Me, Teach Me, Save for later",
       "label": "More options"
      }
     ],
@@ -6207,6 +6214,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-design",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -6495,6 +6503,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-design",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -6731,6 +6740,7 @@ export const VIEWS: Record<string, unknown> = {
    "fix_run": true,
    "grouped": false,
    "plan_files": [],
+   "prefix": "",
    "run_id": "run-fix",
    "slug": "bug",
    "spec": ".temper/specs/bug",
@@ -7004,6 +7014,7 @@ export const VIEWS: Record<string, unknown> = {
    "fix_run": false,
    "grouped": false,
    "plan_files": [],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -7279,6 +7290,7 @@ export const VIEWS: Record<string, unknown> = {
    "fix_run": false,
    "grouped": false,
    "plan_files": [],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -7452,6 +7464,7 @@ export const VIEWS: Record<string, unknown> = {
    "fix_run": false,
    "grouped": false,
    "plan_files": [],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -7827,6 +7840,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -7974,13 +7988,6 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [],
-      "description": "Publish the plan as a private Claude artifact others can comment on.",
-      "do": "Follow /plugin/reference/plan-review.md (Share HTML review), then ask this question again.",
-      "label": "Share HTML review",
-      "move": null
-     },
-     {
-      "calls": [],
       "description": "Stress test the plan.",
       "do": "Use the grill-me skill on this stage's work, then ask this question again.",
       "label": "Grill Me",
@@ -8005,10 +8012,6 @@ export const VIEWS: Record<string, unknown> = {
      "header": "Temper gate",
      "multiSelect": false,
      "options": [
-      {
-       "description": "Publish the plan as a private Claude artifact others can comment on.",
-       "label": "Share HTML review"
-      },
       {
        "description": "Stress test the plan.",
        "label": "Grill Me"
@@ -8042,13 +8045,6 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Review the plan section by section.",
-     "do": "Follow /plugin/reference/plan.md, section Approval, then ask this question again.",
-     "label": "Walk through step by step",
-     "move": null
-    },
-    {
-     "calls": [],
      "description": "Open the plan as a page to comment on.",
      "do": "Follow /plugin/reference/plan-review.md (Open HTML review), then ask this question again.",
      "label": "Open HTML review",
@@ -8056,7 +8052,14 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Share HTML review, Grill Me, Teach Me, Save for later",
+     "description": "Publish the plan as a private Claude artifact others can comment on.",
+     "do": "Follow /plugin/reference/plan-review.md (Share HTML review), then ask this question again.",
+     "label": "Share HTML review",
+     "move": null
+    },
+    {
+     "calls": [],
+     "description": "Grill Me, Teach Me, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -8071,15 +8074,15 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Continue to Build (Recommended)"
      },
      {
-      "description": "Review the plan section by section.",
-      "label": "Walk through step by step"
-     },
-     {
       "description": "Open the plan as a page to comment on.",
       "label": "Open HTML review"
      },
      {
-      "description": "Share HTML review, Grill Me, Teach Me, Save for later",
+      "description": "Publish the plan as a private Claude artifact others can comment on.",
+      "label": "Share HTML review"
+     },
+     {
+      "description": "Grill Me, Teach Me, Save for later",
       "label": "More options"
      }
     ],
@@ -8232,6 +8235,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -8374,13 +8378,6 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [],
-      "description": "Open the plan as a page to comment on.",
-      "do": "Follow /plugin/reference/plan-review.md (Open HTML review), then ask this question again.",
-      "label": "Open HTML review",
-      "move": null
-     },
-     {
-      "calls": [],
       "description": "Publish the plan as a private Claude artifact others can comment on.",
       "do": "Follow /plugin/reference/plan-review.md (Share HTML review), then ask this question again.",
       "label": "Share HTML review",
@@ -8391,6 +8388,13 @@ export const VIEWS: Record<string, unknown> = {
       "description": "Stress test the plan.",
       "do": "Use the grill-me skill on this stage's work, then ask this question again.",
       "label": "Grill Me",
+      "move": null
+     },
+     {
+      "calls": [],
+      "description": "Walk through the plan.",
+      "do": "Use the teach-me skill on this stage's work, then ask this question again.",
+      "label": "Teach Me",
       "move": null
      },
      {
@@ -8406,16 +8410,16 @@ export const VIEWS: Record<string, unknown> = {
      "multiSelect": false,
      "options": [
       {
-       "description": "Open the plan as a page to comment on.",
-       "label": "Open HTML review"
-      },
-      {
        "description": "Publish the plan as a private Claude artifact others can comment on.",
        "label": "Share HTML review"
       },
       {
        "description": "Stress test the plan.",
        "label": "Grill Me"
+      },
+      {
+       "description": "Walk through the plan.",
+       "label": "Teach Me"
       },
       {
        "description": "Stop here. The run is saved; /temper:temper takes it up again.",
@@ -8454,14 +8458,14 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Review the plan section by section.",
-     "do": "Follow /plugin/reference/plan.md, section Approval, then ask this question again.",
-     "label": "Walk through step by step",
+     "description": "Open the plan as a page to comment on.",
+     "do": "Follow /plugin/reference/plan-review.md (Open HTML review), then ask this question again.",
+     "label": "Open HTML review",
      "move": null
     },
     {
      "calls": [],
-     "description": "Open HTML review, Share HTML review, Grill Me, Save for later",
+     "description": "Share HTML review, Grill Me, Teach Me, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -8480,11 +8484,11 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Autonomous: run the rest unattended"
      },
      {
-      "description": "Review the plan section by section.",
-      "label": "Walk through step by step"
+      "description": "Open the plan as a page to comment on.",
+      "label": "Open HTML review"
      },
      {
-      "description": "Open HTML review, Share HTML review, Grill Me, Save for later",
+      "description": "Share HTML review, Grill Me, Teach Me, Save for later",
       "label": "More options"
      }
     ],
@@ -8637,6 +8641,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -8866,6 +8871,7 @@ export const VIEWS: Record<string, unknown> = {
    "fix_run": false,
    "grouped": false,
    "plan_files": [],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -9338,6 +9344,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -9739,6 +9746,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",
@@ -10020,6 +10028,7 @@ export const VIEWS: Record<string, unknown> = {
     "tests/app.test.ts",
     "src/mail.ts"
    ],
+   "prefix": "",
    "run_id": "run-pw",
    "slug": "pw",
    "spec": ".temper/specs/pw",

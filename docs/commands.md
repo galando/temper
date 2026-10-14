@@ -45,15 +45,14 @@ options `temper next --json` gives for that gate. After the plan:
 Temper gate
 Plan: the check passed. Approve the plan and continue to Build?
   1. Continue to Build (Recommended)   Approve the plan, commit it, and start Build.
-  2. Walk through step by step         Review the plan section by section.
-  3. Open HTML review                  Open the plan as a page to comment on.
-  4. More options                      Share HTML review, Grill Me, Teach Me, Save for later
+  2. Open HTML review                  Open the plan as a page to comment on.
+  3. Share HTML review                 Publish the plan as a private Claude artifact others can comment on.
+  4. More options                      Grill Me, Teach Me, Save for later
 ```
 
 | Response | Action |
 |----------|--------|
 | **Continue to Build** | Approve the plan, commit it, and start Build |
-| **Walk through step by step** | Interactive walkthrough: each section explained in detail |
 | **Grill Me** | Socratic challenge mode — adversarial questions that stress-test your plan |
 | **Open HTML review** | Browser-based review with inline comments (Google Doc-style) |
 | **Share HTML review** | Publish the same review as a Claude artifact so other people can comment by link, and their comments come back automatically. Without the Artifact tool it offers Open HTML review instead. Asks before anything leaves your machine |
@@ -197,7 +196,8 @@ take up a `/temper` run at their stage, so there is one flow to keep right:
   then run their own stage. The earlier stages are checked, not run again, against what the
   run still has: their evidence went to the archive with the run that made it, so a check that
   reads evidence (Plan's search record, Build's RED then GREEN runs) fails, the question names
-  the failed rows, and you skip it with your reason.
+  the failed rows, and you choose: **Run** that stage now (it and every stage after it run), or
+  skip it with your reason.
 
 `/temper:intent` stays on its own: it captures a draft intent and builds nothing.
 

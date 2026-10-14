@@ -156,9 +156,12 @@ describe('while a grouped Build run is active, the run tasks.md is the CLI\'s', 
     expect(isDeny(write(grouped, `${WT}/${tasks}`))).toBe(true)
   })
 
-  test('with no groups.json (no grouped run yet) the plan keeps its allowance', () => {
-    expect('allow' in write(ctx, tasks)).toBe(true)
-    expect('allow' in write({ ...ctx, groupedActive: false }, tasks)).toBe(true)
+  test('after the plan gate, with no groups.json yet (Design, or Build before its first group starts), tasks.md is refused too', () => {
+    // Round 4 of the release audit: the approved tasks.md (its Test, Validate and Integration commands) was writable
+    // between the plan gate and the first group start, and the first group start recorded the changed plan.
+    expect(isDeny(write(ctx, tasks))).toBe(true)
+    expect(isDeny(write({ ...ctx, groupedActive: false }, tasks, 'design'))).toBe(true)
+    expect('allow' in write(ctx, tasks, 'plan')).toBe(true)
   })
 
   test('Plan phase may still write tasks.md even when a stale groups.json is present', () => {

@@ -28,20 +28,18 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
    evidence row. Record every finding as evidence: the ledger is the record of what was
    found; report EVERY CRITICAL and HIGH finding in your panel, never only "the top
    issues". You do not change code at Review (with the mod, a write outside the spec
-   folder is refused at this stage); the person loops a finding back to Build. On a
-   Review after that loop, mark a finding the fix pass fixed and re-tested as resolved,
-   so the gate stops counting it while the row survives:
+   folder is refused at this stage); the person loops a finding back to Build. The loop
+   starts the review ledger empty (the earlier findings go with the loop), so on a Review
+   after it, record again each finding that is still there and leave out one the fix pass
+   fixed and re-tested; the loop's reason in the report says what was found before:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage review \
      --claim '<file>:<line> <one-line finding>' --severity critical|high|medium|low \
      --confidence <0.0-1.0> --label HEURISTIC
-   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence list --stage review      # shows the #ids
-   ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence resolve --stage review \
-     --id <n> --fixed-by '<commit sha or what you changed>'           # after the fix is re-tested
    ```
    Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
    `$` in it stays text.
-   Never clear the ledger to pass the gate; resolve is the honest path. A finding the
+   Never clear the ledger to pass the gate. A finding the
    person decides to keep is never accepted by you: accepting it (`${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence
    accept`, which needs a reason) is their call.
    Use `--label PROVEN` only for a finding an external tool (MCP, semgrep) actually
@@ -58,8 +56,8 @@ nothing), use `git diff --name-only {base_sha}` plus still-uncommitted paths
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
 - An empty findings ledger is not a review. Always record the `review completed` row.
 - Report every CRITICAL and HIGH finding in the panel, never only the top issues.
-- Record every finding as evidence; mark it resolved with `--fixed-by` only once a loop
-  back to Build fixed it and its test passes. Never clear the ledger to pass the gate.
+- Record every finding as evidence, also on a Review after a loop back (the loop empties the
+  ledger): a finding still there is recorded again. Never clear the ledger to pass the gate.
 - Use `PROVEN` only for a finding an external tool verified. Everything you traced by
   reading is `HEURISTIC`.
 - Checkpoint commits land before Review, so a plain `git diff` shows nothing. Use
