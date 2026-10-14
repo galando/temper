@@ -23,7 +23,7 @@
 #   temper config get <dot.path> [default]        read temper.config (for hook and CI scripts)
 # Build, in groups of small tasks:
 #   temper schedule [--json]                      the launchable tasks, one JSON line each
-#   temper group <start|gate|reopen|report> ..    worktree, group verdict, Change, measurement report [--json]
+#   temper group <start|gate|reopen|continue> G<n> | report [--json]   worktree, group verdict, Change, Continue, report
 #   temper task <start|show|test|gate> N          one task's lifecycle (test runs the declared command)
 #   temper integrate                              merge the passed groups, run the suite, check Interfaces
 #   temper model <task|task-escalation>           the task agent's model and its escalation model
@@ -4340,7 +4340,16 @@ gate_check() {
   local spec_path="$1"
   local threshold; threshold="$(_cfg_get check.coverage-threshold 80)"
   local reqs=() all_pass=1
-  local tests_n; tests_n=$(_ev_count_matching check test "" 0)
+  # A test run: a passing row that names tests and is no scenario's trace (a scenario row names its test too, and is
+  # what the scenarios row below reads)
+  local tests_n; tests_n="$(python3 -c "
+import json, re, sys
+try:
+    rows = json.load(open(sys.argv[1]))
+except Exception:
+    rows = []
+print(sum(1 for r in rows if isinstance(r, dict) and not r.get('scenario') and r.get('exit_code') == 0
+          and re.search('test', r.get('claim') or '', re.I)))" "$(_evidence_file check)" 2>/dev/null || echo 0)"
   if [[ "$tests_n" -gt 0 ]]; then
     reqs+=("$(_req "tests pass" 1 "$tests_n green test run(s) recorded")")
   else
@@ -4882,47 +4891,22 @@ _setup_calls() {
   fi
 }
 
-# The facts of the project the flow needs and cannot read from the run's files: the branch, HEAD, whether the spec
-# folder is ignored or has something to commit, the files the run changed (at Commit). `full` adds the models and the
-# setup calls, which only `temper next` prints. One JSON object; `temper next` and the view writer pass the same, so
-# the question the view holds is the one `next` gives.
-_flow_ctx() { # _flow_ctx [full]
-  local spec base changed="[]" ignored=false branch head bexists=false sdirty=false models="" setup=""
-  spec="$(_spec_path "")"
-  branch="$(git branch --show-current 2>/dev/null || true)"
-  head="$(git rev-parse HEAD 2>/dev/null || true)"
-  if [[ -n "$spec" ]] && git check-ignore -q "$spec/intent.md" 2>/dev/null; then ignored=true; fi
-  local lignored=false
-  git check-ignore -q .temper/lessons.md 2>/dev/null && lignored=true
-  # Whether the spec folder has anything to commit (the Intent and Plan approvals commit it only then)
-  [[ -n "$spec" && -n "$(git status --porcelain --untracked-files=all -- "$spec" 2>/dev/null)" ]] && sdirty=true
-  local want; want="$(_json_get_path "$STATE_FILE" branch "")"
-  [[ -n "$want" ]] && git show-ref --verify --quiet "refs/heads/$want" 2>/dev/null && bexists=true
-  base="$(_json_get_path "$STATE_FILE" base_sha "")"
-  if [[ "$(_json_get_path "$STATE_FILE" next_stage "")" == "commit" ]]; then
-    changed="$(python3 "$SCRIPTS_DIR/flow.py" changed "$base" "$(_json_get_path "$STATE_FILE" started "")" 2>/dev/null || echo '[]')"
-  fi
-  if [[ "${1:-}" == "full" ]]; then
-    models="$(cmd_model --all 2>/dev/null)"
-    setup="$(_setup_calls)"
-  fi
-  python3 -c "
+# temper next [--json]: the next action of the run, computed (ADR 0013, docs/flow.md). Read only. flow.py reads the
+# project's facts itself (the branch, HEAD, the spec folder's state, the changed files); the CLI adds the models and the
+# setup calls, which only it knows.
+cmd_next() {
+  _state_migrate_legacy
+  local models; models="$(cmd_model --all 2>/dev/null)"
+  local setup; setup="$(_setup_calls)"
+  local ctx
+  ctx="$(python3 -c "
 import json, sys
 a = sys.argv[1:]
 models = dict(l.split('=', 1) for l in a[3].splitlines() if '=' in l)
 print(json.dumps({'plugin': a[0], 'cli': a[1], 'config_file': a[2], 'models': models,
                   'task_model': models.get('task', ''), 'escalation_model': models.get('task-escalation', ''),
-                  'branch': a[4], 'head': a[5], 'branch_exists': a[6] == 'true', 'spec_ignored': a[7] == 'true',
-                  'changed': json.loads(a[8] or '[]'), 'now': a[9],
-                  'setup': [l for l in a[10].splitlines() if l.strip()], 'spec_dirty': a[11] == 'true',
-                  'lessons_ignored': a[12] == 'true'}))
-" "$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/temper" "$CONFIG_FILE" "$models" "$branch" "$head" "$bexists" "$ignored" "$changed" "$(_now)" "$setup" "$sdirty" "$lignored"
-}
-
-# temper next [--json]: the next action of the run, computed (ADR 0013, docs/flow.md). Read only.
-cmd_next() {
-  _state_migrate_legacy
-  local ctx; ctx="$(_flow_ctx full)" || return 1
+                  'now': a[4], 'setup': [l for l in a[5].splitlines() if l.strip()]}))
+" "$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/temper" "$CONFIG_FILE" "$models" "$(_now)" "$setup")" || return 1
   python3 "$SCRIPTS_DIR/flow.py" next --ctx "$ctx"
 }
 
@@ -4930,8 +4914,7 @@ cmd_next() {
 # Fail open: a view that cannot be written never changes what the command did.
 _view_write() {
   [[ -d "$TEMPER_DIR" && ! -L "$TEMPER_DIR" ]] || return 0
-  local ctx; ctx="$(_flow_ctx 2>/dev/null)" || ctx='{}'
-  python3 "$SCRIPTS_DIR/flow.py" view --ctx "$ctx" --plugin "$PLUGIN_ROOT" --cli "$PLUGIN_ROOT/scripts/temper" \
+  python3 "$SCRIPTS_DIR/flow.py" view --plugin "$PLUGIN_ROOT" --cli "$PLUGIN_ROOT/scripts/temper" \
     --config-file "$CONFIG_FILE" --now "$(_now)" >/dev/null 2>&1 || true
 }
 
@@ -5348,7 +5331,8 @@ Usage:
   temper config get <dot.path> [default]
   temper model task | task-escalation   (grouped Build: the task agent's model and its escalation model)
   temper schedule [--json]        (grouped Build: the launchable tasks, one JSON line each)
-  temper group <start|gate|reopen|report> G<n>  (grouped Build: worktree, group verdict, Change, measurement report [--json])
+  temper group <start|gate|reopen|continue> G<n>  (grouped Build: worktree, group verdict, Change or kept commits, the person's Continue)
+  temper group report [--json]    (grouped Build: the measurement report)
   temper task <start|show|test|gate> N  (grouped Build: one task's lifecycle)
   temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
   temper usage add --stage S [--model M] [--tokens T] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)

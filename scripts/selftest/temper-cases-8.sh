@@ -285,7 +285,7 @@ assert_eq "next: a question names the gate of its stage" "gate check" "$(nx "d['
 assert_eq "next: the question names the failed row" "1" "$(nx "int('no passing test-run evidence recorded' in d['ask']['question']['question'])")"
 
 setup; "$TEMPER" state init demo --enter check >/dev/null 2>&1; gfail intent "problem stated" "missing"
-assert_eq "next: a door's failed earlier stage offers only a skip with a reason, or Save for later" "Override and continue|Save for later" "$(labels)"
+assert_eq "next: a door's failed earlier stage offers to run it, a skip with a reason, or Save for later" "Run Intent (Recommended)|Override and continue|Save for later" "$(labels)"
 
 # --- groups that stop: a failed group gate, a parked group ---
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1

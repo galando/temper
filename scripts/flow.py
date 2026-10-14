@@ -1118,6 +1118,34 @@ def changed_files(base, started):
     return sorted(out)
 
 
+def project_facts(run, ctx):
+    """The facts of the project that the run's files do not hold: the branch, HEAD, whether the run's branch exists,
+    whether the spec folder is ignored or has something to commit, whether the lessons file is ignored, and the files
+    the run changed (at Commit). `temper next` and the view read them the same way, so the question the view holds is
+    the one `next` gives. A fact the caller gave in ctx is kept."""
+    def ok(*args):
+        try:
+            return subprocess.run(["git"] + list(args), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+    spec = run.spec
+    want = run.state.get("branch") or ""
+    facts = {
+        "branch": lambda: git("branch", "--show-current"),
+        "head": lambda: git("rev-parse", "HEAD"),
+        "branch_exists": lambda: bool(want) and ok("show-ref", "--verify", "--quiet", "refs/heads/" + want),
+        "spec_ignored": lambda: bool(spec) and ok("check-ignore", "-q", spec + "/intent.md"),
+        "lessons_ignored": lambda: ok("check-ignore", "-q", os.path.join(TEMPER, "lessons.md")),
+        "spec_dirty": lambda: bool(spec) and bool(git("status", "--porcelain", "--untracked-files=all", "--", spec)),
+        "changed": lambda: changed_files(run.state.get("base_sha") or "", run.state.get("started") or "") if run.stage == "commit" else [],
+    }
+    if not run.active:
+        return
+    for key, get in facts.items():
+        if key not in ctx:
+            ctx[key] = get()
+
+
 def main(argv):
     if len(argv) >= 3 and argv[1] == "changed":
         print(json.dumps(changed_files(argv[2], argv[3] if len(argv) > 3 else "")))
@@ -1146,6 +1174,7 @@ def main(argv):
         if f in argv and argv.index(f) + 1 < len(argv):
             ctx[flag] = argv[argv.index(f) + 1]
     run = Run(ctx)
+    project_facts(run, ctx)
     if argv[1] == "next":
         out = Builder(run).next()
         if ctx.get("setup"):

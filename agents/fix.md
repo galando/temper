@@ -24,7 +24,7 @@ the plugin folder.
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
      --claim "regression test" --cmd '<the exact test command>' --exit <code> \
-     --phase red --label PROVEN    # failing, before the fix
+     --phase red --label HEURISTIC    # failing, before the fix
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
      --claim "regression test" --cmd '<the exact test command>' --exit 0 \
      --phase green --label PROVEN  # passing, after the fix

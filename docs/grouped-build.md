@@ -53,7 +53,7 @@ To keep groups but run the tasks on another model (no Haiku), set `task-model: s
    A worktree is a checkout of the whole repository: for a project below the top of its
    repository (a package of a monorepo) the task works in the project's folder inside it, and
    the CLI reads every path from the project folder, as the plan writes them.
-3. **Schedule.** `temper schedule` (add `--json` for the machine form) prints the launchable tasks,
+3. **Schedule.** `temper schedule` prints the launchable tasks,
    one JSON line each, with the model to use: dependencies met, group not parked, declared
    files disjoint from running tasks, `max-parallel` respected. The orchestrator launches all
    of them in one turn.

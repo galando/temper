@@ -409,7 +409,7 @@ Build runs the plan's groups ([Haiku Build](grouped-build.md)). `temper next --j
   test of each listed case first (RED), then the code (GREEN).
 - The CLI gates each task from its own recorded test runs, commits it on the task branch and merges it
   into the group branch. A failed task is retried, then escalated, then parks its group.
-- You review each group once, in the `Temper gate` question.
+- You review each group once, in the `Build group` question (Continue, Change or Stop).
 - The CLI merges the groups into the feature branch and gates Build.
 
 **What you see:** the bar shows the step and the groups; the pane shows the Build grid, one row per

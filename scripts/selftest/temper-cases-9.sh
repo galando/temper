@@ -196,3 +196,11 @@ assert_eq "round 4, 3: the native hook gates the commit of a project below the t
   && git -c user.email=t@t -c user.name=t commit -qm "spec only") >/dev/null 2>&1; rc=$?
 assert_eq "round 4, 3: and lets its spec only commit through" "0|spec only" "$rc|$(git -C "$N" log --format=%s -1)"
 rm -rf "$N"
+
+# --- re-audit: a scenario's trace row is no test run ---
+setup
+"$TEMPER" evidence add --stage check --scenario first --claim 'scenario: first -> tests/test_a.py:test_first' --exit 0 >/dev/null 2>&1
+assert_eq "re-audit: a scenario row that names its test does not count as a passing test run" "0" \
+  "$("$TEMPER" gate check 2>/dev/null | grep -c '\[v\] tests pass')"
+"$TEMPER" evidence add --stage check --claim "tests" --cmd "pytest" --exit 0 >/dev/null 2>&1
+assert_eq "re-audit: the test run row does" "1" "$("$TEMPER" gate check 2>/dev/null | grep -c '\[v\] tests pass')"

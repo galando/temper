@@ -41,7 +41,7 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
      --claim "unit tests" --cmd '<the exact test command>' --exit <code> \
-     --phase red --label PROVEN     # after the RED run
+     --phase red --label HEURISTIC     # after the RED run
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
      --claim "unit tests" --cmd '<the exact test command>' --exit 0 \
      --phase green --label PROVEN   # after the GREEN run

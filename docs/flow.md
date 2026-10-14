@@ -29,6 +29,7 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `restart` | the `Temper resume` question (Start over or Cancel) for this run and step |
 | `blocking` | with `ask`: the Blocking open questions of `intent.md`, asked before the gate question |
 | `gate` | with `ask`: the `temper gate` call of the question's stage (Fix is judged by the build gate), run again after a change the person typed at the question |
+| `setup` | when the project still lacks it, the calls that set Temper up (the config, the `.temper` scaffold, the commit hook); each is idempotent |
 
 ### The actions
 
@@ -36,12 +37,12 @@ that meets a version it does not know draws nothing and refuses nothing.
 - **`work`**: run each of `calls` in order (CLI calls, written out in full); launch every agent of
   `agents` in one turn; when an agent returns, run its `after` calls, filling `{tokens}` and `{ms}`
   from the Agent result. `steps`, when present, are the commit steps in order. Then ask `next` again.
-  An agent is `{type, model, prompt, before, after}`; a Build task agent also names its `task`,
-  `group`, `title` and `attempt`.
+  An agent is `{type, model, prompt, after}`; a Build task agent also has `before` (its `task start`
+  call) and names its `task`, `group`, `title` and `attempt`.
 - **`ask`**: ask `ask.question` with the AskUserQuestion tool exactly as given (header, question,
   options and their descriptions). See "Questions" below.
-- **`wait`**: tasks are running. When their agents were launched in this conversation, wait for each
-  result and run its `after` calls; otherwise run the `after` calls now.
+- **`wait`**: tasks are running; `tasks` lists each as `{task, after}`. When their agents were launched
+  in this conversation, wait for each result and run its `after` calls; otherwise run the `after` calls now.
 - **`auto`**: an armed autonomous run moves by itself: run `calls`, then ask `next` again.
 - **`broken`**: the run state does not fit its spec folder; ask the `restart` question.
 
@@ -76,7 +77,7 @@ question is no answer. A typed message is never a move: it is a change request o
 | `run` | `{id, step, slug, title, command, stage, mode, complexity, branch, spec, feature, parked}` or `null` |
 | `stages` | `[{id, label, mark, verdict, failed, skipped?}]`; `mark` is `passed`, `failed`, `skipped`, `here` or `todo`; `failed` is the failed rows of its last check; `skipped` is `{reason, by}` |
 | `status` | one sentence: where the run is and who it waits for |
-| `next` | `{action, stage, say, calls, steps}` of `temper next`; `calls` for a `work` or `auto` action, `steps` for a `work` action (the CLI's own moves, which the mod lets through) |
+| `next` | `{action, stage, say, calls, steps}` of `temper next` (`action` is `error` when `next` itself failed, with the error in `say`); `calls` for a `work` or `auto` action, `steps` for a `work` action (the CLI's own moves, which the mod lets through) |
 | `ask` | the current question, as `next` gives it, or `null` |
 | `blocking` | the Blocking open questions |
 | `restart` | the `Temper resume` question |
