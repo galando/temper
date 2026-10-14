@@ -408,3 +408,11 @@ assert_exit "live run 1: state set archived is the CLI's" 1 "$TEMPER" state set 
 assert_eq "live run 1: state clear keeps the ledger the commit carries, with the run's own commit verdict" "|0" \
   "$(git status --porcelain -- .temper/specs/demo/gate-ledger.json)|$(grep -c 'artifact-only commit' .temper/specs/demo/gate-ledger.json)"
 rm -rf .git
+
+# --- your question: which model runs each stage is shown before the launch and in the report ---
+fresh
+assert_eq "model: the line next gives before a stage runs names its model" "1" \
+  "$(nx "int(d['say'] == 'Intent runs on %s.' % d['agents'][0]['model'] and bool(d['agents'][0]['model']))")"
+"$TEMPER" usage add --stage intent --model opus --tokens 10 --ms 5 >/dev/null 2>&1
+assert_eq "model: the report's stage table names the model each stage was launched on" "1|opus" \
+  "$("$TEMPER" report 2>/dev/null | grep -cE '^  intent +1 +10 +5  opus$')|$(vw "','.join(d['usage']['by_stage']['intent']['models'])")"

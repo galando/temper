@@ -169,9 +169,12 @@ def render(view):
     for key, head in (("by_stage", "Stage"), ("by_model", "Model")):
         rows = usage.get(key) or {}
         if rows:
-            trs = "".join("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (e(k), e(v.get("runs")), e(tokens(v.get("tokens"))), e(spent(v.get("ms"))))
+            # The stage table names the model each stage was launched on (what Temper asked for).
+            model = (lambda v: "<td>%s</td>" % e(", ".join(str(m) for m in v.get("models") or []) or "-")) if key == "by_stage" else (lambda v: "")
+            trs = "".join("<tr><td>%s</td>%s<td>%s</td><td>%s</td><td>%s</td></tr>" % (e(k), model(v), e(v.get("runs")), e(tokens(v.get("tokens"))), e(spent(v.get("ms"))))
                           for k, v in sorted(rows.items(), key=lambda kv: (order.get(kv[0], len(order)), kv[0])) if isinstance(v, dict))
-            tables.append("<table><tr><th>%s</th><th>Launches</th><th>Tokens</th><th>Time</th></tr>%s</table>" % (head, trs))
+            cols = "<th>Model</th>" if key == "by_stage" else ""
+            tables.append("<table><tr><th>%s</th>%s<th>Launches</th><th>Tokens</th><th>Time</th></tr>%s</table>" % (head, cols, trs))
     if tables:
         out.append(section("Time and tokens", "".join(tables)))
 

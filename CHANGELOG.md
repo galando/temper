@@ -83,6 +83,10 @@ loop clears that stage's ledger. The last commit's message names the run's recor
 committed. `state clear` keeps the ledger `state archive` wrote for the commit, so the commit's own hook (which records
 the spec only commit's verdict) no longer changes the committed record. Check's `.temper/coverage/` folder is kept out
 of git status.
+The line `temper next` gives before each launch names the model the agent runs on ("Plan runs on opus.",
+"Build hands out 2 tasks on haiku."), and the report's stage table names the model each stage was launched on (in the
+terminal, in `report.html` and in the view's `usage.by_stage`). Both name the model Temper asked for; the session
+transcript holds the model that served each turn.
 
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.

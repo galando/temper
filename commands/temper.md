@@ -55,8 +55,8 @@ Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`.
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json` and do what its `action` says. Then run it
 again. Stop only where this section says so. When it lists `setup`, run those calls first, each once.
 
-- **`work`**: run each of `calls`, then launch each agent of `agents`, all in one turn, then do each
-  of `steps` in order.
+- **`work`**: say its `say` in one line (it names the model each agent runs on), then run each of
+  `calls`, launch each agent of `agents`, all in one turn, then do each of `steps` in order.
   - An agent: first run its `before` calls. Then launch it with the Agent tool: `subagent_type` its
     `type` (when that type is not offered, the general purpose agent), `model` its `model`, and its
     `prompt` exactly. When it returns, print the box it returns verbatim, then run its `after` calls,

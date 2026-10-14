@@ -544,7 +544,7 @@ class Builder:
         a = self.agent(stage, extra)
         a["after"].append(self.c("gate %s" % (r.gate_of(stage) or stage)))
         return {"action": "work", "stage": stage, "calls": [], "agents": [a],
-                "say": "%s runs." % LABEL.get(stage, stage)}
+                "say": "%s runs%s." % (LABEL.get(stage, stage), on_model([a]))}
 
     def build_work(self):
         """Grouped Build, computed: start groups, hand out ready tasks, gate tasks and groups, integrate."""
@@ -564,7 +564,7 @@ class Builder:
             if integ != "PASS":
                 a["after"].append(self.c("integrate"))
             a["after"].append(self.c("gate build"))
-            return {"action": "work", "stage": "build", "calls": [], "agents": [a], "say": "Build mends what was found (the fix pass)."}
+            return {"action": "work", "stage": "build", "calls": [], "agents": [a], "say": "Build mends what was found (the fix pass)%s." % on_model([a])}
 
         run = []
         if not r.state.get("base_sha") and r.ctx.get("head"):
@@ -594,7 +594,7 @@ class Builder:
                                "after": [self.c("task gate %d --model %s --tokens {tokens} --ms {ms}" % (t["task"], t.get("model")))],
                                "task": t["task"], "group": t.get("group"), "title": t.get("title"), "attempt": t.get("attempt")})
             return {"action": "work", "stage": "build", "calls": [], "agents": agents,
-                    "say": "Build hands out %d task%s." % (len(agents), "" if len(agents) == 1 else "s")}
+                    "say": "Build hands out %d task%s%s." % (len(agents), "" if len(agents) == 1 else "s", on_model(agents))}
 
         running = [(int(n), v) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"]
         if running:
@@ -949,6 +949,13 @@ def path_tokens(text):
 
 # ---- the view ----------------------------------------------------------------------------------
 
+def on_model(agents):
+    """ on <model>: the model each agent is launched on, as `next` names it (what Temper asks for; the session
+    transcript holds the model that served each turn)."""
+    models = sorted({str(a.get("model")) for a in agents if a.get("model")})
+    return " on %s" % ", ".join(models) if models else ""
+
+
 def check_markers(run):
     rows = read_json(os.path.join(TEMPER, "evidence", "check.json"), [])
     kinds = [("compile", r"compile|build\b|type ?check|tsc|mypy"), ("tests", r"\btests?\b|unittest|pytest|jest"),
@@ -1077,6 +1084,9 @@ def usage(run):
             b["runs"] += 1
             b["tokens"] += r.get("tokens") or 0 if isinstance(r.get("tokens"), int) else 0
             b["ms"] += r.get("ms") or 0 if isinstance(r.get("ms"), int) else 0
+            # a stage names the models its launches asked for
+            if key == "stage" and r.get("model") and r.get("model") not in b.setdefault("models", []):
+                b["models"].append(r.get("model"))
         return out
     return {"tokens": tokens, "ms": ms, "by_stage": by("stage"), "by_model": by("model")}
 

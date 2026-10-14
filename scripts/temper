@@ -1171,9 +1171,10 @@ cmd_state_archive() { # temper state archive — write the ledger WITHOUT touchi
 }
 
 cmd_state_clear() {
-  local archived_note="" out="" rc=0 kept
+  local archived_note="" out="" rc=0 kept slug
   kept="$(cmd_state_get archived "")"
-  if [[ -n "$kept" ]]; then
+  slug="$(_spec_slug "$(cmd_state_get spec_path "")")"
+  if [[ -n "$kept" && -n "$slug" && -f ".temper/specs/$slug/gate-ledger.json" ]]; then
     # state archive wrote the record the commit carries; it stays as committed
     archived_note=" — the gate ledger archived at $kept is kept"
   else
@@ -5037,9 +5038,9 @@ u = json.loads(sys.argv[1])
 def n(v): return '-' if v is None else str(v)
 print()
 print('Usage (per-agent totals as Claude Code returns them; the orchestrator session is not counted)')
-print('  %-10s %6s %12s %12s' % ('stage', 'rows', 'tokens', 'ms'))
+print('  %-10s %6s %12s %12s  %s' % ('stage', 'rows', 'tokens', 'ms', 'model'))
 for k, v in u['by_stage'].items():
-    print('  %-10s %6d %12s %12s' % (k, v['rows'], n(v['tokens']), n(v['ms'])))
+    print('  %-10s %6d %12s %12s  %s' % (k, v['rows'], n(v['tokens']), n(v['ms']), ', '.join(v.get('models') or []) or '-'))
 print('  %-10s %6s %12s %12s' % ('model', '', 'tokens', 'ms'))
 for k, v in u['by_model'].items():
     print('  %-10s %6d %12s %12s' % (k, v['rows'], n(v['tokens']), n(v['ms'])))
@@ -5082,7 +5083,11 @@ def add(acc, r):
 by_stage, by_model, total = {}, {}, {'rows': 0, 'tokens': None, 'ms': None}
 fresh = lambda: {'rows': 0, 'tokens': None, 'ms': None}
 for r in rows:
-    add(by_stage.setdefault(r.get('stage') or 'unknown', fresh()), r)
+    st = by_stage.setdefault(r.get('stage') or 'unknown', fresh())
+    add(st, r)
+    # the models a stage's rows name (what the orchestrator launched it on)
+    if r.get('model') and r.get('model') not in st.setdefault('models', []):
+        st['models'].append(r.get('model'))
     add(by_model.setdefault(r.get('model') or 'unknown', fresh()), r)
     add(total, r)
 print(json.dumps({'by_stage': by_stage, 'by_model': by_model, 'total': total}, sort_keys=True))
