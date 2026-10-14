@@ -12,6 +12,8 @@ its thinking, billed as output, is not counted, so its cost can be low. The main
 
   usage_cost.py agent <agent id>             one JSON line: the agent's calls summed (exit 1 when no transcript)
   usage_cost.py session <transcript> <since>  one JSON line: the main conversation's calls from <since> (ISO UTC)
+  usage_cost.py run <usage.json> <since>      the same, from the session transcripts the run's usage rows name
+  usage_cost.py prices                        the date of the prices
 
 Claude Code's transcript layout is not a documented interface: anything this cannot read is reported as not found,
 and the caller falls back to the numbers the Agent tool gave.
@@ -234,6 +236,35 @@ def main(argv):
             return 1
         s.update({"path": argv[1], "prices_as_of": PRICES_AS_OF})
         print(json.dumps(s, sort_keys=True))
+        return 0
+    if len(argv) >= 3 and argv[0] == "run":
+        # the main conversation's calls since the run started, from the session transcripts the run's rows name: only
+        # a transcript in Claude Code's own folder, each once
+        try:
+            rows = json.load(open(argv[1], encoding="utf-8"))
+        except (OSError, ValueError):
+            rows = []
+        home = os.path.realpath(os.path.join(config_dir(), "projects")) + os.sep
+        seen, cs = set(), []
+        for r in rows if isinstance(rows, list) else []:
+            s = r.get("session") if isinstance(r, dict) else None
+            if not isinstance(s, str) or not s.endswith(".jsonl") or s in seen:
+                continue
+            seen.add(s)
+            if not os.path.realpath(s).startswith(home) or not os.path.isfile(s):
+                continue
+            try:
+                cs += calls(s, main=True, since=argv[2])
+            except OSError:
+                continue
+        if not cs:
+            return 1
+        s = summary(cs)
+        s["prices_as_of"] = PRICES_AS_OF
+        print(json.dumps(s, sort_keys=True))
+        return 0
+    if argv[:1] == ["prices"]:
+        print(PRICES_AS_OF)
         return 0
     sys.stderr.write(__doc__)
     return 2

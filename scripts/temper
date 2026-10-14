@@ -5371,7 +5371,7 @@ if t.get('unpriced'):
 if t.get('output_estimated'):
     print('  An agent transcript records each reply before it streams: its output is taken from the reply text, and its')
     print('  thinking, billed as output, is not counted, so the cost of the agents can be low.')
-print('  A Claude plan is not billed per token: this is what the run costs at API list prices.')" "$usage_json" "$(_usage_main)" "$(python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import usage_cost; print(usage_cost.PRICES_AS_OF)" "$SCRIPTS_DIR" 2>/dev/null)"
+print('  A Claude plan is not billed per token: this is what the run costs at API list prices.')" "$usage_json" "$(_usage_main)" "$(python3 -I "$SCRIPTS_DIR/usage_cost.py" prices 2>/dev/null)"
 }
 
 # Whole-flow usage (9.7.0, intent D-07). .temper/usage.json is a CLI-owned array of rows
@@ -5457,28 +5457,7 @@ _usage_main() {
   [[ -f "$USAGE_FILE" && -f "$STATE_FILE" ]] || return 0
   local since; since="$(_json_get_path "$STATE_FILE" started "")"
   [[ -n "$since" ]] || return 0
-  python3 -I - "$USAGE_FILE" "$since" "$SCRIPTS_DIR" <<'PY' 2>/dev/null || true
-import json, os, sys
-sys.path.insert(0, sys.argv[3])
-import usage_cost
-try:
-    rows = json.load(open(sys.argv[1]))
-except Exception:
-    rows = []
-home = os.path.realpath(os.path.join(usage_cost.config_dir(), "projects")) + os.sep
-seen, cs = set(), []
-for r in rows if isinstance(rows, list) else []:
-    s = r.get("session") if isinstance(r, dict) else None
-    # only a session transcript of Claude Code's own folder, each once
-    if not isinstance(s, str) or not s.endswith(".jsonl") or s in seen or not os.path.realpath(s).startswith(home) or not os.path.isfile(s):
-        continue
-    seen.add(s)
-    cs += usage_cost.calls(s, main=True, since=sys.argv[2])
-if cs:
-    out = usage_cost.summary(cs)
-    out["prices_as_of"] = usage_cost.PRICES_AS_OF
-    print(json.dumps(out, sort_keys=True))
-PY
+  python3 -I "$SCRIPTS_DIR/usage_cost.py" run "$USAGE_FILE" "$since" 2>/dev/null || true
 }
 
 cmd_usage() { # temper usage add --stage S [--model M] [--agent ID] [--tokens T] [--ms D] [--task N] [--group G]

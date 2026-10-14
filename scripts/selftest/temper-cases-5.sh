@@ -1122,7 +1122,7 @@ assert_eq "report --json: usage per model" "1700|300" \
   "$(us_json usage.by_model.sonnet.tokens)|$(us_json usage.by_model.claude-haiku-5-5.tokens)"
 out="$("$TEMPER" report 2>&1)"
 assert_eq "report: the text form has a usage section with the stages and the total" "1|1|1" \
-  "$(printf '%s' "$out" | grep -c '^Usage')|$(printf '%s' "$out" | grep -c 'build.*1000')|$(printf '%s' "$out" | grep -c 'total.*2000')"
+  "$(printf '%s' "$out" | grep -c '^Usage')|$(printf '%s' "$out" | grep -c 'build.*1,000')|$(printf '%s' "$out" | grep -c 'total.*2,000')"
 setup
 assert_eq "report --json: a run with no usage rows has no usage key" "" "$(us_json usage)"
 assert_eq "report: a run with no usage rows prints no usage section" "0" "$("$TEMPER" report 2>&1 | grep -c '^Usage')"
@@ -1198,7 +1198,7 @@ assert_eq "orchestrator: the loop runs temper next, and /temper:build is a door 
 assert_eq "orchestrator: the page names no grouped command and no stage brief (temper next gives them)" "0" \
   "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'temper integrate' 'agents/build-task.md' 'agents/plan.md'; do grep -qF -- "$c" "$OT" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "orchestrator: an agent's after calls run with its tokens and time filled in" "yes" \
-  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -qF 'run its `after` calls, with `{tokens}` and `{ms}` filled from the Agent result' && echo yes || echo no)"
+  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -qF 'run its `after` calls: `{agent}` is the agent id its result names' && grep -qF '`{tokens}` and `{ms}` come from the Agent result' "$OT" && echo yes || echo no)"
 assert_eq "orchestrator: fix.md records the RCA launch, and the loop records the rest" "yes|yes" \
   "$(grep -qF 'usage add --stage rca' "$OF" && echo yes || echo no)|$(grep -qF 'scripts/temper next --json' "$OF" && echo yes || echo no)"
 assert_eq "orchestrator-patterns: the run files list groups.json and usage.json" "2" \
