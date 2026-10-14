@@ -61,16 +61,18 @@ again. Stop only where this section says so. When it lists `setup`, run those ca
     `type` (when that type is not offered, the general purpose agent), `model` its `model`, its
     `prompt` exactly, and `run_in_background: false` where the tool takes it, so the run goes on the
     moment the agent returns; the agents of one action go in one message, so they still run at once.
-    When it returns, print the box it returns verbatim, then run its `after` calls, with `{tokens}` and
-    `{ms}` filled from the Agent result, or, for an agent run in the background, from the usage of its
-    completion notice (`subagent_tokens`, `duration_ms`); leave a flag out only when neither gives a
+    When it returns, print the box it returns verbatim, then run its `after` calls: `{agent}` is the agent
+    id its result names (the CLI reads the agent's own transcript for what it was billed and its cost),
+    `{tokens}` and `{ms}` come from the Agent result, or, for an agent run in the background, from the usage
+    of its completion notice (`subagent_tokens`, `duration_ms`), and are `none` only when neither gave a
     value. Then go on with the loop in the same turn.
   - **An agent the tool runs in the background anyway:** say in one line what is running, that the run
     goes on when it returns, that if it waits after the agent finished, any message moves it on, and
     that `/temper:init` can keep agents in the foreground in this project.
     Its completion notice is its return: in the turn the notice starts,
     print its box, run its `after` calls and go on with the loop. Never end that turn with its `after`
-    calls not run: nothing else moves the run.
+    calls not run: nothing else moves the run. The agent's report can come before the notice, as a
+    message: print the box then, and run the `after` calls when the notice brings the numbers.
   - A `steps` entry is a command to run as written, or a short instruction to carry out; `{...}` in it
     is yours to fill (a commit message that says what the feature does).
   - **Filling a placeholder.** Every `{...}` text in a call or a step stands inside single quotes. Put the
@@ -88,7 +90,8 @@ again. Stop only where this section says so. When it lists `setup`, run those ca
   "Shall I...?"; the only stop is a park, which `next` turns into a question.
 - **`broken`**: say its `say` in one line and ask its `restart` question.
 - **`none`** after a commit: the steps printed the report before they cleared the run (a report printed
-  now is empty); the run's page is `report.html` in its spec folder. Say where it is and stop.
+  now is empty); when the person asked for the page, it is `report.html` in its spec folder. Say where it
+  is and stop.
 
 Run the calls of one action in one Bash call, one per line, when they are only `temper` calls; a
 `git` call goes in a call of its own.

@@ -418,10 +418,10 @@ assert_eq "model: the line next gives before a stage runs names its model" "1" \
   "$(nx "int(d['say'] == 'Intent runs on %s.' % d['agents'][0]['model'] and bool(d['agents'][0]['model']))")"
 "$TEMPER" usage add --stage intent --model opus --tokens 10 --ms 5 >/dev/null 2>&1
 assert_eq "model: the report's stage table names the model each stage was launched on" "1|opus" \
-  "$("$TEMPER" report 2>/dev/null | grep -cE '^  intent +1 +10 +5  opus$')|$(vw "','.join(d['usage']['by_stage']['intent']['models'])")"
+  "$("$TEMPER" report 2>/dev/null | grep -cE '^  intent +1 +10 +5 +-  opus$')|$(vw "','.join(d['usage']['by_stage']['intent']['models'])")"
 "$TEMPER" usage add --stage plan --model claude-haiku-5-5 --tokens 7 --ms 3 >/dev/null 2>&1
 assert_eq "live run 5: the model table names its rows column, and a long model id keeps the columns apart" "1|1" \
-  "$("$TEMPER" report 2>/dev/null | grep -cE '^  model +rows +tokens +ms$')|$("$TEMPER" report 2>/dev/null | grep -cE '^  claude-haiku-5-5 +1 +7 +3$')"
+  "$("$TEMPER" report 2>/dev/null | grep -cE '^  model +rows +tokens +ms +cost$')|$("$TEMPER" report 2>/dev/null | grep -cE '^  claude-haiku-5-5 +1 +7 +3 +-$')"
 
 # --- live run 3: a passed Design whose concern needs the plan changed can step back to Plan ---
 fresh; gpass intent plan design
@@ -688,3 +688,72 @@ fresh; "$TEMPER" state set complexity medium >/dev/null 2>&1; "$TEMPER" state cl
 "$TEMPER" state init demo --enter review >/dev/null 2>&1
 assert_eq "tier: a door after a tier changed at the plan gate takes the changed tier, not Intent's first guess" "medium" \
   "$("$TEMPER" state get complexity)"
+
+# --- the author's run: usage and cost from each agent's own transcript, the report in the terminal ---
+fresh
+CC="$WORKDIR/cc"; rm -rf "$CC"; mkdir -p "$CC/projects/-p/sess1/subagents"
+python3 - "$CC/projects/-p" "$("$TEMPER" state get started)" <<'PY'
+import json, os, sys
+d, started = sys.argv[1], sys.argv[2]
+def rec(mid, model, usage, stop="end_turn", ts="2099-01-01T00:00:01.000Z", text="", side=True):
+    return json.dumps({"type": "assistant", "isSidechain": side, "timestamp": ts,
+                       "message": {"id": mid, "role": "assistant", "model": model, "stop_reason": stop, "usage": usage,
+                                   "content": [{"type": "text", "text": text}]}})
+cw5 = lambda n: {"ephemeral_5m_input_tokens": n, "ephemeral_1h_input_tokens": 0}
+lines = [
+    # Haiku 5.5 under 100K tokens of prompt, written twice as Claude Code does (the larger output counts)
+    rec("a", "claude-haiku-5-5", {"input_tokens": 10, "cache_creation_input_tokens": 1000, "cache_creation": cw5(1000), "cache_read_input_tokens": 50000, "output_tokens": 150}),
+    rec("a", "claude-haiku-5-5", {"input_tokens": 10, "cache_creation_input_tokens": 1000, "cache_creation": cw5(1000), "cache_read_input_tokens": 50000, "output_tokens": 200}),
+    # Haiku 5.5 over 100K: the higher prices
+    rec("b", "claude-haiku-5-5", {"input_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 120000, "output_tokens": 100}),
+    # Opus 5.5 in fast mode, a 1 hour cache write
+    rec("c", "claude-opus-5-5", {"input_tokens": 1000, "cache_creation_input_tokens": 2000, "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 2000}, "cache_read_input_tokens": 0, "output_tokens": 500, "speed": "fast"}),
+    # Sonnet 5.5 with US-only inference and two web searches
+    rec("d", "claude-sonnet-5-5", {"input_tokens": 1000, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "output_tokens": 1000, "inference_geo": "us", "server_tool_use": {"web_search_requests": 2}}),
+    # a record written before its reply streamed: its 400 characters of text are the floor of its output
+    rec("e", "claude-sonnet-5-5", {"input_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "output_tokens": 3}, stop=None, text="x" * 400, ts="2099-01-01T00:00:03.500Z"),
+    rec("s", "<synthetic>", {"input_tokens": 0, "output_tokens": 0}),
+]
+open(os.path.join(d, "sess1", "subagents", "agent-abc123def.jsonl"), "w").write("\n".join(lines) + "\n")
+open(os.path.join(d, "sess1", "subagents", "agent-unk999xyz.jsonl"), "w").write(
+    rec("u", "claude-x-9", {"input_tokens": 5, "output_tokens": 5}) + "\n")
+# the session's own transcript: a call before the run started, two after it, one of them an agent's (not counted here)
+open(os.path.join(d, "sess1.jsonl"), "w").write("\n".join([
+    rec("m0", "claude-opus-5-5", {"input_tokens": 999999, "output_tokens": 0}, ts="2000-01-01T00:00:00.000Z", side=False),
+    rec("m1", "claude-opus-5-5", {"input_tokens": 1000, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 100000, "output_tokens": 1000}, side=False),
+    rec("m2", "claude-opus-5-5", {"input_tokens": 7, "output_tokens": 7}, side=True)]) + "\n")
+PY
+export CLAUDE_CONFIG_DIR="$CC"
+out="$("$TEMPER" usage add --stage plan --model opus --agent abc123def --tokens 114370 --ms 9000 2>&1)"
+assert_eq "usage: an agent's row is read from its own transcript: billed tokens, calls, the notice's time, served models" \
+  "OK: usage recorded (plan, from the transcript of the agent)|transcript|176910|5|9000|claude-haiku-5-5,claude-opus-5-5,claude-sonnet-5-5|1" \
+  "$out|$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s|%s|%s|%s|%d' % (r['source'], r['tokens'], r['calls'], r['ms'], ','.join(r['served']), r['output_estimated']))")"
+assert_eq "usage: the cost at list prices: long Haiku prompts, fast mode, US-only inference, web searches, the output floor" \
+  "0.101176" "$(python3 -c "import json; print(round(json.load(open('.temper/usage.json'))[-1]['cost'], 6))")"
+"$TEMPER" usage add --stage review --model sonnet --agent abc123def --tokens none --ms none >/dev/null 2>&1
+assert_eq "usage: with no time from the notice, the transcript's span is the time" "2500" \
+  "$(python3 -c "import json; print(json.load(open('.temper/usage.json'))[-1]['ms'])")"
+"$TEMPER" usage add --stage check --model sonnet --agent unk999xyz >/dev/null 2>&1
+assert_eq "usage: a model with no price leaves the row without a cost" "None|claude-x-9" \
+  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s' % (r['cost'], ','.join(r['unpriced'])))")"
+n0="$(python3 -c "import json; print(len(json.load(open('.temper/usage.json'))))")"
+out="$("$TEMPER" usage add --stage design --model opus --agent nothere12 2>&1)"; rc=$?
+assert_eq "usage: an agent with no transcript and no total is refused, and nothing is recorded (its report came before its notice)" \
+  "1|1|$n0" "$rc|$(printf '%s' "$out" | grep -c 'completion notice of an agent run in the background carries subagent_tokens')|$(python3 -c "import json; print(len(json.load(open('.temper/usage.json'))))")"
+out="$("$TEMPER" task gate 1 --model haiku --agent nothere12 2>&1)"; rc=$?
+assert_eq "task gate: the same refusal, before the gate judges anything" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'no usage for agent nothere12')"
+"$TEMPER" usage add --stage design --model opus --agent nothere12 --tokens 50000 --ms 700 >/dev/null 2>&1
+assert_eq "usage: with no transcript, the notice's total is the row, with no cost" "notice|50000|None" \
+  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s|%s' % (r['source'], r['tokens'], r.get('cost')))")"
+assert_exit "usage: an agent id that is not a plain name is never looked up" 1 "$TEMPER" usage add --stage design --model opus --agent '../x'
+rep="$("$TEMPER" report 2>&1)"
+assert_eq "report: the terminal report gives the cost by stage, the main conversation since the run started, the notes" "1|1|1|1|1|1" \
+  "$(printf '%s\n' "$rep" | grep -c '^  plan .*\$0.1012  opus$')|$(printf '%s\n' "$rep" | grep -c 'main conversation since the run started: 102,000 tokens in 1 call(s), \$0.0440')|$(printf '%s\n' "$rep" | grep -c '2 launch(es) have no cost')|$(printf '%s\n' "$rep" | grep -c 'thinking, billed as output, is not counted')|$(printf '%s\n' "$rep" | grep -c 'not billed per token')|$(printf '%s\n' "$rep" | grep -c 'list prices of 20')"
+"$TEMPER" report --html >/dev/null 2>&1
+assert_eq "report --html: a Cost column, the main conversation and the notes" "1|1|1" \
+  "$(grep -c '<th>Cost</th>' .temper/specs/demo/report.html)|$(grep -c 'Main conversation since the run started: 102k tokens in 1 call(s), \$0.0440' .temper/specs/demo/report.html)|$(grep -c 'not billed per token' .temper/specs/demo/report.html)"
+assert_eq "view: the usage carries the cost and the count of rows without one" "0.202352|2" \
+  "$(python3 -c "import json; u=json.load(open('.temper/view.json'))['usage']; print('%s|%s' % (round(u['cost'], 6), u['unpriced']))")"
+assert_eq "next: every agent's after call names its id, so its usage is read from its transcript" "1" \
+  "$(nx "int('--agent {agent} --tokens {tokens} --ms {ms}' in d['agents'][0]['after'][0])")"
+unset CLAUDE_CONFIG_DIR

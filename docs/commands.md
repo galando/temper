@@ -143,8 +143,9 @@ The bar has one button, and it decides nothing. **Go on** (key `1`, while Claude
 runs `/temper:temper`, so Claude takes the run up again and asks the gate question. The pane repeats the
 run on one card: the plan's files by group, the Build grid with each task's state, model and retries, the
 Review findings, the Check markers, the acceptance criteria ("what must be true") with their evidence,
-the loops with their reasons and your decisions; it has no button. At the commit, `temper report --html`
-writes the same as one page, `report.html` in the spec folder, to share with the change
+the loops with their reasons and your decisions; it has no button. At the commit, the report is printed in
+the terminal, and on your answer `temper report --html` writes the same as one page, `report.html` in the
+spec folder, to share with the change
 ([The mod](mod.md#the-bar)).
 
 ### One flow

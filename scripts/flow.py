@@ -546,7 +546,7 @@ class Builder:
         lines.extend(extra_lines)
         lines.append(self.plugin_line())
         return {"type": "temper:temper-%s" % stage, "model": models.get(stage, ""), "prompt": "\n".join(lines),
-                "after": [self.c("usage add --stage %s --model %s --tokens {tokens} --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
+                "after": [self.c("usage add --stage %s --model %s --agent {agent} --tokens {tokens} --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
 
     def feedback_lines(self):
         fb = self.r.latest_feedback()
@@ -638,7 +638,7 @@ class Builder:
                 agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or "haiku",
                                "before": [self.c("task start %d" % t["task"])],
                                "prompt": "Follow %s/agents/build-task.md exactly.\n%s\nTask: %d." % (self.plugin, self.plugin_line(), t["task"]),
-                               "after": [self.c("task gate %d --model %s --tokens {tokens} --ms {ms}" % (t["task"], t.get("model")))],
+                               "after": [self.c("task gate %d --model %s --agent {agent} --tokens {tokens} --ms {ms}" % (t["task"], t.get("model")))],
                                "task": t["task"], "group": t.get("group"), "title": t.get("title"), "attempt": t.get("attempt")})
             return {"action": "work", "stage": "build", "calls": [], "agents": agents,
                     "say": "Build hands out %d task%s%s." % (len(agents), "" if len(agents) == 1 else "s", on_model(agents))}
@@ -646,7 +646,7 @@ class Builder:
         running = [(int(n), v) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"]
         if running:
             return {"action": "wait", "stage": "build", "tasks": [
-                {"task": n, "after": [self.c("task gate %d --model %s --tokens {tokens} --ms {ms}" % (n, v.get("model") or self.r.ctx.get("task_model") or "haiku"))]}
+                {"task": n, "after": [self.c("task gate %d --model %s --agent {agent} --tokens {tokens} --ms {ms}" % (n, v.get("model") or self.r.ctx.get("task_model") or "haiku"))]}
                 for n, v in sorted(running)],
                 "say": "Tasks are running. When you launched their agents in this conversation, wait for each result, then run its after calls; "
                        "otherwise (a new conversation) run the after calls now."}
@@ -807,8 +807,13 @@ class Builder:
         if r.command == "fix":
             steps.append("Append one entry for this fix to .temper/lessons.md (create it with a # Lessons header when it is absent), "
                          "as %s/reference/fix.md section Commit + record shows: the next RCA reads it first." % self.plugin)
-        # The end of run report page goes into the spec folder first, so the commit carries it.
-        steps.append(self.c("report --html"))
+        # The report prints before the commit, and the person sees it in the reply: the output of a Bash call is not
+        # shown to them. The HTML page is theirs to want; written now, the commit carries it with the spec.
+        steps.append(self.c("report"))
+        steps.append("Show the person the report temper report printed, as it printed it, in your reply. Then ask with "
+                     "AskUserQuestion, header `Report`, question `Write the report as an HTML page too?`, options "
+                     "`Write report.html` (description `%s/report.html, committed with the spec`) and `Not now`; on "
+                     "`Write report.html` run %s." % (r.spec or ".temper/specs/{slug}", self.c("report --html")))
         steps.append(self.c("state archive"))
         files = r.ctx.get("changed") or []
         if not r.spec_ignored() and r.spec:
@@ -830,8 +835,6 @@ class Builder:
             steps.append("git commit -m %s" % shlex.quote("docs(%s): record the run: spec, gate ledger and report (the code is in the commits before it)" % r.slug))
         else:
             steps.append("git commit -m '{a conventional commit message for the feature}'")
-        # The report reads the run state, so it prints before the state is cleared.
-        steps.append(self.c("report"))
         steps.append(self.c("state clear"))
         return steps
 
@@ -1130,18 +1133,29 @@ def usage(run):
     rows = [r for r in run.usage if isinstance(r, dict)]
     tokens = sum(r.get("tokens") or 0 for r in rows if isinstance(r.get("tokens"), int))
     ms = sum(r.get("ms") or 0 for r in rows if isinstance(r.get("ms"), int))
+
+    def price(r):   # a row read from the agent's transcript carries its cost at list prices; a row from a total does not
+        c = r.get("cost")
+        return c if isinstance(c, (int, float)) and not isinstance(c, bool) else None
+
     def by(key):
         out = {}
         for r in rows:
-            b = out.setdefault(r.get(key) or "unknown", {"tokens": 0, "ms": 0, "runs": 0})
+            b = out.setdefault(r.get(key) or "unknown", {"tokens": 0, "ms": 0, "runs": 0, "cost": None, "unpriced": 0})
             b["runs"] += 1
             b["tokens"] += r.get("tokens") or 0 if isinstance(r.get("tokens"), int) else 0
             b["ms"] += r.get("ms") or 0 if isinstance(r.get("ms"), int) else 0
+            if price(r) is None:
+                b["unpriced"] += 1
+            else:
+                b["cost"] = round((b["cost"] or 0) + price(r), 6)
             # a stage names the models its launches asked for
             if key == "stage" and r.get("model") and r.get("model") not in b.setdefault("models", []):
                 b["models"].append(r.get("model"))
         return out
-    return {"tokens": tokens, "ms": ms, "by_stage": by("stage"), "by_model": by("model")}
+    priced = [price(r) for r in rows if price(r) is not None]
+    return {"tokens": tokens, "ms": ms, "cost": round(sum(priced), 6) if priced else None, "unpriced": len(rows) - len(priced),
+            "output_estimated": any(r.get("output_estimated") for r in rows), "by_stage": by("stage"), "by_model": by("model")}
 
 
 def loops(run):

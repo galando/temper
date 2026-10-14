@@ -137,6 +137,20 @@ into the `**Complexity:**` line of `intent.md` (and of `plan.md`, when it has on
 plan gate stayed only in the run's state, `plan.md` names no tier, so a later door took Intent's first guess. The
 plan gate's new `tier recorded` row fails when such a line names another tier than the run.
 
+**Usage, cost, and the report at the end.** A run's report showed zero tokens and zero time for every stage:
+its agents ran in the background, each one's report came before its completion notice, and the orchestrator
+recorded the stage when the report came. `temper usage add` and `temper task gate` now take the agent's id
+(`--agent`), and the CLI reads what the agent was billed for from its own transcript: each call's input, cache
+writes, cache reads and output, with the model that served it, so the numbers no longer depend on when the call
+runs. The total Claude Code returns (`subagent_tokens`) is the agent's context at its last call, not its usage:
+one Haiku task returned 114K and was billed for 1.65M tokens, mostly cache reads. An agent named with no
+transcript and no total is refused, and nothing is recorded. The report gives an estimated cost at API list
+prices (`scripts/usage_cost.py`, with their date), by stage and by model, and the main conversation's since the
+run started, from the session transcript. A subagent's transcript records each reply before it streams, so its
+output is taken from the reply's text and its thinking is not counted: the cost of the agents can be low. At the
+end of a run the report prints in the terminal before the commit, the orchestrator shows it, and a question
+offers the HTML page; before, `report.html` was always written, and the terminal report came after the commit.
+
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.
 

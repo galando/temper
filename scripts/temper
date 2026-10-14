@@ -3822,12 +3822,13 @@ cmd_task_gate() {
 
 _task_gate_body() {
   local n="${1:-}"; shift || true
-  local model="" tokens="" ms=""
+  local model="" tokens="" ms="" agent=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --model) model="${2:-}"; shift 2 || true ;;
       --tokens) tokens="${2:-}"; shift 2 || true ;;
       --ms) ms="${2:-}"; shift 2 || true ;;
+      --agent) agent="${2:-}"; shift 2 || true ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
@@ -3837,6 +3838,7 @@ _task_gate_body() {
     echo "FAIL: task gate needs --model, the model the agent of Task $n ran on. Gate a task only after its agent has returned. Nothing was recorded." >&2
     return 1
   fi
+  local from; from="$(_usage_from "$agent" "$tokens")" || return 1
   _task_load "$n" || return 1
   _task_parked_refuse "$n" gate || return 1
   local status; status="$(_jget "$_T_CTX" status)"
@@ -3851,7 +3853,7 @@ _task_gate_body() {
   # D-07: this launch's usage, once, whatever the verdict (a failed attempt spent tokens too).
   [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=""
   [[ "$ms" =~ ^[0-9]+$ ]] || ms=""
-  _usage_append task "$model" "$tokens" "$ms" "$n" "$group" || true
+  _usage_append task "$model" "$tokens" "$ms" "$n" "$group" "$from" || true
 
   if [[ "$verdict" != "PASS" ]]; then
     local att fshas wtrel park=""
@@ -5290,7 +5292,7 @@ cmd_report() {
   if [[ "${1:-}" == "--html" ]]; then
     shift
     _view_write
-    python3 "$SCRIPTS_DIR/run_report.py" render --view "$TEMPER_DIR/view.json" --root "$REPO_ROOT" "$@"
+    python3 "$SCRIPTS_DIR/run_report.py" render --view "$TEMPER_DIR/view.json" --root "$REPO_ROOT" --main "$(_usage_main)" "$@"
     return
   fi
   [[ -f "$GATES_FILE" ]] || echo '{}' > "$GATES_FILE"
@@ -5342,34 +5344,74 @@ if accepted:
   [[ -z "$usage_json" ]] || python3 -I -c "
 import json, sys
 u = json.loads(sys.argv[1])
+m = json.loads(sys.argv[2]) if sys.argv[2] else None
 def n(v): return '-' if v is None else str(v)
+def tk(v): return '-' if v is None else format(v, ',')
+def usd(v): return '-' if v is None else '\$%.2f' % v if v >= 0.995 else '\$%.4f' % v
+seq = ['intent', 'rca', 'plan', 'design', 'build', 'task', 'fix', 'review', 'check']
+in_run = lambda kv: (seq.index(kv[0]) if kv[0] in seq else len(seq), kv[0])
 print()
-print('Usage (per-agent totals as Claude Code returns them; the orchestrator session is not counted)')
+print('Usage and estimated cost (tokens as billed, from each agent transcript; cost at the API list prices of %s)' % sys.argv[3])
 w = max([10] + [len(k) for k in list(u['by_stage']) + list(u['by_model'])])   # a full model id is wider than a stage
-print('  %-*s %6s %12s %12s  %s' % (w, 'stage', 'rows', 'tokens', 'ms', 'model'))
-for k, v in u['by_stage'].items():
-    print('  %-*s %6d %12s %12s  %s' % (w, k, v['rows'], n(v['tokens']), n(v['ms']), ', '.join(v.get('models') or []) or '-'))
-print('  %-*s %6s %12s %12s' % (w, 'model', 'rows', 'tokens', 'ms'))
+print('  %-*s %6s %12s %12s %10s  %s' % (w, 'stage', 'rows', 'tokens', 'ms', 'cost', 'model'))
+for k, v in sorted(u['by_stage'].items(), key=in_run):
+    print('  %-*s %6d %12s %12s %10s  %s' % (w, k, v['rows'], tk(v['tokens']), n(v['ms']), usd(v.get('cost')), ', '.join(v.get('models') or []) or '-'))
+print('  %-*s %6s %12s %12s %10s' % (w, 'model', 'rows', 'tokens', 'ms', 'cost'))
 for k, v in u['by_model'].items():
-    print('  %-*s %6d %12s %12s' % (w, k, v['rows'], n(v['tokens']), n(v['ms'])))
+    print('  %-*s %6d %12s %12s %10s' % (w, k, v['rows'], tk(v['tokens']), n(v['ms']), usd(v.get('cost'))))
 t = u['total']
-print('  %-*s %6d %12s %12s' % (w, 'total', t['rows'], n(t['tokens']), n(t['ms'])))" "$usage_json"
+print('  %-*s %6d %12s %12s %10s' % (w, 'total', t['rows'], tk(t['tokens']), n(t['ms']), usd(t.get('cost'))))
+if m:
+    print('  main conversation since the run started: %s tokens in %d call(s), %s' % (tk(m['tokens']), m['calls'], usd(m['cost'] if not m['unpriced'] else None)))
+    if t.get('cost') is not None and not m['unpriced']:
+        print('  run total, the agents and the main conversation: %s' % usd(t['cost'] + m['cost']))
+if t.get('unpriced'):
+    print('  %d launch(es) have no cost: no transcript was found (the tokens are then the total Claude Code gave, the context' % t['unpriced'])
+    print('  at the end), or a model they ran on has no price here.')
+if t.get('output_estimated'):
+    print('  An agent transcript records each reply before it streams: its output is taken from the reply text, and its')
+    print('  thinking, billed as output, is not counted, so the cost of the agents can be low.')
+print('  A Claude plan is not billed per token: this is what the run costs at API list prices.')" "$usage_json" "$(_usage_main)" "$(python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import usage_cost; print(usage_cost.PRICES_AS_OF)" "$SCRIPTS_DIR" 2>/dev/null)"
 }
 
 # Whole-flow usage (9.7.0, intent D-07). .temper/usage.json is a CLI-owned array of rows
 # {stage, model, tokens, ms, task, group, ts}; a value that was not given is null. The grouped
 # `task gate --tokens --ms` writes its row here too, and `group report` keeps reading groups.json
 # attempts, so the two views never meet in one total: the usage totals count each launch once.
-_usage_append() { # _usage_append <stage> <model> <tokens> <ms> <task> <group>
+_usage_append() { # _usage_append <stage> <model> <tokens> <ms> <task> <group> [<the agent's transcript summary>]
   local row
   row="$(python3 -I -c "
 import json, sys
 a = sys.argv[1:]
 def num(x): return int(x) if x.isdigit() else None
-print(json.dumps({'stage': a[0], 'model': a[1] or None, 'tokens': num(a[2]), 'ms': num(a[3]),
-                  'task': num(a[4]), 'group': a[5] or None, 'ts': a[6]}))" "$@" "$(_now)")" || return 1
+row = {'stage': a[0], 'model': a[1] or None, 'tokens': num(a[2]), 'ms': num(a[3]),
+       'task': num(a[4]), 'group': a[5] or None, 'ts': a[6], 'source': 'notice' if num(a[2]) else 'none'}
+try:
+    s = json.loads(a[7]) if a[7] else None
+except ValueError:
+    s = None
+if isinstance(s, dict) and s.get('calls'):
+    # What the agent was billed for, from its own transcript; the time the notice gave, else the transcript's span.
+    row.update({'tokens': s['tokens'], 'ms': num(a[3]) if num(a[3]) else s.get('ms'), 'source': 'transcript',
+                'cost': s.get('cost') if not s.get('unpriced') else None, 'unpriced': s.get('unpriced') or [],
+                'calls': s['calls'], 'served': s.get('served') or [], 'agent': s.get('agent'), 'session': s.get('session'),
+                'parts': {k: s.get(k) for k in ('input', 'cache_write', 'cache_read', 'output')},
+                'output_estimated': bool(s.get('output_estimated'))})
+print(json.dumps(row))" "$1" "$2" "$3" "$4" "$5" "$6" "$(_now)" "${7:-}")" || return 1
   _ensure_dirs
   _json_append "$USAGE_FILE" "$row"
+}
+
+# _usage_from <agent> <tokens>: the summary of the agent's own transcript (one JSON line) when Claude Code's transcript of
+# it is found. An agent named with no transcript and no total from Claude Code is one call too early (an agent run in the
+# background sends its report before its completion notice, which carries the numbers): refused, nothing recorded.
+_usage_from() {
+  local agent="$1" tokens="$2"
+  [[ -n "$agent" ]] || return 0
+  python3 -I "$SCRIPTS_DIR/usage_cost.py" agent "$agent" 2>/dev/null && return 0
+  [[ "$tokens" =~ ^[1-9][0-9]*$ || "$tokens" == "none" ]] && return 0
+  echo "FAIL: no usage for agent $agent: its transcript was not found and no --tokens was given. The completion notice of an agent run in the background carries subagent_tokens and duration_ms: run this call when it arrives, with them (--tokens none --ms none only when it gave none). Nothing was recorded." >&2
+  return 1
 }
 
 _usage_json() { # prints the usage summary as one JSON line, or nothing when no row was recorded
@@ -5388,8 +5430,15 @@ def add(acc, r):
     for k in ('tokens', 'ms'):
         if isinstance(r.get(k), int):
             acc[k] = (acc[k] or 0) + r[k]
-by_stage, by_model, total = {}, {}, {'rows': 0, 'tokens': None, 'ms': None}
-fresh = lambda: {'rows': 0, 'tokens': None, 'ms': None}
+    # the cost at list prices of a row read from the agent's transcript; a row from a total has none
+    c = r.get('cost')
+    if isinstance(c, (int, float)) and not isinstance(c, bool):
+        acc['cost'] = round((acc['cost'] or 0) + c, 6)
+    else:
+        acc['unpriced'] += 1
+    acc['output_estimated'] = acc['output_estimated'] or bool(r.get('output_estimated'))
+fresh = lambda: {'rows': 0, 'tokens': None, 'ms': None, 'cost': None, 'unpriced': 0, 'output_estimated': False}
+by_stage, by_model, total = {}, {}, fresh()
 for r in rows:
     st = by_stage.setdefault(r.get('stage') or 'unknown', fresh())
     add(st, r)
@@ -5402,13 +5451,43 @@ print(json.dumps({'by_stage': by_stage, 'by_model': by_model, 'total': total}, s
 PY
 }
 
-cmd_usage() { # temper usage add --stage S [--model M] [--tokens T] [--ms D] [--task N] [--group G]
+# _usage_main: the main conversation's own calls since the run started, as one JSON line (nothing when none is known),
+# from the session transcripts the run's agents were found in: the agents' transcripts sit below their session's.
+_usage_main() {
+  [[ -f "$USAGE_FILE" && -f "$STATE_FILE" ]] || return 0
+  local since; since="$(_json_get_path "$STATE_FILE" started "")"
+  [[ -n "$since" ]] || return 0
+  python3 -I - "$USAGE_FILE" "$since" "$SCRIPTS_DIR" <<'PY' 2>/dev/null || true
+import json, os, sys
+sys.path.insert(0, sys.argv[3])
+import usage_cost
+try:
+    rows = json.load(open(sys.argv[1]))
+except Exception:
+    rows = []
+home = os.path.realpath(os.path.join(usage_cost.config_dir(), "projects")) + os.sep
+seen, cs = set(), []
+for r in rows if isinstance(rows, list) else []:
+    s = r.get("session") if isinstance(r, dict) else None
+    # only a session transcript of Claude Code's own folder, each once
+    if not isinstance(s, str) or not s.endswith(".jsonl") or s in seen or not os.path.realpath(s).startswith(home) or not os.path.isfile(s):
+        continue
+    seen.add(s)
+    cs += usage_cost.calls(s, main=True, since=sys.argv[2])
+if cs:
+    out = usage_cost.summary(cs)
+    out["prices_as_of"] = usage_cost.PRICES_AS_OF
+    print(json.dumps(out, sort_keys=True))
+PY
+}
+
+cmd_usage() { # temper usage add --stage S [--model M] [--agent ID] [--tokens T] [--ms D] [--task N] [--group G]
   local sub="${1:-}"; shift || true
   if [[ "$sub" != "add" ]]; then
-    echo "FAIL: usage: temper usage add --stage <intent|plan|design|build|review|check|rca|fix|task> [--model M] [--tokens T] [--ms D] [--task N] [--group G]" >&2
+    echo "FAIL: usage: temper usage add --stage <intent|plan|design|build|review|check|rca|fix|task> [--model M] [--agent ID] [--tokens T] [--ms D] [--task N] [--group G]" >&2
     return 1
   fi
-  local stage="" model="" tokens="" ms="" task="" group=""
+  local stage="" model="" tokens="" ms="" task="" group="" agent=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stage) stage="${2:-}"; shift 2 || true ;;
@@ -5417,6 +5496,7 @@ cmd_usage() { # temper usage add --stage S [--model M] [--tokens T] [--ms D] [--
       --ms) ms="${2:-}"; shift 2 || true ;;
       --task) task="${2:-}"; shift 2 || true ;;
       --group) group="${2:-}"; shift 2 || true ;;
+      --agent) agent="${2:-}"; shift 2 || true ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
@@ -5425,12 +5505,14 @@ cmd_usage() { # temper usage add --stage S [--model M] [--tokens T] [--ms D] [--
     *) echo "FAIL: --stage must be one of: $AGENT_STAGES task (got '$stage')" >&2; return 1 ;;
   esac
   local v
-  for v in "$tokens" "$ms" "$task"; do
-    [[ -z "$v" || "$v" =~ ^[0-9]+$ ]] || { echo "FAIL: --tokens, --ms and --task take whole numbers (got '$v')" >&2; return 1; }
+  for v in "$tokens" "$ms"; do
+    [[ -z "$v" || "$v" == "none" || "$v" =~ ^[0-9]+$ ]] || { echo "FAIL: --tokens and --ms take whole numbers, or none (got '$v')" >&2; return 1; }
   done
+  [[ -z "$task" || "$task" =~ ^[0-9]+$ ]] || { echo "FAIL: --task takes a whole number (got '$task')" >&2; return 1; }
   [[ -z "$group" || "$group" =~ ^G[0-9]+$ ]] || { echo "FAIL: --group takes G<n> (got '$group')" >&2; return 1; }
-  _usage_append "$stage" "$model" "$tokens" "$ms" "$task" "$group" || return 1
-  echo "OK: usage recorded ($stage)"
+  local from; from="$(_usage_from "$agent" "$tokens")" || return 1
+  _usage_append "$stage" "$model" "$tokens" "$ms" "$task" "$group" "$from" || return 1
+  echo "OK: usage recorded ($stage${from:+, from the transcript of the agent})"
 }
 
 # ---------------------------------------------------------------------------

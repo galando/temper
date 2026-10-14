@@ -91,7 +91,7 @@ question is no answer. A typed message is never a move: it is a change request o
 | `criteria` | `[{id, priority, status, text, evidence}]` of the intent's success criteria |
 | `loops` | `[{from, to, reason, iteration, max, at}]` |
 | `skips` | `[{stage, reason, by}]` |
-| `usage` | `{tokens, ms, by_stage, by_model}` from `temper usage add`; each of `by_stage` and `by_model` maps a name to `{tokens, ms, runs}`, and a stage also to `models` (the models its launches asked for) |
+| `usage` | `{tokens, ms, cost, unpriced, output_estimated, by_stage, by_model}` from `temper usage add`; each of `by_stage` and `by_model` maps a name to `{tokens, ms, runs, cost, unpriced}`, and a stage also to `models` (the models its launches asked for). `cost` is the estimate at list prices of the rows read from an agent's transcript (null when none was), `unpriced` counts the rows without one |
 | `time` | `{started, updated}` |
 
 The file is replaced whole each time (written beside it, then moved), so a reader never sees half of
@@ -101,7 +101,8 @@ it, and a link at that path is replaced, never written through.
 
 `temper report --html [-o OUT]` renders the view as one page (`scripts/run_report.py`): the stages with
 the skips and the loops and their reasons, the plan's files by group, the Build grid, the Review findings,
-the Check markers with their failing lines, the criteria with their evidence, and the time and tokens by
-stage and by model. Its head says Done only once the Commit gate has passed. By default it writes
-`report.html` in the run's spec folder, and the commit steps of `temper next` run it before `git add`, so
-the commit carries the page. Every value is escaped, and it never writes inside the plugin's own folder.
+the Check markers with their failing lines, the criteria with their evidence, and the time, tokens and
+estimated cost by stage and by model, with the main conversation. Its head says Done only once the Commit
+gate has passed. By default it writes `report.html` in the run's spec folder. The commit steps of
+`temper next` print `temper report` in the terminal before `git add`, the orchestrator shows it, and the
+person chooses whether to write the page too; written then, the commit carries it. Every value is escaped, and it never writes inside the plugin's own folder.

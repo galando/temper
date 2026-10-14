@@ -57,8 +57,9 @@ the branch left main or master), so the work the door reviews is in the diff.
 The other run files are the CLI's too: `.temper/gates.json` (each stage's verdict and rows),
 `.temper/overrides.json` (the person's skips), `.temper/feedback-loops.json` (the loop budget),
 `.temper/usage.json` (whole flow usage rows `{stage, model, tokens, ms, task, group, ts}`, from
-`temper usage add` after each stage launch and from `temper task gate --tokens --ms` for each task
-agent, so each launch is counted once), in Build `.temper/groups.json` (each group's worktree,
+`temper usage add --agent` after each stage launch and from `temper task gate --agent --tokens --ms` for
+each task agent, so each launch is counted once; the agent id reads its billed tokens and cost from its
+transcript), in Build `.temper/groups.json` (each group's worktree,
 status and gate verdict; each task's status, attempts and commit; the integration verdict), and
 `.temper/view.json`, the view the mod draws (`${CLAUDE_PLUGIN_ROOT}/docs/flow.md`).
 

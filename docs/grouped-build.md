@@ -123,9 +123,10 @@ the final feature commit.
   still checks the full packs.
 - **Merge commits run no pre-commit hook.** The CLI checks the upstream-gate condition
   (ADR 0009) itself before each commit and merge.
-- **Usage numbers are rough.** They are the per-agent totals that Claude Code returns for
-  each launch, not split into input, output and cache tokens. The orchestrator session's own
-  usage is not visible and is not recorded.
+- **The cost is an estimate.** Input and cache tokens come exact from each agent's transcript;
+  a subagent's transcript records a reply before it streams, so its output is taken from the
+  reply's text, and its thinking (billed as output) is not counted. The cost is at the API list
+  prices `scripts/usage_cost.py` holds (with their date); a Claude plan is not billed per token.
 
 ## Run files
 
@@ -134,27 +135,35 @@ The CLI owns these `.temper/` runtime files. Do not hand-write them and do not c
 
 - `.temper/groups.json`: per-group worktree, status and gate verdict; per-task status,
   attempts and commit; the integration verdict.
-- `.temper/usage.json`: one row per agent launch: stage, model, tokens, milliseconds, task and group.
+- `.temper/usage.json`: one row per agent launch: stage, model, tokens, milliseconds, task and group,
+  and, when the agent's transcript was found, its cost, calls, the models that served it and its session.
 - `.temper/view.json`: the run as the mod draws it, written after every change (docs/flow.md).
 - `.temper/.lock/`: the short-lived lock directory that serializes writes to the files above
   (stale after 30 s, never held while a test runs).
 
 ## Measuring a run
 
-Every stage launch is recorded with `temper usage add --stage S --model M --tokens T --ms D`
+Every stage launch is recorded with `temper usage add --stage S --model M --agent ID --tokens T --ms D`
 (the orchestrator makes that call after each launch; task agents are recorded by
-`temper task gate --tokens --ms`). After a run, save:
+`temper task gate --agent --tokens --ms`). After a run, save:
 
 - `temper report --json`: whole-flow usage (`usage.by_stage`, `usage.by_model`, `usage.total`)
   and the gate verdicts;
 - `temper group report --json`: `tokens_by_model`, `attempts`, `escalations`, `parked`,
   `wall_ms_by_group`, `build_wall_ms`, `review_findings_open`.
 
-The numbers are the totals the Agent tool returns. An agent Claude Code runs in the background
-(as in auto permission mode) returns none at launch; its completion notice carries them
-(`subagent_tokens`, `duration_ms`), and the orchestrator fills the row from it. A row is left
-without tokens only when neither gives them. The session transcripts hold every agent's tokens,
-and the model that served each of its turns.
+The tokens are what each agent was billed for, read by its id from its own transcript
+(`<config>/projects/<project>/<session>/subagents/agent-<id>.jsonl`, `CLAUDE_CONFIG_DIR` or
+`~/.claude`): every call's input, cache writes, cache reads and output, the model that served it,
+its speed and its inference geography, priced at list prices. The total the Agent tool returns
+(`subagent_tokens`) is the agent's context at its last call, not what it was billed for: one
+Haiku task of 19 calls returned 114K and was billed for 1.65M, mostly cache reads. When the
+transcript is not found, the row takes that total (and the time) from the Agent result or, for an
+agent run in the background, its completion notice, and has no cost; an agent named with no
+transcript and no total is refused (its report came before its notice). `temper report` adds the
+main conversation since the run started, from the session transcript the agents sit below. Claude
+Code's transcript layout is not a documented interface: what the CLI cannot read is left out, and
+the report says how many launches have no cost.
 
 To compare two runs (two models for the task agents, two plans, two versions of Temper), build
 the same feature from the same commit on two branches and compare tokens per model times that

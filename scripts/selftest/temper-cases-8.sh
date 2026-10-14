@@ -169,9 +169,9 @@ assert_eq "next: config suggestions add their option" "Commit (Recommended)|Loop
 rm -f .temper/specs/demo/config-suggestions.json
 assert_eq "next: at Commit with no verdict, the commit gate runs" "work|gate commit" "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1]")"
 gpass commit
-assert_eq "next: a passed commit gate gives the commit steps: the report page first, ending with the report and then state clear" \
-  "work|intent complete|report --html|state archive|report|state clear" \
-  "$(nx "s = d['steps']; '|'.join([d['action'], s[0].split('temper ', 1)[1], s[2].split('temper ', 1)[1], s[3].split('temper ', 1)[1], s[-2].split('temper ', 1)[1], s[-1].split('temper ', 1)[1]])")"
+assert_eq "next: a passed commit gate gives the commit steps: the report in the terminal first, the page on the person's answer, then the commit and state clear" \
+  "work|intent complete|report|1|state archive|git add|git commit|state clear" \
+  "$(nx "s = d['steps']; '|'.join([d['action'], s[0].split('temper ', 1)[1], s[2].split('temper ', 1)[1], str(int('Write report.html' in s[3] and s[3].endswith('report --html.') and 'Show the person the report' in s[3])), s[4].split('temper ', 1)[1], s[5][:7], s[6][:10], s[-1].split('temper ', 1)[1]])")"
 gfail commit "review gate" "FAIL, no override recorded"
 assert_eq "next: a failed commit gate asks to override the failed stages, with a reason" \
   "Override and commit|commitOverride|override review --reason '{reason}'|gate commit" \

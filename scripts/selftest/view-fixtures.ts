@@ -284,8 +284,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -568,8 +571,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -884,8 +890,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -1195,8 +1204,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -1506,8 +1518,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -1816,8 +1831,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -2121,8 +2139,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -2505,8 +2526,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -2862,8 +2886,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -3146,8 +3173,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -3545,8 +3575,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -3918,8 +3951,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -4221,8 +4257,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -4592,8 +4631,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -4787,11 +4829,11 @@ export const VIEWS: Record<string, unknown> = {
    "steps": [
     "/plugin/scripts/temper intent complete",
     "When .temper/specs/pw/build-context.json records deviations from the plan, write them into plan.md as a ## Deviations section.",
-    "/plugin/scripts/temper report --html",
+    "/plugin/scripts/temper report",
+    "Show the person the report temper report printed, as it printed it, in your reply. Then ask with AskUserQuestion, header `Report`, question `Write the report as an HTML page too?`, options `Write report.html` (description `.temper/specs/pw/report.html, committed with the spec`) and `Not now`; on `Write report.html` run /plugin/scripts/temper report --html.",
     "/plugin/scripts/temper state archive",
     "git add -- .temper/specs/pw/",
     "git commit -m 'docs(pw): record the run: spec, gate ledger and report (the code is in the commits before it)'",
-    "/plugin/scripts/temper report",
     "/plugin/scripts/temper state clear"
    ]
   },
@@ -4910,8 +4952,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -5221,8 +5266,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -5602,8 +5650,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -6015,8 +6066,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -6412,8 +6466,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -6701,8 +6758,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -6904,8 +6964,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -7191,8 +7254,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -7463,8 +7529,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -7637,8 +7706,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -8038,8 +8110,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -8428,8 +8503,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -8834,8 +8912,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -9044,8 +9125,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -9542,8 +9626,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -10069,8 +10156,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -10351,8 +10441,11 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
+   "cost": null,
    "ms": 0,
-   "tokens": 0
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
