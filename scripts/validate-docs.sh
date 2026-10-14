@@ -240,6 +240,7 @@ ROWS = [
     ('commands/check.md', '+', r'"Entering at a stage"', 'the Check command is a door into /temper'),
     ('commands/fix.md', '+', r'the mod stands aside in a `/temper:fix` run', 'a fix run asks its own questions with the mod'),
     ('commands/fix.md', '+', r'scripts/temper next --json', 'after its RCA a fix run is driven by temper next'),
+    ('commands/fix.md', '+', r'When it lists `setup`, run those calls', 'a fix run installs the commit hook before its RCA'),
     ('commands/fix.md', '-', r'"Run Fix again \(Recommended\)"', 'the page lists no gate option'),
     ('commands/fix.md', '-', r'Ready to push', 'the fix run invites no typing'),
     ('reference/plan.md', '-', r'write `.temper/build-state.json`', 'the guard refuses a hand written run state'),

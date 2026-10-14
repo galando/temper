@@ -53,7 +53,7 @@ Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`.
 ## The loop
 
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json` and do what its `action` says. Then run it
-again. Stop only where this section says so.
+again. Stop only where this section says so. When it lists `setup`, run those calls first, each once.
 
 - **`work`**: run each of `calls`, then launch each agent of `agents`, all in one turn, then do each
   of `steps` in order.

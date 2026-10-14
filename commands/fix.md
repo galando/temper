@@ -30,6 +30,10 @@ regression test is a RED then GREEN pair), Review and Check are the same stages 
 
 ## 1. RCA (before the run exists)
 
+First run `${CLAUDE_PLUGIN_ROOT}/scripts/temper next --json`. When it lists `setup`, run those calls
+first, each once, as the Start section of `${CLAUDE_PLUGIN_ROOT}/commands/temper.md` says: they
+install the native commit hook, without which nothing gates the fix's commit.
+
 With no arguments and a fix run active (`${CLAUDE_PLUGIN_ROOT}/scripts/temper state get command`
 prints `fix`), skip to step 2. A `/temper` run that is active is not this command's: say so in one
 line and ask its `restart` question from `temper next --json`.
