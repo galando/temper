@@ -475,7 +475,8 @@ class Builder:
         if stage == "check":
             go = [self.c("state advance check_complete commit")]
             if passed:
-                opts = [self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", calls=go)]
+                # What Check passed with a warning (a lint run, a test gap) is the person's to send back to Build.
+                opts = [self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", calls=go)] + back_opt()
                 if r.spec and os.path.isfile(os.path.join(r.spec, "config-suggestions.json")):
                     opts.append(self.opt("Review config suggestions", "Accept, reject or defer each suggestion, then come back here.",
                                          do="Show each suggestion in config-suggestions.json: Accept (write it into CLAUDE.md or AGENTS.md), Reject or Defer. Then ask this question again."))
@@ -577,10 +578,12 @@ class Builder:
         def gpass(g):
             return ((rg.get(g) or {}).get("gate") or {}).get("verdict") == "PASS"
 
-        # the fix pass: the groups are integrated, so Build mends what a step back or "Run Build again" names
-        if integ and all(gpass(g) for g in gid):
+        # the fix pass: the groups are integrated, so Build mends what a step back or "Run Build again" names. A door's
+        # run whose code an earlier run built (built_before, from the walked Build's check) mends it the same way.
+        before = r.state.get("built_before") and not rg
+        if (integ and all(gpass(g) for g in gid)) or before:
             a = self.agent("build", self.feedback_lines())
-            if integ != "PASS":
+            if integ != "PASS" and not before:
                 a["after"].append(self.c("integrate"))
             a["after"].append(self.c("gate build"))
             return {"action": "work", "stage": "build", "calls": [], "agents": [a], "say": "Build mends what was found (the fix pass)%s." % on_model([a])}
@@ -799,7 +802,10 @@ class Builder:
         elif files and not code:
             # A grouped Build commits the code itself (each task, each group, the merge into this branch): this commit is
             # the run's record, and its message says so.
-            steps.append("git commit -m %s" % shlex.quote("docs(%s): record the run: spec, gate ledger and report (the code came in with the Build merges)" % r.slug))
+            # A run that entered at Review or Check walked Build: the code was there before the run.
+            came = ("the code was committed before this run" if r.state.get("enter") in ("review", "check")
+                    else "the code came in with the Build merges")
+            steps.append("git commit -m %s" % shlex.quote("docs(%s): record the run: spec, gate ledger and report (%s)" % (r.slug, came)))
         else:
             steps.append("git commit -m '{a conventional commit message for the feature}'")
         # The report reads the run state, so it prints before the state is cleared.
@@ -819,7 +825,7 @@ class Builder:
                     "say": "The armed run parks before the commit; the person decides."}
         if verdict == "PASS":
             if r.state.get("parked"):
-                return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: every gate passed. Commit?", stage="commit", options=[
+                return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: every gate passed, and the armed run parked here for you (its report: .temper/autonomy-report.md). Commit?", stage="commit", options=[
                     self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", steps=self.commit_steps()), self.save()])}
             return {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.commit_steps(),
                     "say": "Every gate passed: the change is committed."}

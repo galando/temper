@@ -50,7 +50,9 @@ on branch `feature/{slug}`; `/temper:fix` is rca, fix, review, check, commit, on
 Every change of `next_stage` counts one `step`; a step back clears the verdicts of the stages it redoes.
 A run moves forward only by `state advance` (a forward `state set next_stage`, and a `state loop` to a
 later stage, are refused), and entering Commit clears any earlier commit verdict, so the commit gate
-runs for the run itself.
+runs for the run itself. `base_sha` is recorded when the run leaves Plan: HEAD, or, for a door into
+Review or Check, where the feature started (before the commit that added its `intent.md`, else where
+the branch left main or master), so the work the door reviews is in the diff.
 
 The other run files are the CLI's too: `.temper/gates.json` (each stage's verdict and rows),
 `.temper/overrides.json` (the person's skips), `.temper/feedback-loops.json` (the loop budget),

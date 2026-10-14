@@ -3563,6 +3563,30 @@ export const VIEWS: Record<string, unknown> = {
      "move": "advance"
     },
     {
+     "calls": [
+      "/plugin/scripts/temper state loop check build --reason '{reason}'"
+     ],
+     "description": "Do Build again; the stages after it are redone too.",
+     "label": "Loop back to Build",
+     "move": "back",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "The check found a real problem"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Loop back to Build. What is the reason?"
+     }
+    },
+    {
      "calls": [],
      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
      "label": "Save for later",
@@ -3577,6 +3601,10 @@ export const VIEWS: Record<string, unknown> = {
      {
       "description": "Commit the change with its spec files.",
       "label": "Commit (Recommended)"
+     },
+     {
+      "description": "Do Build again; the stages after it are redone too.",
+      "label": "Loop back to Build"
      },
      {
       "description": "Stop here. The run is saved; /temper:temper takes it up again.",

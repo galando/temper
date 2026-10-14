@@ -88,6 +88,23 @@ Plan: the check passed. Approve the plan and continue to Build?
 You choose in the dialog; a message you type is not a choice. **Save for later** stops the run;
 `/temper:temper` with no arguments takes it up again.
 
+**Stage agents in the background.** Each stage runs in an agent of its own. Claude Code runs agents
+in the background by default (with fork mode on, the default of interactive sessions, it always
+does), and the run goes on in the turn Claude Code starts when the agent finishes. Claude Code does
+not promise that turn for a session that sits idle: if a run waits after an agent finished, send any
+message, such as "go on", and the run records the agent's result and asks the next question. With
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` set to `1`, Claude Code runs every agent in the foreground,
+with fork mode on or off, so a run never waits for that turn. Set it in the shell before `claude`
+starts, or in the `env` block of the project's `.claude/settings.json` (it applies once the folder is
+trusted), then start Claude Code again; `/temper:temper` with no arguments takes the run up:
+
+```json
+{ "env": { "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1" } }
+```
+
+It turns off every background task of the session (background Bash commands and Ctrl+B too), and
+the session is busy while an agent runs.
+
 ### Option B: Start at a stage
 
 Each stage command is a door into the same run: it starts `/temper:temper` at that stage, or takes up
@@ -95,8 +112,9 @@ the run that is active, and you decide every gate in the same question. `/temper
 Intent gate, because the plan is derived from the intent you approve. A later stage command
 (`/temper:build`, `/temper:review`, `/temper:check`) needs a planned feature: it checks and asks each
 earlier gate in turn, then runs its stage. A new run holds no evidence of an earlier session, so an earlier
-stage whose check needs it (Build, Review) fails there: you choose **Run** it (it and every stage after it
-run) or **Override and continue** with your reason.
+stage whose check needs it (Review at the Check door) fails there: you choose **Run** it (it and every stage
+after it run) or **Override and continue** with your reason. Build passes on the earlier run's committed
+ledger while no file of the plan changed since.
 
 ### 1. Plan a Feature
 

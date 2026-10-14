@@ -58,11 +58,18 @@ again. Stop only where this section says so. When it lists `setup`, run those ca
 - **`work`**: say its `say` in one line (it names the model each agent runs on), then run each of
   `calls`, launch each agent of `agents`, all in one turn, then do each of `steps` in order.
   - An agent: first run its `before` calls. Then launch it with the Agent tool: `subagent_type` its
-    `type` (when that type is not offered, the general purpose agent), `model` its `model`, and its
-    `prompt` exactly. When it returns, print the box it returns verbatim, then run its `after` calls,
-    with `{tokens}` and `{ms}` filled from the Agent result, or, for an agent run in the background,
-    from the usage of its completion notice (`subagent_tokens`, `duration_ms`); leave a flag out only
-    when neither gives a value.
+    `type` (when that type is not offered, the general purpose agent), `model` its `model`, its
+    `prompt` exactly, and `run_in_background: false` where the tool takes it, so the run goes on the
+    moment the agent returns; the agents of one action go in one message, so they still run at once.
+    When it returns, print the box it returns verbatim, then run its `after` calls, with `{tokens}` and
+    `{ms}` filled from the Agent result, or, for an agent run in the background, from the usage of its
+    completion notice (`subagent_tokens`, `duration_ms`); leave a flag out only when neither gives a
+    value. Then go on with the loop in the same turn.
+  - **An agent the tool runs in the background anyway:** say in one line what is running, that the run
+    goes on when it returns, and that if it waits after the agent finished, any message moves it on.
+    Its completion notice is its return: in the turn the notice starts,
+    print its box, run its `after` calls and go on with the loop. Never end that turn with its `after`
+    calls not run: nothing else moves the run.
   - A `steps` entry is a command to run as written, or a short instruction to carry out; `{...}` in it
     is yours to fill (a commit message that says what the feature does).
   - **Filling a placeholder.** Every `{...}` text in a call or a step stands inside single quotes. Put the
@@ -136,8 +143,8 @@ the spec folder's name.
 3. **No run, a later door:** the run is for the folder in `.temper/specs` that holds `plan.md` and
    `tasks.md` (the one the arguments name, the only one, or else ask the person; with none, say in
    one line that this stage needs a planned feature and that `/temper:temper "<feature>"` starts one,
-   and stop). Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --enter {stage}`, then, when
-   its `intent.md` has a `**Complexity:**` header, `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity {tier}`.
+   and stop). Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {slug} --enter {stage}` (it takes the
+   tier from the Complexity line of `plan.md`, else of `intent.md`).
    The Design door enters at Build when the run has no Design stage, and says so. Then run the loop:
    the stages before the door's are checked and asked, not run again; the question of one whose check
    fails offers to run it.

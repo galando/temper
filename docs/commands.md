@@ -195,9 +195,12 @@ take up a `/temper` run at their stage, so there is one flow to keep right:
   (the same `Temper gate` question, Override and continue with your reason when a gate fails),
   then run their own stage. The earlier stages are checked, not run again, against what the
   run still has: their evidence went to the archive with the run that made it, so a check that
-  reads evidence (Plan's search record, Build's RED then GREEN runs) fails, the question names
-  the failed rows, and you choose: **Run** that stage now (it and every stage after it run), or
-  skip it with your reason.
+  reads evidence (Plan's search record, Review's completion) fails, the question names the
+  failed rows, and you choose: **Run** that stage now (it and every stage after it run), or
+  skip it with your reason. Build at a Review or Check door passes on the Build PASS that the
+  spec folder's committed `gate-ledger.json` records, while no file of the plan changed since
+  that commit. A loop back from such a run runs the stage it goes back to; Build's fix pass then
+  mends the code the earlier run built.
 
 `/temper:intent` stays on its own: it captures a draft intent and builds nothing.
 

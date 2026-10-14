@@ -566,7 +566,7 @@ cmd_init() {
   if ex="$(git rev-parse --git-common-dir 2>/dev/null)/info/exclude" && [[ "$ex" != "/info/exclude" ]]; then
     mkdir -p "$(dirname "$ex")" 2>/dev/null
     for p in build-state.json feedback-loops.json observability.json gates.json overrides.json status.json \
-             stage-gate.log pending-stage.json groups.json usage.json autonomy.lock coverage.json coverage/ security-map.json view.json \
+             stage-gate.log pending-stage.json groups.json usage.json autonomy.lock autonomy-report.md coverage.json coverage/ security-map.json view.json \
              evidence/ index/ reviews/ archive/ .lock/; do
       grep -qxF "/${pre}.temper/$p" "$ex" 2>/dev/null || printf '/%s.temper/%s\n' "$pre" "$p" >> "$ex" 2>/dev/null || true
     done
@@ -654,7 +654,7 @@ cmd_state_init() { # temper state init <slug> [--command temper|fix] [--branch N
   [[ -n "$branch" ]] || branch="feature/$slug"
   [[ "$command" == "fix" ]] && [[ "$branch" == "feature/$slug" ]] && branch="fix/$slug"
   python3 -c "
-import json, sys, uuid
+import json, os, sys, uuid
 d = {
     'stage': 'started',
     'spec': sys.argv[1],
@@ -672,7 +672,19 @@ d = {
 }
 # ADR 0013: the feature as the person gave it (the Intent brief's input), and a door's stage
 if sys.argv[6]: d['feature'] = sys.argv[6]
-if sys.argv[7] and sys.argv[3] == 'temper': d['enter'] = sys.argv[7]
+if sys.argv[7] and sys.argv[3] == 'temper':
+    d['enter'] = sys.argv[7]
+    # A door's run takes the tier Plan recorded: plan.md's Complexity line, else intent.md's (Intent's first guess)
+    import re
+    for name in ('plan.md', 'intent.md'):
+        try:
+            text = open(os.path.join(d['spec_path'], name), encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        m = re.search(r'^\s*(?:\*\*Complexity:\*\*|#{1,6}\s*Complexity:)[\s*]*(trivial|simple|medium|complex)\b', text, re.I | re.M)
+        if m:
+            d['complexity'] = m.group(1).lower()
+            break
 json.dump(d, open(sys.argv[5], 'w'), indent=2)
 " "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE" "$feature" "$enter"
   echo "OK: state initialized for '$slug' ($command, branch $branch)"
@@ -746,6 +758,10 @@ cmd_state_set() {
   fi
   if [[ "$1" == "archived" ]]; then
     echo "FAIL: archived is kept by the CLI (state archive records it when it writes the ledger the commit carries)" >&2
+    return 1
+  fi
+  if [[ "$1" == "enter" || "$1" == "built_before" ]]; then
+    echo "FAIL: $1 is kept by the CLI (state init --enter records a door's stage; the walked Build's check records what an earlier run built)" >&2
     return 1
   fi
   # The commit the run's diff is read against is recorded once (state advance plan_complete): a later one would hide
@@ -886,6 +902,24 @@ PY
   return $rc
 }
 
+_door_base() { # _door_base <slug>: where the work of a run that entered at Review or Check started: the parent of the
+               # commit that added the spec's intent.md, else where HEAD left main or master; nothing when neither is known
+  local slug="$1" first b mb cur
+  first="$(git log --format=%H --no-renames --diff-filter=A -- ".temper/specs/$slug/intent.md" 2>/dev/null | tail -1)"
+  if [[ -n "$first" ]] && git rev-parse --verify -q "${first}^" >/dev/null 2>&1; then
+    git rev-parse "${first}^"
+    return 0
+  fi
+  cur="$(git branch --show-current 2>/dev/null || true)"
+  for b in main master; do
+    [[ "$cur" == "$b" ]] && continue
+    git rev-parse --verify -q "refs/heads/$b" >/dev/null 2>&1 || continue
+    mb="$(git merge-base HEAD "refs/heads/$b" 2>/dev/null || true)"
+    [[ -n "$mb" ]] && { echo "$mb"; return 0; }
+  done
+  return 0
+}
+
 cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
   _state_migrate_legacy
   [[ -f "$STATE_FILE" ]] || { echo "FAIL: no active state — run 'temper state init' first" >&2; return 1; }
@@ -939,6 +973,11 @@ os.replace(tmp, p)
     _lock_release
     if [[ -z "$(_json_get_path "$STATE_FILE" base_sha "")" ]]; then
       local head; head="$(git rev-parse HEAD 2>/dev/null || true)"
+      # A run that entered at Review or Check reviews work already made, often committed already: its diff starts where
+      # the feature started, not at HEAD, or Review would read an empty diff.
+      case "$(_json_get_path "$STATE_FILE" enter "")" in
+        review|check) local db; db="$(_door_base "$(_json_get_path "$STATE_FILE" spec "")")"; [[ -n "$db" ]] && head="$db" ;;
+      esac
       [[ -n "$head" ]] && _json_set_path "$STATE_FILE" "base_sha" "$head" '{}' >/dev/null
     fi
   fi
@@ -1024,10 +1063,18 @@ print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_t
   if [[ $rc -eq 0 && -f "$GROUPS_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]]; then
     _groups_reset
   fi
+  # and the code an earlier run built no longer stands for the plan: Build builds the plan, not a fix pass of it
+  if [[ $rc -eq 0 && -f "$STATE_FILE" ]] && [[ "$to" == "intent" || "$to" == "plan" || "$to" == "design" ]] \
+     && [[ -n "$(cmd_state_get built_before "")" ]]; then
+    _json_set_path "$STATE_FILE" built_before "" '{}' >/dev/null
+  fi
   # P1: the run goes back to the loop's target stage, so the build-checkpoint commit carve-out applies to it
   if [[ $rc -eq 0 && -f "$STATE_FILE" ]]; then
     _redo_from "$to"
     _state_next "$to" >/dev/null
+    # A run a door started at a later stage runs the stage it loops back to, and every stage after it
+    local enter; enter="$(_json_get_path "$STATE_FILE" enter "")"
+    if [[ -n "$enter" ]] && _stage_before "$to" "$enter"; then _json_set_path "$STATE_FILE" enter "$to" '{}' >/dev/null; fi
   fi
   return $rc
 }
@@ -4198,9 +4245,54 @@ gate_plan() {
   echo "$reqs_json" "$all_pass"
 }
 
+_earlier_build() { # _earlier_build <spec_path>: prints the commit of the spec folder's gate-ledger.json when that committed
+                   # ledger records Build PASS (not skipped) and no file of the plan changed since; else why not, exit 1
+  python3 - "$1" "$(_grouped_parse "$1/tasks.md" 2>/dev/null)" <<'PY'
+import json, subprocess, sys
+spec = sys.argv[1].rstrip('/')
+def git(*a):
+    r = subprocess.run(['git', '--literal-pathspecs', '-c', 'core.quotePath=false'] + list(a), capture_output=True, text=True)
+    return r.returncode, r.stdout
+led = spec + '/gate-ledger.json'
+rc, sha = git('log', '-1', '--format=%H', '--', led)
+sha = sha.strip()
+if rc or not sha:
+    print('the spec folder holds no committed gate-ledger.json of an earlier run'); sys.exit(1)
+rc, text = git('show', '%s:./%s' % (sha, led))
+try:
+    d = json.loads(text) if rc == 0 else {}
+except ValueError:
+    d = {}
+b = (d.get('gates') or {}).get('build') or {}
+if b.get('verdict') != 'PASS' or any(isinstance(o, dict) and o.get('stage') == 'build' for o in d.get('overrides') or []):
+    print('the ledger committed in %s records no Build PASS of its own' % sha[:7]); sys.exit(1)
+try:
+    files = sorted({f for t in json.loads(sys.argv[2]).get('tasks', []) for f in t.get('files', [])})
+except ValueError:
+    files = []
+if not files:
+    print('tasks.md declares no files'); sys.exit(1)
+rc, out = git('diff', '--name-only', sha, '--', *files)
+if rc or out.strip():
+    print('a file of the plan changed since the ledger was committed in %s: %s' % (sha[:7], ', '.join(out.split()[:3]) or 'git diff failed')); sys.exit(1)
+print(sha)
+PY
+}
+
 gate_build() {
   local spec_path="$1"
   local reqs=() all_pass=1
+  # A door into Review or Check walks Build in a run that built nothing: the Build PASS of the earlier run that built
+  # the code counts, as its committed ledger records it, while no file of the plan changed since.
+  case "$(cmd_state_get enter "")" in
+    review|check)
+      local before
+      if before="$(_earlier_build "$spec_path")"; then
+        reqs+=("$(_req "built in an earlier run" 1 "the spec folder's gate-ledger.json, committed in ${before:0:7}, records Build PASS, and no file of the plan changed since")")
+        echo "$(python3 -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"${reqs[0]}")" 1
+        return 0
+      fi ;;
+  esac
   local red_n green_n after_n
   red_n=$(_ev_count_matching build test red nonzero)
   green_n=$(_ev_count_matching build test green 0)
@@ -4285,6 +4377,8 @@ except Exception:
 print('%s|%s' % (i.get('verdict', ''), i.get('reason', '')))" "$GROUPS_FILE")"
     if [[ "${integ%%|*}" == "PASS" ]]; then
       reqs+=("$(_req "integration" 1 "groups merged, suite and interfaces verified (temper integrate)")")
+    elif [[ -z "${integ%%|*}" && -n "$(cmd_state_get built_before "")" ]]; then
+      reqs+=("$(_req "integration" 1 "the groups were built and merged in an earlier run (its ledger, committed in $(cmd_state_get built_before "" | cut -c1-7)); this run's fix pass works on that code")")
     elif [[ -n "${integ%%|*}" ]]; then
       reqs+=("$(_req "integration" 0 "integration FAIL: ${integ#*|}")")
       all_pass=0
@@ -4393,15 +4487,25 @@ gate_check() {
   local reqs=() all_pass=1
   # A test run: a passing row that names tests and is no scenario's trace (a scenario row names its test too, and is
   # what the scenarios row below reads)
-  local tests_n; tests_n="$(python3 -c "
+  # Each test command counts by its latest run: a failing integration run beside a passing unit run is a failure.
+  local tests_n tests_red; tests_n="$(python3 -c "
 import json, re, sys
 try:
     rows = json.load(open(sys.argv[1]))
 except Exception:
     rows = []
-print(sum(1 for r in rows if isinstance(r, dict) and not r.get('scenario') and r.get('exit_code') == 0
-          and re.search('test', r.get('claim') or '', re.I)))" "$(_evidence_file check)" 2>/dev/null || echo 0)"
-  if [[ "$tests_n" -gt 0 ]]; then
+runs = [r for r in rows if isinstance(r, dict) and not r.get('scenario') and isinstance(r.get('exit_code'), int)
+        and re.search('test', r.get('claim') or '', re.I)]
+last = {}
+for r in runs:
+    last[' '.join(str(r.get('claim')).lower().split())] = r
+red = [k for k, r in last.items() if r.get('exit_code') != 0]
+print('%d|%s' % (sum(1 for r in runs if r.get('exit_code') == 0), '; '.join(red)[:300]))" "$(_evidence_file check)" 2>/dev/null || echo 0)"
+  tests_red="${tests_n#*|}"; tests_n="${tests_n%%|*}"; [[ "$tests_red" == "$tests_n" ]] && tests_red=""
+  if [[ -n "$tests_red" ]]; then
+    reqs+=("$(_req "tests pass" 0 "the latest run of a test command failed: $tests_red")")
+    all_pass=0
+  elif [[ "$tests_n" -gt 0 ]]; then
     reqs+=("$(_req "tests pass" 1 "$tests_n green test run(s) recorded")")
   else
     reqs+=("$(_req "tests pass" 0 "no passing test-run evidence recorded")")
@@ -4752,6 +4856,13 @@ cmd_gate() {
   [[ "$all_pass" == "1" ]] && verdict="PASS"
   if [[ "$record" == "1" ]]; then
     _gate_write_verdict "$stage" "$verdict" "$reqs_json"
+    # The walked Build of a door's run passed on the earlier run's ledger: a loop back to Build mends that code (the fix
+    # pass), it does not build the plan again.
+    if [[ "$stage" == "build" && "$verdict" == "PASS" && -z "$(cmd_state_get built_before "")" ]]; then
+      case "$(cmd_state_get enter "")" in
+        review|check) local bb; bb="$(_earlier_build "$spec_path")" && _json_set_path "$STATE_FILE" built_before "$bb" '{}' >/dev/null ;;
+      esac
+    fi
     # Per-criterion status for the live view. Fail open: never changes the verdict.
     _status_write "$spec_path" >/dev/null 2>&1 || true
   fi
@@ -5038,14 +5149,15 @@ u = json.loads(sys.argv[1])
 def n(v): return '-' if v is None else str(v)
 print()
 print('Usage (per-agent totals as Claude Code returns them; the orchestrator session is not counted)')
-print('  %-10s %6s %12s %12s  %s' % ('stage', 'rows', 'tokens', 'ms', 'model'))
+w = max([10] + [len(k) for k in list(u['by_stage']) + list(u['by_model'])])   # a full model id is wider than a stage
+print('  %-*s %6s %12s %12s  %s' % (w, 'stage', 'rows', 'tokens', 'ms', 'model'))
 for k, v in u['by_stage'].items():
-    print('  %-10s %6d %12s %12s  %s' % (k, v['rows'], n(v['tokens']), n(v['ms']), ', '.join(v.get('models') or []) or '-'))
-print('  %-10s %6s %12s %12s' % ('model', '', 'tokens', 'ms'))
+    print('  %-*s %6d %12s %12s  %s' % (w, k, v['rows'], n(v['tokens']), n(v['ms']), ', '.join(v.get('models') or []) or '-'))
+print('  %-*s %6s %12s %12s' % (w, 'model', 'rows', 'tokens', 'ms'))
 for k, v in u['by_model'].items():
-    print('  %-10s %6d %12s %12s' % (k, v['rows'], n(v['tokens']), n(v['ms'])))
+    print('  %-*s %6d %12s %12s' % (w, k, v['rows'], n(v['tokens']), n(v['ms'])))
 t = u['total']
-print('  %-10s %6d %12s %12s' % ('total', t['rows'], n(t['tokens']), n(t['ms'])))" "$usage_json"
+print('  %-*s %6d %12s %12s' % (w, 'total', t['rows'], n(t['tokens']), n(t['ms'])))" "$usage_json"
 }
 
 # Whole-flow usage (9.7.0, intent D-07). .temper/usage.json is a CLI-owned array of rows
