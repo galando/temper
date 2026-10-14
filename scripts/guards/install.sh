@@ -236,12 +236,12 @@ top, plugin = os.getcwd(), os.path.realpath(sys.argv[1])
 out = [top]
 names = subprocess.run(["git", "diff", "--cached", "--name-only", "-z"], stdout=subprocess.PIPE).stdout
 for n in names.decode("utf-8", "surrogateescape").split(chr(0)):
-    d = os.path.dirname(os.path.join(top, n)) if n else top
+    d = os.path.split(os.path.join(top, n))[0] if n else top
     while len(d) > len(top) and d.startswith(top + os.sep):
         real = os.path.realpath(d)
         if d not in out and os.path.isdir(os.path.join(d, ".temper")) and not (real == plugin or real.startswith(plugin + os.sep)):
             out.append(d)
-        d = os.path.dirname(d)
+        d = os.path.split(d)[0]
 print(chr(10).join(out))
 ' "\${TEMPER_CLI%/scripts/temper}" 2>/dev/null)" || GATE_DIRS="\$REPO_DIR"
 [ -n "\$GATE_DIRS" ] || GATE_DIRS="\$REPO_DIR"
