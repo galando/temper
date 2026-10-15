@@ -29,7 +29,7 @@ _main() {
   fi
 
   local stage
-  stage=$(python3 -c "
+  stage=$(python3 -I -c "
 import json, sys
 try:
     d = json.load(open(sys.argv[1]))

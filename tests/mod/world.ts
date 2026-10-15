@@ -3,6 +3,8 @@
 // from; a file write records back into it.
 import type { On } from 'claude-code'
 
+import { deriveView, planFiles } from './run-files'
+
 export type World = {
   files: Map<string, string>
   writes: string[]
@@ -22,16 +24,20 @@ export type World = {
   cliFailures?: number
   // How many of the next `git commit` calls the fake CLI fails (see fakeCli).
   commitFailures?: number
+  // True: the fake CLI prints BLOCKED for `state loop` (the loop budget is spent), as cmd_state_loop does.
+  loopsBlocked?: boolean
   // The folder the engine is in now, after a `cd` (see WorldOptions.projectRoot).
   cwdNow?: string
   // Commands that reached the engine's own command run (after the plugin's hooks), in order.
   commandRuns: Array<{ command: string; args: string; origin: string }>
   // Drafts the mod put in the prompt box (`$.prompt.fill`), in order.
   filled: Array<{ text: string; mode: string | undefined }>
-  // Questions the mod asked the person through the engine's dialog, in order.
+  // Questions the mod asked the person through the engine's dialog, in order, and the options of each.
   asked: string[]
-  // Answers the person gives, in order; empty means nobody answers (a `-p` run).
-  answers: string[]
+  askedOptions: string[][]
+  // Answers the person gives, in order; empty means nobody answers (a `-p` run). An answer with a note is the person's
+  // note on the option (the dialog's annotation).
+  answers: Answer[]
   // What the mod showed or did through the engine's UI calls.
   toasts: string[]
   opened: string[]
@@ -47,13 +53,15 @@ export type World = {
   rendered: Array<{ component: string; props: Record<string, unknown> }>
 }
 
+export type Answer = string | { label: string; note: string }
+
 export type WorldOptions = {
   version?: string | null
   cwd?: string
   // Initial store entries (the mod's own event ids live under `ev:`).
   store?: Record<string, unknown>
   // Answers the person gives to the mod's questions, in order.
-  answers?: string[]
+  answers?: Answer[]
   // Config rows the mod can list; a locked one is an administrator's.
   rows?: Array<{ key: string; value: string; isLocked: boolean }>
   // False answers every pane open with "not placed" (a narrow terminal).
@@ -63,7 +71,7 @@ export type WorldOptions = {
   grantFocus?: boolean
   // Answer every directory listing with something that is not a list.
   brokenList?: boolean
-  // False: the prompt box refuses a draft (a dialog or the game pane holds the keys).
+  // False: the prompt box refuses a draft (a dialog holds the keys).
   fillable?: boolean
   // Only files under this folder exist (see `outside`); a relative path is read from `w.cwdNow`.
   projectRoot?: string
@@ -74,20 +82,42 @@ export type WorldOptions = {
   runAt?: string
 }
 
-// The CLI moves the run to a stage (what a mirror call does): build-state.json next_stage. The mod
-// reads it on its next refresh (a status command, a turn end).
+// The CLI moves the run to a stage: build-state.json next_stage, and the view it writes. The mod reads it on its next
+// refresh (a status command, a turn end).
 export function cliTo(w: World, next: string): void {
   const d = JSON.parse(w.files.get('.temper/build-state.json') ?? '{}') as Record<string, unknown>
   w.files.set('.temper/build-state.json', JSON.stringify({ ...d, next_stage: next }))
+  w.files.delete('.temper/view.json')
+}
+
+// The view the CLI wrote for the run in the world: a view.json the test set, else the one the world makes from the CLI's
+// state (deriveView).
+export function viewText(w: World): string | null {
+  return w.files.get('.temper/view.json') ?? deriveView(p => w.files.get(p))
 }
 
 // The stages of the CLI, in order (STAGE_SEQ_TEMPER in scripts/temper).
 export const CLI_SEQ = ['intent', 'plan', 'design', 'build', 'review', 'check']
 
-// The part of scripts/temper the mod depends on: `state advance <stage>_complete <next>`,
-// `state set next_stage <stage>` and `state clear` against .temper/build-state.json. Same checks as cmd_state_advance.
-// The script may be named by a quoted full path ("/a b/scripts/temper" state ...). Null for any other
-// command (the stub answers it).
+// The part of scripts/temper the mod depends on, with the same moves as the real CLI (ADR 0012): `state advance`,
+// `state set`, `state loop`, `state clear|archive|init`, `override` and `evidence accept`, against the .temper files.
+// Every change of next_stage counts one step; a step back removes the verdicts and the skips of the stages it redoes.
+// The script may be named by a quoted full path ("/a b/scripts/temper" state ...). Null for any other command (the stub
+// answers it).
+const SEQ_ALL = [...CLI_SEQ, 'commit']
+
+function redo(w: World, to: string): void {
+  const from = SEQ_ALL.indexOf(to)
+  if (from < 0) return
+  const gone = new Set(SEQ_ALL.slice(from))
+  const gates = JSON.parse(w.files.get('.temper/gates.json') ?? '{}') as Record<string, unknown>
+  w.files.set('.temper/gates.json', JSON.stringify(Object.fromEntries(Object.entries(gates).filter(([k]) => !gone.has(k)))))
+  if (w.files.has('.temper/overrides.json')) {
+    const rows = JSON.parse(w.files.get('.temper/overrides.json') ?? '[]') as Array<{ stage?: string }>
+    w.files.set('.temper/overrides.json', JSON.stringify(rows.filter(r => !gone.has(r.stage ?? ''))))
+  }
+}
+
 export function fakeCli(w: World, command: string): { result: string; text: string; isError?: boolean } | null {
   const path = '.temper/build-state.json'
   // A refused call (the CLI exits with an error): a test sets w.cliFailures to refuse the next calls.
@@ -103,14 +133,25 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
   // `...; exit 1`: the call takes effect and the command still ends in an error (the engine reports isError).
   const failsAfter = /;\s*exit\s+[1-9]/.test(command)
   const read = (): Record<string, unknown> => JSON.parse(w.files.get(path) ?? '{}') as Record<string, unknown>
-  const save = (d: Record<string, unknown>) => w.files.set(path, JSON.stringify(d))
+  // A move of the CLI writes the view again: a view.json the test set gives way to the one made from the state.
+  const save = (d: Record<string, unknown>) => {
+    w.files.set(path, JSON.stringify(d))
+    w.files.delete('.temper/view.json')
+  }
+  const ok = (text: string) => ({ result: text, text, ...(failsAfter ? { isError: true } : {}) })
+  // Moves next_stage; a change counts one step.
+  const move = (d: Record<string, unknown>, next: string): Record<string, unknown> =>
+    d.next_stage === next ? d : { ...d, next_stage: next, step: (typeof d.step === 'number' ? d.step : 0) + 1 }
   const adv = /scripts\/temper["']?\s+state\s+advance\s+([^\s;]+)\s+([^\s;]+)/.exec(command)
   if (adv) {
     const [, stage, next] = adv as unknown as [string, string, string]
     if (!CLI_SEQ.some(s => stage === `${s}_complete`) && stage !== 'started') return { result: `FAIL: unknown stage '${stage}'`, text: `FAIL: unknown stage '${stage}'`, isError: true }
-    save({ ...read(), stage, next_stage: next })
-    // `...; exit 1`: the call took effect and the command still ends in an error (the engine reports isError).
-    return { result: `OK: advanced to ${stage} (next: ${next})`, text: `OK: advanced to ${stage} (next: ${next})`, ...(failsAfter ? { isError: true } : {}) }
+    // Leaving Plan records the files the person approved (approved_files), as the CLI does.
+    const d = read()
+    const spec = typeof d.spec_path === 'string' ? d.spec_path : '.temper/specs/pw'
+    const approved = stage === 'plan_complete' ? { approved_files: planFiles(w.files.get(`${spec}/plan.md`) ?? '', w.files.get(`${spec}/tasks.md`) ?? '') } : {}
+    save(move({ ...d, stage, ...approved }, next))
+    return ok(`OK: advanced to ${stage} (next: ${next})`)
   }
   // `git checkout -b <branch>`: the current branch changes.
   const checkout = /\bgit\s+checkout\s+-b\s+(\S+)/.exec(command)
@@ -118,16 +159,54 @@ export function fakeCli(w: World, command: string): { result: string; text: stri
     w.files.set('/repo/.git/HEAD', `ref: refs/heads/${checkout[1]}\n`)
     return { result: `Switched to a new branch '${checkout[1]}'`, text: `Switched to a new branch '${checkout[1]}'` }
   }
-  const set = /scripts\/temper["']?\s+state\s+set\s+next_stage\s+([^\s;]+)/.exec(command)
-  if (set) {
-    save({ ...read(), next_stage: set[1] })
-    return { result: `OK: next_stage = ${set[1]}`, text: `OK: next_stage = ${set[1]}`, ...(failsAfter ? { isError: true } : {}) }
+  // `state loop <from> <to>`: BLOCKED when the budget is spent (exit 1, nothing moves), else the run goes back to <to>.
+  const loop = /scripts\/temper["']?\s+state\s+loop\s+([^\s;]+)\s+([^\s;]+)/.exec(command)
+  // A loop chained with `; exit 1` stays the stand in for a call that failed and changed nothing (see hardening.test.ts).
+  if (loop && !failsAfter) {
+    if (w.loopsBlocked) {
+      const text = `BLOCKED: max iterations (2) reached for ${loop[1]}->${loop[2]}`
+      return { result: text, text, isError: true }
+    }
+    redo(w, loop[2] as string)
+    save(move(read(), loop[2] as string))
+    return { result: `OK: loop ${loop[1]}->${loop[2]} iteration 1/2`, text: `OK: loop ${loop[1]}->${loop[2]} iteration 1/2` }
   }
-  // `state clear`: the run state goes, as cmd_state_clear removes it (the spec folder stays).
-  if (/scripts\/temper["']?\s+state\s+clear\b/.test(command)) {
-    for (const name of ['build-state.json', 'feedback-loops.json', 'gates.json', 'overrides.json']) w.files.delete(`.temper/${name}`)
+  const set = /scripts\/temper["']?\s+state\s+set\s+(\S+)\s+([^\s;]+)/.exec(command)
+  if (set) {
+    const [, key, value] = set as unknown as [string, string, string]
+    const d = read()
+    if (key === 'next_stage') {
+      if (d.next_stage === value) return ok(`OK: next_stage = ${value} (unchanged)`)
+      if (SEQ_ALL.indexOf(value) >= 0 && SEQ_ALL.indexOf(value) < SEQ_ALL.indexOf(String(d.next_stage))) redo(w, value)
+      save(move(read(), value))
+      return ok(`OK: next_stage = ${value}`)
+    }
+    save({ ...d, [key]: value })
+    return ok(`OK: ${key} = ${value}`)
+  }
+  // `override <stage> --reason ..`: the skip is recorded.
+  const skip = /scripts\/temper["']?\s+override\s+([^\s;]+)/.exec(command)
+  if (skip) {
+    const rows = JSON.parse(w.files.get('.temper/overrides.json') ?? '[]') as unknown[]
+    w.files.set('.temper/overrides.json', JSON.stringify([...rows, { stage: skip[1], reason: 'r', by: 'u', ts: 't' }]))
+    w.files.delete('.temper/view.json')
+    return ok(`OK: override recorded for '${skip[1]}'`)
+  }
+  // `state clear` and `state archive`: the run state goes, as cmd_state_clear removes it (the spec folder stays).
+  if (/scripts\/temper["']?\s+state\s+(?:clear|archive)\b/.test(command)) {
+    for (const name of ['build-state.json', 'feedback-loops.json', 'gates.json', 'overrides.json', 'view.json']) w.files.delete(`.temper/${name}`)
     for (const key of [...w.files.keys()]) if (key.startsWith('.temper/evidence/')) w.files.delete(key)
-    return { result: 'OK: run state cleared', text: 'OK: run state cleared', ...(failsAfter ? { isError: true } : {}) }
+    return ok('OK: run state cleared')
+  }
+  // `state init <slug>`: a new run, at step 0, with a new run id.
+  const init = /scripts\/temper["']?\s+state\s+init\s+([^\s;]+)/.exec(command)
+  if (init) {
+    w.files.delete('.temper/gates.json')
+    w.files.delete('.temper/overrides.json')
+    w.files.delete('.temper/view.json')
+    const slug = init[1] as string
+    save({ stage: 'started', spec: slug, spec_path: `.temper/specs/${slug}`, command: 'temper', next_stage: 'intent', run_mode: 'interactive', run_id: `run-${Math.random().toString(16).slice(2, 10)}`, step: 0 })
+    return ok(`OK: state initialized for ${slug}`)
   }
   return failsAfter ? { result: 'exit 1', text: 'exit 1', isError: true } : null
 }
@@ -144,16 +223,16 @@ const rel = (p: string): string => {
 }
 
 export function world(on: On, files: Record<string, string> = {}, opts: WorldOptions = {}): World {
-  const w: World = { files: new Map(Object.entries(files)), writes: [], fsWrites: [], reads: [], prompts: [], rawPaths: [], commandRuns: [], filled: [], asked: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) } }
+  const w: World = { files: new Map(Object.entries(files)), writes: [], fsWrites: [], reads: [], prompts: [], rawPaths: [], commandRuns: [], filled: [], asked: [], askedOptions: [], answers: [...(opts.answers ?? [])], toasts: [], opened: [], openArgs: [], closed: [], invalidated: 0, suggestions: [], rows: [...(opts.rows ?? [])], configSets: [], rendered: [], store: { ...(opts.store ?? {}) } }
   const panes = new Map<string, boolean>()
   // The plugin store, in memory and live: a test reads what the mod stored from `w.store`.
   // The mod keeps its records (events, the report) in the store as `vf:<full path>` (see makeIo). The world
   // shows each one in `w.files` and `w.writes` too, so a test reads what the mod recorded the same way for
-  // a kept text and for a file, and `failWrites` fails a kept text as it fails a file write.
+  // a kept text and for a file, and `failWrites` fails every store write as it fails a file write.
   on('store.get', ($, e) => ({ value: w.store[e.key] }))
   on('store.set', ($, e) => {
+    if (w.failWrites) return { deny: `EACCES: ${e.key.startsWith('vf:') ? e.key.slice(3) : e.key}` }
     if (e.key.startsWith('vf:')) {
-      if (w.failWrites) return { deny: `EACCES: ${e.key.slice(3)}` }
       w.files.set(rel(e.key.slice(3)), String(e.value))
       w.writes.push(rel(e.key.slice(3)))
     }
@@ -181,6 +260,13 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
     w.reads.push(rel(e.path))
     if (outside(e.path) || elsewhere(e.path)) return { deny: `ENOENT: ${e.path}` }
     if (w.unreadable?.has(rel(e.path))) return { deny: `EACCES: ${e.path}` }
+    // The view the CLI writes after every change: read as the CLI's state stands now, unless the test set one. An
+    // unreadable run state stands for a view that cannot be read either.
+    if (rel(e.path) === '.temper/view.json') {
+      if (w.unreadable?.has('.temper/build-state.json')) return { deny: `EACCES: ${e.path}` }
+      const text = viewText(w)
+      return text === null ? { deny: `ENOENT: ${e.path}` } : { value: text }
+    }
     const text = w.files.get(rel(e.path))
     return text === undefined ? { deny: `ENOENT: ${e.path}` } : { value: text }
   })
@@ -252,9 +338,12 @@ export function world(on: On, files: Record<string, string> = {}, opts: WorldOpt
       const questions = (e as unknown as { questions?: Array<{ question: string }> }).questions ?? []
       const question = questions[0]?.question ?? ''
       w.asked.push(question)
+      w.askedOptions.push((questions[0] as { options?: Array<{ label?: string }> } | undefined)?.options?.map(o => o.label ?? '') ?? [])
       const answer = w.answers.shift()
       if (answer === undefined) return { deny: 'no one to ask' }
-      return { result: { questions, answers: { [question]: answer } }, text: answer } as never
+      const label = typeof answer === 'string' ? answer : answer.label
+      const annotations = typeof answer === 'string' ? {} : { annotations: { [question]: { notes: answer.note } } }
+      return { result: { questions, answers: { [question]: label }, ...annotations }, text: label } as never
     }
     if (opts.fakeCli && e.tool === 'Bash') {
       const out = fakeCli(w, String((e as unknown as { command?: string }).command ?? ''))

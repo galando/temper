@@ -1,77 +1,67 @@
-// Deny rules: `evaluate(state, ctx, toolCall)` answers allow or deny for one tool call.
-// Pure. Every deny reason ends with what to do next (mods-plan 3.4).
+// The guard (ADR 0013): `evaluate(ctx, call)` answers allow or deny for one tool call. Pure. It claims only what it can
+// enforce, in three jobs:
+//  1. a CLI call that only the person may cause is one the person's answer at the CLI's current step maps to, word for
+//     word, or one the CLI's own action lists (an armed run's move, the commit steps);
+//  2. Temper's own files (the CLI's files in `.temper`, and during a run the config and the git hooks) are written by
+//     neither the editing tools nor a plain Bash write, and each stage allows its own writes by the editing tools;
+//  3. a short Bash list: no commit around the native hook (`--no-verify`, a changed `core.hooksPath`).
+// Where the run is comes from view.json's guard field (RunFacts); the person's choices come from the question dialogs
+// (core/decisions.ts). Whether a stage may be left on its verdict is the CLI's to decide (it refuses the call). Every
+// deny text ends with what to do next. core/shell.ts reads a Bash command; it is not a shell parser, and Temper is not a
+// sandbox (docs/trust.md).
 
-import { DRIFT_HEADER, DRIFT_PREFIX } from './drift'
-import { classifyBash, protectedKind } from './bash'
-import type { DecisionKind, ProtectedKind } from './bash'
-import type { Phase } from './events'
-import { ONLY_USER, phaseLabel } from './machine'
-import type { RunState } from './machine'
-import { CLI, guardedPhase } from './cli'
+import { callWords, globCould, readShell, sameCall } from './shell'
+import type { DriftState } from './decisions'
+import { CLI } from './cli'
 import { matchesPlan, normalizePath } from './paths'
+import type { Stage } from './stages'
+import { STAGES, isStage, stageIndex, stageLabel } from './stages'
 
-// A decision the person made that no CLI call has matched yet: the event id, its kind, and
-// the phase (or finding id) it was made for.
-export type HumanDecision = { id: string; kind: DecisionKind; phase?: string; findingId?: string }
+export const DRIFT_HEADER = 'Scope drift'
+export const DRIFT_PREFIX = 'Outside the plan:'
 
-export type RuleContext = {
-  // Absolute project root; absolute tool paths inside it are made relative.
-  root?: string
+// What view.json says about the run, for the guard.
+export type RunFacts = {
+  // The stage the CLI is at. `commit`: every gate is behind the run; it is done.
+  stage: Stage
+  // The CLI's step count: 0 right after `state init`.
+  step: number
   // The spec directory, relative to the root: `.temper/specs/{slug}`.
   specDir: string
-  // File entries from plan.md and tasks.md (exact paths, `dir/` prefixes or globs).
+  // The files the person approved at the plan gate (before it, the plan's files as they are).
   planFiles: readonly string[]
-  // Human decision events not yet matched by a CLI call.
-  humanDecisions?: readonly HumanDecision[]
-  // The run's complexity (build-state.json): medium and complex runs have a design stage after plan.
-  complexity?: string | null
-  // `phases.design: true` is written in .claude/temper.config. When it is not, the orchestrator may go from a
-  // medium or complex plan straight to Build (the project never switched design on), so that step is accepted too.
-  designRequired?: boolean
-  // The CLI state looks reset (it is earlier than checks that passed): the phase rules do not block a
-  // write. Protected paths stay protected.
-  failOpenWrites?: boolean
-  // What the CLI commit gate (`temper gate commit`) would let through, read from the same facts. The mod's
-  // commit rule is never stricter than it.
-  commit?: CommitFacts
-  // `autonomy.enabled: true` in .claude/temper.config: the person has opted in to autonomous runs.
-  autonomyEnabled?: boolean
-  // Files a Fix finding action is currently active for (Review phase writes).
-  fixFiles?: readonly string[]
-  // The folder the shell is in (relative to the project root, or absolute), carried from the earlier Bash calls;
-  // null when it is not known. Staged paths and write targets are read against it.
-  cwd?: string | null
-  // Back decisions a `state loop` call has already used: the loop is spent once, the `state set next_stage` that follows
-  // spends the decision itself.
-  loopedDecisions?: readonly string[]
-  // Where the Temper script is: its full path in the plugin folder, or the plain `scripts/temper` when that is not
-  // known (see pluginCliFrom). Every deny text names the CLI by it.
-  cli?: string
-  // The CLI's files and the spec folder show a run that never left Intent, read fresh for this call (see nothingToLose
-  // in the adapter): no completed stage, no verdict, no skip, and none of intent.md, plan.md, tasks.md and design.md.
-  // With the mod's own record holding only the start, a `state clear` then loses nothing (the TRIVIAL exit of the
-  // orchestrator). Left out: not known, and the clear is refused.
-  nothingToLose?: boolean
+  // A grouped Build run is active, and the CLI (not an agent) ticks the run's tasks.md.
+  groupedActive: boolean
+  // The run never left Intent and holds no spec file: a `state clear` loses nothing (the TRIVIAL exit).
+  trivialExit: boolean
+  // The project's folder from the top of its git repository (`packages/app/`); "" or absent at the top. A group or task
+  // worktree is a checkout of the whole repository, so the project's files are under this prefix in it.
+  prefix?: string
 }
 
-// The carve-outs of the CLI commit gate (scripts/temper gate_commit, docs/decisions/0009):
-//  - artifact only: every staged file is under .temper/specs/ (the intent accept commit, the plan commit);
-//  - Build checkpoint: next_stage is build, command temper, the current branch is the run's branch, the
-//    plan (and intent, design) gates are satisfied, and the last build test row is green.
-export type CommitFacts = {
-  // Every file this commit stages is under .temper/specs/ (as far as the mod saw it staged).
-  stagedSpecsOnly: boolean
-  // The Build checkpoint carve-out holds.
-  checkpoint: boolean
-  // Why a checkpoint commit would be refused, in the CLI's words, for the deny text (a branch problem).
-  hint?: string
+export type RuleContext = {
+  // The run, or null when no /temper run is active (the mod then guards only what needs no run).
+  run: RunFacts | null
+  // The calls the person's answers at this step map to, and the calls and steps of the CLI's own action (an armed
+  // run's move, the commit steps): a call only the person may cause passes when it is one of these, word for word.
+  allowed: readonly string[]
+  // The person chose Start over in this run.
+  restart: boolean
+  // The person's Scope drift answers in this run.
+  drift: DriftState
+  // A /temper:fix run is active: the mod judges none of its moves (commands/fix.md asks every gate), but nothing goes
+  // around the native commit hook, and the config and the git hooks stay the person's.
+  fixRun?: boolean
+  // Absolute project root; absolute tool paths inside it are made relative.
+  root?: string
+  // Where the Temper script is: every deny text names the CLI by it.
+  cli?: string
 }
 
 export type ToolCall = { tool: string; input: Record<string, unknown> }
 
-export type RuleResult =
-  | { allow: true; consume?: DecisionKind | 'drift'; driftPath?: string; eventId?: string; eventIds?: string[]; loopIds?: string[] }
-  | { deny: string; drift?: string }
+// `use`: a decision this call spends (Keep the agent's commits, an Allow once answer); it counts once.
+export type RuleResult = { allow: true; use?: string } | { deny: string; drift?: string }
 
 const ALLOW: RuleResult = { allow: true }
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
@@ -80,12 +70,83 @@ const TEST_FILE = [/(^|\/)(?:tests?|__tests__|specs?)\//, /\.(?:test|spec)\.[^/]
 
 export const isTestFile = (path: string): boolean => TEST_FILE.some(re => re.test(path))
 
+const ASK = 'ask the user with AskUserQuestion, header `Temper gate`'
+
+export const ONLY_USER = `Only the user decides this. Next: ask the question \`temper next --json\` gives, exactly as given (header \`Temper gate\`), then wait.`
+
+const AUTONOMY_REPORT = '.temper/autonomy-report.md'
+
 function targetPath(call: ToolCall): string | null {
   const raw = call.tool === 'NotebookEdit' ? call.input.notebook_path : call.input.file_path
   return typeof raw === 'string' && raw.length > 0 ? raw : null
 }
 
 const inDir = (path: string, dir: string): boolean => path === dir || path.startsWith(dir + '/')
+
+// The files the editing tools never write. `config` and `hooks` only while a run is active (the person writes the config
+// with /temper:init, and installs the hooks, when no run is on). `hooks` is the native commit gate: the git hooks, the
+// git config (core.hooksPath) and the Temper commit hook (the temper-gate folder in the git folder, the older
+// temper-pre-commit file there, and the older folders hooks-temper and temper-git-hooks).
+export type ProtectedKind = 'events' | 'gates' | 'status' | 'overrides' | 'state' | 'folder' | 'evidence' | 'loops' | 'config' | 'hooks'
+
+// Every name is compared without regard to case: macOS (APFS) and Windows folders are case insensitive.
+const PROTECTED: ReadonlyArray<readonly [ProtectedKind, RegExp]> = [
+  ['events', /(^|\/)\.temper\/specs\/[^/\s]+\/events(\/|$)/i],
+  ['gates', /(^|\/)\.temper\/gates\.json$/i],
+  ['status', /(^|\/)\.temper\/status\.json$/i],
+  ['overrides', /(^|\/)\.temper\/overrides\.json$/i],
+  // The run state, the grouped Build record, the token usage record and the view the mod draws: the CLI writes them.
+  ['state', /(^|\/)\.temper\/(?:build-state|groups|usage|view)\.json$/i],
+  ['evidence', /(^|\/)\.temper\/evidence\/[^/]+\.json$/i],
+  ['loops', /(^|\/)\.temper\/feedback-loops\.json$/i],
+  ['config', /(^|\/)\.claude\/temper\.config$/i],
+  ['hooks', /(^|\/)\.git\/(?:hooks(\/|$)|hooks-temper(\/|$)|temper-git-hooks(\/|$)|config$|config\.worktree$|worktrees\/[^/]+\/config\.worktree$|temper-gate(\/|$)|temper-pre-commit(\/|$))/i],
+  // Folders that hold guarded files: removing or replacing one removes them too.
+  ['folder', /(^|\/)\.temper(\/specs(\/[^/\s]+)?|\/evidence)?\/?$/i],
+]
+
+// A guarded path of each kind, to test a glob a Bash command writes against (`rm .temper/*.json`).
+const GUARDED_SAMPLES = [
+  '.temper', '.temper/specs', '.temper/evidence', '.temper/gates.json', '.temper/status.json', '.temper/overrides.json',
+  '.temper/build-state.json', '.temper/groups.json', '.temper/usage.json', '.temper/view.json', '.temper/feedback-loops.json',
+  '.temper/evidence/review.json', '.claude/temper.config', '.git/config', '.git/hooks', '.git/hooks/pre-commit', '.git/temper-gate',
+]
+// A glob as bash reads it, one segment at a time: `*` and `?` stay inside a segment, and a segment that starts with one
+// does not match a name that starts with a dot (bash's default: `rm -rf *` leaves `.temper` alone).
+const globRe = (glob: string): RegExp =>
+  new RegExp(
+    '^' +
+      glob
+        .split('/')
+        .map(seg => (/^[*?[]/.test(seg) ? '(?!\\.)' : '') + seg.split('').map(c => (c === '*' ? '[^/]*' : c === '?' ? '[^/]' : c === '[' || c === ']' ? c : c.replace(/[.+^${}()|\\]/g, '\\$&'))).join(''))
+        .join('/') +
+      '$',
+    'i',
+  )
+
+// Which guarded kind a glob a command writes can reach, or null (the glob against a guarded path of each kind).
+function globKind(path: string): ProtectedKind | null {
+  if (!/[*?[]/.test(path)) return null
+  let re: RegExp
+  try {
+    re = globRe(path)
+  } catch {
+    return null
+  }
+  const hit = GUARDED_SAMPLES.find(g => re.test(g))
+  return hit === undefined ? null : protectedKind(hit)
+}
+
+// Which guarded Temper path a path names, or null. `..` and `.` segments are collapsed first.
+export function protectedKind(path: string): ProtectedKind | null {
+  const p = normalizePath(path)
+  for (const [kind, re] of PROTECTED) if (re.test(p)) return kind
+  return null
+}
+
+// A /temper run is on, at any stage up to and with Commit: the commit gate can still fail at the commit stage (a missing
+// verdict, an autonomous park), so nothing may go around it there either. At Commit only the spec folder is written (stageWriteRule).
+const isActive = (ctx: RuleContext): ctx is RuleContext & { run: RunFacts } => ctx.run !== null
 
 function protectedDeny(kind: ProtectedKind, cli: string): RuleResult {
   if (kind === 'events' || kind === 'overrides') return { deny: ONLY_USER }
@@ -119,45 +180,62 @@ function protectedDeny(kind: ProtectedKind, cli: string): RuleResult {
   }
   if (kind === 'state') {
     return {
-      deny:
-        'Temper: use the temper CLI to change run state. Do not write it by hand. ' +
-        `Next: use ${cli} state set or ${cli} state advance.`,
+      deny: 'Temper: use the temper CLI to change run state. Do not write it by hand. ' + `Next: use ${cli} state set or ${cli} state advance.`,
     }
   }
   return {
-    deny:
-      'Temper: the temper CLI makes the gate verdicts. Do not write them by hand. ' +
-      `Next: run ${cli} gate <stage> and read the verdict.`,
+    deny: 'Temper: the temper CLI makes the gate verdicts. Do not write them by hand. ' + `Next: run ${cli} gate <stage> and read the verdict.`,
   }
 }
 
-const COMMIT_NEXT: Record<Phase, string> = {
-  intent: 'finish the phases up to Check (key 1 or /temper:temper next)',
-  plan: 'finish the phases up to Check (key 1 or /temper:temper next)',
-  build: 'finish Build, then do Review and Check (key 1 or /temper:temper next)',
-  review: 'finish Review, then do Check (key 1 or /temper:temper next)',
-  check: 'run the checks (key 1 in Check or /temper:check)',
-  fix: 'fix the failed checks. Then run the checks again (key 1 in Fix)',
+// The path inside a group or task worktree of THIS run (`.claude/worktrees/temper-{slug}-G{n}/...` or `-T{n}/...`),
+// relative to the project folder in that worktree; null for any other path. The path is normalized already, so a `..`
+// after the prefix has been collapsed and cannot leave the worktree this way. A worktree is a checkout of the whole
+// repository: for a project below its top (`project`, as `packages/app/`), a path outside the project reads as `../...`,
+// which no plan names.
+function worktreeRelative(path: string, specDir: string, project = ''): string | null {
+  const slug = normalizePath(specDir).split('/').pop() ?? ''
+  if (slug === '') return null
+  const prefix = `.claude/worktrees/temper-${slug}-`
+  if (!path.startsWith(prefix)) return null
+  const m = /^[GT](\d+)\/(.+)$/.exec(path.slice(prefix.length))
+  const rel = m?.[2]
+  if (rel === undefined) return null
+  const pre = normalizePath(project)
+  if (pre === '') return rel
+  if (rel.startsWith(pre + '/')) return rel.slice(pre.length + 1)
+  return '../'.repeat(pre.split('/').length) + rel
 }
 
-const isActive = (s: RunState): s is RunState & { phase: Phase } => s.phase !== null && s.phase !== 'done'
+const TASKS_OWNED =
+  'Next: run the tasks through the CLI (task test, task gate); the CLI ticks the boxes. To change the plan, ask the user whether to loop back to Plan.'
 
-function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, path: string): RuleResult {
-  const spec = normalizePath(ctx.specDir)
+function stageWriteRule(ctx: RuleContext & { run: RunFacts }, rawPath: string): RuleResult {
+  const r = ctx.run
+  // A write in a group or task worktree of this run is judged by its worktree-relative path, with the same rule.
+  const rel = worktreeRelative(rawPath, r.specDir, r.prefix)
+  const path = rel ?? rawPath
+  const spec = normalizePath(r.specDir)
+  // The person approved tasks.md at the plan gate, and in Build the CLI ticks it: from Design on, no agent writes it
+  // (a change needs a step back to Plan and the person's approval again).
+  if (stageIndex(r.stage) >= stageIndex('design') && path === `${spec}/tasks.md`) {
+    return { deny: `Temper: the plan is approved. Writing ${rawPath} is not allowed: the run's tasks.md is the plan the user approved, and the temper CLI ticks it. ${TASKS_OWNED}` }
+  }
   const inSpec = inDir(path, spec)
   const specFile = (name: string) => path === `${spec}/${name}`
-  const label = phaseLabel(s.phase)
+  const label = stageLabel(r.stage)
 
-  switch (s.phase) {
+  switch (r.stage) {
     case 'intent':
       if (specFile('intent.md') || specFile('intent-context.json')) return ALLOW
       return {
         deny:
-          `Temper: ${label} phase. Writing ${path} is not allowed until the user approves the intent. ` +
+          `Temper: ${label} stage. Writing ${path} is not allowed until the user approves the intent. ` +
           'Do not look for another way. Do not offer to turn Temper off. ' +
-          'Next: finish intent.md. Then ask the user to approve it (key 1 or /temper:temper approve).',
+          `Next: finish intent.md. Then ${ASK} (Continue to Plan).`,
       }
-    case 'plan': {
+    case 'plan':
+    case 'design': {
       const ok =
         ['intent.md', 'plan.md', 'tasks.md', 'design.md', 'config-suggestions.json'].some(specFile) ||
         (inSpec && /-context\.json$/.test(path)) ||
@@ -165,352 +243,214 @@ function phaseWriteRule(s: RunState & { phase: Phase }, ctx: RuleContext, path: 
       if (ok) return ALLOW
       return {
         deny:
-          `Temper: ${label} phase. Writing ${path} is not allowed until the user approves the plan. ` +
+          `Temper: ${label} stage. Writing ${path} is not allowed until the user approves the plan and Build starts. ` +
           'Do not look for another way. Do not offer to turn Temper off. ' +
-          'Next: finish plan.md and tasks.md. Then ask the user to approve them (key 1 or /temper:temper approve).',
+          `Next: finish the ${r.stage === 'plan' ? 'plan' : 'design'}. Then ${ASK}.`,
       }
     }
     case 'review':
-      if (inSpec || (ctx.fixFiles ?? []).some(f => normalizePath(f, ctx.root) === path)) return ALLOW
-      return {
-        deny:
-          `Temper: ${label} phase. Writing ${path} is not allowed. Review changes the spec folder only. ` +
-          'Next: write the finding in the spec folder. Fix it when the user starts Fix (key 1 in Review, Fix all).',
-      }
-    case 'check':
       if (inSpec) return ALLOW
       return {
         deny:
-          `Temper: ${label} phase. Writing ${path} is not allowed. Check only runs checks. ` +
-          'Next: run the checks (key 1 in Check or /temper:check).',
+          `Temper: ${label} stage. Writing ${path} is not allowed. Review changes the spec folder only. ` +
+          `Next: write the finding in the spec folder. To fix it, ${ASK} whether to loop back to Build.`,
       }
-    case 'build':
-    case 'fix': {
-      if (inSpec || isTestFile(path) || matchesPlan(path, ctx.planFiles) || s.addedPaths.some(p => normalizePath(p) === path)) {
-        return ALLOW
+    case 'check':
+      // A config suggestion the user accepts after Check passed goes into the project's agent instructions.
+      if (inSpec || PROJECT_NOTES.has(path)) return ALLOW
+      return {
+        deny:
+          `Temper: ${label} stage. Writing ${path} is not allowed. Check only runs checks. ` +
+          `Next: finish the check stage. To change code, ${ASK} whether to loop back to Build.`,
       }
-      if (s.allowOnce.some(p => normalizePath(p) === path)) return { allow: true, consume: 'drift', driftPath: path }
+    case 'build': {
+      if (inSpec || isTestFile(path) || matchesPlan(path, r.planFiles) || ctx.drift.added.some(p => normalizePath(p) === path)) return ALLOW
+      const once = ctx.drift.allowOnce.find(a => normalizePath(a.path) === path)
+      if (once) return { allow: true, use: once.id }
       return {
         deny:
           `Temper: scope drift. ${path} is not in the plan, so the user decides first: add to plan, revert, or allow once. ` +
           'Do not write it another way. Next: in the Build stage, stop this task and list the file in the DRIFT section of your ' +
           'panel, with why it is needed and what you would change. In the main conversation, ask with AskUserQuestion: ' +
           `header "${DRIFT_HEADER}", a question whose first line is "${DRIFT_PREFIX} ${path}", then a "Why:" line and a ` +
-          '"Change:" line, and the options Add to plan, Revert, Allow once. The user can also type ' +
-          '/temper:temper drift add|revert|allow <reason>.',
+          '"Change:" line, and the options Add to plan, Revert, Allow once.',
         drift: path,
       }
     }
+    case 'commit':
+      // Every gate has passed: the code is what Review and Check saw. The commit steps write in the spec folder only
+      // (the plan's deviations, the report page).
+      if (inSpec || PROJECT_NOTES.has(path)) return ALLOW
+      return {
+        deny:
+          `Temper: ${label} stage. Writing ${path} is not allowed: Review and Check passed on the code as it is, and the commit carries that. ` +
+          `Next: do the commit steps. To change code, ${ASK} (Save for later, then a new run), or loop back from Check before the commit.`,
+      }
   }
 }
 
-// The CLI has no Fix stage: a decision made in Fix is a decision about the Check stage.
-const stageName = (p: string): string => (p === 'fix' ? 'check' : p)
-
-// The person skipped this stage with a reason (the override event) and has not stepped back since. A skip is the
-// person's own decision to go on, so the `state advance` that follows it needs no second approval, also for Intent
-// and Plan. A later step back ends it: a re-planned Plan must be approved again.
-function skippedStage(s: RunState, stage: string): boolean {
-  const lastBack = s.history.reduce((t, h) => (h.kind === 'back' ? Math.max(t, h.ts) : t), -Infinity)
-  return s.overrides.some(o => stageName(o.phase) === stage && o.ts >= lastBack)
-}
-
-// The Plan was approved by the person in this run: a trusted advance out of Plan, not undone by a
-// later back step to Intent or Plan. Untrusted event files never reach the state, so they never count.
-const planApproved = (s: RunState): boolean => {
-  let approved = false
-  for (const h of s.history) {
-    if (h.kind === 'advance' && h.from === 'plan') approved = true
-    if (h.kind === 'back' && (h.to === 'intent' || h.to === 'plan')) approved = false
-  }
-  return approved
-}
+// The project's agent instructions, where an accepted config suggestion is written (reference/config-suggestions.md).
+const PROJECT_NOTES = new Set(['CLAUDE.md', 'AGENTS.md', '.claude/CLAUDE.md', '.claude/AGENTS.md'])
 
 const AUTONOMY_DENY =
   'Temper: only the user can turn on autonomous mode, at the plan gate. ' +
-  'Next: ask the user to approve the plan (key 1 or /temper:temper approve) and to set autonomy.enabled: true in .claude/temper.config. Then try again.'
+  `Next: ${ASK} at the plan gate, exactly as \`temper next --json\` gives it. ` +
+  'It needs autonomy.enabled: true in .claude/temper.config, which only the user sets.'
 
-const GUARD_KEYS = new Set(['stage', 'next_stage', 'branch', 'spec_path', 'run_mode', 'command'])
+// The keys of build-state.json that only the CLI's own moves write. next_stage is a step (see the back calls).
+const GUARD_KEYS = new Set(['stage', 'branch', 'spec_path', 'command', 'run_id', 'step', 'approved_files', 'plan_hash', 'archived', 'enter', 'built_before', 'review_snapshot'])
 
-const UNCHECKABLE = (cli: string): string =>
-  'Temper: this command writes to a path that Temper cannot check, and it names Temper state. ' +
-  'Next: write the exact file path with no variables, globs, braces or substitutions. Or use ' +
-  `${cli} gate <stage>, ${cli} evidence or ${cli} state.`
-
-const REPEATED_FLAG =
-  'Temper: this decision call repeats a flag (--id, --stage or --reason). ' +
-  'Temper cannot match it to the decision of the user. Next: run the call again. Give each flag one time.'
+const DONE_OVERRIDE_DENY =
+  "Temper: the run is done, and an override now is the user's choice. " +
+  `Next: show the failed commit gate and ${ASK}: "Override and commit" (with a reason) or "Save for later". ` +
+  'Then run every override that commit needs.'
 
 const STATE_RESTART =
   'Temper: state init and state loop restart or move the run. Only the user decides that. ' +
-  'Next: ask the user to use the Temper bar buttons (Loop back, Go back) or /temper:temper back <phase> <reason>.'
-
-// The stage that follows a stage in the CLI sequence (STAGE_SEQ_TEMPER in scripts/temper), with design
-// between plan and build for a medium or complex run. Null for a name that is not a stage.
-export function nextStage(stage: string, complexity: string | null | undefined): string | null {
-  switch (stage) {
-    case 'intent':
-      return 'plan'
-    case 'plan':
-      return complexity === 'medium' || complexity === 'complex' ? 'design' : 'build'
-    case 'design':
-      return 'build'
-    case 'build':
-      return 'review'
-    case 'review':
-      return 'check'
-    case 'check':
-      return 'commit'
-    default:
-      return null
-  }
-}
-
-// The mod's commit rule defers to the CLI commit gate: a commit passes when the gate would pass it. Every
-// stage that the gate checks (plan, build, review, check) passed or was overridden; or one of its two
-// carve-outs holds (an artifact only commit, or a Build checkpoint on the run's branch).
-function commitAllowed(s: RunState, facts: CommitFacts | undefined): boolean {
-  if (facts?.stagedSpecsOnly || facts?.checkpoint) return true
-  const passed = (p: Phase) => s.gate[p] === 'fresh' || s.overrides.some(o => o.phase === p)
-  return (['plan', 'build', 'review', 'check'] as const).every(passed)
-}
-
-// The check of a stage passed (fresh PASS) or the person overrode it, and the run is at that stage.
-// Design has no verdict of its own in the mod: it follows an approved plan whose check passed.
-function followsVerdict(s: RunState, stage: string, complexity?: string | null): boolean {
-  if (stage === 'design') return (complexity === 'medium' || complexity === 'complex') && (planApproved(s) || skippedStage(s, 'plan')) && (s.gate.plan === 'fresh' || s.overrides.some(o => o.phase === 'plan'))
-  if (!(stage in s.gate)) return false
-  const here = s.phase === stage || (s.phase === 'fix' && stage === 'check')
-  return here && (s.gate[stage as Phase] === 'fresh' || s.overrides.some(o => o.phase === stage))
-}
+  'Next: ask the user with AskUserQuestion, header `Temper resume`, whether to start over (or, for a step back, the Loop back choice of the `Temper gate` question).'
 
 const STATE_END = (cli: string): string =>
   'Temper: do not clear or archive the run state during a run. Next: finish the run, ' +
-  `commit, then run ${cli} state archive.`
-
-const stateSetDeny = (key: string): string =>
-  `Temper: state set ${key} moves the run. Only the user can do this. ` +
-  'Next: ask the user to run /temper:temper back <phase> <reason>.'
-
-const OPAQUE_DENY =
-  'Temper: this command runs the Temper script in a way Temper cannot read, and it holds a decision word. ' +
-  'Only the user decides. Next: ask the user to use the buttons or the /temper:temper subcommands (approve, override, accept, back).'
-
-const DYNAMIC_DENY = (cli: string): string =>
-  'Temper: this command writes what a Temper call does (its subcommand) in a form Temper cannot read: a variable, a substitution or an escaped string. ' +
-  'It could be a decision, and only the user decides, with the buttons or the /temper:temper subcommands. ' +
-  `Next: run each ${cli} call with its words written out, one per Bash call.`
-
-const OPAQUE_HIDDEN_DENY = (cli: string): string =>
-  'Temper: this command may run the Temper script (it names the script, or starts a program that can run it) and hides part of what it runs behind a substitution, an expansion or a here-string, so Temper cannot read it. ' +
-  `Next: run ${cli} with its words written out, in a Bash call of its own.`
-
-const ALIAS_DENY = (cli: string): string =>
-  'Temper: do not link, copy or source the Temper script. A second name for it hides the decision calls. ' +
-  `Next: run ${cli} by its own path. The user decides with the buttons or /temper:temper.`
-
-const HIDDEN_DENY =
-  'Temper: a shell, or a builtin that runs text as commands (source and the like), is given a program that this command does not show (a pipe from another command, a file on stdin, a substitution, or a word split by quotes, backslashes, braces or globs). ' +
-  'While a run is active only a program that is written out plainly passes. Next: run each command in its own Bash call, with the words written out.'
-
-const GUARDED_USE_DENY = (word: string, cli: string): string =>
-  `Temper: this command names ${word}, a file of the run, and it is not a plain read. The CLI writes those files; nothing else does. ` +
-  `Next: read it with cat, grep, jq, head or git diff, or use ${cli} gate, evidence or state.`
-
-const ENV_DENY = (cli: string): string =>
-  'Temper: TEMPER_DIR and TEMPER_CONFIG point the CLI at other files than the run\'s, so its verdicts would be written for a run that is not this one. ' +
-  `Next: run ${cli} with no TEMPER_DIR or TEMPER_CONFIG.`
+  `commit, then run ${cli} state archive. To throw the run away, ask the user with AskUserQuestion, header \`Temper resume\`, whether to start over.`
 
 const HOOKS_DENY =
   'Temper: --no-verify, -n and core.hooksPath switch the native pre-commit hook off. The hook is the commit gate for every commit. ' +
   'Next: commit without them. If the hook blocks the commit, finish the stages it names.'
 
-const BACK_DENY =
-  'Temper: state advance cannot move the run to an earlier stage. Only the user steps back. ' +
-  'Next: ask the user to use Go back or /temper:temper back <phase> <reason>.'
+const TOO_MANY_DENY =
+  'Temper: a word of this command expands to more words (a brace list) than the guard reads, so what it writes is not known. ' +
+  'Next: write the paths out, or split the command.'
+
+// The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
+const PERSON_WORDS = ['override', 'group', 'reopen', '--accept-foreign', 'evidence', 'accept', 'clear', 'state', 'advance', 'intent_complete',
+  'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix', ...STAGES]
+
+const GLOB_DENY =
+  'Temper: a word of this temper call is an unquoted glob (`*`, `?`, `[...]`), which bash may expand to the name of a file, so the call it makes is not known. ' +
+  'Next: write the call out, or quote the word.'
+
+// The plugin data folder of Claude Code (`~/.claude/plugins/data/`) holds the mod's store, and in it the person's
+// decisions. The editing tools do not write it while a run is active.
+const PLUGIN_DATA = /\.claude\/plugins\/data(?:\/|\b)/
+
+const PLUGIN_DATA_DENY =
+  'Temper: the plugin data folder under ~/.claude holds the decisions the user made. Do not change it while a run is active. ' +
+  `Next: ${ASK} for a decision.`
 
 const KEY_DENY = (key: string): string =>
-  `Temper: state set ${key} is allowed only in the form and the phase the orchestrator uses ` +
-  '(complexity while the plan is open, base_sha as the current commit in Plan or Build, command never). ' +
+  `Temper: state set ${key} is allowed only in the form and the stage the orchestrator uses ` +
+  '(complexity while the plan is open, base_sha as the current commit in Plan or Build; run_id, step and command never). ' +
   'Next: ask the user if the run needs another value.'
 
-// Where each stage sits in the CLI sequence; the mod's phase of the same name for a run that is at it.
-const STAGE_INDEX: Record<string, number> = { intent: 0, plan: 1, design: 2, build: 3, review: 4, check: 5, commit: 6 }
-const PHASE_INDEX: Record<string, number> = { intent: 0, plan: 1, build: 3, review: 4, check: 5, fix: 5, done: 6 }
-
-function evaluateBash(s: RunState, ctx: RuleContext, command: string): RuleResult {
-  const c = classifyBash(command, ctx.cwd === undefined ? '' : ctx.cwd)
+function evaluateBash(ctx: RuleContext, command: string): RuleResult {
+  const c = readShell(command)
   const cli = ctx.cli ?? CLI
+  const active = isActive(ctx)
+  // Nothing goes around the native commit hook while a /temper run or a /temper:fix run is active.
+  const guardsCommit = active || ctx.fixRun === true
 
-  if (c.alias) return { deny: ALIAS_DENY(cli) }
-  if (c.opaque && isActive(s)) return { deny: c.opaqueWhy === 'dynamic' ? DYNAMIC_DENY(cli) : c.opaqueWhy === 'hidden' ? OPAQUE_HIDDEN_DENY(cli) : OPAQUE_DENY }
-  if (isActive(s)) {
-    if (c.hidden) return { deny: HIDDEN_DENY }
-    if (c.envTamper) return { deny: ENV_DENY(cli) }
-    if (c.hookTamper || c.noVerify) return { deny: HOOKS_DENY }
+  if (guardsCommit && c.noVerify) return { deny: HOOKS_DENY }
+  if (guardsCommit && c.hooksPath) return protectedDeny('hooks', cli)
+  if (c.tooMany) return { deny: TOO_MANY_DENY }
+  // A plain write onto a protected file: the same list, and the same texts, as the editing tools. A copy, move or link
+  // whose last word is a folder of the run (`cp notes.md .temper/specs/pw/`) puts its files in that folder: the folder
+  // is not replaced, and each file that lands there is judged by its own path.
+  const kindOf = (p: string): ProtectedKind | null => {
+    const n = normalizePath(p, ctx.root)
+    return protectedKind(n) ?? globKind(n)
   }
-
-  if (c.protectedWrites.length > 0) {
-    const known = c.protectedWrites.filter(p => !c.uncheckable.includes(p))
-    if (known.length === 0) return { deny: UNCHECKABLE(cli) }
-    // The config, the git hooks and the Temper commit hook are the run's only while a run is active (/temper:init writes
-    // the config and installs the hook before).
-    // A path of no known kind (a link made inside .temper) gets the text of the .temper folders: it is no decision.
-    const kinds = known.map(p => protectedKind(p) ?? 'folder').filter(k => isActive(s) || (k !== 'config' && k !== 'hooks'))
-    if (kinds.length > 0) {
-      const forged = kinds.find(k => k === 'events' || k === 'overrides')
-      return protectedDeny(forged ?? kinds[0] ?? 'folder', cli)
-    }
-    if (c.uncheckable.length > 0) return { deny: UNCHECKABLE(cli) }
+  // A target that is a folder of the run is not replaced; a glob is no folder (bash may expand `.temper/[Eg][Va]*` to
+  // one file), so it is judged as a write.
+  const target = (p: string): ProtectedKind | null => {
+    const k = kindOf(p)
+    return k === 'folder' && !/[*?[]/.test(p) ? null : k
   }
-  if (isActive(s) && c.guardedUse.length > 0) return { deny: GUARDED_USE_DENY(c.guardedUse[0] ?? 'a guarded file', cli) }
+  const kinds = [...c.writes.map(kindOf), ...c.targets.map(target), ...c.landings.map(kindOf)].filter(
+    (k): k is ProtectedKind => k !== null && (guardsCommit || (k !== 'config' && k !== 'hooks')),
+  )
+  if (kinds.length > 0) return protectedDeny(kinds.find(k => k === 'events' || k === 'overrides') ?? (kinds[0] as ProtectedKind), cli)
 
-  // Removing or archiving the run's state is for after the run: while a run is active it would
-  // take the gate ledger and the overrides with it. One exception, the TRIVIAL exit of the orchestrator: a clear of a run
-  // that never left Intent loses nothing. The mod's own record holds only the start (no advance, no step back, no skip),
-  // and the CLI's files and the spec folder agree (ctx.nothingToLose).
-  const trivialExit = s.phase === 'intent' && s.history.every(h => h.kind === 'start') && ctx.nothingToLose === true
-  if (isActive(s) && c.stateOps.some(o => o.op === 'archive' || (o.op === 'clear' && !trivialExit))) return { deny: STATE_END(cli) }
-  if (isActive(s) && c.stateOps.some(o => o.op === 'init')) return { deny: STATE_RESTART }
-  // `state loop <from> <to>` keeps the loop budget and clears the evidence of the stages that are redone.
-  // While a run is active it is for the person's Loop back only: it passes when the person's back decision
-  // for that stage waits unspent. The decision is spent by the `state set next_stage` call that follows.
-  // The loop leaves the stage the run is at (a loop from another stage only burns the budget), and it uses the back
-  // decision once: a second loop call needs another decision. The step that follows still spends it.
-  const loopIds: string[] = []
-  if (isActive(s)) {
-    const here = stageName(s.phase)
-    for (const op of c.stateOps) {
-      if (op.op !== 'loop') continue
-      const to = op.to
-      const fromOk = op.from !== undefined && (op.from === here || (here === 'plan' && op.from === 'design'))
-      const used = ctx.loopedDecisions ?? []
-      const hit =
-        to === undefined || !fromOk
-          ? undefined
-          : (ctx.humanDecisions ?? []).find(h => h.kind === 'back' && h.phase !== undefined && stageName(h.phase) === stageName(to) && !used.includes(h.id) && !loopIds.includes(h.id))
-      if (hit === undefined) return { deny: STATE_RESTART }
-      loopIds.push(hit.id)
-    }
-  }
-
-  if (isActive(s)) {
-    if (c.calls.some(call => call.invalid)) return { deny: REPEATED_FLAG }
-    for (const op of c.stateOps) {
-      // Keys that move the run. next_stage is matched to the person's back decision below.
-      if (op.op === 'set' && op.key === 'run_mode' && op.value === 'autonomous') {
-        // Armed only after the person approved the Plan, and only where autonomy is switched on.
-        if (!(planApproved(s) && ctx.autonomyEnabled === true)) return { deny: AUTONOMY_DENY }
-        continue
-      }
-      if (op.op === 'set' && GUARD_KEYS.has(op.key) && op.key !== 'next_stage' && !(op.key === 'run_mode' && op.value === 'interactive')) {
-        return { deny: op.key === 'command' ? KEY_DENY(op.key) : stateSetDeny(op.key) }
-      }
-      // The keys the orchestrator sets itself, only in the form and the phase it sets them: the complexity while the
-      // plan is open (a later change would drop Design), base_sha as the current commit in Plan or Build (a later one
-      // would shrink what Review and Check look at).
-      if (op.op === 'set' && op.key === 'complexity') {
-        const open = (s.phase === 'intent' || s.phase === 'plan') && !planApproved(s) && !skippedStage(s, 'plan')
-        if (!(open && /^(?:trivial|simple|medium|complex)$/.test(op.value ?? ''))) return { deny: KEY_DENY(op.key) }
-      }
-      if (op.op === 'set' && op.key === 'base_sha') {
-        const v = op.value ?? ''
+  if (!active) return ALLOW
+  // An unquoted glob in a call that could spell a word of a call only the person may cause (`o?erride`, `lo[o]p`,
+  // `--accept-for?ign`): bash expands it when a file of that name exists. Any other glob (`sonnet[1m]`) is no refusal.
+  if (c.globWords.some(ws => ws.some(w => PERSON_WORDS.some(t => globCould(w, t) || globCould(w.split('=')[0] ?? w, t))))) return { deny: GLOB_DENY }
+  const r = ctx.run
+  for (const call of c.calls) {
+    const w = callWords(call)
+    const [a, b, key, value] = w
+    if (a === 'state' && b === 'set' && key !== undefined) {
+      if (GUARD_KEYS.has(key)) return { deny: KEY_DENY(key) }
+      // The keys the orchestrator sets itself, only in the form and the stage it sets them: the complexity while the
+      // plan is open (a later change would drop Design), base_sha as the current commit in Plan or Build.
+      if (key === 'complexity' && !((r.stage === 'intent' || r.stage === 'plan') && /^(?:trivial|simple|medium|complex)$/.test(value ?? ''))) return { deny: KEY_DENY(key) }
+      if (key === 'base_sha') {
+        const v = value ?? ''
         const form = /^[0-9a-f]{7,40}$/i.test(v) || v === '$(git rev-parse HEAD)' || v === '`git rev-parse HEAD`'
-        if (!((s.phase === 'plan' || s.phase === 'build') && form)) return { deny: KEY_DENY(op.key) }
+        if (!((r.stage === 'plan' || r.stage === 'build') && form)) return { deny: KEY_DENY(key) }
       }
     }
-    // Each guarded CLI call needs its own unconsumed human decision made for that phase (and
-    // that finding, when the call names one).
-    const pool = [...(ctx.humanDecisions ?? [])]
-    let first: { kind: DecisionKind; eventId: string } | null = null
-    const matched: string[] = []
-    for (const call of c.calls) {
-      // An advance needs a person only when it leaves Intent or Plan (`intent_complete`,
-      // `plan_complete`); the phase it names is the phase the person approved, whatever phase the
-      // run is in by now. Later advances follow a verdict and are not guarded.
-      // Every advance is checked, not only the two approvals: the CLI stores any next stage it is given.
-      // A call passes with (a) a matching human decision, or (b) when it is the exact next stage of the
-      // run and the check of the stage it completes passed (the autonomous run, and a stage that follows
-      // its own verdict). Intent and Plan always need the person.
-      let approved: string | null = null
-      if (call.kind === 'advance') {
-        const stage = (call.stage ?? '').replace(/_complete$/, '')
-        const expected = nextStage(stage, ctx.complexity)
-        const skipsDesign = stage === 'plan' && expected === 'design' && ctx.designRequired !== true && call.next === 'build'
-        const wellFormed = /_complete$/.test(call.stage ?? '') && expected !== null && (call.next === expected || skipsDesign)
-        // Design belongs to Plan: the person's Continue at the design check spends an advance decision of Plan.
-        approved = wellFormed ? (stage === 'design' ? 'plan' : stage) : null
-        // No advance lowers the stage the run is at, whoever approved it: only a step back does (the user's).
-        const target = STAGE_INDEX[call.next ?? '']
-        if (target !== undefined && target < (PHASE_INDEX[s.phase] ?? 0)) return { deny: BACK_DENY }
-        const hasHuman = approved !== null && pool.some(h => h.kind === 'advance' && (h.phase === undefined || h.phase === approved))
-        if (!hasHuman) {
-          if (wellFormed && stage !== 'intent' && stage !== 'plan' && followsVerdict(s, stage, ctx.complexity)) continue
-          // A skip is for the stage the run is at: it is not an approval for a stage the run went past.
-          if (wellFormed && stage !== 'design' && skippedStage(s, stage) && stage === stageName(s.phase)) continue
-          // The person's decision for this stage waits, but the call names another next stage (found live: a
-          // medium run with design on, advanced straight to Build). Say which stage is next; do not send the
-          // model back to the person for a decision that was already made.
-          const waits = pool.some(h => h.kind === 'advance' && (h.phase === undefined || h.phase === stage))
-          if (!wellFormed && waits && expected !== null && /_complete$/.test(call.stage ?? '')) {
-            return {
-              deny:
-                `Temper: after ${stage} the next stage of this run is ${expected}, not ${call.next ?? 'none'}. ` +
-                `Next: run ${cli} state advance ${stage}_complete ${expected}. The user's approval is already recorded.`,
-            }
-          }
-          return { deny: ONLY_USER }
-        }
-      }
-      // A step to another stage by `state set next_stage`: the person's back decision, or the exact next
-      // stage after a check that passed.
-      if (call.kind === 'back' && !pool.some(h => h.kind === 'back' && (call.stage === undefined || h.phase === undefined || stageName(h.phase) === stageName(call.stage)))) {
-        const cur = s.phase === 'fix' ? 'check' : s.phase
-        if (call.stage !== undefined && call.stage === nextStage(cur, ctx.complexity) && followsVerdict(s, cur)) continue
-      }
-      const i = pool.findIndex(
-        h =>
-          h.kind === call.kind &&
-          // An accept is for one stage's ledger: --stage must be the stage the person accepted in.
-          (call.kind === 'accept' ? call.stage !== undefined && h.phase === call.stage : (call.kind === 'advance' ? h.phase === undefined || h.phase === approved : call.stage === undefined || h.phase === undefined || stageName(h.phase) === stageName(call.stage))) &&
-          (call.id === undefined || h.findingId === undefined || h.findingId === call.id),
-      )
-      const hit = i >= 0 ? pool[i] : undefined
-      if (!hit) return { deny: ONLY_USER }
-      pool.splice(i, 1)
-      matched.push(hit.id)
-      first ??= { kind: call.kind, eventId: hit.id }
-    }
-    if (first && !(c.commits && !s.paused)) return { allow: true, consume: first.kind, eventId: first.eventId, eventIds: matched, ...(loopIds.length > 0 ? { loopIds } : {}) }
+    if (!personOnly(w, r)) continue
+    // The person's answer at this step, or the CLI's own action, maps to this very call.
+    if (ctx.allowed.some(written => sameCall(written, w))) continue
+    const resets = a === 'state' && (b === 'clear' || b === 'archive' || b === 'init')
+    // The TRIVIAL exit of the orchestrator: a clear of a run that never left Intent loses nothing.
+    if (a === 'state' && b === 'clear' && r.trivialExit && r.stage === 'intent' && r.step <= 0) continue
+    // Start over: the saved run state goes, and a run of the same command begins (never a fix run, which the mod stands
+    // aside for).
+    if (resets && ctx.restart && !w.some((x, i) => (x === '--command' && w[i + 1] === 'fix') || x === '--command=fix')) continue
+    return { deny: personDeny(w, r, cli) }
   }
-
-  // The artifact only carve-out is for a plain `git commit` of the index: a pathspec commit, a merge, a cherry-pick,
-  // an am, a pull or a revert brings in files that no `git add` named.
-  const facts = ctx.commit && c.unplainCommit ? { ...ctx.commit, stagedSpecsOnly: false } : ctx.commit
-  if (c.commits && isActive(s) && !s.paused && !commitAllowed(s, facts)) {
-    return {
-      deny: `Temper: commit blocked. Check has not passed. ${ctx.commit?.hint ? `${ctx.commit.hint} ` : ''}Next: ${COMMIT_NEXT[s.phase]}. The native pre-commit hook is the backstop.`,
-    }
-  }
-  return loopIds.length > 0 ? { allow: true, loopIds } : ALLOW
+  return ALLOW
 }
 
-export function evaluate(state: RunState, ctx: RuleContext, call: ToolCall): RuleResult {
+// The temper calls only the person may cause (ADR 0013), by their words after the script: leaving Intent or Plan, a
+// skip, a step back, accepting a finding, arming autonomy, keeping a task agent's commits, and starting over or ending
+// the run before it is done.
+function personOnly(w: readonly string[], r: RunFacts): boolean {
+  const [a, b, c, d] = w
+  if (a === 'override') return true
+  if (a === 'group' && b === 'reopen') return w.some(x => x === '--accept-foreign' || x.startsWith('--accept-foreign='))
+  // Accepting a finding, or clearing a ledger (which erases what a stage found), is the person's.
+  if (a === 'evidence') return b === 'accept' || b === 'clear'
+  if (a !== 'state') return false
+  if (b === 'advance') return c === 'intent_complete' || c === 'plan_complete'
+  if (b === 'loop' || b === 'init' || b === 'clear' || b === 'archive') return true
+  if (b === 'set' && c === 'run_mode') return d !== 'interactive'
+  // A step back (a set to the stage the run is at changes nothing; a step forward is the CLI's to check).
+  if (b === 'set' && c === 'next_stage') return !(d !== undefined && isStage(d) && stageIndex(d) >= stageIndex(r.stage))
+  return false
+}
+
+function personDeny(w: readonly string[], r: RunFacts, cli: string): string {
+  const [a, b, c] = w
+  if (a === 'state' && (b === 'clear' || b === 'archive')) return STATE_END(cli)
+  if (a === 'state' && (b === 'init' || b === 'loop')) return STATE_RESTART
+  if (a === 'state' && b === 'set' && c === 'run_mode') return AUTONOMY_DENY
+  if (a === 'override' && r.stage === 'commit') return DONE_OVERRIDE_DENY
+  return ONLY_USER
+}
+
+export function evaluate(ctx: RuleContext, call: ToolCall): RuleResult {
   if (call.tool === 'Bash') {
     const command = typeof call.input.command === 'string' ? call.input.command : ''
-    return evaluateBash(state, ctx, command)
+    return evaluateBash(ctx, command)
   }
   if (!WRITE_TOOLS.has(call.tool)) return ALLOW
 
   const raw = targetPath(call)
   if (raw === null) return ALLOW
   const path = normalizePath(raw, ctx.root)
+  const active = isActive(ctx)
+  if (active && PLUGIN_DATA.test(raw)) return { deny: PLUGIN_DATA_DENY }
 
   const kind = protectedKind(path)
-  // The config, the git hooks and the Temper commit hook are guarded while a run is active (the person writes them with
-  // no run on).
-  if (kind !== null && (isActive(state) || (kind !== 'config' && kind !== 'hooks'))) return protectedDeny(kind, ctx.cli ?? CLI)
+  // The config, the git hooks and the Temper commit hook are guarded while a run is active, a fix run too (the person
+  // writes them with no run on).
+  if (kind !== null && (active || ctx.fixRun === true || (kind !== 'config' && kind !== 'hooks'))) return protectedDeny(kind, ctx.cli ?? CLI)
+  // The report a parked autonomous run leaves (reference/autonomy.md): a note of the run, at any stage.
+  if (path === AUTONOMY_REPORT) return ALLOW
 
-  if (!isActive(state) || state.paused || ctx.failOpenWrites) return ALLOW
-  return phaseWriteRule(state, ctx, path)
+  // Save for later stops the run; it lifts no rule (enforcement off is the person's way to lift them).
+  if (!active) return ALLOW
+  return stageWriteRule(ctx, path)
 }

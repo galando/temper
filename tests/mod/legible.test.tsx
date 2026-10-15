@@ -8,7 +8,6 @@ const SURFACES = ['terminal', 'desktop', 'vscode', 'mobile'] as const
 const START = (surface: string | null) => ({ cwd: '/repo', surface, isInteractive: false }) as never
 
 const PANE = { title: 'Temper', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 20 }, view: {} } as const
-const GAME = { title: 'Temper Run', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 12 }, view: {} } as const
 
 type Node = { type?: string; props?: Record<string, unknown>; children?: unknown }
 
@@ -22,9 +21,6 @@ function texts(tree: unknown, bg: string | null = null, out: Seen[] = []): Seen[
   }
   if (typeof tree !== 'object' || tree === null) return out
   const n = tree as Node
-  // The picture of the game is made of coloured half blocks (a Box with a key that starts with
-  // scene-). Those are pixels, not text, and the art tests check their colours.
-  if (typeof n.props?.key === 'string' && n.props.key.startsWith('scene-')) return out
   const own = typeof n.props?.backgroundColor === 'string' ? (n.props.backgroundColor as string) : bg
   if (n.type === 'Text') out.push({ text: JSON.stringify(n.children ?? ''), props: n.props ?? {}, bg: own })
   texts(n.children, own, out)
@@ -75,7 +71,6 @@ describe('the pane is legible on every theme', () => {
         world(on, { ...runFiles({ nextStage: stage, passedCriteria: ['AC-01'] }), '.temper/evidence/review.json': JSON.stringify([{ claim: 'x', severity: 'major' }]) })
         await $.session.start(START(surface))
         const ui = await $.ui.mount({ plugin: 'temper', surface, component: 'Pane', requestId: 'temper', props: PANE })
-        await ui.press({ key: 'pane-more-actions' }).catch(() => undefined)
         expectLegible(await ui.drawn(), `${stage}/${surface}`)
       })
     }
@@ -87,26 +82,6 @@ describe('the pane is legible on every theme', () => {
     const ui = await $.ui.mount({ plugin: 'temper', surface: 'terminal', component: 'Pane', requestId: 'temper', props: PANE })
     expectLegible(await ui.drawn(), 'no run')
   })
-})
-
-describe('the game is legible on every theme', () => {
-  for (const surface of ['terminal', 'desktop'] as const) {
-    test(`the game area sets a background and explicit colours on ${surface}`, async ($, on) => {
-      world(on, runFiles({ nextStage: 'build' }), { options: undefined } as never)
-      await $.session.start(START(surface))
-      await $.command.run({ command: 'temper', args: 'play', origin: { kind: 'composer' } } as never)
-      const ui = await $.ui.mount({ plugin: 'temper', surface, component: 'Pane', requestId: 'temper-game', props: GAME })
-      expectLegible(await ui.drawn({ in: 'game' }), `game/${surface}`)
-      // Running, with the help line and the heat bars, and after the game over with its two lines.
-      await ui.press({ key: 'game-run' })
-      await ui.advance(1000)
-      expectLegible(await ui.drawn({ in: 'game' }), `game running/${surface}`)
-      await ui.advance(12000)
-      const over = await ui.drawn({ in: 'game' })
-      expect(JSON.stringify(over)).toContain('Game over. Your forge went cold.')
-      expectLegible(over, `game over/${surface}`)
-    })
-  }
 })
 
 describe('the palette of the card', () => {

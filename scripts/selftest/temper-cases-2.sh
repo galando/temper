@@ -40,7 +40,7 @@ assert_exit "protected-paths: garbage stdin fails open" 0 \
 
 # The command names the CLI as the plugin's own command files write it (the spelling is taken from
 # commands/temper.md, so the case follows it).
-CO_CLI="$(grep -m1 -oE '[^[:space:]`"(]+/scripts/temper override' "$REPO_ROOT/commands/temper.md")"
+CO_CLI="$(grep -m1 -oE '[^[:space:]`"(]+/scripts/temper next' "$REPO_ROOT/commands/temper.md" | sed 's/ next$/ override/')"
 assert_eq "commands/temper.md names the CLI through the braced plugin root variable" "yes" \
   "$([[ "${CO_CLI:0:2}" == '${' ]] && echo yes || echo no)"
 OUT=$(python3 -c 'import json, sys; print(json.dumps({"tool_input": {"command": sys.argv[1] + " review --reason x"}}))' "$CO_CLI" | bash "$CONFIRM")
@@ -50,6 +50,11 @@ OUT=$(echo '{"tool_input": {"command": "git status"}}' | bash "$CONFIRM")
 assert_eq "confirm-override: any other command stays silent" "" "$OUT"
 assert_exit "confirm-override: always exits 0 (ask is advisory, not a block)" 0 \
   bash -c "echo '{\"tool_input\": {\"command\": \"temper override plan --reason y\"}}' | bash '$CONFIRM'"
+# D-08 review M2: keeping an agent commit (group reopen --accept-foreign) is a decision like an override
+co_ask() { python3 -c 'import json, sys; print(json.dumps({"tool_input": {"command": sys.argv[1]}}))' "$1" | bash "$CONFIRM" | grep -c '"permissionDecision": "ask"'; }
+assert_eq "confirm-override: group reopen --accept-foreign asks (also by path, with a global option)" "1|1|1" \
+  "$(co_ask 'temper group reopen G1 --task 1 --accept-foreign abc1234 --reason ok')|$(co_ask "${CO_CLI% override} group reopen G1 --task 1 --accept-foreign abc1234 --reason ok")|$(co_ask 'temper --spec-path .temper/specs/x group reopen G1 --task 1 --accept-foreign abc1234 --reason ok')"
+assert_eq "confirm-override: a plain group reopen stays silent" "0" "$(co_ask 'temper group reopen G1 --task 1')"
 
 echo 'x  =  1' > messy.txt
 cat >> .claude/temper.config <<'EOF'
@@ -553,7 +558,7 @@ assert_eq "the carve-out names itself" "yes" "$(echo "$OUT" | grep -q 'active ru
 # --- gate commit: build-checkpoint carve-out ---
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
-"$TEMPER" state set next_stage build >/dev/null
+_at build
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests green task 1" --phase green --exit 0 --cmd pytest >/dev/null
@@ -566,7 +571,7 @@ assert_eq "the checkpoint carve-out names the green run" "yes" \
 
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
-"$TEMPER" state set next_stage build >/dev/null
+_at build
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests green then regress" --phase green --exit 0 --cmd pytest >/dev/null
@@ -577,7 +582,7 @@ assert_eq "the RED carve-out names the failing claim" "yes" "$(echo "$OUT" | gre
 
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
-"$TEMPER" state set next_stage build >/dev/null
+_at build
 # no plan verdict -> upstream not satisfied -> full gate applies -> FAIL (build gate never ran)
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_exit "upstream gates unmet => full commit gate applies" 1 "$TEMPER" gate commit
@@ -586,7 +591,7 @@ assert_eq "no checkpoint carve-out row when upstream is unmet" "no" \
 
 setup
 "$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD)" >/dev/null
-"$TEMPER" state set next_stage review >/dev/null   # past build => no carve-out
+_at review   # past build => no carve-out
 "$TEMPER" gate intent >/dev/null
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests green" --phase green --exit 0 --cmd pytest >/dev/null
@@ -623,6 +628,7 @@ git commit --no-verify -q -m "suite baseline for base_sha" >/dev/null 2>&1 || tr
 "$TEMPER" state init demo --command temper >/dev/null   # fresh state on the committed tree
 "$TEMPER" state set run_mode autonomous >/dev/null
 "$TEMPER" state set base_sha "$(git rev-parse HEAD)" >/dev/null
+rm -f .temper/specs/demo/tasks.md   # the count rule is for a run without tasks.md (a /temper:fix run)
 mkdir -p src && echo a > src/a.js
 OUT=$("$TEMPER" gate commit 2>&1; true)
 assert_eq "base_sha diff + uncommitted paths feed the blast-radius count" "yes" \
@@ -630,7 +636,7 @@ assert_eq "base_sha diff + uncommitted paths feed the blast-radius count" "yes" 
 
 # --- mods: check.commands.* and fix.max-loops config keys ---
 setup
-assert_eq "config get fix.max-loops defaults to 3 when the key is absent" "3" "$("$TEMPER" config get fix.max-loops)"
+assert_eq "config get fix.max-loops prints the limit the loop keeps when the key is absent (loops.max-per-type)" "2" "$("$TEMPER" config get fix.max-loops)"
 assert_eq "config get check.commands.test prints nothing when absent" "" "$("$TEMPER" config get check.commands.test)"
 cat >> .claude/temper.config <<'CFG'
 fix:
@@ -644,7 +650,7 @@ assert_eq "config get check.commands.lint prints an unquoted command" "npm run l
 assert_eq "config get check.commands.typecheck prints the configured command" "tsc --noEmit" "$("$TEMPER" config get check.commands.typecheck)"
 assert_eq "config get fix.max-loops prints 3 when set to 3" "3" "$("$TEMPER" config get fix.max-loops)"
 # fix.max-loops bounds the check->fix pair only when set; loops.max-per-type stays 2 elsewhere.
-"$TEMPER" state init demo --command fix >/dev/null
+"$TEMPER" state init demo --command fix >/dev/null; _at check
 assert_exit "state loop check fix iteration 1 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason a
 assert_exit "state loop check fix iteration 2 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason b
 assert_exit "state loop check fix iteration 3 passes under fix.max-loops 3" 0 "$TEMPER" state loop check fix --reason c
@@ -653,7 +659,7 @@ assert_exit "state loop review build still stops at loops.max-per-type 2 (key un
 assert_exit "state loop review build second iteration passes" 0 "$TEMPER" state loop review build --reason b
 assert_exit "state loop review build third iteration is blocked" 1 "$TEMPER" state loop review build --reason c
 setup
-"$TEMPER" state init demo --command fix >/dev/null
+"$TEMPER" state init demo --command fix >/dev/null; _at check
 "$TEMPER" state loop check fix --reason a >/dev/null; "$TEMPER" state loop check fix --reason b >/dev/null
 assert_exit "with fix.max-loops unset, check fix keeps loops.max-per-type 2" 1 "$TEMPER" state loop check fix --reason c
 
@@ -746,8 +752,8 @@ assert_eq "a draft with only a Deferred question reports no Blocking question" "
 
 assert_eq "the CLI header lists temper status exactly once" "1" "$(grep -c '^#   temper status' "$TEMPER")"
 
-# --- mods: the stage names the mod puts in its follow up prompts are the CLI's own ---
-# The CLI's stage order is pinned here, and the mod's CLI test pins its CLI_STAGES and its fake
+# --- mods: the stage names the mod reads and writes in its texts are the CLI's own ---
+# The CLI's stage order is pinned here, and the mod's guard test pins its STAGES and its fake
 # engine's CLI_SEQ to the same text, so a change on either side fails a test. No script here reads a
 # file of the mod.
 MOD_STAGE_SEQ="intent plan design build review check"
@@ -755,8 +761,11 @@ assert_eq "STAGE_SEQ_TEMPER is the stage order the mod expects" "$MOD_STAGE_SEQ"
   "$(sed -n 's/^STAGE_SEQ_TEMPER="\(.*\)"$/\1/p' "$TEMPER")"
 setup
 "$TEMPER" state init demo --command temper >/dev/null
+_pass intent
 assert_exit "the mod's approve intent command is accepted by the CLI" 0 "$TEMPER" state advance intent_complete plan
+_pass plan design; "$TEMPER" state set complexity medium >/dev/null
 assert_exit "the mod's approve plan command (design first) is accepted by the CLI" 0 bash -c "'$TEMPER' state advance plan_complete design && '$TEMPER' state advance design_complete build"
+_pass build review check
 assert_exit "the mod's later advances are accepted by the CLI" 0 bash -c "'$TEMPER' state advance build_complete review && '$TEMPER' state advance review_complete check && '$TEMPER' state advance check_complete commit"
 assert_exit "the mod's back command is accepted by the CLI" 0 "$TEMPER" state set next_stage plan
 assert_exit "the old form 'state advance intent plan' is refused by the CLI" 1 "$TEMPER" state advance intent plan
@@ -805,6 +814,8 @@ setup
 "$TEMPER" state init demo --command temper >/dev/null
 mirror_step() { # mirror_step <name> <expected next_stage> <temper args...>
   local name="$1" want="$2"; shift 2
+  # ADR 0013: a stage is left once its check passed
+  [[ "$1 $2" == "state advance" ]] && _pass "${3%_complete}"
   assert_exit "mirror: $name" 0 "$TEMPER" "$@"
   assert_eq "mirror: $name sets next_stage" "$want" "$("$TEMPER" state get next_stage 2>/dev/null)"
 }
@@ -814,13 +825,15 @@ mirror_step "build_complete review" review state advance build_complete review
 mirror_step "review_complete check" check state advance review_complete check
 mirror_step "check_complete commit" commit state advance check_complete commit
 # A medium or complex run goes through design.
-"$TEMPER" state advance intent_complete plan >/dev/null
+_at plan plan; "$TEMPER" state set complexity medium >/dev/null
 mirror_step "plan_complete design" design state advance plan_complete design
 mirror_step "design_complete build" build state advance design_complete build
 # A step back: the CLI resumes from the stage it is pointed at.
-for s in intent plan build review check; do
+_at check
+for s in review build plan intent; do
   mirror_step "state set next_stage $s" "$s" state set next_stage "$s"
 done
+_at build build
 assert_eq "mirror: stage is recorded by state advance" "build_complete" "$("$TEMPER" state advance build_complete review >/dev/null; "$TEMPER" state get stage)"
 assert_exit "mirror: override <stage> --reason" 0 "$TEMPER" override review --reason "reviewer is on leave"
 "$TEMPER" evidence add --stage review --claim "a finding" --severity low >/dev/null
@@ -1022,7 +1035,7 @@ assert_eq "a CLI reached through a symlink resolves a model from its own folder,
 assert_exit "a CLI reached through a symlink loads acceptance.py by its full path, with an empty environment" 0 \
   env -i HOME="$HOME" PATH="$PATH" "$WORKDIR/bin/temper" gate plan
 assert_eq "the CLI and its Python helpers list no folder by wildcard and load no folder onto sys.path" "0" \
-  "$(cat "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/pack-discover.py" | grep -cE 'glob\.glob|^import glob|sys\.path\.insert|TEMPER_DIR:-')"
+  "$(cat "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/pack-discover.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/flow.py" | grep -cE 'glob\.glob|^import glob|sys\.path\.insert|TEMPER_DIR:-')"
 
 # --- CLI: the plugin folder comes from the CLI's own file, never from an environment variable ---
 setup
@@ -1030,7 +1043,7 @@ mkdir -p "$WORKDIR/bin"
 CLI_PLUGIN="$WORKDIR/cli-plugin"
 rm -rf "$CLI_PLUGIN"
 mkdir -p "$CLI_PLUGIN/scripts" "$CLI_PLUGIN/inner/sub"
-cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$CLI_PLUGIN/scripts/"
+cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/flow.py" "$CLI_PLUGIN/scripts/"
 cp -R "$REPO_ROOT/agents" "$CLI_PLUGIN/agents"
 ln -sf ../cli-plugin/scripts/temper "$WORKDIR/bin/rel-temper"
 ln -sf rel-temper "$WORKDIR/bin/chained-temper"

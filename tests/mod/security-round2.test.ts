@@ -1,11 +1,10 @@
-// Tests that sit beside review-exploits-2.test.ts: the flows the fail closed Temper CLI rule must
-// keep allowing, the deny texts of that rule, and the plugin folder path in a follow up prompt.
+// Tests that sit beside review-exploits-2.test.ts: the Temper CLI flows the guard keeps allowing, the stage an accept
+// names, and the plugin folder path in a follow up prompt.
 import { describe, expect, test } from 'claude-code/testing'
 
-import { classifyBash } from '../../hooks/temper-mod/core/bash'
 import { MOD_FILE, pluginCliFrom } from '../../hooks/temper-mod/core/cli'
-import { evaluate } from '../../hooks/temper-mod/core/rules'
-import type { RuleContext } from '../../hooks/temper-mod/core/rules'
+import { check as evaluate } from './helpers'
+import type { OldCtx as RuleContext } from './helpers'
 import { stateAt } from './helpers'
 import { SPEC, runFiles } from './run-files'
 import { world } from './world'
@@ -50,48 +49,6 @@ describe('legitimate Temper CLI flows stay allowed', () => {
   }
 })
 
-describe('the fail closed rule: more spellings are denied and say what to do', () => {
-  const attempts = [
-    'tempe[r] override plan --reason x',
-    'scripts/temp* override plan --reason x',
-    'scripts/* state advance plan_complete build',
-    'T=scripts/temper; $T override plan --reason x',
-    'U=$(echo scripts/temper); $U override plan --reason x',
-    'echo "scripts/temper override plan --reason x" | bash',
-    'echo override | xargs scripts/temper',
-    'nohup scripts/temper evidence accept --stage review --id 1 --reason x',
-    'nice -n 5 scripts/temper state advance plan_complete build',
-    'find . -maxdepth 0 -exec scripts/temper override plan --reason x \\;',
-    'ln -s scripts/temper /tmp/t',
-    'cp scripts/temper /tmp/t',
-    'mv scripts/temper /tmp/t',
-    'ln -s /Users/x/plugin/scripts/temper tp',
-    'source scripts/temper',
-    '. scripts/temper',
-    'perl -e \'system("scripts/temper","override","plan")\'',
-    'ruby -e \'system("scripts/temper override plan --reason x")\'',
-    'node -e "require(\'child_process\').execSync(\'scripts/temper override plan --reason x\')"',
-  ]
-  for (const cmd of attempts) {
-    test(cmd, () => {
-      const r = run(cmd, 'plan')
-      expect('deny' in r).toBe(true)
-      if ('deny' in r) expect(r.deny).toMatch(/Next: /)
-    })
-  }
-
-  test('a link of the script is denied with no decision word at all', () => {
-    expect('deny' in run('ln -s scripts/temper /tmp/t', 'check')).toBe(true)
-    expect(classifyBash('cp -r scripts/temper /tmp/t').alias).toBe(true)
-  })
-
-  test('the deny names the buttons and the subcommands', () => {
-    const r = run('tempe[r] override plan --reason x', 'plan')
-    expect('deny' in r && r.deny).toContain('/temper:temper')
-    expect('deny' in r && r.deny).toContain('buttons')
-  })
-})
-
 describe('evidence accept needs the stage of the decision', () => {
   const accept = { id: 'e1', kind: 'accept' as const, phase: 'review', findingId: '1' }
   const call = (cmd: string) => evaluate(stateAt('review'), { ...ctx, humanDecisions: [accept] }, { tool: 'Bash', input: { command: cmd } })
@@ -114,7 +71,9 @@ describe('the plugin folder path in a prompt', () => {
 })
 
 describe('refusals of the commands end with Next:', () => {
-  for (const word of ['approve', 'override because', 'accept 1 because', 'pause', 'mode off']) {
+  // ADR 0012: the decision words go on to the orchestrator (it asks the Temper gate question); the mod refuses only a
+  // change of what Temper shows or enforces from another origin.
+  for (const word of ['mode off', 'enforcement off']) {
     test(`${word} from a model origin`, async ($, on) => {
       world(on, runFiles({ nextStage: 'plan' }))
       await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: false })

@@ -45,7 +45,7 @@ _main() {
   local -a files=()
   if [[ ! -t 0 ]] && command -v python3 >/dev/null 2>&1; then
     local stdin_file
-    stdin_file=$(python3 -c "
+    stdin_file=$(python3 -I -c "
 import json, sys
 try:
     print(json.load(sys.stdin).get('tool_input', {}).get('file_path', '') or '')

@@ -4,10 +4,11 @@
 # Runs `claude plugin validate` on the manifest, takes the `calls:` line it prints for the
 # hooks module, and FAILS when
 #   - any call is in the process, http or env namespace (the mod never spawns, fetches or
-#     reads the environment: tests, lint, git and CLI calls are prompts to Claude), or
-#   - any call is not on the reviewed list below.
-# A new call is a reviewed change: add it here AND to docs/mods-plan.md section 2.7 with a
-# one line reason.
+#     reads the environment: tests, lint, git and CLI calls are prompts to Claude),
+#   - any call is not on the reviewed list below, or
+#   - a call on the list is not made any more (the list is exact: a stale line goes).
+# A new call is a reviewed change: add it here with a one line reason. (docs/mods-plan.md 2.7 is the
+# list as first built, kept as history.)
 #
 # Test hook: CHECK_MOD_CALLS_LINE="<a calls: line>" checks that line without running claude.
 set -euo pipefail
@@ -22,29 +23,23 @@ REPO_ROOT="${HERE%/scripts}"
 # The reviewed list: one `noun.method` per line, with why the mod needs it.
 ALLOWED='
 agent.list       the reviewerModel option: tells whether a subagent step belongs to the Temper review agent (read only; the spawn is never changed)
-clock.sleep      waits 60 ms before build-state.json is read again while the CLI rewrites it (no global timer)
-command.run      a pressed Button ends with /temper:temper (the orchestrator Resume) after its decision is recorded; prompt.submit refuses a slash text
+command.run      the Go on button runs /temper:temper, and the orchestrator takes up the run where the CLI says it is (it decides nothing)
 config.list      /temper mode and enforcement read the row to see whether an administrator locked it
 config.set       the same commands change the row the way /config does (key temper.uiMode, temper.enforcement)
-fs.list          lists the events folder of a spec under .temper/specs to rebuild the run
-fs.read          reads build-state, gates, status, evidence, intent, plan, tasks, temper.config, event files and an older report
+fs.read          reads .temper/view.json, the one file the mod reads of the CLI (ADR 0013)
 fs.stat          resolves "." to the project root so absolute tool paths can be made relative
-prompt.fill      key 4 Discuss and key 2 Change at Build put a draft in the prompt box; the person types the rest (a press only, never from a hook)
-prompt.submit    a pressed band or pane Button sends its action to Claude (never from a hook)
-prompt.suggest   offers the next action as a suggestion after a turn (Tab to take, never submitted)
 session.version  the version guard: the mod stays inert below 2.1.287
 state.get        the drawing hooks read the run view and the live mode, so a write redraws them
 state.set        publishes the run view and the live mode
-store.delete     drops the oldest kept folder, so the store stays small
-store.get        own event ids (forgery guard), consumed human decisions, "mode already asked", kept events and report
+store.delete     drops the oldest kept report and the oldest run of answers, so the store stays small
+store.get        the gate answers of the person per run (dec:<run id>), "mode already asked" and the kept report
 store.set        records those (the mod writes no file)
-ui.ask           scope drift choices, the first run mode question, reasons for override and accept
+ui.ask           the first run question: how much Temper shows (uiMode)
 ui.close         closes the pane (leaving full mode, a toggle, a pane that would not dock)
-ui.focus         key 9 on the band moves the focus into the override reason field
 ui.invalidate    redraws the render sites after a mode or enforcement change
 ui.open          opens the pane
 ui.resolve       the element table of the surface being drawn (Box, Text, Button, Markdown)
-ui.toast         one toast per phase transition and on enforcement changes
+ui.toast         one toast per stage change and on enforcement changes
 '
 
 allowed_names() { printf '%s\n' "$ALLOWED" | awk 'NF { print $1 }'; }
@@ -89,16 +84,22 @@ while IFS= read -r call; do
       ;;
   esac
   if ! allowed_names | grep -qx -- "$call"; then
-    echo "FAIL: \$.$call is not on the reviewed list (scripts/check-mod-calls.sh, docs/mods-plan.md 2.7)"
+    echo "FAIL: \$.$call is not on the reviewed list (scripts/check-mod-calls.sh)"
     FAIL=1
   fi
 done <<< "$CALLS"
 
-# The game's surface module has no engine at all: `$` is not defined there, so the mod's type check
-# in CI fails on an engine call written as `$.`, and at run time a surface module has no `$` to
-# reach. This script reads only the validator's output and never opens a file of the mod.
+# This script reads only the validator's output and never opens a file of the mod.
+
+# The list is exact: every reviewed call is still made.
+while IFS= read -r name; do
+  if ! printf '%s\n' "$CALLS" | grep -qx -- "$name"; then
+    echo "FAIL: \$.$name is on the reviewed list but the mod no longer makes it (remove its line)"
+    FAIL=1
+  fi
+done < <(allowed_names)
 
 if [[ $FAIL -eq 0 ]]; then
-  echo "OK: $(printf '%s\n' "$CALLS" | wc -l | tr -d ' ') calls, all on the reviewed list, none process/http/env"
+  echo "OK: $(printf '%s\n' "$CALLS" | wc -l | tr -d ' ') calls, exactly the reviewed list, none process/http/env"
 fi
 exit $FAIL

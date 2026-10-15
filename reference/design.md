@@ -7,9 +7,9 @@ description: "System design exploration for complex features (optional stage)"
 **Goal:** Produce system design artifacts for complex/medium features — skipped for
 simple/trivial. Active when `phases.design: true` AND complexity >= medium.
 
-**Modes:** Standalone (`/temper:design`) runs in the current context, own gate. Agent
-subprocess (from `/temper`) starts clean, no `AskUserQuestion` gate — return the summary,
-the orchestrator owns it. Load `intent.md`, `plan.md`, and the enabled packs' `rules.md`
+**Mode:** Design runs as a stage of `/temper` (also when `/temper:design` starts it: the
+command is a door into `/temper`), in a clean subprocess with no `AskUserQuestion` gate:
+return the summary, the orchestrator owns the gate. Load `intent.md`, `plan.md`, and the enabled packs' `rules.md`
 (project `.claude/packs/` shadows global `~/.claude/packs/` shadows
 the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`, kept where `phases` is `all` or contains
 `design`), plus the project's `.claude/packs/stacks/{detected-stack}.md` if present.
@@ -55,18 +55,26 @@ fact rows for what the design actually has: API contracts (`+ POST /api/x — sh
 response`), DB changes (`+ {table} — {columns}`), integration points.
 
 Any flagged concern is presented **first** at the gate — it is the reason the human is
-here. "Continue to Build" with open concerns means the human accepted them; record
-their call in the concern's line (`resolved: {what was decided}`).
+here. Write each concern as its own heading under Areas of Concern (or its own list item
+at the margin), so the CLI can name it: the Design question lists the open ones (a
+concern is resolved once a line of it starts with `resolved:`). "Continue to Build" with
+open concerns means the human accepted them as written: leaving Design, the CLI adds
+`resolved: accepted as written at the Design question ({date})` to each, as a paragraph
+of its own (indented to the item's text under a list item concern), and the run
+commits `design.md`. Another call, typed at the question, is written into the
+concern's own `resolved: {what was decided}` line before the question is asked again.
+An armed run parks at a Design with open concerns, so the person decides them.
 
-`AskUserQuestion`: "Continue to Build (Recommended)" (save `design.md`, proceed) / "Walk
-through design step by step" (below) / "Save for later". "Other" free-text → edit
-`design.md`, re-show this gate — a change is never approval to proceed.
+The orchestrator asks the gate question exactly as `temper next --json` gives it (header
+`Temper gate`; on a pass: "Continue to Build (Recommended)", "Walk through step by step"
+(below), "Grill Me", and "More options" with Teach Me and Save for later). "Other" free text
+edits `design.md` and asks the same question again: a change is never approval to proceed.
 
 **Walkthrough:** read `design.md`, present only the sections it actually has — Architecture
 Overview (always), API Contracts, Database Changes, Integration Points, Decision Log
 (always) — one at a time via `AskUserQuestion` ("Next step" / "Ask a question", answer
 then re-show the same section / "Other" edits then re-shows the same section). After the
-last section: "Continue to Build (Recommended)" / "Save for later".
+last section, ask the gate question again.
 
 ## ADR Generation
 
@@ -85,5 +93,6 @@ Considered, Consequences. Never delete an ADR; supersede it with a new one refer
 
 ## Skip Conditions
 
-Auto-skipped (orchestrator goes straight to Build): Trivial/Simple complexity,
-`phases.design: false`, or a config-only/single-file plan.
+The CLI decides whether a run has a Design stage: it has one when the complexity is Medium or
+Complex and `phases.design` is not `false`, or when the spec folder already holds `design.md`.
+Otherwise the run goes from Plan straight to Build.

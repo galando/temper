@@ -10,16 +10,16 @@ because the integration surface is just commands and exit codes:
 
 | What you wire | The command | Exit contract |
 |---|---|---|
-| Review as a merge/pipeline check | `claude -p "/temper:review" --plugin-dir <temper checkout>` then `scripts/temper gate review` | gate exits 0 = no open findings at a severity **listed in** `review.block-on` (set membership, default `[critical]` — list every severity you want blocking); nonzero fails the check. The verdict is computed from the evidence ledger, never model narration. |
+| Review as a merge/pipeline check | In a throwaway checkout: `scripts/temper state init <slug> --enter review`, then the Review brief headless (`claude -p "Follow <temper>/agents/review.md exactly. Spec path: ..."`), then `scripts/temper gate review` | gate exits 0 = no open findings at a severity **listed in** `review.block-on` (set membership, default `[critical]`: list every severity you want blocking); nonzero fails the check. The verdict is computed from the evidence ledger, never model narration. |
 | Closing-the-loop monitoring | `scripts/temper bands` on a schedule (no tokens until a breach) | exit 1 = 2sigma+ breach → have your automation invoke `claude -p` to draft the breach as a Stage-1 `intent.md` (per `reference/status.md` Step 3.7) and route it into whatever review flow your host uses |
 | Feeding external metrics | `scripts/temper metrics append <series> <value>` from any pipeline step | any appended series becomes band-able by name |
 
 Two cautions that apply on every platform: run headless steps in a sandboxed runner
 (a throwaway checkout, with `--dangerously-skip-permissions` only inside it), and guard
-the review check against a *vacuous* pass — `temper gate review` reads an empty
-evidence ledger as "0 findings", so have the review record a completion marker
-(`temper evidence add --stage review --claim "review completed"`) and fail the job if
-it's absent.
+the review check against a *vacuous* pass: `temper gate review` fails when the ledger has no
+`review completed` row (an empty findings ledger is not a review), so a review that never ran
+cannot pass. The `/temper:review` door is for an interactive session: headless, it stops at the
+first gate question.
 
 ## Sprint Workflow Example
 
@@ -27,34 +27,29 @@ it's absent.
 
 ```
 /temper:fix "BKNG-4530"
-→ Fetches Jira → RCA via Explore subagent → regression test (RED)
-→ Fix (GREEN) → /temper:check → all pass → commit
-Total: ~10 minutes
+→ Fetches Jira → RCA → the RCA question: Proceed to Fix
+→ Fix: regression test (RED), then the fix (GREEN)
+→ Review → Check → all pass → Commit (with an entry in .temper/lessons.md)
 ```
 
 ### Tuesday-Wednesday: Feature
 
 ```
-/temper:plan "BKNG-4521"
-→ Fetches Jira → Explore scans codebase → risk assessment (HIGH: payment code)
-→ Blast radius: 4 controllers, 2 services → generates plan with rollback notes
-→ Asks: "Single provider or multiple?" → generates 8 tasks
-
-/temper:build
-→ Task 1-8: RED → GREEN → REFACTOR per task
-→ Auto-chain: /temper:review (parallel subagents, confidence-scored findings)
-→ Auto-chain: /temper:check (all green, coverage 91%)
-→ "Ready to commit?"
-Total: ~1-2 hours
+/temper:temper "BKNG-4521"
+→ Intent: the problem and the criteria → the Intent question: Continue to Plan
+→ Plan: blast radius, scenarios, tasks.md in groups → the Plan question: Continue to Build
+→ Build: each ready task as a Haiku task agent in its own worktree, RED then GREEN;
+  one question per group
+→ Review (confidence-scored findings) → the Review question
+→ Check (all green, coverage 91%) → the Check question: Commit
 ```
 
 ### Thursday: Tech Debt Refactor
 
 ```
-/temper:plan "BKNG-4535 refactor notification service"
-→ Blast radius: 14 callers → plan: extract interface, 3 implementations
-→ /temper:build → 12 tasks, all existing tests still pass
-→ /temper:check → all green
+/temper:temper "BKNG-4535 refactor notification service"
+→ Plan: 14 callers in the blast radius → 3 groups, 12 tasks
+→ Build, Review, Check as above; the existing tests still pass
 ```
 
 ### Friday: Sprint Review
@@ -69,8 +64,7 @@ Total: ~1-2 hours
 ```
 /temper:pack
 → Shows all packs with enabled/disabled status
-→ Toggle packs on/off, or select "Add new pack"
-→ Add new pack: scans codebase, interview, generates .claude/packs/{name}/rules.md
-→ Validates against current codebase
-→ Sets baseline for future tracking
+→ Toggle packs on/off, or quick-create a pack for a target
+→ "Other", then "add new pack": the full builder scans the codebase, interviews you,
+  writes .claude/packs/{name}/rules.md and adds it to the config
 ```

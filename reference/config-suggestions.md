@@ -8,7 +8,7 @@ description: "Post-check config suggestions — analyze what was built and sugge
 
 ## When to Trigger
 
-After all validation levels in `/temper:check` pass (no failures), before the Commit gate:
+After all validation levels of Check pass (no failures), before the Commit gate:
 
 1. Check validation passed (compile, tests, coverage, lint, security all green)
 2. At least one file was changed (diffing against `${CLAUDE_PLUGIN_ROOT}/scripts/temper state get base_sha` when

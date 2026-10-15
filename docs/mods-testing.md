@@ -47,112 +47,182 @@ Run these from `<clone>`. None of them sends a request.
 - [ ] **Start a run in a small test project.** Use any small git project you can throw away
   (`<project>`). Open a terminal in `<project>` and start Claude Code with your clone
   loaded: `claude --plugin-dir <clone>`. When Claude Code asks, choose "Yes, I trust this
-  folder". Always type the full command name `/temper:temper`. Type `/temper:temper "add a small function"` and approve the intent, so the run
-  is at Plan with the plan written. Expect the TEMPER bar above the prompt ("Step 2 of 6: Plan" and
-  "1 Continue to Build.") and no plugin load error.
-- [ ] **The smooth path.** At Plan, type `Skip the tasks: edit a source file now to add the
-  function`. Expect a refusal with a `Next:` step. Then, with the prompt empty, press `1`. Expect the
-  toast "Plan approved. Build open.", the bar at "Step 3 of 6: Build", and, after Claude's one
-  short line, `<clone>/scripts/temper state get next_stage`, run in `<project>`, prints `build`.
-  Claude must not ask you to approve again. Then expect a second turn that starts with `/temper:temper`: the
-  orchestrator launches the Build stage in its own subagent (a `temper:temper-build` agent line). No
-  AskUserQuestion dialog may appear at the gate: the stage ends with "Waiting for you. Use the Temper
-  bar, or type /temper:temper approve (or back, override, pause), or type a change." and the bar
-  offers the next step ("1 Continue with task 2" while tasks are open, "1 Continue to Review" when
-  the build check passes).
-- [ ] **No second question at a gate.** With the mod active, at every gate (Intent, Plan, Build,
-  Review, Check) expect no Continue / Save for later / Other dialog under the bar. Start Claude Code
-  with the mod switched off (`--settings '{"enabledPlugins":{"temper@temper":false}}'` and no
-  `--plugin-dir`) and expect the orchestrator to ask its own questions as before.
-- [ ] **Discuss.** Press `4`. Expect the prompt box to hold the draft `Discuss this step: ` and the
-  toast "Type your message. Press Enter to send it." Type `why is this file in the plan?` and press
-  Enter. Expect Claude to answer, the phase to stay the same, and no new file in
-  `.temper/specs/<name>/events/`. Open the game (`/temper:temper play`) and press `4`: expect the toast
-  "Close the pane, then type your message."
-- [ ] **More (key 0).** Press `0`. Expect the band to show the line "More actions. Press the number
-  shown." above the phase chips, then the other options as `1:` to `9:` and `0: Fewer`, in the full
-  screen layout and in the main screen layout (set `CLAUDE_CODE_NO_FLICKER=0`; test 100 and 120
-  columns). Press a number and expect the option to run and the menu to close. Press `0` twice and
-  expect the main buttons back. Every original option (Save for later, Grill me, Teach me, Open HTML
-  review, Architecture depth review, Review config suggestions, Stop, Commit, Walk through step by
-  step, Change, Loop back to, Skip with a reason) must be one digit away, or `0` and one digit.
-  Expect NO button for anything the original `/temper` did not ask: no Show the files, Run the tests,
-  Show the changes, Write the PR text, Go back to, Pause the run or Show the timeline. Plan shows
-  `1 Continue to Build`, `2 Walk through`, `3 Open HTML review`, `4 Discuss`; a Build checkpoint shows
-  `1 Continue with task N`, `2 Change`, `3 Stop`; Check shows `1 Run Check` or `Continue to Commit`,
-  then Grill me or Review config suggestions, and Teach me.
+  folder". Always type the full command name `/temper:temper`. Type
+  `/temper:temper "add a small function"`. Expect the TEMPER bar above the prompt with Intent
+  current, a drafted intent, and no plugin load error.
 - [ ] **Ask Claude whether the mod is active.** Type
   `Does your system prompt contain a Temper enforcement line?` and expect Claude to quote
   `Temper enforcement: active`.
-- [ ] **Start a run (from `intent`, or with no run).** Type
-  `/temper:temper Add password reset: one time token that expires after one hour`.
-  Expect a phase bar above the prompt with Intent current, and a drafted intent.
+- [ ] **The gate is a question.** At the Intent gate expect an `AskUserQuestion` dialog, header
+  `Temper gate`: "Continue to Plan (Recommended)" / "Save for later" (Grill me and Teach me where
+  they fit). The bar says "Intent: the check passed. Waiting for you: answer the Temper gate
+  question." and has one button, Go on. Choose Continue: expect the toast "Plan is open." and the
+  bar at "Step 2 of 6: Plan".
+- [ ] **No decision anywhere else.** Type `/temper:temper approve`. Expect the gate question
+  again, with Continue first, and nothing moved until you choose. Press `1` (Go on) at an empty
+  prompt: expect `/temper:temper` to run and the gate question to come back. Expect no button on
+  the bar or in the pane that continues, skips, loops back, accepts or commits.
+- [ ] **The smooth path.** At Plan, type `Skip the tasks: edit a source file now to add the
+  function`. Expect a refusal with a `Next:` step. Answer the Plan gate with "Continue to Build".
+  Expect `<clone>/scripts/temper state get next_stage`, run in `<project>`, to print `build`, and
+  the orchestrator to start the first group (`temper group start G1`) and launch one
+  `temper:temper-build-task` agent per ready task.
+  Claude must not ask you to approve again.
 
-## 4. Phase by phase
+## 4. Stage by stage
 
-Work through one run. For each phase, check the refusal and the key.
+Work through one run. For each stage, check the refusal and the gate question.
 
 - [ ] **Intent denial.** While Intent is current, type `Edit a source file of the project and add a field now`.
-  Expect a refusal that starts `Temper: Intent phase.` and ends with `Next:` and a step.
+  Expect a refusal that starts `Temper: Intent stage.` and ends with `Next:` and a step.
   The write to `.temper/specs/<name>/intent.md` must still be allowed.
-- [ ] **Continue from Intent with a key.** Press `1` ("Start Intent"): Claude's Intent stage writes
-  the intent and its check runs. Then key 1 says "Continue to Plan"; press it. Expect the band to
-  show Plan as current and a toast "Intent approved. Plan open."
 - [ ] **Plan denial and approval.** Repeat the denial for the same file. Expect
-  `Temper: Plan phase.` Then press `1` ("Continue to Build") to approve the plan.
-- [ ] **Build.** Expect key 1 to say "Continue with task N" and the stage to write a failing test
-  first. Ask Claude to edit a file
-  that is not in the plan (for example `README.md`). Expect a question with
-  three choices: Add to plan, Revert, Allow once. Choose Allow once and give a reason.
-  Expect the edit to go through once.
-- [ ] **The pane.** Type `/temper:temper pane`. Expect a pane with the criteria checklist, the
-  phase and a short timeline. Type `/temper:temper pane` again to close it.
-- [ ] **The game.** Type `/temper:temper play` with an empty prompt. Expect a game pane beside the
-  Temper pane (terminal and desktop app only; on the VS Code extension you get a short text) and the
-  line "The game is open. Press r to run, w to jump, s to duck, q or Esc to leave." Press `r`, then
-  `w` over an anvil or a bucket and `s` under a flying hammer, with no mouse. Expect Ember the dragon
-  (orange, with horns, a wing and a flame at the tail), anvils, buckets of cold water and spinning
-  hammers, a floor of bricks and embers, and the line "HI 00000  00032" at the top right. At every
-  100 points expect a banner "Hot! 100" and a yellow flash. Let Ember hit something and expect
-  "Game over. Your forge went cold." and "Press r to run again. q or Esc leaves.", and the button
-  `r  Run again`. Press `q` and expect the pane to close. While the game is open, ask Claude to edit
-  a source file: expect the same refusal as without the game. Press Esc and expect the pane to close
-  and the prompt to work. Resize to 80 columns and open it again: the picture must fit.
-- [ ] **The game feels right.** With the Buttons only (no click), expect a jump to start within a
-  fraction of a second of the key (measured here: about 40 ms, see `docs/mods-plan.md` 3.8a). A jump pressed
-  just before landing must fire on the landing. After one click on the game, Space and the Up arrow
-  must jump at once and the Down arrow must duck.
-- [ ] **The game offer.** Send a prompt that takes a while ("Write a 300 word essay about forges").
-  While Claude works, expect `8: Play while you wait` in the band (`8: Play` when the band is
-  narrow), "Play while you wait" in the Actions list of the pane, and "Press 8 to play while you
-  wait." at the start of the hint line under the prompt (terminal). Press `8` at the empty prompt and
-  expect the game pane with the keys, so `r` runs. When Claude stops, expect the offers
-  to go away. The toast is always "The game is open. Press r to run, w to jump, s to duck, q or Esc to
-  leave." Press `r` and `w` and expect no hint in the game area. Open it again and wait 4 seconds without a
-  key: expect the dim line "No keys yet? Press Ctrl+X, then Tab, to give the game the keys." and
-  expect it to go when you press a key. Set the plugin setting `game` to `command` and expect no offer anywhere, while
-  `/temper:temper play` still works. Set it to `off` and expect "The game is off. Set game to on in
-  /config."
-- [ ] **Skip needs a reason.** Press `9` ("Skip with a reason"). Dismiss the reason question without
-  an answer. Expect a toast that a skip needs a reason and no phase change.
-- [ ] **Commit gate.** Before Check passes, ask Claude to run `git commit -am wip`. Expect
-  `Temper: commit blocked. Check has not passed.` After Check passes, the same command
-  must be allowed.
-- [ ] **Review and Check.** Press `1` at each band. After Check passes, type
-  `/temper:temper report`. Expect the report, listing the phases, any override and every scope
-  decision with its reason. It is kept in the mod's plugin store, so expect no `.temper/report.md`
-  file.
+  `Temper: Plan stage.` Then answer the Plan gate with Continue to approve the plan.
+- [ ] **Build.** Expect the stage to write a failing test first. Ask Claude to edit a file
+  that is not in the plan (for example `README.md`). Expect a `Scope drift` question with
+  three choices: Add to plan, Revert, Allow once. Choose Allow once.
+  Expect the edit to go through once, and a second edit of the same file to ask again.
+- [ ] **The pane.** Type `/temper:temper pane`. Expect a pane with the stages, the status, the
+  criteria checklist and your decisions, and no button that decides. Type `/temper:temper pane`
+  again to close it.
+- [ ] **A skip needs a reason.** At a failed check choose "Override and continue" with no reason.
+  Expect the question `Override and continue. What is the reason?`; choose Cancel and expect the
+  gate again and no stage change.
+- [ ] **Commit gate.** Before Check passes, ask Claude to run `git commit -am wip`. Expect the native
+  hook to block it with the gates that are not passed. Ask for `git commit --no-verify -am wip`: expect a
+  `Temper:` refusal from the mod. A `git merge` of another branch is not refused (a known limit,
+  listed in [Trust](trust.md)).
+- [ ] **Review and Check.** Answer each gate. After Check passes, type `/temper:temper report`.
+  Expect the report, listing the stages, any skip and every decision with its reason. It is kept
+  in the mod's plugin store, so expect no `.temper/report.md` file.
 - [ ] **Forgery.** Ask Claude to write `.temper/gates.json` or to run
-  `scripts/temper override plan --reason ok`. Expect a refusal that says only the user can
-  approve.
+  `scripts/temper override plan --reason ok`. Expect a refusal that says only the user decides.
+
+## 4a. Grouped Build and the cases found in hands-on runs
+
+Each step below is a problem a real run hit once. Run them on a small project (a copy of a small
+Python repository is enough), with a feature that splits into at least two tasks.
+
+- [ ] **Blocking questions are buttons.** Start a run whose intent leaves a choice open (for
+  example "list N jokes", without saying what happens when N is larger than the list). Expect
+  an `AskUserQuestion` dialog with one question per Blocking question and its choices as
+  options, never a list of questions to answer by typing. Expect the answers under
+  `### Decisions` in `intent.md`.
+- [ ] **Cases in the plan.** After Plan, open `tasks.md`. Expect `**Cases:**` under every task
+  with at least 2 concrete cases (an input and its exact expected result).
+- [ ] **Tasks in their own worktrees.** During Build, expect the folders
+  `.claude/worktrees/temper-<name>-T<N>` while tasks run, tasks of one group running at the
+  same time, and one gate per group (not one per task). The bar lists the groups and their tasks.
+- [ ] **A pattern for the task agent.** Run `<clone>/scripts/temper task show <N>` while a
+  task runs. Expect a `--- PATTERN TEST (...)` block with an existing test of the project
+  (none when the project has no test of that kind).
+- [ ] **Change at a group gate.** At a group gate (a `Build group` question) choose Change and type
+  a small change. Expect only the named task to run again, and the group gate to come back.
+- [ ] **A parked group.** Ask a task agent to commit its own work (or commit in its worktree by
+  hand). Expect its task gate to fail, the group to park with the commit named, and two ways
+  out printed. Follow one and expect `group reopen` to be accepted.
+- [ ] **No false failures.** After Build, run `<clone>/scripts/temper group report`. Expect
+  every task with its attempts in plain words. A failed attempt must name its model and its
+  reason; an attempt with "no model given to task gate" means the orchestrator gated a task
+  before its agent ran: stop and report it.
+- [ ] **Tokens in the report.** Type `/temper:temper report`. Expect a Usage section with tokens
+  and time per stage and per model, and a total.
+- [ ] **A reused feature name.** Finish or clear a run, then start a new run with the same
+  feature name. Expect the Intent gate's Continue to go through and Plan's `state set complexity`
+  not to be refused.
+- [ ] **Model choice.** Set `build.grouped.task-model: claude-sonnet-5-5` and run once. Expect
+  the task agents and the report to name that model.
+
+## 4b. Every wait point, with the mod and without it
+
+The rule for every step below: you go on with an option of a dialog. You never type
+`/temper:temper` or a CLI command to go on, Claude never tells you to press a key or a button
+that decides, and an option you click is never refused. If any of that happens, stop and write
+down the step, the setup and the text you saw.
+
+Use a small Python project you can throw away (`<project>`), with pytest installed:
+
+```
+mkdir -p ~/temper-try/jokes && cd ~/temper-try/jokes && git init -q
+printf 'JOKES = ["a", "b", "c"]\n\ndef first():\n    return JOKES[0]\n' > jokes.py
+mkdir tests && printf 'from jokes import first\n\ndef test_first():\n    assert first() == "a"\n' > tests/test_jokes.py
+git add . && git commit -qm base
+```
+
+Run the steps twice, once per setup. The mode changes only what is drawn, so one mode is enough;
+section 5 checks the modes.
+
+| Setup | How to start it | First check |
+|---|---|---|
+| No mod | `npx -y @anthropic-ai/claude-code@2.1.259 --plugin-dir <clone>` (the mod is inert before 2.1.287) | The first reply line is `Temper enforcement is off here (no mods support); ...` |
+| Mod | `claude --plugin-dir <clone>` | The TEMPER bar above the prompt |
+
+Then once more with the mod and `/temper:temper enforcement off`: every click below works the
+same, nothing is refused, and the first reply line says enforcement is off. Turn it back on.
+
+Start with `/temper:temper "list N jokes, and say what happens when N is larger than the list"`.
+Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless it says otherwise.
+
+- [ ] **Blocking questions.** One dialog, one question per Blocking question, three choices at
+  most plus "Carry forward". Never a list of questions to answer by typing.
+- [ ] **Intent gate.** A dialog "Continue to Plan (Recommended)" / "Save for later" (Grill me,
+  Teach me where they fit). Choose Continue: Plan starts.
+- [ ] **Plan gate.** A dialog of four options at most, the rest behind "More options". Choose
+  Continue: Build (or Design, for a medium run with `phases.design: true`) starts.
+- [ ] **Arming autonomy.** Add `autonomy:` and `  enabled: true` to `.claude/temper.config` and
+  start a new run. At the plan gate: a dialog "Stage by stage (Recommended)" / "Autonomous: run
+  the rest unattended" / "Open HTML review" / "More options" (Save for later is there). Choose Autonomous: the run goes on without asking, and
+  nothing is refused. Remove the lines afterwards.
+- [ ] **Design gate** (a medium run with `phases.design: true`). On a failed design check: a dialog
+  "Loop back to Plan" / "Override and continue" / "Save for later". Choose Override and continue
+  and give a reason: Build starts, and `<clone>/scripts/temper report` lists the skip of design.
+- [ ] **A group gate.** A dialog, header `Build group`: Continue (Recommended) / Change / Stop.
+- [ ] **A parked group.** While a task runs, commit in its worktree by hand
+  (`git -C .claude/worktrees/temper-<name>-T<N> commit -am x`). A dialog "Take the commits out
+  and run the task again (Recommended)" / "Keep the agent's commits" / "Save for later". Choose
+  Keep and pick a reason: the group reopens, nothing is refused.
+- [ ] **Build completion gate on FAIL.** A dialog "Run Build again (Recommended)" / "Loop back to
+  Plan" / "Override and continue" / "Save for later".
+- [ ] **Review with open findings.** A dialog "Loop back to Build (Recommended)" / "Accept a
+  finding" / "Override and continue" / "More options" (Architecture Depth Review, Save for later). Choose Accept a finding, pick the
+  finding and a reason: the review check runs again. Choose Loop back to Build with a reason:
+  Build runs again, its writes are not refused, and the bar shows Review and Check as to come.
+- [ ] **The loop budget is spent.** Set `loops:` and `  max-per-type: 1` in
+  `.claude/temper.config` and loop back from Review twice. The second time Claude says the
+  budget is spent and asks again with "Override and continue" / "Save for later". Override with
+  a reason: Check starts.
+- [ ] **Check FAIL.** A dialog "Loop back to Build" / "Override and continue" / "Save for later".
+- [ ] **Check PASS.** One dialog "Commit (Recommended)" / "Save for later" (and "Review config
+  suggestions" when Check wrote them), never two dialogs in a row.
+- [ ] **Commit gate FAIL.** Before you choose Commit, run `touch .temper/specs/<name>/design.md`
+  in another terminal (the commit gate then wants a design check). A dialog "Override and commit"
+  / "Save for later". Choose it and give a reason: the commit is made. Delete the empty
+  `design.md` afterwards.
+- [ ] **An autonomous park.** In an armed run, make Review fail twice (the loop budget). Expect
+  the park report, then the dialog of the gate it parked at. Override with a reason: the run goes
+  on, nothing is refused.
+- [ ] **Save for later, then go on.** At any gate choose Save for later. With the mod, the bar says
+  the stage is saved for later, and a write outside the stage is still refused. Start a new session
+  and run `/temper:temper` (or press Go on): the gate dialog comes back, and Continue goes through.
+- [ ] **Start over.** With a run saved, `/temper:temper "a different feature"`. A `Temper resume`
+  dialog with "Start over". Choose it: the new run starts at Intent.
+- [ ] **Scope drift.** Ask Claude in Build to edit `README.md`. A dialog, header `Scope drift`,
+  with Add to plan / Revert / Allow once.
+- [ ] **A fix run.** `/temper:fix "first() fails on an empty list"`. With the mod, in every mode:
+  no bar for the fix run, `/temper:temper status` says the mod stands aside, nothing is refused,
+  and every gate is a dialog (Proceed to Fix, Continue to Review, the review FAIL options,
+  Commit). Without the mod: the same dialogs.
+- [ ] **A stage command.** After a commit cleared the run, run `/temper:build` on a spec with an
+  approved plan. Expect it to start `/temper` at Build: the same gates as above, and with the
+  mod nothing else is refused.
 
 ## 5. Modes
 
-- [ ] `/temper:temper mode minimal`. Expect the reply `Temper mode: minimal`, the bar with no
-  action buttons, no toasts and no pane. Denials still apply.
+- [ ] `/temper:temper mode minimal`. Expect the reply `Temper mode: minimal`, the stage chips
+  only, no toasts and no pane. Denials still apply, and the gate is the same dialog.
 - [ ] `/temper:temper mode off`. Expect the bar to disappear. Ask for a write in Plan and expect
-  the refusal to still appear.
-- [ ] `/temper:temper mode full`. Expect the bar and the buttons back, with no restart.
+  the refusal to still appear, and the gate to be the same dialog.
+- [ ] `/temper:temper mode full`. Expect the full bar back, with no restart.
 - [ ] `/temper:temper enforcement off`, then try a write in Plan. Expect the write to go through
   and a toast `Temper enforcement: off`. Run `/temper:temper enforcement on` to restore it.
 - [ ] If you can, set `pluginConfigs` for Temper in a managed settings file so that
@@ -164,10 +234,9 @@ Work through one run. For each phase, check the refusal and the key.
 
 - [ ] **`/compact` keeps the marker.** Type `/compact`. After it finishes, ask
   `Does your system prompt contain a Temper enforcement line?` Expect `Temper enforcement: active`
-  and the same phase.
-- [ ] **`/clear` rebuilds the state.** Type `/clear`, then `/temper:temper status`. Expect the same
-  phase as before, rebuilt from the decisions the mod keeps in its plugin store and the CLI's files
-  in `.temper/`.
+  and the same stage.
+- [ ] **`/clear` keeps the run.** Type `/clear`, then `/temper:temper status`. Expect the same
+  stage as before, read from the CLI's files in `.temper/`.
 - [ ] **A narrow terminal.** Resize to 80 columns. Expect the bar to wrap or truncate
   without breaking the prompt, and the pane to wait instead of squeezing in.
 - [ ] **A wide terminal.** Resize to 160 columns in fullscreen. Expect the pane to dock beside
@@ -206,7 +275,7 @@ desktop app depends on your installation, so treat the first step as an experime
   (for example by adding `<clone>` as a local marketplace through the plugin settings, with
   the installed Temper disabled as in step 1). If your build has no way to do this, mark
   the step skipped and note it.
-- [ ] Start a run and expect the same phase bar and the same Plan denial as in the terminal.
+- [ ] Start a run and expect the same stage bar and the same Plan denial as in the terminal.
   Open the pane and expect it to draw. Elements that only the terminal has are not used by
   the mod, so nothing should be missing.
 - [ ] Switch to a WSL session if you use one. Plugins are unavailable there, so expect no

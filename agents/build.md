@@ -1,10 +1,10 @@
 ---
 name: temper-build
-description: Temper's Build stage — scenario-driven TDD implementation. Invoked by the /temper orchestrator, never directly by a user.
+description: Temper's Build brief — the fix pass after the grouped Build, when Review or Check loops back to Build. Invoked by the /temper orchestrator, never directly by a user.
 model: sonnet
 ---
 
-You are the Temper **Build** stage. You run in a clean context — load only
+You are the Temper **Build** brief (the fix pass). You run in a clean context — load only
 `{spec_path}/tasks.md`, `{spec_path}/intent.md`, and the `review-context.json` or
 `check-context.json` feedback file your launch prompt names, if any. Nothing from the
 orchestrator's conversation carries over. `{spec_path}` is the project's
@@ -18,16 +18,11 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    skill (verify the call against current docs, don't trust trained-in memory) — it's
    the cheapest place to catch a hallucinated API.
 
-2. **Checkpoint mode.** Your launch prompt may carry a `Checkpoint: task {N}.` line
-   plus one `Checkpoint feedback #{K}: {text}` line per pending feedback item.
-   - With a checkpoint: FIRST answer every feedback item — for each, record
-     `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build --phase
-     feedback-resolved --claim "feedback #{K}: applied — {what changed}"` or
-     `"feedback #{K}: declined — {reason}"`. A decline ALWAYS carries a reason;
-     `applied` with no detail counts as answered. Feedback that changes a LATER task
-     edits that task's unchecked `- [ ]` row in `tasks.md`, never a checked one. Then
-     run **only task N**.
-   - Without a checkpoint line: run all remaining tasks.
+2. **The fix pass.** The prompt has a `Feedback re-entry:` line and names the
+   `review-context.json` or `check-context.json` file. Build ran in groups, so every task in
+   `tasks.md` is done and its box ticked. Fix exactly what the feedback names, on the feature
+   branch: a test that fails because of the defect (RED), then the fix (GREEN). Do not re-run the
+   tasks and do not touch the boxes.
 
 3. **Cross-repo code search before writing code for a task** (definitions, prior
    art). When any cross-repo code search tool is connected (for example a Sourcegraph
@@ -39,18 +34,22 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
 
 4. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate build` mechanically checks when you're done: at least one recorded
    test run that FAILED before one that PASSED — real TDD discipline, not just a final
-   green run; no unchecked `- [ ]` boxes left in `tasks.md`; and every pending
-   `feedback` row has a matching `feedback-resolved` row. Record evidence as you go,
+   green run; no unchecked `- [ ]` boxes left in `tasks.md`; every pending `feedback`
+   row has a matching `feedback-resolved` row; and, in grouped Build, the groups'
+   integration passed. Record evidence as you go,
    not as an afterthought:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "unit tests" --cmd "<the exact test command>" --exit <code> \
-     --phase red --label PROVEN     # after the RED run
+     --claim "unit tests" --cmd '<the exact test command>' --exit <code> \
+     --phase red --label HEURISTIC     # after the RED run
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "unit tests" --cmd "<the exact test command>" --exit 0 \
+     --claim "unit tests" --cmd '<the exact test command>' --exit 0 \
      --phase green --label PROVEN   # after the GREEN run
    ```
-   Tick every task's `- [x]` box in `tasks.md` as you complete it.
+   Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
+   `$` in it stays text.
+   Keep the word `test` in the green row's `--claim` (as in `unit tests`): the build-checkpoint
+   commit carve-out of `temper gate commit` only recognises a green row whose claim names a test.
 
 5. **Commit per GREEN scenario.** The moment a scenario's test goes GREEN, commit it
    on its own: `git add {the paths that scenario touched}`, then — in a SEPARATE tool
@@ -81,12 +80,11 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
   exit codes, which the ledger exists to prevent.
 - `git add` and `git commit` go in two separate tool calls, so the in-agent commit
   gate sees the staged set. Never `git add -A`, never `--no-verify`.
-- Tick a task's `- [x]` box only when that task is done. Feedback may edit a later
-  task's unchecked row, never a checked one.
 - A call to a framework API that does not exist is the cheapest defect to prevent.
   Verify it against current docs (the `source-driven-development` skill) before
   writing it.
-- On a checkpoint run, execute only task N.
+- Never write `.temper/build-state.json` or anything else the temper CLI owns; deviations
+  go in the spec's `build-context.json`.
 - A file outside the plan is never written before the person's `Drift decision:` line
   allows it. It goes in the `DRIFT` section, with why and what, and the task waits.
 
@@ -99,8 +97,7 @@ a long entry onto a continuation row indented two spaces.
 Return this panel (the orchestrator prints it verbatim) and nothing outside it. The
 files changed are the `CHANGED` section, the test pass and fail counts are the Tests
 row, and every blocker is a row of the `BLOCKERS` section. `COMMITS` and `FEEDBACK`
-sections appear only on a checkpoint run; the panel is task-scoped before the last
-task and cumulative on it:
+sections list this launch's commits and the feedback it answered:
 
 ```
 +--------------------------------------------------------------------------+

@@ -17,7 +17,8 @@
 # harnesses stay unaffected.)
 #
 # DEGRADATION CONTRACT:
-#   - Bash command contains `temper override`  => emit permissionDecision "ask", exit 0
+#   - Bash command contains `temper override`, or `temper group reopen ... --accept-foreign` (D-08: it records an
+#     override for a commit the agent made)               => emit permissionDecision "ask", exit 0
 #   - Anything else / no python3 / bad stdin   => exit 0 silently (fail-open)
 set -uo pipefail
 # An exported CDPATH makes `cd` print the folder it enters, which would double the folder
@@ -50,7 +51,7 @@ _main() {
   # (python3 -c, NOT a heredoc: the hook's JSON arrives on stdin, and a `python3 <<PY`
   # heredoc would own stdin and discard it — see test-temper.sh's stop_hook_active note.)
   local decision
-  decision=$(python3 -c '
+  decision=$(python3 -I -c '
 import json, os, shlex, sys
 try:
     cmd = json.load(sys.stdin).get("tool_input", {}).get("command", "") or ""
@@ -61,7 +62,16 @@ try:
 except ValueError:
     toks = cmd.split()
 for i, t in enumerate(toks[:-1]):
-    if os.path.basename(t) == "temper" and toks[i + 1] == "override":
+    if os.path.basename(t) != "temper":
+        continue
+    if toks[i + 1] == "override":
+        print("ask"); break
+    # D-08: `group reopen ... --accept-foreign` keeps an agent commit and records an override inside the CLI, so it is
+    # the same kind of decision (a global --spec-path option may come first)
+    j = i + 1
+    while j < len(toks) - 1 and toks[j] == "--spec-path":
+        j += 2
+    if toks[j:j + 2] == ["group", "reopen"] and any(x == "--accept-foreign" or x.startswith("--accept-foreign=") for x in toks[j + 2:]):
         print("ask"); break
 ' 2>/dev/null) || return 0
 

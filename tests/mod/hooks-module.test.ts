@@ -15,8 +15,10 @@ describe('the hooks module', () => {
 
   test('register adds exactly the hooks the README lists, and nothing else', () => {
     const events = new Set<string>()
+    // The engine's `on` returns the registration, which takes one `.catch`.
     const on = ((event: string) => {
       events.add(event)
+      return { catch: () => undefined }
     }) as unknown as On
     register(on, {} as Options)
     expect([...events].sort()).toEqual(
@@ -30,7 +32,6 @@ describe('the hooks module', () => {
         'turn.complete',
         'turn.step',
         'ui.close',
-        'ui.message',
         'ui.render',
       ].sort(),
     )

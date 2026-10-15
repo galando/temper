@@ -222,7 +222,8 @@ def status_report(intent_path, ev_dir):
             if names and all(h and supported_pass(h[2]) for h in hits):
                 status = "passed"
                 evidence = ["%s#%d scenario %s" % (h[0], h[1], n) for n, h in zip(names, hits)]
-        out.append({"id": c["id"], "priority": c["priority"], "status": status,
+        text = re.sub(r"^AC-\d+\s*\[(?:required|optional)\]:\s*", "", c.get("first_line") or "").strip()
+        out.append({"id": c["id"], "priority": c["priority"], "status": status, "text": text,
                     "evidence": [e.strip() for e in evidence]})
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return {"criteria": out, "ts": ts}

@@ -155,6 +155,7 @@ assert_eq "override is recorded and visible in report" "yes" "$("$TEMPER" report
 # --- state: illegal transitions rejected, loop budget enforced ---
 setup
 assert_exit "state advance rejects an unknown stage name" 1 "$TEMPER" state advance not_a_real_stage build
+_at build build
 assert_exit "state advance accepts a known stage" 0 "$TEMPER" state advance build_complete review
 assert_exit "state loop allows iterations up to max-per-type" 0 "$TEMPER" state loop review build --reason r1
 assert_exit "state loop allows the second iteration" 0 "$TEMPER" state loop review build --reason r2
@@ -166,11 +167,27 @@ setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
+_at review   # a loop goes back from the stage the run is at
 "$TEMPER" state loop review build --reason r1 >/dev/null
 assert_eq "a temper-run loop keeps the plan evidence above the target" "1" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/plan.json"))))')"
 assert_eq "a temper-run loop clears build evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/build.json"))))')"
 assert_eq "a temper-run loop clears review evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/review.json"))))')"
 assert_eq "a temper-run loop clears check evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/check.json"))))')"
+# P1: the loop sends the run back to its target stage, so the build-checkpoint commit carve-out applies
+assert_eq "state loop review build sets next_stage to build" "build" "$("$TEMPER" state get next_stage)"
+# R6: a loop target must be a known stage; a typo writes no next_stage
+assert_exit "state loop to an unknown stage is refused" 1 "$TEMPER" state loop review bogus --reason typo
+assert_eq "state loop to an unknown stage leaves next_stage alone" "build" "$("$TEMPER" state get next_stage)"
+setup
+"$TEMPER" state set branch "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" >/dev/null
+_at check
+"$TEMPER" gate intent >/dev/null; "$TEMPER" gate plan >/dev/null
+echo 'fix' > loopfix.js; git add loopfix.js >/dev/null 2>&1
+"$TEMPER" state loop check build --reason "review found a defect" >/dev/null
+"$TEMPER" evidence add --stage build --claim "fix tests" --phase green --exit 0 --cmd pytest >/dev/null
+assert_eq "state loop check build: next_stage is build" "build" "$("$TEMPER" state get next_stage)"
+assert_eq "after a loop back to build, a fix commit rides the checkpoint carve-out" "yes" \
+  "$("$TEMPER" gate commit 2>&1 | grep -q 'build checkpoint commit' && echo yes || echo no)"
 
 # --- state loop: a /temper:fix run clears build, review and check on a loop back to fix (woningscout #984) ---
 setup
@@ -180,6 +197,7 @@ setup
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 assert_exit "a fix run's review gate FAILs on the open finding" 1 "$TEMPER" gate review
+_at review
 assert_exit "state loop review fix is accepted in a fix run" 0 "$TEMPER" state loop review fix --reason "fix the injection"
 assert_eq "a fix-run loop clears the build evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/build.json"))))')"
 assert_eq "a fix-run loop clears the review evidence" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/review.json"))))')"
@@ -187,6 +205,7 @@ assert_eq "a fix-run loop clears the check evidence" "0" "$(python3 -c 'import j
 "$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 assert_exit "the review gate can pass again after the loop" 0 "$TEMPER" gate review
 "$TEMPER" evidence add --stage review --claim "kept" --severity critical >/dev/null
+_at check
 "$TEMPER" state loop check fix --reason "second loop" >/dev/null
 assert_eq "a fix-run loop back to fix from check also clears review" "0" "$(python3 -c 'import json; print(len(json.load(open(".temper/evidence/review.json"))))')"
 
@@ -208,6 +227,7 @@ assert_eq "state advance with one arg prints a usage message, not an unbound-var
 # --- state advance: stage vocabulary is scoped per command (temper vs fix) ---
 setup
 assert_exit "a /temper run rejects fix-only stage names (rca_complete)" 1 "$TEMPER" state advance rca_complete design
+_at plan plan; "$TEMPER" state set complexity medium >/dev/null
 assert_exit "a /temper run accepts its own stage names" 0 "$TEMPER" state advance plan_complete design
 
 setup
@@ -369,6 +389,7 @@ setup
 "$TEMPER" evidence add --stage check --scenario "first" --claim "scenario: first" --exit 0 --cmd "pytest -k first" >/dev/null
 "$TEMPER" evidence add --stage check --scenario "second" --claim "scenario: second" --exit 0 --cmd "pytest -k second" >/dev/null
 "$TEMPER" gate check >/dev/null
+_at check
 "$TEMPER" state loop check build --reason "regression found downstream" >/dev/null
 assert_eq "state loop check->build auto-clears check evidence (check is downstream of build)" "[]" "$(cat .temper/evidence/check.json | tr -d '[:space:]')"
 assert_exit "check gate FAILs closed again after the auto-clear (stale scenario coverage cannot mask a regression)" 1 "$TEMPER" gate check
@@ -594,29 +615,34 @@ setup
 MARKER="$REPO_ROOT/scripts/guards/stage-marker.sh"
 VERIFY="$REPO_ROOT/scripts/guards/verify-stage-gate.sh"
 
-echo '{"prompt": "/temper:plan add a thing"}' | bash "$MARKER"
-assert_eq "stage-marker records the owed stage" "plan" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['stage'])")"
+echo '{"prompt": "/temper:intent add a thing"}' | bash "$MARKER"
+assert_eq "stage-marker records the owed stage" "intent" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['stage'])")"
 
 rm -f .temper/pending-stage.json
-echo '{"prompt": "please run /temper:plan for me"}' | bash "$MARKER"
+echo '{"prompt": "please run /temper:intent for me"}' | bash "$MARKER"
 assert_eq "stage-marker ignores a mid-sentence mention" "absent" "$([[ -f .temper/pending-stage.json ]] && echo created || echo absent)"
 echo '{"prompt": "/temper add login"}' | bash "$MARKER"
 assert_eq "stage-marker ignores the unified /temper command" "absent" "$([[ -f .temper/pending-stage.json ]] && echo created || echo absent)"
+# The stage commands are doors into /temper (ADR 0012): a session may end at any gate, so none is marked.
+for door in plan design build review check; do
+  echo "{\"prompt\": \"/temper:$door add a thing\"}" | bash "$MARKER"
+  assert_eq "stage-marker does not mark the /temper:$door door" "absent" "$([[ -f .temper/pending-stage.json ]] && echo created || echo absent)"
+done
 echo 'not json at all' | bash "$MARKER"
 assert_exit "stage-marker fails open on garbage stdin" 0 bash -c "echo garbage | bash '$MARKER'"
 
 assert_exit "verify-stage-gate passes with no marker" 0 bash "$VERIFY"
 
-echo '{"prompt": "/temper:plan x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
 assert_exit "verify-stage-gate BLOCKS when no verdict exists" 2 bash "$VERIFY"
 assert_eq "block is counted in the marker" "1" "$(python3 -c "import json; print(json.load(open('.temper/pending-stage.json'))['blocks'])")"
 
-echo '{"plan": {"verdict": "FAIL"}}' > .temper/gates.json
+echo '{"intent": {"verdict": "FAIL"}}' > .temper/gates.json
 assert_exit "a FAIL verdict satisfies the guarantee (gate ran)" 0 bash "$VERIFY"
 assert_eq "marker cleared once the verdict exists" "absent" "$([[ -f .temper/pending-stage.json ]] && echo present || echo absent)"
 
 rm -f .temper/gates.json
-echo '{"prompt": "/temper:build x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
 bash "$VERIFY" >/dev/null 2>&1; bash "$VERIFY" >/dev/null 2>&1
 assert_exit "loop guard fails open on the third stop attempt" 0 bash "$VERIFY"
 assert_eq "loop-guard fail-open clears the marker" "absent" "$([[ -f .temper/pending-stage.json ]] && echo present || echo absent)"
@@ -628,23 +654,23 @@ assert_exit "corrupt marker fails open" 0 bash "$VERIFY"
 # rather than loop. (Regression: the harness JSON must travel as argv; piping it into
 # `python3 - <<heredoc` silently discards it, since the heredoc owns stdin.)
 rm -f .temper/pending-stage.json .temper/gates.json
-echo '{"prompt": "/temper:check x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
 assert_exit "stop_hook_active with a stuck counter fails open" 0 \
   bash -c "echo '{\"stop_hook_active\": true}' | bash '$VERIFY'"
 rm -f .temper/pending-stage.json
-echo '{"prompt": "/temper:check x"}' | bash "$MARKER"
+echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
 assert_exit "stop_hook_active=false still blocks normally" 2 \
   bash -c "echo '{\"stop_hook_active\": false}' | bash '$VERIFY'"
 
 # Time-scoping: a verdict from BEFORE the marker (a previous run's leftovers) must not
 # satisfy this session's debt; one recorded after it must.
 rm -f .temper/gates.json .temper/pending-stage.json
-echo '{"plan": {"verdict": "PASS", "ts": "2020-01-01T00:00:00Z"}}' > .temper/gates.json
-echo '{"prompt": "/temper:plan a new feature"}' | bash "$MARKER"
+echo '{"intent": {"verdict": "PASS", "ts": "2020-01-01T00:00:00Z"}}' > .temper/gates.json
+echo '{"prompt": "/temper:intent a new feature"}' | bash "$MARKER"
 assert_exit "a pre-marker verdict does NOT pay this session's debt" 2 bash "$VERIFY"
 python3 -c "
 import json; g=json.load(open('.temper/gates.json'))
-g['plan']['ts']='2099-01-01T00:00:00Z'; json.dump(g, open('.temper/gates.json','w'))"
+g['intent']['ts']='2099-01-01T00:00:00Z'; json.dump(g, open('.temper/gates.json','w'))"
 assert_exit "a post-marker verdict does" 0 bash "$VERIFY"
 
 # Backward compat: missing timestamps degrade to the any-verdict check, never a block.
@@ -655,9 +681,9 @@ assert_exit "verdict without ts + old marker format still clears" 0 bash "$VERIF
 
 # End-to-end with the real CLI: marker -> real `temper gate plan` FAIL -> stop allowed.
 rm -f .temper/gates.json .temper/pending-stage.json
-echo '{"prompt": "/temper:plan x"}' | bash "$MARKER"
-"$TEMPER" gate plan --spec-path .temper/specs/empty >/dev/null 2>&1 || true
-assert_exit "real gate FAIL verdict unblocks the stop" 0 bash "$VERIFY"
+echo '{"prompt": "/temper:intent x"}' | bash "$MARKER"
+"$TEMPER" gate intent --spec-path .temper/specs/empty >/dev/null 2>&1 || true
+assert_exit "a real gate verdict unblocks the stop" 0 bash "$VERIFY"
 
 # --- temper model: config override > the stage brief's frontmatter, resolved in bash ---
 setup
@@ -665,8 +691,8 @@ setup
 assert_eq "model plan defaults to agents/plan.md frontmatter" \
   "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); print; exit}' "$REPO_ROOT/agents/plan.md")" \
   "$("$TEMPER" model plan)"
-assert_eq "model --all emits one stage=model line per agent stage" "8" "$("$TEMPER" model --all | grep -c '^[a-z]*=')"
-assert_eq "model --all covers every agent stage (incl. fix-command stages)" "intent plan design build review check rca fix" \
+assert_eq "model --all emits one stage=model line per agent stage, plus the task agent's two" "10" "$("$TEMPER" model --all | grep -c '^[a-z-]*=')"
+assert_eq "model --all covers every agent stage (incl. fix-command stages) and the task models" "intent plan design build review check rca fix task task-escalation" \
   "$("$TEMPER" model --all | cut -d= -f1 | tr '\n' ' ' | sed 's/ $//')"
 assert_eq "model rca defaults to agents/rca.md frontmatter" \
   "$(awk '/^---[[:space:]]*$/{n++; if(n==2) exit; next} n==1 && /^model:/{sub(/^model:[[:space:]]*/,""); print; exit}' "$REPO_ROOT/agents/rca.md")" \
@@ -976,6 +1002,7 @@ assert_exit "commit gate PASSes once the intent gate ran" 0 "$TEMPER" gate commi
 
 # intent_complete is a valid /temper state transition; the fix sequence rejects it.
 setup
+_pass intent
 assert_exit "a /temper run accepts intent_complete" 0 "$TEMPER" state advance intent_complete plan
 assert_eq "state init points a temper run at the intent stage first" "intent" \
   "$(rm -f .temper/build-state.json; "$TEMPER" state init demo2 --command temper >/dev/null; "$TEMPER" state get next_stage)"

@@ -9,11 +9,9 @@ export function hintProps(
   props: RenderPropsOf['PromptHint'],
   view: View,
   surface: string,
-  // The game is offered (setting `on`). The offer shows only while Claude works.
-  offerGame = false,
 ): RenderPropsOf['PromptHint'] | null {
   if (surface !== 'terminal') return null
   const tail = hintTail(view)
   if (tail === null) return null
-  return { ...props, tail: offerGame && props.isWorking ? `Press 8 to play while you wait. ${tail}` : tail }
+  return { ...props, tail }
 }

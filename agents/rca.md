@@ -23,7 +23,7 @@ carries over except the bug description in your launch prompt.
    results. Fall back to grep-based tracing if unavailable — `[HEURISTIC]`.
 4. The CLI has no RCA gate. The RCA gate is human judgment on your findings.
    Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
-   orchestrator; it owns the human-facing gate and persists `rca.md` on Continue.
+   orchestrator; it saves `rca.md` when you return and asks the person the RCA question.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
 - Read `.temper/lessons.md` first when it exists, and skip silently when it does not.
@@ -37,7 +37,8 @@ carries over except the bug description in your launch prompt.
 the right border), and it is the only box you print. Fact rows at the top, then titled sections
 (`+--- NAME (N) ---+`) inside the border; one row per item, no subset, no "and N
 more"; omit an empty section including its divider — never a row saying "none"; wrap
-a long entry onto a continuation row indented two spaces.
+a long entry, a fact row (CAUSE, FIX) too, onto continuation rows indented two spaces.
+Never cut a row short: the panel is saved as `rca.md`, so a word cut off is lost to Fix.
 
 Return this panel (the orchestrator prints it verbatim and saves it as `rca.md`) and
 nothing outside it. The panel holds everything `rca.md` needs: the root cause (the

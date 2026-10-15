@@ -1,5 +1,5 @@
-// One look for everything Temper draws inside a card with its own background (the pane and the
-// game). The engine frames a pane with its own colour, which follows Claude Code's theme and not the
+// One look for everything Temper draws inside a card with its own background (the pane). The engine
+// frames a pane with its own colour, which follows Claude Code's theme and not the
 // terminal's. Text with no colour of its own takes the terminal's foreground, so on a light terminal
 // it is dark on a dark pane. So the card sets an explicit background, and every text node inside it
 // sets an explicit colour with a contrast of at least 4.5 to 1 against that background. It then looks

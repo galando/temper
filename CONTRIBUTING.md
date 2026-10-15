@@ -37,7 +37,7 @@ temper/
 ├── reference/               # Per-stage methodology docs (loaded on demand)
 ├── skills/                  # Skill definitions (temper-core, grill-me, ...)
 ├── packs/                   # Rule packs, stack files, guardrails pack
-├── scripts/                 # temper CLI (the deterministic spine), guards/, tests/
+├── scripts/                 # temper CLI (the deterministic spine), flow.py, guards/, selftest/
 ├── templates/               # Artifact templates (intent/plan/design/config)
 ├── examples/                # Company packs, CI workflow templates, an example gate
 ├── docs/                    # GitHub Pages documentation
@@ -86,8 +86,9 @@ with TypeScript 5.6) and `bash scripts/check-mod-calls.sh`.
 
 ### Add a New Command
 
-1. Create the command's stub in `commands/`, named after the command (~300B)
-2. Create its full docs in `reference/`, under the same name
+1. Create the command in `commands/`, named after the command. A stage command is a door into
+   `/temper` (about 900 bytes, like `commands/plan.md`); what comes next belongs in `scripts/flow.py`
+2. Put long methodology in `reference/` and a stage agent's brief in `agents/`
 3. Update `.claude-plugin/plugin.json`
 4. Update the commands table in README.md and the command's section in `docs/commands.md`
 
@@ -101,13 +102,14 @@ with TypeScript 5.6) and `bash scripts/check-mod-calls.sh`.
 
 ### Context Budget
 
-Keep always-loaded content minimal:
-| File | Target Size |
+Keep always-loaded content small. Sizes in 9.7.0, as a guide:
+| File | Size |
 |------|-------------|
-| CLAUDE.md | ~200B |
-| SKILL.md | ~1KB |
-| Command stubs | ~300B each |
-| Reference docs | Can be larger (loaded on-demand) |
+| `.claude/CLAUDE.md` | about 4.5 KB |
+| `skills/temper-core/SKILL.md` | about 6.4 KB |
+| A stage door (`commands/plan.md` and the like) | about 900 bytes each |
+| `commands/temper.md` (read on every run) | about 10.5 KB |
+| Reference docs | Can be larger (loaded on demand) |
 
 ### Code Style
 

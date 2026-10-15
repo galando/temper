@@ -2,7 +2,7 @@
   "name": "temper",
   "displayName": "Temper",
   "description": "Claude cannot write code before you approve the intent. Gated plan, TDD, review and check for AI written code, with a phase bar in Claude Code.",
-  "version": "9.6.8",
+  "version": "9.7.0",
   "author": {
     "name": "galando",
     "url": "https://github.com/galando"
@@ -40,6 +40,7 @@
     "./agents/plan.md",
     "./agents/design.md",
     "./agents/build.md",
+    "./agents/build-task.md",
     "./agents/review.md",
     "./agents/check.md",
     "./agents/rca.md",
@@ -57,22 +58,15 @@
     "uiMode": {
       "type": "string",
       "title": "Temper UI mode",
-      "description": "How much Temper draws: full, minimal or off. Denials and slash subcommands work in every mode.",
+      "description": "How much Temper draws: full, minimal or off. The gate questions, the denials and the subcommands are the same in every mode.",
       "default": "full",
       "sensitive": false
     },
     "enforcement": {
       "type": "string",
       "title": "Temper enforcement",
-      "description": "on refuses out-of-phase writes and early commits; off keeps the UI only. Values: on or off.",
+      "description": "on refuses writes outside the stage, --no-verify, a changed hooks path, and a step only the person may take without their answer; off keeps the drawing only. Values: on or off.",
       "default": "on",
-      "sensitive": false
-    },
-    "fixMaxLoops": {
-      "type": "string",
-      "title": "Fix loop limit",
-      "description": "Failed Check to Fix loops before Temper stops and offers re-plan, override or hand over.",
-      "default": "3",
       "sensitive": false
     },
     "prAttribution": {
@@ -94,13 +88,6 @@
       "title": "Reviewer model",
       "description": "Optional model for the Temper review agent. Empty means no change.",
       "default": "",
-      "sensitive": false
-    },
-    "game": {
-      "type": "string",
-      "title": "Game",
-      "description": "Temper Run game. on offers it while Claude works (press 8) and answers /temper:temper play. command answers the command only and offers nothing. off hides it all. Off also reads false, no, 0, disabled and none. On also reads true, yes and 1. Any other value is on.",
-      "default": "on",
       "sensitive": false
     }
   }

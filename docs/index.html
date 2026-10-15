@@ -32,7 +32,7 @@
     "license": "https://opensource.org/licenses/MIT",
     "author": { "@type": "Person", "name": "Gal Naor", "url": "https://github.com/galando" },
     "programmingLanguage": "Markdown",
-    "version": "9.6.8"
+    "version": "9.7.0"
   }
   </script>
 
@@ -807,14 +807,14 @@
     <div class="hero-grid">
       <div class="hero-content">
         <h1>Your AI writes fast.<br><em>Temper makes it last.</em></h1>
-        <p>An intent-gated SDLC for AI-generated code. Every gate verdict is computed by a small auditable CLI from an evidence ledger &mdash; never asserted by a model &mdash; and a red gate physically blocks <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code>.</p>
+        <p>An intent-gated SDLC for AI-generated code. Every gate verdict is computed by a small auditable CLI from an evidence ledger, never asserted by a model, and a red gate physically blocks <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">git commit</code>.</p>
         <div class="hero-actions">
           <a href="#install" class="btn btn-primary">Install &rarr;</a>
           <a href="https://github.com/galando/temper" class="btn btn-secondary" target="_blank">View on GitHub</a>
         </div>
       </div>
       <div class="hero-image">
-        <img src="https://raw.githubusercontent.com/galando/temper/c4b892bc6081ba77db0744de49410c79a1db93d2/docs/assets/mode-full-dark.png" alt="Temper phase bar in Claude Code, showing the current phase and numbered actions" style="width: 100%; border-radius: 6px; border: 1px solid var(--border);">
+        <img src="https://raw.githubusercontent.com/galando/temper/c4b892bc6081ba77db0744de49410c79a1db93d2/docs/assets/mode-full-dark.png" alt="The Temper stage bar in Claude Code as of 9.6.8, showing the current stage" style="width: 100%; border-radius: 6px; border: 1px solid var(--border);">
       </div>
     </div>
   </header>
@@ -834,9 +834,9 @@
 
   <section id="video">
     <div class="section-label">Watch</div>
-    <h2 class="section-title">Temper in 26 seconds</h2>
-    <p class="section-desc">The intent comes first. Then one loop with a human gate at every stage, and every gate computed from evidence, never from the model&rsquo;s word.</p>
-    <video controls preload="metadata" playsinline poster="https://raw.githubusercontent.com/galando/temper/07228492dbed8e80acf7676c592a681ffa54ba1d/docs/assets/temper-sdlc.jpg" src="media/temper-sdlc.mp4" aria-label="Temper in 26 seconds: the intent comes first, then one loop with a computed gate at every stage" style="width: 100%; aspect-ratio: 16 / 9; display: block; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 2rem; background: #000;"></video>
+    <h2 class="section-title">Temper in 38 seconds</h2>
+    <p class="section-desc">The intent comes first. Then one loop with a human gate at every stage, and every gate computed from evidence, never from the model&rsquo;s word. Build gives each task to a small Haiku agent, and the run ends with a report of time, tokens and cost.</p>
+    <video controls preload="metadata" playsinline poster="https://raw.githubusercontent.com/galando/temper/93501d30438d8295448af583bb58a65fa384c259/docs/assets/temper-sdlc.jpg" src="media/temper-sdlc.mp4" aria-label="Temper in 38 seconds, recorded on 9.7.0: the intent comes first, then one loop with a computed gate at every stage, Build in groups of Haiku agents and the report at the end" style="width: 100%; aspect-ratio: 16 / 9; display: block; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 2rem; background: #000;"></video>
   </section>
 
   <section id="loop">
@@ -875,9 +875,9 @@
   <section id="mod">
     <div class="section-label">The Mod</div>
     <h2 class="section-title">Claude cannot write code before you approve the intent</h2>
-    <p class="section-desc">On Claude Code 2.1.287 or later, Temper also draws a phase bar and enforces every phase at the tool layer. Older versions load the plugin as before.</p>
+    <p class="section-desc">On Claude Code 2.1.287 or later, Temper also draws a stage bar and the run&rsquo;s pane, and enforces every stage at the tool layer. Older versions load the plugin as before.</p>
 
-    <video controls preload="metadata" playsinline poster="https://raw.githubusercontent.com/galando/temper/07228492dbed8e80acf7676c592a681ffa54ba1d/docs/assets/temper-mod.jpg" src="media/temper-mod.mp4" aria-label="The Temper mod in 31 seconds: the phase bar, refused writes and commits, the Scope drift question, the modes and the game" style="width: 100%; aspect-ratio: 16 / 9; display: block; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 2rem; background: #000;"></video>
+    <video controls preload="metadata" playsinline poster="https://raw.githubusercontent.com/galando/temper/93501d30438d8295448af583bb58a65fa384c259/docs/assets/temper-mod.jpg" src="media/temper-mod.mp4" aria-label="The Temper mod in 38 seconds, recorded on 9.7.0: the stage bar, the Temper gate question, refused writes and commits, the pane, the Scope drift question and the modes" style="width: 100%; aspect-ratio: 16 / 9; display: block; border-radius: 6px; border: 1px solid var(--border); margin-bottom: 2rem; background: #000;"></video>
 
     <div class="why-grid">
       <div class="why-item">
@@ -886,7 +886,7 @@
       </div>
       <div class="why-item">
         <h4>You see where you are</h4>
-        <p>A phase bar and numbered actions match the original <code style="background:var(--bg);padding:0.1rem 0.4rem;border-radius:2px;">/temper</code> gates: Continue, Teach me, Grill me, Discuss, Skip with a reason.</p>
+        <p>A stage bar shows each stage with its result, the time and tokens, and each loop back with its reason. A pane shows the Build tasks, the findings, the checks and the criteria. You decide each gate in one question; nothing on the bar decides.</p>
       </div>
       <div class="why-item">
         <h4>You choose how much</h4>

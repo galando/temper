@@ -28,6 +28,8 @@ is the project's `.temper/specs/{slug}` folder, never a path in the plugin folde
 - The gate checks only that an Areas of Concern heading exists. That is a floor, not
   the standard: list the real conflicts with the owner who resolves each, or write an
   explicit `None flagged` line with the reason. Silence is not a valid claim.
+- Give each area of concern its own heading under the Areas of Concern heading (or its own list
+  item): the Design question names each open one, and a line starting with `resolved:` closes it.
 - Areas of Concern come first in your panel. They are the reason the human is at this
   gate.
 - Design flags a policy conflict and names its owner. It never silently picks a side.

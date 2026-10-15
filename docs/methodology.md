@@ -7,7 +7,7 @@ Temper combines three development methodologies in a single contract file called
 ## IDD: Intent-Driven Development
 
 **Question:** Did we solve the problem?
-**When:** Defined during `/temper:plan`, validated during `/temper:review`
+**When:** Defined in the Intent stage (the first gate, before Plan), validated during Review
 
 IDD captures the *why* behind a feature. Not "add a password reset endpoint" but "users should be able to reset their password without contacting support, completing the flow in under 2 minutes."
 
@@ -58,7 +58,7 @@ Intent Validation (IDD): 4/5 (3 mechanical, 1 deferred, 1 manual)
 ## BDD: Behavior-Driven Development
 
 **Question:** Does it do the right things?
-**When:** Scenarios derived during `/temper:plan` (before architecture), enforced during `/temper:build`
+**When:** Scenarios derived during Plan (before architecture), tested during Build, enforced at Check
 
 BDD in Temper isn't an afterthought — **scenarios are derived before the architecture exists.** This is the key design decision:
 
@@ -85,7 +85,7 @@ Every file in the plan must justify its existence. If the AI plans a file that n
 
 ### Scenario Coverage Gate
 
-After all tasks complete, `/temper:build` runs the scenario coverage gate:
+The Check gate holds the scenario coverage row (`scenarios traced to tests`):
 
 ```
 Scenario Coverage: 5/5
@@ -96,7 +96,7 @@ Scenario Coverage: 5/5
   [x] Non-existent user handled     -> test_nonexistent_user (PASS)
 ```
 
-If any scenario has no passing test, build cannot proceed.
+If any scenario has no passing test, the Check gate fails, and the person can loop back to Build.
 
 ---
 
@@ -143,7 +143,7 @@ Scenario: Rate limiting on reset requests
   Note: unit
 ```
 
-Scenario coverage gate caught it: no test for rate limiting. Build wrote the test. Test failed. Build implemented rate limiting. Test passed.
+The scenario coverage row at Check caught it: no test for rate limiting. The loop back to Build wrote the test. Test failed. Build implemented rate limiting. Test passed.
 
 ### Over-Engineering Caught by Traceability
 

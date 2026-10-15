@@ -11,7 +11,7 @@ entry point for work that isn't ready to build yet: the originator (who may not 
 implementer, or an engineer at all) describes the problem in their own words; the
 committed draft is what a product owner reviews and what `/temper` later picks up.
 
-`/temper`'s own Intent stage (and standalone `/temper:plan`) still creates intent.md
+`/temper`'s own Intent stage (also when `/temper:plan` starts the run) still creates intent.md
 when none exists — this command exists for the capture-now-build-later split, so the
 idea's author, timestamp, and revision history live in version control from the moment
 it's real. A draft captured here is exactly what the pipeline's Intent gate later
@@ -39,8 +39,7 @@ You state this once, in this conversation: a stage subprocess never has that lin
 its system prompt, so its brief says nothing about enforcement.
 
 1. **Understand the problem, not the solution.** Read `$ARGUMENTS` (tell a ticket
-   key such as `JIRA-123`, a GitHub issue such as `#123` and free text apart: the three
-   input forms under "Usage" in `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`). Fetch every
+   key such as `JIRA-123`, a GitHub issue such as `#123` and free text apart). Fetch every
    source the request links (ticket, MR/PR, doc) read-only and record each under
    `### Context Sources` (`consulted:` / `unavailable:` / `none:`). Then interview
    with the full question bank — current vs desired behavior, scope and non-goals,
@@ -87,7 +86,9 @@ its system prompt, so its brief says nothing about enforcement.
    constraint that has no `(source: …)` marker) — the same deterministic floor the pipeline's
    Intent gate applies. `--spec-path` is required here: this command never runs
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper state init`, and without a spec path the gate refuses to guess (usage
-   error, no verdict) rather than vacuously passing on a path it never looked at.
+   error, no verdict) rather than vacuously passing on a path it never looked at. While a `/temper` run of
+   another feature is active, the gate prints its rows and says `not recorded`: the draft's verdict never
+   stands for that run. Fix the FAIL rows all the same.
 
 4. **Let the originator correct it.** Show the draft; apply their corrections; re-show.
    The artifact is theirs — you drafted it.
@@ -112,7 +113,7 @@ its system prompt, so its brief says nothing about enforcement.
 | Status | Written by | Meaning |
 |---|---|---|
 | `draft` | this command (or a bands-breach draft via `/temper:status`) | captured, awaiting review |
-| `accepted` | the Intent gate's human "Continue" (`/temper`'s Stage 0; the plan gate in standalone `/temper:plan`) | a person accepted it into build |
+| `accepted` | the Intent gate's human "Continue" (`/temper`'s Stage 0, also when a stage command entered the run later) | a person accepted it into build |
 | `completed` | the commit step | implemented — the change is committed, not necessarily released |
 
 No stage advances on a draft without a human accepting it — same rule as every other

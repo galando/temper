@@ -27,11 +27,12 @@ absolute folder written into each command, replacing any earlier Temper guard en
 `/temper:pack` and `/temper:init` offer to fix a guard command whose plugin folder no longer
 exists. Neither command reads or writes the settings in your home folder.
 
-### The phase bar (Claude Code 2.1.287 or later)
+### The stage bar (Claude Code 2.1.287 or later)
 
-On Claude Code 2.1.287 or later, the same install also loads the Temper mod. You get a phase bar
-with numbered actions, and Claude cannot edit code outside the current phase or commit before the
-gates pass. Check your version with `claude --version`. On an older version nothing changes.
+On Claude Code 2.1.287 or later, the same install also loads the Temper mod. You get a stage bar
+that shows where the run is, and the mod refuses an edit outside the current stage and
+`--no-verify` on a commit. You still decide each gate in the same question as without the mod.
+It is not a sandbox: [Trust](trust.md) lists what it does not see. Check your version with `claude --version`. On an older version nothing changes.
 
 | Setting | Values | Effect |
 |---|---|---|
@@ -45,7 +46,7 @@ plugin settings. Your organization can block mods; the plugin then works as befo
 ### A clone of the repository
 
 Temper runs in Claude Code only: its gates need the CLI in the plugin's `scripts` folder, and
-the phase bar needs the mod. To try a clone without installing it, open a terminal in your
+the stage bar needs the mod. To try a clone without installing it, open a terminal in your
 project and start Claude Code with the clone loaded: `claude --plugin-dir <path of the clone>`.
 That loads it for one session. Copying the repository's `.claude` folder into a project does
 not install Temper: that folder holds only this repository's own developer notes and config.
@@ -72,57 +73,52 @@ In Claude Code, in your project:
 Temper runs intent → plan → build → review → check with stage gates. The first gate is
 the cheapest and highest-leverage: you approve the Problem and success criteria before
 any exploration or architecture spends tokens — correcting the intent there costs
-words; correcting it after planning costs the plan. Then:
+words; correcting it after planning costs the plan. At each gate Claude asks one question in
+Claude Code's own dialog, with the options the CLI gives for that gate. After the plan:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ 📋 PLAN COMPLETE — Add User Authentication                  │
-├─────────────────────────────────────────────────────────────┤
-│ 🎯 INTENT                                                   │
-│    Problem: Users can't access protected routes             │
-│    Success: JWT auth with role-based access                 │
-│    Scenarios: 5 (4 unit, 1 integration)                     │
-│                                                             │
-│ 📁 FILES: 3 create, 2 modify                                │
-│ ⚡ RISK: Medium (touches auth layer)                        │
-│                                                             │
-│ ✅ Ready to build? [Y/e(dit)/n]                             │
-└─────────────────────────────────────────────────────────────┘
+```text
+Temper gate
+Plan: the check passed. Approve the plan and continue to Build?
+  1. Continue to Build (Recommended)   Approve the plan, commit it, and start Build.
+  2. Open HTML review                  Open the plan as a page to comment on.
+  3. Share HTML review                 Publish the plan as a private Claude artifact others can comment on.
+  4. More options                      Grill Me, Teach Me, Save for later
 ```
 
-At each stage, choose:
-- **Y** → Proceed to next stage
-- **e** → Edit the plan/scenarios
-- **n** → Stop. Resume later with `/temper:temper` and no arguments.
+You choose in the dialog; a message you type is not a choice. **Save for later** stops the run;
+`/temper:temper` with no arguments takes it up again.
 
-### Option B: Individual Commands (Granular Control)
+**Stage agents in the background.** Each stage runs in an agent of its own. Claude Code runs agents
+in the background by default (with fork mode on, the default of interactive sessions, it always
+does), and the run goes on in the turn Claude Code starts when the agent finishes. Claude Code does
+not promise that turn for a session that sits idle: if a run waits after an agent finished, send any
+message, such as "go on", and the run records the agent's result and asks the next question. With
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` set to `1`, Claude Code runs every agent in the foreground,
+with fork mode on or off, so a run never waits for that turn. A plugin cannot set it for you:
+`/temper:init` asks whether to add it to the project's `.claude/settings.json` (`temper init
+--foreground-agents` is the CLI call). Or set it in the shell before `claude` starts, or in that
+file's `env` block by hand (it applies once the folder is trusted); then start Claude Code again, and
+`/temper:temper` with no arguments takes the run up:
 
-For more control, use individual commands:
-
-### 1. Check Your Stack
-
-```bash
-cd your-project
-/temper:check
+```json
+{ "env": { "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1" } }
 ```
 
-Temper will auto-detect your stack and report:
+It turns off every background task of the session (background Bash commands and Ctrl+B too), and
+the session is busy while an agent runs.
 
-```
-🔍 Detecting stack...
-✅ Detected: Spring Boot
-   • Build: Maven
-   • Test: mvn test
-   • Compile: mvn compile
-   • Lint: None configured
+### Option B: Start at a stage
 
-📊 Quality Status:
-   • Coverage: 72%
-   • Open issues: 3
-   • Technical debt: Low
-```
+Each stage command is a door into the same run: it starts `/temper:temper` at that stage, or takes up
+the run that is active, and you decide every gate in the same question. `/temper:plan` starts at the
+Intent gate, because the plan is derived from the intent you approve. A later stage command
+(`/temper:build`, `/temper:review`, `/temper:check`) needs a planned feature: it checks and asks each
+earlier gate in turn, then runs its stage. A new run holds no evidence of an earlier session, so an earlier
+stage whose check needs it (Review at the Check door) fails there: you choose **Run** it (it and every stage
+after it run) or **Override and continue** with your reason. Build passes on the earlier run's committed
+ledger while no file of the plan changed since.
 
-### 2. Plan a Feature
+### 1. Plan a Feature
 
 ```bash
 /temper:plan "add user authentication"
@@ -155,7 +151,7 @@ Temper will analyze the blast radius:
 📋 Plan: 7 steps with test gates
 ```
 
-### 3. Build with Quality Gates
+### 2. Build with Quality Gates
 
 ```bash
 /temper:build
@@ -172,7 +168,7 @@ Temper will:
 {: .highlight }
 **intent.md** defines behavior scenarios — your tests must cover all of them before build completes.
 
-### 4. Review Your Code
+### 3. Review Your Code
 
 ```bash
 /temper:review
@@ -264,6 +260,15 @@ MCP server. Temper installs neither. Full setup notes: [Recommended Setup](recom
 ```
 
 Shows live scenario verification status, MCP tool availability, and evidence ratio.
+
+## Build runs in groups
+
+Plan writes `tasks.md` as groups of small tasks. Build runs each task as one Haiku agent
+(`claude-haiku-5-5`, escalating to Sonnet after two failed attempts), each task in its own
+git worktree, with one human gate per group. See [Grouped Build](grouped-build.md) for the
+loop and the tuning keys (`build.grouped.*`). It
+writes `.temper/groups.json`, `.temper/usage.json` and `.temper/.lock/`; like the other
+`.temper/` runtime files, do not commit them.
 
 ## Parallel Runs (worktrees)
 

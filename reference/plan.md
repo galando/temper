@@ -11,16 +11,10 @@ rules a strong model would not derive on its own; it does not choreograph your s
 
 ## Usage
 
-```
-/temper:plan "feature description" | "JIRA-123" | "#123"
-/temper:plan --full "feature"    # force full artifact set even for a small change
-/temper:plan --quick "feature"   # force a lightweight, inline plan
-```
-
-**Modes:** Standalone (`/temper:plan`) runs in the current context and shows its own
-gate. Agent subprocess (from `/temper`) runs in a clean context and returns a summary —
-The plan brief (`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`) step 8 already tells you not to show an `AskUserQuestion` gate in that
-mode; the orchestrator owns it. The methodology below is identical either way.
+Plan runs as a stage of `/temper`, in a clean subprocess from the plan brief
+(`${CLAUDE_PLUGIN_ROOT}/agents/plan.md`), also when `/temper:plan` starts the run (it is a door
+into `/temper`). It returns a summary and never shows an `AskUserQuestion` gate: the
+orchestrator owns the gate.
 
 ## What You Produce
 
@@ -36,9 +30,15 @@ plan` reads only these three.
 - **`plan.md`** — Architecture, **Blast Radius** (required for Medium/Complex), Approach
   Decisions (only when a real alternative was rejected), a diagram.
 
-**Trivial** (<3 files): no artifacts — say so and implement directly. **Simple** (3-5
-files): an inline plan in the conversation, no files. **Medium** (5-10) / **Complex**
-(10+): the three files above. `--full`/`--quick` force Complex/Simple.
+**Count production files only.** The tier counts the files that hold the product's code: test
+files, docs (README, CHANGELOG, guides) and a one-line export or registration edit follow from the
+code and add no design question, so they do not count.
+
+**Trivial** (one file, no product problem): no artifacts — say so and implement directly (in
+`/temper` the Intent stage decides this). **Simple** (up to 3 production files, with new functions,
+options or fields in existing modules only): the three files above, and Design is skipped.
+**Medium** (4-10 production files, or a new module, data model or external interface) / **Complex**
+(10+): the three files above, and Design runs. The risk multipliers below still push a tier up.
 
 **intent.md usually already exists when you start.** In the orchestrated `/temper`
 flow, the Intent stage wrote it and a human accepted it at the intent gate
@@ -49,36 +49,14 @@ Sources` records** — the intent summarizes them, but you plan against them; tr
 every `- unavailable:` line as an explicit gap (name it in `plan.md`, and add an
 Open Question back into `intent.md` if it hides a decision). Do not re-derive
 context Intent already gathered. A `Status: draft` intent (captured via
-`/temper:intent` or a control-band breach, reaching you standalone) is the same
-input, plus: resolve or explicitly re-carry each Open Question (a refine pass may
-ask only a question the draft marks `Blocking`, or one a gate FAIL forces —
-anything else thin becomes a new Open Question); the draft→accepted flip happens at
-whichever human gate reviews it first.
-Standalone `/temper:plan` with no existing intent.md: derive the intent yourself
-from `${CLAUDE_PLUGIN_ROOT}/templates/intent.md` — full header (including `**Reviewer:**`, a name not a
-role), Problem, Success Criteria with stable `AC-NN` ids each carrying `Why:` and
-`Validate:`, Constraints with source markers, Scope and Non-goals, action-chain
-Target Users, labeled Open Questions, and `### Context Sources` (`consulted:` /
-`unavailable:` / `none:`) — as your first act. The two mandatory probes of the
-intent interview apply here too: what business outcome or risk does each criterion
-address, and who acts on the result with what next step. Never turn a source "should"
-or "may" into "must" silently: ask the originator, record the answer in `### Decisions`,
-and with no answer keep the source wording (`(source: …)`) plus a Blocking Open
-Question. The gate fails a draft that uses should/may/might/possibly in a criterion or
-constraint with no `(source: …)` marker.
-
-**Either way, standalone `/temper:plan` records the intent verdict itself.** Whenever
-intent.md exists at the spec path — authored fresh OR picked up as a draft — run
-`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent --spec-path {spec-path}` and fix any
-FAIL before proceeding to blast radius. Always pass `--spec-path` explicitly: state
-may not be initialized yet in standalone mode, and without a spec path the gate
-refuses to guess (usage error, no verdict). This matters at the end of the chain: the
-commit gate requires an intent verdict whenever intent.md exists, so the standalone
-`/temper:plan → :build → :review → :check → commit` chain FAILs at commit if this
-verdict was never recorded.
-
+`/temper:intent` or a control-band breach) is the same
+input, plus: resolve or explicitly re-carry each Open Question (you ask nobody: a
+question that must be settled is marked `Blocking`, and the orchestrator asks it before
+the gate question); the intent is accepted (`temper intent accept`) when the person
+leaves Intent.
 **Risk multipliers** (each pushes complexity up one tier): touches auth/payment/security
-code; modifies a library with 5+ consumers; changes a DB schema; a module with a
+code; changes what the consumers of a library with 5+ consumers already use (a signature,
+a behaviour, a default; adding a new function or option they never call does not count); changes a DB schema; a module with a
 historically high defect rate (`.temper/metrics.json` if present); a CRITICAL/HIGH
 security hot path (below).
 
@@ -92,7 +70,9 @@ count >= Success Criteria count; every criterion has explicit validation links
 fence; `plan.md` records `## Cross-Repo Search`. **Only for `medium`/`complex`**:
 `plan.md` also needs a heading matching `blast radius` (any level, e.g.
 `## Blast Radius`). Record `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <tier>` as soon as you
-classify it — the gate reads it to decide whether the Blast Radius section applies.
+classify it — the gate reads it to decide whether the Blast Radius section applies. The call also writes the
+tier into the `**Complexity:**` line of `intent.md` (and of `plan.md`, when it has one), where a later door
+reads it; the gate's `tier recorded` row fails when such a line names another tier than the run.
 
 Fix any FAIL before returning: usually a missing scenario, an empty Success Criteria
 section, a missing Cross-Repo Search record, or a missing Blast Radius heading.
@@ -120,7 +100,8 @@ similar code, test coverage. A nested Explore subagent is an escape hatch for a 
 large enough that reading it directly would blow your context, not a mandatory first
 step; that judgment call is yours, not a fixed procedure. Read `.claude/temper.config`
 and enabled packs' `rules.md` (project shadows global shadows the built-in files listed in `${CLAUDE_PLUGIN_ROOT}/reference/pack.md`;
-keep rules whose `phases` is `all` or contains `plan`) before you plan.
+keep rules whose `phases` is `all` or contains `plan`, and also those that contain `build`: the
+groups' Context distils them, below) before you plan.
 
 ## Blast Radius: Measured, Not Estimated
 
@@ -202,10 +183,10 @@ infrastructure any file no scenario touches.
 | `metric` | `Validate: metric — measure support ticket volume post-deploy` |
 | `manual` | `Validate: manual — UX review needed` |
 
-Ask clarifying questions (`AskUserQuestion`, concrete options — "integrate with
-existing PaymentService or create a new one?", never "what should the architecture
-be?") only where the uncertainty changes the outcome — no fixed round count, one
-question at a time. Skip entirely when requirements are clear.
+You run headless and ask nobody. Where an uncertainty changes the outcome, write it into
+`intent.md`'s Open Questions as `Blocking`, with concrete choices ("integrate with the existing
+PaymentService, or create a new one?", never "what should the architecture be?"); the
+orchestrator asks it before the gate question. Skip it entirely when the requirements are clear.
 
 ## File-to-Scenario Traceability
 
@@ -216,9 +197,9 @@ PasswordResetService`). A file that is neither: question whether it's needed: if
 a scenario is missing — add one. In `tasks.md`, fill `Traced to:` for every task the same
 way (`Traced to: Scenario: "name"` or `Traced to: Infrastructure: required by {module}`).
 
-Order tasks by layer (infra → core → integration → tests). Mark independent tasks
-`[PARALLEL: with Task N]` only when they touch disjoint files and neither depends on the
-other's output or config changes — default to `[SEQUENTIAL: after Task N]` when unsure.
+Order tasks by layer (infra → core → integration → tests). Tasks with disjoint files and
+no `**Depends:**` between them run in parallel; give a task `**Depends:**` on another when it
+needs that task's output or config change (see "Grouped tasks" below).
 
 ## Approach Decisions
 
@@ -241,8 +222,74 @@ data flow, `stateDiagram-v2` for lifecycles, `sequenceDiagram` for cross-boundar
 existing vs. modified when it helps. Render the diagram as ASCII box-drawing art right
 after the terminal summary panel too, as the one drawing allowed beside that panel (the
 terminal can't render mermaid); keep the mermaid block in
-plan.md for GitHub/tool rendering. Skip the diagram only for a single-file or config-only
-change in standalone `/temper:plan`.
+plan.md for GitHub/tool rendering.
+
+## Grouped tasks
+
+Build runs in groups, so write `tasks.md` as groups of tasks; the example to copy is in
+`${CLAUDE_PLUGIN_ROOT}/templates/tasks.md` (between the `grouped-example` markers). The format below is what the CLI parser
+(`_grouped_parse`) reads and the plan gate (`_grouped_plan_reqs`) checks.
+
+**Format.**
+- A top-level `**Integration:**` line with the full-suite command in backticks. Required.
+- `## Group G<n>: title`, then `**Depends:**` (`none` or `G1, G2`), `**Validate:**` (a backticked
+  group-level test command), `**Interfaces:**` (optional; each entry is `` `path` — `literal` ``, a path and
+  a string that must appear in it after integration) and `**Context:**` (a block that runs until the
+  first `### Task`). Every group needs a Context.
+- `### Task N: description`, with `**File:**`, `**Depends:**` (`none` or `Task 1, Task 2`),
+  `**Test:**`, `**Cases:**`, `**Traced to:**` and a closing `- [ ] done` box. The parser takes a task's group from the `## Group` heading it sits under (a `[group: G<n>]` tag in the
+  title is not read).
+  Task numbers are unique across the whole file.
+
+**Declared files.** `**File:**` lists backticked paths, one per file the task will write, including its test file.
+They can stand on one line or on a `**File:**` line each; every line counts.
+Give exact file paths, one per file. The plan gate refuses any glob
+character (`*`, `?`, `[`) in a `**File:**` path and the commit check compares changed files to the
+declared union by exact path, so name every file, the test file included. Two tasks that can
+run together (neither depends on the other, directly or through their groups) must declare disjoint files;
+the gate rejects an overlap. Order the tasks with `**Depends:**` when they must touch the same file.
+
+**Test per task.** Every task declares its own scoped `**Test:**` command: its own test file or a filter
+for it, never the whole suite. The CLI runs it and judges the task on it alone. The whole suite runs only
+at the group's `**Validate:**` and at `**Integration:**`. The test file a task creates must be in that
+task's `**File:**`: the plan gate fails a task whose `**Test:**` command names a path (its first path
+argument) that is neither declared by the task nor already in the project, because the task's commit check
+would otherwise reject the new test file as an undeclared change.
+
+**Cases: write the test cases, not just the test file.** Under `**Cases:**`, one bullet per case the
+task's test must check, each a concrete input and its exact expected result (a value, an output line, an
+error message or exit code), never a vague "works correctly". List the normal result first, then the edge
+cases (empty, boundary, a value just over a limit) and the error cases the intent and scenarios name. The
+plan gate fails a task with fewer than 2 cases. The task agent, often a small model, writes one test per
+case and is judged on them, so the cases you write here are the quality of its tests: a case you leave out
+is a gap Review finds later.
+
+**Context: distil the pack rules.** A task agent reads only its task and its group's Context, never the
+packs. Distil the rules of the enabled packs that apply to that group into its Context, in your own words
+and short: the quality, tdd and performance rules for the kind of code the group writes, and the
+security rules always, even for a group that looks harmless. Add the conventions to follow and the
+interfaces the group must keep. Review still checks the full packs, so the Context is a working summary,
+not a substitute.
+
+**Budgets (the gate fails a plan over them).** A group's Context is at most 4096 bytes. A task block (its
+heading through its last field, the cases included) is at most 2048 bytes. Put long background in `plan.md`, not in tasks.md.
+
+**Few groups, parallel tasks.** A group costs a worktree, a merge commit and a human gate; a dependency
+between two tasks of the same group costs nothing extra. Make a new group only for a separate review unit
+(another area of the code, or work a human should approve before the next part starts), not for every
+step: a small feature is usually one group. Inside a group, give independent tasks disjoint files and no
+`**Depends:**`, so they run at the same time; where one task needs another's code, give it
+`**Depends:** Task N` in the same group rather than a second group. Say in the Context which code from
+earlier tasks the tests call for real: task agents test the real code and mock only what a test cannot
+run (network, clock, randomness, an error that cannot be triggered).
+
+**Splitting a group.** The gate counts the distinct files a group declares and fails a group over
+`autonomy.max-blast-radius` (default 15). Split it into two groups, with `**Depends:**` between them when
+the second needs the first's files.
+
+**Interfaces and Integration.** Name in `**Interfaces:**` each seam another group relies on, so
+`temper integrate` can confirm it after the merge. `**Integration:**` is the command that runs after every
+group branch is merged.
 
 ## Evidence + State (batch these into one Bash call)
 
@@ -266,35 +313,18 @@ different reviews.
 
 Trivial: a one-line box, no gate. Simple: `Files: {N} create, {N} modify` / `Risk: {L/M}`.
 
-## Approval (standalone `/temper:plan` only)
+## Approval
 
-Subprocess mode never shows this — return the summary and stop (see above). Standalone:
-`AskUserQuestion` — "Continue to Build (Recommended)" / "Walk through step by step"
-(present Intent, Diagram, Scenarios, Architecture, Blast Radius, Tasks one section at a
-time, `AskUserQuestion` "Next step"/"Ask a question" between each) / "Save for later". A
-change typed via "Other" is never approval — make the edit, then re-show this same gate.
-
-On Continue: write `.temper/build-state.json` (`stage: plan_complete`, `next_stage:
-build`, `artifacts: ["intent.md","tasks.md"]`); if intent.md's header still says
-`Status: draft` (standalone mode — no intent gate ran before this one), flip it to
-`Status: accepted` and add `**Accepted-by:** {git config user.name} <{user.email}>` —
-the first human gate that reviews the intent is where acceptance is recorded (in the
-orchestrated flow that already happened at the Intent gate). Commit the artifacts in
-two steps — `git add .temper/specs/{slug}/` first, then `git commit -m "docs(plan):
-approve plan — {slug}"` as a separate call (not `add && commit`: the in-agent
-commit-gate hook checks `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` when the commit is submitted, and the
-artifact-only carve-out that lets this commit through mid-pipeline reads the
-already-staged set). Skip
-with a note if the project gitignores `.temper/specs/`. Standalone mode loads only
-`tasks.md` + `intent.md` for Build. Subprocess mode: the orchestrator handles the
-transition.
+The orchestrator owns the plan gate (`temper next --json` gives its question); this stage never
+shows it: return the summary and stop. A change typed via "Other" is never approval: make the
+edit, then ask the same gate again.
 
 ## Edge Cases
 
-- Vague description ("improve performance") → ask which part before exploring.
+- Vague description ("improve performance") → a `Blocking` Open Question on which part, before exploring.
 - No tests in the project → flag lower coverage expectations, add a Task 0 "set up test
   infrastructure", scope new tests to the new code only.
-- Monorepo → ask which package; still check blast radius across shared libraries.
+- Monorepo → a `Blocking` Open Question on which package; still check blast radius across shared libraries.
 - DB migration needed → Task 1, before code depending on the new schema; +1 risk tier;
   note the rollback path.
 - Feature partially exists → build on the similar code found, don't duplicate; say so.

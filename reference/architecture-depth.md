@@ -25,10 +25,10 @@ Use these terms consistently in all findings:
 
 ## When to Trigger
 
-This review runs as an **optional pass** during `/temper:review`:
+This review runs as an **optional pass** during Review:
 
-1. User selects "Architecture Depth Review" at the review gate (always offered, no config toggle)
-2. `architecture-depth` pack is enabled in temper.config
+The person chooses "Architecture Depth Review" at the Review question (under More options,
+always offered, no config toggle). The orchestrator runs it, not the Review stage.
 
 ## Context Loading
 

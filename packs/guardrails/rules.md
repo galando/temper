@@ -22,8 +22,9 @@ the evidence ledger written by every stage (`${CLAUDE_PLUGIN_ROOT}/scripts/tempe
 per gate, rather than checking a single `build-state.json` stage field. `verify-tests-ran.sh`
 is kept as a fallback for a project that installed only this pack, without the CLI.
 
-**Plugin-shipped subset (v8):** the standalone-stage gate pair (`stage-marker.sh` and
-`verify-stage-gate.sh`) ships in the plugin's own hooks file, so every install of the
+**Plugin-shipped subset (v8):** the stage gate pair (`stage-marker.sh` and
+`verify-stage-gate.sh`; since 9.7.0 it marks only `/temper:intent`, as the other stage commands are
+doors into `/temper`) ships in the plugin's own hooks file, so every install of the
 Temper plugin, `--plugin-dir` or marketplace, gets that guarantee with **no settings
 merge and no pack enablement**. Enabling this pack adds the other guards: secrets,
 protected paths, the regression test, the override prompt, the formatter, imports and
@@ -262,8 +263,8 @@ The single fail-closed path for each script is documented below. Everything else
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `${CLAUDE_PLUGIN_ROOT}/scripts/temper override`: it emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records the git identity (`by`) |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/run-formatter.sh` | PostToolUse (Edit\|Write) | **format** (no-op by default) | Never blocks — runs `format: cmd:` from temper.config on each edited file so drift never accumulates; a formatter failure is a stderr warning, not a gate |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` FAILs (in-agent mirror of the native hook, below). A CLI refusal of an unsafe `.temper` folder (exit 3) blocks while a run is active (`.temper/build-state.json` exists, as a file or a link) and says to remove the symlink; with no run active it is a one-line warning, not a block |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/stage-marker.sh` | UserPromptSubmit (plugin hook, always on) | **no-op** (records only) | Never: it writes `.temper/pending-stage.json` when a `/temper:intent`, `/temper:plan`, `/temper:design`, `/temper:build`, `/temper:review` or `/temper:check` prompt is submitted, and blocks nothing |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-stage-gate.sh` | Stop (plugin hook, always on) | **BLOCK** | A standalone stage session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage (see `${CLAUDE_PLUGIN_ROOT}/docs/decisions/0005-deterministic-stage-gate-enforcement.md`). Fails open after 2 refusals |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/stage-marker.sh` | UserPromptSubmit (plugin hook, always on) | **no-op** (records only) | Never: it writes `.temper/pending-stage.json` when a `/temper:intent` prompt is submitted (the stage doors may end at any gate, ADR 0005 as amended), and blocks nothing |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-stage-gate.sh` | Stop (plugin hook, always on) | **BLOCK** | A `/temper:intent` session tries to end while `.temper/gates.json` has no verdict (PASS *or* FAIL both satisfy it) for the marked stage (see `${CLAUDE_PLUGIN_ROOT}/docs/decisions/0005-deterministic-stage-gate-enforcement.md`). Fails open after 2 refusals |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` | native pre-commit | **BLOCK** | Any stage's evidence-backed gate is not PASS and has no recorded `${CLAUDE_PLUGIN_ROOT}/scripts/temper override` |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/verify-tests-ran.sh` | native pre-commit (fallback) | **BLOCK** | `.temper/build-state.json` shows the latest `check_complete` absent or failed — used only when the temper CLI isn't present |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/install.sh` | n/a (installer) | **install** | Wires block-secrets + `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` into a native git `pre-commit` hook (the deterministic commit gate), kept in `temper-gate` in the repository's git folder with `core.hooksPath` pointing at that folder; it never writes into a folder named `hooks` |
@@ -348,7 +349,7 @@ no-op.
 Refuses a commit if any stage's evidence-backed gate isn't PASS and has no recorded
 override. Reads the project's evidence ledger (written by `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add` throughout
 the pipeline) and `.temper/gates.json` (the last-computed verdict per stage); prints the
-specific unmet requirement(s). `${CLAUDE_PLUGIN_ROOT}/scripts/temper override <stage> --reason "..."` records a human
+specific unmet requirement(s). `${CLAUDE_PLUGIN_ROOT}/scripts/temper override <stage> --reason '...'` records a human
 override. It stays visible in `${CLAUDE_PLUGIN_ROOT}/scripts/temper report` and the final summary, and it does not erase
 the FAIL. See `${CLAUDE_PLUGIN_ROOT}/docs/getting-started.md` for the full CLI reference. Absent `.temper/`
 state → `exit 0` (degrade; a repo not running `/temper` for this commit is never blocked).

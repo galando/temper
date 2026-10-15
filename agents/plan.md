@@ -16,8 +16,7 @@ orchestrator's conversation carries over except the prompt you were launched wit
    (Success Criteria + Gherkin Scenarios), `tasks.md`, `plan.md`. In the orchestrated
    flow the Intent stage already wrote `intent.md` and a human accepted it — it is your
    INPUT: derive scenarios and architecture from it, refine only with a stated reason,
-   never re-derive the Problem (`${CLAUDE_PLUGIN_ROOT}/reference/plan.md` covers the standalone case where you
-   author it yourself and run `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate intent` first).
+   never re-derive the Problem.
 3. **Re-read the intent's context sources.** Under `## Source Traceability` →
    `### Context Sources`, re-read every `- consulted:` source yourself (ticket, MR/PR,
    doc link) — the intent summarizes them, but you are the stage that plans against
@@ -27,6 +26,7 @@ orchestrator's conversation carries over except the prompt you were launched wit
 4. As soon as you classify complexity, record it:
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <trivial|simple|medium|complex>`
    (`${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` reads it to decide whether a Blast Radius section is required).
+   The call also writes the tier into intent.md's `**Complexity:**` line; never edit that line by hand.
 5. **Cross-repo code search.** When any cross-repo code search tool is connected (for
    example a Sourcegraph MCP), use it — for blast radius (callers of the changed code
    OUTSIDE this repo), prior art (has another repo solved this), and definitions that
@@ -42,7 +42,11 @@ orchestrator's conversation carries over except the prompt you were launched wit
    or `manual`, default `unit`) and `Covers:` (the comma-separated AC ids this
    scenario verifies; a regression-only scenario may omit it). Group the blocks under
    `#### Happy Path`, `#### Error Paths`, `#### Edge Cases`; omit an empty group.
-7. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` mechanically checks, **at every tier**: the artifacts exist;
+7. **Grouped tasks.** Write `tasks.md` in the grouped format of `${CLAUDE_PLUGIN_ROOT}/reference/plan.md`,
+   "Grouped tasks" (copy the example in `${CLAUDE_PLUGIN_ROOT}/templates/tasks.md`): Build runs each task
+   as one slim task agent, so each task is small, declares its files, its own test command and,
+   under `**Cases:**`, the concrete cases its test must check (normal, edge and error results).
+8. `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` mechanically checks, **at every tier**: the artifacts exist;
    scenario count >= success-criterion count; every criterion has explicit validation
    links (`acceptance.py plan` — stable `AC-NN` ids, `Why:` and `Validate:` on each,
    every `Covers:` id names a real criterion); every `Scenario:` sits inside a
@@ -51,7 +55,7 @@ orchestrator's conversation carries over except the prompt you were launched wit
    treat this list as the whole of "done" — it is a floor, not the methodology. Run
    `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` yourself before returning, and fix
    any FAIL it reports.
-8. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
+9. Do NOT show an `AskUserQuestion` gate — you run headless. Return the summary to the
    orchestrator; it owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):

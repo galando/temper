@@ -197,6 +197,84 @@ else
   echo "$CHOREO" | sed 's/^/  /'
 fi
 
+# 7. Grouped Build docs: the user guide exists, says it is the one Build, names every run
+# state file, is linked from getting-started.md, and ADR 0011 is Accepted.
+GB="$REPO_ROOT/docs/grouped-build.md"
+ADR="$REPO_ROOT/docs/decisions/0011-grouped-build.md"
+if [[ -f "$GB" ]] && grep -q 'the one Build' "$GB" && ! grep -q 'mode: per-task' "$GB" \
+   && grep -q '\.temper/groups\.json' "$GB" && grep -q '\.temper/usage\.json' "$GB" && grep -q '\.temper/\.lock/' "$GB" \
+   && grep -q 'temper group report --json' "$GB" && grep -q 'temper report --json' "$GB" \
+   && grep -q 'grouped-build.md' "$REPO_ROOT/docs/getting-started.md" \
+   && [[ -f "$ADR" ]] && grep -q '^\*\*Status:\*\* Accepted' "$ADR" && grep -q 'D-07' "$ADR"; then
+  ok
+else
+  fail "grouped Build docs incomplete (docs/grouped-build.md, link in getting-started.md, ADR 0011 Accepted with D-01..D-07)"
+fi
+
+# 8. One flow (ADR 0012, ADR 0013): the orchestrator pages are a loop over `temper next`. They list no gate
+# option and name no move (the CLI gives each one), ask every question exactly as the CLI wrote it, never send
+# the person to type a command or press a button, and the stage commands are doors into /temper. Each row is a
+# page, a regular expression it must hold (+) or must not hold (-), and why. Whitespace in a pattern matches
+# any run of spaces and line breaks, so a reflowed paragraph still matches.
+FLOW_TEXT=$(python3 - "$REPO_ROOT" <<'PY'
+import re, sys
+root = sys.argv[1]
+ROWS = [
+    ('commands/temper.md', '+', r'scripts/temper next --json', 'the orchestrator is a loop over temper next'),
+    ('commands/temper.md', '+', r'Never compute a gate, an option or a next stage yourself', 'the CLI decides what comes next'),
+    ('commands/temper.md', '+', r'exactly as given', 'every question goes to the person as the CLI wrote it'),
+    ('commands/temper.md', '-', r'Continue to Plan \(Recommended\)', 'the page lists no gate option'),
+    ('commands/temper.md', '-', r'"Override and commit"', 'the page lists no gate option'),
+    ('commands/temper.md', '-', r'state advance [a-z]+_complete', 'the page names no move; the CLI gives each one'),
+    ('commands/temper.md', '-', r'type /temper:temper approve', 'no line sends the person to type a command'),
+    ('commands/temper.md', '-', r'Temper bar', 'no line sends the person to the bar'),
+    ('commands/temper.md', '+', r'never choose "Start over" yourself', 'only the person starts over'),
+    ('commands/temper.md', '+', r'three at most', 'a Blocking question holds three choices plus Carry forward'),
+    ('commands/temper.md', '+', r'## Entering at a stage', 'the stage commands are doors into /temper'),
+    ('commands/temper.md', '+', r'--enter \{stage\}', 'a door starts its run at its stage'),
+    ('commands/temper.md', '-', r'state set complexity \{tier\}', 'a door takes the tier Plan recorded from the CLI, not from Intent\'s first guess'),
+    ('commands/temper.md', '+', r'run_in_background: false', 'a stage agent runs in the foreground, so the run goes on the moment it returns'),
+    ('commands/temper.md', '+', r'Never end a turn with an agent\'s `after` calls not run', 'an agent\'s report or completion notice moves the run'),
+    ('commands/temper.md', '+', r'`\{agent\}` is the agent\s+id its result names', 'usage comes from the agent\'s own transcript, by its id'),
+    ('commands/temper.md', '+', r'Never wait for the notice', 'an agent\'s report moves the run; Claude Code may start no turn for its notice'),
+    ('commands/fix.md', '+', r'--agent \{agent\}', 'the RCA agent\'s usage comes from its transcript'),
+    ('commands/temper.md', '+', r'copy what it printed into\s+your reply', 'the person sees the end of run report in the reply, not in a Bash output'),
+    ('commands/init.md', '+', r'temper init --foreground-agents status', 'init offers to keep stage agents in the foreground'),
+    ('commands/plan.md', '+', r'"Entering at a stage"', 'the Plan command is a door into /temper'),
+    ('commands/design.md', '+', r'"Entering at a stage"', 'the Design command is a door into /temper'),
+    ('commands/build.md', '+', r'"Entering at a stage"', 'the Build command is a door into /temper'),
+    ('commands/review.md', '+', r'"Entering at a stage"', 'the Review command is a door into /temper'),
+    ('commands/check.md', '+', r'"Entering at a stage"', 'the Check command is a door into /temper'),
+    ('commands/fix.md', '+', r'the mod stands aside in a `/temper:fix` run', 'a fix run asks its own questions with the mod'),
+    ('commands/fix.md', '+', r'scripts/temper next --json', 'after its RCA a fix run is driven by temper next'),
+    ('commands/fix.md', '+', r'When it lists `setup`, run those calls', 'a fix run installs the commit hook before its RCA'),
+    ('commands/fix.md', '-', r'"Run Fix again \(Recommended\)"', 'the page lists no gate option'),
+    ('commands/fix.md', '-', r'Ready to push', 'the fix run invites no typing'),
+    ('reference/plan.md', '-', r'write `.temper/build-state.json`', 'the guard refuses a hand written run state'),
+    ('reference/check.md', '-', r'write `build-state.json` with', 'the guard refuses a hand written run state'),
+    ('reference/autonomy.md', '-', r'Run /temper to resume', 'a park waits at its gate question, not for a typed command'),
+    ('reference/autonomy.md', '+', r'The run waits for you at the gate it parked at', 'a park shows its gate'),
+    ('reference/autonomy.md', '+', r'final feature commit', 'autonomy never makes the final feature commit'),
+]
+for page, sign, pattern, why in ROWS:
+    try:
+        text = open(f'{root}/{page}', encoding='utf-8').read()
+    except OSError:
+        print(f'{page}: missing ({why})')
+        continue
+    rx = re.compile(r'\s+'.join(re.escape(w) if not re.search(r'[\\(\[{]', w) else w for w in pattern.split(' ')))
+    found = rx.search(text) is not None
+    if found != (sign == '+'):
+        print(f'{page}: {"missing" if sign == "+" else "still holds"} /{pattern}/ ({why})')
+PY
+)
+if [[ -z "$FLOW_TEXT" ]]; then
+  ok
+else
+  fail "orchestrator texts of the one flow:"
+  echo "$FLOW_TEXT" | sed 's/^/  /'
+fi
+
 echo ""
 echo "=== validate-docs.sh ==="
 echo "PASS: $PASS  FAIL: $FAIL"

@@ -64,6 +64,10 @@ Thumbs.db
 .temper/evidence/
 .temper/stage-gate.log
 .temper/pending-stage.json
+.temper/groups.json
+.temper/usage.json
+.temper/view.json
+.temper/.lock/
 
 # Local video work folders of /brag (the videos live in one pinned commit, not in the tree)
 brag-output*/

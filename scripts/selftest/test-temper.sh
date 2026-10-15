@@ -129,11 +129,56 @@ Scenario: second
 ### Context Sources
 - none: description only — nothing linked
 EOF
+  # Build runs in groups: the default run is one already built and integrated (one group, one
+  # done task, groups.json with an integration PASS); a case about the grouped run writes its own
   cat > .temper/specs/demo/tasks.md <<'EOF'
+# Tasks: demo
+
+**Integration:** `true`
+
+## Group G1: Core
+**Depends:** none
+**Validate:** `true`
+**Context:**
+The demo group.
+
+### Task 1: done task
+**File:** `src/demo.sh`
+**Depends:** none
+**Test:** `true`
+**Cases:**
+- the demo runs
+- a bad input is refused
 - [x] done task
 EOF
   "$TEMPER" init >/dev/null
   "$TEMPER" state init demo --command temper >/dev/null
+  printf '{"version": 1, "slug": "demo", "groups": {}, "tasks": {}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
+}
+
+# Test setup only (ADR 0013: the CLI leaves a stage only once its check passed or the person skipped it):
+# _pass records a PASS verdict for each named stage; _at moves the run to a stage by hand.
+_pass() {
+  python3 - "$@" <<'PASSPY'
+import json, sys
+try:
+    g = json.load(open('.temper/gates.json'))
+except Exception:
+    g = {}
+for s in sys.argv[1:]:
+    g[s] = {'verdict': 'PASS', 'requirements': []}
+json.dump(g, open('.temper/gates.json', 'w'))
+PASSPY
+}
+_at() { # _at <stage> [stage to pass...]
+  local stage="$1"; shift
+  python3 - "$stage" <<'ATPY'
+import json, sys
+d = json.load(open('.temper/build-state.json'))
+d['next_stage'] = sys.argv[1]
+json.dump(d, open('.temper/build-state.json', 'w'), indent=2)
+ATPY
+  [[ $# -eq 0 ]] || _pass "$@"
 }
 
 # No case writes into a folder named hooks. While core.hooksPath is unset, git runs the hooks in
@@ -153,7 +198,7 @@ _dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI
   local g
   rm -rf "$1"
   mkdir -p "$1/scripts/guards"
-  cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$1/scripts/"
+  cp "$TEMPER" "$REPO_ROOT/scripts/acceptance.py" "$REPO_ROOT/scripts/config_yaml.py" "$REPO_ROOT/scripts/tasks_md.py" "$REPO_ROOT/scripts/flow.py" "$1/scripts/"
   for g in block-secrets.sh verify-tests-ran.sh block-uncommitted-gate.sh; do
     cp "$REPO_ROOT/scripts/guards/$g" "$1/scripts/guards/$g"
   done
@@ -161,13 +206,18 @@ _dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI
     > "$1/scripts/guards/install.sh"
 }
 
-# The cases live in four files next to this one, sourced in order so they share the helpers,
+# The cases live in the files next to this one, sourced in order so they share the helpers,
 # the counters and the state each case leaves for the next. Each stays well under the size a
 # reader takes in at once.
 source "$TESTS_DIR/temper-cases-1.sh"
 source "$TESTS_DIR/temper-cases-2.sh"
 source "$TESTS_DIR/temper-cases-3.sh"
 source "$TESTS_DIR/temper-cases-4.sh"
+source "$TESTS_DIR/temper-cases-5.sh"
+source "$TESTS_DIR/temper-cases-6.sh"
+source "$TESTS_DIR/temper-cases-7.sh"
+source "$TESTS_DIR/temper-cases-8.sh"
+source "$TESTS_DIR/temper-cases-9.sh"
 
 echo ""
 echo "=== test-temper.sh ==="

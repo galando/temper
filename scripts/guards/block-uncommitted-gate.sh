@@ -30,7 +30,7 @@ unset CDPATH
 _main() {
   local cmd=""
   if command -v python3 >/dev/null 2>&1; then
-    cmd=$(python3 -c "
+    cmd=$(python3 -I -c "
 import json, sys
 try:
     d = json.load(sys.stdin)

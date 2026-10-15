@@ -54,7 +54,7 @@ describe('/temper:temper mode', () => {
     await $.session.start(START)
     await $.command.run(run('mode off'))
     const r = await $.tool.call({ tool: 'Write', file_path: 'src/app.ts', content: 'x' })
-    expect(r.deny?.startsWith('Temper: Plan phase.')).toBe(true)
+    expect(r.deny?.startsWith('Temper: Plan stage.')).toBe(true)
   })
 })
 
@@ -110,7 +110,7 @@ describe('first interactive run asks once', () => {
     await $.command.run(run('add password reset'))
     expect(w.asked).toHaveLength(1)
     expect(w.configSets).toEqual([])
-    expect(w.toasts).toContain('Temper mode is full. To change it, use /temper:temper mode <full|minimal|off>.')
+    expect(w.toasts).toContain('Temper mode is full.')
     await $.command.run(run('add more'))
     expect(w.asked).toHaveLength(1)
   })

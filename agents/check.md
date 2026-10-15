@@ -22,12 +22,14 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    (`acceptance.py check`). Record real results from real commands — never estimate:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage check \
-     --claim "tests" --cmd "<the exact test command>" --exit <code> --label PROVEN
+     --claim "tests" --cmd '<the exact test command>' --exit <code> --label PROVEN
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage check \
-     --claim "coverage" --cmd "<the exact coverage command>" --exit <code> \
+     --claim "coverage" --cmd '<the exact coverage command>' --exit <code> \
      --value <the parsed coverage percentage> --artifact <path to the coverage report> \
      --label PROVEN
    ```
+   Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
+   `$` in it stays text.
    `--label PROVEN` is downgraded automatically by the CLI if the artifact doesn't exist —
    so point `--artifact` at the real report file, don't skip it.
 
@@ -36,8 +38,8 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    scenario's Given/When/Then to actual test code) and record one row per scenario:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage check \
-     --scenario "<the exact scenario name from intent.md>" \
-     --claim "scenario: <name> -> <test file>:<test name>" --exit 0 --label HEURISTIC
+     --scenario '<the exact scenario name from intent.md>' \
+     --claim 'scenario: <name> -> <test file>:<test name>' --exit 0 --label HEURISTIC
    ```
    If you cannot find a test for a scenario, record it anyway with `--exit 1` — either way
    (no row, or a `--exit 1` row) the gate lists it by name in its FAIL detail, but an

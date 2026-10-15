@@ -23,12 +23,14 @@ the plugin folder.
    fixes have no `tasks.md`). Record as you go:
    ```
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "regression test" --cmd "<the exact test command>" --exit <code> \
-     --phase red --label PROVEN    # failing, before the fix
+     --claim "regression test" --cmd '<the exact test command>' --exit <code> \
+     --phase red --label HEURISTIC    # failing, before the fix
    ${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage build \
-     --claim "regression test" --cmd "<the exact test command>" --exit 0 \
+     --claim "regression test" --cmd '<the exact test command>' --exit 0 \
      --phase green --label PROVEN  # passing, after the fix
    ```
+   Each `'<...>'` holds the text as it is, with each `'` in it written as `'\''`, so a backquote or a
+   `$` in it stays text.
    As soon as RED is confirmed, also record the test's path — this arms the write
    shield (`protect-regression-test.sh` blocks you from editing that file; fix the
    code, not the test):
@@ -41,8 +43,7 @@ the plugin folder.
    occurrences `rca.md` flagged. Cross-reference an active `intent.md` if one exists.
 4. **A file outside the fix: the person decides first.** The fix's files are the regression
    test and the files `rca.md` names (the cause, the same-pattern occurrences, the related
-   files). Before you change any other file, or when Temper refuses a write as scope drift,
-   stop: do not write it another way. List it in the `DRIFT` section of your panel: the path,
+   files). Before you change any other file, stop: do not write it another way. List it in the `DRIFT` section of your panel: the path,
    why the fix needs it, and the change you would make. The orchestrator asks the person and
    launches you again with one `Drift decision: {path}: {add|revert|allow-once}` line per
    answer; `revert` means fix without that file, `allow-once` allows one edit.

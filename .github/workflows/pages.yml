@@ -28,7 +28,7 @@ jobs:
       # They live in one pinned commit and are restored here, so Pages serves them as video/mp4.
       - name: Restore the videos
         env:
-          MEDIA_SHA: 07228492dbed8e80acf7676c592a681ffa54ba1d
+          MEDIA_SHA: 93501d30438d8295448af583bb58a65fa384c259
         run: |
           git fetch --depth 1 origin "$MEDIA_SHA"
           mkdir -p docs/media

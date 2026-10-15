@@ -115,7 +115,7 @@ _main() {
   # program is an inline `python3 -c` string (single-quoted, so it must not contain a
   # single quote) and every input travels as argv, so the hook runs no other file.
   local decision
-  decision=$(python3 -c '
+  decision=$(python3 -I -c '
 import json, sys
 marker_path, gates_path, max_blocks = sys.argv[1], sys.argv[2], int(sys.argv[3])
 try:

@@ -3,6 +3,186 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.7.0: the CLI says what comes next, the mod only draws, Build runs in groups of Haiku agents
+
+**The CLI says what comes next (ADR 0013).** `temper next --json` prints the one next action of a run:
+work (CLI calls, a stage brief to launch, the commit steps), a question with its exact header, question
+and options (each with the CLI calls it maps to), a wait, an armed run's own move, or a broken run.
+`commands/temper.md` is a loop over it (6,870 words to 2,117), and `commands/fix.md` follows the
+same loop (2,057 to 676). The CLI writes `.temper/view.json` after every change. `state advance` refuses
+to leave a failed stage nobody skipped, a stage with no verdict, or a stage out of order, and leaving
+Plan records the approved files and `base_sha`.
+
+**One flow (ADR 0012, amended by ADR 0013).** The CLI is the only run state. The person decides every
+gate in the `Temper gate` question, with the mod or without it, in every mode. The mod counts an answer
+only when its header, question and label are exactly what the CLI wrote for that run and step; a typed
+message is never a move. The stage commands are doors into `/temper` (`state init <slug> --enter <stage>`).
+
+**The guard claims only what it can enforce.** A call only the person may cause (leaving Intent or Plan,
+a skip, a step back, an accepted finding, arming autonomy, kept agent commits, the commit override,
+starting over) passes only as one of the calls of the person's answer, word for word. The file rules hold
+each stage to its writes and Build to the approved files. Through Bash the mod refuses `--no-verify`, a
+changed `core.hooksPath` and a write onto a protected file. The shell parser `core/bash.ts` and its lists
+are deleted. Temper is not a sandbox: `docs/trust.md` lists what the guard does not see.
+
+**The mod draws the run from view.json, and reads nothing else of the CLI's.** The band: the stage
+timeline, time and tokens, the loops with their reasons, and one button, Go on. The pane, read only: plan
+files by group, the Build grid (state, model and retries per task), the Review findings with confidence
+and file:line, the Check markers with their failing lines, the criteria with their evidence. At the
+commit, `temper report --html` writes `report.html` in the spec folder. The game is removed. The mod
+went from 6,092 lines to 3,224, its tests from 8,755 to 5,235.
+
+**Build runs in groups of small Haiku task agents (ADR 0011, amended).** Plan writes `tasks.md` as groups
+of tasks, each with its files, dependencies and at least two test cases (an input and its exact result).
+Each task runs on Haiku in its own worktree, with a slim brief and a pattern test; a failed task is
+retried, then escalated, then parks its group, and a person reviews each group once. The CLI makes the
+task commits and the merges, and parks a group on a commit it did not record. Per task Build and
+`build.mode` are removed; `agents/build.md` is the fix pass of a loop back to Build. Every stage records
+its usage (`temper usage add`), and a fix run's commit adds its lesson to `.temper/lessons.md`.
+
+**Release audit fixes.** A verdict of the active run is computed from its own spec folder and the project's config:
+`gate --spec-path` of another folder prints the rows and records nothing, and `TEMPER_CONFIG` is not followed while a
+run is active. The plan gate records the digest of the approved `tasks.md`, so a Test, Validate or Integration command
+changed after it stops the grouped Build, and from Design on no agent writes `tasks.md`. A project below the top of its
+git repository (a package of a monorepo) builds in its own folder inside each worktree, and the native hook gates every
+project a commit touches. The guard reads `$'...'` and `$"..."` quotes, expands every word's brace lists (a quoted one
+not), finds a program through a glob or in another case and a call at every word that names the script, and refuses a
+config handed to git that can switch the hook off (`-c include.path`, `--config-env`, an alias whose body skips the hook,
+`GIT_CONFIG_GLOBAL`); a copy into the spec folder is no longer refused. At Commit only the spec folder is written.
+`base_sha` is recorded once. A door's walked approvals commit the spec only when it changed, and a walked stage whose
+check fails offers to run it. A commit the CLI did not make on a group's branch is a question (take it out or keep it).
+The commit step skips a file deleted in a commit. `gate build` wants the passing run after the failing one; a Review that
+did not finish offers to run again; `config get fix.max-loops` prints the limit the loop keeps. The plan gate has no
+"Walk through step by step" option.
+
+**Second audit fixes.** The guard judges a copy's target on its own, so a copy into `.temper/` no longer lets an
+`rm -rf .temper/` in the same command through; a brace list gives each word as many times as bash does (`-m {-n,-n}`);
+a glob with a class names a program (`/usr/bin/[[:alpha:]]it`); a command that runs git and sets `HOME` or
+`XDG_CONFIG_HOME` is refused, and so is a temper call with an unquoted glob in its words. A config suggestion may go
+into `.claude/AGENTS.md`. The native hook and the commit gate read a rename by both its names, so a file moved out of a
+project below the top, or a code file moved into the spec folder, is gated. A project folder whose name holds a glob
+character keeps its run files out of `git status`. After Keep the commits, the next step merges the groups again, and
+Take the commits out is offered only for the newest commits of the branch.
+
+**Live run fixes.** A live run of the release candidate found that the accepted intent was committed on the branch the
+person was on (often main): leaving Intent now switches to the run's branch, or makes it, before that commit. A group
+that builds on another starts only after the person's Continue of it (`temper group start` refuses before that). A
+passed Review with open findings below the blocking severity offers Loop back to Build and Accept a finding. The end of
+the run prints the report before it clears the run state, and clearing it leaves an unchanged gate ledger as it is, so
+the commit leaves the spec folder clean. The Check marker of the tests reads no scenario row. When Build committed the
+code itself, the last commit's message names the run's record instead of a feature. A background agent's tokens and time
+come from its completion notice. A second narrow review closed more ways around the guard: a glob as a copy target
+(`cp f .temper/[Eg][Va]*`), `NAME+=value`, a program named by bracket sets alone (`/usr/bin/[g][i][t]`), `cp --parents`
+and `rsync -R` landings, `rsync --remove-source-files`, and a glob after a call's reason; a glob in a call is refused only
+when it could spell a word the person decides (`--model sonnet[1m]` passes). After Keep the commits the person is asked
+before the groups are merged again, so a merge that stops early does not go round unasked.
+
+**Two more live runs.** A `/temper:fix` run in a fresh project now runs the setup calls, so its commit hook is
+installed. A loop back to Build keeps what Review (or Check) left open, and the fix pass prompt names it, since the
+loop clears that stage's ledger. The last commit's message names the run's record when the code it lists is already
+committed. `state clear` keeps the ledger `state archive` wrote for the commit, so the commit's own hook (which records
+the spec only commit's verdict) no longer changes the committed record. Check's `.temper/coverage/` folder is kept out
+of git status.
+The line `temper next` gives before each launch names the model the agent runs on ("Plan runs on opus.",
+"Build hands out 2 tasks on haiku."), and the report's stage table names the model each stage was launched on (in the
+terminal, in `report.html` and in the view's `usage.by_stage`). Both name the model Temper asked for; the session
+transcript holds the model that served each turn.
+A passed Design offers Loop back to Plan (a concern can need a missing case, and the plan is closed from Design on),
+and a loop back to Intent, Plan or Design gives that stage's agent the person's reason, as Build and Fix already had.
+
+**Targeted live runs.** A door into Review or Check reads the run's diff from where the feature started (before the
+commit that added the spec's `intent.md`, else where the branch left main or master), so committed work is
+reviewed; before, its base was HEAD and Review read an empty diff. `state init --enter` takes the tier from the
+Complexity line of `plan.md` (else of `intent.md`, which holds Intent's first guess), so a Design door no longer
+skips Design on a first guess of simple. The last commit of a run whose code is all committed says the code is in the
+commits before it. Such a door's walked Build passes on the newest Build PASS the spec folder's committed
+`gate-ledger.json` records (looking back past a later door that skipped Build), while no file of the plan changed
+since that commit (before, it always failed: the door's run holds no evidence of the run that built the code, and Run
+Build built the whole plan again). When a file of the plan changed since, the check fails and names it, and Run Build
+is the fix pass on that code, not the plan built again. A loop back from a door's run runs the stage it goes back
+to, and Build's fix pass mends the code the earlier run built (before, Build was only checked again, so a door's run
+could never fix what Review found). `enter` and `built_before` are the CLI's keys. Check's tests row reads the latest
+run of each test command, so a failing integration run beside a passing unit run fails it, and a passed Check offers
+Loop back to Build, for what Check passed with a warning (a lint run, by the methodology a warning).
+Review writes no code: the CLI records the project's tracked files as Review starts, and the Review check fails, naming
+the file, when a Review agent left a change in them or made a commit (a probe it restores leaves none); a live Review
+had fixed a critical finding itself and resolved it, so no loop back ran and no test came first. A loop names only the
+feedback file of the stage it came back from, and Check's `test-gap-report.json` is kept out of git status.
+The orchestrator launches a stage agent with `run_in_background: false`, and when the tool runs it in the background
+anyway, its completion notice is the agent's return and the turn it starts runs the `after` calls: a run once sat
+idle after its Plan agent finished in the background until the person wrote. Getting Started says what to do
+when a run waits after an agent finished, and names `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, which keeps agents in
+the foreground. A plugin cannot set that variable, so `/temper:init` asks whether to add it to the project's
+`.claude/settings.json` (`temper init --foreground-agents`, which merges the one `env` key, keeps every other key,
+and writes nothing into a file it cannot read as JSON or through a symlink); the line said when an agent goes to the
+background names `/temper:init` too. A parked commit question says the armed run parked there and where its report is.
+
+**The lows of the live runs.** The Design question names each open area of concern (`design.md` gives each its own
+heading or list item); leaving Design records the ones the person accepted as written (`resolved: accepted as written
+at the Design question`) and commits `design.md`, which was left for the last commit; an armed run parks at a Design
+with open concerns, since a person decides them before Build. `temper next` no longer lists `temper init` after every
+finished run (a run's end removes `gates.json`, which the setup check read); it lists it when `.temper` is missing or
+the clone's exclude list lacks a run file, so a project set up before a newer run file (`security-map.json`) gets it.
+A task agent's box gives its test runs' exit codes as `red exit 1, green exit 0`, and the RCA box wraps a long fact
+row instead of cutting it (the box is saved as `rca.md`). The CLI, the guard scripts and the commit hook run their
+inline Python isolated (`python3 -I`): before, a file in the project named like a standard module (`json.py`) ran on
+every `temper` call; a hook installed before this is listed for `install.sh` again.
+
+**The lows of the Design run.** Three lows of a run through Design, armed at the plan gate, are fixed. The
+`resolved:` line leaving Design adds is a paragraph of its own (Markdown joined it to the concern's last list item
+or paragraph); under a list item concern it is indented to the item's text. A passing group Validate or integration suite prints
+only its last 12 lines into the main conversation (a suite of 60 tests printed about 250); a failing one prints all
+of its output, and the ledger row keeps the last 4 KB as before. `temper state set complexity` also writes the tier
+into the `**Complexity:**` line of `intent.md` (and of `plan.md`, when it has one): a tier the person changed at the
+plan gate stayed only in the run's state, `plan.md` names no tier, so a later door took Intent's first guess. The
+plan gate's new `tier recorded` row fails when such a line names another tier than the run.
+
+**Usage, cost, and the report at the end.** A run's report showed zero tokens and zero time for every stage:
+its agents ran in the background, each one's report came before its completion notice, and the orchestrator
+recorded the stage when the report came. `temper usage add` and `temper task gate` now take the agent's id
+(`--agent`), and the CLI reads what the agent was billed for from its own transcript: each call's input, cache
+writes, cache reads and output, with the model that served it, so the numbers no longer depend on when the call
+runs. The total Claude Code returns (`subagent_tokens`) is the agent's context at its last call, not its usage:
+one Haiku task returned 114K and was billed for 1.65M tokens, mostly cache reads. An agent named with no
+transcript and no total is refused, and nothing is recorded. The report gives an estimated cost at API list
+prices (`scripts/usage_cost.py`, with their date), by stage and by model, and the main conversation's since the
+run started, from the session transcript. A subagent's transcript records each reply before it streams, so its
+output is taken from the reply's text and its thinking is not counted: the cost of the agents can be low. At the
+end of a run the report prints in the terminal before the commit, the orchestrator shows it, and a question
+offers the HTML page; before, `report.html` was always written, and the terminal report came after the commit.
+The orchestrator records an agent and goes on at its report, the first of its report and its notice to arrive:
+the agent has finished by then, and its numbers come from its transcript. Claude Code started a turn for the
+report but none for the notice, so a run that waited for the notice waited until the person wrote.
+The first run with this showed no cost at all: its Claude Code named each model with a gateway prefix
+(`ml-asset:static-model/...`), and the price table matched only bare ids. The CLI now takes the last
+`claude-<family>` id in the name, whatever comes before or after it. That run also skipped the HTML question
+and did not show the report: both were instructions in a list of commit steps. The question is now one
+`temper next` asks, after `temper report --end` has printed the report; the page says to copy the report into
+the reply. The next run priced only its Sonnet stages: one call on a model the price table does not know
+dropped the cost of its whole agent, the report did not say which model, and its run total added only what
+had a cost. A row now keeps the cost of the agent's other calls; that cost, and every total it is in, is
+marked `+`; a launch none of whose calls has a price still has none; and the report names the models with no
+price, so a missing one can be added to `scripts/usage_cost.py`. Its note "no transcript was found, or a model
+they ran on has no price" now gives the two causes apart: the launches with no transcript, with the agent ids
+they were given, and the launches that ran only on models with no price.
+
+**The pane opens for a run started in the session.** In full mode the mod opened the pane by itself only
+when a session started during a run, so a run started with `/temper:temper` in the session showed no pane
+until the person typed `/temper:temper pane`. Now the person's own `/temper:temper` with a feature
+description (or any word that goes on to the run) opens it, which Claude Code places at any width, and so
+does the first read that finds a run started later in the session (a door, or a run Claude started), which
+Claude Code places only on a wide terminal. A pane the person closed by hand is not opened again by itself
+in that session. The empty pane now says that a run shows there once it starts.
+
+**The two videos show 9.7.0.** The workflow video (38 seconds) now shows the Temper gate question,
+Build in groups of Haiku task agents and the report at the end. The mod video (38 seconds) shows the
+band and the pane as the mod draws them from `view.json`, a gate question, the refusals, the Scope drift
+question from Build's fix pass and the three modes. The game is gone from it, as from the mod. One commit
+holds the two videos, and the website links pin that commit.
+
+**Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
+plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.
+
 ## v9.6.8: scope drift asks with why and the change, two narrated videos, a shorter README
 
 **Scope drift is one question, with the mod and without it.** Before this release, a file outside

@@ -57,7 +57,7 @@ _main() {
   [[ -f "$state" ]] || return 0
 
   local verdict=""
-  verdict=$(python3 -c "
+  verdict=$(python3 -I -c "
 import json, os, sys
 state_path, project_dir = sys.argv[1], sys.argv[2]
 try:

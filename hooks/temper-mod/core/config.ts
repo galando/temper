@@ -1,33 +1,8 @@
-// The few keys the mod reads: `.claude/temper.config` (a small YAML subset) and the
-// plain-string userConfig fields. userConfig declares no `options` (that would stop the
-// whole plugin loading before Claude Code 2.1.271), so every value is validated here.
+// The plain text userConfig fields the mod reads. userConfig declares no `options` (that
+// would stop the whole plugin loading before Claude Code 2.1.271), so every value is
+// validated here. The mod reads no `.claude/temper.config`: the CLI puts what it needs in view.json.
 
 export type UiMode = 'full' | 'minimal' | 'off'
-
-// Value of a dotted key such as `fix.max-loops`, read by indentation. Comments, inline
-// comments and surrounding quotes are dropped. Null when the key is absent.
-export function readConfigValue(text: string, dotted: string): string | null {
-  const want = dotted.split('.')
-  const stack: Array<{ indent: number; key: string }> = []
-  for (const raw of text.split('\n')) {
-    if (raw.trim() === '' || raw.trimStart().startsWith('#')) continue
-    const m = /^(\s*)([A-Za-z0-9_-]+):\s*(.*)$/.exec(raw)
-    if (!m) continue
-    const indent = (m[1] ?? '').length
-    const key = m[2] ?? ''
-    for (let top = stack[stack.length - 1]; top !== undefined && top.indent >= indent; top = stack[stack.length - 1]) stack.pop()
-    const path = [...stack.map(s => s.key), key]
-    const value = (m[3] ?? '').replace(/\s+#.*$/, '').trim()
-    if (value === '') {
-      stack.push({ indent, key })
-      continue
-    }
-    if (path.length === want.length && path.every((k, i) => k === want[i])) {
-      return value.replace(/^(['"])(.*)\1$/, '$2')
-    }
-  }
-  return null
-}
 
 const norm = (v: string | undefined): string => (v ?? '').trim().toLowerCase()
 
@@ -41,30 +16,7 @@ export function parseOnOff(v: string | undefined, fallback: 'on' | 'off'): 'on' 
   return n === 'on' || n === 'off' ? n : fallback
 }
 
-// The game setting: `on` offers the game while Claude works and answers the command, `command`
-// answers the command only, `off` hides it all. Checked here, never as a picker.
-export type GameMode = 'on' | 'command' | 'off'
-
-export function parseGameMode(v: string | undefined): GameMode {
-  const n = norm(v)
-  // Off has synonyms, so a person who writes false or no gets what they mean. Anything that is
-  // not a known word (a typo, an empty value) is on, the default, and shows no message.
-  if (['off', 'false', 'no', '0', 'disabled', 'none'].includes(n)) return 'off'
-  return n === 'command' ? 'command' : 'on'
-}
-
 export const parseEnforcement =(v: string | undefined): 'on' | 'off' => parseOnOff(v, 'on')
-
-const positiveInt = (v: string | null | undefined): number | null => {
-  if (v === null || v === undefined || !/^\s*\d+\s*$/.test(v)) return null
-  const n = Number(v)
-  return n >= 1 ? n : null
-}
-
-// fix.max-loops in temper.config wins, then the userConfig field, then 3.
-export function parseMaxLoops(configText: string, userValue: string | undefined): number {
-  return positiveInt(readConfigValue(configText, 'fix.max-loops')) ?? positiveInt(userValue) ?? 3
-}
 
 // "build=sonnet, plan=opus" -> { build: 'sonnet', plan: 'opus' }; malformed pairs skipped.
 export function parsePhaseModels(v: string | undefined): Record<string, string> {
