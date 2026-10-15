@@ -11,7 +11,7 @@ the current stage ([the mod](docs/mod.md)).
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1.287%2B%20for%20the%20mod-blue)](docs/mod.md#where-enforcement-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-https://github.com/user-attachments/assets/ad593a29-a75d-407b-8945-94aa93e8439d
+https://github.com/user-attachments/assets/ce765159-e062-46df-a6e9-c26b7f7deca7
 
 [Website](https://galando.github.io/temper) · [Getting Started](docs/getting-started.md) · [Commands](docs/commands.md) · [The mod](docs/mod.md) · [Haiku Build](docs/grouped-build.md) · [Releases](https://github.com/galando/temper/releases)
 
@@ -68,7 +68,7 @@ flowchart LR
   run's pane, and at the commit the run writes a report page. It is not a sandbox: [Trust](docs/trust.md)
   lists what it does not see, and [the mod](docs/mod.md) has the details.
 
-https://github.com/user-attachments/assets/627e1385-cbc0-4ad9-bd3a-05ca2b8bb09e
+https://github.com/user-attachments/assets/448bb711-1723-41b0-bf45-c5ba3ce048c6
 
 ## What the mod reads and writes
 
