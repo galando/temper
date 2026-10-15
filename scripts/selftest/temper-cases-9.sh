@@ -743,18 +743,24 @@ assert_eq "usage: an agent with no transcript and no total is refused, and nothi
   "1|1|$n0" "$rc|$(printf '%s' "$out" | grep -c 'completion notice of an agent run in the background carries subagent_tokens')|$(python3 -c "import json; print(len(json.load(open('.temper/usage.json'))))")"
 out="$("$TEMPER" task gate 1 --model haiku --agent nothere12 2>&1)"; rc=$?
 assert_eq "task gate: the same refusal, before the gate judges anything" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'no usage for agent nothere12')"
-"$TEMPER" usage add --stage design --model opus --agent nothere12 --tokens 50000 --ms 700 >/dev/null 2>&1
-assert_eq "usage: with no transcript, the notice's total is the row, with no cost" "notice|50000|None" \
-  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s|%s' % (r['source'], r['tokens'], r.get('cost')))")"
+out="$("$TEMPER" usage add --stage design --model opus --agent nothere12 --tokens 50000 --ms 700 2>&1)"
+assert_eq "usage: with no transcript, the notice's total is the row, with no cost, and the agent id it was given" "notice|50000|None|nothere12" \
+  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s|%s|%s' % (r['source'], r['tokens'], r.get('cost'), r.get('agent')))")"
+assert_eq "usage: the answer says no transcript of the agent was found" \
+  "OK: usage recorded (design, from the totals Claude Code gave: no transcript of agent nothere12 was found, so no cost)" "$out"
 assert_exit "usage: an agent id that is not a plain name is never looked up" 1 "$TEMPER" usage add --stage design --model opus --agent '../x'
 rep="$("$TEMPER" report 2>&1)"
 assert_eq "report: the terminal report gives the cost by stage, the main conversation since the run started, the notes" "1|1|1|1|1|1" \
-  "$(printf '%s\n' "$rep" | grep -c '^  plan .*\$0.1012  opus$')|$(printf '%s\n' "$rep" | grep -c 'main conversation since the run started: 102,000 tokens in 1 call(s), \$0.0440')|$(printf '%s\n' "$rep" | grep -c '2 launch(es) have no cost')|$(printf '%s\n' "$rep" | grep -c 'thinking, billed as output, is not counted')|$(printf '%s\n' "$rep" | grep -c 'not billed per token')|$(printf '%s\n' "$rep" | grep -c 'list prices of 20')"
+  "$(printf '%s\n' "$rep" | grep -c '^  plan .*\$0.1012  opus$')|$(printf '%s\n' "$rep" | grep -c 'main conversation since the run started: 102,000 tokens in 1 call(s), \$0.0440')|$(printf '%s\n' "$rep" | grep -c '1 launch(es) have no transcript here, so no cost')|$(printf '%s\n' "$rep" | grep -c 'thinking, billed as output, is not counted')|$(printf '%s\n' "$rep" | grep -c 'not billed per token')|$(printf '%s\n' "$rep" | grep -c 'list prices of 20')"
+assert_eq "report: it names the agent ids with no transcript, and counts the launches that ran only on models with no price" "1|1" \
+  "$(printf '%s\n' "$rep" | grep -c 'No agent-<id>.jsonl was found for the agent id(s) nothere12\.')|$(printf '%s\n' "$rep" | grep -c '1 launch(es) ran only on models with no price here\.')"
 "$TEMPER" report --html >/dev/null 2>&1
 assert_eq "report --html: a Cost column, the main conversation and the notes" "1|1|1" \
   "$(grep -c '<th>Cost</th>' .temper/specs/demo/report.html)|$(grep -c 'Main conversation since the run started: 102k tokens in 1 call(s), \$0.0440' .temper/specs/demo/report.html)|$(grep -c 'not billed per token' .temper/specs/demo/report.html)"
 assert_eq "view: the usage carries the cost and the count of rows without one" "0.202352|2" \
   "$(python3 -c "import json; u=json.load(open('.temper/view.json'))['usage']; print('%s|%s' % (round(u['cost'], 6), u['unpriced']))")"
+assert_eq "view and report --html: the launches with no transcript and their agent ids" "1|nothere12|1" \
+  "$(python3 -c "import json; u=json.load(open('.temper/view.json'))['usage']; print('%s|%s' % (u['no_transcript'], ','.join(u['missing_agents'])))")|$(grep -c 'No agent-&lt;id&gt;.jsonl was found for the agent id(s) nothere12' .temper/specs/demo/report.html)"
 assert_eq "next: every agent's after call names its id, so its usage is read from its transcript" "1" \
   "$(nx "int('--agent {agent} --tokens {tokens} --ms {ms}' in d['agents'][0]['after'][0])")"
 unset CLAUDE_CONFIG_DIR
@@ -773,6 +779,11 @@ open(os.path.join(d, "sess2.jsonl"), "w").write(
     rec("m", "ml-asset:static-model/claude-opus-5-5", {"input_tokens": 1000, "output_tokens": 1000}, side=False) + "\n")
 PY
 export CLAUDE_CONFIG_DIR="$CC"
+mkdir -p "$CC/projects/-p/sess-earlier/subagents"
+python3 -c "import json,sys; open(sys.argv[1],'w').write(json.dumps({'type':'assistant','isSidechain':True,'timestamp':'2099-01-01T00:00:01.000Z','message':{'id':'e1','role':'assistant','model':'claude-sonnet-5-5','stop_reason':'end_turn','usage':{'input_tokens':1000,'output_tokens':1000},'content':[]}})+'\\n')" "$CC/projects/-p/sess-earlier/subagents/agent-earlier123.jsonl"
+"$TEMPER" usage add --stage intent --model sonnet --agent earlier123 >/dev/null 2>&1
+assert_eq "usage: an agent of another session (a run taken up in a new conversation) is found by its id" "transcript|0.012" \
+  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s' % (r['source'], round(r['cost'], 6)))")"
 "$TEMPER" usage add --stage review --model sonnet --agent gw1234567 >/dev/null 2>&1
 assert_eq "usage: a model named with a gateway prefix gets its price (agent and main conversation)" "0.012|0.0240" \
   "$(python3 -c "import json; print(round(json.load(open('.temper/usage.json'))[-1]['cost'], 6))")|$("$TEMPER" report 2>&1 | sed -n 's/.*main conversation since the run started: .*, \$\([0-9.]*\)$/\1/p')"

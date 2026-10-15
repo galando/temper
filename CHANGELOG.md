@@ -162,7 +162,9 @@ the reply. The next run priced only its Sonnet stages: one call on a model the p
 dropped the cost of its whole agent, the report did not say which model, and its run total added only what
 had a cost. A row now keeps the cost of the agent's other calls; that cost, and every total it is in, is
 marked `+`; a launch none of whose calls has a price still has none; and the report names the models with no
-price, so a missing one can be added to `scripts/usage_cost.py`.
+price, so a missing one can be added to `scripts/usage_cost.py`. Its note "no transcript was found, or a model
+they ran on has no price" now gives the two causes apart: the launches with no transcript, with the agent ids
+they were given, and the launches that ran only on models with no price.
 
 **The pane opens for a run started in the session.** In full mode the mod opened the pane by itself only
 when a session started during a run, so a run started with `/temper:temper` in the session showed no pane

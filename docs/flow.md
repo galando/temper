@@ -91,7 +91,7 @@ question is no answer. A typed message is never a move: it is a change request o
 | `criteria` | `[{id, priority, status, text, evidence}]` of the intent's success criteria |
 | `loops` | `[{from, to, reason, iteration, max, at}]` |
 | `skips` | `[{stage, reason, by}]` |
-| `usage` | `{tokens, ms, cost, unpriced, partial, no_price, output_estimated, by_stage, by_model}` from `temper usage add`; each of `by_stage` and `by_model` maps a name to `{tokens, ms, runs, cost, unpriced, partial}`, and a stage also to `models` (the models its launches asked for). `cost` is the estimate at list prices of the rows read from an agent's transcript (null when none was), `unpriced` counts the rows without one, `partial` says some row's cost leaves out calls on a model with no price here, and `no_price` names those models as the price table reads them |
+| `usage` | `{tokens, ms, cost, unpriced, partial, no_price, output_estimated, by_stage, by_model}` from `temper usage add`; each of `by_stage` and `by_model` maps a name to `{tokens, ms, runs, cost, unpriced, partial}`, and a stage also to `models` (the models its launches asked for). `cost` is the estimate at list prices of the rows read from an agent's transcript (null when none was), `unpriced` counts the rows without one, `partial` says some row's cost leaves out calls on a model with no price here, `no_price` names those models as the price table reads them, `no_transcript` counts the rows whose agent transcript was not found, and `missing_agents` names the agent ids they were given |
 | `time` | `{started, updated}` |
 
 The file is replaced whole each time (written beside it, then moved), so a reader never sees half of

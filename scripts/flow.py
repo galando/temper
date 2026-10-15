@@ -1180,11 +1180,17 @@ def usage(run):
                 b["models"].append(r.get("model"))
         return out
     priced = [price(r) for r in rows if price(r) is not None]
-    no_price = []
+    no_price, missing = [], []
     for r in rows:
         no_price += [x for x in names(r) if x not in no_price]
+    # the launches whose transcript was not found (the totals Claude Code gave), and the agent ids they were given
+    lost = [r for r in rows if r.get("source") != "transcript"]
+    for r in lost:
+        if isinstance(r.get("agent"), str) and r["agent"] not in missing:
+            missing.append(r["agent"])
     return {"tokens": tokens, "ms": ms, "cost": round(sum(priced), 6) if priced else None, "unpriced": len(rows) - len(priced),
             "partial": any(price(r) is not None and names(r) for r in rows), "no_price": no_price,
+            "no_transcript": len(lost), "missing_agents": missing,
             "output_estimated": any(r.get("output_estimated") for r in rows), "by_stage": by("stage"), "by_model": by("model")}
 
 

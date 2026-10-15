@@ -204,9 +204,13 @@ def render(view, main=None):
             notes.append("Main conversation since the run started: %s tokens in %d call(s), %s.%s" % (
                 tokens(main.get("tokens")), main["calls"], cost(mc, bool(main.get("unpriced"))),
                 " The run, agents and main conversation: %s." % whole if whole is not None else ""))
-        if usage.get("unpriced"):
-            notes.append("%d launch(es) have no cost: no transcript was found (the tokens are then the total Claude Code gave, "
-                         "the context at the end), or none of their calls ran on a model with a price here." % usage["unpriced"])
+        lost = usage.get("no_transcript") or 0
+        if lost:
+            notes.append("%d launch(es) have no transcript here, so no cost: their tokens are the total Claude Code gave (the "
+                         "context at the end).%s" % (lost, " No agent-<id>.jsonl was found for the agent id(s) %s." % ", ".join(
+                             usage["missing_agents"]) if usage.get("missing_agents") else ""))
+        if (usage.get("unpriced") or 0) > lost:
+            notes.append("%d launch(es) ran only on models with no price here." % (usage["unpriced"] - lost))
         if plus:
             notes.append("A cost with + leaves out what has no cost here: a launch with none, or calls on a model with no price here.")
         if no_price:

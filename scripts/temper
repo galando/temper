@@ -3857,7 +3857,7 @@ _task_gate_body() {
   # D-07: this launch's usage, once, whatever the verdict (a failed attempt spent tokens too).
   [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=""
   [[ "$ms" =~ ^[0-9]+$ ]] || ms=""
-  _usage_append task "$model" "$tokens" "$ms" "$n" "$group" "$from" || true
+  _usage_append task "$model" "$tokens" "$ms" "$n" "$group" "$from" "$agent" || true
 
   if [[ "$verdict" != "PASS" ]]; then
     local att fshas wtrel park=""
@@ -5404,9 +5404,11 @@ if m:
     if t.get('cost') is not None or mc is not None:
         short = bool(t.get('unpriced') or t.get('partial') or m.get('unpriced')) or t.get('cost') is None
         print('  run total, the agents and the main conversation: %s' % cost((t.get('cost') or 0) + (mc or 0), short))
-if t.get('unpriced'):
-    print('  %d launch(es) have no cost: no transcript was found (the tokens are then the total Claude Code gave, the context' % t['unpriced'])
-    print('  at the end), or none of their calls ran on a model with a price here.')
+if t.get('no_transcript'):
+    print('  %d launch(es) have no transcript here, so no cost: their tokens are the total Claude Code gave (the context at' % t['no_transcript'])
+    print('  the end).' + (' No agent-<id>.jsonl was found for the agent id(s) %s.' % ', '.join(t['missing_agents']) if t.get('missing_agents') else ''))
+if t.get('unpriced', 0) > t.get('no_transcript', 0):
+    print('  %d launch(es) ran only on models with no price here.' % (t['unpriced'] - t['no_transcript']))
 if plus:
     print('  A cost with + leaves out what has no cost here: a launch with none, or calls on a model with no price here.')
 if no_price:
@@ -5423,7 +5425,7 @@ print('  A Claude plan is not billed per token: this is what the run costs at AP
 # {stage, model, tokens, ms, task, group, ts}; a value that was not given is null. The grouped
 # `task gate --tokens --ms` writes its row here too, and `group report` keeps reading groups.json
 # attempts, so the two views never meet in one total: the usage totals count each launch once.
-_usage_append() { # _usage_append <stage> <model> <tokens> <ms> <task> <group> [<the agent's transcript summary>]
+_usage_append() { # _usage_append <stage> <model> <tokens> <ms> <task> <group> [<the agent's transcript summary>] [<the agent id given>]
   local row
   row="$(python3 -I -c "
 import json, sys
@@ -5431,6 +5433,9 @@ a = sys.argv[1:]
 def num(x): return int(x) if x.isdigit() else None
 row = {'stage': a[0], 'model': a[1] or None, 'tokens': num(a[2]), 'ms': num(a[3]),
        'task': num(a[4]), 'group': a[5] or None, 'ts': a[6], 'source': 'notice' if num(a[2]) else 'none'}
+# the agent id given, kept when its transcript was not found, so the report can name it
+if a[8]:
+    row['agent'] = a[8]
 try:
     s = json.loads(a[7]) if a[7] else None
 except ValueError:
@@ -5445,7 +5450,7 @@ if isinstance(s, dict) and s.get('calls'):
                 'calls': s['calls'], 'served': s.get('served') or [], 'agent': s.get('agent'), 'session': s.get('session'),
                 'parts': {k: s.get(k) for k in ('input', 'cache_write', 'cache_read', 'output')},
                 'output_estimated': bool(s.get('output_estimated'))})
-print(json.dumps(row))" "$1" "$2" "$3" "$4" "$5" "$6" "$(_now)" "${7:-}")" || return 1
+print(json.dumps(row))" "$1" "$2" "$3" "$4" "$5" "$6" "$(_now)" "${7:-}" "${8:-}")" || return 1
   _ensure_dirs
   _json_append "$USAGE_FILE" "$row"
 }
@@ -5488,8 +5493,14 @@ def add(acc, r):
     else:
         acc['unpriced'] += 1
     acc['no_price'] += [x for x in names if x not in acc['no_price']]
+    # a launch whose transcript was not found has the totals Claude Code gave, and the agent id it was given
+    if r.get('source') != 'transcript':
+        acc['no_transcript'] += 1
+        if isinstance(r.get('agent'), str) and r['agent'] not in acc['missing_agents']:
+            acc['missing_agents'].append(r['agent'])
     acc['output_estimated'] = acc['output_estimated'] or bool(r.get('output_estimated'))
-fresh = lambda: {'rows': 0, 'tokens': None, 'ms': None, 'cost': None, 'unpriced': 0, 'partial': False, 'no_price': [], 'output_estimated': False}
+fresh = lambda: {'rows': 0, 'tokens': None, 'ms': None, 'cost': None, 'unpriced': 0, 'partial': False, 'no_price': [],
+                 'no_transcript': 0, 'missing_agents': [], 'output_estimated': False}
 by_stage, by_model, total = {}, {}, fresh()
 for r in rows:
     st = by_stage.setdefault(r.get('stage') or 'unknown', fresh())
@@ -5542,8 +5553,14 @@ cmd_usage() { # temper usage add --stage S [--model M] [--agent ID] [--tokens T]
   [[ -z "$task" || "$task" =~ ^[0-9]+$ ]] || { echo "FAIL: --task takes a whole number (got '$task')" >&2; return 1; }
   [[ -z "$group" || "$group" =~ ^G[0-9]+$ ]] || { echo "FAIL: --group takes G<n> (got '$group')" >&2; return 1; }
   local from; from="$(_usage_from "$agent" "$tokens")" || return 1
-  _usage_append "$stage" "$model" "$tokens" "$ms" "$task" "$group" "$from" || return 1
-  echo "OK: usage recorded ($stage${from:+, from the transcript of the agent})"
+  _usage_append "$stage" "$model" "$tokens" "$ms" "$task" "$group" "$from" "$agent" || return 1
+  if [[ -n "$from" ]]; then
+    echo "OK: usage recorded ($stage, from the transcript of the agent)"
+  elif [[ -n "$agent" ]]; then
+    echo "OK: usage recorded ($stage, from the totals Claude Code gave: no transcript of agent $agent was found, so no cost)"
+  else
+    echo "OK: usage recorded ($stage)"
+  fi
 }
 
 # ---------------------------------------------------------------------------
