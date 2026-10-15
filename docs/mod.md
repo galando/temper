@@ -114,7 +114,7 @@ applies when the mod does not load. You keep the full pipeline:
 - The evidence ledger.
 
 You lose the live refusals, the bar, the pane and the mod's report; `temper report` and the
-report page written at the commit stay. This was checked on 2.1.200 and 2.1.259.
+report page you can ask for at the commit stay. This was checked on 2.1.200 and 2.1.259.
 
 The settings declare no picker options. This is intentional: a settings field with options stops the
 plugin from loading on versions before 2.1.271.

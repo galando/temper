@@ -65,8 +65,8 @@ flowchart LR
   hook. A person can override a gate, and Temper records who did it. A confused model cannot.
 - **The mod makes the stages real.** It refuses writes outside the stage, `--no-verify`, and a step
   only you may take when you did not choose it in the gate question. It draws the stage bar and the
-  run's pane, and at the commit the run writes a report page. It is not a sandbox: [Trust](docs/trust.md)
-  lists what it does not see, and [the mod](docs/mod.md) has the details.
+  run's pane; at the end the run prints its report, and writes it as a page when you ask. It is not a
+  sandbox: [Trust](docs/trust.md) lists what it does not see, and [the mod](docs/mod.md) has the details.
 
 https://github.com/user-attachments/assets/448bb711-1723-41b0-bf45-c5ba3ce048c6
 
