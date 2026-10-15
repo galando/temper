@@ -8,8 +8,8 @@ All notable changes to Temper are documented here. The plugin version lives in
 **The CLI says what comes next (ADR 0013).** `temper next --json` prints the one next action of a run:
 work (CLI calls, a stage brief to launch, the commit steps), a question with its exact header, question
 and options (each with the CLI calls it maps to), a wait, an armed run's own move, or a broken run.
-`commands/temper.md` is a loop over it (6,870 words to 1,718), and `commands/fix.md` follows the
-same loop (2,057 to 619). The CLI writes `.temper/view.json` after every change. `state advance` refuses
+`commands/temper.md` is a loop over it (6,870 words to 2,117), and `commands/fix.md` follows the
+same loop (2,057 to 676). The CLI writes `.temper/view.json` after every change. `state advance` refuses
 to leave a failed stage nobody skipped, a stage with no verdict, or a stage out of order, and leaving
 Plan records the approved files and `base_sha`.
 
