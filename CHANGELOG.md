@@ -150,6 +150,9 @@ run started, from the session transcript. A subagent's transcript records each r
 output is taken from the reply's text and its thinking is not counted: the cost of the agents can be low. At the
 end of a run the report prints in the terminal before the commit, the orchestrator shows it, and a question
 offers the HTML page; before, `report.html` was always written, and the terminal report came after the commit.
+The orchestrator records an agent and goes on at its report, the first of its report and its notice to arrive:
+the agent has finished by then, and its numbers come from its transcript. Claude Code started a turn for the
+report but none for the notice, so a run that waited for the notice waited until the person wrote.
 
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.

@@ -69,10 +69,12 @@ again. Stop only where this section says so. When it lists `setup`, run those ca
   - **An agent the tool runs in the background anyway:** say in one line what is running, that the run
     goes on when it returns, that if it waits after the agent finished, any message moves it on, and
     that `/temper:init` can keep agents in the foreground in this project.
-    Its completion notice is its return: in the turn the notice starts,
-    print its box, run its `after` calls and go on with the loop. Never end that turn with its `after`
-    calls not run: nothing else moves the run. The agent's report can come before the notice, as a
-    message: print the box then, and run the `after` calls when the notice brings the numbers.
+    Its return is the first of its report (a message from the agent) and its completion notice: in the
+    turn that starts, print its box, run its `after` calls and go on with the loop. At the report, fill
+    `{tokens}` and `{ms}` with `none`: the agent has finished, and the CLI reads its numbers from its
+    transcript. Never wait for the notice; Claude Code may start no turn for it. Only when the CLI
+    refuses the call (no transcript of the agent) does the run wait for the notice, which carries the
+    numbers. Never end a turn with an agent's `after` calls not run: nothing else moves the run.
   - A `steps` entry is a command to run as written, or a short instruction to carry out; `{...}` in it
     is yours to fill (a commit message that says what the feature does).
   - **Filling a placeholder.** Every `{...}` text in a call or a step stands inside single quotes. Put the
