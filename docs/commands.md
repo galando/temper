@@ -100,7 +100,7 @@ after the command is one of these, Temper handles it instead of starting a run. 
 | `/temper:temper pr` | Ask Claude for a pull request description from the report |
 | `/temper:temper mode <full\|minimal\|off>` | Change how much Temper draws |
 | `/temper:temper enforcement <on\|off>` | Turn denials on or off |
-| `/temper:temper pane` | Open or close the pane |
+| `/temper:temper pane` | Open or close the pane (in full mode it also opens by itself when a run starts; see [the mod](mod.md)) |
 | `/temper:temper discuss <text>` | Send a message about the step you are at. It changes no stage. |
 | `/temper:temper help` | List these |
 

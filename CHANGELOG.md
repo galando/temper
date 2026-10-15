@@ -160,6 +160,14 @@ and did not show the report: both were instructions in a list of commit steps. T
 `temper next` asks, after `temper report --end` has printed the report; the page says to copy the report into
 the reply.
 
+**The pane opens for a run started in the session.** In full mode the mod opened the pane by itself only
+when a session started during a run, so a run started with `/temper:temper` in the session showed no pane
+until the person typed `/temper:temper pane`. Now the person's own `/temper:temper` with a feature
+description (or any word that goes on to the run) opens it, which Claude Code places at any width, and so
+does the first read that finds a run started later in the session (a door, or a run Claude started), which
+Claude Code places only on a wide terminal. A pane the person closed by hand is not opened again by itself
+in that session. The empty pane now says that a run shows there once it starts.
+
 **The two videos show 9.7.0.** The workflow video (38 seconds) now shows the Temper gate question,
 Build in groups of Haiku task agents and the report at the end. The mod video (38 seconds) shows the
 band and the pane as the mod draws them from `view.json`, a gate question, the refusals, the Scope drift

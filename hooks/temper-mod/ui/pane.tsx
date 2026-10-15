@@ -30,7 +30,7 @@ export function renderPane(kit: Kit, view: View, inline = false): RenderElement 
     return (
       <Box flexDirection="column" backgroundColor={CARD_BG}>
         <Text bold color={PINK}>{'◈ Temper'}</Text>
-        <Text color={MUTED}>No Temper run is active. Start one with /temper:temper and a feature description.</Text>
+        <Text color={MUTED}>No Temper run is active yet. A run started with /temper:temper and a feature description shows here.</Text>
       </Box>
     )
   }

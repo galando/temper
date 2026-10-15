@@ -59,6 +59,13 @@ findings (severity, confidence, file and line, open, resolved or accepted), the 
 tests, coverage, lint, security, with the lines that failed), the acceptance criteria with their evidence,
 and your decisions. It has no button. `minimal` draws the stages only; `off` draws nothing.
 
+In full mode the pane opens by itself: when you type `/temper:temper` with a feature description (or
+any word that goes on to the run), when a run starts later in the session (a door, or a run Claude
+started), and when a session starts during a run. Your own `/temper:temper` opens it at any terminal
+width; Claude Code shows a pane the mod opens on its own only from 144 columns (110 once you have opened
+it yourself, until you close it by hand). Once you close it by hand, it stays closed for the rest of the session;
+`/temper:temper pane` opens or closes it at any time.
+
 At the commit the run prints its report in the terminal (`temper report`), and asks whether to write it
 as one page too, `report.html` in the spec folder (`temper report --html`), from the same view: the stages,
 loops and skips with their reasons, the plan, the Build grid, the findings, the Check markers, the criteria
@@ -278,15 +285,17 @@ to ask you for a mode. CI fails on a call outside `scripts/check-mod-calls.sh`.
   - `command.run` handles only `/temper:temper`. It answers `status`, `timeline`, `help`, `report`, `mode`,
     `enforcement` and `pane`. A word that changes what is drawn or enforced is refused unless you
     typed it in your prompt box. Every other word (`approve`, `back`, `override` and the rest) and any other command
-    pass on unchanged, and the mod records nothing from them.
+    pass on unchanged, and the mod records nothing from them; in full mode, such a word typed in your prompt box
+    opens the pane first.
   - `session.start` and `classic.SessionStart` find the project root and load the run; in full mode
-    `session.start` also opens the pane during a run. Both return what the engine gives them: no
-    context, instruction or setting is added.
+    `session.start` also opens the pane during a run, as the first read that finds a run started later in the
+    session does. Both return what the engine gives them: no context, instruction or setting is added.
   - `turn.step` sets the model and effort from `phaseModels` and the Temper review agent's model from `reviewerModel`;
     empty options change nothing. `attribution.text` adds one Temper line to a pull request description during a run
     when `prAttribution` is on. `turn.complete` adds a one line status under an answer in full mode.
   - `ui.render` draws the bar, pane, spinner word, prompt hint and a line above Claude's question
-    dialog, which stays unchanged. `ui.close` notes a closed pane.
+    dialog, which stays unchanged. `ui.close` notes a closed pane, and one you closed by hand is not opened
+    again by itself in that session.
 - **Other:** toasts tell a stage change (full mode), an enforcement change and the default mode when you dismiss
   the mode question. The CLI replaces view.json whole, so the mod never reads half of it.
 - **The tests never run in your session.** The mod's test suite runs only under `claude plugin test`; the plugin never

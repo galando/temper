@@ -31,6 +31,9 @@ let root = ''
 // never asked without one.
 let interactive = false
 let paneOpen = false
+// The person closed the pane by hand (its close mark, or /temper:temper pane): the mod does not open it for them again
+// in this session; /temper:temper pane does.
+let paneShut = false
 // The last stage announced, so a toast goes out once per stage change and never at load.
 let lastStage: string | null | undefined
 
@@ -215,8 +218,16 @@ async function refresh($: Api): Promise<Snapshot> {
   const snap = await current
   await publish(makeIo($), snap).catch(() => undefined)
   if (reachedDone(snap)) await writeReport(makeIo($), snap).catch(() => undefined)
+  const started = startedHere(snap)
   announce($, snap)
+  if (started) await autoOpenPane($, snap).catch(() => undefined)
   return snap
+}
+
+// A run the mod first sees after it saw none in this session (a run started with /temper:temper,
+// a door or `temper state init`): the pane opens for it as it does at a session start.
+function startedHere(snap: Snapshot): boolean {
+  return lastStage === null && !snap.inert && snap.run !== null && snap.run.stage !== 'commit'
 }
 
 // The session's directory, to make absolute tool paths project relative: the cwd the
@@ -255,16 +266,17 @@ async function closePane($: Api): Promise<void> {
 
 async function togglePane($: Api): Promise<string> {
   if (paneOpen) {
+    paneShut = true
     await closePane($)
     return 'The Temper pane is closed.'
   }
+  paneShut = false
   return (await openPane($)) ? 'The Temper pane is open.' : 'The Temper pane needs a wider terminal.'
 }
 
-// Opened unasked (a session start): only where it would dock. Where it would only wait
-// undrawn, it is closed again so it does not pop up later.
-async function autoOpenPane($: Api, snap: Snapshot): Promise<void> {
-  if (snap.mode !== 'full' || snap.run === null || snap.run.stage === 'commit') return
+// Opens the pane where the surface places it now. Where it would only wait undrawn, it is
+// closed again so it does not pop up later.
+async function placeOrDrop($: Api): Promise<void> {
   const placed = await $.ui.open({ id: PANE_ID, title: 'Temper' })
   if (placed.isPlaced) {
     paneOpen = true
@@ -274,6 +286,23 @@ async function autoOpenPane($: Api, snap: Snapshot): Promise<void> {
     paneOpen = false
     live.paneOpen = false
   }
+}
+
+// Opened unasked, in full mode, for a run in progress: at a session start, and when a run
+// starts later in the session (see refresh). The engine places an unasked pane only on a
+// wide terminal.
+async function autoOpenPane($: Api, snap: Snapshot): Promise<void> {
+  if (paneOpen || paneShut || snap.mode !== 'full' || snap.run === null || snap.run.stage === 'commit') return
+  await placeOrDrop($)
+}
+
+// The person's own /temper:temper with a run word (a feature description, a decision word,
+// or nothing), in full mode: the pane opens as their command, which the engine places at any
+// width. A run they start has no state yet; the pane draws it once the CLI writes it.
+async function openForPerson($: Api): Promise<void> {
+  const snap = await ensure($)
+  if (paneOpen || paneShut || snap.inert || snap.mode !== 'full' || snap.runCommand === 'fix') return
+  await placeOrDrop($)
 }
 // ---- Modes (config rows) ------------------------------------------------------------
 
@@ -513,6 +542,7 @@ export const register: Register = (on, opts) => {
   sessionCwd = ''
   interactive = false
   paneOpen = false
+  paneShut = false
   lastStage = undefined
   working = false
   live.mode = undefined
@@ -547,7 +577,10 @@ export const register: Register = (on, opts) => {
       if (parsed?.word === 'mode') await markModeAsked($, parsed.rest.trim() !== '').catch(() => undefined)
       else await firstRunAsk($).catch(() => undefined)
     }
-    if (parsed === null) return next(e)
+    if (parsed === null) {
+      if (e.origin?.kind === 'composer') await openForPerson($).catch(() => undefined)
+      return next(e)
+    }
     const out = await handleTemper($, parsed, e.origin?.kind ?? '').catch(() => null)
     return out ?? next(e)
   })
@@ -625,11 +658,13 @@ export const register: Register = (on, opts) => {
     return band ?? next(e)
   })
 
-  // A pane closed by its own mark: forget it, so the next toggle opens it again.
+  // A pane closed by its own mark: forget it, so the next toggle opens it again. Closed by the
+  // person, it is not opened for them again in this session.
   on('ui.close', async ($, e, next) => {
     if (e.id === PANE_ID) {
       paneOpen = false
       live.paneOpen = false
+      if (e.origin?.kind === 'person') paneShut = true
     }
     return next(e)
   })

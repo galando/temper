@@ -165,6 +165,6 @@ describe('the pane shows the whole run, read only', () => {
   test('with no run the pane says how to start one', async ($, on) => {
     world(on, {})
     await $.session.start(START)
-    expect(JSON.stringify(await (await mount($, 'Pane', PANE, 'temper')).drawn())).toContain('No Temper run is active.')
+    expect(JSON.stringify(await (await mount($, 'Pane', PANE, 'temper')).drawn())).toContain('No Temper run is active yet. A run started with /temper:temper and a feature description shows here.')
   })
 })
