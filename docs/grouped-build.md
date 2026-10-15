@@ -163,7 +163,10 @@ agent run in the background, its completion notice, and has no cost; an agent na
 transcript and no total is refused (its report came before its notice). `temper report` adds the
 main conversation since the run started, from the session transcript the agents sit below. Claude
 Code's transcript layout is not a documented interface: what the CLI cannot read is left out, and
-the report says how many launches have no cost.
+the report says how many launches have no cost. A call on a model the price table does not know
+(a gateway's own name for it, a newer model) has no price: the row keeps the cost of the agent's
+other calls, the report marks that cost, and every total it is in, with `+`, and it names the
+models with no price, so a missing one can be added to `scripts/usage_cost.py`.
 
 To compare two runs (two models for the task agents, two plans, two versions of Temper), build
 the same feature from the same commit on two branches and compare tokens per model times that

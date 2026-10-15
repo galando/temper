@@ -779,6 +779,47 @@ assert_eq "usage: a model named with a gateway prefix gets its price (agent and 
 assert_eq "usage: the id is the last claude model in the name, whatever wraps it" "claude-sonnet-4-5|claude-haiku-5-5|claude-opus-4-5|claude-opus-5-5" \
   "$(python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import usage_cost as u; print('|'.join(u.base_id(m) for m in ['us.anthropic.claude-sonnet-4-5-20250929-v1:0', 'my-claude-proxy/claude-haiku-5-5', 'claude-opus-4-5@20251101', 'claude-opus-5-5[1m]']))" "$(dirname "$TEMPER")")"
 unset CLAUDE_CONFIG_DIR
+
+# --- the author's run with 3fe3924: one call on a model with no price took the cost of the whole agent, unnamed ---
+fresh
+CC="$WORKDIR/cc3"; rm -rf "$CC"; mkdir -p "$CC/projects/-p/sess3/subagents"
+python3 - "$CC/projects/-p" <<'PY'
+import json, os, sys
+d = sys.argv[1]
+rec = lambda mid, model, u, side=True: json.dumps({"type": "assistant", "isSidechain": side, "timestamp": "2099-01-01T00:00:01.000Z",
+    "message": {"id": mid, "role": "assistant", "model": model, "stop_reason": "end_turn", "usage": u, "content": []}})
+# an Opus agent with one call on a model the price table does not know
+open(os.path.join(d, "sess3", "subagents", "agent-mix123456.jsonl"), "w").write("\n".join([
+    rec("o1", "ml-asset:static-model/claude-opus-5-5", {"input_tokens": 1000, "output_tokens": 1000}),
+    rec("o2", "ml-asset:static-model/side-model-x", {"input_tokens": 500, "output_tokens": 500})]) + "\n")
+# an agent none of whose calls has a price
+open(os.path.join(d, "sess3", "subagents", "agent-none12345.jsonl"), "w").write(
+    rec("n1", "ml-asset:static-model/opus-next", {"input_tokens": 100, "output_tokens": 100}) + "\n")
+open(os.path.join(d, "sess3.jsonl"), "w").write(
+    rec("m", "claude-sonnet-5-5", {"input_tokens": 1000, "output_tokens": 1000}, side=False) + "\n")
+PY
+export CLAUDE_CONFIG_DIR="$CC"
+"$TEMPER" usage add --stage plan --model opus --agent mix123456 >/dev/null 2>&1
+assert_eq "usage: calls on a model with no price leave the cost of the agent's other calls; they are counted and named" \
+  "0.024|ml-asset:static-model/side-model-x|1000" \
+  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s|%s' % (round(r['cost'], 6), ','.join(r['unpriced']), r['unpriced_tokens']))")"
+"$TEMPER" usage add --stage intent --model opus --agent none12345 >/dev/null 2>&1
+assert_eq "usage: an agent none of whose calls has a price has no cost, and its model is named" "None|ml-asset:static-model/opus-next" \
+  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s' % (r['cost'], ','.join(r['unpriced'])))")"
+rep="$("$TEMPER" report 2>&1)"
+assert_eq "report: a partial cost is marked +, a stage with no priced call has none, the run total is marked, the models with no price are named" \
+  "1|1|1|1|1" \
+  "$(printf '%s\n' "$rep" | grep -c '^  plan .* \$0.0240+  opus$')|$(printf '%s\n' "$rep" | grep -c '^  intent .* -  opus$')|$(printf '%s\n' "$rep" | grep -c 'run total, the agents and the main conversation: \$0.0360+$')|$(printf '%s\n' "$rep" | grep -c 'A cost with + leaves out what has no cost here')|$(printf '%s\n' "$rep" | grep -c 'No price here for the model(s) ml-asset:static-model/side-model-x, ml-asset:static-model/opus-next (')"
+assert_eq "view: the usage says its cost is partial and names the models with no price" "True|True|ml-asset:static-model/side-model-x,ml-asset:static-model/opus-next" \
+  "$(python3 -c "import json; u=json.load(open('.temper/view.json'))['usage']; print('%s|%s|%s' % (u['partial'], u['by_stage']['plan']['partial'], ','.join(u['no_price'])))")"
+"$TEMPER" report --html >/dev/null 2>&1
+assert_eq "report --html: the same marks and notes" "1|1|1" \
+  "$(grep -c '\$0.0240+' .temper/specs/demo/report.html)|$(grep -c 'The run, agents and main conversation: \$0.0360+' .temper/specs/demo/report.html)|$(grep -c 'No price here for the model(s) ml-asset:static-model/side-model-x' .temper/specs/demo/report.html)"
+gpass intent plan build review check commit; _at commit
+"$TEMPER" report --end >/dev/null 2>&1
+assert_eq "commit: the page question gives the agents' cost as at least that when some of it is missing" "1" \
+  "$(nx "int('(the agents: at least \$0.02 at list prices)' in d['ask']['question']['question'])")"
+unset CLAUDE_CONFIG_DIR
 fresh; gpass intent plan build review check commit; _at commit
 "$TEMPER" park --verdict SHIP-PENDING-COMMIT --reason 'every gate passed' >/dev/null 2>&1
 assert_eq "commit: a parked run's Commit answer leads to the report steps" "1" \

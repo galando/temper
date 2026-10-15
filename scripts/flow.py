@@ -817,7 +817,9 @@ class Builder:
 
     def page_question(self):
         r, u = self.r, usage(self.r)
-        cost = " (the agents: about $%.2f at list prices)" % u["cost"] if u.get("cost") is not None else ""
+        # the agents' cost, at least that when a launch or a call has no cost here
+        short = u.get("unpriced") or u.get("partial")
+        cost = " (the agents: %s $%.2f at list prices)" % ("at least" if short else "about", u["cost"]) if u.get("cost") is not None else ""
         return self.question(GATE_HEADER, "Every gate passed. The report is above%s. Write it as an HTML page too, before the commit?" % cost,
                              stage="commit", options=[
             self.opt("Write report.html", "%s/report.html, committed with the spec." % (r.spec or ".temper/specs/{slug}"),
@@ -1156,10 +1158,14 @@ def usage(run):
         c = r.get("cost")
         return c if isinstance(c, (int, float)) and not isinstance(c, bool) else None
 
+    def names(r):   # the models of a row's calls that have no price here
+        return [x for x in r.get("unpriced") or [] if isinstance(x, str)]
+
     def by(key):
         out = {}
         for r in rows:
-            b = out.setdefault(r.get(key) or "unknown", {"tokens": 0, "ms": 0, "runs": 0, "cost": None, "unpriced": 0})
+            b = out.setdefault(r.get(key) or "unknown", {"tokens": 0, "ms": 0, "runs": 0, "cost": None, "unpriced": 0,
+                                                         "partial": False})
             b["runs"] += 1
             b["tokens"] += r.get("tokens") or 0 if isinstance(r.get("tokens"), int) else 0
             b["ms"] += r.get("ms") or 0 if isinstance(r.get("ms"), int) else 0
@@ -1167,12 +1173,18 @@ def usage(run):
                 b["unpriced"] += 1
             else:
                 b["cost"] = round((b["cost"] or 0) + price(r), 6)
+                # the cost of a row with calls on a model with no price here is of its other calls
+                b["partial"] = b["partial"] or bool(names(r))
             # a stage names the models its launches asked for
             if key == "stage" and r.get("model") and r.get("model") not in b.setdefault("models", []):
                 b["models"].append(r.get("model"))
         return out
     priced = [price(r) for r in rows if price(r) is not None]
+    no_price = []
+    for r in rows:
+        no_price += [x for x in names(r) if x not in no_price]
     return {"tokens": tokens, "ms": ms, "cost": round(sum(priced), 6) if priced else None, "unpriced": len(rows) - len(priced),
+            "partial": any(price(r) is not None and names(r) for r in rows), "no_price": no_price,
             "output_estimated": any(r.get("output_estimated") for r in rows), "by_stage": by("stage"), "by_model": by("model")}
 
 

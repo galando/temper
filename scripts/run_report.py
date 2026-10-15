@@ -170,6 +170,14 @@ def render(view, main=None):
         out.append(section("Acceptance criteria: %d of %d met" % (passed, len(criteria)), "<ul>%s</ul>" % lis))
 
     order = {s.get("id"): i for i, s in enumerate(stages)}
+    plus = []
+
+    def cost(v, short):   # a cost with + leaves out what has no cost here
+        if v is None:
+            return "-"
+        if short:
+            plus.append(1)
+        return usd(v) + ("+" if short else "")
     tables = []
     for key, head in (("by_stage", "Stage"), ("by_model", "Model")):
         rows = usage.get(key) or {}
@@ -177,20 +185,32 @@ def render(view, main=None):
             # The stage table names the model each stage was launched on (what Temper asked for).
             model = (lambda v: "<td>%s</td>" % e(", ".join(str(m) for m in v.get("models") or []) or "-")) if key == "by_stage" else (lambda v: "")
             trs = "".join("<tr><td>%s</td>%s<td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (
-                e(k), model(v), e(v.get("runs")), e(tokens(v.get("tokens"))), e(spent(v.get("ms"))), e(usd(v.get("cost"))))
+                e(k), model(v), e(v.get("runs")), e(tokens(v.get("tokens"))), e(spent(v.get("ms"))),
+                e(cost(v.get("cost"), v.get("partial") or v.get("unpriced"))))
                           for k, v in sorted(rows.items(), key=lambda kv: (order.get(kv[0], len(order)), kv[0])) if isinstance(v, dict))
             cols = "<th>Model</th>" if key == "by_stage" else ""
             tables.append("<table><tr><th>%s</th>%s<th>Launches</th><th>Tokens</th><th>Time</th><th>Cost</th></tr>%s</table>" % (head, cols, trs))
     if tables:
         notes = []
+        no_price = list(usage.get("no_price") or [])
         if isinstance(main, dict) and main.get("calls"):
-            whole = usage.get("cost") + main["cost"] if usage.get("cost") is not None and not main.get("unpriced") else None
+            # the main conversation's calls on a model with a price here; none of them priced is no cost
+            mc = main.get("cost") if main["calls"] > main.get("unpriced_calls", main["calls"] if main.get("unpriced") else 0) else None
+            no_price += [x for x in main.get("unpriced") or [] if x not in no_price]
+            whole = None
+            if usage.get("cost") is not None or mc is not None:
+                short = bool(usage.get("unpriced") or usage.get("partial") or main.get("unpriced")) or usage.get("cost") is None
+                whole = cost((usage.get("cost") or 0) + (mc or 0), short)
             notes.append("Main conversation since the run started: %s tokens in %d call(s), %s.%s" % (
-                tokens(main.get("tokens")), main["calls"], usd(main.get("cost") if not main.get("unpriced") else None),
-                " The run, agents and main conversation: %s." % usd(whole) if whole is not None else ""))
+                tokens(main.get("tokens")), main["calls"], cost(mc, bool(main.get("unpriced"))),
+                " The run, agents and main conversation: %s." % whole if whole is not None else ""))
         if usage.get("unpriced"):
             notes.append("%d launch(es) have no cost: no transcript was found (the tokens are then the total Claude Code gave, "
-                         "the context at the end), or a model they ran on has no price here." % usage["unpriced"])
+                         "the context at the end), or none of their calls ran on a model with a price here." % usage["unpriced"])
+        if plus:
+            notes.append("A cost with + leaves out what has no cost here: a launch with none, or calls on a model with no price here.")
+        if no_price:
+            notes.append("No price here for the model(s) %s (scripts/usage_cost.py holds the prices)." % ", ".join(no_price))
         if usage.get("output_estimated"):
             notes.append("An agent transcript records each reply before it streams: its output is taken from the reply text, and "
                          "its thinking, billed as output, is not counted, so the cost of the agents can be low.")

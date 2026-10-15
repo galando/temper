@@ -149,7 +149,7 @@ def calls(path, main=False, since=""):
 
 def summary(cs):
     s = {"calls": 0, "input": 0, "cache_write": 0, "cache_read": 0, "output": 0, "tokens": 0, "cost": 0.0,
-         "unpriced": [], "models": {}, "first": None, "last": None,
+         "unpriced": [], "unpriced_calls": 0, "unpriced_tokens": 0, "models": {}, "first": None, "last": None,
          "output_estimated": any(not c.get("final") for c in cs)}
     for c in cs:
         u, model = c["usage"], base_id(c["model"]) or "unknown"
@@ -164,8 +164,11 @@ def summary(cs):
             s["tokens"] += v
             mm["tokens"] += v
         if cost is None:
+            # the cost is then of the other calls: these are counted, and their model named
             if model not in s["unpriced"]:
                 s["unpriced"].append(model)
+            s["unpriced_calls"] += 1
+            s["unpriced_tokens"] += sum(part.values())
         else:
             s["cost"] += cost
             mm["cost"] += cost
