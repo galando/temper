@@ -103,6 +103,8 @@ it, and a link at that path is replaced, never written through.
 the skips and the loops and their reasons, the plan's files by group, the Build grid, the Review findings,
 the Check markers with their failing lines, the criteria with their evidence, and the time, tokens and
 estimated cost by stage and by model, with the main conversation. Its head says Done only once the Commit
-gate has passed. By default it writes `report.html` in the run's spec folder. The commit steps of
-`temper next` print `temper report` in the terminal before `git add`, the orchestrator shows it, and the
-person chooses whether to write the page too; written then, the commit carries it. Every value is escaped, and it never writes inside the plugin's own folder.
+gate has passed. By default it writes `report.html` in the run's spec folder. At a passed Commit, `temper
+next` gives three actions in turn: steps that end with `temper report --end`, which prints the report for
+the orchestrator to show; a question whether to write the page too (Write report.html runs
+`temper report --html`, Not now `temper report --no-html`); then the commit steps. The run's
+`end_report` records the first two (the CLI keeps it), and a page written then is carried by the commit. Every value is escaped, and it never writes inside the plugin's own folder.

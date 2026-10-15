@@ -153,6 +153,12 @@ offers the HTML page; before, `report.html` was always written, and the terminal
 The orchestrator records an agent and goes on at its report, the first of its report and its notice to arrive:
 the agent has finished by then, and its numbers come from its transcript. Claude Code started a turn for the
 report but none for the notice, so a run that waited for the notice waited until the person wrote.
+The first run with this showed no cost at all: its Claude Code named each model with a gateway prefix
+(`ml-asset:static-model/claude-opus-5-5`), and the price table matched only bare ids. The CLI now takes the last
+`claude-<family>` id in the name, whatever comes before or after it. That run also skipped the HTML question
+and did not show the report: both were instructions in a list of commit steps. The question is now one
+`temper next` asks, after `temper report --end` has printed the report; the page says to copy the report into
+the reply.
 
 **The two videos show 9.7.0.** The workflow video (38 seconds) now shows the Temper gate question,
 Build in groups of Haiku task agents and the report at the end. The mod video (38 seconds) shows the

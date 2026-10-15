@@ -169,9 +169,21 @@ assert_eq "next: config suggestions add their option" "Commit (Recommended)|Loop
 rm -f .temper/specs/demo/config-suggestions.json
 assert_eq "next: at Commit with no verdict, the commit gate runs" "work|gate commit" "$(nx "d['action'] + '|' + d['calls'][0].split('temper ', 1)[1]")"
 gpass commit
-assert_eq "next: a passed commit gate gives the commit steps: the report in the terminal first, the page on the person's answer, then the commit and state clear" \
-  "work|intent complete|report|1|state archive|git add|git commit|state clear" \
-  "$(nx "s = d['steps']; '|'.join([d['action'], s[0].split('temper ', 1)[1], s[2].split('temper ', 1)[1], str(int('Write report.html' in s[3] and s[3].endswith('report --html.') and 'Show the person the report' in s[3])), s[4].split('temper ', 1)[1], s[5][:7], s[6][:10], s[-1].split('temper ', 1)[1]])")"
+assert_eq "next: a passed commit gate gives the report steps first: the intent completed, the report printed for the person to see" \
+  "work|intent complete|report --end|1" \
+  "$(nx "s = d['steps']; '|'.join([d['action'], s[0].split('temper ', 1)[1], s[2].split('temper ', 1)[1], str(int('into your reply' in s[3] and 'Bash call' in s[3]))])")"
+"$TEMPER" report --end >/dev/null 2>&1
+assert_eq "next: after the report, the question whether to write the page, with the calls of each answer" \
+  "ask|Temper gate|Write report.html|report --html|Not now|report --no-html|1" \
+  "$(nx "o = d['ask']['options']; '|'.join([d['action'], d['ask']['question']['header'], o[0]['label'], o[0]['calls'][0].split('temper ', 1)[1], o[1]['label'], o[1]['calls'][0].split('temper ', 1)[1], str(int(d['ask']['question']['question'].startswith('Every gate passed. The report is above')))])")"
+assert_exit "state set: end_report is the CLI's" 1 "$TEMPER" state set end_report none
+"$TEMPER" report --no-html >/dev/null 2>&1
+assert_eq "next: after the answer, the commit steps: the ledger archived, the commit, the state cleared" \
+  "work|state archive|git add|git commit|state clear" \
+  "$(nx "s = d['steps']; '|'.join([d['action'], s[0].split('temper ', 1)[1], s[1][:7], s[2][:10], s[-1].split('temper ', 1)[1]])")"
+"$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --html >/dev/null 2>&1
+assert_eq "report: --end and the answer count once each, in order: a second report --end changes nothing" "none|1" \
+  "$("$TEMPER" state get end_report)|$(nx "int(d['action'] == 'work' and d['steps'][0].endswith('state archive'))")"
 gfail commit "review gate" "FAIL, no override recorded"
 assert_eq "next: a failed commit gate asks to override the failed stages, with a reason" \
   "Override and commit|commitOverride|override review --reason '{reason}'|gate commit" \
@@ -378,7 +390,7 @@ git rm -q -r src/auth >/dev/null 2>&1; git -c user.email=t@t -c user.name=t comm
 # 6, 7. The commit steps add what the run changed: no untracked file that was there before the run, every name quoted.
 fresh; touch -d '2020-01-01' local.env
 mkdir -p docs; : > 'docs/café.md'; : > 'x$(touch PWNED5).txt'
-_walk_to_commit; gpass commit
+_walk_to_commit; gpass commit; "$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --no-html >/dev/null 2>&1
 ADD="$(nx "[x for x in d['steps'] if x.startswith('git add')][0]")"
 assert_eq "round 2, 6: an untracked file older than the run is not added" "0|1" \
   "$(grep -c 'local.env' <<<"$ADD")|$(grep -c 'café.md' <<<"$ADD")"
@@ -451,8 +463,11 @@ gpass build; "$TEMPER" state advance fix_complete review >/dev/null 2>&1
 assert_eq "next: a fix run's Review reads rca.md (fix mode)" "temper:temper-review|1" \
   "$(nx "d['agents'][0]['type'] + '|' + str(int('Fix mode: there is no intent.md' in d['agents'][0]['prompt']))")"
 gpass review check; "$TEMPER" state advance review_complete check >/dev/null 2>&1; "$TEMPER" state advance check_complete commit >/dev/null 2>&1; gpass commit
-assert_eq "next: a fix run's commit steps add the incident to .temper/lessons.md, which the next RCA reads, and commit it" "work|1|1" \
-  "$(nx "s = d['steps']; d['action'] + '|' + str(int(any('.temper/lessons.md' in x and 'reference/fix.md' in x for x in s))) + '|' + str(int(any(x.startswith('git add') and '.temper/lessons.md' in x for x in s)))")"
+assert_eq "next: a fix run's report steps add the incident to .temper/lessons.md, which the next RCA reads" "work|1" \
+  "$(nx "s = d['steps']; d['action'] + '|' + str(int(any('.temper/lessons.md' in x and 'reference/fix.md' in x for x in s)))")"
+"$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --no-html >/dev/null 2>&1
+assert_eq "next: a fix run's commit steps commit .temper/lessons.md" "work|1" \
+  "$(nx "s = d['steps']; d['action'] + '|' + str(int(any(x.startswith('git add') and '.temper/lessons.md' in x for x in s)))")"
 setup
 
 # --- the view fixtures the mod's tests import are the CLI's own output ---

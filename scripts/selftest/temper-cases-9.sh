@@ -375,6 +375,7 @@ setup; rm -rf .git bare   # a repository of its own: no file an earlier case lef
 git init -q . 2>/dev/null; git checkout -q -B feature/demo 2>/dev/null
 git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t -c core.hooksPath=/dev/null commit -qm base >/dev/null 2>&1
 _walk_to_commit; gpass commit; printf '\nA note.\n' >> .temper/specs/demo/intent.md
+"$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --no-html >/dev/null 2>&1   # the report and the page answer come first
 assert_eq "check: with only the spec folder changed, the commit message names the run's record, not a feature" "1|0" \
   "$(nx "sum(1 for x in d['steps'] if x.startswith('git commit') and 'docs(demo): record the run' in x)")|$(nx "sum(1 for x in d['steps'] if 'conventional commit message for the feature' in x)")"
 python3 -c "import json; p='.temper/build-state.json'; d=json.load(open(p)); d['enter']='review'; json.dump(d, open(p, 'w'))"
@@ -757,3 +758,33 @@ assert_eq "view: the usage carries the cost and the count of rows without one" "
 assert_eq "next: every agent's after call names its id, so its usage is read from its transcript" "1" \
   "$(nx "int('--agent {agent} --tokens {tokens} --ms {ms}' in d['agents'][0]['after'][0])")"
 unset CLAUDE_CONFIG_DIR
+
+# --- the author's run with b7bf277: a gateway names the model with its own prefix; the page question is next's own ---
+fresh
+CC="$WORKDIR/cc2"; rm -rf "$CC"; mkdir -p "$CC/projects/-p/sess2/subagents"
+python3 - "$CC/projects/-p" <<'PY'
+import json, os, sys
+d = sys.argv[1]
+rec = lambda mid, model, u, side=True: json.dumps({"type": "assistant", "isSidechain": side, "timestamp": "2099-01-01T00:00:01.000Z",
+    "message": {"id": mid, "role": "assistant", "model": model, "stop_reason": "end_turn", "usage": u, "content": []}})
+open(os.path.join(d, "sess2", "subagents", "agent-gw1234567.jsonl"), "w").write(
+    rec("g", "ml-asset:static-model/claude-sonnet-5-5", {"input_tokens": 1000, "output_tokens": 1000}) + "\n")
+open(os.path.join(d, "sess2.jsonl"), "w").write(
+    rec("m", "ml-asset:static-model/claude-opus-5-5", {"input_tokens": 1000, "output_tokens": 1000}, side=False) + "\n")
+PY
+export CLAUDE_CONFIG_DIR="$CC"
+"$TEMPER" usage add --stage review --model sonnet --agent gw1234567 >/dev/null 2>&1
+assert_eq "usage: a model named with a gateway prefix gets its price (agent and main conversation)" "0.012|0.0240" \
+  "$(python3 -c "import json; print(round(json.load(open('.temper/usage.json'))[-1]['cost'], 6))")|$("$TEMPER" report 2>&1 | sed -n 's/.*main conversation since the run started: .*, \$\([0-9.]*\)$/\1/p')"
+assert_eq "usage: the id is the last claude model in the name, whatever wraps it" "claude-sonnet-4-5|claude-haiku-5-5|claude-opus-4-5|claude-opus-5-5" \
+  "$(python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import usage_cost as u; print('|'.join(u.base_id(m) for m in ['us.anthropic.claude-sonnet-4-5-20250929-v1:0', 'my-claude-proxy/claude-haiku-5-5', 'claude-opus-4-5@20251101', 'claude-opus-5-5[1m]']))" "$(dirname "$TEMPER")")"
+unset CLAUDE_CONFIG_DIR
+fresh; gpass intent plan build review check commit; _at commit
+"$TEMPER" park --verdict SHIP-PENDING-COMMIT --reason 'every gate passed' >/dev/null 2>&1
+assert_eq "commit: a parked run's Commit answer leads to the report steps" "1" \
+  "$(nx "int(any(x.endswith('report --end') for x in d['ask']['options'][0]['steps']))")"
+"$TEMPER" report --end >/dev/null 2>&1
+assert_eq "commit: once the report is printed, next asks the page question, not the park's again" "Write report.html" \
+  "$(nx "d['ask']['options'][0]['label']")"
+assert_eq "report: --end and the answer are recorded only at a passed Commit" "" \
+  "$(fresh; "$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" state get end_report)"

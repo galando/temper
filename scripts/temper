@@ -817,6 +817,10 @@ cmd_state_set() {
     echo "FAIL: $1 is kept by the CLI (a door's stage, what an earlier run built and the code as Review starts are its records)" >&2
     return 1
   fi
+  if [[ "$1" == "end_report" ]]; then
+    echo "FAIL: end_report is kept by the CLI (temper report --end, then the person's answer: report --html or report --no-html)" >&2
+    return 1
+  fi
   # The commit the run's diff is read against is recorded once (state advance plan_complete): a later one would hide
   # what the run changed from Review and from the commit gate.
   if [[ "$1" == "base_sha" && -f "$STATE_FILE" && -n "$(_json_get_path "$STATE_FILE" base_sha "")" ]]; then
@@ -5284,16 +5288,39 @@ _view_write() {
 # report
 # ---------------------------------------------------------------------------
 
+# _report_end <shown|html|none>: the end of the run, at a passed Commit only. --end records that the report was printed
+# for the person (temper next then asks whether to write the page), --html or --no-html records their answer (next then
+# gives the commit steps). Each happens once, in that order.
+_report_end() {
+  [[ -f "$STATE_FILE" && -f "$GATES_FILE" ]] || return 0
+  [[ "$(_json_get_path "$STATE_FILE" next_stage "")" == "commit" && "$(_json_get_path "$GATES_FILE" commit.verdict "")" == "PASS" ]] || return 0
+  local cur; cur="$(_json_get_path "$STATE_FILE" end_report "")"
+  case "$1" in
+    shown) [[ -z "$cur" ]] || return 0 ;;
+    *) [[ "$cur" == "shown" ]] || return 0 ;;
+  esac
+  _json_set_path "$STATE_FILE" end_report "$1" '{}'
+  _view_write
+}
+
 cmd_report() {
-  local as_json=false
+  local as_json=false end=false
   [[ "${1:-}" == "--json" ]] && as_json=true
+  [[ "${1:-}" == "--end" ]] && end=true
+  if [[ "${1:-}" == "--no-html" ]]; then
+    _report_end none
+    echo "OK: no HTML page; the commit goes on with the report printed in the terminal"
+    return 0
+  fi
   # The end of run report as one page to share (scripts/run_report.py), from the view as the run stands now. It is
   # written to the spec folder (report.html), so the commit carries it; -o OUT writes elsewhere, -o - prints it.
   if [[ "${1:-}" == "--html" ]]; then
     shift
     _view_write
-    python3 "$SCRIPTS_DIR/run_report.py" render --view "$TEMPER_DIR/view.json" --root "$REPO_ROOT" --main "$(_usage_main)" "$@"
-    return
+    local rc=0
+    python3 "$SCRIPTS_DIR/run_report.py" render --view "$TEMPER_DIR/view.json" --root "$REPO_ROOT" --main "$(_usage_main)" "$@" || rc=$?
+    [[ $rc -eq 0 ]] && _report_end html
+    return $rc
   fi
   [[ -f "$GATES_FILE" ]] || echo '{}' > "$GATES_FILE"
   local usage_json; usage_json="$(_usage_json)"
@@ -5372,6 +5399,8 @@ if t.get('output_estimated'):
     print('  An agent transcript records each reply before it streams: its output is taken from the reply text, and its')
     print('  thinking, billed as output, is not counted, so the cost of the agents can be low.')
 print('  A Claude plan is not billed per token: this is what the run costs at API list prices.')" "$usage_json" "$(_usage_main)" "$(python3 -I "$SCRIPTS_DIR/usage_cost.py" prices 2>/dev/null)"
+  [[ "$end" == "true" ]] && _report_end shown
+  return 0
 }
 
 # Whole-flow usage (9.7.0, intent D-07). .temper/usage.json is a CLI-owned array of rows
@@ -5764,6 +5793,7 @@ Usage:
   temper usage add --stage S [--model M] [--tokens T] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
   temper next [--json]            (what the run does next: a stage to run, a question to ask, or the commit; docs/flow.md)
   temper report --html [-o OUT]   (the end of run report as one page, to report.html in the spec folder)
+  temper report --end | --no-html (at the commit: the report for the person, then their No to the page)
   temper intent accept|complete   (the Status header of the run's intent.md)
   temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
   temper group continue G<n>      (the person's Continue at a group question)

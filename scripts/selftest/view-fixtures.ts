@@ -4640,6 +4640,355 @@ export const VIEWS: Record<string, unknown> = {
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
  },
+ "commit-page": {
+  "ask": {
+   "options": [
+    {
+     "calls": [
+      "/plugin/scripts/temper report --html"
+     ],
+     "description": ".temper/specs/pw/report.html, committed with the spec.",
+     "label": "Write report.html",
+     "move": null
+    },
+    {
+     "calls": [
+      "/plugin/scripts/temper report --no-html"
+     ],
+     "description": "The commit goes on; the report stays the one in the terminal.",
+     "label": "Not now",
+     "move": null
+    }
+   ],
+   "question": {
+    "header": "Temper gate",
+    "multiSelect": false,
+    "options": [
+     {
+      "description": ".temper/specs/pw/report.html, committed with the spec.",
+      "label": "Write report.html"
+     },
+     {
+      "description": "The commit goes on; the report stays the one in the terminal.",
+      "label": "Not now"
+     }
+    ],
+    "question": "Every gate passed. The report is above. Write it as an HTML page too, before the commit?"
+   },
+   "run_id": "run-pw",
+   "stage": "commit",
+   "step": 5
+  },
+  "blocking": [],
+  "build": {
+   "groups": [
+    {
+     "id": "G1",
+     "status": "pending",
+     "tasks": [
+      {
+       "attempts": 0,
+       "files": [
+        "src/app.ts",
+        "tests/app.test.ts"
+       ],
+       "model": null,
+       "n": 1,
+       "state": "waiting",
+       "title": "Issue a token"
+      },
+      {
+       "attempts": 0,
+       "files": [
+        "src/app.ts"
+       ],
+       "model": null,
+       "n": 2,
+       "state": "waiting",
+       "title": "Expire a token"
+      }
+     ],
+     "title": "Tokens",
+     "verdict": null
+    },
+    {
+     "id": "G2",
+     "status": "pending",
+     "tasks": [
+      {
+       "attempts": 0,
+       "files": [
+        "src/mail.ts"
+       ],
+       "model": null,
+       "n": 3,
+       "state": "waiting",
+       "title": "Send the mail"
+      }
+     ],
+     "title": "Mail",
+     "verdict": null
+    }
+   ],
+   "integration": null
+  },
+  "check_markers": [
+   {
+    "detail": "",
+    "lines": [],
+    "name": "compile",
+    "state": "none"
+   },
+   {
+    "detail": "",
+    "lines": [],
+    "name": "tests",
+    "state": "none"
+   },
+   {
+    "detail": "",
+    "lines": [],
+    "name": "coverage",
+    "state": "none"
+   },
+   {
+    "detail": "",
+    "lines": [],
+    "name": "lint",
+    "state": "none"
+   },
+   {
+    "detail": "",
+    "lines": [],
+    "name": "security",
+    "state": "none"
+   }
+  ],
+  "checks": [
+   {
+    "detail": "ok",
+    "name": "all",
+    "pass": true
+   }
+  ],
+  "criteria": [
+   {
+    "evidence": [],
+    "id": "AC-01",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 1 (source: test)"
+   },
+   {
+    "evidence": [],
+    "id": "AC-02",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 2 (source: test)"
+   },
+   {
+    "evidence": [],
+    "id": "AC-03",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 3 (source: test)"
+   },
+   {
+    "evidence": [],
+    "id": "AC-04",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 4 (source: test)"
+   },
+   {
+    "evidence": [],
+    "id": "AC-05",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 5 (source: test)"
+   }
+  ],
+  "drift": {
+   "header": "Scope drift",
+   "options": [
+    "Add to plan",
+    "Revert",
+    "Allow once"
+   ],
+   "prefix": "Outside the plan:"
+  },
+  "findings": [
+   {
+    "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
+    "file": "src/app.ts",
+    "id": 1,
+    "label": "PROVEN",
+    "line": 12,
+    "severity": "critical",
+    "state": "open"
+   },
+   {
+    "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
+    "file": "src/mail.ts",
+    "id": 2,
+    "label": "HEURISTIC",
+    "line": 4,
+    "severity": "low",
+    "state": "open"
+   }
+  ],
+  "guard": {
+   "armed": false,
+   "autonomy_enabled": false,
+   "fix_run": false,
+   "grouped": false,
+   "plan_files": [
+    "src/app.ts",
+    "tests/app.test.ts",
+    "src/mail.ts"
+   ],
+   "prefix": "",
+   "run_id": "run-pw",
+   "slug": "pw",
+   "spec": ".temper/specs/pw",
+   "stage": "commit",
+   "step": 5,
+   "trivial_exit": false
+  },
+  "loops": [],
+  "next": {
+   "action": "ask",
+   "calls": [],
+   "say": null,
+   "stage": "commit",
+   "steps": []
+  },
+  "plan": {
+   "approved": true,
+   "files": [
+    "src/app.ts",
+    "tests/app.test.ts",
+    "src/mail.ts"
+   ],
+   "groups": [
+    {
+     "files": [
+      "src/app.ts",
+      "tests/app.test.ts"
+     ],
+     "id": "G1",
+     "title": "Tokens"
+    },
+    {
+     "files": [
+      "src/mail.ts"
+     ],
+     "id": "G2",
+     "title": "Mail"
+    }
+   ]
+  },
+  "restart": {
+   "header": "Temper resume",
+   "multiSelect": false,
+   "options": [
+    {
+     "calls": [
+      "/plugin/scripts/temper state clear"
+     ],
+     "description": "The saved run state goes; the spec files stay.",
+     "label": "Start over",
+     "move": "restart"
+    },
+    {
+     "calls": [],
+     "description": "Keep the run.",
+     "label": "Cancel",
+     "move": null
+    }
+   ],
+   "question": "A run of pw is open at Commit. Start over?",
+   "run_id": "run-pw",
+   "step": 5
+  },
+  "run": {
+   "branch": "feature/pw",
+   "command": "temper",
+   "complexity": null,
+   "feature": "Password reset by email",
+   "id": "run-pw",
+   "mode": "interactive",
+   "parked": null,
+   "slug": "pw",
+   "spec": ".temper/specs/pw",
+   "stage": "commit",
+   "step": 5,
+   "title": "Password reset by email"
+  },
+  "skips": [],
+  "stages": [
+   {
+    "failed": [],
+    "id": "intent",
+    "label": "Intent",
+    "mark": "passed",
+    "verdict": "PASS"
+   },
+   {
+    "failed": [],
+    "id": "plan",
+    "label": "Plan",
+    "mark": "passed",
+    "verdict": "PASS"
+   },
+   {
+    "failed": [],
+    "id": "build",
+    "label": "Build",
+    "mark": "passed",
+    "verdict": "PASS"
+   },
+   {
+    "failed": [],
+    "id": "review",
+    "label": "Review",
+    "mark": "passed",
+    "verdict": "PASS"
+   },
+   {
+    "failed": [],
+    "id": "check",
+    "label": "Check",
+    "mark": "passed",
+    "verdict": "PASS"
+   },
+   {
+    "failed": [],
+    "id": "commit",
+    "label": "Commit",
+    "mark": "here",
+    "verdict": "PASS"
+   }
+  ],
+  "status": "Commit: waiting for your answer to the Temper gate question.",
+  "time": {
+   "started": "2026-01-01T00:00:00Z",
+   "updated": "2026-01-01T00:00:00Z"
+  },
+  "usage": {
+   "by_model": {},
+   "by_stage": {},
+   "cost": null,
+   "ms": 0,
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
+  },
+  "version": 1,
+  "written": "2026-01-01T00:00:00Z"
+ },
  "commit-pass": {
   "ask": null,
   "blocking": [],
@@ -4824,13 +5173,326 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "work",
    "calls": [],
-   "say": "Every gate passed: the change is committed.",
+   "say": "Every gate passed: the report first, then the commit.",
    "stage": "commit",
    "steps": [
     "/plugin/scripts/temper intent complete",
     "When .temper/specs/pw/build-context.json records deviations from the plan, write them into plan.md as a ## Deviations section.",
-    "/plugin/scripts/temper report",
-    "Show the person the report temper report printed, as it printed it, in your reply. Then ask with AskUserQuestion, header `Report`, question `Write the report as an HTML page too?`, options `Write report.html` (description `.temper/specs/pw/report.html, committed with the spec`) and `Not now`; on `Write report.html` run /plugin/scripts/temper report --html.",
+    "/plugin/scripts/temper report --end",
+    "Copy what temper report printed into your reply, as it printed it, in a code block: the person does not see the output of a Bash call."
+   ]
+  },
+  "plan": {
+   "approved": true,
+   "files": [
+    "src/app.ts",
+    "tests/app.test.ts",
+    "src/mail.ts"
+   ],
+   "groups": [
+    {
+     "files": [
+      "src/app.ts",
+      "tests/app.test.ts"
+     ],
+     "id": "G1",
+     "title": "Tokens"
+    },
+    {
+     "files": [
+      "src/mail.ts"
+     ],
+     "id": "G2",
+     "title": "Mail"
+    }
+   ]
+  },
+  "restart": {
+   "header": "Temper resume",
+   "multiSelect": false,
+   "options": [
+    {
+     "calls": [
+      "/plugin/scripts/temper state clear"
+     ],
+     "description": "The saved run state goes; the spec files stay.",
+     "label": "Start over",
+     "move": "restart"
+    },
+    {
+     "calls": [],
+     "description": "Keep the run.",
+     "label": "Cancel",
+     "move": null
+    }
+   ],
+   "question": "A run of pw is open at Commit. Start over?",
+   "run_id": "run-pw",
+   "step": 5
+  },
+  "run": {
+   "branch": "feature/pw",
+   "command": "temper",
+   "complexity": null,
+   "feature": "Password reset by email",
+   "id": "run-pw",
+   "mode": "interactive",
+   "parked": null,
+   "slug": "pw",
+   "spec": ".temper/specs/pw",
+   "stage": "commit",
+   "step": 5,
+   "title": "Password reset by email"
+  },
+  "skips": [],
+  "stages": [
+   {
+    "failed": [],
+    "id": "intent",
+    "label": "Intent",
+    "mark": "passed",
+    "verdict": "PASS"
+   },
+   {
+    "failed": [],
+    "id": "plan",
+    "label": "Plan",
+    "mark": "passed",
+    "verdict": "PASS"
+   },
+   {
+    "failed": [],
+    "id": "build",
+    "label": "Build",
+    "mark": "passed",
+    "verdict": "PASS"
+   },
+   {
+    "failed": [],
+    "id": "review",
+    "label": "Review",
+    "mark": "passed",
+    "verdict": "PASS"
+   },
+   {
+    "failed": [],
+    "id": "check",
+    "label": "Check",
+    "mark": "passed",
+    "verdict": "PASS"
+   },
+   {
+    "failed": [],
+    "id": "commit",
+    "label": "Commit",
+    "mark": "here",
+    "verdict": "PASS"
+   }
+  ],
+  "status": "Every gate passed: the report first, then the commit.",
+  "time": {
+   "started": "2026-01-01T00:00:00Z",
+   "updated": "2026-01-01T00:00:00Z"
+  },
+  "usage": {
+   "by_model": {},
+   "by_stage": {},
+   "cost": null,
+   "ms": 0,
+   "output_estimated": false,
+   "tokens": 0,
+   "unpriced": 0
+  },
+  "version": 1,
+  "written": "2026-01-01T00:00:00Z"
+ },
+ "commit-record": {
+  "ask": null,
+  "blocking": [],
+  "build": {
+   "groups": [
+    {
+     "id": "G1",
+     "status": "pending",
+     "tasks": [
+      {
+       "attempts": 0,
+       "files": [
+        "src/app.ts",
+        "tests/app.test.ts"
+       ],
+       "model": null,
+       "n": 1,
+       "state": "waiting",
+       "title": "Issue a token"
+      },
+      {
+       "attempts": 0,
+       "files": [
+        "src/app.ts"
+       ],
+       "model": null,
+       "n": 2,
+       "state": "waiting",
+       "title": "Expire a token"
+      }
+     ],
+     "title": "Tokens",
+     "verdict": null
+    },
+    {
+     "id": "G2",
+     "status": "pending",
+     "tasks": [
+      {
+       "attempts": 0,
+       "files": [
+        "src/mail.ts"
+       ],
+       "model": null,
+       "n": 3,
+       "state": "waiting",
+       "title": "Send the mail"
+      }
+     ],
+     "title": "Mail",
+     "verdict": null
+    }
+   ],
+   "integration": null
+  },
+  "check_markers": [
+   {
+    "detail": "",
+    "lines": [],
+    "name": "compile",
+    "state": "none"
+   },
+   {
+    "detail": "",
+    "lines": [],
+    "name": "tests",
+    "state": "none"
+   },
+   {
+    "detail": "",
+    "lines": [],
+    "name": "coverage",
+    "state": "none"
+   },
+   {
+    "detail": "",
+    "lines": [],
+    "name": "lint",
+    "state": "none"
+   },
+   {
+    "detail": "",
+    "lines": [],
+    "name": "security",
+    "state": "none"
+   }
+  ],
+  "checks": [
+   {
+    "detail": "ok",
+    "name": "all",
+    "pass": true
+   }
+  ],
+  "criteria": [
+   {
+    "evidence": [],
+    "id": "AC-01",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 1 (source: test)"
+   },
+   {
+    "evidence": [],
+    "id": "AC-02",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 2 (source: test)"
+   },
+   {
+    "evidence": [],
+    "id": "AC-03",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 3 (source: test)"
+   },
+   {
+    "evidence": [],
+    "id": "AC-04",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 4 (source: test)"
+   },
+   {
+    "evidence": [],
+    "id": "AC-05",
+    "priority": "required",
+    "status": "open",
+    "text": "criterion 5 (source: test)"
+   }
+  ],
+  "drift": {
+   "header": "Scope drift",
+   "options": [
+    "Add to plan",
+    "Revert",
+    "Allow once"
+   ],
+   "prefix": "Outside the plan:"
+  },
+  "findings": [
+   {
+    "claim": "src/app.ts:12 the token never expires",
+    "confidence": null,
+    "file": "src/app.ts",
+    "id": 1,
+    "label": "PROVEN",
+    "line": 12,
+    "severity": "critical",
+    "state": "open"
+   },
+   {
+    "claim": "src/mail.ts:4 the subject is not localized",
+    "confidence": null,
+    "file": "src/mail.ts",
+    "id": 2,
+    "label": "HEURISTIC",
+    "line": 4,
+    "severity": "low",
+    "state": "open"
+   }
+  ],
+  "guard": {
+   "armed": false,
+   "autonomy_enabled": false,
+   "fix_run": false,
+   "grouped": false,
+   "plan_files": [
+    "src/app.ts",
+    "tests/app.test.ts",
+    "src/mail.ts"
+   ],
+   "prefix": "",
+   "run_id": "run-pw",
+   "slug": "pw",
+   "spec": ".temper/specs/pw",
+   "stage": "commit",
+   "step": 5,
+   "trivial_exit": false
+  },
+  "loops": [],
+  "next": {
+   "action": "work",
+   "calls": [],
+   "say": "The commit carries the run's record.",
+   "stage": "commit",
+   "steps": [
     "/plugin/scripts/temper state archive",
     "git add -- .temper/specs/pw/",
     "git commit -m 'docs(pw): record the run: spec, gate ledger and report (the code is in the commits before it)'",
@@ -4944,7 +5606,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": "PASS"
    }
   ],
-  "status": "Every gate passed: the change is committed.",
+  "status": "The commit carries the run's record.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"

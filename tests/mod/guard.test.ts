@@ -197,7 +197,7 @@ describe('what only the person may cause, at the step the run is at', () => {
     expect(isDeny(bash(ctx('build', { restart: true }), `${CLI} state init next --command fix`))).toBe(true)
     expect('allow' in bash(ctx('intent', { facts: { step: 0, trivialExit: true } }), `${CLI} state clear`)).toBe(true)
     expect(isDeny(bash(ctx('intent', { facts: { step: 2 } }), `${CLI} state clear`))).toBe(true)
-    const steps = nextCalls('commit-pass')
+    const steps = nextCalls('commit-record')
     expect('allow' in bash(ctx('commit', { allowed: steps }), `${CLI} state archive`)).toBe(true)
     expect('allow' in bash(ctx('commit', { allowed: steps }), `${CLI} state clear`)).toBe(true)
   })
@@ -257,7 +257,8 @@ describe('review of the one flow: what goes around a gate', () => {
     expect(isDeny(write(c, '.claude/temper.config'))).toBe(true)
   })
   test('legit at the commit stage: the Commit steps (writes, archive, a plain commit, clear)', () => {
-    const c = ctx('commit', { allowed: nextCalls('commit-pass') })
+    // The commit steps come after the report and the person's answer about the page (scripts/flow.py, the end of the run).
+    const c = ctx('commit', { allowed: nextCalls('commit-record') })
     expect('allow' in write(c, `${SPEC}/intent.md`)).toBe(true)
     // Round 4 of the release audit: the code is what Review and Check passed; at Commit it is not written.
     expect(isDeny(write(c, 'src/anything.ts'))).toBe(true)

@@ -59,14 +59,17 @@ WEB_SEARCH = 10 / 1000.0    # $ per search
 
 
 def base_id(model):
-    """The price table's id of a transcript's model name: no provider prefix, version tag, date or context suffix."""
+    """The price table's id of a transcript's model name. A gateway or a cloud names the model with its own prefix and
+    suffix (`ml-asset:static-model/claude-opus-5-5`, `us.anthropic.claude-sonnet-4-5-20250929-v1:0`,
+    `claude-opus-4-5@20251101`, `claude-opus-5-5[1m]`): the id is the last `claude-<family>...` in it, without a version
+    tag or a date."""
     m = str(model or "").strip().lower()
-    m = re.sub(r"^(?:[a-z]+\.)?anthropic\.", "", m)     # anthropic.claude-... and us.anthropic.claude-...
-    m = re.sub(r"\[[^\]]*\]$", "", m)                     # claude-opus-5-5[1m]
-    m = re.sub(r"@.*$", "", m)                            # claude-opus-4-5@20251101
-    m = re.sub(r"-v\d+(?::\d+)?$", "", m)                 # ...-v1:0
+    hits = re.findall(r"claude-(?:opus|sonnet|haiku|fable|mythos|\d)[a-z0-9.-]*", m)
+    if hits:
+        m = hits[-1]
+    m = re.sub(r"-v\d+$", "", m)                          # ...-v1 (its :0 is not part of the match)
     m = re.sub(r"-\d{8}$", "", m)                         # ...-20250514
-    return m
+    return m.rstrip(".-")
 
 
 def call_cost(model, u):

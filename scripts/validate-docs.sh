@@ -238,6 +238,7 @@ ROWS = [
     ('commands/temper.md', '+', r'`\{agent\}` is the agent\s+id its result names', 'usage comes from the agent\'s own transcript, by its id'),
     ('commands/temper.md', '+', r'Never wait for the notice', 'an agent\'s report moves the run; Claude Code may start no turn for its notice'),
     ('commands/fix.md', '+', r'--agent \{agent\}', 'the RCA agent\'s usage comes from its transcript'),
+    ('commands/temper.md', '+', r'copy what it printed into\s+your reply', 'the person sees the end of run report in the reply, not in a Bash output'),
     ('commands/init.md', '+', r'temper init --foreground-agents status', 'init offers to keep stage agents in the foreground'),
     ('commands/plan.md', '+', r'"Entering at a stage"', 'the Plan command is a door into /temper'),
     ('commands/design.md', '+', r'"Entering at a stage"', 'the Design command is a door into /temper'),

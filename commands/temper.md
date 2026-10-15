@@ -77,6 +77,9 @@ again. Stop only where this section says so. When it lists `setup`, run those ca
     numbers. Never end a turn with an agent's `after` calls not run: nothing else moves the run.
   - A `steps` entry is a command to run as written, or a short instruction to carry out; `{...}` in it
     is yours to fill (a commit message that says what the feature does).
+  - **The report.** When a call prints the run's report (`temper report --end`), copy what it printed into
+    your reply, as it is, in a code block, before the next call: the person does not see a Bash call's
+    output. Then run `next`: it asks whether to write the report as an HTML page too.
   - **Filling a placeholder.** Every `{...}` text in a call or a step stands inside single quotes. Put the
     text there as it is, with each `'` in it written as `'\''`, so a backquote or a `$` in it stays text. Run `git commit` in a Bash call
     of its own, after the `git add` call.

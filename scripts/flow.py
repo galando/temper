@@ -798,7 +798,10 @@ class Builder:
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
 
     # -- the end of the run --------------------------------------------------------------------
-    def commit_steps(self):
+    # Three actions, in order: the report steps (the intent completed, the report printed for the person), the person's
+    # answer to the page question, then the record steps (the ledger archived, the commit, the state cleared). The CLI
+    # records the first two in the run's end_report (temper report --end, then --html or --no-html).
+    def report_steps(self):
         r = self.r
         steps = []
         if r.command == "temper":
@@ -807,14 +810,23 @@ class Builder:
         if r.command == "fix":
             steps.append("Append one entry for this fix to .temper/lessons.md (create it with a # Lessons header when it is absent), "
                          "as %s/reference/fix.md section Commit + record shows: the next RCA reads it first." % self.plugin)
-        # The report prints before the commit, and the person sees it in the reply: the output of a Bash call is not
-        # shown to them. The HTML page is theirs to want; written now, the commit carries it with the spec.
-        steps.append(self.c("report"))
-        steps.append("Show the person the report temper report printed, as it printed it, in your reply. Then ask with "
-                     "AskUserQuestion, header `Report`, question `Write the report as an HTML page too?`, options "
-                     "`Write report.html` (description `%s/report.html, committed with the spec`) and `Not now`; on "
-                     "`Write report.html` run %s." % (r.spec or ".temper/specs/{slug}", self.c("report --html")))
-        steps.append(self.c("state archive"))
+        steps.append(self.c("report --end"))
+        steps.append("Copy what temper report printed into your reply, as it printed it, in a code block: the person does not "
+                     "see the output of a Bash call.")
+        return steps
+
+    def page_question(self):
+        r, u = self.r, usage(self.r)
+        cost = " (the agents: about $%.2f at list prices)" % u["cost"] if u.get("cost") is not None else ""
+        return self.question(GATE_HEADER, "Every gate passed. The report is above%s. Write it as an HTML page too, before the commit?" % cost,
+                             stage="commit", options=[
+            self.opt("Write report.html", "%s/report.html, committed with the spec." % (r.spec or ".temper/specs/{slug}"),
+                     calls=[self.c("report --html")]),
+            self.opt("Not now", "The commit goes on; the report stays the one in the terminal.", calls=[self.c("report --no-html")])])
+
+    def record_steps(self):
+        r = self.r
+        steps = [self.c("state archive")]
         files = r.ctx.get("changed") or []
         if not r.spec_ignored() and r.spec:
             files = [r.spec + "/"] + [f for f in files if not f.startswith(r.spec + "/")]
@@ -849,11 +861,17 @@ class Builder:
             return {"action": "auto", "stage": "commit", "calls": [self.c('park --verdict %s --reason %s' % (kind, shlex.quote(why or "every gate passed")))],
                     "say": "The armed run parks before the commit; the person decides."}
         if verdict == "PASS":
+            end = r.state.get("end_report")
+            if end in ("html", "none"):
+                return {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.record_steps(),
+                        "say": "The commit carries the run's record."}
+            if end == "shown":
+                return {"action": "ask", "stage": "commit", "ask": self.page_question()}
             if r.state.get("parked"):
                 return {"action": "ask", "stage": "commit", "ask": self.question(GATE_HEADER, "Commit: every gate passed, and the armed run parked here for you (its report: .temper/autonomy-report.md). Commit?", stage="commit", options=[
-                    self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", steps=self.commit_steps()), self.save()])}
-            return {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.commit_steps(),
-                    "say": "Every gate passed: the change is committed."}
+                    self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", steps=self.report_steps()), self.save()])}
+            return {"action": "work", "stage": "commit", "calls": [], "agents": [], "steps": self.report_steps(),
+                    "say": "Every gate passed: the report first, then the commit."}
         failing = sorted({re.sub(r"\s+gate$", "", str(x.get("name", ""))) for x in r.failed_rows("commit") if str(x.get("name", "")).endswith(" gate")})
         # Only rows of the commit gate's own failed (an armed run's blast radius or park-on-touch): the person's skip is
         # of the commit check itself, recorded with their reason like any other.

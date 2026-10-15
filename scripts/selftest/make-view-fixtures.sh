@@ -150,6 +150,10 @@ verdict(p, "commit", False, "review gate", "review has no PASS verdict")
 snap(p, "commit-fail", "run-pw")
 verdict(p, "commit", True)
 snap(p, "commit-pass", "run-pw")
+cli(p, "report", "--end")
+snap(p, "commit-page", "run-pw")
+cli(p, "report", "--no-html")
+snap(p, "commit-record", "run-pw")
 
 # A run with a Design stage (a medium plan, with phases.design on).
 d = project("design")
