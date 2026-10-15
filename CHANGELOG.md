@@ -174,11 +174,14 @@ does the first read that finds a run started later in the session (a door, or a 
 Claude Code places only on a wide terminal. A pane the person closed by hand is not opened again by itself
 in that session. The empty pane now says that a run shows there once it starts.
 
-**The two videos show 9.7.0.** The workflow video (38 seconds) now shows the Temper gate question,
-Build in groups of Haiku task agents and the report at the end. The mod video (38 seconds) shows the
-band and the pane as the mod draws them from `view.json`, a gate question, the refusals, the Scope drift
-question from Build's fix pass and the three modes. The game is gone from it, as from the mod. One commit
-holds the two videos, and the website links pin that commit.
+**The two videos show 9.7.0.** The workflow video (43 seconds) takes one run through each stage and
+shows how each stage hands work to the next: Intent writes the criteria with an ID, Plan turns each
+criterion into a scenario (`Covers: AC-01`) and a task (`Traced to:`) and names every file, Build gives each
+task to a Haiku agent that writes a failing test first, Review reads the change against the plan and the
+intent and sends a real bug back, Check traces every criterion to evidence (the real `temper gate check`
+output), and only then the commit and the report. The mod video (36 seconds) shows the bar, a gate
+question, a tour of the pane section by section, and the Scope drift question. Neither video has a
+refusal scene. One commit holds the two videos, and the website links pin that commit.
 
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.
