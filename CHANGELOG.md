@@ -154,6 +154,12 @@ The orchestrator records an agent and goes on at its report, the first of its re
 the agent has finished by then, and its numbers come from its transcript. Claude Code started a turn for the
 report but none for the notice, so a run that waited for the notice waited until the person wrote.
 
+**The two videos show 9.7.0.** The workflow video (38 seconds) now shows the Temper gate question,
+Build in groups of Haiku task agents and the report at the end. The mod video (38 seconds) shows the
+band and the pane as the mod draws them from `view.json`, a gate question, the refusals, the Scope drift
+question from Build's fix pass and the three modes. The game is gone from it, as from the mod. One commit
+holds the two videos, and the website links pin that commit.
+
 **Migration.** A run planned before 9.7.0 has a flat `tasks.md`, which fails the plan gate (`grouped
 plan`): loop back to Plan to write it as groups. A `build.mode` left in a config changes nothing.
 
