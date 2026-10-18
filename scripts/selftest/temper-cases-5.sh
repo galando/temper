@@ -1524,7 +1524,7 @@ out="$("$TEMPER" task gate 2 --model m 2>&1)"; rc=$?
 assert_eq "F4: a sibling edit of the reopened src/a.sh FAILs as undeclared" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'undeclared change: src/a.sh')"
 
 # F5: no test seam in production code
-assert_eq "F5: the lock code has no TEMPER_LOCK_TEST_HOOK seam" "0" "$(grep -c TEMPER_LOCK_TEST_HOOK "$TEMPER")"
+assert_eq "F5: the lock code has no TEMPER_LOCK_TEST_HOOK seam" "0" "$(cat "$TEMPER" "$REPO_ROOT/scripts/task_ops.py" | grep -c TEMPER_LOCK_TEST_HOOK)"
 # F6: a stale lock broken by parallel waiters leaves no aside folder, one holder at a time, and every row lands
 setup
 mkdir -p .temper/evidence .temper/.lock
