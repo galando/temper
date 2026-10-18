@@ -3,6 +3,24 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.7.1: the plugin directory can fetch Temper again, and no file is over 256 KiB
+
+The Claude plugin directory could not fetch 9.7.0 (a17c0e7 and e7a49e8): "Something in the repository the
+scanner won't accept", and nothing was scanned. No behaviour change.
+
+**A line-ending rule the scanner accepts.** The directory names a line-ending rule in `.gitattributes` without
+`eol=lf` as the most common cause. The repository's one rule was `* text=auto`; it is now `* text=auto eol=lf`, so
+every text file is stored and checked out with LF on every platform. `git add --renormalize .` changed no file: each
+was already stored with LF.
+
+**No file over 256 KiB.** `scripts/temper` had grown to 281,652 bytes, and the directory holds a version for a
+reviewer when a file that is not an image is over 256 KiB. The Build task operations (the CLI's `_task_py`: a task's
+brief and context, its test runs, the group checks, restore and the task verdict) move unchanged from a heredoc in
+`scripts/temper` to `scripts/task_ops.py`, and `_task_py` runs that file with standard input closed, as the heredoc
+left it. `scripts/temper` is now 249,734 bytes. The three tests that read the CLI's own text (no folder listed by a
+wildcard and no folder put on `sys.path`, no lock test seam, no variable for the overrides file) read
+`scripts/task_ops.py` too.
+
 ## v9.7.0: the CLI says what comes next, the mod only draws, Build runs in groups of Haiku agents
 
 **The CLI says what comes next (ADR 0013).** `temper next --json` prints the one next action of a run:
