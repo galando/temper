@@ -1,5 +1,5 @@
 ---
-description: "Manage quality packs: view, toggle, quick-create launchers, configure links & phases, enable or disable the guardrails hooks"
+description: "Manage quality packs: view, toggle, quick-create launchers, configure links & phases, print the guardrails hooks to add or remove"
 argument-hint: "[enable guardrails | disable guardrails]"
 ---
 
@@ -20,7 +20,8 @@ settings file, the project's or the home folder's: the interactive manager and b
 guardrails procedures stop first in the home folder, in an installed copy of the plugin
 and in a folder inside the plugin folder (step 1a and 1b of **Guardrails: Enable**).
 Nothing here reads Claude Code's own files in the home folder either (its plugin list,
-its plugin folders, or the skills and commands kept there). The one home folder path Temper reads is its own global pack folder,
+other plugins' folders, or the skills and commands kept there); of the plugin folder, it
+reads only Temper's own files. The one home folder path Temper reads is its own global pack folder,
 `~/.claude/packs`.
 
 ## Step 1: Discover Packs

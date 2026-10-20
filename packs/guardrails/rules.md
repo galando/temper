@@ -250,7 +250,7 @@ The single fail-closed path for each script is documented below. Everything else
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-forbidden-imports.sh` | PostToolUse | **warn** (no-op by default) | An edited file imports a name on the explicit denylist (empty by default) |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/protect-regression-test.sh` | PreToolUse (Edit\|Write) | **BLOCK** | A /temper:fix run edits the regression test it recorded at RED (`state.regression_test`) — the fix loop's own check must not be weakened by the agent running it |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-protected-paths.sh` | PreToolUse (Edit\|Write) | **BLOCK** (no-op by default) | The edited file matches a `protect: paths:` pattern in temper.config (generated classes, frozen packages) — enforced at edit time, every mode, not just at the autonomous commit gate |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `${CLAUDE_PLUGIN_ROOT}/scripts/temper override`: it emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records the git identity (`by`) |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `${CLAUDE_PLUGIN_ROOT}/scripts/temper override`: it emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records that the person decided it (`by`) |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/run-formatter.sh` | PostToolUse (Edit\|Write) | **format** (no-op by default) | Never blocks — runs `format: cmd:` from temper.config on each edited file so drift never accumulates; a formatter failure is a stderr warning, not a gate |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` FAILs (in-agent mirror of the native hook, below). A CLI refusal of an unsafe `.temper` folder (exit 3) blocks while a run is active (`.temper/build-state.json` exists, as a file or a link) and says to remove the symlink; with no run active it is a one-line warning, not a block |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/stage-marker.sh` | UserPromptSubmit (plugin hook, always on) | **no-op** (records only) | Never: it writes `.temper/pending-stage.json` when a `/temper:intent` prompt is submitted (the stage doors may end at any gate, ADR 0005 as amended), and blocks nothing |
@@ -324,7 +324,7 @@ command that clears a FAIL gate, and it used to be reachable by the agent with n
 deterministic in between. This hook emits Claude Code's `permissionDecision: "ask"` for any
 Bash command invoking it, putting an explicit human approval click between an agent and its
 own approval route; `cmd_override` additionally records, in the `by` field of every
-overrides.json entry, that the person decided it (Temper asks git for no name or email). Separation of duties, enforced at the exact seam
+overrides.json entry, that the person decided it (Temper reads no name or email from git). Separation of duties, enforced at the exact seam
 where it used to be prompt-only.
 
 ### run-formatter.sh

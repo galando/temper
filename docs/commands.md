@@ -222,8 +222,8 @@ without starting the pipeline.
 
 - Interviews the originator the way an analyst would (scope, affected users,
   constraints, what better looks like) — no formal language required of them
-- Writes `.temper/specs/{slug}/intent.md` with `Status: draft`, the author (from git
-  config), Problem, measurable Success Criteria, Constraints, Target Users, and Open
+- Writes `.temper/specs/{slug}/intent.md` with `Status: draft`, the author (a name you
+  typed, else `the person`; never from git), Problem, measurable Success Criteria, Constraints, Target Users, and Open
   Questions — **no scenarios and no architecture**; those are Plan's job, derived from
   the measured blast radius later
 - Keeps criteria and constraints firm: `temper gate intent` fails a draft that uses
@@ -654,7 +654,7 @@ Manage quality packs: view, toggle, quick-create a launcher pack, configure link
 
 | Option | What it does |
 |--------|-------------|
-| **Toggle packs on/off** | Select packs to enable or disable. Turning `guardrails` on or off runs Guardrails enable or disable, which shows its change and asks first. |
+| **Toggle packs on/off** | Select packs to enable or disable. Turning `guardrails` on prints its hook entries for you to add; turning it off says which to remove. Temper opens no settings file. |
 | **Quick-create launcher pack** | Wrap a skill or command as a BLOCK-level pack in the project's `.claude/packs` folder. |
 | **Configure pack (link, phases)** | Set the link target or the phases of an existing pack. |
 | **Done** | Exit. To open the full pack builder instead, choose **Other** and describe the pack. |

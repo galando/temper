@@ -417,10 +417,10 @@ rm -rf .git
 fresh
 assert_eq "model: the line next gives before a stage runs names its model" "1" \
   "$(nx "int(d['say'] == 'Intent runs on %s.' % d['agents'][0]['model'] and bool(d['agents'][0]['model']))")"
-"$TEMPER" usage add --stage intent --model opus --tokens 10 --ms 5 >/dev/null 2>&1
+"$TEMPER" usage add --stage intent --model opus --token-count 10 --ms 5 >/dev/null 2>&1
 assert_eq "model: the report's stage table names the model each stage was launched on" "1|opus" \
   "$("$TEMPER" report 2>/dev/null | grep -cE '^  intent +1 +10 +5  opus$')|$(vw "','.join(d['usage']['by_stage']['intent']['models'])")"
-"$TEMPER" usage add --stage plan --model claude-haiku-5-5 --tokens 7 --ms 3 >/dev/null 2>&1
+"$TEMPER" usage add --stage plan --model claude-haiku-5-5 --token-count 7 --ms 3 >/dev/null 2>&1
 assert_eq "live run 5: the model table names its rows column, and a long model id keeps the columns apart" "1|1" \
   "$("$TEMPER" report 2>/dev/null | grep -cE '^  model +rows +tokens +ms$')|$("$TEMPER" report 2>/dev/null | grep -cE '^  claude-haiku-5-5 +1 +7 +3$')"
 
@@ -562,14 +562,12 @@ assert_eq "live run 9: Check's test gap report is in the clone's info/exclude" "
   "$(git status --porcelain --untracked-files=all | grep -c 'test-gap-report')"
 
 # --- 9.7.3: Temper edits no Claude Code settings file; the person sets the foreground variable ---
-setup; rm -rf .claude/settings.json .claude/settings.local.json
-printf '{"permissions": {"allow": ["Bash(ls)"]}}\n' > .claude/settings.json; cp .claude/settings.json fg-before.json
+setup
 "$TEMPER" init --foreground-agents >/dev/null 2>&1; "$TEMPER" init >/dev/null 2>&1
-assert_eq "init: a settings file stays as it is, and none is made" "same|no" \
-  "$(cmp -s .claude/settings.json fg-before.json && echo same || echo changed)|$([[ -e .claude/settings.local.json ]] && echo yes || echo no)"
+assert_eq "init: no settings file is made, with or without the old flag" "" \
+  "$(ls .claude | grep -E '^settings' || true)"
 assert_eq "init: the CLI names no settings file, and /temper:init offers no settings edit" "0|0" \
   "$(grep -c 'settings\.json' "$TEMPER")|$(grep -c 'foreground-agents' "$REPO_ROOT/commands/init.md")"
-rm -f .claude/settings.json fg-before.json
 
 # --- live runs: the Design question names the open areas of concern, leaving Design records them, design.md is committed ---
 fresh; gpass intent plan; "$TEMPER" state set complexity medium >/dev/null 2>&1
@@ -687,14 +685,14 @@ assert_eq "tier: a door after a tier changed at the plan gate takes the changed 
 # Temper's (the privacy page says Temper reads only its own pack folder there), so the row is what the orchestrator
 # hands over, and an agent id is only accepted, as 9.7.0 and 9.7.1 after calls gave one.
 fresh
-out="$("$TEMPER" usage add --stage plan --model opus --agent abc123def --tokens 114370 --ms 9000 2>&1)"
+out="$("$TEMPER" usage add --stage plan --model opus --agent abc123def --token-count 114370 --ms 9000 2>&1)"
 assert_eq "usage: the row is the totals given, and an old --agent is ignored" \
   "OK: usage recorded (plan)|114370|9000|group,model,ms,stage,task,tokens,ts" \
   "$out|$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s|%s' % (r['tokens'], r['ms'], ','.join(sorted(r))))")"
 out="$("$TEMPER" usage add --stage design --model opus --agent nothere12 2>&1)"; rc=$?
 assert_eq "usage: an agent with no total given is recorded with empty values, never refused" "0|OK: usage recorded (design)|None|None" \
   "$rc|$out|$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s' % (r['tokens'], r['ms']))")"
-"$TEMPER" usage add --stage review --model sonnet --tokens none --ms none >/dev/null 2>&1
+"$TEMPER" usage add --stage review --model sonnet --token-count none --ms none >/dev/null 2>&1
 assert_eq "usage: none for both values is an empty row" "None|None" \
   "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s' % (r['tokens'], r['ms']))")"
 out="$("$TEMPER" task gate 1 --model haiku --agent nothere12 2>&1)"
@@ -708,7 +706,7 @@ assert_eq "report --html: time and tokens, no Cost column, no transcript" "1|0|0
 assert_eq "view: the usage holds tokens, time, and the two tables of tokens, time and launches" "by_model,by_stage,ms,tokens|ms,runs,tokens" \
   "$(python3 -c "import json; u=json.load(open('.temper/view.json'))['usage']; print('%s|%s' % (','.join(sorted(u)), ','.join(sorted(k for k in u['by_model']['opus']))))")"
 assert_eq "next: an agent's after call takes its tokens and time, and no agent id" "1|0" \
-  "$(nx "int('--tokens {tokens} --ms {ms}' in d['agents'][0]['after'][0])")|$(nx "int('--agent' in d['agents'][0]['after'][0])")"
+  "$(nx "int('--token-count {token_count} --ms {ms}' in d['agents'][0]['after'][0])")|$(nx "int('--agent' in d['agents'][0]['after'][0])")"
 assert_eq "the CLI and its Python files expand no home folder and read no transcript, and usage_cost.py is gone" "0|no" \
   "$(git -C "$REPO_ROOT" ls-files -z -- scripts/temper 'scripts/*.py' | (cd "$REPO_ROOT" && xargs -0 grep -liE 'expanduser|\.jsonl|transcript') | wc -l | tr -d ' ')|$([[ -e "$REPO_ROOT/scripts/usage_cost.py" ]] && echo yes || echo no)"
 gpass intent plan build review check commit; _at commit

@@ -695,7 +695,7 @@ st_nextcount() { printf '%s\n' "$1" | grep -c '^NEXT:'; }
 st_attempt() { # st_attempt <model> <tokens> <ms>: start Task 1, write a declared file and a stray one, no RED: a FAIL
   "$TEMPER" task start 1 >/dev/null 2>&1
   st_edit src/a.sh; st_edit stray.txt
-  "$TEMPER" task gate 1 --model "$1" --tokens "$2" --ms "$3" 2>&1
+  "$TEMPER" task gate 1 --model "$1" --token-count "$2" --ms "$3" 2>&1
 }
 st_setup
 out="$(st_attempt claude-haiku-5-5 2100 41000)"; rc=$?
@@ -734,7 +734,7 @@ print(','.join('%s/%s/%s/%s' % (x['model'],x['outcome'],x['tokens'],x['ms']) for
 "$TEMPER" task start 3 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 3 --phase red >/dev/null 2>&1
 mkdir -p ".claude/worktrees/temper-demo-G2/src" 2>/dev/null; echo c > ".claude/worktrees/temper-demo-G2/src/c.sh"
 ST_EXIT=0 "$TEMPER" task test 3 --phase green >/dev/null 2>&1
-out="$("$TEMPER" task gate 3 --model claude-haiku-5-5 --tokens 10 --ms 5 2>&1)"
+out="$("$TEMPER" task gate 3 --model claude-haiku-5-5 --token-count 10 --ms 5 2>&1)"
 assert_eq "park: a task in the other group still passes and prints only NEXT: schedule" "0|NEXT: schedule" \
   "$(printf '%s\n' "$out" | grep -c '^FAIL')|$(printf '%s\n' "$out" | grep '^NEXT:')"
 
@@ -751,7 +751,7 @@ assert_eq "retry: tokens and ms are optional (recorded as null)" "None|None" \
 # a passing gate prints no retry/escalate/park line
 st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh
 ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
-out="$("$TEMPER" task gate 1 --model claude-haiku-5-5 --tokens 7 --ms 9 2>&1)"
+out="$("$TEMPER" task gate 1 --model claude-haiku-5-5 --token-count 7 --ms 9 2>&1)"
 assert_eq "usage: a PASS records tokens and ms and prints only NEXT: schedule" "7/9|NEXT: schedule" \
   "$(python3 -c "import json; a=json.load(open('.temper/groups.json'))['tasks']['1']['attempts'][0]; print('%s/%s' % (a['tokens'],a['ms']))")|$(printf '%s\n' "$out" | grep '^NEXT:')"
 
@@ -770,7 +770,7 @@ gg_pass() { # gg_pass <task> <file>: drive one task through RED, an edit, GREEN 
   ST_EXIT=1 "$TEMPER" task test "$1" --phase red >/dev/null 2>&1
   st_edit "$2"
   ST_EXIT=0 "$TEMPER" task test "$1" --phase green >/dev/null 2>&1
-  "$TEMPER" task gate "$1" --model claude-haiku-5-5 --tokens 10 --ms 5 >/dev/null 2>&1
+  "$TEMPER" task gate "$1" --model claude-haiku-5-5 --token-count 10 --ms 5 >/dev/null 2>&1
 }
 gg_g() { # gg_g <group> <field>
   python3 -c "
@@ -875,7 +875,7 @@ gi_pass() { # gi_pass <task> <group> <file> <content>: RED, edit in the task's o
   ST_EXIT=1 "$TEMPER" task test "$1" --phase red >/dev/null 2>&1
   mkdir -p "$wt/$(dirname "$3")"; printf '%s\n' "$4" > "$wt/$3"
   ST_EXIT=0 "$TEMPER" task test "$1" --phase green >/dev/null 2>&1
-  "$TEMPER" task gate "$1" --model claude-haiku-5-5 --tokens 10 --ms 5 >/dev/null 2>&1
+  "$TEMPER" task gate "$1" --model claude-haiku-5-5 --token-count 10 --ms 5 >/dev/null 2>&1
 }
 gi_all() { # every task passed and both group gates PASS
   gi_setup
@@ -1032,11 +1032,11 @@ print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"; }
 gg_setup
 # Task 1 fails twice (haiku, haiku) then passes on the escalation model; Task 2 passes at once
 for a in 1 2; do
-  "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model claude-haiku-5-5 --tokens 100 --ms 1000 >/dev/null 2>&1
+  "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model claude-haiku-5-5 --token-count 100 --ms 1000 >/dev/null 2>&1
 done
 "$TEMPER" task start 1 >/dev/null 2>&1
 ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
-"$TEMPER" task gate 1 --model sonnet --tokens 500 --ms 3000 >/dev/null 2>&1
+"$TEMPER" task gate 1 --model sonnet --token-count 500 --ms 3000 >/dev/null 2>&1
 gg_pass 2 src/b.sh
 "$TEMPER" group gate G1 >/dev/null 2>&1
 assert_eq "group report: tokens are totalled per model across every attempt" '{"claude-haiku-5-5": 210, "sonnet": 500}' "$(gr_json tokens_by_model)"
@@ -1101,16 +1101,16 @@ for k in sys.argv[1].split('.'):
     v=v.get(k,'') if isinstance(v,dict) else ''
 print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"; }
 setup
-assert_exit "usage add: a recorded row exits 0" 0 "$TEMPER" usage add --stage plan --model sonnet --tokens 1000 --ms 4000
-"$TEMPER" usage add --stage build --model claude-haiku-5-5 --tokens 300 --ms 2000 --task 4 >/dev/null 2>&1
-"$TEMPER" usage add --stage build --model sonnet --tokens 700 >/dev/null 2>&1
+assert_exit "usage add: a recorded row exits 0" 0 "$TEMPER" usage add --stage plan --model sonnet --token-count 1000 --ms 4000
+"$TEMPER" usage add --stage build --model claude-haiku-5-5 --token-count 300 --ms 2000 --task 4 >/dev/null 2>&1
+"$TEMPER" usage add --stage build --model sonnet --token-count 700 >/dev/null 2>&1
 assert_eq "usage add: rows land in .temper/usage.json with the task and group" "3|4" \
   "$(python3 -c "import json; r=json.load(open('.temper/usage.json')); print('%d|%s' % (len(r), r[1].get('task')))")"
 assert_eq "usage add: a missing value is recorded as null and never blocks" "None|None" \
   "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[2]; print('%s|%s' % (r['ms'], r.get('group')))")"
 assert_exit "usage add: an unknown stage exits 1" 1 "$TEMPER" usage add --stage commit --model sonnet
 assert_exit "usage add: a stage name that is not on the list exits 1" 1 "$TEMPER" usage add --stage ../x --model sonnet
-assert_exit "usage add: a non-numeric --tokens exits 1" 1 "$TEMPER" usage add --stage plan --model sonnet --tokens lots
+assert_exit "usage add: a non-numeric --token-count exits 1" 1 "$TEMPER" usage add --stage plan --model sonnet --token-count lots
 assert_exit "usage add: a missing --stage exits 1" 1 "$TEMPER" usage add --model sonnet
 assert_exit "usage add: an unknown flag exits 1" 1 "$TEMPER" usage add --stage plan --bogus 1
 assert_eq "usage add: all four value flags may be absent (a null row)" "0|4" \
@@ -1129,18 +1129,18 @@ assert_eq "report --json: a run with no usage rows has no usage key" "" "$(us_js
 assert_eq "report: a run with no usage rows prints no usage section" "0" "$("$TEMPER" report 2>&1 | grep -c '^Usage')"
 # grouped task attempts count once
 gg_setup
-"$TEMPER" usage add --stage plan --model sonnet --tokens 50 --ms 10 >/dev/null 2>&1
-for a in 1 2; do "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model claude-haiku-5-5 --tokens 100 --ms 1000 >/dev/null 2>&1; done
+"$TEMPER" usage add --stage plan --model sonnet --token-count 50 --ms 10 >/dev/null 2>&1
+for a in 1 2; do "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model claude-haiku-5-5 --token-count 100 --ms 1000 >/dev/null 2>&1; done
 "$TEMPER" task start 1 >/dev/null 2>&1
 ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
-"$TEMPER" task gate 1 --model sonnet --tokens 500 --ms 3000 >/dev/null 2>&1
+"$TEMPER" task gate 1 --model sonnet --token-count 500 --ms 3000 >/dev/null 2>&1
 assert_eq "task gate: every attempt (failed and passed) writes one task usage row" "3|3" \
   "$(python3 -c "import json; r=[x for x in json.load(open('.temper/usage.json')) if x['stage']=='task']; print(len(r))")|$(python3 -c "import json; r=[x for x in json.load(open('.temper/usage.json')) if x['stage']=='task' and x.get('task')==1 and x.get('group')=='G1']; print(len(r))")"
 assert_eq "report --json: grouped attempts count once in the totals (700 task + 50 plan)" "750" "$(us_json usage.total.tokens)"
 assert_eq "report --json: the task stage total is the attempts once" "700|2" \
   "$(us_json usage.by_stage.task.tokens)|$(python3 -c "import json; print(len([x for x in json.load(open('.temper/usage.json')) if x['stage']=='task' and x['model']=='claude-haiku-5-5']))")"
 "$TEMPER" task start 2 >/dev/null 2>&1; "$TEMPER" task gate 2 --model m >/dev/null 2>&1
-assert_eq "task gate: no --model/--tokens/--ms still writes a null usage row" "4" \
+assert_eq "task gate: no --model/--token-count/--ms still writes a null usage row" "4" \
   "$(python3 -c "import json; print(len([x for x in json.load(open('.temper/usage.json')) if x['stage']=='task']))")"
 assert_eq "group report: still totals from groups.json (unchanged by the usage file)" '{"claude-haiku-5-5": 200, "sonnet": 500}' "$(gr_json tokens_by_model)"
 "$TEMPER" gate plan >/dev/null 2>&1; "$TEMPER" state archive >/dev/null 2>&1
@@ -1199,7 +1199,7 @@ assert_eq "orchestrator: the loop runs temper next, and /temper:build is a door 
 assert_eq "orchestrator: the page names no grouped command and no stage brief (temper next gives them)" "0" \
   "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'temper integrate' 'agents/build-task.md' 'agents/plan.md'; do grep -qF -- "$c" "$OT" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "orchestrator: an agent's after calls run with its tokens and time filled in, and no agent id" "yes|0" \
-  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -qF 'run its `after` calls: `{tokens}` and `{ms}` come from the Agent result' && echo yes || echo no)|$(grep -c '{agent}' "$OT")"
+  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -qF 'run its `after` calls: `{token_count}` and `{ms}` come from the Agent result' && echo yes || echo no)|$(grep -c '{agent}' "$OT")"
 assert_eq "orchestrator: fix.md records the RCA launch, and the loop records the rest" "yes|yes" \
   "$(grep -qF 'usage add --stage rca' "$OF" && echo yes || echo no)|$(grep -qF 'scripts/temper next --json' "$OF" && echo yes || echo no)"
 assert_eq "orchestrator-patterns: the run files list groups.json and usage.json" "2" \

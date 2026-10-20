@@ -64,7 +64,7 @@ its system prompt, so its brief says nothing about enforcement.
 
 2. **Write the draft** to the project's `.temper/specs/{slug}/intent.md` using
    `${CLAUDE_PLUGIN_ROOT}/templates/intent.md`:
-   - Header: `**Author:**` (the name the person gave in the conversation, else
+   - Header: `**Author:**` (a name the person typed, else
      `the person`; never ask git or the system for a name or email),
      `**Status:** draft`, `**Created:**`, `**Ticket:**` if one was given,
      `**Reviewer:**` (from step 1), `**Complexity:**` (a first guess).

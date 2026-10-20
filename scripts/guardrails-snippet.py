@@ -8,7 +8,8 @@ and prints its `hooks` object as JSON with 2-space indents: in every command the
 variable gives way to the plugin's absolute folder, and the script path is put in double quotes
 (hooks in a settings file get no such variable). The person adds the entries to their project's
 .claude/settings.local.json or .claude/settings.json themselves. Temper never opens a settings
-file: this script reads no file of the project, of the home folder or of Claude Code.
+file: this script reads only that one file of its own plugin, and nothing of the project, of the
+home folder or of Claude Code's settings.
 
 The plugin folder is this script's own folder, after following links, with the literal /scripts
 taken off.
@@ -76,7 +77,7 @@ def main():
             for hook in block.get("hooks", []) if isinstance(block, dict) else []:
                 if isinstance(hook, dict) and isinstance(hook.get("command"), str):
                     hook["command"] = filled(hook["command"], plugin)
-    print(json.dumps({"hooks": hooks}, indent=2))
+    print(json.dumps({"hooks": hooks}, indent=2, ensure_ascii=False))
     return 0
 
 

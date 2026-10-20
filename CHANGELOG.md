@@ -26,7 +26,7 @@ reads were gone. 9.7.0 had also added `temper init --foreground-agents`, which r
 old `temper init --foreground-agents` call runs the plain init and writes no settings file. A test checks that init
 leaves a settings file as it is and that the CLI names no settings file.
 
-**No Claude Code settings file is opened, and git is asked for no name or email.** The report names a credential "from
+**No Claude Code settings file is opened, and no name or email is read from git.** The report names a credential "from
 the user's machine" without saying which, so this release removes the two other reads of that kind.
 - `scripts/guard-entries.py`, which read the project's `.claude/settings.json` and `.claude/settings.local.json` to list
   Temper guard entries, is removed, with every flow that read or merged those files: the stale guard check of
@@ -37,9 +37,14 @@ the user's machine" without saying which, so this release removes the two other 
   checks that it opens that one file, and that no shipped script or mod file names a project settings file to open.
 - The CLI no longer runs `git config user.name` or `user.email`, and no longer reads `$USER`. An override, an accepted
   finding and an accepted intent record that the person decided it at the gate (`the person`, and `the person at the
-  Intent gate`). Before a commit of its own, the CLI asks git only whether it has an identity (the exit status of
-  `git var`, its output thrown away), and passes a fixed one when it has none. The intent briefs write the name the
-  person gave, never one from git. Tests check that the CLI makes no such read.
+  Intent gate`). Before a commit of its own, the CLI asks git only whether an identity is set (the exit status of
+  `git var` with `user.useConfigOnly`, so git guesses none from the system account; its output is thrown away),
+  and passes a fixed one when none is. The intent briefs write a name the person typed, never one from git. Tests
+  check that no shipped script makes such a read.
+- The orchestrator passes each agent's token count to the CLI as `--token-count` (it was `--tokens`): a count of
+  model tokens, a whole number, which a reader could take for a credential under the old name.
+- The new tests write no stand-in settings file and name no plugin root variable (9.6.7 removed those names from
+  the tests). The pages that still said an override records your git name say what it records now.
 
 **The mod runs no command and sets no setting.** Every report from 9.6.4 to 9.7.2 held the plugin for these two, with
 the README text the directory asks for.

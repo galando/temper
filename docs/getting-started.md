@@ -22,8 +22,8 @@ that may not resolve in every surface, so this guide types the full name. To set
 instead, run `/temper:init`. For optional edit-time guardrails, run `/temper:pack enable guardrails`. It
 prints the guard hooks, with the plugin's absolute folder written into each command, for you to add to
 `.claude/settings.local.json` (personal, recommended) or `.claude/settings.json` (shared) in your project.
-`/temper:pack disable guardrails` says which entries to remove. After a plugin upgrade, run it again to
-print the current commands. Temper never opens a Claude Code settings file, the project's or your home
+`/temper:pack disable guardrails` says which entries to remove. After a plugin upgrade, run
+`/temper:pack enable guardrails` again to print the current commands. Temper never opens a Claude Code settings file, the project's or your home
 folder's.
 
 ### The stage bar (Claude Code 2.1.287 or later)

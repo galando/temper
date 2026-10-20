@@ -27,7 +27,7 @@
 #   temper task <start|show|test|gate> N          one task's lifecycle (test runs the declared command)
 #   temper integrate                              merge the passed groups, run the suite, check Interfaces
 #   temper model <task|task-escalation>           the task agent's model and its escalation model
-#   temper usage add --stage S [--model M] [--tokens T] [--ms D] [--task N] [--group G]
+#   temper usage add --stage S [--model M] [--token-count T] [--ms D] [--task N] [--group G]
 #                                                 one agent launch's usage (any stage);
 #                                                 report and state archive show it; missing values are null
 #
@@ -1513,7 +1513,7 @@ cmd_evidence_accept() { # temper evidence accept --stage <s> --id <n> --reason "
   _ensure_dirs
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo "FAIL: no evidence recorded for stage '$stage'" >&2; return 1; }
-  # The person decides it at the gate. Temper asks git for no name or email and reads no login name.
+  # The person decides it at the gate. Temper reads no name or email from git and reads no login name.
   local by="the person"
   _lock_acquire
   python3 -I - "$file" "$id" "$reason" "$by" "$(_now)" <<'PY'
@@ -2328,10 +2328,11 @@ _prefix_re() { _prefix | sed 's/[][\\.*^$]/\\&/g'; }
 _in_wt() { local p; p="$1/$(_prefix)"; echo "${p%/}"; }
 
 # git needs an identity for the commits the CLI makes. Temper never reads it: it asks git only
-# whether it has one (the exit status of git var, whose output goes nowhere), and passes a fixed
-# one when it has none, so git uses its own identity whenever it can.
-_git_id_args() { # prints "-c user.name=... -c user.email=..." only when git has no identity
-  if ! git var GIT_AUTHOR_IDENT >/dev/null 2>&1 || ! git var GIT_COMMITTER_IDENT >/dev/null 2>&1; then
+# whether one is set (the exit status of git var, whose output goes nowhere; user.useConfigOnly
+# keeps git from guessing one from the system account), and passes a fixed one when none is set.
+_git_id_args() { # prints "-c user.name=... -c user.email=..." only when git has no identity set
+  if ! git -c user.useConfigOnly=true var GIT_AUTHOR_IDENT >/dev/null 2>&1 \
+     || ! git -c user.useConfigOnly=true var GIT_COMMITTER_IDENT >/dev/null 2>&1; then
     echo "-c user.name=Temper -c user.email=temper@localhost"
   fi
 }
@@ -3194,7 +3195,7 @@ _task_gate_body() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --model) model="${2:-}"; shift 2 || true ;;
-      --tokens) tokens="${2:-}"; shift 2 || true ;;
+      --token-count) tokens="${2:-}"; shift 2 || true ;;
       --ms) ms="${2:-}"; shift 2 || true ;;
       # An agent id: the after calls of 9.7.0 and 9.7.1 named it, so a run started then still records. Nothing reads it.
       --agent) shift; shift || true ;;
@@ -4508,8 +4509,8 @@ cmd_override() {
   [[ -n "$stage" && -n "$reason" ]] || { echo "FAIL: usage: temper override <stage> --reason \"...\"" >&2; return 1; }
   _ensure_dirs
   [[ -f "$OVERRIDES_FILE" ]] || echo '[]' > "$OVERRIDES_FILE"
-  # An override is a human decision, made at the gate: record that, and why. Temper asks git
-  # for no name or email and reads no login name. The confirm-override hook (guardrails pack)
+  # An override is a human decision, made at the gate: record that, and why. Temper reads no
+  # name or email from git and reads no login name. The confirm-override hook (guardrails pack)
   # additionally puts a human permission prompt between an agent and this command.
   local by="the person"
   local entry
@@ -4524,7 +4525,7 @@ print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'by': sys.argv[3]
 # ---------------------------------------------------------------------------
 # intent accept|complete: the header of the run's intent.md, written by the CLI (ADR 0013).
 # accept: **Status:** accepted plus **Accepted-by:** the person (their Continue at the Intent gate
-# is the acceptance; Temper asks git for no name or email). complete: **Status:** completed plus
+# is the acceptance; Temper reads no name or email from git). complete: **Status:** completed plus
 # **Completed:** today.
 # Idempotent: an accepted intent stays as it is.
 # ---------------------------------------------------------------------------
@@ -4751,7 +4752,7 @@ print('  The tokens of an agent are its context at its last call, as Claude Code
 # Whole-flow usage (9.7.0, intent D-07). .temper/usage.json is a CLI-owned array of rows
 # {stage, model, tokens, ms, task, group, ts}; a value that was not given is null. The tokens and the time are the totals
 # Claude Code gives for an agent (its Agent result, or the completion notice of an agent run in the background): the CLI
-# opens no file of Claude Code's to learn more. The grouped `task gate --tokens --ms` writes its row here too, and
+# opens no file of Claude Code's to learn more. The grouped `task gate --token-count --ms` writes its row here too, and
 # `group report` keeps reading groups.json attempts, so the two views never meet in one total: the usage totals count
 # each launch once.
 _usage_append() { # _usage_append <stage> <model> <tokens> <ms> <task> <group>
@@ -4796,10 +4797,10 @@ print(json.dumps({'by_stage': by_stage, 'by_model': by_model, 'total': total}, s
 PY
 }
 
-cmd_usage() { # temper usage add --stage S [--model M] [--tokens T] [--ms D] [--task N] [--group G]
+cmd_usage() { # temper usage add --stage S [--model M] [--token-count T] [--ms D] [--task N] [--group G]
   local sub="${1:-}"; shift || true
   if [[ "$sub" != "add" ]]; then
-    echo "FAIL: usage: temper usage add --stage <intent|plan|design|build|review|check|rca|fix|task> [--model M] [--tokens T] [--ms D] [--task N] [--group G]" >&2
+    echo "FAIL: usage: temper usage add --stage <intent|plan|design|build|review|check|rca|fix|task> [--model M] [--token-count T] [--ms D] [--task N] [--group G]" >&2
     return 1
   fi
   local stage="" model="" tokens="" ms="" task="" group=""
@@ -4807,7 +4808,7 @@ cmd_usage() { # temper usage add --stage S [--model M] [--tokens T] [--ms D] [--
     case "$1" in
       --stage) stage="${2:-}"; shift 2 || true ;;
       --model) model="${2:-}"; shift 2 || true ;;
-      --tokens) tokens="${2:-}"; shift 2 || true ;;
+      --token-count) tokens="${2:-}"; shift 2 || true ;;
       --ms) ms="${2:-}"; shift 2 || true ;;
       --task) task="${2:-}"; shift 2 || true ;;
       --group) group="${2:-}"; shift 2 || true ;;
@@ -4822,7 +4823,7 @@ cmd_usage() { # temper usage add --stage S [--model M] [--tokens T] [--ms D] [--
   esac
   local v
   for v in "$tokens" "$ms"; do
-    [[ -z "$v" || "$v" == "none" || "$v" =~ ^[0-9]+$ ]] || { echo "FAIL: --tokens and --ms take whole numbers, or none (got '$v')" >&2; return 1; }
+    [[ -z "$v" || "$v" == "none" || "$v" =~ ^[0-9]+$ ]] || { echo "FAIL: --token-count and --ms take whole numbers, or none (got '$v')" >&2; return 1; }
   done
   [[ -z "$task" || "$task" =~ ^[0-9]+$ ]] || { echo "FAIL: --task takes a whole number (got '$task')" >&2; return 1; }
   [[ -z "$group" || "$group" =~ ^G[0-9]+$ ]] || { echo "FAIL: --group takes G<n> (got '$group')" >&2; return 1; }
@@ -5097,7 +5098,7 @@ Usage:
   temper group report [--json]    (grouped Build: the measurement report)
   temper task <start|show|test|gate> N  (grouped Build: one task's lifecycle)
   temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
-  temper usage add --stage S [--model M] [--tokens T] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
+  temper usage add --stage S [--model M] [--token-count T] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
   temper next [--json]            (what the run does next: a stage to run, a question to ask, or the commit; docs/flow.md)
   temper report --html [-o OUT]   (the end of run report as one page, to report.html in the spec folder)
   temper report --end | --no-html (at the commit: the report for the person, then their No to the page)

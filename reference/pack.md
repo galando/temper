@@ -1,5 +1,5 @@
 ---
-description: "Manage quality packs: view, toggle, create, quick-create launchers, configure links and phases, enable or disable the guardrails hooks"
+description: "Manage quality packs: view, toggle, create, quick-create launchers, configure links and phases, print the guardrails hooks to add or remove"
 ---
 
 # Pack: Quality Pack Manager

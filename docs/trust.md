@@ -1,7 +1,7 @@
 # Trust
 
-Markdown, a mod written in TypeScript, about 7,200 lines of auditable bash (the CLI and the guard scripts) whose
-inline Python parses and writes JSON and computes the gate requirements, and nine Python scripts (about 2,700
+Markdown, a mod written in TypeScript, about 7,100 lines of auditable bash (the CLI and the guard scripts) whose
+inline Python parses and writes JSON and computes the gate requirements, and ten Python scripts (about 3,600
 lines, standard library only). Temper itself makes no network calls, sends no telemetry and adds no packages. The
 committed artifacts (intent, plan, design, gate ledger and diff) are the audit trail, in the same commits as the code.
 
@@ -10,7 +10,7 @@ committed artifacts (intent, plan, design, gate ledger and diff) are the audit t
 Temper's scripts run locally with `bash`, `git` and `python3`, and write only inside your project and its git
 folder. Apart from the mod's plugin store, Temper reads only one place in your home folder that git does not
 name: its global pack folder `~/.claude/packs`, if you made one. Through git it reads the hooks folder your git
-config names, which may be in your home folder; it asks git for no name or email (an accepted intent or an
+config names, which may be in your home folder; it reads no name or email from git (an accepted intent or an
 override records that the person decided it at the gate). It reads no key, login, transcript, settings or other
 Claude Code file. A pack's link targets come from the skills and commands your session lists.
 
@@ -30,7 +30,12 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   repository, the next `/temper` points the setting at the new place. Unset it before adding the pre-commit framework
   or lefthook. To remove, unset it, drop any Temper line, delete `temper-gate` and any 9.6.5 `temper-pre-commit`.
 - **Your toolchain.** Build and check run the test, lint and type check commands of your stack (detected,
-  or set in `check.commands.*` in `.claude/temper.config`) and record their exit codes as evidence.
+  or set in `check.commands.*` in `.claude/temper.config`) and record their exit codes as evidence. A grouped
+  Build runs each task's declared test command in its worktree, the way your shell would.
+- **Its own commits.** In a grouped Build the CLI commits each task's declared files in its worktree and merges
+  them, as plain `git commit` and `git merge` calls that use git's own identity and settings (signing too, when
+  you turned it on). Before one, it asks git only whether an identity is set (an exit status; git guesses none
+  from your system account), and uses the fixed `Temper <temper@localhost>` when none is.
 - **Optional tools already on your machine.** OCR (open code review) is off by default. With `tools.ocr.mode`
   set to `auto` or `require` and `ocr` on your `PATH`, `/temper:review` uses it, and `ocr` sends the diff to
   the provider you set up. Temper adds no tool; the guardrails pack and autonomy run only when you ask.

@@ -463,10 +463,7 @@ GS="$REPO_ROOT/scripts/guardrails-snippet.py"
 GS_PROJ="$WORKDIR/gs-project"
 GS_HOME="$WORKDIR/gs-home"
 rm -rf "$GS_PROJ" "$GS_HOME" "$WORKDIR/gs-bin" "$WORKDIR/gs-q" "$WORKDIR/gs-loose" "$WORKDIR/gs-empty"
-mkdir -p "$GS_PROJ/.claude" "$GS_HOME/.claude" "$WORKDIR/gs-bin"
-printf '{"hooks": {"PreToolUse": []}}\n' > "$GS_PROJ/.claude/settings.json"
-printf '{"hooks": {"PreToolUse": []}}\n' > "$GS_PROJ/.claude/settings.local.json"
-printf '{"env": {}}\n' > "$GS_HOME/.claude/settings.json"
+mkdir -p "$GS_PROJ/.claude" "$GS_HOME" "$WORKDIR/gs-bin"
 ln -s "$GS" "$WORKDIR/gs-bin/guardrails-snippet.py"
 cd "$GS_PROJ" || exit 1
 GS_OUT="$(HOME="$GS_HOME" python3 "$GS" 2>"$WORKDIR/gs-err.txt")"; GS_RC=$?
@@ -490,13 +487,12 @@ print("|".join([
     "same" if got == want else "differs",
     "keys:" + ",".join(sorted(out)),
     str(len(cmds)),
-    "novar" if all("CLAUDE_PLUGIN_ROOT" not in c for c in cmds) else "var",
     cmds[0],
 ]))
 PY
 )"
 assert_eq "guardrails-snippet prints the pack's hooks object, each command with the plugin folder in double quotes in place of the root variable" \
-  "same|keys:hooks|8|novar|bash \"$REPO_ROOT/scripts/guards/block-secrets.sh\"" "$GS_CHECK"
+  "same|keys:hooks|8|bash \"$REPO_ROOT/scripts/guards/block-secrets.sh\"" "$GS_CHECK"
 assert_eq "guardrails-snippet prints the same JSON on every run" "$GS_OUT" "$(HOME="$GS_HOME" python3 "$GS" 2>/dev/null)"
 assert_eq "guardrails-snippet run through a link finds the plugin folder the link points at" \
   "$GS_OUT" "$(HOME="$GS_HOME" python3 "$WORKDIR/gs-bin/guardrails-snippet.py" 2>&1)"
@@ -513,8 +509,8 @@ for gs_copy in "$WORKDIR/gs-q/it's/scripts/guardrails-snippet.py" "$WORKDIR/gs-l
 done
 assert_eq "guardrails-snippet refuses with exit 2, one line and no output for a quote in the plugin folder, no scripts folder and no snippet" \
   "2:1:0;2:1:0;2:1:0;" "$GS_REFUSE"
-# Nothing but the pack's snippet is opened: not the project's two settings files, not the home
-# folder's, and no folder is listed. audit-opens.py <script> runs the script and prints, on stderr,
+# Nothing but the pack's snippet is opened (a settings file of the project or the home folder would
+# show here even when it does not exist), and no folder is listed. audit-opens.py <script> runs the script and prints, on stderr,
 # every open, scandir and listdir it makes (the script file itself and Python's own files aside).
 cat > "$WORKDIR/audit-opens.py" <<'PY'
 import os, runpy, sys
@@ -1018,18 +1014,22 @@ git config user.email "jane@example.com"
 OV_OUT="$(USER=jane-login "$TEMPER" override review --reason "accepted the risk")"
 assert_eq "override entry records that the person decided it, with no git name, email or login name" "the person|0" \
   "$(python3 -c "import json; print(json.load(open('.temper/overrides.json'))[0]['by'])")|$({ cat .temper/overrides.json; printf '%s' "$OV_OUT"; } | grep -cE 'Jane|jane')"
-# The CLI never asks git for a name or an email, and never reads a login name.
-assert_eq "the CLI never runs git config user.name or user.email and never reads USER or LOGNAME" "0" \
-  "$(grep -cE 'config[[:space:]]+(--get[[:space:]]+)?user\.(name|email)|\$\{?(USER|LOGNAME)\b|whoami|getpass|getlogin|getpwuid' "$TEMPER")"
+# No shipped script asks git for a name or an email, or reads a login name.
+assert_eq "no shipped script runs git config user.name or user.email, or reads USER or LOGNAME" "" \
+  "$(cd "$REPO_ROOT" && { echo scripts/temper; git ls-files 'scripts/*.py' 'scripts/guards/*.sh'; } | grep -v '^scripts/selftest/' \
+    | xargs grep -lE 'config[^|;&]*user\.(name|email)|\$\{?(USER|LOGNAME)\b|environ[^)]*(USER|LOGNAME)|whoami|getpass|getlogin|getpwuid' || true)"
 # git needs an identity for the commits the CLI makes: _git_id_args asks git only whether it has one
 # (an exit status) and passes a fixed one when it has none.
 GID_HOME="$WORKDIR/gid-home"; GID_REPO="$WORKDIR/gid-repo"
 rm -rf "$GID_HOME" "$GID_REPO"; mkdir -p "$GID_HOME" "$GID_REPO"; git -C "$GID_REPO" init -q
 GID_OUT="$(cd "$GID_REPO" && env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL -u EMAIL \
+  -u GIT_CONFIG_GLOBAL -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT \
   HOME="$GID_HOME" XDG_CONFIG_HOME="$GID_HOME" GIT_CONFIG_NOSYSTEM=1 bash -c "$(sed -n '/^_git_id_args() {/,/^}/p' "$TEMPER")"'
-_git_id_args; echo "|"; git config user.name "Some One"; git config user.email "some@example.com"; _git_id_args')"
-assert_eq "_git_id_args passes a fixed identity only when git has none, and prints nothing of git's own" \
+_git_id_args; echo "|"; git config user.email "some@example.com"; _git_id_args; echo "|"; git config user.name "Some One"; _git_id_args')"
+assert_eq "_git_id_args passes a fixed identity unless git has one set (never one guessed from the system), and prints nothing of git's own" \
   "-c user.name=Temper -c user.email=temper@localhost
+|
+-c user.name=Temper -c user.email=temper@localhost
 |" "$GID_OUT"
 rm -rf "$GID_HOME" "$GID_REPO"
 

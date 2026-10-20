@@ -127,8 +127,8 @@ setting and runs no command.
 
 Outside your project folder, Temper reads its own global pack folder `~/.claude/packs` (if you made one),
 the mod's plugin store, and the folders above the session folder where the mod looks for the project. It
-asks git for its hooks folder, which may be one your git config names, and never for your name or email:
-an accepted intent or an override records that the person decided it at the gate. It reads no key, login,
+asks git for its hooks folder, which may be one your git config names, and reads no name or email from
+git: an accepted intent or an override records that the person decided it at the gate. It reads no key, login,
 transcript, settings or other Claude Code file. Setting up a project (`/temper:init`, or your first
 `/temper:temper`) points the repository's own `core.hooksPath` at Temper's commit hook, or, when that would
 stop a hook of yours, prints one line to add to it. Temper never opens a Claude Code settings file, the
