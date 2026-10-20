@@ -552,6 +552,10 @@ assert_eq "block-secrets blocks a secret that a Write, an Edit, a MultiEdit or a
   "$(_i_scan Write '{"file_path": "a.txt", "content": "k = KEY"}')|$(_i_scan Edit '{"file_path": "a.txt", "old_string": "x", "new_string": "k = KEY"}')|$(_i_scan MultiEdit '{"file_path": "a.txt", "edits": [{"old_string": "a", "new_string": "b"}, {"old_string": "c", "new_string": "KEY"}]}')|$(_i_scan Bash '{"command": "echo KEY > k.txt"}')"
 assert_eq "block-secrets with no JSON on stdin, and with --staged (whatever is on stdin), scans the staged files" "2|2|2" \
   "$(bash "$I_SECRETS" < /dev/null >/dev/null 2>&1; echo $?)|$(bash "$I_SECRETS" --staged < /dev/null >/dev/null 2>&1; echo $?)|$(echo '{"tool_input": {"command": "ls"}}' | bash "$I_SECRETS" --staged >/dev/null 2>&1; echo $?)"
+I_OUT="$(bash "$I_SECRETS" --staged < /dev/null 2>&1)"
+I_OUT2="$(python3 -c 'import json, sys; print(json.dumps({"tool_name": "Write", "tool_input": {"file_path": "a.txt", "content": "k = " + sys.argv[1]}}))' "$I_KEY" | bash "$I_SECRETS" 2>&1)"
+assert_eq "block-secrets names where a secret is and its first 4 characters, never the secret itself" "1|0|1|0" \
+  "$(grep -cF "'AKIA...' (20 characters, the rest not shown) in the staged copy of 'leak.txt'" <<<"$I_OUT")|$(grep -cF "$I_KEY" <<<"$I_OUT")|$(grep -cF "'AKIA...' (20 characters, the rest not shown) in the text this tool call adds" <<<"$I_OUT2")|$(grep -cF "$I_KEY" <<<"$I_OUT2")"
 git rm -q --cached leak.txt >/dev/null 2>&1 || true
 rm -f leak.txt
 # The guard messages name the CLI by its full path, quoted for the shell.

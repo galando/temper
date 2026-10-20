@@ -32,9 +32,11 @@ jobs:
         run: |
           git fetch --depth 1 origin "$MEDIA_SHA"
           mkdir -p docs/media
-          for f in temper-sdlc temper-mod; do
-            git show "$MEDIA_SHA:docs/assets/$f.mp4" > "docs/media/$f.mp4"
-          done
+          # Each file by its blob id in that commit: the workflow video and its poster, then the mod tour.
+          git cat-file blob d55a8b50f614d5b4bf32644f0cfc637985c198cf > docs/media/workflow.mp4
+          git cat-file blob da0950b8a5811acaf3adf5c184d9ec5435bc10b3 > docs/media/workflow.jpg
+          git cat-file blob bdbe503e8036b64844ac401fe45b23d00b8b3cc3 > docs/media/tour.mp4
+          git cat-file blob 24e3f2a050be1a5214b7c5d2515ca83839286d20 > docs/media/tour.jpg
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

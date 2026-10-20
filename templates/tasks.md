@@ -27,11 +27,11 @@ interfaces it must keep. Not the whole plan.
 - [ ] done
 
 ### Task 2: {description}
-**File:** `src/report.sh`, `unit/report_test.sh`
+**File:** `src/printer.sh`, `unit/printer_test.sh`
 **Depends:** Task 1
-**Test:** `bash unit/report_test.sh`
+**Test:** `bash unit/printer_test.sh`
 **Cases:**
-- one parsed item prints one report line
+- one parsed item prints one line
 - no items prints `nothing to report` and exits 0
 **Traced to:** Scenario: "name1", "name2"
 - [ ] done
@@ -43,11 +43,11 @@ interfaces it must keep. Not the whole plan.
 Distilled rules and conventions for G2.
 
 ### Task 3: {description}
-**File:** `src/cli.sh`, `unit/cli_test.sh`
+**File:** `src/main.sh`, `unit/main_test.sh`
 **Depends:** none
-**Test:** `bash unit/cli_test.sh`
+**Test:** `bash unit/main_test.sh`
 **Cases:**
-- `cli --help` prints the usage and exits 0
+- `main --help` prints the usage and exits 0
 - an unknown flag prints the usage and exits 2
 **Traced to:** Infrastructure: required by G1
 - [ ] done

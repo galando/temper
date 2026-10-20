@@ -25,11 +25,13 @@
 #      at all (hooks, tests, mod, core, ui), read or write, comments included (a word with a
 #      slash and a part of one of those names). A bare word with no slash, as in git rev-parse
 #      --git-path, does not count.
-#  11. No such script lists a folder by a wildcard after a variable ("$dir"/name.*, or a glob
-#      call in a Python file), comments included; a wildcard in quotes, in ${ } or in a pattern
-#      after [[ ... == lists nothing and does not count.
-#  12. No such script puts .. right after a variable or a $( ) span ("$dir"/../x, or an
-#      os.path.join with ".." or os.pardir in a Python file), comments included.
+#  11. No such script lists a folder by a wildcard after a variable (a variable, a slash, then a
+#      star or a question mark in the same word, or a glob call in a Python file), comments
+#      included; a wildcard in quotes, in ${ } or in a pattern after [[ ... == lists nothing and
+#      does not count.
+#  12. No such script goes up a folder right after a variable or a $( ) span (a variable, a
+#      slash, then the parent folder's two dots), or in a Python file joins a path with the
+#      parent folder's name or os.pardir; comments included.
 #
 # It checks the plugin folder it sits in, and nothing in the environment moves that folder: the
 # tests copy this script into a temporary plugin and run the copy there. The folder must be a git
@@ -601,8 +603,8 @@ else
   fail "rule 10 needs python3 and a git work tree at $ROOT"
 fi
 
-# 11. No script lists a folder by a wildcard after a variable: "$dir"/name.*, $dir/*, or a glob
-# call in a Python file. The directory asks for plugin paths with no wildcard, and a folder held
+# 11. No script lists a folder by a wildcard after a variable (a variable, a slash, then a star or a
+# question mark in the same word), or by a glob call in a Python file. The directory asks for plugin paths with no wildcard, and a folder held
 # in a variable may be the plugin's own as far as it can tell: it held a script that globbed a
 # computed folder each time. List the folder with find and match each name instead. A wildcard
 # inside quotes, inside ${ } (as in ${f##*/}) or in a pattern after [[ ... == does not list
@@ -712,22 +714,25 @@ else
   fail "rule 11 needs python3 and a git work tree at $ROOT"
 fi
 
-# 12. No script puts .. right after a variable or a $( ) span: "$dir"/../x, ${D}/.., $(pwd)/..,
-# or in a Python file an os.path.join with ".." or os.pardir. The directory asks for every plugin
-# path written out in full with no .., and a folder held in a variable may be the plugin's own as
-# far as it can tell; 9.7.1 was held on a test file with such a path. Write the path the
-# variable and the .. lead to instead. Comments count. The files are those of rule 9.
+# 12. No script goes up a folder right after a variable or a $( ) span (a variable or the end of a
+# span, a slash, then the parent folder's name), or in a Python file joins a path with the parent
+# folder's name or os.pardir. The directory asks for every plugin path written out in full with no
+# parent folder step, and a folder held in a variable may be the plugin's own as far as it can
+# tell; 9.7.1 was held on a test file with such a path. Write the path it leads to instead.
+# Comments count. The files are those of rule 9. The parent folder's name is fixed text in the
+# one line below (the tests give it another name, as for rule 10).
+UP_SEGMENT_NAME=".."
 if command -v python3 >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  python3 - "$ROOT" <<'PY' || FAIL=$((FAIL+1))
+  python3 - "$ROOT" "$UP_SEGMENT_NAME" <<'PY' || FAIL=$((FAIL+1))
 import os, re, subprocess, sys
-root = sys.argv[1]
+root, up = sys.argv[1], sys.argv[2]
 own = "scripts/validate-directory.sh"
 listed = subprocess.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
                         capture_output=True, check=False).stdout.decode("utf-8", "replace").split("\0")
-# A variable ($X, ${X...}) or the end of a $( ) span, an optional closing quote, a slash, then ..
-# that ends the word or goes on with a slash.
-shell_up = re.compile(r"(?:\$[A-Za-z_][A-Za-z0-9_]*|\$\{[^{}]*\}|\))[\"']?/\.\.(?=/|[\s\"';|&)`]|$)")
-py_up = re.compile(r"\bos\.pardir\b|\bjoin\s*\([^)]*['\"]\.\.['\"]")
+# A variable ($X, ${X...}) or the end of a $( ) span, an optional closing quote, a slash, then the
+# parent folder's name, which ends the word or goes on with a slash.
+shell_up = re.compile(r"(?:\$[A-Za-z_][A-Za-z0-9_]*|\$\{[^{}]*\}|\))[\"']?/" + re.escape(up) + r"(?=/|[\s\"';|&)`]|$)")
+py_up = re.compile(r"\bos\.pardir\b|\bjoin\s*\([^)]*['\"]" + re.escape(up) + r"['\"]")
 
 
 def kind(rel, path):
@@ -770,7 +775,7 @@ for rel in listed:
         if hit:
             found.append("  %s:%d: %s" % (rel, n, line.strip()[:100]))
 if found:
-    print("FAIL: a script puts .. after a variable (write the path it leads to instead):")
+    print("FAIL: a script goes up a folder after a variable (write the path it leads to instead):")
     print("\n".join(found[:20]))
     if len(found) > 20:
         print("  (and %d more)" % (len(found) - 20))

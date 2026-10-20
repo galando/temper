@@ -80,38 +80,55 @@ https://github.com/user-attachments/assets/31a9f4dc-8860-41be-97ca-f03460630f2f
 
 The mod makes no network, `process` or `env` call, starts no agent and writes no file itself.
 
-- **Reads:** `.temper/view.json`, the one file the CLI writes for it, its own settings, store and state,
-  and the Claude Code version. When you change its mode or enforcement it reads the `/config` list to
-  find its own two rows. When `reviewerModel` is set it reads the session's agent list (id and type only).
-- **Configuration and environment it sets:** no environment variable. Only its own two settings,
-  `temper.uiMode` (when you type `/temper:temper mode`, or answer the mode question your first
-  `/temper:temper` asks) and `temper.enforcement` (when you type `/temper:temper enforcement`). A setting
-  your organization locked stays as it is.
+- **Reads:** `.temper/view.json`, the one file the CLI writes for it. To find the project it looks for that
+  file in the session folder and in up to 11 folders above it. It also reads its own settings, store and
+  state, and the Claude Code version. When you change its mode or enforcement it reads the `/config` list
+  to find its own two rows. When `reviewerModel` is set it reads the session's agent list (id and type only).
+- **Configuration and environment it sets:** no environment variable. Only its own two settings, through
+  Claude Code: `temper.uiMode` and `temper.enforcement`. `temper.uiMode` changes when you type
+  `/temper:temper mode full`, `minimal` or `off`, or answer the mode question (your first `/temper:temper`
+  asks it, and so does a bare `mode`). `temper.enforcement` changes when you type
+  `/temper:temper enforcement on` or `off`. A word that changes either counts only from your prompt box,
+  and a setting your organization locked stays as it is.
 - **Slash commands it runs, and when:** only `/temper:temper` with no words, written as fixed text, when
-  you press Go on in the bar. It never builds a command from data.
+  you press Go on in the bar (or its key), and not while Claude is working. It never builds a command from
+  data.
 - **Hooks, and what each changes:**
-  - `tool.call` reads the path of Write, Edit, MultiEdit and NotebookEdit and the text of Bash. It refuses
-    a write outside the stage, `--no-verify`, a changed hooks path or a step only you may take, with a
-    reason, or passes the call on and returns its result unchanged. After a question dialog it reads your
-    answer from the result.
-  - `command.run` handles only `/temper:temper`: it answers `status`, `timeline`, `help`, `report`,
-    `mode`, `enforcement` and `pane`. Every other word, and every other command, passes on unchanged.
-  - `session.start` and `classic.SessionStart` find the project folder and load the run. Both return what
-    Claude Code gave them unchanged: they add or change no context, instruction, setting or hook.
+  - `tool.call` reads the path of Write, Edit, MultiEdit and NotebookEdit and the text of Bash. During a run
+    it refuses, with a reason, a write outside the stage, a write to a file the CLI or git owns (the run
+    files in `.temper/`, the config, git's hooks) or to the mod's plugin data folder, `--no-verify`, a
+    changed hooks path, and a step only you may take; when its own check fails, it refuses the Bash call
+    rather than guess. Any other call goes on, and its result comes back unchanged. After a question dialog
+    it reads your answer from the result.
+  - `command.run` handles only `/temper:temper` (and `/temper`). It answers `status`, `timeline`, `help`,
+    `report`, `mode`, `enforcement` and `pane`. Typed in your prompt box, it may first ask the mode question
+    once and open the pane during a run in full mode. Every other word, and every other command, goes on
+    unchanged.
+  - `session.start` and `classic.SessionStart` find the project folder and load the run. Neither adds or
+    changes a context, an instruction, a setting or another hook: each returns what Claude Code gave it.
+    What they change is the mod's own: the project folder, the bar's view and the mode in `$.state`; in
+    full mode the pane opens during a run, and a toast tells a stage change; at Done the run report is kept
+    in the store.
   - `prompt.compose` adds one system prompt section, `temper:phase`: enforcement on or off, the stage, the
     run title, the passed criteria and the next step.
   - `turn.step` sets the model and effort from `phaseModels`, and the review agent's model from
     `reviewerModel`; empty options change nothing.
   - `attribution.text` adds one Temper line to a pull request description during a run, when
     `prAttribution` is on.
-  - `turn.complete` adds a one line status under an answer in full mode; `ui.render` and `ui.close` draw
-    the bar, the pane, the spinner word and the prompt hint, and note a pane you closed.
+  - `turn.complete` adds a one line status under an answer in full mode.
+  - `ui.render` draws the bar, the pane, the spinner word, the prompt hint and one line above the question
+    dialog, which stays as it is; `ui.close` notes a pane you closed, so it does not open again by itself.
 - **Keeps:** your answers in the question dialogs, the run report and whether you were asked for a mode,
-  in its plugin store; the bar's view in `$.state`, which other plugins can read.
+  in its plugin store; the project folder, the bar's view and the mode in `$.state`, which other plugins
+  can read. Toasts tell a stage change (full mode), an enforcement change and the default mode.
 
-Outside your project, Temper reads only its own global pack folder `~/.claude/packs` (if you made one)
-and the mod's plugin store. It reads no key, login, transcript or other Claude Code file. It asks git for
-your name and email to record who accepted an intent or overrode a gate. The full list is in
+Outside your project folder, Temper reads its own global pack folder `~/.claude/packs` (if you made one),
+the mod's plugin store, and the folders above the session folder where the mod looks for the project. It
+asks git for your name and email, to record who accepted an intent or overrode a gate, and for its hooks
+folder, which may be one your git config names. It reads no key, login, transcript or other Claude Code
+file. Setting up a project (`/temper:init`, or your first `/temper:temper`) points the repository's own
+`core.hooksPath` at Temper's commit hook, or, when that would stop a hook of yours, prints one line to add
+to it; `/temper:init` adds one `env` key to the project's `.claude/settings.json` only when you say yes. The full list is in
 [The mod](docs/mod.md#what-the-mod-reads-and-writes).
 
 ## Commands

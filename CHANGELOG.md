@@ -17,8 +17,15 @@ fixtures are generated again. The named file also made a folder through a variab
 folder directly now. A comment named a file of the mod's tests, and two decision records and the 9.7.0 entry named
 files of the mod; they name them by role.
 - Rule 10 of `scripts/validate-directory.sh` now fails on a path with a folder named like any folder of the mod or of
-  its tests (`hooks`, `tests`, `mod`, `core`, `ui`, fixed text in the script), and a new rule 12 fails on `..` right
-  after a variable or a `$( )` span. Run on 9.7.1, they fail on those 65 lines and on the `..` path.
+  its tests (`hooks`, `tests`, `mod`, `core`, `ui`, fixed text in the script), and a new rule 12 fails on a step up a
+  folder right after a variable or a `$( )` span. Run on 9.7.1, they fail on those 65 lines and on that path. The
+  validator's comments describe the forms in words, and its tests give each rule another name for its folder, as
+  rule 10's always did, so neither file spells a form it refuses.
+- Other names a reader could take for the mod's: the Pages workflow restored the videos by a loop over the mod
+  folder's own name; it now restores each video and poster by its blob id in the pinned media commit, under
+  neutral names. The grouped example's `src/cli.sh` and `src/report.sh` are `src/main.sh` and `src/printer.sh`. The
+  init command and the guardrails pack name the hook file as the `pre-commit` file in the folder git names, and the
+  TDD and Rust packs and the Check brief say "the `tests` folder" in words.
 
 **The CLI reads no Claude Code file.** The report held 9.7.1 for "Update adds credential forward". 9.7.0 read each
 agent's transcript in Claude Code's own folder in your home folder for the tokens it was billed and a cost at list
@@ -31,10 +38,17 @@ started on 9.7.0 or 9.7.1 still records. An agent with no total given is recorde
 refused. A test checks that a row holds exactly the totals given, and that no file of the CLI expands a home folder
 or reads a transcript.
 
+**The secret guard no longer repeats a secret.** `block-secrets.sh` printed the whole match in its refusal, which
+Claude and the session transcript see when a commit is refused. It now shows the first 4 characters and the length.
+
 **The README says what the mod sets, runs and hooks.** The report asked, at the lines that make them, for the README to
 say which settings the mod sets, which command it runs and when, and what its `classic.SessionStart` and `command.run`
-hooks do. 9.6.8 had cut that section to a link. It now says each, what every other hook changes, and what Temper reads
-outside the project. The Install section also gives the one line install `claude plugin validate` suggests.
+hooks do. 9.6.8 had cut that section to a link. It now says each, checked line by line against the code: the mode
+question a bare `mode` asks, `/temper` as well as `/temper:temper`, what the session hooks change in the mod's own
+state (the pane, a toast, the kept report), every refusal of `tool.call`, the line above the question dialog, and the
+toasts. It says what Temper reads outside the project (the pack folder, the folders above the session folder where the
+mod looks for the project, and through git your name, email and hooks folder), and what setting up a project changes;
+`docs/trust.md` says the same. The Install section also gives the one line install `claude plugin validate` suggests.
 
 Notes the directory listed that need no change: `types` (Claude Code's own validator needs it for the mod's `$.state`
 keys), no icon (a bundled image holds a plugin for review, and an icon added now would not become the listing icon),

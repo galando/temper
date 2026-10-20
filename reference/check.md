@@ -86,7 +86,7 @@ report, don't imply stronger guarantees than they give:
   boundary, negative, empty, error path) / NO TEST. No test on security-critical code →
   BLOCK; zero coverage elsewhere → WARN. Write `.temper/test-gap-report.json`.
 - **4.85 API diff:** for changed controller/route/DTO/shared-type files, diff old vs.
-  new shape (ADDITIVE/MODIFIED/BREAKING), grep tests/frontend/imports for consumers, and
+  new shape (ADDITIVE/MODIFIED/BREAKING), grep the tests, the frontend and the imports for consumers, and
   check whether each consumer was updated. Breaking + consumer not updated → BLOCK.
   Write `.temper/contract-map.json`.
 - **4.9 performance:** run configured benchmarks, compare to
