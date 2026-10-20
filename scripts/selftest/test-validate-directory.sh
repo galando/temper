@@ -165,12 +165,15 @@ seg_misc_ok()  { seg_name "$1"
                    printf 'git rev-parse --git-path gate_dir/pre-commit\n'; } > "$1/scripts/a.sh"
                  printf 'rel = path.replace("gate_dir/", "")\nprint(Path("gate_dir/x.json").read_text())\n' > "$1/scripts/a.py"; }
 
-# Rule 11 needs no name: a wildcard after a variable fails wherever it is.
-glob_for()     { printf 'for f in "$1"/pre-commit.bak.*; do echo "$f"; done\n' > "$1/scripts/a.sh"; }
-glob_cp()      { printf 'cp "$SRC"/scripts/*.sh "$OUT/"\n' > "$1/scripts/a.sh"; }
-glob_subst()   { printf 'n="$(cat "$A" "$B"/x/*.sh | wc -l)"\n' > "$1/scripts/a.sh"; }
-glob_bare()    { printf 'ls $DIR/*.json\n' > "$1/scripts/a.sh"; }
-glob_comment() { printf '# lists "$d"/*.sh\nexit 0\n' > "$1/scripts/a.sh"; }
+# Rule 11 names its wildcard characters in one line too; these cases change them to @ the same way,
+# so this file spells no wildcard after a variable.
+glob_name()    { sed "s/^WILDCARD_CHARS=.*\$/WILDCARD_CHARS='@'/" "$1/scripts/validate-directory.sh" > "$1/scripts/v" \
+                   && mv "$1/scripts/v" "$1/scripts/validate-directory.sh"; }
+glob_for()     { glob_name "$1"; printf 'for f in "$1"/pre-commit.bak.@; do echo "$f"; done\n' > "$1/scripts/a.sh"; }
+glob_cp()      { glob_name "$1"; printf 'cp "$SRC"/scripts/@.sh "$OUT/"\n' > "$1/scripts/a.sh"; }
+glob_subst()   { glob_name "$1"; printf 'n="$(cat "$A" "$B"/x/@.sh | wc -l)"\n' > "$1/scripts/a.sh"; }
+glob_bare()    { glob_name "$1"; printf 'ls $DIR/@.json\n' > "$1/scripts/a.sh"; }
+glob_comment() { glob_name "$1"; printf '# lists "$d"/@.sh\nexit 0\n' > "$1/scripts/a.sh"; }
 glob_python()  { printf 'import glob, os\nfiles = glob.glob(os.path.join(d, "x.sh"))\n' > "$1/scripts/a.py"; }
 glob_pathlib() { printf 'from pathlib import Path\nfiles = sorted(Path(d).glob("x.json"))\n' > "$1/scripts/a.py"; }
 # Rule 12 names the parent folder in one line too; these cases change it to up_dir the same way, so
@@ -185,9 +188,10 @@ up_python()    { up_name "$1"; printf 'import os\np = os.path.join(d, "up_dir", 
 up_pardir()    { printf 'import os\np = os.path.join(d, os.pardir)\n' > "$1/scripts/a.py"; }
 up_ok()        { up_name "$1"; printf 'ln -s up_dir/x rel-link\necho "the up_dir folder"\nD="$X/up_dir-old"\n' > "$1/scripts/a.sh"
                  printf 'ok = parts[-2] not in ("", ".", "up_dir")\n' > "$1/scripts/a.py"; }
-glob_ok()      { { printf 'n="${f##*/}"\nd="${p%%/*}"\n[[ "$v" == */x ]] && echo a\n[[ "$p" == "$X"/* ]] && echo b\n'
-                   printf 'echo "$d/*"\nfind "$d" -mindepth 1 -maxdepth 1 -print0\ncase "$n" in pre-commit.bak.*) echo c ;; esac\n'
-                   printf 'echo "$((a * b))"\nrm -f ./*.tmp\n'; } > "$1/scripts/a.sh"
+glob_ok()      { glob_name "$1"
+                 { printf 'n="${f##@/}"\nd="${p%%/@}"\n[[ "$v" == @/x ]] && echo a\n[[ "$p" == "$X"/@ ]] && echo b\n'
+                   printf 'echo "$d/@"\nfind "$d" -mindepth 1 -maxdepth 1 -print0\ncase "$n" in pre-commit.bak.@) echo c ;; esac\n'
+                   printf 'echo "$((a * b))"\nrm -f ./@.tmp\n'; } > "$1/scripts/a.sh"
                  printf 'import fnmatch, os\nnames = [n for n in sorted(os.listdir(d)) if fnmatch.fnmatch(n, "x.json")]\n' > "$1/scripts/a.py"; }
 
 make_fixture good && check "a good fixture passes" 0 "$FIXTURES/good"
@@ -270,9 +274,9 @@ check "the old folder variable cannot point a broken plugin's check at a good on
 # The script finds its folder with CDPATH naming that folder (cd would print it otherwise).
 check "a good fixture passes with CDPATH naming it" 0 "$FIXTURES/good" CDPATH="$FIXTURES/good"
 
-# The shipped lists: rule 10 holds the names of the folders of the mod and its tests, and rule 12 the
-# parent folder's name.
-for line in 'NAMED_SEGMENT_NAMES="hooks tests mod core ui"' 'UP_SEGMENT_NAME=".."'; do
+# The shipped lists: rule 10 holds the names of the folders of the mod and its tests, rule 11 the
+# wildcard characters, and rule 12 the parent folder's name.
+for line in 'NAMED_SEGMENT_NAMES="hooks tests mod core ui"' "WILDCARD_CHARS='*?'" 'UP_SEGMENT_NAME=".."'; do
   if grep -qxF "$line" "$ROOT/scripts/validate-directory.sh"; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); echo "FAIL: the validator ships $line"; fi
 done
 

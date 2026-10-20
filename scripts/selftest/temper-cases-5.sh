@@ -501,7 +501,8 @@ PY
 st_edit() { # st_edit <task-file-relative-path>: write a file into the running task's worktree (st_twt)
   # Only ever inside the selftest's throwaway folder: a case that left the folder would
   # otherwise write into the repository it runs from.
-  [[ "$(pwd -P)" == "$(cd "$WORKDIR" && pwd -P)"* ]] || { echo "st_edit refused: cwd $(pwd) is outside WORKDIR" >&2; return 1; }
+  local here top; here="$(pwd -P)"; top="$(cd "$WORKDIR" && pwd -P)"
+  [[ "$here" == "$top" || "${here#"$top"/}" != "$here" ]] || { echo "st_edit refused: cwd $(pwd) is outside WORKDIR" >&2; return 1; }
   local w; w="$(st_twt "$1")"
   mkdir -p "$w/$(dirname "$1")"; echo "work $1" > "$w/$1"
 }

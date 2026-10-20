@@ -608,11 +608,13 @@ fi
 # in a variable may be the plugin's own as far as it can tell: it held a script that globbed a
 # computed folder each time. List the folder with find and match each name instead. A wildcard
 # inside quotes, inside ${ } (as in ${f##*/}) or in a pattern after [[ ... == does not list
-# anything and does not count; comments count. The files are those of rule 9.
+# anything and does not count; comments count. The files are those of rule 9. The wildcard
+# characters are fixed text in the one line below (the tests give them a stand-in, as for rule 10).
+WILDCARD_CHARS='*?'
 if command -v python3 >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  python3 - "$ROOT" <<'PY' || FAIL=$((FAIL+1))
+  python3 - "$ROOT" "$WILDCARD_CHARS" <<'PY' || FAIL=$((FAIL+1))
 import os, re, subprocess, sys
-root = sys.argv[1]
+root, wild = sys.argv[1], sys.argv[2]
 own = "scripts/validate-directory.sh"
 listed = subprocess.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
                         capture_output=True, check=False).stdout.decode("utf-8", "replace").split("\0")
@@ -658,7 +660,7 @@ def shell_globs(line):
             var = True
         elif ch == "/" and var:
             slash = True
-        elif ch in "*?" and slash:
+        elif ch in wild and slash:
             return True
         i += 1
     return False

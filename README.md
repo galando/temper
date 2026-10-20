@@ -94,23 +94,23 @@ The mod makes no network, `process` or `env` call, starts no agent and writes no
   you press Go on in the bar (or its key), and not while Claude is working. It never builds a command from
   data.
 - **Hooks, and what each changes:**
-  - `tool.call` reads the path of Write, Edit, MultiEdit and NotebookEdit and the text of Bash. During a run
-    it refuses, with a reason, a write outside the stage, a write to a file the CLI or git owns (the run
-    files in `.temper/`, the config, git's hooks) or to the mod's plugin data folder, `--no-verify`, a
-    changed hooks path, and a step only you may take; when its own check fails, it refuses the Bash call
-    rather than guess. Any other call goes on, and its result comes back unchanged. After a question dialog
-    it reads your answer from the result.
+  - `tool.call` reads the path of Write, Edit, MultiEdit and NotebookEdit and the text of Bash, and refuses
+    some calls with a reason. Always: a write to the CLI's run files in `.temper/`, and a Bash word that
+    expands to more words than it reads (a long brace list). During a `/temper` or `/temper:fix` run:
+    `--no-verify`, a changed hooks path, and a write to the config or git's hooks. During a `/temper` run: a
+    write outside the stage, a write to the mod's plugin data folder, a step only you may take, an unquoted
+    glob in a Temper call that could spell such a step, and a Bash call its own check failed on. Any other
+    call goes on, and its result comes back unchanged. After a question dialog it reads your answer from the
+    result.
   - `command.run` handles only `/temper:temper` (and `/temper`). It answers `status`, `timeline`, `help`,
     `report`, `mode`, `enforcement` and `pane`. Typed in your prompt box, it may first ask the mode question
-    once and open the pane during a run in full mode. Every other word, and every other command, goes on
-    unchanged.
+    once and open the pane in full mode. Every other word, and every other command, goes on unchanged.
   - `session.start` and `classic.SessionStart` find the project folder and load the run. Neither adds or
     changes a context, an instruction, a setting or another hook: each returns what Claude Code gave it.
-    What they change is the mod's own: the project folder, the bar's view and the mode in `$.state`; in
-    full mode the pane opens during a run, and a toast tells a stage change; at Done the run report is kept
-    in the store.
-  - `prompt.compose` adds one system prompt section, `temper:phase`: enforcement on or off, the stage, the
-    run title, the passed criteria and the next step.
+  - `prompt.compose` adds one system prompt section, `temper:phase`, to each request: enforcement on or off,
+    the stage, the run title, the passed criteria, the next step for Claude (from `.temper/view.json`), a line
+    when the mod cannot read the run as it should, and one fixed line (answer a message at a gate; after a
+    requested change, run the gate again and ask again).
   - `turn.step` sets the model and effort from `phaseModels`, and the review agent's model from
     `reviewerModel`; empty options change nothing.
   - `attribution.text` adds one Temper line to a pull request description during a run, when
@@ -118,9 +118,13 @@ The mod makes no network, `process` or `env` call, starts no agent and writes no
   - `turn.complete` adds a one line status under an answer in full mode.
   - `ui.render` draws the bar, the pane, the spinner word, the prompt hint and one line above the question
     dialog, which stays as it is; `ui.close` notes a pane you closed, so it does not open again by itself.
+- **What reading the run again changes:** the session hooks, `tool.call` (after a Bash call or a question
+  dialog), `turn.complete` and `command.run` read the run again. That changes only the mod's own state: the
+  project folder, the bar's view and the mode in `$.state`, which other plugins can read; at Done the run
+  report kept in its store; in full mode a toast for a stage change, and the pane opened for a run that
+  started. Typed in your prompt box, a run word opens the pane before the run exists.
 - **Keeps:** your answers in the question dialogs, the run report and whether you were asked for a mode,
-  in its plugin store; the project folder, the bar's view and the mode in `$.state`, which other plugins
-  can read. Toasts tell a stage change (full mode), an enforcement change and the default mode.
+  in its plugin store. Toasts also tell an enforcement change and the default mode.
 
 Outside your project folder, Temper reads its own global pack folder `~/.claude/packs` (if you made one),
 the mod's plugin store, and the folders above the session folder where the mod looks for the project. It

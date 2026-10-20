@@ -19,8 +19,8 @@ files of the mod; they name them by role.
 - Rule 10 of `scripts/validate-directory.sh` now fails on a path with a folder named like any folder of the mod or of
   its tests (`hooks`, `tests`, `mod`, `core`, `ui`, fixed text in the script), and a new rule 12 fails on a step up a
   folder right after a variable or a `$( )` span. Run on 9.7.1, they fail on those 65 lines and on that path. The
-  validator's comments describe the forms in words, and its tests give each rule another name for its folder, as
-  rule 10's always did, so neither file spells a form it refuses.
+  validator's comments describe the forms in words, and its tests give each rule its own stand-in (another folder
+  name, another wildcard character), as rule 10's tests always did, so neither file spells a form it refuses.
 - Other names a reader could take for the mod's: the Pages workflow restored the videos by a loop over the mod
   folder's own name; it now restores each video and poster by its blob id in the pinned media commit, under
   neutral names. The grouped example's `src/cli.sh` and `src/report.sh` are `src/main.sh` and `src/printer.sh`. The
@@ -45,8 +45,8 @@ Claude and the session transcript see when a commit is refused. It now shows the
 say which settings the mod sets, which command it runs and when, and what its `classic.SessionStart` and `command.run`
 hooks do. 9.6.8 had cut that section to a link. It now says each, checked line by line against the code: the mode
 question a bare `mode` asks, `/temper` as well as `/temper:temper`, what the session hooks change in the mod's own
-state (the pane, a toast, the kept report), every refusal of `tool.call`, the line above the question dialog, and the
-toasts. It says what Temper reads outside the project (the pack folder, the folders above the session folder where the
+state (the pane, a toast, the kept report) and which hooks cause them, the refusals of `tool.call` and when each applies,
+what the system prompt section holds, the line above the question dialog, and the toasts. It says what Temper reads outside the project (the pack folder, the folders above the session folder where the
 mod looks for the project, and through git your name, email and hooks folder), and what setting up a project changes;
 `docs/trust.md` says the same. The Install section also gives the one line install `claude plugin validate` suggests.
 
