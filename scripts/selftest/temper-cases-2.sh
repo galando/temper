@@ -677,7 +677,7 @@ assert_exit "evidence accept rejects an unknown stage" 1 "$TEMPER" evidence acce
 assert_exit "review gate FAILs while the critical finding is open" 1 "$TEMPER" gate review
 assert_exit "evidence accept records the finding with a reason" 0 "$TEMPER" evidence accept --stage review --id 1 --reason "legacy hash, tracked in TICKET-9"
 assert_exit "evidence accept refuses the same finding twice" 1 "$TEMPER" evidence accept --stage review --id 1 --reason "again"
-assert_eq "accepted row stores reason, author and ts" "legacy hash, tracked in TICKET-9|Acc Person <acc@example.com>|yes" \
+assert_eq "accepted row stores reason, author (the person, never git's name or email) and ts" "legacy hash, tracked in TICKET-9|the person|yes" \
   "$("$TEMPER" evidence list --stage review --json | python3 -c 'import json,sys; a=json.load(sys.stdin)[0]["accepted"]; print("%s|%s|%s" % (a["reason"], a["author"], "yes" if a.get("ts") else "no"))')"
 assert_eq "the accepted row is still in the ledger" "3" "$("$TEMPER" evidence list --stage review --json | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
 assert_eq "evidence list shows [accepted: reason]" "yes" "$("$TEMPER" evidence list --stage review | grep '#1 .*\[accepted: legacy hash, tracked in TICKET-9\]' >/dev/null && echo yes || echo no)"
@@ -1050,8 +1050,8 @@ ln -sf rel-temper "$WORKDIR/bin/chained-temper"
 assert_eq "a CLI reached through a chain of relative symlinks finds its own plugin folder" "$("$TEMPER" model plan)" \
   "$(env -i HOME="$HOME" PATH="$PATH" "$WORKDIR/bin/chained-temper" model plan)"
 # No value of the plugin root variable can move them: the CLI and the guard scripts never name it.
-# Its name is taken from guard-entries.py, which looks for it in settings files.
-ROOT_VAR_NAME="$(sed -n 's/^ROOT_VAR_NAME = "\(.*\)"$/\1/p' "$REPO_ROOT/scripts/guard-entries.py")"
+# Its name is taken from guardrails-snippet.py, which replaces it in the commands it prints.
+ROOT_VAR_NAME="$(sed -n 's/^ROOT_VAR_NAME = "\(.*\)"$/\1/p' "$REPO_ROOT/scripts/guardrails-snippet.py")"
 GUARD_FILES="$(git -C "$REPO_ROOT" ls-files -- scripts/guards | sed "s|^|$REPO_ROOT/|")"
 assert_eq "the CLI and the guard scripts never read the plugin root variable" "yes|yes|0" \
   "$([[ -n "$ROOT_VAR_NAME" ]] && echo yes || echo no)|$([[ -n "$GUARD_FILES" ]] && echo yes || echo no)|$({ cat "$TEMPER"; while IFS= read -r f; do cat "$f"; done <<< "$GUARD_FILES"; } | grep -cF -- "$ROOT_VAR_NAME")"

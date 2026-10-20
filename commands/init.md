@@ -175,42 +175,19 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    to `1` themselves, as `${CLAUDE_PLUGIN_ROOT}/docs/getting-started.md` ("Stage agents in the
    background") shows, and that any message moves a waiting run on.
 
-6. Guardrails hooks. Run the stale guard check of
-   ${CLAUDE_PLUGIN_ROOT}/reference/pack.md → "Guardrails Hooks" (it is skipped when the
-   project folder is the home folder, so the user's home settings are never read). It
-   runs, from the project folder:
-      python3 "${CLAUDE_PLUGIN_ROOT}/scripts/guard-entries.py"
-   which reads only .claude/settings.json and .claude/settings.local.json in the
-   project and prints one FILE|EVENT|MATCHER|SCRIPT|STATUS line per Temper guard entry
-   (a matcher can hold '|', so read FILE and EVENT from the left and SCRIPT and STATUS
-   from the right). STATUS stale means the command runs a guard script outside the
-   current plugin folder, whether it exists or not (the folder of an earlier plugin
-   version, which Claude Code keeps for a while after an upgrade, or the guard scripts
-   folder of versions before 9.6.5), a script that does not exist, or a path that still
-   holds the CLAUDE_PLUGIN_ROOT variable. Decide from its output only, never from your
-   own reading of the settings files. When no line says stale, or it exits 2, print
-   nothing. When any line says stale, ask that section's question as an
-   AskUserQuestion of its own, before step 7: "Replace them with the current
-   guardrails set (shows the change first)" / "Not now". On the first, follow that
-   section's Enable steps 1 and 3 to 7 with that file as the picked file (they show the
-   change in both project settings files and ask again before writing). On "Not now",
-   change nothing.
-
-7. Report done, and name the one optional add-on in a single line:
-   "Set up. Optional: `/temper:pack enable guardrails` adds edit-time guardrails (secret
+6. Report done, and name the one optional add-on in a single line:
+   "Set up. Optional: `/temper:pack enable guardrails` prints edit-time guardrails (secret
    blocking, frozen-path protection, auto-format, an approval prompt before overrides)
-   to a project settings file you pick. The commit gate above works without it."
+   for you to add to a project settings file. The commit gate above works without it."
 ```
 
 ## What this deliberately does NOT do
 
 - It does **not** add hooks to a settings file. The stage-gate hooks ship with the plugin
   (in its own hooks file) and work on install with no merge. The fuller edit-time
-  guardrail set is the opt-in `/temper:pack enable guardrails` above, because merging
-  hooks into a project settings file is a change the user should choose. The two
-  settings changes it can make wait for the user's answer: step 5 adds one `env` key to
-  `.claude/settings.json`, and step 6 replaces stale guard commands with the current
-  guardrails set. Temper never reads or writes the user's home settings.
+  guardrail set is the opt-in `/temper:pack enable guardrails` above, which prints the
+  hook entries for the user to add to a project settings file. Temper never opens a
+  Claude Code settings file, the project's or the home folder's.
 - It does **not** overwrite an existing config, and it never writes into a folder
   named `hooks`, so it never writes over a hook of the user's or of another tool. When
   pointing `core.hooksPath` at the `temper-gate` folder would switch such a hook off,
@@ -226,4 +203,5 @@ A pre-v7 config (`tokens:`, `observability:` or `capabilities:` blocks, or the v
 ignores keys it doesn't use. Nothing breaks; step 2 just reports what's now inert. A
 flat `models:` block is not retired: it is the per-stage model override. Guard hooks an
 earlier version merged into a project settings file, pointing at the guard scripts
-folder of versions before 9.6.5, are what step 5 finds. See `${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md` for the mapping.
+folder of versions before 9.6.5, stay there until the user removes them;
+`/temper:pack enable guardrails` prints the current set. See `${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md` for the mapping.

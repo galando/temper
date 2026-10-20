@@ -1,6 +1,6 @@
 # Intent: {Feature Name}
 
-**Author:** {name <email>}
+**Author:** {the name the person gave, else: the person}
 **Status:** {draft | accepted | completed}
 **Created:** {date}
 **Ticket:** {JIRA-XXX or #XXX or !XXX if linked}

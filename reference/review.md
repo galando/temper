@@ -218,7 +218,7 @@ top issues as `[{severity}] {file}:{line} — {one-liner}`.
 
 **Accepting a finding.** A person can keep a finding as it stands with
 `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence accept --stage review --id <n> --reason '<why>'`. The row stays in the
-ledger with the reason, the author (git identity) and the time; `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review`
+ledger with the reason, the author (`the person`; Temper asks git for no name or email) and the time; `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate review`
 stops counting it and its detail names the accepted count. The reason is required, an
 empty one exits 1 and writes nothing, and a finding already resolved or accepted cannot
 be accepted again. Resolve means fixed; accept means a person chose to keep it. The

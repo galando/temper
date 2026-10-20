@@ -1498,7 +1498,7 @@ PY
 cmd_evidence_accept() { # temper evidence accept --stage <s> --id <n> --reason "<why>"
   # A person decides a finding stays as it is. Like resolve, the row is kept — the ledger
   # still shows what was found — but the gate stops counting it, and the decision carries
-  # a reason, an author (git identity, as override does) and a time.
+  # a reason, an author (the person, as override records) and a time.
   local stage="" id="" reason=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1513,12 +1513,8 @@ cmd_evidence_accept() { # temper evidence accept --stage <s> --id <n> --reason "
   _ensure_dirs
   local file; file="$(_evidence_file "$stage")"
   [[ -f "$file" ]] || { echo "FAIL: no evidence recorded for stage '$stage'" >&2; return 1; }
-  local by name email
-  name="$(git config user.name 2>/dev/null || true)"
-  email="$(git config user.email 2>/dev/null || true)"
-  by="$name"
-  [[ -n "$email" ]] && by="${by:+$by }<$email>"
-  [[ -n "$by" ]] || by="${USER:-unknown}"
+  # The person decides it at the gate. Temper asks git for no name or email and reads no login name.
+  local by="the person"
   _lock_acquire
   python3 -I - "$file" "$id" "$reason" "$by" "$(_now)" <<'PY'
 import json, os, sys
@@ -2331,9 +2327,11 @@ _prefix_re() { _prefix | sed 's/[][\\.*^$]/\\&/g'; }
 # The project folder inside a worktree: <abs worktree>/<prefix>, without a trailing slash.
 _in_wt() { local p; p="$1/$(_prefix)"; echo "${p%/}"; }
 
-# git needs an identity for the merge commits the CLI makes; use the project's own, else a fixed one.
-_git_id_args() { # prints "-c user.name=... -c user.email=..." only when the project has none
-  if [[ -z "$(git config user.email 2>/dev/null)" ]]; then
+# git needs an identity for the commits the CLI makes. Temper never reads it: it asks git only
+# whether it has one (the exit status of git var, whose output goes nowhere), and passes a fixed
+# one when it has none, so git uses its own identity whenever it can.
+_git_id_args() { # prints "-c user.name=... -c user.email=..." only when git has no identity
+  if ! git var GIT_AUTHOR_IDENT >/dev/null 2>&1 || ! git var GIT_COMMITTER_IDENT >/dev/null 2>&1; then
     echo "-c user.name=Temper -c user.email=temper@localhost"
   fi
 }
@@ -4510,15 +4508,10 @@ cmd_override() {
   [[ -n "$stage" && -n "$reason" ]] || { echo "FAIL: usage: temper override <stage> --reason \"...\"" >&2; return 1; }
   _ensure_dirs
   [[ -f "$OVERRIDES_FILE" ]] || echo '[]' > "$OVERRIDES_FILE"
-  # An override is a human decision — record WHO, not just why. git identity is the
-  # best deterministic proxy available here; the confirm-override hook (guardrails pack)
+  # An override is a human decision, made at the gate: record that, and why. Temper asks git
+  # for no name or email and reads no login name. The confirm-override hook (guardrails pack)
   # additionally puts a human permission prompt between an agent and this command.
-  local by name email
-  name="$(git config user.name 2>/dev/null || true)"
-  email="$(git config user.email 2>/dev/null || true)"
-  by="$name"
-  [[ -n "$email" ]] && by="${by:+$by }<$email>"
-  [[ -n "$by" ]] || by="${USER:-unknown}"
+  local by="the person"
   local entry
   entry=$(python3 -I -c "
 import json, sys
@@ -4530,8 +4523,9 @@ print(json.dumps({'stage': sys.argv[1], 'reason': sys.argv[2], 'by': sys.argv[3]
 
 # ---------------------------------------------------------------------------
 # intent accept|complete: the header of the run's intent.md, written by the CLI (ADR 0013).
-# accept: **Status:** accepted plus **Accepted-by:** from git config (the person's Continue at the
-# Intent gate is the acceptance). complete: **Status:** completed plus **Completed:** today.
+# accept: **Status:** accepted plus **Accepted-by:** the person (their Continue at the Intent gate
+# is the acceptance; Temper asks git for no name or email). complete: **Status:** completed plus
+# **Completed:** today.
 # Idempotent: an accepted intent stays as it is.
 # ---------------------------------------------------------------------------
 
@@ -4540,10 +4534,7 @@ cmd_intent() {
   case "$sub" in accept|complete) ;; *) echo "FAIL: usage: temper intent accept|complete" >&2; return 1 ;; esac
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -f "$spec/intent.md" ]] || { echo "FAIL: no intent.md for the active run" >&2; return 1; }
-  local who; who="$(git config user.name 2>/dev/null || true)"
-  local email; email="$(git config user.email 2>/dev/null || true)"
-  [[ -n "$email" ]] && who="${who:+$who }<$email>"
-  python3 -I - "$spec/intent.md" "$sub" "${who:-${USER:-unknown}}" "$(date -u +%Y-%m-%d)" <<'PY'
+  python3 -I - "$spec/intent.md" "$sub" "the person at the Intent gate" "$(date -u +%Y-%m-%d)" <<'PY'
 import os, re, sys
 path, sub, who, day = sys.argv[1:5]
 text = open(path, encoding='utf-8').read()

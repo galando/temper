@@ -1,5 +1,5 @@
-// The first words of `/temper:temper` that the mod answers itself: the ones that show the run or set how Temper shows
-// and enforces it. Pure. Every other word goes on to the prompt based /temper:temper: a feature description starts or
+// The first words of `/temper:temper` that the mod answers itself: the ones that show the run, open or close the pane,
+// or say how Temper shows and enforces it (the person changes those two in /config). Pure. Every other word goes on to the prompt based /temper:temper: a feature description starts or
 // resumes a run, and a decision word (approve, back, override, accept, pause, restart and the like) makes Claude ask
 // the `Temper gate` question, where the person decides with a click (ADR 0012).
 

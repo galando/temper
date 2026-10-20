@@ -19,13 +19,12 @@ That's it. Claude Code loads Temper's commands and skills automatically, and you
 `/temper:temper "…"` in a project sets it up on the spot: config, `.temper/` scaffold, and the
 native commit gate that blocks a red commit. The short form `/temper` is an interactive shortcut
 that may not resolve in every surface, so this guide types the full name. To set up explicitly
-instead, run `/temper:init`. For optional edit-time guardrails, run `/temper:pack enable guardrails`. It asks
-whether to use `.claude/settings.local.json` (personal, the default) or `.claude/settings.json` (shared) in
-your project, shows the change, and after you confirm adds the guard hooks with the plugin's
-absolute folder written into each command, replacing any earlier Temper guard entry in either file.
-`/temper:pack disable guardrails` removes them from both files.
-`/temper:pack` and `/temper:init` offer to fix a guard command whose plugin folder no longer
-exists. Neither command reads or writes the settings in your home folder.
+instead, run `/temper:init`. For optional edit-time guardrails, run `/temper:pack enable guardrails`. It
+prints the guard hooks, with the plugin's absolute folder written into each command, for you to add to
+`.claude/settings.local.json` (personal, recommended) or `.claude/settings.json` (shared) in your project.
+`/temper:pack disable guardrails` says which entries to remove. After a plugin upgrade, run it again to
+print the current commands. Temper never opens a Claude Code settings file, the project's or your home
+folder's.
 
 ### The stage bar (Claude Code 2.1.287 or later)
 
@@ -284,10 +283,10 @@ claude --worktree fix-rate-limit    # session 2: /temper:fix "429 not returned"
   autonomy lock — sessions cannot collide on runtime state.
 - Split work so parallel tasks touch **disjoint files** (the plan's blast radius shows
   where work is independent); tasks sharing files belong in one session, sequentially.
-- The controls travel with the repo: packs and guard hooks in the shared `.claude/settings.json`
-  apply the same way in every worktree, so more sessions never means fewer guardrails. Guard
-  hooks in `.claude/settings.local.json` are personal and kept out of git, so a new worktree does
-  not get them from git.
+- The controls travel with the repo: packs, and guard hooks you added to the shared
+  `.claude/settings.json`, apply the same way in every worktree, so more sessions never means fewer
+  guardrails. Guard hooks you added to `.claude/settings.local.json` are personal and kept out of
+  git, so a new worktree does not get them from git.
 - The pre-commit gate is shared, not copied. The installer keeps the Temper hook in
   `temper-gate/pre-commit` in the repository's git folder, which every worktree shares, and sets
   the repository's `core.hooksPath` to that folder's absolute path, so one hook covers every

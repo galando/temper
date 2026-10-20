@@ -282,7 +282,8 @@ starts no agent, makes no tool call, sets no setting and runs no command. CI fai
     reason question, when the option needs one), a `Temper resume` Start over, or a `Scope drift` answer (Add to plan,
     Revert or Allow once). It keeps it, with the calls the option maps to, for the run and the step the CLI is at.
   - `command.run` handles only `/temper:temper` (and `/temper`). It answers `status`, `timeline`, `help`, `report`,
-    `mode`, `enforcement` and `pane`, and changes nothing with them. Every other word (`approve`, `back`, `override`
+    `mode`, `enforcement` and `pane`. Of those, only `pane` changes something (it opens or closes the pane, in full
+    mode) and `report` keeps the run report in its store; `mode` and `enforcement` only say what is set. Every other word (`approve`, `back`, `override`
     and the rest) and any other command pass on unchanged, and the mod records nothing from them; in full mode, such
     a word typed in your prompt box opens the pane first.
   - `session.start` and `classic.SessionStart` find the project root and load the run; in full mode
@@ -300,8 +301,8 @@ starts no agent, makes no tool call, sets no setting and runs no command. CI fai
   loads it. Every `$` call there (`$.session.start`, `$.ui.mount`, `$.tool.call`, `$.agent.spawn` and the rest) goes
   to Claude Code's own test kit (`claude-code/testing`), not another plugin. Tests hand Bash, Write, Edit,
   NotebookEdit and Read calls to the guard. Temper's fake engine answers each tool call, question, prompt,
-  `config.set`, `fs.write` and `command.run` with a stub and keeps what the mod sent in memory for the test to check,
-  so nothing runs and nothing leaves the test. One test spawns a stub review agent (prompt `review it`, type
+  `fs.write` and `command.run` with a stub, records any `config.set` or `config.list` call so a test can check that
+  there is none, and keeps what the mod sent in memory for the test to check, so nothing runs and nothing leaves the test. One test spawns a stub review agent (prompt `review it`, type
   `temper:temper-review`, no model); a stub answers it, so no agent runs, and the mod leaves the spawn unchanged.
 - **Tests, lint, git and `scripts/temper`** run as prompts to Claude with its normal permissions. Auto
   mode may refuse a skip as a gate bypass. Allow that one `scripts/temper override` command, or run it

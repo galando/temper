@@ -3,7 +3,7 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
-## v9.7.3: no hook written through a split name, no settings rewrite, the mod sets nothing and runs nothing
+## v9.7.3: no hook written through a split name, no settings file or git identity read, the mod sets nothing and runs nothing
 
 The directory's report on 9.7.2 (59576ee) held it for the same five reasons as 9.7.1. "This plugin includes a mod"
 always goes to a reviewer. This release answers the other four in code.
@@ -26,6 +26,21 @@ reads were gone. 9.7.0 had also added `temper init --foreground-agents`, which r
 old `temper init --foreground-agents` call runs the plain init and writes no settings file. A test checks that init
 leaves a settings file as it is and that the CLI names no settings file.
 
+**No Claude Code settings file is opened, and git is asked for no name or email.** The report names a credential "from
+the user's machine" without saying which, so this release removes the two other reads of that kind.
+- `scripts/guard-entries.py`, which read the project's `.claude/settings.json` and `.claude/settings.local.json` to list
+  Temper guard entries, is removed, with every flow that read or merged those files: the stale guard check of
+  `/temper:pack` and `/temper:init`, and the merges of `/temper:pack enable guardrails` and `disable guardrails`.
+  `enable guardrails` now prints the entries through `scripts/guardrails-snippet.py`, which reads only the plugin's own
+  `packs/guardrails/settings-guardrails.json`, for the person to add to a project settings file. `disable guardrails`
+  removes the `packs:` entry and says which entries to remove. A test runs the snippet script under an audit hook and
+  checks that it opens that one file, and that no shipped script or mod file names a project settings file to open.
+- The CLI no longer runs `git config user.name` or `user.email`, and no longer reads `$USER`. An override, an accepted
+  finding and an accepted intent record that the person decided it at the gate (`the person`, and `the person at the
+  Intent gate`). Before a commit of its own, the CLI asks git only whether it has an identity (the exit status of
+  `git var`, its output thrown away), and passes a fixed one when it has none. The intent briefs write the name the
+  person gave, never one from git. Tests check that the CLI makes no such read.
+
 **The mod runs no command and sets no setting.** Every report from 9.6.4 to 9.7.2 held the plugin for these two, with
 the README text the directory asks for.
 - The bar's Go on button, the mod's one `$.command.run` (it ran `/temper:temper`), is gone. The bar has no button; you
@@ -37,9 +52,13 @@ the README text the directory asks for.
   `config.set`, `ui.ask` or `ui.invalidate`. The mod tests check that no command runs, no setting changes and the bar
   has no button.
 
-The README, `docs/mod.md`, `docs/commands.md`, Getting Started and the manual test checklist say the same.
+The README, `docs/mod.md`, `docs/commands.md`, `docs/trust.md`, the privacy page, Getting Started, the pack pages
+and the manual test checklist say the same. The mod's drawing kit no longer offers a button at all.
 
 **Migration.** A mode or enforcement you set with the old commands stays set; change it in `/config` from now on.
+Guard entries you added to a settings file stay as they are; after a plugin upgrade, run
+`/temper:pack enable guardrails` to print the current ones and put them in place of the old. Overrides and accepted
+intents recorded before keep the name they hold.
 
 ## v9.7.2: the directory's holds on 9.7.1, answered in code and in the README
 

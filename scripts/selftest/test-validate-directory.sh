@@ -192,9 +192,9 @@ up_ok()        { up_name "$1"; printf 'ln -s up_dir/x rel-link\necho "the up_dir
 # so this file joins no word from quoted pieces.
 split_name()   { sed 's/^SPLIT_MARKS=.*$/SPLIT_MARKS="@@"/' "$1/scripts/validate-directory.sh" > "$1/scripts/v" \
                    && mv "$1/scripts/v" "$1/scripts/validate-directory.sh"; }
-split_sh()     { split_name "$1"; printf 'hd="$(git rev-parse --git-common-dir)/ho@@oks"; mkdir -p "$hd"\n' > "$1/scripts/a.sh"; }
-split_comment(){ split_name "$1"; printf '# the folder te@@sts\nexit 0\n' > "$1/scripts/a.sh"; }
-split_python() { split_name "$1"; printf 'd = "ho@@oks"\n' > "$1/scripts/a.py"; }
+split_sh()     { split_name "$1"; printf 'hd="$(git rev-parse --git-common-dir)/ab@@cd"; mkdir -p "$hd"\n' > "$1/scripts/a.sh"; }
+split_comment(){ split_name "$1"; printf '# the folder ef@@gh\nexit 0\n' > "$1/scripts/a.sh"; }
+split_python() { split_name "$1"; printf 'd = "ij@@kl"\n' > "$1/scripts/a.py"; }
 split_ok()     { split_name "$1"; printf 'a="@@"\nb= @@ c\nd="$x"@@"$y"\n' > "$1/scripts/a.sh"; }
 glob_ok()      { glob_name "$1"
                  { printf 'n="${f##@/}"\nd="${p%%/@}"\n[[ "$v" == @/x ]] && echo a\n[[ "$p" == "$X"/@ ]] && echo b\n'

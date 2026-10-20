@@ -68,7 +68,8 @@ flowchart LR
   explores or designs. A wrong intent costs words here. Later, it costs the whole plan.
 - **Each gate is computed.** `scripts/temper` is auditable bash with no network. It reads an evidence
   ledger and prints PASS or FAIL for each requirement. A red gate blocks `git commit` through a real
-  hook. A person can override a gate, and Temper records who did it. A confused model cannot.
+  hook. A person can override a gate at the gate question, and Temper records that and why. A confused
+  model cannot.
 - **The mod makes the stages real.** It refuses writes outside the stage, `--no-verify`, and a step
   only you may take when you did not choose it in the gate question. It draws the stage bar and the
   run's pane; at the end the run prints its report, and writes it as a page when you ask. It is not a
@@ -100,9 +101,10 @@ setting and runs no command.
     call goes on, and its result comes back unchanged. After a question dialog it reads your answer from the
     result.
   - `command.run` handles only `/temper:temper` (and `/temper`). It answers `status`, `timeline`, `help`,
-    `report`, `mode`, `enforcement` and `pane` itself, and changes nothing with them. Typed in your prompt
-    box, any other word opens the pane in full mode, then goes on unchanged; every other command goes on
-    unchanged.
+    `report`, `mode`, `enforcement` and `pane` itself. Of those, only `pane` changes something (it opens or
+    closes the pane, in full mode) and `report` keeps the run report in its store; `mode` and
+    `enforcement` only say what is set. Typed in your prompt box, any other word opens the pane in full
+    mode, then goes on unchanged; every other command goes on unchanged.
   - `session.start` and `classic.SessionStart` find the project folder and load the run. Neither adds or
     changes a context, an instruction, a setting or another hook: each returns what Claude Code gave it.
   - `prompt.compose` adds one system prompt section, `temper:phase`, to each request: enforcement on or off,
@@ -125,12 +127,13 @@ setting and runs no command.
 
 Outside your project folder, Temper reads its own global pack folder `~/.claude/packs` (if you made one),
 the mod's plugin store, and the folders above the session folder where the mod looks for the project. It
-asks git for your name and email, to record who accepted an intent or overrode a gate, and for its hooks
-folder, which may be one your git config names. It reads no key, login, transcript or other Claude Code
-file. Setting up a project (`/temper:init`, or your first `/temper:temper`) points the repository's own
-`core.hooksPath` at Temper's commit hook, or, when that would stop a hook of yours, prints one line to add
-to it. Temper never edits a Claude Code settings file on its own; the guardrails pack writes guard entries
-into the project's settings only after you confirm. The full list is in
+asks git for its hooks folder, which may be one your git config names, and never for your name or email:
+an accepted intent or an override records that the person decided it at the gate. It reads no key, login,
+transcript, settings or other Claude Code file. Setting up a project (`/temper:init`, or your first
+`/temper:temper`) points the repository's own `core.hooksPath` at Temper's commit hook, or, when that would
+stop a hook of yours, prints one line to add to it. Temper never opens a Claude Code settings file, the
+project's or your home folder's: the guardrails pack prints its hook entries for you to add yourself. The
+full list is in
 [The mod](docs/mod.md#what-the-mod-reads-and-writes).
 
 ## Commands

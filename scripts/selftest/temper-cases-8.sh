@@ -252,6 +252,8 @@ assert_eq "intent accept: the Status turns accepted and Accepted-by is added onc
   "$(grep -c '^\*\*Status:\*\* accepted' .temper/specs/demo/intent.md)|$(grep -c '^\*\*Accepted-by:\*\*' .temper/specs/demo/intent.md)"
 "$TEMPER" intent accept >/dev/null 2>&1
 assert_eq "intent accept: a second call changes nothing" "1" "$(grep -c '^\*\*Accepted-by:\*\*' .temper/specs/demo/intent.md)"
+assert_eq "intent accept: Accepted-by records the person at the gate, never git's name or email" "**Accepted-by:** the person at the Intent gate" \
+  "$(grep '^\*\*Accepted-by:\*\*' .temper/specs/demo/intent.md)"
 "$TEMPER" intent complete >/dev/null 2>&1
 assert_eq "intent complete: the Status turns completed with today's date" "1|1" \
   "$(grep -c '^\*\*Status:\*\* completed' .temper/specs/demo/intent.md)|$(grep -c "^\*\*Completed:\*\* $(date -u +%Y-%m-%d)" .temper/specs/demo/intent.md)"

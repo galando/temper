@@ -316,12 +316,12 @@ else
   ok
 fi
 
-# --- guard-entries.py: the stale guard check of /temper:pack and /temper:init ---
-GUARD_ENTRIES="$REPO_ROOT/scripts/guard-entries.py"
-if [[ ! -f "$GUARD_ENTRIES" ]]; then
-  fail "scripts/guard-entries.py missing"
-elif ! python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" "$GUARD_ENTRIES" 2>/dev/null; then
-  fail "scripts/guard-entries.py has a syntax error"
+# --- guardrails-snippet.py: prints the guardrails entries for /temper:pack enable guardrails ---
+GUARDRAILS_SNIPPET="$REPO_ROOT/scripts/guardrails-snippet.py"
+if [[ ! -f "$GUARDRAILS_SNIPPET" ]]; then
+  fail "scripts/guardrails-snippet.py missing"
+elif ! python3 -c "import ast, sys; ast.parse(open(sys.argv[1]).read())" "$GUARDRAILS_SNIPPET" 2>/dev/null; then
+  fail "scripts/guardrails-snippet.py has a syntax error"
 else
   ok
 fi
