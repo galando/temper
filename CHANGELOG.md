@@ -3,6 +3,45 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.7.2: the directory's holds on 9.7.1, answered in code and in the README
+
+The directory's report on 9.7.1 (f33d200) held it for five reasons. "This plugin includes a mod" always goes to a
+reviewer. This release answers the other four.
+
+**No script names a path with a folder named like one of the mod's.** The report could not confirm that the mod stays
+the same after it is checked, and named `scripts/selftest/temper-cases-5.sh`. 9.7.0 added shell cases whose throwaway
+projects keep their tests in a `tests` folder: 65 lines in five files (27 in the named one), where 9.6.7 and 9.6.8 had
+none. `tests` is the name of the folder that holds the mod's tests, and 9.6.4 was held for the same name. Those
+projects use `unit` now, and so do the grouped example in `templates/tasks.md` and two doc examples; the view
+fixtures are generated again. The named file also made a folder through a variable followed by `..`; it names the
+folder directly now. A comment named a file of the mod's tests, and two decision records and the 9.7.0 entry named
+files of the mod; they name them by role.
+- Rule 10 of `scripts/validate-directory.sh` now fails on a path with a folder named like any folder of the mod or of
+  its tests (`hooks`, `tests`, `mod`, `core`, `ui`, fixed text in the script), and a new rule 12 fails on `..` right
+  after a variable or a `$( )` span. Run on 9.7.1, they fail on those 65 lines and on the `..` path.
+
+**The CLI reads no Claude Code file.** The report held 9.7.1 for "Update adds credential forward". 9.7.0 read each
+agent's transcript in Claude Code's own folder in your home folder for the tokens it was billed and a cost at list
+prices, and the report the run commits carried what it read, while the privacy page and
+`docs/trust.md` said Temper opens no file there but its own pack folder. `scripts/usage_cost.py` is deleted. A usage
+row is the totals Claude Code gives for an agent (the Agent result, or the completion notice of an agent run in the
+background), and `temper report`, `report.html` and the view give time and tokens by stage and by model, with no
+cost. The `after` calls `temper next` gives no longer name an agent id; `--agent` is accepted and ignored, so a run
+started on 9.7.0 or 9.7.1 still records. An agent with no total given is recorded with empty values instead of being
+refused. A test checks that a row holds exactly the totals given, and that no file of the CLI expands a home folder
+or reads a transcript.
+
+**The README says what the mod sets, runs and hooks.** The report asked, at the lines that make them, for the README to
+say which settings the mod sets, which command it runs and when, and what its `classic.SessionStart` and `command.run`
+hooks do. 9.6.8 had cut that section to a link. It now says each, what every other hook changes, and what Temper reads
+outside the project. The Install section also gives the one line install `claude plugin validate` suggests.
+
+Notes the directory listed that need no change: `types` (Claude Code's own validator needs it for the mod's `$.state`
+keys), no icon (a bundled image holds a plugin for review, and an icon added now would not become the listing icon),
+and the download-and-run notes, which sit in docs, history, test inputs and the guard's patterns.
+
+**Migration.** Usage rows a 9.7.0 or 9.7.1 run wrote keep their extra fields; the CLI reads only their tokens and time.
+
 ## v9.7.1: the plugin directory can fetch Temper again, and no file is over 256 KiB
 
 The Claude plugin directory could not fetch 9.7.0 (a17c0e7 and e7a49e8): "Something in the repository the
@@ -40,7 +79,7 @@ message is never a move. The stage commands are doors into `/temper` (`state ini
 a skip, a step back, an accepted finding, arming autonomy, kept agent commits, the commit override,
 starting over) passes only as one of the calls of the person's answer, word for word. The file rules hold
 each stage to its writes and Build to the approved files. Through Bash the mod refuses `--no-verify`, a
-changed `core.hooksPath` and a write onto a protected file. The shell parser `core/bash.ts` and its lists
+changed `core.hooksPath` and a write onto a protected file. The mod's shell parser and its lists
 are deleted. Temper is not a sandbox: `docs/trust.md` lists what the guard does not see.
 
 **The mod draws the run from view.json, and reads nothing else of the CLI's.** The band: the stage

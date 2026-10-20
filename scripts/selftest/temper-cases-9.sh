@@ -62,25 +62,25 @@ assert_eq "round 4, 7: Run Build moves the door's entry to Build, so Build runs 
 # --- 8. A commit the CLI did not make on a passed group's branch: the person takes it out or keeps it ---
 r4_grouped() { # a real grouped run of one group and one task, built through the CLI up to the group's Continue
   cd "$WORKDIR" || exit 1
-  rm -rf .git src tests stray.txt   # a repository of its own: no branch or worktree of an earlier case is left
+  rm -rf .git src unit stray.txt   # a repository of its own: no branch or worktree of an earlier case is left
   setup; rm -f .temper/groups.json
   git checkout -q -b feature/demo 2>/dev/null || git checkout -q feature/demo
-  mkdir -p src tests; echo 'echo base' > src/parser.sh
+  mkdir -p src unit; echo 'echo base' > src/parser.sh
   cat > .temper/specs/demo/tasks.md <<'TASKS'
 # Tasks: demo
 
-**Integration:** `bash tests/parser_test.sh`
+**Integration:** `bash unit/parser_test.sh`
 
 ## Group G1: Parser
 **Depends:** none
-**Validate:** `bash tests/parser_test.sh`
+**Validate:** `bash unit/parser_test.sh`
 **Context:**
 The parser group.
 
 ### Task 1: parse
-**File:** `src/parser.sh`, `tests/parser_test.sh`
+**File:** `src/parser.sh`, `unit/parser_test.sh`
 **Depends:** none
-**Test:** `bash tests/parser_test.sh`
+**Test:** `bash unit/parser_test.sh`
 **Cases:**
 - `parse` prints `two`
 - nothing else is printed
@@ -90,8 +90,8 @@ TASKS
   gpass intent plan
   "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
   "$TEMPER" group start G1 >/dev/null 2>&1; "$TEMPER" task start 1 >/dev/null 2>&1
-  local wt; wt="$PWD/.claude/worktrees/temper-demo-T1"; mkdir -p "$wt/tests"
-  printf 'out=$(bash src/parser.sh)\n[ "$out" = "two" ] || { echo "assert failed: $out"; exit 1; }\n' > "$wt/tests/parser_test.sh"
+  local wt; wt="$PWD/.claude/worktrees/temper-demo-T1"; mkdir -p "$wt/unit"
+  printf 'out=$(bash src/parser.sh)\n[ "$out" = "two" ] || { echo "assert failed: $out"; exit 1; }\n' > "$wt/unit/parser_test.sh"
   echo 'echo one' > "$wt/src/parser.sh"; "$TEMPER" task test 1 --phase red >/dev/null 2>&1
   echo 'echo two' > "$wt/src/parser.sh"; "$TEMPER" task test 1 --phase green >/dev/null 2>&1
   "$TEMPER" task gate 1 --model haiku >/dev/null 2>&1; "$TEMPER" group gate G1 >/dev/null 2>&1; "$TEMPER" group continue G1 >/dev/null 2>&1
@@ -162,7 +162,7 @@ assert_eq "round 4, low: a review that did not finish is run again first" "Run R
   "$(nx "o = d['ask']['options'][0]; o['label'] + '|' + ' '.join(o['calls'][0].split('temper ', 1)[1].split()[:3])")"
 
 # --- 2, 3. A project below the top of its git repository (a package of a monorepo) ---
-N="$WORKDIR/r4-nested"; rm -rf "$N"; mkdir -p "$N/packages/app/src" "$N/packages/app/tests"
+N="$WORKDIR/r4-nested"; rm -rf "$N"; mkdir -p "$N/packages/app/src" "$N/packages/app/unit"
 (
   cd "$N" && git init -q . && echo r > README && echo 'echo base' > packages/app/src/parser.sh
   git add -A && git -c user.email=t@t -c user.name=t commit -qm init && git checkout -q -b feature/pw
@@ -171,18 +171,18 @@ N="$WORKDIR/r4-nested"; rm -rf "$N"; mkdir -p "$N/packages/app/src" "$N/packages
   cat > .temper/specs/pw/tasks.md <<'TASKS'
 # Tasks: nested
 
-**Integration:** `bash tests/parser_test.sh`
+**Integration:** `bash unit/parser_test.sh`
 
 ## Group G1: Parser
 **Depends:** none
-**Validate:** `bash tests/parser_test.sh`
+**Validate:** `bash unit/parser_test.sh`
 **Context:**
 The parser group.
 
 ### Task 1: parse
-**File:** `src/parser.sh`, `tests/parser_test.sh`
+**File:** `src/parser.sh`, `unit/parser_test.sh`
 **Depends:** none
-**Test:** `bash tests/parser_test.sh`
+**Test:** `bash unit/parser_test.sh`
 **Cases:**
 - `parse` prints `two`
 - nothing else is printed
@@ -202,12 +202,12 @@ assert_eq "round 4, 2: in a package of a monorepo the run's own files stay out o
 WT="$(cd "$N/packages/app" && "$TEMPER" task show 1 2>/dev/null | sed -n 's/^WORKTREE: //p')"
 assert_eq "round 4, 2: a task's WORKTREE line is the project folder inside the worktree" "1" \
   "$([[ "$WT" == */.claude/worktrees/temper-pw-T1/packages/app && -f "$WT/src/parser.sh" ]] && echo 1 || echo 0)"
-mkdir -p "$WT/tests"; printf 'out=$(bash src/parser.sh)\n[ "$out" = "two" ] || { echo "assert failed: $out"; exit 1; }\n' > "$WT/tests/parser_test.sh"
+mkdir -p "$WT/unit"; printf 'out=$(bash src/parser.sh)\n[ "$out" = "two" ] || { echo "assert failed: $out"; exit 1; }\n' > "$WT/unit/parser_test.sh"
 echo 'echo one' > "$WT/src/parser.sh"
 (cd "$N/packages/app" && "$TEMPER" task test 1 --phase red) >/dev/null 2>&1
 echo 'echo two' > "$WT/src/parser.sh"
 (cd "$N/packages/app" && "$TEMPER" task test 1 --phase green && "$TEMPER" task gate 1 --model haiku) >/dev/null 2>&1
-assert_eq "round 4, 2: the task's commit holds the project's own files" "packages/app/src/parser.sh packages/app/tests/parser_test.sh" \
+assert_eq "round 4, 2: the task's commit holds the project's own files" "packages/app/src/parser.sh packages/app/unit/parser_test.sh" \
   "$(git -C "$N" show --name-only --format= temper/pw/G1 2>/dev/null | sort | paste -sd' ' -)"
 (cd "$N/packages/app" && "$TEMPER" group gate G1 && "$TEMPER" group continue G1 && "$TEMPER" integrate) >/dev/null 2>&1
 assert_eq "round 4, 2: integrate merges them into the project" "PASS|echo two" \
@@ -229,7 +229,7 @@ rm -rf "$N"
 
 # --- re-audit: a scenario's trace row is no test run ---
 setup
-"$TEMPER" evidence add --stage check --scenario first --claim 'scenario: first -> tests/test_a.py:test_first' --exit 0 >/dev/null 2>&1
+"$TEMPER" evidence add --stage check --scenario first --claim 'scenario: first -> unit/test_a.py:test_first' --exit 0 >/dev/null 2>&1
 assert_eq "re-audit: a scenario row that names its test does not count as a passing test run" "0" \
   "$("$TEMPER" gate check 2>/dev/null | grep -c '\[v\] tests pass')"
 "$TEMPER" evidence add --stage check --claim "tests" --cmd "pytest" --exit 0 >/dev/null 2>&1
@@ -281,25 +281,25 @@ git checkout -q main 2>/dev/null; rm -rf .git
 # --- live run: a group that builds on another starts after the person's Continue of it ---
 r5_two_groups() { # r4_grouped with a second group G2 that depends on G1, through G1's group gate
   cd "$WORKDIR" || exit 1
-  rm -rf .git src tests stray.txt
+  rm -rf .git src unit stray.txt
   setup; rm -f .temper/groups.json
   git checkout -q -b feature/demo 2>/dev/null || git checkout -q feature/demo
-  mkdir -p src tests; echo 'echo base' > src/parser.sh; echo 'echo p' > src/printer.sh
+  mkdir -p src unit; echo 'echo base' > src/parser.sh; echo 'echo p' > src/printer.sh
   cat > .temper/specs/demo/tasks.md <<'TASKS'
 # Tasks: demo
 
-**Integration:** `bash tests/parser_test.sh`
+**Integration:** `bash unit/parser_test.sh`
 
 ## Group G1: Parser
 **Depends:** none
-**Validate:** `bash tests/parser_test.sh`
+**Validate:** `bash unit/parser_test.sh`
 **Context:**
 The parser group.
 
 ### Task 1: parse
-**File:** `src/parser.sh`, `tests/parser_test.sh`
+**File:** `src/parser.sh`, `unit/parser_test.sh`
 **Depends:** none
-**Test:** `bash tests/parser_test.sh`
+**Test:** `bash unit/parser_test.sh`
 **Cases:**
 - `parse` prints `two`
 - nothing else is printed
@@ -324,8 +324,8 @@ TASKS
   gpass intent plan
   "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
   "$TEMPER" group start G1 >/dev/null 2>&1; "$TEMPER" task start 1 >/dev/null 2>&1
-  local wt; wt="$PWD/.claude/worktrees/temper-demo-T1"; mkdir -p "$wt/tests"
-  printf 'out=$(bash src/parser.sh)\n[ "$out" = "two" ] || { echo "assert failed: $out"; exit 1; }\n' > "$wt/tests/parser_test.sh"
+  local wt; wt="$PWD/.claude/worktrees/temper-demo-T1"; mkdir -p "$wt/unit"
+  printf 'out=$(bash src/parser.sh)\n[ "$out" = "two" ] || { echo "assert failed: $out"; exit 1; }\n' > "$wt/unit/parser_test.sh"
   echo 'echo one' > "$wt/src/parser.sh"; "$TEMPER" task test 1 --phase red >/dev/null 2>&1
   echo 'echo two' > "$wt/src/parser.sh"; "$TEMPER" task test 1 --phase green >/dev/null 2>&1
   "$TEMPER" task gate 1 --model haiku >/dev/null 2>&1; "$TEMPER" group gate G1 >/dev/null 2>&1
@@ -338,7 +338,7 @@ assert_eq "live run: group start G2 before the Continue of G1 is refused" "1|1" 
 "$TEMPER" group continue G1 >/dev/null 2>&1
 assert_eq "live run: after the Continue, next starts G2" "work|1" \
   "$(nx "d['action'] + '|' + str(sum(1 for c in d.get('calls') or [] if 'group start G2' in c))")"
-rm -rf .git src tests
+rm -rf .git src unit
 
 # --- live run: a passed Review with open findings below the blocking severity can loop them back to Build ---
 fresh; _walk_to_commit >/dev/null 2>&1; fresh
@@ -366,7 +366,7 @@ rm -rf .git
 
 # --- live run: a scenario's trace row is no Check marker of the tests ---
 fresh
-"$TEMPER" evidence add --stage check --scenario first --claim 'scenario: first -> tests/test_a.py:test_first (3 tests)' --exit 0 >/dev/null 2>&1
+"$TEMPER" evidence add --stage check --scenario first --claim 'scenario: first -> unit/test_a.py:test_first (3 tests)' --exit 0 >/dev/null 2>&1
 assert_eq "live run: the tests marker of the view reads no scenario row" "none" \
   "$(vw "next(m['state'] for m in d['check_markers'] if m['name'] == 'tests')")"
 
@@ -419,10 +419,10 @@ assert_eq "model: the line next gives before a stage runs names its model" "1" \
   "$(nx "int(d['say'] == 'Intent runs on %s.' % d['agents'][0]['model'] and bool(d['agents'][0]['model']))")"
 "$TEMPER" usage add --stage intent --model opus --tokens 10 --ms 5 >/dev/null 2>&1
 assert_eq "model: the report's stage table names the model each stage was launched on" "1|opus" \
-  "$("$TEMPER" report 2>/dev/null | grep -cE '^  intent +1 +10 +5 +-  opus$')|$(vw "','.join(d['usage']['by_stage']['intent']['models'])")"
+  "$("$TEMPER" report 2>/dev/null | grep -cE '^  intent +1 +10 +5  opus$')|$(vw "','.join(d['usage']['by_stage']['intent']['models'])")"
 "$TEMPER" usage add --stage plan --model claude-haiku-5-5 --tokens 7 --ms 3 >/dev/null 2>&1
 assert_eq "live run 5: the model table names its rows column, and a long model id keeps the columns apart" "1|1" \
-  "$("$TEMPER" report 2>/dev/null | grep -cE '^  model +rows +tokens +ms +cost$')|$("$TEMPER" report 2>/dev/null | grep -cE '^  claude-haiku-5-5 +1 +7 +3 +-$')"
+  "$("$TEMPER" report 2>/dev/null | grep -cE '^  model +rows +tokens +ms$')|$("$TEMPER" report 2>/dev/null | grep -cE '^  claude-haiku-5-5 +1 +7 +3$')"
 
 # --- live run 3: a passed Design whose concern needs the plan changed can step back to Plan ---
 fresh; gpass intent plan design
@@ -690,147 +690,39 @@ fresh; "$TEMPER" state set complexity medium >/dev/null 2>&1; "$TEMPER" state cl
 assert_eq "tier: a door after a tier changed at the plan gate takes the changed tier, not Intent's first guess" "medium" \
   "$("$TEMPER" state get complexity)"
 
-# --- the author's run: usage and cost from each agent's own transcript, the report in the terminal ---
+# --- 9.7.2: usage is the totals Claude Code gives; the CLI opens no file of Claude Code's ---
+# 9.7.0 read each agent's transcript in Claude Code's own folder for billed tokens and a cost. That folder is not
+# Temper's (the privacy page says Temper reads only its own pack folder there), so the row is what the orchestrator
+# hands over, and an agent id is only accepted, as 9.7.0 and 9.7.1 after calls gave one.
 fresh
-CC="$WORKDIR/cc"; rm -rf "$CC"; mkdir -p "$CC/projects/-p/sess1/subagents"
-python3 - "$CC/projects/-p" "$("$TEMPER" state get started)" <<'PY'
-import json, os, sys
-d, started = sys.argv[1], sys.argv[2]
-def rec(mid, model, usage, stop="end_turn", ts="2099-01-01T00:00:01.000Z", text="", side=True):
-    return json.dumps({"type": "assistant", "isSidechain": side, "timestamp": ts,
-                       "message": {"id": mid, "role": "assistant", "model": model, "stop_reason": stop, "usage": usage,
-                                   "content": [{"type": "text", "text": text}]}})
-cw5 = lambda n: {"ephemeral_5m_input_tokens": n, "ephemeral_1h_input_tokens": 0}
-lines = [
-    # Haiku 5.5 under 100K tokens of prompt, written twice as Claude Code does (the larger output counts)
-    rec("a", "claude-haiku-5-5", {"input_tokens": 10, "cache_creation_input_tokens": 1000, "cache_creation": cw5(1000), "cache_read_input_tokens": 50000, "output_tokens": 150}),
-    rec("a", "claude-haiku-5-5", {"input_tokens": 10, "cache_creation_input_tokens": 1000, "cache_creation": cw5(1000), "cache_read_input_tokens": 50000, "output_tokens": 200}),
-    # Haiku 5.5 over 100K: the higher prices
-    rec("b", "claude-haiku-5-5", {"input_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 120000, "output_tokens": 100}),
-    # Opus 5.5 in fast mode, a 1 hour cache write
-    rec("c", "claude-opus-5-5", {"input_tokens": 1000, "cache_creation_input_tokens": 2000, "cache_creation": {"ephemeral_5m_input_tokens": 0, "ephemeral_1h_input_tokens": 2000}, "cache_read_input_tokens": 0, "output_tokens": 500, "speed": "fast"}),
-    # Sonnet 5.5 with US-only inference and two web searches
-    rec("d", "claude-sonnet-5-5", {"input_tokens": 1000, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "output_tokens": 1000, "inference_geo": "us", "server_tool_use": {"web_search_requests": 2}}),
-    # a record written before its reply streamed: its 400 characters of text are the floor of its output
-    rec("e", "claude-sonnet-5-5", {"input_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "output_tokens": 3}, stop=None, text="x" * 400, ts="2099-01-01T00:00:03.500Z"),
-    rec("s", "<synthetic>", {"input_tokens": 0, "output_tokens": 0}),
-]
-open(os.path.join(d, "sess1", "subagents", "agent-abc123def.jsonl"), "w").write("\n".join(lines) + "\n")
-open(os.path.join(d, "sess1", "subagents", "agent-unk999xyz.jsonl"), "w").write(
-    rec("u", "claude-x-9", {"input_tokens": 5, "output_tokens": 5}) + "\n")
-# the session's own transcript: a call before the run started, two after it, one of them an agent's (not counted here)
-open(os.path.join(d, "sess1.jsonl"), "w").write("\n".join([
-    rec("m0", "claude-opus-5-5", {"input_tokens": 999999, "output_tokens": 0}, ts="2000-01-01T00:00:00.000Z", side=False),
-    rec("m1", "claude-opus-5-5", {"input_tokens": 1000, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 100000, "output_tokens": 1000}, side=False),
-    rec("m2", "claude-opus-5-5", {"input_tokens": 7, "output_tokens": 7}, side=True)]) + "\n")
-PY
-export CLAUDE_CONFIG_DIR="$CC"
 out="$("$TEMPER" usage add --stage plan --model opus --agent abc123def --tokens 114370 --ms 9000 2>&1)"
-assert_eq "usage: an agent's row is read from its own transcript: billed tokens, calls, the notice's time, served models" \
-  "OK: usage recorded (plan, from the transcript of the agent)|transcript|176910|5|9000|claude-haiku-5-5,claude-opus-5-5,claude-sonnet-5-5|1" \
-  "$out|$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s|%s|%s|%s|%d' % (r['source'], r['tokens'], r['calls'], r['ms'], ','.join(r['served']), r['output_estimated']))")"
-assert_eq "usage: the cost at list prices: long Haiku prompts, fast mode, US-only inference, web searches, the output floor" \
-  "0.101176" "$(python3 -c "import json; print(round(json.load(open('.temper/usage.json'))[-1]['cost'], 6))")"
-"$TEMPER" usage add --stage review --model sonnet --agent abc123def --tokens none --ms none >/dev/null 2>&1
-assert_eq "usage: with no time from the notice, the transcript's span is the time" "2500" \
-  "$(python3 -c "import json; print(json.load(open('.temper/usage.json'))[-1]['ms'])")"
-"$TEMPER" usage add --stage check --model sonnet --agent unk999xyz >/dev/null 2>&1
-assert_eq "usage: a model with no price leaves the row without a cost" "None|claude-x-9" \
-  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s' % (r['cost'], ','.join(r['unpriced'])))")"
-n0="$(python3 -c "import json; print(len(json.load(open('.temper/usage.json'))))")"
+assert_eq "usage: the row is the totals given, and an old --agent is ignored" \
+  "OK: usage recorded (plan)|114370|9000|group,model,ms,stage,task,tokens,ts" \
+  "$out|$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s|%s' % (r['tokens'], r['ms'], ','.join(sorted(r))))")"
 out="$("$TEMPER" usage add --stage design --model opus --agent nothere12 2>&1)"; rc=$?
-assert_eq "usage: an agent with no transcript and no total is refused, and nothing is recorded (its report came before its notice)" \
-  "1|1|$n0" "$rc|$(printf '%s' "$out" | grep -c 'completion notice of an agent run in the background carries subagent_tokens')|$(python3 -c "import json; print(len(json.load(open('.temper/usage.json'))))")"
-out="$("$TEMPER" task gate 1 --model haiku --agent nothere12 2>&1)"; rc=$?
-assert_eq "task gate: the same refusal, before the gate judges anything" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'no usage for agent nothere12')"
-out="$("$TEMPER" usage add --stage design --model opus --agent nothere12 --tokens 50000 --ms 700 2>&1)"
-assert_eq "usage: with no transcript, the notice's total is the row, with no cost, and the agent id it was given" "notice|50000|None|nothere12" \
-  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s|%s|%s' % (r['source'], r['tokens'], r.get('cost'), r.get('agent')))")"
-assert_eq "usage: the answer says no transcript of the agent was found" \
-  "OK: usage recorded (design, from the totals Claude Code gave: no transcript of agent nothere12 was found, so no cost)" "$out"
-assert_exit "usage: an agent id that is not a plain name is never looked up" 1 "$TEMPER" usage add --stage design --model opus --agent '../x'
+assert_eq "usage: an agent with no total given is recorded with empty values, never refused" "0|OK: usage recorded (design)|None|None" \
+  "$rc|$out|$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s' % (r['tokens'], r['ms']))")"
+"$TEMPER" usage add --stage review --model sonnet --tokens none --ms none >/dev/null 2>&1
+assert_eq "usage: none for both values is an empty row" "None|None" \
+  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s' % (r['tokens'], r['ms']))")"
+out="$("$TEMPER" task gate 1 --model haiku --agent nothere12 2>&1)"
+assert_eq "task gate: an agent id is no reason to refuse" "0" "$(printf '%s' "$out" | grep -c 'no usage for agent')"
 rep="$("$TEMPER" report 2>&1)"
-assert_eq "report: the terminal report gives the cost by stage, the main conversation since the run started, the notes" "1|1|1|1|1|1" \
-  "$(printf '%s\n' "$rep" | grep -c '^  plan .*\$0.1012  opus$')|$(printf '%s\n' "$rep" | grep -c 'main conversation since the run started: 102,000 tokens in 1 call(s), \$0.0440')|$(printf '%s\n' "$rep" | grep -c '1 launch(es) have no transcript here, so no cost')|$(printf '%s\n' "$rep" | grep -c 'thinking, billed as output, is not counted')|$(printf '%s\n' "$rep" | grep -c 'not billed per token')|$(printf '%s\n' "$rep" | grep -c 'list prices of 20')"
-assert_eq "report: it names the agent ids with no transcript, and counts the launches that ran only on models with no price" "1|1" \
-  "$(printf '%s\n' "$rep" | grep -c 'No agent-<id>.jsonl was found for the agent id(s) nothere12\.')|$(printf '%s\n' "$rep" | grep -c '1 launch(es) ran only on models with no price here\.')"
+assert_eq "report: the terminal report gives tokens and time by stage, with no cost and no transcript" "1|1|1|0|0" \
+  "$(printf '%s\n' "$rep" | grep -cE '^  stage +rows +tokens +ms  model$')|$(printf '%s\n' "$rep" | grep -cE '^  plan +1 +114,370 +9000  opus$')|$(printf '%s\n' "$rep" | grep -c 'not what it was billed for')|$(printf '%s\n' "$rep" | grep -ciE 'cost|\$[0-9]')|$(printf '%s\n' "$rep" | grep -ci 'transcript')"
 "$TEMPER" report --html >/dev/null 2>&1
-assert_eq "report --html: a Cost column, the main conversation and the notes" "1|1|1" \
-  "$(grep -c '<th>Cost</th>' .temper/specs/demo/report.html)|$(grep -c 'Main conversation since the run started: 102k tokens in 1 call(s), \$0.0440' .temper/specs/demo/report.html)|$(grep -c 'not billed per token' .temper/specs/demo/report.html)"
-assert_eq "view: the usage carries the cost and the count of rows without one" "0.202352|2" \
-  "$(python3 -c "import json; u=json.load(open('.temper/view.json'))['usage']; print('%s|%s' % (round(u['cost'], 6), u['unpriced']))")"
-assert_eq "view and report --html: the launches with no transcript and their agent ids" "1|nothere12|1" \
-  "$(python3 -c "import json; u=json.load(open('.temper/view.json'))['usage']; print('%s|%s' % (u['no_transcript'], ','.join(u['missing_agents'])))")|$(grep -c 'No agent-&lt;id&gt;.jsonl was found for the agent id(s) nothere12' .temper/specs/demo/report.html)"
-assert_eq "next: every agent's after call names its id, so its usage is read from its transcript" "1" \
-  "$(nx "int('--agent {agent} --tokens {tokens} --ms {ms}' in d['agents'][0]['after'][0])")"
-unset CLAUDE_CONFIG_DIR
-
-# --- the author's run with b7bf277: a gateway names the model with its own prefix; the page question is next's own ---
-fresh
-CC="$WORKDIR/cc2"; rm -rf "$CC"; mkdir -p "$CC/projects/-p/sess2/subagents"
-python3 - "$CC/projects/-p" <<'PY'
-import json, os, sys
-d = sys.argv[1]
-rec = lambda mid, model, u, side=True: json.dumps({"type": "assistant", "isSidechain": side, "timestamp": "2099-01-01T00:00:01.000Z",
-    "message": {"id": mid, "role": "assistant", "model": model, "stop_reason": "end_turn", "usage": u, "content": []}})
-open(os.path.join(d, "sess2", "subagents", "agent-gw1234567.jsonl"), "w").write(
-    rec("g", "ml-asset:static-model/claude-sonnet-5-5", {"input_tokens": 1000, "output_tokens": 1000}) + "\n")
-open(os.path.join(d, "sess2.jsonl"), "w").write(
-    rec("m", "ml-asset:static-model/claude-opus-5-5", {"input_tokens": 1000, "output_tokens": 1000}, side=False) + "\n")
-PY
-export CLAUDE_CONFIG_DIR="$CC"
-mkdir -p "$CC/projects/-p/sess-earlier/subagents"
-python3 -c "import json,sys; open(sys.argv[1],'w').write(json.dumps({'type':'assistant','isSidechain':True,'timestamp':'2099-01-01T00:00:01.000Z','message':{'id':'e1','role':'assistant','model':'claude-sonnet-5-5','stop_reason':'end_turn','usage':{'input_tokens':1000,'output_tokens':1000},'content':[]}})+'\\n')" "$CC/projects/-p/sess-earlier/subagents/agent-earlier123.jsonl"
-"$TEMPER" usage add --stage intent --model sonnet --agent earlier123 >/dev/null 2>&1
-assert_eq "usage: an agent of another session (a run taken up in a new conversation) is found by its id" "transcript|0.012" \
-  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s' % (r['source'], round(r['cost'], 6)))")"
-"$TEMPER" usage add --stage review --model sonnet --agent gw1234567 >/dev/null 2>&1
-assert_eq "usage: a model named with a gateway prefix gets its price (agent and main conversation)" "0.012|0.0240" \
-  "$(python3 -c "import json; print(round(json.load(open('.temper/usage.json'))[-1]['cost'], 6))")|$("$TEMPER" report 2>&1 | sed -n 's/.*main conversation since the run started: .*, \$\([0-9.]*\)$/\1/p')"
-assert_eq "usage: the id is the last claude model in the name, whatever wraps it" "claude-sonnet-4-5|claude-haiku-5-5|claude-opus-4-5|claude-opus-5-5" \
-  "$(python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import usage_cost as u; print('|'.join(u.base_id(m) for m in ['us.anthropic.claude-sonnet-4-5-20250929-v1:0', 'my-claude-proxy/claude-haiku-5-5', 'claude-opus-4-5@20251101', 'claude-opus-5-5[1m]']))" "$(dirname "$TEMPER")")"
-unset CLAUDE_CONFIG_DIR
-
-# --- the author's run with 3fe3924: one call on a model with no price took the cost of the whole agent, unnamed ---
-fresh
-CC="$WORKDIR/cc3"; rm -rf "$CC"; mkdir -p "$CC/projects/-p/sess3/subagents"
-python3 - "$CC/projects/-p" <<'PY'
-import json, os, sys
-d = sys.argv[1]
-rec = lambda mid, model, u, side=True: json.dumps({"type": "assistant", "isSidechain": side, "timestamp": "2099-01-01T00:00:01.000Z",
-    "message": {"id": mid, "role": "assistant", "model": model, "stop_reason": "end_turn", "usage": u, "content": []}})
-# an Opus agent with one call on a model the price table does not know
-open(os.path.join(d, "sess3", "subagents", "agent-mix123456.jsonl"), "w").write("\n".join([
-    rec("o1", "ml-asset:static-model/claude-opus-5-5", {"input_tokens": 1000, "output_tokens": 1000}),
-    rec("o2", "ml-asset:static-model/side-model-x", {"input_tokens": 500, "output_tokens": 500})]) + "\n")
-# an agent none of whose calls has a price
-open(os.path.join(d, "sess3", "subagents", "agent-none12345.jsonl"), "w").write(
-    rec("n1", "ml-asset:static-model/opus-next", {"input_tokens": 100, "output_tokens": 100}) + "\n")
-open(os.path.join(d, "sess3.jsonl"), "w").write(
-    rec("m", "claude-sonnet-5-5", {"input_tokens": 1000, "output_tokens": 1000}, side=False) + "\n")
-PY
-export CLAUDE_CONFIG_DIR="$CC"
-"$TEMPER" usage add --stage plan --model opus --agent mix123456 >/dev/null 2>&1
-assert_eq "usage: calls on a model with no price leave the cost of the agent's other calls; they are counted and named" \
-  "0.024|ml-asset:static-model/side-model-x|1000" \
-  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s|%s' % (round(r['cost'], 6), ','.join(r['unpriced']), r['unpriced_tokens']))")"
-"$TEMPER" usage add --stage intent --model opus --agent none12345 >/dev/null 2>&1
-assert_eq "usage: an agent none of whose calls has a price has no cost, and its model is named" "None|ml-asset:static-model/opus-next" \
-  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s' % (r['cost'], ','.join(r['unpriced'])))")"
-rep="$("$TEMPER" report 2>&1)"
-assert_eq "report: a partial cost is marked +, a stage with no priced call has none, the run total is marked, the models with no price are named" \
-  "1|1|1|1|1" \
-  "$(printf '%s\n' "$rep" | grep -c '^  plan .* \$0.0240+  opus$')|$(printf '%s\n' "$rep" | grep -c '^  intent .* -  opus$')|$(printf '%s\n' "$rep" | grep -c 'run total, the agents and the main conversation: \$0.0360+$')|$(printf '%s\n' "$rep" | grep -c 'A cost with + leaves out what has no cost here')|$(printf '%s\n' "$rep" | grep -c 'No price here for the model(s) ml-asset:static-model/side-model-x, ml-asset:static-model/opus-next (')"
-assert_eq "view: the usage says its cost is partial and names the models with no price" "True|True|ml-asset:static-model/side-model-x,ml-asset:static-model/opus-next" \
-  "$(python3 -c "import json; u=json.load(open('.temper/view.json'))['usage']; print('%s|%s|%s' % (u['partial'], u['by_stage']['plan']['partial'], ','.join(u['no_price'])))")"
-"$TEMPER" report --html >/dev/null 2>&1
-assert_eq "report --html: the same marks and notes" "1|1|1" \
-  "$(grep -c '\$0.0240+' .temper/specs/demo/report.html)|$(grep -c 'The run, agents and main conversation: \$0.0360+' .temper/specs/demo/report.html)|$(grep -c 'No price here for the model(s) ml-asset:static-model/side-model-x' .temper/specs/demo/report.html)"
+assert_eq "report --html: time and tokens, no Cost column, no transcript" "1|0|0" \
+  "$(grep -c '<h2>Time and tokens</h2>' .temper/specs/demo/report.html)|$(grep -c '<th>Cost</th>' .temper/specs/demo/report.html)|$(grep -ci 'transcript' .temper/specs/demo/report.html)"
+assert_eq "view: the usage holds tokens, time, and the two tables of tokens, time and launches" "by_model,by_stage,ms,tokens|ms,runs,tokens" \
+  "$(python3 -c "import json; u=json.load(open('.temper/view.json'))['usage']; print('%s|%s' % (','.join(sorted(u)), ','.join(sorted(k for k in u['by_model']['opus']))))")"
+assert_eq "next: an agent's after call takes its tokens and time, and no agent id" "1|0" \
+  "$(nx "int('--tokens {tokens} --ms {ms}' in d['agents'][0]['after'][0])")|$(nx "int('--agent' in d['agents'][0]['after'][0])")"
+assert_eq "the CLI and its Python files expand no home folder and read no transcript, and usage_cost.py is gone" "0|no" \
+  "$(git -C "$REPO_ROOT" ls-files -z -- scripts/temper 'scripts/*.py' | (cd "$REPO_ROOT" && xargs -0 grep -liE 'expanduser|\.jsonl|transcript') | wc -l | tr -d ' ')|$([[ -e "$REPO_ROOT/scripts/usage_cost.py" ]] && echo yes || echo no)"
 gpass intent plan build review check commit; _at commit
 "$TEMPER" report --end >/dev/null 2>&1
-assert_eq "commit: the page question gives the agents' cost as at least that when some of it is missing" "1" \
-  "$(nx "int('(the agents: at least \$0.02 at list prices)' in d['ask']['question']['question'])")"
-unset CLAUDE_CONFIG_DIR
+assert_eq "commit: the page question names no cost" "1|0" \
+  "$(nx "int(d['ask']['question']['question'] == 'Every gate passed. The report is above. Write it as an HTML page too, before the commit?')")|$(nx "int('\$' in d['ask']['question']['question'])")"
 fresh; gpass intent plan build review check commit; _at commit
 "$TEMPER" park --verdict SHIP-PENDING-COMMIT --reason 'every gate passed' >/dev/null 2>&1
 assert_eq "commit: a parked run's Commit answer leads to the report steps" "1" \

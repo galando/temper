@@ -24,7 +24,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from plan_review import output_refusal, to_artifact_fragment  # noqa: E402
-from usage_cost import PRICES_AS_OF  # noqa: E402
 
 TASK = {"waiting": ("○", "waiting", "muted"), "running": ("◐", "running", "info"), "red": ("●", "RED", "bad"),
         "green": ("●", "GREEN", "good"), "pass": ("✓", "PASS", "good"), "fail": ("✗", "FAIL", "bad"),
@@ -77,15 +76,11 @@ def tokens(n):
     return "%.1fM" % (n / 1e6) if n >= 1e6 else ("%dk" % (n // 1000) if n >= 1000 else str(n))
 
 
-def usd(v):
-    return "%s" % ("$%.2f" % v if v >= 0.995 else "$%.4f" % v) if isinstance(v, (int, float)) and not isinstance(v, bool) else "-"
-
-
 def section(title, body):
     return "<section><h2>%s</h2>%s</section>" % (e(title), body)
 
 
-def render(view, main=None):
+def render(view):
     run = view.get("run") or {}
     stages = view.get("stages") or []
     here = next((s for s in stages if s.get("mark") == "here"), None)
@@ -170,58 +165,21 @@ def render(view, main=None):
         out.append(section("Acceptance criteria: %d of %d met" % (passed, len(criteria)), "<ul>%s</ul>" % lis))
 
     order = {s.get("id"): i for i, s in enumerate(stages)}
-    plus = []
-
-    def cost(v, short):   # a cost with + leaves out what has no cost here
-        if v is None:
-            return "-"
-        if short:
-            plus.append(1)
-        return usd(v) + ("+" if short else "")
     tables = []
     for key, head in (("by_stage", "Stage"), ("by_model", "Model")):
         rows = usage.get(key) or {}
         if rows:
             # The stage table names the model each stage was launched on (what Temper asked for).
             model = (lambda v: "<td>%s</td>" % e(", ".join(str(m) for m in v.get("models") or []) or "-")) if key == "by_stage" else (lambda v: "")
-            trs = "".join("<tr><td>%s</td>%s<td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (
-                e(k), model(v), e(v.get("runs")), e(tokens(v.get("tokens"))), e(spent(v.get("ms"))),
-                e(cost(v.get("cost"), v.get("partial") or v.get("unpriced"))))
+            trs = "".join("<tr><td>%s</td>%s<td>%s</td><td>%s</td><td>%s</td></tr>" % (
+                e(k), model(v), e(v.get("runs")), e(tokens(v.get("tokens"))), e(spent(v.get("ms"))))
                           for k, v in sorted(rows.items(), key=lambda kv: (order.get(kv[0], len(order)), kv[0])) if isinstance(v, dict))
             cols = "<th>Model</th>" if key == "by_stage" else ""
-            tables.append("<table><tr><th>%s</th>%s<th>Launches</th><th>Tokens</th><th>Time</th><th>Cost</th></tr>%s</table>" % (head, cols, trs))
+            tables.append("<table><tr><th>%s</th>%s<th>Launches</th><th>Tokens</th><th>Time</th></tr>%s</table>" % (head, cols, trs))
     if tables:
-        notes = []
-        no_price = list(usage.get("no_price") or [])
-        if isinstance(main, dict) and main.get("calls"):
-            # the main conversation's calls on a model with a price here; none of them priced is no cost
-            mc = main.get("cost") if main["calls"] > main.get("unpriced_calls", main["calls"] if main.get("unpriced") else 0) else None
-            no_price += [x for x in main.get("unpriced") or [] if x not in no_price]
-            whole = None
-            if usage.get("cost") is not None or mc is not None:
-                short = bool(usage.get("unpriced") or usage.get("partial") or main.get("unpriced")) or usage.get("cost") is None
-                whole = cost((usage.get("cost") or 0) + (mc or 0), short)
-            notes.append("Main conversation since the run started: %s tokens in %d call(s), %s.%s" % (
-                tokens(main.get("tokens")), main["calls"], cost(mc, bool(main.get("unpriced"))),
-                " The run, agents and main conversation: %s." % whole if whole is not None else ""))
-        lost = usage.get("no_transcript") or 0
-        if lost:
-            notes.append("%d launch(es) have no transcript here, so no cost: their tokens are the total Claude Code gave (the "
-                         "context at the end).%s" % (lost, " No agent-<id>.jsonl was found for the agent id(s) %s." % ", ".join(
-                             usage["missing_agents"]) if usage.get("missing_agents") else ""))
-        if (usage.get("unpriced") or 0) > lost:
-            notes.append("%d launch(es) ran only on models with no price here." % (usage["unpriced"] - lost))
-        if plus:
-            notes.append("A cost with + leaves out what has no cost here: a launch with none, or calls on a model with no price here.")
-        if no_price:
-            notes.append("No price here for the model(s) %s (scripts/usage_cost.py holds the prices)." % ", ".join(no_price))
-        if usage.get("output_estimated"):
-            notes.append("An agent transcript records each reply before it streams: its output is taken from the reply text, and "
-                         "its thinking, billed as output, is not counted, so the cost of the agents can be low.")
-        notes.append("Tokens as billed, from each agent transcript; cost at the API list prices of %s. A Claude plan is not "
-                     "billed per token." % ((main or {}).get("prices_as_of") or PRICES_AS_OF))
-        tables.append("".join("<p class='muted'>%s</p>" % e(x) for x in notes))
-        out.append(section("Time, tokens and cost", "".join(tables)))
+        tables.append("<p class='muted'>%s</p>" % e("The tokens of an agent are its context at its last call, as Claude Code "
+                                                    "gives them, not what it was billed for."))
+        out.append(section("Time and tokens", "".join(tables)))
 
     title = "Temper report: %s" % (run.get("title") or run.get("slug") or "run")
     return ("<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
@@ -236,7 +194,6 @@ def main(argv=None):
     r.add_argument("--root", default=".", help="the project folder the run's spec path is relative to")
     r.add_argument("--target", choices=["file", "artifact"], default="file")
     r.add_argument("-o", dest="out", default=None)
-    r.add_argument("--main", default="", help="the main conversation's usage, one JSON line (temper report gives it)")
     args = p.parse_args(argv)
     try:
         with open(args.view, encoding="utf-8") as f:
@@ -247,11 +204,7 @@ def main(argv=None):
     if view.get("version") != 1 or not view.get("run"):
         print("FAIL: %s holds no run of view version 1" % args.view, file=sys.stderr)
         return 1
-    try:
-        main = json.loads(args.main) if args.main else None
-    except ValueError:
-        main = None
-    doc = render(view, main)
+    doc = render(view)
     if args.target == "artifact":
         doc = to_artifact_fragment(doc)
     out = args.out or os.path.join(args.root, view["run"].get("spec") or ".temper", "report.html")

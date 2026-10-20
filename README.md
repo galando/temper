@@ -7,7 +7,7 @@ The model never decides a verdict. With Claude Code 2.1.287 or later, a mod refu
 the current stage ([the mod](docs/mod.md)).
 
 [![Plugin directory](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
-[![Version](https://img.shields.io/badge/version-v9.7.1-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v9.7.2-blue)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1.287%2B%20for%20the%20mod-blue)](docs/mod.md#where-enforcement-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -20,6 +20,12 @@ https://github.com/user-attachments/assets/ec84e98e-7c28-45f9-87c2-8df0b80e19b8
 ```text
 /plugin marketplace add galando/temper
 /plugin install temper
+```
+
+On Claude Code 2.1.275 or later, one line does both:
+
+```text
+/plugin install temper --marketplace galando/temper
 ```
 
 You can also open the Plugins page in Claude, choose **Discover** and search for "temper".
@@ -72,8 +78,41 @@ https://github.com/user-attachments/assets/31a9f4dc-8860-41be-97ca-f03460630f2f
 
 ## What the mod reads and writes
 
-The mod makes no network, `process` or `env` call, starts no agent and writes no file itself. The full list
-of what it reads, writes, sets and runs is in [The mod](docs/mod.md#what-the-mod-reads-and-writes).
+The mod makes no network, `process` or `env` call, starts no agent and writes no file itself.
+
+- **Reads:** `.temper/view.json`, the one file the CLI writes for it, its own settings, store and state,
+  and the Claude Code version. When you change its mode or enforcement it reads the `/config` list to
+  find its own two rows. When `reviewerModel` is set it reads the session's agent list (id and type only).
+- **Configuration and environment it sets:** no environment variable. Only its own two settings,
+  `temper.uiMode` (when you type `/temper:temper mode`, or answer the mode question your first
+  `/temper:temper` asks) and `temper.enforcement` (when you type `/temper:temper enforcement`). A setting
+  your organization locked stays as it is.
+- **Slash commands it runs, and when:** only `/temper:temper` with no words, written as fixed text, when
+  you press Go on in the bar. It never builds a command from data.
+- **Hooks, and what each changes:**
+  - `tool.call` reads the path of Write, Edit, MultiEdit and NotebookEdit and the text of Bash. It refuses
+    a write outside the stage, `--no-verify`, a changed hooks path or a step only you may take, with a
+    reason, or passes the call on and returns its result unchanged. After a question dialog it reads your
+    answer from the result.
+  - `command.run` handles only `/temper:temper`: it answers `status`, `timeline`, `help`, `report`,
+    `mode`, `enforcement` and `pane`. Every other word, and every other command, passes on unchanged.
+  - `session.start` and `classic.SessionStart` find the project folder and load the run. Both return what
+    Claude Code gave them unchanged: they add or change no context, instruction, setting or hook.
+  - `prompt.compose` adds one system prompt section, `temper:phase`: enforcement on or off, the stage, the
+    run title, the passed criteria and the next step.
+  - `turn.step` sets the model and effort from `phaseModels`, and the review agent's model from
+    `reviewerModel`; empty options change nothing.
+  - `attribution.text` adds one Temper line to a pull request description during a run, when
+    `prAttribution` is on.
+  - `turn.complete` adds a one line status under an answer in full mode; `ui.render` and `ui.close` draw
+    the bar, the pane, the spinner word and the prompt hint, and note a pane you closed.
+- **Keeps:** your answers in the question dialogs, the run report and whether you were asked for a mode,
+  in its plugin store; the bar's view in `$.state`, which other plugins can read.
+
+Outside your project, Temper reads only its own global pack folder `~/.claude/packs` (if you made one)
+and the mod's plugin store. It reads no key, login, transcript or other Claude Code file. It asks git for
+your name and email to record who accepted an intent or overrode a gate. The full list is in
+[The mod](docs/mod.md#what-the-mod-reads-and-writes).
 
 ## Commands
 

@@ -61,20 +61,18 @@ again. Stop only where this section says so. When it lists `setup`, run those ca
     `type` (when that type is not offered, the general purpose agent), `model` its `model`, its
     `prompt` exactly, and `run_in_background: false` where the tool takes it, so the run goes on the
     moment the agent returns; the agents of one action go in one message, so they still run at once.
-    When it returns, print the box it returns verbatim, then run its `after` calls: `{agent}` is the agent
-    id its result names (the CLI reads the agent's own transcript for what it was billed and its cost),
-    `{tokens}` and `{ms}` come from the Agent result, or, for an agent run in the background, from the usage
-    of its completion notice (`subagent_tokens`, `duration_ms`), and are `none` only when neither gave a
-    value. Then go on with the loop in the same turn.
+    When it returns, print the box it returns verbatim, then run its `after` calls: `{tokens}` and `{ms}`
+    come from the Agent result, or, for an agent run in the background, from the usage of its completion
+    notice (`subagent_tokens`, `duration_ms`), and are `none` only when neither gave a value. Then go on
+    with the loop in the same turn.
   - **An agent the tool runs in the background anyway:** say in one line what is running, that the run
     goes on when it returns, that if it waits after the agent finished, any message moves it on, and
     that `/temper:init` can keep agents in the foreground in this project.
     Its return is the first of its report (a message from the agent) and its completion notice: in the
     turn that starts, print its box, run its `after` calls and go on with the loop. At the report, fill
-    `{tokens}` and `{ms}` with `none`: the agent has finished, and the CLI reads its numbers from its
-    transcript. Never wait for the notice; Claude Code may start no turn for it. Only when the CLI
-    refuses the call (no transcript of the agent) does the run wait for the notice, which carries the
-    numbers. Never end a turn with an agent's `after` calls not run: nothing else moves the run.
+    `{tokens}` and `{ms}` from the notice when it came first, else with `none`. Never wait for the notice;
+    Claude Code may start no turn for it. Never end a turn with an agent's `after` calls not run: nothing
+    else moves the run.
   - A `steps` entry is a command to run as written, or a short instruction to carry out; `{...}` in it
     is yours to fill (a commit message that says what the feature does).
   - **The report.** When a call prints the run's report (`temper report --end`), copy what it printed into

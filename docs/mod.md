@@ -69,7 +69,7 @@ it yourself, until you close it by hand). Once you close it by hand, it stays cl
 At the commit the run prints its report in the terminal (`temper report`), and asks whether to write it
 as one page too, `report.html` in the spec folder (`temper report --html`), from the same view: the stages,
 loops and skips with their reasons, the plan, the Build grid, the findings, the Check markers, the criteria
-with evidence, and the time, tokens and estimated cost by stage and by model. The commit carries the page,
+with evidence, and the time and tokens by stage and by model. The commit carries the page,
 so it goes with the change.
 
 ## Each stage

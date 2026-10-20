@@ -546,7 +546,7 @@ class Builder:
         lines.extend(extra_lines)
         lines.append(self.plugin_line())
         return {"type": "temper:temper-%s" % stage, "model": models.get(stage, ""), "prompt": "\n".join(lines),
-                "after": [self.c("usage add --stage %s --model %s --agent {agent} --tokens {tokens} --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
+                "after": [self.c("usage add --stage %s --model %s --tokens {tokens} --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
 
     def feedback_lines(self):
         fb = self.r.latest_feedback()
@@ -638,7 +638,7 @@ class Builder:
                 agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or "haiku",
                                "before": [self.c("task start %d" % t["task"])],
                                "prompt": "Follow %s/agents/build-task.md exactly.\n%s\nTask: %d." % (self.plugin, self.plugin_line(), t["task"]),
-                               "after": [self.c("task gate %d --model %s --agent {agent} --tokens {tokens} --ms {ms}" % (t["task"], t.get("model")))],
+                               "after": [self.c("task gate %d --model %s --tokens {tokens} --ms {ms}" % (t["task"], t.get("model")))],
                                "task": t["task"], "group": t.get("group"), "title": t.get("title"), "attempt": t.get("attempt")})
             return {"action": "work", "stage": "build", "calls": [], "agents": agents,
                     "say": "Build hands out %d task%s%s." % (len(agents), "" if len(agents) == 1 else "s", on_model(agents))}
@@ -646,7 +646,7 @@ class Builder:
         running = [(int(n), v) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"]
         if running:
             return {"action": "wait", "stage": "build", "tasks": [
-                {"task": n, "after": [self.c("task gate %d --model %s --agent {agent} --tokens {tokens} --ms {ms}" % (n, v.get("model") or self.r.ctx.get("task_model") or "haiku"))]}
+                {"task": n, "after": [self.c("task gate %d --model %s --tokens {tokens} --ms {ms}" % (n, v.get("model") or self.r.ctx.get("task_model") or "haiku"))]}
                 for n, v in sorted(running)],
                 "say": "Tasks are running. When you launched their agents in this conversation, wait for each result, then run its after calls; "
                        "otherwise (a new conversation) run the after calls now."}
@@ -816,11 +816,8 @@ class Builder:
         return steps
 
     def page_question(self):
-        r, u = self.r, usage(self.r)
-        # the agents' cost, at least that when a launch or a call has no cost here
-        short = u.get("unpriced") or u.get("partial")
-        cost = " (the agents: %s $%.2f at list prices)" % ("at least" if short else "about", u["cost"]) if u.get("cost") is not None else ""
-        return self.question(GATE_HEADER, "Every gate passed. The report is above%s. Write it as an HTML page too, before the commit?" % cost,
+        r = self.r
+        return self.question(GATE_HEADER, "Every gate passed. The report is above. Write it as an HTML page too, before the commit?",
                              stage="commit", options=[
             self.opt("Write report.html", "%s/report.html, committed with the spec." % (r.spec or ".temper/specs/{slug}"),
                      calls=[self.c("report --html")]),
@@ -1026,8 +1023,8 @@ def path_tokens(text):
 # ---- the view ----------------------------------------------------------------------------------
 
 def on_model(agents):
-    """ on <model>: the model each agent is launched on, as `next` names it (what Temper asks for; the session
-    transcript holds the model that served each turn)."""
+    """ on <model>: the model each agent is launched on, as `next` names it (what Temper asks for, not the model that
+    served each turn)."""
     models = sorted({str(a.get("model")) for a in agents if a.get("model")})
     return " on %s" % ", ".join(models) if models else ""
 
@@ -1150,48 +1147,23 @@ def plan_view(run):
 
 
 def usage(run):
+    """The totals Claude Code gave for each launch (tokens and time), summed, and by stage and by model."""
     rows = [r for r in run.usage if isinstance(r, dict)]
-    tokens = sum(r.get("tokens") or 0 for r in rows if isinstance(r.get("tokens"), int))
-    ms = sum(r.get("ms") or 0 for r in rows if isinstance(r.get("ms"), int))
-
-    def price(r):   # a row read from the agent's transcript carries its cost at list prices; a row from a total does not
-        c = r.get("cost")
-        return c if isinstance(c, (int, float)) and not isinstance(c, bool) else None
-
-    def names(r):   # the models of a row's calls that have no price here
-        return [x for x in r.get("unpriced") or [] if isinstance(x, str)]
+    num = lambda r, k: r[k] if isinstance(r.get(k), int) and not isinstance(r.get(k), bool) else 0
 
     def by(key):
         out = {}
         for r in rows:
-            b = out.setdefault(r.get(key) or "unknown", {"tokens": 0, "ms": 0, "runs": 0, "cost": None, "unpriced": 0,
-                                                         "partial": False})
+            b = out.setdefault(r.get(key) or "unknown", {"tokens": 0, "ms": 0, "runs": 0})
             b["runs"] += 1
-            b["tokens"] += r.get("tokens") or 0 if isinstance(r.get("tokens"), int) else 0
-            b["ms"] += r.get("ms") or 0 if isinstance(r.get("ms"), int) else 0
-            if price(r) is None:
-                b["unpriced"] += 1
-            else:
-                b["cost"] = round((b["cost"] or 0) + price(r), 6)
-                # the cost of a row with calls on a model with no price here is of its other calls
-                b["partial"] = b["partial"] or bool(names(r))
+            b["tokens"] += num(r, "tokens")
+            b["ms"] += num(r, "ms")
             # a stage names the models its launches asked for
             if key == "stage" and r.get("model") and r.get("model") not in b.setdefault("models", []):
                 b["models"].append(r.get("model"))
         return out
-    priced = [price(r) for r in rows if price(r) is not None]
-    no_price, missing = [], []
-    for r in rows:
-        no_price += [x for x in names(r) if x not in no_price]
-    # the launches whose transcript was not found (the totals Claude Code gave), and the agent ids they were given
-    lost = [r for r in rows if r.get("source") != "transcript"]
-    for r in lost:
-        if isinstance(r.get("agent"), str) and r["agent"] not in missing:
-            missing.append(r["agent"])
-    return {"tokens": tokens, "ms": ms, "cost": round(sum(priced), 6) if priced else None, "unpriced": len(rows) - len(priced),
-            "partial": any(price(r) is not None and names(r) for r in rows), "no_price": no_price,
-            "no_transcript": len(lost), "missing_agents": missing,
-            "output_estimated": any(r.get("output_estimated") for r in rows), "by_stage": by("stage"), "by_model": by("model")}
+    return {"tokens": sum(num(r, "tokens") for r in rows), "ms": sum(num(r, "ms") for r in rows),
+            "by_stage": by("stage"), "by_model": by("model")}
 
 
 def loops(run):

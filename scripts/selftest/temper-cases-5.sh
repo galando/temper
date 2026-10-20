@@ -75,15 +75,15 @@ gp_base() { # write the valid two-group fixture to the demo spec's tasks.md (a p
 
 ## Group G1: Core
 **Depends:** none
-**Validate:** `bash tests/g1.sh`
+**Validate:** `bash unit/g1.sh`
 **Interfaces:** `src/a.sh` — `a_main`
 **Context:**
 Shared notes for G1. Use bash.
 
 ### Task 1: Alpha
-**File:** `src/a.sh`, `tests/a_test.sh`
+**File:** `src/a.sh`, `unit/a_test.sh`
 **Depends:** none
-**Test:** `bash tests/a_test.sh`
+**Test:** `bash unit/a_test.sh`
 **Cases:**
 - the normal input gives the expected result
 - an empty input is refused
@@ -92,7 +92,7 @@ Shared notes for G1. Use bash.
 ### Task 2: Beta
 **File:** `src/b.sh`
 **Depends:** Task 1
-**Test:** `bash tests/b_test.sh`
+**Test:** `bash unit/b_test.sh`
 **Cases:**
 - the normal input gives the expected result
 - an empty input is refused
@@ -100,14 +100,14 @@ Shared notes for G1. Use bash.
 
 ## Group G2: Edge
 **Depends:** none
-**Validate:** `bash tests/g2.sh`
+**Validate:** `bash unit/g2.sh`
 **Context:**
 Notes for G2.
 
 ### Task 3: Gamma
 **File:** `src/c.sh`
 **Depends:** none
-**Test:** `bash tests/c_test.sh`
+**Test:** `bash unit/c_test.sh`
 **Cases:**
 - the normal input gives the expected result
 - an empty input is refused
@@ -134,8 +134,8 @@ assert sys.argv[1] in s, 'fixture text not found: ' + sys.argv[1]
 open(p, 'w').write(s.replace(sys.argv[1], sys.argv[2], 1))
 PY
 }
-# tests/b_test.sh and tests/c_test.sh exist already (undeclared), as a test path must exist or be declared
-gp_setup() { setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; gp_base; mkdir -p tests; : > tests/b_test.sh; : > tests/c_test.sh; }
+# unit/b_test.sh and unit/c_test.sh exist already (undeclared), as a test path must exist or be declared
+gp_setup() { setup; printf 'build:\n  mode: grouped\n' >> .claude/temper.config; gp_base; mkdir -p unit; : > unit/b_test.sh; : > unit/c_test.sh; }
 gp_gate() { "$TEMPER" gate plan 2>&1; }
 gp_has() { gp_gate | grep -c -- "$1" | tr -d ' '; }
 
@@ -149,16 +149,16 @@ assert_exit "grouped plan: a task with no **File:** fails" 1 "$TEMPER" gate plan
 assert_eq "grouped plan: the failing row names Task 2" "1" "$(gp_has 'Task 2: no declared files')"
 
 # a Test command's first path must exist in the project or be declared by that task (feedback #5)
-gp_setup; gp_mut '**Test:** `bash tests/c_test.sh`' '**Test:** `bash tests/zzz_test.sh`'
+gp_setup; gp_mut '**Test:** `bash unit/c_test.sh`' '**Test:** `bash unit/zzz_test.sh`'
 assert_exit "grouped plan: a test path neither existing nor declared fails" 1 "$TEMPER" gate plan
-assert_eq "grouped plan: the failing row names Task 3 and the path" "1" "$(gp_has 'Task 3: test path tests/zzz_test.sh is not declared')"
-gp_setup; gp_mut '**Test:** `bash tests/c_test.sh`' '**Test:** `bash tests/zzz_test.sh`'
-mkdir -p tests && : > tests/zzz_test.sh
+assert_eq "grouped plan: the failing row names Task 3 and the path" "1" "$(gp_has 'Task 3: test path unit/zzz_test.sh is not declared')"
+gp_setup; gp_mut '**Test:** `bash unit/c_test.sh`' '**Test:** `bash unit/zzz_test.sh`'
+mkdir -p unit && : > unit/zzz_test.sh
 assert_exit "grouped plan: a test path that already exists passes" 0 "$TEMPER" gate plan
-rm -f tests/zzz_test.sh
-gp_setup; gp_mut '**Test:** `bash tests/c_test.sh`' '**Test:** `bash -n tests/c_test.sh && echo ok`'
+rm -f unit/zzz_test.sh
+gp_setup; gp_mut '**Test:** `bash unit/c_test.sh`' '**Test:** `bash -n unit/c_test.sh && echo ok`'
 assert_exit "grouped plan: the first path argument is the declared one, so it passes" 0 "$TEMPER" gate plan
-gp_setup; gp_mut '**Test:** `bash tests/c_test.sh`' '**Test:** `npm test`'
+gp_setup; gp_mut '**Test:** `bash unit/c_test.sh`' '**Test:** `npm test`'
 assert_exit "grouped plan: a test command with no path is not checked" 0 "$TEMPER" gate plan
 
 gp_setup; gp_mut '**Context:**
@@ -167,7 +167,7 @@ Notes for G2.
 assert_exit "grouped plan: a group with no **Context:** fails" 1 "$TEMPER" gate plan
 assert_eq "grouped plan: the failing row names G2" "1" "$(gp_has 'G2: no group context')"
 
-gp_setup; gp_mut '**Test:** `bash tests/b_test.sh`
+gp_setup; gp_mut '**Test:** `bash unit/b_test.sh`
 ' ''
 assert_exit "grouped plan: a task with no **Test:** fails (per-task scoped test command)" 1 "$TEMPER" gate plan
 assert_eq "grouped plan: the failing row names Task 2's missing test command" "1" "$(gp_has 'Task 2: no test command')"
@@ -208,8 +208,8 @@ assert_eq "grouped plan: the task block budget row names Task 2" "1" "$(gp_has '
 
 # dependency graph
 gp_setup; gp_mut '**Depends:** none
-**Test:** `bash tests/a_test.sh`' '**Depends:** Task 2
-**Test:** `bash tests/a_test.sh`'
+**Test:** `bash unit/a_test.sh`' '**Depends:** Task 2
+**Test:** `bash unit/a_test.sh`'
 assert_exit "grouped plan: a Depends cycle fails" 1 "$TEMPER" gate plan
 assert_eq "grouped plan: the cycle row names the loop" "1" "$(gp_has 'Depends cycle: Task 1 -> Task 2 -> Task 1')"
 gp_setup; gp_mut '**Depends:** Task 1' '**Depends:** Task 9'
@@ -221,7 +221,7 @@ gp_setup; gp_mut '## Group G2: Edge
 assert_eq "grouped plan: a group Depends on an unknown group fails" "1|1" "$("$TEMPER" gate plan >/dev/null 2>&1; echo $? | sed 's/^0$/0/')|$(gp_has 'G2 depends on unknown G7')"
 
 # a flat tasks.md fails the plan gate: Plan always writes groups
-setup; mkdir -p tests; : > tests/b_test.sh; : > tests/c_test.sh; gp_base
+setup; mkdir -p unit; : > unit/b_test.sh; : > unit/c_test.sh; gp_base
 assert_exit "the grouped tasks.md passes the plan gate" 0 "$TEMPER" gate plan
 printf '# Tasks: demo\n\n### Task 1: Alpha [SEQUENTIAL]\n**File:** src/a.sh\n- [ ] done\n' > .temper/specs/demo/tasks.md
 assert_exit "a flat tasks.md fails the plan gate" 1 "$TEMPER" gate plan
@@ -455,7 +455,7 @@ st_setup() { # sw_setup + the upstream gates ADR 0009 asks for + both groups sta
   # the declared Test: commands are controllable from outside the worktree: ST_EXIT is the exit, ST_SLEEP
   # hangs, ST_LONG prints a long output
   local t="bash -c 'echo boom; pwd; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
-  gp_mut '`bash tests/a_test.sh`' "\`$t\`"; gp_mut '`bash tests/b_test.sh`' "\`$t\`"; gp_mut '`bash tests/c_test.sh`' "\`$t\`"
+  gp_mut '`bash unit/a_test.sh`' "\`$t\`"; gp_mut '`bash unit/b_test.sh`' "\`$t\`"; gp_mut '`bash unit/c_test.sh`' "\`$t\`"
   [[ -z "${ST_PRE:-}" ]] || eval "$ST_PRE"   # a case may edit the plan before the first group start
   "$TEMPER" group start G1 >/dev/null 2>&1; "$TEMPER" group start G2 >/dev/null 2>&1
 }
@@ -531,7 +531,7 @@ SHOW="$("$TEMPER" task show 1)"
 assert_eq "task show: the header names task, group, attempt and title" "1" "$(printf '%s\n' "$SHOW" | grep -c '^TASK 1 (group G1, attempt 1): Alpha$')"
 assert_eq "task show: the worktree and project lines are absolute" "1|1" \
   "$(printf '%s\n' "$SHOW" | grep -c "^WORKTREE: $PWD/$T1W\$")|$(printf '%s\n' "$SHOW" | grep -c "^PROJECT:  $PWD\$")"
-assert_eq "task show: the declared files line" "1" "$(printf '%s\n' "$SHOW" | grep -c '^DECLARED FILES: src/a.sh, tests/a_test.sh$')"
+assert_eq "task show: the declared files line" "1" "$(printf '%s\n' "$SHOW" | grep -c '^DECLARED FILES: src/a.sh, unit/a_test.sh$')"
 assert_eq "task show: the task block and the group context are inside" "1|1|1" \
   "$(printf '%s\n' "$SHOW" | grep -c '^--- TASK ---$')|$(printf '%s\n' "$SHOW" | grep -c 'Test:\*\* `bash -c .echo boom')|$(printf '%s\n' "$SHOW" | grep -c 'Shared notes for G1')"
 assert_eq "task show: another group's context is not inside" "0" "$(printf '%s\n' "$SHOW" | grep -c 'Notes for G2')"
@@ -581,7 +581,7 @@ assert_exit "task gate: RED and GREEN of the declared command pass the gate" 0 "
 # task gate: the pass path
 st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; BASE="$(st_field 1 start_sha)"
 ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
-st_edit src/a.sh; st_edit tests/a_test.sh
+st_edit src/a.sh; st_edit unit/a_test.sh
 ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 --model m 2>&1)"; rc=$?
 assert_eq "task gate: RED then GREEN with declared files only passes" "0|1|1" \
@@ -591,7 +591,7 @@ assert_eq "task gate: only Task 1's box is ticked" "2" "$(st_unticked)"
 assert_eq "task gate: Task 1's own box is the ticked one" "1" "$(awk '/^### Task 1:/{f=1} /^### Task 2:/{f=0} f' .temper/specs/demo/tasks.md | grep -c '^- \[x\]')"
 assert_eq "task gate: one commit on the group branch, subject names task and group" "feat(demo): Task 1 Alpha [G1]" \
   "$(git -C "$ST_WT" log -1 --format=%s)"
-assert_eq "task gate: the commit holds exactly the declared files" "src/a.sh,tests/a_test.sh" \
+assert_eq "task gate: the commit holds exactly the declared files" "src/a.sh,unit/a_test.sh" \
   "$(git -C "$ST_WT" show --name-only --format= HEAD | sort | paste -sd, -)"
 assert_eq "task gate: the commit is on top of the start sha" "$BASE" "$(git -C "$ST_WT" rev-parse HEAD~1)"
 assert_eq "task gate: the verdict goes to groups.json, not gates.json" "0" "$(grep -c '"task"' .temper/gates.json)"
@@ -731,7 +731,7 @@ assert all(x['reason'] for x in a)
 print(','.join('%s/%s/%s/%s' % (x['model'],x['outcome'],x['tokens'],x['ms']) for x in a))")"
 # the other group is unaffected and can still pass
 "$TEMPER" task start 3 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 3 --phase red >/dev/null 2>&1
-mkdir -p "$ST_WT/../temper-demo-G2/src" 2>/dev/null; echo c > ".claude/worktrees/temper-demo-G2/src/c.sh"
+mkdir -p ".claude/worktrees/temper-demo-G2/src" 2>/dev/null; echo c > ".claude/worktrees/temper-demo-G2/src/c.sh"
 ST_EXIT=0 "$TEMPER" task test 3 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 3 --model claude-haiku-5-5 --tokens 10 --ms 5 2>&1)"
 assert_eq "park: a task in the other group still passes and prints only NEXT: schedule" "0|NEXT: schedule" \
@@ -762,7 +762,7 @@ setup
 # group gate reruns only the named tasks [AC-09, D-02]
 gg_setup() { # st_setup + a controllable G1 Validate command (GV_EXIT is its exit)
   st_setup
-  gp_mut '`bash tests/g1.sh`' "\`bash -c 'echo validating; pwd; exit \${GV_EXIT:-0}'\`"
+  gp_mut '`bash unit/g1.sh`' "\`bash -c 'echo validating; pwd; exit \${GV_EXIT:-0}'\`"
 }
 gg_pass() { # gg_pass <task> <file>: drive one task through RED, an edit, GREEN and its gate
   "$TEMPER" task start "$1" >/dev/null 2>&1
@@ -862,9 +862,9 @@ setup
 # Scenarios: Integration merges every passed group and verifies the result; A merge conflict stops the
 # run before Review [AC-10]. Every case runs in the throwaway folder's own git repository.
 gi_setup() { # both groups started, G1/G2 Validate and the Integration suite controllable (GI_EXIT)
-  rm -rf src tests shared.txt   # files an earlier case merged into the shared throwaway folder
+  rm -rf src unit shared.txt   # files an earlier case merged into the shared throwaway folder
   gg_setup
-  gp_mut '`bash tests/g2.sh`' '`true`'
+  gp_mut '`bash unit/g2.sh`' '`true`'
   gp_mut '`bash run-all.sh`' "\`bash -c 'echo integrating; pwd; ls src; exit \${GI_EXIT:-0}'\`"
   "$TEMPER" group start G2 >/dev/null 2>&1
 }
@@ -998,10 +998,10 @@ gc_setup() { # gc_setup <grouped|fix>: autonomous run, max-blast-radius 3, four 
   # setup keeps the work tree, so the four files an earlier gc_setup left would be committed into this
   # base with the same content and stop counting as changes. Clear them first so every call starts from
   # the same tree.
-  rm -rf src tests
+  rm -rf src unit
   git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -q -m base >/dev/null 2>&1
-  mkdir -p src tests
-  for f in src/a.sh tests/a_test.sh src/b.sh src/c.sh; do echo "x" > "$f"; done
+  mkdir -p src unit
+  for f in src/a.sh unit/a_test.sh src/b.sh src/c.sh; do echo "x" > "$f"; done
 }
 gc_row() { "$TEMPER" gate commit 2>&1 | grep 'blast radius'; }
 gc_setup grouped
@@ -1197,8 +1197,8 @@ assert_eq "orchestrator: the loop runs temper next, and /temper:build is a door 
   "$(grep -c 'scripts/temper next --json` and do what its `action` says' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$(grep -qF 'commands/temper.md' "$REPO_ROOT/commands/build.md" && grep -qF 'Entering at a stage' "$REPO_ROOT/commands/build.md" && echo 1 || echo 0)"
 assert_eq "orchestrator: the page names no grouped command and no stage brief (temper next gives them)" "0" \
   "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'temper integrate' 'agents/build-task.md' 'agents/plan.md'; do grep -qF -- "$c" "$OT" && echo x; done | wc -l | tr -d ' ')"
-assert_eq "orchestrator: an agent's after calls run with its tokens and time filled in" "yes" \
-  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -qF 'run its `after` calls: `{agent}` is the agent id its result names' && grep -qF '`{tokens}` and `{ms}` come from the Agent result' "$OT" && echo yes || echo no)"
+assert_eq "orchestrator: an agent's after calls run with its tokens and time filled in, and no agent id" "yes|0" \
+  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -qF 'run its `after` calls: `{tokens}` and `{ms}` come from the Agent result' && echo yes || echo no)|$(grep -c '{agent}' "$OT")"
 assert_eq "orchestrator: fix.md records the RCA launch, and the loop records the rest" "yes|yes" \
   "$(grep -qF 'usage add --stage rca' "$OF" && echo yes || echo no)|$(grep -qF 'scripts/temper next --json' "$OF" && echo yes || echo no)"
 assert_eq "orchestrator-patterns: the run files list groups.json and usage.json" "2" \
@@ -1300,7 +1300,7 @@ assert_exit "H4: a glob in **File:** fails the grouped plan gate" 1 "$TEMPER" ga
 assert_eq "H4: the failing row names Task 3 and the path" "1" "$(gp_has 'Task 3.*src/\*\.sh')"
 gp_setup; gp_mut '**File:** `src/c.sh`' '**File:** `src/c?.sh`'
 assert_exit "H4: a ? in **File:** fails the grouped plan gate" 1 "$TEMPER" gate plan
-ST_PRE="gp_mut '\`src/a.sh\`, \`tests/a_test.sh\`' '\`src/*.sh\`, \`tests/a_test.sh\`'" st_setup
+ST_PRE="gp_mut '\`src/a.sh\`, \`unit/a_test.sh\`' '\`src/*.sh\`, \`unit/a_test.sh\`'" st_setup
 "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 --model m 2>&1)"; rc=$?
 assert_eq "H4: the task verdict compares exact paths (src/a.sh is not src/*.sh)" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'undeclared change: src/a.sh')"

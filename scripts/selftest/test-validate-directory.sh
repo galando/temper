@@ -148,14 +148,19 @@ seg_more_ok()  { seg_name "$1"
                    printf 'cd .git/gate_dir && ls\ncat .git/gate_dir/pre-commit > /tmp/copy\ncd /tmp\nrm -f x\n'; } > "$1/scripts/a.sh"
                  { printf 'import shutil, subprocess\nshutil.copy("gate_dir/x.json", out)\nshutil.copytree("gate_dir", out)\n'
                    printf 'subprocess.run(["cp", "gate_dir/x.json", out])\nentries = d.get("gate_dir", {})\n'; } > "$1/scripts/a.py"; }
-# Rule 10 names one folder in one line too; these cases change it to gate_dir the same way.
-named_name()   { sed 's/^NAMED_SEGMENT_NAME=.*$/NAMED_SEGMENT_NAME="gate_dir"/' "$1/scripts/validate-directory.sh" > "$1/scripts/v" \
+# Rule 10 names its folders in one line too; these cases change them to gate_dir and test_dir the same way.
+named_name()   { sed 's/^NAMED_SEGMENT_NAMES=.*$/NAMED_SEGMENT_NAMES="gate_dir test_dir"/' "$1/scripts/validate-directory.sh" > "$1/scripts/v" \
                    && mv "$1/scripts/v" "$1/scripts/validate-directory.sh"; }
 named_read()    { named_name "$1"; printf 'ls -A .git/gate_dir\n' > "$1/scripts/a.sh"; }
 named_var()     { named_name "$1"; printf 'D="$COMMON/gate_dir"\n[ -d "$D" ] && echo yes\n' > "$1/scripts/a.sh"; }
 named_comment() { named_name "$1"; printf '# never writes into .git/gate_dir\nexit 0\n' > "$1/scripts/a.sh"; }
 named_python()  { named_name "$1"; printf 'import os\nprint(os.path.exists("gate_dir/x.json"))\n' > "$1/scripts/a.py"; }
 named_ok()      { named_name "$1"; printf 'D="$(git rev-parse --git-path gate_dir)"\nmkdir -p .git/gate_dir-temper/x\necho "the gate_dir folder"\n' > "$1/scripts/a.sh"; }
+named_second()  { named_name "$1"; printf 'mkdir -p unit\n: > test_dir/a_test.sh\n' > "$1/scripts/a.sh"; }
+# The shipped list, and a path with its tests folder written in when the test runs (this file names no such path).
+TESTS_DIR=tests
+named_list()    { grep -qxF 'NAMED_SEGMENT_NAMES="hooks tests mod core ui"' "$1/scripts/validate-directory.sh" || return 1
+                  printf 'printf "x" > "$W/%s/a_test.sh"\n' "$TESTS_DIR" > "$1/scripts/a.sh"; }
 seg_misc_ok()  { seg_name "$1"
                  { printf "find . -path ./gate_dir -prune -o -name '*.tmp' -delete\n"
                    printf 'cp gate_dir/gate_dir.json "$OUT/manifest.json"\n'
@@ -172,6 +177,17 @@ glob_bare()    { printf 'ls $DIR/*.json\n' > "$1/scripts/a.sh"; }
 glob_comment() { printf '# lists "$d"/*.sh\nexit 0\n' > "$1/scripts/a.sh"; }
 glob_python()  { printf 'import glob, os\nfiles = glob.glob(os.path.join(d, "x.sh"))\n' > "$1/scripts/a.py"; }
 glob_pathlib() { printf 'from pathlib import Path\nfiles = sorted(Path(d).glob("x.json"))\n' > "$1/scripts/a.py"; }
+# Rule 12 needs no name either: .. after a variable or a $( ) span fails wherever it is. The .. is
+# written in when the test runs, so this file has no such path itself.
+UP=..
+up_mkdir()     { printf 'mkdir -p "$WT/%s/other/src"\n' "$UP" > "$1/scripts/a.sh"; }
+up_braced()    { printf 'cd ${ROOT}/%s\n' "$UP" > "$1/scripts/a.sh"; }
+up_subst()     { printf 'D="$(pwd)/%s/x"\n' "$UP" > "$1/scripts/a.sh"; }
+up_comment()   { printf '# writes "$d"/%s/x\nexit 0\n' "$UP" > "$1/scripts/a.sh"; }
+up_python()    { printf 'import os\np = os.path.join(d, "..", "x")\n' > "$1/scripts/a.py"; }
+up_pardir()    { printf 'import os\np = os.path.join(d, os.pardir)\n' > "$1/scripts/a.py"; }
+up_ok()        { printf 'ln -s ../x rel-link\nfor bad in "../../outside" "a..b"; do echo "$bad"; done\necho "$a..$b"\n' > "$1/scripts/a.sh"
+                 printf 'ok = parts[-2] not in ("", ".", "..")\n' > "$1/scripts/a.py"; }
 glob_ok()      { { printf 'n="${f##*/}"\nd="${p%%/*}"\n[[ "$v" == */x ]] && echo a\n[[ "$p" == "$X"/* ]] && echo b\n'
                    printf 'echo "$d/*"\nfind "$d" -mindepth 1 -maxdepth 1 -print0\ncase "$n" in pre-commit.bak.*) echo c ;; esac\n'
                    printf 'echo "$((a * b))"\nrm -f ./*.tmp\n'; } > "$1/scripts/a.sh"
@@ -230,6 +246,8 @@ broken "rule 10: a variable path that ends in the named folder fails" named_var
 broken "rule 10: a comment that names such a path fails" named_comment
 broken "rule 10: a Python path with the named folder fails" named_python
 variant "rule 10: a bare word, a longer folder name and prose pass" 0 named_ok
+broken "rule 10: a path with the second name of the list fails" named_second
+broken "rule 10: the shipped list holds the mod's folder names, and a tests folder fails" named_list
 broken "rule 11: a for loop over a wildcard after a variable fails" glob_for
 broken "rule 11: a cp of a wildcard after a variable fails" glob_cp
 broken "rule 11: a wildcard after a variable in a quoted \$( ) span fails" glob_subst
@@ -238,6 +256,13 @@ broken "rule 11: a comment with such a wildcard fails" glob_comment
 broken "rule 11: a Python glob.glob call fails" glob_python
 broken "rule 11: a pathlib glob call fails" glob_pathlib
 variant "rule 11: \${ } patterns, [[ == ]] patterns, quoted text, find, case, arithmetic and listdir pass" 0 glob_ok
+broken "rule 12: a mkdir of .. after a variable fails" up_mkdir
+broken "rule 12: .. after a \${ } variable fails" up_braced
+broken "rule 12: .. after a \$( ) span fails" up_subst
+broken "rule 12: a comment with .. after a variable fails" up_comment
+broken "rule 12: a Python join with \"..\" fails" up_python
+broken "rule 12: a Python join with os.pardir fails" up_pardir
+variant "rule 12: a relative link, .. in quoted text after no variable and a tuple with \"..\" pass" 0 up_ok
 make_fixture no_git plain && check "a folder that is not a git work tree fails" 1 "$FIXTURES/no_git"
 
 # Nothing in the environment moves the checked folder: the variable older versions read to check
