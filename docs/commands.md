@@ -98,8 +98,8 @@ after the command is one of these, Temper handles it instead of starting a run. 
 | `/temper:temper approve`, `next`, `back`, `override`, `accept`, `drift` | Your wish, not a move: Claude runs the loop and asks the gate question exactly as the CLI gives it. You choose there. |
 | `/temper:temper report` | The run report: verdicts, skips with their reasons, loops, usage. Without the mod it is `temper report`; with it, the mod's report from `view.json` and your decisions, kept in its plugin store. The page to share is `report.html` (below). |
 | `/temper:temper pr` | Ask Claude for a pull request description from the report |
-| `/temper:temper mode <full\|minimal\|off>` | Change how much Temper draws |
-| `/temper:temper enforcement <on\|off>` | Turn denials on or off |
+| `/temper:temper mode` | Say how much Temper draws, and that you change it in `/config` (Temper UI mode) |
+| `/temper:temper enforcement` | Say whether denials are on, and that you change it in `/config` (Temper enforcement) |
 | `/temper:temper pane` | Open or close the pane (in full mode it also opens by itself when a run starts; see [the mod](mod.md)) |
 | `/temper:temper discuss <text>` | Send a message about the step you are at. It changes no stage. |
 | `/temper:temper help` | List these |
@@ -116,18 +116,17 @@ only a person can answer the gate question. With enforcement off a headless run 
 ### Modes
 
 With Claude Code 2.1.287 or later, the Temper mod draws the run (a stage bar, a pane and a few other
-elements) and refuses writes that do not belong to the current stage. Two settings control it, and
-both can be changed while a session runs:
+elements) and refuses writes that do not belong to the current stage. Two plugin options control it.
+You change both in `/config`; the mod never changes them itself:
 
 | Setting | Values | Effect |
 |---|---|---|
-| `uiMode` (`/temper:temper mode`) | `full`, `minimal`, `off` | `full` draws the bar, the pane, toasts, the spinner text, the turn line, the hint and the question header. `minimal` draws the stage timeline only. `off` draws nothing. The mode changes only what is drawn: the questions and the rules are the same in every mode. |
-| `enforcement` (`/temper:temper enforcement`) | `on`, `off` | `on` refuses writes outside the stage, `--no-verify`, a changed hooks path, and a step only you may take without your answer. `off` keeps the drawing only. |
+| `uiMode` (Temper UI mode) | `full`, `minimal`, `off` | `full` draws the bar, the pane, toasts, the spinner text, the turn line, the hint and the question header. `minimal` draws the stage timeline only. `off` draws nothing. The mode changes only what is drawn: the questions and the rules are the same in every mode. |
+| `enforcement` (Temper enforcement) | `on`, `off` | `on` refuses writes outside the stage, `--no-verify`, a changed hooks path, and a step only you may take without your answer. `off` keeps the drawing only. |
 
-Denials and subcommands work in every mode. The first interactive `/temper:temper` asks once
-which mode you want. If your organization locked a mode, `/temper:temper mode` says so and does
-not change it. [Where enforcement works](mod.md#where-enforcement-works) shows what is
-covered and what is not.
+Denials and subcommands work in every mode. `/temper:temper mode` and `/temper:temper enforcement`
+say what is set and where to change it. [Where enforcement works](mod.md#where-enforcement-works)
+shows what is covered and what is not.
 
 ### The stage bar
 
@@ -139,8 +138,8 @@ to come), the loops back with their reasons, the time and tokens of the run, one
 the failed checks. Under about 100 columns (for example while the pane is docked) the bar uses a compact
 form without borders. `minimal` shows the chips only.
 
-The bar has one button, and it decides nothing. **Go on** (key `1`, while Claude is not working)
-runs `/temper:temper`, so Claude takes the run up again and asks the gate question. The pane repeats the
+The bar has no button and decides nothing. To take a run up again, type `/temper:temper`: Claude asks
+the gate question again. The pane repeats the
 run on one card: the plan's files by group, the Build grid with each task's state, model and retries, the
 Review findings, the Check markers, the acceptance criteria ("what must be true") with their evidence,
 the loops with their reasons and your decisions; it has no button. At the commit, the report is printed in

@@ -198,11 +198,10 @@ describe('finding 2: the run state cannot be switched off by hiding build-state.
     expect(await wr(api, 'src/app.ts')).toBeUndefined()
   })
 
-  test('the person turns enforcement off: that is the way out', async ($, on) => {
+  test('the person turns Temper enforcement off in /config: that is the way out', { options: { enforcement: 'off' } }, async ($, on) => {
     const { w, api } = await begin($, on)
     w.files.delete(STATE)
     await refresh(api)
-    await api.command.run({ command: 'temper:temper', args: 'enforcement off', origin: { kind: 'composer' } })
     expect(await wr(api, 'src/app.ts')).toBeUndefined()
   })
 })

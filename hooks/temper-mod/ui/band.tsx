@@ -40,26 +40,15 @@ function chip(kit: Kit, step: StageView, compact: boolean) {
   )
 }
 
-// The band's one button, Go on (1). It decides nothing: the person decides in the `Temper gate` question. While Claude
-// is not working, it takes the run up again (`/temper:temper` with no words): Claude reads where the run is and asks the
-// gate question again.
-export type BandButtons = { goOn: () => void | Promise<void> }
-
-// The band above the prompt. Full mode: TEMPER, the title, where the run is, its time and tokens, the stage timeline with
-// its loops back and their reasons, the status of the stage, its details (the groups in Build, the findings in Review,
-// the failed checks) and the Go on button. Minimal draws
-// the timeline only. Off draws nothing (the caller passes next(e)).
-export function renderBand(
-  kit: Kit,
-  view: View,
-  mode: UiMode,
-  buttons: BandButtons,
-  columns = 120,
-  working = false,
-): RenderElement | null {
+// The band above the prompt. It has no button and decides nothing: the person decides in the `Temper gate` question,
+// and takes a run up again by typing /temper:temper. Full mode: TEMPER, the title, where the run is, its time and tokens,
+// the stage timeline with its loops back and their reasons, the status of the stage and its details (the groups in
+// Build, the findings in Review, the failed checks). Minimal draws the timeline only. Off draws nothing (the caller
+// passes next(e)).
+export function renderBand(kit: Kit, view: View, mode: UiMode, columns = 120): RenderElement | null {
   const style = barStyle(mode)
   if (style === 'none' || view.stage === null) return null
-  const { Box, Text, Button } = kit
+  const { Box, Text } = kit
   const compact = columns < COMPACT_BELOW
 
   const chips = (
@@ -95,13 +84,6 @@ export function renderBand(
   )
   const detail = view.detail.slice(0, MAX_DETAIL)
   const more = view.detail.length - detail.length
-  const box = (id: string, key: string, label: string, onPress: () => void | Promise<void>, primary: boolean) => (
-    <Box key={`box-${id}`} borderStyle={compact ? undefined : 'round'} borderColor={primary ? 'blue' : 'gray'} paddingX={compact ? 0 : 1}>
-      <Button key={`action-${id}`} label={label} hotkey={key} plain variant={primary ? 'primary' : 'secondary'} onPress={onPress} />
-    </Box>
-  )
-  const goOn = !working ? box('go-on', '1', view.wait === 'saved' ? 'Go on with the run' : 'Go on', buttons.goOn, view.wait === 'gate' || view.wait === 'saved') : null
-
   return (
     <Box flexDirection="column" key="temper-band">
       {head}
@@ -119,11 +101,6 @@ export function renderBand(
       ))}
       {more > 0 ? <Text dimColor>{`and ${more} more lines in the pane (/temper:temper pane)`}</Text> : null}
       {view.line ? <Text color="yellow">{view.line}</Text> : null}
-      {goOn ? (
-        <Box flexDirection="row" columnGap={compact ? 1 : 0} flexWrap="wrap">
-          {goOn}
-        </Box>
-      ) : null}
     </Box>
   )
 }

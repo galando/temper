@@ -19,17 +19,13 @@ export function parseArgs(args: string): Parsed | null {
   return m && isReserved(word) ? { word, rest: (m[2] ?? '').trim() } : null
 }
 
-export const NEEDS_PERSON =
-  'Temper: only the user changes what Temper shows and enforces, from the prompt box. This command came from somewhere else, such as a claude -p run, the Agent SDK or Claude. ' +
-  'Next: ask the user to run it.'
-
 export const HELP = [
   'Temper subcommands (type them after /temper:temper):',
   '  status               show where the run is',
   '  timeline             list your decisions in this run',
   '  report               show the run report (with no run active, the last one kept)',
   '  pane                 open or close the Temper pane (full mode)',
-  '  mode, enforcement    show or change what Temper shows and enforces',
+  '  mode, enforcement    show what Temper shows and enforces (change both in /config)',
   'You decide at every gate in the Temper gate question: Continue, Loop back, Override and continue, Save for later.',
   'Any other text after /temper:temper is a feature description. It starts or resumes a run. With no text it takes the run up again.',
 ].join('\n')

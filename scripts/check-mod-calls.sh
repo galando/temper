@@ -23,23 +23,18 @@ REPO_ROOT="${HERE%/scripts}"
 # The reviewed list: one `noun.method` per line, with why the mod needs it.
 ALLOWED='
 agent.list       the reviewerModel option: tells whether a subagent step belongs to the Temper review agent (read only; the spawn is never changed)
-command.run      the Go on button runs /temper:temper, and the orchestrator takes up the run where the CLI says it is (it decides nothing)
-config.list      /temper mode and enforcement read the row to see whether an administrator locked it
-config.set       the same commands change the row the way /config does (key temper.uiMode, temper.enforcement)
 fs.read          reads .temper/view.json, the one file the mod reads of the CLI (ADR 0013)
 fs.stat          resolves "." to the project root so absolute tool paths can be made relative
 session.version  the version guard: the mod stays inert below 2.1.287
-state.get        the drawing hooks read the run view and the live mode, so a write redraws them
-state.set        publishes the run view and the live mode
+state.get        the drawing hooks read the run view and the mode, so a write redraws them
+state.set        publishes the run view and the mode
 store.delete     drops the oldest kept report and the oldest run of answers, so the store stays small
-store.get        the gate answers of the person per run (dec:<run id>), "mode already asked" and the kept report
+store.get        the gate answers of the person per run (dec:<run id>) and the kept report
 store.set        records those (the mod writes no file)
-ui.ask           the first run question: how much Temper shows (uiMode)
-ui.close         closes the pane (leaving full mode, a toggle, a pane that would not dock)
-ui.invalidate    redraws the render sites after a mode or enforcement change
+ui.close         closes the pane (a toggle, a pane that would not dock)
 ui.open          opens the pane
-ui.resolve       the element table of the surface being drawn (Box, Text, Button, Markdown)
-ui.toast         one toast per stage change and on enforcement changes
+ui.resolve       the element table of the surface being drawn (Box, Text, Markdown)
+ui.toast         one toast per stage change
 '
 
 allowed_names() { printf '%s\n' "$ALLOWED" | awk 'NF { print $1 }'; }

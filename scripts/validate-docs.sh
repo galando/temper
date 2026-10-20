@@ -239,7 +239,7 @@ ROWS = [
     ('commands/temper.md', '+', r'Never wait for the notice', 'an agent\'s report moves the run; Claude Code may start no turn for its notice'),
     ('commands/fix.md', '-', r'--agent', 'the RCA agent\'s usage is the totals Claude Code gives, not looked up by an agent id'),
     ('commands/temper.md', '+', r'copy what it printed into\s+your reply', 'the person sees the end of run report in the reply, not in a Bash output'),
-    ('commands/init.md', '+', r'temper init --foreground-agents status', 'init offers to keep stage agents in the foreground'),
+    ('commands/init.md', '-', r'foreground-agents', 'Temper never edits a Claude Code settings file: the person sets the variable'),
     ('commands/plan.md', '+', r'"Entering at a stage"', 'the Plan command is a door into /temper'),
     ('commands/design.md', '+', r'"Entering at a stage"', 'the Design command is a door into /temper'),
     ('commands/build.md', '+', r'"Entering at a stage"', 'the Build command is a door into /temper'),

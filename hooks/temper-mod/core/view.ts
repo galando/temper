@@ -125,7 +125,7 @@ function waitOf(input: ViewInput, stage: Stage | null): Wait | null {
 function statusOf(input: ViewInput, stage: Stage | null, wait: Wait | null): string {
   if (stage === null) return ''
   const label = stageLabel(stage)
-  if (wait === 'saved') return `${label} is saved for later. Go on when you are ready.`
+  if (wait === 'saved') return `${label} is saved for later. Type /temper:temper when you are ready.`
   if (wait === 'chosen' && input.answer !== null) return `${label}: your choice (${input.answer.label}). Claude carries it out.`
   return input.view.status
 }

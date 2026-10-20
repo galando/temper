@@ -1241,10 +1241,14 @@ out="$("$TEMPER" task gate 1 --model m 2>&1)"; rc=$?
 assert_eq "H2: a declared file committed by hand still fails (not a CLI commit)" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'not made by the CLI')"
 
 # H5: the commit hook writes .temper/gates.json inside the worktree; that is not an undeclared change
-h5_hook() { # a native pre-commit hook that writes run state in the commit's own top folder, as the real one does
-  local hd; hd="$(git rev-parse --git-common-dir)/ho""oks"; mkdir -p "$hd"
-  printf '#!/bin/sh\nmkdir -p .temper && echo "{}" > .temper/gates.json\nexit 0\n' > "$hd/pre-commit"; chmod +x "$hd/pre-commit"
+case_hook() { # case_hook <shell line>: a native pre-commit hook that runs the line, for every commit of this case's
+  # repository and its worktrees. It sits in a folder of the case's own in the git folder, which core.hooksPath names by
+  # its absolute path (as Temper's installer does), never in git's default hook folder; sw_setup removes it with .git.
+  local hd; hd="$(cd "$(git rev-parse --git-common-dir)" && pwd -P)/case-gate"; mkdir -p "$hd"
+  printf '#!/bin/sh\n%s\nexit 0\n' "$1" > "$hd/pre-commit"; chmod +x "$hd/pre-commit"
+  git config core.hooksPath "$hd"
 }
+h5_hook() { case_hook 'mkdir -p .temper && echo "{}" > .temper/gates.json'; }   # writes run state in the commit's own top folder, as the real hook does
 st_setup; gp_mut '**Depends:** Task 1' '**Depends:** none'; h5_hook
 "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task start 2 >/dev/null 2>&1
 ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 2 --phase red >/dev/null 2>&1
@@ -1311,10 +1315,7 @@ assert_eq "H4: the autonomy commit gate compares exact paths too" "1" "$(gc_row 
 setup
 
 # --- Grouped Build (9.7.0), review loop 1: locking, atomic run-file writes and recorded shas [M1, L1, L2, L3, A1] ---
-slow_hook() { # a native pre-commit hook that sleeps $1 seconds, so a commit is observably in flight
-  local hd; hd="$(git rev-parse --git-common-dir)/ho""oks"; mkdir -p "$hd"
-  printf '#!/bin/sh\nsleep %s\nexit 0\n' "$1" > "$hd/pre-commit"; chmod +x "$hd/pre-commit"
-}
+slow_hook() { case_hook "sleep $1"; }   # sleeps $1 seconds, so a commit is observably in flight
 lock_owner() { cat .temper/.lock/owner 2>/dev/null || echo none; }
 
 # A1: a commit the task agent makes itself, with the CLI's subject format, is still not the CLI's

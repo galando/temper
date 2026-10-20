@@ -169,21 +169,11 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
 
 5. Agents in the foreground. Claude Code runs each Temper stage agent in the background (since
    v2.1.198; with fork mode on, always), and a run goes on only in the turn Claude Code starts
-   when the agent finishes, which an idle session may not get. A plugin cannot change that;
-   `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` in the project's settings can. Run
-      ${CLAUDE_PLUGIN_ROOT}/scripts/temper init --foreground-agents status
-   It prints `on` (this session already runs agents in the foreground: print nothing), `set`
-   (the project's settings hold it: say in one line that it takes effect when Claude Code
-   starts again), or `off`. On `off`, ask one AskUserQuestion: header `Agents`, question "Claude
-   Code runs Temper's stage agents in the background, and a run can wait after one finishes
-   until you write. Run agents in the foreground in this project?", options "Run them in the
-   foreground (Recommended)" with the description "Adds CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 to
-   .claude/settings.json. It also turns off background Bash commands and Ctrl+B here, and takes
-   effect when Claude Code starts again." and "Not now" with the description "Change nothing;
-   any message moves a waiting run on." On the first, run
-   `${CLAUDE_PLUGIN_ROOT}/scripts/temper init --foreground-agents` and carry its `OK:` or
-   `FAIL:` line into the report (a `FAIL:` line means nothing was written). On "Not now",
-   change nothing.
+   when the agent finishes, which an idle session may not get. A plugin cannot change that, and
+   Temper never edits a Claude Code settings file for it. Say in one line, in the report, that
+   the person can keep agents in the foreground by setting `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS`
+   to `1` themselves, as `${CLAUDE_PLUGIN_ROOT}/docs/getting-started.md` ("Stage agents in the
+   background") shows, and that any message moves a waiting run on.
 
 6. Guardrails hooks. Run the stale guard check of
    ${CLAUDE_PLUGIN_ROOT}/reference/pack.md → "Guardrails Hooks" (it is skipped when the

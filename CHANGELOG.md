@@ -3,6 +3,44 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.7.3: no hook written through a split name, no settings rewrite, the mod sets nothing and runs nothing
+
+The directory's report on 9.7.2 (59576ee) held it for the same five reasons as 9.7.1. "This plugin includes a mod"
+always goes to a reviewer. This release answers the other four in code.
+
+**The mod stays the same (`temper-cases-5.sh`, named again).** The cause was two test helpers that 9.7.0 added to that
+file. They wrote a git pre-commit hook into git's own hook folder of the test repository, with that folder's name written
+as two quoted halves, which the shell joins back into `hooks`, the name of the folder that holds the mod.
+`validate-directory.sh` rules 9 and 10 never saw the name. 9.6.6 was held for exactly such a write, and only this file
+had one, which is why the report named it twice. The helpers now write the case's hook into a folder of its own in
+the git folder, `case-gate`, and point `core.hooksPath` at it by its absolute path, as Temper's installer does. Each
+case's fresh repository removes it. The slow hook cases still see a commit in flight, so the hook runs. A new
+rule 13 in `validate-directory.sh` fails on a word joined from quoted pieces with nothing between them (a quote mark
+doubled between two letters). On 9.7.2 it fails on exactly those two lines, and on nothing else in the tree.
+
+**The CLI edits no Claude Code settings file.** "Update adds credential forward" held 9.7.2 too, after the transcript
+reads were gone. 9.7.0 had also added `temper init --foreground-agents`, which read the project's
+`.claude/settings.json` whole (people keep keys and tokens in its `env` block) and wrote it back with
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` added, and read that variable from the environment. It is removed.
+`/temper:init` now says in one line how the person sets the variable themselves, and Getting Started shows where. An
+old `temper init --foreground-agents` call runs the plain init and writes no settings file. A test checks that init
+leaves a settings file as it is and that the CLI names no settings file.
+
+**The mod runs no command and sets no setting.** Every report from 9.6.4 to 9.7.2 held the plugin for these two, with
+the README text the directory asks for.
+- The bar's Go on button, the mod's one `$.command.run` (it ran `/temper:temper`), is gone. The bar has no button; you
+  type `/temper:temper` to take a run up again.
+- `/temper:temper mode` and `/temper:temper enforcement` no longer change the two settings (`$.config.set`, after a
+  `$.config.list` read for a locked row). They say what is set and where to change it: `/config`, Temper UI mode and
+  Temper enforcement, the plugin's own options. The first run mode question (`$.ui.ask`) and its store key are gone.
+- The mod's reviewed calls go from 18 to 13 (`scripts/check-mod-calls.sh`): no `command.run`, `config.list`,
+  `config.set`, `ui.ask` or `ui.invalidate`. The mod tests check that no command runs, no setting changes and the bar
+  has no button.
+
+The README, `docs/mod.md`, `docs/commands.md`, Getting Started and the manual test checklist say the same.
+
+**Migration.** A mode or enforcement you set with the old commands stays set; change it in `/config` from now on.
+
 ## v9.7.2: the directory's holds on 9.7.1, answered in code and in the README
 
 The directory's report on 9.7.1 (f33d200) held it for five reasons. "This plugin includes a mod" always goes to a

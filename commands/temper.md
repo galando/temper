@@ -67,7 +67,7 @@ again. Stop only where this section says so. When it lists `setup`, run those ca
     with the loop in the same turn.
   - **An agent the tool runs in the background anyway:** say in one line what is running, that the run
     goes on when it returns, that if it waits after the agent finished, any message moves it on, and
-    that `/temper:init` can keep agents in the foreground in this project.
+    that `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, which the person sets, keeps agents in the foreground.
     Its return is the first of its report (a message from the agent) and its completion notice: in the
     turn that starts, print its box, run its `after` calls and go on with the loop. At the report, fill
     `{tokens}` and `{ms}` from the notice when it came first, else with `none`. Never wait for the notice;
