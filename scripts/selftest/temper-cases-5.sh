@@ -1199,7 +1199,7 @@ assert_eq "orchestrator: the loop runs temper next, and /temper:build is a door 
 assert_eq "orchestrator: the page names no grouped command and no stage brief (temper next gives them)" "0" \
   "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'temper integrate' 'agents/build-task.md' 'agents/plan.md'; do grep -qF -- "$c" "$OT" && echo x; done | wc -l | tr -d ' ')"
 assert_eq "orchestrator: an agent's after calls run with its tokens and time filled in, and no agent id" "yes|0" \
-  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -qF 'run its `after` calls: `{token_count}` and `{ms}` come from the Agent result' && echo yes || echo no)|$(grep -c '{agent}' "$OT")"
+  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -qF 'run its `after` calls: `{token_count}` (how many model tokens the agent used, a whole number) and `{ms}` come from the Agent result' && echo yes || echo no)|$(grep -c '{agent}' "$OT")"
 assert_eq "orchestrator: fix.md records the RCA launch, and the loop records the rest" "yes|yes" \
   "$(grep -qF 'usage add --stage rca' "$OF" && echo yes || echo no)|$(grep -qF 'scripts/temper next --json' "$OF" && echo yes || echo no)"
 assert_eq "orchestrator-patterns: the run files list groups.json and usage.json" "2" \
