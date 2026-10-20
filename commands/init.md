@@ -60,8 +60,8 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    which every worktree of the repository shares; never committed, never in the plugin
    folder), written through a new file moved into place, and runs
    `git config --local core.hooksPath` with that folder's absolute path, so git runs
-   the hook in every worktree. `git rev-parse --git-path hooks/pre-commit`, the file
-   git runs as the pre-commit hook, then names the kept hook. It never writes into a
+   the hook in every worktree. The `pre-commit` file in the folder `git rev-parse --git-path hooks`
+   names, the file git runs as the pre-commit hook, is then the kept hook. It never writes into a
    folder named `hooks`: not git's own hooks folder, not the folder
    `git rev-parse --git-path hooks` names, and not a `core.hooksPath` folder that is
    not Temper's. It only reads the hooks there to decide. Its one other write is the

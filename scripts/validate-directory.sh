@@ -21,12 +21,17 @@
 #      that runs git rev-parse, ${NAME} or its default, a cd or pushd into the folder (on the same
 #      line, or alone on a line before), or a variable (shell, or Python in a .py file) set to such
 #      a path earlier in the same file; a name built from pieces at run time is for review.
-#  10. No such script names a path with a folder named hooks at all, read or write, comments
-#      included (a word with a slash and a part of that name). A bare word with no slash, as in
-#      git rev-parse --git-path, does not count.
-#  11. No such script lists a folder by a wildcard after a variable ("$dir"/name.*, or a glob
-#      call in a Python file), comments included; a wildcard in quotes, in ${ } or in a pattern
-#      after [[ ... == lists nothing and does not count.
+#  10. No such script names a path with a folder named like a folder of the mod or of its tests
+#      at all (hooks, tests, mod, core, ui), read or write, comments included (a word with a
+#      slash and a part of one of those names). A bare word with no slash, as in git rev-parse
+#      --git-path, does not count.
+#  11. No such script lists a folder by a wildcard after a variable (a variable, a slash, then a
+#      star or a question mark in the same word, or a glob call in a Python file), comments
+#      included; a wildcard in quotes, in ${ } or in a pattern after [[ ... == lists nothing and
+#      does not count.
+#  12. No such script goes up a folder right after a variable or a $( ) span (a variable, a
+#      slash, then the parent folder's two dots), or in a Python file joins a path with the
+#      parent folder's name or os.pardir; comments included.
 #
 # It checks the plugin folder it sits in, and nothing in the environment moves that folder: the
 # tests copy this script into a temporary plugin and run the copy there. The folder must be a git
@@ -527,28 +532,33 @@ else
   fail "rule 9 needs python3 and a git work tree at $ROOT"
 fi
 
-# 10. No script names a path with a folder named hooks at all, read or write, comments included:
-# the directory cannot tell git's hook folders from the plugin folder that holds the mod, and it
-# held every script that built or read such a path. A line counts when a part with that name sits
-# next to a slash (.git/<name>, $X/<name>, <name>/x). A bare word, as in git rev-parse --git-path
-# <name>, has no slash and does not count. The files are those of rule 9: the shell scripts,
-# Python files and workflow files git lists (the mod and its tests are TypeScript, never read).
-NAMED_SEGMENT_NAME="hooks"
+# 10. No script names a path with a folder named like a folder of the mod or of its tests, read or
+# write, comments included: the directory cannot tell such a path from the mod's own folders, and
+# it held every script that built or read one (git's hook folders in 9.6.6, a test project's
+# tests folder in 9.7.1; 9.6.4 for a folder of scripts named tests). The names are fixed text
+# here; this script opens no folder of the mod to learn them. A line counts when a part with one
+# of the names sits next to a slash (.git/<name>, $X/<name>, <name>/x). A bare word, as in
+# git rev-parse --git-path <name>, has no slash and does not count. The files are those of rule 9:
+# the shell scripts, Python files and workflow files git lists (the mod and its tests are
+# TypeScript, never read).
+NAMED_SEGMENT_NAMES="hooks tests mod core ui"
 if command -v python3 >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  python3 - "$ROOT" "$NAMED_SEGMENT_NAME" <<'PY' || FAIL=$((FAIL+1))
+  python3 - "$ROOT" "$NAMED_SEGMENT_NAMES" <<'PY' || FAIL=$((FAIL+1))
 import os, re, subprocess, sys
-root, name = sys.argv[1], sys.argv[2]
+root, names = sys.argv[1], sys.argv[2].split()
 own = "scripts/validate-directory.sh"
 listed = subprocess.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
                         capture_output=True, check=False).stdout.decode("utf-8", "replace").split("\0")
 
 
 def names_path(line):
-    """True when a word of the line holds a slash and has a part equal to the name."""
+    """The name a word of the line has as a part next to a slash, or None."""
     for word in re.split(r"[\s\"'`=();|<>,]+", line):
-        if "/" in word and name in word.split("/"):
-            return True
-    return False
+        if "/" in word:
+            for name in names:
+                if name in word.split("/"):
+                    return name
+    return None
 
 
 def kind(rel, path):
@@ -579,10 +589,11 @@ for rel in listed:
     except OSError:
         continue
     for k, line in enumerate(lines, 1):
-        if names_path(line):
-            found.append("  %s:%d: %s" % (rel, k, line.strip()[:100]))
+        hit = names_path(line)
+        if hit:
+            found.append("  %s:%d: (%s) %s" % (rel, k, hit, line.strip()[:100]))
 if found:
-    print("FAIL: a script names a path with a folder named %s:" % name)
+    print("FAIL: a script names a path with a folder named like one of the mod's (%s):" % ", ".join(names))
     print("\n".join(found[:20]))
     if len(found) > 20:
         print("  (and %d more)" % (len(found) - 20))
@@ -592,16 +603,18 @@ else
   fail "rule 10 needs python3 and a git work tree at $ROOT"
 fi
 
-# 11. No script lists a folder by a wildcard after a variable: "$dir"/name.*, $dir/*, or a glob
-# call in a Python file. The directory asks for plugin paths with no wildcard, and a folder held
+# 11. No script lists a folder by a wildcard after a variable (a variable, a slash, then a star or a
+# question mark in the same word), or by a glob call in a Python file. The directory asks for plugin paths with no wildcard, and a folder held
 # in a variable may be the plugin's own as far as it can tell: it held a script that globbed a
 # computed folder each time. List the folder with find and match each name instead. A wildcard
 # inside quotes, inside ${ } (as in ${f##*/}) or in a pattern after [[ ... == does not list
-# anything and does not count; comments count. The files are those of rule 9.
+# anything and does not count; comments count. The files are those of rule 9. The wildcard
+# characters are fixed text in the one line below (the tests give them a stand-in, as for rule 10).
+WILDCARD_CHARS='*?'
 if command -v python3 >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  python3 - "$ROOT" <<'PY' || FAIL=$((FAIL+1))
+  python3 - "$ROOT" "$WILDCARD_CHARS" <<'PY' || FAIL=$((FAIL+1))
 import os, re, subprocess, sys
-root = sys.argv[1]
+root, wild = sys.argv[1], sys.argv[2]
 own = "scripts/validate-directory.sh"
 listed = subprocess.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
                         capture_output=True, check=False).stdout.decode("utf-8", "replace").split("\0")
@@ -647,7 +660,7 @@ def shell_globs(line):
             var = True
         elif ch == "/" and var:
             slash = True
-        elif ch in "*?" and slash:
+        elif ch in wild and slash:
             return True
         i += 1
     return False
@@ -701,6 +714,77 @@ if found:
 PY
 else
   fail "rule 11 needs python3 and a git work tree at $ROOT"
+fi
+
+# 12. No script goes up a folder right after a variable or a $( ) span (a variable or the end of a
+# span, a slash, then the parent folder's name), or in a Python file joins a path with the parent
+# folder's name or os.pardir. The directory asks for every plugin path written out in full with no
+# parent folder step, and a folder held in a variable may be the plugin's own as far as it can
+# tell; 9.7.1 was held on a test file with such a path. Write the path it leads to instead.
+# Comments count. The files are those of rule 9. The parent folder's name is fixed text in the
+# one line below (the tests give it another name, as for rule 10).
+UP_SEGMENT_NAME=".."
+if command -v python3 >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  python3 - "$ROOT" "$UP_SEGMENT_NAME" <<'PY' || FAIL=$((FAIL+1))
+import os, re, subprocess, sys
+root, up = sys.argv[1], sys.argv[2]
+own = "scripts/validate-directory.sh"
+listed = subprocess.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                        capture_output=True, check=False).stdout.decode("utf-8", "replace").split("\0")
+# A variable ($X, ${X...}) or the end of a $( ) span, an optional closing quote, a slash, then the
+# parent folder's name, which ends the word or goes on with a slash.
+shell_up = re.compile(r"(?:\$[A-Za-z_][A-Za-z0-9_]*|\$\{[^{}]*\}|\))[\"']?/" + re.escape(up) + r"(?=/|[\s\"';|&)`]|$)")
+py_up = re.compile(r"\bos\.pardir\b|\bjoin\s*\([^)]*['\"]" + re.escape(up) + r"['\"]")
+
+
+def kind(rel, path):
+    if rel.endswith((".sh", ".bash")):
+        return "sh"
+    if rel.endswith(".py"):
+        return "py"
+    if rel.startswith(".github/") and rel.endswith((".yml", ".yaml")):
+        return "sh"
+    if "." not in os.path.basename(rel):
+        try:
+            with open(path, "rb") as f:
+                first = f.readline(200)
+        except OSError:
+            return ""
+        if first.startswith(b"#!") and re.search(rb"\b(?:ba)?sh\b", first):
+            return "sh"
+        if first.startswith(b"#!") and b"python" in first:
+            return "py"
+    return ""
+
+
+found = []
+for rel in listed:
+    if not rel or rel == own:
+        continue
+    path = os.path.join(root, rel)
+    if not os.path.isfile(path) or os.path.islink(path):
+        continue
+    k = kind(rel, path)
+    if not k:
+        continue
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        continue
+    for n, line in enumerate(lines, 1):
+        hit = shell_up.search(line) if k == "sh" else (py_up.search(line) or shell_up.search(line))
+        if hit:
+            found.append("  %s:%d: %s" % (rel, n, line.strip()[:100]))
+if found:
+    print("FAIL: a script goes up a folder after a variable (write the path it leads to instead):")
+    print("\n".join(found[:20]))
+    if len(found) > 20:
+        print("  (and %d more)" % (len(found) - 20))
+    sys.exit(1)
+PY
+else
+  fail "rule 12 needs python3 and a git work tree at $ROOT"
 fi
 
 if [[ $FAIL -eq 0 ]]; then

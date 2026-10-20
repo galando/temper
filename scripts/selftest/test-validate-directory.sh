@@ -148,14 +148,15 @@ seg_more_ok()  { seg_name "$1"
                    printf 'cd .git/gate_dir && ls\ncat .git/gate_dir/pre-commit > /tmp/copy\ncd /tmp\nrm -f x\n'; } > "$1/scripts/a.sh"
                  { printf 'import shutil, subprocess\nshutil.copy("gate_dir/x.json", out)\nshutil.copytree("gate_dir", out)\n'
                    printf 'subprocess.run(["cp", "gate_dir/x.json", out])\nentries = d.get("gate_dir", {})\n'; } > "$1/scripts/a.py"; }
-# Rule 10 names one folder in one line too; these cases change it to gate_dir the same way.
-named_name()   { sed 's/^NAMED_SEGMENT_NAME=.*$/NAMED_SEGMENT_NAME="gate_dir"/' "$1/scripts/validate-directory.sh" > "$1/scripts/v" \
+# Rule 10 names its folders in one line too; these cases change them to gate_dir and test_dir the same way.
+named_name()   { sed 's/^NAMED_SEGMENT_NAMES=.*$/NAMED_SEGMENT_NAMES="gate_dir test_dir"/' "$1/scripts/validate-directory.sh" > "$1/scripts/v" \
                    && mv "$1/scripts/v" "$1/scripts/validate-directory.sh"; }
 named_read()    { named_name "$1"; printf 'ls -A .git/gate_dir\n' > "$1/scripts/a.sh"; }
 named_var()     { named_name "$1"; printf 'D="$COMMON/gate_dir"\n[ -d "$D" ] && echo yes\n' > "$1/scripts/a.sh"; }
 named_comment() { named_name "$1"; printf '# never writes into .git/gate_dir\nexit 0\n' > "$1/scripts/a.sh"; }
 named_python()  { named_name "$1"; printf 'import os\nprint(os.path.exists("gate_dir/x.json"))\n' > "$1/scripts/a.py"; }
 named_ok()      { named_name "$1"; printf 'D="$(git rev-parse --git-path gate_dir)"\nmkdir -p .git/gate_dir-temper/x\necho "the gate_dir folder"\n' > "$1/scripts/a.sh"; }
+named_second()  { named_name "$1"; printf 'mkdir -p unit\n: > test_dir/a_test.sh\n' > "$1/scripts/a.sh"; }
 seg_misc_ok()  { seg_name "$1"
                  { printf "find . -path ./gate_dir -prune -o -name '*.tmp' -delete\n"
                    printf 'cp gate_dir/gate_dir.json "$OUT/manifest.json"\n'
@@ -164,17 +165,33 @@ seg_misc_ok()  { seg_name "$1"
                    printf 'git rev-parse --git-path gate_dir/pre-commit\n'; } > "$1/scripts/a.sh"
                  printf 'rel = path.replace("gate_dir/", "")\nprint(Path("gate_dir/x.json").read_text())\n' > "$1/scripts/a.py"; }
 
-# Rule 11 needs no name: a wildcard after a variable fails wherever it is.
-glob_for()     { printf 'for f in "$1"/pre-commit.bak.*; do echo "$f"; done\n' > "$1/scripts/a.sh"; }
-glob_cp()      { printf 'cp "$SRC"/scripts/*.sh "$OUT/"\n' > "$1/scripts/a.sh"; }
-glob_subst()   { printf 'n="$(cat "$A" "$B"/x/*.sh | wc -l)"\n' > "$1/scripts/a.sh"; }
-glob_bare()    { printf 'ls $DIR/*.json\n' > "$1/scripts/a.sh"; }
-glob_comment() { printf '# lists "$d"/*.sh\nexit 0\n' > "$1/scripts/a.sh"; }
+# Rule 11 names its wildcard characters in one line too; these cases change them to @ the same way,
+# so this file spells no wildcard after a variable.
+glob_name()    { sed "s/^WILDCARD_CHARS=.*\$/WILDCARD_CHARS='@'/" "$1/scripts/validate-directory.sh" > "$1/scripts/v" \
+                   && mv "$1/scripts/v" "$1/scripts/validate-directory.sh"; }
+glob_for()     { glob_name "$1"; printf 'for f in "$1"/pre-commit.bak.@; do echo "$f"; done\n' > "$1/scripts/a.sh"; }
+glob_cp()      { glob_name "$1"; printf 'cp "$SRC"/scripts/@.sh "$OUT/"\n' > "$1/scripts/a.sh"; }
+glob_subst()   { glob_name "$1"; printf 'n="$(cat "$A" "$B"/x/@.sh | wc -l)"\n' > "$1/scripts/a.sh"; }
+glob_bare()    { glob_name "$1"; printf 'ls $DIR/@.json\n' > "$1/scripts/a.sh"; }
+glob_comment() { glob_name "$1"; printf '# lists "$d"/@.sh\nexit 0\n' > "$1/scripts/a.sh"; }
 glob_python()  { printf 'import glob, os\nfiles = glob.glob(os.path.join(d, "x.sh"))\n' > "$1/scripts/a.py"; }
 glob_pathlib() { printf 'from pathlib import Path\nfiles = sorted(Path(d).glob("x.json"))\n' > "$1/scripts/a.py"; }
-glob_ok()      { { printf 'n="${f##*/}"\nd="${p%%/*}"\n[[ "$v" == */x ]] && echo a\n[[ "$p" == "$X"/* ]] && echo b\n'
-                   printf 'echo "$d/*"\nfind "$d" -mindepth 1 -maxdepth 1 -print0\ncase "$n" in pre-commit.bak.*) echo c ;; esac\n'
-                   printf 'echo "$((a * b))"\nrm -f ./*.tmp\n'; } > "$1/scripts/a.sh"
+# Rule 12 names the parent folder in one line too; these cases change it to up_dir the same way, so
+# this file spells no such path.
+up_name()      { sed 's/^UP_SEGMENT_NAME=.*$/UP_SEGMENT_NAME="up_dir"/' "$1/scripts/validate-directory.sh" > "$1/scripts/v" \
+                   && mv "$1/scripts/v" "$1/scripts/validate-directory.sh"; }
+up_mkdir()     { up_name "$1"; printf 'mkdir -p "$WT/up_dir/other/src"\n' > "$1/scripts/a.sh"; }
+up_braced()    { up_name "$1"; printf 'cd ${ROOT}/up_dir\n' > "$1/scripts/a.sh"; }
+up_subst()     { up_name "$1"; printf 'D="$(pwd)/up_dir/x"\n' > "$1/scripts/a.sh"; }
+up_comment()   { up_name "$1"; printf '# writes "$d"/up_dir/x\nexit 0\n' > "$1/scripts/a.sh"; }
+up_python()    { up_name "$1"; printf 'import os\np = os.path.join(d, "up_dir", "x")\n' > "$1/scripts/a.py"; }
+up_pardir()    { printf 'import os\np = os.path.join(d, os.pardir)\n' > "$1/scripts/a.py"; }
+up_ok()        { up_name "$1"; printf 'ln -s up_dir/x rel-link\necho "the up_dir folder"\nD="$X/up_dir-old"\n' > "$1/scripts/a.sh"
+                 printf 'ok = parts[-2] not in ("", ".", "up_dir")\n' > "$1/scripts/a.py"; }
+glob_ok()      { glob_name "$1"
+                 { printf 'n="${f##@/}"\nd="${p%%/@}"\n[[ "$v" == @/x ]] && echo a\n[[ "$p" == "$X"/@ ]] && echo b\n'
+                   printf 'echo "$d/@"\nfind "$d" -mindepth 1 -maxdepth 1 -print0\ncase "$n" in pre-commit.bak.@) echo c ;; esac\n'
+                   printf 'echo "$((a * b))"\nrm -f ./@.tmp\n'; } > "$1/scripts/a.sh"
                  printf 'import fnmatch, os\nnames = [n for n in sorted(os.listdir(d)) if fnmatch.fnmatch(n, "x.json")]\n' > "$1/scripts/a.py"; }
 
 make_fixture good && check "a good fixture passes" 0 "$FIXTURES/good"
@@ -230,6 +247,7 @@ broken "rule 10: a variable path that ends in the named folder fails" named_var
 broken "rule 10: a comment that names such a path fails" named_comment
 broken "rule 10: a Python path with the named folder fails" named_python
 variant "rule 10: a bare word, a longer folder name and prose pass" 0 named_ok
+broken "rule 10: a path with the second name of the list fails" named_second
 broken "rule 11: a for loop over a wildcard after a variable fails" glob_for
 broken "rule 11: a cp of a wildcard after a variable fails" glob_cp
 broken "rule 11: a wildcard after a variable in a quoted \$( ) span fails" glob_subst
@@ -238,6 +256,13 @@ broken "rule 11: a comment with such a wildcard fails" glob_comment
 broken "rule 11: a Python glob.glob call fails" glob_python
 broken "rule 11: a pathlib glob call fails" glob_pathlib
 variant "rule 11: \${ } patterns, [[ == ]] patterns, quoted text, find, case, arithmetic and listdir pass" 0 glob_ok
+broken "rule 12: a mkdir up a folder after a variable fails" up_mkdir
+broken "rule 12: up a folder after a \${ } variable fails" up_braced
+broken "rule 12: up a folder after a \$( ) span fails" up_subst
+broken "rule 12: a comment that goes up a folder after a variable fails" up_comment
+broken "rule 12: a Python join with the parent folder's name fails" up_python
+broken "rule 12: a Python join with os.pardir fails" up_pardir
+variant "rule 12: a relative link, prose, a longer folder name and a tuple with the name pass" 0 up_ok
 make_fixture no_git plain && check "a folder that is not a git work tree fails" 1 "$FIXTURES/no_git"
 
 # Nothing in the environment moves the checked folder: the variable older versions read to check
@@ -248,6 +273,12 @@ check "the old folder variable cannot point a broken plugin's check at a good on
   VALIDATE_DIRECTORY_ROOT="$FIXTURES/good"
 # The script finds its folder with CDPATH naming that folder (cd would print it otherwise).
 check "a good fixture passes with CDPATH naming it" 0 "$FIXTURES/good" CDPATH="$FIXTURES/good"
+
+# The shipped lists: rule 10 holds the names of the folders of the mod and its tests, rule 11 the
+# wildcard characters, and rule 12 the parent folder's name.
+for line in 'NAMED_SEGMENT_NAMES="hooks tests mod core ui"' "WILDCARD_CHARS='*?'" 'UP_SEGMENT_NAME=".."'; do
+  if grep -qxF "$line" "$ROOT/scripts/validate-directory.sh"; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); echo "FAIL: the validator ships $line"; fi
+done
 
 # The real clone passes.
 check "this clone passes" 0 "$ROOT"

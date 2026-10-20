@@ -104,8 +104,9 @@ sys.stdout.write("\n".join(parts))
                    # still read as text, and the C locale so the ranges are plain ASCII.
     LC_ALL=C grep -aEo -e "$joined" 2>/dev/null | head -1
   }
-  _block() { # _block <match> <where>
-    echo "BLOCK: detected likely secret pattern: '$1' in $2" >&2
+  _block() { # _block <match> <where>: the match shows only its first 4 characters and its length, so the refusal,
+             # which Claude and the session transcript see, never repeats the secret
+    echo "BLOCK: detected likely secret pattern: '${1:0:4}...' (${#1} characters, the rest not shown) in $2" >&2
     echo "Refusing commit/edit. Remove the secret or place it in an env var / secrets store." >&2
   }
 

@@ -34,11 +34,11 @@ INTENT = "\n".join([
     "",
 ] + ["- [ ] AC-0%d [required]: criterion %d (source: test)" % (n, n) for n in range(1, 6)] + [""])
 PLAN = "\n".join(["# Plan", "", "### Files to Modify", "", "| File | Change |", "|---|---|", "| `src/app.ts` | edit |",
-                  "| `tests/app.test.ts` | add |", "| `src/mail.ts` | edit |", ""])
+                  "| `unit/app.test.ts` | add |", "| `src/mail.ts` | edit |", ""])
 TASKS = "\n".join([
     "# Tasks: Password reset by email", "", "**Integration:** `npm test`", "",
     "## Group G1: Tokens", "**Depends:** none", "**Validate:** `npm test`", "**Context:**", "Keep the token API.", "",
-    "### Task 1: Issue a token", "**File:** `src/app.ts`, `tests/app.test.ts`", "**Depends:** none", "**Test:** `npm test`",
+    "### Task 1: Issue a token", "**File:** `src/app.ts`, `unit/app.test.ts`", "**Depends:** none", "**Test:** `npm test`",
     "**Cases:**", "- a token is issued", "**Traced to:** Scenario: \"reset\"", "- [ ] done", "",
     "### Task 2: Expire a token", "**File:** `src/app.ts`", "**Depends:** Task 1", "**Test:** `npm test`",
     "**Cases:**", "- an old token is refused", "**Traced to:** Scenario: \"reset\"", "- [ ] done", "",
@@ -127,7 +127,7 @@ snap(p, "plan-pass-autonomy", "run-pw")
 write(p, ".claude/temper.config", "review:\n  block-on: [critical]\n")
 cli(p, "state", "advance", "plan_complete", "build")
 snap(p, "build-work", "run-pw")
-verdict(p, "build", False, "tests pass", "2 tests fail: tests/app.test.ts")
+verdict(p, "build", False, "tests pass", "2 tests fail: unit/app.test.ts")
 snap(p, "build-fail", "run-pw")
 verdict(p, "build", True)
 snap(p, "build-pass", "run-pw")
@@ -187,7 +187,7 @@ write(a, ".temper/specs/pw/tasks.md", TASKS)
 verdict(a, "plan", True)
 cli(a, "state", "set", "run_mode", "autonomous")
 cli(a, "state", "advance", "plan_complete", "build")
-verdict(a, "build", False, "tests pass", "2 tests fail: tests/app.test.ts")
+verdict(a, "build", False, "tests pass", "2 tests fail: unit/app.test.ts")
 snap(a, "armed-build-fail", "run-armed")
 verdict(a, "build", True)
 snap(a, "armed-build-pass", "run-armed")

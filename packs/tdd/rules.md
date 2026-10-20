@@ -65,6 +65,6 @@ Intent.md scenarios drive WHAT to test. TDD pack enforces HOW (discipline, conve
 | Spring Boot | `src/test/java/{package}/` | `{Class}Test.java` |
 | React/TS | Same dir or `__tests__/` | `{Component}.test.tsx` |
 | Node/Jest | Same dir or `__tests__/` | `{module}.test.js` |
-| Python/pytest | `tests/` | `test_{module}.py` |
+| Python/pytest | the `tests` folder | `test_{module}.py` |
 | Go | Same package | `{file}_test.go` |
-| Rust | Same dir or `tests/` | `#[test]` in source |
+| Rust | Same dir or the `tests` folder | `#[test]` in source |

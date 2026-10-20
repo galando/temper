@@ -45,7 +45,7 @@ serious bugs that the fixes of the round before had made. Almost every finding s
    only while the CLI is at that run and step, and the latest move at a step replaces the earlier ones.
    An accepted finding counts at its step for that finding. A Scope drift answer counts for the run and
    its path, and Allow once is used by one write. Start over counts until the next `state init`.
-6. **The guard has three jobs**, and `core/bash.ts` is frozen (no new shell parsing):
+6. **The guard has three jobs**, and the mod's shell parser is frozen (no new shell parsing):
    - a CLI call that only the person may cause needs the matching move at the current step: leaving
      Intent or Plan, a skip, a step back, accepting a finding, arming autonomy, keeping an agent's
      commits, clearing the run during a run. Every other advance follows the stage's own verdict (PASS,
@@ -98,7 +98,7 @@ serious bugs that the fixes of the round before had made. Almost every finding s
 - **Decision 5:** the answer still comes from the dialog's result, but it is matched exactly
   against the header, the question and the option labels that `temper next --json` gave for that
   step, not parsed from words. A move that needs a reason counts once the reason is known.
-- **Decision 6:** `core/bash.ts` is deleted, not frozen. The guard keeps the person's answer before
+- **Decision 6:** the mod's shell parser is deleted, not frozen. The guard keeps the person's answer before
   a step only the person may take, the file path rules, and a short Bash list (`--no-verify` or `-n`
   on a commit, a changed hooks path, and a Bash write onto a protected file: the CLI's files in
   `.temper/`, and during a run the config and the git hooks; a spec file stays Claude's to write).

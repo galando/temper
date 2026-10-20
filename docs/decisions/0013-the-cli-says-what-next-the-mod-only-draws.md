@@ -17,7 +17,7 @@ Three things it left in place kept the cost of the flow high:
 2. **The "what next" lived in prose.** `commands/temper.md` was 6,913 words (about 46,000
    characters), read in the main conversation on every run. Each gate's options, each "On
    Continue" sequence, the autonomy rules and the doors were prose the model had to follow.
-3. **A guard that could not be finished.** `core/bash.ts` (1,591 lines) tried to read shell
+3. **A guard that could not be finished.** The mod's shell parser (1,591 lines) tried to read shell
    commands well enough to stop a model that wanted to get around a gate. Its own header said Bash
    can write files in ways no classifier catches. About two fifths of the mod's 7,851 test lines
    were in files named hardening, security rounds 2 and 3, review exploits 1 to 3, bash,
@@ -71,9 +71,9 @@ the person; and the mod checks that the person answered before a step only the p
      `mv`, `cp`, `tee`, `sed -i` and the like), written out in the command. It is held to the same list
      of protected files as the editing tools: the CLI's files in `.temper/` (a spec file stays
      Claude's to write), and during a run the config and the git hooks.
-   `core/shell.ts` reads a command for these: it splits the text into statements and words and
+   The mod's shell reader reads a command for these: it splits the text into statements and words and
    honours quotes, and follows no variable, substitution output, `cd` or link.
-   `core/bash.ts` as a shell parser is deleted, with the lists of git plumbing, aliases and exec
+   The mod's shell parser is deleted, with the lists of git plumbing, aliases and exec
    forms and the tests that existed only for them. Temper is not a sandbox: it keeps a cooperating
    Claude on the path and makes a skip visible; a Claude set on getting around a gate through Bash
    can do it (`docs/trust.md`). The native `pre-commit` hook and the Stop hook stay.
@@ -104,7 +104,7 @@ the person; and the mod checks that the person answered before a step only the p
   matches the answer exactly against the options the CLI wrote for that step instead of parsing
   words. A move needing a reason counts once the reason is known: the person's note on the option,
   or their answer to the reason question the CLI wrote.
-- Decision 6 ("the guard has three jobs, and `core/bash.ts` is frozen"): replaced by decision 5
+- Decision 6 ("the guard has three jobs, and the mod's shell parser is frozen"): replaced by decision 5
   above. The jobs "a commit never goes around the native hook" through git exec forms, aliases,
   plumbing and the commits the hook does not check are dropped; they are listed as limits.
   "Every other advance follows the stage's own verdict" moves from the mod to the CLI (decision 3).

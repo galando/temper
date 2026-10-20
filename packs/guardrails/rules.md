@@ -106,8 +106,8 @@ to `temper-gate/pre-commit` in the repository's git folder (the folder
 `git rev-parse --git-common-dir` names, with symlinks followed; git never commits it, and
 every linked worktree of the repository shares it), through a new file in that folder moved
 into place, executable. Then it runs `git config --local core.hooksPath` with the absolute
-path of that folder, so git runs that hook in every worktree of the repository, and
-`git rev-parse --git-path hooks/pre-commit` names it. `--global` is still accepted and does
+path of that folder, so git runs that hook in every worktree of the repository, and it is
+the `pre-commit` file in the folder `git rev-parse --git-path hooks` names. `--global` is still accepted and does
 the same as the default, with a note on stderr.
 
 The installer never writes into a folder named `hooks`: not `.git/hooks`, not the folder

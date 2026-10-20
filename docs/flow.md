@@ -91,7 +91,7 @@ question is no answer. A typed message is never a move: it is a change request o
 | `criteria` | `[{id, priority, status, text, evidence}]` of the intent's success criteria |
 | `loops` | `[{from, to, reason, iteration, max, at}]` |
 | `skips` | `[{stage, reason, by}]` |
-| `usage` | `{tokens, ms, cost, unpriced, partial, no_price, output_estimated, by_stage, by_model}` from `temper usage add`; each of `by_stage` and `by_model` maps a name to `{tokens, ms, runs, cost, unpriced, partial}`, and a stage also to `models` (the models its launches asked for). `cost` is the estimate at list prices of the rows read from an agent's transcript (null when none was), `unpriced` counts the rows without one, `partial` says some row's cost leaves out calls on a model with no price here, `no_price` names those models as the price table reads them, `no_transcript` counts the rows whose agent transcript was not found, and `missing_agents` names the agent ids they were given |
+| `usage` | `{tokens, ms, by_stage, by_model}` from `temper usage add`; each of `by_stage` and `by_model` maps a name to `{tokens, ms, runs}`, and a stage also to `models` (the models its launches asked for). The tokens and the time are the totals Claude Code gives for each agent (its context at its last call, not what it was billed for) |
 | `time` | `{started, updated}` |
 
 The file is replaced whole each time (written beside it, then moved), so a reader never sees half of
@@ -101,8 +101,8 @@ it, and a link at that path is replaced, never written through.
 
 `temper report --html [-o OUT]` renders the view as one page (`scripts/run_report.py`): the stages with
 the skips and the loops and their reasons, the plan's files by group, the Build grid, the Review findings,
-the Check markers with their failing lines, the criteria with their evidence, and the time, tokens and
-estimated cost by stage and by model, with the main conversation. Its head says Done only once the Commit
+the Check markers with their failing lines, the criteria with their evidence, and the time and tokens
+by stage and by model. Its head says Done only once the Commit
 gate has passed. By default it writes `report.html` in the run's spec folder. At a passed Commit, `temper
 next` gives three actions in turn: steps that end with `temper report --end`, which prints the report for
 the orchestrator to show; a question whether to write the page too (Write report.html runs

@@ -35,7 +35,7 @@ function richView(): J {
   ]
   v.check_markers = [
     { name: 'compile', state: 'pass', detail: 'tsc', value: null, lines: [] },
-    { name: 'tests', state: 'fail', detail: 'npm test', value: null, lines: ['tests/app.test.ts: expected 410, got 200'] },
+    { name: 'tests', state: 'fail', detail: 'npm test', value: null, lines: ['unit/app.test.ts: expected 410, got 200'] },
     { name: 'coverage', state: 'info', detail: 'coverage 81%', value: 81, lines: [] },
     { name: 'lint', state: 'pass', detail: 'eslint', value: null, lines: [] },
     { name: 'security', state: 'none', detail: '', value: null, lines: [] },
@@ -84,7 +84,7 @@ describe('the pane: the whole run, read only', () => {
     expect(text).toContain('Plan files · as you approved them')
     expect(text).toContain('G1 Tokens')
     expect(text).toContain('├ src/app.ts')
-    expect(text).toContain('└ tests/app.test.ts')
+    expect(text).toContain('└ unit/app.test.ts')
     // The Build grid: state, model, retries.
     expect(text).toContain('✓ PASS    Task 1: Issue a token · haiku-4-5')
     expect(text).toContain('● RED     Task 2: Expire a token · haiku-4-5 · 2 retries')
@@ -95,7 +95,7 @@ describe('the pane: the whole run, read only', () => {
     expect(text).toContain('#2 low the subject is not localized · accepted')
     // The Check markers with the failing lines.
     expect(text).toContain('✗ tests: npm test')
-    expect(text).toContain('tests/app.test.ts: expected 410, got 200')
+    expect(text).toContain('unit/app.test.ts: expected 410, got 200')
     expect(text).toContain('✓ compile: tsc')
     expect(text).toContain('○ security')
     // The criteria with their evidence, the loop and the clock.

@@ -145,7 +145,7 @@ Use a small Python project you can throw away (`<project>`), with pytest install
 ```
 mkdir -p ~/temper-try/jokes && cd ~/temper-try/jokes && git init -q
 printf 'JOKES = ["a", "b", "c"]\n\ndef first():\n    return JOKES[0]\n' > jokes.py
-mkdir tests && printf 'from jokes import first\n\ndef test_first():\n    assert first() == "a"\n' > tests/test_jokes.py
+mkdir unit && printf 'from jokes import first\n\ndef test_first():\n    assert first() == "a"\n' > unit/test_jokes.py
 git add . && git commit -qm base
 ```
 

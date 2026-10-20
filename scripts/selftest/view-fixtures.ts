@@ -14,7 +14,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -143,7 +143,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -158,7 +158,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "auto",
    "calls": [
-    "/plugin/scripts/temper park --verdict PARKED-NEEDS-DECISION --reason 'Build failed: tests pass: 2 tests fail: tests/app.test.ts'"
+    "/plugin/scripts/temper park --verdict PARKED-NEEDS-DECISION --reason 'Build failed: tests pass: 2 tests fail: unit/app.test.ts'"
    ],
    "say": "Build failed; the armed run parks for you.",
    "stage": "build",
@@ -168,14 +168,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -245,7 +245,7 @@ export const VIEWS: Record<string, unknown> = {
    {
     "failed": [
      {
-      "detail": "2 tests fail: tests/app.test.ts",
+      "detail": "2 tests fail: unit/app.test.ts",
       "name": "tests pass"
      }
     ],
@@ -284,15 +284,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -310,7 +303,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -439,7 +432,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -464,14 +457,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -575,15 +568,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -601,7 +587,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -757,7 +743,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -782,14 +768,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -898,15 +884,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -924,7 +903,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -1080,7 +1059,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -1105,14 +1084,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -1216,15 +1195,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -1242,7 +1214,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -1398,7 +1370,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -1423,14 +1395,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -1534,15 +1506,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -1560,7 +1525,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -1710,7 +1675,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -1735,14 +1700,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -1851,15 +1816,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -1877,7 +1835,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -2027,7 +1985,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -2052,14 +2010,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -2163,15 +2121,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -2181,7 +2132,7 @@ export const VIEWS: Record<string, unknown> = {
    "options": [
     {
      "calls": [
-      "/plugin/scripts/temper state redo build --reason 'tests pass: 2 tests fail: tests/app.test.ts'"
+      "/plugin/scripts/temper state redo build --reason 'tests pass: 2 tests fail: unit/app.test.ts'"
      ],
      "description": "Mend what the failed rows name, then check Build again.",
      "label": "Run Build again (Recommended)",
@@ -2269,7 +2220,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Save for later"
      }
     ],
-    "question": "Build: the check failed (tests pass: 2 tests fail: tests/app.test.ts). Run Build again?"
+    "question": "Build: the check failed (tests pass: 2 tests fail: unit/app.test.ts). Run Build again?"
    },
    "run_id": "run-pw",
    "stage": "build",
@@ -2286,7 +2237,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -2415,7 +2366,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -2438,14 +2389,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -2515,7 +2466,7 @@ export const VIEWS: Record<string, unknown> = {
    {
     "failed": [
      {
-      "detail": "2 tests fail: tests/app.test.ts",
+      "detail": "2 tests fail: unit/app.test.ts",
       "name": "tests pass"
      }
     ],
@@ -2554,15 +2505,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -2655,7 +2599,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -2784,7 +2728,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -2807,14 +2751,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -2918,15 +2862,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -2944,7 +2881,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -3073,7 +3010,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -3098,14 +3035,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -3209,15 +3146,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -3320,7 +3250,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -3476,7 +3406,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -3499,14 +3429,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -3615,15 +3545,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -3705,7 +3628,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -3861,7 +3784,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -3884,14 +3807,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -3995,15 +3918,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -4021,7 +3937,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -4171,7 +4087,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -4194,14 +4110,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -4305,15 +4221,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -4388,7 +4297,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -4544,7 +4453,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -4567,14 +4476,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -4683,15 +4592,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -4746,7 +4648,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -4902,7 +4804,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -4925,14 +4827,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -5036,15 +4938,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -5062,7 +4957,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -5218,7 +5113,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -5246,14 +5141,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -5357,15 +5252,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -5383,7 +5271,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -5539,7 +5427,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -5567,14 +5455,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -5678,15 +5566,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -5704,7 +5585,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -5860,7 +5741,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -5885,14 +5766,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -5996,15 +5877,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -6109,7 +5983,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -6238,7 +6112,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -6261,14 +6135,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -6384,15 +6258,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -6534,7 +6401,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -6663,7 +6530,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -6686,14 +6553,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -6804,15 +6671,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -6938,7 +6798,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -7067,7 +6927,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -7090,14 +6950,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": false,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -7208,15 +7068,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -7234,7 +7087,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -7363,7 +7216,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -7386,14 +7239,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -7504,15 +7357,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -7714,15 +7560,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -8008,15 +7847,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -8287,15 +8119,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -8468,15 +8293,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -8608,7 +8426,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -8737,7 +8555,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -8760,14 +8578,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": false,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -8876,15 +8694,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -9010,7 +8821,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -9139,7 +8950,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -9162,14 +8973,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": false,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -9273,15 +9084,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -9423,7 +9227,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -9552,7 +9356,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -9575,14 +9379,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": false,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -9686,15 +9490,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -9903,15 +9700,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -10119,7 +9909,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -10269,7 +10059,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -10292,14 +10082,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -10408,15 +10198,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -10658,7 +10441,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -10808,7 +10591,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -10831,14 +10614,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -10942,15 +10725,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
@@ -10968,7 +10744,7 @@ export const VIEWS: Record<string, unknown> = {
        "attempts": 0,
        "files": [
         "src/app.ts",
-        "tests/app.test.ts"
+        "unit/app.test.ts"
        ],
        "model": null,
        "n": 1,
@@ -11097,7 +10873,7 @@ export const VIEWS: Record<string, unknown> = {
    "grouped": false,
    "plan_files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "prefix": "",
@@ -11120,14 +10896,14 @@ export const VIEWS: Record<string, unknown> = {
    "approved": true,
    "files": [
     "src/app.ts",
-    "tests/app.test.ts",
+    "unit/app.test.ts",
     "src/mail.ts"
    ],
    "groups": [
     {
      "files": [
       "src/app.ts",
-      "tests/app.test.ts"
+      "unit/app.test.ts"
      ],
      "id": "G1",
      "title": "Tokens"
@@ -11231,15 +11007,8 @@ export const VIEWS: Record<string, unknown> = {
   "usage": {
    "by_model": {},
    "by_stage": {},
-   "cost": null,
-   "missing_agents": [],
    "ms": 0,
-   "no_price": [],
-   "no_transcript": 0,
-   "output_estimated": false,
-   "partial": false,
-   "tokens": 0,
-   "unpriced": 0
+   "tokens": 0
   },
   "version": 1,
   "written": "2026-01-01T00:00:00Z"

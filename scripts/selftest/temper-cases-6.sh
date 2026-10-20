@@ -195,7 +195,7 @@ assert_exit "M1: the printed rebase and then the printed reopen are accepted" 0 
 out="$("$TEMPER" task gate 1 --model m 2>&1)"; rc=$?
 assert_eq "M1: the culprit's reopened task does not pass on its pre-park RED and GREEN rows" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'no green run')"
 
-# M2 is covered by the guard case in temper-cases-2.sh and tests/mod/bash.test.ts
+# M2 is covered by the guard case in temper-cases-2.sh and by the mod's guard tests
 
 # M3 (normal run): a D-03 park refuses the gate of a sibling that finished in the same batch; the reopen says how to gate it
 d_setup
@@ -425,7 +425,7 @@ assert_eq "reopen: a sha accepted from any kept worktree of the group is accepte
 # pytest at the start of the Test command: exit 2 is no RED
 gg_setup
 mkdir -p "$WORKDIR/fakebin"; printf '#!/bin/sh\nexit ${ST_EXIT:-0}\n' > "$WORKDIR/fakebin/pytest"; chmod +x "$WORKDIR/fakebin/pytest"
-gp_mut "\`$FX_T2\`" "\`pytest -q tests/a_test.py\`"
+gp_mut "\`$FX_T2\`" "\`pytest -q unit/a_test.py\`"
 "$TEMPER" task start 1 >/dev/null 2>&1
 PATH="$WORKDIR/fakebin:$PATH" ST_EXIT=2 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
 st_edit src/a.sh; PATH="$WORKDIR/fakebin:$PATH" ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
@@ -455,38 +455,38 @@ assert_eq "orchestrator: Blocking questions go to one AskUserQuestion before the
 # --- Better tests from small task agents: Plan writes the cases, task show adds a pattern test ---
 gp_setup
 assert_exit "cases: the fixture plan with 2 cases per task passes" 0 "$TEMPER" gate plan
-gp_mut '**Test:** `bash tests/c_test.sh`
+gp_mut '**Test:** `bash unit/c_test.sh`
 **Cases:**
 - the normal input gives the expected result
-- an empty input is refused' '**Test:** `bash tests/c_test.sh`
+- an empty input is refused' '**Test:** `bash unit/c_test.sh`
 **Cases:**
 - the normal input gives the expected result'
 assert_exit "cases: a task with 1 case fails the plan gate" 1 "$TEMPER" gate plan
 assert_eq "cases: the row names the task and the count" "1" "$(gp_has 'Task 3: 1 case(s) under \*\*Cases:\*\*')"
 gp_setup
-gp_mut '**Test:** `bash tests/c_test.sh`
+gp_mut '**Test:** `bash unit/c_test.sh`
 **Cases:**
 - the normal input gives the expected result
-- an empty input is refused' '**Test:** `bash tests/c_test.sh`
+- an empty input is refused' '**Test:** `bash unit/c_test.sh`
 **Cases:** the normal input gives the expected result'
 assert_eq "cases: an inline value counts as one case and the checkbox does not count" "1" "$(gp_has 'Task 3: 1 case(s)')"
 gp_setup
-gp_mut '**Test:** `bash tests/c_test.sh`
+gp_mut '**Test:** `bash unit/c_test.sh`
 **Cases:**
 - the normal input gives the expected result
 - an empty input is refused
-' '**Test:** `bash tests/c_test.sh`
+' '**Test:** `bash unit/c_test.sh`
 '
 assert_eq "cases: a task with no **Cases:** fails with 0" "1" "$(gp_has 'Task 3: 0 case(s)')"
 # task show carries the cases and the nearest existing test as a pattern
-ST_PRE='mkdir -p tests; printf "# pattern marker\nsource src/helper.sh\n" > tests/helper_test.sh; printf "x\n" > tests/notes.txt; git add tests; git commit -q --no-verify -m "add tests"' st_setup; ST_PRE=""
+ST_PRE='mkdir -p unit; printf "# pattern marker\nsource src/helper.sh\n" > unit/helper_test.sh; printf "x\n" > unit/notes.txt; git add unit; git commit -q --no-verify -m "add tests"' st_setup; ST_PRE=""
 "$TEMPER" task start 1 >/dev/null 2>&1
 SHOW="$("$TEMPER" task show 1)"
 assert_eq "task show: the task's cases reach the agent" "1|1" \
   "$(printf '%s\n' "$SHOW" | grep -c '^\*\*Cases:\*\*$')|$(printf '%s\n' "$SHOW" | grep -c '^- an empty input is refused$')"
 assert_eq "task show: the nearest existing test of the same kind is the pattern, with its text (empty tests are skipped)" "1|1" \
-  "$(printf '%s\n' "$SHOW" | grep -c '^--- PATTERN TEST (tests/helper_test.sh: ')|$(printf '%s\n' "$SHOW" | grep -c '^# pattern marker$')"
-ST_PRE='mkdir -p tests; python3 -c "print(\"# big\"); [print(\"line %d\" % i) for i in range(900)]" > tests/big_test.sh; git add tests; git commit -q --no-verify -m "add a big test"' st_setup; ST_PRE=""
+  "$(printf '%s\n' "$SHOW" | grep -c '^--- PATTERN TEST (unit/helper_test.sh: ')|$(printf '%s\n' "$SHOW" | grep -c '^# pattern marker$')"
+ST_PRE='mkdir -p unit; python3 -c "print(\"# big\"); [print(\"line %d\" % i) for i in range(900)]" > unit/big_test.sh; git add unit; git commit -q --no-verify -m "add a big test"' st_setup; ST_PRE=""
 "$TEMPER" task start 1 >/dev/null 2>&1
 SHOW="$("$TEMPER" task show 1)"
 assert_eq "task show: a long pattern is cut at 2048 bytes on a line end and says so" "1|0|1" \

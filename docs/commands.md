@@ -341,7 +341,7 @@ that run up ([Entering at a stage](#stage-commands-are-doors)).
 
 ## Group G1: Reset tokens
 ### Task 1: Create PasswordResetService
-  **File:** src/auth/PasswordResetService.ts, tests/PasswordResetService.test.ts
+  **File:** src/auth/PasswordResetService.ts, unit/PasswordResetService.test.ts
   **Depends:** none
   **Cases:** a fresh token resets the password; an expired token is refused
 ### Task 2: Add the reset endpoint

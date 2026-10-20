@@ -423,8 +423,8 @@ assert_eq "round 2, 13: the group question's Stop makes no call" "Stop|0" "$(nx 
 
 # --- round 3: a narrow check of round 2 and a live run that looped back to Build ---
 # 1. A task with a **File:** line for each file declares them all (the live run's task agent was held to the last one).
-printf '# Tasks: x\n\n## Group G1: One\n**Depends:** none\n**Validate:** `true`\n\n### Task 1: a\n**File:** `orders.py`\n**File:** `tests/test_orders.py`, `orders.py`\n**Depends:** none\n**Test:** `true`\n' > r3-tasks.md
-assert_eq "round 3, 1: a task with two **File:** lines declares the files of both, each once" "orders.py tests/test_orders.py" \
+printf '# Tasks: x\n\n## Group G1: One\n**Depends:** none\n**Validate:** `true`\n\n### Task 1: a\n**File:** `orders.py`\n**File:** `unit/test_orders.py`, `orders.py`\n**Depends:** none\n**Test:** `true`\n' > r3-tasks.md
+assert_eq "round 3, 1: a task with two **File:** lines declares the files of both, each once" "orders.py unit/test_orders.py" \
   "$(python3 "$REPO_ROOT/scripts/tasks_md.py" parse r3-tasks.md | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin)['tasks'][0]['files']))")"
 rm -f r3-tasks.md
 # 2. next_stage takes only a stage of the run's own sequence, so no other value opens a forward move.
