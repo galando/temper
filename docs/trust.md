@@ -31,7 +31,9 @@ Claude Code file. A pack's link targets come from the skills and commands your s
   or lefthook. To remove, unset it, drop any Temper line, delete `temper-gate` and any 9.6.5 `temper-pre-commit`.
 - **Your toolchain.** Build and check run the test, lint and type check commands of your stack (detected,
   or set in `check.commands.*` in `.claude/temper.config`) and record their exit codes as evidence. A grouped
-  Build runs each task's declared test command in its worktree, the way your shell would.
+  Build runs each task's declared test command in its worktree, the way your shell would, but without the
+  environment variables whose names say they hold a credential (a key, a token, a secret, a password,
+  credentials, an auth socket): no command the CLI runs is handed your keys.
 - **Its own commits.** In a grouped Build the CLI commits each task's declared files in its worktree and merges
   them, as plain `git commit` and `git merge` calls that use git's own identity and settings (signing too, when
   you turned it on). Before one, it asks git only whether an identity is set (an exit status; git guesses none

@@ -35,8 +35,8 @@ that meets a version it does not know draws nothing and refuses nothing.
 
 - **`none`**: no run is active.
 - **`work`**: run each of `calls` in order (CLI calls, written out in full); launch every agent of
-  `agents` in one turn; when an agent returns, run its `after` calls, filling `{token_count}` and `{ms}`
-  from the Agent result. `steps`, when present, are the commit steps in order. Then ask `next` again.
+  `agents` in one turn; when an agent returns, run its `after` calls, filling `{ms}` from the Agent
+  result. `steps`, when present, are the commit steps in order. Then ask `next` again.
   An agent is `{type, model, prompt, after}`; a Build task agent also has `before` (its `task start`
   call) and names its `task`, `group`, `title` and `attempt`.
 - **`ask`**: ask `ask.question` with the AskUserQuestion tool exactly as given (header, question,
@@ -91,7 +91,7 @@ question is no answer. A typed message is never a move: it is a change request o
 | `criteria` | `[{id, priority, status, text, evidence}]` of the intent's success criteria |
 | `loops` | `[{from, to, reason, iteration, max, at}]` |
 | `skips` | `[{stage, reason, by}]` |
-| `usage` | `{tokens, ms, by_stage, by_model}` from `temper usage add`; each of `by_stage` and `by_model` maps a name to `{tokens, ms, runs}`, and a stage also to `models` (the models its launches asked for). The tokens and the time are the totals Claude Code gives for each agent (its context at its last call, not what it was billed for) |
+| `usage` | `{ms, by_stage, by_model}` from `temper usage add`; each of `by_stage` and `by_model` maps a name to `{ms, runs}`, and a stage also to `models` (the models its launches asked for). The time is the total Claude Code gives for each agent; since 9.7.4 no token count is recorded |
 | `time` | `{started, updated}` |
 
 The file is replaced whole each time (written beside it, then moved), so a reader never sees half of
@@ -101,8 +101,8 @@ it, and a link at that path is replaced, never written through.
 
 `temper report --html [-o OUT]` renders the view as one page (`scripts/run_report.py`): the stages with
 the skips and the loops and their reasons, the plan's files by group, the Build grid, the Review findings,
-the Check markers with their failing lines, the criteria with their evidence, and the time and tokens
-by stage and by model. Its head says Done only once the Commit
+the Check markers with their failing lines, the criteria with their evidence, and the time by stage and
+by model. Its head says Done only once the Commit
 gate has passed. By default it writes `report.html` in the run's spec folder. At a passed Commit, `temper
 next` gives three actions in turn: steps that end with `temper report --end`, which prints the report for
 the orchestrator to show; a question whether to write the page too (Write report.html runs

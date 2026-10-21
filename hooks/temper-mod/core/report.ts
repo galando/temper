@@ -21,15 +21,15 @@ function usageRows(u: RunView['usage']): string[] {
   return [
     USAGE_NOTE,
     '',
-    '| Stage | Launches | Tokens | ms |',
-    '|---|---|---|---|',
-    ...rows.map(r => `| ${r.stage} | ${r.runs} | ${r.tokens} | ${r.ms} |`),
+    '| Stage | Launches | ms |',
+    '|---|---|---|',
+    ...rows.map(r => `| ${r.stage} | ${r.runs} | ${r.ms} |`),
     '',
-    '| Model | Launches | Tokens | ms |',
-    '|---|---|---|---|',
-    ...[...u.byModel].sort((a, b) => (a.model < b.model ? -1 : a.model > b.model ? 1 : 0)).map(r => `| ${r.model} | ${r.runs} | ${r.tokens} | ${r.ms} |`),
+    '| Model | Launches | ms |',
+    '|---|---|---|',
+    ...[...u.byModel].sort((a, b) => (a.model < b.model ? -1 : a.model > b.model ? 1 : 0)).map(r => `| ${r.model} | ${r.runs} | ${r.ms} |`),
     '',
-    `Total: ${launches} launches, ${u.tokens} tokens, ${u.ms} ms`,
+    `Total: ${launches} launches, ${u.ms} ms`,
   ]
 }
 

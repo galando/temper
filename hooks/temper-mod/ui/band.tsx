@@ -41,7 +41,7 @@ function chip(kit: Kit, step: StageView, compact: boolean) {
 }
 
 // The band above the prompt. It has no button and decides nothing: the person decides in the `Temper gate` question,
-// and takes a run up again by typing /temper:temper. Full mode: TEMPER, the title, where the run is, its time and tokens,
+// and takes a run up again by typing /temper:temper. Full mode: TEMPER, the title, where the run is, its time,
 // the stage timeline with its loops back and their reasons, the status of the stage and its details (the groups in
 // Build, the findings in Review, the failed checks). Minimal draws the timeline only. Off draws nothing (the caller
 // passes next(e)).

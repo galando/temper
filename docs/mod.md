@@ -47,7 +47,7 @@ The same mod runs in the desktop app (Code tab).
 Everything the mod draws comes from `.temper/view.json` (ADR 0013), so it shows what the CLI knows.
 
 The bar shows where the run is: each stage with its result (passed, failed, skipped, here, to come), the
-loops back with their reasons, the time and the tokens of the run, one sentence of status, and the details
+loops back with their reasons, the time of the run, one sentence of status, and the details
 of the stage (the groups and tasks of Build, the open findings of Review, the failed checks). It has no
 button and decides nothing. To take a run up again, type `/temper:temper`: Claude asks the gate question
 again.
@@ -69,7 +69,7 @@ it yourself, until you close it by hand). Once you close it by hand, it stays cl
 At the commit the run prints its report in the terminal (`temper report`), and asks whether to write it
 as one page too, `report.html` in the spec folder (`temper report --html`), from the same view: the stages,
 loops and skips with their reasons, the plan, the Build grid, the findings, the Check markers, the criteria
-with evidence, and the time and tokens by stage and by model. The commit carries the page,
+with evidence, and the time by stage and by model. The commit carries the page,
 so it goes with the change.
 
 ## Each stage

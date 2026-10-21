@@ -124,8 +124,8 @@ Python repository is enough), with a feature that splits into at least two tasks
   every task with its attempts in plain words. A failed attempt must name its model and its
   reason; an attempt with "no model given to task gate" means the orchestrator gated a task
   before its agent ran: stop and report it.
-- [ ] **Tokens in the report.** Type `/temper:temper report`. Expect a Usage section with tokens
-  and time per stage and per model, and a total.
+- [ ] **Time in the report.** Type `/temper:temper report`. Expect a Usage section with launches
+  and time per stage and per model, and a total, and no token count.
 - [ ] **A reused feature name.** Finish or clear a run, then start a new run with the same
   feature name. Expect the Intent gate's Continue to go through and Plan's `state set complexity`
   not to be refused.

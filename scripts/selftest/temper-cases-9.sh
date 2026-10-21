@@ -417,12 +417,12 @@ rm -rf .git
 fresh
 assert_eq "model: the line next gives before a stage runs names its model" "1" \
   "$(nx "int(d['say'] == 'Intent runs on %s.' % d['agents'][0]['model'] and bool(d['agents'][0]['model']))")"
-"$TEMPER" usage add --stage intent --model opus --token-count 10 --ms 5 >/dev/null 2>&1
+"$TEMPER" usage add --stage intent --model opus --ms 5 >/dev/null 2>&1
 assert_eq "model: the report's stage table names the model each stage was launched on" "1|opus" \
-  "$("$TEMPER" report 2>/dev/null | grep -cE '^  intent +1 +10 +5  opus$')|$(vw "','.join(d['usage']['by_stage']['intent']['models'])")"
-"$TEMPER" usage add --stage plan --model claude-haiku-5-5 --token-count 7 --ms 3 >/dev/null 2>&1
+  "$("$TEMPER" report 2>/dev/null | grep -cE '^  intent +1 +5  opus$')|$(vw "','.join(d['usage']['by_stage']['intent']['models'])")"
+"$TEMPER" usage add --stage plan --model claude-haiku-5-5 --ms 3 >/dev/null 2>&1
 assert_eq "live run 5: the model table names its rows column, and a long model id keeps the columns apart" "1|1" \
-  "$("$TEMPER" report 2>/dev/null | grep -cE '^  model +rows +tokens +ms$')|$("$TEMPER" report 2>/dev/null | grep -cE '^  claude-haiku-5-5 +1 +7 +3$')"
+  "$("$TEMPER" report 2>/dev/null | grep -cE '^  model +rows +ms$')|$("$TEMPER" report 2>/dev/null | grep -cE '^  claude-haiku-5-5 +1 +3$')"
 
 # --- live run 3: a passed Design whose concern needs the plan changed can step back to Plan ---
 fresh; gpass intent plan design
@@ -683,30 +683,31 @@ assert_eq "tier: a door after a tier changed at the plan gate takes the changed 
 # --- 9.7.2: usage is the totals Claude Code gives; the CLI opens no file of Claude Code's ---
 # 9.7.0 read each agent's transcript in Claude Code's own folder for billed tokens and a cost. That folder is not
 # Temper's (the privacy page says Temper reads only its own pack folder there), so the row is what the orchestrator
-# hands over, and an agent id is only accepted, as 9.7.0 and 9.7.1 after calls gave one.
+# hands over, and an agent id is only accepted, as 9.7.0 and 9.7.1 after calls gave one. Since 9.7.4 the row is the
+# time only: a token count an older after call passes is accepted and read by nothing.
 fresh
 out="$("$TEMPER" usage add --stage plan --model opus --agent abc123def --token-count 114370 --ms 9000 2>&1)"
-assert_eq "usage: the row is the totals given, and an old --agent is ignored" \
-  "OK: usage recorded (plan)|114370|9000|group,model,ms,stage,task,tokens,ts" \
-  "$out|$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s|%s' % (r['tokens'], r['ms'], ','.join(sorted(r))))")"
+assert_eq "usage: the row is the time given, and an old --agent or token count is ignored" \
+  "OK: usage recorded (plan)|9000|group,model,ms,stage,task,ts" \
+  "$out|$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s' % (r['ms'], ','.join(sorted(r))))")"
 out="$("$TEMPER" usage add --stage design --model opus --agent nothere12 2>&1)"; rc=$?
-assert_eq "usage: an agent with no total given is recorded with empty values, never refused" "0|OK: usage recorded (design)|None|None" \
-  "$rc|$out|$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s' % (r['tokens'], r['ms']))")"
-"$TEMPER" usage add --stage review --model sonnet --token-count none --ms none >/dev/null 2>&1
-assert_eq "usage: none for both values is an empty row" "None|None" \
-  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print('%s|%s' % (r['tokens'], r['ms']))")"
+assert_eq "usage: an agent with no time given is recorded with an empty value, never refused" "0|OK: usage recorded (design)|None" \
+  "$rc|$out|$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print(r['ms'])")"
+"$TEMPER" usage add --stage review --model sonnet --ms none >/dev/null 2>&1
+assert_eq "usage: none for the time is an empty row" "None" \
+  "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[-1]; print(r['ms'])")"
 out="$("$TEMPER" task gate 1 --model haiku --agent nothere12 2>&1)"
 assert_eq "task gate: an agent id is no reason to refuse" "0" "$(printf '%s' "$out" | grep -c 'no usage for agent')"
 rep="$("$TEMPER" report 2>&1)"
-assert_eq "report: the terminal report gives tokens and time by stage, with no cost and no transcript" "1|1|1|0|0" \
-  "$(printf '%s\n' "$rep" | grep -cE '^  stage +rows +tokens +ms  model$')|$(printf '%s\n' "$rep" | grep -cE '^  plan +1 +114,370 +9000  opus$')|$(printf '%s\n' "$rep" | grep -c 'not what it was billed for')|$(printf '%s\n' "$rep" | grep -ciE 'cost|\$[0-9]')|$(printf '%s\n' "$rep" | grep -ci 'transcript')"
+assert_eq "report: the terminal report gives the time by stage, with no token count, no cost and no transcript" "1|1|0|0|0" \
+  "$(printf '%s\n' "$rep" | grep -cE '^  stage +rows +ms  model$')|$(printf '%s\n' "$rep" | grep -cE '^  plan +1 +9000  opus$')|$(printf '%s\n' "$rep" | grep -ci 'token')|$(printf '%s\n' "$rep" | grep -ciE 'cost|\$[0-9]')|$(printf '%s\n' "$rep" | grep -ci 'transcript')"
 "$TEMPER" report --html >/dev/null 2>&1
-assert_eq "report --html: time and tokens, no Cost column, no transcript" "1|0|0" \
-  "$(grep -c '<h2>Time and tokens</h2>' .temper/specs/demo/report.html)|$(grep -c '<th>Cost</th>' .temper/specs/demo/report.html)|$(grep -ci 'transcript' .temper/specs/demo/report.html)"
-assert_eq "view: the usage holds tokens, time, and the two tables of tokens, time and launches" "by_model,by_stage,ms,tokens|ms,runs,tokens" \
+assert_eq "report --html: the time, no Tokens or Cost column, no transcript" "1|0|0|0" \
+  "$(grep -c '<h2>Time</h2>' .temper/specs/demo/report.html)|$(grep -c '<th>Tokens</th>' .temper/specs/demo/report.html)|$(grep -c '<th>Cost</th>' .temper/specs/demo/report.html)|$(grep -ci 'transcript' .temper/specs/demo/report.html)"
+assert_eq "view: the usage holds the time and the two tables of time and launches, and no token count" "by_model,by_stage,ms|ms,runs" \
   "$(python3 -c "import json; u=json.load(open('.temper/view.json'))['usage']; print('%s|%s' % (','.join(sorted(u)), ','.join(sorted(k for k in u['by_model']['opus']))))")"
-assert_eq "next: an agent's after call takes its tokens and time, and no agent id" "1|0" \
-  "$(nx "int('--token-count {token_count} --ms {ms}' in d['agents'][0]['after'][0])")|$(nx "int('--agent' in d['agents'][0]['after'][0])")"
+assert_eq "next: an agent's after call takes its time, and no token count or agent id" "1|0" \
+  "$(nx "int('--ms {ms}' in d['agents'][0]['after'][0] and 'token' not in d['agents'][0]['after'][0])")|$(nx "int('--agent' in d['agents'][0]['after'][0])")"
 assert_eq "the CLI and its Python files expand no home folder and read no transcript, and usage_cost.py is gone" "0|no" \
   "$(git -C "$REPO_ROOT" ls-files -z -- scripts/temper 'scripts/*.py' | (cd "$REPO_ROOT" && xargs -0 grep -liE 'expanduser|\.jsonl|transcript') | wc -l | tr -d ' ')|$([[ -e "$REPO_ROOT/scripts/usage_cost.py" ]] && echo yes || echo no)"
 gpass intent plan build review check commit; _at commit

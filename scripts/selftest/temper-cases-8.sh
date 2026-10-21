@@ -496,11 +496,11 @@ assert_eq "report --html: a finding shows its confidence and where it is" "1|1" 
 assert_eq "report --html: -o - prints the page" "1" "$("$TEMPER" report --html -o - | grep -c '<!doctype html>')"
 assert_exit "report --html: never writes inside the plugin folder" 2 "$TEMPER" report --html -o "$REPO_ROOT/x.html"
 assert_exit "evidence add: a confidence outside 0 to 1 is refused" 1 "$TEMPER" evidence add --stage review --claim x --confidence 1.5
-"$TEMPER" usage add --stage plan --model claude-sonnet-4-6 --token-count 1500000 --ms 120000 >/dev/null 2>&1
-"$TEMPER" usage add --stage build --model claude-haiku-4-5 --token-count 2500 --ms 3000 >/dev/null 2>&1
+"$TEMPER" usage add --stage plan --model claude-sonnet-4-6 --ms 120000 >/dev/null 2>&1
+"$TEMPER" usage add --stage build --model claude-haiku-4-5 --ms 3000 >/dev/null 2>&1
 "$TEMPER" report --html >/dev/null 2>&1
-assert_eq "report --html: time and tokens by stage (with the model each stage ran on) and by model, in words" "1|1|1|1" \
-  "$(grep -c '<td>claude-haiku-4-5</td><td>1</td><td>2k</td><td>3 s</td>' .temper/specs/demo/report.html)|$(grep -c '<td>claude-sonnet-4-6</td><td>1</td><td>1.5M</td><td>2 min</td>' .temper/specs/demo/report.html)|$(grep -c '<th>Model</th><th>Launches</th>' .temper/specs/demo/report.html)|$(grep -c '<td>plan</td><td>claude-sonnet-4-6</td><td>1</td><td>1.5M</td><td>2 min</td>' .temper/specs/demo/report.html)"
+assert_eq "report --html: time by stage (with the model each stage ran on) and by model, in words, and no token count" "1|1|1|1|0" \
+  "$(grep -c '<td>claude-haiku-4-5</td><td>1</td><td>3 s</td>' .temper/specs/demo/report.html)|$(grep -c '<td>claude-sonnet-4-6</td><td>1</td><td>2 min</td>' .temper/specs/demo/report.html)|$(grep -c '<th>Model</th><th>Launches</th><th>Time</th>' .temper/specs/demo/report.html)|$(grep -c '<td>plan</td><td>claude-sonnet-4-6</td><td>1</td><td>2 min</td>' .temper/specs/demo/report.html)|$(grep -c '<th>Tokens</th>' .temper/specs/demo/report.html)"
 # Done only once the Commit gate has passed; a run at Commit before that is still in progress.
 python3 - "$WORKDIR" <<'PY'
 import json, sys

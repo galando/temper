@@ -453,8 +453,8 @@ st_setup() { # sw_setup + the upstream gates ADR 0009 asks for + both groups sta
   sw_setup
   printf '{"plan":{"verdict":"PASS"},"intent":{"verdict":"PASS"}}\n' > .temper/gates.json
   # the declared Test: commands are controllable from outside the worktree: ST_EXIT is the exit, ST_SLEEP
-  # hangs, ST_LONG prints a long output
-  local t="bash -c 'echo boom; pwd; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
+  # hangs, ST_LONG prints a long output, ST_ENV prints the names of the variables the command was given
+  local t="bash -c 'echo boom; pwd; [ -z \"\$ST_ENV\" ] || env | cut -d= -f1; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
   gp_mut '`bash unit/a_test.sh`' "\`$t\`"; gp_mut '`bash unit/b_test.sh`' "\`$t\`"; gp_mut '`bash unit/c_test.sh`' "\`$t\`"
   [[ -z "${ST_PRE:-}" ]] || eval "$ST_PRE"   # a case may edit the plan before the first group start
   "$TEMPER" group start G1 >/dev/null 2>&1; "$TEMPER" group start G2 >/dev/null 2>&1
@@ -559,6 +559,12 @@ assert_eq "task test: a hung command is killed and exits 124" "124" "$rc"
 assert_eq "task test: the timed-out run is recorded with exit 124" "124" \
   "$(python3 -c "import json; print(json.load(open('.temper/evidence/build.json'))[-1]['exit_code'])")"
 
+# 9.7.4: a command the CLI runs is given every variable but those whose names say they hold a credential
+st_setup; "$TEMPER" task start 1 >/dev/null 2>&1
+out="$(ST_ENV=1 ST_EXIT=1 T_KEY=1 T_TOKEN=1 T_SECRET=1 TPASSWORD=1 T_AUTH_SOCK=1 T_CREDENTIALS=1 T_SETTING=1 T_TOKENIZER=1 \
+  "$TEMPER" task test 1 --phase red 2>&1)"
+assert_eq "task test: the command gets no credential-named variable, and every other variable" "0|1|1|1" \
+  "$(printf '%s\n' "$out" | grep -cxE 'T_KEY|T_TOKEN|T_SECRET|TPASSWORD|T_AUTH_SOCK|T_CREDENTIALS')|$(printf '%s\n' "$out" | grep -cx T_SETTING)|$(printf '%s\n' "$out" | grep -cx T_TOKENIZER)|$(printf '%s\n' "$out" | grep -cx PATH)"
 # task test runs the task's own declared Test: command (design Resolution 3); a substituted one is refused
 st_setup; "$TEMPER" task start 1 >/dev/null 2>&1
 out="$("$TEMPER" task test 1 --phase red -- false 2>&1)"; rc=$?
@@ -570,7 +576,7 @@ out="$("$TEMPER" task gate 1 --model m 2>&1)"; rc=$?
 assert_eq "task gate: false-for-RED and true-for-GREEN substitution cannot pass the gate" "1|1" "$rc|$(printf '%s' "$out" | grep -c '^FAIL: no green run')"
 assert_eq "task gate: the substituted attempt is not committed or ticked" "3|failed" "$(st_unticked)|$(st_field 1 status)"
 st_setup; "$TEMPER" task start 1 >/dev/null 2>&1
-DECL="bash -c 'echo boom; pwd; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
+DECL="bash -c 'echo boom; pwd; [ -z \"\$ST_ENV\" ] || env | cut -d= -f1; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
 ST_EXIT=2 "$TEMPER" task test 1 --phase red -- "$DECL" >/dev/null 2>&1; rc=$?
 assert_eq "task test: the declared command itself after -- is accepted, exit passed through" "2|red:2" "$rc|$(st_rows 1)"
 assert_eq "task test: the row records the declared command" "1" \
@@ -692,13 +698,13 @@ assert_eq "task show: the group context is kept whole inside the budget" "64" "$
 
 # retry -> escalate -> park (D-03), restore on FAIL, usage recording
 st_nextcount() { printf '%s\n' "$1" | grep -c '^NEXT:'; }
-st_attempt() { # st_attempt <model> <tokens> <ms>: start Task 1, write a declared file and a stray one, no RED: a FAIL
+st_attempt() { # st_attempt <model> <ms>: start Task 1, write a declared file and a stray one, no RED: a FAIL
   "$TEMPER" task start 1 >/dev/null 2>&1
   st_edit src/a.sh; st_edit stray.txt
-  "$TEMPER" task gate 1 --model "$1" --token-count "$2" --ms "$3" 2>&1
+  "$TEMPER" task gate 1 --model "$1" --ms "$2" 2>&1
 }
 st_setup
-out="$(st_attempt claude-haiku-5-5 2100 41000)"; rc=$?
+out="$(st_attempt claude-haiku-5-5 41000)"; rc=$?
 assert_eq "retry: attempt 1 FAIL prints exactly one NEXT line, retry on the task model" "1|NEXT: retry Task 1 on claude-haiku-5-5" \
   "$(st_nextcount "$out")|$(printf '%s\n' "$out" | grep '^NEXT:')"
 assert_eq "retry: the failed attempt's worktree and branch are discarded, the group worktree never saw its files" "no|no|no" \
@@ -707,7 +713,7 @@ assert_eq "retry: the group is not parked after one failure and Task 1 is offere
   "$(python3 -c "import json; print(json.load(open('.temper/groups.json'))['groups']['G1']['status'])")|attempt $("$TEMPER" schedule | python3 -c "
 import json,sys
 print(next(json.loads(l)['attempt'] for l in sys.stdin if l.startswith('{') and json.loads(l).get('task')==1))")"
-out="$(st_attempt claude-haiku-5-5 1900 39000)"
+out="$(st_attempt claude-haiku-5-5 39000)"
 assert_eq "retry: attempt 2 FAIL prints one NEXT line, escalate on the escalation model" "1|NEXT: escalate Task 1 on sonnet" \
   "$(st_nextcount "$out")|$(printf '%s\n' "$out" | grep '^NEXT:')"
 assert_eq "retry: the schedule offers the escalation model for attempt 3" "sonnet|3" \
@@ -715,7 +721,7 @@ assert_eq "retry: the schedule offers the escalation model for attempt 3" "sonne
 import json,sys
 r=next(json.loads(l) for l in sys.stdin if l.startswith('{') and json.loads(l).get('task')==1)
 print('%s|%s' % (r['model'], r['attempt']))")"
-out="$(st_attempt sonnet 5200 90000)"; rc=$?
+out="$(st_attempt sonnet 90000)"; rc=$?
 assert_eq "retry: attempt 3 FAIL prints one NEXT line, park the group, exit 1" "1|1|NEXT: park group G1" \
   "$rc|$(st_nextcount "$out")|$(printf '%s\n' "$out" | grep '^NEXT:')"
 assert_eq "park: the group is parked with a reason naming the task" "parked|1" \
@@ -723,18 +729,18 @@ assert_eq "park: the group is parked with a reason naming the task" "parked|1" \
 assert_eq "park: the schedule stops offering G1 tasks and still offers G2" "3" "$(sg_ready)"
 out="$("$TEMPER" task start 1 2>&1)"; rc=$?
 assert_eq "park: a fourth attempt cannot start (exit 1, names the parked group)" "1|1" "$rc|$(printf '%s' "$out" | grep -c 'parked')"
-assert_eq "usage: three attempts carry model, outcome, reason, tokens and ms" \
-  "claude-haiku-5-5/FAIL/2100/41000,claude-haiku-5-5/FAIL/1900/39000,sonnet/FAIL/5200/90000" \
+assert_eq "usage: three attempts carry model, outcome, reason and ms, and no token count" \
+  "claude-haiku-5-5/FAIL/41000,claude-haiku-5-5/FAIL/39000,sonnet/FAIL/90000" \
   "$(python3 -c "
 import json
 a=json.load(open('.temper/groups.json'))['tasks']['1']['attempts']
-assert all(x['reason'] for x in a)
-print(','.join('%s/%s/%s/%s' % (x['model'],x['outcome'],x['tokens'],x['ms']) for x in a))")"
+assert all(x['reason'] for x in a) and not any('tokens' in x for x in a)
+print(','.join('%s/%s/%s' % (x['model'],x['outcome'],x['ms']) for x in a))")"
 # the other group is unaffected and can still pass
 "$TEMPER" task start 3 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 3 --phase red >/dev/null 2>&1
 mkdir -p ".claude/worktrees/temper-demo-G2/src" 2>/dev/null; echo c > ".claude/worktrees/temper-demo-G2/src/c.sh"
 ST_EXIT=0 "$TEMPER" task test 3 --phase green >/dev/null 2>&1
-out="$("$TEMPER" task gate 3 --model claude-haiku-5-5 --token-count 10 --ms 5 2>&1)"
+out="$("$TEMPER" task gate 3 --model claude-haiku-5-5 --ms 5 2>&1)"
 assert_eq "park: a task in the other group still passes and prints only NEXT: schedule" "0|NEXT: schedule" \
   "$(printf '%s\n' "$out" | grep -c '^FAIL')|$(printf '%s\n' "$out" | grep '^NEXT:')"
 
@@ -746,14 +752,15 @@ git -C "$ST_WT" add src/a.sh >/dev/null 2>&1; git -C "$ST_WT" -c user.name=t -c 
 "$TEMPER" task gate 1 --model claude-haiku-5-5 >/dev/null 2>&1
 "$TEMPER" task start 1 >/dev/null 2>&1
 assert_eq "retry: the next attempt's worktree holds the tracked declared file's start content" "original" "$(cat "$T1W/src/a.sh")"
-assert_eq "retry: tokens and ms are optional (recorded as null)" "None|None" \
-  "$(python3 -c "import json; a=json.load(open('.temper/groups.json'))['tasks']['1']['attempts'][0]; print('%s|%s' % (a['tokens'],a['ms']))")"
+assert_eq "retry: ms is optional (recorded as null)" "None" \
+  "$(python3 -c "import json; a=json.load(open('.temper/groups.json'))['tasks']['1']['attempts'][0]; print(a['ms'])")"
 # a passing gate prints no retry/escalate/park line
 st_setup; "$TEMPER" task start 1 >/dev/null 2>&1; ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh
 ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
 out="$("$TEMPER" task gate 1 --model claude-haiku-5-5 --token-count 7 --ms 9 2>&1)"
-assert_eq "usage: a PASS records tokens and ms and prints only NEXT: schedule" "7/9|NEXT: schedule" \
-  "$(python3 -c "import json; a=json.load(open('.temper/groups.json'))['tasks']['1']['attempts'][0]; print('%s/%s' % (a['tokens'],a['ms']))")|$(printf '%s\n' "$out" | grep '^NEXT:')"
+assert_eq "usage: a PASS records ms, reads no token count an older after call passes, and prints only NEXT: schedule" \
+  "9|no|NEXT: schedule" \
+  "$(python3 -c "import json; a=json.load(open('.temper/groups.json'))['tasks']['1']['attempts'][0]; print('%s|%s' % (a['ms'], 'yes' if 'tokens' in a else 'no'))")|$(printf '%s\n' "$out" | grep '^NEXT:')"
 
 assert_exit "an unknown task subcommand exits 1" 1 "$TEMPER" task frobnicate
 setup
@@ -770,7 +777,7 @@ gg_pass() { # gg_pass <task> <file>: drive one task through RED, an edit, GREEN 
   ST_EXIT=1 "$TEMPER" task test "$1" --phase red >/dev/null 2>&1
   st_edit "$2"
   ST_EXIT=0 "$TEMPER" task test "$1" --phase green >/dev/null 2>&1
-  "$TEMPER" task gate "$1" --model claude-haiku-5-5 --token-count 10 --ms 5 >/dev/null 2>&1
+  "$TEMPER" task gate "$1" --model claude-haiku-5-5 --ms 5 >/dev/null 2>&1
 }
 gg_g() { # gg_g <group> <field>
   python3 -c "
@@ -875,7 +882,7 @@ gi_pass() { # gi_pass <task> <group> <file> <content>: RED, edit in the task's o
   ST_EXIT=1 "$TEMPER" task test "$1" --phase red >/dev/null 2>&1
   mkdir -p "$wt/$(dirname "$3")"; printf '%s\n' "$4" > "$wt/$3"
   ST_EXIT=0 "$TEMPER" task test "$1" --phase green >/dev/null 2>&1
-  "$TEMPER" task gate "$1" --model claude-haiku-5-5 --token-count 10 --ms 5 >/dev/null 2>&1
+  "$TEMPER" task gate "$1" --model claude-haiku-5-5 --ms 5 >/dev/null 2>&1
 }
 gi_all() { # every task passed and both group gates PASS
   gi_setup
@@ -1032,18 +1039,18 @@ print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"; }
 gg_setup
 # Task 1 fails twice (haiku, haiku) then passes on the escalation model; Task 2 passes at once
 for a in 1 2; do
-  "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model claude-haiku-5-5 --token-count 100 --ms 1000 >/dev/null 2>&1
+  "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model claude-haiku-5-5 --ms 1000 >/dev/null 2>&1
 done
 "$TEMPER" task start 1 >/dev/null 2>&1
 ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
-"$TEMPER" task gate 1 --model sonnet --token-count 500 --ms 3000 >/dev/null 2>&1
+"$TEMPER" task gate 1 --model sonnet --ms 3000 >/dev/null 2>&1
 gg_pass 2 src/b.sh
 "$TEMPER" group gate G1 >/dev/null 2>&1
-assert_eq "group report: tokens are totalled per model across every attempt" '{"claude-haiku-5-5": 210, "sonnet": 500}' "$(gr_json tokens_by_model)"
+assert_eq "group report: the time is totalled per model across every attempt" '{"claude-haiku-5-5": 2005, "sonnet": 3000}' "$(gr_json ms_by_model)"
 assert_eq "group report: attempts per task carry model and outcome" "3|1" \
   "$(gr_json attempts | python3 -c "import json,sys; a=json.load(sys.stdin); print(len(a['1']))")|$(gr_json attempts | python3 -c "import json,sys; a=json.load(sys.stdin); print(len(a['2']))")"
-assert_eq "group report: attempt rows keep model, outcome, tokens and ms" "sonnet|PASS|500|3000" \
-  "$(gr_json attempts | python3 -c "import json,sys; r=json.load(sys.stdin)['1'][-1]; print('%s|%s|%s|%s' % (r['model'],r['outcome'],r['tokens'],r['ms']))")"
+assert_eq "group report: attempt rows keep model, outcome and ms" "sonnet|PASS|3000" \
+  "$(gr_json attempts | python3 -c "import json,sys; r=json.load(sys.stdin)['1'][-1]; print('%s|%s|%s' % (r['model'],r['outcome'],r['ms']))")"
 assert_eq "group report: one escalation (Task 1 ran a third attempt)" "1" "$(gr_json escalations)"
 assert_eq "group report: no parked group, no open review findings" "[]|0" "$(gr_json parked)|$(gr_json review_findings_open)"
 assert_eq "group report: wall time is recorded for the passed group only" "yes|no" \
@@ -1064,8 +1071,8 @@ assert_eq "group report: open review findings are counted from the review ledger
 "$TEMPER" evidence resolve --stage review --id 2 --fixed-by "abc" >/dev/null 2>&1
 assert_eq "group report: a resolved finding is no longer open" "1" "$(gr_json review_findings_open)"
 out="$("$TEMPER" group report 2>&1)"; rc=$?
-assert_eq "group report: the text form prints exit 0 and the headline numbers" "0|1|1" \
-  "$rc|$(printf '%s' "$out" | grep -c 'moved to the stronger model after two failed attempts: 1')|$(printf '%s' "$out" | grep -c 'claude-haiku-5-5.*210')"
+assert_eq "group report: the text form prints exit 0 and the headline numbers, and no token count" "0|1|1|0" \
+  "$rc|$(printf '%s' "$out" | grep -c 'moved to the stronger model after two failed attempts: 1')|$(printf '%s' "$out" | grep -c 'claude-haiku-5-5 2 s, sonnet 3 s')|$(printf '%s' "$out" | grep -ci 'token')"
 # parked group
 gg_setup
 for i in 1 2 3; do "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model m >/dev/null 2>&1; done
@@ -1079,8 +1086,8 @@ assert_eq "state archive: gate-ledger.json gets a grouped block with the report 
 import json
 g=json.load(open('.temper/specs/demo/gate-ledger.json')).get('grouped') or {}
 print('%s|%s|%s|%s' % (1 if g else 0, g.get('task_model'), g.get('escalation_model'), len(g.get('attempts') or {})))")"
-assert_eq "state archive: the grouped block carries tokens_by_model" "1" \
-  "$(python3 -c "import json; print(1 if json.load(open('.temper/specs/demo/gate-ledger.json'))['grouped']['tokens_by_model'] else 0)")"
+assert_eq "state archive: the grouped block carries ms_by_model" "1" \
+  "$(python3 -c "import json; print(1 if json.load(open('.temper/specs/demo/gate-ledger.json'))['grouped']['ms_by_model'] else 0)")"
 setup; sw_setup >/dev/null 2>&1; setup; rm -f .temper/groups.json
 "$TEMPER" gate plan >/dev/null 2>&1; "$TEMPER" state archive >/dev/null 2>&1
 assert_eq "state archive: a run with no groups.json (a /temper:fix run) has no grouped block" "0" \
@@ -1101,51 +1108,53 @@ for k in sys.argv[1].split('.'):
     v=v.get(k,'') if isinstance(v,dict) else ''
 print(json.dumps(v,sort_keys=True) if isinstance(v,(dict,list)) else v)" "$1"; }
 setup
-assert_exit "usage add: a recorded row exits 0" 0 "$TEMPER" usage add --stage plan --model sonnet --token-count 1000 --ms 4000
-"$TEMPER" usage add --stage build --model claude-haiku-5-5 --token-count 300 --ms 2000 --task 4 >/dev/null 2>&1
-"$TEMPER" usage add --stage build --model sonnet --token-count 700 >/dev/null 2>&1
+assert_exit "usage add: a recorded row exits 0" 0 "$TEMPER" usage add --stage plan --model sonnet --ms 4000
+"$TEMPER" usage add --stage build --model claude-haiku-5-5 --ms 2000 --task 4 >/dev/null 2>&1
+"$TEMPER" usage add --stage build --model sonnet >/dev/null 2>&1
 assert_eq "usage add: rows land in .temper/usage.json with the task and group" "3|4" \
   "$(python3 -c "import json; r=json.load(open('.temper/usage.json')); print('%d|%s' % (len(r), r[1].get('task')))")"
 assert_eq "usage add: a missing value is recorded as null and never blocks" "None|None" \
   "$(python3 -c "import json; r=json.load(open('.temper/usage.json'))[2]; print('%s|%s' % (r['ms'], r.get('group')))")"
 assert_exit "usage add: an unknown stage exits 1" 1 "$TEMPER" usage add --stage commit --model sonnet
 assert_exit "usage add: a stage name that is not on the list exits 1" 1 "$TEMPER" usage add --stage ../x --model sonnet
-assert_exit "usage add: a non-numeric --token-count exits 1" 1 "$TEMPER" usage add --stage plan --model sonnet --token-count lots
+assert_exit "usage add: a non-numeric --ms exits 1" 1 "$TEMPER" usage add --stage plan --model sonnet --ms lots
 assert_exit "usage add: a missing --stage exits 1" 1 "$TEMPER" usage add --model sonnet
 assert_exit "usage add: an unknown flag exits 1" 1 "$TEMPER" usage add --stage plan --bogus 1
 assert_eq "usage add: all four value flags may be absent (a null row)" "0|4" \
   "$("$TEMPER" usage add --stage check >/dev/null 2>&1; echo $?)|$(python3 -c "import json; print(len(json.load(open('.temper/usage.json'))))")"
-assert_eq "report --json: usage totals tokens and ms, skipping nulls" "2000|6000|4" \
-  "$(us_json usage.total.tokens)|$(us_json usage.total.ms)|$(us_json usage.total.rows)"
-assert_eq "report --json: usage per stage" "1000|2000" \
-  "$(us_json usage.by_stage.build.tokens)|$(us_json usage.by_stage.build.ms)"
-assert_eq "report --json: usage per model" "1700|300" \
-  "$(us_json usage.by_model.sonnet.tokens)|$(us_json usage.by_model.claude-haiku-5-5.tokens)"
+assert_eq "report --json: usage totals ms and rows, skipping nulls, and no token count" "6000|4|" \
+  "$(us_json usage.total.ms)|$(us_json usage.total.rows)|$(us_json usage.total.tokens)"
+assert_eq "report --json: usage per stage" "2000|2" \
+  "$(us_json usage.by_stage.build.ms)|$(us_json usage.by_stage.build.rows)"
+assert_eq "report --json: usage per model" "4000|2000" \
+  "$(us_json usage.by_model.sonnet.ms)|$(us_json usage.by_model.claude-haiku-5-5.ms)"
 out="$("$TEMPER" report 2>&1)"
-assert_eq "report: the text form has a usage section with the stages and the total" "1|1|1" \
-  "$(printf '%s' "$out" | grep -c '^Usage')|$(printf '%s' "$out" | grep -c 'build.*1,000')|$(printf '%s' "$out" | grep -c 'total.*2,000')"
+assert_eq "report: the text form has a usage section with the stages and the total, and no token count" "1|1|1|0" \
+  "$(printf '%s' "$out" | grep -c '^Usage')|$(printf '%s' "$out" | grep -c 'build.* 2000 ')|$(printf '%s' "$out" | grep -c 'total.* 6000$')|$(printf '%s' "$out" | grep -ci 'token')"
+assert_eq "usage add: a count an older after call passes is read by nothing" "0|no" \
+  "$("$TEMPER" usage add --stage check --token-count 5 --ms 1 >/dev/null 2>&1; echo $?)|$(python3 -c "import json; print('yes' if any('tokens' in r for r in json.load(open('.temper/usage.json'))) else 'no')")"
 setup
 assert_eq "report --json: a run with no usage rows has no usage key" "" "$(us_json usage)"
 assert_eq "report: a run with no usage rows prints no usage section" "0" "$("$TEMPER" report 2>&1 | grep -c '^Usage')"
 # grouped task attempts count once
 gg_setup
-"$TEMPER" usage add --stage plan --model sonnet --token-count 50 --ms 10 >/dev/null 2>&1
-for a in 1 2; do "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model claude-haiku-5-5 --token-count 100 --ms 1000 >/dev/null 2>&1; done
+"$TEMPER" usage add --stage plan --model sonnet --ms 10 >/dev/null 2>&1
+for a in 1 2; do "$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model claude-haiku-5-5 --ms 1000 >/dev/null 2>&1; done
 "$TEMPER" task start 1 >/dev/null 2>&1
 ST_EXIT=1 "$TEMPER" task test 1 --phase red >/dev/null 2>&1; st_edit src/a.sh; ST_EXIT=0 "$TEMPER" task test 1 --phase green >/dev/null 2>&1
-"$TEMPER" task gate 1 --model sonnet --token-count 500 --ms 3000 >/dev/null 2>&1
+"$TEMPER" task gate 1 --model sonnet --ms 3000 >/dev/null 2>&1
 assert_eq "task gate: every attempt (failed and passed) writes one task usage row" "3|3" \
   "$(python3 -c "import json; r=[x for x in json.load(open('.temper/usage.json')) if x['stage']=='task']; print(len(r))")|$(python3 -c "import json; r=[x for x in json.load(open('.temper/usage.json')) if x['stage']=='task' and x.get('task')==1 and x.get('group')=='G1']; print(len(r))")"
-assert_eq "report --json: grouped attempts count once in the totals (700 task + 50 plan)" "750" "$(us_json usage.total.tokens)"
-assert_eq "report --json: the task stage total is the attempts once" "700|2" \
-  "$(us_json usage.by_stage.task.tokens)|$(python3 -c "import json; print(len([x for x in json.load(open('.temper/usage.json')) if x['stage']=='task' and x['model']=='claude-haiku-5-5']))")"
+assert_eq "report --json: grouped attempts count once in the totals (5000 task + 10 plan)" "5010" "$(us_json usage.total.ms)"
+assert_eq "report --json: the task stage total is the attempts once" "5000|2" \
+  "$(us_json usage.by_stage.task.ms)|$(python3 -c "import json; print(len([x for x in json.load(open('.temper/usage.json')) if x['stage']=='task' and x['model']=='claude-haiku-5-5']))")"
 "$TEMPER" task start 2 >/dev/null 2>&1; "$TEMPER" task gate 2 --model m >/dev/null 2>&1
-assert_eq "task gate: no --model/--token-count/--ms still writes a null usage row" "4" \
+assert_eq "task gate: no --model/--ms still writes a null usage row" "4" \
   "$(python3 -c "import json; print(len([x for x in json.load(open('.temper/usage.json')) if x['stage']=='task']))")"
-assert_eq "group report: still totals from groups.json (unchanged by the usage file)" '{"claude-haiku-5-5": 200, "sonnet": 500}' "$(gr_json tokens_by_model)"
+assert_eq "group report: still totals from groups.json (unchanged by the usage file)" '{"claude-haiku-5-5": 2000, "sonnet": 3000}' "$(gr_json ms_by_model)"
 "$TEMPER" gate plan >/dev/null 2>&1; "$TEMPER" state archive >/dev/null 2>&1
-assert_eq "state archive: gate-ledger.json keeps the usage section" "700|50" \
-  "$(python3 -c "import json; u=json.load(open('.temper/specs/demo/gate-ledger.json'))['usage']; print('%s|%s' % (u['by_stage']['task']['tokens'], u['by_stage']['plan']['tokens']))" 2>/dev/null)"
+assert_eq "state archive: gate-ledger.json keeps the usage section" "5000|10" \
+  "$(python3 -c "import json; u=json.load(open('.temper/specs/demo/gate-ledger.json'))['usage']; print('%s|%s' % (u['by_stage']['task']['ms'], u['by_stage']['plan']['ms']))" 2>/dev/null)"
 "$TEMPER" state clear >/dev/null 2>&1
 assert_eq "state clear: removes the usage file" "0" "$([[ -f .temper/usage.json ]] && echo 1 || echo 0)"
 assert_eq "help documents: usage add" "1" "$("$TEMPER" --help | grep -cF -- 'usage add')"
@@ -1198,8 +1207,8 @@ assert_eq "orchestrator: the loop runs temper next, and /temper:build is a door 
   "$(grep -c 'scripts/temper next --json` and do what its `action` says' "$OT" | sed 's/^[1-9][0-9]*$/1/')|$(grep -qF 'commands/temper.md' "$REPO_ROOT/commands/build.md" && grep -qF 'Entering at a stage' "$REPO_ROOT/commands/build.md" && echo 1 || echo 0)"
 assert_eq "orchestrator: the page names no grouped command and no stage brief (temper next gives them)" "0" \
   "$(for c in 'group start' 'temper schedule' 'task start' 'task gate' 'group gate' 'temper integrate' 'agents/build-task.md' 'agents/plan.md'; do grep -qF -- "$c" "$OT" && echo x; done | wc -l | tr -d ' ')"
-assert_eq "orchestrator: an agent's after calls run with its tokens and time filled in, and no agent id" "yes|0" \
-  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -qF 'run its `after` calls: `{token_count}` (how many model tokens the agent used, a whole number) and `{ms}` come from the Agent result' && echo yes || echo no)|$(grep -c '{agent}' "$OT")"
+assert_eq "orchestrator: an agent's after calls run with its time filled in, and no agent id or token count" "yes|0|0" \
+  "$(tr '\n' ' ' < "$OT" | tr -s ' ' | grep -qF 'run its `after` calls: `{ms}` (how long the agent ran, in milliseconds) comes from the Agent result' && echo yes || echo no)|$(grep -c '{agent}' "$OT")|$(grep -ciE 'subagent_tokens|token_count' "$OT")"
 assert_eq "orchestrator: fix.md records the RCA launch, and the loop records the rest" "yes|yes" \
   "$(grep -qF 'usage add --stage rca' "$OF" && echo yes || echo no)|$(grep -qF 'scripts/temper next --json' "$OF" && echo yes || echo no)"
 assert_eq "orchestrator-patterns: the run files list groups.json and usage.json" "2" \

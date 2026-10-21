@@ -170,16 +170,15 @@ export function deriveView(get: (path: string) => string | undefined): string | 
     const rows = usage.filter((r): r is J => typeof r === 'object' && r !== null && !Array.isArray(r))
     const n = (x: unknown): number => (typeof x === 'number' && Number.isInteger(x) ? x : 0)
     const by = (key: string): J => {
-      const out: Record<string, { tokens: number; ms: number; runs: number }> = {}
+      const out: Record<string, { ms: number; runs: number }> = {}
       for (const r of rows) {
-        const b = (out[typeof r[key] === 'string' && r[key] !== '' ? (r[key] as string) : 'unknown'] ??= { tokens: 0, ms: 0, runs: 0 })
+        const b = (out[typeof r[key] === 'string' && r[key] !== '' ? (r[key] as string) : 'unknown'] ??= { ms: 0, runs: 0 })
         b.runs += 1
-        b.tokens += n(r.tokens)
         b.ms += n(r.ms)
       }
       return out
     }
-    v.usage = { tokens: rows.reduce((t, r) => t + n(r.tokens), 0), ms: rows.reduce((t, r) => t + n(r.ms), 0), by_stage: by('stage'), by_model: by('model') }
+    v.usage = { ms: rows.reduce((t, r) => t + n(r.ms), 0), by_stage: by('stage'), by_model: by('model') }
   }
   const review = json(get('.temper/evidence/review.json'))
   if (Array.isArray(review)) {

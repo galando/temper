@@ -546,7 +546,7 @@ class Builder:
         lines.extend(extra_lines)
         lines.append(self.plugin_line())
         return {"type": "temper:temper-%s" % stage, "model": models.get(stage, ""), "prompt": "\n".join(lines),
-                "after": [self.c("usage add --stage %s --model %s --token-count {token_count} --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
+                "after": [self.c("usage add --stage %s --model %s --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
 
     def feedback_lines(self):
         fb = self.r.latest_feedback()
@@ -638,7 +638,7 @@ class Builder:
                 agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or "haiku",
                                "before": [self.c("task start %d" % t["task"])],
                                "prompt": "Follow %s/agents/build-task.md exactly.\n%s\nTask: %d." % (self.plugin, self.plugin_line(), t["task"]),
-                               "after": [self.c("task gate %d --model %s --token-count {token_count} --ms {ms}" % (t["task"], t.get("model")))],
+                               "after": [self.c("task gate %d --model %s --ms {ms}" % (t["task"], t.get("model")))],
                                "task": t["task"], "group": t.get("group"), "title": t.get("title"), "attempt": t.get("attempt")})
             return {"action": "work", "stage": "build", "calls": [], "agents": agents,
                     "say": "Build hands out %d task%s%s." % (len(agents), "" if len(agents) == 1 else "s", on_model(agents))}
@@ -646,7 +646,7 @@ class Builder:
         running = [(int(n), v) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"]
         if running:
             return {"action": "wait", "stage": "build", "tasks": [
-                {"task": n, "after": [self.c("task gate %d --model %s --token-count {token_count} --ms {ms}" % (n, v.get("model") or self.r.ctx.get("task_model") or "haiku"))]}
+                {"task": n, "after": [self.c("task gate %d --model %s --ms {ms}" % (n, v.get("model") or self.r.ctx.get("task_model") or "haiku"))]}
                 for n, v in sorted(running)],
                 "say": "Tasks are running. When you launched their agents in this conversation, wait for each result, then run its after calls; "
                        "otherwise (a new conversation) run the after calls now."}
@@ -1147,23 +1147,21 @@ def plan_view(run):
 
 
 def usage(run):
-    """The totals Claude Code gave for each launch (tokens and time), summed, and by stage and by model."""
+    """The time Claude Code gave for each launch, summed, and by stage and by model (no token count since 9.7.4)."""
     rows = [r for r in run.usage if isinstance(r, dict)]
     num = lambda r, k: r[k] if isinstance(r.get(k), int) and not isinstance(r.get(k), bool) else 0
 
     def by(key):
         out = {}
         for r in rows:
-            b = out.setdefault(r.get(key) or "unknown", {"tokens": 0, "ms": 0, "runs": 0})
+            b = out.setdefault(r.get(key) or "unknown", {"ms": 0, "runs": 0})
             b["runs"] += 1
-            b["tokens"] += num(r, "tokens")
             b["ms"] += num(r, "ms")
             # a stage names the models its launches asked for
             if key == "stage" and r.get("model") and r.get("model") not in b.setdefault("models", []):
                 b["models"].append(r.get("model"))
         return out
-    return {"tokens": sum(num(r, "tokens") for r in rows), "ms": sum(num(r, "ms") for r in rows),
-            "by_stage": by("stage"), "by_model": by("model")}
+    return {"ms": sum(num(r, "ms") for r in rows), "by_stage": by("stage"), "by_model": by("model")}
 
 
 def loops(run):

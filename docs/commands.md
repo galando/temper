@@ -133,7 +133,7 @@ shows what is covered and what is not.
 In `full` mode the bar above the prompt shows `TEMPER`, the run's title, the step in plain words
 ("Step 2 of 6: Plan"), the stages as chips (green with a check for passed, red with a cross for a failed
 check, yellow for a stage you skipped, a filled chip for the stage you are at, plain chips for the stages
-to come), the loops back with their reasons, the time and tokens of the run, one sentence of status
+to come), the loops back with their reasons, the time of the run, one sentence of status
 ("Plan: waiting for your answer to the Temper gate question.") and the details of the stage: the groups and tasks of Build, the open findings of Review,
 the failed checks. Under about 100 columns (for example while the pane is docked) the bar uses a compact
 form without borders. `minimal` shows the chips only.

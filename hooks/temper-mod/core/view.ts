@@ -58,8 +58,8 @@ export type View = {
   criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string; evidence: string[] }>
   passed: number
   total: number
-  // Minutes from the run's start to its last change, and the tokens of its agents (null and 0 when not known).
-  clock: { minutes: number | null; tokens: number }
+  // Minutes from the run's start to its last change (null when not known).
+  clock: { minutes: number | null }
   loopMarks: LoopMark[]
   // The plan's files by Build group (approved: as the person approved them at the plan gate); null with no plan.
   planTree: { approved: boolean; groups: Array<{ id: string; title: string; files: string[] }>; other: string[] } | null
@@ -177,7 +177,7 @@ export function buildView(input: ViewInput): View {
     loops: rv.loops.map(l => `${cap(l.from)} to ${cap(l.to)}: ${l.iteration} of ${l.max}${l.reason ? ` (${l.reason})` : ''}`),
     line: input.line ?? null,
     next: { action: rv.next.action, say: rv.next.say, header: rv.ask?.question.header ?? null },
-    clock: { minutes: minutesOf(rv.time.started, rv.time.updated), tokens: rv.usage.tokens },
+    clock: { minutes: minutesOf(rv.time.started, rv.time.updated) },
     loopMarks: rv.loops.map(l => ({ from: l.from, to: l.to, iteration: l.iteration, max: l.max, reason: l.reason })),
     planTree: planTreeOf(rv),
     grid: rv.build.groups.length === 0 ? null : rv.build.groups.map(g => ({ id: g.id, title: g.title, status: g.status, tasks: g.tasks.map(t => ({ n: t.n, title: t.title, state: t.state, model: t.model, retries: Math.max(t.attempts - 1, 0) })) })),
@@ -200,12 +200,10 @@ function planTreeOf(rv: RunView): View['planTree'] {
   return { approved: rv.plan.approved, groups: rv.plan.groups, other: rv.plan.files.filter(f => !grouped.has(f)) }
 }
 
-// "42 min · 1.2M tokens": the band's measure of the run; null when neither is known.
+// "42 min": the band's measure of the run; null when it is not known.
 export function clockText(v: View): string | null {
-  const parts: string[] = []
-  if (v.clock.minutes !== null) parts.push(v.clock.minutes >= 60 ? `${Math.floor(v.clock.minutes / 60)} h ${v.clock.minutes % 60} min` : `${v.clock.minutes} min`)
-  if (v.clock.tokens > 0) parts.push(`${v.clock.tokens >= 1e6 ? `${(v.clock.tokens / 1e6).toFixed(1)}M` : v.clock.tokens >= 1000 ? `${Math.floor(v.clock.tokens / 1000)}k` : v.clock.tokens} tokens`)
-  return parts.length > 0 ? parts.join(' · ') : null
+  if (v.clock.minutes === null) return null
+  return v.clock.minutes >= 60 ? `${Math.floor(v.clock.minutes / 60)} h ${v.clock.minutes % 60} min` : `${v.clock.minutes} min`
 }
 
 // "↺ Review to Build (1 of 2): a real bug": a loop on the timeline.

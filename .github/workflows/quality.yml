@@ -93,11 +93,11 @@ jobs:
       - name: claude plugin validate --strict
         run: claude plugin validate --strict .
       - name: Generate the mod types
-        # Loading the plugin writes .claude-plugin/types/. The key is invalid on purpose:
-        # the load happens before any request, and nothing is sent that needs a login.
+        # Loading the plugin writes .claude-plugin/types/. No key or login is set: the load happens before
+        # Claude Code would need one, and the step fails when the types are missing.
         run: |
-          ANTHROPIC_API_KEY=sk-invalid claude -p "hi" --plugin-dir . || true
-          test -f .claude-plugin/types/claude-code/index.d.ts
+          timeout 120 claude -p "hi" --plugin-dir . --debug-file "$RUNNER_TEMP/mod-debug.log" || true
+          test -f .claude-plugin/types/claude-code/index.d.ts || { tail -40 "$RUNNER_TEMP/mod-debug.log" || true; exit 1; }
       - name: Type check the mod (tsc via tsconfig.mod.json)
         run: npx -p typescript@5.6 tsc -p tsconfig.mod.json
       - name: Assert the reviewed calls list
