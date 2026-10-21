@@ -25,7 +25,7 @@ export type TemperView = {
   criteria: Array<{ id: string; text: string; status: 'passed' | 'open'; priority: string; evidence: string[] }>
   passed: number
   total: number
-  clock: { minutes: number | null; tokens: number }
+  clock: { minutes: number | null }
   loopMarks: Array<{ from: string; to: string; iteration: number; max: number; reason: string }>
   planTree: { approved: boolean; groups: Array<{ id: string; title: string; files: string[] }>; other: string[] } | null
   grid: Array<{ id: string; title: string; status: string; tasks: Array<{ n: number; title: string; state: 'waiting' | 'running' | 'red' | 'green' | 'pass' | 'fail' | 'parked'; model: string | null; retries: number }> }> | null

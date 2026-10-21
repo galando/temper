@@ -13,7 +13,8 @@ take for either.
 
 **No key in CI.** The Mod job made Claude Code write the mod's type declarations by running
 `claude -p "hi" --plugin-dir .` with an invalid `ANTHROPIC_API_KEY` set: a key and a request in one line. It runs with
-no key or login now, and fails when the declarations are missing.
+no key or login now (Claude Code says it is not logged in, and has written the declarations by then), and fails when
+they are missing.
 
 **No token count.** 9.7.0 had the orchestrator take each agent's token count from Claude Code (the Agent result, or
 `subagent_tokens` in a completion notice) and pass it to the CLI, which kept it in `.temper/usage.json`, the report and
@@ -23,6 +24,7 @@ the bar. Temper records the time only now.
 - `temper report`, `temper report --html`, `/temper:temper report` and the bar show launches and time, and no token
   count. `temper group report` gives `ms_by_model` in place of `tokens_by_model`.
 - `/temper:temper` and `/temper:fix` fill `{ms}` only.
+- The view the mod puts in `$.state` (`types/index.d.ts`, `TemperView`) has a clock of minutes only.
 
 **No credential handed to a test.** The commands the CLI runs in a grouped Build (a task's test, a group's Validate
 command, the integration suite) get the environment without the variables whose names say they hold a credential: a
