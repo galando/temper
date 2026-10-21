@@ -8,7 +8,9 @@
 > also in 9.7.0, more of it is history: the mod reads only `.temper/view.json` (it rebuilds nothing from
 > the other `.temper` files), the game is removed, the git alias, exec and plumbing rules are gone with the
 > shell parser, and the reviewed call list no longer holds `clock.sleep`, `fs.list` or the `prompt.*`
-> calls. [The mod](mod.md) describes it as it is.
+> calls. Since 9.7.3 the mod sets no setting and runs no command: the parts about `$.config.set`, the
+> mode question, `$.command.run` and a managed settings file are history too. [The mod](mod.md)
+> describes it as it is.
 
 **Status:** awaiting approval (Step 0). Nothing below is built yet.
 **Date:** 2026-10-02

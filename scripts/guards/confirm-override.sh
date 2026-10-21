@@ -7,8 +7,8 @@
 # stand between an agent and running it on its own; this hook adds Claude Code's
 # "ask" permission tier: when the Bash command contains a temper override invocation,
 # it emits permissionDecision "ask", so the person at the terminal explicitly
-# approves that one command before it runs. Combined with cmd_override recording the
-# git identity, an override now carries both a human click and a name.
+# approves that one command before it runs. Combined with cmd_override recording that
+# the person decided it at the gate, an override carries a human click and a record.
 #
 # This is an ASK, not a BLOCK: the orchestrator legitimately runs `temper override`
 # after the human picks "Override and continue" at a gate — the permission prompt is

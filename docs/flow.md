@@ -35,7 +35,7 @@ that meets a version it does not know draws nothing and refuses nothing.
 
 - **`none`**: no run is active.
 - **`work`**: run each of `calls` in order (CLI calls, written out in full); launch every agent of
-  `agents` in one turn; when an agent returns, run its `after` calls, filling `{tokens}` and `{ms}`
+  `agents` in one turn; when an agent returns, run its `after` calls, filling `{token_count}` and `{ms}`
   from the Agent result. `steps`, when present, are the commit steps in order. Then ask `next` again.
   An agent is `{type, model, prompt, after}`; a Build task agent also has `before` (its `task start`
   call) and names its `task`, `group`, `title` and `attempt`.

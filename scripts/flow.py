@@ -546,7 +546,7 @@ class Builder:
         lines.extend(extra_lines)
         lines.append(self.plugin_line())
         return {"type": "temper:temper-%s" % stage, "model": models.get(stage, ""), "prompt": "\n".join(lines),
-                "after": [self.c("usage add --stage %s --model %s --tokens {tokens} --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
+                "after": [self.c("usage add --stage %s --model %s --token-count {token_count} --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
 
     def feedback_lines(self):
         fb = self.r.latest_feedback()
@@ -638,7 +638,7 @@ class Builder:
                 agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or "haiku",
                                "before": [self.c("task start %d" % t["task"])],
                                "prompt": "Follow %s/agents/build-task.md exactly.\n%s\nTask: %d." % (self.plugin, self.plugin_line(), t["task"]),
-                               "after": [self.c("task gate %d --model %s --tokens {tokens} --ms {ms}" % (t["task"], t.get("model")))],
+                               "after": [self.c("task gate %d --model %s --token-count {token_count} --ms {ms}" % (t["task"], t.get("model")))],
                                "task": t["task"], "group": t.get("group"), "title": t.get("title"), "attempt": t.get("attempt")})
             return {"action": "work", "stage": "build", "calls": [], "agents": agents,
                     "say": "Build hands out %d task%s%s." % (len(agents), "" if len(agents) == 1 else "s", on_model(agents))}
@@ -646,7 +646,7 @@ class Builder:
         running = [(int(n), v) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"]
         if running:
             return {"action": "wait", "stage": "build", "tasks": [
-                {"task": n, "after": [self.c("task gate %d --model %s --tokens {tokens} --ms {ms}" % (n, v.get("model") or self.r.ctx.get("task_model") or "haiku"))]}
+                {"task": n, "after": [self.c("task gate %d --model %s --token-count {token_count} --ms {ms}" % (n, v.get("model") or self.r.ctx.get("task_model") or "haiku"))]}
                 for n, v in sorted(running)],
                 "say": "Tasks are running. When you launched their agents in this conversation, wait for each result, then run its after calls; "
                        "otherwise (a new conversation) run the after calls now."}

@@ -41,48 +41,38 @@ There are **two** layers, and both are needed for the full guarantee:
 /temper:pack enable guardrails
 ```
 
-This asks which project settings file to use: `.claude/settings.local.json` (personal,
-the default, because each command holds this machine's plugin folder) or
+This prints the hook entries for you to add yourself: Temper never opens, reads or writes a
+Claude Code settings file, the project's or your home folder's. It runs
+`${CLAUDE_PLUGIN_ROOT}/scripts/guardrails-snippet.py`, which reads only the plugin's own
+`${CLAUDE_PLUGIN_ROOT}/packs/guardrails/settings-guardrails.json` and prints its `hooks`
+object. Hooks in a settings file get no CLAUDE_PLUGIN_ROOT variable, so each printed command
+is the word `bash`, a space, and then, in double quotes, the plugin's absolute folder
+followed by `/scripts/guards/` and the script's file name. Add the entries to the `hooks`
+object of `.claude/settings.local.json` (personal, the right home for them, because each
+command holds this machine's plugin folder; keep it out of commits) or
 `.claude/settings.json` (shared with everyone who works on the project; a teammate whose
-plugin sits in another folder sees those commands as stale). It shows the change, and on your confirmation merges the hook blocks of
-`${CLAUDE_PLUGIN_ROOT}/packs/guardrails/settings-guardrails.json` into that file. Hooks in a
-settings file get no CLAUDE_PLUGIN_ROOT variable, so each command written there is the
-word `bash`, a space, and then, in double quotes, the plugin's absolute folder followed by
-`/scripts/guards/` and the script's file name. Temper never reads or writes your home
-settings, so the command refuses to run when the project folder is your home folder, and
-it refuses an installed copy of the plugin and a folder inside the plugin folder too (it
-asks the temper CLI, which refuses those folders). When you pick
-`.claude/settings.local.json` and git neither tracks nor ignores that file, the same
-confirmation offers to add it to the project's `.gitignore` (once: a line that is already
-there is not added again), and this machine's plugin folder stays out of commits once git
-ignores the file. A `.gitignore` line does not stop git from committing a file it already
-tracks, so for a tracked file no line is offered and the confirmation says that
-`git rm --cached .claude/settings.local.json` stops tracking it.
+plugin sits in another folder gets commands that point at a missing folder), appending
+each block to its event's list. The command also adds `guardrails` to `packs:`. It refuses
+to run when the project folder is your home folder, in an installed copy of the plugin and
+in a folder inside the plugin folder (it asks the temper CLI, which refuses those folders).
 
 The blocks fire when the **agent** edits or writes files (block-secrets, the regression
 test guard and the protected paths guard on every Edit/Write, then the import check and
 the formatter after it) or runs Bash (block-secrets, the commit gate and the override
 prompt on every Bash call; the commit-gate check is a no-op unless the command is a
-`git commit`). The merge is additive: it keeps your other hooks, and it replaces an
-earlier Temper guard entry instead of adding a second one. A Temper guard entry is a
-hook command that names one of the guard script files, under the current plugin folder,
-or under an earlier plugin folder or the guard scripts folder of versions before 9.6.5
-outside your project. The same change removes the Temper guard entries from the other
-project settings file, so none is left behind there. A copy of a guard script inside
-your project, or one named through a relative path or the CLAUDE_PROJECT_DIR variable,
-is yours and is never touched. It also adds `guardrails` to `packs:`. To uninstall, run
-`/temper:pack disable guardrails`: it removes the Temper guard entries from both project
-settings files and the `packs:` entry.
+`git commit`). Add them next to your other hooks, and replace an earlier Temper guard
+entry instead of adding a second one. A Temper guard entry is a hook command that runs
+one of the guard script files from a Temper plugin folder: the current one, an earlier
+one, or the guard scripts folder of versions before 9.6.5. A copy of a guard script
+inside your project, or one named through a relative path or the CLAUDE_PROJECT_DIR
+variable, is yours. To uninstall, run `/temper:pack disable guardrails`: it removes the
+`packs:` entry and tells you which entries to remove from your settings files.
 
-The commands hold the plugin folder as it was when you enabled the pack. A plugin upgrade
+The commands hold the plugin folder as it was when you added them. A plugin upgrade
 moves that folder, and the commands then run an old or missing copy of the guard scripts
 (Claude Code keeps an earlier version's folder for a while after an upgrade, so the old
-copy can go on running). `/temper:pack` and `/temper:init` list the Temper guard entries
-with `${CLAUDE_PLUGIN_ROOT}/scripts/guard-entries.py`, which reads only the two project
-settings files and marks an entry stale when its script lies outside the current plugin
-folder or does not exist. When one is stale, they ask, as a question of its own, whether
-to replace them with the current guardrails set: the whole current set is written, after
-the change is shown, in place of every Temper guard entry in both files.
+copy can go on running). Run `/temper:pack enable guardrails` again to print the current
+entries, and put them in place of the old ones.
 
 To copy the blocks by hand instead, take the `hooks` object of
 `${CLAUDE_PLUGIN_ROOT}/packs/guardrails/settings-guardrails.json` and, in every command, put
@@ -260,7 +250,7 @@ The single fail-closed path for each script is documented below. Everything else
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-forbidden-imports.sh` | PostToolUse | **warn** (no-op by default) | An edited file imports a name on the explicit denylist (empty by default) |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/protect-regression-test.sh` | PreToolUse (Edit\|Write) | **BLOCK** | A /temper:fix run edits the regression test it recorded at RED (`state.regression_test`) — the fix loop's own check must not be weakened by the agent running it |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-protected-paths.sh` | PreToolUse (Edit\|Write) | **BLOCK** (no-op by default) | The edited file matches a `protect: paths:` pattern in temper.config (generated classes, frozen packages) — enforced at edit time, every mode, not just at the autonomous commit gate |
-| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `${CLAUDE_PLUGIN_ROOT}/scripts/temper override`: it emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records the git identity (`by`) |
+| `${CLAUDE_PLUGIN_ROOT}/scripts/guards/confirm-override.sh` | PreToolUse (Bash) | **ASK** | The command invokes `${CLAUDE_PLUGIN_ROOT}/scripts/temper override`: it emits `permissionDecision: "ask"` so a human explicitly approves the one command that clears a FAIL gate; the override entry itself records that the person decided it (`by`) |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/run-formatter.sh` | PostToolUse (Edit\|Write) | **format** (no-op by default) | Never blocks — runs `format: cmd:` from temper.config on each edited file so drift never accumulates; a formatter failure is a stderr warning, not a gate |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/block-uncommitted-gate.sh` | PreToolUse (Bash) | **BLOCK** | The agent runs `git commit` and `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate commit` FAILs (in-agent mirror of the native hook, below). A CLI refusal of an unsafe `.temper` folder (exit 3) blocks while a run is active (`.temper/build-state.json` exists, as a file or a link) and says to remove the symlink; with no run active it is a one-line warning, not a block |
 | `${CLAUDE_PLUGIN_ROOT}/scripts/guards/stage-marker.sh` | UserPromptSubmit (plugin hook, always on) | **no-op** (records only) | Never: it writes `.temper/pending-stage.json` when a `/temper:intent` prompt is submitted (the stage doors may end at any gate, ADR 0005 as amended), and blocks nothing |
@@ -333,8 +323,8 @@ The ASK tier, the third hook mode after allow and block. `${CLAUDE_PLUGIN_ROOT}/
 command that clears a FAIL gate, and it used to be reachable by the agent with nothing
 deterministic in between. This hook emits Claude Code's `permissionDecision: "ask"` for any
 Bash command invoking it, putting an explicit human approval click between an agent and its
-own approval route; `cmd_override` additionally records the approver's git identity in the
-`by` field of every overrides.json entry. Separation of duties, enforced at the exact seam
+own approval route; `cmd_override` additionally records, in the `by` field of every
+overrides.json entry, that the person decided it (Temper reads no name or email from git). Separation of duties, enforced at the exact seam
 where it used to be prompt-only.
 
 ### run-formatter.sh

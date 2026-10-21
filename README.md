@@ -7,7 +7,7 @@ The model never decides a verdict. With Claude Code 2.1.287 or later, a mod refu
 the current stage ([the mod](docs/mod.md)).
 
 [![Plugin directory](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
-[![Version](https://img.shields.io/badge/version-v9.7.2-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v9.7.3-blue)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1.287%2B%20for%20the%20mod-blue)](docs/mod.md#where-enforcement-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -68,7 +68,8 @@ flowchart LR
   explores or designs. A wrong intent costs words here. Later, it costs the whole plan.
 - **Each gate is computed.** `scripts/temper` is auditable bash with no network. It reads an evidence
   ledger and prints PASS or FAIL for each requirement. A red gate blocks `git commit` through a real
-  hook. A person can override a gate, and Temper records who did it. A confused model cannot.
+  hook. A person can override a gate at the gate question, and Temper records that and why. A confused
+  model cannot.
 - **The mod makes the stages real.** It refuses writes outside the stage, `--no-verify`, and a step
   only you may take when you did not choose it in the gate question. It draws the stage bar and the
   run's pane; at the end the run prints its report, and writes it as a page when you ask. It is not a
@@ -78,21 +79,18 @@ https://github.com/user-attachments/assets/31a9f4dc-8860-41be-97ca-f03460630f2f
 
 ## What the mod reads and writes
 
-The mod makes no network, `process` or `env` call, starts no agent and writes no file itself.
+The mod makes no network, `process` or `env` call, starts no agent and writes no file itself. It sets no
+setting and runs no command.
 
 - **Reads:** `.temper/view.json`, the one file the CLI writes for it. To find the project it looks for that
-  file in the session folder and in up to 11 folders above it. It also reads its own settings, store and
-  state, and the Claude Code version. When you change its mode or enforcement it reads the `/config` list
-  to find its own two rows. When `reviewerModel` is set it reads the session's agent list (id and type only).
-- **Configuration and environment it sets:** no environment variable. Only its own two settings, through
-  Claude Code: `temper.uiMode` and `temper.enforcement`. `temper.uiMode` changes when you type
-  `/temper:temper mode full`, `minimal` or `off`, or answer the mode question (your first `/temper:temper`
-  asks it, and so does a bare `mode`). `temper.enforcement` changes when you type
-  `/temper:temper enforcement on` or `off`. A word that changes either counts only from your prompt box,
-  and a setting your organization locked stays as it is.
-- **Slash commands it runs, and when:** only `/temper:temper` with no words, written as fixed text, when
-  you press Go on in the bar (or its key), and not while Claude is working. It never builds a command from
-  data.
+  file in the session folder and in up to 11 folders above it. It also reads its own options, store and
+  state, and the Claude Code version. When `reviewerModel` is set it reads the session's agent list (id and
+  type only).
+- **Configuration and environment it sets:** none. It sets no environment variable and changes no setting,
+  its own included. You set its options in `/config`: Temper UI mode (`full`, `minimal` or `off`) and Temper
+  enforcement (`on` or `off`), and the others below. `/temper:temper mode` and `/temper:temper enforcement`
+  only say what is set and where to change it.
+- **Slash commands it runs:** none. The bar has no button; you type `/temper:temper` to take a run up again.
 - **Hooks, and what each changes:**
   - `tool.call` reads the path of Write, Edit, MultiEdit and NotebookEdit and the text of Bash, and refuses
     some calls with a reason. Always: a write to the CLI's run files in `.temper/`, and a Bash word that
@@ -103,8 +101,10 @@ The mod makes no network, `process` or `env` call, starts no agent and writes no
     call goes on, and its result comes back unchanged. After a question dialog it reads your answer from the
     result.
   - `command.run` handles only `/temper:temper` (and `/temper`). It answers `status`, `timeline`, `help`,
-    `report`, `mode`, `enforcement` and `pane`. Typed in your prompt box, it may first ask the mode question
-    once and open the pane in full mode. Every other word, and every other command, goes on unchanged.
+    `report`, `mode`, `enforcement` and `pane` itself. Of those, only `pane` changes something (it opens or
+    closes the pane, in full mode) and `report` keeps the run report in its store; `mode` and
+    `enforcement` only say what is set. Typed in your prompt box, any other word opens the pane in full
+    mode, then goes on unchanged; every other command goes on unchanged.
   - `session.start` and `classic.SessionStart` find the project folder and load the run. Neither adds or
     changes a context, an instruction, a setting or another hook: each returns what Claude Code gave it.
   - `prompt.compose` adds one system prompt section, `temper:phase`, to each request: enforcement on or off,
@@ -122,17 +122,18 @@ The mod makes no network, `process` or `env` call, starts no agent and writes no
   dialog), `turn.complete` and `command.run` read the run again. That changes only the mod's own state: the
   project folder, the bar's view and the mode in `$.state`, which other plugins can read; at Done the run
   report kept in its store; in full mode a toast for a stage change, and the pane opened for a run that
-  started. Typed in your prompt box, a run word opens the pane before the run exists.
-- **Keeps:** your answers in the question dialogs, the run report and whether you were asked for a mode,
-  in its plugin store. Toasts also tell an enforcement change and the default mode.
+  started.
+- **Keeps:** your answers in the question dialogs and the run report, in its plugin store.
 
 Outside your project folder, Temper reads its own global pack folder `~/.claude/packs` (if you made one),
 the mod's plugin store, and the folders above the session folder where the mod looks for the project. It
-asks git for your name and email, to record who accepted an intent or overrode a gate, and for its hooks
-folder, which may be one your git config names. It reads no key, login, transcript or other Claude Code
-file. Setting up a project (`/temper:init`, or your first `/temper:temper`) points the repository's own
-`core.hooksPath` at Temper's commit hook, or, when that would stop a hook of yours, prints one line to add
-to it; `/temper:init` adds one `env` key to the project's `.claude/settings.json` only when you say yes. The full list is in
+asks git for its hooks folder, which may be one your git config names, and reads no name or email from
+git: an accepted intent or an override records that the person decided it at the gate. It reads no key, login,
+transcript, settings or other Claude Code file. Setting up a project (`/temper:init`, or your first
+`/temper:temper`) points the repository's own `core.hooksPath` at Temper's commit hook, or, when that would
+stop a hook of yours, prints one line to add to it. Temper never opens a Claude Code settings file, the
+project's or your home folder's: the guardrails pack prints its hook entries for you to add yourself. The
+full list is in
 [The mod](docs/mod.md#what-the-mod-reads-and-writes).
 
 ## Commands

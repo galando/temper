@@ -32,6 +32,10 @@
 #  12. No such script goes up a folder right after a variable or a $( ) span (a variable, a
 #      slash, then the parent folder's two dots), or in a Python file joins a path with the
 #      parent folder's name or os.pardir; comments included.
+#  13. No such script joins a word from quoted pieces with nothing between them (a quote mark
+#      doubled between two letters), comments included: the shell joins them back, so a name
+#      split this way hides from rules 9 to 12 and from a reviewer, and 9.7.2 was held for a
+#      hooks folder its tests wrote through such a split name.
 #
 # It checks the plugin folder it sits in, and nothing in the environment moves that folder: the
 # tests copy this script into a temporary plugin and run the copy there. The folder must be a git
@@ -785,6 +789,66 @@ if found:
 PY
 else
   fail "rule 12 needs python3 and a git work tree at $ROOT"
+fi
+
+# 13. No script joins a word from quoted pieces with nothing between them: a quote mark doubled
+# between two letters, digits or the marks _ . - (the same mark twice). The shell joins the pieces
+# back into one word, so a name split this way (a folder named like the mod's, written in two
+# halves) passes rules 9 to 12 and still names the folder. 9.7.0 added two such test lines that
+# wrote a hook into git's hook folder; 9.7.1 and 9.7.2 were held for them. Write the word whole.
+# Comments count. The files are those of rule 9. The doubled marks are fixed text in the one line
+# below (the tests give them a stand-in, as for rules 10 to 12).
+SPLIT_MARKS="\"\" ''"
+if command -v python3 >/dev/null 2>&1 && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  python3 - "$ROOT" "$SPLIT_MARKS" <<'PY' || FAIL=$((FAIL+1))
+import os, re, subprocess, sys
+root, marks = sys.argv[1], sys.argv[2].split()
+own = "scripts/validate-directory.sh"
+listed = subprocess.run(["git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+                        capture_output=True, check=False).stdout.decode("utf-8", "replace").split("\0")
+word = r"[A-Za-z0-9_.-]"
+split = re.compile(word + "(?:" + "|".join(re.escape(m) for m in marks) + ")" + word)
+
+
+def kind(rel, path):
+    if rel.endswith((".sh", ".bash", ".py")):
+        return True
+    if rel.startswith(".github/") and rel.endswith((".yml", ".yaml")):
+        return True
+    if "." not in os.path.basename(rel):
+        try:
+            with open(path, "rb") as f:
+                first = f.readline(200)
+        except OSError:
+            return False
+        return first.startswith(b"#!") and (re.search(rb"\b(?:ba)?sh\b", first) is not None or b"python" in first)
+    return False
+
+
+found = []
+for rel in listed:
+    if not rel or rel == own:
+        continue
+    path = os.path.join(root, rel)
+    if not os.path.isfile(path) or os.path.islink(path) or not kind(rel, path):
+        continue
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        continue
+    for n, line in enumerate(lines, 1):
+        if split.search(line):
+            found.append("  %s:%d: %s" % (rel, n, line.strip()[:100]))
+if found:
+    print("FAIL: a script joins a word from quoted pieces with nothing between them (write the word whole):")
+    print("\n".join(found[:20]))
+    if len(found) > 20:
+        print("  (and %d more)" % (len(found) - 20))
+    sys.exit(1)
+PY
+else
+  fail "rule 13 needs python3 and a git work tree at $ROOT"
 fi
 
 if [[ $FAIL -eq 0 ]]; then

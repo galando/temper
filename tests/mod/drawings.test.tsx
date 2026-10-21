@@ -1,7 +1,7 @@
 // The drawings of ADR 0013, each a plain function of view.json: the band's time, tokens and loops on the timeline; the
 // pane's plan files by group, Build grid (each task's state, model and retries), Review findings, Check markers with
-// their failing lines and acceptance criteria with their evidence. No drawing decides: the band has Go on only, the pane
-// no button. uiMode sets only how much is drawn. The views are the CLI's real output (scripts/selftest/view-fixtures.ts)
+// their failing lines and acceptance criteria with their evidence. No drawing decides, and neither the band nor the pane
+// has a button. uiMode sets only how much is drawn. The views are the CLI's real output (scripts/selftest/view-fixtures.ts)
 // with a run's own data put in.
 import { describe, expect, test } from 'claude-code/testing'
 
@@ -48,14 +48,14 @@ function richView(): J {
 const runWith = (on: Parameters<typeof world>[0], v: J) => world(on, { '.temper/view.json': JSON.stringify(v) })
 
 describe('the band: time, tokens and the loops on the timeline', () => {
-  test('full mode draws the clock and each loop with its reason, and only Go on', async ($, on) => {
+  test('full mode draws the clock and each loop with its reason, and no button', async ($, on) => {
     runWith(on, richView())
     await $.session.start(START)
     const band = await mount($, 'AbovePrompt', BAND())
     const text = JSON.stringify(await band.drawn())
     expect(text).toContain('42 min · 1.2M tokens')
     expect(text).toContain('↺ Review to Build (1 of 2): a real bug')
-    expect(await labels(band)).toEqual(['Go on'])
+    expect(await labels(band)).toEqual([])
   })
 
   test('minimal mode draws the stages only; off draws nothing of Temper', { options: { uiMode: 'minimal' } }, async ($, on) => {

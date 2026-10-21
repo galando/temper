@@ -188,6 +188,14 @@ up_python()    { up_name "$1"; printf 'import os\np = os.path.join(d, "up_dir", 
 up_pardir()    { printf 'import os\np = os.path.join(d, os.pardir)\n' > "$1/scripts/a.py"; }
 up_ok()        { up_name "$1"; printf 'ln -s up_dir/x rel-link\necho "the up_dir folder"\nD="$X/up_dir-old"\n' > "$1/scripts/a.sh"
                  printf 'ok = parts[-2] not in ("", ".", "up_dir")\n' > "$1/scripts/a.py"; }
+# Rule 13 names its doubled quote marks in one line too; these cases change them to @@ the same way,
+# so this file joins no word from quoted pieces.
+split_name()   { sed 's/^SPLIT_MARKS=.*$/SPLIT_MARKS="@@"/' "$1/scripts/validate-directory.sh" > "$1/scripts/v" \
+                   && mv "$1/scripts/v" "$1/scripts/validate-directory.sh"; }
+split_sh()     { split_name "$1"; printf 'hd="$(git rev-parse --git-common-dir)/ab@@cd"; mkdir -p "$hd"\n' > "$1/scripts/a.sh"; }
+split_comment(){ split_name "$1"; printf '# the folder ef@@gh\nexit 0\n' > "$1/scripts/a.sh"; }
+split_python() { split_name "$1"; printf 'd = "ij@@kl"\n' > "$1/scripts/a.py"; }
+split_ok()     { split_name "$1"; printf 'a="@@"\nb= @@ c\nd="$x"@@"$y"\n' > "$1/scripts/a.sh"; }
 glob_ok()      { glob_name "$1"
                  { printf 'n="${f##@/}"\nd="${p%%/@}"\n[[ "$v" == @/x ]] && echo a\n[[ "$p" == "$X"/@ ]] && echo b\n'
                    printf 'echo "$d/@"\nfind "$d" -mindepth 1 -maxdepth 1 -print0\ncase "$n" in pre-commit.bak.@) echo c ;; esac\n'
@@ -263,6 +271,10 @@ broken "rule 12: a comment that goes up a folder after a variable fails" up_comm
 broken "rule 12: a Python join with the parent folder's name fails" up_python
 broken "rule 12: a Python join with os.pardir fails" up_pardir
 variant "rule 12: a relative link, prose, a longer folder name and a tuple with the name pass" 0 up_ok
+broken "rule 13: a shell word joined from quoted pieces fails" split_sh
+broken "rule 13: a comment with such a word fails" split_comment
+broken "rule 13: a Python word joined from pieces fails" split_python
+variant "rule 13: the marks alone, between spaces, and between variables pass" 0 split_ok
 make_fixture no_git plain && check "a folder that is not a git work tree fails" 1 "$FIXTURES/no_git"
 
 # Nothing in the environment moves the checked folder: the variable older versions read to check
@@ -275,8 +287,8 @@ check "the old folder variable cannot point a broken plugin's check at a good on
 check "a good fixture passes with CDPATH naming it" 0 "$FIXTURES/good" CDPATH="$FIXTURES/good"
 
 # The shipped lists: rule 10 holds the names of the folders of the mod and its tests, rule 11 the
-# wildcard characters, and rule 12 the parent folder's name.
-for line in 'NAMED_SEGMENT_NAMES="hooks tests mod core ui"' "WILDCARD_CHARS='*?'" 'UP_SEGMENT_NAME=".."'; do
+# wildcard characters, rule 12 the parent folder's name, and rule 13 the doubled quote marks.
+for line in 'NAMED_SEGMENT_NAMES="hooks tests mod core ui"' "WILDCARD_CHARS='*?'" 'UP_SEGMENT_NAME=".."' "SPLIT_MARKS=\"\\\"\\\" ''\""; do
   if grep -qxF "$line" "$ROOT/scripts/validate-directory.sh"; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); echo "FAIL: the validator ships $line"; fi
 done
 

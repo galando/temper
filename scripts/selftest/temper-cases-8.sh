@@ -252,6 +252,8 @@ assert_eq "intent accept: the Status turns accepted and Accepted-by is added onc
   "$(grep -c '^\*\*Status:\*\* accepted' .temper/specs/demo/intent.md)|$(grep -c '^\*\*Accepted-by:\*\*' .temper/specs/demo/intent.md)"
 "$TEMPER" intent accept >/dev/null 2>&1
 assert_eq "intent accept: a second call changes nothing" "1" "$(grep -c '^\*\*Accepted-by:\*\*' .temper/specs/demo/intent.md)"
+assert_eq "intent accept: Accepted-by records the person at the gate, never git's name or email" "**Accepted-by:** the person at the Intent gate" \
+  "$(grep '^\*\*Accepted-by:\*\*' .temper/specs/demo/intent.md)"
 "$TEMPER" intent complete >/dev/null 2>&1
 assert_eq "intent complete: the Status turns completed with today's date" "1|1" \
   "$(grep -c '^\*\*Status:\*\* completed' .temper/specs/demo/intent.md)|$(grep -c "^\*\*Completed:\*\* $(date -u +%Y-%m-%d)" .temper/specs/demo/intent.md)"
@@ -494,8 +496,8 @@ assert_eq "report --html: a finding shows its confidence and where it is" "1|1" 
 assert_eq "report --html: -o - prints the page" "1" "$("$TEMPER" report --html -o - | grep -c '<!doctype html>')"
 assert_exit "report --html: never writes inside the plugin folder" 2 "$TEMPER" report --html -o "$REPO_ROOT/x.html"
 assert_exit "evidence add: a confidence outside 0 to 1 is refused" 1 "$TEMPER" evidence add --stage review --claim x --confidence 1.5
-"$TEMPER" usage add --stage plan --model claude-sonnet-4-6 --tokens 1500000 --ms 120000 >/dev/null 2>&1
-"$TEMPER" usage add --stage build --model claude-haiku-4-5 --tokens 2500 --ms 3000 >/dev/null 2>&1
+"$TEMPER" usage add --stage plan --model claude-sonnet-4-6 --token-count 1500000 --ms 120000 >/dev/null 2>&1
+"$TEMPER" usage add --stage build --model claude-haiku-4-5 --token-count 2500 --ms 3000 >/dev/null 2>&1
 "$TEMPER" report --html >/dev/null 2>&1
 assert_eq "report --html: time and tokens by stage (with the model each stage ran on) and by model, in words" "1|1|1|1" \
   "$(grep -c '<td>claude-haiku-4-5</td><td>1</td><td>2k</td><td>3 s</td>' .temper/specs/demo/report.html)|$(grep -c '<td>claude-sonnet-4-6</td><td>1</td><td>1.5M</td><td>2 min</td>' .temper/specs/demo/report.html)|$(grep -c '<th>Model</th><th>Launches</th>' .temper/specs/demo/report.html)|$(grep -c '<td>plan</td><td>claude-sonnet-4-6</td><td>1</td><td>1.5M</td><td>2 min</td>' .temper/specs/demo/report.html)"

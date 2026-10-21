@@ -18,7 +18,7 @@ chain of commits is the audit trail. Temper's spine is the same loop with one
 sharpening: every gate between arcs is **computed by a CLI from an evidence ledger**
 (`temper gate`), never asserted by a model — and **[NEW]** the run's decision record
 now survives the run: `temper state archive` writes verdicts, overrides (with the
-approver's identity), and evidence counts into the spec dir as `gate-ledger.json`,
+reason and the record that the person decided them), and evidence counts into the spec dir as `gate-ledger.json`,
 committed with the diff, so what the gates verified is part of the same audit chain
 as what was asked and what was built.
 
@@ -163,8 +163,8 @@ composes with them rather than reimplementing them.
 **Hooks as approval gates.** Temper's fence deliberately ends at `git commit`
 (see divergences), and its commit gate is already an approval gate: a human override
 is recorded, never erased. **[NEW]** The separation-of-duties seam is now enforced at
-its weakest point: every override entry records *who* approved (`by:` from git
-identity), and `confirm-override.sh` emits the ASK permission tier for any
+its weakest point: every override entry records that a person approved it at the gate
+(`by:`, never a name from git), and `confirm-override.sh` emits the ASK permission tier for any
 `temper override` command — a deterministic human click between an agent and the one
 command that clears a FAIL gate. **[NEW]** For past-the-fence release gating,
 `examples/gates/production-gate.sh` + `packs/guardrails/rules.md` document the

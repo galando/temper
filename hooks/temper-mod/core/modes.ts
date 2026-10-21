@@ -4,13 +4,13 @@
 
 import type { UiMode } from './config'
 
-export type Element = 'denials' | 'stages' | 'details' | 'goOn' | 'pane' | 'toasts' | 'hint' | 'spinner' | 'turnLine' | 'questionHeader' | 'subcommands'
+export type Element = 'denials' | 'stages' | 'details' | 'pane' | 'toasts' | 'hint' | 'spinner' | 'turnLine' | 'questionHeader' | 'subcommands'
 
 const ALWAYS: readonly Element[] = ['denials', 'subcommands']
 
 const BY_MODE: Record<UiMode, readonly Element[]> = {
-  // The bar with the stage timeline, the details of the stage and the Go on button, the pane, and the lines around the prompt.
-  full: ['stages', 'details', 'goOn', 'pane', 'toasts', 'hint', 'spinner', 'turnLine', 'questionHeader'],
+  // The bar with the stage timeline and the details of the stage, the pane, and the lines around the prompt.
+  full: ['stages', 'details', 'pane', 'toasts', 'hint', 'spinner', 'turnLine', 'questionHeader'],
   // The stage timeline only.
   minimal: ['stages'],
   off: [],

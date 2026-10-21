@@ -83,14 +83,14 @@ const str = (options: PluginOptions, key: string): string | undefined => {
   return typeof v === 'string' ? v : undefined
 }
 
-// Values changed live (`/temper:temper mode`, `/temper:temper enforcement`) win over the options of this load until the
-// config change reloads the module with the new options.
-export const live: { mode?: UiMode; enforcement?: 'on' | 'off'; paneOpen?: boolean } = {}
+// Whether the pane is open, as the mod last placed or closed it. The mode and enforcement come only from the options,
+// which the person changes in /config (the module reloads with the new options); the mod writes no setting.
+export const live: { paneOpen?: boolean } = {}
 
 export function settingsFrom(options: PluginOptions) {
   return {
-    mode: live.mode ?? parseUiMode(str(options, 'uiMode')),
-    enforcement: live.enforcement ?? parseEnforcement(str(options, 'enforcement')),
+    mode: parseUiMode(str(options, 'uiMode')),
+    enforcement: parseEnforcement(str(options, 'enforcement')),
     prAttribution: parseOnOff(str(options, 'prAttribution'), 'on'),
   }
 }

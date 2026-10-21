@@ -70,15 +70,16 @@ describe('the plugin folder path in a prompt', () => {
   test('a broken encoding gives the plain path', () => expect(pluginCliFrom(url('/Users/a%ZZb/plugin'))).toBe('scripts/temper'))
 })
 
-describe('refusals of the commands end with Next:', () => {
-  // ADR 0012: the decision words go on to the orchestrator (it asks the Temper gate question); the mod refuses only a
-  // change of what Temper shows or enforces from another origin.
+describe('the setting words say where the person changes the setting', () => {
+  // ADR 0012: the decision words go on to the orchestrator (it asks the Temper gate question). 9.7.3: the mode and
+  // enforcement words change nothing from any origin; they name the /config option instead.
   for (const word of ['mode off', 'enforcement off']) {
     test(`${word} from a model origin`, async ($, on) => {
-      world(on, runFiles({ nextStage: 'plan' }))
+      const w = world(on, runFiles({ nextStage: 'plan' }))
       await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: false })
       const r = await $.command.run({ command: 'temper', args: word, origin: { kind: 'sdk' } } as never)
-      expect(r.text).toMatch(/Next: /)
+      expect(r.text).toMatch(/Change it in \/config: Temper (UI mode|enforcement)/)
+      expect(w.configSets).toEqual([])
     })
   }
   test('the spec folder name is used', () => expect(SPEC).toContain('.temper/specs/'))

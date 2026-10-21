@@ -19,13 +19,12 @@ That's it. Claude Code loads Temper's commands and skills automatically, and you
 `/temper:temper "…"` in a project sets it up on the spot: config, `.temper/` scaffold, and the
 native commit gate that blocks a red commit. The short form `/temper` is an interactive shortcut
 that may not resolve in every surface, so this guide types the full name. To set up explicitly
-instead, run `/temper:init`. For optional edit-time guardrails, run `/temper:pack enable guardrails`. It asks
-whether to use `.claude/settings.local.json` (personal, the default) or `.claude/settings.json` (shared) in
-your project, shows the change, and after you confirm adds the guard hooks with the plugin's
-absolute folder written into each command, replacing any earlier Temper guard entry in either file.
-`/temper:pack disable guardrails` removes them from both files.
-`/temper:pack` and `/temper:init` offer to fix a guard command whose plugin folder no longer
-exists. Neither command reads or writes the settings in your home folder.
+instead, run `/temper:init`. For optional edit-time guardrails, run `/temper:pack enable guardrails`. It
+prints the guard hooks, with the plugin's absolute folder written into each command, for you to add to
+`.claude/settings.local.json` (personal, recommended) or `.claude/settings.json` (shared) in your project.
+`/temper:pack disable guardrails` says which entries to remove. After a plugin upgrade, run
+`/temper:pack enable guardrails` again to print the current commands. Temper never opens a Claude Code settings file, the project's or your home
+folder's.
 
 ### The stage bar (Claude Code 2.1.287 or later)
 
@@ -39,8 +38,8 @@ It is not a sandbox: [Trust](trust.md) lists what it does not see. Check your ve
 | `uiMode` | `full`, `minimal`, `off` | How much Temper draws. Refusals work in every mode. |
 | `enforcement` | `on`, `off` | `off` keeps the bar and stops the refusals. |
 
-Change them with `/temper:temper mode <value>` and `/temper:temper enforcement <value>`, or in the
-plugin settings. Your organization can block mods; the plugin then works as before. See
+Change them in `/config` (the plugin's Temper UI mode and Temper enforcement options); the mod never
+changes them itself. Your organization can block mods; the plugin then works as before. See
 [Testing the mod](mods-testing.html) for a checklist.
 
 ### A clone of the repository
@@ -94,11 +93,10 @@ does), and the run goes on in the turn Claude Code starts when the agent finishe
 not promise that turn for a session that sits idle: if a run waits after an agent finished, send any
 message, such as "go on", and the run records the agent's result and asks the next question. With
 `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` set to `1`, Claude Code runs every agent in the foreground,
-with fork mode on or off, so a run never waits for that turn. A plugin cannot set it for you:
-`/temper:init` asks whether to add it to the project's `.claude/settings.json` (`temper init
---foreground-agents` is the CLI call). Or set it in the shell before `claude` starts, or in that
-file's `env` block by hand (it applies once the folder is trusted); then start Claude Code again, and
-`/temper:temper` with no arguments takes the run up:
+with fork mode on or off, so a run never waits for that turn. A plugin cannot set it for you, and
+Temper does not edit your settings: set it in the shell before `claude` starts, or add it by hand to
+the `env` block of the project's `.claude/settings.json` (it applies once the folder is trusted);
+then start Claude Code again, and `/temper:temper` with no arguments takes the run up:
 
 ```json
 { "env": { "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1" } }
@@ -285,10 +283,10 @@ claude --worktree fix-rate-limit    # session 2: /temper:fix "429 not returned"
   autonomy lock — sessions cannot collide on runtime state.
 - Split work so parallel tasks touch **disjoint files** (the plan's blast radius shows
   where work is independent); tasks sharing files belong in one session, sequentially.
-- The controls travel with the repo: packs and guard hooks in the shared `.claude/settings.json`
-  apply the same way in every worktree, so more sessions never means fewer guardrails. Guard
-  hooks in `.claude/settings.local.json` are personal and kept out of git, so a new worktree does
-  not get them from git.
+- The controls travel with the repo: packs, and guard hooks you added to the shared
+  `.claude/settings.json`, apply the same way in every worktree, so more sessions never means fewer
+  guardrails. Guard hooks you added to `.claude/settings.local.json` are personal and kept out of
+  git, so a new worktree does not get them from git.
 - The pre-commit gate is shared, not copied. The installer keeps the Temper hook in
   `temper-gate/pre-commit` in the repository's git folder, which every worktree shares, and sets
   the repository's `core.hooksPath` to that folder's absolute path, so one hook covers every

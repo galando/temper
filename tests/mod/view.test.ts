@@ -1,6 +1,6 @@
 // What the mod shows (ADR 0013): the view is built from view.json (the CLI's real output, scripts/selftest/view-fixtures.ts)
-// and the person's decisions, and the bar and the pane only show it. The bar has one button, Go on (it takes the run up
-// again with /temper:temper); it decides nothing. The pane has no button.
+// and the person's decisions, and the bar and the pane only show it. Neither has a button (9.7.3): the person decides in
+// the question dialog and takes a run up again by typing /temper:temper.
 import { describe, expect, test } from 'claude-code/testing'
 
 import type { Decision } from '../../hooks/temper-mod/core/decisions'
@@ -56,7 +56,7 @@ describe('the view of the run', () => {
   test('the status is the CLI\'s sentence, or the person\'s choice', () => {
     expect(buildView(input('build-fail')).status).toBe('Build: waiting for your answer to the Temper gate question.')
     expect(buildView(input('build-pass', { answer: answer('Continue to Review (Recommended)', 'advance') })).status).toBe('Build: your choice (Continue to Review (Recommended)). Claude carries it out.')
-    expect(buildView(input('build-pass', { answer: answer('Save for later', 'pause') })).status).toBe('Build is saved for later. Go on when you are ready.')
+    expect(buildView(input('build-pass', { answer: answer('Save for later', 'pause') })).status).toBe('Build is saved for later. Type /temper:temper when you are ready.')
   })
 
   test('the details: the groups of Build, the open findings of Review, the failed checks', () => {
@@ -93,15 +93,14 @@ const labels = async (m: Mounted): Promise<string[]> => (await m.findAll({ type:
 const DECIDES = /continue|approve|override|accept|loop back|skip|commit|keep|restart|start over|fix/i
 
 describe('the bar above the prompt shows; it does not decide', () => {
-  test('at a gate the bar has Go on, and pressing it takes the run up again with /temper:temper', async ($, on) => {
+  test('at a gate the bar shows the wait and has no button; the mod runs no command', async ($, on) => {
     const w = world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }))
     await $.session.start(START)
     const band = await mount($, 'AbovePrompt', BAND(false))
-    expect(await labels(band)).toEqual(['Go on'])
+    expect(await labels(band)).toEqual([])
     const text = JSON.stringify(await band.drawn())
     expect(text).toContain('Plan: waiting for your answer to the Temper gate question.')
-    await band.press({ key: 'action-go-on' })
-    expect(w.commandRuns.filter(c => c.command === 'temper:temper').map(c => c.args)).toEqual([''])
+    expect(w.commandRuns).toEqual([])
     expect(Object.keys(w.store).some(k => k.startsWith('dec:'))).toBe(false)
   })
 
@@ -132,17 +131,17 @@ describe('the bar above the prompt shows; it does not decide', () => {
     }
   })
 
-  test('while Claude works the bar has no Go on', async ($, on) => {
+  test('while Claude works the bar has no button either', async ($, on) => {
     world(on, runFiles({ nextStage: 'build' }))
     await $.session.start(START)
-    expect(await labels(await mount($, 'AbovePrompt', BAND(true)))).not.toContain('Go on')
+    expect(await labels(await mount($, 'AbovePrompt', BAND(true)))).toEqual([])
   })
 
   test('a narrow terminal draws the compact bar with the same content', async ($, on) => {
     world(on, runFiles({ nextStage: 'plan', gates: { plan: 'PASS' } }))
     await $.session.start(START)
     const band = await mount($, 'AbovePrompt', BAND(false, 60))
-    expect(await labels(band)).toEqual(['Go on'])
+    expect(await labels(band)).toEqual([])
     expect(JSON.stringify(await band.drawn())).toContain('Plan: waiting for your answer')
   })
 })

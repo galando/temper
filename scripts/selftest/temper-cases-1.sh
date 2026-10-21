@@ -455,99 +455,66 @@ assert_eq "pack-discover prints the full resolved path of the file a link reads"
 assert_eq "pack-discover prints the same rows on every run" "$DEDUP_OUT" "$(python3 "$REPO_ROOT/scripts/pack-discover.py")"
 rm -rf .claude/commands .claude/skills
 
-# --- guard-entries.py: the Temper guard entries in the project's two settings files, each with its
-# status. The plugin folder is the one that holds the script, found after following links. One
-# command names its script through the braced plugin root variable, as an older merge wrote it.
-# GE_OLD stands for an earlier plugin folder. ---
+# --- guardrails-snippet.py: the guardrails pack's hook entries, printed for the person to add to a
+# project settings file. The plugin folder is the one that holds the script, found after following
+# links. Temper opens no Claude Code settings file: the script reads the pack's own snippet only. ---
 setup
-GE="$REPO_ROOT/scripts/guard-entries.py"
-GE_PROJ="$WORKDIR/ge-project"
-GE_OLD="$WORKDIR/ge-old-plugin"
-GE_HOME="$WORKDIR/ge-home"
-GE_OUTSIDE="$WORKDIR/ge-outside"
-rm -rf "$GE_PROJ" "$GE_OLD" "$GE_HOME" "$GE_OUTSIDE" "$WORKDIR/ge-bin" "$WORKDIR/ge-proj-link"
-rm -f "$WORKDIR/ge-guards-link"
-mkdir -p "$GE_PROJ/.claude" "$GE_PROJ/tools/scripts/guards" "$GE_OLD/scripts/guards" "$GE_HOME" "$GE_OUTSIDE" "$WORKDIR/ge-bin"
-printf 'x\n' > "$GE_OLD/scripts/guards/block-uncommitted-gate.sh"
-ln -s "$REPO_ROOT/scripts/guards" "$WORKDIR/ge-guards-link"
-ln -s "$GE" "$WORKDIR/ge-bin/guard-entries.py"
-ln -s "$GE_PROJ" "$WORKDIR/ge-proj-link"
-# The guard entry that holds the plugin root variable comes from the pack's own settings file, as
-# an entry copied by hand has it (the pack's command, with the variable not replaced).
-GE_ROOTVAR_FULL="$(python3 -c '
+GS="$REPO_ROOT/scripts/guardrails-snippet.py"
+GS_PROJ="$WORKDIR/gs-project"
+GS_HOME="$WORKDIR/gs-home"
+rm -rf "$GS_PROJ" "$GS_HOME" "$WORKDIR/gs-bin" "$WORKDIR/gs-q" "$WORKDIR/gs-loose" "$WORKDIR/gs-empty"
+mkdir -p "$GS_PROJ/.claude" "$GS_HOME" "$WORKDIR/gs-bin"
+ln -s "$GS" "$WORKDIR/gs-bin/guardrails-snippet.py"
+cd "$GS_PROJ" || exit 1
+GS_OUT="$(HOME="$GS_HOME" python3 "$GS" 2>"$WORKDIR/gs-err.txt")"; GS_RC=$?
+assert_eq "guardrails-snippet exits 0 and prints nothing on stderr" "0|" "$GS_RC|$(cat "$WORKDIR/gs-err.txt")"
+# Every command of the pack's snippet comes out in the same place, with the plugin folder in double
+# quotes in place of the plugin root variable; the rest of the snippet is unchanged.
+GS_CHECK="$(python3 - "$REPO_ROOT/packs/guardrails/settings-guardrails.json" "$REPO_ROOT" "$GS_OUT" <<'PY'
 import json, sys
-d = json.load(open(sys.argv[1]))
-print(next(h["command"] for e in d["hooks"]["PreToolUse"] for h in e["hooks"] if h["command"].endswith("/confirm-override.sh")))' "$REPO_ROOT/packs/guardrails/settings-guardrails.json")"
-GE_ROOTVAR_CMD="${GE_ROOTVAR_FULL#bash }"
-assert_eq "the pack's confirm-override command names its script through the plugin root variable" "yes|yes" \
-  "$([[ "${GE_ROOTVAR_CMD:0:2}" == '${' ]] && echo yes || echo no)|$([[ "$GE_ROOTVAR_CMD" == */scripts/guards/confirm-override.sh ]] && echo yes || echo no)"
-cat > "$GE_PROJ/.claude/settings.json" <<EOF
-{"permissions": {"allow": []},
- "hooks": {
-  "PreToolUse": [
-   {"matcher": "Edit|Write", "hooks": [
-     {"type": "command", "command": "bash \"$REPO_ROOT/scripts/guards/block-secrets.sh\""},
-     {"type": "command", "command": "bash \"$WORKDIR/ge-guards-link/protect-regression-test.sh\""},
-     {"type": "command", "command": "bash \"\$CLAUDE_PROJECT_DIR/tools/block-secrets.sh\""},
-     {"type": "command", "command": "\"\$CLAUDE_PROJECT_DIR\"/tools/block-protected-paths.sh"},
-     {"type": "command", "command": "bash tools/block-secrets.sh"},
-     {"type": "command", "command": "bash \"$GE_PROJ/tools/scripts/guards/block-secrets.sh\""},
-     {"type": "command", "command": "bash \"$GE_OLD/scripts/a/b/block-secrets.sh\""},
-     {"type": "command", "command": "bash ./my-lint.sh"}]},
-   {"matcher": "Bash", "hooks": [
-     {"type": "command", "command": "bash \"$GE_OLD/scripts/guards/block-uncommitted-gate.sh\""},
-     {"type": "command", "command": "bash $GE_OLD/scripts/legacy/confirm-override.sh"},
-     {"type": "command", "command": "$GE_ROOTVAR_FULL"},
-     {"type": "command", "command": "bash \"$REPO_ROOT/scripts/retired/run-formatter.sh\""}]}],
-  "PostToolUse": [
-   {"hooks": [{"type": "command", "command": "bash $REPO_ROOT/scripts/guards/run-formatter.sh"}]}]}}
-EOF
-cat > "$GE_PROJ/.claude/settings.local.json" <<EOF
-{"hooks": {"PreToolUse": [{"matcher": "Edit", "hooks": [
-  {"type": "command", "command": "bash \"$REPO_ROOT/scripts/guards/block-secrets.sh\""}]}]}}
-EOF
-GE_WANT="$(printf '%s\n' \
-  ".claude/settings.json|PreToolUse|Edit|Write|$REPO_ROOT/scripts/guards/block-secrets.sh|current" \
-  ".claude/settings.json|PreToolUse|Edit|Write|$WORKDIR/ge-guards-link/protect-regression-test.sh|current" \
-  ".claude/settings.json|PreToolUse|Bash|$GE_OLD/scripts/guards/block-uncommitted-gate.sh|stale" \
-  ".claude/settings.json|PreToolUse|Bash|$GE_OLD/scripts/legacy/confirm-override.sh|stale" \
-  ".claude/settings.json|PreToolUse|Bash|$GE_ROOTVAR_CMD|stale" \
-  ".claude/settings.json|PreToolUse|Bash|$REPO_ROOT/scripts/retired/run-formatter.sh|stale" \
-  ".claude/settings.json|PostToolUse||$REPO_ROOT/scripts/guards/run-formatter.sh|current" \
-  ".claude/settings.local.json|PreToolUse|Edit|$REPO_ROOT/scripts/guards/block-secrets.sh|current")"
-cd "$GE_PROJ" || exit 1
-GE_OUT="$(HOME="$GE_HOME" python3 "$GE" 2>"$WORKDIR/ge-err.txt")"; GE_RC=$?
-assert_eq "guard-entries lists both files' Temper guard entries in file order: current under this plugin folder (also through a link), stale for an earlier plugin folder, an older guard scripts folder, the plugin root variable and a missing script" \
-  "$GE_WANT" "$GE_OUT"
-assert_eq "guard-entries exits 0 and prints nothing on stderr when both files read" "0|" "$GE_RC|$(cat "$WORKDIR/ge-err.txt")"
-assert_eq "guard-entries leaves the user's copies alone (the CLAUDE_PROJECT_DIR variable, a relative path, a path inside the project, a path deeper than one folder under scripts) and a hook that names no guard script" \
-  "0" "$(printf '%s\n' "$GE_OUT" | grep -cE 'tools/|scripts/a/b/|my-lint')"
-assert_eq "guard-entries run through a link finds the plugin folder the link points at" \
-  "$GE_WANT" "$(HOME="$GE_HOME" python3 "$WORKDIR/ge-bin/guard-entries.py" 2>&1)"
-assert_eq "guard-entries prints the same lines on every run" "$GE_OUT" "$(HOME="$GE_HOME" python3 "$GE" 2>/dev/null)"
-# The home folder: refused by file identity, also when HOME spells it through a link.
-GE_REFUSE="$(HOME="$GE_PROJ" python3 "$GE" 2>&1)"; GE_RC=$?
-assert_eq "guard-entries refuses with exit 2 and one line when the project folder is the home folder" "2|1|1" \
-  "$GE_RC|$(printf '%s\n' "$GE_REFUSE" | wc -l | tr -d ' ')|$(printf '%s\n' "$GE_REFUSE" | grep -c 'home folder')"
-assert_exit "guard-entries refuses when HOME names the project folder through a link" 2 \
-  env HOME="$WORKDIR/ge-proj-link" python3 "$GE"
-# A file that is not JSON: named on stderr, exit 1, and the other file is still listed.
-printf 'not json {\n' > .claude/settings.json
-GE_OUT="$(HOME="$GE_HOME" python3 "$GE" 2>"$WORKDIR/ge-err.txt")"; GE_RC=$?
-assert_eq "guard-entries names a settings file that is not JSON, exits 1, and still lists the other file" \
-  "1|.claude/settings.local.json|PreToolUse|Edit|$REPO_ROOT/scripts/guards/block-secrets.sh|current|1" \
-  "$GE_RC|$GE_OUT|$(grep -c '^guard-entries: \.claude/settings\.json is not valid JSON' "$WORKDIR/ge-err.txt")"
-# Nothing outside the project is opened or listed: a settings file linked out of the project is
-# named, never read. audit-outside.py <project> <script> runs the script and prints, on stderr,
-# every open, scandir and listdir of a path outside that project (the script file itself and
-# Python's own files, which load as the script runs, aside).
-printf '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash %s/scripts/guards/block-secrets.sh"}]}]}}\n' \
-  "$REPO_ROOT" > "$GE_OUTSIDE/notes.json"
-rm -f .claude/settings.json
-ln -s "$GE_OUTSIDE/notes.json" .claude/settings.json
-cat > "$WORKDIR/audit-outside.py" <<'PY'
+pack, root, out = json.load(open(sys.argv[1])), sys.argv[2], json.loads(sys.argv[3])
+want = pack["hooks"]
+got = out.get("hooks")
+cmds = []
+for event, blocks in want.items():
+    for block in blocks:
+        for hook in block["hooks"]:
+            c = hook["command"]
+            name = c.split("/scripts/guards/", 1)[1]
+            hook["command"] = 'bash "%s/scripts/guards/%s"' % (root, name)
+            cmds.append(hook["command"])
+print("|".join([
+    "same" if got == want else "differs",
+    "keys:" + ",".join(sorted(out)),
+    str(len(cmds)),
+    cmds[0],
+]))
+PY
+)"
+assert_eq "guardrails-snippet prints the pack's hooks object, each command with the plugin folder in double quotes in place of the root variable" \
+  "same|keys:hooks|8|bash \"$REPO_ROOT/scripts/guards/block-secrets.sh\"" "$GS_CHECK"
+assert_eq "guardrails-snippet prints the same JSON on every run" "$GS_OUT" "$(HOME="$GS_HOME" python3 "$GS" 2>/dev/null)"
+assert_eq "guardrails-snippet run through a link finds the plugin folder the link points at" \
+  "$GS_OUT" "$(HOME="$GS_HOME" python3 "$WORKDIR/gs-bin/guardrails-snippet.py" 2>&1)"
+# It refuses with exit 2 and one line: a plugin folder no command could quote, a script outside a
+# scripts folder, and a plugin folder with no snippet.
+mkdir -p "$WORKDIR/gs-q/it's/scripts" "$WORKDIR/gs-q/it's/packs/guardrails" "$WORKDIR/gs-loose" "$WORKDIR/gs-empty/scripts"
+cp "$GS" "$WORKDIR/gs-q/it's/scripts/"; cp "$REPO_ROOT/packs/guardrails/settings-guardrails.json" "$WORKDIR/gs-q/it's/packs/guardrails/"
+cp "$GS" "$WORKDIR/gs-loose/"; cp "$GS" "$WORKDIR/gs-empty/scripts/"
+GS_REFUSE=""
+for gs_copy in "$WORKDIR/gs-q/it's/scripts/guardrails-snippet.py" "$WORKDIR/gs-loose/guardrails-snippet.py" \
+  "$WORKDIR/gs-empty/scripts/guardrails-snippet.py"; do
+  gs_err="$(python3 "$gs_copy" 2>&1 >/dev/null)"; gs_rc=$?
+  GS_REFUSE+="$gs_rc:$(printf '%s\n' "$gs_err" | wc -l | tr -d ' '):$(python3 "$gs_copy" 2>/dev/null | wc -c | tr -d ' ');"
+done
+assert_eq "guardrails-snippet refuses with exit 2, one line and no output for a quote in the plugin folder, no scripts folder and no snippet" \
+  "2:1:0;2:1:0;2:1:0;" "$GS_REFUSE"
+# Nothing but the pack's snippet is opened (a settings file of the project or the home folder would
+# show here even when it does not exist), and no folder is listed. audit-opens.py <script> runs the script and prints, on stderr,
+# every open, scandir and listdir it makes (the script file itself and Python's own files aside).
+cat > "$WORKDIR/audit-opens.py" <<'PY'
 import os, runpy, sys
-project, script = os.path.realpath(sys.argv[1]), sys.argv[2]
+script = sys.argv[1]
 own = tuple({os.path.realpath(p) + os.sep for p in (sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix)})
 seen, busy = [], []
 def hook(event, args):
@@ -556,7 +523,7 @@ def hook(event, args):
     busy.append(1)
     try:
         path = os.path.realpath(os.path.abspath(args[0]))
-        if path != os.path.realpath(script) and not path.startswith(project + os.sep) and not path.startswith(own):
+        if path != os.path.realpath(script) and not path.startswith(own):
             seen.append(event + " " + path)
     finally:
         busy.pop()
@@ -566,46 +533,23 @@ try:
     runpy.run_path(script, run_name="__main__")
 except SystemExit:
     pass
-print("\n".join("READ " + s for s in seen) if seen else "NO READ", file=sys.stderr)
+print("\n".join(seen) if seen else "NOTHING", file=sys.stderr)
 PY
-GE_PROJ_REAL="$(pwd -P)"
-GE_OUT="$(HOME="$GE_HOME" python3 -I "$WORKDIR/audit-outside.py" "$GE_PROJ_REAL" "$GE" 2>"$WORKDIR/ge-audit.txt")"
-assert_eq "guard-entries opens and lists nothing outside the project, the home folder and its own plugin folder included" \
-  "NO READ" "$(grep -v '^guard-entries: ' "$WORKDIR/ge-audit.txt")"
-assert_eq "guard-entries names a settings file that resolves outside the project instead of reading it" "1|.claude/settings.local.json" \
-  "$(grep -c '^guard-entries: \.claude/settings\.json resolves outside the project folder' "$WORKDIR/ge-audit.txt")|$(printf '%s\n' "$GE_OUT" | cut -d'|' -f1)"
-# The audit hook sees reads: the same run, told the project is another folder, records the one it opens.
-HOME="$GE_HOME" python3 -I "$WORKDIR/audit-outside.py" "$GE_HOME" "$GE" >/dev/null 2>"$WORKDIR/ge-audit.txt"
-assert_eq "the audit hook records the project settings file the script opens" "1" \
-  "$(grep -cxF "READ open $GE_PROJ_REAL/.claude/settings.local.json" "$WORKDIR/ge-audit.txt")"
-assert_eq "guard-entries' source opens a file in one place and never asks for the home folder's contents" "1|0" \
-  "$(grep -c 'open(' "$GE")|$(grep -cE 'expanduser|listdir|scandir|glob|walk\(' "$GE")"
-# The plugin folder inside the project: a copy of the script in vendor/temper decides by its own
-# folder. Its scripts are Temper's (current when the file exists), another path in the project is the
-# user's, and this checkout, outside that project, is an earlier plugin folder.
-GE_IN="$WORKDIR/ge-inside"
-rm -rf "$GE_IN"
-mkdir -p "$GE_IN/.claude" "$GE_IN/vendor/temper/scripts/guards"
-cp "$GE" "$GE_IN/vendor/temper/scripts/guard-entries.py"
-printf 'x\n' > "$GE_IN/vendor/temper/scripts/guards/block-secrets.sh"
-cat > "$GE_IN/.claude/settings.local.json" <<EOF
-{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
-  {"type": "command", "command": "bash \"$GE_IN/vendor/temper/scripts/guards/block-secrets.sh\""},
-  {"type": "command", "command": "bash \"$GE_IN/vendor/temper/scripts/guards/run-formatter.sh\""},
-  {"type": "command", "command": "bash \"$GE_IN/tools/scripts/guards/block-secrets.sh\""},
-  {"type": "command", "command": "bash \"$REPO_ROOT/scripts/guards/block-secrets.sh\""}]}]}}
-EOF
-cd "$GE_IN" || exit 1
-assert_eq "guard-entries with the plugin folder inside the project: its scripts are Temper's, current or stale, the project's own path is the user's" \
-  "$(printf '%s\n' \
-    ".claude/settings.local.json|PreToolUse|Bash|$GE_IN/vendor/temper/scripts/guards/block-secrets.sh|current" \
-    ".claude/settings.local.json|PreToolUse|Bash|$GE_IN/vendor/temper/scripts/guards/run-formatter.sh|stale" \
-    ".claude/settings.local.json|PreToolUse|Bash|$REPO_ROOT/scripts/guards/block-secrets.sh|stale")" \
-  "$(HOME="$GE_HOME" python3 "$GE_IN/vendor/temper/scripts/guard-entries.py" 2>&1)"
+HOME="$GS_HOME" python3 -I "$WORKDIR/audit-opens.py" "$GS" >/dev/null 2>"$WORKDIR/gs-audit.txt"
+assert_eq "guardrails-snippet opens the pack's snippet and nothing else: no project or home settings file, no folder listing" \
+  "open $(cd "$REPO_ROOT" && pwd -P)/packs/guardrails/settings-guardrails.json" "$(cat "$WORKDIR/gs-audit.txt")"
+assert_eq "guardrails-snippet's source opens a file in one place and never asks for the home folder's contents" "1|0" \
+  "$(grep -c 'open(' "$GS")|$(grep -cE 'expanduser|listdir|scandir|glob|walk\(|getcwd' "$GS")"
+# No shipped script or mod file reads a Claude Code settings file: the one file that names the
+# personal settings file is this script, in the words it prints and in its docstring.
+assert_eq "no shipped script or mod file but guardrails-snippet.py names a project settings file to open" \
+  "scripts/guardrails-snippet.py" \
+  "$(cd "$REPO_ROOT" && grep -rlE 'settings\.local\.json|"settings\.json"' scripts hooks | grep -v '^scripts/selftest/' | sort | paste -sd' ' -)"
+assert_eq "the lister that read the project's settings files is gone" "no" \
+  "$([[ -e "$REPO_ROOT/scripts/guard-entries.py" ]] && echo yes || echo no)"
 cd "$WORKDIR" || exit 1
-rm -rf "$GE_PROJ" "$GE_OLD" "$GE_HOME" "$GE_OUTSIDE" "$GE_IN" "$WORKDIR/ge-bin" "$WORKDIR/ge-proj-link" \
-  "$WORKDIR/ge-err.txt" "$WORKDIR/ge-audit.txt" "$WORKDIR/audit-outside.py"
-rm -f "$WORKDIR/ge-guards-link"
+rm -rf "$GS_PROJ" "$GS_HOME" "$WORKDIR/gs-bin" "$WORKDIR/gs-q" "$WORKDIR/gs-loose" "$WORKDIR/gs-empty" \
+  "$WORKDIR/gs-err.txt" "$WORKDIR/gs-audit.txt" "$WORKDIR/audit-opens.py"
 
 # --- stage-marker.sh + verify-stage-gate.sh: the standalone-stage gate guarantee ---
 # stage-marker records the gate a /temper:{stage} session owes; verify-stage-gate blocks
@@ -1063,13 +1007,31 @@ echo 'code' > src.js
 git add src.js >/dev/null 2>&1
 assert_exit "one staged file outside .temper/specs/ restores every gate requirement" 1 "$TEMPER" gate commit
 
-# --- v9: override records the approver's identity ---
+# --- 9.7.3: override records that the person decided it, and asks git for no name or email ---
 setup
 git config user.name "Jane Approver"
 git config user.email "jane@example.com"
-"$TEMPER" override review --reason "accepted the risk" >/dev/null
-assert_eq "override entry records who approved" "Jane Approver <jane@example.com>" \
-  "$(python3 -c "import json; print(json.load(open('.temper/overrides.json'))[0]['by'])")"
+OV_OUT="$(USER=jane-login "$TEMPER" override review --reason "accepted the risk")"
+assert_eq "override entry records that the person decided it, with no git name, email or login name" "the person|0" \
+  "$(python3 -c "import json; print(json.load(open('.temper/overrides.json'))[0]['by'])")|$({ cat .temper/overrides.json; printf '%s' "$OV_OUT"; } | grep -cE 'Jane|jane')"
+# No shipped script asks git for a name or an email, or reads a login name.
+assert_eq "no shipped script runs git config user.name or user.email, or reads USER or LOGNAME" "" \
+  "$(cd "$REPO_ROOT" && { echo scripts/temper; git ls-files 'scripts/*.py' 'scripts/guards/*.sh'; } | grep -v '^scripts/selftest/' \
+    | xargs grep -lE 'config[^|;&]*user\.(name|email)|\$\{?(USER|LOGNAME)\b|environ[^)]*(USER|LOGNAME)|whoami|getpass|getlogin|getpwuid' || true)"
+# git needs an identity for the commits the CLI makes: _git_id_args asks git only whether it has one
+# (an exit status) and passes a fixed one when it has none.
+GID_HOME="$WORKDIR/gid-home"; GID_REPO="$WORKDIR/gid-repo"
+rm -rf "$GID_HOME" "$GID_REPO"; mkdir -p "$GID_HOME" "$GID_REPO"; git -C "$GID_REPO" init -q
+GID_OUT="$(cd "$GID_REPO" && env -u GIT_AUTHOR_NAME -u GIT_AUTHOR_EMAIL -u GIT_COMMITTER_NAME -u GIT_COMMITTER_EMAIL -u EMAIL \
+  -u GIT_CONFIG_GLOBAL -u GIT_CONFIG_PARAMETERS -u GIT_CONFIG_COUNT \
+  HOME="$GID_HOME" XDG_CONFIG_HOME="$GID_HOME" GIT_CONFIG_NOSYSTEM=1 bash -c "$(sed -n '/^_git_id_args() {/,/^}/p' "$TEMPER")"'
+_git_id_args; echo "|"; git config user.email "some@example.com"; _git_id_args; echo "|"; git config user.name "Some One"; _git_id_args')"
+assert_eq "_git_id_args passes a fixed identity unless git has one set (never one guessed from the system), and prints nothing of git's own" \
+  "-c user.name=Temper -c user.email=temper@localhost
+|
+-c user.name=Temper -c user.email=temper@localhost
+|" "$GID_OUT"
+rm -rf "$GID_HOME" "$GID_REPO"
 
 # --- v9: the gate ledger is archived into the spec dir (audit trail survives) ---
 setup

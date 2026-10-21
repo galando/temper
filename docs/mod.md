@@ -31,14 +31,16 @@ notes are in [ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws
 
 ## The three modes
 
-Use `/temper:temper mode` to set how much Temper draws. The rules and the questions are the same in every mode.
+Set how much Temper draws in `/config`, with the plugin's Temper UI mode option. The mod never changes it
+itself; `/temper:temper mode` says what is set and where to change it. The rules and the questions are the
+same in every mode.
 
-- **Full** draws the bar (the stage timeline, the status, its details and one button), the pane, toasts
-  and a status line under each answer.
+- **Full** draws the bar (the stage timeline, the status and its details), the pane, toasts and a status
+  line under each answer.
 - **Minimal** draws the stage timeline only.
 - **Off** draws nothing. A write outside the stage is still refused.
 
-A toast confirms a change to enforcement in every mode. The same mod runs in the desktop app (Code tab).
+The same mod runs in the desktop app (Code tab).
 
 ## The bar
 
@@ -46,11 +48,9 @@ Everything the mod draws comes from `.temper/view.json` (ADR 0013), so it shows 
 
 The bar shows where the run is: each stage with its result (passed, failed, skipped, here, to come), the
 loops back with their reasons, the time and the tokens of the run, one sentence of status, and the details
-of the stage (the groups and tasks of Build, the open findings of Review, the failed checks). It has one
-button, and it decides nothing:
-
-- **Go on** (key `1`, while Claude is not working) takes the run up again: it runs `/temper:temper`, and
-  Claude asks the gate question again.
+of the stage (the groups and tasks of Build, the open findings of Review, the failed checks). It has no
+button and decides nothing. To take a run up again, type `/temper:temper`: Claude asks the gate question
+again.
 
 The pane (`/temper:temper pane`) shows the whole run on one card: the intent, the stages with your skips
 and the loops back, the plan's files by Build group as you approved them, the Build grid (each task's
@@ -86,7 +86,7 @@ so it goes with the change.
 
 A step back is a loop: you choose "Loop back to {stage}" with a reason, and the run does that stage
 again. "Save for later" stops the run where it is; every rule still holds. To work without the
-rules for a while, turn enforcement off (`/temper:temper enforcement off`).
+rules for a while, turn the Temper enforcement option off in `/config`.
 
 Build is held to the plan you approved: the CLI keeps the plan's files and the digest of `tasks.md` with
 your approval, so a `plan.md` edited during Build does not widen it, and a `tasks.md` changed after the
@@ -159,7 +159,7 @@ An administrator can turn off parts of the mod:
 
 ### You can turn it off
 
-Anyone can disable the plugin or run `/temper:temper enforcement off`. The mod guards a workflow for
+Anyone can disable the plugin or turn the Temper enforcement option off in `/config`. The mod guards a workflow for
 honest use. It is not a security boundary.
 
 ### What the guard checks, and what it does not
@@ -247,26 +247,25 @@ only commit passes it mid run, as does a Build checkpoint commit with a green te
 
 ## What the mod reads and writes
 
-Mods are not sandboxed, so this is the full list. The mod makes no network, `process` or `env` call
-and starts no agent. Its one tool call is Claude Code's question dialog (`$.ui.ask`, AskUserQuestion),
-to ask you for a mode. CI fails on a call outside `scripts/check-mod-calls.sh`.
+Mods are not sandboxed, so this is the full list. The mod makes no network, `process` or `env` call,
+starts no agent, makes no tool call, sets no setting and runs no command. CI fails on a call outside
+`scripts/check-mod-calls.sh`.
 
 - **Reads:** `.temper/view.json`, the one file the CLI writes for it (ADR 0013; its fields are in
   [The flow](flow.md)). To find the project it stats the session folder and looks for `.temper/view.json` there
   and in up to 11 folders above it. It reads its
-  settings, store and state and the Claude Code version. When you change the mode or enforcement it reads the
-  `/config` list (every row) to find its two rows and whether your organization locked them. When `reviewerModel` is
+  options, store and state and the Claude Code version. When `reviewerModel` is
   set it reads the session's agent list and keeps only the id and type, to find the Temper review agent.
 - **Writes no file itself.** Your decisions (the answers you gave in the question dialogs, each with the run
-  id and the step it counts at, for the last 40 runs), the report and whether you were
-  asked for a mode stay in its plugin store, a JSON file in your Claude Code settings folder.
+  id and the step it counts at, for the last 40 runs) and the report stay in its plugin store, a JSON file
+  in your Claude Code settings folder.
 - **Session state:** for its drawing it keeps the bar's view (run title, stage, criteria, findings),
   the mode and the project folder in `$.state`, which other plugins can read.
-- **Configuration and environment it sets:** no environment variable. Only `temper.uiMode` (you type
-  `/temper:temper mode`, or answer the mode question your first `/temper:temper` or a bare `mode` asks)
-  and `temper.enforcement` (you type `/temper:temper enforcement`). A row your organization locked stays.
-- **Slash commands it runs, and when:** only `/temper:temper` with no words, written as fixed text, and only
-  when you press Go on. No command is built from data.
+- **Configuration and environment it sets:** none. You set Temper UI mode and Temper enforcement (and the
+  other options) in `/config`; `/temper:temper mode` and `/temper:temper enforcement` only say what is set and
+  where to change it. Before 9.7.3 the mod changed those two settings on your command.
+- **Slash commands it runs:** none. Before 9.7.3 a Go on button on the bar ran `/temper:temper`; you now
+  type it.
 - **What it puts in the prompts it submits:** nothing. It fills no prompt and suggests none. Apart from the
   refusals below and its state, it sends no text out.
 - **System prompt:** `prompt.compose` adds one section, `temper:phase`, to each request: enforcement on
@@ -282,11 +281,11 @@ to ask you for a mode. CI fails on a call outside `scripts/check-mod-calls.sh`.
     against the question view.json holds: a `Temper gate` option (with your reason, your note or your answer to the
     reason question, when the option needs one), a `Temper resume` Start over, or a `Scope drift` answer (Add to plan,
     Revert or Allow once). It keeps it, with the calls the option maps to, for the run and the step the CLI is at.
-  - `command.run` handles only `/temper:temper`. It answers `status`, `timeline`, `help`, `report`, `mode`,
-    `enforcement` and `pane`. A word that changes what is drawn or enforced is refused unless you
-    typed it in your prompt box. Every other word (`approve`, `back`, `override` and the rest) and any other command
-    pass on unchanged, and the mod records nothing from them; in full mode, such a word typed in your prompt box
-    opens the pane first.
+  - `command.run` handles only `/temper:temper` (and `/temper`). It answers `status`, `timeline`, `help`, `report`,
+    `mode`, `enforcement` and `pane`. Of those, only `pane` changes something (it opens or closes the pane, in full
+    mode) and `report` keeps the run report in its store; `mode` and `enforcement` only say what is set. Every other word (`approve`, `back`, `override`
+    and the rest) and any other command pass on unchanged, and the mod records nothing from them; in full mode, such
+    a word typed in your prompt box opens the pane first.
   - `session.start` and `classic.SessionStart` find the project root and load the run; in full mode
     `session.start` also opens the pane during a run, as the first read that finds a run started later in the
     session does. Both return what the engine gives them: no context, instruction or setting is added.
@@ -296,14 +295,14 @@ to ask you for a mode. CI fails on a call outside `scripts/check-mod-calls.sh`.
   - `ui.render` draws the bar, pane, spinner word, prompt hint and a line above Claude's question
     dialog, which stays unchanged. `ui.close` notes a closed pane, and one you closed by hand is not opened
     again by itself in that session.
-- **Other:** toasts tell a stage change (full mode), an enforcement change and the default mode when you dismiss
-  the mode question. The CLI replaces view.json whole, so the mod never reads half of it.
+- **Other:** a toast tells a stage change (full mode). The CLI replaces view.json whole, so the mod never reads
+  half of it.
 - **The tests never run in your session.** The mod's test suite runs only under `claude plugin test`; the plugin never
   loads it. Every `$` call there (`$.session.start`, `$.ui.mount`, `$.tool.call`, `$.agent.spawn` and the rest) goes
   to Claude Code's own test kit (`claude-code/testing`), not another plugin. Tests hand Bash, Write, Edit,
   NotebookEdit and Read calls to the guard. Temper's fake engine answers each tool call, question, prompt,
-  `config.set`, `fs.write` and `command.run` with a stub and keeps what the mod sent in memory for the test to check,
-  so nothing runs and nothing leaves the test. One test spawns a stub review agent (prompt `review it`, type
+  `fs.write` and `command.run` with a stub, records any `config.set` or `config.list` call so a test can check that
+  there is none, and keeps what the mod sent in memory for the test to check, so nothing runs and nothing leaves the test. One test spawns a stub review agent (prompt `review it`, type
   `temper:temper-review`, no model); a stub answers it, so no agent runs, and the mod leaves the spawn unchanged.
 - **Tests, lint, git and `scripts/temper`** run as prompts to Claude with its normal permissions. Auto
   mode may refuse a skip as a gate bypass. Allow that one `scripts/temper override` command, or run it

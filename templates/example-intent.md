@@ -1,6 +1,6 @@
 # Intent: Export Gate Ledger as CI-Readable JSON
 
-**Author:** Dana Okafor <dana.okafor@example.com>
+**Author:** Dana Okafor
 **Status:** draft
 **Created:** 2026-09-29
 **Ticket:** PROJ-1187

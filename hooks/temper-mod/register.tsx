@@ -3,9 +3,9 @@ import type { CommandRunResult, EngineInterface, PluginOptions, Register } from 
 import { FIX_RUN, VIEW_PATH, composeText, idleSnapshot, keepDecision, keptReport, live, loadSnapshot, publish, reportText, settingsFrom, spendDecision, statusText, timelineText, viewOf, writeReport } from './adapter'
 import type { Io, Snapshot } from './adapter'
 import { pluginCliFrom } from './core/cli'
-import { HELP, NEEDS_PERSON, parseArgs } from './core/commands'
+import { HELP, parseArgs } from './core/commands'
 import type { Parsed } from './core/commands'
-import { parsePhaseModel, parsePhaseModels, parseUiMode, versionAtLeast } from './core/config'
+import { parsePhaseModel, parsePhaseModels, versionAtLeast } from './core/config'
 import type { UiMode } from './core/config'
 import { answersIn } from './core/answers'
 import { evaluate } from './core/rules'
@@ -27,21 +27,12 @@ type Api = EngineInterface
 let options: PluginOptions = {}
 let current: Promise<Snapshot> | null = null
 let root = ''
-// Whether a person is at the prompt (session.start says so); the first run question is
-// never asked without one.
-let interactive = false
 let paneOpen = false
 // The person closed the pane by hand (its close mark, or /temper:temper pane): the mod does not open it for them again
 // in this session; /temper:temper pane does.
 let paneShut = false
 // The last stage announced, so a toast goes out once per stage change and never at load.
 let lastStage: string | null | undefined
-
-const MODE_LABELS: Array<[UiMode, string]> = [
-  ['full', 'Full: the bar with every detail, and the pane'],
-  ['minimal', 'Minimal: the stages only'],
-  ['off', 'Off: show nothing'],
-]
 
 // One toast. Every toast of the mod goes through here.
 function showToast($: Api, text: string): void {
@@ -96,7 +87,7 @@ function makeIo($: Api): Io {
 let lastRun: Snapshot | null = null
 
 const LOST_STATE =
-  'Temper state: .temper/view.json is missing or unreadable. The last known state still applies. Run temper next, which writes it again, or turn enforcement off with /temper:temper enforcement off.'
+  'Temper state: .temper/view.json is missing or unreadable. The last known state still applies. Run temper next, which writes it again, or turn Temper enforcement off in /config.'
 
 // The last known run, when it was in progress; null when it was over (Done) or never seen.
 function heldRun(): Snapshot | null {
@@ -246,8 +237,6 @@ async function readUi($: Api): Promise<{ view: View; mode: UiMode } | null> {
   if (!run.value || !mode.value) return null
   return { view: run.value.view, mode: mode.value }
 }
-// Whether Claude is working, as the band and the hint last saw it: Go on waits while it is.
-let working = false
 
 // ---- Pane ------------------------------------------------------------------------
 
@@ -304,74 +293,6 @@ async function openForPerson($: Api): Promise<void> {
   if (paneOpen || paneShut || snap.inert || snap.mode !== 'full' || snap.runCommand === 'fix') return
   await placeOrDrop($)
 }
-// ---- Modes (config rows) ------------------------------------------------------------
-
-type RowKey = 'temper.uiMode' | 'temper.enforcement'
-
-// Changes one of the mod's config rows the way the person changing it in /config does:
-// refused when an administrator locked it, else written (and the module reloads with the
-// new option). Returns the refusal text, or null when it took.
-async function setRow($: Api, key: RowKey, label: string, value: string): Promise<string | null> {
-  const rows = await $.config.list()
-  const row = rows.find(r => r.key === key)
-  if (row?.isLocked) return `Your organization set Temper's ${label} to ${String(row.value)}. Ask your admin to change it.`
-  // Each key is written as fixed text, so a reader (and the plugin directory) sees which setting changes.
-  const result = key === 'temper.uiMode' ? await $.config.set({ key: 'temper.uiMode', value: value }) : await $.config.set({ key: 'temper.enforcement', value: value })
-  return result.deny ?? null
-}
-
-async function switchMode($: Api, mode: UiMode): Promise<string> {
-  const refused = await setRow($, 'temper.uiMode', 'mode', mode)
-  if (refused) return refused
-  live.mode = mode
-  if (mode !== 'full' && paneOpen) await closePane($)
-  await refresh($)
-  $.ui.invalidate('ui.render')
-  return `Temper mode: ${mode}`
-}
-
-async function switchEnforcement($: Api, value: 'on' | 'off'): Promise<string> {
-  const refused = await setRow($, 'temper.enforcement', 'enforcement', value)
-  if (refused) return refused
-  live.enforcement = value
-  await refresh($)
-  $.ui.invalidate('ui.render')
-  showToast($, `Temper enforcement: ${value}`)
-  return `Temper enforcement: ${value}`
-}
-
-// Asks the person for a mode: the first interactive run (once, remembered in the store),
-// or `/temper:temper mode` with no argument. Dismissed means full.
-async function askMode($: Api): Promise<string> {
-  let picked: UiMode | null = null
-  try {
-    const answer = await $.ui.ask('How much do you want Temper to show?', { options: MODE_LABELS.map(([, label]) => label), header: 'Temper mode' })
-    picked = MODE_LABELS.find(([mode, label]) => answer === label || answer.trim().toLowerCase().startsWith(mode))?.[0] ?? null
-  } catch {
-    picked = null
-  }
-  if (picked === null) {
-    live.mode = 'full'
-    await refresh($)
-    showToast($, 'Temper mode is full.')
-    return 'Temper mode: full'
-  }
-  return switchMode($, picked)
-}
-
-// Records that the mode question needs no first run ask. An explicit choice always counts; a
-// bare /temper:temper mode counts only where the question can be asked (never in a `-p` run, whose
-// store is the same machine wide one).
-async function markModeAsked($: Api, isExplicit: boolean): Promise<void> {
-  if (isExplicit || interactive) await $.store.set('modeAsked', 1)
-}
-
-async function firstRunAsk($: Api): Promise<void> {
-  if (!interactive) return
-  if (await $.store.get('modeAsked')) return
-  await $.store.set('modeAsked', 1)
-  await askMode($)
-}
 // ---- The person's answers ---------------------------------------------------------------
 
 // Claude asks every gate in Claude Code's own question dialog, exactly as `temper next --json` gives it (ADR 0013). The
@@ -408,7 +329,7 @@ function ruleContext(snap: Snapshot, rootDir: string): RuleContext {
 
 const GUARD_ERROR =
   'Temper: the guard hit an error while it checked this command, and a run is active. Temper does not pass a command it could not check. ' +
-  'Next: run the command again. If it keeps failing, ask the user (the user can turn enforcement off with /temper:temper enforcement off).'
+  'Next: run the command again. If it keeps failing, ask the user (the user can turn Temper enforcement off in /config).'
 
 // A guard that threw: Bash is refused while a run is active (a command the guard cannot read is the one to refuse),
 // every other tool passes (the mod must not make Temper worse than without it).
@@ -444,13 +365,13 @@ async function guard($: Api, tool: string, input: Record<string, unknown>): Prom
 
 // ---- /temper:temper -------------------------------------------------------------------------
 
-async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise<CommandRunResult | null> {
+// Where the person changes the two settings: Claude Code's /config, the plugin's own options. The mod never writes them.
+const MODE_WHERE = 'Change it in /config: Temper UI mode (full, minimal or off).'
+const ENFORCEMENT_WHERE = 'Change it in /config: Temper enforcement (on or off).'
+
+async function handleTemper($: Api, parsed: Parsed): Promise<CommandRunResult | null> {
   const snap = await ensure($)
   if (snap.inert) return null
-  // A change of what Temper shows or enforces is the person's own, from the prompt box. The words that only show
-  // something stay open to any origin.
-  const changes = (parsed.word === 'mode' || parsed.word === 'enforcement') && parsed.rest.trim() !== ''
-  if (changes && originKind !== 'composer') return { text: NEEDS_PERSON }
   switch (parsed.word) {
     case 'help':
       return { text: HELP }
@@ -468,36 +389,15 @@ async function handleTemper($: Api, parsed: Parsed, originKind: string): Promise
       if (fresh.line === LOST_STATE) return { text: `${LOST_STATE}\n\n${reportText(fresh)}` }
       return { text: await writeReport(makeIo($), fresh) }
     }
-    case 'mode': {
-      const wanted = parsed.rest.trim().toLowerCase()
-      if (wanted === '') return { text: interactive ? await askMode($) : `Temper mode: ${snap.mode}` }
-      if (wanted !== 'full' && wanted !== 'minimal' && wanted !== 'off') return { text: 'Usage: /temper:temper mode <full|minimal|off>' }
-      return { text: await switchMode($, parseUiMode(wanted)) }
-    }
-    case 'enforcement': {
-      const wanted = parsed.rest.trim().toLowerCase()
-      if (wanted === '') return { text: `Temper enforcement: ${snap.enforcement}` }
-      if (wanted !== 'on' && wanted !== 'off') return { text: 'Usage: /temper:temper enforcement <on|off>' }
-      return { text: await switchEnforcement($, wanted) }
-    }
+    // The mod changes no setting: the two words say what is set and where the person changes it.
+    case 'mode':
+      return { text: `Temper mode: ${snap.mode}. ${MODE_WHERE}` }
+    case 'enforcement':
+      return { text: `Temper enforcement: ${snap.enforcement}. ${ENFORCEMENT_WHERE}` }
     case 'pane':
-      if (snap.mode !== 'full') return { text: 'The pane shows in full mode only. Use /temper:temper mode full.' }
+      if (snap.mode !== 'full') return { text: `The pane shows in full mode only. ${MODE_WHERE}` }
       return { text: await togglePane($) }
   }
-}
-
-// The band's Go on: the orchestrator's own Resume, `/temper:temper` with no words. Claude reads where the run is and
-// asks the gate question again. It decides nothing. `prompt.submit` refuses a text that starts with a slash, so the
-// command is run as a command.
-async function goOn($: Api): Promise<void> {
-  if (working) {
-    showToast($, 'Claude is working. Wait for the answer.')
-    return
-  }
-  await $.command.run({ command: 'temper:temper', args: '' }).then(
-    () => undefined,
-    () => undefined,
-  )
 }
 
 const REVIEWERS = ['temper-review', 'temper:temper-review']
@@ -540,20 +440,15 @@ export const register: Register = (on, opts) => {
   lastRun = null
   rootVerified = false
   sessionCwd = ''
-  interactive = false
   paneOpen = false
   paneShut = false
   lastStage = undefined
-  working = false
-  live.mode = undefined
-  live.enforcement = undefined
   live.paneOpen = undefined
   reviewerIds.clear()
 
   on('session.start', async ($, e, next) => {
     await settleRoot($, e.cwd)
     current = null
-    interactive = e.isInteractive
     await refresh($)
       .then(snap => autoOpenPane($, snap))
       .catch(() => undefined)
@@ -571,17 +466,12 @@ export const register: Register = (on, opts) => {
   on('command.run', async ($, e, next) => {
     if (e.command !== 'temper' && e.command !== 'temper:temper') return next(e)
     const parsed = parseArgs(e.args)
-    // Only the person's own composer counts here: a command from any other origin never marks the question answered and
-    // never opens the dialog. /temper:temper mode handles the question itself.
-    if (e.origin?.kind === 'composer') {
-      if (parsed?.word === 'mode') await markModeAsked($, parsed.rest.trim() !== '').catch(() => undefined)
-      else await firstRunAsk($).catch(() => undefined)
-    }
     if (parsed === null) {
+      // The person's own run word, from the prompt box, opens the pane in full mode; any other origin opens nothing.
       if (e.origin?.kind === 'composer') await openForPerson($).catch(() => undefined)
       return next(e)
     }
-    const out = await handleTemper($, parsed, e.origin?.kind ?? '').catch(() => null)
+    const out = await handleTemper($, parsed).catch(() => null)
     return out ?? next(e)
   })
 
@@ -640,21 +530,13 @@ export const register: Register = (on, opts) => {
     }
   })
 
-  // The bar: the stage timeline, and in full mode the status and details of the stage and the Go on button. Off draws
+  // The bar: the stage timeline, and in full mode the status and details of the stage. It has no button. Off draws
   // nothing; a survey holding the band is left alone.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey) return next(e)
     const ui = await readUi($).catch(() => null)
     if (ui === null) return next(e)
-    const band = renderBand(
-      $.ui.resolve(e),
-      ui.view,
-      ui.mode,
-      { goOn: () => goOn($).catch(() => undefined) },
-      e.props.bodyColumns,
-      e.props.isWorking,
-    )
-    working = e.props.isWorking
+    const band = renderBand($.ui.resolve(e), ui.view, ui.mode, e.props.bodyColumns)
     return band ?? next(e)
   })
 
@@ -685,7 +567,6 @@ export const register: Register = (on, opts) => {
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const ui = await readUi($).catch(() => null)
     const props = ui !== null && ui.mode === 'full' ? hintProps(e.props, ui.view, e.surface) : null
-    working = e.props.isWorking
     return props === null ? next(e) : next({ ...e, props })
   })
 

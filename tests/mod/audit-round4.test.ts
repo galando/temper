@@ -222,7 +222,7 @@ describe('second review: a glob in a temper call is refused only when it could s
   for (const command of [`${CLI} group reopen G1 --reason x --accept-for?ign abc1234`, `${CLI} group reopen G1 --accept-for?ign=abc1234 --reason x`, `${CLI} state lo?p review build --reason x`]) {
     test(`refused: ${command}`, () => expect(isDeny(bash('build', command))).toBe(true))
   }
-  for (const command of [`${CLI} task gate 1 --model sonnet[1m] --tokens 1200 --ms 3400`, 'grep -rn TODO /home/user/temper --include=*.ts', 'find ~/.claude/plugins/cache/temper -name *.md']) {
+  for (const command of [`${CLI} task gate 1 --model sonnet[1m] --token-count 1200 --ms 3400`, 'grep -rn TODO /home/user/temper --include=*.ts', 'find ~/.claude/plugins/cache/temper -name *.md']) {
     test(`allowed: ${command}`, () => expect(isDeny(bash('build', command))).toBe(false))
   }
 })

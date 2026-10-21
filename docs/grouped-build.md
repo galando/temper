@@ -63,7 +63,7 @@ To keep groups but run the tasks on another model (no Haiku), set `task-model: s
    files in that worktree, then `temper task test N --phase red` and `temper task test N --phase green`.
    The CLI runs the task's own declared test command there and records the output. Tasks that run
    at the same time never see each other's unfinished edits.
-5. **Task gate.** `temper task gate N --model M --tokens T --ms D` runs once the task's agent
+5. **Task gate.** `temper task gate N --model M --token-count T --ms D` runs once the task's agent
    has returned, never before: the CLI refuses a task gate with no `--model`, and the schedule
    lists a task whose agent still works as `running on {model}: wait for its agent to return`. It
    passes only with RED then GREEN evidence for that task and only declared files changed in its worktree. On PASS the CLI
@@ -141,9 +141,9 @@ The CLI owns these `.temper/` runtime files. Do not hand-write them and do not c
 
 ## Measuring a run
 
-Every stage launch is recorded with `temper usage add --stage S --model M --tokens T --ms D`
+Every stage launch is recorded with `temper usage add --stage S --model M --token-count T --ms D`
 (the orchestrator makes that call after each launch; task agents are recorded by
-`temper task gate --tokens --ms`). After a run, save:
+`temper task gate --token-count --ms`). After a run, save:
 
 - `temper report --json`: whole-flow usage (`usage.by_stage`, `usage.by_model`, `usage.total`)
   and the gate verdicts;

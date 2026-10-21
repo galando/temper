@@ -1,5 +1,5 @@
-// The first words of `/temper:temper` that the mod answers itself: the ones that show the run or set how Temper shows
-// and enforces it. Pure. Every other word goes on to the prompt based /temper:temper: a feature description starts or
+// The first words of `/temper:temper` that the mod answers itself: the ones that show the run, open or close the pane,
+// or say how Temper shows and enforces it (the person changes those two in /config). Pure. Every other word goes on to the prompt based /temper:temper: a feature description starts or
 // resumes a run, and a decision word (approve, back, override, accept, pause, restart and the like) makes Claude ask
 // the `Temper gate` question, where the person decides with a click (ADR 0012).
 
@@ -19,17 +19,13 @@ export function parseArgs(args: string): Parsed | null {
   return m && isReserved(word) ? { word, rest: (m[2] ?? '').trim() } : null
 }
 
-export const NEEDS_PERSON =
-  'Temper: only the user changes what Temper shows and enforces, from the prompt box. This command came from somewhere else, such as a claude -p run, the Agent SDK or Claude. ' +
-  'Next: ask the user to run it.'
-
 export const HELP = [
   'Temper subcommands (type them after /temper:temper):',
   '  status               show where the run is',
   '  timeline             list your decisions in this run',
   '  report               show the run report (with no run active, the last one kept)',
   '  pane                 open or close the Temper pane (full mode)',
-  '  mode, enforcement    show or change what Temper shows and enforces',
+  '  mode, enforcement    show what Temper shows and enforces (change both in /config)',
   'You decide at every gate in the Temper gate question: Continue, Loop back, Override and continue, Save for later.',
   'Any other text after /temper:temper is a feature description. It starts or resumes a run. With no text it takes the run up again.',
 ].join('\n')

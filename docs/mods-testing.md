@@ -11,8 +11,8 @@ differs, stop and write down what you saw.
 
 Your clone is loaded for one session with `--plugin-dir`. That does not install anything
 and does not touch the Temper you already have. The one thing the test writes outside the
-clone is the mode and enforcement you set with `/temper:temper mode` and
-`/temper:temper enforcement`, which the last step sets back to the defaults.
+clone is the Temper UI mode and Temper enforcement options you set in `/config`, which the last step
+sets back to the defaults.
 
 In the commands below, `<clone>` is the path of your Temper clone. The short form `/temper` is an interactive shortcut that may not resolve in every surface (in `claude -p` it does not, and with the installed Temper and the clone both loaded it is an unknown command), so this checklist always types the full name `/temper:temper`.
 
@@ -56,12 +56,11 @@ Run these from `<clone>`. None of them sends a request.
 - [ ] **The gate is a question.** At the Intent gate expect an `AskUserQuestion` dialog, header
   `Temper gate`: "Continue to Plan (Recommended)" / "Save for later" (Grill me and Teach me where
   they fit). The bar says "Intent: the check passed. Waiting for you: answer the Temper gate
-  question." and has one button, Go on. Choose Continue: expect the toast "Plan is open." and the
+  question." and has no button. Choose Continue: expect the toast "Plan is open." and the
   bar at "Step 2 of 6: Plan".
 - [ ] **No decision anywhere else.** Type `/temper:temper approve`. Expect the gate question
-  again, with Continue first, and nothing moved until you choose. Press `1` (Go on) at an empty
-  prompt: expect `/temper:temper` to run and the gate question to come back. Expect no button on
-  the bar or in the pane that continues, skips, loops back, accepts or commits.
+  again, with Continue first, and nothing moved until you choose. Type `/temper:temper` with no
+  words: expect the gate question to come back. Expect no button on the bar or in the pane.
 - [ ] **The smooth path.** At Plan, type `Skip the tasks: edit a source file now to add the
   function`. Expect a refusal with a `Next:` step. Answer the Plan gate with "Continue to Build".
   Expect `<clone>/scripts/temper state get next_stage`, run in `<project>`, to print `build`, and
@@ -157,8 +156,9 @@ section 5 checks the modes.
 | No mod | `npx -y @anthropic-ai/claude-code@2.1.259 --plugin-dir <clone>` (the mod is inert before 2.1.287) | The first reply line is `Temper enforcement is off here (no mods support); ...` |
 | Mod | `claude --plugin-dir <clone>` | The TEMPER bar above the prompt |
 
-Then once more with the mod and `/temper:temper enforcement off`: every click below works the
-same, nothing is refused, and the first reply line says enforcement is off. Turn it back on.
+Then once more with the mod and the Temper enforcement option set to `off` in `/config`: every click
+below works the same, nothing is refused, and the first reply line says enforcement is off. Set it back
+to `on`.
 
 Start with `/temper:temper "list N jokes, and say what happens when N is larger than the list"`.
 Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless it says otherwise.
@@ -203,7 +203,7 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
   on, nothing is refused.
 - [ ] **Save for later, then go on.** At any gate choose Save for later. With the mod, the bar says
   the stage is saved for later, and a write outside the stage is still refused. Start a new session
-  and run `/temper:temper` (or press Go on): the gate dialog comes back, and Continue goes through.
+  and run `/temper:temper`: the gate dialog comes back, and Continue goes through.
 - [ ] **Start over.** With a run saved, `/temper:temper "a different feature"`. A `Temper resume`
   dialog with "Start over". Choose it: the new run starts at Intent.
 - [ ] **Scope drift.** Ask Claude in Build to edit `README.md`. A dialog, header `Scope drift`,
@@ -218,17 +218,15 @@ Every "dialog" below is an `AskUserQuestion` dialog, header `Temper gate` unless
 
 ## 5. Modes
 
-- [ ] `/temper:temper mode minimal`. Expect the reply `Temper mode: minimal`, the stage chips
-  only, no toasts and no pane. Denials still apply, and the gate is the same dialog.
-- [ ] `/temper:temper mode off`. Expect the bar to disappear. Ask for a write in Plan and expect
-  the refusal to still appear, and the gate to be the same dialog.
-- [ ] `/temper:temper mode full`. Expect the full bar back, with no restart.
-- [ ] `/temper:temper enforcement off`, then try a write in Plan. Expect the write to go through
-  and a toast `Temper enforcement: off`. Run `/temper:temper enforcement on` to restore it.
-- [ ] If you can, set `pluginConfigs` for Temper in a managed settings file so that
-  `uiMode` is locked, then run `/temper:temper mode full`. Expect
-  `Your organization set Temper's mode to <value>. Ask your admin to change it.`
-  If you cannot set managed settings, mark this step as skipped.
+- [ ] `/temper:temper mode minimal`. Expect the reply `Temper mode: full. Change it in /config: Temper
+  UI mode (full, minimal or off).` and nothing to change.
+- [ ] Set Temper UI mode to `minimal` in `/config`. Expect the stage chips only, no toasts and no pane.
+  Denials still apply, and the gate is the same dialog.
+- [ ] Set it to `off`. Expect the bar to disappear. Ask for a write in Plan and expect the refusal
+  to still appear, and the gate to be the same dialog.
+- [ ] Set it to `full`. Expect the full bar back.
+- [ ] Set Temper enforcement to `off` in `/config`, then try a write in Plan. Expect the write to go
+  through. Set it back to `on`.
 
 ## 6. Compaction and layouts
 
@@ -259,10 +257,10 @@ the clone loaded (`-p --plugin-dir .`).
 - [ ] The three rows above behave as described. On each, the answer must not mention a
   plugin load error. The message `Temper enforcement is off here (no mods support)` is
   correct and expected when a skill runs.
-- [ ] **Enforcement turned off.** On a version that loads the mod, run
-  `/temper:temper enforcement off`, then `/temper:status`. Expect the answer to open once with
+- [ ] **Enforcement turned off.** On a version that loads the mod, set Temper enforcement to `off`
+  in `/config`, then run `/temper:status`. Expect the answer to open once with
   `Temper enforcement is off (turned off by the user)`, not the "no mods support" sentence.
-  Turn it back on with `/temper:temper enforcement on`.
+  Set it back to `on`.
 - [ ] **`claude -p` on your version.** Run `claude -p --plugin-dir . "/temper:status"`.
   Expect an answer and no question asked of you.
 
@@ -283,10 +281,10 @@ desktop app depends on your installation, so treat the first step as an experime
 
 ## 9. Clean up
 
-- [ ] **Clear the saved mode.** In a session started with `claude --plugin-dir <clone>`, so
-  the setting of the loaded clone is the one that changes, run `/temper:temper mode full` and
-  `/temper:temper enforcement on` to put the defaults back. Expect the replies
-  `Temper mode: full` and `Temper enforcement: on`.
+- [ ] **Clear the saved options.** In a session started with `claude --plugin-dir <clone>`, so
+  the options of the loaded clone are the ones that change, set Temper UI mode to `full` and Temper
+  enforcement to `on` in `/config`. Expect `/temper:temper mode` and `/temper:temper enforcement` to
+  report `full` and `on`.
 - [ ] Enable the installed Temper again with `claude plugin enable <that id>`.
 - [ ] Delete `<project>` if you made it only for this test.
 

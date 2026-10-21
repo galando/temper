@@ -46,7 +46,8 @@ folder.
 5. **Otherwise derive the intent** from the feature description in your launch prompt,
    with at most a quick look at the repo for naming and context. Write
    `{spec_path}/intent.md` from `${CLAUDE_PLUGIN_ROOT}/templates/intent.md`:
-   - Header: `**Author:**` (git config user.name/email), `**Status:** draft`,
+   - Header: `**Author:**` (a name the person typed, else
+     `the person`; never ask git or the system for a name or email), `**Status:** draft`,
      `**Created:**`, `**Ticket:**` if one was given, `**Reviewer:**` (see the
      interview rules below), `**Complexity:**` (a first guess; Plan records the
      authoritative one).

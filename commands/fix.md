@@ -52,10 +52,10 @@ Then run, in one Bash call:
 
 ```
 ${CLAUDE_PLUGIN_ROOT}/scripts/temper state init {bug-slug} --command fix
-${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage rca --model {model} --tokens {tokens} --ms {ms}
+${CLAUDE_PLUGIN_ROOT}/scripts/temper usage add --stage rca --model {model} --token-count {token_count} --ms {ms}
 ```
 
-`{tokens}` and `{ms}` are filled as `/temper:temper`'s agent bullet says.
+`{token_count}` and `{ms}` are filled as `/temper:temper`'s agent bullet says.
 
 When the git pack is on and `git branch --show-current` prints main or master, run
 `git checkout -b fix/{bug-slug}`.

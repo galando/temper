@@ -13,10 +13,10 @@ type Api = {
   command: { run: (a: unknown) => Promise<{ text?: string }> }
   tool: { call: (a: unknown) => Promise<{ deny?: string; text?: string }> }
 }
-// The person's own /temper:temper, from the prompt box. The mode question of a first run is already answered.
+// The person's own /temper:temper, from the prompt box.
 const person = (args: string) => ({ command: 'temper', args, origin: { kind: 'composer' } })
 const sh = (api: Api, command: string) => api.tool.call({ tool: 'Bash', command })
-const fresh = (on: Parameters<typeof world>[0], o: { placed?: boolean } = {}) => world(on, {}, { fakeCli: true, projectRoot: '/repo', store: { modeAsked: 1 }, ...o })
+const fresh = (on: Parameters<typeof world>[0], o: { placed?: boolean } = {}) => world(on, {}, { fakeCli: true, projectRoot: '/repo', ...o })
 
 describe('the pane opens for a run that starts in the session', () => {
   test('a run started after the session began opens the pane when it appears, once', async ($, on) => {
@@ -84,7 +84,7 @@ describe('the pane opens for a run that starts in the session', () => {
 
   test('a run in progress at the session start opens it there, as before, and not again', async ($, on) => {
     const api = $ as unknown as Api
-    const w = world(on, runFiles({ nextStage: 'build' }), { fakeCli: true, projectRoot: '/repo', store: { modeAsked: 1 } })
+    const w = world(on, runFiles({ nextStage: 'build' }), { fakeCli: true, projectRoot: '/repo' })
     await api.session.start(START)
     expect(w.opened).toEqual(['temper'])
     await api.command.run(person(''))
