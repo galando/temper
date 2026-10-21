@@ -3,6 +3,39 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.7.4: no key in CI, no token count, no credential handed to a test
+
+The directory's report on 9.7.3 (b1d1c18) cleared three holds: the mod staying the same, the mod running slash commands
+and the mod setting configuration. Two remain: "This plugin includes a mod", which always goes to a reviewer, and
+"Update adds credential forward" ("Uses a credential from the user's machine"), whose note now says what it looks for: a
+part that reads a credential and a part that sends data. This release removes the three parts left that a reader could
+take for either.
+
+**No key in CI.** The Mod job made Claude Code write the mod's type declarations by running
+`claude -p "hi" --plugin-dir .` with an invalid `ANTHROPIC_API_KEY` set: a key and a request in one line. It runs with
+no key or login now (Claude Code says it is not logged in, and has written the declarations by then), and fails when
+they are missing.
+
+**No token count.** 9.7.0 had the orchestrator take each agent's token count from Claude Code (the Agent result, or
+`subagent_tokens` in a completion notice) and pass it to the CLI, which kept it in `.temper/usage.json`, the report and
+the bar. Temper records the time only now.
+- `temper usage add` and `temper task gate` take `--ms`; a token count an older after call passes is accepted and read
+  by nothing. A usage row is `{stage, model, ms, task, group, ts}`.
+- `temper report`, `temper report --html`, `/temper:temper report` and the bar show launches and time, and no token
+  count. `temper group report` gives `ms_by_model` in place of `tokens_by_model`.
+- `/temper:temper` and `/temper:fix` fill `{ms}` only.
+- The view the mod puts in `$.state` (`types/index.d.ts`, `TemperView`) has a clock of minutes only.
+
+**No credential handed to a test.** The commands the CLI runs in a grouped Build (a task's test, a group's Validate
+command, the integration suite) get the environment without the variables whose names say they hold a credential: a
+key, a token, a secret, a password or passphrase, credentials, an auth socket or helper. Every other variable passes as
+it is. A test checks both.
+
+The trust page, Grouped Build, the flow page, the orchestrator patterns and the manual test checklist say the same.
+
+**Migration.** A `.temper/usage.json` row with a token count still counts, its count unread. A test that needs a key is
+not a task's unit test: run it in Check.
+
 ## v9.7.3: no hook written through a split name, no settings file or git identity read, the mod sets nothing and runs nothing
 
 The directory's report on 9.7.2 (59576ee) held it for the same five reasons as 9.7.1. "This plugin includes a mod"

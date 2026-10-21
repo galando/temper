@@ -1,4 +1,4 @@
-// The drawings of ADR 0013, each a plain function of view.json: the band's time, tokens and loops on the timeline; the
+// The drawings of ADR 0013, each a plain function of view.json: the band's time and loops on the timeline; the
 // pane's plan files by group, Build grid (each task's state, model and retries), Review findings, Check markers with
 // their failing lines and acceptance criteria with their evidence. No drawing decides, and neither the band nor the pane
 // has a button. uiMode sets only how much is drawn. The views are the CLI's real output (scripts/selftest/view-fixtures.ts)
@@ -27,6 +27,7 @@ function richView(): J {
   const states: Array<[string, string | null, number]> = [['pass', 'claude-haiku-4-5', 1], ['red', 'claude-haiku-4-5', 3], ['green', 'claude-sonnet-4-6', 2]]
   tasks.forEach((t, i) => Object.assign(t, { state: states[i]?.[0], model: states[i]?.[1], attempts: states[i]?.[2] }))
   v.loops = [{ from: 'review', to: 'build', reason: 'a real bug', iteration: 1, max: 2, at: 't' }]
+  // A token count left by a 9.7.3 run is not drawn: since 9.7.4 Temper records the time only.
   v.usage = { tokens: 1234567, ms: 1, by_stage: {}, by_model: {} }
   v.time = { started: '2026-01-01T10:00:00Z', updated: '2026-01-01T10:42:00Z' }
   v.findings = [
@@ -47,13 +48,14 @@ function richView(): J {
 
 const runWith = (on: Parameters<typeof world>[0], v: J) => world(on, { '.temper/view.json': JSON.stringify(v) })
 
-describe('the band: time, tokens and the loops on the timeline', () => {
+describe('the band: time and the loops on the timeline', () => {
   test('full mode draws the clock and each loop with its reason, and no button', async ($, on) => {
     runWith(on, richView())
     await $.session.start(START)
     const band = await mount($, 'AbovePrompt', BAND())
     const text = JSON.stringify(await band.drawn())
-    expect(text).toContain('42 min · 1.2M tokens')
+    expect(text).toContain('42 min')
+    expect(text).not.toContain('1.2M')
     expect(text).toContain('↺ Review to Build (1 of 2): a real bug')
     expect(await labels(band)).toEqual([])
   })
@@ -102,7 +104,8 @@ describe('the pane: the whole run, read only', () => {
     expect(text).toContain('Acceptance criteria · 1 of 5 met')
     expect(text).toContain('build#3 unit tests pass')
     expect(text).toContain('↺ Review to Build (1 of 2): a real bug')
-    expect(text).toContain('42 min · 1.2M tokens')
+    expect(text).toContain('42 min')
+    expect(text).not.toContain('1.2M')
     expect(await labels(pane)).toEqual([])
   })
 

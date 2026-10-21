@@ -7,7 +7,7 @@ Usage:
 The page shows what the run did: the stages with their verdicts, the person's skips and the
 loops with their reasons; the plan's files by Build group; each Build task with its state,
 model and retries; the Review findings; the Check markers with their failing lines; the
-acceptance criteria with their evidence; time and tokens. It reads only view.json, the file
+acceptance criteria with their evidence; the time. It reads only view.json, the file
 the temper CLI writes after every change (docs/flow.md), so it shows what the mod shows.
 
 The default output is report.html in the run's spec folder ("-o -" prints it; any other -o is
@@ -71,11 +71,6 @@ def spent(ms):
     return "%d s" % secs if secs < 60 else ("%d min" % (secs // 60) if secs < 3600 else "%d h %d min" % (secs // 3600, secs % 3600 // 60))
 
 
-def tokens(n):
-    n = num(n)
-    return "%.1fM" % (n / 1e6) if n >= 1e6 else ("%dk" % (n // 1000) if n >= 1000 else str(n))
-
-
 def section(title, body):
     return "<section><h2>%s</h2>%s</section>" % (e(title), body)
 
@@ -90,7 +85,7 @@ def render(view):
     head = ["<h1>%s</h1>" % e(run.get("title") or run.get("slug") or "Temper run"),
             "<div class='sub'>%s</div>" % " · ".join(e(x) for x in [
                 "Spec " + str(run.get("slug") or ""), "Branch " + str(run.get("branch") or "none"), result,
-                duration(view) and "Time " + duration(view), usage.get("tokens") and tokens(usage.get("tokens")) + " tokens"] if x)]
+                duration(view) and "Time " + duration(view)] if x)]
     out = ["".join(head)]
 
     chips = "".join("<span class='chip %s'>%s %s</span>" % (MARK.get(s.get("mark"), ("", ""))[1], MARK.get(s.get("mark"), ("?", ""))[0], e(s.get("label")))
@@ -171,15 +166,13 @@ def render(view):
         if rows:
             # The stage table names the model each stage was launched on (what Temper asked for).
             model = (lambda v: "<td>%s</td>" % e(", ".join(str(m) for m in v.get("models") or []) or "-")) if key == "by_stage" else (lambda v: "")
-            trs = "".join("<tr><td>%s</td>%s<td>%s</td><td>%s</td><td>%s</td></tr>" % (
-                e(k), model(v), e(v.get("runs")), e(tokens(v.get("tokens"))), e(spent(v.get("ms"))))
+            trs = "".join("<tr><td>%s</td>%s<td>%s</td><td>%s</td></tr>" % (
+                e(k), model(v), e(v.get("runs")), e(spent(v.get("ms"))))
                           for k, v in sorted(rows.items(), key=lambda kv: (order.get(kv[0], len(order)), kv[0])) if isinstance(v, dict))
             cols = "<th>Model</th>" if key == "by_stage" else ""
-            tables.append("<table><tr><th>%s</th>%s<th>Launches</th><th>Tokens</th><th>Time</th></tr>%s</table>" % (head, cols, trs))
+            tables.append("<table><tr><th>%s</th>%s<th>Launches</th><th>Time</th></tr>%s</table>" % (head, cols, trs))
     if tables:
-        tables.append("<p class='muted'>%s</p>" % e("The tokens of an agent are its context at its last call, as Claude Code "
-                                                    "gives them, not what it was billed for."))
-        out.append(section("Time and tokens", "".join(tables)))
+        out.append(section("Time", "".join(tables)))
 
     title = "Temper report: %s" % (run.get("title") or run.get("slug") or "run")
     return ("<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"

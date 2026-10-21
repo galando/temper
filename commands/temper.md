@@ -61,17 +61,16 @@ again. Stop only where this section says so. When it lists `setup`, run those ca
     `type` (when that type is not offered, the general purpose agent), `model` its `model`, its
     `prompt` exactly, and `run_in_background: false` where the tool takes it, so the run goes on the
     moment the agent returns; the agents of one action go in one message, so they still run at once.
-    When it returns, print the box it returns verbatim, then run its `after` calls: `{token_count}` (how many
-    model tokens the agent used, a whole number) and `{ms}` come from the Agent result, or, for an agent run in
-    the background, from the usage of its completion notice (`subagent_tokens`, `duration_ms`), and are `none`
-    only when neither gave a value. Then go on
+    When it returns, print the box it returns verbatim, then run its `after` calls: `{ms}` (how long the agent
+    ran, in milliseconds) comes from the Agent result, or, for an agent run in the background, from the
+    `duration_ms` of its completion notice, and is `none` only when neither gave a value. Then go on
     with the loop in the same turn.
   - **An agent the tool runs in the background anyway:** say in one line what is running, that the run
     goes on when it returns, that if it waits after the agent finished, any message moves it on, and
     that `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, which the person sets, keeps agents in the foreground.
     Its return is the first of its report (a message from the agent) and its completion notice: in the
     turn that starts, print its box, run its `after` calls and go on with the loop. At the report, fill
-    `{token_count}` and `{ms}` from the notice when it came first, else with `none`. Never wait for the notice;
+    `{ms}` from the notice when it came first, else with `none`. Never wait for the notice;
     Claude Code may start no turn for it. Never end a turn with an agent's `after` calls not run: nothing
     else moves the run.
   - A `steps` entry is a command to run as written, or a short instruction to carry out; `{...}` in it

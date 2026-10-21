@@ -70,7 +70,7 @@ export type RunView = {
   criteria: Array<{ id: string; priority: string; status: string; text: string; evidence: string[] }>
   loops: Array<{ from: string; to: string; reason: string; iteration: number; max: number; at: string }>
   skips: Array<{ stage: string; reason: string; by: string }>
-  usage: { tokens: number; ms: number; byStage: Array<{ stage: string; tokens: number; ms: number; runs: number }>; byModel: Array<{ model: string; tokens: number; ms: number; runs: number }> }
+  usage: { ms: number; byStage: Array<{ stage: string; ms: number; runs: number }>; byModel: Array<{ model: string; ms: number; runs: number }> }
   time: { started: string | null; updated: string | null }
 }
 
@@ -228,10 +228,9 @@ export function parseRunView(text: string): RunView | null {
     }),
     skips: arr(v.skips).map(x => ({ stage: str(obj(x).stage), reason: str(obj(x).reason), by: str(obj(x).by) })),
     usage: {
-      tokens: num(usage.tokens),
       ms: num(usage.ms),
-      byStage: Object.entries(obj(usage.by_stage)).map(([stage, x]) => ({ stage, tokens: num(obj(x).tokens), ms: num(obj(x).ms), runs: num(obj(x).runs) })),
-      byModel: Object.entries(obj(usage.by_model)).map(([model, x]) => ({ model, tokens: num(obj(x).tokens), ms: num(obj(x).ms), runs: num(obj(x).runs) })),
+      byStage: Object.entries(obj(usage.by_stage)).map(([stage, x]) => ({ stage, ms: num(obj(x).ms), runs: num(obj(x).runs) })),
+      byModel: Object.entries(obj(usage.by_model)).map(([model, x]) => ({ model, ms: num(obj(x).ms), runs: num(obj(x).runs) })),
     },
     time: { started: strOrNull(time.started), updated: strOrNull(time.updated) },
   }

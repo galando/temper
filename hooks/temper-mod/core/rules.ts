@@ -95,7 +95,7 @@ const PROTECTED: ReadonlyArray<readonly [ProtectedKind, RegExp]> = [
   ['gates', /(^|\/)\.temper\/gates\.json$/i],
   ['status', /(^|\/)\.temper\/status\.json$/i],
   ['overrides', /(^|\/)\.temper\/overrides\.json$/i],
-  // The run state, the grouped Build record, the token usage record and the view the mod draws: the CLI writes them.
+  // The run state, the grouped Build record, the usage record and the view the mod draws: the CLI writes them.
   ['state', /(^|\/)\.temper\/(?:build-state|groups|usage|view)\.json$/i],
   ['evidence', /(^|\/)\.temper\/evidence\/[^/]+\.json$/i],
   ['loops', /(^|\/)\.temper\/feedback-loops\.json$/i],

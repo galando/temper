@@ -272,7 +272,7 @@ assert_eq "D-08: no automatic-undo code is left in scripts/temper" "0" \
 setup
 
 # --- Grouped Build: whole-diff review fixes (F1-F5) and the fail-closed spec path ---
-FX_T="bash -c 'echo boom; pwd; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
+FX_T="bash -c 'echo boom; pwd; [ -z \"\$ST_ENV\" ] || env | cut -d= -f1; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
 
 # F5: a file the declared test command creates (a byproduct such as __pycache__) is not an undeclared change
 gg_setup
@@ -355,7 +355,7 @@ assert_eq "per task Build: no loop page, no template example, no page that names
 
 # --- Task agents and Plan: fewer tools, real-code tests, a real RED, few groups, production-file tiers ---
 # RED must fail on the tests themselves: pytest exit 2 (collection or import error), 126/127 and a timeout are no RED
-FX_T2="bash -c 'echo boom; pwd; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
+FX_T2="bash -c 'echo boom; pwd; [ -z \"\$ST_ENV\" ] || env | cut -d= -f1; [ -z \"\$ST_LONG\" ] || for i in \$(seq 1 400); do echo \"line \$i of a long failing output\"; done; [ -z \"\$ST_SLEEP\" ] || sleep \$ST_SLEEP; exit \${ST_EXIT:-0}'"
 red_case() { # red_case <exit of the RED run>: Task 1 runs a pytest-named command, RED with that exit, then GREEN
   gg_setup
   gp_mut "\`$FX_T2\`" "\`bash -c 'echo running pytest; exit \${ST_EXIT:-0}'\`"
@@ -495,11 +495,11 @@ st_setup; "$TEMPER" task start 1 >/dev/null 2>&1
 assert_eq "task show: with no test in the project there is no pattern block" "0" "$("$TEMPER" task show 1 | grep -c '^--- PATTERN TEST')"
 # the grouped report reads in plain words and says why an attempt failed
 gg_setup
-"$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model claude-haiku-5-5 --token-count 1200 --ms 61000 >/dev/null 2>&1
+"$TEMPER" task start 1 >/dev/null 2>&1; "$TEMPER" task gate 1 --model claude-haiku-5-5 --ms 61000 >/dev/null 2>&1
 gg_pass 1 src/a.sh
 REP="$("$TEMPER" group report)"
 assert_eq "group report: plain words, each attempt with its model and the reason it failed" "1|1|1|1" \
-  "$(printf '%s\n' "$REP" | grep -c '^  Task 1: passed after 2 attempt(s)$')|$(printf '%s\n' "$REP" | grep -c '^    attempt 1: failed (claude-haiku-5-5, 1,200 tokens, 1 min 1 s): ')|$(printf '%s\n' "$REP" | grep -c 'no green run')|$(printf '%s\n' "$REP" | grep -c '^  Tokens used by the task agents: ')"
+  "$(printf '%s\n' "$REP" | grep -c '^  Task 1: passed after 2 attempt(s)$')|$(printf '%s\n' "$REP" | grep -c '^    attempt 1: failed (claude-haiku-5-5, 1 min 1 s): ')|$(printf '%s\n' "$REP" | grep -c 'no green run')|$(printf '%s\n' "$REP" | grep -c '^  Time the task agents ran: ')"
 setup
 
 # None FAIL (found in a hands-on run: two tasks each lost a Haiku attempt to a gate that ran before their agents did).

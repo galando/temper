@@ -32,7 +32,7 @@ counts an answer only on an exact match for the CLI's run and step, guards, and 
 bar decides nothing). The guard is not a sandbox (`docs/trust.md`). The stage commands above are
 doors into `/temper`.
 
-**Version:** 9.7.3 (history: `CHANGELOG.md`).
+**Version:** 9.7.4 (history: `CHANGELOG.md`).
 Config: `.claude/temper.config` | Docs: `reference/`
 CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
 

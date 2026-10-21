@@ -101,11 +101,23 @@ def load_run(gfile):
     except Exception:
         return {}
 
+# A credential is no input of a test. The commands the CLI runs (a task's test, a group's Validate command, the
+# integration suite) get the environment without the variables whose names say they hold one: a key, a token, a
+# secret, a password or passphrase, credentials, an auth socket or helper. Every other variable passes as it is.
+CREDENTIAL_NAME = re.compile(r'PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|APIKEY|ASKPASS|(?:^|_)(?:KEYS?|TOKENS?|SECRETS?|AUTH|PAT)(?:_|$)')
+CREDENTIAL_NAMES = {'GPG_AGENT_INFO', 'GNUPGHOME', 'KRB5CCNAME'}
+
+def test_env():
+    """The environment for a command the CLI runs: this one, without its credential-named variables."""
+    return {k: v for k, v in os.environ.items()
+            if not CREDENTIAL_NAME.search(k.upper()) and k.upper() not in CREDENTIAL_NAMES}
+
 def run_cmd(wt, timeout, cmd):
-    """Run cmd (one string runs through bash -c) in wt with a kill timeout; returns (output bytes, exit)."""
+    """Run cmd (one string runs through bash -c) in wt with a kill timeout and test_env(); returns (output bytes, exit)."""
     args = ['bash', '-c', cmd[0]] if len(cmd) == 1 else cmd
     try:
-        p = subprocess.Popen(args, cwd=wt, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+        p = subprocess.Popen(args, cwd=wt, env=test_env(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             start_new_session=True)
         try:
             out, _ = p.communicate(timeout=float(timeout))
             rc = p.returncode if p.returncode >= 0 else 128 - p.returncode

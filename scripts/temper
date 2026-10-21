@@ -27,7 +27,7 @@
 #   temper task <start|show|test|gate> N          one task's lifecycle (test runs the declared command)
 #   temper integrate                              merge the passed groups, run the suite, check Interfaces
 #   temper model <task|task-escalation>           the task agent's model and its escalation model
-#   temper usage add --stage S [--model M] [--token-count T] [--ms D] [--task N] [--group G]
+#   temper usage add --stage S [--model M] [--ms D] [--task N] [--group G]
 #                                                 one agent launch's usage (any stage);
 #                                                 report and state archive show it; missing values are null
 #
@@ -2851,13 +2851,13 @@ def secs(s):
         return calendar.timegm(time.strptime(s, '%Y-%m-%dT%H:%M:%SZ'))
     except Exception:
         return None
-tokens, attempts, esc = {}, {}, 0
+spent, attempts, esc = {}, {}, 0
 for n, t in sorted((run.get('tasks') or {}).items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 0):
     rows = list(t.get('attempts_prior') or []) + list(t.get('attempts') or [])
     attempts[n] = rows
     for r in rows:
-        if isinstance(r.get('tokens'), int):
-            tokens[r.get('model') or 'unknown'] = tokens.get(r.get('model') or 'unknown', 0) + r['tokens']
+        if isinstance(r.get('ms'), int):
+            spent[r.get('model') or 'unknown'] = spent.get(r.get('model') or 'unknown', 0) + r['ms']
         if isinstance(r.get('n'), int) and r['n'] >= 3:
             esc += 1
 groups = run.get('groups') or {}
@@ -2872,7 +2872,7 @@ for g, v in sorted(groups.items()):
 total = (max(ends) - min(starts)) * 1000 if starts and ends else 0
 openf = sum(1 for e in rev if isinstance(e, dict) and e.get('severity') and not e.get('resolved') and not e.get('accepted'))
 task_groups = {n: (t or {}).get('group') for n, t in (run.get('tasks') or {}).items() if (t or {}).get('group')}
-print(json.dumps({'tokens_by_model': tokens, 'attempts': attempts, 'escalations': esc, 'task_groups': task_groups,
+print(json.dumps({'ms_by_model': spent, 'attempts': attempts, 'escalations': esc, 'task_groups': task_groups,
                   'parked': sorted(g for g, v in groups.items() if v.get('status') == 'parked'),
                   'wall_ms_by_group': wall, 'build_wall_ms': total, 'review_findings_open': openf},
                  sort_keys=True))
@@ -2888,14 +2888,12 @@ r = json.loads(sys.argv[1])
 def dur(ms):
     s = int(ms or 0) // 1000
     return '%d min %d s' % (s // 60, s % 60) if s >= 60 else '%d s' % s
-def num(n):
-    return '{:,}'.format(n)
 tasks = sorted(r['attempts'].items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 0)
 groups = r.get('task_groups') or {}
-total = sum(r['tokens_by_model'].values())
+total = sum(r['ms_by_model'].values())
 print('Grouped Build report')
 print('  Tasks: %d, in %d group(s). Build time: %s.' % (len(tasks), len(r['wall_ms_by_group']) or len(set(groups.values())), dur(r['build_wall_ms'])))
-print('  Tokens used by the task agents: %s%s' % (num(total), (' (' + ', '.join('%s %s' % (m, num(n)) for m, n in sorted(r['tokens_by_model'].items())) + ')') if r['tokens_by_model'] else ''))
+print('  Time the task agents ran: %s%s' % (dur(total), (' (' + ', '.join('%s %s' % (m, dur(n)) for m, n in sorted(r['ms_by_model'].items())) + ')') if r['ms_by_model'] else ''))
 for g, ms in sorted(r['wall_ms_by_group'].items()):
     print('  Group %s: passed its group gate after %s.' % (g, dur(ms)))
 print('  Groups stopped for you (parked): %s' % (', '.join(r['parked']) or 'none'))
@@ -2912,8 +2910,6 @@ for n, rows in tasks:
         what = 'passed' if a.get('outcome') == 'PASS' else 'failed'
         model = a.get('model') or 'no model given to task gate'
         extra = []
-        if isinstance(a.get('tokens'), int):
-            extra.append('%s tokens' % num(a['tokens']))
         if isinstance(a.get('ms'), int):
             extra.append(dur(a['ms']))
         line = '    attempt %d: %s (%s%s)' % (i, what, model, ''.join(', ' + x for x in extra))
@@ -3191,14 +3187,13 @@ cmd_task_gate() {
 
 _task_gate_body() {
   local n="${1:-}"; shift || true
-  local model="" tokens="" ms=""
+  local model="" ms=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --model) model="${2:-}"; shift 2 || true ;;
-      --token-count) tokens="${2:-}"; shift 2 || true ;;
       --ms) ms="${2:-}"; shift 2 || true ;;
-      # An agent id: the after calls of 9.7.0 and 9.7.1 named it, so a run started then still records. Nothing reads it.
-      --agent) shift; shift || true ;;
+      # A value the after calls of 9.7.0 to 9.7.3 passed as well, so a run started then still records. Nothing reads it.
+      --agent|--tokens|--token-count) shift; shift || true ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
@@ -3219,10 +3214,9 @@ _task_gate_body() {
   v="$(_task_py verdict "$_T_PLAN" "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$_T_ABS")" || return 1
   verdict="$(_jget "$v" verdict)"; reason="$(_jget "$v" reason)"
   local group slug title; group="$(_jget "$v" group)"; slug="$(_jget "$v" slug)"; title="$(_jget "$v" title)"
-  # D-07: this launch's usage, once, whatever the verdict (a failed attempt spent tokens too).
-  [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=""
+  # D-07: this launch's usage, once, whatever the verdict (a failed attempt took time too).
   [[ "$ms" =~ ^[0-9]+$ ]] || ms=""
-  _usage_append task "$model" "$tokens" "$ms" "$n" "$group" || true
+  _usage_append task "$model" "$ms" "$n" "$group" || true
 
   if [[ "$verdict" != "PASS" ]]; then
     local att fshas wtrel park=""
@@ -3241,17 +3235,17 @@ _task_gate_body() {
 t = d['tasks'][a[0]]
 def num(x): return int(x) if x.isdigit() else None
 t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'FAIL', 'reason': a[3],
-    'tokens': num(a[4]), 'ms': num(a[5]), 'ts': a[6], 'output': a[7]})
+    'ms': num(a[4]), 'ts': a[5], 'output': a[6]})
 t['status'] = 'failed'
-if int(a[1]) >= 3 or a[9]:
-    g = d.setdefault('groups', {}).setdefault(a[8], {})
-    g.setdefault('parked_foreign', []).extend(x for x in json.loads(a[10] or '[]') if x not in g.get('parked_foreign', []))
+if int(a[1]) >= 3 or a[8]:
+    g = d.setdefault('groups', {}).setdefault(a[7], {})
+    g.setdefault('parked_foreign', []).extend(x for x in json.loads(a[9] or '[]') if x not in g.get('parked_foreign', []))
     # a group already parked keeps the reason it was parked for and gains this one
-    new = a[9] or 'Task %s failed %s attempts' % (a[0], a[1])
+    new = a[8] or 'Task %s failed %s attempts' % (a[0], a[1])
     old = g.get('parked_reason') if g.get('status') == 'parked' else ''
     g['parked_reason'] = old + ' -- also: ' + new if old and new not in old else (old or new)
     g['status'] = 'parked'
-" "$n" "$att" "$model" "$reason" "$tokens" "$ms" "$(_now)" "$(_jget "$v" output)" "$group" "$park" "${fshas:-[]}" || return 1
+" "$n" "$att" "$model" "$reason" "$ms" "$(_now)" "$(_jget "$v" output)" "$group" "$park" "${fshas:-[]}" || return 1
     echo "FAIL: $reason"
     if [[ "$fshas" != "[]" && -n "$fshas" ]]; then
       local fl=(); mapfile -t fl < <(python3 -I -c "
@@ -3332,14 +3326,14 @@ if a[6]:   # the commit the CLI just made on the task branch is its own, so a re
 t = d['tasks'][a[0]]
 def num(x): return int(x) if x.isdigit() else None
 t.setdefault('attempts', []).append({'n': int(a[1]), 'model': a[2] or None, 'outcome': 'PASS', 'reason': '',
-    'tokens': num(a[3]), 'ms': num(a[4]), 'ts': a[5]})
+    'ms': num(a[3]), 'ts': a[4]})
 t['status'] = 'passed'
-t['passed_at'] = a[5]
-t['commit'] = a[8] or None
-for x in (a[6], a[7]):
+t['passed_at'] = a[4]
+t['commit'] = a[7] or None
+for x in (a[5], a[6]):
     if x:
         d.setdefault('cli_commits', []).append(x)
-" "$n" "$(_jget "$v" attempt)" "$model" "$tokens" "$ms" "$(_now)" "$sha" "$mrg" "$tip" || return 1
+" "$n" "$(_jget "$v" attempt)" "$model" "$ms" "$(_now)" "$sha" "$mrg" "$tip" || return 1
   _task_wt_discard "$n" "$(_jget "$_T_CTX" worktree)" "$tb" || return 1
   # F1: a task reopened with group-gate feedback answers it by passing: the CLI records the feedback-resolved row
   # that gate build requires, and marks the reopen answered so task show stops printing it
@@ -4730,39 +4724,37 @@ if accepted:
 import json, sys
 u = json.loads(sys.argv[1])
 def n(v): return '-' if v is None else str(v)
-def tk(v): return '-' if v is None else format(v, ',')
 seq = ['intent', 'rca', 'plan', 'design', 'build', 'task', 'fix', 'review', 'check']
 in_run = lambda kv: (seq.index(kv[0]) if kv[0] in seq else len(seq), kv[0])
 print()
-print('Usage (the totals Claude Code gave for each agent)')
+print('Usage (the time Claude Code gave for each agent)')
 w = max([10] + [len(k) for k in list(u['by_stage']) + list(u['by_model'])])   # a full model id is wider than a stage
-print('  %-*s %6s %12s %12s  %s' % (w, 'stage', 'rows', 'tokens', 'ms', 'model'))
+print('  %-*s %6s %12s  %s' % (w, 'stage', 'rows', 'ms', 'model'))
 for k, v in sorted(u['by_stage'].items(), key=in_run):
-    print('  %-*s %6d %12s %12s  %s' % (w, k, v['rows'], tk(v['tokens']), n(v['ms']), ', '.join(v.get('models') or []) or '-'))
-print('  %-*s %6s %12s %12s' % (w, 'model', 'rows', 'tokens', 'ms'))
+    print('  %-*s %6d %12s  %s' % (w, k, v['rows'], n(v['ms']), ', '.join(v.get('models') or []) or '-'))
+print('  %-*s %6s %12s' % (w, 'model', 'rows', 'ms'))
 for k, v in u['by_model'].items():
-    print('  %-*s %6d %12s %12s' % (w, k, v['rows'], tk(v['tokens']), n(v['ms'])))
+    print('  %-*s %6d %12s' % (w, k, v['rows'], n(v['ms'])))
 t = u['total']
-print('  %-*s %6d %12s %12s' % (w, 'total', t['rows'], tk(t['tokens']), n(t['ms'])))
-print('  The tokens of an agent are its context at its last call, as Claude Code gives them, not what it was billed for.')" "$usage_json"
+print('  %-*s %6d %12s' % (w, 'total', t['rows'], n(t['ms'])))" "$usage_json"
   [[ "$end" == "true" ]] && _report_end shown
   return 0
 }
 
 # Whole-flow usage (9.7.0, intent D-07). .temper/usage.json is a CLI-owned array of rows
-# {stage, model, tokens, ms, task, group, ts}; a value that was not given is null. The tokens and the time are the totals
-# Claude Code gives for an agent (its Agent result, or the completion notice of an agent run in the background): the CLI
-# opens no file of Claude Code's to learn more. The grouped `task gate --token-count --ms` writes its row here too, and
+# {stage, model, ms, task, group, ts}; a value that was not given is null. The time is the total Claude Code gives for an
+# agent (its Agent result, or the completion notice of an agent run in the background): the CLI opens no file of Claude
+# Code's to learn more, and since 9.7.4 records no token count. The grouped `task gate --ms` writes its row here too, and
 # `group report` keeps reading groups.json attempts, so the two views never meet in one total: the usage totals count
 # each launch once.
-_usage_append() { # _usage_append <stage> <model> <tokens> <ms> <task> <group>
+_usage_append() { # _usage_append <stage> <model> <ms> <task> <group>
   local row
   row="$(python3 -I -c "
 import json, sys
 a = sys.argv[1:]
 def num(x): return int(x) if x.isdigit() else None
-print(json.dumps({'stage': a[0], 'model': a[1] or None, 'tokens': num(a[2]), 'ms': num(a[3]),
-                  'task': num(a[4]), 'group': a[5] or None, 'ts': a[6]}))" "$1" "$2" "$3" "$4" "$5" "$6" "$(_now)")" || return 1
+print(json.dumps({'stage': a[0], 'model': a[1] or None, 'ms': num(a[2]),
+                  'task': num(a[3]), 'group': a[4] or None, 'ts': a[5]}))" "$1" "$2" "$3" "$4" "$5" "$(_now)")" || return 1
   _ensure_dirs
   _json_append "$USAGE_FILE" "$row"
 }
@@ -4780,10 +4772,9 @@ if not rows:
     sys.exit(0)
 def add(acc, r):
     acc['rows'] += 1
-    for k in ('tokens', 'ms'):
-        if isinstance(r.get(k), int):
-            acc[k] = (acc[k] or 0) + r[k]
-fresh = lambda: {'rows': 0, 'tokens': None, 'ms': None}
+    if isinstance(r.get('ms'), int):
+        acc['ms'] = (acc['ms'] or 0) + r['ms']
+fresh = lambda: {'rows': 0, 'ms': None}
 by_stage, by_model, total = {}, {}, fresh()
 for r in rows:
     st = by_stage.setdefault(r.get('stage') or 'unknown', fresh())
@@ -4797,23 +4788,22 @@ print(json.dumps({'by_stage': by_stage, 'by_model': by_model, 'total': total}, s
 PY
 }
 
-cmd_usage() { # temper usage add --stage S [--model M] [--token-count T] [--ms D] [--task N] [--group G]
+cmd_usage() { # temper usage add --stage S [--model M] [--ms D] [--task N] [--group G]
   local sub="${1:-}"; shift || true
   if [[ "$sub" != "add" ]]; then
-    echo "FAIL: usage: temper usage add --stage <intent|plan|design|build|review|check|rca|fix|task> [--model M] [--token-count T] [--ms D] [--task N] [--group G]" >&2
+    echo "FAIL: usage: temper usage add --stage <intent|plan|design|build|review|check|rca|fix|task> [--model M] [--ms D] [--task N] [--group G]" >&2
     return 1
   fi
-  local stage="" model="" tokens="" ms="" task="" group=""
+  local stage="" model="" ms="" task="" group=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stage) stage="${2:-}"; shift 2 || true ;;
       --model) model="${2:-}"; shift 2 || true ;;
-      --token-count) tokens="${2:-}"; shift 2 || true ;;
       --ms) ms="${2:-}"; shift 2 || true ;;
       --task) task="${2:-}"; shift 2 || true ;;
       --group) group="${2:-}"; shift 2 || true ;;
-      # An agent id: the after calls of 9.7.0 and 9.7.1 named it, so a run started then still records. Nothing reads it.
-      --agent) shift; shift || true ;;
+      # A value the after calls of 9.7.0 to 9.7.3 passed as well, so a run started then still records. Nothing reads it.
+      --agent|--tokens|--token-count) shift; shift || true ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
@@ -4821,13 +4811,10 @@ cmd_usage() { # temper usage add --stage S [--model M] [--token-count T] [--ms D
     *" $stage "*) [[ -n "$stage" ]] || { echo "FAIL: --stage is required" >&2; return 1; } ;;
     *) echo "FAIL: --stage must be one of: $AGENT_STAGES task (got '$stage')" >&2; return 1 ;;
   esac
-  local v
-  for v in "$tokens" "$ms"; do
-    [[ -z "$v" || "$v" == "none" || "$v" =~ ^[0-9]+$ ]] || { echo "FAIL: --token-count and --ms take whole numbers, or none (got '$v')" >&2; return 1; }
-  done
+  [[ -z "$ms" || "$ms" == "none" || "$ms" =~ ^[0-9]+$ ]] || { echo "FAIL: --ms takes a whole number, or none (got '$ms')" >&2; return 1; }
   [[ -z "$task" || "$task" =~ ^[0-9]+$ ]] || { echo "FAIL: --task takes a whole number (got '$task')" >&2; return 1; }
   [[ -z "$group" || "$group" =~ ^G[0-9]+$ ]] || { echo "FAIL: --group takes G<n> (got '$group')" >&2; return 1; }
-  _usage_append "$stage" "$model" "$tokens" "$ms" "$task" "$group" || return 1
+  _usage_append "$stage" "$model" "$ms" "$task" "$group" || return 1
   echo "OK: usage recorded ($stage)"
 }
 
@@ -5098,7 +5085,7 @@ Usage:
   temper group report [--json]    (grouped Build: the measurement report)
   temper task <start|show|test|gate> N  (grouped Build: one task's lifecycle)
   temper integrate                (grouped Build: merge the passed groups, run the suite, check Interfaces)
-  temper usage add --stage S [--model M] [--token-count T] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
+  temper usage add --stage S [--model M] [--ms D] [--task N] [--group G]  (whole-flow usage; shown by report)
   temper next [--json]            (what the run does next: a stage to run, a question to ask, or the commit; docs/flow.md)
   temper report --html [-o OUT]   (the end of run report as one page, to report.html in the spec folder)
   temper report --end | --no-html (at the commit: the report for the person, then their No to the page)

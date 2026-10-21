@@ -63,7 +63,7 @@ To keep groups but run the tasks on another model (no Haiku), set `task-model: s
    files in that worktree, then `temper task test N --phase red` and `temper task test N --phase green`.
    The CLI runs the task's own declared test command there and records the output. Tasks that run
    at the same time never see each other's unfinished edits.
-5. **Task gate.** `temper task gate N --model M --token-count T --ms D` runs once the task's agent
+5. **Task gate.** `temper task gate N --model M --ms D` runs once the task's agent
    has returned, never before: the CLI refuses a task gate with no `--model`, and the schedule
    lists a task whose agent still works as `running on {model}: wait for its agent to return`. It
    passes only with RED then GREEN evidence for that task and only declared files changed in its worktree. On PASS the CLI
@@ -123,9 +123,13 @@ the final feature commit.
   still checks the full packs.
 - **Merge commits run no pre-commit hook.** The CLI checks the upstream-gate condition
   (ADR 0009) itself before each commit and merge.
-- **The tokens are the totals Claude Code gives, not a bill.** The CLI opens no file of Claude
-  Code's, so it shows no cost: an agent's tokens are its context at its last call, which is far
-  below what it was billed for when it read a cache many times.
+- **A test gets no credential.** The commands the CLI runs (a task's test, a group's Validate command,
+  the integration suite) get your environment without the variables whose names say they hold a
+  credential: a key, a token, a secret, a password or passphrase, credentials, an auth socket. A test
+  that needs one is not a unit test of a task; run it in Check.
+- **Usage is time, not tokens or cost.** Since 9.7.4 the CLI records how long each agent ran and how
+  many times each stage launched one, and no token count. It opens no file of Claude Code's, so it
+  shows no cost either.
 
 ## Run files
 
@@ -134,28 +138,27 @@ The CLI owns these `.temper/` runtime files. Do not hand-write them and do not c
 
 - `.temper/groups.json`: per-group worktree, status and gate verdict; per-task status,
   attempts and commit; the integration verdict.
-- `.temper/usage.json`: one row per agent launch: stage, model, tokens, milliseconds, task and group.
+- `.temper/usage.json`: one row per agent launch: stage, model, milliseconds, task and group.
 - `.temper/view.json`: the run as the mod draws it, written after every change (docs/flow.md).
 - `.temper/.lock/`: the short-lived lock directory that serializes writes to the files above
   (stale after 30 s, never held while a test runs).
 
 ## Measuring a run
 
-Every stage launch is recorded with `temper usage add --stage S --model M --token-count T --ms D`
+Every stage launch is recorded with `temper usage add --stage S --model M --ms D`
 (the orchestrator makes that call after each launch; task agents are recorded by
-`temper task gate --token-count --ms`). After a run, save:
+`temper task gate --ms`). After a run, save:
 
 - `temper report --json`: whole-flow usage (`usage.by_stage`, `usage.by_model`, `usage.total`)
   and the gate verdicts;
-- `temper group report --json`: `tokens_by_model`, `attempts`, `escalations`, `parked`,
+- `temper group report --json`: `ms_by_model`, `attempts`, `escalations`, `parked`,
   `wall_ms_by_group`, `build_wall_ms`, `review_findings_open`.
 
-The tokens and the time of a row are the totals Claude Code gives for the agent: the Agent result,
-or, for an agent run in the background, its completion notice (`subagent_tokens`, `duration_ms`);
-a value neither gave is left empty. That total is the agent's context at its last call, not what it
-was billed for: one Haiku task of 19 calls gave 114K and was billed for 1.65M, mostly cache reads.
-The CLI opens no file of Claude Code's to learn more, so the report gives no cost.
+The time of a row is the total Claude Code gives for the agent: the Agent result, or, for an agent
+run in the background, the `duration_ms` of its completion notice; a value neither gave is left
+empty. The CLI opens no file of Claude Code's to learn more, and records no token count or cost.
 
 To compare two runs (two models for the task agents, two plans, two versions of Temper), build
-the same feature from the same commit on two branches and compare tokens per model times that
-model's price, Build wall time, retries, escalations, parked groups and Review findings.
+the same feature from the same commit on two branches and compare the time per model, Build wall
+time, retries, escalations, parked groups and Review findings. For the cost of each, read your own
+usage page.
