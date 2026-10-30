@@ -295,8 +295,15 @@ group branch is merged.
 
 ```
 ${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <trivial|simple|medium|complex>
+${CLAUDE_PLUGIN_ROOT}/scripts/temper risk
 ${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan
 ```
+
+`temper risk` computes the rating from the blast radius, so the same blast radius always gives the same rating:
+production files (declared files that are not tests or docs) up to 3 is L, up to 10 is M, more is H; a CRITICAL entry
+in `.temper/security-map.json` is H; a HIGH entry, or a `[CROSS-REPO]` row in the Blast Radius section, moves it up one
+tier. The panel's RISK field is the letter it printed. To raise it, `temper risk --raise L|M|H --reason '<why>'`: a
+raise needs a reason and never lowers the rating.
 
 If a security-hot-path scan ran, also persist `.temper/security-map.json` (one entry per
 CRITICAL/HIGH file: `file`, `function`, `sensitivity`, `entry_points[]` with `route`,

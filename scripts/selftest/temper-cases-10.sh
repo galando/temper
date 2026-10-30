@@ -118,3 +118,33 @@ printf '\n### Open Questions\n\n- Blocking: does the reset link expire; conseque
 assert_eq "F10: an accepted intent passes whatever its Open Questions hold" "True|PASS" \
   "$(_blockrow)|$(python3 -c "import json; print(json.load(open('.temper/gates.json'))['intent']['verdict'])")"
 assert_eq "F10: the example intent holds no Blocking question" "0" "$(grep -c '^- Blocking:' "$REPO_ROOT/templates/example-intent.md")"
+
+# --- F11. temper risk computes the rating from the blast radius ---
+_risk_tasks() { # _risk_tasks <file>...: a tasks.md whose one task declares the files
+  { printf '# Tasks: demo\n\n**Integration:** `true`\n\n## Group G1: Core\n**Depends:** none\n**Validate:** `true`\n**Context:**\nx\n\n### Task 1: t\n**File:**'
+    for f in "$@"; do printf ' `%s`' "$f"; done
+    printf '\n**Depends:** none\n**Test:** `true`\n**Cases:**\n- a case\n- [ ] done\n'; } > .temper/specs/demo/tasks.md
+}
+fresh; rm -f .temper/security-map.json
+_risk_tasks src/a.py src/b.py src/c.py unit/test_a.py docs/x.md README.md
+assert_eq "F11: three production files (tests and docs are not counted) is L" "RISK: L (3 production files)" "$("$TEMPER" risk | head -1)"
+_risk_tasks src/a.py src/b.py src/c.py src/d.py
+"$TEMPER" risk >/dev/null; assert_eq "F11: four production files is M" "M" "$("$TEMPER" state get risk)"
+assert_eq "F11: the same blast radius gives the same rating twice" "$("$TEMPER" risk)" "$("$TEMPER" risk)"
+_risk_tasks src/a.py src/b.py src/c.py src/d.py src/e.py src/f.py src/g.py src/h.py src/i.py src/j.py src/k.py
+"$TEMPER" risk >/dev/null; assert_eq "F11: eleven production files is H" "H" "$("$TEMPER" state get risk)"
+_risk_tasks src/a.py
+printf '[{"file": "src/a.py", "function": "f", "sensitivity": "CRITICAL"}]\n' > .temper/security-map.json
+"$TEMPER" risk >/dev/null; assert_eq "F11: a CRITICAL entry in the security map is H" "H" "$("$TEMPER" state get risk)"
+printf '[{"file": "src/a.py", "function": "f", "sensitivity": "HIGH"}]\n' > .temper/security-map.json
+"$TEMPER" risk >/dev/null; assert_eq "F11: a HIGH entry moves L up to M" "M" "$("$TEMPER" state get risk)"
+rm -f .temper/security-map.json
+printf '# Plan\n\n## Blast Radius\n\n- [CROSS-REPO] the api repo reads this\n\n## Files to Modify\n' > .temper/specs/demo/plan.md
+"$TEMPER" risk >/dev/null; assert_eq "F11: a CROSS-REPO row in the Blast Radius moves L up to M" "M" "$("$TEMPER" state get risk)"
+printf '# Plan\n\n## Blast Radius\n\nnone\n' > .temper/specs/demo/plan.md
+assert_exit "F11: a raise needs a reason" 1 "$TEMPER" risk --raise H
+assert_exit "F11: a raise to H with a reason works" 0 "$TEMPER" risk --raise H --reason "the billing job reads this"
+assert_eq "F11: the raise is kept in the state with its reason" "H|the billing job reads this" "$("$TEMPER" state get risk)|$("$TEMPER" state get risk_raise_reason)"
+assert_eq "F11: a later call keeps the raise" "H" "$("$TEMPER" risk >/dev/null; "$TEMPER" state get risk)"
+_risk_tasks src/a.py src/b.py src/c.py src/d.py
+assert_exit "F11: a raise never lowers the rating" 1 "$TEMPER" risk --raise L --reason "x"

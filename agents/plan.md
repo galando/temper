@@ -83,7 +83,7 @@ a long entry onto a continuation row indented two spaces.
 
 Return this panel (the orchestrator prints it verbatim), then the plan's ASCII diagram
 right after its closing border. After them, on a line of its own, return the spec path.
-The complexity tier and the risk level are the panel's COMPLEXITY and RISK fields.
+The complexity tier and the risk level are the panel's COMPLEXITY and RISK fields. Run `${CLAUDE_PLUGIN_ROOT}/scripts/temper risk` right after `state set complexity`; the RISK field is the letter it prints, never your own estimate.
 Nothing else goes outside the panel:
 
 ```

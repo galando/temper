@@ -4635,6 +4635,28 @@ _setup_calls() {
   fi
 }
 
+# temper risk [--raise L|M|H --reason R]: the plan's rating from its blast radius (scripts/risk.py), kept in the run state.
+cmd_risk() {
+  _state_migrate_legacy
+  [[ -f "$STATE_FILE" ]] || { echo "FAIL: no active state (temper state init)" >&2; return 1; }
+  local spec; spec="$(_spec_path "")"
+  [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
+  local out rc=0
+  out="$(python3 -I -c "
+import sys
+sys.path.insert(0, sys.argv[1])
+sys.argv = ['risk.py', 'compute'] + sys.argv[2:]
+import risk
+sys.exit(risk.main(sys.argv))" "$SCRIPTS_DIR" "$spec" "$TEMPER_DIR/security-map.json" "$@" --prior "$(_json_get_path "$STATE_FILE" risk_raise "")")" || rc=$?
+  [[ $rc -eq 0 ]] || return $rc
+  head -1 <<<"$out"
+  python3 -I -c "
+import json, sys
+for k, v in json.loads(sys.argv[1]).items(): print(k + '\t' + str(v))" "$(tail -1 <<<"$out")" | while IFS=$'\t' read -r k v; do
+    _json_set_path "$STATE_FILE" "$k" "$v" '{}' >/dev/null
+  done
+}
+
 # temper next [--json]: the next action of the run, computed (ADR 0013, docs/flow.md). Read only. flow.py reads the
 # project's facts itself (the branch, HEAD, the spec folder's state, the changed files); the CLI adds the models and the
 # setup calls, which only it knows.
@@ -5077,6 +5099,7 @@ main() {
     integrate) cmd_integrate "$@" ;;
     usage) cmd_usage "$@" ;;
     next) cmd_next "$@" ;;
+    risk) cmd_risk "$@" ;;
     intent) cmd_intent "$@" ;;
     park) cmd_park "$@" ;;
     ""|-h|--help)
