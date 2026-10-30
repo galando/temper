@@ -17,6 +17,9 @@ REPO_ROOT="${TESTS_DIR%/scripts/selftest}"
 TEMPER="$REPO_ROOT/scripts/temper"
 WORKDIR="$(mktemp -d)" || exit 1
 WORKDIR="$(cd -P "$WORKDIR" && pwd)" || exit 1   # physical, as the scripts see their own folders
+# A CLI call from outside this folder is refused (exit 3), config and model included, and the real .temper is left as it was.
+export TEMPER_SELFTEST_ROOT="$WORKDIR"
+_REAL_TEMPER_BEFORE="$(find "$REPO_ROOT/.temper" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | cksum)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 PASS=0
@@ -230,6 +233,12 @@ _dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 10 "* ]] && source "$TESTS_DIR/temper-cases-10.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 11 "* ]] && source "$TESTS_DIR/temper-cases-11.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 12 "* ]] && source "$TESTS_DIR/temper-cases-12.sh"
+
+# the suite leaves the real .temper folder as it was, and a CLI call outside its own folder is refused
+assert_eq "selftest safety: the real .temper folder is as it was" "$_REAL_TEMPER_BEFORE" "$(find "$REPO_ROOT/.temper" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | cksum)"
+assert_exit "selftest safety: a CLI call from outside the self test folder is refused (exit 3), config included" 3 \
+  bash -c "cd '$REPO_ROOT' && '$TEMPER' config get check.coverage-threshold"
+assert_exit "selftest safety: model is refused there too" 3 bash -c "cd '$REPO_ROOT' && '$TEMPER' model plan"
 
 echo ""
 echo "=== test-temper.sh ==="

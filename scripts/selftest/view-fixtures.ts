@@ -10752,9 +10752,16 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [],
-      "description": "Accept a finding, Grill Me, Teach Me, Save for later",
-      "do": "Ask the more question.",
-      "label": "More options",
+      "description": "Keep a finding as it is, with your reason.",
+      "do": "Ask the accept question.",
+      "label": "Accept a finding",
+      "move": null
+     },
+     {
+      "calls": [],
+      "description": "Stress test the change.",
+      "do": "Use the grill-me skill on this stage's work, then ask this question again.",
+      "label": "Grill Me",
       "move": null
      },
      {
@@ -10785,6 +10792,13 @@ export const VIEWS: Record<string, unknown> = {
        ],
        "question": "Make a small change. What is the reason?"
       }
+     },
+     {
+      "calls": [],
+      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+      "label": "Save for later",
+      "move": "pause",
+      "stop": true
      }
     ],
     "question": {
@@ -10792,15 +10806,23 @@ export const VIEWS: Record<string, unknown> = {
      "multiSelect": false,
      "options": [
       {
-       "description": "Accept a finding, Grill Me, Teach Me, Save for later",
-       "label": "More options"
+       "description": "Keep a finding as it is, with your reason.",
+       "label": "Accept a finding"
+      },
+      {
+       "description": "Stress test the change.",
+       "label": "Grill Me"
       },
       {
        "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
        "label": "Make a small change"
+      },
+      {
+       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+       "label": "Save for later"
       }
      ],
-     "question": "Review: the check passed. Continue to Check? More options."
+     "question": "Review: more options."
     },
     "run_id": "run-pw",
     "stage": "review",
@@ -10848,7 +10870,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "More options, Make a small change",
+     "description": "Accept a finding, Grill Me, Teach Me, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -10871,7 +10893,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Architecture Depth Review"
      },
      {
-      "description": "More options, Make a small change",
+      "description": "Accept a finding, Grill Me, Teach Me, Save for later",
       "label": "More options"
      }
     ],

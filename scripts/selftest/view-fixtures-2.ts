@@ -65,7 +65,7 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
       "label": "Save for later"
      }
     ],
-    "question": "Intent: the check passed. The branch feature/pw already exists from an earlier run; its last commit is 3fe20f5 an earlier run. Accept the intent and continue to Plan?"
+    "question": "Intent: the check passed. The branch feature/pw already exists from an earlier run; its last commit is 0000000 an earlier run. Accept the intent and continue to Plan?"
    },
    "run_id": "run-clash",
    "stage": "intent",

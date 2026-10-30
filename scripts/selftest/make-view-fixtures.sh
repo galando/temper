@@ -16,6 +16,9 @@ ROOT="${HERE%/scripts/selftest}"
 WORK="$(mktemp -d)"
 WORK="$(cd -P "$WORK" && pwd)"
 trap 'rm -rf "$WORK"' EXIT
+# under its own root and with a home of its own: a call outside the folder is refused, and no real file is read
+export TEMPER_SELFTEST_ROOT="$WORK" HOME="$WORK/home"
+mkdir -p "$HOME"
 
 python3 - "$ROOT" "$WORK" "${1:-}" <<'PY'
 import json, os, re, subprocess, sys
@@ -95,6 +98,7 @@ def snap(cwd, name, run_name):
     text = text.replace(root, "/plugin").replace(cwd, "/project").replace(work, "/work")
     if head:
         text = text.replace(head, "0" * 40)
+    text = re.sub(r"its last commit is [0-9a-f]{7,40} ", "its last commit is 0000000 ", text)
     d = json.loads(text)
     rid = (d.get("run") or {}).get("id")
     text = json.dumps(d, sort_keys=True)
