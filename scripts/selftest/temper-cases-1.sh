@@ -665,7 +665,7 @@ models:
 EOF
 assert_eq "models.{stage} config overrides the frontmatter default" "opus" "$("$TEMPER" model review)"
 assert_eq "models.{stage} accepts a full model ID, not just an alias" "claude-opus-5" "$("$TEMPER" model check)"
-assert_eq "an unset stage still falls back to frontmatter" "$("$TEMPER" model plan)" "$(cd "$REPO_ROOT" && ./scripts/temper model plan)"
+assert_eq "an unset stage still falls back to frontmatter" "$("$TEMPER" model plan)" "$(cd "$REPO_ROOT" && env -u TEMPER_SELFTEST_ROOT ./scripts/temper model plan)"
 assert_eq "model --all reflects overrides" "review=opus" "$("$TEMPER" model --all | grep '^review=')"
 
 # Absent config => frontmatter defaults, never an empty string.
