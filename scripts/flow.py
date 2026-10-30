@@ -1412,14 +1412,27 @@ def main(argv):
         f = "--" + flag.replace("_", "-")
         if f in argv and argv.index(f) + 1 < len(argv):
             ctx[flag] = argv[argv.index(f) + 1]
+    if argv[1] == "next":
+        print(run_next(ctx))
+        return 0
+    run_view(ctx)
+    return 0
+
+
+def run_next(ctx):
+    """The next action as the JSON text `temper next` prints."""
     run = Run(ctx)
     project_facts(run, ctx)
-    if argv[1] == "next":
-        out = Builder(run).next()
-        if ctx.get("setup"):
-            out["setup"] = ctx["setup"]
-        print(json.dumps(out, indent=1))
-        return 0
+    out = Builder(run).next()
+    if ctx.get("setup"):
+        out["setup"] = ctx["setup"]
+    return json.dumps(out, indent=1)
+
+
+def run_view(ctx):
+    """Write .temper/view.json for the run as it stands."""
+    run = Run(ctx)
+    project_facts(run, ctx)
     try:
         nxt = Builder(run).next()
     except Exception as e:  # the view still says where the run is; it never stays behind the run
@@ -1427,8 +1440,6 @@ def main(argv):
     doc = view(run, nxt)
     doc["written"] = ctx.get("now")
     write_view(doc)
-    return 0
-
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv))

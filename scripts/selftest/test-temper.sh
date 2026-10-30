@@ -209,15 +209,16 @@ _dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI
 # The cases live in the files next to this one, sourced in order so they share the helpers,
 # the counters and the state each case leaves for the next. Each stays well under the size a
 # reader takes in at once.
-source "$TESTS_DIR/temper-cases-1.sh"
-source "$TESTS_DIR/temper-cases-2.sh"
-source "$TESTS_DIR/temper-cases-3.sh"
-source "$TESTS_DIR/temper-cases-4.sh"
-source "$TESTS_DIR/temper-cases-5.sh"
-source "$TESTS_DIR/temper-cases-6.sh"
-source "$TESTS_DIR/temper-cases-7.sh"
-source "$TESTS_DIR/temper-cases-8.sh"
-source "$TESTS_DIR/temper-cases-9.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 1 "* ]] && source "$TESTS_DIR/temper-cases-1.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 2 "* ]] && source "$TESTS_DIR/temper-cases-2.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 3 "* ]] && source "$TESTS_DIR/temper-cases-3.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 4 "* ]] && source "$TESTS_DIR/temper-cases-4.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 5 "* ]] && source "$TESTS_DIR/temper-cases-5.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 6 "* ]] && source "$TESTS_DIR/temper-cases-6.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 7 "* ]] && source "$TESTS_DIR/temper-cases-7.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 8 "* ]] && source "$TESTS_DIR/temper-cases-8.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 9 "* ]] && source "$TESTS_DIR/temper-cases-9.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 10 "* ]] && source "$TESTS_DIR/temper-cases-10.sh"
 
 echo ""
 echo "=== test-temper.sh ==="

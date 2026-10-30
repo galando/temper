@@ -4614,18 +4614,8 @@ _setup_calls() {
 # setup calls, which only it knows.
 cmd_next() {
   _state_migrate_legacy
-  local models; models="$(cmd_model --all 2>/dev/null)"
-  local setup; setup="$(_setup_calls)"
-  local ctx
-  ctx="$(python3 -I -c "
-import json, sys
-a = sys.argv[1:]
-models = dict(l.split('=', 1) for l in a[3].splitlines() if '=' in l)
-print(json.dumps({'plugin': a[0], 'cli': a[1], 'config_file': a[2], 'models': models,
-                  'task_model': models.get('task', ''), 'escalation_model': models.get('task-escalation', ''),
-                  'now': a[4], 'setup': [l for l in a[5].splitlines() if l.strip()]}))
-" "$PLUGIN_ROOT" "$PLUGIN_ROOT/scripts/temper" "$CONFIG_FILE" "$models" "$(_now)" "$setup")" || return 1
-  python3 "$SCRIPTS_DIR/flow.py" next --ctx "$ctx"
+  python3 "$SCRIPTS_DIR/cli_ctx.py" next --plugin "$PLUGIN_ROOT" --cli "$PLUGIN_ROOT/scripts/temper" \
+    --config-file "$CONFIG_FILE" --now "$(_now)" --run-files "$_RUN_FILES"
 }
 
 # .temper/view.json, the one file the mod reads (ADR 0013): written after every command that may change the run.
@@ -5101,6 +5091,7 @@ EOF
   # ADR 0013: every command that may change the run rewrites .temper/view.json
   case "$sub" in
     config|model|""|-h|--help|report|status|bands|metrics|schedule) ;;
+    next) ;;   # cli_ctx.py wrote the view in the same process
     state) [[ "${1:-}" == "get" ]] || _view_write ;;
     evidence) [[ "${1:-}" == "list" ]] || _view_write ;;
     group) [[ "${1:-}" == "report" ]] || _view_write ;;
