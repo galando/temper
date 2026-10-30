@@ -520,6 +520,10 @@ _resolve_task_escalation_model() {
 
 cmd_model() {
   local stage="${1:-}"
+  if [[ "${2:-}" == "--source" && "$stage" == "--all" ]]; then   # each model and where it comes from (cli_ctx.py)
+    python3 "$SCRIPTS_DIR/cli_ctx.py" models --plugin "$PLUGIN_ROOT" --config-file "$CONFIG_FILE" --source
+    return
+  fi
   if [[ -z "$stage" || "$stage" == "--all" ]]; then
     local s m rc=0
     for s in $AGENT_STAGES; do
@@ -3103,7 +3107,8 @@ t['snapshot'] = json.loads(a[3])
 t['started_at'] = a[4]
 t['worktree'] = a[5]
 t['branch'] = a[6]
-" "$n" "$group" "$sha" "$snap" "$(_now)" "$twt" "$tb" || return 1
+t['model'] = a[7] if t['attempt'] <= 2 else a[8]
+" "$n" "$group" "$sha" "$snap" "$(_now)" "$twt" "$tb" "$(_resolve_task_model)" "$(_resolve_task_escalation_model)" || return 1
   echo "OK: Task $n started (group $group, worktree $twt)"
 }
 
@@ -4485,15 +4490,27 @@ cmd_status() { # temper status [--json] [--spec-path P]
   local out
   out="$(python3 "$ACCEPTANCE_PY" status "$spec_path/intent.md" "$EVIDENCE_DIR")" || { echo "FAIL: could not compute criteria status" >&2; return 1; }
   printf '%s\n' "$out" > "$STATUS_FILE" 2>/dev/null || true
+  local models; models="$(python3 "$SCRIPTS_DIR/cli_ctx.py" models --plugin "$PLUGIN_ROOT" --config-file "$CONFIG_FILE" --source 2>/dev/null)"
   if [[ "$as_json" == "true" ]]; then
-    printf '%s\n' "$out"
+    python3 -I -c "
+import json, sys
+d = json.loads(sys.argv[1])
+d['models'] = [{'stage': l.split('=', 1)[0], 'model': l.split('=', 1)[1].rsplit(' (', 1)[0], 'source': l.rsplit(' (', 1)[1].rstrip(')')}
+               for l in sys.argv[2].splitlines() if '=' in l and ' (' in l]
+print(json.dumps(d))" "$out" "$models"
   else
     python3 -I -c "
 import json, sys
 for c in json.loads(sys.argv[1])['criteria']:
     ev = '; '.join(c['evidence']) if c['evidence'] else 'no evidence'
     print('  [%s] %s (%s) — %s' % ('v' if c['status'] == 'passed' else ' ', c['id'], c['priority'], ev))
-" "$out"
+print('Models')
+for l in sys.argv[2].splitlines():
+    if '=' in l and ' (' in l:
+        name, rest = l.split('=', 1)
+        model, src = rest.rsplit(' (', 1)
+        print('  %-16s %-18s %s' % (name, model, src.rstrip(')')))
+" "$out" "$models"
   fi
 }
 

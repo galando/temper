@@ -51,3 +51,21 @@ rows = [{'claim': 'Task 2: a'}, {'claim': 'Group G1: b'}, {'claim': 'c'}, {'clai
 print(';'.join(flow.scoped_notes(rows, 2, 'G1')))
 PYT
 )"
+
+# --- F2. The model of each stage, and of the running attempt, is named ---
+fresh
+assert_eq "F2: model --all --source says a stage's model comes from its brief" "1" "$("$TEMPER" model --all --source | grep -c '^plan=.* (brief)$')"
+printf 'models:\n  plan: opus\nbuild:\n  grouped:\n    task-model: sonnet\n' > .claude/temper.config
+assert_eq "F2: a config override is named as one" "plan=opus (config)|task=sonnet (config)" \
+  "$("$TEMPER" model --all --source | grep -E '^(plan|task)=' | tr '\n' '|' | sed 's/|$//')"
+assert_eq "F2: temper status has a Models block with the stage, the model and the source" "1|1" \
+  "$("$TEMPER" status | grep -c '^Models$')|$("$TEMPER" status | grep -cE '^  plan +opus +config$')"
+assert_eq "F2: status --json holds the models" "opus|config" \
+  "$("$TEMPER" status --json | python3 -c "import json,sys; m=[x for x in json.load(sys.stdin)['models'] if x['stage']=='plan'][0]; print(m['model']+'|'+m['source'])")"
+printf 'stack: auto\n' > .claude/temper.config
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"worktree": "w", "status": "started"}}, "tasks": {"1": {"status": "running", "attempt": 3, "group": "G1"}}}\n' > .temper/groups.json
+assert_eq "F2: the wait action of attempt 3 names the escalation model, in the task and in its gate call" "wait|sonnet|1" \
+  "$(nx "'|'.join([d['action'], d['tasks'][0]['model'], str(d['tasks'][0]['after'][0].count('--model sonnet '))])")"
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"worktree": "w", "status": "started"}}, "tasks": {"1": {"status": "running", "attempt": 1, "group": "G1"}}}\n' > .temper/groups.json
+assert_eq "F2: attempt 1 names the task model" "claude-haiku-5-5" "$(nx "d['tasks'][0]['model']")"

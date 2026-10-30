@@ -621,6 +621,15 @@ class Builder:
         return {"action": "work", "stage": stage, "calls": [], "agents": [a],
                 "say": "%s runs%s." % (LABEL.get(stage, stage), on_model([a]))}
 
+    def ran_on(self, task):
+        """The model of the running attempt: the one task start recorded, else (a run started before it did) the one the
+        attempt number gives, the task model for the first two attempts and the escalation model after."""
+        if task.get("model"):
+            return task["model"]
+        task_model = self.r.ctx.get("task_model") or "haiku"
+        esc = self.r.ctx.get("escalation_model") or "sonnet"
+        return task_model if int(task.get("attempt") or 1) <= 2 else esc
+
     def build_work(self):
         """Grouped Build, computed: start groups, hand out ready tasks, gate tasks and groups, integrate."""
         r = self.r
@@ -678,7 +687,7 @@ class Builder:
         running = [(int(n), v) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"]
         if running:
             return {"action": "wait", "stage": "build", "tasks": [
-                {"task": n, "after": [self.c("task gate %d --model %s --ms {ms}" % (n, v.get("model") or self.r.ctx.get("task_model") or "haiku"))]}
+                {"task": n, "model": self.ran_on(v), "after": [self.c("task gate %d --model %s --ms {ms}" % (n, self.ran_on(v)))]}
                 for n, v in sorted(running)],
                 "say": "Tasks are running. When you launched their agents in this conversation, wait for each result, then run its after calls; "
                        "otherwise (a new conversation) run the after calls now."}
