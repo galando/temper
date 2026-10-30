@@ -185,7 +185,7 @@ export async function loadSnapshot(io: Io, options: PluginOptions): Promise<Snap
   const run: RunFacts | null =
     stage === null || g === null
       ? null
-      : { stage, step: g.step, specDir: g.spec, planFiles: g.planFiles, groupedActive: g.grouped, trivialExit: g.trivialExit, prefix: g.prefix }
+      : { stage, step: g.step, specDir: g.spec, planFiles: g.planFiles, groupedActive: g.grouped, trivialExit: g.trivialExit, prefix: g.prefix, adhocStage: g.adhocStage }
   return {
     ...idle,
     failOpen: run === null,

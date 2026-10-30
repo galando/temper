@@ -230,8 +230,8 @@ describe('the stage order is the CLI\'s', () => {
   // scripts/selftest/temper-cases-2.sh pins STAGE_SEQ_TEMPER to the same text, so a change on either side fails a test.
   test('the mod\'s stages and the fake CLI\'s are STAGE_SEQ_TEMPER, then commit', () => {
     const seq = 'intent plan design build review check'
-    expect(STAGES.filter(s => s !== 'commit').join(' ')).toBe(seq)
-    expect(STAGES.at(-1)).toBe('commit')
+    expect(STAGES.filter(s => s !== 'commit' && s !== 'pipeline').join(' ')).toBe(seq)
+    expect(STAGES.slice(-2).join(' ')).toBe('commit pipeline')   // the optional Pipeline stage follows Commit (9.7.5)
     expect(CLI_SEQ.join(' ')).toBe(seq)
   })
 })

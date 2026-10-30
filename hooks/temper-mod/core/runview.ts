@@ -16,6 +16,8 @@ export type Option = {
   steps: string[]
   // The move needs the person's reason: their note on the option, or their answer to this question.
   reasonQuestion: Question | null
+  // The move needs a typed answer (the name of the person who confirms a manual task): this question asks it.
+  answerQuestion: Question | null
 }
 
 export type Ask = { stage: string; step: number; runId: string; question: Question; options: Option[]; more: Ask | null; accept: Ask | null }
@@ -42,6 +44,8 @@ export type RunView = {
   status: string
   next: { action: string; stage: string; say: string; calls: string[]; steps: string[] }
   ask: Ask | null
+  // The Context check of Plan (a question of the CLI's own), while the Context Map is not reviewed: its choices run `plan review --answer`.
+  contextCheck: { ask: Ask; answer: string } | null
   restart: { header: string; question: string; options: Option[] } | null
   drift: { header: string; prefix: string; options: string[] }
   guard: {
@@ -58,6 +62,8 @@ export type RunView = {
     trivialExit: boolean
     // The project's folder from the top of its git repository (`packages/app/`), "" at the top.
     prefix: string
+    // The small change window that is open (`temper adhoc open`): the stage it was opened at, or null.
+    adhocStage: string | null
   } | null
   plan: { approved: boolean; files: string[]; groups: Array<{ id: string; title: string; files: string[] }> }
   build: {
@@ -100,6 +106,7 @@ function option(v: unknown): Option {
     calls: strs(o.calls),
     steps: strs(o.steps),
     reasonQuestion: o.reason === true ? question(o.reason_question) : null,
+    answerQuestion: o.answer_question === undefined ? null : question(o.answer_question),
   }
 }
 
@@ -108,6 +115,13 @@ function ask(v: unknown): Ask | null {
   const q = question(a.question)
   if (q === null) return null
   return { stage: str(a.stage), step: num(a.step, -1), runId: str(a.run_id), question: q, options: arr(a.options).map(option), more: ask(a.more), accept: ask(a.accept) }
+}
+
+function contextCheck(v: unknown, runId: string, step: number): { ask: Ask; answer: string } | null {
+  const c = obj(v)
+  const q = question({ header: c.header, question: c.question, options: c.options })
+  if (q === null) return null
+  return { ask: { stage: 'plan', step, runId, question: q, options: arr(c.options).map(option), more: null, accept: null }, answer: str(c.answer) }
 }
 
 const TASK_STATES: readonly TaskState[] = ['waiting', 'running', 'red', 'green', 'pass', 'fail', 'parked']
@@ -163,6 +177,7 @@ export function parseRunView(text: string): RunView | null {
     status: str(v.status),
     next: { action: str(n.action, 'none'), stage: str(n.stage), say: str(n.say), calls: strs(n.calls), steps: strs(n.steps) },
     ask: ask(v.ask),
+    contextCheck: contextCheck(v.context_check, str(obj(v.run).id), num(obj(v.run).step, -1)),
     restart: restart === null ? null : { header: restart.header, question: restart.question, options: arr(obj(v.restart).options).map(option) },
     drift: { header: str(drift.header, 'Scope drift'), prefix: str(drift.prefix, 'Outside the plan:'), options: strs(drift.options) },
     guard:
@@ -181,6 +196,7 @@ export function parseRunView(text: string): RunView | null {
             runId: str(g.run_id),
             trivialExit: g.trivial_exit === true,
             prefix: str(g.prefix),
+            adhocStage: strOrNull(g.adhoc_stage),
           },
     plan: {
       approved: plan.approved === true,

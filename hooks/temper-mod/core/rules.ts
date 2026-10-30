@@ -37,6 +37,8 @@ export type RunFacts = {
   // The project's folder from the top of its git repository (`packages/app/`); "" or absent at the top. A group or task
   // worktree is a checkout of the whole repository, so the project's files are under this prefix in it.
   prefix?: string
+  // The stage a small change window was opened at (`temper adhoc open`), or null/absent when none is open.
+  adhocStage?: string | null
 }
 
 export type RuleContext = {
@@ -210,7 +212,21 @@ function worktreeRelative(path: string, specDir: string, project = ''): string |
 const TASKS_OWNED =
   'Next: run the tasks through the CLI (task test, task gate); the CLI ticks the boxes. To change the plan, ask the user whether to loop back to Plan.'
 
+// What a stage refusal tells besides the rule: whose folder it is, where other work goes, and (from Build on) the small change.
+function ownsFolder(r: RunFacts): string {
+  const slug = normalizePath(r.specDir).split('/').pop() ?? ''
+  const small = stageIndex(r.stage) >= stageIndex('build') ? 'or choose Make a small change at the next Temper gate question.' : 'Make a small change is possible from Build on.'
+  return `The run ${slug} (${stageLabel(r.stage)} stage) owns this folder. For other work, use a worktree (claude --worktree <name>), ${small}`
+}
+
 function stageWriteRule(ctx: RuleContext & { run: RunFacts }, rawPath: string): RuleResult {
+  const res = stageWriteRuleCore(ctx, rawPath)
+  if (!('deny' in res) || 'drift' in res) return res
+  const text = res.deny.replace(' Next: ', ` ${ownsFolder(ctx.run)} Next: `)
+  return { ...res, deny: text }
+}
+
+function stageWriteRuleCore(ctx: RuleContext & { run: RunFacts }, rawPath: string): RuleResult {
   const r = ctx.run
   // A write in a group or task worktree of this run is judged by its worktree-relative path, with the same rule.
   const rel = worktreeRelative(rawPath, r.specDir, r.prefix)
@@ -224,6 +240,8 @@ function stageWriteRule(ctx: RuleContext & { run: RunFacts }, rawPath: string): 
   const inSpec = inDir(path, spec)
   const specFile = (name: string) => path === `${spec}/${name}`
   const label = stageLabel(r.stage)
+  // A small change window (`temper adhoc open`) lets a code write through at the stage it was opened at, and only there.
+  if (r.adhocStage != null && r.adhocStage === r.stage && r.stage !== 'intent' && r.stage !== 'plan' && r.stage !== 'design') return ALLOW
 
   switch (r.stage) {
     case 'intent':
@@ -277,6 +295,15 @@ function stageWriteRule(ctx: RuleContext & { run: RunFacts }, rawPath: string): 
         drift: path,
       }
     }
+    case 'pipeline':
+      // Pipeline reads the pull request's checks and proposes a fix; the push is the person's. The fix is applied in a small
+      // change window the Pipeline question's steps open.
+      if (inSpec || PROJECT_NOTES.has(path)) return ALLOW
+      return {
+        deny:
+          `Temper: ${label} stage. Writing ${path} is not allowed: Pipeline reads the checks and proposes a fix, and the user decides each push. ` +
+          `Next: ${ASK} (Apply the fix and push), whose steps open a small change window.`,
+      }
     case 'commit':
       // Every gate has passed: the code is what Review and Check saw. The commit steps write in the spec folder only
       // (the plan's deviations, the report page).
@@ -313,6 +340,10 @@ const STATE_END = (cli: string): string =>
   'Temper: do not clear or archive the run state during a run. Next: finish the run, ' +
   `commit, then run ${cli} state archive. To throw the run away, ask the user with AskUserQuestion, header \`Temper resume\`, whether to start over.`
 
+const UNINSTALL_DENY =
+  'Temper: turning the commit gate off (temper guards uninstall, install.sh --uninstall) is the user\'s, in a terminal, and not while a run is active. ' +
+  'Next: finish the run, or ask the user to end it (temper state clear), then they run it themselves.'
+
 const HOOKS_DENY =
   'Temper: --no-verify, -n and core.hooksPath switch the native pre-commit hook off. The hook is the commit gate for every commit. ' +
   'Next: commit without them. If the hook blocks the commit, finish the stages it names.'
@@ -322,7 +353,7 @@ const TOO_MANY_DENY =
   'Next: write the paths out, or split the command.'
 
 // The words the check of a call only the person may cause reads (personOnly), and the stages a step back may name.
-const PERSON_WORDS = ['override', 'group', 'reopen', '--accept-foreign', 'evidence', 'accept', 'clear', 'state', 'advance', 'intent_complete',
+const PERSON_WORDS = ['override', 'group', 'reopen', '--accept-foreign', 'evidence', 'accept', 'clear', 'state', 'advance', 'intent_complete', 'plan', 'review', 'task', 'confirm', 'adhoc', 'open', 'branch', 'guards', 'uninstall',
   'plan_complete', 'loop', 'init', 'archive', 'set', 'run_mode', 'next_stage', 'autonomous', 'interactive', 'rca', 'fix', ...STAGES]
 
 const GLOB_DENY =
@@ -371,6 +402,8 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   if (kinds.length > 0) return protectedDeny(kinds.find(k => k === 'events' || k === 'overrides') ?? (kinds[0] as ProtectedKind), cli)
 
   if (!active) return ALLOW
+  // Turning Temper off (guards uninstall, install.sh --uninstall) is done in a terminal, never during a run (as a changed core.hooksPath).
+  if (/install\.sh\b[^\n;|&]*--uninstall/.test(command) || c.calls.some(call => { const x = callWords(call); return x[0] === 'guards' && x[1] === 'uninstall' })) return { deny: UNINSTALL_DENY }
   // An unquoted glob in a call that could spell a word of a call only the person may cause (`o?erride`, `lo[o]p`,
   // `--accept-for?ign`): bash expands it when a file of that name exists. Any other glob (`sonnet[1m]`) is no refusal.
   if (c.globWords.some(ws => ws.some(w => PERSON_WORDS.some(t => globCould(w, t) || globCould(w.split('=')[0] ?? w, t))))) return { deny: GLOB_DENY }
@@ -379,7 +412,7 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
     const w = callWords(call)
     const [a, b, key, value] = w
     if (a === 'state' && b === 'set' && key !== undefined) {
-      if (GUARD_KEYS.has(key)) return { deny: KEY_DENY(key) }
+      if (GUARD_KEYS.has(key) && !(key === 'branch' && ctx.allowed.some(written => sameCall(written, w)))) return { deny: KEY_DENY(key) }
       // The keys the orchestrator sets itself, only in the form and the stage it sets them: the complexity while the
       // plan is open (a later change would drop Design), base_sha as the current commit in Plan or Build.
       if (key === 'complexity' && !((r.stage === 'intent' || r.stage === 'plan') && /^(?:trivial|simple|medium|complex)$/.test(value ?? ''))) return { deny: KEY_DENY(key) }
@@ -409,6 +442,12 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
 function personOnly(w: readonly string[], r: RunFacts): boolean {
   const [a, b, c, d] = w
   if (a === 'override') return true
+  // 9.7.5: the Context check answer, a manual task's confirmation, a covered task's acceptance and a small change are the
+  // person's, each only as the call their answer to the CLI's question maps to.
+  if (a === 'plan' && b === 'review') return true
+  if (a === 'task' && (b === 'confirm' || b === 'accept')) return true
+  if (a === 'adhoc' && b === 'open') return true
+  if (a === 'state' && b === 'set' && c === 'branch') return true
   if (a === 'group' && b === 'reopen') return w.some(x => x === '--accept-foreign' || x.startsWith('--accept-foreign='))
   // Accepting a finding, or clearing a ledger (which erases what a stage found), is the person's.
   if (a === 'evidence') return b === 'accept' || b === 'clear'

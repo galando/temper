@@ -89,6 +89,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -137,6 +139,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -377,6 +380,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -425,6 +430,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -666,6 +672,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": false
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -735,6 +743,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -981,6 +990,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -1050,6 +1061,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -1291,6 +1303,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -1360,6 +1374,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -1595,6 +1610,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -1664,6 +1681,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -1904,6 +1922,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -1973,6 +1993,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": true,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -2363,6 +2384,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -2411,6 +2434,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -2782,6 +2806,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -2830,6 +2856,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -3063,6 +3090,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -3111,6 +3140,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -3470,6 +3500,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": false
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -3539,6 +3571,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -3691,6 +3724,134 @@ export const VIEWS: Record<string, unknown> = {
  },
  "check-pass": {
   "ask": {
+   "more": {
+    "options": [
+     {
+      "calls": [
+       "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'",
+       "/plugin/scripts/temper state set pr one",
+       "/plugin/scripts/temper state set commit_path skip",
+       "/plugin/scripts/temper state advance check_complete commit"
+      ],
+      "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
+      "label": "Skip it, Temper PR steps",
+      "move": "advance",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "The skill is not installed here"
+        },
+        {
+         "description": "",
+         "label": "I accept the risk"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Skip it, Temper PR steps. What is the reason?"
+      }
+     },
+     {
+      "calls": [
+       "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'",
+       "/plugin/scripts/temper state set pr stacked",
+       "/plugin/scripts/temper state set commit_path skip",
+       "/plugin/scripts/temper state advance check_complete commit"
+      ],
+      "description": "Commit, then Temper opens a stack of draft pull requests, one per Build group itself (reference/pr.md); every one is a draft.",
+      "label": "Skip it, Temper stacked PR steps",
+      "move": "advance",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "The skill is not installed here"
+        },
+        {
+         "description": "",
+         "label": "I accept the risk"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Skip it, Temper stacked PR steps. What is the reason?"
+      }
+     },
+     {
+      "calls": [
+       "/plugin/scripts/temper adhoc open --stage check --reason '{reason}'"
+      ],
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "label": "Make a small change",
+      "move": "adhoc",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "A small fix of my own"
+        },
+        {
+         "description": "",
+         "label": "A change the review asked for"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Make a small change. What is the reason?"
+      }
+     },
+     {
+      "calls": [],
+      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+      "label": "Save for later",
+      "move": "pause",
+      "stop": true
+     }
+    ],
+    "question": {
+     "header": "Temper gate",
+     "multiSelect": false,
+     "options": [
+      {
+       "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
+       "label": "Skip it, Temper PR steps"
+      },
+      {
+       "description": "Commit, then Temper opens a stack of draft pull requests, one per Build group itself (reference/pr.md); every one is a draft.",
+       "label": "Skip it, Temper stacked PR steps"
+      },
+      {
+       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "label": "Make a small change"
+      },
+      {
+       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+       "label": "Save for later"
+      }
+     ],
+     "question": "Check: more options."
+    },
+    "run_id": "run-pw",
+    "stage": "check",
+    "step": 4
+   },
    "options": [
     {
      "calls": [
@@ -3726,39 +3887,19 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [
-      "/plugin/scripts/temper adhoc open --stage check --reason '{reason}'"
+      "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable'"
      ],
-     "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-     "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
-     "label": "Make a small change",
-     "move": "adhoc",
-     "reason": true,
-     "reason_question": {
-      "header": "Temper gate",
-      "multiSelect": false,
-      "options": [
-       {
-        "description": "",
-        "label": "A small fix of my own"
-       },
-       {
-        "description": "",
-        "label": "A change the review asked for"
-       },
-       {
-        "description": "Back to the question before.",
-        "label": "Cancel"
-       }
-      ],
-      "question": "Make a small change. What is the reason?"
-     }
+     "description": "Install a skill named review-readiness, then this question is asked again.",
+     "do": "Ask the person to install a skill named review-readiness (a plugin, or .claude/skills/review-readiness/SKILL.md). Once the session lists it, run /plugin/scripts/temper next --json --skill review-readiness and ask this question again.",
+     "label": "Install the readiness skill and try again",
+     "move": null
     },
     {
      "calls": [],
-     "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-     "label": "Save for later",
-     "move": "pause",
-     "stop": true
+     "description": "Skip it, Temper PR steps, Skip it, Temper stacked PR steps, Save for later",
+     "do": "Ask the more question.",
+     "label": "More options",
+     "move": null
     }
    ],
    "question": {
@@ -3774,12 +3915,12 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Loop back to Build"
      },
      {
-      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-      "label": "Make a small change"
+      "description": "Install a skill named review-readiness, then this question is asked again.",
+      "label": "Install the readiness skill and try again"
      },
      {
-      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-      "label": "Save for later"
+      "description": "Skip it, Temper PR steps, Skip it, Temper stacked PR steps, Save for later",
+      "label": "More options"
      }
     ],
     "question": "Check: the check passed. Commit?"
@@ -3880,6 +4021,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -3949,6 +4092,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -4182,6 +4326,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -4251,6 +4397,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -4580,6 +4727,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -4649,6 +4798,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -4963,6 +5113,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -5032,6 +5184,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -5271,6 +5424,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -5340,6 +5495,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -5584,6 +5740,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -5653,6 +5811,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -5897,6 +6056,8 @@ export const VIEWS: Record<string, unknown> = {
     "pass": true
    }
   ],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -5966,6 +6127,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -6288,6 +6450,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -6336,6 +6500,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -6705,6 +6870,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -6753,6 +6920,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -7101,6 +7269,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -7149,6 +7319,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -7389,6 +7560,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -7437,6 +7610,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -7665,6 +7839,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [],
   "drift": {
    "header": "Scope drift",
@@ -7677,6 +7853,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": true,
@@ -7903,6 +8080,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -7951,6 +8130,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -8179,6 +8359,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -8227,6 +8409,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -8388,6 +8571,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [],
   "drift": {
    "header": "Scope drift",
@@ -8400,6 +8585,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -8723,6 +8909,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -8771,6 +8959,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -9117,6 +9306,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -9165,6 +9356,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -9522,6 +9714,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -9570,6 +9764,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": true,
    "fix_run": false,
@@ -9755,6 +9950,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -9803,6 +10000,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -10235,6 +10433,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -10304,6 +10504,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -10766,6 +10967,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -10835,6 +11038,7 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,
@@ -11068,6 +11272,8 @@ export const VIEWS: Record<string, unknown> = {
    }
   ],
   "checks": [],
+  "context_check": null,
+  "context_map": null,
   "criteria": [
    {
     "evidence": [],
@@ -11116,6 +11322,7 @@ export const VIEWS: Record<string, unknown> = {
   },
   "findings": [],
   "guard": {
+   "adhoc_stage": null,
    "armed": false,
    "autonomy_enabled": false,
    "fix_run": false,

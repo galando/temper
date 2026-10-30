@@ -5,7 +5,7 @@
 // agree wherever the module writes the value. The view only shows the run: no decision
 // is made from it (ADR 0013).
 
-export type StageName = 'intent' | 'plan' | 'design' | 'build' | 'review' | 'check' | 'commit'
+export type StageName = 'intent' | 'plan' | 'design' | 'build' | 'review' | 'check' | 'commit' | 'pipeline'
 
 export type UiMode = 'full' | 'minimal' | 'off'
 

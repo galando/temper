@@ -227,7 +227,7 @@ describe('every wait point of the flow audit', () => {
     const w = begin(on, 'build', { plan: 'PASS', build: 'PASS' }, ['Save for later'])
     await api.session.start(START)
     expect(await write(api, 'src/other.ts')).toContain('scope drift')
-    await ask(api, w)
+    await ask(api, w, { more: true })   // 9.7.5: Save for later sits under More options beside Make a small change
     expect(await system(api)).toContain('saved the run for later')
     expect(await write(api, 'src/other.ts')).toContain('scope drift')
     expect(await sh(api, 'git commit --no-verify -m x')).toContain('pre-commit hook')
