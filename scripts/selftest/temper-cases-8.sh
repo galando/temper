@@ -477,6 +477,8 @@ setup
 # views are a generated module). Regenerated here: a change of the view or of a question shows up as a difference.
 assert_eq "view fixtures: the module the mod's tests import is what the CLI writes now (run make-view-fixtures.sh)" "same" \
   "$(bash "$REPO_ROOT/scripts/selftest/make-view-fixtures.sh" 2>/dev/null | cmp -s - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" && echo same || echo differs)"
+assert_eq "view fixtures: the second module (the states 9.7.5 added) is what the CLI writes now (make-view-fixtures.sh extra)" "same" \
+  "$(bash "$REPO_ROOT/scripts/selftest/make-view-fixtures.sh" extra 2>/dev/null | cmp -s - "$REPO_ROOT/scripts/selftest/view-fixtures-2.ts" && echo same || echo differs)"
 assert_eq "view fixtures: the next field carries the calls of the CLI's own action" "state advance build_complete review" \
   "$(python3 - "$REPO_ROOT/scripts/selftest/view-fixtures.ts" <<'PY'
 import json, sys
