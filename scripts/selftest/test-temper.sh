@@ -155,14 +155,14 @@ The demo group.
 EOF
   "$TEMPER" init >/dev/null
   "$TEMPER" state init demo --command temper >/dev/null
-  # 9.7.5: a scenario criterion passes only from a row the CLI ran, so the demo run starts with one for each scenario
-  python3 -c "
-import json
-rows = [{'claim': 'scenario ' + n, 'cmd': 'true', 'exit_code': 0, 'artifact': None, 'sha256': None, 'value': None, 'severity': None,
-         'phase': 'scenario', 'scenario': n, 'criterion': None, 'label': 'PROVEN', 'executed_by': 'cli', 'ts': '2026-01-01T00:00:00Z'}
-        for n in ('first', 'second')]
-json.dump(rows, open('.temper/evidence/build.json', 'w'))"
   printf '{"version": 1, "slug": "demo", "groups": {}, "tasks": {}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
+}
+
+# 9.7.5: a scenario criterion passes only from a row the CLI ran. _scen records one for each scenario of the demo intent, as
+# `temper integrate` does; a case that needs the Build gate to pass calls it after its RED and GREEN rows.
+_scen() {
+  "$TEMPER" evidence run --stage build --scenario first --claim "scenario first" -- true >/dev/null
+  "$TEMPER" evidence run --stage build --scenario second --claim "scenario second" -- true >/dev/null
 }
 
 # Test setup only (ADR 0013: the CLI leaves a stage only once its check passed or the person skipped it):

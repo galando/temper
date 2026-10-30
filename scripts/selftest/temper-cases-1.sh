@@ -44,11 +44,13 @@ assert_exit "plan gate PASSes once plan.md has a Blast Radius section" 0 "$TEMPE
 # --- build gate: RED then GREEN required ---
 setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 assert_exit "build gate FAILs on GREEN with no RED (TDD discipline)" 1 "$TEMPER" gate build
 
 setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 assert_exit "build gate PASSes on RED then GREEN + no unchecked tasks" 0 "$TEMPER" gate build
 
 # --- review gate: block-on severity ---
@@ -134,6 +136,7 @@ setup
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 "$TEMPER" gate build >/dev/null
 "$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 "$TEMPER" gate review >/dev/null
@@ -165,6 +168,7 @@ assert_exit "state loop blocks the third iteration (max-per-type: 2)" 1 "$TEMPER
 setup
 "$TEMPER" evidence add --stage plan --claim "plan row" --exit 0 >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 "$TEMPER" evidence add --stage review --claim "sql injection" --severity critical >/dev/null
 "$TEMPER" evidence add --stage check --claim "tests" --exit 0 >/dev/null
 _at review   # a loop goes back from the stage the run is at
@@ -316,6 +320,7 @@ assert_eq "the allowed commit actually landed" "yes" "$(git log --oneline 2>&1 |
 setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 assert_exit "gate build runs cleanly against a config with a stale eval: block" 0 "$TEMPER" gate build
 
 # 2. A stale "eval" key in .temper/gates.json is ignored by gate_commit, not iterated.
@@ -324,6 +329,7 @@ setup
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 "$TEMPER" gate build >/dev/null
 "$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 "$TEMPER" gate review >/dev/null
@@ -932,6 +938,7 @@ setup
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 "$TEMPER" gate build >/dev/null
 "$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 "$TEMPER" gate review >/dev/null
@@ -980,6 +987,7 @@ setup
 "$TEMPER" gate plan >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+_scen
 "$TEMPER" gate build >/dev/null
 "$TEMPER" evidence add --stage review --claim "review completed" --exit 0 --cmd "review panel" >/dev/null
 "$TEMPER" gate review >/dev/null
