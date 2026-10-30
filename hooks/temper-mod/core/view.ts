@@ -245,6 +245,7 @@ const VERB: Record<Stage, string> = {
   review: 'Reviewing',
   check: 'Checking',
   commit: 'Committing',
+  pipeline: 'Reading the checks',
 }
 
 // "Building · criterion 2 of 5": the criterion being worked is the first not yet passed.
