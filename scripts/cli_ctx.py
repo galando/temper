@@ -134,7 +134,8 @@ def main(argv):
            "task_model": models.get("task", ""), "escalation_model": models.get("task-escalation", ""),
            "now": option(argv, "--now"), "setup": setup_calls(plugin, config_file, option(argv, "--run-files"))}
     print(flow.run_next(ctx))
-    flow.run_view({"plugin": plugin, "cli": ctx["cli"], "config_file": config_file, "now": ctx["now"]})
+    flow.run_view({"plugin": plugin, "cli": ctx["cli"], "config_file": config_file, "now": ctx["now"], "models": models,
+                   "task_model": ctx["task_model"], "escalation_model": ctx["escalation_model"]})
     return 0
 
 

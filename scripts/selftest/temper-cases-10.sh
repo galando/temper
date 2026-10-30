@@ -69,3 +69,29 @@ assert_eq "F2: the wait action of attempt 3 names the escalation model, in the t
   "$(nx "'|'.join([d['action'], d['tasks'][0]['model'], str(d['tasks'][0]['after'][0].count('--model sonnet '))])")"
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"worktree": "w", "status": "started"}}, "tasks": {"1": {"status": "running", "attempt": 1, "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "F2: attempt 1 names the task model" "claude-haiku-5-5" "$(nx "d['tasks'][0]['model']")"
+
+# --- F3. Every say is a sentence for the person ---
+_banned_say() { # prints the first word of an instruction for Claude found in the text, or nothing
+  grep -oiE 'after calls|conversation|launch|run its' <<<"$1" | head -1
+}
+fresh
+assert_eq "F3: a stage agent's wait text names the stage, the agent, the model and that the run goes on" \
+  "Intent: the Intent agent is working on $("$TEMPER" model intent). The run goes on when it returns." "$(nx "d['say']")"
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w"}}, "tasks": {"1": {"status": "running", "attempt": 1, "group": "G1"}}}\n' > .temper/groups.json
+assert_eq "F3: a running task is named with its model, and the run goes on when it returns" \
+  "Build: Task 1 runs on claude-haiku-5-5. The run goes on when it returns." "$(nx "d['say']")"
+assert_eq "F3: the status the mod shows is that sentence" "Build: Task 1 runs on claude-haiku-5-5. The run goes on when it returns." "$(vw "d['status']")"
+_all_says=""
+fresh; _all_says+="$(vw "d['status']")"$'\n'
+gpass intent; _all_says+="$(vw "d['status']")"$'\n'
+printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1; _all_says+="$(vw "d['status']")"$'\n'
+_all_says+="$(nx "d.get('say', '')")"$'\n'
+printf 'stack: auto\n' > .claude/temper.config
+assert_eq "F3: the status of a work, wait, ask and auto run holds no instruction for Claude" "" "$(_banned_say "$_all_says")"
+assert_eq "F3: no say string in flow.py holds an instruction for Claude" "" \
+  "$(python3 -I -c "
+import re, sys
+src = open(sys.argv[1]).read()
+bad = [m for m in re.findall(r'\"say\": (.+)', src) if re.search(r'after calls|conversation|launch|run its', m, re.I)]
+print('; '.join(bad))" "$REPO_ROOT/scripts/flow.py")"

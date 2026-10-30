@@ -416,7 +416,7 @@ rm -rf .git
 # --- your question: which model runs each stage is shown before the launch and in the report ---
 fresh
 assert_eq "model: the line next gives before a stage runs names its model" "1" \
-  "$(nx "int(d['say'] == 'Intent runs on %s.' % d['agents'][0]['model'] and bool(d['agents'][0]['model']))")"
+  "$(nx "int(d['say'] == 'Intent: the Intent agent is working on %s. The run goes on when it returns.' % d['agents'][0]['model'] and bool(d['agents'][0]['model']))")"
 "$TEMPER" usage add --stage intent --model opus --ms 5 >/dev/null 2>&1
 assert_eq "model: the report's stage table names the model each stage was launched on" "1|opus" \
   "$("$TEMPER" report 2>/dev/null | grep -cE '^  intent +1 +5  opus$')|$(vw "','.join(d['usage']['by_stage']['intent']['models'])")"

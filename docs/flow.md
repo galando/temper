@@ -41,6 +41,10 @@ that meets a version it does not know draws nothing and refuses nothing.
   call) and names its `task`, `group`, `title` and `attempt`.
 - **`ask`**: ask `ask.question` with the AskUserQuestion tool exactly as given (header, question,
   options and their descriptions). See "Questions" below.
+- **A failed call stops its action.** A call or step that exits non-zero stops its action, and the loop runs
+  `temper next --json` again. One exception: an agent's gate call, named `gate` (the last of its `after` calls).
+  When it prints `temper gate <stage> -> FAIL`, it has recorded a verdict that `next` asks about, so the action
+  goes on; any other failure of it stops the action.
 - **`wait`**: tasks are running; `tasks` lists each as `{task, after}`. When their agents were launched
   in this conversation, wait for each result and run its `after` calls; otherwise run the `after` calls now.
 - **`auto`**: an armed autonomous run moves by itself: run `calls`, then ask `next` again.

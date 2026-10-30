@@ -618,8 +618,9 @@ class Builder:
                                                           "; ".join("%d. %s" % (i + 1, x) for i, x in enumerate(back["findings"]))))
         a = self.agent(stage, extra)
         a["after"].append(self.c("gate %s" % (r.gate_of(stage) or stage)))
+        a["gate"] = a["after"][-1]
         return {"action": "work", "stage": stage, "calls": [], "agents": [a],
-                "say": "%s runs%s." % (LABEL.get(stage, stage), on_model([a]))}
+                "say": "%s: the %s agent is working%s. %s" % (LABEL.get(stage, stage), LABEL.get(stage, stage), on_model([a]), goes_on(False))}
 
     def ran_on(self, task):
         """The model of the running attempt: the one task start recorded, else (a run started before it did) the one the
@@ -650,7 +651,8 @@ class Builder:
             if integ != "PASS" and not before:
                 a["after"].append(self.c("integrate"))
             a["after"].append(self.c("gate build"))
-            return {"action": "work", "stage": "build", "calls": [], "agents": [a], "say": "Build mends what was found (the fix pass)%s." % on_model([a])}
+            a["gate"] = a["after"][-1]
+            return {"action": "work", "stage": "build", "calls": [], "agents": [a], "say": "Build: the fix pass is working%s. %s" % (on_model([a]), goes_on(False))}
 
         run = []
         if not r.state.get("base_sha") and r.ctx.get("head"):
@@ -682,15 +684,14 @@ class Builder:
                                "after": [self.c("task gate %d --model %s --ms {ms}" % (t["task"], t.get("model")))],
                                "task": t["task"], "group": t.get("group"), "title": t.get("title"), "attempt": t.get("attempt")})
             return {"action": "work", "stage": "build", "calls": [], "agents": agents,
-                    "say": "Build hands out %d task%s%s." % (len(agents), "" if len(agents) == 1 else "s", on_model(agents))}
+                    "say": "Build: %s. %s" % (", ".join("Task %d runs on %s" % (x["task"], x["model"]) for x in agents), goes_on(len(agents) > 1))}
 
         running = [(int(n), v) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"]
         if running:
             return {"action": "wait", "stage": "build", "tasks": [
                 {"task": n, "model": self.ran_on(v), "after": [self.c("task gate %d --model %s --ms {ms}" % (n, self.ran_on(v)))]}
                 for n, v in sorted(running)],
-                "say": "Tasks are running. When you launched their agents in this conversation, wait for each result, then run its after calls; "
-                       "otherwise (a new conversation) run the after calls now."}
+                "say": "Build: %s. %s" % (", ".join("Task %d runs on %s" % (n, self.ran_on(v)) for n, v in sorted(running)), goes_on(len(running) > 1))}
 
         for g in gid:
             st = (rg.get(g) or {}).get("status")
@@ -964,8 +965,9 @@ class Builder:
                 if stage == "build" and r.command == "temper":
                     a = self.agent("build", self.feedback_lines())
                     a["after"].append(self.c("gate build"))
+                    a["gate"] = a["after"][-1]
                     out.update({"action": "work", "stage": "build", "calls": [], "agents": [a],
-                                "say": "Build takes up your note%s." % on_model([a])})
+                                "say": "Build: the fix pass is taking up your note%s. %s" % (on_model([a]), goes_on(False))})
                 else:
                     out.update(self.stage_work(stage))
                 return out
@@ -1077,6 +1079,10 @@ def path_tokens(text):
 
 
 # ---- the view ----------------------------------------------------------------------------------
+
+def goes_on(plural):
+    return "The run goes on when %s." % ("they return" if plural else "it returns")
+
 
 def on_model(agents):
     """ on <model>: the model each agent is launched on, as `next` names it (what Temper asks for, not the model that

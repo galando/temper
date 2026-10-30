@@ -99,6 +99,12 @@ again. Stop only where this section says so. When it lists `setup`, run those ca
 Run the calls of one action in one Bash call, one per line, when they are only `temper` calls; a
 `git` call goes in a call of its own.
 
+**A failed call stops its action.** A call or a step that exits non-zero stops the action it belongs to:
+run no later call or step of it, say in one line which one failed, and run `temper next --json` again.
+One exception: an agent's gate call is named `gate` (the last of its `after` calls). When it prints
+`temper gate {stage} -> FAIL`, it has recorded a verdict that `next` asks about, so the action goes on.
+Any other failure of it still stops the action.
+
 ## Every question
 
 - **Exactly as given.** The header, the question, every option label and description, in the order
