@@ -85,6 +85,33 @@ def scenario_lines(lines):
     return out
 
 
+TEST_RE = re.compile(r"^\s*Test:\s*(.+?)\s*$", re.I)
+
+
+def scenario_blocks(lines):
+    """[{name, cmd, covers}] for every Scenario: in file order. cmd is the scenario's `Test:` line (a scoped shell command
+    that proves it on the merged tree), '' when it has none; covers are the AC ids of its `Covers:` line."""
+    out, cur = [], None
+    for line in lines:
+        m = re.match(r"^\s*Scenario:\s*(.+?)\s*$", line)
+        if m:
+            cur = {"name": m.group(1), "cmd": "", "covers": []}
+            out.append(cur)
+            continue
+        if cur is None:
+            continue
+        if re.match(r"^#{1,6}\s", line):
+            cur = None
+            continue
+        tm = TEST_RE.match(line)
+        if tm and not cur["cmd"]:
+            cur["cmd"] = tm.group(1).strip().strip("`").strip()
+        cm = COVERS_RE.match(line)
+        if cm:
+            cur["covers"] += [x.strip() for x in cm.group(1).split(",") if x.strip()]
+    return out
+
+
 def covers_ids_in_lines(lines):
     """Every AC id mentioned on a `Covers:` line within these lines."""
     ids = []
@@ -229,7 +256,62 @@ def status_report(intent_path, ev_dir):
     return {"criteria": out, "ts": ts}
 
 
+def build_report(intent_path, ev_path):
+    """One line per success criterion for the Build gate: PASS, FAIL, CONFIRM or SKIP. A criterion with Validate: scenario
+    passes only when each scenario that covers it has a row the CLI itself ran (temper evidence run --scenario, or
+    temper integrate) that exited 0; a Traced to line or a row an agent wrote proves nothing. Returns (lines, failed)."""
+    lines = open(intent_path).read().splitlines()
+    real = [c for c in parse_criteria(section_lines(lines, "Success Criteria")) if not c.get("placeholder") and c.get("id")]
+    blocks = scenario_blocks(lines)
+    rows = [r for r in load_evidence(ev_path) if isinstance(r, dict)]
+    cli_rows = [r for r in rows if r.get("executed_by") == "cli"]
+    by_scenario = latest_by_key(cli_rows, "scenario")
+    by_criterion = latest_by_key(rows, "criterion")
+    out, failed = [], 0
+    for c in real:
+        cid, vtype = c["id"], c.get("vtype")
+        if c.get("deferred") and c.get("optional"):
+            out.append("%s SKIP: deferred" % cid)
+        elif vtype == "scenario":
+            names = [b for b in blocks if cid in b["covers"]]
+            bad = []
+            for b in names:
+                row = by_scenario.get(b["name"])
+                cmd = (b["cmd"] or (row or {}).get("cmd") or "no Test: line")[:60]
+                if row is None:
+                    bad.append("scenario '%s' (%s) has no row run by the CLI" % (b["name"], cmd))
+                elif row.get("exit_code") != 0:
+                    bad.append("scenario '%s' (%s) exit %s" % (b["name"], cmd, row.get("exit_code")))
+            if not names:
+                bad.append("no scenario covers it")
+            if bad:
+                failed += 1
+                out.append("%s FAIL: %s." % (cid, "; ".join(bad)))
+            else:
+                out.append("%s PASS: %d scenario(s) ran green" % (cid, len(names)))
+        elif vtype == "code":
+            row = by_criterion.get(cid)
+            if row and supported_pass(row):
+                out.append("%s PASS: %s" % (cid, row.get("claim") or "recorded"))
+            else:
+                failed += 1
+                out.append("%s FAIL: Validate: code, and no passing row records it." % cid)
+        elif vtype == "manual":
+            out.append("%s CONFIRM: the person confirms it at Check" % cid)
+        else:
+            out.append("%s SKIP: %s is checked at Check" % (cid, vtype or "no Validate type"))
+    return out, failed
+
+
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "build":
+        try:
+            lines_out, failed = build_report(sys.argv[2], sys.argv[3])
+        except OSError as e:
+            print(f"cannot read intent: {e}", file=sys.stderr)
+            return 2
+        print("\n".join(lines_out))
+        return 1 if failed else 0
     if len(sys.argv) >= 2 and sys.argv[1] == "status":
         if len(sys.argv) != 4:
             print("usage: acceptance.py status <intent.md> <evidence-dir>", file=sys.stderr)

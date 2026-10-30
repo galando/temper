@@ -1579,6 +1579,13 @@ cmd_evidence_run() { # temper evidence run --stage s --claim c [--phase p] [--sc
   [[ -n "$stage" && -n "$claim" && $# -gt 0 ]] || { echo "FAIL: usage: temper evidence run --stage <s> --claim <c> -- <cmd...>" >&2; return 1; }
   # Checked before the command runs: an unknown stage records nothing and runs nothing.
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
+  if [[ -n "$scenario" ]]; then   # a scenario row names a scenario intent.md holds (F8)
+    local sp; sp="$(_spec_path "")"
+    if [[ -n "$sp" && -f "$sp/intent.md" ]] && ! python3 -E -s "$SCRIPTS_DIR/gate_rows.py" scenario-known "$sp/intent.md" "$scenario"; then
+      echo "FAIL: intent.md holds no scenario named '$scenario'; nothing was run or recorded" >&2
+      return 1
+    fi
+  fi
   _ensure_dirs
   "$@"
   local exit_code=$?
@@ -2192,7 +2199,7 @@ gate_intent() {
       grep -q '"pass": false' <<<"$draft_line" && all_pass=0
     done < <(_intent_closure_reqs "$spec_path/intent.md")
     # A Blocking question still open in a draft (F10, scripts/gate_rows.py): the person answers it before the plan.
-    draft_line="$(python3 -I "$SCRIPTS_DIR/gate_rows.py" intent-blocking "$spec_path/intent.md")"
+    draft_line="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" intent-blocking "$spec_path/intent.md")"
     reqs+=("$draft_line")
     grep -q '"pass": false' <<<"$draft_line" && all_pass=0
   fi
@@ -2514,9 +2521,15 @@ e.setdefault('finished_at', None)
 # temper group gate G: PASS when every task of G passed and the group's own Validate command, run by the
 # CLI in the group worktree, exits 0. Recorded as a build row tagged with the group (phase 'group').
 cmd_group_gate() {
-  local g="${1:-}"
+  local g="${1:-}" tmo="${TEMPER_TASK_TEST_TIMEOUT_S:-600}" timed_out=""; shift || true
+  while [[ $# -gt 0 ]]; do   # --timeout-s N: the limit of the group's own runs (a rerun after a timeout doubles it)
+    case "$1" in
+      --timeout-s) [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { echo "FAIL: --timeout-s takes a whole number of seconds" >&2; return 1; }; tmo="$2"; shift 2 ;;
+      *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
+    esac
+  done
   if [[ ! "$g" =~ ^G[0-9]+$ ]]; then
-    echo "FAIL: usage: temper group gate G<n>" >&2
+    echo "FAIL: usage: temper group gate G<n> [--timeout-s N]" >&2
     return 1
   fi
   local spec_path plan chk validate notpassed wt
@@ -2563,18 +2576,25 @@ except Exception:
   if [[ -z "$reason" ]]; then
     local rowfile rc
     rowfile="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
-    _task_py grouprun "$(_in_wt "$(pwd -P)/$wt")" "${TEMPER_TASK_TEST_TIMEOUT_S:-600}" "$rowfile" "$g" -- "$validate"
+    _task_py grouprun "$(_in_wt "$(pwd -P)/$wt")" "$tmo" "$rowfile" "$g" -- "$validate"
     rc=$?
     _ensure_dirs
     [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
     rm -f "$rowfile"
-    [[ "$rc" -ne 0 ]] && reason="group $g Validate failed (exit $rc): $validate"
+    if [[ "$rc" -eq 124 ]]; then timed_out="$tmo"; reason="group $g Validate timed out after ${tmo}s: $validate"
+    elif [[ "$rc" -ne 0 ]]; then reason="group $g Validate failed (exit $rc): $validate"; fi
+  fi
+  if [[ -z "$reason" && -f "$spec_path/intent.md" ]]; then   # F9: the scenario tests the group owes, on the merged group branch
+    reason="$(python3 -E -s "$SCRIPTS_DIR/scenario_ops.py" group-run "$spec_path/intent.md" "$spec_path/tasks.md" "$g" "$(_in_wt "$(pwd -P)/$wt")" "$tmo")"
+    [[ "$reason" == *"exit 124"* ]] && timed_out="$tmo"
+    [[ -n "$reason" ]] && reason="group $g: $reason"
   fi
   if [[ -n "$reason" ]]; then
     _groups_mutate "
 g = d.setdefault('groups', {}).setdefault(a[0], {})
 g['gate'] = {'verdict': 'FAIL', 'reason': a[1], 'ts': a[2]}
-" "$g" "$reason" "$(_now)" || return 1
+if a[3]: g['gate']['timeout_s'] = int(a[3])
+" "$g" "$reason" "$(_now)" "$timed_out" || return 1
     echo "FAIL: $reason"
     return 1
   fi
@@ -2990,7 +3010,7 @@ PY
 }
 
 _task_py() { # _task_py <mode> [args...]: the Build task operations, in scripts/task_ops.py
-  TEMPER_GROUPS_FILE="$GROUPS_FILE" TEMPER_PREFIX="$(_prefix)" python3 -I "$SCRIPTS_DIR/task_ops.py" "$@" </dev/null
+  TEMPER_GROUPS_FILE="$GROUPS_FILE" TEMPER_PREFIX="$(_prefix)" python3 -E -s "$SCRIPTS_DIR/task_ops.py" "$@" </dev/null
 }
 
 _jget() { # _jget <json> <key> -> the value (lists and objects as JSON); the JSON goes in on stdin, so a large
@@ -3489,7 +3509,7 @@ print(json.dumps(d))" "$foreign" "$ug" "$ufull")"
   if [[ -n "$suite" ]]; then
     local rowfile rc
     rowfile="$(mktemp "${TMPDIR:-/tmp}/temper-row.XXXXXX")" || return 1
-    _task_py integrun "$(pwd -P)" "${TEMPER_TASK_TEST_TIMEOUT_S:-600}" "$rowfile" -- "$suite"
+    _task_py integrun "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$rowfile" -- "$suite"
     rc=$?
     _ensure_dirs
     [[ -s "$rowfile" ]] && _json_append "$(_evidence_file build)" "$(cat "$rowfile")"
@@ -3499,6 +3519,11 @@ print(json.dumps(d))" "$foreign" "$ug" "$ufull")"
       echo "FAIL: integration suite failed (exit $rc): $suite" >&2
       return 1
     fi
+  fi
+  # F8: each scenario's Test: command runs on the merged tree, one CLI-run row each. A failing one records a failing row and
+  # does not fail the integration: the Build gate fails for that reason and the person gets the gate question.
+  if [[ -f "$spec_path/intent.md" ]]; then
+    python3 -E -s "$SCRIPTS_DIR/scenario_ops.py" integrate "$spec_path/intent.md" "$(pwd -P)" "${TEMPER_INTEGRATION_TIMEOUT_S:-3600}" "$(_evidence_file build)" || true
   fi
   local ifail
   if ! ifail="$(_task_py ifcheck "$(python3 -I -c "import json, sys; print(json.dumps(json.loads(sys.argv[1])['interfaces']))" "$facts")")"; then
@@ -3769,6 +3794,12 @@ gate_plan() {
       g_ok="$(python3 -I -c "import json,sys; print(1 if json.loads(sys.argv[1])['pass'] else 0)" "$g_line")"
       [[ "$g_ok" == "1" ]] || all_pass=0
     done <<<"$(_grouped_plan_reqs "$spec_path/tasks.md" "$(_cfg_get autonomy.max-blast-radius 15)")"
+    # the rows scripts/gate_rows.py adds (F8: every scenario has a Test: line)
+    while IFS= read -r g_line; do
+      [[ -n "$g_line" ]] || continue
+      reqs+=("$g_line")
+      grep -q '"pass": false' <<<"$g_line" && all_pass=0
+    done <<<"$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" plan-rows "$spec_path" "$(pwd -P)")"
   fi
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
@@ -3851,7 +3882,7 @@ def test(r): return isinstance(r, dict) and re.search('test', r.get('claim') or 
 red = [i for i, r in enumerate(rows) if test(r) and r.get('phase') == 'red' and r.get('exit_code') not in (0, None)]
 print(sum(1 for i, r in enumerate(rows) if red and i > red[0] and test(r) and r.get('phase') == 'green' and r.get('exit_code') == 0))
 " "$(_evidence_file build)" 2>/dev/null || echo 0)"
-  if [[ -f "$spec_path/tasks.md" ]] && python3 -I "$SCRIPTS_DIR/task_rows.py" all-manual "$spec_path/tasks.md"; then
+  if [[ -f "$spec_path/tasks.md" ]] && python3 -E -s "$SCRIPTS_DIR/task_rows.py" all-manual "$spec_path/tasks.md"; then
     reqs+=("$(_req "RED then GREEN" 1 "every task is manual: the person confirms each by hand, there is no test to run")")
   elif [[ "$red_n" -gt 0 && "${after_n:-0}" -gt 0 ]]; then
     reqs+=("$(_req "RED then GREEN" 1 "$red_n failing-first run(s), $green_n passing run(s) recorded")")
@@ -3863,9 +3894,12 @@ print(sum(1 for i, r in enumerate(rows) if red and i > red[0] and test(r) and r.
     all_pass=0
   fi
   if [[ -f "$spec_path/tasks.md" ]]; then
-    local trow; trow="$(python3 -I "$SCRIPTS_DIR/task_rows.py" all-tasks "$spec_path/tasks.md" "$GROUPS_FILE")"
+    local trow; trow="$(python3 -E -s "$SCRIPTS_DIR/task_rows.py" all-tasks "$spec_path/tasks.md" "$GROUPS_FILE")"
     reqs+=("$trow")
     grep -q '"pass": false' <<<"$trow" && all_pass=0
+    # every success criterion is validated: a scenario criterion by a row the CLI ran (F7, scripts/acceptance.py build)
+    trow="$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" build-rows "$spec_path" "$(_evidence_file build)")"
+    if [[ -n "$trow" ]]; then reqs+=("$trow"); grep -q '"pass": false' <<<"$trow" && all_pass=0; fi
   fi
   # Checkpoint feedback: every `feedback #N` row the orchestrator recorded must be
   # answered by a `feedback-resolved` row — applied (detail optional) or declined
@@ -4671,12 +4705,7 @@ cmd_risk() {
   local spec; spec="$(_spec_path "")"
   [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
   local out rc=0
-  out="$(python3 -I -c "
-import sys
-sys.path.insert(0, sys.argv[1])
-sys.argv = ['risk.py', 'compute'] + sys.argv[2:]
-import risk
-sys.exit(risk.main(sys.argv))" "$SCRIPTS_DIR" "$spec" "$TEMPER_DIR/security-map.json" "$@" --prior "$(_json_get_path "$STATE_FILE" risk_raise "")")" || rc=$?
+  out="$(python3 -E -s "$SCRIPTS_DIR/risk.py" compute "$spec" "$TEMPER_DIR/security-map.json" "$@" --prior "$(_json_get_path "$STATE_FILE" risk_raise "")")" || rc=$?
   [[ $rc -eq 0 ]] || return $rc
   head -1 <<<"$out"
   python3 -I -c "

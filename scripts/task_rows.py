@@ -12,8 +12,7 @@ import os
 import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import tasks_md  # noqa: E402
+import tasks_md
 
 
 def row(ok, detail):
