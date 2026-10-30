@@ -213,7 +213,7 @@ assert_eq "round 4, 2: the task's commit holds the project's own files" "package
 assert_eq "round 4, 2: integrate merges them into the project" "PASS|echo two" \
   "$(python3 -c "import json; print(json.load(open('$N/packages/app/.temper/groups.json'))['integration']['verdict'])")|$(cat "$N/packages/app/src/parser.sh")"
 (cd "$N/packages/app" && bash "$REPO_ROOT/scripts/guards/install.sh") >/dev/null 2>&1
-(cd "$N/packages/app" && "$TEMPER" state init pw2 && echo code > app.js && git add app.js) >/dev/null 2>&1
+(cd "$N/packages/app" && "$TEMPER" state init pw2 --branch "$(git -C "$N" branch --show-current)" && echo code > app.js && git add app.js) >/dev/null 2>&1   # the hook gates the run's own branch (9.7.5)
 (cd "$N/packages/app" && git -c user.email=t@t -c user.name=t commit -qm "code while every gate fails") >/dev/null 2>&1; rc=$?
 assert_eq "round 4, 3: the native hook gates the commit of a project below the top of its repository" "1|init" \
   "$rc|$(git -C "$N" log --format=%s -1 | sed 's/^Merge.*/init/; s/^merge.*/init/; s/^feat.*/init/; s/^spec$/init/')"
