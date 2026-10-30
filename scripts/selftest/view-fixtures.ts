@@ -4090,7 +4090,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "work",
    "calls": [],
-   "say": "Check runs.",
+   "say": "Check: the Check agent is working on sonnet. The run goes on when it returns.",
    "stage": "check",
    "steps": []
   },
@@ -4201,7 +4201,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Check runs.",
+  "status": "Check: the Check agent is working on sonnet. The run goes on when it returns.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -7210,7 +7210,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "work",
    "calls": [],
-   "say": "Design runs.",
+   "say": "Design: the Design agent is working on opus. The run goes on when it returns.",
    "stage": "design",
    "steps": []
   },
@@ -7328,7 +7328,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Design runs.",
+  "status": "Design: the Design agent is working on opus. The run goes on when it returns.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -8169,7 +8169,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "work",
    "calls": [],
-   "say": "Intent runs.",
+   "say": "Intent: the Intent agent is working on opus. The run goes on when it returns.",
    "stage": "intent",
    "steps": []
   },
@@ -8260,7 +8260,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Intent runs.",
+  "status": "Intent: the Intent agent is working on opus. The run goes on when it returns.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -9572,7 +9572,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "work",
    "calls": [],
-   "say": "Plan runs.",
+   "say": "Plan: the Plan agent is working on opus. The run goes on when it returns.",
    "stage": "plan",
    "steps": []
   },
@@ -9663,7 +9663,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Plan runs.",
+  "status": "Plan: the Plan agent is working on opus. The run goes on when it returns.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
@@ -10856,7 +10856,7 @@ export const VIEWS: Record<string, unknown> = {
   "next": {
    "action": "work",
    "calls": [],
-   "say": "Review runs.",
+   "say": "Review: the Review agent is working on sonnet. The run goes on when it returns.",
    "stage": "review",
    "steps": []
   },
@@ -10967,7 +10967,7 @@ export const VIEWS: Record<string, unknown> = {
     "verdict": null
    }
   ],
-  "status": "Review runs.",
+  "status": "Review: the Review agent is working on sonnet. The run goes on when it returns.",
   "time": {
    "started": "2026-01-01T00:00:00Z",
    "updated": "2026-01-01T00:00:00Z"
