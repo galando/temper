@@ -81,6 +81,8 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    orchestrator; it owns the human-facing gate.
 
 **Gotchas** (each one is a gate or hook that rejects the stage when missed):
+- Wait for every test run in the foreground. Never return while a run goes on in the background: the stage ends when you return.
+- Run the tests the fix touches (a file, a class, a keyword), never the full suite; Check runs it once.
 - RED must really fail. The gate needs a recorded failing run before a passing one,
   so a test that passes on its first run proves nothing. Record the real exit code.
 - Record evidence as you go. Reconstructing it afterward means inventing commands and

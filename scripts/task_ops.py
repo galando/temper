@@ -15,6 +15,8 @@ import hashlib, json, os, re, shlex, signal, subprocess, sys, time
 
 from run_env import run_cmd, test_env  # noqa: F401
 import scenario_ops
+import maven_loop
+import tasks_md
 
 # The project's folder from the top of its repository ("" at the top). git status and git diff name a path from the
 # top of the worktree; the plan names it from the project folder, so each is read from there (a path outside the
@@ -309,7 +311,13 @@ elif mode == 'testrun':
     wt, timeout, rowfile, n, group, attempt, phase = sys.argv[2:9]
     cmd = sys.argv[10:]   # argv[9] is the '--' separator
     before = untracked(wt)
-    out, rc = run_cmd(wt, timeout, cmd)
+    if len(cmd) == 1 and maven_loop.is_maven(cmd[0]):   # F22: a Maven test runs the declared test classes only, offline
+        slug = load_run(os.environ.get('TEMPER_GROUPS_FILE', '')).get('slug', '')
+        task = next((x for x in tasks_md.parse(os.path.join('.temper', 'specs', slug, 'tasks.md'))['tasks'] if x['n'] == int(n)), {'files': []})
+        loop = os.environ.get('TEMPER_MAVEN_LOOP') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'maven_loop.py')
+        out, rc = run_cmd(wt, timeout, ['python3', '-E', '-s', loop, 'run', wt, str(timeout), cmd[0]] + task['files'])
+    else:
+        out, rc = run_cmd(wt, timeout, cmd)
     # F5: untracked paths that first appear during this CLI run (__pycache__, coverage files, logs) are the test
     # command's byproducts; the task verdict does not count them as undeclared changes
     byproducts = sorted(untracked(wt) - before)
@@ -600,7 +608,12 @@ elif mode == 'verdict':
         last = [r for r in mine if r.get('output')]
         tail = '\n'.join((last[-1]['output'] if last else '').split('\n')[:20]).rstrip('\n')
     verdict = 'FAIL' if reason else ('AWAIT' if c['manual'] and not c['confirmed_by'] else 'PASS')
-    print(json.dumps({'verdict': verdict, 'reason': reason, 'commit_paths': mine_changed,
+    # F19: the last run of the attempt was a RED that passed, with no GREEN: an earlier task built this (covered)
+    red_cmd = red_tail = ''
+    if not c['manual'] and mine and mine[-1].get('phase') == 'red' and mine[-1].get('exit_code') == 0 and green is None:
+        verdict, red_cmd = 'COVERED', mine[-1].get('cmd') or ''
+        red_tail = '\n'.join((mine[-1].get('output') or '').rstrip('\n').split('\n')[-6:])[:500]
+    print(json.dumps({'verdict': verdict, 'red_cmd': red_cmd, 'red_tail': red_tail, 'reason': reason, 'commit_paths': mine_changed,
                       'foreign_shas': foreign,
                       'output': tail, 'attempt': c['attempt'], 'title': c['title'], 'group': c['group'],
                       'slug': c['slug']}))

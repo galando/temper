@@ -177,3 +177,10 @@ Build while the budget allows, a skip with a reason, and Save for later). This s
 - **Missing tool:** skip that level, name the missing tool and point to its own install
   page (never print an install command), and never fail the whole pipeline for an
   optional tool.
+
+## One suite run, with coverage
+
+Check runs the project's suite once. When the stack allows it, coverage is on in that same run; a second full run for coverage is
+never made. The coverage output goes under `.temper/check/` (`.temper/check/coverage.xml`, `.temper/check/htmlcov/`), which the
+blast radius skips along with `.coverage`, `htmlcov/`, `.pytest_cache/` and the other test caches. Task agents and the fix pass
+run scoped tests, never the full suite.

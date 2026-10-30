@@ -3073,7 +3073,7 @@ _task_start_body() {
   local why=""
   if [[ -z "$wt" ]]; then
     why="group $group is not started (temper group start $group)"
-  elif [[ "$status" == "running" || "$status" == "passed" ]]; then
+  elif [[ "$status" == "running" || "$status" == "passed" || "$status" == "covered" ]]; then
     why="it is already $status"
   else
     local ready max
@@ -3251,10 +3251,17 @@ _task_gate_body() {
   local v verdict reason
   v="$(_task_py verdict "$_T_PLAN" "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$_T_ABS")" || return 1
   verdict="$(_jget "$v" verdict)"; reason="$(_jget "$v" reason)"
+  [[ -n "${TEMPER_ACCEPT_COVERED:-}" && "$verdict" == "COVERED" ]] && verdict=PASS   # the person accepted it (task accept)
   local group slug title; group="$(_jget "$v" group)"; slug="$(_jget "$v" slug)"; title="$(_jget "$v" title)"
   # D-07: this launch's usage, once, whatever the verdict (a failed attempt took time too).
   [[ "$ms" =~ ^[0-9]+$ ]] || ms=""
   _usage_append task "$model" "$ms" "$n" "$group" || true
+  if [[ "$verdict" == "COVERED" ]]; then   # F19: its tests pass before any change; the person decides, no attempt is spent
+    _groups_mutate "d['tasks'][a[0]]['status'] = 'covered'; d['tasks'][a[0]]['covered'] = {'cmd': a[1], 'tail': a[2], 'ts': a[3]}" "$n" "$(_jget "$v" red_cmd)" "$(_jget "$v" red_tail)" "$(_now)" || return 1
+    echo "COVERED: Task $n's tests already pass before any change; the worktree is kept with the tests"
+    echo "NEXT: temper next asks the person"
+    return 0
+  fi
   if [[ "$verdict" == "AWAIT" ]]; then   # a manual task: its files are made, the person confirms them by hand (F12)
     _groups_mutate "d['tasks'][a[0]]['awaiting'] = 'confirm'" "$n" || return 1
     echo "NEXT: temper next asks the person to confirm Task $n by hand"
@@ -3320,10 +3327,12 @@ print('\n'.join(json.loads(sys.argv[1])))" "$fshas")
 import json, sys
 for p in json.loads(sys.argv[1]): print(p)" "$(_jget "$v" commit_paths)")
   if [[ ${#paths[@]} -gt 0 ]]; then
-    local idargs; idargs="$(_git_id_args)"
+    local idargs cmsg; idargs="$(_git_id_args)"
+    cmsg="feat($slug): Task $n $title [$group]"
+    [[ -z "${TEMPER_ACCEPT_COVERED:-}" ]] || cmsg="test($slug): Task $n $title (built by an earlier task) [$group]"
     # shellcheck disable=SC2086
     if ! git --literal-pathspecs -C "$_T_ABS" add -A -- "${paths[@]}" >/dev/null 2>&1 \
-       || ! git --literal-pathspecs -C "$_T_ABS" $idargs commit -q -m "feat($slug): Task $n $title [$group]" -- "${paths[@]}" >/dev/null 2>&1; then
+       || ! git --literal-pathspecs -C "$_T_ABS" $idargs commit -q -m "$cmsg" -- "${paths[@]}" >/dev/null 2>&1; then
       echo "FAIL: could not commit Task $n in $(_jget "$_T_CTX" worktree)" >&2
       return 1
     fi
@@ -3558,6 +3567,22 @@ print(json.dumps({'claim': 'Task %s confirmed by %s' % (sys.argv[1], sys.argv[2]
   echo "OK: Task $n confirmed by $by"
 }
 
+# temper task accept N --reason R | temper task retry N: the person's answer for a covered task (F19, scripts/task_cover.py).
+cmd_task_cover() {
+  local sub="$1" n="${2:-}" reason="" rc; shift 2 || true
+  while [[ $# -gt 0 ]]; do case "$1" in --reason) reason="${2:-}"; shift 2 || true ;; *) shift ;; esac; done
+  _task_load "$n" || return 1
+  _lock_acquire
+  if [[ "$sub" == "retry" ]]; then
+    python3 -E -s "$SCRIPTS_DIR/task_cover.py" retry "$GROUPS_FILE" "$n" && _task_wt_discard "$n" "$(_jget "$_T_CTX" worktree)" "$(_jget "$_T_CTX" tbranch)"
+    rc=$?; _lock_release
+    [[ $rc -eq 0 ]] && echo "OK: Task $n starts again (temper next hands it out)"; return $rc
+  fi
+  python3 -E -s "$SCRIPTS_DIR/task_cover.py" accept "$GROUPS_FILE" "$(_evidence_file build)" "$n" "$reason"; rc=$?; _lock_release
+  [[ $rc -eq 0 ]] || return $rc
+  TEMPER_ACCEPT_COVERED=1 cmd_task_gate "$n" --model person
+}
+
 cmd_task() {
   local sub="${1:-}"; shift || true
   case "$sub" in
@@ -3566,7 +3591,8 @@ cmd_task() {
     test) cmd_task_test "$@" ;;
     gate) cmd_task_gate "$@" ;;
     confirm) cmd_task_confirm "$@" ;;
-    *) echo "FAIL: usage: temper task <start|show|test|gate|confirm> ..." >&2; return 1 ;;
+    accept|retry) cmd_task_cover "$sub" "$@" ;;
+    *) echo "FAIL: usage: temper task <start|show|test|gate|confirm|accept|retry> ..." >&2; return 1 ;;
   esac
 }
 
@@ -4208,14 +4234,9 @@ sys.exit(0 if any(o.get('stage') == sys.argv[2] for o in d) else 1)
 " "$OVERRIDES_FILE" "$1" 2>/dev/null
 }
 
-_project_names() { # stdin: file names from the top of the repository (git diff, git status); stdout: each from the project folder
-  python3 -I -c "
-import os, subprocess, sys
-top = subprocess.run(['git', 'rev-parse', '--show-toplevel'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL).stdout.decode().strip()
-for l in sys.stdin:
-    n = l.rstrip('\n')
-    if n:
-        print(os.path.relpath(os.path.join(top, n)) if top else n)"
+_project_names() { # stdin: file names from the top of the repository (git diff, git status); stdout: each from the project folder,
+                   # the ones that do not count toward the blast radius left out (scripts/blast_filter.py, F21)
+  python3 -E -s "$SCRIPTS_DIR/blast_filter.py" project
 }
 
 _glob_touch_match() { # _glob_touch_match <file> <pattern>  (a project pattern from autonomy.park-on-touch)
@@ -4368,10 +4389,10 @@ print('yes' if any(o.get('stage') == sys.argv[2] for o in d) else 'no')
     base_sha="$(cmd_state_get base_sha "")"
     if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
       changed_n=$( { git -C "$REPO_ROOT" diff --name-only "$base_sha" 2>/dev/null
-                     git -C "$REPO_ROOT" status --porcelain 2>/dev/null | awk '{print $NF}'
-                   } | sort -u | grep -c . )
+                     git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //'
+                   } | _project_names | sort -u | grep -c . )
     else
-      changed_n=$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+      changed_n=$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //' | _project_names | sort -u | grep -c .)
     fi
     if [[ -f "$(_spec_path "")/tasks.md" ]]; then
       # D-01: in grouped mode a group may legitimately exceed the count, so the row compares the
@@ -4420,7 +4441,7 @@ else: print('PASS %d changed, all declared' % len(changed))
       # what is still uncommitted; a rename by both its names, so a file moved out of a parked path still parks.
       done < <( { if [[ -n "$base_sha" ]] && git -C "$REPO_ROOT" cat-file -e "$base_sha" 2>/dev/null; then
                     git -C "$REPO_ROOT" -c core.quotePath=false diff --name-only --no-renames "$base_sha" 2>/dev/null; fi
-                  git -C "$REPO_ROOT" -c core.quotePath=false -c status.renames=false status --porcelain 2>/dev/null | cut -c4- | sed 's/.* -> //'
+                  git -C "$REPO_ROOT" -c core.quotePath=false -c status.renames=false status --porcelain --untracked-files=all 2>/dev/null | cut -c4- | sed 's/.* -> //'
                 } | _project_names | sort -u)
     fi
     if [[ -z "$touched" ]]; then

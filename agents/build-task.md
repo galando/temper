@@ -37,6 +37,8 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
    the library's current docs before using it.
 
 **Gotchas** (each one fails the task or the run):
+- Wait for every test run in the foreground. Never return while a run goes on in the background: the stage ends when you return.
+- Run scoped tests only: the task's own Test command through `task test`, or a file, a class or a keyword to look at one failure. Never the full suite; Check runs it once.
 - Never commit, stage, branch or push. The CLI commits your declared files when the
   orchestrator's task gate passes.
 - The prompt's `SCENARIO TESTS` block, if `task show` prints one, names tests you owe with their exact names and the
@@ -47,6 +49,8 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
 - Test the real code. Call what earlier tasks and groups built; mock only what a test
   cannot run for real (network, clock, randomness, an error you cannot trigger). A test
   that mocks the code it checks proves nothing, and Review reports it.
+- Build only this task's own Cases. When your RED run passes before any code (an earlier task built it), stop: write no code
+  and no stub, and report it under BLOCKERS. The person decides; the gate does not retry it.
 - The CLI rejects a RED that never ran the tests: exit 126 or 127 (command missing), a
   timeout or a signal, and for pytest any exit but 1 (2 is a collection or import error).
 - Never run the test command yourself in place of `task test`; only the CLI's recorded

@@ -469,3 +469,73 @@ d = json.load(open('.temper/build-state.json')); d['adhoc_done'] = {'stage': 'bu
 PYT
 assert_eq "F14: a change made at Build, or of docs only, re-runs only the stage's gate call" "work|0|gate build" \
   "$(nx "'|'.join([d['action'], str(len(d['agents'])), d['calls'][0].split('temper ', 1)[1]])")"
+
+# --- F19. A task an earlier task already built: its RED run passed; the person decides, nothing retries it ---
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w"}}, "tasks": {"1": {"status": "covered", "group": "G1", "attempt": 3, "covered": {"cmd": "pytest unit/test_a.py -q", "tail": "3 passed in 0.02s"}}}}\n' > .temper/groups.json
+assert_eq "F19: the covered question names the task, the RED command and its output, with the four options" \
+  "ask|Task 1 (done task): its tests already pass before any change, so an earlier task built it. The RED run pytest unit/test_a.py -q passed (exit 0): 3 passed in 0.02s. Accept it as done?|Accept it as done|Run it again|Loop back to Plan|Save for later" \
+  "$(nx "'|'.join([d['action'], d['ask']['question']['question']] + [o['label'] for o in d['ask']['options']])")"
+assert_eq "F19: Accept asks for a reason and runs task accept; Run it again runs task retry" "task accept 1 --reason '{reason}'|True|task retry 1" \
+  "$(nx "o = d['ask']['options']; o[0]['calls'][0].split('temper ', 1)[1] + '|' + str(o[0]['reason']) + '|' + o[1]['calls'][0].split('temper ', 1)[1]")"
+assert_exit "F19: task start holds a covered task back" 1 "$TEMPER" task start 1
+printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+assert_eq "F19: an armed run parks for the person" "auto|1" "$(nx "d['action'] + '|' + str(sum(1 for c in d['calls'] if 'park' in c))")"
+printf 'stack: auto\n' > .claude/temper.config
+assert_exit "F19: task accept needs a reason" 1 "$TEMPER" task accept 1
+assert_exit "F19: a task that is not covered is not accepted" 1 "$TEMPER" task accept 2 --reason "x"
+
+# --- F21. The blast radius skips Temper's own files and test output; a source file that looks like one still counts ---
+assert_eq "F21: Temper's files and test output do not count; coverage.py and src files do" "no|no|no|no|no|no|no|no|no|yes|yes|yes" \
+  "$(python3 -I - "$REPO_ROOT/scripts" <<'PYT'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location('blast_filter', sys.argv[1] + '/blast_filter.py'); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+paths = ['.claude/temper.config', '.claude/settings.json', '.temper/specs/x/intent.md', '.claude/worktrees/temper-x-G1/a.py', '.coverage', 'htmlcov/index.html',
+         'pkg/__pycache__/a.cpython-312.pyc', 'target/surefire-reports/TEST-a.xml', '.pytest_cache/v/cache/lastfailed', 'coverage.py', 'src/htmlcov_view.py', 'src/app.py']
+print('|'.join('yes' if m.counts(p) else 'no' for p in paths))
+PYT
+)"
+setup; "$TEMPER" state set run_mode autonomous >/dev/null
+git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm base >/dev/null 2>&1
+printf 'stack: auto\nautonomy:\n  enabled: true\n  max-blast-radius: 1\n' > .claude/temper.config
+mkdir -p htmlcov .pytest_cache; echo x > .coverage; echo x > htmlcov/index.html; echo x > .pytest_cache/f
+OUT="$("$TEMPER" gate commit 2>&1)"
+assert_eq "F21: an armed run does not fail the blast radius row on the config or on coverage files" "1" "$(grep -c '^ *\[v\] blast radius' <<<"$OUT")"
+echo y > src_extra.py
+OUT="$("$TEMPER" gate commit 2>&1)"
+assert_eq "F21: one undeclared source file still fails the row" "1" "$(grep -c '^ *\[x\] blast radius' <<<"$OUT")"
+
+# --- F22. Maven: the declared test classes only, offline, a new surefire report per class; a Maven group verifies with JaCoCo ---
+mkdir -p fakebin f22/src/test/java/com/acme f22/target
+cat > fakebin/mvn <<'FAKE'
+#!/usr/bin/env bash
+# a fake mvn: records its arguments, writes a surefire report for each class of -Dtest= unless FAKE_NO_REPORT is set
+printf '%s\n' "$*" > "${FAKE_MVN_LOG:-/dev/null}"
+[[ -z "${FAKE_NO_REPORT:-}" ]] || exit 0
+for a in "$@"; do
+  case "$a" in -Dtest=*) for c in $(echo "${a#-Dtest=}" | tr ',' ' '); do c="${c%%#*}"; mkdir -p target/surefire-reports; echo "<testsuite/>" > "target/surefire-reports/TEST-com.acme.$c.xml"; done ;; esac
+done
+exit "${FAKE_MVN_EXIT:-0}"
+FAKE
+chmod +x fakebin/mvn
+F22LOG="$PWD/mvn.log"
+run_loop() { (cd f22 && PATH="$WORKDIR/fakebin:$PATH" FAKE_MVN_LOG="$F22LOG" python3 -E -s "$REPO_ROOT/scripts/maven_loop.py" run . 60 "$1" src/test/java/com/acme/FooTest.java src/test/java/com/acme/BarTest.java src/main/java/com/acme/Foo.java >/dev/null 2>&1; echo $?); }
+assert_eq "F22: a green Maven run with a report for each declared class exits 0" "0" "$(run_loop 'mvn test -Dgroups=fast')"
+assert_eq "F22: it runs offline, with the skip flags, only the declared classes, and keeps the declared flags" "1|1|1|1" \
+  "$(grep -c -e '-o ' "$F22LOG" | sed 's/.*/1/')|$(grep -c 'Dtest=FooTest,BarTest' "$F22LOG")|$(grep -c 'Dcheckstyle.skip=true' "$F22LOG")|$(grep -c 'Dgroups=fast' "$F22LOG")"
+assert_eq "F22: a #method of the declared command is kept for its class" "1" "$(run_loop 'mvn test -Dtest=FooTest#parses' >/dev/null; grep -c 'Dtest=FooTest#parses,BarTest' "$F22LOG")"
+rm -rf f22/target
+assert_eq "F22: a run that leaves no new surefire report for a class fails (exit 3)" "3" "$(FAKE_NO_REPORT=1 run_loop 'mvn test')"
+printf '#!/usr/bin/env bash\nprintf "mvnd " >> "${FAKE_MVN_LOG}"\nexec "$(dirname "$0")/mvn" "$@"\n' > fakebin/mvnd; chmod +x fakebin/mvnd
+rm -f "$F22LOG"; run_loop 'mvn test' >/dev/null
+assert_eq "F22: mvnd is used when it is on the PATH" "1" "$(grep -c '^mvnd ' "$F22LOG")"
+rm -rf fakebin f22 "$F22LOG"
+fresh; f9_tasks > .temper/specs/demo/tasks.md
+assert_eq "F22: a plan with no Maven group skips the row" "True|skipped: no Maven group" \
+  "$(python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" | sed -n 2p | python3 -c "import json,sys; d=json.load(sys.stdin); print(str(d['pass'])+'|'+d['detail'])")"
+sed -i 's/^\*\*Validate:\*\* `true`$/**Validate:** `mvn test`/' .temper/specs/demo/tasks.md
+assert_eq "F22: a Maven group that does not verify with JaCoCo is named by the plan row" "False|1" \
+  "$(python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" | sed -n 2p | python3 -c "import json,sys; d=json.load(sys.stdin); print(str(d['pass'])+'|'+str(d['detail'].count('G1')))")"
+sed -i 's/^\*\*Validate:\*\* `mvn test`$/**Validate:** `mvn verify -Pjacoco`/' .temper/specs/demo/tasks.md
+assert_eq "F22: mvn verify with JaCoCo passes the row" "True" \
+  "$(python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" | sed -n 2p | python3 -c "import json,sys; print(json.load(sys.stdin)['pass'])")"

@@ -13,6 +13,7 @@ import sys
 
 import acceptance
 import tasks_md
+import maven_loop
 
 
 def row(name, ok, detail):
@@ -88,6 +89,28 @@ def plan_scenario_commands(spec, project):
     return row(name, True, "%d scenario(s), each with a Test: command" % len(blocks))
 
 
+def plan_maven_verify(spec):
+    """A Maven group (a task or the group's Validate runs mvn, mvnd or mvnw, or a task declares a pom.xml) validates with
+    `mvn verify` and JaCoCo on, once, at the group gate. The row names each Maven group that breaks the rule."""
+    name = "maven group verify"
+    plan = tasks_md.parse(os.path.join(spec, "tasks.md"))
+    bad, maven = [], 0
+    for g in plan["groups"]:
+        tasks = [t for t in plan["tasks"] if t["group"] == g["id"]]
+        if not (maven_loop.is_maven(g["validate"]) or any(maven_loop.is_maven(t["test"]) for t in tasks)
+                or any(f.endswith("pom.xml") for t in tasks for f in t["files"])):
+            continue
+        maven += 1
+        v = g["validate"]
+        if not (maven_loop.is_maven(v) and re.search(r"\bverify\b", v) and "jacoco" in v.lower()):
+            bad.append(g["id"])
+    if not maven:
+        return row(name, True, "skipped: no Maven group")
+    if bad:
+        return row(name, False, "%s: a Maven group validates with `mvn verify` and JaCoCo on (for example `mvn verify -Pjacoco`), once, at the group gate" % ", ".join(bad))
+    return row(name, True, "%d Maven group(s) validate with mvn verify and JaCoCo" % maven)
+
+
 def build_criteria(spec, evidence):
     out, failed = acceptance.build_report(os.path.join(spec, "intent.md"), evidence)
     bad = [x for x in out if " FAIL" in x]
@@ -103,6 +126,7 @@ def main(argv):
         return 0 if argv[3] in names else 1
     if len(argv) == 4 and argv[1] == "plan-rows":
         print(json.dumps(plan_scenario_commands(argv[2], argv[3])))
+        print(json.dumps(plan_maven_verify(argv[2])))
         return 0
     if len(argv) == 4 and argv[1] == "build-rows":
         if os.path.isfile(os.path.join(argv[2], "intent.md")):

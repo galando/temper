@@ -811,6 +811,9 @@ class Builder:
                     "say": "Build: %s. %s" % (", ".join("Task %d runs on %s" % (x["task"], x["model"]) for x in agents), goes_on(len(agents) > 1))}
 
         running = [(int(n), v) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"]
+        covered = sorted(int(n) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "covered")
+        if covered:
+            return self.covered_task(covered[0], plan, rt.get(str(covered[0])) or {})
         waiting_on_person = sorted(n for n, v in running if v.get("awaiting") == "confirm")
         if waiting_on_person:
             return self.manual_task(waiting_on_person[0], plan)
@@ -902,6 +905,27 @@ class Builder:
             text = ("Group %s's branch holds commits the CLI did not make (%s); %s, so they cannot be taken out here. "
                     "Keep them, or save the run and take them out by hand?" % (gid, csv, why))
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=out)}
+
+    def covered_task(self, n, plan, info):
+        """A task whose tests passed before any change: an earlier task built it. The person decides; nothing retries it."""
+        r = self.r
+        title = next((x.get("title", "") for x in plan.get("tasks", []) if x["n"] == n), "")
+        c = info.get("covered") or {}
+        if r.armed():
+            return {"action": "auto", "stage": "build", "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote(
+                "Task %d: its tests already pass before any change; an earlier task built it" % n))],
+                "say": "Task %d's tests already pass; the armed run parks for you." % n}
+        tail = " ".join(str(c.get("tail", "")).split())[:300]
+        text = "Task %d (%s): its tests already pass before any change, so an earlier task built it. The RED run %s passed (exit 0): %s. Accept it as done?" % (
+            n, title, c.get("cmd") or "(no command)", tail or "no output")
+        opts = [self.opt("Accept it as done", "Commit its tests, merge them and tick the task.", move="accept",
+                         calls=[self.c("task accept %d --reason '{reason}'" % n)], reason=["An earlier task built it", "I accept the risk"]),
+                self.opt("Run it again", "The kept worktree goes and a fresh attempt starts.", move="redo", calls=[self.c("task retry %d" % n)])]
+        if r.can_loop("build", "plan"):
+            opts.append(self.opt("Loop back to Plan", "The plan asks for work that is already done.", move="back",
+                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]))
+        opts.append(self.save())
+        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
 
     def manual_task(self, n, plan):
         """A manual task (`**Test:** manual`) whose files are made: the person confirms each Case by hand."""
