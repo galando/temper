@@ -349,3 +349,61 @@ fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/nul
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "gate": {"verdict": "FAIL", "reason": "group G1 Validate timed out after 600s: make test", "timeout_s": 600}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "F17: a timed out gate offers a rerun at 1200 seconds first" "Run the gate again with twice the time (Recommended)|group gate G1 --timeout-s 1200" \
   "$(nx "d['ask']['options'][0]['label'] + '|' + d['ask']['options'][0]['calls'][0].split('temper ', 1)[1]")"
+
+# --- F13. Change reopens the task it concerns and the tasks that must reopen with it ---
+_change_tasks() { cat <<'TASKS'
+# Tasks: demo
+
+**Integration:** `true`
+
+## Group G1: Core
+**Depends:** none
+**Validate:** `true`
+**Context:**
+x
+
+### Task 1: parse
+**File:** `src/p.sh`, `src/shared.sh`
+**Depends:** none
+**Test:** `true`
+**Cases:**
+- a
+- [x] done
+
+### Task 2: print
+**File:** `src/o.sh`, `src/shared.sh`
+**Depends:** Task 1
+**Test:** `true`
+**Cases:**
+- b
+- [x] done
+
+### Task 3: help
+**File:** `src/h.sh`
+**Depends:** Task 2
+**Test:** `true`
+**Cases:**
+- c
+- [x] done
+
+### Task 4: version
+**File:** `src/v.sh`
+**Depends:** none
+**Test:** `true`
+**Cases:**
+- d
+- [x] done
+TASKS
+}
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+_change_tasks > .temper/specs/demo/tasks.md
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}, "2": {"status": "passed", "group": "G1"}, "3": {"status": "passed", "group": "G1"}, "4": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
+assert_eq "F13: the group question keeps Continue, Change and Stop" "Continue (Recommended)|Change|Stop" "$(nx "'|'.join(o['label'] for o in d['ask']['question']['options'])")"
+assert_eq "F13: Change asks Which task changes? with one option per task; a task shares files with the one it depends on and reopens with it" \
+  "Which task changes?|Task 1 (with Task 2)|Task 2|Task 3|Task 4" \
+  "$(nx "c = d['ask']['change']['question']; c['question'] + '|' + '|'.join(o['label'] for o in c['options'])")"
+assert_eq "F13: a task's option reopens the task and its companions with the feedback number" \
+  "group reopen G1 --task 1 --task 2 --feedback {K}|Re-runs Task 1 and Task 2; the other tasks of G1 keep their work." \
+  "$(nx "o = d['ask']['change']['options'][0]; o['calls'][0].split('temper ', 1)[1] + '|' + o['description']")"
+assert_eq "F13: Change records each feedback item first" "1" \
+  "$(nx "str(int('evidence add --stage build --phase feedback --claim' in d['ask']['options'][1]['do'] and 'Which task changes?' in d['ask']['options'][1]['do']))")"

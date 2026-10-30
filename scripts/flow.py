@@ -855,14 +855,54 @@ class Builder:
         return {"action": "ask", "stage": "build", "ask": self.question("Manual task", text, stage="build", options=[
             confirm, self.opt("Stop", "Save the run for later.", move="pause", calls=[], stop=True)])}
 
+    def reopen_set(self, g, n):
+        """Task n and the tasks that must reopen with it: a task of the group that has run (passed or running), depends on a
+        task already taken, directly or not, and shares a declared file with it."""
+        plan = self.r.plan or {"tasks": []}
+        rt = self.r.groups.get("tasks") or {}
+        by_n = {t["n"]: t for t in plan["tasks"] if t.get("group") == g["id"]}
+
+        def deps(m, seen):
+            out = set()
+            for d in by_n[m]["depends"]:
+                if d in by_n and d not in seen:
+                    out |= {d} | deps(d, seen | {d})
+            return out
+
+        taken = [n]
+        grew = True
+        while grew:
+            grew = False
+            for m in sorted(by_n):
+                if m in taken or (rt.get(str(m)) or {}).get("status") not in ("passed", "running"):
+                    continue
+                up = deps(m, {m})
+                if any(t in up and set(by_n[m]["files"]) & set(by_n[t]["files"]) for t in taken):
+                    taken.append(m)
+                    grew = True
+        return sorted(taken)
+
     def group_question(self, g):
         gid = g["id"]
+        opts = []
+        for t in g.get("tasks", []):
+            n = t if isinstance(t, int) else t
+            taken = self.reopen_set(g, n)
+            others = [m for m in taken if m != n]
+            names = ["Task %d" % m for m in taken]
+            label = "Task %d" % n + (" (with %s)" % ", ".join("Task %d" % m for m in others) if others else "")
+            what = names[0] if len(names) == 1 else "%s and %s" % (", ".join(names[:-1]), names[-1])
+            opts.append(self.opt(label, "Re-runs %s; the other tasks of %s keep their work." % (what, gid), move="redo",
+                                 calls=[self.c("group reopen %s %s --feedback {K}" % (gid, " ".join("--task %d" % m for m in taken)))]))
+        which = self.with_more(GROUP_HEADER, "Which task changes?", "build", opts[:3] if len(opts) > 4 else opts,
+                               opts[3:] if len(opts) > 4 else [], "Which task changes? More tasks.")
         q = self.question(GROUP_HEADER, "Group %s (%s) passed its check. Continue?" % (gid, g.get("title", "")), stage="build", options=[
             self.opt("Continue (Recommended)", "Go on to the next group, or to the merge.", move="advance", calls=[self.c("group continue %s" % gid)]),
             self.opt("Change", "Give feedback; only the tasks it concerns run again.",
-                     do="Record each item the person typed with %s, then run %s for each task it concerns. Then ask for the next step."
-                        % (self.c("evidence add --stage build --phase feedback --claim 'feedback #{K}: {text}'"), self.c("group reopen %s --task {N} --feedback {K}" % gid))),
-            self.opt("Stop", "Save the run for later.", move="pause", calls=[], stop=True)])
+                     do="Record each item the person typed with %s, then ask the change question (Which task changes?) in this action's `change`; its option runs the reopen call."
+                        % self.c("evidence add --stage build --phase feedback --claim 'feedback #{K}: {text}'")),
+            self.opt("Stop", "Save the run for later.", move="pause", calls=[], stop=True)],
+            extra={"change": which})
         return q
 
     def group_failed(self, g, ginfo):
