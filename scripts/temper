@@ -1096,6 +1096,13 @@ if loop['iteration'] >= max_per_type:
     sys.exit(1)
 loop['iteration'] += 1
 loop['reason'] = reason or loop['reason']
+loop['at'] = ts      # each step writes when it ran: readers order by at, so the latest reason is the one a fix pass reads
+try:                 # an older Run Build again no longer speaks for the stage
+    st = json.load(open(sys.argv[8]))
+    if st.pop('redo', None) is not None:
+        json.dump(st, open(sys.argv[8], 'w'), indent=2)
+except Exception:
+    pass
 # What the stage left open goes with the loop, since the loop clears that stage's ledger: Review's open findings, Check's
 # failed runs. The fix pass reads them (temper next names them in its prompt).
 try:
@@ -1116,7 +1123,7 @@ else:
 d['active_loops'] = active
 json.dump(d, open(f, 'w'), indent=2)
 print('OK: loop %s->%s iteration %d/%d' % (frm, to, loop['iteration'], max_per_type))
-" "$LOOPS_FILE" "$from" "$to" "$reason" "$max_per_type" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)")
+" "$LOOPS_FILE" "$from" "$to" "$reason" "$max_per_type" "$(_now)" "$(_evidence_file "$from" 2>/dev/null)" "$STATE_FILE")
   local rc=$?
   echo "$result"
   # A loop means "we are going backwards" — evidence is append-only, so a stale row
@@ -4792,7 +4799,7 @@ for k, v in json.loads(sys.argv[1]).items(): print(k + '\t' + str(v))" "$(tail -
 cmd_next() {
   _state_migrate_legacy
   python3 "$SCRIPTS_DIR/cli_ctx.py" next --plugin "$PLUGIN_ROOT" --cli "$PLUGIN_ROOT/scripts/temper" \
-    --config-file "$CONFIG_FILE" --now "$(_now)" --run-files "$_RUN_FILES"
+    --config-file "$CONFIG_FILE" --now "$(_now)" --run-files "$_RUN_FILES" "$@"
 }
 
 # .temper/view.json, the one file the mod reads (ADR 0013): written after every command that may change the run.

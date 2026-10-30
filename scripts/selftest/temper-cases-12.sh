@@ -36,3 +36,27 @@ print(';'.join('%d:%s' % (p['part'], '+'.join(p['groups'])) for p in json.load(s
  assert_eq "F24: a commit after the last group merge joins the last part, which then ends at HEAD" "1:G1|$(git rev-parse HEAD)" \
    "$(python3 "$REPO_ROOT/scripts/pr_parts.py" parts "$PR_BASE" demo | python3 -c "import json,sys; p=json.load(sys.stdin)[0]; print(str(p['part'])+':'+'+'.join(p['groups'])+'|'+p['merge'])")"
  cd ..; rm -rf pr24)
+
+# --- F23 and F25. The Check question offers draft pull requests; the readiness skill is detected without reading the home folder ---
+fresh; gpass intent plan build review check; _at check
+assert_eq "F23: without the readiness skill the Check question offers Commit, Install it, and Skip it for Temper PR steps" \
+  "Commit (Recommended)|Loop back to Build|Install the readiness skill and try again|More options" "$(labels)"
+assert_eq "F25: Skip it asks a reason, records readiness: unavailable, sets pr one and commit_path skip, then advances" \
+  "True|evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'|state set pr one|state set commit_path skip|state advance check_complete commit" \
+  "$(nx "o = d['ask']['more']['options'][0]; str(o['reason']) + '|' + '|'.join(c.split('temper ', 1)[1] for c in o['calls'])")"
+assert_eq "F25: view.json and next agree (same options)" "$(labels)" "$(vw "'|'.join(o['label'] for o in d['ask']['options'])")"
+"$TEMPER" next --json --skill review-readiness >/dev/null 2>&1
+assert_eq "F25: with the skill listed by the session, the question offers Commit and open PR with commit_path skill" \
+  "Commit (Recommended)|Loop back to Build|Commit and open PR|More options|state set pr one|state set commit_path skill" \
+  "$(labels)|$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['ask']['options'][2]['calls'][:2])")"
+assert_eq "F25: the view the next command wrote agrees, and a later command's view keeps the answer" "Commit (Recommended)|Commit and open PR" \
+  "$("$TEMPER" state get next_stage >/dev/null; vw "d['ask']['options'][0]['label'] + '|' + d['ask']['options'][2]['label']")"
+mkdir -p .claude/skills/review-readiness; echo x > .claude/skills/review-readiness/SKILL.md; "$TEMPER" next --json >/dev/null 2>&1
+assert_eq "F25: the project's own .claude/skills folder also counts" "Commit and open PR" "$(labels | cut -d'|' -f3)"
+rm -rf .claude/skills
+fresh; gpass intent plan build review check; _at check; "$TEMPER" next --json --skill review-readiness >/dev/null 2>&1
+printf '# Tasks: demo\n\n**Integration:** `true`\n\n## Group G1: A\n**Depends:** none\n**Validate:** `true`\n**Context:**\nx\n\n### Task 1: a\n**File:** `src/a.sh`\n**Test:** `true`\n**Cases:**\n- a\n- [x] done\n\n## Group G2: B\n**Depends:** none\n**Validate:** `true`\n**Context:**\nx\n\n### Task 2: b\n**File:** `src/b.sh`\n**Test:** `true`\n**Cases:**\n- b\n- [x] done\n' > .temper/specs/demo/tasks.md
+assert_eq "F23: with two or more Build groups the stacked option is offered too" "Commit and open stacked PRs" "$(nx "d['ask']['more']['options'][0]['label'] if len(d['ask']['options']) == 4 and d['ask']['more']['options'][0]['label'].startswith('Commit and open') else d['ask']['options'][2]['label']")"
+printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
+assert_eq "F23: an armed run is never offered a pull request" "0" "$(nx "str(sum(1 for o in d.get('ask', {}).get('options', []) if 'open' in o['label'].lower()))")"
+printf 'stack: auto\n' > .claude/temper.config

@@ -8,6 +8,7 @@ processes (the action, then the view). It starts one now: the models and the set
 here, the action is printed, and .temper/view.json is written from the same process. The output is the
 same, byte for byte (a self test case compares both for every view fixture state). Standard library only.
 """
+import json
 import os
 import re
 import subprocess
@@ -116,6 +117,26 @@ def option(argv, name, default=""):
     return argv[argv.index(name) + 1] if name in argv and argv.index(name) + 1 < len(argv) else default
 
 
+def keep_skills(argv):
+    """`temper next --skill NAME` says which skills the session lists (the CLI never looks in the home folder). The answer is kept in
+    the run state, so `next` and the view the other commands write agree."""
+    names = [argv[i + 1] for i, a in enumerate(argv) if a == "--skill" and i + 1 < len(argv)]
+    path = os.path.join(".temper", "build-state.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            st = json.load(f)
+    except (OSError, ValueError):
+        return
+    if not isinstance(st, dict) or not st.get("next_stage") or st.get("skills", []) == names or (not names and "skills" not in st):
+        return
+    st["skills"] = names
+    tmp = "%s.tmp.%d" % (path, os.getpid())
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(st, f, indent=2)
+        f.write("\n")
+    os.replace(tmp, path)
+
+
 def main(argv):
     if len(argv) < 2 or argv[1] not in ("next", "models"):
         print(__doc__, file=sys.stderr)
@@ -129,6 +150,7 @@ def main(argv):
             print("%s=%s%s" % (name, model, " (%s)" % source if "--source" in argv else ""))
         return 0
     import flow
+    keep_skills(argv)
     models = {k: v[0] for k, v in found.items()}
     ctx = {"plugin": plugin, "cli": option(argv, "--cli"), "config_file": config_file, "models": models,
            "task_model": models.get("task", ""), "escalation_model": models.get("task-escalation", ""),

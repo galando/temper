@@ -435,16 +435,16 @@ assert_eq "F14: a change of docs only re-runs only the stage's own gate" "gate|T
 # --- F14. The gate questions offer Make a small change; a closed change runs the steps it touches ---
 fresh; gpass intent plan build review check; _at check
 assert_eq "F14: a passed Check keeps Loop back to Build beside Commit, and offers the small change before Save" \
-  "Commit (Recommended)|Loop back to Build|Make a small change|Save for later" "$(labels)"
+  "Commit (Recommended)|Loop back to Build|Install the readiness skill and try again|More options" "$(labels)"
 assert_eq "F14: the option opens the window with a reason question and says what to do" "adhoc|1|1|1" \
-  "$(nx "o = [x for x in d['ask']['options'] if x['label'] == 'Make a small change'][0]; '|'.join([o['move'], str(len(o['calls'])), str(int('adhoc open --stage check --reason' in o['calls'][0])), str(int('adhoc close' in o['do'] and o.get('reason') is True))])")"
+  "$(nx "o = [x for x in d['ask']['more']['options'] if x['label'] == 'Make a small change'][0]; '|'.join([o['move'], str(len(o['calls'])), str(int('adhoc open --stage check --reason' in o['calls'][0])), str(int('adhoc close' in o['do'] and o.get('reason') is True))])")"
 assert_eq "F14: the description is the agreed sentence" "Change the work yourself, with no loop back; the change re-runs only what it touches." \
-  "$(nx "[x for x in d['ask']['options'] if x['label'] == 'Make a small change'][0]['description']")"
+  "$(nx "[x for x in d['ask']['more']['options'] if x['label'] == 'Make a small change'][0]['description']")"
 python3 - <<'PYT'
 import json
 d = json.load(open('.temper/build-state.json')); d['adhoc'] = {'stage': 'check', 'reason': 'x', 'base': '', 'files': {}}; json.dump(d, open('.temper/build-state.json', 'w'))
 PYT
-assert_eq "F14: it is not offered while a window is open" "Commit (Recommended)|Loop back to Build|Save for later" "$(labels)"
+assert_eq "F14: it is not offered while a window is open" "0" "$(nx "str(sum(1 for o in d['ask']['more']['options'] if o['label'] == 'Make a small change'))")"
 python3 - <<'PYT'
 import json
 d = json.load(open('.temper/build-state.json')); d.pop('adhoc'); d['adhoc_done'] = {'stage': 'check', 'reason': 'x', 'files': ['src/a.sh'], 'doc_only': False, 'steps': ['review', 'check', 'commit']}; json.dump(d, open('.temper/build-state.json', 'w'))

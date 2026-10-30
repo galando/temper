@@ -145,7 +145,7 @@ class Run:
 
     def round_id(self):
         """What marks one round of a stage: the latest Run Build again and the latest step back."""
-        return "%s|%s" % ((self.state.get("redo") or {}).get("ts", ""), (self.latest_loop() or {}).get("started", ""))
+        return "%s|%s" % ((self.state.get("redo") or {}).get("ts", ""), (self.latest_loop() or {}).get("at") or (self.latest_loop() or {}).get("started", ""))
 
     def cfg(self, key, default=""):
         v = config_yaml.get(self.config, key, default)
@@ -226,22 +226,22 @@ class Run:
         """The latest active step back to `stage`, or None."""
         best, at = None, ""
         for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
-            if isinstance(l, dict) and l.get("to_stage") == stage and str(l.get("started", "")) >= at:
-                best, at = l, str(l.get("started", ""))
+            if isinstance(l, dict) and l.get("to_stage") == stage and str(l.get("at") or l.get("started", "")) >= at:
+                best, at = l, str(l.get("at") or l.get("started", ""))
         return best
 
     def latest_loop(self):
         """The latest step back to Build (or Fix), or None."""
         best, at = None, ""
         for l in self.loops.get("active_loops", []) if isinstance(self.loops, dict) else []:
-            if isinstance(l, dict) and l.get("to_stage") in ("build", "fix") and str(l.get("started", "")) >= at:
-                best, at = l, str(l.get("started", ""))
+            if isinstance(l, dict) and l.get("to_stage") in ("build", "fix") and str(l.get("at") or l.get("started", "")) >= at:
+                best, at = l, str(l.get("at") or l.get("started", ""))
         return best
 
     def latest_feedback(self):
         """The reason of the latest step back to Build (or Fix), or of a "Run Build again"."""
         loop = self.latest_loop() or {}
-        best, at = loop.get("reason") or "", str(loop.get("started", ""))
+        best, at = loop.get("reason") or "", str(loop.get("at") or loop.get("started", ""))
         redo = self.state.get("redo") or {}
         if isinstance(redo, dict) and str(redo.get("ts", "")) >= at and redo.get("reason"):
             best = redo.get("reason")
@@ -267,6 +267,11 @@ class Run:
             if m and not m.group(1).strip().lower().startswith("context check:"):   # the CLI asks the Context check itself
                 out.append(m.group(1).strip())
         return out
+
+    def skill_present(self, name):
+        """A skill the orchestrator said the session lists (`temper next --skill NAME`, kept in the run state so `next` and the
+        view agree), or the project's own .claude/skills/NAME/SKILL.md. The CLI never looks in the home folder."""
+        return name in (self.state.get("skills") or []) or os.path.isfile(os.path.join(".claude", "skills", name, "SKILL.md"))
 
     def context(self):
         """The Context Map of plan.md as `temper next` and the view carry it, or None."""
@@ -555,15 +560,42 @@ class Builder:
             go = [self.c("state advance check_complete commit")]
             if passed:
                 # What Check passed with a warning (a lint run, a test gap) is the person's to send back to Build.
-                opts = [self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", calls=go)] + back_opt()
+                opts = [self.opt("Commit (Recommended)", "Commit the change with its spec files.", move="advance", calls=go)] + back_opt() + self.pr_options(go)
                 if r.spec and os.path.isfile(os.path.join(r.spec, "config-suggestions.json")):
                     opts.append(self.opt("Review config suggestions", "Accept, reject or defer each suggestion, then come back here.",
                                          do="Show each suggestion in config-suggestions.json: Accept (write it into CLAUDE.md or AGENTS.md), Reject or Defer. Then ask this question again."))
-                return self.question(GATE_HEADER, "Check: %s. Commit?" % state_of, stage=stage, options=opts + [self.save()])
+                return self.with_more(GATE_HEADER, "Check: %s. Commit?" % state_of, stage, opts[:3] if len(opts) >= 4 else opts, opts[3:] + [self.save()] if len(opts) >= 4 else [self.save()], "Check: more options.")
             return self.question(GATE_HEADER, "Check: the check failed (%s). Loop back to %s?" % (why, LABEL[back or "build"]), stage=stage,
                                  options=back_opt(rec=True) + [override_opt(go), self.save()])
 
         return None
+
+    def pr_options(self, go):
+        """At a passed Check of an unarmed /temper:temper run: Commit and open PR (and, with two or more Build groups, stacked PRs).
+        With the review-readiness skill the skill's steps open them; without it the question offers to install it or to skip it."""
+        r = self.r
+        if r.armed() or r.command != "temper":
+            return []
+        kinds = [("one", "PR", "a draft pull request")]
+        if len((r.plan or {}).get("groups", [])) >= 2:
+            kinds.append(("stacked", "stacked PRs", "a stack of draft pull requests, one per Build group"))
+        out = []
+        if r.skill_present("review-readiness"):
+            for kind, label, what in kinds:
+                out.append(self.opt("Commit and open %s" % label, "Commit, then the review-readiness skill opens %s; it stops before it would mark one ready." % what,
+                                    move="advance", calls=[self.c("state set pr %s" % kind), self.c("state set commit_path skill")] + go))
+            return out
+        out.append(self.opt("Install the readiness skill and try again", "Install a skill named review-readiness, then this question is asked again.",
+                            calls=[self.c("evidence add --stage commit --claim 'readiness: unavailable'")],
+                            do="Ask the person to install a skill named review-readiness (a plugin, or .claude/skills/review-readiness/SKILL.md). "
+                               "Once the session lists it, run %s and ask this question again." % self.c("next --json --skill review-readiness")))
+        for kind, label, what in kinds:
+            out.append(self.opt("Skip it, Temper %s steps" % ("PR" if kind == "one" else "stacked PR"),
+                                "Commit, then Temper opens %s itself (reference/pr.md); every one is a draft." % what, move="advance",
+                                calls=[self.c("evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'"),
+                                       self.c("state set pr %s" % kind), self.c("state set commit_path skip")] + go,
+                                reason=["The skill is not installed here", "I accept the risk"]))
+        return out
 
     ADHOC_STAGES = ("build", "review", "check", "commit")
 
@@ -1109,21 +1141,37 @@ class Builder:
             files = [r.spec + "/"] + [f for f in files if not f.startswith(r.spec + "/")]
         # A fix run's lesson is committed with it, unless the project keeps .temper out of git (then it stays local).
         lessons = [".temper/lessons.md"] if r.command == "fix" and ".temper/lessons.md" not in files and not r.ctx.get("lessons_ignored") else []
-        # Each name one shell quoted word: the step runs as printed, and a file name is never shell code.
-        steps.append("git add -- %s" % " ".join(shlex.quote(f) for f in files + lessons) if files
-                     else "git add -- (each file the run changed)%s" % "".join(" " + x for x in lessons))
         code = [f for f in files if not (f.startswith(r.spec + "/") or f.startswith(".temper/"))] if r.spec else files
         # The code this commit carries: what is still uncommitted (Build commits each task, each group and the merge).
         if code and git("rev-parse", "--verify", "-q", "HEAD"):
             code = [f for f in code if git("status", "--porcelain", "--", f)]
-        if r.command == "fix":
-            steps.append("git commit -m 'fix({scope}): {description}' -m 'Root cause: {explanation}' -m 'Regression test: {test name}'")
-        elif files and not code:
-            # A grouped Build commits the code itself (each task, each group, the merge into this branch): this commit is
-            # the run's record, and its message says so.
-            steps.append("git commit -m %s" % shlex.quote("docs(%s): record the run: spec, gate ledger and report (the code is in the commits before it)" % r.slug))
+        if not code and not lessons and (r.spec_ignored() or not r.spec):
+            # F27: nothing to stage: no uncommitted code, no lesson file, and a spec folder git ignores. No git add, no git commit.
+            steps.append("There is no record commit: no uncommitted code, no lesson file, and the spec folder is git-ignored or unchanged, so there is nothing to stage.")
         else:
-            steps.append("git commit -m '{a conventional commit message for the feature}'")
+            # Each name one shell quoted word: the step runs as printed, and a file name is never shell code.
+            steps.append("git add -- %s" % " ".join(shlex.quote(f) for f in files + lessons) if files
+                         else "git add -- (each file the run changed)%s" % "".join(" " + x for x in lessons))
+            if r.command == "fix":
+                steps.append("git commit -m 'fix({scope}): {description}' -m 'Root cause: {explanation}' -m 'Regression test: {test name}'")
+            elif files and not code:
+                # A grouped Build commits the code itself (each task, each group, the merge into this branch): this commit is
+                # the run's record, and its message says so.
+                steps.append("git commit -m %s" % shlex.quote("docs(%s): record the run: spec, gate ledger and report (the code is in the commits before it)" % r.slug))
+            else:
+                steps.append("git commit -m '{a conventional commit message for the feature}'")
+        pr = r.state.get("pr")
+        if pr in ("one", "stacked") and not r.armed() and r.command == "temper":
+            steps.append("Pull request: follow %s/reference/pr.md, section Capture, now: note base_sha, the branch, the default branch and the spec path, "
+                         "since the state is gone after state clear." % self.plugin)
+            if r.state.get("commit_path") == "skill":
+                steps.append("Follow %s/reference/pr.md, section The review-readiness skill: run its Steps 1 to 5 once per part (%s), stop before the step that "
+                             "would mark a pull request ready, record each verdict with %s, then run %s again."
+                             % (self.plugin, "one part" if pr == "one" else "one part per Build group",
+                                self.c("evidence add --stage commit --claim 'readiness: {PASS|FAIL}, part {k} of {N}'"), self.c("report")))
+            else:
+                steps.append("Follow %s/reference/pr.md, section %s: every pull request is a draft, and Temper never marks one ready. "
+                             "A pull request that cannot be opened never fails the commit." % (self.plugin, "One PR" if pr == "one" else "Stacked PRs"))
         steps.append(self.c("state clear"))
         return steps
 
