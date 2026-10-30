@@ -91,3 +91,13 @@ describe('9.7.5: the band while the answer is carried out', () => {
     expect(chosen.stages.find(s => s.id === 'build')?.failed).toBe(false)
   })
 })
+
+describe('9.7.5: every pull request is a draft', () => {
+  const CLI = '/p/scripts/temper'
+  test('gh pr create without --draft and any gh pr ready are refused while a run is active; a draft passes', () => {
+    expect(text(bash(ctx(run()), "gh pr create --head f --base main --title 't' --body-file b"))).toContain('every pull request is a draft')
+    expect(text(bash(ctx(run()), 'gh pr ready 12'))).toContain('never runs gh pr ready')
+    expect('deny' in bash(ctx(run()), "gh pr create --head f --base main --title 't' --body-file b --draft")).toBe(false)
+    expect(CLI).toContain('temper')
+  })
+})

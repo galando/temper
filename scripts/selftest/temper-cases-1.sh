@@ -33,6 +33,10 @@ assert_exit "plan gate PASSes without a Blast Radius section (no complexity set)
 "$TEMPER" state set complexity medium >/dev/null
 assert_exit "plan gate FAILs: medium complexity needs a Blast Radius section" 1 "$TEMPER" gate plan
 cat > .temper/specs/demo/plan.md <<'EOF'
+## Context Map
+- use: intent.md - the accepted scope
+- reviewed: auto - every source is current and on topic
+
 ## Blast Radius
 - no external consumers
 

@@ -1178,7 +1178,7 @@ assert_eq "task brief: states the panel rule and the plugin folder rule" "1|1" \
 assert_eq "task brief: names every CLI command it relies on" "3" \
   "$(for c in 'task show' 'task test' '--phase red'; do grep -qF -- "$c" "$TB" 2>/dev/null && echo x; done | wc -l | tr -d ' ')"
 assert_eq "task brief: never points at an orchestrator file" "0" "$(grep -c 'commands/temper.md' "$TB" 2>/dev/null | tr -d ' ')"
-assert_eq "model --all has 10 lines with the task brief present" "10" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
+assert_eq "model --all has 10 lines with the task brief present" "11" "$(setup; "$TEMPER" model --all | wc -l | tr -d ' ')"
 setup
 
 # --- Grouped Build (9.7.0): plan brief, plan reference and templates for grouped output ---

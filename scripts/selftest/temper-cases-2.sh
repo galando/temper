@@ -432,6 +432,10 @@ assert_eq "bare Scenario: lines FAIL scenarios in gherkin blocks" "yes" \
 
 setup
 cat > .temper/specs/demo/plan.md <<'EOF'
+## Context Map
+- use: intent.md - the accepted scope
+- reviewed: auto - every source is current and on topic
+
 ## Blast Radius
 - none
 
@@ -443,6 +447,10 @@ assert_exit "plan gate PASSes with a recorded cross-repo search" 0 "$TEMPER" gat
 
 setup
 cat > .temper/specs/demo/plan.md <<'EOF'
+## Context Map
+- use: intent.md - the accepted scope
+- reviewed: auto - every source is current and on topic
+
 ## Blast Radius
 - none
 EOF

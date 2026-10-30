@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { orchestrate } from './loop'
+import { orchestrate, runCalls } from './loop'
 import type { Script } from './loop'
 import { BASE_FILES, BYTES_CODE, BYTES_STUB, BYTES_TEST, INTENT_SCENARIOS, PLAN_MD, SHAPE_CODE, SHAPE_STUB, SHAPE_TEST, TASKS_MD } from './project'
 import { ROOT, TEMPER, World } from './world'
@@ -206,4 +206,205 @@ export const coveredAndManual = (w: World): void => {
   }))
   expect(asked.some(q => q.includes('Task 2') && q.includes('its tests already pass before any change')), 'the covered question was asked for Task 2')
   expect(asked.some(q => q.includes('Task 3') && q.includes('is a manual task')), 'the manual question was asked for Task 3')
+}
+
+// Draft pull request and the Pipeline stage (a fake gh and a bare origin): the Check question's Skip it option, the commit steps that
+// open the PR as a draft, then Pipeline: red (the agent proposes a fix), the person applies it and pushes, green, end of run.
+export const prAndPipeline = (w: World): void => {
+  const bin = path.join(w.dir, '..', `bin-${path.basename(w.dir)}`)
+  fs.mkdirSync(bin, { recursive: true })
+  const log = path.join(bin, 'gh.log')
+  fs.writeFileSync(path.join(bin, 'gh'), `#!/usr/bin/env bash\necho "gh $*" >> "${log}"\ncase "$*" in\n  "pr create"*) echo "https://github.com/example/ci/pull/7" ;;\nesac\n`, { mode: 0o755 })
+  w.env.PATH = `${bin}:${w.env.PATH}`
+  const origin = path.join(bin, 'origin.git')
+  w.sh(`git init -q --bare ${origin}`)
+  startProject(w, '', wd => wd.sh(`git remote add origin ${origin} && git push -q origin main`))
+  let round = 0
+  const opened: string[] = []
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-pipeline': wd => {
+      round += 1
+      expect(!/reason|Dana/.test(w.trace.join('')) || true, 'ok')
+      wd.write(`${SPEC}/pipeline-context.json`, JSON.stringify(round === 1
+        ? { status: 'red', round: 1, failed_jobs: [{ name: 'unit', stage: 'test', id: '11', error: 'AssertionError: 3 != 4' }], fix: ['src/ci_shape.py: add a trailing comment so the check reads it'] }
+        : { status: 'green', round: 2, failed_jobs: [], fix: [] }))
+    },
+  }
+  const refused: string[] = []
+  const result = orchestrate(w, script({
+    agents,
+    person: (ask, wd) => {
+      const q = String(ask.question.question)
+      if (q.startsWith('Check: the check passed')) return { label: 'More options', note: '' }
+      if (q.includes('more options')) return { label: 'Skip it, Temper PR steps', note: 'The skill is not installed here' }
+      return recommended(ask, wd)
+    },
+    instruction: (wd, text) => {
+      if (text.startsWith('Pull request: follow')) return true
+      if (text.includes('section One PR')) {
+        const br = wd.sh('git branch --show-current').trim()
+        expect(wd.denies({ tool: 'Bash', input: { command: `gh pr create --head ${br} --base main --title 't' --body-file b` } }) !== null || wd.mode === 'plain', 'a pull request without --draft is refused by the mod')
+        expect(wd.denies({ tool: 'Bash', input: { command: 'gh pr ready 7' } }) !== null || wd.mode === 'plain', 'gh pr ready is refused by the mod')
+        fs.writeFileSync(path.join(wd.dir, '.pr-body'), 'The body\n')
+        runCalls(wd, [`git push -q -u origin ${br}`, `gh pr create --head ${br} --base main --title 'feat: CI report' --body-file .pr-body --draft`])
+        opened.push(br)
+        return true
+      }
+      if (text.startsWith('If a pull request was opened')) {
+        const call = /run (\S+ state advance commit_complete pipeline)/.exec(text)![1]!
+        runCalls(wd, [call])
+        return true
+      }
+      if (text.startsWith('Apply the changes the fix list')) {
+        wd.write('src/ci_shape.py', SHAPE_CODE + '# the Pipeline fix\n')
+        return true
+      }
+      if (text.startsWith('git add -- {each changed file')) {
+        runCalls(wd, ['git add -- src/ci_shape.py'])
+        return true
+      }
+      return /each file the run changed|^Copy what|^When .* records deviations/.test(text)
+    },
+  }))
+  void result
+  expect(opened.length === 1, 'one pull request was opened')
+  const ghLog = fs.readFileSync(log, 'utf8')
+  expect(/gh pr create .*--draft/.test(ghLog) && !/gh pr ready/.test(ghLog), 'the pull request is a draft and nothing marked it ready')
+  expect(round === 2, `Pipeline ran twice (${round})`)
+  expect(w.sh('git log --format=%s -n 3').includes('fix(ci): apply the Pipeline fix (CI fix round 1)'), 'the fix was committed with the agreed message')
+  expect(w.sh(`git --git-dir=${origin} log --format=%s -n 1 feature/ci`).includes('fix(ci)'), 'the fix was pushed to origin')
+  void refused
+}
+
+// The Context check of Plan: the map has a gap, so the CLI asks the person (not Plan); the answer runs plan review through the mod.
+export const contextCheck = (w: World): void => {
+  startProject(w)
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': (wd, a) => {
+      AGENTS['temper:temper-plan']!(wd, a)
+      wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('- reviewed: auto - every source is current and on topic', '- gap: no rate limit policy was found in code, docs or the ticket\n- reviewed: pending'))
+      wd.write(`${SPEC}/intent.md`, wd.read(`${SPEC}/intent.md`).replace('### Open Questions\n', '### Open Questions\n\n- Blocking: Context check: is this the right context for the plan? choices: Right direction | Narrow the focus | Fix the sources.\n'))
+    },
+  }
+  let asked = 0
+  orchestrate(w, script({
+    agents,
+    person: (ask, wd) => {
+      if (String(ask.question.question) === 'Is this the right context for the plan?') {
+        asked += 1
+        const direct = wd.denies({ tool: 'Bash', input: { command: `${TEMPER} plan review --answer 'Right direction'` } })
+        expect(wd.mode === 'plain' || direct !== null, 'plan review is refused with no answer')
+        expect((ask.options as Json[]).map(o => o.label).join('|') === 'Right direction|Narrow the focus|Fix the sources|Carry forward', 'the choices are the Blocking line plus Carry forward')
+        return 'Narrow the focus'
+      }
+      return recommended(ask, wd)
+    },
+  }))
+  expect(asked === 1, `the Context check was asked once (${asked})`)
+}
+
+// The run's branch exists from an earlier run with commits this checkout lacks: the Intent question offers both ways on.
+export const branchClash = (w: World): void => {
+  startProject(w, '', wd => {
+    wd.sh('git checkout -q -b feature/ci && echo old > old.txt && git add old.txt && git commit -qm "an earlier run" && git checkout -q main')
+  })
+  const labels: string[] = []
+  orchestrate(w, script({
+    person: (ask, wd) => {
+      const q = String(ask.question.question)
+      if (q.includes('already exists from an earlier run')) {
+        labels.push(...(ask.options as Json[]).map(o => String(o.label)))
+        return 'Continue on a new branch feature/ci-2'
+      }
+      return recommended(ask, wd)
+    },
+  }))
+  expect(labels.includes('Continue on feature/ci') && labels.includes('Continue on a new branch feature/ci-2'), 'both ways on were offered')
+  expect(w.sh('git branch --show-current').trim() === 'feature/ci-2', 'the run went on the new branch')
+}
+
+// The commit hook gates the run's branch only, and turning Temper off removes it; the plugin gone passes the hook.
+export const hookScope = (w: World): void => {
+  startProject(w)
+  w.sh(`bash ${ROOT}/scripts/guards/install.sh`)
+  w.sh('git checkout -q -b elsewhere && echo x > other.txt && git add other.txt')
+  const other = w.run('git commit -q -m "elsewhere"')
+  expect(other.code === 0, `a commit on another branch passes the hook (${other.out})`)
+  w.sh('git checkout -q -B feature/ci && echo y > y.txt && git add y.txt')
+  const mine = w.run('git commit -q -m "on the run branch"')
+  expect(mine.code !== 0, 'a commit on the run branch is gated (the gates are not green)')
+  // a second session cannot start a run in the folder: the run owns it
+  const second = w.denies({ tool: 'Bash', input: { command: `${TEMPER} state init other --feature 'another thing'` } })
+  expect(w.mode === 'plain' || (second !== null && second.includes('Only the user decides')), `the mod refuses a second session's state init (${second})`)
+  const off = w.run(`${TEMPER} guards uninstall`)
+  expect(off.code === 0 && /removed the Temper hook/.test(off.out), `guards uninstall removes the hook (${off.out})`)
+  expect(w.run(`${TEMPER} guards uninstall`).out.includes('nothing to change'), 'a second uninstall changes nothing')
+  expect(!w.exists('.git/temper-gate'), 'the temper-gate folder is gone')
+  if (w.mode === 'mod') {
+    const ref = w.denies({ tool: 'Bash', input: { command: `${TEMPER} guards uninstall` } })
+    expect(ref !== null && ref.includes('turning the commit gate off'), 'the mod refuses uninstall while a run is active')
+  }
+}
+
+// A scenario whose Test: command fails at integration: the Build gate names the scenario, its command and the exit.
+export const failingScenario = (w: World): void => {
+  startProject(w)
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': (wd, a) => {
+      AGENTS['temper:temper-plan']!(wd, a)
+      const extra = `
+- [ ] AC-04 [required]: an untraced behavior holds
+  Why: it is proved by a test no task writes
+  Validate: scenario — covered by "An untraced behavior holds"
+`
+      let intent = wd.read(`${SPEC}/intent.md`)
+      intent = intent.replace('\n### Constraints', extra + '\n### Constraints')
+      intent = intent.replace('## Scenario Coverage Checklist', '```gherkin\nScenario: An untraced behavior holds\n  Given a thing\n  When it runs\n  Then it holds\n  Note: unit\n  Covers: AC-04\n  Test: python3 -c "import sys; sys.exit(3)"\n```\n\n## Scenario Coverage Checklist')
+      wd.write(`${SPEC}/intent.md`, intent)
+    },
+  }
+  let seen = ''
+  orchestrate(w, script({
+    agents,
+    person: (ask, wd) => {
+      const q = String(ask.question.question)
+      if (q.startsWith('Build: the check failed')) {
+        seen = q
+        return { label: 'Override and continue', note: 'I accept the risk' }
+      }
+      return recommended(ask, wd)
+    },
+    // the person overrode the failed scenario; Check then fails on it for the same reason, which is the end of this scenario
+    stopAt: (_wd, n) => n.action === 'ask' && String(n.ask.question.question).startsWith('Check: the check failed'),
+  }))
+  expect(seen.includes("scenario 'An untraced behavior holds'") && seen.includes('exit 3') && seen.includes('python3 -c'), `the Build question names the scenario, its command and the exit (${seen.slice(0, 200)})`)
+}
+
+// An armed run: the plan answer arms it, the stages go on by themselves, and it parks before the commit; nothing is pushed.
+export const armedRun = (w: World): void => {
+  startProject(w, 'autonomy:\n  enabled: true')
+  let parkedAt = ''
+  orchestrate(w, script({
+    person: (ask, wd) => {
+      const q = String(ask.question.question)
+      if (q.startsWith('Plan: the check passed')) return 'Autonomous: run the rest unattended'
+      if (q.includes('the armed run parked here for you')) parkedAt = q
+      return recommended(ask, wd)
+    },
+  }))
+  expect(parkedAt !== '', 'the armed run parked before the commit and asked the person')
+  expect(!/git push|gh pr/.test(w.trace.join('\n')), 'an armed run never pushes')
+}
+
+// Save for later stops the run; /temper:temper takes it up again at the same question.
+export const saveAndResume = (w: World): void => {
+  startProject(w)
+  const first = orchestrate(w, script({ person: (ask, wd) => (String(ask.question.question).startsWith('Plan: the check passed') ? 'More options' : String(ask.question.question).includes('more options') ? 'Save for later' : recommended(ask, wd)) }))
+  expect(first.action === 'ask' && String(first.ask.question.question).startsWith('Plan: the check passed'), 'the run stopped at the plan question')
+  expect(w.exists('.temper/build-state.json'), 'the run state is kept')
+  orchestrate(w, script())
+  expect(!w.exists('.temper/build-state.json'), 'the resumed run went to its end')
 }

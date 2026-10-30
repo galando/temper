@@ -340,6 +340,10 @@ const STATE_END = (cli: string): string =>
   'Temper: do not clear or archive the run state during a run. Next: finish the run, ' +
   `commit, then run ${cli} state archive. To throw the run away, ask the user with AskUserQuestion, header \`Temper resume\`, whether to start over.`
 
+const DRAFT_DENY =
+  'Temper: every pull request is a draft. gh pr create needs --draft, and Temper never runs gh pr ready. ' +
+  'Next: add --draft; the user marks a pull request ready themselves, on GitHub.'
+
 const UNINSTALL_DENY =
   'Temper: turning the commit gate off (temper guards uninstall, install.sh --uninstall) is the user\'s, in a terminal, and not while a run is active. ' +
   'Next: finish the run, or ask the user to end it (temper state clear), then they run it themselves.'
@@ -402,6 +406,8 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   if (kinds.length > 0) return protectedDeny(kinds.find(k => k === 'events' || k === 'overrides') ?? (kinds[0] as ProtectedKind), cli)
 
   if (!active) return ALLOW
+  // Every pull request is a draft, and Temper never marks one ready (reference/pr.md).
+  if (/\bgh\s+pr\s+ready\b/.test(command) || (/\bgh\s+pr\s+create\b/.test(command) && !/--draft\b/.test(command))) return { deny: DRAFT_DENY }
   // Turning Temper off (guards uninstall, install.sh --uninstall) is done in a terminal, never during a run (as a changed core.hooksPath).
   if (/install\.sh\b[^\n;|&]*--uninstall/.test(command) || c.calls.some(call => { const x = callWords(call); return x[0] === 'guards' && x[1] === 'uninstall' })) return { deny: UNINSTALL_DENY }
   // An unquoted glob in a call that could spell a word of a call only the person may cause (`o?erride`, `lo[o]p`,

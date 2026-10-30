@@ -10,16 +10,24 @@ export type Script = {
   stopAt?: (w: World, n: Json) => boolean             // end the loop early (a scenario that checks the middle of a run)
 }
 
-const looksLikeCommand = (s: string): boolean => /^(\/|git |gh |mkdir |cp |rm |bash |python3 |cd |t=)/.test(s.trim()) || s.includes('/scripts/temper ')
+const looksLikeCommand = (s: string): boolean => /^(\/|git |gh |mkdir |cp |rm |bash |python3 |cd |t=)/.test(s.trim()) && !/each file the run changed|\{each/.test(s)
 
-export function runCalls(w: World, calls: string[], fills: Record<string, string> = {}): void {
+// F4: a call that exits non-zero stops its action, except an agent's gate call (named `gate`) that printed `-> FAIL`: it recorded a verdict.
+export function runCalls(w: World, calls: string[], fills: Record<string, string> = {}, gateCall = '', stopOnFail = false): boolean {
   for (const c of calls) {
     const text = w.fill(c, fills)
     w.guardBash(text)
     const r = w.run(text)
     w.trace.push(`  call ${text.replace(/^\S*\/scripts\/temper /, 'temper ').slice(0, 80)} -> ${r.code}`)
-    if (r.code !== 0) throw new Error(`call failed (${r.code}): ${text}\n${r.out}`)
+    if (r.code !== 0 && !(gateCall !== '' && c === gateCall && r.out.includes('-> FAIL'))) {
+      if (stopOnFail) {
+        w.trace.push('  (the call failed: its action stops, and the loop asks `next` again)')
+        return false
+      }
+      throw new Error(`call failed (${r.code}): ${text}\n${r.out}`)
+    }
   }
+  return true
 }
 
 function runSteps(w: World, script: Script, steps: string[], fills: Record<string, string> = {}): void {
@@ -40,13 +48,13 @@ export function orchestrate(w: World, script: Script, limit = 400): Json {
     if (n.action === 'none') return n
     if (n.action === 'broken') throw new Error(`broken run: ${n.say}`)
     if (n.action === 'work' || n.action === 'auto') {
-      runCalls(w, n.calls ?? [])
+      if (!runCalls(w, n.calls ?? [], {}, '', true)) continue
       for (const a of (n.agents ?? []) as Json[]) {
         runCalls(w, a.before ?? [])
         const agent = script.agents[a.type]
         if (agent === undefined) throw new Error(`no scripted agent for ${a.type}`)
         agent(w, a)
-        runCalls(w, a.after ?? [], { ms: '1' })
+        runCalls(w, a.after ?? [], { ms: '1' }, a.gate ?? '')
       }
       runSteps(w, script, n.steps ?? [])
       continue
