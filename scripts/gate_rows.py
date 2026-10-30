@@ -14,6 +14,7 @@ import sys
 import acceptance
 import tasks_md
 import maven_loop
+import plan_ops
 
 
 def row(name, ok, detail):
@@ -124,9 +125,11 @@ def main(argv):
     if len(argv) == 4 and argv[1] == "scenario-known":
         names = [b["name"] for b in acceptance.scenario_blocks(open(argv[2], encoding="utf-8").read().splitlines())]
         return 0 if argv[3] in names else 1
-    if len(argv) == 4 and argv[1] == "plan-rows":
+    if len(argv) in (4, 5) and argv[1] == "plan-rows":
         print(json.dumps(plan_scenario_commands(argv[2], argv[3])))
         print(json.dumps(plan_maven_verify(argv[2])))
+        if os.path.isfile(os.path.join(argv[2], "plan.md")):   # a run with no plan.md (the trivial path) has no map to review
+            print(json.dumps(plan_ops.gate_row(argv[2], argv[4] if len(argv) == 5 else "auto")))
         return 0
     if len(argv) == 4 and argv[1] == "build-rows":
         if os.path.isfile(os.path.join(argv[2], "intent.md")):

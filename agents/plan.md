@@ -62,6 +62,12 @@ orchestrator's conversation carries over except the prompt you were launched wit
 - The spec directory holds exactly `intent.md`, `tasks.md` and `plan.md`. Never a
   fourth file (no `spec.md`, `quickstart.md`, README); `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` reads only
   those three.
+- Write `## Context Map` at the top of `plan.md`, after exploring and before any scenario: one line per source of context,
+  never per code file (an area is one line: `src/auth/ (12 files)`), as `- use:`, `- ignore:` or `- gap:` entries, at most 12 of
+  them and each at most 100 characters, then `- reviewed: pending`. Add this Open Question to `intent.md`:
+  `- Blocking: Context check: is this the right context for the plan? choices: Right direction | Narrow the focus | Fix the sources.`
+  Ask nobody yourself, and never write `reviewed: human` or edit that line afterwards: the CLI writes it from the person's answer
+  (`temper plan review --answer`), and `plan.context-check` in the config decides whether the person is asked.
 - Every scenario carries a `Test:` line: a scoped shell command that proves it on the merged tree and names the test a
   task of `tasks.md` writes. Build runs each one and records a row; a criterion with `Validate: scenario` passes only
   from that row, never from a `Traced to:` line. `temper gate plan` names every scenario with none.

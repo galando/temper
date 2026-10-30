@@ -22,6 +22,7 @@ import sys
 import tempfile
 
 import config_yaml
+import plan_ops
 import tasks_md
 
 VERSION = 1
@@ -263,9 +264,19 @@ class Run:
                 active = bool(re.match(r"open questions", h.group(1).strip(), re.I))
                 continue
             m = re.match(r"^\s*[-*]\s+Blocking:\s*(.+)$", line) if active else None
-            if m:
+            if m and not m.group(1).strip().lower().startswith("context check:"):   # the CLI asks the Context check itself
                 out.append(m.group(1).strip())
         return out
+
+    def context(self):
+        """The Context Map of plan.md as `temper next` and the view carry it, or None."""
+        return plan_ops.map_json(self.spec) if self.spec and os.path.isfile(os.path.join(self.spec, "plan.md")) else None
+
+    def context_choices(self):
+        """The choices of the Context check, from the Blocking line Plan wrote into intent.md (three at most)."""
+        m = re.search(r"^\s*[-*]\s+Blocking:\s*Context check:.*?choices:\s*(.+?)\.?\s*$", self.intent, re.M | re.I)
+        got = [c.strip().rstrip(".") for c in m.group(1).split("|")] if m else []
+        return [c for c in got if c][:3] or ["Right direction", "Narrow the focus", "Fix the sources"]
 
     def findings(self):
         rows = read_json(os.path.join(TEMPER, "evidence", "review.json"), [])
@@ -1162,7 +1173,41 @@ class Builder:
                             {"label": "Cancel", "description": "Keep the run.", "move": None, "calls": []}]}
 
     # -- the one entry point -------------------------------------------------------------------
+    def context_question(self, cm):
+        """The Context check as the CLI's own question: the person's choice runs `plan review --answer`, then the plan gate."""
+        r = self.r
+        opts = []
+        for choice in r.context_choices():
+            o = self.opt(choice, "Record this answer in the Context Map, then check the plan again.", move="answer",
+                         calls=[self.c("plan review --answer %s" % shlex.quote(choice)), self.c("gate plan")])
+            o["preview"] = cm["table"]
+            opts.append(o)
+        carry = self.opt("Carry forward", "Decide later; the plan gate keeps naming this question.", move=None, calls=[])
+        carry["preview"] = cm["table"]
+        opts.append(carry)
+        q = self.question(GATE_HEADER, "Is this the right context for the plan?", opts, "plan")
+        q["context"] = True
+        q["answer"] = self.c("plan review --answer '{text}'")
+        q["gate"] = self.c("gate plan")
+        return q
+
     def next(self):
+        out = self.core_next()
+        r = self.r
+        if r.active and r.stage == "plan":
+            cm = r.context()
+            if cm:
+                out["context_map"] = {k: cm[k] for k in ("intro", "file", "rows", "answer", "table")}
+                if cm["reviewed"] not in ("human", "auto"):
+                    q = self.context_question(cm)
+                    out["context_check"] = {k: q[k] for k in ("question", "options", "answer", "gate")}
+                    out["context_check"]["header"] = GATE_HEADER
+                    rows = r.failed_rows("plan")
+                    if out.get("action") == "ask" and len(rows) == 1 and rows[0].get("name") == "context map reviewed":
+                        out["ask"] = q    # the only failed row is the pending check: ask the check itself, so a refused call can be answered again
+        return out
+
+    def core_next(self):
         r = self.r
         if not r.active:
             return {"v": VERSION, "action": "none", "run": None, "say": "No run is active."}
@@ -1398,6 +1443,8 @@ def status_line(run, nxt):
     label = LABEL.get(run.stage, run.stage)
     a = nxt.get("action")
     if a == "ask":
+        if (nxt.get("ask") or {}).get("context"):
+            return "%s: your answer to the Is this the right context for the plan? question is not recorded yet." % label
         return "%s: waiting for your answer to the %s question." % (label, (nxt.get("ask") or {}).get("question", {}).get("header", GATE_HEADER))
     if a == "auto":
         return nxt.get("say") or "%s: the armed run goes on." % label
@@ -1496,6 +1543,8 @@ def view(run, nxt):
                  "steps": nxt.get("steps") or [] if nxt.get("action") == "work" else []},
         "ask": nxt.get("ask") if nxt.get("action") == "ask" else None,
         "blocking": nxt.get("blocking") or [],
+        "context_map": nxt.get("context_map"),
+        "context_check": nxt.get("context_check"),
         "restart": nxt.get("restart"),
         "drift": drift_info(),
         "guard": {"stage": r.stage, "spec": r.spec, "slug": r.slug, "fix_run": r.command == "fix",

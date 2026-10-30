@@ -540,3 +540,49 @@ assert_eq "F22: a Maven group that does not verify with JaCoCo is named by the p
 sed -i 's/^\*\*Validate:\*\* `mvn test`$/**Validate:** `mvn verify -Pjacoco`/' .temper/specs/demo/tasks.md
 assert_eq "F22: mvn verify with JaCoCo passes the row" "True" \
   "$(python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" plan-rows .temper/specs/demo "$PWD" | sed -n 2p | python3 -c "import json,sys; print(json.load(sys.stdin)['pass'])")"
+
+# --- F6. The Context Map: the plan gate row, the Context check as the CLI's own question, and plan review ---
+_cmap() { # _cmap <reviewed line> [entry lines...]: plan.md with a Context Map at the top
+  local reviewed="$1"; shift
+  { printf '# Plan\n\n## Context Map\n'; printf '%s\n' "$@"; printf -- '- reviewed: %s\n\n## Blast Radius\n\nnone\n' "$reviewed"; } > .temper/specs/demo/plan.md
+}
+_crow() { python3 -E -s "$REPO_ROOT/scripts/plan_ops.py" row .temper/specs/demo "${1:-auto}" | python3 -c "import json,sys; d=json.load(sys.stdin); print(str(d['pass'])+'|'+d['detail'])"; }
+fresh
+_cmap auto '- use: intent.md AC-01 - the scope' '- use: src/auth/ (12 files) - the flow this change extends'
+assert_eq "F6: a map of uses reviewed auto passes in auto mode" "True" "$(_crow auto | cut -d'|' -f1)"
+_cmap auto '- use: intent.md - scope' '- gap: no rate limit policy found'
+assert_eq "F6: auto mode refuses reviewed: auto when the map has a gap" "False" "$(_crow auto | cut -d'|' -f1)"
+_cmap auto '- use: intent.md - scope'
+assert_eq "F6: always refuses every reviewed: auto, and off accepts a gap" "False|True" "$(_crow always | cut -d'|' -f1)|$(_cmap auto '- gap: x'; _crow off | cut -d'|' -f1)"
+_cmap pending '- use: intent.md - scope'
+assert_eq "F6: pending fails and says the answer is not recorded yet" "False|1" "$(_crow auto | cut -d'|' -f1)|$(_crow auto | grep -c 'answer is not recorded yet')"
+_cmap human
+assert_eq "F6: a map with no use, ignore or gap entry fails" "False" "$(_crow auto | cut -d'|' -f1)"
+{ printf '# Plan\n\n## Context Map\n'; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13; do printf -- '- use: source %s\n' "$i"; done; printf -- '- reviewed: human\n'; } > .temper/specs/demo/plan.md
+assert_eq "F6: more than 12 entries fails, naming the cap" "False|1" "$(_crow auto | cut -d'|' -f1)|$(_crow auto | grep -c '12')"
+{ printf '# Plan\n\n## Context Map\n- use: %s\n- reviewed: human\n' "$(printf 'x%.0s' $(seq 1 120))"; } > .temper/specs/demo/plan.md
+assert_eq "F6: a line over 100 characters fails" "False" "$(_crow auto | cut -d'|' -f1)"
+assert_exit "F6: plan review with no plan.md fails" 1 bash -c "cd '$PWD' && rm -f .temper/specs/demo/plan.md && '$TEMPER' plan review --answer 'x'"
+printf '# Plan\n\nno map\n' > .temper/specs/demo/plan.md
+assert_exit "F6: plan review with no Context Map fails" 1 "$TEMPER" plan review --answer 'x'
+_cmap pending '- use: intent.md - scope' '- ignore: .temper/specs/old/ - other scope'
+"$TEMPER" plan review --answer "Narrow the focus" --focus "src/auth/" >/dev/null 2>&1
+assert_eq "F6: plan review writes the answer and focus into the map and sets reviewed: human" "1|1|1|0" \
+  "$(grep -c '^- answer: Narrow the focus' .temper/specs/demo/plan.md)|$(grep -c '^- focus: src/auth/' .temper/specs/demo/plan.md)|$(grep -c '^- reviewed: human' .temper/specs/demo/plan.md)|$(grep -c 'reviewed: pending' .temper/specs/demo/plan.md)"
+assert_exit "F6: an answer over 100 characters is refused" 1 "$TEMPER" plan review --answer "$(printf 'y%.0s' $(seq 1 130))"
+# the question in next and the view
+fresh; gpass intent; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1
+printf '\n### Open Questions\n\n- Blocking: Context check: is this the right context for the plan? choices: Right direction | Narrow the focus | Fix the sources.\n' >> .temper/specs/demo/intent.md
+_cmap pending '- use: intent.md - scope' '- gap: no rate limit policy'
+gfail plan "context map reviewed" "the Context check is pending: the person's answer is not recorded yet"
+assert_eq "F6: the pending check is the plan gate's only failed row: ask is the Context check, not the failed gate question" \
+  "ask|Temper gate|Is this the right context for the plan?|Right direction|Narrow the focus|Fix the sources|Carry forward" \
+  "$(nx "'|'.join([d['action'], d['ask']['question']['header'], d['ask']['question']['question']] + [o['label'] for o in d['ask']['options']])")"
+assert_eq "F6: a choice runs plan review --answer then the plan gate; Carry forward runs nothing; each option carries the table" "plan review --answer 'Narrow the focus'|gate plan|0|1" \
+  "$(nx "o = d['ask']['options']; '|'.join([o[1]['calls'][0].split('temper ', 1)[1], o[1]['calls'][1].split('temper ', 1)[1], str(len(o[3]['calls'])), str(int('Context Map' in o[0]['preview']))])")"
+assert_eq "F6: next and the view carry context_map and context_check, and the Blocking line is not asked twice" "2|4|0" \
+  "$(nx "str(len(d['context_map']['rows'])) + '|' + str(len(d['context_check']['options'])) + '|' + str(len(d.get('blocking', [])))")"
+assert_eq "F6: the view holds the same, and the status says the answer is not recorded yet" "4|1" \
+  "$(vw "str(len(d['context_check']['options'])) + '|' + str(int('not recorded yet' in d['status']))")"
+"$TEMPER" plan review --answer "Right direction" >/dev/null 2>&1
+assert_eq "F6: once reviewed there is no context_check" "None" "$(nx "d.get('context_check')")"

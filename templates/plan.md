@@ -1,5 +1,12 @@
 # Plan: {Feature Name}
 
+## Context Map
+
+- use: {source of context and why, one line each; group an area: src/auth/ (12 files)}
+- ignore: {a source that looks related and is not, and why}
+- gap: {something the plan needs and the sources do not give}
+- reviewed: pending
+
 ## Architecture
 
 {Description of approach}

@@ -3825,7 +3825,7 @@ gate_plan() {
       [[ -n "$g_line" ]] || continue
       reqs+=("$g_line")
       grep -q '"pass": false' <<<"$g_line" && all_pass=0
-    done <<<"$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" plan-rows "$spec_path" "$(pwd -P)")"
+    done <<<"$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" plan-rows "$spec_path" "$(pwd -P)" "$(_cfg_get plan.context-check auto)")"
   fi
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
@@ -4724,6 +4724,26 @@ _setup_calls() {
   fi
 }
 
+# temper plan review --answer '<text>' [--focus '<area>']...: the person's answer to the Context check, written into plan.md's
+# Context Map by the CLI (scripts/plan_ops.py). Nothing edits the reviewed: line by hand.
+cmd_plan() {
+  _state_migrate_legacy
+  [[ "${1:-}" == "review" ]] || { echo "FAIL: usage: temper plan review --answer '<text>' [--focus '<area>']..." >&2; return 1; }
+  shift
+  local spec; spec="$(_spec_path "")"
+  [[ -n "$spec" && -d "$spec" ]] || { echo "FAIL: no spec folder for the run" >&2; return 1; }
+  local args=() answer=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --answer) args+=("--answer" "${2:-}"); answer=1; shift 2 || true ;;
+      --focus) args+=("--focus" "${2:-}"); shift 2 || true ;;
+      *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
+    esac
+  done
+  [[ $answer -eq 1 ]] || { echo "FAIL: temper plan review needs --answer '<text>'" >&2; return 1; }
+  python3 -E -s "$SCRIPTS_DIR/plan_ops.py" review "$spec" "${args[@]}"
+}
+
 # temper adhoc open --stage S --reason R | temper adhoc close: the small-change window (scripts/adhoc_ops.py, F14).
 cmd_adhoc() {
   _state_migrate_legacy
@@ -5210,6 +5230,7 @@ main() {
     next) cmd_next "$@" ;;
     risk) cmd_risk "$@" ;;
     adhoc) cmd_adhoc "$@" ;;
+    plan) cmd_plan "$@" ;;
     intent) cmd_intent "$@" ;;
     park) cmd_park "$@" ;;
     ""|-h|--help)
@@ -5244,6 +5265,7 @@ Usage:
   temper park --verdict V --reason R      (an armed run stops for the person)
   temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
+  temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
 EOF
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;

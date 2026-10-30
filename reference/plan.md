@@ -63,6 +63,17 @@ security hot path (below).
 ## What `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` Checks
 
 Quoted from the plan gate in the temper CLI (`${CLAUDE_PLUGIN_ROOT}/scripts/temper`) so this doc cannot drift from the gate.
+## Context Map and the Context check
+
+`plan.md` opens with `## Context Map`: what Plan used (`use`), what it left out on purpose (`ignore`) and what it could not find
+(`gap`), one line per source and never per code file. The plan gate row `context map reviewed` needs at least one entry, at most 12,
+each line at most 100 characters, and a `- reviewed: human|auto` line. Plan writes `- reviewed: pending`; the CLI replaces it.
+`plan.context-check` is `auto` (ask only when the map has an `ignore` or a `gap`), `always` (ask every run) or `off` (never ask;
+the map is still written and gated). The question is the CLI's own (`temper next` and `view.json` carry `context_map` and
+`context_check`); the person's choice runs `temper plan review --answer '<choice>'`, then `temper gate plan`. Plan never asks it and
+never writes `reviewed: human`. Auto mode may refuse an edit of that line, which is why the CLI writes it
+([auto mode](../docs/auto-mode.md)).
+
 Every scenario carries a `Test:` line, a scoped shell command that proves it on the merged tree and names the test the plan's
 task writes; the gate row `scenario test commands` fails for one without it, and for a `Test:` file no task declares and the
 project lacks. A task owes the scenarios its `Traced to:` line names (`temper task show` lists them with their exact

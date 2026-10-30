@@ -100,6 +100,8 @@ check:
 # format:
 #   cmd: "npx --no-install prettier --write {file}"
 
+plan:
+  context-check: auto               # auto: ask when the Context Map has an ignore or a gap; always; off
 phases:
   design: true                 # design stage for medium/complex features (auto-skipped otherwise)
 
