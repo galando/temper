@@ -113,6 +113,7 @@ Scenario: first
   Then it works
   Note: unit
   Covers: AC-01
+  Test: true
 ```
 ```gherkin
 Scenario: second
@@ -121,6 +122,7 @@ Scenario: second
   Then it still works
   Note: unit
   Covers: AC-02
+  Test: true
 ```
 
 ## Scenario Coverage Checklist

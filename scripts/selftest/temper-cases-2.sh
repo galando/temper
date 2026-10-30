@@ -16,6 +16,7 @@ assert_eq "evidence run records the observed exit code" "1" \
 assert_eq "evidence run keeps PROVEN on a nonzero exit (machine-observed, no downgrade)" "PROVEN" \
   "$(python3 -c "import json; print([e for e in json.load(open('.temper/evidence/build.json')) if e['claim']=='regression test red'][0]['label'])")"
 echo '- [x] t' > .temper/specs/demo/tasks.md
+"$TEMPER" evidence run --stage build --scenario first --claim "scenario first" -- true >/dev/null; "$TEMPER" evidence run --stage build --scenario second --claim "scenario second" -- true >/dev/null
 assert_exit "cli-executed RED+GREEN satisfies the build gate" 0 "$TEMPER" gate build
 
 # --- v9 hooks: protected paths, confirm-override ask tier, formatter, imports stdin ---
@@ -535,6 +536,7 @@ assert_exit "a latest nonzero completion row FAILs the gate" 1 "$TEMPER" gate re
 setup
 "$TEMPER" evidence add --stage build --claim "tests" --exit 1 --phase red >/dev/null
 "$TEMPER" evidence add --stage build --claim "tests" --exit 0 --phase green >/dev/null
+"$TEMPER" evidence run --stage build --scenario first --claim "scenario first" -- true >/dev/null; "$TEMPER" evidence run --stage build --scenario second --claim "scenario second" -- true >/dev/null
 assert_exit "no feedback rows => requirement skipped" 0 "$TEMPER" gate build
 "$TEMPER" evidence add --stage build --phase feedback --claim "feedback #1: use the builder pattern" >/dev/null
 assert_exit "an unanswered feedback row FAILs the build gate" 1 "$TEMPER" gate build

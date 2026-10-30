@@ -67,7 +67,7 @@ assert_eq "F12: after the confirmation the gate passes the task and ticks its bo
 assert_eq "F12: a plan of only manual tasks has no RED then GREEN to show: that row passes" "True" \
   "$("$TEMPER" gate build 2>&1 | grep -c 'every task is manual' | sed 's/1/True/')"
 assert_eq "F12: the all-tasks check counts a task with no checkbox as not done" "False" \
-  "$(python3 -I "$REPO_ROOT/scripts/task_rows.py" all-tasks <(printf '## Group G1: A\n**Depends:** none\n\n### Task 1: a\n**File:** `a.py`\n**Test:** `true`\n**Cases:**\n- x\n\n### Task 2: b\n**File:** `b.py`\n**Test:** `true`\n**Cases:**\n- y\n- [x] done\n') /dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['pass'])")"
+  "$(python3 -E -s "$REPO_ROOT/scripts/task_rows.py" all-tasks <(printf '## Group G1: A\n**Depends:** none\n\n### Task 1: a\n**File:** `a.py`\n**Test:** `true`\n**Cases:**\n- x\n\n### Task 2: b\n**File:** `b.py`\n**Test:** `true`\n**Cases:**\n- y\n- [x] done\n') /dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['pass'])")"
 
 # --- F18. A command the CLI runs imports the code of the folder it runs in; R10: no credential reaches it ---
 mkdir -p r18/root_pkg r18/wt_pkg
