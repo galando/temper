@@ -1,5 +1,7 @@
 # Trust
 
+With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+
 Markdown, a mod written in TypeScript, about 7,100 lines of auditable bash (the CLI and the guard scripts) whose
 inline Python parses and writes JSON and computes the gate requirements, and ten Python scripts (about 3,600
 lines, standard library only). Temper itself makes no network calls, sends no telemetry and adds no packages. The

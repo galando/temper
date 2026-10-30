@@ -82,6 +82,8 @@ https://github.com/user-attachments/assets/31a9f4dc-8860-41be-97ca-f03460630f2f
 The mod makes no network, `process` or `env` call, starts no agent and writes no file itself. It sets no
 setting and runs no command.
 
+With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+
 - **Reads:** `.temper/view.json`, the one file the CLI writes for it. To find the project it looks for that
   file in the session folder and in up to 11 folders above it. It also reads its own options, store and
   state, and the Claude Code version. When `reviewerModel` is set it reads the session's agent list (id and

@@ -1,6 +1,8 @@
 # The flow: `temper next` and `view.json`
 
 Two outputs of the `temper` CLI carry the whole flow of a run ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)).
+
+With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
 Both are computed by `scripts/flow.py` from the run's own files; nothing else decides what comes next.
 
 - `temper next --json` prints the next action. The orchestrator (`commands/temper.md`) does what it

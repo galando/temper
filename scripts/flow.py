@@ -554,6 +554,83 @@ class Builder:
 
         return None
 
+    ADHOC_STAGES = ("build", "review", "check", "commit")
+
+    def adhoc_option(self, stage):
+        return self.opt("Make a small change", "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+                        move="adhoc", calls=[self.c("adhoc open --stage %s --reason '{reason}'" % stage)],
+                        do="Make the change, run %s, then run %s again." % (self.c("adhoc close"), self.c("next --json")),
+                        reason=["A small fix of my own", "A change the review asked for"])
+
+    def add_adhoc(self, out, stage):
+        """Add Make a small change to the gate question of Build, Review, Check or Commit, before Save for later. Four options
+        at most: when the question is full it goes under More options. Not offered while a window is open, nor at a fix
+        run's Fix stage (its change is the fix itself)."""
+        r = self.r
+        if stage not in self.ADHOC_STAGES or r.state.get("adhoc") or (r.command == "fix" and r.stage == "fix"):
+            return out
+        q = out.get("ask") if "ask" in out else out
+        if not isinstance(q, dict) or "options" not in q or any(o["label"] == "Make a small change" for o in q["options"]):
+            return out
+        if stage == "review" and q["options"] and q["options"][0]["label"].startswith("Continue") and r.verdict("review") == "PASS" and \
+                any(f["state"] == "open" for f in r.findings()):
+            q["options"] = [o for o in q["options"] if o["label"] != "Teach Me"]   # Teach Me gives way to the change
+        opt = self.adhoc_option(stage)
+
+        def put(options):
+            keep = [o for o in options if o["label"] == "Save for later"]
+            rest = [o for o in options if o["label"] != "Save for later"]
+            return rest + [opt] + keep
+
+        if len(q["options"]) < 4:
+            q["options"] = put(q["options"])
+        elif q.get("more") and len(q["more"]["options"]) < 4:
+            q["more"]["options"] = put(q["more"]["options"])
+            q["more"]["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in q["more"]["options"]]
+        else:
+            first, rest = q["options"][:3], q["options"][3:]
+            more = self.question(q["question"]["header"], q["question"]["question"].split("?")[0] + "? More options.", put(rest), stage)
+            q["options"] = first + [self.opt("More options", ", ".join(o["label"] for o in more["options"]), do="Ask the more question.")]
+            q["more"] = more
+        q["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in q["options"]]
+        return out
+
+    def small_change_work(self, done):
+        """A small change is closed: run the steps it touches, in order (review of the changed files, check, the commit gate;
+        or only the stage's own gate), before the stage's question is asked again."""
+        r = self.r
+        step = (done.get("steps") or [""])[0]
+        files = ", ".join(done.get("files") or [])
+        if step == "review":
+            a = self.agent("review", ["Ad-hoc change: review only %s." % files])
+            a["after"].append(self.c("gate review"))
+            a["gate"] = a["after"][-1]
+            return {"action": "work", "stage": r.stage, "calls": [], "agents": [a],
+                    "say": "%s: the Review agent checks your small change%s. %s" % (LABEL.get(r.stage, r.stage), on_model([a]), goes_on(False))}
+        if step == "check":
+            a = self.agent("check", ["Ad-hoc change: check the tree as it is now; the change touched %s." % files])
+            a["after"].append(self.c("gate check"))
+            a["gate"] = a["after"][-1]
+            return {"action": "work", "stage": r.stage, "calls": [], "agents": [a],
+                    "say": "%s: the Check agent checks the tree after your small change%s. %s" % (LABEL.get(r.stage, r.stage), on_model([a]), goes_on(False))}
+        gate = {"commit": "commit"}.get(step) or (r.gate_of(done.get("stage") or r.stage) or r.stage)
+        return {"action": "work", "stage": r.stage, "calls": [self.c("gate %s" % gate)], "agents": [],
+                "say": "%s is checked again after your small change." % LABEL.get(done.get("stage") or r.stage, r.stage)}
+
+    def side_review_failed(self, done):
+        """Review of a change made at Check or Commit failed: the run has left Review, so it never offers to advance from it."""
+        r = self.r
+        why = "; ".join("%s: %s" % (x.get("name"), x.get("detail")) for x in r.failed_rows("review")[:3])
+        opts = []
+        if r.can_loop(r.stage, "build"):
+            opts.append(self.opt("Loop back to Build (Recommended)", "Do Build again; the stages after it are redone too.", move="back",
+                                 calls=[self.c("state loop %s build --reason '{reason}'" % r.stage)], reason=["The review found a real problem"]))
+        opts.append(self.opt("Override and continue", "Skip the Review of your change with your reason; the report shows it.", move="override",
+                             calls=[self.c("override review --reason '{reason}'")], reason=["I accept the risk", "It is not a real issue"]))
+        opts.append(self.save())
+        return {"action": "ask", "stage": r.stage, "ask": self.question(GATE_HEADER, "%s: Review of your small change failed (%s). Loop back to Build?" % (
+            LABEL.get(r.stage, r.stage), why), stage=r.stage, options=opts)}
+
     def accept_question(self, opens):
         """The `Accept a finding` question: one option per open finding (the first three), and Cancel."""
         aopts = [self.opt("Accept finding %d" % f["id"], f["claim"][:150], move="accept",
@@ -1070,8 +1147,18 @@ class Builder:
             out.update({"action": "broken", "say": "The run state does not fit its spec folder (%s at %s)." % (r.spec, r.stage)})
             return out
         stage = r.stage
+        done = r.state.get("adhoc_done")
+        if isinstance(done, dict) and done.get("steps") and not r.state.get("adhoc"):
+            step = done["steps"][0]
+            if step in ("check", "commit") and "review" not in done["steps"] and r.verdict("review") == "FAIL" and stage in ("check", "commit"):
+                out.update(self.side_review_failed(done))
+            else:
+                out.update(self.small_change_work(done))
+            return out
         if stage == "commit":
             out.update(self.commit())
+            if out.get("action") == "ask":
+                self.add_adhoc(out, "commit")
             return out
         if stage == "build" and r.command == "temper":
             fb = self.foreign_branch()
@@ -1140,6 +1227,7 @@ class Builder:
             return out
         q = self.ask(stage)
         out.update({"action": "ask", "stage": stage, "ask": q})
+        self.add_adhoc(out, stage)
         if r.gate_of(stage):  # the gate to run again after a change the person typed at this question
             out["gate"] = self.c("gate %s" % r.gate_of(stage))
         blocking = r.blocking()

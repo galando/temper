@@ -110,6 +110,8 @@ The mod reads your answer from the result of the question, not from what Claude 
 The mod needs Claude Code 2.1.287 or later. This section shows where enforcement works, where it does
 not work and what is not verified.
 
+With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+
 ### Older versions, or no mod
 
 Before 2.1.287 the mod does nothing, and the skills say one time that enforcement is off. The same

@@ -419,15 +419,53 @@ assert_exit "F14: a second open is refused" 1 "$TEMPER" adhoc open --stage build
 mkdir -p src; echo one > src/a.sh; echo two > src/b.sh
 OUT="$("$TEMPER" adhoc close 2>&1)"
 assert_eq "F14: close records the files changed since the open (src/a.sh, src/b.sh), not every dirty file" "src/a.sh,src/b.sh|gate" \
-  "$(python3 -c "import json; d=json.load(open('.temper/build-state.json'))['adhoc_done']; print(','.join(d['files'])+'|'+','.join(d['steps']))")"
+  "$(python3 -c "import json; d=json.load(open('.temper/build-state.json'))['adhoc_done']; print(','.join(f for f in d['files'] if f.startswith('src/'))+'|'+','.join(d['steps']))")"
 assert_exit "F14: a window can open again after a close" 0 "$TEMPER" adhoc open --stage check --reason "fix an off by one"
 echo changed >> src/a.sh
 git add -A >/dev/null 2>&1; git commit -qm "the small change" >/dev/null 2>&1
 echo dirty-from-before-the-open-is-not-counted > docs-note.txt
 "$TEMPER" adhoc close >/dev/null 2>&1
-assert_eq "F14: a change at Check re-runs Review of the changed files, then Check, then the commit gate; a change in a commit counts" "review,check,commit|src/a.sh" \
+assert_eq "F14: a change at Check re-runs Review of the changed files, then Check, then the commit gate; a change in a commit counts" "review,check,commit|src/a.sh,src/b.sh" \
   "$(python3 -c "import json; d=json.load(open('.temper/build-state.json'))['adhoc_done']; print(','.join(d['steps'])+'|'+','.join(f for f in d['files'] if f.startswith('src')))")"
 "$TEMPER" adhoc open --stage review --reason "a doc fix" >/dev/null 2>&1; echo more > docs/guide.md 2>/dev/null || { mkdir -p docs; echo more > docs/guide.md; }
 "$TEMPER" adhoc close >/dev/null 2>&1
 assert_eq "F14: a change of docs only re-runs only the stage's own gate" "gate|True" \
   "$(python3 -c "import json; d=json.load(open('.temper/build-state.json'))['adhoc_done']; print(','.join(d['steps'])+'|'+str(d['doc_only']))")"
+
+# --- F14. The gate questions offer Make a small change; a closed change runs the steps it touches ---
+fresh; gpass intent plan build review check; _at check
+assert_eq "F14: a passed Check keeps Loop back to Build beside Commit, and offers the small change before Save" \
+  "Commit (Recommended)|Loop back to Build|Make a small change|Save for later" "$(labels)"
+assert_eq "F14: the option opens the window with a reason question and says what to do" "adhoc|1|1|1" \
+  "$(nx "o = [x for x in d['ask']['options'] if x['label'] == 'Make a small change'][0]; '|'.join([o['move'], str(len(o['calls'])), str(int('adhoc open --stage check --reason' in o['calls'][0])), str(int('adhoc close' in o['do'] and o.get('reason') is True))])")"
+assert_eq "F14: the description is the agreed sentence" "Change the work yourself, with no loop back; the change re-runs only what it touches." \
+  "$(nx "[x for x in d['ask']['options'] if x['label'] == 'Make a small change'][0]['description']")"
+python3 - <<'PYT'
+import json
+d = json.load(open('.temper/build-state.json')); d['adhoc'] = {'stage': 'check', 'reason': 'x', 'base': '', 'files': {}}; json.dump(d, open('.temper/build-state.json', 'w'))
+PYT
+assert_eq "F14: it is not offered while a window is open" "Commit (Recommended)|Loop back to Build|Save for later" "$(labels)"
+python3 - <<'PYT'
+import json
+d = json.load(open('.temper/build-state.json')); d.pop('adhoc'); d['adhoc_done'] = {'stage': 'check', 'reason': 'x', 'files': ['src/a.sh'], 'doc_only': False, 'steps': ['review', 'check', 'commit']}; json.dump(d, open('.temper/build-state.json', 'w'))
+PYT
+assert_eq "F14: after a code change at Check the Review agent runs first, over the changed files only" "work|temper:temper-review|1" \
+  "$(nx "'|'.join([d['action'], d['agents'][0]['type'], str(d['agents'][0]['prompt'].count('Ad-hoc change: review only src/a.sh'))])")"
+python3 - <<'PYT'
+import json
+d = json.load(open('.temper/build-state.json')); d['adhoc_done']['steps'] = ['check', 'commit']; json.dump(d, open('.temper/build-state.json', 'w'))
+g = json.load(open('.temper/gates.json')); g['review'] = {'verdict': 'FAIL', 'requirements': [{'name': 'critical findings', 'pass': False, 'detail': '1 open'}]}; json.dump(g, open('.temper/gates.json', 'w'))
+PYT
+assert_eq "F14: a failed Review of a change made at Check never offers to advance from a stage the run has left" "ask|0" \
+  "$(nx "d['action'] + '|' + str(sum(1 for o in d['ask']['options'] for c in o['calls'] if 'state advance review_complete' in c))")"
+python3 - <<'PYT'
+import json
+d = json.load(open('.temper/build-state.json')); d['adhoc_done'] = {'stage': 'build', 'reason': 'x', 'files': ['docs/a.md'], 'doc_only': True, 'steps': ['gate']}; json.dump(d, open('.temper/build-state.json', 'w'))
+PYT
+fresh; gpass intent plan build; _at build
+python3 - <<'PYT'
+import json
+d = json.load(open('.temper/build-state.json')); d['adhoc_done'] = {'stage': 'build', 'reason': 'x', 'files': ['docs/a.md'], 'doc_only': True, 'steps': ['gate']}; json.dump(d, open('.temper/build-state.json', 'w'))
+PYT
+assert_eq "F14: a change made at Build, or of docs only, re-runs only the stage's gate call" "work|0|gate build" \
+  "$(nx "'|'.join([d['action'], str(len(d['agents'])), d['calls'][0].split('temper ', 1)[1]])")"

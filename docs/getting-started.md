@@ -31,6 +31,8 @@ folder's.
 On Claude Code 2.1.287 or later, the same install also loads the Temper mod. You get a stage bar
 that shows where the run is, and the mod refuses an edit outside the current stage and
 `--no-verify` on a commit. You still decide each gate in the same question as without the mod.
+
+With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
 It is not a sandbox: [Trust](trust.md) lists what it does not see. Check your version with `claude --version`. On an older version nothing changes.
 
 | Setting | Values | Effect |

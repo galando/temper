@@ -17,6 +17,9 @@ The temper CLI is `${CLAUDE_PLUGIN_ROOT}/scripts/temper`. It decides every step 
 that (its format: `${CLAUDE_PLUGIN_ROOT}/docs/flow.md`). Every path it prints is written out in full:
 run it exactly as printed. Never compute a gate, an option or a next stage yourself.
 
+
+With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+
 ## Arguments
 
 When the first word is one of these, do this and start no run. Any other first word begins a

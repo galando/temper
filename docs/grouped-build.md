@@ -1,5 +1,7 @@
 # Grouped Build (9.7.0)
 
+With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+
 Build runs in groups of small tasks, each handed to a slim Haiku agent, with one human gate
 per group. It is the one Build since 9.7.0: in the baseline measurement (galando/temper#97) the
 Haiku task agents cost about a fourteenth of a Sonnet build agent ([ADR 0013](decisions/0013-the-cli-says-what-next-the-mod-only-draws.md)).
