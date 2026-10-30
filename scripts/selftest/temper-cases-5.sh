@@ -1,7 +1,7 @@
 # --- Grouped Build (9.7.0): config keys and task model resolution ---
 # Build runs in groups of small tasks: the one Build (ADR 0013)
 setup
-assert_eq "model --all prints the 8 stage lines plus task= and task-escalation=" "10|1|1" \
+assert_eq "model --all prints the 9 stage lines plus task= and task-escalation=" "11|1|1" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep -c '^task=')|$("$TEMPER" model --all | grep -c '^task-escalation=')"
 
 # Scenario: Task and escalation models resolve from config with defaults [AC-06, AC-01]
@@ -9,7 +9,7 @@ setup
 printf 'build:\n  mode: grouped\n' >> .claude/temper.config
 assert_eq "model task defaults to claude-haiku-5-5" "claude-haiku-5-5" "$("$TEMPER" model task)"
 assert_eq "model task-escalation defaults to sonnet" "sonnet" "$("$TEMPER" model task-escalation)"
-assert_eq "grouped on: model --all appends task= and task-escalation=" "10|task=claude-haiku-5-5|task-escalation=sonnet" \
+assert_eq "grouped on: model --all appends task= and task-escalation=" "11|task=claude-haiku-5-5|task-escalation=sonnet" \
   "$("$TEMPER" model --all | wc -l | tr -d ' ')|$("$TEMPER" model --all | grep '^task=')|$("$TEMPER" model --all | grep '^task-escalation=')"
 setup
 printf 'build:\n  mode: grouped\n  grouped:\n    task-model: haiku\n    escalation-model: opus\n' >> .claude/temper.config
