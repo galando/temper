@@ -418,8 +418,8 @@ assert_exit "F14: open at Build with a reason" 0 "$TEMPER" adhoc open --stage bu
 assert_exit "F14: a second open is refused" 1 "$TEMPER" adhoc open --stage build --reason "again"
 mkdir -p src; echo one > src/a.sh; echo two > src/b.sh
 OUT="$("$TEMPER" adhoc close 2>&1)"
-assert_eq "F14: close records the files changed since the open (src/a.sh, src/b.sh), not every dirty file" "2|gate" \
-  "$(python3 -c "import json; d=json.load(open('.temper/build-state.json'))['adhoc_done']; print(str(len(d['files']))+'|'+','.join(d['steps']))")"
+assert_eq "F14: close records the files changed since the open (src/a.sh, src/b.sh), not every dirty file" "src/a.sh,src/b.sh|gate" \
+  "$(python3 -c "import json; d=json.load(open('.temper/build-state.json'))['adhoc_done']; print(','.join(d['files'])+'|'+','.join(d['steps']))")"
 assert_exit "F14: a window can open again after a close" 0 "$TEMPER" adhoc open --stage check --reason "fix an off by one"
 echo changed >> src/a.sh
 git add -A >/dev/null 2>&1; git commit -qm "the small change" >/dev/null 2>&1
