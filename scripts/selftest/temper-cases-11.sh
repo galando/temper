@@ -407,3 +407,27 @@ assert_eq "F13: a task's option reopens the task and its companions with the fee
   "$(nx "o = d['ask']['change']['options'][0]; o['calls'][0].split('temper ', 1)[1] + '|' + o['description']")"
 assert_eq "F13: Change records each feedback item first" "1" \
   "$(nx "str(int('evidence add --stage build --phase feedback --claim' in d['ask']['options'][1]['do'] and 'Which task changes?' in d['ask']['options'][1]['do']))")"
+
+# --- F14. The small-change window ---
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+git init -q . 2>/dev/null; git config user.email t@example.com; git config user.name T; git add -A >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
+assert_exit "F14: close with no window is an error" 1 "$TEMPER" adhoc close
+assert_exit "F14: open needs a reason" 1 "$TEMPER" adhoc open --stage build
+assert_exit "F14: open takes a known stage" 1 "$TEMPER" adhoc open --stage intent --reason "x"
+assert_exit "F14: open at Build with a reason" 0 "$TEMPER" adhoc open --stage build --reason "rename a variable"
+assert_exit "F14: a second open is refused" 1 "$TEMPER" adhoc open --stage build --reason "again"
+mkdir -p src; echo one > src/a.sh; echo two > src/b.sh
+OUT="$("$TEMPER" adhoc close 2>&1)"
+assert_eq "F14: close records the files changed since the open (src/a.sh, src/b.sh), not every dirty file" "2|gate" \
+  "$(python3 -c "import json; d=json.load(open('.temper/build-state.json'))['adhoc_done']; print(str(len(d['files']))+'|'+','.join(d['steps']))")"
+assert_exit "F14: a window can open again after a close" 0 "$TEMPER" adhoc open --stage check --reason "fix an off by one"
+echo changed >> src/a.sh
+git add -A >/dev/null 2>&1; git commit -qm "the small change" >/dev/null 2>&1
+echo dirty-from-before-the-open-is-not-counted > docs-note.txt
+"$TEMPER" adhoc close >/dev/null 2>&1
+assert_eq "F14: a change at Check re-runs Review of the changed files, then Check, then the commit gate; a change in a commit counts" "review,check,commit|src/a.sh" \
+  "$(python3 -c "import json; d=json.load(open('.temper/build-state.json'))['adhoc_done']; print(','.join(d['steps'])+'|'+','.join(f for f in d['files'] if f.startswith('src')))")"
+"$TEMPER" adhoc open --stage review --reason "a doc fix" >/dev/null 2>&1; echo more > docs/guide.md 2>/dev/null || { mkdir -p docs; echo more > docs/guide.md; }
+"$TEMPER" adhoc close >/dev/null 2>&1
+assert_eq "F14: a change of docs only re-runs only the stage's own gate" "gate|True" \
+  "$(python3 -c "import json; d=json.load(open('.temper/build-state.json'))['adhoc_done']; print(','.join(d['steps'])+'|'+str(d['doc_only']))")"

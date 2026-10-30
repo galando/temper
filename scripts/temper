@@ -4437,9 +4437,9 @@ else: print('PASS %d changed, all declared' % len(changed))
 cmd_gate() {
   _state_migrate_legacy
   local stage="${1:-}"; shift || true
-  local spec_path_override=""
+  local spec_path_override="" from_hook=0
   while [[ $# -gt 0 ]]; do
-    case "$1" in --spec-path) spec_path_override="$2"; shift 2 ;; *) shift ;; esac
+    case "$1" in --spec-path) spec_path_override="$2"; shift 2 ;; --from-hook) from_hook=1; shift ;; *) shift ;; esac
   done
   _ensure_dirs
   local ok=false
@@ -4500,6 +4500,11 @@ cmd_gate() {
     fi
     # Per-criterion status for the live view. Fail open: never changes the verdict.
     _status_write "$spec_path" >/dev/null 2>&1 || true
+    # A gate the orchestrator runs marks the small change's step done; one the commit hook runs neither marks nor closes it.
+    if [[ "$from_hook" != "1" && -f "$STATE_FILE" ]]; then
+      python3 -E -s "$SCRIPTS_DIR/adhoc_ops.py" step "$STATE_FILE" "$stage" || true
+      python3 -E -s "$SCRIPTS_DIR/adhoc_ops.py" step "$STATE_FILE" gate || true
+    fi
   fi
 
   echo "temper gate $stage -> $verdict"
@@ -4696,6 +4701,31 @@ _setup_calls() {
      || ! grep -qF 'python3 -I ' "$hook" 2>/dev/null; then
     echo "bash $PLUGIN_ROOT/scripts/guards/install.sh"
   fi
+}
+
+# temper adhoc open --stage S --reason R | temper adhoc close: the small-change window (scripts/adhoc_ops.py, F14).
+cmd_adhoc() {
+  _state_migrate_legacy
+  local sub="${1:-}"; shift || true
+  [[ -f "$STATE_FILE" ]] || { echo "FAIL: no active state (temper state init)" >&2; return 1; }
+  local stage="" reason="" rc
+  while [[ $# -gt 0 ]]; do
+    case "$1" in --stage) stage="${2:-}"; shift 2 || true ;; --reason) reason="${2:-}"; shift 2 || true ;; *) echo "FAIL: unknown flag $1" >&2; return 1 ;; esac
+  done
+  _lock_acquire
+  case "$sub" in
+    open) python3 -E -s "$SCRIPTS_DIR/adhoc_ops.py" open "$STATE_FILE" "$stage" "$reason"; rc=$? ;;
+    close) python3 -E -s "$SCRIPTS_DIR/adhoc_ops.py" close "$STATE_FILE"; rc=$? ;;
+    *) echo "FAIL: usage: temper adhoc open --stage <build|review|check|commit|pipeline> --reason '<why>' | temper adhoc close" >&2; rc=1 ;;
+  esac
+  _lock_release
+  # a change that re-runs the Review agent takes the Review code snapshot now, after the change: Review then does not fail on it
+  if [[ "$sub" == "close" && $rc -eq 0 ]] && python3 -I -c "
+import json, sys
+sys.exit(0 if 'review' in (json.load(open(sys.argv[1])).get('adhoc_done') or {}).get('steps', []) else 1)" "$STATE_FILE"; then
+    _review_code save || true
+  fi
+  return $rc
 }
 
 # temper risk [--raise L|M|H --reason R]: the plan's rating from its blast radius (scripts/risk.py), kept in the run state.
@@ -5158,6 +5188,7 @@ main() {
     usage) cmd_usage "$@" ;;
     next) cmd_next "$@" ;;
     risk) cmd_risk "$@" ;;
+    adhoc) cmd_adhoc "$@" ;;
     intent) cmd_intent "$@" ;;
     park) cmd_park "$@" ;;
     ""|-h|--help)
@@ -5190,6 +5221,8 @@ Usage:
   temper state redo <stage> [--reason R]   (run the stage the run is at again; its verdict goes)
   temper group continue G<n>      (the person's Continue at a group question)
   temper park --verdict V --reason R      (an armed run stops for the person)
+  temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
+  temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
 EOF
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;
