@@ -82,7 +82,7 @@ EVIDENCE_DIR="$TEMPER_DIR/evidence"
 METRICS_FILE="$TEMPER_DIR/metrics.json"
 BANDS_FILE="$TEMPER_DIR/bands.json"
 
-STAGES="intent plan design build review check commit"
+STAGES="intent plan design build review check commit pipeline"
 # Grouped Build (9.7.0) byte budgets: the slim task brief, a group's Context block, one task block.
 TASK_BRIEF_MAX_BYTES=6144
 GROUP_CONTEXT_MAX_BYTES=4096
@@ -94,16 +94,16 @@ GROUPS_FILE=".temper/groups.json"   # grouped run state: CLI-owned, every write 
 # `commit` is not one — it's the orchestrator running `temper gate commit`.
 # rca/fix are /temper:fix's subprocess stages: model stages (the rca and fix briefs'
 # frontmatter) but never gate stages — Fix evidence gates as `build`.
-AGENT_STAGES="intent plan design build review check rca fix"
+AGENT_STAGES="intent plan design build review check pipeline rca fix"
 
 # The only stage names an evidence ledger file can carry: every gate stage plus the two
 # /temper:fix subprocess stages. A stage name is checked against this list before any
 # path is built from it (see _stage_ok and _evidence_file).
-EVIDENCE_STAGES="intent plan design build review check commit rca fix"
+EVIDENCE_STAGES="intent plan design build review check commit pipeline rca fix"
 
 _stage_ok() { # _stage_ok <stage> -> 0 only for a name on the fixed EVIDENCE_STAGES list
   case "$1" in
-    intent|plan|design|build|review|check|commit|rca|fix) return 0 ;;
+    intent|plan|design|build|review|check|commit|pipeline|rca|fix) return 0 ;;
   esac
   return 1
 }
@@ -481,6 +481,7 @@ _agent_file() { # <stage> -> its brief, each path written out in full (an unknow
     build)  echo "$PLUGIN_ROOT/agents/build.md" ;;
     review) echo "$PLUGIN_ROOT/agents/review.md" ;;
     check)  echo "$PLUGIN_ROOT/agents/check.md" ;;
+    pipeline) echo "$PLUGIN_ROOT/agents/pipeline.md" ;;
     rca)    echo "$PLUGIN_ROOT/agents/rca.md" ;;
     fix)    echo "$PLUGIN_ROOT/agents/fix.md" ;;
     *)      echo "" ;;
@@ -862,7 +863,7 @@ for name in ('intent.md', 'plan.md'):
 _run_seq() { # the run's own stage sequence, with the commit stage last (a fix run has its own)
   local command="temper"
   [[ -f "$STATE_FILE" ]] && command="$(_json_get_path "$STATE_FILE" command temper)"
-  if [[ "$command" == "fix" ]]; then echo "$STAGE_SEQ_FIX commit"; else echo "$STAGE_SEQ_TEMPER commit"; fi
+  if [[ "$command" == "fix" ]]; then echo "$STAGE_SEQ_FIX commit"; else echo "$STAGE_SEQ_TEMPER commit pipeline"; fi
 }
 
 _stage_before() { # _stage_before <a> <b>: 0 when stage a comes before stage b in the run's own sequence
@@ -997,6 +998,7 @@ cmd_state_advance() { # temper state advance <stage_complete> <next_stage>
   for s in $valid_stages; do
     [[ "$stage" == "${s}_complete" ]] && known=true
   done
+  [[ "$command" == "temper" && "$stage" == "commit_complete" && "$next" == "pipeline" ]] && known=true   # F26: Commit opened a pull request
   if [[ "$known" != "true" ]]; then
     echo "FAIL: unknown stage '$stage' for command '$command' (expected one of: $(for s in $valid_stages; do printf '%s_complete ' "$s"; done))" >&2
     return 1
@@ -1321,6 +1323,7 @@ cmd_state_redo() { # temper state redo <stage> [--reason "..."]: "Run Build agai
     return 1
   fi
   _redo_from "$stage" || return 1
+  [[ "$stage" == "pipeline" ]] && rm -f "$(_json_get_path "$STATE_FILE" spec_path "")/pipeline-context.json"   # CI is read again
   [[ "$stage" == "review" ]] && _review_code save
   # A run a door started at a later stage checks the stages before it instead of running them: one run again is run,
   # and so is every stage after it (the door's entry moves to it).
@@ -1693,6 +1696,7 @@ _evidence_file() { # <stage> -> its ledger file, each path written out in full r
     review) echo ".temper/evidence/review.json" ;;
     check)  echo ".temper/evidence/check.json" ;;
     commit) echo ".temper/evidence/commit.json" ;;
+    pipeline) echo ".temper/evidence/pipeline.json" ;;
     rca)    echo ".temper/evidence/rca.json" ;;
     fix)    echo ".temper/evidence/fix.json" ;;
     *)      echo "" ;;
@@ -4508,6 +4512,7 @@ cmd_gate() {
     review) out=$(gate_review) ;;
     check) out=$(gate_check "$spec_path") ;;
     commit) out=$(gate_commit) ;;
+    pipeline) out=$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" pipeline-gate "$spec_path") ;;
   esac
   if [[ -n "${out:-}" ]]; then
     reqs_json="${out% *}"

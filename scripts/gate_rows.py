@@ -121,7 +121,28 @@ def build_criteria(spec, evidence):
         "%s %s" % (x.split()[0], x.split()[1].rstrip(":")) for x in out))[:300])
 
 
+def pipeline_gate(spec):
+    """The Pipeline gate, printed as the CLI's gates print: a JSON array of rows, then 1 or 0. The agent writes
+    pipeline-context.json; a missing file, or a status that is neither green nor red, is a result that is not final."""
+    try:
+        ctx = json.load(open(os.path.join(spec, "pipeline-context.json"), encoding="utf-8"))
+    except (OSError, ValueError):
+        ctx = None
+    status = ctx.get("status") if isinstance(ctx, dict) else None
+    rows = [row("pipeline result", status in ("green", "red"),
+                "the checks gave a final result: %s" % status if status in ("green", "red")
+                else "the Pipeline result is missing or not final (no pipeline-context.json with a green or red status)")]
+    if status in ("green", "red"):
+        failed = [j.get("name", "?") for j in (ctx.get("failed_jobs") or []) if isinstance(j, dict)]
+        rows.append(row("jobs passed", status == "green",
+                        "every job passed" if status == "green" else "%d job(s) failed: %s" % (len(failed), ", ".join(failed[:5]) or "see pipeline-context.json")))
+    return "%s %d" % (json.dumps(rows), 1 if all(r["pass"] for r in rows) else 0)
+
+
 def main(argv):
+    if len(argv) == 3 and argv[1] == "pipeline-gate":
+        print(pipeline_gate(argv[2]))
+        return 0
     if len(argv) == 4 and argv[1] == "scenario-known":
         names = [b["name"] for b in acceptance.scenario_blocks(open(argv[2], encoding="utf-8").read().splitlines())]
         return 0 if argv[3] in names else 1

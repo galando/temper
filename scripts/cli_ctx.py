@@ -16,7 +16,7 @@ import sys
 
 import config_yaml
 
-AGENT_STAGES = ["intent", "plan", "design", "build", "review", "check", "rca", "fix"]
+AGENT_STAGES = ["intent", "plan", "design", "build", "review", "check", "pipeline", "rca", "fix"]
 TASK_DEFAULT = "claude-haiku-5-5"
 ESCALATION_DEFAULT = "sonnet"
 
