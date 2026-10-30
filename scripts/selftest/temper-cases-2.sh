@@ -740,7 +740,7 @@ setup; scope_fixture completed "" "- none"
 assert_exit "a completed intent without an Out of scope line PASSes" 0 "$TEMPER" gate intent
 setup; scope_fixture draft "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
 OUT=$("$TEMPER" gate intent 2>&1; true)
-assert_exit "a draft may hold a Blocking question and still PASS" 0 "$TEMPER" gate intent
+assert_exit "a draft with a Blocking question open FAILs the Intent gate (9.7.5, F10)" 1 "$TEMPER" gate intent
 assert_eq "the gate names the Blocking question still open on the draft" "yes" "$(echo "$OUT" | grep -q 'Blocking question(s) still open on the draft' && echo yes || echo no)"
 setup; scope_fixture accepted "billing" "- Blocking: which provider?; consequence: schema; owner: PM."
 assert_exit "an accepted intent with a Blocking question PASSes (not revisited)" 0 "$TEMPER" gate intent
