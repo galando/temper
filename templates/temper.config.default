@@ -117,6 +117,7 @@ loops:
 #     task-model: claude-haiku-5-5     # model of the task agents (default: the build-task brief)
 #     escalation-model: sonnet         # the one retry after two failed attempts
 #     max-parallel: 4                  # tasks running at once
+#     max-groups: 2                    # groups working at once (a whole number, at least 1)
 
 # ============================================================
 # Autonomous Continuation: armed by a human at the PLAN GATE, never at

@@ -272,3 +272,80 @@ fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/nul
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}, "confirmed": "x"}}, "tasks": {"1": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
 gfail build "criteria validated" "AC-02 FAIL: scenario 'second' (bash -c 'exit 3') exit 3."
 assert_eq "F8: a row that exists and failed keeps the gate question" "ask" "$(nx "d['action']")"
+
+# --- F16. build.grouped.max-groups, and a plan with tasks and no groups stops Build with no agent ---
+_three_groups() { cat <<'TASKS'
+# Tasks: demo
+
+**Integration:** `true`
+
+## Group G1: One
+**Depends:** none
+**Validate:** `true`
+**Context:**
+x
+
+### Task 1: a
+**File:** `src/a.sh`
+**Depends:** none
+**Test:** `true`
+**Cases:**
+- a
+- [ ] done
+
+## Group G2: Two
+**Depends:** none
+**Validate:** `true`
+**Context:**
+x
+
+### Task 2: b
+**File:** `src/b.sh`
+**Depends:** none
+**Test:** `true`
+**Cases:**
+- b
+- [ ] done
+
+## Group G3: Three
+**Depends:** none
+**Validate:** `true`
+**Context:**
+x
+
+### Task 3: c
+**File:** `src/c.sh`
+**Depends:** none
+**Test:** `true`
+**Cases:**
+- c
+- [ ] done
+TASKS
+}
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+_three_groups > .temper/specs/demo/tasks.md; rm -f .temper/groups.json
+assert_eq "F16: by default two groups start at once" "group start G1|group start G2" "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['calls'] if 'group start' in c)")"
+printf 'build:\n  grouped:\n    max-groups: 3\n' > .claude/temper.config
+assert_eq "F16: max-groups 3 starts all three" "3" "$(nx "str(sum(1 for c in d['calls'] if 'group start' in c))")"
+for bad in 0 -1 two 1.5; do
+  printf 'build:\n  grouped:\n    max-groups: %s\n' "$bad" > .claude/temper.config
+  assert_eq "F16: max-groups '$bad' means 2" "2" "$(nx "str(sum(1 for c in d['calls'] if 'group start' in c))")"
+done
+printf 'build:\n  grouped:\n    max-groups: 1\n' > .claude/temper.config
+assert_eq "F16: max-groups 1 starts one" "1" "$(nx "str(sum(1 for c in d['calls'] if 'group start' in c))")"
+printf 'stack: auto\n' > .claude/temper.config
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '# Tasks: demo\n\n### Task 1: a\n**File:** `src/a.sh`\n**Test:** `true`\n**Cases:**\n- a\n- [ ] done\n' > .temper/specs/demo/tasks.md; rm -f .temper/groups.json
+assert_eq "F16: tasks and no groups stops Build with a question and no agent" "ask|Build stopped: tasks.md has tasks but no groups, so Build cannot run them in isolated groups. Run Plan again to write the tasks in groups.|Run Plan again (Recommended)|Save for later" \
+  "$(nx "'|'.join([d['action'], d['ask']['question']['question'], d['ask']['options'][0]['label'], d['ask']['options'][1]['label']])")"
+assert_eq "F16: Run Plan again is a loop from Build to Plan with a reason" "back|1" \
+  "$(nx "d['ask']['options'][0]['move'] + '|' + str(len(d['ask']['options'][0]['calls']))")"
+"$TEMPER" state loop build plan --reason "no groups" >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+assert_eq "F16: with the loop budget spent the text says to write the groups by hand or save" "1" \
+  "$(nx "str(int('write the groups by hand' in d['ask']['question']['question']))")"
+
+# --- F17. After a timed out group gate the question offers a rerun at double the limit ---
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w", "gate": {"verdict": "FAIL", "reason": "group G1 Validate timed out after 600s: make test", "timeout_s": 600}}}, "tasks": {"1": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
+assert_eq "F17: a timed out gate offers a rerun at 1200 seconds first" "Run the gate again with twice the time (Recommended)|group gate G1 --timeout-s 1200" \
+  "$(nx "d['ask']['options'][0]['label'] + '|' + d['ask']['options'][0]['calls'][0].split('temper ', 1)[1]")"

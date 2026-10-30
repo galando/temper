@@ -657,10 +657,26 @@ class Builder:
         esc = self.r.ctx.get("escalation_model") or "sonnet"
         return task_model if int(task.get("attempt") or 1) <= 2 else esc
 
+    def no_groups(self):
+        """tasks.md has tasks and no group: Build stops before any group starts, with no agent."""
+        r = self.r
+        text = "Build stopped: tasks.md has tasks but no groups, so Build cannot run them in isolated groups."
+        opts = []
+        if r.can_loop("build", "plan"):
+            opts.append(self.opt("Run Plan again (Recommended)", "Plan writes the tasks in groups.", move="back",
+                                 calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The tasks have no groups"]))
+            text += " Run Plan again to write the tasks in groups."
+        else:
+            text += " Plan has run again already: write the groups by hand in tasks.md, or save the run."
+        opts.append(self.save())
+        return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=opts)}
+
     def build_work(self):
         """Grouped Build, computed: start groups, hand out ready tasks, gate tasks and groups, integrate."""
         r = self.r
         plan = r.plan or {"groups": [], "tasks": []}
+        if plan.get("tasks") and not plan.get("groups"):
+            return self.no_groups()
         rg = r.groups.get("groups") or {}
         rt = r.groups.get("tasks") or {}
         integ = (r.groups.get("integration") or {}).get("verdict")
@@ -683,12 +699,17 @@ class Builder:
         run = []
         if not r.state.get("base_sha") and r.ctx.get("head"):
             run.append(self.c("state set base_sha %s" % r.ctx.get("head")))
+        # build.grouped.max-groups groups work at once (default 2; anything but a whole number of at least 1 means 2)
+        mg = r.cfg("build.grouped.max-groups", "2")
+        room = (int(mg) if re.fullmatch(r"[1-9][0-9]*", mg) else 2) - sum(
+            1 for g in plan.get("groups", []) if (rg.get(g["id"]) or {}).get("worktree") and not (rg.get(g["id"]) or {}).get("confirmed"))
         for g in plan.get("groups", []):
             started = bool((rg.get(g["id"]) or {}).get("worktree"))
             # A group that builds on another starts after the person's Continue of it, not on its check alone: a Change
             # there reruns work this group would build on.
-            if not started and all(gpass(d) and (rg.get(d) or {}).get("confirmed") for d in g.get("depends", [])):
+            if not started and room > 0 and all(gpass(d) and (rg.get(d) or {}).get("confirmed") for d in g.get("depends", [])):
                 run.append(self.c("group start %s" % g["id"]))
+                room -= 1
         if run:
             return {"action": "work", "stage": "build", "calls": run, "agents": [], "say": "Build starts its groups."}
 
@@ -852,7 +873,12 @@ class Builder:
                     "calls": [self.c('park --verdict PARKED-NEEDS-DECISION --reason %s' % shlex.quote("group %s failed its check: %s" % (gid, why)))],
                     "say": "Group %s failed its check; the armed run parks for you." % gid}
         reopen = [self.c("group reopen %s %s" % (gid, " ".join("--task %d" % n for n in g.get("tasks", []))))]
-        opts = [self.opt("Run the group's tasks again (Recommended)", "Each task of %s runs again." % gid, move="redo", calls=reopen)]
+        opts = []
+        limit = int((ginfo.get("gate") or {}).get("timeout_s") or 0)
+        if limit:  # the gate ran out of time, not out of luck: the same checks again with twice the limit
+            opts.append(self.opt("Run the gate again with twice the time (Recommended)", "Group %s's checks run again, limit %d seconds." % (gid, 2 * limit),
+                                 move="redo", calls=[self.c("group gate %s --timeout-s %d" % (gid, 2 * limit))]))
+        opts.append(self.opt("Run the group's tasks again" + ("" if limit else " (Recommended)"), "Each task of %s runs again." % gid, move="redo", calls=reopen))
         if self.r.can_loop("build", "plan"):
             opts.append(self.opt("Loop back to Plan", "The plan cannot be built as written.", move="back",
                                  calls=[self.c("state loop build plan --reason '{reason}'")], reason=["The plan cannot be built"]))
