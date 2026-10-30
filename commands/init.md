@@ -113,9 +113,10 @@ most people never call `/temper:init` by hand — it's here for an explicit re-r
    a warning and says how to bring it back: move it back to `pre-commit` in git's
    hooks folder, then add to it the line it prints between its BEGIN and END lines.
    `--global` does the same as the default, with a note. It also prints how to
-   uninstall: unset `core.hooksPath` when it points at the `temper-gate` folder,
-   remove the Temper line from the user's own hook if one was added, and delete the
-   `temper-gate` folder (and any `temper-pre-commit` that 9.6.5 left). A hook tool added
+   uninstall: `temper guards uninstall` (or `/temper:init --uninstall`, or `install.sh --uninstall`) removes the Temper
+   hook and the `temper-gate` folder (and any `temper-pre-commit` that 9.6.5 left), unsets `core.hooksPath` when it points
+   at that folder and no other hook is left there, and names a Temper line in the user's own hook, which the user removes.
+   A second run changes nothing. A hook tool added
    later needs `core.hooksPath` unset first: the pre-commit framework refuses to install
    while it is set, and lefthook installs into the folder it names, which is Temper's. The
    next `/temper` or `/temper:init` then keeps the Temper hook and prints the line to add.

@@ -88,7 +88,7 @@ _plctx '{"status": "red", "failed_jobs": [{"name": "unit", "stage": "test", "id"
 "$TEMPER" gate pipeline >/dev/null 2>&1
 assert_eq "F26: red asks Apply the fix and push?, and the steps are the agreed ones in order" \
   "Apply the fix and push?|adhoc open --stage pipeline --reason 'CI fix round 1'|git push|adhoc close|state set pipeline_round 2|state redo pipeline --reason 'CI fix round 1 pushed; CI runs again'" \
-  "$(nx "q = d['ask']; s = q['options'][0]['steps']; q['question']['question'].split('). ', 1)[1] + '|' + '|'.join([s[0].split('temper ', 1)[1], s[3], s[4].split('temper ', 1)[1], s[5].split('temper ', 1)[1], s[6].split('temper ', 1)[1]])")"
+  "$(nx "q = d['ask']; s = q['options'][0]['steps']; q['question']['question'].split('). ', 1)[1] + '|' + '|'.join([s[0].split('temper ', 1)[1], s[4], s[5].split('temper ', 1)[1], s[6].split('temper ', 1)[1], s[7].split('temper ', 1)[1]])")"
 assert_eq "F26: the commit step stages by name and never with -A" "0" "$(nx "str(sum(1 for s in d['ask']['options'][0]['steps'] if 'git add -A' in s or 'git add .' == s.strip()))")"
 "$TEMPER" state set commit_path skill >/dev/null 2>&1
 assert_eq "F26: on the skill path the question names checks and code review, and the skill's Step 5 does the push" "1|0" \
@@ -99,8 +99,64 @@ assert_eq "F26: past loops.max-per-type rounds the question says the fix limit i
 "$TEMPER" state redo pipeline --reason "CI fix round 1 pushed; CI runs again" >/dev/null 2>&1
 assert_eq "F26: a redo removes the old verdict and the context file, so CI is read again" "none|no|work" \
   "$(python3 -c "import json; print(json.load(open('.temper/gates.json')).get('pipeline', {}).get('verdict', 'none'))")|$([[ -f .temper/specs/demo/pipeline-context.json ]] && echo yes || echo no)|$(nx "d['action']")"
-printf 'phases:\n  pipeline: false\n' > .claude/temper.config
-assert_eq "F26: with phases.pipeline false the Commit steps end with state clear and the sequence has no Pipeline" "0" \
-  "$(fresh; gpass intent plan build review check; "$TEMPER" state set pr one >/dev/null 2>&1; vw "str(sum(1 for s in d['stages'] if s.get('id') == 'pipeline' or s.get('stage') == 'pipeline'))")"
+fresh; gpass intent plan build review check; "$TEMPER" state set pr one >/dev/null 2>&1; printf 'phases:\n  pipeline: false\n' > .claude/temper.config
+assert_eq "F26: with phases.pipeline false the sequence has no Pipeline stage" "0" "$(vw "str(sum(1 for s in d['stages'] if s.get('id') == 'pipeline'))")"
 printf 'stack: auto\n' > .claude/temper.config
-assert_exit "F26: gate pipeline is a gate stage" 0 "$TEMPER" gate pipeline
+fresh; gpass intent plan build review check; "$TEMPER" state set pr one >/dev/null 2>&1
+assert_eq "F26: with a pull request opened the sequence ends with Pipeline" "1" "$(vw "str(sum(1 for s in d['stages'] if s.get('id') == 'pipeline'))")"
+assert_eq "F26: gate pipeline is a gate stage of the CLI" "1" "$("$TEMPER" gate pipeline 2>&1 | grep -c 'temper gate pipeline ->')"
+
+# --- F28. Leaving Intent when the run's branch exists from an earlier run with commits this checkout lacks ---
+fresh; rm -rf .git; git init -q . 2>/dev/null; git config user.email t@example.com; git config user.name T; git checkout -q -B main 2>/dev/null
+echo base > README; git add README; git commit -qm base; gpass intent
+git checkout -q -b feature/demo; echo old > old.txt; git add old.txt; git commit -qm "an earlier run's work"; git checkout -q main
+assert_eq "F28: the question names the branch and its last commit, and offers both ways on" "1|Continue on feature/demo|Continue on a new branch feature/demo-2" \
+  "$(nx "str(d['ask']['question']['question'].count('The branch feature/demo already exists from an earlier run; its last commit is')) + '|' + d['ask']['options'][0]['label'] + '|' + d['ask']['options'][1]['label']")"
+assert_eq "F28: the first one carries the spec across with a temp folder, never git stash" "1|0" \
+  "$(nx "c = d['ask']['options'][0]['calls'][0]; str(int('mktemp -d' in c and 'git checkout feature/demo' in c)) + '|' + str(c.count('git stash'))")"
+assert_eq "F28: the new branch option checks it out and sets the state branch" "git checkout -b feature/demo-2|state set branch feature/demo-2" \
+  "$(nx "o = d['ask']['options'][1]['calls']; o[0] + '|' + o[1].split('temper ', 1)[1]")"
+git branch -q feature/demo-2 main 2>/dev/null
+assert_eq "F28: the new number is the next free one" "Continue on a new branch feature/demo-3" "$(nx "d['ask']['options'][1]['label']")"
+git branch -D feature/demo-2 >/dev/null 2>&1
+git checkout -q feature/demo; git checkout -q -B plain main; git branch -f feature/demo main
+assert_eq "F28: a branch with no extra commits keeps the plain switch" "Continue to Plan (Recommended)" "$(labels | cut -d'|' -f1)"
+# the carry-across call really moves the new spec files across the switch
+git branch -f feature/demo main; git checkout -q feature/demo; echo old > old.txt; git add old.txt; git commit -qm "earlier"; git checkout -q plain
+mkdir -p .temper/specs/demo; echo "# new intent" > .temper/specs/demo/intent.md
+CALL="$(nx "d['ask']['options'][0]['calls'][0]")"
+bash -c "$CALL" >/dev/null 2>&1
+assert_eq "F28: the carry call lands on the branch with the new spec file in place, and no temp folder is left" "feature/demo|# new intent|yes" \
+  "$(git branch --show-current)|$(cat .temper/specs/demo/intent.md)|$([[ -f old.txt ]] && echo yes || echo no)"
+
+# --- F29 and F30. The commit hook gates the run's branch only; turning Temper off fully ---
+fresh; rm -rf .git; git init -q . 2>/dev/null; git config user.email t@example.com; git config user.name T; git checkout -q -B main 2>/dev/null
+echo base > README; git add README; git commit -qm base; "$TEMPER" state set branch feature/demo >/dev/null 2>&1
+git checkout -q -b other
+OUT="$("$TEMPER" gate commit --from-hook 2>&1)"; rc=$?
+assert_eq "F29: a commit on another branch passes with one line, and records nothing" "0|1|none" \
+  "$rc|$(grep -c 'the run demo is on feature/demo; this commit is on other, so the commit gate does not apply.' <<<"$OUT")|$(python3 -c "import json; print(json.load(open('.temper/gates.json')).get('commit', {}).get('verdict', 'none'))")"
+git checkout -q -b feature/demo
+"$TEMPER" gate commit --from-hook >/dev/null 2>&1
+assert_eq "F29: on the run's branch the gate applies" "FAIL" "$(python3 -c "import json; print(json.load(open('.temper/gates.json')).get('commit', {}).get('verdict', 'none'))")"
+git checkout -q --detach
+assert_eq "F29: a detached HEAD keeps the gate" "FAIL" "$("$TEMPER" gate commit --from-hook 2>&1 | grep -o 'FAIL' | head -1)"
+git checkout -q feature/demo
+bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
+assert_eq "F30: the installer's hook runs the commit gate with --from-hook" "1" "$(grep -c 'gate commit --from-hook' "$(git rev-parse --git-common-dir)/temper-gate/pre-commit")"
+assert_eq "F30: the hook passes, naming temper guards uninstall, when the plugin's CLI is gone" "0|1" \
+  "$(sed "s|^TEMPER_CLI=.*|TEMPER_CLI=/nonexistent/scripts/temper|" "$(git rev-parse --git-common-dir)/temper-gate/pre-commit" > hookcopy.sh; bash hookcopy.sh >/dev/null 2>&1; echo $?)|$(sed "s|^TEMPER_CLI=.*|TEMPER_CLI=/nonexistent/scripts/temper|" "$(git rev-parse --git-common-dir)/temper-gate/pre-commit" > hookcopy.sh; bash hookcopy.sh 2>&1 | grep -c 'temper guards uninstall')"
+rm -f hookcopy.sh
+OUT="$("$TEMPER" guards uninstall 2>&1)"
+assert_eq "F30: uninstall removes the hook and its folder and unsets core.hooksPath" "no|no|unset" \
+  "$([[ -f "$(git rev-parse --git-common-dir)/temper-gate/pre-commit" ]] && echo yes || echo no)|$([[ -d "$(git rev-parse --git-common-dir)/temper-gate" ]] && echo yes || echo no)|$(git config --get core.hooksPath || echo unset)"
+assert_eq "F30: a second run changes nothing" "1" "$("$TEMPER" guards uninstall 2>&1 | grep -c 'nothing to change')"
+assert_eq "F30: install.sh --uninstall does the same" "1" "$(bash "$REPO_ROOT/scripts/guards/install.sh" --uninstall 2>&1 | grep -c 'nothing to change')"
+assert_eq "F30: the installer's To uninstall line names the command" "1" "$(bash "$REPO_ROOT/scripts/guards/install.sh" 2>&1 | grep -c "temper guards uninstall")"
+bash "$REPO_ROOT/scripts/guards/install.sh" >/dev/null 2>&1
+mkdir -p userhooks; printf '#!/bin/sh\nbash "$(git rev-parse --git-common-dir)/temper-gate/pre-commit" || exit 1\n' > userhooks/pre-commit; chmod +x userhooks/pre-commit
+git config core.hooksPath "$PWD/userhooks"
+OUT="$("$TEMPER" guards uninstall 2>&1)"
+assert_eq "F30: a Temper line in a hook of the user's own is named, and not changed; core.hooksPath that is not Temper's stays" "1|1|$PWD/userhooks" \
+  "$(grep -c 'your hook .* runs the Temper hook' <<<"$OUT")|$(grep -c 'temper-gate/pre-commit' userhooks/pre-commit)|$(git config --get core.hooksPath)"
+git config --unset core.hooksPath; rm -rf userhooks

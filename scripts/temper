@@ -4503,6 +4503,15 @@ cmd_gate() {
     echo "      (gate $stage treats a missing artifact as a legitimate skip, so it refuses to guess where to look)" >&2
     return 1
   fi
+  # F29: the commit hook gates a commit on the run's branch only. A commit on another branch passes with one line and records
+  # nothing; a detached HEAD, and a run with no branch, keep the gate. The orchestrator's own gate call is unchanged.
+  if [[ "$from_hook" == "1" && "$stage" == "commit" && -f "$STATE_FILE" ]]; then
+    local rb cb; rb="$(cmd_state_get branch "")"; cb="$(git branch --show-current 2>/dev/null)"
+    if [[ -n "$rb" && -n "$cb" && "$cb" != "$rb" ]]; then
+      echo "Temper: the run $(cmd_state_get spec "") is on $rb; this commit is on $cb, so the commit gate does not apply."
+      return 0
+    fi
+  fi
   local out reqs_json all_pass
   case "$stage" in
     intent) out=$(gate_intent "$spec_path") ;;
@@ -5216,7 +5225,7 @@ main() {
   # The home folder is refused first (exit 1): it is never a project. A symlink on a path
   # the CLI writes or reads as run state is refused too (exit 3), for the same reason.
   case "$sub" in
-    config|model|""|-h|--help) ;;
+    config|model|guards|""|-h|--help) ;;
     *) _home_refuse || return 1
        _inside_plugin_refuse || return 1
        _unsafe_temper_refuse || return 3
@@ -5243,6 +5252,7 @@ main() {
     risk) cmd_risk "$@" ;;
     adhoc) cmd_adhoc "$@" ;;
     plan) cmd_plan "$@" ;;
+    guards) [[ "${1:-}" == "uninstall" ]] && python3 -E -s "$SCRIPTS_DIR/guards_ops.py" uninstall || { echo "FAIL: usage: temper guards uninstall" >&2; false; } ;;
     intent) cmd_intent "$@" ;;
     park) cmd_park "$@" ;;
     ""|-h|--help)
@@ -5278,6 +5288,7 @@ Usage:
   temper adhoc open --stage S --reason R | adhoc close   (a small change at Build, Review, Check, Commit or Pipeline)
   temper risk [--raise L|M|H --reason R]  (the plan's rating, computed from its blast radius)
   temper plan review --answer T [--focus A]...   (the person's answer to the Context check, written into plan.md)
+  temper guards uninstall                 (remove the Temper commit hook and its folder; unset core.hooksPath if it names it)
 EOF
       ;;
     *) echo "FAIL: unknown subcommand '$sub' (temper --help)" >&2; return 1 ;;
@@ -5285,7 +5296,7 @@ EOF
   local rc=$?
   # ADR 0013: every command that may change the run rewrites .temper/view.json
   case "$sub" in
-    config|model|""|-h|--help|report|status|bands|metrics|schedule) ;;
+    config|model|guards|""|-h|--help|report|status|bands|metrics|schedule) ;;
     next) ;;   # cli_ctx.py wrote the view in the same process
     state) [[ "${1:-}" == "get" ]] || _view_write ;;
     evidence) [[ "${1:-}" == "list" ]] || _view_write ;;

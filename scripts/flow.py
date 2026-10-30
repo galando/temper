@@ -393,7 +393,29 @@ class Builder:
             return []
         return ["git checkout %s" % shlex.quote(branch) if self.r.ctx.get("branch_exists") else "git checkout -b %s" % shlex.quote(branch)]
 
-    def leave_intent(self):
+    def branch_clash(self):
+        """The run's branch (`feature/{slug}`) exists from an earlier run, the project is on another branch, and that branch holds
+        commits HEAD lacks: a plain switch would leave them behind, or carry the new spec onto old work. None when there is none."""
+        r = self.r
+        want = r.state.get("branch") or ""
+        if not want or (r.ctx.get("branch") or "") == want or not r.ctx.get("branch_exists") or not int(r.ctx.get("branch_ahead") or 0):
+            return None
+        n = 2
+        while subprocess.run(["git", "show-ref", "--verify", "--quiet", "refs/heads/%s-%d" % (want, n)], capture_output=True).returncode == 0:
+            n += 1
+        return {"branch": want, "last": r.ctx.get("branch_last") or "", "new": "%s-%d" % (want, n)}
+
+    def carry_switch(self, branch):
+        """One shell call that carries the new spec files across the switch through a temp folder (never git stash, whose stack
+        every worktree shares): restore the spec folder to HEAD, switch, copy the files back. A refused switch puts them back,
+        fails, and names the temp folder."""
+        spec = shlex.quote(self.r.spec)
+        return ('t="$(mktemp -d)" && cp -R %s/. "$t"/ && { git restore --source=HEAD --worktree -- %s 2>/dev/null; git clean -fdq -- %s; } ; '
+                'if git checkout %s; then mkdir -p %s && cp -R "$t"/. %s/ && rm -rf "$t"; '
+                'else mkdir -p %s && cp -R "$t"/. %s/; echo "FAIL: could not switch to %s; your spec files are in $t" >&2; exit 1; fi'
+                % (spec, spec, spec, shlex.quote(branch), spec, spec, spec, spec, branch.replace('"', '')))
+
+    def leave_intent(self, switch=True):
         """Switch to the run's branch, accept the intent (when there is one, and it is not accepted yet the accept changes
         it), commit, advance."""
         r = self.r
@@ -401,7 +423,7 @@ class Builder:
         # The whole value, as `temper intent accept` reads it: only `accepted` or `completed` leaves the file unchanged.
         m = re.search(r"^\*\*Status:\*\*(.*)$", r.intent, re.M)
         accepts = has and not (m and m.group(1).strip().lower() in ("accepted", "completed"))
-        return self.to_branch() + ([self.c("intent accept")] if has else []) + \
+        return (self.to_branch() if switch else []) + ([self.c("intent accept")] if has else []) + \
             self.spec_commit("docs(intent): accept %s" % r.slug, changes=accepts) + [self.c("state advance intent_complete plan")]
 
     def leave_plan(self):
@@ -459,6 +481,17 @@ class Builder:
                          calls=[self.c("state advance rca_complete fix")]), self.save()])
 
         if stage == "intent":
+            clash = self.branch_clash() if passed else None
+            if clash:
+                text = ("Intent: %s. The branch %s already exists from an earlier run; its last commit is %s. Accept the intent and continue to Plan?"
+                        % (state_of, clash["branch"], clash["last"]))
+                tail = self.leave_intent(switch=False)
+                return self.question(GATE_HEADER, text, stage=stage, options=[
+                    self.opt("Continue on %s" % clash["branch"], "Switch to it (the new spec files go across), accept intent.md, commit it there, and start Plan.", move="approve",
+                             calls=[self.carry_switch(clash["branch"])] + tail),
+                    self.opt("Continue on a new branch %s" % clash["new"], "Start a new branch from here, accept intent.md, commit it there, and start Plan.", move="approve",
+                             calls=["git checkout -b %s" % shlex.quote(clash["new"]), self.c("state set branch %s" % shlex.quote(clash["new"]))] + tail),
+                    self.skill("grill-me", "Grill Me", "Stress test the intent first."), self.save()])
             if passed:
                 return self.question(GATE_HEADER, "Intent: %s. Accept the intent and continue to Plan?" % state_of, stage=stage, options=[
                     self.opt("Continue to Plan (Recommended)", "Accept intent.md, commit it on the run's branch, and start Plan.", move="approve", calls=self.leave_intent()),
@@ -1750,6 +1783,8 @@ def project_facts(run, ctx):
         "branch": lambda: git("branch", "--show-current"),
         "head": lambda: git("rev-parse", "HEAD"),
         "branch_exists": lambda: bool(want) and ok("show-ref", "--verify", "--quiet", "refs/heads/" + want),
+        "branch_ahead": lambda: int(git("rev-list", "--count", "HEAD..refs/heads/" + want) or 0) if want and ok("show-ref", "--verify", "--quiet", "refs/heads/" + want) else 0,
+        "branch_last": lambda: git("log", "-1", "--format=%h %s", "refs/heads/" + want) if want and ok("show-ref", "--verify", "--quiet", "refs/heads/" + want) else "",
         "spec_ignored": lambda: bool(spec) and ok("check-ignore", "-q", spec + "/intent.md"),
         "lessons_ignored": lambda: ok("check-ignore", "-q", os.path.join(TEMPER, "lessons.md")),
         "spec_dirty": lambda: bool(spec) and bool(git("status", "--porcelain", "--untracked-files=all", "--", spec)),

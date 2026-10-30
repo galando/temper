@@ -107,7 +107,8 @@ def setup_calls(plugin, config_file, run_files):
             text = ""
         second = text.split("\n")[1] if text.count("\n") >= 1 else ""
         ok = (second.startswith("# Temper native pre-commit hook") and plugin + "/scripts/temper" in text
-              and '"--cached", "--name-only", "--no-renames"' in text and "python3 -I " in text)
+              and '"--cached", "--name-only", "--no-renames"' in text and "python3 -I " in text
+              and "gate commit --from-hook" in text)
     if not ok:
         calls.append("bash %s/scripts/guards/install.sh" % plugin)
     return calls

@@ -81,7 +81,7 @@ except Exception:
   [[ -n "${HOME:-}" && "$repo_real" -ef "$HOME" ]] && return 0
 
   local rc
-  ( cd "$repo_root" && "$temper_bin" gate commit )
+  ( cd "$repo_root" && "$temper_bin" gate commit --from-hook )
   rc=$?
   [[ $rc -eq 0 ]] && return 0
   if [[ $rc -eq 3 ]]; then
