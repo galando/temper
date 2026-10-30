@@ -31,7 +31,19 @@ that meets a version it does not know draws nothing and refuses nothing.
 | `restart` | the `Temper resume` question (Start over or Cancel) for this run and step |
 | `blocking` | with `ask`: the Blocking open questions of `intent.md`, asked before the gate question |
 | `gate` | with `ask`: the `temper gate` call of the question's stage (Fix is judged by the build gate), run again after a change the person typed at the question |
+| `context_map` | at Plan, when `plan.md` has a Context Map: `{intro, file, rows, answer, table}`, the table as plain text |
+| `context_check` | at Plan, while the map's `reviewed:` line is not `human` or `auto`: the CLI's own question (header `Temper gate`, `Is this the right context for the plan?`), the Blocking line's choices (three at most) plus `Carry forward`, each with the table as its preview; a choice runs `temper plan review --answer '<choice>'` then `temper gate plan`; `answer` is the call a typed answer fills. When the pending check is the plan gate's only failed row, `ask` is this question |
+| `guard.adhoc_stage` | the stage a small change window (`temper adhoc open`) was opened at, or `null` |
 | `setup` | when the project still lacks it, the calls that set Temper up (the config, the `.temper` scaffold, the commit hook); each is idempotent |
+
+The stages are Intent, Plan, Design, Build, Review, Check and Commit, and an optional **Pipeline** stage after a Commit that opened a pull
+request (`phases.pipeline` not `false`; [ADR 0014](decisions/0014-the-pipeline-stage-after-commit.md)). Its agent reads the checks and
+writes `pipeline-context.json`; the push is the orchestrator's, after the person's yes. An agent's gate call is named `gate` (the last of
+its `after` calls) in `agents[]`.
+
+A **small change** (`temper adhoc open --stage S --reason R`, `adhoc close`) is offered at the Build, Review, Check and Commit questions as
+`Make a small change`. After `adhoc close`, `next` runs the steps the change touches: Review of the changed files, then Check, then the
+commit gate (a change made at Build, or of docs only, runs only the stage's gate).
 
 ### The actions
 

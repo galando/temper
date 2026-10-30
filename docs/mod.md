@@ -309,3 +309,17 @@ starts no agent, makes no tool call, sets no setting and runs no command. CI fai
 - **Tests, lint, git and `scripts/temper`** run as prompts to Claude with its normal permissions. Auto
   mode may refuse a skip as a gate bypass. Allow that one `scripts/temper override` command, or run it
   yourself with `!`.
+
+
+## What 9.7.5 adds to the mod
+
+- **The small change window.** An open window (`temper adhoc open`) lets a code write through at the stage it was opened at, and only
+  there (Pipeline included). `adhoc close` needs no answer; `adhoc open` is the person's, as the call their answer maps to.
+- **Person only calls.** `plan review`, `task confirm`, `task accept`, `adhoc open` and `state set branch` pass only as the call the
+  person's answer to the CLI's question maps to, word for word. A typed answer to the Context check maps to `plan review --answer` with
+  that text, quoted ([ADR 0016](decisions/0016-the-mod-answer-audit.md)).
+- **Refusals** name the run and the stage, keep their `Next:` step and point at a worktree (`claude --worktree <name>`); from Build on they
+  also point at `Make a small change`.
+- **Pipeline** refuses a code write unless its window is open. `gh pr create` without `--draft`, and any `gh pr ready`, are refused.
+- **Turning Temper off** (`temper guards uninstall`, `install.sh --uninstall`) is refused while a run is active; the person runs it.
+- **Known limit.** A commit on a branch other than the run's passes the hook with one line (the gate is branch scoped).

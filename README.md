@@ -7,7 +7,7 @@ The model never decides a verdict. With Claude Code 2.1.287 or later, a mod refu
 the current stage ([the mod](docs/mod.md)).
 
 [![Plugin directory](https://img.shields.io/badge/Claude%20Code-plugin-D97757)](https://code.claude.com/docs/en/discover-plugins)
-[![Version](https://img.shields.io/badge/version-v9.7.4-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v9.7.5-blue)](CHANGELOG.md)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-2.1.287%2B%20for%20the%20mod-blue)](docs/mod.md#where-enforcement-works)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -137,6 +137,16 @@ stop a hook of yours, prints one line to add to it. Temper never opens a Claude 
 project's or your home folder's: the guardrails pack prints its hook entries for you to add yourself. The
 full list is in
 [The mod](docs/mod.md#what-the-mod-reads-and-writes).
+
+## What's new in v9.7.5
+
+- A scenario criterion passes only from a test the CLI ran: every scenario has a `Test:` command, and `temper integrate` records it.
+- Plan writes a Context Map; the Context check is the CLI's own question (`temper plan review`).
+- Make a small change at Build, Review, Check and Commit, without a loop back; manual tasks; covered tasks the person accepts.
+- Commit can open draft pull requests (stacked, one per Build group), and an optional Pipeline stage reads their checks and proposes a fix.
+- `temper guards uninstall`, a commit hook that gates the run's branch only, and `temper next` in one process.
+
+Details: [CHANGELOG.md](CHANGELOG.md).
 
 ## Working on several things at once
 

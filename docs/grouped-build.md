@@ -164,3 +164,19 @@ To compare two runs (two models for the task agents, two plans, two versions of 
 the same feature from the same commit on two branches and compare the time per model, Build wall
 time, retries, escalations, parked groups and Review findings. For the cost of each, read your own
 usage page.
+
+
+## What 9.7.5 changed in Build
+
+- **Scenario tests.** Every scenario of `intent.md` carries a `Test:` command. `temper task show` lists the ones a task owes (exact test
+  names); the task gate and the group gate run them; `temper integrate` runs each on the merged tree and records a CLI run row; a
+  `Validate: scenario` criterion passes only from that row.
+- **Change** asks which task changes and reopens it with the tasks that must reopen with it (they ran, depend on it, and share a declared file).
+- **A task an earlier task built** (its RED run passes) is not retried: the person accepts it or runs it again.
+- **Manual tasks** (`**Test:** manual`) have no RED or GREEN; the person confirms them.
+- **Groups.** `build.grouped.max-groups` (default 2) bounds the groups working at once; a plan with tasks and no groups stops Build.
+- **Timeouts.** The group gate takes `--timeout-s`; the integration suite has its own limit (`TEMPER_INTEGRATION_TIMEOUT_S`).
+- **Maven.** `scripts/maven_loop.py` runs the declared test classes offline and needs a new surefire report per class; a Maven group
+  validates with `mvn verify` and JaCoCo.
+- Task tests, group Validate, scenario tests and the integration suite put the folder they run in first on `PYTHONPATH`, and still get
+  the environment without credential-named variables.

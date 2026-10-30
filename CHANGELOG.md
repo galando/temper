@@ -3,6 +3,61 @@
 All notable changes to Temper are documented here. The plugin version lives in
 `.claude-plugin/plugin.json`.
 
+## v9.7.5: the Context Map, scenario tests that run, small changes, draft pull requests and the Pipeline stage
+
+A private fork of 9.7.0 grew a set of behaviours in its own "9.7.1". This release rebuilds them on 9.7.4, with every hold of the
+plugin directory kept: `validate-directory.sh` passes, usage stays time only, no script opens a Claude Code settings file or reads a
+git identity, the mod runs nothing and sets nothing, and `userConfig.enforcement` stays a `/config` option.
+
+**Gates and Plan**
+- **A scenario criterion passed on a `Traced to:` line (F7, F8, F9).** *What broke:* a criterion with `Validate: scenario` passed
+  Build with no test run for its scenario. *Cause:* the Build gate counted tasks and RED then GREEN runs, never the scenarios.
+  *Why nothing failed:* the tests existed; nothing tied them to the scenario. *Fix:* every scenario carries a `Test:` command
+  (the plan gate row `scenario test commands` names each one without it). `temper task show` lists the ones a task owes, with their
+  exact names; the task gate and the group gate run them; `temper integrate` runs each on the merged tree and records a CLI run
+  row, and the Build gate row `criteria validated` passes a scenario criterion only from such a row. A pytest exit 4 or 5 says to
+  write the test under that exact name. A gate that fails only for rows nobody recorded sends a record pass, once per round.
+- **The Intent gate passed over an open Blocking question (F10).** It fails now while a draft holds one.
+- **The Context Map (F6).** Plan writes `## Context Map` at the top of `plan.md`; `plan.context-check` (auto, always, off) says when
+  the person is asked. The question is the CLI's own (`context_map` and `context_check` in `temper next` and `view.json`), the answer
+  runs `temper plan review --answer`, and nothing edits the `reviewed:` line by hand, which auto mode can refuse
+  (`docs/auto-mode.md`).
+- **Risk was Plan's estimate (F11).** `temper risk` computes it from the blast radius: the same blast radius, the same rating.
+- **tasks.md (F12).** Bullet file lists and the `**Files:**` alias parse; a task with `**Test:** manual` needs no RED or GREEN and the
+  person confirms it (`temper task confirm N --by '<name>'`, the name the person gives, never read from git). The all-tasks check
+  counts every task, also one with no checkbox (it passed with one of eight done).
+
+**Build**
+- **Change reopened every task (F13).** It asks which task changes and reopens that task and the tasks that must reopen with it.
+- **A small change needed a loop back (F14).** `temper adhoc open --stage S --reason R` and `adhoc close` at Build, Review, Check and
+  Commit; the change re-runs only what it touches; the mod lets a code write through in the open window at its stage only.
+- **Build stopped when the mod was off (F15).** It runs the same groups; nothing in the CLI reads `TEMPER_MOD`.
+- **Groups (F16, F17).** `build.grouped.max-groups` (default 2); a plan with tasks and no groups stops before any agent; a group gate
+  records a timeout, takes `--timeout-s`, and offers a rerun at double the limit.
+- **Tests imported the wrong copy (F18).** The folder a command runs in is first on `PYTHONPATH`.
+- **A task an earlier task built (F19).** Its RED run passed, so it was retried and parked. The person decides now:
+  `temper task accept` or `temper task retry`.
+- **Scoped tests, one suite run (F20).** Task agents and the fix pass run scoped tests; Check runs the suite once with coverage in
+  the same run, under `.temper/check/`. Briefs tell agents to wait for runs in the foreground (`validate-panels.py` checks it).
+- **Blast radius counted Temper's own files (F21).** Temper's files and test output no longer count.
+- **Maven (F22).** `scripts/maven_loop.py` runs the declared test classes offline and needs a new surefire report per class; the plan
+  gate row `maven group verify` names a Maven group that does not verify with JaCoCo.
+
+**After Commit**
+- **The Pipeline stage (F26, ADR 0014)**, draft pull requests and stacked parts by branch pointers (F23, F24, ADR 0015), and the
+  optional review-readiness skill (F25). Every pull request is a draft; Temper never marks one ready; the agent never pushes.
+- **Record commit and loop reasons (F27).** No record commit when there is nothing to stage; a fix pass reads the latest loop reason.
+
+**Sessions and hooks**
+- **Branch clash (F28)**, **the commit hook gates the run's branch only (F29)**, **`temper guards uninstall` (F30)** and the stage
+  refusals that name the run and point at a worktree, and **the band (F31)**: no failed rows while an answer is carried out.
+- **Notes and typed answers (F1)** reach the next agent; the wait text and every `say` are sentences for the person (F3); a failed
+  call stops its action (F4); `temper next` starts one Python process (F5); the models and their sources are shown (F2).
+
+**Migration.** An old flat `tasks.md` is counted by its boxes as before. Rows in `.temper/usage.json` are read as they were. A run
+started on 9.7.4 carries on: its running tasks take their model from the attempt number. A hook an older version left runs the gate
+on every branch until `bash scripts/guards/install.sh` writes the 9.7.5 hook; remove it with `temper guards uninstall`.
+
 ## v9.7.4: no key in CI, no token count, no credential handed to a test
 
 The directory's report on 9.7.3 (b1d1c18) cleared three holds: the mod staying the same, the mod running slash commands

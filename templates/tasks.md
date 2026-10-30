@@ -52,3 +52,10 @@ Distilled rules and conventions for G2.
 **Traced to:** Infrastructure: required by G1
 - [ ] done
 <!-- grouped-example:end -->
+
+<!-- A file list is the one line above, or a bullet list under the line (the **Files:** line is an alias):
+**Files:**
+- `src/parser.sh`
+- `unit/parser_test.sh`
+A task whose work only a person can judge says **Test:** manual — {what the person confirms}; it needs no RED or GREEN, and
+Build asks the person to confirm each Case by hand (a checkbox line is not a Case). -->

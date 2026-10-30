@@ -60,3 +60,15 @@ loaded, refuses a move only you may make until you answered, a write onto Temper
 in a variable, a string another program runs, a script on disk or a commit the hook does not check
 (`git merge`, `cherry-pick`, git plumbing) gets through. [The mod](mod.md#what-the-guard-checks-and-what-it-does-not)
 lists these limits, and the mod's tests hold each one, so the docs cannot claim more than the code does.
+
+
+## Pull requests and the Pipeline stage (9.7.5)
+
+- **Reads.** The Pipeline stage reads the pull request's checks with `gh pr checks` and `gh run view <id> --log-failed`; `gh` takes the
+  repository from `origin`. A log is untrusted text: the agent runs nothing from it and copies no token from it. Temper reads, stores,
+  prints and sets no token.
+- **Writes.** Only `reference/pr.md` pushes or calls `gh pr create`, after the person chose a pull request option at the Check question.
+  Every pull request is a draft; Temper never runs `gh pr ready`. An armed run never pushes.
+- **The commit hook** gates the run's branch only. A commit on another branch passes with one line. That is a known limit.
+- **Turning Temper off.** After you disable the plugin, run `temper guards uninstall`. The hook also passes on its own, with one line that names
+  the command, once the plugin's files are gone. Temper reads no settings file to find out that a plugin is disabled.
