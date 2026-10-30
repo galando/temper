@@ -500,7 +500,7 @@ git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm base
 printf 'stack: auto\nautonomy:\n  enabled: true\n  max-blast-radius: 1\n' > .claude/temper.config
 mkdir -p htmlcov .pytest_cache; echo x > .coverage; echo x > htmlcov/index.html; echo x > .pytest_cache/f
 OUT="$("$TEMPER" gate commit 2>&1)"
-assert_eq "F21: an armed run does not fail the blast radius row on the config or on coverage files" "1" "$(grep -c '^ *\[v\] blast radius' <<<"$OUT")"
+assert_eq "F21: an armed run does not fail the blast radius row on the config or on coverage files" "[v]" "$(grep '\] blast radius' <<<"$OUT" | head -1 | grep -o '\[.\]'; grep -q 'blast radius' <<<"$OUT" || echo "$OUT" | head -12)"
 echo y > src_extra.py
 OUT="$("$TEMPER" gate commit 2>&1)"
 assert_eq "F21: one undeclared source file still fails the row" "1" "$(grep -c '^ *\[x\] blast radius' <<<"$OUT")"
@@ -526,9 +526,10 @@ assert_eq "F22: it runs offline, with the skip flags, only the declared classes,
 assert_eq "F22: a #method of the declared command is kept for its class" "1" "$(run_loop 'mvn test -Dtest=FooTest#parses' >/dev/null; grep -c 'Dtest=FooTest#parses,BarTest' "$F22LOG")"
 rm -rf f22/target
 assert_eq "F22: a run that leaves no new surefire report for a class fails (exit 3)" "3" "$(FAKE_NO_REPORT=1 run_loop 'mvn test')"
-printf '#!/usr/bin/env bash\nprintf "mvnd " >> "${FAKE_MVN_LOG}"\nexec "$(dirname "$0")/mvn" "$@"\n' > fakebin/mvnd; chmod +x fakebin/mvnd
-rm -f "$F22LOG"; run_loop 'mvn test' >/dev/null
-assert_eq "F22: mvnd is used when it is on the PATH" "1" "$(grep -c '^mvnd ' "$F22LOG")"
+printf '#!/usr/bin/env bash\n: > "${FAKE_MVN_LOG}.mvnd"\nexec "$(dirname "$0")/mvn" "$@"\n' > fakebin/mvnd; chmod +x fakebin/mvnd
+rm -f "$F22LOG" "$F22LOG.mvnd"; run_loop 'mvn test' >/dev/null
+assert_eq "F22: mvnd is used when it is on the PATH" "yes" "$([[ -f "$F22LOG.mvnd" ]] && echo yes || echo no)"
+rm -f "$F22LOG.mvnd"
 rm -rf fakebin f22 "$F22LOG"
 fresh; f9_tasks > .temper/specs/demo/tasks.md
 assert_eq "F22: a plan with no Maven group skips the row" "True|skipped: no Maven group" \

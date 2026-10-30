@@ -2122,6 +2122,64 @@ export const VIEWS: Record<string, unknown> = {
  },
  "build-fail": {
   "ask": {
+   "more": {
+    "options": [
+     {
+      "calls": [
+       "/plugin/scripts/temper adhoc open --stage build --reason '{reason}'"
+      ],
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "label": "Make a small change",
+      "move": "adhoc",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "A small fix of my own"
+        },
+        {
+         "description": "",
+         "label": "A change the review asked for"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Make a small change. What is the reason?"
+      }
+     },
+     {
+      "calls": [],
+      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+      "label": "Save for later",
+      "move": "pause",
+      "stop": true
+     }
+    ],
+    "question": {
+     "header": "Temper gate",
+     "multiSelect": false,
+     "options": [
+      {
+       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "label": "Make a small change"
+      },
+      {
+       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+       "label": "Save for later"
+      }
+     ],
+     "question": "Build: the check failed (tests pass: 2 tests fail: unit/app.test.ts). Run Build again? More options."
+    },
+    "run_id": "run-pw",
+    "stage": "build",
+    "step": 2
+   },
    "options": [
     {
      "calls": [
@@ -2186,10 +2244,10 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-     "label": "Save for later",
-     "move": "pause",
-     "stop": true
+     "description": "Make a small change, Save for later",
+     "do": "Ask the more question.",
+     "label": "More options",
+     "move": null
     }
    ],
    "question": {
@@ -2209,8 +2267,8 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Override and continue"
      },
      {
-      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-      "label": "Save for later"
+      "description": "Make a small change, Save for later",
+      "label": "More options"
      }
     ],
     "question": "Build: the check failed (tests pass: 2 tests fail: unit/app.test.ts). Run Build again?"
@@ -2505,6 +2563,64 @@ export const VIEWS: Record<string, unknown> = {
  },
  "build-pass": {
   "ask": {
+   "more": {
+    "options": [
+     {
+      "calls": [
+       "/plugin/scripts/temper adhoc open --stage build --reason '{reason}'"
+      ],
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "label": "Make a small change",
+      "move": "adhoc",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "A small fix of my own"
+        },
+        {
+         "description": "",
+         "label": "A change the review asked for"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Make a small change. What is the reason?"
+      }
+     },
+     {
+      "calls": [],
+      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+      "label": "Save for later",
+      "move": "pause",
+      "stop": true
+     }
+    ],
+    "question": {
+     "header": "Temper gate",
+     "multiSelect": false,
+     "options": [
+      {
+       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "label": "Make a small change"
+      },
+      {
+       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
+       "label": "Save for later"
+      }
+     ],
+     "question": "Build: the check passed. Continue to Review? More options."
+    },
+    "run_id": "run-pw",
+    "stage": "build",
+    "step": 2
+   },
    "options": [
     {
      "calls": [
@@ -2547,10 +2663,10 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-     "label": "Save for later",
-     "move": "pause",
-     "stop": true
+     "description": "Make a small change, Save for later",
+     "do": "Ask the more question.",
+     "label": "More options",
+     "move": null
     }
    ],
    "question": {
@@ -2570,8 +2686,8 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Loop back to Plan"
      },
      {
-      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-      "label": "Save for later"
+      "description": "Make a small change, Save for later",
+      "label": "More options"
      }
     ],
     "question": "Build: the check passed. Continue to Review?"
@@ -3199,6 +3315,35 @@ export const VIEWS: Record<string, unknown> = {
      }
     },
     {
+     "calls": [
+      "/plugin/scripts/temper adhoc open --stage check --reason '{reason}'"
+     ],
+     "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+     "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+     "label": "Make a small change",
+     "move": "adhoc",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "A small fix of my own"
+       },
+       {
+        "description": "",
+        "label": "A change the review asked for"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Make a small change. What is the reason?"
+     }
+    },
+    {
      "calls": [],
      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
      "label": "Save for later",
@@ -3217,6 +3362,10 @@ export const VIEWS: Record<string, unknown> = {
      {
       "description": "Skip this check with your reason; the report shows it.",
       "label": "Override and continue"
+     },
+     {
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "label": "Make a small change"
      },
      {
       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
@@ -3576,6 +3725,35 @@ export const VIEWS: Record<string, unknown> = {
      }
     },
     {
+     "calls": [
+      "/plugin/scripts/temper adhoc open --stage check --reason '{reason}'"
+     ],
+     "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+     "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+     "label": "Make a small change",
+     "move": "adhoc",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "A small fix of my own"
+       },
+       {
+        "description": "",
+        "label": "A change the review asked for"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Make a small change. What is the reason?"
+     }
+    },
+    {
      "calls": [],
      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
      "label": "Save for later",
@@ -3594,6 +3772,10 @@ export const VIEWS: Record<string, unknown> = {
      {
       "description": "Do Build again; the stages after it are redone too.",
       "label": "Loop back to Build"
+     },
+     {
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "label": "Make a small change"
      },
      {
       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
@@ -4247,6 +4429,35 @@ export const VIEWS: Record<string, unknown> = {
      }
     },
     {
+     "calls": [
+      "/plugin/scripts/temper adhoc open --stage commit --reason '{reason}'"
+     ],
+     "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+     "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+     "label": "Make a small change",
+     "move": "adhoc",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "A small fix of my own"
+       },
+       {
+        "description": "",
+        "label": "A change the review asked for"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Make a small change. What is the reason?"
+     }
+    },
+    {
      "calls": [],
      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
      "label": "Save for later",
@@ -4261,6 +4472,10 @@ export const VIEWS: Record<string, unknown> = {
      {
       "description": "Skip the failed gates with your reason and commit.",
       "label": "Override and commit"
+     },
+     {
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "label": "Make a small change"
      },
      {
       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
@@ -4602,6 +4817,35 @@ export const VIEWS: Record<string, unknown> = {
      "description": "The commit goes on; the report stays the one in the terminal.",
      "label": "Not now",
      "move": null
+    },
+    {
+     "calls": [
+      "/plugin/scripts/temper adhoc open --stage commit --reason '{reason}'"
+     ],
+     "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+     "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+     "label": "Make a small change",
+     "move": "adhoc",
+     "reason": true,
+     "reason_question": {
+      "header": "Temper gate",
+      "multiSelect": false,
+      "options": [
+       {
+        "description": "",
+        "label": "A small fix of my own"
+       },
+       {
+        "description": "",
+        "label": "A change the review asked for"
+       },
+       {
+        "description": "Back to the question before.",
+        "label": "Cancel"
+       }
+      ],
+      "question": "Make a small change. What is the reason?"
+     }
     }
    ],
    "question": {
@@ -4615,6 +4859,10 @@ export const VIEWS: Record<string, unknown> = {
      {
       "description": "The commit goes on; the report stays the one in the terminal.",
       "label": "Not now"
+     },
+     {
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "label": "Make a small change"
      }
     ],
     "question": "Every gate passed. The report is above. Write it as an HTML page too, before the commit?"
@@ -9746,6 +9994,35 @@ export const VIEWS: Record<string, unknown> = {
       "move": null
      },
      {
+      "calls": [
+       "/plugin/scripts/temper adhoc open --stage review --reason '{reason}'"
+      ],
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "label": "Make a small change",
+      "move": "adhoc",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "A small fix of my own"
+        },
+        {
+         "description": "",
+         "label": "A change the review asked for"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Make a small change. What is the reason?"
+      }
+     },
+     {
       "calls": [],
       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
       "label": "Save for later",
@@ -9760,6 +10037,10 @@ export const VIEWS: Record<string, unknown> = {
       {
        "description": "Check the changed modules' depth, then come back here.",
        "label": "Architecture Depth Review"
+      },
+      {
+       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "label": "Make a small change"
       },
       {
        "description": "Stop here. The run is saved; /temper:temper takes it up again.",
@@ -10270,31 +10551,39 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [],
-      "description": "Keep a finding as it is, with your reason.",
-      "do": "Ask the accept question.",
-      "label": "Accept a finding",
+      "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+      "do": "Ask the more question.",
+      "label": "More options",
       "move": null
      },
      {
-      "calls": [],
-      "description": "Stress test the change.",
-      "do": "Use the grill-me skill on this stage's work, then ask this question again.",
-      "label": "Grill Me",
-      "move": null
-     },
-     {
-      "calls": [],
-      "description": "Walk through the change.",
-      "do": "Use the teach-me skill on this stage's work, then ask this question again.",
-      "label": "Teach Me",
-      "move": null
-     },
-     {
-      "calls": [],
-      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-      "label": "Save for later",
-      "move": "pause",
-      "stop": true
+      "calls": [
+       "/plugin/scripts/temper adhoc open --stage review --reason '{reason}'"
+      ],
+      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
+      "label": "Make a small change",
+      "move": "adhoc",
+      "reason": true,
+      "reason_question": {
+       "header": "Temper gate",
+       "multiSelect": false,
+       "options": [
+        {
+         "description": "",
+         "label": "A small fix of my own"
+        },
+        {
+         "description": "",
+         "label": "A change the review asked for"
+        },
+        {
+         "description": "Back to the question before.",
+         "label": "Cancel"
+        }
+       ],
+       "question": "Make a small change. What is the reason?"
+      }
      }
     ],
     "question": {
@@ -10302,23 +10591,15 @@ export const VIEWS: Record<string, unknown> = {
      "multiSelect": false,
      "options": [
       {
-       "description": "Keep a finding as it is, with your reason.",
-       "label": "Accept a finding"
+       "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+       "label": "More options"
       },
       {
-       "description": "Stress test the change.",
-       "label": "Grill Me"
-      },
-      {
-       "description": "Walk through the change.",
-       "label": "Teach Me"
-      },
-      {
-       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-       "label": "Save for later"
+       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
+       "label": "Make a small change"
       }
      ],
-     "question": "Review: more options."
+     "question": "Review: the check passed. Continue to Check? More options."
     },
     "run_id": "run-pw",
     "stage": "review",
@@ -10366,7 +10647,7 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [],
-     "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+     "description": "More options, Make a small change",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -10389,7 +10670,7 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Architecture Depth Review"
      },
      {
-      "description": "Accept a finding, Grill Me, Teach Me, Save for later",
+      "description": "More options, Make a small change",
       "label": "More options"
      }
     ],
