@@ -5222,7 +5222,7 @@ main() {
   # case that leaves its fixture can never touch a real project's .temper.
   if [[ -n "${TEMPER_SELFTEST_ROOT:-}" ]]; then
     local _here; _here="$(pwd -P)"; [[ "$_here" == //* && "$_here" != ///* ]] && _here="${_here#/}"
-    case "$_here/" in "$TEMPER_SELFTEST_ROOT"/*) ;; *) echo "FAIL: a self test call from outside its own folder is refused ($_here)" >&2; return 3 ;; esac
+    [[ "$_here/" == "$TEMPER_SELFTEST_ROOT"/* ]] || { echo "FAIL: a self test call from outside its own folder is refused ($_here)" >&2; return 3; }
   fi
   # Every subcommand that reads or writes the project's .temper folder is refused in a
   # folder inside the plugin folder, and in the plugin folder itself unless it is its own
