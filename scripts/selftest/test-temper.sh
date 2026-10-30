@@ -154,6 +154,13 @@ The demo group.
 - [x] done task
 EOF
   "$TEMPER" init >/dev/null
+  # 9.7.5: a scenario criterion passes only from a row the CLI ran, so the demo run starts with one for each scenario
+  python3 -c "
+import json
+rows = [{'claim': 'scenario ' + n, 'cmd': 'true', 'exit_code': 0, 'artifact': None, 'sha256': None, 'value': None, 'severity': None,
+         'phase': 'scenario', 'scenario': n, 'criterion': None, 'label': 'PROVEN', 'executed_by': 'cli', 'ts': '2026-01-01T00:00:00Z'}
+        for n in ('first', 'second')]
+json.dump(rows, open('.temper/evidence/build.json', 'w'))"
   "$TEMPER" state init demo --command temper >/dev/null
   printf '{"version": 1, "slug": "demo", "groups": {}, "tasks": {}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
 }
