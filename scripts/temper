@@ -3153,6 +3153,10 @@ cmd_task_test() {
   fi
   _task_load "$n" || return 1
   _task_parked_refuse "$n" test || return 1
+  if [[ "$(_jget "$_T_CTX" manual)" =~ ^[Tt]rue$ ]]; then
+    echo "FAIL: Task $n is a manual task: it has no RED or GREEN run; produce its files, and the person confirms it (temper task confirm)" >&2
+    return 1
+  fi
   if [[ "$(_jget "$_T_CTX" status)" != "running" ]]; then
     echo "FAIL: Task $n is not running (temper task start $n)" >&2
     return 1
@@ -3231,6 +3235,11 @@ _task_gate_body() {
   # D-07: this launch's usage, once, whatever the verdict (a failed attempt took time too).
   [[ "$ms" =~ ^[0-9]+$ ]] || ms=""
   _usage_append task "$model" "$ms" "$n" "$group" || true
+  if [[ "$verdict" == "AWAIT" ]]; then   # a manual task: its files are made, the person confirms them by hand (F12)
+    _groups_mutate "d['tasks'][a[0]]['awaiting'] = 'confirm'" "$n" || return 1
+    echo "NEXT: temper next asks the person to confirm Task $n by hand"
+    return 0
+  fi
 
   if [[ "$verdict" != "PASS" ]]; then
     local att fshas wtrel park=""
@@ -3502,6 +3511,28 @@ print(json.dumps(d))" "$foreign" "$ug" "$ufull")"
   echo "PASS: integrated $order into $feature"
 }
 
+# temper task confirm N --by '<name>': the person confirmed a manual task by hand (F12). The name is what the person typed
+# when asked; Temper reads no name from git or the account. The gate then passes the task.
+cmd_task_confirm() {
+  local n="${1:-}" by=""; shift || true
+  while [[ $# -gt 0 ]]; do case "$1" in --by) by="${2:-}"; shift 2 || true ;; *) shift ;; esac; done
+  [[ -n "$by" ]] || { echo "FAIL: usage: temper task confirm <N> --by '<the name the person gives>'" >&2; return 1; }
+  _task_load "$n" || return 1
+  [[ "$(_jget "$_T_CTX" manual)" == "True" || "$(_jget "$_T_CTX" manual)" == "true" ]] || { echo "FAIL: Task $n is not a manual task" >&2; return 1; }
+  [[ "$(_jget "$_T_CTX" status)" == "running" ]] || { echo "FAIL: Task $n is not running (temper task start $n)" >&2; return 1; }
+  _lock_acquire
+  _groups_mutate "d['tasks'][a[0]]['confirmed_by'] = a[1]; d['tasks'][a[0]].pop('awaiting', None)" "$n" "$by"
+  local rc=$?
+  _lock_release
+  [[ $rc -eq 0 ]] || return $rc
+  _json_append "$(_evidence_file build)" "$(python3 -I -c "
+import json, sys, time
+print(json.dumps({'claim': 'Task %s confirmed by %s' % (sys.argv[1], sys.argv[2]), 'cmd': None, 'exit_code': 0, 'artifact': None,
+                  'sha256': None, 'value': None, 'severity': None, 'phase': 'confirm', 'scenario': None, 'criterion': None,
+                  'label': 'PROVEN', 'task': int(sys.argv[1]), 'executed_by': 'person', 'ts': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}))" "$n" "$by")"
+  echo "OK: Task $n confirmed by $by"
+}
+
 cmd_task() {
   local sub="${1:-}"; shift || true
   case "$sub" in
@@ -3509,7 +3540,8 @@ cmd_task() {
     show) cmd_task_show "$@" ;;
     test) cmd_task_test "$@" ;;
     gate) cmd_task_gate "$@" ;;
-    *) echo "FAIL: usage: temper task <start|show|test|gate> ..." >&2; return 1 ;;
+    confirm) cmd_task_confirm "$@" ;;
+    *) echo "FAIL: usage: temper task <start|show|test|gate|confirm> ..." >&2; return 1 ;;
   esac
 }
 
@@ -3819,7 +3851,9 @@ def test(r): return isinstance(r, dict) and re.search('test', r.get('claim') or 
 red = [i for i, r in enumerate(rows) if test(r) and r.get('phase') == 'red' and r.get('exit_code') not in (0, None)]
 print(sum(1 for i, r in enumerate(rows) if red and i > red[0] and test(r) and r.get('phase') == 'green' and r.get('exit_code') == 0))
 " "$(_evidence_file build)" 2>/dev/null || echo 0)"
-  if [[ "$red_n" -gt 0 && "${after_n:-0}" -gt 0 ]]; then
+  if [[ -f "$spec_path/tasks.md" ]] && python3 -I "$SCRIPTS_DIR/task_rows.py" all-manual "$spec_path/tasks.md"; then
+    reqs+=("$(_req "RED then GREEN" 1 "every task is manual: the person confirms each by hand, there is no test to run")")
+  elif [[ "$red_n" -gt 0 && "${after_n:-0}" -gt 0 ]]; then
     reqs+=("$(_req "RED then GREEN" 1 "$red_n failing-first run(s), $green_n passing run(s) recorded")")
   elif [[ "$red_n" -gt 0 && "$green_n" -gt 0 ]]; then
     reqs+=("$(_req "RED then GREEN" 0 "every passing run (GREEN) was recorded before the first failing run (RED); a test first fails, then passes")")
@@ -3829,14 +3863,9 @@ print(sum(1 for i, r in enumerate(rows) if red and i > red[0] and test(r) and r.
     all_pass=0
   fi
   if [[ -f "$spec_path/tasks.md" ]]; then
-    local unchecked
-    unchecked=$(_count_lines_matching '^[[:space:]]*- \[ \]' "$spec_path/tasks.md")
-    if [[ "$unchecked" -eq 0 ]]; then
-      reqs+=("$(_req "all tasks complete" 1 "no unchecked tasks in tasks.md")")
-    else
-      reqs+=("$(_req "all tasks complete" 0 "$unchecked unchecked task(s) remain in tasks.md")")
-      all_pass=0
-    fi
+    local trow; trow="$(python3 -I "$SCRIPTS_DIR/task_rows.py" all-tasks "$spec_path/tasks.md" "$GROUPS_FILE")"
+    reqs+=("$trow")
+    grep -q '"pass": false' <<<"$trow" && all_pass=0
   fi
   # Checkpoint feedback: every `feedback #N` row the orchestrator recorded must be
   # answered by a `feedback-resolved` row — applied (detail optional) or declined

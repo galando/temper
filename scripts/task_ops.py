@@ -169,6 +169,7 @@ def ctx(plan, run, n):
     attempts = rt.get('attempts') or []
     return {'n': n, 'title': t['title'], 'group': g['id'], 'files': t['files'], 'block': t['block'],
             'test': t['test'], 'context': g['context'], 'status': status,
+            'manual': bool(t.get('manual')), 'confirm': t.get('confirm', ''), 'confirmed_by': rt.get('confirmed_by', ''),
             # one worktree per task: a task works in its own worktree (made by task start from the group branch, removed
             # when its gate passes or fails), never in the group worktree, which only takes merges and the group Validate
             'worktree': rt.get('worktree') or rg.get('worktree', ''), 'gworktree': rg.get('worktree', ''),
@@ -569,6 +570,8 @@ elif mode == 'verdict':
                       bad[-1].get('exit_code'), red_why(bad[-1])))
     elif green != len(mine) - 1:
         reason = 'the final run of this attempt is not green'
+    if c['manual']:   # a manual task has no RED or GREEN: the person confirms it by hand (F12)
+        reason = ''
     # the worktree's own run state (the commit hook writes .temper/gates.json there) is not the task's change
     def internal(p):
         return p.startswith('.temper/') or p.startswith('.claude/worktrees/')
@@ -612,7 +615,8 @@ elif mode == 'verdict':
     if reason:
         last = [r for r in mine if r.get('output')]
         tail = '\n'.join((last[-1]['output'] if last else '').split('\n')[:20]).rstrip('\n')
-    print(json.dumps({'verdict': 'FAIL' if reason else 'PASS', 'reason': reason, 'commit_paths': mine_changed,
+    verdict = 'FAIL' if reason else ('AWAIT' if c['manual'] and not c['confirmed_by'] else 'PASS')
+    print(json.dumps({'verdict': verdict, 'reason': reason, 'commit_paths': mine_changed,
                       'foreign_shas': foreign,
                       'output': tail, 'attempt': c['attempt'], 'title': c['title'], 'group': c['group'],
                       'slug': c['slug']}))

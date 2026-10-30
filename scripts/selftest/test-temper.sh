@@ -219,6 +219,7 @@ _dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 8 "* ]] && source "$TESTS_DIR/temper-cases-8.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 9 "* ]] && source "$TESTS_DIR/temper-cases-9.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 10 "* ]] && source "$TESTS_DIR/temper-cases-10.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 11 "* ]] && source "$TESTS_DIR/temper-cases-11.sh"
 
 echo ""
 echo "=== test-temper.sh ==="

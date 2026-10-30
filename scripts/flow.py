@@ -43,7 +43,7 @@ GATE_OF = {"fix": "build", "rca": None}
 BACK_TO = {"temper": {"plan": "intent", "design": "plan", "build": "plan", "review": "build", "check": "build"},
            "fix": {"review": "fix", "check": "fix"}}
 # The moves only the person may make; the mod lets their CLI calls through only for the person's answer.
-PERSON_MOVES = {"approve", "arm", "override", "back", "accept", "keep", "commitOverride", "restart"}
+PERSON_MOVES = {"approve", "arm", "override", "back", "accept", "keep", "commitOverride", "restart", "confirm"}
 
 
 # ---- reading the run -----------------------------------------------------------------------
@@ -290,8 +290,11 @@ class Builder:
                 "variable, use this folder." % self.plugin)
 
     # -- options ---------------------------------------------------------------------------
-    def opt(self, label, description, move=None, calls=None, steps=None, do=None, stop=False, reason=None):
+    def opt(self, label, description, move=None, calls=None, steps=None, do=None, stop=False, reason=None, answer=None):
         o = {"label": label, "description": description, "move": move, "calls": calls or []}
+        if answer:  # a question whose typed answer fills {answer} in the calls (the person's name, for a manual task)
+            o["answer_question"] = {"header": answer[0], "question": answer[1], "multiSelect": False,
+                                    "options": [{"label": "Cancel", "description": "Back to the question before."}]}
         if steps:
             o["steps"] = steps
         if do:
@@ -687,6 +690,9 @@ class Builder:
                     "say": "Build: %s. %s" % (", ".join("Task %d runs on %s" % (x["task"], x["model"]) for x in agents), goes_on(len(agents) > 1))}
 
         running = [(int(n), v) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"]
+        waiting_on_person = sorted(n for n, v in running if v.get("awaiting") == "confirm")
+        if waiting_on_person:
+            return self.manual_task(waiting_on_person[0], plan)
         if running:
             return {"action": "wait", "stage": "build", "tasks": [
                 {"task": n, "model": self.ran_on(v), "after": [self.c("task gate %d --model %s --ms {ms}" % (n, self.ran_on(v)))]}
@@ -775,6 +781,35 @@ class Builder:
             text = ("Group %s's branch holds commits the CLI did not make (%s); %s, so they cannot be taken out here. "
                     "Keep them, or save the run and take them out by hand?" % (gid, csv, why))
         return {"action": "ask", "stage": "build", "ask": self.question(GATE_HEADER, text, stage="build", options=out)}
+
+    def manual_task(self, n, plan):
+        """A manual task (`**Test:** manual`) whose files are made: the person confirms each Case by hand."""
+        r = self.r
+        t = next((x for x in plan.get("tasks", []) if x["n"] == n), {"title": "", "block": ""})
+        cases = []
+        on = False
+        for line in t.get("block", "").splitlines():
+            if re.match(r"^\*\*Cases:\*\*", line):
+                on = True
+                inline = line.split(":**", 1)[1].strip()
+                if inline:
+                    cases.append(inline)
+                continue
+            if on and re.match(r"^\*\*\w+:\*\*", line):
+                on = False
+            m = re.match(r"^\s*[-*]\s+(?!\[[ xX]\])(\S.*)$", line) if on else None
+            if m:
+                cases.append(m.group(1).strip())
+        if r.armed():
+            return {"action": "auto", "stage": "build", "calls": [self.c("park --verdict PARKED-NEEDS-DECISION --reason %s" % shlex.quote(
+                "Task %d is a manual task: it needs you to confirm it by hand" % n))],
+                "say": "Task %d is a manual task; the armed run parks for you." % n}
+        text = "Task %d (%s) is a manual task. Confirm by hand that each Case holds: %s." % (n, t.get("title", ""), "; ".join(cases) or "see the task")
+        confirm = self.opt("Confirm", "Every Case holds; the task passes.", move="confirm",
+                           calls=[self.c("task confirm %d --by '{answer}'" % n), self.c("task gate %d --model person" % n)],
+                           answer=("Manual task", "Task %d: what name should the confirmation carry?" % n))
+        return {"action": "ask", "stage": "build", "ask": self.question("Manual task", text, stage="build", options=[
+            confirm, self.opt("Stop", "Save the run for later.", move="pause", calls=[], stop=True)])}
 
     def group_question(self, g):
         gid = g["id"]

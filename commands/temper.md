@@ -113,6 +113,10 @@ Any other failure of it still stops the action.
   allow is refused. Never add "(Recommended)" or any other word.
 - **The person decides.** Only the person's choice in the dialog is a decision. Never choose for
   them, never answer a question for them, and never choose "Start over" yourself.
+- **Names.** An option with `answer_question` needs a typed answer, such as the name of the person who
+  confirms a manual task: ask that question exactly as given, put the answer in place of `{answer}` as
+  "Filling a placeholder" says, and never fill it from git, the account or a guess. "Cancel" asks the
+  first question again.
 - **Reasons.** An option with `reason` needs the person's reason: their note on the option, or else
   ask its `reason_question` exactly as given. Any answer to it but "Cancel" is the reason, typed text
   included; "Cancel" asks the first question again. Put the reason in place of `{reason}`, as "Filling a
