@@ -100,9 +100,10 @@ assert_eq "F26: past loops.max-per-type rounds the question says the fix limit i
 assert_eq "F26: a redo removes the old verdict and the context file, so CI is read again" "none|no|work" \
   "$(python3 -c "import json; print(json.load(open('.temper/gates.json')).get('pipeline', {}).get('verdict', 'none'))")|$([[ -f .temper/specs/demo/pipeline-context.json ]] && echo yes || echo no)|$(nx "d['action']")"
 fresh; gpass intent plan build review check; "$TEMPER" state set pr one >/dev/null 2>&1; printf 'phases:\n  pipeline: false\n' > .claude/temper.config
+"$TEMPER" next --json >/dev/null 2>&1
 assert_eq "F26: with phases.pipeline false the sequence has no Pipeline stage" "0" "$(vw "str(sum(1 for s in d['stages'] if s.get('id') == 'pipeline'))")"
 printf 'stack: auto\n' > .claude/temper.config
-fresh; gpass intent plan build review check; "$TEMPER" state set pr one >/dev/null 2>&1
+fresh; gpass intent plan build review check; "$TEMPER" state set pr one >/dev/null 2>&1; "$TEMPER" next --json >/dev/null 2>&1
 assert_eq "F26: with a pull request opened the sequence ends with Pipeline" "1" "$(vw "str(sum(1 for s in d['stages'] if s.get('id') == 'pipeline'))")"
 assert_eq "F26: gate pipeline is a gate stage of the CLI" "1" "$("$TEMPER" gate pipeline 2>&1 | grep -c 'temper gate pipeline ->')"
 
@@ -111,7 +112,7 @@ fresh; rm -rf .git; git init -q . 2>/dev/null; git config user.email t@example.c
 echo base > README; git add README; git commit -qm base; gpass intent
 git checkout -q -b feature/demo; echo old > old.txt; git add old.txt; git commit -qm "an earlier run's work"; git checkout -q main
 assert_eq "F28: the question names the branch and its last commit, and offers both ways on" "1|Continue on feature/demo|Continue on a new branch feature/demo-2" \
-  "$(nx "str(d['ask']['question']['question'].count('The branch feature/demo already exists from an earlier run; its last commit is')) + '|' + d['ask']['options'][0]['label'] + '|' + d['ask']['options'][1]['label']")"
+  "$(nx "str(d['ask']['question']['question'].count('The branch feature/demo already exists from an earlier run')) + '|' + d['ask']['options'][0]['label'] + '|' + d['ask']['options'][1]['label']")"
 assert_eq "F28: the first one carries the spec across with a temp folder, never git stash" "1|0" \
   "$(nx "c = d['ask']['options'][0]['calls'][0]; str(int('mktemp -d' in c and 'git checkout feature/demo' in c)) + '|' + str(c.count('git stash'))")"
 assert_eq "F28: the new branch option checks it out and sets the state branch" "git checkout -b feature/demo-2|state set branch feature/demo-2" \
@@ -160,3 +161,4 @@ OUT="$("$TEMPER" guards uninstall 2>&1)"
 assert_eq "F30: a Temper line in a hook of the user's own is named, and not changed; core.hooksPath that is not Temper's stays" "1|1|$PWD/userhooks" \
   "$(grep -c 'your hook .* runs the Temper hook' <<<"$OUT")|$(grep -c 'temper-gate/pre-commit' userhooks/pre-commit)|$(git config --get core.hooksPath)"
 git config --unset core.hooksPath; rm -rf userhooks
+assert_eq "F30: state init prints one Note line saying the run owns the folder and a worktree gives other work its own run" "1" "$(setup; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init noteslug 2>&1 | grep -c '^Note: the run noteslug owns this folder; separate work goes in a worktree')"

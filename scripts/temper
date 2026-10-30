@@ -706,6 +706,7 @@ if sys.argv[7] and sys.argv[3] == 'temper':
 json.dump(d, open(sys.argv[5], 'w'), indent=2)
 " "$slug" "$branch" "$command" "$(_now)" "$STATE_FILE" "$feature" "$enter"
   echo "OK: state initialized for '$slug' ($command, branch $branch)"
+  echo "Note: the run $slug owns this folder; separate work goes in a worktree (claude --worktree <name>), which gives it its own run."
 }
 
 _state_migrate_legacy() { # idempotent; called before any state read/write and by cmd_gate.

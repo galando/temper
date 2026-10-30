@@ -138,6 +138,22 @@ project's or your home folder's: the guardrails pack prints its hook entries for
 full list is in
 [The mod](docs/mod.md#what-the-mod-reads-and-writes).
 
+## Working on several things at once
+
+A run owns the folder it is started in: while it is active, the mod refuses a write that does not belong to its stage, and the
+refusal names the run, the stage and the way out. Separate work gets its own folder and so its own run:
+
+- **A worktree per intent.** Start the other work with `claude --worktree <name>`; `/temper:temper` there is a run of its own.
+- **Make a small change.** At the Build, Review, Check and Commit questions, choose it to change the work yourself with no loop back:
+  `temper adhoc open --stage <stage> --reason '<why>'`, make the change, `temper adhoc close`. The change re-runs only what it
+  touches: Review of the changed files, then Check, then the commit gate (a change of docs only re-runs the stage's gate).
+- **The commit gate is branch scoped.** The hook gates a commit on the run's branch only. A commit on another branch passes with one
+  line and records nothing.
+- **Turning Temper off.** Disable the plugin, then run `temper guards uninstall` (it removes the Temper hook and its folder, unsets
+  `core.hooksPath` when it names that folder, and names a Temper line in a hook of your own, which you remove). To end a run,
+  `temper state clear`. After you disable the plugin the hook passes on its own once the plugin's files are gone, with one line
+  that names `temper guards uninstall`.
+
 ## Commands
 
 Three you will actually type. `/temper:temper` runs and routes the rest.
