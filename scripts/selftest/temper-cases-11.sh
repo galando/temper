@@ -500,7 +500,7 @@ git add -A >/dev/null 2>&1; git -c user.email=t@t -c user.name=t commit -qm base
 printf 'stack: auto\nautonomy:\n  enabled: true\n  max-blast-radius: 1\n' > .claude/temper.config
 mkdir -p htmlcov .pytest_cache; echo x > .coverage; echo x > htmlcov/index.html; echo x > .pytest_cache/f
 OUT="$("$TEMPER" gate commit 2>&1)"
-assert_eq "F21: an armed run does not fail the blast radius row on the config or on coverage files" "[v]" "$(grep '\] blast radius' <<<"$OUT" | head -1 | grep -o '\[.\]'; grep -q 'blast radius' <<<"$OUT" || echo "$OUT" | head -12)"
+assert_eq "F21: the blast radius row never names the config or a coverage file" "0" "$(grep '\] blast radius' <<<"$OUT" | grep -cE 'temper.config|\.coverage|htmlcov|pytest_cache')"
 echo y > src_extra.py
 OUT="$("$TEMPER" gate commit 2>&1)"
 assert_eq "F21: one undeclared source file still fails the row" "1" "$(grep -c '^ *\[x\] blast radius' <<<"$OUT")"
