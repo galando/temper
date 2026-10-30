@@ -408,3 +408,165 @@ export const saveAndResume = (w: World): void => {
   orchestrate(w, script())
   expect(!w.exists('.temper/build-state.json'), 'the resumed run went to its end')
 }
+
+// A medium change: Design runs between Plan and Build.
+export const designRun = (w: World): void => {
+  startProject(w)
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': (wd, a) => {
+      AGENTS['temper:temper-plan']!(wd, a)
+      t(wd, 'state set complexity medium')
+    },
+    'temper:temper-design': wd => wd.write(`${SPEC}/design.md`, '# Design: CI report\n\n## Architecture\n\nTwo small modules.\n\n## Areas of Concern\n\nNone flagged — the change is two new files.\n'),
+  }
+  const asked: string[] = []
+  orchestrate(w, script({ agents, person: (ask, wd) => { asked.push(String(ask.question.question)); return recommended(ask, wd) } }))
+  expect(asked.some(q => q.startsWith('Design: the check passed')), 'the Design question was asked')
+  expect(/work:design/.test(w.trace.join('\n')), 'the Design agent ran between Plan and Build')
+}
+
+// Three groups: only max-groups (two) start at once; the third waits for a place.
+export const threeGroups = (w: World): void => {
+  startProject(w)
+  const tasks = TASKS_MD.trimEnd() + `
+
+## Group G3: Extra
+**Depends:** none
+**Validate:** \`python3 -m unittest unit.test_ci_extra\`
+**Context:**
+Plain python, standard library only.
+
+### Task 3: Extra module
+**File:** \`src/ci_extra.py\`, \`unit/test_ci_extra.py\`
+**Depends:** none
+**Test:** \`python3 -m unittest unit.test_ci_extra\`
+**Cases:**
+- the extra value is one
+- the extra value is an int
+**Traced to:** Infrastructure: a third group for the e2e
+- [ ] done
+`
+  const extraTest = 'import unittest\n\nfrom src.ci_extra import VALUE\n\n\nclass ExtraTest(unittest.TestCase):\n    def test_the_extra_value_is_one(self):\n        self.assertEqual(VALUE, 1)\n\n    def test_the_extra_value_is_an_int(self):\n        self.assertIsInstance(VALUE, int)\n'
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': (wd, a) => {
+      AGENTS['temper:temper-plan']!(wd, a)
+      wd.write(`${SPEC}/tasks.md`, tasks)
+      wd.write(`${SPEC}/plan.md`, PLAN_MD.replace('## Files to Modify', '| src/ci_extra.py | an extra module | Infrastructure: a third group for the e2e |\n| unit/test_ci_extra.py | its test | Infrastructure: a third group for the e2e |\n\n## Files to Modify'))
+    },
+    'temper:temper-build-task': (wd, a) => {
+      const n = Number(/Task:\s*(\d+)/.exec(a.prompt)![1])
+      if (n !== 3) return buildTask(wd, a)
+      const wt = path.relative(wd.dir, worktreeOf(t(wd, 'task show 3').out))
+      wd.write(path.join(wt, 'unit/test_ci_extra.py'), extraTest)
+      wd.write(path.join(wt, 'src/ci_extra.py'), 'VALUE = None\n')
+      expect(t(wd, 'task test 3 --phase red').code !== 0, 'RED fails')
+      wd.write(path.join(wt, 'src/ci_extra.py'), 'VALUE = 1\n')
+      expect(t(wd, 'task test 3 --phase green').code === 0, 'GREEN passes')
+    },
+  }
+  orchestrate(w, script({ agents }))
+  const starts = w.trace.filter(l => l.includes('group start'))
+  expect(starts.length === 3, `all three groups started in the end (${starts.length})`)
+  const firstWork = w.trace.findIndex(l => l.includes('group start'))
+  const batch = w.trace.slice(firstWork).findIndex((l, i) => i > 0 && !l.includes('group start'))
+  expect(batch === 2, `the first batch started two groups (max-groups 2), not ${batch}`)
+}
+
+// Maven (a fake mvn): the declared test classes only, offline, a new surefire report per class; the group verifies with JaCoCo.
+export const mavenRun = (w: World): void => {
+  const bin = path.join(w.dir, '..', `bin-${path.basename(w.dir)}`)
+  fs.mkdirSync(bin, { recursive: true })
+  const log = path.join(bin, 'mvn.log')
+  const green = path.join(bin, 'green')
+  fs.writeFileSync(path.join(bin, 'mvn'), `#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "${log}"
+for a in "$@"; do
+  case "$a" in -Dtest=*) for c in $(echo "\${a#-Dtest=}" | tr ',' ' '); do c="\${c%%#*}"; mkdir -p target/surefire-reports; echo "<testsuite/>" > "target/surefire-reports/TEST-com.acme.$c.xml"; done ;; esac
+done
+case "$*" in *verify*) exit 0 ;; esac
+[ -f "${green}" ] && exit 0 || exit 1
+`, { mode: 0o755 })
+  w.env.PATH = `${bin}:${w.env.PATH}`
+  startProject(w)
+  const tasks = TASKS_MD
+    .replace(/\*\*Validate:\*\* `python3 -m unittest unit\.test_ci_shape`/, '**Validate:** `mvn verify -Pjacoco`')
+    .replace(/\*\*Validate:\*\* `python3 -m unittest unit\.test_ci_bytes`/, '**Validate:** `mvn verify -Pjacoco`')
+    .replace('**Integration:** `python3 -m unittest discover -s unit -t .`', '**Integration:** `mvn verify -Pjacoco`')
+    .replace('`src/ci_shape.py`, `unit/test_ci_shape.py`', '`src/main/java/com/acme/Shape.java`, `src/test/java/com/acme/ShapeTest.java`')
+    .replace('`src/ci_bytes.py`, `unit/test_ci_bytes.py`', '`src/main/java/com/acme/Bytes.java`, `src/test/java/com/acme/BytesTest.java`')
+    .replace(/\*\*Test:\*\* `python3 -m unittest unit\.test_ci_(shape|bytes)`/g, '**Test:** `mvn test`')
+  const plan = PLAN_MD.replace(/src\/ci_shape\.py/g, 'src/main/java/com/acme/Shape.java').replace(/unit\/test_ci_shape\.py/g, 'src/test/java/com/acme/ShapeTest.java')
+    .replace(/src\/ci_bytes\.py/g, 'src/main/java/com/acme/Bytes.java').replace(/unit\/test_ci_bytes\.py/g, 'src/test/java/com/acme/BytesTest.java')
+  const agents: Record<string, Agent> = {
+    ...AGENTS,
+    'temper:temper-plan': (wd, a) => {
+      AGENTS['temper:temper-plan']!(wd, a)
+      wd.write(`${SPEC}/tasks.md`, tasks)
+      wd.write(`${SPEC}/plan.md`, plan)
+      // the scenario Test: commands are Maven ones too
+      wd.write(`${SPEC}/intent.md`, wd.read(`${SPEC}/intent.md`).replace(/Test: python3 -m unittest unit\.test_ci_\w+/g, 'Test: mvn test'))
+    },
+    'temper:temper-build-task': (wd, a) => {
+      const n = Number(/Task:\s*(\d+)/.exec(a.prompt)![1])
+      const [main, test] = n === 1 ? ['Shape', 'ShapeTest'] : ['Bytes', 'BytesTest']
+      const wt = path.relative(wd.dir, worktreeOf(t(wd, `task show ${n}`).out))
+      fs.rmSync(green, { force: true })
+      wd.write(path.join(wt, `src/test/java/com/acme/${test}.java`), `package com.acme;\npublic class ${test} {}\n`)
+      wd.write(path.join(wt, `src/main/java/com/acme/${main}.java`), `package com.acme;\npublic class ${main} {}\n`)
+      expect(t(wd, `task test ${n} --phase red`).code !== 0, 'RED fails')
+      fs.writeFileSync(green, '')
+      const g = t(wd, `task test ${n} --phase green`)
+      expect(g.code === 0, `GREEN passes with a new report for the class (${g.out.slice(0, 200)})`)
+    },
+  }
+  orchestrate(w, script({ agents }))
+  const calls = fs.readFileSync(log, 'utf8')
+  expect(/-o /.test(calls) && /-Dtest=ShapeTest/.test(calls) && /-Dtest=BytesTest/.test(calls), `Maven ran offline with only the declared classes (${calls.slice(0, 300)})`)
+  expect(/verify -Pjacoco/.test(calls) || /-Pjacoco/.test(calls), 'the group verified with JaCoCo')
+}
+
+// A /temper:fix run: RCA, Fix (a regression test first), Review, Check and the commit; the mod stands aside for it.
+export const fixRun = (w: World): void => {
+  startProject(w, '', wd => {
+    wd.write('src/ci_shape.py', 'def stage_object(stage, verdict, requirements):\n    return {"stage": stage}\n')
+    wd.sh('git add -A && git commit -qm "a shape with a bug"')
+  })
+  t(w, 'state clear')
+  w.sh(`${TEMPER} state init bug --command fix`)
+  const bug = '.temper/specs/bug'
+  const agents: Record<string, Agent> = {
+    'temper:temper-rca': wd => wd.write(`${bug}/rca.md`, '# RCA: the shape drops the verdict\n\n## Root cause\n\n`stage_object` returns only the stage.\n\n## Fix\n\nReturn verdict and requirements.\n'),
+    'temper:temper-fix': wd => {
+      wd.write('unit/test_ci_shape.py', SHAPE_TEST)
+      const red = sh(wd, 'python3 -m unittest unit.test_ci_shape')
+      expect(red.code !== 0, 'the regression test fails first')
+      t(wd, `evidence add --stage build --phase red --claim 'regression test: the shape keeps its verdict' --exit 1 --cmd 'python3 -m unittest unit.test_ci_shape'`)
+      wd.write('src/ci_shape.py', SHAPE_CODE)
+      expect(sh(wd, 'python3 -m unittest unit.test_ci_shape').code === 0, 'the fix passes the regression test')
+      t(wd, `evidence add --stage build --phase green --claim 'regression test: the shape keeps its verdict' --exit 0 --cmd 'python3 -m unittest unit.test_ci_shape'`)
+    },
+    'temper:temper-review': wd => t(wd, `evidence add --stage review --claim 'review completed' --exit 0 --cmd 'review panel'`),
+    'temper:temper-check': wd => {
+      t(wd, `evidence add --stage check --claim 'tests' --exit 0 --cmd 'python3 -m unittest discover -s unit -t .'`)
+      t(wd, `evidence add --stage check --claim 'coverage' --value 90 --exit 0 --cmd 'coverage report'`)
+    },
+  }
+  // commands/fix.md launches the RCA agent itself; the loop over `temper next` starts at its question
+  agents['temper:temper-rca']!(w, {})
+  const asked: string[] = []
+  orchestrate(w, script({
+    agents,
+    person: (ask, wd) => { asked.push(String(ask.question.question)); return recommended(ask, wd) },
+    instruction: (wd, text) => {
+      if (text.startsWith('Append one entry for this fix')) {
+        wd.write('.temper/lessons.md', '# Lessons\n\n- the shape must keep its verdict: a regression test names it\n')
+        return true
+      }
+      return /each file the run changed|^Copy what|^When .* records deviations/.test(text)
+    },
+  }))
+  expect(asked.some(q => q.startsWith('RCA: the root cause is in')), 'the RCA question was asked')
+  expect(w.sh('git log --format=%s -n 1').length > 0 && !w.exists('.temper/build-state.json'), 'the fix run ended with its commit')
+}
