@@ -68,7 +68,7 @@ number of downstream repos that read `--ci` output (owner: Dana, reviewed each q
 
 ### Open Questions
 
-- Blocking: does `--ci` exit non-zero when any stage FAILs, or does `gate` alone own the exit code; consequence: pipelines that use the exit code need a wrapper if we choose wrong; owner: Marco.
+- Deferred: does `--ci` exit non-zero when any stage FAILs, or does `gate` alone own the exit code; consequence: pipelines that use the exit code need a wrapper if we choose wrong; why work can proceed: `report --ci` is the only caller and Marco decides before the first outside user; needed by: before the first outside user.
 - Deferred: does the array include stages with no verdict yet; consequence: users must handle missing stages either way; why work can proceed: the shape does not change, so we can omit missing stages now and add them later; needed by: before the first outside user.
 
 ### Decisions

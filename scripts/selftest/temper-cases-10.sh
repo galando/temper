@@ -95,3 +95,26 @@ import re, sys
 src = open(sys.argv[1]).read()
 bad = [m for m in re.findall(r'\"say\": (.+)', src) if re.search(r'after calls|conversation|launch|run its', m, re.I)]
 print('; '.join(bad))" "$REPO_ROOT/scripts/flow.py")"
+
+# --- F10. The Intent gate fails while a Blocking question is open ---
+_blockrow() { python3 -c "
+import json
+rows = json.load(open('.temper/gates.json'))['intent']['requirements']
+print([str(r['pass']) for r in rows if r['name'] == 'blocking question open'][0])"; }
+fresh
+sed -i 's/^\*\*Status:\*\* .*/**Status:** draft/' .temper/specs/demo/intent.md
+printf '\n### Open Questions\n\n- Blocking: does the reset link expire; consequence: a stale link works; owner: Dana.\n' >> .temper/specs/demo/intent.md
+OUT="$("$TEMPER" gate intent 2>&1)"
+assert_eq "F10: an open Blocking question in a draft fails the Intent gate, and the row is named" "False|FAIL" \
+  "$(_blockrow)|$(python3 -c "import json; print(json.load(open('.temper/gates.json'))['intent']['verdict'])")"
+fresh
+sed -i 's/^\*\*Status:\*\* .*/**Status:** draft/' .temper/specs/demo/intent.md
+printf '\n### Open Questions\n\n- Deferred: which locale first; consequence: copy changes; why work can proceed: text is data; needed by: release.\n' >> .temper/specs/demo/intent.md
+"$TEMPER" gate intent >/dev/null 2>&1
+assert_eq "F10: a Deferred question leaves the row passing" "True" "$(_blockrow)"
+fresh
+printf '\n### Open Questions\n\n- Blocking: does the reset link expire; consequence: a stale link works; owner: Dana.\n' >> .temper/specs/demo/intent.md
+"$TEMPER" gate intent >/dev/null 2>&1
+assert_eq "F10: an accepted intent passes whatever its Open Questions hold" "True|PASS" \
+  "$(_blockrow)|$(python3 -c "import json; print(json.load(open('.temper/gates.json'))['intent']['verdict'])")"
+assert_eq "F10: the example intent holds no Blocking question" "0" "$(grep -c '^- Blocking:' "$REPO_ROOT/templates/example-intent.md")"

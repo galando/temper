@@ -2191,6 +2191,10 @@ gate_intent() {
       reqs+=("$draft_line")
       grep -q '"pass": false' <<<"$draft_line" && all_pass=0
     done < <(_intent_closure_reqs "$spec_path/intent.md")
+    # A Blocking question still open in a draft (F10, scripts/gate_rows.py): the person answers it before the plan.
+    draft_line="$(python3 -I "$SCRIPTS_DIR/gate_rows.py" intent-blocking "$spec_path/intent.md")"
+    reqs+=("$draft_line")
+    grep -q '"pass": false' <<<"$draft_line" && all_pass=0
   fi
   local reqs_json; reqs_json=$(python3 -I -c "import json,sys; print(json.dumps([json.loads(l) for l in sys.stdin]))" <<<"$(printf '%s\n' "${reqs[@]}")")
   echo "$reqs_json" "$all_pass"
