@@ -54,7 +54,7 @@ assert_eq "round 4, 7: with no intent.md the approval accepts nothing" "0" \
   "$(nx "sum(1 for x in d['ask']['options'][0]['calls'] if 'intent accept' in x)")"
 mv r4-intent.md .temper/specs/demo/intent.md
 _at build; gfail build "RED then GREEN" "have red=0 green=0"
-assert_eq "round 4, 7: a walked stage whose check failed can be run now, or skipped" "Run Build (Recommended)|Override and continue|Save for later" "$(labels)"
+assert_eq "round 4, 7: a walked stage whose check failed can be run now, or skipped" "Run Build (Recommended)|Override and continue|Make a small change|Save for later" "$(labels)"
 CALL="$(nx "d['ask']['options'][0]['calls'][0]")"; eval "$CALL" >/dev/null 2>&1
 assert_eq "round 4, 7: Run Build moves the door's entry to Build, so Build runs and is no longer walked" "build|work|1" \
   "$("$TEMPER" state get enter)|$(nx "d['action'] + '|' + str(int(not any('gate build' == c.split('temper ', 1)[-1] for c in d.get('calls', []))))")"
@@ -489,6 +489,7 @@ assert_eq "live run 6: a loop back to Build from a door runs the fix pass on tha
   "$("$TEMPER" state get enter)|$(nx "d['agents'][0]['type']")|$(nx "sum(1 for c in d['agents'][0]['after'] if c.endswith(' integrate'))")"
 "$TEMPER" evidence add --stage build --phase red --claim 'test: the regression test fails' --exit 1 >/dev/null 2>&1
 "$TEMPER" evidence add --stage build --phase green --claim 'test: the suite passes' --exit 0 >/dev/null 2>&1
+_scen
 assert_exit "live run 6: the fix pass passes Build with its own red and green runs" 0 "$TEMPER" gate build
 gpass build review; "$TEMPER" state loop build plan --reason 'a case is missing' >/dev/null 2>&1
 assert_eq "live run 6: a loop back to Plan drops what the earlier run built, so Build builds the plan again" "|plan" \
@@ -525,7 +526,7 @@ assert_eq "live run 7: a failing integration run beside a passing unit run fails
 assert_eq "live run 7: a later passing run of the same command clears it" "1" \
   "$("$TEMPER" gate check 2>&1 | grep -c '\[v\] tests pass')"
 _at check; gpass check
-assert_eq "live run 7: a passed Check offers Loop back to Build beside Commit" "Commit (Recommended)|Loop back to Build|Save for later" "$(labels)"
+assert_eq "live run 7: a passed Check offers Loop back to Build beside Commit" "Commit (Recommended)|Loop back to Build|Install the readiness skill and try again|More options" "$(labels)"
 
 # --- live run 9: Review writes no code; a change a Review agent leaves in the project fails its check ---
 setup; rm -rf .git bare; git init -q . 2>/dev/null; git checkout -q -B feature/demo 2>/dev/null

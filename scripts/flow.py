@@ -658,6 +658,9 @@ class Builder:
         if stage == "review" and q["options"] and q["options"][0]["label"].startswith("Continue") and r.verdict("review") == "PASS" and \
                 any(f["state"] == "open" for f in r.findings()):
             q["options"] = [o for o in q["options"] if o["label"] != "Teach Me"]   # Teach Me gives way to the change
+            if q.get("more"):
+                q["more"]["options"] = [o for o in q["more"]["options"] if o["label"] != "Teach Me"]
+                q["more"]["question"]["options"] = [{"label": o["label"], "description": o["description"]} for o in q["more"]["options"]]
         opt = self.adhoc_option(stage)
 
         def put(options):
