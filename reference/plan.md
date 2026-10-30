@@ -63,6 +63,12 @@ security hot path (below).
 ## What `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` Checks
 
 Quoted from the plan gate in the temper CLI (`${CLAUDE_PLUGIN_ROOT}/scripts/temper`) so this doc cannot drift from the gate.
+Every scenario carries a `Test:` line, a scoped shell command that proves it on the merged tree and names the test the plan's
+task writes; the gate row `scenario test commands` fails for one without it, and for a `Test:` file no task declares and the
+project lacks. A task owes the scenarios its `Traced to:` line names (`temper task show` lists them with their exact
+commands). Build runs each `Test:` command at integration and records a row: that row, not a `Traced to:` line, is what
+lets a `Validate: scenario` criterion pass.
+
 These run **at every tier**: the artifacts exist (`intent.md` + `tasks.md`); scenario
 count >= Success Criteria count; every criterion has explicit validation links
 (`acceptance.py plan` — stable `AC-NN` ids, `Why:` and `Validate:` on each, every

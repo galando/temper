@@ -62,6 +62,9 @@ orchestrator's conversation carries over except the prompt you were launched wit
 - The spec directory holds exactly `intent.md`, `tasks.md` and `plan.md`. Never a
   fourth file (no `spec.md`, `quickstart.md`, README); `${CLAUDE_PLUGIN_ROOT}/scripts/temper gate plan` reads only
   those three.
+- Every scenario carries a `Test:` line: a scoped shell command that proves it on the merged tree and names the test a
+  task of `tasks.md` writes. Build runs each one and records a row; a criterion with `Validate: scenario` passes only
+  from that row, never from a `Traced to:` line. `temper gate plan` names every scenario with none.
 - A `Scenario:` outside a ```gherkin fence fails the gate, and a bare one renders as a
   run-on paragraph in every review surface.
 - Record complexity with `${CLAUDE_PLUGIN_ROOT}/scripts/temper state set complexity <tier>`

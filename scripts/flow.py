@@ -123,6 +123,29 @@ class Run:
         at = str(g.get("ts") or "") if isinstance(g, dict) else ""
         return [x for x in self.notes(stage, kind) if at and str(x.get("ts") or "") > at]
 
+    def missing_records(self, stage):
+        """When the stage's gate fails only for success criteria that lack a row the CLI could record (a scenario with no CLI
+        run row or no Test: line, a Validate: code criterion with no row), the lines of those rows; else []. A row that
+        exists and failed (an exit code) is not one of them: that keeps the gate question."""
+        rows = self.failed_rows(stage)
+        if stage != "build" or len(rows) != 1 or rows[0].get("name") != "criteria validated":
+            return []
+        found = []
+        for m in re.finditer(r"(AC-\d+) FAIL: (.*?)(?<=\.)(?:\s|$)", str(rows[0].get("detail") or "")):
+            what = m.group(2)
+            sm = re.match(r"scenario '(.*?)' \((.*)\) has no row run by the CLI\.?$", what)
+            if sm:
+                found.append("Record scenario: %s (%s)." % (sm.group(1), sm.group(2)))
+            elif "no passing row records it" in what:
+                found.append("Record criterion: %s (Validate: code)." % m.group(1))
+            else:
+                return []
+        return found
+
+    def round_id(self):
+        """What marks one round of a stage: the latest Run Build again and the latest step back."""
+        return "%s|%s" % ((self.state.get("redo") or {}).get("ts", ""), (self.latest_loop() or {}).get("started", ""))
+
     def cfg(self, key, default=""):
         v = config_yaml.get(self.config, key, default)
         return default if v is None or v == "" else str(v)
@@ -1010,6 +1033,15 @@ class Builder:
                 out.update({"action": "work", "stage": stage, "calls": [self.c("gate %s" % (r.gate_of(stage) or stage))], "agents": [],
                             "say": "%s is checked again after your change." % LABEL[stage]})
                 return out
+        records = r.missing_records(stage) if verdict == "FAIL" and not skipped and r.command == "temper" else []
+        if records and r.state.get("record_pass") != r.round_id():
+            a = self.agent("build", ["Record only: write the rows below with `temper evidence run`; change no code, no test and no plan file."] + records)
+            a["after"].append(self.c("state set record_pass %s" % shlex.quote(r.round_id())))
+            a["after"].append(self.c("gate build"))
+            a["gate"] = a["after"][-1]
+            out.update({"action": "work", "stage": "build", "calls": [], "agents": [a],
+                        "say": "Build: the record pass is working%s. %s" % (on_model([a]), goes_on(False))})
+            return out
         if verdict is None and not skipped:
             if self.walked(stage):
                 out.update({"action": "work", "stage": stage, "calls": [self.c("gate %s" % stage)], "agents": [],

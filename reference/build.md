@@ -62,6 +62,15 @@ reconciles these against each task's `Traced to:` field.
 **f. Simplify** — if the `code-simplifier` agent is available, run it on the files you
 just touched (not the whole codebase); preserve behavior, improve clarity only.
 
+## Scenario tests: the Build gate reads them
+
+A scenario of `intent.md` carries a `Test:` command. A task owes the scenarios its `Traced to:` line names: write each
+test under the exact name the command gives. The task gate runs the scenarios the task owes in its worktree (a scenario
+traced to several tasks runs at the task all the others precede, else at the group gate), and the group gate runs the
+group's on the merged group branch. `temper integrate` then runs every `Test:` command on the merged tree and records one
+CLI-run row each; a failing command records a failing row and Build's gate names the scenario, its command and the exit.
+A pytest exit 4 or 5 means no test has that name: write it under the name the command gives.
+
 ## Scenario Coverage (BDD): the Check gate reads it
 
 If `intent.md` exists: for every `Scenario:`, find or write the test that exercises it

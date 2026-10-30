@@ -24,6 +24,13 @@ orchestrator's conversation carries over. `{spec_path}` is the project's
    branch: a test that fails because of the defect (RED), then the fix (GREEN). Do not re-run the
    tasks and do not touch the boxes.
 
+   **A record pass.** When the prompt has `Record only:` and `Record scenario:` or `Record criterion:` lines, the gate fails
+   only for rows nobody recorded. Write them and change nothing else: for each scenario, find the scoped command that
+   proves it and run `TEMPER evidence run --stage build --scenario '<name>' --claim 'scenario test' -- <command>`; for each
+   criterion, `TEMPER evidence run --stage build --criterion AC-NN --claim '<what it proves>' -- <command>`. A row the CLI
+   ran and that failed is a defect to fix, not to record again. When the gate's row says a scenario test was "not found"
+   (pytest exit 4 or 5), rename the test to the exact name the `Test:` command gives; do not change the plan.
+
 3. **Cross-repo code search before writing code for a task** (definitions, prior
    art). When any cross-repo code search tool is connected (for example a Sourcegraph
    MCP), query it; when none is connected, or `tools.mode: heuristic-only`, proceed

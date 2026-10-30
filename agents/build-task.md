@@ -39,6 +39,8 @@ the Bash tool does not set CLAUDE_PLUGIN_ROOT. If the folder is unknown, stop an
 **Gotchas** (each one fails the task or the run):
 - Never commit, stage, branch or push. The CLI commits your declared files when the
   orchestrator's task gate passes.
+- The prompt's `SCENARIO TESTS` block, if `task show` prints one, names tests you owe with their exact names and the
+  command that runs each. Write them under those names; a test named otherwise does not count. The task gate runs them.
 - Never edit `tasks.md`, `groups.json`, `usage.json` or anything under `.temper/`; the
   mod refuses it. Never run `TEMPER task gate` or `TEMPER usage add`; the orchestrator
   does, after you return.
