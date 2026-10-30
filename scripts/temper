@@ -1350,7 +1350,7 @@ cmd_state() {
 # ---------------------------------------------------------------------------
 
 cmd_evidence_add() {
-  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion="" confidence=""
+  local stage="" claim="" cmd="" exit_code="" artifact="" value="" severity="" label="HEURISTIC" phase="" scenario="" criterion="" confidence="" kind=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --stage) stage="$2"; shift 2 ;;
@@ -1365,9 +1365,12 @@ cmd_evidence_add() {
       --phase) phase="$2"; shift 2 ;;
       --scenario) scenario="$2"; shift 2 ;;
       --criterion) criterion="$2"; shift 2 ;;
+      --kind) kind="$2"; shift 2 ;;
       *) echo "FAIL: unknown flag $1" >&2; return 1 ;;
     esac
   done
+  case "$kind" in ""|input|edit) ;; *) echo "FAIL: --kind takes input or edit (a note for the next agent, or a change made for the person)" >&2; return 1 ;; esac
+  [[ -z "$kind" || "$phase" == "note" ]] || { echo "FAIL: --kind goes with --phase note" >&2; return 1; }
   [[ -n "$stage" && -n "$claim" ]] || { echo "FAIL: --stage and --claim are required" >&2; return 1; }
   _stage_ok "$stage" || { _stage_refuse "$stage"; return 1; }
   # A review finding's confidence (reference/review.md): a number from 0 to 1.
@@ -1397,7 +1400,7 @@ cmd_evidence_add() {
   local entry
   entry=$(python3 -I -c "
 import json, sys
-claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, scenario, criterion, confidence, ts = sys.argv[1:]
+claim, cmd, exit_code, artifact, artifact_hash, value, severity, label, phase, scenario, criterion, confidence, kind, ts = sys.argv[1:]
 e = {'claim': claim, 'cmd': cmd or None,
      'exit_code': int(exit_code) if exit_code != '' else None,
      'artifact': artifact or None, 'sha256': artifact_hash or None,
@@ -1406,8 +1409,10 @@ e = {'claim': claim, 'cmd': cmd or None,
      'criterion': criterion or None, 'label': label, 'ts': ts}
 if confidence != '':
     e['confidence'] = float(confidence)
+if kind:
+    e['kind'] = kind
 print(json.dumps(e))
-" "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$(_now)")
+" "$claim" "$cmd" "$exit_code" "$artifact" "$artifact_hash" "$value" "$severity" "$label" "$phase" "$scenario" "$criterion" "$confidence" "$kind" "$(_now)")
   _json_append "$file" "$entry"
   echo "OK: [$label] $stage: $claim"
 }

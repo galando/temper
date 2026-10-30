@@ -112,8 +112,11 @@ Run the calls of one action in one Bash call, one per line, when they are only `
   included; "Cancel" asks the first question again. Put the reason in place of `{reason}`, as "Filling a
   placeholder" says.
 - **Typed text.** An answer typed in "Other" (not to a reason question), or a message the person
-  writes at a question, is a change request or a question: answer it; for a change, make it, run the
-  action's `gate` call when it has one, and ask again. It never moves the run.
+  writes at a question, is a change request or a question. Record it first, so the next agent reads it:
+  `${CLAUDE_PLUGIN_ROOT}/scripts/temper evidence add --stage {the run's stage} --phase note --kind input --claim '{the text}'`.
+  Then answer it; for a change you make yourself, also record
+  `--kind edit --claim '{what you changed}'`, make it, run the action's `gate` call when it has one,
+  and ask again. A note for a Build task starts `Task N:` or `Group G<n>:`. It never moves the run.
 - **Blocking questions** (the `blocking` list): ask them in one AskUserQuestion call, one question
   each, with the question's choices as options, the recommended one first, three at most, and a last
   option "Carry forward". Write each answer into intent.md's `### Decisions` and take the question out

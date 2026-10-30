@@ -65,6 +65,22 @@ def read_text(path):
         return ""
 
 
+def scoped_notes(rows, task, group):
+    """The notes for one Build task: `Task N: text` for task N, `Group G<n>: text` for every task of that group, and a note
+    with no such prefix for all tasks. Each is returned as the person wrote it."""
+    out = []
+    for x in rows:
+        claim = str(x.get("claim") or "")
+        m = re.match(r"^(Task|Group)\s+(\S+?):", claim)
+        if not m:
+            out.append(claim)
+        elif m.group(1) == "Task" and m.group(2) == str(task):
+            out.append(claim)
+        elif m.group(1) == "Group" and m.group(2) == str(group):
+            out.append(claim)
+    return out
+
+
 def git(*args):
     try:
         r = subprocess.run(["git"] + list(args), capture_output=True, text=True, timeout=20)
@@ -93,6 +109,19 @@ class Run:
         tasks = os.path.join(self.spec, "tasks.md") if self.spec else ""
         self.plan = tasks_md.parse(tasks) if tasks and os.path.isfile(tasks) else None
         self.intent = read_text(os.path.join(self.spec, "intent.md")) if self.spec else ""
+
+    def notes(self, stage, kind=None):
+        """The notes of the stage (temper evidence add --phase note): the person's words for the next agent (input) or a
+        change the orchestrator made for them (edit), oldest first."""
+        rows = read_json(os.path.join(TEMPER, "evidence", "%s.json" % stage), [])
+        return [x for x in rows if isinstance(x, dict) and x.get("phase") == "note" and x.get("claim")
+                and (kind is None or (x.get("kind") or "input") == kind)]
+
+    def stale_notes(self, stage, kind):
+        """The notes of the stage newer than its recorded verdict; none when the stage has no verdict time."""
+        g = self.gates.get(self.gate_of(stage) or "")
+        at = str(g.get("ts") or "") if isinstance(g, dict) else ""
+        return [x for x in self.notes(stage, kind) if at and str(x.get("ts") or "") > at]
 
     def cfg(self, key, default=""):
         v = config_yaml.get(self.config, key, default)
@@ -544,6 +573,7 @@ class Builder:
             lines.append("Feature: %s." % r.state.get("feature"))
         lines.append("Spec path: %s." % r.spec)
         lines.extend(extra_lines)
+        lines.extend("Person's note: %s" % x["claim"] for x in r.notes(stage, "input"))
         lines.append(self.plugin_line())
         return {"type": "temper:temper-%s" % stage, "model": models.get(stage, ""), "prompt": "\n".join(lines),
                 "after": [self.c("usage add --stage %s --model %s --ms {ms}" % (stage, models.get(stage, "") or "unknown"))]}
@@ -634,10 +664,12 @@ class Builder:
         ready = [x for x in sched if "task" in x]
         if ready:
             agents = []
+            build_notes = r.notes("build", "input")
             for t in ready:
+                said = "".join("\nPerson's note: %s" % x for x in scoped_notes(build_notes, t["task"], t.get("group")))
                 agents.append({"type": "temper:temper-build-task", "model": t.get("agent_model") or "haiku",
                                "before": [self.c("task start %d" % t["task"])],
-                               "prompt": "Follow %s/agents/build-task.md exactly.\n%s\nTask: %d." % (self.plugin, self.plugin_line(), t["task"]),
+                               "prompt": "Follow %s/agents/build-task.md exactly.\n%s\nTask: %d.%s" % (self.plugin, self.plugin_line(), t["task"], said),
                                "after": [self.c("task gate %d --model %s --ms {ms}" % (t["task"], t.get("model")))],
                                "task": t["task"], "group": t.get("group"), "title": t.get("title"), "attempt": t.get("attempt")})
             return {"action": "work", "stage": "build", "calls": [], "agents": agents,
@@ -917,6 +949,21 @@ class Builder:
             return out
         verdict = r.verdict(stage)
         skipped = r.skip(stage) is not None
+        # A note the person gave after the verdict: input goes to the agent again, edit (made for them) only to the gate.
+        if verdict is not None and not skipped and not self.walked(stage):
+            if r.stale_notes(stage, "input"):
+                if stage == "build" and r.command == "temper":
+                    a = self.agent("build", self.feedback_lines())
+                    a["after"].append(self.c("gate build"))
+                    out.update({"action": "work", "stage": "build", "calls": [], "agents": [a],
+                                "say": "Build takes up your note%s." % on_model([a])})
+                else:
+                    out.update(self.stage_work(stage))
+                return out
+            if r.stale_notes(stage, "edit"):
+                out.update({"action": "work", "stage": stage, "calls": [self.c("gate %s" % (r.gate_of(stage) or stage))], "agents": [],
+                            "say": "%s is checked again after your change." % LABEL[stage]})
+                return out
         if verdict is None and not skipped:
             if self.walked(stage):
                 out.update({"action": "work", "stage": stage, "calls": [self.c("gate %s" % stage)], "agents": [],
