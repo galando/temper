@@ -1550,3 +1550,34 @@ assert_eq "F7: reference/plan.md names the test file in the declared-files sente
   "$(grep -c 'including its test file\.' "$REPO_ROOT/reference/plan.md")"
 
 setup
+
+# --- The audit of the port: integrate rows (F8), the integration timeout (F17), the covered accept commit (F19), Maven routing (F22) ---
+gi_all; f9_intent "bash -c 'exit 0'" "bash -c 'exit 5'"
+out="$("$TEMPER" integrate 2>&1)"; rc=$?
+assert_eq "F8: a failing scenario test does not fail the integration, and each scenario prints one line (name, exit, seconds)" "0|1|1" \
+  "$rc|$(grep -c "^scenario 'alpha': exit 0, [0-9.]* s$" <<<"$out")|$(grep -c "^scenario 'beta': exit 5, [0-9.]* s$" <<<"$out")"
+assert_eq "F8: integrate records one CLI-run row per scenario, with the exit and the claim" "alpha:0:cli:scenario test at integration|beta:5:cli:scenario test at integration" \
+  "$(python3 -c "import json; print('|'.join('%s:%s:%s:%s' % (r['scenario'], r['exit_code'], r['executed_by'], r['claim']) for r in json.load(open('.temper/evidence/build.json')) if r.get('scenario')))")"
+gi_all
+sed -i 's/^\*\*Integration:\*\*.*/**Integration:** `sleep 5`/' .temper/specs/demo/tasks.md
+python3 -c "
+import json
+for f in ('.temper/groups.json', '.temper/build-state.json'):
+    d = json.load(open(f)); d.pop('plan_hash', None); json.dump(d, open(f, 'w'))"
+out="$(TEMPER_INTEGRATION_TIMEOUT_S=1 "$TEMPER" integrate 2>&1)"; rc=$?
+assert_eq "F17: TEMPER_INTEGRATION_TIMEOUT_S limits the integration suite, which fails with exit 124" "1|1" "$rc|$(grep -c 'integration suite failed (exit 124)' <<<"$out")"
+gi_setup
+"$TEMPER" task start 1 >/dev/null 2>&1
+ST_EXIT=0 "$TEMPER" task test 1 --phase red >/dev/null 2>&1
+"$TEMPER" task gate 1 --model claude-haiku-5-5 --ms 5 >/dev/null 2>&1
+mkdir -p .claude/worktrees/temper-demo-T1/unit; echo 'exit 0' > .claude/worktrees/temper-demo-T1/unit/a_test.sh
+"$TEMPER" task accept 1 --reason 'an earlier task built it' >/dev/null 2>&1
+assert_eq "F19: task accept commits the tests as test(<slug>): Task N ... (built by an earlier task)" "1" \
+  "$(git log --all --format=%s | grep -c '^test(demo): Task 1 Alpha (built by an earlier task)')"
+gi_setup; gp_mut '`bash unit/a_test.sh`' '`mvn test`'
+printf 'import sys\nprint("LOOP-RAN", len(sys.argv))\n' > fake-loop.py
+"$TEMPER" task start 1 >/dev/null 2>&1
+assert_eq "F22: task test hands a Maven test command to the Maven loop (TEMPER_MAVEN_LOOP overrides it)" "1" \
+  "$(TEMPER_MAVEN_LOOP="$PWD/fake-loop.py" ST_EXIT=0 "$TEMPER" task test 1 --phase green 2>&1 | grep -c '^LOOP-RAN')"
+rm -f fake-loop.py
+setup

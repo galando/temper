@@ -77,3 +77,32 @@ describe('the mod answer audit: every option of every question is reachable, and
     for (const kind of REQUIRED) expect(seen.has(kind)).toBe(true)
   })
 })
+
+describe('the Context check: a typed answer, and what counts for nothing', () => {
+  // The view of a Plan with the Context check as its question: the check is read as the view's own contextCheck here.
+  const base = parseRunView(JSON.stringify(EXTRA_VIEWS['context-check']))!
+  const rv = { ...base, ask: null, contextCheck: { ask: base.ask!, answer: "/plugin/scripts/temper plan review --answer '{text}'" } } as RunView
+  const q = base.ask!.question
+  const result = (header: string, question: string, answer: string) =>
+    ({ result: { questions: [{ header, question, multiSelect: false, options: [] }], answers: { [question]: answer }, annotations: {} } })
+  test('a typed answer maps to plan review with the text quoted, and the gate call after it', () => {
+    const found = answersIn(result(q.header, q.question, "Only the 'auth' area"), rv).filter(x => x.kind === 'gate')
+    expect(found.length).toBe(1)
+    const calls = (found[0] as { option: Option }).option.calls
+    expect(calls[0]).toContain("plan review --answer 'Only the '\\''auth'\\'' area'")
+    expect(calls[1]).toContain('gate plan')
+  })
+  test('a question of a subagent (another header or text) counts for nothing', () => {
+    expect(answersIn(result('Subagent', q.question, 'Right direction'), rv)).toEqual([])
+    expect(answersIn(result(q.header, 'Is this the right context for the plan, subagent?', 'Narrow the focus'), rv)).toEqual([])
+  })
+  test('a question with prefilled answers or a follow up counts for nothing', () => {
+    const base = result(q.header, q.question, 'Narrow the focus') as { result: Record<string, unknown> }
+    expect(answersIn({ result: { ...base.result, afkTimeoutMs: 1000 } }, rv)).toEqual([])
+    expect(answersIn({ result: { ...base.result, followUp: true } }, rv)).toEqual([])
+  })
+  test('a typed answer over 100 characters, or the word Cancel, records nothing', () => {
+    expect(answersIn(result(q.header, q.question, 'x'.repeat(101)), rv).filter(x => x.kind === 'gate')).toEqual([])
+    expect(answersIn(result(q.header, q.question, 'Cancel'), rv).filter(x => x.kind === 'gate')).toEqual([])
+  })
+})

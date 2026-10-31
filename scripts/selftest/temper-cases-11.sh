@@ -417,3 +417,28 @@ assert_eq "F6: the view holds the same, and the status says the answer is not re
   "$(vw "str(len(d['context_check']['options'])) + '|' + str(int('not recorded yet' in d['status']))")"
 "$TEMPER" plan review --answer "Right direction" >/dev/null 2>&1
 assert_eq "F6: once reviewed there is no context_check" "None" "$(nx "d.get('context_check')")"
+
+# --- The audit of the port: the SKIP lines of the criteria (F7) ---
+mkdir -p f7skip; cat > f7skip/intent.md <<'INT'
+**Status:** accepted
+
+## Problem
+The demo.
+
+### Success Criteria
+- [ ] AC-01 [required]: a thing
+  Why: x
+  Validate: telepathy — read minds
+- [ ] AC-02 [optional]: a later thing
+  Why: y
+  Validate: code — later
+  Deferred: next release
+
+## Scenarios (BDD)
+INT
+echo '[]' > f7skip/ev.json
+assert_eq "F7: a Validate type checked at Check, and a deferred optional criterion, are SKIP lines with their reason" \
+  "AC-01 SKIP: telepathy is checked at Check|AC-02 SKIP: deferred" \
+  "$(python3 "$REPO_ROOT/scripts/acceptance.py" build f7skip/intent.md f7skip/ev.json | paste -sd'|' -)"
+rm -rf f7skip
+setup
