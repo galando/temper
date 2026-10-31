@@ -54,6 +54,15 @@ git identity, the mod runs nothing and sets nothing, and `userConfig.enforcement
 - **Notes and typed answers (F1)** reach the next agent; the wait text and every `say` are sentences for the person (F3); a failed
   call stops its action (F4); `temper next` starts one Python process (F5); the models and their sources are shown (F2).
 
+**Tests.** The self test refuses a CLI call outside its own folder (`TEMPER_SELFTEST_ROOT`) and leaves the real `.temper` as it was.
+`scripts/selftest/run-selftest.sh` runs the case files in parallel (`--jobs`, `TEMPER_SELFTEST_JOBS`, at most 12) with tiers
+(`--fast`, `--slow`, `--changed [REV]`); the helpers the case files share are in `case-helpers.sh`. `bun scripts/e2e/run.ts both`
+plays the orchestrator with scripted agents and a scripted person through the real CLI, with the mod's rule engine and without it, over
+15 scenarios, and checks the flow is identical (`scripts/e2e/live-smoke.sh` is a live model smoke, off by default and never in CI).
+The mod answer audit answers every option of every question of the view fixtures and judges each person only call by the mod's rule.
+The e2e carry scenario found one real fault: the mod refused the command the CLI wrote to carry the spec files across a branch switch;
+it now passes character for character when the person chose it and the only Temper path it writes is the spec folder.
+
 **Migration.** An old flat `tasks.md` is counted by its boxes as before. Rows in `.temper/usage.json` are read as they were. A run
 started on 9.7.4 carries on: its running tasks take their model from the attempt number. A hook an older version left runs the gate
 on every branch until `bash scripts/guards/install.sh` writes the 9.7.5 hook; remove it with `temper guards uninstall`.

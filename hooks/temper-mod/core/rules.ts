@@ -403,7 +403,18 @@ function evaluateBash(ctx: RuleContext, command: string): RuleResult {
   const kinds = [...c.writes.map(kindOf), ...c.targets.map(target), ...c.landings.map(kindOf)].filter(
     (k): k is ProtectedKind => k !== null && (guardsCommit || (k !== 'config' && k !== 'hooks')),
   )
-  if (kinds.length > 0) return protectedDeny(kinds.find(k => k === 'events' || k === 'overrides') ?? (kinds[0] as ProtectedKind), cli)
+  if (kinds.length > 0) {
+    // A command the CLI wrote whole into the option the person chose (the switch that carries the spec files across a branch change)
+    // passes, character for character, when the only Temper path it writes is the run's spec folder.
+    const spec = ctx.run === null ? '' : normalizePath(ctx.run.specDir)
+    const underTemper = (n: string): boolean => /(^|\/)\.temper(\/|$)/.test(n)
+    const specOnly = spec !== '' && [...c.writes, ...c.targets, ...c.landings].every(p => {
+      const n = normalizePath(p, ctx.root)
+      return !underTemper(n) || n === spec || inDir(n, spec)
+    })
+    if (specOnly && ctx.allowed.some(written => written === command)) return ALLOW
+    return protectedDeny(kinds.find(k => k === 'events' || k === 'overrides') ?? (kinds[0] as ProtectedKind), cli)
+  }
 
   if (!active) return ALLOW
   // Every pull request is a draft, and Temper never marks one ready (reference/pr.md).

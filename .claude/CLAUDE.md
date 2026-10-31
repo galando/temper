@@ -39,6 +39,8 @@ CLI reference: `scripts/temper --help` | Retired systems: `docs/history/`
 **Developing temper (this repo):**
 - Test: `bash scripts/selftest/test-temper.sh` (ends `PASS: N  FAIL: 0`); validators:
   `bash scripts/quality-check.sh` (also runs in CI via quality.yml).
+- Faster: `bash scripts/selftest/run-selftest.sh [--fast|--changed|--slow]` runs the case files in parallel; `bun scripts/e2e/run.ts both`
+  is the end to end driver (the real CLI, with the mod's rule engine and without it).
 - Directory readiness: `bash scripts/validate-directory.sh` (no raw HTML in the README, no
   assets folder path in text, no `options` key). Run it before any README or manifest change.
 - The mod (pure rules, wiring, drawing) and its test suite: after any change to them run

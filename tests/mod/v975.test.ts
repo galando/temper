@@ -101,3 +101,16 @@ describe('9.7.5: every pull request is a draft', () => {
     expect(CLI).toContain('temper')
   })
 })
+
+describe('9.7.5: the command the CLI wrote whole for a branch switch', () => {
+  const carry = 't="$(mktemp -d)" && cp -R .temper/specs/pw/. "$t"/ && { git restore --source=HEAD --worktree -- .temper/specs/pw 2>/dev/null; git clean -fdq -- .temper/specs/pw ; } ; if git checkout feature/pw; then mkdir -p .temper/specs/pw && cp -R "$t"/. .temper/specs/pw/ && rm -rf "$t"; else exit 1; fi'
+  test('passes character for character when the person chose it, and not otherwise or when changed', () => {
+    expect('deny' in bash(ctx(run()), carry)).toBe(true)
+    expect('deny' in bash(ctx(run(), [carry]), carry)).toBe(false)
+    expect('deny' in bash(ctx(run(), [carry]), carry.replace('feature/pw', 'main'))).toBe(true)
+  })
+  test('does not pass when it writes another Temper path than the spec folder', () => {
+    const other = carry.replace('cp -R "$t"/. .temper/specs/pw/', 'cp -R "$t"/. .temper/gates.json')
+    expect('deny' in bash(ctx(run(), [other]), other)).toBe(true)
+  })
+})
