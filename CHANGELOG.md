@@ -43,6 +43,16 @@ git identity, the mod runs nothing and sets nothing, and `userConfig.enforcement
 - **Maven (F22).** `scripts/maven_loop.py` runs the declared test classes offline and needs a new surefire report per class; the plan
   gate row `maven group verify` names a Maven group that does not verify with JaCoCo.
 
+**Check**
+- **A missing tool sent the run back to Build (found by running Temper on pyjokes).** *What broke:* with no coverage tool installed the Check
+  gate failed on `coverage >= threshold`, and its question offered Loop back to Build (recommended), Override, a small change or Save.
+  *Cause:* the gate asks for a recorded coverage value and the question had no way to measure again. *Why nothing failed:* every
+  option worked; none fitted a failure that is not in the code. *Fix:* when the only failed rows are a measurement nobody took (no
+  passing test run, no coverage value), the question is **Run Check again?** with **Run Check again (Recommended)** first
+  (`state redo check`); a failing test keeps Loop back to Build first. The Check brief now tells the person to install the tool and choose
+  that option, never to record a number by hand, and `reference/check.md` says the gate fails without a coverage value, as it
+  always did (its table said the level was skipped). `.temper/check/`, where the coverage output goes, is excluded from git like the other run files.
+
 **After Commit**
 - **The Pipeline stage (F26, ADR 0014)**, draft pull requests and stacked parts by branch pointers (F23, F24, ADR 0015).
   Every pull request is a draft; Temper never marks one ready; the agent never pushes.

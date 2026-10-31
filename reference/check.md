@@ -43,7 +43,7 @@ missing *optional* tool.
 | 1 | Compile/build | STOP, show error, suggest fix | — |
 | 2 | Unit tests | STOP, show failing names | — |
 | 3 | Integration tests | STOP, show failing tests | none configured |
-| 4 | Coverage vs. `check.coverage-threshold` (default 80) | WARN | no coverage tool |
+| 4 | Coverage vs. `check.coverage-threshold` (default 80) | the gate FAILs without a recorded value | never skipped: with no coverage tool the gate fails until it is installed |
 | 4.5 | **Scenario verification** — see below | BLOCK on FAIL, WARN on MISSING | no intent.md |
 | 4.75 | Heuristic test-gap analysis | WARN | level 2 or 4.5 failed |
 | 4.85 | API diff / contract check | WARN (BLOCK if breaking + consumer not updated) | no API files changed |
@@ -176,7 +176,10 @@ Build while the budget allows, a skip with a reason, and Save for later). This s
   one fixes it, else note it as an accepted risk with a workaround if one exists.
 - **Missing tool:** skip that level, name the missing tool and point to its own install
   page (never print an install command), and never fail the whole pipeline for an
-  optional tool.
+  optional tool. The two measurements the gate needs are the exception: a test run and a coverage value. When the
+  tool for one is missing, say so in the summary, record nothing and estimate nothing: the gate fails on that row only,
+  and its question offers **Run Check again**. The person installs the tool and picks it; the person never records a
+  number by hand.
 
 ## Maven
 

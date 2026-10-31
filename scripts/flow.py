@@ -600,10 +600,23 @@ class Builder:
                     opts.append(self.opt("Review config suggestions", "Accept, reject or defer each suggestion, then come back here.",
                                          do="Show each suggestion in config-suggestions.json: Accept (write it into CLAUDE.md or AGENTS.md), Reject or Defer. Then ask this question again."))
                 return self.with_more(GATE_HEADER, "Check: %s. Commit?" % state_of, stage, opts[:3] if len(opts) >= 4 else opts, opts[3:] + [self.save()] if len(opts) >= 4 else [self.save()], "Check: more options.")
-            return self.question(GATE_HEADER, "Check: the check failed (%s). Loop back to %s?" % (why, LABEL[back or "build"]), stage=stage,
-                                 options=back_opt(rec=True) + [override_opt(go), self.save()])
+            # A measurement nobody took (no coverage run, no test run recorded: a tool is missing) is not a fault of the code:
+            # Check runs again once the tool is there, and going back to Build would redo work for nothing.
+            gap = self.measurement_gap(r.failed_rows("check"))
+            again = [self.opt("Run Check again (Recommended)", "Install what the failed row names, then Check measures again; Build is not redone.",
+                              move="redo", calls=[self.c("state redo check --reason %s" % shlex.quote(("the measurement was missing: " + why)[:300]))])] if gap else []
+            return self.question(GATE_HEADER, "Check: the check failed (%s). %s?" % (why, "Run Check again" if gap else "Loop back to %s" % LABEL[back or "build"]), stage=stage,
+                                 options=again + back_opt(rec=not gap) + [override_opt(go), self.save()])
 
         return None
+
+    @staticmethod
+    def measurement_gap(rows):
+        """True when every failed row of Check is a measurement nobody took (no passing test run recorded, no coverage value):
+        a missing tool, not a defect in the code."""
+        if not rows:
+            return False
+        return all(re.search(r"no passing test-run evidence recorded|recorded coverage 'none'", str(x.get("detail", ""))) for x in rows)
 
     def pr_options(self, go):
         """At a passed Check of an unarmed /temper:temper run: Commit and open PR (and, with two or more Build groups, stacked PRs).

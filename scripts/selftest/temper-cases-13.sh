@@ -106,3 +106,22 @@ printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "w
 "$TEMPER" evidence add --stage build --phase note --kind input --claim 'Task 2: leave this alone' >/dev/null 2>&1
 assert_eq "F1: the prompt of Task 1 carries its own note and not the note of Task 2" "1|0" \
   "$(nx "str(sum(a['prompt'].count(\"Person's note: Task 1: use the retry helper\") for a in d['agents'])) + '|' + str(sum(a['prompt'].count('leave this alone') for a in d['agents']))")"
+
+# --- Run Check again: a measurement nobody took (a missing coverage tool) is not a defect in the code ---
+fresh; gpass intent plan build review; _at check
+gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80%"
+assert_eq "Check: a missing coverage value offers Run Check again first (recommended), then Loop back to Build, and the small change under More options" \
+  "Run Check again (Recommended)|Loop back to Build|Override and continue|More options" "$(labels)"
+assert_eq "Check: Run Check again runs state redo check with the reason, and moves nothing else" "state redo check|redo|1" \
+  "$(nx "o = d['ask']['options'][0]; ' '.join(o['calls'][0].split('temper ', 1)[1].split()[:3]) + '|' + o['move'] + '|' + str(len(o['calls']))")"
+assert_eq "Check: the question asks Run Check again, not Loop back" "1" "$(nx "int(d['ask']['question']['question'].endswith('Run Check again?'))")"
+gfail check "tests pass" "the latest run of a test command failed: unit/test_cli.py"
+assert_eq "Check: a failing test is a defect in the code: Loop back to Build stays first, and there is no Run Check again" "Loop back to Build (Recommended)|0" \
+  "$(nx "d['ask']['options'][0]['label'] + '|' + str(sum(1 for o in d['ask']['options'] if o['label'].startswith('Run Check again')))")"
+gfail check "coverage >= threshold" "recorded coverage 'none' vs threshold 80%"
+"$TEMPER" state redo check --reason "the measurement was missing" >/dev/null 2>&1
+assert_eq "Check: after state redo check the verdict is gone and the Check agent runs again" "work|temper:temper-check|none" \
+  "$(nx "d['action'] + '|' + d['agents'][0]['type'] + '|' + str(d.get('ask') and 'asked' or 'none')")"
+setup
+assert_eq "init: the coverage output folder .temper/check/ is excluded from git, so the tree stays clean after a Check" "1" \
+  "$(grep -c '^/\.temper/check/$' "$(git rev-parse --git-common-dir)/info/exclude")"
