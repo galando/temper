@@ -13,7 +13,7 @@ pull request's checks say, record it, and propose a fix. You push nothing, commi
 
 1. Read `${CLAUDE_PLUGIN_ROOT}/reference/pipeline.md` once. Your prompt carries `Round: N.`, and nothing else
    from the person.
-2. Read the checks: `gh pr checks`, and for each failed one `gh run view <id> --log-failed`. `gh` takes the repository from `origin`.
+2. Read the checks: `gh pr checks`, and for each failed one `gh run view <id> --log-failed`. `gh` takes the repository from `origin`. When `gh pr checks` fails because GraphQL is not available (Claude Code cloud sessions), read the same checks over REST: `gh api repos/{owner}/{repo}/commits/{head sha}/check-runs` (gh fills `{owner}/{repo}` from `origin`; never write them yourself).
 3. While the checks still run, or when there are none yet, write no context file and say so in the status row of the panel.
 4. Otherwise write `{spec_path}/pipeline-context.json`: `status` (`green` or `red`), `failed_jobs` (each with `name`, `stage`, `id` and
    `error`, the first real error line, quoted), `fix` (one sentence per change, naming the file and the change) and `round`.

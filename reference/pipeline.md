@@ -5,7 +5,7 @@ for a run whose Commit opened a pull request (`reference/pr.md`), and only when 
 
 ## What the agent does
 
-It reads `gh pr checks` and, for each failed check, `gh run view <id> --log-failed`. It writes
+It reads `gh pr checks` and, for each failed check, `gh run view <id> --log-failed`; where GraphQL is not available (Claude Code cloud sessions) it reads `gh api repos/{owner}/{repo}/commits/{head sha}/check-runs` instead. It writes
 `.temper/specs/<slug>/pipeline-context.json`:
 
 ```json

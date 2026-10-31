@@ -125,3 +125,7 @@ assert_eq "Check: after state redo check the verdict is gone and the Check agent
 setup
 assert_eq "init: the coverage output folder .temper/check/ is excluded from git, so the tree stays clean after a Check" "1" \
   "$(grep -c '^/\.temper/check/$' "$(git rev-parse --git-common-dir)/info/exclude")"
+
+# --- Pipeline reads the checks over REST where GraphQL is not available (Claude Code cloud sessions) ---
+assert_eq "Pipeline: the brief, the reference and the trust page name the REST read of the checks" "1|1|1" \
+  "$(grep -c 'gh api repos/{owner}/{repo}/commits/{head sha}/check-runs' "$REPO_ROOT/agents/pipeline.md")|$(grep -c 'gh api repos/{owner}/{repo}/commits/{head sha}/check-runs' "$REPO_ROOT/reference/pipeline.md")|$(grep -c 'gh api repos/{owner}/{repo}/commits/{head sha}/check-runs' "$REPO_ROOT/docs/trust.md")"

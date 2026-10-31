@@ -52,6 +52,9 @@ git identity, the mod runs nothing and sets nothing, and `userConfig.enforcement
   (`state redo check`); a failing test keeps Loop back to Build first. The Check brief now tells the person to install the tool and choose
   that option, never to record a number by hand, and `reference/check.md` says the gate fails without a coverage value, as it
   always did (its table said the level was skipped). `.temper/check/`, where the coverage output goes, is excluded from git like the other run files.
+- **Pipeline could not read the checks in a Claude Code cloud session.** `gh pr checks` uses GraphQL, which those sessions refuse with
+  HTTP 403, and the Pipeline brief had no other way. It now falls back to `gh api repos/{owner}/{repo}/commits/{head sha}/check-runs` (REST, tried
+  from this session). `gh pr create` uses GraphQL too: there the pull request step falls back to the commands it prints, as it does for any other failure.
 
 **After Commit**
 - **The Pipeline stage (F26, ADR 0014)**, draft pull requests and stacked parts by branch pointers (F23, F24, ADR 0015).

@@ -252,7 +252,7 @@ assert_eq "next: Design FAIL" "Loop back to Plan|Override and continue|Save for 
 fresh; gpass intent plan build review
 for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 gfail check "tests pass" "no passing test-run evidence recorded"
-assert_eq "next: Check FAIL" "Loop back to Build (Recommended)|Override and continue|Make a small change|Save for later" "$(labels)"
+assert_eq "next: Check FAIL on a missing measurement (no test run recorded) offers Run Check again first, the small change under More options" "Run Check again (Recommended)|Loop back to Build|Override and continue|More options" "$(labels)"
 assert_eq "next: a question names the gate of its stage" "gate check" "$(nx "d['gate'].split('temper ', 1)[1]")"
 assert_eq "next: the question names the failed row" "1" "$(nx "int('no passing test-run evidence recorded' in d['ask']['question']['question'])")"
 

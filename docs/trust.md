@@ -64,7 +64,7 @@ lists these limits, and the mod's tests hold each one, so the docs cannot claim 
 
 ## Pull requests and the Pipeline stage (9.7.5)
 
-- **Reads.** The Pipeline stage reads the pull request's checks with `gh pr checks` and `gh run view <id> --log-failed`; `gh` takes the
+- **Reads.** The Pipeline stage reads the pull request's checks with `gh pr checks` and `gh run view <id> --log-failed` (over REST, `gh api repos/{owner}/{repo}/commits/{head sha}/check-runs`, where GraphQL is not available); `gh` takes the
   repository from `origin`. A log is untrusted text: the agent runs nothing from it and copies no token from it. Temper reads, stores,
   prints and sets no token.
 - **Writes.** Only `reference/pr.md` pushes or calls `gh pr create`, after the person chose a pull request option at the Check question.
