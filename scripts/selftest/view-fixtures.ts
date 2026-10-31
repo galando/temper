@@ -3728,65 +3728,12 @@ export const VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [
-       "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'",
-       "/plugin/scripts/temper state set pr one",
-       "/plugin/scripts/temper state set commit_path skip",
-       "/plugin/scripts/temper state advance check_complete commit"
-      ],
-      "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
-      "label": "Skip it, Temper PR steps",
-      "move": "advance",
-      "reason": true,
-      "reason_question": {
-       "header": "Temper gate",
-       "multiSelect": false,
-       "options": [
-        {
-         "description": "",
-         "label": "The skill is not installed here"
-        },
-        {
-         "description": "",
-         "label": "I accept the risk"
-        },
-        {
-         "description": "Back to the question before.",
-         "label": "Cancel"
-        }
-       ],
-       "question": "Skip it, Temper PR steps. What is the reason?"
-      }
-     },
-     {
-      "calls": [
-       "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'",
        "/plugin/scripts/temper state set pr stacked",
-       "/plugin/scripts/temper state set commit_path skip",
        "/plugin/scripts/temper state advance check_complete commit"
       ],
       "description": "Commit, then Temper opens a stack of draft pull requests, one per Build group itself (reference/pr.md); every one is a draft.",
-      "label": "Skip it, Temper stacked PR steps",
-      "move": "advance",
-      "reason": true,
-      "reason_question": {
-       "header": "Temper gate",
-       "multiSelect": false,
-       "options": [
-        {
-         "description": "",
-         "label": "The skill is not installed here"
-        },
-        {
-         "description": "",
-         "label": "I accept the risk"
-        },
-        {
-         "description": "Back to the question before.",
-         "label": "Cancel"
-        }
-       ],
-       "question": "Skip it, Temper stacked PR steps. What is the reason?"
-      }
+      "label": "Commit and open stacked PRs",
+      "move": "advance"
      },
      {
       "calls": [
@@ -3830,12 +3777,8 @@ export const VIEWS: Record<string, unknown> = {
      "multiSelect": false,
      "options": [
       {
-       "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
-       "label": "Skip it, Temper PR steps"
-      },
-      {
        "description": "Commit, then Temper opens a stack of draft pull requests, one per Build group itself (reference/pr.md); every one is a draft.",
-       "label": "Skip it, Temper stacked PR steps"
+       "label": "Commit and open stacked PRs"
       },
       {
        "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
@@ -3887,16 +3830,16 @@ export const VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [
-      "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable'"
+      "/plugin/scripts/temper state set pr one",
+      "/plugin/scripts/temper state advance check_complete commit"
      ],
-     "description": "Install a skill named review-readiness, then this question is asked again.",
-     "do": "Ask the person to install a skill named review-readiness (a plugin, or .claude/skills/review-readiness/SKILL.md). Once the session lists it, run /plugin/scripts/temper next --json --skill review-readiness and ask this question again.",
-     "label": "Install the readiness skill and try again",
-     "move": null
+     "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
+     "label": "Commit and open PR",
+     "move": "advance"
     },
     {
      "calls": [],
-     "description": "Skip it, Temper PR steps, Skip it, Temper stacked PR steps, Save for later",
+     "description": "Commit and open stacked PRs, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -3915,11 +3858,11 @@ export const VIEWS: Record<string, unknown> = {
       "label": "Loop back to Build"
      },
      {
-      "description": "Install a skill named review-readiness, then this question is asked again.",
-      "label": "Install the readiness skill and try again"
+      "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
+      "label": "Commit and open PR"
      },
      {
-      "description": "Skip it, Temper PR steps, Skip it, Temper stacked PR steps, Save for later",
+      "description": "Commit and open stacked PRs, Save for later",
       "label": "More options"
      }
     ],

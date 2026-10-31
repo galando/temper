@@ -11,7 +11,7 @@ Base: main at 595aaae (v9.7.4). Branch: claude/happy-dijkstra-l3vagh. Nothing ha
 | scripts/selftest/view-fixtures.ts is 212,087 bytes. 13 new states will push it past 262,144. | Add view-fixtures-2.ts for the new states (the existing file is not re-laid out). make-view-fixtures.sh writes both. |
 | validate-directory.sh rule 10 reads script text, comments included, for a path with a folder named hooks, tests, mod, core or ui. | No script or message may contain a path such as tests/test_cli.py. The F7 and F9 example output is built from the data at run time, and shell cases and fixtures use unit/. |
 | Rule 9 and 13 bar writes into a git hooks folder by a split name. | F30 uninstall reuses the existing installer approach (the case-gate style folder named by its absolute path). No new split names. |
-| ADR numbers 0001 to 0013 exist with gaps at 0007 and 0008. | New ADRs are 0014 (Pipeline stage), 0015 (draft and stacked PRs, readiness skill), 0016 (mod answer audit). The gaps are not reused. |
+| ADR numbers 0001 to 0013 exist with gaps at 0007 and 0008. | New ADRs are 0014 (Pipeline stage), 0015 (draft and stacked PRs), 0016 (mod answer audit). The gaps are not reused. |
 | The mod lives in hooks/temper-mod (core/*.ts, ui/*.tsx, adapter.ts, register.tsx). Its tests are in tests/mod. rules.ts is 25 KB, shell.ts 32 KB. | Mod changes: rules.ts, shell.ts, answers.ts, view.ts, runview.ts, stages.ts, band.tsx, pane.tsx, types/index.d.ts. check-mod-calls.sh must stay at 13 calls. |
 | .temper/specs is git ignored, .temper/port-9.7.5.md is not. | This plan is a normal untracked file. I will not commit it unless you say so. |
 
@@ -70,7 +70,7 @@ Order inside Phase A: F5 first in time (its snapshot must be taken before F3 cha
 |---|---|---|---|
 | F23 draft PRs | flow.py (options, state keys pr and commit_path), commands/temper.md record steps, mod rule for gh | reference/pr.md, scripts/flow_pr.py | options only for unarmed /temper; never in fix; guard fails on gh pr create without --draft and on gh pr ready |
 | F24 parts | none | scripts/pr_parts.py | #, //, block comment, block open at hunk end, last group comment only |
-| F25 readiness | flow.py, commands/temper.md (passes `--skill review-readiness`) | none | view.json and next agree; absent skill question; skip records reason |
+| F25 (removed) | the optional review-readiness skill was taken out: Check always offers Temper's own PR steps | none | view.json and next agree |
 | F26 Pipeline | scripts/temper (STAGES, _run_seq, gate_pipeline, evidence file), flow.py, mod stages.ts and band, types, plugin.json | agents/pipeline.md, reference/pipeline.md, scripts/pipeline_ops.py | each question state; redo clears verdict and context file; mod refuses a write without the window; agent brief has no push |
 | F27 record commit | commands/temper.md, state loop in scripts/temper | none | skipped record commit gives no git add or commit; latest loop reason wins |
 
@@ -87,7 +87,6 @@ Order inside Phase A: F5 first in time (its snapshot must be taken before F3 cha
 
 1. F12 confirm name: asked of the person, passed as `--by '<name>'`, never read from git or $USER (R6).
 2. F21 settings path: matched as a path string only, never opened (R5).
-3. F25 skill detection: temper next takes `--skill review-readiness` from the orchestrator, which passes it when the session lists the skill. The CLI never looks in the home folder (R7). The project's own .claude/skills/review-readiness/SKILL.md is also accepted, and view.json is built by the same function as next so the two cannot disagree.
 4. F30 disabled plugin: the hook passes when the plugin CLI path is gone, and docs/trust.md says "after you disable the plugin, run temper guards uninstall". No enabledPlugins scan (R5, R7).
 5. F5 byte identity is proven between F5 and its parent only, because F3 and F31 change wording on purpose.
 6. F7 and F9 example output uses runtime data, never a literal tests/ path in a script (R1 rule 10).

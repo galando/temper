@@ -266,7 +266,7 @@ assert_eq "F14: a change of docs only re-runs only the stage's own gate" "gate|T
 # --- F14. The gate questions offer Make a small change; a closed change runs the steps it touches ---
 fresh; gpass intent plan build review check; _at check
 assert_eq "F14: a passed Check keeps Loop back to Build beside Commit, and offers the small change before Save" \
-  "Commit (Recommended)|Loop back to Build|Install the readiness skill and try again|More options" "$(labels)"
+  "Commit (Recommended)|Loop back to Build|Commit and open PR|More options" "$(labels)"
 assert_eq "F14: the option opens the window with a reason question and says what to do" "adhoc|1|1|1" \
   "$(nx "o = [x for x in d['ask']['more']['options'] if x['label'] == 'Make a small change'][0]; '|'.join([o['move'], str(len(o['calls'])), str(int('adhoc open --stage check --reason' in o['calls'][0])), str(int('adhoc close' in o['do'] and o.get('reason') is True))])")"
 assert_eq "F14: the description is the agreed sentence" "Change the work yourself, with no loop back; the change re-runs only what it touches." \

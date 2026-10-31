@@ -281,71 +281,18 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
   "version": 1,
   "written": "2026-01-01T00:00:00Z"
  },
- "check-readiness-absent": {
+ "check-pr-options": {
   "ask": {
    "more": {
     "options": [
      {
       "calls": [
-       "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'",
-       "/plugin/scripts/temper state set pr one",
-       "/plugin/scripts/temper state set commit_path skip",
-       "/plugin/scripts/temper state advance check_complete commit"
-      ],
-      "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
-      "label": "Skip it, Temper PR steps",
-      "move": "advance",
-      "reason": true,
-      "reason_question": {
-       "header": "Temper gate",
-       "multiSelect": false,
-       "options": [
-        {
-         "description": "",
-         "label": "The skill is not installed here"
-        },
-        {
-         "description": "",
-         "label": "I accept the risk"
-        },
-        {
-         "description": "Back to the question before.",
-         "label": "Cancel"
-        }
-       ],
-       "question": "Skip it, Temper PR steps. What is the reason?"
-      }
-     },
-     {
-      "calls": [
-       "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'",
        "/plugin/scripts/temper state set pr stacked",
-       "/plugin/scripts/temper state set commit_path skip",
        "/plugin/scripts/temper state advance check_complete commit"
       ],
       "description": "Commit, then Temper opens a stack of draft pull requests, one per Build group itself (reference/pr.md); every one is a draft.",
-      "label": "Skip it, Temper stacked PR steps",
-      "move": "advance",
-      "reason": true,
-      "reason_question": {
-       "header": "Temper gate",
-       "multiSelect": false,
-       "options": [
-        {
-         "description": "",
-         "label": "The skill is not installed here"
-        },
-        {
-         "description": "",
-         "label": "I accept the risk"
-        },
-        {
-         "description": "Back to the question before.",
-         "label": "Cancel"
-        }
-       ],
-       "question": "Skip it, Temper stacked PR steps. What is the reason?"
-      }
+      "label": "Commit and open stacked PRs",
+      "move": "advance"
      },
      {
       "calls": [
@@ -389,12 +336,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
      "multiSelect": false,
      "options": [
       {
-       "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
-       "label": "Skip it, Temper PR steps"
-      },
-      {
        "description": "Commit, then Temper opens a stack of draft pull requests, one per Build group itself (reference/pr.md); every one is a draft.",
-       "label": "Skip it, Temper stacked PR steps"
+       "label": "Commit and open stacked PRs"
       },
       {
        "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
@@ -446,511 +389,16 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [
-      "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable'"
-     ],
-     "description": "Install a skill named review-readiness, then this question is asked again.",
-     "do": "Ask the person to install a skill named review-readiness (a plugin, or .claude/skills/review-readiness/SKILL.md). Once the session lists it, run /plugin/scripts/temper next --json --skill review-readiness and ask this question again.",
-     "label": "Install the readiness skill and try again",
-     "move": null
-    },
-    {
-     "calls": [],
-     "description": "Skip it, Temper PR steps, Skip it, Temper stacked PR steps, Save for later",
-     "do": "Ask the more question.",
-     "label": "More options",
-     "move": null
-    }
-   ],
-   "question": {
-    "header": "Temper gate",
-    "multiSelect": false,
-    "options": [
-     {
-      "description": "Commit the change with its spec files.",
-      "label": "Commit (Recommended)"
-     },
-     {
-      "description": "Do Build again; the stages after it are redone too.",
-      "label": "Loop back to Build"
-     },
-     {
-      "description": "Install a skill named review-readiness, then this question is asked again.",
-      "label": "Install the readiness skill and try again"
-     },
-     {
-      "description": "Skip it, Temper PR steps, Skip it, Temper stacked PR steps, Save for later",
-      "label": "More options"
-     }
-    ],
-    "question": "Check: the check passed. Commit?"
-   },
-   "run_id": "run-small",
-   "stage": "check",
-   "step": 4
-  },
-  "blocking": [],
-  "build": {
-   "groups": [
-    {
-     "id": "G1",
-     "status": "pending",
-     "tasks": [
-      {
-       "attempts": 0,
-       "files": [
-        "src/app.ts",
-        "unit/app.test.ts"
-       ],
-       "model": null,
-       "n": 1,
-       "state": "waiting",
-       "title": "Issue a token"
-      },
-      {
-       "attempts": 0,
-       "files": [
-        "src/app.ts"
-       ],
-       "model": null,
-       "n": 2,
-       "state": "waiting",
-       "title": "Expire a token"
-      }
-     ],
-     "title": "Tokens",
-     "verdict": null
-    },
-    {
-     "id": "G2",
-     "status": "pending",
-     "tasks": [
-      {
-       "attempts": 0,
-       "files": [
-        "src/mail.ts"
-       ],
-       "model": null,
-       "n": 3,
-       "state": "waiting",
-       "title": "Send the mail"
-      }
-     ],
-     "title": "Mail",
-     "verdict": null
-    }
-   ],
-   "integration": null
-  },
-  "check_markers": [
-   {
-    "detail": "",
-    "lines": [],
-    "name": "compile",
-    "state": "none"
-   },
-   {
-    "detail": "",
-    "lines": [],
-    "name": "tests",
-    "state": "none"
-   },
-   {
-    "detail": "",
-    "lines": [],
-    "name": "coverage",
-    "state": "none"
-   },
-   {
-    "detail": "",
-    "lines": [],
-    "name": "lint",
-    "state": "none"
-   },
-   {
-    "detail": "",
-    "lines": [],
-    "name": "security",
-    "state": "none"
-   }
-  ],
-  "checks": [
-   {
-    "detail": "ok",
-    "name": "all",
-    "pass": true
-   }
-  ],
-  "context_check": null,
-  "context_map": null,
-  "criteria": [
-   {
-    "evidence": [],
-    "id": "AC-01",
-    "priority": "required",
-    "status": "open",
-    "text": "criterion 1 (source: test)"
-   },
-   {
-    "evidence": [],
-    "id": "AC-02",
-    "priority": "required",
-    "status": "open",
-    "text": "criterion 2 (source: test)"
-   },
-   {
-    "evidence": [],
-    "id": "AC-03",
-    "priority": "required",
-    "status": "open",
-    "text": "criterion 3 (source: test)"
-   },
-   {
-    "evidence": [],
-    "id": "AC-04",
-    "priority": "required",
-    "status": "open",
-    "text": "criterion 4 (source: test)"
-   },
-   {
-    "evidence": [],
-    "id": "AC-05",
-    "priority": "required",
-    "status": "open",
-    "text": "criterion 5 (source: test)"
-   }
-  ],
-  "drift": {
-   "header": "Scope drift",
-   "options": [
-    "Add to plan",
-    "Revert",
-    "Allow once"
-   ],
-   "prefix": "Outside the plan:"
-  },
-  "findings": [],
-  "guard": {
-   "adhoc_stage": null,
-   "armed": false,
-   "autonomy_enabled": false,
-   "fix_run": false,
-   "grouped": false,
-   "plan_files": [
-    "src/app.ts",
-    "unit/app.test.ts",
-    "src/mail.ts"
-   ],
-   "prefix": "",
-   "run_id": "run-small",
-   "slug": "pw",
-   "spec": ".temper/specs/pw",
-   "stage": "check",
-   "step": 4,
-   "trivial_exit": false
-  },
-  "loops": [],
-  "next": {
-   "action": "ask",
-   "calls": [],
-   "say": null,
-   "stage": "check",
-   "steps": []
-  },
-  "plan": {
-   "approved": true,
-   "files": [
-    "src/app.ts",
-    "unit/app.test.ts",
-    "src/mail.ts"
-   ],
-   "groups": [
-    {
-     "files": [
-      "src/app.ts",
-      "unit/app.test.ts"
-     ],
-     "id": "G1",
-     "title": "Tokens"
-    },
-    {
-     "files": [
-      "src/mail.ts"
-     ],
-     "id": "G2",
-     "title": "Mail"
-    }
-   ]
-  },
-  "restart": {
-   "header": "Temper resume",
-   "multiSelect": false,
-   "options": [
-    {
-     "calls": [
-      "/plugin/scripts/temper state clear"
-     ],
-     "description": "The saved run state goes; the spec files stay.",
-     "label": "Start over",
-     "move": "restart"
-    },
-    {
-     "calls": [],
-     "description": "Keep the run.",
-     "label": "Cancel",
-     "move": null
-    }
-   ],
-   "question": "A run of pw is open at Check. Start over?",
-   "run_id": "run-small",
-   "step": 4
-  },
-  "run": {
-   "branch": "feature/pw",
-   "command": "temper",
-   "complexity": null,
-   "feature": "Password reset by email",
-   "id": "run-small",
-   "mode": "interactive",
-   "parked": null,
-   "slug": "pw",
-   "spec": ".temper/specs/pw",
-   "stage": "check",
-   "step": 4,
-   "title": "Password reset by email"
-  },
-  "skips": [],
-  "stages": [
-   {
-    "failed": [],
-    "id": "intent",
-    "label": "Intent",
-    "mark": "passed",
-    "verdict": "PASS"
-   },
-   {
-    "failed": [],
-    "id": "plan",
-    "label": "Plan",
-    "mark": "passed",
-    "verdict": "PASS"
-   },
-   {
-    "failed": [],
-    "id": "build",
-    "label": "Build",
-    "mark": "passed",
-    "verdict": "PASS"
-   },
-   {
-    "failed": [],
-    "id": "review",
-    "label": "Review",
-    "mark": "passed",
-    "verdict": "PASS"
-   },
-   {
-    "failed": [],
-    "id": "check",
-    "label": "Check",
-    "mark": "here",
-    "verdict": "PASS"
-   },
-   {
-    "failed": [],
-    "id": "commit",
-    "label": "Commit",
-    "mark": "todo",
-    "verdict": null
-   }
-  ],
-  "status": "Check: waiting for your answer to the Temper gate question.",
-  "time": {
-   "started": "2026-01-01T00:00:00Z",
-   "updated": "2026-01-01T00:00:00Z"
-  },
-  "usage": {
-   "by_model": {},
-   "by_stage": {},
-   "ms": 0
-  },
-  "version": 1,
-  "written": "2026-01-01T00:00:00Z"
- },
- "check-readiness-present": {
-  "ask": {
-   "more": {
-    "options": [
-     {
-      "calls": [
-       "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'",
-       "/plugin/scripts/temper state set pr one",
-       "/plugin/scripts/temper state set commit_path skip",
-       "/plugin/scripts/temper state advance check_complete commit"
-      ],
-      "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
-      "label": "Skip it, Temper PR steps",
-      "move": "advance",
-      "reason": true,
-      "reason_question": {
-       "header": "Temper gate",
-       "multiSelect": false,
-       "options": [
-        {
-         "description": "",
-         "label": "The skill is not installed here"
-        },
-        {
-         "description": "",
-         "label": "I accept the risk"
-        },
-        {
-         "description": "Back to the question before.",
-         "label": "Cancel"
-        }
-       ],
-       "question": "Skip it, Temper PR steps. What is the reason?"
-      }
-     },
-     {
-      "calls": [
-       "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'",
-       "/plugin/scripts/temper state set pr stacked",
-       "/plugin/scripts/temper state set commit_path skip",
-       "/plugin/scripts/temper state advance check_complete commit"
-      ],
-      "description": "Commit, then Temper opens a stack of draft pull requests, one per Build group itself (reference/pr.md); every one is a draft.",
-      "label": "Skip it, Temper stacked PR steps",
-      "move": "advance",
-      "reason": true,
-      "reason_question": {
-       "header": "Temper gate",
-       "multiSelect": false,
-       "options": [
-        {
-         "description": "",
-         "label": "The skill is not installed here"
-        },
-        {
-         "description": "",
-         "label": "I accept the risk"
-        },
-        {
-         "description": "Back to the question before.",
-         "label": "Cancel"
-        }
-       ],
-       "question": "Skip it, Temper stacked PR steps. What is the reason?"
-      }
-     },
-     {
-      "calls": [
-       "/plugin/scripts/temper adhoc open --stage check --reason '{reason}'"
-      ],
-      "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-      "do": "Make the change, run /plugin/scripts/temper adhoc close, then run /plugin/scripts/temper next --json again.",
-      "label": "Make a small change",
-      "move": "adhoc",
-      "reason": true,
-      "reason_question": {
-       "header": "Temper gate",
-       "multiSelect": false,
-       "options": [
-        {
-         "description": "",
-         "label": "A small fix of my own"
-        },
-        {
-         "description": "",
-         "label": "A change the review asked for"
-        },
-        {
-         "description": "Back to the question before.",
-         "label": "Cancel"
-        }
-       ],
-       "question": "Make a small change. What is the reason?"
-      }
-     },
-     {
-      "calls": [],
-      "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-      "label": "Save for later",
-      "move": "pause",
-      "stop": true
-     }
-    ],
-    "question": {
-     "header": "Temper gate",
-     "multiSelect": false,
-     "options": [
-      {
-       "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
-       "label": "Skip it, Temper PR steps"
-      },
-      {
-       "description": "Commit, then Temper opens a stack of draft pull requests, one per Build group itself (reference/pr.md); every one is a draft.",
-       "label": "Skip it, Temper stacked PR steps"
-      },
-      {
-       "description": "Change the work yourself, with no loop back; the change re-runs only what it touches.",
-       "label": "Make a small change"
-      },
-      {
-       "description": "Stop here. The run is saved; /temper:temper takes it up again.",
-       "label": "Save for later"
-      }
-     ],
-     "question": "Check: more options."
-    },
-    "run_id": "run-small",
-    "stage": "check",
-    "step": 4
-   },
-   "options": [
-    {
-     "calls": [
+      "/plugin/scripts/temper state set pr one",
       "/plugin/scripts/temper state advance check_complete commit"
      ],
-     "description": "Commit the change with its spec files.",
-     "label": "Commit (Recommended)",
+     "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
+     "label": "Commit and open PR",
      "move": "advance"
     },
     {
-     "calls": [
-      "/plugin/scripts/temper state loop check build --reason '{reason}'"
-     ],
-     "description": "Do Build again; the stages after it are redone too.",
-     "label": "Loop back to Build",
-     "move": "back",
-     "reason": true,
-     "reason_question": {
-      "header": "Temper gate",
-      "multiSelect": false,
-      "options": [
-       {
-        "description": "",
-        "label": "The check found a real problem"
-       },
-       {
-        "description": "Back to the question before.",
-        "label": "Cancel"
-       }
-      ],
-      "question": "Loop back to Build. What is the reason?"
-     }
-    },
-    {
-     "calls": [
-      "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable'"
-     ],
-     "description": "Install a skill named review-readiness, then this question is asked again.",
-     "do": "Ask the person to install a skill named review-readiness (a plugin, or .claude/skills/review-readiness/SKILL.md). Once the session lists it, run /plugin/scripts/temper next --json --skill review-readiness and ask this question again.",
-     "label": "Install the readiness skill and try again",
-     "move": null
-    },
-    {
      "calls": [],
-     "description": "Skip it, Temper PR steps, Skip it, Temper stacked PR steps, Save for later",
+     "description": "Commit and open stacked PRs, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -969,11 +417,11 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
       "label": "Loop back to Build"
      },
      {
-      "description": "Install a skill named review-readiness, then this question is asked again.",
-      "label": "Install the readiness skill and try again"
+      "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
+      "label": "Commit and open PR"
      },
      {
-      "description": "Skip it, Temper PR steps, Skip it, Temper stacked PR steps, Save for later",
+      "description": "Commit and open stacked PRs, Save for later",
       "label": "More options"
      }
     ],
@@ -3083,65 +2531,12 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     "options": [
      {
       "calls": [
-       "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'",
-       "/plugin/scripts/temper state set pr one",
-       "/plugin/scripts/temper state set commit_path skip",
-       "/plugin/scripts/temper state advance check_complete commit"
-      ],
-      "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
-      "label": "Skip it, Temper PR steps",
-      "move": "advance",
-      "reason": true,
-      "reason_question": {
-       "header": "Temper gate",
-       "multiSelect": false,
-       "options": [
-        {
-         "description": "",
-         "label": "The skill is not installed here"
-        },
-        {
-         "description": "",
-         "label": "I accept the risk"
-        },
-        {
-         "description": "Back to the question before.",
-         "label": "Cancel"
-        }
-       ],
-       "question": "Skip it, Temper PR steps. What is the reason?"
-      }
-     },
-     {
-      "calls": [
-       "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'",
        "/plugin/scripts/temper state set pr stacked",
-       "/plugin/scripts/temper state set commit_path skip",
        "/plugin/scripts/temper state advance check_complete commit"
       ],
       "description": "Commit, then Temper opens a stack of draft pull requests, one per Build group itself (reference/pr.md); every one is a draft.",
-      "label": "Skip it, Temper stacked PR steps",
-      "move": "advance",
-      "reason": true,
-      "reason_question": {
-       "header": "Temper gate",
-       "multiSelect": false,
-       "options": [
-        {
-         "description": "",
-         "label": "The skill is not installed here"
-        },
-        {
-         "description": "",
-         "label": "I accept the risk"
-        },
-        {
-         "description": "Back to the question before.",
-         "label": "Cancel"
-        }
-       ],
-       "question": "Skip it, Temper stacked PR steps. What is the reason?"
-      }
+      "label": "Commit and open stacked PRs",
+      "move": "advance"
      },
      {
       "calls": [],
@@ -3156,12 +2551,8 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
      "multiSelect": false,
      "options": [
       {
-       "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
-       "label": "Skip it, Temper PR steps"
-      },
-      {
        "description": "Commit, then Temper opens a stack of draft pull requests, one per Build group itself (reference/pr.md); every one is a draft.",
-       "label": "Skip it, Temper stacked PR steps"
+       "label": "Commit and open stacked PRs"
       },
       {
        "description": "Stop here. The run is saved; /temper:temper takes it up again.",
@@ -3209,16 +2600,16 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
     },
     {
      "calls": [
-      "/plugin/scripts/temper evidence add --stage commit --claim 'readiness: unavailable'"
+      "/plugin/scripts/temper state set pr one",
+      "/plugin/scripts/temper state advance check_complete commit"
      ],
-     "description": "Install a skill named review-readiness, then this question is asked again.",
-     "do": "Ask the person to install a skill named review-readiness (a plugin, or .claude/skills/review-readiness/SKILL.md). Once the session lists it, run /plugin/scripts/temper next --json --skill review-readiness and ask this question again.",
-     "label": "Install the readiness skill and try again",
-     "move": null
+     "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
+     "label": "Commit and open PR",
+     "move": "advance"
     },
     {
      "calls": [],
-     "description": "Skip it, Temper PR steps, Skip it, Temper stacked PR steps, Save for later",
+     "description": "Commit and open stacked PRs, Save for later",
      "do": "Ask the more question.",
      "label": "More options",
      "move": null
@@ -3237,11 +2628,11 @@ export const EXTRA_VIEWS: Record<string, unknown> = {
       "label": "Loop back to Build"
      },
      {
-      "description": "Install a skill named review-readiness, then this question is asked again.",
-      "label": "Install the readiness skill and try again"
+      "description": "Commit, then Temper opens a draft pull request itself (reference/pr.md); every one is a draft.",
+      "label": "Commit and open PR"
      },
      {
-      "description": "Skip it, Temper PR steps, Skip it, Temper stacked PR steps, Save for later",
+      "description": "Commit and open stacked PRs, Save for later",
       "label": "More options"
      }
     ],

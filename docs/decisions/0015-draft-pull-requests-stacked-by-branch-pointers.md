@@ -1,4 +1,4 @@
-# ADR-0015: Draft pull requests, stacked by branch pointers, and the optional readiness skill
+# ADR-0015: Draft pull requests, stacked by branch pointers
 
 **Status:** Accepted
 **Date:** 2026-10-30
@@ -21,15 +21,11 @@ produced one commit history that reviewers had to read whole.
    Part 1 targets the default branch and part k targets part k minus one. Every commit keeps the SHA Build gave it, and
    history is never rewritten. `scripts/pr_parts.py` cuts the parts at the `merge(<slug>): group G<n>` commits and folds a part
    whose change is only comments or blank lines into the next one.
-4. **The review-readiness skill is optional and never vendored.** When a skill named `review-readiness` is available, the pull
-   request options run its Steps 1 to 5 once per part, and stop before the step that would mark the request ready. It runs at
-   Commit, not Review, because it creates the pull request. When it is absent, the question offers to install it or to skip it
-   with a reason, and Temper's own steps run.
+4. **Temper opens the pull requests itself, and no outside skill is used.** At a passed Check the question offers **Commit and open
+   PR** and, with two or more Build groups, **Commit and open stacked PRs**; `reference/pr.md` is what runs. It runs at Commit, not
+   Review, because it creates the pull request.
 5. **An armed run never pushes.** The options are not offered to it, and not to `/temper:fix`.
 
 ## Consequences
 
-- The CLI cannot read the home folder, so it does not look for the skill there: the orchestrator passes
-  `--skill review-readiness` to `temper next` when the session lists it, and the project's own `.claude/skills` folder is also
-  read. `next` and the view are built by one function, so they cannot disagree.
 - A failed part stops the run of parts, reports the pull requests already open, and prints the commands for the rest.

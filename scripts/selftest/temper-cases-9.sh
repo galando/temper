@@ -526,7 +526,7 @@ assert_eq "live run 7: a failing integration run beside a passing unit run fails
 assert_eq "live run 7: a later passing run of the same command clears it" "1" \
   "$("$TEMPER" gate check 2>&1 | grep -c '\[v\] tests pass')"
 _at check; gpass check
-assert_eq "live run 7: a passed Check offers Loop back to Build beside Commit" "Commit (Recommended)|Loop back to Build|Install the readiness skill and try again|More options" "$(labels)"
+assert_eq "live run 7: a passed Check offers Loop back to Build beside Commit" "Commit (Recommended)|Loop back to Build|Commit and open PR|More options" "$(labels)"
 
 # --- live run 9: Review writes no code; a change a Review agent leaves in the project fails its check ---
 setup; rm -rf .git bare; git init -q . 2>/dev/null; git checkout -q -B feature/demo 2>/dev/null

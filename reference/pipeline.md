@@ -32,6 +32,5 @@ result", and a `red` status fails the row "jobs passed". Green passes.
 The orchestrator applies a fix only after the person says yes, in a Pipeline ad-hoc window
 (`temper adhoc open --stage pipeline`): it applies the changes the fix list names (the step names the file, never the CI text),
 stages each changed file by name (never `git add -A`), commits `fix(ci): apply the Pipeline fix (CI fix round n)`, pushes, closes the
-window, counts the round and redoes the stage, so the checks are read again. With the review-readiness skill (commit path `skill`),
-its Steps 1 to 5 run for the failed part only, and its Step 5 does the one push. A mod write at Pipeline is refused unless the
+window, counts the round and redoes the stage, so the checks are read again. A mod write at Pipeline is refused unless the
 window is open. Temper never runs `gh pr ready`.

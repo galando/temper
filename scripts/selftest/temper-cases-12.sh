@@ -39,27 +39,19 @@ print(';'.join('%d:%s' % (p['part'], '+'.join(p['groups'])) for p in json.load(s
    "$(python3 "$REPO_ROOT/scripts/pr_parts.py" parts "$PR_BASE" demo | python3 -c "import json,sys; p=json.load(sys.stdin)[0]; print(str(p['part'])+':'+'+'.join(p['groups'])+'|'+p['merge'])")"
  cd ..; rm -rf pr24)
 
-# --- F23 and F25. The Check question offers draft pull requests; the readiness skill is detected without reading the home folder ---
+# --- F23. The Check question offers draft pull requests, opened by Temper's own steps (no outside skill) ---
 fresh; gpass intent plan build review check; _at check
-assert_eq "F23: without the readiness skill the Check question offers Commit, Install it, and Skip it for Temper PR steps" \
-  "Commit (Recommended)|Loop back to Build|Install the readiness skill and try again|More options" "$(labels)"
-assert_eq "F25: Skip it asks a reason, records readiness: unavailable, sets pr one and commit_path skip, then advances" \
-  "True|evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'|state set pr one|state set commit_path skip|state advance check_complete commit" \
-  "$(nx "o = d['ask']['more']['options'][0]; str(o['reason']) + '|' + '|'.join(c.split('temper ', 1)[1] for c in o['calls'])")"
-assert_eq "F25: view.json and next agree (same options)" "$(labels)" "$(vw "'|'.join(o['label'] for o in d['ask']['options'])")"
-NXS="$("$TEMPER" next --json --skill review-readiness 2>/dev/null)"
-assert_eq "F25: with the skill listed by the session, the question offers Commit and open PR with commit_path skill" \
-  "Commit (Recommended)|Loop back to Build|Commit and open PR|More options|state set pr one|state set commit_path skill" \
-  "$(_ev "'|'.join(o['label'] for o in d['ask']['options'])" "$NXS")|$(_ev "'|'.join(c.split('temper ', 1)[1] for c in d['ask']['options'][2]['calls'][:2])" "$NXS")"
-assert_eq "F25: the view the call wrote agrees, and a later command's view keeps the answer" "Commit (Recommended)|Commit and open PR" \
-  "$("$TEMPER" state set note_for_view x >/dev/null; vw "d['ask']['options'][0]['label'] + '|' + d['ask']['options'][2]['label']")"
-"$TEMPER" next --json >/dev/null 2>&1
-mkdir -p .claude/skills/review-readiness; echo x > .claude/skills/review-readiness/SKILL.md; "$TEMPER" next --json >/dev/null 2>&1
-assert_eq "F25: the project's own .claude/skills folder also counts" "Commit and open PR" "$(labels | cut -d'|' -f3)"
-rm -rf .claude/skills
+assert_eq "F23: the Check question offers Commit, Loop back, Commit and open PR, and More options" \
+  "Commit (Recommended)|Loop back to Build|Commit and open PR|More options" "$(labels)"
+assert_eq "F23: Commit and open PR sets pr one and advances, and sets nothing about a skill" \
+  "state set pr one|state advance check_complete commit" \
+  "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['ask']['options'][2]['calls'])")"
+assert_eq "F23: view.json and next agree (same options)" "$(labels)" "$(vw "'|'.join(o['label'] for o in d['ask']['options'])")"
+assert_eq "F23: no option installs, names or asks for a readiness skill" "0" \
+  "$(nx "str(sum(1 for o in d['ask']['options'] + d['ask'].get('more', {}).get('options', []) if 'readiness' in (o['label'] + o['description']).lower()))")"
 fresh; gpass intent plan build review check; _at check
 printf '# Tasks: demo\n\n**Integration:** `true`\n\n## Group G1: A\n**Depends:** none\n**Validate:** `true`\n**Context:**\nx\n\n### Task 1: a\n**File:** `src/a.sh`\n**Test:** `true`\n**Cases:**\n- a\n- [x] done\n\n## Group G2: B\n**Depends:** none\n**Validate:** `true`\n**Context:**\nx\n\n### Task 2: b\n**File:** `src/b.sh`\n**Test:** `true`\n**Cases:**\n- b\n- [x] done\n' > .temper/specs/demo/tasks.md
-NXS="$("$TEMPER" next --json --skill review-readiness 2>/dev/null)"
+NXS="$("$TEMPER" next --json 2>/dev/null)"
 assert_eq "F23: with two or more Build groups the stacked option is offered too" "Commit and open stacked PRs" "$(_ev "d['ask']['more']['options'][0]['label']" "$NXS")"
 printf 'autonomy:\n  enabled: true\n' > .claude/temper.config; "$TEMPER" state set run_mode autonomous >/dev/null 2>&1
 assert_eq "F23: an armed run is never offered a pull request" "0" "$(nx "str(sum(1 for o in d.get('ask', {}).get('options', []) if 'open' in o['label'].lower()))")"
@@ -67,13 +59,13 @@ printf 'stack: auto\n' > .claude/temper.config
 
 # --- F26. The Pipeline stage after Commit ---
 _pl() { # _pl: a run at the Pipeline stage after a Commit that opened a pull request
-  fresh; gpass intent plan build review check commit; "$TEMPER" state set pr one >/dev/null 2>&1; "$TEMPER" state set commit_path skip >/dev/null 2>&1; _at pipeline
+  fresh; gpass intent plan build review check commit; "$TEMPER" state set pr one >/dev/null 2>&1; _at pipeline
 }
 _plctx() { printf '%s\n' "$1" > .temper/specs/demo/pipeline-context.json; }
 _pl
-assert_eq "F26: a run at Pipeline launches the Pipeline agent with the commit path and the round, and nothing of the person's answer" \
-  "work|temper:temper-pipeline|1|1|0" \
-  "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], str(a['prompt'].count('Commit path: skip.')), str(a['prompt'].count('Round: 1.')), str(a['prompt'].count('reason'))])")"
+assert_eq "F26: a run at Pipeline launches the Pipeline agent with the round only (no commit path), and nothing of the person's answer" \
+  "work|temper:temper-pipeline|0|1|0" \
+  "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], str(a['prompt'].count('Commit path')), str(a['prompt'].count('Round: 1.')), str(a['prompt'].count('reason'))])")"
 assert_eq "F26: the agent's gate call is the last of its after calls" "gate pipeline" "$(nx "d['agents'][0]['after'][-1].split('temper ', 1)[1]")"
 assert_eq "F26: the stage is in the CLI's models and its brief names sonnet" "sonnet" "$("$TEMPER" model pipeline)"
 "$TEMPER" gate pipeline >/dev/null 2>&1
@@ -90,10 +82,7 @@ assert_eq "F26: red asks Apply the fix and push?, and the steps are the agreed o
   "Apply the fix and push?|adhoc open --stage pipeline --reason 'CI fix round 1'|git push|adhoc close|state set pipeline_round 2|state redo pipeline --reason 'CI fix round 1 pushed; CI runs again'" \
   "$(nx "q = d['ask']; s = q['options'][0]['steps']; q['question']['question'].split('). ', 1)[1] + '|' + '|'.join([s[0].split('temper ', 1)[1], s[4], s[5].split('temper ', 1)[1], s[6].split('temper ', 1)[1], s[7].split('temper ', 1)[1]])")"
 assert_eq "F26: the commit step stages by name and never with -A" "0" "$(nx "str(sum(1 for s in d['ask']['options'][0]['steps'] if 'git add -A' in s or 'git add .' == s.strip()))")"
-"$TEMPER" state set commit_path skill >/dev/null 2>&1
-assert_eq "F26: on the skill path the question names checks and code review, and the skill's Step 5 does the push" "1|0" \
-  "$(nx "str(int(d['ask']['question']['question'].endswith('Apply the fix, run checks and code review, and push?'))) + '|' + str(sum(1 for s in d['ask']['options'][0]['steps'] if s == 'git push'))")"
-"$TEMPER" state set commit_path skip >/dev/null 2>&1; "$TEMPER" state set pipeline_round 3 >/dev/null 2>&1
+"$TEMPER" state set pipeline_round 3 >/dev/null 2>&1
 assert_eq "F26: past loops.max-per-type rounds the question says the fix limit is reached" "Pipeline: the fix limit is reached (round 3 of 2). End the run?" "$(nx "d['ask']['question']['question']")"
 "$TEMPER" state set pipeline_round 1 >/dev/null 2>&1
 "$TEMPER" state redo pipeline --reason "CI fix round 1 pushed; CI runs again" >/dev/null 2>&1

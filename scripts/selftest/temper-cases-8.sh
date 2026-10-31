@@ -115,10 +115,10 @@ assert_eq "next: with the loop budget spent there is no Loop back option" "0" "$
 fresh; gpass intent plan build review
 for s in intent_complete:plan plan_complete:build build_complete:review review_complete:check; do "$TEMPER" state advance "${s%%:*}" "${s##*:}" >/dev/null 2>&1; done
 gpass check
-assert_eq "next: Check PASS is the one Commit question, with a loop back for what it passed with a warning" "Commit (Recommended)|Loop back to Build|Install the readiness skill and try again|More options|state advance check_complete commit" \
+assert_eq "next: Check PASS is the one Commit question, with a loop back for what it passed with a warning" "Commit (Recommended)|Loop back to Build|Commit and open PR|More options|state advance check_complete commit" \
   "$(nx "'|'.join(o['label'] for o in d['ask']['options']) + '|' + d['ask']['options'][0]['calls'][0].split('temper ', 1)[1]")"
 echo '[]' > .temper/specs/demo/config-suggestions.json
-assert_eq "next: config suggestions add their option; the small change goes under More options" "Commit (Recommended)|Loop back to Build|Install the readiness skill and try again|More options" "$(labels)"
+assert_eq "next: config suggestions add their option; the small change goes under More options" "Commit (Recommended)|Loop back to Build|Commit and open PR|More options" "$(labels)"
 
 # --- the commit stage ---
 "$TEMPER" state advance check_complete commit >/dev/null 2>&1

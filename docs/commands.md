@@ -814,6 +814,5 @@ which is what lets the loop begin and end without a person starting it.
 | `temper group gate G<n> --timeout-s N` | A limit for the group's own runs; a timed out gate offers a rerun at double. |
 | `temper evidence add --phase note --kind input\|edit --claim '<text>'` | A note the next stage agent reads (`Task N:` and `Group G<n>:` prefixes scope it to Build tasks). |
 | `temper model --all --source` | Each stage's model and whether it comes from a config override or a brief default. |
-| `temper next --json --skill review-readiness` | Says the session lists the review-readiness skill (the CLI never looks in the home folder). |
 | `temper guards uninstall` | Removes the Temper commit hook and its folder; unsets `core.hooksPath` when it names that folder. |
 | `temper gate commit --from-hook` | The hook's call: it gates a commit on the run's branch only. |

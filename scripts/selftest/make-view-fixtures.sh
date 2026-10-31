@@ -256,7 +256,7 @@ snap2(m, "covered-task", "run-manual")
 write(m, ".temper/groups.json", json.dumps({"version": 1, "slug": "pw", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}, "2": {"status": "passed", "group": "G1"}}}))
 snap2(m, "group-change", "run-manual")
 
-# A small change at Check, the readiness skill present and absent, a branch clash, the Pipeline stage
+# A small change at Check, the pull request options, a branch clash, the Pipeline stage
 s = project("small")
 cli(s, "state", "init", "pw", "--feature", "Password reset by email")
 at_build(s)
@@ -264,8 +264,7 @@ for st, nxt in (("build", "review"), ("review", "check")):
     verdict(s, st, True)
     cli(s, "state", "advance", st + "_complete", nxt)
 verdict(s, "check", True)
-snap2(s, "check-readiness-absent", "run-small")
-snap2(s, "check-readiness-present", "run-small", "--skill", "review-readiness")
+snap2(s, "check-pr-options", "run-small")
 cli(s, "next", "--json")
 r = cli(s, "adhoc", "open", "--stage", "check", "--reason", "a fix")
 snap2(s, "small-change-open", "run-small")

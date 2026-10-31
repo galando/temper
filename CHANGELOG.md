@@ -44,8 +44,8 @@ git identity, the mod runs nothing and sets nothing, and `userConfig.enforcement
   gate row `maven group verify` names a Maven group that does not verify with JaCoCo.
 
 **After Commit**
-- **The Pipeline stage (F26, ADR 0014)**, draft pull requests and stacked parts by branch pointers (F23, F24, ADR 0015), and the
-  optional review-readiness skill (F25). Every pull request is a draft; Temper never marks one ready; the agent never pushes.
+- **The Pipeline stage (F26, ADR 0014)**, draft pull requests and stacked parts by branch pointers (F23, F24, ADR 0015).
+  Every pull request is a draft; Temper never marks one ready; the agent never pushes.
 - **Record commit and loop reasons (F27).** No record commit when there is nothing to stage; a fix pass reads the latest loop reason.
 
 **Sessions and hooks**

@@ -272,11 +272,6 @@ class Run:
                 out.append(m.group(1).strip())
         return out
 
-    def skill_present(self, name):
-        """A skill the orchestrator said the session lists (`temper next --skill NAME`, kept in the run state so `next` and the
-        view agree), or the project's own .claude/skills/NAME/SKILL.md. The CLI never looks in the home folder."""
-        return name in (self.state.get("skills") or []) or os.path.isfile(os.path.join(".claude", "skills", name, "SKILL.md"))
-
     def context(self):
         """The Context Map of plan.md as `temper next` and the view carry it, or None."""
         return plan_ops.map_json(self.spec) if self.spec and os.path.isfile(os.path.join(self.spec, "plan.md")) else None
@@ -612,30 +607,15 @@ class Builder:
 
     def pr_options(self, go):
         """At a passed Check of an unarmed /temper:temper run: Commit and open PR (and, with two or more Build groups, stacked PRs).
-        With the review-readiness skill the skill's steps open them; without it the question offers to install it or to skip it."""
+        Temper opens them itself (reference/pr.md); every one is a draft."""
         r = self.r
         if r.armed() or r.command != "temper":
             return []
         kinds = [("one", "PR", "a draft pull request")]
         if len((r.plan or {}).get("groups", [])) >= 2:
             kinds.append(("stacked", "stacked PRs", "a stack of draft pull requests, one per Build group"))
-        out = []
-        if r.skill_present("review-readiness"):
-            for kind, label, what in kinds:
-                out.append(self.opt("Commit and open %s" % label, "Commit, then the review-readiness skill opens %s; it stops before it would mark one ready." % what,
-                                    move="advance", calls=[self.c("state set pr %s" % kind), self.c("state set commit_path skill")] + go))
-            return out
-        out.append(self.opt("Install the readiness skill and try again", "Install a skill named review-readiness, then this question is asked again.",
-                            calls=[self.c("evidence add --stage commit --claim 'readiness: unavailable'")],
-                            do="Ask the person to install a skill named review-readiness (a plugin, or .claude/skills/review-readiness/SKILL.md). "
-                               "Once the session lists it, run %s and ask this question again." % self.c("next --json --skill review-readiness")))
-        for kind, label, what in kinds:
-            out.append(self.opt("Skip it, Temper %s steps" % ("PR" if kind == "one" else "stacked PR"),
-                                "Commit, then Temper opens %s itself (reference/pr.md); every one is a draft." % what, move="advance",
-                                calls=[self.c("evidence add --stage commit --claim 'readiness: unavailable, skipped by you: {reason}'"),
-                                       self.c("state set pr %s" % kind), self.c("state set commit_path skip")] + go,
-                                reason=["The skill is not installed here", "I accept the risk"]))
-        return out
+        return [self.opt("Commit and open %s" % label, "Commit, then Temper opens %s itself (reference/pr.md); every one is a draft." % what,
+                         move="advance", calls=[self.c("state set pr %s" % kind)] + go) for kind, label, what in kinds]
 
     ADHOC_STAGES = ("build", "review", "check", "commit")
 
@@ -735,22 +715,16 @@ class Builder:
                          calls=[self.c("state redo pipeline --reason 'the Pipeline result is missing or not final'")]), self.save()])
         if rnd > mx:
             return self.question(GATE_HEADER, "Pipeline: the fix limit is reached (round %d of %d). End the run?" % (rnd, mx), stage="pipeline", options=[end, self.save()])
-        skill = r.state.get("commit_path") == "skill"
         fix = ["Apply the changes the fix list in %s/pipeline-context.json names: the step names the file, never the CI text." % r.spec,
                "git add -- {each changed file, by name}",
                "git commit -m 'fix(ci): apply the Pipeline fix (CI fix round %d)'" % rnd]
-        if skill:
-            fix.append("Follow %s/reference/pr.md, section The review-readiness skill: run its Steps 1 to 5 for the failed part only (its Step 5 does the one push), "
-                       "and record its verdict with %s." % (self.plugin, self.c("evidence add --stage commit --claim 'readiness: {PASS|FAIL}, part {k} of {N}'")))
-        else:
-            fix.append("git push")
+        fix.append("git push")
         steps = [self.c("adhoc open --stage pipeline --reason 'CI fix round %d'" % rnd)] + fix + [
             self.c("adhoc close"), self.c("state set pipeline_round %d" % (rnd + 1)),
             self.c("state redo pipeline --reason 'CI fix round %d pushed; CI runs again'" % rnd)]
-        text = "Pipeline: the check failed (%s). %s" % (why or "see pipeline-context.json",
-                                                         "Apply the fix, run checks and code review, and push?" if skill else "Apply the fix and push?")
+        text = "Pipeline: the check failed (%s). Apply the fix and push?" % (why or "see pipeline-context.json")
         return self.question(GATE_HEADER, text, stage="pipeline", options=[
-            self.opt("Apply the fix and push (Recommended)" if not skill else "Apply the fix, run checks and code review, and push (Recommended)",
+            self.opt("Apply the fix and push (Recommended)",
                      "The fix list in pipeline-context.json is applied, pushed, and the checks are read again.", move="advance", steps=steps),
             self.opt("End the run", "Finish here without the fix; the run state is cleared.", move="advance", calls=[self.c("state clear")]), self.save()])
 
@@ -834,7 +808,7 @@ class Builder:
             elif stage == "fix":
                 extra = self.feedback_lines()
         if stage == "pipeline":
-            extra = ["Commit path: %s." % (r.state.get("commit_path") or "skip"), "Round: %s." % (r.state.get("pipeline_round") or 1)]
+            extra = ["Round: %s." % (r.state.get("pipeline_round") or 1)]
         # A step back to this stage (from Design to Plan, from Review to Intent): the agent runs again for the person's
         # reason, and with what the stage it came from left open.
         back = r.loop_into(stage) if stage not in ("build", "fix") else None
@@ -1246,14 +1220,8 @@ class Builder:
         if pr in ("one", "stacked") and not r.armed() and r.command == "temper":
             steps.append("Pull request: follow %s/reference/pr.md, section Capture, now: note base_sha, the branch, the default branch and the spec path, "
                          "since the state is gone after state clear." % self.plugin)
-            if r.state.get("commit_path") == "skill":
-                steps.append("Follow %s/reference/pr.md, section The review-readiness skill: run its Steps 1 to 5 once per part (%s), stop before the step that "
-                             "would mark a pull request ready, record each verdict with %s, then run %s again."
-                             % (self.plugin, "one part" if pr == "one" else "one part per Build group",
-                                self.c("evidence add --stage commit --claim 'readiness: {PASS|FAIL}, part {k} of {N}'"), self.c("report")))
-            else:
-                steps.append("Follow %s/reference/pr.md, section %s: every pull request is a draft, and Temper never marks one ready. "
-                             "A pull request that cannot be opened never fails the commit." % (self.plugin, "One PR" if pr == "one" else "Stacked PRs"))
+            steps.append("Follow %s/reference/pr.md, section %s: every pull request is a draft, and Temper never marks one ready. "
+                         "A pull request that cannot be opened never fails the commit." % (self.plugin, "One PR" if pr == "one" else "Stacked PRs"))
         if r.command == "temper" and r.cfg("phases.pipeline", "true").lower() != "false" and pr in ("one", "stacked") and not r.armed():
             steps.append("If a pull request was opened, run %s: Pipeline reads its checks. Otherwise run %s." % (
                 self.c("state advance commit_complete pipeline"), self.c("state clear")))

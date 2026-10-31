@@ -208,7 +208,7 @@ export const coveredAndManual = (w: World): void => {
   expect(asked.some(q => q.includes('Task 3') && q.includes('is a manual task')), 'the manual question was asked for Task 3')
 }
 
-// Draft pull request and the Pipeline stage (a fake gh and a bare origin): the Check question's Skip it option, the commit steps that
+// Draft pull request and the Pipeline stage (a fake gh and a bare origin): the Check question's Commit and open PR option, the commit steps that
 // open the PR as a draft, then Pipeline: red (the agent proposes a fix), the person applies it and pushes, green, end of run.
 export const prAndPipeline = (w: World): void => {
   const bin = path.join(w.dir, '..', `bin-${path.basename(w.dir)}`)
@@ -236,8 +236,7 @@ export const prAndPipeline = (w: World): void => {
     agents,
     person: (ask, wd) => {
       const q = String(ask.question.question)
-      if (q.startsWith('Check: the check passed')) return { label: 'More options', note: '' }
-      if (q.includes('more options')) return { label: 'Skip it, Temper PR steps', note: 'The skill is not installed here' }
+      if (q.startsWith('Check: the check passed')) return { label: 'Commit and open PR', note: '' }
       return recommended(ask, wd)
     },
     instruction: (wd, text) => {

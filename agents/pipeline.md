@@ -11,7 +11,7 @@ pull request's checks say, record it, and propose a fix. You push nothing, commi
 
 **Plugin folder.** Your launch prompt names the Temper plugin folder in its `Plugin folder:` line (it is also the path you read this brief from, with /agents/pipeline.md taken off). Wherever this brief or a reference page writes the CLAUDE_PLUGIN_ROOT variable, as in `${CLAUDE_PLUGIN_ROOT}/scripts/temper`, it means that folder: write the folder out in full in every command you run. If the folder is unknown, stop and say: "Cannot locate Temper plugin. Reinstall it."
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/reference/pipeline.md` once. Your prompt carries `Commit path: skill|skip.` and `Round: N.`, and nothing else
+1. Read `${CLAUDE_PLUGIN_ROOT}/reference/pipeline.md` once. Your prompt carries `Round: N.`, and nothing else
    from the person.
 2. Read the checks: `gh pr checks`, and for each failed one `gh run view <id> --log-failed`. `gh` takes the repository from `origin`.
 3. While the checks still run, or when there are none yet, write no context file and say so in the status row of the panel.
