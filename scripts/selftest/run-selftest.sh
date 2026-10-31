@@ -30,7 +30,9 @@ done
 
 if [[ "$TIER" == "slow" ]]; then exec bash "$HERE/test-temper.sh"; fi
 
+# Case files that use what an earlier file defines run in one process with it, in order: 2 with 3, 5 with 6, 8 with 9.
 ALL="1 2 3 4 5 6 7 8 9 10 11 12 13"
+group_of() { case "$1" in 3) echo "2 3" ;; 2) echo "2 3" ;; 5|6) echo "5 6" ;; 8|9) echo "8 9" ;; *) echo "$1" ;; esac; }
 case "$TIER" in
   fast) FILES="10 11 12 13" ;;
   changed)
@@ -48,11 +50,12 @@ case "$TIER" in
     ;;
   *) FILES="$ALL" ;;
 esac
+GROUPS_TO_RUN="$(for n in $FILES; do group_of "$n" | tr ' ' '_'; done | sort -t_ -k1,1n | uniq | tr '\n' ' ')"
 
 LOGS="$(mktemp -d)"; trap 'rm -rf "$LOGS"' EXIT
-run_one() { TEMPER_CASES_ONLY="$1" bash "$HERE/test-temper.sh" > "$LOGS/$1.log" 2>&1; }
+run_one() { TEMPER_CASES_ONLY="${1//_/ }" bash "$HERE/test-temper.sh" > "$LOGS/$1.log" 2>&1; }
 running=0
-for n in $FILES; do
+for n in $GROUPS_TO_RUN; do
   run_one "$n" &
   running=$((running + 1))
   if [[ "$running" -ge "$JOBS" ]]; then wait -n 2>/dev/null || wait; running=$((running - 1)); fi
@@ -60,11 +63,11 @@ done
 wait
 
 pass=0; fail=0; bad=0
-for n in $FILES; do
+for n in $GROUPS_TO_RUN; do
   line="$(grep -E '^PASS: [0-9]+  FAIL: [0-9]+' "$LOGS/$n.log" | tail -1)"
-  if [[ -z "$line" ]]; then echo "case file $n: no result (the run stopped early)"; tail -5 "$LOGS/$n.log" | sed 's/^/    /'; bad=$((bad + 1)); continue; fi
+  if [[ -z "$line" ]]; then echo "case file(s) ${n//_/ }: no result (the run stopped early)"; tail -5 "$LOGS/$n.log" | sed 's/^/    /'; bad=$((bad + 1)); continue; fi
   p="${line#PASS: }"; p="${p%% *}"; f="${line##*FAIL: }"
-  echo "case file $n: $line"
+  echo "case file(s) ${n//_/ }: $line"
   pass=$((pass + p)); fail=$((fail + f))
   [[ "$f" -eq 0 ]] || { grep '^FAIL' "$LOGS/$n.log" | head -8 | sed 's/^/    /'; }
 done
