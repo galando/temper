@@ -1574,7 +1574,12 @@ mkdir -p .claude/worktrees/temper-demo-T1/unit; echo 'exit 0' > .claude/worktree
 "$TEMPER" task accept 1 --reason 'an earlier task built it' >/dev/null 2>&1
 assert_eq "F19: task accept commits the tests as test(<slug>): Task N ... (built by an earlier task)" "1" \
   "$(git log --all --format=%s | grep -c '^test(demo): Task 1 Alpha (built by an earlier task)')"
-gi_setup; gp_mut '`bash unit/a_test.sh`' '`mvn test`'
+gi_setup
+sed -i '0,/^\*\*Test:\*\*.*/s//**Test:** `mvn test`/' .temper/specs/demo/tasks.md
+python3 -c "
+import json
+for f in ('.temper/groups.json', '.temper/build-state.json'):
+    d = json.load(open(f)); d.pop('plan_hash', None); json.dump(d, open(f, 'w'))"
 printf 'import sys\nprint("LOOP-RAN", len(sys.argv))\n' > fake-loop.py
 "$TEMPER" task start 1 >/dev/null 2>&1
 assert_eq "F22: task test hands a Maven test command to the Maven loop (TEMPER_MAVEN_LOOP overrides it)" "1" \
