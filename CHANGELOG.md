@@ -87,6 +87,13 @@ it now passes character for character when the person chose it and the only Temp
 started on 9.7.4 carries on: its running tasks take their model from the attempt number. A hook an older version left runs the gate
 on every branch until `bash scripts/guards/install.sh` writes the 9.7.5 hook; remove it with `temper guards uninstall`.
 
+**Suite counts.** The full self test went from 1761 passing, 0 failing (9.7.4, 22 minutes 37 seconds in series) to 1988 passing, 0 failing
+(`run-selftest.sh`, 4 at a time, about 17 minutes; the serial run in CI takes about 26 minutes). `claude plugin test .` runs 1610
+tests across 34 files; `bun scripts/e2e/run.ts both` plays 16 scenarios with the mod and without it and finds the flow identical in
+each (48 lines, 0 failures). `claude plugin validate --strict .`, `validate-directory.sh`, `validate-docs.sh`, `validate-readme.sh`,
+`validate-plugin.sh`, `validate-panels.py`, `check-mod-calls.sh` (13 calls, unchanged) and `check-known-limits.sh` pass, and the largest
+file, `scripts/temper`, is 254,333 bytes.
+
 ## v9.7.4: no key in CI, no token count, no credential handed to a test
 
 The directory's report on 9.7.3 (b1d1c18) cleared three holds: the mod staying the same, the mod running slash commands
