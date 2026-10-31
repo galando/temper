@@ -442,3 +442,53 @@ assert_eq "F7: a Validate type checked at Check, and a deferred optional criteri
   "$(python3 "$REPO_ROOT/scripts/acceptance.py" build f7skip/intent.md f7skip/ev.json | paste -sd'|' -)"
 rm -rf f7skip
 setup
+
+# --- The audit of the port (F14, F18): Teach Me gives way to the small change at a passed Review with open findings; the Review snapshot; the worktree copy wins through task test ---
+_all_labels() { nx "'|'.join([o['label'] for o in d['ask']['options']] + [o['label'] for o in d['ask'].get('more', {}).get('options', [])])"; }
+fresh; gpass intent plan build review; _at review
+mkdir -p .temper/evidence; printf '[{"claim": "review completed", "severity": null, "label": "PROVEN"}]\n' > .temper/evidence/review.json
+assert_eq "F14: at a passed Review with no finding, Teach Me stays and no small change is offered beside it" "1|1" "$(_all_labels | tr '|' '\n' | grep -c '^Teach Me$')|$(_all_labels | tr '|' '\n' | grep -c '^Make a small change$')"
+printf '[{"claim": "review completed", "severity": null, "label": "PROVEN"}, {"claim": "src/a.sh:3 a style nit", "severity": "low", "label": "HEURISTIC", "confidence": 80}]\n' > .temper/evidence/review.json
+assert_eq "F14: with an open finding Teach Me gives way to Make a small change, in both questions" "0|1" "$(_all_labels | tr '|' '\n' | grep -c '^Teach Me$')|$(_all_labels | tr '|' '\n' | grep -c '^Make a small change$')"
+setup
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+git init -q . 2>/dev/null; git config user.email t@example.com; git config user.name T; git add -A >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
+"$TEMPER" adhoc open --stage check --reason "fix an off by one" >/dev/null 2>&1
+mkdir -p src; echo changed > src/a.sh
+"$TEMPER" adhoc close >/dev/null 2>&1
+assert_eq "F14: closing a change that re-runs Review takes the Review code snapshot then" "1" \
+  "$(python3 -c "import json; print(int(bool(json.load(open('.temper/build-state.json')).get('review_snapshot'))))")"
+python3 -c "
+import json
+d = json.load(open('.temper/build-state.json')); d.pop('review_snapshot', None); json.dump(d, open('.temper/build-state.json', 'w'))"
+"$TEMPER" adhoc open --stage review --reason "a doc fix" >/dev/null 2>&1; mkdir -p docs; echo more > docs/guide.md
+"$TEMPER" adhoc close >/dev/null 2>&1
+assert_eq "F14: a change of docs only takes no snapshot" "0" \
+  "$(python3 -c "import json; print(int(bool(json.load(open('.temper/build-state.json')).get('review_snapshot'))))")"
+setup
+# F18 through task test: a package importable from the project root (PYTHONPATH here) and from the task worktree: the worktree copy wins
+f9_tasks | m_setup
+mkdir -p f18inst f18probe; echo "WHO = 'installed'" > f18inst/pkgx.py; printf 'import pkgx\nprint("WHO=" + pkgx.WHO)\n' > f18probe/probe.py
+"$TEMPER" task start 1 >/dev/null 2>&1
+python3 - "$PWD/f18probe/probe.py" <<'PYT'
+import re, sys
+p = '.temper/specs/demo/tasks.md'
+t = open(p).read()
+open(p, 'w').write(re.sub(r'^\*\*Test:\*\*.*$', '**Test:** `python3 ' + sys.argv[1] + '`', t, count=1, flags=re.M))
+PYT
+python3 -c "
+import json
+for f in ('.temper/groups.json', '.temper/build-state.json'):
+    d = json.load(open(f)); d.pop('plan_hash', None); json.dump(d, open(f, 'w'))"
+echo "WHO = 'worktree'" > .claude/worktrees/temper-demo-T1/pkgx.py
+assert_eq "F18: task test runs with the task worktree first on PYTHONPATH, so the worktree copy of a package wins" "WHO=worktree" \
+  "$(PYTHONPATH="$PWD/f18inst" "$TEMPER" task test 1 --phase red 2>&1 | grep '^WHO=')"
+rm -rf f18inst f18probe
+setup
+# F14 in a fix run: the Fix stage question is asked, and it does not offer the small change (its change is the fix itself)
+setup; "$TEMPER" state init demo-bug --command fix >/dev/null 2>&1
+mkdir -p .temper/specs/demo-bug; printf '# Root cause\nx\n' > .temper/specs/demo-bug/rca.md
+_at fix; gpass build fix rca
+assert_eq "F14: a fix run's Fix stage question does not offer Make a small change" "ask|fix|0" \
+  "$(nx "d['action'] + '|' + d['stage'] + '|' + str(sum(1 for o in d['ask']['options'] + d['ask'].get('more', {}).get('options', []) if o['label'] == 'Make a small change'))")"
+setup

@@ -907,7 +907,7 @@ class Builder:
                                "after": [self.c("task gate %d --model %s --ms {ms}" % (t["task"], t.get("model")))],
                                "task": t["task"], "group": t.get("group"), "title": t.get("title"), "attempt": t.get("attempt")})
             return {"action": "work", "stage": "build", "calls": [], "agents": agents,
-                    "say": "Build: %s. %s" % (", ".join("Task %d runs on %s" % (x["task"], x["model"]) for x in agents), goes_on(len(agents) > 1))}
+                    "say": "Build: %s. %s" % (", ".join("Task %d runs on %s" % (x["task"], short_model(x["model"])) for x in agents), goes_on(len(agents) > 1))}
 
         running = [(int(n), v) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "running"]
         covered = sorted(int(n) for n, v in rt.items() if isinstance(v, dict) and v.get("status") == "covered")
@@ -920,7 +920,7 @@ class Builder:
             return {"action": "wait", "stage": "build", "tasks": [
                 {"task": n, "model": self.ran_on(v), "after": [self.c("task gate %d --model %s --ms {ms}" % (n, self.ran_on(v)))]}
                 for n, v in sorted(running)],
-                "say": "Build: %s. %s" % (", ".join("Task %d runs on %s" % (n, self.ran_on(v)) for n, v in sorted(running)), goes_on(len(running) > 1))}
+                "say": "Build: %s. %s" % (", ".join("Task %d runs on %s" % (n, short_model(self.ran_on(v))) for n, v in sorted(running)), goes_on(len(running) > 1))}
 
         for g in gid:
             st = (rg.get(g) or {}).get("status")
@@ -1476,10 +1476,16 @@ def goes_on(plural):
     return "The run goes on when %s." % ("they return" if plural else "it returns")
 
 
+def short_model(model):
+    """The name a person knows a model by: claude-haiku-5-5 is haiku. Any other name stays as it is."""
+    m = re.match(r"^claude-(haiku|sonnet|opus|fable)-\d", str(model))
+    return m.group(1) if m else str(model)
+
+
 def on_model(agents):
     """ on <model>: the model each agent is launched on, as `next` names it (what Temper asks for, not the model that
     served each turn)."""
-    models = sorted({str(a.get("model")) for a in agents if a.get("model")})
+    models = sorted({short_model(a.get("model")) for a in agents if a.get("model")})
     return " on %s" % ", ".join(models) if models else ""
 
 

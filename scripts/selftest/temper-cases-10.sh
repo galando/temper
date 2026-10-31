@@ -80,8 +80,8 @@ assert_eq "F3: a stage agent's wait text names the stage, the agent, the model a
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w"}}, "tasks": {"1": {"status": "running", "attempt": 1, "group": "G1"}}}\n' > .temper/groups.json
 assert_eq "F3: a running task is named with its model, and the run goes on when it returns" \
-  "Build: Task 1 runs on claude-haiku-5-5. The run goes on when it returns." "$(nx "d['say']")"
-assert_eq "F3: the status the mod shows is that sentence" "Build: Task 1 runs on claude-haiku-5-5. The run goes on when it returns." "$(vw "d['status']")"
+  "Build: Task 1 runs on haiku. The run goes on when it returns." "$(nx "d['say']")"
+assert_eq "F3: the status the mod shows is that sentence" "Build: Task 1 runs on haiku. The run goes on when it returns." "$(vw "d['status']")"
 _all_says=""
 fresh; _all_says+="$(vw "d['status']")"$'\n'
 gpass intent; _all_says+="$(vw "d['status']")"$'\n'
