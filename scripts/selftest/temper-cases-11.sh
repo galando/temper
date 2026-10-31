@@ -1,19 +1,6 @@
 # Release 9.7.5, Phases B and C (F6 to F22). Sourced by test-temper.sh after temper-cases-10.sh (helpers: nx, vw, labels,
 # gpass, gfail, fresh, setup). Every throwaway project here is the selftest's own folder, and its folder names are unit and src.
 
-m_setup() { # m_setup <tasks.md text on stdin>: a fresh repository on the run's feature branch with the plan approved, one group started
-  local text; text="$(cat)"
-  setup
-  rm -rf .git README; git init -q . 2>/dev/null
-  git config user.email t@example.com; git config user.name T
-  echo base > README; git add README; git commit -q -m base
-  git checkout -q -B feature/demo
-  printf '%s\n' "$text" > .temper/specs/demo/tasks.md
-  printf '{"plan":{"verdict":"PASS"},"intent":{"verdict":"PASS"}}\n' > .temper/gates.json
-  "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
-  "$TEMPER" group start G1 >/dev/null 2>&1
-}
-m_field() { python3 -c "import json,sys; print(json.load(open('.temper/groups.json'))['tasks'][sys.argv[1]].get(sys.argv[2],''))" "$1" "$2"; }
 
 # --- F12. tasks.md file lists and manual tasks ---
 assert_eq "F12: a bullet list under **Files:** and a one line **File:** both declare files" "docs/guide.md,src/b.py|a.py,b.py|1|0" \
@@ -141,70 +128,6 @@ assert_eq "F7: a row an agent wrote (not run by the CLI) does not pass a scenari
   "$(python3 "$REPO_ROOT/scripts/acceptance.py" build .temper/specs/demo/intent.md .temper/evidence/build.json | sed -n 2p | cut -c1-11)"
 
 # --- F8 and F9. The scenario tests: owed by a task, run by the group gate and by integrate ---
-f9_tasks() { cat <<'TASKS'
-# Tasks: demo
-
-**Integration:** `true`
-
-## Group G1: Core
-**Depends:** none
-**Validate:** `true`
-**Context:**
-The core.
-
-### Task 1: first
-**File:** `src/a.sh`, `unit/a_test.sh`
-**Depends:** none
-**Test:** `true`
-**Cases:**
-- a holds
-**Traced to:** Scenario: "alpha"
-- [ ] done
-
-### Task 2: second
-**File:** `src/b.sh`, `unit/b_test.sh`
-**Depends:** Task 1
-**Test:** `true`
-**Cases:**
-- b holds
-**Traced to:** Scenario: "alpha", "beta"
-- [ ] done
-TASKS
-}
-f9_intent() { # f9_intent <alpha command> <beta command>
-  cat > .temper/specs/demo/intent.md <<INT
-**Status:** accepted
-
-## Problem
-The demo.
-
-### Success Criteria
-- [ ] AC-01 [required]: alpha works
-  Why: a
-  Validate: scenario — alpha
-- [ ] AC-02 [required]: beta works
-  Why: b
-  Validate: scenario — beta
-
-## Scenarios (BDD)
-\`\`\`gherkin
-Scenario: alpha
-  Given a
-  When b
-  Then c
-  Covers: AC-01
-  Test: $1
-\`\`\`
-\`\`\`gherkin
-Scenario: beta
-  Given a
-  When b
-  Then c
-  Covers: AC-02
-  Test: $2
-\`\`\`
-INT
-}
 f9_tasks | m_setup
 f9_intent "bash -c 'exit 0'" "bash -c 'exit 5'"
 assert_eq "F9: a scenario traced to two tasks is owed by the task all the others precede; one traced to a task, by it" "alpha|beta" \
@@ -274,54 +197,6 @@ gfail build "criteria validated" "AC-02 FAIL: scenario 'second' (bash -c 'exit 3
 assert_eq "F8: a row that exists and failed keeps the gate question" "ask" "$(nx "d['action']")"
 
 # --- F16. build.grouped.max-groups, and a plan with tasks and no groups stops Build with no agent ---
-_three_groups() { cat <<'TASKS'
-# Tasks: demo
-
-**Integration:** `true`
-
-## Group G1: One
-**Depends:** none
-**Validate:** `true`
-**Context:**
-x
-
-### Task 1: a
-**File:** `src/a.sh`
-**Depends:** none
-**Test:** `true`
-**Cases:**
-- a
-- [ ] done
-
-## Group G2: Two
-**Depends:** none
-**Validate:** `true`
-**Context:**
-x
-
-### Task 2: b
-**File:** `src/b.sh`
-**Depends:** none
-**Test:** `true`
-**Cases:**
-- b
-- [ ] done
-
-## Group G3: Three
-**Depends:** none
-**Validate:** `true`
-**Context:**
-x
-
-### Task 3: c
-**File:** `src/c.sh`
-**Depends:** none
-**Test:** `true`
-**Cases:**
-- c
-- [ ] done
-TASKS
-}
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 _three_groups > .temper/specs/demo/tasks.md; rm -f .temper/groups.json
 assert_eq "F16: by default two groups start at once" "group start G1|group start G2" "$(nx "'|'.join(c.split('temper ', 1)[1] for c in d['calls'] if 'group start' in c)")"
@@ -351,50 +226,6 @@ assert_eq "F17: a timed out gate offers a rerun at 1200 seconds first" "Run the 
   "$(nx "d['ask']['options'][0]['label'] + '|' + d['ask']['options'][0]['calls'][0].split('temper ', 1)[1]")"
 
 # --- F13. Change reopens the task it concerns and the tasks that must reopen with it ---
-_change_tasks() { cat <<'TASKS'
-# Tasks: demo
-
-**Integration:** `true`
-
-## Group G1: Core
-**Depends:** none
-**Validate:** `true`
-**Context:**
-x
-
-### Task 1: parse
-**File:** `src/p.sh`, `src/shared.sh`
-**Depends:** none
-**Test:** `true`
-**Cases:**
-- a
-- [x] done
-
-### Task 2: print
-**File:** `src/o.sh`, `src/shared.sh`
-**Depends:** Task 1
-**Test:** `true`
-**Cases:**
-- b
-- [x] done
-
-### Task 3: help
-**File:** `src/h.sh`
-**Depends:** Task 2
-**Test:** `true`
-**Cases:**
-- c
-- [x] done
-
-### Task 4: version
-**File:** `src/v.sh`
-**Depends:** none
-**Test:** `true`
-**Cases:**
-- d
-- [x] done
-TASKS
-}
 fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
 _change_tasks > .temper/specs/demo/tasks.md
 printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}, "2": {"status": "passed", "group": "G1"}, "3": {"status": "passed", "group": "G1"}, "4": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json

@@ -2,51 +2,7 @@
 # (.temper/view.json), and refuses to leave a stage whose check failed unless the person skipped it.
 # Sourced by test-temper.sh (assert_eq, assert_exit, setup, $TEMPER).
 
-_ev() { # _ev <code> <json text>: runs the code over d (the JSON); the last "; " part is printed
-  python3 - "$1" "$2" <<'PY' 2>&1
-import json, sys
-code, text = sys.argv[1], sys.argv[2]
-d = json.loads(text)
-*stmts, last = code.split('; ')
-env = {'d': d}
-for st in stmts:
-    exec(st, env)
-print(eval(last, env))
-PY
-}
-nx() { _ev "$1" "$("$TEMPER" next --json 2>/dev/null)"; }   # one value of `temper next --json`
-vw() { _ev "$1" "$(cat .temper/view.json 2>/dev/null)"; }      # one value of .temper/view.json
-labels() { nx "'|'.join(o['label'] for o in d['ask']['question']['options'])"; }
-gpass() { # gpass <stage>...: record a PASS verdict for each stage, as a gate run would
-  python3 - "$@" <<'PY'
-import json, sys
-p = '.temper/gates.json'
-try:
-    d = json.load(open(p))
-except Exception:
-    d = {}
-for s in sys.argv[1:]:
-    d[s] = {'verdict': 'PASS', 'requirements': [{'name': 'all', 'pass': True, 'detail': 'ok'}]}
-json.dump(d, open(p, 'w'))
-PY
-}
-gfail() { # gfail <stage> <row name> <detail>: record a FAIL verdict with one failed row
-  python3 - "$1" "$2" "$3" <<'PY'
-import json, sys
-p = '.temper/gates.json'
-try:
-    d = json.load(open(p))
-except Exception:
-    d = {}
-d[sys.argv[1]] = {'verdict': 'FAIL', 'requirements': [{'name': sys.argv[2], 'pass': False, 'detail': sys.argv[3]}]}
-json.dump(d, open(p, 'w'))
-PY
-}
-fresh() { # a new run of the demo spec at Intent, with the run state written by the CLI
-  setup
-  rm -f .temper/groups.json .temper/view.json
-  "$TEMPER" state init demo --feature "the demo thing" >/dev/null 2>&1
-}
+# The helpers this file and the later ones use (_ev, nx, vw, labels, gpass, gfail, fresh) are in case-helpers.sh.
 
 # --- no run ---
 setup; "$TEMPER" state clear >/dev/null 2>&1

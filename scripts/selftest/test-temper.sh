@@ -221,6 +221,7 @@ _dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI
 # The cases live in the files next to this one, sourced in order so they share the helpers,
 # the counters and the state each case leaves for the next. Each stays well under the size a
 # reader takes in at once.
+source "$TESTS_DIR/case-helpers.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 1 "* ]] && source "$TESTS_DIR/temper-cases-1.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 2 "* ]] && source "$TESTS_DIR/temper-cases-2.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 3 "* ]] && source "$TESTS_DIR/temper-cases-3.sh"
@@ -233,6 +234,7 @@ _dg_plugin() { # _dg_plugin <folder>: makes that throwaway plugin there (the CLI
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 10 "* ]] && source "$TESTS_DIR/temper-cases-10.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 11 "* ]] && source "$TESTS_DIR/temper-cases-11.sh"
 [[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 12 "* ]] && source "$TESTS_DIR/temper-cases-12.sh"
+[[ -z "${TEMPER_CASES_ONLY:-}" || " $TEMPER_CASES_ONLY " == *" 13 "* ]] && source "$TESTS_DIR/temper-cases-13.sh"
 
 # the suite leaves the real .temper folder as it was, and a CLI call outside its own folder is refused
 assert_eq "selftest safety: the real .temper folder is as it was" "$_REAL_TEMPER_BEFORE" "$(find "$REPO_ROOT/.temper" -type f -printf '%p %s %T@\n' 2>/dev/null | LC_ALL=C sort | cksum)"
