@@ -28,15 +28,15 @@ jobs:
       # They live in one pinned commit and are restored here, so Pages serves them as video/mp4.
       - name: Restore the videos
         env:
-          MEDIA_SHA: a77c3396989fa5a37bd7c9daaf338b6c5e72205b
+          MEDIA_SHA: 36ce94bd6f138f62aa0c6885d786a8901d63444d
         run: |
           git fetch --depth 1 origin "$MEDIA_SHA"
           mkdir -p docs/media
           # Each file by its blob id in that commit: the workflow video and its poster, then the mod tour.
-          git cat-file blob d55a8b50f614d5b4bf32644f0cfc637985c198cf > docs/media/workflow.mp4
-          git cat-file blob da0950b8a5811acaf3adf5c184d9ec5435bc10b3 > docs/media/workflow.jpg
-          git cat-file blob bdbe503e8036b64844ac401fe45b23d00b8b3cc3 > docs/media/tour.mp4
-          git cat-file blob 24e3f2a050be1a5214b7c5d2515ca83839286d20 > docs/media/tour.jpg
+          git cat-file blob 8486ef0e02ef6e0da9adbb3da1650e5e803a1ad9 > docs/media/workflow.mp4
+          git cat-file blob d221a932b4086bb03c8fbe1bf0f832fe9cbc9de0 > docs/media/workflow.jpg
+          git cat-file blob 20507b8131f0408be8c191bea13432ad7022c62b > docs/media/tour.mp4
+          git cat-file blob d35cd16a619580963e8cca74d2aaf3279d67af79 > docs/media/tour.jpg
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
