@@ -275,7 +275,7 @@ python3 - <<'PYT'
 import json
 d = json.load(open('.temper/build-state.json')); d['adhoc'] = {'stage': 'check', 'reason': 'x', 'base': '', 'files': {}}; json.dump(d, open('.temper/build-state.json', 'w'))
 PYT
-assert_eq "F14: it is not offered while a window is open" "0" "$(nx "str(sum(1 for o in d['ask']['more']['options'] if o['label'] == 'Make a small change'))")"
+assert_eq "F14: it is not offered while a window is open" "0" "$(nx "str(sum(1 for o in d['ask']['options'] + d['ask'].get('more', {}).get('options', []) if o['label'] == 'Make a small change'))")"
 python3 - <<'PYT'
 import json
 d = json.load(open('.temper/build-state.json')); d.pop('adhoc'); d['adhoc_done'] = {'stage': 'check', 'reason': 'x', 'files': ['src/a.sh'], 'doc_only': False, 'steps': ['review', 'check', 'commit']}; json.dump(d, open('.temper/build-state.json', 'w'))
