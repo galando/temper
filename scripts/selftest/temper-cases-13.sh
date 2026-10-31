@@ -57,10 +57,10 @@ assert_eq "F27: a changed spec folder gets its record commit" "0|1" \
 git checkout -q -- . >/dev/null 2>&1
 
 # F8. The plan gate names a scenario without a Test: line; the CLI refuses a scenario name intent.md does not hold
-fresh; f7_intent; sed -i '/^  Test: /d' .temper/specs/demo/intent.md
+fresh; f9_intent "true" "true"; sed -i '/^  Test: /d' .temper/specs/demo/intent.md
 assert_eq "F8: the plan gate row scenario test commands names a scenario with no Test: line" "1" \
-  "$("$TEMPER" gate plan 2>&1 | grep -c "scenario test commands.*the CLI lists categories in color")"
-f7_intent
+  "$("$TEMPER" gate plan 2>&1 | grep -c "scenario test commands.*alpha")"
+f9_intent "true" "true"
 assert_eq "F8: evidence run --scenario refuses a name intent.md does not hold" "refused" \
   "$("$TEMPER" evidence run --stage build --scenario 'no such scenario' --claim x -- true >/dev/null 2>&1 && echo ran || echo refused)"
 
@@ -89,3 +89,20 @@ gpass build
 assert_eq "F15: a passed Build gate is the same with the mod off" "same" "$(_same_with_mod_off)"
 assert_eq "F5: next --json and view.json carry the same question at a passed Build gate" "same" \
   "$(a="$("$TEMPER" next --json 2>/dev/null | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin).get('ask'), sort_keys=True))")"; b="$(python3 -c "import json; print(json.dumps(json.load(open('.temper/view.json')).get('ask'), sort_keys=True))")"; [[ "$a" == "$b" ]] && echo same || echo differs)"
+
+# F13. Past three tasks, the rest go under More options of the Which task changes? question
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+_change_tasks > .temper/specs/demo/tasks.md
+printf '\n### Task 5: extra\n**File:** `src/e5.sh`\n**Depends:** none\n**Test:** `true`\n**Cases:**\n- e\n- [x] done\n' >> .temper/specs/demo/tasks.md
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}}}, "tasks": {"1": {"status": "passed", "group": "G1"}, "2": {"status": "passed", "group": "G1"}, "3": {"status": "passed", "group": "G1"}, "4": {"status": "passed", "group": "G1"}, "5": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
+assert_eq "F13: with five tasks the question shows three and More options, which holds the rest" "Task 1 (with Task 2)|Task 2|Task 3|More options#Task 4|Task 5" \
+  "$(nx "'|'.join(o['label'] for o in d['ask']['change']['question']['options']) + '#' + '|'.join(o['label'] for o in d['ask']['change']['more']['options'])")"
+
+# F1. A note named for a task reaches that task's prompt only
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+f9_tasks > .temper/specs/demo/tasks.md
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": ".claude/worktrees/temper-demo-G1"}}, "tasks": {"1": {"status": "pending", "group": "G1"}}}\n' > .temper/groups.json
+"$TEMPER" evidence add --stage build --phase note --kind input --claim 'Task 1: use the retry helper' >/dev/null 2>&1
+"$TEMPER" evidence add --stage build --phase note --kind input --claim 'Task 2: leave this alone' >/dev/null 2>&1
+assert_eq "F1: the prompt of Task 1 carries its own note and not the note of Task 2" "1|0" \
+  "$(nx "str(sum(a['prompt'].count(\"Person's note: Task 1: use the retry helper\") for a in d['agents'])) + '|' + str(sum(a['prompt'].count('leave this alone') for a in d['agents']))")"

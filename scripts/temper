@@ -4272,6 +4272,10 @@ sys.exit(0 if re.match("^" + "".join(out) + "$", target) else 1)
 PY
 }
 
+gate_pipeline() { # gate_pipeline <spec_path>: the rows of the Pipeline gate (gate_rows.py)
+  python3 -E -s "$SCRIPTS_DIR/gate_rows.py" pipeline-gate "$1"
+}
+
 gate_commit() {
   local reqs=() all_pass=1
   local run_mode; run_mode="$(cmd_state_get run_mode interactive)"
@@ -4522,7 +4526,7 @@ cmd_gate() {
     review) out=$(gate_review) ;;
     check) out=$(gate_check "$spec_path") ;;
     commit) out=$(gate_commit) ;;
-    pipeline) out=$(python3 -E -s "$SCRIPTS_DIR/gate_rows.py" pipeline-gate "$spec_path") ;;
+    pipeline) out=$(gate_pipeline "$spec_path") ;;
   esac
   if [[ -n "${out:-}" ]]; then
     reqs_json="${out% *}"
