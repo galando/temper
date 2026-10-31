@@ -43,3 +43,49 @@ if command -v mvn >/dev/null 2>&1 && command -v java >/dev/null 2>&1 && [[ -d "$
 else
   echo "SKIP: F22 real Maven case: java, mvn or the local repository is not here"
 fi
+
+# --- The audit of the port: the checks the first pass left to a direct call or to the e2e driver ---
+# F27. Nothing to stage: a spec folder that git tracks and that has not changed gives no git add and no git commit
+fresh; gpass intent plan build review check commit
+git add -A >/dev/null 2>&1; git -c user.email=t@example.com -c user.name=T commit -qm "the spec is committed" >/dev/null 2>&1
+_at commit; "$TEMPER" report --end >/dev/null 2>&1; "$TEMPER" report --no-html >/dev/null 2>&1
+assert_eq "F27: a committed, unchanged spec folder with no code says there is no record commit, and gives no git add" "1|0" \
+  "$(nx "str(sum(1 for s in d['steps'] if s.startswith('There is no record commit'))) + '|' + str(sum(1 for s in d['steps'] if s.startswith('git add')))")"
+echo "a changed line" >> .temper/specs/demo/intent.md
+assert_eq "F27: a changed spec folder gets its record commit" "0|1" \
+  "$(nx "str(sum(1 for s in d['steps'] if s.startswith('There is no record commit'))) + '|' + str(sum(1 for s in d['steps'] if s.startswith('git add')))")"
+git checkout -q -- . >/dev/null 2>&1
+
+# F8. The plan gate names a scenario without a Test: line; the CLI refuses a scenario name intent.md does not hold
+fresh; f7_intent; sed -i '/^  Test: /d' .temper/specs/demo/intent.md
+assert_eq "F8: the plan gate row scenario test commands names a scenario with no Test: line" "1" \
+  "$("$TEMPER" gate plan 2>&1 | grep -c "scenario test commands.*the CLI lists categories in color")"
+f7_intent
+assert_eq "F8: evidence run --scenario refuses a name intent.md does not hold" "refused" \
+  "$("$TEMPER" evidence run --stage build --scenario 'no such scenario' --claim x -- true >/dev/null 2>&1 && echo ran || echo refused)"
+
+# F12. The schedule's ready line shows the manual flag
+printf '# Tasks: demo\n\n**Integration:** `true`\n\n## Group G1: A\n**Depends:** none\n**Validate:** `true`\n**Context:**\nx\n\n### Task 1: hand check\n**File:** `docs/a.md`\n**Test:** manual - a person reads it\n**Cases:**\n- reads well\n- [ ] done\n' > .temper/specs/demo/tasks.md
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "running", "worktree": "w"}}, "tasks": {}}\n' > .temper/groups.json
+assert_eq "F12: a manual task's ready line carries manual true" "true" \
+  "$("$TEMPER" schedule 2>/dev/null | head -1 | python3 -c "import json,sys; print(str(json.loads(sys.stdin.readline())['manual']).lower())")"
+
+# F14. A gate run from the commit hook neither marks the small change's step nor closes its window
+fresh; gpass intent plan build review check
+"$TEMPER" adhoc open --stage check --reason 'a small fix' >/dev/null 2>&1
+"$TEMPER" gate commit --from-hook >/dev/null 2>&1
+assert_eq "F14: the window is still open after a gate run from the hook" "check" \
+  "$(python3 -c "import json; print((json.load(open('.temper/build-state.json')).get('adhoc') or {}).get('stage', 'closed'))")"
+"$TEMPER" adhoc close >/dev/null 2>&1
+
+# F5 and F15. next --json and view.json agree, and the mod switch changes nothing, at the integrate and the passed gate states too
+fresh; gpass intent plan; "$TEMPER" state advance intent_complete plan >/dev/null 2>&1; "$TEMPER" state advance plan_complete build >/dev/null 2>&1
+f9_tasks > .temper/specs/demo/tasks.md
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "passed", "worktree": "w", "gate": {"verdict": "PASS"}, "confirmed": "x"}}, "tasks": {"1": {"status": "passed", "group": "G1"}, "2": {"status": "passed", "group": "G1"}}}\n' > .temper/groups.json
+assert_eq "F15: the integrate step (groups passed, not yet merged) is the same with the mod off" "same" "$(_same_with_mod_off)"
+printf '{"version": 1, "slug": "demo", "groups": {"G1": {"status": "merged", "worktree": "w", "gate": {"verdict": "PASS"}, "confirmed": "x"}}, "tasks": {"1": {"status": "passed", "group": "G1"}, "2": {"status": "passed", "group": "G1"}}, "integration": {"verdict": "PASS"}}\n' > .temper/groups.json
+assert_eq "F15: merged groups are the same with the mod off" "same" "$(_same_with_mod_off)"
+gpass build
+assert_eq "F15: a passed Build gate is the same with the mod off" "same" "$(_same_with_mod_off)"
+assert_eq "F5: next --json and view.json carry the same question at a passed Build gate" "same" \
+  "$(a="$("$TEMPER" next --json 2>/dev/null | python3 -c "import json,sys; print(json.dumps(json.load(sys.stdin).get('ask'), sort_keys=True))")"; b="$(python3 -c "import json; print(json.dumps(json.load(open('.temper/view.json')).get('ask'), sort_keys=True))")"; [[ "$a" == "$b" ]] && echo same || echo differs)"

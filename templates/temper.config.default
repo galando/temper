@@ -104,6 +104,7 @@ plan:
   context-check: auto               # auto: ask when the Context Map has an ignore or a gap; always; off
 phases:
   design: true                 # design stage for medium/complex features (auto-skipped otherwise)
+  pipeline: true               # false: no Pipeline stage after a Commit that opened a pull request
 
 feedback:
   enabled: true                # allow Review->Build / Check->Build loops

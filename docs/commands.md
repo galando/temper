@@ -104,6 +104,8 @@ after the command is one of these, Temper handles it instead of starting a run. 
 | `/temper:temper discuss <text>` | Send a message about the step you are at. It changes no stage. |
 | `/temper:temper help` | List these |
 
+With the mod off, every phase works the same; the mod adds the band, the pane and its write guards. Nothing falls back silently.
+
 A word that names a move (`approve`, `next`, `back`, `override`, `accept`, `drift`) is your wish, not
 your decision: you decide in the question dialog that follows, with one click. Claude cannot decide for
 you. With the mod loaded it answers the words that only show something (`status`, `timeline`,

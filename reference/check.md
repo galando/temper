@@ -178,6 +178,12 @@ Build while the budget allows, a skip with a reason, and Save for later). This s
   page (never print an install command), and never fail the whole pipeline for an
   optional tool.
 
+## Maven
+
+A Maven group validates with `mvn verify` run once with JaCoCo on, so the suite and its coverage come from one run. A task's tests run
+only its declared test classes (`-Dtest=`, offline, `mvnd` when it is on PATH, else `mvn`), and GREEN needs a new surefire report for
+each class (`scripts/maven_loop.py`). Check never runs a second full Maven pass for coverage.
+
 ## One suite run, with coverage
 
 Check runs the project's suite once. When the stack allows it, coverage is on in that same run; a second full run for coverage is

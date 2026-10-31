@@ -54,11 +54,31 @@ git identity, the mod runs nothing and sets nothing, and `userConfig.enforcement
 - **Notes and typed answers (F1)** reach the next agent; the wait text and every `say` are sentences for the person (F3); a failed
   call stops its action (F4); `temper next` starts one Python process (F5); the models and their sources are shown (F2).
 
+**What broke in the short entries (cause, why nothing failed, fix)**
+- *F1, F3, F4.* A note or a typed answer only edited files, so no agent read it; a `say` could hold an instruction for Claude; a failed call
+  let the action go on. The loop had no rule for any of the three, and every step still ran, so no test failed. Notes are ledger rows the next
+  agent prompt carries, every `say` is a sentence, and `commands/temper.md` states that a failed call stops its action (the stage agent's
+  gate call named `gate` is the one exception).
+- *F2, F5.* The model a stage ran on was invisible, and `temper next` started several Python processes (2.2 s). Nothing measured either. The
+  model rules and the setup facts moved into `scripts/cli_ctx.py`, one process computes the answer and the view, and the output is byte for
+  byte the same (the view fixtures are regenerated and compared).
+- *F13, F16, F17.* Change reopened the whole group, a plan with tasks and no groups reached a Build with nothing to run, and a slow group gate
+  was cut at the task limit. Each was a missing rule in a path the happy run never took. Each now has its own question or limit.
+- *F18, F20, F21.* A test imported the project copy instead of the worktree copy, agents ran the full suite twice, and Temper's own files
+  counted as outside the declared files. All three passed locally because the copies were equal. The folder first on `PYTHONPATH`, scoped
+  tests and one suite run, and a skip list in `scripts/blast_filter.py` fix them.
+- *F27.* A run with nothing to stage still printed `git add` and `git commit`, and the commit hook refused the empty commit. The record
+  steps now say there is no record commit when no code is uncommitted, no lesson file exists, and the spec folder is git ignored or unchanged.
+- *F28, F29, F30, F31.* A new branch took the spec files of an earlier run with it, the commit hook gated every branch, a disabled plugin
+  left its hook behind, and the band showed failed rows while an answer was carried out. Each hid behind a single-run test setup.
+- *The readiness skill (F25) is not part of this release.* The optional `review-readiness` skill was taken out: the Check question offers
+  Temper's own draft pull request steps (`reference/pr.md`) and nothing else, and `temper next` takes no `--skill`.
+
 **Tests.** The self test refuses a CLI call outside its own folder (`TEMPER_SELFTEST_ROOT`) and leaves the real `.temper` as it was.
 `scripts/selftest/run-selftest.sh` runs the case files in parallel (`--jobs`, `TEMPER_SELFTEST_JOBS`, at most 12) with tiers
 (`--fast`, `--slow`, `--changed [REV]`); the helpers the case files share are in `case-helpers.sh`. `bun scripts/e2e/run.ts both`
 plays the orchestrator with scripted agents and a scripted person through the real CLI, with the mod's rule engine and without it, over
-15 scenarios, and checks the flow is identical (`scripts/e2e/live-smoke.sh` is a live model smoke, off by default and never in CI).
+16 scenarios, and checks the flow is identical (`scripts/e2e/live-smoke.sh` is a live model smoke, off by default and never in CI).
 The mod answer audit answers every option of every question of the view fixtures and judges each person only call by the mod's rule.
 The e2e carry scenario found one real fault: the mod refused the command the CLI wrote to carry the spec files across a branch switch;
 it now passes character for character when the person chose it and the only Temper path it writes is the spec folder.

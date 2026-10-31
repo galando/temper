@@ -9,6 +9,7 @@
 - Test: `./mvnw test` or `./gradlew test`
 - Integration: `./mvnw verify -DskipUnitTests` or `./gradlew integrationTest`
 - Coverage: `./mvnw jacoco:report` or `./gradlew jacocoTestReport`
+- Grouped Build with Maven: a group validates with `mvn verify` once, JaCoCo on; a task runs only its declared test classes (`-Dtest=`), offline, on `mvnd` when it is on PATH, and needs a new surefire report per class
 - Build: `./mvnw package` or `./gradlew build`
 - Lint: `./mvnw checkstyle:check` or `./gradlew checkstyleMain`
 - Security: `./mvnw dependency-check:check` or `./gradlew dependencyCheckAnalyze`

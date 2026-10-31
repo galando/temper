@@ -12,6 +12,11 @@ of times; an existing config is never overwritten.
 `/temper` runs this automatically the first time it's used in an un-set-up project, so
 most people never call `/temper:init` by hand — it's here for an explicit re-run.
 
+## Uninstall
+
+When the arguments hold `--uninstall`, do nothing else: run `${CLAUDE_PLUGIN_ROOT}/scripts/temper guards uninstall`, print what it
+says, and stop. It removes the Temper commit hook and its folder; the person runs it in a terminal while no run is active.
+
 ## Steps
 
 ```

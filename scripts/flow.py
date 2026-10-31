@@ -864,7 +864,7 @@ class Builder:
         # the fix pass: the groups are integrated, so Build mends what a step back or "Run Build again" names. A door's
         # run whose code an earlier run built (built_before, from the walked Build's check) mends it the same way.
         before = r.state.get("built_before") and not rg
-        if (integ and all(gpass(g) for g in gid)) or before:
+        if (integ and gid and all(gpass(g) for g in gid)) or before:
             a = self.agent("build", self.feedback_lines())
             if integ != "PASS" and not before:
                 a["after"].append(self.c("integrate"))
@@ -1201,7 +1201,7 @@ class Builder:
         # The code this commit carries: what is still uncommitted (Build commits each task, each group and the merge).
         if code and git("rev-parse", "--verify", "-q", "HEAD"):
             code = [f for f in code if git("status", "--porcelain", "--", f)]
-        if not code and not lessons and (r.spec_ignored() or not r.spec):
+        if not code and not lessons and (r.spec_ignored() or not r.spec or not r.ctx.get("spec_dirty")):
             # F27: nothing to stage: no uncommitted code, no lesson file, and a spec folder git ignores. No git add, no git commit.
             steps.append("There is no record commit: no uncommitted code, no lesson file, and the spec folder is git-ignored or unchanged, so there is nothing to stage.")
         else:

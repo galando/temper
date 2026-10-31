@@ -68,6 +68,9 @@ orchestrator's conversation carries over except the prompt you were launched wit
   `- Blocking: Context check: is this the right context for the plan? choices: Right direction | Narrow the focus | Fix the sources.`
   Ask nobody yourself, and never write `reviewed: human` or edit that line afterwards: the CLI writes it from the person's answer
   (`temper plan review --answer`), and `plan.context-check` in the config decides whether the person is asked.
+- A Maven group (a `pom.xml` in it) validates with `mvn verify` run once with JaCoCo on, never a bare test goal; a task's test
+  command names its test classes (a `-Dtest=` list, with or without `#method`), and Build runs only those, offline, on `mvnd` when
+  it is on PATH, and needs a new surefire report for each class. `temper gate plan` names a Maven group that breaks this.
 - Every scenario carries a `Test:` line: a scoped shell command that proves it on the merged tree and names the test a
   task of `tasks.md` writes. Build runs each one and records a row; a criterion with `Validate: scenario` passes only
   from that row, never from a `Traced to:` line. `temper gate plan` names every scenario with none.
