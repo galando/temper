@@ -162,3 +162,12 @@ assert_eq "F30: a Temper line in a hook of the user's own is named, and not chan
   "$(grep -c 'your hook .* runs the Temper hook' <<<"$OUT")|$(grep -c 'temper-gate/pre-commit' userhooks/pre-commit)|$(git config --get core.hooksPath)"
 git config --unset core.hooksPath; rm -rf userhooks
 assert_eq "F30: state init prints one Note line saying the run owns the folder and a worktree gives other work its own run" "1" "$(setup; "$TEMPER" state clear >/dev/null 2>&1; "$TEMPER" state init noteslug 2>&1 | grep -c '^Note: the run noteslug owns this folder; separate work goes in a worktree')"
+
+# --- F30. A guard script passes at once, with one line naming temper guards uninstall, when the plugin's CLI is gone ---
+GP="$WORKDIR/gone-plugin"; rm -rf "$GP"; mkdir -p "$GP/scripts/guards"
+cp "$REPO_ROOT/scripts/guards/block-uncommitted-gate.sh" "$REPO_ROOT/scripts/guards/block-protected-paths.sh" "$GP/scripts/guards/"
+for g in block-uncommitted-gate block-protected-paths; do
+  OUT="$(cd "$WORKDIR" && echo '{"tool_input": {"command": "git commit -m x", "file_path": "a.txt"}}' | bash "$GP/scripts/guards/$g.sh" 2>&1; echo "rc=$?")"
+  assert_eq "F30: $g passes with one line naming temper guards uninstall when the CLI is gone" "1|rc=0" "$(grep -c 'temper guards uninstall' <<<"$OUT")|$(grep -o 'rc=[0-9]*' <<<"$OUT")"
+done
+rm -rf "$GP"

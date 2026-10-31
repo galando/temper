@@ -62,6 +62,7 @@ except Exception:
   root="${here%/scripts/guards}"
   [[ "$root" != "$here" ]] || return 0
   temper_bin="$root/scripts/temper"
+  [[ -e "$temper_bin" ]] || { echo "Temper: the plugin's CLI is gone, so this guard passes. To remove the commit hook for good, run temper guards uninstall." >&2; return 0; }
   [[ -x "$temper_bin" ]] || return 0
   # A repository inside the plugin's own folder (a second checkout or worktree placed in
   # it) is part of the plugin: the CLI refuses to run there, so there is nothing to gate.

@@ -570,3 +570,17 @@ export const fixRun = (w: World): void => {
   expect(asked.some(q => q.startsWith('RCA: the root cause is in')), 'the RCA question was asked')
   expect(w.sh('git log --format=%s -n 1').length > 0 && !w.exists('.temper/build-state.json'), 'the fix run ended with its commit')
 }
+
+// The run's branch exists from an earlier run: Continue on it carries the new spec files across the switch through a temp folder.
+// The mod lets the call through whole, as the CLI wrote it (the only Temper path it writes is the spec folder).
+export const branchClashCarry = (w: World): void => {
+  startProject(w, '', wd => {
+    wd.sh('git checkout -q -b feature/ci && echo old > old.txt && git add old.txt && git commit -qm "an earlier run" && git checkout -q main')
+  })
+  orchestrate(w, script({
+    person: (ask, wd) => (String(ask.question.question).includes('already exists from an earlier run') ? 'Continue on feature/ci' : recommended(ask, wd)),
+  }))
+  expect(w.sh('git branch --show-current').trim() === 'feature/ci', 'the run went on the earlier branch')
+  expect(w.sh('git log --format=%s feature/ci').includes('docs(intent): accept ci') || w.sh('git log --all --format=%s').includes('docs(intent): accept ci'), 'the intent was accepted and committed there, with the new spec files carried across')
+  expect(w.exists('old.txt') || !w.exists('.temper/build-state.json'), 'the earlier work is on the branch')
+}
