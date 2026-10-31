@@ -279,6 +279,7 @@ for st, nxt in (("build", "review"), ("review", "check"), ("check", "commit")):
 verdict(pl, "commit", True)
 cli(pl, "state", "set", "pr", "one")
 cli(pl, "state", "advance", "commit_complete", "pipeline")
+write(pl, "src/app.ts", "export const x = 1\n")
 write(pl, ".temper/specs/pw/pipeline-context.json", json.dumps({"status": "red", "round": 1, "failed_jobs": [{"name": "unit", "stage": "test", "id": "1", "error": "boom"}], "fix": ["src/app.ts: fix"]}))
 verdict(pl, "pipeline", False, "jobs passed", "1 job(s) failed: unit")
 snap2(pl, "pipeline-red", "run-pipe")

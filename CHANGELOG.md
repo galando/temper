@@ -55,6 +55,14 @@ git identity, the mod runs nothing and sets nothing, and `userConfig.enforcement
 - **Pipeline could not read the checks in a Claude Code cloud session.** `gh pr checks` uses GraphQL, which those sessions refuse with
   HTTP 403, and the Pipeline brief had no other way. It now falls back to `gh api repos/{owner}/{repo}/commits/{head sha}/check-runs` (REST, tried
   from this session). `gh pr create` uses GraphQL too: there the pull request step falls back to the commands it prints, as it does for any other failure.
+- **A CI fix sent Review, Check and the commit gate again, before CI was read (found by running the fix loop as printed).** *What broke:*
+  after "Apply the fix and push" the next action was the Review agent over the pushed fix, not the Pipeline read. *Cause:* `adhoc close`
+  treated a change made at Pipeline like one made at Check or Commit. *Why nothing failed:* the end to end driver's scripted Review and Check
+  agents accepted the extra launches. *Fix:* a change made at Pipeline re-runs nothing (`state redo pipeline`, the last step of the fix,
+  reads CI again), and the scenario now counts the Review and Check launches.
+- **The Pipeline agent guessed a fix path and a round limit.** The launch line is now `Round: N of M.` (M is `loops.max-per-type`), so the
+  panel's "ROUND n of max" is no longer made up, and each `fix` entry starts with a path that exists in the project or with `no file:`;
+  the gate row `fix paths` fails any other entry, and the red question shows why.
 
 **After Commit**
 - **The Pipeline stage (F26, ADR 0014)**, draft pull requests and stacked parts by branch pointers (F23, F24, ADR 0015).

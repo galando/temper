@@ -129,3 +129,51 @@ assert_eq "init: the coverage output folder .temper/check/ is excluded from git,
 # --- Pipeline reads the checks over REST where GraphQL is not available (Claude Code cloud sessions) ---
 assert_eq "Pipeline: the brief, the reference and the trust page name the REST read of the checks" "1|1|1" \
   "$(grep -c 'gh api repos/{owner}/{repo}/commits/{head sha}/check-runs' "$REPO_ROOT/agents/pipeline.md")|$(grep -c 'gh api repos/{owner}/{repo}/commits/{head sha}/check-runs' "$REPO_ROOT/reference/pipeline.md")|$(grep -c 'gh api repos/{owner}/{repo}/commits/{head sha}/check-runs' "$REPO_ROOT/docs/trust.md")"
+
+# --- Pipeline: the fix list names real files (no guessed path), and the whole fix loop run as printed ---
+_fixrow() { # _fixrow <fix json>: the `fix paths` row of the Pipeline gate for a red result
+  printf '{"status": "red", "round": 1, "failed_jobs": [{"name": "unit", "stage": "test", "id": "1", "error": "boom"}], "fix": %s}\n' "$1" > .temper/specs/demo/pipeline-context.json
+  python3 -E -s "$REPO_ROOT/scripts/gate_rows.py" pipeline-gate .temper/specs/demo | python3 -c "
+import json, sys
+t = sys.stdin.read().strip(); rows = json.loads(t.rsplit(' ', 1)[0])
+r = [x for x in rows if x['name'] == 'fix paths'][0]
+print(str(r['pass']) + '|' + r['detail'])"
+}
+fresh; mkdir -p unit; echo x > unit/a.sh
+assert_eq "Pipeline: a fix entry that names a file that exists passes the fix paths row" "True" "$(_fixrow '["unit/a.sh: the value is 4"]' | cut -d'|' -f1)"
+assert_eq "Pipeline: a fix entry may say no file, and says where to look instead" "True" "$(_fixrow '["no file: the log names none; look in the test that prints boom"]' | cut -d'|' -f1)"
+assert_eq "Pipeline: a path taken from a step name and not in the project fails the row, naming the entry" "False|1" \
+  "$(_fixrow '["scripts/selftest/test-temper.sh: update the fixture"]' | awk -F'|' '{print $1 "|" (index($0, "entry 1 starts with '"'"'scripts/selftest/test-temper.sh'"'"', which is not a file here") > 0)}')"
+assert_eq "Pipeline: a path outside the project, or one climbing out of it, fails the row" "False|False" \
+  "$(_fixrow '["/etc/hostname: x"]' | cut -d'|' -f1)|$(_fixrow '["../unit/a.sh: x"]' | cut -d'|' -f1)"
+assert_eq "Pipeline: an empty fix list, or an entry with no path, fails the row" "False|False" \
+  "$(_fixrow '[]' | cut -d'|' -f1)|$(_fixrow '["fix the thing"]' | cut -d'|' -f1)"
+
+# The whole loop as printed: red -> the steps run literally (a real commit, a real push to a bare origin) -> redo -> Round 2 of 2 -> green -> End
+_pl; rm -rf .git ../pl-origin.git; git init -q . 2>/dev/null; git config user.email t@example.com; git config user.name T; git checkout -q -B feature/demo
+echo base > unit/a.sh; printf '.temper/\n.claude/\n' > .gitignore; git add -A >/dev/null 2>&1; git commit -qm base >/dev/null 2>&1
+git init -q --bare ../pl-origin.git 2>/dev/null; git remote add origin ../pl-origin.git; git push -q -u origin feature/demo >/dev/null 2>&1
+_plctx '{"status": "red", "round": 1, "failed_jobs": [{"name": "unit", "stage": "test", "id": "1", "error": "boom"}], "fix": ["unit/a.sh: the value is 4"]}'
+"$TEMPER" gate pipeline >/dev/null 2>&1
+STEPS="$(nx "'\n'.join(d['ask']['options'][0]['steps'])")"
+while IFS= read -r st; do
+  case "$st" in
+    *"/scripts/temper "*) bash -c "$st" >/dev/null 2>&1 ;;
+    Apply*) echo 'the value is 4' > unit/a.sh ;;
+    "git add -- "*) git add -- unit/a.sh >/dev/null 2>&1 ;;
+    "git commit -m "*) bash -c "$st" >/dev/null 2>&1 ;;
+    "git push") git push -q >/dev/null 2>&1 ;;
+  esac
+done <<<"$STEPS"
+assert_eq "Pipeline loop: the printed steps made the fix commit and pushed it to the origin" "fix(ci): apply the Pipeline fix (CI fix round 1)" \
+  "$(git --git-dir=../pl-origin.git log --format=%s -n 1 feature/demo)"
+assert_eq "Pipeline loop: the round is counted, the old result is gone and the window is closed" "2|no|closed" \
+  "$("$TEMPER" state get pipeline_round 2>/dev/null)|$([[ -f .temper/specs/demo/pipeline-context.json ]] && echo yes || echo no)|$(python3 -c "import json; print('open' if json.load(open('.temper/build-state.json')).get('adhoc') else 'closed')")"
+assert_eq "Pipeline loop: the Pipeline agent runs again and its launch line says Round: 2 of 2." "work|temper:temper-pipeline|1" \
+  "$(nx "d['action'] + '|' + d['agents'][0]['type'] + '|' + str(d['agents'][0]['prompt'].count('Round: 2 of 2.'))")"
+_plctx '{"status": "green", "round": 2, "failed_jobs": [], "fix": []}'
+"$TEMPER" gate pipeline >/dev/null 2>&1
+assert_eq "Pipeline loop: the second read is green and the run may end" "Pipeline: every job passed. End the run?|End the run (Recommended)" \
+  "$(nx "d['ask']['question']['question'] + '|' + d['ask']['options'][0]['label']")"
+rm -rf ../pl-origin.git
+setup

@@ -136,7 +136,24 @@ def pipeline_gate(spec):
         failed = [j.get("name", "?") for j in (ctx.get("failed_jobs") or []) if isinstance(j, dict)]
         rows.append(row("jobs passed", status == "green",
                         "every job passed" if status == "green" else "%d job(s) failed: %s" % (len(failed), ", ".join(failed[:5]) or "see pipeline-context.json")))
+        if status == "red":
+            rows.append(fix_paths_row(ctx.get("fix")))
     return "%s %d" % (json.dumps(rows), 1 if all(r["pass"] for r in rows) else 0)
+
+
+def fix_paths_row(fix):
+    """A red result's fix list names real files: each entry starts with `<path>:` where the path exists in the project, or with
+    `no file:` when the log names no file (a path guessed from a step name is how a fix goes to the wrong place)."""
+    entries = [str(x) for x in fix] if isinstance(fix, list) else []
+    if not entries:
+        return row("fix paths", False, "the fix list is empty: it names no file and no change")
+    bad = []
+    for i, e in enumerate(entries, 1):
+        head = e.split(":", 1)[0].strip()
+        if head == "no file" or (head and ":" in e and os.path.isfile(head) and ".." not in head.split("/") and not os.path.isabs(head)):
+            continue
+        bad.append("entry %d starts with %s" % (i, "'%s', which is not a file here" % head[:60] if head else "no path"))
+    return row("fix paths", not bad, "every fix entry names a file that exists, or says `no file:`" if not bad else "; ".join(bad[:3]) + " (a fix entry starts with an existing `path:` or `no file:`)")
 
 
 def main(argv):

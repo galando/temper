@@ -220,9 +220,16 @@ export const prAndPipeline = (w: World): void => {
   w.sh(`git init -q --bare ${origin}`)
   startProject(w, '', wd => wd.sh(`git remote add origin ${origin} && git push -q origin main`))
   let round = 0
+  const launches: Record<string, number> = {}
+  const counted = (type: string): Agent => (wd, a) => {
+    launches[type] = (launches[type] ?? 0) + 1
+    AGENTS[type]!(wd, a)
+  }
   const opened: string[] = []
   const agents: Record<string, Agent> = {
     ...AGENTS,
+    'temper:temper-review': counted('temper:temper-review'),
+    'temper:temper-check': counted('temper:temper-check'),
     'temper:temper-pipeline': wd => {
       round += 1
       expect(!/reason|Dana/.test(w.trace.join('')) || true, 'ok')
@@ -271,6 +278,7 @@ export const prAndPipeline = (w: World): void => {
   const ghLog = fs.readFileSync(log, 'utf8')
   expect(/gh pr create .*--draft/.test(ghLog) && !/gh pr ready/.test(ghLog), 'the pull request is a draft and nothing marked it ready')
   expect(round === 2, `Pipeline ran twice (${round})`)
+  expect(launches['temper:temper-review'] === 1 && launches['temper:temper-check'] === 1, `a CI fix sends no Review or Check again (review ${launches['temper:temper-review']}, check ${launches['temper:temper-check']})`)
   expect(w.sh('git log --format=%s -n 3').includes('fix(ci): apply the Pipeline fix (CI fix round 1)'), 'the fix was committed with the agreed message')
   expect(w.sh(`git --git-dir=${origin} log --format=%s -n 1 feature/ci`).includes('fix(ci)'), 'the fix was pushed to origin')
   void refused

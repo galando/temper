@@ -91,7 +91,10 @@ def open_window(state_path, stage, reason):
 def steps_for(stage, files):
     """What a change made at the stage re-runs. A doc only change, and a change made at Build, re-run only the stage's own
     gate; a code change at Review re-runs Review; at Check or Commit, Review of the changed files, then Check, then the
-    commit gate."""
+    commit gate. A change made at Pipeline (a CI fix, already pushed) re-runs nothing: `state redo pipeline`, which the fix ends
+    with, makes the Pipeline stage read the checks again."""
+    if stage == "pipeline":
+        return []
     if not files or all(is_doc(f) for f in files) or stage == "build":
         return ["gate"]
     if stage == "review":
@@ -118,7 +121,10 @@ def close_window(state_path):
     done = {"stage": w["stage"], "reason": w["reason"], "files": files, "doc_only": bool(files) and all(is_doc(f) for f in files),
             "steps": steps_for(w["stage"], files), "closed": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     d.pop("adhoc", None)
-    d["adhoc_done"] = done
+    if done["steps"]:
+        d["adhoc_done"] = done
+    else:
+        d.pop("adhoc_done", None)
     save(state_path, d)
     return done
 
@@ -144,7 +150,7 @@ def main(argv):
         if len(argv) == 3 and argv[1] == "close":
             done = close_window(argv[2])
             print("OK: small change closed: %d file(s) changed%s; still to run: %s" % (
-                len(done["files"]), " (docs only)" if done["doc_only"] else "", ", ".join(done["steps"])))
+                len(done["files"]), " (docs only)" if done["doc_only"] else "", ", ".join(done["steps"]) or "nothing here (the Pipeline stage reads the checks again)"))
             return 0
         if len(argv) == 4 and argv[1] == "step":
             mark_step(argv[2], argv[3])

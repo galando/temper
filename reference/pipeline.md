@@ -30,7 +30,7 @@ result", and a `red` status fails the row "jobs passed". Green passes.
 - Red past the limit: **the fix limit is reached; End the run?**
 
 The orchestrator applies a fix only after the person says yes, in a Pipeline ad-hoc window
-(`temper adhoc open --stage pipeline`): it applies the changes the fix list names (the step names the file, never the CI text),
+(`temper adhoc open --stage pipeline`): it applies the changes the fix list names (the step names the file, never the CI text; each entry starts with a path that exists in the project, or `no file:`, and the gate row `fix paths` fails any other entry),
 stages each changed file by name (never `git add -A`), commits `fix(ci): apply the Pipeline fix (CI fix round n)`, pushes, closes the
 window, counts the round and redoes the stage, so the checks are read again. A mod write at Pipeline is refused unless the
 window is open. Temper never runs `gh pr ready`.

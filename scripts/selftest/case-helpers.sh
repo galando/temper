@@ -221,3 +221,8 @@ x
 - [x] done
 TASKS
 }
+
+_pl() { # _pl: a run at the Pipeline stage after a Commit that opened a pull request
+  fresh; gpass intent plan build review check commit; "$TEMPER" state set pr one >/dev/null 2>&1; _at pipeline
+}
+_plctx() { printf '%s\n' "$1" > .temper/specs/demo/pipeline-context.json; }

@@ -58,14 +58,10 @@ assert_eq "F23: an armed run is never offered a pull request" "0" "$(nx "str(sum
 printf 'stack: auto\n' > .claude/temper.config
 
 # --- F26. The Pipeline stage after Commit ---
-_pl() { # _pl: a run at the Pipeline stage after a Commit that opened a pull request
-  fresh; gpass intent plan build review check commit; "$TEMPER" state set pr one >/dev/null 2>&1; _at pipeline
-}
-_plctx() { printf '%s\n' "$1" > .temper/specs/demo/pipeline-context.json; }
 _pl
-assert_eq "F26: a run at Pipeline launches the Pipeline agent with the round only (no commit path), and nothing of the person's answer" \
+assert_eq "F26: a run at Pipeline launches the Pipeline agent with the round and the most rounds (Round: 1 of 2.), no commit path, and nothing of the person's answer" \
   "work|temper:temper-pipeline|0|1|0" \
-  "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], str(a['prompt'].count('Commit path')), str(a['prompt'].count('Round: 1.')), str(a['prompt'].count('reason'))])")"
+  "$(nx "a = d['agents'][0]; '|'.join([d['action'], a['type'], str(a['prompt'].count('Commit path')), str(a['prompt'].count('Round: 1 of 2.')), str(a['prompt'].count('reason'))])")"
 assert_eq "F26: the agent's gate call is the last of its after calls" "gate pipeline" "$(nx "d['agents'][0]['after'][-1].split('temper ', 1)[1]")"
 assert_eq "F26: the stage is in the CLI's models and its brief names sonnet" "sonnet" "$("$TEMPER" model pipeline)"
 "$TEMPER" gate pipeline >/dev/null 2>&1
@@ -76,6 +72,7 @@ _plctx '{"status": "green", "failed_jobs": [], "fix": [], "round": 1}'
 "$TEMPER" gate pipeline >/dev/null 2>&1
 assert_eq "F26: green asks to end the run" "Pipeline: every job passed. End the run?|End the run (Recommended)|Save for later" \
   "$(nx "d['ask']['question']['question'] + '|' + '|'.join(o['label'] for o in d['ask']['options'])")"
+mkdir -p unit; echo 'x' > unit/a.sh
 _plctx '{"status": "red", "failed_jobs": [{"name": "unit", "stage": "test", "id": "1", "error": "boom"}], "fix": ["unit/a.sh: the value is 4"], "round": 1}'
 "$TEMPER" gate pipeline >/dev/null 2>&1
 assert_eq "F26: red asks Apply the fix and push?, and the steps are the agreed ones in order" \

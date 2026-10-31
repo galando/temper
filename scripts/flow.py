@@ -710,15 +710,19 @@ class Builder:
         return {"action": "ask", "stage": r.stage, "ask": self.question(GATE_HEADER, "%s: Review of your small change failed (%s). Loop back to Build?" % (
             LABEL.get(r.stage, r.stage), why), stage=r.stage, options=opts)}
 
+    def round_limit(self):
+        """The most CI fix rounds (loops.max-per-type, 2 by default): the Pipeline question and the Pipeline agent's launch line use the same."""
+        try:
+            return int(self.r.cfg("loops.max-per-type", "2"))
+        except ValueError:
+            return 2
+
     def pipeline_question(self, passed, why):
         r = self.r
         ctx = read_json(os.path.join(r.spec, "pipeline-context.json"), {}) if r.spec else {}
         status = ctx.get("status") if ctx else None
         rnd = int(r.state.get("pipeline_round") or 1)
-        try:
-            mx = int(r.cfg("loops.max-per-type", "2"))
-        except ValueError:
-            mx = 2
+        mx = self.round_limit()
         end = self.opt("End the run" + (" (Recommended)" if passed or rnd > mx else ""), "Finish here; the run state is cleared.", move="advance", calls=[self.c("state clear")])
         if passed:
             return self.question(GATE_HEADER, "Pipeline: every job passed. End the run?", stage="pipeline", options=[end, self.save()])
@@ -821,7 +825,7 @@ class Builder:
             elif stage == "fix":
                 extra = self.feedback_lines()
         if stage == "pipeline":
-            extra = ["Round: %s." % (r.state.get("pipeline_round") or 1)]
+            extra = ["Round: %s of %s." % (r.state.get("pipeline_round") or 1, self.round_limit())]
         # A step back to this stage (from Design to Plan, from Review to Intent): the agent runs again for the person's
         # reason, and with what the stage it came from left open.
         back = r.loop_into(stage) if stage not in ("build", "fix") else None
